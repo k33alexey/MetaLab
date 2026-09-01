@@ -1,0 +1,159 @@
+version: 1
+keywords:
+  - {id: procedure, ru: Процедура, en: Procedure, category: declaration}
+  - {id: end_procedure, ru: КонецПроцедуры, en: EndProcedure, category: declaration}
+  - {id: function, ru: Функция, en: Function, category: declaration}
+  - {id: end_function, ru: КонецФункции, en: EndFunction, category: declaration}
+  - {id: var, ru: Перем, en: Var, category: declaration}
+  - {id: export, ru: Экспорт, en: Export, category: declaration}
+  - {id: val, ru: Знач, en: Val, category: declaration}
+  - {id: if, ru: Если, en: If, category: control}
+  - {id: then, ru: Тогда, en: Then, category: control}
+  - {id: elsif, ru: ИначеЕсли, en: ElsIf, category: control}
+  - {id: else, ru: Иначе, en: Else, category: control}
+  - {id: end_if, ru: КонецЕсли, en: EndIf, category: control}
+  - {id: for, ru: Для, en: For, category: control}
+  - {id: each, ru: Каждого, en: Each, category: control}
+  - {id: in, ru: Из, en: In, category: control}
+  - {id: to, ru: По, en: To, category: control}
+  - {id: do, ru: Цикл, en: Do, category: control}
+  - {id: end_do, ru: КонецЦикла, en: EndDo, category: control}
+  - {id: while, ru: Пока, en: While, category: control}
+  - {id: try, ru: Попытка, en: Try, category: control}
+  - {id: except, ru: Исключение, en: Except, category: control}
+  - {id: end_try, ru: КонецПопытки, en: EndTry, category: control}
+  - {id: raise, ru: ВызватьИсключение, en: Raise, category: control}
+  - {id: return, ru: Возврат, en: Return, category: control}
+  - {id: continue, ru: Продолжить, en: Continue, category: control}
+  - {id: break, ru: Прервать, en: Break, category: control}
+  - {id: goto, ru: Перейти, en: Goto, category: control}
+  - {id: execute, ru: Выполнить, en: Execute, category: dynamic}
+  - {id: add_handler, ru: ДобавитьОбработчик, en: AddHandler, category: dynamic}
+  - {id: remove_handler, ru: УдалитьОбработчик, en: RemoveHandler, category: dynamic}
+  - {id: async, ru: Асинх, en: Async, category: async}
+  - {id: await, ru: Ждать, en: Await, category: async}
+  - {id: new, ru: Новый, en: New, category: expression}
+  - {id: not, ru: Не, en: Not, category: expression}
+  - {id: and, ru: И, en: And, category: expression}
+  - {id: or, ru: Или, en: Or, category: expression}
+  - {id: true, ru: Истина, en: True, category: literal}
+  - {id: false, ru: Ложь, en: False, category: literal}
+  - {id: undefined, ru: Неопределено, en: Undefined, category: literal}
+  - {id: "null", ru: "Null", en: "Null", category: literal}
+features:
+  - id: lexical.identifiers
+    category: lexical
+    title: Unicode identifiers and case-insensitive keywords
+    corpus: [lexical.bsl, declarations_ru.bsl, declarations_en.bsl]
+  - id: lexical.comments
+    category: lexical
+    title: Line comments and whitespace
+    corpus: [lexical.bsl]
+  - id: lexical.numbers
+    category: lexical
+    title: Integer and decimal literals
+    corpus: [lexical.bsl]
+  - id: lexical.strings
+    category: lexical
+    title: Strings, escaped quotes and multiline strings
+    corpus: [lexical.bsl]
+  - id: lexical.dates
+    category: lexical
+    title: Date literals
+    corpus: [lexical.bsl]
+  - id: preprocessor.regions
+    category: preprocessor
+    title: Regions
+    corpus: [preprocessor.bsl]
+  - id: preprocessor.conditions
+    category: preprocessor
+    title: Conditional compilation and target symbols
+    corpus: [preprocessor.bsl]
+  - id: declaration.variables
+    category: declaration
+    title: Module and local variable declarations
+    corpus: [declarations_ru.bsl, declarations_en.bsl]
+  - id: declaration.procedures
+    category: declaration
+    title: Procedures, parameters by value, defaults and export
+    corpus: [declarations_ru.bsl, declarations_en.bsl]
+  - id: declaration.functions
+    category: declaration
+    title: Functions and return values
+    corpus: [declarations_ru.bsl, declarations_en.bsl]
+  - id: declaration.async
+    category: declaration
+    title: Async procedures and functions
+    corpus: [async_ru.bsl, async_en.bsl]
+  - id: declaration.directives
+    category: declaration
+    title: Client and server compiler directives
+    corpus: [declarations_ru.bsl, declarations_en.bsl]
+  - id: statement.assignment
+    category: statement
+    title: Assignment to variables, properties and indexes
+    corpus: [expressions_ru.bsl, expressions_en.bsl]
+  - id: statement.condition
+    category: statement
+    title: If, ElsIf and Else branches
+    corpus: [control_ru.bsl, control_en.bsl]
+  - id: statement.loops
+    category: statement
+    title: While, numeric For and For Each loops
+    corpus: [control_ru.bsl, control_en.bsl]
+  - id: statement.loop_control
+    category: statement
+    title: Break and Continue
+    corpus: [control_ru.bsl, control_en.bsl]
+  - id: statement.exceptions
+    category: statement
+    title: Try, Except and Raise
+    corpus: [control_ru.bsl, control_en.bsl]
+  - id: statement.return
+    category: statement
+    title: Return with and without value
+    corpus: [declarations_ru.bsl, declarations_en.bsl]
+  - id: statement.dynamic_execute
+    category: statement
+    title: Execute statement
+    corpus: [advanced_ru.bsl, advanced_en.bsl]
+  - id: statement.labels
+    category: statement
+    title: Labels and Goto
+    corpus: [advanced_ru.bsl, advanced_en.bsl]
+  - id: statement.handlers
+    category: statement
+    title: AddHandler and RemoveHandler
+    corpus: [advanced_ru.bsl, advanced_en.bsl]
+  - id: statement.await
+    category: statement
+    title: Await statement and expression
+    corpus: [async_ru.bsl, async_en.bsl]
+  - id: expression.literals
+    category: expression
+    title: Boolean, Undefined and Null literals
+    corpus: [expressions_ru.bsl, expressions_en.bsl]
+  - id: expression.operators
+    category: expression
+    title: Arithmetic, comparison, boolean and unary operators
+    corpus: [expressions_ru.bsl, expressions_en.bsl]
+  - id: expression.calls
+    category: expression
+    title: Calls, member access, indexes and skipped arguments
+    corpus: [expressions_ru.bsl, expressions_en.bsl]
+  - id: expression.new
+    category: expression
+    title: Object construction forms
+    corpus: [expressions_ru.bsl, expressions_en.bsl]
+  - id: expression.ternary
+    category: expression
+    title: Ternary operator
+    corpus: [expressions_ru.bsl, expressions_en.bsl]
+  - id: extension.annotations
+    category: extension
+    title: Extension method annotations
+    corpus: [extension_ru.bsl, extension_en.bsl]
+  - id: extension.blocks
+    category: extension
+    title: Insert and delete source blocks
+    corpus: [extension_ru.bsl, extension_en.bsl]
