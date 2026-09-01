@@ -27,9 +27,25 @@ MetaLab (ML) is an open-source platform for developing and running business appl
 
 ## Current status
 
-The high-level product requirements and development roadmap have been prepared. Implementation has not started yet.
+The high-level product requirements and development roadmap have been prepared. The initial Go project scaffold is now in place.
 
 Installation and usage instructions will be added as soon as the first working version becomes available.
+
+## Development
+
+Requirements: Go 1.27 or newer.
+
+```shell
+make check
+```
+
+The same checks can be run without Make:
+
+```shell
+go vet ./...
+go test -race ./...
+go build ./cmd/ml
+```
 
 ## License
 
