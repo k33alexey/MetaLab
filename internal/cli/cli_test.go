@@ -83,7 +83,7 @@ func TestRunReportsModeAndArgumentErrors(t *testing.T) {
 		code     int
 	}{
 		{name: "unavailable", args: []string{"manager"}, message: "unavailable", code: 1},
-		{name: "runner", commands: Commands{Service: func(context.Context, appconfig.Config) error { return errors.New("failed") }}, args: []string{"service"}, message: "service: failed", code: 1},
+		{name: "runner", commands: Commands{Service: func(context.Context, appconfig.Config) error { return errors.New("failed") }}, args: []string{"service"}, message: "service run: failed", code: 1},
 		{name: "argument", args: []string{"manager", "extra"}, message: "unexpected argument", code: 2},
 	}
 	for _, test := range tests {
@@ -102,6 +102,55 @@ func TestConfigValidate(t *testing.T) {
 	code, stdout, stderr := run(t, Commands{}, "config", "validate", "--config", path)
 	if code != 0 || !strings.Contains(stdout, path) {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+}
+
+func TestServiceNativeActions(t *testing.T) {
+	t.Parallel()
+
+	var gotAction, gotPath string
+	commands := Commands{Control: func(action, path string) (string, error) {
+		gotAction, gotPath = action, path
+		return "running", nil
+	}}
+	code, stdout, stderr := run(t, commands, "service", "status")
+	if code != 0 || stdout != "running\n" || gotAction != "status" || gotPath != "" {
+		t.Fatalf("code=%d stdout=%q stderr=%q action=%q path=%q", code, stdout, stderr, gotAction, gotPath)
+	}
+}
+
+func TestServiceInstallRequiresAndValidatesConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	writeConfiguration(t, path)
+	var installedPath string
+	commands := Commands{Control: func(action, configurationPath string) (string, error) {
+		if action != "install" {
+			t.Fatalf("action = %q", action)
+		}
+		installedPath = configurationPath
+		return "install completed", nil
+	}}
+	code, _, stderr := run(t, commands, "service", "install", "--config", path)
+	if code != 0 || installedPath != path {
+		t.Fatalf("code=%d path=%q stderr=%q", code, installedPath, stderr)
+	}
+	code, _, stderr = run(t, commands, "service", "install")
+	if code != 2 || !strings.Contains(stderr, "requires --config") {
+		t.Fatalf("code=%d stderr=%q", code, stderr)
+	}
+}
+
+func TestServiceControlReportsErrors(t *testing.T) {
+	t.Parallel()
+
+	commands := Commands{Control: func(string, string) (string, error) { return "", errors.New("denied") }}
+	code, _, stderr := run(t, commands, "service", "start")
+	if code != 1 || !strings.Contains(stderr, "denied") {
+		t.Fatalf("code=%d stderr=%q", code, stderr)
+	}
+	code, _, stderr = run(t, Commands{}, "service", "stop", "extra")
+	if code != 2 || !strings.Contains(stderr, "unexpected arguments") {
+		t.Fatalf("code=%d stderr=%q", code, stderr)
 	}
 }
 

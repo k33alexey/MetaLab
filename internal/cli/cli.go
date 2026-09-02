@@ -15,7 +15,9 @@ const usage = `MetaLab
 
 Usage:
   ml manager [--config PATH]
-  ml service [--config PATH]
+  ml service run [--config PATH]
+  ml service install --config PATH
+  ml service start|stop|restart|status|uninstall
   ml config validate [--config PATH]
   ml version
   ml help
@@ -27,10 +29,14 @@ Environment overrides: ML_LANGUAGE, ML_SERVICE_LISTEN, ML_DATABASE_URL.
 // Runner starts one long-running MetaLab mode.
 type Runner func(context.Context, appconfig.Config) error
 
+// ServiceControl executes one native service-manager action.
+type ServiceControl func(action, configurationPath string) (string, error)
+
 // Commands contains platform-specific mode implementations.
 type Commands struct {
 	Manager Runner
 	Service Runner
+	Control ServiceControl
 }
 
 // CLI is the root MetaLab command-line application.
@@ -60,13 +66,62 @@ func (cli CLI) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 	case "manager":
 		return cli.runMode(ctx, "manager", args[1:], cli.commands.Manager, stderr)
 	case "service":
-		return cli.runMode(ctx, "service", args[1:], cli.commands.Service, stderr)
+		return cli.runService(ctx, args[1:], stdout, stderr)
 	case "config":
 		return cli.runConfig(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n%s", args[0], usage)
 		return 2
 	}
+}
+
+func (cli CLI) runService(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 || args[0] == "run" || len(args[0]) > 0 && args[0][0] == '-' {
+		if len(args) != 0 && args[0] == "run" {
+			args = args[1:]
+		}
+		return cli.runMode(ctx, "service run", args, cli.commands.Service, stderr)
+	}
+	action := args[0]
+	if action == "install" {
+		if !hasConfigFlag(args[1:]) {
+			fmt.Fprintln(stderr, "service install requires --config PATH")
+			return 2
+		}
+		_, path, ok := loadConfiguration("service install", args[1:], stderr)
+		if !ok {
+			return 2
+		}
+		return cli.controlService(action, path, stdout, stderr)
+	}
+	if len(args) != 1 {
+		fmt.Fprintf(stderr, "service %s: unexpected arguments\n", action)
+		return 2
+	}
+	return cli.controlService(action, "", stdout, stderr)
+}
+
+func (cli CLI) controlService(action, path string, stdout, stderr io.Writer) int {
+	if cli.commands.Control == nil {
+		fmt.Fprintln(stderr, "native service control is unavailable in this build")
+		return 1
+	}
+	message, err := cli.commands.Control(action, path)
+	if err != nil {
+		fmt.Fprintf(stderr, "service %s: %v\n", action, err)
+		return 1
+	}
+	fmt.Fprintln(stdout, message)
+	return 0
+}
+
+func hasConfigFlag(args []string) bool {
+	for _, argument := range args {
+		if argument == "--config" || len(argument) > len("--config=") && argument[:len("--config=")] == "--config=" {
+			return true
+		}
+	}
+	return false
 }
 
 func (cli CLI) runMode(ctx context.Context, name string, args []string, runner Runner, stderr io.Writer) int {

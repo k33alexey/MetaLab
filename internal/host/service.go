@@ -3,6 +3,7 @@ package host
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -18,21 +19,18 @@ import (
 // RunService starts ML Service and blocks until cancellation or failure.
 func RunService(ctx context.Context, configuration appconfig.Config) error {
 	databaseURL := os.Getenv("ML_DATABASE_URL")
-	if databaseURL == "" {
-		return fmt.Errorf("ML_DATABASE_URL is required for service mode")
-	}
-	runtime, err := prototype.OpenRuntime(ctx, databaseURL)
+	handler, closeRuntime, err := buildHandler(ctx, databaseURL)
 	if err != nil {
 		return err
 	}
-	defer runtime.Close()
+	defer closeRuntime()
 
 	listener, err := net.Listen("tcp", configuration.Service.Listen)
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", configuration.Service.Listen, err)
 	}
 	server := &http.Server{
-		Handler: runtime.Service.Handler(), ReadHeaderTimeout: 5 * time.Second,
+		Handler: handler, ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second,
 	}
 	finished := make(chan error, 1)
@@ -57,4 +55,22 @@ func RunService(ctx context.Context, configuration appconfig.Config) error {
 		}
 		return fmt.Errorf("serve ML Service: %w", err)
 	}
+}
+
+func buildHandler(ctx context.Context, databaseURL string) (http.Handler, func(), error) {
+	if databaseURL == "" {
+		routes := http.NewServeMux()
+		routes.HandleFunc("GET /api/health", func(response http.ResponseWriter, _ *http.Request) {
+			response.Header().Set("Content-Type", "application/json; charset=utf-8")
+			_ = json.NewEncoder(response).Encode(map[string]string{
+				"status": "degraded", "database": "unconfigured",
+			})
+		})
+		return routes, func() {}, nil
+	}
+	runtime, err := prototype.OpenRuntime(ctx, databaseURL)
+	if err != nil {
+		return nil, nil, err
+	}
+	return runtime.Service.Handler(), runtime.Close, nil
 }

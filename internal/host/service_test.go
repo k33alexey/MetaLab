@@ -2,16 +2,22 @@ package host
 
 import (
 	"context"
-	"strings"
+	"net/http"
+	"net/http/httptest"
 	"testing"
-
-	"github.com/k33alexey/MetaLab/internal/appconfig"
 )
 
-func TestRunServiceRequiresDatabaseURL(t *testing.T) {
-	t.Setenv("ML_DATABASE_URL", "")
-	err := RunService(context.Background(), appconfig.Default())
-	if err == nil || !strings.Contains(err.Error(), "ML_DATABASE_URL") {
-		t.Fatalf("RunService() error = %v", err)
+func TestBuildHandlerAllowsFirstRunWithoutDatabase(t *testing.T) {
+	t.Parallel()
+
+	handler, closeRuntime, err := buildHandler(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeRuntime()
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/health", nil))
+	if response.Code != http.StatusOK || response.Body.String() != "{\"database\":\"unconfigured\",\"status\":\"degraded\"}\n" {
+		t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
 	}
 }
