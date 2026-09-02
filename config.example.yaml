@@ -1,0 +1,8 @@
+version: 1
+language: ru
+
+service:
+  listen: 127.0.0.1:8090
+
+# Secrets are not stored in this file.
+# PostgreSQL is supplied through ML_DATABASE_URL until protected storage is implemented.

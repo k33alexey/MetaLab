@@ -3,11 +3,10 @@
 build:
 	mkdir -p bin
 	go build -o bin/ml ./cmd/ml
-	go build -o bin/ml-prototype ./cmd/mlprototype
 
 build-desktop:
 	mkdir -p bin
-	go build -tags desktop -ldflags='-s -w' -o bin/ml-prototype-desktop ./cmd/mlprototype-desktop
+	go build -tags desktop -ldflags='-s -w' -o bin/ml-desktop ./cmd/ml
 
 build-wasm:
 	mkdir -p bin

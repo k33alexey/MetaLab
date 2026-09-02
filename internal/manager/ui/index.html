@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ML Manager</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background: #0f141d; color: #eef2f8; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: radial-gradient(circle at 30% 0, #273858, #0f141d 56%); }
+    main { width: min(760px, calc(100% - 48px)); }
+    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+    h1 { margin: 0; font-size: 28px; } .tag { color: #8a98b0; }
+    section { padding: 24px; border: 1px solid #34425c; border-radius: 18px; background: #171e2aeb; box-shadow: 0 24px 70px #0007; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+    .state { display: inline-flex; align-items: center; gap: 9px; font-weight: 700; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #ef6674; box-shadow: 0 0 16px #ef6674; }
+    .running .dot { background: #5ee1be; box-shadow: 0 0 16px #5ee1be; }
+    small { color: #8390a6; } button { padding: 10px 14px; border: 0; border-radius: 9px; background: #5ee1be; color: #08221b; font-weight: 700; cursor: pointer; }
+  </style>
+</head>
+<body>
+<main>
+  <header><h1>ML Manager</h1><span class="tag">MetaLab</span></header>
+  <section>
+    <div class="row">
+      <div><div id="state" class="state"><i class="dot"></i><span>Проверка ML Service…</span></div><br><small id="url"></small></div>
+      <button id="refresh">Обновить</button>
+    </div>
+  </section>
+</main>
+<script>
+  const state = document.querySelector('#state');
+  const url = document.querySelector('#url');
+  async function refresh() {
+    const response = await fetch('/api/status'); const data = await response.json();
+    state.className = `state ${data.running ? 'running' : ''}`;
+    state.querySelector('span').textContent = data.running ? 'ML Service работает' : 'ML Service остановлен';
+    url.textContent = data.url;
+  }
+  document.querySelector('#refresh').addEventListener('click', refresh);
+  refresh(); setInterval(refresh, 5000);
+</script>
+</body>
+</html>

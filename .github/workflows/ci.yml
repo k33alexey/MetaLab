@@ -60,5 +60,8 @@ jobs:
       - name: Build
         run: go build ./cmd/ml
 
+      - name: Build Windows desktop binary
+        run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags desktop -o /tmp/ml.exe ./cmd/ml
+
       - name: WebAssembly smoke test
         run: make test-wasm
