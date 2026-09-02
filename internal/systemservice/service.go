@@ -123,7 +123,7 @@ func serviceDefinition(configurationPath string) (*kservice.Config, error) {
 	if configurationPath != "" {
 		arguments = append(arguments, "--config", configurationPath)
 	}
-	return &kservice.Config{
+	definition := &kservice.Config{
 		Name: "metalab", DisplayName: "MetaLab Service",
 		Description:      "MetaLab application platform service",
 		Executable:       executable,
@@ -135,7 +135,9 @@ func serviceDefinition(configurationPath string) (*kservice.Config, error) {
 			"DelayedAutoStart": true, "StartType": "automatic",
 			"OnFailure": "restart", "OnFailureDelayDuration": "5s",
 		},
-	}, nil
+	}
+	configureServiceIdentity(definition)
+	return definition, nil
 }
 
 func statusName(status kservice.Status) string {

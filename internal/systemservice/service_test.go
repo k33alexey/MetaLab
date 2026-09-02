@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -40,6 +41,9 @@ func TestControllerBuildsAbsoluteInstallDefinition(t *testing.T) {
 	}
 	if captured.Name != "metalab" || captured.Option["StartType"] != "automatic" {
 		t.Fatalf("definition = %+v", captured)
+	}
+	if runtime.GOOS != "windows" && captured.Option["UserService"] != true {
+		t.Fatalf("service must retain the installing user's protected-store identity: %+v", captured.Option)
 	}
 }
 

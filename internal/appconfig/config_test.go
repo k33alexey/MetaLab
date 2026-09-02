@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/k33alexey/MetaLab/internal/postgresconn"
 )
 
 func TestLoadStrictConfiguration(t *testing.T) {
@@ -72,6 +74,34 @@ func TestDefaultConfigurationIsValid(t *testing.T) {
 	}
 	if configuration.LocalServiceURL() != "http://127.0.0.1:8090" {
 		t.Fatalf("LocalServiceURL() = %q", configuration.LocalServiceURL())
+	}
+}
+
+func TestSaveAndLoadSystemDatabaseWithoutPassword(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "nested", "config.yaml")
+	configuration := Default()
+	configuration.SystemDatabase = &postgresconn.Descriptor{
+		Host: "db.example.test", Port: 5432, Database: "metalab_system", User: "metalab_service",
+		SSLMode: "verify-full", SecretKey: postgresconn.DefaultSystemSecretKey,
+	}
+	if err := Save(path, configuration); err != nil {
+		t.Fatal(err)
+	}
+	loaded, _, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.SystemDatabase == nil || *loaded.SystemDatabase != *configuration.SystemDatabase {
+		t.Fatalf("loaded configuration = %+v", loaded)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(content), "password:") {
+		t.Fatalf("configuration contains password field: %s", content)
 	}
 }
 

@@ -14,14 +14,15 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
 	"github.com/k33alexey/MetaLab/internal/prototype"
+	"github.com/k33alexey/MetaLab/internal/secretstore"
+	"github.com/k33alexey/MetaLab/internal/systemdb"
 )
 
 // RunService starts ML Service and blocks until cancellation or failure.
 func RunService(ctx context.Context, configuration appconfig.Config) error {
-	databaseURL := os.Getenv("ML_DATABASE_URL")
-	handler, closeRuntime, err := buildHandler(ctx, databaseURL)
+	handler, closeRuntime, err := buildHandler(ctx, configuration, secretstore.New())
 	if err != nil {
-		return err
+		slog.Error("ML Service started in degraded mode", "error", err)
 	}
 	defer closeRuntime()
 
@@ -57,20 +58,58 @@ func RunService(ctx context.Context, configuration appconfig.Config) error {
 	}
 }
 
-func buildHandler(ctx context.Context, databaseURL string) (http.Handler, func(), error) {
+type secretReader interface {
+	Get(string) (string, error)
+}
+
+func buildHandler(ctx context.Context, configuration appconfig.Config, secrets secretReader) (http.Handler, func(), error) {
+	if configuration.SystemDatabase != nil {
+		password, err := secrets.Get(configuration.SystemDatabase.SecretKey)
+		if err != nil {
+			return degradedHandler(), func() {}, err
+		}
+		poolConfiguration, err := configuration.SystemDatabase.PoolConfig(password)
+		if err != nil {
+			return degradedHandler(), func() {}, err
+		}
+		database, err := systemdb.OpenConfig(ctx, poolConfiguration)
+		if err != nil {
+			return degradedHandler(), func() {}, err
+		}
+		return healthySystemHandler(), database.Close, nil
+	}
+	if systemDatabaseURL := os.Getenv("ML_SYSTEM_DATABASE_URL"); systemDatabaseURL != "" {
+		database, err := systemdb.Open(ctx, systemDatabaseURL)
+		if err != nil {
+			return degradedHandler(), func() {}, err
+		}
+		return healthySystemHandler(), database.Close, nil
+	}
+	databaseURL := os.Getenv("ML_DATABASE_URL")
 	if databaseURL == "" {
-		routes := http.NewServeMux()
-		routes.HandleFunc("GET /api/health", func(response http.ResponseWriter, _ *http.Request) {
-			response.Header().Set("Content-Type", "application/json; charset=utf-8")
-			_ = json.NewEncoder(response).Encode(map[string]string{
-				"status": "degraded", "database": "unconfigured",
-			})
-		})
-		return routes, func() {}, nil
+		return degradedHandler(), func() {}, nil
 	}
 	runtime, err := prototype.OpenRuntime(ctx, databaseURL)
 	if err != nil {
 		return nil, nil, err
 	}
 	return runtime.Service.Handler(), runtime.Close, nil
+}
+
+func degradedHandler() http.Handler {
+	routes := http.NewServeMux()
+	routes.HandleFunc("GET /api/health", func(response http.ResponseWriter, _ *http.Request) {
+		response.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(response).Encode(map[string]string{"status": "degraded", "database": "unconfigured"})
+	})
+	return routes
+}
+
+func healthySystemHandler() http.Handler {
+	routes := http.NewServeMux()
+	routes.HandleFunc("GET /api/health", func(response http.ResponseWriter, _ *http.Request) {
+		response.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(response).Encode(map[string]string{"status": "ok", "database": "postgresql"})
+	})
+	return routes
 }

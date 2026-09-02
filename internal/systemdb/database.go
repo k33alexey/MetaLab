@@ -25,6 +25,14 @@ func Open(ctx context.Context, databaseURL string) (*Database, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse ML System PostgreSQL configuration: %w", err)
 	}
+	return OpenConfig(ctx, configuration)
+}
+
+// OpenConfig connects using an in-memory configuration that may contain secrets.
+func OpenConfig(ctx context.Context, configuration *pgxpool.Config) (*Database, error) {
+	if configuration == nil {
+		return nil, fmt.Errorf("ML System PostgreSQL configuration is required")
+	}
 	pool, err := pgxpool.NewWithConfig(ctx, configuration)
 	if err != nil {
 		return nil, fmt.Errorf("create ML System PostgreSQL pool: %w", err)

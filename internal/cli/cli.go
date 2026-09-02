@@ -18,7 +18,7 @@ Usage:
   ml service run [--config PATH]
   ml service install --config PATH
   ml service start|stop|restart|status|uninstall
-  ml admin reset-password --login LOGIN
+  ml admin reset-password --login LOGIN [--config PATH]
   ml config validate [--config PATH]
   ml version
   ml help
@@ -40,7 +40,7 @@ type EmergencyCredentials struct {
 }
 
 // AdministratorReset performs an OS-local emergency reset.
-type AdministratorReset func(context.Context, string) (EmergencyCredentials, error)
+type AdministratorReset func(context.Context, string, appconfig.Config) (EmergencyCredentials, error)
 
 // Commands contains platform-specific mode implementations.
 type Commands struct {
@@ -90,15 +90,16 @@ func (cli CLI) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 
 func (cli CLI) runAdmin(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] != "reset-password" {
-		fmt.Fprintln(stderr, "usage: ml admin reset-password --login LOGIN")
+		fmt.Fprintln(stderr, "usage: ml admin reset-password --login LOGIN [--config PATH]")
 		return 2
 	}
 	flags := flag.NewFlagSet("admin reset-password", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	login := flags.String("login", "", "administrator login")
+	configurationPath := flags.String("config", "", "path to MetaLab YAML configuration")
 	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 || *login == "" {
 		if err == nil {
-			fmt.Fprintln(stderr, "usage: ml admin reset-password --login LOGIN")
+			fmt.Fprintln(stderr, "usage: ml admin reset-password --login LOGIN [--config PATH]")
 		}
 		return 2
 	}
@@ -106,7 +107,12 @@ func (cli CLI) runAdmin(ctx context.Context, args []string, stdout, stderr io.Wr
 		fmt.Fprintln(stderr, "local administrator reset is unavailable in this build")
 		return 1
 	}
-	credentials, err := cli.commands.Reset(ctx, *login)
+	configuration, _, err := appconfig.Load(*configurationPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "admin reset-password: %v\n", err)
+		return 1
+	}
+	credentials, err := cli.commands.Reset(ctx, *login, configuration)
 	if err != nil {
 		fmt.Fprintf(stderr, "admin reset-password: %v\n", err)
 		return 1

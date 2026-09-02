@@ -155,30 +155,30 @@ func TestServiceControlReportsErrors(t *testing.T) {
 }
 
 func TestAdministratorEmergencyReset(t *testing.T) {
-	t.Parallel()
-
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	writeConfiguration(t, path)
 	var gotLogin string
-	commands := Commands{Reset: func(_ context.Context, login string) (EmergencyCredentials, error) {
+	commands := Commands{Reset: func(_ context.Context, login string, _ appconfig.Config) (EmergencyCredentials, error) {
 		gotLogin = login
 		return EmergencyCredentials{TemporaryPassword: "temporary", RecoveryCodes: []string{"ONE", "TWO"}}, nil
 	}}
-	code, stdout, stderr := run(t, commands, "admin", "reset-password", "--login", "admin")
+	code, stdout, stderr := run(t, commands, "admin", "reset-password", "--login", "admin", "--config", path)
 	if code != 0 || gotLogin != "admin" || !strings.Contains(stdout, "temporary") || !strings.Contains(stdout, "ONE") {
 		t.Fatalf("code=%d login=%q stdout=%q stderr=%q", code, gotLogin, stdout, stderr)
 	}
 }
 
 func TestAdministratorEmergencyResetErrors(t *testing.T) {
-	t.Parallel()
-
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	writeConfiguration(t, path)
 	code, _, stderr := run(t, Commands{}, "admin", "reset-password")
 	if code != 2 || !strings.Contains(stderr, "--login") {
 		t.Fatalf("code=%d stderr=%q", code, stderr)
 	}
-	commands := Commands{Reset: func(context.Context, string) (EmergencyCredentials, error) {
+	commands := Commands{Reset: func(context.Context, string, appconfig.Config) (EmergencyCredentials, error) {
 		return EmergencyCredentials{}, errors.New("denied")
 	}}
-	code, _, stderr = run(t, commands, "admin", "reset-password", "--login", "admin")
+	code, _, stderr = run(t, commands, "admin", "reset-password", "--login", "admin", "--config", path)
 	if code != 1 || !strings.Contains(stderr, "denied") {
 		t.Fatalf("code=%d stderr=%q", code, stderr)
 	}

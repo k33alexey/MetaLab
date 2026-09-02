@@ -5,6 +5,6 @@ service:
   listen: 127.0.0.1:8090
 
 # Secrets are not stored in this file.
-# During bootstrap, ML System PostgreSQL is supplied through ML_SYSTEM_DATABASE_URL.
-# Application prototype PostgreSQL uses ML_DATABASE_URL.
-# Both move to protected OS storage in iteration 011.
+# ML Manager writes the non-secret system_database section after setup.
+# Its password is stored in the native OS credential store, never in this YAML.
+# ML_SYSTEM_DATABASE_URL and ML_DATABASE_URL remain development-only fallbacks.

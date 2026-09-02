@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/postgresconn"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -17,9 +18,11 @@ const Version = 1
 
 // Config is the versioned configuration shared by Manager, Service and CLI.
 type Config struct {
-	Version  int           `yaml:"version"`
-	Language string        `yaml:"language"`
-	Service  ServiceConfig `yaml:"service"`
+	Version        int                      `yaml:"version"`
+	Language       string                   `yaml:"language"`
+	Service        ServiceConfig            `yaml:"service"`
+	SystemDatabase *postgresconn.Descriptor `yaml:"system_database,omitempty"`
+	SourcePath     string                   `yaml:"-"`
 }
 
 // ServiceConfig contains non-secret ML Service settings.
@@ -60,6 +63,7 @@ func Load(path string) (Config, string, error) {
 	if err != nil {
 		if !explicit && errors.Is(err, os.ErrNotExist) {
 			applyEnvironment(&configuration)
+			configuration.SourcePath = path
 			return configuration, path, configuration.Validate()
 		}
 		return Config{}, path, fmt.Errorf("open configuration %q: %w", path, err)
@@ -79,6 +83,7 @@ func Load(path string) (Config, string, error) {
 		return Config{}, path, fmt.Errorf("decode configuration %q: %w", path, err)
 	}
 	applyEnvironment(&configuration)
+	configuration.SourcePath = path
 	if err := configuration.Validate(); err != nil {
 		return Config{}, path, fmt.Errorf("validate configuration %q: %w", path, err)
 	}
@@ -97,6 +102,49 @@ func (configuration Config) Validate() error {
 	}
 	if _, _, err := net.SplitHostPort(configuration.Service.Listen); err != nil {
 		return fmt.Errorf("invalid service listen address %q: %w", configuration.Service.Listen, err)
+	}
+	if configuration.SystemDatabase != nil {
+		if err := configuration.SystemDatabase.Validate(); err != nil {
+			return fmt.Errorf("invalid ML System database: %w", err)
+		}
+	}
+	return nil
+}
+
+// Save writes a validated configuration atomically with owner-only permissions.
+func Save(path string, configuration Config) error {
+	if err := configuration.Validate(); err != nil {
+		return fmt.Errorf("validate configuration before save: %w", err)
+	}
+	directory := filepath.Dir(path)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return fmt.Errorf("create configuration directory: %w", err)
+	}
+	temporary, err := os.CreateTemp(directory, ".config-*.yaml")
+	if err != nil {
+		return fmt.Errorf("create temporary configuration: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	defer func() { _ = os.Remove(temporaryPath) }()
+	if err := temporary.Chmod(0o600); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("protect temporary configuration: %w", err)
+	}
+	encoder := yaml.NewEncoder(temporary)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(configuration); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("encode configuration: %w", err)
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("sync configuration: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("close configuration: %w", err)
+	}
+	if err := replaceFile(temporaryPath, path); err != nil {
+		return fmt.Errorf("replace configuration: %w", err)
 	}
 	return nil
 }

@@ -19,6 +19,9 @@
     form { display: grid; gap: 14px; } label { display: grid; gap: 6px; color: #b8c2d2; }
     input { padding: 11px 12px; border: 1px solid #42516c; border-radius: 9px; background: #0f1622; color: #eef2f8; font: inherit; }
     .hidden { display: none; } .error { color: #ff8591; } .codes { padding: 14px; border-radius: 10px; background: #0c121c; font-family: ui-monospace, monospace; line-height: 1.7; white-space: pre-wrap; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .actions { display: flex; gap: 10px; } .secondary { background: #34425c; color: #eef2f8; }
+    @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -29,6 +32,25 @@
       <div><div id="state" class="state"><i class="dot"></i><span>Проверка ML Service…</span></div><br><small id="url"></small></div>
       <button id="refresh">Обновить</button>
     </div>
+  </section>
+  <section id="postgres">
+    <h2>PostgreSQL</h2>
+    <div id="postgres-ready" class="hidden"><div class="state running"><i class="dot"></i><span>ML System подключён</span></div><br><small id="postgres-address"></small></div>
+    <form id="postgres-form" class="hidden">
+      <p class="hint">Укажите административное подключение. Пароль не попадёт в YAML: ML создаст отдельного технического пользователя.</p>
+      <div class="grid">
+        <label>Сервер<input id="pg-host" value="127.0.0.1" required></label>
+        <label>Порт<input id="pg-port" type="number" value="5432" min="1" max="65535" required></label>
+        <label>Административная база<input id="pg-admin-db" value="postgres" required></label>
+        <label>Администратор PostgreSQL<input id="pg-admin-user" value="postgres" autocomplete="username" required></label>
+        <label>Пароль PostgreSQL<input id="pg-admin-password" type="password" autocomplete="current-password" placeholder="Не нужен для локального Unix socket"></label>
+        <label>TLS<select id="pg-ssl"><option value="disable">Отключён (только localhost)</option><option value="require">Шифрование</option><option value="verify-full">Полная проверка</option></select></label>
+        <label>База ML System<input id="pg-system-db" value="metalab_system" pattern="[a-z][a-z0-9_]{0,62}" required></label>
+        <label>Технический пользователь<input id="pg-technical-user" value="metalab_service" pattern="[a-z][a-z0-9_]{0,62}" required></label>
+      </div>
+      <div id="postgres-error" class="error"></div><div id="postgres-result" class="hint"></div>
+      <div class="actions"><button id="postgres-check" type="button" class="secondary">Проверить</button><button type="submit">Создать ML System</button></div>
+    </form>
   </section>
   <section id="setup" class="hidden">
     <h2>Первичная настройка</h2>
@@ -63,6 +85,39 @@
     const data = await response.json();
     document.querySelector('#setup').classList.toggle('hidden', !data.available || !data.required);
   }
+  function postgresPayload() {
+    return {
+      host: document.querySelector('#pg-host').value,
+      port: Number(document.querySelector('#pg-port').value),
+      administratorDatabase: document.querySelector('#pg-admin-db').value,
+      administratorUser: document.querySelector('#pg-admin-user').value,
+      administratorPassword: document.querySelector('#pg-admin-password').value,
+      sslMode: document.querySelector('#pg-ssl').value,
+      systemDatabase: document.querySelector('#pg-system-db').value,
+      technicalUser: document.querySelector('#pg-technical-user').value
+    };
+  }
+  async function refreshPostgres() {
+    const response = await fetch('/api/postgres'); if (!response.ok) return;
+    const data = await response.json();
+    document.querySelector('#postgres-form').classList.toggle('hidden', data.configured);
+    document.querySelector('#postgres-ready').classList.toggle('hidden', !data.configured);
+    if (data.connection) document.querySelector('#postgres-address').textContent = `${data.connection.host}:${data.connection.port} / ${data.connection.database}`;
+    if (data.error) document.querySelector('#postgres-error').textContent = data.error;
+  }
+  async function postgresAction(path) {
+    const error = document.querySelector('#postgres-error'); const result = document.querySelector('#postgres-result');
+    error.textContent = ''; result.textContent = '';
+    const response = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(postgresPayload())});
+    if (!response.ok) { error.textContent = await response.text(); return false; }
+    const data = await response.json(); result.textContent = `PostgreSQL ${data.version}, UTF8 — проверка пройдена`;
+    return true;
+  }
+  document.querySelector('#postgres-check').addEventListener('click', () => postgresAction('/api/postgres/check'));
+  document.querySelector('#postgres-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    if (await postgresAction('/api/postgres/provision')) { document.querySelector('#pg-admin-password').value = ''; await refreshPostgres(); await refreshSetup(); }
+  });
   document.querySelector('#setup-form').addEventListener('submit', async event => {
     event.preventDefault();
     const error = document.querySelector('#setup-error');
@@ -81,7 +136,7 @@
     document.querySelector('#recovery').classList.remove('hidden');
     document.querySelector('#codes').textContent = data.recoveryCodes.join('\n');
   });
-  refresh(); refreshSetup(); setInterval(refresh, 5000);
+  refresh(); refreshPostgres(); refreshSetup(); setInterval(refresh, 5000);
 </script>
 </body>
 </html>
