@@ -1,8 +1,13 @@
-.PHONY: build build-wasm check fmt fmt-check test test-race test-wasm vet
+.PHONY: build build-desktop build-wasm check fmt fmt-check test test-race test-wasm vet
 
 build:
 	mkdir -p bin
 	go build -o bin/ml ./cmd/ml
+	go build -o bin/ml-prototype ./cmd/mlprototype
+
+build-desktop:
+	mkdir -p bin
+	go build -tags desktop -ldflags='-s -w' -o bin/ml-prototype-desktop ./cmd/mlprototype-desktop
 
 build-wasm:
 	mkdir -p bin

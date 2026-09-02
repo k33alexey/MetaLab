@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MetaLab Architecture Prototype</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background: #10141d; color: #e9edf5; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: radial-gradient(circle at top, #253351, #10141d 55%); }
+    main { width: min(720px, calc(100% - 40px)); padding: 32px; border: 1px solid #34415c; border-radius: 20px; background: #171d29e8; box-shadow: 0 24px 70px #0008; }
+    h1 { margin: 0 0 8px; font-size: 28px; } p { color: #aeb8cc; }
+    .flow { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0; color: #72d6bd; font-size: 14px; }
+    .flow span { padding: 7px 10px; border-radius: 999px; background: #20352f; }
+    form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; }
+    input, button { box-sizing: border-box; border-radius: 10px; border: 1px solid #3a4761; padding: 12px; font: inherit; }
+    input { min-width: 0; background: #0e131d; color: #fff; } button { background: #5ee1be; color: #08221b; border: 0; font-weight: 700; cursor: pointer; }
+    output { display: block; min-height: 26px; margin-top: 22px; font-size: 18px; color: #fff; }
+    small { color: #78869f; } .error { color: #ff8e9a; }
+    @media (max-width: 560px) { main { padding: 22px; } form { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>MetaLab</h1>
+  <p>Сквозной архитектурный прототип</p>
+  <div class="flow"><span>WebView</span><b>→</b><span>ML Service</span><b>→</b><span>BSL VM</span><b>→</b><span>PostgreSQL</span></div>
+  <form id="calculation">
+    <input id="left" type="number" value="20" step="any" aria-label="Первое число">
+    <input id="right" type="number" value="22" step="any" aria-label="Второе число">
+    <button>Выполнить</button>
+  </form>
+  <output id="result">Проверка соединения…</output>
+  <small id="stats"></small>
+</main>
+<script>
+  const result = document.querySelector('#result');
+  const stats = document.querySelector('#stats');
+  const leftInput = document.querySelector('#left');
+  const rightInput = document.querySelector('#right');
+  async function refreshStats() {
+    const response = await fetch('/api/prototype/stats');
+    const data = await response.json();
+    stats.textContent = `Операций в PostgreSQL: ${data.count}`;
+  }
+  document.querySelector('#calculation').addEventListener('submit', async event => {
+    event.preventDefault(); result.className = ''; result.textContent = 'Выполнение…';
+    try {
+      const response = await fetch('/api/prototype/calculate', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({left: Number(leftInput.value), right: Number(rightInput.value)}) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      result.textContent = `BSL результат: ${data.result} · ${data.elapsedMicroseconds} мкс`;
+      await refreshStats();
+    } catch (error) { result.className = 'error'; result.textContent = error.message; }
+  });
+  fetch('/api/health').then(response => { if (!response.ok) throw new Error('ML Service недоступен'); return refreshStats(); }).then(() => { result.textContent = 'Система готова'; }).catch(error => { result.className = 'error'; result.textContent = error.message; });
+  if (new URLSearchParams(location.search).has('smoke')) document.querySelector('#calculation').requestSubmit();
+</script>
+</body>
+</html>

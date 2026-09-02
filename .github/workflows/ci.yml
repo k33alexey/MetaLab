@@ -17,6 +17,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: metalab
+          POSTGRES_PASSWORD: metalab
+          POSTGRES_DB: metalab
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U metalab"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      ML_TEST_DATABASE_URL: postgres://metalab:metalab@127.0.0.1:5432/metalab?sslmode=disable
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
