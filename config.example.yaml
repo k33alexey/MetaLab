@@ -5,4 +5,6 @@ service:
   listen: 127.0.0.1:8090
 
 # Secrets are not stored in this file.
-# PostgreSQL is supplied through ML_DATABASE_URL until protected storage is implemented.
+# During bootstrap, ML System PostgreSQL is supplied through ML_SYSTEM_DATABASE_URL.
+# Application prototype PostgreSQL uses ML_DATABASE_URL.
+# Both move to protected OS storage in iteration 011.

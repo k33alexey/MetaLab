@@ -30,6 +30,7 @@ func main() {
 		Manager: runManager,
 		Service: nativeService.Run,
 		Control: nativeService.Control,
+		Reset:   resetAdministrator,
 	})
 	os.Exit(application.Run(ctx, os.Args[1:], os.Stdout, os.Stderr))
 }

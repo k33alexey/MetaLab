@@ -10,12 +10,15 @@
     main { width: min(760px, calc(100% - 48px)); }
     header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
     h1 { margin: 0; font-size: 28px; } .tag { color: #8a98b0; }
-    section { padding: 24px; border: 1px solid #34425c; border-radius: 18px; background: #171e2aeb; box-shadow: 0 24px 70px #0007; }
+    section { margin-bottom: 18px; padding: 24px; border: 1px solid #34425c; border-radius: 18px; background: #171e2aeb; box-shadow: 0 24px 70px #0007; }
     .row { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
     .state { display: inline-flex; align-items: center; gap: 9px; font-weight: 700; }
     .dot { width: 10px; height: 10px; border-radius: 50%; background: #ef6674; box-shadow: 0 0 16px #ef6674; }
     .running .dot { background: #5ee1be; box-shadow: 0 0 16px #5ee1be; }
-    small { color: #8390a6; } button { padding: 10px 14px; border: 0; border-radius: 9px; background: #5ee1be; color: #08221b; font-weight: 700; cursor: pointer; }
+    small, .hint { color: #8390a6; } button { padding: 10px 14px; border: 0; border-radius: 9px; background: #5ee1be; color: #08221b; font-weight: 700; cursor: pointer; }
+    form { display: grid; gap: 14px; } label { display: grid; gap: 6px; color: #b8c2d2; }
+    input { padding: 11px 12px; border: 1px solid #42516c; border-radius: 9px; background: #0f1622; color: #eef2f8; font: inherit; }
+    .hidden { display: none; } .error { color: #ff8591; } .codes { padding: 14px; border-radius: 10px; background: #0c121c; font-family: ui-monospace, monospace; line-height: 1.7; white-space: pre-wrap; }
   </style>
 </head>
 <body>
@@ -25,6 +28,22 @@
     <div class="row">
       <div><div id="state" class="state"><i class="dot"></i><span>Проверка ML Service…</span></div><br><small id="url"></small></div>
       <button id="refresh">Обновить</button>
+    </div>
+  </section>
+  <section id="setup" class="hidden">
+    <h2>Первичная настройка</h2>
+    <p class="hint">Создайте первого администратора платформы. Стандартного пароля нет.</p>
+    <form id="setup-form">
+      <label>Логин<input id="login" autocomplete="username" maxlength="128" required></label>
+      <label>Пароль<input id="password" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label>Повторите пароль<input id="confirmation" type="password" autocomplete="new-password" minlength="8" required></label>
+      <div id="setup-error" class="error"></div>
+      <button type="submit">Создать администратора</button>
+    </form>
+    <div id="recovery" class="hidden">
+      <h3>Коды восстановления</h3>
+      <p class="hint">Сохраните их сейчас: каждый код одноразовый и больше не будет показан.</p>
+      <div id="codes" class="codes"></div>
     </div>
   </section>
 </main>
@@ -38,7 +57,31 @@
     url.textContent = data.url;
   }
   document.querySelector('#refresh').addEventListener('click', refresh);
-  refresh(); setInterval(refresh, 5000);
+  async function refreshSetup() {
+    const response = await fetch('/api/setup');
+    if (!response.ok) return;
+    const data = await response.json();
+    document.querySelector('#setup').classList.toggle('hidden', !data.available || !data.required);
+  }
+  document.querySelector('#setup-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const error = document.querySelector('#setup-error');
+    const password = document.querySelector('#password').value;
+    if (password !== document.querySelector('#confirmation').value) {
+      error.textContent = 'Пароли не совпадают'; return;
+    }
+    error.textContent = '';
+    const response = await fetch('/api/setup/administrator', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({login: document.querySelector('#login').value, password})
+    });
+    if (!response.ok) { error.textContent = await response.text(); return; }
+    const data = await response.json();
+    document.querySelector('#setup-form').classList.add('hidden');
+    document.querySelector('#recovery').classList.remove('hidden');
+    document.querySelector('#codes').textContent = data.recoveryCodes.join('\n');
+  });
+  refresh(); refreshSetup(); setInterval(refresh, 5000);
 </script>
 </body>
 </html>

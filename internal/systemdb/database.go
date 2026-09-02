@@ -11,8 +11,9 @@ import (
 
 // Database is a validated ML System connection pool and its repositories.
 type Database struct {
-	pool     *pgxpool.Pool
-	Settings *SettingsRepository
+	pool           *pgxpool.Pool
+	Settings       *SettingsRepository
+	Administrators *AdministratorRepository
 }
 
 // Open connects to PostgreSQL, validates it and applies embedded migrations.
@@ -45,6 +46,7 @@ func Open(ctx context.Context, databaseURL string) (*Database, error) {
 		return nil, err
 	}
 	database.Settings = &SettingsRepository{pool: pool}
+	database.Administrators = &AdministratorRepository{pool: pool}
 	return database, nil
 }
 

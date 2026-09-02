@@ -18,12 +18,13 @@ Usage:
   ml service run [--config PATH]
   ml service install --config PATH
   ml service start|stop|restart|status|uninstall
+  ml admin reset-password --login LOGIN
   ml config validate [--config PATH]
   ml version
   ml help
 
 Running ml without arguments starts ML Manager.
-Environment overrides: ML_LANGUAGE, ML_SERVICE_LISTEN, ML_DATABASE_URL.
+Environment overrides: ML_LANGUAGE, ML_SERVICE_LISTEN, ML_DATABASE_URL, ML_SYSTEM_DATABASE_URL.
 `
 
 // Runner starts one long-running MetaLab mode.
@@ -32,11 +33,21 @@ type Runner func(context.Context, appconfig.Config) error
 // ServiceControl executes one native service-manager action.
 type ServiceControl func(action, configurationPath string) (string, error)
 
+// EmergencyCredentials are displayed once after a local administrator reset.
+type EmergencyCredentials struct {
+	TemporaryPassword string
+	RecoveryCodes     []string
+}
+
+// AdministratorReset performs an OS-local emergency reset.
+type AdministratorReset func(context.Context, string) (EmergencyCredentials, error)
+
 // Commands contains platform-specific mode implementations.
 type Commands struct {
 	Manager Runner
 	Service Runner
 	Control ServiceControl
+	Reset   AdministratorReset
 }
 
 // CLI is the root MetaLab command-line application.
@@ -67,12 +78,44 @@ func (cli CLI) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return cli.runMode(ctx, "manager", args[1:], cli.commands.Manager, stderr)
 	case "service":
 		return cli.runService(ctx, args[1:], stdout, stderr)
+	case "admin":
+		return cli.runAdmin(ctx, args[1:], stdout, stderr)
 	case "config":
 		return cli.runConfig(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n%s", args[0], usage)
 		return 2
 	}
+}
+
+func (cli CLI) runAdmin(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 || args[0] != "reset-password" {
+		fmt.Fprintln(stderr, "usage: ml admin reset-password --login LOGIN")
+		return 2
+	}
+	flags := flag.NewFlagSet("admin reset-password", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	login := flags.String("login", "", "administrator login")
+	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 || *login == "" {
+		if err == nil {
+			fmt.Fprintln(stderr, "usage: ml admin reset-password --login LOGIN")
+		}
+		return 2
+	}
+	if cli.commands.Reset == nil {
+		fmt.Fprintln(stderr, "local administrator reset is unavailable in this build")
+		return 1
+	}
+	credentials, err := cli.commands.Reset(ctx, *login)
+	if err != nil {
+		fmt.Fprintf(stderr, "admin reset-password: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "Temporary password: %s\nRecovery codes (shown once):\n", credentials.TemporaryPassword)
+	for _, code := range credentials.RecoveryCodes {
+		fmt.Fprintln(stdout, code)
+	}
+	return 0
 }
 
 func (cli CLI) runService(ctx context.Context, args []string, stdout, stderr io.Writer) int {
