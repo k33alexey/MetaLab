@@ -41,3 +41,6 @@ jobs:
 
       - name: Build
         run: go build ./cmd/ml
+
+      - name: WebAssembly smoke test
+        run: make test-wasm
