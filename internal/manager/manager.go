@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -52,6 +53,18 @@ type platformSetup interface {
 	RegisterDatabase(context.Context, platform.RegisterDatabaseRequest) (systemdb.RegisteredDatabase, error)
 	CreateDebugDatabase(context.Context, uuid.UUID, platform.CreateDebugDatabaseRequest) (systemdb.RegisteredDatabase, error)
 	UnregisterDatabase(context.Context, uuid.UUID) error
+	StartDatabase(context.Context, uuid.UUID) (systemdb.RegisteredDatabase, error)
+	StopDatabase(context.Context, uuid.UUID) (systemdb.RegisteredDatabase, error)
+	SetDatabaseSessionAccess(context.Context, uuid.UUID, bool) (systemdb.RegisteredDatabase, error)
+	CheckDatabaseHealth(context.Context, uuid.UUID) (systemdb.RegisteredDatabase, error)
+	ListDatabaseSessions(context.Context, *uuid.UUID) ([]systemdb.DatabaseSession, error)
+	SendSessionMessage(context.Context, uuid.UUID, string) error
+	TerminateDatabaseSession(context.Context, uuid.UUID) error
+	ListAuditEvents(context.Context, *uuid.UUID, int) ([]systemdb.AuditEvent, error)
+	CreateDatabaseBackup(context.Context, uuid.UUID) (systemdb.Backup, error)
+	ListDatabaseBackups(context.Context, uuid.UUID) ([]systemdb.Backup, error)
+	DeleteDatabaseBackup(context.Context, uuid.UUID, uuid.UUID) error
+	RestoreDatabaseBackup(context.Context, uuid.UUID, uuid.UUID) error
 }
 
 func newHandler(configuration appconfig.Config, client *http.Client, setup administratorSetup, postgres platformSetup) http.Handler {
@@ -211,13 +224,213 @@ func newHandler(configuration appconfig.Config, client *http.Client, setup admin
 		switch {
 		case errors.Is(err, systemdb.ErrDatabaseNotFound):
 			http.Error(response, err.Error(), http.StatusNotFound)
-		case errors.Is(err, systemdb.ErrDatabaseCannotUnregister), errors.Is(err, systemdb.ErrDatabaseHasDebugCopies):
+		case errors.Is(err, systemdb.ErrDatabaseCannotUnregister), errors.Is(err, systemdb.ErrDatabaseHasDebugCopies), errors.Is(err, systemdb.ErrDatabaseHasBackups):
 			http.Error(response, err.Error(), http.StatusConflict)
 		case err != nil:
 			http.Error(response, "Unable to unregister database", http.StatusInternalServerError)
 		default:
 			response.WriteHeader(http.StatusNoContent)
 		}
+	})
+	if postgres != nil {
+		for action, operation := range map[string]func(context.Context, uuid.UUID) (systemdb.RegisteredDatabase, error){
+			"start": postgres.StartDatabase, "stop": postgres.StopDatabase, "health": postgres.CheckDatabaseHealth,
+		} {
+			action, operation := action, operation
+			routes.HandleFunc("POST /api/databases/{id}/"+action, func(response http.ResponseWriter, request *http.Request) {
+				id, ok := parsePathUUID(response, request, "database")
+				if !ok {
+					return
+				}
+				item, err := operation(request.Context(), id)
+				if err != nil {
+					http.Error(response, err.Error(), http.StatusConflict)
+					return
+				}
+				writeJSON(response, http.StatusOK, item)
+			})
+		}
+	}
+	routes.HandleFunc("PUT /api/databases/{id}/session-access", func(response http.ResponseWriter, request *http.Request) {
+		if postgres == nil {
+			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		id, ok := parsePathUUID(response, request, "database")
+		if !ok {
+			return
+		}
+		var input struct {
+			Allowed bool `json:"allowed"`
+		}
+		if !decodeJSON(response, request, &input) {
+			return
+		}
+		item, err := postgres.SetDatabaseSessionAccess(request.Context(), id, input.Allowed)
+		if err != nil {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(response, http.StatusOK, item)
+	})
+	routes.HandleFunc("GET /api/sessions", func(response http.ResponseWriter, request *http.Request) {
+		if postgres == nil {
+			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		databaseID, ok := optionalQueryUUID(response, request, "databaseId")
+		if !ok {
+			return
+		}
+		items, err := postgres.ListDatabaseSessions(request.Context(), databaseID)
+		if err != nil {
+			http.Error(response, "Unable to list sessions", http.StatusServiceUnavailable)
+			return
+		}
+		writeJSON(response, http.StatusOK, items)
+	})
+	routes.HandleFunc("POST /api/sessions/{id}/message", func(response http.ResponseWriter, request *http.Request) {
+		if postgres == nil {
+			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		id, ok := parsePathUUID(response, request, "session")
+		if !ok {
+			return
+		}
+		var input struct {
+			Message string `json:"message"`
+		}
+		if !decodeJSON(response, request, &input) {
+			return
+		}
+		if err := postgres.SendSessionMessage(request.Context(), id, input.Message); err != nil {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+			return
+		}
+		response.WriteHeader(http.StatusNoContent)
+	})
+	routes.HandleFunc("DELETE /api/sessions/{id}", func(response http.ResponseWriter, request *http.Request) {
+		if postgres == nil {
+			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		id, ok := parsePathUUID(response, request, "session")
+		if !ok {
+			return
+		}
+		if err := postgres.TerminateDatabaseSession(request.Context(), id); err != nil {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+			return
+		}
+		response.WriteHeader(http.StatusNoContent)
+	})
+	routes.HandleFunc("GET /api/logs", func(response http.ResponseWriter, request *http.Request) {
+		if postgres == nil {
+			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		databaseID, ok := optionalQueryUUID(response, request, "databaseId")
+		if !ok {
+			return
+		}
+		limit := 100
+		if value := request.URL.Query().Get("limit"); value != "" {
+			parsed, err := strconv.Atoi(value)
+			if err != nil || parsed < 1 || parsed > 500 {
+				http.Error(response, "Invalid log limit", http.StatusBadRequest)
+				return
+			}
+			limit = parsed
+		}
+		items, err := postgres.ListAuditEvents(request.Context(), databaseID, limit)
+		if err != nil {
+			http.Error(response, "Unable to list logs", http.StatusServiceUnavailable)
+			return
+		}
+		writeJSON(response, http.StatusOK, items)
+	})
+	routes.HandleFunc("GET /api/databases/{id}/backups", func(response http.ResponseWriter, request *http.Request) {
+		if postgres == nil {
+			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		id, ok := parsePathUUID(response, request, "database")
+		if !ok {
+			return
+		}
+		items, err := postgres.ListDatabaseBackups(request.Context(), id)
+		if err != nil {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(response, http.StatusOK, items)
+	})
+	routes.HandleFunc("POST /api/databases/{id}/backups", func(response http.ResponseWriter, request *http.Request) {
+		if postgres == nil {
+			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		id, ok := parsePathUUID(response, request, "database")
+		if !ok {
+			return
+		}
+		backup, err := postgres.CreateDatabaseBackup(request.Context(), id)
+		if err != nil {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(response, http.StatusCreated, backup)
+	})
+	routes.HandleFunc("POST /api/databases/{id}/backups/{backupId}/restore", func(response http.ResponseWriter, request *http.Request) {
+		if postgres == nil {
+			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		databaseID, ok := parsePathUUID(response, request, "database")
+		if !ok {
+			return
+		}
+		backupID, err := uuid.Parse(request.PathValue("backupId"))
+		if err != nil {
+			http.Error(response, "Invalid backup identifier", http.StatusBadRequest)
+			return
+		}
+		var input struct {
+			Confirm bool `json:"confirm"`
+		}
+		if !decodeJSON(response, request, &input) {
+			return
+		}
+		if !input.Confirm {
+			http.Error(response, "Restore confirmation is required", http.StatusBadRequest)
+			return
+		}
+		if err := postgres.RestoreDatabaseBackup(request.Context(), databaseID, backupID); err != nil {
+			http.Error(response, err.Error(), http.StatusConflict)
+			return
+		}
+		response.WriteHeader(http.StatusNoContent)
+	})
+	routes.HandleFunc("DELETE /api/databases/{id}/backups/{backupId}", func(response http.ResponseWriter, request *http.Request) {
+		if postgres == nil {
+			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		databaseID, ok := parsePathUUID(response, request, "database")
+		if !ok {
+			return
+		}
+		backupID, err := uuid.Parse(request.PathValue("backupId"))
+		if err != nil {
+			http.Error(response, "Invalid backup identifier", http.StatusBadRequest)
+			return
+		}
+		if err := postgres.DeleteDatabaseBackup(request.Context(), databaseID, backupID); err != nil {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+			return
+		}
+		response.WriteHeader(http.StatusNoContent)
 	})
 	routes.HandleFunc("POST /api/setup/administrator", func(response http.ResponseWriter, request *http.Request) {
 		if setup == nil {
@@ -249,6 +462,28 @@ func newHandler(configuration appconfig.Config, client *http.Client, setup admin
 		}{Login: administrator.Login, RecoveryCodes: codes})
 	})
 	return routes
+}
+
+func parsePathUUID(response http.ResponseWriter, request *http.Request, kind string) (uuid.UUID, bool) {
+	id, err := uuid.Parse(request.PathValue("id"))
+	if err != nil {
+		http.Error(response, "Invalid "+kind+" identifier", http.StatusBadRequest)
+		return uuid.UUID{}, false
+	}
+	return id, true
+}
+
+func optionalQueryUUID(response http.ResponseWriter, request *http.Request, name string) (*uuid.UUID, bool) {
+	value := request.URL.Query().Get(name)
+	if value == "" {
+		return nil, true
+	}
+	id, err := uuid.Parse(value)
+	if err != nil {
+		http.Error(response, "Invalid "+name, http.StatusBadRequest)
+		return nil, false
+	}
+	return &id, true
 }
 
 func decodeJSON(response http.ResponseWriter, request *http.Request, destination any) bool {

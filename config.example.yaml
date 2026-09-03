@@ -4,6 +4,10 @@ language: ru
 service:
   listen: 127.0.0.1:8090
 
+# Optional absolute directory. By default ML uses the MetaLab user configuration directory.
+# backups:
+#   directory: /absolute/path/to/metalab/backups
+
 # Secrets are not stored in this file.
 # ML Manager writes the non-secret system_database section after setup.
 # Its password is stored in the native OS credential store, never in this YAML.

@@ -93,8 +93,8 @@ func (repository *AdministratorRepository) CreateInitial(ctx context.Context, lo
 	}
 	administrator := Administrator{ID: id, Login: login}
 	if err := transaction.QueryRow(ctx, `
-INSERT INTO ml_system.users(id, login, password_hash, platform_administrator)
-VALUES ($1, $2, $3, TRUE)
+INSERT INTO ml_system.users(id, login, password_hash, platform_administrator, metadata_administrator)
+VALUES ($1, $2, $3, TRUE, TRUE)
 RETURNING created_at`, id.String(), login, passwordHash).Scan(&administrator.CreatedAt); err != nil {
 		return Administrator{}, nil, fmt.Errorf("create initial administrator: %w", err)
 	}
@@ -178,6 +178,9 @@ SET password_hash = $2, must_change_password = FALSE, updated_at = clock_timesta
 WHERE id = $1`, id, passwordHash); err != nil {
 		return fmt.Errorf("recover administrator password: %w", err)
 	}
+	if err := revokeUserSessions(ctx, transaction, id, nil); err != nil {
+		return err
+	}
 	if err := transaction.Commit(ctx); err != nil {
 		return fmt.Errorf("commit password recovery: %w", err)
 	}
@@ -228,6 +231,9 @@ RETURNING id::text`, login, passwordHash).Scan(&idText)
 	if err := insertRecoveryCodes(ctx, transaction, id, digests); err != nil {
 		return EmergencyCredentials{}, err
 	}
+	if err := revokeUserSessions(ctx, transaction, idText, nil); err != nil {
+		return EmergencyCredentials{}, err
+	}
 	if err := transaction.Commit(ctx); err != nil {
 		return EmergencyCredentials{}, fmt.Errorf("commit emergency password reset: %w", err)
 	}
@@ -236,6 +242,15 @@ RETURNING id::text`, login, passwordHash).Scan(&idText)
 
 // ChangePassword verifies the current password and clears the mandatory-change flag.
 func (repository *AdministratorRepository) ChangePassword(ctx context.Context, login, currentPassword, newPassword string) error {
+	return repository.changePassword(ctx, login, currentPassword, newPassword, nil)
+}
+
+// ChangePasswordKeepingSession changes the password and atomically revokes every other session.
+func (repository *AdministratorRepository) ChangePasswordKeepingSession(ctx context.Context, login, currentPassword, newPassword string, keepSessionID uuid.UUID) error {
+	return repository.changePassword(ctx, login, currentPassword, newPassword, &keepSessionID)
+}
+
+func (repository *AdministratorRepository) changePassword(ctx context.Context, login, currentPassword, newPassword string, keepSessionID *uuid.UUID) error {
 	administrator, err := repository.Authenticate(ctx, login, currentPassword)
 	if err != nil {
 		return err
@@ -244,7 +259,12 @@ func (repository *AdministratorRepository) ChangePassword(ctx context.Context, l
 	if err != nil {
 		return err
 	}
-	result, err := repository.pool.Exec(ctx, `
+	transaction, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin password change: %w", err)
+	}
+	defer func() { _ = transaction.Rollback(ctx) }()
+	result, err := transaction.Exec(ctx, `
 UPDATE ml_system.users
 SET password_hash = $2, must_change_password = FALSE, updated_at = clock_timestamp()
 WHERE id = $1 AND enabled`, administrator.ID.String(), passwordHash)
@@ -253,6 +273,33 @@ WHERE id = $1 AND enabled`, administrator.ID.String(), passwordHash)
 	}
 	if result.RowsAffected() != 1 {
 		return ErrInvalidCredentials
+	}
+	if err := revokeUserSessions(ctx, transaction, administrator.ID.String(), keepSessionID); err != nil {
+		return err
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return fmt.Errorf("commit password change: %w", err)
+	}
+	return nil
+}
+
+func revokeUserSessions(ctx context.Context, transaction pgx.Tx, userID string, keepSessionID *uuid.UUID) error {
+	var keep any
+	if keepSessionID != nil {
+		keep = keepSessionID.String()
+	}
+	if _, err := transaction.Exec(ctx, `
+UPDATE ml_system.database_sessions SET terminated_at = clock_timestamp()
+WHERE terminated_at IS NULL AND portal_session_id IN (
+    SELECT id FROM ml_system.portal_sessions
+    WHERE user_id = $1 AND ($2::uuid IS NULL OR id <> $2)
+)`, userID, keep); err != nil {
+		return fmt.Errorf("terminate sessions after password change: %w", err)
+	}
+	if _, err := transaction.Exec(ctx, `
+UPDATE ml_system.portal_sessions SET revoked_at = clock_timestamp()
+WHERE user_id = $1 AND revoked_at IS NULL AND ($2::uuid IS NULL OR id <> $2)`, userID, keep); err != nil {
+		return fmt.Errorf("revoke sessions after password change: %w", err)
 	}
 	return nil
 }

@@ -26,7 +26,7 @@ func runManager(ctx context.Context, configuration appconfig.Config) error {
 	}
 	server := &http.Server{
 		Handler: manager.NewHandlerWithPlatform(configuration, platformRuntime), ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second,
+		ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second,
 	}
 	serverErrors := make(chan error, 1)
 	go func() { serverErrors <- server.Serve(listener) }()

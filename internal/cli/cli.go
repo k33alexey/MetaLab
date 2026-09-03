@@ -24,7 +24,7 @@ Usage:
   ml help
 
 Running ml without arguments starts ML Manager.
-Environment overrides: ML_LANGUAGE, ML_SERVICE_LISTEN, ML_DATABASE_URL, ML_SYSTEM_DATABASE_URL.
+Environment overrides: ML_LANGUAGE, ML_SERVICE_LISTEN, ML_BACKUP_DIRECTORY, ML_DATABASE_URL, ML_SYSTEM_DATABASE_URL.
 `
 
 // Runner starts one long-running MetaLab mode.

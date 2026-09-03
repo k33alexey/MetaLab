@@ -34,7 +34,9 @@ func TestProvisionPersistsAndReopensMLSystemIntegration(t *testing.T) {
 		SystemDatabase: "ml_platform_db_" + suffix, TechnicalUser: "ml_platform_role_" + suffix,
 	}
 	configuration := appconfig.Default()
-	configuration.SourcePath = t.TempDir() + "/config.yaml"
+	workDirectory := t.TempDir()
+	configuration.SourcePath = workDirectory + "/config.yaml"
+	configuration.Backups.Directory = workDirectory + "/backups"
 	secrets := &memorySecrets{values: make(map[string]string)}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -200,7 +202,9 @@ func TestCreateDebugDatabaseCopiesOrStartsCleanIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	configuration := appconfig.Default()
-	configuration.SourcePath = t.TempDir() + "/config.yaml"
+	workDirectory := t.TempDir()
+	configuration.SourcePath = workDirectory + "/config.yaml"
+	configuration.Backups.Directory = workDirectory + "/backups"
 	secrets := &memorySecrets{values: make(map[string]string)}
 	runtime := New(ctx, configuration, secrets)
 	system, err := postgresadmin.Provision(
@@ -249,6 +253,87 @@ func TestCreateDebugDatabaseCopiesOrStartsCleanIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	sourcePool.Close()
+	if _, _, err := runtime.database.Administrators.CreateInitial(ctx, "admin-"+suffix, "platform integration password"); err != nil {
+		t.Fatal(err)
+	}
+	runningSource, err := runtime.StartDatabase(ctx, registeredSource.ID)
+	if err != nil || runningSource.State != systemdb.DatabaseRunning {
+		t.Fatalf("running source=%+v error=%v", runningSource, err)
+	}
+	portalLogin, err := runtime.LoginPortal(ctx, "admin-"+suffix, "platform integration password", "127.0.0.1", "integration-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	portalSession, visible, err := runtime.LoadPortal(ctx, portalLogin.Token)
+	if err != nil || len(visible) != 1 || visible[0].ID != registeredSource.ID {
+		t.Fatalf("portal session=%+v visible=%+v error=%v", portalSession, visible, err)
+	}
+	applicationSession, err := runtime.OpenPortalDatabase(ctx, portalLogin.Token, registeredSource.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SendSessionMessage(ctx, applicationSession.ID, "Maintenance soon"); err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := runtime.ResumePortalDatabase(ctx, portalLogin.Token, registeredSource.ID)
+	if err != nil || resumed.Message != "Maintenance soon" {
+		t.Fatalf("resumed session=%+v error=%v", resumed, err)
+	}
+	if err := runtime.AcknowledgeSessionMessage(ctx, portalLogin.Token, applicationSession.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SetDatabaseSessionAccess(ctx, registeredSource.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	secondLogin, err := runtime.LoginPortal(ctx, "admin-"+suffix, "platform integration password", "127.0.0.2", "integration-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.OpenPortalDatabase(ctx, secondLogin.Token, registeredSource.ID); !errors.Is(err, systemdb.ErrNewSessionsForbidden) {
+		t.Fatalf("new session while forbidden error = %v", err)
+	}
+	backup, err := runtime.CreateDatabaseBackup(ctx, registeredSource.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backups, err := runtime.ListDatabaseBackups(ctx, registeredSource.ID)
+	if err != nil || len(backups) != 1 || backups[0].ID != backup.ID {
+		t.Fatalf("backups=%+v error=%v", backups, err)
+	}
+	mutationPool, err := pgxpool.NewWithConfig(ctx, mustPoolConfig(t, source.Connection, source.Password))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mutationPool.Exec(ctx, "UPDATE copied_probe SET value = 'changed after backup'"); err != nil {
+		mutationPool.Close()
+		t.Fatal(err)
+	}
+	mutationPool.Close()
+	if _, err := runtime.StopDatabase(ctx, registeredSource.ID); err != nil {
+		t.Fatal(err)
+	}
+	if sessions, err := runtime.ListDatabaseSessions(ctx, &registeredSource.ID); err != nil || len(sessions) != 0 {
+		t.Fatalf("sessions after stop=%+v error=%v", sessions, err)
+	}
+	if _, err := runtime.ResumePortalDatabase(ctx, portalLogin.Token, registeredSource.ID); !errors.Is(err, systemdb.ErrDatabaseNotRunning) {
+		t.Fatalf("terminated session resume error = %v", err)
+	}
+	if err := runtime.RestoreDatabaseBackup(ctx, registeredSource.ID, backup.ID); err != nil {
+		t.Fatal(err)
+	}
+	restoredPool, err := pgxpool.NewWithConfig(ctx, mustPoolConfig(t, source.Connection, source.Password))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restoredValue string
+	if err := restoredPool.QueryRow(ctx, "SELECT value FROM copied_probe").Scan(&restoredValue); err != nil {
+		restoredPool.Close()
+		t.Fatal(err)
+	}
+	restoredPool.Close()
+	if restoredValue != "from primary" {
+		t.Fatalf("restored value = %q", restoredValue)
+	}
 
 	copyRequest := debugRequest(administrator, administratorPassword, suffix, "copy")
 	copied, err := runtime.CreateDebugDatabase(ctx, registeredSource.ID, copyRequest)
@@ -333,6 +418,12 @@ SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_database WHERE datname = $1),
 		t.Fatal(err)
 	}
 	if err := runtime.UnregisterDatabase(ctx, clean.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.UnregisterDatabase(ctx, registeredSource.ID); !errors.Is(err, systemdb.ErrDatabaseHasBackups) {
+		t.Fatalf("unregister source with backup error = %v", err)
+	}
+	if err := runtime.DeleteDatabaseBackup(ctx, registeredSource.ID, backup.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err := runtime.UnregisterDatabase(ctx, registeredSource.ID); err != nil {

@@ -23,6 +23,9 @@ type DatabaseState string
 // DatabaseMode separates production operation from isolated development and debugging.
 type DatabaseMode string
 
+// DatabaseHealthStatus is the latest verified connection state.
+type DatabaseHealthStatus string
+
 const (
 	DatabaseStopped     DatabaseState = "stopped"
 	DatabaseStarting    DatabaseState = "starting"
@@ -37,6 +40,12 @@ const (
 	DatabaseDebug   DatabaseMode = "debug"
 )
 
+const (
+	DatabaseHealthUnknown   DatabaseHealthStatus = "unknown"
+	DatabaseHealthHealthy   DatabaseHealthStatus = "healthy"
+	DatabaseHealthUnhealthy DatabaseHealthStatus = "unhealthy"
+)
+
 var (
 	ErrDatabaseNotFound         = errors.New("registered database not found")
 	ErrDatabaseNameExists       = errors.New("database name is already registered")
@@ -44,6 +53,7 @@ var (
 	ErrDatabaseStateConflict    = errors.New("registered database state changed concurrently")
 	ErrDatabaseCannotUnregister = errors.New("only a stopped database can be unregistered")
 	ErrDatabaseHasDebugCopies   = errors.New("database has registered debug copies")
+	ErrDatabaseHasBackups       = errors.New("database has registered backups")
 )
 
 // RegisteredDatabase is a non-secret ML System registry entry.
@@ -54,6 +64,10 @@ type RegisteredDatabase struct {
 	Connection       postgresconn.Descriptor `json:"connection"`
 	Mode             DatabaseMode            `json:"mode"`
 	SourceDatabaseID *uuid.UUID              `json:"sourceDatabaseId,omitempty"`
+	AllowNewSessions bool                    `json:"allowNewSessions"`
+	HealthStatus     DatabaseHealthStatus    `json:"healthStatus"`
+	HealthMessage    string                  `json:"healthMessage,omitempty"`
+	HealthCheckedAt  *time.Time              `json:"healthCheckedAt,omitempty"`
 	State            DatabaseState           `json:"state"`
 	StateRevision    int64                   `json:"stateRevision"`
 	LastError        string                  `json:"lastError,omitempty"`
@@ -108,6 +122,7 @@ INSERT INTO ml_system.databases(
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING id::text, name, physical_id::text, host, port, database_name, username, ssl_mode, secret_key,
           mode, COALESCE(source_database_id::text, ''),
+          allow_new_sessions, health_status, COALESCE(health_message, ''), health_checked_at,
           state, state_revision, COALESCE(last_error, ''), state_changed_at, created_at, updated_at`,
 		registration.ID.String(), registration.Name, registration.PhysicalID.String(),
 		registration.Connection.Host, registration.Connection.Port, registration.Connection.Database,
@@ -125,6 +140,7 @@ func (repository *DatabaseRepository) List(ctx context.Context) ([]RegisteredDat
 	rows, err := repository.pool.Query(ctx, `
 SELECT id::text, name, physical_id::text, host, port, database_name, username, ssl_mode, secret_key,
        mode, COALESCE(source_database_id::text, ''),
+       allow_new_sessions, health_status, COALESCE(health_message, ''), health_checked_at,
        state, state_revision, COALESCE(last_error, ''), state_changed_at, created_at, updated_at
 FROM ml_system.databases
 ORDER BY lower(name), id`)
@@ -154,6 +170,7 @@ func (repository *DatabaseRepository) Get(ctx context.Context, id uuid.UUID) (Re
 	row := repository.pool.QueryRow(ctx, `
 SELECT id::text, name, physical_id::text, host, port, database_name, username, ssl_mode, secret_key,
        mode, COALESCE(source_database_id::text, ''),
+       allow_new_sessions, health_status, COALESCE(health_message, ''), health_checked_at,
        state, state_revision, COALESCE(last_error, ''), state_changed_at, created_at, updated_at
 FROM ml_system.databases WHERE id = $1`, id.String())
 	item, err := scanRegisteredDatabase(row)
@@ -180,6 +197,7 @@ SET state = $4, state_revision = state_revision + 1, last_error = NULLIF($5, '')
 WHERE id = $1 AND state = $2 AND state_revision = $3
 RETURNING id::text, name, physical_id::text, host, port, database_name, username, ssl_mode, secret_key,
           mode, COALESCE(source_database_id::text, ''),
+          allow_new_sessions, health_status, COALESCE(health_message, ''), health_checked_at,
           state, state_revision, COALESCE(last_error, ''), state_changed_at, created_at, updated_at`,
 		id.String(), expected, expectedRevision, next, message)
 	item, err := scanRegisteredDatabase(row)
@@ -205,11 +223,17 @@ func (repository *DatabaseRepository) Unregister(ctx context.Context, id uuid.UU
 DELETE FROM ml_system.databases WHERE id = $1 AND state = 'stopped'
 RETURNING id::text, name, physical_id::text, host, port, database_name, username, ssl_mode, secret_key,
           mode, COALESCE(source_database_id::text, ''),
+          allow_new_sessions, health_status, COALESCE(health_message, ''), health_checked_at,
           state, state_revision, COALESCE(last_error, ''), state_changed_at, created_at, updated_at`, id.String())
 	item, err := scanRegisteredDatabase(row)
 	var postgresError *pgconn.PgError
 	if errors.As(err, &postgresError) && postgresError.Code == "23503" {
-		return RegisteredDatabase{}, ErrDatabaseHasDebugCopies
+		switch postgresError.ConstraintName {
+		case "databases_source_database_id_fkey":
+			return RegisteredDatabase{}, ErrDatabaseHasDebugCopies
+		case "backups_database_id_fkey":
+			return RegisteredDatabase{}, ErrDatabaseHasBackups
+		}
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		current, getErr := repository.Get(ctx, id)
@@ -238,6 +262,7 @@ func scanRegisteredDatabase(row rowScanner) (RegisteredDatabase, error) {
 		&id, &item.Name, &physicalID, &item.Connection.Host, &item.Connection.Port,
 		&item.Connection.Database, &item.Connection.User, &item.Connection.SSLMode, &item.Connection.SecretKey,
 		&item.Mode, &sourceDatabaseID,
+		&item.AllowNewSessions, &item.HealthStatus, &item.HealthMessage, &item.HealthCheckedAt,
 		&item.State, &item.StateRevision, &item.LastError, &item.StateChangedAt, &item.CreatedAt, &item.UpdatedAt,
 	)
 	if err != nil {
@@ -247,6 +272,52 @@ func scanRegisteredDatabase(row rowScanner) (RegisteredDatabase, error) {
 		return RegisteredDatabase{}, err
 	}
 	return item, nil
+}
+
+// SetSessionAccess enables or blocks creation of new sessions without disconnecting existing ones.
+func (repository *DatabaseRepository) SetSessionAccess(ctx context.Context, id uuid.UUID, allowed bool) (RegisteredDatabase, error) {
+	if id.IsZero() {
+		return RegisteredDatabase{}, fmt.Errorf("registered database identifier is required")
+	}
+	item, err := scanRegisteredDatabase(repository.pool.QueryRow(ctx, `
+UPDATE ml_system.databases
+SET allow_new_sessions = $2, updated_at = clock_timestamp()
+WHERE id = $1
+RETURNING id::text, name, physical_id::text, host, port, database_name, username, ssl_mode, secret_key,
+          mode, COALESCE(source_database_id::text, ''),
+          allow_new_sessions, health_status, COALESCE(health_message, ''), health_checked_at,
+          state, state_revision, COALESCE(last_error, ''), state_changed_at, created_at, updated_at`, id.String(), allowed))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return RegisteredDatabase{}, ErrDatabaseNotFound
+	}
+	return item, err
+}
+
+// RecordHealth persists a bounded, non-secret result of a connection check.
+func (repository *DatabaseRepository) RecordHealth(ctx context.Context, id uuid.UUID, healthy bool, message string) (RegisteredDatabase, error) {
+	if id.IsZero() {
+		return RegisteredDatabase{}, fmt.Errorf("registered database identifier is required")
+	}
+	status := DatabaseHealthUnhealthy
+	if healthy {
+		status, message = DatabaseHealthHealthy, ""
+	}
+	message = strings.TrimSpace(message)
+	if utf8.RuneCountInString(message) > 1000 {
+		message = string([]rune(message)[:1000])
+	}
+	item, err := scanRegisteredDatabase(repository.pool.QueryRow(ctx, `
+UPDATE ml_system.databases
+SET health_status = $2, health_message = NULLIF($3, ''), health_checked_at = clock_timestamp(), updated_at = clock_timestamp()
+WHERE id = $1
+RETURNING id::text, name, physical_id::text, host, port, database_name, username, ssl_mode, secret_key,
+          mode, COALESCE(source_database_id::text, ''),
+          allow_new_sessions, health_status, COALESCE(health_message, ''), health_checked_at,
+          state, state_revision, COALESCE(last_error, ''), state_changed_at, created_at, updated_at`, id.String(), status, message))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return RegisteredDatabase{}, ErrDatabaseNotFound
+	}
+	return item, err
 }
 
 func parseDatabaseIDs(item *RegisteredDatabase, id, physicalID, sourceDatabaseID string) error {

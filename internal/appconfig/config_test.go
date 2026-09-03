@@ -77,6 +77,25 @@ func TestDefaultConfigurationIsValid(t *testing.T) {
 	}
 }
 
+func TestBackupDirectoryRequiresAbsolutePathAndSupportsEnvironment(t *testing.T) {
+	directory := t.TempDir()
+	t.Setenv("ML_BACKUP_DIRECTORY", directory)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	writeFile(t, path, "version: 1\nlanguage: ru\nservice: {listen: '127.0.0.1:8090'}\n")
+	configuration, _, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := configuration.BackupDirectory()
+	if err != nil || resolved != directory {
+		t.Fatalf("backup directory=%q error=%v", resolved, err)
+	}
+	configuration.Backups.Directory = "relative"
+	if err := configuration.Validate(); err == nil {
+		t.Fatal("relative backup directory was accepted")
+	}
+}
+
 func TestSaveAndLoadSystemDatabaseWithoutPassword(t *testing.T) {
 	t.Parallel()
 

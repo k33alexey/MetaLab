@@ -13,9 +13,10 @@ import (
 	"time"
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
+	"github.com/k33alexey/MetaLab/internal/platform"
+	"github.com/k33alexey/MetaLab/internal/portal"
 	"github.com/k33alexey/MetaLab/internal/prototype"
 	"github.com/k33alexey/MetaLab/internal/secretstore"
-	"github.com/k33alexey/MetaLab/internal/systemdb"
 )
 
 // RunService starts ML Service and blocks until cancellation or failure.
@@ -58,32 +59,18 @@ func RunService(ctx context.Context, configuration appconfig.Config) error {
 	}
 }
 
-type secretReader interface {
-	Get(string) (string, error)
-}
-
-func buildHandler(ctx context.Context, configuration appconfig.Config, secrets secretReader) (http.Handler, func(), error) {
-	if configuration.SystemDatabase != nil {
-		password, err := secrets.Get(configuration.SystemDatabase.SecretKey)
-		if err != nil {
-			return degradedHandler(), func() {}, err
+func buildHandler(ctx context.Context, configuration appconfig.Config, secrets platform.Secrets) (http.Handler, func(), error) {
+	if configuration.SystemDatabase != nil || os.Getenv("ML_SYSTEM_DATABASE_URL") != "" {
+		runtime := platform.New(ctx, configuration, secrets)
+		state := runtime.State()
+		if !state.Connected {
+			runtime.Close()
+			if state.Error == "" {
+				return degradedHandler(), func() {}, fmt.Errorf("ML System PostgreSQL is unavailable")
+			}
+			return degradedHandler(), func() {}, errors.New(state.Error)
 		}
-		poolConfiguration, err := configuration.SystemDatabase.PoolConfig(password)
-		if err != nil {
-			return degradedHandler(), func() {}, err
-		}
-		database, err := systemdb.OpenConfig(ctx, poolConfiguration)
-		if err != nil {
-			return degradedHandler(), func() {}, err
-		}
-		return healthySystemHandler(), database.Close, nil
-	}
-	if systemDatabaseURL := os.Getenv("ML_SYSTEM_DATABASE_URL"); systemDatabaseURL != "" {
-		database, err := systemdb.Open(ctx, systemDatabaseURL)
-		if err != nil {
-			return degradedHandler(), func() {}, err
-		}
-		return healthySystemHandler(), database.Close, nil
+		return portal.NewHandler(runtime), runtime.Close, nil
 	}
 	databaseURL := os.Getenv("ML_DATABASE_URL")
 	if databaseURL == "" {
@@ -101,15 +88,6 @@ func degradedHandler() http.Handler {
 	routes.HandleFunc("GET /api/health", func(response http.ResponseWriter, _ *http.Request) {
 		response.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(response).Encode(map[string]string{"status": "degraded", "database": "unconfigured"})
-	})
-	return routes
-}
-
-func healthySystemHandler() http.Handler {
-	routes := http.NewServeMux()
-	routes.HandleFunc("GET /api/health", func(response http.ResponseWriter, _ *http.Request) {
-		response.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = json.NewEncoder(response).Encode(map[string]string{"status": "ok", "database": "postgresql"})
 	})
 	return routes
 }

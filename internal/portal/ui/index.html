@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ML Portal</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background:#0f141d; color:#eef2f8 }
+    body { margin:0; min-height:100vh; display:grid; place-items:center; background:radial-gradient(circle at 30% 0,#273858,#0f141d 56%) }
+    main { width:min(780px,calc(100% - 40px)) } section { padding:24px; border:1px solid #34425c; border-radius:18px; background:#171e2aeb; box-shadow:0 24px 70px #0007 }
+    header,.row { display:flex; align-items:center; justify-content:space-between; gap:16px } h1 { margin:0 0 20px } form,.list { display:grid; gap:14px }
+    label { display:grid; gap:6px; color:#b8c2d2 } input { padding:11px 12px; border:1px solid #42516c; border-radius:9px; background:#0f1622; color:#eef2f8; font:inherit }
+    button { padding:10px 14px; border:0; border-radius:9px; background:#5ee1be; color:#08221b; font-weight:700; cursor:pointer } .secondary { background:#34425c; color:#eef2f8 }
+    .database { padding:16px; border:1px solid #34425c; border-radius:12px; background:#101722 } .database strong { display:block } small,.hint { color:#8390a6 } .error { color:#ff8591 } .hidden { display:none }
+  </style>
+</head>
+<body><main>
+  <h1>ML Portal</h1>
+  <section id="login-panel">
+    <form id="login-form">
+      <label>Пользователь<input id="login" autocomplete="username" required autofocus></label>
+      <label>Пароль<input id="password" type="password" autocomplete="current-password" required></label>
+      <div id="login-error" class="error"></div><button type="submit">Войти</button>
+    </form>
+  </section>
+  <section id="portal-panel" class="hidden">
+    <header><div><strong id="user"></strong><div class="hint">Выберите базу</div></div><button id="logout" class="secondary">Выйти</button></header>
+    <form id="password-form" class="hidden">
+      <p class="hint">Перед продолжением необходимо изменить временный пароль.</p>
+      <label>Текущий пароль<input id="current-password" type="password" autocomplete="current-password" required></label>
+      <label>Новый пароль<input id="new-password" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label>Повторите новый пароль<input id="new-password-confirm" type="password" autocomplete="new-password" minlength="8" required></label>
+      <div id="password-error" class="error"></div><button type="submit">Изменить пароль</button>
+    </form>
+    <div id="portal-content"><div id="database-list" class="list"></div><p id="empty" class="hint">Нет запущенных доступных баз.</p></div>
+  </section>
+</main><script>
+  const loginPanel=document.querySelector('#login-panel'),portalPanel=document.querySelector('#portal-panel');
+  async function loadPortal(){
+    const response=await fetch('/api/portal'); if(!response.ok){loginPanel.classList.remove('hidden');portalPanel.classList.add('hidden');return}
+    const data=await response.json(); loginPanel.classList.add('hidden');portalPanel.classList.remove('hidden');document.querySelector('#user').textContent=data.session.login;document.querySelector('#password-form').classList.toggle('hidden',!data.session.mustChangePassword);document.querySelector('#portal-content').classList.toggle('hidden',data.session.mustChangePassword);
+    const list=document.querySelector('#database-list');list.replaceChildren();document.querySelector('#empty').classList.toggle('hidden',data.databases.length!==0);
+    for(const item of data.databases){const card=document.createElement('div');card.className='database row';const info=document.createElement('div');const name=document.createElement('strong');name.textContent=item.name;const mode=document.createElement('small');mode.textContent=item.mode==='debug'?'Отладка':'Основная';info.append(name,mode);const open=document.createElement('button');open.textContent='Открыть';open.disabled=!item.allowNewSessions;open.addEventListener('click',async()=>{const result=await fetch(`/api/databases/${item.id}/open`,{method:'POST',headers:{'X-ML-CSRF':'1'}});if(result.ok){location.href=(await result.json()).url}else{alert(await result.text())}});card.append(info,open);list.append(card)}
+  }
+  document.querySelector('#login-form').addEventListener('submit',async event=>{event.preventDefault();const error=document.querySelector('#login-error');error.textContent='';const response=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:document.querySelector('#login').value,password:document.querySelector('#password').value})});document.querySelector('#password').value='';if(!response.ok){error.textContent='Неверный пользователь или пароль';return}await loadPortal()});
+  document.querySelector('#password-form').addEventListener('submit',async event=>{event.preventDefault();const current=document.querySelector('#current-password'),next=document.querySelector('#new-password'),confirmation=document.querySelector('#new-password-confirm'),error=document.querySelector('#password-error');error.textContent='';if(next.value!==confirmation.value){error.textContent='Пароли не совпадают';return}const response=await fetch('/api/password',{method:'POST',headers:{'Content-Type':'application/json','X-ML-CSRF':'1'},body:JSON.stringify({currentPassword:current.value,newPassword:next.value})});current.value='';next.value='';confirmation.value='';if(!response.ok){error.textContent='Не удалось изменить пароль';return}await loadPortal()});
+  document.querySelector('#logout').addEventListener('click',async()=>{await fetch('/api/logout',{method:'POST',headers:{'X-ML-CSRF':'1'}});await loadPortal()});loadPortal();
+</script></body></html>

@@ -69,6 +69,7 @@ func TestDatabaseRegistryErrorsAreMatchable(t *testing.T) {
 	for _, target := range []error{
 		ErrDatabaseNotFound, ErrDatabaseNameExists, ErrPhysicalDatabaseExists,
 		ErrDatabaseStateConflict, ErrDatabaseCannotUnregister, ErrDatabaseHasDebugCopies,
+		ErrDatabaseHasBackups,
 	} {
 		if !errors.Is(errors.Join(target, errors.New("context")), target) {
 			t.Fatalf("error %v is not matchable", target)

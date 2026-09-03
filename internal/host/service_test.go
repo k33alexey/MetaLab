@@ -52,3 +52,5 @@ type fakeSecrets struct {
 }
 
 func (secrets fakeSecrets) Get(string) (string, error) { return secrets.password, secrets.failure }
+func (secrets fakeSecrets) Set(string, string) error   { return secrets.failure }
+func (secrets fakeSecrets) Delete(string) error        { return secrets.failure }

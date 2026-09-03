@@ -21,6 +21,7 @@ type Config struct {
 	Version        int                      `yaml:"version"`
 	Language       string                   `yaml:"language"`
 	Service        ServiceConfig            `yaml:"service"`
+	Backups        BackupConfig             `yaml:"backups,omitempty"`
 	SystemDatabase *postgresconn.Descriptor `yaml:"system_database,omitempty"`
 	SourcePath     string                   `yaml:"-"`
 }
@@ -28,6 +29,11 @@ type Config struct {
 // ServiceConfig contains non-secret ML Service settings.
 type ServiceConfig struct {
 	Listen string `yaml:"listen"`
+}
+
+// BackupConfig controls the local archive directory. Scheduling is added with the job engine.
+type BackupConfig struct {
+	Directory string `yaml:"directory,omitempty"`
 }
 
 // Default returns safe local settings for a first run.
@@ -108,7 +114,22 @@ func (configuration Config) Validate() error {
 			return fmt.Errorf("invalid ML System database: %w", err)
 		}
 	}
+	if configuration.Backups.Directory != "" && !filepath.IsAbs(configuration.Backups.Directory) {
+		return fmt.Errorf("backup directory must be absolute")
+	}
 	return nil
+}
+
+// BackupDirectory resolves the configured or platform-default local archive directory.
+func (configuration Config) BackupDirectory() (string, error) {
+	if configuration.Backups.Directory != "" {
+		return configuration.Backups.Directory, nil
+	}
+	directory, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve backup directory: %w", err)
+	}
+	return filepath.Join(directory, "MetaLab", "backups"), nil
 }
 
 // Save writes a validated configuration atomically with owner-only permissions.
@@ -165,5 +186,8 @@ func applyEnvironment(configuration *Config) {
 	}
 	if listen := os.Getenv("ML_SERVICE_LISTEN"); listen != "" {
 		configuration.Service.Listen = listen
+	}
+	if directory := os.Getenv("ML_BACKUP_DIRECTORY"); directory != "" {
+		configuration.Backups.Directory = directory
 	}
 }

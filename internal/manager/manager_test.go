@@ -102,6 +102,11 @@ func TestManagerSetupRejectsUnavailableInvalidAndRepeatedRequests(t *testing.T) 
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("unavailable status = %d", response.Code)
 	}
+	response = httptest.NewRecorder()
+	unavailable.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unavailable sessions status = %d", response.Code)
+	}
 
 	setup := &fakeAdministratorSetup{failure: systemdb.ErrInitialAdministratorExists}
 	handler := newHandler(appconfig.Default(), http.DefaultClient, setup, nil)
@@ -200,6 +205,46 @@ func TestManagerDatabaseRegistryReportsConflicts(t *testing.T) {
 	}
 }
 
+func TestManagerOperationalAPI(t *testing.T) {
+	t.Parallel()
+	databaseID, backupID := uuid.MustNew(), uuid.MustNew()
+	setup := &fakePlatformSetup{}
+	handler := newHandler(appconfig.Default(), http.DefaultClient, setup, setup)
+	for _, path := range []string{"start", "stop", "health"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/databases/"+databaseID.String()+"/"+path, nil))
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s status=%d body=%s", path, response.Code, response.Body.String())
+		}
+	}
+	request := httptest.NewRequest(http.MethodPut, "/api/databases/"+databaseID.String()+"/session-access", strings.NewReader(`{"allowed":false}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("session access status=%d body=%s", response.Code, response.Body.String())
+	}
+	for _, path := range []string{"/api/sessions", "/api/logs", "/api/databases/" + databaseID.String() + "/backups"} {
+		response = httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusOK {
+			t.Fatalf("GET %s status=%d body=%s", path, response.Code, response.Body.String())
+		}
+	}
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/databases/"+databaseID.String()+"/backups", nil))
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create backup status=%d body=%s", response.Code, response.Body.String())
+	}
+	request = httptest.NewRequest(http.MethodPost, "/api/databases/"+databaseID.String()+"/backups/"+backupID.String()+"/restore", strings.NewReader(`{"confirm":true}`))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("restore status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 type fakeAdministratorSetup struct {
 	required bool
 	login    string
@@ -253,6 +298,42 @@ func (setup *fakePlatformSetup) CreateDebugDatabase(_ context.Context, source uu
 }
 func (setup *fakePlatformSetup) UnregisterDatabase(_ context.Context, id uuid.UUID) error {
 	setup.unregistered = id
+	return setup.registryError
+}
+func (setup *fakePlatformSetup) StartDatabase(_ context.Context, id uuid.UUID) (systemdb.RegisteredDatabase, error) {
+	return systemdb.RegisteredDatabase{ID: id, PhysicalID: uuid.MustNew(), State: systemdb.DatabaseRunning}, setup.registryError
+}
+func (setup *fakePlatformSetup) StopDatabase(_ context.Context, id uuid.UUID) (systemdb.RegisteredDatabase, error) {
+	return systemdb.RegisteredDatabase{ID: id, PhysicalID: uuid.MustNew(), State: systemdb.DatabaseStopped}, setup.registryError
+}
+func (setup *fakePlatformSetup) SetDatabaseSessionAccess(_ context.Context, id uuid.UUID, allowed bool) (systemdb.RegisteredDatabase, error) {
+	return systemdb.RegisteredDatabase{ID: id, PhysicalID: uuid.MustNew(), AllowNewSessions: allowed}, setup.registryError
+}
+func (setup *fakePlatformSetup) CheckDatabaseHealth(_ context.Context, id uuid.UUID) (systemdb.RegisteredDatabase, error) {
+	return systemdb.RegisteredDatabase{ID: id, PhysicalID: uuid.MustNew(), HealthStatus: systemdb.DatabaseHealthHealthy}, setup.registryError
+}
+func (setup *fakePlatformSetup) ListDatabaseSessions(context.Context, *uuid.UUID) ([]systemdb.DatabaseSession, error) {
+	return []systemdb.DatabaseSession{}, setup.registryError
+}
+func (setup *fakePlatformSetup) SendSessionMessage(context.Context, uuid.UUID, string) error {
+	return setup.registryError
+}
+func (setup *fakePlatformSetup) TerminateDatabaseSession(context.Context, uuid.UUID) error {
+	return setup.registryError
+}
+func (setup *fakePlatformSetup) ListAuditEvents(context.Context, *uuid.UUID, int) ([]systemdb.AuditEvent, error) {
+	return []systemdb.AuditEvent{}, setup.registryError
+}
+func (setup *fakePlatformSetup) CreateDatabaseBackup(_ context.Context, id uuid.UUID) (systemdb.Backup, error) {
+	return systemdb.Backup{ID: uuid.MustNew(), DatabaseID: id, FileName: "test.mlbackup"}, setup.registryError
+}
+func (setup *fakePlatformSetup) ListDatabaseBackups(context.Context, uuid.UUID) ([]systemdb.Backup, error) {
+	return []systemdb.Backup{}, setup.registryError
+}
+func (setup *fakePlatformSetup) DeleteDatabaseBackup(context.Context, uuid.UUID, uuid.UUID) error {
+	return setup.registryError
+}
+func (setup *fakePlatformSetup) RestoreDatabaseBackup(context.Context, uuid.UUID, uuid.UUID) error {
 	return setup.registryError
 }
 

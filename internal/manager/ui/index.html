@@ -7,7 +7,7 @@
   <style>
     :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background: #0f141d; color: #eef2f8; }
     body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: radial-gradient(circle at 30% 0, #273858, #0f141d 56%); }
-    main { width: min(760px, calc(100% - 48px)); }
+    main { width: min(1040px, calc(100% - 48px)); }
     header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
     h1 { margin: 0; font-size: 28px; } .tag { color: #8a98b0; }
     section { margin-bottom: 18px; padding: 24px; border: 1px solid #34425c; border-radius: 18px; background: #171e2aeb; box-shadow: 0 24px 70px #0007; }
@@ -20,12 +20,14 @@
     input, select { padding: 11px 12px; border: 1px solid #42516c; border-radius: 9px; background: #0f1622; color: #eef2f8; font: inherit; }
     .hidden { display: none; } .error { color: #ff8591; } .codes { padding: 14px; border-radius: 10px; background: #0c121c; font-family: ui-monospace, monospace; line-height: 1.7; white-space: pre-wrap; }
     .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-    .actions { display: flex; gap: 10px; } .secondary { background: #34425c; color: #eef2f8; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; } .secondary { background: #34425c; color: #eef2f8; }
     .database-list { display: grid; gap: 10px; margin: 16px 0; }
     .database { padding: 14px; border: 1px solid #34425c; border-radius: 12px; background: #101722; }
     .database strong { display: block; margin-bottom: 4px; } .database .row { align-items: flex-start; }
     .danger { background: #542b35; color: #ffdce1; } button:disabled { cursor: not-allowed; opacity: .45; }
     input[type="checkbox"] { width: 18px; height: 18px; padding: 0; } .check { display: flex; grid-column: 1 / -1; align-items: center; gap: 9px; }
+    .operational-list { display: grid; gap: 8px; margin-top: 12px; } .operational-item { padding: 10px; border-radius: 9px; background: #0c121c; }
+    .healthy { color: #5ee1be; } .unhealthy { color: #ff8591; } .warning { color: #ffd479; }
     @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -109,6 +111,12 @@
       <div id="debug-error" class="error"></div>
       <div class="actions"><button type="submit">Создать</button><button id="debug-cancel" type="button" class="secondary">Отмена</button></div>
     </form>
+    <h3>Активные сеансы</h3>
+    <div class="actions"><button id="sessions-refresh" type="button" class="secondary">Обновить сеансы</button></div>
+    <div id="session-list" class="operational-list"></div>
+    <h3>Журнал операций</h3>
+    <div class="actions"><button id="logs-refresh" type="button" class="secondary">Обновить журнал</button></div>
+    <div id="log-list" class="operational-list"></div>
   </section>
 </main>
 <script>
@@ -147,7 +155,7 @@
     if (data.connection) document.querySelector('#postgres-address').textContent = `${data.connection.host}:${data.connection.port} / ${data.connection.database}`;
     if (data.error) document.querySelector('#postgres-error').textContent = data.error;
     document.querySelector('#databases').classList.toggle('hidden', !data.connected);
-    if (data.connected) await refreshDatabases();
+    if (data.connected) { await refreshDatabases(); await refreshSessions(); await refreshLogs(); }
   }
   async function postgresAction(path) {
     const error = document.querySelector('#postgres-error'); const result = document.querySelector('#postgres-result');
@@ -176,7 +184,8 @@
       const description = document.createElement('div');
       const name = document.createElement('strong'); name.textContent = item.name;
       const connection = document.createElement('small'); const mode = item.mode === 'debug' ? 'Отладка' : 'Основная'; connection.textContent = `${item.connection.host}:${item.connection.port} / ${item.connection.database} · ${mode} · ${item.state}`;
-      description.append(name, connection);
+      const health = document.createElement('small'); health.className = item.healthStatus === 'healthy' ? 'healthy' : item.healthStatus === 'unhealthy' ? 'unhealthy' : 'hint'; health.textContent = `Здоровье: ${item.healthStatus || 'unknown'}${item.healthMessage ? ` — ${item.healthMessage}` : ''}`;
+      description.append(name, connection, document.createElement('br'), health);
       const buttons = document.createElement('div'); buttons.className = 'actions';
       if (item.mode === 'primary') {
         const debug = document.createElement('button'); debug.className = 'secondary'; debug.textContent = 'Создать отладочную';
@@ -186,6 +195,13 @@
         });
         buttons.append(debug);
       }
+      const lifecycle = document.createElement('button'); lifecycle.className = 'secondary'; lifecycle.textContent = item.state === 'running' ? 'Остановить' : 'Запустить'; lifecycle.disabled = !['running','stopped','error','maintenance'].includes(item.state);
+      lifecycle.addEventListener('click', async () => { const action = item.state === 'running' ? 'stop' : 'start'; if (action === 'stop' && !confirm(`Остановить базу «${item.name}» и завершить её активные сеансы?`)) return; const result = await fetch(`/api/databases/${item.id}/${action}`, {method:'POST'}); if (!result.ok) alert(await result.text()); await refreshDatabases(); await refreshSessions(); }); buttons.append(lifecycle);
+      const access = document.createElement('button'); access.className = 'secondary'; access.textContent = item.allowNewSessions ? 'Запретить вход' : 'Разрешить вход';
+      access.addEventListener('click', async () => { const result = await fetch(`/api/databases/${item.id}/session-access`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({allowed:!item.allowNewSessions})}); if (!result.ok) alert(await result.text()); await refreshDatabases(); }); buttons.append(access);
+      const check = document.createElement('button'); check.className = 'secondary'; check.textContent = 'Проверить'; check.addEventListener('click', async () => { const result = await fetch(`/api/databases/${item.id}/health`, {method:'POST'}); if (!result.ok) alert(await result.text()); await refreshDatabases(); }); buttons.append(check);
+      const backup = document.createElement('button'); backup.className = 'secondary'; backup.textContent = 'Создать копию'; backup.addEventListener('click', async () => { const result = await fetch(`/api/databases/${item.id}/backups`, {method:'POST'}); if (!result.ok) alert(await result.text()); await loadBackups(item, card); }); buttons.append(backup);
+      const backups = document.createElement('button'); backups.className = 'secondary'; backups.textContent = 'Копии'; backups.addEventListener('click', () => loadBackups(item, card)); buttons.append(backups);
       const remove = document.createElement('button'); remove.className = 'danger'; remove.textContent = 'Удалить'; remove.disabled = item.state !== 'stopped';
       remove.addEventListener('click', async () => {
         if (!confirm(`Удалить базу «${item.name}» из списка? Данные PostgreSQL удалены не будут.`)) return;
@@ -208,6 +224,16 @@
     if (!response.ok) { error.textContent = await response.text(); return; }
     databaseForm.reset(); databaseForm.classList.add('hidden'); await refreshDatabases();
   });
+  async function loadBackups(database, card) {
+    let container = card.querySelector('.backup-list'); if (!container) { container = document.createElement('div'); container.className = 'backup-list operational-list'; card.append(container); }
+    const response = await fetch(`/api/databases/${database.id}/backups`); if (!response.ok) { alert(await response.text()); return; }
+    const items = await response.json(); container.replaceChildren();
+    for (const item of items) { const row = document.createElement('div'); row.className = 'operational-item row'; const text = document.createElement('small'); text.textContent = `${item.fileName} · ${item.sizeBytes} байт · ${new Date(item.createdAt).toLocaleString()}`; const actions=document.createElement('div');actions.className='actions';const restore = document.createElement('button'); restore.className = 'danger'; restore.textContent = 'Восстановить'; restore.disabled = database.state !== 'stopped'; restore.addEventListener('click', async () => { if (!confirm(`Восстановить базу «${database.name}» из этой копии? Текущие данные будут заменены.`)) return; const result = await fetch(`/api/databases/${database.id}/backups/${item.id}/restore`, {method:'POST',headers:{'Content-Type':'application/json'},body:'{"confirm":true}'}); if (!result.ok) alert(await result.text()); else alert('База восстановлена'); }); const remove=document.createElement('button');remove.className='danger';remove.textContent='Удалить копию';remove.addEventListener('click',async()=>{if(!confirm(`Удалить резервную копию ${item.fileName}?`))return;const result=await fetch(`/api/databases/${database.id}/backups/${item.id}`,{method:'DELETE'});if(!result.ok)alert(await result.text());await loadBackups(database,card)});actions.append(restore,remove);row.append(text, actions); container.append(row); }
+    if (items.length === 0) container.textContent = 'Резервных копий пока нет.';
+  }
+  async function refreshSessions() { const response = await fetch('/api/sessions'); if (!response.ok) return; const items = await response.json(); const list = document.querySelector('#session-list'); list.replaceChildren(); for (const item of items) { const row = document.createElement('div'); row.className='operational-item row'; const text=document.createElement('small'); text.textContent=`${item.login} · ${item.databaseName} · ${item.remoteAddress} · ${new Date(item.lastSeenAt).toLocaleString()}`; const actions=document.createElement('div'); actions.className='actions'; const message=document.createElement('button'); message.className='secondary'; message.textContent='Сообщение'; message.addEventListener('click',async()=>{const value=prompt('Сообщение пользователю');if(!value)return;const result=await fetch(`/api/sessions/${item.id}/message`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:value})});if(!result.ok)alert(await result.text())}); const terminate=document.createElement('button');terminate.className='danger';terminate.textContent='Завершить';terminate.addEventListener('click',async()=>{if(!confirm('Принудительно завершить сеанс?'))return;const result=await fetch(`/api/sessions/${item.id}`,{method:'DELETE'});if(!result.ok)alert(await result.text());await refreshSessions()});actions.append(message,terminate);row.append(text,actions);list.append(row); } if(items.length===0) list.textContent='Активных сеансов нет.'; }
+  async function refreshLogs() { const response=await fetch('/api/logs?limit=100');if(!response.ok)return;const items=await response.json();const list=document.querySelector('#log-list');list.replaceChildren();for(const item of items){const row=document.createElement('div');row.className=`operational-item ${item.level==='error'?'unhealthy':item.level==='warning'?'warning':''}`;row.textContent=`${new Date(item.occurredAt).toLocaleString()} · ${item.code} · ${item.message}`;list.append(row)}if(items.length===0)list.textContent='Журнал пока пуст.';}
+  document.querySelector('#sessions-refresh').addEventListener('click',refreshSessions); document.querySelector('#logs-refresh').addEventListener('click',refreshLogs);
   document.querySelector('#debug-cancel').addEventListener('click', () => { debugForm.reset(); debugForm.classList.add('hidden'); debugSourceID = ''; document.querySelector('#debug-error').textContent = ''; });
   debugForm.addEventListener('submit', async event => {
     event.preventDefault(); const error = document.querySelector('#debug-error'); error.textContent = '';

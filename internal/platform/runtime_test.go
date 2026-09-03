@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -48,5 +49,13 @@ func TestProvisionRequestRequiresTLSForRemoteServer(t *testing.T) {
 	}
 	if _, err := request.administratorDescriptor(); err == nil || !strings.Contains(err.Error(), "TLS") {
 		t.Fatalf("administratorDescriptor() error = %v", err)
+	}
+}
+
+func TestOperationalErrorsRedactKnownSecrets(t *testing.T) {
+	t.Parallel()
+	message := safeOperationalError(errors.New("connection failed with password super-secret"), "super-secret")
+	if strings.Contains(message, "super-secret") || !strings.Contains(message, "[REDACTED]") {
+		t.Fatalf("safe error = %q", message)
 	}
 }
