@@ -2,8 +2,10 @@
 package studio
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -21,7 +24,10 @@ import (
 var assets embed.FS
 
 // Workspace is one validated project opened by a Studio process.
-type Workspace struct{ root string }
+type Workspace struct {
+	root string
+	mu   sync.Mutex
+}
 
 // Snapshot is the read-only project model rendered by the Studio shell.
 type Snapshot struct {
@@ -97,12 +103,14 @@ func Open(root string) (*Workspace, error) {
 
 // Snapshot scans current project sources, including edits made outside Studio.
 func (workspace *Workspace) Snapshot() (Snapshot, error) {
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
 	manifest, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return Snapshot{}, err
 	}
 	root := Node{
-		ID: "project", Kind: "project", Title: manifest.Title,
+		ID: "project", Kind: "project", Title: manifest.Title, Path: project.ManifestFile,
 		Properties: []Property{
 			{Name: "Имя", Value: manifest.Name}, {Name: "Заголовок", Value: manifest.Title},
 			{Name: "UUID", Value: manifest.ID.String()}, {Name: "Основной язык", Value: manifest.DefaultLanguage},
@@ -147,6 +155,52 @@ func NewHandler(workspace *Workspace) http.Handler {
 		response.Header().Set("Cache-Control", "no-store")
 		_ = json.NewEncoder(response).Encode(snapshot)
 	})
+	routes.HandleFunc("GET /api/file", func(response http.ResponseWriter, request *http.Request) {
+		file, err := workspace.ReadSource(request.URL.Query().Get("path"))
+		if err != nil {
+			writeSourceError(response, err)
+			return
+		}
+		entityTag := `"` + file.Revision + `"`
+		response.Header().Set("ETag", entityTag)
+		if request.Header.Get("If-None-Match") == entityTag {
+			response.WriteHeader(http.StatusNotModified)
+			return
+		}
+		writeStudioJSON(response, file)
+	})
+	routes.HandleFunc("PUT /api/file", func(response http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("X-ML-CSRF") != "1" {
+			http.Error(response, "CSRF check failed", http.StatusForbidden)
+			return
+		}
+		if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
+			http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+			return
+		}
+		var input struct {
+			Path             string `json:"path"`
+			Content          string `json:"content"`
+			ExpectedRevision string `json:"expectedRevision"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, MaxEditableFileBytes+(64<<10)))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil {
+			http.Error(response, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			http.Error(response, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		file, err := workspace.SaveSource(input.Path, input.Content, input.ExpectedRevision)
+		if err != nil {
+			writeSourceError(response, err)
+			return
+		}
+		writeStudioJSON(response, file)
+	})
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
 		response.Header().Set("X-Content-Type-Options", "nosniff")
@@ -154,6 +208,28 @@ func NewHandler(workspace *Workspace) http.Handler {
 		response.Header().Set("X-Frame-Options", "DENY")
 		routes.ServeHTTP(response, request)
 	})
+}
+
+func writeStudioJSON(response http.ResponseWriter, value any) {
+	var body bytes.Buffer
+	if err := json.NewEncoder(&body).Encode(value); err != nil {
+		http.Error(response, "Unable to encode response", http.StatusInternalServerError)
+		return
+	}
+	response.Header().Set("Content-Type", "application/json; charset=utf-8")
+	response.Header().Set("Cache-Control", "no-store")
+	_, _ = response.Write(body.Bytes())
+}
+
+func writeSourceError(response http.ResponseWriter, err error) {
+	status := http.StatusBadRequest
+	switch {
+	case errors.Is(err, ErrSourceChanged):
+		status = http.StatusConflict
+	case errors.Is(err, ErrSourceNotFound):
+		status = http.StatusNotFound
+	}
+	http.Error(response, err.Error(), status)
 }
 
 func (workspace *Workspace) metadataTree() (Node, error) {
