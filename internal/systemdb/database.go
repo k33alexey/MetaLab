@@ -18,6 +18,7 @@ type Database struct {
 	Sessions       *SessionRepository
 	Audit          *AuditRepository
 	Backups        *BackupRepository
+	StudioSessions *StudioSessionRepository
 }
 
 // Open connects to PostgreSQL, validates it and applies embedded migrations.
@@ -63,6 +64,7 @@ func OpenConfig(ctx context.Context, configuration *pgxpool.Config) (*Database, 
 	database.Sessions = &SessionRepository{pool: pool}
 	database.Audit = &AuditRepository{pool: pool}
 	database.Backups = &BackupRepository{pool: pool}
+	database.StudioSessions = &StudioSessionRepository{pool: pool}
 	return database, nil
 }
 

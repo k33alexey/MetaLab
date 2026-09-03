@@ -46,7 +46,7 @@ func NewHandlerWithPlatformAndStudio(configuration appconfig.Config, runtime pla
 
 // StudioLauncher opens a filesystem-backed project without tying its lifetime to Manager HTTP requests.
 type StudioLauncher interface {
-	OpenStudio(string) error
+	OpenStudio(context.Context, uuid.UUID, string) error
 }
 
 type administratorSetup interface {
@@ -75,6 +75,8 @@ type platformSetup interface {
 	ListDatabaseBackups(context.Context, uuid.UUID) ([]systemdb.Backup, error)
 	DeleteDatabaseBackup(context.Context, uuid.UUID, uuid.UUID) error
 	RestoreDatabaseBackup(context.Context, uuid.UUID, uuid.UUID) error
+	ListStudioSessions(context.Context) ([]systemdb.StudioSession, error)
+	TerminateStudioSession(context.Context, uuid.UUID) error
 }
 
 func newHandler(configuration appconfig.Config, client *http.Client, setup administratorSetup, postgres platformSetup, launchers ...StudioLauncher) http.Handler {
@@ -118,18 +120,47 @@ func newHandler(configuration appconfig.Config, client *http.Client, setup admin
 			return
 		}
 		var input struct {
-			ProjectPath string `json:"projectPath"`
+			DatabaseID  uuid.UUID `json:"databaseId"`
+			ProjectPath string    `json:"projectPath"`
 		}
 		if !decodeJSON(response, request, &input) {
 			return
 		}
 		input.ProjectPath = strings.TrimSpace(input.ProjectPath)
-		if input.ProjectPath == "" {
-			http.Error(response, "ML Project path is required", http.StatusBadRequest)
+		if input.DatabaseID.IsZero() || input.ProjectPath == "" {
+			http.Error(response, "Database and ML Project path are required", http.StatusBadRequest)
 			return
 		}
-		if err := launcher.OpenStudio(input.ProjectPath); err != nil {
+		if err := launcher.OpenStudio(request.Context(), input.DatabaseID, input.ProjectPath); err != nil {
 			http.Error(response, err.Error(), http.StatusBadRequest)
+			return
+		}
+		response.WriteHeader(http.StatusNoContent)
+	})
+	routes.HandleFunc("GET /api/studio/sessions", func(response http.ResponseWriter, request *http.Request) {
+		if postgres == nil {
+			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		items, err := postgres.ListStudioSessions(request.Context())
+		if err != nil {
+			http.Error(response, "Unable to list ML Studio sessions", http.StatusServiceUnavailable)
+			return
+		}
+		writeJSON(response, http.StatusOK, items)
+	})
+	routes.HandleFunc("DELETE /api/studio/sessions/{databaseId}", func(response http.ResponseWriter, request *http.Request) {
+		if postgres == nil {
+			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		databaseID, err := uuid.Parse(request.PathValue("databaseId"))
+		if err != nil {
+			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
+			return
+		}
+		if err := postgres.TerminateStudioSession(request.Context(), databaseID); err != nil {
+			http.Error(response, err.Error(), http.StatusConflict)
 			return
 		}
 		response.WriteHeader(http.StatusNoContent)
@@ -260,7 +291,7 @@ func newHandler(configuration appconfig.Config, client *http.Client, setup admin
 		switch {
 		case errors.Is(err, systemdb.ErrDatabaseNotFound):
 			http.Error(response, err.Error(), http.StatusNotFound)
-		case errors.Is(err, systemdb.ErrDatabaseCannotUnregister), errors.Is(err, systemdb.ErrDatabaseHasDebugCopies), errors.Is(err, systemdb.ErrDatabaseHasBackups):
+		case errors.Is(err, systemdb.ErrDatabaseCannotUnregister), errors.Is(err, systemdb.ErrDatabaseHasDebugCopies), errors.Is(err, systemdb.ErrDatabaseHasBackups), errors.Is(err, systemdb.ErrDatabaseHasStudioSession):
 			http.Error(response, err.Error(), http.StatusConflict)
 		case err != nil:
 			http.Error(response, "Unable to unregister database", http.StatusInternalServerError)

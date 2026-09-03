@@ -92,6 +92,12 @@ type PortalLogin struct {
 	Session systemdb.PortalSession `json:"session"`
 }
 
+// StudioLease carries the opaque token returned once for an exclusive Studio session.
+type StudioLease struct {
+	Token   string
+	Session systemdb.StudioSession
+}
+
 // PortalDatabase is the safe user-facing projection of a running database.
 type PortalDatabase struct {
 	ID               uuid.UUID                     `json:"id"`
@@ -942,6 +948,91 @@ func (runtime *Runtime) RestoreDatabaseBackup(ctx context.Context, databaseID, b
 	_, _ = runtime.database.Audit.Write(ctx, systemdb.AuditEvent{
 		Level: "warning", Code: "database.backup_restored", DatabaseID: &databaseID,
 		Message: "Local database backup restored", Details: map[string]any{"backupId": backup.ID.String()},
+	})
+	return nil
+}
+
+// AcquireStudioSession obtains the one renewable Studio lease allowed for a database.
+func (runtime *Runtime) AcquireStudioSession(
+	ctx context.Context, databaseID, projectID uuid.UUID, ownerName, hostName string, processID int64,
+) (StudioLease, error) {
+	runtime.mu.RLock()
+	database := runtime.database
+	runtime.mu.RUnlock()
+	if database == nil {
+		return StudioLease{}, fmt.Errorf("ML System PostgreSQL is not configured")
+	}
+	if _, err := database.Databases.Get(ctx, databaseID); err != nil {
+		return StudioLease{}, err
+	}
+	token, digest, err := auth.NewSessionToken()
+	if err != nil {
+		return StudioLease{}, err
+	}
+	id, err := uuid.New()
+	if err != nil {
+		return StudioLease{}, err
+	}
+	session, err := database.StudioSessions.Acquire(ctx, databaseID, projectID, id, digest[:], ownerName, hostName, processID)
+	if err != nil {
+		return StudioLease{}, err
+	}
+	_, _ = database.Audit.Write(ctx, systemdb.AuditEvent{
+		Level: "info", Code: "studio.session_started", DatabaseID: &databaseID, SessionID: &session.ID,
+		Message: "Exclusive ML Studio session started", Details: map[string]any{"projectId": projectID.String(), "owner": session.OwnerName},
+	})
+	return StudioLease{Token: token, Session: session}, nil
+}
+
+// HeartbeatStudioSession renews a lease and detects administrative termination.
+func (runtime *Runtime) HeartbeatStudioSession(ctx context.Context, id uuid.UUID, token string, processID int64) (systemdb.StudioSession, error) {
+	runtime.mu.RLock()
+	database := runtime.database
+	runtime.mu.RUnlock()
+	if database == nil || token == "" {
+		return systemdb.StudioSession{}, systemdb.ErrStudioSessionNotFound
+	}
+	digest := auth.SessionTokenDigest(token)
+	return database.StudioSessions.Heartbeat(ctx, id, digest[:], processID)
+}
+
+// ReleaseStudioSession ends a lease owned by its opaque token.
+func (runtime *Runtime) ReleaseStudioSession(ctx context.Context, id uuid.UUID, token string) error {
+	runtime.mu.RLock()
+	database := runtime.database
+	runtime.mu.RUnlock()
+	if database == nil || token == "" {
+		return systemdb.ErrStudioSessionNotFound
+	}
+	digest := auth.SessionTokenDigest(token)
+	return database.StudioSessions.Release(ctx, id, digest[:])
+}
+
+// ListStudioSessions returns current exclusive editor leases to Manager.
+func (runtime *Runtime) ListStudioSessions(ctx context.Context) ([]systemdb.StudioSession, error) {
+	runtime.mu.RLock()
+	database := runtime.database
+	runtime.mu.RUnlock()
+	if database == nil {
+		return nil, fmt.Errorf("ML System PostgreSQL is not configured")
+	}
+	return database.StudioSessions.ListActive(ctx)
+}
+
+// TerminateStudioSession forcibly revokes the current editor lease of a database.
+func (runtime *Runtime) TerminateStudioSession(ctx context.Context, databaseID uuid.UUID) error {
+	runtime.mu.RLock()
+	database := runtime.database
+	runtime.mu.RUnlock()
+	if database == nil {
+		return fmt.Errorf("ML System PostgreSQL is not configured")
+	}
+	if err := database.StudioSessions.Terminate(ctx, databaseID); err != nil {
+		return err
+	}
+	_, _ = database.Audit.Write(ctx, systemdb.AuditEvent{
+		Level: "warning", Code: "studio.session_terminated", DatabaseID: &databaseID,
+		Message: "ML Studio session forcibly terminated",
 	})
 	return nil
 }

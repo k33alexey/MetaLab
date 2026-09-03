@@ -15,7 +15,7 @@ const usage = `MetaLab
 
 Usage:
   ml manager [--config PATH]
-  ml studio --project PATH [--config PATH]
+  ml studio --database UUID --project PATH [--config PATH]
   ml service run [--config PATH]
   ml service install --config PATH
   ml service start|stop|restart|status|uninstall
@@ -32,7 +32,7 @@ Environment overrides: ML_LANGUAGE, ML_SERVICE_LISTEN, ML_BACKUP_DIRECTORY, ML_D
 type Runner func(context.Context, appconfig.Config) error
 
 // StudioRunner opens one filesystem-backed ML Project.
-type StudioRunner func(context.Context, appconfig.Config, string) error
+type StudioRunner func(context.Context, appconfig.Config, string, string) error
 
 // ServiceControl executes one native service-manager action.
 type ServiceControl func(action, configurationPath string) (string, error)
@@ -99,10 +99,11 @@ func (cli CLI) runStudio(ctx context.Context, args []string, stderr io.Writer) i
 	flags := flag.NewFlagSet("studio", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	projectPath := flags.String("project", "", "path to ML Project")
+	databaseID := flags.String("database", "", "registered database UUID")
 	configurationPath := flags.String("config", "", "path to MetaLab YAML configuration")
-	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || *projectPath == "" {
+	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || *projectPath == "" || *databaseID == "" {
 		if err == nil {
-			fmt.Fprintln(stderr, "usage: ml studio --project PATH [--config PATH]")
+			fmt.Fprintln(stderr, "usage: ml studio --database UUID --project PATH [--config PATH]")
 		}
 		return 2
 	}
@@ -115,7 +116,7 @@ func (cli CLI) runStudio(ctx context.Context, args []string, stderr io.Writer) i
 		fmt.Fprintf(stderr, "studio: %v\n", err)
 		return 1
 	}
-	if err := cli.commands.Studio(ctx, configuration, *projectPath); err != nil {
+	if err := cli.commands.Studio(ctx, configuration, *projectPath, *databaseID); err != nil {
 		fmt.Fprintf(stderr, "studio: %v\n", err)
 		return 1
 	}

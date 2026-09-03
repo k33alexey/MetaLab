@@ -76,16 +76,19 @@ func TestStudioUsesProjectAndSharedConfiguration(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	writeConfiguration(t, path)
 	var gotProject string
-	commands := Commands{Studio: func(_ context.Context, configuration appconfig.Config, projectPath string) error {
+	var gotDatabase string
+	commands := Commands{Studio: func(_ context.Context, configuration appconfig.Config, projectPath, databaseID string) error {
 		gotProject = projectPath
+		gotDatabase = databaseID
 		if configuration.Service.Listen != "127.0.0.1:9200" {
 			t.Fatalf("configuration = %+v", configuration)
 		}
 		return nil
 	}}
-	code, _, stderr := run(t, commands, "studio", "--project", "/projects/sales", "--config", path)
-	if code != 0 || gotProject != "/projects/sales" {
-		t.Fatalf("code=%d project=%q stderr=%q", code, gotProject, stderr)
+	databaseID := "018f1f72-3b4c-7d6e-8f90-123456789abc"
+	code, _, stderr := run(t, commands, "studio", "--database", databaseID, "--project", "/projects/sales", "--config", path)
+	if code != 0 || gotProject != "/projects/sales" || gotDatabase != databaseID {
+		t.Fatalf("code=%d project=%q database=%q stderr=%q", code, gotProject, gotDatabase, stderr)
 	}
 }
 
@@ -96,7 +99,7 @@ func TestStudioRequiresProjectAndDesktopRunner(t *testing.T) {
 	if code != 2 || !strings.Contains(stderr, "--project") {
 		t.Fatalf("missing project: code=%d stderr=%q", code, stderr)
 	}
-	code, _, stderr = run(t, Commands{}, "studio", "--project", "/projects/sales")
+	code, _, stderr = run(t, Commands{}, "studio", "--database", "018f1f72-3b4c-7d6e-8f90-123456789abc", "--project", "/projects/sales")
 	if code != 1 || !strings.Contains(stderr, "unavailable") {
 		t.Fatalf("missing runner: code=%d stderr=%q", code, stderr)
 	}

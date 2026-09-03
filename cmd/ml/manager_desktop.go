@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/user"
 	"time"
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
@@ -17,6 +18,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/platform"
 	"github.com/k33alexey/MetaLab/internal/secretstore"
 	"github.com/k33alexey/MetaLab/internal/studio"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -28,7 +30,7 @@ func runManager(ctx context.Context, configuration appconfig.Config) error {
 		return fmt.Errorf("start ML Manager UI: %w", err)
 	}
 	server := &http.Server{
-		Handler: manager.NewHandlerWithPlatformAndStudio(configuration, platformRuntime, executableStudioLauncher{configurationPath: configuration.SourcePath}), ReadHeaderTimeout: 5 * time.Second,
+		Handler: manager.NewHandlerWithPlatformAndStudio(configuration, platformRuntime, executableStudioLauncher{configurationPath: configuration.SourcePath, runtime: platformRuntime}), ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second,
 	}
 	serverErrors := make(chan error, 1)
@@ -66,26 +68,58 @@ func runManager(ctx context.Context, configuration appconfig.Config) error {
 	return nil
 }
 
-type executableStudioLauncher struct{ configurationPath string }
+const (
+	studioSessionIDEnvironment    = "ML_STUDIO_SESSION_ID"
+	studioSessionTokenEnvironment = "ML_STUDIO_SESSION_TOKEN"
+)
 
-func (launcher executableStudioLauncher) OpenStudio(projectPath string) error {
-	if _, err := studio.Open(projectPath); err != nil {
+type executableStudioLauncher struct {
+	configurationPath string
+	runtime           *platform.Runtime
+}
+
+func (launcher executableStudioLauncher) OpenStudio(ctx context.Context, databaseID uuid.UUID, projectPath string) error {
+	workspace, err := studio.Open(projectPath)
+	if err != nil {
 		return fmt.Errorf("open ML Project: %w", err)
+	}
+	snapshot, err := workspace.Snapshot()
+	if err != nil {
+		return fmt.Errorf("read ML Project: %w", err)
+	}
+	ownerName := "local-user"
+	if current, currentErr := user.Current(); currentErr == nil && current.Username != "" {
+		ownerName = current.Username
+	}
+	hostName := "localhost"
+	if current, hostErr := os.Hostname(); hostErr == nil && current != "" {
+		hostName = current
+	}
+	lease, err := launcher.runtime.AcquireStudioSession(ctx, databaseID, snapshot.Manifest.ID, ownerName, hostName, int64(os.Getpid()))
+	if err != nil {
+		return err
 	}
 	executable, err := os.Executable()
 	if err != nil {
+		releaseStudioLaunchLease(ctx, launcher.runtime, lease)
 		return fmt.Errorf("locate MetaLab executable: %w", err)
 	}
-	arguments := []string{"studio", "--project", projectPath}
+	arguments := []string{"studio", "--database", databaseID.String(), "--project", projectPath}
 	if launcher.configurationPath != "" {
 		arguments = append(arguments, "--config", launcher.configurationPath)
 	}
 	command := exec.Command(executable, arguments...)
+	command.Env = append(os.Environ(), studioSessionIDEnvironment+"="+lease.Session.ID.String(), studioSessionTokenEnvironment+"="+lease.Token)
 	if err := command.Start(); err != nil {
+		releaseStudioLaunchLease(ctx, launcher.runtime, lease)
 		return fmt.Errorf("start ML Studio: %w", err)
 	}
-	if err := command.Process.Release(); err != nil {
-		return fmt.Errorf("release ML Studio process: %w", err)
-	}
+	_ = command.Process.Release()
 	return nil
+}
+
+func releaseStudioLaunchLease(ctx context.Context, runtime *platform.Runtime, lease platform.StudioLease) {
+	releaseContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	_ = runtime.ReleaseStudioSession(releaseContext, lease.Session.ID, lease.Token)
 }

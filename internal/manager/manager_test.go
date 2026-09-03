@@ -75,12 +75,33 @@ func TestManagerLaunchesStudioForProjectPath(t *testing.T) {
 
 	launcher := &fakeStudioLauncher{}
 	handler := newHandler(appconfig.Default(), http.DefaultClient, nil, nil, launcher)
-	request := httptest.NewRequest(http.MethodPost, "/api/studio/open", strings.NewReader(`{"projectPath":" /projects/sales "}`))
+	databaseID := uuid.MustNew()
+	request := httptest.NewRequest(http.MethodPost, "/api/studio/open", strings.NewReader(`{"databaseId":"`+databaseID.String()+`","projectPath":" /projects/sales "}`))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusNoContent || launcher.path != "/projects/sales" {
-		t.Fatalf("status=%d body=%s path=%q", response.Code, response.Body.String(), launcher.path)
+	if response.Code != http.StatusNoContent || launcher.path != "/projects/sales" || launcher.databaseID != databaseID {
+		t.Fatalf("status=%d body=%s database=%s path=%q", response.Code, response.Body.String(), launcher.databaseID, launcher.path)
+	}
+}
+
+func TestManagerListsAndTerminatesStudioSession(t *testing.T) {
+	t.Parallel()
+
+	databaseID := uuid.MustNew()
+	setup := &fakePlatformSetup{studioSessions: []systemdb.StudioSession{{
+		ID: uuid.MustNew(), DatabaseID: databaseID, ProjectID: uuid.MustNew(), OwnerName: "alexey", HostName: "workstation", ProcessID: 42,
+	}}}
+	handler := newHandler(appconfig.Default(), http.DefaultClient, setup, setup)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/studio/sessions", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "alexey") {
+		t.Fatalf("list status=%d body=%s", response.Code, response.Body.String())
+	}
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodDelete, "/api/studio/sessions/"+databaseID.String(), nil))
+	if response.Code != http.StatusNoContent || setup.terminatedStudio != databaseID {
+		t.Fatalf("terminate status=%d database=%s body=%s", response.Code, setup.terminatedStudio, response.Body.String())
 	}
 }
 
@@ -267,12 +288,13 @@ type fakeAdministratorSetup struct {
 }
 
 type fakeStudioLauncher struct {
-	path string
-	err  error
+	databaseID uuid.UUID
+	path       string
+	err        error
 }
 
-func (launcher *fakeStudioLauncher) OpenStudio(path string) error {
-	launcher.path = path
+func (launcher *fakeStudioLauncher) OpenStudio(_ context.Context, databaseID uuid.UUID, path string) error {
+	launcher.databaseID, launcher.path = databaseID, path
 	return launcher.err
 }
 
@@ -287,16 +309,18 @@ func (setup *fakeAdministratorSetup) CreateInitial(_ context.Context, login, pas
 
 type fakePlatformSetup struct {
 	fakeAdministratorSetup
-	state           platform.State
-	request         platform.ProvisionRequest
-	checks          int
-	provisions      int
-	databases       []systemdb.RegisteredDatabase
-	registerRequest platform.RegisterDatabaseRequest
-	debugRequest    platform.CreateDebugDatabaseRequest
-	debugSource     uuid.UUID
-	unregistered    uuid.UUID
-	registryError   error
+	state            platform.State
+	request          platform.ProvisionRequest
+	checks           int
+	provisions       int
+	databases        []systemdb.RegisteredDatabase
+	registerRequest  platform.RegisterDatabaseRequest
+	debugRequest     platform.CreateDebugDatabaseRequest
+	debugSource      uuid.UUID
+	unregistered     uuid.UUID
+	registryError    error
+	studioSessions   []systemdb.StudioSession
+	terminatedStudio uuid.UUID
 }
 
 func (setup *fakePlatformSetup) State() platform.State { return setup.state }
@@ -358,6 +382,13 @@ func (setup *fakePlatformSetup) DeleteDatabaseBackup(context.Context, uuid.UUID,
 	return setup.registryError
 }
 func (setup *fakePlatformSetup) RestoreDatabaseBackup(context.Context, uuid.UUID, uuid.UUID) error {
+	return setup.registryError
+}
+func (setup *fakePlatformSetup) ListStudioSessions(context.Context) ([]systemdb.StudioSession, error) {
+	return setup.studioSessions, setup.registryError
+}
+func (setup *fakePlatformSetup) TerminateStudioSession(_ context.Context, databaseID uuid.UUID) error {
+	setup.terminatedStudio = databaseID
 	return setup.registryError
 }
 

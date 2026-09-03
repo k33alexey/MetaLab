@@ -54,6 +54,7 @@ var (
 	ErrDatabaseCannotUnregister = errors.New("only a stopped database can be unregistered")
 	ErrDatabaseHasDebugCopies   = errors.New("database has registered debug copies")
 	ErrDatabaseHasBackups       = errors.New("database has registered backups")
+	ErrDatabaseHasStudioSession = errors.New("database has an active ML Studio session")
 )
 
 // RegisteredDatabase is a non-secret ML System registry entry.
@@ -220,7 +221,12 @@ func (repository *DatabaseRepository) Unregister(ctx context.Context, id uuid.UU
 		return RegisteredDatabase{}, fmt.Errorf("registered database identifier is required")
 	}
 	row := repository.pool.QueryRow(ctx, `
-DELETE FROM ml_system.databases WHERE id = $1 AND state = 'stopped'
+DELETE FROM ml_system.databases
+WHERE id = $1 AND state = 'stopped'
+  AND NOT EXISTS (
+      SELECT 1 FROM ml_system.studio_sessions
+      WHERE database_id = $1 AND terminated_at IS NULL AND expires_at > clock_timestamp()
+  )
 RETURNING id::text, name, physical_id::text, host, port, database_name, username, ssl_mode, secret_key,
           mode, COALESCE(source_database_id::text, ''),
           allow_new_sessions, health_status, COALESCE(health_message, ''), health_checked_at,
@@ -245,6 +251,17 @@ RETURNING id::text, name, physical_id::text, host, port, database_name, username
 		}
 		if current.State != DatabaseStopped {
 			return RegisteredDatabase{}, ErrDatabaseCannotUnregister
+		}
+		var studioActive bool
+		if studioErr := repository.pool.QueryRow(ctx, `
+SELECT EXISTS(
+    SELECT 1 FROM ml_system.studio_sessions
+    WHERE database_id = $1 AND terminated_at IS NULL AND expires_at > clock_timestamp()
+)`, id.String()).Scan(&studioActive); studioErr != nil {
+			return RegisteredDatabase{}, fmt.Errorf("check active ML Studio session: %w", studioErr)
+		}
+		if studioActive {
+			return RegisteredDatabase{}, ErrDatabaseHasStudioSession
 		}
 		return RegisteredDatabase{}, ErrDatabaseStateConflict
 	}

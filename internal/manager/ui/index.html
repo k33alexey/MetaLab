@@ -43,6 +43,7 @@
   <section>
     <div class="row"><div><h2>ML Studio</h2><p class="hint">Откройте каталог существующего ML Project в отдельном окне Studio.</p></div></div>
     <form id="studio-form">
+      <label>База<select id="studio-database" required><option value="">Выберите базу</option></select></label>
       <label>Каталог проекта<input id="studio-project-path" placeholder="/projects/MyProject" required></label>
       <div id="studio-error" class="error"></div>
       <div class="actions"><button type="submit">Открыть ML Studio</button></div>
@@ -137,7 +138,7 @@
     url.textContent = data.url;
   }
   document.querySelector('#refresh').addEventListener('click', refresh);
-  document.querySelector('#studio-form').addEventListener('submit',async event=>{event.preventDefault();const error=document.querySelector('#studio-error');error.textContent='';const response=await fetch('/api/studio/open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectPath:document.querySelector('#studio-project-path').value})});if(!response.ok)error.textContent=await response.text()});
+  document.querySelector('#studio-form').addEventListener('submit',async event=>{event.preventDefault();const error=document.querySelector('#studio-error');error.textContent='';const response=await fetch('/api/studio/open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({databaseId:document.querySelector('#studio-database').value,projectPath:document.querySelector('#studio-project-path').value})});if(!response.ok){error.textContent=await response.text();return}setTimeout(refreshDatabases,500)});
   async function refreshSetup() {
     const response = await fetch('/api/setup');
     if (!response.ok) return;
@@ -185,7 +186,8 @@
   document.querySelector('#database-cancel').addEventListener('click', () => { databaseForm.reset(); databaseForm.classList.add('hidden'); document.querySelector('#database-error').textContent = ''; });
   async function refreshDatabases() {
     const response = await fetch('/api/databases'); if (!response.ok) return;
-    const items = await response.json(); const list = document.querySelector('#database-list'); list.replaceChildren();
+    const items = await response.json(); const studioResponse=await fetch('/api/studio/sessions');const studioSessions=studioResponse.ok?await studioResponse.json():[];const studioByDatabase=new Map(studioSessions.map(session=>[session.databaseId,session]));const list = document.querySelector('#database-list'); list.replaceChildren();
+    const studioSelect=document.querySelector('#studio-database'),selectedDatabase=studioSelect.value;studioSelect.replaceChildren(new Option('Выберите базу',''));for(const item of items)studioSelect.append(new Option(`${item.name} · ${item.mode==='debug'?'Отладка':'Основная'}`,item.id));studioSelect.value=selectedDatabase;
     document.querySelector('#database-empty').classList.toggle('hidden', items.length !== 0);
     for (const item of items) {
       const card = document.createElement('div'); card.className = 'database';
@@ -194,7 +196,7 @@
       const name = document.createElement('strong'); name.textContent = item.name;
       const connection = document.createElement('small'); const mode = item.mode === 'debug' ? 'Отладка' : 'Основная'; connection.textContent = `${item.connection.host}:${item.connection.port} / ${item.connection.database} · ${mode} · ${item.state}`;
       const health = document.createElement('small'); health.className = item.healthStatus === 'healthy' ? 'healthy' : item.healthStatus === 'unhealthy' ? 'unhealthy' : 'hint'; health.textContent = `Здоровье: ${item.healthStatus || 'unknown'}${item.healthMessage ? ` — ${item.healthMessage}` : ''}`;
-      description.append(name, connection, document.createElement('br'), health);
+      description.append(name, connection, document.createElement('br'), health);const studioSession=studioByDatabase.get(item.id);if(studioSession){const studioState=document.createElement('small');studioState.className='warning';studioState.textContent=` · Studio: ${studioSession.ownerName} @ ${studioSession.hostName}`;description.append(studioState)}
       const buttons = document.createElement('div'); buttons.className = 'actions';
       if (item.mode === 'primary') {
         const debug = document.createElement('button'); debug.className = 'secondary'; debug.textContent = 'Создать отладочную';
@@ -210,6 +212,7 @@
       access.addEventListener('click', async () => { const result = await fetch(`/api/databases/${item.id}/session-access`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({allowed:!item.allowNewSessions})}); if (!result.ok) alert(await result.text()); await refreshDatabases(); }); buttons.append(access);
       const check = document.createElement('button'); check.className = 'secondary'; check.textContent = 'Проверить'; check.addEventListener('click', async () => { const result = await fetch(`/api/databases/${item.id}/health`, {method:'POST'}); if (!result.ok) alert(await result.text()); await refreshDatabases(); }); buttons.append(check);
       const backup = document.createElement('button'); backup.className = 'secondary'; backup.textContent = 'Создать копию'; backup.addEventListener('click', async () => { const result = await fetch(`/api/databases/${item.id}/backups`, {method:'POST'}); if (!result.ok) alert(await result.text()); await loadBackups(item, card); }); buttons.append(backup);
+      if(studioSession){const terminateStudio=document.createElement('button');terminateStudio.className='danger';terminateStudio.textContent='Завершить Studio';terminateStudio.addEventListener('click',async()=>{if(!confirm(`Принудительно завершить Studio пользователя ${studioSession.ownerName}?`))return;const result=await fetch(`/api/studio/sessions/${item.id}`,{method:'DELETE'});if(!result.ok)alert(await result.text());await refreshDatabases()});buttons.append(terminateStudio)}
       const backups = document.createElement('button'); backups.className = 'secondary'; backups.textContent = 'Копии'; backups.addEventListener('click', () => loadBackups(item, card)); buttons.append(backups);
       const remove = document.createElement('button'); remove.className = 'danger'; remove.textContent = 'Удалить'; remove.disabled = item.state !== 'stopped';
       remove.addEventListener('click', async () => {
@@ -275,7 +278,7 @@
     document.querySelector('#recovery').classList.remove('hidden');
     document.querySelector('#codes').textContent = data.recoveryCodes.join('\n');
   });
-  refresh(); refreshPostgres(); refreshSetup(); setInterval(refresh, 5000);
+  refresh(); refreshPostgres(); refreshSetup(); setInterval(() => { refresh(); refreshDatabases(); }, 5000);
 </script>
 </body>
 </html>
