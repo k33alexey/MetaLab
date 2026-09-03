@@ -11,9 +11,11 @@ import (
 	"time"
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
+	"github.com/k33alexey/MetaLab/internal/appdb"
 	"github.com/k33alexey/MetaLab/internal/postgresadmin"
 	"github.com/k33alexey/MetaLab/internal/postgresconn"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // Secrets is the minimal protected-storage boundary used by Manager.
@@ -33,6 +35,17 @@ type ProvisionRequest struct {
 	SSLMode               string `json:"sslMode"`
 	SystemDatabase        string `json:"systemDatabase"`
 	TechnicalUser         string `json:"technicalUser"`
+}
+
+// RegisterDatabaseRequest contains one ephemeral application-database connection.
+type RegisterDatabaseRequest struct {
+	Name     string `json:"name"`
+	Host     string `json:"host"`
+	Port     uint16 `json:"port"`
+	Database string `json:"database"`
+	User     string `json:"user"`
+	Password string `json:"password"`
+	SSLMode  string `json:"sslMode"`
 }
 
 // State is safe to expose to ML Manager UI.
@@ -192,6 +205,94 @@ func (runtime *Runtime) CreateInitial(ctx context.Context, login, password strin
 	return database.Administrators.CreateInitial(ctx, login, password)
 }
 
+// ListDatabases returns the safe application-database registry.
+func (runtime *Runtime) ListDatabases(ctx context.Context) ([]systemdb.RegisteredDatabase, error) {
+	runtime.mu.RLock()
+	database, connectionErr := runtime.database, runtime.connectionErr
+	runtime.mu.RUnlock()
+	if database == nil {
+		if connectionErr != nil {
+			return nil, connectionErr
+		}
+		return nil, fmt.Errorf("ML System PostgreSQL is not configured")
+	}
+	return database.Databases.List(ctx)
+}
+
+// RegisterDatabase verifies a physical PostgreSQL database and stores its password separately.
+func (runtime *Runtime) RegisterDatabase(ctx context.Context, request RegisterDatabaseRequest) (systemdb.RegisteredDatabase, error) {
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.database == nil {
+		if runtime.connectionErr != nil {
+			return systemdb.RegisteredDatabase{}, runtime.connectionErr
+		}
+		return systemdb.RegisteredDatabase{}, fmt.Errorf("ML System PostgreSQL is not configured")
+	}
+	descriptor := postgresconn.Descriptor{
+		Host: request.Host, Port: request.Port, Database: request.Database,
+		User: request.User, SSLMode: request.SSLMode, SecretKey: "placeholder",
+	}
+	if err := validateApplicationConnection(descriptor, request.Password); err != nil {
+		return systemdb.RegisteredDatabase{}, err
+	}
+	if _, err := postgresadmin.Validate(ctx, descriptor, request.Password); err != nil {
+		return systemdb.RegisteredDatabase{}, err
+	}
+	physicalID, err := appdb.EnsureIdentity(ctx, descriptor, request.Password)
+	if err != nil {
+		return systemdb.RegisteredDatabase{}, err
+	}
+	id, err := uuid.New()
+	if err != nil {
+		return systemdb.RegisteredDatabase{}, err
+	}
+	descriptor.SecretKey = "database." + id.String() + ".password"
+	if err := runtime.secrets.Set(descriptor.SecretKey, request.Password); err != nil {
+		return systemdb.RegisteredDatabase{}, err
+	}
+	registered, err := runtime.database.Databases.Register(ctx, systemdb.DatabaseRegistration{
+		ID: id, Name: request.Name, PhysicalID: physicalID, Connection: descriptor,
+	})
+	if err != nil {
+		if cleanupErr := runtime.secrets.Delete(descriptor.SecretKey); cleanupErr != nil {
+			err = errors.Join(err, cleanupErr)
+		}
+		return systemdb.RegisteredDatabase{}, err
+	}
+	return registered, nil
+}
+
+// UnregisterDatabase removes a stopped registry entry and its protected password.
+func (runtime *Runtime) UnregisterDatabase(ctx context.Context, id uuid.UUID) error {
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.database == nil {
+		return fmt.Errorf("ML System PostgreSQL is not configured")
+	}
+	registered, err := runtime.database.Databases.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if registered.State != systemdb.DatabaseStopped {
+		return systemdb.ErrDatabaseCannotUnregister
+	}
+	password, err := runtime.secrets.Get(registered.Connection.SecretKey)
+	if err != nil {
+		return err
+	}
+	if err := runtime.secrets.Delete(registered.Connection.SecretKey); err != nil {
+		return err
+	}
+	if _, err := runtime.database.Databases.Unregister(ctx, id); err != nil {
+		if restoreErr := runtime.secrets.Set(registered.Connection.SecretKey, password); restoreErr != nil {
+			return errors.Join(err, fmt.Errorf("restore protected database password: %w", restoreErr))
+		}
+		return err
+	}
+	return nil
+}
+
 func (request ProvisionRequest) administratorDescriptor() (postgresconn.Descriptor, error) {
 	descriptor := postgresconn.Descriptor{
 		Host: request.Host, Port: request.Port, Database: request.AdministratorDatabase,
@@ -207,6 +308,19 @@ func (request ProvisionRequest) administratorDescriptor() (postgresconn.Descript
 		return postgresconn.Descriptor{}, fmt.Errorf("TLS cannot be disabled for a remote PostgreSQL server")
 	}
 	return descriptor, nil
+}
+
+func validateApplicationConnection(descriptor postgresconn.Descriptor, password string) error {
+	if err := descriptor.Validate(); err != nil {
+		return err
+	}
+	if password == "" {
+		return fmt.Errorf("PostgreSQL password is required")
+	}
+	if !descriptor.IsLocal() && descriptor.SSLMode == "disable" {
+		return fmt.Errorf("TLS cannot be disabled for a remote PostgreSQL server")
+	}
+	return nil
 }
 
 func openSystemDatabase(ctx context.Context, descriptor postgresconn.Descriptor, secrets Secrets) (*systemdb.Database, error) {

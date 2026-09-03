@@ -16,6 +16,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/postgresadmin"
 	"github.com/k33alexey/MetaLab/internal/postgresconn"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 func TestManagerServesUIAndRunningServiceStatus(t *testing.T) {
@@ -145,6 +146,52 @@ func TestManagerPostgreSQLSetupAPI(t *testing.T) {
 	}
 }
 
+func TestManagerDatabaseRegistryAPI(t *testing.T) {
+	t.Parallel()
+
+	id := uuid.MustNew()
+	setup := &fakePlatformSetup{databases: []systemdb.RegisteredDatabase{{ID: id, Name: "Продажи", PhysicalID: uuid.MustNew(), State: systemdb.DatabaseStopped}}}
+	handler := newHandler(appconfig.Default(), http.DefaultClient, setup, setup)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/databases", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Продажи") {
+		t.Fatalf("list status=%d body=%s", response.Code, response.Body.String())
+	}
+	payload := `{"name":"Склад","host":"localhost","port":5432,"database":"warehouse","user":"ml","password":"do-not-return","sslMode":"disable"}`
+	request := httptest.NewRequest(http.MethodPost, "/api/databases", strings.NewReader(payload))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated || strings.Contains(response.Body.String(), "do-not-return") || setup.registerRequest.Database != "warehouse" {
+		t.Fatalf("register status=%d body=%s request=%+v", response.Code, response.Body.String(), setup.registerRequest)
+	}
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodDelete, "/api/databases/"+id.String(), nil))
+	if response.Code != http.StatusNoContent || setup.unregistered != id {
+		t.Fatalf("delete status=%d id=%s", response.Code, setup.unregistered)
+	}
+}
+
+func TestManagerDatabaseRegistryReportsConflicts(t *testing.T) {
+	t.Parallel()
+
+	setup := &fakePlatformSetup{registryError: systemdb.ErrPhysicalDatabaseExists}
+	handler := newHandler(appconfig.Default(), http.DefaultClient, setup, setup)
+	payload := `{"name":"Duplicate","host":"localhost","port":5432,"database":"app","user":"ml","password":"secret","sslMode":"disable"}`
+	request := httptest.NewRequest(http.MethodPost, "/api/databases", strings.NewReader(payload))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusConflict {
+		t.Fatalf("duplicate status=%d body=%s", response.Code, response.Body.String())
+	}
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodDelete, "/api/databases/not-a-uuid", nil))
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid identifier status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 type fakeAdministratorSetup struct {
 	required bool
 	login    string
@@ -163,10 +210,14 @@ func (setup *fakeAdministratorSetup) CreateInitial(_ context.Context, login, pas
 
 type fakePlatformSetup struct {
 	fakeAdministratorSetup
-	state      platform.State
-	request    platform.ProvisionRequest
-	checks     int
-	provisions int
+	state           platform.State
+	request         platform.ProvisionRequest
+	checks          int
+	provisions      int
+	databases       []systemdb.RegisteredDatabase
+	registerRequest platform.RegisterDatabaseRequest
+	unregistered    uuid.UUID
+	registryError   error
 }
 
 func (setup *fakePlatformSetup) State() platform.State { return setup.state }
@@ -178,6 +229,17 @@ func (setup *fakePlatformSetup) ProvisionPostgreSQL(_ context.Context, request p
 	setup.request, setup.provisions = request, setup.provisions+1
 	setup.state = platform.State{Configured: true, Connected: true, Connection: &postgresconn.Descriptor{Host: request.Host}}
 	return postgresadmin.Check{Version: "16.14", Encoding: "UTF8", CanCreateDB: true, CanCreateRole: true}, nil
+}
+func (setup *fakePlatformSetup) ListDatabases(context.Context) ([]systemdb.RegisteredDatabase, error) {
+	return setup.databases, setup.registryError
+}
+func (setup *fakePlatformSetup) RegisterDatabase(_ context.Context, request platform.RegisterDatabaseRequest) (systemdb.RegisteredDatabase, error) {
+	setup.registerRequest = request
+	return systemdb.RegisteredDatabase{ID: uuid.MustNew(), Name: request.Name, PhysicalID: uuid.MustNew(), State: systemdb.DatabaseStopped}, setup.registryError
+}
+func (setup *fakePlatformSetup) UnregisterDatabase(_ context.Context, id uuid.UUID) error {
+	setup.unregistered = id
+	return setup.registryError
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

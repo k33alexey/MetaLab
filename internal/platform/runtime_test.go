@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
+	"github.com/k33alexey/MetaLab/internal/postgresconn"
 )
 
 func TestRuntimeReportsUnavailableSecretStore(t *testing.T) {
@@ -15,6 +16,26 @@ func TestRuntimeReportsUnavailableSecretStore(t *testing.T) {
 	defer runtime.Close()
 	if state := runtime.State(); state.Connected || !strings.Contains(state.Error, "credential store") {
 		t.Fatalf("state = %+v", state)
+	}
+}
+
+func TestApplicationConnectionRequiresRemoteTLSAndTechnicalPassword(t *testing.T) {
+	t.Parallel()
+
+	descriptor := postgresconn.Descriptor{
+		Host: "db.example.test", Port: 5432, Database: "app", User: "app",
+		SSLMode: "disable", SecretKey: "placeholder",
+	}
+	if err := validateApplicationConnection(descriptor, "secret"); err == nil || !strings.Contains(err.Error(), "TLS") {
+		t.Fatalf("remote connection error = %v", err)
+	}
+	descriptor.Host = "localhost"
+	if err := validateApplicationConnection(descriptor, ""); err == nil || !strings.Contains(err.Error(), "password") {
+		t.Fatalf("passwordless TCP error = %v", err)
+	}
+	descriptor.Host = "/tmp"
+	if err := validateApplicationConnection(descriptor, ""); err == nil || !strings.Contains(err.Error(), "password") {
+		t.Fatalf("passwordless Unix socket error = %v", err)
 	}
 }
 

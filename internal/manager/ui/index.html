@@ -17,10 +17,14 @@
     .running .dot { background: #5ee1be; box-shadow: 0 0 16px #5ee1be; }
     small, .hint { color: #8390a6; } button { padding: 10px 14px; border: 0; border-radius: 9px; background: #5ee1be; color: #08221b; font-weight: 700; cursor: pointer; }
     form { display: grid; gap: 14px; } label { display: grid; gap: 6px; color: #b8c2d2; }
-    input { padding: 11px 12px; border: 1px solid #42516c; border-radius: 9px; background: #0f1622; color: #eef2f8; font: inherit; }
+    input, select { padding: 11px 12px; border: 1px solid #42516c; border-radius: 9px; background: #0f1622; color: #eef2f8; font: inherit; }
     .hidden { display: none; } .error { color: #ff8591; } .codes { padding: 14px; border-radius: 10px; background: #0c121c; font-family: ui-monospace, monospace; line-height: 1.7; white-space: pre-wrap; }
     .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
     .actions { display: flex; gap: 10px; } .secondary { background: #34425c; color: #eef2f8; }
+    .database-list { display: grid; gap: 10px; margin: 16px 0; }
+    .database { padding: 14px; border: 1px solid #34425c; border-radius: 12px; background: #101722; }
+    .database strong { display: block; margin-bottom: 4px; } .database .row { align-items: flex-start; }
+    .danger { background: #542b35; color: #ffdce1; } button:disabled { cursor: not-allowed; opacity: .45; }
     @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -68,6 +72,24 @@
       <div id="codes" class="codes"></div>
     </div>
   </section>
+  <section id="databases" class="hidden">
+    <div class="row"><div><h2>Базы</h2><p class="hint">Каждая физическая PostgreSQL-база может быть зарегистрирована только один раз.</p></div><button id="database-add-toggle" class="secondary">Добавить</button></div>
+    <div id="database-list" class="database-list"></div>
+    <div id="database-empty" class="hint">Зарегистрированных баз пока нет.</div>
+    <form id="database-form" class="hidden">
+      <div class="grid">
+        <label>Название<input id="database-name" maxlength="128" required></label>
+        <label>Сервер<input id="database-host" value="127.0.0.1" required></label>
+        <label>Порт<input id="database-port" type="number" value="5432" min="1" max="65535" required></label>
+        <label>База PostgreSQL<input id="database-db" required></label>
+        <label>Технический пользователь<input id="database-user" autocomplete="username" required></label>
+        <label>Пароль<input id="database-password" type="password" autocomplete="current-password" required></label>
+        <label>TLS<select id="database-ssl"><option value="disable">Отключён (только localhost)</option><option value="require">Шифрование</option><option value="verify-ca">Проверка центра</option><option value="verify-full">Полная проверка</option></select></label>
+      </div>
+      <div id="database-error" class="error"></div>
+      <div class="actions"><button type="submit">Зарегистрировать</button><button id="database-cancel" type="button" class="secondary">Отмена</button></div>
+    </form>
+  </section>
 </main>
 <script>
   const state = document.querySelector('#state');
@@ -104,6 +126,8 @@
     document.querySelector('#postgres-ready').classList.toggle('hidden', !data.configured);
     if (data.connection) document.querySelector('#postgres-address').textContent = `${data.connection.host}:${data.connection.port} / ${data.connection.database}`;
     if (data.error) document.querySelector('#postgres-error').textContent = data.error;
+    document.querySelector('#databases').classList.toggle('hidden', !data.connected);
+    if (data.connected) await refreshDatabases();
   }
   async function postgresAction(path) {
     const error = document.querySelector('#postgres-error'); const result = document.querySelector('#postgres-result');
@@ -117,6 +141,42 @@
   document.querySelector('#postgres-form').addEventListener('submit', async event => {
     event.preventDefault();
     if (await postgresAction('/api/postgres/provision')) { document.querySelector('#pg-admin-password').value = ''; await refreshPostgres(); await refreshSetup(); }
+  });
+  const databaseForm = document.querySelector('#database-form');
+  document.querySelector('#database-add-toggle').addEventListener('click', () => databaseForm.classList.remove('hidden'));
+  document.querySelector('#database-cancel').addEventListener('click', () => { databaseForm.reset(); databaseForm.classList.add('hidden'); document.querySelector('#database-error').textContent = ''; });
+  async function refreshDatabases() {
+    const response = await fetch('/api/databases'); if (!response.ok) return;
+    const items = await response.json(); const list = document.querySelector('#database-list'); list.replaceChildren();
+    document.querySelector('#database-empty').classList.toggle('hidden', items.length !== 0);
+    for (const item of items) {
+      const card = document.createElement('div'); card.className = 'database';
+      const row = document.createElement('div'); row.className = 'row';
+      const description = document.createElement('div');
+      const name = document.createElement('strong'); name.textContent = item.name;
+      const connection = document.createElement('small'); connection.textContent = `${item.connection.host}:${item.connection.port} / ${item.connection.database} · ${item.state}`;
+      description.append(name, connection);
+      const remove = document.createElement('button'); remove.className = 'danger'; remove.textContent = 'Удалить'; remove.disabled = item.state !== 'stopped';
+      remove.addEventListener('click', async () => {
+        if (!confirm(`Удалить базу «${item.name}» из списка? Данные PostgreSQL удалены не будут.`)) return;
+        const result = await fetch(`/api/databases/${item.id}`, {method: 'DELETE'});
+        if (!result.ok) { document.querySelector('#database-error').textContent = await result.text(); return; }
+        await refreshDatabases();
+      });
+      row.append(description, remove); card.append(row); list.append(card);
+    }
+  }
+  databaseForm.addEventListener('submit', async event => {
+    event.preventDefault(); const error = document.querySelector('#database-error'); error.textContent = '';
+    const payload = {
+      name: document.querySelector('#database-name').value, host: document.querySelector('#database-host').value,
+      port: Number(document.querySelector('#database-port').value), database: document.querySelector('#database-db').value,
+      user: document.querySelector('#database-user').value, password: document.querySelector('#database-password').value,
+      sslMode: document.querySelector('#database-ssl').value
+    };
+    const response = await fetch('/api/databases', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+    if (!response.ok) { error.textContent = await response.text(); return; }
+    databaseForm.reset(); databaseForm.classList.add('hidden'); await refreshDatabases();
   });
   document.querySelector('#setup-form').addEventListener('submit', async event => {
     event.preventDefault();

@@ -14,6 +14,7 @@ type Database struct {
 	pool           *pgxpool.Pool
 	Settings       *SettingsRepository
 	Administrators *AdministratorRepository
+	Databases      *DatabaseRepository
 }
 
 // Open connects to PostgreSQL, validates it and applies embedded migrations.
@@ -55,6 +56,7 @@ func OpenConfig(ctx context.Context, configuration *pgxpool.Config) (*Database, 
 	}
 	database.Settings = &SettingsRepository{pool: pool}
 	database.Administrators = &AdministratorRepository{pool: pool}
+	database.Databases = &DatabaseRepository{pool: pool}
 	return database, nil
 }
 

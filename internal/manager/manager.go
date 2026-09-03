@@ -17,6 +17,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/platform"
 	"github.com/k33alexey/MetaLab/internal/postgresadmin"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 //go:embed ui/index.html
@@ -47,6 +48,9 @@ type platformSetup interface {
 	State() platform.State
 	CheckPostgreSQL(context.Context, platform.ProvisionRequest) (postgresadmin.Check, error)
 	ProvisionPostgreSQL(context.Context, platform.ProvisionRequest) (postgresadmin.Check, error)
+	ListDatabases(context.Context) ([]systemdb.RegisteredDatabase, error)
+	RegisterDatabase(context.Context, platform.RegisterDatabaseRequest) (systemdb.RegisteredDatabase, error)
+	UnregisterDatabase(context.Context, uuid.UUID) error
 }
 
 func newHandler(configuration appconfig.Config, client *http.Client, setup administratorSetup, postgres platformSetup) http.Handler {
@@ -133,6 +137,60 @@ func newHandler(configuration appconfig.Config, client *http.Client, setup admin
 			return
 		}
 		writeJSON(response, http.StatusCreated, check)
+	})
+	routes.HandleFunc("GET /api/databases", func(response http.ResponseWriter, request *http.Request) {
+		if postgres == nil {
+			http.Error(response, "Database registry is unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		items, err := postgres.ListDatabases(request.Context())
+		if err != nil {
+			http.Error(response, "Unable to read database registry", http.StatusServiceUnavailable)
+			return
+		}
+		writeJSON(response, http.StatusOK, items)
+	})
+	routes.HandleFunc("POST /api/databases", func(response http.ResponseWriter, request *http.Request) {
+		if postgres == nil {
+			http.Error(response, "Database registry is unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var input platform.RegisterDatabaseRequest
+		if !decodeJSON(response, request, &input) {
+			return
+		}
+		item, err := postgres.RegisterDatabase(request.Context(), input)
+		switch {
+		case errors.Is(err, systemdb.ErrDatabaseNameExists), errors.Is(err, systemdb.ErrPhysicalDatabaseExists):
+			http.Error(response, err.Error(), http.StatusConflict)
+			return
+		case err != nil:
+			http.Error(response, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(response, http.StatusCreated, item)
+	})
+	routes.HandleFunc("DELETE /api/databases/{id}", func(response http.ResponseWriter, request *http.Request) {
+		if postgres == nil {
+			http.Error(response, "Database registry is unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		id, err := uuid.Parse(request.PathValue("id"))
+		if err != nil {
+			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
+			return
+		}
+		err = postgres.UnregisterDatabase(request.Context(), id)
+		switch {
+		case errors.Is(err, systemdb.ErrDatabaseNotFound):
+			http.Error(response, err.Error(), http.StatusNotFound)
+		case errors.Is(err, systemdb.ErrDatabaseCannotUnregister):
+			http.Error(response, err.Error(), http.StatusConflict)
+		case err != nil:
+			http.Error(response, "Unable to unregister database", http.StatusInternalServerError)
+		default:
+			response.WriteHeader(http.StatusNoContent)
+		}
 	})
 	routes.HandleFunc("POST /api/setup/administrator", func(response http.ResponseWriter, request *http.Request) {
 		if setup == nil {

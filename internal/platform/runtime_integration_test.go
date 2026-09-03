@@ -17,6 +17,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/postgresadmin"
 	"github.com/k33alexey/MetaLab/internal/postgresconn"
 	"github.com/k33alexey/MetaLab/internal/secretstore"
+	"github.com/k33alexey/MetaLab/internal/systemdb"
 )
 
 func TestProvisionPersistsAndReopensMLSystemIntegration(t *testing.T) {
@@ -118,6 +119,74 @@ SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_database WHERE datname = $1),
 	}
 	if databaseExists || roleExists {
 		t.Fatalf("rollback left database=%v role=%v", databaseExists, roleExists)
+	}
+}
+
+func TestApplicationDatabaseRegistryRejectsSamePhysicalDatabaseIntegration(t *testing.T) {
+	databaseURL := os.Getenv("ML_TEST_ADMIN_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("ML_TEST_ADMIN_DATABASE_URL is not set")
+	}
+	administrator, administratorPassword := platformDescriptorFromURL(t, databaseURL)
+	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	systemRequest := ProvisionRequest{
+		Host: administrator.Host, Port: administrator.Port,
+		AdministratorDatabase: administrator.Database, AdministratorUser: administrator.User,
+		AdministratorPassword: administratorPassword, SSLMode: administrator.SSLMode,
+		SystemDatabase: "ml_registry_system_" + suffix, TechnicalUser: "ml_registry_system_role_" + suffix,
+	}
+	configuration := appconfig.Default()
+	configuration.SourcePath = t.TempDir() + "/config.yaml"
+	secrets := &memorySecrets{values: make(map[string]string)}
+	runtime := New(ctx, configuration, secrets)
+	if _, err := runtime.ProvisionPostgreSQL(ctx, systemRequest); err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	systemConnection := *runtime.State().Connection
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cleanupCancel()
+		_ = postgresadmin.RollbackProvisioned(cleanupCtx, administrator, administratorPassword, postgresadmin.Provisioned{Connection: systemConnection})
+	})
+	application, err := postgresadmin.Provision(
+		ctx, administrator, administratorPassword, "ml_registry_app_"+suffix, "ml_registry_app_role_"+suffix,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cleanupCancel()
+		_ = postgresadmin.RollbackProvisioned(cleanupCtx, administrator, administratorPassword, application)
+	})
+	request := RegisterDatabaseRequest{
+		Name: "Продажи " + suffix, Host: application.Connection.Host, Port: application.Connection.Port,
+		Database: application.Connection.Database, User: application.Connection.User,
+		Password: application.Password, SSLMode: application.Connection.SSLMode,
+	}
+	registered, err := runtime.RegisterDatabase(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if registered.State != systemdb.DatabaseStopped || registered.PhysicalID.IsZero() || registered.Connection.SecretKey == "" {
+		t.Fatalf("registered = %+v", registered)
+	}
+	request.Name = "Та же база через вторую запись " + suffix
+	if _, err := runtime.RegisterDatabase(ctx, request); !errors.Is(err, systemdb.ErrPhysicalDatabaseExists) {
+		t.Fatalf("duplicate physical database error = %v", err)
+	}
+	items, err := runtime.ListDatabases(ctx)
+	if err != nil || len(items) != 1 || items[0].ID != registered.ID {
+		t.Fatalf("items=%+v error=%v", items, err)
+	}
+	if err := runtime.UnregisterDatabase(ctx, registered.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := secrets.Get(registered.Connection.SecretKey); !errors.Is(err, secretstore.ErrNotFound) {
+		t.Fatalf("protected password after unregister error = %v", err)
 	}
 }
 
