@@ -8,12 +8,15 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
 	"time"
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
 	"github.com/k33alexey/MetaLab/internal/manager"
 	"github.com/k33alexey/MetaLab/internal/platform"
 	"github.com/k33alexey/MetaLab/internal/secretstore"
+	"github.com/k33alexey/MetaLab/internal/studio"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -25,7 +28,7 @@ func runManager(ctx context.Context, configuration appconfig.Config) error {
 		return fmt.Errorf("start ML Manager UI: %w", err)
 	}
 	server := &http.Server{
-		Handler: manager.NewHandlerWithPlatform(configuration, platformRuntime), ReadHeaderTimeout: 5 * time.Second,
+		Handler: manager.NewHandlerWithPlatformAndStudio(configuration, platformRuntime, executableStudioLauncher{configurationPath: configuration.SourcePath}), ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second,
 	}
 	serverErrors := make(chan error, 1)
@@ -59,6 +62,30 @@ func runManager(ctx context.Context, configuration appconfig.Config) error {
 	}
 	if err := <-serverErrors; err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("serve ML Manager UI: %w", err)
+	}
+	return nil
+}
+
+type executableStudioLauncher struct{ configurationPath string }
+
+func (launcher executableStudioLauncher) OpenStudio(projectPath string) error {
+	if _, err := studio.Open(projectPath); err != nil {
+		return fmt.Errorf("open ML Project: %w", err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("locate MetaLab executable: %w", err)
+	}
+	arguments := []string{"studio", "--project", projectPath}
+	if launcher.configurationPath != "" {
+		arguments = append(arguments, "--config", launcher.configurationPath)
+	}
+	command := exec.Command(executable, arguments...)
+	if err := command.Start(); err != nil {
+		return fmt.Errorf("start ML Studio: %w", err)
+	}
+	if err := command.Process.Release(); err != nil {
+		return fmt.Errorf("release ML Studio process: %w", err)
 	}
 	return nil
 }

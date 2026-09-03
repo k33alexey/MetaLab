@@ -70,6 +70,20 @@ func TestManagerReportsStoppedService(t *testing.T) {
 	}
 }
 
+func TestManagerLaunchesStudioForProjectPath(t *testing.T) {
+	t.Parallel()
+
+	launcher := &fakeStudioLauncher{}
+	handler := newHandler(appconfig.Default(), http.DefaultClient, nil, nil, launcher)
+	request := httptest.NewRequest(http.MethodPost, "/api/studio/open", strings.NewReader(`{"projectPath":" /projects/sales "}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent || launcher.path != "/projects/sales" {
+		t.Fatalf("status=%d body=%s path=%q", response.Code, response.Body.String(), launcher.path)
+	}
+}
+
 func TestManagerInitialAdministratorWizard(t *testing.T) {
 	t.Parallel()
 
@@ -250,6 +264,16 @@ type fakeAdministratorSetup struct {
 	login    string
 	password string
 	failure  error
+}
+
+type fakeStudioLauncher struct {
+	path string
+	err  error
+}
+
+func (launcher *fakeStudioLauncher) OpenStudio(path string) error {
+	launcher.path = path
+	return launcher.err
 }
 
 func (setup *fakeAdministratorSetup) InitialSetupRequired(context.Context) (bool, error) {

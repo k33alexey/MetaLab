@@ -15,6 +15,7 @@ const usage = `MetaLab
 
 Usage:
   ml manager [--config PATH]
+  ml studio --project PATH [--config PATH]
   ml service run [--config PATH]
   ml service install --config PATH
   ml service start|stop|restart|status|uninstall
@@ -29,6 +30,9 @@ Environment overrides: ML_LANGUAGE, ML_SERVICE_LISTEN, ML_BACKUP_DIRECTORY, ML_D
 
 // Runner starts one long-running MetaLab mode.
 type Runner func(context.Context, appconfig.Config) error
+
+// StudioRunner opens one filesystem-backed ML Project.
+type StudioRunner func(context.Context, appconfig.Config, string) error
 
 // ServiceControl executes one native service-manager action.
 type ServiceControl func(action, configurationPath string) (string, error)
@@ -45,6 +49,7 @@ type AdministratorReset func(context.Context, string, appconfig.Config) (Emergen
 // Commands contains platform-specific mode implementations.
 type Commands struct {
 	Manager Runner
+	Studio  StudioRunner
 	Service Runner
 	Control ServiceControl
 	Reset   AdministratorReset
@@ -76,6 +81,8 @@ func (cli CLI) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return 0
 	case "manager":
 		return cli.runMode(ctx, "manager", args[1:], cli.commands.Manager, stderr)
+	case "studio":
+		return cli.runStudio(ctx, args[1:], stderr)
 	case "service":
 		return cli.runService(ctx, args[1:], stdout, stderr)
 	case "admin":
@@ -86,6 +93,33 @@ func (cli CLI) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		fmt.Fprintf(stderr, "unknown command %q\n\n%s", args[0], usage)
 		return 2
 	}
+}
+
+func (cli CLI) runStudio(ctx context.Context, args []string, stderr io.Writer) int {
+	flags := flag.NewFlagSet("studio", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	projectPath := flags.String("project", "", "path to ML Project")
+	configurationPath := flags.String("config", "", "path to MetaLab YAML configuration")
+	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || *projectPath == "" {
+		if err == nil {
+			fmt.Fprintln(stderr, "usage: ml studio --project PATH [--config PATH]")
+		}
+		return 2
+	}
+	if cli.commands.Studio == nil {
+		fmt.Fprintln(stderr, "studio mode is unavailable in this build")
+		return 1
+	}
+	configuration, _, err := appconfig.Load(*configurationPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "studio: %v\n", err)
+		return 1
+	}
+	if err := cli.commands.Studio(ctx, configuration, *projectPath); err != nil {
+		fmt.Fprintf(stderr, "studio: %v\n", err)
+		return 1
+	}
+	return 0
 }
 
 func (cli CLI) runAdmin(ctx context.Context, args []string, stdout, stderr io.Writer) int {

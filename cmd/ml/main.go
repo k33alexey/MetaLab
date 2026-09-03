@@ -28,6 +28,7 @@ func main() {
 		Date:    date,
 	}, cli.Commands{
 		Manager: runManager,
+		Studio:  runStudio,
 		Service: nativeService.Run,
 		Control: nativeService.Control,
 		Reset:   resetAdministrator,

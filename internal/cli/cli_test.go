@@ -72,6 +72,36 @@ func TestServiceUsesExplicitConfiguration(t *testing.T) {
 	}
 }
 
+func TestStudioUsesProjectAndSharedConfiguration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	writeConfiguration(t, path)
+	var gotProject string
+	commands := Commands{Studio: func(_ context.Context, configuration appconfig.Config, projectPath string) error {
+		gotProject = projectPath
+		if configuration.Service.Listen != "127.0.0.1:9200" {
+			t.Fatalf("configuration = %+v", configuration)
+		}
+		return nil
+	}}
+	code, _, stderr := run(t, commands, "studio", "--project", "/projects/sales", "--config", path)
+	if code != 0 || gotProject != "/projects/sales" {
+		t.Fatalf("code=%d project=%q stderr=%q", code, gotProject, stderr)
+	}
+}
+
+func TestStudioRequiresProjectAndDesktopRunner(t *testing.T) {
+	t.Parallel()
+
+	code, _, stderr := run(t, Commands{}, "studio")
+	if code != 2 || !strings.Contains(stderr, "--project") {
+		t.Fatalf("missing project: code=%d stderr=%q", code, stderr)
+	}
+	code, _, stderr = run(t, Commands{}, "studio", "--project", "/projects/sales")
+	if code != 1 || !strings.Contains(stderr, "unavailable") {
+		t.Fatalf("missing runner: code=%d stderr=%q", code, stderr)
+	}
+}
+
 func TestRunReportsModeAndArgumentErrors(t *testing.T) {
 	t.Parallel()
 

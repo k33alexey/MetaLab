@@ -40,6 +40,14 @@
       <button id="refresh">Обновить</button>
     </div>
   </section>
+  <section>
+    <div class="row"><div><h2>ML Studio</h2><p class="hint">Откройте каталог существующего ML Project в отдельном окне Studio.</p></div></div>
+    <form id="studio-form">
+      <label>Каталог проекта<input id="studio-project-path" placeholder="/projects/MyProject" required></label>
+      <div id="studio-error" class="error"></div>
+      <div class="actions"><button type="submit">Открыть ML Studio</button></div>
+    </form>
+  </section>
   <section id="postgres">
     <h2>PostgreSQL</h2>
     <div id="postgres-ready" class="hidden"><div class="state running"><i class="dot"></i><span>ML System подключён</span></div><br><small id="postgres-address"></small></div>
@@ -129,6 +137,7 @@
     url.textContent = data.url;
   }
   document.querySelector('#refresh').addEventListener('click', refresh);
+  document.querySelector('#studio-form').addEventListener('submit',async event=>{event.preventDefault();const error=document.querySelector('#studio-error');error.textContent='';const response=await fetch('/api/studio/open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectPath:document.querySelector('#studio-project-path').value})});if(!response.ok)error.textContent=await response.text()});
   async function refreshSetup() {
     const response = await fetch('/api/setup');
     if (!response.ok) return;

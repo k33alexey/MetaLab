@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ML Studio</title>
+  <style>
+    :root { color-scheme:dark; font-family:Inter,system-ui,sans-serif; background:#1e1f22; color:#dfe1e5 }
+    * { box-sizing:border-box } body { margin:0; height:100vh; overflow:hidden }
+    header { height:42px; display:flex; align-items:center; gap:18px; padding:0 14px; border-bottom:1px solid #393b40; background:#2b2d30 }
+    header strong { color:#fff } .muted { color:#92959d; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+    .workspace { display:grid; grid-template-columns:300px minmax(320px,1fr) 300px; height:calc(100vh - 66px) }
+    aside,main { min-width:0; overflow:auto } aside { background:#25262a } #tree-panel { border-right:1px solid #393b40 } #properties-panel { border-left:1px solid #393b40 }
+    .panel-title { position:sticky; top:0; z-index:2; display:flex; align-items:center; justify-content:space-between; height:36px; padding:0 12px; background:#2b2d30; border-bottom:1px solid #393b40; font-size:12px; font-weight:700 }
+    #tree { padding:7px 5px 24px } details { margin:1px 0 } summary,.leaf { min-height:27px; display:flex; align-items:center; gap:6px; padding:4px 8px; border-radius:5px; cursor:pointer; user-select:none; font-size:13px }
+    summary { list-style:none } summary::-webkit-details-marker { display:none } summary::before { content:'›'; width:10px; color:#8c9098 } details[open]>summary::before { transform:rotate(90deg) }
+    summary:hover,.leaf:hover,.selected { background:#3c3f45 } .children { margin-left:15px }
+    .icon { color:#e8a765; font-size:11px } .leaf .icon { color:#6fa9e8 }
+    main { display:grid; place-items:center; background:#1e1f22 }
+    .welcome { width:min(620px,calc(100% - 48px)); padding:32px; border:1px solid #393b40; border-radius:12px; background:#25262a; box-shadow:0 18px 60px #0004 }
+    .welcome h1 { margin:0 0 8px; font-size:25px } .welcome p { color:#a8abb3; line-height:1.55 }
+    #properties { padding:8px 12px } .property { display:grid; grid-template-columns:minmax(90px,42%) 1fr; gap:10px; padding:7px 4px; border-bottom:1px solid #34363b; font-size:12px }
+    .property span:first-child { color:#aeb1b8 } .property span:last-child { overflow-wrap:anywhere; color:#e1e3e7 }
+    footer { height:24px; display:flex; align-items:center; justify-content:space-between; padding:0 10px; border-top:1px solid #393b40; background:#2b2d30; color:#a8abb3; font-size:11px }
+    .error { color:#ff7b86 } button { border:0; border-radius:5px; padding:5px 9px; background:#3c3f45; color:#dfe1e5; cursor:pointer } button:hover { background:#4b4e55 }
+    @media (max-width:850px) { .workspace { grid-template-columns:240px 1fr } #properties-panel { display:none } }
+  </style>
+</head>
+<body>
+  <header><strong>ML Studio</strong><span id="project-name"></span><span id="project-path" class="muted"></span><button id="refresh">Обновить</button></header>
+  <div class="workspace">
+    <aside id="tree-panel"><div class="panel-title"><span>ML Project</span></div><div id="tree"></div></aside>
+    <main><section class="welcome"><h1 id="title">Открытие проекта…</h1><p id="description">ML Studio загружает структуру исходников.</p></section></main>
+    <aside id="properties-panel"><div class="panel-title"><span>Свойства</span><span id="selection" class="muted"></span></div><div id="properties"></div></aside>
+  </div>
+  <footer><span id="status">Готово</span><span>UTF-8 · YAML · BSL</span></footer>
+  <script>
+    const tree=document.querySelector('#tree'),properties=document.querySelector('#properties'),status=document.querySelector('#status');
+    let selectedElement;
+    function select(node,element){if(selectedElement)selectedElement.classList.remove('selected');selectedElement=element;element.classList.add('selected');document.querySelector('#selection').textContent=node.title;properties.replaceChildren();for(const item of node.properties||[]){const row=document.createElement('div');row.className='property';const name=document.createElement('span'),value=document.createElement('span');name.textContent=item.name;value.textContent=item.value;row.append(name,value);properties.append(row)}}
+    function renderNode(node){if(node.children&&node.children.length){const details=document.createElement('details');details.open=node.id==='project'||node.id==='metadata';const summary=document.createElement('summary');const icon=document.createElement('span');icon.className='icon';icon.textContent='◆';const title=document.createElement('span');title.textContent=node.title;summary.append(icon,title);summary.addEventListener('click',event=>{event.stopPropagation();select(node,summary)});const children=document.createElement('div');children.className='children';for(const child of node.children)children.append(renderNode(child));details.append(summary,children);return details}const leaf=document.createElement('div');leaf.className='leaf';const icon=document.createElement('span');icon.className='icon';icon.textContent=node.kind==='group'||node.kind==='metadata-group'?'◆':'●';const title=document.createElement('span');title.textContent=node.title;leaf.append(icon,title);leaf.addEventListener('click',()=>select(node,leaf));return leaf}
+    async function load(){status.textContent='Обновление…';status.className='';const response=await fetch('/api/project');if(!response.ok){status.textContent=await response.text();status.className='error';return}const data=await response.json();document.title=`ML Studio — ${data.manifest.title}`;document.querySelector('#project-name').textContent=data.manifest.title;document.querySelector('#project-path').textContent=data.projectPath;document.querySelector('#title').textContent=data.manifest.title;document.querySelector('#description').textContent='Проект открыт. Выберите объект в дереве, чтобы увидеть его свойства.';tree.replaceChildren(renderNode(data.tree));select(data.tree,tree.querySelector('summary'));status.textContent='Готово'}
+    document.querySelector('#refresh').addEventListener('click',load);load();
+  </script>
+</body>
+</html>

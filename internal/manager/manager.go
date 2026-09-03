@@ -39,6 +39,16 @@ func NewHandlerWithPlatform(configuration appconfig.Config, runtime platformSetu
 	return newHandler(configuration, http.DefaultClient, runtime, runtime)
 }
 
+// NewHandlerWithPlatformAndStudio adds launching an independent ML Studio process.
+func NewHandlerWithPlatformAndStudio(configuration appconfig.Config, runtime platformSetup, launcher StudioLauncher) http.Handler {
+	return newHandler(configuration, http.DefaultClient, runtime, runtime, launcher)
+}
+
+// StudioLauncher opens a filesystem-backed project without tying its lifetime to Manager HTTP requests.
+type StudioLauncher interface {
+	OpenStudio(string) error
+}
+
 type administratorSetup interface {
 	InitialSetupRequired(context.Context) (bool, error)
 	CreateInitial(context.Context, string, string) (systemdb.Administrator, []string, error)
@@ -67,8 +77,12 @@ type platformSetup interface {
 	RestoreDatabaseBackup(context.Context, uuid.UUID, uuid.UUID) error
 }
 
-func newHandler(configuration appconfig.Config, client *http.Client, setup administratorSetup, postgres platformSetup) http.Handler {
+func newHandler(configuration appconfig.Config, client *http.Client, setup administratorSetup, postgres platformSetup, launchers ...StudioLauncher) http.Handler {
 	routes := http.NewServeMux()
+	var launcher StudioLauncher
+	if len(launchers) > 0 {
+		launcher = launchers[0]
+	}
 	routes.HandleFunc("GET /{$}", func(response http.ResponseWriter, _ *http.Request) {
 		page, err := assets.ReadFile("ui/index.html")
 		if err != nil {
@@ -97,6 +111,28 @@ func newHandler(configuration appconfig.Config, client *http.Client, setup admin
 		response.Header().Set("Content-Type", "application/json; charset=utf-8")
 		response.Header().Set("Cache-Control", "no-store")
 		_ = json.NewEncoder(response).Encode(status)
+	})
+	routes.HandleFunc("POST /api/studio/open", func(response http.ResponseWriter, request *http.Request) {
+		if launcher == nil {
+			http.Error(response, "ML Studio launcher is unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var input struct {
+			ProjectPath string `json:"projectPath"`
+		}
+		if !decodeJSON(response, request, &input) {
+			return
+		}
+		input.ProjectPath = strings.TrimSpace(input.ProjectPath)
+		if input.ProjectPath == "" {
+			http.Error(response, "ML Project path is required", http.StatusBadRequest)
+			return
+		}
+		if err := launcher.OpenStudio(input.ProjectPath); err != nil {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+			return
+		}
+		response.WriteHeader(http.StatusNoContent)
 	})
 	routes.HandleFunc("GET /api/setup", func(response http.ResponseWriter, request *http.Request) {
 		state := struct {
