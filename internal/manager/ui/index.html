@@ -25,6 +25,7 @@
     .database { padding: 14px; border: 1px solid #34425c; border-radius: 12px; background: #101722; }
     .database strong { display: block; margin-bottom: 4px; } .database .row { align-items: flex-start; }
     .danger { background: #542b35; color: #ffdce1; } button:disabled { cursor: not-allowed; opacity: .45; }
+    input[type="checkbox"] { width: 18px; height: 18px; padding: 0; } .check { display: flex; grid-column: 1 / -1; align-items: center; gap: 9px; }
     @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -79,6 +80,7 @@
     <form id="database-form" class="hidden">
       <div class="grid">
         <label>Название<input id="database-name" maxlength="128" required></label>
+        <label>Режим<select id="database-mode"><option value="primary">Основная</option><option value="debug">Отладка</option></select></label>
         <label>Сервер<input id="database-host" value="127.0.0.1" required></label>
         <label>Порт<input id="database-port" type="number" value="5432" min="1" max="65535" required></label>
         <label>База PostgreSQL<input id="database-db" required></label>
@@ -88,6 +90,24 @@
       </div>
       <div id="database-error" class="error"></div>
       <div class="actions"><button type="submit">Зарегистрировать</button><button id="database-cancel" type="button" class="secondary">Отмена</button></div>
+    </form>
+    <form id="debug-form" class="hidden">
+      <h3>Новая отладочная база</h3>
+      <p class="hint">Источник: <strong id="debug-source-name"></strong>. Целевая PostgreSQL-база и пользователь будут созданы отдельно.</p>
+      <div class="grid">
+        <label>Название<input id="debug-name" maxlength="128" required></label>
+        <label class="check"><input id="debug-copy-data" type="checkbox"> Взять за основу рабочую базу и скопировать данные</label>
+        <label>Сервер PostgreSQL<input id="debug-host" value="127.0.0.1" required></label>
+        <label>Порт<input id="debug-port" type="number" value="5432" min="1" max="65535" required></label>
+        <label>Административная база<input id="debug-admin-db" value="postgres" required></label>
+        <label>Администратор PostgreSQL<input id="debug-admin-user" value="postgres" autocomplete="username" required></label>
+        <label>Пароль администратора<input id="debug-admin-password" type="password" autocomplete="current-password"></label>
+        <label>TLS<select id="debug-ssl"><option value="disable">Отключён (только localhost)</option><option value="require">Шифрование</option><option value="verify-ca">Проверка центра</option><option value="verify-full">Полная проверка</option></select></label>
+        <label>Новая база PostgreSQL<input id="debug-target-db" pattern="[a-z][a-z0-9_]{0,62}" required></label>
+        <label>Новый технический пользователь<input id="debug-technical-user" pattern="[a-z][a-z0-9_]{0,62}" required></label>
+      </div>
+      <div id="debug-error" class="error"></div>
+      <div class="actions"><button type="submit">Создать</button><button id="debug-cancel" type="button" class="secondary">Отмена</button></div>
     </form>
   </section>
 </main>
@@ -143,6 +163,7 @@
     if (await postgresAction('/api/postgres/provision')) { document.querySelector('#pg-admin-password').value = ''; await refreshPostgres(); await refreshSetup(); }
   });
   const databaseForm = document.querySelector('#database-form');
+  const debugForm = document.querySelector('#debug-form'); let debugSourceID = '';
   document.querySelector('#database-add-toggle').addEventListener('click', () => databaseForm.classList.remove('hidden'));
   document.querySelector('#database-cancel').addEventListener('click', () => { databaseForm.reset(); databaseForm.classList.add('hidden'); document.querySelector('#database-error').textContent = ''; });
   async function refreshDatabases() {
@@ -154,8 +175,17 @@
       const row = document.createElement('div'); row.className = 'row';
       const description = document.createElement('div');
       const name = document.createElement('strong'); name.textContent = item.name;
-      const connection = document.createElement('small'); connection.textContent = `${item.connection.host}:${item.connection.port} / ${item.connection.database} · ${item.state}`;
+      const connection = document.createElement('small'); const mode = item.mode === 'debug' ? 'Отладка' : 'Основная'; connection.textContent = `${item.connection.host}:${item.connection.port} / ${item.connection.database} · ${mode} · ${item.state}`;
       description.append(name, connection);
+      const buttons = document.createElement('div'); buttons.className = 'actions';
+      if (item.mode === 'primary') {
+        const debug = document.createElement('button'); debug.className = 'secondary'; debug.textContent = 'Создать отладочную';
+        debug.addEventListener('click', () => {
+          debugSourceID = item.id; document.querySelector('#debug-source-name').textContent = item.name;
+          document.querySelector('#debug-name').value = `${item.name} — отладка`; debugForm.classList.remove('hidden');
+        });
+        buttons.append(debug);
+      }
       const remove = document.createElement('button'); remove.className = 'danger'; remove.textContent = 'Удалить'; remove.disabled = item.state !== 'stopped';
       remove.addEventListener('click', async () => {
         if (!confirm(`Удалить базу «${item.name}» из списка? Данные PostgreSQL удалены не будут.`)) return;
@@ -163,7 +193,7 @@
         if (!result.ok) { document.querySelector('#database-error').textContent = await result.text(); return; }
         await refreshDatabases();
       });
-      row.append(description, remove); card.append(row); list.append(card);
+      buttons.append(remove); row.append(description, buttons); card.append(row); list.append(card);
     }
   }
   databaseForm.addEventListener('submit', async event => {
@@ -172,11 +202,25 @@
       name: document.querySelector('#database-name').value, host: document.querySelector('#database-host').value,
       port: Number(document.querySelector('#database-port').value), database: document.querySelector('#database-db').value,
       user: document.querySelector('#database-user').value, password: document.querySelector('#database-password').value,
-      sslMode: document.querySelector('#database-ssl').value
+      sslMode: document.querySelector('#database-ssl').value, mode: document.querySelector('#database-mode').value
     };
     const response = await fetch('/api/databases', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
     if (!response.ok) { error.textContent = await response.text(); return; }
     databaseForm.reset(); databaseForm.classList.add('hidden'); await refreshDatabases();
+  });
+  document.querySelector('#debug-cancel').addEventListener('click', () => { debugForm.reset(); debugForm.classList.add('hidden'); debugSourceID = ''; document.querySelector('#debug-error').textContent = ''; });
+  debugForm.addEventListener('submit', async event => {
+    event.preventDefault(); const error = document.querySelector('#debug-error'); error.textContent = '';
+    const payload = {
+      name: document.querySelector('#debug-name').value, copyData: document.querySelector('#debug-copy-data').checked,
+      host: document.querySelector('#debug-host').value, port: Number(document.querySelector('#debug-port').value),
+      administratorDatabase: document.querySelector('#debug-admin-db').value, administratorUser: document.querySelector('#debug-admin-user').value,
+      administratorPassword: document.querySelector('#debug-admin-password').value, sslMode: document.querySelector('#debug-ssl').value,
+      targetDatabase: document.querySelector('#debug-target-db').value, technicalUser: document.querySelector('#debug-technical-user').value
+    };
+    const response = await fetch(`/api/databases/${debugSourceID}/debug`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+    if (!response.ok) { error.textContent = await response.text(); return; }
+    debugForm.reset(); debugForm.classList.add('hidden'); debugSourceID = ''; await refreshDatabases();
   });
   document.querySelector('#setup-form').addEventListener('submit', async event => {
     event.preventDefault();

@@ -154,3 +154,59 @@ func TestConcurrentPhysicalDatabaseRegistrationHasSingleWinner(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPrimaryDatabaseCannotBeRemovedBeforeItsDebugCopiesIntegration(t *testing.T) {
+	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("ML_TEST_DATABASE_URL is not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	database, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	primaryID := uuid.MustNew()
+	primary, err := database.Databases.Register(ctx, DatabaseRegistration{
+		ID: primaryID, Name: "Primary " + suffix, PhysicalID: uuid.MustNew(), Mode: DatabasePrimary,
+		Connection: postgresconn.Descriptor{
+			Host: "localhost", Port: 5432, Database: "primary_" + suffix, User: "test",
+			SSLMode: "disable", SecretKey: "database." + suffix + ".primary",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	debug, err := database.Databases.Register(ctx, DatabaseRegistration{
+		ID: uuid.MustNew(), Name: "Debug " + suffix, PhysicalID: uuid.MustNew(), Mode: DatabaseDebug,
+		SourceDatabaseID: &primaryID,
+		Connection: postgresconn.Descriptor{
+			Host: "localhost", Port: 5432, Database: "debug_" + suffix, User: "test",
+			SSLMode: "disable", SecretKey: "database." + suffix + ".debug",
+		},
+	})
+	if err != nil {
+		_, _ = database.Databases.Unregister(ctx, primary.ID)
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cleanupCancel()
+		_, _ = database.Databases.Unregister(cleanupCtx, debug.ID)
+		_, _ = database.Databases.Unregister(cleanupCtx, primary.ID)
+	})
+	if debug.SourceDatabaseID == nil || *debug.SourceDatabaseID != primary.ID {
+		t.Fatalf("debug source = %v, want %s", debug.SourceDatabaseID, primary.ID)
+	}
+	if _, err := database.Databases.Unregister(ctx, primary.ID); !errors.Is(err, ErrDatabaseHasDebugCopies) {
+		t.Fatalf("unregister primary error = %v", err)
+	}
+	if _, err := database.Databases.Unregister(ctx, debug.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Databases.Unregister(ctx, primary.ID); err != nil {
+		t.Fatal(err)
+	}
+}

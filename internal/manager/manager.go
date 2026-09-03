@@ -50,6 +50,7 @@ type platformSetup interface {
 	ProvisionPostgreSQL(context.Context, platform.ProvisionRequest) (postgresadmin.Check, error)
 	ListDatabases(context.Context) ([]systemdb.RegisteredDatabase, error)
 	RegisterDatabase(context.Context, platform.RegisterDatabaseRequest) (systemdb.RegisteredDatabase, error)
+	CreateDebugDatabase(context.Context, uuid.UUID, platform.CreateDebugDatabaseRequest) (systemdb.RegisteredDatabase, error)
 	UnregisterDatabase(context.Context, uuid.UUID) error
 }
 
@@ -170,6 +171,32 @@ func newHandler(configuration appconfig.Config, client *http.Client, setup admin
 		}
 		writeJSON(response, http.StatusCreated, item)
 	})
+	routes.HandleFunc("POST /api/databases/{id}/debug", func(response http.ResponseWriter, request *http.Request) {
+		if postgres == nil {
+			http.Error(response, "Database registry is unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		id, err := uuid.Parse(request.PathValue("id"))
+		if err != nil {
+			http.Error(response, "Invalid source database identifier", http.StatusBadRequest)
+			return
+		}
+		var input platform.CreateDebugDatabaseRequest
+		if !decodeJSON(response, request, &input) {
+			return
+		}
+		item, err := postgres.CreateDebugDatabase(request.Context(), id, input)
+		switch {
+		case errors.Is(err, systemdb.ErrDatabaseNotFound):
+			http.Error(response, err.Error(), http.StatusNotFound)
+		case errors.Is(err, systemdb.ErrDatabaseNameExists), errors.Is(err, systemdb.ErrPhysicalDatabaseExists):
+			http.Error(response, err.Error(), http.StatusConflict)
+		case err != nil:
+			http.Error(response, err.Error(), http.StatusBadRequest)
+		default:
+			writeJSON(response, http.StatusCreated, item)
+		}
+	})
 	routes.HandleFunc("DELETE /api/databases/{id}", func(response http.ResponseWriter, request *http.Request) {
 		if postgres == nil {
 			http.Error(response, "Database registry is unavailable", http.StatusServiceUnavailable)
@@ -184,7 +211,7 @@ func newHandler(configuration appconfig.Config, client *http.Client, setup admin
 		switch {
 		case errors.Is(err, systemdb.ErrDatabaseNotFound):
 			http.Error(response, err.Error(), http.StatusNotFound)
-		case errors.Is(err, systemdb.ErrDatabaseCannotUnregister):
+		case errors.Is(err, systemdb.ErrDatabaseCannotUnregister), errors.Is(err, systemdb.ErrDatabaseHasDebugCopies):
 			http.Error(response, err.Error(), http.StatusConflict)
 		case err != nil:
 			http.Error(response, "Unable to unregister database", http.StatusInternalServerError)

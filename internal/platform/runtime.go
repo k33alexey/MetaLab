@@ -12,6 +12,7 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
 	"github.com/k33alexey/MetaLab/internal/appdb"
+	"github.com/k33alexey/MetaLab/internal/pgcopy"
 	"github.com/k33alexey/MetaLab/internal/postgresadmin"
 	"github.com/k33alexey/MetaLab/internal/postgresconn"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
@@ -39,13 +40,33 @@ type ProvisionRequest struct {
 
 // RegisterDatabaseRequest contains one ephemeral application-database connection.
 type RegisterDatabaseRequest struct {
-	Name     string `json:"name"`
-	Host     string `json:"host"`
-	Port     uint16 `json:"port"`
-	Database string `json:"database"`
-	User     string `json:"user"`
-	Password string `json:"password"`
-	SSLMode  string `json:"sslMode"`
+	Name     string                `json:"name"`
+	Host     string                `json:"host"`
+	Port     uint16                `json:"port"`
+	Database string                `json:"database"`
+	User     string                `json:"user"`
+	Password string                `json:"password"`
+	SSLMode  string                `json:"sslMode"`
+	Mode     systemdb.DatabaseMode `json:"mode"`
+}
+
+// CreateDebugDatabaseRequest provisions an isolated debug database, optionally with source data.
+type CreateDebugDatabaseRequest struct {
+	Name                  string `json:"name"`
+	CopyData              bool   `json:"copyData"`
+	Host                  string `json:"host"`
+	Port                  uint16 `json:"port"`
+	AdministratorDatabase string `json:"administratorDatabase"`
+	AdministratorUser     string `json:"administratorUser"`
+	AdministratorPassword string `json:"administratorPassword"`
+	SSLMode               string `json:"sslMode"`
+	TargetDatabase        string `json:"targetDatabase"`
+	TechnicalUser         string `json:"technicalUser"`
+}
+
+// DatabaseCopier is the official PostgreSQL dump/restore boundary.
+type DatabaseCopier interface {
+	Copy(context.Context, postgresconn.Descriptor, string, int, postgresconn.Descriptor, string, int) error
 }
 
 // State is safe to expose to ML Manager UI.
@@ -63,11 +84,14 @@ type Runtime struct {
 	secrets       Secrets
 	database      *systemdb.Database
 	connectionErr error
+	copier        DatabaseCopier
+	copierErr     error
 }
 
 // New opens an already configured ML System. A connection problem remains visible in State.
 func New(ctx context.Context, configuration appconfig.Config, secrets Secrets) *Runtime {
 	runtime := &Runtime{configuration: configuration, secrets: secrets}
+	runtime.copier, runtime.copierErr = pgcopy.New()
 	if secrets == nil {
 		runtime.connectionErr = fmt.Errorf("OS credential store is unavailable")
 		return runtime
@@ -229,6 +253,15 @@ func (runtime *Runtime) RegisterDatabase(ctx context.Context, request RegisterDa
 		}
 		return systemdb.RegisteredDatabase{}, fmt.Errorf("ML System PostgreSQL is not configured")
 	}
+	if err := systemdb.ValidateDatabaseName(request.Name); err != nil {
+		return systemdb.RegisteredDatabase{}, err
+	}
+	if request.Mode == "" {
+		request.Mode = systemdb.DatabasePrimary
+	}
+	if request.Mode != systemdb.DatabasePrimary && request.Mode != systemdb.DatabaseDebug {
+		return systemdb.RegisteredDatabase{}, fmt.Errorf("invalid database mode %q", request.Mode)
+	}
 	descriptor := postgresconn.Descriptor{
 		Host: request.Host, Port: request.Port, Database: request.Database,
 		User: request.User, SSLMode: request.SSLMode, SecretKey: "placeholder",
@@ -243,22 +276,87 @@ func (runtime *Runtime) RegisterDatabase(ctx context.Context, request RegisterDa
 	if err != nil {
 		return systemdb.RegisteredDatabase{}, err
 	}
-	id, err := uuid.New()
+	return runtime.storeDatabase(ctx, request.Name, request.Mode, nil, descriptor, request.Password, physicalID)
+}
+
+// CreateDebugDatabase creates a separate clean or data-bearing debug database from a primary source.
+func (runtime *Runtime) CreateDebugDatabase(ctx context.Context, sourceID uuid.UUID, request CreateDebugDatabaseRequest) (systemdb.RegisteredDatabase, error) {
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.database == nil {
+		return systemdb.RegisteredDatabase{}, fmt.Errorf("ML System PostgreSQL is not configured")
+	}
+	if err := systemdb.ValidateDatabaseName(request.Name); err != nil {
+		return systemdb.RegisteredDatabase{}, err
+	}
+	source, err := runtime.database.Databases.Get(ctx, sourceID)
 	if err != nil {
 		return systemdb.RegisteredDatabase{}, err
 	}
-	descriptor.SecretKey = "database." + id.String() + ".password"
-	if err := runtime.secrets.Set(descriptor.SecretKey, request.Password); err != nil {
-		return systemdb.RegisteredDatabase{}, err
+	if source.Mode != systemdb.DatabasePrimary {
+		return systemdb.RegisteredDatabase{}, fmt.Errorf("debug database can only be created from a primary database")
 	}
-	registered, err := runtime.database.Databases.Register(ctx, systemdb.DatabaseRegistration{
-		ID: id, Name: request.Name, PhysicalID: physicalID, Connection: descriptor,
-	})
-	if err != nil {
-		if cleanupErr := runtime.secrets.Delete(descriptor.SecretKey); cleanupErr != nil {
-			err = errors.Join(err, cleanupErr)
+	if request.CopyData && runtime.copier == nil {
+		if runtime.copierErr != nil {
+			return systemdb.RegisteredDatabase{}, runtime.copierErr
 		}
+		return systemdb.RegisteredDatabase{}, fmt.Errorf("pg_dump and pg_restore are unavailable")
+	}
+	administratorRequest := ProvisionRequest{
+		Host: request.Host, Port: request.Port,
+		AdministratorDatabase: request.AdministratorDatabase, AdministratorUser: request.AdministratorUser,
+		AdministratorPassword: request.AdministratorPassword, SSLMode: request.SSLMode,
+		SystemDatabase: request.TargetDatabase, TechnicalUser: request.TechnicalUser,
+	}
+	administrator, err := administratorRequest.administratorDescriptor()
+	if err != nil {
 		return systemdb.RegisteredDatabase{}, err
+	}
+	targetCheck, err := postgresadmin.Validate(ctx, administrator, request.AdministratorPassword)
+	if err != nil {
+		return systemdb.RegisteredDatabase{}, err
+	}
+	provisioned, err := postgresadmin.Provision(
+		ctx, administrator, request.AdministratorPassword, request.TargetDatabase, request.TechnicalUser,
+	)
+	if err != nil {
+		return systemdb.RegisteredDatabase{}, err
+	}
+	rollback := func(cause error) (systemdb.RegisteredDatabase, error) {
+		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		rollbackErr := postgresadmin.RollbackProvisioned(rollbackCtx, administrator, request.AdministratorPassword, provisioned)
+		return systemdb.RegisteredDatabase{}, errors.Join(cause, rollbackErr)
+	}
+	var physicalID uuid.UUID
+	if request.CopyData {
+		sourcePassword, secretErr := runtime.secrets.Get(source.Connection.SecretKey)
+		if secretErr != nil {
+			return rollback(secretErr)
+		}
+		sourceCheck, checkErr := postgresadmin.Validate(ctx, source.Connection, sourcePassword)
+		if checkErr != nil {
+			return rollback(checkErr)
+		}
+		if copyErr := runtime.copier.Copy(
+			ctx, source.Connection, sourcePassword, sourceCheck.VersionNumber/10000,
+			provisioned.Connection, provisioned.Password, targetCheck.VersionNumber/10000,
+		); copyErr != nil {
+			return rollback(copyErr)
+		}
+		physicalID, err = appdb.ResetIdentity(ctx, provisioned.Connection, provisioned.Password)
+	} else {
+		physicalID, err = appdb.EnsureIdentity(ctx, provisioned.Connection, provisioned.Password)
+	}
+	if err != nil {
+		return rollback(err)
+	}
+	registered, err := runtime.storeDatabase(
+		ctx, request.Name, systemdb.DatabaseDebug, &sourceID,
+		provisioned.Connection, provisioned.Password, physicalID,
+	)
+	if err != nil {
+		return rollback(err)
 	}
 	return registered, nil
 }
@@ -321,6 +419,35 @@ func validateApplicationConnection(descriptor postgresconn.Descriptor, password 
 		return fmt.Errorf("TLS cannot be disabled for a remote PostgreSQL server")
 	}
 	return nil
+}
+
+func (runtime *Runtime) storeDatabase(
+	ctx context.Context,
+	name string,
+	mode systemdb.DatabaseMode,
+	sourceID *uuid.UUID,
+	descriptor postgresconn.Descriptor,
+	password string,
+	physicalID uuid.UUID,
+) (systemdb.RegisteredDatabase, error) {
+	id, err := uuid.New()
+	if err != nil {
+		return systemdb.RegisteredDatabase{}, err
+	}
+	descriptor.SecretKey = "database." + id.String() + ".password"
+	if err := runtime.secrets.Set(descriptor.SecretKey, password); err != nil {
+		return systemdb.RegisteredDatabase{}, err
+	}
+	registered, err := runtime.database.Databases.Register(ctx, systemdb.DatabaseRegistration{
+		ID: id, Name: name, PhysicalID: physicalID, Connection: descriptor, Mode: mode, SourceDatabaseID: sourceID,
+	})
+	if err != nil {
+		if cleanupErr := runtime.secrets.Delete(descriptor.SecretKey); cleanupErr != nil {
+			err = errors.Join(err, cleanupErr)
+		}
+		return systemdb.RegisteredDatabase{}, err
+	}
+	return registered, nil
 }
 
 func openSystemDatabase(ctx context.Context, descriptor postgresconn.Descriptor, secrets Secrets) (*systemdb.Database, error) {

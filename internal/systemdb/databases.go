@@ -20,6 +20,9 @@ import (
 // DatabaseState is the persisted lifecycle state observed by ML Service.
 type DatabaseState string
 
+// DatabaseMode separates production operation from isolated development and debugging.
+type DatabaseMode string
+
 const (
 	DatabaseStopped     DatabaseState = "stopped"
 	DatabaseStarting    DatabaseState = "starting"
@@ -29,34 +32,61 @@ const (
 	DatabaseError       DatabaseState = "error"
 )
 
+const (
+	DatabasePrimary DatabaseMode = "primary"
+	DatabaseDebug   DatabaseMode = "debug"
+)
+
 var (
 	ErrDatabaseNotFound         = errors.New("registered database not found")
 	ErrDatabaseNameExists       = errors.New("database name is already registered")
 	ErrPhysicalDatabaseExists   = errors.New("physical PostgreSQL database is already registered")
 	ErrDatabaseStateConflict    = errors.New("registered database state changed concurrently")
 	ErrDatabaseCannotUnregister = errors.New("only a stopped database can be unregistered")
+	ErrDatabaseHasDebugCopies   = errors.New("database has registered debug copies")
 )
 
 // RegisteredDatabase is a non-secret ML System registry entry.
 type RegisteredDatabase struct {
-	ID             uuid.UUID               `json:"id"`
-	Name           string                  `json:"name"`
-	PhysicalID     uuid.UUID               `json:"physicalId"`
-	Connection     postgresconn.Descriptor `json:"connection"`
-	State          DatabaseState           `json:"state"`
-	StateRevision  int64                   `json:"stateRevision"`
-	LastError      string                  `json:"lastError,omitempty"`
-	StateChangedAt time.Time               `json:"stateChangedAt"`
-	CreatedAt      time.Time               `json:"createdAt"`
-	UpdatedAt      time.Time               `json:"updatedAt"`
+	ID               uuid.UUID               `json:"id"`
+	Name             string                  `json:"name"`
+	PhysicalID       uuid.UUID               `json:"physicalId"`
+	Connection       postgresconn.Descriptor `json:"connection"`
+	Mode             DatabaseMode            `json:"mode"`
+	SourceDatabaseID *uuid.UUID              `json:"sourceDatabaseId,omitempty"`
+	State            DatabaseState           `json:"state"`
+	StateRevision    int64                   `json:"stateRevision"`
+	LastError        string                  `json:"lastError,omitempty"`
+	StateChangedAt   time.Time               `json:"stateChangedAt"`
+	CreatedAt        time.Time               `json:"createdAt"`
+	UpdatedAt        time.Time               `json:"updatedAt"`
 }
 
 // DatabaseRegistration contains a validated new registry entry.
 type DatabaseRegistration struct {
-	ID         uuid.UUID
-	Name       string
-	PhysicalID uuid.UUID
-	Connection postgresconn.Descriptor
+	ID               uuid.UUID
+	Name             string
+	PhysicalID       uuid.UUID
+	Connection       postgresconn.Descriptor
+	Mode             DatabaseMode
+	SourceDatabaseID *uuid.UUID
+}
+
+// DatabaseCapabilities are mandatory platform restrictions derived from mode.
+type DatabaseCapabilities struct {
+	Debugging                     bool `json:"debugging"`
+	AutomaticScheduledJobs        bool `json:"automaticScheduledJobs"`
+	ExternalIntegrations          bool `json:"externalIntegrations"`
+	Equipment                     bool `json:"equipment"`
+	ManualJobRequiresConfirmation bool `json:"manualJobRequiresConfirmation"`
+}
+
+// Capabilities returns restrictions that cannot be weakened by project code.
+func (database RegisteredDatabase) Capabilities() DatabaseCapabilities {
+	if database.Mode == DatabaseDebug {
+		return DatabaseCapabilities{Debugging: true, ManualJobRequiresConfirmation: true}
+	}
+	return DatabaseCapabilities{AutomaticScheduledJobs: true, ExternalIntegrations: true, Equipment: true}
 }
 
 // DatabaseRepository persists the authoritative registry of application databases.
@@ -66,30 +96,26 @@ type DatabaseRepository struct {
 
 // Register creates a stopped registry entry and enforces physical uniqueness in PostgreSQL.
 func (repository *DatabaseRepository) Register(ctx context.Context, registration DatabaseRegistration) (RegisteredDatabase, error) {
+	if registration.Mode == "" {
+		registration.Mode = DatabasePrimary
+	}
 	if err := validateDatabaseRegistration(registration); err != nil {
 		return RegisteredDatabase{}, err
 	}
-	var item RegisteredDatabase
-	var id, physicalID string
-	err := repository.pool.QueryRow(ctx, `
+	item, err := scanRegisteredDatabase(repository.pool.QueryRow(ctx, `
 INSERT INTO ml_system.databases(
-    id, name, physical_id, host, port, database_name, username, ssl_mode, secret_key
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    id, name, physical_id, host, port, database_name, username, ssl_mode, secret_key, mode, source_database_id
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING id::text, name, physical_id::text, host, port, database_name, username, ssl_mode, secret_key,
+          mode, COALESCE(source_database_id::text, ''),
           state, state_revision, COALESCE(last_error, ''), state_changed_at, created_at, updated_at`,
 		registration.ID.String(), registration.Name, registration.PhysicalID.String(),
 		registration.Connection.Host, registration.Connection.Port, registration.Connection.Database,
 		registration.Connection.User, registration.Connection.SSLMode, registration.Connection.SecretKey,
-	).Scan(
-		&id, &item.Name, &physicalID, &item.Connection.Host, &item.Connection.Port,
-		&item.Connection.Database, &item.Connection.User, &item.Connection.SSLMode, &item.Connection.SecretKey,
-		&item.State, &item.StateRevision, &item.LastError, &item.StateChangedAt, &item.CreatedAt, &item.UpdatedAt,
-	)
+		registration.Mode, optionalUUIDText(registration.SourceDatabaseID),
+	))
 	if err != nil {
 		return RegisteredDatabase{}, mapDatabaseConstraintError(err)
-	}
-	if err := parseDatabaseIDs(&item, id, physicalID); err != nil {
-		return RegisteredDatabase{}, err
 	}
 	return item, nil
 }
@@ -98,6 +124,7 @@ RETURNING id::text, name, physical_id::text, host, port, database_name, username
 func (repository *DatabaseRepository) List(ctx context.Context) ([]RegisteredDatabase, error) {
 	rows, err := repository.pool.Query(ctx, `
 SELECT id::text, name, physical_id::text, host, port, database_name, username, ssl_mode, secret_key,
+       mode, COALESCE(source_database_id::text, ''),
        state, state_revision, COALESCE(last_error, ''), state_changed_at, created_at, updated_at
 FROM ml_system.databases
 ORDER BY lower(name), id`)
@@ -126,6 +153,7 @@ func (repository *DatabaseRepository) Get(ctx context.Context, id uuid.UUID) (Re
 	}
 	row := repository.pool.QueryRow(ctx, `
 SELECT id::text, name, physical_id::text, host, port, database_name, username, ssl_mode, secret_key,
+       mode, COALESCE(source_database_id::text, ''),
        state, state_revision, COALESCE(last_error, ''), state_changed_at, created_at, updated_at
 FROM ml_system.databases WHERE id = $1`, id.String())
 	item, err := scanRegisteredDatabase(row)
@@ -151,6 +179,7 @@ SET state = $4, state_revision = state_revision + 1, last_error = NULLIF($5, '')
     state_changed_at = clock_timestamp(), updated_at = clock_timestamp()
 WHERE id = $1 AND state = $2 AND state_revision = $3
 RETURNING id::text, name, physical_id::text, host, port, database_name, username, ssl_mode, secret_key,
+          mode, COALESCE(source_database_id::text, ''),
           state, state_revision, COALESCE(last_error, ''), state_changed_at, created_at, updated_at`,
 		id.String(), expected, expectedRevision, next, message)
 	item, err := scanRegisteredDatabase(row)
@@ -175,8 +204,13 @@ func (repository *DatabaseRepository) Unregister(ctx context.Context, id uuid.UU
 	row := repository.pool.QueryRow(ctx, `
 DELETE FROM ml_system.databases WHERE id = $1 AND state = 'stopped'
 RETURNING id::text, name, physical_id::text, host, port, database_name, username, ssl_mode, secret_key,
+          mode, COALESCE(source_database_id::text, ''),
           state, state_revision, COALESCE(last_error, ''), state_changed_at, created_at, updated_at`, id.String())
 	item, err := scanRegisteredDatabase(row)
+	var postgresError *pgconn.PgError
+	if errors.As(err, &postgresError) && postgresError.Code == "23503" {
+		return RegisteredDatabase{}, ErrDatabaseHasDebugCopies
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		current, getErr := repository.Get(ctx, id)
 		if errors.Is(getErr, ErrDatabaseNotFound) {
@@ -199,22 +233,23 @@ type rowScanner interface {
 
 func scanRegisteredDatabase(row rowScanner) (RegisteredDatabase, error) {
 	var item RegisteredDatabase
-	var id, physicalID string
+	var id, physicalID, sourceDatabaseID string
 	err := row.Scan(
 		&id, &item.Name, &physicalID, &item.Connection.Host, &item.Connection.Port,
 		&item.Connection.Database, &item.Connection.User, &item.Connection.SSLMode, &item.Connection.SecretKey,
+		&item.Mode, &sourceDatabaseID,
 		&item.State, &item.StateRevision, &item.LastError, &item.StateChangedAt, &item.CreatedAt, &item.UpdatedAt,
 	)
 	if err != nil {
 		return RegisteredDatabase{}, err
 	}
-	if err := parseDatabaseIDs(&item, id, physicalID); err != nil {
+	if err := parseDatabaseIDs(&item, id, physicalID, sourceDatabaseID); err != nil {
 		return RegisteredDatabase{}, err
 	}
 	return item, nil
 }
 
-func parseDatabaseIDs(item *RegisteredDatabase, id, physicalID string) error {
+func parseDatabaseIDs(item *RegisteredDatabase, id, physicalID, sourceDatabaseID string) error {
 	var err error
 	item.ID, err = uuid.Parse(id)
 	if err != nil {
@@ -224,6 +259,13 @@ func parseDatabaseIDs(item *RegisteredDatabase, id, physicalID string) error {
 	if err != nil {
 		return fmt.Errorf("parse physical database identifier: %w", err)
 	}
+	if sourceDatabaseID != "" {
+		source, parseErr := uuid.Parse(sourceDatabaseID)
+		if parseErr != nil {
+			return fmt.Errorf("parse source database identifier: %w", parseErr)
+		}
+		item.SourceDatabaseID = &source
+	}
 	return nil
 }
 
@@ -231,18 +273,42 @@ func validateDatabaseRegistration(registration DatabaseRegistration) error {
 	if registration.ID.IsZero() || registration.PhysicalID.IsZero() {
 		return fmt.Errorf("database and physical identifiers are required")
 	}
-	if registration.Name == "" || registration.Name != strings.TrimSpace(registration.Name) || utf8.RuneCountInString(registration.Name) > 128 {
-		return fmt.Errorf("invalid registered database name %q", registration.Name)
-	}
-	for _, symbol := range registration.Name {
-		if unicode.IsControl(symbol) {
-			return fmt.Errorf("invalid registered database name %q", registration.Name)
-		}
+	if err := ValidateDatabaseName(registration.Name); err != nil {
+		return err
 	}
 	if err := registration.Connection.Validate(); err != nil {
 		return err
 	}
+	if registration.Mode != DatabasePrimary && registration.Mode != DatabaseDebug {
+		return fmt.Errorf("invalid database mode %q", registration.Mode)
+	}
+	if registration.Mode == DatabasePrimary && registration.SourceDatabaseID != nil {
+		return fmt.Errorf("primary database cannot have a source database")
+	}
+	if registration.SourceDatabaseID != nil && *registration.SourceDatabaseID == registration.ID {
+		return fmt.Errorf("database cannot use itself as source")
+	}
 	return nil
+}
+
+// ValidateDatabaseName checks a user-facing registry name before expensive provisioning starts.
+func ValidateDatabaseName(name string) error {
+	if name == "" || name != strings.TrimSpace(name) || utf8.RuneCountInString(name) > 128 {
+		return fmt.Errorf("invalid registered database name %q", name)
+	}
+	for _, symbol := range name {
+		if unicode.IsControl(symbol) {
+			return fmt.Errorf("invalid registered database name %q", name)
+		}
+	}
+	return nil
+}
+
+func optionalUUIDText(id *uuid.UUID) any {
+	if id == nil {
+		return nil
+	}
+	return id.String()
 }
 
 func mapDatabaseConstraintError(err error) error {

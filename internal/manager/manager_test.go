@@ -165,6 +165,14 @@ func TestManagerDatabaseRegistryAPI(t *testing.T) {
 	if response.Code != http.StatusCreated || strings.Contains(response.Body.String(), "do-not-return") || setup.registerRequest.Database != "warehouse" {
 		t.Fatalf("register status=%d body=%s request=%+v", response.Code, response.Body.String(), setup.registerRequest)
 	}
+	debugPayload := `{"name":"Продажи — отладка","copyData":false,"host":"localhost","port":5432,"administratorDatabase":"postgres","administratorUser":"postgres","administratorPassword":"do-not-return","sslMode":"disable","targetDatabase":"sales_debug","technicalUser":"sales_debug_role"}`
+	request = httptest.NewRequest(http.MethodPost, "/api/databases/"+id.String()+"/debug", strings.NewReader(debugPayload))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated || strings.Contains(response.Body.String(), "do-not-return") || setup.debugSource != id || setup.debugRequest.TargetDatabase != "sales_debug" {
+		t.Fatalf("debug status=%d body=%s source=%s request=%+v", response.Code, response.Body.String(), setup.debugSource, setup.debugRequest)
+	}
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodDelete, "/api/databases/"+id.String(), nil))
 	if response.Code != http.StatusNoContent || setup.unregistered != id {
@@ -216,6 +224,8 @@ type fakePlatformSetup struct {
 	provisions      int
 	databases       []systemdb.RegisteredDatabase
 	registerRequest platform.RegisterDatabaseRequest
+	debugRequest    platform.CreateDebugDatabaseRequest
+	debugSource     uuid.UUID
 	unregistered    uuid.UUID
 	registryError   error
 }
@@ -236,6 +246,10 @@ func (setup *fakePlatformSetup) ListDatabases(context.Context) ([]systemdb.Regis
 func (setup *fakePlatformSetup) RegisterDatabase(_ context.Context, request platform.RegisterDatabaseRequest) (systemdb.RegisteredDatabase, error) {
 	setup.registerRequest = request
 	return systemdb.RegisteredDatabase{ID: uuid.MustNew(), Name: request.Name, PhysicalID: uuid.MustNew(), State: systemdb.DatabaseStopped}, setup.registryError
+}
+func (setup *fakePlatformSetup) CreateDebugDatabase(_ context.Context, source uuid.UUID, request platform.CreateDebugDatabaseRequest) (systemdb.RegisteredDatabase, error) {
+	setup.debugSource, setup.debugRequest = source, request
+	return systemdb.RegisteredDatabase{ID: uuid.MustNew(), Name: request.Name, PhysicalID: uuid.MustNew(), Mode: systemdb.DatabaseDebug, State: systemdb.DatabaseStopped}, setup.registryError
 }
 func (setup *fakePlatformSetup) UnregisterDatabase(_ context.Context, id uuid.UUID) error {
 	setup.unregistered = id

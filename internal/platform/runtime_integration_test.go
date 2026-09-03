@@ -190,6 +190,182 @@ func TestApplicationDatabaseRegistryRejectsSamePhysicalDatabaseIntegration(t *te
 	}
 }
 
+func TestCreateDebugDatabaseCopiesOrStartsCleanIntegration(t *testing.T) {
+	databaseURL := os.Getenv("ML_TEST_ADMIN_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("ML_TEST_ADMIN_DATABASE_URL is not set")
+	}
+	administrator, administratorPassword := platformDescriptorFromURL(t, databaseURL)
+	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	configuration := appconfig.Default()
+	configuration.SourcePath = t.TempDir() + "/config.yaml"
+	secrets := &memorySecrets{values: make(map[string]string)}
+	runtime := New(ctx, configuration, secrets)
+	system, err := postgresadmin.Provision(
+		ctx, administrator, administratorPassword,
+		"ml_debug_system_"+suffix, "ml_debug_system_role_"+suffix,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.database, err = systemdb.OpenConfig(ctx, mustPoolConfig(t, system.Connection, system.Password))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+
+	provisioned := []postgresadmin.Provisioned{system}
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		for index := len(provisioned) - 1; index >= 0; index-- {
+			_ = postgresadmin.RollbackProvisioned(cleanupCtx, administrator, administratorPassword, provisioned[index])
+		}
+	})
+	source, err := postgresadmin.Provision(
+		ctx, administrator, administratorPassword,
+		"ml_debug_source_"+suffix, "ml_debug_source_role_"+suffix,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provisioned = append(provisioned, source)
+	registeredSource, err := runtime.RegisterDatabase(ctx, RegisterDatabaseRequest{
+		Name: "Основная " + suffix, Host: source.Connection.Host, Port: source.Connection.Port,
+		Database: source.Connection.Database, User: source.Connection.User, Password: source.Password,
+		SSLMode: source.Connection.SSLMode, Mode: systemdb.DatabasePrimary,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourcePool, err := pgxpool.NewWithConfig(ctx, mustPoolConfig(t, source.Connection, source.Password))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sourcePool.Exec(ctx, "CREATE TABLE copied_probe(value TEXT NOT NULL); INSERT INTO copied_probe VALUES ('from primary')"); err != nil {
+		sourcePool.Close()
+		t.Fatal(err)
+	}
+	sourcePool.Close()
+
+	copyRequest := debugRequest(administrator, administratorPassword, suffix, "copy")
+	copied, err := runtime.CreateDebugDatabase(ctx, registeredSource.ID, copyRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copyPassword, err := secrets.Get(copied.Connection.SecretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provisioned = append(provisioned, postgresadmin.Provisioned{Connection: copied.Connection, Password: copyPassword})
+	if copied.Mode != systemdb.DatabaseDebug || copied.SourceDatabaseID == nil || *copied.SourceDatabaseID != registeredSource.ID {
+		t.Fatalf("copied debug registry entry = %+v", copied)
+	}
+	if copied.PhysicalID == registeredSource.PhysicalID {
+		t.Fatal("debug copy reused the primary physical database identity")
+	}
+	copyPool, err := pgxpool.NewWithConfig(ctx, mustPoolConfig(t, copied.Connection, copyPassword))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var copiedValue string
+	if err := copyPool.QueryRow(ctx, "SELECT value FROM copied_probe").Scan(&copiedValue); err != nil {
+		copyPool.Close()
+		t.Fatal(err)
+	}
+	copyPool.Close()
+	if copiedValue != "from primary" {
+		t.Fatalf("copied value = %q", copiedValue)
+	}
+
+	cleanRequest := debugRequest(administrator, administratorPassword, suffix, "clean")
+	cleanRequest.CopyData = false
+	clean, err := runtime.CreateDebugDatabase(ctx, registeredSource.ID, cleanRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleanPassword, err := secrets.Get(clean.Connection.SecretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provisioned = append(provisioned, postgresadmin.Provisioned{Connection: clean.Connection, Password: cleanPassword})
+	cleanPool, err := pgxpool.NewWithConfig(ctx, mustPoolConfig(t, clean.Connection, cleanPassword))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var copiedTableExists bool
+	if err := cleanPool.QueryRow(ctx, "SELECT to_regclass('copied_probe') IS NOT NULL").Scan(&copiedTableExists); err != nil {
+		cleanPool.Close()
+		t.Fatal(err)
+	}
+	cleanPool.Close()
+	if copiedTableExists {
+		t.Fatal("clean debug database contains source business data")
+	}
+	runtime.copier = failingDatabaseCopier{}
+	failedRequest := debugRequest(administrator, administratorPassword, suffix, "failed")
+	if _, err := runtime.CreateDebugDatabase(ctx, registeredSource.ID, failedRequest); err == nil || !strings.Contains(err.Error(), "forced copy failure") {
+		t.Fatalf("failed debug copy error = %v", err)
+	}
+	adminPool, err := pgxpool.NewWithConfig(ctx, mustPoolConfig(t, administrator, administratorPassword))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var failedDatabaseExists, failedRoleExists bool
+	if err := adminPool.QueryRow(ctx, `
+SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_database WHERE datname = $1),
+       EXISTS(SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = $2)`,
+		failedRequest.TargetDatabase, failedRequest.TechnicalUser,
+	).Scan(&failedDatabaseExists, &failedRoleExists); err != nil {
+		adminPool.Close()
+		t.Fatal(err)
+	}
+	adminPool.Close()
+	if failedDatabaseExists || failedRoleExists {
+		t.Fatalf("failed copy left database=%v role=%v", failedDatabaseExists, failedRoleExists)
+	}
+	if err := runtime.UnregisterDatabase(ctx, registeredSource.ID); !errors.Is(err, systemdb.ErrDatabaseHasDebugCopies) {
+		t.Fatalf("unregister source with debug copies error = %v", err)
+	}
+	if err := runtime.UnregisterDatabase(ctx, copied.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.UnregisterDatabase(ctx, clean.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.UnregisterDatabase(ctx, registeredSource.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type failingDatabaseCopier struct{}
+
+func (failingDatabaseCopier) Copy(context.Context, postgresconn.Descriptor, string, int, postgresconn.Descriptor, string, int) error {
+	return errors.New("forced copy failure")
+}
+
+func debugRequest(administrator postgresconn.Descriptor, password, suffix, variant string) CreateDebugDatabaseRequest {
+	return CreateDebugDatabaseRequest{
+		Name: "Отладка " + variant + " " + suffix, CopyData: true,
+		Host: administrator.Host, Port: administrator.Port,
+		AdministratorDatabase: administrator.Database, AdministratorUser: administrator.User,
+		AdministratorPassword: password, SSLMode: administrator.SSLMode,
+		TargetDatabase: "ml_debug_" + variant + "_" + suffix,
+		TechnicalUser:  "ml_debug_" + variant + "_role_" + suffix,
+	}
+}
+
+func mustPoolConfig(t *testing.T, descriptor postgresconn.Descriptor, password string) *pgxpool.Config {
+	t.Helper()
+	configuration, err := descriptor.PoolConfig(password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return configuration
+}
+
 type memorySecrets struct {
 	mu     sync.Mutex
 	values map[string]string
