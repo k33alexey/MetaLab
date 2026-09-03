@@ -47,6 +47,7 @@ func NewHandlerWithPlatformAndStudio(configuration appconfig.Config, runtime pla
 // StudioLauncher opens a filesystem-backed project without tying its lifetime to Manager HTTP requests.
 type StudioLauncher interface {
 	OpenStudio(context.Context, uuid.UUID, string) error
+	CloneProject(context.Context, string, string) error
 }
 
 type administratorSetup interface {
@@ -132,6 +133,24 @@ func newHandler(configuration appconfig.Config, client *http.Client, setup admin
 			return
 		}
 		if err := launcher.OpenStudio(request.Context(), input.DatabaseID, input.ProjectPath); err != nil {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+			return
+		}
+		response.WriteHeader(http.StatusNoContent)
+	})
+	routes.HandleFunc("POST /api/studio/clone", func(response http.ResponseWriter, request *http.Request) {
+		if launcher == nil {
+			http.Error(response, "ML Studio launcher is unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var input struct {
+			Repository  string `json:"repository"`
+			Destination string `json:"destination"`
+		}
+		if !decodeJSON(response, request, &input) {
+			return
+		}
+		if err := launcher.CloneProject(request.Context(), input.Repository, input.Destination); err != nil {
 			http.Error(response, err.Error(), http.StatusBadRequest)
 			return
 		}

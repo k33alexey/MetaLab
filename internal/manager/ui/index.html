@@ -48,6 +48,13 @@
       <div id="studio-error" class="error"></div>
       <div class="actions"><button type="submit">Открыть ML Studio</button></div>
     </form>
+    <form id="studio-clone-form">
+      <p class="hint">Или клонируйте ML Project из Git. Для доступа используются системные SSH-ключи или настроенный Git credential helper.</p>
+      <label>Git-репозиторий<input id="studio-clone-repository" placeholder="git@github.com:team/project.git" required></label>
+      <label>Новый каталог проекта<input id="studio-clone-destination" placeholder="/projects/MyProject" required></label>
+      <div id="studio-clone-error" class="error"></div>
+      <div class="actions"><button type="submit" class="secondary">Клонировать</button></div>
+    </form>
   </section>
   <section id="postgres">
     <h2>PostgreSQL</h2>
@@ -139,6 +146,7 @@
   }
   document.querySelector('#refresh').addEventListener('click', refresh);
   document.querySelector('#studio-form').addEventListener('submit',async event=>{event.preventDefault();const error=document.querySelector('#studio-error');error.textContent='';const response=await fetch('/api/studio/open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({databaseId:document.querySelector('#studio-database').value,projectPath:document.querySelector('#studio-project-path').value})});if(!response.ok){error.textContent=await response.text();return}setTimeout(refreshDatabases,500)});
+  document.querySelector('#studio-clone-form').addEventListener('submit',async event=>{event.preventDefault();const error=document.querySelector('#studio-clone-error'),destination=document.querySelector('#studio-clone-destination').value;error.textContent='';const response=await fetch('/api/studio/clone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({repository:document.querySelector('#studio-clone-repository').value,destination})});if(!response.ok){error.textContent=await response.text();return}document.querySelector('#studio-project-path').value=destination;error.textContent='Проект клонирован. Выберите базу и откройте ML Studio.'});
   async function refreshSetup() {
     const response = await fetch('/api/setup');
     if (!response.ok) return;

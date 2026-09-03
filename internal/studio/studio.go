@@ -3,6 +3,7 @@ package studio
 
 import (
 	"bytes"
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/k33alexey/MetaLab/internal/gitclient"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 	"go.yaml.in/yaml/v3"
@@ -201,6 +203,102 @@ func NewHandler(workspace *Workspace) http.Handler {
 		}
 		writeStudioJSON(response, file)
 	})
+	routes.HandleFunc("GET /api/git/status", func(response http.ResponseWriter, request *http.Request) {
+		client, err := gitclient.Open(request.Context(), workspace.root)
+		if err != nil {
+			writeGitError(response, err)
+			return
+		}
+		status, err := client.Status(request.Context())
+		if err != nil {
+			writeGitError(response, err)
+			return
+		}
+		writeStudioJSON(response, status)
+	})
+	routes.HandleFunc("GET /api/git/diff", func(response http.ResponseWriter, request *http.Request) {
+		client, err := gitclient.Open(request.Context(), workspace.root)
+		if err != nil {
+			writeGitError(response, err)
+			return
+		}
+		diff, err := client.Diff(request.Context(), request.URL.Query().Get("path"))
+		if err != nil {
+			writeGitError(response, err)
+			return
+		}
+		writeStudioJSON(response, map[string]string{"diff": diff})
+	})
+	routes.HandleFunc("GET /api/git/branches", func(response http.ResponseWriter, request *http.Request) {
+		client, err := gitclient.Open(request.Context(), workspace.root)
+		if err != nil {
+			writeGitError(response, err)
+			return
+		}
+		branches, err := client.Branches(request.Context())
+		if err != nil {
+			writeGitError(response, err)
+			return
+		}
+		writeStudioJSON(response, branches)
+	})
+	routes.HandleFunc("POST /api/git/commit", func(response http.ResponseWriter, request *http.Request) {
+		var input struct {
+			Message string `json:"message"`
+		}
+		if !decodeStudioMutation(response, request, &input) {
+			return
+		}
+		client, err := gitclient.Open(request.Context(), workspace.root)
+		if err == nil {
+			var result gitclient.Result
+			result, err = client.Commit(request.Context(), input.Message)
+			if err == nil {
+				writeStudioJSON(response, result)
+				return
+			}
+		}
+		writeGitError(response, err)
+	})
+	for path, operation := range map[string]func(context.Context, *gitclient.Client) (gitclient.Result, error){
+		"/api/git/pull": func(ctx context.Context, client *gitclient.Client) (gitclient.Result, error) { return client.Pull(ctx) },
+		"/api/git/push": func(ctx context.Context, client *gitclient.Client) (gitclient.Result, error) { return client.Push(ctx) },
+	} {
+		routes.HandleFunc("POST "+path, func(response http.ResponseWriter, request *http.Request) {
+			if !validateStudioMutation(response, request) {
+				return
+			}
+			client, err := gitclient.Open(request.Context(), workspace.root)
+			if err == nil {
+				var result gitclient.Result
+				result, err = operation(request.Context(), client)
+				if err == nil {
+					writeStudioJSON(response, result)
+					return
+				}
+			}
+			writeGitError(response, err)
+		})
+	}
+	routes.HandleFunc("POST /api/git/branches/switch", func(response http.ResponseWriter, request *http.Request) {
+		var input struct {
+			Name   string `json:"name"`
+			Create bool   `json:"create"`
+		}
+		if !decodeStudioMutation(response, request, &input) {
+			return
+		}
+		client, err := gitclient.Open(request.Context(), workspace.root)
+		if err == nil {
+			var result gitclient.Result
+			result, err = client.SwitchBranch(request.Context(), input.Name, input.Create)
+			if err == nil {
+				writeStudioJSON(response, result)
+				return
+			}
+		}
+		writeGitError(response, err)
+	})
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
 		response.Header().Set("X-Content-Type-Options", "nosniff")
@@ -208,6 +306,46 @@ func NewHandler(workspace *Workspace) http.Handler {
 		response.Header().Set("X-Frame-Options", "DENY")
 		routes.ServeHTTP(response, request)
 	})
+}
+
+func validateStudioMutation(response http.ResponseWriter, request *http.Request) bool {
+	if request.Header.Get("X-ML-CSRF") != "1" {
+		http.Error(response, "CSRF check failed", http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
+func decodeStudioMutation(response http.ResponseWriter, request *http.Request, value any) bool {
+	if !validateStudioMutation(response, request) {
+		return false
+	}
+	if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
+		http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+		return false
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 16<<10))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(value); err != nil {
+		http.Error(response, "Invalid request", http.StatusBadRequest)
+		return false
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		http.Error(response, "Invalid request", http.StatusBadRequest)
+		return false
+	}
+	return true
+}
+
+func writeGitError(response http.ResponseWriter, err error) {
+	status := http.StatusBadRequest
+	if errors.Is(err, gitclient.ErrGitUnavailable) {
+		status = http.StatusServiceUnavailable
+	} else if errors.Is(err, gitclient.ErrNotRepository) || errors.Is(err, gitclient.ErrUnsafeRepository) {
+		status = http.StatusConflict
+	}
+	http.Error(response, err.Error(), status)
 }
 
 func writeStudioJSON(response http.ResponseWriter, value any) {

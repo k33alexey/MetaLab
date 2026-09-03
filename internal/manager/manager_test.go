@@ -85,6 +85,20 @@ func TestManagerLaunchesStudioForProjectPath(t *testing.T) {
 	}
 }
 
+func TestManagerClonesStudioProject(t *testing.T) {
+	t.Parallel()
+
+	launcher := &fakeStudioLauncher{}
+	handler := newHandler(appconfig.Default(), http.DefaultClient, nil, nil, launcher)
+	request := httptest.NewRequest(http.MethodPost, "/api/studio/clone", strings.NewReader(`{"repository":"git@example.test:team/project.git","destination":"/projects/sales"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent || launcher.cloneRepository != "git@example.test:team/project.git" || launcher.cloneDestination != "/projects/sales" {
+		t.Fatalf("status=%d repository=%q destination=%q body=%s", response.Code, launcher.cloneRepository, launcher.cloneDestination, response.Body.String())
+	}
+}
+
 func TestManagerListsAndTerminatesStudioSession(t *testing.T) {
 	t.Parallel()
 
@@ -288,14 +302,23 @@ type fakeAdministratorSetup struct {
 }
 
 type fakeStudioLauncher struct {
-	databaseID uuid.UUID
-	path       string
-	err        error
+	databaseID       uuid.UUID
+	path             string
+	err              error
+	cloneRepository  string
+	cloneDestination string
+	cloneErr         error
 }
 
 func (launcher *fakeStudioLauncher) OpenStudio(_ context.Context, databaseID uuid.UUID, path string) error {
 	launcher.databaseID, launcher.path = databaseID, path
 	return launcher.err
+}
+
+func (launcher *fakeStudioLauncher) CloneProject(_ context.Context, repository, destination string) error {
+	launcher.cloneRepository = repository
+	launcher.cloneDestination = destination
+	return launcher.cloneErr
 }
 
 func (setup *fakeAdministratorSetup) InitialSetupRequired(context.Context) (bool, error) {

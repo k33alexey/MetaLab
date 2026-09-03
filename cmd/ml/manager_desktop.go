@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
+	"github.com/k33alexey/MetaLab/internal/gitclient"
 	"github.com/k33alexey/MetaLab/internal/manager"
 	"github.com/k33alexey/MetaLab/internal/platform"
 	"github.com/k33alexey/MetaLab/internal/secretstore"
@@ -76,6 +77,10 @@ const (
 type executableStudioLauncher struct {
 	configurationPath string
 	runtime           *platform.Runtime
+}
+
+func (launcher executableStudioLauncher) CloneProject(ctx context.Context, repository, destination string) error {
+	return gitclient.Clone(ctx, repository, destination)
 }
 
 func (launcher executableStudioLauncher) OpenStudio(ctx context.Context, databaseID uuid.UUID, projectPath string) error {
