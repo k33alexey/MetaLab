@@ -50,7 +50,7 @@ func TestMigrationConfirmationExecutionRecheckAndJournalIntegration(t *testing.T
 	}
 	request := MigrationRequest{
 		ProjectID: projectID, PackageSHA256: repeatedHex('a', 64), GitCommit: repeatedHex('b', 40),
-		Desired: desired, ExpectedPlanSHA256: prepared.SHA256,
+		Desired: desired, ExpectedPlanSHA256: prepared.SHA256, ExpectedSchemaSHA256: prepared.ActualSHA256,
 	}
 	if _, err := Execute(ctx, pool, request); !errors.Is(err, ErrConfirmationRequired) {
 		t.Fatalf("unconfirmed Execute() error = %v", err)
@@ -105,7 +105,7 @@ func TestMigrationConfirmationExecutionRecheckAndJournalIntegration(t *testing.T
 	if err != nil || destructivePlan.Plan.DestructiveCount == 0 {
 		t.Fatalf("destructive plan=%+v error=%v", destructivePlan, err)
 	}
-	request.Desired, request.ExpectedPlanSHA256 = destructive, destructivePlan.SHA256
+	request.Desired, request.ExpectedPlanSHA256, request.ExpectedSchemaSHA256 = destructive, destructivePlan.SHA256, destructivePlan.ActualSHA256
 	if _, err := Execute(ctx, pool, request); !errors.Is(err, ErrDestructiveDenied) {
 		t.Fatalf("destructive Execute() error = %v", err)
 	}
@@ -123,7 +123,7 @@ func TestMigrationConfirmationExecutionRecheckAndJournalIntegration(t *testing.T
 	if _, err := pool.Exec(ctx, "ALTER TABLE "+quotedSchema+`.t_demo ADD COLUMN external text`); err != nil {
 		t.Fatal(err)
 	}
-	request.Desired, request.ExpectedPlanSHA256 = changed, changedPlan.SHA256
+	request.Desired, request.ExpectedPlanSHA256, request.ExpectedSchemaSHA256 = changed, changedPlan.SHA256, changedPlan.ActualSHA256
 	if _, err := Execute(ctx, pool, request); !errors.Is(err, ErrPlanChanged) {
 		t.Fatalf("changed-plan Execute() error = %v", err)
 	}
@@ -137,7 +137,7 @@ func TestMigrationConfirmationExecutionRecheckAndJournalIntegration(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	request.Desired, request.ExpectedPlanSHA256 = failing, failingPlan.SHA256
+	request.Desired, request.ExpectedPlanSHA256, request.ExpectedSchemaSHA256 = failing, failingPlan.SHA256, failingPlan.ActualSHA256
 	failed, err := Execute(ctx, pool, request)
 	if err == nil || failed.Status != "failed" || failed.Error == "" {
 		t.Fatalf("failed record=%+v error=%v", failed, err)

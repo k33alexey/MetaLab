@@ -35,6 +35,13 @@ func TestPlanAndTargetDigestsAreStableAndDoNotMutateInput(t *testing.T) {
 	if digest, err := PlanSHA256(plan); err != nil || len(digest) != 64 {
 		t.Fatalf("plan digest=%q error=%v", digest, err)
 	}
+	emptyCollections := cloneSchema(schema)
+	emptyCollections.Tables[0].Indexes = []Index{}
+	emptyCollections.Tables[0].Constraints = []Constraint{}
+	canonical, err := ObservedSchemaSHA256(emptyCollections)
+	if err != nil || canonical != first {
+		t.Fatalf("canonical digest=%q want=%q error=%v", canonical, first, err)
+	}
 }
 
 func TestMigrationStatementsQuoteNamesOrderDependenciesAndRejectInjection(t *testing.T) {

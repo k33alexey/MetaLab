@@ -27,17 +27,26 @@ var (
 type PreparedPlan struct {
 	Plan         Plan   `json:"plan"`
 	SHA256       string `json:"sha256"`
+	ActualSHA256 string `json:"actualSha256"`
 	TargetSHA256 string `json:"targetSha256"`
 }
 
 type MigrationRequest struct {
-	ProjectID          uuid.UUID
-	PackageSHA256      string
-	GitCommit          string
-	Desired            Schema
-	ExpectedPlanSHA256 string
-	Confirmed          bool
-	AllowDestructive   bool
+	ProjectID            uuid.UUID
+	PackageSHA256        string
+	GitCommit            string
+	Desired              Schema
+	ExpectedPlanSHA256   string
+	ExpectedSchemaSHA256 string
+	Confirmed            bool
+	AllowDestructive     bool
+}
+
+// TransactionHooks let a higher-level publisher validate and activate a version
+// under the same PostgreSQL lock and transaction as its schema migration.
+type TransactionHooks struct {
+	BeforeApply  func(context.Context, pgx.Tx, MigrationRecord) error
+	BeforeCommit func(context.Context, pgx.Tx, MigrationRecord) error
 }
 
 type MigrationRecord struct {
@@ -72,7 +81,11 @@ func Prepare(ctx context.Context, pool *pgxpool.Pool, desired Schema) (PreparedP
 	if err != nil {
 		return PreparedPlan{}, err
 	}
-	return PreparedPlan{Plan: plan, SHA256: digest, TargetSHA256: targetDigest}, nil
+	actualDigest, err := ObservedSchemaSHA256(actual)
+	if err != nil {
+		return PreparedPlan{}, err
+	}
+	return PreparedPlan{Plan: plan, SHA256: digest, ActualSHA256: actualDigest, TargetSHA256: targetDigest}, nil
 }
 
 func PlanSHA256(plan Plan) (string, error) {
@@ -89,6 +102,35 @@ func SchemaSHA256(schema Schema) (string, error) {
 	if err := schema.NormalizeAndValidate(); err != nil {
 		return "", err
 	}
+	return schemaSHA256(schema)
+}
+
+// ObservedSchemaSHA256 hashes a schema read from PostgreSQL, including legal
+// database identifiers that are intentionally stricter for generated schemas.
+func ObservedSchemaSHA256(schema Schema) (string, error) {
+	schema = cloneSchema(schema)
+	if err := schema.normalizeActual(); err != nil {
+		return "", err
+	}
+	return schemaSHA256(schema)
+}
+
+func schemaSHA256(schema Schema) (string, error) {
+	if len(schema.Tables) == 0 {
+		schema.Tables = nil
+	}
+	for tableIndex := range schema.Tables {
+		table := &schema.Tables[tableIndex]
+		if len(table.Columns) == 0 {
+			table.Columns = nil
+		}
+		if len(table.Indexes) == 0 {
+			table.Indexes = nil
+		}
+		if len(table.Constraints) == 0 {
+			table.Constraints = nil
+		}
+	}
 	content, err := json.Marshal(schema)
 	if err != nil {
 		return "", fmt.Errorf("encode target schema: %w", err)
@@ -99,10 +141,15 @@ func SchemaSHA256(schema Schema) (string, error) {
 
 // Execute rechecks and applies the confirmed plan in one PostgreSQL transaction.
 func Execute(ctx context.Context, pool *pgxpool.Pool, request MigrationRequest) (MigrationRecord, error) {
+	return ExecuteWithHooks(ctx, pool, request, TransactionHooks{})
+}
+
+// ExecuteWithHooks applies a migration and higher-level activation atomically.
+func ExecuteWithHooks(ctx context.Context, pool *pgxpool.Pool, request MigrationRequest, hooks TransactionHooks) (MigrationRecord, error) {
 	if !request.Confirmed {
 		return MigrationRecord{}, ErrConfirmationRequired
 	}
-	if pool == nil || request.ProjectID.IsZero() || !validDigest(request.PackageSHA256) || !validDigest(request.ExpectedPlanSHA256) || validateCommit(request.GitCommit) != nil {
+	if pool == nil || request.ProjectID.IsZero() || !validDigest(request.PackageSHA256) || !validDigest(request.ExpectedPlanSHA256) || !validDigest(request.ExpectedSchemaSHA256) || validateCommit(request.GitCommit) != nil {
 		return MigrationRecord{}, fmt.Errorf("invalid schema migration request")
 	}
 	request.Desired = cloneSchema(request.Desired)
@@ -131,6 +178,13 @@ func Execute(ctx context.Context, pool *pgxpool.Pool, request MigrationRequest) 
 	actual, err := inspectCatalog(ctx, transaction, request.Desired.Name)
 	if err != nil {
 		return MigrationRecord{}, err
+	}
+	actualDigest, err := ObservedSchemaSHA256(actual)
+	if err != nil {
+		return MigrationRecord{}, err
+	}
+	if actualDigest != request.ExpectedSchemaSHA256 {
+		return MigrationRecord{}, ErrPlanChanged
 	}
 	plan, err := Compare(request.Desired, actual)
 	if err != nil {
@@ -166,6 +220,11 @@ func Execute(ctx context.Context, pool *pgxpool.Pool, request MigrationRequest) 
 		ID: id, ProjectID: request.ProjectID, PackageSHA256: request.PackageSHA256, GitCommit: request.GitCommit,
 		PlanSHA256: digest, SchemaSHA256: targetDigest, Status: "running", DestructiveCount: plan.DestructiveCount, Changes: changes,
 	}
+	if hooks.BeforeApply != nil {
+		if err := hooks.BeforeApply(ctx, transaction, record); err != nil {
+			return MigrationRecord{}, err
+		}
+	}
 	if err := insertMigration(ctx, transaction, record); err != nil {
 		return MigrationRecord{}, err
 	}
@@ -175,6 +234,14 @@ func Execute(ctx context.Context, pool *pgxpool.Pool, request MigrationRequest) 
 			record.Status, record.Error = "failed", boundedError(err)
 			record = recordFailure(ctx, connection, record)
 			return record, fmt.Errorf("execute schema migration: %w", err)
+		}
+	}
+	if hooks.BeforeCommit != nil {
+		if err := hooks.BeforeCommit(ctx, transaction, record); err != nil {
+			_ = transaction.Rollback(ctx)
+			record.Status, record.Error = "failed", boundedError(err)
+			record = recordFailure(ctx, connection, record)
+			return record, fmt.Errorf("activate migrated schema: %w", err)
 		}
 	}
 	if err := transaction.QueryRow(ctx, `
