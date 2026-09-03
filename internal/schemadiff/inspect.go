@@ -18,14 +18,30 @@ func Inspect(ctx context.Context, pool *pgxpool.Pool, schemaName string) (Schema
 		return Schema{}, fmt.Errorf("begin PostgreSQL schema inspection: %w", err)
 	}
 	defer func() { _ = transaction.Rollback(ctx) }()
+	result, err := inspectCatalog(ctx, transaction, schemaName)
+	if err != nil {
+		return Schema{}, err
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return Schema{}, fmt.Errorf("finish PostgreSQL schema inspection: %w", err)
+	}
+	return result, nil
+}
+
+type catalogQuerier interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func inspectCatalog(ctx context.Context, query catalogQuerier, schemaName string) (Schema, error) {
 	result := Schema{Name: schemaName, Tables: make([]Table, 0)}
-	if err := transaction.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname = $1)", schemaName).Scan(&result.Exists); err != nil {
+	if err := query.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname = $1)", schemaName).Scan(&result.Exists); err != nil {
 		return Schema{}, fmt.Errorf("inspect PostgreSQL schema: %w", err)
 	}
 	if !result.Exists {
 		return result, nil
 	}
-	rows, err := transaction.Query(ctx, `
+	rows, err := query.Query(ctx, `
 SELECT relation.relname
 FROM pg_class AS relation
 JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
@@ -49,18 +65,15 @@ ORDER BY relation.relname`, schemaName)
 	rows.Close()
 	for index := range result.Tables {
 		table := &result.Tables[index]
-		if table.Columns, err = inspectColumns(ctx, transaction, schemaName, table.Name); err != nil {
+		if table.Columns, err = inspectColumns(ctx, query, schemaName, table.Name); err != nil {
 			return Schema{}, err
 		}
-		if table.Indexes, err = inspectIndexes(ctx, transaction, schemaName, table.Name); err != nil {
+		if table.Indexes, err = inspectIndexes(ctx, query, schemaName, table.Name); err != nil {
 			return Schema{}, err
 		}
-		if table.Constraints, err = inspectConstraints(ctx, transaction, schemaName, table.Name); err != nil {
+		if table.Constraints, err = inspectConstraints(ctx, query, schemaName, table.Name); err != nil {
 			return Schema{}, err
 		}
-	}
-	if err := transaction.Commit(ctx); err != nil {
-		return Schema{}, fmt.Errorf("finish PostgreSQL schema inspection: %w", err)
 	}
 	if err := result.normalizeActual(); err != nil {
 		return Schema{}, fmt.Errorf("normalize inspected PostgreSQL schema: %w", err)
@@ -68,8 +81,8 @@ ORDER BY relation.relname`, schemaName)
 	return result, nil
 }
 
-func inspectColumns(ctx context.Context, transaction pgx.Tx, schemaName, tableName string) ([]Column, error) {
-	rows, err := transaction.Query(ctx, `
+func inspectColumns(ctx context.Context, query catalogQuerier, schemaName, tableName string) ([]Column, error) {
+	rows, err := query.Query(ctx, `
 SELECT attribute.attname, pg_catalog.format_type(attribute.atttypid, attribute.atttypmod),
        NOT attribute.attnotnull, COALESCE(pg_get_expr(default_value.adbin, default_value.adrelid), '')
 FROM pg_attribute AS attribute
@@ -97,8 +110,8 @@ ORDER BY attribute.attname`, schemaName, tableName)
 	return items, nil
 }
 
-func inspectIndexes(ctx context.Context, transaction pgx.Tx, schemaName, tableName string) ([]Index, error) {
-	rows, err := transaction.Query(ctx, `
+func inspectIndexes(ctx context.Context, query catalogQuerier, schemaName, tableName string) ([]Index, error) {
+	rows, err := query.Query(ctx, `
 SELECT index_relation.relname, indexed.indisunique, access_method.amname,
        ARRAY(SELECT pg_get_indexdef(indexed.indexrelid, position, TRUE)
              FROM generate_series(1, indexed.indnkeyatts) AS position ORDER BY position),
@@ -131,8 +144,8 @@ ORDER BY index_relation.relname`, schemaName, tableName)
 	return items, nil
 }
 
-func inspectConstraints(ctx context.Context, transaction pgx.Tx, schemaName, tableName string) ([]Constraint, error) {
-	rows, err := transaction.Query(ctx, `
+func inspectConstraints(ctx context.Context, query catalogQuerier, schemaName, tableName string) ([]Constraint, error) {
+	rows, err := query.Query(ctx, `
 SELECT constraint_name.conname,
        CASE constraint_name.contype
          WHEN 'p' THEN 'primary_key' WHEN 'u' THEN 'unique' WHEN 'f' THEN 'foreign_key'

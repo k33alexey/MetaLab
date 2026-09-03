@@ -76,7 +76,7 @@ func compareTable(plan *Plan, desired, actual Table) {
 		current, currentOK := actualColumns[name]
 		switch {
 		case wantedOK && !currentOK:
-			plan.add(Change{Kind: AddColumn, Table: desired.Name, Object: name, After: wanted})
+			plan.add(Change{Kind: AddColumn, Table: desired.Name, Object: name, Destructive: !wanted.Nullable && wanted.Default == "", After: wanted})
 		case !wantedOK && currentOK:
 			plan.add(Change{Kind: DropColumn, Table: desired.Name, Object: name, Destructive: true, Before: current})
 		case !reflect.DeepEqual(wanted, current):
