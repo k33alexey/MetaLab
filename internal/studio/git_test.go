@@ -69,6 +69,14 @@ func TestGitAPIStatusDiffCommitAndBranches(t *testing.T) {
 	if committed.Code != http.StatusOK || !strings.Contains(committed.Body.String(), "Add module") {
 		t.Fatalf("commit status=%d body=%s", committed.Code, committed.Body.String())
 	}
+	packaged := httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/api/publication/package", nil)
+	request.Header.Set("X-ML-CSRF", "1")
+	handler.ServeHTTP(packaged, request)
+	prefixLength := min(20, packaged.Body.Len())
+	if packaged.Code != http.StatusOK || !bytes.HasPrefix(packaged.Body.Bytes(), []byte("PK")) || packaged.Header().Get("X-ML-Package-Digest") == "" {
+		t.Fatalf("package status=%d headers=%v body-prefix=%q", packaged.Code, packaged.Header(), packaged.Body.Bytes()[:prefixLength])
+	}
 
 	switched := httptest.NewRecorder()
 	request = httptest.NewRequest(http.MethodPost, "/api/git/branches/switch", strings.NewReader(`{"name":"feature/forms","create":true}`))

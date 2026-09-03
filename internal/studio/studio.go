@@ -18,6 +18,7 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/gitclient"
 	"github.com/k33alexey/MetaLab/internal/project"
+	"github.com/k33alexey/MetaLab/internal/publication"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 	"go.yaml.in/yaml/v3"
 )
@@ -132,6 +133,40 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 		root.Children = append(root.Children, node)
 	}
 	return Snapshot{ProjectPath: workspace.root, Manifest: manifest, Tree: root}, nil
+}
+
+// BuildPublicationPackage snapshots validated sources under the same lock as Studio saves.
+func (workspace *Workspace) BuildPublicationPackage(ctx context.Context, destination string) (publication.Manifest, error) {
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
+	client, err := gitclient.Open(ctx, workspace.root)
+	if err != nil {
+		return publication.Manifest{}, err
+	}
+	status, err := client.Status(ctx)
+	if err != nil {
+		return publication.Manifest{}, err
+	}
+	if status.Revision == "" {
+		return publication.Manifest{}, fmt.Errorf("ML Project must have at least one Git commit before packaging")
+	}
+	state := publication.SourceState{
+		GitCommit: status.Revision,
+		Dirty:     len(status.Entries) != 0,
+	}
+	manifest, err := publication.BuildFile(ctx, workspace.root, destination, state)
+	if err != nil {
+		return publication.Manifest{}, err
+	}
+	current, err := client.Status(ctx)
+	if err != nil || current.Revision != state.GitCommit || (len(current.Entries) != 0) != state.Dirty {
+		_ = os.Remove(destination)
+		if err != nil {
+			return publication.Manifest{}, err
+		}
+		return publication.Manifest{}, publication.ErrSourceChanged
+	}
+	return manifest, nil
 }
 
 // NewHandler serves the local read-only Studio shell for one workspace.
@@ -298,6 +333,35 @@ func NewHandler(workspace *Workspace) http.Handler {
 			}
 		}
 		writeGitError(response, err)
+	})
+	routes.HandleFunc("POST /api/publication/package", func(response http.ResponseWriter, request *http.Request) {
+		if !validateStudioMutation(response, request) {
+			return
+		}
+		temporaryDirectory, err := os.MkdirTemp("", "metalab-publication-*")
+		if err != nil {
+			http.Error(response, "Unable to create publication package", http.StatusInternalServerError)
+			return
+		}
+		defer os.RemoveAll(temporaryDirectory)
+		destination := filepath.Join(temporaryDirectory, "publication"+publication.PackageExtension)
+		manifest, err := workspace.BuildPublicationPackage(request.Context(), destination)
+		if err != nil {
+			writeGitError(response, err)
+			return
+		}
+		file, err := os.Open(destination)
+		if err != nil {
+			http.Error(response, "Unable to open publication package", http.StatusInternalServerError)
+			return
+		}
+		defer file.Close()
+		response.Header().Set("Content-Type", "application/vnd.metalab.package")
+		response.Header().Set("Content-Disposition", `attachment; filename="publication.mlpkg"`)
+		response.Header().Set("X-ML-Package-Digest", manifest.ContentSHA256)
+		if _, err := io.Copy(response, file); err != nil {
+			return
+		}
 	})
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
