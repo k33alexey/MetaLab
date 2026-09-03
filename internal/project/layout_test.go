@@ -84,6 +84,45 @@ func TestValidateLayoutRejectsMissingDirectory(t *testing.T) {
 	}
 }
 
+func TestSaveManifestIsStableAndPreservesIdentity(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "project")
+	manifest := testManifest()
+	if err := Initialize(root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Title = "Новое название"
+	manifest.Languages = append(manifest.Languages, Language{Name: "English", Title: "English", Code: "en"})
+	if err := SaveManifest(root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.ReadFile(filepath.Join(root, ManifestFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveManifest(root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(filepath.Join(root, ManifestFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first) != string(second) {
+		t.Fatalf("manifest serialization changed:\nfirst:\n%s\nsecond:\n%s", first, second)
+	}
+
+	replacement := manifest
+	replacement.ID = uuid.MustNew()
+	if err := SaveManifest(root, replacement); !errors.Is(err, ErrProjectIdentityChanged) {
+		t.Fatalf("SaveManifest() error = %v, want ErrProjectIdentityChanged", err)
+	}
+	afterRejectedSave, err := os.ReadFile(filepath.Join(root, ManifestFile))
+	if err != nil || string(afterRejectedSave) != string(second) {
+		t.Fatalf("manifest changed after rejected save: error=%v", err)
+	}
+}
+
 func TestCanonicalSourcePathsUseStableUUIDs(t *testing.T) {
 	t.Parallel()
 

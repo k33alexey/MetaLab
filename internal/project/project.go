@@ -2,12 +2,14 @@
 package project
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/k33alexey/MetaLab/internal/uuid"
 	"go.yaml.in/yaml/v3"
@@ -16,7 +18,41 @@ import (
 const (
 	// CurrentFormat is the latest supported ML Project manifest format.
 	CurrentFormat = 1
+	// MaxYAMLDocumentBytes bounds individual source documents before parsing.
+	MaxYAMLDocumentBytes = 4 << 20
 )
+
+var (
+	// ErrUnsupportedFormat identifies a manifest written in an unsupported format version.
+	ErrUnsupportedFormat = errors.New("unsupported ML Project format")
+	// ErrYAMLDocumentTooLarge prevents unbounded memory use while parsing project sources.
+	ErrYAMLDocumentTooLarge = errors.New("ML Project YAML document is too large")
+)
+
+// ValidationIssue points to one invalid manifest field.
+type ValidationIssue struct {
+	Path    string
+	Message string
+}
+
+// ValidationError contains all independently detectable manifest problems.
+type ValidationError struct {
+	Issues            []ValidationIssue
+	unsupportedFormat bool
+}
+
+func (validation *ValidationError) Error() string {
+	problems := make([]string, 0, len(validation.Issues))
+	for _, issue := range validation.Issues {
+		problems = append(problems, issue.Path+" "+issue.Message)
+	}
+	return "invalid ML Project: " + strings.Join(problems, "; ")
+}
+
+// Is makes future or obsolete manifest versions programmatically distinguishable.
+func (validation *ValidationError) Is(target error) bool {
+	return target == ErrUnsupportedFormat && validation.unsupportedFormat
+}
 
 // Project is the root manifest stored in mlproject.yaml.
 type Project struct {
@@ -37,24 +73,36 @@ type Language struct {
 
 // Decode reads one strict YAML document and validates it.
 func Decode(reader io.Reader) (Project, error) {
-	decoder := yaml.NewDecoder(reader)
+	return DecodeSource("ML Project", reader)
+}
+
+// DecodeSource reads one named strict YAML document so diagnostics identify its source.
+func DecodeSource(source string, reader io.Reader) (Project, error) {
+	content, err := io.ReadAll(io.LimitReader(reader, MaxYAMLDocumentBytes+1))
+	if err != nil {
+		return Project{}, fmt.Errorf("read %s: %w", source, err)
+	}
+	if len(content) > MaxYAMLDocumentBytes {
+		return Project{}, fmt.Errorf("decode %s: %w (maximum %d bytes)", source, ErrYAMLDocumentTooLarge, MaxYAMLDocumentBytes)
+	}
+	decoder := yaml.NewDecoder(bytes.NewReader(content))
 	decoder.KnownFields(true)
 
 	var result Project
 	if err := decoder.Decode(&result); err != nil {
-		return Project{}, fmt.Errorf("decode ML Project: %w", err)
+		return Project{}, fmt.Errorf("decode %s: %w", source, err)
 	}
 
 	var extra any
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		if err != nil {
-			return Project{}, fmt.Errorf("decode trailing YAML: %w", err)
+			return Project{}, fmt.Errorf("decode trailing YAML in %s: %w", source, err)
 		}
-		return Project{}, errors.New("decode ML Project: multiple YAML documents are not allowed")
+		return Project{}, fmt.Errorf("decode %s: multiple YAML documents are not allowed", source)
 	}
 
 	if err := result.Validate(); err != nil {
-		return Project{}, err
+		return Project{}, fmt.Errorf("validate %s: %w", source, err)
 	}
 
 	return result, nil
@@ -66,7 +114,8 @@ func Encode(writer io.Writer, value Project) error {
 		return err
 	}
 
-	encoder := yaml.NewEncoder(writer)
+	var content bytes.Buffer
+	encoder := yaml.NewEncoder(&content)
 	encoder.SetIndent(2)
 
 	if err := encoder.Encode(value); err != nil {
@@ -75,28 +124,39 @@ func Encode(writer io.Writer, value Project) error {
 	if err := encoder.Close(); err != nil {
 		return fmt.Errorf("close ML Project encoder: %w", err)
 	}
+	if content.Len() > MaxYAMLDocumentBytes {
+		return ErrYAMLDocumentTooLarge
+	}
+	if _, err := io.Copy(writer, &content); err != nil {
+		return fmt.Errorf("write ML Project: %w", err)
+	}
 
 	return nil
 }
 
 // Validate checks the project invariants used by all readers and writers.
 func (p Project) Validate() error {
-	var problems []string
+	var issues []ValidationIssue
+	add := func(path, message string) { issues = append(issues, ValidationIssue{Path: path, Message: message}) }
 
 	if p.Format != CurrentFormat {
-		problems = append(problems, fmt.Sprintf("format must be %d", CurrentFormat))
+		add("format", fmt.Sprintf("must be %d", CurrentFormat))
 	}
 	if p.ID.IsZero() {
-		problems = append(problems, "id must be a non-zero UUID")
+		add("id", "must be a non-zero UUID")
 	}
 	if !isIdentifier(p.Name) {
-		problems = append(problems, "name must start with a letter and contain only letters or digits")
+		add("name", "must start with a letter and contain only letters or digits")
+	} else if utf8.RuneCountInString(p.Name) > 128 {
+		add("name", "must not exceed 128 characters")
 	}
-	if strings.TrimSpace(p.Title) == "" {
-		problems = append(problems, "title must not be empty")
+	if !isDisplayText(p.Title, 512) {
+		add("title", "must contain 1 to 512 printable characters")
 	}
 	if len(p.Languages) == 0 {
-		problems = append(problems, "at least one language is required")
+		add("languages", "must contain at least one language")
+	} else if len(p.Languages) > 100 {
+		add("languages", "must not contain more than 100 languages")
 	}
 
 	seenNames := make(map[string]struct{}, len(p.Languages))
@@ -104,24 +164,26 @@ func (p Project) Validate() error {
 	for index, language := range p.Languages {
 		prefix := fmt.Sprintf("languages[%d]", index)
 		if !isIdentifier(language.Name) {
-			problems = append(problems, prefix+".name must start with a letter and contain only letters or digits")
+			add(prefix+".name", "must start with a letter and contain only letters or digits")
+		} else if utf8.RuneCountInString(language.Name) > 128 {
+			add(prefix+".name", "must not exceed 128 characters")
 		}
-		if strings.TrimSpace(language.Title) == "" {
-			problems = append(problems, prefix+".title must not be empty")
+		if !isDisplayText(language.Title, 512) {
+			add(prefix+".title", "must contain 1 to 512 printable characters")
 		}
 		if !isLocaleCode(language.Code) {
-			problems = append(problems, prefix+".code must be a lowercase language code with optional region")
+			add(prefix+".code", "must be a lowercase language code with optional region")
 		}
 
 		normalizedName := strings.ToLower(language.Name)
 		if _, exists := seenNames[normalizedName]; exists {
-			problems = append(problems, prefix+".name must be unique")
+			add(prefix+".name", "must be unique")
 		}
 		seenNames[normalizedName] = struct{}{}
 
 		normalizedCode := strings.ToLower(language.Code)
 		if _, exists := seenCodes[normalizedCode]; exists {
-			problems = append(problems, prefix+".code must be unique")
+			add(prefix+".code", "must be unique")
 		}
 		seenCodes[normalizedCode] = struct{}{}
 	}
@@ -129,11 +191,11 @@ func (p Project) Validate() error {
 	if !slices.ContainsFunc(p.Languages, func(language Language) bool {
 		return strings.EqualFold(language.Code, p.DefaultLanguage)
 	}) {
-		problems = append(problems, "default_language must reference a configured language code")
+		add("default_language", "must reference a configured language code")
 	}
 
-	if len(problems) > 0 {
-		return errors.New("invalid ML Project: " + strings.Join(problems, "; "))
+	if len(issues) > 0 {
+		return &ValidationError{Issues: issues, unsupportedFormat: p.Format > 0 && p.Format != CurrentFormat}
 	}
 
 	return nil
@@ -173,6 +235,18 @@ func isLocaleCode(value string) bool {
 			return false
 		}
 
+	}
+	return true
+}
+
+func isDisplayText(value string, maximum int) bool {
+	if !utf8.ValidString(value) || strings.TrimSpace(value) == "" || utf8.RuneCountInString(value) > maximum {
+		return false
+	}
+	for _, symbol := range value {
+		if unicode.IsControl(symbol) {
+			return false
+		}
 	}
 	return true
 }

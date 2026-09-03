@@ -24,6 +24,8 @@ var (
 	ErrProjectExists = errors.New("ML Project path already exists")
 	// ErrInvalidLayout indicates a missing, unsafe, or malformed project path.
 	ErrInvalidLayout = errors.New("invalid ML Project layout")
+	// ErrProjectIdentityChanged prevents accidental replacement with another project manifest.
+	ErrProjectIdentityChanged = errors.New("ML Project identity cannot be changed")
 
 	rootDirectories = []string{"metadata", "modules", "forms", "reports", "tests", "assets"}
 	metadataKinds   = []string{
@@ -145,16 +147,54 @@ func ValidateLayout(root string) (Project, error) {
 			return Project{}, err
 		}
 	}
-	file, err := os.Open(manifestPath)
-	if err != nil {
-		return Project{}, fmt.Errorf("%w: open manifest: %v", ErrInvalidLayout, err)
-	}
-	defer file.Close()
-	manifest, err := Decode(file)
+	manifest, err := readManifest(manifestPath)
 	if err != nil {
 		return Project{}, fmt.Errorf("%w: %v", ErrInvalidLayout, err)
 	}
 	return manifest, nil
+}
+
+// SaveManifest atomically writes a validated manifest without allowing its stable UUID to change.
+func SaveManifest(root string, manifest Project) error {
+	if err := manifest.Validate(); err != nil {
+		return err
+	}
+	root, err := cleanRoot(root)
+	if err != nil {
+		return err
+	}
+	current, err := ValidateLayout(root)
+	if err != nil {
+		return err
+	}
+	if current.ID != manifest.ID {
+		return ErrProjectIdentityChanged
+	}
+	temporary, err := os.CreateTemp(root, ".mlproject-*.yaml")
+	if err != nil {
+		return fmt.Errorf("create temporary ML Project manifest: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(0o644); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("set temporary manifest permissions: %w", err)
+	}
+	if err := Encode(temporary, manifest); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("sync ML Project manifest: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("close ML Project manifest: %w", err)
+	}
+	if err := replaceProjectFile(temporaryPath, filepath.Join(root, ManifestFile)); err != nil {
+		return fmt.Errorf("replace ML Project manifest: %w", err)
+	}
+	return nil
 }
 
 // MetadataPath returns the canonical relative YAML path for a metadata object.
@@ -223,4 +263,13 @@ func requirePath(path string, directory bool) error {
 		return fmt.Errorf("%w: %q must be a regular file", ErrInvalidLayout, path)
 	}
 	return nil
+}
+
+func readManifest(path string) (Project, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return Project{}, fmt.Errorf("open manifest %q: %w", path, err)
+	}
+	defer file.Close()
+	return DecodeSource(path, file)
 }
