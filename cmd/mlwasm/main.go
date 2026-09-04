@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"syscall/js"
+	"time"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
 	"github.com/k33alexey/MetaLab/internal/bsl/clientvm"
@@ -139,15 +140,31 @@ func readValueAtDepth(value js.Value, depth int) (bytecode.Value, error) {
 		return bytecode.Undefined(), fmt.Errorf("JavaScript value nesting is too deep")
 	}
 	switch value.Type() {
-	case js.TypeUndefined, js.TypeNull:
+	case js.TypeUndefined:
 		return bytecode.Undefined(), nil
+	case js.TypeNull:
+		return bytecode.Null(), nil
 	case js.TypeBoolean:
 		return bytecode.Boolean(value.Bool()), nil
 	case js.TypeNumber:
-		return bytecode.Number(value.Float()), nil
+		return bytecode.NumberFromFloat64(value.Float())
 	case js.TypeString:
 		return bytecode.String(value.String()), nil
 	case js.TypeObject:
+		if value.InstanceOf(js.Global().Get("Date")) {
+			milliseconds := value.Call("getTime").Float()
+			if math.IsNaN(milliseconds) || math.IsInf(milliseconds, 0) || milliseconds > math.MaxInt64 || milliseconds < math.MinInt64 {
+				return bytecode.Undefined(), fmt.Errorf("invalid JavaScript date")
+			}
+			return bytecode.Date(time.UnixMilli(int64(milliseconds)))
+		}
+		if kind := value.Get("kind"); kind.Type() == js.TypeString && kind.String() == "number" {
+			text := value.Get("text")
+			if text.Type() != js.TypeString {
+				return bytecode.Undefined(), fmt.Errorf("exact number requires decimal text")
+			}
+			return bytecode.ParseNumber(text.String())
+		}
 		if !js.Global().Get("Array").Call("isArray", value).Bool() {
 			break
 		}
@@ -184,8 +201,10 @@ func valueResultAtDepth(value bytecode.Value, depth int) js.Value {
 		result.Set("value", js.Undefined())
 	case bytecode.NumberKind:
 		number, _ := value.AsNumber()
+		exact, _ := value.NumberText()
 		result.Set("kind", "number")
 		result.Set("value", number)
+		result.Set("text", exact)
 	case bytecode.StringKind:
 		text, _ := value.AsString()
 		result.Set("kind", "string")
@@ -207,6 +226,15 @@ func valueResultAtDepth(value bytecode.Value, depth int) js.Value {
 		}
 		result.Set("kind", "array")
 		result.Set("value", array)
+	case bytecode.NullKind:
+		result.Set("kind", "null")
+		result.Set("value", js.Null())
+	case bytecode.DateKind:
+		date, _ := value.AsDate()
+		ticks, _ := value.DateTicks()
+		result.Set("kind", "date")
+		result.Set("value", js.Global().Get("Date").New(date.UnixMilli()))
+		result.Set("ticks100us", float64(ticks))
 	default:
 		return failure("unsupported VM result type")
 	}

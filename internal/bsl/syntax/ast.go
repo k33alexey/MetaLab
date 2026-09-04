@@ -155,6 +155,27 @@ type BooleanExpression struct {
 func (*BooleanExpression) expression()         {}
 func (node *BooleanExpression) NodeSpan() Span { return node.SourceSpan }
 
+// DateExpression retains the compact BSL date literal payload.
+type DateExpression struct {
+	Text       string
+	SourceSpan Span
+}
+
+func (*DateExpression) expression()         {}
+func (node *DateExpression) NodeSpan() Span { return node.SourceSpan }
+
+// UndefinedExpression is the Undefined literal.
+type UndefinedExpression struct{ SourceSpan Span }
+
+func (*UndefinedExpression) expression()         {}
+func (node *UndefinedExpression) NodeSpan() Span { return node.SourceSpan }
+
+// NullExpression is the database NULL literal.
+type NullExpression struct{ SourceSpan Span }
+
+func (*NullExpression) expression()         {}
+func (node *NullExpression) NodeSpan() Span { return node.SourceSpan }
+
 // GroupExpression preserves a parenthesized expression source range.
 type GroupExpression struct {
 	Expression Expression

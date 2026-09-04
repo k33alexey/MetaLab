@@ -3,6 +3,7 @@ package vm
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
 	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
@@ -272,6 +273,150 @@ func TestMachineRejectsNonBooleanCondition(t *testing.T) {
 	machine := compileMachine(t, "Function Test()\nIf 1 Then Return 1; EndIf;\nReturn 0;\nEndFunction")
 	if _, err := machine.Call("Test"); err == nil || err.Error() != "Test:2:1: condition requires a boolean" {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestMachineExecutesPrimitiveLiteralsAndDateArithmetic(t *testing.T) {
+	t.Parallel()
+
+	machine := compileMachine(t, `Function UndefinedValue() Return Undefined; EndFunction
+Function NullValue() Return Null; EndFunction
+Function DateValue() Return '20240229010203' + 60; EndFunction
+Function DateDifference() Return '20240229010203' - '20240229010103'; EndFunction
+Function DateSubtract() Return '20240229010203' - 3.5; EndFunction`)
+	undefined, err := machine.Call("UndefinedValue")
+	if err != nil || undefined.Kind() != bytecode.UndefinedKind {
+		t.Fatalf("UndefinedValue() = %v, %v", undefined, err)
+	}
+	null, err := machine.Call("NullValue")
+	if err != nil || null.Kind() != bytecode.NullKind {
+		t.Fatalf("NullValue() = %v, %v", null, err)
+	}
+	shifted, err := machine.Call("DateValue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDate := time.Date(2024, 2, 29, 1, 3, 3, 0, time.UTC)
+	if value, ok := shifted.AsDate(); !ok || !value.Equal(wantDate) {
+		t.Fatalf("DateValue() = %v, want %v", shifted, wantDate)
+	}
+	difference, err := machine.Call("DateDifference")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if number, ok := difference.AsNumber(); !ok || number != 60 {
+		t.Fatalf("DateDifference() = %v, want 60", difference)
+	}
+	subtracted, err := machine.Call("DateSubtract")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDate = time.Date(2024, 2, 29, 1, 1, 59, 500_000_000, time.UTC)
+	if value, ok := subtracted.AsDate(); !ok || !value.Equal(wantDate) {
+		t.Fatalf("DateSubtract() = %v, want %v", subtracted, wantDate)
+	}
+}
+
+func TestMachineKeepsDecimalArithmeticExact(t *testing.T) {
+	t.Parallel()
+
+	machine := compileMachine(t, `Function ExactSum() Return 0.1 + 0.2; EndFunction
+Function Maximum() Return 99999999999999999999999999999999999999; EndFunction`)
+	sum, err := machine.Call("ExactSum")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text, ok := sum.NumberText(); !ok || text != "0.3" {
+		t.Fatalf("ExactSum() = %v, want 0.3", sum)
+	}
+	maximum, err := machine.Call("Maximum")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text, ok := maximum.NumberText(); !ok || text != "99999999999999999999999999999999999999" {
+		t.Fatalf("Maximum() = %v", maximum)
+	}
+}
+
+func TestMachineComparesPrimitiveTypesAndConcatenatesString(t *testing.T) {
+	t.Parallel()
+
+	machine := compileMachine(t, `Function Ordered()
+Return Null < Undefined And Undefined < False And False < 0 And 0 < '20240101' And '20240101' < "A";
+EndFunction
+Function DistinctEmptyValues() Return Null <> Undefined; EndFunction
+Function CaseSensitive() Return "A" <> "a"; EndFunction
+Function Presentation() Return "Value=" + 42; EndFunction`)
+	for _, function := range []string{"Ordered", "DistinctEmptyValues", "CaseSensitive"} {
+		result, err := machine.Call(function)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if value, ok := result.AsBoolean(); !ok || !value {
+			t.Fatalf("%s() = %v, want True", function, result)
+		}
+	}
+	result, err := machine.Call("Presentation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value, ok := result.AsString(); !ok || value != "Value=42" {
+		t.Fatalf("Presentation() = %v", result)
+	}
+}
+
+func TestMachineShortCircuitsLogicalExpressions(t *testing.T) {
+	t.Parallel()
+
+	machine := compileMachine(t, `Function AndValue() Return False And (1 / 0 = 0); EndFunction
+Function OrValue() Return True Or (1 / 0 = 0); EndFunction`)
+	andValue, err := machine.Call("AndValue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value, ok := andValue.AsBoolean(); !ok || value {
+		t.Fatalf("AndValue() = %v", andValue)
+	}
+	orValue, err := machine.Call("OrValue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value, ok := orValue.AsBoolean(); !ok || !value {
+		t.Fatalf("OrValue() = %v", orValue)
+	}
+}
+
+func TestMachineValidatesEvaluatedLogicalOperand(t *testing.T) {
+	t.Parallel()
+
+	for _, source := range []string{
+		"Function Test() Return True And 1; EndFunction",
+		"Function Test() Return False Or 1; EndFunction",
+	} {
+		machine := compileMachine(t, source)
+		if _, err := machine.Call("Test"); err == nil {
+			t.Fatalf("Call() accepted non-boolean operand in %q", source)
+		}
+	}
+}
+
+func TestCompileRejectsInvalidCalendarDate(t *testing.T) {
+	t.Parallel()
+
+	for _, literal := range []string{"''", "'20230229'", "'20240101240000'", "'40000101'"} {
+		_, diagnostics := compiler.CompileSource("date.bsl", "Function Test() Return "+literal+"; EndFunction")
+		if len(diagnostics) != 1 || diagnostics[0].Code != "BSL3014" {
+			t.Fatalf("literal %s diagnostics = %v", literal, diagnostics)
+		}
+	}
+}
+
+func TestCompileRejectsNumberOutsidePrecision(t *testing.T) {
+	t.Parallel()
+
+	_, diagnostics := compiler.CompileSource("number.bsl", "Function Test() Return 123456789012345678901234567890123456789; EndFunction")
+	if len(diagnostics) != 1 || diagnostics[0].Code != "BSL3006" {
+		t.Fatalf("diagnostics = %v", diagnostics)
 	}
 }
 

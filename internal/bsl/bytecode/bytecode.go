@@ -9,7 +9,7 @@ import (
 )
 
 // Version changes whenever the bytecode contract becomes incompatible.
-const Version uint16 = 2
+const Version uint16 = 3
 
 // Opcode identifies one stack-machine instruction.
 type Opcode uint8
@@ -38,6 +38,11 @@ const (
 	OpOr
 	OpArrayLength
 	OpArrayElement
+	OpPop
+	OpJumpIfTrueKeep
+	OpJumpIfFalseKeep
+	OpPositive
+	OpBoolean
 )
 
 var opcodeNames = [...]string{
@@ -50,6 +55,9 @@ var opcodeNames = [...]string{
 	OpJump: "jump", OpJumpIfFalse: "jump_if_false",
 	OpAnd: "and", OpOr: "or",
 	OpArrayLength: "array_length", OpArrayElement: "array_element",
+	OpPop: "pop", OpJumpIfTrueKeep: "jump_if_true_keep", OpJumpIfFalseKeep: "jump_if_false_keep",
+	OpPositive: "positive",
+	OpBoolean:  "boolean",
 }
 
 func (opcode Opcode) String() string {
@@ -134,11 +142,11 @@ func validateFunction(function *Function) error {
 			if instruction.Operand >= function.LocalCount {
 				return fmt.Errorf("instruction %d references local %d", index, instruction.Operand)
 			}
-		case OpJump, OpJumpIfFalse:
+		case OpJump, OpJumpIfFalse, OpJumpIfTrueKeep, OpJumpIfFalseKeep:
 			if int(instruction.Operand) >= len(function.Code) {
 				return fmt.Errorf("instruction %d jumps outside code to %d", index, instruction.Operand)
 			}
-		case OpNegate, OpNot, OpArrayLength, OpAdd, OpSubtract, OpMultiply, OpDivide, OpModulo,
+		case OpNegate, OpNot, OpArrayLength, OpPositive, OpBoolean, OpPop, OpAdd, OpSubtract, OpMultiply, OpDivide, OpModulo,
 			OpEqual, OpNotEqual, OpLess, OpLessEqual, OpGreater, OpGreaterEqual,
 			OpAnd, OpOr, OpArrayElement, OpReturn:
 		default:
@@ -180,7 +188,7 @@ func validateFunction(function *Function) error {
 			successors := [2]int{index + 1, -1}
 			if instruction.Opcode == OpJump {
 				successors[0] = int(instruction.Operand)
-			} else if instruction.Opcode == OpJumpIfFalse {
+			} else if instruction.Opcode == OpJumpIfFalse || instruction.Opcode == OpJumpIfTrueKeep || instruction.Opcode == OpJumpIfFalseKeep {
 				successors[1] = int(instruction.Operand)
 			}
 			for _, successor := range successors {
@@ -209,9 +217,9 @@ func stackEffect(opcode Opcode) (required, delta int) {
 	switch opcode {
 	case OpConstant, OpLoadLocal:
 		return 0, 1
-	case OpStoreLocal, OpJumpIfFalse, OpReturn:
+	case OpStoreLocal, OpJumpIfFalse, OpPop, OpReturn:
 		return 1, -1
-	case OpNegate, OpNot, OpArrayLength:
+	case OpNegate, OpNot, OpArrayLength, OpPositive, OpBoolean, OpJumpIfTrueKeep, OpJumpIfFalseKeep:
 		return 1, 0
 	case OpJump:
 		return 0, 0

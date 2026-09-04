@@ -1,8 +1,10 @@
 package bytecode
 
 import (
+	"math"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestProgramValidationAndLookup(t *testing.T) {
@@ -72,11 +74,17 @@ func TestProgramRejectsMalformedBytecode(t *testing.T) {
 func TestValueKindsAndFormatting(t *testing.T) {
 	t.Parallel()
 
+	if NumberKind.String() != "number" || ValueKind(255).String() != "value_kind(255)" {
+		t.Fatal("ValueKind.String() returned an unstable name")
+	}
 	if value := Undefined(); value.Kind() != UndefinedKind || value.String() != "Undefined" {
 		t.Fatalf("Undefined() = %#v", value)
 	}
 	if value := Number(42.5); value.Kind() != NumberKind || value.String() != "42.5" {
 		t.Fatalf("Number() = %#v", value)
+	}
+	if _, err := NumberFromFloat64(math.Inf(1)); err == nil {
+		t.Fatal("NumberFromFloat64() accepted infinity")
 	}
 	if value := String("MetaLab"); value.Kind() != StringKind || value.String() != "MetaLab" {
 		t.Fatalf("String() = %#v", value)
@@ -95,6 +103,32 @@ func TestValueKindsAndFormatting(t *testing.T) {
 	}
 	if _, ok := array.ArrayElement(2); ok {
 		t.Fatal("ArrayElement() accepted an out-of-range index")
+	}
+	if value := Null(); value.Kind() != NullKind || value.String() != "Null" {
+		t.Fatalf("Null() = %#v", value)
+	}
+	date, err := ParseDate("20240229010203")
+	if err != nil || date.Kind() != DateKind || date.String() != "2024-02-29 01:02:03.0000" {
+		t.Fatalf("ParseDate() = %v, %v", date, err)
+	}
+	if decoded, ok := date.AsDate(); !ok || !decoded.Equal(time.Date(2024, 2, 29, 1, 2, 3, 0, time.UTC)) {
+		t.Fatalf("AsDate() = %v, %v", decoded, ok)
+	}
+	fraction, err := ParseNumber("0.00005")
+	if err != nil {
+		t.Fatal(err)
+	}
+	shifted, err := AddDateSeconds(date, fraction)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded, ok := shifted.AsDate(); !ok || decoded.Nanosecond() != 100_000 {
+		t.Fatalf("fractional date arithmetic = %v, %v", decoded, ok)
+	}
+	for _, invalid := range []string{"", "20230229", "20240101240000", "40000101"} {
+		if _, err := ParseDate(invalid); err == nil {
+			t.Fatalf("ParseDate(%q) succeeded", invalid)
+		}
 	}
 	if value := (Value{kind: ValueKind(255)}).String(); value != "value(255)" {
 		t.Fatalf("unknown Value.String() = %q", value)
@@ -145,7 +179,7 @@ func TestProgramRejectsConflictingBranchStackDepths(t *testing.T) {
 func TestOpcodeStringHandlesUnknownValue(t *testing.T) {
 	t.Parallel()
 
-	for opcode := OpConstant; opcode <= OpArrayElement; opcode++ {
+	for opcode := OpConstant; opcode <= OpBoolean; opcode++ {
 		if strings.HasPrefix(opcode.String(), "opcode(") {
 			t.Fatalf("opcode %d has no stable name", opcode)
 		}

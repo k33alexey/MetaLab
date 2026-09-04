@@ -10,9 +10,17 @@ import (
 func TestBinaryCodecRoundTripIsDeterministic(t *testing.T) {
 	t.Parallel()
 
+	date, err := ParseDate("20260904153045")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exact, err := ParseNumber("99999999999999999999999999999999999999")
+	if err != nil {
+		t.Fatal(err)
+	}
 	program := &Program{Version: Version, Functions: []Function{{
 		Name: "Расчёт", IsFunction: true, Export: true, Arity: 1, LocalCount: 2, MaxStack: 2,
-		Constants: []Value{Undefined(), Number(2.5), String("MetaLab"), Boolean(true)},
+		Constants: []Value{Undefined(), Number(2.5), String("MetaLab"), Boolean(true), Null(), date, exact},
 		Code: []Instruction{
 			{Opcode: OpLoadLocal, Span: testSpan(1, 1)},
 			{Opcode: OpConstant, Operand: 1, Span: testSpan(2, 8)},
@@ -44,6 +52,12 @@ func TestBinaryCodecRoundTripIsDeterministic(t *testing.T) {
 	}
 	if boolean, ok := function.Constants[3].AsBoolean(); !ok || !boolean {
 		t.Fatalf("decoded boolean = %v, %v", boolean, ok)
+	}
+	if function.Constants[4].Kind() != NullKind || function.Constants[5].String() != date.String() {
+		t.Fatalf("decoded null/date = %v, %v", function.Constants[4], function.Constants[5])
+	}
+	if number, ok := function.Constants[6].NumberText(); !ok || number != exact.String() {
+		t.Fatalf("decoded exact number = %q, %v", number, ok)
 	}
 }
 
@@ -89,6 +103,20 @@ func TestBinaryCodecRejectsMalformedBoolean(t *testing.T) {
 	decoder := wireDecoder{data: []byte{byte(BooleanKind), 2}}
 	if _, err := decoder.readValue(); err == nil {
 		t.Fatal("readValue() accepted a malformed boolean")
+	}
+}
+
+func TestBinaryCodecRejectsMalformedNumber(t *testing.T) {
+	t.Parallel()
+
+	var encoded bytes.Buffer
+	encoded.WriteByte(byte(NumberKind))
+	if err := writeString(&encoded, "1e100"); err != nil {
+		t.Fatal(err)
+	}
+	decoder := wireDecoder{data: encoded.Bytes()}
+	if _, err := decoder.readValue(); err == nil {
+		t.Fatal("readValue() accepted a malformed decimal")
 	}
 }
 

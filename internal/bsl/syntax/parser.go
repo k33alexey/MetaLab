@@ -356,6 +356,15 @@ func (p *parser) parsePrimary() Expression {
 	case True, False:
 		p.advance()
 		return &BooleanExpression{Value: current.Kind == True, SourceSpan: current.Span}
+	case Date:
+		p.advance()
+		return &DateExpression{Text: current.Value, SourceSpan: current.Span}
+	case Undefined:
+		p.advance()
+		return &UndefinedExpression{SourceSpan: current.Span}
+	case Null:
+		p.advance()
+		return &NullExpression{SourceSpan: current.Span}
 	case Identifier:
 		p.advance()
 		return &IdentifierExpression{Name: current.Value, SourceSpan: current.Span}
@@ -500,7 +509,7 @@ func (p *parser) report(current Token, code, message string) {
 
 func canStartExpression(kind Kind) bool {
 	switch kind {
-	case Number, String, StringStart, Identifier, True, False, LeftParen, Plus, Minus, Not:
+	case Number, String, StringStart, Identifier, True, False, Date, Undefined, Null, LeftParen, Plus, Minus, Not:
 		return true
 	default:
 		return false

@@ -118,9 +118,8 @@ func writeValue(output *bytes.Buffer, value Value) error {
 	case UndefinedKind:
 		return nil
 	case NumberKind:
-		number, _ := value.AsNumber()
-		writeUint64(output, math.Float64bits(number))
-		return nil
+		number, _ := value.NumberText()
+		return writeString(output, number)
 	case StringKind:
 		text, _ := value.AsString()
 		return writeString(output, text)
@@ -131,6 +130,12 @@ func writeValue(output *bytes.Buffer, value Value) error {
 		} else {
 			output.WriteByte(0)
 		}
+		return nil
+	case NullKind:
+		return nil
+	case DateKind:
+		ticks, _ := value.DateTicks()
+		writeUint64(output, uint64(ticks))
 		return nil
 	default:
 		return fmt.Errorf("unsupported value kind %d", value.Kind())
@@ -253,11 +258,11 @@ func (decoder *wireDecoder) readValue() (Value, error) {
 	case UndefinedKind:
 		return Undefined(), nil
 	case NumberKind:
-		bits, readErr := decoder.readUint64()
+		text, readErr := decoder.readString()
 		if readErr != nil {
 			return Value{}, readErr
 		}
-		return Number(math.Float64frombits(bits)), nil
+		return ParseNumber(text)
 	case StringKind:
 		text, readErr := decoder.readString()
 		if readErr != nil {
@@ -273,6 +278,14 @@ func (decoder *wireDecoder) readValue() (Value, error) {
 			return Value{}, fmt.Errorf("invalid boolean value %d", encoded)
 		}
 		return Boolean(encoded == 1), nil
+	case NullKind:
+		return Null(), nil
+	case DateKind:
+		ticks, readErr := decoder.readUint64()
+		if readErr != nil {
+			return Value{}, readErr
+		}
+		return DateFromTicks(int64(ticks))
 	default:
 		return Value{}, fmt.Errorf("unsupported value kind %d", kind)
 	}

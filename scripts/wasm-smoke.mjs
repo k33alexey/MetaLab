@@ -74,7 +74,7 @@ assertSuccess(loaded, "load");
 
 const first = globalThis.MetaLabWasm.call(loaded.handle, "add", [20, 22]);
 assertSuccess(first, "call");
-if (first.kind !== "number" || first.value !== 42) {
+if (first.kind !== "number" || first.value !== 42 || first.text !== "42") {
   throw new Error(`unexpected VM result: ${JSON.stringify(first)}`);
 }
 const text = globalThis.MetaLabWasm.call(loaded.handle, "Add", ["Meta", "Lab"]);
@@ -96,6 +96,22 @@ const echoed = globalThis.MetaLabWasm.call(loaded.handle, "EchoArray", [[1, true
 assertSuccess(echoed, "array result");
 if (echoed.kind !== "array" || JSON.stringify(echoed.value) !== '[1,true,"three"]') {
   throw new Error(`unexpected array result: ${JSON.stringify(echoed)}`);
+}
+const sourceDate = new Date(Date.UTC(2026, 8, 4, 15, 30, 45));
+const echoedDate = globalThis.MetaLabWasm.call(loaded.handle, "EchoArray", [sourceDate]);
+assertSuccess(echoedDate, "date result");
+if (echoedDate.kind !== "date" || echoedDate.value.toISOString() !== sourceDate.toISOString()) {
+  throw new Error(`unexpected date result: ${JSON.stringify(echoedDate)}`);
+}
+const echoedNull = globalThis.MetaLabWasm.call(loaded.handle, "EchoArray", [null]);
+assertSuccess(echoedNull, "null result");
+if (echoedNull.kind !== "null" || echoedNull.value !== null) {
+  throw new Error(`unexpected null result: ${JSON.stringify(echoedNull)}`);
+}
+const exact = globalThis.MetaLabWasm.call(loaded.handle, "EchoArray", [{kind: "number", text: "0.1"}]);
+assertSuccess(exact, "exact number result");
+if (exact.kind !== "number" || exact.value !== 0.1 || exact.text !== "0.1") {
+  throw new Error(`unexpected exact number result: ${JSON.stringify(exact)}`);
 }
 const invalidArgument = globalThis.MetaLabWasm.call(loaded.handle, "Add", [{}, 1]);
 if (invalidArgument.ok) {
@@ -137,7 +153,7 @@ function assertSuccess(result, operation) {
 function encodeAddProgram() {
   const writer = new BinaryWriter();
   writer.ascii("MLBC");
-  writer.uint16(2);
+  writer.uint16(3);
   writer.uint32(4);
 
   writer.string("Add");

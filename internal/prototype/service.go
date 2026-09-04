@@ -103,8 +103,18 @@ func (service *Service) calculate(response http.ResponseWriter, request *http.Re
 		return
 	}
 
+	left, err := bytecode.NumberFromFloat64(input.Left)
+	if err != nil {
+		writeError(response, http.StatusBadRequest, "invalid left operand: "+err.Error())
+		return
+	}
+	right, err := bytecode.NumberFromFloat64(input.Right)
+	if err != nil {
+		writeError(response, http.StatusBadRequest, "invalid right operand: "+err.Error())
+		return
+	}
 	started := time.Now()
-	result, err := service.machine.Call("Calculate", bytecode.Number(input.Left), bytecode.Number(input.Right))
+	result, err := service.machine.Call("Calculate", left, right)
 	if err != nil {
 		writeError(response, http.StatusUnprocessableEntity, err.Error())
 		return

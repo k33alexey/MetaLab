@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -120,6 +121,29 @@ EndProcedure`,
 				t.Fatalf("conditional span = %+v", conditional.SourceSpan)
 			}
 		})
+	}
+}
+
+func TestParsePrimitiveLiterals(t *testing.T) {
+	t.Parallel()
+
+	source := `Function DateValue() Return '20260904153045'; EndFunction
+Function UndefinedValue() Return Undefined; EndFunction
+Function NullValue() Return Null; EndFunction
+Function BooleanValue() Return True; EndFunction`
+	module, diagnostics := Parse("literals.bsl", source)
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	if len(module.Routines) != 4 {
+		t.Fatalf("routines = %d", len(module.Routines))
+	}
+	want := []Expression{&DateExpression{}, &UndefinedExpression{}, &NullExpression{}, &BooleanExpression{}}
+	for index, expected := range want {
+		returned := module.Routines[index].Body[0].(*ReturnStatement)
+		if fmt.Sprintf("%T", returned.Value) != fmt.Sprintf("%T", expected) {
+			t.Fatalf("routine %d literal = %T, want %T", index, returned.Value, expected)
+		}
 	}
 }
 

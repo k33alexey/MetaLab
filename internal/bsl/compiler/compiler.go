@@ -4,7 +4,6 @@ package compiler
 import (
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
@@ -138,17 +137,29 @@ func (c *functionCompiler) compileStatement(statement syntax.Statement) {
 func (c *functionCompiler) compileExpression(expression syntax.Expression) {
 	switch node := expression.(type) {
 	case *syntax.NumberExpression:
-		value, err := strconv.ParseFloat(node.Text, 64)
+		value, err := bytecode.ParseNumber(node.Text)
 		if err != nil {
 			c.owner.report(node.SourceSpan, "BSL3006", "invalid number "+node.Text)
 			c.emitConstant(bytecode.Undefined(), node.SourceSpan)
 			return
 		}
-		c.emitConstant(bytecode.Number(value), node.SourceSpan)
+		c.emitConstant(value, node.SourceSpan)
 	case *syntax.StringExpression:
 		c.emitConstant(bytecode.String(node.Value), node.SourceSpan)
 	case *syntax.BooleanExpression:
 		c.emitConstant(bytecode.Boolean(node.Value), node.SourceSpan)
+	case *syntax.DateExpression:
+		value, err := bytecode.ParseDate(node.Text)
+		if err != nil {
+			c.owner.report(node.SourceSpan, "BSL3014", "invalid date literal: "+err.Error())
+			c.emitConstant(bytecode.Undefined(), node.SourceSpan)
+			return
+		}
+		c.emitConstant(value, node.SourceSpan)
+	case *syntax.UndefinedExpression:
+		c.emitConstant(bytecode.Undefined(), node.SourceSpan)
+	case *syntax.NullExpression:
+		c.emitConstant(bytecode.Null(), node.SourceSpan)
 	case *syntax.IdentifierExpression:
 		index, ok := c.locals[strings.ToLower(node.Name)]
 		if !ok {
@@ -162,12 +173,18 @@ func (c *functionCompiler) compileExpression(expression syntax.Expression) {
 	case *syntax.UnaryExpression:
 		c.compileExpression(node.Operand)
 		switch node.Operator {
+		case syntax.Plus:
+			c.emit(bytecode.OpPositive, 0, node.SourceSpan)
 		case syntax.Minus:
 			c.emit(bytecode.OpNegate, 0, node.SourceSpan)
 		case syntax.Not:
 			c.emit(bytecode.OpNot, 0, node.SourceSpan)
 		}
 	case *syntax.BinaryExpression:
+		if node.Operator == syntax.And || node.Operator == syntax.Or {
+			c.compileLogical(node)
+			return
+		}
 		c.compileExpression(node.Left)
 		c.compileExpression(node.Right)
 		opcode := bytecode.OpAdd
@@ -206,6 +223,19 @@ func (c *functionCompiler) compileExpression(expression syntax.Expression) {
 		c.owner.report(expression.NodeSpan(), "BSL3009", fmt.Sprintf("unsupported expression %T", expression))
 		c.emitConstant(bytecode.Undefined(), expression.NodeSpan())
 	}
+}
+
+func (c *functionCompiler) compileLogical(expression *syntax.BinaryExpression) {
+	c.compileExpression(expression.Left)
+	opcode := bytecode.OpJumpIfFalseKeep
+	if expression.Operator == syntax.Or {
+		opcode = bytecode.OpJumpIfTrueKeep
+	}
+	endJump := c.emitJump(opcode, expression.SourceSpan)
+	c.emit(bytecode.OpPop, 0, expression.SourceSpan)
+	c.compileExpression(expression.Right)
+	c.emit(bytecode.OpBoolean, 0, expression.Right.NodeSpan())
+	c.patchJump(endJump, len(c.function.Code), expression.SourceSpan)
 }
 
 func (c *functionCompiler) compileIf(statement *syntax.IfStatement) {
@@ -391,7 +421,8 @@ func (c *functionCompiler) patchJump(index, target int, span syntax.Span) {
 
 func (c *functionCompiler) hasJumpTarget(target int) bool {
 	for _, instruction := range c.function.Code {
-		if (instruction.Opcode == bytecode.OpJump || instruction.Opcode == bytecode.OpJumpIfFalse) && int(instruction.Operand) == target {
+		if (instruction.Opcode == bytecode.OpJump || instruction.Opcode == bytecode.OpJumpIfFalse ||
+			instruction.Opcode == bytecode.OpJumpIfTrueKeep || instruction.Opcode == bytecode.OpJumpIfFalseKeep) && int(instruction.Operand) == target {
 			return true
 		}
 	}
@@ -413,7 +444,7 @@ func (c *functionCompiler) emit(opcode bytecode.Opcode, operand uint16, span syn
 	switch opcode {
 	case bytecode.OpConstant, bytecode.OpLoadLocal:
 		c.depth++
-	case bytecode.OpStoreLocal, bytecode.OpJumpIfFalse:
+	case bytecode.OpStoreLocal, bytecode.OpJumpIfFalse, bytecode.OpPop:
 		c.depth--
 	case bytecode.OpAdd, bytecode.OpSubtract, bytecode.OpMultiply, bytecode.OpDivide,
 		bytecode.OpModulo, bytecode.OpEqual, bytecode.OpNotEqual, bytecode.OpLess,

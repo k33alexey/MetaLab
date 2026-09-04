@@ -76,6 +76,7 @@ func TestServiceRejectsInvalidRequests(t *testing.T) {
 		{name: "malformed", body: `{`},
 		{name: "unknown field", body: `{"left":1,"right":2,"other":3}`},
 		{name: "multiple values", body: `{"left":1,"right":2} {}`},
+		{name: "number outside BSL precision", body: `{"left":1e100,"right":2}`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
