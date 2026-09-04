@@ -50,6 +50,79 @@ func TestParseRussianAndEnglishHaveEquivalentShape(t *testing.T) {
 	}
 }
 
+func TestParseRussianAndEnglishControlFlow(t *testing.T) {
+	t.Parallel()
+
+	sources := map[string]string{
+		"russian": `Процедура Поток(Коллекция)
+Итог = 0;
+Если Истина Тогда
+    Пока Ложь Цикл
+        Прервать;
+    КонецЦикла;
+ИначеЕсли Не Ложь И 1 < 2 Или Ложь Тогда
+    Для Индекс = 1 По 3 Цикл
+        Продолжить;
+    КонецЦикла;
+Иначе
+    Для Каждого Элемент Из Коллекция Цикл
+        Прервать;
+    КонецЦикла;
+КонецЕсли;
+КонецПроцедуры`,
+		"english": `Procedure Flow(Collection)
+Total = 0;
+If True Then
+    While False Do
+        Break;
+    EndDo;
+ElsIf Not False And 1 < 2 Or False Then
+    For Index = 1 To 3 Do
+        Continue;
+    EndDo;
+Else
+    For Each Item In Collection Do
+        Break;
+    EndDo;
+EndIf;
+EndProcedure`,
+	}
+	for name, source := range sources {
+		t.Run(name, func(t *testing.T) {
+			module, diagnostics := Parse(name+".bsl", source)
+			if len(diagnostics) != 0 {
+				t.Fatalf("diagnostics = %v", diagnostics)
+			}
+			if len(module.Routines) != 1 || len(module.Routines[0].Body) != 2 {
+				t.Fatalf("module = %+v", module)
+			}
+			if _, ok := module.Routines[0].Body[0].(*AssignmentStatement); !ok {
+				t.Fatalf("first statement = %T", module.Routines[0].Body[0])
+			}
+			conditional, ok := module.Routines[0].Body[1].(*IfStatement)
+			if !ok || len(conditional.Branches) != 2 || len(conditional.ElseBody) != 1 {
+				t.Fatalf("conditional = %#v", module.Routines[0].Body[1])
+			}
+			if _, ok := conditional.Branches[0].Body[0].(*WhileStatement); !ok {
+				t.Fatalf("first branch = %T", conditional.Branches[0].Body[0])
+			}
+			if _, ok := conditional.Branches[1].Body[0].(*ForStatement); !ok {
+				t.Fatalf("second branch = %T", conditional.Branches[1].Body[0])
+			}
+			if _, ok := conditional.ElseBody[0].(*ForEachStatement); !ok {
+				t.Fatalf("else branch = %T", conditional.ElseBody[0])
+			}
+			condition := conditional.Branches[1].Condition.(*BinaryExpression)
+			if condition.Operator != Or || condition.Left.(*BinaryExpression).Operator != And {
+				t.Fatalf("condition precedence = %#v", condition)
+			}
+			if conditional.SourceSpan.Start.Line != 3 || conditional.SourceSpan.End.Line != 15 {
+				t.Fatalf("conditional span = %+v", conditional.SourceSpan)
+			}
+		})
+	}
+}
+
 func TestParseReportsFilenameLineAndColumn(t *testing.T) {
 	t.Parallel()
 
@@ -357,6 +430,28 @@ func FuzzTokenizeLossless(f *testing.F) {
 		}
 		if len(tokens) == 0 || tokens[len(tokens)-1].Kind != EOF {
 			t.Fatalf("missing EOF token: %+v", tokens)
+		}
+	})
+}
+
+func FuzzParseControlFlowNeverPanics(f *testing.F) {
+	for _, source := range []string{
+		"Procedure Test() EndProcedure",
+		"Function Test(Value) If Value > 0 Then Return Value; Else Return 0; EndIf; EndFunction",
+		"Procedure Test() While True Do Break; EndDo; EndProcedure",
+		"Procedure Test(Items) For Each Item In Items Do Continue; EndDo; EndProcedure",
+	} {
+		f.Add(source)
+	}
+	f.Fuzz(func(t *testing.T, source string) {
+		module, diagnostics := Parse("fuzz.bsl", source)
+		if module == nil {
+			t.Fatal("Parse() returned a nil module")
+		}
+		for _, diagnostic := range diagnostics {
+			if diagnostic.Span.Start.Offset < 0 || diagnostic.Span.End.Offset < diagnostic.Span.Start.Offset || diagnostic.Span.End.Offset > len(source) {
+				t.Fatalf("diagnostic span = %+v, source bytes = %d", diagnostic.Span, len(source))
+			}
 		}
 	})
 }

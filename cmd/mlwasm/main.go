@@ -12,7 +12,11 @@ import (
 	"github.com/k33alexey/MetaLab/internal/bsl/clientvm"
 )
 
-const maxInputSize = 64 << 20
+const (
+	maxInputSize      = 64 << 20
+	maxCollectionSize = 1 << 20
+	maxValueNesting   = 64
+)
 
 var (
 	registry  = clientvm.NewRegistry()
@@ -127,19 +131,52 @@ func readHandle(value js.Value) (uint32, error) {
 }
 
 func readValue(value js.Value) (bytecode.Value, error) {
+	return readValueAtDepth(value, 0)
+}
+
+func readValueAtDepth(value js.Value, depth int) (bytecode.Value, error) {
+	if depth > maxValueNesting {
+		return bytecode.Undefined(), fmt.Errorf("JavaScript value nesting is too deep")
+	}
 	switch value.Type() {
 	case js.TypeUndefined, js.TypeNull:
 		return bytecode.Undefined(), nil
+	case js.TypeBoolean:
+		return bytecode.Boolean(value.Bool()), nil
 	case js.TypeNumber:
 		return bytecode.Number(value.Float()), nil
 	case js.TypeString:
 		return bytecode.String(value.String()), nil
+	case js.TypeObject:
+		if !js.Global().Get("Array").Call("isArray", value).Bool() {
+			break
+		}
+		length := value.Length()
+		if length < 0 || length > maxCollectionSize {
+			return bytecode.Undefined(), fmt.Errorf("JavaScript array is too large")
+		}
+		elements := make([]bytecode.Value, length)
+		for index := range elements {
+			converted, err := readValueAtDepth(value.Index(index), depth+1)
+			if err != nil {
+				return bytecode.Undefined(), fmt.Errorf("array element %d: %w", index, err)
+			}
+			elements[index] = converted
+		}
+		return bytecode.Array(elements...), nil
 	default:
-		return bytecode.Undefined(), fmt.Errorf("unsupported JavaScript value type %s", value.Type())
 	}
+	return bytecode.Undefined(), fmt.Errorf("unsupported JavaScript value type %s", value.Type())
 }
 
 func valueResult(value bytecode.Value) js.Value {
+	return valueResultAtDepth(value, 0)
+}
+
+func valueResultAtDepth(value bytecode.Value, depth int) js.Value {
+	if depth > maxValueNesting {
+		return failure("VM result nesting is too deep")
+	}
 	result := success()
 	switch value.Kind() {
 	case bytecode.UndefinedKind:
@@ -153,6 +190,23 @@ func valueResult(value bytecode.Value) js.Value {
 		text, _ := value.AsString()
 		result.Set("kind", "string")
 		result.Set("value", text)
+	case bytecode.BooleanKind:
+		boolean, _ := value.AsBoolean()
+		result.Set("kind", "boolean")
+		result.Set("value", boolean)
+	case bytecode.ArrayKind:
+		length, _ := value.ArrayLength()
+		array := js.Global().Get("Array").New(length)
+		for index := 0; index < length; index++ {
+			element, _ := value.ArrayElement(index)
+			converted := valueResultAtDepth(element, depth+1)
+			if !converted.Get("ok").Bool() {
+				return failure(fmt.Sprintf("array element %d: %s", index, converted.Get("error").String()))
+			}
+			array.SetIndex(index, converted.Get("value"))
+		}
+		result.Set("kind", "array")
+		result.Set("value", array)
 	default:
 		return failure("unsupported VM result type")
 	}

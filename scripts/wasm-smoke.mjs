@@ -82,7 +82,22 @@ assertSuccess(text, "string call");
 if (text.kind !== "string" || text.value !== "MetaLab") {
   throw new Error(`unexpected string result: ${JSON.stringify(text)}`);
 }
-const invalidArgument = globalThis.MetaLabWasm.call(loaded.handle, "Add", [true, 1]);
+const boolean = globalThis.MetaLabWasm.call(loaded.handle, "NotValue", [false]);
+assertSuccess(boolean, "boolean call");
+if (boolean.kind !== "boolean" || boolean.value !== true) {
+  throw new Error(`unexpected boolean result: ${JSON.stringify(boolean)}`);
+}
+const count = globalThis.MetaLabWasm.call(loaded.handle, "Count", [[1, 2, 3]]);
+assertSuccess(count, "array call");
+if (count.kind !== "number" || count.value !== 3) {
+  throw new Error(`unexpected array length: ${JSON.stringify(count)}`);
+}
+const echoed = globalThis.MetaLabWasm.call(loaded.handle, "EchoArray", [[1, true, "three"]]);
+assertSuccess(echoed, "array result");
+if (echoed.kind !== "array" || JSON.stringify(echoed.value) !== '[1,true,"three"]') {
+  throw new Error(`unexpected array result: ${JSON.stringify(echoed)}`);
+}
+const invalidArgument = globalThis.MetaLabWasm.call(loaded.handle, "Add", [{}, 1]);
 if (invalidArgument.ok) {
   throw new Error("unsupported JavaScript argument was accepted");
 }
@@ -122,17 +137,51 @@ function assertSuccess(result, operation) {
 function encodeAddProgram() {
   const writer = new BinaryWriter();
   writer.ascii("MLBC");
-  writer.uint16(1);
-  writer.uint32(1);
+  writer.uint16(2);
+  writer.uint32(4);
+
   writer.string("Add");
   writer.uint8(3); // function + export
   writer.uint16(2); // arity
+  writer.uint16(2); // local count
   writer.uint16(2); // maximum stack depth
   writer.uint32(0); // constants
   writer.uint32(4); // instructions
   writer.instruction(1, 0); // load local 0
   writer.instruction(1, 1); // load local 1
   writer.instruction(3, 0); // add
+  writer.instruction(7, 0); // return
+
+  writer.string("NotValue");
+  writer.uint8(3);
+  writer.uint16(1); // arity
+  writer.uint16(1); // local count
+  writer.uint16(1); // maximum stack depth
+  writer.uint32(0); // constants
+  writer.uint32(3); // instructions
+  writer.instruction(1, 0); // load local 0
+  writer.instruction(9, 0); // not
+  writer.instruction(7, 0); // return
+
+  writer.string("Count");
+  writer.uint8(3);
+  writer.uint16(1); // arity
+  writer.uint16(1); // local count
+  writer.uint16(1); // maximum stack depth
+  writer.uint32(0); // constants
+  writer.uint32(3); // instructions
+  writer.instruction(1, 0); // load local 0
+  writer.instruction(21, 0); // array length
+  writer.instruction(7, 0); // return
+
+  writer.string("EchoArray");
+  writer.uint8(3);
+  writer.uint16(1); // arity
+  writer.uint16(1); // local count
+  writer.uint16(1); // maximum stack depth
+  writer.uint32(0); // constants
+  writer.uint32(2); // instructions
+  writer.instruction(1, 0); // load local 0
   writer.instruction(7, 0); // return
   return writer.bytes();
 }

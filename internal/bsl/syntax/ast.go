@@ -47,6 +47,78 @@ type ReturnStatement struct {
 func (*ReturnStatement) statement()          {}
 func (node *ReturnStatement) NodeSpan() Span { return node.SourceSpan }
 
+// AssignmentStatement assigns a value to a local identifier.
+type AssignmentStatement struct {
+	Name       string
+	Value      Expression
+	SourceSpan Span
+}
+
+func (*AssignmentStatement) statement()          {}
+func (node *AssignmentStatement) NodeSpan() Span { return node.SourceSpan }
+
+// ConditionalBranch is one If or ElsIf branch.
+type ConditionalBranch struct {
+	Condition  Expression
+	Body       []Statement
+	SourceSpan Span
+}
+
+// IfStatement executes the first matching branch or its optional Else body.
+type IfStatement struct {
+	Branches   []ConditionalBranch
+	ElseBody   []Statement
+	SourceSpan Span
+}
+
+func (*IfStatement) statement()          {}
+func (node *IfStatement) NodeSpan() Span { return node.SourceSpan }
+
+// WhileStatement repeats its body while the condition is true.
+type WhileStatement struct {
+	Condition  Expression
+	Body       []Statement
+	SourceSpan Span
+}
+
+func (*WhileStatement) statement()          {}
+func (node *WhileStatement) NodeSpan() Span { return node.SourceSpan }
+
+// ForStatement iterates a numeric local variable over an inclusive range.
+type ForStatement struct {
+	Variable   string
+	Initial    Expression
+	Limit      Expression
+	Body       []Statement
+	SourceSpan Span
+}
+
+func (*ForStatement) statement()          {}
+func (node *ForStatement) NodeSpan() Span { return node.SourceSpan }
+
+// ForEachStatement iterates a local variable over a collection expression.
+type ForEachStatement struct {
+	Variable   string
+	Collection Expression
+	Body       []Statement
+	SourceSpan Span
+}
+
+func (*ForEachStatement) statement()          {}
+func (node *ForEachStatement) NodeSpan() Span { return node.SourceSpan }
+
+// BreakStatement exits the nearest enclosing loop.
+type BreakStatement struct{ SourceSpan Span }
+
+func (*BreakStatement) statement()          {}
+func (node *BreakStatement) NodeSpan() Span { return node.SourceSpan }
+
+// ContinueStatement advances the nearest enclosing loop.
+type ContinueStatement struct{ SourceSpan Span }
+
+func (*ContinueStatement) statement()          {}
+func (node *ContinueStatement) NodeSpan() Span { return node.SourceSpan }
+
 // IdentifierExpression references a parameter or local value.
 type IdentifierExpression struct {
 	Name       string
@@ -73,6 +145,15 @@ type StringExpression struct {
 
 func (*StringExpression) expression()         {}
 func (node *StringExpression) NodeSpan() Span { return node.SourceSpan }
+
+// BooleanExpression is a True or False literal.
+type BooleanExpression struct {
+	Value      bool
+	SourceSpan Span
+}
+
+func (*BooleanExpression) expression()         {}
+func (node *BooleanExpression) NodeSpan() Span { return node.SourceSpan }
 
 // GroupExpression preserves a parenthesized expression source range.
 type GroupExpression struct {

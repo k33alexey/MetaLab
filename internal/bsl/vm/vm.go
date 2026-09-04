@@ -3,12 +3,16 @@ package vm
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 )
 
-const inlineStackSize = 64
+const (
+	inlineStackSize = 64
+	inlineLocalSize = 16
+)
 
 // Machine is an immutable, concurrency-safe bytecode runtime.
 type Machine struct {
@@ -68,6 +72,14 @@ func (machine *Machine) Call(name string, arguments ...bytecode.Value) (bytecode
 }
 
 func execute(function *bytecode.Function, arguments []bytecode.Value) (bytecode.Value, error) {
+	var inlineLocals [inlineLocalSize]bytecode.Value
+	locals := inlineLocals[:]
+	if int(function.LocalCount) > len(locals) {
+		locals = make([]bytecode.Value, function.LocalCount)
+	} else {
+		locals = locals[:function.LocalCount]
+	}
+	copy(locals, arguments)
 	var inline [inlineStackSize]bytecode.Value
 	stack := inline[:]
 	if int(function.MaxStack) > len(stack) {
@@ -83,12 +95,15 @@ func execute(function *bytecode.Function, arguments []bytecode.Value) (bytecode.
 		return stack[depth]
 	}
 
-	for _, instruction := range function.Code {
+	for instructionPointer := 0; instructionPointer < len(function.Code); instructionPointer++ {
+		instruction := function.Code[instructionPointer]
 		switch instruction.Opcode {
 		case bytecode.OpConstant:
 			push(function.Constants[instruction.Operand])
 		case bytecode.OpLoadLocal:
-			push(arguments[instruction.Operand])
+			push(locals[instruction.Operand])
+		case bytecode.OpStoreLocal:
+			locals[instruction.Operand] = pop()
 		case bytecode.OpNegate:
 			value := pop()
 			number, ok := value.AsNumber()
@@ -96,7 +111,36 @@ func execute(function *bytecode.Function, arguments []bytecode.Value) (bytecode.
 				return bytecode.Undefined(), runtimeFailure(function, instruction, "unary minus requires a number")
 			}
 			push(bytecode.Number(-number))
-		case bytecode.OpAdd, bytecode.OpSubtract, bytecode.OpMultiply, bytecode.OpDivide:
+		case bytecode.OpNot:
+			value := pop()
+			boolean, ok := value.AsBoolean()
+			if !ok {
+				return bytecode.Undefined(), runtimeFailure(function, instruction, "Not requires a boolean")
+			}
+			push(bytecode.Boolean(!boolean))
+		case bytecode.OpArrayLength:
+			value := pop()
+			length, ok := value.ArrayLength()
+			if !ok {
+				return bytecode.Undefined(), runtimeFailure(function, instruction, "For Each requires an array")
+			}
+			push(bytecode.Number(float64(length)))
+		case bytecode.OpArrayElement:
+			indexValue := pop()
+			array := pop()
+			index, ok := indexValue.AsNumber()
+			if !ok || index < 0 || index != math.Trunc(index) || index > float64(maxInt()) {
+				return bytecode.Undefined(), runtimeFailure(function, instruction, "array index must be a non-negative integer")
+			}
+			element, ok := array.ArrayElement(int(index))
+			if !ok {
+				return bytecode.Undefined(), runtimeFailure(function, instruction, "array index is out of range")
+			}
+			push(element)
+		case bytecode.OpAdd, bytecode.OpSubtract, bytecode.OpMultiply, bytecode.OpDivide,
+			bytecode.OpModulo, bytecode.OpEqual, bytecode.OpNotEqual, bytecode.OpLess,
+			bytecode.OpLessEqual, bytecode.OpGreater, bytecode.OpGreaterEqual,
+			bytecode.OpAnd, bytecode.OpOr:
 			right := pop()
 			left := pop()
 			result, err := binary(instruction.Opcode, left, right)
@@ -104,6 +148,17 @@ func execute(function *bytecode.Function, arguments []bytecode.Value) (bytecode.
 				return bytecode.Undefined(), runtimeFailure(function, instruction, err.Error())
 			}
 			push(result)
+		case bytecode.OpJump:
+			instructionPointer = int(instruction.Operand) - 1
+		case bytecode.OpJumpIfFalse:
+			condition := pop()
+			boolean, ok := condition.AsBoolean()
+			if !ok {
+				return bytecode.Undefined(), runtimeFailure(function, instruction, "condition requires a boolean")
+			}
+			if !boolean {
+				instructionPointer = int(instruction.Operand) - 1
+			}
 		case bytecode.OpReturn:
 			return pop(), nil
 		default:
@@ -114,6 +169,24 @@ func execute(function *bytecode.Function, arguments []bytecode.Value) (bytecode.
 }
 
 func binary(opcode bytecode.Opcode, left, right bytecode.Value) (bytecode.Value, error) {
+	if opcode == bytecode.OpEqual || opcode == bytecode.OpNotEqual {
+		equal := valuesEqual(left, right)
+		if opcode == bytecode.OpNotEqual {
+			equal = !equal
+		}
+		return bytecode.Boolean(equal), nil
+	}
+	if opcode == bytecode.OpAnd || opcode == bytecode.OpOr {
+		leftBoolean, leftOK := left.AsBoolean()
+		rightBoolean, rightOK := right.AsBoolean()
+		if !leftOK || !rightOK {
+			return bytecode.Undefined(), fmt.Errorf("%s requires two booleans", opcode)
+		}
+		if opcode == bytecode.OpAnd {
+			return bytecode.Boolean(leftBoolean && rightBoolean), nil
+		}
+		return bytecode.Boolean(leftBoolean || rightBoolean), nil
+	}
 	if opcode == bytecode.OpAdd {
 		leftString, leftIsString := left.AsString()
 		rightString, rightIsString := right.AsString()
@@ -138,11 +211,50 @@ func binary(opcode bytecode.Opcode, left, right bytecode.Value) (bytecode.Value,
 			return bytecode.Undefined(), fmt.Errorf("division by zero")
 		}
 		return bytecode.Number(leftNumber / rightNumber), nil
+	case bytecode.OpModulo:
+		if rightNumber == 0 {
+			return bytecode.Undefined(), fmt.Errorf("division by zero")
+		}
+		return bytecode.Number(math.Mod(leftNumber, rightNumber)), nil
+	case bytecode.OpLess:
+		return bytecode.Boolean(leftNumber < rightNumber), nil
+	case bytecode.OpLessEqual:
+		return bytecode.Boolean(leftNumber <= rightNumber), nil
+	case bytecode.OpGreater:
+		return bytecode.Boolean(leftNumber > rightNumber), nil
+	case bytecode.OpGreaterEqual:
+		return bytecode.Boolean(leftNumber >= rightNumber), nil
 	default:
 		return bytecode.Undefined(), fmt.Errorf("unsupported binary opcode %s", opcode)
+	}
+}
+
+func valuesEqual(left, right bytecode.Value) bool {
+	if left.Kind() != right.Kind() {
+		return false
+	}
+	switch left.Kind() {
+	case bytecode.UndefinedKind:
+		return true
+	case bytecode.NumberKind:
+		leftNumber, _ := left.AsNumber()
+		rightNumber, _ := right.AsNumber()
+		return leftNumber == rightNumber
+	case bytecode.StringKind:
+		leftString, _ := left.AsString()
+		rightString, _ := right.AsString()
+		return leftString == rightString
+	case bytecode.BooleanKind:
+		leftBoolean, _ := left.AsBoolean()
+		rightBoolean, _ := right.AsBoolean()
+		return leftBoolean == rightBoolean
+	default:
+		return false
 	}
 }
 
 func runtimeFailure(function *bytecode.Function, instruction bytecode.Instruction, message string) error {
 	return &RuntimeError{Function: function.Name, Span: instruction.Span, Message: message}
 }
+
+func maxInt() int { return int(^uint(0) >> 1) }

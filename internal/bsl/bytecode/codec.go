@@ -46,6 +46,7 @@ func MarshalBinary(program *Program) ([]byte, error) {
 		}
 		output.WriteByte(flags)
 		writeUint16(&output, function.Arity)
+		writeUint16(&output, function.LocalCount)
 		writeUint16(&output, function.MaxStack)
 
 		if len(function.Constants) > maxWireCollectionLen {
@@ -90,7 +91,7 @@ func UnmarshalBinary(data []byte) (*Program, error) {
 	if err != nil {
 		return nil, err
 	}
-	functionCount, err := decoder.readCount("functions", 17)
+	functionCount, err := decoder.readCount("functions", 19)
 	if err != nil {
 		return nil, err
 	}
@@ -123,6 +124,14 @@ func writeValue(output *bytes.Buffer, value Value) error {
 	case StringKind:
 		text, _ := value.AsString()
 		return writeString(output, text)
+	case BooleanKind:
+		boolean, _ := value.AsBoolean()
+		if boolean {
+			output.WriteByte(1)
+		} else {
+			output.WriteByte(0)
+		}
+		return nil
 	default:
 		return fmt.Errorf("unsupported value kind %d", value.Kind())
 	}
@@ -190,6 +199,10 @@ func (decoder *wireDecoder) readFunction() (Function, error) {
 	if err != nil {
 		return Function{}, err
 	}
+	localCount, err := decoder.readUint16()
+	if err != nil {
+		return Function{}, err
+	}
 	maxStack, err := decoder.readUint16()
 	if err != nil {
 		return Function{}, err
@@ -227,7 +240,7 @@ func (decoder *wireDecoder) readFunction() (Function, error) {
 	}
 	return Function{
 		Name: name, IsFunction: flags&1 != 0, Export: flags&2 != 0,
-		Arity: arity, MaxStack: maxStack, Constants: constants, Code: code,
+		Arity: arity, LocalCount: localCount, MaxStack: maxStack, Constants: constants, Code: code,
 	}, nil
 }
 
@@ -251,6 +264,15 @@ func (decoder *wireDecoder) readValue() (Value, error) {
 			return Value{}, readErr
 		}
 		return String(text), nil
+	case BooleanKind:
+		encoded, readErr := decoder.readByte()
+		if readErr != nil {
+			return Value{}, readErr
+		}
+		if encoded > 1 {
+			return Value{}, fmt.Errorf("invalid boolean value %d", encoded)
+		}
+		return Boolean(encoded == 1), nil
 	default:
 		return Value{}, fmt.Errorf("unsupported value kind %d", kind)
 	}

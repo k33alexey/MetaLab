@@ -11,7 +11,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 )
 
-// CompileSource performs the complete prototype frontend and compilation pass.
+// CompileSource performs the complete frontend and compilation pass.
 func CompileSource(filename, source string) (*bytecode.Program, []syntax.Diagnostic) {
 	module, diagnostics := syntax.Parse(filename, source)
 	if len(diagnostics) != 0 {
@@ -53,12 +53,20 @@ type compiler struct {
 }
 
 type functionCompiler struct {
-	owner      *compiler
-	routine    *syntax.Routine
-	function   bytecode.Function
-	parameters map[string]uint16
-	depth      int
-	maximum    int
+	owner     *compiler
+	routine   *syntax.Routine
+	function  bytecode.Function
+	locals    map[string]uint16
+	nextLocal int
+	loops     []loopContext
+	depth     int
+	maximum   int
+}
+
+type loopContext struct {
+	continueTarget int
+	breakJumps     []int
+	continueJumps  []int
 }
 
 func (c *compiler) compileRoutine(routine *syntax.Routine) *bytecode.Function {
@@ -72,24 +80,28 @@ func (c *compiler) compileRoutine(routine *syntax.Routine) *bytecode.Function {
 			Name: routine.Name, IsFunction: routine.Function, Export: routine.Export,
 			Arity: uint16(len(routine.Parameters)),
 		},
-		parameters: make(map[string]uint16, len(routine.Parameters)),
+		locals: make(map[string]uint16, len(routine.Parameters)), nextLocal: len(routine.Parameters),
 	}
 	for index, parameter := range routine.Parameters {
 		name := strings.ToLower(parameter.Name)
-		if _, exists := state.parameters[name]; exists {
+		if _, exists := state.locals[name]; exists {
 			c.report(parameter.Span, "BSL3004", "duplicate parameter "+parameter.Name)
 			continue
 		}
-		state.parameters[name] = uint16(index)
+		state.locals[name] = uint16(index)
 	}
 
 	for _, statement := range routine.Body {
 		state.compileStatement(statement)
 	}
-	if len(state.function.Code) == 0 || state.function.Code[len(state.function.Code)-1].Opcode != bytecode.OpReturn {
+	if len(state.function.Code) == 0 || state.function.Code[len(state.function.Code)-1].Opcode != bytecode.OpReturn || state.hasJumpTarget(len(state.function.Code)) {
 		state.emitConstant(bytecode.Undefined(), routine.SourceSpan)
 		state.emit(bytecode.OpReturn, 0, routine.SourceSpan)
 	}
+	if state.nextLocal > math.MaxUint16 {
+		c.report(routine.SourceSpan, "BSL3011", "too many local variables in routine")
+	}
+	state.function.LocalCount = uint16(state.nextLocal)
 	state.function.MaxStack = uint16(state.maximum)
 	return &state.function
 }
@@ -103,6 +115,21 @@ func (c *functionCompiler) compileStatement(statement syntax.Statement) {
 			c.compileExpression(node.Value)
 		}
 		c.emit(bytecode.OpReturn, 0, node.SourceSpan)
+	case *syntax.AssignmentStatement:
+		c.compileExpression(node.Value)
+		c.emit(bytecode.OpStoreLocal, c.ensureLocal(node.Name, node.SourceSpan), node.SourceSpan)
+	case *syntax.IfStatement:
+		c.compileIf(node)
+	case *syntax.WhileStatement:
+		c.compileWhile(node)
+	case *syntax.ForStatement:
+		c.compileFor(node)
+	case *syntax.ForEachStatement:
+		c.compileForEach(node)
+	case *syntax.BreakStatement:
+		c.compileLoopControl(node.SourceSpan, true)
+	case *syntax.ContinueStatement:
+		c.compileLoopControl(node.SourceSpan, false)
 	default:
 		c.owner.report(statement.NodeSpan(), "BSL3005", fmt.Sprintf("unsupported statement %T", statement))
 	}
@@ -120,8 +147,10 @@ func (c *functionCompiler) compileExpression(expression syntax.Expression) {
 		c.emitConstant(bytecode.Number(value), node.SourceSpan)
 	case *syntax.StringExpression:
 		c.emitConstant(bytecode.String(node.Value), node.SourceSpan)
+	case *syntax.BooleanExpression:
+		c.emitConstant(bytecode.Boolean(node.Value), node.SourceSpan)
 	case *syntax.IdentifierExpression:
-		index, ok := c.parameters[strings.ToLower(node.Name)]
+		index, ok := c.locals[strings.ToLower(node.Name)]
 		if !ok {
 			c.owner.report(node.SourceSpan, "BSL3007", "unknown identifier "+node.Name)
 			c.emitConstant(bytecode.Undefined(), node.SourceSpan)
@@ -132,8 +161,11 @@ func (c *functionCompiler) compileExpression(expression syntax.Expression) {
 		c.compileExpression(node.Expression)
 	case *syntax.UnaryExpression:
 		c.compileExpression(node.Operand)
-		if node.Operator == syntax.Minus {
+		switch node.Operator {
+		case syntax.Minus:
 			c.emit(bytecode.OpNegate, 0, node.SourceSpan)
+		case syntax.Not:
+			c.emit(bytecode.OpNot, 0, node.SourceSpan)
 		}
 	case *syntax.BinaryExpression:
 		c.compileExpression(node.Left)
@@ -148,6 +180,24 @@ func (c *functionCompiler) compileExpression(expression syntax.Expression) {
 			opcode = bytecode.OpMultiply
 		case syntax.Slash:
 			opcode = bytecode.OpDivide
+		case syntax.Percent:
+			opcode = bytecode.OpModulo
+		case syntax.Equal:
+			opcode = bytecode.OpEqual
+		case syntax.NotEqual:
+			opcode = bytecode.OpNotEqual
+		case syntax.Less:
+			opcode = bytecode.OpLess
+		case syntax.LessEqual:
+			opcode = bytecode.OpLessEqual
+		case syntax.Greater:
+			opcode = bytecode.OpGreater
+		case syntax.GreaterEqual:
+			opcode = bytecode.OpGreaterEqual
+		case syntax.And:
+			opcode = bytecode.OpAnd
+		case syntax.Or:
+			opcode = bytecode.OpOr
 		default:
 			c.owner.report(node.SourceSpan, "BSL3008", "unsupported binary operator "+node.Operator.String())
 		}
@@ -156,6 +206,196 @@ func (c *functionCompiler) compileExpression(expression syntax.Expression) {
 		c.owner.report(expression.NodeSpan(), "BSL3009", fmt.Sprintf("unsupported expression %T", expression))
 		c.emitConstant(bytecode.Undefined(), expression.NodeSpan())
 	}
+}
+
+func (c *functionCompiler) compileIf(statement *syntax.IfStatement) {
+	endJumps := make([]int, 0, len(statement.Branches))
+	for _, branch := range statement.Branches {
+		c.compileExpression(branch.Condition)
+		falseJump := c.emitJump(bytecode.OpJumpIfFalse, branch.SourceSpan)
+		for _, child := range branch.Body {
+			c.compileStatement(child)
+		}
+		endJumps = append(endJumps, c.emitJump(bytecode.OpJump, branch.SourceSpan))
+		c.patchJump(falseJump, len(c.function.Code), branch.SourceSpan)
+	}
+	for _, child := range statement.ElseBody {
+		c.compileStatement(child)
+	}
+	end := len(c.function.Code)
+	for _, jump := range endJumps {
+		c.patchJump(jump, end, statement.SourceSpan)
+	}
+}
+
+func (c *functionCompiler) compileWhile(statement *syntax.WhileStatement) {
+	start := len(c.function.Code)
+	c.compileExpression(statement.Condition)
+	exitJump := c.emitJump(bytecode.OpJumpIfFalse, statement.SourceSpan)
+	c.loops = append(c.loops, loopContext{continueTarget: start})
+	for _, child := range statement.Body {
+		c.compileStatement(child)
+	}
+	loop := c.loops[len(c.loops)-1]
+	c.loops = c.loops[:len(c.loops)-1]
+	c.emitTargetJump(bytecode.OpJump, start, statement.SourceSpan)
+	exit := len(c.function.Code)
+	c.patchJump(exitJump, exit, statement.SourceSpan)
+	for _, jump := range loop.breakJumps {
+		c.patchJump(jump, exit, statement.SourceSpan)
+	}
+}
+
+func (c *functionCompiler) compileFor(statement *syntax.ForStatement) {
+	counter := c.ensureLocal(statement.Variable, statement.SourceSpan)
+	limit := c.allocateLocal(statement.SourceSpan)
+	c.compileExpression(statement.Initial)
+	c.emit(bytecode.OpStoreLocal, counter, statement.SourceSpan)
+	c.compileExpression(statement.Limit)
+	c.emit(bytecode.OpStoreLocal, limit, statement.SourceSpan)
+
+	start := len(c.function.Code)
+	c.emit(bytecode.OpLoadLocal, counter, statement.SourceSpan)
+	c.emit(bytecode.OpLoadLocal, limit, statement.SourceSpan)
+	c.emit(bytecode.OpLessEqual, 0, statement.SourceSpan)
+	exitJump := c.emitJump(bytecode.OpJumpIfFalse, statement.SourceSpan)
+	c.loops = append(c.loops, loopContext{continueTarget: -1})
+	for _, child := range statement.Body {
+		c.compileStatement(child)
+	}
+	loopIndex := len(c.loops) - 1
+	increment := len(c.function.Code)
+	c.loops[loopIndex].continueTarget = increment
+	for _, jump := range c.loops[loopIndex].continueJumps {
+		c.patchJump(jump, increment, statement.SourceSpan)
+	}
+	loop := c.loops[loopIndex]
+	c.loops = c.loops[:loopIndex]
+
+	c.emit(bytecode.OpLoadLocal, counter, statement.SourceSpan)
+	c.emitConstant(bytecode.Number(1), statement.SourceSpan)
+	c.emit(bytecode.OpAdd, 0, statement.SourceSpan)
+	c.emit(bytecode.OpStoreLocal, counter, statement.SourceSpan)
+	c.emitTargetJump(bytecode.OpJump, start, statement.SourceSpan)
+	exit := len(c.function.Code)
+	c.patchJump(exitJump, exit, statement.SourceSpan)
+	for _, jump := range loop.breakJumps {
+		c.patchJump(jump, exit, statement.SourceSpan)
+	}
+}
+
+func (c *functionCompiler) compileForEach(statement *syntax.ForEachStatement) {
+	iterator := c.ensureLocal(statement.Variable, statement.SourceSpan)
+	collection := c.allocateLocal(statement.SourceSpan)
+	index := c.allocateLocal(statement.SourceSpan)
+	c.compileExpression(statement.Collection)
+	c.emit(bytecode.OpStoreLocal, collection, statement.SourceSpan)
+	c.emitConstant(bytecode.Number(0), statement.SourceSpan)
+	c.emit(bytecode.OpStoreLocal, index, statement.SourceSpan)
+
+	start := len(c.function.Code)
+	c.emit(bytecode.OpLoadLocal, index, statement.SourceSpan)
+	c.emit(bytecode.OpLoadLocal, collection, statement.SourceSpan)
+	c.emit(bytecode.OpArrayLength, 0, statement.SourceSpan)
+	c.emit(bytecode.OpLess, 0, statement.SourceSpan)
+	exitJump := c.emitJump(bytecode.OpJumpIfFalse, statement.SourceSpan)
+	c.emit(bytecode.OpLoadLocal, collection, statement.SourceSpan)
+	c.emit(bytecode.OpLoadLocal, index, statement.SourceSpan)
+	c.emit(bytecode.OpArrayElement, 0, statement.SourceSpan)
+	c.emit(bytecode.OpStoreLocal, iterator, statement.SourceSpan)
+
+	c.loops = append(c.loops, loopContext{continueTarget: -1})
+	for _, child := range statement.Body {
+		c.compileStatement(child)
+	}
+	loopIndex := len(c.loops) - 1
+	increment := len(c.function.Code)
+	c.loops[loopIndex].continueTarget = increment
+	for _, jump := range c.loops[loopIndex].continueJumps {
+		c.patchJump(jump, increment, statement.SourceSpan)
+	}
+	loop := c.loops[loopIndex]
+	c.loops = c.loops[:loopIndex]
+
+	c.emit(bytecode.OpLoadLocal, index, statement.SourceSpan)
+	c.emitConstant(bytecode.Number(1), statement.SourceSpan)
+	c.emit(bytecode.OpAdd, 0, statement.SourceSpan)
+	c.emit(bytecode.OpStoreLocal, index, statement.SourceSpan)
+	c.emitTargetJump(bytecode.OpJump, start, statement.SourceSpan)
+	exit := len(c.function.Code)
+	c.patchJump(exitJump, exit, statement.SourceSpan)
+	for _, jump := range loop.breakJumps {
+		c.patchJump(jump, exit, statement.SourceSpan)
+	}
+}
+
+func (c *functionCompiler) compileLoopControl(span syntax.Span, breaking bool) {
+	if len(c.loops) == 0 {
+		name := "Continue"
+		if breaking {
+			name = "Break"
+		}
+		c.owner.report(span, "BSL3012", name+" is only allowed inside a loop")
+		return
+	}
+	loop := &c.loops[len(c.loops)-1]
+	if breaking {
+		loop.breakJumps = append(loop.breakJumps, c.emitJump(bytecode.OpJump, span))
+		return
+	}
+	if loop.continueTarget >= 0 {
+		c.emitTargetJump(bytecode.OpJump, loop.continueTarget, span)
+	} else {
+		loop.continueJumps = append(loop.continueJumps, c.emitJump(bytecode.OpJump, span))
+	}
+}
+
+func (c *functionCompiler) ensureLocal(name string, span syntax.Span) uint16 {
+	folded := strings.ToLower(name)
+	if index, ok := c.locals[folded]; ok {
+		return index
+	}
+	index := c.allocateLocal(span)
+	c.locals[folded] = index
+	return index
+}
+
+func (c *functionCompiler) allocateLocal(span syntax.Span) uint16 {
+	if c.nextLocal >= math.MaxUint16 {
+		c.owner.report(span, "BSL3011", "too many local variables in routine")
+		return 0
+	}
+	index := uint16(c.nextLocal)
+	c.nextLocal++
+	return index
+}
+
+func (c *functionCompiler) emitJump(opcode bytecode.Opcode, span syntax.Span) int {
+	index := len(c.function.Code)
+	c.emit(opcode, 0, span)
+	return index
+}
+
+func (c *functionCompiler) emitTargetJump(opcode bytecode.Opcode, target int, span syntax.Span) {
+	index := c.emitJump(opcode, span)
+	c.patchJump(index, target, span)
+}
+
+func (c *functionCompiler) patchJump(index, target int, span syntax.Span) {
+	if index < 0 || index >= len(c.function.Code) || target < 0 || target > math.MaxUint16 {
+		c.owner.report(span, "BSL3013", "routine is too large for a control-flow jump")
+		return
+	}
+	c.function.Code[index].Operand = uint16(target)
+}
+
+func (c *functionCompiler) hasJumpTarget(target int) bool {
+	for _, instruction := range c.function.Code {
+		if (instruction.Opcode == bytecode.OpJump || instruction.Opcode == bytecode.OpJumpIfFalse) && int(instruction.Operand) == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *functionCompiler) emitConstant(value bytecode.Value, span syntax.Span) {
@@ -173,7 +413,12 @@ func (c *functionCompiler) emit(opcode bytecode.Opcode, operand uint16, span syn
 	switch opcode {
 	case bytecode.OpConstant, bytecode.OpLoadLocal:
 		c.depth++
-	case bytecode.OpAdd, bytecode.OpSubtract, bytecode.OpMultiply, bytecode.OpDivide:
+	case bytecode.OpStoreLocal, bytecode.OpJumpIfFalse:
+		c.depth--
+	case bytecode.OpAdd, bytecode.OpSubtract, bytecode.OpMultiply, bytecode.OpDivide,
+		bytecode.OpModulo, bytecode.OpEqual, bytecode.OpNotEqual, bytecode.OpLess,
+		bytecode.OpLessEqual, bytecode.OpGreater, bytecode.OpGreaterEqual,
+		bytecode.OpAnd, bytecode.OpOr, bytecode.OpArrayElement:
 		c.depth--
 	case bytecode.OpReturn:
 		c.depth--

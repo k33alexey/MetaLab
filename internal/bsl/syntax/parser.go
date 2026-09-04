@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// Parse builds an AST and returns all diagnostics found by the prototype frontend.
+// Parse builds an AST and returns all frontend diagnostics.
 func Parse(filename, source string) (*Module, []Diagnostic) {
 	tokens, diagnostics := Tokenize(filename, source)
 	state := parser{filename: filename, tokens: tokens, diagnostics: diagnostics}
@@ -114,14 +114,34 @@ func (p *parser) parseParameters() []Parameter {
 }
 
 func (p *parser) parseStatement() Statement {
-	if !p.match(Return) {
-		p.report(p.peek(), "BSL2001", fmt.Sprintf("unexpected %s, expected Return", p.peek().Kind))
-		p.synchronizeStatement()
-		return nil
+	switch p.peek().Kind {
+	case Return:
+		return p.parseReturnStatement()
+	case If:
+		return p.parseIfStatement()
+	case While:
+		return p.parseWhileStatement()
+	case For:
+		return p.parseForStatement()
+	case Break:
+		return p.parseLoopControlStatement(true)
+	case Continue:
+		return p.parseLoopControlStatement(false)
+	case Identifier:
+		if p.checkNext(Equal) {
+			return p.parseAssignmentStatement()
+		}
 	}
+	p.report(p.peek(), "BSL2001", fmt.Sprintf("unexpected %s, expected statement", p.peek().Kind))
+	p.synchronizeStatement()
+	return nil
+}
+
+func (p *parser) parseReturnStatement() Statement {
+	p.advance()
 	start := p.previous()
 	var value Expression
-	if !p.check(Semicolon) && !p.check(EndFunction) && !p.check(EndProcedure) && !p.atEnd() {
+	if canStartExpression(p.peek().Kind) {
 		value = p.parseExpression()
 	}
 	end := start.Span.End
@@ -134,7 +154,146 @@ func (p *parser) parseStatement() Statement {
 	return &ReturnStatement{Value: value, SourceSpan: Span{Start: start.Span.Start, End: end}}
 }
 
-func (p *parser) parseExpression() Expression { return p.parseAdditive() }
+func (p *parser) parseAssignmentStatement() Statement {
+	name := p.advance()
+	p.advance() // Equal.
+	value := p.parseExpression()
+	end := name.Span.End
+	if value != nil {
+		end = value.NodeSpan().End
+	}
+	if semicolon, ok := p.expect(Semicolon, "expected ';' after assignment"); ok {
+		end = semicolon.Span.End
+	}
+	return &AssignmentStatement{Name: name.Value, Value: value, SourceSpan: Span{Start: name.Span.Start, End: end}}
+}
+
+func (p *parser) parseIfStatement() Statement {
+	start := p.advance()
+	branches := make([]ConditionalBranch, 0, 2)
+	condition := p.parseExpression()
+	p.expect(Then, "expected Then after If condition")
+	body := p.parseBlock(ElsIf, Else, EndIf)
+	branches = append(branches, ConditionalBranch{
+		Condition: condition, Body: body,
+		SourceSpan: spanThroughBody(start.Span.Start, condition, body),
+	})
+
+	for p.match(ElsIf) {
+		branchStart := p.previous()
+		condition = p.parseExpression()
+		p.expect(Then, "expected Then after ElsIf condition")
+		body = p.parseBlock(ElsIf, Else, EndIf)
+		branches = append(branches, ConditionalBranch{
+			Condition: condition, Body: body,
+			SourceSpan: spanThroughBody(branchStart.Span.Start, condition, body),
+		})
+	}
+
+	var elseBody []Statement
+	if p.match(Else) {
+		elseBody = p.parseBlock(EndIf)
+	}
+	end := p.finishBlock(EndIf, "EndIf")
+	return &IfStatement{Branches: branches, ElseBody: elseBody, SourceSpan: Span{Start: start.Span.Start, End: end}}
+}
+
+func (p *parser) parseWhileStatement() Statement {
+	start := p.advance()
+	condition := p.parseExpression()
+	p.expect(Do, "expected Do after While condition")
+	body := p.parseBlock(EndDo)
+	end := p.finishBlock(EndDo, "EndDo")
+	return &WhileStatement{Condition: condition, Body: body, SourceSpan: Span{Start: start.Span.Start, End: end}}
+}
+
+func (p *parser) parseForStatement() Statement {
+	start := p.advance()
+	if p.match(Each) {
+		variable, _ := p.expect(Identifier, "expected iterator name after Each")
+		p.expect(In, "expected In after iterator name")
+		collection := p.parseExpression()
+		p.expect(Do, "expected Do after collection")
+		body := p.parseBlock(EndDo)
+		end := p.finishBlock(EndDo, "EndDo")
+		return &ForEachStatement{
+			Variable: variable.Value, Collection: collection, Body: body,
+			SourceSpan: Span{Start: start.Span.Start, End: end},
+		}
+	}
+
+	variable, _ := p.expect(Identifier, "expected counter name after For")
+	p.expect(Equal, "expected '=' after counter name")
+	initial := p.parseExpression()
+	p.expect(To, "expected To after initial counter value")
+	limit := p.parseExpression()
+	p.expect(Do, "expected Do after final counter value")
+	body := p.parseBlock(EndDo)
+	end := p.finishBlock(EndDo, "EndDo")
+	return &ForStatement{
+		Variable: variable.Value, Initial: initial, Limit: limit, Body: body,
+		SourceSpan: Span{Start: start.Span.Start, End: end},
+	}
+}
+
+func (p *parser) parseLoopControlStatement(breakStatement bool) Statement {
+	start := p.advance()
+	end := start.Span.End
+	if semicolon, ok := p.expect(Semicolon, "expected ';' after "+start.Kind.String()); ok {
+		end = semicolon.Span.End
+	}
+	span := Span{Start: start.Span.Start, End: end}
+	if breakStatement {
+		return &BreakStatement{SourceSpan: span}
+	}
+	return &ContinueStatement{SourceSpan: span}
+}
+
+func (p *parser) parseBlock(stops ...Kind) []Statement {
+	var body []Statement
+	for !p.atEnd() && !p.checkAny(stops...) && !p.check(EndFunction) && !p.check(EndProcedure) {
+		if statement := p.parseStatement(); statement != nil {
+			body = append(body, statement)
+		}
+	}
+	return body
+}
+
+func (p *parser) finishBlock(kind Kind, name string) Position {
+	end := p.peek().Span.End
+	if token, ok := p.expect(kind, "expected "+name); ok {
+		end = token.Span.End
+		if semicolon, found := p.expect(Semicolon, "expected ';' after "+name); found {
+			end = semicolon.Span.End
+		}
+	}
+	return end
+}
+
+func spanThroughBody(start Position, expression Expression, body []Statement) Span {
+	end := start
+	if expression != nil {
+		end = expression.NodeSpan().End
+	}
+	if len(body) != 0 {
+		end = body[len(body)-1].NodeSpan().End
+	}
+	return Span{Start: start, End: end}
+}
+
+func (p *parser) parseExpression() Expression { return p.parseOr() }
+
+func (p *parser) parseOr() Expression {
+	return p.parseBinary(p.parseAnd, Or)
+}
+
+func (p *parser) parseAnd() Expression {
+	return p.parseBinary(p.parseComparison, And)
+}
+
+func (p *parser) parseComparison() Expression {
+	return p.parseBinary(p.parseAdditive, Equal, NotEqual, Less, LessEqual, Greater, GreaterEqual)
+}
 
 func (p *parser) parseAdditive() Expression {
 	expression := p.parseMultiplicative()
@@ -154,7 +313,7 @@ func (p *parser) parseAdditive() Expression {
 
 func (p *parser) parseMultiplicative() Expression {
 	expression := p.parseUnary()
-	for p.check(Star) || p.check(Slash) {
+	for p.check(Star) || p.check(Slash) || p.check(Percent) {
 		operator := p.advance()
 		right := p.parseUnary()
 		if expression == nil || right == nil {
@@ -169,7 +328,7 @@ func (p *parser) parseMultiplicative() Expression {
 }
 
 func (p *parser) parseUnary() Expression {
-	if p.check(Plus) || p.check(Minus) {
+	if p.check(Plus) || p.check(Minus) || p.check(Not) {
 		operator := p.advance()
 		operand := p.parseUnary()
 		if operand == nil {
@@ -194,6 +353,9 @@ func (p *parser) parsePrimary() Expression {
 		return &StringExpression{Value: current.Value, SourceSpan: current.Span}
 	case StringStart:
 		return p.parseMultilineString()
+	case True, False:
+		p.advance()
+		return &BooleanExpression{Value: current.Kind == True, SourceSpan: current.Span}
 	case Identifier:
 		p.advance()
 		return &IdentifierExpression{Name: current.Value, SourceSpan: current.Span}
@@ -212,6 +374,22 @@ func (p *parser) parsePrimary() Expression {
 		}
 		return nil
 	}
+}
+
+func (p *parser) parseBinary(operand func() Expression, kinds ...Kind) Expression {
+	expression := operand()
+	for p.checkAny(kinds...) {
+		operator := p.advance()
+		right := operand()
+		if expression == nil || right == nil {
+			return expression
+		}
+		expression = &BinaryExpression{
+			Left: expression, Operator: operator.Kind, Right: right,
+			SourceSpan: Span{Start: expression.NodeSpan().Start, End: right.NodeSpan().End},
+		}
+	}
+	return expression
 }
 
 func (p *parser) parseMultilineString() Expression {
@@ -236,7 +414,15 @@ func (p *parser) parseMultilineString() Expression {
 
 func (p *parser) synchronizeStatement() {
 	for !p.atEnd() {
-		if p.match(Semicolon) || p.check(EndFunction) || p.check(EndProcedure) {
+		if p.match(Semicolon) {
+			return
+		}
+		if p.checkAny(ElsIf, Else, EndIf, EndDo) {
+			p.advance()
+			p.match(Semicolon)
+			return
+		}
+		if p.checkAny(EndFunction, EndProcedure, Return, If, While, For, Break, Continue) {
 			return
 		}
 		p.advance()
@@ -275,6 +461,19 @@ func (p *parser) match(kind Kind) bool {
 
 func (p *parser) check(kind Kind) bool { return p.peek().Kind == kind }
 
+func (p *parser) checkAny(kinds ...Kind) bool {
+	for _, kind := range kinds {
+		if p.check(kind) {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *parser) checkNext(kind Kind) bool {
+	return p.current+1 < len(p.tokens) && p.tokens[p.current+1].Kind == kind
+}
+
 func (p *parser) atEnd() bool { return p.peek().Kind == EOF }
 
 func (p *parser) peek() Token { return p.tokens[p.current] }
@@ -297,4 +496,13 @@ func (p *parser) report(current Token, code, message string) {
 	p.diagnostics = append(p.diagnostics, Diagnostic{
 		Filename: p.filename, Code: code, Message: message, Span: current.Span,
 	})
+}
+
+func canStartExpression(kind Kind) bool {
+	switch kind {
+	case Number, String, StringStart, Identifier, True, False, LeftParen, Plus, Minus, Not:
+		return true
+	default:
+		return false
+	}
 }

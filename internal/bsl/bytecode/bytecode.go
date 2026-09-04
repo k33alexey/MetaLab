@@ -9,7 +9,7 @@ import (
 )
 
 // Version changes whenever the bytecode contract becomes incompatible.
-const Version uint16 = 1
+const Version uint16 = 2
 
 // Opcode identifies one stack-machine instruction.
 type Opcode uint8
@@ -23,12 +23,33 @@ const (
 	OpMultiply
 	OpDivide
 	OpReturn
+	OpStoreLocal
+	OpNot
+	OpModulo
+	OpEqual
+	OpNotEqual
+	OpLess
+	OpLessEqual
+	OpGreater
+	OpGreaterEqual
+	OpJump
+	OpJumpIfFalse
+	OpAnd
+	OpOr
+	OpArrayLength
+	OpArrayElement
 )
 
 var opcodeNames = [...]string{
 	OpConstant: "constant", OpLoadLocal: "load_local", OpNegate: "negate",
 	OpAdd: "add", OpSubtract: "subtract", OpMultiply: "multiply",
 	OpDivide: "divide", OpReturn: "return",
+	OpStoreLocal: "store_local", OpNot: "not", OpModulo: "modulo",
+	OpEqual: "equal", OpNotEqual: "not_equal", OpLess: "less",
+	OpLessEqual: "less_equal", OpGreater: "greater", OpGreaterEqual: "greater_equal",
+	OpJump: "jump", OpJumpIfFalse: "jump_if_false",
+	OpAnd: "and", OpOr: "or",
+	OpArrayLength: "array_length", OpArrayElement: "array_element",
 }
 
 func (opcode Opcode) String() string {
@@ -51,6 +72,7 @@ type Function struct {
 	IsFunction bool
 	Export     bool
 	Arity      uint16
+	LocalCount uint16
 	MaxStack   uint16
 	Constants  []Value
 	Code       []Instruction
@@ -99,46 +121,105 @@ func validateFunction(function *Function) error {
 	if len(function.Code) == 0 || function.Code[len(function.Code)-1].Opcode != OpReturn {
 		return fmt.Errorf("code must end with return")
 	}
-	depth := 0
-	maximum := 0
+	if function.LocalCount < function.Arity {
+		return fmt.Errorf("local count %d is smaller than arity %d", function.LocalCount, function.Arity)
+	}
 	for index, instruction := range function.Code {
 		switch instruction.Opcode {
 		case OpConstant:
 			if int(instruction.Operand) >= len(function.Constants) {
 				return fmt.Errorf("instruction %d references constant %d", index, instruction.Operand)
 			}
-			depth++
-		case OpLoadLocal:
-			if instruction.Operand >= function.Arity {
+		case OpLoadLocal, OpStoreLocal:
+			if instruction.Operand >= function.LocalCount {
 				return fmt.Errorf("instruction %d references local %d", index, instruction.Operand)
 			}
-			depth++
-		case OpNegate:
-			if depth < 1 {
-				return fmt.Errorf("instruction %d underflows stack", index)
+		case OpJump, OpJumpIfFalse:
+			if int(instruction.Operand) >= len(function.Code) {
+				return fmt.Errorf("instruction %d jumps outside code to %d", index, instruction.Operand)
 			}
-		case OpAdd, OpSubtract, OpMultiply, OpDivide:
-			if depth < 2 {
-				return fmt.Errorf("instruction %d underflows stack", index)
-			}
-			depth--
-		case OpReturn:
-			if depth < 1 {
-				return fmt.Errorf("instruction %d underflows stack", index)
-			}
-			depth--
+		case OpNegate, OpNot, OpArrayLength, OpAdd, OpSubtract, OpMultiply, OpDivide, OpModulo,
+			OpEqual, OpNotEqual, OpLess, OpLessEqual, OpGreater, OpGreaterEqual,
+			OpAnd, OpOr, OpArrayElement, OpReturn:
 		default:
 			return fmt.Errorf("instruction %d has unknown opcode %d", index, instruction.Opcode)
 		}
-		if depth > maximum {
-			maximum = depth
-		}
 	}
-	if depth != 0 {
-		return fmt.Errorf("stack depth after code is %d", depth)
+
+	depthAt := make([]int, len(function.Code))
+	for index := range depthAt {
+		depthAt[index] = -1
+	}
+	maximum := 0
+	for seed := range function.Code {
+		if depthAt[seed] >= 0 {
+			continue
+		}
+		depthAt[seed] = 0
+		work := []int{seed}
+		for len(work) != 0 {
+			index := work[len(work)-1]
+			work = work[:len(work)-1]
+			instruction := function.Code[index]
+			depth := depthAt[index]
+			required, delta := stackEffect(instruction.Opcode)
+			if depth < required {
+				return fmt.Errorf("instruction %d underflows stack", index)
+			}
+			if depth > maximum {
+				maximum = depth
+			}
+			nextDepth := depth + delta
+			if instruction.Opcode == OpReturn {
+				if nextDepth != 0 {
+					return fmt.Errorf("instruction %d returns with stack depth %d", index, nextDepth)
+				}
+				continue
+			}
+
+			successors := [2]int{index + 1, -1}
+			if instruction.Opcode == OpJump {
+				successors[0] = int(instruction.Operand)
+			} else if instruction.Opcode == OpJumpIfFalse {
+				successors[1] = int(instruction.Operand)
+			}
+			for _, successor := range successors {
+				if successor < 0 {
+					continue
+				}
+				if successor >= len(function.Code) {
+					return fmt.Errorf("instruction %d falls outside code", index)
+				}
+				if depthAt[successor] == -1 {
+					depthAt[successor] = nextDepth
+					work = append(work, successor)
+				} else if depthAt[successor] != nextDepth {
+					return fmt.Errorf("instruction %d has conflicting stack depths %d and %d", successor, depthAt[successor], nextDepth)
+				}
+			}
+		}
 	}
 	if maximum != int(function.MaxStack) {
 		return fmt.Errorf("max stack is %d, declared %d", maximum, function.MaxStack)
 	}
 	return nil
+}
+
+func stackEffect(opcode Opcode) (required, delta int) {
+	switch opcode {
+	case OpConstant, OpLoadLocal:
+		return 0, 1
+	case OpStoreLocal, OpJumpIfFalse, OpReturn:
+		return 1, -1
+	case OpNegate, OpNot, OpArrayLength:
+		return 1, 0
+	case OpJump:
+		return 0, 0
+	case OpAdd, OpSubtract, OpMultiply, OpDivide, OpModulo,
+		OpEqual, OpNotEqual, OpLess, OpLessEqual, OpGreater, OpGreaterEqual,
+		OpAnd, OpOr, OpArrayElement:
+		return 2, -1
+	default:
+		return 0, 0
+	}
 }

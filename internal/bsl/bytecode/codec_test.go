@@ -11,8 +11,8 @@ func TestBinaryCodecRoundTripIsDeterministic(t *testing.T) {
 	t.Parallel()
 
 	program := &Program{Version: Version, Functions: []Function{{
-		Name: "Расчёт", IsFunction: true, Export: true, Arity: 1, MaxStack: 2,
-		Constants: []Value{Undefined(), Number(2.5), String("MetaLab")},
+		Name: "Расчёт", IsFunction: true, Export: true, Arity: 1, LocalCount: 2, MaxStack: 2,
+		Constants: []Value{Undefined(), Number(2.5), String("MetaLab"), Boolean(true)},
 		Code: []Instruction{
 			{Opcode: OpLoadLocal, Span: testSpan(1, 1)},
 			{Opcode: OpConstant, Operand: 1, Span: testSpan(2, 8)},
@@ -36,11 +36,14 @@ func TestBinaryCodecRoundTripIsDeterministic(t *testing.T) {
 		t.Fatal("binary encoding is not deterministic")
 	}
 	function, ok := decoded.Lookup("расчёт")
-	if !ok || !function.IsFunction || !function.Export || function.Arity != 1 {
+	if !ok || !function.IsFunction || !function.Export || function.Arity != 1 || function.LocalCount != 2 {
 		t.Fatalf("decoded function = %+v", function)
 	}
 	if text, ok := function.Constants[2].AsString(); !ok || text != "MetaLab" {
 		t.Fatalf("decoded string = %q, %v", text, ok)
+	}
+	if boolean, ok := function.Constants[3].AsBoolean(); !ok || !boolean {
+		t.Fatalf("decoded boolean = %v, %v", boolean, ok)
 	}
 }
 
@@ -77,6 +80,15 @@ func TestMarshalBinaryRejectsNilAndInvalidProgram(t *testing.T) {
 	}
 	if _, err := MarshalBinary(&Program{}); err == nil {
 		t.Fatal("MarshalBinary() accepted an invalid program")
+	}
+}
+
+func TestBinaryCodecRejectsMalformedBoolean(t *testing.T) {
+	t.Parallel()
+
+	decoder := wireDecoder{data: []byte{byte(BooleanKind), 2}}
+	if _, err := decoder.readValue(); err == nil {
+		t.Fatal("readValue() accepted a malformed boolean")
 	}
 }
 
