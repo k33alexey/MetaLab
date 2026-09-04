@@ -13,9 +13,10 @@ var files embed.FS
 
 // Catalog is the machine-readable BSL syntax contract.
 type Catalog struct {
-	Version  int       `yaml:"version"`
-	Keywords []Keyword `yaml:"keywords"`
-	Features []Feature `yaml:"features"`
+	Version   int        `yaml:"version"`
+	Keywords  []Keyword  `yaml:"keywords"`
+	Operators []Operator `yaml:"operators"`
+	Features  []Feature  `yaml:"features"`
 }
 
 // Keyword is one canonical Russian/English BSL keyword pair.
@@ -24,6 +25,12 @@ type Keyword struct {
 	Russian  string `yaml:"ru"`
 	English  string `yaml:"en"`
 	Category string `yaml:"category"`
+}
+
+// Operator is one punctuation or operator token recognized by the BSL lexer.
+type Operator struct {
+	ID     string `yaml:"id"`
+	Lexeme string `yaml:"lexeme"`
 }
 
 // Feature describes one independently testable part of BSL syntax.

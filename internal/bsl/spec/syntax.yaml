@@ -1,4 +1,4 @@
-version: 1
+version: 2
 keywords:
   - {id: procedure, ru: Процедура, en: Procedure, category: declaration}
   - {id: end_procedure, ru: КонецПроцедуры, en: EndProcedure, category: declaration}
@@ -40,6 +40,31 @@ keywords:
   - {id: false, ru: Ложь, en: False, category: literal}
   - {id: undefined, ru: Неопределено, en: Undefined, category: literal}
   - {id: "null", ru: "Null", en: "Null", category: literal}
+operators:
+  - {id: plus, lexeme: "+"}
+  - {id: minus, lexeme: "-"}
+  - {id: multiply, lexeme: "*"}
+  - {id: divide, lexeme: "/"}
+  - {id: modulo, lexeme: "%"}
+  - {id: equal, lexeme: "="}
+  - {id: not_equal, lexeme: "<>"}
+  - {id: less, lexeme: "<"}
+  - {id: less_equal, lexeme: "<="}
+  - {id: greater, lexeme: ">"}
+  - {id: greater_equal, lexeme: ">="}
+  - {id: left_parenthesis, lexeme: "("}
+  - {id: right_parenthesis, lexeme: ")"}
+  - {id: left_bracket, lexeme: "["}
+  - {id: right_bracket, lexeme: "]"}
+  - {id: dot, lexeme: "."}
+  - {id: comma, lexeme: ","}
+  - {id: semicolon, lexeme: ";"}
+  - {id: colon, lexeme: ":"}
+  - {id: question, lexeme: "?"}
+  - {id: ampersand, lexeme: "&"}
+  - {id: hash, lexeme: "#"}
+  - {id: tilde, lexeme: "~"}
+  - {id: bar, lexeme: "|"}
 features:
   - id: lexical.identifiers
     category: lexical

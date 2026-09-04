@@ -3,6 +3,8 @@ package syntax
 import (
 	"strings"
 	"testing"
+
+	"github.com/k33alexey/MetaLab/internal/bsl/spec"
 )
 
 func TestTokenizeIsLosslessAndTracksUnicodePosition(t *testing.T) {
@@ -63,9 +65,320 @@ func TestParseReportsFilenameLineAndColumn(t *testing.T) {
 func TestTokenizeRejectsUnterminatedString(t *testing.T) {
 	t.Parallel()
 
-	_, diagnostics := Tokenize("broken.bsl", "Возврат \"текст\n")
+	tokens, diagnostics := Tokenize("broken.bsl", "Возврат \"текст\n")
 	if len(diagnostics) != 1 || diagnostics[0].Code != "BSL1001" {
 		t.Fatalf("diagnostics = %v", diagnostics)
+	}
+	if tokens[1].Kind != StringStart {
+		t.Fatalf("tokens = %+v", tokens)
+	}
+}
+
+func TestCatalogKeywordsAndOperatorsAreRecognized(t *testing.T) {
+	t.Parallel()
+
+	catalog, err := spec.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seenKinds := make(map[Kind]string, len(catalog.Keywords))
+	for _, keyword := range catalog.Keywords {
+		russian, russianOK := KeywordKind(strings.ToUpper(keyword.Russian))
+		english, englishOK := KeywordKind(strings.ToUpper(keyword.English))
+		if !russianOK || !englishOK || russian != english || !russian.IsKeyword() {
+			t.Fatalf("keyword %+v maps to %v/%v (%v/%v)", keyword, russian, english, russianOK, englishOK)
+		}
+		if owner, exists := seenKinds[russian]; exists && owner != keyword.ID {
+			t.Fatalf("keyword kind %v belongs to %q and %q", russian, owner, keyword.ID)
+		}
+		seenKinds[russian] = keyword.ID
+		for _, alias := range []string{keyword.Russian, keyword.English} {
+			tokens, diagnostics := Tokenize("property.bsl", "Object."+alias)
+			if len(diagnostics) != 0 || len(tokens) != 4 || tokens[2].Kind != Identifier {
+				t.Fatalf("property keyword %q tokens=%+v diagnostics=%v", alias, tokens, diagnostics)
+			}
+		}
+	}
+	if len(seenKinds) != len(catalog.Keywords) {
+		t.Fatalf("recognized %d keyword kinds, want %d", len(seenKinds), len(catalog.Keywords))
+	}
+	for _, operator := range catalog.Operators {
+		tokens, diagnostics := Tokenize("operator.bsl", operator.Lexeme)
+		if len(diagnostics) != 0 || len(tokens) != 2 || tokens[0].Kind == Invalid || tokens[0].Lexeme != operator.Lexeme || tokens[1].Kind != EOF {
+			t.Fatalf("operator %+v tokens=%+v diagnostics=%v", operator, tokens, diagnostics)
+		}
+	}
+}
+
+func TestConformanceCorpusIsLexicallyValid(t *testing.T) {
+	t.Parallel()
+
+	catalog, err := spec.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := make(map[string]bool)
+	for _, feature := range catalog.Features {
+		for _, name := range feature.Corpus {
+			if checked[name] {
+				continue
+			}
+			checked[name] = true
+			source, err := spec.Corpus(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tokens, diagnostics := Tokenize(name, string(source))
+			if len(diagnostics) != 0 {
+				t.Fatalf("%s diagnostics = %v", name, diagnostics)
+			}
+			assertLosslessTokens(t, string(source), tokens)
+		}
+	}
+}
+
+func TestEveryTokenKindHasAStableName(t *testing.T) {
+	t.Parallel()
+
+	for kind := Invalid; kind <= Bar; kind++ {
+		if strings.HasPrefix(kind.String(), "token(") {
+			t.Fatalf("token kind %d has no stable name", kind)
+		}
+	}
+}
+
+func TestTokenizeOperatorsNumbersDatesAndDelimiters(t *testing.T) {
+	t.Parallel()
+
+	source := "0 42. 42.50 '' '20260904' '20260904153045' + - * / % = <> < <= > >= ( ) [ ] . , ; : ? & # ~ |"
+	tokens, diagnostics := Tokenize("all.bsl", source)
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %v", diagnostics)
+	}
+	want := []Kind{
+		Number, Number, Number, Date, Date, Date,
+		Plus, Minus, Star, Slash, Percent, Equal, NotEqual, Less, LessEqual, Greater, GreaterEqual,
+		LeftParen, RightParen, LeftBracket, RightBracket, Dot, Comma, Semicolon, Colon, Question, Ampersand, Hash, Tilde, Bar, EOF,
+	}
+	if len(tokens) != len(want) {
+		t.Fatalf("token count = %d, want %d: %+v", len(tokens), len(want), tokens)
+	}
+	for index, kind := range want {
+		if tokens[index].Kind != kind {
+			t.Fatalf("token %d = %v, want %v", index, tokens[index].Kind, kind)
+		}
+	}
+	if tokens[2].Value != "42.50" || tokens[3].Value != "" || tokens[5].Value != "20260904153045" {
+		t.Fatalf("literal values = %q, %q, %q", tokens[2].Value, tokens[3].Value, tokens[5].Value)
+	}
+}
+
+func TestTokenizeMultilineStringAndStructuredTrivia(t *testing.T) {
+	t.Parallel()
+
+	source := "\ufeff// описание\r\n\tЗначение = \"Первая\r\n  |Вторая\n\t|Третья \"\"строка\"\"\"; // конец"
+	tokens, diagnostics := Tokenize("multiline.bsl", source)
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %v", diagnostics)
+	}
+	if len(tokens) != 7 || tokens[0].Kind != Identifier || tokens[1].Kind != Equal || tokens[2].Kind != StringStart || tokens[3].Kind != StringPart || tokens[4].Kind != StringEnd || tokens[5].Kind != Semicolon || tokens[6].Kind != EOF {
+		t.Fatalf("tokens = %+v", tokens)
+	}
+	if got := strings.Join([]string{tokens[2].Value, tokens[3].Value, tokens[4].Value}, "\n"); got != "Первая\nВторая\nТретья \"строка\"" {
+		t.Fatalf("multiline value = %q", got)
+	}
+	if tokens[2].Span.Start.Line != 2 || tokens[4].Span.End.Line != 4 {
+		t.Fatalf("multiline spans = %+v .. %+v", tokens[2].Span, tokens[4].Span)
+	}
+	trivia := tokens[0].LeadingTrivia
+	if len(trivia) != 3 || trivia[0].Kind != ByteOrderMarkTrivia || trivia[1].Kind != LineCommentTrivia || trivia[2].Kind != WhitespaceTrivia {
+		t.Fatalf("leading trivia = %+v", trivia)
+	}
+	if tokens[0].Span.Start.Offset != len("\ufeff// описание\r\n\t") || tokens[0].Span.Start.Line != 2 || tokens[0].Span.Start.Column != 2 {
+		t.Fatalf("first token span = %+v", tokens[0].Span)
+	}
+	if len(tokens[6].LeadingTrivia) != 2 || tokens[6].LeadingTrivia[1].Kind != LineCommentTrivia {
+		t.Fatalf("EOF trivia = %+v", tokens[6].LeadingTrivia)
+	}
+	assertLosslessTokens(t, source, tokens)
+}
+
+func TestTokenizeReportsLexicalErrorsAndContinues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		source string
+		code   string
+		kind   Kind
+	}{
+		{name: "string", source: "\"строка\nСледующий", code: "BSL1001", kind: StringStart},
+		{name: "date", source: "'date' Следующий", code: "BSL1004", kind: Invalid},
+		{name: "unterminated date", source: "'20260904\nСледующий", code: "BSL1003", kind: Invalid},
+		{name: "character", source: "! Следующий", code: "BSL1002", kind: Invalid},
+		{name: "unsupported whitespace", source: "\u00a0Следующий", code: "BSL1002", kind: Invalid},
+		{name: "utf8", source: string([]byte{'A', 0xff, 'B'}), code: "BSL1005", kind: Identifier},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			tokens, diagnostics := Tokenize(test.name+".bsl", test.source)
+			if len(diagnostics) != 1 || diagnostics[0].Code != test.code {
+				t.Fatalf("diagnostics = %v", diagnostics)
+			}
+			if tokens[0].Kind != test.kind || tokens[len(tokens)-1].Kind != EOF {
+				t.Fatalf("tokens = %+v", tokens)
+			}
+			assertLosslessTokens(t, test.source, tokens)
+		})
+	}
+}
+
+func TestTokenizeContextSensitiveIdentifiersAndTrailingDots(t *testing.T) {
+	t.Parallel()
+
+	source := "Поле.Процедура Запрос.  Выполнить\nА. // комментарий\nЕсли\n~Если: &Если"
+	tokens, diagnostics := Tokenize("contexts.bsl", source)
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %v", diagnostics)
+	}
+	want := []Kind{
+		Identifier, Dot, Identifier,
+		Identifier, Dot, Execute,
+		Identifier, DotTrailing, If,
+		Tilde, Identifier, Colon, Ampersand, Identifier, EOF,
+	}
+	if len(tokens) != len(want) {
+		t.Fatalf("tokens = %+v", tokens)
+	}
+	for index, kind := range want {
+		if tokens[index].Kind != kind {
+			t.Fatalf("token %d (%q) = %v, want %v", index, tokens[index].Lexeme, tokens[index].Kind, kind)
+		}
+	}
+}
+
+func TestTokenizeBarOutsideMultilineString(t *testing.T) {
+	t.Parallel()
+
+	tokens, diagnostics := Tokenize("bar.bsl", "|Если")
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %v", diagnostics)
+	}
+	want := []Kind{Bar, If, EOF}
+	if len(tokens) != len(want) {
+		t.Fatalf("tokens = %+v", tokens)
+	}
+	for index, kind := range want {
+		if tokens[index].Kind != kind {
+			t.Fatalf("token %d (%q) = %v, want %v", index, tokens[index].Lexeme, tokens[index].Kind, kind)
+		}
+	}
+}
+
+func TestTokenizeMultilineStringWithPreprocessorLines(t *testing.T) {
+	t.Parallel()
+
+	source := "\"Начало\n#Если Сервер Тогда\n|Сервер\n#Иначе\n|Клиент\""
+	tokens, diagnostics := Tokenize("conditional-string.bsl", source)
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %v", diagnostics)
+	}
+	want := []Kind{StringStart, Hash, If, Identifier, Then, StringPart, Hash, Else, StringEnd, EOF}
+	if len(tokens) != len(want) {
+		t.Fatalf("tokens = %+v", tokens)
+	}
+	for index, kind := range want {
+		if tokens[index].Kind != kind {
+			t.Fatalf("token %d (%q) = %v, want %v", index, tokens[index].Lexeme, tokens[index].Kind, kind)
+		}
+	}
+	assertLosslessTokens(t, source, tokens)
+}
+
+func TestParseSimpleMultilineString(t *testing.T) {
+	t.Parallel()
+
+	module, diagnostics := Parse("string.bsl", "Функция Текст()\nВозврат \"Первая\n |Вторая\n |Третья\";\nКонецФункции")
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %v", diagnostics)
+	}
+	returned, ok := module.Routines[0].Body[0].(*ReturnStatement)
+	if !ok {
+		t.Fatalf("statement = %#v", module.Routines[0].Body[0])
+	}
+	value, ok := returned.Value.(*StringExpression)
+	if !ok || value.Value != "Первая\nВторая\nТретья" || value.SourceSpan.Start.Line != 2 || value.SourceSpan.End.Line != 4 {
+		t.Fatalf("value = %#v", returned.Value)
+	}
+}
+
+func TestTokenizeRegionNameAsIdentifier(t *testing.T) {
+	t.Parallel()
+
+	for _, source := range []string{"#Область Если", "# Region If"} {
+		tokens, diagnostics := Tokenize("region.bsl", source)
+		if len(diagnostics) != 0 || len(tokens) != 4 || tokens[0].Kind != Hash || tokens[1].Kind != Identifier || tokens[2].Kind != Identifier || tokens[3].Kind != EOF {
+			t.Fatalf("source=%q tokens=%+v diagnostics=%v", source, tokens, diagnostics)
+		}
+	}
+}
+
+func TestTokenizeReportsInvalidUTF8InsideCommentAndString(t *testing.T) {
+	t.Parallel()
+
+	source := string([]byte{'/', '/', ' ', 0xff, '\n', '"', 0xfe, '"'})
+	tokens, diagnostics := Tokenize("encoding.bsl", source)
+	if len(diagnostics) != 2 || diagnostics[0].Code != "BSL1005" || diagnostics[1].Code != "BSL1005" {
+		t.Fatalf("diagnostics = %v", diagnostics)
+	}
+	if len(tokens) != 2 || tokens[0].Kind != String || tokens[1].Kind != EOF {
+		t.Fatalf("tokens = %+v", tokens)
+	}
+	assertLosslessTokens(t, source, tokens)
+}
+
+func FuzzTokenizeLossless(f *testing.F) {
+	for _, source := range []string{
+		"", "Функция Тест()\nКонецФункции", "// комментарий\r\nВозврат 1;",
+		"\"Первая\n|Вторая\"", "'20260904153045'", string([]byte{0xff, '\r', '\n'}),
+	} {
+		f.Add(source)
+	}
+	f.Fuzz(func(t *testing.T, source string) {
+		tokens, _ := Tokenize("fuzz.bsl", source)
+		assertLosslessTokens(t, source, tokens)
+		previousEnd := 0
+		for index, token := range tokens {
+			if token.Span.Start.Offset < previousEnd || token.Span.Start.Offset > token.Span.End.Offset || token.Span.End.Offset > len(source) {
+				t.Fatalf("invalid token %d span %+v after offset %d", index, token.Span, previousEnd)
+			}
+			previousEnd = token.Span.End.Offset
+		}
+		if len(tokens) == 0 || tokens[len(tokens)-1].Kind != EOF {
+			t.Fatalf("missing EOF token: %+v", tokens)
+		}
+	})
+}
+
+func BenchmarkTokenize(b *testing.B) {
+	source := strings.Repeat("// Строка\nЕсли Значение >= 42 Тогда\nРезультат = \"Текст\";\nКонецЕсли;\n", 100)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(source)))
+	for range b.N {
+		Tokenize("benchmark.bsl", source)
+	}
+}
+
+func assertLosslessTokens(t testing.TB, source string, tokens []Token) {
+	t.Helper()
+	var reconstructed strings.Builder
+	for _, token := range tokens {
+		reconstructed.WriteString(token.Leading)
+		reconstructed.WriteString(token.Lexeme)
+	}
+	if reconstructed.String() != source {
+		t.Fatalf("lossless source = %q, want %q", reconstructed.String(), source)
 	}
 }
 

@@ -14,14 +14,17 @@ func TestCatalogIsCompleteAndConsistent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if catalog.Version != 1 {
-		t.Fatalf("catalog version = %d, want 1", catalog.Version)
+	if catalog.Version != 2 {
+		t.Fatalf("catalog version = %d, want 2", catalog.Version)
 	}
 	if len(catalog.Features) < 20 {
 		t.Fatalf("catalog has only %d features", len(catalog.Features))
 	}
 	if len(catalog.Keywords) < 35 {
 		t.Fatalf("catalog has only %d keyword pairs", len(catalog.Keywords))
+	}
+	if len(catalog.Operators) < 20 {
+		t.Fatalf("catalog has only %d operators and punctuation tokens", len(catalog.Operators))
 	}
 
 	keywordIDs := make(map[string]bool, len(catalog.Keywords))
@@ -41,6 +44,18 @@ func TestCatalogIsCompleteAndConsistent(t *testing.T) {
 			}
 			aliases[folded] = keyword.ID
 		}
+	}
+	operatorIDs := make(map[string]bool, len(catalog.Operators))
+	operatorLexemes := make(map[string]bool, len(catalog.Operators))
+	for _, operator := range catalog.Operators {
+		if operator.ID == "" || operator.Lexeme == "" {
+			t.Fatalf("operator has an empty field: %+v", operator)
+		}
+		if operatorIDs[operator.ID] || operatorLexemes[operator.Lexeme] {
+			t.Fatalf("duplicate operator: %+v", operator)
+		}
+		operatorIDs[operator.ID] = true
+		operatorLexemes[operator.Lexeme] = true
 	}
 
 	allowedCategories := map[string]bool{

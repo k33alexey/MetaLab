@@ -1,6 +1,9 @@
 package syntax
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Parse builds an AST and returns all diagnostics found by the prototype frontend.
 func Parse(filename, source string) (*Module, []Diagnostic) {
@@ -189,6 +192,8 @@ func (p *parser) parsePrimary() Expression {
 	case String:
 		p.advance()
 		return &StringExpression{Value: current.Value, SourceSpan: current.Span}
+	case StringStart:
+		return p.parseMultilineString()
 	case Identifier:
 		p.advance()
 		return &IdentifierExpression{Name: current.Value, SourceSpan: current.Span}
@@ -206,6 +211,26 @@ func (p *parser) parsePrimary() Expression {
 			p.advance()
 		}
 		return nil
+	}
+}
+
+func (p *parser) parseMultilineString() Expression {
+	start := p.advance()
+	var value strings.Builder
+	value.WriteString(start.Value)
+	for p.check(StringPart) {
+		value.WriteByte('\n')
+		value.WriteString(p.advance().Value)
+	}
+	if !p.check(StringEnd) {
+		p.report(p.peek(), "BSL2002", "expected multiline string end")
+		return &StringExpression{Value: value.String(), SourceSpan: start.Span}
+	}
+	end := p.advance()
+	value.WriteByte('\n')
+	value.WriteString(end.Value)
+	return &StringExpression{
+		Value: value.String(), SourceSpan: Span{Start: start.Span.Start, End: end.Span.End},
 	}
 }
 
