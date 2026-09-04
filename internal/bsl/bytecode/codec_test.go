@@ -18,9 +18,13 @@ func TestBinaryCodecRoundTripIsDeterministic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	program := &Program{Version: Version, Functions: []Function{{
+	program := &Program{Version: Version, Modules: []Module{{
+		Name: "Основной", Variables: []ModuleVariable{{Name: "Состояние", Export: true}},
+	}}, Functions: []Function{{
 		Name: "Расчёт", IsFunction: true, Export: true, Arity: 1, LocalCount: 2, MaxStack: 2,
-		Constants: []Value{Undefined(), Number(2.5), String("MetaLab"), Boolean(true), Null(), date, exact},
+		Parameters: []Parameter{{HasDefault: true, Default: Number(10)}},
+		Constants:  []Value{Undefined(), Number(2.5), String("MetaLab"), Boolean(true), Null(), date, exact},
+		ModuleVars: []VariableReference{{Kind: ModuleReference, Variable: 0}},
 		Code: []Instruction{
 			{Opcode: OpLoadLocal, Span: testSpan(1, 1)},
 			{Opcode: OpConstant, Operand: 1, Span: testSpan(2, 8)},
@@ -46,6 +50,12 @@ func TestBinaryCodecRoundTripIsDeterministic(t *testing.T) {
 	function, ok := decoded.Lookup("расчёт")
 	if !ok || !function.IsFunction || !function.Export || function.Arity != 1 || function.LocalCount != 2 {
 		t.Fatalf("decoded function = %+v", function)
+	}
+	if len(decoded.Modules) != 1 || decoded.Modules[0].Name != "Основной" || !decoded.Modules[0].Variables[0].Export {
+		t.Fatalf("decoded modules = %+v", decoded.Modules)
+	}
+	if len(function.Parameters) != 1 || !function.Parameters[0].HasDefault || function.Parameters[0].Default.String() != "10" {
+		t.Fatalf("decoded parameters = %+v", function.Parameters)
 	}
 	if text, ok := function.Constants[2].AsString(); !ok || text != "MetaLab" {
 		t.Fatalf("decoded string = %q, %v", text, ok)

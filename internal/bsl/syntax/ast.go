@@ -2,7 +2,15 @@ package syntax
 
 // Module is one parsed BSL source file.
 type Module struct {
-	Routines []*Routine
+	Variables []Variable
+	Routines  []*Routine
+}
+
+// Variable is one module-level or local declaration.
+type Variable struct {
+	Name       string
+	Export     bool
+	SourceSpan Span
 }
 
 // Routine is a procedure or function declaration.
@@ -17,8 +25,10 @@ type Routine struct {
 
 // Parameter is one routine argument.
 type Parameter struct {
-	Name string
-	Span Span
+	Name       string
+	ByValue    bool
+	Default    Expression
+	SourceSpan Span
 }
 
 // Statement is a BSL executable statement.
@@ -49,10 +59,29 @@ func (node *ReturnStatement) NodeSpan() Span { return node.SourceSpan }
 
 // AssignmentStatement assigns a value to a local identifier.
 type AssignmentStatement struct {
+	Qualifier  string
 	Name       string
 	Value      Expression
 	SourceSpan Span
 }
+
+// VariableStatement declares local routine variables.
+type VariableStatement struct {
+	Variables  []Variable
+	SourceSpan Span
+}
+
+func (*VariableStatement) statement()          {}
+func (node *VariableStatement) NodeSpan() Span { return node.SourceSpan }
+
+// CallStatement invokes a procedure or discards a function result.
+type CallStatement struct {
+	Call       *CallExpression
+	SourceSpan Span
+}
+
+func (*CallStatement) statement()          {}
+func (node *CallStatement) NodeSpan() Span { return node.SourceSpan }
 
 func (*AssignmentStatement) statement()          {}
 func (node *AssignmentStatement) NodeSpan() Span { return node.SourceSpan }
@@ -121,9 +150,27 @@ func (node *ContinueStatement) NodeSpan() Span { return node.SourceSpan }
 
 // IdentifierExpression references a parameter or local value.
 type IdentifierExpression struct {
+	Qualifier  string
 	Name       string
 	SourceSpan Span
 }
+
+// CallArgument is one supplied or deliberately omitted positional argument.
+type CallArgument struct {
+	Value      Expression
+	SourceSpan Span
+}
+
+// CallExpression invokes a function. The same node is used by CallStatement.
+type CallExpression struct {
+	Qualifier  string
+	Name       string
+	Arguments  []CallArgument
+	SourceSpan Span
+}
+
+func (*CallExpression) expression()         {}
+func (node *CallExpression) NodeSpan() Span { return node.SourceSpan }
 
 func (*IdentifierExpression) expression()         {}
 func (node *IdentifierExpression) NodeSpan() Span { return node.SourceSpan }

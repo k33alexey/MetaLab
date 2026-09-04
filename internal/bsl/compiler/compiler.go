@@ -4,55 +4,156 @@ package compiler
 import (
 	"fmt"
 	"math"
+	"path"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 )
 
+// ModuleSource is one named BSL module compiled together with related modules.
+type ModuleSource struct {
+	Name     string
+	Filename string
+	Source   string
+}
+
 // CompileSource performs the complete frontend and compilation pass.
 func CompileSource(filename, source string) (*bytecode.Program, []syntax.Diagnostic) {
-	module, diagnostics := syntax.Parse(filename, source)
-	if len(diagnostics) != 0 {
-		return nil, diagnostics
-	}
-	return Compile(filename, module)
+	return CompileModules([]ModuleSource{{Name: moduleName(filename), Filename: filename, Source: source}})
 }
 
 // Compile translates a parsed module into validated bytecode.
 func Compile(filename string, module *syntax.Module) (*bytecode.Program, []syntax.Diagnostic) {
-	program := &bytecode.Program{Version: bytecode.Version}
-	state := compiler{filename: filename}
-	names := make(map[string]bool, len(module.Routines))
-	for _, routine := range module.Routines {
-		folded := strings.ToLower(routine.Name)
-		if names[folded] {
-			state.report(routine.SourceSpan, "BSL3001", "duplicate routine "+routine.Name)
+	return compileParsed([]parsedModule{{name: moduleName(filename), filename: filename, syntax: module}})
+}
+
+// CompileModules parses and links multiple independently scoped BSL modules.
+func CompileModules(sources []ModuleSource) (*bytecode.Program, []syntax.Diagnostic) {
+	parsed := make([]parsedModule, 0, len(sources))
+	var diagnostics []syntax.Diagnostic
+	for _, source := range sources {
+		name := source.Name
+		if name == "" {
+			name = moduleName(source.Filename)
+		}
+		module, current := syntax.Parse(source.Filename, source.Source)
+		diagnostics = append(diagnostics, current...)
+		parsed = append(parsed, parsedModule{name: name, filename: source.Filename, syntax: module})
+	}
+	if len(diagnostics) != 0 {
+		return nil, diagnostics
+	}
+	return compileParsed(parsed)
+}
+
+type parsedModule struct {
+	name     string
+	filename string
+	syntax   *syntax.Module
+}
+
+type routineEntry struct {
+	module  uint16
+	index   uint16
+	owner   *parsedModule
+	routine *syntax.Routine
+}
+
+func compileParsed(modules []parsedModule) (*bytecode.Program, []syntax.Diagnostic) {
+	state := compiler{
+		program:       &bytecode.Program{Version: bytecode.Version},
+		moduleByName:  make(map[string]uint16, len(modules)),
+		routineByName: make(map[string]routineEntry),
+	}
+	for index := range modules {
+		module := &modules[index]
+		folded := strings.ToLower(module.name)
+		if module.name == "" || state.moduleByNameContains(folded) {
+			state.report(module.filename, syntax.Span{}, "BSL3015", "empty or duplicate module name "+module.name)
 			continue
 		}
-		names[folded] = true
-		compiled := state.compileRoutine(routine)
-		if compiled != nil {
-			program.Functions = append(program.Functions, *compiled)
+		if len(state.program.Modules) > math.MaxUint16 {
+			state.report(module.filename, syntax.Span{}, "BSL3023", "too many modules in program")
+			continue
 		}
+		moduleIndex := uint16(len(state.program.Modules))
+		state.moduleByName[folded] = moduleIndex
+		variables := make(map[string]bool, len(module.syntax.Variables))
+		definition := bytecode.Module{Name: module.name}
+		for _, variable := range module.syntax.Variables {
+			name := strings.ToLower(variable.Name)
+			if variables[name] {
+				state.report(module.filename, variable.SourceSpan, "BSL3022", "duplicate module variable "+variable.Name)
+				continue
+			}
+			if len(definition.Variables) > math.MaxUint16 {
+				state.report(module.filename, variable.SourceSpan, "BSL3023", "too many module variables")
+				continue
+			}
+			variables[name] = true
+			definition.Variables = append(definition.Variables, bytecode.ModuleVariable{Name: variable.Name, Export: variable.Export})
+		}
+		state.program.Modules = append(state.program.Modules, definition)
+	}
+
+	var entries []routineEntry
+	for moduleIndex := range state.program.Modules {
+		module := state.parsedModuleForName(modules, state.program.Modules[moduleIndex].Name)
+		if module == nil {
+			continue
+		}
+		seen := make(map[string]bool, len(module.syntax.Routines))
+		for _, routine := range module.syntax.Routines {
+			folded := strings.ToLower(routine.Name)
+			if seen[folded] {
+				state.report(module.filename, routine.SourceSpan, "BSL3001", "duplicate routine "+routine.Name)
+				continue
+			}
+			if len(entries) > math.MaxUint16 {
+				state.report(module.filename, routine.SourceSpan, "BSL3023", "too many routines in program")
+				continue
+			}
+			seen[folded] = true
+			entry := routineEntry{module: uint16(moduleIndex), index: uint16(len(entries)), owner: module, routine: routine}
+			entries = append(entries, entry)
+			state.routineByName[state.routineKey(entry.module, routine.Name)] = entry
+			state.program.Functions = append(state.program.Functions, bytecode.Function{Name: routine.Name, Module: entry.module})
+		}
+	}
+	for _, entry := range entries {
+		state.program.Functions[entry.index] = state.compileRoutine(entry)
 	}
 	if len(state.diagnostics) != 0 {
 		return nil, state.diagnostics
 	}
-	if err := program.Validate(); err != nil {
-		state.report(syntax.Span{}, "BSL3002", "invalid generated bytecode: "+err.Error())
+	if err := state.program.Validate(); err != nil {
+		state.report("", syntax.Span{}, "BSL3002", "invalid generated bytecode: "+err.Error())
 		return nil, state.diagnostics
 	}
-	return program, nil
+	return state.program, nil
+}
+
+func moduleName(filename string) string {
+	base := path.Base(strings.ReplaceAll(filename, "\\", "/"))
+	name := strings.TrimSuffix(base, path.Ext(base))
+	if name == "" || name == "." {
+		return "Module"
+	}
+	return name
 }
 
 type compiler struct {
-	filename    string
-	diagnostics []syntax.Diagnostic
+	program       *bytecode.Program
+	moduleByName  map[string]uint16
+	routineByName map[string]routineEntry
+	diagnostics   []syntax.Diagnostic
 }
 
 type functionCompiler struct {
 	owner     *compiler
+	filename  string
+	module    uint16
 	routine   *syntax.Routine
 	function  bytecode.Function
 	locals    map[string]uint16
@@ -62,33 +163,66 @@ type functionCompiler struct {
 	maximum   int
 }
 
+func (c *compiler) moduleByNameContains(name string) bool {
+	_, exists := c.moduleByName[name]
+	return exists
+}
+
+func (c *compiler) parsedModuleForName(modules []parsedModule, name string) *parsedModule {
+	for index := range modules {
+		if strings.EqualFold(modules[index].name, name) {
+			return &modules[index]
+		}
+	}
+	return nil
+}
+
+func (c *compiler) routineKey(module uint16, name string) string {
+	return fmt.Sprintf("%d:%s", module, strings.ToLower(name))
+}
+
 type loopContext struct {
 	continueTarget int
 	breakJumps     []int
 	continueJumps  []int
 }
 
-func (c *compiler) compileRoutine(routine *syntax.Routine) *bytecode.Function {
+func (c *compiler) compileRoutine(entry routineEntry) bytecode.Function {
+	routine := entry.routine
 	if len(routine.Parameters) > math.MaxUint16 {
-		c.report(routine.SourceSpan, "BSL3003", "too many routine parameters")
-		return nil
+		c.report(entry.owner.filename, routine.SourceSpan, "BSL3003", "too many routine parameters")
+		return bytecode.Function{Name: routine.Name, Module: entry.module}
 	}
 	state := functionCompiler{
-		owner: c, routine: routine,
+		owner: c, filename: entry.owner.filename, module: entry.module, routine: routine,
 		function: bytecode.Function{
-			Name: routine.Name, IsFunction: routine.Function, Export: routine.Export,
+			Name: routine.Name, Module: entry.module, IsFunction: routine.Function, Export: routine.Export,
 			Arity: uint16(len(routine.Parameters)),
 		},
 		locals: make(map[string]uint16, len(routine.Parameters)), nextLocal: len(routine.Parameters),
 	}
+	optional := false
 	for index, parameter := range routine.Parameters {
 		name := strings.ToLower(parameter.Name)
 		if _, exists := state.locals[name]; exists {
-			c.report(parameter.Span, "BSL3004", "duplicate parameter "+parameter.Name)
+			c.report(entry.owner.filename, parameter.SourceSpan, "BSL3004", "duplicate parameter "+parameter.Name)
 			continue
 		}
 		state.locals[name] = uint16(index)
+		metadata := bytecode.Parameter{ByValue: parameter.ByValue, HasDefault: parameter.Default != nil}
+		if parameter.Default != nil {
+			optional = true
+			value, ok := c.compileDefault(entry.owner.filename, parameter.Default)
+			if ok {
+				metadata.Default = value
+			}
+		} else if optional {
+			c.report(entry.owner.filename, parameter.SourceSpan, "BSL3016", "required parameter follows an optional parameter")
+		}
+		state.function.Parameters = append(state.function.Parameters, metadata)
 	}
+	state.declareExplicitLocals(routine.Body)
+	state.declareImplicitLocals(routine.Body)
 
 	for _, statement := range routine.Body {
 		state.compileStatement(statement)
@@ -98,16 +232,125 @@ func (c *compiler) compileRoutine(routine *syntax.Routine) *bytecode.Function {
 		state.emit(bytecode.OpReturn, 0, routine.SourceSpan)
 	}
 	if state.nextLocal > math.MaxUint16 {
-		c.report(routine.SourceSpan, "BSL3011", "too many local variables in routine")
+		c.report(entry.owner.filename, routine.SourceSpan, "BSL3011", "too many local variables in routine")
 	}
 	state.function.LocalCount = uint16(state.nextLocal)
 	state.function.MaxStack = uint16(state.maximum)
-	return &state.function
+	return state.function
+}
+
+func (c *functionCompiler) declareExplicitLocals(statements []syntax.Statement) {
+	for _, statement := range statements {
+		switch node := statement.(type) {
+		case *syntax.VariableStatement:
+			for _, variable := range node.Variables {
+				name := strings.ToLower(variable.Name)
+				if _, exists := c.locals[name]; exists {
+					c.owner.report(c.filename, variable.SourceSpan, "BSL3024", "duplicate local variable "+variable.Name)
+					continue
+				}
+				c.locals[name] = c.allocateLocal(variable.SourceSpan)
+			}
+		case *syntax.IfStatement:
+			for _, branch := range node.Branches {
+				c.declareExplicitLocals(branch.Body)
+			}
+			c.declareExplicitLocals(node.ElseBody)
+		case *syntax.WhileStatement:
+			c.declareExplicitLocals(node.Body)
+		case *syntax.ForStatement:
+			c.declareExplicitLocals(node.Body)
+		case *syntax.ForEachStatement:
+			c.declareExplicitLocals(node.Body)
+		}
+	}
+}
+
+func (c *functionCompiler) declareImplicitLocals(statements []syntax.Statement) {
+	for _, statement := range statements {
+		switch node := statement.(type) {
+		case *syntax.AssignmentStatement:
+			if node.Qualifier == "" && !c.currentModuleHasVariable(node.Name) {
+				c.ensureLocal(node.Name, node.SourceSpan)
+			}
+		case *syntax.ForStatement:
+			c.ensureLocal(node.Variable, node.SourceSpan)
+			c.declareImplicitLocals(node.Body)
+		case *syntax.ForEachStatement:
+			c.ensureLocal(node.Variable, node.SourceSpan)
+			c.declareImplicitLocals(node.Body)
+		case *syntax.IfStatement:
+			for _, branch := range node.Branches {
+				c.declareImplicitLocals(branch.Body)
+			}
+			c.declareImplicitLocals(node.ElseBody)
+		case *syntax.WhileStatement:
+			c.declareImplicitLocals(node.Body)
+		}
+	}
+}
+
+func (c *functionCompiler) currentModuleHasVariable(name string) bool {
+	for _, variable := range c.owner.program.Modules[c.module].Variables {
+		if strings.EqualFold(variable.Name, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *compiler) compileDefault(filename string, expression syntax.Expression) (bytecode.Value, bool) {
+	value, ok := primitiveConstant(expression)
+	if ok {
+		return value, true
+	}
+	c.report(filename, expression.NodeSpan(), "BSL3017", "default parameter value must be a primitive constant")
+	return bytecode.Undefined(), false
+}
+
+func primitiveConstant(expression syntax.Expression) (bytecode.Value, bool) {
+	switch node := expression.(type) {
+	case *syntax.NumberExpression:
+		value, err := bytecode.ParseNumber(node.Text)
+		if err == nil {
+			return value, true
+		}
+	case *syntax.StringExpression:
+		return bytecode.String(node.Value), true
+	case *syntax.BooleanExpression:
+		return bytecode.Boolean(node.Value), true
+	case *syntax.DateExpression:
+		value, err := bytecode.ParseDate(node.Text)
+		if err == nil {
+			return value, true
+		}
+	case *syntax.UndefinedExpression:
+		return bytecode.Undefined(), true
+	case *syntax.NullExpression:
+		return bytecode.Null(), true
+	case *syntax.GroupExpression:
+		return primitiveConstant(node.Expression)
+	case *syntax.UnaryExpression:
+		value, ok := primitiveConstant(node.Operand)
+		if ok && value.Kind() == bytecode.NumberKind {
+			if node.Operator == syntax.Plus {
+				return value, true
+			}
+			if node.Operator == syntax.Minus {
+				negated, err := bytecode.NegateNumber(value)
+				return negated, err == nil
+			}
+		}
+	}
+	return bytecode.Undefined(), false
 }
 
 func (c *functionCompiler) compileStatement(statement syntax.Statement) {
 	switch node := statement.(type) {
 	case *syntax.ReturnStatement:
+		if !c.routine.Function && node.Value != nil {
+			c.owner.report(c.filename, node.SourceSpan, "BSL3025", "procedure cannot return a value")
+		}
 		if node.Value == nil {
 			c.emitConstant(bytecode.Undefined(), node.SourceSpan)
 		} else {
@@ -116,7 +359,12 @@ func (c *functionCompiler) compileStatement(statement syntax.Statement) {
 		c.emit(bytecode.OpReturn, 0, node.SourceSpan)
 	case *syntax.AssignmentStatement:
 		c.compileExpression(node.Value)
-		c.emit(bytecode.OpStoreLocal, c.ensureLocal(node.Name, node.SourceSpan), node.SourceSpan)
+		c.compileStore(node.Qualifier, node.Name, node.SourceSpan)
+	case *syntax.VariableStatement:
+		// Locals are allocated before code generation so their scope is the whole routine.
+	case *syntax.CallStatement:
+		c.compileCall(node.Call, false)
+		c.emit(bytecode.OpPop, 0, node.SourceSpan)
 	case *syntax.IfStatement:
 		c.compileIf(node)
 	case *syntax.WhileStatement:
@@ -130,7 +378,7 @@ func (c *functionCompiler) compileStatement(statement syntax.Statement) {
 	case *syntax.ContinueStatement:
 		c.compileLoopControl(node.SourceSpan, false)
 	default:
-		c.owner.report(statement.NodeSpan(), "BSL3005", fmt.Sprintf("unsupported statement %T", statement))
+		c.owner.report(c.filename, statement.NodeSpan(), "BSL3005", fmt.Sprintf("unsupported statement %T", statement))
 	}
 }
 
@@ -139,7 +387,7 @@ func (c *functionCompiler) compileExpression(expression syntax.Expression) {
 	case *syntax.NumberExpression:
 		value, err := bytecode.ParseNumber(node.Text)
 		if err != nil {
-			c.owner.report(node.SourceSpan, "BSL3006", "invalid number "+node.Text)
+			c.owner.report(c.filename, node.SourceSpan, "BSL3006", "invalid number "+node.Text)
 			c.emitConstant(bytecode.Undefined(), node.SourceSpan)
 			return
 		}
@@ -151,7 +399,7 @@ func (c *functionCompiler) compileExpression(expression syntax.Expression) {
 	case *syntax.DateExpression:
 		value, err := bytecode.ParseDate(node.Text)
 		if err != nil {
-			c.owner.report(node.SourceSpan, "BSL3014", "invalid date literal: "+err.Error())
+			c.owner.report(c.filename, node.SourceSpan, "BSL3014", "invalid date literal: "+err.Error())
 			c.emitConstant(bytecode.Undefined(), node.SourceSpan)
 			return
 		}
@@ -161,13 +409,9 @@ func (c *functionCompiler) compileExpression(expression syntax.Expression) {
 	case *syntax.NullExpression:
 		c.emitConstant(bytecode.Null(), node.SourceSpan)
 	case *syntax.IdentifierExpression:
-		index, ok := c.locals[strings.ToLower(node.Name)]
-		if !ok {
-			c.owner.report(node.SourceSpan, "BSL3007", "unknown identifier "+node.Name)
-			c.emitConstant(bytecode.Undefined(), node.SourceSpan)
-			return
-		}
-		c.emit(bytecode.OpLoadLocal, index, node.SourceSpan)
+		c.compileLoad(node.Qualifier, node.Name, node.SourceSpan)
+	case *syntax.CallExpression:
+		c.compileCall(node, true)
 	case *syntax.GroupExpression:
 		c.compileExpression(node.Expression)
 	case *syntax.UnaryExpression:
@@ -216,13 +460,171 @@ func (c *functionCompiler) compileExpression(expression syntax.Expression) {
 		case syntax.Or:
 			opcode = bytecode.OpOr
 		default:
-			c.owner.report(node.SourceSpan, "BSL3008", "unsupported binary operator "+node.Operator.String())
+			c.owner.report(c.filename, node.SourceSpan, "BSL3008", "unsupported binary operator "+node.Operator.String())
 		}
 		c.emit(opcode, 0, node.SourceSpan)
 	default:
-		c.owner.report(expression.NodeSpan(), "BSL3009", fmt.Sprintf("unsupported expression %T", expression))
+		c.owner.report(c.filename, expression.NodeSpan(), "BSL3009", fmt.Sprintf("unsupported expression %T", expression))
 		c.emitConstant(bytecode.Undefined(), expression.NodeSpan())
 	}
+}
+
+func (c *functionCompiler) compileLoad(qualifier, name string, span syntax.Span) {
+	reference, ok := c.resolveVariable(qualifier, name, false, span)
+	if !ok {
+		c.emitConstant(bytecode.Undefined(), span)
+		return
+	}
+	switch reference.Kind {
+	case bytecode.LocalReference:
+		c.emit(bytecode.OpLoadLocal, reference.Variable, span)
+	case bytecode.ModuleReference:
+		c.emit(bytecode.OpLoadModule, c.addModuleAccess(reference, span), span)
+	}
+}
+
+func (c *functionCompiler) compileStore(qualifier, name string, span syntax.Span) {
+	reference, ok := c.resolveVariable(qualifier, name, true, span)
+	if !ok {
+		c.emit(bytecode.OpPop, 0, span)
+		return
+	}
+	switch reference.Kind {
+	case bytecode.LocalReference:
+		c.emit(bytecode.OpStoreLocal, reference.Variable, span)
+	case bytecode.ModuleReference:
+		c.emit(bytecode.OpStoreModule, c.addModuleAccess(reference, span), span)
+	}
+}
+
+func (c *functionCompiler) resolveVariable(qualifier, name string, createLocal bool, span syntax.Span) (bytecode.VariableReference, bool) {
+	if qualifier == "" {
+		if index, ok := c.locals[strings.ToLower(name)]; ok {
+			return bytecode.VariableReference{Kind: bytecode.LocalReference, Variable: index}, true
+		}
+		module := &c.owner.program.Modules[c.module]
+		for index, variable := range module.Variables {
+			if strings.EqualFold(variable.Name, name) {
+				return bytecode.VariableReference{Kind: bytecode.ModuleReference, Module: c.module, Variable: uint16(index)}, true
+			}
+		}
+		if createLocal {
+			return bytecode.VariableReference{Kind: bytecode.LocalReference, Variable: c.ensureLocal(name, span)}, true
+		}
+		c.owner.report(c.filename, span, "BSL3007", "unknown identifier "+name)
+		return bytecode.VariableReference{}, false
+	}
+	moduleIndex, exists := c.owner.moduleByName[strings.ToLower(qualifier)]
+	if !exists {
+		c.owner.report(c.filename, span, "BSL3026", "unknown module "+qualifier)
+		return bytecode.VariableReference{}, false
+	}
+	module := &c.owner.program.Modules[moduleIndex]
+	for index, variable := range module.Variables {
+		if !strings.EqualFold(variable.Name, name) {
+			continue
+		}
+		if moduleIndex != c.module && !variable.Export {
+			c.owner.report(c.filename, span, "BSL3027", "module variable is not exported: "+qualifier+"."+name)
+			return bytecode.VariableReference{}, false
+		}
+		return bytecode.VariableReference{Kind: bytecode.ModuleReference, Module: moduleIndex, Variable: uint16(index)}, true
+	}
+	c.owner.report(c.filename, span, "BSL3007", "unknown identifier "+qualifier+"."+name)
+	return bytecode.VariableReference{}, false
+}
+
+func (c *functionCompiler) addModuleAccess(reference bytecode.VariableReference, span syntax.Span) uint16 {
+	for index, existing := range c.function.ModuleVars {
+		if existing == reference {
+			return uint16(index)
+		}
+	}
+	if len(c.function.ModuleVars) > math.MaxUint16 {
+		c.owner.report(c.filename, span, "BSL3028", "too many module variable accesses")
+		return 0
+	}
+	index := uint16(len(c.function.ModuleVars))
+	c.function.ModuleVars = append(c.function.ModuleVars, reference)
+	return index
+}
+
+func (c *functionCompiler) compileCall(call *syntax.CallExpression, requireFunction bool) {
+	entry, ok := c.resolveRoutine(call.Qualifier, call.Name, call.SourceSpan)
+	if !ok {
+		c.emitConstant(bytecode.Undefined(), call.SourceSpan)
+		return
+	}
+	if requireFunction && !entry.routine.Function {
+		c.owner.report(c.filename, call.SourceSpan, "BSL3029", "procedure cannot be used as a value: "+call.Name)
+	}
+	parameters := entry.routine.Parameters
+	if len(call.Arguments) > len(parameters) {
+		c.owner.report(c.filename, call.SourceSpan, "BSL3030", fmt.Sprintf("routine %s expects at most %d arguments, got %d", call.Name, len(parameters), len(call.Arguments)))
+	}
+	references := make([]bytecode.VariableReference, len(parameters))
+	for index, parameter := range parameters {
+		var argument *syntax.CallArgument
+		if index < len(call.Arguments) {
+			argument = &call.Arguments[index]
+		}
+		if argument != nil && argument.Value != nil {
+			diagnosticCount := len(c.owner.diagnostics)
+			c.compileExpression(argument.Value)
+			if !parameter.ByValue && len(c.owner.diagnostics) == diagnosticCount {
+				references[index], _ = c.referenceForExpression(argument.Value)
+			}
+			continue
+		}
+		if parameter.Default == nil {
+			c.owner.report(c.filename, call.SourceSpan, "BSL3031", fmt.Sprintf("required argument %d for %s is omitted", index+1, call.Name))
+			c.emitConstant(bytecode.Undefined(), call.SourceSpan)
+			continue
+		}
+		value, valid := primitiveConstant(parameter.Default)
+		if !valid {
+			value = bytecode.Undefined()
+		}
+		c.emitConstant(value, parameter.SourceSpan)
+	}
+	if len(c.function.CallSites) > math.MaxUint16 {
+		c.owner.report(c.filename, call.SourceSpan, "BSL3032", "too many calls in routine")
+		c.emitConstant(bytecode.Undefined(), call.SourceSpan)
+		return
+	}
+	callSite := uint16(len(c.function.CallSites))
+	c.function.CallSites = append(c.function.CallSites, bytecode.CallSite{Target: entry.index, References: references})
+	c.emitCall(callSite, len(parameters), call.SourceSpan)
+}
+
+func (c *functionCompiler) resolveRoutine(qualifier, name string, span syntax.Span) (routineEntry, bool) {
+	module := c.module
+	if qualifier != "" {
+		resolved, ok := c.owner.moduleByName[strings.ToLower(qualifier)]
+		if !ok {
+			c.owner.report(c.filename, span, "BSL3026", "unknown module "+qualifier)
+			return routineEntry{}, false
+		}
+		module = resolved
+	}
+	entry, ok := c.owner.routineByName[c.owner.routineKey(module, name)]
+	if !ok {
+		c.owner.report(c.filename, span, "BSL3033", "unknown routine "+name)
+		return routineEntry{}, false
+	}
+	if module != c.module && !entry.routine.Export {
+		c.owner.report(c.filename, span, "BSL3034", "routine is not exported: "+qualifier+"."+name)
+		return routineEntry{}, false
+	}
+	return entry, true
+}
+
+func (c *functionCompiler) referenceForExpression(expression syntax.Expression) (bytecode.VariableReference, bool) {
+	identifier, ok := expression.(*syntax.IdentifierExpression)
+	if !ok {
+		return bytecode.VariableReference{}, false
+	}
+	return c.resolveVariable(identifier.Qualifier, identifier.Name, false, identifier.SourceSpan)
 }
 
 func (c *functionCompiler) compileLogical(expression *syntax.BinaryExpression) {
@@ -365,7 +767,7 @@ func (c *functionCompiler) compileLoopControl(span syntax.Span, breaking bool) {
 		if breaking {
 			name = "Break"
 		}
-		c.owner.report(span, "BSL3012", name+" is only allowed inside a loop")
+		c.owner.report(c.filename, span, "BSL3012", name+" is only allowed inside a loop")
 		return
 	}
 	loop := &c.loops[len(c.loops)-1]
@@ -392,7 +794,7 @@ func (c *functionCompiler) ensureLocal(name string, span syntax.Span) uint16 {
 
 func (c *functionCompiler) allocateLocal(span syntax.Span) uint16 {
 	if c.nextLocal >= math.MaxUint16 {
-		c.owner.report(span, "BSL3011", "too many local variables in routine")
+		c.owner.report(c.filename, span, "BSL3011", "too many local variables in routine")
 		return 0
 	}
 	index := uint16(c.nextLocal)
@@ -413,7 +815,7 @@ func (c *functionCompiler) emitTargetJump(opcode bytecode.Opcode, target int, sp
 
 func (c *functionCompiler) patchJump(index, target int, span syntax.Span) {
 	if index < 0 || index >= len(c.function.Code) || target < 0 || target > math.MaxUint16 {
-		c.owner.report(span, "BSL3013", "routine is too large for a control-flow jump")
+		c.owner.report(c.filename, span, "BSL3013", "routine is too large for a control-flow jump")
 		return
 	}
 	c.function.Code[index].Operand = uint16(target)
@@ -430,8 +832,8 @@ func (c *functionCompiler) hasJumpTarget(target int) bool {
 }
 
 func (c *functionCompiler) emitConstant(value bytecode.Value, span syntax.Span) {
-	if len(c.function.Constants) >= math.MaxUint16 {
-		c.owner.report(span, "BSL3010", "too many constants in routine")
+	if len(c.function.Constants) > math.MaxUint16 {
+		c.owner.report(c.filename, span, "BSL3010", "too many constants in routine")
 		return
 	}
 	index := uint16(len(c.function.Constants))
@@ -439,12 +841,20 @@ func (c *functionCompiler) emitConstant(value bytecode.Value, span syntax.Span) 
 	c.emit(bytecode.OpConstant, index, span)
 }
 
+func (c *functionCompiler) emitCall(callSite uint16, arity int, span syntax.Span) {
+	c.function.Code = append(c.function.Code, bytecode.Instruction{Opcode: bytecode.OpCall, Operand: callSite, Span: span})
+	c.depth += 1 - arity
+	if c.depth > c.maximum {
+		c.maximum = c.depth
+	}
+}
+
 func (c *functionCompiler) emit(opcode bytecode.Opcode, operand uint16, span syntax.Span) {
 	c.function.Code = append(c.function.Code, bytecode.Instruction{Opcode: opcode, Operand: operand, Span: span})
 	switch opcode {
-	case bytecode.OpConstant, bytecode.OpLoadLocal:
+	case bytecode.OpConstant, bytecode.OpLoadLocal, bytecode.OpLoadModule:
 		c.depth++
-	case bytecode.OpStoreLocal, bytecode.OpJumpIfFalse, bytecode.OpPop:
+	case bytecode.OpStoreLocal, bytecode.OpStoreModule, bytecode.OpJumpIfFalse, bytecode.OpPop:
 		c.depth--
 	case bytecode.OpAdd, bytecode.OpSubtract, bytecode.OpMultiply, bytecode.OpDivide,
 		bytecode.OpModulo, bytecode.OpEqual, bytecode.OpNotEqual, bytecode.OpLess,
@@ -459,11 +869,11 @@ func (c *functionCompiler) emit(opcode bytecode.Opcode, operand uint16, span syn
 	}
 }
 
-func (c *compiler) report(span syntax.Span, code, message string) {
+func (c *compiler) report(filename string, span syntax.Span, code, message string) {
 	if span.Start.Line == 0 {
 		span.Start.Line, span.Start.Column = 1, 1
 	}
 	c.diagnostics = append(c.diagnostics, syntax.Diagnostic{
-		Filename: c.filename, Code: code, Message: message, Span: span,
+		Filename: filename, Code: code, Message: message, Span: span,
 	})
 }

@@ -62,6 +62,56 @@ func TestRegistrySupportsConcurrentCalls(t *testing.T) {
 	wait.Wait()
 }
 
+func TestRegistryPreservesModuleStatePerHandle(t *testing.T) {
+	t.Parallel()
+
+	registry := NewRegistry()
+	source := `Var State;
+Procedure Set(Value) State = Value; EndProcedure
+Function Get() Return State; EndFunction`
+	first := loadSource(t, registry, source)
+	second := loadSource(t, registry, source)
+	if _, err := registry.Call(first, "Set", bytecode.Number(42)); err != nil {
+		t.Fatal(err)
+	}
+	value, err := registry.Call(first, "Get")
+	if err != nil || value.String() != "42" {
+		t.Fatalf("first handle state = %v, %v", value, err)
+	}
+	value, err = registry.Call(second, "Get")
+	if err != nil || value.Kind() != bytecode.UndefinedKind {
+		t.Fatalf("second handle state = %v, %v", value, err)
+	}
+}
+
+func TestRegistrySerializesConcurrentStatefulCalls(t *testing.T) {
+	t.Parallel()
+
+	registry := NewRegistry()
+	handle := loadSource(t, registry, `Var Counter;
+Procedure Set(Value) Counter = Value; EndProcedure
+Procedure Increment() Counter = Counter + 1; EndProcedure
+Function Get() Return Counter; EndFunction`)
+	if _, err := registry.Call(handle, "Set", bytecode.Number(0)); err != nil {
+		t.Fatal(err)
+	}
+	var wait sync.WaitGroup
+	for range 100 {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			if _, err := registry.Call(handle, "Increment"); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wait.Wait()
+	value, err := registry.Call(handle, "Get")
+	if err != nil || value.String() != "100" {
+		t.Fatalf("state after concurrent calls = %v, %v", value, err)
+	}
+}
+
 func loadSource(t *testing.T, registry *Registry, source string) uint32 {
 	t.Helper()
 	program, diagnostics := compiler.CompileSource("test.bsl", source)

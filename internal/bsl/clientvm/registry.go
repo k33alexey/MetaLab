@@ -15,12 +15,12 @@ const maxMachines = 1024
 type Registry struct {
 	mu       sync.RWMutex
 	next     uint32
-	machines map[uint32]*vm.Machine
+	contexts map[uint32]*vm.Context
 }
 
 // NewRegistry creates an empty client machine registry.
 func NewRegistry() *Registry {
-	return &Registry{next: 1, machines: make(map[uint32]*vm.Machine)}
+	return &Registry{next: 1, contexts: make(map[uint32]*vm.Context)}
 }
 
 // Load decodes and validates a bytecode program and returns its local handle.
@@ -36,7 +36,7 @@ func (registry *Registry) Load(encoded []byte) (uint32, error) {
 
 	registry.mu.Lock()
 	defer registry.mu.Unlock()
-	if len(registry.machines) >= maxMachines {
+	if len(registry.contexts) >= maxMachines {
 		return 0, fmt.Errorf("client VM machine limit reached")
 	}
 	for {
@@ -46,8 +46,8 @@ func (registry *Registry) Load(encoded []byte) (uint32, error) {
 			registry.next = 1
 		}
 		if handle != 0 {
-			if _, exists := registry.machines[handle]; !exists {
-				registry.machines[handle] = machine
+			if _, exists := registry.contexts[handle]; !exists {
+				registry.contexts[handle] = machine.NewContext()
 				return handle, nil
 			}
 		}
@@ -57,21 +57,21 @@ func (registry *Registry) Load(encoded []byte) (uint32, error) {
 // Call executes a routine on a previously loaded machine.
 func (registry *Registry) Call(handle uint32, name string, arguments ...bytecode.Value) (bytecode.Value, error) {
 	registry.mu.RLock()
-	machine, ok := registry.machines[handle]
+	context, ok := registry.contexts[handle]
 	registry.mu.RUnlock()
 	if !ok {
 		return bytecode.Undefined(), fmt.Errorf("client VM machine %d not found", handle)
 	}
-	return machine.Call(name, arguments...)
+	return context.Call(name, arguments...)
 }
 
 // Release removes a loaded machine.
 func (registry *Registry) Release(handle uint32) bool {
 	registry.mu.Lock()
 	defer registry.mu.Unlock()
-	if _, ok := registry.machines[handle]; !ok {
+	if _, ok := registry.contexts[handle]; !ok {
 		return false
 	}
-	delete(registry.machines, handle)
+	delete(registry.contexts, handle)
 	return true
 }

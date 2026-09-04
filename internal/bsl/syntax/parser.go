@@ -32,6 +32,10 @@ func (p *parser) parseModule() *Module {
 			}
 			continue
 		}
+		if p.check(Var) {
+			module.Variables = append(module.Variables, p.parseVariables(true)...)
+			continue
+		}
 		p.report(p.peek(), "BSL2001", fmt.Sprintf("unexpected %s, expected routine declaration", p.peek().Kind))
 		p.advance()
 	}
@@ -102,19 +106,64 @@ func (p *parser) parseParameters() []Parameter {
 	}
 	var parameters []Parameter
 	for {
+		start := p.peek().Span.Start
+		byValue := p.match(Val)
 		parameter, ok := p.expect(Identifier, "expected parameter name")
 		if !ok {
 			return parameters
 		}
-		parameters = append(parameters, Parameter{Name: parameter.Value, Span: parameter.Span})
+		var defaultValue Expression
+		end := parameter.Span.End
+		if p.match(Equal) {
+			defaultValue = p.parseExpression()
+			if defaultValue != nil {
+				end = defaultValue.NodeSpan().End
+			}
+		}
+		parameters = append(parameters, Parameter{
+			Name: parameter.Value, ByValue: byValue, Default: defaultValue,
+			SourceSpan: Span{Start: start, End: end},
+		})
 		if !p.match(Comma) {
 			return parameters
 		}
 	}
 }
 
+func (p *parser) parseVariables(moduleLevel bool) []Variable {
+	start := p.advance()
+	var variables []Variable
+	for {
+		name, ok := p.expect(Identifier, "expected variable name")
+		if !ok {
+			break
+		}
+		exported := p.match(Export)
+		variables = append(variables, Variable{Name: name.Value, Export: exported && moduleLevel, SourceSpan: name.Span})
+		if exported && !moduleLevel {
+			p.report(name, "BSL2003", "local variables cannot be exported")
+		}
+		if !p.match(Comma) {
+			break
+		}
+	}
+	end := start.Span.End
+	if semicolon, ok := p.expect(Semicolon, "expected ';' after variable declaration"); ok {
+		end = semicolon.Span.End
+	}
+	for index := range variables {
+		variables[index].SourceSpan = Span{Start: variables[index].SourceSpan.Start, End: end}
+	}
+	return variables
+}
+
 func (p *parser) parseStatement() Statement {
 	switch p.peek().Kind {
+	case Var:
+		start := p.peek().Span.Start
+		variables := p.parseVariables(false)
+		end := p.previous().Span.End
+		return &VariableStatement{Variables: variables, SourceSpan: Span{Start: start, End: end}}
 	case Return:
 		return p.parseReturnStatement()
 	case If:
@@ -128,8 +177,11 @@ func (p *parser) parseStatement() Statement {
 	case Continue:
 		return p.parseLoopControlStatement(false)
 	case Identifier:
-		if p.checkNext(Equal) {
+		if p.isAssignmentStart() {
 			return p.parseAssignmentStatement()
+		}
+		if p.checkNext(LeftParen) || p.checkNext(Dot) {
+			return p.parseCallStatement()
 		}
 	}
 	p.report(p.peek(), "BSL2001", fmt.Sprintf("unexpected %s, expected statement", p.peek().Kind))
@@ -156,6 +208,15 @@ func (p *parser) parseReturnStatement() Statement {
 
 func (p *parser) parseAssignmentStatement() Statement {
 	name := p.advance()
+	start := name.Span.Start
+	qualifier := ""
+	if p.match(Dot) {
+		qualifier = name.Value
+		member, ok := p.expect(Identifier, "expected variable name after '.'")
+		if ok {
+			name = member
+		}
+	}
 	p.advance() // Equal.
 	value := p.parseExpression()
 	end := name.Span.End
@@ -165,7 +226,23 @@ func (p *parser) parseAssignmentStatement() Statement {
 	if semicolon, ok := p.expect(Semicolon, "expected ';' after assignment"); ok {
 		end = semicolon.Span.End
 	}
-	return &AssignmentStatement{Name: name.Value, Value: value, SourceSpan: Span{Start: name.Span.Start, End: end}}
+	return &AssignmentStatement{Qualifier: qualifier, Name: name.Value, Value: value, SourceSpan: Span{Start: start, End: end}}
+}
+
+func (p *parser) parseCallStatement() Statement {
+	start := p.peek().Span.Start
+	expression := p.parsePrimary()
+	call, ok := expression.(*CallExpression)
+	if !ok {
+		p.report(p.peek(), "BSL2001", "expected procedure or function call")
+		p.synchronizeStatement()
+		return nil
+	}
+	end := call.SourceSpan.End
+	if semicolon, found := p.expect(Semicolon, "expected ';' after call"); found {
+		end = semicolon.Span.End
+	}
+	return &CallStatement{Call: call, SourceSpan: Span{Start: start, End: end}}
 }
 
 func (p *parser) parseIfStatement() Statement {
@@ -367,7 +444,28 @@ func (p *parser) parsePrimary() Expression {
 		return &NullExpression{SourceSpan: current.Span}
 	case Identifier:
 		p.advance()
-		return &IdentifierExpression{Name: current.Value, SourceSpan: current.Span}
+		qualifier, name := "", current.Value
+		end := current.Span.End
+		if p.match(Dot) {
+			qualifier = name
+			member, ok := p.expect(Identifier, "expected name after '.'")
+			if !ok {
+				return &IdentifierExpression{Name: name, SourceSpan: current.Span}
+			}
+			name, end = member.Value, member.Span.End
+		}
+		if p.match(LeftParen) {
+			arguments := p.parseCallArguments()
+			right, ok := p.expect(RightParen, "expected ')' after call arguments")
+			if ok {
+				end = right.Span.End
+			}
+			return &CallExpression{
+				Qualifier: qualifier, Name: name, Arguments: arguments,
+				SourceSpan: Span{Start: current.Span.Start, End: end},
+			}
+		}
+		return &IdentifierExpression{Qualifier: qualifier, Name: name, SourceSpan: Span{Start: current.Span.Start, End: end}}
 	case LeftParen:
 		left := p.advance()
 		expression := p.parseExpression()
@@ -383,6 +481,32 @@ func (p *parser) parsePrimary() Expression {
 		}
 		return nil
 	}
+}
+
+func (p *parser) parseCallArguments() []CallArgument {
+	if p.check(RightParen) {
+		return nil
+	}
+	var arguments []CallArgument
+	for !p.atEnd() && !p.check(RightParen) {
+		if p.check(Comma) {
+			arguments = append(arguments, CallArgument{SourceSpan: p.peek().Span})
+		} else {
+			value := p.parseExpression()
+			span := p.peek().Span
+			if value != nil {
+				span = value.NodeSpan()
+			}
+			arguments = append(arguments, CallArgument{Value: value, SourceSpan: span})
+		}
+		if !p.match(Comma) {
+			break
+		}
+		if p.check(RightParen) {
+			arguments = append(arguments, CallArgument{SourceSpan: p.previous().Span})
+		}
+	}
+	return arguments
 }
 
 func (p *parser) parseBinary(operand func() Expression, kinds ...Kind) Expression {
@@ -481,6 +605,14 @@ func (p *parser) checkAny(kinds ...Kind) bool {
 
 func (p *parser) checkNext(kind Kind) bool {
 	return p.current+1 < len(p.tokens) && p.tokens[p.current+1].Kind == kind
+}
+
+func (p *parser) isAssignmentStart() bool {
+	if p.checkNext(Equal) {
+		return true
+	}
+	return p.current+3 < len(p.tokens) && p.tokens[p.current+1].Kind == Dot &&
+		p.tokens[p.current+2].Kind == Identifier && p.tokens[p.current+3].Kind == Equal
 }
 
 func (p *parser) atEnd() bool { return p.peek().Kind == EOF }

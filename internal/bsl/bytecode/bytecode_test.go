@@ -179,13 +179,41 @@ func TestProgramRejectsConflictingBranchStackDepths(t *testing.T) {
 func TestOpcodeStringHandlesUnknownValue(t *testing.T) {
 	t.Parallel()
 
-	for opcode := OpConstant; opcode <= OpBoolean; opcode++ {
+	for opcode := OpConstant; opcode <= OpCall; opcode++ {
 		if strings.HasPrefix(opcode.String(), "opcode(") {
 			t.Fatalf("opcode %d has no stable name", opcode)
 		}
 	}
 	if got := Opcode(255).String(); got != "opcode(255)" {
 		t.Fatalf("Opcode.String() = %q", got)
+	}
+}
+
+func TestProgramRejectsCrossModulePrivateCall(t *testing.T) {
+	t.Parallel()
+
+	program := Program{Version: Version, Modules: []Module{{Name: "Private"}, {Name: "Caller"}}, Functions: []Function{
+		{Name: "Hidden", Module: 0, MaxStack: 1, Constants: []Value{Undefined()}, Code: returningConstant()},
+		{Name: "Run", Module: 1, MaxStack: 1, CallSites: []CallSite{{Target: 0}}, Code: []Instruction{{Opcode: OpCall}, {Opcode: OpReturn}}},
+	}}
+	if err := program.Validate(); err == nil || !strings.Contains(err.Error(), "non-exported routine") {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestProgramRejectsCrossModulePrivateVariable(t *testing.T) {
+	t.Parallel()
+
+	program := Program{Version: Version, Modules: []Module{
+		{Name: "Private", Variables: []ModuleVariable{{Name: "Hidden"}}},
+		{Name: "Caller"},
+	}, Functions: []Function{{
+		Name: "Run", Module: 1, MaxStack: 1,
+		ModuleVars: []VariableReference{{Kind: ModuleReference, Module: 0}},
+		Code:       []Instruction{{Opcode: OpLoadModule}, {Opcode: OpReturn}},
+	}}}
+	if err := program.Validate(); err == nil || !strings.Contains(err.Error(), "non-exported variable") {
+		t.Fatalf("Validate() error = %v", err)
 	}
 }
 

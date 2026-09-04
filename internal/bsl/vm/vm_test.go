@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -84,6 +85,14 @@ func TestMachineOwnsImmutableProgramCopy(t *testing.T) {
 	program, diagnostics := compiler.CompileSource("test.bsl", "Function Value()\nReturn 42;\nEndFunction")
 	if len(diagnostics) != 0 {
 		t.Fatal(diagnostics)
+	}
+	encoded, err := bytecode.MarshalBinary(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err = bytecode.UnmarshalBinary(encoded)
+	if err != nil {
+		t.Fatal(err)
 	}
 	machine, err := New(program)
 	if err != nil {
@@ -489,6 +498,150 @@ EndFunction`)
 	}
 }
 
+func TestMachineExecutesNestedAndRecursiveCalls(t *testing.T) {
+	t.Parallel()
+
+	machine := compileMachine(t, `Function Double(Value) Return Value * 2; EndFunction
+Function Factorial(Value)
+If Value <= 1 Then Return 1; EndIf;
+Return Value * Factorial(Value - 1);
+EndFunction
+Function Calculate(Value) Return Double(Factorial(Value)); EndFunction`)
+	result, err := machine.Call("Calculate", bytecode.Number(5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if number, ok := result.AsNumber(); !ok || number != 240 {
+		t.Fatalf("Calculate(5) = %v", result)
+	}
+}
+
+func TestMachineSupportsDefaultsSkippedArgumentsAndReferences(t *testing.T) {
+	t.Parallel()
+
+	machine := compileMachine(t, `Procedure Change(A, Val B)
+A = A + 1;
+B = B + 10;
+EndProcedure
+Procedure Alias(A, B)
+A = 1;
+B = A + 1;
+EndProcedure
+Procedure Inner(A) A = A + 1; EndProcedure
+Procedure Outer(B) Inner(B); EndProcedure
+Function Sum(A, B = 10, C = 100) Return A + B + C; EndFunction
+Function Test()
+X = 1;
+Y = 2;
+Change(X, Y);
+Alias(X, X);
+Outer(X);
+Return X * 1000 + Y * 100 + Sum(1, , 3);
+EndFunction`)
+	result, err := machine.Call("Test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if number, ok := result.AsNumber(); !ok || number != 3214 {
+		t.Fatalf("Test() = %v, want 3214", result)
+	}
+	defaulted, err := machine.Call("Sum", bytecode.Number(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if number, ok := defaulted.AsNumber(); !ok || number != 111 {
+		t.Fatalf("Sum(1) = %v", defaulted)
+	}
+}
+
+func TestContextIsolatesAndPersistsModuleVariables(t *testing.T) {
+	t.Parallel()
+
+	program, diagnostics := compiler.CompileModules([]compiler.ModuleSource{
+		{Name: "State", Filename: "state.bsl", Source: `Var Counter Export;
+Procedure Set(Value) Export Counter = Value; EndProcedure
+Procedure Increment(Value) Export Value = Value + 1; EndProcedure
+Procedure SetDirect() Counter = 20; EndProcedure
+Function Observe(Value) Export SetDirect(); Return Value; EndFunction
+Function Current() Export Return Counter; EndFunction`},
+		{Name: "App", Filename: "app.bsl", Source: `Function Advance() Export
+State.Increment(State.Counter);
+Return State.Current();
+EndFunction
+Function RefreshAlias() Export Return State.Observe(State.Counter); EndFunction`},
+	})
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	encoded, err := bytecode.MarshalBinary(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err = bytecode.UnmarshalBinary(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine, err := New(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, second := machine.NewContext(), machine.NewContext()
+	if _, err := first.CallExported("State", "Set", bytecode.Number(10)); err != nil {
+		t.Fatal(err)
+	}
+	advanced, err := first.CallExported("App", "Advance")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if number, _ := advanced.AsNumber(); number != 11 {
+		t.Fatalf("first context = %v", advanced)
+	}
+	refreshed, err := first.CallExported("App", "RefreshAlias")
+	if err != nil || refreshed.String() != "20" {
+		t.Fatalf("refreshed module alias = %v, %v", refreshed, err)
+	}
+	current, err := second.CallExported("State", "Current")
+	if err != nil || current.Kind() != bytecode.UndefinedKind {
+		t.Fatalf("second context = %v, %v", current, err)
+	}
+	if _, err := first.CallExported("State", "Missing"); err == nil {
+		t.Fatal("CallExported() accepted a missing routine")
+	}
+	if _, err := first.CallExported("State", "SetDirect"); err == nil {
+		t.Fatal("CallExported() accepted a private routine")
+	}
+}
+
+func TestContextStatefulCallDoesNotAllocate(t *testing.T) {
+	machine := compileMachine(t, `Var Counter;
+Procedure Set(Value) Counter = Value; EndProcedure
+Procedure Increment() Counter = Counter + 1; EndProcedure`)
+	context := machine.NewContext()
+	if _, err := context.Call("Set", bytecode.Number(0)); err != nil {
+		t.Fatal(err)
+	}
+	allocations := testing.AllocsPerRun(1_000, func() {
+		if _, err := context.Call("Increment"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if allocations != 0 {
+		t.Fatalf("stateful call allocations = %v, want 0", allocations)
+	}
+}
+
+func TestMachineStopsRunawayRecursion(t *testing.T) {
+	t.Parallel()
+
+	machine := compileMachine(t, `Function Recurse(Value)
+If Value = 0 Then Return 0; EndIf;
+Return Recurse(Value - 1);
+EndFunction`)
+	if _, err := machine.Call("Recurse", bytecode.Number(300)); err == nil || !strings.Contains(err.Error(), "maximum BSL call depth") {
+		t.Fatalf("recursion error = %v", err)
+	}
+}
+
 type unexpectedResult struct{ got, want float64 }
 
 func (err *unexpectedResult) Error() string { return "unexpected concurrent result" }
@@ -549,6 +702,22 @@ EndFunction`)
 			b.Fatal(err)
 		}
 		if number, _ := result.AsNumber(); number != 2500 {
+			b.Fatal(number)
+		}
+	}
+}
+
+func BenchmarkMachineNestedCall(b *testing.B) {
+	machine := compileMachine(b, `Function Add(A, B) Return A + B; EndFunction
+Function Calculate(A, B) Return Add(A, B) * 2; EndFunction`)
+	left, right := bytecode.Number(20), bytecode.Number(22)
+	b.ReportAllocs()
+	for b.Loop() {
+		result, err := machine.Call("Calculate", left, right)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if number, _ := result.AsNumber(); number != 84 {
 			b.Fatal(number)
 		}
 	}

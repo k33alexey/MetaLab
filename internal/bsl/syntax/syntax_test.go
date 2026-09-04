@@ -147,6 +147,56 @@ Function BooleanValue() Return True; EndFunction`
 	}
 }
 
+func TestParseVariablesParametersAndCalls(t *testing.T) {
+	t.Parallel()
+
+	source := `Перем Состояние Экспорт, Счётчик;
+Процедура Установить(Знач Новое, Дополнение = 1) Экспорт
+    Перем Локальная;
+    Состояние = Новое + Дополнение;
+КонецПроцедуры
+Функция Получить()
+    Установить(Модуль.Значение(), );
+    Установить(,);
+    Возврат Состояние;
+КонецФункции`
+	module, diagnostics := Parse("module.bsl", source)
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	if len(module.Variables) != 2 || !module.Variables[0].Export || module.Variables[1].Export || module.Variables[1].Name != "Счётчик" {
+		t.Fatalf("module variables = %+v", module.Variables)
+	}
+	parameters := module.Routines[0].Parameters
+	if len(parameters) != 2 || !parameters[0].ByValue || parameters[0].Default != nil || parameters[1].Default == nil {
+		t.Fatalf("parameters = %+v", parameters)
+	}
+	if declaration, ok := module.Routines[0].Body[0].(*VariableStatement); !ok || declaration.Variables[0].Name != "Локальная" {
+		t.Fatalf("local declaration = %#v", module.Routines[0].Body[0])
+	}
+	statement, ok := module.Routines[1].Body[0].(*CallStatement)
+	if !ok || statement.Call.Name != "Установить" || len(statement.Call.Arguments) != 2 || statement.Call.Arguments[1].Value != nil {
+		t.Fatalf("call statement = %#v", module.Routines[1].Body[0])
+	}
+	nested, ok := statement.Call.Arguments[0].Value.(*CallExpression)
+	if !ok || nested.Qualifier != "Модуль" || nested.Name != "Значение" {
+		t.Fatalf("nested call = %#v", statement.Call.Arguments[0].Value)
+	}
+	empty := module.Routines[1].Body[1].(*CallStatement)
+	if len(empty.Call.Arguments) != 2 || empty.Call.Arguments[0].Value != nil || empty.Call.Arguments[1].Value != nil {
+		t.Fatalf("omitted arguments = %#v", empty.Call.Arguments)
+	}
+}
+
+func TestParseRejectsExportedLocalVariable(t *testing.T) {
+	t.Parallel()
+
+	_, diagnostics := Parse("local.bsl", "Procedure Test() Var Local Export; EndProcedure")
+	if len(diagnostics) != 1 || diagnostics[0].Code != "BSL2003" {
+		t.Fatalf("diagnostics = %v", diagnostics)
+	}
+}
+
 func TestParseReportsFilenameLineAndColumn(t *testing.T) {
 	t.Parallel()
 

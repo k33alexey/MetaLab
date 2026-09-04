@@ -31,12 +31,31 @@ func MarshalBinary(program *Program) ([]byte, error) {
 	var output bytes.Buffer
 	output.WriteString(wireMagic)
 	writeUint16(&output, program.Version)
+	writeUint32(&output, uint32(len(program.Modules)))
+	for moduleIndex := range program.Modules {
+		module := &program.Modules[moduleIndex]
+		if err := writeString(&output, module.Name); err != nil {
+			return nil, fmt.Errorf("module %d name: %w", moduleIndex, err)
+		}
+		writeUint32(&output, uint32(len(module.Variables)))
+		for variableIndex, variable := range module.Variables {
+			if err := writeString(&output, variable.Name); err != nil {
+				return nil, fmt.Errorf("module %q variable %d: %w", module.Name, variableIndex, err)
+			}
+			if variable.Export {
+				output.WriteByte(1)
+			} else {
+				output.WriteByte(0)
+			}
+		}
+	}
 	writeUint32(&output, uint32(len(program.Functions)))
 	for index := range program.Functions {
 		function := &program.Functions[index]
 		if err := writeString(&output, function.Name); err != nil {
 			return nil, fmt.Errorf("function %d name: %w", index, err)
 		}
+		writeUint16(&output, function.Module)
 		var flags byte
 		if function.IsFunction {
 			flags |= 1
@@ -46,6 +65,25 @@ func MarshalBinary(program *Program) ([]byte, error) {
 		}
 		output.WriteByte(flags)
 		writeUint16(&output, function.Arity)
+		for parameterIndex := 0; parameterIndex < int(function.Arity); parameterIndex++ {
+			parameter := Parameter{ByValue: true}
+			if len(function.Parameters) != 0 {
+				parameter = function.Parameters[parameterIndex]
+			}
+			var parameterFlags byte
+			if parameter.ByValue {
+				parameterFlags |= 1
+			}
+			if parameter.HasDefault {
+				parameterFlags |= 2
+			}
+			output.WriteByte(parameterFlags)
+			if parameter.HasDefault {
+				if err := writeValue(&output, parameter.Default); err != nil {
+					return nil, fmt.Errorf("function %q parameter %d default: %w", function.Name, parameterIndex, err)
+				}
+			}
+		}
 		writeUint16(&output, function.LocalCount)
 		writeUint16(&output, function.MaxStack)
 
@@ -56,6 +94,19 @@ func MarshalBinary(program *Program) ([]byte, error) {
 		for constantIndex, value := range function.Constants {
 			if err := writeValue(&output, value); err != nil {
 				return nil, fmt.Errorf("function %q constant %d: %w", function.Name, constantIndex, err)
+			}
+		}
+
+		writeUint32(&output, uint32(len(function.ModuleVars)))
+		for _, reference := range function.ModuleVars {
+			writeReference(&output, reference)
+		}
+		writeUint32(&output, uint32(len(function.CallSites)))
+		for _, call := range function.CallSites {
+			writeUint16(&output, call.Target)
+			writeUint32(&output, uint32(len(call.References)))
+			for _, reference := range call.References {
+				writeReference(&output, reference)
 			}
 		}
 
@@ -91,11 +142,23 @@ func UnmarshalBinary(data []byte) (*Program, error) {
 	if err != nil {
 		return nil, err
 	}
-	functionCount, err := decoder.readCount("functions", 19)
+	moduleCount, err := decoder.readCount("modules", 8)
 	if err != nil {
 		return nil, err
 	}
-	program := &Program{Version: version, Functions: make([]Function, functionCount)}
+	program := &Program{Version: version, Modules: make([]Module, moduleCount)}
+	for index := range program.Modules {
+		module, readErr := decoder.readModule()
+		if readErr != nil {
+			return nil, fmt.Errorf("module %d: %w", index, readErr)
+		}
+		program.Modules[index] = module
+	}
+	functionCount, err := decoder.readCount("functions", 21)
+	if err != nil {
+		return nil, err
+	}
+	program.Functions = make([]Function, functionCount)
 	for index := range program.Functions {
 		function, err := decoder.readFunction()
 		if err != nil {
@@ -183,15 +246,52 @@ func writeUint64(output *bytes.Buffer, value uint64) {
 	output.Write(data[:])
 }
 
+func writeReference(output *bytes.Buffer, reference VariableReference) {
+	output.WriteByte(byte(reference.Kind))
+	writeUint16(output, reference.Module)
+	writeUint16(output, reference.Variable)
+}
+
 type wireDecoder struct {
 	data   []byte
 	offset int
+}
+
+func (decoder *wireDecoder) readModule() (Module, error) {
+	name, err := decoder.readString()
+	if err != nil {
+		return Module{}, fmt.Errorf("name: %w", err)
+	}
+	variableCount, err := decoder.readCount("variables", 5)
+	if err != nil {
+		return Module{}, err
+	}
+	variables := make([]ModuleVariable, variableCount)
+	for index := range variables {
+		variableName, readErr := decoder.readString()
+		if readErr != nil {
+			return Module{}, fmt.Errorf("variable %d name: %w", index, readErr)
+		}
+		exported, readErr := decoder.readByte()
+		if readErr != nil {
+			return Module{}, fmt.Errorf("variable %d export: %w", index, readErr)
+		}
+		if exported > 1 {
+			return Module{}, fmt.Errorf("variable %d has invalid export flag %d", index, exported)
+		}
+		variables[index] = ModuleVariable{Name: variableName, Export: exported == 1}
+	}
+	return Module{Name: name, Variables: variables}, nil
 }
 
 func (decoder *wireDecoder) readFunction() (Function, error) {
 	name, err := decoder.readString()
 	if err != nil {
 		return Function{}, fmt.Errorf("name: %w", err)
+	}
+	module, err := decoder.readUint16()
+	if err != nil {
+		return Function{}, err
 	}
 	flags, err := decoder.readByte()
 	if err != nil {
@@ -203,6 +303,23 @@ func (decoder *wireDecoder) readFunction() (Function, error) {
 	arity, err := decoder.readUint16()
 	if err != nil {
 		return Function{}, err
+	}
+	parameters := make([]Parameter, arity)
+	for index := range parameters {
+		parameterFlags, readErr := decoder.readByte()
+		if readErr != nil {
+			return Function{}, fmt.Errorf("parameter %d: %w", index, readErr)
+		}
+		if parameterFlags&^byte(3) != 0 {
+			return Function{}, fmt.Errorf("parameter %d has unknown flags %d", index, parameterFlags)
+		}
+		parameters[index] = Parameter{ByValue: parameterFlags&1 != 0, HasDefault: parameterFlags&2 != 0}
+		if parameters[index].HasDefault {
+			parameters[index].Default, readErr = decoder.readValue()
+			if readErr != nil {
+				return Function{}, fmt.Errorf("parameter %d default: %w", index, readErr)
+			}
+		}
 	}
 	localCount, err := decoder.readUint16()
 	if err != nil {
@@ -222,6 +339,40 @@ func (decoder *wireDecoder) readFunction() (Function, error) {
 		if err != nil {
 			return Function{}, fmt.Errorf("constant %d: %w", index, err)
 		}
+	}
+	moduleVariableCount, err := decoder.readCount("module variable accesses", 5)
+	if err != nil {
+		return Function{}, err
+	}
+	moduleVariables := make([]VariableReference, moduleVariableCount)
+	for index := range moduleVariables {
+		moduleVariables[index], err = decoder.readReference()
+		if err != nil {
+			return Function{}, fmt.Errorf("module variable access %d: %w", index, err)
+		}
+	}
+	callCount, err := decoder.readCount("call sites", 6)
+	if err != nil {
+		return Function{}, err
+	}
+	calls := make([]CallSite, callCount)
+	for index := range calls {
+		target, readErr := decoder.readUint16()
+		if readErr != nil {
+			return Function{}, fmt.Errorf("call site %d target: %w", index, readErr)
+		}
+		referenceCount, readErr := decoder.readCount("call references", 5)
+		if readErr != nil {
+			return Function{}, fmt.Errorf("call site %d: %w", index, readErr)
+		}
+		references := make([]VariableReference, referenceCount)
+		for referenceIndex := range references {
+			references[referenceIndex], readErr = decoder.readReference()
+			if readErr != nil {
+				return Function{}, fmt.Errorf("call site %d reference %d: %w", index, referenceIndex, readErr)
+			}
+		}
+		calls[index] = CallSite{Target: target, References: references}
 	}
 	instructionCount, err := decoder.readCount("instructions", 27)
 	if err != nil {
@@ -244,9 +395,29 @@ func (decoder *wireDecoder) readFunction() (Function, error) {
 		code[index] = Instruction{Opcode: Opcode(opcode), Operand: operand, Span: span}
 	}
 	return Function{
-		Name: name, IsFunction: flags&1 != 0, Export: flags&2 != 0,
-		Arity: arity, LocalCount: localCount, MaxStack: maxStack, Constants: constants, Code: code,
+		Name: name, Module: module, IsFunction: flags&1 != 0, Export: flags&2 != 0,
+		Arity: arity, Parameters: parameters, LocalCount: localCount, MaxStack: maxStack,
+		Constants: constants, ModuleVars: moduleVariables, CallSites: calls, Code: code,
 	}, nil
+}
+
+func (decoder *wireDecoder) readReference() (VariableReference, error) {
+	kind, err := decoder.readByte()
+	if err != nil {
+		return VariableReference{}, err
+	}
+	module, err := decoder.readUint16()
+	if err != nil {
+		return VariableReference{}, err
+	}
+	variable, err := decoder.readUint16()
+	if err != nil {
+		return VariableReference{}, err
+	}
+	if ReferenceKind(kind) > ModuleReference {
+		return VariableReference{}, fmt.Errorf("unknown reference kind %d", kind)
+	}
+	return VariableReference{Kind: ReferenceKind(kind), Module: module, Variable: variable}, nil
 }
 
 func (decoder *wireDecoder) readValue() (Value, error) {
