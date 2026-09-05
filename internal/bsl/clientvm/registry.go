@@ -9,7 +9,11 @@ import (
 	"github.com/k33alexey/MetaLab/internal/bsl/vm"
 )
 
-const maxMachines = 1024
+const (
+	maxMachines               = 1024
+	maxLoadedMachineBytes     = 256 << 20
+	estimatedMachineExpansion = 3
+)
 
 // Registry owns the immutable machines loaded by one client runtime.
 type Registry struct {
@@ -17,37 +21,46 @@ type Registry struct {
 	next     uint32
 	contexts map[uint32]*vm.Context
 	server   vm.ServerCaller
+	cache    *vm.Cache
+	weights  map[uint32]uint64
+	bytes    uint64
 }
 
 // NewRegistry creates an empty client machine registry.
 func NewRegistry() *Registry {
-	return &Registry{next: 1, contexts: make(map[uint32]*vm.Context)}
+	return newRegistry(nil)
 }
 
 // NewRegistryWithServer creates a client registry with an RPC transport.
 func NewRegistryWithServer(server vm.ServerCaller) *Registry {
-	return &Registry{next: 1, contexts: make(map[uint32]*vm.Context), server: server}
+	return newRegistry(server)
+}
+
+func newRegistry(server vm.ServerCaller) *Registry {
+	return &Registry{
+		next: 1, contexts: make(map[uint32]*vm.Context), server: server,
+		cache: vm.NewDefaultCache(), weights: make(map[uint32]uint64),
+	}
 }
 
 // Load decodes and validates a bytecode program and returns its local handle.
 func (registry *Registry) Load(encoded []byte) (uint32, error) {
-	program, err := bytecode.UnmarshalBinary(encoded)
-	if err != nil {
-		return 0, fmt.Errorf("decode bytecode: %w", err)
+	if uint64(len(encoded)) > maxLoadedMachineBytes/estimatedMachineExpansion {
+		return 0, fmt.Errorf("client VM bytecode exceeds loaded memory limit")
 	}
-	program, err = program.ClientProgram()
+	weight := uint64(len(encoded)) * estimatedMachineExpansion
+	machine, err := registry.cache.LoadClient(encoded)
 	if err != nil {
-		return 0, fmt.Errorf("prepare client bytecode: %w", err)
-	}
-	machine, err := vm.New(program)
-	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("load client bytecode: %w", err)
 	}
 
 	registry.mu.Lock()
 	defer registry.mu.Unlock()
 	if len(registry.contexts) >= maxMachines {
 		return 0, fmt.Errorf("client VM machine limit reached")
+	}
+	if registry.bytes > maxLoadedMachineBytes-weight {
+		return 0, fmt.Errorf("client VM loaded memory limit reached")
 	}
 	for {
 		handle := registry.next
@@ -58,6 +71,8 @@ func (registry *Registry) Load(encoded []byte) (uint32, error) {
 		if handle != 0 {
 			if _, exists := registry.contexts[handle]; !exists {
 				registry.contexts[handle] = machine.NewClientContext(registry.server)
+				registry.weights[handle] = weight
+				registry.bytes += weight
 				return handle, nil
 			}
 		}
@@ -83,5 +98,7 @@ func (registry *Registry) Release(handle uint32) bool {
 		return false
 	}
 	delete(registry.contexts, handle)
+	registry.bytes -= registry.weights[handle]
+	delete(registry.weights, handle)
 	return true
 }

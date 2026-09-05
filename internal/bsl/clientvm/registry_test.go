@@ -1,6 +1,7 @@
 package clientvm
 
 import (
+	"context"
 	"sync"
 	"testing"
 
@@ -13,7 +14,7 @@ type testServer struct {
 	call vm.ServerCall
 }
 
-func (server *testServer) CallServer(call vm.ServerCall) (bytecode.Value, error) {
+func (server *testServer) CallServer(_ context.Context, call vm.ServerCall) (bytecode.Value, error) {
 	server.call = call
 	return bytecode.Number(42), nil
 }
@@ -23,6 +24,9 @@ func TestRegistryLoadsCallsAndReleasesMachine(t *testing.T) {
 
 	registry := NewRegistry()
 	handle := loadSource(t, registry, "Function Add(A, B) Return A + B; EndFunction")
+	if registry.bytes == 0 || len(registry.weights) != 1 {
+		t.Fatalf("registry memory accounting = %d, %v", registry.bytes, registry.weights)
+	}
 	result, err := registry.Call(handle, "add", bytecode.Number(20), bytecode.Number(22))
 	if err != nil {
 		t.Fatal(err)
@@ -32,6 +36,9 @@ func TestRegistryLoadsCallsAndReleasesMachine(t *testing.T) {
 	}
 	if !registry.Release(handle) {
 		t.Fatal("Release() = false")
+	}
+	if registry.bytes != 0 || len(registry.weights) != 0 {
+		t.Fatalf("released registry memory = %d, %v", registry.bytes, registry.weights)
 	}
 	if registry.Release(handle) {
 		t.Fatal("second Release() = true")

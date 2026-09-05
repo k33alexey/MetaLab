@@ -2,6 +2,7 @@
 package vm
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -20,7 +21,13 @@ var callArgumentPool = sync.Pool{New: func() any { return new([inlineLocalSize]c
 
 // Machine is an immutable, concurrency-safe bytecode runtime.
 type Machine struct {
-	program *bytecode.Program
+	program          *bytecode.Program
+	limits           Limits
+	qualified        map[string]uint16
+	unqualified      map[string]int
+	exactQualified   map[string]uint16
+	exactUnqualified map[string]int
+	moduleMemory     uint64
 }
 
 // ExecutionSide identifies the runtime currently executing BSL bytecode.
@@ -39,10 +46,10 @@ type ServerCall struct {
 	WithoutContext bool
 }
 
-// ServerCaller performs a client-to-server BSL call. HTTP transport implements
-// this contract outside the VM.
+// ServerCaller performs a client-to-server BSL call. Implementations must be
+// concurrency-safe and honor context cancellation and deadlines.
 type ServerCaller interface {
-	CallServer(ServerCall) (bytecode.Value, error)
+	CallServer(context.Context, ServerCall) (bytecode.Value, error)
 }
 
 type executionEnvironment struct {
@@ -56,17 +63,84 @@ type Context struct {
 	mutex   sync.Mutex
 	modules [][]bytecode.Value
 	env     executionEnvironment
+	memory  uint64
 }
 
 // New validates a program once before it can be executed.
 func New(program *bytecode.Program) (*Machine, error) {
+	return NewWithLimits(program, DefaultLimits())
+}
+
+// NewWithLimits validates a program and configures deterministic resource limits.
+func NewWithLimits(program *bytecode.Program, limits Limits) (*Machine, error) {
 	if program == nil {
 		return nil, fmt.Errorf("bytecode program is nil")
+	}
+	if err := limits.validate(); err != nil {
+		return nil, fmt.Errorf("validate VM limits: %w", err)
 	}
 	if err := program.Validate(); err != nil {
 		return nil, fmt.Errorf("validate bytecode: %w", err)
 	}
-	return &Machine{program: cloneProgram(program)}, nil
+	if !programFitsMemory(program, limits.MaxMemoryBytes) {
+		return nil, fmt.Errorf("validate bytecode memory: %w", memoryLimitError(limits.MaxMemoryBytes))
+	}
+	moduleMemory, ok := moduleContextMemory(program)
+	if !ok || moduleMemory > limits.MaxMemoryBytes {
+		return nil, fmt.Errorf("validate module context memory: %w", memoryLimitError(limits.MaxMemoryBytes))
+	}
+	machine := &Machine{program: cloneProgram(program), limits: limits, moduleMemory: moduleMemory}
+	machine.buildRoutineIndex()
+	return machine, nil
+}
+
+func (machine *Machine) buildRoutineIndex() {
+	machine.qualified = make(map[string]uint16, len(machine.program.Functions))
+	machine.unqualified = make(map[string]int, len(machine.program.Functions))
+	machine.exactQualified = make(map[string]uint16, len(machine.program.Functions))
+	machine.exactUnqualified = make(map[string]int, len(machine.program.Functions))
+	for index := range machine.program.Functions {
+		function := &machine.program.Functions[index]
+		name := strings.ToLower(function.Name)
+		if current, exists := machine.unqualified[name]; exists && current != index {
+			machine.unqualified[name] = -1
+		} else {
+			machine.unqualified[name] = index
+		}
+	}
+	for index := range machine.program.Functions {
+		function := &machine.program.Functions[index]
+		if machine.unqualified[strings.ToLower(function.Name)] >= 0 {
+			machine.exactUnqualified[function.Name] = index
+		}
+		if int(function.Module) < len(machine.program.Modules) {
+			module := machine.program.Modules[function.Module].Name
+			qualified := module + "." + function.Name
+			machine.exactQualified[qualified] = uint16(index)
+			machine.qualified[strings.ToLower(qualified)] = uint16(index)
+		}
+	}
+}
+
+func (machine *Machine) lookup(name string) (*bytecode.Function, bool) {
+	if index, ok := machine.exactQualified[name]; ok {
+		return &machine.program.Functions[index], true
+	}
+	if index, ok := machine.exactUnqualified[name]; ok {
+		if index < 0 {
+			return nil, false
+		}
+		return &machine.program.Functions[index], true
+	}
+	folded := strings.ToLower(name)
+	if index, ok := machine.qualified[folded]; ok {
+		return &machine.program.Functions[index], true
+	}
+	index, ok := machine.unqualified[folded]
+	if !ok || index < 0 {
+		return nil, false
+	}
+	return &machine.program.Functions[index], true
 }
 
 func cloneProgram(program *bytecode.Program) *bytecode.Program {
@@ -113,6 +187,23 @@ type RuntimeError struct {
 	Span     syntax.Span
 	Message  string
 	Stack    []StackFrame
+	Cause    error
+}
+
+// Unwrap exposes a resource-limit or cancellation cause to errors.Is.
+func (runtimeError *RuntimeError) Unwrap() error { return runtimeError.Cause }
+
+func firstInstruction(function *bytecode.Function) bytecode.Instruction {
+	if len(function.Code) == 0 {
+		return bytecode.Instruction{}
+	}
+	return function.Code[0]
+}
+
+func resourceFailure(function *bytecode.Function, instruction bytecode.Instruction, cause error) *RuntimeError {
+	failure := runtimeFailure(function, instruction, cause.Error())
+	failure.Cause = cause
+	return failure
 }
 
 func (runtimeError *RuntimeError) Error() string {
@@ -144,7 +235,12 @@ func (runtimeError *RuntimeError) Error() string {
 // Call executes a named BSL routine in an isolated transient context. Use
 // NewContext when module variables must persist between calls.
 func (machine *Machine) Call(name string, arguments ...bytecode.Value) (bytecode.Value, error) {
-	function, ok := machine.program.Lookup(name)
+	return machine.CallContext(context.Background(), name, arguments...)
+}
+
+// CallContext executes a routine with cancellation and deadline propagation.
+func (machine *Machine) CallContext(ctx context.Context, name string, arguments ...bytecode.Value) (bytecode.Value, error) {
+	function, ok := machine.lookup(name)
 	if !ok {
 		return bytecode.Undefined(), fmt.Errorf("routine %q not found", name)
 	}
@@ -157,13 +253,33 @@ func (machine *Machine) Call(name string, arguments ...bytecode.Value) (bytecode
 		return bytecode.Undefined(), unavailableContextError(function, ServerSide)
 	}
 	if !requiresContext(function) {
-		value, callErr := executeFast(function, arguments)
+		budget, budgetErr := newExecutionBudget(ctx, machine.limits, arguments, nil)
+		if budgetErr != nil {
+			return bytecode.Undefined(), budgetErr
+		}
+		value, callErr := executeFast(function, arguments, &budget)
 		if callErr != nil {
 			return value, finalizeRuntimeError(machine.program, callErr)
 		}
 		return value, nil
 	}
-	value, callErr := executeWithValues(machine.program, function, arguments, makeModuleValues(machine.program), env)
+	if machine.moduleMemory == 0 {
+		budget, budgetErr := newExecutionBudget(ctx, machine.limits, arguments, nil)
+		if budgetErr != nil {
+			return bytecode.Undefined(), budgetErr
+		}
+		value, callErr := executeWithValues(machine.program, function, arguments, makeModuleValues(machine.program), env, &budget)
+		if callErr != nil {
+			return value, finalizeRuntimeError(machine.program, callErr)
+		}
+		return value, nil
+	}
+	moduleMemory := machine.moduleMemory
+	budget, err := newExecutionBudget(ctx, machine.limits, arguments, &moduleMemory)
+	if err != nil {
+		return bytecode.Undefined(), err
+	}
+	value, callErr := executeWithValues(machine.program, function, arguments, makeModuleValues(machine.program), env, &budget)
 	if callErr != nil {
 		return value, finalizeRuntimeError(machine.program, callErr)
 	}
@@ -172,7 +288,10 @@ func (machine *Machine) Call(name string, arguments ...bytecode.Value) (bytecode
 
 // NewContext creates isolated persistent module state for one user session.
 func (machine *Machine) NewContext() *Context {
-	return &Context{machine: machine, modules: makeModuleValues(machine.program), env: executionEnvironment{side: ServerSide}}
+	return &Context{
+		machine: machine, modules: makeModuleValues(machine.program),
+		env: executionEnvironment{side: ServerSide}, memory: machine.moduleMemory,
+	}
 }
 
 // NewClientContext creates a browser-side context. Calls to server-only
@@ -180,13 +299,18 @@ func (machine *Machine) NewContext() *Context {
 func (machine *Machine) NewClientContext(server ServerCaller) *Context {
 	return &Context{
 		machine: machine, modules: makeModuleValues(machine.program),
-		env: executionEnvironment{side: ClientSide, server: server},
+		env: executionEnvironment{side: ClientSide, server: server}, memory: machine.moduleMemory,
 	}
 }
 
 // Call executes a routine while preserving this context's module variables.
-func (context *Context) Call(name string, arguments ...bytecode.Value) (bytecode.Value, error) {
-	function, ok := context.machine.program.Lookup(name)
+func (runtimeContext *Context) Call(name string, arguments ...bytecode.Value) (bytecode.Value, error) {
+	return runtimeContext.CallContext(context.Background(), name, arguments...)
+}
+
+// CallContext executes a routine in this session with cancellation support.
+func (runtimeContext *Context) CallContext(ctx context.Context, name string, arguments ...bytecode.Value) (bytecode.Value, error) {
+	function, ok := runtimeContext.machine.lookup(name)
 	if !ok {
 		return bytecode.Undefined(), fmt.Errorf("routine %q not found", name)
 	}
@@ -194,24 +318,46 @@ func (context *Context) Call(name string, arguments ...bytecode.Value) (bytecode
 	if err != nil {
 		return bytecode.Undefined(), err
 	}
-	if !allowsSide(function.Context, context.env.side) {
-		if context.env.side == ClientSide && function.Context.AllowsServer() {
-			return dispatchServer(context.machine.program, context.env.server, function, completed)
+	if !allowsSide(function.Context, runtimeContext.env.side) {
+		if runtimeContext.env.side == ClientSide && function.Context.AllowsServer() {
+			budget, budgetErr := newExecutionBudget(ctx, runtimeContext.machine.limits, completed, nil)
+			if budgetErr != nil {
+				return bytecode.Undefined(), budgetErr
+			}
+			rpcContext, cancel := budget.rpcContext()
+			defer cancel()
+			value, callErr := dispatchServer(rpcContext, runtimeContext.machine.program, runtimeContext.env.server, function, completed)
+			callErr = budget.externalError(callErr)
+			if callErr == nil {
+				callErr = budget.checkClock()
+			}
+			if callErr == nil {
+				callErr = budget.retain(value)
+			}
+			return value, callErr
 		}
-		return bytecode.Undefined(), unavailableContextError(function, context.env.side)
+		return bytecode.Undefined(), unavailableContextError(function, runtimeContext.env.side)
 	}
 	if !requiresContext(function) {
-		value, callErr := executeFast(function, completed)
+		budget, budgetErr := newExecutionBudget(ctx, runtimeContext.machine.limits, completed, nil)
+		if budgetErr != nil {
+			return bytecode.Undefined(), budgetErr
+		}
+		value, callErr := executeFast(function, completed, &budget)
 		if callErr != nil {
-			return value, finalizeRuntimeError(context.machine.program, callErr)
+			return value, finalizeRuntimeError(runtimeContext.machine.program, callErr)
 		}
 		return value, nil
 	}
-	context.mutex.Lock()
-	defer context.mutex.Unlock()
-	value, callErr := executeWithValues(context.machine.program, function, completed, context.modules, context.env)
+	runtimeContext.mutex.Lock()
+	defer runtimeContext.mutex.Unlock()
+	budget, err := newExecutionBudget(ctx, runtimeContext.machine.limits, completed, &runtimeContext.memory)
+	if err != nil {
+		return bytecode.Undefined(), err
+	}
+	value, callErr := executeWithValues(runtimeContext.machine.program, function, completed, runtimeContext.modules, runtimeContext.env, &budget)
 	if callErr != nil {
-		return value, finalizeRuntimeError(context.machine.program, callErr)
+		return value, finalizeRuntimeError(runtimeContext.machine.program, callErr)
 	}
 	return value, nil
 }
@@ -231,7 +377,7 @@ func unavailableContextError(function *bytecode.Function, side ExecutionSide) er
 	return fmt.Errorf("routine %q is not available in %s context", function.Name, name)
 }
 
-func dispatchServer(program *bytecode.Program, server ServerCaller, function *bytecode.Function, arguments []bytecode.Value) (bytecode.Value, error) {
+func dispatchServer(ctx context.Context, program *bytecode.Program, server ServerCaller, function *bytecode.Function, arguments []bytecode.Value) (bytecode.Value, error) {
 	if server == nil {
 		return bytecode.Undefined(), fmt.Errorf("server RPC is not configured for routine %q", function.Name)
 	}
@@ -239,7 +385,7 @@ func dispatchServer(program *bytecode.Program, server ServerCaller, function *by
 	if int(function.Module) < len(program.Modules) {
 		module = program.Modules[function.Module].Name
 	}
-	return server.CallServer(ServerCall{
+	return server.CallServer(ctx, ServerCall{
 		Module: module, Routine: function.Name,
 		Arguments:      append([]bytecode.Value(nil), arguments...),
 		WithoutContext: function.Context.ServerWithoutContext(),
@@ -300,7 +446,12 @@ func requiresContext(function *bytecode.Function) bool {
 	return len(function.CallSites) != 0 || len(function.ModuleVars) != 0 || len(function.Exceptions) != 0
 }
 
-func executeFast(function *bytecode.Function, arguments []bytecode.Value) (bytecode.Value, error) {
+func executeFast(function *bytecode.Function, arguments []bytecode.Value, budget *executionBudget) (bytecode.Value, error) {
+	frame, err := budget.enter(function, 0)
+	if err != nil {
+		return bytecode.Undefined(), resourceFailure(function, firstInstruction(function), err)
+	}
+	defer budget.leave(frame)
 	var inlineLocals [inlineLocalSize]bytecode.Value
 	locals := inlineLocals[:]
 	if int(function.LocalCount) > len(locals) {
@@ -325,9 +476,16 @@ func executeFast(function *bytecode.Function, arguments []bytecode.Value) (bytec
 	}
 	for instructionPointer := 0; instructionPointer < len(function.Code); instructionPointer++ {
 		instruction := function.Code[instructionPointer]
+		if err := budget.step(); err != nil {
+			return bytecode.Undefined(), resourceFailure(function, instruction, err)
+		}
 		switch instruction.Opcode {
 		case bytecode.OpConstant:
-			push(function.Constants[instruction.Operand])
+			value := function.Constants[instruction.Operand]
+			if err := budget.fit(value); err != nil {
+				return bytecode.Undefined(), resourceFailure(function, instruction, err)
+			}
+			push(value)
 		case bytecode.OpLoadLocal:
 			push(locals[instruction.Operand])
 		case bytecode.OpStoreLocal:
@@ -390,6 +548,9 @@ func executeFast(function *bytecode.Function, arguments []bytecode.Value) (bytec
 			if err != nil {
 				return bytecode.Undefined(), runtimeFailure(function, instruction, err.Error())
 			}
+			if err := budget.retain(result); err != nil {
+				return bytecode.Undefined(), resourceFailure(function, instruction, err)
+			}
 			push(result)
 		case bytecode.OpJump:
 			instructionPointer = int(instruction.Operand) - 1
@@ -433,8 +594,9 @@ func executeWithValues(
 	values []bytecode.Value,
 	modules [][]bytecode.Value,
 	env executionEnvironment,
+	budget *executionBudget,
 ) (bytecode.Value, error) {
-	return executeAdvanced(program, function, nil, values, modules, env, 0)
+	return executeAdvanced(program, function, nil, values, modules, env, budget, 0)
 }
 
 func executeAdvanced(
@@ -444,15 +606,14 @@ func executeAdvanced(
 	rootValues []bytecode.Value,
 	modules [][]bytecode.Value,
 	env executionEnvironment,
+	budget *executionBudget,
 	callDepth int,
 ) (bytecode.Value, error) {
-	if callDepth >= maxCallDepth {
-		frame := StackFrame{Function: function.Name, module: function.Module}
-		return bytecode.Undefined(), &RuntimeError{
-			Function: function.Name, Message: fmt.Sprintf("maximum BSL call depth %d exceeded", maxCallDepth),
-			Stack: []StackFrame{frame},
-		}
+	frameBytes, err := budget.enter(function, callDepth)
+	if err != nil {
+		return bytecode.Undefined(), resourceFailure(function, firstInstruction(function), err)
 	}
+	defer budget.leave(frameBytes)
 	var inlineLocals [inlineLocalSize]bytecode.Value
 	locals := inlineLocals[:]
 	if int(function.LocalCount) > len(locals) {
@@ -502,7 +663,10 @@ func executeAdvanced(
 			Variable: uint16((identity & uint64(^uint32(0))) - 1),
 		}
 	}
-	setModule := func(reference bytecode.VariableReference, value bytecode.Value) {
+	setModule := func(reference bytecode.VariableReference, value bytecode.Value) error {
+		if err := budget.replacePersistent(modules[reference.Module][reference.Variable], value); err != nil {
+			return err
+		}
 		modules[reference.Module][reference.Variable] = value
 		identity := moduleIdentity(reference)
 		for index := range identities {
@@ -510,12 +674,13 @@ func executeAdvanced(
 				locals[index] = value
 			}
 		}
+		return nil
 	}
-	setLocal := func(index uint16, value bytecode.Value) {
+	setLocal := func(index uint16, value bytecode.Value) error {
 		identity := identities[index]
 		if identity == 0 {
 			locals[index] = value
-			return
+			return nil
 		}
 		for localIndex := range identities {
 			if identities[localIndex] == identity {
@@ -524,8 +689,12 @@ func executeAdvanced(
 		}
 		if identity>>63 != 0 {
 			reference := moduleReference(identity)
+			if err := budget.replacePersistent(modules[reference.Module][reference.Variable], value); err != nil {
+				return err
+			}
 			modules[reference.Module][reference.Variable] = value
 		}
+		return nil
 	}
 	localIdentity := func(index uint16) uint64 {
 		if identities[index] != 0 {
@@ -558,19 +727,30 @@ func executeAdvanced(
 
 	for instructionPointer := 0; instructionPointer < len(function.Code); instructionPointer++ {
 		instruction := function.Code[instructionPointer]
+		if err := budget.step(); err != nil {
+			return bytecode.Undefined(), resourceFailure(function, instruction, err)
+		}
 		var failure *RuntimeError
 		switch instruction.Opcode {
 		case bytecode.OpConstant:
-			push(function.Constants[instruction.Operand])
+			value := function.Constants[instruction.Operand]
+			if err := budget.fit(value); err != nil {
+				return bytecode.Undefined(), resourceFailure(function, instruction, err)
+			}
+			push(value)
 		case bytecode.OpLoadLocal:
 			push(locals[instruction.Operand])
 		case bytecode.OpStoreLocal:
-			setLocal(instruction.Operand, pop())
+			if err := setLocal(instruction.Operand, pop()); err != nil {
+				return bytecode.Undefined(), resourceFailure(function, instruction, err)
+			}
 		case bytecode.OpLoadModule:
 			reference := function.ModuleVars[instruction.Operand]
 			push(modules[reference.Module][reference.Variable])
 		case bytecode.OpStoreModule:
-			setModule(function.ModuleVars[instruction.Operand], pop())
+			if err := setModule(function.ModuleVars[instruction.Operand], pop()); err != nil {
+				return bytecode.Undefined(), resourceFailure(function, instruction, err)
+			}
 		case bytecode.OpPositive, bytecode.OpNegate:
 			value := pop()
 			if value.Kind() != bytecode.NumberKind {
@@ -637,6 +817,9 @@ func executeAdvanced(
 				failure = runtimeFailure(function, instruction, err.Error())
 				break
 			}
+			if err := budget.retain(result); err != nil {
+				return bytecode.Undefined(), resourceFailure(function, instruction, err)
+			}
 			push(result)
 		case bytecode.OpJump:
 			instructionPointer = int(instruction.Operand) - 1
@@ -690,17 +873,27 @@ func executeAdvanced(
 				for index := range callArguments {
 					values[index] = callArguments[index].value
 				}
-				result, err = dispatchServer(program, env.server, target, values)
+				rpcContext, cancel := budget.rpcContext()
+				result, err = dispatchServer(rpcContext, program, env.server, target, values)
+				cancel()
+				err = budget.externalError(err)
+				if err == nil {
+					err = budget.checkClock()
+				}
 			} else if remote {
 				err = unavailableContextError(target, env.side)
 			} else {
-				result, err = executeAdvanced(program, target, callArguments, nil, modules, env, callDepth+1)
+				result, err = executeAdvanced(program, target, callArguments, nil, modules, env, budget, callDepth+1)
 				for index, reference := range call.References {
 					switch reference.Kind {
 					case bytecode.LocalReference:
-						setLocal(reference.Variable, callArguments[index].value)
+						if setErr := setLocal(reference.Variable, callArguments[index].value); setErr != nil {
+							err = setErr
+						}
 					case bytecode.ModuleReference:
-						setModule(reference, callArguments[index].value)
+						if setErr := setModule(reference, callArguments[index].value); setErr != nil {
+							err = setErr
+						}
 					}
 				}
 				for index, identity := range identities {
@@ -710,8 +903,14 @@ func executeAdvanced(
 					}
 				}
 			}
+			if err == nil && remote {
+				err = budget.retain(result)
+			}
 			releaseCallArguments(pooledArguments, callArguments)
 			if err != nil {
+				if isResourceFailure(err) {
+					return bytecode.Undefined(), callFailure(err, function, instruction)
+				}
 				failure = callFailure(err, function, instruction)
 				break
 			}
@@ -725,7 +924,11 @@ func executeAdvanced(
 			}
 		case bytecode.OpErrorDescription:
 			if active := caught[instruction.Operand]; active != nil {
-				push(bytecode.String(active.Message))
+				value := bytecode.String(active.Message)
+				if err := budget.retain(value); err != nil {
+					return bytecode.Undefined(), resourceFailure(function, instruction, err)
+				}
+				push(value)
 			} else {
 				push(bytecode.String(""))
 			}
@@ -972,7 +1175,9 @@ func callFailure(err error, function *bytecode.Function, instruction bytecode.In
 		})
 		return runtimeError
 	}
-	return runtimeFailure(function, instruction, err.Error())
+	failure := runtimeFailure(function, instruction, err.Error())
+	failure.Cause = err
+	return failure
 }
 
 func finalizeRuntimeError(program *bytecode.Program, err error) error {

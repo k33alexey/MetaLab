@@ -175,6 +175,41 @@ func (value Value) ArrayElement(index int) (Value, bool) {
 	return value.elements[index], true
 }
 
+// DynamicMemory estimates heap storage retained by strings and arrays. The
+// limit makes the traversal safe for untrusted, deeply nested values.
+func (value Value) DynamicMemory(limit uint64) (uint64, bool) {
+	return dynamicMemory(value, limit, 0)
+}
+
+func dynamicMemory(value Value, limit uint64, depth int) (uint64, bool) {
+	const (
+		estimatedValueSlotBytes = uint64(96)
+		maxNesting              = 64
+	)
+	if depth > maxNesting {
+		return limit, false
+	}
+	var size uint64
+	switch value.kind {
+	case StringKind:
+		size = uint64(len(value.text))
+	case ArrayKind:
+		if uint64(len(value.elements)) > limit/estimatedValueSlotBytes {
+			return limit, false
+		}
+		size = uint64(len(value.elements)) * estimatedValueSlotBytes
+		for _, element := range value.elements {
+			remaining := limit - min(size, limit)
+			elementSize, ok := dynamicMemory(element, remaining, depth+1)
+			if !ok || elementSize > remaining {
+				return limit, false
+			}
+			size += elementSize
+		}
+	}
+	return size, size <= limit
+}
+
 // AsDate returns the date payload in UTC.
 func (value Value) AsDate() (time.Time, bool) {
 	if value.kind != DateKind {

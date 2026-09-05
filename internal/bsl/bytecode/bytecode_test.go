@@ -38,6 +38,25 @@ func TestClientProgramStripsServerBodiesAndKeepsRPCSignatures(t *testing.T) {
 	}
 }
 
+func TestValueDynamicMemoryIsBounded(t *testing.T) {
+	t.Parallel()
+
+	value := Array(String("Meta"), Array(String("Lab")))
+	if size, ok := value.DynamicMemory(1 << 20); !ok || size != 295 {
+		t.Fatalf("dynamic memory = %d, %v", size, ok)
+	}
+	if _, ok := value.DynamicMemory(294); ok {
+		t.Fatal("DynamicMemory accepted an undersized limit")
+	}
+	deep := Undefined()
+	for range 66 {
+		deep = Array(deep)
+	}
+	if _, ok := deep.DynamicMemory(1 << 20); ok {
+		t.Fatal("DynamicMemory accepted excessive nesting")
+	}
+}
+
 func TestProgramValidationAndLookup(t *testing.T) {
 	t.Parallel()
 

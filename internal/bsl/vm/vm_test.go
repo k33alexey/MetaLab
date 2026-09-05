@@ -1,6 +1,9 @@
 package vm
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -16,7 +19,14 @@ type recordingServer struct {
 	err    error
 }
 
-func (server *recordingServer) CallServer(call ServerCall) (bytecode.Value, error) {
+type blockingServer struct{}
+
+func (blockingServer) CallServer(ctx context.Context, _ ServerCall) (bytecode.Value, error) {
+	<-ctx.Done()
+	return bytecode.Undefined(), ctx.Err()
+}
+
+func (server *recordingServer) CallServer(_ context.Context, call ServerCall) (bytecode.Value, error) {
 	server.calls = append(server.calls, call)
 	return server.result, server.err
 }
@@ -158,6 +168,29 @@ func TestMachineOwnsImmutableProgramCopy(t *testing.T) {
 	}
 	if number, _ := result.AsNumber(); number != 42 {
 		t.Fatalf("result = %v, want 42", result)
+	}
+}
+
+func TestMachineIndexedLookupPreservesCaseInsensitiveAmbiguity(t *testing.T) {
+	t.Parallel()
+
+	program, diagnostics := compiler.CompileModules([]compiler.ModuleSource{
+		{Name: "First", Filename: "first.bsl", Source: "Function Value() Export Return 1; EndFunction"},
+		{Name: "Second", Filename: "second.bsl", Source: "Function vALUE() Export Return 2; EndFunction"},
+	})
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	machine, err := New(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := machine.Call("Value"); err == nil {
+		t.Fatal("ambiguous exact name was resolved")
+	}
+	value, err := machine.Call("sEcOnD.VaLuE")
+	if err != nil || value.String() != "2" {
+		t.Fatalf("qualified indexed lookup = %v, %v", value, err)
 	}
 }
 
@@ -719,6 +752,208 @@ EndFunction`)
 	}
 }
 
+func TestMachineStopsInfiniteLoopAtInstructionLimit(t *testing.T) {
+	t.Parallel()
+
+	limits := DefaultLimits()
+	limits.MaxInstructions = 100
+	machine := compileMachineWithLimits(t, `Procedure Run()
+While True Do
+EndDo;
+EndProcedure`, limits)
+	_, err := machine.Call("Run")
+	if !errors.Is(err, ErrInstructionLimit) {
+		t.Fatalf("instruction limit error = %v", err)
+	}
+	var runtimeError *RuntimeError
+	if !errors.As(err, &runtimeError) || runtimeError.Span.Start.Line != 2 {
+		t.Fatalf("runtime error = %#v", err)
+	}
+}
+
+func TestResourceLimitCannotBeCaughtByBSL(t *testing.T) {
+	t.Parallel()
+
+	limits := DefaultLimits()
+	limits.MaxInstructions = 100
+	machine := compileMachineWithLimits(t, `Function Run()
+Try
+    While True Do EndDo;
+Except
+    Return 42;
+EndTry;
+Return 0;
+EndFunction`, limits)
+	if _, err := machine.Call("Run"); !errors.Is(err, ErrInstructionLimit) {
+		t.Fatalf("resource limit was caught: %v", err)
+	}
+
+	nested := compileMachineWithLimits(t, `Function Spin()
+While True Do EndDo;
+EndFunction
+Function Run()
+Try
+    Return Spin();
+Except
+    Return 42;
+EndTry;
+EndFunction`, limits)
+	if _, err := nested.Call("Run"); !errors.Is(err, ErrInstructionLimit) {
+		t.Fatalf("nested resource limit was caught: %v", err)
+	}
+}
+
+func TestMachineHonorsCancellationAndDuration(t *testing.T) {
+	t.Parallel()
+
+	machine := compileMachine(t, "Function Run() Return 1; EndFunction")
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := machine.CallContext(canceled, "Run"); !errors.Is(err, ErrExecutionCanceled) {
+		t.Fatalf("cancellation error = %v", err)
+	}
+
+	limits := DefaultLimits()
+	limits.MaxDuration = time.Nanosecond
+	timed := compileMachineWithLimits(t, `Procedure Run()
+While True Do
+EndDo;
+EndProcedure`, limits)
+	if _, err := timed.Call("Run"); !errors.Is(err, ErrExecutionTimeout) {
+		t.Fatalf("duration error = %v", err)
+	}
+}
+
+func TestClientRPCReceivesExecutionDeadline(t *testing.T) {
+	t.Parallel()
+
+	limits := DefaultLimits()
+	limits.MaxDuration = 5 * time.Millisecond
+	machine := compileMachineWithLimits(t, "&AtServer\nFunction Load() Return 1; EndFunction", limits)
+	started := time.Now()
+	_, err := machine.NewClientContext(blockingServer{}).Call("Load")
+	if !errors.Is(err, ErrExecutionTimeout) {
+		t.Fatalf("RPC timeout error = %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("RPC cancellation took %s", elapsed)
+	}
+}
+
+func TestMachineEnforcesConfigurableCallDepth(t *testing.T) {
+	t.Parallel()
+
+	limits := DefaultLimits()
+	limits.MaxCallDepth = 8
+	machine := compileMachineWithLimits(t, `Function Recurse()
+Return Recurse();
+EndFunction`, limits)
+	_, err := machine.Call("Recurse")
+	if !errors.Is(err, ErrCallDepthLimit) {
+		t.Fatalf("call depth error = %v", err)
+	}
+	var runtimeError *RuntimeError
+	if !errors.As(err, &runtimeError) || len(runtimeError.Stack) != 9 {
+		t.Fatalf("call depth stack = %#v", err)
+	}
+}
+
+func TestMachineEnforcesInputFrameAndGeneratedMemoryLimits(t *testing.T) {
+	t.Parallel()
+
+	limits := DefaultLimits()
+	limits.MaxMemoryBytes = 16 << 10
+	machine := compileMachineWithLimits(t, "Function Echo(Value) Return Value; EndFunction", limits)
+	if _, err := machine.Call("Echo", bytecode.String(strings.Repeat("x", 20<<10))); !errors.Is(err, ErrMemoryLimit) {
+		t.Fatalf("input memory error = %v", err)
+	}
+
+	grow := compileMachineWithLimits(t, "Function Grow(Value) Return Value + Value; EndFunction", limits)
+	if _, err := grow.Call("Grow", bytecode.String(strings.Repeat("x", 4<<10))); !errors.Is(err, ErrMemoryLimit) {
+		t.Fatalf("generated memory error = %v", err)
+	}
+	literal := compileMachineWithLimits(t, `Function Large() Return "`+strings.Repeat("x", 10<<10)+`"; EndFunction`, limits)
+	if _, err := literal.Call("Large"); !errors.Is(err, ErrMemoryLimit) {
+		t.Fatalf("constant memory error = %v", err)
+	}
+}
+
+func TestContextBoundsAndReleasesPersistentValueMemory(t *testing.T) {
+	t.Parallel()
+
+	limits := DefaultLimits()
+	limits.MaxMemoryBytes = 16 << 10
+	machine := compileMachineWithLimits(t, `Var State;
+Procedure Set(Value) State = Value; EndProcedure
+Function Get() Return State; EndFunction`, limits)
+	runtimeContext := machine.NewContext()
+	large := bytecode.String(strings.Repeat("x", 8<<10))
+	if _, err := runtimeContext.Call("Set", large); err != nil {
+		t.Fatal(err)
+	}
+	if value, err := runtimeContext.Call("Get"); err != nil || value.String() != large.String() {
+		t.Fatalf("Get() = %v, %v", value, err)
+	}
+	if _, err := runtimeContext.Call("Set", large); !errors.Is(err, ErrMemoryLimit) {
+		t.Fatalf("persistent memory error = %v", err)
+	}
+	if _, err := runtimeContext.Call("Set", bytecode.String("ok")); err != nil {
+		t.Fatalf("replace with smaller value: %v", err)
+	}
+	if value, err := runtimeContext.Call("Get"); err != nil || value.String() != "ok" {
+		t.Fatalf("Get() after replacement = %v, %v", value, err)
+	}
+}
+
+func TestNewWithLimitsRejectsUnsafeConfiguration(t *testing.T) {
+	t.Parallel()
+
+	program, diagnostics := compiler.CompileSource("test.bsl", "Procedure Run() EndProcedure")
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	invalid := []Limits{
+		{},
+		{MaxInstructions: 1, MaxMemoryBytes: 1, MaxCallDepth: 1},
+		{MaxInstructions: 1, MaxMemoryBytes: 1, MaxCallDepth: maximumCallDepth + 1, MaxDuration: time.Second},
+	}
+	for _, limits := range invalid {
+		if _, err := NewWithLimits(program, limits); err == nil {
+			t.Fatalf("NewWithLimits accepted %+v", limits)
+		}
+	}
+}
+
+func TestNewWithLimitsRejectsProgramAndModuleStorageBeyondMemoryBudget(t *testing.T) {
+	t.Parallel()
+
+	program, diagnostics := compiler.CompileSource("test.bsl", "Procedure Run() EndProcedure")
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	limits := DefaultLimits()
+	limits.MaxMemoryBytes = 128
+	if _, err := NewWithLimits(program, limits); !errors.Is(err, ErrMemoryLimit) {
+		t.Fatalf("program memory error = %v", err)
+	}
+
+	variables := make([]string, 40)
+	for index := range variables {
+		variables[index] = fmt.Sprintf("Value%d", index)
+	}
+	program, diagnostics = compiler.CompileSource("test.bsl", "Var "+strings.Join(variables, ", ")+";\nProcedure Run() EndProcedure")
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	limits.MaxMemoryBytes = 3_000
+	if !programFitsMemory(program, limits.MaxMemoryBytes) {
+		t.Fatal("test program must fit the bytecode memory budget")
+	}
+	if _, err := NewWithLimits(program, limits); !errors.Is(err, ErrMemoryLimit) || !strings.Contains(err.Error(), "module context") {
+		t.Fatalf("module storage memory error = %v", err)
+	}
+}
+
 func TestMachineCatchesExplicitAndRuntimeExceptions(t *testing.T) {
 	t.Parallel()
 
@@ -897,6 +1132,19 @@ func compileMachine(t testing.TB, source string) *Machine {
 		t.Fatalf("compile diagnostics = %v", diagnostics)
 	}
 	machine, err := New(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return machine
+}
+
+func compileMachineWithLimits(t testing.TB, source string, limits Limits) *Machine {
+	t.Helper()
+	program, diagnostics := compiler.CompileSource("test.bsl", source)
+	if len(diagnostics) != 0 {
+		t.Fatalf("compile diagnostics = %v", diagnostics)
+	}
+	machine, err := NewWithLimits(program, limits)
 	if err != nil {
 		t.Fatal(err)
 	}
