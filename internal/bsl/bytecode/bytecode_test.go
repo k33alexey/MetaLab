@@ -60,6 +60,9 @@ func TestProgramRejectsMalformedBytecode(t *testing.T) {
 		{name: "jump", program: programWith(Function{Name: "Test", Code: []Instruction{{Opcode: OpJump, Operand: 2}, {Opcode: OpReturn}}}), message: "jumps outside code"},
 		{name: "unknown opcode", program: programWith(Function{Name: "Test", Code: []Instruction{{Opcode: Opcode(255)}, {Opcode: OpReturn}}, MaxStack: 1}), message: "unknown opcode"},
 		{name: "wrong max stack", program: programWith(Function{Name: "Test", Code: returningConstant(), Constants: []Value{Undefined()}, MaxStack: 2}), message: "max stack"},
+		{name: "exception range", program: programWith(Function{Name: "Test", Code: returningConstant(), Constants: []Value{Undefined()}, MaxStack: 1, Exceptions: []ExceptionHandler{{Start: 1, End: 0, Target: 1}}}), message: "protected range"},
+		{name: "exception target", program: programWith(Function{Name: "Test", Code: returningConstant(), Constants: []Value{Undefined()}, MaxStack: 1, Exceptions: []ExceptionHandler{{Start: 0, End: 1, Target: 2}}}), message: "invalid target"},
+		{name: "reraise handler", program: programWith(Function{Name: "Test", Code: []Instruction{{Opcode: OpReraise}, {Opcode: OpConstant}, {Opcode: OpReturn}}, Constants: []Value{Undefined()}, MaxStack: 1}), message: "references exception handler"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -179,7 +182,7 @@ func TestProgramRejectsConflictingBranchStackDepths(t *testing.T) {
 func TestOpcodeStringHandlesUnknownValue(t *testing.T) {
 	t.Parallel()
 
-	for opcode := OpConstant; opcode <= OpCall; opcode++ {
+	for opcode := OpConstant; opcode <= OpErrorDescription; opcode++ {
 		if strings.HasPrefix(opcode.String(), "opcode(") {
 			t.Fatalf("opcode %d has no stable name", opcode)
 		}

@@ -55,6 +55,7 @@ func cloneProgram(program *bytecode.Program) *bytecode.Program {
 		clone.Functions[index].Parameters = append([]bytecode.Parameter(nil), program.Functions[index].Parameters...)
 		clone.Functions[index].Constants = append([]bytecode.Value(nil), program.Functions[index].Constants...)
 		clone.Functions[index].ModuleVars = append([]bytecode.VariableReference(nil), program.Functions[index].ModuleVars...)
+		clone.Functions[index].Exceptions = append([]bytecode.ExceptionHandler(nil), program.Functions[index].Exceptions...)
 		clone.Functions[index].CallSites = make([]bytecode.CallSite, len(program.Functions[index].CallSites))
 		for callIndex := range program.Functions[index].CallSites {
 			clone.Functions[index].CallSites[callIndex] = program.Functions[index].CallSites[callIndex]
@@ -67,21 +68,49 @@ func cloneProgram(program *bytecode.Program) *bytecode.Program {
 	return clone
 }
 
-// RuntimeError identifies the routine and source position of an execution failure.
-type RuntimeError struct {
+// StackFrame identifies one BSL call site, starting with the failure origin.
+type StackFrame struct {
+	Module   string
 	Function string
+	Filename string
+	Span     syntax.Span
+	module   uint16
+}
+
+// RuntimeError contains a source-linked BSL call stack.
+type RuntimeError struct {
+	Module   string
+	Function string
+	Filename string
 	Span     syntax.Span
 	Message  string
+	Stack    []StackFrame
 }
 
 func (runtimeError *RuntimeError) Error() string {
-	return fmt.Sprintf(
-		"%s:%d:%d: %s",
-		runtimeError.Function,
-		runtimeError.Span.Start.Line,
-		runtimeError.Span.Start.Column,
-		runtimeError.Message,
-	)
+	if len(runtimeError.Stack) == 0 {
+		return runtimeError.Message
+	}
+	var result strings.Builder
+	writeFrame := func(frame StackFrame, prefix string) {
+		name := frame.Function
+		if frame.Module != "" {
+			name = frame.Module + "." + frame.Function
+		}
+		location := frame.Filename
+		if location == "" {
+			location = name
+		}
+		fmt.Fprintf(&result, "%s%s:%d:%d: %s", prefix, location, frame.Span.Start.Line, frame.Span.Start.Column, name)
+	}
+	writeFrame(runtimeError.Stack[0], "")
+	result.WriteString(": ")
+	result.WriteString(runtimeError.Message)
+	for _, frame := range runtimeError.Stack[1:] {
+		result.WriteByte('\n')
+		writeFrame(frame, "  at ")
+	}
+	return result.String()
 }
 
 // Call executes a named BSL routine in an isolated transient context. Use
@@ -96,9 +125,17 @@ func (machine *Machine) Call(name string, arguments ...bytecode.Value) (bytecode
 		return bytecode.Undefined(), err
 	}
 	if !requiresContext(function) {
-		return executeFast(function, arguments)
+		value, callErr := executeFast(function, arguments)
+		if callErr != nil {
+			return value, finalizeRuntimeError(machine.program, callErr)
+		}
+		return value, nil
 	}
-	return executeWithValues(machine.program, function, arguments, makeModuleValues(machine.program))
+	value, callErr := executeWithValues(machine.program, function, arguments, makeModuleValues(machine.program))
+	if callErr != nil {
+		return value, finalizeRuntimeError(machine.program, callErr)
+	}
+	return value, nil
 }
 
 // NewContext creates isolated persistent module state for one user session.
@@ -117,11 +154,19 @@ func (context *Context) Call(name string, arguments ...bytecode.Value) (bytecode
 		return bytecode.Undefined(), err
 	}
 	if !requiresContext(function) {
-		return executeFast(function, completed)
+		value, callErr := executeFast(function, completed)
+		if callErr != nil {
+			return value, finalizeRuntimeError(context.machine.program, callErr)
+		}
+		return value, nil
 	}
 	context.mutex.Lock()
 	defer context.mutex.Unlock()
-	return executeWithValues(context.machine.program, function, completed, context.modules)
+	value, callErr := executeWithValues(context.machine.program, function, completed, context.modules)
+	if callErr != nil {
+		return value, finalizeRuntimeError(context.machine.program, callErr)
+	}
+	return value, nil
 }
 
 // CallExported invokes only a routine explicitly exported by a named module.
@@ -175,7 +220,7 @@ func makeModuleValues(program *bytecode.Program) [][]bytecode.Value {
 }
 
 func requiresContext(function *bytecode.Function) bool {
-	return len(function.CallSites) != 0 || len(function.ModuleVars) != 0
+	return len(function.CallSites) != 0 || len(function.ModuleVars) != 0 || len(function.Exceptions) != 0
 }
 
 func executeFast(function *bytecode.Function, arguments []bytecode.Value) (bytecode.Value, error) {
@@ -201,7 +246,6 @@ func executeFast(function *bytecode.Function, arguments []bytecode.Value) (bytec
 		depth--
 		return stack[depth]
 	}
-
 	for instructionPointer := 0; instructionPointer < len(function.Code); instructionPointer++ {
 		instruction := function.Code[instructionPointer]
 		switch instruction.Opcode {
@@ -290,6 +334,8 @@ func executeFast(function *bytecode.Function, arguments []bytecode.Value) (bytec
 			if instruction.Opcode == bytecode.OpJumpIfTrueKeep && boolean || instruction.Opcode == bytecode.OpJumpIfFalseKeep && !boolean {
 				instructionPointer = int(instruction.Operand) - 1
 			}
+		case bytecode.OpRaise:
+			return bytecode.Undefined(), runtimeFailure(function, instruction, pop().String())
 		case bytecode.OpReturn:
 			return pop(), nil
 		default:
@@ -322,7 +368,11 @@ func executeAdvanced(
 	callDepth int,
 ) (bytecode.Value, error) {
 	if callDepth >= maxCallDepth {
-		return bytecode.Undefined(), fmt.Errorf("maximum BSL call depth %d exceeded", maxCallDepth)
+		frame := StackFrame{Function: function.Name, module: function.Module}
+		return bytecode.Undefined(), &RuntimeError{
+			Function: function.Name, Message: fmt.Sprintf("maximum BSL call depth %d exceeded", maxCallDepth),
+			Stack: []StackFrame{frame},
+		}
 	}
 	var inlineLocals [inlineLocalSize]bytecode.Value
 	locals := inlineLocals[:]
@@ -352,6 +402,16 @@ func executeAdvanced(
 		locals[index] = argument.value
 		if !byValue {
 			identities[index] = argument.identity
+		}
+	}
+	writeBackArguments := func() {
+		if arguments == nil {
+			return
+		}
+		for index := range arguments {
+			if len(function.Parameters) != 0 && !function.Parameters[index].ByValue {
+				arguments[index].value = locals[index]
+			}
 		}
 	}
 	moduleIdentity := func(reference bytecode.VariableReference) uint64 {
@@ -409,9 +469,17 @@ func executeAdvanced(
 		depth--
 		return stack[depth]
 	}
+	var inlineCaught [8]*RuntimeError
+	caught := inlineCaught[:]
+	if len(function.Exceptions) > len(caught) {
+		caught = make([]*RuntimeError, len(function.Exceptions))
+	} else {
+		caught = caught[:len(function.Exceptions)]
+	}
 
 	for instructionPointer := 0; instructionPointer < len(function.Code); instructionPointer++ {
 		instruction := function.Code[instructionPointer]
+		var failure *RuntimeError
 		switch instruction.Opcode {
 		case bytecode.OpConstant:
 			push(function.Constants[instruction.Operand])
@@ -427,7 +495,8 @@ func executeAdvanced(
 		case bytecode.OpPositive, bytecode.OpNegate:
 			value := pop()
 			if value.Kind() != bytecode.NumberKind {
-				return bytecode.Undefined(), runtimeFailure(function, instruction, "unary sign requires a number")
+				failure = runtimeFailure(function, instruction, "unary sign requires a number")
+				break
 			}
 			if instruction.Opcode == bytecode.OpPositive {
 				push(value)
@@ -435,27 +504,31 @@ func executeAdvanced(
 			}
 			negated, err := bytecode.NegateNumber(value)
 			if err != nil {
-				return bytecode.Undefined(), runtimeFailure(function, instruction, err.Error())
+				failure = runtimeFailure(function, instruction, err.Error())
+				break
 			}
 			push(negated)
 		case bytecode.OpNot:
 			value := pop()
 			boolean, ok := value.AsBoolean()
 			if !ok {
-				return bytecode.Undefined(), runtimeFailure(function, instruction, "Not requires a boolean")
+				failure = runtimeFailure(function, instruction, "Not requires a boolean")
+				break
 			}
 			push(bytecode.Boolean(!boolean))
 		case bytecode.OpBoolean:
 			value := pop()
 			if _, ok := value.AsBoolean(); !ok {
-				return bytecode.Undefined(), runtimeFailure(function, instruction, "logical operation requires a boolean")
+				failure = runtimeFailure(function, instruction, "logical operation requires a boolean")
+				break
 			}
 			push(value)
 		case bytecode.OpArrayLength:
 			value := pop()
 			length, ok := value.ArrayLength()
 			if !ok {
-				return bytecode.Undefined(), runtimeFailure(function, instruction, "For Each requires an array")
+				failure = runtimeFailure(function, instruction, "For Each requires an array")
+				break
 			}
 			push(bytecode.Number(float64(length)))
 		case bytecode.OpArrayElement:
@@ -463,11 +536,13 @@ func executeAdvanced(
 			array := pop()
 			index, ok := indexValue.NumberInteger()
 			if !ok || index < 0 || uint64(index) > uint64(maxInt()) {
-				return bytecode.Undefined(), runtimeFailure(function, instruction, "array index must be a non-negative integer")
+				failure = runtimeFailure(function, instruction, "array index must be a non-negative integer")
+				break
 			}
 			element, ok := array.ArrayElement(int(index))
 			if !ok {
-				return bytecode.Undefined(), runtimeFailure(function, instruction, "array index is out of range")
+				failure = runtimeFailure(function, instruction, "array index is out of range")
+				break
 			}
 			push(element)
 		case bytecode.OpPop:
@@ -480,7 +555,8 @@ func executeAdvanced(
 			left := pop()
 			result, err := binary(instruction.Opcode, left, right)
 			if err != nil {
-				return bytecode.Undefined(), runtimeFailure(function, instruction, err.Error())
+				failure = runtimeFailure(function, instruction, err.Error())
+				break
 			}
 			push(result)
 		case bytecode.OpJump:
@@ -489,7 +565,8 @@ func executeAdvanced(
 			condition := pop()
 			boolean, ok := condition.AsBoolean()
 			if !ok {
-				return bytecode.Undefined(), runtimeFailure(function, instruction, "condition requires a boolean")
+				failure = runtimeFailure(function, instruction, "condition requires a boolean")
+				break
 			}
 			if !boolean {
 				instructionPointer = int(instruction.Operand) - 1
@@ -498,7 +575,8 @@ func executeAdvanced(
 			condition := stack[depth-1]
 			boolean, ok := condition.AsBoolean()
 			if !ok {
-				return bytecode.Undefined(), runtimeFailure(function, instruction, "logical operation requires a boolean")
+				failure = runtimeFailure(function, instruction, "logical operation requires a boolean")
+				break
 			}
 			if instruction.Opcode == bytecode.OpJumpIfTrueKeep && boolean || instruction.Opcode == bytecode.OpJumpIfFalseKeep && !boolean {
 				instructionPointer = int(instruction.Operand) - 1
@@ -526,10 +604,6 @@ func executeAdvanced(
 				}
 			}
 			result, err := executeAdvanced(program, target, callArguments, nil, modules, callDepth+1)
-			if err != nil {
-				releaseCallArguments(pooledArguments, callArguments)
-				return bytecode.Undefined(), err
-			}
 			for index, reference := range call.References {
 				switch reference.Kind {
 				case bytecode.LocalReference:
@@ -545,21 +619,60 @@ func executeAdvanced(
 				}
 			}
 			releaseCallArguments(pooledArguments, callArguments)
-			push(result)
-		case bytecode.OpReturn:
-			if arguments != nil {
-				for index := range arguments {
-					if len(function.Parameters) != 0 && !function.Parameters[index].ByValue {
-						arguments[index].value = locals[index]
-					}
-				}
+			if err != nil {
+				failure = callFailure(err, function, instruction)
+				break
 			}
+			push(result)
+		case bytecode.OpRaise:
+			failure = runtimeFailure(function, instruction, pop().String())
+		case bytecode.OpReraise:
+			failure = caught[instruction.Operand]
+			if failure == nil {
+				failure = runtimeFailure(function, instruction, "no active exception to rethrow")
+			}
+		case bytecode.OpErrorDescription:
+			if active := caught[instruction.Operand]; active != nil {
+				push(bytecode.String(active.Message))
+			} else {
+				push(bytecode.String(""))
+			}
+		case bytecode.OpReturn:
+			writeBackArguments()
 			return pop(), nil
 		default:
-			return bytecode.Undefined(), runtimeFailure(function, instruction, "unknown opcode")
+			failure = runtimeFailure(function, instruction, "unknown opcode")
+		}
+		if failure != nil {
+			handlerIndex := findExceptionHandler(function, instructionPointer)
+			if handlerIndex < 0 {
+				writeBackArguments()
+				return bytecode.Undefined(), failure
+			}
+			caught[handlerIndex] = failure
+			for index := 0; index < depth; index++ {
+				stack[index] = bytecode.Value{}
+			}
+			depth = 0
+			instructionPointer = int(function.Exceptions[handlerIndex].Target) - 1
 		}
 	}
 	return bytecode.Undefined(), fmt.Errorf("routine %q ended without return", function.Name)
+}
+
+func findExceptionHandler(function *bytecode.Function, instruction int) int {
+	selected := -1
+	selectedWidth := int(^uint(0) >> 1)
+	for index, handler := range function.Exceptions {
+		if instruction < int(handler.Start) || instruction >= int(handler.End) {
+			continue
+		}
+		width := int(handler.End) - int(handler.Start)
+		if width <= selectedWidth {
+			selected, selectedWidth = index, width
+		}
+	}
+	return selected
 }
 
 func releaseCallArguments(pooled *[inlineLocalSize]callArgument, arguments []callArgument) {
@@ -755,8 +868,44 @@ func valuesEqual(left, right bytecode.Value) bool {
 	}
 }
 
-func runtimeFailure(function *bytecode.Function, instruction bytecode.Instruction, message string) error {
-	return &RuntimeError{Function: function.Name, Span: instruction.Span, Message: message}
+func runtimeFailure(function *bytecode.Function, instruction bytecode.Instruction, message string) *RuntimeError {
+	frame := StackFrame{Function: function.Name, Span: instruction.Span, module: function.Module}
+	return &RuntimeError{Function: function.Name, Span: instruction.Span, Message: message, Stack: []StackFrame{frame}}
+}
+
+func callFailure(err error, function *bytecode.Function, instruction bytecode.Instruction) *RuntimeError {
+	if runtimeError, ok := err.(*RuntimeError); ok {
+		runtimeError.Stack = append(runtimeError.Stack, StackFrame{
+			Function: function.Name, Span: instruction.Span, module: function.Module,
+		})
+		return runtimeError
+	}
+	return runtimeFailure(function, instruction, err.Error())
+}
+
+func finalizeRuntimeError(program *bytecode.Program, err error) error {
+	if err == nil {
+		return nil
+	}
+	runtimeError, ok := err.(*RuntimeError)
+	if !ok {
+		return err
+	}
+	for index := range runtimeError.Stack {
+		frame := &runtimeError.Stack[index]
+		if int(frame.module) < len(program.Modules) {
+			frame.Module = program.Modules[frame.module].Name
+			frame.Filename = program.Modules[frame.module].Source
+		}
+	}
+	if len(runtimeError.Stack) != 0 {
+		root := runtimeError.Stack[0]
+		runtimeError.Module = root.Module
+		runtimeError.Function = root.Function
+		runtimeError.Filename = root.Filename
+		runtimeError.Span = root.Span
+	}
+	return runtimeError
 }
 
 func maxInt() int { return int(^uint(0) >> 1) }

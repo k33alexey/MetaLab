@@ -50,8 +50,12 @@ func TestMachineReportsSourcePositionForDivisionByZero(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected division error")
 	}
-	if got := err.Error(); got != "Divide:2:8: division by zero" {
+	if got := err.Error(); got != "test.bsl:2:8: test.Divide: division by zero" {
 		t.Fatalf("error = %q", got)
+	}
+	runtimeError, ok := err.(*RuntimeError)
+	if !ok || runtimeError.Filename != "test.bsl" || runtimeError.Module != "test" || len(runtimeError.Stack) != 1 {
+		t.Fatalf("runtime error = %#v", err)
 	}
 }
 
@@ -106,6 +110,26 @@ func TestMachineOwnsImmutableProgramCopy(t *testing.T) {
 	}
 	if number, _ := result.AsNumber(); number != 42 {
 		t.Fatalf("result = %v, want 42", result)
+	}
+}
+
+func TestMachineOwnsImmutableExceptionTableCopy(t *testing.T) {
+	t.Parallel()
+
+	program, diagnostics := compiler.CompileSource("test.bsl", `Function Value()
+Try Raise "boom"; Except Return 42; EndTry;
+EndFunction`)
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	machine, err := New(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program.Functions[0].Exceptions[0].Target = program.Functions[0].Exceptions[0].End
+	result, err := machine.Call("Value")
+	if err != nil || result.String() != "42" {
+		t.Fatalf("Value() = %v, %v", result, err)
 	}
 }
 
@@ -271,7 +295,7 @@ func TestMachineRejectsNonArrayForEachValue(t *testing.T) {
 	t.Parallel()
 
 	machine := compileMachine(t, "Function Test(Items)\nFor Each Item In Items Do Break; EndDo;\nReturn 0;\nEndFunction")
-	if _, err := machine.Call("Test", bytecode.Number(1)); err == nil || err.Error() != "Test:2:1: For Each requires an array" {
+	if _, err := machine.Call("Test", bytecode.Number(1)); err == nil || err.Error() != "test.bsl:2:1: test.Test: For Each requires an array" {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -280,7 +304,7 @@ func TestMachineRejectsNonBooleanCondition(t *testing.T) {
 	t.Parallel()
 
 	machine := compileMachine(t, "Function Test()\nIf 1 Then Return 1; EndIf;\nReturn 0;\nEndFunction")
-	if _, err := machine.Call("Test"); err == nil || err.Error() != "Test:2:1: condition requires a boolean" {
+	if _, err := machine.Call("Test"); err == nil || err.Error() != "test.bsl:2:1: test.Test: condition requires a boolean" {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -637,8 +661,180 @@ func TestMachineStopsRunawayRecursion(t *testing.T) {
 If Value = 0 Then Return 0; EndIf;
 Return Recurse(Value - 1);
 EndFunction`)
-	if _, err := machine.Call("Recurse", bytecode.Number(300)); err == nil || !strings.Contains(err.Error(), "maximum BSL call depth") {
+	_, err := machine.Call("Recurse", bytecode.Number(300))
+	if err == nil || !strings.Contains(err.Error(), "maximum BSL call depth") {
 		t.Fatalf("recursion error = %v", err)
+	}
+	runtimeError, ok := err.(*RuntimeError)
+	if !ok || len(runtimeError.Stack) != maxCallDepth+1 || runtimeError.Stack[0].Filename != "test.bsl" {
+		t.Fatalf("recursion stack = %#v", err)
+	}
+}
+
+func TestMachineCatchesExplicitAndRuntimeExceptions(t *testing.T) {
+	t.Parallel()
+
+	machine := compileMachine(t, `Function Explicit()
+Try
+    Raise "boom";
+Except
+    Return 41;
+EndTry;
+EndFunction
+Function Failure() Return 1 / 0; EndFunction
+Function Runtime()
+Try
+    Return Failure();
+Except
+    Return 42;
+EndTry;
+EndFunction
+Function Success()
+Try
+    Result = 43;
+Except
+    Result = 0;
+EndTry;
+Return Result;
+EndFunction
+Procedure ChangeThenFail(Value)
+Value = 44;
+Raise "changed";
+EndProcedure
+Function Reference()
+Value = 0;
+Try
+    ChangeThenFail(Value);
+Except
+    Return Value;
+EndTry;
+EndFunction
+Function Description()
+Try
+    Return 1 / 0;
+Except
+    Return ErrorDescription();
+EndTry;
+EndFunction
+Функция Описание()
+Попытка
+    ВызватьИсключение "русская ошибка";
+Исключение
+    Возврат ОписаниеОшибки();
+КонецПопытки;
+КонецФункции`)
+	for name, want := range map[string]float64{"Explicit": 41, "Runtime": 42, "Success": 43, "Reference": 44} {
+		result, err := machine.Call(name)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if number, ok := result.AsNumber(); !ok || number != want {
+			t.Fatalf("%s() = %v, want %v", name, result, want)
+		}
+	}
+	for name, want := range map[string]string{"Description": "division by zero", "Описание": "русская ошибка"} {
+		result, err := machine.Call(name)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if text, ok := result.AsString(); !ok || text != want {
+			t.Fatalf("%s() = %v, want %q", name, result, want)
+		}
+	}
+}
+
+func TestMachineRethrowsWithCompleteCrossModuleStack(t *testing.T) {
+	t.Parallel()
+
+	program, diagnostics := compiler.CompileModules([]compiler.ModuleSource{
+		{Name: "Leaf", Filename: "modules/leaf.bsl", Source: "Procedure Fail() Export\nRaise \"boom\";\nEndProcedure"},
+		{Name: "Middle", Filename: "modules/middle.bsl", Source: "Procedure Run() Export\nLeaf.Fail();\nEndProcedure"},
+		{Name: "App", Filename: "modules/app.bsl", Source: `Procedure Start() Export
+Try
+    Middle.Run();
+Except
+    Raise;
+EndTry;
+EndProcedure`},
+	})
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	encoded, err := bytecode.MarshalBinary(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err = bytecode.UnmarshalBinary(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine, err := New(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = machine.Call("App.Start")
+	runtimeError, ok := err.(*RuntimeError)
+	if !ok {
+		t.Fatalf("error = %#v", err)
+	}
+	if runtimeError.Message != "boom" || len(runtimeError.Stack) != 3 {
+		t.Fatalf("runtime error = %#v", runtimeError)
+	}
+	wantModules := []string{"Leaf", "Middle", "App"}
+	wantFiles := []string{"modules/leaf.bsl", "modules/middle.bsl", "modules/app.bsl"}
+	for index, frame := range runtimeError.Stack {
+		if frame.Module != wantModules[index] || frame.Filename != wantFiles[index] || frame.Span.Start.Line != 2 && index < 2 {
+			t.Fatalf("stack[%d] = %#v", index, frame)
+		}
+	}
+	if text := runtimeError.Error(); !strings.Contains(text, "modules/leaf.bsl:2:1: Leaf.Fail") ||
+		!strings.Contains(text, "at modules/middle.bsl:2:1: Middle.Run") ||
+		!strings.Contains(text, "at modules/app.bsl:3:5: App.Start") {
+		t.Fatalf("formatted stack = %q", text)
+	}
+}
+
+func TestMachineNestedTryCatchesRethrow(t *testing.T) {
+	t.Parallel()
+
+	machine := compileMachine(t, `Function Test()
+Value = 0;
+Try
+    Try
+        Raise "inner";
+    Except
+        Value = 42;
+        Raise;
+    EndTry;
+Except
+    Return Value;
+EndTry;
+Return 0;
+EndFunction`)
+	result, err := machine.Call("Test")
+	if err != nil || result.String() != "42" {
+		t.Fatalf("Test() = %v, %v", result, err)
+	}
+}
+
+func TestMachineExceptionGuardDoesNotAllocateWithoutFailure(t *testing.T) {
+	machine := compileMachine(t, `Function Safe(Value)
+Try
+    Result = Value + 1;
+Except
+    Result = 0;
+EndTry;
+Return Result;
+EndFunction`)
+	argument := bytecode.Number(41)
+	allocations := testing.AllocsPerRun(1_000, func() {
+		result, err := machine.Call("Safe", argument)
+		if err != nil || result.String() != "42" {
+			t.Fatalf("Safe() = %v, %v", result, err)
+		}
+	})
+	if allocations != 0 {
+		t.Fatalf("guarded call allocations = %v, want 0", allocations)
 	}
 }
 

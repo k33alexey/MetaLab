@@ -80,7 +80,7 @@ func compileParsed(modules []parsedModule) (*bytecode.Program, []syntax.Diagnost
 		moduleIndex := uint16(len(state.program.Modules))
 		state.moduleByName[folded] = moduleIndex
 		variables := make(map[string]bool, len(module.syntax.Variables))
-		definition := bytecode.Module{Name: module.name}
+		definition := bytecode.Module{Name: module.name, Source: module.filename}
 		for _, variable := range module.syntax.Variables {
 			name := strings.ToLower(variable.Name)
 			if variables[name] {
@@ -151,16 +151,17 @@ type compiler struct {
 }
 
 type functionCompiler struct {
-	owner     *compiler
-	filename  string
-	module    uint16
-	routine   *syntax.Routine
-	function  bytecode.Function
-	locals    map[string]uint16
-	nextLocal int
-	loops     []loopContext
-	depth     int
-	maximum   int
+	owner      *compiler
+	filename   string
+	module     uint16
+	routine    *syntax.Routine
+	function   bytecode.Function
+	locals     map[string]uint16
+	nextLocal  int
+	loops      []loopContext
+	exceptions []uint16
+	depth      int
+	maximum    int
 }
 
 func (c *compiler) moduleByNameContains(name string) bool {
@@ -262,6 +263,9 @@ func (c *functionCompiler) declareExplicitLocals(statements []syntax.Statement) 
 			c.declareExplicitLocals(node.Body)
 		case *syntax.ForEachStatement:
 			c.declareExplicitLocals(node.Body)
+		case *syntax.TryStatement:
+			c.declareExplicitLocals(node.Body)
+			c.declareExplicitLocals(node.ExceptBody)
 		}
 	}
 }
@@ -286,6 +290,9 @@ func (c *functionCompiler) declareImplicitLocals(statements []syntax.Statement) 
 			c.declareImplicitLocals(node.ElseBody)
 		case *syntax.WhileStatement:
 			c.declareImplicitLocals(node.Body)
+		case *syntax.TryStatement:
+			c.declareImplicitLocals(node.Body)
+			c.declareImplicitLocals(node.ExceptBody)
 		}
 	}
 }
@@ -377,9 +384,56 @@ func (c *functionCompiler) compileStatement(statement syntax.Statement) {
 		c.compileLoopControl(node.SourceSpan, true)
 	case *syntax.ContinueStatement:
 		c.compileLoopControl(node.SourceSpan, false)
+	case *syntax.TryStatement:
+		c.compileTry(node)
+	case *syntax.RaiseStatement:
+		c.compileRaise(node)
 	default:
 		c.owner.report(c.filename, statement.NodeSpan(), "BSL3005", fmt.Sprintf("unsupported statement %T", statement))
 	}
+}
+
+func (c *functionCompiler) compileTry(statement *syntax.TryStatement) {
+	protectedStart := len(c.function.Code)
+	for _, child := range statement.Body {
+		c.compileStatement(child)
+	}
+	protectedEnd := len(c.function.Code)
+	skipHandler := c.emitJump(bytecode.OpJump, statement.SourceSpan)
+	handlerTarget := len(c.function.Code)
+	if protectedStart > math.MaxUint16 || protectedEnd > math.MaxUint16 || handlerTarget > math.MaxUint16 {
+		c.owner.report(c.filename, statement.SourceSpan, "BSL3013", "routine is too large for an exception handler")
+		return
+	}
+	if len(c.function.Exceptions) > math.MaxUint16 {
+		c.owner.report(c.filename, statement.SourceSpan, "BSL3036", "too many exception handlers in routine")
+		return
+	}
+	handlerIndex := uint16(len(c.function.Exceptions))
+	c.function.Exceptions = append(c.function.Exceptions, bytecode.ExceptionHandler{
+		Start: uint16(protectedStart), End: uint16(protectedEnd), Target: uint16(handlerTarget),
+	})
+	c.exceptions = append(c.exceptions, handlerIndex)
+	for _, child := range statement.ExceptBody {
+		c.compileStatement(child)
+	}
+	c.exceptions = c.exceptions[:len(c.exceptions)-1]
+	c.patchJump(skipHandler, len(c.function.Code), statement.SourceSpan)
+}
+
+func (c *functionCompiler) compileRaise(statement *syntax.RaiseStatement) {
+	if statement.Value != nil {
+		c.compileExpression(statement.Value)
+		c.emit(bytecode.OpRaise, 0, statement.SourceSpan)
+		return
+	}
+	if len(c.exceptions) == 0 {
+		c.owner.report(c.filename, statement.SourceSpan, "BSL3035", "Raise without a value is only allowed inside an Except block")
+		c.emitConstant(bytecode.Undefined(), statement.SourceSpan)
+		c.emit(bytecode.OpRaise, 0, statement.SourceSpan)
+		return
+	}
+	c.emit(bytecode.OpReraise, c.exceptions[len(c.exceptions)-1], statement.SourceSpan)
 }
 
 func (c *functionCompiler) compileExpression(expression syntax.Expression) {
@@ -550,6 +604,10 @@ func (c *functionCompiler) addModuleAccess(reference bytecode.VariableReference,
 }
 
 func (c *functionCompiler) compileCall(call *syntax.CallExpression, requireFunction bool) {
+	if call.Qualifier == "" && (strings.EqualFold(call.Name, "ОписаниеОшибки") || strings.EqualFold(call.Name, "ErrorDescription")) {
+		c.compileErrorDescription(call)
+		return
+	}
 	entry, ok := c.resolveRoutine(call.Qualifier, call.Name, call.SourceSpan)
 	if !ok {
 		c.emitConstant(bytecode.Undefined(), call.SourceSpan)
@@ -595,6 +653,18 @@ func (c *functionCompiler) compileCall(call *syntax.CallExpression, requireFunct
 	callSite := uint16(len(c.function.CallSites))
 	c.function.CallSites = append(c.function.CallSites, bytecode.CallSite{Target: entry.index, References: references})
 	c.emitCall(callSite, len(parameters), call.SourceSpan)
+}
+
+func (c *functionCompiler) compileErrorDescription(call *syntax.CallExpression) {
+	if len(call.Arguments) != 0 {
+		c.owner.report(c.filename, call.SourceSpan, "BSL3037", "ErrorDescription expects no arguments")
+	}
+	if len(c.exceptions) == 0 {
+		c.owner.report(c.filename, call.SourceSpan, "BSL3038", "ErrorDescription is only allowed inside an Except block")
+		c.emitConstant(bytecode.String(""), call.SourceSpan)
+		return
+	}
+	c.emit(bytecode.OpErrorDescription, c.exceptions[len(c.exceptions)-1], call.SourceSpan)
 }
 
 func (c *functionCompiler) resolveRoutine(qualifier, name string, span syntax.Span) (routineEntry, bool) {
@@ -852,9 +922,9 @@ func (c *functionCompiler) emitCall(callSite uint16, arity int, span syntax.Span
 func (c *functionCompiler) emit(opcode bytecode.Opcode, operand uint16, span syntax.Span) {
 	c.function.Code = append(c.function.Code, bytecode.Instruction{Opcode: opcode, Operand: operand, Span: span})
 	switch opcode {
-	case bytecode.OpConstant, bytecode.OpLoadLocal, bytecode.OpLoadModule:
+	case bytecode.OpConstant, bytecode.OpLoadLocal, bytecode.OpLoadModule, bytecode.OpErrorDescription:
 		c.depth++
-	case bytecode.OpStoreLocal, bytecode.OpStoreModule, bytecode.OpJumpIfFalse, bytecode.OpPop:
+	case bytecode.OpStoreLocal, bytecode.OpStoreModule, bytecode.OpJumpIfFalse, bytecode.OpPop, bytecode.OpRaise:
 		c.depth--
 	case bytecode.OpAdd, bytecode.OpSubtract, bytecode.OpMultiply, bytecode.OpDivide,
 		bytecode.OpModulo, bytecode.OpEqual, bytecode.OpNotEqual, bytecode.OpLess,

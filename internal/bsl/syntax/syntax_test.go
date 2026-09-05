@@ -197,6 +197,45 @@ func TestParseRejectsExportedLocalVariable(t *testing.T) {
 	}
 }
 
+func TestParseRussianAndEnglishExceptions(t *testing.T) {
+	t.Parallel()
+
+	tests := []string{
+		`Процедура Проверить()
+Попытка
+    ВызватьИсключение "ошибка";
+Исключение
+    ВызватьИсключение;
+КонецПопытки;
+КонецПроцедуры`,
+		`Procedure Check()
+Try
+    Raise "error";
+Except
+    Raise;
+EndTry;
+EndProcedure`,
+	}
+	for _, source := range tests {
+		module, diagnostics := Parse("exceptions.bsl", source)
+		if len(diagnostics) != 0 {
+			t.Fatalf("unexpected diagnostics: %+v", diagnostics)
+		}
+		statement, ok := module.Routines[0].Body[0].(*TryStatement)
+		if !ok || len(statement.Body) != 1 || len(statement.ExceptBody) != 1 {
+			t.Fatalf("try statement = %#v", module.Routines[0].Body[0])
+		}
+		raise, ok := statement.Body[0].(*RaiseStatement)
+		if !ok || raise.Value == nil {
+			t.Fatalf("raise statement = %#v", statement.Body[0])
+		}
+		reraise, ok := statement.ExceptBody[0].(*RaiseStatement)
+		if !ok || reraise.Value != nil {
+			t.Fatalf("reraise statement = %#v", statement.ExceptBody[0])
+		}
+	}
+}
+
 func TestParseReportsFilenameLineAndColumn(t *testing.T) {
 	t.Parallel()
 
@@ -514,6 +553,7 @@ func FuzzParseControlFlowNeverPanics(f *testing.F) {
 		"Function Test(Value) If Value > 0 Then Return Value; Else Return 0; EndIf; EndFunction",
 		"Procedure Test() While True Do Break; EndDo; EndProcedure",
 		"Procedure Test(Items) For Each Item In Items Do Continue; EndDo; EndProcedure",
+		"Procedure Test() Try Raise \"boom\"; Except Raise; EndTry; EndProcedure",
 	} {
 		f.Add(source)
 	}

@@ -293,12 +293,70 @@ EndFunction`)
 	}
 }
 
+func TestCompileExceptionHandlersAndSourceIdentity(t *testing.T) {
+	t.Parallel()
+
+	program, diagnostics := CompileSource("errors/main.bsl", `Function Recover() Export
+Try
+    Raise "boom";
+Except
+    Result = 42;
+EndTry;
+Return Result;
+EndFunction`)
+	if len(diagnostics) != 0 {
+		t.Fatalf("unexpected diagnostics: %+v", diagnostics)
+	}
+	if len(program.Modules) != 1 || program.Modules[0].Source != "errors/main.bsl" {
+		t.Fatalf("module source = %+v", program.Modules)
+	}
+	function, ok := program.Lookup("Recover")
+	if !ok || len(function.Exceptions) != 1 {
+		t.Fatalf("compiled function = %+v", function)
+	}
+	handler := function.Exceptions[0]
+	if handler.Start >= handler.End || handler.Target < handler.End {
+		t.Fatalf("exception handler = %+v", handler)
+	}
+	if err := program.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCompileRejectsReraiseOutsideExcept(t *testing.T) {
+	t.Parallel()
+
+	_, diagnostics := CompileSource("invalid.bsl", "Procedure Test() Raise; EndProcedure")
+	if len(diagnostics) != 1 || diagnostics[0].Code != "BSL3035" {
+		t.Fatalf("diagnostics = %+v", diagnostics)
+	}
+}
+
+func TestCompileValidatesErrorDescriptionContext(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		source string
+		code   string
+	}{
+		{source: "Function Test() Return ErrorDescription(); EndFunction", code: "BSL3038"},
+		{source: "Function Test() Try Raise \"x\"; Except Return ErrorDescription(1); EndTry; EndFunction", code: "BSL3037"},
+	}
+	for _, test := range tests {
+		_, diagnostics := CompileSource("invalid.bsl", test.source)
+		if len(diagnostics) == 0 || diagnostics[0].Code != test.code {
+			t.Fatalf("diagnostics = %+v, want %s", diagnostics, test.code)
+		}
+	}
+}
+
 func FuzzCompileControlFlowNeverProducesInvalidBytecode(f *testing.F) {
 	for _, source := range []string{
 		"Function Test() Return 1; EndFunction",
 		"Function Test(Value) If Value > 0 Then Return Value; Else Return 0; EndIf; EndFunction",
 		"Procedure Test() For Index = 1 To 3 Do Continue; EndDo; EndProcedure",
 		"Procedure Test(Items) For Each Item In Items Do Break; EndDo; EndProcedure",
+		"Function Test() Try Raise \"boom\"; Except Return 42; EndTry; EndFunction",
 	} {
 		f.Add(source)
 	}

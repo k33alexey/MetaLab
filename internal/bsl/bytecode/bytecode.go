@@ -11,7 +11,7 @@ import (
 const maxIndexedItems = 1 << 16
 
 // Version changes whenever the bytecode contract becomes incompatible.
-const Version uint16 = 4
+const Version uint16 = 5
 
 // Opcode identifies one stack-machine instruction.
 type Opcode uint8
@@ -48,6 +48,9 @@ const (
 	OpLoadModule
 	OpStoreModule
 	OpCall
+	OpRaise
+	OpReraise
+	OpErrorDescription
 )
 
 var opcodeNames = [...]string{
@@ -64,6 +67,8 @@ var opcodeNames = [...]string{
 	OpPositive:   "positive",
 	OpBoolean:    "boolean",
 	OpLoadModule: "load_module", OpStoreModule: "store_module", OpCall: "call",
+	OpRaise: "raise", OpReraise: "reraise",
+	OpErrorDescription: "error_description",
 }
 
 func (opcode Opcode) String() string {
@@ -118,7 +123,15 @@ type ModuleVariable struct {
 // Module defines an independently scoped BSL source module.
 type Module struct {
 	Name      string
+	Source    string
 	Variables []ModuleVariable
+}
+
+// ExceptionHandler maps a protected instruction range to its Except block.
+type ExceptionHandler struct {
+	Start  uint16
+	End    uint16
+	Target uint16
 }
 
 // Function is one compiled BSL procedure or function.
@@ -134,6 +147,7 @@ type Function struct {
 	Constants  []Value
 	CallSites  []CallSite
 	ModuleVars []VariableReference
+	Exceptions []ExceptionHandler
 	Code       []Instruction
 }
 
@@ -235,8 +249,9 @@ func validateFunction(program *Program, function *Function) error {
 	if function.LocalCount < function.Arity {
 		return fmt.Errorf("local count %d is smaller than arity %d", function.LocalCount, function.Arity)
 	}
-	if len(function.Constants) > maxIndexedItems || len(function.CallSites) > maxIndexedItems || len(function.ModuleVars) > maxIndexedItems {
-		return fmt.Errorf("routine exceeds 16-bit constant, call, or module-access index space")
+	if len(function.Constants) > maxIndexedItems || len(function.CallSites) > maxIndexedItems ||
+		len(function.ModuleVars) > maxIndexedItems || len(function.Exceptions) > maxIndexedItems {
+		return fmt.Errorf("routine exceeds 16-bit constant, call, module-access, or exception index space")
 	}
 	if len(function.Parameters) != 0 && len(function.Parameters) != int(function.Arity) {
 		return fmt.Errorf("parameter metadata count %d differs from arity %d", len(function.Parameters), function.Arity)
@@ -282,6 +297,14 @@ func validateFunction(program *Program, function *Function) error {
 			return fmt.Errorf("module variable access %d: %w", index, err)
 		}
 	}
+	for index, handler := range function.Exceptions {
+		if handler.Start > handler.End || int(handler.End) > len(function.Code) {
+			return fmt.Errorf("exception handler %d has invalid protected range %d..%d", index, handler.Start, handler.End)
+		}
+		if int(handler.Target) >= len(function.Code) || handler.Target < handler.End {
+			return fmt.Errorf("exception handler %d has invalid target %d", index, handler.Target)
+		}
+	}
 	for index, instruction := range function.Code {
 		switch instruction.Opcode {
 		case OpConstant:
@@ -304,7 +327,15 @@ func validateFunction(program *Program, function *Function) error {
 			if int(instruction.Operand) >= len(function.Code) {
 				return fmt.Errorf("instruction %d jumps outside code to %d", index, instruction.Operand)
 			}
-		case OpNegate, OpNot, OpArrayLength, OpPositive, OpBoolean, OpPop, OpAdd, OpSubtract, OpMultiply, OpDivide, OpModulo,
+		case OpReraise:
+			if int(instruction.Operand) >= len(function.Exceptions) {
+				return fmt.Errorf("instruction %d references exception handler %d", index, instruction.Operand)
+			}
+		case OpErrorDescription:
+			if int(instruction.Operand) >= len(function.Exceptions) {
+				return fmt.Errorf("instruction %d references exception handler %d", index, instruction.Operand)
+			}
+		case OpNegate, OpNot, OpArrayLength, OpPositive, OpBoolean, OpPop, OpRaise, OpAdd, OpSubtract, OpMultiply, OpDivide, OpModulo,
 			OpEqual, OpNotEqual, OpLess, OpLessEqual, OpGreater, OpGreaterEqual,
 			OpAnd, OpOr, OpArrayElement, OpReturn:
 		default:
@@ -336,7 +367,7 @@ func validateFunction(program *Program, function *Function) error {
 				maximum = depth
 			}
 			nextDepth := depth + delta
-			if instruction.Opcode == OpReturn {
+			if instruction.Opcode == OpReturn || instruction.Opcode == OpRaise || instruction.Opcode == OpReraise {
 				if nextDepth != 0 {
 					return fmt.Errorf("instruction %d returns with stack depth %d", index, nextDepth)
 				}
@@ -373,15 +404,15 @@ func validateFunction(program *Program, function *Function) error {
 
 func stackEffect(program *Program, function *Function, instruction Instruction) (required, delta int) {
 	switch instruction.Opcode {
-	case OpConstant, OpLoadLocal:
+	case OpConstant, OpLoadLocal, OpErrorDescription:
 		return 0, 1
 	case OpLoadModule:
 		return 0, 1
-	case OpStoreLocal, OpStoreModule, OpJumpIfFalse, OpPop, OpReturn:
+	case OpStoreLocal, OpStoreModule, OpJumpIfFalse, OpPop, OpReturn, OpRaise:
 		return 1, -1
 	case OpNegate, OpNot, OpArrayLength, OpPositive, OpBoolean, OpJumpIfTrueKeep, OpJumpIfFalseKeep:
 		return 1, 0
-	case OpJump:
+	case OpJump, OpReraise:
 		return 0, 0
 	case OpCall:
 		call := function.CallSites[instruction.Operand]

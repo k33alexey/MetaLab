@@ -37,6 +37,9 @@ func MarshalBinary(program *Program) ([]byte, error) {
 		if err := writeString(&output, module.Name); err != nil {
 			return nil, fmt.Errorf("module %d name: %w", moduleIndex, err)
 		}
+		if err := writeString(&output, module.Source); err != nil {
+			return nil, fmt.Errorf("module %q source: %w", module.Name, err)
+		}
 		writeUint32(&output, uint32(len(module.Variables)))
 		for variableIndex, variable := range module.Variables {
 			if err := writeString(&output, variable.Name); err != nil {
@@ -109,6 +112,12 @@ func MarshalBinary(program *Program) ([]byte, error) {
 				writeReference(&output, reference)
 			}
 		}
+		writeUint32(&output, uint32(len(function.Exceptions)))
+		for _, handler := range function.Exceptions {
+			writeUint16(&output, handler.Start)
+			writeUint16(&output, handler.End)
+			writeUint16(&output, handler.Target)
+		}
 
 		if len(function.Code) > maxWireCollectionLen {
 			return nil, fmt.Errorf("function %q has too many instructions", function.Name)
@@ -142,7 +151,7 @@ func UnmarshalBinary(data []byte) (*Program, error) {
 	if err != nil {
 		return nil, err
 	}
-	moduleCount, err := decoder.readCount("modules", 8)
+	moduleCount, err := decoder.readCount("modules", 12)
 	if err != nil {
 		return nil, err
 	}
@@ -262,6 +271,10 @@ func (decoder *wireDecoder) readModule() (Module, error) {
 	if err != nil {
 		return Module{}, fmt.Errorf("name: %w", err)
 	}
+	source, err := decoder.readString()
+	if err != nil {
+		return Module{}, fmt.Errorf("source: %w", err)
+	}
 	variableCount, err := decoder.readCount("variables", 5)
 	if err != nil {
 		return Module{}, err
@@ -281,7 +294,7 @@ func (decoder *wireDecoder) readModule() (Module, error) {
 		}
 		variables[index] = ModuleVariable{Name: variableName, Export: exported == 1}
 	}
-	return Module{Name: name, Variables: variables}, nil
+	return Module{Name: name, Source: source, Variables: variables}, nil
 }
 
 func (decoder *wireDecoder) readFunction() (Function, error) {
@@ -374,6 +387,26 @@ func (decoder *wireDecoder) readFunction() (Function, error) {
 		}
 		calls[index] = CallSite{Target: target, References: references}
 	}
+	exceptionCount, err := decoder.readCount("exception handlers", 6)
+	if err != nil {
+		return Function{}, err
+	}
+	exceptions := make([]ExceptionHandler, exceptionCount)
+	for index := range exceptions {
+		start, readErr := decoder.readUint16()
+		if readErr != nil {
+			return Function{}, fmt.Errorf("exception handler %d start: %w", index, readErr)
+		}
+		end, readErr := decoder.readUint16()
+		if readErr != nil {
+			return Function{}, fmt.Errorf("exception handler %d end: %w", index, readErr)
+		}
+		target, readErr := decoder.readUint16()
+		if readErr != nil {
+			return Function{}, fmt.Errorf("exception handler %d target: %w", index, readErr)
+		}
+		exceptions[index] = ExceptionHandler{Start: start, End: end, Target: target}
+	}
 	instructionCount, err := decoder.readCount("instructions", 27)
 	if err != nil {
 		return Function{}, err
@@ -397,7 +430,7 @@ func (decoder *wireDecoder) readFunction() (Function, error) {
 	return Function{
 		Name: name, Module: module, IsFunction: flags&1 != 0, Export: flags&2 != 0,
 		Arity: arity, Parameters: parameters, LocalCount: localCount, MaxStack: maxStack,
-		Constants: constants, ModuleVars: moduleVariables, CallSites: calls, Code: code,
+		Constants: constants, ModuleVars: moduleVariables, CallSites: calls, Exceptions: exceptions, Code: code,
 	}, nil
 }
 

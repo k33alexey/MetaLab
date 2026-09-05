@@ -176,6 +176,10 @@ func (p *parser) parseStatement() Statement {
 		return p.parseLoopControlStatement(true)
 	case Continue:
 		return p.parseLoopControlStatement(false)
+	case Try:
+		return p.parseTryStatement()
+	case Raise:
+		return p.parseRaiseStatement()
 	case Identifier:
 		if p.isAssignmentStart() {
 			return p.parseAssignmentStatement()
@@ -187,6 +191,34 @@ func (p *parser) parseStatement() Statement {
 	p.report(p.peek(), "BSL2001", fmt.Sprintf("unexpected %s, expected statement", p.peek().Kind))
 	p.synchronizeStatement()
 	return nil
+}
+
+func (p *parser) parseTryStatement() Statement {
+	start := p.advance()
+	body := p.parseBlock(Except, EndTry)
+	if _, ok := p.expect(Except, "expected Except in Try statement"); !ok {
+		end := p.finishBlock(EndTry, "EndTry")
+		return &TryStatement{Body: body, SourceSpan: Span{Start: start.Span.Start, End: end}}
+	}
+	exceptBody := p.parseBlock(EndTry)
+	end := p.finishBlock(EndTry, "EndTry")
+	return &TryStatement{Body: body, ExceptBody: exceptBody, SourceSpan: Span{Start: start.Span.Start, End: end}}
+}
+
+func (p *parser) parseRaiseStatement() Statement {
+	start := p.advance()
+	var value Expression
+	if canStartExpression(p.peek().Kind) {
+		value = p.parseExpression()
+	}
+	end := start.Span.End
+	if value != nil {
+		end = value.NodeSpan().End
+	}
+	if semicolon, ok := p.expect(Semicolon, "expected ';' after Raise"); ok {
+		end = semicolon.Span.End
+	}
+	return &RaiseStatement{Value: value, SourceSpan: Span{Start: start.Span.Start, End: end}}
 }
 
 func (p *parser) parseReturnStatement() Statement {
@@ -550,12 +582,12 @@ func (p *parser) synchronizeStatement() {
 		if p.match(Semicolon) {
 			return
 		}
-		if p.checkAny(ElsIf, Else, EndIf, EndDo) {
+		if p.checkAny(ElsIf, Else, EndIf, EndDo, Except, EndTry) {
 			p.advance()
 			p.match(Semicolon)
 			return
 		}
-		if p.checkAny(EndFunction, EndProcedure, Return, If, While, For, Break, Continue) {
+		if p.checkAny(EndFunction, EndProcedure, Return, If, While, For, Break, Continue, Try, Raise, Var) {
 			return
 		}
 		p.advance()

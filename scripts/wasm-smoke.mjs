@@ -88,6 +88,13 @@ assertSuccess(state, "get module state");
 if (state.kind !== "number" || state.value !== 41 || state.text !== "41") {
   throw new Error(`unexpected module state: ${JSON.stringify(state)}`);
 }
+const failed = globalThis.MetaLabWasm.call(loaded.handle, "Fail", []);
+if (failed.ok || failed.message !== "boom" || failed.stack?.length !== 1) {
+  throw new Error(`unexpected runtime error: ${JSON.stringify(failed)}`);
+}
+if (failed.stack[0].module !== "Smoke" || failed.stack[0].function !== "Fail" || failed.stack[0].filename !== "smoke.bsl") {
+  throw new Error(`unexpected runtime stack: ${JSON.stringify(failed.stack)}`);
+}
 const text = globalThis.MetaLabWasm.call(loaded.handle, "Add", ["Meta", "Lab"]);
 assertSuccess(text, "string call");
 if (text.kind !== "string" || text.value !== "MetaLab") {
@@ -164,13 +171,14 @@ function assertSuccess(result, operation) {
 function encodeAddProgram() {
   const writer = new BinaryWriter();
   writer.ascii("MLBC");
-  writer.uint16(4);
+  writer.uint16(5);
   writer.uint32(1); // modules
   writer.string("Smoke");
+  writer.string("smoke.bsl");
   writer.uint32(1); // variables
   writer.string("State");
   writer.uint8(1); // exported
-  writer.uint32(7);
+  writer.uint32(8);
 
   writer.string("Add");
   writer.uint16(0); // module
@@ -183,6 +191,7 @@ function encodeAddProgram() {
   writer.uint32(0); // constants
   writer.uint32(0); // module variable accesses
   writer.uint32(0); // call sites
+  writer.uint32(0); // exception handlers
   writer.uint32(4); // instructions
   writer.instruction(1, 0); // load local 0
   writer.instruction(1, 1); // load local 1
@@ -199,6 +208,7 @@ function encodeAddProgram() {
   writer.uint32(0); // constants
   writer.uint32(0); // module variable accesses
   writer.uint32(0); // call sites
+  writer.uint32(0); // exception handlers
   writer.uint32(3); // instructions
   writer.instruction(1, 0); // load local 0
   writer.instruction(9, 0); // not
@@ -214,6 +224,7 @@ function encodeAddProgram() {
   writer.uint32(0); // constants
   writer.uint32(0); // module variable accesses
   writer.uint32(0); // call sites
+  writer.uint32(0); // exception handlers
   writer.uint32(3); // instructions
   writer.instruction(1, 0); // load local 0
   writer.instruction(21, 0); // array length
@@ -229,6 +240,7 @@ function encodeAddProgram() {
   writer.uint32(0); // constants
   writer.uint32(0); // module variable accesses
   writer.uint32(0); // call sites
+  writer.uint32(0); // exception handlers
   writer.uint32(2); // instructions
   writer.instruction(1, 0); // load local 0
   writer.instruction(7, 0); // return
@@ -253,6 +265,7 @@ function encodeAddProgram() {
     writer.uint16(0);
     writer.uint16(0);
   }
+  writer.uint32(0); // exception handlers
   writer.uint32(6); // instructions
   writer.instruction(1, 0); // load local 0
   writer.instruction(1, 1); // load local 1
@@ -275,6 +288,7 @@ function encodeAddProgram() {
   writer.uint16(0); // module 0
   writer.uint16(0); // variable 0
   writer.uint32(0); // call sites
+  writer.uint32(0); // exception handlers
   writer.uint32(4); // instructions
   writer.instruction(1, 0); // load local 0
   writer.instruction(29, 0); // store module access 0
@@ -293,8 +307,27 @@ function encodeAddProgram() {
   writer.uint16(0); // module 0
   writer.uint16(0); // variable 0
   writer.uint32(0); // call sites
+  writer.uint32(0); // exception handlers
   writer.uint32(2); // instructions
   writer.instruction(28, 0); // load module access 0
+  writer.instruction(7, 0); // return
+
+  writer.string("Fail");
+  writer.uint16(0);
+  writer.uint8(3); // function + export
+  writer.uint16(0); // arity
+  writer.uint16(0); // local count
+  writer.uint16(1); // maximum stack depth
+  writer.uint32(1); // constants
+  writer.uint8(2); // string
+  writer.string("boom");
+  writer.uint32(0); // module variable accesses
+  writer.uint32(0); // call sites
+  writer.uint32(0); // exception handlers
+  writer.uint32(4); // instructions
+  writer.instruction(0, 0); // constant 0
+  writer.instruction(31, 0); // raise
+  writer.instruction(0, 0); // unreachable structural return value
   writer.instruction(7, 0); // return
   return writer.bytes();
 }

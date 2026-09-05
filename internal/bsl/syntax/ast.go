@@ -83,6 +83,25 @@ type CallStatement struct {
 func (*CallStatement) statement()          {}
 func (node *CallStatement) NodeSpan() Span { return node.SourceSpan }
 
+// TryStatement executes ExceptBody when Body raises a runtime exception.
+type TryStatement struct {
+	Body       []Statement
+	ExceptBody []Statement
+	SourceSpan Span
+}
+
+func (*TryStatement) statement()          {}
+func (node *TryStatement) NodeSpan() Span { return node.SourceSpan }
+
+// RaiseStatement creates an exception or rethrows the current one when Value is nil.
+type RaiseStatement struct {
+	Value      Expression
+	SourceSpan Span
+}
+
+func (*RaiseStatement) statement()          {}
+func (node *RaiseStatement) NodeSpan() Span { return node.SourceSpan }
+
 func (*AssignmentStatement) statement()          {}
 func (node *AssignmentStatement) NodeSpan() Span { return node.SourceSpan }
 

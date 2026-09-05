@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"syscall/js"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
 	"github.com/k33alexey/MetaLab/internal/bsl/clientvm"
+	"github.com/k33alexey/MetaLab/internal/bsl/vm"
 )
 
 const (
@@ -101,7 +103,7 @@ func call(_ js.Value, arguments []js.Value) any {
 	}
 	value, err := registry.Call(handle, arguments[1].String(), values...)
 	if err != nil {
-		return failure(err.Error())
+		return executionFailure(err)
 	}
 	return valueResult(value)
 }
@@ -251,5 +253,28 @@ func failure(message string) js.Value {
 	result := js.Global().Get("Object").New()
 	result.Set("ok", false)
 	result.Set("error", message)
+	return result
+}
+
+func executionFailure(err error) js.Value {
+	result := failure(err.Error())
+	var runtimeError *vm.RuntimeError
+	if !errors.As(err, &runtimeError) {
+		return result
+	}
+	result.Set("message", runtimeError.Message)
+	stack := js.Global().Get("Array").New(len(runtimeError.Stack))
+	for index, frame := range runtimeError.Stack {
+		encoded := js.Global().Get("Object").New()
+		encoded.Set("module", frame.Module)
+		encoded.Set("function", frame.Function)
+		encoded.Set("filename", frame.Filename)
+		encoded.Set("line", frame.Span.Start.Line)
+		encoded.Set("column", frame.Span.Start.Column)
+		encoded.Set("endLine", frame.Span.End.Line)
+		encoded.Set("endColumn", frame.Span.End.Column)
+		stack.SetIndex(index, encoded)
+	}
+	result.Set("stack", stack)
 	return result
 }
