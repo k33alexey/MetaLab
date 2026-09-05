@@ -6,7 +6,17 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
 	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
+	"github.com/k33alexey/MetaLab/internal/bsl/vm"
 )
+
+type testServer struct {
+	call vm.ServerCall
+}
+
+func (server *testServer) CallServer(call vm.ServerCall) (bytecode.Value, error) {
+	server.call = call
+	return bytecode.Number(42), nil
+}
 
 func TestRegistryLoadsCallsAndReleasesMachine(t *testing.T) {
 	t.Parallel()
@@ -36,6 +46,22 @@ func TestRegistryRejectsInvalidBytecode(t *testing.T) {
 
 	if _, err := NewRegistry().Load([]byte("invalid")); err == nil {
 		t.Fatal("Load() accepted invalid bytecode")
+	}
+}
+
+func TestRegistryUsesClientContextAndServerTransport(t *testing.T) {
+	t.Parallel()
+
+	server := &testServer{}
+	registry := NewRegistryWithServer(server)
+	handle := loadSource(t, registry, `&AtServer
+Function Load() Export Return 100; EndFunction`)
+	result, err := registry.Call(handle, "Load")
+	if err != nil || result.String() != "42" {
+		t.Fatalf("Load() = %v, %v", result, err)
+	}
+	if server.call.Routine != "Load" || server.call.WithoutContext {
+		t.Fatalf("server call = %+v", server.call)
 	}
 }
 

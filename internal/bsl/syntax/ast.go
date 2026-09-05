@@ -6,6 +6,19 @@ type Module struct {
 	Routines  []*Routine
 }
 
+// ExecutionContext describes where a routine is allowed to execute.
+// Unspecified keeps modules without directives usable in both runtimes.
+type ExecutionContext uint8
+
+const (
+	ContextUnspecified ExecutionContext = iota
+	ContextClient
+	ContextServer
+	ContextServerNoContext
+	ContextClientServer
+	ContextClientServerNoContext
+)
+
 // Variable is one module-level or local declaration.
 type Variable struct {
 	Name       string
@@ -18,6 +31,7 @@ type Routine struct {
 	Name       string
 	Function   bool
 	Export     bool
+	Context    ExecutionContext
 	Parameters []Parameter
 	Body       []Statement
 	SourceSpan Span

@@ -10,6 +10,17 @@ import (
 	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
 )
 
+type recordingServer struct {
+	calls  []ServerCall
+	result bytecode.Value
+	err    error
+}
+
+func (server *recordingServer) CallServer(call ServerCall) (bytecode.Value, error) {
+	server.calls = append(server.calls, call)
+	return server.result, server.err
+}
+
 func TestRussianAndEnglishProgramsExecute(t *testing.T) {
 	t.Parallel()
 
@@ -39,6 +50,43 @@ func TestRussianAndEnglishProgramsExecute(t *testing.T) {
 				t.Fatalf("result = %v, want 84", result)
 			}
 		})
+	}
+}
+
+func TestClientContextRoutesServerCallsThroughRPC(t *testing.T) {
+	t.Parallel()
+
+	machine := compileMachine(t, `&AtServerNoContext
+Function Load(Value) Export Return Value + 1; EndFunction
+&AtClient
+Function Run() Export Return Load(41); EndFunction`)
+	server := &recordingServer{result: bytecode.Number(42)}
+	result, err := machine.NewClientContext(server).Call("Run")
+	if err != nil || result.String() != "42" {
+		t.Fatalf("Run() = %v, %v", result, err)
+	}
+	if len(server.calls) != 1 || server.calls[0].Module != "test" || server.calls[0].Routine != "Load" ||
+		!server.calls[0].WithoutContext || len(server.calls[0].Arguments) != 1 || server.calls[0].Arguments[0].String() != "41" {
+		t.Fatalf("server calls = %+v", server.calls)
+	}
+}
+
+func TestRuntimeEnforcesExecutionContext(t *testing.T) {
+	t.Parallel()
+
+	machine := compileMachine(t, `&AtClient
+Function ClientOnly() Return 1; EndFunction
+&AtServer
+Function ServerOnly() Return 2; EndFunction`)
+	if _, err := machine.Call("ClientOnly"); err == nil || !strings.Contains(err.Error(), "server context") {
+		t.Fatalf("server call error = %v", err)
+	}
+	if _, err := machine.NewClientContext(nil).Call("ServerOnly"); err == nil || !strings.Contains(err.Error(), "RPC is not configured") {
+		t.Fatalf("client call error = %v", err)
+	}
+	result, err := machine.NewClientContext(nil).Call("ClientOnly")
+	if err != nil || result.String() != "1" {
+		t.Fatalf("client-only call = %v, %v", result, err)
 	}
 }
 

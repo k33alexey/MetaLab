@@ -11,7 +11,45 @@ import (
 const maxIndexedItems = 1 << 16
 
 // Version changes whenever the bytecode contract becomes incompatible.
-const Version uint16 = 5
+const Version uint16 = 6
+
+// ExecutionContext is the runtime placement of one compiled routine.
+type ExecutionContext uint8
+
+const (
+	ContextShared ExecutionContext = iota
+	ContextClient
+	ContextServer
+	ContextServerNoContext
+	ContextClientServer
+	ContextClientServerNoContext
+)
+
+// AllowsClient reports whether the routine has a client implementation.
+func (context ExecutionContext) AllowsClient() bool {
+	return context == ContextShared || context == ContextClient ||
+		context == ContextClientServer || context == ContextClientServerNoContext
+}
+
+// AllowsServer reports whether the routine has a server implementation.
+func (context ExecutionContext) AllowsServer() bool {
+	return context == ContextShared || context == ContextServer || context == ContextServerNoContext ||
+		context == ContextClientServer || context == ContextClientServerNoContext
+}
+
+// ServerWithoutContext reports that a remote server call must not receive client context.
+func (context ExecutionContext) ServerWithoutContext() bool {
+	return context == ContextServerNoContext || context == ContextClientServerNoContext
+}
+
+// CallRoute tells a client VM whether a call crosses the server boundary.
+type CallRoute uint8
+
+const (
+	CallLocal CallRoute = iota
+	CallServer
+	CallServerNoContext
+)
 
 // Opcode identifies one stack-machine instruction.
 type Opcode uint8
@@ -111,6 +149,7 @@ type VariableReference struct {
 // CallSite binds one call instruction to its target and writable arguments.
 type CallSite struct {
 	Target     uint16
+	Route      CallRoute
 	References []VariableReference
 }
 
@@ -140,6 +179,7 @@ type Function struct {
 	Module     uint16
 	IsFunction bool
 	Export     bool
+	Context    ExecutionContext
 	Arity      uint16
 	Parameters []Parameter
 	LocalCount uint16
@@ -156,6 +196,53 @@ type Program struct {
 	Version   uint16
 	Modules   []Module
 	Functions []Function
+}
+
+// ClientProgram returns a validated client artifact. Server-only routine bodies
+// are replaced by inert stubs while their signatures remain available for RPC.
+func (program *Program) ClientProgram() (*Program, error) {
+	if program == nil {
+		return nil, fmt.Errorf("bytecode program is nil")
+	}
+	if err := program.Validate(); err != nil {
+		return nil, err
+	}
+	client := &Program{
+		Version: program.Version, Modules: make([]Module, len(program.Modules)),
+		Functions: make([]Function, len(program.Functions)),
+	}
+	for index := range program.Modules {
+		client.Modules[index] = program.Modules[index]
+		client.Modules[index].Variables = append([]ModuleVariable(nil), program.Modules[index].Variables...)
+	}
+	for index := range program.Functions {
+		source := &program.Functions[index]
+		target := *source
+		target.Parameters = append([]Parameter(nil), source.Parameters...)
+		if !source.Context.AllowsClient() {
+			target.Constants = []Value{Undefined()}
+			target.CallSites = nil
+			target.ModuleVars = nil
+			target.Exceptions = nil
+			target.MaxStack = 1
+			target.Code = []Instruction{{Opcode: OpConstant}, {Opcode: OpReturn}}
+		} else {
+			target.Constants = append([]Value(nil), source.Constants...)
+			target.ModuleVars = append([]VariableReference(nil), source.ModuleVars...)
+			target.Exceptions = append([]ExceptionHandler(nil), source.Exceptions...)
+			target.CallSites = make([]CallSite, len(source.CallSites))
+			for callIndex := range source.CallSites {
+				target.CallSites[callIndex] = source.CallSites[callIndex]
+				target.CallSites[callIndex].References = append([]VariableReference(nil), source.CallSites[callIndex].References...)
+			}
+			target.Code = append([]Instruction(nil), source.Code...)
+		}
+		client.Functions[index] = target
+	}
+	if err := client.Validate(); err != nil {
+		return nil, fmt.Errorf("validate client bytecode: %w", err)
+	}
+	return client, nil
 }
 
 // Lookup finds a routine using BSL case-insensitive name matching.
@@ -227,6 +314,9 @@ func (program *Program) Validate() error {
 		if function.Name == "" {
 			return fmt.Errorf("function %d has empty name", functionIndex)
 		}
+		if function.Context > ContextClientServerNoContext {
+			return fmt.Errorf("function %q has unknown execution context %d", function.Name, function.Context)
+		}
 		if len(program.Modules) != 0 && int(function.Module) >= len(program.Modules) {
 			return fmt.Errorf("function %q references module %d", function.Name, function.Module)
 		}
@@ -274,6 +364,17 @@ func validateFunction(program *Program, function *Function) error {
 			return fmt.Errorf("call site %d references function %d", index, call.Target)
 		}
 		target := &program.Functions[call.Target]
+		expectedRoute := CallLocal
+		if !target.Context.AllowsClient() {
+			if target.Context.ServerWithoutContext() {
+				expectedRoute = CallServerNoContext
+			} else {
+				expectedRoute = CallServer
+			}
+		}
+		if call.Route != expectedRoute {
+			return fmt.Errorf("call site %d has route %d, expected %d", index, call.Route, expectedRoute)
+		}
 		if target.Module != function.Module && !target.Export {
 			return fmt.Errorf("call site %d accesses non-exported routine %q", index, target.Name)
 		}

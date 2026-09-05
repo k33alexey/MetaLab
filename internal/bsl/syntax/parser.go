@@ -26,8 +26,22 @@ func (p *parser) parseModule() *Module {
 			p.advance()
 			continue
 		}
+		if p.check(Ampersand) {
+			context, start, ok := p.parseExecutionDirective()
+			if !p.check(Function) && !p.check(Procedure) {
+				p.report(p.peek(), "BSL2005", "execution directive must precede a routine declaration")
+				continue
+			}
+			if routine := p.parseRoutine(context, start); routine != nil {
+				if ok {
+					routine.Context = context
+				}
+				module.Routines = append(module.Routines, routine)
+			}
+			continue
+		}
 		if p.check(Function) || p.check(Procedure) {
-			if routine := p.parseRoutine(); routine != nil {
+			if routine := p.parseRoutine(ContextUnspecified, p.peek().Span.Start); routine != nil {
 				module.Routines = append(module.Routines, routine)
 			}
 			continue
@@ -42,7 +56,30 @@ func (p *parser) parseModule() *Module {
 	return module
 }
 
-func (p *parser) parseRoutine() *Routine {
+func (p *parser) parseExecutionDirective() (ExecutionContext, Position, bool) {
+	start := p.advance().Span.Start
+	name, ok := p.expect(Identifier, "expected execution directive name after '&'")
+	if !ok {
+		return ContextUnspecified, start, false
+	}
+	switch {
+	case strings.EqualFold(name.Value, "НаКлиенте"), strings.EqualFold(name.Value, "AtClient"):
+		return ContextClient, start, true
+	case strings.EqualFold(name.Value, "НаСервере"), strings.EqualFold(name.Value, "AtServer"):
+		return ContextServer, start, true
+	case strings.EqualFold(name.Value, "НаСервереБезКонтекста"), strings.EqualFold(name.Value, "AtServerNoContext"):
+		return ContextServerNoContext, start, true
+	case strings.EqualFold(name.Value, "НаКлиентеНаСервере"), strings.EqualFold(name.Value, "AtClientAtServer"):
+		return ContextClientServer, start, true
+	case strings.EqualFold(name.Value, "НаКлиентеНаСервереБезКонтекста"), strings.EqualFold(name.Value, "AtClientAtServerNoContext"):
+		return ContextClientServerNoContext, start, true
+	default:
+		p.report(name, "BSL2004", "unknown execution directive &"+name.Value)
+		return ContextUnspecified, start, false
+	}
+}
+
+func (p *parser) parseRoutine(context ExecutionContext, declarationStart Position) *Routine {
 	start := p.advance()
 	isFunction := start.Kind == Function
 	name, ok := p.expect(Identifier, "expected routine name")
@@ -95,8 +132,9 @@ func (p *parser) parseRoutine() *Routine {
 
 	return &Routine{
 		Name: name.Value, Function: isFunction, Export: exported,
+		Context:    context,
 		Parameters: parameters, Body: body,
-		SourceSpan: Span{Start: start.Span.Start, End: end.Span.End},
+		SourceSpan: Span{Start: declarationStart, End: end.Span.End},
 	}
 }
 

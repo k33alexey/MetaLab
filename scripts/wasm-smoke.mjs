@@ -135,6 +135,10 @@ const invalidArgument = globalThis.MetaLabWasm.call(loaded.handle, "Add", [{}, 1
 if (invalidArgument.ok) {
   throw new Error("unsupported JavaScript argument was accepted");
 }
+const serverOnly = globalThis.MetaLabWasm.call(loaded.handle, "ServerOnly", []);
+if (serverOnly.ok || !serverOnly.error?.includes("server RPC is not configured")) {
+  throw new Error(`server-only routine crossed the client boundary: ${JSON.stringify(serverOnly)}`);
+}
 
 const iterations = 20_000;
 const started = performance.now();
@@ -171,18 +175,19 @@ function assertSuccess(result, operation) {
 function encodeAddProgram() {
   const writer = new BinaryWriter();
   writer.ascii("MLBC");
-  writer.uint16(5);
+  writer.uint16(6);
   writer.uint32(1); // modules
   writer.string("Smoke");
   writer.string("smoke.bsl");
   writer.uint32(1); // variables
   writer.string("State");
   writer.uint8(1); // exported
-  writer.uint32(8);
+  writer.uint32(9);
 
   writer.string("Add");
   writer.uint16(0); // module
   writer.uint8(3); // function + export
+  writer.uint8(0); // shared execution context
   writer.uint16(2); // arity
   writer.uint8(1); // parameter 0 by value
   writer.uint8(1); // parameter 1 by value
@@ -201,6 +206,7 @@ function encodeAddProgram() {
   writer.string("NotValue");
   writer.uint16(0);
   writer.uint8(3);
+  writer.uint8(0); // shared execution context
   writer.uint16(1); // arity
   writer.uint8(1); // parameter 0 by value
   writer.uint16(1); // local count
@@ -217,6 +223,7 @@ function encodeAddProgram() {
   writer.string("Count");
   writer.uint16(0);
   writer.uint8(3);
+  writer.uint8(0); // shared execution context
   writer.uint16(1); // arity
   writer.uint8(1); // parameter 0 by value
   writer.uint16(1); // local count
@@ -233,6 +240,7 @@ function encodeAddProgram() {
   writer.string("EchoArray");
   writer.uint16(0);
   writer.uint8(3);
+  writer.uint8(0); // shared execution context
   writer.uint16(1); // arity
   writer.uint8(1); // parameter 0 by value
   writer.uint16(1); // local count
@@ -248,6 +256,7 @@ function encodeAddProgram() {
   writer.string("Twice");
   writer.uint16(0);
   writer.uint8(3);
+  writer.uint8(0); // shared execution context
   writer.uint16(2); // arity
   writer.uint8(1); // parameter 0 by value
   writer.uint8(1); // parameter 1 by value
@@ -259,6 +268,7 @@ function encodeAddProgram() {
   writer.uint32(0); // module variable accesses
   writer.uint32(1); // call sites
   writer.uint16(0); // Add target
+  writer.uint8(0); // local call route
   writer.uint32(2); // argument references
   for (let index = 0; index < 2; index += 1) {
     writer.uint8(0); // no reference
@@ -277,6 +287,7 @@ function encodeAddProgram() {
   writer.string("SetState");
   writer.uint16(0);
   writer.uint8(2); // procedure + export
+  writer.uint8(0); // shared execution context
   writer.uint16(1); // arity
   writer.uint8(1); // parameter 0 by value
   writer.uint16(1); // local count
@@ -298,6 +309,7 @@ function encodeAddProgram() {
   writer.string("GetState");
   writer.uint16(0);
   writer.uint8(3); // function + export
+  writer.uint8(0); // shared execution context
   writer.uint16(0); // arity
   writer.uint16(0); // local count
   writer.uint16(1); // maximum stack depth
@@ -315,6 +327,7 @@ function encodeAddProgram() {
   writer.string("Fail");
   writer.uint16(0);
   writer.uint8(3); // function + export
+  writer.uint8(0); // shared execution context
   writer.uint16(0); // arity
   writer.uint16(0); // local count
   writer.uint16(1); // maximum stack depth
@@ -328,6 +341,23 @@ function encodeAddProgram() {
   writer.instruction(0, 0); // constant 0
   writer.instruction(31, 0); // raise
   writer.instruction(0, 0); // unreachable structural return value
+  writer.instruction(7, 0); // return
+
+  writer.string("ServerOnly");
+  writer.uint16(0);
+  writer.uint8(3); // function + export
+  writer.uint8(2); // server execution context
+  writer.uint16(0); // arity
+  writer.uint16(0); // local count
+  writer.uint16(1); // maximum stack depth
+  writer.uint32(1); // constants
+  writer.uint8(1); // number
+  writer.string("99");
+  writer.uint32(0); // module variable accesses
+  writer.uint32(0); // call sites
+  writer.uint32(0); // exception handlers
+  writer.uint32(2); // instructions
+  writer.instruction(0, 0); // constant 0
   writer.instruction(7, 0); // return
   return writer.bytes();
 }

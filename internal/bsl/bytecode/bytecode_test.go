@@ -7,6 +7,37 @@ import (
 	"time"
 )
 
+func TestClientProgramStripsServerBodiesAndKeepsRPCSignatures(t *testing.T) {
+	t.Parallel()
+
+	program := &Program{Version: Version, Modules: []Module{{Name: "App"}}, Functions: []Function{
+		{
+			Name: "Secret", Context: ContextServer, MaxStack: 1,
+			Constants: []Value{String("server secret")},
+			Code:      []Instruction{{Opcode: OpConstant}, {Opcode: OpReturn}},
+		},
+		{
+			Name: "Run", Context: ContextClient, MaxStack: 1,
+			CallSites: []CallSite{{Target: 0, Route: CallServer}},
+			Code:      []Instruction{{Opcode: OpCall}, {Opcode: OpReturn}},
+		},
+	}}
+	client, err := program.ClientProgram()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.Functions[0].Constants[0].Kind() != UndefinedKind || len(client.Functions[0].Code) != 2 ||
+		client.Functions[0].Context != ContextServer {
+		t.Fatalf("server stub = %+v", client.Functions[0])
+	}
+	if len(client.Functions[1].CallSites) != 1 || client.Functions[1].CallSites[0].Route != CallServer {
+		t.Fatalf("client function = %+v", client.Functions[1])
+	}
+	if program.Functions[0].Constants[0].String() != "server secret" {
+		t.Fatal("ClientProgram mutated the source program")
+	}
+}
+
 func TestProgramValidationAndLookup(t *testing.T) {
 	t.Parallel()
 

@@ -21,7 +21,7 @@ func TestBinaryCodecRoundTripIsDeterministic(t *testing.T) {
 	program := &Program{Version: Version, Modules: []Module{{
 		Name: "Основной", Source: "modules/main.bsl", Variables: []ModuleVariable{{Name: "Состояние", Export: true}},
 	}}, Functions: []Function{{
-		Name: "Расчёт", IsFunction: true, Export: true, Arity: 1, LocalCount: 2, MaxStack: 2,
+		Name: "Расчёт", IsFunction: true, Export: true, Context: ContextClientServerNoContext, Arity: 1, LocalCount: 2, MaxStack: 2,
 		Parameters: []Parameter{{HasDefault: true, Default: Number(10)}},
 		Constants:  []Value{Undefined(), Number(2.5), String("MetaLab"), Boolean(true), Null(), date, exact},
 		ModuleVars: []VariableReference{{Kind: ModuleReference, Variable: 0}},
@@ -49,7 +49,7 @@ func TestBinaryCodecRoundTripIsDeterministic(t *testing.T) {
 		t.Fatal("binary encoding is not deterministic")
 	}
 	function, ok := decoded.Lookup("расчёт")
-	if !ok || !function.IsFunction || !function.Export || function.Arity != 1 || function.LocalCount != 2 {
+	if !ok || !function.IsFunction || !function.Export || function.Context != ContextClientServerNoContext || function.Arity != 1 || function.LocalCount != 2 {
 		t.Fatalf("decoded function = %+v", function)
 	}
 	if len(decoded.Modules) != 1 || decoded.Modules[0].Name != "Основной" ||

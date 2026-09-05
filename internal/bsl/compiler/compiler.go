@@ -118,7 +118,9 @@ func compileParsed(modules []parsedModule) (*bytecode.Program, []syntax.Diagnost
 			entry := routineEntry{module: uint16(moduleIndex), index: uint16(len(entries)), owner: module, routine: routine}
 			entries = append(entries, entry)
 			state.routineByName[state.routineKey(entry.module, routine.Name)] = entry
-			state.program.Functions = append(state.program.Functions, bytecode.Function{Name: routine.Name, Module: entry.module})
+			state.program.Functions = append(state.program.Functions, bytecode.Function{
+				Name: routine.Name, Module: entry.module, Context: executionContext(routine.Context),
+			})
 		}
 	}
 	for _, entry := range entries {
@@ -132,6 +134,23 @@ func compileParsed(modules []parsedModule) (*bytecode.Program, []syntax.Diagnost
 		return nil, state.diagnostics
 	}
 	return state.program, nil
+}
+
+func executionContext(context syntax.ExecutionContext) bytecode.ExecutionContext {
+	switch context {
+	case syntax.ContextClient:
+		return bytecode.ContextClient
+	case syntax.ContextServer:
+		return bytecode.ContextServer
+	case syntax.ContextServerNoContext:
+		return bytecode.ContextServerNoContext
+	case syntax.ContextClientServer:
+		return bytecode.ContextClientServer
+	case syntax.ContextClientServerNoContext:
+		return bytecode.ContextClientServerNoContext
+	default:
+		return bytecode.ContextShared
+	}
 }
 
 func moduleName(filename string) string {
@@ -198,7 +217,7 @@ func (c *compiler) compileRoutine(entry routineEntry) bytecode.Function {
 		owner: c, filename: entry.owner.filename, module: entry.module, routine: routine,
 		function: bytecode.Function{
 			Name: routine.Name, Module: entry.module, IsFunction: routine.Function, Export: routine.Export,
-			Arity: uint16(len(routine.Parameters)),
+			Context: executionContext(routine.Context), Arity: uint16(len(routine.Parameters)),
 		},
 		locals: make(map[string]uint16, len(routine.Parameters)), nextLocal: len(routine.Parameters),
 	}
@@ -613,6 +632,11 @@ func (c *functionCompiler) compileCall(call *syntax.CallExpression, requireFunct
 		c.emitConstant(bytecode.Undefined(), call.SourceSpan)
 		return
 	}
+	callerContext := executionContext(c.routine.Context)
+	targetContext := executionContext(entry.routine.Context)
+	if callerContext.AllowsServer() && !targetContext.AllowsServer() {
+		c.owner.report(c.filename, call.SourceSpan, "BSL3039", "server routine cannot call client-only routine "+call.Name)
+	}
 	if requireFunction && !entry.routine.Function {
 		c.owner.report(c.filename, call.SourceSpan, "BSL3029", "procedure cannot be used as a value: "+call.Name)
 	}
@@ -651,7 +675,15 @@ func (c *functionCompiler) compileCall(call *syntax.CallExpression, requireFunct
 		return
 	}
 	callSite := uint16(len(c.function.CallSites))
-	c.function.CallSites = append(c.function.CallSites, bytecode.CallSite{Target: entry.index, References: references})
+	route := bytecode.CallLocal
+	if !targetContext.AllowsClient() {
+		if targetContext.ServerWithoutContext() {
+			route = bytecode.CallServerNoContext
+		} else {
+			route = bytecode.CallServer
+		}
+	}
+	c.function.CallSites = append(c.function.CallSites, bytecode.CallSite{Target: entry.index, Route: route, References: references})
 	c.emitCall(callSite, len(parameters), call.SourceSpan)
 }
 

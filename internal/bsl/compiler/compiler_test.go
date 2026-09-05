@@ -35,6 +35,44 @@ func TestCompileSourceProducesDeterministicBytecode(t *testing.T) {
 	}
 }
 
+func TestCompileExecutionContextsAndRPCRoutes(t *testing.T) {
+	t.Parallel()
+
+	program, diagnostics := CompileSource("contexts.bsl", `&AtServer
+Function ServerValue() Return 1; EndFunction
+&AtServerNoContext
+Function IsolatedValue() Return 2; EndFunction
+&AtClient
+Function ClientValue() Return ServerValue() + IsolatedValue(); EndFunction`)
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	server, _ := program.Lookup("ServerValue")
+	isolated, _ := program.Lookup("IsolatedValue")
+	client, _ := program.Lookup("ClientValue")
+	if server.Context != bytecode.ContextServer || isolated.Context != bytecode.ContextServerNoContext || client.Context != bytecode.ContextClient {
+		t.Fatalf("contexts = %d, %d, %d", server.Context, isolated.Context, client.Context)
+	}
+	if len(client.CallSites) != 2 || client.CallSites[0].Route != bytecode.CallServer || client.CallSites[1].Route != bytecode.CallServerNoContext {
+		t.Fatalf("call sites = %+v", client.CallSites)
+	}
+}
+
+func TestCompileRejectsServerToClientCall(t *testing.T) {
+	t.Parallel()
+
+	callers := []string{"&AtServer", "&AtServerNoContext", "&AtClientAtServer", "&AtClientAtServerNoContext", ""}
+	for _, caller := range callers {
+		_, diagnostics := CompileSource("contexts.bsl", `&AtClient
+Procedure Notify() EndProcedure
+`+caller+`
+Procedure Run() Notify(); EndProcedure`)
+		if len(diagnostics) != 1 || diagnostics[0].Code != "BSL3039" {
+			t.Fatalf("caller %q diagnostics = %v", caller, diagnostics)
+		}
+	}
+}
+
 func TestCompileReportsUnknownIdentifier(t *testing.T) {
 	t.Parallel()
 

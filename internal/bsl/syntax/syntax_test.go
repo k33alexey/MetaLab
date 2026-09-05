@@ -51,6 +51,48 @@ func TestParseRussianAndEnglishHaveEquivalentShape(t *testing.T) {
 	}
 }
 
+func TestParseExecutionDirectivesInBothLanguages(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		directive string
+		context   ExecutionContext
+	}{
+		{"НаКлиенте", ContextClient}, {"AtClient", ContextClient},
+		{"НаСервере", ContextServer}, {"AtServer", ContextServer},
+		{"НаСервереБезКонтекста", ContextServerNoContext}, {"AtServerNoContext", ContextServerNoContext},
+		{"НаКлиентеНаСервере", ContextClientServer}, {"AtClientAtServer", ContextClientServer},
+		{"НаКлиентеНаСервереБезКонтекста", ContextClientServerNoContext}, {"AtClientAtServerNoContext", ContextClientServerNoContext},
+	}
+	for _, test := range tests {
+		t.Run(test.directive, func(t *testing.T) {
+			module, diagnostics := Parse("context.bsl", "&"+test.directive+"\nProcedure Run()\nEndProcedure")
+			if len(diagnostics) != 0 {
+				t.Fatal(diagnostics)
+			}
+			if len(module.Routines) != 1 || module.Routines[0].Context != test.context {
+				t.Fatalf("routines = %+v", module.Routines)
+			}
+			if module.Routines[0].SourceSpan.Start.Line != 1 {
+				t.Fatalf("span = %+v", module.Routines[0].SourceSpan)
+			}
+		})
+	}
+}
+
+func TestParseRejectsUnknownOrDetachedExecutionDirective(t *testing.T) {
+	t.Parallel()
+
+	_, diagnostics := Parse("context.bsl", "&Somewhere\nProcedure Run() EndProcedure")
+	if len(diagnostics) != 1 || diagnostics[0].Code != "BSL2004" {
+		t.Fatalf("unknown directive diagnostics = %v", diagnostics)
+	}
+	_, diagnostics = Parse("context.bsl", "&AtClient\nVar State;")
+	if len(diagnostics) == 0 || diagnostics[0].Code != "BSL2005" {
+		t.Fatalf("detached directive diagnostics = %v", diagnostics)
+	}
+}
+
 func TestParseRussianAndEnglishControlFlow(t *testing.T) {
 	t.Parallel()
 

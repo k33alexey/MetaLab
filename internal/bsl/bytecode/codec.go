@@ -67,6 +67,7 @@ func MarshalBinary(program *Program) ([]byte, error) {
 			flags |= 2
 		}
 		output.WriteByte(flags)
+		output.WriteByte(byte(function.Context))
 		writeUint16(&output, function.Arity)
 		for parameterIndex := 0; parameterIndex < int(function.Arity); parameterIndex++ {
 			parameter := Parameter{ByValue: true}
@@ -107,6 +108,7 @@ func MarshalBinary(program *Program) ([]byte, error) {
 		writeUint32(&output, uint32(len(function.CallSites)))
 		for _, call := range function.CallSites {
 			writeUint16(&output, call.Target)
+			output.WriteByte(byte(call.Route))
 			writeUint32(&output, uint32(len(call.References)))
 			for _, reference := range call.References {
 				writeReference(&output, reference)
@@ -163,7 +165,7 @@ func UnmarshalBinary(data []byte) (*Program, error) {
 		}
 		program.Modules[index] = module
 	}
-	functionCount, err := decoder.readCount("functions", 21)
+	functionCount, err := decoder.readCount("functions", 22)
 	if err != nil {
 		return nil, err
 	}
@@ -313,6 +315,13 @@ func (decoder *wireDecoder) readFunction() (Function, error) {
 	if flags&^byte(3) != 0 {
 		return Function{}, fmt.Errorf("unknown function flags %d", flags)
 	}
+	context, err := decoder.readByte()
+	if err != nil {
+		return Function{}, err
+	}
+	if ExecutionContext(context) > ContextClientServerNoContext {
+		return Function{}, fmt.Errorf("unknown execution context %d", context)
+	}
 	arity, err := decoder.readUint16()
 	if err != nil {
 		return Function{}, err
@@ -364,7 +373,7 @@ func (decoder *wireDecoder) readFunction() (Function, error) {
 			return Function{}, fmt.Errorf("module variable access %d: %w", index, err)
 		}
 	}
-	callCount, err := decoder.readCount("call sites", 6)
+	callCount, err := decoder.readCount("call sites", 7)
 	if err != nil {
 		return Function{}, err
 	}
@@ -373,6 +382,13 @@ func (decoder *wireDecoder) readFunction() (Function, error) {
 		target, readErr := decoder.readUint16()
 		if readErr != nil {
 			return Function{}, fmt.Errorf("call site %d target: %w", index, readErr)
+		}
+		route, readErr := decoder.readByte()
+		if readErr != nil {
+			return Function{}, fmt.Errorf("call site %d route: %w", index, readErr)
+		}
+		if CallRoute(route) > CallServerNoContext {
+			return Function{}, fmt.Errorf("call site %d has unknown route %d", index, route)
 		}
 		referenceCount, readErr := decoder.readCount("call references", 5)
 		if readErr != nil {
@@ -385,7 +401,7 @@ func (decoder *wireDecoder) readFunction() (Function, error) {
 				return Function{}, fmt.Errorf("call site %d reference %d: %w", index, referenceIndex, readErr)
 			}
 		}
-		calls[index] = CallSite{Target: target, References: references}
+		calls[index] = CallSite{Target: target, Route: CallRoute(route), References: references}
 	}
 	exceptionCount, err := decoder.readCount("exception handlers", 6)
 	if err != nil {
@@ -428,7 +444,7 @@ func (decoder *wireDecoder) readFunction() (Function, error) {
 		code[index] = Instruction{Opcode: Opcode(opcode), Operand: operand, Span: span}
 	}
 	return Function{
-		Name: name, Module: module, IsFunction: flags&1 != 0, Export: flags&2 != 0,
+		Name: name, Module: module, IsFunction: flags&1 != 0, Export: flags&2 != 0, Context: ExecutionContext(context),
 		Arity: arity, Parameters: parameters, LocalCount: localCount, MaxStack: maxStack,
 		Constants: constants, ModuleVars: moduleVariables, CallSites: calls, Exceptions: exceptions, Code: code,
 	}, nil

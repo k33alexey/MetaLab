@@ -23,11 +23,39 @@ type Machine struct {
 	program *bytecode.Program
 }
 
+// ExecutionSide identifies the runtime currently executing BSL bytecode.
+type ExecutionSide uint8
+
+const (
+	ServerSide ExecutionSide = iota
+	ClientSide
+)
+
+// ServerCall is a transport-independent RPC request from a client VM.
+type ServerCall struct {
+	Module         string
+	Routine        string
+	Arguments      []bytecode.Value
+	WithoutContext bool
+}
+
+// ServerCaller performs a client-to-server BSL call. HTTP transport implements
+// this contract outside the VM.
+type ServerCaller interface {
+	CallServer(ServerCall) (bytecode.Value, error)
+}
+
+type executionEnvironment struct {
+	side   ExecutionSide
+	server ServerCaller
+}
+
 // Context owns module variables for one isolated BSL session.
 type Context struct {
 	machine *Machine
 	mutex   sync.Mutex
 	modules [][]bytecode.Value
+	env     executionEnvironment
 }
 
 // New validates a program once before it can be executed.
@@ -124,6 +152,10 @@ func (machine *Machine) Call(name string, arguments ...bytecode.Value) (bytecode
 	if err != nil {
 		return bytecode.Undefined(), err
 	}
+	env := executionEnvironment{side: ServerSide}
+	if !function.Context.AllowsServer() {
+		return bytecode.Undefined(), unavailableContextError(function, ServerSide)
+	}
 	if !requiresContext(function) {
 		value, callErr := executeFast(function, arguments)
 		if callErr != nil {
@@ -131,7 +163,7 @@ func (machine *Machine) Call(name string, arguments ...bytecode.Value) (bytecode
 		}
 		return value, nil
 	}
-	value, callErr := executeWithValues(machine.program, function, arguments, makeModuleValues(machine.program))
+	value, callErr := executeWithValues(machine.program, function, arguments, makeModuleValues(machine.program), env)
 	if callErr != nil {
 		return value, finalizeRuntimeError(machine.program, callErr)
 	}
@@ -140,7 +172,16 @@ func (machine *Machine) Call(name string, arguments ...bytecode.Value) (bytecode
 
 // NewContext creates isolated persistent module state for one user session.
 func (machine *Machine) NewContext() *Context {
-	return &Context{machine: machine, modules: makeModuleValues(machine.program)}
+	return &Context{machine: machine, modules: makeModuleValues(machine.program), env: executionEnvironment{side: ServerSide}}
+}
+
+// NewClientContext creates a browser-side context. Calls to server-only
+// routines are delegated through server.
+func (machine *Machine) NewClientContext(server ServerCaller) *Context {
+	return &Context{
+		machine: machine, modules: makeModuleValues(machine.program),
+		env: executionEnvironment{side: ClientSide, server: server},
+	}
 }
 
 // Call executes a routine while preserving this context's module variables.
@@ -153,6 +194,12 @@ func (context *Context) Call(name string, arguments ...bytecode.Value) (bytecode
 	if err != nil {
 		return bytecode.Undefined(), err
 	}
+	if !allowsSide(function.Context, context.env.side) {
+		if context.env.side == ClientSide && function.Context.AllowsServer() {
+			return dispatchServer(context.machine.program, context.env.server, function, completed)
+		}
+		return bytecode.Undefined(), unavailableContextError(function, context.env.side)
+	}
 	if !requiresContext(function) {
 		value, callErr := executeFast(function, completed)
 		if callErr != nil {
@@ -162,11 +209,41 @@ func (context *Context) Call(name string, arguments ...bytecode.Value) (bytecode
 	}
 	context.mutex.Lock()
 	defer context.mutex.Unlock()
-	value, callErr := executeWithValues(context.machine.program, function, completed, context.modules)
+	value, callErr := executeWithValues(context.machine.program, function, completed, context.modules, context.env)
 	if callErr != nil {
 		return value, finalizeRuntimeError(context.machine.program, callErr)
 	}
 	return value, nil
+}
+
+func allowsSide(context bytecode.ExecutionContext, side ExecutionSide) bool {
+	if side == ClientSide {
+		return context.AllowsClient()
+	}
+	return context.AllowsServer()
+}
+
+func unavailableContextError(function *bytecode.Function, side ExecutionSide) error {
+	name := "server"
+	if side == ClientSide {
+		name = "client"
+	}
+	return fmt.Errorf("routine %q is not available in %s context", function.Name, name)
+}
+
+func dispatchServer(program *bytecode.Program, server ServerCaller, function *bytecode.Function, arguments []bytecode.Value) (bytecode.Value, error) {
+	if server == nil {
+		return bytecode.Undefined(), fmt.Errorf("server RPC is not configured for routine %q", function.Name)
+	}
+	module := ""
+	if int(function.Module) < len(program.Modules) {
+		module = program.Modules[function.Module].Name
+	}
+	return server.CallServer(ServerCall{
+		Module: module, Routine: function.Name,
+		Arguments:      append([]bytecode.Value(nil), arguments...),
+		WithoutContext: function.Context.ServerWithoutContext(),
+	})
 }
 
 // CallExported invokes only a routine explicitly exported by a named module.
@@ -355,8 +432,9 @@ func executeWithValues(
 	function *bytecode.Function,
 	values []bytecode.Value,
 	modules [][]bytecode.Value,
+	env executionEnvironment,
 ) (bytecode.Value, error) {
-	return executeAdvanced(program, function, nil, values, modules, 0)
+	return executeAdvanced(program, function, nil, values, modules, env, 0)
 }
 
 func executeAdvanced(
@@ -365,6 +443,7 @@ func executeAdvanced(
 	arguments []callArgument,
 	rootValues []bytecode.Value,
 	modules [][]bytecode.Value,
+	env executionEnvironment,
 	callDepth int,
 ) (bytecode.Value, error) {
 	if callDepth >= maxCallDepth {
@@ -603,19 +682,32 @@ func executeAdvanced(
 					callArguments[index].identity = moduleIdentity(reference)
 				}
 			}
-			result, err := executeAdvanced(program, target, callArguments, nil, modules, callDepth+1)
-			for index, reference := range call.References {
-				switch reference.Kind {
-				case bytecode.LocalReference:
-					setLocal(reference.Variable, callArguments[index].value)
-				case bytecode.ModuleReference:
-					setModule(reference, callArguments[index].value)
+			var result bytecode.Value
+			var err error
+			remote := !allowsSide(target.Context, env.side)
+			if remote && env.side == ClientSide && target.Context.AllowsServer() {
+				values := make([]bytecode.Value, len(callArguments))
+				for index := range callArguments {
+					values[index] = callArguments[index].value
 				}
-			}
-			for index, identity := range identities {
-				if identity>>63 != 0 {
-					reference := moduleReference(identity)
-					locals[index] = modules[reference.Module][reference.Variable]
+				result, err = dispatchServer(program, env.server, target, values)
+			} else if remote {
+				err = unavailableContextError(target, env.side)
+			} else {
+				result, err = executeAdvanced(program, target, callArguments, nil, modules, env, callDepth+1)
+				for index, reference := range call.References {
+					switch reference.Kind {
+					case bytecode.LocalReference:
+						setLocal(reference.Variable, callArguments[index].value)
+					case bytecode.ModuleReference:
+						setModule(reference, callArguments[index].value)
+					}
+				}
+				for index, identity := range identities {
+					if identity>>63 != 0 {
+						reference := moduleReference(identity)
+						locals[index] = modules[reference.Module][reference.Variable]
+					}
 				}
 			}
 			releaseCallArguments(pooledArguments, callArguments)

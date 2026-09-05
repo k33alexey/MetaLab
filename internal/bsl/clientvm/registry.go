@@ -16,6 +16,7 @@ type Registry struct {
 	mu       sync.RWMutex
 	next     uint32
 	contexts map[uint32]*vm.Context
+	server   vm.ServerCaller
 }
 
 // NewRegistry creates an empty client machine registry.
@@ -23,11 +24,20 @@ func NewRegistry() *Registry {
 	return &Registry{next: 1, contexts: make(map[uint32]*vm.Context)}
 }
 
+// NewRegistryWithServer creates a client registry with an RPC transport.
+func NewRegistryWithServer(server vm.ServerCaller) *Registry {
+	return &Registry{next: 1, contexts: make(map[uint32]*vm.Context), server: server}
+}
+
 // Load decodes and validates a bytecode program and returns its local handle.
 func (registry *Registry) Load(encoded []byte) (uint32, error) {
 	program, err := bytecode.UnmarshalBinary(encoded)
 	if err != nil {
 		return 0, fmt.Errorf("decode bytecode: %w", err)
+	}
+	program, err = program.ClientProgram()
+	if err != nil {
+		return 0, fmt.Errorf("prepare client bytecode: %w", err)
 	}
 	machine, err := vm.New(program)
 	if err != nil {
@@ -47,7 +57,7 @@ func (registry *Registry) Load(encoded []byte) (uint32, error) {
 		}
 		if handle != 0 {
 			if _, exists := registry.contexts[handle]; !exists {
-				registry.contexts[handle] = machine.NewContext()
+				registry.contexts[handle] = machine.NewClientContext(registry.server)
 				return handle, nil
 			}
 		}
