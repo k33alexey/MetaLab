@@ -20,7 +20,11 @@ type Value struct {
 
 // NormalizeValue validates a value against a constant and canonicalizes it.
 func (catalog *Catalog) NormalizeValue(constant Constant, value Value) (Value, error) {
-	types, err := catalog.expandTypes(constant.Types, nil)
+	return catalog.normalizeTypes("constant "+constant.Name, constant.Types, value)
+}
+
+func (catalog *Catalog) normalizeTypes(owner string, types []Type, value Value) (Value, error) {
+	types, err := catalog.expandTypes(types, nil)
 	if err != nil {
 		return Value{}, err
 	}
@@ -38,10 +42,23 @@ func (catalog *Catalog) NormalizeValue(constant Constant, value Value) (Value, e
 		}
 	}
 	if len(reasons) == 0 {
-		return Value{}, fmt.Errorf("constant %s does not allow value kind %s", constant.Name, value.Kind)
+		return Value{}, fmt.Errorf("%s does not allow value kind %s", owner, value.Kind)
 	}
 	sort.Strings(reasons)
-	return Value{}, fmt.Errorf("constant %s value is invalid: %s", constant.Name, strings.Join(reasons, "; "))
+	return Value{}, fmt.Errorf("%s value is invalid: %s", owner, strings.Join(reasons, "; "))
+}
+
+func (catalog *Catalog) allowsCatalogReference(types []Type, catalogID uuid.UUID) (bool, error) {
+	resolved, err := catalog.expandTypes(types, nil)
+	if err != nil {
+		return false, err
+	}
+	for _, item := range resolved {
+		if item.Kind == CatalogType && item.Reference != nil && *item.Reference == catalogID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (catalog *Catalog) expandTypes(types []Type, stack map[uuid.UUID]bool) ([]Type, error) {
@@ -117,12 +134,15 @@ func (catalog *Catalog) normalizeAs(value Value, allowed Type) (Value, bool, str
 			return Value{}, false, "date must be RFC3339 within years 1..3999"
 		}
 		return Value{Kind: DateType, Data: parsed.UTC().Format(time.RFC3339Nano)}, true, ""
-	case UUIDType:
+	case UUIDType, CatalogType:
 		id, err := uuid.Parse(value.Data)
 		if err != nil {
-			return Value{}, false, "invalid UUID"
+			return Value{}, false, "invalid UUID reference"
 		}
-		return Value{Kind: UUIDType, Data: id.String()}, true, ""
+		if allowed.Kind == CatalogType && id.IsZero() {
+			return Value{}, false, "catalog reference cannot be empty"
+		}
+		return Value{Kind: allowed.Kind, Data: id.String()}, true, ""
 	case EnumerationType:
 		id, err := uuid.Parse(value.Data)
 		if err != nil || allowed.Reference == nil {

@@ -155,6 +155,9 @@ func TestSaveRejectsMalformedYAML(t *testing.T) {
 		t.Fatal(err)
 	}
 	filePath := filepath.Join(root, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filePath, []byte("format: 1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -202,6 +205,42 @@ func TestSaveValidatesAndCanonicalizesSupportedMetadata(t *testing.T) {
 	mismatched := strings.Replace(saved.Content, id.String(), uuid.MustNew().String(), 1)
 	if _, err := workspace.SaveSource(relative, mismatched, saved.Revision); err == nil || !strings.Contains(err.Error(), "does not match filename") {
 		t.Fatalf("metadata identity error = %v", err)
+	}
+}
+
+func TestSaveValidatesAndCanonicalizesCatalogMetadata(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	id, attributeID := uuid.MustNew(), uuid.MustNew()
+	relative, err := project.MetadataPath("catalogs", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filePath := filepath.Join(root, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := "format: 1\nid: " + id.String() + "\nname: Товары\ntitle: {ru: Товары}\n" +
+		"code: {type: string, length: 9, auto: true, unique: true}\ndescription_length: 250\n" +
+		"attributes: [{id: " + attributeID.String() + ", name: Артикул, title: {ru: Артикул}, types: [{kind: string, length: 32}], indexed: true}]\n"
+	if err := os.WriteFile(filePath, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := workspace.ReadSource(relative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := workspace.SaveSource(relative, original, opened.Revision)
+	if err != nil || !strings.Contains(saved.Content, "code:\n  type: string\n") || !strings.Contains(saved.Content, "name: Артикул\n") {
+		t.Fatalf("canonical catalog = %q, error=%v", saved.Content, err)
+	}
+	invalid := strings.Replace(saved.Content, "name: Артикул", "name: Ссылка", 1)
+	if _, err := workspace.SaveSource(relative, invalid, saved.Revision); err == nil || !strings.Contains(err.Error(), "reserved") {
+		t.Fatalf("reserved catalog attribute error = %v", err)
 	}
 }
 

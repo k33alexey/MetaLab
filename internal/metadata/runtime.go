@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
@@ -12,9 +13,12 @@ import (
 
 // Runtime implements the BSL metadata boundary backed by PostgreSQL constants.
 type Runtime struct {
-	repository *ConstantRepository
-	catalog    *Catalog
-	actor      *uuid.UUID
+	repository        *ConstantRepository
+	catalogRepository *CatalogRepository
+	catalog           *Catalog
+	actor             *uuid.UUID
+	eventsMu          sync.RWMutex
+	events            map[uuid.UUID]CatalogEventHandler
 }
 
 func NewRuntime(repository *ConstantRepository, catalog *Catalog, actor *uuid.UUID) (*Runtime, error) {
@@ -31,10 +35,53 @@ func NewRuntime(repository *ConstantRepository, catalog *Catalog, actor *uuid.UU
 		copy := *actor
 		actor = &copy
 	}
-	return &Runtime{repository: repository, catalog: catalog, actor: actor}, nil
+	return &Runtime{repository: repository, catalog: catalog, actor: actor, events: make(map[uuid.UUID]CatalogEventHandler)}, nil
+}
+
+// NewRuntimeWithCatalogs creates a metadata runtime with constants and catalog objects.
+func NewRuntimeWithCatalogs(constants *ConstantRepository, catalogs *CatalogRepository, catalog *Catalog, actor *uuid.UUID) (*Runtime, error) {
+	if catalog == nil || constants == nil && catalogs == nil {
+		return nil, fmt.Errorf("metadata runtime requires a catalog and at least one repository")
+	}
+	if constants != nil && constants.catalog != catalog || catalogs != nil && catalogs.catalog != catalog {
+		return nil, fmt.Errorf("metadata runtime catalog does not match its repositories")
+	}
+	runtime := &Runtime{repository: constants, catalogRepository: catalogs, catalog: catalog, events: make(map[uuid.UUID]CatalogEventHandler)}
+	if actor != nil {
+		if actor.IsZero() {
+			return nil, fmt.Errorf("metadata runtime actor UUID must not be zero")
+		}
+		copy := *actor
+		runtime.actor = &copy
+	}
+	return runtime, nil
+}
+
+func (runtime *Runtime) SetCatalogEventHandler(name string, handler CatalogEventHandler) error {
+	definition, ok := runtime.catalog.CatalogDefinition(name)
+	if !ok {
+		return fmt.Errorf("unknown catalog %q", name)
+	}
+	runtime.eventsMu.Lock()
+	defer runtime.eventsMu.Unlock()
+	if handler == nil {
+		delete(runtime.events, definition.ID)
+	} else {
+		runtime.events[definition.ID] = handler
+	}
+	return nil
+}
+
+func (runtime *Runtime) catalogEventHandler(id uuid.UUID) CatalogEventHandler {
+	runtime.eventsMu.RLock()
+	defer runtime.eventsMu.RUnlock()
+	return runtime.events[id]
 }
 
 func (runtime *Runtime) GetConstant(ctx context.Context, name string) (bytecode.Value, error) {
+	if runtime.repository == nil {
+		return bytecode.Undefined(), fmt.Errorf("constant repository is not configured")
+	}
 	stored, err := runtime.repository.Get(ctx, name)
 	if errors.Is(err, ErrConstantValueNotFound) {
 		constant, ok := runtime.catalog.Constant(name)
@@ -44,15 +91,19 @@ func (runtime *Runtime) GetConstant(ctx context.Context, name string) (bytecode.
 		if constant.Default == nil {
 			return bytecode.Undefined(), nil
 		}
-		return valueToBSL(*constant.Default)
+		return runtime.catalogValueToBSL(constant.Types, *constant.Default)
 	}
 	if err != nil {
 		return bytecode.Undefined(), err
 	}
-	return valueToBSL(stored.Value)
+	constant, _ := runtime.catalog.Constant(name)
+	return runtime.catalogValueToBSL(constant.Types, stored.Value)
 }
 
 func (runtime *Runtime) SetConstant(ctx context.Context, name string, value bytecode.Value) error {
+	if runtime.repository == nil {
+		return fmt.Errorf("constant repository is not configured")
+	}
 	constant, ok := runtime.catalog.Constant(name)
 	if !ok {
 		return fmt.Errorf("unknown constant %q", name)
@@ -100,6 +151,22 @@ func (runtime *Runtime) GetDefinedType(_ context.Context, name string) (bytecode
 }
 
 func (runtime *Runtime) valueFromBSL(constant Constant, value bytecode.Value) (Value, error) {
+	if opaque, ok := value.AsRuntimeObject(); ok {
+		if reference, ok := opaque.(*catalogReferenceObject); ok {
+			if reference.reference.ObjectID.IsZero() {
+				return Value{}, fmt.Errorf("constant %s cannot store an empty catalog reference", constant.Name)
+			}
+			allowed, err := runtime.catalog.allowsCatalogReference(constant.Types, reference.reference.CatalogID)
+			if err != nil {
+				return Value{}, err
+			}
+			if !allowed {
+				return Value{}, fmt.Errorf("constant %s does not allow %s", constant.Name, reference.RuntimeTypeName())
+			}
+			return runtime.catalog.NormalizeValue(constant, Value{Kind: CatalogType, Data: reference.reference.ObjectID.String()})
+		}
+		return Value{}, fmt.Errorf("constant %s cannot store BSL value %s", constant.Name, value.String())
+	}
 	switch value.Kind() {
 	case bytecode.StringKind:
 		text, _ := value.AsString()

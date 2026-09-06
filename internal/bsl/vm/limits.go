@@ -279,7 +279,7 @@ func (budget *executionBudget) enter(function *bytecode.Function, depth int) (ui
 func (budget *executionBudget) leave(frame uint64) { budget.frames -= frame }
 
 func (budget *executionBudget) retain(value bytecode.Value) error {
-	if value.Kind() != bytecode.StringKind && !value.IsCollection() {
+	if value.Kind() != bytecode.StringKind && value.Kind() != bytecode.RuntimeObjectKind && !value.IsCollection() {
 		return nil
 	}
 	remaining := budget.limits.MaxMemoryBytes - budget.frames - budget.retained
@@ -292,7 +292,7 @@ func (budget *executionBudget) retain(value bytecode.Value) error {
 }
 
 func (budget *executionBudget) fit(value bytecode.Value) error {
-	if value.Kind() != bytecode.StringKind && !value.IsCollection() {
+	if value.Kind() != bytecode.StringKind && value.Kind() != bytecode.RuntimeObjectKind && !value.IsCollection() {
 		return nil
 	}
 	remaining := budget.limits.MaxMemoryBytes - budget.frames - budget.retained

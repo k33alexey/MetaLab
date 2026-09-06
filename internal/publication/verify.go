@@ -17,6 +17,7 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
+	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -82,54 +83,120 @@ func VerifyFile(ctx context.Context, packagePath string) (Manifest, error) {
 	if hex.EncodeToString(contentHash.Sum(nil)) != manifest.ContentSHA256 {
 		return Manifest{}, fmt.Errorf("publication package content checksum mismatch")
 	}
-	if err := verifyConstantManifest(&archive.Reader, manifest); err != nil {
+	if err := verifyMetadataManifest(&archive.Reader, manifest); err != nil {
 		return Manifest{}, err
 	}
 	return manifest, nil
 }
 
-func verifyConstantManifest(archive *zip.Reader, manifest Manifest) error {
+func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) error {
 	var projectManifest project.Project
-	constantIDs := make([]uuid.UUID, 0, len(manifest.ConstantIDs))
+	var constants []metadata.Constant
+	var enumerations []metadata.Enumeration
+	var definedTypes []metadata.DefinedTypeObject
+	var catalogs []metadata.CatalogDefinition
+	moduleIDs := make(map[uuid.UUID]bool)
 	for index, entry := range manifest.Files {
-		if entry.Path != project.ManifestFile && !strings.HasPrefix(entry.Path, "metadata/constants/") {
-			continue
-		}
-		content, err := readMetadataEntry(archive.File[index+1], entry.Size)
-		if err != nil {
-			return err
-		}
 		if entry.Path == project.ManifestFile {
+			content, err := readMetadataEntry(archive.File[index+1], entry.Size)
+			if err != nil {
+				return err
+			}
 			projectManifest, err = project.DecodeSource(entry.Path, bytes.NewReader(content))
 			if err != nil {
 				return err
 			}
+		}
+		if strings.HasPrefix(entry.Path, "modules/") {
+			id, err := uuid.Parse(strings.TrimSuffix(path.Base(entry.Path), ".bsl"))
+			if err != nil {
+				return fmt.Errorf("invalid module source %q", entry.Path)
+			}
+			moduleIDs[id] = true
 		}
 	}
 	if projectManifest.ID.IsZero() {
 		return fmt.Errorf("publication project manifest is invalid")
 	}
 	for index, entry := range manifest.Files {
-		if !strings.HasPrefix(entry.Path, "metadata/constants/") {
+		kind := metadata.Kind("")
+		switch {
+		case strings.HasPrefix(entry.Path, "metadata/constants/"):
+			kind = metadata.ConstantKind
+		case strings.HasPrefix(entry.Path, "metadata/enumerations/"):
+			kind = metadata.EnumerationKind
+		case strings.HasPrefix(entry.Path, "metadata/defined-types/"):
+			kind = metadata.DefinedTypeKind
+		case strings.HasPrefix(entry.Path, "metadata/catalogs/"):
+			kind = metadata.CatalogKind
+		}
+		if kind == "" {
 			continue
 		}
 		content, err := readMetadataEntry(archive.File[index+1], entry.Size)
 		if err != nil {
 			return err
 		}
-		constant, err := metadata.DecodeConstant(entry.Path, bytes.NewReader(content), projectManifest)
-		if err != nil {
-			return err
+		var id uuid.UUID
+		switch kind {
+		case metadata.ConstantKind:
+			value, err := metadata.DecodeConstant(entry.Path, bytes.NewReader(content), projectManifest)
+			if err != nil {
+				return err
+			}
+			id, constants = value.ID, append(constants, value)
+		case metadata.EnumerationKind:
+			value, err := metadata.DecodeEnumeration(entry.Path, bytes.NewReader(content), projectManifest)
+			if err != nil {
+				return err
+			}
+			id, enumerations = value.ID, append(enumerations, value)
+		case metadata.DefinedTypeKind:
+			value, err := metadata.DecodeDefinedType(entry.Path, bytes.NewReader(content), projectManifest)
+			if err != nil {
+				return err
+			}
+			id, definedTypes = value.ID, append(definedTypes, value)
+		case metadata.CatalogKind:
+			value, err := metadata.DecodeCatalog(entry.Path, bytes.NewReader(content), projectManifest)
+			if err != nil {
+				return err
+			}
+			id, catalogs = value.ID, append(catalogs, value)
 		}
 		filenameID, err := uuid.Parse(strings.TrimSuffix(path.Base(entry.Path), ".yaml"))
-		if err != nil || filenameID != constant.ID {
-			return fmt.Errorf("constant metadata UUID does not match %q", entry.Path)
+		if err != nil || filenameID != id {
+			return fmt.Errorf("metadata UUID does not match %q", entry.Path)
 		}
-		constantIDs = append(constantIDs, constant.ID)
 	}
-	slices.SortFunc(constantIDs, func(left, right uuid.UUID) int { return strings.Compare(left.String(), right.String()) })
+	catalog, err := metadata.NewCatalogSnapshot(projectManifest, constants, enumerations, definedTypes, catalogs)
+	if err != nil {
+		return fmt.Errorf("validate packaged metadata: %w", err)
+	}
+	for _, definition := range catalog.Catalogs {
+		for role, module := range map[string]*uuid.UUID{"object": definition.ObjectModule, "manager": definition.ManagerModule} {
+			if module != nil && !moduleIDs[*module] {
+				return fmt.Errorf("catalog %s %s module %s is absent from publication package", definition.Name, role, module)
+			}
+		}
+	}
+	constantIDs, catalogIDs := catalog.ConstantIDs(), catalog.CatalogIDs()
 	if !slices.Equal(constantIDs, manifest.ConstantIDs) {
 		return fmt.Errorf("publication constant UUIDs do not match packaged metadata")
+	}
+	if !slices.Equal(catalogIDs, manifest.CatalogIDs) {
+		return fmt.Errorf("publication catalog UUIDs do not match packaged metadata")
+	}
+	applicationSchema, err := catalog.ApplicationSchema()
+	if err != nil {
+		return err
+	}
+	digest, err := schemadiff.SchemaSHA256(applicationSchema)
+	if err != nil {
+		return err
+	}
+	if digest != manifest.SchemaSHA256 {
+		return fmt.Errorf("publication schema does not match packaged metadata")
 	}
 	return nil
 }
@@ -184,12 +251,17 @@ func readPackageManifest(entry *zip.File) (Manifest, error) {
 	if len(manifest.ContentSHA256) != sha256.Size*2 {
 		return Manifest{}, fmt.Errorf("invalid publication package content checksum")
 	}
-	for index, id := range manifest.ConstantIDs {
-		if id.IsZero() {
-			return Manifest{}, fmt.Errorf("publication constant UUID must not be zero")
-		}
-		if index > 0 && manifest.ConstantIDs[index-1].String() >= id.String() {
-			return Manifest{}, fmt.Errorf("publication constant UUIDs must be unique and sorted")
+	if !validSHA256(manifest.SchemaSHA256) {
+		return Manifest{}, fmt.Errorf("invalid publication application schema checksum")
+	}
+	for label, identifiers := range map[string][]uuid.UUID{"constant": manifest.ConstantIDs, "catalog": manifest.CatalogIDs} {
+		for index, id := range identifiers {
+			if id.IsZero() {
+				return Manifest{}, fmt.Errorf("publication %s UUID must not be zero", label)
+			}
+			if index > 0 && identifiers[index-1].String() >= id.String() {
+				return Manifest{}, fmt.Errorf("publication %s UUIDs must be unique and sorted", label)
+			}
 		}
 	}
 	return manifest, nil

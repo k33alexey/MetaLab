@@ -29,6 +29,7 @@ const (
 	ConstantKind    Kind = "constants"
 	EnumerationKind Kind = "enumerations"
 	DefinedTypeKind Kind = "defined-types"
+	CatalogKind     Kind = "catalogs"
 )
 
 type TypeKind string
@@ -41,6 +42,7 @@ const (
 	UUIDType        TypeKind = "uuid"
 	EnumerationType TypeKind = "enumeration"
 	DefinedType     TypeKind = "defined-type"
+	CatalogType     TypeKind = "catalog"
 )
 
 var (
@@ -115,18 +117,58 @@ type DefinedTypeObject struct {
 	Types  []Type        `yaml:"types"`
 }
 
+type CatalogCode struct {
+	Type   TypeKind `yaml:"type"`
+	Length int      `yaml:"length"`
+	Auto   bool     `yaml:"auto"`
+	Unique bool     `yaml:"unique"`
+}
+
+type Attribute struct {
+	ID       uuid.UUID     `yaml:"id"`
+	Name     string        `yaml:"name"`
+	Title    LocalizedText `yaml:"title"`
+	Types    []Type        `yaml:"types"`
+	Required bool          `yaml:"required,omitempty"`
+	Indexed  bool          `yaml:"indexed,omitempty"`
+}
+
+type TablePart struct {
+	ID         uuid.UUID     `yaml:"id"`
+	Name       string        `yaml:"name"`
+	Title      LocalizedText `yaml:"title"`
+	Attributes []Attribute   `yaml:"attributes"`
+}
+
+// CatalogDefinition describes one ML catalog and its persistent record shape.
+type CatalogDefinition struct {
+	Format            int           `yaml:"format"`
+	ID                uuid.UUID     `yaml:"id"`
+	Name              string        `yaml:"name"`
+	Title             LocalizedText `yaml:"title"`
+	Code              CatalogCode   `yaml:"code"`
+	DescriptionLength int           `yaml:"description_length"`
+	Attributes        []Attribute   `yaml:"attributes,omitempty"`
+	TableParts        []TablePart   `yaml:"table_parts,omitempty"`
+	ObjectModule      *uuid.UUID    `yaml:"object_module,omitempty"`
+	ManagerModule     *uuid.UUID    `yaml:"manager_module,omitempty"`
+}
+
 // Catalog is an immutable-by-convention snapshot of the supported metadata kinds.
 type Catalog struct {
 	Project           project.Project
 	Constants         []Constant
 	Enumerations      []Enumeration
 	DefinedTypes      []DefinedTypeObject
+	Catalogs          []CatalogDefinition
 	constantByName    map[string]int
 	constantByID      map[uuid.UUID]int
 	enumerationByName map[string]int
 	definedTypeByName map[string]int
 	enumerationByID   map[uuid.UUID]int
 	definedTypeByID   map[uuid.UUID]int
+	catalogByName     map[string]int
+	catalogByID       map[uuid.UUID]int
 }
 
 func (catalog *Catalog) ConstantByID(id uuid.UUID) (Constant, bool) {
@@ -196,6 +238,33 @@ func (catalog *Catalog) DefinedType(name string) (DefinedTypeObject, bool) {
 	return cloneDefinedType(catalog.DefinedTypes[index]), true
 }
 
+func (catalog *Catalog) CatalogDefinition(name string) (CatalogDefinition, bool) {
+	index, ok := catalog.catalogByName[strings.ToLower(name)]
+	if !ok {
+		return CatalogDefinition{}, false
+	}
+	return cloneCatalogDefinition(catalog.Catalogs[index]), true
+}
+
+func (catalog *Catalog) CatalogByID(id uuid.UUID) (CatalogDefinition, bool) {
+	index, ok := catalog.catalogByID[id]
+	if !ok {
+		return CatalogDefinition{}, false
+	}
+	return cloneCatalogDefinition(catalog.Catalogs[index]), true
+}
+
+func (catalog *Catalog) CatalogIDs() []uuid.UUID {
+	if len(catalog.Catalogs) == 0 {
+		return nil
+	}
+	result := make([]uuid.UUID, len(catalog.Catalogs))
+	for index := range catalog.Catalogs {
+		result[index] = catalog.Catalogs[index].ID
+	}
+	return result
+}
+
 func DecodeConstant(source string, reader io.Reader, manifest project.Project) (Constant, error) {
 	var value Constant
 	if err := decodeStrict(source, reader, &value); err != nil {
@@ -255,6 +324,117 @@ func DecodeDefinedType(source string, reader io.Reader, manifest project.Project
 		return DefinedTypeObject{}, err
 	}
 	return value, nil
+}
+
+func DecodeCatalog(source string, reader io.Reader, manifest project.Project) (CatalogDefinition, error) {
+	var value CatalogDefinition
+	if err := decodeStrict(source, reader, &value); err != nil {
+		return CatalogDefinition{}, err
+	}
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	switch value.Code.Type {
+	case StringType:
+		if value.Code.Length < 1 || value.Code.Length > 128 {
+			issues = append(issues, "code.length must be 1..128 for string codes")
+		}
+	case NumberType:
+		if value.Code.Length < 1 || value.Code.Length > 38 {
+			issues = append(issues, "code.length must be 1..38 for number codes")
+		}
+	default:
+		issues = append(issues, "code.type must be string or number")
+	}
+	if value.DescriptionLength < 1 || value.DescriptionLength > 1_048_576 {
+		issues = append(issues, "description_length must be 1..1048576")
+	}
+	issues = append(issues, validateAttributes("attributes", value.Attributes, manifest)...)
+	attributeNames := make(map[string]bool, len(value.Attributes))
+	for _, attribute := range value.Attributes {
+		attributeNames[strings.ToLower(attribute.Name)] = true
+	}
+	if len(value.TableParts) > 128 {
+		issues = append(issues, "table_parts must not contain more than 128 items")
+	}
+	partNames, partIDs := map[string]bool{}, map[uuid.UUID]bool{}
+	for index, part := range value.TableParts {
+		prefix := fmt.Sprintf("table_parts[%d]", index)
+		if part.ID.IsZero() {
+			issues = append(issues, prefix+".id must be a non-zero UUID")
+		}
+		if partIDs[part.ID] {
+			issues = append(issues, prefix+".id must be unique")
+		}
+		partIDs[part.ID] = true
+		if !validIdentifier(part.Name) {
+			issues = append(issues, prefix+".name must be a valid identifier")
+		}
+		folded := strings.ToLower(part.Name)
+		if partNames[folded] {
+			issues = append(issues, prefix+".name must be unique")
+		}
+		if reservedCatalogObjectName(folded) {
+			issues = append(issues, prefix+".name is reserved")
+		}
+		if attributeNames[folded] {
+			issues = append(issues, prefix+".name conflicts with an attribute")
+		}
+		partNames[folded] = true
+		issues = append(issues, validateTitle(prefix+".title", part.Title, manifest)...)
+		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, manifest)...)
+	}
+	for name, module := range map[string]*uuid.UUID{"object_module": value.ObjectModule, "manager_module": value.ManagerModule} {
+		if module != nil && module.IsZero() {
+			issues = append(issues, name+" must be a non-zero UUID")
+		}
+	}
+	if value.ObjectModule != nil && value.ManagerModule != nil && *value.ObjectModule == *value.ManagerModule {
+		issues = append(issues, "object_module and manager_module must be different")
+	}
+	if err := issuesError(source, value.Format, issues); err != nil {
+		return CatalogDefinition{}, err
+	}
+	return value, nil
+}
+
+func validateAttributes(path string, attributes []Attribute, manifest project.Project) []string {
+	if len(attributes) > 1024 {
+		return []string{path + " must not contain more than 1024 items"}
+	}
+	var issues []string
+	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+	for index, attribute := range attributes {
+		prefix := fmt.Sprintf("%s[%d]", path, index)
+		if attribute.ID.IsZero() {
+			issues = append(issues, prefix+".id must be a non-zero UUID")
+		}
+		if ids[attribute.ID] {
+			issues = append(issues, prefix+".id must be unique")
+		}
+		ids[attribute.ID] = true
+		if !validIdentifier(attribute.Name) {
+			issues = append(issues, prefix+".name must be a valid identifier")
+		}
+		folded := strings.ToLower(attribute.Name)
+		if names[folded] {
+			issues = append(issues, prefix+".name must be unique")
+		}
+		if reservedCatalogObjectName(folded) {
+			issues = append(issues, prefix+".name is reserved")
+		}
+		names[folded] = true
+		issues = append(issues, validateTitle(prefix+".title", attribute.Title, manifest)...)
+		issues = append(issues, validateTypes(prefix+".types", attribute.Types, uuid.UUID{})...)
+	}
+	return issues
+}
+
+func reservedCatalogObjectName(name string) bool {
+	switch strings.ToLower(name) {
+	case "ссылка", "ref", "код", "code", "наименование", "description", "версия", "version":
+		return true
+	default:
+		return false
+	}
 }
 
 func Encode(writer io.Writer, value any) error {
@@ -350,7 +530,7 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 			issues = append(issues, prefix+" duplicates an allowed type")
 		}
 		seen[key] = true
-		referenced := item.Kind == EnumerationType || item.Kind == DefinedType
+		referenced := item.Kind == EnumerationType || item.Kind == DefinedType || item.Kind == CatalogType
 		if referenced && (item.Reference == nil || item.Reference.IsZero()) {
 			issues = append(issues, prefix+".reference is required")
 		}
@@ -378,7 +558,7 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 			if item.Length != 0 {
 				issues = append(issues, prefix+".length is not allowed")
 			}
-		case BooleanType, DateType, UUIDType, EnumerationType, DefinedType:
+		case BooleanType, DateType, UUIDType, EnumerationType, DefinedType, CatalogType:
 			if item.Length != 0 || item.Precision != 0 || item.Scale != 0 {
 				issues = append(issues, prefix+" has unsupported qualifiers")
 			}
@@ -460,4 +640,32 @@ func cloneEnumeration(value Enumeration) Enumeration {
 func cloneDefinedType(value DefinedTypeObject) DefinedTypeObject {
 	value.Title, value.Types = cloneTitle(value.Title), cloneTypes(value.Types)
 	return value
+}
+
+func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
+	value.Title = cloneTitle(value.Title)
+	value.Attributes = cloneAttributes(value.Attributes)
+	value.TableParts = slices.Clone(value.TableParts)
+	for index := range value.TableParts {
+		value.TableParts[index].Title = cloneTitle(value.TableParts[index].Title)
+		value.TableParts[index].Attributes = cloneAttributes(value.TableParts[index].Attributes)
+	}
+	if value.ObjectModule != nil {
+		id := *value.ObjectModule
+		value.ObjectModule = &id
+	}
+	if value.ManagerModule != nil {
+		id := *value.ManagerModule
+		value.ManagerModule = &id
+	}
+	return value
+}
+
+func cloneAttributes(value []Attribute) []Attribute {
+	result := slices.Clone(value)
+	for index := range result {
+		result[index].Title = cloneTitle(result[index].Title)
+		result[index].Types = cloneTypes(result[index].Types)
+	}
+	return result
 }

@@ -1449,6 +1449,9 @@ func CollectionPropertyNames(value Value) ([]string, bool) {
 
 // SameReference compares collection object identity.
 func SameReference(left, right Value) bool {
+	if left.kind == RuntimeObjectKind && right.kind == RuntimeObjectKind && left.runtime != nil && right.runtime != nil {
+		return left.runtime.RuntimeEqual(right.runtime)
+	}
 	return left.kind == right.kind && left.object != nil && left.object == right.object
 }
 
@@ -1469,6 +1472,8 @@ func ValuesEqual(left, right Value) bool {
 		return left.boolean == right.boolean
 	case DateKind:
 		return left.dateTicks == right.dateTicks
+	case RuntimeObjectKind:
+		return left.runtime != nil && right.runtime != nil && left.runtime.RuntimeEqual(right.runtime)
 	default:
 		return left.object != nil && left.object == right.object
 	}

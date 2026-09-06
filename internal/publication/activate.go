@@ -46,6 +46,7 @@ type ActivationRequest struct {
 	Mode                        ActivationMode
 	Confirmed                   bool
 	AllowDestructive            bool
+	allowNonApplicationSchema   bool
 }
 
 type Version struct {
@@ -75,6 +76,9 @@ func Activate(ctx context.Context, pool *pgxpool.Pool, request ActivationRequest
 	if pool == nil || (request.Mode != ActivationPrimary && request.Mode != ActivationDebug) {
 		return ActiveVersion{}, schemadiff.MigrationRecord{}, fmt.Errorf("invalid publication activation request")
 	}
+	if request.Desired.Name != schemadiff.ApplicationSchema && !request.allowNonApplicationSchema {
+		return ActiveVersion{}, schemadiff.MigrationRecord{}, fmt.Errorf("publication may migrate only the ML application schema")
+	}
 	manifest, err := VerifyFile(ctx, request.PackagePath)
 	if err != nil {
 		return ActiveVersion{}, schemadiff.MigrationRecord{}, err
@@ -91,6 +95,9 @@ func Activate(ctx context.Context, pool *pgxpool.Pool, request ActivationRequest
 	targetSHA256, err := schemadiff.SchemaSHA256(request.Desired)
 	if err != nil {
 		return ActiveVersion{}, schemadiff.MigrationRecord{}, err
+	}
+	if request.Desired.Name == schemadiff.ApplicationSchema && targetSHA256 != manifest.SchemaSHA256 {
+		return ActiveVersion{}, schemadiff.MigrationRecord{}, fmt.Errorf("publication migration schema does not match packaged metadata")
 	}
 	planSHA256, err := schemadiff.PlanSHA256(request.Prepared.Plan)
 	if err != nil {

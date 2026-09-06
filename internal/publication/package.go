@@ -21,12 +21,13 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
+	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 	"go.yaml.in/yaml/v3"
 )
 
 const (
-	CurrentPackageFormat = 1
+	CurrentPackageFormat = 2
 	PackageExtension     = ".mlpkg"
 	maxSourceFileBytes   = 64 << 20
 	maxPackageInputBytes = 512 << 20
@@ -49,6 +50,8 @@ type Manifest struct {
 	ContentSHA256 string      `json:"contentSha256"`
 	Files         []FileEntry `json:"files"`
 	ConstantIDs   []uuid.UUID `json:"constantIds,omitempty"`
+	CatalogIDs    []uuid.UUID `json:"catalogIds,omitempty"`
+	SchemaSHA256  string      `json:"schemaSha256"`
 }
 
 type FileEntry struct {
@@ -154,6 +157,14 @@ func inspect(ctx context.Context, root string, state SourceState) (Manifest, []s
 	if err != nil {
 		return Manifest{}, nil, fmt.Errorf("validate application metadata: %w", err)
 	}
+	applicationSchema, err := metadataCatalog.ApplicationSchema()
+	if err != nil {
+		return Manifest{}, nil, fmt.Errorf("build application schema: %w", err)
+	}
+	schemaSHA256, err := schemadiff.SchemaSHA256(applicationSchema)
+	if err != nil {
+		return Manifest{}, nil, err
+	}
 	root, err = filepath.Abs(root)
 	if err != nil {
 		return Manifest{}, nil, fmt.Errorf("resolve ML Project path: %w", err)
@@ -186,6 +197,7 @@ func inspect(ctx context.Context, root string, state SourceState) (Manifest, []s
 		ProjectFormat: projectManifest.Format, GitCommit: strings.TrimSpace(state.GitCommit), Dirty: state.Dirty,
 		ContentSHA256: hex.EncodeToString(contentHash.Sum(nil)), Files: make([]FileEntry, len(sources)),
 		ConstantIDs: metadataCatalog.ConstantIDs(),
+		CatalogIDs:  metadataCatalog.CatalogIDs(), SchemaSHA256: schemaSHA256,
 	}
 	for index := range sources {
 		manifest.Files[index] = sources[index].entry

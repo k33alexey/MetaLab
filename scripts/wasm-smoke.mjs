@@ -180,7 +180,7 @@ function assertSuccess(result, operation) {
 function encodeAddProgram() {
   const writer = new BinaryWriter();
   writer.ascii("MLBC");
-  writer.uint16(8);
+  writer.uint16(9);
   writer.uint32(1); // modules
   writer.string("Smoke");
   writer.string("smoke.bsl");

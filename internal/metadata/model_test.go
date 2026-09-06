@@ -17,6 +17,10 @@ const (
 	enumerationID = "20000000-0000-4000-8000-000000000001"
 	enumValueID   = "20000000-0000-4000-8000-000000000002"
 	definedTypeID = "30000000-0000-4000-8000-000000000001"
+	catalogID     = "40000000-0000-4000-8000-000000000001"
+	attributeID   = "40000000-0000-4000-8000-000000000002"
+	tablePartID   = "40000000-0000-4000-8000-000000000003"
+	partFieldID   = "40000000-0000-4000-8000-000000000004"
 )
 
 func TestDecodeMetadataIsStrictAndLocalized(t *testing.T) {
@@ -199,13 +203,96 @@ types: [{kind: defined-type, reference: `+definedTypeID+`}]
 	}
 }
 
+func TestLoadCatalogWithAttributesTablePartsAndSelfReference(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeMetadata(t, root, CatalogKind, catalogID, `format: 1
+id: `+catalogID+`
+name: Контрагенты
+title: {ru: Контрагенты}
+code: {type: string, length: 9, auto: true, unique: true}
+description_length: 250
+attributes:
+  - id: `+attributeID+`
+    name: Родитель
+    title: {ru: Родитель}
+    types: [{kind: catalog, reference: `+catalogID+`}]
+    indexed: true
+table_parts:
+  - id: `+tablePartID+`
+    name: Контакты
+    title: {ru: Контакты}
+    attributes:
+      - id: `+partFieldID+`
+        name: Телефон
+        title: {ru: Телефон}
+        types: [{kind: string, length: 32}]
+`)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition, ok := catalog.CatalogDefinition("контрагенты")
+	if !ok || definition.ID.String() != catalogID || len(definition.TableParts) != 1 {
+		t.Fatalf("catalog = %+v, found=%v", definition, ok)
+	}
+	definition.Attributes[0].Name = "Changed"
+	again, _ := catalog.CatalogDefinition("Контрагенты")
+	if again.Attributes[0].Name != "Родитель" {
+		t.Fatal("catalog lookup exposed mutable attribute storage")
+	}
+}
+
+func TestDecodeCatalogRejectsInvalidShape(t *testing.T) {
+	t.Parallel()
+	_, err := DecodeCatalog("catalog.yaml", strings.NewReader(`format: 1
+id: `+catalogID+`
+name: Контрагенты
+title: {ru: Контрагенты}
+code: {type: boolean, length: 0}
+description_length: 0
+attributes:
+  - id: `+attributeID+`
+    name: Ссылка
+    title: {ru: Ссылка}
+    types: [{kind: string}]
+`), metadataManifest())
+	if err == nil || !strings.Contains(err.Error(), "code.type") || !strings.Contains(err.Error(), "reserved") {
+		t.Fatalf("DecodeCatalog() error = %v", err)
+	}
+}
+
+func TestDecodeCatalogRejectsAmbiguousObjectProperties(t *testing.T) {
+	t.Parallel()
+	_, err := DecodeCatalog("catalog.yaml", strings.NewReader(`format: 1
+id: `+catalogID+`
+name: Контрагенты
+title: {ru: Контрагенты}
+code: {type: string, length: 9}
+description_length: 250
+attributes:
+  - id: `+attributeID+`
+    name: Контакты
+    title: {ru: Контакты}
+    types: [{kind: string}]
+table_parts:
+  - id: `+tablePartID+`
+    name: Контакты
+    title: {ru: Контакты}
+    attributes: []
+`), metadataManifest())
+	if err == nil || !strings.Contains(err.Error(), "conflicts with an attribute") {
+		t.Fatalf("DecodeCatalog() error = %v", err)
+	}
+}
+
 func metadataProject(t *testing.T) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "project")
 	if err := project.Initialize(root, metadataManifest()); err != nil {
 		t.Fatal(err)
 	}
-	for _, kind := range []Kind{ConstantKind, EnumerationKind, DefinedTypeKind} {
+	for _, kind := range []Kind{ConstantKind, EnumerationKind, DefinedTypeKind, CatalogKind} {
 		if err := os.MkdirAll(filepath.Join(root, "metadata", string(kind)), 0o755); err != nil {
 			t.Fatal(err)
 		}

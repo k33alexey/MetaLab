@@ -56,6 +56,7 @@ func TestAtomicPublicationActivationIntegration(t *testing.T) {
 	first, firstMigration, err := Activate(ctx, pool, ActivationRequest{
 		PackagePath: firstPackage, Desired: desired, Prepared: firstPlan,
 		ExpectedGitCommit: repeatedCommit('1'), Mode: ActivationPrimary, Confirmed: true,
+		allowNonApplicationSchema: true,
 	})
 	if err != nil || first.Generation != 1 || firstMigration.Status != "succeeded" || first.MigrationID != firstMigration.ID {
 		t.Fatalf("first=%+v migration=%+v error=%v", first, firstMigration, err)
@@ -74,6 +75,7 @@ func TestAtomicPublicationActivationIntegration(t *testing.T) {
 		PackagePath: secondPackage, Desired: desired, Prepared: secondPlan,
 		ExpectedGitCommit: repeatedCommit('2'), ExpectedActivePackageSHA256: first.PackageSHA256,
 		Mode: ActivationPrimary, Confirmed: true,
+		allowNonApplicationSchema: true,
 	}
 	type result struct {
 		active ActiveVersion
@@ -115,6 +117,7 @@ func TestAtomicPublicationActivationIntegration(t *testing.T) {
 		PackagePath: dirtyPackage, Desired: desired, Prepared: dirtyPlan,
 		ExpectedGitCommit: repeatedCommit('3'), ExpectedActivePackageSHA256: second.PackageSHA256,
 		Mode: ActivationPrimary, Confirmed: true,
+		allowNonApplicationSchema: true,
 	}
 	if _, _, err := Activate(ctx, pool, dirtyRequest); !errors.Is(err, ErrDirtyPrimary) {
 		t.Fatalf("dirty primary Activate() error = %v", err)
@@ -146,6 +149,7 @@ FOR EACH ROW EXECUTE FUNCTION ml_core.reject_test_publication()`); err != nil {
 		PackagePath: rollbackPackage, Desired: changedDesired, Prepared: rollbackPlan,
 		ExpectedGitCommit: repeatedCommit('4'), ExpectedActivePackageSHA256: debugVersion.PackageSHA256,
 		Mode: ActivationPrimary, Confirmed: true,
+		allowNonApplicationSchema: true,
 	})
 	if err == nil || failedMigration.Status != "failed" {
 		t.Fatalf("failed atomic activation migration=%+v error=%v", failedMigration, err)
@@ -176,6 +180,7 @@ DROP FUNCTION ml_core.reject_test_publication()`); err != nil {
 		PackagePath: otherPackage, Desired: desired, Prepared: otherPlan,
 		ExpectedGitCommit: repeatedCommit('5'), ExpectedActivePackageSHA256: debugVersion.PackageSHA256,
 		Mode: ActivationPrimary, Confirmed: true,
+		allowNonApplicationSchema: true,
 	}); !errors.Is(err, ErrProjectMismatch) {
 		t.Fatalf("other-project Activate() error = %v", err)
 	}
@@ -192,6 +197,7 @@ DROP FUNCTION ml_core.reject_test_publication()`); err != nil {
 		PackagePath: fourthPackage, Desired: desired, Prepared: driftPlan,
 		ExpectedGitCommit: repeatedCommit('6'), ExpectedActivePackageSHA256: debugVersion.PackageSHA256,
 		Mode: ActivationPrimary, Confirmed: true, AllowDestructive: true,
+		allowNonApplicationSchema: true,
 	}); !errors.Is(err, ErrSchemaDiverged) {
 		t.Fatalf("diverged-schema Activate() error = %v", err)
 	}

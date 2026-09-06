@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -55,10 +56,46 @@ func Load(root string) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := catalog.indexAndValidate(); err != nil {
+	if err := loadKind(root, CatalogKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeCatalog(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.Catalogs = append(catalog.Catalogs, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	if err := catalog.indexAndValidate(root); err != nil {
 		return nil, err
 	}
 	return catalog, nil
+}
+
+// NewCatalogSnapshot validates already decoded metadata, for example from a publication package.
+func NewCatalogSnapshot(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition) (*Catalog, error) {
+	result := &Catalog{
+		Project: manifest, Constants: slices.Clone(constants), Enumerations: slices.Clone(enumerations),
+		DefinedTypes: slices.Clone(definedTypes), Catalogs: slices.Clone(catalogs),
+	}
+	for index := range result.Constants {
+		result.Constants[index] = cloneConstant(result.Constants[index])
+	}
+	for index := range result.Enumerations {
+		result.Enumerations[index] = cloneEnumeration(result.Enumerations[index])
+	}
+	for index := range result.DefinedTypes {
+		result.DefinedTypes[index] = cloneDefinedType(result.DefinedTypes[index])
+	}
+	for index := range result.Catalogs {
+		result.Catalogs[index] = cloneCatalogDefinition(result.Catalogs[index])
+	}
+	if err := result.indexAndValidate(""); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func loadKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) error) error {
@@ -110,13 +147,15 @@ func loadKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) e
 	return nil
 }
 
-func (catalog *Catalog) indexAndValidate() error {
+func (catalog *Catalog) indexAndValidate(root string) error {
 	sort.Slice(catalog.Constants, func(i, j int) bool { return catalog.Constants[i].ID.String() < catalog.Constants[j].ID.String() })
 	sort.Slice(catalog.Enumerations, func(i, j int) bool { return catalog.Enumerations[i].ID.String() < catalog.Enumerations[j].ID.String() })
 	sort.Slice(catalog.DefinedTypes, func(i, j int) bool { return catalog.DefinedTypes[i].ID.String() < catalog.DefinedTypes[j].ID.String() })
+	sort.Slice(catalog.Catalogs, func(i, j int) bool { return catalog.Catalogs[i].ID.String() < catalog.Catalogs[j].ID.String() })
 	catalog.constantByName, catalog.constantByID = make(map[string]int, len(catalog.Constants)), make(map[uuid.UUID]int, len(catalog.Constants))
 	catalog.enumerationByName, catalog.enumerationByID = make(map[string]int, len(catalog.Enumerations)), make(map[uuid.UUID]int, len(catalog.Enumerations))
 	catalog.definedTypeByName, catalog.definedTypeByID = make(map[string]int, len(catalog.DefinedTypes)), make(map[uuid.UUID]int, len(catalog.DefinedTypes))
+	catalog.catalogByName, catalog.catalogByID = make(map[string]int, len(catalog.Catalogs)), make(map[uuid.UUID]int, len(catalog.Catalogs))
 	allIDs := map[uuid.UUID]string{}
 	add := func(kind string, id uuid.UUID, name string, index int, names map[string]int, ids map[uuid.UUID]int) error {
 		folded := strings.ToLower(name)
@@ -153,6 +192,29 @@ func (catalog *Catalog) indexAndValidate() error {
 			return err
 		}
 	}
+	for index, item := range catalog.Catalogs {
+		if err := add("catalog", item.ID, item.Name, index, catalog.catalogByName, catalog.catalogByID); err != nil {
+			return err
+		}
+		for _, attribute := range item.Attributes {
+			if previous, ok := allIDs[attribute.ID]; ok {
+				return fmt.Errorf("%w: %s and catalog attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
+			}
+			allIDs[attribute.ID] = "catalog attribute " + item.Name + "." + attribute.Name
+		}
+		for _, part := range item.TableParts {
+			if previous, ok := allIDs[part.ID]; ok {
+				return fmt.Errorf("%w: %s and catalog table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
+			}
+			allIDs[part.ID] = "catalog table part " + item.Name + "." + part.Name
+			for _, attribute := range part.Attributes {
+				if previous, ok := allIDs[attribute.ID]; ok {
+					return fmt.Errorf("%w: %s and catalog table part attribute %s.%s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, attribute.Name, attribute.ID)
+				}
+				allIDs[attribute.ID] = "catalog table part attribute " + item.Name + "." + part.Name + "." + attribute.Name
+			}
+		}
+	}
 	for _, item := range catalog.Constants {
 		if err := catalog.validateReferences("constant "+item.Name, item.Types); err != nil {
 			return err
@@ -166,6 +228,33 @@ func (catalog *Catalog) indexAndValidate() error {
 	for _, item := range catalog.DefinedTypes {
 		if err := catalog.validateReferences("defined type "+item.Name, item.Types); err != nil {
 			return err
+		}
+	}
+	for _, item := range catalog.Catalogs {
+		for _, attribute := range item.Attributes {
+			if err := catalog.validateReferences("catalog "+item.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
+				return err
+			}
+		}
+		for _, part := range item.TableParts {
+			for _, attribute := range part.Attributes {
+				if err := catalog.validateReferences("catalog "+item.Name+" table part "+part.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
+					return err
+				}
+			}
+		}
+		for role, module := range map[string]*uuid.UUID{"object": item.ObjectModule, "manager": item.ManagerModule} {
+			if module == nil {
+				continue
+			}
+			if root == "" {
+				continue
+			}
+			path := filepath.Join(root, "modules", module.String()+".bsl")
+			info, err := os.Lstat(path)
+			if err != nil || !info.Mode().IsRegular() || info.Mode()&fs.ModeSymlink != 0 {
+				return fmt.Errorf("catalog %s %s module %s is missing or unsafe", item.Name, role, module)
+			}
 		}
 	}
 	return catalog.validateDefinedTypeCycles()
@@ -184,6 +273,10 @@ func (catalog *Catalog) validateReferences(owner string, types []Type) error {
 		case DefinedType:
 			if _, ok := catalog.definedTypeByID[*item.Reference]; !ok {
 				return fmt.Errorf("%s references unknown defined type %s", owner, item.Reference)
+			}
+		case CatalogType:
+			if _, ok := catalog.catalogByID[*item.Reference]; !ok {
+				return fmt.Errorf("%s references unknown catalog %s", owner, item.Reference)
 			}
 		}
 	}

@@ -13,9 +13,10 @@ import (
 
 // ModuleSource is one named BSL module compiled together with related modules.
 type ModuleSource struct {
-	Name     string
-	Filename string
-	Source   string
+	Name                string
+	Filename            string
+	Source              string
+	PredefinedVariables []string
 }
 
 // CompileSource performs the complete frontend and compilation pass.
@@ -39,6 +40,9 @@ func CompileModules(sources []ModuleSource) (*bytecode.Program, []syntax.Diagnos
 		}
 		module, current := syntax.Parse(source.Filename, source.Source)
 		diagnostics = append(diagnostics, current...)
+		for _, name := range source.PredefinedVariables {
+			module.Variables = append(module.Variables, syntax.Variable{Name: name})
+		}
 		parsed = append(parsed, parsedModule{name: name, filename: source.Filename, syntax: module})
 	}
 	if len(diagnostics) != 0 {
@@ -818,7 +822,13 @@ func metadataAllowed(context syntax.ExecutionContext) bool {
 
 func metadataCallPath(call *syntax.CallExpression) (string, bool) {
 	parts, ok := expressionPath(call.Receiver)
-	if !ok || len(parts) != 2 || !(strings.EqualFold(parts[0], "Константы") || strings.EqualFold(parts[0], "Constants")) {
+	if !ok || len(parts) != 2 {
+		return "", false
+	}
+	if strings.EqualFold(parts[0], "Справочники") || strings.EqualFold(parts[0], "Catalogs") {
+		return catalogCallPath(parts[1], call.Name, len(call.Arguments))
+	}
+	if !(strings.EqualFold(parts[0], "Константы") || strings.EqualFold(parts[0], "Constants")) {
 		return "", false
 	}
 	operation := ""
@@ -837,6 +847,24 @@ func metadataCallPath(call *syntax.CallExpression) (string, bool) {
 		return "", false
 	}
 	return "constant/" + parts[1] + "/" + operation, true
+}
+
+func catalogCallPath(catalog, method string, arity int) (string, bool) {
+	operation, expected := "", -1
+	switch {
+	case strings.EqualFold(method, "СоздатьЭлемент"), strings.EqualFold(method, "CreateItem"):
+		operation, expected = "create", 0
+	case strings.EqualFold(method, "ПолучитьОбъект"), strings.EqualFold(method, "GetObject"):
+		operation, expected = "get", 1
+	case strings.EqualFold(method, "НайтиПоКоду"), strings.EqualFold(method, "FindByCode"):
+		operation, expected = "find-code", 1
+	case strings.EqualFold(method, "ПолучитьСсылку"), strings.EqualFold(method, "GetRef"), strings.EqualFold(method, "GetReference"):
+		operation, expected = "reference", 1
+	}
+	if operation == "" || arity != expected {
+		return "", false
+	}
+	return "catalog/" + catalog + "/" + operation, true
 }
 
 func expressionPath(expression syntax.Expression) ([]string, bool) {

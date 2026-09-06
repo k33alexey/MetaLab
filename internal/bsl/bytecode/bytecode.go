@@ -11,7 +11,7 @@ import (
 const maxIndexedItems = 1 << 16
 
 // Version changes whenever the bytecode contract becomes incompatible.
-const Version uint16 = 8
+const Version uint16 = 9
 
 // ExecutionContext is the runtime placement of one compiled routine.
 type ExecutionContext uint8
@@ -370,6 +370,13 @@ func validateFunction(program *Program, function *Function) error {
 	if len(function.Constants) > maxIndexedItems || len(function.CallSites) > maxIndexedItems || len(function.Objects) > maxIndexedItems ||
 		len(function.ModuleVars) > maxIndexedItems || len(function.Exceptions) > maxIndexedItems {
 		return fmt.Errorf("routine exceeds a 16-bit metadata index space")
+	}
+	for index, value := range function.Constants {
+		switch value.Kind() {
+		case UndefinedKind, NumberKind, StringKind, BooleanKind, NullKind, DateKind:
+		default:
+			return fmt.Errorf("constant %d has unsupported kind %s", index, value.Kind())
+		}
 	}
 	if len(function.Parameters) != 0 && len(function.Parameters) != int(function.Arity) {
 		return fmt.Errorf("parameter metadata count %d differs from arity %d", len(function.Parameters), function.Arity)

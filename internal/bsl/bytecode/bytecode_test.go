@@ -57,6 +57,42 @@ func TestValueDynamicMemoryIsBounded(t *testing.T) {
 	}
 }
 
+func TestRuntimeObjectIsBoundedAndCannotBecomeBytecodeConstant(t *testing.T) {
+	t.Parallel()
+
+	object := &testRuntimeObject{size: 256}
+	value, err := Object(object)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if size, ok := value.DynamicMemory(256); !ok || size != 256 || !ValuesEqual(value, value) {
+		t.Fatalf("runtime object memory=%d valid=%v equal=%v", size, ok, ValuesEqual(value, value))
+	}
+	if _, ok := value.DynamicMemory(255); ok {
+		t.Fatal("runtime object exceeded its memory limit")
+	}
+	program := programWith(Function{
+		Name: "Test", MaxStack: 1, Constants: []Value{value}, Code: returningConstant(),
+	})
+	if err := program.Validate(); err == nil || !strings.Contains(err.Error(), "unsupported kind runtime_object") {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if _, err := Object(nil); err == nil {
+		t.Fatal("Object(nil) succeeded")
+	}
+}
+
+type testRuntimeObject struct{ size uint64 }
+
+func (*testRuntimeObject) RuntimeTypeName() string { return "TestObject" }
+func (object *testRuntimeObject) RuntimeDynamicMemory(limit uint64) (uint64, bool) {
+	return object.size, object.size <= limit
+}
+func (object *testRuntimeObject) RuntimeEqual(other RuntimeObject) bool {
+	candidate, ok := other.(*testRuntimeObject)
+	return ok && candidate == object
+}
+
 func TestProgramValidationAndLookup(t *testing.T) {
 	t.Parallel()
 

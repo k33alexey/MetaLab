@@ -29,6 +29,7 @@ const (
 	KeyAndValueKind
 	NullKind
 	DateKind
+	RuntimeObjectKind
 )
 
 var valueKindNames = [...]string{
@@ -48,6 +49,15 @@ var valueKindNames = [...]string{
 	KeyAndValueKind:       "key_and_value",
 	NullKind:              "null",
 	DateKind:              "date",
+	RuntimeObjectKind:     "runtime_object",
+}
+
+// RuntimeObject is an opaque server-side BSL object supplied by a platform runtime.
+// It is never accepted in bytecode constants or serialized to a client artifact.
+type RuntimeObject interface {
+	RuntimeTypeName() string
+	RuntimeDynamicMemory(limit uint64) (uint64, bool)
+	RuntimeEqual(other RuntimeObject) bool
 }
 
 func (kind ValueKind) String() string {
@@ -66,6 +76,7 @@ type Value struct {
 	boolean   bool
 	object    *collectionObject
 	dateTicks int64
+	runtime   RuntimeObject
 }
 
 // Undefined returns the BSL Undefined value.
@@ -113,6 +124,14 @@ func Array(values ...Value) Value {
 // Null returns the database NULL value, which is distinct from Undefined.
 func Null() Value { return Value{kind: NullKind} }
 
+// Object wraps one server-side platform object as a BSL runtime value.
+func Object(object RuntimeObject) (Value, error) {
+	if object == nil {
+		return Undefined(), fmt.Errorf("runtime object is nil")
+	}
+	return Value{kind: RuntimeObjectKind, runtime: object}, nil
+}
+
 // Date returns a date with 100-microsecond precision in the supported BSL range.
 func Date(value time.Time) (Value, error) {
 	value = value.UTC()
@@ -158,6 +177,11 @@ func ParseDate(text string) (Value, error) {
 
 // Kind returns the value kind.
 func (value Value) Kind() ValueKind { return value.kind }
+
+// AsRuntimeObject returns the opaque platform object carried by this value.
+func (value Value) AsRuntimeObject() (RuntimeObject, bool) {
+	return value.runtime, value.kind == RuntimeObjectKind && value.runtime != nil
+}
 
 // IsCollection reports whether the value is one of the reference collection values.
 func (value Value) IsCollection() bool {
@@ -234,6 +258,10 @@ func dynamicMemory(value Value, limit uint64, depth int, visited map[*collection
 				visited = make(map[*collectionObject]struct{})
 			}
 			return value.object.dynamicMemory(limit, depth, visited)
+		}
+	case RuntimeObjectKind:
+		if value.runtime != nil {
+			return value.runtime.RuntimeDynamicMemory(limit)
 		}
 	}
 	return size, size <= limit
@@ -330,6 +358,11 @@ func (value Value) String() string {
 	case DateKind:
 		date, _ := value.AsDate()
 		return date.Format("2006-01-02 15:04:05.0000")
+	case RuntimeObjectKind:
+		if value.runtime == nil {
+			return "runtime_object"
+		}
+		return value.runtime.RuntimeTypeName()
 	default:
 		return fmt.Sprintf("value(%d)", value.kind)
 	}

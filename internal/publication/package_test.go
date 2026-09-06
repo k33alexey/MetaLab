@@ -170,6 +170,33 @@ func TestPackageCarriesVerifiedConstantIDs(t *testing.T) {
 	}
 }
 
+func TestPackageCarriesCatalogSchemaIdentity(t *testing.T) {
+	t.Parallel()
+	root := publicationProject(t)
+	id := uuid.MustNew()
+	attributeID := uuid.MustNew()
+	relative, _ := project.MetadataPath("catalogs", id)
+	absolute := filepath.Join(root, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "format: 1\nid: " + id.String() + "\nname: Товары\ntitle: {ru: Товары}\n" +
+		"code: {type: string, length: 9, auto: true, unique: true}\ndescription_length: 250\n" +
+		"attributes:\n  - id: " + attributeID.String() + "\n    name: Артикул\n    title: {ru: Артикул}\n    types: [{kind: string, length: 32}]\n    indexed: true\n"
+	if err := os.WriteFile(absolute, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	packagePath := filepath.Join(t.TempDir(), "catalog.mlpkg")
+	built, err := BuildFile(context.Background(), root, packagePath, SourceState{})
+	if err != nil || len(built.CatalogIDs) != 1 || built.CatalogIDs[0] != id || len(built.SchemaSHA256) != 64 {
+		t.Fatalf("built=%+v error=%v", built, err)
+	}
+	verified, err := VerifyFile(context.Background(), packagePath)
+	if err != nil || !reflect.DeepEqual(verified, built) {
+		t.Fatalf("verified=%+v error=%v", verified, err)
+	}
+}
+
 func TestBuildHonoursCancellationAndRejectsSymlinks(t *testing.T) {
 	root := publicationProject(t)
 	ctx, cancel := context.WithCancel(context.Background())

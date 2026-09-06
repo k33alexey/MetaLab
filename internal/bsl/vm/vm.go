@@ -61,6 +61,21 @@ type MetadataRuntime interface {
 	GetDefinedType(context.Context, string) (bytecode.Value, error)
 }
 
+// CatalogRuntime resolves catalog manager operations for server-side BSL.
+type CatalogRuntime interface {
+	CreateCatalogObject(context.Context, string) (bytecode.Value, error)
+	GetCatalogObject(context.Context, string, bytecode.Value) (bytecode.Value, error)
+	FindCatalogByCode(context.Context, string, bytecode.Value) (bytecode.Value, error)
+	GetCatalogReference(context.Context, string, bytecode.Value) (bytecode.Value, error)
+}
+
+// MetadataObjectRuntime supplies properties and methods of opaque server objects.
+type MetadataObjectRuntime interface {
+	GetObjectProperty(context.Context, bytecode.RuntimeObject, string) (bytecode.Value, error)
+	SetObjectProperty(context.Context, bytecode.RuntimeObject, string, bytecode.Value) error
+	CallObjectMethod(context.Context, bytecode.RuntimeObject, string, []bytecode.Value) (bytecode.Value, error)
+}
+
 type executionEnvironment struct {
 	side     ExecutionSide
 	server   ServerCaller
@@ -333,6 +348,12 @@ func (runtimeContext *Context) Call(name string, arguments ...bytecode.Value) (b
 	return runtimeContext.CallContext(context.Background(), name, arguments...)
 }
 
+// HasRoutine reports whether this context can resolve a module-qualified routine.
+func (runtimeContext *Context) HasRoutine(module, name string) bool {
+	_, ok := runtimeContext.machine.program.Lookup(module + "." + name)
+	return ok
+}
+
 // CallContext executes a routine in this session with cancellation support.
 func (runtimeContext *Context) CallContext(ctx context.Context, name string, arguments ...bytecode.Value) (bytecode.Value, error) {
 	function, ok := runtimeContext.machine.lookup(name)
@@ -391,6 +412,76 @@ func (runtimeContext *Context) CallContext(ctx context.Context, name string, arg
 		return value, finalizeRuntimeError(runtimeContext.machine.program, callErr)
 	}
 	return value, nil
+}
+
+// CallContextMutable executes a server routine and returns final values of by-reference parameters.
+func (runtimeContext *Context) CallContextMutable(ctx context.Context, name string, arguments ...bytecode.Value) (bytecode.Value, []bytecode.Value, error) {
+	function, ok := runtimeContext.machine.lookup(name)
+	if !ok {
+		return bytecode.Undefined(), nil, fmt.Errorf("routine %q not found", name)
+	}
+	completed, err := completeArguments(function, arguments)
+	if err != nil {
+		return bytecode.Undefined(), nil, err
+	}
+	if runtimeContext.env.side != ServerSide || !function.Context.AllowsServer() {
+		return bytecode.Undefined(), nil, unavailableContextError(function, runtimeContext.env.side)
+	}
+	runtimeContext.mutex.Lock()
+	defer runtimeContext.mutex.Unlock()
+	budget, err := newExecutionBudget(ctx, runtimeContext.machine.limits, completed, &runtimeContext.memory)
+	if err != nil {
+		return bytecode.Undefined(), nil, err
+	}
+	callArguments := make([]callArgument, len(completed))
+	for index, value := range completed {
+		callArguments[index] = callArgument{value: value, identity: uint64(index + 1)}
+	}
+	value, callErr := executeAdvanced(runtimeContext.machine.program, function, callArguments, nil, runtimeContext.modules, runtimeContext.env, &budget, 0)
+	if memory, valid := moduleValuesMemory(runtimeContext.machine.moduleMemory, runtimeContext.modules, runtimeContext.machine.limits.MaxMemoryBytes); valid {
+		runtimeContext.memory = memory
+	} else {
+		callErr = resourceFailure(function, firstInstruction(function), memoryLimitError(runtimeContext.machine.limits.MaxMemoryBytes))
+	}
+	finalArguments := make([]bytecode.Value, len(callArguments))
+	for index := range callArguments {
+		finalArguments[index] = callArguments[index].value
+	}
+	if callErr != nil {
+		return value, finalArguments, finalizeRuntimeError(runtimeContext.machine.program, callErr)
+	}
+	return value, finalArguments, nil
+}
+
+// SetModuleVariable sets a declared module variable while preserving the context memory limit.
+func (runtimeContext *Context) SetModuleVariable(module, name string, value bytecode.Value) error {
+	moduleIndex, variableIndex := -1, -1
+	for index, definition := range runtimeContext.machine.program.Modules {
+		if strings.EqualFold(definition.Name, module) {
+			moduleIndex = index
+			for variable, item := range definition.Variables {
+				if strings.EqualFold(item.Name, name) {
+					variableIndex = variable
+					break
+				}
+			}
+			break
+		}
+	}
+	if moduleIndex < 0 || variableIndex < 0 {
+		return fmt.Errorf("module variable %s.%s not found", module, name)
+	}
+	runtimeContext.mutex.Lock()
+	defer runtimeContext.mutex.Unlock()
+	previous := runtimeContext.modules[moduleIndex][variableIndex]
+	runtimeContext.modules[moduleIndex][variableIndex] = value
+	memory, ok := moduleValuesMemory(runtimeContext.machine.moduleMemory, runtimeContext.modules, runtimeContext.machine.limits.MaxMemoryBytes)
+	if !ok {
+		runtimeContext.modules[moduleIndex][variableIndex] = previous
+		return memoryLimitError(runtimeContext.machine.limits.MaxMemoryBytes)
+	}
+	runtimeContext.memory = memory
+	return nil
 }
 
 func allowsSide(context bytecode.ExecutionContext, side ExecutionSide) bool {
@@ -1003,15 +1094,25 @@ func executeAdvanced(
 				arguments[index] = pop()
 			}
 			receiver := pop()
-			mutation := bytecode.CollectionMutationEstimate(receiver, operation.Name, arguments)
-			detached := bytecode.CollectionDetachedResultEstimate(receiver, operation.Name)
-			if detached > ^uint64(0)-mutation {
-				return bytecode.Undefined(), resourceFailure(function, instruction, memoryLimitError(budget.limits.MaxMemoryBytes))
+			var result bytecode.Value
+			var err error
+			_, runtimeObject := receiver.AsRuntimeObject()
+			if object, ok := receiver.AsRuntimeObject(); ok {
+				objectContext, cancel := budget.rpcContext()
+				result, err = dispatchObjectMethod(objectContext, env, object, operation.Name, arguments)
+				cancel()
+				err = budget.externalError(err)
+			} else {
+				mutation := bytecode.CollectionMutationEstimate(receiver, operation.Name, arguments)
+				detached := bytecode.CollectionDetachedResultEstimate(receiver, operation.Name)
+				if detached > ^uint64(0)-mutation {
+					return bytecode.Undefined(), resourceFailure(function, instruction, memoryLimitError(budget.limits.MaxMemoryBytes))
+				}
+				if err := budget.reserveMemory(mutation + detached); err != nil {
+					return bytecode.Undefined(), resourceFailure(function, instruction, err)
+				}
+				result, err = bytecode.CollectionMethod(receiver, operation.Name, arguments)
 			}
-			if err := budget.reserveMemory(mutation + detached); err != nil {
-				return bytecode.Undefined(), resourceFailure(function, instruction, err)
-			}
-			result, err := bytecode.CollectionMethod(receiver, operation.Name, arguments)
 			if err != nil {
 				failure = runtimeFailure(function, instruction, err.Error())
 				break
@@ -1029,19 +1130,48 @@ func executeAdvanced(
 					return bytecode.Undefined(), resourceFailure(function, instruction, err)
 				}
 			}
+			if runtimeObject {
+				if err := budget.retain(result); err != nil {
+					return bytecode.Undefined(), resourceFailure(function, instruction, err)
+				}
+			}
 			push(result)
 		case bytecode.OpGetProperty:
 			operation := function.Objects[instruction.Operand]
-			result, err := bytecode.CollectionProperty(pop(), operation.Name)
+			receiver := pop()
+			var result bytecode.Value
+			var err error
+			if object, ok := receiver.AsRuntimeObject(); ok {
+				objectContext, cancel := budget.rpcContext()
+				result, err = dispatchObjectProperty(objectContext, env, object, operation.Name)
+				cancel()
+				err = budget.externalError(err)
+			} else {
+				result, err = bytecode.CollectionProperty(receiver, operation.Name)
+			}
 			if err != nil {
 				failure = runtimeFailure(function, instruction, err.Error())
 				break
+			}
+			if result.Kind() == bytecode.RuntimeObjectKind {
+				if err := budget.retain(result); err != nil {
+					return bytecode.Undefined(), resourceFailure(function, instruction, err)
+				}
 			}
 			push(result)
 		case bytecode.OpSetProperty:
 			operation := function.Objects[instruction.Operand]
 			value, receiver := pop(), pop()
-			if err := bytecode.SetCollectionProperty(receiver, operation.Name, value); err != nil {
+			var err error
+			if object, ok := receiver.AsRuntimeObject(); ok {
+				objectContext, cancel := budget.rpcContext()
+				err = dispatchSetObjectProperty(objectContext, env, object, operation.Name, value)
+				cancel()
+				err = budget.externalError(err)
+			} else {
+				err = bytecode.SetCollectionProperty(receiver, operation.Name, value)
+			}
+			if err != nil {
 				failure = runtimeFailure(function, instruction, err.Error())
 				break
 			}
@@ -1146,9 +1276,68 @@ func dispatchMetadata(ctx context.Context, env executionEnvironment, path string
 		return env.metadata.GetEnumerationValue(ctx, parts[1], parts[2])
 	case len(parts) == 2 && parts[0] == "defined-type" && len(arguments) == 0:
 		return env.metadata.GetDefinedType(ctx, parts[1])
+	case len(parts) == 3 && parts[0] == "catalog":
+		runtime, ok := env.metadata.(CatalogRuntime)
+		if !ok {
+			return bytecode.Undefined(), fmt.Errorf("catalog runtime is not configured")
+		}
+		switch parts[2] {
+		case "create":
+			if len(arguments) == 0 {
+				return runtime.CreateCatalogObject(ctx, parts[1])
+			}
+		case "get":
+			if len(arguments) == 1 {
+				return runtime.GetCatalogObject(ctx, parts[1], arguments[0])
+			}
+		case "find-code":
+			if len(arguments) == 1 {
+				return runtime.FindCatalogByCode(ctx, parts[1], arguments[0])
+			}
+		case "reference":
+			if len(arguments) == 1 {
+				return runtime.GetCatalogReference(ctx, parts[1], arguments[0])
+			}
+		}
+		return bytecode.Undefined(), fmt.Errorf("invalid application metadata operation %q", path)
 	default:
 		return bytecode.Undefined(), fmt.Errorf("invalid application metadata operation %q", path)
 	}
+}
+
+func objectRuntime(env executionEnvironment) (MetadataObjectRuntime, error) {
+	if env.side != ServerSide {
+		return nil, fmt.Errorf("application objects are only available in server context")
+	}
+	runtime, ok := env.metadata.(MetadataObjectRuntime)
+	if !ok {
+		return nil, fmt.Errorf("application object runtime is not configured")
+	}
+	return runtime, nil
+}
+
+func dispatchObjectProperty(ctx context.Context, env executionEnvironment, object bytecode.RuntimeObject, name string) (bytecode.Value, error) {
+	runtime, err := objectRuntime(env)
+	if err != nil {
+		return bytecode.Undefined(), err
+	}
+	return runtime.GetObjectProperty(ctx, object, name)
+}
+
+func dispatchSetObjectProperty(ctx context.Context, env executionEnvironment, object bytecode.RuntimeObject, name string, value bytecode.Value) error {
+	runtime, err := objectRuntime(env)
+	if err != nil {
+		return err
+	}
+	return runtime.SetObjectProperty(ctx, object, name, value)
+}
+
+func dispatchObjectMethod(ctx context.Context, env executionEnvironment, object bytecode.RuntimeObject, name string, arguments []bytecode.Value) (bytecode.Value, error) {
+	runtime, err := objectRuntime(env)
+	if err != nil {
+		return bytecode.Undefined(), err
+	}
+	return runtime.CallObjectMethod(ctx, object, name, arguments)
 }
 
 func findExceptionHandler(function *bytecode.Function, instruction int) int {
