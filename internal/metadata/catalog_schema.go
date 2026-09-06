@@ -22,6 +22,14 @@ func (catalog *Catalog) ApplicationSchema() (schemadiff.Schema, error) {
 		schema.Tables = append(schema.Tables, table)
 		schema.Tables = append(schema.Tables, parts...)
 	}
+	for _, definition := range catalog.Documents {
+		table, parts, err := catalog.documentTables(definition)
+		if err != nil {
+			return schemadiff.Schema{}, err
+		}
+		schema.Tables = append(schema.Tables, table)
+		schema.Tables = append(schema.Tables, parts...)
+	}
 	if err := schema.NormalizeAndValidate(); err != nil {
 		return schemadiff.Schema{}, fmt.Errorf("build application schema: %w", err)
 	}
@@ -33,6 +41,9 @@ func PhysicalCatalogTable(id uuid.UUID) (string, error) { return schemadiff.Tabl
 
 // PhysicalAttributeColumn returns the stable PostgreSQL column name for an attribute UUID.
 func PhysicalAttributeColumn(id uuid.UUID) (string, error) { return schemadiff.ColumnName(id) }
+
+// PhysicalDocumentTable returns the stable PostgreSQL table name for a document UUID.
+func PhysicalDocumentTable(id uuid.UUID) (string, error) { return schemadiff.TableName(id) }
 
 func (catalog *Catalog) catalogTables(definition CatalogDefinition) (schemadiff.Table, []schemadiff.Table, error) {
 	tableName, err := PhysicalCatalogTable(definition.ID)
@@ -59,11 +70,23 @@ func (catalog *Catalog) catalogTables(definition CatalogDefinition) (schemadiff.
 			return schemadiff.Table{}, nil, fmt.Errorf("catalog %s attribute %s: %w", definition.Name, attribute.Name, err)
 		}
 	}
-	parts := make([]schemadiff.Table, 0, len(definition.TableParts))
-	for _, part := range definition.TableParts {
+	parts, err := catalog.tablePartTables("catalog", definition.Name, definition.ID, definition.TableParts)
+	if err != nil {
+		return schemadiff.Table{}, nil, err
+	}
+	return table, parts, nil
+}
+
+func (catalog *Catalog) tablePartTables(ownerKind, ownerName string, ownerID uuid.UUID, definitions []TablePart) ([]schemadiff.Table, error) {
+	ownerTable, err := schemadiff.TableName(ownerID)
+	if err != nil {
+		return nil, err
+	}
+	parts := make([]schemadiff.Table, 0, len(definitions))
+	for _, part := range definitions {
 		partName, err := PhysicalCatalogTable(part.ID)
 		if err != nil {
-			return schemadiff.Table{}, nil, err
+			return nil, err
 		}
 		partTable := schemadiff.Table{
 			Name: partName,
@@ -73,17 +96,17 @@ func (catalog *Catalog) catalogTables(definition CatalogDefinition) (schemadiff.
 			},
 			Constraints: []schemadiff.Constraint{
 				{Name: physicalObjectName("pk", part.ID), Type: "primary_key", Definition: "PRIMARY KEY (owner_ref, line_no)"},
-				{Name: physicalObjectName("fk", part.ID), Type: "foreign_key", Definition: "FOREIGN KEY (owner_ref) REFERENCES " + schemadiff.ApplicationSchema + "." + tableName + "(ref) ON DELETE CASCADE"},
+				{Name: physicalObjectName("fk", part.ID), Type: "foreign_key", Definition: "FOREIGN KEY (owner_ref) REFERENCES " + schemadiff.ApplicationSchema + "." + ownerTable + "(ref) ON DELETE CASCADE"},
 			},
 		}
 		for _, attribute := range part.Attributes {
 			if err := catalog.appendAttributeSchema(&partTable, attribute); err != nil {
-				return schemadiff.Table{}, nil, fmt.Errorf("catalog %s table part %s attribute %s: %w", definition.Name, part.Name, attribute.Name, err)
+				return nil, fmt.Errorf("%s %s table part %s attribute %s: %w", ownerKind, ownerName, part.Name, attribute.Name, err)
 			}
 		}
 		parts = append(parts, partTable)
 	}
-	return table, parts, nil
+	return parts, nil
 }
 
 func (catalog *Catalog) appendAttributeSchema(table *schemadiff.Table, attribute Attribute) error {
@@ -99,8 +122,8 @@ func (catalog *Catalog) appendAttributeSchema(table *schemadiff.Table, attribute
 	if attribute.Indexed {
 		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("i", attribute.ID), Method: "btree", Keys: []string{columnName}})
 	}
-	if storage.referenceCatalog != nil {
-		target, err := PhysicalCatalogTable(*storage.referenceCatalog)
+	if storage.referenceObject != nil {
+		target, err := schemadiff.TableName(*storage.referenceObject)
 		if err != nil {
 			return err
 		}
@@ -113,10 +136,10 @@ func (catalog *Catalog) appendAttributeSchema(table *schemadiff.Table, attribute
 }
 
 type attributeStorage struct {
-	sqlType          string
-	valueType        TypeKind
-	referenceCatalog *uuid.UUID
-	composite        bool
+	sqlType         string
+	valueType       TypeKind
+	referenceObject *uuid.UUID
+	composite       bool
 }
 
 func (catalog *Catalog) attributeStorage(types []Type) (attributeStorage, error) {
@@ -141,11 +164,11 @@ func (catalog *Catalog) attributeStorage(types []Type) (attributeStorage, error)
 		storage.sqlType = "boolean"
 	case DateType:
 		storage.sqlType = "timestamp with time zone"
-	case UUIDType, EnumerationType, CatalogType:
+	case UUIDType, EnumerationType, CatalogType, DocumentType:
 		storage.sqlType = "uuid"
-		if item.Kind == CatalogType {
+		if item.Kind == CatalogType || item.Kind == DocumentType {
 			id := *item.Reference
-			storage.referenceCatalog = &id
+			storage.referenceObject = &id
 		}
 	default:
 		return attributeStorage{}, fmt.Errorf("unsupported resolved type %s", item.Kind)

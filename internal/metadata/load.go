@@ -13,7 +13,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// Load reads and cross-validates constants, enumerations and defined types.
+// Load reads and cross-validates all currently supported application metadata.
 func Load(root string) (*Catalog, error) {
 	manifest, err := project.ValidateLayout(root)
 	if err != nil {
@@ -68,6 +68,18 @@ func Load(root string) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := loadKind(root, DocumentKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeDocument(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.Documents = append(catalog.Documents, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := catalog.indexAndValidate(root); err != nil {
 		return nil, err
 	}
@@ -75,10 +87,10 @@ func Load(root string) (*Catalog, error) {
 }
 
 // NewCatalogSnapshot validates already decoded metadata, for example from a publication package.
-func NewCatalogSnapshot(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition) (*Catalog, error) {
+func NewCatalogSnapshot(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition) (*Catalog, error) {
 	result := &Catalog{
 		Project: manifest, Constants: slices.Clone(constants), Enumerations: slices.Clone(enumerations),
-		DefinedTypes: slices.Clone(definedTypes), Catalogs: slices.Clone(catalogs),
+		DefinedTypes: slices.Clone(definedTypes), Catalogs: slices.Clone(catalogs), Documents: slices.Clone(documents),
 	}
 	for index := range result.Constants {
 		result.Constants[index] = cloneConstant(result.Constants[index])
@@ -91,6 +103,9 @@ func NewCatalogSnapshot(manifest project.Project, constants []Constant, enumerat
 	}
 	for index := range result.Catalogs {
 		result.Catalogs[index] = cloneCatalogDefinition(result.Catalogs[index])
+	}
+	for index := range result.Documents {
+		result.Documents[index] = cloneDocumentDefinition(result.Documents[index])
 	}
 	if err := result.indexAndValidate(""); err != nil {
 		return nil, err
@@ -152,10 +167,12 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	sort.Slice(catalog.Enumerations, func(i, j int) bool { return catalog.Enumerations[i].ID.String() < catalog.Enumerations[j].ID.String() })
 	sort.Slice(catalog.DefinedTypes, func(i, j int) bool { return catalog.DefinedTypes[i].ID.String() < catalog.DefinedTypes[j].ID.String() })
 	sort.Slice(catalog.Catalogs, func(i, j int) bool { return catalog.Catalogs[i].ID.String() < catalog.Catalogs[j].ID.String() })
+	sort.Slice(catalog.Documents, func(i, j int) bool { return catalog.Documents[i].ID.String() < catalog.Documents[j].ID.String() })
 	catalog.constantByName, catalog.constantByID = make(map[string]int, len(catalog.Constants)), make(map[uuid.UUID]int, len(catalog.Constants))
 	catalog.enumerationByName, catalog.enumerationByID = make(map[string]int, len(catalog.Enumerations)), make(map[uuid.UUID]int, len(catalog.Enumerations))
 	catalog.definedTypeByName, catalog.definedTypeByID = make(map[string]int, len(catalog.DefinedTypes)), make(map[uuid.UUID]int, len(catalog.DefinedTypes))
 	catalog.catalogByName, catalog.catalogByID = make(map[string]int, len(catalog.Catalogs)), make(map[uuid.UUID]int, len(catalog.Catalogs))
+	catalog.documentByName, catalog.documentByID = make(map[string]int, len(catalog.Documents)), make(map[uuid.UUID]int, len(catalog.Documents))
 	allIDs := map[uuid.UUID]string{}
 	add := func(kind string, id uuid.UUID, name string, index int, names map[string]int, ids map[uuid.UUID]int) error {
 		folded := strings.ToLower(name)
@@ -215,6 +232,29 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			}
 		}
 	}
+	for index, item := range catalog.Documents {
+		if err := add("document", item.ID, item.Name, index, catalog.documentByName, catalog.documentByID); err != nil {
+			return err
+		}
+		for _, attribute := range item.Attributes {
+			if previous, ok := allIDs[attribute.ID]; ok {
+				return fmt.Errorf("%w: %s and document attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
+			}
+			allIDs[attribute.ID] = "document attribute " + item.Name + "." + attribute.Name
+		}
+		for _, part := range item.TableParts {
+			if previous, ok := allIDs[part.ID]; ok {
+				return fmt.Errorf("%w: %s and document table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
+			}
+			allIDs[part.ID] = "document table part " + item.Name + "." + part.Name
+			for _, attribute := range part.Attributes {
+				if previous, ok := allIDs[attribute.ID]; ok {
+					return fmt.Errorf("%w: %s and document table part attribute %s.%s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, attribute.Name, attribute.ID)
+				}
+				allIDs[attribute.ID] = "document table part attribute " + item.Name + "." + part.Name + "." + attribute.Name
+			}
+		}
+	}
 	for _, item := range catalog.Constants {
 		if err := catalog.validateReferences("constant "+item.Name, item.Types); err != nil {
 			return err
@@ -243,18 +283,25 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				}
 			}
 		}
-		for role, module := range map[string]*uuid.UUID{"object": item.ObjectModule, "manager": item.ManagerModule} {
-			if module == nil {
-				continue
+		if err := validateObjectSources(root, "catalog", item.Name, item.ObjectModule, item.ManagerModule, item.Forms); err != nil {
+			return err
+		}
+	}
+	for _, item := range catalog.Documents {
+		for _, attribute := range item.Attributes {
+			if err := catalog.validateReferences("document "+item.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
+				return err
 			}
-			if root == "" {
-				continue
+		}
+		for _, part := range item.TableParts {
+			for _, attribute := range part.Attributes {
+				if err := catalog.validateReferences("document "+item.Name+" table part "+part.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
+					return err
+				}
 			}
-			path := filepath.Join(root, "modules", module.String()+".bsl")
-			info, err := os.Lstat(path)
-			if err != nil || !info.Mode().IsRegular() || info.Mode()&fs.ModeSymlink != 0 {
-				return fmt.Errorf("catalog %s %s module %s is missing or unsafe", item.Name, role, module)
-			}
+		}
+		if err := validateObjectSources(root, "document", item.Name, item.ObjectModule, item.ManagerModule, item.Forms); err != nil {
+			return err
 		}
 	}
 	return catalog.validateDefinedTypeCycles()
@@ -278,6 +325,38 @@ func (catalog *Catalog) validateReferences(owner string, types []Type) error {
 			if _, ok := catalog.catalogByID[*item.Reference]; !ok {
 				return fmt.Errorf("%s references unknown catalog %s", owner, item.Reference)
 			}
+		case DocumentType:
+			if _, ok := catalog.documentByID[*item.Reference]; !ok {
+				return fmt.Errorf("%s references unknown document %s", owner, item.Reference)
+			}
+		}
+	}
+	return nil
+}
+
+func validateObjectSources(root, kind, name string, objectModule, managerModule *uuid.UUID, forms ObjectForms) error {
+	if root == "" {
+		return nil
+	}
+	type source struct {
+		role, directory, extension string
+		id                         *uuid.UUID
+	}
+	sources := []source{
+		{role: "object module", directory: "modules", extension: ".bsl", id: objectModule},
+		{role: "manager module", directory: "modules", extension: ".bsl", id: managerModule},
+		{role: "object form", directory: "forms", extension: ".yaml", id: forms.Object},
+		{role: "list form", directory: "forms", extension: ".yaml", id: forms.List},
+		{role: "choice form", directory: "forms", extension: ".yaml", id: forms.Choice},
+	}
+	for _, source := range sources {
+		if source.id == nil {
+			continue
+		}
+		path := filepath.Join(root, source.directory, source.id.String()+source.extension)
+		info, err := os.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() || info.Mode()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("%s %s %s %s is missing or unsafe", kind, name, source.role, source.id)
 		}
 	}
 	return nil

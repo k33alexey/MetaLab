@@ -105,6 +105,30 @@ EndFunction`)
 	}
 }
 
+func TestDocumentManagerAndRuntimeObjectDispatch(t *testing.T) {
+	t.Parallel()
+	program, diagnostics := compiler.CompileSource("document.bsl", `&НаСервере
+Функция Проверить()
+    Документ = Документы.Продажа.СоздатьДокумент();
+    Документ.Номер = "SALE-1";
+    Документ.Записать();
+    Ссылка = Документы.Продажа.НайтиПоНомеру("SALE-1", '20260906');
+    Возврат Документ.Номер + ":" + Ссылка.UUID;
+КонецФункции`)
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	machine, err := New(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := &catalogRuntimeStub{}
+	result, err := machine.NewContextWithMetadata(runtime).Call("Проверить")
+	if err != nil || result.String() != "SALE-1:record-id" || !runtime.written {
+		t.Fatalf("result=%v written=%v error=%v", result, runtime.written, err)
+	}
+}
+
 type metadataRuntimeStub struct{ value bytecode.Value }
 
 func (runtime *metadataRuntimeStub) GetConstant(_ context.Context, _ string) (bytecode.Value, error) {
@@ -142,6 +166,18 @@ func (runtime *catalogRuntimeStub) FindCatalogByCode(context.Context, string, by
 func (runtime *catalogRuntimeStub) GetCatalogReference(context.Context, string, bytecode.Value) (bytecode.Value, error) {
 	return runtime.FindCatalogByCode(context.Background(), "", bytecode.Undefined())
 }
+func (runtime *catalogRuntimeStub) CreateDocumentObject(ctx context.Context, name string) (bytecode.Value, error) {
+	return runtime.CreateCatalogObject(ctx, name)
+}
+func (runtime *catalogRuntimeStub) GetDocumentObject(ctx context.Context, name string, value bytecode.Value) (bytecode.Value, error) {
+	return runtime.GetCatalogObject(ctx, name, value)
+}
+func (runtime *catalogRuntimeStub) FindDocumentByNumber(ctx context.Context, name string, value, _ bytecode.Value) (bytecode.Value, error) {
+	return runtime.FindCatalogByCode(ctx, name, value)
+}
+func (runtime *catalogRuntimeStub) GetDocumentReference(ctx context.Context, name string, value bytecode.Value) (bytecode.Value, error) {
+	return runtime.GetCatalogReference(ctx, name, value)
+}
 func (*catalogRuntimeStub) GetObjectProperty(_ context.Context, object bytecode.RuntimeObject, name string) (bytecode.Value, error) {
 	stub := object.(*runtimeObjectStub)
 	value, ok := stub.properties[strings.ToLower(name)]
@@ -155,7 +191,7 @@ func (*catalogRuntimeStub) SetObjectProperty(_ context.Context, object bytecode.
 	return nil
 }
 func (runtime *catalogRuntimeStub) CallObjectMethod(_ context.Context, _ bytecode.RuntimeObject, name string, arguments []bytecode.Value) (bytecode.Value, error) {
-	if !strings.EqualFold(name, "Write") || len(arguments) != 0 {
+	if !(strings.EqualFold(name, "Write") || strings.EqualFold(name, "Записать")) || len(arguments) != 0 {
 		return bytecode.Undefined(), fmt.Errorf("unknown method %s", name)
 	}
 	runtime.written = true

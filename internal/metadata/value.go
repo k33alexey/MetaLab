@@ -48,13 +48,13 @@ func (catalog *Catalog) normalizeTypes(owner string, types []Type, value Value) 
 	return Value{}, fmt.Errorf("%s value is invalid: %s", owner, strings.Join(reasons, "; "))
 }
 
-func (catalog *Catalog) allowsCatalogReference(types []Type, catalogID uuid.UUID) (bool, error) {
+func (catalog *Catalog) allowsObjectReference(types []Type, kind TypeKind, objectID uuid.UUID) (bool, error) {
 	resolved, err := catalog.expandTypes(types, nil)
 	if err != nil {
 		return false, err
 	}
 	for _, item := range resolved {
-		if item.Kind == CatalogType && item.Reference != nil && *item.Reference == catalogID {
+		if item.Kind == kind && item.Reference != nil && *item.Reference == objectID {
 			return true, nil
 		}
 	}
@@ -134,13 +134,13 @@ func (catalog *Catalog) normalizeAs(value Value, allowed Type) (Value, bool, str
 			return Value{}, false, "date must be RFC3339 within years 1..3999"
 		}
 		return Value{Kind: DateType, Data: parsed.UTC().Format(time.RFC3339Nano)}, true, ""
-	case UUIDType, CatalogType:
+	case UUIDType, CatalogType, DocumentType:
 		id, err := uuid.Parse(value.Data)
 		if err != nil {
 			return Value{}, false, "invalid UUID reference"
 		}
-		if allowed.Kind == CatalogType && id.IsZero() {
-			return Value{}, false, "catalog reference cannot be empty"
+		if (allowed.Kind == CatalogType || allowed.Kind == DocumentType) && id.IsZero() {
+			return Value{}, false, "object reference cannot be empty"
 		}
 		return Value{Kind: allowed.Kind, Data: id.String()}, true, ""
 	case EnumerationType:

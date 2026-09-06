@@ -113,7 +113,13 @@ ORDER BY attribute.attname`, schemaName, tableName)
 func inspectIndexes(ctx context.Context, query catalogQuerier, schemaName, tableName string) ([]Index, error) {
 	rows, err := query.Query(ctx, `
 SELECT index_relation.relname, indexed.indisunique, access_method.amname,
-       ARRAY(SELECT pg_get_indexdef(indexed.indexrelid, position, TRUE)
+       ARRAY(SELECT pg_get_indexdef(indexed.indexrelid, position, TRUE) ||
+                    CASE WHEN (indexed.indoption[position - 1] & 1) = 1 THEN ' DESC' ELSE '' END ||
+                    CASE
+                      WHEN (indexed.indoption[position - 1] & 2) = 2 AND (indexed.indoption[position - 1] & 1) = 0 THEN ' NULLS FIRST'
+                      WHEN (indexed.indoption[position - 1] & 2) = 0 AND (indexed.indoption[position - 1] & 1) = 1 THEN ' NULLS LAST'
+                      ELSE ''
+                    END
              FROM generate_series(1, indexed.indnkeyatts) AS position ORDER BY position),
        ARRAY(SELECT pg_get_indexdef(indexed.indexrelid, position, TRUE)
              FROM generate_series(indexed.indnkeyatts + 1, indexed.indnatts) AS position ORDER BY position),

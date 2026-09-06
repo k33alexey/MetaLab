@@ -69,7 +69,7 @@ func TestCatalogReferenceTypeCannotBeMixed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runtime.catalogValueFromBSL([]Type{{Kind: CatalogType, Reference: &products.ID}}, value, "attribute Product"); err == nil {
-		t.Fatal("catalogValueFromBSL accepted a reference of another catalog")
+	if _, err := runtime.applicationValueFromBSL([]Type{{Kind: CatalogType, Reference: &products.ID}}, value, "attribute Product"); err == nil {
+		t.Fatal("applicationValueFromBSL accepted a reference of another catalog")
 	}
 }

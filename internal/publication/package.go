@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	CurrentPackageFormat = 2
+	CurrentPackageFormat = 3
 	PackageExtension     = ".mlpkg"
 	maxSourceFileBytes   = 64 << 20
 	maxPackageInputBytes = 512 << 20
@@ -51,6 +51,7 @@ type Manifest struct {
 	Files         []FileEntry `json:"files"`
 	ConstantIDs   []uuid.UUID `json:"constantIds,omitempty"`
 	CatalogIDs    []uuid.UUID `json:"catalogIds,omitempty"`
+	DocumentIDs   []uuid.UUID `json:"documentIds,omitempty"`
 	SchemaSHA256  string      `json:"schemaSha256"`
 }
 
@@ -198,6 +199,7 @@ func inspect(ctx context.Context, root string, state SourceState) (Manifest, []s
 		ContentSHA256: hex.EncodeToString(contentHash.Sum(nil)), Files: make([]FileEntry, len(sources)),
 		ConstantIDs: metadataCatalog.ConstantIDs(),
 		CatalogIDs:  metadataCatalog.CatalogIDs(), SchemaSHA256: schemaSHA256,
+		DocumentIDs: metadataCatalog.DocumentIDs(),
 	}
 	for index := range sources {
 		manifest.Files[index] = sources[index].entry

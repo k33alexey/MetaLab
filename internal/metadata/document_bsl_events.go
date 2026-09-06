@@ -12,45 +12,39 @@ import (
 	"github.com/k33alexey/MetaLab/internal/bsl/vm"
 )
 
-const (
-	catalogThisObjectRU = "ЭтотОбъект"
-	catalogThisObjectEN = "ThisObject"
-)
-
-// CatalogObjectModuleName returns the deterministic internal name of an object module.
-func CatalogObjectModuleName(definition CatalogDefinition) string {
-	return "CatalogObject" + strings.ReplaceAll(definition.ID.String(), "-", "")
+func DocumentObjectModuleName(definition DocumentDefinition) string {
+	return "DocumentObject" + strings.ReplaceAll(definition.ID.String(), "-", "")
 }
 
-// CompileCatalogObjectModule compiles a catalog object module with its predefined object context.
-func CompileCatalogObjectModule(definition CatalogDefinition, filename, source string) (*bytecode.Program, []syntax.Diagnostic) {
+func CompileDocumentObjectModule(definition DocumentDefinition, filename, source string) (*bytecode.Program, []syntax.Diagnostic) {
 	return compiler.CompileModules([]compiler.ModuleSource{{
-		Name: CatalogObjectModuleName(definition), Filename: filename, Source: source,
+		Name: DocumentObjectModuleName(definition), Filename: filename, Source: source,
 		PredefinedVariables: []string{catalogThisObjectRU, catalogThisObjectEN},
 	}})
 }
 
-// CatalogBSLEvents invokes optional predefined procedures in one catalog object module.
-type CatalogBSLEvents struct {
+type DocumentBSLEvents struct {
 	mu         sync.Mutex
 	runtime    *Runtime
 	context    *vm.Context
-	definition CatalogDefinition
+	definition DocumentDefinition
 	module     string
 }
 
-func NewCatalogBSLEvents(runtime *Runtime, context *vm.Context, definition CatalogDefinition) (*CatalogBSLEvents, error) {
+func NewDocumentBSLEvents(runtime *Runtime, context *vm.Context, definition DocumentDefinition) (*DocumentBSLEvents, error) {
 	if runtime == nil || context == nil || definition.ID.IsZero() {
-		return nil, fmt.Errorf("catalog BSL events require runtime, context and catalog definition")
+		return nil, fmt.Errorf("document BSL events require runtime, context and document definition")
 	}
-	return &CatalogBSLEvents{runtime: runtime, context: context, definition: cloneCatalogDefinition(definition), module: CatalogObjectModuleName(definition)}, nil
+	return &DocumentBSLEvents{
+		runtime: runtime, context: context, definition: cloneDocumentDefinition(definition), module: DocumentObjectModuleName(definition),
+	}, nil
 }
 
-func (handler *CatalogBSLEvents) HandleCatalogEvent(ctx context.Context, event CatalogEvent, record *CatalogRecord) (bool, error) {
-	if record == nil || record.Reference.CatalogID != handler.definition.ID {
-		return false, fmt.Errorf("catalog event received an incompatible record")
+func (handler *DocumentBSLEvents) HandleDocumentEvent(ctx context.Context, event DocumentEvent, record *DocumentRecord) (bool, error) {
+	if record == nil || record.Reference.DocumentID != handler.definition.ID {
+		return false, fmt.Errorf("document event received an incompatible record")
 	}
-	russian, english, arguments := catalogEventRoutine(event, handler.definition)
+	russian, english, arguments := documentEventRoutine(event, handler.definition)
 	routine := ""
 	if handler.context.HasRoutine(handler.module, russian) {
 		routine = russian
@@ -61,11 +55,11 @@ func (handler *CatalogBSLEvents) HandleCatalogEvent(ctx context.Context, event C
 	}
 	guarded, err := enterBSLEvent(ctx, handler)
 	if err != nil {
-		return false, fmt.Errorf("catalog event %s: %w", event, err)
+		return false, fmt.Errorf("document event %s: %w", event, err)
 	}
 	handler.mu.Lock()
 	defer handler.mu.Unlock()
-	value, err := handler.runtime.wrapCatalogRecord(handler.definition, record)
+	value, err := handler.runtime.wrapDocumentRecord(handler.definition, record)
 	if err != nil {
 		return false, err
 	}
@@ -84,33 +78,33 @@ func (handler *CatalogBSLEvents) HandleCatalogEvent(ctx context.Context, event C
 	if err != nil {
 		return false, err
 	}
-	object := valueRuntimeCatalogObject(value)
+	object := valueRuntimeDocumentObject(value)
 	object.mu.Lock()
-	if err := handler.runtime.syncCatalogTables(object); err != nil {
+	if err := handler.runtime.syncDocumentTables(object); err != nil {
 		object.mu.Unlock()
 		return false, err
 	}
-	updated := cloneCatalogRecord(object.record)
+	updated := cloneDocumentRecord(object.record)
 	object.mu.Unlock()
 	*record = *updated
-	if event == CatalogEventFillCheck || event == CatalogEventBefore || event == CatalogEventOnWrite {
+	if event == DocumentEventFillCheck || event == DocumentEventBefore || event == DocumentEventOnWrite {
 		if len(final) == 0 {
-			return false, fmt.Errorf("catalog event %s did not return its cancellation argument", event)
+			return false, fmt.Errorf("document event %s did not return its cancellation argument", event)
 		}
 		cancel, ok := final[0].AsBoolean()
 		if !ok {
-			return false, fmt.Errorf("catalog event %s cancellation argument must remain boolean", event)
+			return false, fmt.Errorf("document event %s cancellation argument must remain boolean", event)
 		}
 		return cancel, nil
 	}
 	return false, nil
 }
 
-func catalogEventRoutine(event CatalogEvent, definition CatalogDefinition) (string, string, []bytecode.Value) {
+func documentEventRoutine(event DocumentEvent, definition DocumentDefinition) (string, string, []bytecode.Value) {
 	switch event {
-	case CatalogEventFill:
+	case DocumentEventFill:
 		return "ОбработкаЗаполнения", "FillProcessing", []bytecode.Value{bytecode.Undefined(), bytecode.Boolean(true)}
-	case CatalogEventFillCheck:
+	case DocumentEventFillCheck:
 		names := make([]bytecode.Value, 0)
 		for _, attribute := range definition.Attributes {
 			if attribute.Required {
@@ -118,19 +112,21 @@ func catalogEventRoutine(event CatalogEvent, definition CatalogDefinition) (stri
 			}
 		}
 		return "ОбработкаПроверкиЗаполнения", "FillCheckProcessing", []bytecode.Value{bytecode.Boolean(false), bytecode.Array(names...)}
-	case CatalogEventBefore:
-		return "ПередЗаписью", "BeforeWrite", []bytecode.Value{bytecode.Boolean(false)}
-	case CatalogEventOnWrite:
+	case DocumentEventBefore:
+		return "ПередЗаписью", "BeforeWrite", []bytecode.Value{
+			bytecode.Boolean(false), bytecode.String("Write"), bytecode.String("DoNotPost"),
+		}
+	case DocumentEventOnWrite:
 		return "ПриЗаписи", "OnWrite", []bytecode.Value{bytecode.Boolean(false)}
-	case CatalogEventAfter:
+	case DocumentEventAfter:
 		return "ПослеЗаписи", "AfterWrite", nil
 	default:
 		return "", "", nil
 	}
 }
 
-func valueRuntimeCatalogObject(value bytecode.Value) *catalogObject {
+func valueRuntimeDocumentObject(value bytecode.Value) *documentObject {
 	object, _ := value.AsRuntimeObject()
-	result, _ := object.(*catalogObject)
+	result, _ := object.(*documentObject)
 	return result
 }

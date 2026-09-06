@@ -30,6 +30,7 @@ const (
 	EnumerationKind Kind = "enumerations"
 	DefinedTypeKind Kind = "defined-types"
 	CatalogKind     Kind = "catalogs"
+	DocumentKind    Kind = "documents"
 )
 
 type TypeKind string
@@ -43,6 +44,7 @@ const (
 	EnumerationType TypeKind = "enumeration"
 	DefinedType     TypeKind = "defined-type"
 	CatalogType     TypeKind = "catalog"
+	DocumentType    TypeKind = "document"
 )
 
 var (
@@ -152,6 +154,7 @@ type CatalogDefinition struct {
 	TableParts        []TablePart   `yaml:"table_parts,omitempty"`
 	ObjectModule      *uuid.UUID    `yaml:"object_module,omitempty"`
 	ManagerModule     *uuid.UUID    `yaml:"manager_module,omitempty"`
+	Forms             ObjectForms   `yaml:"forms,omitempty"`
 }
 
 // Catalog is an immutable-by-convention snapshot of the supported metadata kinds.
@@ -161,6 +164,7 @@ type Catalog struct {
 	Enumerations      []Enumeration
 	DefinedTypes      []DefinedTypeObject
 	Catalogs          []CatalogDefinition
+	Documents         []DocumentDefinition
 	constantByName    map[string]int
 	constantByID      map[uuid.UUID]int
 	enumerationByName map[string]int
@@ -169,6 +173,8 @@ type Catalog struct {
 	definedTypeByID   map[uuid.UUID]int
 	catalogByName     map[string]int
 	catalogByID       map[uuid.UUID]int
+	documentByName    map[string]int
+	documentByID      map[uuid.UUID]int
 }
 
 func (catalog *Catalog) ConstantByID(id uuid.UUID) (Constant, bool) {
@@ -265,6 +271,33 @@ func (catalog *Catalog) CatalogIDs() []uuid.UUID {
 	return result
 }
 
+func (catalog *Catalog) DocumentDefinition(name string) (DocumentDefinition, bool) {
+	index, ok := catalog.documentByName[strings.ToLower(name)]
+	if !ok {
+		return DocumentDefinition{}, false
+	}
+	return cloneDocumentDefinition(catalog.Documents[index]), true
+}
+
+func (catalog *Catalog) DocumentByID(id uuid.UUID) (DocumentDefinition, bool) {
+	index, ok := catalog.documentByID[id]
+	if !ok {
+		return DocumentDefinition{}, false
+	}
+	return cloneDocumentDefinition(catalog.Documents[index]), true
+}
+
+func (catalog *Catalog) DocumentIDs() []uuid.UUID {
+	if len(catalog.Documents) == 0 {
+		return nil
+	}
+	result := make([]uuid.UUID, len(catalog.Documents))
+	for index := range catalog.Documents {
+		result[index] = catalog.Documents[index].ID
+	}
+	return result
+}
+
 func DecodeConstant(source string, reader io.Reader, manifest project.Project) (Constant, error) {
 	var value Constant
 	if err := decodeStrict(source, reader, &value); err != nil {
@@ -347,7 +380,7 @@ func DecodeCatalog(source string, reader io.Reader, manifest project.Project) (C
 	if value.DescriptionLength < 1 || value.DescriptionLength > 1_048_576 {
 		issues = append(issues, "description_length must be 1..1048576")
 	}
-	issues = append(issues, validateAttributes("attributes", value.Attributes, manifest)...)
+	issues = append(issues, validateAttributes("attributes", value.Attributes, manifest, reservedCatalogObjectName)...)
 	attributeNames := make(map[string]bool, len(value.Attributes))
 	for _, attribute := range value.Attributes {
 		attributeNames[strings.ToLower(attribute.Name)] = true
@@ -380,7 +413,7 @@ func DecodeCatalog(source string, reader io.Reader, manifest project.Project) (C
 		}
 		partNames[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", part.Title, manifest)...)
-		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, manifest)...)
+		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, manifest, nil)...)
 	}
 	for name, module := range map[string]*uuid.UUID{"object_module": value.ObjectModule, "manager_module": value.ManagerModule} {
 		if module != nil && module.IsZero() {
@@ -390,13 +423,14 @@ func DecodeCatalog(source string, reader io.Reader, manifest project.Project) (C
 	if value.ObjectModule != nil && value.ManagerModule != nil && *value.ObjectModule == *value.ManagerModule {
 		issues = append(issues, "object_module and manager_module must be different")
 	}
+	issues = append(issues, validateObjectForms(value.Forms)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return CatalogDefinition{}, err
 	}
 	return value, nil
 }
 
-func validateAttributes(path string, attributes []Attribute, manifest project.Project) []string {
+func validateAttributes(path string, attributes []Attribute, manifest project.Project, reserved func(string) bool) []string {
 	if len(attributes) > 1024 {
 		return []string{path + " must not contain more than 1024 items"}
 	}
@@ -418,7 +452,7 @@ func validateAttributes(path string, attributes []Attribute, manifest project.Pr
 		if names[folded] {
 			issues = append(issues, prefix+".name must be unique")
 		}
-		if reservedCatalogObjectName(folded) {
+		if reserved != nil && reserved(folded) {
 			issues = append(issues, prefix+".name is reserved")
 		}
 		names[folded] = true
@@ -530,7 +564,7 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 			issues = append(issues, prefix+" duplicates an allowed type")
 		}
 		seen[key] = true
-		referenced := item.Kind == EnumerationType || item.Kind == DefinedType || item.Kind == CatalogType
+		referenced := item.Kind == EnumerationType || item.Kind == DefinedType || item.Kind == CatalogType || item.Kind == DocumentType
 		if referenced && (item.Reference == nil || item.Reference.IsZero()) {
 			issues = append(issues, prefix+".reference is required")
 		}
@@ -558,7 +592,7 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 			if item.Length != 0 {
 				issues = append(issues, prefix+".length is not allowed")
 			}
-		case BooleanType, DateType, UUIDType, EnumerationType, DefinedType, CatalogType:
+		case BooleanType, DateType, UUIDType, EnumerationType, DefinedType, CatalogType, DocumentType:
 			if item.Length != 0 || item.Precision != 0 || item.Scale != 0 {
 				issues = append(issues, prefix+" has unsupported qualifiers")
 			}
@@ -658,6 +692,7 @@ func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
 		id := *value.ManagerModule
 		value.ManagerModule = &id
 	}
+	value.Forms = cloneObjectForms(value.Forms)
 	return value
 }
 

@@ -828,6 +828,9 @@ func metadataCallPath(call *syntax.CallExpression) (string, bool) {
 	if strings.EqualFold(parts[0], "Справочники") || strings.EqualFold(parts[0], "Catalogs") {
 		return catalogCallPath(parts[1], call.Name, len(call.Arguments))
 	}
+	if strings.EqualFold(parts[0], "Документы") || strings.EqualFold(parts[0], "Documents") {
+		return documentCallPath(parts[1], call.Name, len(call.Arguments))
+	}
 	if !(strings.EqualFold(parts[0], "Константы") || strings.EqualFold(parts[0], "Constants")) {
 		return "", false
 	}
@@ -865,6 +868,24 @@ func catalogCallPath(catalog, method string, arity int) (string, bool) {
 		return "", false
 	}
 	return "catalog/" + catalog + "/" + operation, true
+}
+
+func documentCallPath(document, method string, arity int) (string, bool) {
+	operation, validArity := "", false
+	switch {
+	case strings.EqualFold(method, "СоздатьДокумент"), strings.EqualFold(method, "CreateDocument"):
+		operation, validArity = "create", arity == 0
+	case strings.EqualFold(method, "ПолучитьОбъект"), strings.EqualFold(method, "GetObject"):
+		operation, validArity = "get", arity == 1
+	case strings.EqualFold(method, "НайтиПоНомеру"), strings.EqualFold(method, "FindByNumber"):
+		operation, validArity = "find-number", arity == 1 || arity == 2
+	case strings.EqualFold(method, "ПолучитьСсылку"), strings.EqualFold(method, "GetRef"), strings.EqualFold(method, "GetReference"):
+		operation, validArity = "reference", arity == 1
+	}
+	if operation == "" || !validArity {
+		return "", false
+	}
+	return "document/" + document + "/" + operation, true
 }
 
 func expressionPath(expression syntax.Expression) ([]string, bool) {

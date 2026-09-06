@@ -244,6 +244,42 @@ func TestSaveValidatesAndCanonicalizesCatalogMetadata(t *testing.T) {
 	}
 }
 
+func TestSaveValidatesAndCanonicalizesDocumentMetadata(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	id, attributeID := uuid.MustNew(), uuid.MustNew()
+	relative, err := project.MetadataPath("documents", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filePath := filepath.Join(root, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := "format: 1\nid: " + id.String() + "\nname: Продажа\ntitle: {ru: Продажа}\n" +
+		"number: {type: string, length: 11, auto: false, unique: true, periodicity: year}\n" +
+		"attributes: [{id: " + attributeID.String() + ", name: Комментарий, title: {ru: Комментарий}, types: [{kind: string, length: 100}]}]\n"
+	if err := os.WriteFile(filePath, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := workspace.ReadSource(relative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := workspace.SaveSource(relative, original, opened.Revision)
+	if err != nil || !strings.Contains(saved.Content, "number:\n  type: string\n") || !strings.Contains(saved.Content, "periodicity: year\n") {
+		t.Fatalf("canonical document = %q, error=%v", saved.Content, err)
+	}
+	invalid := strings.Replace(saved.Content, "name: Комментарий", "name: Дата", 1)
+	if _, err := workspace.SaveSource(relative, invalid, saved.Revision); err == nil || !strings.Contains(err.Error(), "reserved") {
+		t.Fatalf("reserved document attribute error = %v", err)
+	}
+}
+
 func TestFileAPIRequiresRevisionAndCSRF(t *testing.T) {
 	t.Parallel()
 

@@ -79,6 +79,38 @@ func TestNonUniqueCatalogCodeIsIndexed(t *testing.T) {
 	}
 }
 
+func TestDocumentApplicationSchemaContainsLifecycleColumns(t *testing.T) {
+	t.Parallel()
+	documentID := parseTestUUID(t, "50000000-0000-4000-8000-000000000001")
+	attributeID := parseTestUUID(t, "50000000-0000-4000-8000-000000000002")
+	partID := parseTestUUID(t, "50000000-0000-4000-8000-000000000003")
+	catalog := &Catalog{Documents: []DocumentDefinition{{
+		ID: documentID, Name: "Продажа",
+		Number:     DocumentNumber{Type: StringType, Length: 11, Unique: true, Periodicity: NumberPeriodYear},
+		Attributes: []Attribute{{ID: attributeID, Name: "Комментарий", Types: []Type{{Kind: StringType, Length: 100}}}},
+		TableParts: []TablePart{{ID: partID, Name: "Товары"}},
+	}}}
+	schema, err := catalog.ApplicationSchema()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tableName, _ := PhysicalDocumentTable(documentID)
+	table := schemaTable(t, schema, tableName)
+	if !hasSchemaColumn(table, "number", "character varying(11)", false) ||
+		!hasSchemaColumn(table, "number_period", "integer", false) ||
+		!hasSchemaColumn(table, "date", "timestamp with time zone", false) ||
+		!hasSchemaColumn(table, "posted", "boolean", false) {
+		t.Fatalf("document columns = %+v", table.Columns)
+	}
+	if len(table.Constraints) != 2 || len(table.Indexes) != 1 || table.Indexes[0].Keys[0] != "date DESC" {
+		t.Fatalf("document constraints/indexes = %+v / %+v", table.Constraints, table.Indexes)
+	}
+	partName, _ := PhysicalDocumentTable(partID)
+	if part := schemaTable(t, schema, partName); !hasSchemaColumn(part, "owner_ref", "uuid", false) {
+		t.Fatalf("document table part = %+v", part)
+	}
+}
+
 func schemaTable(t *testing.T, schema schemadiff.Schema, name string) schemadiff.Table {
 	t.Helper()
 	for _, table := range schema.Tables {

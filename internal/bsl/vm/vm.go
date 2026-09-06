@@ -69,6 +69,14 @@ type CatalogRuntime interface {
 	GetCatalogReference(context.Context, string, bytecode.Value) (bytecode.Value, error)
 }
 
+// DocumentRuntime resolves document manager operations for server-side BSL.
+type DocumentRuntime interface {
+	CreateDocumentObject(context.Context, string) (bytecode.Value, error)
+	GetDocumentObject(context.Context, string, bytecode.Value) (bytecode.Value, error)
+	FindDocumentByNumber(context.Context, string, bytecode.Value, bytecode.Value) (bytecode.Value, error)
+	GetDocumentReference(context.Context, string, bytecode.Value) (bytecode.Value, error)
+}
+
 // MetadataObjectRuntime supplies properties and methods of opaque server objects.
 type MetadataObjectRuntime interface {
 	GetObjectProperty(context.Context, bytecode.RuntimeObject, string) (bytecode.Value, error)
@@ -1297,6 +1305,33 @@ func dispatchMetadata(ctx context.Context, env executionEnvironment, path string
 		case "reference":
 			if len(arguments) == 1 {
 				return runtime.GetCatalogReference(ctx, parts[1], arguments[0])
+			}
+		}
+		return bytecode.Undefined(), fmt.Errorf("invalid application metadata operation %q", path)
+	case len(parts) == 3 && parts[0] == "document":
+		runtime, ok := env.metadata.(DocumentRuntime)
+		if !ok {
+			return bytecode.Undefined(), fmt.Errorf("document runtime is not configured")
+		}
+		switch parts[2] {
+		case "create":
+			if len(arguments) == 0 {
+				return runtime.CreateDocumentObject(ctx, parts[1])
+			}
+		case "get":
+			if len(arguments) == 1 {
+				return runtime.GetDocumentObject(ctx, parts[1], arguments[0])
+			}
+		case "find-number":
+			if len(arguments) == 1 {
+				return runtime.FindDocumentByNumber(ctx, parts[1], arguments[0], bytecode.Undefined())
+			}
+			if len(arguments) == 2 {
+				return runtime.FindDocumentByNumber(ctx, parts[1], arguments[0], arguments[1])
+			}
+		case "reference":
+			if len(arguments) == 1 {
+				return runtime.GetDocumentReference(ctx, parts[1], arguments[0])
 			}
 		}
 		return bytecode.Undefined(), fmt.Errorf("invalid application metadata operation %q", path)

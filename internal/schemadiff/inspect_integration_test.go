@@ -39,7 +39,7 @@ CREATE TABLE `+quotedSchema+`.t_customer (
     CONSTRAINT pk_customer PRIMARY KEY (id),
     CONSTRAINT ck_amount CHECK (amount >= 0)
 );
-CREATE UNIQUE INDEX ix_customer_name ON `+quotedSchema+`.t_customer USING btree (name) INCLUDE (amount) WHERE name <> ''::text;`); err != nil {
+CREATE UNIQUE INDEX ix_customer_name ON `+quotedSchema+`.t_customer USING btree (name DESC) INCLUDE (amount) WHERE name <> ''::text;`); err != nil {
 		t.Fatal(err)
 	}
 	actual, err := Inspect(ctx, pool, schemaName)
@@ -50,7 +50,7 @@ CREATE UNIQUE INDEX ix_customer_name ON `+quotedSchema+`.t_customer USING btree 
 		t.Fatalf("inspected schema = %+v", actual)
 	}
 	index := actual.Tables[0].Indexes[0]
-	if index.Name != "ix_customer_name" || !index.Unique || index.Method != "btree" || len(index.Keys) != 1 || index.Keys[0] != "name" || len(index.Include) != 1 || index.Include[0] != "amount" || !strings.Contains(index.Predicate, "name") {
+	if index.Name != "ix_customer_name" || !index.Unique || index.Method != "btree" || len(index.Keys) != 1 || index.Keys[0] != "name DESC" || len(index.Include) != 1 || index.Include[0] != "amount" || !strings.Contains(index.Predicate, "name") {
 		t.Fatalf("inspected index = %+v", index)
 	}
 	plan, err := Compare(cloneSchema(actual), actual)

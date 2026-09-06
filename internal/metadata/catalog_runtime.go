@@ -168,7 +168,7 @@ func (runtime *Runtime) GetObjectProperty(_ context.Context, value bytecode.Runt
 			if !present {
 				return bytecode.Undefined(), nil
 			}
-			return runtime.catalogValueToBSL(attribute.Types, stored)
+			return runtime.applicationValueToBSL(attribute.Types, stored)
 		}
 		if part, ok := findCatalogTablePart(object.definition.TableParts, name); ok {
 			return object.tables[part.ID], nil
@@ -186,12 +186,34 @@ func (runtime *Runtime) GetObjectProperty(_ context.Context, value bytecode.Runt
 			return bytecode.String(object.reference.ObjectID.String()), nil
 		}
 		return bytecode.Undefined(), fmt.Errorf("%s has no property %s", object.RuntimeTypeName(), name)
+	case *documentObject:
+		if object.runtime != runtime {
+			return bytecode.Undefined(), fmt.Errorf("document object belongs to another metadata runtime")
+		}
+		return runtime.getDocumentProperty(object, name)
+	case *documentReferenceObject:
+		if object.runtime != runtime {
+			return bytecode.Undefined(), fmt.Errorf("document reference belongs to another metadata runtime")
+		}
+		if propertyName(name, "UUID", "UUID") {
+			if object.reference.ObjectID.IsZero() {
+				return bytecode.String(""), nil
+			}
+			return bytecode.String(object.reference.ObjectID.String()), nil
+		}
+		return bytecode.Undefined(), fmt.Errorf("%s has no property %s", object.RuntimeTypeName(), name)
 	default:
 		return bytecode.Undefined(), fmt.Errorf("unsupported application object %T", value)
 	}
 }
 
 func (runtime *Runtime) SetObjectProperty(_ context.Context, value bytecode.RuntimeObject, name string, assigned bytecode.Value) error {
+	if object, ok := value.(*documentObject); ok {
+		if object.runtime != runtime {
+			return fmt.Errorf("document object belongs to another metadata runtime")
+		}
+		return runtime.setDocumentProperty(object, name, assigned)
+	}
 	object, ok := value.(*catalogObject)
 	if !ok || object.runtime != runtime {
 		return fmt.Errorf("%s property %s is not writable", value.RuntimeTypeName(), name)
@@ -234,7 +256,7 @@ func (runtime *Runtime) SetObjectProperty(_ context.Context, value bytecode.Runt
 		delete(object.record.Attributes, attribute.ID)
 		return nil
 	}
-	converted, err := runtime.catalogValueFromBSL(attribute.Types, assigned, "attribute "+attribute.Name)
+	converted, err := runtime.applicationValueFromBSL(attribute.Types, assigned, "attribute "+attribute.Name)
 	if err != nil {
 		return err
 	}
@@ -293,6 +315,16 @@ func (runtime *Runtime) CallObjectMethod(ctx context.Context, value bytecode.Run
 			}
 			return runtime.wrapCatalogRecord(object.definition, record)
 		}
+	case *documentObject:
+		if object.runtime != runtime {
+			return bytecode.Undefined(), fmt.Errorf("document object belongs to another metadata runtime")
+		}
+		return runtime.callDocumentMethod(ctx, object, name, arguments)
+	case *documentReferenceObject:
+		if object.runtime != runtime {
+			return bytecode.Undefined(), fmt.Errorf("document reference belongs to another metadata runtime")
+		}
+		return runtime.callDocumentReferenceMethod(ctx, object, name, arguments)
 	}
 	return bytecode.Undefined(), fmt.Errorf("%s has no method %s", value.RuntimeTypeName(), name)
 }
@@ -354,7 +386,7 @@ func (runtime *Runtime) catalogTableToBSL(part TablePart, rows []CatalogRow) (by
 			if !present {
 				continue
 			}
-			value, err := runtime.catalogValueToBSL(attribute.Types, stored)
+			value, err := runtime.applicationValueToBSL(attribute.Types, stored)
 			if err != nil {
 				return bytecode.Undefined(), err
 			}
@@ -391,7 +423,7 @@ func (runtime *Runtime) syncCatalogTables(object *catalogObject) error {
 					}
 					continue
 				}
-				stored, err := runtime.catalogValueFromBSL(attribute.Types, value, "attribute "+part.Name+"."+attribute.Name)
+				stored, err := runtime.applicationValueFromBSL(attribute.Types, value, "attribute "+part.Name+"."+attribute.Name)
 				if err != nil {
 					return err
 				}
@@ -403,33 +435,41 @@ func (runtime *Runtime) syncCatalogTables(object *catalogObject) error {
 	return nil
 }
 
-func (runtime *Runtime) catalogValueFromBSL(types []Type, value bytecode.Value, owner string) (Value, error) {
+func (runtime *Runtime) applicationValueFromBSL(types []Type, value bytecode.Value, owner string) (Value, error) {
 	if opaque, ok := value.AsRuntimeObject(); ok {
-		if reference, ok := opaque.(*catalogReferenceObject); ok {
+		kind, metadataID, objectID, runtimeType := TypeKind(""), uuid.UUID{}, uuid.UUID{}, ""
+		switch reference := opaque.(type) {
+		case *catalogReferenceObject:
 			if reference.runtime != runtime {
-				return Value{}, fmt.Errorf("%s received a catalog reference from another metadata runtime", owner)
+				return Value{}, fmt.Errorf("%s received an object reference from another metadata runtime", owner)
 			}
-			if reference.reference.ObjectID.IsZero() {
-				return Value{}, fmt.Errorf("%s cannot store an empty catalog reference", owner)
+			kind, metadataID, objectID, runtimeType = CatalogType, reference.reference.CatalogID, reference.reference.ObjectID, reference.RuntimeTypeName()
+		case *documentReferenceObject:
+			if reference.runtime != runtime {
+				return Value{}, fmt.Errorf("%s received an object reference from another metadata runtime", owner)
 			}
-			allowed, err := runtime.catalog.allowsCatalogReference(types, reference.reference.CatalogID)
-			if err != nil {
-				return Value{}, err
-			}
-			if !allowed {
-				return Value{}, fmt.Errorf("%s does not allow %s", owner, reference.RuntimeTypeName())
-			}
-			converted := Value{Kind: CatalogType, Data: reference.reference.ObjectID.String()}
-			return runtime.catalog.normalizeTypes(owner, types, converted)
+			kind, metadataID, objectID, runtimeType = DocumentType, reference.reference.DocumentID, reference.reference.ObjectID, reference.RuntimeTypeName()
+		default:
+			return Value{}, fmt.Errorf("%s cannot store %s", owner, value.String())
 		}
-		return Value{}, fmt.Errorf("%s cannot store %s", owner, value.String())
+		if objectID.IsZero() {
+			return Value{}, fmt.Errorf("%s cannot store an empty object reference", owner)
+		}
+		allowed, err := runtime.catalog.allowsObjectReference(types, kind, metadataID)
+		if err != nil {
+			return Value{}, err
+		}
+		if !allowed {
+			return Value{}, fmt.Errorf("%s does not allow %s", owner, runtimeType)
+		}
+		return runtime.catalog.normalizeTypes(owner, types, Value{Kind: kind, Data: objectID.String()})
 	}
 	constant := Constant{Name: owner, Types: types}
 	return runtime.valueFromBSL(constant, value)
 }
 
-func (runtime *Runtime) catalogValueToBSL(types []Type, value Value) (bytecode.Value, error) {
-	if value.Kind != CatalogType {
+func (runtime *Runtime) applicationValueToBSL(types []Type, value Value) (bytecode.Value, error) {
+	if value.Kind != CatalogType && value.Kind != DocumentType {
 		return valueToBSL(value)
 	}
 	resolved, err := runtime.catalog.expandTypes(types, nil)
@@ -437,19 +477,26 @@ func (runtime *Runtime) catalogValueToBSL(types []Type, value Value) (bytecode.V
 		return bytecode.Undefined(), err
 	}
 	for _, item := range resolved {
-		if item.Kind == CatalogType && item.Reference != nil {
-			definition, ok := runtime.catalog.CatalogByID(*item.Reference)
-			if !ok {
-				return bytecode.Undefined(), fmt.Errorf("unknown catalog %s", item.Reference)
-			}
+		if item.Kind == value.Kind && item.Reference != nil {
 			id, err := uuid.Parse(value.Data)
 			if err != nil {
 				return bytecode.Undefined(), err
 			}
+			if item.Kind == DocumentType {
+				definition, ok := runtime.catalog.DocumentByID(*item.Reference)
+				if !ok {
+					return bytecode.Undefined(), fmt.Errorf("unknown document %s", item.Reference)
+				}
+				return runtime.wrapDocumentReference(definition, DocumentReference{DocumentID: definition.ID, ObjectID: id})
+			}
+			definition, ok := runtime.catalog.CatalogByID(*item.Reference)
+			if !ok {
+				return bytecode.Undefined(), fmt.Errorf("unknown catalog %s", item.Reference)
+			}
 			return runtime.wrapCatalogReference(definition, CatalogReference{CatalogID: definition.ID, ObjectID: id})
 		}
 	}
-	return bytecode.Undefined(), fmt.Errorf("catalog reference type is missing")
+	return bytecode.Undefined(), fmt.Errorf("object reference type is missing")
 }
 
 func findCatalogAttribute(attributes []Attribute, name string) (Attribute, bool) {

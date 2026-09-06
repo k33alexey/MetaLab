@@ -197,6 +197,40 @@ func TestPackageCarriesCatalogSchemaIdentity(t *testing.T) {
 	}
 }
 
+func TestPackageCarriesDocumentSchemaAndSources(t *testing.T) {
+	t.Parallel()
+	root := publicationProject(t)
+	documentID, moduleID, formID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	modulePath, _ := project.ModulePath(moduleID)
+	formPath, _ := project.FormPath(formID)
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(modulePath)), []byte("Процедура ПриЗаписи(Отказ)\nКонецПроцедуры\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(formPath)), []byte("format: 1\nname: DocumentForm\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	relative, _ := project.MetadataPath("documents", documentID)
+	absolute := filepath.Join(root, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "format: 1\nid: " + documentID.String() + "\nname: Продажа\ntitle: {ru: Продажа}\n" +
+		"number: {type: string, length: 11, auto: false, unique: true, periodicity: year}\nposting: true\n" +
+		"object_module: " + moduleID.String() + "\nforms: {object: " + formID.String() + "}\n"
+	if err := os.WriteFile(absolute, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	packagePath := filepath.Join(t.TempDir(), "document.mlpkg")
+	built, err := BuildFile(context.Background(), root, packagePath, SourceState{})
+	if err != nil || len(built.DocumentIDs) != 1 || built.DocumentIDs[0] != documentID || len(built.SchemaSHA256) != 64 {
+		t.Fatalf("built=%+v error=%v", built, err)
+	}
+	verified, err := VerifyFile(context.Background(), packagePath)
+	if err != nil || !reflect.DeepEqual(verified, built) {
+		t.Fatalf("verified=%+v error=%v", verified, err)
+	}
+}
+
 func TestBuildHonoursCancellationAndRejectsSymlinks(t *testing.T) {
 	root := publicationProject(t)
 	ctx, cancel := context.WithCancel(context.Background())

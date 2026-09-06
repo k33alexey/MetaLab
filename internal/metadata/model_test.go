@@ -13,14 +13,16 @@ import (
 )
 
 const (
-	constantID    = "10000000-0000-4000-8000-000000000001"
-	enumerationID = "20000000-0000-4000-8000-000000000001"
-	enumValueID   = "20000000-0000-4000-8000-000000000002"
-	definedTypeID = "30000000-0000-4000-8000-000000000001"
-	catalogID     = "40000000-0000-4000-8000-000000000001"
-	attributeID   = "40000000-0000-4000-8000-000000000002"
-	tablePartID   = "40000000-0000-4000-8000-000000000003"
-	partFieldID   = "40000000-0000-4000-8000-000000000004"
+	constantID     = "10000000-0000-4000-8000-000000000001"
+	enumerationID  = "20000000-0000-4000-8000-000000000001"
+	enumValueID    = "20000000-0000-4000-8000-000000000002"
+	definedTypeID  = "30000000-0000-4000-8000-000000000001"
+	catalogID      = "40000000-0000-4000-8000-000000000001"
+	attributeID    = "40000000-0000-4000-8000-000000000002"
+	tablePartID    = "40000000-0000-4000-8000-000000000003"
+	partFieldID    = "40000000-0000-4000-8000-000000000004"
+	documentID     = "50000000-0000-4000-8000-000000000001"
+	docAttributeID = "50000000-0000-4000-8000-000000000002"
 )
 
 func TestDecodeMetadataIsStrictAndLocalized(t *testing.T) {
@@ -286,13 +288,88 @@ table_parts:
 	}
 }
 
+func TestLoadDocumentWithFormsAndReferences(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeMetadata(t, root, CatalogKind, catalogID, `format: 1
+id: `+catalogID+`
+name: Контрагенты
+title: {ru: Контрагенты}
+code: {type: string, length: 9}
+description_length: 250
+`)
+	objectModule, managerModule := uuid.MustNew(), uuid.MustNew()
+	objectForm, listForm, choiceForm := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	for _, id := range []uuid.UUID{objectModule, managerModule} {
+		relative, _ := project.ModulePath(id)
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(relative)), []byte("// module\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range []uuid.UUID{objectForm, listForm, choiceForm} {
+		relative, _ := project.FormPath(id)
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(relative)), []byte("format: 1\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeMetadata(t, root, DocumentKind, documentID, `format: 1
+id: `+documentID+`
+name: Продажа
+title: {ru: Продажа}
+number: {type: string, length: 11, auto: true, unique: true, periodicity: year}
+posting: true
+attributes:
+  - id: `+docAttributeID+`
+    name: Контрагент
+    title: {ru: Контрагент}
+    types: [{kind: catalog, reference: `+catalogID+`}]
+object_module: `+objectModule.String()+`
+manager_module: `+managerModule.String()+`
+forms:
+  object: `+objectForm.String()+`
+  list: `+listForm.String()+`
+  choice: `+choiceForm.String()+`
+`)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, ok := catalog.DocumentDefinition("продажа")
+	if !ok || document.ID.String() != documentID || document.Number.Periodicity != NumberPeriodYear || document.Forms.Object == nil || *document.Forms.Object != objectForm {
+		t.Fatalf("document=%+v found=%v", document, ok)
+	}
+	*document.Forms.Object = uuid.MustNew()
+	again, _ := catalog.DocumentDefinition("Продажа")
+	if *again.Forms.Object != objectForm {
+		t.Fatal("document lookup exposed mutable form identity")
+	}
+}
+
+func TestDecodeDocumentRejectsInvalidNumberAndReservedProperty(t *testing.T) {
+	t.Parallel()
+	_, err := DecodeDocument("document.yaml", strings.NewReader(`format: 1
+id: `+documentID+`
+name: Продажа
+title: {ru: Продажа}
+number: {type: boolean, length: 0, periodicity: week}
+attributes:
+  - id: `+docAttributeID+`
+    name: Дата
+    title: {ru: Дата}
+    types: [{kind: date}]
+`), metadataManifest())
+	if err == nil || !strings.Contains(err.Error(), "number.type") || !strings.Contains(err.Error(), "periodicity") || !strings.Contains(err.Error(), "reserved") {
+		t.Fatalf("DecodeDocument() error = %v", err)
+	}
+}
+
 func metadataProject(t *testing.T) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "project")
 	if err := project.Initialize(root, metadataManifest()); err != nil {
 		t.Fatal(err)
 	}
-	for _, kind := range []Kind{ConstantKind, EnumerationKind, DefinedTypeKind, CatalogKind} {
+	for _, kind := range []Kind{ConstantKind, EnumerationKind, DefinedTypeKind, CatalogKind, DocumentKind} {
 		if err := os.MkdirAll(filepath.Join(root, "metadata", string(kind)), 0o755); err != nil {
 			t.Fatal(err)
 		}

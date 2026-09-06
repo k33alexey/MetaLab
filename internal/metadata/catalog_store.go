@@ -33,9 +33,11 @@ func (reference CatalogReference) IsEmpty() bool {
 	return reference.CatalogID.IsZero() || reference.ObjectID.IsZero()
 }
 
-type CatalogRow struct {
+type ObjectRow struct {
 	Values map[uuid.UUID]Value
 }
+
+type CatalogRow = ObjectRow
 
 type CatalogRecord struct {
 	Reference   CatalogReference
@@ -193,7 +195,7 @@ func (repository *CatalogRepository) normalizeRecord(definition CatalogDefinitio
 	if !utf8.ValidString(record.Description) || utf8.RuneCountInString(record.Description) > definition.DescriptionLength {
 		return fmt.Errorf("catalog %s description exceeds %d characters", definition.Name, definition.DescriptionLength)
 	}
-	attributes, err := repository.normalizeAttributes(definition.Name, definition.Attributes, record.Attributes)
+	attributes, err := repository.catalog.normalizeAttributes(definition.Name, definition.Attributes, record.Attributes)
 	if err != nil {
 		return err
 	}
@@ -210,7 +212,7 @@ func (repository *CatalogRepository) normalizeRecord(definition CatalogDefinitio
 		}
 		normalizedRows := make([]CatalogRow, len(rows))
 		for index, row := range rows {
-			values, err := repository.normalizeAttributes(definition.Name+"."+part.Name, part.Attributes, row.Values)
+			values, err := repository.catalog.normalizeAttributes(definition.Name+"."+part.Name, part.Attributes, row.Values)
 			if err != nil {
 				return fmt.Errorf("row %d: %w", index+1, err)
 			}
@@ -226,7 +228,7 @@ func (repository *CatalogRepository) normalizeRecord(definition CatalogDefinitio
 	return nil
 }
 
-func (repository *CatalogRepository) normalizeAttributes(owner string, definitions []Attribute, values map[uuid.UUID]Value) (map[uuid.UUID]Value, error) {
+func (catalog *Catalog) normalizeAttributes(owner string, definitions []Attribute, values map[uuid.UUID]Value) (map[uuid.UUID]Value, error) {
 	known := make(map[uuid.UUID]Attribute, len(definitions))
 	result := make(map[uuid.UUID]Value, len(values))
 	for _, attribute := range definitions {
@@ -238,7 +240,7 @@ func (repository *CatalogRepository) normalizeAttributes(owner string, definitio
 			}
 			continue
 		}
-		normalized, err := repository.catalog.normalizeTypes("attribute "+owner+"."+attribute.Name, attribute.Types, value)
+		normalized, err := catalog.normalizeTypes("attribute "+owner+"."+attribute.Name, attribute.Types, value)
 		if err != nil {
 			return nil, err
 		}
@@ -376,6 +378,10 @@ func (repository *CatalogRepository) decodeRecord(definition CatalogDefinition, 
 		if err != nil {
 			return nil, fmt.Errorf("decode catalog %s attribute %s: %w", definition.Name, attribute.Name, err)
 		}
+		value, err = repository.catalog.normalizeTypes("attribute "+definition.Name+"."+attribute.Name, attribute.Types, value)
+		if err != nil {
+			return nil, fmt.Errorf("decode catalog %s attribute %s: %w", definition.Name, attribute.Name, err)
+		}
 		record.Attributes[attribute.ID] = value
 	}
 	return record, nil
@@ -409,6 +415,11 @@ func (repository *CatalogRepository) readTableParts(ctx context.Context, definit
 				}
 				storage, _ := repository.catalog.attributeStorage(attribute.Types)
 				value, err := decodeDatabaseAttribute(storage, raw)
+				if err != nil {
+					rows.Close()
+					return fmt.Errorf("decode catalog table part %s attribute %s: %w", part.Name, attribute.Name, err)
+				}
+				value, err = repository.catalog.normalizeTypes("attribute "+definition.Name+"."+part.Name+"."+attribute.Name, attribute.Types, value)
 				if err != nil {
 					rows.Close()
 					return fmt.Errorf("decode catalog table part %s attribute %s: %w", part.Name, attribute.Name, err)
@@ -460,7 +471,7 @@ func databaseAttributeValue(storage attributeStorage, value Value) (any, error) 
 		return value.Data == "true", nil
 	case DateType:
 		return time.Parse(time.RFC3339Nano, value.Data)
-	case UUIDType, EnumerationType, CatalogType:
+	case UUIDType, EnumerationType, CatalogType, DocumentType:
 		return value.Data, nil
 	default:
 		return nil, fmt.Errorf("unsupported database value type %s", storage.valueType)
@@ -477,7 +488,7 @@ func decodeDatabaseAttribute(storage attributeStorage, raw json.RawMessage) (Val
 	}
 	value := Value{Kind: storage.valueType}
 	switch storage.valueType {
-	case StringType, DateType, UUIDType, EnumerationType, CatalogType:
+	case StringType, DateType, UUIDType, EnumerationType, CatalogType, DocumentType:
 		if err := json.Unmarshal(raw, &value.Data); err != nil {
 			return Value{}, err
 		}
