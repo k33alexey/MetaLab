@@ -3,6 +3,7 @@ package vm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -156,6 +157,13 @@ func cloneProgram(program *bytecode.Program) *bytecode.Program {
 		clone.Functions[index] = program.Functions[index]
 		clone.Functions[index].Parameters = append([]bytecode.Parameter(nil), program.Functions[index].Parameters...)
 		clone.Functions[index].Constants = append([]bytecode.Value(nil), program.Functions[index].Constants...)
+		clone.Functions[index].Objects = make([]bytecode.ObjectOperation, len(program.Functions[index].Objects))
+		for operationIndex := range program.Functions[index].Objects {
+			clone.Functions[index].Objects[operationIndex] = program.Functions[index].Objects[operationIndex]
+			clone.Functions[index].Objects[operationIndex].References = append(
+				[]bytecode.VariableReference(nil), program.Functions[index].Objects[operationIndex].References...,
+			)
+		}
 		clone.Functions[index].ModuleVars = append([]bytecode.VariableReference(nil), program.Functions[index].ModuleVars...)
 		clone.Functions[index].Exceptions = append([]bytecode.ExceptionHandler(nil), program.Functions[index].Exceptions...)
 		clone.Functions[index].CallSites = make([]bytecode.CallSite, len(program.Functions[index].CallSites))
@@ -356,6 +364,12 @@ func (runtimeContext *Context) CallContext(ctx context.Context, name string, arg
 		return bytecode.Undefined(), err
 	}
 	value, callErr := executeWithValues(runtimeContext.machine.program, function, completed, runtimeContext.modules, runtimeContext.env, &budget)
+	if memory, ok := moduleValuesMemory(runtimeContext.machine.moduleMemory, runtimeContext.modules, runtimeContext.machine.limits.MaxMemoryBytes); ok {
+		runtimeContext.memory = memory
+	} else {
+		memoryErr := resourceFailure(function, firstInstruction(function), memoryLimitError(runtimeContext.machine.limits.MaxMemoryBytes))
+		return bytecode.Undefined(), finalizeRuntimeError(runtimeContext.machine.program, memoryErr)
+	}
 	if callErr != nil {
 		return value, finalizeRuntimeError(runtimeContext.machine.program, callErr)
 	}
@@ -443,7 +457,7 @@ func makeModuleValues(program *bytecode.Program) [][]bytecode.Value {
 }
 
 func requiresContext(function *bytecode.Function) bool {
-	return len(function.CallSites) != 0 || len(function.ModuleVars) != 0 || len(function.Exceptions) != 0
+	return len(function.CallSites) != 0 || len(function.ModuleVars) != 0 || len(function.Exceptions) != 0 || len(function.Objects) != 0
 }
 
 func executeFast(function *bytecode.Function, arguments []bytecode.Value, budget *executionBudget) (bytecode.Value, error) {
@@ -519,9 +533,9 @@ func executeFast(function *bytecode.Function, arguments []bytecode.Value, budget
 			push(value)
 		case bytecode.OpArrayLength:
 			value := pop()
-			length, ok := value.ArrayLength()
+			length, ok := bytecode.CollectionLength(value)
 			if !ok {
-				return bytecode.Undefined(), runtimeFailure(function, instruction, "For Each requires an array")
+				return bytecode.Undefined(), runtimeFailure(function, instruction, "For Each requires a collection")
 			}
 			push(bytecode.Number(float64(length)))
 		case bytecode.OpArrayElement:
@@ -531,9 +545,14 @@ func executeFast(function *bytecode.Function, arguments []bytecode.Value, budget
 			if !ok || index < 0 || uint64(index) > uint64(maxInt()) {
 				return bytecode.Undefined(), runtimeFailure(function, instruction, "array index must be a non-negative integer")
 			}
-			element, ok := array.ArrayElement(int(index))
+			element, ok := bytecode.CollectionElement(array, int(index))
 			if !ok {
 				return bytecode.Undefined(), runtimeFailure(function, instruction, "array index is out of range")
+			}
+			if element.Kind() == bytecode.KeyAndValueKind {
+				if err := budget.reserveMemory(600); err != nil {
+					return bytecode.Undefined(), resourceFailure(function, instruction, err)
+				}
 			}
 			push(element)
 		case bytecode.OpPop:
@@ -784,9 +803,9 @@ func executeAdvanced(
 			push(value)
 		case bytecode.OpArrayLength:
 			value := pop()
-			length, ok := value.ArrayLength()
+			length, ok := bytecode.CollectionLength(value)
 			if !ok {
-				failure = runtimeFailure(function, instruction, "For Each requires an array")
+				failure = runtimeFailure(function, instruction, "For Each requires a collection")
 				break
 			}
 			push(bytecode.Number(float64(length)))
@@ -798,10 +817,15 @@ func executeAdvanced(
 				failure = runtimeFailure(function, instruction, "array index must be a non-negative integer")
 				break
 			}
-			element, ok := array.ArrayElement(int(index))
+			element, ok := bytecode.CollectionElement(array, int(index))
 			if !ok {
 				failure = runtimeFailure(function, instruction, "array index is out of range")
 				break
+			}
+			if element.Kind() == bytecode.KeyAndValueKind {
+				if err := budget.reserveMemory(600); err != nil {
+					return bytecode.Undefined(), resourceFailure(function, instruction, err)
+				}
 			}
 			push(element)
 		case bytecode.OpPop:
@@ -915,6 +939,112 @@ func executeAdvanced(
 				break
 			}
 			push(result)
+		case bytecode.OpConstruct:
+			operation := function.Objects[instruction.Operand]
+			var inlineArguments [8]bytecode.Value
+			arguments := inlineArguments[:0]
+			if int(operation.Arity) <= len(inlineArguments) {
+				arguments = inlineArguments[:int(operation.Arity)]
+			} else {
+				arguments = make([]bytecode.Value, operation.Arity)
+			}
+			for index := len(arguments) - 1; index >= 0; index-- {
+				arguments[index] = pop()
+			}
+			typeName := operation.Name
+			if operation.Dynamic {
+				typeValue := pop()
+				var ok bool
+				typeName, ok = typeValue.AsString()
+				if !ok {
+					failure = runtimeFailure(function, instruction, "dynamic New type name must be a string")
+					break
+				}
+			}
+			result, err := bytecode.ConstructCollectionWithin(typeName, arguments, budget.remainingMemory())
+			if err != nil {
+				if errors.Is(err, bytecode.ErrCollectionMemoryLimit) {
+					return bytecode.Undefined(), resourceFailure(function, instruction, memoryLimitError(budget.limits.MaxMemoryBytes))
+				}
+				failure = runtimeFailure(function, instruction, err.Error())
+				break
+			}
+			if err := budget.retain(result); err != nil {
+				return bytecode.Undefined(), resourceFailure(function, instruction, err)
+			}
+			push(result)
+		case bytecode.OpCallMethod:
+			operation := function.Objects[instruction.Operand]
+			var inlineArguments [8]bytecode.Value
+			arguments := inlineArguments[:0]
+			if int(operation.Arity) <= len(inlineArguments) {
+				arguments = inlineArguments[:int(operation.Arity)]
+			} else {
+				arguments = make([]bytecode.Value, operation.Arity)
+			}
+			for index := len(arguments) - 1; index >= 0; index-- {
+				arguments[index] = pop()
+			}
+			receiver := pop()
+			mutation := bytecode.CollectionMutationEstimate(receiver, operation.Name, arguments)
+			detached := bytecode.CollectionDetachedResultEstimate(receiver, operation.Name)
+			if detached > ^uint64(0)-mutation {
+				return bytecode.Undefined(), resourceFailure(function, instruction, memoryLimitError(budget.limits.MaxMemoryBytes))
+			}
+			if err := budget.reserveMemory(mutation + detached); err != nil {
+				return bytecode.Undefined(), resourceFailure(function, instruction, err)
+			}
+			result, err := bytecode.CollectionMethod(receiver, operation.Name, arguments)
+			if err != nil {
+				failure = runtimeFailure(function, instruction, err.Error())
+				break
+			}
+			for index, reference := range operation.References {
+				if reference.Kind == bytecode.NoReference {
+					continue
+				}
+				if reference.Kind == bytecode.LocalReference {
+					err = setLocal(reference.Variable, arguments[index])
+				} else {
+					err = setModule(reference, arguments[index])
+				}
+				if err != nil {
+					return bytecode.Undefined(), resourceFailure(function, instruction, err)
+				}
+			}
+			push(result)
+		case bytecode.OpGetProperty:
+			operation := function.Objects[instruction.Operand]
+			result, err := bytecode.CollectionProperty(pop(), operation.Name)
+			if err != nil {
+				failure = runtimeFailure(function, instruction, err.Error())
+				break
+			}
+			push(result)
+		case bytecode.OpSetProperty:
+			operation := function.Objects[instruction.Operand]
+			value, receiver := pop(), pop()
+			if err := bytecode.SetCollectionProperty(receiver, operation.Name, value); err != nil {
+				failure = runtimeFailure(function, instruction, err.Error())
+				break
+			}
+		case bytecode.OpGetIndex:
+			key, receiver := pop(), pop()
+			result, err := bytecode.CollectionIndex(receiver, key)
+			if err != nil {
+				failure = runtimeFailure(function, instruction, err.Error())
+				break
+			}
+			push(result)
+		case bytecode.OpSetIndex:
+			value, key, receiver := pop(), pop(), pop()
+			if err := budget.reserveMemory(bytecode.CollectionIndexMutationEstimate(receiver, key)); err != nil {
+				return bytecode.Undefined(), resourceFailure(function, instruction, err)
+			}
+			if err := bytecode.SetCollectionIndex(receiver, key, value); err != nil {
+				failure = runtimeFailure(function, instruction, err.Error())
+				break
+			}
 		case bytecode.OpRaise:
 			failure = runtimeFailure(function, instruction, pop().String())
 		case bytecode.OpReraise:
@@ -1135,32 +1265,7 @@ func comparisonRank(kind bytecode.ValueKind) (int, bool) {
 }
 
 func valuesEqual(left, right bytecode.Value) bool {
-	if left.Kind() != right.Kind() {
-		return false
-	}
-	switch left.Kind() {
-	case bytecode.UndefinedKind:
-		return true
-	case bytecode.NumberKind:
-		comparison, _ := bytecode.CompareNumbers(left, right)
-		return comparison == 0
-	case bytecode.StringKind:
-		leftString, _ := left.AsString()
-		rightString, _ := right.AsString()
-		return leftString == rightString
-	case bytecode.BooleanKind:
-		leftBoolean, _ := left.AsBoolean()
-		rightBoolean, _ := right.AsBoolean()
-		return leftBoolean == rightBoolean
-	case bytecode.NullKind:
-		return true
-	case bytecode.DateKind:
-		leftTicks, _ := left.DateTicks()
-		rightTicks, _ := right.DateTicks()
-		return leftTicks == rightTicks
-	default:
-		return false
-	}
+	return bytecode.ValuesEqual(left, right)
 }
 
 func runtimeFailure(function *bytecode.Function, instruction bytecode.Instruction, message string) *RuntimeError {

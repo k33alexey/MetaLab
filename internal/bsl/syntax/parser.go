@@ -222,9 +222,7 @@ func (p *parser) parseStatement() Statement {
 		if p.isAssignmentStart() {
 			return p.parseAssignmentStatement()
 		}
-		if p.checkNext(LeftParen) || p.checkNext(Dot) {
-			return p.parseCallStatement()
-		}
+		return p.parseCallStatement()
 	}
 	p.report(p.peek(), "BSL2001", fmt.Sprintf("unexpected %s, expected statement", p.peek().Kind))
 	p.synchronizeStatement()
@@ -277,26 +275,30 @@ func (p *parser) parseReturnStatement() Statement {
 }
 
 func (p *parser) parseAssignmentStatement() Statement {
-	name := p.advance()
-	start := name.Span.Start
-	qualifier := ""
-	if p.match(Dot) {
-		qualifier = name.Value
-		member, ok := p.expect(Identifier, "expected variable name after '.'")
-		if ok {
-			name = member
-		}
+	start := p.peek().Span.Start
+	target := p.parsePrimary()
+	if target == nil {
+		p.synchronizeStatement()
+		return nil
 	}
-	p.advance() // Equal.
+	p.expect(Equal, "expected '=' after assignment target")
 	value := p.parseExpression()
-	end := name.Span.End
+	end := target.NodeSpan().End
 	if value != nil {
 		end = value.NodeSpan().End
 	}
 	if semicolon, ok := p.expect(Semicolon, "expected ';' after assignment"); ok {
 		end = semicolon.Span.End
 	}
-	return &AssignmentStatement{Qualifier: qualifier, Name: name.Value, Value: value, SourceSpan: Span{Start: start, End: end}}
+	statement := &AssignmentStatement{Target: target, Value: value, SourceSpan: Span{Start: start, End: end}}
+	if identifier, ok := target.(*IdentifierExpression); ok {
+		statement.Qualifier, statement.Name = identifier.Qualifier, identifier.Name
+	} else if member, ok := target.(*MemberExpression); ok {
+		if identifier, simple := member.Receiver.(*IdentifierExpression); simple {
+			statement.Qualifier, statement.Name = identifier.Name, member.Name
+		}
+	}
+	return statement
 }
 
 func (p *parser) parseCallStatement() Statement {
@@ -491,59 +493,53 @@ func (p *parser) parseUnary() Expression {
 
 func (p *parser) parsePrimary() Expression {
 	current := p.peek()
+	var expression Expression
 	switch current.Kind {
 	case Number:
 		p.advance()
-		return &NumberExpression{Text: current.Value, SourceSpan: current.Span}
+		expression = &NumberExpression{Text: current.Value, SourceSpan: current.Span}
 	case String:
 		p.advance()
-		return &StringExpression{Value: current.Value, SourceSpan: current.Span}
+		expression = &StringExpression{Value: current.Value, SourceSpan: current.Span}
 	case StringStart:
-		return p.parseMultilineString()
+		expression = p.parseMultilineString()
 	case True, False:
 		p.advance()
-		return &BooleanExpression{Value: current.Kind == True, SourceSpan: current.Span}
+		expression = &BooleanExpression{Value: current.Kind == True, SourceSpan: current.Span}
 	case Date:
 		p.advance()
-		return &DateExpression{Text: current.Value, SourceSpan: current.Span}
+		expression = &DateExpression{Text: current.Value, SourceSpan: current.Span}
 	case Undefined:
 		p.advance()
-		return &UndefinedExpression{SourceSpan: current.Span}
+		expression = &UndefinedExpression{SourceSpan: current.Span}
 	case Null:
 		p.advance()
-		return &NullExpression{SourceSpan: current.Span}
+		expression = &NullExpression{SourceSpan: current.Span}
+	case New:
+		expression = p.parseNewExpression()
 	case Identifier:
 		p.advance()
-		qualifier, name := "", current.Value
-		end := current.Span.End
-		if p.match(Dot) {
-			qualifier = name
-			member, ok := p.expect(Identifier, "expected name after '.'")
-			if !ok {
-				return &IdentifierExpression{Name: name, SourceSpan: current.Span}
-			}
-			name, end = member.Value, member.Span.End
-		}
+		expression = &IdentifierExpression{Name: current.Value, SourceSpan: current.Span}
 		if p.match(LeftParen) {
 			arguments := p.parseCallArguments()
 			right, ok := p.expect(RightParen, "expected ')' after call arguments")
+			end := current.Span.End
 			if ok {
 				end = right.Span.End
 			}
-			return &CallExpression{
-				Qualifier: qualifier, Name: name, Arguments: arguments,
+			expression = &CallExpression{
+				Name: current.Value, Arguments: arguments,
 				SourceSpan: Span{Start: current.Span.Start, End: end},
 			}
 		}
-		return &IdentifierExpression{Qualifier: qualifier, Name: name, SourceSpan: Span{Start: current.Span.Start, End: end}}
 	case LeftParen:
 		left := p.advance()
-		expression := p.parseExpression()
+		expression = p.parseExpression()
 		right, ok := p.expect(RightParen, "expected ')' after expression")
 		if !ok || expression == nil {
 			return expression
 		}
-		return &GroupExpression{Expression: expression, SourceSpan: Span{Start: left.Span.Start, End: right.Span.End}}
+		expression = &GroupExpression{Expression: expression, SourceSpan: Span{Start: left.Span.Start, End: right.Span.End}}
 	default:
 		p.report(current, "BSL2001", fmt.Sprintf("unexpected %s, expected expression", current.Kind))
 		if !p.atEnd() {
@@ -551,6 +547,78 @@ func (p *parser) parsePrimary() Expression {
 		}
 		return nil
 	}
+	return p.parsePostfix(expression)
+}
+
+func (p *parser) parsePostfix(expression Expression) Expression {
+	for expression != nil {
+		switch {
+		case p.match(Dot):
+			member, ok := p.expect(Identifier, "expected name after '.'")
+			if !ok {
+				return expression
+			}
+			start := expression.NodeSpan().Start
+			if p.match(LeftParen) {
+				arguments := p.parseCallArguments()
+				right, found := p.expect(RightParen, "expected ')' after call arguments")
+				end := member.Span.End
+				if found {
+					end = right.Span.End
+				}
+				call := &CallExpression{Receiver: expression, Name: member.Value, Arguments: arguments, SourceSpan: Span{Start: start, End: end}}
+				if identifier, simple := expression.(*IdentifierExpression); simple && identifier.Qualifier == "" {
+					call.Qualifier = identifier.Name
+				}
+				expression = call
+			} else {
+				expression = &MemberExpression{Receiver: expression, Name: member.Value, SourceSpan: Span{Start: start, End: member.Span.End}}
+			}
+		case p.match(LeftBracket):
+			start := expression.NodeSpan().Start
+			index := p.parseExpression()
+			right, ok := p.expect(RightBracket, "expected ']' after index")
+			end := p.previous().Span.End
+			if ok {
+				end = right.Span.End
+			}
+			expression = &IndexExpression{Collection: expression, Index: index, SourceSpan: Span{Start: start, End: end}}
+		default:
+			return expression
+		}
+	}
+	return expression
+}
+
+func (p *parser) parseNewExpression() Expression {
+	start := p.advance()
+	result := &NewExpression{SourceSpan: start.Span}
+	if p.match(LeftParen) {
+		arguments := p.parseCallArguments()
+		if len(arguments) == 0 || arguments[0].Value == nil {
+			p.report(start, "BSL2006", "dynamic New expects a type name")
+		} else {
+			result.Type = arguments[0].Value
+			result.Arguments = arguments[1:]
+		}
+		if right, ok := p.expect(RightParen, "expected ')' after New arguments"); ok {
+			result.SourceSpan.End = right.Span.End
+		}
+		return result
+	}
+	typeName, ok := p.expect(Identifier, "expected type name after New")
+	if !ok {
+		return result
+	}
+	result.TypeName = typeName.Value
+	result.SourceSpan.End = typeName.Span.End
+	if p.match(LeftParen) {
+		result.Arguments = p.parseCallArguments()
+		if right, found := p.expect(RightParen, "expected ')' after constructor arguments"); found {
+			result.SourceSpan.End = right.Span.End
+		}
+	}
+	return result
 }
 
 func (p *parser) parseCallArguments() []CallArgument {
@@ -678,11 +746,24 @@ func (p *parser) checkNext(kind Kind) bool {
 }
 
 func (p *parser) isAssignmentStart() bool {
-	if p.checkNext(Equal) {
-		return true
+	parentheses, brackets := 0, 0
+	for index := p.current + 1; index < len(p.tokens); index++ {
+		switch p.tokens[index].Kind {
+		case LeftParen:
+			parentheses++
+		case RightParen:
+			parentheses--
+		case LeftBracket:
+			brackets++
+		case RightBracket:
+			brackets--
+		case Equal:
+			return parentheses == 0 && brackets == 0
+		case Semicolon, EOF:
+			return false
+		}
 	}
-	return p.current+3 < len(p.tokens) && p.tokens[p.current+1].Kind == Dot &&
-		p.tokens[p.current+2].Kind == Identifier && p.tokens[p.current+3].Kind == Equal
+	return false
 }
 
 func (p *parser) atEnd() bool { return p.peek().Kind == EOF }
@@ -711,7 +792,7 @@ func (p *parser) report(current Token, code, message string) {
 
 func canStartExpression(kind Kind) bool {
 	switch kind {
-	case Number, String, StringStart, Identifier, True, False, Date, Undefined, Null, LeftParen, Plus, Minus, Not:
+	case Number, String, StringStart, Identifier, True, False, Date, Undefined, Null, New, LeftParen, Plus, Minus, Not:
 		return true
 	default:
 		return false

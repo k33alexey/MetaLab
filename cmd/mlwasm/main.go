@@ -167,22 +167,40 @@ func readValueAtDepth(value js.Value, depth int) (bytecode.Value, error) {
 			}
 			return bytecode.ParseNumber(text.String())
 		}
-		if !js.Global().Get("Array").Call("isArray", value).Bool() {
-			break
-		}
-		length := value.Length()
-		if length < 0 || length > maxCollectionSize {
-			return bytecode.Undefined(), fmt.Errorf("JavaScript array is too large")
-		}
-		elements := make([]bytecode.Value, length)
-		for index := range elements {
-			converted, err := readValueAtDepth(value.Index(index), depth+1)
-			if err != nil {
-				return bytecode.Undefined(), fmt.Errorf("array element %d: %w", index, err)
+		if js.Global().Get("Array").Call("isArray", value).Bool() {
+			length := value.Length()
+			if length < 0 || length > maxCollectionSize {
+				return bytecode.Undefined(), fmt.Errorf("JavaScript array is too large")
 			}
-			elements[index] = converted
+			elements := make([]bytecode.Value, length)
+			for index := range elements {
+				converted, err := readValueAtDepth(value.Index(index), depth+1)
+				if err != nil {
+					return bytecode.Undefined(), fmt.Errorf("array element %d: %w", index, err)
+				}
+				elements[index] = converted
+			}
+			return bytecode.Array(elements...), nil
 		}
-		return bytecode.Array(elements...), nil
+		keys := js.Global().Get("Object").Call("keys", value)
+		if keys.Length() > maxCollectionSize {
+			return bytecode.Undefined(), fmt.Errorf("JavaScript object has too many properties")
+		}
+		result, err := bytecode.ConstructCollection("Structure", nil)
+		if err != nil {
+			return bytecode.Undefined(), err
+		}
+		for index := 0; index < keys.Length(); index++ {
+			name := keys.Index(index).String()
+			converted, convertErr := readValueAtDepth(value.Get(name), depth+1)
+			if convertErr != nil {
+				return bytecode.Undefined(), fmt.Errorf("property %s: %w", name, convertErr)
+			}
+			if _, insertErr := bytecode.CollectionMethod(result, "Insert", []bytecode.Value{bytecode.String(name), converted}); insertErr != nil {
+				return bytecode.Undefined(), insertErr
+			}
+		}
+		return result, nil
 	default:
 	}
 	return bytecode.Undefined(), fmt.Errorf("unsupported JavaScript value type %s", value.Type())
@@ -216,10 +234,10 @@ func valueResultAtDepth(value bytecode.Value, depth int) js.Value {
 		result.Set("kind", "boolean")
 		result.Set("value", boolean)
 	case bytecode.ArrayKind:
-		length, _ := value.ArrayLength()
+		length, _ := bytecode.CollectionLength(value)
 		array := js.Global().Get("Array").New(length)
 		for index := 0; index < length; index++ {
-			element, _ := value.ArrayElement(index)
+			element, _ := bytecode.CollectionElement(value, index)
 			converted := valueResultAtDepth(element, depth+1)
 			if !converted.Get("ok").Bool() {
 				return failure(fmt.Sprintf("array element %d: %s", index, converted.Get("error").String()))
@@ -227,6 +245,29 @@ func valueResultAtDepth(value bytecode.Value, depth int) js.Value {
 			array.SetIndex(index, converted.Get("value"))
 		}
 		result.Set("kind", "array")
+		result.Set("value", array)
+	case bytecode.StructureKind, bytecode.ValueListItemKind, bytecode.ValueTableRowKind,
+		bytecode.ValueTableColumnKind, bytecode.KeyAndValueKind:
+		object, err := collectionObjectResult(value, depth)
+		if err != nil {
+			return failure(err.Error())
+		}
+		result.Set("kind", value.Kind().String())
+		result.Set("value", object)
+	case bytecode.MapKind, bytecode.ValueListKind, bytecode.ValueTableKind, bytecode.ValueTableColumnsKind:
+		values, ok := bytecode.CollectionSnapshot(value)
+		if !ok {
+			return failure("could not enumerate collection result")
+		}
+		array := js.Global().Get("Array").New(len(values))
+		for index, item := range values {
+			converted := valueResultAtDepth(item, depth+1)
+			if !converted.Get("ok").Bool() {
+				return failure(fmt.Sprintf("collection item %d: %s", index, converted.Get("error").String()))
+			}
+			array.SetIndex(index, converted.Get("value"))
+		}
+		result.Set("kind", value.Kind().String())
 		result.Set("value", array)
 	case bytecode.NullKind:
 		result.Set("kind", "null")
@@ -241,6 +282,26 @@ func valueResultAtDepth(value bytecode.Value, depth int) js.Value {
 		return failure("unsupported VM result type")
 	}
 	return result
+}
+
+func collectionObjectResult(value bytecode.Value, depth int) (js.Value, error) {
+	names, ok := bytecode.CollectionPropertyNames(value)
+	if !ok {
+		return js.Undefined(), fmt.Errorf("could not enumerate %s properties", value.Kind())
+	}
+	object := js.Global().Get("Object").New()
+	for _, name := range names {
+		property, err := bytecode.CollectionProperty(value, name)
+		if err != nil {
+			return js.Undefined(), err
+		}
+		converted := valueResultAtDepth(property, depth+1)
+		if !converted.Get("ok").Bool() {
+			return js.Undefined(), fmt.Errorf("property %s: %s", name, converted.Get("error").String())
+		}
+		object.Set(name, converted.Get("value"))
+	}
+	return object, nil
 }
 
 func success() js.Value {

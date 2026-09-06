@@ -131,6 +131,11 @@ assertSuccess(exact, "exact number result");
 if (exact.kind !== "number" || exact.value !== 0.1 || exact.text !== "0.1") {
   throw new Error(`unexpected exact number result: ${JSON.stringify(exact)}`);
 }
+const structured = globalThis.MetaLabWasm.call(loaded.handle, "EchoArray", [{Name: "MetaLab", Version: 1}]);
+assertSuccess(structured, "structure result");
+if (structured.kind !== "structure" || structured.value.Name !== "MetaLab" || structured.value.Version !== 1) {
+  throw new Error(`unexpected structure result: ${JSON.stringify(structured)}`);
+}
 const invalidArgument = globalThis.MetaLabWasm.call(loaded.handle, "Add", [{}, 1]);
 if (invalidArgument.ok) {
   throw new Error("unsupported JavaScript argument was accepted");
@@ -175,7 +180,7 @@ function assertSuccess(result, operation) {
 function encodeAddProgram() {
   const writer = new BinaryWriter();
   writer.ascii("MLBC");
-  writer.uint16(6);
+  writer.uint16(7);
   writer.uint32(1); // modules
   writer.string("Smoke");
   writer.string("smoke.bsl");
@@ -196,6 +201,7 @@ function encodeAddProgram() {
   writer.uint32(0); // constants
   writer.uint32(0); // module variable accesses
   writer.uint32(0); // call sites
+  writer.uint32(0); // object operations
   writer.uint32(0); // exception handlers
   writer.uint32(4); // instructions
   writer.instruction(1, 0); // load local 0
@@ -214,6 +220,7 @@ function encodeAddProgram() {
   writer.uint32(0); // constants
   writer.uint32(0); // module variable accesses
   writer.uint32(0); // call sites
+  writer.uint32(0); // object operations
   writer.uint32(0); // exception handlers
   writer.uint32(3); // instructions
   writer.instruction(1, 0); // load local 0
@@ -231,6 +238,7 @@ function encodeAddProgram() {
   writer.uint32(0); // constants
   writer.uint32(0); // module variable accesses
   writer.uint32(0); // call sites
+  writer.uint32(0); // object operations
   writer.uint32(0); // exception handlers
   writer.uint32(3); // instructions
   writer.instruction(1, 0); // load local 0
@@ -248,6 +256,7 @@ function encodeAddProgram() {
   writer.uint32(0); // constants
   writer.uint32(0); // module variable accesses
   writer.uint32(0); // call sites
+  writer.uint32(0); // object operations
   writer.uint32(0); // exception handlers
   writer.uint32(2); // instructions
   writer.instruction(1, 0); // load local 0
@@ -275,6 +284,7 @@ function encodeAddProgram() {
     writer.uint16(0);
     writer.uint16(0);
   }
+  writer.uint32(0); // object operations
   writer.uint32(0); // exception handlers
   writer.uint32(6); // instructions
   writer.instruction(1, 0); // load local 0
@@ -299,6 +309,7 @@ function encodeAddProgram() {
   writer.uint16(0); // module 0
   writer.uint16(0); // variable 0
   writer.uint32(0); // call sites
+  writer.uint32(0); // object operations
   writer.uint32(0); // exception handlers
   writer.uint32(4); // instructions
   writer.instruction(1, 0); // load local 0
@@ -319,6 +330,7 @@ function encodeAddProgram() {
   writer.uint16(0); // module 0
   writer.uint16(0); // variable 0
   writer.uint32(0); // call sites
+  writer.uint32(0); // object operations
   writer.uint32(0); // exception handlers
   writer.uint32(2); // instructions
   writer.instruction(28, 0); // load module access 0
@@ -336,6 +348,7 @@ function encodeAddProgram() {
   writer.string("boom");
   writer.uint32(0); // module variable accesses
   writer.uint32(0); // call sites
+  writer.uint32(0); // object operations
   writer.uint32(0); // exception handlers
   writer.uint32(4); // instructions
   writer.instruction(0, 0); // constant 0
@@ -355,6 +368,7 @@ function encodeAddProgram() {
   writer.string("99");
   writer.uint32(0); // module variable accesses
   writer.uint32(0); // call sites
+  writer.uint32(0); // object operations
   writer.uint32(0); // exception handlers
   writer.uint32(2); // instructions
   writer.instruction(0, 0); // constant 0

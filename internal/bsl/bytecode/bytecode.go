@@ -11,7 +11,7 @@ import (
 const maxIndexedItems = 1 << 16
 
 // Version changes whenever the bytecode contract becomes incompatible.
-const Version uint16 = 6
+const Version uint16 = 7
 
 // ExecutionContext is the runtime placement of one compiled routine.
 type ExecutionContext uint8
@@ -89,6 +89,12 @@ const (
 	OpRaise
 	OpReraise
 	OpErrorDescription
+	OpConstruct
+	OpCallMethod
+	OpGetProperty
+	OpSetProperty
+	OpGetIndex
+	OpSetIndex
 )
 
 var opcodeNames = [...]string{
@@ -107,6 +113,9 @@ var opcodeNames = [...]string{
 	OpLoadModule: "load_module", OpStoreModule: "store_module", OpCall: "call",
 	OpRaise: "raise", OpReraise: "reraise",
 	OpErrorDescription: "error_description",
+	OpConstruct:        "construct", OpCallMethod: "call_method",
+	OpGetProperty: "get_property", OpSetProperty: "set_property",
+	OpGetIndex: "get_index", OpSetIndex: "set_index",
 }
 
 func (opcode Opcode) String() string {
@@ -153,6 +162,15 @@ type CallSite struct {
 	References []VariableReference
 }
 
+// ObjectOperation describes a collection constructor, method or property used
+// by one instruction. Dynamic constructors take their type name from the stack.
+type ObjectOperation struct {
+	Name       string
+	Arity      uint16
+	Dynamic    bool
+	References []VariableReference
+}
+
 // ModuleVariable is one named module storage slot.
 type ModuleVariable struct {
 	Name   string
@@ -186,6 +204,7 @@ type Function struct {
 	MaxStack   uint16
 	Constants  []Value
 	CallSites  []CallSite
+	Objects    []ObjectOperation
 	ModuleVars []VariableReference
 	Exceptions []ExceptionHandler
 	Code       []Instruction
@@ -222,12 +241,18 @@ func (program *Program) ClientProgram() (*Program, error) {
 		if !source.Context.AllowsClient() {
 			target.Constants = []Value{Undefined()}
 			target.CallSites = nil
+			target.Objects = nil
 			target.ModuleVars = nil
 			target.Exceptions = nil
 			target.MaxStack = 1
 			target.Code = []Instruction{{Opcode: OpConstant}, {Opcode: OpReturn}}
 		} else {
 			target.Constants = append([]Value(nil), source.Constants...)
+			target.Objects = make([]ObjectOperation, len(source.Objects))
+			for operationIndex := range source.Objects {
+				target.Objects[operationIndex] = source.Objects[operationIndex]
+				target.Objects[operationIndex].References = append([]VariableReference(nil), source.Objects[operationIndex].References...)
+			}
 			target.ModuleVars = append([]VariableReference(nil), source.ModuleVars...)
 			target.Exceptions = append([]ExceptionHandler(nil), source.Exceptions...)
 			target.CallSites = make([]CallSite, len(source.CallSites))
@@ -339,9 +364,9 @@ func validateFunction(program *Program, function *Function) error {
 	if function.LocalCount < function.Arity {
 		return fmt.Errorf("local count %d is smaller than arity %d", function.LocalCount, function.Arity)
 	}
-	if len(function.Constants) > maxIndexedItems || len(function.CallSites) > maxIndexedItems ||
+	if len(function.Constants) > maxIndexedItems || len(function.CallSites) > maxIndexedItems || len(function.Objects) > maxIndexedItems ||
 		len(function.ModuleVars) > maxIndexedItems || len(function.Exceptions) > maxIndexedItems {
-		return fmt.Errorf("routine exceeds 16-bit constant, call, module-access, or exception index space")
+		return fmt.Errorf("routine exceeds a 16-bit metadata index space")
 	}
 	if len(function.Parameters) != 0 && len(function.Parameters) != int(function.Arity) {
 		return fmt.Errorf("parameter metadata count %d differs from arity %d", len(function.Parameters), function.Arity)
@@ -398,6 +423,19 @@ func validateFunction(program *Program, function *Function) error {
 			return fmt.Errorf("module variable access %d: %w", index, err)
 		}
 	}
+	for index, operation := range function.Objects {
+		if operation.Name == "" && !operation.Dynamic {
+			return fmt.Errorf("object operation %d has an empty name", index)
+		}
+		if len(operation.References) != 0 && len(operation.References) != int(operation.Arity) {
+			return fmt.Errorf("object operation %d has %d references for arity %d", index, len(operation.References), operation.Arity)
+		}
+		for referenceIndex, reference := range operation.References {
+			if err := validateReference(program, function, reference); err != nil {
+				return fmt.Errorf("object operation %d reference %d: %w", index, referenceIndex, err)
+			}
+		}
+	}
 	for index, handler := range function.Exceptions {
 		if handler.Start > handler.End || int(handler.End) > len(function.Code) {
 			return fmt.Errorf("exception handler %d has invalid protected range %d..%d", index, handler.Start, handler.End)
@@ -424,6 +462,10 @@ func validateFunction(program *Program, function *Function) error {
 			if int(instruction.Operand) >= len(function.CallSites) {
 				return fmt.Errorf("instruction %d references call site %d", index, instruction.Operand)
 			}
+		case OpConstruct, OpCallMethod, OpGetProperty, OpSetProperty:
+			if int(instruction.Operand) >= len(function.Objects) {
+				return fmt.Errorf("instruction %d references object operation %d", index, instruction.Operand)
+			}
 		case OpJump, OpJumpIfFalse, OpJumpIfTrueKeep, OpJumpIfFalseKeep:
 			if int(instruction.Operand) >= len(function.Code) {
 				return fmt.Errorf("instruction %d jumps outside code to %d", index, instruction.Operand)
@@ -438,7 +480,7 @@ func validateFunction(program *Program, function *Function) error {
 			}
 		case OpNegate, OpNot, OpArrayLength, OpPositive, OpBoolean, OpPop, OpRaise, OpAdd, OpSubtract, OpMultiply, OpDivide, OpModulo,
 			OpEqual, OpNotEqual, OpLess, OpLessEqual, OpGreater, OpGreaterEqual,
-			OpAnd, OpOr, OpArrayElement, OpReturn:
+			OpAnd, OpOr, OpArrayElement, OpGetIndex, OpSetIndex, OpReturn:
 		default:
 			return fmt.Errorf("instruction %d has unknown opcode %d", index, instruction.Opcode)
 		}
@@ -519,6 +561,24 @@ func stackEffect(program *Program, function *Function, instruction Instruction) 
 		call := function.CallSites[instruction.Operand]
 		arity := int(program.Functions[call.Target].Arity)
 		return arity, 1 - arity
+	case OpConstruct:
+		operation := function.Objects[instruction.Operand]
+		arity := int(operation.Arity)
+		if operation.Dynamic {
+			arity++
+		}
+		return arity, 1 - arity
+	case OpCallMethod:
+		arity := int(function.Objects[instruction.Operand].Arity)
+		return arity + 1, -arity
+	case OpGetProperty:
+		return 1, 0
+	case OpSetProperty:
+		return 2, -2
+	case OpGetIndex:
+		return 2, -1
+	case OpSetIndex:
+		return 3, -3
 	case OpAdd, OpSubtract, OpMultiply, OpDivide, OpModulo,
 		OpEqual, OpNotEqual, OpLess, OpLessEqual, OpGreater, OpGreaterEqual,
 		OpAnd, OpOr, OpArrayElement:

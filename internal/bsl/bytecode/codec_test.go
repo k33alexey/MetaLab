@@ -25,6 +25,7 @@ func TestBinaryCodecRoundTripIsDeterministic(t *testing.T) {
 		Parameters: []Parameter{{HasDefault: true, Default: Number(10)}},
 		Constants:  []Value{Undefined(), Number(2.5), String("MetaLab"), Boolean(true), Null(), date, exact},
 		ModuleVars: []VariableReference{{Kind: ModuleReference, Variable: 0}},
+		Objects:    []ObjectOperation{{Name: "Property", Arity: 1, References: []VariableReference{{Kind: LocalReference, Variable: 0}}}},
 		Exceptions: []ExceptionHandler{{Start: 0, End: 1, Target: 1}},
 		Code: []Instruction{
 			{Opcode: OpLoadLocal, Span: testSpan(1, 1)},
@@ -61,6 +62,9 @@ func TestBinaryCodecRoundTripIsDeterministic(t *testing.T) {
 	}
 	if len(function.Exceptions) != 1 || function.Exceptions[0].Target != 1 {
 		t.Fatalf("decoded exception handlers = %+v", function.Exceptions)
+	}
+	if len(function.Objects) != 1 || function.Objects[0].Name != "Property" || function.Objects[0].References[0].Kind != LocalReference {
+		t.Fatalf("decoded object operations = %+v", function.Objects)
 	}
 	if text, ok := function.Constants[2].AsString(); !ok || text != "MetaLab" {
 		t.Fatalf("decoded string = %q, %v", text, ok)

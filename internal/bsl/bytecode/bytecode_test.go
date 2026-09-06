@@ -42,10 +42,10 @@ func TestValueDynamicMemoryIsBounded(t *testing.T) {
 	t.Parallel()
 
 	value := Array(String("Meta"), Array(String("Lab")))
-	if size, ok := value.DynamicMemory(1 << 20); !ok || size != 295 {
+	if size, ok := value.DynamicMemory(1 << 20); !ok || size != 551 {
 		t.Fatalf("dynamic memory = %d, %v", size, ok)
 	}
-	if _, ok := value.DynamicMemory(294); ok {
+	if _, ok := value.DynamicMemory(550); ok {
 		t.Fatal("DynamicMemory accepted an undersized limit")
 	}
 	deep := Undefined()

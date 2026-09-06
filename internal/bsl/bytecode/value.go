@@ -18,18 +18,36 @@ const (
 	StringKind
 	BooleanKind
 	ArrayKind
+	StructureKind
+	MapKind
+	ValueListKind
+	ValueListItemKind
+	ValueTableKind
+	ValueTableRowKind
+	ValueTableColumnsKind
+	ValueTableColumnKind
+	KeyAndValueKind
 	NullKind
 	DateKind
 )
 
 var valueKindNames = [...]string{
-	UndefinedKind: "undefined",
-	NumberKind:    "number",
-	StringKind:    "string",
-	BooleanKind:   "boolean",
-	ArrayKind:     "array",
-	NullKind:      "null",
-	DateKind:      "date",
+	UndefinedKind:         "undefined",
+	NumberKind:            "number",
+	StringKind:            "string",
+	BooleanKind:           "boolean",
+	ArrayKind:             "array",
+	StructureKind:         "structure",
+	MapKind:               "map",
+	ValueListKind:         "value_list",
+	ValueListItemKind:     "value_list_item",
+	ValueTableKind:        "value_table",
+	ValueTableRowKind:     "value_table_row",
+	ValueTableColumnsKind: "value_table_columns",
+	ValueTableColumnKind:  "value_table_column",
+	KeyAndValueKind:       "key_and_value",
+	NullKind:              "null",
+	DateKind:              "date",
 }
 
 func (kind ValueKind) String() string {
@@ -39,13 +57,14 @@ func (kind ValueKind) String() string {
 	return valueKindNames[kind]
 }
 
-// Value is one immutable BSL runtime value. Later iterations add the remaining BSL types.
+// Value is one BSL runtime value. Primitive payloads are immutable; collection
+// values hold shared, mutable object identity.
 type Value struct {
 	kind      ValueKind
 	number    bslnumber.Decimal
 	text      string
 	boolean   bool
-	elements  []Value
+	object    *collectionObject
 	dateTicks int64
 }
 
@@ -86,9 +105,9 @@ func String(value string) Value { return Value{kind: StringKind, text: value} }
 // Boolean returns a BSL boolean value.
 func Boolean(value bool) Value { return Value{kind: BooleanKind, boolean: value} }
 
-// Array returns an immutable sequence value used by For Each. Collection APIs are added separately.
+// Array returns a mutable reference collection initialized with the supplied values.
 func Array(values ...Value) Value {
-	return Value{kind: ArrayKind, elements: append([]Value(nil), values...)}
+	return Value{kind: ArrayKind, object: newArrayObject(values)}
 }
 
 // Null returns the database NULL value, which is distinct from Undefined.
@@ -140,6 +159,17 @@ func ParseDate(text string) (Value, error) {
 // Kind returns the value kind.
 func (value Value) Kind() ValueKind { return value.kind }
 
+// IsCollection reports whether the value is one of the reference collection values.
+func (value Value) IsCollection() bool {
+	switch value.kind {
+	case ArrayKind, StructureKind, MapKind, ValueListKind, ValueListItemKind,
+		ValueTableKind, ValueTableRowKind, ValueTableColumnsKind, ValueTableColumnKind, KeyAndValueKind:
+		return true
+	default:
+		return false
+	}
+}
+
 // AsNumber returns the numeric payload.
 func (value Value) AsNumber() (float64, bool) {
 	return value.number.Float64(), value.kind == NumberKind
@@ -165,26 +195,30 @@ func (value Value) AsString() (string, bool) { return value.text, value.kind == 
 func (value Value) AsBoolean() (bool, bool) { return value.boolean, value.kind == BooleanKind }
 
 // ArrayLength returns the sequence length.
-func (value Value) ArrayLength() (int, bool) { return len(value.elements), value.kind == ArrayKind }
+func (value Value) ArrayLength() (int, bool) {
+	if value.kind != ArrayKind || value.object == nil {
+		return 0, false
+	}
+	return value.object.length(), true
+}
 
 // ArrayElement returns one sequence element without exposing mutable storage.
 func (value Value) ArrayElement(index int) (Value, bool) {
-	if value.kind != ArrayKind || index < 0 || index >= len(value.elements) {
+	if value.kind != ArrayKind || value.object == nil {
 		return Undefined(), false
 	}
-	return value.elements[index], true
+	return value.object.arrayElement(index)
 }
 
-// DynamicMemory estimates heap storage retained by strings and arrays. The
-// limit makes the traversal safe for untrusted, deeply nested values.
+// DynamicMemory estimates heap storage retained by strings and collections.
+// The limit makes the traversal safe for untrusted, deeply nested values.
 func (value Value) DynamicMemory(limit uint64) (uint64, bool) {
-	return dynamicMemory(value, limit, 0)
+	return dynamicMemory(value, limit, 0, nil)
 }
 
-func dynamicMemory(value Value, limit uint64, depth int) (uint64, bool) {
+func dynamicMemory(value Value, limit uint64, depth int, visited map[*collectionObject]struct{}) (uint64, bool) {
 	const (
-		estimatedValueSlotBytes = uint64(96)
-		maxNesting              = 64
+		maxNesting = 64
 	)
 	if depth > maxNesting {
 		return limit, false
@@ -193,18 +227,13 @@ func dynamicMemory(value Value, limit uint64, depth int) (uint64, bool) {
 	switch value.kind {
 	case StringKind:
 		size = uint64(len(value.text))
-	case ArrayKind:
-		if uint64(len(value.elements)) > limit/estimatedValueSlotBytes {
-			return limit, false
-		}
-		size = uint64(len(value.elements)) * estimatedValueSlotBytes
-		for _, element := range value.elements {
-			remaining := limit - min(size, limit)
-			elementSize, ok := dynamicMemory(element, remaining, depth+1)
-			if !ok || elementSize > remaining {
-				return limit, false
+	case ArrayKind, StructureKind, MapKind, ValueListKind, ValueListItemKind,
+		ValueTableKind, ValueTableRowKind, ValueTableColumnsKind, ValueTableColumnKind, KeyAndValueKind:
+		if value.object != nil {
+			if visited == nil {
+				visited = make(map[*collectionObject]struct{})
 			}
-			size += elementSize
+			return value.object.dynamicMemory(limit, depth, visited)
 		}
 	}
 	return size, size <= limit
@@ -278,8 +307,24 @@ func (value Value) String() string {
 			return "True"
 		}
 		return "False"
-	case ArrayKind:
-		return fmt.Sprintf("Array(%d)", len(value.elements))
+	case ArrayKind, StructureKind, MapKind, ValueListKind, ValueTableKind:
+		if value.object == nil {
+			return value.kind.String()
+		}
+		name := "Array"
+		switch value.kind {
+		case StructureKind:
+			name = "Structure"
+		case MapKind:
+			name = "Map"
+		case ValueListKind:
+			name = "ValueList"
+		case ValueTableKind:
+			name = "ValueTable"
+		}
+		return fmt.Sprintf("%s(%d)", name, value.object.length())
+	case ValueListItemKind, ValueTableRowKind, ValueTableColumnsKind, ValueTableColumnKind, KeyAndValueKind:
+		return value.kind.String()
 	case NullKind:
 		return "Null"
 	case DateKind:

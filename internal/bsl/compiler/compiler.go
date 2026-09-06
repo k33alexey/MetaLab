@@ -384,8 +384,7 @@ func (c *functionCompiler) compileStatement(statement syntax.Statement) {
 		}
 		c.emit(bytecode.OpReturn, 0, node.SourceSpan)
 	case *syntax.AssignmentStatement:
-		c.compileExpression(node.Value)
-		c.compileStore(node.Qualifier, node.Name, node.SourceSpan)
+		c.compileAssignment(node)
 	case *syntax.VariableStatement:
 		// Locals are allocated before code generation so their scope is the whole routine.
 	case *syntax.CallStatement:
@@ -485,6 +484,14 @@ func (c *functionCompiler) compileExpression(expression syntax.Expression) {
 		c.compileLoad(node.Qualifier, node.Name, node.SourceSpan)
 	case *syntax.CallExpression:
 		c.compileCall(node, true)
+	case *syntax.MemberExpression:
+		c.compileMember(node)
+	case *syntax.IndexExpression:
+		c.compileExpression(node.Collection)
+		c.compileExpression(node.Index)
+		c.emit(bytecode.OpGetIndex, 0, node.SourceSpan)
+	case *syntax.NewExpression:
+		c.compileNew(node)
 	case *syntax.GroupExpression:
 		c.compileExpression(node.Expression)
 	case *syntax.UnaryExpression:
@@ -540,6 +547,58 @@ func (c *functionCompiler) compileExpression(expression syntax.Expression) {
 		c.owner.report(c.filename, expression.NodeSpan(), "BSL3009", fmt.Sprintf("unsupported expression %T", expression))
 		c.emitConstant(bytecode.Undefined(), expression.NodeSpan())
 	}
+}
+
+func (c *functionCompiler) compileAssignment(statement *syntax.AssignmentStatement) {
+	switch target := statement.Target.(type) {
+	case nil:
+		c.compileExpression(statement.Value)
+		c.compileStore(statement.Qualifier, statement.Name, statement.SourceSpan)
+	case *syntax.IdentifierExpression:
+		c.compileExpression(statement.Value)
+		c.compileStore(target.Qualifier, target.Name, statement.SourceSpan)
+	case *syntax.MemberExpression:
+		if identifier, ok := target.Receiver.(*syntax.IdentifierExpression); ok && c.isModuleQualifier(identifier.Name) {
+			c.compileExpression(statement.Value)
+			c.compileStore(identifier.Name, target.Name, statement.SourceSpan)
+			return
+		}
+		c.compileExpression(target.Receiver)
+		c.compileExpression(statement.Value)
+		c.emit(bytecode.OpSetProperty, c.addObjectOperation(target.Name, 0, false, nil, target.SourceSpan), statement.SourceSpan)
+	case *syntax.IndexExpression:
+		c.compileExpression(target.Collection)
+		c.compileExpression(target.Index)
+		c.compileExpression(statement.Value)
+		c.emit(bytecode.OpSetIndex, 0, statement.SourceSpan)
+	default:
+		c.owner.report(c.filename, statement.SourceSpan, "BSL3040", "expression is not assignable")
+	}
+}
+
+func (c *functionCompiler) compileMember(member *syntax.MemberExpression) {
+	if identifier, ok := member.Receiver.(*syntax.IdentifierExpression); ok && c.isModuleQualifier(identifier.Name) {
+		c.compileLoad(identifier.Name, member.Name, member.SourceSpan)
+		return
+	}
+	c.compileExpression(member.Receiver)
+	c.emit(bytecode.OpGetProperty, c.addObjectOperation(member.Name, 0, false, nil, member.SourceSpan), member.SourceSpan)
+}
+
+func (c *functionCompiler) compileNew(expression *syntax.NewExpression) {
+	dynamic := expression.TypeName == ""
+	if dynamic {
+		c.compileExpression(expression.Type)
+	}
+	for _, argument := range expression.Arguments {
+		if argument.Value == nil {
+			c.emitConstant(bytecode.Undefined(), argument.SourceSpan)
+		} else {
+			c.compileExpression(argument.Value)
+		}
+	}
+	operation := c.addObjectOperation(expression.TypeName, len(expression.Arguments), dynamic, nil, expression.SourceSpan)
+	c.emit(bytecode.OpConstruct, operation, expression.SourceSpan)
 }
 
 func (c *functionCompiler) compileLoad(qualifier, name string, span syntax.Span) {
@@ -623,6 +682,14 @@ func (c *functionCompiler) addModuleAccess(reference bytecode.VariableReference,
 }
 
 func (c *functionCompiler) compileCall(call *syntax.CallExpression, requireFunction bool) {
+	if call.Receiver != nil {
+		if identifier, ok := call.Receiver.(*syntax.IdentifierExpression); ok && c.isModuleQualifier(identifier.Name) {
+			call.Qualifier = identifier.Name
+		} else {
+			c.compileMethodCall(call)
+			return
+		}
+	}
 	if call.Qualifier == "" && (strings.EqualFold(call.Name, "ОписаниеОшибки") || strings.EqualFold(call.Name, "ErrorDescription")) {
 		c.compileErrorDescription(call)
 		return
@@ -687,6 +754,67 @@ func (c *functionCompiler) compileCall(call *syntax.CallExpression, requireFunct
 	c.emitCall(callSite, len(parameters), call.SourceSpan)
 }
 
+func (c *functionCompiler) compileMethodCall(call *syntax.CallExpression) {
+	c.compileExpression(call.Receiver)
+	references := make([]bytecode.VariableReference, len(call.Arguments))
+	for index, argument := range call.Arguments {
+		if argument.Value == nil {
+			c.emitConstant(bytecode.Undefined(), argument.SourceSpan)
+		} else {
+			if index == 1 && (strings.EqualFold(call.Name, "Свойство") || strings.EqualFold(call.Name, "Property")) {
+				if identifier, ok := argument.Value.(*syntax.IdentifierExpression); ok && identifier.Qualifier == "" && !c.hasUnqualifiedVariable(identifier.Name) {
+					c.ensureLocal(identifier.Name, identifier.SourceSpan)
+				}
+			}
+			c.compileExpression(argument.Value)
+			references[index], _ = c.referenceForExpression(argument.Value)
+		}
+	}
+	operation := c.addObjectOperation(call.Name, len(call.Arguments), false, references, call.SourceSpan)
+	c.emit(bytecode.OpCallMethod, operation, call.SourceSpan)
+}
+
+func (c *functionCompiler) addObjectOperation(name string, arity int, dynamic bool, references []bytecode.VariableReference, span syntax.Span) uint16 {
+	if arity > math.MaxUint16 || len(c.function.Objects) > math.MaxUint16 {
+		c.owner.report(c.filename, span, "BSL3041", "too many object operations or arguments")
+		return 0
+	}
+	operation := bytecode.ObjectOperation{Name: name, Arity: uint16(arity), Dynamic: dynamic, References: references}
+	index := uint16(len(c.function.Objects))
+	c.function.Objects = append(c.function.Objects, operation)
+	return index
+}
+
+func (c *functionCompiler) hasModule(name string) bool {
+	_, ok := c.owner.moduleByName[strings.ToLower(name)]
+	return ok
+}
+
+func (c *functionCompiler) isModuleQualifier(name string) bool {
+	folded := strings.ToLower(name)
+	if _, local := c.locals[folded]; local {
+		return false
+	}
+	for _, variable := range c.owner.program.Modules[c.module].Variables {
+		if strings.EqualFold(variable.Name, name) {
+			return false
+		}
+	}
+	return c.hasModule(name)
+}
+
+func (c *functionCompiler) hasUnqualifiedVariable(name string) bool {
+	if _, ok := c.locals[strings.ToLower(name)]; ok {
+		return true
+	}
+	for _, variable := range c.owner.program.Modules[c.module].Variables {
+		if strings.EqualFold(variable.Name, name) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *functionCompiler) compileErrorDescription(call *syntax.CallExpression) {
 	if len(call.Arguments) != 0 {
 		c.owner.report(c.filename, call.SourceSpan, "BSL3037", "ErrorDescription expects no arguments")
@@ -722,11 +850,15 @@ func (c *functionCompiler) resolveRoutine(qualifier, name string, span syntax.Sp
 }
 
 func (c *functionCompiler) referenceForExpression(expression syntax.Expression) (bytecode.VariableReference, bool) {
-	identifier, ok := expression.(*syntax.IdentifierExpression)
-	if !ok {
-		return bytecode.VariableReference{}, false
+	switch node := expression.(type) {
+	case *syntax.IdentifierExpression:
+		return c.resolveVariable(node.Qualifier, node.Name, false, node.SourceSpan)
+	case *syntax.MemberExpression:
+		if identifier, ok := node.Receiver.(*syntax.IdentifierExpression); ok && c.isModuleQualifier(identifier.Name) {
+			return c.resolveVariable(identifier.Name, node.Name, false, node.SourceSpan)
+		}
 	}
-	return c.resolveVariable(identifier.Qualifier, identifier.Name, false, identifier.SourceSpan)
+	return bytecode.VariableReference{}, false
 }
 
 func (c *functionCompiler) compileLogical(expression *syntax.BinaryExpression) {
@@ -958,10 +1090,22 @@ func (c *functionCompiler) emit(opcode bytecode.Opcode, operand uint16, span syn
 		c.depth++
 	case bytecode.OpStoreLocal, bytecode.OpStoreModule, bytecode.OpJumpIfFalse, bytecode.OpPop, bytecode.OpRaise:
 		c.depth--
+	case bytecode.OpSetProperty:
+		c.depth -= 2
+	case bytecode.OpSetIndex:
+		c.depth -= 3
+	case bytecode.OpConstruct:
+		operation := c.function.Objects[operand]
+		c.depth += 1 - int(operation.Arity)
+		if operation.Dynamic {
+			c.depth--
+		}
+	case bytecode.OpCallMethod:
+		c.depth -= int(c.function.Objects[operand].Arity)
 	case bytecode.OpAdd, bytecode.OpSubtract, bytecode.OpMultiply, bytecode.OpDivide,
 		bytecode.OpModulo, bytecode.OpEqual, bytecode.OpNotEqual, bytecode.OpLess,
 		bytecode.OpLessEqual, bytecode.OpGreater, bytecode.OpGreaterEqual,
-		bytecode.OpAnd, bytecode.OpOr, bytecode.OpArrayElement:
+		bytecode.OpAnd, bytecode.OpOr, bytecode.OpArrayElement, bytecode.OpGetIndex:
 		c.depth--
 	case bytecode.OpReturn:
 		c.depth--

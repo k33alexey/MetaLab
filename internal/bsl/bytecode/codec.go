@@ -114,6 +114,25 @@ func MarshalBinary(program *Program) ([]byte, error) {
 				writeReference(&output, reference)
 			}
 		}
+		if len(function.Objects) > maxWireCollectionLen {
+			return nil, fmt.Errorf("function %q has too many object operations", function.Name)
+		}
+		writeUint32(&output, uint32(len(function.Objects)))
+		for operationIndex, operation := range function.Objects {
+			if err := writeString(&output, operation.Name); err != nil {
+				return nil, fmt.Errorf("function %q object operation %d: %w", function.Name, operationIndex, err)
+			}
+			writeUint16(&output, operation.Arity)
+			if operation.Dynamic {
+				output.WriteByte(1)
+			} else {
+				output.WriteByte(0)
+			}
+			writeUint32(&output, uint32(len(operation.References)))
+			for _, reference := range operation.References {
+				writeReference(&output, reference)
+			}
+		}
 		writeUint32(&output, uint32(len(function.Exceptions)))
 		for _, handler := range function.Exceptions {
 			writeUint16(&output, handler.Start)
@@ -403,6 +422,40 @@ func (decoder *wireDecoder) readFunction() (Function, error) {
 		}
 		calls[index] = CallSite{Target: target, Route: CallRoute(route), References: references}
 	}
+	objectCount, err := decoder.readCount("object operations", 11)
+	if err != nil {
+		return Function{}, err
+	}
+	objects := make([]ObjectOperation, objectCount)
+	for index := range objects {
+		name, readErr := decoder.readString()
+		if readErr != nil {
+			return Function{}, fmt.Errorf("object operation %d name: %w", index, readErr)
+		}
+		arity, readErr := decoder.readUint16()
+		if readErr != nil {
+			return Function{}, fmt.Errorf("object operation %d arity: %w", index, readErr)
+		}
+		flags, readErr := decoder.readByte()
+		if readErr != nil {
+			return Function{}, fmt.Errorf("object operation %d flags: %w", index, readErr)
+		}
+		if flags > 1 {
+			return Function{}, fmt.Errorf("object operation %d has unknown flags %d", index, flags)
+		}
+		referenceCount, readErr := decoder.readCount("object operation references", 5)
+		if readErr != nil {
+			return Function{}, fmt.Errorf("object operation %d: %w", index, readErr)
+		}
+		references := make([]VariableReference, referenceCount)
+		for referenceIndex := range references {
+			references[referenceIndex], readErr = decoder.readReference()
+			if readErr != nil {
+				return Function{}, fmt.Errorf("object operation %d reference %d: %w", index, referenceIndex, readErr)
+			}
+		}
+		objects[index] = ObjectOperation{Name: name, Arity: arity, Dynamic: flags == 1, References: references}
+	}
 	exceptionCount, err := decoder.readCount("exception handlers", 6)
 	if err != nil {
 		return Function{}, err
@@ -446,7 +499,7 @@ func (decoder *wireDecoder) readFunction() (Function, error) {
 	return Function{
 		Name: name, Module: module, IsFunction: flags&1 != 0, Export: flags&2 != 0, Context: ExecutionContext(context),
 		Arity: arity, Parameters: parameters, LocalCount: localCount, MaxStack: maxStack,
-		Constants: constants, ModuleVars: moduleVariables, CallSites: calls, Exceptions: exceptions, Code: code,
+		Constants: constants, ModuleVars: moduleVariables, CallSites: calls, Objects: objects, Exceptions: exceptions, Code: code,
 	}, nil
 }
 

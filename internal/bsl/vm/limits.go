@@ -85,6 +85,7 @@ func programFitsMemory(program *bytecode.Program, limit uint64) bool {
 		if !add(uint64(len(function.Name))) || !add(uint64(len(function.Parameters))*128) ||
 			!add(uint64(len(function.Constants))*estimatedValueBytes) ||
 			!add(uint64(len(function.CallSites))*40) || !add(uint64(len(function.ModuleVars))*8) ||
+			!add(uint64(len(function.Objects))*32) ||
 			!add(uint64(len(function.Exceptions))*24) || !add(uint64(len(function.Code))*64) {
 			return false
 		}
@@ -104,6 +105,14 @@ func programFitsMemory(program *bytecode.Program, limit uint64) bool {
 		}
 		for _, call := range function.CallSites {
 			if !add(uint64(len(call.References)) * 8) {
+				return false
+			}
+		}
+		for _, operation := range function.Objects {
+			if !add(uint64(len(operation.Name))) {
+				return false
+			}
+			if !add(uint64(len(operation.References)) * 8) {
 				return false
 			}
 		}
@@ -132,6 +141,24 @@ func moduleContextMemory(program *bytecode.Program) (uint64, bool) {
 		return 0, false
 	}
 	return variables + slices, true
+}
+
+func moduleValuesMemory(base uint64, modules [][]bytecode.Value, limit uint64) (uint64, bool) {
+	used := base
+	if used > limit {
+		return limit, false
+	}
+	for _, module := range modules {
+		for _, value := range module {
+			remaining := limit - used
+			size, ok := value.DynamicMemory(remaining)
+			if !ok || size > remaining {
+				return limit, false
+			}
+			used += size
+		}
+	}
+	return used, true
 }
 
 type executionBudget struct {
@@ -252,7 +279,7 @@ func (budget *executionBudget) enter(function *bytecode.Function, depth int) (ui
 func (budget *executionBudget) leave(frame uint64) { budget.frames -= frame }
 
 func (budget *executionBudget) retain(value bytecode.Value) error {
-	if value.Kind() != bytecode.StringKind && value.Kind() != bytecode.ArrayKind {
+	if value.Kind() != bytecode.StringKind && !value.IsCollection() {
 		return nil
 	}
 	remaining := budget.limits.MaxMemoryBytes - budget.frames - budget.retained
@@ -265,7 +292,7 @@ func (budget *executionBudget) retain(value bytecode.Value) error {
 }
 
 func (budget *executionBudget) fit(value bytecode.Value) error {
-	if value.Kind() != bytecode.StringKind && value.Kind() != bytecode.ArrayKind {
+	if value.Kind() != bytecode.StringKind && !value.IsCollection() {
 		return nil
 	}
 	remaining := budget.limits.MaxMemoryBytes - budget.frames - budget.retained
@@ -273,6 +300,21 @@ func (budget *executionBudget) fit(value bytecode.Value) error {
 	if !ok || size > remaining {
 		return memoryLimitError(budget.limits.MaxMemoryBytes)
 	}
+	return nil
+}
+
+func (budget *executionBudget) remainingMemory() uint64 {
+	if budget.frames >= budget.limits.MaxMemoryBytes || budget.retained >= budget.limits.MaxMemoryBytes-budget.frames {
+		return 0
+	}
+	return budget.limits.MaxMemoryBytes - budget.frames - budget.retained
+}
+
+func (budget *executionBudget) reserveMemory(size uint64) error {
+	if size > budget.remainingMemory() {
+		return memoryLimitError(budget.limits.MaxMemoryBytes)
+	}
+	budget.retained += size
 	return nil
 }
 

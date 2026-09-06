@@ -75,6 +75,7 @@ func (node *ReturnStatement) NodeSpan() Span { return node.SourceSpan }
 type AssignmentStatement struct {
 	Qualifier  string
 	Name       string
+	Target     Expression
 	Value      Expression
 	SourceSpan Span
 }
@@ -198,12 +199,44 @@ type CallArgument struct {
 type CallExpression struct {
 	Qualifier  string
 	Name       string
+	Receiver   Expression
 	Arguments  []CallArgument
 	SourceSpan Span
 }
 
 func (*CallExpression) expression()         {}
 func (node *CallExpression) NodeSpan() Span { return node.SourceSpan }
+
+// MemberExpression reads a property from an object value.
+type MemberExpression struct {
+	Receiver   Expression
+	Name       string
+	SourceSpan Span
+}
+
+func (*MemberExpression) expression()         {}
+func (node *MemberExpression) NodeSpan() Span { return node.SourceSpan }
+
+// IndexExpression reads an indexed collection value.
+type IndexExpression struct {
+	Collection Expression
+	Index      Expression
+	SourceSpan Span
+}
+
+func (*IndexExpression) expression()         {}
+func (node *IndexExpression) NodeSpan() Span { return node.SourceSpan }
+
+// NewExpression constructs a platform value by a static or dynamic type name.
+type NewExpression struct {
+	TypeName   string
+	Type       Expression
+	Arguments  []CallArgument
+	SourceSpan Span
+}
+
+func (*NewExpression) expression()         {}
+func (node *NewExpression) NodeSpan() Span { return node.SourceSpan }
 
 func (*IdentifierExpression) expression()         {}
 func (node *IdentifierExpression) NodeSpan() Span { return node.SourceSpan }

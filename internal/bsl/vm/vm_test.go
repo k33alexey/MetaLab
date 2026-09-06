@@ -372,11 +372,11 @@ EndFunction`)
 	}
 }
 
-func TestMachineRejectsNonArrayForEachValue(t *testing.T) {
+func TestMachineRejectsNonCollectionForEachValue(t *testing.T) {
 	t.Parallel()
 
 	machine := compileMachine(t, "Function Test(Items)\nFor Each Item In Items Do Break; EndDo;\nReturn 0;\nEndFunction")
-	if _, err := machine.Call("Test", bytecode.Number(1)); err == nil || err.Error() != "test.bsl:2:1: test.Test: For Each requires an array" {
+	if _, err := machine.Call("Test", bytecode.Number(1)); err == nil || err.Error() != "test.bsl:2:1: test.Test: For Each requires a collection" {
 		t.Fatalf("error = %v", err)
 	}
 }

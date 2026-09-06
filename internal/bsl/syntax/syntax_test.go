@@ -189,6 +189,45 @@ Function BooleanValue() Return True; EndFunction`
 	}
 }
 
+func TestParseCollectionConstructionAndPostfixChains(t *testing.T) {
+	t.Parallel()
+
+	module, diagnostics := Parse("collections.bsl", `Procedure Run()
+Items = New Array;
+Dynamic = New("Structure", "Name", "MetaLab");
+Items[0].Name = Dynamic.Name;
+Items[0].Values.Add(42);
+EndProcedure`)
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	body := module.Routines[0].Body
+	if len(body) != 4 {
+		t.Fatalf("statements = %d", len(body))
+	}
+	first := body[0].(*AssignmentStatement)
+	if value, ok := first.Value.(*NewExpression); !ok || value.TypeName != "Array" {
+		t.Fatalf("static constructor = %#v", first.Value)
+	}
+	second := body[1].(*AssignmentStatement)
+	if value, ok := second.Value.(*NewExpression); !ok || value.Type == nil || len(value.Arguments) != 2 {
+		t.Fatalf("dynamic constructor = %#v", second.Value)
+	}
+	third := body[2].(*AssignmentStatement)
+	if _, ok := third.Target.(*MemberExpression); !ok {
+		t.Fatalf("property target = %T", third.Target)
+	}
+	call := body[3].(*CallStatement).Call
+	if call.Name != "Add" {
+		t.Fatalf("method call = %#v", call)
+	}
+	if member, ok := call.Receiver.(*MemberExpression); !ok {
+		t.Fatalf("method receiver = %T", call.Receiver)
+	} else if _, ok := member.Receiver.(*IndexExpression); !ok {
+		t.Fatalf("member receiver = %T", member.Receiver)
+	}
+}
+
 func TestParseVariablesParametersAndCalls(t *testing.T) {
 	t.Parallel()
 
