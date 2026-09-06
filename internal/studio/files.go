@@ -15,6 +15,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 	"go.yaml.in/yaml/v3"
@@ -238,6 +239,45 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 			return nil, err
 		}
 		return canonical.Bytes(), nil
+	}
+	parts := strings.Split(relative, "/")
+	if len(parts) == 3 && parts[0] == "metadata" {
+		manifest, err := project.ValidateLayout(workspace.root)
+		if err != nil {
+			return nil, err
+		}
+		var value any
+		switch metadata.Kind(parts[1]) {
+		case metadata.ConstantKind:
+			value, err = metadata.DecodeConstant(relative, bytes.NewReader(content), manifest)
+		case metadata.EnumerationKind:
+			value, err = metadata.DecodeEnumeration(relative, bytes.NewReader(content), manifest)
+		case metadata.DefinedTypeKind:
+			value, err = metadata.DecodeDefinedType(relative, bytes.NewReader(content), manifest)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if value != nil {
+			filenameID, _ := uuid.Parse(strings.TrimSuffix(parts[2], ".yaml"))
+			var metadataID uuid.UUID
+			switch item := value.(type) {
+			case metadata.Constant:
+				metadataID = item.ID
+			case metadata.Enumeration:
+				metadataID = item.ID
+			case metadata.DefinedTypeObject:
+				metadataID = item.ID
+			}
+			if metadataID != filenameID {
+				return nil, fmt.Errorf("metadata UUID %s does not match filename UUID %s", metadataID, filenameID)
+			}
+			var canonical bytes.Buffer
+			if err := metadata.Encode(&canonical, value); err != nil {
+				return nil, err
+			}
+			return canonical.Bytes(), nil
+		}
 	}
 	decoder := yaml.NewDecoder(bytes.NewReader(content))
 	var document yaml.Node

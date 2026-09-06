@@ -123,9 +123,9 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 	for _, directory := range project.RootDirectories() {
 		var node Node
 		if directory == "metadata" {
-			node, err = workspace.metadataTree()
+			node, err = workspace.metadataTree(manifest.DefaultLanguage, manifest.Languages)
 		} else {
-			node, err = workspace.sourceTree(directory)
+			node, err = workspace.sourceTree(directory, manifest.DefaultLanguage, manifest.Languages)
 		}
 		if err != nil {
 			return Snapshot{}, err
@@ -434,7 +434,7 @@ func writeSourceError(response http.ResponseWriter, err error) {
 	http.Error(response, err.Error(), status)
 }
 
-func (workspace *Workspace) metadataTree() (Node, error) {
+func (workspace *Workspace) metadataTree(language string, languages []project.Language) (Node, error) {
 	root := Node{ID: "metadata", Kind: "group", Title: rootTitles["metadata"], Path: "metadata"}
 	entries, err := os.ReadDir(filepath.Join(workspace.root, "metadata"))
 	if err != nil {
@@ -457,7 +457,7 @@ func (workspace *Workspace) metadataTree() (Node, error) {
 		node := Node{ID: "metadata/" + kind, Kind: "metadata-group", Title: metadataTitle(kind), Path: filepath.ToSlash(relative)}
 		path := filepath.Join(workspace.root, relative)
 		if _, err := os.Stat(path); err == nil {
-			node.Children, err = workspace.sourceFiles(path, filepath.ToSlash(relative), ".yaml", "metadata")
+			node.Children, err = workspace.sourceFiles(path, filepath.ToSlash(relative), ".yaml", "metadata", language, languages)
 			if err != nil {
 				return Node{}, err
 			}
@@ -471,7 +471,7 @@ func (workspace *Workspace) metadataTree() (Node, error) {
 	return root, nil
 }
 
-func (workspace *Workspace) sourceTree(directory string) (Node, error) {
+func (workspace *Workspace) sourceTree(directory, language string, languages []project.Language) (Node, error) {
 	extension, kind := "", directory
 	switch directory {
 	case "modules", "tests":
@@ -481,7 +481,7 @@ func (workspace *Workspace) sourceTree(directory string) (Node, error) {
 	case "assets":
 		kind = "asset"
 	}
-	children, err := workspace.sourceFiles(filepath.Join(workspace.root, directory), directory, extension, kind)
+	children, err := workspace.sourceFiles(filepath.Join(workspace.root, directory), directory, extension, kind, language, languages)
 	if err != nil {
 		return Node{}, err
 	}
@@ -491,7 +491,7 @@ func (workspace *Workspace) sourceTree(directory string) (Node, error) {
 	}, nil
 }
 
-func (workspace *Workspace) sourceFiles(directory, relative, extension, kind string) ([]Node, error) {
+func (workspace *Workspace) sourceFiles(directory, relative, extension, kind, language string, languages []project.Language) ([]Node, error) {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return nil, fmt.Errorf("read project directory %q: %w", relative, err)
@@ -519,7 +519,7 @@ func (workspace *Workspace) sourceFiles(directory, relative, extension, kind str
 		path := filepath.ToSlash(filepath.Join(relative, entry.Name()))
 		title := id.String()
 		if ext == ".yaml" {
-			title, err = yamlSourceTitle(filepath.Join(directory, entry.Name()), path, title, info.Size())
+			title, err = yamlSourceTitle(filepath.Join(directory, entry.Name()), path, title, info.Size(), language, languages)
 			if err != nil {
 				return nil, err
 			}
@@ -533,7 +533,7 @@ func (workspace *Workspace) sourceFiles(directory, relative, extension, kind str
 	return nodes, nil
 }
 
-func yamlSourceTitle(filePath, relative, fallback string, size int64) (string, error) {
+func yamlSourceTitle(filePath, relative, fallback string, size int64, language string, languages []project.Language) (string, error) {
 	if size > project.MaxYAMLDocumentBytes {
 		return "", fmt.Errorf("read source %q: %w", relative, project.ErrYAMLDocumentTooLarge)
 	}
@@ -551,20 +551,46 @@ func yamlSourceTitle(filePath, relative, fallback string, size int64) (string, e
 	}
 	mapping := document.Content[0]
 	name, title := "", ""
+	localizedTitles := map[string]string{}
 	for index := 0; index+1 < len(mapping.Content); index += 2 {
 		key, value := mapping.Content[index], mapping.Content[index+1]
-		if value.Kind != yaml.ScalarNode {
-			continue
-		}
 		switch key.Value {
 		case "name":
-			name = strings.TrimSpace(value.Value)
+			if value.Kind == yaml.ScalarNode {
+				name = strings.TrimSpace(value.Value)
+			}
 		case "title":
-			title = strings.TrimSpace(value.Value)
+			if value.Kind == yaml.ScalarNode {
+				title = strings.TrimSpace(value.Value)
+			} else if value.Kind == yaml.MappingNode {
+				for item := 0; item+1 < len(value.Content); item += 2 {
+					if value.Content[item].Kind == yaml.ScalarNode && value.Content[item+1].Kind == yaml.ScalarNode {
+						localizedTitles[value.Content[item].Value] = strings.TrimSpace(value.Content[item+1].Value)
+					}
+				}
+			}
 		}
 	}
 	if title != "" {
 		return title, nil
+	}
+	if title = localizedTitles[language]; title != "" {
+		return title, nil
+	}
+	for _, configured := range languages {
+		if title = localizedTitles[configured.Code]; title != "" {
+			return title, nil
+		}
+	}
+	localizedCodes := make([]string, 0, len(localizedTitles))
+	for code := range localizedTitles {
+		localizedCodes = append(localizedCodes, code)
+	}
+	sort.Strings(localizedCodes)
+	for _, code := range localizedCodes {
+		if title = localizedTitles[code]; title != "" {
+			return title, nil
+		}
 	}
 	if name != "" {
 		return name, nil

@@ -55,6 +55,32 @@ func TestWorkspaceSnapshotBuildsCanonicalTree(t *testing.T) {
 	}
 }
 
+func TestWorkspaceTreeUsesLocalizedMetadataTitle(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	id := uuid.MustNew()
+	relative, err := project.MetadataPath("constants", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	absolute := filepath.Join(root, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "format: 1\nid: " + id.String() + "\nname: Режим\ntitle: {uk: Режим роботи, ru: Рабочий режим}\ntypes: [{kind: boolean}]\n"
+	if err := os.WriteFile(absolute, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := workspace.Snapshot()
+	if err != nil || !treeContainsTitle(snapshot.Tree, "Рабочий режим") {
+		t.Fatalf("localized tree error=%v tree=%+v", err, snapshot.Tree)
+	}
+}
+
 func TestStudioHandlerServesShellAndSnapshot(t *testing.T) {
 	t.Parallel()
 

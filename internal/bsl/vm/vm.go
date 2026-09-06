@@ -53,9 +53,18 @@ type ServerCaller interface {
 	CallServer(context.Context, ServerCall) (bytecode.Value, error)
 }
 
+// MetadataRuntime resolves application metadata and persistent constants for BSL.
+type MetadataRuntime interface {
+	GetConstant(context.Context, string) (bytecode.Value, error)
+	SetConstant(context.Context, string, bytecode.Value) error
+	GetEnumerationValue(context.Context, string, string) (bytecode.Value, error)
+	GetDefinedType(context.Context, string) (bytecode.Value, error)
+}
+
 type executionEnvironment struct {
-	side   ExecutionSide
-	server ServerCaller
+	side     ExecutionSide
+	server   ServerCaller
+	metadata MetadataRuntime
 }
 
 // Context owns module variables for one isolated BSL session.
@@ -299,6 +308,14 @@ func (machine *Machine) NewContext() *Context {
 	return &Context{
 		machine: machine, modules: makeModuleValues(machine.program),
 		env: executionEnvironment{side: ServerSide}, memory: machine.moduleMemory,
+	}
+}
+
+// NewContextWithMetadata creates a server context connected to application metadata.
+func (machine *Machine) NewContextWithMetadata(runtime MetadataRuntime) *Context {
+	return &Context{
+		machine: machine, modules: makeModuleValues(machine.program),
+		env: executionEnvironment{side: ServerSide, metadata: runtime}, memory: machine.moduleMemory,
 	}
 }
 
@@ -1045,6 +1062,30 @@ func executeAdvanced(
 				failure = runtimeFailure(function, instruction, err.Error())
 				break
 			}
+		case bytecode.OpMetadataGet, bytecode.OpMetadataCall:
+			operation := function.Objects[instruction.Operand]
+			arguments := make([]bytecode.Value, operation.Arity)
+			for index := len(arguments) - 1; index >= 0; index-- {
+				arguments[index] = pop()
+			}
+			metadataContext, cancel := budget.rpcContext()
+			result, err := dispatchMetadata(metadataContext, env, operation.Name, arguments)
+			cancel()
+			err = budget.externalError(err)
+			if err == nil {
+				err = budget.checkClock()
+			}
+			if err != nil {
+				if isResourceFailure(err) {
+					return bytecode.Undefined(), resourceFailure(function, instruction, err)
+				}
+				failure = runtimeFailure(function, instruction, err.Error())
+				break
+			}
+			if err := budget.retain(result); err != nil {
+				return bytecode.Undefined(), resourceFailure(function, instruction, err)
+			}
+			push(result)
 		case bytecode.OpRaise:
 			failure = runtimeFailure(function, instruction, pop().String())
 		case bytecode.OpReraise:
@@ -1083,6 +1124,31 @@ func executeAdvanced(
 		}
 	}
 	return bytecode.Undefined(), fmt.Errorf("routine %q ended without return", function.Name)
+}
+
+func dispatchMetadata(ctx context.Context, env executionEnvironment, path string, arguments []bytecode.Value) (bytecode.Value, error) {
+	if env.side != ServerSide {
+		return bytecode.Undefined(), fmt.Errorf("application metadata is only available in server context")
+	}
+	if env.metadata == nil {
+		return bytecode.Undefined(), fmt.Errorf("application metadata runtime is not configured")
+	}
+	parts := strings.Split(path, "/")
+	switch {
+	case len(parts) == 3 && parts[0] == "constant" && parts[2] == "get" && len(arguments) == 0:
+		return env.metadata.GetConstant(ctx, parts[1])
+	case len(parts) == 3 && parts[0] == "constant" && parts[2] == "set" && len(arguments) == 1:
+		if err := env.metadata.SetConstant(ctx, parts[1], arguments[0]); err != nil {
+			return bytecode.Undefined(), err
+		}
+		return bytecode.Undefined(), nil
+	case len(parts) == 3 && parts[0] == "enumeration" && len(arguments) == 0:
+		return env.metadata.GetEnumerationValue(ctx, parts[1], parts[2])
+	case len(parts) == 2 && parts[0] == "defined-type" && len(arguments) == 0:
+		return env.metadata.GetDefinedType(ctx, parts[1])
+	default:
+		return bytecode.Undefined(), fmt.Errorf("invalid application metadata operation %q", path)
+	}
 }
 
 func findExceptionHandler(function *bytecode.Function, instruction int) int {

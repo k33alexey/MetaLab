@@ -19,6 +19,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 	"go.yaml.in/yaml/v3"
@@ -47,6 +48,7 @@ type Manifest struct {
 	Dirty         bool        `json:"dirty"`
 	ContentSHA256 string      `json:"contentSha256"`
 	Files         []FileEntry `json:"files"`
+	ConstantIDs   []uuid.UUID `json:"constantIds,omitempty"`
 }
 
 type FileEntry struct {
@@ -148,6 +150,10 @@ func inspect(ctx context.Context, root string, state SourceState) (Manifest, []s
 	if err != nil {
 		return Manifest{}, nil, err
 	}
+	metadataCatalog, err := metadata.Load(root)
+	if err != nil {
+		return Manifest{}, nil, fmt.Errorf("validate application metadata: %w", err)
+	}
 	root, err = filepath.Abs(root)
 	if err != nil {
 		return Manifest{}, nil, fmt.Errorf("resolve ML Project path: %w", err)
@@ -179,6 +185,7 @@ func inspect(ctx context.Context, root string, state SourceState) (Manifest, []s
 		Format: CurrentPackageFormat, ProjectID: projectManifest.ID, ProjectName: projectManifest.Name,
 		ProjectFormat: projectManifest.Format, GitCommit: strings.TrimSpace(state.GitCommit), Dirty: state.Dirty,
 		ContentSHA256: hex.EncodeToString(contentHash.Sum(nil)), Files: make([]FileEntry, len(sources)),
+		ConstantIDs: metadataCatalog.ConstantIDs(),
 	}
 	for index := range sources {
 		manifest.Files[index] = sources[index].entry

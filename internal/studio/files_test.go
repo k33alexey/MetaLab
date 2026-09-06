@@ -171,6 +171,40 @@ func TestSaveRejectsMalformedYAML(t *testing.T) {
 	}
 }
 
+func TestSaveValidatesAndCanonicalizesSupportedMetadata(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	id := uuid.MustNew()
+	relative, err := project.MetadataPath("constants", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filePath := filepath.Join(root, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := "format: 1\nid: " + id.String() + "\nname: Режим\ntitle: {ru: Режим}\ntypes: [{kind: boolean}]\n"
+	if err := os.WriteFile(filePath, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := workspace.ReadSource(relative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := workspace.SaveSource(relative, original, opened.Revision)
+	if err != nil || !strings.Contains(saved.Content, "title:\n  ru: Режим\n") {
+		t.Fatalf("canonical metadata = %q, error=%v", saved.Content, err)
+	}
+	mismatched := strings.Replace(saved.Content, id.String(), uuid.MustNew().String(), 1)
+	if _, err := workspace.SaveSource(relative, mismatched, saved.Revision); err == nil || !strings.Contains(err.Error(), "does not match filename") {
+		t.Fatalf("metadata identity error = %v", err)
+	}
+}
+
 func TestFileAPIRequiresRevisionAndCSRF(t *testing.T) {
 	t.Parallel()
 

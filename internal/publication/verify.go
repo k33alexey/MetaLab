@@ -3,6 +3,7 @@ package publication
 import (
 	"archive/zip"
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,9 +12,12 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"slices"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 const maxPackageManifestBytes = 16 << 20
@@ -78,7 +82,78 @@ func VerifyFile(ctx context.Context, packagePath string) (Manifest, error) {
 	if hex.EncodeToString(contentHash.Sum(nil)) != manifest.ContentSHA256 {
 		return Manifest{}, fmt.Errorf("publication package content checksum mismatch")
 	}
+	if err := verifyConstantManifest(&archive.Reader, manifest); err != nil {
+		return Manifest{}, err
+	}
 	return manifest, nil
+}
+
+func verifyConstantManifest(archive *zip.Reader, manifest Manifest) error {
+	var projectManifest project.Project
+	constantIDs := make([]uuid.UUID, 0, len(manifest.ConstantIDs))
+	for index, entry := range manifest.Files {
+		if entry.Path != project.ManifestFile && !strings.HasPrefix(entry.Path, "metadata/constants/") {
+			continue
+		}
+		content, err := readMetadataEntry(archive.File[index+1], entry.Size)
+		if err != nil {
+			return err
+		}
+		if entry.Path == project.ManifestFile {
+			projectManifest, err = project.DecodeSource(entry.Path, bytes.NewReader(content))
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if projectManifest.ID.IsZero() {
+		return fmt.Errorf("publication project manifest is invalid")
+	}
+	for index, entry := range manifest.Files {
+		if !strings.HasPrefix(entry.Path, "metadata/constants/") {
+			continue
+		}
+		content, err := readMetadataEntry(archive.File[index+1], entry.Size)
+		if err != nil {
+			return err
+		}
+		constant, err := metadata.DecodeConstant(entry.Path, bytes.NewReader(content), projectManifest)
+		if err != nil {
+			return err
+		}
+		filenameID, err := uuid.Parse(strings.TrimSuffix(path.Base(entry.Path), ".yaml"))
+		if err != nil || filenameID != constant.ID {
+			return fmt.Errorf("constant metadata UUID does not match %q", entry.Path)
+		}
+		constantIDs = append(constantIDs, constant.ID)
+	}
+	slices.SortFunc(constantIDs, func(left, right uuid.UUID) int { return strings.Compare(left.String(), right.String()) })
+	if !slices.Equal(constantIDs, manifest.ConstantIDs) {
+		return fmt.Errorf("publication constant UUIDs do not match packaged metadata")
+	}
+	return nil
+}
+
+func readMetadataEntry(entry *zip.File, expected int64) ([]byte, error) {
+	if expected < 0 || expected > project.MaxYAMLDocumentBytes {
+		return nil, fmt.Errorf("metadata entry %q is too large", entry.Name)
+	}
+	reader, err := entry.Open()
+	if err != nil {
+		return nil, fmt.Errorf("open metadata entry %q: %w", entry.Name, err)
+	}
+	content, readErr := io.ReadAll(io.LimitReader(reader, expected+1))
+	closeErr := reader.Close()
+	if readErr != nil {
+		return nil, fmt.Errorf("read metadata entry %q: %w", entry.Name, readErr)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("close metadata entry %q: %w", entry.Name, closeErr)
+	}
+	if int64(len(content)) != expected {
+		return nil, fmt.Errorf("metadata entry %q size mismatch", entry.Name)
+	}
+	return content, nil
 }
 
 func readPackageManifest(entry *zip.File) (Manifest, error) {
@@ -108,6 +183,14 @@ func readPackageManifest(entry *zip.File) (Manifest, error) {
 	}
 	if len(manifest.ContentSHA256) != sha256.Size*2 {
 		return Manifest{}, fmt.Errorf("invalid publication package content checksum")
+	}
+	for index, id := range manifest.ConstantIDs {
+		if id.IsZero() {
+			return Manifest{}, fmt.Errorf("publication constant UUID must not be zero")
+		}
+		if index > 0 && manifest.ConstantIDs[index-1].String() >= id.String() {
+			return Manifest{}, fmt.Errorf("publication constant UUIDs must be unique and sorted")
+		}
 	}
 	return manifest, nil
 }

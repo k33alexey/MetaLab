@@ -11,7 +11,7 @@ import (
 const maxIndexedItems = 1 << 16
 
 // Version changes whenever the bytecode contract becomes incompatible.
-const Version uint16 = 7
+const Version uint16 = 8
 
 // ExecutionContext is the runtime placement of one compiled routine.
 type ExecutionContext uint8
@@ -95,6 +95,8 @@ const (
 	OpSetProperty
 	OpGetIndex
 	OpSetIndex
+	OpMetadataGet
+	OpMetadataCall
 )
 
 var opcodeNames = [...]string{
@@ -116,6 +118,7 @@ var opcodeNames = [...]string{
 	OpConstruct:        "construct", OpCallMethod: "call_method",
 	OpGetProperty: "get_property", OpSetProperty: "set_property",
 	OpGetIndex: "get_index", OpSetIndex: "set_index",
+	OpMetadataGet: "metadata_get", OpMetadataCall: "metadata_call",
 }
 
 func (opcode Opcode) String() string {
@@ -466,6 +469,13 @@ func validateFunction(program *Program, function *Function) error {
 			if int(instruction.Operand) >= len(function.Objects) {
 				return fmt.Errorf("instruction %d references object operation %d", index, instruction.Operand)
 			}
+		case OpMetadataGet, OpMetadataCall:
+			if function.Context.AllowsClient() {
+				return fmt.Errorf("instruction %d uses server-only application metadata in a client-capable routine", index)
+			}
+			if int(instruction.Operand) >= len(function.Objects) {
+				return fmt.Errorf("instruction %d references object operation %d", index, instruction.Operand)
+			}
 		case OpJump, OpJumpIfFalse, OpJumpIfTrueKeep, OpJumpIfFalseKeep:
 			if int(instruction.Operand) >= len(function.Code) {
 				return fmt.Errorf("instruction %d jumps outside code to %d", index, instruction.Operand)
@@ -579,6 +589,11 @@ func stackEffect(program *Program, function *Function, instruction Instruction) 
 		return 2, -1
 	case OpSetIndex:
 		return 3, -3
+	case OpMetadataGet:
+		return 0, 1
+	case OpMetadataCall:
+		arity := int(function.Objects[instruction.Operand].Arity)
+		return arity, 1 - arity
 	case OpAdd, OpSubtract, OpMultiply, OpDivide, OpModulo,
 		OpEqual, OpNotEqual, OpLess, OpLessEqual, OpGreater, OpGreaterEqual,
 		OpAnd, OpOr, OpArrayElement:

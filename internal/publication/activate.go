@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -160,6 +161,12 @@ func Activate(ctx context.Context, pool *pgxpool.Pool, request ActivationRequest
 			return nil
 		},
 		BeforeCommit: func(ctx context.Context, transaction pgx.Tx, migration schemadiff.MigrationRecord) error {
+			if err := metadata.EnsureConstantStorage(ctx, transaction); err != nil {
+				return err
+			}
+			if err := metadata.SyncConstantStorage(ctx, transaction, manifest.ConstantIDs); err != nil {
+				return err
+			}
 			currentPackageSHA256, err := digestFile(ctx, request.PackagePath)
 			if err != nil {
 				return err

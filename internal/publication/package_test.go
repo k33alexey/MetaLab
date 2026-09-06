@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 
@@ -122,6 +123,50 @@ func TestBuildRejectsInvalidSourcesWithoutPublishing(t *testing.T) {
 	}
 	if _, err := BuildFile(context.Background(), root, destination, SourceState{}); err == nil {
 		t.Fatal("BuildFile accepted a non-UUID source path")
+	}
+}
+
+func TestBuildRejectsInvalidSupportedMetadata(t *testing.T) {
+	t.Parallel()
+	root := publicationProject(t)
+	id := uuid.MustNew()
+	relative, err := project.MetadataPath("constants", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(root, filepath.FromSlash(relative))), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "format: 1\nid: " + id.String() + "\nname: Invalid\ntitle: {de: Ungültig}\ntypes: [{kind: boolean}]\n"
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(relative)), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Build(context.Background(), root, &bytes.Buffer{}, SourceState{}); err == nil || !strings.Contains(err.Error(), "unconfigured language") {
+		t.Fatalf("Build() error = %v", err)
+	}
+}
+
+func TestPackageCarriesVerifiedConstantIDs(t *testing.T) {
+	t.Parallel()
+	root := publicationProject(t)
+	id := uuid.MustNew()
+	relative, _ := project.MetadataPath("constants", id)
+	absolute := filepath.Join(root, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "format: 1\nid: " + id.String() + "\nname: Режим\ntitle: {ru: Режим}\ntypes: [{kind: boolean}]\n"
+	if err := os.WriteFile(absolute, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	packagePath := filepath.Join(t.TempDir(), "constant.mlpkg")
+	built, err := BuildFile(context.Background(), root, packagePath, SourceState{})
+	if err != nil || len(built.ConstantIDs) != 1 || built.ConstantIDs[0] != id {
+		t.Fatalf("built=%+v error=%v", built, err)
+	}
+	verified, err := VerifyFile(context.Background(), packagePath)
+	if err != nil || !reflect.DeepEqual(verified.ConstantIDs, built.ConstantIDs) {
+		t.Fatalf("verified=%+v error=%v", verified, err)
 	}
 }
 

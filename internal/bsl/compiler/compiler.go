@@ -577,6 +577,14 @@ func (c *functionCompiler) compileAssignment(statement *syntax.AssignmentStateme
 }
 
 func (c *functionCompiler) compileMember(member *syntax.MemberExpression) {
+	if path, ok := metadataMemberPath(member); ok {
+		if !metadataAllowed(c.routine.Context) {
+			c.owner.report(c.filename, member.SourceSpan, "BSL3042", "application metadata is only available in server context")
+		}
+		operation := c.addObjectOperation(path, 0, false, nil, member.SourceSpan)
+		c.emit(bytecode.OpMetadataGet, operation, member.SourceSpan)
+		return
+	}
 	if identifier, ok := member.Receiver.(*syntax.IdentifierExpression); ok && c.isModuleQualifier(identifier.Name) {
 		c.compileLoad(identifier.Name, member.Name, member.SourceSpan)
 		return
@@ -755,6 +763,21 @@ func (c *functionCompiler) compileCall(call *syntax.CallExpression, requireFunct
 }
 
 func (c *functionCompiler) compileMethodCall(call *syntax.CallExpression) {
+	if path, ok := metadataCallPath(call); ok {
+		if !metadataAllowed(c.routine.Context) {
+			c.owner.report(c.filename, call.SourceSpan, "BSL3042", "application metadata is only available in server context")
+		}
+		for _, argument := range call.Arguments {
+			if argument.Value == nil {
+				c.emitConstant(bytecode.Undefined(), argument.SourceSpan)
+			} else {
+				c.compileExpression(argument.Value)
+			}
+		}
+		operation := c.addObjectOperation(path, len(call.Arguments), false, nil, call.SourceSpan)
+		c.emit(bytecode.OpMetadataCall, operation, call.SourceSpan)
+		return
+	}
 	c.compileExpression(call.Receiver)
 	references := make([]bytecode.VariableReference, len(call.Arguments))
 	for index, argument := range call.Arguments {
@@ -772,6 +795,66 @@ func (c *functionCompiler) compileMethodCall(call *syntax.CallExpression) {
 	}
 	operation := c.addObjectOperation(call.Name, len(call.Arguments), false, references, call.SourceSpan)
 	c.emit(bytecode.OpCallMethod, operation, call.SourceSpan)
+}
+
+func metadataMemberPath(member *syntax.MemberExpression) (string, bool) {
+	parts, ok := expressionPath(member)
+	if !ok {
+		return "", false
+	}
+	if len(parts) == 3 && (strings.EqualFold(parts[0], "Перечисления") || strings.EqualFold(parts[0], "Enums")) {
+		return "enumeration/" + parts[1] + "/" + parts[2], true
+	}
+	if len(parts) == 2 && (strings.EqualFold(parts[0], "ОпределяемыеТипы") || strings.EqualFold(parts[0], "DefinedTypes")) {
+		return "defined-type/" + parts[1], true
+	}
+	return "", false
+}
+
+func metadataAllowed(context syntax.ExecutionContext) bool {
+	converted := executionContext(context)
+	return converted == bytecode.ContextServer || converted == bytecode.ContextServerNoContext
+}
+
+func metadataCallPath(call *syntax.CallExpression) (string, bool) {
+	parts, ok := expressionPath(call.Receiver)
+	if !ok || len(parts) != 2 || !(strings.EqualFold(parts[0], "Константы") || strings.EqualFold(parts[0], "Constants")) {
+		return "", false
+	}
+	operation := ""
+	switch {
+	case strings.EqualFold(call.Name, "Получить"), strings.EqualFold(call.Name, "Get"):
+		operation = "get"
+		if len(call.Arguments) != 0 {
+			return "", false
+		}
+	case strings.EqualFold(call.Name, "Установить"), strings.EqualFold(call.Name, "Set"):
+		operation = "set"
+		if len(call.Arguments) != 1 {
+			return "", false
+		}
+	default:
+		return "", false
+	}
+	return "constant/" + parts[1] + "/" + operation, true
+}
+
+func expressionPath(expression syntax.Expression) ([]string, bool) {
+	switch node := expression.(type) {
+	case *syntax.IdentifierExpression:
+		if node.Qualifier != "" {
+			return []string{node.Qualifier, node.Name}, true
+		}
+		return []string{node.Name}, true
+	case *syntax.MemberExpression:
+		parts, ok := expressionPath(node.Receiver)
+		if !ok {
+			return nil, false
+		}
+		return append(parts, node.Name), true
+	default:
+		return nil, false
+	}
 }
 
 func (c *functionCompiler) addObjectOperation(name string, arity int, dynamic bool, references []bytecode.VariableReference, span syntax.Span) uint16 {
@@ -1102,6 +1185,10 @@ func (c *functionCompiler) emit(opcode bytecode.Opcode, operand uint16, span syn
 		}
 	case bytecode.OpCallMethod:
 		c.depth -= int(c.function.Objects[operand].Arity)
+	case bytecode.OpMetadataGet:
+		c.depth++
+	case bytecode.OpMetadataCall:
+		c.depth += 1 - int(c.function.Objects[operand].Arity)
 	case bytecode.OpAdd, bytecode.OpSubtract, bytecode.OpMultiply, bytecode.OpDivide,
 		bytecode.OpModulo, bytecode.OpEqual, bytecode.OpNotEqual, bytecode.OpLess,
 		bytecode.OpLessEqual, bytecode.OpGreater, bytecode.OpGreaterEqual,

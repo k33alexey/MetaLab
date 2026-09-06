@@ -113,6 +113,7 @@ func TestProgramRejectsMalformedBytecode(t *testing.T) {
 		{name: "exception range", program: programWith(Function{Name: "Test", Code: returningConstant(), Constants: []Value{Undefined()}, MaxStack: 1, Exceptions: []ExceptionHandler{{Start: 1, End: 0, Target: 1}}}), message: "protected range"},
 		{name: "exception target", program: programWith(Function{Name: "Test", Code: returningConstant(), Constants: []Value{Undefined()}, MaxStack: 1, Exceptions: []ExceptionHandler{{Start: 0, End: 1, Target: 2}}}), message: "invalid target"},
 		{name: "reraise handler", program: programWith(Function{Name: "Test", Code: []Instruction{{Opcode: OpReraise}, {Opcode: OpConstant}, {Opcode: OpReturn}}, Constants: []Value{Undefined()}, MaxStack: 1}), message: "references exception handler"},
+		{name: "client metadata", program: programWith(Function{Name: "Test", Context: ContextClient, Code: []Instruction{{Opcode: OpMetadataGet}, {Opcode: OpReturn}}, Objects: []ObjectOperation{{Name: "defined-type/Test"}}, MaxStack: 1}), message: "server-only application metadata"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
