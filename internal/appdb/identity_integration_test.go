@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/k33alexey/MetaLab/internal/postgresconn"
+	"github.com/k33alexey/MetaLab/internal/systemdb"
 )
 
 func TestEnsureIdentityRejectsMLSystemIntegration(t *testing.T) {
@@ -37,6 +38,11 @@ func TestEnsureIdentityRejectsMLSystemIntegration(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	systemDatabase, err := systemdb.Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer systemDatabase.Close()
 	if _, err := EnsureIdentity(ctx, descriptor, configuration.ConnConfig.Password); !errors.Is(err, ErrSystemDatabase) {
 		t.Fatalf("EnsureIdentity() error = %v", err)
 	}
