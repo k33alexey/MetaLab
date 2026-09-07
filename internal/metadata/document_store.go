@@ -36,13 +36,14 @@ func (reference DocumentReference) IsEmpty() bool {
 type DocumentRow = ObjectRow
 
 type DocumentRecord struct {
-	Reference  DocumentReference
-	Version    int64
-	Number     string
-	Date       time.Time
-	Posted     bool
-	Attributes map[uuid.UUID]Value
-	TableParts map[uuid.UUID][]DocumentRow
+	Reference    DocumentReference
+	Version      int64
+	Number       string
+	Date         time.Time
+	Posted       bool
+	DeletionMark bool
+	Attributes   map[uuid.UUID]Value
+	TableParts   map[uuid.UUID][]DocumentRow
 }
 
 type DocumentRepository struct {
@@ -107,14 +108,30 @@ func (repository *DocumentRepository) Save(ctx context.Context, record *Document
 	if working.Reference != reference || working.Version != expectedVersion || working.Posted != posted {
 		return fmt.Errorf("document before-write event changed immutable record state")
 	}
-	if err := repository.normalizeRecord(definition, working); err != nil {
-		return err
-	}
 	transaction, err := repository.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin document write: %w", err)
 	}
 	defer func() { _ = transaction.Rollback(ctx) }()
+	if working.Version == 0 && working.Number == "" && definition.Number.Auto {
+		working.Date = normalizeDocumentDate(working.Date)
+		if err := validateDocumentDate(working.Date); err != nil {
+			return fmt.Errorf("document %s date: %w", definition.Name, err)
+		}
+		table, _ := PhysicalDocumentTable(definition.ID)
+		period := documentNumberPeriod(definition.Number.Periodicity, working.Date)
+		value, err := nextObjectSequence(ctx, transaction, definition.ID, period, table, "number", definition.Number.Type == StringType, definition.Number.Periodicity != NumberPeriodNone)
+		if err != nil {
+			return fmt.Errorf("document %s number: %w", definition.Name, err)
+		}
+		working.Number, err = formatAutomaticIdentifier(value, definition.Number.Type, definition.Number.Length)
+		if err != nil {
+			return fmt.Errorf("document %s number: %w", definition.Name, err)
+		}
+	}
+	if err := repository.normalizeRecord(definition, working); err != nil {
+		return err
+	}
 	version, err := repository.writeRecord(ctx, transaction, definition, working)
 	if err != nil {
 		return err
@@ -244,9 +261,9 @@ func (repository *DocumentRepository) normalizeRecord(definition DocumentDefinit
 
 func (repository *DocumentRepository) writeRecord(ctx context.Context, transaction pgx.Tx, definition DocumentDefinition, record *DocumentRecord) (int64, error) {
 	table, _ := PhysicalDocumentTable(definition.ID)
-	columns := []string{"ref", "number", "number_period", "date", "posted"}
+	columns := []string{"ref", "number", "number_period", "date", "posted", "deletion_mark"}
 	arguments := []any{
-		record.Reference.ObjectID.String(), record.Number, documentNumberPeriod(definition.Number.Periodicity, record.Date), record.Date, record.Posted,
+		record.Reference.ObjectID.String(), record.Number, documentNumberPeriod(definition.Number.Periodicity, record.Date), record.Date, record.Posted, record.DeletionMark,
 	}
 	for _, attribute := range definition.Attributes {
 		column, _ := PhysicalAttributeColumn(attribute.ID)
@@ -368,6 +385,9 @@ func (repository *DocumentRepository) decodeRecord(definition DocumentDefinition
 	record.Date = normalizeDocumentDate(record.Date)
 	if err := json.Unmarshal(fields["posted"], &record.Posted); err != nil {
 		return nil, fmt.Errorf("decode document %s posted state: %w", definition.Name, err)
+	}
+	if err := json.Unmarshal(fields["deletion_mark"], &record.DeletionMark); err != nil {
+		return nil, fmt.Errorf("decode document %s deletion mark: %w", definition.Name, err)
 	}
 	for _, attribute := range definition.Attributes {
 		column, _ := PhysicalAttributeColumn(attribute.ID)

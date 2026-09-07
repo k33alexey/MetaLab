@@ -57,8 +57,14 @@ func (catalog *Catalog) catalogTables(definition CatalogDefinition) (schemadiff.
 			{Name: "version", Type: "bigint", Nullable: false, Default: "1"},
 			{Name: "code", Type: codeSQLType(definition.Code), Nullable: false},
 			{Name: "description", Type: fmt.Sprintf("character varying(%d)", definition.DescriptionLength), Nullable: false, Default: "''::character varying"},
+			{Name: "deletion_mark", Type: "boolean", Nullable: false, Default: "false"},
+			{Name: "predefined_name", Type: "character varying(128)", Nullable: true},
 		},
-		Constraints: []schemadiff.Constraint{{Name: physicalObjectName("pk", definition.ID), Type: "primary_key", Definition: "PRIMARY KEY (ref)"}},
+		Constraints: []schemadiff.Constraint{
+			{Name: physicalObjectName("pk", definition.ID), Type: "primary_key", Definition: "PRIMARY KEY (ref)"},
+			{Name: physicalObjectName("up", definition.ID), Type: "unique", Definition: "UNIQUE (predefined_name)"},
+		},
+		Indexes: []schemadiff.Index{{Name: physicalObjectName("im", definition.ID), Method: "btree", Keys: []string{"deletion_mark"}}},
 	}
 	if definition.Code.Unique {
 		table.Constraints = append(table.Constraints, schemadiff.Constraint{Name: physicalObjectName("uq", definition.ID), Type: "unique", Definition: "UNIQUE (code)"})
@@ -129,7 +135,7 @@ func (catalog *Catalog) appendAttributeSchema(table *schemadiff.Table, attribute
 		}
 		table.Constraints = append(table.Constraints, schemadiff.Constraint{
 			Name: physicalObjectName("fk", attribute.ID), Type: "foreign_key",
-			Definition: "FOREIGN KEY (" + columnName + ") REFERENCES " + schemadiff.ApplicationSchema + "." + target + "(ref)",
+			Definition: "FOREIGN KEY (" + columnName + ") REFERENCES " + schemadiff.ApplicationSchema + "." + target + "(ref) DEFERRABLE INITIALLY DEFERRED",
 		})
 	}
 	return nil

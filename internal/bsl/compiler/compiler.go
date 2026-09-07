@@ -809,6 +809,9 @@ func metadataMemberPath(member *syntax.MemberExpression) (string, bool) {
 	if len(parts) == 3 && (strings.EqualFold(parts[0], "Перечисления") || strings.EqualFold(parts[0], "Enums")) {
 		return "enumeration/" + parts[1] + "/" + parts[2], true
 	}
+	if len(parts) == 3 && (strings.EqualFold(parts[0], "Справочники") || strings.EqualFold(parts[0], "Catalogs")) {
+		return "catalog-predefined/" + parts[1] + "/" + parts[2], true
+	}
 	if len(parts) == 2 && (strings.EqualFold(parts[0], "ОпределяемыеТипы") || strings.EqualFold(parts[0], "DefinedTypes")) {
 		return "defined-type/" + parts[1], true
 	}

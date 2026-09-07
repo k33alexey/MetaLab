@@ -125,7 +125,8 @@ func DecodeDocument(source string, reader io.Reader, manifest project.Project) (
 
 func reservedDocumentObjectName(name string) bool {
 	switch strings.ToLower(name) {
-	case "ссылка", "ref", "номер", "number", "дата", "date", "проведен", "проведён", "posted", "версия", "version":
+	case "ссылка", "ref", "номер", "number", "дата", "date", "проведен", "проведён", "posted", "версия", "version",
+		"пометкаудаления", "deletionmark":
 		return true
 	default:
 		return false

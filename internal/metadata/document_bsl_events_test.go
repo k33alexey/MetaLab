@@ -30,6 +30,11 @@ func TestDocumentBSLEventsProvideThisObjectAndWriteModes(t *testing.T) {
     Если ЭтотОбъект.Номер = "" Или РежимЗаписи <> "Write" Или РежимПроведения <> "DoNotPost" Тогда
         Отказ = Истина;
     КонецЕсли;
+КонецПроцедуры
+
+&НаСервере
+Процедура ПередУдалением(Отказ)
+    Отказ = Истина;
 КонецПроцедуры`)
 	if len(diagnostics) != 0 {
 		t.Fatal(diagnostics)
@@ -54,5 +59,9 @@ func TestDocumentBSLEventsProvideThisObjectAndWriteModes(t *testing.T) {
 	cancelled, err = handler.HandleDocumentEvent(context.Background(), DocumentEventBefore, record)
 	if err != nil || !cancelled {
 		t.Fatalf("before cancelled=%v error=%v", cancelled, err)
+	}
+	cancelled, err = handler.HandleDocumentEvent(context.Background(), DocumentEventBeforeDelete, record)
+	if err != nil || !cancelled {
+		t.Fatalf("before-delete cancelled=%v error=%v", cancelled, err)
 	}
 }

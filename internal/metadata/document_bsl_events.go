@@ -87,7 +87,7 @@ func (handler *DocumentBSLEvents) HandleDocumentEvent(ctx context.Context, event
 	updated := cloneDocumentRecord(object.record)
 	object.mu.Unlock()
 	*record = *updated
-	if event == DocumentEventFillCheck || event == DocumentEventBefore || event == DocumentEventOnWrite {
+	if event == DocumentEventFillCheck || event == DocumentEventBefore || event == DocumentEventOnWrite || event == DocumentEventBeforeDelete {
 		if len(final) == 0 {
 			return false, fmt.Errorf("document event %s did not return its cancellation argument", event)
 		}
@@ -120,6 +120,8 @@ func documentEventRoutine(event DocumentEvent, definition DocumentDefinition) (s
 		return "ПриЗаписи", "OnWrite", []bytecode.Value{bytecode.Boolean(false)}
 	case DocumentEventAfter:
 		return "ПослеЗаписи", "AfterWrite", nil
+	case DocumentEventBeforeDelete:
+		return "ПередУдалением", "BeforeDelete", []bytecode.Value{bytecode.Boolean(false)}
 	default:
 		return "", "", nil
 	}

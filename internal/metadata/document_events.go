@@ -9,14 +9,18 @@ import (
 type DocumentEvent string
 
 const (
-	DocumentEventFill      DocumentEvent = "fill"
-	DocumentEventFillCheck DocumentEvent = "fill-check"
-	DocumentEventBefore    DocumentEvent = "before-write"
-	DocumentEventOnWrite   DocumentEvent = "on-write"
-	DocumentEventAfter     DocumentEvent = "after-write"
+	DocumentEventFill         DocumentEvent = "fill"
+	DocumentEventFillCheck    DocumentEvent = "fill-check"
+	DocumentEventBefore       DocumentEvent = "before-write"
+	DocumentEventOnWrite      DocumentEvent = "on-write"
+	DocumentEventAfter        DocumentEvent = "after-write"
+	DocumentEventBeforeDelete DocumentEvent = "before-delete"
 )
 
-var ErrDocumentWriteCancelled = errors.New("document write was cancelled by an event handler")
+var (
+	ErrDocumentWriteCancelled  = errors.New("document write was cancelled by an event handler")
+	ErrDocumentDeleteCancelled = errors.New("document deletion was cancelled by an event handler")
+)
 
 type DocumentEventHandler interface {
 	HandleDocumentEvent(context.Context, DocumentEvent, *DocumentRecord) (cancel bool, err error)
@@ -38,6 +42,9 @@ func dispatchDocumentEvent(ctx context.Context, handler DocumentEventHandler, ev
 	}
 	if !cancel {
 		return nil
+	}
+	if event == DocumentEventBeforeDelete {
+		return ErrDocumentDeleteCancelled
 	}
 	if event != DocumentEventFillCheck && event != DocumentEventBefore && event != DocumentEventOnWrite {
 		return fmt.Errorf("document event %s cannot cancel an operation", event)

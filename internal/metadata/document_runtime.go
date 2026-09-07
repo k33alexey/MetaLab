@@ -167,6 +167,8 @@ func (runtime *Runtime) getDocumentProperty(object *documentObject, name string)
 		return bytecode.Boolean(object.record.Posted), nil
 	case propertyName(name, "Версия", "Version"):
 		return bytecode.ParseNumber(fmt.Sprint(object.record.Version))
+	case propertyName(name, "ПометкаУдаления", "DeletionMark"):
+		return bytecode.Boolean(object.record.DeletionMark), nil
 	}
 	if attribute, ok := findCatalogAttribute(object.definition.Attributes, name); ok {
 		stored, present := object.record.Attributes[attribute.ID]
@@ -204,7 +206,8 @@ func (runtime *Runtime) setDocumentProperty(object *documentObject, name string,
 		object.record.Date = normalizeDocumentDate(date)
 		return nil
 	case propertyName(name, "Ссылка", "Ref"), propertyName(name, "Проведен", "Posted"),
-		propertyName(name, "Проведён", "Posted"), propertyName(name, "Версия", "Version"):
+		propertyName(name, "Проведён", "Posted"), propertyName(name, "Версия", "Version"),
+		propertyName(name, "ПометкаУдаления", "DeletionMark"):
 		return fmt.Errorf("document property %s is read-only", name)
 	}
 	attribute, ok := findCatalogAttribute(object.definition.Attributes, name)
@@ -254,6 +257,37 @@ func (runtime *Runtime) callDocumentMethod(ctx context.Context, object *document
 		object.mu.RLock()
 		defer object.mu.RUnlock()
 		return runtime.wrapDocumentReference(object.definition, object.record.Reference)
+	case propertyName(name, "УстановитьПометкуУдаления", "SetDeletionMark"):
+		if len(arguments) != 1 {
+			return bytecode.Undefined(), fmt.Errorf("%s expects one boolean argument", name)
+		}
+		mark, ok := arguments[0].AsBoolean()
+		if !ok {
+			return bytecode.Undefined(), fmt.Errorf("%s expects one boolean argument", name)
+		}
+		object.mu.Lock()
+		defer object.mu.Unlock()
+		previous := cloneDocumentRecord(object.record)
+		object.record.DeletionMark = mark
+		if err := runtime.syncDocumentTables(object); err != nil {
+			object.record = previous
+			return bytecode.Undefined(), err
+		}
+		if err := runtime.documentRepository.Save(ctx, object.record, runtime.documentEventHandler(object.definition.ID)); err != nil {
+			object.record = previous
+			return bytecode.Undefined(), err
+		}
+		return bytecode.Undefined(), nil
+	case propertyName(name, "Удалить", "Delete"):
+		if len(arguments) != 0 {
+			return bytecode.Undefined(), fmt.Errorf("%s expects no arguments", name)
+		}
+		object.mu.Lock()
+		defer object.mu.Unlock()
+		if _, err := runtime.documentRepository.Delete(ctx, object.record, runtime.documentEventHandler(object.definition.ID), runtime.actor); err != nil {
+			return bytecode.Undefined(), err
+		}
+		return bytecode.Undefined(), nil
 	default:
 		return bytecode.Undefined(), fmt.Errorf("%s has no method %s", object.RuntimeTypeName(), name)
 	}

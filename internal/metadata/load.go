@@ -213,6 +213,12 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		if err := add("catalog", item.ID, item.Name, index, catalog.catalogByName, catalog.catalogByID); err != nil {
 			return err
 		}
+		for _, predefined := range item.Predefined {
+			if previous, ok := allIDs[predefined.ID]; ok {
+				return fmt.Errorf("%w: %s and predefined catalog item %s.%s use %s", ErrDuplicateID, previous, item.Name, predefined.Name, predefined.ID)
+			}
+			allIDs[predefined.ID] = "predefined catalog item " + item.Name + "." + predefined.Name
+		}
 		for _, attribute := range item.Attributes {
 			if previous, ok := allIDs[attribute.ID]; ok {
 				return fmt.Errorf("%w: %s and catalog attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
@@ -281,6 +287,19 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				if err := catalog.validateReferences("catalog "+item.Name+" table part "+part.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
 					return err
 				}
+			}
+		}
+		for _, predefined := range item.Predefined {
+			values := make(map[uuid.UUID]Value, len(predefined.Attributes))
+			for name, value := range predefined.Attributes {
+				attribute, ok := findCatalogAttribute(item.Attributes, name)
+				if !ok {
+					return fmt.Errorf("predefined catalog item %s.%s has unknown attribute %s", item.Name, predefined.Name, name)
+				}
+				values[attribute.ID] = value
+			}
+			if _, err := catalog.normalizeAttributes(item.Name+"."+predefined.Name, item.Attributes, values); err != nil {
+				return fmt.Errorf("predefined catalog item %s.%s: %w", item.Name, predefined.Name, err)
 			}
 		}
 		if err := validateObjectSources(root, "catalog", item.Name, item.ObjectModule, item.ManagerModule, item.Forms); err != nil {

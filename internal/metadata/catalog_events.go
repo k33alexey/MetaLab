@@ -9,17 +9,21 @@ import (
 type CatalogEvent string
 
 const (
-	CatalogEventFill      CatalogEvent = "fill"
-	CatalogEventFillCheck CatalogEvent = "fill-check"
-	CatalogEventBefore    CatalogEvent = "before-write"
-	CatalogEventOnWrite   CatalogEvent = "on-write"
-	CatalogEventAfter     CatalogEvent = "after-write"
+	CatalogEventFill         CatalogEvent = "fill"
+	CatalogEventFillCheck    CatalogEvent = "fill-check"
+	CatalogEventBefore       CatalogEvent = "before-write"
+	CatalogEventOnWrite      CatalogEvent = "on-write"
+	CatalogEventAfter        CatalogEvent = "after-write"
+	CatalogEventBeforeDelete CatalogEvent = "before-delete"
 )
 
-var ErrCatalogWriteCancelled = errors.New("catalog write was cancelled by an event handler")
+var (
+	ErrCatalogWriteCancelled  = errors.New("catalog write was cancelled by an event handler")
+	ErrCatalogDeleteCancelled = errors.New("catalog deletion was cancelled by an event handler")
+)
 
 // CatalogEventHandler receives catalog lifecycle events in their fixed order.
-// Returning cancel is supported only by fill-check, before-write and on-write.
+// Returning cancel is supported by fill-check, write and before-delete events.
 type CatalogEventHandler interface {
 	HandleCatalogEvent(context.Context, CatalogEvent, *CatalogRecord) (cancel bool, err error)
 }
@@ -39,6 +43,9 @@ func dispatchCatalogEvent(ctx context.Context, handler CatalogEventHandler, even
 		return fmt.Errorf("catalog event %s: %w", event, err)
 	}
 	if cancel {
+		if event == CatalogEventBeforeDelete {
+			return ErrCatalogDeleteCancelled
+		}
 		if event != CatalogEventFillCheck && event != CatalogEventBefore && event != CatalogEventOnWrite {
 			return fmt.Errorf("catalog event %s cannot cancel an operation", event)
 		}

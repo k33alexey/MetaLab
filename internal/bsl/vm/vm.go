@@ -67,6 +67,7 @@ type CatalogRuntime interface {
 	GetCatalogObject(context.Context, string, bytecode.Value) (bytecode.Value, error)
 	FindCatalogByCode(context.Context, string, bytecode.Value) (bytecode.Value, error)
 	GetCatalogReference(context.Context, string, bytecode.Value) (bytecode.Value, error)
+	GetPredefinedCatalogReference(context.Context, string, string) (bytecode.Value, error)
 }
 
 // DocumentRuntime resolves document manager operations for server-side BSL.
@@ -1308,6 +1309,12 @@ func dispatchMetadata(ctx context.Context, env executionEnvironment, path string
 			}
 		}
 		return bytecode.Undefined(), fmt.Errorf("invalid application metadata operation %q", path)
+	case len(parts) == 3 && parts[0] == "catalog-predefined" && len(arguments) == 0:
+		runtime, ok := env.metadata.(CatalogRuntime)
+		if !ok {
+			return bytecode.Undefined(), fmt.Errorf("catalog runtime is not configured")
+		}
+		return runtime.GetPredefinedCatalogReference(ctx, parts[1], parts[2])
 	case len(parts) == 3 && parts[0] == "document":
 		runtime, ok := env.metadata.(DocumentRuntime)
 		if !ok {

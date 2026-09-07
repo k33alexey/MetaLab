@@ -93,7 +93,7 @@ func (handler *CatalogBSLEvents) HandleCatalogEvent(ctx context.Context, event C
 	updated := cloneCatalogRecord(object.record)
 	object.mu.Unlock()
 	*record = *updated
-	if event == CatalogEventFillCheck || event == CatalogEventBefore || event == CatalogEventOnWrite {
+	if event == CatalogEventFillCheck || event == CatalogEventBefore || event == CatalogEventOnWrite || event == CatalogEventBeforeDelete {
 		if len(final) == 0 {
 			return false, fmt.Errorf("catalog event %s did not return its cancellation argument", event)
 		}
@@ -124,6 +124,8 @@ func catalogEventRoutine(event CatalogEvent, definition CatalogDefinition) (stri
 		return "ПриЗаписи", "OnWrite", []bytecode.Value{bytecode.Boolean(false)}
 	case CatalogEventAfter:
 		return "ПослеЗаписи", "AfterWrite", nil
+	case CatalogEventBeforeDelete:
+		return "ПередУдалением", "BeforeDelete", []bytecode.Value{bytecode.Boolean(false)}
 	default:
 		return "", "", nil
 	}

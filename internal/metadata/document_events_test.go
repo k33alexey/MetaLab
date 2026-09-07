@@ -20,6 +20,9 @@ func TestDocumentEventCancellationContract(t *testing.T) {
 			t.Fatalf("event %s error = %v", event, err)
 		}
 	}
+	if err := dispatchDocumentEvent(context.Background(), handler, DocumentEventBeforeDelete, &DocumentRecord{}); !errors.Is(err, ErrDocumentDeleteCancelled) {
+		t.Fatalf("before-delete cancellation error = %v", err)
+	}
 	for _, event := range []DocumentEvent{DocumentEventFill, DocumentEventAfter} {
 		if err := dispatchDocumentEvent(context.Background(), handler, event, &DocumentRecord{}); err == nil {
 			t.Fatalf("event %s accepted cancellation", event)

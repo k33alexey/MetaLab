@@ -40,10 +40,11 @@ func TestCatalogApplicationSchemaUsesStableUUIDNames(t *testing.T) {
 	mainName, _ := PhysicalCatalogTable(catalogID)
 	attributeName, _ := PhysicalAttributeColumn(attributeID)
 	main := schemaTable(t, schema, mainName)
-	if !hasSchemaColumn(main, "ref", "uuid", false) || !hasSchemaColumn(main, attributeName, "uuid", true) {
+	if !hasSchemaColumn(main, "ref", "uuid", false) || !hasSchemaColumn(main, "deletion_mark", "boolean", false) ||
+		!hasSchemaColumn(main, "predefined_name", "character varying(128)", true) || !hasSchemaColumn(main, attributeName, "uuid", true) {
 		t.Fatalf("main table = %+v", main)
 	}
-	if len(main.Indexes) != 1 || main.Indexes[0].Keys[0] != attributeName || len(main.Constraints) != 3 {
+	if !hasSchemaIndex(main, attributeName) || !hasSchemaIndex(main, "deletion_mark") || len(main.Constraints) != 4 {
 		t.Fatalf("main indexes/constraints = %+v / %+v", main.Indexes, main.Constraints)
 	}
 	partName, _ := PhysicalCatalogTable(partID)
@@ -74,7 +75,7 @@ func TestNonUniqueCatalogCodeIsIndexed(t *testing.T) {
 	}
 	tableName, _ := PhysicalCatalogTable(catalogID)
 	table := schemaTable(t, schema, tableName)
-	if len(table.Indexes) != 1 || len(table.Indexes[0].Keys) != 1 || table.Indexes[0].Keys[0] != "code" {
+	if !hasSchemaIndex(table, "code") || !hasSchemaIndex(table, "deletion_mark") {
 		t.Fatalf("code indexes = %+v", table.Indexes)
 	}
 }
@@ -99,10 +100,10 @@ func TestDocumentApplicationSchemaContainsLifecycleColumns(t *testing.T) {
 	if !hasSchemaColumn(table, "number", "character varying(11)", false) ||
 		!hasSchemaColumn(table, "number_period", "integer", false) ||
 		!hasSchemaColumn(table, "date", "timestamp with time zone", false) ||
-		!hasSchemaColumn(table, "posted", "boolean", false) {
+		!hasSchemaColumn(table, "posted", "boolean", false) || !hasSchemaColumn(table, "deletion_mark", "boolean", false) {
 		t.Fatalf("document columns = %+v", table.Columns)
 	}
-	if len(table.Constraints) != 2 || len(table.Indexes) != 1 || table.Indexes[0].Keys[0] != "date DESC" {
+	if len(table.Constraints) != 2 || !hasSchemaIndex(table, "date DESC") || !hasSchemaIndex(table, "deletion_mark") {
 		t.Fatalf("document constraints/indexes = %+v / %+v", table.Constraints, table.Indexes)
 	}
 	partName, _ := PhysicalDocumentTable(partID)
@@ -125,6 +126,15 @@ func schemaTable(t *testing.T, schema schemadiff.Schema, name string) schemadiff
 func hasSchemaColumn(table schemadiff.Table, name, sqlType string, nullable bool) bool {
 	for _, column := range table.Columns {
 		if column.Name == name && column.Type == sqlType && column.Nullable == nullable {
+			return true
+		}
+	}
+	return false
+}
+
+func hasSchemaIndex(table schemadiff.Table, firstKey string) bool {
+	for _, index := range table.Indexes {
+		if len(index.Keys) > 0 && index.Keys[0] == firstKey {
 			return true
 		}
 	}

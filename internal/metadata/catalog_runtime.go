@@ -35,7 +35,7 @@ func (object *catalogObject) RuntimeEqual(other bytecode.RuntimeObject) bool {
 func (object *catalogObject) RuntimeDynamicMemory(limit uint64) (uint64, bool) {
 	object.mu.RLock()
 	defer object.mu.RUnlock()
-	size := uint64(1024 + len(object.record.Code) + len(object.record.Description))
+	size := uint64(1024 + len(object.record.Code) + len(object.record.Description) + len(object.record.PredefinedName))
 	for _, value := range object.record.Attributes {
 		if size > limit {
 			return limit, false
@@ -142,6 +142,19 @@ func (runtime *Runtime) GetCatalogReference(_ context.Context, name string, valu
 	return runtime.wrapCatalogReference(definition, reference)
 }
 
+// GetPredefinedCatalogReference resolves a stable predefined item directly from BSL metadata.
+func (runtime *Runtime) GetPredefinedCatalogReference(_ context.Context, catalogName, itemName string) (bytecode.Value, error) {
+	definition, ok := runtime.catalog.CatalogDefinition(catalogName)
+	if !ok {
+		return bytecode.Undefined(), fmt.Errorf("unknown catalog %q", catalogName)
+	}
+	item, ok := definition.PredefinedItem(itemName)
+	if !ok {
+		return bytecode.Undefined(), fmt.Errorf("unknown predefined catalog item %s.%s", definition.Name, itemName)
+	}
+	return runtime.wrapCatalogReference(definition, CatalogReference{CatalogID: definition.ID, ObjectID: item.ID})
+}
+
 func (runtime *Runtime) GetObjectProperty(_ context.Context, value bytecode.RuntimeObject, name string) (bytecode.Value, error) {
 	switch object := value.(type) {
 	case *catalogObject:
@@ -162,6 +175,10 @@ func (runtime *Runtime) GetObjectProperty(_ context.Context, value bytecode.Runt
 			return bytecode.String(object.record.Description), nil
 		case propertyName(name, "Версия", "Version"):
 			return bytecode.ParseNumber(fmt.Sprint(object.record.Version))
+		case propertyName(name, "ПометкаУдаления", "DeletionMark"):
+			return bytecode.Boolean(object.record.DeletionMark), nil
+		case propertyName(name, "ИмяПредопределенныхДанных", "PredefinedDataName"), propertyName(name, "ИмяПредопределённыхДанных", "PredefinedDataName"):
+			return bytecode.String(object.record.PredefinedName), nil
 		}
 		if attribute, ok := findCatalogAttribute(object.definition.Attributes, name); ok {
 			stored, present := object.record.Attributes[attribute.ID]
@@ -239,7 +256,9 @@ func (runtime *Runtime) SetObjectProperty(_ context.Context, value bytecode.Runt
 		}
 		object.record.Description = text
 		return nil
-	case propertyName(name, "Ссылка", "Ref"), propertyName(name, "Версия", "Version"):
+	case propertyName(name, "Ссылка", "Ref"), propertyName(name, "Версия", "Version"),
+		propertyName(name, "ПометкаУдаления", "DeletionMark"),
+		propertyName(name, "ИмяПредопределенныхДанных", "PredefinedDataName"), propertyName(name, "ИмяПредопределённыхДанных", "PredefinedDataName"):
 		return fmt.Errorf("catalog property %s is read-only", name)
 	}
 	attribute, ok := findCatalogAttribute(object.definition.Attributes, name)
@@ -291,6 +310,37 @@ func (runtime *Runtime) CallObjectMethod(ctx context.Context, value bytecode.Run
 			object.mu.RLock()
 			defer object.mu.RUnlock()
 			return runtime.wrapCatalogReference(object.definition, object.record.Reference)
+		case propertyName(name, "УстановитьПометкуУдаления", "SetDeletionMark"):
+			if len(arguments) != 1 {
+				return bytecode.Undefined(), fmt.Errorf("%s expects one boolean argument", name)
+			}
+			mark, ok := arguments[0].AsBoolean()
+			if !ok {
+				return bytecode.Undefined(), fmt.Errorf("%s expects one boolean argument", name)
+			}
+			object.mu.Lock()
+			defer object.mu.Unlock()
+			previous := cloneCatalogRecord(object.record)
+			object.record.DeletionMark = mark
+			if err := runtime.syncCatalogTables(object); err != nil {
+				object.record = previous
+				return bytecode.Undefined(), err
+			}
+			if err := runtime.catalogRepository.Save(ctx, object.record, runtime.catalogEventHandler(object.definition.ID)); err != nil {
+				object.record = previous
+				return bytecode.Undefined(), err
+			}
+			return bytecode.Undefined(), nil
+		case propertyName(name, "Удалить", "Delete"):
+			if len(arguments) != 0 {
+				return bytecode.Undefined(), fmt.Errorf("%s expects no arguments", name)
+			}
+			object.mu.Lock()
+			defer object.mu.Unlock()
+			if _, err := runtime.catalogRepository.Delete(ctx, object.record, runtime.catalogEventHandler(object.definition.ID), runtime.actor); err != nil {
+				return bytecode.Undefined(), err
+			}
+			return bytecode.Undefined(), nil
 		}
 	case *catalogReferenceObject:
 		if object.runtime != runtime {

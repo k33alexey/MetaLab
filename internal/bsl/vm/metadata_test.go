@@ -105,6 +105,25 @@ EndFunction`)
 	}
 }
 
+func TestPredefinedCatalogReferenceDispatch(t *testing.T) {
+	t.Parallel()
+	program, diagnostics := compiler.CompileSource("predefined.bsl", `&НаСервере
+Функция Проверить()
+    Возврат Справочники.Товары.Базовый;
+КонецФункции`)
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	machine, err := New(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := machine.NewContextWithMetadata(&catalogRuntimeStub{}).Call("Проверить")
+	if err != nil || result.String() != "Товары.Базовый" {
+		t.Fatalf("result=%v error=%v", result, err)
+	}
+}
+
 func TestDocumentManagerAndRuntimeObjectDispatch(t *testing.T) {
 	t.Parallel()
 	program, diagnostics := compiler.CompileSource("document.bsl", `&НаСервере
@@ -165,6 +184,10 @@ func (runtime *catalogRuntimeStub) FindCatalogByCode(context.Context, string, by
 }
 func (runtime *catalogRuntimeStub) GetCatalogReference(context.Context, string, bytecode.Value) (bytecode.Value, error) {
 	return runtime.FindCatalogByCode(context.Background(), "", bytecode.Undefined())
+}
+
+func (runtime *catalogRuntimeStub) GetPredefinedCatalogReference(_ context.Context, catalog, item string) (bytecode.Value, error) {
+	return bytecode.String(catalog + "." + item), nil
 }
 func (runtime *catalogRuntimeStub) CreateDocumentObject(ctx context.Context, name string) (bytecode.Value, error) {
 	return runtime.CreateCatalogObject(ctx, name)

@@ -20,11 +20,12 @@ func (catalog *Catalog) documentTables(definition DocumentDefinition) (schemadif
 			{Name: "number_period", Type: "integer", Nullable: false, Default: "0"},
 			{Name: "date", Type: "timestamp with time zone", Nullable: false},
 			{Name: "posted", Type: "boolean", Nullable: false, Default: "false"},
+			{Name: "deletion_mark", Type: "boolean", Nullable: false, Default: "false"},
 		},
 		Constraints: []schemadiff.Constraint{{Name: physicalObjectName("pk", definition.ID), Type: "primary_key", Definition: "PRIMARY KEY (ref)"}},
 		Indexes: []schemadiff.Index{{
 			Name: physicalObjectName("id", definition.ID), Method: "btree", Keys: []string{"date DESC", "ref DESC"},
-		}},
+		}, {Name: physicalObjectName("im", definition.ID), Method: "btree", Keys: []string{"deletion_mark"}}},
 	}
 	if definition.Number.Unique {
 		table.Constraints = append(table.Constraints, schemadiff.Constraint{

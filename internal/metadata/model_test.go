@@ -288,6 +288,42 @@ table_parts:
 	}
 }
 
+func TestDecodeCatalogPredefinedItems(t *testing.T) {
+	t.Parallel()
+	predefinedID := uuid.MustNew()
+	definition, err := DecodeCatalog("catalog.yaml", strings.NewReader(`format: 1
+id: `+catalogID+`
+name: Контрагенты
+title: {ru: Контрагенты}
+code: {type: string, length: 9, auto: true, unique: true}
+description_length: 250
+attributes:
+  - id: `+attributeID+`
+    name: ИНН
+    title: {ru: ИНН}
+    types: [{kind: string, length: 12}]
+    required: true
+predefined:
+  - id: `+predefinedID.String()+`
+    name: Основной
+    description: Основной контрагент
+    attributes:
+      ИНН: {kind: string, data: "123456789012"}
+`), metadataManifest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, ok := definition.PredefinedItem("основной")
+	if !ok || item.ID != predefinedID || item.Attributes["ИНН"].Data != "123456789012" {
+		t.Fatalf("predefined=%+v found=%v", item, ok)
+	}
+	item.Attributes["ИНН"] = Value{Kind: StringType, Data: "changed"}
+	again, _ := definition.PredefinedItem("Основной")
+	if again.Attributes["ИНН"].Data != "123456789012" {
+		t.Fatal("predefined lookup exposed mutable attributes")
+	}
+}
+
 func TestLoadDocumentWithFormsAndReferences(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)

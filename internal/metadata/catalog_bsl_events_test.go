@@ -28,6 +28,11 @@ func TestCatalogBSLEventsProvideThisObjectAndCancellation(t *testing.T) {
     Если ЭтотОбъект.Наименование = "" Тогда
         Отказ = Истина;
     КонецЕсли;
+КонецПроцедуры
+
+&НаСервере
+Процедура ПередУдалением(Отказ)
+    Отказ = Истина;
 КонецПроцедуры`)
 	if len(diagnostics) != 0 {
 		t.Fatal(diagnostics)
@@ -52,6 +57,10 @@ func TestCatalogBSLEventsProvideThisObjectAndCancellation(t *testing.T) {
 	cancelled, err = handler.HandleCatalogEvent(context.Background(), CatalogEventBefore, record)
 	if err != nil || !cancelled {
 		t.Fatalf("before cancelled=%v error=%v", cancelled, err)
+	}
+	cancelled, err = handler.HandleCatalogEvent(context.Background(), CatalogEventBeforeDelete, record)
+	if err != nil || !cancelled {
+		t.Fatalf("before-delete cancelled=%v error=%v", cancelled, err)
 	}
 }
 

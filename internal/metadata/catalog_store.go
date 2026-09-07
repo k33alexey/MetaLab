@@ -40,12 +40,14 @@ type ObjectRow struct {
 type CatalogRow = ObjectRow
 
 type CatalogRecord struct {
-	Reference   CatalogReference
-	Version     int64
-	Code        string
-	Description string
-	Attributes  map[uuid.UUID]Value
-	TableParts  map[uuid.UUID][]CatalogRow
+	Reference      CatalogReference
+	Version        int64
+	Code           string
+	Description    string
+	DeletionMark   bool
+	PredefinedName string
+	Attributes     map[uuid.UUID]Value
+	TableParts     map[uuid.UUID][]CatalogRow
 }
 
 type CatalogRepository struct {
@@ -95,27 +97,38 @@ func (repository *CatalogRepository) Save(ctx context.Context, record *CatalogRe
 	if !ok {
 		return fmt.Errorf("unknown catalog %s", working.Reference.CatalogID)
 	}
-	reference, expectedVersion := working.Reference, working.Version
+	reference, expectedVersion, predefinedName := working.Reference, working.Version, working.PredefinedName
 	if err := dispatchCatalogEvent(ctx, handler, CatalogEventFillCheck, working); err != nil {
 		return err
 	}
-	if working.Reference != reference || working.Version != expectedVersion {
+	if working.Reference != reference || working.Version != expectedVersion || working.PredefinedName != predefinedName {
 		return fmt.Errorf("catalog fill-check event changed immutable record identity")
 	}
 	if err := dispatchCatalogEvent(ctx, handler, CatalogEventBefore, working); err != nil {
 		return err
 	}
-	if working.Reference != reference || working.Version != expectedVersion {
+	if working.Reference != reference || working.Version != expectedVersion || working.PredefinedName != predefinedName {
 		return fmt.Errorf("catalog before-write event changed immutable record identity")
-	}
-	if err := repository.normalizeRecord(definition, working); err != nil {
-		return err
 	}
 	transaction, err := repository.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin catalog write: %w", err)
 	}
 	defer func() { _ = transaction.Rollback(ctx) }()
+	if working.Version == 0 && working.Code == "" && definition.Code.Auto {
+		table, _ := PhysicalCatalogTable(definition.ID)
+		value, err := nextObjectSequence(ctx, transaction, definition.ID, 0, table, "code", definition.Code.Type == StringType, false)
+		if err != nil {
+			return fmt.Errorf("catalog %s code: %w", definition.Name, err)
+		}
+		working.Code, err = formatAutomaticIdentifier(value, definition.Code.Type, definition.Code.Length)
+		if err != nil {
+			return fmt.Errorf("catalog %s code: %w", definition.Name, err)
+		}
+	}
+	if err := repository.normalizeRecord(definition, working); err != nil {
+		return err
+	}
 	version, err := repository.writeRecord(ctx, transaction, definition, working)
 	if err != nil {
 		return err
@@ -192,6 +205,14 @@ func (repository *CatalogRepository) normalizeRecord(definition CatalogDefinitio
 		return fmt.Errorf("catalog %s code: %w", definition.Name, err)
 	}
 	record.Code = code
+	predefined, isPredefined := definition.PredefinedByID(record.Reference.ObjectID)
+	if isPredefined {
+		if record.PredefinedName != predefined.Name {
+			return fmt.Errorf("catalog %s predefined identity is immutable", definition.Name)
+		}
+	} else if record.PredefinedName != "" {
+		return fmt.Errorf("catalog %s record has an unknown predefined identity", definition.Name)
+	}
 	if !utf8.ValidString(record.Description) || utf8.RuneCountInString(record.Description) > definition.DescriptionLength {
 		return fmt.Errorf("catalog %s description exceeds %d characters", definition.Name, definition.DescriptionLength)
 	}
@@ -256,8 +277,12 @@ func (catalog *Catalog) normalizeAttributes(owner string, definitions []Attribut
 
 func (repository *CatalogRepository) writeRecord(ctx context.Context, transaction pgx.Tx, definition CatalogDefinition, record *CatalogRecord) (int64, error) {
 	table, _ := PhysicalCatalogTable(definition.ID)
-	columns := []string{"ref", "code", "description"}
-	arguments := []any{record.Reference.ObjectID.String(), record.Code, record.Description}
+	columns := []string{"ref", "code", "description", "deletion_mark", "predefined_name"}
+	var predefinedName any
+	if record.PredefinedName != "" {
+		predefinedName = record.PredefinedName
+	}
+	arguments := []any{record.Reference.ObjectID.String(), record.Code, record.Description, record.DeletionMark, predefinedName}
 	for _, attribute := range definition.Attributes {
 		column, _ := PhysicalAttributeColumn(attribute.ID)
 		columns = append(columns, column)
@@ -366,6 +391,14 @@ func (repository *CatalogRepository) decodeRecord(definition CatalogDefinition, 
 	}
 	if err := json.Unmarshal(fields["description"], &record.Description); err != nil {
 		return nil, fmt.Errorf("decode catalog %s description: %w", definition.Name, err)
+	}
+	if err := json.Unmarshal(fields["deletion_mark"], &record.DeletionMark); err != nil {
+		return nil, fmt.Errorf("decode catalog %s deletion mark: %w", definition.Name, err)
+	}
+	if raw := fields["predefined_name"]; len(raw) != 0 && string(raw) != "null" {
+		if err := json.Unmarshal(raw, &record.PredefinedName); err != nil {
+			return nil, fmt.Errorf("decode catalog %s predefined name: %w", definition.Name, err)
+		}
 	}
 	for _, attribute := range definition.Attributes {
 		column, _ := PhysicalAttributeColumn(attribute.ID)

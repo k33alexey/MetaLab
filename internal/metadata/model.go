@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -126,6 +127,15 @@ type CatalogCode struct {
 	Unique bool     `yaml:"unique"`
 }
 
+// PredefinedCatalogItem binds configuration identity to one stable catalog reference.
+type PredefinedCatalogItem struct {
+	ID          uuid.UUID        `yaml:"id"`
+	Name        string           `yaml:"name"`
+	Code        string           `yaml:"code,omitempty"`
+	Description string           `yaml:"description,omitempty"`
+	Attributes  map[string]Value `yaml:"attributes,omitempty"`
+}
+
 type Attribute struct {
 	ID       uuid.UUID     `yaml:"id"`
 	Name     string        `yaml:"name"`
@@ -144,17 +154,18 @@ type TablePart struct {
 
 // CatalogDefinition describes one ML catalog and its persistent record shape.
 type CatalogDefinition struct {
-	Format            int           `yaml:"format"`
-	ID                uuid.UUID     `yaml:"id"`
-	Name              string        `yaml:"name"`
-	Title             LocalizedText `yaml:"title"`
-	Code              CatalogCode   `yaml:"code"`
-	DescriptionLength int           `yaml:"description_length"`
-	Attributes        []Attribute   `yaml:"attributes,omitempty"`
-	TableParts        []TablePart   `yaml:"table_parts,omitempty"`
-	ObjectModule      *uuid.UUID    `yaml:"object_module,omitempty"`
-	ManagerModule     *uuid.UUID    `yaml:"manager_module,omitempty"`
-	Forms             ObjectForms   `yaml:"forms,omitempty"`
+	Format            int                     `yaml:"format"`
+	ID                uuid.UUID               `yaml:"id"`
+	Name              string                  `yaml:"name"`
+	Title             LocalizedText           `yaml:"title"`
+	Code              CatalogCode             `yaml:"code"`
+	DescriptionLength int                     `yaml:"description_length"`
+	Attributes        []Attribute             `yaml:"attributes,omitempty"`
+	TableParts        []TablePart             `yaml:"table_parts,omitempty"`
+	ObjectModule      *uuid.UUID              `yaml:"object_module,omitempty"`
+	ManagerModule     *uuid.UUID              `yaml:"manager_module,omitempty"`
+	Forms             ObjectForms             `yaml:"forms,omitempty"`
+	Predefined        []PredefinedCatalogItem `yaml:"predefined,omitempty"`
 }
 
 // Catalog is an immutable-by-convention snapshot of the supported metadata kinds.
@@ -269,6 +280,24 @@ func (catalog *Catalog) CatalogIDs() []uuid.UUID {
 		result[index] = catalog.Catalogs[index].ID
 	}
 	return result
+}
+
+func (definition CatalogDefinition) PredefinedItem(name string) (PredefinedCatalogItem, bool) {
+	for _, item := range definition.Predefined {
+		if strings.EqualFold(item.Name, name) {
+			return clonePredefinedCatalogItem(item), true
+		}
+	}
+	return PredefinedCatalogItem{}, false
+}
+
+func (definition CatalogDefinition) PredefinedByID(id uuid.UUID) (PredefinedCatalogItem, bool) {
+	for _, item := range definition.Predefined {
+		if item.ID == id {
+			return clonePredefinedCatalogItem(item), true
+		}
+	}
+	return PredefinedCatalogItem{}, false
 }
 
 func (catalog *Catalog) DocumentDefinition(name string) (DocumentDefinition, bool) {
@@ -424,10 +453,66 @@ func DecodeCatalog(source string, reader io.Reader, manifest project.Project) (C
 		issues = append(issues, "object_module and manager_module must be different")
 	}
 	issues = append(issues, validateObjectForms(value.Forms)...)
+	issues = append(issues, validatePredefinedCatalogItems(value)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return CatalogDefinition{}, err
 	}
 	return value, nil
+}
+
+func validatePredefinedCatalogItems(definition CatalogDefinition) []string {
+	if len(definition.Predefined) > maxObjectsPerKind {
+		return []string{fmt.Sprintf("predefined must not contain more than %d items", maxObjectsPerKind)}
+	}
+	var issues []string
+	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+	for index, item := range definition.Predefined {
+		prefix := fmt.Sprintf("predefined[%d]", index)
+		if item.ID.IsZero() {
+			issues = append(issues, prefix+".id must be a non-zero UUID")
+		}
+		if ids[item.ID] {
+			issues = append(issues, prefix+".id must be unique")
+		}
+		ids[item.ID] = true
+		if !validIdentifier(item.Name) || utf8.RuneCountInString(item.Name) > 128 {
+			issues = append(issues, prefix+".name must be a valid identifier of at most 128 characters")
+		}
+		folded := strings.ToLower(item.Name)
+		if names[folded] {
+			issues = append(issues, prefix+".name must be unique")
+		}
+		names[folded] = true
+		if item.Code == "" {
+			if !definition.Code.Auto {
+				issues = append(issues, prefix+".code is required when automatic codes are disabled")
+			}
+		} else if _, err := normalizeCatalogCode(definition.Code, item.Code); err != nil {
+			issues = append(issues, prefix+".code is invalid: "+err.Error())
+		}
+		if !utf8.ValidString(item.Description) || utf8.RuneCountInString(item.Description) > definition.DescriptionLength {
+			issues = append(issues, fmt.Sprintf("%s.description must not exceed %d characters", prefix, definition.DescriptionLength))
+		}
+		attributeNames := map[string]bool{}
+		for name := range item.Attributes {
+			attribute, ok := findCatalogAttribute(definition.Attributes, name)
+			if !ok {
+				issues = append(issues, prefix+".attributes."+name+" is unknown")
+				continue
+			}
+			key := strings.ToLower(attribute.Name)
+			if attributeNames[key] {
+				issues = append(issues, prefix+".attributes contains duplicate "+attribute.Name)
+			}
+			attributeNames[key] = true
+		}
+		for _, attribute := range definition.Attributes {
+			if attribute.Required && !attributeNames[strings.ToLower(attribute.Name)] {
+				issues = append(issues, prefix+".attributes."+attribute.Name+" is required")
+			}
+		}
+	}
+	return issues
 }
 
 func validateAttributes(path string, attributes []Attribute, manifest project.Project, reserved func(string) bool) []string {
@@ -464,7 +549,8 @@ func validateAttributes(path string, attributes []Attribute, manifest project.Pr
 
 func reservedCatalogObjectName(name string) bool {
 	switch strings.ToLower(name) {
-	case "ссылка", "ref", "код", "code", "наименование", "description", "версия", "version":
+	case "ссылка", "ref", "код", "code", "наименование", "description", "версия", "version",
+		"пометкаудаления", "deletionmark", "имяпредопределенныхданных", "имяпредопределённыхданных", "predefineddataname":
 		return true
 	default:
 		return false
@@ -693,6 +779,18 @@ func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
 		value.ManagerModule = &id
 	}
 	value.Forms = cloneObjectForms(value.Forms)
+	value.Predefined = slices.Clone(value.Predefined)
+	for index := range value.Predefined {
+		value.Predefined[index] = clonePredefinedCatalogItem(value.Predefined[index])
+	}
+	return value
+}
+
+func clonePredefinedCatalogItem(value PredefinedCatalogItem) PredefinedCatalogItem {
+	if value.Attributes == nil {
+		return value
+	}
+	value.Attributes = maps.Clone(value.Attributes)
 	return value
 }
 

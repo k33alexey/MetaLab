@@ -168,6 +168,9 @@ func Activate(ctx context.Context, pool *pgxpool.Pool, request ActivationRequest
 			return nil
 		},
 		BeforeCommit: func(ctx context.Context, transaction pgx.Tx, migration schemadiff.MigrationRecord) error {
+			if err := metadata.EnsureObjectIntegrityStorage(ctx, transaction); err != nil {
+				return err
+			}
 			if err := metadata.EnsureConstantStorage(ctx, transaction); err != nil {
 				return err
 			}
