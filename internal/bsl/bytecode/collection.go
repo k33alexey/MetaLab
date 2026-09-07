@@ -1208,6 +1208,13 @@ func SetCollectionProperty(receiver Value, name string, value Value) error {
 
 // CollectionIndex reads an indexed collection element.
 func CollectionIndex(receiver, key Value) (Value, error) {
+	if runtime, ok := receiver.AsRuntimeObject(); ok {
+		indexed, ok := runtime.(RuntimeIndexObject)
+		if !ok {
+			return Undefined(), fmt.Errorf("%s is not indexable", receiver.kind)
+		}
+		return indexed.RuntimeCollectionIndex(key)
+	}
 	if receiver.object == nil {
 		return Undefined(), fmt.Errorf("%s is not indexable", receiver.kind)
 	}
@@ -1343,6 +1350,13 @@ func CollectionSnapshot(value Value) ([]Value, bool) {
 
 // CollectionLength returns the number of values produced by For Each.
 func CollectionLength(value Value) (int, bool) {
+	if runtime, ok := value.AsRuntimeObject(); ok {
+		collection, ok := runtime.(RuntimeCollectionObject)
+		if !ok {
+			return 0, false
+		}
+		return collection.RuntimeCollectionLength(), true
+	}
 	if value.object == nil {
 		return 0, false
 	}
@@ -1369,6 +1383,13 @@ func CollectionLength(value Value) (int, bool) {
 
 // CollectionElement returns one value in deterministic For Each order.
 func CollectionElement(value Value, index int) (Value, bool) {
+	if runtime, ok := value.AsRuntimeObject(); ok {
+		collection, ok := runtime.(RuntimeCollectionObject)
+		if !ok {
+			return Undefined(), false
+		}
+		return collection.RuntimeCollectionElement(index)
+	}
 	if value.object == nil || index < 0 {
 		return Undefined(), false
 	}

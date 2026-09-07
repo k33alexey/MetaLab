@@ -148,6 +148,29 @@ func TestDocumentManagerAndRuntimeObjectDispatch(t *testing.T) {
 	}
 }
 
+func TestInformationRegisterManagerDispatch(t *testing.T) {
+	t.Parallel()
+	program, diagnostics := compiler.CompileSource("register.bsl", `&НаСервере
+Функция Проверить()
+    Набор = РегистрыСведений.Цены.СоздатьНаборЗаписей();
+    Набор.Записать();
+    Срез = РегистрыСведений.Цены.СрезПоследних('20260907');
+    Возврат Срез.Количество;
+КонецФункции`)
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	machine, err := New(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := &catalogRuntimeStub{}
+	result, err := machine.NewContextWithMetadata(runtime).Call("Проверить")
+	if err != nil || result.String() != "1" || !runtime.written {
+		t.Fatalf("result=%v written=%v error=%v", result, runtime.written, err)
+	}
+}
+
 type metadataRuntimeStub struct{ value bytecode.Value }
 
 func (runtime *metadataRuntimeStub) GetConstant(_ context.Context, _ string) (bytecode.Value, error) {
@@ -200,6 +223,15 @@ func (runtime *catalogRuntimeStub) FindDocumentByNumber(ctx context.Context, nam
 }
 func (runtime *catalogRuntimeStub) GetDocumentReference(ctx context.Context, name string, value bytecode.Value) (bytecode.Value, error) {
 	return runtime.GetCatalogReference(ctx, name, value)
+}
+func (runtime *catalogRuntimeStub) CreateInformationRegisterRecordSet(ctx context.Context, name string) (bytecode.Value, error) {
+	return runtime.CreateCatalogObject(ctx, name)
+}
+func (runtime *catalogRuntimeStub) InformationRegisterSliceLast(ctx context.Context, name string, _, _ bytecode.Value) (bytecode.Value, error) {
+	return bytecode.Object(&runtimeObjectStub{runtime: runtime, properties: map[string]bytecode.Value{"количество": bytecode.Number(1)}})
+}
+func (runtime *catalogRuntimeStub) InformationRegisterSliceFirst(ctx context.Context, name string, period, filter bytecode.Value) (bytecode.Value, error) {
+	return runtime.InformationRegisterSliceLast(ctx, name, period, filter)
 }
 func (*catalogRuntimeStub) GetObjectProperty(_ context.Context, object bytecode.RuntimeObject, name string) (bytecode.Value, error) {
 	stub := object.(*runtimeObjectStub)

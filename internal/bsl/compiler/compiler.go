@@ -888,6 +888,9 @@ func metadataCallPath(call *syntax.CallExpression) (string, bool) {
 	if strings.EqualFold(parts[0], "Документы") || strings.EqualFold(parts[0], "Documents") {
 		return documentCallPath(parts[1], call.Name, len(call.Arguments))
 	}
+	if strings.EqualFold(parts[0], "РегистрыСведений") || strings.EqualFold(parts[0], "InformationRegisters") {
+		return informationRegisterCallPath(parts[1], call.Name, len(call.Arguments))
+	}
 	if !(strings.EqualFold(parts[0], "Константы") || strings.EqualFold(parts[0], "Constants")) {
 		return "", false
 	}
@@ -943,6 +946,22 @@ func documentCallPath(document, method string, arity int) (string, bool) {
 		return "", false
 	}
 	return "document/" + document + "/" + operation, true
+}
+
+func informationRegisterCallPath(register, method string, arity int) (string, bool) {
+	operation, validArity := "", false
+	switch {
+	case strings.EqualFold(method, "СоздатьНаборЗаписей"), strings.EqualFold(method, "CreateRecordSet"):
+		operation, validArity = "create-record-set", arity == 0
+	case strings.EqualFold(method, "СрезПоследних"), strings.EqualFold(method, "SliceLast"):
+		operation, validArity = "slice-last", arity == 1 || arity == 2
+	case strings.EqualFold(method, "СрезПервых"), strings.EqualFold(method, "SliceFirst"):
+		operation, validArity = "slice-first", arity == 1 || arity == 2
+	}
+	if operation == "" || !validArity {
+		return "", false
+	}
+	return "information-register/" + register + "/" + operation, true
 }
 
 func expressionPath(expression syntax.Expression) ([]string, bool) {

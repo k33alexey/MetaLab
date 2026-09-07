@@ -13,16 +13,19 @@ import (
 )
 
 const (
-	constantID     = "10000000-0000-4000-8000-000000000001"
-	enumerationID  = "20000000-0000-4000-8000-000000000001"
-	enumValueID    = "20000000-0000-4000-8000-000000000002"
-	definedTypeID  = "30000000-0000-4000-8000-000000000001"
-	catalogID      = "40000000-0000-4000-8000-000000000001"
-	attributeID    = "40000000-0000-4000-8000-000000000002"
-	tablePartID    = "40000000-0000-4000-8000-000000000003"
-	partFieldID    = "40000000-0000-4000-8000-000000000004"
-	documentID     = "50000000-0000-4000-8000-000000000001"
-	docAttributeID = "50000000-0000-4000-8000-000000000002"
+	constantID            = "10000000-0000-4000-8000-000000000001"
+	enumerationID         = "20000000-0000-4000-8000-000000000001"
+	enumValueID           = "20000000-0000-4000-8000-000000000002"
+	definedTypeID         = "30000000-0000-4000-8000-000000000001"
+	catalogID             = "40000000-0000-4000-8000-000000000001"
+	attributeID           = "40000000-0000-4000-8000-000000000002"
+	tablePartID           = "40000000-0000-4000-8000-000000000003"
+	partFieldID           = "40000000-0000-4000-8000-000000000004"
+	documentID            = "50000000-0000-4000-8000-000000000001"
+	docAttributeID        = "50000000-0000-4000-8000-000000000002"
+	informationRegisterID = "60000000-0000-4000-8000-000000000001"
+	registerDimensionID   = "60000000-0000-4000-8000-000000000002"
+	registerResourceID    = "60000000-0000-4000-8000-000000000003"
 )
 
 func TestDecodeMetadataIsStrictAndLocalized(t *testing.T) {
@@ -399,13 +402,105 @@ attributes:
 	}
 }
 
+func TestLoadInformationRegisterValidatesRecorderAndClonesFields(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeMetadata(t, root, DocumentKind, documentID, `format: 1
+id: `+documentID+`
+name: УстановкаЦен
+title: {ru: Установка цен}
+number: {type: string, length: 11, periodicity: year}
+`)
+	writeMetadata(t, root, InformationRegisterKind, informationRegisterID, `format: 1
+id: `+informationRegisterID+`
+name: Цены
+title: {ru: Цены}
+write_mode: recorder
+periodicity: recorder-position
+recorders: [`+documentID+`]
+dimensions:
+  - id: `+registerDimensionID+`
+    name: Товар
+    title: {ru: Товар}
+    types: [{kind: uuid}]
+resources:
+  - id: `+registerResourceID+`
+    name: Цена
+    title: {ru: Цена}
+    types: [{kind: number, precision: 15, scale: 2}]
+`)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	register, ok := catalog.InformationRegisterDefinition("цены")
+	if !ok || register.Periodicity != InformationRegisterPeriodRecorderPosition || register.Recorders[0].String() != documentID {
+		t.Fatalf("register=%+v found=%v", register, ok)
+	}
+	register.Resources[0].Name = "Изменено"
+	again, _ := catalog.InformationRegisterDefinition("Цены")
+	if again.Resources[0].Name != "Цена" || len(catalog.InformationRegisterIDs()) != 1 {
+		t.Fatal("information register lookup exposed mutable metadata")
+	}
+}
+
+func TestDecodeInformationRegisterRejectsInvalidSemantics(t *testing.T) {
+	t.Parallel()
+	_, err := DecodeInformationRegister("register.yaml", strings.NewReader(`format: 1
+id: `+informationRegisterID+`
+name: Цены
+title: {ru: Цены}
+write_mode: independent
+periodicity: recorder-position
+recorders: [`+documentID+`]
+dimensions:
+  - id: `+registerDimensionID+`
+    name: Период
+    title: {ru: Период}
+    types: [{kind: uuid}]
+resources:
+  - id: `+registerResourceID+`
+    name: Значение
+    title: {ru: Значение}
+    types: [{kind: string}]
+attributes:
+  - id: `+uuid.MustNew().String()+`
+    name: Значение
+    title: {ru: Значение}
+    types: [{kind: string}]
+`), metadataManifest())
+	if err == nil || !strings.Contains(err.Error(), "recorder-position") || !strings.Contains(err.Error(), "only allowed") ||
+		!strings.Contains(err.Error(), "reserved") || !strings.Contains(err.Error(), "conflicts") {
+		t.Fatalf("DecodeInformationRegister() error = %v", err)
+	}
+}
+
+func TestDecodeInformationRegisterAllowsDimensionOnly(t *testing.T) {
+	t.Parallel()
+	value, err := DecodeInformationRegister("dimension-only.yaml", strings.NewReader(`format: 1
+id: `+informationRegisterID+`
+name: Связи
+title: {ru: Связи}
+write_mode: independent
+periodicity: none
+dimensions:
+  - id: `+registerDimensionID+`
+    name: Объект
+    title: {ru: Объект}
+    types: [{kind: uuid}]
+`), metadataManifest())
+	if err != nil || len(value.Dimensions) != 1 || len(value.Resources) != 0 {
+		t.Fatalf("dimension-only register=%+v error=%v", value, err)
+	}
+}
+
 func metadataProject(t *testing.T) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "project")
 	if err := project.Initialize(root, metadataManifest()); err != nil {
 		t.Fatal(err)
 	}
-	for _, kind := range []Kind{ConstantKind, EnumerationKind, DefinedTypeKind, CatalogKind, DocumentKind} {
+	for _, kind := range []Kind{ConstantKind, EnumerationKind, DefinedTypeKind, CatalogKind, DocumentKind, InformationRegisterKind} {
 		if err := os.MkdirAll(filepath.Join(root, "metadata", string(kind)), 0o755); err != nil {
 			t.Fatal(err)
 		}

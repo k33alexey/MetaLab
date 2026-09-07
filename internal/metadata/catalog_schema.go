@@ -30,6 +30,13 @@ func (catalog *Catalog) ApplicationSchema() (schemadiff.Schema, error) {
 		schema.Tables = append(schema.Tables, table)
 		schema.Tables = append(schema.Tables, parts...)
 	}
+	for _, definition := range catalog.InformationRegisters {
+		table, err := catalog.informationRegisterTable(definition)
+		if err != nil {
+			return schemadiff.Schema{}, err
+		}
+		schema.Tables = append(schema.Tables, table)
+	}
 	if err := schema.NormalizeAndValidate(); err != nil {
 		return schemadiff.Schema{}, fmt.Errorf("build application schema: %w", err)
 	}
@@ -139,6 +146,13 @@ func (catalog *Catalog) appendAttributeSchema(table *schemadiff.Table, attribute
 		})
 	}
 	return nil
+}
+
+func informationRegisterIndexMethod(storage attributeStorage) string {
+	if storage.composite || storage.valueType == StringType {
+		return "hash"
+	}
+	return "btree"
 }
 
 type attributeStorage struct {

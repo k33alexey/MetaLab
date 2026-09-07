@@ -96,6 +96,7 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) error {
 	var definedTypes []metadata.DefinedTypeObject
 	var catalogs []metadata.CatalogDefinition
 	var documents []metadata.DocumentDefinition
+	var informationRegisters []metadata.InformationRegisterDefinition
 	moduleIDs := make(map[uuid.UUID]bool)
 	formIDs := make(map[uuid.UUID]bool)
 	for index, entry := range manifest.Files {
@@ -140,6 +141,8 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) error {
 			kind = metadata.CatalogKind
 		case strings.HasPrefix(entry.Path, "metadata/documents/"):
 			kind = metadata.DocumentKind
+		case strings.HasPrefix(entry.Path, "metadata/information-registers/"):
+			kind = metadata.InformationRegisterKind
 		}
 		if kind == "" {
 			continue
@@ -180,13 +183,19 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) error {
 				return err
 			}
 			id, documents = value.ID, append(documents, value)
+		case metadata.InformationRegisterKind:
+			value, err := metadata.DecodeInformationRegister(entry.Path, bytes.NewReader(content), projectManifest)
+			if err != nil {
+				return err
+			}
+			id, informationRegisters = value.ID, append(informationRegisters, value)
 		}
 		filenameID, err := uuid.Parse(strings.TrimSuffix(path.Base(entry.Path), ".yaml"))
 		if err != nil || filenameID != id {
 			return fmt.Errorf("metadata UUID does not match %q", entry.Path)
 		}
 	}
-	catalog, err := metadata.NewCatalogSnapshot(projectManifest, constants, enumerations, definedTypes, catalogs, documents)
+	catalog, err := metadata.NewCatalogSnapshot(projectManifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters)
 	if err != nil {
 		return fmt.Errorf("validate packaged metadata: %w", err)
 	}
@@ -200,7 +209,13 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) error {
 			return err
 		}
 	}
+	for _, definition := range catalog.InformationRegisters {
+		if err := verifyPackagedObjectSources("information register", definition.Name, definition.RecordSetModule, definition.ManagerModule, definition.Forms, moduleIDs, formIDs); err != nil {
+			return err
+		}
+	}
 	constantIDs, catalogIDs, documentIDs := catalog.ConstantIDs(), catalog.CatalogIDs(), catalog.DocumentIDs()
+	informationRegisterIDs := catalog.InformationRegisterIDs()
 	if !slices.Equal(constantIDs, manifest.ConstantIDs) {
 		return fmt.Errorf("publication constant UUIDs do not match packaged metadata")
 	}
@@ -209,6 +224,9 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) error {
 	}
 	if !slices.Equal(documentIDs, manifest.DocumentIDs) {
 		return fmt.Errorf("publication document UUIDs do not match packaged metadata")
+	}
+	if !slices.Equal(informationRegisterIDs, manifest.InformationRegisterIDs) {
+		return fmt.Errorf("publication information register UUIDs do not match packaged metadata")
 	}
 	applicationSchema, err := catalog.ApplicationSchema()
 	if err != nil {
@@ -277,7 +295,7 @@ func readPackageManifest(entry *zip.File) (Manifest, error) {
 	if !validSHA256(manifest.SchemaSHA256) {
 		return Manifest{}, fmt.Errorf("invalid publication application schema checksum")
 	}
-	for label, identifiers := range map[string][]uuid.UUID{"constant": manifest.ConstantIDs, "catalog": manifest.CatalogIDs, "document": manifest.DocumentIDs} {
+	for label, identifiers := range map[string][]uuid.UUID{"constant": manifest.ConstantIDs, "catalog": manifest.CatalogIDs, "document": manifest.DocumentIDs, "information register": manifest.InformationRegisterIDs} {
 		for index, id := range identifiers {
 			if id.IsZero() {
 				return Manifest{}, fmt.Errorf("publication %s UUID must not be zero", label)

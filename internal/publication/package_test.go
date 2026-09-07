@@ -231,6 +231,33 @@ func TestPackageCarriesDocumentSchemaAndSources(t *testing.T) {
 	}
 }
 
+func TestPackageCarriesInformationRegisterSchema(t *testing.T) {
+	t.Parallel()
+	root := publicationProject(t)
+	registerID, dimensionID, resourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	relative, _ := project.MetadataPath("information-registers", registerID)
+	absolute := filepath.Join(root, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "format: 1\nid: " + registerID.String() + "\nname: КурсыВалют\ntitle: {ru: Курсы валют}\n" +
+		"write_mode: independent\nperiodicity: day\n" +
+		"dimensions:\n  - id: " + dimensionID.String() + "\n    name: Валюта\n    title: {ru: Валюта}\n    types: [{kind: uuid}]\n" +
+		"resources:\n  - id: " + resourceID.String() + "\n    name: Курс\n    title: {ru: Курс}\n    types: [{kind: number, precision: 15, scale: 4}]\n"
+	if err := os.WriteFile(absolute, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	packagePath := filepath.Join(t.TempDir(), "information-register.mlpkg")
+	built, err := BuildFile(context.Background(), root, packagePath, SourceState{})
+	if err != nil || len(built.InformationRegisterIDs) != 1 || built.InformationRegisterIDs[0] != registerID || built.Format != CurrentPackageFormat {
+		t.Fatalf("built=%+v error=%v", built, err)
+	}
+	verified, err := VerifyFile(context.Background(), packagePath)
+	if err != nil || !reflect.DeepEqual(verified, built) {
+		t.Fatalf("verified=%+v error=%v", verified, err)
+	}
+}
+
 func TestBuildHonoursCancellationAndRejectsSymlinks(t *testing.T) {
 	root := publicationProject(t)
 	ctx, cancel := context.WithCancel(context.Background())

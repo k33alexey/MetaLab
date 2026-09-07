@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -154,6 +155,8 @@ type referenceSource struct {
 	ownerColumn     string
 	lineColumn      bool
 	composite       bool
+	discriminator   string
+	discriminatorID uuid.UUID
 }
 
 func (catalog *Catalog) referenceSources(target objectIdentity) ([]referenceSource, error) {
@@ -205,6 +208,19 @@ func (catalog *Catalog) referenceSources(target objectIdentity) ([]referenceSour
 			if err := appendAttributes("document", definition.Name, definition.ID, table, "owner_ref", part.Name+".", part.Attributes, true); err != nil {
 				return nil, err
 			}
+		}
+	}
+	for _, definition := range catalog.InformationRegisters {
+		table, _ := PhysicalInformationRegisterTable(definition.ID)
+		if target.kind == DocumentType && slices.Contains(definition.Recorders, target.metadataID) {
+			result = append(result, referenceSource{
+				table: table, ownerKind: "information-register", ownerName: definition.Name, ownerMetadataID: definition.ID,
+				field: "Recorder", column: "recorder_ref", ownerColumn: "record_id",
+				discriminator: "recorder_type", discriminatorID: target.metadataID,
+			})
+		}
+		if err := appendAttributes("information-register", definition.Name, definition.ID, table, "record_id", "", informationRegisterFields(definition), false); err != nil {
+			return nil, err
 		}
 	}
 	return result, nil
@@ -261,6 +277,10 @@ func (catalog *Catalog) findObjectReferences(ctx context.Context, transaction pg
 		if source.composite {
 			predicate = column + "->>'kind' = $2 AND " + column + "->>'data' = $1"
 			arguments = append(arguments, string(target.kind))
+		}
+		if source.discriminator != "" {
+			arguments = append(arguments, source.discriminatorID.String())
+			predicate += fmt.Sprintf(" AND %s = $%d::uuid", pgx.Identifier{source.discriminator}.Sanitize(), len(arguments))
 		}
 		if source.ownerMetadataID == target.metadataID && source.ownerKind == string(target.kind) {
 			predicate += " AND " + ownerColumn + " <> $1::uuid"

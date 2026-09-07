@@ -14,15 +14,17 @@ import (
 
 // Runtime implements the BSL metadata boundary backed by PostgreSQL constants.
 type Runtime struct {
-	repository         *ConstantRepository
-	catalogRepository  *CatalogRepository
-	documentRepository *DocumentRepository
-	catalog            *Catalog
-	actor              *uuid.UUID
-	eventsMu           sync.RWMutex
-	events             map[uuid.UUID]CatalogEventHandler
-	documentEvents     map[uuid.UUID]DocumentEventHandler
-	dataLockWait       atomic.Int64
+	repository                    *ConstantRepository
+	catalogRepository             *CatalogRepository
+	documentRepository            *DocumentRepository
+	informationRegisterRepository *InformationRegisterRepository
+	catalog                       *Catalog
+	actor                         *uuid.UUID
+	eventsMu                      sync.RWMutex
+	events                        map[uuid.UUID]CatalogEventHandler
+	documentEvents                map[uuid.UUID]DocumentEventHandler
+	informationRegisterEvents     map[uuid.UUID]InformationRegisterEventHandler
+	dataLockWait                  atomic.Int64
 }
 
 func NewRuntime(repository *ConstantRepository, catalog *Catalog, actor *uuid.UUID) (*Runtime, error) {
@@ -42,6 +44,7 @@ func NewRuntime(repository *ConstantRepository, catalog *Catalog, actor *uuid.UU
 	runtime := &Runtime{
 		repository: repository, catalog: catalog, actor: actor,
 		events: make(map[uuid.UUID]CatalogEventHandler), documentEvents: make(map[uuid.UUID]DocumentEventHandler),
+		informationRegisterEvents: make(map[uuid.UUID]InformationRegisterEventHandler),
 	}
 	if _, err := runtime.databasePool(); err != nil {
 		return nil, err
@@ -56,15 +59,22 @@ func NewRuntimeWithCatalogs(constants *ConstantRepository, catalogs *CatalogRepo
 
 // NewRuntimeWithObjects creates a metadata runtime with all currently supported application objects.
 func NewRuntimeWithObjects(constants *ConstantRepository, catalogs *CatalogRepository, documents *DocumentRepository, catalog *Catalog, actor *uuid.UUID) (*Runtime, error) {
-	if catalog == nil || constants == nil && catalogs == nil && documents == nil {
+	return NewRuntimeWithAllObjects(constants, catalogs, documents, nil, catalog, actor)
+}
+
+// NewRuntimeWithAllObjects creates a metadata runtime including information registers.
+func NewRuntimeWithAllObjects(constants *ConstantRepository, catalogs *CatalogRepository, documents *DocumentRepository, informationRegisters *InformationRegisterRepository, catalog *Catalog, actor *uuid.UUID) (*Runtime, error) {
+	if catalog == nil || constants == nil && catalogs == nil && documents == nil && informationRegisters == nil {
 		return nil, fmt.Errorf("metadata runtime requires a catalog and at least one repository")
 	}
-	if constants != nil && constants.catalog != catalog || catalogs != nil && catalogs.catalog != catalog || documents != nil && documents.catalog != catalog {
+	if constants != nil && constants.catalog != catalog || catalogs != nil && catalogs.catalog != catalog || documents != nil && documents.catalog != catalog ||
+		informationRegisters != nil && informationRegisters.catalog != catalog {
 		return nil, fmt.Errorf("metadata runtime catalog does not match its repositories")
 	}
 	runtime := &Runtime{
-		repository: constants, catalogRepository: catalogs, documentRepository: documents, catalog: catalog,
+		repository: constants, catalogRepository: catalogs, documentRepository: documents, informationRegisterRepository: informationRegisters, catalog: catalog,
 		events: make(map[uuid.UUID]CatalogEventHandler), documentEvents: make(map[uuid.UUID]DocumentEventHandler),
+		informationRegisterEvents: make(map[uuid.UUID]InformationRegisterEventHandler),
 	}
 	if actor != nil {
 		if actor.IsZero() {
@@ -77,6 +87,27 @@ func NewRuntimeWithObjects(constants *ConstantRepository, catalogs *CatalogRepos
 		return nil, err
 	}
 	return runtime, nil
+}
+
+func (runtime *Runtime) SetInformationRegisterEventHandler(name string, handler InformationRegisterEventHandler) error {
+	definition, ok := runtime.catalog.InformationRegisterDefinition(name)
+	if !ok {
+		return fmt.Errorf("unknown information register %q", name)
+	}
+	runtime.eventsMu.Lock()
+	defer runtime.eventsMu.Unlock()
+	if handler == nil {
+		delete(runtime.informationRegisterEvents, definition.ID)
+	} else {
+		runtime.informationRegisterEvents[definition.ID] = handler
+	}
+	return nil
+}
+
+func (runtime *Runtime) informationRegisterEventHandler(id uuid.UUID) InformationRegisterEventHandler {
+	runtime.eventsMu.RLock()
+	defer runtime.eventsMu.RUnlock()
+	return runtime.informationRegisterEvents[id]
 }
 
 func (runtime *Runtime) SetDocumentEventHandler(name string, handler DocumentEventHandler) error {

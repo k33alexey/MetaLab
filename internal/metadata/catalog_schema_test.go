@@ -112,6 +112,39 @@ func TestDocumentApplicationSchemaContainsLifecycleColumns(t *testing.T) {
 	}
 }
 
+func TestInformationRegisterSchemaContainsStableKeyAndSystemFields(t *testing.T) {
+	t.Parallel()
+	registerID := parseTestUUID(t, "60000000-0000-4000-8000-000000000001")
+	dimensionID := parseTestUUID(t, "60000000-0000-4000-8000-000000000002")
+	resourceID := parseTestUUID(t, "60000000-0000-4000-8000-000000000003")
+	catalog := &Catalog{InformationRegisters: []InformationRegisterDefinition{{
+		ID: registerID, Name: "Цены", WriteMode: InformationRegisterRecorder, Periodicity: InformationRegisterPeriodRecorderPosition,
+		Dimensions: []Attribute{{ID: dimensionID, Name: "Товар", Types: []Type{{Kind: UUIDType}}}},
+		Resources:  []Attribute{{ID: resourceID, Name: "Цена", Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}},
+	}}}
+	schema, err := catalog.ApplicationSchema()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tableName, _ := PhysicalInformationRegisterTable(registerID)
+	dimensionColumn, _ := PhysicalAttributeColumn(dimensionID)
+	table := schemaTable(t, schema, tableName)
+	for _, expected := range []struct {
+		name, sqlType string
+		nullable      bool
+	}{{"record_id", "uuid", false}, {"record_key", "character(64)", false}, {"period", "timestamp with time zone", false},
+		{"recorder_type", "uuid", false}, {"recorder_ref", "uuid", false}, {"line_no", "integer", false}, {"active", "boolean", false},
+		{dimensionColumn, "uuid", true}} {
+		if !hasSchemaColumn(table, expected.name, expected.sqlType, expected.nullable) {
+			t.Fatalf("missing register column %+v in %+v", expected, table.Columns)
+		}
+	}
+	if len(table.Constraints) != 3 || !hasSchemaConstraint(table, "UNIQUE (recorder_type, recorder_ref, line_no)") ||
+		!hasSchemaIndex(table, "period DESC") || !hasSchemaIndex(table, dimensionColumn) {
+		t.Fatalf("register constraints/indexes=%+v/%+v", table.Constraints, table.Indexes)
+	}
+}
+
 func schemaTable(t *testing.T, schema schemadiff.Schema, name string) schemadiff.Table {
 	t.Helper()
 	for _, table := range schema.Tables {
@@ -135,6 +168,15 @@ func hasSchemaColumn(table schemadiff.Table, name, sqlType string, nullable bool
 func hasSchemaIndex(table schemadiff.Table, firstKey string) bool {
 	for _, index := range table.Indexes {
 		if len(index.Keys) > 0 && index.Keys[0] == firstKey {
+			return true
+		}
+	}
+	return false
+}
+
+func hasSchemaConstraint(table schemadiff.Table, definition string) bool {
+	for _, constraint := range table.Constraints {
+		if constraint.Definition == definition {
 			return true
 		}
 	}

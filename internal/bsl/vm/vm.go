@@ -86,6 +86,13 @@ type DocumentRuntime interface {
 	GetDocumentReference(context.Context, string, bytecode.Value) (bytecode.Value, error)
 }
 
+// InformationRegisterRuntime resolves information-register manager operations for server-side BSL.
+type InformationRegisterRuntime interface {
+	CreateInformationRegisterRecordSet(context.Context, string) (bytecode.Value, error)
+	InformationRegisterSliceLast(context.Context, string, bytecode.Value, bytecode.Value) (bytecode.Value, error)
+	InformationRegisterSliceFirst(context.Context, string, bytecode.Value, bytecode.Value) (bytecode.Value, error)
+}
+
 // MetadataObjectRuntime supplies properties and methods of opaque server objects.
 type MetadataObjectRuntime interface {
 	GetObjectProperty(context.Context, bytecode.RuntimeObject, string) (bytecode.Value, error)
@@ -1444,6 +1451,29 @@ func dispatchMetadata(ctx context.Context, env executionEnvironment, path string
 		case "reference":
 			if len(arguments) == 1 {
 				return runtime.GetDocumentReference(ctx, parts[1], arguments[0])
+			}
+		}
+		return bytecode.Undefined(), fmt.Errorf("invalid application metadata operation %q", path)
+	case len(parts) == 3 && parts[0] == "information-register":
+		runtime, ok := env.metadata.(InformationRegisterRuntime)
+		if !ok {
+			return bytecode.Undefined(), fmt.Errorf("information register runtime is not configured")
+		}
+		switch parts[2] {
+		case "create-record-set":
+			if len(arguments) == 0 {
+				return runtime.CreateInformationRegisterRecordSet(ctx, parts[1])
+			}
+		case "slice-last", "slice-first":
+			if len(arguments) == 1 || len(arguments) == 2 {
+				filter := bytecode.Undefined()
+				if len(arguments) == 2 {
+					filter = arguments[1]
+				}
+				if parts[2] == "slice-last" {
+					return runtime.InformationRegisterSliceLast(ctx, parts[1], arguments[0], filter)
+				}
+				return runtime.InformationRegisterSliceFirst(ctx, parts[1], arguments[0], filter)
 			}
 		}
 		return bytecode.Undefined(), fmt.Errorf("invalid application metadata operation %q", path)

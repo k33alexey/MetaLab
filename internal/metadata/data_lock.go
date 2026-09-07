@@ -32,6 +32,8 @@ type dataLockElement struct {
 	kind       TypeKind
 	metadataID uuid.UUID
 	objectID   uuid.UUID
+	register   *InformationRegisterDefinition
+	filter     InformationRegisterFilter
 	space      string
 	mode       string
 }
@@ -51,6 +53,9 @@ func (lock *dataLock) RuntimeDynamicMemory(limit uint64) (uint64, bool) {
 	for _, entry := range lock.entries {
 		entry.mu.RLock()
 		addition := uint64(256 + len(entry.space) + len(entry.mode))
+		for _, value := range entry.filter.Dimensions {
+			addition += uint64(len(value.Data) + 96)
+		}
 		entry.mu.RUnlock()
 		if addition > limit-size {
 			return limit, false
@@ -69,6 +74,9 @@ func (element *dataLockElement) RuntimeDynamicMemory(limit uint64) (uint64, bool
 	element.mu.RLock()
 	defer element.mu.RUnlock()
 	size := uint64(256 + len(element.space) + len(element.mode))
+	for _, value := range element.filter.Dimensions {
+		size += uint64(len(value.Data) + 96)
+	}
 	return size, size <= limit
 }
 
@@ -119,12 +127,28 @@ func (runtime *Runtime) newDataLockElement(space string) (*dataLockElement, erro
 			return nil, fmt.Errorf("unknown document %q", name)
 		}
 		return &dataLockElement{runtime: runtime, kind: DocumentType, metadataID: definition.ID, space: "Document." + definition.Name, mode: dataLockExclusive}, nil
+	case propertyName(strings.TrimSpace(parts[0]), "РегистрСведений", "InformationRegister"):
+		definition, ok := runtime.catalog.InformationRegisterDefinition(name)
+		if !ok {
+			return nil, fmt.Errorf("unknown information register %q", name)
+		}
+		return &dataLockElement{
+			runtime: runtime, kind: TypeKind("information-register"), metadataID: definition.ID,
+			register: &definition, filter: InformationRegisterFilter{Dimensions: map[uuid.UUID]Value{}},
+			space: "InformationRegister." + definition.Name, mode: dataLockExclusive,
+		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported data lock space %q", space)
 	}
 }
 
 func (runtime *Runtime) setDataLockValue(element *dataLockElement, field string, value bytecode.Value) error {
+	element.mu.RLock()
+	register := element.register
+	element.mu.RUnlock()
+	if register != nil {
+		return runtime.setInformationRegisterDataLockValue(element, field, value)
+	}
 	if !propertyName(field, "Ссылка", "Ref") {
 		return fmt.Errorf("data lock field %q is not supported", field)
 	}
@@ -156,9 +180,54 @@ func (runtime *Runtime) setDataLockValue(element *dataLockElement, field string,
 	return nil
 }
 
+func (runtime *Runtime) setInformationRegisterDataLockValue(element *dataLockElement, field string, value bytecode.Value) error {
+	element.mu.RLock()
+	definition := cloneInformationRegisterDefinition(*element.register)
+	element.mu.RUnlock()
+	switch {
+	case propertyName(field, "Период", "Period") && definition.Periodicity != InformationRegisterPeriodNone:
+		period, ok := value.AsDate()
+		if !ok {
+			return fmt.Errorf("information register data lock period must be a date")
+		}
+		period, err := normalizeInformationRegisterPeriod(definition.Periodicity, period)
+		if err != nil {
+			return err
+		}
+		element.mu.Lock()
+		element.filter.Period = &period
+		element.mu.Unlock()
+		return nil
+	case propertyName(field, "Регистратор", "Recorder") && definition.WriteMode == InformationRegisterRecorder:
+		opaque, ok := value.AsRuntimeObject()
+		reference, valid := opaque.(*documentReferenceObject)
+		if !ok || !valid || reference.runtime != runtime || !allowedInformationRegisterRecorder(definition, reference.reference) {
+			return fmt.Errorf("information register data lock recorder is invalid")
+		}
+		stored := reference.reference
+		element.mu.Lock()
+		element.filter.Recorder = &stored
+		element.mu.Unlock()
+		return nil
+	}
+	dimension, ok := findCatalogAttribute(definition.Dimensions, field)
+	if !ok {
+		return fmt.Errorf("information register data lock field %q is not supported", field)
+	}
+	stored, err := runtime.applicationValueFromBSL(dimension.Types, value, "information register data lock dimension "+dimension.Name)
+	if err != nil {
+		return err
+	}
+	element.mu.Lock()
+	element.filter.Dimensions[dimension.ID] = stored
+	element.mu.Unlock()
+	return nil
+}
+
 type resolvedDataLock struct {
 	key  int64
 	mode string
+	tier int
 }
 
 func (runtime *Runtime) acquireDataLocks(ctx context.Context, lock *dataLock) error {
@@ -176,24 +245,54 @@ func (runtime *Runtime) acquireDataLocks(ctx context.Context, lock *dataLock) er
 	lock.mu.RLock()
 	entries := append([]*dataLockElement(nil), lock.entries...)
 	lock.mu.RUnlock()
-	resolved := make(map[int64]string, len(entries))
+	resolved := make(map[int64]resolvedDataLock, len(entries)*2)
+	merge := func(key int64, mode string, tier int) {
+		current, exists := resolved[key]
+		if !exists || current.mode == dataLockShared && mode == dataLockExclusive {
+			resolved[key] = resolvedDataLock{key: key, mode: mode, tier: tier}
+		}
+	}
 	for _, entry := range entries {
 		entry.mu.RLock()
-		key, mode, objectID := objectLockKey(entry.kind, entry.metadataID, entry.objectID), entry.mode, entry.objectID
+		kind, metadataID, objectID, mode := entry.kind, entry.metadataID, entry.objectID, entry.mode
+		register, filter := entry.register, cloneInformationRegisterFilter(entry.filter)
 		entry.mu.RUnlock()
+		if register != nil {
+			tableKey := objectLockKey(TypeKind("information-register"), metadataID, metadataID)
+			exact := len(filter.Dimensions) == len(register.Dimensions)
+			if register.Periodicity != InformationRegisterPeriodNone {
+				exact = exact && filter.Period != nil
+			}
+			if register.WriteMode == InformationRegisterRecorder {
+				exact = filter.Recorder != nil
+			}
+			if exact {
+				merge(tableKey, dataLockShared, 0)
+				merge(informationRegisterFilterLockKey(*register, filter), mode, 1)
+			} else {
+				// A partial register range cannot be represented by one advisory key.
+				// Use the exclusive hierarchy gate so both shared and exclusive
+				// range locks reliably block overlapping writes.
+				merge(tableKey, dataLockExclusive, 0)
+			}
+			continue
+		}
+		key := objectLockKey(kind, metadataID, objectID)
 		if objectID.IsZero() {
 			return fmt.Errorf("data lock value is not set")
 		}
-		if current := resolved[key]; current == dataLockExclusive || current == mode {
-			continue
-		}
-		resolved[key] = mode
+		merge(key, mode, 1)
 	}
 	ordered := make([]resolvedDataLock, 0, len(resolved))
-	for key, mode := range resolved {
-		ordered = append(ordered, resolvedDataLock{key: key, mode: mode})
+	for _, item := range resolved {
+		ordered = append(ordered, item)
 	}
-	sort.Slice(ordered, func(left, right int) bool { return ordered[left].key < ordered[right].key })
+	sort.Slice(ordered, func(left, right int) bool {
+		if ordered[left].tier != ordered[right].tier {
+			return ordered[left].tier < ordered[right].tier
+		}
+		return ordered[left].key < ordered[right].key
+	})
 	for _, item := range ordered {
 		function := "pg_advisory_xact_lock"
 		if item.mode == dataLockShared {

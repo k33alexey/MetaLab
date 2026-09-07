@@ -27,11 +27,12 @@ const (
 type Kind string
 
 const (
-	ConstantKind    Kind = "constants"
-	EnumerationKind Kind = "enumerations"
-	DefinedTypeKind Kind = "defined-types"
-	CatalogKind     Kind = "catalogs"
-	DocumentKind    Kind = "documents"
+	ConstantKind            Kind = "constants"
+	EnumerationKind         Kind = "enumerations"
+	DefinedTypeKind         Kind = "defined-types"
+	CatalogKind             Kind = "catalogs"
+	DocumentKind            Kind = "documents"
+	InformationRegisterKind Kind = "information-registers"
 )
 
 type TypeKind string
@@ -170,22 +171,25 @@ type CatalogDefinition struct {
 
 // Catalog is an immutable-by-convention snapshot of the supported metadata kinds.
 type Catalog struct {
-	Project           project.Project
-	Constants         []Constant
-	Enumerations      []Enumeration
-	DefinedTypes      []DefinedTypeObject
-	Catalogs          []CatalogDefinition
-	Documents         []DocumentDefinition
-	constantByName    map[string]int
-	constantByID      map[uuid.UUID]int
-	enumerationByName map[string]int
-	definedTypeByName map[string]int
-	enumerationByID   map[uuid.UUID]int
-	definedTypeByID   map[uuid.UUID]int
-	catalogByName     map[string]int
-	catalogByID       map[uuid.UUID]int
-	documentByName    map[string]int
-	documentByID      map[uuid.UUID]int
+	Project                   project.Project
+	Constants                 []Constant
+	Enumerations              []Enumeration
+	DefinedTypes              []DefinedTypeObject
+	Catalogs                  []CatalogDefinition
+	Documents                 []DocumentDefinition
+	InformationRegisters      []InformationRegisterDefinition
+	constantByName            map[string]int
+	constantByID              map[uuid.UUID]int
+	enumerationByName         map[string]int
+	definedTypeByName         map[string]int
+	enumerationByID           map[uuid.UUID]int
+	definedTypeByID           map[uuid.UUID]int
+	catalogByName             map[string]int
+	catalogByID               map[uuid.UUID]int
+	documentByName            map[string]int
+	documentByID              map[uuid.UUID]int
+	informationRegisterByName map[string]int
+	informationRegisterByID   map[uuid.UUID]int
 }
 
 func (catalog *Catalog) ConstantByID(id uuid.UUID) (Constant, bool) {
@@ -323,6 +327,33 @@ func (catalog *Catalog) DocumentIDs() []uuid.UUID {
 	result := make([]uuid.UUID, len(catalog.Documents))
 	for index := range catalog.Documents {
 		result[index] = catalog.Documents[index].ID
+	}
+	return result
+}
+
+func (catalog *Catalog) InformationRegisterDefinition(name string) (InformationRegisterDefinition, bool) {
+	index, ok := catalog.informationRegisterByName[strings.ToLower(name)]
+	if !ok {
+		return InformationRegisterDefinition{}, false
+	}
+	return cloneInformationRegisterDefinition(catalog.InformationRegisters[index]), true
+}
+
+func (catalog *Catalog) InformationRegisterByID(id uuid.UUID) (InformationRegisterDefinition, bool) {
+	index, ok := catalog.informationRegisterByID[id]
+	if !ok {
+		return InformationRegisterDefinition{}, false
+	}
+	return cloneInformationRegisterDefinition(catalog.InformationRegisters[index]), true
+}
+
+func (catalog *Catalog) InformationRegisterIDs() []uuid.UUID {
+	if len(catalog.InformationRegisters) == 0 {
+		return nil
+	}
+	result := make([]uuid.UUID, len(catalog.InformationRegisters))
+	for index := range catalog.InformationRegisters {
+		result[index] = catalog.InformationRegisters[index].ID
 	}
 	return result
 }

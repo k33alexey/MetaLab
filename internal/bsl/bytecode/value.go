@@ -60,6 +60,17 @@ type RuntimeObject interface {
 	RuntimeEqual(other RuntimeObject) bool
 }
 
+// RuntimeCollectionObject exposes an in-memory platform object to BSL For Each.
+type RuntimeCollectionObject interface {
+	RuntimeCollectionLength() int
+	RuntimeCollectionElement(int) (Value, bool)
+}
+
+// RuntimeIndexObject exposes bracket lookup for an in-memory platform object.
+type RuntimeIndexObject interface {
+	RuntimeCollectionIndex(Value) (Value, error)
+}
+
 func (kind ValueKind) String() string {
 	if int(kind) >= len(valueKindNames) || valueKindNames[kind] == "" {
 		return fmt.Sprintf("value_kind(%d)", kind)

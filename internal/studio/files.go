@@ -258,6 +258,8 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 			value, err = metadata.DecodeCatalog(relative, bytes.NewReader(content), manifest)
 		case metadata.DocumentKind:
 			value, err = metadata.DecodeDocument(relative, bytes.NewReader(content), manifest)
+		case metadata.InformationRegisterKind:
+			value, err = metadata.DecodeInformationRegister(relative, bytes.NewReader(content), manifest)
 		}
 		if err != nil {
 			return nil, err
@@ -275,6 +277,8 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 			case metadata.CatalogDefinition:
 				metadataID = item.ID
 			case metadata.DocumentDefinition:
+				metadataID = item.ID
+			case metadata.InformationRegisterDefinition:
 				metadataID = item.ID
 			}
 			if metadataID != filenameID {

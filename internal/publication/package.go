@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	CurrentPackageFormat = 3
+	CurrentPackageFormat = 4
 	PackageExtension     = ".mlpkg"
 	maxSourceFileBytes   = 64 << 20
 	maxPackageInputBytes = 512 << 20
@@ -41,18 +41,19 @@ type SourceState struct {
 }
 
 type Manifest struct {
-	Format        int         `json:"format"`
-	ProjectID     uuid.UUID   `json:"projectId"`
-	ProjectName   string      `json:"projectName"`
-	ProjectFormat int         `json:"projectFormat"`
-	GitCommit     string      `json:"gitCommit,omitempty"`
-	Dirty         bool        `json:"dirty"`
-	ContentSHA256 string      `json:"contentSha256"`
-	Files         []FileEntry `json:"files"`
-	ConstantIDs   []uuid.UUID `json:"constantIds,omitempty"`
-	CatalogIDs    []uuid.UUID `json:"catalogIds,omitempty"`
-	DocumentIDs   []uuid.UUID `json:"documentIds,omitempty"`
-	SchemaSHA256  string      `json:"schemaSha256"`
+	Format                 int         `json:"format"`
+	ProjectID              uuid.UUID   `json:"projectId"`
+	ProjectName            string      `json:"projectName"`
+	ProjectFormat          int         `json:"projectFormat"`
+	GitCommit              string      `json:"gitCommit,omitempty"`
+	Dirty                  bool        `json:"dirty"`
+	ContentSHA256          string      `json:"contentSha256"`
+	Files                  []FileEntry `json:"files"`
+	ConstantIDs            []uuid.UUID `json:"constantIds,omitempty"`
+	CatalogIDs             []uuid.UUID `json:"catalogIds,omitempty"`
+	DocumentIDs            []uuid.UUID `json:"documentIds,omitempty"`
+	InformationRegisterIDs []uuid.UUID `json:"informationRegisterIds,omitempty"`
+	SchemaSHA256           string      `json:"schemaSha256"`
 }
 
 type FileEntry struct {
@@ -199,7 +200,8 @@ func inspect(ctx context.Context, root string, state SourceState) (Manifest, []s
 		ContentSHA256: hex.EncodeToString(contentHash.Sum(nil)), Files: make([]FileEntry, len(sources)),
 		ConstantIDs: metadataCatalog.ConstantIDs(),
 		CatalogIDs:  metadataCatalog.CatalogIDs(), SchemaSHA256: schemaSHA256,
-		DocumentIDs: metadataCatalog.DocumentIDs(),
+		DocumentIDs:            metadataCatalog.DocumentIDs(),
+		InformationRegisterIDs: metadataCatalog.InformationRegisterIDs(),
 	}
 	for index := range sources {
 		manifest.Files[index] = sources[index].entry

@@ -159,6 +159,9 @@ func (runtime *Runtime) GetObjectProperty(_ context.Context, value bytecode.Runt
 	if result, handled, err := runtime.getDataLockProperty(value, name); handled {
 		return result, err
 	}
+	if result, handled, err := runtime.getInformationRegisterProperty(value, name); handled {
+		return result, err
+	}
 	switch object := value.(type) {
 	case *catalogObject:
 		if object.runtime != runtime {
@@ -231,6 +234,9 @@ func (runtime *Runtime) SetObjectProperty(_ context.Context, value bytecode.Runt
 	if handled, err := runtime.setDataLockProperty(value, name, assigned); handled {
 		return err
 	}
+	if handled, err := runtime.setInformationRegisterProperty(value, name, assigned); handled {
+		return err
+	}
 	if object, ok := value.(*documentObject); ok {
 		if object.runtime != runtime {
 			return fmt.Errorf("document object belongs to another metadata runtime")
@@ -291,6 +297,9 @@ func (runtime *Runtime) SetObjectProperty(_ context.Context, value bytecode.Runt
 
 func (runtime *Runtime) CallObjectMethod(ctx context.Context, value bytecode.RuntimeObject, name string, arguments []bytecode.Value) (bytecode.Value, error) {
 	if result, handled, err := runtime.callDataLockMethod(ctx, value, name, arguments); handled {
+		return result, err
+	}
+	if result, handled, err := runtime.callInformationRegisterMethod(ctx, value, name, arguments); handled {
 		return result, err
 	}
 	switch object := value.(type) {
