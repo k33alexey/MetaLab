@@ -92,58 +92,71 @@ func (repository *CatalogRepository) Save(ctx context.Context, record *CatalogRe
 	if record == nil {
 		return fmt.Errorf("catalog record is required")
 	}
-	working := cloneCatalogRecord(record)
+	original, working := cloneCatalogRecord(record), cloneCatalogRecord(record)
 	definition, ok := repository.catalog.CatalogByID(working.Reference.CatalogID)
 	if !ok {
 		return fmt.Errorf("unknown catalog %s", working.Reference.CatalogID)
 	}
 	reference, expectedVersion, predefinedName := working.Reference, working.Version, working.PredefinedName
-	if err := dispatchCatalogEvent(ctx, handler, CatalogEventFillCheck, working); err != nil {
-		return err
-	}
-	if working.Reference != reference || working.Version != expectedVersion || working.PredefinedName != predefinedName {
-		return fmt.Errorf("catalog fill-check event changed immutable record identity")
-	}
-	if err := dispatchCatalogEvent(ctx, handler, CatalogEventBefore, working); err != nil {
-		return err
-	}
-	if working.Reference != reference || working.Version != expectedVersion || working.PredefinedName != predefinedName {
-		return fmt.Errorf("catalog before-write event changed immutable record identity")
-	}
-	transaction, err := repository.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return fmt.Errorf("begin catalog write: %w", err)
-	}
-	defer func() { _ = transaction.Rollback(ctx) }()
-	if working.Version == 0 && working.Code == "" && definition.Code.Auto {
-		table, _ := PhysicalCatalogTable(definition.ID)
-		value, err := nextObjectSequence(ctx, transaction, definition.ID, 0, table, "code", definition.Code.Type == StringType, false)
-		if err != nil {
-			return fmt.Errorf("catalog %s code: %w", definition.Name, err)
+	prepare := func() error {
+		if err := dispatchCatalogEvent(ctx, handler, CatalogEventFillCheck, working); err != nil {
+			return err
 		}
-		working.Code, err = formatAutomaticIdentifier(value, definition.Code.Type, definition.Code.Length)
-		if err != nil {
-			return fmt.Errorf("catalog %s code: %w", definition.Name, err)
+		if working.Reference != reference || working.Version != expectedVersion || working.PredefinedName != predefinedName {
+			return fmt.Errorf("catalog fill-check event changed immutable record identity")
 		}
+		if err := dispatchCatalogEvent(ctx, handler, CatalogEventBefore, working); err != nil {
+			return err
+		}
+		if working.Reference != reference || working.Version != expectedVersion || working.PredefinedName != predefinedName {
+			return fmt.Errorf("catalog before-write event changed immutable record identity")
+		}
+		return nil
 	}
-	if err := repository.normalizeRecord(definition, working); err != nil {
-		return err
-	}
-	version, err := repository.writeRecord(ctx, transaction, definition, working)
-	if err != nil {
-		return err
-	}
-	working.Version = version
-	if err := repository.writeTableParts(ctx, transaction, definition, working); err != nil {
-		return err
-	}
-	for _, event := range []CatalogEvent{CatalogEventOnWrite, CatalogEventAfter} {
-		if err := dispatchCatalogEvent(ctx, handler, event, cloneCatalogRecord(working)); err != nil {
+	if repository.pool == nil {
+		if err := prepare(); err != nil {
 			return err
 		}
 	}
-	if err := transaction.Commit(ctx); err != nil {
-		return fmt.Errorf("commit catalog write: %w", err)
+	err := runDataTransaction(ctx, repository.pool, func() { *record = *cloneCatalogRecord(original) }, func(transactionContext context.Context, transaction pgx.Tx) error {
+		ctx = transactionContext
+		if err := prepare(); err != nil {
+			return err
+		}
+		if working.Version == 0 && working.Code == "" && definition.Code.Auto {
+			table, _ := PhysicalCatalogTable(definition.ID)
+			value, err := nextObjectSequence(ctx, transaction, definition.ID, 0, table, "code", definition.Code.Type == StringType, false)
+			if err != nil {
+				return fmt.Errorf("catalog %s code: %w", definition.Name, err)
+			}
+			working.Code, err = formatAutomaticIdentifier(value, definition.Code.Type, definition.Code.Length)
+			if err != nil {
+				return fmt.Errorf("catalog %s code: %w", definition.Name, err)
+			}
+		}
+		if err := repository.normalizeRecord(definition, working); err != nil {
+			return err
+		}
+		if err := lockObjectForWrite(ctx, transaction, CatalogType, definition.ID, working.Reference.ObjectID); err != nil {
+			return err
+		}
+		version, err := repository.writeRecord(ctx, transaction, definition, working)
+		if err != nil {
+			return err
+		}
+		working.Version = version
+		if err := repository.writeTableParts(ctx, transaction, definition, working); err != nil {
+			return err
+		}
+		for _, event := range []CatalogEvent{CatalogEventOnWrite, CatalogEventAfter} {
+			if err := dispatchCatalogEvent(ctx, handler, event, cloneCatalogRecord(working)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	*record = *working
 	return nil
@@ -157,10 +170,14 @@ func (repository *CatalogRepository) Get(ctx context.Context, reference CatalogR
 	table, _ := PhysicalCatalogTable(definition.ID)
 	statement := "SELECT to_jsonb(item) FROM " + qualifiedCatalogTable(table) + " AS item WHERE ref = $1"
 	var encoded []byte
-	if err := repository.pool.QueryRow(ctx, statement, reference.ObjectID.String()).Scan(&encoded); errors.Is(err, pgx.ErrNoRows) {
+	query, err := queryData(ctx, repository.pool)
+	if err != nil {
+		return nil, err
+	}
+	if err := query.QueryRow(ctx, statement, reference.ObjectID.String()).Scan(&encoded); errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrCatalogRecordNotFound
 	} else if err != nil {
-		return nil, fmt.Errorf("read catalog %s: %w", definition.Name, err)
+		return nil, recordDataError(ctx, repository.pool, fmt.Errorf("read catalog %s: %w", definition.Name, err))
 	}
 	record, err := repository.decodeRecord(definition, encoded)
 	if err != nil {
@@ -184,10 +201,14 @@ func (repository *CatalogRepository) FindByCode(ctx context.Context, name, code 
 	table, _ := PhysicalCatalogTable(definition.ID)
 	statement := "SELECT ref::text FROM " + qualifiedCatalogTable(table) + " WHERE code = $1 ORDER BY ref LIMIT 1"
 	var idText string
-	if err := repository.pool.QueryRow(ctx, statement, code).Scan(&idText); errors.Is(err, pgx.ErrNoRows) {
+	query, err := queryData(ctx, repository.pool)
+	if err != nil {
+		return CatalogReference{}, false, err
+	}
+	if err := query.QueryRow(ctx, statement, code).Scan(&idText); errors.Is(err, pgx.ErrNoRows) {
 		return CatalogReference{}, false, nil
 	} else if err != nil {
-		return CatalogReference{}, false, fmt.Errorf("find catalog %s by code: %w", definition.Name, err)
+		return CatalogReference{}, false, recordDataError(ctx, repository.pool, fmt.Errorf("find catalog %s by code: %w", definition.Name, err))
 	}
 	id, err := uuid.Parse(idText)
 	if err != nil {
@@ -421,11 +442,15 @@ func (repository *CatalogRepository) decodeRecord(definition CatalogDefinition, 
 }
 
 func (repository *CatalogRepository) readTableParts(ctx context.Context, definition CatalogDefinition, record *CatalogRecord) error {
+	query, err := queryData(ctx, repository.pool)
+	if err != nil {
+		return err
+	}
 	for _, part := range definition.TableParts {
 		table, _ := PhysicalCatalogTable(part.ID)
-		rows, err := repository.pool.Query(ctx, "SELECT to_jsonb(item) FROM "+qualifiedCatalogTable(table)+" AS item WHERE owner_ref = $1 ORDER BY line_no", record.Reference.ObjectID.String())
+		rows, err := query.Query(ctx, "SELECT to_jsonb(item) FROM "+qualifiedCatalogTable(table)+" AS item WHERE owner_ref = $1 ORDER BY line_no", record.Reference.ObjectID.String())
 		if err != nil {
-			return fmt.Errorf("read catalog table part %s: %w", part.Name, err)
+			return recordDataError(ctx, repository.pool, fmt.Errorf("read catalog table part %s: %w", part.Name, err))
 		}
 		decodedRows := make([]CatalogRow, 0)
 		for rows.Next() {

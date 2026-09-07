@@ -599,6 +599,14 @@ func (c *functionCompiler) compileMember(member *syntax.MemberExpression) {
 
 func (c *functionCompiler) compileNew(expression *syntax.NewExpression) {
 	dynamic := expression.TypeName == ""
+	if !dynamic && (strings.EqualFold(expression.TypeName, "БлокировкаДанных") || strings.EqualFold(expression.TypeName, "DataLock")) {
+		if !metadataAllowed(c.routine.Context) {
+			c.owner.report(c.filename, expression.SourceSpan, "BSL3042", "data locks are only available in server context")
+		}
+		if len(expression.Arguments) != 0 {
+			c.owner.report(c.filename, expression.SourceSpan, "BSL3043", expression.TypeName+" expects no arguments")
+		}
+	}
 	if dynamic {
 		c.compileExpression(expression.Type)
 	}
@@ -706,6 +714,29 @@ func (c *functionCompiler) compileCall(call *syntax.CallExpression, requireFunct
 		c.compileErrorDescription(call)
 		return
 	}
+	if call.Qualifier == "" {
+		if path, returnsValue, ok := transactionBuiltin(call.Name); ok {
+			if !metadataAllowed(c.routine.Context) {
+				c.owner.report(c.filename, call.SourceSpan, "BSL3042", "transactions are only available in server context")
+			}
+			if len(call.Arguments) != 0 {
+				c.owner.report(c.filename, call.SourceSpan, "BSL3043", call.Name+" expects no arguments")
+			}
+			if requireFunction && !returnsValue {
+				c.owner.report(c.filename, call.SourceSpan, "BSL3029", "procedure cannot be used as a value: "+call.Name)
+			}
+			for _, argument := range call.Arguments {
+				if argument.Value == nil {
+					c.emitConstant(bytecode.Undefined(), argument.SourceSpan)
+				} else {
+					c.compileExpression(argument.Value)
+				}
+			}
+			operation := c.addObjectOperation(path, len(call.Arguments), false, nil, call.SourceSpan)
+			c.emit(bytecode.OpMetadataCall, operation, call.SourceSpan)
+			return
+		}
+	}
 	entry, ok := c.resolveRoutine(call.Qualifier, call.Name, call.SourceSpan)
 	if !ok {
 		c.emitConstant(bytecode.Undefined(), call.SourceSpan)
@@ -766,6 +797,21 @@ func (c *functionCompiler) compileCall(call *syntax.CallExpression, requireFunct
 	c.emitCall(callSite, len(parameters), call.SourceSpan)
 }
 
+func transactionBuiltin(name string) (string, bool, bool) {
+	switch {
+	case strings.EqualFold(name, "НачатьТранзакцию"), strings.EqualFold(name, "BeginTransaction"):
+		return "transaction/begin", false, true
+	case strings.EqualFold(name, "ЗафиксироватьТранзакцию"), strings.EqualFold(name, "CommitTransaction"):
+		return "transaction/commit", false, true
+	case strings.EqualFold(name, "ОтменитьТранзакцию"), strings.EqualFold(name, "RollbackTransaction"):
+		return "transaction/rollback", false, true
+	case strings.EqualFold(name, "ТранзакцияАктивна"), strings.EqualFold(name, "TransactionActive"):
+		return "transaction/active", true, true
+	default:
+		return "", false, false
+	}
+}
+
 func (c *functionCompiler) compileMethodCall(call *syntax.CallExpression) {
 	if path, ok := metadataCallPath(call); ok {
 		if !metadataAllowed(c.routine.Context) {
@@ -814,6 +860,14 @@ func metadataMemberPath(member *syntax.MemberExpression) (string, bool) {
 	}
 	if len(parts) == 2 && (strings.EqualFold(parts[0], "ОпределяемыеТипы") || strings.EqualFold(parts[0], "DefinedTypes")) {
 		return "defined-type/" + parts[1], true
+	}
+	if len(parts) == 2 && (strings.EqualFold(parts[0], "РежимБлокировкиДанных") || strings.EqualFold(parts[0], "DataLockMode")) {
+		switch {
+		case strings.EqualFold(parts[1], "Исключительный"), strings.EqualFold(parts[1], "Exclusive"):
+			return "data-lock-mode/exclusive", true
+		case strings.EqualFold(parts[1], "Разделяемый"), strings.EqualFold(parts[1], "Shared"):
+			return "data-lock-mode/shared", true
+		}
 	}
 	return "", false
 }

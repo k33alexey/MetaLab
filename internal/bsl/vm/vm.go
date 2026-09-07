@@ -70,6 +70,14 @@ type CatalogRuntime interface {
 	GetPredefinedCatalogReference(context.Context, string, string) (bytecode.Value, error)
 }
 
+// TransactionRuntime controls one PostgreSQL transaction in server-side BSL.
+type TransactionRuntime interface {
+	BeginTransaction(context.Context) error
+	CommitTransaction(context.Context) error
+	RollbackTransaction(context.Context) error
+	TransactionActive(context.Context) (bool, error)
+}
+
 // DocumentRuntime resolves document manager operations for server-side BSL.
 type DocumentRuntime interface {
 	CreateDocumentObject(context.Context, string) (bytecode.Value, error)
@@ -83,6 +91,17 @@ type MetadataObjectRuntime interface {
 	GetObjectProperty(context.Context, bytecode.RuntimeObject, string) (bytecode.Value, error)
 	SetObjectProperty(context.Context, bytecode.RuntimeObject, string, bytecode.Value) error
 	CallObjectMethod(context.Context, bytecode.RuntimeObject, string, []bytecode.Value) (bytecode.Value, error)
+}
+
+// RuntimeObjectConstructor creates platform objects that are not built-in collections.
+type RuntimeObjectConstructor interface {
+	ConstructRuntimeObject(context.Context, string, []bytecode.Value) (bytecode.Value, bool, error)
+}
+
+// ExecutionRuntime binds external resources to one top-level BSL execution.
+// Nested VM calls inherit the same scope through context.Context.
+type ExecutionRuntime interface {
+	BeginExecution(context.Context) (context.Context, func(error) error, error)
 }
 
 type executionEnvironment struct {
@@ -364,7 +383,7 @@ func (runtimeContext *Context) HasRoutine(module, name string) bool {
 }
 
 // CallContext executes a routine in this session with cancellation support.
-func (runtimeContext *Context) CallContext(ctx context.Context, name string, arguments ...bytecode.Value) (bytecode.Value, error) {
+func (runtimeContext *Context) CallContext(ctx context.Context, name string, arguments ...bytecode.Value) (result bytecode.Value, resultErr error) {
 	function, ok := runtimeContext.machine.lookup(name)
 	if !ok {
 		return bytecode.Undefined(), fmt.Errorf("routine %q not found", name)
@@ -392,6 +411,21 @@ func (runtimeContext *Context) CallContext(ctx context.Context, name string, arg
 			return value, callErr
 		}
 		return bytecode.Undefined(), unavailableContextError(function, runtimeContext.env.side)
+	}
+	ctx, finish, err := beginRuntimeExecution(ctx, runtimeContext.env.metadata)
+	if err != nil {
+		return bytecode.Undefined(), err
+	}
+	if finish != nil {
+		defer func() {
+			if cleanupErr := finish(resultErr); cleanupErr != nil {
+				if resultErr == nil {
+					resultErr = cleanupErr
+				} else {
+					resultErr = errors.Join(resultErr, cleanupErr)
+				}
+			}
+		}()
 	}
 	if !requiresContext(function) {
 		budget, budgetErr := newExecutionBudget(ctx, runtimeContext.machine.limits, completed, nil)
@@ -424,7 +458,7 @@ func (runtimeContext *Context) CallContext(ctx context.Context, name string, arg
 }
 
 // CallContextMutable executes a server routine and returns final values of by-reference parameters.
-func (runtimeContext *Context) CallContextMutable(ctx context.Context, name string, arguments ...bytecode.Value) (bytecode.Value, []bytecode.Value, error) {
+func (runtimeContext *Context) CallContextMutable(ctx context.Context, name string, arguments ...bytecode.Value) (result bytecode.Value, final []bytecode.Value, resultErr error) {
 	function, ok := runtimeContext.machine.lookup(name)
 	if !ok {
 		return bytecode.Undefined(), nil, fmt.Errorf("routine %q not found", name)
@@ -435,6 +469,21 @@ func (runtimeContext *Context) CallContextMutable(ctx context.Context, name stri
 	}
 	if runtimeContext.env.side != ServerSide || !function.Context.AllowsServer() {
 		return bytecode.Undefined(), nil, unavailableContextError(function, runtimeContext.env.side)
+	}
+	ctx, finish, err := beginRuntimeExecution(ctx, runtimeContext.env.metadata)
+	if err != nil {
+		return bytecode.Undefined(), nil, err
+	}
+	if finish != nil {
+		defer func() {
+			if cleanupErr := finish(resultErr); cleanupErr != nil {
+				if resultErr == nil {
+					resultErr = cleanupErr
+				} else {
+					resultErr = errors.Join(resultErr, cleanupErr)
+				}
+			}
+		}()
 	}
 	runtimeContext.mutex.Lock()
 	defer runtimeContext.mutex.Unlock()
@@ -460,6 +509,17 @@ func (runtimeContext *Context) CallContextMutable(ctx context.Context, name stri
 		return value, finalArguments, finalizeRuntimeError(runtimeContext.machine.program, callErr)
 	}
 	return value, finalArguments, nil
+}
+
+func beginRuntimeExecution(ctx context.Context, runtime MetadataRuntime) (context.Context, func(error) error, error) {
+	if runtime == nil {
+		return ctx, nil, nil
+	}
+	scoped, ok := runtime.(ExecutionRuntime)
+	if !ok {
+		return ctx, nil, nil
+	}
+	return scoped.BeginExecution(ctx)
 }
 
 // SetModuleVariable sets a declared module variable while preserving the context memory limit.
@@ -1078,7 +1138,18 @@ func executeAdvanced(
 					break
 				}
 			}
-			result, err := bytecode.ConstructCollectionWithin(typeName, arguments, budget.remainingMemory())
+			var result bytecode.Value
+			var err error
+			handled := false
+			if constructor, ok := env.metadata.(RuntimeObjectConstructor); ok && env.side == ServerSide {
+				objectContext, cancel := budget.rpcContext()
+				result, handled, err = constructor.ConstructRuntimeObject(objectContext, typeName, arguments)
+				cancel()
+				err = budget.externalError(err)
+			}
+			if !handled && err == nil {
+				result, err = bytecode.ConstructCollectionWithin(typeName, arguments, budget.remainingMemory())
+			}
 			if err != nil {
 				if errors.Is(err, bytecode.ErrCollectionMemoryLimit) {
 					return bytecode.Undefined(), resourceFailure(function, instruction, memoryLimitError(budget.limits.MaxMemoryBytes))
@@ -1285,6 +1356,40 @@ func dispatchMetadata(ctx context.Context, env executionEnvironment, path string
 		return env.metadata.GetEnumerationValue(ctx, parts[1], parts[2])
 	case len(parts) == 2 && parts[0] == "defined-type" && len(arguments) == 0:
 		return env.metadata.GetDefinedType(ctx, parts[1])
+	case len(parts) == 2 && parts[0] == "data-lock-mode" && len(arguments) == 0:
+		if parts[1] != "exclusive" && parts[1] != "shared" {
+			return bytecode.Undefined(), fmt.Errorf("invalid data lock mode %q", parts[1])
+		}
+		return bytecode.String(parts[1]), nil
+	case len(parts) == 2 && parts[0] == "transaction" && len(arguments) == 0:
+		runtime, ok := env.metadata.(TransactionRuntime)
+		if !ok {
+			return bytecode.Undefined(), fmt.Errorf("transaction runtime is not configured")
+		}
+		switch parts[1] {
+		case "begin":
+			if err := runtime.BeginTransaction(ctx); err != nil {
+				return bytecode.Undefined(), err
+			}
+			return bytecode.Undefined(), nil
+		case "commit":
+			if err := runtime.CommitTransaction(ctx); err != nil {
+				return bytecode.Undefined(), err
+			}
+			return bytecode.Undefined(), nil
+		case "rollback":
+			if err := runtime.RollbackTransaction(ctx); err != nil {
+				return bytecode.Undefined(), err
+			}
+			return bytecode.Undefined(), nil
+		case "active":
+			active, err := runtime.TransactionActive(ctx)
+			if err != nil {
+				return bytecode.Undefined(), err
+			}
+			return bytecode.Boolean(active), nil
+		}
+		return bytecode.Undefined(), fmt.Errorf("invalid transaction operation %q", path)
 	case len(parts) == 3 && parts[0] == "catalog":
 		runtime, ok := env.metadata.(CatalogRuntime)
 		if !ok {

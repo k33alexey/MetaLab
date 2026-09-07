@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
@@ -21,6 +22,7 @@ type Runtime struct {
 	eventsMu           sync.RWMutex
 	events             map[uuid.UUID]CatalogEventHandler
 	documentEvents     map[uuid.UUID]DocumentEventHandler
+	dataLockWait       atomic.Int64
 }
 
 func NewRuntime(repository *ConstantRepository, catalog *Catalog, actor *uuid.UUID) (*Runtime, error) {
@@ -37,10 +39,14 @@ func NewRuntime(repository *ConstantRepository, catalog *Catalog, actor *uuid.UU
 		copy := *actor
 		actor = &copy
 	}
-	return &Runtime{
+	runtime := &Runtime{
 		repository: repository, catalog: catalog, actor: actor,
 		events: make(map[uuid.UUID]CatalogEventHandler), documentEvents: make(map[uuid.UUID]DocumentEventHandler),
-	}, nil
+	}
+	if _, err := runtime.databasePool(); err != nil {
+		return nil, err
+	}
+	return runtime, nil
 }
 
 // NewRuntimeWithCatalogs creates a metadata runtime with constants and catalog objects.
@@ -66,6 +72,9 @@ func NewRuntimeWithObjects(constants *ConstantRepository, catalogs *CatalogRepos
 		}
 		copy := *actor
 		runtime.actor = &copy
+	}
+	if _, err := runtime.databasePool(); err != nil {
+		return nil, err
 	}
 	return runtime, nil
 }

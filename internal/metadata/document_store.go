@@ -90,63 +90,76 @@ func (repository *DocumentRepository) Save(ctx context.Context, record *Document
 	if record == nil {
 		return fmt.Errorf("document record is required")
 	}
-	working := cloneDocumentRecord(record)
+	original, working := cloneDocumentRecord(record), cloneDocumentRecord(record)
 	definition, ok := repository.catalog.DocumentByID(working.Reference.DocumentID)
 	if !ok {
 		return fmt.Errorf("unknown document %s", working.Reference.DocumentID)
 	}
 	reference, expectedVersion, posted := working.Reference, working.Version, working.Posted
-	if err := dispatchDocumentEvent(ctx, handler, DocumentEventFillCheck, working); err != nil {
-		return err
-	}
-	if working.Reference != reference || working.Version != expectedVersion || working.Posted != posted {
-		return fmt.Errorf("document fill-check event changed immutable record state")
-	}
-	if err := dispatchDocumentEvent(ctx, handler, DocumentEventBefore, working); err != nil {
-		return err
-	}
-	if working.Reference != reference || working.Version != expectedVersion || working.Posted != posted {
-		return fmt.Errorf("document before-write event changed immutable record state")
-	}
-	transaction, err := repository.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return fmt.Errorf("begin document write: %w", err)
-	}
-	defer func() { _ = transaction.Rollback(ctx) }()
-	if working.Version == 0 && working.Number == "" && definition.Number.Auto {
-		working.Date = normalizeDocumentDate(working.Date)
-		if err := validateDocumentDate(working.Date); err != nil {
-			return fmt.Errorf("document %s date: %w", definition.Name, err)
+	prepare := func() error {
+		if err := dispatchDocumentEvent(ctx, handler, DocumentEventFillCheck, working); err != nil {
+			return err
 		}
-		table, _ := PhysicalDocumentTable(definition.ID)
-		period := documentNumberPeriod(definition.Number.Periodicity, working.Date)
-		value, err := nextObjectSequence(ctx, transaction, definition.ID, period, table, "number", definition.Number.Type == StringType, definition.Number.Periodicity != NumberPeriodNone)
-		if err != nil {
-			return fmt.Errorf("document %s number: %w", definition.Name, err)
+		if working.Reference != reference || working.Version != expectedVersion || working.Posted != posted {
+			return fmt.Errorf("document fill-check event changed immutable record state")
 		}
-		working.Number, err = formatAutomaticIdentifier(value, definition.Number.Type, definition.Number.Length)
-		if err != nil {
-			return fmt.Errorf("document %s number: %w", definition.Name, err)
+		if err := dispatchDocumentEvent(ctx, handler, DocumentEventBefore, working); err != nil {
+			return err
 		}
+		if working.Reference != reference || working.Version != expectedVersion || working.Posted != posted {
+			return fmt.Errorf("document before-write event changed immutable record state")
+		}
+		return nil
 	}
-	if err := repository.normalizeRecord(definition, working); err != nil {
-		return err
-	}
-	version, err := repository.writeRecord(ctx, transaction, definition, working)
-	if err != nil {
-		return err
-	}
-	working.Version = version
-	if err := repository.writeTableParts(ctx, transaction, definition, working); err != nil {
-		return err
-	}
-	for _, event := range []DocumentEvent{DocumentEventOnWrite, DocumentEventAfter} {
-		if err := dispatchDocumentEvent(ctx, handler, event, cloneDocumentRecord(working)); err != nil {
+	if repository.pool == nil {
+		if err := prepare(); err != nil {
 			return err
 		}
 	}
-	if err := transaction.Commit(ctx); err != nil {
-		return fmt.Errorf("commit document write: %w", err)
+	err := runDataTransaction(ctx, repository.pool, func() { *record = *cloneDocumentRecord(original) }, func(transactionContext context.Context, transaction pgx.Tx) error {
+		ctx = transactionContext
+		if err := prepare(); err != nil {
+			return err
+		}
+		if working.Version == 0 && working.Number == "" && definition.Number.Auto {
+			working.Date = normalizeDocumentDate(working.Date)
+			if err := validateDocumentDate(working.Date); err != nil {
+				return fmt.Errorf("document %s date: %w", definition.Name, err)
+			}
+			table, _ := PhysicalDocumentTable(definition.ID)
+			period := documentNumberPeriod(definition.Number.Periodicity, working.Date)
+			value, err := nextObjectSequence(ctx, transaction, definition.ID, period, table, "number", definition.Number.Type == StringType, definition.Number.Periodicity != NumberPeriodNone)
+			if err != nil {
+				return fmt.Errorf("document %s number: %w", definition.Name, err)
+			}
+			working.Number, err = formatAutomaticIdentifier(value, definition.Number.Type, definition.Number.Length)
+			if err != nil {
+				return fmt.Errorf("document %s number: %w", definition.Name, err)
+			}
+		}
+		if err := repository.normalizeRecord(definition, working); err != nil {
+			return err
+		}
+		if err := lockObjectForWrite(ctx, transaction, DocumentType, definition.ID, working.Reference.ObjectID); err != nil {
+			return err
+		}
+		version, err := repository.writeRecord(ctx, transaction, definition, working)
+		if err != nil {
+			return err
+		}
+		working.Version = version
+		if err := repository.writeTableParts(ctx, transaction, definition, working); err != nil {
+			return err
+		}
+		for _, event := range []DocumentEvent{DocumentEventOnWrite, DocumentEventAfter} {
+			if err := dispatchDocumentEvent(ctx, handler, event, cloneDocumentRecord(working)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	*record = *working
 	return nil
@@ -160,10 +173,14 @@ func (repository *DocumentRepository) Get(ctx context.Context, reference Documen
 	table, _ := PhysicalDocumentTable(definition.ID)
 	statement := "SELECT to_jsonb(item) FROM " + qualifiedCatalogTable(table) + " AS item WHERE ref = $1"
 	var encoded []byte
-	if err := repository.pool.QueryRow(ctx, statement, reference.ObjectID.String()).Scan(&encoded); errors.Is(err, pgx.ErrNoRows) {
+	query, err := queryData(ctx, repository.pool)
+	if err != nil {
+		return nil, err
+	}
+	if err := query.QueryRow(ctx, statement, reference.ObjectID.String()).Scan(&encoded); errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrDocumentRecordNotFound
 	} else if err != nil {
-		return nil, fmt.Errorf("read document %s: %w", definition.Name, err)
+		return nil, recordDataError(ctx, repository.pool, fmt.Errorf("read document %s: %w", definition.Name, err))
 	}
 	record, err := repository.decodeRecord(definition, encoded)
 	if err != nil {
@@ -198,10 +215,14 @@ func (repository *DocumentRepository) FindByNumber(ctx context.Context, name, nu
 	table, _ := PhysicalDocumentTable(definition.ID)
 	statement := "SELECT ref::text FROM " + qualifiedCatalogTable(table) + " WHERE number_period = $1 AND number = $2 ORDER BY date DESC, ref LIMIT 1"
 	var idText string
-	if err := repository.pool.QueryRow(ctx, statement, period, number).Scan(&idText); errors.Is(err, pgx.ErrNoRows) {
+	query, err := queryData(ctx, repository.pool)
+	if err != nil {
+		return DocumentReference{}, false, err
+	}
+	if err := query.QueryRow(ctx, statement, period, number).Scan(&idText); errors.Is(err, pgx.ErrNoRows) {
 		return DocumentReference{}, false, nil
 	} else if err != nil {
-		return DocumentReference{}, false, fmt.Errorf("find document %s by number: %w", definition.Name, err)
+		return DocumentReference{}, false, recordDataError(ctx, repository.pool, fmt.Errorf("find document %s by number: %w", definition.Name, err))
 	}
 	id, err := uuid.Parse(idText)
 	if err != nil {
@@ -410,11 +431,15 @@ func (repository *DocumentRepository) decodeRecord(definition DocumentDefinition
 }
 
 func (repository *DocumentRepository) readTableParts(ctx context.Context, definition DocumentDefinition, record *DocumentRecord) error {
+	query, err := queryData(ctx, repository.pool)
+	if err != nil {
+		return err
+	}
 	for _, part := range definition.TableParts {
 		table, _ := PhysicalDocumentTable(part.ID)
-		rows, err := repository.pool.Query(ctx, "SELECT to_jsonb(item) FROM "+qualifiedCatalogTable(table)+" AS item WHERE owner_ref = $1 ORDER BY line_no", record.Reference.ObjectID.String())
+		rows, err := query.Query(ctx, "SELECT to_jsonb(item) FROM "+qualifiedCatalogTable(table)+" AS item WHERE owner_ref = $1 ORDER BY line_no", record.Reference.ObjectID.String())
 		if err != nil {
-			return fmt.Errorf("read document table part %s: %w", part.Name, err)
+			return recordDataError(ctx, repository.pool, fmt.Errorf("read document table part %s: %w", part.Name, err))
 		}
 		decodedRows := make([]DocumentRow, 0)
 		for rows.Next() {

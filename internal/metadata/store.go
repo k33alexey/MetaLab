@@ -102,7 +102,11 @@ func (repository *ConstantRepository) Set(ctx context.Context, name string, valu
 	var id string
 	var changedBy *string
 	var result StoredConstant
-	err = repository.pool.QueryRow(ctx, `
+	query, err := queryData(ctx, repository.pool)
+	if err != nil {
+		return StoredConstant{}, err
+	}
+	err = query.QueryRow(ctx, `
 INSERT INTO ml_core.constant_values(constant_id, value, changed_by)
 VALUES ($1, $2, $3)
 ON CONFLICT (constant_id) DO UPDATE SET
@@ -114,7 +118,7 @@ RETURNING constant_id::text, value, revision, changed_by::text, changed_at`, con
 		&id, &encoded, &result.Revision, &changedBy, &result.ChangedAt,
 	)
 	if err != nil {
-		return StoredConstant{}, fmt.Errorf("save constant %s: %w", name, err)
+		return StoredConstant{}, recordDataError(ctx, repository.pool, fmt.Errorf("save constant %s: %w", name, err))
 	}
 	return decodeStoredConstant(id, encoded, result.Revision, changedBy, result.ChangedAt, repository.catalog)
 }
@@ -129,14 +133,18 @@ func (repository *ConstantRepository) Get(ctx context.Context, name string) (Sto
 	var revision int64
 	var changedBy *string
 	var changedAt time.Time
-	err := repository.pool.QueryRow(ctx, `
+	query, err := queryData(ctx, repository.pool)
+	if err != nil {
+		return StoredConstant{}, err
+	}
+	err = query.QueryRow(ctx, `
 SELECT constant_id::text, value, revision, changed_by::text, changed_at
 FROM ml_core.constant_values WHERE constant_id = $1`, constant.ID.String()).Scan(&id, &encoded, &revision, &changedBy, &changedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return StoredConstant{}, fmt.Errorf("%w: %s", ErrConstantValueNotFound, name)
 	}
 	if err != nil {
-		return StoredConstant{}, fmt.Errorf("read constant %s: %w", name, err)
+		return StoredConstant{}, recordDataError(ctx, repository.pool, fmt.Errorf("read constant %s: %w", name, err))
 	}
 	return decodeStoredConstant(id, encoded, revision, changedBy, changedAt, repository.catalog)
 }

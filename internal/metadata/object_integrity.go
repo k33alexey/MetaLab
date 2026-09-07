@@ -358,7 +358,18 @@ func (catalog *Catalog) objectReferences(ctx context.Context, pool *pgxpool.Pool
 	if err != nil {
 		return nil, err
 	}
-	transaction, err := pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadWrite})
+	if scope, ok := scopeFromContext(ctx, pool); ok && scope.tx != nil {
+		if scope.rollbackOnly {
+			return nil, ErrTransactionDoomed
+		}
+		constantStorage, err := lockReferenceTables(ctx, scope.tx, targetTable, sources)
+		if err != nil {
+			return nil, recordDataError(ctx, pool, err)
+		}
+		result, err := catalog.findObjectReferences(ctx, scope.tx, target, sources, constantStorage, limit)
+		return result, recordDataError(ctx, pool, err)
+	}
+	transaction, err := pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadWrite, IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return nil, fmt.Errorf("begin object reference check: %w", err)
 	}
@@ -394,7 +405,7 @@ func (repository *DocumentRepository) FindReferences(ctx context.Context, refere
 	}, table, limit)
 }
 
-func (catalog *Catalog) deleteObject(ctx context.Context, pool *pgxpool.Pool, target objectIdentity, table string, version int64, metadataName, presentation string, actor *uuid.UUID) (DeletionRecord, error) {
+func (catalog *Catalog) deleteObject(ctx context.Context, pool *pgxpool.Pool, target objectIdentity, table string, version int64, metadataName, presentation string, actor *uuid.UUID, before func(context.Context) error) (DeletionRecord, error) {
 	if pool == nil || target.metadataID.IsZero() || target.objectID.IsZero() || version < 1 {
 		return DeletionRecord{}, fmt.Errorf("invalid object deletion request")
 	}
@@ -409,35 +420,6 @@ func (catalog *Catalog) deleteObject(ctx context.Context, pool *pgxpool.Pool, ta
 	if err != nil {
 		return DeletionRecord{}, err
 	}
-	transaction, err := pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return DeletionRecord{}, fmt.Errorf("begin object deletion: %w", err)
-	}
-	defer func() { _ = transaction.Rollback(ctx) }()
-	constantStorage, err := lockReferenceTables(ctx, transaction, table, sources)
-	if err != nil {
-		return DeletionRecord{}, err
-	}
-	uses, err := catalog.findObjectReferences(ctx, transaction, target, sources, constantStorage, 100)
-	if err != nil {
-		return DeletionRecord{}, err
-	}
-	if len(uses) > 0 {
-		return DeletionRecord{}, &ReferenceIntegrityError{Uses: uses}
-	}
-	conditions := "ref = $1 AND version = $2 AND deletion_mark"
-	if target.kind == CatalogType {
-		conditions += " AND predefined_name IS NULL"
-	} else if target.kind == DocumentType {
-		conditions += " AND NOT posted"
-	}
-	command, err := transaction.Exec(ctx, "DELETE FROM "+pgx.Identifier{schemadiff.ApplicationSchema, table}.Sanitize()+" WHERE "+conditions, target.objectID.String(), version)
-	if err != nil {
-		return DeletionRecord{}, fmt.Errorf("delete %s %s: %w", target.kind, metadataName, err)
-	}
-	if command.RowsAffected() != 1 {
-		return DeletionRecord{}, fmt.Errorf("object changed before deletion")
-	}
 	eventID, err := uuid.New()
 	if err != nil {
 		return DeletionRecord{}, err
@@ -450,16 +432,48 @@ func (catalog *Catalog) deleteObject(ctx context.Context, pool *pgxpool.Pool, ta
 		copy := *actor
 		record.ActorID = &copy
 	}
-	err = transaction.QueryRow(ctx, `
+	err = runDataTransaction(ctx, pool, nil, func(transactionContext context.Context, transaction pgx.Tx) error {
+		ctx = transactionContext
+		if err := lockObjectForWrite(ctx, transaction, target.kind, target.metadataID, target.objectID); err != nil {
+			return err
+		}
+		if before != nil {
+			if err := before(ctx); err != nil {
+				return err
+			}
+		}
+		constantStorage, err := lockReferenceTables(ctx, transaction, table, sources)
+		if err != nil {
+			return err
+		}
+		uses, err := catalog.findObjectReferences(ctx, transaction, target, sources, constantStorage, 100)
+		if err != nil {
+			return err
+		}
+		if len(uses) > 0 {
+			return &ReferenceIntegrityError{Uses: uses}
+		}
+		conditions := "ref = $1 AND version = $2 AND deletion_mark"
+		if target.kind == CatalogType {
+			conditions += " AND predefined_name IS NULL"
+		} else if target.kind == DocumentType {
+			conditions += " AND NOT posted"
+		}
+		command, err := transaction.Exec(ctx, "DELETE FROM "+pgx.Identifier{schemadiff.ApplicationSchema, table}.Sanitize()+" WHERE "+conditions, target.objectID.String(), version)
+		if err != nil {
+			return fmt.Errorf("delete %s %s: %w", target.kind, metadataName, err)
+		}
+		if command.RowsAffected() != 1 {
+			return fmt.Errorf("object changed before deletion")
+		}
+		return transaction.QueryRow(ctx, `
 INSERT INTO ml_core.object_deletions(id, object_kind, metadata_id, metadata_name, object_id, presentation, actor_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING deleted_at`,
-		record.ID.String(), record.ObjectKind, record.MetadataID.String(), record.MetadataName,
-		record.ObjectID.String(), record.Presentation, actorValue).Scan(&record.DeletedAt)
+			record.ID.String(), record.ObjectKind, record.MetadataID.String(), record.MetadataName,
+			record.ObjectID.String(), record.Presentation, actorValue).Scan(&record.DeletedAt)
+	})
 	if err != nil {
 		return DeletionRecord{}, fmt.Errorf("record object deletion: %w", err)
-	}
-	if err := transaction.Commit(ctx); err != nil {
-		return DeletionRecord{}, fmt.Errorf("commit object deletion: %w", err)
 	}
 	return record, nil
 }
@@ -481,12 +495,6 @@ func (repository *CatalogRepository) Delete(ctx context.Context, record *Catalog
 		return DeletionRecord{}, ErrPredefinedDeleteDenied
 	}
 	identity, version, predefinedName := working.Reference, working.Version, working.PredefinedName
-	if err := dispatchCatalogEvent(ctx, handler, CatalogEventBeforeDelete, working); err != nil {
-		return DeletionRecord{}, err
-	}
-	if working.Reference != identity || working.Version != version || working.PredefinedName != predefinedName || !working.DeletionMark {
-		return DeletionRecord{}, fmt.Errorf("catalog before-delete event changed immutable record state")
-	}
 	table, _ := PhysicalCatalogTable(definition.ID)
 	presentation := working.Description
 	if presentation == "" {
@@ -494,7 +502,15 @@ func (repository *CatalogRepository) Delete(ctx context.Context, record *Catalog
 	}
 	return repository.catalog.deleteObject(ctx, repository.pool, objectIdentity{
 		kind: CatalogType, metadataID: definition.ID, objectID: identity.ObjectID,
-	}, table, version, definition.Name, presentation, actor)
+	}, table, version, definition.Name, presentation, actor, func(eventContext context.Context) error {
+		if err := dispatchCatalogEvent(eventContext, handler, CatalogEventBeforeDelete, working); err != nil {
+			return err
+		}
+		if working.Reference != identity || working.Version != version || working.PredefinedName != predefinedName || !working.DeletionMark {
+			return fmt.Errorf("catalog before-delete event changed immutable record state")
+		}
+		return nil
+	})
 }
 
 // Delete permanently removes a marked, unposted document after checking references.
@@ -514,29 +530,35 @@ func (repository *DocumentRepository) Delete(ctx context.Context, record *Docume
 		return DeletionRecord{}, fmt.Errorf("posted document cannot be deleted")
 	}
 	identity, version, posted := working.Reference, working.Version, working.Posted
-	if err := dispatchDocumentEvent(ctx, handler, DocumentEventBeforeDelete, working); err != nil {
-		return DeletionRecord{}, err
-	}
-	if working.Reference != identity || working.Version != version || working.Posted != posted || !working.DeletionMark {
-		return DeletionRecord{}, fmt.Errorf("document before-delete event changed immutable record state")
-	}
 	table, _ := PhysicalDocumentTable(definition.ID)
 	presentation := working.Number + " " + working.Date.Format(time.RFC3339)
 	return repository.catalog.deleteObject(ctx, repository.pool, objectIdentity{
 		kind: DocumentType, metadataID: definition.ID, objectID: identity.ObjectID,
-	}, table, version, definition.Name, presentation, actor)
+	}, table, version, definition.Name, presentation, actor, func(eventContext context.Context) error {
+		if err := dispatchDocumentEvent(eventContext, handler, DocumentEventBeforeDelete, working); err != nil {
+			return err
+		}
+		if working.Reference != identity || working.Version != version || working.Posted != posted || !working.DeletionMark {
+			return fmt.Errorf("document before-delete event changed immutable record state")
+		}
+		return nil
+	})
 }
 
 func ListObjectDeletions(ctx context.Context, pool *pgxpool.Pool, limit int) ([]DeletionRecord, error) {
 	if pool == nil || limit < 1 || limit > 1000 {
 		return nil, fmt.Errorf("object deletion history limit must be between 1 and 1000")
 	}
-	rows, err := pool.Query(ctx, `
+	query, err := queryData(ctx, pool)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := query.Query(ctx, `
 SELECT id::text, object_kind, metadata_id::text, metadata_name, object_id::text,
        presentation, actor_id::text, deleted_at
 FROM ml_core.object_deletions ORDER BY deleted_at DESC, id DESC LIMIT $1`, limit)
 	if err != nil {
-		return nil, fmt.Errorf("list object deletions: %w", err)
+		return nil, recordDataError(ctx, pool, fmt.Errorf("list object deletions: %w", err))
 	}
 	defer rows.Close()
 	result := make([]DeletionRecord, 0)
