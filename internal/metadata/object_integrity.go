@@ -223,6 +223,19 @@ func (catalog *Catalog) referenceSources(target objectIdentity) ([]referenceSour
 			return nil, err
 		}
 	}
+	for _, definition := range catalog.AccumulationRegisters {
+		table, _ := PhysicalAccumulationRegisterTable(definition.ID)
+		if target.kind == DocumentType && slices.Contains(definition.Recorders, target.metadataID) {
+			result = append(result, referenceSource{
+				table: table, ownerKind: "accumulation-register", ownerName: definition.Name, ownerMetadataID: definition.ID,
+				field: "Recorder", column: "recorder_ref", ownerColumn: "record_id",
+				discriminator: "recorder_type", discriminatorID: target.metadataID,
+			})
+		}
+		if err := appendAttributes("accumulation-register", definition.Name, definition.ID, table, "record_id", "", accumulationRegisterFields(definition), false); err != nil {
+			return nil, err
+		}
+	}
 	return result, nil
 }
 

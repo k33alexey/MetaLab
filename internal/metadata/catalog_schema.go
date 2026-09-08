@@ -37,6 +37,13 @@ func (catalog *Catalog) ApplicationSchema() (schemadiff.Schema, error) {
 		}
 		schema.Tables = append(schema.Tables, table)
 	}
+	for _, definition := range catalog.AccumulationRegisters {
+		movements, totals, err := catalog.accumulationRegisterTables(definition)
+		if err != nil {
+			return schemadiff.Schema{}, err
+		}
+		schema.Tables = append(schema.Tables, movements, totals)
+	}
 	if err := schema.NormalizeAndValidate(); err != nil {
 		return schemadiff.Schema{}, fmt.Errorf("build application schema: %w", err)
 	}

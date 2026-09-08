@@ -869,6 +869,14 @@ func metadataMemberPath(member *syntax.MemberExpression) (string, bool) {
 			return "data-lock-mode/shared", true
 		}
 	}
+	if len(parts) == 2 && (strings.EqualFold(parts[0], "ВидДвиженияНакопления") || strings.EqualFold(parts[0], "AccumulationMovementKind")) {
+		switch {
+		case strings.EqualFold(parts[1], "Приход"), strings.EqualFold(parts[1], "Receipt"):
+			return "accumulation-movement-kind/receipt", true
+		case strings.EqualFold(parts[1], "Расход"), strings.EqualFold(parts[1], "Expense"):
+			return "accumulation-movement-kind/expense", true
+		}
+	}
 	return "", false
 }
 
@@ -890,6 +898,9 @@ func metadataCallPath(call *syntax.CallExpression) (string, bool) {
 	}
 	if strings.EqualFold(parts[0], "РегистрыСведений") || strings.EqualFold(parts[0], "InformationRegisters") {
 		return informationRegisterCallPath(parts[1], call.Name, len(call.Arguments))
+	}
+	if strings.EqualFold(parts[0], "РегистрыНакопления") || strings.EqualFold(parts[0], "AccumulationRegisters") {
+		return accumulationRegisterCallPath(parts[1], call.Name, len(call.Arguments))
 	}
 	if !(strings.EqualFold(parts[0], "Константы") || strings.EqualFold(parts[0], "Constants")) {
 		return "", false
@@ -962,6 +973,24 @@ func informationRegisterCallPath(register, method string, arity int) (string, bo
 		return "", false
 	}
 	return "information-register/" + register + "/" + operation, true
+}
+
+func accumulationRegisterCallPath(register, method string, arity int) (string, bool) {
+	operation, validArity := "", false
+	switch {
+	case strings.EqualFold(method, "СоздатьНаборЗаписей"), strings.EqualFold(method, "CreateRecordSet"):
+		operation, validArity = "create-record-set", arity == 0
+	case strings.EqualFold(method, "Остатки"), strings.EqualFold(method, "Balances"):
+		operation, validArity = "balances", arity == 1 || arity == 2
+	case strings.EqualFold(method, "Обороты"), strings.EqualFold(method, "Turnovers"):
+		operation, validArity = "turnovers", arity == 2 || arity == 3
+	case strings.EqualFold(method, "ОстаткиИОбороты"), strings.EqualFold(method, "BalancesAndTurnovers"):
+		operation, validArity = "balances-and-turnovers", arity == 2 || arity == 3
+	}
+	if operation == "" || !validArity {
+		return "", false
+	}
+	return "accumulation-register/" + register + "/" + operation, true
 }
 
 func expressionPath(expression syntax.Expression) ([]string, bool) {

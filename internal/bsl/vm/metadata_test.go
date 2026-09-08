@@ -171,6 +171,31 @@ func TestInformationRegisterManagerDispatch(t *testing.T) {
 	}
 }
 
+func TestAccumulationRegisterManagerDispatch(t *testing.T) {
+	t.Parallel()
+	program, diagnostics := compiler.CompileSource("accumulation.bsl", `&НаСервере
+Функция Проверить()
+    Набор = РегистрыНакопления.Остатки.СоздатьНаборЗаписей();
+    Строка = Набор.Добавить();
+    Строка.ВидДвижения = ВидДвиженияНакопления.Расход;
+    Набор.Записать();
+    Таблица = РегистрыНакопления.Остатки.ОстаткиИОбороты('20260901', '20260930');
+    Возврат Строка.ВидДвижения + ":" + Таблица.Количество;
+КонецФункции`)
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	machine, err := New(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := &catalogRuntimeStub{}
+	result, err := machine.NewContextWithMetadata(runtime).Call("Проверить")
+	if err != nil || result.String() != "expense:1" || !runtime.written {
+		t.Fatalf("result=%v written=%v error=%v", result, runtime.written, err)
+	}
+}
+
 type metadataRuntimeStub struct{ value bytecode.Value }
 
 func (runtime *metadataRuntimeStub) GetConstant(_ context.Context, _ string) (bytecode.Value, error) {
@@ -233,6 +258,18 @@ func (runtime *catalogRuntimeStub) InformationRegisterSliceLast(ctx context.Cont
 func (runtime *catalogRuntimeStub) InformationRegisterSliceFirst(ctx context.Context, name string, period, filter bytecode.Value) (bytecode.Value, error) {
 	return runtime.InformationRegisterSliceLast(ctx, name, period, filter)
 }
+func (runtime *catalogRuntimeStub) CreateAccumulationRegisterRecordSet(ctx context.Context, name string) (bytecode.Value, error) {
+	return runtime.CreateCatalogObject(ctx, name)
+}
+func (runtime *catalogRuntimeStub) AccumulationRegisterBalances(ctx context.Context, name string, _, _ bytecode.Value) (bytecode.Value, error) {
+	return runtime.InformationRegisterSliceLast(ctx, name, bytecode.Undefined(), bytecode.Undefined())
+}
+func (runtime *catalogRuntimeStub) AccumulationRegisterTurnovers(ctx context.Context, name string, _, _, _ bytecode.Value) (bytecode.Value, error) {
+	return runtime.AccumulationRegisterBalances(ctx, name, bytecode.Undefined(), bytecode.Undefined())
+}
+func (runtime *catalogRuntimeStub) AccumulationRegisterBalancesAndTurnovers(ctx context.Context, name string, _, _, _ bytecode.Value) (bytecode.Value, error) {
+	return runtime.AccumulationRegisterBalances(ctx, name, bytecode.Undefined(), bytecode.Undefined())
+}
 func (*catalogRuntimeStub) GetObjectProperty(_ context.Context, object bytecode.RuntimeObject, name string) (bytecode.Value, error) {
 	stub := object.(*runtimeObjectStub)
 	value, ok := stub.properties[strings.ToLower(name)]
@@ -245,12 +282,15 @@ func (*catalogRuntimeStub) SetObjectProperty(_ context.Context, object bytecode.
 	object.(*runtimeObjectStub).properties[strings.ToLower(name)] = value
 	return nil
 }
-func (runtime *catalogRuntimeStub) CallObjectMethod(_ context.Context, _ bytecode.RuntimeObject, name string, arguments []bytecode.Value) (bytecode.Value, error) {
-	if !(strings.EqualFold(name, "Write") || strings.EqualFold(name, "Записать")) || len(arguments) != 0 {
-		return bytecode.Undefined(), fmt.Errorf("unknown method %s", name)
+func (runtime *catalogRuntimeStub) CallObjectMethod(_ context.Context, object bytecode.RuntimeObject, name string, arguments []bytecode.Value) (bytecode.Value, error) {
+	if len(arguments) == 0 && (strings.EqualFold(name, "Add") || strings.EqualFold(name, "Добавить")) {
+		return bytecode.Object(object)
 	}
-	runtime.written = true
-	return bytecode.Undefined(), nil
+	if len(arguments) == 0 && (strings.EqualFold(name, "Write") || strings.EqualFold(name, "Записать")) {
+		runtime.written = true
+		return bytecode.Undefined(), nil
+	}
+	return bytecode.Undefined(), fmt.Errorf("unknown method %s", name)
 }
 func (runtime *metadataRuntimeStub) SetConstant(_ context.Context, _ string, value bytecode.Value) error {
 	runtime.value = value

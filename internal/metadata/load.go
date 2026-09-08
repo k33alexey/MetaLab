@@ -92,6 +92,18 @@ func Load(root string) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := loadKind(root, AccumulationRegisterKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeAccumulationRegister(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.AccumulationRegisters = append(catalog.AccumulationRegisters, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := catalog.indexAndValidate(root); err != nil {
 		return nil, err
 	}
@@ -100,10 +112,16 @@ func Load(root string) (*Catalog, error) {
 
 // NewCatalogSnapshot validates already decoded metadata, for example from a publication package.
 func NewCatalogSnapshot(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition) (*Catalog, error) {
+	return NewCatalogSnapshotWithAccumulationRegisters(manifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, nil)
+}
+
+// NewCatalogSnapshotWithAccumulationRegisters validates all supported decoded metadata.
+func NewCatalogSnapshotWithAccumulationRegisters(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition) (*Catalog, error) {
 	result := &Catalog{
 		Project: manifest, Constants: slices.Clone(constants), Enumerations: slices.Clone(enumerations),
 		DefinedTypes: slices.Clone(definedTypes), Catalogs: slices.Clone(catalogs), Documents: slices.Clone(documents),
-		InformationRegisters: slices.Clone(informationRegisters),
+		InformationRegisters:  slices.Clone(informationRegisters),
+		AccumulationRegisters: slices.Clone(accumulationRegisters),
 	}
 	for index := range result.Constants {
 		result.Constants[index] = cloneConstant(result.Constants[index])
@@ -122,6 +140,9 @@ func NewCatalogSnapshot(manifest project.Project, constants []Constant, enumerat
 	}
 	for index := range result.InformationRegisters {
 		result.InformationRegisters[index] = cloneInformationRegisterDefinition(result.InformationRegisters[index])
+	}
+	for index := range result.AccumulationRegisters {
+		result.AccumulationRegisters[index] = cloneAccumulationRegisterDefinition(result.AccumulationRegisters[index])
 	}
 	if err := result.indexAndValidate(""); err != nil {
 		return nil, err
@@ -187,12 +208,16 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	sort.Slice(catalog.InformationRegisters, func(i, j int) bool {
 		return catalog.InformationRegisters[i].ID.String() < catalog.InformationRegisters[j].ID.String()
 	})
+	sort.Slice(catalog.AccumulationRegisters, func(i, j int) bool {
+		return catalog.AccumulationRegisters[i].ID.String() < catalog.AccumulationRegisters[j].ID.String()
+	})
 	catalog.constantByName, catalog.constantByID = make(map[string]int, len(catalog.Constants)), make(map[uuid.UUID]int, len(catalog.Constants))
 	catalog.enumerationByName, catalog.enumerationByID = make(map[string]int, len(catalog.Enumerations)), make(map[uuid.UUID]int, len(catalog.Enumerations))
 	catalog.definedTypeByName, catalog.definedTypeByID = make(map[string]int, len(catalog.DefinedTypes)), make(map[uuid.UUID]int, len(catalog.DefinedTypes))
 	catalog.catalogByName, catalog.catalogByID = make(map[string]int, len(catalog.Catalogs)), make(map[uuid.UUID]int, len(catalog.Catalogs))
 	catalog.documentByName, catalog.documentByID = make(map[string]int, len(catalog.Documents)), make(map[uuid.UUID]int, len(catalog.Documents))
 	catalog.informationRegisterByName, catalog.informationRegisterByID = make(map[string]int, len(catalog.InformationRegisters)), make(map[uuid.UUID]int, len(catalog.InformationRegisters))
+	catalog.accumulationRegisterByName, catalog.accumulationRegisterByID = make(map[string]int, len(catalog.AccumulationRegisters)), make(map[uuid.UUID]int, len(catalog.AccumulationRegisters))
 	allIDs := map[uuid.UUID]string{}
 	add := func(kind string, id uuid.UUID, name string, index int, names map[string]int, ids map[uuid.UUID]int) error {
 		folded := strings.ToLower(name)
@@ -292,6 +317,17 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			allIDs[field.ID] = "information register field " + item.Name + "." + field.Name
 		}
 	}
+	for index, item := range catalog.AccumulationRegisters {
+		if err := add("accumulation register", item.ID, item.Name, index, catalog.accumulationRegisterByName, catalog.accumulationRegisterByID); err != nil {
+			return err
+		}
+		for _, field := range accumulationRegisterFields(item) {
+			if previous, ok := allIDs[field.ID]; ok {
+				return fmt.Errorf("%w: %s and accumulation register field %s.%s use %s", ErrDuplicateID, previous, item.Name, field.Name, field.ID)
+			}
+			allIDs[field.ID] = "accumulation register field " + item.Name + "." + field.Name
+		}
+	}
 	for _, item := range catalog.Constants {
 		if err := catalog.validateReferences("constant "+item.Name, item.Types); err != nil {
 			return err
@@ -366,6 +402,26 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			}
 		}
 		if err := validateObjectSources(root, "information register", item.Name, item.RecordSetModule, item.ManagerModule, item.Forms); err != nil {
+			return err
+		}
+	}
+	for _, item := range catalog.AccumulationRegisters {
+		for _, field := range accumulationRegisterFields(item) {
+			if err := catalog.validateReferences("accumulation register "+item.Name+" field "+field.Name, field.Types); err != nil {
+				return err
+			}
+		}
+		for _, resource := range item.Resources {
+			if _, err := catalog.accumulationResourceType(resource); err != nil {
+				return fmt.Errorf("accumulation register %s: %w", item.Name, err)
+			}
+		}
+		for _, recorder := range item.Recorders {
+			if _, ok := catalog.documentByID[recorder]; !ok {
+				return fmt.Errorf("accumulation register %s references unknown recorder document %s", item.Name, recorder)
+			}
+		}
+		if err := validateObjectSources(root, "accumulation register", item.Name, item.RecordSetModule, item.ManagerModule, item.Forms); err != nil {
 			return err
 		}
 	}

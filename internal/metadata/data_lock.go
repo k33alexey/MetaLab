@@ -27,15 +27,17 @@ type dataLock struct {
 }
 
 type dataLockElement struct {
-	mu         sync.RWMutex
-	runtime    *Runtime
-	kind       TypeKind
-	metadataID uuid.UUID
-	objectID   uuid.UUID
-	register   *InformationRegisterDefinition
-	filter     InformationRegisterFilter
-	space      string
-	mode       string
+	mu                     sync.RWMutex
+	runtime                *Runtime
+	kind                   TypeKind
+	metadataID             uuid.UUID
+	objectID               uuid.UUID
+	register               *InformationRegisterDefinition
+	filter                 InformationRegisterFilter
+	accumulationRegister   *AccumulationRegisterDefinition
+	accumulationDimensions map[uuid.UUID]Value
+	space                  string
+	mode                   string
 }
 
 func (*dataLock) RuntimeTypeName() string { return "DataLock" }
@@ -54,6 +56,9 @@ func (lock *dataLock) RuntimeDynamicMemory(limit uint64) (uint64, bool) {
 		entry.mu.RLock()
 		addition := uint64(256 + len(entry.space) + len(entry.mode))
 		for _, value := range entry.filter.Dimensions {
+			addition += uint64(len(value.Data) + 96)
+		}
+		for _, value := range entry.accumulationDimensions {
 			addition += uint64(len(value.Data) + 96)
 		}
 		entry.mu.RUnlock()
@@ -75,6 +80,9 @@ func (element *dataLockElement) RuntimeDynamicMemory(limit uint64) (uint64, bool
 	defer element.mu.RUnlock()
 	size := uint64(256 + len(element.space) + len(element.mode))
 	for _, value := range element.filter.Dimensions {
+		size += uint64(len(value.Data) + 96)
+	}
+	for _, value := range element.accumulationDimensions {
 		size += uint64(len(value.Data) + 96)
 	}
 	return size, size <= limit
@@ -137,6 +145,16 @@ func (runtime *Runtime) newDataLockElement(space string) (*dataLockElement, erro
 			register: &definition, filter: InformationRegisterFilter{Dimensions: map[uuid.UUID]Value{}},
 			space: "InformationRegister." + definition.Name, mode: dataLockExclusive,
 		}, nil
+	case propertyName(strings.TrimSpace(parts[0]), "РегистрНакопления", "AccumulationRegister"):
+		definition, ok := runtime.catalog.AccumulationRegisterDefinition(name)
+		if !ok {
+			return nil, fmt.Errorf("unknown accumulation register %q", name)
+		}
+		return &dataLockElement{
+			runtime: runtime, kind: TypeKind("accumulation-register"), metadataID: definition.ID,
+			accumulationRegister: &definition, accumulationDimensions: map[uuid.UUID]Value{},
+			space: "AccumulationRegister." + definition.Name, mode: dataLockExclusive,
+		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported data lock space %q", space)
 	}
@@ -145,9 +163,13 @@ func (runtime *Runtime) newDataLockElement(space string) (*dataLockElement, erro
 func (runtime *Runtime) setDataLockValue(element *dataLockElement, field string, value bytecode.Value) error {
 	element.mu.RLock()
 	register := element.register
+	accumulationRegister := element.accumulationRegister
 	element.mu.RUnlock()
 	if register != nil {
 		return runtime.setInformationRegisterDataLockValue(element, field, value)
+	}
+	if accumulationRegister != nil {
+		return runtime.setAccumulationRegisterDataLockValue(element, field, value)
 	}
 	if !propertyName(field, "Ссылка", "Ref") {
 		return fmt.Errorf("data lock field %q is not supported", field)
@@ -176,6 +198,24 @@ func (runtime *Runtime) setDataLockValue(element *dataLockElement, field string,
 	}
 	element.mu.Lock()
 	element.objectID = objectID
+	element.mu.Unlock()
+	return nil
+}
+
+func (runtime *Runtime) setAccumulationRegisterDataLockValue(element *dataLockElement, field string, value bytecode.Value) error {
+	element.mu.RLock()
+	definition := cloneAccumulationRegisterDefinition(*element.accumulationRegister)
+	element.mu.RUnlock()
+	dimension, ok := findCatalogAttribute(definition.Dimensions, field)
+	if !ok {
+		return fmt.Errorf("accumulation register data lock field %q is not supported", field)
+	}
+	stored, err := runtime.applicationValueFromBSL(dimension.Types, value, "accumulation register data lock dimension "+dimension.Name)
+	if err != nil {
+		return err
+	}
+	element.mu.Lock()
+	element.accumulationDimensions[dimension.ID] = stored
 	element.mu.Unlock()
 	return nil
 }
@@ -256,6 +296,7 @@ func (runtime *Runtime) acquireDataLocks(ctx context.Context, lock *dataLock) er
 		entry.mu.RLock()
 		kind, metadataID, objectID, mode := entry.kind, entry.metadataID, entry.objectID, entry.mode
 		register, filter := entry.register, cloneInformationRegisterFilter(entry.filter)
+		accumulationRegister, accumulationDimensions := entry.accumulationRegister, mapsCloneValues(entry.accumulationDimensions)
 		entry.mu.RUnlock()
 		if register != nil {
 			tableKey := objectLockKey(TypeKind("information-register"), metadataID, metadataID)
@@ -273,6 +314,16 @@ func (runtime *Runtime) acquireDataLocks(ctx context.Context, lock *dataLock) er
 				// A partial register range cannot be represented by one advisory key.
 				// Use the exclusive hierarchy gate so both shared and exclusive
 				// range locks reliably block overlapping writes.
+				merge(tableKey, dataLockExclusive, 0)
+			}
+			continue
+		}
+		if accumulationRegister != nil {
+			tableKey := objectLockKey(TypeKind("accumulation-register"), metadataID, metadataID)
+			if len(accumulationDimensions) == len(accumulationRegister.Dimensions) {
+				merge(tableKey, dataLockShared, 0)
+				merge(accumulationDimensionLockKey(*accumulationRegister, accumulationDimensions), mode, 1)
+			} else {
 				merge(tableKey, dataLockExclusive, 0)
 			}
 			continue

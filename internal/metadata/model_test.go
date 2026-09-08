@@ -494,13 +494,61 @@ dimensions:
 	}
 }
 
+func TestLoadAccumulationRegisterValidatesRecorderAndClonesFields(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	recorder, register, dimension, resource, numericType := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	writeMetadata(t, root, DefinedTypeKind, numericType.String(), `format: 1
+id: `+numericType.String()+`
+name: ДенежнаяСумма
+title: {ru: Денежная сумма}
+types: [{kind: number, precision: 15, scale: 2}]
+`)
+	writeMetadata(t, root, DocumentKind, recorder.String(), `format: 1
+id: `+recorder.String()+`
+name: Продажа
+title: {ru: Продажа}
+number: {type: string, length: 11, periodicity: year}
+`)
+	writeMetadata(t, root, AccumulationRegisterKind, register.String(), `format: 1
+id: `+register.String()+`
+name: Продажи
+title: {ru: Продажи}
+kind: turnover
+recorders: [`+recorder.String()+`]
+dimensions:
+  - id: `+dimension.String()+`
+    name: Товар
+    title: {ru: Товар}
+    types: [{kind: uuid}]
+resources:
+  - id: `+resource.String()+`
+    name: Сумма
+    title: {ru: Сумма}
+    types: [{kind: defined-type, reference: `+numericType.String()+`}]
+`)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, ok := catalog.AccumulationRegisterDefinition("продажи")
+	if !ok || value.Kind != AccumulationRegisterTurnover || value.Recorders[0] != recorder {
+		t.Fatalf("register=%+v found=%v", value, ok)
+	}
+	value.Resources[0].Name = "Изменено"
+	again, _ := catalog.AccumulationRegisterDefinition("Продажи")
+	if again.Resources[0].Name != "Сумма" || len(catalog.AccumulationRegisterIDs()) != 1 {
+		t.Fatal("accumulation register lookup exposed mutable metadata")
+	}
+}
+
 func metadataProject(t *testing.T) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "project")
 	if err := project.Initialize(root, metadataManifest()); err != nil {
 		t.Fatal(err)
 	}
-	for _, kind := range []Kind{ConstantKind, EnumerationKind, DefinedTypeKind, CatalogKind, DocumentKind, InformationRegisterKind} {
+	for _, kind := range []Kind{ConstantKind, EnumerationKind, DefinedTypeKind, CatalogKind, DocumentKind, InformationRegisterKind, AccumulationRegisterKind} {
 		if err := os.MkdirAll(filepath.Join(root, "metadata", string(kind)), 0o755); err != nil {
 			t.Fatal(err)
 		}

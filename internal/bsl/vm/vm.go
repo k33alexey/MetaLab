@@ -93,6 +93,14 @@ type InformationRegisterRuntime interface {
 	InformationRegisterSliceFirst(context.Context, string, bytecode.Value, bytecode.Value) (bytecode.Value, error)
 }
 
+// AccumulationRegisterRuntime resolves movement sets and basic virtual tables.
+type AccumulationRegisterRuntime interface {
+	CreateAccumulationRegisterRecordSet(context.Context, string) (bytecode.Value, error)
+	AccumulationRegisterBalances(context.Context, string, bytecode.Value, bytecode.Value) (bytecode.Value, error)
+	AccumulationRegisterTurnovers(context.Context, string, bytecode.Value, bytecode.Value, bytecode.Value) (bytecode.Value, error)
+	AccumulationRegisterBalancesAndTurnovers(context.Context, string, bytecode.Value, bytecode.Value, bytecode.Value) (bytecode.Value, error)
+}
+
 // MetadataObjectRuntime supplies properties and methods of opaque server objects.
 type MetadataObjectRuntime interface {
 	GetObjectProperty(context.Context, bytecode.RuntimeObject, string) (bytecode.Value, error)
@@ -1368,6 +1376,11 @@ func dispatchMetadata(ctx context.Context, env executionEnvironment, path string
 			return bytecode.Undefined(), fmt.Errorf("invalid data lock mode %q", parts[1])
 		}
 		return bytecode.String(parts[1]), nil
+	case len(parts) == 2 && parts[0] == "accumulation-movement-kind" && len(arguments) == 0:
+		if parts[1] != "receipt" && parts[1] != "expense" {
+			return bytecode.Undefined(), fmt.Errorf("invalid accumulation movement kind %q", parts[1])
+		}
+		return bytecode.String(parts[1]), nil
 	case len(parts) == 2 && parts[0] == "transaction" && len(arguments) == 0:
 		runtime, ok := env.metadata.(TransactionRuntime)
 		if !ok {
@@ -1474,6 +1487,37 @@ func dispatchMetadata(ctx context.Context, env executionEnvironment, path string
 					return runtime.InformationRegisterSliceLast(ctx, parts[1], arguments[0], filter)
 				}
 				return runtime.InformationRegisterSliceFirst(ctx, parts[1], arguments[0], filter)
+			}
+		}
+		return bytecode.Undefined(), fmt.Errorf("invalid application metadata operation %q", path)
+	case len(parts) == 3 && parts[0] == "accumulation-register":
+		runtime, ok := env.metadata.(AccumulationRegisterRuntime)
+		if !ok {
+			return bytecode.Undefined(), fmt.Errorf("accumulation register runtime is not configured")
+		}
+		switch parts[2] {
+		case "create-record-set":
+			if len(arguments) == 0 {
+				return runtime.CreateAccumulationRegisterRecordSet(ctx, parts[1])
+			}
+		case "balances":
+			if len(arguments) == 1 || len(arguments) == 2 {
+				filter := bytecode.Undefined()
+				if len(arguments) == 2 {
+					filter = arguments[1]
+				}
+				return runtime.AccumulationRegisterBalances(ctx, parts[1], arguments[0], filter)
+			}
+		case "turnovers", "balances-and-turnovers":
+			if len(arguments) == 2 || len(arguments) == 3 {
+				filter := bytecode.Undefined()
+				if len(arguments) == 3 {
+					filter = arguments[2]
+				}
+				if parts[2] == "turnovers" {
+					return runtime.AccumulationRegisterTurnovers(ctx, parts[1], arguments[0], arguments[1], filter)
+				}
+				return runtime.AccumulationRegisterBalancesAndTurnovers(ctx, parts[1], arguments[0], arguments[1], filter)
 			}
 		}
 		return bytecode.Undefined(), fmt.Errorf("invalid application metadata operation %q", path)

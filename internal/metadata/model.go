@@ -27,12 +27,13 @@ const (
 type Kind string
 
 const (
-	ConstantKind            Kind = "constants"
-	EnumerationKind         Kind = "enumerations"
-	DefinedTypeKind         Kind = "defined-types"
-	CatalogKind             Kind = "catalogs"
-	DocumentKind            Kind = "documents"
-	InformationRegisterKind Kind = "information-registers"
+	ConstantKind             Kind = "constants"
+	EnumerationKind          Kind = "enumerations"
+	DefinedTypeKind          Kind = "defined-types"
+	CatalogKind              Kind = "catalogs"
+	DocumentKind             Kind = "documents"
+	InformationRegisterKind  Kind = "information-registers"
+	AccumulationRegisterKind Kind = "accumulation-registers"
 )
 
 type TypeKind string
@@ -171,25 +172,28 @@ type CatalogDefinition struct {
 
 // Catalog is an immutable-by-convention snapshot of the supported metadata kinds.
 type Catalog struct {
-	Project                   project.Project
-	Constants                 []Constant
-	Enumerations              []Enumeration
-	DefinedTypes              []DefinedTypeObject
-	Catalogs                  []CatalogDefinition
-	Documents                 []DocumentDefinition
-	InformationRegisters      []InformationRegisterDefinition
-	constantByName            map[string]int
-	constantByID              map[uuid.UUID]int
-	enumerationByName         map[string]int
-	definedTypeByName         map[string]int
-	enumerationByID           map[uuid.UUID]int
-	definedTypeByID           map[uuid.UUID]int
-	catalogByName             map[string]int
-	catalogByID               map[uuid.UUID]int
-	documentByName            map[string]int
-	documentByID              map[uuid.UUID]int
-	informationRegisterByName map[string]int
-	informationRegisterByID   map[uuid.UUID]int
+	Project                    project.Project
+	Constants                  []Constant
+	Enumerations               []Enumeration
+	DefinedTypes               []DefinedTypeObject
+	Catalogs                   []CatalogDefinition
+	Documents                  []DocumentDefinition
+	InformationRegisters       []InformationRegisterDefinition
+	AccumulationRegisters      []AccumulationRegisterDefinition
+	constantByName             map[string]int
+	constantByID               map[uuid.UUID]int
+	enumerationByName          map[string]int
+	definedTypeByName          map[string]int
+	enumerationByID            map[uuid.UUID]int
+	definedTypeByID            map[uuid.UUID]int
+	catalogByName              map[string]int
+	catalogByID                map[uuid.UUID]int
+	documentByName             map[string]int
+	documentByID               map[uuid.UUID]int
+	informationRegisterByName  map[string]int
+	informationRegisterByID    map[uuid.UUID]int
+	accumulationRegisterByName map[string]int
+	accumulationRegisterByID   map[uuid.UUID]int
 }
 
 func (catalog *Catalog) ConstantByID(id uuid.UUID) (Constant, bool) {
@@ -354,6 +358,33 @@ func (catalog *Catalog) InformationRegisterIDs() []uuid.UUID {
 	result := make([]uuid.UUID, len(catalog.InformationRegisters))
 	for index := range catalog.InformationRegisters {
 		result[index] = catalog.InformationRegisters[index].ID
+	}
+	return result
+}
+
+func (catalog *Catalog) AccumulationRegisterDefinition(name string) (AccumulationRegisterDefinition, bool) {
+	index, ok := catalog.accumulationRegisterByName[strings.ToLower(name)]
+	if !ok {
+		return AccumulationRegisterDefinition{}, false
+	}
+	return cloneAccumulationRegisterDefinition(catalog.AccumulationRegisters[index]), true
+}
+
+func (catalog *Catalog) AccumulationRegisterByID(id uuid.UUID) (AccumulationRegisterDefinition, bool) {
+	index, ok := catalog.accumulationRegisterByID[id]
+	if !ok {
+		return AccumulationRegisterDefinition{}, false
+	}
+	return cloneAccumulationRegisterDefinition(catalog.AccumulationRegisters[index]), true
+}
+
+func (catalog *Catalog) AccumulationRegisterIDs() []uuid.UUID {
+	if len(catalog.AccumulationRegisters) == 0 {
+		return nil
+	}
+	result := make([]uuid.UUID, len(catalog.AccumulationRegisters))
+	for index := range catalog.AccumulationRegisters {
+		result[index] = catalog.AccumulationRegisters[index].ID
 	}
 	return result
 }

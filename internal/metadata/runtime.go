@@ -14,17 +14,19 @@ import (
 
 // Runtime implements the BSL metadata boundary backed by PostgreSQL constants.
 type Runtime struct {
-	repository                    *ConstantRepository
-	catalogRepository             *CatalogRepository
-	documentRepository            *DocumentRepository
-	informationRegisterRepository *InformationRegisterRepository
-	catalog                       *Catalog
-	actor                         *uuid.UUID
-	eventsMu                      sync.RWMutex
-	events                        map[uuid.UUID]CatalogEventHandler
-	documentEvents                map[uuid.UUID]DocumentEventHandler
-	informationRegisterEvents     map[uuid.UUID]InformationRegisterEventHandler
-	dataLockWait                  atomic.Int64
+	repository                     *ConstantRepository
+	catalogRepository              *CatalogRepository
+	documentRepository             *DocumentRepository
+	informationRegisterRepository  *InformationRegisterRepository
+	accumulationRegisterRepository *AccumulationRegisterRepository
+	catalog                        *Catalog
+	actor                          *uuid.UUID
+	eventsMu                       sync.RWMutex
+	events                         map[uuid.UUID]CatalogEventHandler
+	documentEvents                 map[uuid.UUID]DocumentEventHandler
+	informationRegisterEvents      map[uuid.UUID]InformationRegisterEventHandler
+	accumulationRegisterEvents     map[uuid.UUID]AccumulationRegisterEventHandler
+	dataLockWait                   atomic.Int64
 }
 
 func NewRuntime(repository *ConstantRepository, catalog *Catalog, actor *uuid.UUID) (*Runtime, error) {
@@ -44,7 +46,8 @@ func NewRuntime(repository *ConstantRepository, catalog *Catalog, actor *uuid.UU
 	runtime := &Runtime{
 		repository: repository, catalog: catalog, actor: actor,
 		events: make(map[uuid.UUID]CatalogEventHandler), documentEvents: make(map[uuid.UUID]DocumentEventHandler),
-		informationRegisterEvents: make(map[uuid.UUID]InformationRegisterEventHandler),
+		informationRegisterEvents:  make(map[uuid.UUID]InformationRegisterEventHandler),
+		accumulationRegisterEvents: make(map[uuid.UUID]AccumulationRegisterEventHandler),
 	}
 	if _, err := runtime.databasePool(); err != nil {
 		return nil, err
@@ -64,17 +67,23 @@ func NewRuntimeWithObjects(constants *ConstantRepository, catalogs *CatalogRepos
 
 // NewRuntimeWithAllObjects creates a metadata runtime including information registers.
 func NewRuntimeWithAllObjects(constants *ConstantRepository, catalogs *CatalogRepository, documents *DocumentRepository, informationRegisters *InformationRegisterRepository, catalog *Catalog, actor *uuid.UUID) (*Runtime, error) {
-	if catalog == nil || constants == nil && catalogs == nil && documents == nil && informationRegisters == nil {
+	return NewRuntimeWithAllRegisters(constants, catalogs, documents, informationRegisters, nil, catalog, actor)
+}
+
+// NewRuntimeWithAllRegisters creates a runtime with every currently supported repository.
+func NewRuntimeWithAllRegisters(constants *ConstantRepository, catalogs *CatalogRepository, documents *DocumentRepository, informationRegisters *InformationRegisterRepository, accumulationRegisters *AccumulationRegisterRepository, catalog *Catalog, actor *uuid.UUID) (*Runtime, error) {
+	if catalog == nil || constants == nil && catalogs == nil && documents == nil && informationRegisters == nil && accumulationRegisters == nil {
 		return nil, fmt.Errorf("metadata runtime requires a catalog and at least one repository")
 	}
 	if constants != nil && constants.catalog != catalog || catalogs != nil && catalogs.catalog != catalog || documents != nil && documents.catalog != catalog ||
-		informationRegisters != nil && informationRegisters.catalog != catalog {
+		informationRegisters != nil && informationRegisters.catalog != catalog || accumulationRegisters != nil && accumulationRegisters.catalog != catalog {
 		return nil, fmt.Errorf("metadata runtime catalog does not match its repositories")
 	}
 	runtime := &Runtime{
-		repository: constants, catalogRepository: catalogs, documentRepository: documents, informationRegisterRepository: informationRegisters, catalog: catalog,
+		repository: constants, catalogRepository: catalogs, documentRepository: documents, informationRegisterRepository: informationRegisters, accumulationRegisterRepository: accumulationRegisters, catalog: catalog,
 		events: make(map[uuid.UUID]CatalogEventHandler), documentEvents: make(map[uuid.UUID]DocumentEventHandler),
-		informationRegisterEvents: make(map[uuid.UUID]InformationRegisterEventHandler),
+		informationRegisterEvents:  make(map[uuid.UUID]InformationRegisterEventHandler),
+		accumulationRegisterEvents: make(map[uuid.UUID]AccumulationRegisterEventHandler),
 	}
 	if actor != nil {
 		if actor.IsZero() {
@@ -87,6 +96,27 @@ func NewRuntimeWithAllObjects(constants *ConstantRepository, catalogs *CatalogRe
 		return nil, err
 	}
 	return runtime, nil
+}
+
+func (runtime *Runtime) SetAccumulationRegisterEventHandler(name string, handler AccumulationRegisterEventHandler) error {
+	definition, ok := runtime.catalog.AccumulationRegisterDefinition(name)
+	if !ok {
+		return fmt.Errorf("unknown accumulation register %q", name)
+	}
+	runtime.eventsMu.Lock()
+	defer runtime.eventsMu.Unlock()
+	if handler == nil {
+		delete(runtime.accumulationRegisterEvents, definition.ID)
+	} else {
+		runtime.accumulationRegisterEvents[definition.ID] = handler
+	}
+	return nil
+}
+
+func (runtime *Runtime) accumulationRegisterEventHandler(id uuid.UUID) AccumulationRegisterEventHandler {
+	runtime.eventsMu.RLock()
+	defer runtime.eventsMu.RUnlock()
+	return runtime.accumulationRegisterEvents[id]
 }
 
 func (runtime *Runtime) SetInformationRegisterEventHandler(name string, handler InformationRegisterEventHandler) error {

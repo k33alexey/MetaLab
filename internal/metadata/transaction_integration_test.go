@@ -324,49 +324,73 @@ func testDeadlockDetection(t *testing.T, runtime *Runtime, repository *CatalogRe
 	}
 	firstCross := testCatalogDataLock(t, runtime, firstContext, secondRecord.Reference, dataLockExclusive)
 	secondCross := testCatalogDataLock(t, runtime, secondContext, CatalogReference{CatalogID: catalogID, ObjectID: firstID}, dataLockExclusive)
+	firstLockContext, cancelFirstLock := context.WithCancel(firstContext)
+	secondLockContext, cancelSecondLock := context.WithCancel(secondContext)
+	defer cancelFirstLock()
+	defer cancelSecondLock()
 	type outcome struct {
 		owner int
 		err   error
 	}
 	results := make(chan outcome, 2)
 	go func() {
-		_, _, err := runtime.callDataLockMethod(firstContext, firstCross, "Lock", nil)
+		_, _, err := runtime.callDataLockMethod(firstLockContext, firstCross, "Lock", nil)
 		results <- outcome{owner: 1, err: err}
 	}()
 	go func() {
-		_, _, err := runtime.callDataLockMethod(secondContext, secondCross, "Lock", nil)
+		_, _, err := runtime.callDataLockMethod(secondLockContext, secondCross, "Lock", nil)
 		results <- outcome{owner: 2, err: err}
 	}()
-	var victim outcome
-	select {
-	case victim = <-results:
-	case <-time.After(5 * time.Second):
-		t.Fatal("PostgreSQL did not detect advisory-lock deadlock")
-	}
-	if !errors.Is(victim.err, ErrDeadlockDetected) {
-		t.Fatalf("deadlock victim=%d error=%v", victim.owner, victim.err)
-	}
-	if victim.owner == 1 {
-		if err := runtime.RollbackTransaction(firstContext); err != nil {
-			t.Fatal(err)
+	rollbackOwner := func(owner int) error {
+		if owner == 1 {
+			return runtime.RollbackTransaction(firstContext)
 		}
-	} else if err := runtime.RollbackTransaction(secondContext); err != nil {
-		t.Fatal(err)
+		return runtime.RollbackTransaction(secondContext)
 	}
-	var survivor outcome
-	select {
-	case survivor = <-results:
-	case <-time.After(5 * time.Second):
-		t.Fatal("surviving transaction did not continue after deadlock rollback")
-	}
-	if survivor.err != nil {
-		t.Fatalf("deadlock survivor=%d error=%v", survivor.owner, survivor.err)
-	}
-	if survivor.owner == 1 {
-		if err := runtime.RollbackTransaction(firstContext); err != nil {
-			t.Fatal(err)
+	outcomes := make([]outcome, 0, 2)
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	for len(outcomes) < 2 {
+		select {
+		case result := <-results:
+			outcomes = append(outcomes, result)
+			// PostgreSQL may wake the surviving statement before the victim
+			// goroutine gets CPU time to publish its error. Do not infer the
+			// victim from channel receive order.
+			if errors.Is(result.err, ErrDeadlockDetected) {
+				if err := rollbackOwner(result.owner); err != nil {
+					cancelFirstLock()
+					cancelSecondLock()
+					t.Fatal(err)
+				}
+			}
+		case <-timer.C:
+			cancelFirstLock()
+			cancelSecondLock()
+			for len(outcomes) < 2 {
+				select {
+				case result := <-results:
+					outcomes = append(outcomes, result)
+				case <-time.After(5 * time.Second):
+					t.Fatal("PostgreSQL advisory-lock calls did not stop after context cancellation")
+				}
+			}
+			t.Fatal("PostgreSQL did not detect advisory-lock deadlock")
 		}
-	} else if err := runtime.RollbackTransaction(secondContext); err != nil {
+	}
+	var victim, survivor *outcome
+	for index := range outcomes {
+		switch {
+		case errors.Is(outcomes[index].err, ErrDeadlockDetected):
+			victim = &outcomes[index]
+		case outcomes[index].err == nil:
+			survivor = &outcomes[index]
+		}
+	}
+	if victim == nil || survivor == nil || victim.owner == survivor.owner {
+		t.Fatalf("unexpected deadlock outcomes: %+v", outcomes)
+	}
+	if err := rollbackOwner(survivor.owner); err != nil {
 		t.Fatal(err)
 	}
 }

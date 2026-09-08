@@ -258,6 +258,41 @@ func TestPackageCarriesInformationRegisterSchema(t *testing.T) {
 	}
 }
 
+func TestPackageCarriesAccumulationRegisterSchema(t *testing.T) {
+	t.Parallel()
+	root := publicationProject(t)
+	documentID, registerID, dimensionID, resourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	documentRelative, _ := project.MetadataPath("documents", documentID)
+	documentAbsolute := filepath.Join(root, filepath.FromSlash(documentRelative))
+	if err := os.MkdirAll(filepath.Dir(documentAbsolute), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(documentAbsolute, []byte("format: 1\nid: "+documentID.String()+"\nname: Продажа\ntitle: {ru: Продажа}\nnumber: {type: string, length: 11, periodicity: year}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	relative, _ := project.MetadataPath("accumulation-registers", registerID)
+	absolute := filepath.Join(root, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "format: 1\nid: " + registerID.String() + "\nname: Продажи\ntitle: {ru: Продажи}\nkind: turnover\n" +
+		"dimensions:\n  - id: " + dimensionID.String() + "\n    name: Товар\n    title: {ru: Товар}\n    types: [{kind: string, length: 100}]\n" +
+		"resources:\n  - id: " + resourceID.String() + "\n    name: Сумма\n    title: {ru: Сумма}\n    types: [{kind: number, precision: 15, scale: 2}]\n" +
+		"recorders: [" + documentID.String() + "]\n"
+	if err := os.WriteFile(absolute, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	packagePath := filepath.Join(t.TempDir(), "accumulation-register.mlpkg")
+	built, err := BuildFile(context.Background(), root, packagePath, SourceState{})
+	if err != nil || len(built.AccumulationRegisterIDs) != 1 || built.AccumulationRegisterIDs[0] != registerID || built.Format != CurrentPackageFormat {
+		t.Fatalf("built=%+v error=%v", built, err)
+	}
+	verified, err := VerifyFile(context.Background(), packagePath)
+	if err != nil || !reflect.DeepEqual(verified, built) {
+		t.Fatalf("verified=%+v error=%v", verified, err)
+	}
+}
+
 func TestBuildHonoursCancellationAndRejectsSymlinks(t *testing.T) {
 	root := publicationProject(t)
 	ctx, cancel := context.WithCancel(context.Background())

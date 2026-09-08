@@ -85,6 +85,7 @@ func (runtime *Runtime) databasePool() (*pgxpool.Pool, error) {
 	for _, candidate := range []*pgxpool.Pool{
 		poolOfConstants(runtime.repository), poolOfCatalogs(runtime.catalogRepository), poolOfDocuments(runtime.documentRepository),
 		poolOfInformationRegisters(runtime.informationRegisterRepository),
+		poolOfAccumulationRegisters(runtime.accumulationRegisterRepository),
 	} {
 		if candidate == nil {
 			continue
@@ -122,6 +123,13 @@ func poolOfDocuments(repository *DocumentRepository) *pgxpool.Pool {
 }
 
 func poolOfInformationRegisters(repository *InformationRegisterRepository) *pgxpool.Pool {
+	if repository == nil {
+		return nil
+	}
+	return repository.pool
+}
+
+func poolOfAccumulationRegisters(repository *AccumulationRegisterRepository) *pgxpool.Pool {
 	if repository == nil {
 		return nil
 	}
