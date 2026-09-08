@@ -90,6 +90,10 @@ func (element *dataLockElement) RuntimeDynamicMemory(limit uint64) (uint64, bool
 
 // ConstructRuntimeObject creates server-only platform objects used by BSL.
 func (runtime *Runtime) ConstructRuntimeObject(_ context.Context, name string, arguments []bytecode.Value) (bytecode.Value, bool, error) {
+	if propertyName(name, "Запрос", "Query") {
+		value, err := runtime.constructQuery(arguments)
+		return value, true, err
+	}
 	if !propertyName(name, "БлокировкаДанных", "DataLock") {
 		return bytecode.Undefined(), false, nil
 	}
