@@ -1,0 +1,25 @@
+format: 1
+id: 10000000-0000-4000-8000-000000000301
+name: ОстаткиТоваров
+title: {ru: Остатки товаров, uk: Залишки товарів, en: Product stock}
+kind: balance
+dimensions:
+  - id: 10000000-0000-4000-8000-000000001301
+    name: Товар
+    title: {ru: Товар, uk: Товар, en: Product}
+    types: [{kind: catalog, reference: 10000000-0000-4000-8000-000000000101}]
+    required: true
+resources:
+  - id: 10000000-0000-4000-8000-000000001302
+    name: Количество
+    title: {ru: Количество, uk: Кількість, en: Quantity}
+    types: [{kind: number, precision: 15, scale: 3}]
+    required: true
+  - id: 10000000-0000-4000-8000-000000001303
+    name: Сумма
+    title: {ru: Сумма, uk: Сума, en: Amount}
+    types: [{kind: number, precision: 18, scale: 2}]
+    required: true
+recorders:
+  - 10000000-0000-4000-8000-000000000201
+  - 10000000-0000-4000-8000-000000000202

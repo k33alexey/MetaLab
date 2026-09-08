@@ -156,6 +156,9 @@ func (runtime *Runtime) GetPredefinedCatalogReference(_ context.Context, catalog
 }
 
 func (runtime *Runtime) GetObjectProperty(_ context.Context, value bytecode.RuntimeObject, name string) (bytecode.Value, error) {
+	if result, handled, err := runtime.getDocumentMovementsProperty(value, name); handled {
+		return result, err
+	}
 	if result, handled, err := runtime.getQueryProperty(value, name); handled {
 		return result, err
 	}
@@ -237,6 +240,9 @@ func (runtime *Runtime) GetObjectProperty(_ context.Context, value bytecode.Runt
 }
 
 func (runtime *Runtime) SetObjectProperty(_ context.Context, value bytecode.RuntimeObject, name string, assigned bytecode.Value) error {
+	if handled, err := runtime.setDocumentMovementsProperty(value, name, assigned); handled {
+		return err
+	}
 	if handled, err := runtime.setQueryProperty(value, name, assigned); handled {
 		return err
 	}
@@ -308,6 +314,9 @@ func (runtime *Runtime) SetObjectProperty(_ context.Context, value bytecode.Runt
 }
 
 func (runtime *Runtime) CallObjectMethod(ctx context.Context, value bytecode.RuntimeObject, name string, arguments []bytecode.Value) (bytecode.Value, error) {
+	if result, handled, err := runtime.callDocumentMovementsMethod(value, name, arguments); handled {
+		return result, err
+	}
 	if result, handled, err := runtime.callQueryMethod(ctx, value, name, arguments); handled {
 		return result, err
 	}

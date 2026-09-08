@@ -148,6 +148,29 @@ func TestDocumentManagerAndRuntimeObjectDispatch(t *testing.T) {
 	}
 }
 
+func TestDocumentWriteAndPostingModesDispatch(t *testing.T) {
+	t.Parallel()
+	program, diagnostics := compiler.CompileSource("posting.bsl", `&НаСервере
+Процедура Провести()
+    Документ = Документы.Продажа.СоздатьДокумент();
+    Документ.Записать(РежимЗаписиДокумента.Проведение, РежимПроведенияДокумента.Оперативный);
+КонецПроцедуры`)
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	machine, err := New(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := &catalogRuntimeStub{}
+	if _, err := machine.NewContextWithMetadata(runtime).Call("Провести"); err != nil {
+		t.Fatal(err)
+	}
+	if len(runtime.methodArguments) != 2 || runtime.methodArguments[0].String() != "post" || runtime.methodArguments[1].String() != "real-time" {
+		t.Fatalf("write arguments=%v", runtime.methodArguments)
+	}
+}
+
 func TestInformationRegisterManagerDispatch(t *testing.T) {
 	t.Parallel()
 	program, diagnostics := compiler.CompileSource("register.bsl", `&НаСервере
@@ -204,7 +227,8 @@ func (runtime *metadataRuntimeStub) GetConstant(_ context.Context, _ string) (by
 
 type catalogRuntimeStub struct {
 	metadataRuntimeStub
-	written bool
+	written         bool
+	methodArguments []bytecode.Value
 }
 
 type runtimeObjectStub struct {
@@ -286,8 +310,9 @@ func (runtime *catalogRuntimeStub) CallObjectMethod(_ context.Context, object by
 	if len(arguments) == 0 && (strings.EqualFold(name, "Add") || strings.EqualFold(name, "Добавить")) {
 		return bytecode.Object(object)
 	}
-	if len(arguments) == 0 && (strings.EqualFold(name, "Write") || strings.EqualFold(name, "Записать")) {
+	if strings.EqualFold(name, "Write") || strings.EqualFold(name, "Записать") {
 		runtime.written = true
+		runtime.methodArguments = append([]bytecode.Value(nil), arguments...)
 		return bytecode.Undefined(), nil
 	}
 	return bytecode.Undefined(), fmt.Errorf("unknown method %s", name)

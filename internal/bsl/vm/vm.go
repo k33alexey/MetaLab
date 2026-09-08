@@ -1381,6 +1381,16 @@ func dispatchMetadata(ctx context.Context, env executionEnvironment, path string
 			return bytecode.Undefined(), fmt.Errorf("invalid accumulation movement kind %q", parts[1])
 		}
 		return bytecode.String(parts[1]), nil
+	case len(parts) == 2 && parts[0] == "document-write-mode" && len(arguments) == 0:
+		if parts[1] != "write" && parts[1] != "post" && parts[1] != "undo-posting" {
+			return bytecode.Undefined(), fmt.Errorf("invalid document write mode %q", parts[1])
+		}
+		return bytecode.String(parts[1]), nil
+	case len(parts) == 2 && parts[0] == "document-posting-mode" && len(arguments) == 0:
+		if parts[1] != "regular" && parts[1] != "real-time" {
+			return bytecode.Undefined(), fmt.Errorf("invalid document posting mode %q", parts[1])
+		}
+		return bytecode.String(parts[1]), nil
 	case len(parts) == 2 && parts[0] == "transaction" && len(arguments) == 0:
 		runtime, ok := env.metadata.(TransactionRuntime)
 		if !ok {

@@ -96,6 +96,10 @@ func TestCatalogRepositoryLifecycleIntegration(t *testing.T) {
 	if err := repository.Save(ctx, record, handler); err != nil {
 		t.Fatal(err)
 	}
+	page, err := repository.List(ctx, "Контрагенты", nil, 20)
+	if err != nil || len(page.Records) != 1 || page.Records[0].Code != record.Code || page.NextCursor != nil {
+		t.Fatalf("catalog list page=%+v error=%v", page, err)
+	}
 	wantEvents := []CatalogEvent{CatalogEventFill, CatalogEventFillCheck, CatalogEventBefore, CatalogEventOnWrite, CatalogEventAfter}
 	if !slices.Equal(events, wantEvents) || record.Version != 1 {
 		t.Fatalf("events=%v version=%d", events, record.Version)

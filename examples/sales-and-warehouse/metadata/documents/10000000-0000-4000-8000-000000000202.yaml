@@ -1,0 +1,33 @@
+format: 1
+id: 10000000-0000-4000-8000-000000000202
+name: ПродажаТоваров
+title: {ru: Продажа товаров, uk: Продаж товарів, en: Goods sale}
+number: {type: string, length: 11, auto: true, unique: true, periodicity: year}
+posting: true
+attributes:
+  - id: 10000000-0000-4000-8000-000000001202
+    name: Контрагент
+    title: {ru: Контрагент, uk: Контрагент, en: Counterparty}
+    types: [{kind: catalog, reference: 10000000-0000-4000-8000-000000000102}]
+    required: true
+table_parts:
+  - id: 10000000-0000-4000-8000-000000002202
+    name: Товары
+    title: {ru: Товары, uk: Товари, en: Products}
+    attributes:
+      - id: 10000000-0000-4000-8000-000000003211
+        name: Товар
+        title: {ru: Товар, uk: Товар, en: Product}
+        types: [{kind: catalog, reference: 10000000-0000-4000-8000-000000000101}]
+        required: true
+      - id: 10000000-0000-4000-8000-000000003212
+        name: Количество
+        title: {ru: Количество, uk: Кількість, en: Quantity}
+        types: [{kind: number, precision: 15, scale: 3}]
+        required: true
+      - id: 10000000-0000-4000-8000-000000003213
+        name: Цена
+        title: {ru: Цена, uk: Ціна, en: Price}
+        types: [{kind: number, precision: 15, scale: 2}]
+        required: true
+object_module: 10000000-0000-4000-8000-000000000402

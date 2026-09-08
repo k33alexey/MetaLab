@@ -877,6 +877,24 @@ func metadataMemberPath(member *syntax.MemberExpression) (string, bool) {
 			return "accumulation-movement-kind/expense", true
 		}
 	}
+	if len(parts) == 2 && (strings.EqualFold(parts[0], "РежимЗаписиДокумента") || strings.EqualFold(parts[0], "DocumentWriteMode")) {
+		switch {
+		case strings.EqualFold(parts[1], "Запись"), strings.EqualFold(parts[1], "Write"):
+			return "document-write-mode/write", true
+		case strings.EqualFold(parts[1], "Проведение"), strings.EqualFold(parts[1], "Post"):
+			return "document-write-mode/post", true
+		case strings.EqualFold(parts[1], "ОтменаПроведения"), strings.EqualFold(parts[1], "UndoPosting"):
+			return "document-write-mode/undo-posting", true
+		}
+	}
+	if len(parts) == 2 && (strings.EqualFold(parts[0], "РежимПроведенияДокумента") || strings.EqualFold(parts[0], "DocumentPostingMode")) {
+		switch {
+		case strings.EqualFold(parts[1], "Неоперативный"), strings.EqualFold(parts[1], "Regular"):
+			return "document-posting-mode/regular", true
+		case strings.EqualFold(parts[1], "Оперативный"), strings.EqualFold(parts[1], "RealTime"):
+			return "document-posting-mode/real-time", true
+		}
+	}
 	return "", false
 }
 

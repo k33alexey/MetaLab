@@ -5,16 +5,20 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 type accumulationRegisterRecordSetObject struct {
-	mu         sync.RWMutex
-	definition AccumulationRegisterDefinition
-	set        *AccumulationRegisterRecordSet
-	runtime    *Runtime
+	mu              sync.RWMutex
+	definition      AccumulationRegisterDefinition
+	set             *AccumulationRegisterRecordSet
+	runtime         *Runtime
+	writeAtEnd      bool
+	defaultRecorder *DocumentReference
+	defaultPeriod   time.Time
 }
 
 type accumulationRegisterRecordObject struct {
@@ -302,6 +306,8 @@ func (runtime *Runtime) getAccumulationRegisterProperty(value bytecode.RuntimeOb
 			return bytecode.Number(float64(len(object.set.Records))), true, nil
 		case propertyName(name, "БлокироватьДляИзменения", "LockForUpdate"):
 			return bytecode.Boolean(object.set.LockForUpdate), true, nil
+		case propertyName(name, "Записывать", "Write"):
+			return bytecode.Boolean(object.writeAtEnd), true, nil
 		default:
 			return bytecode.Undefined(), true, fmt.Errorf("%s has no property %s", object.RuntimeTypeName(), name)
 		}
@@ -440,6 +446,16 @@ func (runtime *Runtime) setAccumulationRegisterProperty(value bytecode.RuntimeOb
 	case *accumulationRegisterRecordSetObject:
 		if object.runtime != runtime {
 			return true, fmt.Errorf("accumulation register record set belongs to another runtime")
+		}
+		if propertyName(name, "Записывать", "Write") {
+			flag, ok := assigned.AsBoolean()
+			if !ok {
+				return true, fmt.Errorf("Write must be a boolean")
+			}
+			object.mu.Lock()
+			object.writeAtEnd = flag
+			object.mu.Unlock()
+			return true, nil
 		}
 		if !propertyName(name, "БлокироватьДляИзменения", "LockForUpdate") {
 			return true, fmt.Errorf("%s property %s is not writable", object.RuntimeTypeName(), name)
@@ -587,6 +603,11 @@ func (runtime *Runtime) callAccumulationRegisterMethod(ctx context.Context, valu
 			record, err := object.set.Add()
 			if err != nil {
 				return bytecode.Undefined(), true, err
+			}
+			if object.defaultRecorder != nil {
+				record.Recorder = *object.defaultRecorder
+				record.Period = object.defaultPeriod
+				record.Active = true
 			}
 			result, err := bytecode.Object(&accumulationRegisterRecordObject{owner: object, record: record})
 			return result, true, err

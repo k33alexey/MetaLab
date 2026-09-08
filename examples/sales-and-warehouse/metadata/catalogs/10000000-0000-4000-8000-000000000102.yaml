@@ -1,0 +1,12 @@
+format: 1
+id: 10000000-0000-4000-8000-000000000102
+name: Контрагенты
+title: {ru: Контрагенты, uk: Контрагенти, en: Counterparties}
+code: {type: string, length: 9, auto: true, unique: true}
+description_length: 250
+attributes:
+  - id: 10000000-0000-4000-8000-000000001102
+    name: ИНН
+    title: {ru: ИНН, uk: ІПН, en: Tax ID}
+    types: [{kind: string, length: 20}]
+    indexed: true

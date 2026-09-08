@@ -120,6 +120,10 @@ func TestDocumentRepositoryLifecycleIntegration(t *testing.T) {
 	if err := repository.Save(ctx, record, handler); err != nil {
 		t.Fatal(err)
 	}
+	page, err := repository.List(ctx, "Продажа", nil, 20)
+	if err != nil || len(page.Records) != 1 || page.Records[0].Number != "SALE-1" || page.NextCursor != nil {
+		t.Fatalf("document list page=%+v error=%v", page, err)
+	}
 	wantEvents := []DocumentEvent{DocumentEventFill, DocumentEventFillCheck, DocumentEventBefore, DocumentEventOnWrite, DocumentEventAfter}
 	if !slices.Equal(events, wantEvents) || record.Version != 1 || !record.Date.Equal(fixedDate) {
 		t.Fatalf("events=%v version=%d date=%s", events, record.Version, record.Date)

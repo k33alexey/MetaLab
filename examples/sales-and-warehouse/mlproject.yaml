@@ -1,0 +1,15 @@
+format: 1
+id: 10000000-0000-4000-8000-000000000001
+name: ПродажиИСклад
+title: Продажи и склад
+default_language: ru
+languages:
+  - name: Русский
+    title: Русский
+    code: ru
+  - name: Українська
+    title: Українська
+    code: uk
+  - name: English
+    title: English
+    code: en

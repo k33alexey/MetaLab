@@ -13,11 +13,14 @@ import (
 const maxInformationRegisterRuntimeMemory = 64 << 20
 
 type informationRegisterRecordSetObject struct {
-	mu         sync.RWMutex
-	definition InformationRegisterDefinition
-	set        *InformationRegisterRecordSet
-	runtime    *Runtime
-	readOnly   bool
+	mu              sync.RWMutex
+	definition      InformationRegisterDefinition
+	set             *InformationRegisterRecordSet
+	runtime         *Runtime
+	readOnly        bool
+	writeAtEnd      bool
+	defaultRecorder *DocumentReference
+	defaultPeriod   time.Time
 }
 
 type informationRegisterRecordObject struct {
@@ -246,6 +249,8 @@ func (runtime *Runtime) getInformationRegisterProperty(value bytecode.RuntimeObj
 			return result, true, err
 		case propertyName(name, "Количество", "Count"):
 			return bytecode.Number(float64(len(object.set.Records))), true, nil
+		case propertyName(name, "Записывать", "Write"):
+			return bytecode.Boolean(object.writeAtEnd), true, nil
 		}
 		return bytecode.Undefined(), true, fmt.Errorf("%s has no property %s", object.RuntimeTypeName(), name)
 	case *informationRegisterFilterObject:
@@ -329,6 +334,21 @@ func (runtime *Runtime) informationRegisterRecordProperty(object *informationReg
 
 func (runtime *Runtime) setInformationRegisterProperty(value bytecode.RuntimeObject, name string, assigned bytecode.Value) (bool, error) {
 	switch object := value.(type) {
+	case *informationRegisterRecordSetObject:
+		if object.runtime != runtime {
+			return true, fmt.Errorf("information register record set belongs to another metadata runtime")
+		}
+		if !propertyName(name, "Записывать", "Write") || object.readOnly {
+			return true, fmt.Errorf("%s property %s is not writable", object.RuntimeTypeName(), name)
+		}
+		flag, ok := assigned.AsBoolean()
+		if !ok {
+			return true, fmt.Errorf("Write must be a boolean")
+		}
+		object.mu.Lock()
+		object.writeAtEnd = flag
+		object.mu.Unlock()
+		return true, nil
 	case *informationRegisterFilterItemObject:
 		if object.owner.runtime != runtime {
 			return true, fmt.Errorf("information register filter item belongs to another metadata runtime")
@@ -359,7 +379,7 @@ func (runtime *Runtime) setInformationRegisterProperty(value bytecode.RuntimeObj
 			return true, fmt.Errorf("information register record belongs to another metadata runtime")
 		}
 		return true, runtime.setInformationRegisterRecordProperty(object, name, assigned)
-	case *informationRegisterRecordSetObject, *informationRegisterFilterObject:
+	case *informationRegisterFilterObject:
 		return true, fmt.Errorf("%s property %s is not writable", value.RuntimeTypeName(), name)
 	default:
 		return false, nil
@@ -454,6 +474,13 @@ func (runtime *Runtime) callInformationRegisterMethod(ctx context.Context, value
 			record, err := object.set.Add()
 			if err != nil {
 				return bytecode.Undefined(), true, err
+			}
+			if object.defaultRecorder != nil {
+				record.Recorder = *object.defaultRecorder
+				record.Active = true
+				if object.definition.Periodicity != InformationRegisterPeriodNone {
+					record.Period = object.defaultPeriod
+				}
 			}
 			result, err := bytecode.Object(&informationRegisterRecordObject{owner: object, record: record})
 			return result, true, err

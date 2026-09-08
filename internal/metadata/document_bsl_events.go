@@ -19,7 +19,7 @@ func DocumentObjectModuleName(definition DocumentDefinition) string {
 func CompileDocumentObjectModule(definition DocumentDefinition, filename, source string) (*bytecode.Program, []syntax.Diagnostic) {
 	return compiler.CompileModules([]compiler.ModuleSource{{
 		Name: DocumentObjectModuleName(definition), Filename: filename, Source: source,
-		PredefinedVariables: []string{catalogThisObjectRU, catalogThisObjectEN},
+		PredefinedVariables: []string{catalogThisObjectRU, catalogThisObjectEN, "Движения", "Movements"},
 	}})
 }
 
@@ -44,7 +44,7 @@ func (handler *DocumentBSLEvents) HandleDocumentEvent(ctx context.Context, event
 	if record == nil || record.Reference.DocumentID != handler.definition.ID {
 		return false, fmt.Errorf("document event received an incompatible record")
 	}
-	russian, english, arguments := documentEventRoutine(event, handler.definition)
+	russian, english, arguments := documentEventRoutine(ctx, event, handler.definition)
 	routine := ""
 	if handler.context.HasRoutine(handler.module, russian) {
 		routine = russian
@@ -63,6 +63,11 @@ func (handler *DocumentBSLEvents) HandleDocumentEvent(ctx context.Context, event
 	if err != nil {
 		return false, err
 	}
+	object := valueRuntimeDocumentObject(value)
+	movements, err := handler.runtime.getDocumentProperty(object, "Движения")
+	if err != nil {
+		return false, err
+	}
 	if err := handler.context.SetModuleVariable(handler.module, catalogThisObjectRU, value); err != nil {
 		return false, err
 	}
@@ -70,15 +75,27 @@ func (handler *DocumentBSLEvents) HandleDocumentEvent(ctx context.Context, event
 		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectRU, bytecode.Undefined())
 		return false, err
 	}
+	if err := handler.context.SetModuleVariable(handler.module, "Движения", movements); err != nil {
+		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectRU, bytecode.Undefined())
+		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectEN, bytecode.Undefined())
+		return false, err
+	}
+	if err := handler.context.SetModuleVariable(handler.module, "Movements", movements); err != nil {
+		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectRU, bytecode.Undefined())
+		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectEN, bytecode.Undefined())
+		_ = handler.context.SetModuleVariable(handler.module, "Движения", bytecode.Undefined())
+		return false, err
+	}
 	defer func() {
 		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectRU, bytecode.Undefined())
 		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectEN, bytecode.Undefined())
+		_ = handler.context.SetModuleVariable(handler.module, "Движения", bytecode.Undefined())
+		_ = handler.context.SetModuleVariable(handler.module, "Movements", bytecode.Undefined())
 	}()
 	_, final, err := handler.context.CallContextMutable(guarded, handler.module+"."+routine, arguments...)
 	if err != nil {
 		return false, err
 	}
-	object := valueRuntimeDocumentObject(value)
 	object.mu.Lock()
 	if err := handler.runtime.syncDocumentTables(object); err != nil {
 		object.mu.Unlock()
@@ -87,7 +104,9 @@ func (handler *DocumentBSLEvents) HandleDocumentEvent(ctx context.Context, event
 	updated := cloneDocumentRecord(object.record)
 	object.mu.Unlock()
 	*record = *updated
-	if event == DocumentEventFillCheck || event == DocumentEventBefore || event == DocumentEventOnWrite || event == DocumentEventBeforeDelete {
+	var cancelled bool
+	if event == DocumentEventFillCheck || event == DocumentEventBefore || event == DocumentEventOnWrite || event == DocumentEventBeforeDelete ||
+		event == DocumentEventPosting || event == DocumentEventUndoPosting {
 		if len(final) == 0 {
 			return false, fmt.Errorf("document event %s did not return its cancellation argument", event)
 		}
@@ -95,12 +114,18 @@ func (handler *DocumentBSLEvents) HandleDocumentEvent(ctx context.Context, event
 		if !ok {
 			return false, fmt.Errorf("document event %s cancellation argument must remain boolean", event)
 		}
-		return cancel, nil
+		cancelled = cancel
 	}
-	return false, nil
+	if event == DocumentEventPosting && !cancelled {
+		if err := handler.runtime.writeDocumentMovements(guarded, object.movements); err != nil {
+			return false, err
+		}
+	}
+	return cancelled, nil
 }
 
-func documentEventRoutine(event DocumentEvent, definition DocumentDefinition) (string, string, []bytecode.Value) {
+func documentEventRoutine(ctx context.Context, event DocumentEvent, definition DocumentDefinition) (string, string, []bytecode.Value) {
+	operation := documentOperationFromContext(ctx)
 	switch event {
 	case DocumentEventFill:
 		return "ОбработкаЗаполнения", "FillProcessing", []bytecode.Value{bytecode.Undefined(), bytecode.Boolean(true)}
@@ -114,7 +139,7 @@ func documentEventRoutine(event DocumentEvent, definition DocumentDefinition) (s
 		return "ОбработкаПроверкиЗаполнения", "FillCheckProcessing", []bytecode.Value{bytecode.Boolean(false), bytecode.Array(names...)}
 	case DocumentEventBefore:
 		return "ПередЗаписью", "BeforeWrite", []bytecode.Value{
-			bytecode.Boolean(false), bytecode.String("Write"), bytecode.String("DoNotPost"),
+			bytecode.Boolean(false), bytecode.String(documentWriteModeEventValue(operation.writeMode)), bytecode.String(documentPostingModeEventValue(operation)),
 		}
 	case DocumentEventOnWrite:
 		return "ПриЗаписи", "OnWrite", []bytecode.Value{bytecode.Boolean(false)}
@@ -122,9 +147,36 @@ func documentEventRoutine(event DocumentEvent, definition DocumentDefinition) (s
 		return "ПослеЗаписи", "AfterWrite", nil
 	case DocumentEventBeforeDelete:
 		return "ПередУдалением", "BeforeDelete", []bytecode.Value{bytecode.Boolean(false)}
+	case DocumentEventPosting:
+		return "ОбработкаПроведения", "PostingProcessing", []bytecode.Value{
+			bytecode.Boolean(false), bytecode.String(documentPostingModeEventValue(operation)),
+		}
+	case DocumentEventUndoPosting:
+		return "ОбработкаУдаленияПроведения", "UndoPostingProcessing", []bytecode.Value{bytecode.Boolean(false)}
 	default:
 		return "", "", nil
 	}
+}
+
+func documentWriteModeEventValue(mode DocumentWriteMode) string {
+	switch mode {
+	case DocumentPost:
+		return "Post"
+	case DocumentUndoPosting:
+		return "UndoPosting"
+	default:
+		return "Write"
+	}
+}
+
+func documentPostingModeEventValue(operation documentOperation) string {
+	if operation.writeMode != DocumentPost {
+		return "DoNotPost"
+	}
+	if operation.postingMode == DocumentPostingRealTime {
+		return "RealTime"
+	}
+	return "Regular"
 }
 
 func valueRuntimeDocumentObject(value bytecode.Value) *documentObject {

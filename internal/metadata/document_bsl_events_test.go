@@ -65,3 +65,13 @@ func TestDocumentBSLEventsProvideThisObjectAndWriteModes(t *testing.T) {
 		t.Fatalf("before-delete cancelled=%v error=%v", cancelled, err)
 	}
 }
+
+func TestDocumentEventRoutinesReceivePostingModes(t *testing.T) {
+	t.Parallel()
+	ctx := withDocumentOperation(context.Background(), DocumentPost, DocumentPostingRealTime)
+	_, _, before := documentEventRoutine(ctx, DocumentEventBefore, DocumentDefinition{})
+	_, _, posting := documentEventRoutine(ctx, DocumentEventPosting, DocumentDefinition{})
+	if before[1].String() != "Post" || before[2].String() != "RealTime" || posting[1].String() != "RealTime" {
+		t.Fatalf("before=%v posting=%v", before, posting)
+	}
+}

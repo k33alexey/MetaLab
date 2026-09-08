@@ -52,6 +52,10 @@ type DocumentRepository struct {
 	now     func() time.Time
 }
 
+// DocumentPostingAction writes or removes recorder-owned movements while the
+// document transaction is still active.
+type DocumentPostingAction func(context.Context, *DocumentRecord, DocumentWriteMode, DocumentPostingMode) error
+
 func NewDocumentRepository(pool *pgxpool.Pool, catalog *Catalog) (*DocumentRepository, error) {
 	if pool == nil || catalog == nil {
 		return nil, fmt.Errorf("document repository requires PostgreSQL and metadata catalog")
@@ -87,6 +91,11 @@ func (repository *DocumentRepository) New(ctx context.Context, name string, hand
 }
 
 func (repository *DocumentRepository) Save(ctx context.Context, record *DocumentRecord, handler DocumentEventHandler) error {
+	return repository.Write(ctx, record, DocumentWrite, DocumentPostingRegular, handler, nil)
+}
+
+// Write saves, posts, reposts or unposts a document as one PostgreSQL transaction.
+func (repository *DocumentRepository) Write(ctx context.Context, record *DocumentRecord, writeMode DocumentWriteMode, postingMode DocumentPostingMode, handler DocumentEventHandler, postingAction DocumentPostingAction) error {
 	if record == nil {
 		return fmt.Errorf("document record is required")
 	}
@@ -95,15 +104,31 @@ func (repository *DocumentRepository) Save(ctx context.Context, record *Document
 	if !ok {
 		return fmt.Errorf("unknown document %s", working.Reference.DocumentID)
 	}
+	if err := validateDocumentWriteMode(definition, writeMode, postingMode); err != nil {
+		return err
+	}
+	if writeMode == DocumentPost && working.DeletionMark {
+		return fmt.Errorf("document %s marked for deletion cannot be posted", definition.Name)
+	}
+	if writeMode == DocumentUndoPosting && working.Version == 0 {
+		return fmt.Errorf("new document %s cannot be unposted", definition.Name)
+	}
+	switch writeMode {
+	case DocumentPost:
+		working.Posted = true
+	case DocumentUndoPosting:
+		working.Posted = false
+	}
+	operationContext := withDocumentOperation(ctx, writeMode, postingMode)
 	reference, expectedVersion, posted := working.Reference, working.Version, working.Posted
 	prepare := func() error {
-		if err := dispatchDocumentEvent(ctx, handler, DocumentEventFillCheck, working); err != nil {
+		if err := dispatchDocumentEvent(operationContext, handler, DocumentEventFillCheck, working); err != nil {
 			return err
 		}
 		if working.Reference != reference || working.Version != expectedVersion || working.Posted != posted {
 			return fmt.Errorf("document fill-check event changed immutable record state")
 		}
-		if err := dispatchDocumentEvent(ctx, handler, DocumentEventBefore, working); err != nil {
+		if err := dispatchDocumentEvent(operationContext, handler, DocumentEventBefore, working); err != nil {
 			return err
 		}
 		if working.Reference != reference || working.Version != expectedVersion || working.Posted != posted {
@@ -118,6 +143,7 @@ func (repository *DocumentRepository) Save(ctx context.Context, record *Document
 	}
 	err := runDataTransaction(ctx, repository.pool, func() { *record = *cloneDocumentRecord(original) }, func(transactionContext context.Context, transaction pgx.Tx) error {
 		ctx = transactionContext
+		operationContext = withDocumentOperation(transactionContext, writeMode, postingMode)
 		if err := prepare(); err != nil {
 			return err
 		}
@@ -151,10 +177,16 @@ func (repository *DocumentRepository) Save(ctx context.Context, record *Document
 		if err := repository.writeTableParts(ctx, transaction, definition, working); err != nil {
 			return err
 		}
-		for _, event := range []DocumentEvent{DocumentEventOnWrite, DocumentEventAfter} {
-			if err := dispatchDocumentEvent(ctx, handler, event, cloneDocumentRecord(working)); err != nil {
+		if err := dispatchDocumentEvent(operationContext, handler, DocumentEventOnWrite, cloneDocumentRecord(working)); err != nil {
+			return err
+		}
+		if writeMode != DocumentWrite && postingAction != nil {
+			if err := postingAction(operationContext, cloneDocumentRecord(working), writeMode, postingMode); err != nil {
 				return err
 			}
+		}
+		if err := dispatchDocumentEvent(operationContext, handler, DocumentEventAfter, cloneDocumentRecord(working)); err != nil {
+			return err
 		}
 		return nil
 	})
@@ -162,6 +194,19 @@ func (repository *DocumentRepository) Save(ctx context.Context, record *Document
 		return err
 	}
 	*record = *working
+	return nil
+}
+
+func validateDocumentWriteMode(definition DocumentDefinition, writeMode DocumentWriteMode, postingMode DocumentPostingMode) error {
+	if writeMode != DocumentWrite && writeMode != DocumentPost && writeMode != DocumentUndoPosting {
+		return fmt.Errorf("document %s write mode %q is invalid", definition.Name, writeMode)
+	}
+	if postingMode != DocumentPostingRegular && postingMode != DocumentPostingRealTime {
+		return fmt.Errorf("document %s posting mode %q is invalid", definition.Name, postingMode)
+	}
+	if writeMode != DocumentWrite && !definition.Posting {
+		return fmt.Errorf("document %s does not allow posting", definition.Name)
+	}
 	return nil
 }
 
