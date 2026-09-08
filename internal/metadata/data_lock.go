@@ -94,6 +94,10 @@ func (runtime *Runtime) ConstructRuntimeObject(_ context.Context, name string, a
 		value, err := runtime.constructQuery(arguments)
 		return value, true, err
 	}
+	if propertyName(name, "МенеджерВременныхТаблиц", "TempTablesManager") {
+		value, err := runtime.constructTemporaryTableManager(arguments)
+		return value, true, err
+	}
 	if !propertyName(name, "БлокировкаДанных", "DataLock") {
 		return bytecode.Undefined(), false, nil
 	}

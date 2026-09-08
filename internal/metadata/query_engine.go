@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
 	"github.com/k33alexey/MetaLab/internal/querylang"
@@ -41,69 +43,216 @@ type queryColumn struct {
 }
 
 type querySource struct {
-	table       string
+	fromSQL     string
 	logicalName string
 	alias       string
+	sqlAlias    string
 	columns     []queryColumn
 	byName      map[string]int
 }
 
 type queryOutput struct {
-	name   string
-	column *queryColumn
-	fixed  *bytecode.Value
+	name       string
+	column     *queryColumn
+	fixed      *bytecode.Value
+	expression querylang.Expression
+	aggregated bool
 }
 
 type queryCompiler struct {
-	runtime    *Runtime
-	source     querySource
-	parameters map[string]bytecode.Value
-	arguments  []any
-	outputs    []queryOutput
-	aliases    map[string]int
+	runtime           *Runtime
+	sources           []querySource
+	sourceNames       map[string]int
+	parameters        map[string]bytecode.Value
+	arguments         []any
+	outputs           []queryOutput
+	aliases           map[string]int
+	allowAggregate    bool
+	aggregateDepth    int
+	containsAggregate bool
+	visibleSources    int
+	grouped           map[string]struct{}
+}
+
+type queryMaterializedTemporaryTable struct {
+	fromSQL string
+	table   queryTemporaryTable
+}
+
+func (runtime *Runtime) newQueryCompiler(query querylang.Query, parameters map[string]bytecode.Value, temporary map[string]queryMaterializedTemporaryTable) (*queryCompiler, error) {
+	compiler := &queryCompiler{
+		runtime: runtime, parameters: parameters, aliases: make(map[string]int), sourceNames: make(map[string]int),
+	}
+	definitions := make([]querylang.Source, 0, len(query.Joins)+1)
+	definitions = append(definitions, query.Source)
+	for _, join := range query.Joins {
+		definitions = append(definitions, join.Source)
+	}
+	for index, definition := range definitions {
+		sqlAlias := fmt.Sprintf("s%d", index)
+		source, err := runtime.resolveQuerySource(definition, sqlAlias, temporary)
+		if err != nil {
+			return nil, err
+		}
+		foldedAlias := strings.ToLower(source.alias)
+		if foldedAlias == "" {
+			return nil, querySemanticError(definition.Position, "источник должен иметь псевдоним")
+		}
+		if existing := compiler.sourceNames[foldedAlias]; existing != 0 {
+			return nil, querySemanticError(definition.Position, "псевдоним источника "+source.alias+" указан повторно")
+		}
+		compiler.sources = append(compiler.sources, source)
+		compiler.sourceNames[foldedAlias] = len(compiler.sources)
+		foldedLogical := strings.ToLower(source.logicalName)
+		if existing := compiler.sourceNames[foldedLogical]; existing == 0 {
+			compiler.sourceNames[foldedLogical] = len(compiler.sources)
+		} else if existing != len(compiler.sources) {
+			compiler.sourceNames[foldedLogical] = -1
+		}
+	}
+	compiler.visibleSources = len(compiler.sources)
+	return compiler, nil
 }
 
 func (runtime *Runtime) executeQuery(ctx context.Context, text string, parameters map[string]bytecode.Value) (*queryResultObject, error) {
+	results, err := runtime.executeQueryPackage(ctx, text, parameters, nil)
+	if err != nil {
+		return nil, err
+	}
+	return results[len(results)-1], nil
+}
+
+func (runtime *Runtime) executeQueryPackage(ctx context.Context, text string, parameters map[string]bytecode.Value, manager *temporaryTableManagerObject) ([]*queryResultObject, error) {
 	if !utf8.ValidString(text) || strings.TrimSpace(text) == "" || len(text) > maxQueryTextBytes {
 		return nil, fmt.Errorf("query text must contain 1..%d UTF-8 bytes", maxQueryTextBytes)
 	}
-	parsed, err := querylang.Parse(text)
+	statements, err := querylang.ParsePackage(text)
 	if err != nil {
 		return nil, err
 	}
-	source, err := runtime.resolveQuerySource(parsed.Source)
-	if err != nil {
-		return nil, err
-	}
-	compiler := queryCompiler{
-		runtime: runtime, source: source, parameters: parameters,
-		aliases: make(map[string]int),
-	}
-	statement, err := compiler.compile(parsed)
-	if err != nil {
-		return nil, err
+	if manager == nil {
+		for _, statement := range statements {
+			if statement.Drop != nil || statement.Query.Into != nil || queryUsesTemporarySource(*statement.Query) {
+				return nil, fmt.Errorf("temporary table operations require МенеджерВременныхТаблиц")
+			}
+		}
 	}
 	pool, err := runtime.databasePool()
 	if err != nil {
 		return nil, err
 	}
-	query, err := queryData(ctx, pool)
+	if manager == nil && len(statements) == 1 {
+		query, err := queryData(ctx, pool)
+		if err != nil {
+			return nil, err
+		}
+		result, _, err := runtime.executeParsedQuery(ctx, query, pool, *statements[0].Query, parameters, nil, false)
+		if err != nil {
+			return nil, err
+		}
+		return []*queryResultObject{result}, nil
+	}
+	work := make(map[string]queryTemporaryTable)
+	originalVersion := uint64(0)
+	if manager != nil {
+		if manager.runtime != runtime {
+			return nil, fmt.Errorf("temporary table manager belongs to another metadata runtime")
+		}
+		work, originalVersion, err = manager.snapshot()
+		if err != nil {
+			return nil, err
+		}
+	}
+	original := cloneTemporaryTables(work)
+	appliedVersion := uint64(0)
+	rollback := func() {
+		if manager != nil && appliedVersion != 0 {
+			manager.restore(appliedVersion, original, originalVersion)
+		}
+	}
+	var results []*queryResultObject
+	err = runDataTransaction(ctx, pool, rollback, func(transactionContext context.Context, transaction pgx.Tx) error {
+		results = make([]*queryResultObject, 0, len(statements))
+		changed := false
+		for _, statement := range statements {
+			if statement.Drop != nil {
+				key := temporaryTableKey(statement.Drop.Name)
+				if _, ok := work[key]; !ok {
+					return querySemanticError(statement.Drop.Position, "неизвестная временная таблица "+statement.Drop.Name)
+				}
+				delete(work, key)
+				changed = true
+				results = append(results, &queryResultObject{runtime: runtime})
+				continue
+			}
+			materialized, cleanup, err := runtime.materializeTemporarySources(transactionContext, transaction, *statement.Query, work)
+			if err != nil {
+				return err
+			}
+			result, raw, executeErr := runtime.executeParsedQuery(transactionContext, transaction, pool, *statement.Query, parameters, materialized, statement.Query.Into != nil)
+			cleanupErr := cleanup()
+			if executeErr != nil {
+				return executeErr
+			}
+			if cleanupErr != nil {
+				return cleanupErr
+			}
+			if statement.Query.Into != nil {
+				table, err := buildTemporaryTable(statement.Query.Into.Name, statement.Query.IndexBy, result, raw)
+				if err != nil {
+					return err
+				}
+				key := temporaryTableKey(table.name)
+				if _, exists := work[key]; exists {
+					return querySemanticError(statement.Query.Into.Position, "временная таблица "+table.name+" уже существует")
+				}
+				work[key] = table
+				changed = true
+				count, _ := bytecode.ParseNumber(strconv.Itoa(table.rowCount))
+				result = &queryResultObject{runtime: runtime, columns: []string{"Количество"}, rows: [][]bytecode.Value{{count}}}
+			}
+			results = append(results, result)
+		}
+		if manager != nil && changed {
+			appliedVersion, err = manager.apply(originalVersion, cloneTemporaryTables(work))
+			return err
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
+	return results, nil
+}
+
+func (runtime *Runtime) executeParsedQuery(ctx context.Context, query dataQueryer, pool *pgxpool.Pool, parsed querylang.Query, parameters map[string]bytecode.Value, temporary map[string]queryMaterializedTemporaryTable, retainRaw bool) (*queryResultObject, [][]json.RawMessage, error) {
+	compiler, err := runtime.newQueryCompiler(parsed, parameters, temporary)
+	if err != nil {
+		return nil, nil, err
+	}
+	statement, err := compiler.compile(parsed)
+	if err != nil {
+		return nil, nil, err
+	}
 	rows, err := query.Query(ctx, statement, compiler.arguments...)
 	if err != nil {
-		return nil, recordDataError(ctx, pool, fmt.Errorf("execute query: %w", err))
+		return nil, nil, recordDataError(ctx, pool, fmt.Errorf("execute query: %w", err))
 	}
 	defer rows.Close()
-	result := &queryResultObject{runtime: runtime, columns: make([]string, len(compiler.outputs))}
+	result := &queryResultObject{runtime: runtime, columns: make([]string, len(compiler.outputs)), descriptors: make([]queryColumn, len(compiler.outputs))}
 	for index := range compiler.outputs {
 		result.columns[index] = compiler.outputs[index].name
+		descriptor, descriptorErr := compiler.outputDescriptor(compiler.outputs[index])
+		if descriptorErr != nil && retainRaw {
+			return nil, nil, descriptorErr
+		}
+		result.descriptors[index] = descriptor
 	}
 	used := uint64(256)
+	var retained [][]json.RawMessage
 	for rows.Next() {
 		if len(result.rows) == maxQueryResultRows {
-			return nil, fmt.Errorf("query result exceeds %d rows; use ПЕРВЫЕ", maxQueryResultRows)
+			return nil, nil, fmt.Errorf("query result exceeds %d rows; use ПЕРВЫЕ", maxQueryResultRows)
 		}
 		raw := make([]json.RawMessage, len(compiler.outputs))
 		targets := make([]any, len(raw))
@@ -111,44 +260,103 @@ func (runtime *Runtime) executeQuery(ctx context.Context, text string, parameter
 			targets[index] = &raw[index]
 		}
 		if err := rows.Scan(targets...); err != nil {
-			return nil, fmt.Errorf("scan query result: %w", err)
+			return nil, nil, fmt.Errorf("scan query result: %w", err)
+		}
+		if retainRaw {
+			copy := make([]json.RawMessage, len(raw))
+			for index := range raw {
+				copy[index] = append(json.RawMessage(nil), raw[index]...)
+			}
+			retained = append(retained, copy)
 		}
 		values := make([]bytecode.Value, len(raw))
 		for index := range raw {
 			values[index], err = compiler.decodeOutput(compiler.outputs[index], raw[index])
 			if err != nil {
-				return nil, fmt.Errorf("decode query field %s: %w", compiler.outputs[index].name, err)
+				return nil, nil, fmt.Errorf("decode query field %s: %w", compiler.outputs[index].name, err)
 			}
 			memory, ok := values[index].DynamicMemory(maxQueryResultBytes - min(used, maxQueryResultBytes))
 			if !ok || memory > maxQueryResultBytes-used {
-				return nil, fmt.Errorf("query result exceeds %d MiB", maxQueryResultBytes>>20)
+				return nil, nil, fmt.Errorf("query result exceeds %d MiB", maxQueryResultBytes>>20)
 			}
 			used += memory + uint64(len(compiler.outputs[index].name)) + 32
 			if used > maxQueryResultBytes {
-				return nil, fmt.Errorf("query result exceeds %d MiB", maxQueryResultBytes>>20)
+				return nil, nil, fmt.Errorf("query result exceeds %d MiB", maxQueryResultBytes>>20)
 			}
 		}
 		result.rows = append(result.rows, values)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, recordDataError(ctx, pool, fmt.Errorf("read query result: %w", err))
+		return nil, nil, recordDataError(ctx, pool, fmt.Errorf("read query result: %w", err))
 	}
-	return result, nil
+	return result, retained, nil
+}
+
+func (compiler *queryCompiler) outputDescriptor(output queryOutput) (queryColumn, error) {
+	if output.column != nil {
+		return *output.column, nil
+	}
+	if output.fixed == nil {
+		return queryColumn{}, fmt.Errorf("query field %s has no type", output.name)
+	}
+	column := queryColumn{name: output.name, kind: queryStoredColumn}
+	switch output.fixed.Kind() {
+	case bytecode.StringKind:
+		column.storage = attributeStorage{sqlType: "text", valueType: StringType}
+		column.types = []Type{{Kind: StringType}}
+	case bytecode.NumberKind:
+		column.storage = attributeStorage{sqlType: "numeric", valueType: NumberType}
+		column.types = []Type{{Kind: NumberType, Precision: 38}}
+	case bytecode.BooleanKind:
+		column.storage = attributeStorage{sqlType: "boolean", valueType: BooleanType}
+		column.types = []Type{{Kind: BooleanType}}
+	case bytecode.DateKind:
+		column.storage = attributeStorage{sqlType: "timestamp with time zone", valueType: DateType}
+		column.types = []Type{{Kind: DateType}}
+	case bytecode.RuntimeObjectKind:
+		object, _ := output.fixed.AsRuntimeObject()
+		switch reference := object.(type) {
+		case *catalogReferenceObject:
+			column.storage = attributeStorage{sqlType: "uuid", valueType: CatalogType, referenceObject: &reference.reference.CatalogID}
+			column.types = []Type{referenceType(CatalogType, reference.reference.CatalogID)}
+		case *documentReferenceObject:
+			column.storage = attributeStorage{sqlType: "uuid", valueType: DocumentType, referenceObject: &reference.reference.DocumentID}
+			column.types = []Type{referenceType(DocumentType, reference.reference.DocumentID)}
+		default:
+			return queryColumn{}, fmt.Errorf("query field %s cannot be stored in a temporary table", output.name)
+		}
+	default:
+		return queryColumn{}, fmt.Errorf("query field %s has no storable type", output.name)
+	}
+	return column, nil
 }
 
 func (compiler *queryCompiler) compile(query querylang.Query) (string, error) {
 	selectSQL := make([]string, 0, len(query.Fields))
 	for _, selected := range query.Fields {
 		if selected.Wildcard {
-			for index := range compiler.source.columns {
-				column := compiler.source.columns[index]
-				if err := compiler.appendOutput(&selectSQL, column.name, column.sql, &column, nil); err != nil {
+			sources := compiler.sources
+			if len(selected.WildcardSource) != 0 {
+				source, err := compiler.resolveSourceName(selected.WildcardSource, selected.Position)
+				if err != nil {
 					return "", err
+				}
+				sources = []querySource{*source}
+			}
+			for sourceIndex := range sources {
+				for columnIndex := range sources[sourceIndex].columns {
+					column := sources[sourceIndex].columns[columnIndex]
+					field := querylang.Field{Path: []string{sources[sourceIndex].alias, column.name}, Position: selected.Position}
+					if err := compiler.appendOutput(&selectSQL, column.name, column.sql, &column, nil, field, false); err != nil {
+						return "", err
+					}
 				}
 			}
 			continue
 		}
+		compiler.allowAggregate = true
 		expressionSQL, column, fixed, err := compiler.compileValue(selected.Expression, nil)
+		compiler.allowAggregate = false
 		if err != nil {
 			return "", err
 		}
@@ -163,17 +371,79 @@ func (compiler *queryCompiler) compile(query querylang.Query) (string, error) {
 				name = fmt.Sprintf("Поле%d", len(compiler.outputs)+1)
 			}
 		}
-		if err := compiler.appendOutput(&selectSQL, name, expressionSQL, column, fixed); err != nil {
+		aggregated := expressionContainsAggregate(selected.Expression)
+		if err := compiler.appendOutput(&selectSQL, name, expressionSQL, column, fixed, selected.Expression, aggregated); err != nil {
 			return "", err
 		}
 	}
 	if len(selectSQL) == 0 {
 		return "", fmt.Errorf("query must select at least one field")
 	}
+	joinConditions := make([]string, len(query.Joins))
+	for index, join := range query.Joins {
+		if join.Kind == querylang.JoinCross {
+			continue
+		}
+		compiler.visibleSources = index + 2
+		condition, err := compiler.compilePredicate(join.Condition)
+		compiler.visibleSources = len(compiler.sources)
+		if err != nil {
+			return "", err
+		}
+		joinConditions[index] = condition
+	}
 	predicate := ""
 	if query.Where != nil {
 		var err error
 		predicate, err = compiler.compilePredicate(query.Where)
+		if err != nil {
+			return "", err
+		}
+	}
+	group := make([]string, 0, len(query.Group))
+	grouped := make(map[string]struct{}, len(query.Group))
+	compiler.grouped = grouped
+	for _, expression := range query.Group {
+		field, ok := expression.(querylang.Field)
+		if !ok {
+			return "", querySemanticError(expression.ExpressionPosition(), "группировка допускает только поля")
+		}
+		column, err := compiler.resolveGroupedField(field)
+		if err != nil {
+			return "", err
+		}
+		if column.kind == queryRecorderColumn {
+			return "", querySemanticError(field.Position, "группировка по составному полю Регистратор пока не поддерживается")
+		}
+		if _, duplicate := grouped[column.sql]; duplicate {
+			return "", querySemanticError(field.Position, "поле группировки указано повторно")
+		}
+		grouped[column.sql] = struct{}{}
+		group = append(group, column.sql)
+	}
+	aggregateQuery := compiler.containsAggregate || expressionContainsAggregate(query.Having)
+	if len(group) != 0 || aggregateQuery {
+		for _, output := range compiler.outputs {
+			if output.aggregated || output.column == nil {
+				continue
+			}
+			if _, ok := grouped[output.column.sql]; !ok {
+				return "", querySemanticError(output.expression.ExpressionPosition(), "поле "+output.name+" должно входить в СГРУППИРОВАТЬ ПО")
+			}
+		}
+	}
+	having := ""
+	if query.Having != nil {
+		if len(group) == 0 && !compiler.containsAggregate && !expressionContainsAggregate(query.Having) {
+			return "", querySemanticError(query.Having.ExpressionPosition(), "ИМЕЮЩИЕ требует группировку или агрегат")
+		}
+		if err := compiler.validateGroupedExpression(query.Having, grouped, false); err != nil {
+			return "", err
+		}
+		compiler.allowAggregate = true
+		var err error
+		having, err = compiler.compilePredicate(query.Having)
+		compiler.allowAggregate = false
 		if err != nil {
 			return "", err
 		}
@@ -204,11 +474,32 @@ func (compiler *queryCompiler) compile(query querylang.Query) (string, error) {
 	}
 	statement.WriteString(strings.Join(selectSQL, ", "))
 	statement.WriteString(" FROM ")
-	statement.WriteString(qualifiedCatalogTable(compiler.source.table))
-	statement.WriteString(" AS src")
+	statement.WriteString(compiler.sources[0].fromSQL)
+	statement.WriteString(" AS ")
+	statement.WriteString(pgx.Identifier{compiler.sources[0].sqlAlias}.Sanitize())
+	for index, join := range query.Joins {
+		statement.WriteByte(' ')
+		statement.WriteString(queryJoinSQL(join.Kind))
+		statement.WriteByte(' ')
+		statement.WriteString(compiler.sources[index+1].fromSQL)
+		statement.WriteString(" AS ")
+		statement.WriteString(pgx.Identifier{compiler.sources[index+1].sqlAlias}.Sanitize())
+		if join.Kind != querylang.JoinCross {
+			statement.WriteString(" ON ")
+			statement.WriteString(joinConditions[index])
+		}
+	}
 	if predicate != "" {
 		statement.WriteString(" WHERE ")
 		statement.WriteString(predicate)
+	}
+	if len(group) != 0 {
+		statement.WriteString(" GROUP BY ")
+		statement.WriteString(strings.Join(group, ", "))
+	}
+	if having != "" {
+		statement.WriteString(" HAVING ")
+		statement.WriteString(having)
 	}
 	if len(order) != 0 {
 		statement.WriteString(" ORDER BY ")
@@ -231,12 +522,12 @@ func (compiler *queryCompiler) compile(query querylang.Query) (string, error) {
 	return result, nil
 }
 
-func (compiler *queryCompiler) appendOutput(target *[]string, name, expression string, column *queryColumn, fixed *bytecode.Value) error {
+func (compiler *queryCompiler) appendOutput(target *[]string, name, expression string, column *queryColumn, fixed *bytecode.Value, source querylang.Expression, aggregated bool) error {
 	folded := strings.ToLower(name)
 	if folded == "" || compiler.aliases[folded] != 0 {
 		return fmt.Errorf("query result field %q is duplicated or empty", name)
 	}
-	compiler.outputs = append(compiler.outputs, queryOutput{name: name, column: column, fixed: fixed})
+	compiler.outputs = append(compiler.outputs, queryOutput{name: name, column: column, fixed: fixed, expression: source, aggregated: aggregated})
 	index := len(compiler.outputs)
 	compiler.aliases[folded] = index
 	physicalAlias := fmt.Sprintf("q%d", index-1)
@@ -261,6 +552,11 @@ func (compiler *queryCompiler) compileOrder(expression querylang.Expression, dis
 	}
 	if column.kind == queryRecorderColumn {
 		return "", "", querySemanticError(field.Position, "сортировка по составному полю Регистратор пока не поддерживается")
+	}
+	if (compiler.containsAggregate || len(compiler.grouped) != 0) && compiler.grouped != nil {
+		if _, grouped := compiler.grouped[column.sql]; !grouped {
+			return "", "", querySemanticError(field.Position, "поле сортировки должно входить в СГРУППИРОВАТЬ ПО или результат агрегата")
+		}
 	}
 	if index := compiler.outputColumnIndex(column); index >= 0 {
 		alias := pgx.Identifier{fmt.Sprintf("q%d", index)}.Sanitize()
@@ -522,9 +818,78 @@ func (compiler *queryCompiler) compileValue(expression querylang.Expression, hin
 			return "", nil, nil, err
 		}
 		return compiler.bindValue(literal, hint)
+	case querylang.Function:
+		return compiler.compileAggregate(value)
 	default:
 		return "", nil, nil, querySemanticError(expression.ExpressionPosition(), "выражение нельзя использовать как значение")
 	}
+}
+
+func (compiler *queryCompiler) compileAggregate(function querylang.Function) (string, *queryColumn, *bytecode.Value, error) {
+	if !compiler.allowAggregate {
+		return "", nil, nil, querySemanticError(function.Position, "агрегатную функцию нельзя использовать в этом месте")
+	}
+	if compiler.aggregateDepth != 0 {
+		return "", nil, nil, querySemanticError(function.Position, "вложенные агрегатные функции не поддерживаются")
+	}
+	name := strings.ToUpper(function.Name)
+	switch {
+	case queryName(name, "КОЛИЧЕСТВО", "COUNT"):
+		name = "COUNT"
+	case queryName(name, "СУММА", "SUM"):
+		name = "SUM"
+	case queryName(name, "МИНИМУМ", "MIN"):
+		name = "MIN"
+	case queryName(name, "МАКСИМУМ", "MAX"):
+		name = "MAX"
+	case queryName(name, "СРЕДНЕЕ", "AVG"):
+		name = "AVG"
+	default:
+		return "", nil, nil, querySemanticError(function.Position, "неизвестная агрегатная функция "+function.Name)
+	}
+	if function.Wildcard {
+		if name != "COUNT" || function.Distinct || len(function.Arguments) != 0 {
+			return "", nil, nil, querySemanticError(function.Position, "* допускается только в КОЛИЧЕСТВО(*)")
+		}
+		compiler.containsAggregate = true
+		column := &queryColumn{name: function.Name, kind: queryStoredColumn, storage: attributeStorage{sqlType: "numeric", valueType: NumberType}, types: []Type{{Kind: NumberType, Precision: 38}}}
+		return "COUNT(*)", column, nil, nil
+	}
+	if len(function.Arguments) != 1 {
+		return "", nil, nil, querySemanticError(function.Position, "агрегатная функция ожидает один аргумент")
+	}
+	compiler.aggregateDepth++
+	argumentSQL, argumentColumn, _, err := compiler.compileValue(function.Arguments[0], nil)
+	compiler.aggregateDepth--
+	if err != nil {
+		return "", nil, nil, err
+	}
+	if argumentColumn == nil {
+		return "", nil, nil, querySemanticError(function.Arguments[0].ExpressionPosition(), "аргументом агрегатной функции должно быть поле")
+	}
+	if name != "COUNT" && (argumentColumn.kind == queryRecorderColumn || argumentColumn.storage.composite) {
+		return "", nil, nil, querySemanticError(function.Arguments[0].ExpressionPosition(), "агрегатная функция не поддерживает составное поле")
+	}
+	if (name == "SUM" || name == "AVG") && argumentColumn.storage.valueType != NumberType {
+		return "", nil, nil, querySemanticError(function.Arguments[0].ExpressionPosition(), function.Name+" требует числовое поле")
+	}
+	if (name == "MIN" || name == "MAX") && argumentColumn.storage.valueType != NumberType && argumentColumn.storage.valueType != StringType && argumentColumn.storage.valueType != DateType {
+		return "", nil, nil, querySemanticError(function.Arguments[0].ExpressionPosition(), function.Name+" требует числовое, строковое поле или дату")
+	}
+	distinct := ""
+	if function.Distinct {
+		distinct = "DISTINCT "
+	}
+	resultColumn := *argumentColumn
+	resultColumn.name = function.Name
+	resultColumn.sql = ""
+	if name == "COUNT" || name == "SUM" || name == "AVG" {
+		resultColumn.kind = queryStoredColumn
+		resultColumn.storage = attributeStorage{sqlType: "numeric", valueType: NumberType}
+		resultColumn.types = []Type{{Kind: NumberType, Precision: 38}}
+	}
+	compiler.containsAggregate = true
+	return name + "(" + distinct + argumentSQL + ")", &resultColumn, nil, nil
 }
 
 func (compiler *queryCompiler) bindValue(value bytecode.Value, hint *queryColumn) (string, *queryColumn, *bytecode.Value, error) {
@@ -710,22 +1075,122 @@ func literalValue(expression querylang.Expression) (bytecode.Value, error) {
 
 func (compiler *queryCompiler) resolveField(field querylang.Field) (*queryColumn, error) {
 	path := field.Path
-	if len(path) > 1 {
-		prefix := strings.Join(path[:len(path)-1], ".")
-		valid := strings.EqualFold(prefix, compiler.source.alias) || strings.EqualFold(prefix, compiler.source.logicalName)
-		if !valid && len(path) == 2 {
-			valid = strings.EqualFold(path[0], compiler.source.alias) || strings.EqualFold(path[0], compiler.source.logicalName)
-		}
-		if !valid {
-			return nil, querySemanticError(field.Position, "поле относится к неизвестному источнику "+prefix)
-		}
+	if len(path) == 0 {
+		return nil, querySemanticError(field.Position, "имя поля пусто")
 	}
 	name := path[len(path)-1]
-	index, ok := compiler.source.byName[strings.ToLower(name)]
-	if !ok {
+	if len(path) > 1 {
+		source, err := compiler.resolveSourceName(path[:len(path)-1], field.Position)
+		if err != nil {
+			return nil, err
+		}
+		index, ok := source.byName[strings.ToLower(name)]
+		if !ok {
+			return nil, querySemanticError(field.Position, "неизвестное поле "+name+" источника "+source.alias)
+		}
+		return &source.columns[index], nil
+	}
+	matchSource, matchColumn := -1, -1
+	for sourceIndex := 0; sourceIndex < compiler.visibleSources; sourceIndex++ {
+		if columnIndex, ok := compiler.sources[sourceIndex].byName[strings.ToLower(name)]; ok {
+			if matchSource >= 0 {
+				return nil, querySemanticError(field.Position, "неоднозначное поле "+name+"; укажите псевдоним источника")
+			}
+			matchSource, matchColumn = sourceIndex, columnIndex
+		}
+	}
+	if matchSource < 0 {
 		return nil, querySemanticError(field.Position, "неизвестное поле "+name)
 	}
-	return &compiler.source.columns[index], nil
+	return &compiler.sources[matchSource].columns[matchColumn], nil
+}
+
+func (compiler *queryCompiler) resolveSourceName(path []string, position querylang.Position) (*querySource, error) {
+	name := strings.ToLower(strings.Join(path, "."))
+	index := compiler.sourceNames[name]
+	if index == 0 {
+		return nil, querySemanticError(position, "неизвестный источник "+strings.Join(path, "."))
+	}
+	if index < 0 {
+		return nil, querySemanticError(position, "неоднозначный источник "+strings.Join(path, ".")+"; укажите псевдоним")
+	}
+	if index > compiler.visibleSources {
+		return nil, querySemanticError(position, "источник "+strings.Join(path, ".")+" ещё недоступен в этом соединении")
+	}
+	return &compiler.sources[index-1], nil
+}
+
+func (compiler *queryCompiler) resolveGroupedField(field querylang.Field) (*queryColumn, error) {
+	if len(field.Path) == 1 {
+		if index := compiler.aliases[strings.ToLower(field.Path[0])]; index != 0 {
+			output := compiler.outputs[index-1]
+			if output.aggregated {
+				return nil, querySemanticError(field.Position, "агрегатное поле нельзя использовать в СГРУППИРОВАТЬ ПО")
+			}
+			source, ok := output.expression.(querylang.Field)
+			if !ok {
+				return nil, querySemanticError(field.Position, "псевдоним группировки должен ссылаться на поле")
+			}
+			return compiler.resolveField(source)
+		}
+	}
+	return compiler.resolveField(field)
+}
+
+func (compiler *queryCompiler) validateGroupedExpression(expression querylang.Expression, grouped map[string]struct{}, insideAggregate bool) error {
+	switch value := expression.(type) {
+	case querylang.Field:
+		if insideAggregate {
+			return nil
+		}
+		column, err := compiler.resolveField(value)
+		if err != nil {
+			return err
+		}
+		if _, ok := grouped[column.sql]; !ok {
+			return querySemanticError(value.Position, "поле "+value.Path[len(value.Path)-1]+" должно входить в СГРУППИРОВАТЬ ПО")
+		}
+	case querylang.Function:
+		for _, argument := range value.Arguments {
+			if err := compiler.validateGroupedExpression(argument, grouped, true); err != nil {
+				return err
+			}
+		}
+	case querylang.Unary:
+		return compiler.validateGroupedExpression(value.Operand, grouped, insideAggregate)
+	case querylang.Binary:
+		if err := compiler.validateGroupedExpression(value.Left, grouped, insideAggregate); err != nil {
+			return err
+		}
+		return compiler.validateGroupedExpression(value.Right, grouped, insideAggregate)
+	case querylang.List:
+		for _, item := range value.Items {
+			if err := compiler.validateGroupedExpression(item, grouped, insideAggregate); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func expressionContainsAggregate(expression querylang.Expression) bool {
+	switch value := expression.(type) {
+	case nil:
+		return false
+	case querylang.Function:
+		return true
+	case querylang.Unary:
+		return expressionContainsAggregate(value.Operand)
+	case querylang.Binary:
+		return expressionContainsAggregate(value.Left) || expressionContainsAggregate(value.Right)
+	case querylang.List:
+		for _, item := range value.Items {
+			if expressionContainsAggregate(item) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (compiler *queryCompiler) decodeOutput(output queryOutput, raw json.RawMessage) (bytecode.Value, error) {
@@ -782,31 +1247,46 @@ func (compiler *queryCompiler) decodeOutput(output queryOutput, raw json.RawMess
 	}
 }
 
-func (runtime *Runtime) resolveQuerySource(source querylang.Source) (querySource, error) {
-	if len(source.Path) != 2 {
-		return querySource{}, querySemanticError(source.Position, "базовый запрос поддерживает источник вида ТипМетаданных.Имя")
+func (runtime *Runtime) resolveQuerySource(source querylang.Source, sqlAlias string, temporary map[string]queryMaterializedTemporaryTable) (querySource, error) {
+	if len(source.Path) != 1 && len(source.Path) != 2 {
+		return querySource{}, querySemanticError(source.Position, "ожидалось имя временной таблицы или ТипМетаданных.Имя")
 	}
-	kind, name := source.Path[0], source.Path[1]
 	var result querySource
 	result.logicalName = strings.Join(source.Path, ".")
+	result.sqlAlias = sqlAlias
 	result.alias = source.Alias
 	if result.alias == "" {
-		result.alias = name
+		result.alias = source.Path[len(source.Path)-1]
 	}
 	result.byName = make(map[string]int)
+	if len(source.Path) == 1 {
+		materialized, ok := temporary[strings.ToLower(source.Path[0])]
+		if !ok {
+			return querySource{}, querySemanticError(source.Position, "неизвестная временная таблица "+source.Path[0])
+		}
+		result.fromSQL = materialized.fromSQL
+		for index, stored := range materialized.table.columns {
+			column := stored
+			column.sql = querySourceColumnSQL(sqlAlias, fmt.Sprintf("c%d", index))
+			result.add(column)
+		}
+		return result, nil
+	}
+	kind, name := source.Path[0], source.Path[1]
 	switch {
 	case queryName(kind, "Справочник", "Catalog"):
 		definition, ok := runtime.catalog.CatalogDefinition(name)
 		if !ok {
 			return querySource{}, querySemanticError(source.Position, "неизвестный справочник "+name)
 		}
-		result.table, _ = PhysicalCatalogTable(definition.ID)
-		result.addStored("Ссылка", "src.ref", []Type{referenceType(CatalogType, definition.ID)}, "Ref")
-		result.addStored("Версия", "src.version", []Type{{Kind: NumberType, Precision: 19}}, "Version")
-		result.addStored("Код", "src.code", []Type{catalogCodeType(definition.Code)}, "Code")
-		result.addStored("Наименование", "src.description", []Type{{Kind: StringType, Length: definition.DescriptionLength}}, "Description")
-		result.addStored("ПометкаУдаления", "src.deletion_mark", []Type{{Kind: BooleanType}}, "DeletionMark")
-		result.addStored("ИмяПредопределенныхДанных", "src.predefined_name", []Type{{Kind: StringType, Length: 128}}, "PredefinedDataName")
+		table, _ := PhysicalCatalogTable(definition.ID)
+		result.fromSQL = qualifiedCatalogTable(table)
+		result.addStored("Ссылка", querySourceColumnSQL(sqlAlias, "ref"), []Type{referenceType(CatalogType, definition.ID)}, "Ref")
+		result.addStored("Версия", querySourceColumnSQL(sqlAlias, "version"), []Type{{Kind: NumberType, Precision: 19}}, "Version")
+		result.addStored("Код", querySourceColumnSQL(sqlAlias, "code"), []Type{catalogCodeType(definition.Code)}, "Code")
+		result.addStored("Наименование", querySourceColumnSQL(sqlAlias, "description"), []Type{{Kind: StringType, Length: definition.DescriptionLength}}, "Description")
+		result.addStored("ПометкаУдаления", querySourceColumnSQL(sqlAlias, "deletion_mark"), []Type{{Kind: BooleanType}}, "DeletionMark")
+		result.addStored("ИмяПредопределенныхДанных", querySourceColumnSQL(sqlAlias, "predefined_name"), []Type{{Kind: StringType, Length: 128}}, "PredefinedDataName")
 		if err := runtime.addQueryAttributes(&result, definition.Attributes); err != nil {
 			return querySource{}, err
 		}
@@ -815,13 +1295,14 @@ func (runtime *Runtime) resolveQuerySource(source querylang.Source) (querySource
 		if !ok {
 			return querySource{}, querySemanticError(source.Position, "неизвестный документ "+name)
 		}
-		result.table, _ = PhysicalDocumentTable(definition.ID)
-		result.addStored("Ссылка", "src.ref", []Type{referenceType(DocumentType, definition.ID)}, "Ref")
-		result.addStored("Версия", "src.version", []Type{{Kind: NumberType, Precision: 19}}, "Version")
-		result.addStored("Номер", "src.number", []Type{documentNumberType(definition.Number)}, "Number")
-		result.addStored("Дата", "src.date", []Type{{Kind: DateType}}, "Date")
-		result.addStored("Проведен", "src.posted", []Type{{Kind: BooleanType}}, "Posted")
-		result.addStored("ПометкаУдаления", "src.deletion_mark", []Type{{Kind: BooleanType}}, "DeletionMark")
+		table, _ := PhysicalDocumentTable(definition.ID)
+		result.fromSQL = qualifiedCatalogTable(table)
+		result.addStored("Ссылка", querySourceColumnSQL(sqlAlias, "ref"), []Type{referenceType(DocumentType, definition.ID)}, "Ref")
+		result.addStored("Версия", querySourceColumnSQL(sqlAlias, "version"), []Type{{Kind: NumberType, Precision: 19}}, "Version")
+		result.addStored("Номер", querySourceColumnSQL(sqlAlias, "number"), []Type{documentNumberType(definition.Number)}, "Number")
+		result.addStored("Дата", querySourceColumnSQL(sqlAlias, "date"), []Type{{Kind: DateType}}, "Date")
+		result.addStored("Проведен", querySourceColumnSQL(sqlAlias, "posted"), []Type{{Kind: BooleanType}}, "Posted")
+		result.addStored("ПометкаУдаления", querySourceColumnSQL(sqlAlias, "deletion_mark"), []Type{{Kind: BooleanType}}, "DeletionMark")
 		if err := runtime.addQueryAttributes(&result, definition.Attributes); err != nil {
 			return querySource{}, err
 		}
@@ -830,15 +1311,16 @@ func (runtime *Runtime) resolveQuerySource(source querylang.Source) (querySource
 		if !ok {
 			return querySource{}, querySemanticError(source.Position, "неизвестный регистр сведений "+name)
 		}
-		result.table, _ = PhysicalInformationRegisterTable(definition.ID)
-		result.addStored("ИдентификаторЗаписи", "src.record_id", []Type{{Kind: UUIDType}}, "RecordID")
+		table, _ := PhysicalInformationRegisterTable(definition.ID)
+		result.fromSQL = qualifiedCatalogTable(table)
+		result.addStored("ИдентификаторЗаписи", querySourceColumnSQL(sqlAlias, "record_id"), []Type{{Kind: UUIDType}}, "RecordID")
 		if definition.Periodicity != InformationRegisterPeriodNone {
-			result.addStored("Период", "src.period", []Type{{Kind: DateType}}, "Period")
+			result.addStored("Период", querySourceColumnSQL(sqlAlias, "period"), []Type{{Kind: DateType}}, "Period")
 		}
 		if definition.WriteMode == InformationRegisterRecorder {
 			result.addRecorder()
-			result.addStored("НомерСтроки", "src.line_no", []Type{{Kind: NumberType, Precision: 10}}, "LineNumber")
-			result.addStored("Активность", "src.active", []Type{{Kind: BooleanType}}, "Active")
+			result.addStored("НомерСтроки", querySourceColumnSQL(sqlAlias, "line_no"), []Type{{Kind: NumberType, Precision: 10}}, "LineNumber")
+			result.addStored("Активность", querySourceColumnSQL(sqlAlias, "active"), []Type{{Kind: BooleanType}}, "Active")
 		}
 		if err := runtime.addQueryAttributes(&result, appendQueryAttributes(definition.Dimensions, definition.Resources, definition.Attributes)); err != nil {
 			return querySource{}, err
@@ -848,14 +1330,15 @@ func (runtime *Runtime) resolveQuerySource(source querylang.Source) (querySource
 		if !ok {
 			return querySource{}, querySemanticError(source.Position, "неизвестный регистр накопления "+name)
 		}
-		result.table, _ = PhysicalAccumulationRegisterTable(definition.ID)
-		result.addStored("ИдентификаторЗаписи", "src.record_id", []Type{{Kind: UUIDType}}, "RecordID")
-		result.addStored("Период", "src.period", []Type{{Kind: DateType}}, "Period")
+		table, _ := PhysicalAccumulationRegisterTable(definition.ID)
+		result.fromSQL = qualifiedCatalogTable(table)
+		result.addStored("ИдентификаторЗаписи", querySourceColumnSQL(sqlAlias, "record_id"), []Type{{Kind: UUIDType}}, "RecordID")
+		result.addStored("Период", querySourceColumnSQL(sqlAlias, "period"), []Type{{Kind: DateType}}, "Period")
 		result.addRecorder()
-		result.addStored("НомерСтроки", "src.line_no", []Type{{Kind: NumberType, Precision: 10}}, "LineNumber")
-		result.addStored("Активность", "src.active", []Type{{Kind: BooleanType}}, "Active")
+		result.addStored("НомерСтроки", querySourceColumnSQL(sqlAlias, "line_no"), []Type{{Kind: NumberType, Precision: 10}}, "LineNumber")
+		result.addStored("Активность", querySourceColumnSQL(sqlAlias, "active"), []Type{{Kind: BooleanType}}, "Active")
 		if definition.Kind == AccumulationRegisterBalance {
-			result.add(queryColumn{name: "ВидДвижения", sql: "src.movement_kind", kind: queryMovementKindColumn, storage: attributeStorage{sqlType: "smallint", valueType: NumberType}}, "MovementKind")
+			result.add(queryColumn{name: "ВидДвижения", sql: querySourceColumnSQL(sqlAlias, "movement_kind"), kind: queryMovementKindColumn, storage: attributeStorage{sqlType: "smallint", valueType: NumberType}}, "MovementKind")
 		}
 		if err := runtime.addQueryAttributes(&result, appendQueryAttributes(definition.Dimensions, definition.Resources, definition.Attributes)); err != nil {
 			return querySource{}, err
@@ -876,7 +1359,7 @@ func (runtime *Runtime) addQueryAttributes(source *querySource, attributes []Att
 		if err != nil {
 			return err
 		}
-		source.add(queryColumn{name: attribute.Name, sql: "src." + pgx.Identifier{column}.Sanitize(), storage: storage, types: attribute.Types})
+		source.add(queryColumn{name: attribute.Name, sql: querySourceColumnSQL(source.sqlAlias, column), storage: storage, types: attribute.Types})
 	}
 	return nil
 }
@@ -891,10 +1374,32 @@ func (source *querySource) addStored(name, sql string, types []Type, aliases ...
 }
 
 func (source *querySource) addRecorder() {
+	table := pgx.Identifier{source.sqlAlias}.Sanitize()
 	source.add(queryColumn{
 		name: "Регистратор", kind: queryRecorderColumn,
-		sql: "jsonb_build_object('type', src.recorder_type::text, 'ref', src.recorder_ref::text)",
+		sql: "jsonb_build_object('type', " + table + ".recorder_type::text, 'ref', " + table + ".recorder_ref::text)",
 	}, "Recorder")
+}
+
+func querySourceColumnSQL(alias, column string) string {
+	return pgx.Identifier{alias}.Sanitize() + "." + pgx.Identifier{column}.Sanitize()
+}
+
+func queryJoinSQL(kind querylang.JoinKind) string {
+	switch kind {
+	case querylang.JoinInner:
+		return "INNER JOIN"
+	case querylang.JoinLeft:
+		return "LEFT JOIN"
+	case querylang.JoinRight:
+		return "RIGHT JOIN"
+	case querylang.JoinFull:
+		return "FULL JOIN"
+	case querylang.JoinCross:
+		return "CROSS JOIN"
+	default:
+		return "JOIN"
+	}
 }
 
 func (source *querySource) add(column queryColumn, aliases ...string) {

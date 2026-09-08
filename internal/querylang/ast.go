@@ -13,16 +13,22 @@ type Query struct {
 	Top      int
 	Fields   []SelectField
 	Source   Source
+	Joins    []Join
 	Where    Expression
+	Group    []Expression
+	Having   Expression
 	Order    []OrderField
+	Into     *TemporaryTable
+	IndexBy  []Expression
 }
 
 // SelectField describes one result column. Wildcard is expanded against metadata later.
 type SelectField struct {
-	Expression Expression
-	Alias      string
-	Wildcard   bool
-	Position   Position
+	Expression     Expression
+	Alias          string
+	Wildcard       bool
+	WildcardSource []string
+	Position       Position
 }
 
 // Source is one logical metadata table and its optional alias.
@@ -30,6 +36,43 @@ type Source struct {
 	Path     []string
 	Alias    string
 	Position Position
+}
+
+// JoinKind identifies one supported relational join.
+type JoinKind uint8
+
+const (
+	JoinInner JoinKind = iota + 1
+	JoinLeft
+	JoinRight
+	JoinFull
+	JoinCross
+)
+
+// Join adds one source to a query. Cross joins have no condition.
+type Join struct {
+	Kind      JoinKind
+	Source    Source
+	Condition Expression
+	Position  Position
+}
+
+// TemporaryTable describes a table created by a SELECT ... INTO statement.
+type TemporaryTable struct {
+	Name     string
+	Position Position
+}
+
+// DropTemporaryTable removes one table from a temporary table manager.
+type DropTemporaryTable struct {
+	Name     string
+	Position Position
+}
+
+// Statement is one query package item.
+type Statement struct {
+	Query *Query
+	Drop  *DropTemporaryTable
 }
 
 // OrderField describes one expression used for result ordering.
@@ -106,3 +149,15 @@ type List struct {
 
 func (List) queryExpression()                   {}
 func (value List) ExpressionPosition() Position { return value.Position }
+
+// Function is a query function call. Aggregate functions may use Distinct or Wildcard.
+type Function struct {
+	Name      string
+	Arguments []Expression
+	Distinct  bool
+	Wildcard  bool
+	Position  Position
+}
+
+func (Function) queryExpression()                   {}
+func (value Function) ExpressionPosition() Position { return value.Position }

@@ -7,12 +7,16 @@ import (
 )
 
 const (
-	MaxTop          = 100_000
-	MaxSourceBytes  = 1 << 20
-	MaxTokens       = 100_000
-	MaxResultFields = 2048
-	MaxOrderFields  = 1024
-	MaxNesting      = 128
+	MaxTop               = 100_000
+	MaxSourceBytes       = 1 << 20
+	MaxTokens            = 100_000
+	MaxResultFields      = 2048
+	MaxOrderFields       = 1024
+	MaxGroupFields       = 1024
+	MaxJoins             = 64
+	MaxFunctionArguments = 128
+	MaxPackageStatements = 256
+	MaxNesting           = 128
 )
 
 type parser struct {
@@ -23,28 +27,72 @@ type parser struct {
 
 // Parse validates and parses one basic ML query.
 func Parse(source string) (Query, error) {
+	statements, err := ParsePackage(source)
+	if err != nil {
+		return Query{}, err
+	}
+	if len(statements) != 1 || statements[0].Query == nil {
+		position := Position{Line: 1, Column: 1}
+		if len(statements) > 1 {
+			if statements[1].Query != nil {
+				position = statements[1].Query.Source.Position
+			} else {
+				position = statements[1].Drop.Position
+			}
+		}
+		return Query{}, queryError(position, "ожидался один запрос ВЫБРАТЬ")
+	}
+	return *statements[0].Query, nil
+}
+
+// ParsePackage validates and parses queries separated by semicolons.
+func ParsePackage(source string) ([]Statement, error) {
 	if !utf8.ValidString(source) || len(source) > MaxSourceBytes {
-		return Query{}, fmt.Errorf("query source must be valid UTF-8 and not exceed %d bytes", MaxSourceBytes)
+		return nil, fmt.Errorf("query source must be valid UTF-8 and not exceed %d bytes", MaxSourceBytes)
 	}
 	tokens, err := lex(source)
 	if err != nil {
-		return Query{}, err
+		return nil, err
 	}
 	if len(tokens) > MaxTokens {
-		return Query{}, fmt.Errorf("query contains more than %d tokens", MaxTokens)
+		return nil, fmt.Errorf("query contains more than %d tokens", MaxTokens)
 	}
 	value := parser{tokens: tokens}
-	query, err := value.parseQuery()
-	if err != nil {
-		return Query{}, err
+	if value.current().kind == tokenEOF {
+		return nil, value.errorCurrent("ожидалось ВЫБРАТЬ или УНИЧТОЖИТЬ")
 	}
-	if value.match(tokenSemicolon) {
-		// A single trailing semicolon is accepted for editor convenience.
+	statements := make([]Statement, 0, 4)
+	for value.current().kind != tokenEOF {
+		var statement Statement
+		if value.match(tokenDrop) {
+			position := value.previous().position
+			name, err := value.expect(tokenIdentifier, "после УНИЧТОЖИТЬ ожидалось имя временной таблицы")
+			if err != nil {
+				return nil, err
+			}
+			statement.Drop = &DropTemporaryTable{Name: name.text, Position: position}
+		} else {
+			query, err := value.parseQuery()
+			if err != nil {
+				return nil, err
+			}
+			statement.Query = &query
+		}
+		statements = append(statements, statement)
+		if len(statements) > MaxPackageStatements {
+			return nil, value.errorCurrent(fmt.Sprintf("пакет не может содержать более %d запросов", MaxPackageStatements))
+		}
+		if value.current().kind == tokenEOF {
+			break
+		}
+		if !value.match(tokenSemicolon) {
+			return nil, value.errorCurrent("между запросами пакета ожидался ;")
+		}
+		if value.current().kind == tokenEOF {
+			break
+		}
 	}
-	if value.current().kind != tokenEOF {
-		return Query{}, value.errorCurrent("ожидался конец запроса")
-	}
-	return query, nil
+	return statements, nil
 }
 
 func (value *parser) parseQuery() (Query, error) {
@@ -52,6 +100,7 @@ func (value *parser) parseQuery() (Query, error) {
 		return Query{}, err
 	}
 	query := Query{Distinct: value.match(tokenDistinct)}
+	var err error
 	if value.match(tokenTop) {
 		top, err := value.expect(tokenNumber, "после ПЕРВЫЕ ожидается целое число")
 		if err != nil {
@@ -68,17 +117,26 @@ func (value *parser) parseQuery() (Query, error) {
 		if value.match(tokenStar) {
 			field.Wildcard = true
 		} else {
-			expression, err := value.parseValue()
+			path, wildcard, err := value.tryParseQualifiedWildcard()
 			if err != nil {
 				return Query{}, err
 			}
-			field.Expression = expression
-			if value.match(tokenAs) {
-				alias, err := value.expect(tokenIdentifier, "после КАК ожидается псевдоним поля")
+			if wildcard {
+				field.Wildcard = true
+				field.WildcardSource = path
+			} else {
+				expression, err := value.parseValue()
 				if err != nil {
 					return Query{}, err
 				}
-				field.Alias = alias.text
+				field.Expression = expression
+				if value.match(tokenAs) {
+					alias, err := value.expect(tokenIdentifier, "после КАК ожидается псевдоним поля")
+					if err != nil {
+						return Query{}, err
+					}
+					field.Alias = alias.text
+				}
 			}
 		}
 		query.Fields = append(query.Fields, field)
@@ -89,25 +147,74 @@ func (value *parser) parseQuery() (Query, error) {
 			break
 		}
 	}
-	if _, err := value.expect(tokenFrom, "ожидалось ИЗ и имя таблицы метаданных"); err != nil {
-		return Query{}, err
-	}
-	path, position, err := value.parsePath()
-	if err != nil {
-		return Query{}, err
-	}
-	query.Source = Source{Path: path, Position: position}
-	if value.match(tokenAs) {
-		alias, err := value.expect(tokenIdentifier, "после КАК ожидается псевдоним источника")
+	if value.match(tokenInto) {
+		name, err := value.expect(tokenIdentifier, "после ПОМЕСТИТЬ ожидалось имя временной таблицы")
 		if err != nil {
 			return Query{}, err
 		}
-		query.Source.Alias = alias.text
-	} else if value.current().kind == tokenIdentifier {
-		query.Source.Alias = value.advance().text
+		query.Into = &TemporaryTable{Name: name.text, Position: name.position}
+	}
+	if _, err := value.expect(tokenFrom, "ожидалось ИЗ и имя таблицы метаданных"); err != nil {
+		return Query{}, err
+	}
+	query.Source, err = value.parseSource()
+	if err != nil {
+		return Query{}, err
+	}
+	for {
+		kind, position, joined, err := value.parseJoinKind()
+		if err != nil {
+			return Query{}, err
+		}
+		if !joined {
+			break
+		}
+		source, err := value.parseSource()
+		if err != nil {
+			return Query{}, err
+		}
+		join := Join{Kind: kind, Source: source, Position: position}
+		if kind != JoinCross {
+			if !value.match(tokenOn) && !value.match(tokenBy) {
+				return Query{}, value.errorCurrent("после таблицы соединения ожидалось ПО")
+			}
+			join.Condition, err = value.parseOr()
+			if err != nil {
+				return Query{}, err
+			}
+		}
+		query.Joins = append(query.Joins, join)
+		if len(query.Joins) > MaxJoins {
+			return Query{}, queryError(position, fmt.Sprintf("запрос не может содержать более %d соединений", MaxJoins))
+		}
 	}
 	if value.match(tokenWhere) {
 		query.Where, err = value.parseOr()
+		if err != nil {
+			return Query{}, err
+		}
+	}
+	if value.match(tokenGroup) {
+		if _, err := value.expect(tokenBy, "после СГРУППИРОВАТЬ ожидалось ПО"); err != nil {
+			return Query{}, err
+		}
+		for {
+			position := value.current().position
+			expression, err := value.parseValue()
+			if err != nil {
+				return Query{}, err
+			}
+			query.Group = append(query.Group, expression)
+			if len(query.Group) > MaxGroupFields {
+				return Query{}, queryError(position, fmt.Sprintf("группировка не может содержать более %d полей", MaxGroupFields))
+			}
+			if !value.match(tokenComma) {
+				break
+			}
+		}
+	}
+	if value.match(tokenHaving) {
+		query.Having, err = value.parseOr()
 		if err != nil {
 			return Query{}, err
 		}
@@ -137,7 +244,75 @@ func (value *parser) parseQuery() (Query, error) {
 			}
 		}
 	}
+	if value.match(tokenIndex) {
+		if _, err := value.expect(tokenBy, "после ИНДЕКСИРОВАТЬ ожидалось ПО"); err != nil {
+			return Query{}, err
+		}
+		for {
+			expression, err := value.parseValue()
+			if err != nil {
+				return Query{}, err
+			}
+			query.IndexBy = append(query.IndexBy, expression)
+			if len(query.IndexBy) > MaxOrderFields {
+				return Query{}, queryError(expression.ExpressionPosition(), fmt.Sprintf("индекс не может содержать более %d полей", MaxOrderFields))
+			}
+			if !value.match(tokenComma) {
+				break
+			}
+		}
+	}
+	if len(query.IndexBy) != 0 && query.Into == nil {
+		return Query{}, queryError(query.IndexBy[0].ExpressionPosition(), "ИНДЕКСИРОВАТЬ ПО допускается только вместе с ПОМЕСТИТЬ")
+	}
 	return query, nil
+}
+
+func (value *parser) parseSource() (Source, error) {
+	path, position, err := value.parsePath()
+	if err != nil {
+		return Source{}, err
+	}
+	result := Source{Path: path, Position: position}
+	if value.match(tokenAs) {
+		alias, err := value.expect(tokenIdentifier, "после КАК ожидается псевдоним источника")
+		if err != nil {
+			return Source{}, err
+		}
+		result.Alias = alias.text
+	} else if value.current().kind == tokenIdentifier {
+		result.Alias = value.advance().text
+	}
+	return result, nil
+}
+
+func (value *parser) parseJoinKind() (JoinKind, Position, bool, error) {
+	position := value.current().position
+	if value.match(tokenComma) {
+		return JoinCross, position, true, nil
+	}
+	kind := JoinInner
+	switch {
+	case value.match(tokenJoin):
+		return kind, position, true, nil
+	case value.match(tokenInner):
+		kind = JoinInner
+	case value.match(tokenLeft):
+		kind = JoinLeft
+	case value.match(tokenRight):
+		kind = JoinRight
+	case value.match(tokenFull):
+		kind = JoinFull
+	default:
+		return 0, position, false, nil
+	}
+	if kind != JoinInner {
+		value.match(tokenOuter)
+	}
+	if _, err := value.expect(tokenJoin, "ожидалось СОЕДИНЕНИЕ"); err != nil {
+		return 0, position, false, err
+	}
+	return kind, position, true, nil
 }
 
 func (value *parser) parseOr() (Expression, error) {
@@ -293,6 +468,9 @@ func (value *parser) parseValue() (Expression, error) {
 	current := value.current()
 	switch current.kind {
 	case tokenIdentifier:
+		if value.peekToken(1).kind == tokenLeftParen {
+			return value.parseFunction()
+		}
 		path, position, err := value.parsePath()
 		if err != nil {
 			return nil, err
@@ -331,6 +509,59 @@ func (value *parser) parseValue() (Expression, error) {
 	}
 }
 
+func (value *parser) parseFunction() (Expression, error) {
+	name := value.advance()
+	if _, err := value.expect(tokenLeftParen, "после имени функции ожидалась ("); err != nil {
+		return nil, err
+	}
+	if err := value.enter(name.position); err != nil {
+		return nil, err
+	}
+	defer value.leave()
+	result := Function{Name: name.text, Position: name.position, Distinct: value.match(tokenDistinct)}
+	if value.match(tokenStar) {
+		result.Wildcard = true
+	} else if value.current().kind != tokenRightParen {
+		for {
+			argument, err := value.parseValue()
+			if err != nil {
+				return nil, err
+			}
+			result.Arguments = append(result.Arguments, argument)
+			if len(result.Arguments) > MaxFunctionArguments {
+				return nil, queryError(name.position, fmt.Sprintf("функция не может иметь более %d аргументов", MaxFunctionArguments))
+			}
+			if !value.match(tokenComma) {
+				break
+			}
+		}
+	}
+	if _, err := value.expect(tokenRightParen, "ожидалась ) после аргументов функции"); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (value *parser) tryParseQualifiedWildcard() ([]string, bool, error) {
+	if value.current().kind != tokenIdentifier {
+		return nil, false, nil
+	}
+	saved := value.index
+	path := []string{value.advance().text}
+	for value.match(tokenDot) {
+		if value.match(tokenStar) {
+			return path, true, nil
+		}
+		part, err := value.expect(tokenIdentifier, "после точки ожидалось имя или *")
+		if err != nil {
+			return nil, false, err
+		}
+		path = append(path, part.text)
+	}
+	value.index = saved
+	return nil, false, nil
+}
+
 func (value *parser) parsePath() ([]string, Position, error) {
 	first, err := value.expect(tokenIdentifier, "ожидался идентификатор")
 	if err != nil {
@@ -348,6 +579,13 @@ func (value *parser) parsePath() ([]string, Position, error) {
 }
 
 func (value *parser) current() token { return value.tokens[value.index] }
+func (value *parser) peekToken(distance int) token {
+	index := value.index + distance
+	if index >= len(value.tokens) {
+		return value.tokens[len(value.tokens)-1]
+	}
+	return value.tokens[index]
+}
 func (value *parser) previous() token {
 	if value.index == 0 {
 		return value.tokens[0]

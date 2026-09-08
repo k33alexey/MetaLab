@@ -15,12 +15,14 @@ type queryObject struct {
 	runtime    *Runtime
 	text       string
 	parameters map[string]bytecode.Value
+	manager    *temporaryTableManagerObject
 }
 
 type queryResultObject struct {
-	runtime *Runtime
-	columns []string
-	rows    [][]bytecode.Value
+	runtime     *Runtime
+	columns     []string
+	descriptors []queryColumn
+	rows        [][]bytecode.Value
 }
 
 type querySelectionObject struct {
@@ -50,6 +52,13 @@ func (object *queryObject) RuntimeDynamicMemory(limit uint64) (uint64, bool) {
 		if size > limit {
 			return limit, false
 		}
+	}
+	if object.manager != nil {
+		memory, ok := object.manager.RuntimeDynamicMemory(limit - min(size, limit))
+		if !ok || memory > limit-size {
+			return limit, false
+		}
+		size += memory
 	}
 	return size, true
 }
@@ -128,12 +137,25 @@ func (runtime *Runtime) getQueryProperty(value bytecode.RuntimeObject, name stri
 		if object.runtime != runtime {
 			return bytecode.Undefined(), true, fmt.Errorf("query belongs to another metadata runtime")
 		}
-		if !propertyName(name, "Текст", "Text") {
-			return bytecode.Undefined(), true, fmt.Errorf("Query has no property %s", name)
-		}
 		object.mu.RLock()
 		defer object.mu.RUnlock()
-		return bytecode.String(object.text), true, nil
+		switch {
+		case propertyName(name, "Текст", "Text"):
+			return bytecode.String(object.text), true, nil
+		case propertyName(name, "МенеджерВременныхТаблиц", "TempTablesManager"):
+			if object.manager == nil {
+				return bytecode.Undefined(), true, nil
+			}
+			value, err := bytecode.Object(object.manager)
+			return value, true, err
+		default:
+			return bytecode.Undefined(), true, fmt.Errorf("Query has no property %s", name)
+		}
+	case *temporaryTableManagerObject:
+		if object.runtime != runtime {
+			return bytecode.Undefined(), true, fmt.Errorf("temporary table manager belongs to another metadata runtime")
+		}
+		return bytecode.Undefined(), true, fmt.Errorf("TempTablesManager has no property %s", name)
 	case *queryResultObject:
 		if object.runtime != runtime {
 			return bytecode.Undefined(), true, fmt.Errorf("query result belongs to another metadata runtime")
@@ -162,6 +184,9 @@ func (runtime *Runtime) getQueryProperty(value bytecode.RuntimeObject, name stri
 func (runtime *Runtime) setQueryProperty(value bytecode.RuntimeObject, name string, assigned bytecode.Value) (bool, error) {
 	object, ok := value.(*queryObject)
 	if !ok {
+		if _, manager := value.(*temporaryTableManagerObject); manager {
+			return true, fmt.Errorf("TempTablesManager property %s is not writable", name)
+		}
 		if _, queryResult := value.(*queryResultObject); queryResult {
 			return true, fmt.Errorf("QueryResult property %s is not writable", name)
 		}
@@ -173,17 +198,38 @@ func (runtime *Runtime) setQueryProperty(value bytecode.RuntimeObject, name stri
 	if object.runtime != runtime {
 		return true, fmt.Errorf("query belongs to another metadata runtime")
 	}
-	if !propertyName(name, "Текст", "Text") {
+	switch {
+	case propertyName(name, "Текст", "Text"):
+		text, ok := assigned.AsString()
+		if !ok || !validQueryText(text, false) {
+			return true, fmt.Errorf("query text must contain 1..%d UTF-8 bytes", maxQueryTextBytes)
+		}
+		object.mu.Lock()
+		object.text = text
+		object.mu.Unlock()
+		return true, nil
+	case propertyName(name, "МенеджерВременныхТаблиц", "TempTablesManager"):
+		var manager *temporaryTableManagerObject
+		if assigned.Kind() != bytecode.UndefinedKind {
+			value, ok := assigned.AsRuntimeObject()
+			if !ok {
+				return true, fmt.Errorf("Query TempTablesManager requires a temporary table manager or Undefined")
+			}
+			manager, ok = value.(*temporaryTableManagerObject)
+			if !ok || manager.runtime != runtime {
+				return true, fmt.Errorf("Query TempTablesManager belongs to another metadata runtime or has invalid type")
+			}
+			if _, _, err := manager.snapshot(); err != nil {
+				return true, err
+			}
+		}
+		object.mu.Lock()
+		object.manager = manager
+		object.mu.Unlock()
+		return true, nil
+	default:
 		return true, fmt.Errorf("Query property %s is not writable", name)
 	}
-	text, ok := assigned.AsString()
-	if !ok || !validQueryText(text, false) {
-		return true, fmt.Errorf("query text must contain 1..%d UTF-8 bytes", maxQueryTextBytes)
-	}
-	object.mu.Lock()
-	object.text = text
-	object.mu.Unlock()
-	return true, nil
 }
 
 func (runtime *Runtime) callQueryMethod(ctx context.Context, value bytecode.RuntimeObject, name string, arguments []bytecode.Value) (bytecode.Value, bool, error) {
@@ -215,20 +261,57 @@ func (runtime *Runtime) callQueryMethod(ctx context.Context, value bytecode.Runt
 			}
 			object.mu.RLock()
 			text := object.text
+			manager := object.manager
 			parameters := make(map[string]bytecode.Value, len(object.parameters))
 			for key, parameter := range object.parameters {
 				parameters[key] = parameter
 			}
 			object.mu.RUnlock()
-			result, err := runtime.executeQuery(ctx, text, parameters)
+			results, err := runtime.executeQueryPackage(ctx, text, parameters, manager)
 			if err != nil {
 				return bytecode.Undefined(), true, err
 			}
-			wrapped, err := bytecode.Object(result)
+			wrapped, err := bytecode.Object(results[len(results)-1])
 			return wrapped, true, err
+		case propertyName(name, "ВыполнитьПакет", "ExecuteBatch"), propertyName(name, "ВыполнитьПакет", "ExecutePackage"):
+			if len(arguments) != 0 {
+				return bytecode.Undefined(), true, fmt.Errorf("%s expects no arguments", name)
+			}
+			object.mu.RLock()
+			text := object.text
+			manager := object.manager
+			parameters := make(map[string]bytecode.Value, len(object.parameters))
+			for key, parameter := range object.parameters {
+				parameters[key] = parameter
+			}
+			object.mu.RUnlock()
+			results, err := runtime.executeQueryPackage(ctx, text, parameters, manager)
+			if err != nil {
+				return bytecode.Undefined(), true, err
+			}
+			values := make([]bytecode.Value, len(results))
+			for index, result := range results {
+				values[index], err = bytecode.Object(result)
+				if err != nil {
+					return bytecode.Undefined(), true, err
+				}
+			}
+			return bytecode.Array(values...), true, nil
 		default:
 			return bytecode.Undefined(), true, fmt.Errorf("Query has no method %s", name)
 		}
+	case *temporaryTableManagerObject:
+		if object.runtime != runtime {
+			return bytecode.Undefined(), true, fmt.Errorf("temporary table manager belongs to another metadata runtime")
+		}
+		if !propertyName(name, "Закрыть", "Close") {
+			return bytecode.Undefined(), true, fmt.Errorf("TempTablesManager has no method %s", name)
+		}
+		if len(arguments) != 0 {
+			return bytecode.Undefined(), true, fmt.Errorf("%s expects no arguments", name)
+		}
+		object.close()
+		return bytecode.Undefined(), true, nil
 	case *queryResultObject:
 		if object.runtime != runtime {
 			return bytecode.Undefined(), true, fmt.Errorf("query result belongs to another metadata runtime")

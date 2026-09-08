@@ -20,9 +20,21 @@ const (
 	tokenTop
 	tokenFrom
 	tokenAs
+	tokenInto
 	tokenWhere
+	tokenGroup
+	tokenHaving
 	tokenOrder
 	tokenBy
+	tokenIndex
+	tokenDrop
+	tokenInner
+	tokenLeft
+	tokenRight
+	tokenFull
+	tokenOuter
+	tokenJoin
+	tokenOn
 	tokenAscending
 	tokenDescending
 	tokenAnd
@@ -262,9 +274,21 @@ var keywordKinds = map[string]tokenKind{
 	"ПЕРВЫЕ": tokenTop, "TOP": tokenTop,
 	"ИЗ": tokenFrom, "FROM": tokenFrom,
 	"КАК": tokenAs, "AS": tokenAs,
+	"ПОМЕСТИТЬ": tokenInto, "INTO": tokenInto,
 	"ГДЕ": tokenWhere, "WHERE": tokenWhere,
+	"СГРУППИРОВАТЬ": tokenGroup, "GROUP": tokenGroup,
+	"ИМЕЮЩИЕ": tokenHaving, "HAVING": tokenHaving,
 	"УПОРЯДОЧИТЬ": tokenOrder, "ORDER": tokenOrder,
 	"ПО": tokenBy, "BY": tokenBy,
+	"ИНДЕКСИРОВАТЬ": tokenIndex, "INDEX": tokenIndex,
+	"УНИЧТОЖИТЬ": tokenDrop, "DROP": tokenDrop,
+	"ВНУТРЕННЕЕ": tokenInner, "INNER": tokenInner,
+	"ЛЕВОЕ": tokenLeft, "LEFT": tokenLeft,
+	"ПРАВОЕ": tokenRight, "RIGHT": tokenRight,
+	"ПОЛНОЕ": tokenFull, "FULL": tokenFull,
+	"ВНЕШНЕЕ": tokenOuter, "OUTER": tokenOuter,
+	"СОЕДИНЕНИЕ": tokenJoin, "JOIN": tokenJoin,
+	"ON":   tokenOn,
 	"ВОЗР": tokenAscending, "ASC": tokenAscending,
 	"УБЫВ": tokenDescending, "DESC": tokenDescending,
 	"И": tokenAnd, "AND": tokenAnd,

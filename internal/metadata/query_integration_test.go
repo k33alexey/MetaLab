@@ -172,6 +172,96 @@ func TestBasicQueryLanguageIntegration(t *testing.T) {
 		}
 	}
 
+	joined, err := runtime.executeQuery(ctx, `ВЫБРАТЬ Л.Код, П.Наименование
+ИЗ Справочник.Товары КАК Л
+ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Товары КАК П ПО Л.Код = П.Код
+ГДЕ НЕ Л.ПометкаУдаления
+УПОРЯДОЧИТЬ ПО Л.Код`, nil)
+	if err != nil || len(joined.rows) != 2 {
+		t.Fatalf("joined query rows=%d error=%v", len(joined.rows), err)
+	}
+	aggregated, err := runtime.executeQuery(ctx, `ВЫБРАТЬ ПометкаУдаления, КОЛИЧЕСТВО(*) КАК Количество, СУММА(Цена) КАК Сумма
+ИЗ Справочник.Товары
+СГРУППИРОВАТЬ ПО ПометкаУдаления
+ИМЕЮЩИЕ КОЛИЧЕСТВО(*) >= 1
+УПОРЯДОЧИТЬ ПО Количество УБЫВ`, nil)
+	if err != nil || len(aggregated.rows) != 2 {
+		t.Fatalf("aggregate query rows=%d error=%v", len(aggregated.rows), err)
+	}
+	count, _ := aggregated.rows[0][1].NumberText()
+	sum, _ := aggregated.rows[0][2].NumberText()
+	if count != "2" || sum != "12" {
+		t.Fatalf("aggregate count=%s sum=%s", count, sum)
+	}
+
+	managerValue, err := runtime.constructTemporaryTableManager(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	managerObject, _ := managerValue.AsRuntimeObject()
+	manager := managerObject.(*temporaryTableManagerObject)
+	results, err := runtime.executeQueryPackage(ctx, `ВЫБРАТЬ Ссылка, Код, Цена ПОМЕСТИТЬ Выбранные
+ИЗ Справочник.Товары ГДЕ НЕ ПометкаУдаления
+ИНДЕКСИРОВАТЬ ПО Код;
+	ВЫБРАТЬ Ссылка, Код, Цена ИЗ Выбранные УПОРЯДОЧИТЬ ПО Код`, nil, manager)
+	if err != nil || len(results) != 2 || len(results[1].rows) != 2 {
+		t.Fatalf("temporary package results=%d rows=%d error=%v", len(results), len(results[1].rows), err)
+	}
+	temporaryReference, referenceOK := results[1].rows[0][0].AsRuntimeObject()
+	if _, valid := temporaryReference.(*catalogReferenceObject); !referenceOK || !valid {
+		t.Fatalf("temporary reference=%T valid=%v", temporaryReference, referenceOK)
+	}
+	temporaryAggregate, err := runtime.executeQueryPackage(ctx, `ВЫБРАТЬ КОЛИЧЕСТВО(*) КАК Количество, СУММА(Цена) КАК Сумма ИЗ Выбранные`, nil, manager)
+	if err != nil || len(temporaryAggregate) != 1 {
+		t.Fatalf("temporary aggregate results=%d error=%v", len(temporaryAggregate), err)
+	}
+	count, _ = temporaryAggregate[0].rows[0][0].NumberText()
+	sum, _ = temporaryAggregate[0].rows[0][1].NumberText()
+	if count != "2" || sum != "12" {
+		t.Fatalf("temporary aggregate count=%s sum=%s", count, sum)
+	}
+	if _, err := runtime.executeQueryPackage(ctx, `УНИЧТОЖИТЬ Выбранные`, nil, manager); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.executeQueryPackage(ctx, `ВЫБРАТЬ Код ИЗ Выбранные`, nil, manager); err == nil {
+		t.Fatal("destroyed temporary table remained available")
+	}
+	stackProgram, diagnostics := compiler.CompileSource("temp_manager.bsl", `&НаСервере
+Функция ПередатьМенеджер(Менеджер)
+	Возврат Менеджер;
+КонецФункции
+
+&НаСервере
+Функция ПроверитьМенеджер()
+	Менеджер = Новый МенеджерВременныхТаблиц;
+	МенеджерИзФункции = ПередатьМенеджер(Менеджер);
+	ЗапросЗаполнения = Новый Запрос("ВЫБРАТЬ Код, Цена ПОМЕСТИТЬ ПоСтеку ИЗ Справочник.Товары ГДЕ НЕ ПометкаУдаления ИНДЕКСИРОВАТЬ ПО Код; ВЫБРАТЬ Код ИЗ ПоСтеку");
+	ЗапросЗаполнения.МенеджерВременныхТаблиц = МенеджерИзФункции;
+	РезультатыПакета = ЗапросЗаполнения.ВыполнитьПакет();
+	Если РезультатыПакета.Количество() <> 2 Тогда
+		Возврат -1;
+	КонецЕсли;
+	ЗапросЧтения = Новый Запрос("ВЫБРАТЬ КОЛИЧЕСТВО(*) КАК Количество ИЗ ПоСтеку");
+	ЗапросЧтения.МенеджерВременныхТаблиц = Менеджер;
+	РезультатЗапроса = ЗапросЧтения.Выполнить();
+	Выборка = РезультатЗапроса.Выбрать();
+	Выборка.Следующий();
+	Результат = Выборка.Количество;
+	Менеджер.Закрыть();
+	Возврат Результат;
+КонецФункции`)
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	stackMachine, err := vm.New(stackProgram)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stackResult, err := stackMachine.NewContextWithMetadata(runtime).CallContext(ctx, "ПроверитьМенеджер")
+	if err != nil || stackResult.String() != "2" {
+		t.Fatalf("temporary manager stack result=%v error=%v", stackResult, err)
+	}
+
 	if _, err := runtime.executeQuery(ctx, `ВЫБРАТЬ Код ИЗ Справочник.Товары ГДЕ Код = &Код`, map[string]bytecode.Value{}); err == nil || !strings.Contains(err.Error(), "не установлен параметр") {
 		t.Fatalf("missing parameter error=%v", err)
 	}
@@ -212,6 +302,38 @@ func TestBasicQueryLanguageIntegration(t *testing.T) {
 	}
 	if _, found, err := repository.FindByCode(ctx, "Товары", "TX"); err != nil || found {
 		t.Fatalf("rolled-back query record found=%v error=%v", found, err)
+	}
+
+	rollbackManagerValue, err := runtime.constructTemporaryTableManager(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rollbackManagerObject, _ := rollbackManagerValue.AsRuntimeObject()
+	rollbackManager := rollbackManagerObject.(*temporaryTableManagerObject)
+	temporaryExecution, finishTemporary, err := runtime.BeginExecution(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.BeginTransaction(temporaryExecution); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.executeQueryPackage(temporaryExecution, `ВЫБРАТЬ Код ПОМЕСТИТЬ Откатываемая ИЗ Справочник.Товары`, nil, rollbackManager); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.executeQueryPackage(temporaryExecution, `ВЫБРАТЬ Код ИЗ Откатываемая`, nil, rollbackManager); err != nil {
+		t.Fatalf("temporary table is not visible inside transaction: %v", err)
+	}
+	if err := runtime.RollbackTransaction(temporaryExecution); err != nil {
+		t.Fatal(err)
+	}
+	if err := finishTemporary(nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.executeQueryPackage(ctx, `ВЫБРАТЬ Код ИЗ Откатываемая`, nil, rollbackManager); err == nil {
+		t.Fatal("transaction rollback did not restore temporary table manager")
+	}
+	if acquired := pool.Stat().AcquiredConns(); acquired != 0 {
+		t.Fatalf("query execution retained %d PostgreSQL connections", acquired)
 	}
 
 	if _, err := runtime.executeQuery(ctx, `ВЫБРАТЬ Неизвестное ИЗ Справочник.Товары`, nil); err == nil {

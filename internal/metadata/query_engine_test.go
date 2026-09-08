@@ -27,14 +27,9 @@ func TestBasicQueryCompilationUsesLogicalMetadataAndBoundValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source, err := runtime.resolveQuerySource(parsed.Source)
+	compiler, err := runtime.newQueryCompiler(parsed, map[string]bytecode.Value{"код": bytecode.String(`K1' OR TRUE`), "цена": bytecode.Number(10)}, nil)
 	if err != nil {
 		t.Fatal(err)
-	}
-	compiler := queryCompiler{
-		runtime: runtime, source: source,
-		parameters: map[string]bytecode.Value{"код": bytecode.String(`K1' OR TRUE`), "цена": bytecode.Number(10)},
-		aliases:    map[string]int{},
 	}
 	statement, err := compiler.compile(parsed)
 	if err != nil {
@@ -75,7 +70,7 @@ func TestBasicQuerySourcesExposeSupportedMetadataFields(t *testing.T) {
 		{[]string{"РегистрСведений", "Цены"}, []string{"ИдентификаторЗаписи", "Период", "Товар"}},
 		{[]string{"РегистрНакопления", "Остатки"}, []string{"ИдентификаторЗаписи", "Период", "Регистратор", "ВидДвижения", "Количество"}},
 	} {
-		source, err := runtime.resolveQuerySource(querylang.Source{Path: test.path, Position: querylang.Position{Line: 1, Column: 1}})
+		source, err := runtime.resolveQuerySource(querylang.Source{Path: test.path, Position: querylang.Position{Line: 1, Column: 1}}, "s0", nil)
 		if err != nil {
 			t.Fatalf("source %v: %v", test.path, err)
 		}
@@ -106,5 +101,139 @@ func TestQueryResultMemoryLimitIncludesRowOverhead(t *testing.T) {
 	result := &queryResultObject{rows: [][]bytecode.Value{{bytecode.Undefined()}}}
 	if memory, ok := result.RuntimeDynamicMemory(256); ok || memory != 256 {
 		t.Fatalf("RuntimeDynamicMemory() = %d, %v; want 256, false", memory, ok)
+	}
+}
+
+func TestExtendedQueryCompilationJoinsGroupingAndAggregates(t *testing.T) {
+	catalogID := uuid.MustNew()
+	priceID := uuid.MustNew()
+	catalog := &Catalog{
+		Catalogs: []CatalogDefinition{{
+			ID: catalogID, Name: "Товары", Code: CatalogCode{Type: StringType, Length: 20}, DescriptionLength: 100,
+			Attributes: []Attribute{{ID: priceID, Name: "Цена", Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}},
+		}},
+		catalogByName: map[string]int{"товары": 0}, catalogByID: map[uuid.UUID]int{catalogID: 0},
+	}
+	runtime := &Runtime{catalog: catalog}
+	parsed, err := querylang.Parse(`ВЫБРАТЬ Л.Код, СУММА(П.Цена) КАК Сумма, КОЛИЧЕСТВО(РАЗЛИЧНЫЕ П.Ссылка) КАК Количество
+ИЗ Справочник.Товары КАК Л
+ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Товары КАК П ПО Л.Код = П.Код
+СГРУППИРОВАТЬ ПО Л.Код
+ИМЕЮЩИЕ СУММА(П.Цена) > 1
+УПОРЯДОЧИТЬ ПО Сумма УБЫВ`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiler, err := runtime.newQueryCompiler(parsed, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statement, err := compiler.compile(parsed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"LEFT JOIN", "SUM(", "COUNT(DISTINCT", "GROUP BY", "HAVING", "ORDER BY"} {
+		if !strings.Contains(statement, expected) {
+			t.Fatalf("compiled SQL does not contain %q: %s", expected, statement)
+		}
+	}
+	if len(compiler.outputs) != 3 || !compiler.outputs[1].aggregated || !compiler.outputs[2].aggregated {
+		t.Fatalf("aggregate outputs=%+v", compiler.outputs)
+	}
+}
+
+func TestExtendedQueryCompilationRejectsAmbiguityAndInvalidGrouping(t *testing.T) {
+	catalogID := uuid.MustNew()
+	catalog := &Catalog{
+		Catalogs:      []CatalogDefinition{{ID: catalogID, Name: "Товары", Code: CatalogCode{Type: StringType, Length: 20}, DescriptionLength: 100}},
+		catalogByName: map[string]int{"товары": 0}, catalogByID: map[uuid.UUID]int{catalogID: 0},
+	}
+	runtime := &Runtime{catalog: catalog}
+	for _, source := range []string{
+		`ВЫБРАТЬ Код ИЗ Справочник.Товары КАК Л ВНУТРЕННЕЕ СОЕДИНЕНИЕ Справочник.Товары КАК П ПО Л.Код = П.Код`,
+		`ВЫБРАТЬ Код, КОЛИЧЕСТВО(*) ИЗ Справочник.Товары СГРУППИРОВАТЬ ПО Наименование`,
+		`ВЫБРАТЬ Код ИЗ Справочник.Товары ГДЕ КОЛИЧЕСТВО(*) > 0`,
+	} {
+		parsed, err := querylang.Parse(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		compiler, err := runtime.newQueryCompiler(parsed, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := compiler.compile(parsed); err == nil {
+			t.Fatalf("invalid query compiled: %s", source)
+		}
+	}
+}
+
+func TestTemporaryTableManagerReferenceAndClose(t *testing.T) {
+	runtime := &Runtime{}
+	managerValue, err := runtime.constructTemporaryTableManager(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	managerObject, _ := managerValue.AsRuntimeObject()
+	manager := managerObject.(*temporaryTableManagerObject)
+	queryValue, err := runtime.constructQuery(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query, _ := queryValue.AsRuntimeObject()
+	if handled, err := runtime.setQueryProperty(query, "МенеджерВременныхТаблиц", managerValue); !handled || err != nil {
+		t.Fatalf("assign manager handled=%v error=%v", handled, err)
+	}
+	read, handled, err := runtime.getQueryProperty(query, "МенеджерВременныхТаблиц")
+	readObject, _ := read.AsRuntimeObject()
+	if !handled || err != nil || readObject != manager {
+		t.Fatalf("manager reference handled=%v object=%v error=%v", handled, readObject, err)
+	}
+	if _, err := manager.apply(0, map[string]queryTemporaryTable{"x": {name: "X", columns: []queryColumn{{name: "Код"}}, encodedRows: []byte(`[]`)}}); err != nil {
+		t.Fatal(err)
+	}
+	if memory, ok := manager.RuntimeDynamicMemory(4096); !ok || memory <= 256 {
+		t.Fatalf("manager memory=%d ok=%v", memory, ok)
+	}
+	if _, handled, err := runtime.callQueryMethod(nil, manager, "Закрыть", nil); !handled || err != nil {
+		t.Fatalf("close handled=%v error=%v", handled, err)
+	}
+	if memory, ok := manager.RuntimeDynamicMemory(256); !ok || memory != 256 {
+		t.Fatalf("closed manager memory=%d ok=%v", memory, ok)
+	}
+	if _, _, err := manager.snapshot(); err == nil {
+		t.Fatal("closed manager accepted an operation")
+	}
+}
+
+func BenchmarkExtendedQueryCompilation(b *testing.B) {
+	catalogID := uuid.MustNew()
+	priceID := uuid.MustNew()
+	catalog := &Catalog{
+		Catalogs: []CatalogDefinition{{
+			ID: catalogID, Name: "Товары", Code: CatalogCode{Type: StringType, Length: 20}, DescriptionLength: 100,
+			Attributes: []Attribute{{ID: priceID, Name: "Цена", Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}},
+		}},
+		catalogByName: map[string]int{"товары": 0}, catalogByID: map[uuid.UUID]int{catalogID: 0},
+	}
+	runtime := &Runtime{catalog: catalog}
+	parsed, err := querylang.Parse(`ВЫБРАТЬ Л.Код, СУММА(П.Цена) КАК Сумма
+ИЗ Справочник.Товары КАК Л
+ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Товары КАК П ПО Л.Код = П.Код
+СГРУППИРОВАТЬ ПО Л.Код
+ИМЕЮЩИЕ СУММА(П.Цена) > &Минимум
+УПОРЯДОЧИТЬ ПО Сумма УБЫВ`)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	for range b.N {
+		compiler, err := runtime.newQueryCompiler(parsed, map[string]bytecode.Value{"минимум": bytecode.Number(1)}, nil)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if _, err := compiler.compile(parsed); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
