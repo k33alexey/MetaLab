@@ -214,9 +214,11 @@ func TestSearchProjectFindsBSLFormsAndKeepsLineNumbers(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
 	modulePath, _ := project.ModulePath(uuid.MustNew())
-	formPath, _ := project.FormPath(uuid.MustNew())
+	formID := uuid.MustNew()
+	formPath, _ := project.FormPath(formID)
 	writeBSLTestSource(t, root, modulePath, "Процедура Запустить()\n\n\tКонтрагент = Неопределено;\nКонецПроцедуры\n")
-	writeBSLTestSource(t, root, formPath, "format: 1\ntitle: Карточка контрагента\n")
+	formSource := "format: 1\nid: " + formID.String() + "\nname: Форма\ntitle: {ru: Карточка контрагента}\nkind: object\n"
+	writeBSLTestSource(t, root, formPath, formSource)
 	workspace, _ := Open(root)
 	result, err := workspace.SearchProject("контрагент")
 	if err != nil {
@@ -236,7 +238,7 @@ func TestSearchProjectFindsBSLFormsAndKeepsLineNumbers(t *testing.T) {
 	}
 
 	form, _ := workspace.ReadSource(formPath)
-	if _, err := workspace.SaveSource(formPath, "format: 1\ntitle: Карточка поставщика\n", form.Revision); err != nil {
+	if _, err := workspace.SaveSource(formPath, strings.Replace(formSource, "Карточка контрагента", "Карточка поставщика", 1), form.Revision); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := workspace.SearchProject("поставщика")

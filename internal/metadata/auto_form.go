@@ -14,6 +14,7 @@ const (
 	ObjectForm FormKind = "object"
 	ListForm   FormKind = "list"
 	ChoiceForm FormKind = "choice"
+	CommonForm FormKind = "common"
 )
 
 // FormDescriptor is the first server-side form model consumed by ML App.

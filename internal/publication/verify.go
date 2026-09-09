@@ -130,6 +130,21 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) error {
 		return fmt.Errorf("publication project manifest is invalid")
 	}
 	for index, entry := range manifest.Files {
+		if strings.HasPrefix(entry.Path, "forms/") {
+			content, err := readMetadataEntry(archive.File[index+1], entry.Size)
+			if err != nil {
+				return err
+			}
+			form, err := metadata.DecodeManagedForm(entry.Path, bytes.NewReader(content), projectManifest)
+			if err != nil {
+				return err
+			}
+			filenameID, err := uuid.Parse(strings.TrimSuffix(path.Base(entry.Path), ".yaml"))
+			if err != nil || form.ID != filenameID {
+				return fmt.Errorf("form UUID does not match %q", entry.Path)
+			}
+			continue
+		}
 		kind := metadata.Kind("")
 		switch {
 		case strings.HasPrefix(entry.Path, "metadata/constants/"):

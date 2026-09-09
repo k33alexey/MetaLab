@@ -17,6 +17,7 @@ import (
 	"sync"
 
 	"github.com/k33alexey/MetaLab/internal/gitclient"
+	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/publication"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -243,6 +244,45 @@ func NewHandler(workspace *Workspace) http.Handler {
 			return
 		}
 		writeStudioJSON(response, file)
+	})
+	routes.HandleFunc("GET /api/form", func(response http.ResponseWriter, request *http.Request) {
+		form, err := workspace.ReadManagedForm(request.URL.Query().Get("path"))
+		if err != nil {
+			writeSourceError(response, err)
+			return
+		}
+		writeStudioJSON(response, form)
+	})
+	routes.HandleFunc("PUT /api/form", func(response http.ResponseWriter, request *http.Request) {
+		if !validateStudioMutation(response, request) {
+			return
+		}
+		if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
+			http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+			return
+		}
+		var input struct {
+			Path             string               `json:"path"`
+			ExpectedRevision string               `json:"expectedRevision"`
+			Form             metadata.ManagedForm `json:"form"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 2*MaxEditableFileBytes+(64<<10)))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil {
+			http.Error(response, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			http.Error(response, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		form, err := workspace.SaveManagedForm(input.Path, input.Form, input.ExpectedRevision)
+		if err != nil {
+			writeSourceError(response, err)
+			return
+		}
+		writeStudioJSON(response, form)
 	})
 	routes.HandleFunc("POST /api/bsl/analyze", func(response http.ResponseWriter, request *http.Request) {
 		if !validateStudioMutation(response, request) {

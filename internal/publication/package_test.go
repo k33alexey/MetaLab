@@ -17,6 +17,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -24,11 +25,12 @@ import (
 func TestBuildFileIsDeterministicAndVerifiable(t *testing.T) {
 	root := publicationProject(t)
 	modulePath, _ := project.ModulePath(uuid.MustNew())
-	formPath, _ := project.FormPath(uuid.MustNew())
+	formID := uuid.MustNew()
+	formPath, _ := project.FormPath(formID)
 	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(modulePath)), []byte("Процедура Тест()\nКонецПроцедуры\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(formPath)), []byte("format: 1\nname: Main\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(formPath)), managedFormYAML(t, formID, "Main"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	state := SourceState{GitCommit: "0123456789abcdef0123456789abcdef01234567", Dirty: false}
@@ -104,8 +106,10 @@ func TestBuildChangesDigestAndAtomicallyReplacesDestination(t *testing.T) {
 
 func TestBuildRejectsInvalidSourcesWithoutPublishing(t *testing.T) {
 	root := publicationProject(t)
-	formPath, _ := project.FormPath(uuid.MustNew())
-	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(formPath)), []byte("broken: [\n"), 0o644); err != nil {
+	formID := uuid.MustNew()
+	formPath, _ := project.FormPath(formID)
+	invalidForm := "format: 1\nid: " + formID.String() + "\nname: Invalid\ntitle: {ru: Invalid}\nkind: unsupported\n"
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(formPath)), []byte(invalidForm), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	destination := filepath.Join(t.TempDir(), "invalid.mlpkg")
@@ -206,7 +210,7 @@ func TestPackageCarriesDocumentSchemaAndSources(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(modulePath)), []byte("Процедура ПриЗаписи(Отказ)\nКонецПроцедуры\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(formPath)), []byte("format: 1\nname: DocumentForm\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(formPath)), managedFormYAML(t, formID, "DocumentForm"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	relative, _ := project.MetadataPath("documents", documentID)
@@ -229,6 +233,16 @@ func TestPackageCarriesDocumentSchemaAndSources(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(verified, built) {
 		t.Fatalf("verified=%+v error=%v", verified, err)
 	}
+}
+
+func managedFormYAML(t *testing.T, id uuid.UUID, name string) []byte {
+	t.Helper()
+	var content bytes.Buffer
+	form := metadata.ManagedForm{Format: metadata.CurrentFormat, ID: id, Name: name, Title: metadata.LocalizedText{"ru": name}, Kind: metadata.ObjectForm}
+	if err := metadata.Encode(&content, form); err != nil {
+		t.Fatal(err)
+	}
+	return content.Bytes()
 }
 
 func TestPackageCarriesInformationRegisterSchema(t *testing.T) {

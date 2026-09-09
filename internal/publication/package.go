@@ -188,6 +188,24 @@ func inspect(ctx context.Context, root string, state SourceState) (Manifest, []s
 		if err != nil {
 			return Manifest{}, nil, err
 		}
+		if strings.HasPrefix(relative, "forms/") {
+			file, openErr := os.Open(absolute)
+			if openErr != nil {
+				return Manifest{}, nil, openErr
+			}
+			form, decodeErr := metadata.DecodeManagedForm(relative, file, projectManifest)
+			closeErr := file.Close()
+			if decodeErr != nil {
+				return Manifest{}, nil, decodeErr
+			}
+			filenameID, parseErr := uuid.Parse(strings.TrimSuffix(filepath.Base(relative), ".yaml"))
+			if parseErr != nil || form.ID != filenameID {
+				return Manifest{}, nil, fmt.Errorf("form UUID does not match %q", relative)
+			}
+			if closeErr != nil {
+				return Manifest{}, nil, closeErr
+			}
+		}
 		total += entry.Size
 		if total > maxPackageInputBytes {
 			return Manifest{}, nil, fmt.Errorf("ML Project sources exceed %d bytes", maxPackageInputBytes)

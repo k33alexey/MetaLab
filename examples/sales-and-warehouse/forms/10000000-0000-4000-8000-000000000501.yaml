@@ -1,0 +1,20 @@
+format: 1
+id: 10000000-0000-4000-8000-000000000501
+name: ДемоФормаТовара
+title: {ru: Демо формы товара, uk: Демо форми товару, en: Product form demo}
+kind: object
+items:
+  - id: 10000000-0000-4000-8000-000000001501
+    name: ОсновнаяГруппа
+    kind: group
+    title: {ru: Основное, uk: Основне, en: General}
+    orientation: vertical
+    children:
+      - id: 10000000-0000-4000-8000-000000002501
+        name: Наименование
+        kind: field
+        title: {ru: Наименование, uk: Найменування, en: Description}
+      - id: 10000000-0000-4000-8000-000000002502
+        name: Артикул
+        kind: field
+        title: {ru: Артикул, uk: Артикул, en: SKU}

@@ -344,6 +344,25 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 		return canonical.Bytes(), nil
 	}
 	parts := strings.Split(relative, "/")
+	if len(parts) == 2 && parts[0] == "forms" {
+		manifest, err := project.ValidateLayout(workspace.root)
+		if err != nil {
+			return nil, err
+		}
+		value, err := metadata.DecodeManagedForm(relative, bytes.NewReader(content), manifest)
+		if err != nil {
+			return nil, err
+		}
+		filenameID, _ := uuid.Parse(strings.TrimSuffix(parts[1], ".yaml"))
+		if value.ID != filenameID {
+			return nil, fmt.Errorf("form UUID %s does not match filename UUID %s", value.ID, filenameID)
+		}
+		var canonical bytes.Buffer
+		if err := metadata.Encode(&canonical, value); err != nil {
+			return nil, err
+		}
+		return canonical.Bytes(), nil
+	}
 	if len(parts) == 3 && parts[0] == "metadata" {
 		manifest, err := project.ValidateLayout(workspace.root)
 		if err != nil {
