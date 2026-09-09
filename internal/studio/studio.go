@@ -28,8 +28,9 @@ var assets embed.FS
 
 // Workspace is one validated project opened by a Studio process.
 type Workspace struct {
-	root string
-	mu   sync.Mutex
+	root     string
+	mu       sync.Mutex
+	bslIndex *BSLSymbolIndex
 }
 
 // Snapshot is the read-only project model rendered by the Studio shell.
@@ -108,6 +109,7 @@ func Open(root string) (*Workspace, error) {
 func (workspace *Workspace) Snapshot() (Snapshot, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
+	workspace.bslIndex = nil
 	manifest, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return Snapshot{}, err
@@ -274,6 +276,37 @@ func NewHandler(workspace *Workspace) http.Handler {
 		}
 		writeStudioJSON(response, analysis)
 	})
+	routes.HandleFunc("POST /api/bsl/complete", func(response http.ResponseWriter, request *http.Request) {
+		if !validateStudioMutation(response, request) {
+			return
+		}
+		if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
+			http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+			return
+		}
+		var input struct {
+			Path     string      `json:"path"`
+			Content  string      `json:"content"`
+			Position BSLPosition `json:"position"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 2*MaxEditableFileBytes+(64<<10)))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil {
+			http.Error(response, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			http.Error(response, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		completion, err := workspace.CompleteBSL(input.Path, input.Content, input.Position)
+		if err != nil {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeStudioJSON(response, completion)
+	})
 	routes.HandleFunc("GET /api/git/status", func(response http.ResponseWriter, request *http.Request) {
 		client, err := gitclient.Open(request.Context(), workspace.root)
 		if err != nil {
@@ -344,6 +377,9 @@ func NewHandler(workspace *Workspace) http.Handler {
 				var result gitclient.Result
 				result, err = operation(request.Context(), client)
 				if err == nil {
+					if path == "/api/git/pull" {
+						workspace.invalidateBSLIndex()
+					}
 					writeStudioJSON(response, result)
 					return
 				}
@@ -364,6 +400,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 			var result gitclient.Result
 			result, err = client.SwitchBranch(request.Context(), input.Name, input.Create)
 			if err == nil {
+				workspace.invalidateBSLIndex()
 				writeStudioJSON(response, result)
 				return
 			}

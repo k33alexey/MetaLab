@@ -64,3 +64,24 @@
 .bsl-empty { padding:5px 6px; color:#7f838c; font-size:11px }
 #bsl-summary.error { color:#ff7b86 }
 #bsl-summary.warning { color:#e7b75f }
+#bsl-completion,#bsl-signature {
+  position:absolute;
+  z-index:20;
+  max-width:min(620px,calc(100% - 16px));
+  border:1px solid #4a4d54;
+  border-radius:6px;
+  background:#2b2d30;
+  color:#dfe1e5;
+  box-shadow:0 8px 24px #0008;
+}
+#bsl-completion { width:460px; max-height:280px; overflow:auto; padding:3px }
+#bsl-completion[hidden],#bsl-signature[hidden] { display:none }
+.completion-item { display:grid; grid-template-columns:22px minmax(100px,1fr) minmax(0,1fr); gap:6px; align-items:center; width:100%; padding:5px 7px; border-radius:4px; background:transparent; text-align:left; font:12px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace }
+.completion-item[aria-selected="true"] { background:#315477 }
+.completion-kind { color:#cf8e6d; font-weight:700; text-align:center }
+.completion-kind.kind-variable,.completion-kind.kind-parameter { color:#c77dbb }
+.completion-kind.kind-module,.completion-kind.kind-metadata,.completion-kind.kind-metadata-object { color:#56a8f5 }
+.completion-label,.completion-detail { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.completion-detail { color:#8c9098; text-align:right }
+#bsl-signature { display:grid; gap:3px; width:max-content; padding:8px 10px; font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace }
+#bsl-signature span { color:#e7b75f }

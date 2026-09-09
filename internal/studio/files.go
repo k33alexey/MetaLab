@@ -108,6 +108,7 @@ func (workspace *Workspace) SaveSource(relative, content, expectedRevision strin
 	if err := replaceStudioFile(temporaryPath, target); err != nil {
 		return SourceFile{}, fmt.Errorf("replace source: %w", err)
 	}
+	workspace.bslIndex = nil
 	return sourceFile(relative, language, bytesToWrite), nil
 }
 
