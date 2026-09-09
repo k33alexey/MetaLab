@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -108,8 +109,109 @@ func (workspace *Workspace) SaveSource(relative, content, expectedRevision strin
 	if err := replaceStudioFile(temporaryPath, target); err != nil {
 		return SourceFile{}, fmt.Errorf("replace source: %w", err)
 	}
-	workspace.bslIndex = nil
+	workspace.invalidateStudioIndexesLocked()
 	return sourceFile(relative, language, bytesToWrite), nil
+}
+
+type studioSourceReplacement struct {
+	relative string
+	target   string
+	next     string
+	rollback string
+}
+
+// replaceSourcesLocked applies prevalidated refactoring edits and rolls back all
+// replaced files when one replacement or last-moment revision check fails.
+func (workspace *Workspace) replaceSourcesLocked(changes, originals map[string][]byte) error {
+	paths := make([]string, 0, len(changes))
+	for relative := range changes {
+		if _, ok := originals[relative]; !ok {
+			return fmt.Errorf("missing refactoring source snapshot for %s", relative)
+		}
+		paths = append(paths, relative)
+	}
+	sort.Strings(paths)
+	prepared := make([]studioSourceReplacement, 0, len(paths))
+	defer func() {
+		for _, item := range prepared {
+			_ = os.Remove(item.next)
+			_ = os.Remove(item.rollback)
+		}
+	}()
+	for _, relative := range paths {
+		target, err := workspace.resolveExistingSource(relative)
+		if err != nil {
+			return err
+		}
+		next, err := prepareStudioSource(filepath.Dir(target), changes[relative])
+		if err != nil {
+			return err
+		}
+		rollback, err := prepareStudioSource(filepath.Dir(target), originals[relative])
+		if err != nil {
+			_ = os.Remove(next)
+			return err
+		}
+		prepared = append(prepared, studioSourceReplacement{relative: relative, target: target, next: next, rollback: rollback})
+	}
+
+	applied := -1
+	for index, item := range prepared {
+		latest, err := workspace.readSource(item.relative)
+		if err != nil || !bytes.Equal([]byte(latest.Content), originals[item.relative]) {
+			if err == nil {
+				err = ErrSourceChanged
+			}
+			return rollbackStudioSources(prepared, applied, err)
+		}
+		if err := replaceStudioFile(item.next, item.target); err != nil {
+			return rollbackStudioSources(prepared, index, fmt.Errorf("replace refactored source %s: %w", item.relative, err))
+		}
+		applied = index
+	}
+	return nil
+}
+
+func prepareStudioSource(directory string, content []byte) (string, error) {
+	temporary, err := os.CreateTemp(directory, ".ml-refactor-*")
+	if err != nil {
+		return "", fmt.Errorf("create temporary refactoring source: %w", err)
+	}
+	path := temporary.Name()
+	failed := true
+	defer func() {
+		_ = temporary.Close()
+		if failed {
+			_ = os.Remove(path)
+		}
+	}()
+	if err := temporary.Chmod(0o644); err != nil {
+		return "", fmt.Errorf("set temporary refactoring source permissions: %w", err)
+	}
+	if _, err := temporary.Write(content); err != nil {
+		return "", fmt.Errorf("write temporary refactoring source: %w", err)
+	}
+	if err := temporary.Sync(); err != nil {
+		return "", fmt.Errorf("sync temporary refactoring source: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return "", fmt.Errorf("close temporary refactoring source: %w", err)
+	}
+	failed = false
+	return path, nil
+}
+
+func rollbackStudioSources(items []studioSourceReplacement, through int, cause error) error {
+	var rollbackError error
+	for index := min(through, len(items)-1); index >= 0; index-- {
+		if err := replaceStudioFile(items[index].rollback, items[index].target); err != nil && rollbackError == nil {
+			rollbackError = err
+		}
+	}
+	if rollbackError != nil {
+		return fmt.Errorf("%w; rollback failed: %v", cause, rollbackError)
+	}
+	return cause
 }
 
 func (workspace *Workspace) readSource(relative string) (SourceFile, error) {

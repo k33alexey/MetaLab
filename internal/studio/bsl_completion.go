@@ -107,8 +107,14 @@ type bslMovementSet struct {
 
 func (workspace *Workspace) invalidateBSLIndex() {
 	workspace.mu.Lock()
-	workspace.bslIndex = nil
+	workspace.invalidateStudioIndexesLocked()
 	workspace.mu.Unlock()
+}
+
+func (workspace *Workspace) invalidateStudioIndexesLocked() {
+	workspace.bslIndex = nil
+	workspace.bslNavigation = nil
+	workspace.projectSearch = nil
 }
 
 // CompleteBSL returns bounded suggestions for an unsaved module without executing project code.

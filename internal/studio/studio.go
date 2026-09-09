@@ -28,9 +28,11 @@ var assets embed.FS
 
 // Workspace is one validated project opened by a Studio process.
 type Workspace struct {
-	root     string
-	mu       sync.Mutex
-	bslIndex *BSLSymbolIndex
+	root          string
+	mu            sync.Mutex
+	bslIndex      *BSLSymbolIndex
+	bslNavigation *bslNavigationIndex
+	projectSearch *projectSearchIndex
 }
 
 // Snapshot is the read-only project model rendered by the Studio shell.
@@ -109,7 +111,7 @@ func Open(root string) (*Workspace, error) {
 func (workspace *Workspace) Snapshot() (Snapshot, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
-	workspace.bslIndex = nil
+	workspace.invalidateStudioIndexesLocked()
 	manifest, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return Snapshot{}, err
@@ -307,6 +309,63 @@ func NewHandler(workspace *Workspace) http.Handler {
 		}
 		writeStudioJSON(response, completion)
 	})
+	routes.HandleFunc("POST /api/bsl/navigate", func(response http.ResponseWriter, request *http.Request) {
+		if !validateStudioMutation(response, request) {
+			return
+		}
+		if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
+			http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+			return
+		}
+		var input struct {
+			Path     string      `json:"path"`
+			Content  string      `json:"content"`
+			Position BSLPosition `json:"position"`
+			Mode     string      `json:"mode"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 2*MaxEditableFileBytes+(64<<10)))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil {
+			http.Error(response, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			http.Error(response, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		result, err := workspace.NavigateBSL(input.Path, input.Content, input.Position, input.Mode)
+		if err != nil {
+			writeBSLNavigationError(response, err)
+			return
+		}
+		writeStudioJSON(response, result)
+	})
+	routes.HandleFunc("POST /api/bsl/rename", func(response http.ResponseWriter, request *http.Request) {
+		var input struct {
+			Path             string      `json:"path"`
+			Position         BSLPosition `json:"position"`
+			NewName          string      `json:"newName"`
+			ExpectedRevision string      `json:"expectedRevision"`
+		}
+		if !decodeStudioMutation(response, request, &input) {
+			return
+		}
+		result, err := workspace.RenameBSL(input.Path, input.Position, input.NewName, input.ExpectedRevision)
+		if err != nil {
+			writeBSLNavigationError(response, err)
+			return
+		}
+		writeStudioJSON(response, result)
+	})
+	routes.HandleFunc("GET /api/search", func(response http.ResponseWriter, request *http.Request) {
+		result, err := workspace.SearchProject(request.URL.Query().Get("query"))
+		if err != nil {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeStudioJSON(response, result)
+	})
 	routes.HandleFunc("GET /api/git/status", func(response http.ResponseWriter, request *http.Request) {
 		client, err := gitclient.Open(request.Context(), workspace.root)
 		if err != nil {
@@ -502,6 +561,17 @@ func writeSourceError(response http.ResponseWriter, err error) {
 	case errors.Is(err, ErrSourceChanged):
 		status = http.StatusConflict
 	case errors.Is(err, ErrSourceNotFound):
+		status = http.StatusNotFound
+	}
+	http.Error(response, err.Error(), status)
+}
+
+func writeBSLNavigationError(response http.ResponseWriter, err error) {
+	status := http.StatusBadRequest
+	switch {
+	case errors.Is(err, ErrSourceChanged), errors.Is(err, ErrBSLRenameConflict):
+		status = http.StatusConflict
+	case errors.Is(err, ErrSourceNotFound), errors.Is(err, ErrBSLSymbolNotFound):
 		status = http.StatusNotFound
 	}
 	http.Error(response, err.Error(), status)
