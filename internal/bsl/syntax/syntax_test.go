@@ -591,6 +591,18 @@ func TestTokenizeRegionNameAsIdentifier(t *testing.T) {
 	}
 }
 
+func TestParseIgnoresRegionDirectives(t *testing.T) {
+	t.Parallel()
+	source := "#Область СервернаяЛогика\nПроцедура Тест()\n#Region Inner\n#EndRegion\nКонецПроцедуры\n#КонецОбласти"
+	module, diagnostics := Parse("regions.bsl", source)
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %+v", diagnostics)
+	}
+	if len(module.Routines) != 1 || module.Routines[0].Name != "Тест" {
+		t.Fatalf("module = %+v", module)
+	}
+}
+
 func TestTokenizeReportsInvalidUTF8InsideCommentAndString(t *testing.T) {
 	t.Parallel()
 

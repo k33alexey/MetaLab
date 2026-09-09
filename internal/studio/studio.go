@@ -23,7 +23,7 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-//go:embed ui/index.html
+//go:embed ui/*
 var assets embed.FS
 
 // Workspace is one validated project opened by a Studio process.
@@ -172,6 +172,7 @@ func (workspace *Workspace) BuildPublicationPackage(ctx context.Context, destina
 // NewHandler serves the local read-only Studio shell for one workspace.
 func NewHandler(workspace *Workspace) http.Handler {
 	routes := http.NewServeMux()
+	routes.Handle("GET /ui/", http.FileServer(http.FS(assets)))
 	routes.HandleFunc("GET /{$}", func(response http.ResponseWriter, _ *http.Request) {
 		page, err := assets.ReadFile("ui/index.html")
 		if err != nil {
@@ -220,7 +221,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 			Content          string `json:"content"`
 			ExpectedRevision string `json:"expectedRevision"`
 		}
-		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, MaxEditableFileBytes+(64<<10)))
+		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 2*MaxEditableFileBytes+(64<<10)))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&input); err != nil {
 			http.Error(response, "Invalid request", http.StatusBadRequest)
@@ -237,6 +238,41 @@ func NewHandler(workspace *Workspace) http.Handler {
 			return
 		}
 		writeStudioJSON(response, file)
+	})
+	routes.HandleFunc("POST /api/bsl/analyze", func(response http.ResponseWriter, request *http.Request) {
+		if !validateStudioMutation(response, request) {
+			return
+		}
+		if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
+			http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+			return
+		}
+		var input struct {
+			Path    string `json:"path"`
+			Content string `json:"content"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 2*MaxEditableFileBytes+(64<<10)))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil {
+			http.Error(response, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			http.Error(response, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		relative, language, err := validateEditablePath(input.Path)
+		if err != nil || language != "bsl" {
+			http.Error(response, "BSL analysis requires a canonical project module path", http.StatusBadRequest)
+			return
+		}
+		analysis, err := AnalyzeBSL(relative, input.Content)
+		if err != nil {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeStudioJSON(response, analysis)
 	})
 	routes.HandleFunc("GET /api/git/status", func(response http.ResponseWriter, request *http.Request) {
 		client, err := gitclient.Open(request.Context(), workspace.root)

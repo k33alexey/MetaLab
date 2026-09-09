@@ -7,9 +7,16 @@ import (
 
 // Parse builds an AST and returns all frontend diagnostics.
 func Parse(filename, source string) (*Module, []Diagnostic) {
+	module, _, diagnostics := ParseWithTokens(filename, source)
+	return module, diagnostics
+}
+
+// ParseWithTokens builds an AST and retains the lossless token stream for IDE features.
+// The source is tokenized only once.
+func ParseWithTokens(filename, source string) (*Module, []Token, []Diagnostic) {
 	tokens, diagnostics := Tokenize(filename, source)
 	state := parser{filename: filename, tokens: tokens, diagnostics: diagnostics}
-	return state.parseModule(), state.diagnostics
+	return state.parseModule(), tokens, state.diagnostics
 }
 
 type parser struct {
@@ -22,6 +29,9 @@ type parser struct {
 func (p *parser) parseModule() *Module {
 	module := &Module{}
 	for !p.atEnd() {
+		if p.skipRegionDirective() {
+			continue
+		}
 		if p.check(Invalid) {
 			p.advance()
 			continue
@@ -196,6 +206,9 @@ func (p *parser) parseVariables(moduleLevel bool) []Variable {
 }
 
 func (p *parser) parseStatement() Statement {
+	if p.skipRegionDirective() {
+		return nil
+	}
 	switch p.peek().Kind {
 	case Var:
 		start := p.peek().Span.Start
@@ -227,6 +240,25 @@ func (p *parser) parseStatement() Statement {
 	p.report(p.peek(), "BSL2001", fmt.Sprintf("unexpected %s, expected statement", p.peek().Kind))
 	p.synchronizeStatement()
 	return nil
+}
+
+func (p *parser) skipRegionDirective() bool {
+	if !p.check(Hash) || p.current+1 >= len(p.tokens) {
+		return false
+	}
+	line := p.peek().Span.Start.Line
+	directive := p.tokens[p.current+1]
+	if directive.Span.Start.Line != line || directive.Kind != Identifier {
+		return false
+	}
+	name := strings.ToLower(directive.Lexeme)
+	if name != "область" && name != "region" && name != "конецобласти" && name != "endregion" {
+		return false
+	}
+	for !p.atEnd() && p.peek().Span.Start.Line == line {
+		p.advance()
+	}
+	return true
 }
 
 func (p *parser) parseTryStatement() Statement {
