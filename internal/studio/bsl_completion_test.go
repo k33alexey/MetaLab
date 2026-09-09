@@ -267,7 +267,7 @@ func hasCompletion(items []BSLCompletionItem, label, kind string) bool {
 	return false
 }
 
-func writeBSLTestSource(t *testing.T, root, relative, content string) {
+func writeBSLTestSource(t testing.TB, root, relative, content string) {
 	t.Helper()
 	absolute := filepath.Join(root, filepath.FromSlash(relative))
 	if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {

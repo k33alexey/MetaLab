@@ -93,6 +93,7 @@ func TestStudioHandlerServesShellAndSnapshot(t *testing.T) {
 	handler.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/", nil))
 	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "ML Studio") || !strings.Contains(page.Body.String(), "bsl-editor.js") ||
 		!strings.Contains(page.Body.String(), "data-bsl-action=\"definition\"") || !strings.Contains(page.Body.String(), "/api/search?query=") ||
+		!strings.Contains(page.Body.String(), "data-bsl-action=\"help\"") || !strings.Contains(page.Body.String(), "/api/bsl/help?query=") ||
 		page.Header().Get("Content-Security-Policy") == "" {
 		t.Fatalf("page status=%d headers=%v body=%s", page.Code, page.Header(), page.Body.String())
 	}
@@ -101,6 +102,7 @@ func TestStudioHandlerServesShellAndSnapshot(t *testing.T) {
 	if asset.Code != http.StatusOK || !strings.Contains(asset.Body.String(), "createBSLEditor") ||
 		!strings.Contains(asset.Body.String(), "/api/bsl/complete") || !strings.Contains(asset.Body.String(), "completion-item") ||
 		!strings.Contains(asset.Body.String(), "/api/bsl/navigate") || !strings.Contains(asset.Body.String(), "/api/bsl/rename") ||
+		!strings.Contains(asset.Body.String(), "/api/bsl/help/resolve") ||
 		!strings.Contains(asset.Header().Get("Content-Type"), "javascript") {
 		t.Fatalf("editor asset status=%d headers=%v", asset.Code, asset.Header())
 	}
@@ -139,7 +141,7 @@ func TestOpenRejectsIncompleteProject(t *testing.T) {
 	}
 }
 
-func createProject(t *testing.T) string {
+func createProject(t testing.TB) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "SalesDemo")
 	manifest := project.Project{

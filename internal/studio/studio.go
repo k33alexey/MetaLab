@@ -32,6 +32,7 @@ type Workspace struct {
 	mu            sync.Mutex
 	bslIndex      *BSLSymbolIndex
 	bslNavigation *bslNavigationIndex
+	bslHelp       *bslHelpIndex
 	projectSearch *projectSearchIndex
 }
 
@@ -366,6 +367,45 @@ func NewHandler(workspace *Workspace) http.Handler {
 		}
 		writeStudioJSON(response, result)
 	})
+	routes.HandleFunc("GET /api/bsl/help", func(response http.ResponseWriter, request *http.Request) {
+		result, err := workspace.SearchBSLHelp(request.URL.Query().Get("query"))
+		if err != nil {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeStudioJSON(response, result)
+	})
+	routes.HandleFunc("POST /api/bsl/help/resolve", func(response http.ResponseWriter, request *http.Request) {
+		if !validateStudioMutation(response, request) {
+			return
+		}
+		if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
+			http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+			return
+		}
+		var input struct {
+			Path     string      `json:"path"`
+			Content  string      `json:"content"`
+			Position BSLPosition `json:"position"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 2*MaxEditableFileBytes+(64<<10)))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil {
+			http.Error(response, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			http.Error(response, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		item, err := workspace.ResolveBSLHelp(input.Path, input.Content, input.Position)
+		if err != nil {
+			writeBSLNavigationError(response, err)
+			return
+		}
+		writeStudioJSON(response, item)
+	})
 	routes.HandleFunc("GET /api/git/status", func(response http.ResponseWriter, request *http.Request) {
 		client, err := gitclient.Open(request.Context(), workspace.root)
 		if err != nil {
@@ -571,7 +611,7 @@ func writeBSLNavigationError(response http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrSourceChanged), errors.Is(err, ErrBSLRenameConflict):
 		status = http.StatusConflict
-	case errors.Is(err, ErrSourceNotFound), errors.Is(err, ErrBSLSymbolNotFound):
+	case errors.Is(err, ErrSourceNotFound), errors.Is(err, ErrBSLSymbolNotFound), errors.Is(err, ErrBSLHelpNotFound):
 		status = http.StatusNotFound
 	}
 	http.Error(response, err.Error(), status)

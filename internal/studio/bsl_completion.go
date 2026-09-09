@@ -114,6 +114,7 @@ func (workspace *Workspace) invalidateBSLIndex() {
 func (workspace *Workspace) invalidateStudioIndexesLocked() {
 	workspace.bslIndex = nil
 	workspace.bslNavigation = nil
+	workspace.bslHelp = nil
 	workspace.projectSearch = nil
 }
 
