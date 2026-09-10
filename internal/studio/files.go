@@ -49,6 +49,10 @@ func (workspace *Workspace) ReadSource(relative string) (SourceFile, error) {
 func (workspace *Workspace) SaveSource(relative, content, expectedRevision string) (SourceFile, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
+	return workspace.saveSourceLocked(relative, content, expectedRevision)
+}
+
+func (workspace *Workspace) saveSourceLocked(relative, content, expectedRevision string) (SourceFile, error) {
 	relative, language, err := validateEditablePath(relative)
 	if err != nil {
 		return SourceFile{}, err

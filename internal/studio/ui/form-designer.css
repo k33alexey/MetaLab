@@ -2,6 +2,7 @@
 #form-designer[hidden] { display:none }
 .form-toolbar { position:sticky; top:0; z-index:3; display:flex; flex-wrap:wrap; gap:6px; padding:8px 10px; border-bottom:1px solid #393b40; background:#25262a }
 .form-toolbar .separator { width:1px; margin:0 3px; background:#484a50 }
+.form-toolbar button.active { border-color:#5686b7; background:#2f455d; color:#fff }
 .form-surface { min-height:100%; padding:18px }
 .form-root { max-width:900px; min-height:240px; margin:auto; padding:14px; border:1px solid #393b40; border-radius:8px; background:#25262a; transition:border-color .12s,box-shadow .12s }
 .form-root.drop-root { border-color:#5686b7; box-shadow:inset 0 0 0 1px #5686b7 }
@@ -25,6 +26,34 @@
 .form-command-row:hover { background:#33363b }
 .form-command-row span { margin-left:auto; color:#858991; font-size:10px }
 .form-command-row.selected-command { border-color:#5686b7; background:#2a3542 }
+.form-handler-button { width:calc(100% - 8px); margin:10px 4px; padding:8px }
+.form-preview-frame { box-sizing:border-box; min-height:520px; margin:0 auto; border:1px solid #3d4046; border-radius:9px; background:#18191c; box-shadow:0 14px 35px #0005; overflow:auto; transition:max-width .18s }
+.form-preview-frame.desktop { max-width:1180px }
+.form-preview-frame.tablet { max-width:768px }
+.form-preview-frame.mobile { max-width:390px }
+.form-preview-app { min-height:500px; background:#f3f5f7; color:#26313b; font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif }
+.form-preview-app>header { padding:14px 18px; background:#34495e; color:#fff; font-size:16px; font-weight:600 }
+.form-preview-body { display:flex; flex-direction:column; gap:12px; padding:18px }
+.form-preview-group { display:flex; gap:12px; padding:14px; border:1px solid #d8dee5; border-radius:7px; background:#fff }
+.form-preview-group.vertical { flex-direction:column }
+.form-preview-group.horizontal { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)) }
+.form-preview-group-title { grid-column:1/-1; color:#52606d; font-size:12px; font-weight:600 }
+.form-preview-element { box-sizing:border-box }
+.form-preview-element.selected-preview-element { outline:2px solid #4387c5; outline-offset:2px }
+.form-preview-field { display:grid; gap:5px; min-width:0 }
+.form-preview-field>span { color:#536271; font-size:12px }
+.form-preview-field>input { box-sizing:border-box; width:100%; min-width:0; padding:8px 9px; border:1px solid #bcc7d2; border-radius:5px; background:#fff; color:#26313b }
+.form-preview-label { padding:5px 1px; color:#44515e }
+.form-preview-table { min-width:0; overflow:auto; border:1px solid #d8dee5; border-radius:7px; background:#fff }
+.form-preview-table-title { padding:10px 12px; border-bottom:1px solid #e2e7ec; font-weight:600 }
+.form-preview-table table { width:100%; border-collapse:collapse; white-space:nowrap }
+.form-preview-table th,.form-preview-table td { padding:9px 11px; border-bottom:1px solid #e7ebef; text-align:left }
+.form-preview-table th { background:#f7f8fa; color:#536271; font-size:11px }
+.form-preview-table td { color:#8a96a1; text-align:center }
+.form-preview-body button.form-preview-element { align-self:flex-start; padding:8px 14px; border:1px solid #397ab5; border-radius:5px; background:#4387c5; color:#fff }
+.form-preview-frame.mobile .form-preview-body { gap:9px; padding:10px }
+.form-preview-frame.mobile .form-preview-group { display:flex; flex-direction:column; gap:9px; padding:10px }
+.form-preview-frame.mobile .form-preview-app>header { padding:12px 13px; font-size:15px }
 .form-property { display:grid; gap:5px; padding:7px 4px; border-bottom:1px solid #34363b; color:#aeb1b8; font-size:11px }
 .form-property input[type="text"],.form-property select { width:100%; min-width:0; padding:7px; border:1px solid #4a4d54; border-radius:5px; outline:0; background:#1e1f22; color:#dfe1e5 }
 .form-property input:focus,.form-property select:focus { border-color:#5686b7 }

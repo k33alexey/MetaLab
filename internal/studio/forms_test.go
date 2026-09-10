@@ -101,6 +101,66 @@ func TestManagedFormAPIRejectsNonFormAndUnknownJSON(t *testing.T) {
 	}
 }
 
+func TestManagedFormHandlerCreatesModuleAndReopensProcedure(t *testing.T) {
+	t.Parallel()
+	workspace, relative, form := createManagedFormSource(t)
+	opened, err := workspace.ReadManagedForm(relative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := workspace.EnsureManagedFormHandler(relative, opened.Revision, form.Commands[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created.Created || created.Form.Form.Module == nil || !strings.Contains(created.Module.Content, "Процедура Заполнить(Команда)") || created.Location.Range.Start.Line != 1 {
+		t.Fatalf("created handler = %+v", created)
+	}
+	reopened, err := workspace.EnsureManagedFormHandler(relative, created.Form.Revision, form.Commands[0].ID)
+	if err != nil || reopened.Created || reopened.Module.Revision != created.Module.Revision {
+		t.Fatalf("reopened handler = %+v, error=%v", reopened, err)
+	}
+	secondID := uuid.MustNew()
+	nextForm := reopened.Form.Form
+	nextForm.Commands = append(nextForm.Commands, metadata.ManagedFormCommand{ID: secondID, Name: "Проверить", Title: metadata.LocalizedText{"ru": "Проверить"}, Action: metadata.FormCommandCustom, Handler: "Проверить"})
+	saved, err := workspace.SaveManagedForm(relative, nextForm, reopened.Form.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appended, err := workspace.EnsureManagedFormHandler(relative, saved.Revision, secondID)
+	if err != nil || !appended.Created || !strings.Contains(appended.Module.Content, "Процедура Заполнить(Команда)") || !strings.Contains(appended.Module.Content, "Процедура Проверить(Команда)") {
+		t.Fatalf("appended handler = %+v, error=%v", appended, err)
+	}
+}
+
+func TestManagedFormHandlerAPIRequiresCSRFAndReturnsLocation(t *testing.T) {
+	t.Parallel()
+	workspace, relative, form := createManagedFormSource(t)
+	opened, err := workspace.ReadManagedForm(relative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(map[string]string{"path": relative, "expectedRevision": opened.Revision, "command": form.Commands[0].ID.String()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(workspace)
+	denied := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/form/handler", bytes.NewReader(payload))
+	request.Header.Set("Content-Type", "application/json")
+	handler.ServeHTTP(denied, request)
+	if denied.Code != http.StatusForbidden {
+		t.Fatalf("missing CSRF status = %d", denied.Code)
+	}
+	response := httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/api/form/handler", bytes.NewReader(payload))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-ML-CSRF", "1")
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"created":true`) || !strings.Contains(response.Body.String(), `"line":1`) {
+		t.Fatalf("handler status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 func TestStudioIncludesVisualManagedFormDesigner(t *testing.T) {
 	t.Parallel()
 	workspace, _, _ := createManagedFormSource(t)
@@ -111,8 +171,15 @@ func TestStudioIncludesVisualManagedFormDesigner(t *testing.T) {
 		if response.Code != http.StatusOK {
 			t.Fatalf("GET %s status = %d", target, response.Code)
 		}
-		if target == "/" && (!strings.Contains(response.Body.String(), `id="form-designer"`) || !strings.Contains(response.Body.String(), `/api/form`)) {
+		if target == "/" && (!strings.Contains(response.Body.String(), `id="form-designer"`) || !strings.Contains(response.Body.String(), `/api/form/handler`)) {
 			t.Fatalf("Studio shell does not connect the form designer")
+		}
+		if target == "/ui/form-designer.js" {
+			for _, feature := range []string{"desktop", "tablet", "mobile", "Создать или открыть обработчик"} {
+				if !strings.Contains(response.Body.String(), feature) {
+					t.Fatalf("form designer does not contain %q", feature)
+				}
+			}
 		}
 	}
 }
@@ -121,6 +188,7 @@ func createManagedFormSource(t *testing.T) (*Workspace, string, metadata.Managed
 	t.Helper()
 	root := createProject(t)
 	form := metadata.ManagedForm{Format: metadata.CurrentFormat, ID: uuid.MustNew(), Name: "ФормаТовара", Title: metadata.LocalizedText{"ru": "Форма товара"}, Kind: metadata.ObjectForm}
+	form.Commands = []metadata.ManagedFormCommand{{ID: uuid.MustNew(), Name: "Заполнить", Title: metadata.LocalizedText{"ru": "Заполнить"}, Action: metadata.FormCommandCustom, Handler: "Заполнить"}}
 	form.Items = []metadata.ManagedFormElement{{ID: uuid.MustNew(), Name: "ОсновнаяГруппа", Kind: metadata.FormElementGroup, Orientation: metadata.FormVertical, Children: []metadata.ManagedFormElement{{ID: uuid.MustNew(), Name: "Наименование", Kind: metadata.FormElementField, Title: metadata.LocalizedText{"ru": "Наименование"}}}}}
 	relative, err := project.FormPath(form.ID)
 	if err != nil {

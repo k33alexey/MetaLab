@@ -284,6 +284,42 @@ func NewHandler(workspace *Workspace) http.Handler {
 		}
 		writeStudioJSON(response, form)
 	})
+	routes.HandleFunc("POST /api/form/handler", func(response http.ResponseWriter, request *http.Request) {
+		if !validateStudioMutation(response, request) {
+			return
+		}
+		if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
+			http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+			return
+		}
+		var input struct {
+			Path             string `json:"path"`
+			ExpectedRevision string `json:"expectedRevision"`
+			Command          string `json:"command"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 64<<10))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil {
+			http.Error(response, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			http.Error(response, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		commandID, err := uuid.Parse(input.Command)
+		if err != nil {
+			http.Error(response, "Invalid form command UUID", http.StatusBadRequest)
+			return
+		}
+		result, err := workspace.EnsureManagedFormHandler(input.Path, input.ExpectedRevision, commandID)
+		if err != nil {
+			writeSourceError(response, err)
+			return
+		}
+		writeStudioJSON(response, result)
+	})
 	routes.HandleFunc("POST /api/bsl/analyze", func(response http.ResponseWriter, request *http.Request) {
 		if !validateStudioMutation(response, request) {
 			return
