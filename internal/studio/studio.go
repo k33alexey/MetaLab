@@ -20,6 +20,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/publication"
+	"github.com/k33alexey/MetaLab/internal/querylang"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 	"go.yaml.in/yaml/v3"
 )
@@ -35,6 +36,7 @@ type Workspace struct {
 	bslNavigation *bslNavigationIndex
 	bslHelp       *bslHelpIndex
 	projectSearch *projectSearchIndex
+	querySchema   *QueryDesignerSchema
 }
 
 // Snapshot is the read-only project model rendered by the Studio shell.
@@ -316,6 +318,41 @@ func NewHandler(workspace *Workspace) http.Handler {
 		result, err := workspace.EnsureManagedFormHandler(input.Path, input.ExpectedRevision, commandID)
 		if err != nil {
 			writeSourceError(response, err)
+			return
+		}
+		writeStudioJSON(response, result)
+	})
+	routes.HandleFunc("GET /api/query/schema", func(response http.ResponseWriter, _ *http.Request) {
+		schema, err := workspace.QueryDesignerSchema()
+		if err != nil {
+			writeSourceError(response, err)
+			return
+		}
+		writeStudioJSON(response, schema)
+	})
+	routes.HandleFunc("POST /api/query/build", func(response http.ResponseWriter, request *http.Request) {
+		if !validateStudioMutation(response, request) {
+			return
+		}
+		if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
+			http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+			return
+		}
+		var design QueryDesign
+		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, querylang.MaxSourceBytes))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&design); err != nil {
+			http.Error(response, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			http.Error(response, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		result, err := workspace.BuildDesignedQuery(design)
+		if err != nil {
+			http.Error(response, err.Error(), http.StatusBadRequest)
 			return
 		}
 		writeStudioJSON(response, result)

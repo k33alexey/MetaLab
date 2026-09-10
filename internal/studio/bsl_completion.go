@@ -116,6 +116,7 @@ func (workspace *Workspace) invalidateStudioIndexesLocked() {
 	workspace.bslNavigation = nil
 	workspace.bslHelp = nil
 	workspace.projectSearch = nil
+	workspace.querySchema = nil
 }
 
 // CompleteBSL returns bounded suggestions for an unsaved module without executing project code.
