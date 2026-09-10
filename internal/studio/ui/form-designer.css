@@ -3,17 +3,28 @@
 .form-toolbar { position:sticky; top:0; z-index:3; display:flex; flex-wrap:wrap; gap:6px; padding:8px 10px; border-bottom:1px solid #393b40; background:#25262a }
 .form-toolbar .separator { width:1px; margin:0 3px; background:#484a50 }
 .form-surface { min-height:100%; padding:18px }
-.form-root { max-width:900px; min-height:240px; margin:auto; padding:14px; border:1px solid #393b40; border-radius:8px; background:#25262a }
+.form-root { max-width:900px; min-height:240px; margin:auto; padding:14px; border:1px solid #393b40; border-radius:8px; background:#25262a; transition:border-color .12s,box-shadow .12s }
+.form-root.drop-root { border-color:#5686b7; box-shadow:inset 0 0 0 1px #5686b7 }
 .form-root-title { margin:0 0 10px; color:#aeb1b8; font-size:12px }
 .form-empty { padding:36px; border:1px dashed #45484f; border-radius:6px; color:#858991; text-align:center }
 .form-node { margin:4px 0; border:1px solid transparent; border-radius:6px }
-.form-node-row { display:flex; align-items:center; gap:7px; min-height:32px; padding:5px 8px; border-radius:5px; cursor:pointer; user-select:none }
+.form-node-row { position:relative; display:flex; align-items:center; gap:7px; min-height:32px; padding:5px 8px; border-radius:5px; cursor:grab; user-select:none }
+.form-node-row:active { cursor:grabbing }
 .form-node-row:hover { background:#33363b }
+.form-node-row.drop-before::before,.form-node-row.drop-after::after { position:absolute; right:2px; left:2px; height:2px; border-radius:2px; background:#6ea8df; content:"" }
+.form-node-row.drop-before::before { top:-3px }
+.form-node-row.drop-after::after { bottom:-3px }
+.form-node-row.drop-inside { outline:1px solid #6ea8df; background:#2a3c50 }
 .form-node.selected-node { border-color:#5686b7; background:#2a3542 }
 .form-node-icon { width:18px; color:#e8a765; text-align:center }
 .form-node-kind { margin-left:auto; color:#858991; font-size:10px }
 .form-node-children { margin-left:22px; padding:2px 0 3px 10px; border-left:1px solid #42454b }
 .form-node.is-hidden>.form-node-row { opacity:.58 }
+.form-section-title { margin:16px 6px 5px; color:#858991; font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase }
+.form-command-row { display:flex; align-items:center; gap:8px; min-height:30px; margin:3px 0; padding:4px 8px; border:1px solid transparent; border-radius:5px; color:#dfe1e5; cursor:pointer }
+.form-command-row:hover { background:#33363b }
+.form-command-row span { margin-left:auto; color:#858991; font-size:10px }
+.form-command-row.selected-command { border-color:#5686b7; background:#2a3542 }
 .form-property { display:grid; gap:5px; padding:7px 4px; border-bottom:1px solid #34363b; color:#aeb1b8; font-size:11px }
 .form-property input[type="text"],.form-property select { width:100%; min-width:0; padding:7px; border:1px solid #4a4d54; border-radius:5px; outline:0; background:#1e1f22; color:#dfe1e5 }
 .form-property input:focus,.form-property select:focus { border-color:#5686b7 }

@@ -25,6 +25,11 @@ func TestManagedFormWorkspaceRoundTripAndIdentity(t *testing.T) {
 	if opened.Form.Name != form.Name || len(opened.Languages) != 1 || opened.Languages[0].Code != "ru" {
 		t.Fatalf("opened form = %+v", opened)
 	}
+	for _, expected := range []string{"Объект.Код", "Объект.Наименование", "Объект.ИНН", "Объект.Контакты", "Объект.Контакты.Телефон"} {
+		if !hasFormDataPath(opened.DataPaths, expected) {
+			t.Fatalf("data path %q missing from %+v", expected, opened.DataPaths)
+		}
+	}
 	opened.Form.Items[0].Children = append(opened.Form.Items[0].Children, metadata.ManagedFormElement{ID: uuid.MustNew(), Name: "Комментарий", Kind: metadata.FormElementField, Title: metadata.LocalizedText{"ru": "Комментарий"}})
 	saved, err := workspace.SaveManagedForm(relative, opened.Form, opened.Revision)
 	if err != nil || len(saved.Form.Items[0].Children) != 2 || saved.Revision == opened.Revision {
@@ -128,9 +133,39 @@ func createManagedFormSource(t *testing.T) (*Workspace, string, metadata.Managed
 	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(relative)), source.Bytes(), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	catalog := metadata.CatalogDefinition{
+		Format: metadata.CurrentFormat, ID: uuid.MustNew(), Name: "Контрагенты", Title: metadata.LocalizedText{"ru": "Контрагенты"},
+		Code: metadata.CatalogCode{Type: metadata.StringType, Length: 20, Auto: true, Unique: true}, DescriptionLength: 150,
+		Attributes: []metadata.Attribute{{ID: uuid.MustNew(), Name: "ИНН", Title: metadata.LocalizedText{"ru": "ИНН"}, Types: []metadata.Type{{Kind: metadata.StringType, Length: 12}}}},
+		TableParts: []metadata.TablePart{{ID: uuid.MustNew(), Name: "Контакты", Title: metadata.LocalizedText{"ru": "Контакты"}, Attributes: []metadata.Attribute{{ID: uuid.MustNew(), Name: "Телефон", Title: metadata.LocalizedText{"ru": "Телефон"}, Types: []metadata.Type{{Kind: metadata.StringType, Length: 30}}}}}},
+		Forms:      metadata.ObjectForms{Object: &form.ID},
+	}
+	catalogRelative, err := project.MetadataPath(string(metadata.CatalogKind), catalog.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source.Reset()
+	if err := metadata.Encode(&source, catalog); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(root, filepath.FromSlash(catalogRelative))), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(catalogRelative)), source.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	workspace, err := Open(root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return workspace, relative, form
+}
+
+func hasFormDataPath(paths []FormDataPath, expected string) bool {
+	for _, item := range paths {
+		if item.Path == expected {
+			return true
+		}
+	}
+	return false
 }

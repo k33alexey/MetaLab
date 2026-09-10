@@ -17,11 +17,18 @@ type ManagedFormSource struct {
 	Revision  string               `json:"revision"`
 	Form      metadata.ManagedForm `json:"form"`
 	Languages []FormLanguage       `json:"languages"`
+	DataPaths []FormDataPath       `json:"dataPaths"`
 }
 
 type FormLanguage struct {
 	Code  string `json:"code"`
 	Title string `json:"title"`
+}
+
+type FormDataPath struct {
+	Path  string `json:"path"`
+	Title string `json:"title"`
+	Kind  string `json:"kind"`
 }
 
 func (workspace *Workspace) ReadManagedForm(relative string) (ManagedFormSource, error) {
@@ -58,7 +65,7 @@ func (workspace *Workspace) readManagedForm(relative string) (ManagedFormSource,
 		}
 		languages[index] = FormLanguage{Code: language.Code, Title: title}
 	}
-	return ManagedFormSource{Path: relative, Revision: file.Revision, Form: form, Languages: languages}, nil
+	return ManagedFormSource{Path: relative, Revision: file.Revision, Form: form, Languages: languages, DataPaths: workspace.formDataPaths(form.ID, manifest)}, nil
 }
 
 func (workspace *Workspace) SaveManagedForm(relative string, form metadata.ManagedForm, expectedRevision string) (ManagedFormSource, error) {
@@ -92,4 +99,81 @@ func validateFormPath(relative string) error {
 		return ErrInvalidSourcePath
 	}
 	return nil
+}
+
+func (workspace *Workspace) formDataPaths(formID uuid.UUID, manifest project.Project) []FormDataPath {
+	catalog, err := metadata.Load(workspace.root)
+	if err != nil {
+		return nil
+	}
+	var result []FormDataPath
+	appendField := func(prefix, name, title, kind string) {
+		if strings.TrimSpace(title) == "" {
+			title = name
+		}
+		result = append(result, FormDataPath{Path: prefix + "." + name, Title: title, Kind: kind})
+	}
+	for _, object := range catalog.Catalogs {
+		kind, ok := referencedFormKind(object.Forms, formID)
+		if !ok {
+			continue
+		}
+		prefix := formDataPrefix(kind)
+		appendField(prefix, "Код", "Код", "field")
+		appendField(prefix, "Наименование", "Наименование", "field")
+		for _, attribute := range object.Attributes {
+			appendField(prefix, attribute.Name, attribute.Title.Resolve(manifest.DefaultLanguage, manifest.Languages), "field")
+		}
+		if kind == metadata.ObjectForm {
+			for _, part := range object.TableParts {
+				partPath := prefix + "." + part.Name
+				appendField(prefix, part.Name, part.Title.Resolve(manifest.DefaultLanguage, manifest.Languages), "table")
+				for _, attribute := range part.Attributes {
+					appendField(partPath, attribute.Name, attribute.Title.Resolve(manifest.DefaultLanguage, manifest.Languages), "column")
+				}
+			}
+		}
+	}
+	for _, object := range catalog.Documents {
+		kind, ok := referencedFormKind(object.Forms, formID)
+		if !ok {
+			continue
+		}
+		prefix := formDataPrefix(kind)
+		for _, system := range []struct{ name, title string }{{"Номер", "Номер"}, {"Дата", "Дата"}, {"Проведен", "Проведён"}} {
+			appendField(prefix, system.name, system.title, "field")
+		}
+		for _, attribute := range object.Attributes {
+			appendField(prefix, attribute.Name, attribute.Title.Resolve(manifest.DefaultLanguage, manifest.Languages), "field")
+		}
+		if kind == metadata.ObjectForm {
+			for _, part := range object.TableParts {
+				partPath := prefix + "." + part.Name
+				appendField(prefix, part.Name, part.Title.Resolve(manifest.DefaultLanguage, manifest.Languages), "table")
+				for _, attribute := range part.Attributes {
+					appendField(partPath, attribute.Name, attribute.Title.Resolve(manifest.DefaultLanguage, manifest.Languages), "column")
+				}
+			}
+		}
+	}
+	return result
+}
+
+func referencedFormKind(forms metadata.ObjectForms, id uuid.UUID) (metadata.FormKind, bool) {
+	for _, item := range []struct {
+		id   *uuid.UUID
+		kind metadata.FormKind
+	}{{forms.Object, metadata.ObjectForm}, {forms.List, metadata.ListForm}, {forms.Choice, metadata.ChoiceForm}} {
+		if item.id != nil && *item.id == id {
+			return item.kind, true
+		}
+	}
+	return "", false
+}
+
+func formDataPrefix(kind metadata.FormKind) string {
+	if kind == metadata.ObjectForm {
+		return "Объект"
+	}
+	return "Список"
 }

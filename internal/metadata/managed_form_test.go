@@ -13,15 +13,16 @@ import (
 func TestManagedFormDecodeValidateAndRoundTrip(t *testing.T) {
 	t.Parallel()
 	manifest := managedFormManifest()
-	formID, groupID, fieldID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	formID, groupID, fieldID, commandID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	source := "format: 1\nid: " + formID.String() + "\nname: \u0424\u043e\u0440\u043c\u0430\u0422\u043e\u0432\u0430\u0440\u0430\ntitle: {ru: \u0424\u043e\u0440\u043c\u0430 \u0442\u043e\u0432\u0430\u0440\u0430}\nkind: object\nitems:\n" +
 		"  - id: " + groupID.String() + "\n    name: \u041e\u0441\u043d\u043e\u0432\u043d\u0430\u044f\u0413\u0440\u0443\u043f\u043f\u0430\n    kind: group\n    orientation: vertical\n    children:\n" +
-		"      - id: " + fieldID.String() + "\n        name: \u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435\n        kind: field\n        title: {ru: \u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435}\n        read_only: true\n"
+		"      - id: " + fieldID.String() + "\n        name: \u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435\n        kind: field\n        title: {ru: \u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435}\n        read_only: true\n        data_path: \u041e\u0431\u044a\u0435\u043a\u0442.\u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435\n" +
+		"commands:\n  - id: " + commandID.String() + "\n    name: \u0417\u0430\u043f\u0438\u0441\u0430\u0442\u044c\n    title: {ru: \u0417\u0430\u043f\u0438\u0441\u0430\u0442\u044c}\n    action: save\n"
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(source), manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if form.Kind != ObjectForm || len(form.Items) != 1 || len(form.Items[0].Children) != 1 || !form.Items[0].Children[0].ReadOnly {
+	if form.Kind != ObjectForm || len(form.Commands) != 1 || len(form.Items) != 1 || len(form.Items[0].Children) != 1 || !form.Items[0].Children[0].ReadOnly {
 		t.Fatalf("decoded form = %+v", form)
 	}
 	var first, second bytes.Buffer
@@ -72,6 +73,34 @@ func TestManagedFormRejectsUnsupportedFormatAndDepth(t *testing.T) {
 	form.Items = []ManagedFormElement{leaf}
 	if err := ValidateManagedForm("form.yaml", form, manifest); err == nil || !strings.Contains(err.Error(), "maximum nesting depth") {
 		t.Fatalf("depth error = %v", err)
+	}
+}
+
+func TestManagedFormValidatesBindingsAndCommands(t *testing.T) {
+	t.Parallel()
+	manifest := managedFormManifest()
+	commandID := uuid.MustNew()
+	form := ManagedForm{
+		Format: CurrentFormat, ID: uuid.MustNew(), Name: "\u0424\u043e\u0440\u043c\u0430", Title: LocalizedText{"ru": "\u0424\u043e\u0440\u043c\u0430"}, Kind: ObjectForm,
+		Commands: []ManagedFormCommand{{ID: commandID, Name: "\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c", Title: LocalizedText{"ru": "\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c"}, Action: FormCommandRefresh}},
+		Items: []ManagedFormElement{
+			{ID: uuid.MustNew(), Name: "\u041f\u043e\u043b\u0435", Kind: FormElementField, DataPath: "\u041e\u0431\u044a\u0435\u043a\u0442.\u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435"},
+			{ID: uuid.MustNew(), Name: "\u041a\u043d\u043e\u043f\u043a\u0430", Kind: FormElementButton, Command: &commandID},
+		},
+	}
+	if err := ValidateManagedForm("form.yaml", form, manifest); err != nil {
+		t.Fatal(err)
+	}
+	unknown := uuid.MustNew()
+	form.Items[0].DataPath = "\u041e\u0431\u044a\u0435\u043a\u0442..\u041f\u043e\u043b\u0435"
+	form.Items[0].Command = &unknown
+	form.Commands[0].Action = FormCommandCustom
+	form.Commands[0].Handler = ""
+	err := ValidateManagedForm("form.yaml", form, manifest)
+	for _, expected := range []string{"valid identifier segments", "command is allowed only for buttons", "unknown form command", "handler must be a valid BSL routine name"} {
+		if err == nil || !strings.Contains(err.Error(), expected) {
+			t.Fatalf("validation error %q missing from %v", expected, err)
+		}
 	}
 }
 

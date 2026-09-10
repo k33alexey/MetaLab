@@ -105,6 +105,29 @@ EndFunction`)
 	}
 }
 
+func TestRuntimeObjectSupportsDynamicPropertyAccess(t *testing.T) {
+	t.Parallel()
+	program, diagnostics := compiler.CompileSource("dynamic-property.bsl", `&НаСервере
+Функция Проверить()
+    Элемент = Справочники.Товары.СоздатьЭлемент();
+    ИмяРеквизита = "Код";
+    Элемент[ИмяРеквизита] = "P002";
+    Элемент["Наименование"] = "Товар";
+    Возврат Элемент[ИмяРеквизита] + ":" + Элемент["Наименование"];
+КонецФункции`)
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	machine, err := New(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := machine.NewContextWithMetadata(&catalogRuntimeStub{}).Call("Проверить")
+	if err != nil || result.String() != "P002:Товар" {
+		t.Fatalf("result=%v error=%v", result, err)
+	}
+}
+
 func TestPredefinedCatalogReferenceDispatch(t *testing.T) {
 	t.Parallel()
 	program, diagnostics := compiler.CompileSource("predefined.bsl", `&НаСервере

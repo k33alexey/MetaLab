@@ -1272,18 +1272,52 @@ func executeAdvanced(
 			}
 		case bytecode.OpGetIndex:
 			key, receiver := pop(), pop()
-			result, err := bytecode.CollectionIndex(receiver, key)
+			var result bytecode.Value
+			var err error
+			if object, ok := receiver.AsRuntimeObject(); ok {
+				if name, stringKey := key.AsString(); stringKey {
+					objectContext, cancel := budget.rpcContext()
+					result, err = dispatchObjectProperty(objectContext, env, object, name)
+					cancel()
+					err = budget.externalError(err)
+				} else if _, indexed := object.(bytecode.RuntimeIndexObject); indexed {
+					result, err = bytecode.CollectionIndex(receiver, key)
+				} else {
+					err = fmt.Errorf("%s property index must be a string", object.RuntimeTypeName())
+				}
+			} else {
+				result, err = bytecode.CollectionIndex(receiver, key)
+			}
 			if err != nil {
 				failure = runtimeFailure(function, instruction, err.Error())
 				break
 			}
+			if result.Kind() == bytecode.RuntimeObjectKind {
+				if err := budget.retain(result); err != nil {
+					return bytecode.Undefined(), resourceFailure(function, instruction, err)
+				}
+			}
 			push(result)
 		case bytecode.OpSetIndex:
 			value, key, receiver := pop(), pop(), pop()
-			if err := budget.reserveMemory(bytecode.CollectionIndexMutationEstimate(receiver, key)); err != nil {
-				return bytecode.Undefined(), resourceFailure(function, instruction, err)
+			var err error
+			if object, ok := receiver.AsRuntimeObject(); ok {
+				name, stringKey := key.AsString()
+				if !stringKey {
+					err = fmt.Errorf("%s property index must be a string", object.RuntimeTypeName())
+				} else {
+					objectContext, cancel := budget.rpcContext()
+					err = dispatchSetObjectProperty(objectContext, env, object, name, value)
+					cancel()
+					err = budget.externalError(err)
+				}
+			} else {
+				if err = budget.reserveMemory(bytecode.CollectionIndexMutationEstimate(receiver, key)); err != nil {
+					return bytecode.Undefined(), resourceFailure(function, instruction, err)
+				}
+				err = bytecode.SetCollectionIndex(receiver, key, value)
 			}
-			if err := bytecode.SetCollectionIndex(receiver, key, value); err != nil {
+			if err != nil {
 				failure = runtimeFailure(function, instruction, err.Error())
 				break
 			}
