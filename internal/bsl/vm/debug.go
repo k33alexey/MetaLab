@@ -164,7 +164,7 @@ func (runtimeContext *Context) StartDebug(ctx context.Context, name string, brea
 	if err != nil {
 		return nil, err
 	}
-	if runtimeContext.env.side != ServerSide || !function.Context.AllowsServer() {
+	if !allowsSide(function.Context, runtimeContext.env.side) {
 		return nil, unavailableContextError(function, runtimeContext.env.side)
 	}
 	debugContext, cancel := context.WithCancel(ctx)

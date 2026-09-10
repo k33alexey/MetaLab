@@ -26,7 +26,7 @@ func runStudio(ctx context.Context, configuration appconfig.Config, projectPath,
 	if err != nil {
 		return fmt.Errorf("invalid database identifier: %w", err)
 	}
-	workspace, err := studio.Open(projectPath)
+	workspace, err := studio.OpenForDatabase(projectPath, databaseID)
 	if err != nil {
 		return fmt.Errorf("open ML Project: %w", err)
 	}

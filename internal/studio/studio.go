@@ -17,6 +17,7 @@ import (
 	"sync"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/vm"
+	"github.com/k33alexey/MetaLab/internal/debugtarget"
 	"github.com/k33alexey/MetaLab/internal/gitclient"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -39,6 +40,9 @@ type Workspace struct {
 	projectSearch *projectSearchIndex
 	querySchema   *QueryDesignerSchema
 	debugSession  *vm.DebugSession
+	debugTargets  *debugtarget.Registry
+	debugTarget   *debugtarget.Lease
+	debugDatabase uuid.UUID
 }
 
 // Snapshot is the read-only project model rendered by the Studio shell.
@@ -103,6 +107,32 @@ var metadataTitles = map[string]string{
 
 // Open validates and opens an ML Project without mutating its files.
 func Open(root string) (*Workspace, error) {
+	return openWorkspace(root, uuid.UUID{}, debugtarget.NewRegistry())
+}
+
+// OpenWithDebugTargets opens a project against a shared live-runtime registry.
+func OpenWithDebugTargets(root string, targets *debugtarget.Registry) (*Workspace, error) {
+	return openWorkspace(root, uuid.UUID{}, targets)
+}
+
+// OpenForDatabase opens the Studio workspace for one concrete ML database.
+func OpenForDatabase(root string, databaseID uuid.UUID) (*Workspace, error) {
+	return OpenForDatabaseWithDebugTargets(root, databaseID, debugtarget.NewRegistry())
+}
+
+// OpenForDatabaseWithDebugTargets opens a database-bound Studio workspace
+// against a shared live-runtime registry.
+func OpenForDatabaseWithDebugTargets(root string, databaseID uuid.UUID, targets *debugtarget.Registry) (*Workspace, error) {
+	if databaseID.IsZero() {
+		return nil, fmt.Errorf("debug database identifier is required")
+	}
+	return openWorkspace(root, databaseID, targets)
+}
+
+func openWorkspace(root string, databaseID uuid.UUID, targets *debugtarget.Registry) (*Workspace, error) {
+	if targets == nil {
+		return nil, fmt.Errorf("debug target registry is required")
+	}
 	absolute, err := filepath.Abs(root)
 	if err != nil {
 		return nil, fmt.Errorf("resolve ML Project path: %w", err)
@@ -110,7 +140,7 @@ func Open(root string) (*Workspace, error) {
 	if _, err := project.ValidateLayout(absolute); err != nil {
 		return nil, err
 	}
-	return &Workspace{root: filepath.Clean(absolute)}, nil
+	return &Workspace{root: filepath.Clean(absolute), debugTargets: targets, debugDatabase: databaseID}, nil
 }
 
 // Snapshot scans current project sources, including edits made outside Studio.

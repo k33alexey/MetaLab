@@ -2,8 +2,10 @@ package clientvm
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
 	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
@@ -142,6 +144,88 @@ Function Get() Return Counter; EndFunction`)
 	value, err := registry.Call(handle, "Get")
 	if err != nil || value.String() != "100" {
 		t.Fatalf("state after concurrent calls = %v, %v", value, err)
+	}
+}
+
+func TestRegistryDebugsClientBytecode(t *testing.T) {
+	t.Parallel()
+	registry := NewRegistry()
+	handle := loadSource(t, registry, `&AtClient
+Function Calculate(Value)
+    Result = Value + 2;
+    Return Result;
+EndFunction
+
+&AtServer
+Function ServerOnly()
+    Return 1;
+EndFunction`)
+	started, err := registry.StartDebug(context.Background(), handle, "Calculate", nil, bytecode.Number(40))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	entry := started
+	if entry.State != vm.DebugPaused {
+		entry, err = registry.WaitDebug(ctx, handle, started.Sequence)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if entry.State != vm.DebugPaused || entry.Frames[0].Location.Line != 3 {
+		t.Fatalf("entry = %+v", entry)
+	}
+	value, err := registry.EvaluateDebug(handle, 0, "Value + 1")
+	if err != nil || value.Value != "41" {
+		t.Fatalf("EvaluateDebug() = %+v, %v", value, err)
+	}
+	if _, err := registry.SetDebugBreakpoints(handle, []vm.DebugBreakpoint{{Filename: "test.bsl", Line: 4}}); err != nil {
+		t.Fatal(err)
+	}
+	running, err := registry.DebugCommand(handle, vm.DebugContinue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	breakpoint, err := registry.WaitDebug(ctx, handle, running.Sequence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if breakpoint.Reason != "breakpoint" || breakpoint.Frames[0].Location.Line != 4 {
+		t.Fatalf("breakpoint = %+v", breakpoint)
+	}
+	if _, err := registry.DebugCommand(handle, vm.DebugContinue); err != nil {
+		t.Fatal(err)
+	}
+	completed, err := registry.WaitDebug(ctx, handle, breakpoint.Sequence)
+	if err != nil || completed.State != vm.DebugCompleted || completed.Result == nil || completed.Result.Value != "42" {
+		t.Fatalf("completed = %+v, %v", completed, err)
+	}
+	if _, err := registry.StartDebug(context.Background(), handle, "ServerOnly", nil); err == nil || !strings.Contains(err.Error(), "client context") {
+		t.Fatalf("server-only debug error = %v", err)
+	}
+}
+
+func TestRegistryReleaseStopsDebugger(t *testing.T) {
+	t.Parallel()
+	registry := NewRegistry()
+	handle := loadSource(t, registry, "Procedure Run() While True Do EndDo; EndProcedure")
+	started, err := registry.StartDebug(context.Background(), handle, "Run", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if started.State != vm.DebugPaused {
+		if _, err := registry.WaitDebug(ctx, handle, started.Sequence); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !registry.Release(handle) {
+		t.Fatal("Release() = false")
+	}
+	if _, err := registry.DebugState(handle); err == nil {
+		t.Fatal("DebugState() succeeded after release")
 	}
 }
 

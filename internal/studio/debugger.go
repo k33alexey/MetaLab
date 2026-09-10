@@ -16,7 +16,10 @@ import (
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
 	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
 	"github.com/k33alexey/MetaLab/internal/bsl/vm"
+	"github.com/k33alexey/MetaLab/internal/debugtarget"
 	"github.com/k33alexey/MetaLab/internal/metadata"
+	"github.com/k33alexey/MetaLab/internal/project"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 const (
@@ -27,6 +30,7 @@ const (
 )
 
 type studioDebugStart struct {
+	TargetID    string               `json:"targetId,omitempty"`
 	Path        string               `json:"path"`
 	Content     string               `json:"content"`
 	Routine     string               `json:"routine"`
@@ -55,8 +59,12 @@ func (workspace *Workspace) StartDebug(input studioDebugStart) (vm.DebugSnapshot
 			return vm.DebugSnapshot{}, fmt.Errorf("debug argument %d: %w", index+1, err)
 		}
 	}
+	if strings.TrimSpace(input.TargetID) != "" {
+		return workspace.startTargetDebug(input, arguments)
+	}
 
 	workspace.mu.Lock()
+	workspace.releaseDebugTargetLocked(true)
 	program, moduleName, err := workspace.compileDebugProgramLocked(relative, input.Content)
 	if err != nil {
 		workspace.mu.Unlock()
@@ -93,7 +101,61 @@ func (workspace *Workspace) StartDebug(input studioDebugStart) (vm.DebugSnapshot
 	return snapshot, nil
 }
 
+func (workspace *Workspace) startTargetDebug(input studioDebugStart, arguments []bytecode.Value) (vm.DebugSnapshot, error) {
+	targetID, err := uuid.Parse(strings.TrimSpace(input.TargetID))
+	if err != nil {
+		return vm.DebugSnapshot{}, fmt.Errorf("invalid debug target identifier")
+	}
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
+	manifest, err := project.ValidateLayout(workspace.root)
+	if err != nil {
+		return vm.DebugSnapshot{}, err
+	}
+	workspace.releaseDebugTargetLocked(true)
+	if workspace.debugSession != nil {
+		workspace.debugSession.Stop()
+		workspace.debugSession = nil
+	}
+	lease, target, err := workspace.debugTargets.Attach(targetID, "ML Studio · "+manifest.Name)
+	if err != nil {
+		return vm.DebugSnapshot{}, err
+	}
+	if target.ProjectID != manifest.ID {
+		_ = lease.Close()
+		return vm.DebugSnapshot{}, fmt.Errorf("debug target belongs to another ML Project")
+	}
+	if !workspace.debugDatabase.IsZero() && target.DatabaseID != workspace.debugDatabase {
+		_ = lease.Close()
+		return vm.DebugSnapshot{}, fmt.Errorf("debug target belongs to another ML database")
+	}
+	snapshot, err := lease.Start(context.Background(), debugtarget.StartRequest{
+		Routine: strings.TrimSpace(input.Routine), Arguments: arguments, Breakpoints: input.Breakpoints,
+	})
+	if err != nil {
+		_ = lease.Close()
+		return vm.DebugSnapshot{}, err
+	}
+	workspace.debugTarget = lease
+	return snapshot, nil
+}
+
+// DebugTargets returns live client, user-session and job runtimes for this project.
+func (workspace *Workspace) DebugTargets() ([]debugtarget.View, error) {
+	workspace.mu.Lock()
+	manifest, err := project.ValidateLayout(workspace.root)
+	registry := workspace.debugTargets
+	workspace.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	return registry.List(debugtarget.Filter{ProjectID: manifest.ID, DatabaseID: workspace.debugDatabase}), nil
+}
+
 func (workspace *Workspace) DebugSnapshot() (vm.DebugSnapshot, error) {
+	if target := workspace.currentDebugTarget(); target != nil {
+		return target.Snapshot()
+	}
 	session, err := workspace.currentDebugSession()
 	if err != nil {
 		return vm.DebugSnapshot{}, err
@@ -102,6 +164,9 @@ func (workspace *Workspace) DebugSnapshot() (vm.DebugSnapshot, error) {
 }
 
 func (workspace *Workspace) DebugCommand(action vm.DebugAction) (vm.DebugSnapshot, error) {
+	if target := workspace.currentDebugTarget(); target != nil {
+		return target.Command(action)
+	}
 	session, err := workspace.currentDebugSession()
 	if err != nil {
 		return vm.DebugSnapshot{}, err
@@ -113,6 +178,9 @@ func (workspace *Workspace) DebugCommand(action vm.DebugAction) (vm.DebugSnapsho
 }
 
 func (workspace *Workspace) SetDebugBreakpoints(values []vm.DebugBreakpoint) (vm.DebugSnapshot, error) {
+	if target := workspace.currentDebugTarget(); target != nil {
+		return target.SetBreakpoints(values)
+	}
 	session, err := workspace.currentDebugSession()
 	if err != nil {
 		return vm.DebugSnapshot{}, err
@@ -124,6 +192,9 @@ func (workspace *Workspace) SetDebugBreakpoints(values []vm.DebugBreakpoint) (vm
 }
 
 func (workspace *Workspace) PauseDebug() (vm.DebugSnapshot, error) {
+	if target := workspace.currentDebugTarget(); target != nil {
+		return target.Pause()
+	}
 	session, err := workspace.currentDebugSession()
 	if err != nil {
 		return vm.DebugSnapshot{}, err
@@ -135,6 +206,16 @@ func (workspace *Workspace) PauseDebug() (vm.DebugSnapshot, error) {
 }
 
 func (workspace *Workspace) StopDebug() (vm.DebugSnapshot, error) {
+	if target := workspace.currentDebugTarget(); target != nil {
+		snapshot, err := target.Stop()
+		workspace.mu.Lock()
+		if workspace.debugTarget == target {
+			_ = workspace.debugTarget.Close()
+			workspace.debugTarget = nil
+		}
+		workspace.mu.Unlock()
+		return snapshot, err
+	}
 	session, err := workspace.currentDebugSession()
 	if err != nil {
 		return vm.DebugSnapshot{}, err
@@ -146,11 +227,42 @@ func (workspace *Workspace) StopDebug() (vm.DebugSnapshot, error) {
 }
 
 func (workspace *Workspace) EvaluateDebug(frame int, expression string) (vm.DebugValue, error) {
+	if target := workspace.currentDebugTarget(); target != nil {
+		return target.Evaluate(frame, expression)
+	}
 	session, err := workspace.currentDebugSession()
 	if err != nil {
 		return vm.DebugValue{}, err
 	}
 	return session.Evaluate(frame, expression)
+}
+
+func (workspace *Workspace) DebugHeartbeat() error {
+	if target := workspace.currentDebugTarget(); target != nil {
+		_, err := target.Heartbeat()
+		return err
+	}
+	if _, err := workspace.currentDebugSession(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (workspace *Workspace) currentDebugTarget() *debugtarget.Lease {
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
+	return workspace.debugTarget
+}
+
+func (workspace *Workspace) releaseDebugTargetLocked(stop bool) {
+	if workspace.debugTarget == nil {
+		return
+	}
+	if stop {
+		_, _ = workspace.debugTarget.Stop()
+	}
+	_ = workspace.debugTarget.Close()
+	workspace.debugTarget = nil
 }
 
 func (workspace *Workspace) currentDebugSession() (*vm.DebugSession, error) {
@@ -286,6 +398,10 @@ func decodeDebugArgument(raw json.RawMessage, depth int) (bytecode.Value, error)
 }
 
 func registerDebugRoutes(routes *http.ServeMux, workspace *Workspace) {
+	routes.HandleFunc("GET /api/debug/targets", func(response http.ResponseWriter, _ *http.Request) {
+		targets, err := workspace.DebugTargets()
+		writeDebugResponse(response, targets, err)
+	})
 	routes.HandleFunc("POST /api/debug/start", func(response http.ResponseWriter, request *http.Request) {
 		var input studioDebugStart
 		if !decodeDebugRequest(response, request, &input, 2*MaxEditableFileBytes+(1<<20)) {
@@ -297,6 +413,13 @@ func registerDebugRoutes(routes *http.ServeMux, workspace *Workspace) {
 	routes.HandleFunc("GET /api/debug/state", func(response http.ResponseWriter, _ *http.Request) {
 		snapshot, err := workspace.DebugSnapshot()
 		writeDebugResponse(response, snapshot, err)
+	})
+	routes.HandleFunc("POST /api/debug/heartbeat", func(response http.ResponseWriter, request *http.Request) {
+		if !validateStudioMutation(response, request) {
+			return
+		}
+		err := workspace.DebugHeartbeat()
+		writeDebugResponse(response, map[string]bool{"ok": err == nil}, err)
 	})
 	routes.HandleFunc("POST /api/debug/command", func(response http.ResponseWriter, request *http.Request) {
 		var input struct {

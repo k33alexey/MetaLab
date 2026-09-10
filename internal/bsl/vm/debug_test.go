@@ -175,6 +175,45 @@ func TestCompiledProgramRetainsDebuggerLocalNames(t *testing.T) {
 	}
 }
 
+func TestDebugSessionRunsInClientContext(t *testing.T) {
+	t.Parallel()
+	program, diagnostics := compiler.CompileSource("forms/form.bsl", `&НаКлиенте
+Функция Рассчитать(Значение)
+    Возврат Значение + 2;
+КонецФункции
+
+&НаСервере
+Функция Серверная()
+    Возврат 1;
+КонецФункции`)
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	machine, err := New(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := machine.NewClientContext(nil)
+	session, err := client.StartDebug(context.Background(), "Рассчитать", nil, bytecode.Number(40))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := waitDebug(t, session, 0)
+	if entry.State != DebugPaused || entry.Frames[0].Location.Path != "forms/form.bsl" {
+		t.Fatalf("client entry = %+v", entry)
+	}
+	if err := session.Resume(DebugContinue); err != nil {
+		t.Fatal(err)
+	}
+	completed := waitDebug(t, session, entry.Sequence)
+	if completed.State != DebugCompleted || completed.Result == nil || completed.Result.Value != "42" {
+		t.Fatalf("client result = %+v", completed)
+	}
+	if _, err := client.StartDebug(context.Background(), "Серверная", nil); err == nil || !strings.Contains(err.Error(), "client context") {
+		t.Fatalf("server routine client debug error = %v", err)
+	}
+}
+
 func compileDebugMachine(t *testing.T, source string) *Machine {
 	t.Helper()
 	program, diagnostics := compiler.CompileSource("modules/debug.bsl", source)

@@ -2,6 +2,7 @@
 package clientvm
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -20,6 +21,7 @@ type Registry struct {
 	mu       sync.RWMutex
 	next     uint32
 	contexts map[uint32]*vm.Context
+	debug    map[uint32]*vm.DebugSession
 	server   vm.ServerCaller
 	cache    *vm.Cache
 	weights  map[uint32]uint64
@@ -38,7 +40,7 @@ func NewRegistryWithServer(server vm.ServerCaller) *Registry {
 
 func newRegistry(server vm.ServerCaller) *Registry {
 	return &Registry{
-		next: 1, contexts: make(map[uint32]*vm.Context), server: server,
+		next: 1, contexts: make(map[uint32]*vm.Context), debug: make(map[uint32]*vm.DebugSession), server: server,
 		cache: vm.NewDefaultCache(), weights: make(map[uint32]uint64),
 	}
 }
@@ -90,6 +92,112 @@ func (registry *Registry) Call(handle uint32, name string, arguments ...bytecode
 	return context.Call(name, arguments...)
 }
 
+// StartDebug starts an asynchronous client-side debug execution for a loaded
+// machine. A previous debug execution for the same handle is stopped.
+func (registry *Registry) StartDebug(ctx context.Context, handle uint32, name string, breakpoints []vm.DebugBreakpoint, arguments ...bytecode.Value) (vm.DebugSnapshot, error) {
+	registry.mu.Lock()
+	runtimeContext, ok := registry.contexts[handle]
+	if !ok {
+		registry.mu.Unlock()
+		return vm.DebugSnapshot{}, fmt.Errorf("client VM machine %d not found", handle)
+	}
+	if current := registry.debug[handle]; current != nil {
+		current.Stop()
+	}
+	session, err := runtimeContext.StartDebug(ctx, name, breakpoints, arguments...)
+	if err == nil {
+		registry.debug[handle] = session
+	}
+	registry.mu.Unlock()
+	if err != nil {
+		return vm.DebugSnapshot{}, err
+	}
+	return session.Snapshot(), nil
+}
+
+// DebugState returns the latest detached debugger snapshot.
+func (registry *Registry) DebugState(handle uint32) (vm.DebugSnapshot, error) {
+	session, err := registry.debugSession(handle)
+	if err != nil {
+		return vm.DebugSnapshot{}, err
+	}
+	return session.Snapshot(), nil
+}
+
+// WaitDebug waits for a debugger state newer than after or for a terminal state.
+func (registry *Registry) WaitDebug(ctx context.Context, handle uint32, after uint64) (vm.DebugSnapshot, error) {
+	session, err := registry.debugSession(handle)
+	if err != nil {
+		return vm.DebugSnapshot{}, err
+	}
+	return session.Wait(ctx, after)
+}
+
+// DebugCommand resumes a paused client-side debug execution.
+func (registry *Registry) DebugCommand(handle uint32, action vm.DebugAction) (vm.DebugSnapshot, error) {
+	session, err := registry.debugSession(handle)
+	if err != nil {
+		return vm.DebugSnapshot{}, err
+	}
+	if err := session.Resume(action); err != nil {
+		return vm.DebugSnapshot{}, err
+	}
+	return session.Snapshot(), nil
+}
+
+// PauseDebug requests a stop at the next client VM instruction boundary.
+func (registry *Registry) PauseDebug(handle uint32) (vm.DebugSnapshot, error) {
+	session, err := registry.debugSession(handle)
+	if err != nil {
+		return vm.DebugSnapshot{}, err
+	}
+	if err := session.Pause(); err != nil {
+		return vm.DebugSnapshot{}, err
+	}
+	return session.Snapshot(), nil
+}
+
+// SetDebugBreakpoints replaces client-side breakpoints atomically.
+func (registry *Registry) SetDebugBreakpoints(handle uint32, breakpoints []vm.DebugBreakpoint) (vm.DebugSnapshot, error) {
+	session, err := registry.debugSession(handle)
+	if err != nil {
+		return vm.DebugSnapshot{}, err
+	}
+	if err := session.SetBreakpoints(breakpoints); err != nil {
+		return vm.DebugSnapshot{}, err
+	}
+	return session.Snapshot(), nil
+}
+
+// EvaluateDebug evaluates a safe expression in one paused client frame.
+func (registry *Registry) EvaluateDebug(handle uint32, frame int, expression string) (vm.DebugValue, error) {
+	session, err := registry.debugSession(handle)
+	if err != nil {
+		return vm.DebugValue{}, err
+	}
+	return session.Evaluate(frame, expression)
+}
+
+// StopDebug cancels the active debug execution for a machine.
+func (registry *Registry) StopDebug(handle uint32) (vm.DebugSnapshot, error) {
+	session, err := registry.debugSession(handle)
+	if err != nil {
+		return vm.DebugSnapshot{}, err
+	}
+	session.Stop()
+	return session.Snapshot(), nil
+}
+
+func (registry *Registry) debugSession(handle uint32) (*vm.DebugSession, error) {
+	registry.mu.RLock()
+	session, ok := registry.debug[handle]
+	registry.mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("client VM debugger for machine %d is not started", handle)
+	}
+	return session, nil
+}
+
 // Release removes a loaded machine.
 func (registry *Registry) Release(handle uint32) bool {
 	registry.mu.Lock()
@@ -97,6 +205,10 @@ func (registry *Registry) Release(handle uint32) bool {
 	if _, ok := registry.contexts[handle]; !ok {
 		return false
 	}
+	if session := registry.debug[handle]; session != nil {
+		session.Stop()
+	}
+	delete(registry.debug, handle)
 	delete(registry.contexts, handle)
 	registry.bytes -= registry.weights[handle]
 	delete(registry.weights, handle)

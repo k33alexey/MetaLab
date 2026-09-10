@@ -3,7 +3,8 @@ body.debug-open .workspace { height:calc(100vh - 326px) }
 #debug-panel[hidden] { display:none }
 .debug-toolbar { display:flex; align-items:center; gap:6px; height:40px; padding:5px 9px; border-bottom:1px solid #393b40; background:#2b2d30 }
 .debug-toolbar strong { margin-right:5px }
-.debug-toolbar input { min-width:0; height:29px; padding:4px 7px; border:1px solid #4a4d54; border-radius:4px; outline:0; background:#1e1f22; color:#dfe1e5; font:12px ui-monospace,SFMono-Regular,Menlo,monospace }
+.debug-toolbar input,.debug-toolbar select { min-width:0; height:29px; padding:4px 7px; border:1px solid #4a4d54; border-radius:4px; outline:0; background:#1e1f22; color:#dfe1e5; font:12px ui-monospace,SFMono-Regular,Menlo,monospace }
+#debug-target { width:205px }
 #debug-routine { width:190px }
 #debug-arguments { width:230px }
 #debug-state { flex:1; min-width:100px; color:#aeb1b8; font-size:12px; text-align:right }

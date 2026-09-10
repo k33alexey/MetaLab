@@ -4,6 +4,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -31,6 +33,13 @@ func main() {
 	export(api, "load", load)
 	export(api, "call", call)
 	export(api, "release", release)
+	export(api, "debugStart", debugStart)
+	export(api, "debugState", debugState)
+	export(api, "debugCommand", debugCommand)
+	export(api, "debugPause", debugPause)
+	export(api, "debugSetBreakpoints", debugSetBreakpoints)
+	export(api, "debugEvaluate", debugEvaluate)
+	export(api, "debugStop", debugStop)
 	js.Global().Set("MetaLabWasm", api)
 	select {}
 }
@@ -81,31 +90,205 @@ func call(_ js.Value, arguments []js.Value) any {
 	if err != nil {
 		return failure(err.Error())
 	}
-	if arguments[1].Type() != js.TypeString || !js.Global().Get("Array").Call("isArray", arguments[2]).Bool() {
+	if arguments[1].Type() != js.TypeString {
 		return failure("call expects a string routine name and an argument array")
 	}
-	argumentCount := arguments[2].Length()
-	if argumentCount > int(^uint16(0)) {
-		return failure("too many routine arguments")
-	}
 	var inline [32]bytecode.Value
-	values := inline[:]
-	if argumentCount <= len(inline) {
-		values = values[:argumentCount]
-	} else {
-		values = make([]bytecode.Value, argumentCount)
-	}
-	for index := range values {
-		values[index], err = readValue(arguments[2].Index(index))
-		if err != nil {
-			return failure(fmt.Sprintf("argument %d: %v", index, err))
-		}
+	values, err := readArguments(arguments[2], inline[:])
+	if err != nil {
+		return failure(err.Error())
 	}
 	value, err := registry.Call(handle, arguments[1].String(), values...)
 	if err != nil {
 		return executionFailure(err)
 	}
 	return valueResult(value)
+}
+
+func debugStart(_ js.Value, arguments []js.Value) any {
+	if len(arguments) != 4 {
+		return failure("debugStart expects handle, routine name, argument array and breakpoints")
+	}
+	handle, err := readHandle(arguments[0])
+	if err != nil {
+		return failure(err.Error())
+	}
+	if arguments[1].Type() != js.TypeString {
+		return failure("debug routine name must be a string")
+	}
+	var inline [32]bytecode.Value
+	values, err := readArguments(arguments[2], inline[:])
+	if err != nil {
+		return failure(err.Error())
+	}
+	breakpoints, err := readBreakpoints(arguments[3])
+	if err != nil {
+		return failure(err.Error())
+	}
+	snapshot, err := registry.StartDebug(context.Background(), handle, arguments[1].String(), breakpoints, values...)
+	return debugSnapshotResult(snapshot, err)
+}
+
+func debugState(_ js.Value, arguments []js.Value) any {
+	if len(arguments) != 1 {
+		return failure("debugState expects one handle")
+	}
+	handle, err := readHandle(arguments[0])
+	if err != nil {
+		return failure(err.Error())
+	}
+	snapshot, err := registry.DebugState(handle)
+	return debugSnapshotResult(snapshot, err)
+}
+
+func debugCommand(_ js.Value, arguments []js.Value) any {
+	if len(arguments) != 2 {
+		return failure("debugCommand expects handle and action")
+	}
+	handle, err := readHandle(arguments[0])
+	if err != nil {
+		return failure(err.Error())
+	}
+	if arguments[1].Type() != js.TypeString {
+		return failure("debug action must be a string")
+	}
+	snapshot, err := registry.DebugCommand(handle, vm.DebugAction(arguments[1].String()))
+	return debugSnapshotResult(snapshot, err)
+}
+
+func debugPause(_ js.Value, arguments []js.Value) any {
+	if len(arguments) != 1 {
+		return failure("debugPause expects one handle")
+	}
+	handle, err := readHandle(arguments[0])
+	if err != nil {
+		return failure(err.Error())
+	}
+	snapshot, err := registry.PauseDebug(handle)
+	return debugSnapshotResult(snapshot, err)
+}
+
+func debugSetBreakpoints(_ js.Value, arguments []js.Value) any {
+	if len(arguments) != 2 {
+		return failure("debugSetBreakpoints expects handle and breakpoints")
+	}
+	handle, err := readHandle(arguments[0])
+	if err != nil {
+		return failure(err.Error())
+	}
+	breakpoints, err := readBreakpoints(arguments[1])
+	if err != nil {
+		return failure(err.Error())
+	}
+	snapshot, err := registry.SetDebugBreakpoints(handle, breakpoints)
+	return debugSnapshotResult(snapshot, err)
+}
+
+func debugEvaluate(_ js.Value, arguments []js.Value) any {
+	if len(arguments) != 3 {
+		return failure("debugEvaluate expects handle, frame and expression")
+	}
+	handle, err := readHandle(arguments[0])
+	if err != nil {
+		return failure(err.Error())
+	}
+	if arguments[1].Type() != js.TypeNumber || arguments[2].Type() != js.TypeString {
+		return failure("debugEvaluate expects an integer frame and string expression")
+	}
+	frame := arguments[1].Float()
+	if frame < 0 || frame > math.MaxInt32 || math.Trunc(frame) != frame {
+		return failure("invalid debug frame")
+	}
+	value, err := registry.EvaluateDebug(handle, int(frame), arguments[2].String())
+	if err != nil {
+		return failure(err.Error())
+	}
+	result := success()
+	encoded, err := jsonToJS(value)
+	if err != nil {
+		return failure(err.Error())
+	}
+	result.Set("value", encoded)
+	return result
+}
+
+func debugStop(_ js.Value, arguments []js.Value) any {
+	if len(arguments) != 1 {
+		return failure("debugStop expects one handle")
+	}
+	handle, err := readHandle(arguments[0])
+	if err != nil {
+		return failure(err.Error())
+	}
+	snapshot, err := registry.StopDebug(handle)
+	return debugSnapshotResult(snapshot, err)
+}
+
+func debugSnapshotResult(snapshot vm.DebugSnapshot, err error) js.Value {
+	if err != nil {
+		return failure(err.Error())
+	}
+	encoded, err := jsonToJS(snapshot)
+	if err != nil {
+		return failure(err.Error())
+	}
+	result := success()
+	result.Set("snapshot", encoded)
+	return result
+}
+
+func jsonToJS(value any) (js.Value, error) {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return js.Undefined(), fmt.Errorf("encode debugger result: %w", err)
+	}
+	return js.Global().Get("JSON").Call("parse", string(encoded)), nil
+}
+
+func readArguments(value js.Value, scratch []bytecode.Value) ([]bytecode.Value, error) {
+	if !js.Global().Get("Array").Call("isArray", value).Bool() {
+		return nil, fmt.Errorf("routine arguments must be an array")
+	}
+	argumentCount := value.Length()
+	if argumentCount > int(^uint16(0)) {
+		return nil, fmt.Errorf("too many routine arguments")
+	}
+	values := scratch
+	if argumentCount <= len(values) {
+		values = values[:argumentCount]
+	} else {
+		values = make([]bytecode.Value, argumentCount)
+	}
+	for index := range values {
+		converted, err := readValue(value.Index(index))
+		if err != nil {
+			return nil, fmt.Errorf("argument %d: %w", index, err)
+		}
+		values[index] = converted
+	}
+	return values, nil
+}
+
+func readBreakpoints(value js.Value) ([]vm.DebugBreakpoint, error) {
+	if !js.Global().Get("Array").Call("isArray", value).Bool() {
+		return nil, fmt.Errorf("debug breakpoints must be an array")
+	}
+	if value.Length() > 10_000 {
+		return nil, fmt.Errorf("too many debug breakpoints")
+	}
+	result := make([]vm.DebugBreakpoint, value.Length())
+	for index := range result {
+		item := value.Index(index)
+		if item.Type() != js.TypeObject || item.Get("path").Type() != js.TypeString || item.Get("line").Type() != js.TypeNumber {
+			return nil, fmt.Errorf("breakpoint %d must contain path and line", index)
+		}
+		line := item.Get("line").Float()
+		if line < 1 || line > 10_000_000 || math.Trunc(line) != line {
+			return nil, fmt.Errorf("breakpoint %d has invalid line", index)
+		}
+		result[index] = vm.DebugBreakpoint{Filename: item.Get("path").String(), Line: int(line)}
+	}
+	return result, nil
 }
 
 func release(_ js.Value, arguments []js.Value) any {
