@@ -11,6 +11,7 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
 	"github.com/k33alexey/MetaLab/internal/buildinfo"
+	"github.com/k33alexey/MetaLab/internal/testsuite"
 )
 
 func TestRunSimpleCommands(t *testing.T) {
@@ -102,6 +103,36 @@ func TestStudioRequiresProjectAndDesktopRunner(t *testing.T) {
 	code, _, stderr = run(t, Commands{}, "studio", "--database", "018f1f72-3b4c-7d6e-8f90-123456789abc", "--project", "/projects/sales")
 	if code != 1 || !strings.Contains(stderr, "unavailable") {
 		t.Fatalf("missing runner: code=%d stderr=%q", code, stderr)
+	}
+}
+
+func TestProjectTestsUseSelectionRoleAndReportFormat(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	writeConfiguration(t, path)
+	var request TestRequest
+	commands := Commands{Test: func(_ context.Context, _ appconfig.Config, value TestRequest) (testsuite.Report, error) {
+		request = value
+		return testsuite.Report{Passed: 1, Coverage: testsuite.Coverage{Covered: 3, Total: 4, Percent: 75}}, nil
+	}}
+	code, stdout, stderr := run(t, commands, "test", "--database", "018f1f72-3b4c-7d6e-8f90-123456789abc", "--project", "/project", "--role", "Менеджер", "--module", "tests/a.bsl", "--routine", "Проверить", "--format", "json", "--config", path)
+	if code != 0 || request.Role != "Менеджер" || request.Selection.Path != "tests/a.bsl" || request.Selection.Routine != "Проверить" || !strings.Contains(stdout, `"percent": 75`) {
+		t.Fatalf("code=%d request=%+v stdout=%q stderr=%q", code, request, stdout, stderr)
+	}
+}
+
+func TestProjectTestsFailProcessAndValidateArguments(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	writeConfiguration(t, path)
+	commands := Commands{Test: func(context.Context, appconfig.Config, TestRequest) (testsuite.Report, error) {
+		return testsuite.Report{Failed: 1}, nil
+	}}
+	code, _, _ := run(t, commands, "test", "--database", "id", "--project", "/project", "--config", path)
+	if code != 1 {
+		t.Fatalf("failed tests exit code=%d", code)
+	}
+	code, _, stderr := run(t, commands, "test", "--database", "id", "--project", "/project", "--format", "xml", "--config", path)
+	if code != 2 || !strings.Contains(stderr, "unsupported") {
+		t.Fatalf("invalid format code=%d stderr=%q", code, stderr)
 	}
 }
 

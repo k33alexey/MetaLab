@@ -23,6 +23,14 @@ type programEventRuntime interface {
 	ConfigureProgramEvents(*bytecode.Program) error
 }
 
+type observedProgramEventRuntime interface {
+	ConfigureProgramEventsWithObserver(*bytecode.Program, vm.InstructionObserver) error
+}
+
+type protectedRuntime interface {
+	BeginTestExecutionWithOptions(context.Context, string) (context.Context, func(error) error, error)
+}
+
 type Status string
 
 const (
@@ -68,6 +76,13 @@ type Report struct {
 	Failed     int           `json:"failed"`
 	Duration   time.Duration `json:"duration"`
 	FinishedAt time.Time     `json:"finishedAt"`
+	Role       string        `json:"role,omitempty"`
+	Coverage   Coverage      `json:"coverage"`
+}
+
+type RunOptions struct {
+	Selection Selection
+	Role      string
 }
 
 // Discover returns deterministic test cases without executing module code.
@@ -109,6 +124,11 @@ func Discover(program *bytecode.Program) []Case {
 // Run executes selected tests sequentially in isolated VM contexts and
 // protected transactions. Every transaction is finalized with rollback.
 func Run(ctx context.Context, program *bytecode.Program, runtime Runtime, selection Selection) (Report, error) {
+	return RunWithOptions(ctx, program, runtime, RunOptions{Selection: selection})
+}
+
+// RunWithOptions executes tests with a selected application role and coverage.
+func RunWithOptions(ctx context.Context, program *bytecode.Program, runtime Runtime, options RunOptions) (Report, error) {
 	if ctx == nil || runtime == nil {
 		return Report{}, fmt.Errorf("test runner requires context and metadata runtime")
 	}
@@ -116,17 +136,18 @@ func Run(ctx context.Context, program *bytecode.Program, runtime Runtime, select
 	if err != nil {
 		return Report{}, err
 	}
-	cases := selectCases(Discover(program), selection)
-	if len(cases) == 0 && (selection.Path != "" || selection.Routine != "") {
+	cases := selectCases(Discover(program), options.Selection)
+	if len(cases) == 0 && (options.Selection.Path != "" || options.Selection.Routine != "") {
 		return Report{}, fmt.Errorf("selected BSL test was not found")
 	}
 	started := time.Now()
-	report := Report{Results: make([]Result, 0, len(cases))}
+	coverage := newCoverageCollector(program)
+	report := Report{Results: make([]Result, 0, len(cases)), Role: strings.TrimSpace(options.Role)}
 	for _, test := range cases {
 		if err := ctx.Err(); err != nil {
 			return Report{}, err
 		}
-		result := runCase(ctx, machine, program, runtime, test)
+		result := runCase(ctx, machine, program, runtime, test, report.Role, coverage)
 		report.Results = append(report.Results, result)
 		if result.Status == Passed {
 			report.Passed++
@@ -136,6 +157,7 @@ func Run(ctx context.Context, program *bytecode.Program, runtime Runtime, select
 	}
 	report.Duration = time.Since(started)
 	report.FinishedAt = time.Now().UTC()
+	report.Coverage = coverage.report()
 	return report, nil
 }
 
@@ -151,11 +173,13 @@ func selectCases(cases []Case, selection Selection) []Case {
 	return selected
 }
 
-func runCase(ctx context.Context, machine *vm.Machine, program *bytecode.Program, runtime Runtime, test Case) Result {
+func runCase(ctx context.Context, machine *vm.Machine, program *bytecode.Program, runtime Runtime, test Case, role string, coverage *coverageCollector) Result {
 	started := time.Now()
 	result := Result{Case: test}
 	var err error
-	if events, ok := runtime.(programEventRuntime); ok {
+	if events, ok := runtime.(observedProgramEventRuntime); ok {
+		err = events.ConfigureProgramEventsWithObserver(program, coverage)
+	} else if events, ok := runtime.(programEventRuntime); ok {
 		err = events.ConfigureProgramEvents(program)
 	}
 	if err != nil {
@@ -163,13 +187,17 @@ func runCase(ctx context.Context, machine *vm.Machine, program *bytecode.Program
 	}
 	testContext, finish := ctx, (func(error) error)(nil)
 	if err == nil {
-		testContext, finish, err = runtime.BeginTestExecution(ctx)
+		if protected, ok := runtime.(protectedRuntime); ok {
+			testContext, finish, err = protected.BeginTestExecutionWithOptions(ctx, role)
+		} else {
+			testContext, finish, err = runtime.BeginTestExecution(ctx)
+		}
 	}
 	if err == nil {
 		if finish == nil {
 			err = fmt.Errorf("test runtime did not provide transaction cleanup")
 		} else {
-			_, err = machine.NewContextWithMetadata(runtime).CallContext(testContext, test.Module+"."+test.Routine)
+			_, err = machine.NewContextWithMetadataAndObserver(runtime, coverage).CallContext(testContext, test.Module+"."+test.Routine)
 		}
 		if finish != nil {
 			cleanupErr := finish(err)

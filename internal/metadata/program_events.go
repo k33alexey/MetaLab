@@ -12,6 +12,12 @@ import (
 // ConfigureProgramEvents connects object and record-set modules from one
 // compiled application program to metadata lifecycle events.
 func (runtime *Runtime) ConfigureProgramEvents(program *bytecode.Program) error {
+	return runtime.ConfigureProgramEventsWithObserver(program, nil)
+}
+
+// ConfigureProgramEventsWithObserver connects event contexts to the same
+// observer as the test that triggered them.
+func (runtime *Runtime) ConfigureProgramEventsWithObserver(program *bytecode.Program, observer vm.InstructionObserver) error {
 	if runtime == nil || runtime.catalog == nil {
 		return fmt.Errorf("metadata runtime is not configured")
 	}
@@ -35,7 +41,7 @@ func (runtime *Runtime) ConfigureProgramEvents(program *bytecode.Program) error 
 		if !ok {
 			continue
 		}
-		handler, err := NewCatalogBSLEvents(runtime, machine.NewContextWithMetadata(runtime), definition)
+		handler, err := NewCatalogBSLEvents(runtime, machine.NewContextWithMetadataAndObserver(runtime, observer), definition)
 		if err != nil {
 			return err
 		}
@@ -49,7 +55,7 @@ func (runtime *Runtime) ConfigureProgramEvents(program *bytecode.Program) error 
 		if !ok {
 			continue
 		}
-		handler, err := NewDocumentBSLEvents(runtime, machine.NewContextWithMetadata(runtime), definition)
+		handler, err := NewDocumentBSLEvents(runtime, machine.NewContextWithMetadataAndObserver(runtime, observer), definition)
 		if err != nil {
 			return err
 		}
@@ -63,7 +69,7 @@ func (runtime *Runtime) ConfigureProgramEvents(program *bytecode.Program) error 
 		if !ok {
 			continue
 		}
-		handler, err := NewInformationRegisterBSLEvents(runtime, machine.NewContextWithMetadata(runtime), definition)
+		handler, err := NewInformationRegisterBSLEvents(runtime, machine.NewContextWithMetadataAndObserver(runtime, observer), definition)
 		if err != nil {
 			return err
 		}
@@ -77,7 +83,7 @@ func (runtime *Runtime) ConfigureProgramEvents(program *bytecode.Program) error 
 		if !ok {
 			continue
 		}
-		handler, err := NewAccumulationRegisterBSLEvents(runtime, machine.NewContextWithMetadata(runtime), definition)
+		handler, err := NewAccumulationRegisterBSLEvents(runtime, machine.NewContextWithMetadataAndObserver(runtime, observer), definition)
 		if err != nil {
 			return err
 		}

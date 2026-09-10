@@ -119,11 +119,18 @@ type ExecutionRuntime interface {
 	BeginExecution(context.Context) (context.Context, func(error) error, error)
 }
 
+// InstructionObserver receives executed BSL instructions. Implementations must
+// be concurrency-safe and must not retain mutable VM values.
+type InstructionObserver interface {
+	ObserveInstruction(*bytecode.Function, bytecode.Instruction)
+}
+
 type executionEnvironment struct {
 	side     ExecutionSide
 	server   ServerCaller
 	metadata MetadataRuntime
 	debug    *debugRuntime
+	observer InstructionObserver
 }
 
 // Context owns module variables for one isolated BSL session.
@@ -380,6 +387,15 @@ func (machine *Machine) NewContextWithMetadata(runtime MetadataRuntime) *Context
 	}
 }
 
+// NewContextWithMetadataAndObserver creates an isolated server context with
+// instruction observation, used by test coverage without affecting production.
+func (machine *Machine) NewContextWithMetadataAndObserver(runtime MetadataRuntime, observer InstructionObserver) *Context {
+	return &Context{
+		machine: machine, modules: makeModuleValues(machine.program),
+		env: executionEnvironment{side: ServerSide, metadata: runtime, observer: observer}, memory: machine.moduleMemory,
+	}
+}
+
 // NewClientContext creates a browser-side context. Calls to server-only
 // routines are delegated through server.
 func (machine *Machine) NewClientContext(server ServerCaller) *Context {
@@ -445,7 +461,7 @@ func (runtimeContext *Context) CallContext(ctx context.Context, name string, arg
 			}
 		}()
 	}
-	if !requiresContext(function) {
+	if !requiresContext(function) && runtimeContext.env.observer == nil {
 		budget, budgetErr := newExecutionBudget(ctx, runtimeContext.machine.limits, completed, nil)
 		if budgetErr != nil {
 			return bytecode.Undefined(), budgetErr
@@ -940,6 +956,9 @@ func executeAdvanced(
 	}
 	for instructionPointer := 0; instructionPointer < len(function.Code); instructionPointer++ {
 		instruction := function.Code[instructionPointer]
+		if env.observer != nil {
+			env.observer.ObserveInstruction(function, instruction)
+		}
 		if env.debug != nil {
 			paused, debugErr := env.debug.before(function, locals, modules, env, callDepth, instructionPointer, instruction)
 			budget.extendDeadline(paused)

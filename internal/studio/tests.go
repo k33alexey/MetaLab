@@ -4,12 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
-	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/testsuite"
 )
@@ -35,6 +31,9 @@ func (workspace *Workspace) TestCases() ([]testsuite.Case, error) {
 }
 
 func (workspace *Workspace) RunTests(ctx context.Context, selection testsuite.Selection) (testsuite.Report, error) {
+	if err := testsuite.EnsureConflictFree(ctx, workspace.root); err != nil {
+		return testsuite.Report{}, err
+	}
 	workspace.mu.Lock()
 	if workspace.testRunning {
 		workspace.mu.Unlock()
@@ -69,53 +68,7 @@ func (workspace *Workspace) RunTests(ctx context.Context, selection testsuite.Se
 }
 
 func (workspace *Workspace) compileTestsLocked() (*bytecode.Program, error) {
-	catalog, err := metadata.Load(workspace.root)
-	if err != nil {
-		return nil, err
-	}
-	descriptors := workspace.moduleDescriptors(catalog)
-	sources := make([]compiler.ModuleSource, 0, 32)
-	sourceBytes := 0
-	for _, directory := range []string{"modules", "tests"} {
-		entries, err := os.ReadDir(filepath.Join(workspace.root, directory))
-		if err != nil {
-			return nil, fmt.Errorf("read BSL %s: %w", directory, err)
-		}
-		for _, entry := range entries {
-			if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || filepath.Ext(entry.Name()) != ".bsl" {
-				continue
-			}
-			if len(sources) >= maxStudioDebugModules {
-				return nil, fmt.Errorf("test runner supports at most %d BSL modules", maxStudioDebugModules)
-			}
-			relative := filepath.ToSlash(filepath.Join(directory, entry.Name()))
-			file, err := workspace.readSource(relative)
-			if err != nil {
-				return nil, err
-			}
-			if sourceBytes > maxStudioDebugSource-len(file.Content) {
-				return nil, fmt.Errorf("test BSL source exceeds %d bytes", maxStudioDebugSource)
-			}
-			sourceBytes += len(file.Content)
-			id := strings.TrimSuffix(entry.Name(), ".bsl")
-			descriptor := descriptors[id]
-			if descriptor.name == "" {
-				descriptor.name = "Модуль" + strings.ReplaceAll(id, "-", "")
-				if directory == "tests" {
-					descriptor.name = "Тест" + strings.ReplaceAll(id, "-", "")
-				}
-			}
-			sources = append(sources, compiler.ModuleSource{
-				Name: descriptor.name, Filename: relative, Source: file.Content,
-				PredefinedVariables: append([]string(nil), descriptor.predefined...),
-			})
-		}
-	}
-	program, diagnostics := compiler.CompileModules(sources)
-	if len(diagnostics) != 0 {
-		return nil, fmt.Errorf("cannot run tests: %s", diagnostics[0].Error())
-	}
-	return program, nil
+	return testsuite.CompileProject(workspace.root)
 }
 
 func registerTestRoutes(routes *http.ServeMux, workspace *Workspace) {

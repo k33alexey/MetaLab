@@ -47,6 +47,12 @@ go test -race ./...
 go build ./cmd/ml
 ```
 
+BSL tests of an ML Project can be executed against a registered running Debug database. The command exits with a non-zero status when a test fails and can emit text, JSON or JUnit XML for CI:
+
+```shell
+ml test --project /path/to/project --database DATABASE_UUID --format junit
+```
+
 ## License
 
 MetaLab is licensed under the [Apache License 2.0](LICENSE).

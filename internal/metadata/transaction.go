@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -25,6 +26,21 @@ var (
 )
 
 type transactionContextKey struct{}
+type testExecutionContextKey struct{}
+
+// TestExecutionProfile is inherited by platform integrations invoked by BSL.
+// Debug tests always deny real external calls and equipment access.
+type TestExecutionProfile struct {
+	Role                 string
+	AllowExternalCalls   bool
+	AllowEquipmentAccess bool
+}
+
+// TestExecutionProfileFromContext returns the active protected test profile.
+func TestExecutionProfileFromContext(ctx context.Context) (TestExecutionProfile, bool) {
+	profile, ok := ctx.Value(testExecutionContextKey{}).(TestExecutionProfile)
+	return profile, ok
+}
 
 type transactionScope struct {
 	runtime         *Runtime
@@ -43,6 +59,11 @@ type transactionScope struct {
 // The runner always rolls it back; BSL code cannot commit or roll back its
 // outer boundary, but may use balanced nested transactions.
 func (runtime *Runtime) BeginTestExecution(ctx context.Context) (context.Context, func(error) error, error) {
+	return runtime.BeginTestExecutionWithOptions(ctx, "")
+}
+
+// BeginTestExecutionWithOptions creates an isolated test boundary for one role.
+func (runtime *Runtime) BeginTestExecutionWithOptions(ctx context.Context, role string) (context.Context, func(error) error, error) {
 	if ctx == nil {
 		return nil, nil, fmt.Errorf("test execution context is required")
 	}
@@ -59,6 +80,7 @@ func (runtime *Runtime) BeginTestExecution(ctx context.Context) (context.Context
 	}
 	scope.testBoundary = true
 	scoped := context.WithValue(ctx, transactionContextKey{}, scope)
+	scoped = context.WithValue(scoped, testExecutionContextKey{}, TestExecutionProfile{Role: strings.TrimSpace(role)})
 	return scoped, func(cause error) error { return scope.finishTest(cause) }, nil
 }
 

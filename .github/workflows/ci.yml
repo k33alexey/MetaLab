@@ -57,6 +57,12 @@ jobs:
       - name: Test with race detector
         run: go test -race -coverprofile=coverage.out ./...
 
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v6
+        with:
+          name: go-coverage
+          path: coverage.out
+
       - name: Build
         run: go build ./cmd/ml
 

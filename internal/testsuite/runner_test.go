@@ -68,6 +68,9 @@ func TestDiscoverAndRunIsolatesExportedProcedures(t *testing.T) {
 	if report.Passed != 1 || report.Failed != 1 || runtime.begun != 2 || runtime.finished != 2 || runtime.configured != 2 {
 		t.Fatalf("report=%+v runtime=%+v", report, runtime)
 	}
+	if report.Coverage.Total == 0 || report.Coverage.Covered == 0 || report.Coverage.Percent <= 0 {
+		t.Fatalf("coverage=%+v", report.Coverage)
+	}
 	if report.Results[1].Error == "" || len(report.Results[1].Stack) == 0 || report.Results[1].Stack[0].Path != cases[1].Path {
 		t.Fatalf("failed result=%+v", report.Results[1])
 	}

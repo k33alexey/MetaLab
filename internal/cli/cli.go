@@ -9,6 +9,7 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
 	"github.com/k33alexey/MetaLab/internal/buildinfo"
+	"github.com/k33alexey/MetaLab/internal/testsuite"
 )
 
 const usage = `MetaLab
@@ -16,6 +17,7 @@ const usage = `MetaLab
 Usage:
   ml manager [--config PATH]
   ml studio --database UUID --project PATH [--config PATH]
+  ml test --database UUID --project PATH [--role NAME] [--format text|json|junit] [--config PATH]
   ml service run [--config PATH]
   ml service install --config PATH
   ml service start|stop|restart|status|uninstall
@@ -46,6 +48,15 @@ type EmergencyCredentials struct {
 // AdministratorReset performs an OS-local emergency reset.
 type AdministratorReset func(context.Context, string, appconfig.Config) (EmergencyCredentials, error)
 
+type TestRequest struct {
+	ProjectPath string
+	DatabaseID  string
+	Role        string
+	Selection   testsuite.Selection
+}
+
+type TestRunner func(context.Context, appconfig.Config, TestRequest) (testsuite.Report, error)
+
 // Commands contains platform-specific mode implementations.
 type Commands struct {
 	Manager Runner
@@ -53,6 +64,7 @@ type Commands struct {
 	Service Runner
 	Control ServiceControl
 	Reset   AdministratorReset
+	Test    TestRunner
 }
 
 // CLI is the root MetaLab command-line application.
@@ -83,6 +95,8 @@ func (cli CLI) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return cli.runMode(ctx, "manager", args[1:], cli.commands.Manager, stderr)
 	case "studio":
 		return cli.runStudio(ctx, args[1:], stderr)
+	case "test":
+		return cli.runTests(ctx, args[1:], stdout, stderr)
 	case "service":
 		return cli.runService(ctx, args[1:], stdout, stderr)
 	case "admin":
@@ -93,6 +107,53 @@ func (cli CLI) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		fmt.Fprintf(stderr, "unknown command %q\n\n%s", args[0], usage)
 		return 2
 	}
+}
+
+func (cli CLI) runTests(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("test", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	projectPath := flags.String("project", "", "path to ML Project")
+	databaseID := flags.String("database", "", "registered Debug database UUID")
+	configurationPath := flags.String("config", "", "path to MetaLab YAML configuration")
+	role := flags.String("role", "", "application role used by tests")
+	module := flags.String("module", "", "tests module path")
+	routine := flags.String("routine", "", "exported test procedure")
+	format := flags.String("format", testsuite.FormatText, "text, json or junit")
+	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || *projectPath == "" || *databaseID == "" {
+		if err == nil {
+			fmt.Fprintln(stderr, "usage: ml test --database UUID --project PATH [--role NAME] [--module PATH] [--routine NAME] [--format text|json|junit] [--config PATH]")
+		}
+		return 2
+	}
+	if *format != testsuite.FormatText && *format != testsuite.FormatJSON && *format != testsuite.FormatJUnit {
+		fmt.Fprintf(stderr, "test: unsupported report format %q\n", *format)
+		return 2
+	}
+	if cli.commands.Test == nil {
+		fmt.Fprintln(stderr, "test command is unavailable in this build")
+		return 1
+	}
+	configuration, _, err := appconfig.Load(*configurationPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "test: %v\n", err)
+		return 1
+	}
+	report, err := cli.commands.Test(ctx, configuration, TestRequest{
+		ProjectPath: *projectPath, DatabaseID: *databaseID, Role: *role,
+		Selection: testsuite.Selection{Path: *module, Routine: *routine},
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "test: %v\n", err)
+		return 1
+	}
+	if err := testsuite.WriteReport(stdout, *format, report); err != nil {
+		fmt.Fprintf(stderr, "test: write report: %v\n", err)
+		return 1
+	}
+	if report.Failed != 0 {
+		return 1
+	}
+	return 0
 }
 
 func (cli CLI) runStudio(ctx context.Context, args []string, stderr io.Writer) int {
