@@ -31,11 +31,35 @@ type transactionScope struct {
 	pool            *pgxpool.Pool
 	tx              pgx.Tx
 	depth           int
+	testBoundary    bool
 	rollbackOnly    bool
 	implicit        bool
 	rollbackActions []func()
 	lockWait        time.Duration
 	operationDepth  int
+}
+
+// BeginTestExecution creates a protected transaction for one automated test.
+// The runner always rolls it back; BSL code cannot commit or roll back its
+// outer boundary, but may use balanced nested transactions.
+func (runtime *Runtime) BeginTestExecution(ctx context.Context) (context.Context, func(error) error, error) {
+	if ctx == nil {
+		return nil, nil, fmt.Errorf("test execution context is required")
+	}
+	if _, ok := ctx.Value(transactionContextKey{}).(*transactionScope); ok {
+		return nil, nil, fmt.Errorf("test execution already has a transaction scope")
+	}
+	pool, err := runtime.databasePool()
+	if err != nil {
+		return nil, nil, err
+	}
+	scope := &transactionScope{runtime: runtime, pool: pool, lockWait: runtime.dataLockWaitTimeout()}
+	if err := scope.begin(ctx); err != nil {
+		return nil, nil, err
+	}
+	scope.testBoundary = true
+	scoped := context.WithValue(ctx, transactionContextKey{}, scope)
+	return scoped, func(cause error) error { return scope.finishTest(cause) }, nil
 }
 
 // BeginExecution creates one transaction boundary for a top-level BSL call.
@@ -221,7 +245,7 @@ func (scope *transactionScope) commit(ctx context.Context) error {
 		}
 		return nil
 	}
-	if scope.implicit || scope.operationDepth > 0 {
+	if scope.testBoundary || scope.implicit || scope.operationDepth > 0 {
 		return ErrTransactionBoundary
 	}
 	tx, doomed := scope.tx, scope.rollbackOnly
@@ -246,6 +270,9 @@ func (scope *transactionScope) rollback(_ context.Context) error {
 	if scope.tx == nil || scope.depth < 1 {
 		return ErrTransactionNotActive
 	}
+	if scope.testBoundary && scope.depth == 1 {
+		return ErrTransactionBoundary
+	}
 	if scope.implicit {
 		if scope.depth > 1 {
 			scope.depth--
@@ -265,6 +292,28 @@ func (scope *transactionScope) rollback(_ context.Context) error {
 	scope.reset(true)
 	if err != nil {
 		return classifyTransactionError(fmt.Errorf("rollback transaction: %w", err))
+	}
+	return nil
+}
+
+func (scope *transactionScope) finishTest(cause error) error {
+	if scope.tx == nil {
+		return ErrTransactionBoundary
+	}
+	depth, doomed := scope.depth, scope.rollbackOnly
+	err := rollbackWithCleanupContext(scope.tx)
+	scope.reset(true)
+	if err != nil {
+		return classifyTransactionError(fmt.Errorf("rollback test transaction: %w", err))
+	}
+	if cause != nil {
+		return nil
+	}
+	if doomed {
+		return ErrTransactionDoomed
+	}
+	if depth != 1 {
+		return ErrTransactionNotCompleted
 	}
 	return nil
 }
@@ -292,7 +341,7 @@ func (scope *transactionScope) reset(rollback bool) {
 	if rollback {
 		scope.runRollbackActions()
 	}
-	scope.tx, scope.depth, scope.rollbackOnly, scope.implicit = nil, 0, false, false
+	scope.tx, scope.depth, scope.testBoundary, scope.rollbackOnly, scope.implicit = nil, 0, false, false, false
 	scope.rollbackActions = nil
 	scope.operationDepth = 0
 }

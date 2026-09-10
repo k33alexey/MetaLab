@@ -389,6 +389,26 @@ func TestCreateDebugDatabaseCopiesOrStartsCleanIntegration(t *testing.T) {
 	if copiedTableExists {
 		t.Fatal("clean debug database contains source business data")
 	}
+	if pool, _, err := runtime.OpenDebugDatabase(ctx, registeredSource.ID); err == nil || pool != nil || !strings.Contains(err.Error(), "Debug database") {
+		t.Fatalf("primary test pool=%v error=%v", pool, err)
+	}
+	if pool, _, err := runtime.OpenDebugDatabase(ctx, clean.ID); err == nil || pool != nil || !strings.Contains(err.Error(), "must be running") {
+		t.Fatalf("stopped debug test pool=%v error=%v", pool, err)
+	}
+	if _, err := runtime.StartDatabase(ctx, clean.ID); err != nil {
+		t.Fatal(err)
+	}
+	testPool, openedDebug, err := runtime.OpenDebugDatabase(ctx, clean.ID)
+	if err != nil || openedDebug.ID != clean.ID {
+		t.Fatalf("opened debug=%+v error=%v", openedDebug, err)
+	}
+	if err := testPool.Ping(ctx); err != nil {
+		t.Fatal(err)
+	}
+	testPool.Close()
+	if _, err := runtime.StopDatabase(ctx, clean.ID); err != nil {
+		t.Fatal(err)
+	}
 	runtime.copier = failingDatabaseCopier{}
 	failedRequest := debugRequest(administrator, administratorPassword, suffix, "failed")
 	if _, err := runtime.CreateDebugDatabase(ctx, registeredSource.ID, failedRequest); err == nil || !strings.Contains(err.Error(), "forced copy failure") {

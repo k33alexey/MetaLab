@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/k33alexey/MetaLab/internal/appconfig"
 	"github.com/k33alexey/MetaLab/internal/appdb"
 	"github.com/k33alexey/MetaLab/internal/auth"
@@ -274,6 +275,53 @@ func (runtime *Runtime) ListDatabases(ctx context.Context) ([]systemdb.Registere
 		return nil, fmt.Errorf("ML System PostgreSQL is not configured")
 	}
 	return database.Databases.List(ctx)
+}
+
+// OpenDebugDatabase opens a caller-owned pool for Studio test execution.
+func (runtime *Runtime) OpenDebugDatabase(ctx context.Context, id uuid.UUID) (*pgxpool.Pool, systemdb.RegisteredDatabase, error) {
+	runtime.mu.RLock()
+	database, secrets := runtime.database, runtime.secrets
+	runtime.mu.RUnlock()
+	if database == nil || secrets == nil {
+		return nil, systemdb.RegisteredDatabase{}, fmt.Errorf("ML System PostgreSQL is not configured")
+	}
+	registered, err := database.Databases.Get(ctx, id)
+	if err != nil {
+		return nil, systemdb.RegisteredDatabase{}, err
+	}
+	if registered.Mode != systemdb.DatabaseDebug {
+		return nil, systemdb.RegisteredDatabase{}, fmt.Errorf("automated tests require a Debug database")
+	}
+	if registered.State != systemdb.DatabaseRunning {
+		return nil, systemdb.RegisteredDatabase{}, fmt.Errorf("Debug database must be running to execute tests")
+	}
+	password, err := secrets.Get(registered.Connection.SecretKey)
+	if err != nil {
+		return nil, systemdb.RegisteredDatabase{}, err
+	}
+	physicalID, err := appdb.EnsureIdentity(ctx, registered.Connection, password)
+	if err != nil {
+		return nil, systemdb.RegisteredDatabase{}, errors.New(safeOperationalError(err, password))
+	}
+	if physicalID != registered.PhysicalID {
+		return nil, systemdb.RegisteredDatabase{}, fmt.Errorf("physical PostgreSQL database identity changed")
+	}
+	configuration, err := registered.Connection.PoolConfig(password)
+	if err != nil {
+		return nil, systemdb.RegisteredDatabase{}, errors.New(safeOperationalError(err, password))
+	}
+	configuration.MaxConns = 8
+	pool, err := pgxpool.NewWithConfig(ctx, configuration)
+	if err == nil {
+		err = pool.Ping(ctx)
+	}
+	if err != nil {
+		if pool != nil {
+			pool.Close()
+		}
+		return nil, systemdb.RegisteredDatabase{}, errors.New(safeOperationalError(err, password))
+	}
+	return pool, registered, nil
 }
 
 // RegisterDatabase verifies a physical PostgreSQL database and stores its password separately.

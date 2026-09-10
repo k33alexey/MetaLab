@@ -104,6 +104,35 @@ func TestBuildChangesDigestAndAtomicallyReplacesDestination(t *testing.T) {
 	}
 }
 
+func TestBuildExcludesTestModules(t *testing.T) {
+	t.Parallel()
+	root := publicationProject(t)
+	testPath, _ := project.TestPath(uuid.MustNew())
+	absolute := filepath.Join(root, filepath.FromSlash(testPath))
+	if err := os.WriteFile(absolute, []byte("Процедура Проверить() Экспорт\nКонецПроцедуры\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	first, err := Build(context.Background(), root, &bytes.Buffer{}, SourceState{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(absolute, []byte("Процедура ДругойТест() Экспорт\nКонецПроцедуры\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second, err := Build(context.Background(), root, &bytes.Buffer{}, SourceState{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ContentSHA256 != second.ContentSHA256 || !reflect.DeepEqual(first.Files, second.Files) {
+		t.Fatalf("test source affected package: first=%+v second=%+v", first, second)
+	}
+	for _, file := range first.Files {
+		if strings.HasPrefix(file.Path, "tests/") {
+			t.Fatalf("test module was published: %+v", file)
+		}
+	}
+}
+
 func TestBuildRejectsInvalidSourcesWithoutPublishing(t *testing.T) {
 	root := publicationProject(t)
 	formID := uuid.MustNew()
@@ -328,8 +357,8 @@ func TestBuildHonoursCancellationAndRejectsSymlinks(t *testing.T) {
 
 func TestBuildDetectsConcurrentSourceChange(t *testing.T) {
 	root := publicationProject(t)
-	testPath, _ := project.TestPath(uuid.MustNew())
-	absolute := filepath.Join(root, filepath.FromSlash(testPath))
+	modulePath, _ := project.ModulePath(uuid.MustNew())
+	absolute := filepath.Join(root, filepath.FromSlash(modulePath))
 	if err := os.WriteFile(absolute, []byte("Первый();\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

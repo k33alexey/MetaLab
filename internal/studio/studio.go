@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 	"github.com/k33alexey/MetaLab/internal/bsl/vm"
 	"github.com/k33alexey/MetaLab/internal/debugtarget"
 	"github.com/k33alexey/MetaLab/internal/gitclient"
@@ -43,6 +44,8 @@ type Workspace struct {
 	debugTargets  *debugtarget.Registry
 	debugTarget   *debugtarget.Lease
 	debugDatabase uuid.UUID
+	testRuntime   TestRuntimeProvider
+	testRunning   bool
 }
 
 // Snapshot is the read-only project model rendered by the Studio shell.
@@ -60,6 +63,7 @@ type Node struct {
 	Path       string     `json:"path,omitempty"`
 	Properties []Property `json:"properties,omitempty"`
 	Children   []Node     `json:"children,omitempty"`
+	Line       int        `json:"line,omitempty"`
 }
 
 // Property is one ordered value displayed in the properties panel.
@@ -213,6 +217,7 @@ func (workspace *Workspace) BuildPublicationPackage(ctx context.Context, destina
 func NewHandler(workspace *Workspace) http.Handler {
 	routes := http.NewServeMux()
 	registerDebugRoutes(routes, workspace)
+	registerTestRoutes(routes, workspace)
 	routes.Handle("GET /ui/", http.FileServer(http.FS(assets)))
 	routes.HandleFunc("GET /{$}", func(response http.ResponseWriter, _ *http.Request) {
 		page, err := assets.ReadFile("ui/index.html")
@@ -853,10 +858,28 @@ func (workspace *Workspace) sourceFiles(directory, relative, extension, kind, la
 				return nil, err
 			}
 		}
-		nodes = append(nodes, Node{
+		node := Node{
 			ID: id.String(), Kind: kind, Title: title, Path: path,
 			Properties: []Property{{Name: "UUID", Value: id.String()}, {Name: "Путь", Value: path}, {Name: "Размер", Value: fmt.Sprintf("%d байт", info.Size())}},
-		})
+		}
+		if relative == "tests" {
+			file, readErr := workspace.readSource(path)
+			if readErr != nil {
+				return nil, readErr
+			}
+			module, _ := syntax.Parse(path, file.Content)
+			for _, routine := range module.Routines {
+				if routine.Function || !routine.Export {
+					continue
+				}
+				node.Children = append(node.Children, Node{
+					ID: "test:" + id.String() + ":" + strings.ToLower(routine.Name), Kind: "test",
+					Title: routine.Name, Path: path, Line: routine.SourceSpan.Start.Line,
+					Properties: []Property{{Name: "Тест", Value: routine.Name}, {Name: "Строка", Value: fmt.Sprint(routine.SourceSpan.Start.Line)}},
+				})
+			}
+		}
+		nodes = append(nodes, node)
 	}
 	sort.Slice(nodes, func(left, right int) bool { return nodes[left].Path < nodes[right].Path })
 	return nodes, nil

@@ -180,7 +180,7 @@ function assertSuccess(result, operation) {
 function encodeAddProgram() {
   const writer = new BinaryWriter();
   writer.ascii("MLBC");
-  writer.uint16(9);
+  writer.uint16(10);
   writer.uint32(1); // modules
   writer.string("Smoke");
   writer.string("smoke.bsl");
@@ -197,6 +197,7 @@ function encodeAddProgram() {
   writer.uint8(1); // parameter 0 by value
   writer.uint8(1); // parameter 1 by value
   writer.uint16(2); // local count
+  writer.uint16(0); // local names
   writer.uint16(2); // maximum stack depth
   writer.uint32(0); // constants
   writer.uint32(0); // module variable accesses
@@ -216,6 +217,7 @@ function encodeAddProgram() {
   writer.uint16(1); // arity
   writer.uint8(1); // parameter 0 by value
   writer.uint16(1); // local count
+  writer.uint16(0); // local names
   writer.uint16(1); // maximum stack depth
   writer.uint32(0); // constants
   writer.uint32(0); // module variable accesses
@@ -234,6 +236,7 @@ function encodeAddProgram() {
   writer.uint16(1); // arity
   writer.uint8(1); // parameter 0 by value
   writer.uint16(1); // local count
+  writer.uint16(0); // local names
   writer.uint16(1); // maximum stack depth
   writer.uint32(0); // constants
   writer.uint32(0); // module variable accesses
@@ -252,6 +255,7 @@ function encodeAddProgram() {
   writer.uint16(1); // arity
   writer.uint8(1); // parameter 0 by value
   writer.uint16(1); // local count
+  writer.uint16(0); // local names
   writer.uint16(1); // maximum stack depth
   writer.uint32(0); // constants
   writer.uint32(0); // module variable accesses
@@ -270,6 +274,7 @@ function encodeAddProgram() {
   writer.uint8(1); // parameter 0 by value
   writer.uint8(1); // parameter 1 by value
   writer.uint16(2); // local count
+  writer.uint16(0); // local names
   writer.uint16(2); // maximum stack depth
   writer.uint32(1); // constants
   writer.uint8(1); // number
@@ -301,6 +306,7 @@ function encodeAddProgram() {
   writer.uint16(1); // arity
   writer.uint8(1); // parameter 0 by value
   writer.uint16(1); // local count
+  writer.uint16(0); // local names
   writer.uint16(1); // maximum stack depth
   writer.uint32(1); // constants
   writer.uint8(0); // undefined
@@ -323,6 +329,7 @@ function encodeAddProgram() {
   writer.uint8(0); // shared execution context
   writer.uint16(0); // arity
   writer.uint16(0); // local count
+  writer.uint16(0); // local names
   writer.uint16(1); // maximum stack depth
   writer.uint32(0); // constants
   writer.uint32(1); // module variable accesses
@@ -342,6 +349,7 @@ function encodeAddProgram() {
   writer.uint8(0); // shared execution context
   writer.uint16(0); // arity
   writer.uint16(0); // local count
+  writer.uint16(0); // local names
   writer.uint16(1); // maximum stack depth
   writer.uint32(1); // constants
   writer.uint8(2); // string
@@ -362,6 +370,7 @@ function encodeAddProgram() {
   writer.uint8(2); // server execution context
   writer.uint16(0); // arity
   writer.uint16(0); // local count
+  writer.uint16(0); // local names
   writer.uint16(1); // maximum stack depth
   writer.uint32(1); // constants
   writer.uint8(1); // number

@@ -1,6 +1,7 @@
 package studio
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -94,6 +95,7 @@ func TestStudioHandlerServesShellAndSnapshot(t *testing.T) {
 	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "ML Studio") || !strings.Contains(page.Body.String(), "bsl-editor.js") ||
 		!strings.Contains(page.Body.String(), "data-bsl-action=\"definition\"") || !strings.Contains(page.Body.String(), "/api/search?query=") ||
 		!strings.Contains(page.Body.String(), "data-bsl-action=\"help\"") || !strings.Contains(page.Body.String(), "/api/bsl/help?query=") ||
+		!strings.Contains(page.Body.String(), "tests.js") || !strings.Contains(page.Body.String(), "id=\"tests-open\"") ||
 		page.Header().Get("Content-Security-Policy") == "" {
 		t.Fatalf("page status=%d headers=%v body=%s", page.Code, page.Header(), page.Body.String())
 	}
@@ -114,6 +116,46 @@ func TestStudioHandlerServesShellAndSnapshot(t *testing.T) {
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &snapshot); err != nil || snapshot.Manifest.Title != "Продажи и склад" {
 		t.Fatalf("snapshot=%+v error=%v", snapshot, err)
+	}
+}
+
+func TestWorkspaceDiscoversTestProceduresAndServesTestAPI(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	id := uuid.MustNew()
+	relative, err := project.TestPath(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := "Процедура Проверить() Экспорт\nКонецПроцедуры\nФункция НеТест() Экспорт\nВозврат Истина;\nКонецФункции\n"
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(relative)), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases, err := workspace.TestCases()
+	if err != nil || len(cases) != 1 || cases[0].Routine != "Проверить" || cases[0].Path != relative {
+		t.Fatalf("cases=%+v error=%v", cases, err)
+	}
+	snapshot, err := workspace.Snapshot()
+	if err != nil || !treeContainsTitle(snapshot.Tree, "Проверить") {
+		t.Fatalf("test tree error=%v tree=%+v", err, snapshot.Tree)
+	}
+	handler := NewHandler(workspace)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/tests", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Проверить") {
+		t.Fatalf("test API status=%d body=%s", response.Code, response.Body.String())
+	}
+	run := httptest.NewRequest(http.MethodPost, "/api/tests/run", bytes.NewBufferString(`{}`))
+	run.Header.Set("Content-Type", "application/json")
+	run.Header.Set("X-ML-CSRF", "1")
+	runResponse := httptest.NewRecorder()
+	handler.ServeHTTP(runResponse, run)
+	if runResponse.Code != http.StatusConflict || !strings.Contains(runResponse.Body.String(), "Debug database") {
+		t.Fatalf("test run status=%d body=%s", runResponse.Code, runResponse.Body.String())
 	}
 }
 

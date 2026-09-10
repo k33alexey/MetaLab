@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
+	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/platform"
 	"github.com/k33alexey/MetaLab/internal/secretstore"
 	"github.com/k33alexey/MetaLab/internal/studio"
@@ -36,6 +37,23 @@ func runStudio(ctx context.Context, configuration appconfig.Config, projectPath,
 	}
 	platformRuntime := platform.New(ctx, configuration, secretstore.New())
 	defer platformRuntime.Close()
+	workspace.SetTestRuntimeProvider(func(runContext context.Context) (*metadata.Runtime, func(), error) {
+		pool, _, err := platformRuntime.OpenDebugDatabase(runContext, databaseID)
+		if err != nil {
+			return nil, nil, err
+		}
+		catalog, err := metadata.Load(projectPath)
+		if err != nil {
+			pool.Close()
+			return nil, nil, err
+		}
+		runtime, err := metadata.NewApplicationRuntime(pool, catalog, nil)
+		if err != nil {
+			pool.Close()
+			return nil, nil, err
+		}
+		return runtime, pool.Close, nil
+	})
 	lease, err := openStudioLease(ctx, platformRuntime, databaseID, snapshot.Manifest.ID)
 	if err != nil {
 		return err

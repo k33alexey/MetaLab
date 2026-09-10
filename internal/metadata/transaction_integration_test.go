@@ -72,6 +72,51 @@ func TestTransactionsAndDataLocksIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	testContext, finishTest, err := runtime.BeginTestExecution(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.CommitTransaction(testContext); !errors.Is(err, ErrTransactionBoundary) {
+		t.Fatalf("test boundary commit error=%v", err)
+	}
+	if err := runtime.RollbackTransaction(testContext); !errors.Is(err, ErrTransactionBoundary) {
+		t.Fatalf("test boundary rollback error=%v", err)
+	}
+	testObject, err := repository.New(testContext, "Товары", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testObject.Code = "TEST-ROLLBACK"
+	if err := repository.Save(testContext, testObject, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.BeginTransaction(testContext); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.CommitTransaction(testContext); err != nil {
+		t.Fatal(err)
+	}
+	if err := finishTest(nil); err != nil {
+		t.Fatal(err)
+	}
+	if testObject.Version != 0 {
+		t.Fatalf("rolled back test object version=%d", testObject.Version)
+	}
+	if _, found, err := repository.FindByCode(ctx, "Товары", "TEST-ROLLBACK"); err != nil || found {
+		t.Fatalf("test data survived rollback found=%v error=%v", found, err)
+	}
+
+	unbalancedContext, finishUnbalanced, err := runtime.BeginTestExecution(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.BeginTransaction(unbalancedContext); err != nil {
+		t.Fatal(err)
+	}
+	if err := finishUnbalanced(nil); !errors.Is(err, ErrTransactionNotCompleted) {
+		t.Fatalf("unfinished nested test transaction error=%v", err)
+	}
+
 	directContext, finishDirect, err := runtime.BeginExecution(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -208,7 +253,19 @@ func TestTransactionsAndDataLocksIntegration(t *testing.T) {
     Блокировка.Заблокировать();
     ОтменитьТранзакцию();
     Возврат Истина;
-КонецФункции`)
+КонецФункции
+
+&НаСервере
+Процедура ТестоваяЗапись()
+    Элемент = Справочники.Товары.СоздатьЭлемент();
+    Элемент.Код = "TEST-BSL";
+    Элемент.Записать();
+КонецПроцедуры
+
+&НаСервере
+Процедура ТестоваяФиксация()
+    ЗафиксироватьТранзакцию();
+КонецПроцедуры`)
 	if len(diagnostics) != 0 {
 		t.Fatal(diagnostics)
 	}
@@ -217,6 +274,31 @@ func TestTransactionsAndDataLocksIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	vmContext := machine.NewContextWithMetadata(runtime)
+	bslTestContext, finishBSLTest, err := runtime.BeginTestExecution(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, bslTestErr := vmContext.CallContext(bslTestContext, "ТестоваяЗапись")
+	if bslTestErr != nil {
+		t.Fatal(bslTestErr)
+	}
+	if err := finishBSLTest(nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := repository.FindByCode(ctx, "Товары", "TEST-BSL"); err != nil || found {
+		t.Fatalf("BSL test data survived rollback found=%v error=%v", found, err)
+	}
+	bslCommitContext, finishBSLCommit, err := runtime.BeginTestExecution(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, bslCommitErr := vmContext.CallContext(bslCommitContext, "ТестоваяФиксация")
+	if err := finishBSLCommit(bslCommitErr); err != nil {
+		t.Fatal(err)
+	}
+	if bslCommitErr == nil || !strings.Contains(bslCommitErr.Error(), ErrTransactionBoundary.Error()) {
+		t.Fatalf("BSL test commit error=%v", bslCommitErr)
+	}
 	for _, routine := range []string{"ЗаписатьИЗафиксировать", "ЗаписатьИОтменить", "ВложенныйОткат", "ОшибкаВложеннойТранзакции"} {
 		result, err := vmContext.CallContext(ctx, routine)
 		active, _ := result.AsBoolean()
