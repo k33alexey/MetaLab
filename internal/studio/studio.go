@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/k33alexey/MetaLab/internal/bsl/vm"
 	"github.com/k33alexey/MetaLab/internal/gitclient"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -37,6 +38,7 @@ type Workspace struct {
 	bslHelp       *bslHelpIndex
 	projectSearch *projectSearchIndex
 	querySchema   *QueryDesignerSchema
+	debugSession  *vm.DebugSession
 }
 
 // Snapshot is the read-only project model rendered by the Studio shell.
@@ -180,6 +182,7 @@ func (workspace *Workspace) BuildPublicationPackage(ctx context.Context, destina
 // NewHandler serves the local read-only Studio shell for one workspace.
 func NewHandler(workspace *Workspace) http.Handler {
 	routes := http.NewServeMux()
+	registerDebugRoutes(routes, workspace)
 	routes.Handle("GET /ui/", http.FileServer(http.FS(assets)))
 	routes.HandleFunc("GET /{$}", func(response http.ResponseWriter, _ *http.Request) {
 		page, err := assets.ReadFile("ui/index.html")

@@ -11,7 +11,7 @@ import (
 const maxIndexedItems = 1 << 16
 
 // Version changes whenever the bytecode contract becomes incompatible.
-const Version uint16 = 9
+const Version uint16 = 10
 
 // ExecutionContext is the runtime placement of one compiled routine.
 type ExecutionContext uint8
@@ -204,6 +204,9 @@ type Function struct {
 	Arity      uint16
 	Parameters []Parameter
 	LocalCount uint16
+	// LocalNames maps local slots to source identifiers. Empty entries are
+	// compiler temporaries and are intentionally hidden by the debugger.
+	LocalNames []string
 	MaxStack   uint16
 	Constants  []Value
 	CallSites  []CallSite
@@ -241,6 +244,7 @@ func (program *Program) ClientProgram() (*Program, error) {
 		source := &program.Functions[index]
 		target := *source
 		target.Parameters = append([]Parameter(nil), source.Parameters...)
+		target.LocalNames = append([]string(nil), source.LocalNames...)
 		if !source.Context.AllowsClient() {
 			target.Constants = []Value{Undefined()}
 			target.CallSites = nil
@@ -366,6 +370,20 @@ func validateFunction(program *Program, function *Function) error {
 	}
 	if function.LocalCount < function.Arity {
 		return fmt.Errorf("local count %d is smaller than arity %d", function.LocalCount, function.Arity)
+	}
+	if len(function.LocalNames) != 0 && len(function.LocalNames) != int(function.LocalCount) {
+		return fmt.Errorf("local name count %d differs from local count %d", len(function.LocalNames), function.LocalCount)
+	}
+	localNames := make(map[string]bool, len(function.LocalNames))
+	for index, name := range function.LocalNames {
+		if name == "" {
+			continue
+		}
+		folded := strings.ToLower(name)
+		if localNames[folded] {
+			return fmt.Errorf("local %d has duplicate name %q", index, name)
+		}
+		localNames[folded] = true
 	}
 	if len(function.Constants) > maxIndexedItems || len(function.CallSites) > maxIndexedItems || len(function.Objects) > maxIndexedItems ||
 		len(function.ModuleVars) > maxIndexedItems || len(function.Exceptions) > maxIndexedItems {

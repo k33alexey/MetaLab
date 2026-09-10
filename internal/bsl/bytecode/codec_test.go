@@ -21,7 +21,7 @@ func TestBinaryCodecRoundTripIsDeterministic(t *testing.T) {
 	program := &Program{Version: Version, Modules: []Module{{
 		Name: "Основной", Source: "modules/main.bsl", Variables: []ModuleVariable{{Name: "Состояние", Export: true}},
 	}}, Functions: []Function{{
-		Name: "Расчёт", IsFunction: true, Export: true, Context: ContextClientServerNoContext, Arity: 1, LocalCount: 2, MaxStack: 2,
+		Name: "Расчёт", IsFunction: true, Export: true, Context: ContextClientServerNoContext, Arity: 1, LocalCount: 2, LocalNames: []string{"Значение", ""}, MaxStack: 2,
 		Parameters: []Parameter{{HasDefault: true, Default: Number(10)}},
 		Constants:  []Value{Undefined(), Number(2.5), String("MetaLab"), Boolean(true), Null(), date, exact},
 		ModuleVars: []VariableReference{{Kind: ModuleReference, Variable: 0}},
@@ -59,6 +59,9 @@ func TestBinaryCodecRoundTripIsDeterministic(t *testing.T) {
 	}
 	if len(function.Parameters) != 1 || !function.Parameters[0].HasDefault || function.Parameters[0].Default.String() != "10" {
 		t.Fatalf("decoded parameters = %+v", function.Parameters)
+	}
+	if len(function.LocalNames) != 2 || function.LocalNames[0] != "Значение" || function.LocalNames[1] != "" {
+		t.Fatalf("decoded local names = %+v", function.LocalNames)
 	}
 	if len(function.Exceptions) != 1 || function.Exceptions[0].Target != 1 {
 		t.Fatalf("decoded exception handlers = %+v", function.Exceptions)

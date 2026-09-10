@@ -89,6 +89,12 @@ func MarshalBinary(program *Program) ([]byte, error) {
 			}
 		}
 		writeUint16(&output, function.LocalCount)
+		writeUint16(&output, uint16(len(function.LocalNames)))
+		for localIndex, name := range function.LocalNames {
+			if err := writeString(&output, name); err != nil {
+				return nil, fmt.Errorf("function %q local %d name: %w", function.Name, localIndex, err)
+			}
+		}
 		writeUint16(&output, function.MaxStack)
 
 		if len(function.Constants) > maxWireCollectionLen {
@@ -366,6 +372,20 @@ func (decoder *wireDecoder) readFunction() (Function, error) {
 	if err != nil {
 		return Function{}, err
 	}
+	localNameCount, err := decoder.readUint16()
+	if err != nil {
+		return Function{}, err
+	}
+	if localNameCount != 0 && localNameCount != localCount {
+		return Function{}, fmt.Errorf("local name count %d differs from local count %d", localNameCount, localCount)
+	}
+	localNames := make([]string, localNameCount)
+	for index := range localNames {
+		localNames[index], err = decoder.readString()
+		if err != nil {
+			return Function{}, fmt.Errorf("local %d name: %w", index, err)
+		}
+	}
 	maxStack, err := decoder.readUint16()
 	if err != nil {
 		return Function{}, err
@@ -498,7 +518,7 @@ func (decoder *wireDecoder) readFunction() (Function, error) {
 	}
 	return Function{
 		Name: name, Module: module, IsFunction: flags&1 != 0, Export: flags&2 != 0, Context: ExecutionContext(context),
-		Arity: arity, Parameters: parameters, LocalCount: localCount, MaxStack: maxStack,
+		Arity: arity, Parameters: parameters, LocalCount: localCount, LocalNames: localNames, MaxStack: maxStack,
 		Constants: constants, ModuleVars: moduleVariables, CallSites: calls, Objects: objects, Exceptions: exceptions, Code: code,
 	}, nil
 }

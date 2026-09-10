@@ -123,6 +123,7 @@ type executionEnvironment struct {
 	side     ExecutionSide
 	server   ServerCaller
 	metadata MetadataRuntime
+	debug    *debugRuntime
 }
 
 // Context owns module variables for one isolated BSL session.
@@ -223,6 +224,7 @@ func cloneProgram(program *bytecode.Program) *bytecode.Program {
 	for index := range program.Functions {
 		clone.Functions[index] = program.Functions[index]
 		clone.Functions[index].Parameters = append([]bytecode.Parameter(nil), program.Functions[index].Parameters...)
+		clone.Functions[index].LocalNames = append([]string(nil), program.Functions[index].LocalNames...)
 		clone.Functions[index].Constants = append([]bytecode.Value(nil), program.Functions[index].Constants...)
 		clone.Functions[index].Objects = make([]bytecode.ObjectOperation, len(program.Functions[index].Objects))
 		for operationIndex := range program.Functions[index].Objects {
@@ -256,13 +258,14 @@ type StackFrame struct {
 
 // RuntimeError contains a source-linked BSL call stack.
 type RuntimeError struct {
-	Module   string
-	Function string
-	Filename string
-	Span     syntax.Span
-	Message  string
-	Stack    []StackFrame
-	Cause    error
+	Module        string
+	Function      string
+	Filename      string
+	Span          syntax.Span
+	Message       string
+	Stack         []StackFrame
+	Cause         error
+	debugReported bool
 }
 
 // Unwrap exposes a resource-limit or cancellation cause to errors.Is.
@@ -935,9 +938,15 @@ func executeAdvanced(
 	} else {
 		caught = caught[:len(function.Exceptions)]
 	}
-
 	for instructionPointer := 0; instructionPointer < len(function.Code); instructionPointer++ {
 		instruction := function.Code[instructionPointer]
+		if env.debug != nil {
+			paused, debugErr := env.debug.before(function, locals, modules, env, callDepth, instructionPointer, instruction)
+			budget.extendDeadline(paused)
+			if debugErr != nil {
+				return bytecode.Undefined(), resourceFailure(function, instruction, debugErr)
+			}
+		}
 		if err := budget.step(); err != nil {
 			return bytecode.Undefined(), resourceFailure(function, instruction, err)
 		}
@@ -1369,6 +1378,15 @@ func executeAdvanced(
 			failure = runtimeFailure(function, instruction, "unknown opcode")
 		}
 		if failure != nil {
+			if env.debug != nil && !failure.debugReported {
+				failure.debugReported = true
+				frame := captureDebugFrame(function, locals, modules, env, instructionPointer, instruction.Span)
+				paused, debugErr := env.debug.exception(frame, callDepth, failure.Message)
+				budget.extendDeadline(paused)
+				if debugErr != nil {
+					return bytecode.Undefined(), resourceFailure(function, instruction, debugErr)
+				}
+			}
 			handlerIndex := findExceptionHandler(function, instructionPointer)
 			if handlerIndex < 0 {
 				writeBackArguments()

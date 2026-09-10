@@ -1,0 +1,26 @@
+#debug-panel { height:260px; border-top:1px solid #45484f; background:#25262a; color:#dfe1e5 }
+body.debug-open .workspace { height:calc(100vh - 326px) }
+#debug-panel[hidden] { display:none }
+.debug-toolbar { display:flex; align-items:center; gap:6px; height:40px; padding:5px 9px; border-bottom:1px solid #393b40; background:#2b2d30 }
+.debug-toolbar strong { margin-right:5px }
+.debug-toolbar input { min-width:0; height:29px; padding:4px 7px; border:1px solid #4a4d54; border-radius:4px; outline:0; background:#1e1f22; color:#dfe1e5; font:12px ui-monospace,SFMono-Regular,Menlo,monospace }
+#debug-routine { width:190px }
+#debug-arguments { width:230px }
+#debug-state { flex:1; min-width:100px; color:#aeb1b8; font-size:12px; text-align:right }
+.debug-body { display:grid; grid-template-columns:280px minmax(260px,1fr) minmax(300px,1fr); height:219px }
+.debug-pane { min-width:0; overflow:auto; border-right:1px solid #393b40; padding:7px }
+.debug-pane:last-child { border-right:0 }
+.debug-pane h3 { margin:2px 4px 7px; color:#aeb1b8; font-size:11px; text-transform:uppercase }
+#debug-stack,#debug-variables,#debug-watches { display:grid; gap:2px }
+.debug-frame { display:grid; width:100%; padding:6px 7px; background:transparent; text-align:left; font:12px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace }
+.debug-frame:hover,.debug-frame.selected { background:#3c3f45 }
+.debug-frame small { color:#858991; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.debug-variable,.debug-watch { display:grid; grid-template-columns:minmax(100px,35%) 90px minmax(0,1fr) 22px; gap:7px; align-items:center; min-height:27px; padding:3px 5px; font:12px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace }
+.debug-variable { grid-template-columns:minmax(100px,35%) 90px minmax(0,1fr) }
+.debug-kind { color:#858991 }
+.debug-value { min-width:0; overflow:hidden; color:#d6b778; text-overflow:ellipsis; white-space:nowrap }
+.debug-watch.error .debug-value { color:#ff7b86 }
+.debug-watch-input { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:5px; margin:0 0 7px }
+.debug-watch-input input { min-width:0; padding:6px 7px; border:1px solid #4a4d54; border-radius:4px; outline:0; background:#1e1f22; color:#dfe1e5; font:12px ui-monospace,SFMono-Regular,Menlo,monospace }
+.debug-empty { padding:10px 5px; color:#858991; font-size:12px }
+@media (max-width:950px) { .debug-body { grid-template-columns:220px 1fr 1fr } #debug-arguments { width:150px } }

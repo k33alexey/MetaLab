@@ -83,6 +83,7 @@ func programFitsMemory(program *bytecode.Program, limit uint64) bool {
 	}
 	for _, function := range program.Functions {
 		if !add(uint64(len(function.Name))) || !add(uint64(len(function.Parameters))*128) ||
+			!add(uint64(len(function.LocalNames))*16) ||
 			!add(uint64(len(function.Constants))*estimatedValueBytes) ||
 			!add(uint64(len(function.CallSites))*40) || !add(uint64(len(function.ModuleVars))*8) ||
 			!add(uint64(len(function.Objects))*32) ||
@@ -93,6 +94,11 @@ func programFitsMemory(program *bytecode.Program, limit uint64) bool {
 			remaining := limit - used
 			size, ok := parameter.Default.DynamicMemory(remaining)
 			if !ok || !add(size) {
+				return false
+			}
+		}
+		for _, name := range function.LocalNames {
+			if !add(uint64(len(name))) {
 				return false
 			}
 		}
@@ -228,6 +234,12 @@ func (budget *executionBudget) step() error {
 		return fmt.Errorf("%w: maximum %s", ErrExecutionTimeout, budget.limits.MaxDuration)
 	}
 	return nil
+}
+
+func (budget *executionBudget) extendDeadline(duration time.Duration) {
+	if !budget.deadline.IsZero() && duration > 0 {
+		budget.deadline = budget.deadline.Add(duration)
+	}
 }
 
 func (budget *executionBudget) rpcContext() (context.Context, context.CancelFunc) {

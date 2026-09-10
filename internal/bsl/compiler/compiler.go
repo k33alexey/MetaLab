@@ -180,6 +180,7 @@ type functionCompiler struct {
 	routine    *syntax.Routine
 	function   bytecode.Function
 	locals     map[string]uint16
+	localNames []string
 	nextLocal  int
 	loops      []loopContext
 	exceptions []uint16
@@ -223,7 +224,7 @@ func (c *compiler) compileRoutine(entry routineEntry) bytecode.Function {
 			Name: routine.Name, Module: entry.module, IsFunction: routine.Function, Export: routine.Export,
 			Context: executionContext(routine.Context), Arity: uint16(len(routine.Parameters)),
 		},
-		locals: make(map[string]uint16, len(routine.Parameters)), nextLocal: len(routine.Parameters),
+		locals: make(map[string]uint16, len(routine.Parameters)), localNames: make([]string, len(routine.Parameters)), nextLocal: len(routine.Parameters),
 	}
 	optional := false
 	for index, parameter := range routine.Parameters {
@@ -233,6 +234,7 @@ func (c *compiler) compileRoutine(entry routineEntry) bytecode.Function {
 			continue
 		}
 		state.locals[name] = uint16(index)
+		state.localNames[index] = parameter.Name
 		metadata := bytecode.Parameter{ByValue: parameter.ByValue, HasDefault: parameter.Default != nil}
 		if parameter.Default != nil {
 			optional = true
@@ -259,6 +261,7 @@ func (c *compiler) compileRoutine(entry routineEntry) bytecode.Function {
 		c.report(entry.owner.filename, routine.SourceSpan, "BSL3011", "too many local variables in routine")
 	}
 	state.function.LocalCount = uint16(state.nextLocal)
+	state.function.LocalNames = append([]string(nil), state.localNames...)
 	state.function.MaxStack = uint16(state.maximum)
 	return state.function
 }
@@ -273,7 +276,9 @@ func (c *functionCompiler) declareExplicitLocals(statements []syntax.Statement) 
 					c.owner.report(c.filename, variable.SourceSpan, "BSL3024", "duplicate local variable "+variable.Name)
 					continue
 				}
-				c.locals[name] = c.allocateLocal(variable.SourceSpan)
+				index := c.allocateLocal(variable.SourceSpan)
+				c.locals[name] = index
+				c.setLocalName(index, variable.Name)
 			}
 		case *syntax.IfStatement:
 			for _, branch := range node.Branches {
@@ -1278,6 +1283,7 @@ func (c *functionCompiler) ensureLocal(name string, span syntax.Span) uint16 {
 	}
 	index := c.allocateLocal(span)
 	c.locals[folded] = index
+	c.setLocalName(index, name)
 	return index
 }
 
@@ -1288,7 +1294,14 @@ func (c *functionCompiler) allocateLocal(span syntax.Span) uint16 {
 	}
 	index := uint16(c.nextLocal)
 	c.nextLocal++
+	c.localNames = append(c.localNames, "")
 	return index
+}
+
+func (c *functionCompiler) setLocalName(index uint16, name string) {
+	if int(index) < len(c.localNames) {
+		c.localNames[index] = name
+	}
 }
 
 func (c *functionCompiler) emitJump(opcode bytecode.Opcode, span syntax.Span) int {
