@@ -31,8 +31,8 @@ func TestDatabaseMigrationAndSettingsIntegration(t *testing.T) {
 	if err := database.pool.QueryRow(ctx, "SELECT COUNT(*) FROM ml_system.schema_migrations").Scan(&migrations); err != nil {
 		t.Fatal(err)
 	}
-	if migrations != 6 {
-		t.Fatalf("migration count = %d, want 6", migrations)
+	if migrations != 7 {
+		t.Fatalf("migration count = %d, want 7", migrations)
 	}
 
 	key := fmt.Sprintf("test.setting-%d", time.Now().UnixNano())
@@ -149,7 +149,7 @@ func TestMigrationsRejectChangesAndRollbackFailure(t *testing.T) {
 	}
 
 	failing := append(append([]migration(nil), migrations...), migration{
-		version: 6, name: "rollback_probe", checksum: "test",
+		version: 8, name: "rollback_probe", checksum: "test",
 		sql: "CREATE TABLE ml_system.rollback_probe(id BIGINT); SELECT 1 / 0;",
 	})
 	if err := applyMigrations(ctx, connection.Conn(), failing); err == nil {

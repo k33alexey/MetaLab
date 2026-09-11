@@ -18,6 +18,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/postgresconn"
 	"github.com/k33alexey/MetaLab/internal/secretstore"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 func TestProvisionPersistsAndReopensMLSystemIntegration(t *testing.T) {
@@ -253,12 +254,38 @@ func TestCreateDebugDatabaseCopiesOrStartsCleanIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	sourcePool.Close()
-	if _, _, err := runtime.database.Administrators.CreateInitial(ctx, "admin-"+suffix, "platform integration password"); err != nil {
+	administratorAccount, _, err := runtime.database.Administrators.CreateInitial(ctx, "admin-"+suffix, "platform integration password")
+	if err != nil {
 		t.Fatal(err)
 	}
 	runningSource, err := runtime.StartDatabase(ctx, registeredSource.ID)
 	if err != nil || runningSource.State != systemdb.DatabaseRunning {
 		t.Fatalf("running source=%+v error=%v", runningSource, err)
+	}
+	memberID := uuid.MustNew()
+	if _, err := runtime.database.Users.Create(ctx, systemdb.UserCreation{
+		ID: memberID, Login: "member-" + suffix, Password: "member integration password",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	memberLogin, err := runtime.LoginPortal(ctx, "member-"+suffix, "member integration password", "127.0.0.3", "integration-test")
+	if err != nil {
+		t.Fatalf("regular Portal login failed: %v", err)
+	}
+	if _, visible, err := runtime.LoadPortal(ctx, memberLogin.Token); err != nil || len(visible) != 0 {
+		t.Fatalf("unassigned user databases=%+v error=%v", visible, err)
+	}
+	if _, err := runtime.OpenPortalDatabase(ctx, memberLogin.Token, registeredSource.ID); !errors.Is(err, systemdb.ErrDatabaseAccessDenied) {
+		t.Fatalf("unassigned user open error=%v", err)
+	}
+	if _, err := runtime.database.DatabaseAccess.GrantApp(ctx, administratorAccount.ID, memberID, registeredSource.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, visible, err := runtime.LoadPortal(ctx, memberLogin.Token); err != nil || len(visible) != 1 || visible[0].ID != registeredSource.ID || visible[0].AccessLevel != systemdb.DatabaseMember {
+		t.Fatalf("assigned user databases=%+v error=%v", visible, err)
+	}
+	if _, err := runtime.database.DatabaseAccess.GrantApp(ctx, administratorAccount.ID, administratorAccount.ID, registeredSource.ID); err != nil {
+		t.Fatal(err)
 	}
 	portalLogin, err := runtime.LoginPortal(ctx, "admin-"+suffix, "platform integration password", "127.0.0.1", "integration-test")
 	if err != nil {

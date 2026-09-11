@@ -101,6 +101,9 @@ RETURNING created_at`, id.String(), login, passwordHash).Scan(&administrator.Cre
 	if err := insertRecoveryCodes(ctx, transaction, id, digests); err != nil {
 		return Administrator{}, nil, err
 	}
+	if err := assignAllUnownedDatabases(ctx, transaction, id); err != nil {
+		return Administrator{}, nil, err
+	}
 	if err := transaction.Commit(ctx); err != nil {
 		return Administrator{}, nil, fmt.Errorf("commit initial administrator creation: %w", err)
 	}
@@ -109,38 +112,13 @@ RETURNING created_at`, id.String(), login, passwordHash).Scan(&administrator.Cre
 
 // Authenticate verifies an enabled internal account without revealing lookup details.
 func (repository *AdministratorRepository) Authenticate(ctx context.Context, login, password string) (Administrator, error) {
-	var administrator Administrator
-	var id, passwordHash string
-	var enabled, platformAdministrator bool
-	err := repository.pool.QueryRow(ctx, `
-SELECT id::text, login, password_hash, platform_administrator, must_change_password, enabled, created_at
-FROM ml_system.users WHERE lower(login) = lower($1)`, login).Scan(
-		&id, &administrator.Login, &passwordHash, &platformAdministrator,
-		&administrator.MustChangePassword, &enabled, &administrator.CreatedAt,
-	)
-	if errors.Is(err, pgx.ErrNoRows) {
-		auth.SpendPasswordWork(password)
-		return Administrator{}, ErrInvalidCredentials
-	}
+	user, err := authenticateInternalUser(ctx, repository.pool, login, password, true)
 	if err != nil {
-		return Administrator{}, fmt.Errorf("read administrator credentials: %w", err)
+		return Administrator{}, err
 	}
-	if !enabled || !platformAdministrator {
-		auth.SpendPasswordWork(password)
-		return Administrator{}, ErrInvalidCredentials
-	}
-	valid, err := auth.VerifyPassword(passwordHash, password)
-	if err != nil {
-		return Administrator{}, fmt.Errorf("verify administrator password: %w", err)
-	}
-	if !valid {
-		return Administrator{}, ErrInvalidCredentials
-	}
-	administrator.ID, err = uuid.Parse(id)
-	if err != nil {
-		return Administrator{}, fmt.Errorf("parse administrator identifier: %w", err)
-	}
-	return administrator, nil
+	return Administrator{
+		ID: user.ID, Login: user.Login, MustChangePassword: user.MustChangePassword, CreatedAt: user.CreatedAt,
+	}, nil
 }
 
 // RecoverPassword consumes one recovery code and replaces the password.

@@ -25,7 +25,7 @@ func TestSessionsAuditAndBackupCatalogIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	t.Cleanup(database.Close)
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	userID, databaseID := uuid.MustNew(), uuid.MustNew()
 	passwordHash, err := auth.HashPassword("integration password")
@@ -45,6 +45,9 @@ VALUES ($1, $2, $3, TRUE, TRUE)`, userID.String(), "operations-"+suffix, passwor
 		},
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DatabaseAccess.GrantApp(ctx, userID, userID, databaseID); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {

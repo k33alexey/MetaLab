@@ -12,8 +12,8 @@ func TestEmbeddedMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(migrations) != 6 {
-		t.Fatalf("migration count = %d, want 6", len(migrations))
+	if len(migrations) != 7 {
+		t.Fatalf("migration count = %d, want 7", len(migrations))
 	}
 	migration := migrations[0]
 	if migration.version != 1 || migration.name != "settings" || len(migration.checksum) != 64 {
@@ -36,5 +36,8 @@ func TestEmbeddedMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	}
 	if migrations[5].version != 6 || migrations[5].name != "studio_sessions" || !strings.Contains(migrations[5].sql, "CREATE TABLE ml_system.studio_sessions") {
 		t.Fatalf("sixth migration = %+v", migrations[5])
+	}
+	if migrations[6].version != 7 || migrations[6].name != "database_access" || !strings.Contains(migrations[6].sql, "CREATE TABLE ml_system.database_access") {
+		t.Fatalf("seventh migration = %+v", migrations[6])
 	}
 }

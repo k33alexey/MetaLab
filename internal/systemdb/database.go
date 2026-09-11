@@ -13,8 +13,10 @@ import (
 type Database struct {
 	pool           *pgxpool.Pool
 	Settings       *SettingsRepository
+	Users          *UserRepository
 	Administrators *AdministratorRepository
 	Databases      *DatabaseRepository
+	DatabaseAccess *DatabaseAccessRepository
 	Sessions       *SessionRepository
 	Audit          *AuditRepository
 	Backups        *BackupRepository
@@ -59,8 +61,10 @@ func OpenConfig(ctx context.Context, configuration *pgxpool.Config) (*Database, 
 		return nil, err
 	}
 	database.Settings = &SettingsRepository{pool: pool}
+	database.Users = &UserRepository{pool: pool}
 	database.Administrators = &AdministratorRepository{pool: pool}
 	database.Databases = &DatabaseRepository{pool: pool}
+	database.DatabaseAccess = &DatabaseAccessRepository{pool: pool}
 	database.Sessions = &SessionRepository{pool: pool}
 	database.Audit = &AuditRepository{pool: pool}
 	database.Backups = &BackupRepository{pool: pool}

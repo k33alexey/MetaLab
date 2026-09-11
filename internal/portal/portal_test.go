@@ -25,7 +25,8 @@ func TestPortalLoginListOpenAndLogout(t *testing.T) {
 			AbsoluteExpiresAt: time.Now().Add(time.Hour),
 		},
 		databases: []platform.PortalDatabase{{
-			ID: databaseID, Name: "Продажи", Mode: systemdb.DatabasePrimary, AllowNewSessions: true,
+			ID: databaseID, Name: "Продажи", Mode: systemdb.DatabasePrimary,
+			AccessLevel: systemdb.DatabaseOwner, State: systemdb.DatabaseRunning, AllowNewSessions: true,
 		}},
 	}
 	handler := NewHandler(runtime)
@@ -45,7 +46,7 @@ func TestPortalLoginListOpenAndLogout(t *testing.T) {
 	portalRequest.AddCookie(cookies[0])
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, portalRequest)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Продажи") {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Продажи") || !strings.Contains(response.Body.String(), `"accessLevel":"owner"`) {
 		t.Fatalf("portal status=%d body=%s", response.Code, response.Body.String())
 	}
 	open := httptest.NewRequest(http.MethodPost, "/api/databases/"+databaseID.String()+"/open", nil)
@@ -68,6 +69,36 @@ func TestPortalLoginListOpenAndLogout(t *testing.T) {
 	handler.ServeHTTP(response, logout)
 	if response.Code != http.StatusNoContent || !runtime.loggedOut {
 		t.Fatalf("logout status=%d loggedOut=%v", response.Code, runtime.loggedOut)
+	}
+}
+
+func TestPortalContainsOnlyAppEntryAndHidesInaccessibleDatabase(t *testing.T) {
+	t.Parallel()
+	databaseID := uuid.MustNew()
+	handler := NewHandler(&fakeRuntime{
+		token: "token", session: systemdb.PortalSession{ID: uuid.MustNew(), UserID: uuid.MustNew(), Login: "admin"},
+		failure: systemdb.ErrDatabaseAccessDenied,
+	})
+	page := httptest.NewRecorder()
+	handler.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/", nil))
+	if page.Code != http.StatusOK || strings.Contains(page.Body.String(), "ML Studio") || strings.Contains(page.Body.String(), "Studio/App") || strings.Contains(page.Body.String(), "data.databases.length===1") {
+		t.Fatalf("portal page status=%d body=%s", page.Code, page.Body.String())
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/databases/"+databaseID.String()+"/open", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookie, Value: "token"})
+	request.Header.Set("X-ML-CSRF", "1")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("inaccessible database status=%d body=%s", response.Code, response.Body.String())
+	}
+	direct := httptest.NewRequest(http.MethodGet, "/app/"+databaseID.String(), nil)
+	direct.AddCookie(&http.Cookie{Name: sessionCookie, Value: "token"})
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, direct)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("direct inaccessible database status=%d body=%s", response.Code, response.Body.String())
 	}
 }
 

@@ -161,10 +161,24 @@ func (repository *SessionRepository) OpenDatabase(ctx context.Context, portalSes
 	} else if !errors.Is(err, ErrSessionNotFound) {
 		return DatabaseSession{}, err
 	}
+	transaction, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return DatabaseSession{}, fmt.Errorf("begin database session: %w", err)
+	}
+	defer func() { _ = transaction.Rollback(ctx) }()
 	var running, allowed bool
-	if err := repository.pool.QueryRow(ctx, `
-SELECT state = 'running', allow_new_sessions FROM ml_system.databases WHERE id = $1`, databaseID.String()).Scan(&running, &allowed); errors.Is(err, pgx.ErrNoRows) {
-		return DatabaseSession{}, ErrDatabaseNotFound
+	if err := transaction.QueryRow(ctx, `
+SELECT databases.state = 'running', databases.allow_new_sessions
+FROM ml_system.databases AS databases
+JOIN ml_system.portal_sessions AS portal ON portal.id = $1
+JOIN ml_system.users AS users ON users.id = portal.user_id AND users.enabled
+JOIN ml_system.database_access AS access
+  ON access.user_id = portal.user_id AND access.database_id = databases.id
+  AND access.app_access AND access.revoked_at IS NULL
+WHERE databases.id = $2 AND portal.revoked_at IS NULL
+  AND portal.idle_expires_at > clock_timestamp() AND portal.absolute_expires_at > clock_timestamp()
+FOR SHARE OF access`, portalSessionID.String(), databaseID.String()).Scan(&running, &allowed); errors.Is(err, pgx.ErrNoRows) {
+		return DatabaseSession{}, ErrDatabaseAccessDenied
 	} else if err != nil {
 		return DatabaseSession{}, fmt.Errorf("read database session access: %w", err)
 	}
@@ -178,7 +192,7 @@ SELECT state = 'running', allow_new_sessions FROM ml_system.databases WHERE id =
 	if err != nil {
 		return DatabaseSession{}, err
 	}
-	session, err := scanDatabaseSession(repository.pool.QueryRow(ctx, `
+	session, err := scanDatabaseSession(transaction.QueryRow(ctx, `
 WITH opened AS (
     INSERT INTO ml_system.database_sessions(id, portal_session_id, database_id)
     VALUES ($1, $2, $3)
@@ -196,6 +210,9 @@ JOIN ml_system.databases AS databases ON databases.id = sessions.database_id`,
 		id.String(), portalSessionID.String(), databaseID.String()))
 	if err != nil {
 		return DatabaseSession{}, fmt.Errorf("open database session: %w", err)
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return DatabaseSession{}, fmt.Errorf("commit database session: %w", err)
 	}
 	return session, nil
 }
@@ -371,8 +388,13 @@ SELECT sessions.id::text, sessions.portal_session_id::text, sessions.database_id
        sessions.started_at, sessions.last_seen_at, COALESCE(sessions.message, ''), sessions.message_created_at
 FROM active AS sessions
 JOIN ml_system.portal_sessions AS portal ON portal.id = sessions.portal_session_id
-JOIN ml_system.users AS users ON users.id = portal.user_id
-JOIN ml_system.databases AS databases ON databases.id = sessions.database_id`,
+JOIN ml_system.users AS users ON users.id = portal.user_id AND users.enabled
+JOIN ml_system.databases AS databases ON databases.id = sessions.database_id
+JOIN ml_system.database_access AS access
+  ON access.user_id = portal.user_id AND access.database_id = sessions.database_id
+  AND access.app_access AND access.revoked_at IS NULL
+WHERE portal.revoked_at IS NULL
+  AND portal.idle_expires_at > clock_timestamp() AND portal.absolute_expires_at > clock_timestamp()`,
 		portalSessionID.String(), databaseID.String()))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return DatabaseSession{}, ErrSessionNotFound

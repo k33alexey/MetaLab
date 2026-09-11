@@ -117,7 +117,12 @@ func (repository *DatabaseRepository) Register(ctx context.Context, registration
 	if err := validateDatabaseRegistration(registration); err != nil {
 		return RegisteredDatabase{}, err
 	}
-	item, err := scanRegisteredDatabase(repository.pool.QueryRow(ctx, `
+	transaction, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return RegisteredDatabase{}, fmt.Errorf("begin database registration: %w", err)
+	}
+	defer func() { _ = transaction.Rollback(ctx) }()
+	item, err := scanRegisteredDatabase(transaction.QueryRow(ctx, `
 INSERT INTO ml_system.databases(
     id, name, physical_id, host, port, database_name, username, ssl_mode, secret_key, mode, source_database_id
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -132,6 +137,12 @@ RETURNING id::text, name, physical_id::text, host, port, database_name, username
 	))
 	if err != nil {
 		return RegisteredDatabase{}, mapDatabaseConstraintError(err)
+	}
+	if err := assignInitialDatabaseOwner(ctx, transaction, item.ID); err != nil {
+		return RegisteredDatabase{}, err
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return RegisteredDatabase{}, fmt.Errorf("commit database registration: %w", err)
 	}
 	return item, nil
 }

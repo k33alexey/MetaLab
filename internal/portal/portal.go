@@ -1,4 +1,4 @@
-// Package portal implements the shared browser entry point for ML App and ML Studio.
+// Package portal implements the browser entry point for ML App.
 package portal
 
 import (
@@ -154,6 +154,8 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		switch {
 		case errors.Is(err, systemdb.ErrSessionNotFound):
 			http.Error(response, "Authentication required", http.StatusUnauthorized)
+		case errors.Is(err, systemdb.ErrDatabaseAccessDenied):
+			http.NotFound(response, request)
 		case errors.Is(err, systemdb.ErrDatabaseNotFound):
 			http.Error(response, err.Error(), http.StatusNotFound)
 		case errors.Is(err, systemdb.ErrDatabaseNotRunning), errors.Is(err, systemdb.ErrNewSessionsForbidden):
@@ -178,6 +180,10 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			return
 		}
 		_, err = platformRuntime.ResumePortalDatabase(request.Context(), token, id)
+		if errors.Is(err, systemdb.ErrDatabaseAccessDenied) {
+			http.NotFound(response, request)
+			return
+		}
 		if err != nil {
 			http.Error(response, "Database session unavailable", http.StatusConflict)
 			return

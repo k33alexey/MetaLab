@@ -104,6 +104,8 @@ type PortalDatabase struct {
 	ID               uuid.UUID                     `json:"id"`
 	Name             string                        `json:"name"`
 	Mode             systemdb.DatabaseMode         `json:"mode"`
+	AccessLevel      systemdb.DatabaseAccessLevel  `json:"accessLevel"`
+	State            systemdb.DatabaseState        `json:"state"`
 	AllowNewSessions bool                          `json:"allowNewSessions"`
 	HealthStatus     systemdb.DatabaseHealthStatus `json:"healthStatus"`
 }
@@ -480,7 +482,7 @@ func (runtime *Runtime) LoginPortal(ctx context.Context, login, password, remote
 	if database == nil {
 		return PortalLogin{}, fmt.Errorf("ML System PostgreSQL is not configured")
 	}
-	administrator, err := database.Administrators.Authenticate(ctx, login, password)
+	user, err := database.Users.Authenticate(ctx, login, password)
 	if err != nil {
 		_, _ = database.Audit.Write(ctx, systemdb.AuditEvent{
 			Level: "warning", Code: "portal.login_failed", Message: "Portal authentication failed",
@@ -491,12 +493,12 @@ func (runtime *Runtime) LoginPortal(ctx context.Context, login, password, remote
 	if err != nil {
 		return PortalLogin{}, err
 	}
-	session, err := database.Sessions.CreatePortal(ctx, administrator.ID, digest[:], remoteAddress, userAgent)
+	session, err := database.Sessions.CreatePortal(ctx, user.ID, digest[:], remoteAddress, userAgent)
 	if err != nil {
 		return PortalLogin{}, err
 	}
 	_, _ = database.Audit.Write(ctx, systemdb.AuditEvent{
-		Level: "info", Code: "portal.login", UserID: &administrator.ID, SessionID: &session.ID,
+		Level: "info", Code: "portal.login", UserID: &user.ID, SessionID: &session.ID,
 		Message: "Portal session started",
 	})
 	return PortalLogin{Token: token, Session: session}, nil
@@ -535,7 +537,7 @@ func (runtime *Runtime) ChangePortalPassword(ctx context.Context, token, current
 	runtime.mu.RLock()
 	database := runtime.database
 	runtime.mu.RUnlock()
-	if err := database.Administrators.ChangePasswordKeepingSession(ctx, session.Login, currentPassword, newPassword, session.ID); err != nil {
+	if err := database.Users.ChangePasswordKeepingSession(ctx, session.Login, currentPassword, newPassword, session.ID); err != nil {
 		return err
 	}
 	_, _ = database.Audit.Write(ctx, systemdb.AuditEvent{
@@ -545,24 +547,36 @@ func (runtime *Runtime) ChangePortalPassword(ctx context.Context, token, current
 	return nil
 }
 
-// LoadPortal authenticates once and returns the current user with running databases.
+// LoadPortal authenticates once and returns only the current user's databases.
 func (runtime *Runtime) LoadPortal(ctx context.Context, token string) (systemdb.PortalSession, []PortalDatabase, error) {
 	session, err := runtime.AuthenticatePortal(ctx, token)
 	if err != nil {
 		return systemdb.PortalSession{}, nil, err
 	}
+	runtime.mu.RLock()
+	database := runtime.database
+	runtime.mu.RUnlock()
+	accessItems, err := database.DatabaseAccess.ListApp(ctx, session.UserID)
+	if err != nil {
+		return systemdb.PortalSession{}, nil, err
+	}
+	accessByDatabase := make(map[uuid.UUID]systemdb.DatabaseAccessLevel, len(accessItems))
+	for _, item := range accessItems {
+		accessByDatabase[item.DatabaseID] = item.Level
+	}
 	items, err := runtime.ListDatabases(ctx)
 	if err != nil {
 		return systemdb.PortalSession{}, nil, err
 	}
-	visible := make([]PortalDatabase, 0, len(items))
+	visible := make([]PortalDatabase, 0, len(accessItems))
 	if session.MustChangePassword {
 		return session, visible, nil
 	}
 	for _, item := range items {
-		if item.State == systemdb.DatabaseRunning {
+		if level, allowed := accessByDatabase[item.ID]; allowed {
 			visible = append(visible, PortalDatabase{
-				ID: item.ID, Name: item.Name, Mode: item.Mode, AllowNewSessions: item.AllowNewSessions,
+				ID: item.ID, Name: item.Name, Mode: item.Mode, AccessLevel: level,
+				State: item.State, AllowNewSessions: item.AllowNewSessions,
 				HealthStatus: item.HealthStatus,
 			})
 		}
@@ -582,6 +596,9 @@ func (runtime *Runtime) OpenPortalDatabase(ctx context.Context, token string, da
 	runtime.mu.RLock()
 	database := runtime.database
 	runtime.mu.RUnlock()
+	if _, err := database.DatabaseAccess.GetApp(ctx, session.UserID, databaseID); err != nil {
+		return systemdb.DatabaseSession{}, err
+	}
 	registered, err := database.Databases.Get(ctx, databaseID)
 	if err != nil {
 		return systemdb.DatabaseSession{}, err
@@ -620,6 +637,9 @@ func (runtime *Runtime) ResumePortalDatabase(ctx context.Context, token string, 
 	runtime.mu.RLock()
 	database := runtime.database
 	runtime.mu.RUnlock()
+	if _, err := database.DatabaseAccess.GetApp(ctx, session.UserID, databaseID); err != nil {
+		return systemdb.DatabaseSession{}, err
+	}
 	registered, err := database.Databases.Get(ctx, databaseID)
 	if err != nil {
 		return systemdb.DatabaseSession{}, err
