@@ -47,7 +47,7 @@ class MLForm extends HTMLElement {
     }
     if (item.kind === "table") {
       const table = document.createElement("div"); table.className = "form-table"; table.setAttribute("role", "table"); table.setAttribute("aria-label", item.title || "Таблица");
-      if (this.model.list?.searchFields?.length) table.addEventListener("contextmenu", event => { event.preventDefault(); this.dispatchEvent(new CustomEvent("ml-advanced-search", {bubbles: true, composed: true})); });
+      if (this._model.list?.searchFields?.length) table.addEventListener("contextmenu", event => { event.preventDefault(); this.dispatchEvent(new CustomEvent("ml-advanced-search", {bubbles: true, composed: true})); });
       const header = document.createElement("div"); header.className = "table-header"; header.setAttribute("role", "row");
       for (const column of item.children || []) { const cell = document.createElement("strong"); cell.setAttribute("role", "columnheader"); const sort = document.createElement("button"); sort.type = "button"; sort.className = "table-sort"; sort.textContent = column.title || ""; sort.addEventListener("click", () => this.dispatchEvent(new CustomEvent("ml-sort", {bubbles: true, composed: true, detail: {field: column.dataPath}}))); cell.append(sort); header.append(cell); }
       table.append(header);
@@ -67,7 +67,7 @@ class MLForm extends HTMLElement {
 }
 
 class MLAppShell extends HTMLElement {
-  constructor() { super(); this._busy = false; this.addEventListener("ml-command", event => this.runCommand(event.detail.id)); this.addEventListener("ml-sort", event => this.sortList(event.detail.field)); this.addEventListener("ml-advanced-search", () => this.toggleAdvancedSearch()); }
+  constructor() { super(); this._busy = false; this.navOpen = false; this.addEventListener("ml-command", event => this.runCommand(event.detail.id)); this.addEventListener("ml-sort", event => this.sortList(event.detail.field)); this.addEventListener("ml-advanced-search", () => this.toggleAdvancedSearch()); this.addEventListener("keydown", event => this.handleNavigationKey(event)); }
   connectedCallback() { this.load(); }
   async load() {
     const databaseId = location.pathname.split("/").filter(Boolean).at(-1);
@@ -81,16 +81,18 @@ class MLAppShell extends HTMLElement {
     const data = this.bootstrap; this.replaceChildren();
     const header = document.createElement("header"); header.className = "app-header";
     const brand = document.createElement("a"); brand.className = "brand"; brand.href = "/"; brand.textContent = "ML"; brand.setAttribute("aria-label", "ML Portal");
+    const navToggle = document.createElement("button"); navToggle.type = "button"; navToggle.className = "nav-toggle"; navToggle.textContent = "☰"; navToggle.setAttribute("aria-label", "Открыть разделы"); navToggle.setAttribute("aria-controls", "ml-navigation"); navToggle.setAttribute("aria-expanded", String(this.navOpen)); navToggle.addEventListener("click", () => this.toggleNavigation());
     const database = document.createElement("strong"); database.textContent = data.database.name;
     const search = document.createElement("input"); search.type = "search"; search.placeholder = "Поиск команд и объектов"; search.setAttribute("aria-label", "Глобальный поиск"); search.disabled = true;
-    const user = document.createElement("span"); user.className = "user"; user.textContent = data.user.login; header.append(brand, database, search, user);
+    const user = document.createElement("span"); user.className = "user"; user.textContent = data.user.login; header.append(brand, navToggle, database, search, user);
     const body = document.createElement("div"); body.className = "app-body";
-    const nav = document.createElement("nav"); nav.className = "app-nav"; nav.setAttribute("aria-label", "Разделы");
-    for (const item of data.navigation || []) { const selected = this.currentObject ? item.id === this.currentObject.id : item.id === "home"; const button = document.createElement("button"); button.type = "button"; button.textContent = item.title; button.className = selected ? "current" : ""; if (selected) button.setAttribute("aria-current", "page"); button.addEventListener("click", () => item.id === "home" ? this.openHome() : this.openForm(item, "list")); nav.append(button); }
+    const nav = document.createElement("nav"); nav.id = "ml-navigation"; nav.className = "app-nav"; nav.setAttribute("aria-label", "Разделы");
+    for (const item of data.navigation || []) { const selected = this.currentObject ? item.id === this.currentObject.id : item.id === "home"; const button = document.createElement("button"); button.type = "button"; button.textContent = item.title; button.className = selected ? "current" : ""; if (selected) button.setAttribute("aria-current", "page"); button.addEventListener("click", () => { this.closeNavigation(); item.id === "home" ? this.openHome() : this.openForm(item, "list"); }); nav.append(button); }
+    const backdrop = document.createElement("button"); backdrop.type = "button"; backdrop.className = "nav-backdrop"; backdrop.setAttribute("aria-label", "Закрыть разделы"); backdrop.addEventListener("click", () => this.closeNavigation());
     const main = document.createElement("main"); main.id = "ml-workspace"; main.className = "workspace"; main.tabIndex = -1;
     const tabs = document.createElement("div"); tabs.className = "window-tabs"; tabs.setAttribute("role", "tablist");
     const tab = document.createElement("button"); tab.type = "button"; tab.className = "window-tab current"; tab.setAttribute("role", "tab"); tab.setAttribute("aria-selected", "true"); tab.textContent = data.form.title; tabs.append(tab);
-    const form = document.createElement("ml-form"); form.model = data.form; main.append(tabs); if (data.form.list && this.listState) main.append(this.renderListControls()); main.append(form); body.append(nav, main); this.append(header, body);
+    const form = document.createElement("ml-form"); form.model = data.form; main.append(tabs); if (data.form.list && this.listState) main.append(this.renderListControls()); main.append(form); body.append(nav, backdrop, main); this.append(header, body); this.classList.toggle("navigation-open", this.navOpen);
   }
   renderListControls() {
     const state = this.listState, options = this.bootstrap.form.list;
@@ -163,6 +165,17 @@ class MLAppShell extends HTMLElement {
   async previousListPage() { if (!this.listState?.history.length) return; this.listState.cursor = this.listState.history.pop(); await this.loadList(false); }
   async sortList(field) { if (!this.listState || !field) return; if (this.listState.sort === field) this.listState.descending = !this.listState.descending; else { this.listState.sort = field; this.listState.descending = false; } await this.loadList(true); }
   toggleAdvancedSearch() { if (!this.listState || !this.bootstrap.form.list?.searchFields?.length) return; this.listState.advancedVisible = !this.listState.advancedVisible; if (!this.listState.advancedVisible) this.listState.searchField = ""; this.render(); }
+  toggleNavigation() { this.navOpen = !this.navOpen; this.classList.toggle("navigation-open", this.navOpen); const toggle = this.querySelector(".nav-toggle"); toggle?.setAttribute("aria-expanded", String(this.navOpen)); toggle?.setAttribute("aria-label", this.navOpen ? "Закрыть разделы" : "Открыть разделы"); if (this.navOpen) this.querySelector(".app-nav button")?.focus(); }
+  closeNavigation() { if (!this.navOpen) return; this.navOpen = false; this.classList.remove("navigation-open"); const toggle = this.querySelector(".nav-toggle"); toggle?.setAttribute("aria-expanded", "false"); toggle?.setAttribute("aria-label", "Открыть разделы"); toggle?.focus(); }
+  handleNavigationKey(event) {
+    if (!this.navOpen) return;
+    if (event.key === "Escape") { event.preventDefault(); this.closeNavigation(); return; }
+    if (event.key !== "Tab") return;
+    const items = [...this.querySelectorAll(".app-nav button")]; if (!items.length) return;
+    const first = items[0], last = items.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  }
   announce(message) {
     let status = this.querySelector(".app-status"); if (!status) { status = document.createElement("div"); status.className = "app-status"; status.setAttribute("role", "status"); this.append(status); }
     status.textContent = message;

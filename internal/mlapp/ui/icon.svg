@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MetaLab">
+  <rect width="512" height="512" rx="112" fill="#26364d"/>
+  <rect x="76" y="76" width="360" height="360" rx="88" fill="#2f6fed"/>
+  <path fill="#fff" d="M139 341V171h40l77 91 77-91h40v170h-45V239l-72 84-72-84v102z"/>
+</svg>

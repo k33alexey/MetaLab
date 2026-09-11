@@ -124,6 +124,12 @@ func ServeAsset(response http.ResponseWriter, request *http.Request, name string
 		serveAsset(response, request, name, "text/css; charset=utf-8", "no-cache")
 	case "app.js":
 		serveAsset(response, request, name, "text/javascript; charset=utf-8", "no-cache")
+	case "manifest.webmanifest":
+		serveAsset(response, request, name, "application/manifest+json", "no-cache")
+	case "icon.svg":
+		serveAsset(response, request, name, "image/svg+xml", "public, max-age=86400")
+	case "icon-192.png", "icon-512.png":
+		serveAsset(response, request, name, "image/png", "public, max-age=86400")
 	default:
 		http.Error(response, "Not found", http.StatusNotFound)
 	}
