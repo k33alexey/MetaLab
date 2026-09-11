@@ -1,4 +1,4 @@
-.PHONY: build build-desktop build-wasm check fmt fmt-check test test-race test-wasm vet
+.PHONY: build build-desktop build-wasm check fmt fmt-check test test-race test-wasm vet web-check
 
 build:
 	mkdir -p bin
@@ -33,4 +33,7 @@ test-race:
 vet:
 	go vet ./...
 
-check: fmt-check vet test-race build test-wasm
+web-check:
+	node --check internal/mlapp/ui/app.js
+
+check: fmt-check web-check vet test-race build test-wasm

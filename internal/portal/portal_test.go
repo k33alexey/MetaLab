@@ -2,6 +2,7 @@ package portal
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -66,6 +67,47 @@ func TestPortalLoginListOpenAndLogout(t *testing.T) {
 	handler.ServeHTTP(response, logout)
 	if response.Code != http.StatusNoContent || !runtime.loggedOut {
 		t.Fatalf("logout status=%d loggedOut=%v", response.Code, runtime.loggedOut)
+	}
+}
+
+func TestMLAppPageBootstrapAndAssets(t *testing.T) {
+	t.Parallel()
+	databaseID := uuid.MustNew()
+	runtime := &fakeRuntime{token: "token", session: systemdb.PortalSession{ID: uuid.MustNew(), UserID: uuid.MustNew(), Login: "admin"}}
+	handler := NewHandler(runtime)
+	cookie := &http.Cookie{Name: sessionCookie, Value: runtime.token}
+
+	pageRequest := httptest.NewRequest(http.MethodGet, "/app/"+databaseID.String(), nil)
+	pageRequest.AddCookie(cookie)
+	page := httptest.NewRecorder()
+	handler.ServeHTTP(page, pageRequest)
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "<ml-app-shell") {
+		t.Fatalf("app page status=%d body=%s", page.Code, page.Body.String())
+	}
+
+	bootstrapRequest := httptest.NewRequest(http.MethodGet, "/api/databases/"+databaseID.String()+"/app-bootstrap", nil)
+	bootstrapRequest.AddCookie(cookie)
+	bootstrapResponse := httptest.NewRecorder()
+	handler.ServeHTTP(bootstrapResponse, bootstrapRequest)
+	var bootstrap struct {
+		Database struct {
+			Name string `json:"name"`
+		} `json:"database"`
+		User struct {
+			Login string `json:"login"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(bootstrapResponse.Body.Bytes(), &bootstrap); err != nil {
+		t.Fatal(err)
+	}
+	if bootstrapResponse.Code != http.StatusOK || bootstrap.Database.Name != "Продажи" || bootstrap.User.Login != "admin" {
+		t.Fatalf("bootstrap status=%d value=%+v body=%s", bootstrapResponse.Code, bootstrap, bootstrapResponse.Body.String())
+	}
+
+	asset := httptest.NewRecorder()
+	handler.ServeHTTP(asset, httptest.NewRequest(http.MethodGet, "/assets/ml-app/app.js", nil))
+	if asset.Code != http.StatusOK || !strings.Contains(asset.Body.String(), "customElements.define") {
+		t.Fatalf("asset status=%d body=%s", asset.Code, asset.Body.String())
 	}
 }
 

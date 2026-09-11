@@ -54,6 +54,9 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Check browser modules
+        run: node --check internal/mlapp/ui/app.js
+
       - name: Test with race detector
         run: go test -race -coverprofile=coverage.out ./...
 

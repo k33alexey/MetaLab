@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/k33alexey/MetaLab/internal/mlapp"
 	"github.com/k33alexey/MetaLab/internal/platform"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -50,6 +51,9 @@ func NewHandler(platformRuntime runtime) http.Handler {
 	})
 	routes.HandleFunc("GET /api/health", func(response http.ResponseWriter, _ *http.Request) {
 		writeJSON(response, http.StatusOK, map[string]string{"status": "ok", "database": "postgresql"})
+	})
+	routes.HandleFunc("GET /assets/ml-app/{name}", func(response http.ResponseWriter, request *http.Request) {
+		mlapp.ServeAsset(response, request, request.PathValue("name"))
 	})
 	routes.HandleFunc("POST /api/login", func(response http.ResponseWriter, request *http.Request) {
 		var input struct {
@@ -166,14 +170,34 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			http.NotFound(response, request)
 			return
 		}
+		_, err = platformRuntime.ResumePortalDatabase(request.Context(), token, id)
+		if err != nil {
+			http.Error(response, "Database session unavailable", http.StatusConflict)
+			return
+		}
+		mlapp.ServePage(response)
+	})
+	routes.HandleFunc("GET /api/databases/{id}/app-bootstrap", func(response http.ResponseWriter, request *http.Request) {
+		token, ok := requireToken(response, request)
+		if !ok {
+			return
+		}
+		id, err := uuid.Parse(request.PathValue("id"))
+		if err != nil {
+			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
+			return
+		}
 		session, err := platformRuntime.ResumePortalDatabase(request.Context(), token, id)
 		if err != nil {
 			http.Error(response, "Database session unavailable", http.StatusConflict)
 			return
 		}
-		response.Header().Set("Content-Type", "text/html; charset=utf-8")
-		response.Header().Set("Cache-Control", "no-store")
-		_, _ = response.Write([]byte("<!doctype html><meta charset=utf-8><title>ML App</title><h1>ML App</h1><p>База «" + htmlText(session.DatabaseName) + "» запущена. Прикладной интерфейс будет добавлен в следующих итерациях.</p><p><a href=\"/\">Вернуться в Portal</a></p><script>const databaseId='" + id.String() + "';async function poll(){const response=await fetch(`/api/databases/${databaseId}/session`);if(!response.ok){location.href='/';return}const session=await response.json();if(session.message){alert(session.message);await fetch(`/api/sessions/${session.id}/message/ack`,{method:'POST',headers:{'X-ML-CSRF':'1'}})}}setInterval(poll,5000);poll();</script>"))
+		bootstrap := mlapp.NewBootstrap(id, session)
+		if err := bootstrap.Validate(); err != nil {
+			http.Error(response, "ML App unavailable", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(response, http.StatusOK, bootstrap)
 	})
 	routes.HandleFunc("GET /api/databases/{id}/session", func(response http.ResponseWriter, request *http.Request) {
 		token, ok := requireToken(response, request)
@@ -339,11 +363,6 @@ func remoteHost(address string) string {
 		return host
 	}
 	return address
-}
-
-func htmlText(value string) string {
-	replacer := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&#39;")
-	return replacer.Replace(value)
 }
 
 func securityHeaders(next http.Handler) http.Handler {
