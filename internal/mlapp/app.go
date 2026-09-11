@@ -40,6 +40,8 @@ type User struct {
 type NavigationItem struct {
 	ID      string `json:"id"`
 	Title   string `json:"title"`
+	Kind    string `json:"kind,omitempty"`
+	Name    string `json:"name,omitempty"`
 	Current bool   `json:"current,omitempty"`
 }
 
@@ -63,6 +65,7 @@ type Element struct {
 	Title       string    `json:"title,omitempty"`
 	Value       string    `json:"value,omitempty"`
 	InputType   string    `json:"inputType,omitempty"`
+	DataPath    string    `json:"dataPath,omitempty"`
 	ReadOnly    bool      `json:"readOnly,omitempty"`
 	Disabled    bool      `json:"disabled,omitempty"`
 	Orientation string    `json:"orientation,omitempty"`
@@ -136,6 +139,16 @@ func (bootstrap Bootstrap) Validate() error {
 	if len(bootstrap.Navigation) > 1_000 {
 		return fmt.Errorf("ML App navigation exceeds 1000 items")
 	}
+	navigationIDs := make(map[string]bool, len(bootstrap.Navigation))
+	for _, item := range bootstrap.Navigation {
+		if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.Title) == "" || navigationIDs[item.ID] {
+			return fmt.Errorf("invalid ML App navigation item")
+		}
+		if item.ID != "home" && (strings.TrimSpace(item.Kind) == "" || strings.TrimSpace(item.Name) == "") {
+			return fmt.Errorf("invalid ML App navigation target")
+		}
+		navigationIDs[item.ID] = true
+	}
 	if err := validateForm(bootstrap.Form); err != nil {
 		return err
 	}
@@ -154,13 +167,15 @@ func validateForm(form Form) error {
 		commands[command.ID] = true
 	}
 	stack, count := append([]Element(nil), form.Items...), 0
+	ids := make(map[string]bool)
 	for len(stack) != 0 {
 		item := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 		count++
-		if count > 10_000 || item.ID == "" {
+		if count > 10_000 || item.ID == "" || ids[item.ID] {
 			return fmt.Errorf("invalid ML App form element")
 		}
+		ids[item.ID] = true
 		switch item.Kind {
 		case "group", "field", "label", "table", "button":
 		default:

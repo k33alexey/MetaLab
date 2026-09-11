@@ -21,8 +21,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-const maxPackageManifestBytes = 16 << 20
-
 // VerifyFile validates the package format, archive paths and every source digest.
 func VerifyFile(ctx context.Context, packagePath string) (Manifest, error) {
 	archive, err := zip.OpenReader(packagePath)
@@ -83,13 +81,19 @@ func VerifyFile(ctx context.Context, packagePath string) (Manifest, error) {
 	if hex.EncodeToString(contentHash.Sum(nil)) != manifest.ContentSHA256 {
 		return Manifest{}, fmt.Errorf("publication package content checksum mismatch")
 	}
-	if err := verifyMetadataManifest(&archive.Reader, manifest); err != nil {
+	runtimeSnapshot, err := verifyMetadataManifest(&archive.Reader, manifest)
+	if err != nil {
 		return Manifest{}, err
+	}
+	expectedRuntime, expectedErr := json.Marshal(runtimeSnapshot)
+	actualRuntime, actualErr := json.Marshal(manifest.Runtime)
+	if expectedErr != nil || actualErr != nil || !bytes.Equal(expectedRuntime, actualRuntime) {
+		return Manifest{}, fmt.Errorf("publication runtime metadata does not match packaged sources")
 	}
 	return manifest, nil
 }
 
-func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) error {
+func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) (metadata.RuntimeSnapshot, error) {
 	var projectManifest project.Project
 	var constants []metadata.Constant
 	var enumerations []metadata.Enumeration
@@ -98,51 +102,53 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) error {
 	var documents []metadata.DocumentDefinition
 	var informationRegisters []metadata.InformationRegisterDefinition
 	var accumulationRegisters []metadata.AccumulationRegisterDefinition
+	var forms []metadata.ManagedForm
 	moduleIDs := make(map[uuid.UUID]bool)
 	formIDs := make(map[uuid.UUID]bool)
 	for index, entry := range manifest.Files {
 		if entry.Path == project.ManifestFile {
 			content, err := readMetadataEntry(archive.File[index+1], entry.Size)
 			if err != nil {
-				return err
+				return metadata.RuntimeSnapshot{}, err
 			}
 			projectManifest, err = project.DecodeSource(entry.Path, bytes.NewReader(content))
 			if err != nil {
-				return err
+				return metadata.RuntimeSnapshot{}, err
 			}
 		}
 		if strings.HasPrefix(entry.Path, "modules/") {
 			id, err := uuid.Parse(strings.TrimSuffix(path.Base(entry.Path), ".bsl"))
 			if err != nil {
-				return fmt.Errorf("invalid module source %q", entry.Path)
+				return metadata.RuntimeSnapshot{}, fmt.Errorf("invalid module source %q", entry.Path)
 			}
 			moduleIDs[id] = true
 		}
 		if strings.HasPrefix(entry.Path, "forms/") {
 			id, err := uuid.Parse(strings.TrimSuffix(path.Base(entry.Path), ".yaml"))
 			if err != nil {
-				return fmt.Errorf("invalid form source %q", entry.Path)
+				return metadata.RuntimeSnapshot{}, fmt.Errorf("invalid form source %q", entry.Path)
 			}
 			formIDs[id] = true
 		}
 	}
 	if projectManifest.ID.IsZero() {
-		return fmt.Errorf("publication project manifest is invalid")
+		return metadata.RuntimeSnapshot{}, fmt.Errorf("publication project manifest is invalid")
 	}
 	for index, entry := range manifest.Files {
 		if strings.HasPrefix(entry.Path, "forms/") {
 			content, err := readMetadataEntry(archive.File[index+1], entry.Size)
 			if err != nil {
-				return err
+				return metadata.RuntimeSnapshot{}, err
 			}
 			form, err := metadata.DecodeManagedForm(entry.Path, bytes.NewReader(content), projectManifest)
 			if err != nil {
-				return err
+				return metadata.RuntimeSnapshot{}, err
 			}
 			filenameID, err := uuid.Parse(strings.TrimSuffix(path.Base(entry.Path), ".yaml"))
 			if err != nil || form.ID != filenameID {
-				return fmt.Errorf("form UUID does not match %q", entry.Path)
+				return metadata.RuntimeSnapshot{}, fmt.Errorf("form UUID does not match %q", entry.Path)
 			}
+			forms = append(forms, form)
 			continue
 		}
 		kind := metadata.Kind("")
@@ -167,112 +173,116 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) error {
 		}
 		content, err := readMetadataEntry(archive.File[index+1], entry.Size)
 		if err != nil {
-			return err
+			return metadata.RuntimeSnapshot{}, err
 		}
 		var id uuid.UUID
 		switch kind {
 		case metadata.ConstantKind:
 			value, err := metadata.DecodeConstant(entry.Path, bytes.NewReader(content), projectManifest)
 			if err != nil {
-				return err
+				return metadata.RuntimeSnapshot{}, err
 			}
 			id, constants = value.ID, append(constants, value)
 		case metadata.EnumerationKind:
 			value, err := metadata.DecodeEnumeration(entry.Path, bytes.NewReader(content), projectManifest)
 			if err != nil {
-				return err
+				return metadata.RuntimeSnapshot{}, err
 			}
 			id, enumerations = value.ID, append(enumerations, value)
 		case metadata.DefinedTypeKind:
 			value, err := metadata.DecodeDefinedType(entry.Path, bytes.NewReader(content), projectManifest)
 			if err != nil {
-				return err
+				return metadata.RuntimeSnapshot{}, err
 			}
 			id, definedTypes = value.ID, append(definedTypes, value)
 		case metadata.CatalogKind:
 			value, err := metadata.DecodeCatalog(entry.Path, bytes.NewReader(content), projectManifest)
 			if err != nil {
-				return err
+				return metadata.RuntimeSnapshot{}, err
 			}
 			id, catalogs = value.ID, append(catalogs, value)
 		case metadata.DocumentKind:
 			value, err := metadata.DecodeDocument(entry.Path, bytes.NewReader(content), projectManifest)
 			if err != nil {
-				return err
+				return metadata.RuntimeSnapshot{}, err
 			}
 			id, documents = value.ID, append(documents, value)
 		case metadata.InformationRegisterKind:
 			value, err := metadata.DecodeInformationRegister(entry.Path, bytes.NewReader(content), projectManifest)
 			if err != nil {
-				return err
+				return metadata.RuntimeSnapshot{}, err
 			}
 			id, informationRegisters = value.ID, append(informationRegisters, value)
 		case metadata.AccumulationRegisterKind:
 			value, err := metadata.DecodeAccumulationRegister(entry.Path, bytes.NewReader(content), projectManifest)
 			if err != nil {
-				return err
+				return metadata.RuntimeSnapshot{}, err
 			}
 			id, accumulationRegisters = value.ID, append(accumulationRegisters, value)
 		}
 		filenameID, err := uuid.Parse(strings.TrimSuffix(path.Base(entry.Path), ".yaml"))
 		if err != nil || filenameID != id {
-			return fmt.Errorf("metadata UUID does not match %q", entry.Path)
+			return metadata.RuntimeSnapshot{}, fmt.Errorf("metadata UUID does not match %q", entry.Path)
 		}
 	}
 	catalog, err := metadata.NewCatalogSnapshotWithAccumulationRegisters(projectManifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters)
 	if err != nil {
-		return fmt.Errorf("validate packaged metadata: %w", err)
+		return metadata.RuntimeSnapshot{}, fmt.Errorf("validate packaged metadata: %w", err)
 	}
 	for _, definition := range catalog.Catalogs {
 		if err := verifyPackagedObjectSources("catalog", definition.Name, definition.ObjectModule, definition.ManagerModule, definition.Forms, moduleIDs, formIDs); err != nil {
-			return err
+			return metadata.RuntimeSnapshot{}, err
 		}
 	}
 	for _, definition := range catalog.Documents {
 		if err := verifyPackagedObjectSources("document", definition.Name, definition.ObjectModule, definition.ManagerModule, definition.Forms, moduleIDs, formIDs); err != nil {
-			return err
+			return metadata.RuntimeSnapshot{}, err
 		}
 	}
 	for _, definition := range catalog.InformationRegisters {
 		if err := verifyPackagedObjectSources("information register", definition.Name, definition.RecordSetModule, definition.ManagerModule, definition.Forms, moduleIDs, formIDs); err != nil {
-			return err
+			return metadata.RuntimeSnapshot{}, err
 		}
 	}
 	for _, definition := range catalog.AccumulationRegisters {
 		if err := verifyPackagedObjectSources("accumulation register", definition.Name, definition.RecordSetModule, definition.ManagerModule, definition.Forms, moduleIDs, formIDs); err != nil {
-			return err
+			return metadata.RuntimeSnapshot{}, err
 		}
 	}
 	constantIDs, catalogIDs, documentIDs := catalog.ConstantIDs(), catalog.CatalogIDs(), catalog.DocumentIDs()
 	informationRegisterIDs := catalog.InformationRegisterIDs()
 	accumulationRegisterIDs := catalog.AccumulationRegisterIDs()
 	if !slices.Equal(constantIDs, manifest.ConstantIDs) {
-		return fmt.Errorf("publication constant UUIDs do not match packaged metadata")
+		return metadata.RuntimeSnapshot{}, fmt.Errorf("publication constant UUIDs do not match packaged metadata")
 	}
 	if !slices.Equal(catalogIDs, manifest.CatalogIDs) {
-		return fmt.Errorf("publication catalog UUIDs do not match packaged metadata")
+		return metadata.RuntimeSnapshot{}, fmt.Errorf("publication catalog UUIDs do not match packaged metadata")
 	}
 	if !slices.Equal(documentIDs, manifest.DocumentIDs) {
-		return fmt.Errorf("publication document UUIDs do not match packaged metadata")
+		return metadata.RuntimeSnapshot{}, fmt.Errorf("publication document UUIDs do not match packaged metadata")
 	}
 	if !slices.Equal(informationRegisterIDs, manifest.InformationRegisterIDs) {
-		return fmt.Errorf("publication information register UUIDs do not match packaged metadata")
+		return metadata.RuntimeSnapshot{}, fmt.Errorf("publication information register UUIDs do not match packaged metadata")
 	}
 	if !slices.Equal(accumulationRegisterIDs, manifest.AccumulationRegisterIDs) {
-		return fmt.Errorf("publication accumulation register UUIDs do not match packaged metadata")
+		return metadata.RuntimeSnapshot{}, fmt.Errorf("publication accumulation register UUIDs do not match packaged metadata")
 	}
 	applicationSchema, err := catalog.ApplicationSchema()
 	if err != nil {
-		return err
+		return metadata.RuntimeSnapshot{}, err
 	}
 	digest, err := schemadiff.SchemaSHA256(applicationSchema)
 	if err != nil {
-		return err
+		return metadata.RuntimeSnapshot{}, err
 	}
 	if digest != manifest.SchemaSHA256 {
-		return fmt.Errorf("publication schema does not match packaged metadata")
+		return metadata.RuntimeSnapshot{}, fmt.Errorf("publication schema does not match packaged metadata")
 	}
-	return nil
+	snapshot, err := metadata.NewRuntimeSnapshot(catalog, forms)
+	if err != nil {
+		return metadata.RuntimeSnapshot{}, err
+	}
+	return snapshot, nil
 }
 
 func readMetadataEntry(entry *zip.File, expected int64) ([]byte, error) {

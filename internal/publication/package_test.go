@@ -78,6 +78,11 @@ func TestBuildFileIsDeterministicAndVerifiable(t *testing.T) {
 	if _, err := VerifyFile(context.Background(), corrupted); err == nil {
 		t.Fatal("VerifyFile accepted modified package content")
 	}
+	tamperedRuntime := filepath.Join(t.TempDir(), "tampered-runtime.mlpkg")
+	rewritePackageRuntime(t, firstPath, tamperedRuntime)
+	if _, err := VerifyFile(context.Background(), tamperedRuntime); err == nil || !strings.Contains(err.Error(), "runtime metadata") {
+		t.Fatalf("VerifyFile accepted modified runtime metadata: %v", err)
+	}
 }
 
 func TestBuildChangesDigestAndAtomicallyReplacesDestination(t *testing.T) {
@@ -436,6 +441,51 @@ func rewritePackageSource(t *testing.T, source, destination string) {
 		}
 		if err != nil {
 			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func rewritePackageRuntime(t *testing.T, source, destination string) {
+	t.Helper()
+	archive, err := zip.OpenReader(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	file, err := os.Create(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := zip.NewWriter(file)
+	for index, original := range archive.File {
+		entry, createErr := writer.Create(original.Name)
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		reader, openErr := original.Open()
+		if openErr != nil {
+			t.Fatal(openErr)
+		}
+		if index == 0 {
+			var manifest Manifest
+			if decodeErr := json.NewDecoder(reader).Decode(&manifest); decodeErr != nil {
+				t.Fatal(decodeErr)
+			}
+			manifest.Runtime.Project.Title = "Подменённый снимок"
+			if encodeErr := json.NewEncoder(entry).Encode(manifest); encodeErr != nil {
+				t.Fatal(encodeErr)
+			}
+		} else if _, copyErr := io.Copy(entry, reader); copyErr != nil {
+			t.Fatal(copyErr)
+		}
+		if closeErr := reader.Close(); closeErr != nil {
+			t.Fatal(closeErr)
 		}
 	}
 	if err := writer.Close(); err != nil {

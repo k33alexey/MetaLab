@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/platform"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -96,12 +97,23 @@ func TestMLAppPageBootstrapAndAssets(t *testing.T) {
 		User struct {
 			Login string `json:"login"`
 		} `json:"user"`
+		Navigation []struct {
+			Name string `json:"name"`
+		} `json:"navigation"`
 	}
 	if err := json.Unmarshal(bootstrapResponse.Body.Bytes(), &bootstrap); err != nil {
 		t.Fatal(err)
 	}
-	if bootstrapResponse.Code != http.StatusOK || bootstrap.Database.Name != "Продажи" || bootstrap.User.Login != "admin" {
+	if bootstrapResponse.Code != http.StatusOK || bootstrap.Database.Name != "Продажи" || bootstrap.User.Login != "admin" || len(bootstrap.Navigation) != 2 || bootstrap.Navigation[1].Name != "Товары" {
 		t.Fatalf("bootstrap status=%d value=%+v body=%s", bootstrapResponse.Code, bootstrap, bootstrapResponse.Body.String())
+	}
+
+	formRequest := httptest.NewRequest(http.MethodGet, "/api/databases/"+databaseID.String()+"/forms/catalogs/Товары/list", nil)
+	formRequest.AddCookie(cookie)
+	formResponse := httptest.NewRecorder()
+	handler.ServeHTTP(formResponse, formRequest)
+	if formResponse.Code != http.StatusOK || !strings.Contains(formResponse.Body.String(), `"title":"Товары"`) || !strings.Contains(formResponse.Body.String(), `"kind":"table"`) {
+		t.Fatalf("form status=%d body=%s", formResponse.Code, formResponse.Body.String())
 	}
 
 	asset := httptest.NewRecorder()
@@ -181,4 +193,14 @@ func (runtime *fakeRuntime) ResumePortalDatabase(ctx context.Context, token stri
 }
 func (runtime *fakeRuntime) AcknowledgeSessionMessage(context.Context, string, uuid.UUID) error {
 	return runtime.failure
+}
+func (runtime *fakeRuntime) LoadApplicationObjects(context.Context, string, uuid.UUID, string) ([]platform.ApplicationObject, error) {
+	return []platform.ApplicationObject{{Kind: metadata.CatalogKind, Name: "Товары", Title: "Товары"}}, runtime.failure
+}
+func (runtime *fakeRuntime) LoadApplicationForm(_ context.Context, _ string, _ uuid.UUID, kind metadata.Kind, name string, formKind metadata.FormKind, _ string) (platform.ApplicationForm, error) {
+	return platform.ApplicationForm{Descriptor: metadata.FormDescriptor{
+		Kind: formKind, ObjectKind: kind, ObjectID: uuid.MustNew(), ObjectName: name, Title: name, Generated: true,
+		Fields:   []metadata.FormField{{Name: "Description", Title: "Наименование", Types: []metadata.Type{{Kind: metadata.StringType}}}},
+		Commands: []metadata.FormCommand{{Name: "Create", Title: "Создать"}},
+	}}, runtime.failure
 }

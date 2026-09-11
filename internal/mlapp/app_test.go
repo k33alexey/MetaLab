@@ -35,6 +35,16 @@ func TestBootstrapRejectsInvalidComponentContract(t *testing.T) {
 	if err := bootstrap.Validate(); err == nil || !strings.Contains(err.Error(), "unknown command") {
 		t.Fatalf("invalid button error=%v", err)
 	}
+	bootstrap = NewBootstrap(uuid.MustNew(), systemdb.DatabaseSession{DatabaseName: "База", UserID: uuid.MustNew(), Login: "user"})
+	bootstrap.Form.Items = []Element{{ID: "same", Kind: "field"}, {ID: "same", Kind: "field"}}
+	if err := bootstrap.Validate(); err == nil {
+		t.Fatal("duplicate component IDs were accepted")
+	}
+	bootstrap = NewBootstrap(uuid.MustNew(), systemdb.DatabaseSession{DatabaseName: "База", UserID: uuid.MustNew(), Login: "user"})
+	bootstrap.Navigation = append(bootstrap.Navigation, NavigationItem{ID: "object", Title: "Объект"})
+	if err := bootstrap.Validate(); err == nil {
+		t.Fatal("navigation item without a metadata target was accepted")
+	}
 }
 
 func TestEmbeddedApplicationAssetsAreSafeAndCacheable(t *testing.T) {

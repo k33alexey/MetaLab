@@ -47,11 +47,13 @@ class MLForm extends HTMLElement {
     }
     if (item.kind === "table") {
       const table = document.createElement("div"); table.className = "form-table"; table.setAttribute("role", "table"); table.setAttribute("aria-label", item.title || "Таблица");
-      const empty = document.createElement("p"); empty.className = "empty"; empty.textContent = "Нет данных"; table.append(empty); return table;
+      const header = document.createElement("div"); header.className = "table-header"; header.setAttribute("role", "row");
+      for (const column of item.children || []) { const cell = document.createElement("strong"); cell.setAttribute("role", "columnheader"); cell.textContent = column.title || ""; header.append(cell); }
+      const empty = document.createElement("p"); empty.className = "empty"; empty.textContent = "Нет данных"; table.append(header, empty); return table;
     }
     const label = document.createElement("label"); label.className = "form-field";
     const title = document.createElement("span"); title.className = "field-title"; title.textContent = item.title || "";
-    const input = document.createElement("input"); input.id = `field-${item.id}`; input.type = item.inputType || "text"; input.value = item.value || ""; input.readOnly = Boolean(item.readOnly); input.disabled = Boolean(item.disabled);
+    const input = document.createElement("input"); input.id = `field-${item.id}`; input.name = item.dataPath || item.id; input.type = item.inputType || "text"; input.value = item.value || ""; input.readOnly = Boolean(item.readOnly); input.disabled = Boolean(item.disabled);
     label.append(title, input); return label;
   }
 }
@@ -64,7 +66,7 @@ class MLAppShell extends HTMLElement {
     try {
       const response = await fetch(`/api/databases/${encodeURIComponent(databaseId)}/app-bootstrap`, {headers: {"Accept": "application/json"}});
       if (!response.ok) throw new Error(response.status === 401 ? "Требуется вход" : "База недоступна");
-      this.bootstrap = await response.json(); document.documentElement.lang = this.bootstrap.locale || "ru"; this.render(); this.startSessionMonitor(databaseId);
+      this.databaseId = databaseId; this.bootstrap = await response.json(); this.homeForm = this.bootstrap.form; document.documentElement.lang = this.bootstrap.locale || "ru"; this.render(); this.startSessionMonitor(databaseId);
     } catch (error) { this.renderError(error.message); }
   }
   render() {
@@ -76,7 +78,7 @@ class MLAppShell extends HTMLElement {
     const user = document.createElement("span"); user.className = "user"; user.textContent = data.user.login; header.append(brand, database, search, user);
     const body = document.createElement("div"); body.className = "app-body";
     const nav = document.createElement("nav"); nav.className = "app-nav"; nav.setAttribute("aria-label", "Разделы");
-    for (const item of data.navigation || []) { const button = document.createElement("button"); button.type = "button"; button.textContent = item.title; button.className = item.current ? "current" : ""; if (item.current) button.setAttribute("aria-current", "page"); nav.append(button); }
+    for (const item of data.navigation || []) { const selected = this.currentObject ? item.id === this.currentObject.id : item.id === "home"; const button = document.createElement("button"); button.type = "button"; button.textContent = item.title; button.className = selected ? "current" : ""; if (selected) button.setAttribute("aria-current", "page"); button.addEventListener("click", () => item.id === "home" ? this.openHome() : this.openForm(item, "list")); nav.append(button); }
     const main = document.createElement("main"); main.id = "ml-workspace"; main.className = "workspace"; main.tabIndex = -1;
     const tabs = document.createElement("div"); tabs.className = "window-tabs"; tabs.setAttribute("role", "tablist");
     const tab = document.createElement("button"); tab.type = "button"; tab.className = "window-tab current"; tab.setAttribute("role", "tab"); tab.setAttribute("aria-selected", "true"); tab.textContent = data.form.title; tabs.append(tab);
@@ -84,8 +86,19 @@ class MLAppShell extends HTMLElement {
   }
   async runCommand(id) {
     if (this._busy) return; this._busy = true;
-    try { if (id === "refresh") await this.load(); else this.announce(`Команда «${id}» пока недоступна`); }
+    try {
+      if (id === "refresh" || id === "Refresh") { if (this.currentObject) await this.openForm(this.currentObject, this.currentFormKind); else await this.load(); }
+      else if (id === "Create" && this.currentObject) await this.openForm(this.currentObject, "object");
+      else if (id === "Close" && this.currentObject) await this.openForm(this.currentObject, "list");
+      else this.announce(`Команда «${id}» требует выбранного объекта`);
+    }
     finally { this._busy = false; }
+  }
+  openHome() { this.currentObject = null; this.currentFormKind = null; this.bootstrap.form = this.homeForm; this.render(); }
+  async openForm(item, formKind) {
+    const response = await fetch(`/api/databases/${encodeURIComponent(this.databaseId)}/forms/${encodeURIComponent(item.kind)}/${encodeURIComponent(item.name)}/${formKind}`, {headers: {"Accept": "application/json"}});
+    if (!response.ok) { this.announce("Не удалось открыть форму"); return; }
+    this.currentObject = item; this.currentFormKind = formKind; this.bootstrap.form = await response.json(); this.render();
   }
   announce(message) {
     let status = this.querySelector(".app-status"); if (!status) { status = document.createElement("div"); status.className = "app-status"; status.setAttribute("role", "status"); this.append(status); }

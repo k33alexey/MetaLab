@@ -179,7 +179,10 @@ func systemFormField(name string, kind TypeKind, language string, readOnly bool)
 }
 
 func standardObjectCommands(language string, posting, movements bool) []FormCommand {
-	result := []FormCommand{{Name: "Save", Title: formText(language, "save")}}
+	result := []FormCommand{
+		{Name: "Save", Title: formText(language, "save")},
+		{Name: "SaveAndClose", Title: formText(language, "save-and-close")},
+	}
 	if posting {
 		result = append(result,
 			FormCommand{Name: "Post", Title: formText(language, "post")},
@@ -189,7 +192,10 @@ func standardObjectCommands(language string, posting, movements bool) []FormComm
 	if movements {
 		result = append(result, FormCommand{Name: "Movements", Title: formText(language, "movements")})
 	}
-	return append(result, FormCommand{Name: "SetDeletionMark", Title: formText(language, "deletion-mark")})
+	return append(result,
+		FormCommand{Name: "SetDeletionMark", Title: formText(language, "deletion-mark")},
+		FormCommand{Name: "Close", Title: formText(language, "close")},
+	)
 }
 
 func standardListCommands(language string, kind FormKind) []FormCommand {
@@ -201,9 +207,9 @@ func standardListCommands(language string, kind FormKind) []FormCommand {
 
 func formText(language, key string) string {
 	texts := map[string]map[string]string{
-		"ru": {"code": "Код", "description": "Наименование", "number": "Номер", "date": "Дата", "posted": "Проведён", "save": "Записать", "post": "Провести", "undo-posting": "Отменить проведение", "movements": "Движения документа", "deletion-mark": "Пометка удаления", "create": "Создать", "refresh": "Обновить", "choose": "Выбрать"},
-		"uk": {"code": "Код", "description": "Найменування", "number": "Номер", "date": "Дата", "posted": "Проведений", "save": "Записати", "post": "Провести", "undo-posting": "Скасувати проведення", "movements": "Рухи документа", "deletion-mark": "Позначка видалення", "create": "Створити", "refresh": "Оновити", "choose": "Вибрати"},
-		"en": {"code": "Code", "description": "Description", "number": "Number", "date": "Date", "posted": "Posted", "save": "Save", "post": "Post", "undo-posting": "Undo posting", "movements": "Document movements", "deletion-mark": "Deletion mark", "create": "Create", "refresh": "Refresh", "choose": "Choose"},
+		"ru": {"code": "Код", "description": "Наименование", "number": "Номер", "date": "Дата", "posted": "Проведён", "save": "Записать", "save-and-close": "Записать и закрыть", "close": "Закрыть", "post": "Провести", "undo-posting": "Отменить проведение", "movements": "Движения документа", "deletion-mark": "Пометка удаления", "create": "Создать", "refresh": "Обновить", "choose": "Выбрать"},
+		"uk": {"code": "Код", "description": "Найменування", "number": "Номер", "date": "Дата", "posted": "Проведений", "save": "Записати", "save-and-close": "Записати й закрити", "close": "Закрити", "post": "Провести", "undo-posting": "Скасувати проведення", "movements": "Рухи документа", "deletion-mark": "Позначка видалення", "create": "Створити", "refresh": "Оновити", "choose": "Вибрати"},
+		"en": {"code": "Code", "description": "Description", "number": "Number", "date": "Date", "posted": "Posted", "save": "Save", "save-and-close": "Save and close", "close": "Close", "post": "Post", "undo-posting": "Undo posting", "movements": "Document movements", "deletion-mark": "Deletion mark", "create": "Create", "refresh": "Refresh", "choose": "Choose"},
 	}
 	if text := texts[strings.ToLower(language)][key]; text != "" {
 		return text

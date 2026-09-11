@@ -27,10 +27,11 @@ import (
 )
 
 const (
-	CurrentPackageFormat = 5
-	PackageExtension     = ".mlpkg"
-	maxSourceFileBytes   = 64 << 20
-	maxPackageInputBytes = 512 << 20
+	CurrentPackageFormat    = 6
+	PackageExtension        = ".mlpkg"
+	maxSourceFileBytes      = 64 << 20
+	maxPackageInputBytes    = 512 << 20
+	maxPackageManifestBytes = 64 << 20
 )
 
 var ErrSourceChanged = errors.New("ML Project changed while its publication package was being built")
@@ -41,20 +42,21 @@ type SourceState struct {
 }
 
 type Manifest struct {
-	Format                  int         `json:"format"`
-	ProjectID               uuid.UUID   `json:"projectId"`
-	ProjectName             string      `json:"projectName"`
-	ProjectFormat           int         `json:"projectFormat"`
-	GitCommit               string      `json:"gitCommit,omitempty"`
-	Dirty                   bool        `json:"dirty"`
-	ContentSHA256           string      `json:"contentSha256"`
-	Files                   []FileEntry `json:"files"`
-	ConstantIDs             []uuid.UUID `json:"constantIds,omitempty"`
-	CatalogIDs              []uuid.UUID `json:"catalogIds,omitempty"`
-	DocumentIDs             []uuid.UUID `json:"documentIds,omitempty"`
-	InformationRegisterIDs  []uuid.UUID `json:"informationRegisterIds,omitempty"`
-	AccumulationRegisterIDs []uuid.UUID `json:"accumulationRegisterIds,omitempty"`
-	SchemaSHA256            string      `json:"schemaSha256"`
+	Format                  int                      `json:"format"`
+	ProjectID               uuid.UUID                `json:"projectId"`
+	ProjectName             string                   `json:"projectName"`
+	ProjectFormat           int                      `json:"projectFormat"`
+	GitCommit               string                   `json:"gitCommit,omitempty"`
+	Dirty                   bool                     `json:"dirty"`
+	ContentSHA256           string                   `json:"contentSha256"`
+	Files                   []FileEntry              `json:"files"`
+	ConstantIDs             []uuid.UUID              `json:"constantIds,omitempty"`
+	CatalogIDs              []uuid.UUID              `json:"catalogIds,omitempty"`
+	DocumentIDs             []uuid.UUID              `json:"documentIds,omitempty"`
+	InformationRegisterIDs  []uuid.UUID              `json:"informationRegisterIds,omitempty"`
+	AccumulationRegisterIDs []uuid.UUID              `json:"accumulationRegisterIds,omitempty"`
+	SchemaSHA256            string                   `json:"schemaSha256"`
+	Runtime                 metadata.RuntimeSnapshot `json:"runtime"`
 }
 
 type FileEntry struct {
@@ -177,6 +179,7 @@ func inspect(ctx context.Context, root string, state SourceState) (Manifest, []s
 		return Manifest{}, nil, err
 	}
 	sources := make([]sourceFile, 0, len(paths))
+	forms := make([]metadata.ManagedForm, 0)
 	var total int64
 	contentHash := sha256.New()
 	for _, relative := range paths {
@@ -202,6 +205,7 @@ func inspect(ctx context.Context, root string, state SourceState) (Manifest, []s
 			if parseErr != nil || form.ID != filenameID {
 				return Manifest{}, nil, fmt.Errorf("form UUID does not match %q", relative)
 			}
+			forms = append(forms, form)
 			if closeErr != nil {
 				return Manifest{}, nil, closeErr
 			}
@@ -213,6 +217,10 @@ func inspect(ctx context.Context, root string, state SourceState) (Manifest, []s
 		_, _ = fmt.Fprintf(contentHash, "%s\x00%d\x00%s\n", entry.Path, entry.Size, entry.SHA256)
 		sources = append(sources, sourceFile{entry: entry, absolute: absolute, info: info})
 	}
+	runtimeSnapshot, err := metadata.NewRuntimeSnapshot(metadataCatalog, forms)
+	if err != nil {
+		return Manifest{}, nil, fmt.Errorf("build runtime metadata: %w", err)
+	}
 	manifest := Manifest{
 		Format: CurrentPackageFormat, ProjectID: projectManifest.ID, ProjectName: projectManifest.Name,
 		ProjectFormat: projectManifest.Format, GitCommit: strings.TrimSpace(state.GitCommit), Dirty: state.Dirty,
@@ -222,6 +230,7 @@ func inspect(ctx context.Context, root string, state SourceState) (Manifest, []s
 		DocumentIDs:             metadataCatalog.DocumentIDs(),
 		InformationRegisterIDs:  metadataCatalog.InformationRegisterIDs(),
 		AccumulationRegisterIDs: metadataCatalog.AccumulationRegisterIDs(),
+		Runtime:                 runtimeSnapshot,
 	}
 	for index := range sources {
 		manifest.Files[index] = sources[index].entry
@@ -418,6 +427,9 @@ func writeManifest(archive *zip.Writer, manifest Manifest) error {
 		return fmt.Errorf("encode publication manifest: %w", err)
 	}
 	content = append(content, '\n')
+	if len(content) > maxPackageManifestBytes {
+		return fmt.Errorf("publication package manifest exceeds %d bytes", maxPackageManifestBytes)
+	}
 	entry, err := archive.CreateHeader(zipHeader("package.json"))
 	if err != nil {
 		return fmt.Errorf("create publication manifest entry: %w", err)

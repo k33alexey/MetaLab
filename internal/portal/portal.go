@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/mlapp"
 	"github.com/k33alexey/MetaLab/internal/platform"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
@@ -33,6 +34,8 @@ type runtime interface {
 	OpenPortalDatabase(context.Context, string, uuid.UUID) (systemdb.DatabaseSession, error)
 	ResumePortalDatabase(context.Context, string, uuid.UUID) (systemdb.DatabaseSession, error)
 	AcknowledgeSessionMessage(context.Context, string, uuid.UUID) error
+	LoadApplicationObjects(context.Context, string, uuid.UUID, string) ([]platform.ApplicationObject, error)
+	LoadApplicationForm(context.Context, string, uuid.UUID, metadata.Kind, string, metadata.FormKind, string) (platform.ApplicationForm, error)
 }
 
 // NewHandler creates the public Portal HTTP surface.
@@ -192,12 +195,51 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			http.Error(response, "Database session unavailable", http.StatusConflict)
 			return
 		}
+		objects, err := platformRuntime.LoadApplicationObjects(request.Context(), token, id, "ru")
+		if err != nil {
+			http.Error(response, "ML App metadata unavailable", http.StatusConflict)
+			return
+		}
 		bootstrap := mlapp.NewBootstrap(id, session)
+		for _, object := range objects {
+			bootstrap.Navigation = append(bootstrap.Navigation, mlapp.NavigationItem{
+				ID: string(object.Kind) + "/" + object.Name, Title: object.Title,
+				Kind: string(object.Kind), Name: object.Name,
+			})
+		}
 		if err := bootstrap.Validate(); err != nil {
 			http.Error(response, "ML App unavailable", http.StatusInternalServerError)
 			return
 		}
 		writeJSON(response, http.StatusOK, bootstrap)
+	})
+	routes.HandleFunc("GET /api/databases/{id}/forms/{objectKind}/{name}/{formKind}", func(response http.ResponseWriter, request *http.Request) {
+		token, ok := requireToken(response, request)
+		if !ok {
+			return
+		}
+		id, err := uuid.Parse(request.PathValue("id"))
+		if err != nil {
+			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
+			return
+		}
+		objectKind := metadata.Kind(request.PathValue("objectKind"))
+		formKind := metadata.FormKind(request.PathValue("formKind"))
+		if objectKind != metadata.CatalogKind && objectKind != metadata.DocumentKind || formKind != metadata.ObjectForm && formKind != metadata.ListForm && formKind != metadata.ChoiceForm {
+			http.Error(response, "Invalid managed form address", http.StatusBadRequest)
+			return
+		}
+		applicationForm, err := platformRuntime.LoadApplicationForm(request.Context(), token, id, objectKind, request.PathValue("name"), formKind, "ru")
+		if err != nil {
+			http.Error(response, "Managed form unavailable", http.StatusNotFound)
+			return
+		}
+		form, err := mlapp.FormFromMetadata(applicationForm.Descriptor, applicationForm.Custom, "ru")
+		if err != nil {
+			http.Error(response, "Managed form unavailable", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(response, http.StatusOK, form)
 	})
 	routes.HandleFunc("GET /api/databases/{id}/session", func(response http.ResponseWriter, request *http.Request) {
 		token, ok := requireToken(response, request)
