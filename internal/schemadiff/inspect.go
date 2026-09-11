@@ -114,6 +114,9 @@ func inspectIndexes(ctx context.Context, query catalogQuerier, schemaName, table
 	rows, err := query.Query(ctx, `
 SELECT index_relation.relname, indexed.indisunique, access_method.amname,
        ARRAY(SELECT pg_get_indexdef(indexed.indexrelid, position, TRUE) ||
+                    COALESCE((SELECT CASE WHEN operator_class.opcdefault THEN '' ELSE ' ' || operator_class.opcname END
+                              FROM pg_opclass AS operator_class
+                              WHERE operator_class.oid = indexed.indclass[position - 1]), '') ||
                     CASE WHEN (indexed.indoption[position - 1] & 1) = 1 THEN ' DESC' ELSE '' END ||
                     CASE
                       WHEN (indexed.indoption[position - 1] & 2) = 2 AND (indexed.indoption[position - 1] & 1) = 0 THEN ' NULLS FIRST'

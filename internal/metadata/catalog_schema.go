@@ -90,6 +90,9 @@ func (catalog *Catalog) catalogTables(definition CatalogDefinition) (schemadiff.
 			return schemadiff.Table{}, nil, fmt.Errorf("catalog %s attribute %s: %w", definition.Name, attribute.Name, err)
 		}
 	}
+	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Description", "Code"}, definition.Attributes, map[string]listColumn{
+		"code": {name: "code", kind: definition.Code.Type}, "description": {name: "description", kind: StringType},
+	})
 	parts, err := catalog.tablePartTables("catalog", definition.Name, definition.ID, definition.TableParts)
 	if err != nil {
 		return schemadiff.Table{}, nil, err

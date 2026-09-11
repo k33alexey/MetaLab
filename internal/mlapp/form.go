@@ -17,16 +17,19 @@ func FormFromMetadata(descriptor metadata.FormDescriptor, custom *metadata.Manag
 		if custom != nil {
 			return Form{}, fmt.Errorf("generated form must not include a custom source")
 		}
-		return generatedForm(descriptor), nil
+		result := generatedForm(descriptor)
+		return result, validateForm(result)
 	}
 	if custom == nil || descriptor.SourceID == nil || custom.ID != *descriptor.SourceID || custom.Kind != descriptor.Kind {
 		return Form{}, fmt.Errorf("custom form does not match its descriptor")
 	}
-	return customForm(descriptor, *custom, language), nil
+	result := customForm(descriptor, *custom, language)
+	return result, validateForm(result)
 }
 
 func generatedForm(descriptor metadata.FormDescriptor) Form {
 	form := Form{ID: formID(descriptor), Title: descriptor.Title, Commands: generatedCommands(descriptor.Commands)}
+	applyListOptions(&form, descriptor)
 	fields := make([]Element, 0, len(descriptor.Fields))
 	for _, field := range descriptor.Fields {
 		fields = append(fields, formField(field))
@@ -96,7 +99,33 @@ func customForm(descriptor metadata.FormDescriptor, source metadata.ManagedForm,
 		commands[index] = Command{ID: command.Name, Title: commandTitle, Kind: commandKind(string(command.Action))}
 		commandNames[command.ID.String()] = command.Name
 	}
-	return Form{ID: formID(descriptor), Title: title, Commands: commands, Items: customElements(source.Items, language, commandNames)}
+	result := Form{ID: formID(descriptor), Title: title, Commands: commands, Items: customElements(source.Items, language, commandNames)}
+	applyListOptions(&result, descriptor)
+	return result
+}
+
+func applyListOptions(form *Form, descriptor metadata.FormDescriptor) {
+	if descriptor.Kind != metadata.ListForm && descriptor.Kind != metadata.ChoiceForm {
+		return
+	}
+	pageSize := descriptor.List.PageSize
+	if pageSize == 0 {
+		pageSize = 20
+	}
+	fields := make([]ListField, 0, len(descriptor.Fields))
+	searchFields := make([]ListField, 0, len(descriptor.Fields))
+	searchable := make(map[string]bool, len(descriptor.List.SearchFields))
+	for _, name := range descriptor.List.SearchFields {
+		searchable[strings.ToLower(name)] = true
+	}
+	for _, field := range descriptor.Fields {
+		item := ListField{Name: field.Name, Title: field.Title}
+		fields = append(fields, item)
+		if searchable[strings.ToLower(field.Name)] && len(field.Types) == 1 && (field.Types[0].Kind == metadata.StringType || field.Types[0].Kind == metadata.NumberType) {
+			searchFields = append(searchFields, item)
+		}
+	}
+	form.List = &ListOptions{PageSize: pageSize, SearchEnabled: len(descriptor.List.SearchFields) > 0, SearchFields: searchFields, FilterFields: fields}
 }
 
 func customElements(source []metadata.ManagedFormElement, language string, commands map[string]string) []Element {

@@ -30,6 +30,7 @@ type FormDescriptor struct {
 	Fields     []FormField
 	TableParts []FormTablePart
 	Commands   []FormCommand
+	List       ListSettings
 }
 
 type FormField struct {
@@ -58,6 +59,8 @@ func (catalog *Catalog) CatalogForm(name string, kind FormKind, language string)
 		return FormDescriptor{}, fmt.Errorf("unknown catalog %q", name)
 	}
 	form, err := catalog.baseForm(CatalogKind, definition.ID, definition.Name, definition.Title, definition.Forms, kind, language)
+	form.List = definition.List
+	form.List.SearchFields = effectiveListSearchFields(definition.List, []string{"Description", "Code"})
 	if err != nil || !form.Generated {
 		return form, err
 	}
@@ -82,6 +85,8 @@ func (catalog *Catalog) DocumentForm(name string, kind FormKind, language string
 		return FormDescriptor{}, fmt.Errorf("unknown document %q", name)
 	}
 	form, err := catalog.baseForm(DocumentKind, definition.ID, definition.Name, definition.Title, definition.Forms, kind, language)
+	form.List = definition.List
+	form.List.SearchFields = effectiveListSearchFields(definition.List, []string{"Number"})
 	if err != nil || !form.Generated {
 		return form, err
 	}

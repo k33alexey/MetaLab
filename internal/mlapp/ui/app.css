@@ -63,8 +63,16 @@ ml-command-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; 
 .form-field input:read-only { background: var(--ml-color-surface-muted); }
 .form-label { display: grid; grid-template-columns: minmax(120px, 220px) 1fr; gap: 12px; align-items: baseline; }
 .form-table { min-height: 100px; overflow: auto; border: 1px solid var(--ml-color-border); border-radius: var(--ml-radius-sm); }
-.table-header { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(140px, 1fr); min-width: max-content; border-bottom: 1px solid var(--ml-color-border); background: var(--ml-color-surface-muted); }
-.table-header strong { min-width: 140px; padding: 9px 12px; border-right: 1px solid var(--ml-color-border); font-size: .875rem; }
+.table-header, .table-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(140px, 1fr); min-width: max-content; border-bottom: 1px solid var(--ml-color-border); }
+.table-header { background: var(--ml-color-surface-muted); }
+.table-header strong, .table-row span { min-width: 140px; padding: 9px 12px; border-right: 1px solid var(--ml-color-border); font-size: .875rem; }
+.table-sort { width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font-weight: 700; text-align: left; }
+.table-row:last-child { border-bottom: 0; }
+.table-row:hover { background: #f7f9fc; }
+.list-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px; border: 1px solid var(--ml-color-border); border-bottom: 0; background: var(--ml-color-surface); }
+.list-controls input, .list-controls select { min-height: 36px; padding: 6px 9px; border: 1px solid #b9c1ce; border-radius: var(--ml-radius-sm); background: white; }
+.list-controls input[type="search"] { min-width: min(300px, 100%); }
+.list-spacer { flex: 1; }
 .empty { padding: 20px; color: var(--ml-color-muted); text-align: center; }
 .app-status { position: fixed; right: 18px; bottom: 18px; max-width: min(420px, calc(100vw - 36px)); padding: 12px 16px; border-radius: var(--ml-radius-md); background: var(--ml-color-header); color: white; box-shadow: var(--ml-shadow); }
 .error-panel { width: min(540px, calc(100% - 32px)); margin: 60px auto; padding: 24px; border: 1px solid var(--ml-color-border); border-radius: var(--ml-radius-md); background: white; box-shadow: var(--ml-shadow); }

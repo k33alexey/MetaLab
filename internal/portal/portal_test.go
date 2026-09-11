@@ -115,6 +115,13 @@ func TestMLAppPageBootstrapAndAssets(t *testing.T) {
 	if formResponse.Code != http.StatusOK || !strings.Contains(formResponse.Body.String(), `"title":"Товары"`) || !strings.Contains(formResponse.Body.String(), `"kind":"table"`) {
 		t.Fatalf("form status=%d body=%s", formResponse.Code, formResponse.Body.String())
 	}
+	listRequest := httptest.NewRequest(http.MethodGet, "/api/databases/"+databaseID.String()+"/lists/catalogs/Товары?limit=50&search=болт&searchField=Description&sort=Description&direction=desc&filter=Description%3DБолт", nil)
+	listRequest.AddCookie(cookie)
+	listResponse := httptest.NewRecorder()
+	handler.ServeHTTP(listResponse, listRequest)
+	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), `"Description":"Болт"`) || runtime.listRequest.Limit != 50 || runtime.listRequest.Search != "болт" || runtime.listRequest.SearchField != "Description" || runtime.listRequest.SortField != "Description" || !runtime.listRequest.Descending || len(runtime.listRequest.Filters) != 1 {
+		t.Fatalf("list status=%d request=%+v body=%s", listResponse.Code, runtime.listRequest, listResponse.Body.String())
+	}
 
 	asset := httptest.NewRecorder()
 	handler.ServeHTTP(asset, httptest.NewRequest(http.MethodGet, "/assets/ml-app/app.js", nil))
@@ -154,12 +161,13 @@ func TestLoginLimiterIsBoundedAndExpires(t *testing.T) {
 }
 
 type fakeRuntime struct {
-	token     string
-	session   systemdb.PortalSession
-	databases []platform.PortalDatabase
-	opened    uuid.UUID
-	loggedOut bool
-	failure   error
+	token       string
+	session     systemdb.PortalSession
+	databases   []platform.PortalDatabase
+	opened      uuid.UUID
+	loggedOut   bool
+	failure     error
+	listRequest metadata.DynamicListRequest
 }
 
 func (runtime *fakeRuntime) LoginPortal(context.Context, string, string, string, string) (platform.PortalLogin, error) {
@@ -203,4 +211,8 @@ func (runtime *fakeRuntime) LoadApplicationForm(_ context.Context, _ string, _ u
 		Fields:   []metadata.FormField{{Name: "Description", Title: "Наименование", Types: []metadata.Type{{Kind: metadata.StringType}}}},
 		Commands: []metadata.FormCommand{{Name: "Create", Title: "Создать"}},
 	}}, runtime.failure
+}
+func (runtime *fakeRuntime) LoadApplicationList(_ context.Context, _ string, _ uuid.UUID, _ metadata.Kind, _ string, request metadata.DynamicListRequest) (platform.ApplicationListPage, error) {
+	runtime.listRequest = request
+	return platform.ApplicationListPage{PageSize: request.Limit, Rows: []platform.ApplicationListRow{{Reference: uuid.MustNew(), Values: map[string]string{"Description": "Болт"}}}}, runtime.failure
 }

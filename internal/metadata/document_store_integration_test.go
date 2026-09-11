@@ -49,6 +49,7 @@ func TestDocumentRepositoryLifecycleIntegration(t *testing.T) {
 		Documents: []DocumentDefinition{{
 			ID: documentID, Name: "Продажа", Posting: true,
 			Number:     DocumentNumber{Type: StringType, Length: 11, Unique: true, Periodicity: NumberPeriodYear},
+			List:       ListSettings{PageSize: 20, SearchFields: []string{"Number"}},
 			Attributes: []Attribute{{ID: partnerID, Name: "Контрагент", Required: true, Types: []Type{{Kind: CatalogType, Reference: &catalogID}}}},
 			TableParts: []TablePart{{ID: linesID, Name: "Товары", Attributes: []Attribute{
 				{ID: productID, Name: "Товар", Required: true, Types: []Type{{Kind: StringType, Length: 100}}},
@@ -163,6 +164,13 @@ func TestDocumentRepositoryLifecycleIntegration(t *testing.T) {
 	duplicate.Date = fixedDate.AddDate(1, 0, 0)
 	if err := repository.Save(ctx, duplicate, nil); err != nil {
 		t.Fatalf("same number in another period: %v", err)
+	}
+	dynamicPage, err := repository.ListDynamic(ctx, "Продажа", DynamicListRequest{
+		Search: "SALE-2", SortField: "Date", Descending: true,
+		Filters: []ListFilter{{Field: "Posted", Value: "false"}},
+	})
+	if err != nil || len(dynamicPage.Records) != 2 || dynamicPage.Records[0].Reference != duplicate.Reference || dynamicPage.NextCursor != nil {
+		t.Fatalf("dynamic document list page=%+v error=%v", dynamicPage, err)
 	}
 
 	runtime, err := NewRuntimeWithObjects(nil, catalogRepository, repository, catalog, nil)

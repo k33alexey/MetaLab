@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -35,7 +36,7 @@ func TestAutomaticDocumentFormsAndCommands(t *testing.T) {
 		}
 	}
 	list, err := catalog.DocumentForm("Продажа", ListForm, "en")
-	if err != nil || !list.Generated || len(list.Fields) != 3 || !hasFormCommand(list.Commands, "Create") {
+	if err != nil || !list.Generated || len(list.Fields) != 3 || !hasFormCommand(list.Commands, "Create") || !slices.Equal(list.List.SearchFields, []string{"Number"}) {
 		t.Fatalf("list=%+v error=%v", list, err)
 	}
 }

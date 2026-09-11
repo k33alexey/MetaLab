@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -217,6 +218,9 @@ name: Контрагенты
 title: {ru: Контрагенты}
 code: {type: string, length: 9, auto: true, unique: true}
 description_length: 250
+list:
+  page_size: 50
+  search_fields: [Description]
 attributes:
   - id: `+attributeID+`
     name: Родитель
@@ -238,12 +242,13 @@ table_parts:
 		t.Fatal(err)
 	}
 	definition, ok := catalog.CatalogDefinition("контрагенты")
-	if !ok || definition.ID.String() != catalogID || len(definition.TableParts) != 1 {
+	if !ok || definition.ID.String() != catalogID || len(definition.TableParts) != 1 || definition.List.PageSize != 50 || !slices.Equal(definition.List.SearchFields, []string{"Description"}) {
 		t.Fatalf("catalog = %+v, found=%v", definition, ok)
 	}
 	definition.Attributes[0].Name = "Changed"
+	definition.List.SearchFields[0] = "Changed"
 	again, _ := catalog.CatalogDefinition("Контрагенты")
-	if again.Attributes[0].Name != "Родитель" {
+	if again.Attributes[0].Name != "Родитель" || again.List.SearchFields[0] != "Description" {
 		t.Fatal("catalog lookup exposed mutable attribute storage")
 	}
 }

@@ -46,10 +46,23 @@ type NavigationItem struct {
 }
 
 type Form struct {
-	ID       string    `json:"id"`
-	Title    string    `json:"title"`
-	Commands []Command `json:"commands"`
-	Items    []Element `json:"items"`
+	ID       string       `json:"id"`
+	Title    string       `json:"title"`
+	Commands []Command    `json:"commands"`
+	Items    []Element    `json:"items"`
+	List     *ListOptions `json:"list,omitempty"`
+}
+
+type ListOptions struct {
+	PageSize      int         `json:"pageSize"`
+	SearchEnabled bool        `json:"searchEnabled"`
+	SearchFields  []ListField `json:"searchFields"`
+	FilterFields  []ListField `json:"filterFields"`
+}
+
+type ListField struct {
+	Name  string `json:"name"`
+	Title string `json:"title"`
 }
 
 type Command struct {
@@ -71,6 +84,12 @@ type Element struct {
 	Orientation string    `json:"orientation,omitempty"`
 	Command     string    `json:"command,omitempty"`
 	Children    []Element `json:"children,omitempty"`
+	Rows        []ListRow `json:"rows,omitempty"`
+}
+
+type ListRow struct {
+	Reference uuid.UUID         `json:"reference"`
+	Values    map[string]string `json:"values"`
 }
 
 // NewBootstrap creates the minimal authenticated application workspace.
@@ -160,6 +179,28 @@ func validateForm(form Form) error {
 		return fmt.Errorf("invalid ML App form")
 	}
 	commands := make(map[string]bool, len(form.Commands))
+	if form.List != nil && form.List.PageSize != 20 && form.List.PageSize != 50 && form.List.PageSize != 100 {
+		return fmt.Errorf("invalid ML App list page size")
+	}
+	if form.List != nil {
+		if len(form.List.FilterFields) > 1_024 || len(form.List.SearchFields) > 1_024 {
+			return fmt.Errorf("ML App list has too many filter fields")
+		}
+		fields := make(map[string]bool, len(form.List.FilterFields))
+		for _, field := range form.List.FilterFields {
+			if strings.TrimSpace(field.Name) == "" || strings.TrimSpace(field.Title) == "" || fields[field.Name] {
+				return fmt.Errorf("invalid ML App list filter field")
+			}
+			fields[field.Name] = true
+		}
+		searchFields := make(map[string]bool, len(form.List.SearchFields))
+		for _, field := range form.List.SearchFields {
+			if strings.TrimSpace(field.Name) == "" || strings.TrimSpace(field.Title) == "" || searchFields[field.Name] {
+				return fmt.Errorf("invalid ML App list search field")
+			}
+			searchFields[field.Name] = true
+		}
+	}
 	for _, command := range form.Commands {
 		if command.ID == "" || command.Title == "" || commands[command.ID] {
 			return fmt.Errorf("invalid ML App command")

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/k33alexey/MetaLab/internal/appdb"
@@ -26,16 +27,27 @@ type ApplicationForm struct {
 	Custom     *metadata.ManagedForm   `json:"custom,omitempty"`
 }
 
+type ApplicationListPage struct {
+	Rows       []ApplicationListRow `json:"rows"`
+	NextCursor *uuid.UUID           `json:"nextCursor,omitempty"`
+	PageSize   int                  `json:"pageSize"`
+}
+
+type ApplicationListRow struct {
+	Reference uuid.UUID         `json:"reference"`
+	Values    map[string]string `json:"values"`
+}
+
 // LoadApplicationObjects returns objects from the exact active publication.
 func (runtime *Runtime) LoadApplicationObjects(ctx context.Context, token string, databaseID uuid.UUID, language string) ([]ApplicationObject, error) {
 	if _, err := runtime.ResumePortalDatabase(ctx, token, databaseID); err != nil {
 		return nil, err
 	}
-	snapshot, closePool, err := runtime.loadPublishedMetadata(ctx, databaseID)
+	snapshot, pool, err := runtime.loadPublishedMetadata(ctx, databaseID)
 	if err != nil {
 		return nil, err
 	}
-	defer closePool()
+	defer pool.Close()
 	catalog, err := snapshot.Catalog()
 	if err != nil {
 		return nil, err
@@ -55,11 +67,11 @@ func (runtime *Runtime) LoadApplicationForm(ctx context.Context, token string, d
 	if _, err := runtime.ResumePortalDatabase(ctx, token, databaseID); err != nil {
 		return ApplicationForm{}, err
 	}
-	snapshot, closePool, err := runtime.loadPublishedMetadata(ctx, databaseID)
+	snapshot, pool, err := runtime.loadPublishedMetadata(ctx, databaseID)
 	if err != nil {
 		return ApplicationForm{}, err
 	}
-	defer closePool()
+	defer pool.Close()
 	catalog, err := snapshot.Catalog()
 	if err != nil {
 		return ApplicationForm{}, err
@@ -87,29 +99,116 @@ func (runtime *Runtime) LoadApplicationForm(ctx context.Context, token string, d
 	return result, nil
 }
 
-func (runtime *Runtime) loadPublishedMetadata(ctx context.Context, databaseID uuid.UUID) (metadata.RuntimeSnapshot, func(), error) {
+// LoadApplicationList returns one bounded metadata-aware page from PostgreSQL.
+func (runtime *Runtime) LoadApplicationList(ctx context.Context, token string, databaseID uuid.UUID, objectKind metadata.Kind, name string, request metadata.DynamicListRequest) (ApplicationListPage, error) {
+	if _, err := runtime.ResumePortalDatabase(ctx, token, databaseID); err != nil {
+		return ApplicationListPage{}, err
+	}
+	snapshot, pool, err := runtime.loadPublishedMetadata(ctx, databaseID)
+	if err != nil {
+		return ApplicationListPage{}, err
+	}
+	defer pool.Close()
+	catalog, err := snapshot.Catalog()
+	if err != nil {
+		return ApplicationListPage{}, err
+	}
+	result := ApplicationListPage{Rows: []ApplicationListRow{}, PageSize: request.Limit}
+	switch objectKind {
+	case metadata.CatalogKind:
+		definition, ok := catalog.CatalogDefinition(name)
+		if !ok {
+			return ApplicationListPage{}, fmt.Errorf("unknown catalog %q", name)
+		}
+		repository, err := metadata.NewCatalogRepository(pool, catalog)
+		if err != nil {
+			return ApplicationListPage{}, err
+		}
+		page, err := repository.ListDynamic(ctx, name, request)
+		if err != nil {
+			return ApplicationListPage{}, err
+		}
+		result.PageSize, result.NextCursor = effectiveListPageSize(request.Limit, definition.List), page.NextCursor
+		for _, record := range page.Records {
+			values := map[string]string{
+				"Ref": record.Reference.ObjectID.String(), "Code": record.Code, "Description": record.Description,
+				"DeletionMark": fmt.Sprint(record.DeletionMark),
+			}
+			appendApplicationAttributes(values, definition.Attributes, record.Attributes)
+			result.Rows = append(result.Rows, ApplicationListRow{Reference: record.Reference.ObjectID, Values: values})
+		}
+	case metadata.DocumentKind:
+		definition, ok := catalog.DocumentDefinition(name)
+		if !ok {
+			return ApplicationListPage{}, fmt.Errorf("unknown document %q", name)
+		}
+		repository, err := metadata.NewDocumentRepository(pool, catalog)
+		if err != nil {
+			return ApplicationListPage{}, err
+		}
+		page, err := repository.ListDynamic(ctx, name, request)
+		if err != nil {
+			return ApplicationListPage{}, err
+		}
+		result.PageSize, result.NextCursor = effectiveListPageSize(request.Limit, definition.List), page.NextCursor
+		for _, record := range page.Records {
+			values := map[string]string{
+				"Ref": record.Reference.ObjectID.String(), "Number": record.Number,
+				"Date": record.Date.Format(time.RFC3339Nano), "Posted": fmt.Sprint(record.Posted),
+				"DeletionMark": fmt.Sprint(record.DeletionMark),
+			}
+			appendApplicationAttributes(values, definition.Attributes, record.Attributes)
+			result.Rows = append(result.Rows, ApplicationListRow{Reference: record.Reference.ObjectID, Values: values})
+		}
+	default:
+		return ApplicationListPage{}, fmt.Errorf("unsupported application object kind %q", objectKind)
+	}
+	return result, nil
+}
+
+func appendApplicationAttributes(target map[string]string, attributes []metadata.Attribute, values map[uuid.UUID]metadata.Value) {
+	for _, attribute := range attributes {
+		if value, ok := values[attribute.ID]; ok {
+			target[attribute.Name] = value.Data
+		} else {
+			target[attribute.Name] = ""
+		}
+	}
+}
+
+func effectiveListPageSize(requested int, settings metadata.ListSettings) int {
+	if requested != 0 {
+		return requested
+	}
+	if settings.PageSize != 0 {
+		return settings.PageSize
+	}
+	return 20
+}
+
+func (runtime *Runtime) loadPublishedMetadata(ctx context.Context, databaseID uuid.UUID) (metadata.RuntimeSnapshot, *pgxpool.Pool, error) {
 	pool, _, err := runtime.openApplicationPool(ctx, databaseID)
 	if err != nil {
-		return metadata.RuntimeSnapshot{}, func() {}, err
+		return metadata.RuntimeSnapshot{}, nil, err
 	}
 	active, found, err := publication.Current(ctx, pool)
 	if err != nil || !found {
 		pool.Close()
 		if err != nil {
-			return metadata.RuntimeSnapshot{}, func() {}, err
+			return metadata.RuntimeSnapshot{}, nil, err
 		}
-		return metadata.RuntimeSnapshot{}, func() {}, fmt.Errorf("application database has no active publication")
+		return metadata.RuntimeSnapshot{}, nil, fmt.Errorf("application database has no active publication")
 	}
 	var manifest publication.Manifest
 	if err := json.Unmarshal(active.Manifest, &manifest); err != nil {
 		pool.Close()
-		return metadata.RuntimeSnapshot{}, func() {}, fmt.Errorf("decode active publication metadata: %w", err)
+		return metadata.RuntimeSnapshot{}, nil, fmt.Errorf("decode active publication metadata: %w", err)
 	}
 	if err := manifest.Runtime.Validate(); err != nil {
 		pool.Close()
-		return metadata.RuntimeSnapshot{}, func() {}, fmt.Errorf("validate active publication metadata: %w", err)
+		return metadata.RuntimeSnapshot{}, nil, fmt.Errorf("validate active publication metadata: %w", err)
 	}
-	return manifest.Runtime, pool.Close, nil
+	return manifest.Runtime, pool, nil
 }
 
 func (runtime *Runtime) openApplicationPool(ctx context.Context, id uuid.UUID) (*pgxpool.Pool, systemdb.RegisteredDatabase, error) {

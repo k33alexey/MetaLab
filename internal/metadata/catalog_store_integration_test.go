@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"slices"
 	"testing"
@@ -44,6 +45,7 @@ func TestCatalogRepositoryLifecycleIntegration(t *testing.T) {
 	catalog := &Catalog{
 		Catalogs: []CatalogDefinition{{
 			ID: catalogID, Name: "Контрагенты", Code: CatalogCode{Type: StringType, Length: 9, Unique: true}, DescriptionLength: 250,
+			List: ListSettings{PageSize: 20, SearchFields: []string{"Description", "Email"}},
 			Attributes: []Attribute{
 				{ID: emailID, Name: "Email", Required: true, Types: []Type{{Kind: StringType, Length: 100}}},
 				{ID: parentID, Name: "Родитель", Indexed: true, Types: []Type{{Kind: CatalogType, Reference: &catalogID}}},
@@ -171,6 +173,50 @@ func TestCatalogRepositoryLifecycleIntegration(t *testing.T) {
 	result, err := machine.NewContextWithMetadata(runtime).CallContext(ctx, "Проверить")
 	if err != nil || result.String() != "bsl@example.test:+380003:Второй" {
 		t.Fatalf("BSL catalog result=%v error=%v", result, err)
+	}
+	for index := range 20 {
+		item, err := repository.New(ctx, "Контрагенты", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		item.Code, item.Description = fmt.Sprintf("P%03d", index), fmt.Sprintf("Партнёр %03d", index)
+		item.Attributes[emailID] = Value{Kind: StringType, Data: fmt.Sprintf("partner%03d@example.test", index)}
+		if err := repository.Save(ctx, item, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	firstDynamic, err := repository.ListDynamic(ctx, "Контрагенты", DynamicListRequest{Limit: 20})
+	if err != nil || len(firstDynamic.Records) != 20 || firstDynamic.NextCursor == nil {
+		t.Fatalf("first dynamic page records=%d cursor=%v error=%v", len(firstDynamic.Records), firstDynamic.NextCursor, err)
+	}
+	secondDynamic, err := repository.ListDynamic(ctx, "Контрагенты", DynamicListRequest{Limit: 20, Cursor: firstDynamic.NextCursor})
+	if err != nil || len(secondDynamic.Records) != 2 || secondDynamic.NextCursor != nil {
+		t.Fatalf("second dynamic page records=%d cursor=%v error=%v", len(secondDynamic.Records), secondDynamic.NextCursor, err)
+	}
+	searched, err := repository.ListDynamic(ctx, "Контрагенты", DynamicListRequest{Limit: 20, Search: "bsl@"})
+	if err != nil || len(searched.Records) != 1 || searched.Records[0].Code != "K003" {
+		t.Fatalf("searched=%+v error=%v", searched, err)
+	}
+	filtered, err := repository.ListDynamic(ctx, "Контрагенты", DynamicListRequest{Limit: 20, Filters: []ListFilter{{Field: "Code", Value: "K001"}}})
+	if err != nil || len(filtered.Records) != 1 || filtered.Records[0].Description != "Второй" {
+		t.Fatalf("filtered=%+v error=%v", filtered, err)
+	}
+	sortedFirst, err := repository.ListDynamic(ctx, "Контрагенты", DynamicListRequest{Limit: 20, SortField: "Description", Descending: true})
+	if err != nil || len(sortedFirst.Records) != 20 || sortedFirst.NextCursor == nil {
+		t.Fatalf("sorted first page records=%d cursor=%v error=%v", len(sortedFirst.Records), sortedFirst.NextCursor, err)
+	}
+	sortedSecond, err := repository.ListDynamic(ctx, "Контрагенты", DynamicListRequest{Limit: 20, SortField: "Description", Descending: true, Cursor: sortedFirst.NextCursor})
+	if err != nil || len(sortedSecond.Records) != 2 || sortedSecond.NextCursor != nil {
+		t.Fatalf("sorted second page records=%d cursor=%v error=%v", len(sortedSecond.Records), sortedSecond.NextCursor, err)
+	}
+	seen := make(map[uuid.UUID]bool, 22)
+	for _, page := range [][]*CatalogRecord{sortedFirst.Records, sortedSecond.Records} {
+		for _, item := range page {
+			if seen[item.Reference.ObjectID] {
+				t.Fatalf("sorted cursor repeated %s", item.Reference.ObjectID)
+			}
+			seen[item.Reference.ObjectID] = true
+		}
 	}
 }
 

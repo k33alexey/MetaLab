@@ -48,9 +48,10 @@ func TestGeneratedListAndChoiceFormsUseTableAndCommands(t *testing.T) {
 			ObjectName: "Товары", Title: "Товары", Generated: true,
 			Fields:   []metadata.FormField{{Name: "Description", Title: "Наименование", Types: []metadata.Type{{Kind: metadata.StringType}}}},
 			Commands: []metadata.FormCommand{{Name: test.command, Title: test.command}},
+			List:     metadata.ListSettings{PageSize: 50, SearchFields: []string{"Description"}},
 		}
 		form, err := FormFromMetadata(descriptor, nil, "ru")
-		if err != nil || len(form.Items) != 1 || form.Items[0].Kind != "table" || form.Commands[0].ID != test.command {
+		if err != nil || len(form.Items) != 1 || form.Items[0].Kind != "table" || form.Commands[0].ID != test.command || form.List == nil || form.List.PageSize != 50 || !form.List.SearchEnabled || form.List.SearchFields[0].Name != "Description" || form.List.FilterFields[0].Title != "Наименование" {
 			t.Fatalf("kind=%s form=%+v error=%v", test.kind, form, err)
 		}
 	}

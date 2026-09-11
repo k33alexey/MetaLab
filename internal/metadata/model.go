@@ -154,6 +154,12 @@ type TablePart struct {
 	Attributes []Attribute   `yaml:"attributes"`
 }
 
+// ListSettings controls bounded server-side lists without embedding SQL in metadata.
+type ListSettings struct {
+	PageSize     int      `yaml:"page_size,omitempty" json:"pageSize,omitempty"`
+	SearchFields []string `yaml:"search_fields,omitempty" json:"searchFields,omitempty"`
+}
+
 // CatalogDefinition describes one ML catalog and its persistent record shape.
 type CatalogDefinition struct {
 	Format            int                     `yaml:"format"`
@@ -167,6 +173,7 @@ type CatalogDefinition struct {
 	ObjectModule      *uuid.UUID              `yaml:"object_module,omitempty"`
 	ManagerModule     *uuid.UUID              `yaml:"manager_module,omitempty"`
 	Forms             ObjectForms             `yaml:"forms,omitempty"`
+	List              ListSettings            `yaml:"list,omitempty"`
 	Predefined        []PredefinedCatalogItem `yaml:"predefined,omitempty"`
 }
 
@@ -515,6 +522,9 @@ func DecodeCatalog(source string, reader io.Reader, manifest project.Project) (C
 		issues = append(issues, "object_module and manager_module must be different")
 	}
 	issues = append(issues, validateObjectForms(value.Forms)...)
+	issues = append(issues, validateListSettings(value.List, value.Attributes, map[string]TypeKind{
+		"code": value.Code.Type, "description": StringType,
+	})...)
 	issues = append(issues, validatePredefinedCatalogItems(value)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return CatalogDefinition{}, err
@@ -841,6 +851,7 @@ func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
 		value.ManagerModule = &id
 	}
 	value.Forms = cloneObjectForms(value.Forms)
+	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Predefined = slices.Clone(value.Predefined)
 	for index := range value.Predefined {
 		value.Predefined[index] = clonePredefinedCatalogItem(value.Predefined[index])

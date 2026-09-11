@@ -48,6 +48,7 @@ type DocumentDefinition struct {
 	ObjectModule  *uuid.UUID     `yaml:"object_module,omitempty"`
 	ManagerModule *uuid.UUID     `yaml:"manager_module,omitempty"`
 	Forms         ObjectForms    `yaml:"forms,omitempty"`
+	List          ListSettings   `yaml:"list,omitempty"`
 }
 
 func DecodeDocument(source string, reader io.Reader, manifest project.Project) (DocumentDefinition, error) {
@@ -117,6 +118,9 @@ func DecodeDocument(source string, reader io.Reader, manifest project.Project) (
 		issues = append(issues, "object_module and manager_module must be different")
 	}
 	issues = append(issues, validateObjectForms(value.Forms)...)
+	issues = append(issues, validateListSettings(value.List, value.Attributes, map[string]TypeKind{
+		"number": value.Number.Type,
+	})...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return DocumentDefinition{}, err
 	}
@@ -169,6 +173,7 @@ func cloneDocumentDefinition(value DocumentDefinition) DocumentDefinition {
 		value.ManagerModule = &id
 	}
 	value.Forms = cloneObjectForms(value.Forms)
+	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	return value
 }
 

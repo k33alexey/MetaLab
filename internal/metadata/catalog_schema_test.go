@@ -17,6 +17,7 @@ func TestCatalogApplicationSchemaUsesStableUUIDNames(t *testing.T) {
 		Catalogs: []CatalogDefinition{{
 			ID: catalogID, Name: "Контрагенты",
 			Code: CatalogCode{Type: StringType, Length: 9, Unique: true}, DescriptionLength: 250,
+			List: ListSettings{SearchFields: []string{"Description"}},
 			Attributes: []Attribute{{
 				ID: attributeID, Name: "Родитель", Indexed: true,
 				Types: []Type{{Kind: CatalogType, Reference: &catalogID}},
@@ -47,11 +48,25 @@ func TestCatalogApplicationSchemaUsesStableUUIDNames(t *testing.T) {
 	if !hasSchemaIndex(main, attributeName) || !hasSchemaIndex(main, "deletion_mark") || len(main.Constraints) != 4 {
 		t.Fatalf("main indexes/constraints = %+v / %+v", main.Indexes, main.Constraints)
 	}
+	if !hasSchemaIndexExpression(main, "lower(description::text) text_pattern_ops") {
+		t.Fatalf("search indexes = %+v", main.Indexes)
+	}
 	partName, _ := PhysicalCatalogTable(partID)
 	part := schemaTable(t, schema, partName)
 	if !hasSchemaColumn(part, "owner_ref", "uuid", false) || !hasSchemaColumn(part, "line_no", "integer", false) {
 		t.Fatalf("table part = %+v", part)
 	}
+}
+
+func hasSchemaIndexExpression(table schemadiff.Table, expression string) bool {
+	for _, index := range table.Indexes {
+		for _, key := range index.Keys {
+			if key == expression {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func TestCompositeAttributeUsesJSONB(t *testing.T) {

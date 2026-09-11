@@ -7,9 +7,12 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +39,7 @@ type runtime interface {
 	AcknowledgeSessionMessage(context.Context, string, uuid.UUID) error
 	LoadApplicationObjects(context.Context, string, uuid.UUID, string) ([]platform.ApplicationObject, error)
 	LoadApplicationForm(context.Context, string, uuid.UUID, metadata.Kind, string, metadata.FormKind, string) (platform.ApplicationForm, error)
+	LoadApplicationList(context.Context, string, uuid.UUID, metadata.Kind, string, metadata.DynamicListRequest) (platform.ApplicationListPage, error)
 }
 
 // NewHandler creates the public Portal HTTP surface.
@@ -241,6 +245,33 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		}
 		writeJSON(response, http.StatusOK, form)
 	})
+	routes.HandleFunc("GET /api/databases/{id}/lists/{objectKind}/{name}", func(response http.ResponseWriter, request *http.Request) {
+		token, ok := requireToken(response, request)
+		if !ok {
+			return
+		}
+		id, err := uuid.Parse(request.PathValue("id"))
+		if err != nil {
+			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
+			return
+		}
+		objectKind := metadata.Kind(request.PathValue("objectKind"))
+		if objectKind != metadata.CatalogKind && objectKind != metadata.DocumentKind {
+			http.Error(response, "Invalid dynamic list address", http.StatusBadRequest)
+			return
+		}
+		listRequest, err := decodeDynamicListRequest(request.URL.Query())
+		if err != nil {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+			return
+		}
+		page, err := platformRuntime.LoadApplicationList(request.Context(), token, id, objectKind, request.PathValue("name"), listRequest)
+		if err != nil {
+			http.Error(response, "Dynamic list unavailable", http.StatusBadRequest)
+			return
+		}
+		writeJSON(response, http.StatusOK, page)
+	})
 	routes.HandleFunc("GET /api/databases/{id}/session", func(response http.ResponseWriter, request *http.Request) {
 		token, ok := requireToken(response, request)
 		if !ok {
@@ -278,6 +309,39 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		response.WriteHeader(http.StatusNoContent)
 	})
 	return securityHeaders(routes)
+}
+
+func decodeDynamicListRequest(query url.Values) (metadata.DynamicListRequest, error) {
+	result := metadata.DynamicListRequest{Search: query.Get("search"), SearchField: query.Get("searchField"), SortField: query.Get("sort")}
+	switch query.Get("direction") {
+	case "", "asc":
+	case "desc":
+		result.Descending = true
+	default:
+		return metadata.DynamicListRequest{}, fmt.Errorf("Invalid list sort direction")
+	}
+	if value := query.Get("limit"); value != "" {
+		limit, err := strconv.Atoi(value)
+		if err != nil {
+			return metadata.DynamicListRequest{}, fmt.Errorf("Invalid list page size")
+		}
+		result.Limit = limit
+	}
+	if value := query.Get("cursor"); value != "" {
+		cursor, err := uuid.Parse(value)
+		if err != nil {
+			return metadata.DynamicListRequest{}, fmt.Errorf("Invalid list cursor")
+		}
+		result.Cursor = &cursor
+	}
+	for _, encoded := range query["filter"] {
+		field, value, ok := strings.Cut(encoded, "=")
+		if !ok || strings.TrimSpace(field) == "" {
+			return metadata.DynamicListRequest{}, fmt.Errorf("Invalid list filter")
+		}
+		result.Filters = append(result.Filters, metadata.ListFilter{Field: field, Value: value})
+	}
+	return result, nil
 }
 
 type loginAttempt struct {
