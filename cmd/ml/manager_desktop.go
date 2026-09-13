@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"os/user"
 	"time"
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
@@ -92,15 +91,11 @@ func (launcher executableStudioLauncher) OpenStudio(ctx context.Context, databas
 	if err != nil {
 		return fmt.Errorf("read ML Project: %w", err)
 	}
-	ownerName := "local-user"
-	if current, currentErr := user.Current(); currentErr == nil && current.Username != "" {
-		ownerName = current.Username
-	}
 	hostName := "localhost"
 	if current, hostErr := os.Hostname(); hostErr == nil && current != "" {
 		hostName = current
 	}
-	lease, err := launcher.runtime.AcquireStudioSession(ctx, databaseID, snapshot.Manifest.ID, ownerName, hostName, int64(os.Getpid()))
+	lease, err := launcher.runtime.AcquireStudioSession(ctx, databaseID, snapshot.Manifest.ID, "", hostName, int64(os.Getpid()))
 	if err != nil {
 		return err
 	}

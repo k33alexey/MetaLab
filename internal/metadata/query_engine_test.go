@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -27,7 +28,7 @@ func TestBasicQueryCompilationUsesLogicalMetadataAndBoundValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compiler, err := runtime.newQueryCompiler(parsed, map[string]bytecode.Value{"код": bytecode.String(`K1' OR TRUE`), "цена": bytecode.Number(10)}, nil)
+	compiler, err := runtime.newQueryCompiler(context.Background(), parsed, map[string]bytecode.Value{"код": bytecode.String(`K1' OR TRUE`), "цена": bytecode.Number(10)}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +71,7 @@ func TestBasicQuerySourcesExposeSupportedMetadataFields(t *testing.T) {
 		{[]string{"РегистрСведений", "Цены"}, []string{"ИдентификаторЗаписи", "Период", "Товар"}},
 		{[]string{"РегистрНакопления", "Остатки"}, []string{"ИдентификаторЗаписи", "Период", "Регистратор", "ВидДвижения", "Количество"}},
 	} {
-		source, err := runtime.resolveQuerySource(querylang.Source{Path: test.path, Position: querylang.Position{Line: 1, Column: 1}}, "s0", nil)
+		source, err := runtime.resolveQuerySource(context.Background(), querylang.Source{Path: test.path, Position: querylang.Position{Line: 1, Column: 1}}, "s0", nil)
 		if err != nil {
 			t.Fatalf("source %v: %v", test.path, err)
 		}
@@ -124,7 +125,7 @@ func TestExtendedQueryCompilationJoinsGroupingAndAggregates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compiler, err := runtime.newQueryCompiler(parsed, nil, nil)
+	compiler, err := runtime.newQueryCompiler(context.Background(), parsed, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +159,7 @@ func TestExtendedQueryCompilationRejectsAmbiguityAndInvalidGrouping(t *testing.T
 		if err != nil {
 			t.Fatal(err)
 		}
-		compiler, err := runtime.newQueryCompiler(parsed, nil, nil)
+		compiler, err := runtime.newQueryCompiler(context.Background(), parsed, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -228,7 +229,7 @@ func BenchmarkExtendedQueryCompilation(b *testing.B) {
 	}
 	b.ReportAllocs()
 	for range b.N {
-		compiler, err := runtime.newQueryCompiler(parsed, map[string]bytecode.Value{"минимум": bytecode.Number(1)}, nil)
+		compiler, err := runtime.newQueryCompiler(context.Background(), parsed, map[string]bytecode.Value{"минимум": bytecode.Number(1)}, nil)
 		if err != nil {
 			b.Fatal(err)
 		}

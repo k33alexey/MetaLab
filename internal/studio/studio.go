@@ -218,6 +218,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 	routes := http.NewServeMux()
 	registerDebugRoutes(routes, workspace)
 	registerTestRoutes(routes, workspace)
+	registerRoleRoutes(routes, workspace)
 	routes.Handle("GET /ui/", http.FileServer(http.FS(assets)))
 	routes.HandleFunc("GET /{$}", func(response http.ResponseWriter, _ *http.Request) {
 		page, err := assets.ReadFile("ui/index.html")

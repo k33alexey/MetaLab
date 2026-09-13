@@ -15,22 +15,23 @@ import (
 
 // User is an enabled or disabled internal ML account with system-wide flags.
 type User struct {
-	ID                    uuid.UUID
-	Login                 string
-	PlatformAdministrator bool
-	MetadataAdministrator bool
-	MustChangePassword    bool
-	Enabled               bool
-	CreatedAt             time.Time
+	ID                    uuid.UUID `json:"id"`
+	Login                 string    `json:"login"`
+	PlatformAdministrator bool      `json:"platformAdministrator"`
+	MetadataAdministrator bool      `json:"metadataAdministrator"`
+	MustChangePassword    bool      `json:"mustChangePassword"`
+	Enabled               bool      `json:"enabled"`
+	CreatedAt             time.Time `json:"createdAt"`
 }
 
 // UserCreation contains validated fields for a new internal account.
 type UserCreation struct {
-	ID                    uuid.UUID
-	Login                 string
-	Password              string
-	PlatformAdministrator bool
-	MetadataAdministrator bool
+	ID                    uuid.UUID `json:"-"`
+	Login                 string    `json:"login"`
+	Password              string    `json:"password"`
+	PlatformAdministrator bool      `json:"platformAdministrator"`
+	MetadataAdministrator bool      `json:"metadataAdministrator"`
+	MustChangePassword    bool      `json:"mustChangePassword"`
 }
 
 // UserRepository owns authentication shared by Portal users and administrators.
@@ -50,13 +51,13 @@ func (repository *UserRepository) Create(ctx context.Context, creation UserCreat
 	}
 	user := User{
 		ID: creation.ID, Login: creation.Login, PlatformAdministrator: creation.PlatformAdministrator,
-		MetadataAdministrator: creation.MetadataAdministrator, Enabled: true,
+		MetadataAdministrator: creation.MetadataAdministrator, MustChangePassword: creation.MustChangePassword, Enabled: true,
 	}
 	err = repository.pool.QueryRow(ctx, `
-INSERT INTO ml_system.users(id, login, password_hash, platform_administrator, metadata_administrator)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO ml_system.users(id, login, password_hash, platform_administrator, metadata_administrator, must_change_password)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING created_at`, creation.ID.String(), creation.Login, passwordHash,
-		creation.PlatformAdministrator, creation.MetadataAdministrator).Scan(&user.CreatedAt)
+		creation.PlatformAdministrator, creation.MetadataAdministrator, creation.MustChangePassword).Scan(&user.CreatedAt)
 	if err != nil {
 		return User{}, fmt.Errorf("create internal user: %w", err)
 	}

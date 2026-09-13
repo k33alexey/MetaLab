@@ -36,12 +36,12 @@ func NewHandlerWithSetup(configuration appconfig.Config, setup administratorSetu
 
 // NewHandlerWithPlatform adds PostgreSQL and first-administrator setup.
 func NewHandlerWithPlatform(configuration appconfig.Config, runtime platformSetup) http.Handler {
-	return newHandler(configuration, http.DefaultClient, runtime, runtime)
+	return secureManager(newHandler(configuration, http.DefaultClient, runtime, runtime), runtime)
 }
 
 // NewHandlerWithPlatformAndStudio adds launching an independent ML Studio process.
 func NewHandlerWithPlatformAndStudio(configuration appconfig.Config, runtime platformSetup, launcher StudioLauncher) http.Handler {
-	return newHandler(configuration, http.DefaultClient, runtime, runtime, launcher)
+	return secureManager(newHandler(configuration, http.DefaultClient, runtime, runtime, launcher), runtime)
 }
 
 // StudioLauncher opens a filesystem-backed project without tying its lifetime to Manager HTTP requests.
@@ -80,7 +80,7 @@ type platformSetup interface {
 	TerminateStudioSession(context.Context, uuid.UUID) error
 }
 
-func newHandler(configuration appconfig.Config, client *http.Client, setup administratorSetup, postgres platformSetup, launchers ...StudioLauncher) http.Handler {
+func newHandler(configuration appconfig.Config, client *http.Client, setup administratorSetup, postgres platformSetup, launchers ...StudioLauncher) *http.ServeMux {
 	routes := http.NewServeMux()
 	var launcher StudioLauncher
 	if len(launchers) > 0 {
@@ -131,6 +131,17 @@ func newHandler(configuration appconfig.Config, client *http.Client, setup admin
 		if input.DatabaseID.IsZero() || input.ProjectPath == "" {
 			http.Error(response, "Database and ML Project path are required", http.StatusBadRequest)
 			return
+		}
+		if postgres != nil {
+			security, ok := postgres.(managerSecurity)
+			if !ok {
+				http.Error(response, "Manager authentication unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			if err := security.AuthorizeManager(request.Context(), input.DatabaseID, "studio"); err != nil {
+				managerAccessError(response, err)
+				return
+			}
 		}
 		if err := launcher.OpenStudio(request.Context(), input.DatabaseID, input.ProjectPath); err != nil {
 			http.Error(response, err.Error(), http.StatusBadRequest)
@@ -573,11 +584,15 @@ func optionalQueryUUID(response http.ResponseWriter, request *http.Request, name
 }
 
 func decodeJSON(response http.ResponseWriter, request *http.Request, destination any) bool {
+	return decodeJSONLimit(response, request, destination, 8<<10)
+}
+
+func decodeJSONLimit(response http.ResponseWriter, request *http.Request, destination any, limit int64) bool {
 	if contentType := request.Header.Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {
 		http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
 		return false
 	}
-	decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 8<<10))
+	decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, limit))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(destination); err != nil {
 		http.Error(response, "Invalid setup request", http.StatusBadRequest)

@@ -22,19 +22,20 @@ const (
 
 var (
 	ErrDatabaseAccessDenied = errors.New("database is not available to this user")
-	ErrDatabaseOwnerOnly    = errors.New("database access can only be managed by its owner or an authorized administrator")
+	ErrDatabaseOwnerOnly    = errors.New("database access can only be managed by an authorized administrator")
 )
 
 // DatabaseAccess is the server-side personal Portal membership of one user.
 type DatabaseAccess struct {
-	UserID          uuid.UUID
-	DatabaseID      uuid.UUID
-	Level           DatabaseAccessLevel
-	AppAccess       bool
-	StudioAccess    bool
-	DatabaseAdmin   bool
-	GrantedByUserID *uuid.UUID
-	GrantedAt       time.Time
+	UserID          uuid.UUID           `json:"userId"`
+	DatabaseID      uuid.UUID           `json:"databaseId"`
+	Level           DatabaseAccessLevel `json:"level"`
+	AppAccess       bool                `json:"appAccess"`
+	StudioAccess    bool                `json:"studioAccess"`
+	DatabaseAdmin   bool                `json:"databaseAdministrator"`
+	GrantedByUserID *uuid.UUID          `json:"grantedByUserId,omitempty"`
+	GrantedAt       time.Time           `json:"grantedAt"`
+	Login           string              `json:"login,omitempty"`
 }
 
 // DatabaseAccessRepository owns personal Portal lists and database membership.
@@ -117,6 +118,9 @@ func (repository *DatabaseAccessRepository) GrantApp(ctx context.Context, actorI
 		return DatabaseAccess{}, fmt.Errorf("begin database access grant: %w", err)
 	}
 	defer func() { _ = transaction.Rollback(ctx) }()
+	if err := lockDatabasePermissions(ctx, transaction, databaseID); err != nil {
+		return DatabaseAccess{}, err
+	}
 	allowed, err := canManageDatabaseAccess(ctx, transaction, actorID, databaseID)
 	if err != nil {
 		return DatabaseAccess{}, err
@@ -170,6 +174,9 @@ func (repository *DatabaseAccessRepository) RevokeApp(ctx context.Context, actor
 		return fmt.Errorf("begin database access revocation: %w", err)
 	}
 	defer func() { _ = transaction.Rollback(ctx) }()
+	if err := lockDatabasePermissions(ctx, transaction, databaseID); err != nil {
+		return err
+	}
 	allowed, err := canManageDatabaseAccess(ctx, transaction, actorID, databaseID)
 	if err != nil {
 		return err
@@ -220,11 +227,11 @@ func canManageDatabaseAccess(ctx context.Context, transaction pgx.Tx, actorID, d
 	err := transaction.QueryRow(ctx, `
 SELECT EXISTS(
     SELECT 1 FROM ml_system.users AS users
-    WHERE users.id = $1 AND users.enabled AND (
+	WHERE users.id = $1 AND users.enabled AND NOT users.must_change_password AND (
         users.platform_administrator OR EXISTS(
             SELECT 1 FROM ml_system.database_access AS access
             WHERE access.user_id = users.id AND access.database_id = $2
-              AND (access.access_level = 'owner' OR access.database_administrator)
+              AND access.database_administrator
               AND access.revoked_at IS NULL
         )
     )
@@ -274,13 +281,17 @@ ON CONFLICT (user_id, database_id) DO NOTHING`, userID.String())
 	return nil
 }
 
-func scanDatabaseAccess(row rowScanner) (DatabaseAccess, error) {
+func scanDatabaseAccess(row rowScanner, withLogin ...bool) (DatabaseAccess, error) {
 	var item DatabaseAccess
 	var userID, databaseID, grantedBy string
-	if err := row.Scan(
+	fields := []any{
 		&userID, &databaseID, &item.Level, &item.AppAccess, &item.StudioAccess, &item.DatabaseAdmin,
 		&grantedBy, &item.GrantedAt,
-	); err != nil {
+	}
+	if len(withLogin) > 0 && withLogin[0] {
+		fields = append(fields, &item.Login)
+	}
+	if err := row.Scan(fields...); err != nil {
 		return DatabaseAccess{}, err
 	}
 	var err error

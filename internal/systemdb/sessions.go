@@ -63,6 +63,15 @@ type SessionRepository struct{ pool *pgxpool.Pool }
 
 // CreatePortal creates a bounded session for an authenticated user and token digest.
 func (repository *SessionRepository) CreatePortal(ctx context.Context, userID uuid.UUID, tokenHash []byte, remoteAddress, userAgent string) (PortalSession, error) {
+	return repository.createSession(ctx, userID, tokenHash, remoteAddress, userAgent, "portal")
+}
+
+// CreateManager creates an independent Manager session for an eligible account.
+func (repository *SessionRepository) CreateManager(ctx context.Context, userID uuid.UUID, tokenHash []byte, remoteAddress, userAgent string) (PortalSession, error) {
+	return repository.createSession(ctx, userID, tokenHash, remoteAddress, userAgent, "manager")
+}
+
+func (repository *SessionRepository) createSession(ctx context.Context, userID uuid.UUID, tokenHash []byte, remoteAddress, userAgent, purpose string) (PortalSession, error) {
 	if userID.IsZero() || len(tokenHash) != 32 {
 		return PortalSession{}, fmt.Errorf("invalid portal session identity")
 	}
@@ -75,8 +84,15 @@ func (repository *SessionRepository) CreatePortal(ctx context.Context, userID uu
 	return scanPortalSession(repository.pool.QueryRow(ctx, `
 WITH inserted AS (
     INSERT INTO ml_system.portal_sessions(
-        id, user_id, token_hash, remote_address, user_agent, idle_expires_at, absolute_expires_at
-    ) VALUES ($1, $2, $3, $4, $5, clock_timestamp() + $6::interval, clock_timestamp() + $7::interval)
+        id, user_id, token_hash, remote_address, user_agent, idle_expires_at, absolute_expires_at, purpose
+    )
+    SELECT $1, users.id, $3, $4, $5, clock_timestamp() + $6::interval, clock_timestamp() + $7::interval, $8
+    FROM ml_system.users AS users
+    WHERE users.id = $2 AND users.enabled AND ($8 = 'portal' OR
+        users.platform_administrator OR users.metadata_administrator OR EXISTS (
+            SELECT 1 FROM ml_system.database_access AS access
+            WHERE access.user_id = users.id AND access.revoked_at IS NULL AND access.database_administrator
+        ))
     RETURNING *
 )
 SELECT sessions.id::text, sessions.user_id::text, users.login,
@@ -85,11 +101,20 @@ SELECT sessions.id::text, sessions.user_id::text, users.login,
        sessions.idle_expires_at, sessions.absolute_expires_at
 FROM inserted AS sessions JOIN ml_system.users AS users ON users.id = sessions.user_id`,
 		id.String(), userID.String(), tokenHash, remoteAddress, userAgent,
-		portalIdleLifetime.String(), portalAbsoluteLifetime.String()))
+		portalIdleLifetime.String(), portalAbsoluteLifetime.String(), purpose))
 }
 
 // AuthenticatePortal verifies and touches a live bearer session by digest.
 func (repository *SessionRepository) AuthenticatePortal(ctx context.Context, tokenHash []byte) (PortalSession, error) {
+	return repository.authenticateSession(ctx, tokenHash, "portal")
+}
+
+// AuthenticateManager rechecks current system rights on every request.
+func (repository *SessionRepository) AuthenticateManager(ctx context.Context, tokenHash []byte) (PortalSession, error) {
+	return repository.authenticateSession(ctx, tokenHash, "manager")
+}
+
+func (repository *SessionRepository) authenticateSession(ctx context.Context, tokenHash []byte, purpose string) (PortalSession, error) {
 	if len(tokenHash) != 32 {
 		return PortalSession{}, ErrSessionNotFound
 	}
@@ -98,7 +123,7 @@ WITH touched AS (
     UPDATE ml_system.portal_sessions
     SET last_seen_at = clock_timestamp(),
         idle_expires_at = LEAST(absolute_expires_at, clock_timestamp() + $2::interval)
-    WHERE token_hash = $1 AND revoked_at IS NULL
+    WHERE token_hash = $1 AND purpose = $3 AND revoked_at IS NULL
       AND idle_expires_at > clock_timestamp() AND absolute_expires_at > clock_timestamp()
       AND last_seen_at < clock_timestamp() - interval '1 minute'
     RETURNING *
@@ -106,7 +131,7 @@ WITH touched AS (
     SELECT * FROM touched
     UNION ALL
     SELECT sessions.* FROM ml_system.portal_sessions AS sessions
-    WHERE sessions.token_hash = $1 AND sessions.revoked_at IS NULL
+    WHERE sessions.token_hash = $1 AND sessions.purpose = $3 AND sessions.revoked_at IS NULL
       AND sessions.idle_expires_at > clock_timestamp() AND sessions.absolute_expires_at > clock_timestamp()
       AND NOT EXISTS (SELECT 1 FROM touched)
     LIMIT 1
@@ -116,7 +141,10 @@ SELECT sessions.id::text, sessions.user_id::text, users.login,
        sessions.remote_address, sessions.user_agent, sessions.created_at, sessions.last_seen_at,
        sessions.idle_expires_at, sessions.absolute_expires_at
 FROM active AS sessions JOIN ml_system.users AS users ON users.id = sessions.user_id
-WHERE users.enabled`, tokenHash, portalIdleLifetime.String()))
+WHERE users.enabled AND ($3 = 'portal' OR users.platform_administrator OR users.metadata_administrator OR EXISTS (
+    SELECT 1 FROM ml_system.database_access AS access
+    WHERE access.user_id = users.id AND access.revoked_at IS NULL AND access.database_administrator
+))`, tokenHash, portalIdleLifetime.String(), purpose))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PortalSession{}, ErrSessionNotFound
 	}
@@ -125,6 +153,15 @@ WHERE users.enabled`, tokenHash, portalIdleLifetime.String()))
 
 // RevokePortal terminates the portal session and every database session derived from it.
 func (repository *SessionRepository) RevokePortal(ctx context.Context, tokenHash []byte) error {
+	return repository.revokeSession(ctx, tokenHash, "portal")
+}
+
+// RevokeManager does not revoke the same user's independent Portal session.
+func (repository *SessionRepository) RevokeManager(ctx context.Context, tokenHash []byte) error {
+	return repository.revokeSession(ctx, tokenHash, "manager")
+}
+
+func (repository *SessionRepository) revokeSession(ctx context.Context, tokenHash []byte, purpose string) error {
 	transaction, err := repository.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin portal logout: %w", err)
@@ -133,7 +170,7 @@ func (repository *SessionRepository) RevokePortal(ctx context.Context, tokenHash
 	var id string
 	err = transaction.QueryRow(ctx, `
 UPDATE ml_system.portal_sessions SET revoked_at = clock_timestamp()
-WHERE token_hash = $1 AND revoked_at IS NULL RETURNING id::text`, tokenHash).Scan(&id)
+WHERE token_hash = $1 AND purpose = $2 AND revoked_at IS NULL RETURNING id::text`, tokenHash, purpose).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrSessionNotFound
 	}
@@ -175,7 +212,7 @@ JOIN ml_system.users AS users ON users.id = portal.user_id AND users.enabled
 JOIN ml_system.database_access AS access
   ON access.user_id = portal.user_id AND access.database_id = databases.id
   AND access.app_access AND access.revoked_at IS NULL
-WHERE databases.id = $2 AND portal.revoked_at IS NULL
+WHERE databases.id = $2 AND portal.purpose = 'portal' AND portal.revoked_at IS NULL
   AND portal.idle_expires_at > clock_timestamp() AND portal.absolute_expires_at > clock_timestamp()
 FOR SHARE OF access`, portalSessionID.String(), databaseID.String()).Scan(&running, &allowed); errors.Is(err, pgx.ErrNoRows) {
 		return DatabaseSession{}, ErrDatabaseAccessDenied
@@ -393,7 +430,7 @@ JOIN ml_system.databases AS databases ON databases.id = sessions.database_id
 JOIN ml_system.database_access AS access
   ON access.user_id = portal.user_id AND access.database_id = sessions.database_id
   AND access.app_access AND access.revoked_at IS NULL
-WHERE portal.revoked_at IS NULL
+WHERE portal.purpose = 'portal' AND portal.revoked_at IS NULL
   AND portal.idle_expires_at > clock_timestamp() AND portal.absolute_expires_at > clock_timestamp()`,
 		portalSessionID.String(), databaseID.String()))
 	if errors.Is(err, pgx.ErrNoRows) {

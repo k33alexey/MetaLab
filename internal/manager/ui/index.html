@@ -33,14 +33,30 @@
 </head>
 <body>
 <main>
-  <header><h1>ML Manager</h1><span class="tag">MetaLab</span></header>
+  <header><h1>ML Manager</h1><span id="manager-user" class="tag">MetaLab</span><button id="manager-logout" class="secondary hidden">Выйти</button></header>
+  <section id="manager-login" class="hidden">
+    <h2>Вход в ML Manager</h2><p class="hint">Ваша внутренняя учётная запись ML — та же, что в Portal.</p>
+    <form id="manager-login-form">
+      <label>Логин<input id="manager-login-name" autocomplete="username" required></label>
+      <label>Пароль<input id="manager-login-password" type="password" autocomplete="current-password" required></label>
+      <div id="manager-login-error" class="error" role="alert"></div><button>Войти</button>
+    </form>
+  </section>
+  <section id="manager-password" class="hidden">
+    <h2>Смените временный пароль</h2>
+    <form id="manager-password-form">
+      <label>Текущий пароль<input id="manager-current-password" type="password" autocomplete="current-password" required></label>
+      <label>Новый пароль<input id="manager-new-password" type="password" autocomplete="new-password" minlength="8" required></label>
+      <div id="manager-password-error" class="error" role="alert"></div><button>Сохранить пароль</button>
+    </form>
+  </section>
   <section>
     <div class="row">
       <div><div id="state" class="state"><i class="dot"></i><span>Проверка ML Service…</span></div><br><small id="url"></small></div>
       <button id="refresh">Обновить</button>
     </div>
   </section>
-  <section>
+  <section id="studio-section" class="hidden">
     <div class="row"><div><h2>ML Studio</h2><p class="hint">Откройте каталог существующего ML Project в отдельном окне Studio.</p></div></div>
     <form id="studio-form">
       <label>База<select id="studio-database" required><option value="">Выберите базу</option></select></label>
@@ -92,7 +108,14 @@
     </div>
   </section>
   <section id="databases" class="hidden">
-    <div class="row"><div><h2>Базы</h2><p class="hint">Каждая физическая PostgreSQL-база может быть зарегистрирована только один раз.</p></div><button id="database-add-toggle" class="secondary">Добавить</button></div>
+    <div class="row"><div><h2 id="database-list-title">Мои базы</h2><p class="hint">Доступы назначает администратор. Закрытие Manager не останавливает базы.</p></div><button id="database-add-toggle" class="secondary hidden">Добавить</button></div>
+    <div class="grid">
+      <label>Поиск<input id="database-search" placeholder="Название базы"></label>
+      <label>Режим<select id="database-filter"><option value="">Все режимы</option><option value="primary">Основная</option><option value="debug">Отладка</option></select></label>
+      <label>Состояние<select id="database-state-filter"><option value="">Все состояния</option><option value="running">Работает</option><option value="stopped">Остановлена</option><option value="starting">Запускается</option><option value="stopping">Останавливается</option><option value="maintenance">Обслуживание</option><option value="error">Ошибка</option></select></label>
+      <label>Владелец<select id="database-owner-filter"><option value="">Все владельцы</option><option value="unassigned">Без владельца</option></select></label>
+    </div>
+    <div class="actions"><button id="database-filters-reset" type="button" class="secondary">Сбросить фильтры</button><span id="database-count" class="hint" role="status" aria-live="polite"></span></div>
     <div id="database-list" class="database-list"></div>
     <div id="database-empty" class="hint">Зарегистрированных баз пока нет.</div>
     <form id="database-form" class="hidden">
@@ -134,8 +157,173 @@
     <div class="actions"><button id="logs-refresh" type="button" class="secondary">Обновить журнал</button></div>
     <div id="log-list" class="operational-list"></div>
   </section>
+  <section id="manager-users" class="hidden">
+    <h2>Пользователи ML</h2><div id="manager-user-list" class="operational-list"></div>
+    <form id="manager-user-form">
+      <label>Логин<input id="new-user-login" autocomplete="off" required maxlength="128"></label>
+      <label>Начальный пароль<input id="new-user-password" type="password" autocomplete="new-password" required minlength="8"></label>
+      <label class="check"><input id="new-user-metadata" type="checkbox">Администратор метаданных</label>
+      <label class="check"><input id="new-user-platform" type="checkbox">Администратор платформы</label>
+      <div id="manager-user-error" class="error" role="alert"></div><button>Создать пользователя</button>
+    </form>
+  </section>
+  <section id="manager-permissions" class="hidden">
+    <h2>Доступ к базе <span id="permissions-database-name"></span></h2>
+    <div id="permissions-current" class="operational-list"></div>
+    <form id="permissions-form">
+      <label>Логин пользователя<input id="permissions-login" required autocomplete="off"></label>
+      <label class="check"><input id="permissions-app" type="checkbox">ML App — показывать базу в Portal</label>
+      <label class="check"><input id="permissions-studio" type="checkbox">ML Studio — требуется роль «Администратор метаданных»</label>
+      <label class="check"><input id="permissions-admin" type="checkbox">Администрирование этой базы</label>
+      <p class="hint">Сохранение заменяет три назначения. Снятие доступа завершает соответствующие сеансы.</p>
+      <div id="permissions-error" class="error" role="alert"></div><div class="actions"><button>Сохранить доступы</button><button id="permissions-close" type="button" class="secondary">Закрыть</button></div>
+    </form>
+    <form id="application-role-form" class="hidden">
+      <h3>Роли ML Project — <span id="application-role-user"></span></h3>
+      <p class="hint">Выберите роли из действующей публикации. Без ролей прикладные права не предоставляются. Изменение назначений завершит сеанс пользователя только в этой базе.</p>
+      <div id="application-role-choices" class="operational-list"></div>
+      <div id="application-role-error" class="error" role="alert"></div>
+      <div class="actions"><button id="application-role-save" disabled>Сохранить роли</button><button id="application-role-close" type="button" class="secondary">Отмена</button></div>
+    </form>
+  </section>
 </main>
 <script>
+  let managerSession = null, permissionsDatabase = '', authVersion = 0;
+  let applicationRoleState = null;
+  let managerDatabases = [], managerStudioSessions = [], databaseRefreshRevision = 0;
+  const databaseStateTitles = {running:'Работает',stopped:'Остановлена',starting:'Запускается',stopping:'Останавливается',maintenance:'Обслуживание',error:'Ошибка'};
+  function sessionKey(session) { return session ? `${session.id}:${session.platformAdministrator}:${session.metadataAdministrator}:${session.mustChangePassword}` : ''; }
+  async function managerItems(path) {
+    if (!managerSession || managerSession.mustChangePassword) return null;
+    const version = authVersion, response = await fetch(path);
+    if (!response.ok) return null;
+    const items = await response.json();
+    return version === authVersion ? items : null;
+  }
+  async function managerJSON(path, body) {
+    const response = await fetch(path, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if (!response.ok) throw new Error(await response.text());
+    return response.status===204 ? null : response.json();
+  }
+  function showManagerSession(session) {
+    const changed = sessionKey(session) !== sessionKey(managerSession);
+    if (changed) authVersion++;
+    if (changed) {
+      closeApplicationRoles();
+      managerDatabases=[];managerStudioSessions=[];databaseRefreshRevision++;
+      for(const id of ['database-search','database-filter','database-state-filter'])document.getElementById(id).value='';
+      const owner=document.querySelector('#database-owner-filter');
+      owner.replaceChildren(new Option('Все владельцы',''),new Option('Без владельца','unassigned'));owner.value='';
+      document.querySelector('#database-count').textContent='';
+    }
+    managerSession=session;const ready=!!session&&!session.mustChangePassword;
+    document.querySelector('#manager-user').textContent=session?session.login:'MetaLab';
+    document.querySelector('#manager-login').classList.toggle('hidden',!!session);
+    document.querySelector('#manager-logout').classList.toggle('hidden',!session);
+    document.querySelector('#manager-password').classList.toggle('hidden',!session?.mustChangePassword);
+    document.querySelector('#databases').classList.toggle('hidden',!ready);
+    document.querySelector('#studio-section').classList.toggle('hidden',!ready||!session.metadataAdministrator);
+    document.querySelector('#manager-users').classList.toggle('hidden',!ready||!session.platformAdministrator);
+    document.querySelector('#database-add-toggle').classList.toggle('hidden',!ready||!session.platformAdministrator);
+    document.querySelector('#database-list-title').textContent=session?.platformAdministrator?'Все базы':'Мои базы';
+    document.querySelector('#postgres').classList.toggle('hidden',!!session&&!session.platformAdministrator);
+    if(changed){for(const id of ['database-list','session-list','log-list','manager-user-list','permissions-current','studio-database'])document.getElementById(id).replaceChildren();document.querySelector('#manager-permissions').classList.add('hidden');permissionsDatabase='';for(const id of ['manager-user-form','manager-password-form','permissions-form','database-form','debug-form'])document.getElementById(id).reset();for(const id of ['database-form','debug-form'])document.getElementById(id).classList.add('hidden');document.querySelectorAll('input[type="password"]').forEach(input=>{input.value='';});}
+  }
+  async function refreshManagerSession(){const version=authVersion,response=await fetch('/api/manager/session'),session=response.ok?await response.json():null;if(version===authVersion)showManagerSession(session);}
+  document.querySelector('#manager-login-form').addEventListener('submit',async event=>{event.preventDefault();const error=document.querySelector('#manager-login-error');error.textContent='';try{const session=await managerJSON('/api/manager/login',{login:document.querySelector('#manager-login-name').value,password:document.querySelector('#manager-login-password').value});document.querySelector('#manager-login-password').value='';showManagerSession(session);if(!session.mustChangePassword){await refreshPostgres();await refreshDatabases();await refreshSessions();if(session.platformAdministrator){await refreshLogs();await refreshManagerUsers();}}}catch(cause){error.textContent=cause.message;}});
+  document.querySelector('#manager-logout').addEventListener('click',async()=>{authVersion++;showManagerSession(null);try{await managerJSON('/api/manager/logout',{});}catch(cause){document.querySelector('#manager-login-error').textContent=cause.message;}});
+  document.querySelector('#manager-password-form').addEventListener('submit',async event=>{event.preventDefault();try{await managerJSON('/api/manager/password',{currentPassword:document.querySelector('#manager-current-password').value,newPassword:document.querySelector('#manager-new-password').value});event.target.reset();await refreshManagerSession();await refreshDatabases();}catch(cause){document.querySelector('#manager-password-error').textContent=cause.message;}});
+  async function refreshManagerUsers() {
+    if(!managerSession?.platformAdministrator)return;
+    const users=await managerItems('/api/manager/users');if(!users)return;
+    const list=document.querySelector('#manager-user-list');list.replaceChildren();
+    for(const user of users){
+      const row=document.createElement('form');row.className='operational-item';
+      const name=document.createElement('strong');name.textContent=user.login;row.append(name);
+      const fields={};
+      for(const [key,title] of [['enabled','Учётная запись включена'],['platformAdministrator','Администратор платформы'],['metadataAdministrator','Администратор метаданных']]){
+        const label=document.createElement('label');label.className='check';
+        const input=document.createElement('input');input.type='checkbox';input.checked=user[key];fields[key]=input;
+        label.append(input,document.createTextNode(title));row.append(label);
+      }
+      const save=document.createElement('button');save.textContent='Сохранить права';save.className='secondary';row.append(save);
+      const error=document.createElement('div');error.className='error';error.setAttribute('role','alert');row.append(error);
+      row.addEventListener('submit',async event=>{
+        event.preventDefault();if(!confirm(`Изменить права «${user.login}»? Активные сеансы пользователя будут завершены.`))return;
+        save.disabled=true;error.textContent='';
+        try{
+          const update=Object.fromEntries(Object.entries(fields).map(([key,input])=>[key,input.checked]));
+          const response=await fetch(`/api/manager/users/${user.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(update)});
+          if(!response.ok)throw new Error(await response.text());
+          await refreshManagerSession();await refreshManagerUsers();
+        }catch(cause){error.textContent=cause.message;}finally{save.disabled=false;}
+      });list.append(row);
+    }
+  }
+  document.querySelector('#manager-user-form').addEventListener('submit',async event=>{event.preventDefault();const error=document.querySelector('#manager-user-error');error.textContent='';try{await managerJSON('/api/manager/users',{login:document.querySelector('#new-user-login').value,password:document.querySelector('#new-user-password').value,platformAdministrator:document.querySelector('#new-user-platform').checked,metadataAdministrator:document.querySelector('#new-user-metadata').checked});event.target.reset();await refreshManagerUsers();}catch(cause){error.textContent=cause.message;}});
+  async function openPermissions(item){closeApplicationRoles();permissionsDatabase=item.id;document.querySelector('#permissions-database-name').textContent=item.name;document.querySelector('#manager-permissions').classList.remove('hidden');document.querySelector('#permissions-form').reset();document.querySelector('#permissions-error').textContent='';const list=document.querySelector('#permissions-current');list.replaceChildren();const grants=await managerItems(`/api/databases/${item.id}/permissions`);if(!grants||permissionsDatabase!==item.id)return;for(const grant of grants){const row=document.createElement('div');row.className='operational-item';row.textContent=`${grant.login||grant.userId} · App: ${grant.appAccess?'✓':'—'} · Studio: ${grant.studioAccess?'✓':'—'} · Администрирование: ${grant.databaseAdministrator?'✓':'—'}`;const edit=document.createElement('button');edit.type='button';edit.className='secondary';edit.textContent='Изменить';edit.addEventListener('click',()=>{document.querySelector('#permissions-login').value=grant.login;document.querySelector('#permissions-app').checked=grant.appAccess;document.querySelector('#permissions-studio').checked=grant.studioAccess;document.querySelector('#permissions-admin').checked=grant.databaseAdministrator;});row.append(edit);if(grant.appAccess){const roles=document.createElement('button');roles.type='button';roles.className='secondary';roles.textContent='Роли проекта';roles.addEventListener('click',()=>openApplicationRoles(grant));row.append(roles);}list.append(row);}}
+  document.querySelector('#permissions-close').addEventListener('click',()=>{closeApplicationRoles();permissionsDatabase='';document.querySelector('#manager-permissions').classList.add('hidden');});
+  document.querySelector('#permissions-form').addEventListener('submit',async event=>{event.preventDefault();const error=document.querySelector('#permissions-error');error.textContent='';const response=await fetch(`/api/databases/${permissionsDatabase}/permissions`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:document.querySelector('#permissions-login').value,permissions:{app:document.querySelector('#permissions-app').checked,studio:document.querySelector('#permissions-studio').checked,admin:document.querySelector('#permissions-admin').checked}})});if(!response.ok){error.textContent=await response.text();return;}await openPermissions({id:permissionsDatabase,name:document.querySelector('#permissions-database-name').textContent});await refreshDatabases();});
+
+  function closeApplicationRoles() {
+    applicationRoleState=null;
+    document.querySelector('#application-role-form').classList.add('hidden');
+    document.querySelector('#application-role-user').textContent='';
+    document.querySelector('#application-role-choices').replaceChildren();
+    document.querySelector('#application-role-choices').inert=false;
+    document.querySelector('#application-role-error').textContent='';
+    document.querySelector('#application-role-save').disabled=true;
+  }
+  function currentApplicationRoles(state) {
+    return applicationRoleState===state && state.authVersion===authVersion && state.database===permissionsDatabase;
+  }
+  async function openApplicationRoles(grant) {
+    closeApplicationRoles();
+    if(!managerSession || !permissionsDatabase || !grant.appAccess)return;
+    const state={database:permissionsDatabase,user:grant.userId,authVersion,choices:[],view:null,saving:false};
+    applicationRoleState=state;
+    document.querySelector('#application-role-form').classList.remove('hidden');
+    document.querySelector('#application-role-user').textContent=grant.login||'Пользователь';
+    const error=document.querySelector('#application-role-error'),list=document.querySelector('#application-role-choices');
+    error.textContent='Загрузка ролей…';
+    try {
+      const response=await fetch(`/api/databases/${state.database}/application-roles/${state.user}`);
+      if(!response.ok)throw new Error('Не удалось загрузить роли. Проверьте права, запуск базы и наличие публикации.');
+      const view=await response.json();
+      if(!currentApplicationRoles(state))return;
+      state.view=view;error.textContent='';
+      const selected=new Set(view.assignment.roleIds||[]),available=new Set(view.available.map(role=>role.id));
+      function choice(id,title,missing=false) {
+        const label=document.createElement('label'),input=document.createElement('input');label.className='check';input.type='checkbox';input.checked=selected.has(id);
+        label.append(input,document.createTextNode(title));if(missing)label.className+=' warning';list.append(label);state.choices.push({id,input});
+      }
+      for(const role of view.available)choice(role.id,role.title?.ru||role.title?.en||Object.values(role.title||{})[0]||role.name);
+      for(const id of selected)if(!available.has(id))choice(id,'Роль отсутствует в публикации — снимите назначение',true);
+      if(!view.available.length)error.textContent='В публикации нет ролей. Создайте и опубликуйте их из ML Studio.';
+      if(view.assignment.projectId && view.assignment.projectId!==view.projectId)error.textContent='Назначения относятся к другому проекту. Проверьте выбранные роли перед сохранением.';
+      document.querySelector('#application-role-save').disabled=false;
+    } catch(failure) {if(currentApplicationRoles(state))error.textContent=failure.message;}
+  }
+  async function saveApplicationRoles(event) {
+    event.preventDefault();
+    const state=applicationRoleState;
+    if(!state||!state.view||state.saving||!currentApplicationRoles(state))return;
+    const error=document.querySelector('#application-role-error'),save=document.querySelector('#application-role-save'),list=document.querySelector('#application-role-choices');
+    state.saving=true;save.disabled=true;list.inert=true;error.textContent='';
+    const body={projectId:state.view.projectId,expectedRevision:state.view.assignment.revision,roleIds:state.choices.filter(choice=>choice.input.checked).map(choice=>choice.id)};
+    try {
+      const response=await fetch(`/api/databases/${state.database}/application-roles/${state.user}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(!currentApplicationRoles(state))return;
+      if(response.status===409){state.view=null;throw new Error('Назначения уже изменены. Закройте список ролей и откройте его заново.');}
+      if(!response.ok)throw new Error('Роли не сохранены. Проверьте права и актуальность выбранных ролей.');
+      const assignment=await response.json();
+      if(!currentApplicationRoles(state))return;
+      state.view.assignment=assignment;error.textContent='Роли сохранены.';
+    } catch(failure) {if(currentApplicationRoles(state))error.textContent=failure.message;}
+    finally {if(currentApplicationRoles(state)){state.saving=false;save.disabled=!state.view;list.inert=false;}}
+  }
+  document.querySelector('#application-role-form').addEventListener('submit',saveApplicationRoles);
+  document.querySelector('#application-role-close').addEventListener('click',closeApplicationRoles);
   const state = document.querySelector('#state');
   const url = document.querySelector('#url');
   async function refresh() {
@@ -172,8 +360,7 @@
     document.querySelector('#postgres-ready').classList.toggle('hidden', !data.configured);
     if (data.connection) document.querySelector('#postgres-address').textContent = `${data.connection.host}:${data.connection.port} / ${data.connection.database}`;
     if (data.error) document.querySelector('#postgres-error').textContent = data.error;
-    document.querySelector('#databases').classList.toggle('hidden', !data.connected);
-    if (data.connected) { await refreshDatabases(); await refreshSessions(); await refreshLogs(); }
+    if (data.connected && managerSession && !managerSession.mustChangePassword) { await refreshDatabases(); await refreshSessions(); if(managerSession.platformAdministrator)await refreshLogs(); }
   }
   async function postgresAction(path) {
     const error = document.querySelector('#postgres-error'); const result = document.querySelector('#postgres-result');
@@ -193,20 +380,46 @@
   document.querySelector('#database-add-toggle').addEventListener('click', () => databaseForm.classList.remove('hidden'));
   document.querySelector('#database-cancel').addEventListener('click', () => { databaseForm.reset(); databaseForm.classList.add('hidden'); document.querySelector('#database-error').textContent = ''; });
   async function refreshDatabases() {
-    const response = await fetch('/api/databases'); if (!response.ok) return;
-    const items = await response.json(); const studioResponse=await fetch('/api/studio/sessions');const studioSessions=studioResponse.ok?await studioResponse.json():[];const studioByDatabase=new Map(studioSessions.map(session=>[session.databaseId,session]));const list = document.querySelector('#database-list'); list.replaceChildren();
-    const studioSelect=document.querySelector('#studio-database'),selectedDatabase=studioSelect.value;studioSelect.replaceChildren(new Option('Выберите базу',''));for(const item of items)studioSelect.append(new Option(`${item.name} · ${item.mode==='debug'?'Отладка':'Основная'}`,item.id));studioSelect.value=selectedDatabase;
-    document.querySelector('#database-empty').classList.toggle('hidden', items.length !== 0);
-    for (const item of items) {
+    if(!managerSession || managerSession.mustChangePassword)return;
+    const revision=++databaseRefreshRevision;
+    const version=authVersion,items=await managerItems('/api/databases');if(!items)return;
+    const studioSessions=await managerItems('/api/studio/sessions');if(version!==authVersion||revision!==databaseRefreshRevision)return;
+    managerDatabases=items;managerStudioSessions=studioSessions||[];
+    renderDatabases();
+  }
+  function filteredDatabases(items) {
+    const search=document.querySelector('#database-search').value.trim().toLocaleLowerCase();
+    const mode=document.querySelector('#database-filter').value,state=document.querySelector('#database-state-filter').value,owner=document.querySelector('#database-owner-filter').value;
+    return items.filter(item=>item.name.toLocaleLowerCase().includes(search)&&(!mode||item.mode===mode)&&(!state||item.state===state)&&(!owner||(owner==='unassigned'?!item.owner:item.owner?.userId===owner)));
+  }
+  function renderDatabases() {
+    if(!managerSession||managerSession.mustChangePassword)return;
+    const items=managerDatabases,studioByDatabase=new Map(managerStudioSessions.map(session=>[session.databaseId,session]));
+    const list=document.querySelector('#database-list');list.replaceChildren();
+    const ownerSelect=document.querySelector('#database-owner-filter'),selectedOwner=ownerSelect.value;
+    const owners=new Map();for(const item of items)if(item.owner)owners.set(item.owner.userId,item.owner.login);
+    // Keep a now-unavailable choice restrictive; never silently widen the filter.
+    const previousOwnerTitle=ownerSelect.selectedOptions[0]?.textContent;
+    ownerSelect.replaceChildren(new Option('Все владельцы',''),new Option('Без владельца','unassigned'));
+    for(const [id,login] of [...owners].sort((a,b)=>a[1].localeCompare(b[1])||a[0].localeCompare(b[0])))ownerSelect.append(new Option(login,id));
+    if(selectedOwner&&selectedOwner!=='unassigned'&&!owners.has(selectedOwner))ownerSelect.append(new Option(previousOwnerTitle||'Недоступный владелец',selectedOwner));
+    ownerSelect.value=selectedOwner;
+    const studioSelect=document.querySelector('#studio-database'),selectedDatabase=studioSelect.value;studioSelect.replaceChildren(new Option('Выберите базу',''));for(const item of items)if(item.permissions?.studio)studioSelect.append(new Option(`${item.name} · ${item.mode==='debug'?'Отладка':'Основная'}`,item.id));studioSelect.value=selectedDatabase;
+    const visible=filteredDatabases(items),empty=document.querySelector('#database-empty');
+    document.querySelector('#database-count').textContent=`Показано ${visible.length} из ${items.length}`;
+    empty.classList.toggle('hidden',visible.length!==0);
+    empty.textContent=items.length===0?'Нет доступных баз.':'По выбранным фильтрам базы не найдены.';
+    for (const item of visible) {
       const card = document.createElement('div'); card.className = 'database';
       const row = document.createElement('div'); row.className = 'row';
       const description = document.createElement('div');
       const name = document.createElement('strong'); name.textContent = item.name;
-      const connection = document.createElement('small'); const mode = item.mode === 'debug' ? 'Отладка' : 'Основная'; connection.textContent = `${item.connection.host}:${item.connection.port} / ${item.connection.database} · ${mode} · ${item.state}`;
+      const connection = document.createElement('small'); const mode = item.mode === 'debug' ? 'Отладка' : 'Основная'; connection.textContent = `${item.connection.host}:${item.connection.port} / ${item.connection.database} · ${mode} · ${databaseStateTitles[item.state]||item.state}`;
+      const owner=document.createElement('small');owner.textContent=`Владелец: ${item.owner?.login||'не назначен'}`;
       const health = document.createElement('small'); health.className = item.healthStatus === 'healthy' ? 'healthy' : item.healthStatus === 'unhealthy' ? 'unhealthy' : 'hint'; health.textContent = `Здоровье: ${item.healthStatus || 'unknown'}${item.healthMessage ? ` — ${item.healthMessage}` : ''}`;
-      description.append(name, connection, document.createElement('br'), health);const studioSession=studioByDatabase.get(item.id);if(studioSession){const studioState=document.createElement('small');studioState.className='warning';studioState.textContent=` · Studio: ${studioSession.ownerName} @ ${studioSession.hostName}`;description.append(studioState)}
+      description.append(name, connection, document.createElement('br'), owner, document.createElement('br'), health);const studioSession=studioByDatabase.get(item.id);if(studioSession){const studioState=document.createElement('small');studioState.className='warning';studioState.textContent=` · Studio: ${studioSession.ownerName} @ ${studioSession.hostName}`;description.append(studioState)}
       const buttons = document.createElement('div'); buttons.className = 'actions';
-      if (item.mode === 'primary') {
+      if (item.mode === 'primary' && (item.permissions?.studio || managerSession.platformAdministrator)) {
         const debug = document.createElement('button'); debug.className = 'secondary'; debug.textContent = 'Создать отладочную';
         debug.addEventListener('click', () => {
           debugSourceID = item.id; document.querySelector('#debug-source-name').textContent = item.name;
@@ -214,6 +427,8 @@
         });
         buttons.append(debug);
       }
+      if(item.permissions?.admin){
+      const permissions=document.createElement('button');permissions.className='secondary';permissions.textContent='Доступы';permissions.addEventListener('click',()=>openPermissions(item));buttons.append(permissions);
       const lifecycle = document.createElement('button'); lifecycle.className = 'secondary'; lifecycle.textContent = item.state === 'running' ? 'Остановить' : 'Запустить'; lifecycle.disabled = !['running','stopped','error','maintenance'].includes(item.state);
       lifecycle.addEventListener('click', async () => { const action = item.state === 'running' ? 'stop' : 'start'; if (action === 'stop' && !confirm(`Остановить базу «${item.name}» и завершить её активные сеансы?`)) return; const result = await fetch(`/api/databases/${item.id}/${action}`, {method:'POST'}); if (!result.ok) alert(await result.text()); await refreshDatabases(); await refreshSessions(); }); buttons.append(lifecycle);
       const access = document.createElement('button'); access.className = 'secondary'; access.textContent = item.allowNewSessions ? 'Запретить вход' : 'Разрешить вход';
@@ -229,7 +444,9 @@
         if (!result.ok) { document.querySelector('#database-error').textContent = await result.text(); return; }
         await refreshDatabases();
       });
-      buttons.append(remove); row.append(description, buttons); card.append(row); list.append(card);
+      buttons.append(remove);
+      }
+      row.append(description, buttons); card.append(row); list.append(card);
     }
   }
   databaseForm.addEventListener('submit', async event => {
@@ -246,13 +463,12 @@
   });
   async function loadBackups(database, card) {
     let container = card.querySelector('.backup-list'); if (!container) { container = document.createElement('div'); container.className = 'backup-list operational-list'; card.append(container); }
-    const response = await fetch(`/api/databases/${database.id}/backups`); if (!response.ok) { alert(await response.text()); return; }
-    const items = await response.json(); container.replaceChildren();
+    const items = await managerItems(`/api/databases/${database.id}/backups`); if (!items) return; container.replaceChildren();
     for (const item of items) { const row = document.createElement('div'); row.className = 'operational-item row'; const text = document.createElement('small'); text.textContent = `${item.fileName} · ${item.sizeBytes} байт · ${new Date(item.createdAt).toLocaleString()}`; const actions=document.createElement('div');actions.className='actions';const restore = document.createElement('button'); restore.className = 'danger'; restore.textContent = 'Восстановить'; restore.disabled = database.state !== 'stopped'; restore.addEventListener('click', async () => { if (!confirm(`Восстановить базу «${database.name}» из этой копии? Текущие данные будут заменены.`)) return; const result = await fetch(`/api/databases/${database.id}/backups/${item.id}/restore`, {method:'POST',headers:{'Content-Type':'application/json'},body:'{"confirm":true}'}); if (!result.ok) alert(await result.text()); else alert('База восстановлена'); }); const remove=document.createElement('button');remove.className='danger';remove.textContent='Удалить копию';remove.addEventListener('click',async()=>{if(!confirm(`Удалить резервную копию ${item.fileName}?`))return;const result=await fetch(`/api/databases/${database.id}/backups/${item.id}`,{method:'DELETE'});if(!result.ok)alert(await result.text());await loadBackups(database,card)});actions.append(restore,remove);row.append(text, actions); container.append(row); }
     if (items.length === 0) container.textContent = 'Резервных копий пока нет.';
   }
-  async function refreshSessions() { const response = await fetch('/api/sessions'); if (!response.ok) return; const items = await response.json(); const list = document.querySelector('#session-list'); list.replaceChildren(); for (const item of items) { const row = document.createElement('div'); row.className='operational-item row'; const text=document.createElement('small'); text.textContent=`${item.login} · ${item.databaseName} · ${item.remoteAddress} · ${new Date(item.lastSeenAt).toLocaleString()}`; const actions=document.createElement('div'); actions.className='actions'; const message=document.createElement('button'); message.className='secondary'; message.textContent='Сообщение'; message.addEventListener('click',async()=>{const value=prompt('Сообщение пользователю');if(!value)return;const result=await fetch(`/api/sessions/${item.id}/message`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:value})});if(!result.ok)alert(await result.text())}); const terminate=document.createElement('button');terminate.className='danger';terminate.textContent='Завершить';terminate.addEventListener('click',async()=>{if(!confirm('Принудительно завершить сеанс?'))return;const result=await fetch(`/api/sessions/${item.id}`,{method:'DELETE'});if(!result.ok)alert(await result.text());await refreshSessions()});actions.append(message,terminate);row.append(text,actions);list.append(row); } if(items.length===0) list.textContent='Активных сеансов нет.'; }
-  async function refreshLogs() { const response=await fetch('/api/logs?limit=100');if(!response.ok)return;const items=await response.json();const list=document.querySelector('#log-list');list.replaceChildren();for(const item of items){const row=document.createElement('div');row.className=`operational-item ${item.level==='error'?'unhealthy':item.level==='warning'?'warning':''}`;row.textContent=`${new Date(item.occurredAt).toLocaleString()} · ${item.code} · ${item.message}`;list.append(row)}if(items.length===0)list.textContent='Журнал пока пуст.';}
+  async function refreshSessions() { const items=await managerItems('/api/sessions');if(!items)return; const list = document.querySelector('#session-list'); list.replaceChildren(); for (const item of items) { const row = document.createElement('div'); row.className='operational-item row'; const text=document.createElement('small'); text.textContent=`${item.login} · ${item.databaseName} · ${item.remoteAddress} · ${new Date(item.lastSeenAt).toLocaleString()}`; const actions=document.createElement('div'); actions.className='actions'; const message=document.createElement('button'); message.className='secondary'; message.textContent='Сообщение'; message.addEventListener('click',async()=>{const value=prompt('Сообщение пользователю');if(!value)return;const result=await fetch(`/api/sessions/${item.id}/message`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:value})});if(!result.ok)alert(await result.text())}); const terminate=document.createElement('button');terminate.className='danger';terminate.textContent='Завершить';terminate.addEventListener('click',async()=>{if(!confirm('Принудительно завершить сеанс?'))return;const result=await fetch(`/api/sessions/${item.id}`,{method:'DELETE'});if(!result.ok)alert(await result.text());await refreshSessions()});actions.append(message,terminate);row.append(text,actions);list.append(row); } if(items.length===0) list.textContent='Активных сеансов нет.'; }
+  async function refreshLogs() { const items=await managerItems('/api/logs?limit=100');if(!items)return;const list=document.querySelector('#log-list');list.replaceChildren();for(const item of items){const row=document.createElement('div');row.className=`operational-item ${item.level==='error'?'unhealthy':item.level==='warning'?'warning':''}`;row.textContent=`${new Date(item.occurredAt).toLocaleString()} · ${item.code} · ${item.message}`;list.append(row)}if(items.length===0)list.textContent='Журнал пока пуст.';}
   document.querySelector('#sessions-refresh').addEventListener('click',refreshSessions); document.querySelector('#logs-refresh').addEventListener('click',refreshLogs);
   document.querySelector('#debug-cancel').addEventListener('click', () => { debugForm.reset(); debugForm.classList.add('hidden'); debugSourceID = ''; document.querySelector('#debug-error').textContent = ''; });
   debugForm.addEventListener('submit', async event => {
@@ -286,7 +502,11 @@
     document.querySelector('#recovery').classList.remove('hidden');
     document.querySelector('#codes').textContent = data.recoveryCodes.join('\n');
   });
-  refresh(); refreshPostgres(); refreshSetup(); setInterval(() => { refresh(); refreshDatabases(); }, 5000);
+  document.querySelector('#database-search').addEventListener('input',renderDatabases);
+  for(const id of ['database-filter','database-state-filter','database-owner-filter'])document.getElementById(id).addEventListener('change',renderDatabases);
+  document.querySelector('#database-filters-reset').addEventListener('click',()=>{for(const id of ['database-search','database-filter','database-state-filter','database-owner-filter'])document.getElementById(id).value='';renderDatabases();});
+  async function initializeManager(){await refresh();await refreshManagerSession();await refreshPostgres();await refreshSetup();if(managerSession&&!managerSession.mustChangePassword){await refreshDatabases();await refreshManagerUsers();}}
+  initializeManager(); setInterval(async() => { await refresh();await refreshManagerSession(); await refreshDatabases(); }, 5000);
 </script>
 </body>
 </html>

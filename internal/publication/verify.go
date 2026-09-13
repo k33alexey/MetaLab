@@ -102,6 +102,7 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) (metadata.Ru
 	var documents []metadata.DocumentDefinition
 	var informationRegisters []metadata.InformationRegisterDefinition
 	var accumulationRegisters []metadata.AccumulationRegisterDefinition
+	var roles []metadata.RoleDefinition
 	var forms []metadata.ManagedForm
 	moduleIDs := make(map[uuid.UUID]bool)
 	formIDs := make(map[uuid.UUID]bool)
@@ -153,6 +154,8 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) (metadata.Ru
 		}
 		kind := metadata.Kind("")
 		switch {
+		case strings.HasPrefix(entry.Path, "metadata/roles/"):
+			kind = metadata.RoleKind
 		case strings.HasPrefix(entry.Path, "metadata/constants/"):
 			kind = metadata.ConstantKind
 		case strings.HasPrefix(entry.Path, "metadata/enumerations/"):
@@ -177,6 +180,12 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) (metadata.Ru
 		}
 		var id uuid.UUID
 		switch kind {
+		case metadata.RoleKind:
+			value, err := metadata.DecodeRole(entry.Path, bytes.NewReader(content), projectManifest)
+			if err != nil {
+				return metadata.RuntimeSnapshot{}, err
+			}
+			id, roles = value.ID, append(roles, value)
 		case metadata.ConstantKind:
 			value, err := metadata.DecodeConstant(entry.Path, bytes.NewReader(content), projectManifest)
 			if err != nil {
@@ -225,7 +234,7 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) (metadata.Ru
 			return metadata.RuntimeSnapshot{}, fmt.Errorf("metadata UUID does not match %q", entry.Path)
 		}
 	}
-	catalog, err := metadata.NewCatalogSnapshotWithAccumulationRegisters(projectManifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters)
+	catalog, err := metadata.NewCatalogSnapshotWithRoles(projectManifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, roles)
 	if err != nil {
 		return metadata.RuntimeSnapshot{}, fmt.Errorf("validate packaged metadata: %w", err)
 	}

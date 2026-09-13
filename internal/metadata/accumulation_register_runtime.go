@@ -198,7 +198,7 @@ func (runtime *Runtime) CreateAccumulationRegisterRecordSet(_ context.Context, n
 }
 
 func (runtime *Runtime) AccumulationRegisterBalances(ctx context.Context, name string, period, filter bytecode.Value) (bytecode.Value, error) {
-	definition, dimensions, err := runtime.accumulationManagerArguments(name, filter)
+	definition, dimensions, err := runtime.accumulationManagerArguments(ctx, name, filter)
 	if err != nil {
 		return bytecode.Undefined(), err
 	}
@@ -214,7 +214,7 @@ func (runtime *Runtime) AccumulationRegisterBalances(ctx context.Context, name s
 }
 
 func (runtime *Runtime) AccumulationRegisterTurnovers(ctx context.Context, name string, begin, end, filter bytecode.Value) (bytecode.Value, error) {
-	definition, dimensions, err := runtime.accumulationManagerArguments(name, filter)
+	definition, dimensions, err := runtime.accumulationManagerArguments(ctx, name, filter)
 	if err != nil {
 		return bytecode.Undefined(), err
 	}
@@ -231,7 +231,7 @@ func (runtime *Runtime) AccumulationRegisterTurnovers(ctx context.Context, name 
 }
 
 func (runtime *Runtime) AccumulationRegisterBalancesAndTurnovers(ctx context.Context, name string, begin, end, filter bytecode.Value) (bytecode.Value, error) {
-	definition, dimensions, err := runtime.accumulationManagerArguments(name, filter)
+	definition, dimensions, err := runtime.accumulationManagerArguments(ctx, name, filter)
 	if err != nil {
 		return bytecode.Undefined(), err
 	}
@@ -247,13 +247,16 @@ func (runtime *Runtime) AccumulationRegisterBalancesAndTurnovers(ctx context.Con
 	return runtime.wrapAccumulationVirtualTable(definition, "balances-and-turnovers", rows)
 }
 
-func (runtime *Runtime) accumulationManagerArguments(name string, filter bytecode.Value) (AccumulationRegisterDefinition, map[uuid.UUID]Value, error) {
+func (runtime *Runtime) accumulationManagerArguments(ctx context.Context, name string, filter bytecode.Value) (AccumulationRegisterDefinition, map[uuid.UUID]Value, error) {
 	if runtime.accumulationRegisterRepository == nil {
 		return AccumulationRegisterDefinition{}, nil, fmt.Errorf("accumulation register repository is not configured")
 	}
 	definition, ok := runtime.catalog.AccumulationRegisterDefinition(name)
 	if !ok {
 		return AccumulationRegisterDefinition{}, nil, fmt.Errorf("unknown accumulation register %q", name)
+	}
+	if err := requireObject(ctx, definition.ID, PermissionRead); err != nil {
+		return AccumulationRegisterDefinition{}, nil, err
 	}
 	dimensions, err := runtime.accumulationDimensionsFromBSL(definition, filter)
 	return definition, dimensions, err
@@ -290,7 +293,7 @@ func (runtime *Runtime) wrapAccumulationVirtualTable(definition AccumulationRegi
 	return bytecode.Object(&accumulationVirtualTableObject{definition: definition, kind: kind, rows: rows, runtime: runtime})
 }
 
-func (runtime *Runtime) getAccumulationRegisterProperty(value bytecode.RuntimeObject, name string) (bytecode.Value, bool, error) {
+func (runtime *Runtime) getAccumulationRegisterProperty(ctx context.Context, value bytecode.RuntimeObject, name string) (bytecode.Value, bool, error) {
 	switch object := value.(type) {
 	case *accumulationRegisterRecordSetObject:
 		if object.runtime != runtime {
@@ -345,7 +348,7 @@ func (runtime *Runtime) getAccumulationRegisterProperty(value bytecode.RuntimeOb
 		}
 		object.owner.mu.RLock()
 		defer object.owner.mu.RUnlock()
-		result, err := runtime.accumulationRecordProperty(object, name)
+		result, err := runtime.accumulationRecordProperty(ctx, object, name)
 		return result, true, err
 	case *accumulationVirtualTableObject:
 		if object.runtime != runtime {
@@ -359,26 +362,41 @@ func (runtime *Runtime) getAccumulationRegisterProperty(value bytecode.RuntimeOb
 		if object.owner.runtime != runtime {
 			return bytecode.Undefined(), true, fmt.Errorf("accumulation virtual row belongs to another runtime")
 		}
-		result, err := runtime.accumulationVirtualRowProperty(object, name)
+		result, err := runtime.accumulationVirtualRowProperty(ctx, object, name)
 		return result, true, err
 	default:
 		return bytecode.Undefined(), false, nil
 	}
 }
 
-func (runtime *Runtime) accumulationRecordProperty(object *accumulationRegisterRecordObject, name string) (bytecode.Value, error) {
+func (runtime *Runtime) accumulationRecordProperty(ctx context.Context, object *accumulationRegisterRecordObject, name string) (bytecode.Value, error) {
 	definition, record := object.owner.definition, object.record
 	switch {
 	case propertyName(name, "Период", "Period"):
+		if err := requireFields(ctx, definition.ID, PermissionRead, "period"); err != nil {
+			return bytecode.Undefined(), err
+		}
 		return bytecode.Date(record.Period)
 	case propertyName(name, "Регистратор", "Recorder"):
+		if err := requireFields(ctx, definition.ID, PermissionRead, "recorder"); err != nil {
+			return bytecode.Undefined(), err
+		}
 		document, _ := runtime.catalog.DocumentByID(record.Recorder.DocumentID)
 		return runtime.wrapDocumentReference(document, record.Recorder)
 	case propertyName(name, "НомерСтроки", "LineNumber"):
+		if err := requireFields(ctx, definition.ID, PermissionRead, "linenumber"); err != nil {
+			return bytecode.Undefined(), err
+		}
 		return bytecode.Number(float64(record.LineNumber)), nil
 	case propertyName(name, "Активность", "Active"):
+		if err := requireFields(ctx, definition.ID, PermissionRead, "active"); err != nil {
+			return bytecode.Undefined(), err
+		}
 		return bytecode.Boolean(record.Active), nil
 	case propertyName(name, "ВидДвижения", "MovementKind") && definition.Kind == AccumulationRegisterBalance:
+		if err := requireFields(ctx, definition.ID, PermissionRead, "movementkind"); err != nil {
+			return bytecode.Undefined(), err
+		}
 		if record.MovementKind == AccumulationMovementExpense {
 			return bytecode.String("expense"), nil
 		}
@@ -388,6 +406,9 @@ func (runtime *Runtime) accumulationRecordProperty(object *accumulationRegisterR
 	if !ok {
 		return bytecode.Undefined(), fmt.Errorf("%s has no property %s", object.RuntimeTypeName(), name)
 	}
+	if err := requireFields(ctx, definition.ID, PermissionRead, field.ID.String()); err != nil {
+		return bytecode.Undefined(), err
+	}
 	stored, present := values[field.ID]
 	if !present {
 		return bytecode.Undefined(), nil
@@ -395,8 +416,11 @@ func (runtime *Runtime) accumulationRecordProperty(object *accumulationRegisterR
 	return runtime.applicationValueToBSL(field.Types, stored)
 }
 
-func (runtime *Runtime) accumulationVirtualRowProperty(object *accumulationVirtualRowObject, name string) (bytecode.Value, error) {
+func (runtime *Runtime) accumulationVirtualRowProperty(ctx context.Context, object *accumulationVirtualRowObject, name string) (bytecode.Value, error) {
 	if dimension, ok := findCatalogAttribute(object.owner.definition.Dimensions, name); ok {
+		if err := requireFields(ctx, object.owner.definition.ID, PermissionRead, dimension.ID.String()); err != nil {
+			return bytecode.Undefined(), err
+		}
 		value, present := object.row.Dimensions[dimension.ID]
 		if !present {
 			return bytecode.Undefined(), nil
@@ -441,7 +465,7 @@ func (runtime *Runtime) accumulationVirtualRowProperty(object *accumulationVirtu
 	return bytecode.Undefined(), fmt.Errorf("%s has no property %s", object.RuntimeTypeName(), name)
 }
 
-func (runtime *Runtime) setAccumulationRegisterProperty(value bytecode.RuntimeObject, name string, assigned bytecode.Value) (bool, error) {
+func (runtime *Runtime) setAccumulationRegisterProperty(ctx context.Context, value bytecode.RuntimeObject, name string, assigned bytecode.Value) (bool, error) {
 	switch object := value.(type) {
 	case *accumulationRegisterRecordSetObject:
 		if object.runtime != runtime {
@@ -474,7 +498,7 @@ func (runtime *Runtime) setAccumulationRegisterProperty(value bytecode.RuntimeOb
 		}
 		return true, runtime.setAccumulationRecorderFilter(object, assigned)
 	case *accumulationRegisterRecordObject:
-		return true, runtime.setAccumulationRecordProperty(object, name, assigned)
+		return true, runtime.setAccumulationRecordProperty(ctx, object, name, assigned)
 	case *accumulationRegisterFilterObject, *accumulationVirtualTableObject, *accumulationVirtualRowObject:
 		return true, fmt.Errorf("%s property %s is not writable", value.RuntimeTypeName(), name)
 	default:
@@ -495,7 +519,7 @@ func (runtime *Runtime) setAccumulationRecorderFilter(object *accumulationRegist
 	return nil
 }
 
-func (runtime *Runtime) setAccumulationRecordProperty(object *accumulationRegisterRecordObject, name string, assigned bytecode.Value) error {
+func (runtime *Runtime) setAccumulationRecordProperty(ctx context.Context, object *accumulationRegisterRecordObject, name string, assigned bytecode.Value) error {
 	if object.owner.runtime != runtime {
 		return fmt.Errorf("accumulation register record belongs to another runtime")
 	}
@@ -504,6 +528,9 @@ func (runtime *Runtime) setAccumulationRecordProperty(object *accumulationRegist
 	definition, record := object.owner.definition, object.record
 	switch {
 	case propertyName(name, "Период", "Period"):
+		if err := requireFields(ctx, definition.ID, PermissionUpdate, "period"); err != nil {
+			return err
+		}
 		date, ok := assigned.AsDate()
 		if !ok {
 			return fmt.Errorf("accumulation register period must be a date")
@@ -511,6 +538,9 @@ func (runtime *Runtime) setAccumulationRecordProperty(object *accumulationRegist
 		record.Period = date
 		return nil
 	case propertyName(name, "Регистратор", "Recorder"):
+		if err := requireFields(ctx, definition.ID, PermissionUpdate, "recorder"); err != nil {
+			return err
+		}
 		opaque, ok := assigned.AsRuntimeObject()
 		reference, valid := opaque.(*documentReferenceObject)
 		if !ok || !valid || reference.runtime != runtime || !allowedAccumulationRegisterRecorder(definition, reference.reference) {
@@ -519,6 +549,9 @@ func (runtime *Runtime) setAccumulationRecordProperty(object *accumulationRegist
 		record.Recorder = reference.reference
 		return nil
 	case propertyName(name, "НомерСтроки", "LineNumber"):
+		if err := requireFields(ctx, definition.ID, PermissionUpdate, "linenumber"); err != nil {
+			return err
+		}
 		line, ok := assigned.NumberInteger()
 		if !ok || line < 0 || line > maxInformationRegisterLineNumber {
 			return fmt.Errorf("accumulation register line number must be 0..%d", maxInformationRegisterLineNumber)
@@ -526,6 +559,9 @@ func (runtime *Runtime) setAccumulationRecordProperty(object *accumulationRegist
 		record.LineNumber = int(line)
 		return nil
 	case propertyName(name, "Активность", "Active"):
+		if err := requireFields(ctx, definition.ID, PermissionUpdate, "active"); err != nil {
+			return err
+		}
 		active, ok := assigned.AsBoolean()
 		if !ok {
 			return fmt.Errorf("accumulation register Active must be a boolean")
@@ -533,6 +569,9 @@ func (runtime *Runtime) setAccumulationRecordProperty(object *accumulationRegist
 		record.Active = active
 		return nil
 	case propertyName(name, "ВидДвижения", "MovementKind") && definition.Kind == AccumulationRegisterBalance:
+		if err := requireFields(ctx, definition.ID, PermissionUpdate, "movementkind"); err != nil {
+			return err
+		}
 		text, ok := assigned.AsString()
 		if !ok {
 			return fmt.Errorf("accumulation register movement kind is invalid")
@@ -550,6 +589,9 @@ func (runtime *Runtime) setAccumulationRecordProperty(object *accumulationRegist
 	field, values, ok := accumulationRecordField(definition, record, name)
 	if !ok {
 		return fmt.Errorf("%s has no property %s", object.RuntimeTypeName(), name)
+	}
+	if err := requireFields(ctx, definition.ID, PermissionUpdate, field.ID.String()); err != nil {
+		return err
 	}
 	if assigned.Kind() == bytecode.UndefinedKind {
 		if field.Required || slicesContainsAttribute(definition.Resources, field.ID) {
@@ -652,6 +694,9 @@ func (runtime *Runtime) callAccumulationRegisterMethod(ctx context.Context, valu
 			if len(arguments) != 0 {
 				return bytecode.Undefined(), true, fmt.Errorf("%s expects no arguments", name)
 			}
+			if err := requireObject(ctx, object.definition.ID, PermissionRead); err != nil {
+				return bytecode.Undefined(), true, err
+			}
 			original := cloneAccumulationRegisterRecordSet(object.set)
 			if err := runtime.accumulationRegisterRepository.Read(ctx, object.set); err != nil {
 				object.set = original
@@ -669,6 +714,9 @@ func (runtime *Runtime) callAccumulationRegisterMethod(ctx context.Context, valu
 				if !ok {
 					return bytecode.Undefined(), true, fmt.Errorf("%s expects a boolean argument", name)
 				}
+			}
+			if err := requireObject(ctx, object.definition.ID, PermissionUpdate); err != nil {
+				return bytecode.Undefined(), true, err
 			}
 			if err := runtime.accumulationRegisterRepository.WriteWithHandler(ctx, object.set, replace, runtime.accumulationRegisterEventHandler(object.definition.ID)); err != nil {
 				return bytecode.Undefined(), true, err

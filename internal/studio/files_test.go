@@ -208,6 +208,49 @@ func TestSaveValidatesAndCanonicalizesSupportedMetadata(t *testing.T) {
 	}
 }
 
+func TestSaveValidatesAndCanonicalizesRoleMetadata(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	id := uuid.MustNew()
+	relative, err := project.MetadataPath("roles", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	absolute := filepath.Join(root, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	original := "format: 1\nid: " + id.String() + "\nname: Читатель\ntitle: {ru: Читатель}\n"
+	if err := os.WriteFile(absolute, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := workspace.ReadSource(relative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := workspace.SaveSource(relative, original, opened.Revision)
+	if err != nil || !strings.Contains(saved.Content, "title:\n  ru: Читатель\n") {
+		t.Fatalf("save role: %+v, %v", saved, err)
+	}
+	for _, invalid := range []string{
+		strings.Replace(saved.Content, id.String(), uuid.MustNew().String(), 1),
+		saved.Content + "full_access: true\n",
+		saved.Content + "objects: [{object: " + uuid.MustNew().String() + ", operations: [admin]}]\n",
+	} {
+		if _, err := workspace.SaveSource(relative, invalid, saved.Revision); err == nil {
+			t.Fatal("Studio saved an invalid role")
+		}
+		content, err := os.ReadFile(absolute)
+		if err != nil || string(content) != saved.Content {
+			t.Fatalf("invalid save changed the role on disk: %v", err)
+		}
+	}
+}
+
 func TestSaveValidatesAndCanonicalizesCatalogMetadata(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)

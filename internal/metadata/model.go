@@ -180,6 +180,9 @@ type CatalogDefinition struct {
 // Catalog is an immutable-by-convention snapshot of the supported metadata kinds.
 type Catalog struct {
 	Project                    project.Project
+	Roles                      []RoleDefinition
+	roleByName                 map[string]int
+	roleByID                   map[uuid.UUID]int
 	Constants                  []Constant
 	Enumerations               []Enumeration
 	DefinedTypes               []DefinedTypeObject

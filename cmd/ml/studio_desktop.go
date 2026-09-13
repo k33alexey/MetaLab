@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/user"
 	"time"
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
@@ -67,8 +66,15 @@ func runStudio(ctx context.Context, configuration appconfig.Config, projectPath,
 	if err != nil {
 		return fmt.Errorf("start ML Studio UI: %w", err)
 	}
+	handler, launchPath, err := studio.NewAuthorizedHandler(workspace, listener.Addr().String(), func(requestContext context.Context) error {
+		return platformRuntime.AuthorizeStudioLease(requestContext, lease)
+	})
+	if err != nil {
+		_ = listener.Close()
+		return err
+	}
 	server := &http.Server{
-		Handler: studio.NewHandler(workspace), ReadHeaderTimeout: 5 * time.Second,
+		Handler: handler, ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second,
 	}
 	serverErrors := make(chan error, 1)
@@ -81,7 +87,7 @@ func runStudio(ctx context.Context, configuration appconfig.Config, projectPath,
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title: "ML Studio — " + snapshot.Manifest.Title, Width: 1280, Height: 800,
 		MinWidth: 800, MinHeight: 560, BackgroundColour: application.NewRGB(30, 31, 34),
-		URL: "http://" + listener.Addr().String(),
+		URL: "http://" + listener.Addr().String() + launchPath,
 	})
 	window.Center()
 	window.Show()
@@ -133,19 +139,7 @@ func openStudioLease(ctx context.Context, runtime *platform.Runtime, databaseID,
 		}
 		return platform.StudioLease{Token: token, Session: session}, nil
 	}
-	ownerName := "local-user"
-	if current, err := user.Current(); err == nil && current.Username != "" {
-		ownerName = current.Username
-	}
-	hostName := "localhost"
-	if current, err := os.Hostname(); err == nil && current != "" {
-		hostName = current
-	}
-	lease, err := runtime.AcquireStudioSession(ctx, databaseID, projectID, ownerName, hostName, int64(os.Getpid()))
-	if err != nil {
-		return platform.StudioLease{}, fmt.Errorf("acquire exclusive ML Studio session: %w", err)
-	}
-	return lease, nil
+	return platform.StudioLease{}, fmt.Errorf("open ML Studio from an authenticated ML Manager")
 }
 
 func monitorStudioLease(ctx context.Context, runtime *platform.Runtime, lease platform.StudioLease, app *application.App, done chan<- error) {

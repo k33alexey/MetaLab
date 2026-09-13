@@ -79,7 +79,7 @@ type queryMaterializedTemporaryTable struct {
 	table   queryTemporaryTable
 }
 
-func (runtime *Runtime) newQueryCompiler(query querylang.Query, parameters map[string]bytecode.Value, temporary map[string]queryMaterializedTemporaryTable) (*queryCompiler, error) {
+func (runtime *Runtime) newQueryCompiler(ctx context.Context, query querylang.Query, parameters map[string]bytecode.Value, temporary map[string]queryMaterializedTemporaryTable) (*queryCompiler, error) {
 	compiler := &queryCompiler{
 		runtime: runtime, parameters: parameters, aliases: make(map[string]int), sourceNames: make(map[string]int),
 	}
@@ -90,7 +90,7 @@ func (runtime *Runtime) newQueryCompiler(query querylang.Query, parameters map[s
 	}
 	for index, definition := range definitions {
 		sqlAlias := fmt.Sprintf("s%d", index)
-		source, err := runtime.resolveQuerySource(definition, sqlAlias, temporary)
+		source, err := runtime.resolveQuerySource(ctx, definition, sqlAlias, temporary)
 		if err != nil {
 			return nil, err
 		}
@@ -226,7 +226,7 @@ func (runtime *Runtime) executeQueryPackage(ctx context.Context, text string, pa
 }
 
 func (runtime *Runtime) executeParsedQuery(ctx context.Context, query dataQueryer, pool *pgxpool.Pool, parsed querylang.Query, parameters map[string]bytecode.Value, temporary map[string]queryMaterializedTemporaryTable, retainRaw bool) (*queryResultObject, [][]json.RawMessage, error) {
-	compiler, err := runtime.newQueryCompiler(parsed, parameters, temporary)
+	compiler, err := runtime.newQueryCompiler(ctx, parsed, parameters, temporary)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1247,7 +1247,7 @@ func (compiler *queryCompiler) decodeOutput(output queryOutput, raw json.RawMess
 	}
 }
 
-func (runtime *Runtime) resolveQuerySource(source querylang.Source, sqlAlias string, temporary map[string]queryMaterializedTemporaryTable) (querySource, error) {
+func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang.Source, sqlAlias string, temporary map[string]queryMaterializedTemporaryTable) (querySource, error) {
 	if len(source.Path) != 1 && len(source.Path) != 2 {
 		return querySource{}, querySemanticError(source.Position, "ожидалось имя временной таблицы или ТипМетаданных.Имя")
 	}
@@ -1279,6 +1279,9 @@ func (runtime *Runtime) resolveQuerySource(source querylang.Source, sqlAlias str
 		if !ok {
 			return querySource{}, querySemanticError(source.Position, "неизвестный справочник "+name)
 		}
+		if err := requireObject(ctx, definition.ID, PermissionRead); err != nil {
+			return querySource{}, err
+		}
 		table, _ := PhysicalCatalogTable(definition.ID)
 		result.fromSQL = qualifiedCatalogTable(table)
 		result.addStored("Ссылка", querySourceColumnSQL(sqlAlias, "ref"), []Type{referenceType(CatalogType, definition.ID)}, "Ref")
@@ -1295,6 +1298,9 @@ func (runtime *Runtime) resolveQuerySource(source querylang.Source, sqlAlias str
 		if !ok {
 			return querySource{}, querySemanticError(source.Position, "неизвестный документ "+name)
 		}
+		if err := requireObject(ctx, definition.ID, PermissionRead); err != nil {
+			return querySource{}, err
+		}
 		table, _ := PhysicalDocumentTable(definition.ID)
 		result.fromSQL = qualifiedCatalogTable(table)
 		result.addStored("Ссылка", querySourceColumnSQL(sqlAlias, "ref"), []Type{referenceType(DocumentType, definition.ID)}, "Ref")
@@ -1310,6 +1316,9 @@ func (runtime *Runtime) resolveQuerySource(source querylang.Source, sqlAlias str
 		definition, ok := runtime.catalog.InformationRegisterDefinition(name)
 		if !ok {
 			return querySource{}, querySemanticError(source.Position, "неизвестный регистр сведений "+name)
+		}
+		if err := requireObject(ctx, definition.ID, PermissionRead); err != nil {
+			return querySource{}, err
 		}
 		table, _ := PhysicalInformationRegisterTable(definition.ID)
 		result.fromSQL = qualifiedCatalogTable(table)
@@ -1329,6 +1338,9 @@ func (runtime *Runtime) resolveQuerySource(source querylang.Source, sqlAlias str
 		definition, ok := runtime.catalog.AccumulationRegisterDefinition(name)
 		if !ok {
 			return querySource{}, querySemanticError(source.Position, "неизвестный регистр накопления "+name)
+		}
+		if err := requireObject(ctx, definition.ID, PermissionRead); err != nil {
+			return querySource{}, err
 		}
 		table, _ := PhysicalAccumulationRegisterTable(definition.ID)
 		result.fromSQL = qualifiedCatalogTable(table)

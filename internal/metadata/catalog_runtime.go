@@ -89,6 +89,9 @@ func (runtime *Runtime) GetCatalogObject(ctx context.Context, name string, value
 	if !ok {
 		return bytecode.Undefined(), fmt.Errorf("unknown catalog %q", name)
 	}
+	if err := requireObject(ctx, definition.ID, PermissionRead); err != nil {
+		return bytecode.Undefined(), err
+	}
 	reference, err := runtime.catalogReference(definition, value)
 	if err != nil {
 		return bytecode.Undefined(), err
@@ -104,6 +107,13 @@ func (runtime *Runtime) FindCatalogByCode(ctx context.Context, name string, valu
 	if runtime.catalogRepository == nil {
 		return bytecode.Undefined(), fmt.Errorf("catalog repository is not configured")
 	}
+	definition, ok := runtime.catalog.CatalogDefinition(name)
+	if !ok {
+		return bytecode.Undefined(), fmt.Errorf("unknown catalog %q", name)
+	}
+	if err := requireObject(ctx, definition.ID, PermissionRead); err != nil {
+		return bytecode.Undefined(), err
+	}
 	code, err := bslScalarText(value)
 	if err != nil {
 		return bytecode.Undefined(), fmt.Errorf("catalog code: %w", err)
@@ -111,10 +121,6 @@ func (runtime *Runtime) FindCatalogByCode(ctx context.Context, name string, valu
 	reference, found, err := runtime.catalogRepository.FindByCode(ctx, name, code)
 	if err != nil {
 		return bytecode.Undefined(), err
-	}
-	definition, ok := runtime.catalog.CatalogDefinition(name)
-	if !ok {
-		return bytecode.Undefined(), fmt.Errorf("unknown catalog %q", name)
 	}
 	if !found {
 		reference = CatalogReference{CatalogID: definition.ID}
@@ -155,7 +161,7 @@ func (runtime *Runtime) GetPredefinedCatalogReference(_ context.Context, catalog
 	return runtime.wrapCatalogReference(definition, CatalogReference{CatalogID: definition.ID, ObjectID: item.ID})
 }
 
-func (runtime *Runtime) GetObjectProperty(_ context.Context, value bytecode.RuntimeObject, name string) (bytecode.Value, error) {
+func (runtime *Runtime) GetObjectProperty(ctx context.Context, value bytecode.RuntimeObject, name string) (bytecode.Value, error) {
 	if result, handled, err := runtime.getDocumentMovementsProperty(value, name); handled {
 		return result, err
 	}
@@ -165,10 +171,10 @@ func (runtime *Runtime) GetObjectProperty(_ context.Context, value bytecode.Runt
 	if result, handled, err := runtime.getDataLockProperty(value, name); handled {
 		return result, err
 	}
-	if result, handled, err := runtime.getInformationRegisterProperty(value, name); handled {
+	if result, handled, err := runtime.getInformationRegisterProperty(ctx, value, name); handled {
 		return result, err
 	}
-	if result, handled, err := runtime.getAccumulationRegisterProperty(value, name); handled {
+	if result, handled, err := runtime.getAccumulationRegisterProperty(ctx, value, name); handled {
 		return result, err
 	}
 	switch object := value.(type) {
@@ -180,22 +186,43 @@ func (runtime *Runtime) GetObjectProperty(_ context.Context, value bytecode.Runt
 		defer object.mu.RUnlock()
 		switch {
 		case propertyName(name, "Ссылка", "Ref"):
+			if err := requireFields(ctx, object.definition.ID, PermissionRead, "ref"); err != nil {
+				return bytecode.Undefined(), err
+			}
 			return runtime.wrapCatalogReference(object.definition, object.record.Reference)
 		case propertyName(name, "Код", "Code"):
+			if err := requireFields(ctx, object.definition.ID, PermissionRead, "code"); err != nil {
+				return bytecode.Undefined(), err
+			}
 			if object.definition.Code.Type == NumberType {
 				return bytecode.ParseNumber(object.record.Code)
 			}
 			return bytecode.String(object.record.Code), nil
 		case propertyName(name, "Наименование", "Description"):
+			if err := requireFields(ctx, object.definition.ID, PermissionRead, "description"); err != nil {
+				return bytecode.Undefined(), err
+			}
 			return bytecode.String(object.record.Description), nil
 		case propertyName(name, "Версия", "Version"):
+			if err := requireFields(ctx, object.definition.ID, PermissionRead, "version"); err != nil {
+				return bytecode.Undefined(), err
+			}
 			return bytecode.ParseNumber(fmt.Sprint(object.record.Version))
 		case propertyName(name, "ПометкаУдаления", "DeletionMark"):
+			if err := requireFields(ctx, object.definition.ID, PermissionRead, "deletionmark"); err != nil {
+				return bytecode.Undefined(), err
+			}
 			return bytecode.Boolean(object.record.DeletionMark), nil
 		case propertyName(name, "ИмяПредопределенныхДанных", "PredefinedDataName"), propertyName(name, "ИмяПредопределённыхДанных", "PredefinedDataName"):
+			if err := requireFields(ctx, object.definition.ID, PermissionRead, "predefineddataname"); err != nil {
+				return bytecode.Undefined(), err
+			}
 			return bytecode.String(object.record.PredefinedName), nil
 		}
 		if attribute, ok := findCatalogAttribute(object.definition.Attributes, name); ok {
+			if err := requireFields(ctx, object.definition.ID, PermissionRead, attribute.ID.String()); err != nil {
+				return bytecode.Undefined(), err
+			}
 			stored, present := object.record.Attributes[attribute.ID]
 			if !present {
 				return bytecode.Undefined(), nil
@@ -203,6 +230,9 @@ func (runtime *Runtime) GetObjectProperty(_ context.Context, value bytecode.Runt
 			return runtime.applicationValueToBSL(attribute.Types, stored)
 		}
 		if part, ok := findCatalogTablePart(object.definition.TableParts, name); ok {
+			if err := requireFields(ctx, object.definition.ID, PermissionRead, part.ID.String()); err != nil {
+				return bytecode.Undefined(), err
+			}
 			return object.tables[part.ID], nil
 		}
 		return bytecode.Undefined(), fmt.Errorf("%s has no property %s", object.RuntimeTypeName(), name)
@@ -222,7 +252,7 @@ func (runtime *Runtime) GetObjectProperty(_ context.Context, value bytecode.Runt
 		if object.runtime != runtime {
 			return bytecode.Undefined(), fmt.Errorf("document object belongs to another metadata runtime")
 		}
-		return runtime.getDocumentProperty(object, name)
+		return runtime.getDocumentProperty(ctx, object, name)
 	case *documentReferenceObject:
 		if object.runtime != runtime {
 			return bytecode.Undefined(), fmt.Errorf("document reference belongs to another metadata runtime")
@@ -239,7 +269,7 @@ func (runtime *Runtime) GetObjectProperty(_ context.Context, value bytecode.Runt
 	}
 }
 
-func (runtime *Runtime) SetObjectProperty(_ context.Context, value bytecode.RuntimeObject, name string, assigned bytecode.Value) error {
+func (runtime *Runtime) SetObjectProperty(ctx context.Context, value bytecode.RuntimeObject, name string, assigned bytecode.Value) error {
 	if handled, err := runtime.setDocumentMovementsProperty(value, name, assigned); handled {
 		return err
 	}
@@ -249,17 +279,17 @@ func (runtime *Runtime) SetObjectProperty(_ context.Context, value bytecode.Runt
 	if handled, err := runtime.setDataLockProperty(value, name, assigned); handled {
 		return err
 	}
-	if handled, err := runtime.setInformationRegisterProperty(value, name, assigned); handled {
+	if handled, err := runtime.setInformationRegisterProperty(ctx, value, name, assigned); handled {
 		return err
 	}
-	if handled, err := runtime.setAccumulationRegisterProperty(value, name, assigned); handled {
+	if handled, err := runtime.setAccumulationRegisterProperty(ctx, value, name, assigned); handled {
 		return err
 	}
 	if object, ok := value.(*documentObject); ok {
 		if object.runtime != runtime {
 			return fmt.Errorf("document object belongs to another metadata runtime")
 		}
-		return runtime.setDocumentProperty(object, name, assigned)
+		return runtime.setDocumentProperty(ctx, object, name, assigned)
 	}
 	object, ok := value.(*catalogObject)
 	if !ok || object.runtime != runtime {
@@ -267,8 +297,15 @@ func (runtime *Runtime) SetObjectProperty(_ context.Context, value bytecode.Runt
 	}
 	object.mu.Lock()
 	defer object.mu.Unlock()
+	fieldOperation := PermissionUpdate
+	if object.record.Version == 0 {
+		fieldOperation = PermissionCreate
+	}
 	switch {
 	case propertyName(name, "Код", "Code"):
+		if err := requireFields(ctx, object.definition.ID, fieldOperation, "code"); err != nil {
+			return err
+		}
 		text, err := bslScalarText(assigned)
 		if err != nil {
 			return err
@@ -280,6 +317,9 @@ func (runtime *Runtime) SetObjectProperty(_ context.Context, value bytecode.Runt
 		object.record.Code = text
 		return nil
 	case propertyName(name, "Наименование", "Description"):
+		if err := requireFields(ctx, object.definition.ID, fieldOperation, "description"); err != nil {
+			return err
+		}
 		text, ok := assigned.AsString()
 		if !ok || !utf8.ValidString(text) || utf8.RuneCountInString(text) > object.definition.DescriptionLength {
 			return fmt.Errorf("description must be a string of at most %d characters", object.definition.DescriptionLength)
@@ -297,6 +337,9 @@ func (runtime *Runtime) SetObjectProperty(_ context.Context, value bytecode.Runt
 			return fmt.Errorf("catalog table part %s is read-only", name)
 		}
 		return fmt.Errorf("%s has no property %s", object.RuntimeTypeName(), name)
+	}
+	if err := requireFields(ctx, object.definition.ID, fieldOperation, attribute.ID.String()); err != nil {
+		return err
 	}
 	if assigned.Kind() == bytecode.UndefinedKind {
 		if attribute.Required {
@@ -341,7 +384,17 @@ func (runtime *Runtime) CallObjectMethod(ctx context.Context, value bytecode.Run
 			}
 			object.mu.Lock()
 			defer object.mu.Unlock()
+			operation := PermissionUpdate
+			if object.record.Version == 0 {
+				operation = PermissionCreate
+			}
+			if err := requireObject(ctx, object.definition.ID, operation); err != nil {
+				return bytecode.Undefined(), err
+			}
 			if err := runtime.syncCatalogTables(object); err != nil {
+				return bytecode.Undefined(), err
+			}
+			if err := requireTablePartWrites(ctx, object.definition.ID, operation, object.definition.TableParts, object.record.TableParts); err != nil {
 				return bytecode.Undefined(), err
 			}
 			if err := runtime.catalogRepository.Save(ctx, object.record, runtime.catalogEventHandler(object.definition.ID)); err != nil {
@@ -365,6 +418,9 @@ func (runtime *Runtime) CallObjectMethod(ctx context.Context, value bytecode.Run
 			}
 			object.mu.Lock()
 			defer object.mu.Unlock()
+			if err := requireFields(ctx, object.definition.ID, PermissionUpdate, "deletionmark"); err != nil {
+				return bytecode.Undefined(), err
+			}
 			previous := cloneCatalogRecord(object.record)
 			object.record.DeletionMark = mark
 			if err := runtime.syncCatalogTables(object); err != nil {
@@ -382,6 +438,9 @@ func (runtime *Runtime) CallObjectMethod(ctx context.Context, value bytecode.Run
 			}
 			object.mu.Lock()
 			defer object.mu.Unlock()
+			if err := requireObject(ctx, object.definition.ID, PermissionDelete); err != nil {
+				return bytecode.Undefined(), err
+			}
 			if _, err := runtime.catalogRepository.Delete(ctx, object.record, runtime.catalogEventHandler(object.definition.ID), runtime.actor); err != nil {
 				return bytecode.Undefined(), err
 			}
@@ -403,6 +462,9 @@ func (runtime *Runtime) CallObjectMethod(ctx context.Context, value bytecode.Run
 			}
 			if object.reference.ObjectID.IsZero() {
 				return bytecode.Undefined(), ErrCatalogRecordNotFound
+			}
+			if err := requireObject(ctx, object.definition.ID, PermissionRead); err != nil {
+				return bytecode.Undefined(), err
 			}
 			record, err := runtime.catalogRepository.Get(ctx, object.reference)
 			if err != nil {

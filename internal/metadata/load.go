@@ -15,11 +15,31 @@ import (
 
 // Load reads and cross-validates all currently supported application metadata.
 func Load(root string) (*Catalog, error) {
+	return load(root, true)
+}
+
+// Role editing must also work when an existing role has a dangling reference.
+// Only the editor-schema path skips roles; runtime Load always validates them.
+func load(root string, includeRoles bool) (*Catalog, error) {
 	manifest, err := project.ValidateLayout(root)
 	if err != nil {
 		return nil, err
 	}
 	catalog := &Catalog{Project: manifest}
+	if includeRoles {
+		if err := loadKind(root, RoleKind, func(source string, file *os.File, id uuid.UUID) error {
+			value, err := DecodeRole(source, file, manifest)
+			if err == nil && value.ID != id {
+				err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+			}
+			if err == nil {
+				catalog.Roles = append(catalog.Roles, value)
+			}
+			return err
+		}); err != nil {
+			return nil, err
+		}
+	}
 	if err := loadKind(root, ConstantKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeConstant(source, file, manifest)
 		if err == nil && value.ID != id {
@@ -115,13 +135,24 @@ func NewCatalogSnapshot(manifest project.Project, constants []Constant, enumerat
 	return NewCatalogSnapshotWithAccumulationRegisters(manifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, nil)
 }
 
-// NewCatalogSnapshotWithAccumulationRegisters validates all supported decoded metadata.
+// NewCatalogSnapshotWithAccumulationRegisters is the compatibility constructor
+// for metadata without project roles.
 func NewCatalogSnapshotWithAccumulationRegisters(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition) (*Catalog, error) {
+	return NewCatalogSnapshotWithRoles(manifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, nil)
+}
+
+// NewCatalogSnapshotWithRoles validates decoded metadata and role object/field
+// references. Form command references require the full RuntimeSnapshot.
+func NewCatalogSnapshotWithRoles(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition) (*Catalog, error) {
 	result := &Catalog{
 		Project: manifest, Constants: slices.Clone(constants), Enumerations: slices.Clone(enumerations),
 		DefinedTypes: slices.Clone(definedTypes), Catalogs: slices.Clone(catalogs), Documents: slices.Clone(documents),
 		InformationRegisters:  slices.Clone(informationRegisters),
 		AccumulationRegisters: slices.Clone(accumulationRegisters),
+		Roles:                 slices.Clone(roles),
+	}
+	for index := range result.Roles {
+		result.Roles[index] = cloneRole(result.Roles[index])
 	}
 	for index := range result.Constants {
 		result.Constants[index] = cloneConstant(result.Constants[index])
@@ -200,6 +231,8 @@ func loadKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) e
 }
 
 func (catalog *Catalog) indexAndValidate(root string) error {
+	sort.Slice(catalog.Roles, func(i, j int) bool { return catalog.Roles[i].ID.String() < catalog.Roles[j].ID.String() })
+	catalog.roleByName, catalog.roleByID = make(map[string]int, len(catalog.Roles)), make(map[uuid.UUID]int, len(catalog.Roles))
 	sort.Slice(catalog.Constants, func(i, j int) bool { return catalog.Constants[i].ID.String() < catalog.Constants[j].ID.String() })
 	sort.Slice(catalog.Enumerations, func(i, j int) bool { return catalog.Enumerations[i].ID.String() < catalog.Enumerations[j].ID.String() })
 	sort.Slice(catalog.DefinedTypes, func(i, j int) bool { return catalog.DefinedTypes[i].ID.String() < catalog.DefinedTypes[j].ID.String() })
@@ -232,6 +265,14 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			ids[id] = index
 		}
 		return nil
+	}
+	for index, item := range catalog.Roles {
+		if err := ValidateRole("role "+item.Name, item, catalog.Project); err != nil {
+			return err
+		}
+		if err := add("role", item.ID, item.Name, index, catalog.roleByName, catalog.roleByID); err != nil {
+			return err
+		}
 	}
 	for index, item := range catalog.Constants {
 		if err := add("constant", item.ID, item.Name, index, catalog.constantByName, catalog.constantByID); err != nil {
@@ -424,6 +465,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		if err := validateObjectSources(root, "accumulation register", item.Name, item.RecordSetModule, item.ManagerModule, item.Forms); err != nil {
 			return err
 		}
+	}
+	if err := catalog.validateRoleReferences(root); err != nil {
+		return err
 	}
 	return catalog.validateDefinedTypeCycles()
 }

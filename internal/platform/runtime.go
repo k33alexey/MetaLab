@@ -112,20 +112,21 @@ type PortalDatabase struct {
 
 // Runtime owns the live ML System connection used by local Manager operations.
 type Runtime struct {
-	mu            sync.RWMutex
-	configuration appconfig.Config
-	secrets       Secrets
-	database      *systemdb.Database
-	connectionErr error
-	copier        DatabaseCopier
-	copierErr     error
-	backupTool    DatabaseBackupTool
-	backupToolErr error
+	mu                    sync.RWMutex
+	configuration         appconfig.Config
+	secrets               Secrets
+	database              *systemdb.Database
+	connectionErr         error
+	environmentConfigured bool
+	copier                DatabaseCopier
+	copierErr             error
+	backupTool            DatabaseBackupTool
+	backupToolErr         error
 }
 
 // New opens an already configured ML System. A connection problem remains visible in State.
 func New(ctx context.Context, configuration appconfig.Config, secrets Secrets) *Runtime {
-	runtime := &Runtime{configuration: configuration, secrets: secrets}
+	runtime := &Runtime{configuration: configuration, secrets: secrets, environmentConfigured: os.Getenv("ML_SYSTEM_DATABASE_URL") != ""}
 	runtime.copier, runtime.copierErr = pgcopy.New()
 	runtime.backupTool, runtime.backupToolErr = pgbackup.New()
 	if secrets == nil {
@@ -154,7 +155,7 @@ func (runtime *Runtime) Close() {
 func (runtime *Runtime) State() State {
 	runtime.mu.RLock()
 	defer runtime.mu.RUnlock()
-	state := State{Configured: runtime.configuration.SystemDatabase != nil, Connected: runtime.database != nil}
+	state := State{Configured: runtime.configuration.SystemDatabase != nil || runtime.environmentConfigured, Connected: runtime.database != nil}
 	if runtime.configuration.SystemDatabase != nil {
 		copy := *runtime.configuration.SystemDatabase
 		state.Connection = &copy
@@ -328,6 +329,11 @@ func (runtime *Runtime) OpenDebugDatabase(ctx context.Context, id uuid.UUID) (*p
 
 // RegisterDatabase verifies a physical PostgreSQL database and stores its password separately.
 func (runtime *Runtime) RegisterDatabase(ctx context.Context, request RegisterDatabaseRequest) (systemdb.RegisteredDatabase, error) {
+	var contextErr error
+	ctx, contextErr = runtime.databaseCreationContext(ctx)
+	if contextErr != nil {
+		return systemdb.RegisteredDatabase{}, contextErr
+	}
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
 	if runtime.database == nil {
@@ -364,6 +370,11 @@ func (runtime *Runtime) RegisterDatabase(ctx context.Context, request RegisterDa
 
 // CreateDebugDatabase creates a separate clean or data-bearing debug database from a primary source.
 func (runtime *Runtime) CreateDebugDatabase(ctx context.Context, sourceID uuid.UUID, request CreateDebugDatabaseRequest) (systemdb.RegisteredDatabase, error) {
+	var contextErr error
+	ctx, contextErr = runtime.databaseCreationContext(ctx)
+	if contextErr != nil {
+		return systemdb.RegisteredDatabase{}, contextErr
+	}
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
 	if runtime.database == nil {
@@ -1024,6 +1035,10 @@ func (runtime *Runtime) RestoreDatabaseBackup(ctx context.Context, databaseID, b
 func (runtime *Runtime) AcquireStudioSession(
 	ctx context.Context, databaseID, projectID uuid.UUID, ownerName, hostName string, processID int64,
 ) (StudioLease, error) {
+	actor, err := runtime.RequireManager(ctx)
+	if err != nil {
+		return StudioLease{}, err
+	}
 	runtime.mu.RLock()
 	database := runtime.database
 	runtime.mu.RUnlock()
@@ -1041,7 +1056,7 @@ func (runtime *Runtime) AcquireStudioSession(
 	if err != nil {
 		return StudioLease{}, err
 	}
-	session, err := database.StudioSessions.Acquire(ctx, databaseID, projectID, id, digest[:], ownerName, hostName, processID)
+	session, err := database.StudioSessions.AcquireForUser(ctx, actor.UserID, databaseID, projectID, id, digest[:], hostName, processID)
 	if err != nil {
 		return StudioLease{}, err
 	}
@@ -1061,7 +1076,7 @@ func (runtime *Runtime) HeartbeatStudioSession(ctx context.Context, id uuid.UUID
 		return systemdb.StudioSession{}, systemdb.ErrStudioSessionNotFound
 	}
 	digest := auth.SessionTokenDigest(token)
-	return database.StudioSessions.Heartbeat(ctx, id, digest[:], processID)
+	return database.StudioSessions.HeartbeatAuthorized(ctx, id, digest[:], processID)
 }
 
 // ReleaseStudioSession ends a lease owned by its opaque token.
@@ -1152,8 +1167,13 @@ func (runtime *Runtime) storeDatabase(
 	if err := runtime.secrets.Set(descriptor.SecretKey, password); err != nil {
 		return systemdb.RegisteredDatabase{}, err
 	}
+	var ownerID *uuid.UUID
+	if value, ok := ctx.Value(databaseOwnerKey{}).(uuid.UUID); ok {
+		ownerID = &value
+	}
 	registered, err := runtime.database.Databases.Register(ctx, systemdb.DatabaseRegistration{
 		ID: id, Name: name, PhysicalID: physicalID, Connection: descriptor, Mode: mode, SourceDatabaseID: sourceID,
+		OwnerUserID: ownerID,
 	})
 	if err != nil {
 		if cleanupErr := runtime.secrets.Delete(descriptor.SecretKey); cleanupErr != nil {

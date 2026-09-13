@@ -13,6 +13,7 @@ import (
 type RuntimeSnapshot struct {
 	Format                int                              `json:"format"`
 	Project               project.Project                  `json:"project"`
+	Roles                 []RoleDefinition                 `json:"roles,omitempty"`
 	Constants             []Constant                       `json:"constants,omitempty"`
 	Enumerations          []Enumeration                    `json:"enumerations,omitempty"`
 	DefinedTypes          []DefinedTypeObject              `json:"definedTypes,omitempty"`
@@ -28,15 +29,16 @@ func NewRuntimeSnapshot(catalog *Catalog, forms []ManagedForm) (RuntimeSnapshot,
 	if catalog == nil {
 		return RuntimeSnapshot{}, fmt.Errorf("runtime metadata catalog is required")
 	}
-	validated, err := NewCatalogSnapshotWithAccumulationRegisters(
+	validated, err := NewCatalogSnapshotWithRoles(
 		catalog.Project, catalog.Constants, catalog.Enumerations, catalog.DefinedTypes,
-		catalog.Catalogs, catalog.Documents, catalog.InformationRegisters, catalog.AccumulationRegisters,
+		catalog.Catalogs, catalog.Documents, catalog.InformationRegisters, catalog.AccumulationRegisters, catalog.Roles,
 	)
 	if err != nil {
 		return RuntimeSnapshot{}, err
 	}
 	result := RuntimeSnapshot{
 		Format: CurrentFormat, Project: validated.Project,
+		Roles:     validated.Roles,
 		Constants: validated.Constants, Enumerations: validated.Enumerations, DefinedTypes: validated.DefinedTypes,
 		Catalogs: validated.Catalogs, Documents: validated.Documents,
 		InformationRegisters: validated.InformationRegisters, AccumulationRegisters: validated.AccumulationRegisters,
@@ -52,6 +54,9 @@ func NewRuntimeSnapshot(catalog *Catalog, forms []ManagedForm) (RuntimeSnapshot,
 		}
 		seen[form.ID] = true
 		result.Forms[index] = cloneRuntimeForm(form)
+	}
+	if err := result.validateRoleCommands(); err != nil {
+		return RuntimeSnapshot{}, err
 	}
 	if len(result.Constants) == 0 {
 		result.Constants = nil
@@ -86,10 +91,17 @@ func (snapshot RuntimeSnapshot) Catalog() (*Catalog, error) {
 	if snapshot.Format != CurrentFormat {
 		return nil, fmt.Errorf("unsupported runtime metadata format %d", snapshot.Format)
 	}
-	return NewCatalogSnapshotWithAccumulationRegisters(
+	catalog, err := NewCatalogSnapshotWithRoles(
 		snapshot.Project, snapshot.Constants, snapshot.Enumerations, snapshot.DefinedTypes,
-		snapshot.Catalogs, snapshot.Documents, snapshot.InformationRegisters, snapshot.AccumulationRegisters,
+		snapshot.Catalogs, snapshot.Documents, snapshot.InformationRegisters, snapshot.AccumulationRegisters, snapshot.Roles,
 	)
+	if err != nil {
+		return nil, err
+	}
+	if err := snapshot.validateRoleCommands(); err != nil {
+		return nil, err
+	}
+	return catalog, nil
 }
 
 // Validate checks both the metadata catalog and every embedded managed form.
@@ -97,6 +109,11 @@ func (snapshot RuntimeSnapshot) Validate() error {
 	catalog, err := snapshot.Catalog()
 	if err != nil {
 		return err
+	}
+	for index := 1; index < len(snapshot.Roles); index++ {
+		if snapshot.Roles[index-1].ID.String() >= snapshot.Roles[index].ID.String() {
+			return fmt.Errorf("runtime roles must have unique UUIDs in stable order")
+		}
 	}
 	var previous string
 	seen := make(map[uuid.UUID]bool, len(snapshot.Forms))
@@ -111,6 +128,23 @@ func (snapshot RuntimeSnapshot) Validate() error {
 		seen[form.ID], previous = true, current
 	}
 	return nil
+}
+
+func (snapshot RuntimeSnapshot) validateRoleCommands() error {
+	forms := make(map[uuid.UUID]int, len(snapshot.Forms))
+	for index, form := range snapshot.Forms {
+		if _, exists := forms[form.ID]; exists {
+			return fmt.Errorf("duplicate runtime form UUID %s", form.ID)
+		}
+		forms[form.ID] = index
+	}
+	return validateRoleCommands(snapshot.Roles, func(id uuid.UUID) (ManagedForm, error) {
+		index, ok := forms[id]
+		if !ok {
+			return ManagedForm{}, fmt.Errorf("unknown runtime form %s", id)
+		}
+		return snapshot.Forms[index], nil
+	})
 }
 
 // Form returns an isolated managed form by stable UUID.

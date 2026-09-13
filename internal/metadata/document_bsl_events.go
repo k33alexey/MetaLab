@@ -64,7 +64,7 @@ func (handler *DocumentBSLEvents) HandleDocumentEvent(ctx context.Context, event
 		return false, err
 	}
 	object := valueRuntimeDocumentObject(value)
-	movements, err := handler.runtime.getDocumentProperty(object, "Движения")
+	movements, err := handler.runtime.getDocumentProperty(ctx, object, "Движения")
 	if err != nil {
 		return false, err
 	}

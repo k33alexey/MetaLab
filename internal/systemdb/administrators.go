@@ -262,6 +262,10 @@ WHERE id = $1 AND enabled`, administrator.ID.String(), passwordHash)
 }
 
 func revokeUserSessions(ctx context.Context, transaction pgx.Tx, userID string, keepSessionID *uuid.UUID) error {
+	if _, err := transaction.Exec(ctx, `UPDATE ml_system.studio_sessions SET terminated_at=clock_timestamp()
+WHERE owner_user_id=$1 AND terminated_at IS NULL`, userID); err != nil {
+		return fmt.Errorf("terminate Studio after password change: %w", err)
+	}
 	var keep any
 	if keepSessionID != nil {
 		keep = keepSessionID.String()

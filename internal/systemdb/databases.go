@@ -85,6 +85,7 @@ type DatabaseRegistration struct {
 	Connection       postgresconn.Descriptor
 	Mode             DatabaseMode
 	SourceDatabaseID *uuid.UUID
+	OwnerUserID      *uuid.UUID
 }
 
 // DatabaseCapabilities are mandatory platform restrictions derived from mode.
@@ -138,7 +139,7 @@ RETURNING id::text, name, physical_id::text, host, port, database_name, username
 	if err != nil {
 		return RegisteredDatabase{}, mapDatabaseConstraintError(err)
 	}
-	if err := assignInitialDatabaseOwner(ctx, transaction, item.ID); err != nil {
+	if err := assignRegisteredDatabaseOwner(ctx, transaction, item.ID, registration.OwnerUserID); err != nil {
 		return RegisteredDatabase{}, err
 	}
 	if err := transaction.Commit(ctx); err != nil {

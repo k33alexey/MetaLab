@@ -183,6 +183,9 @@ func (runtime *Runtime) informationRegisterSlice(ctx context.Context, name strin
 	if !ok {
 		return bytecode.Undefined(), fmt.Errorf("unknown information register %q", name)
 	}
+	if err := requireObject(ctx, definition.ID, PermissionRead); err != nil {
+		return bytecode.Undefined(), err
+	}
 	dimensions, err := runtime.informationRegisterDimensionsFromBSL(definition, filterValue)
 	if err != nil {
 		return bytecode.Undefined(), err
@@ -235,7 +238,7 @@ func (runtime *Runtime) wrapInformationRegisterReadOnlySet(definition Informatio
 	return bytecode.Object(&informationRegisterRecordSetObject{definition: definition, set: cloneInformationRegisterRecordSet(set), runtime: runtime, readOnly: true})
 }
 
-func (runtime *Runtime) getInformationRegisterProperty(value bytecode.RuntimeObject, name string) (bytecode.Value, bool, error) {
+func (runtime *Runtime) getInformationRegisterProperty(ctx context.Context, value bytecode.RuntimeObject, name string) (bytecode.Value, bool, error) {
 	switch object := value.(type) {
 	case *informationRegisterRecordSetObject:
 		if object.runtime != runtime {
@@ -297,7 +300,7 @@ func (runtime *Runtime) getInformationRegisterProperty(value bytecode.RuntimeObj
 		}
 		object.owner.mu.RLock()
 		defer object.owner.mu.RUnlock()
-		result, err := runtime.informationRegisterRecordProperty(object, name)
+		result, err := runtime.informationRegisterRecordProperty(ctx, object, name)
 		return result, true, err
 	default:
 		return bytecode.Undefined(), false, nil
@@ -305,25 +308,40 @@ func (runtime *Runtime) getInformationRegisterProperty(value bytecode.RuntimeObj
 
 }
 
-func (runtime *Runtime) informationRegisterRecordProperty(object *informationRegisterRecordObject, name string) (bytecode.Value, error) {
+func (runtime *Runtime) informationRegisterRecordProperty(ctx context.Context, object *informationRegisterRecordObject, name string) (bytecode.Value, error) {
 	definition, record := object.owner.definition, object.record
 	switch {
 	case propertyName(name, "Период", "Period") && definition.Periodicity != InformationRegisterPeriodNone:
+		if err := requireFields(ctx, definition.ID, PermissionRead, "period"); err != nil {
+			return bytecode.Undefined(), err
+		}
 		return bytecode.Date(record.Period)
 	case propertyName(name, "Регистратор", "Recorder") && definition.WriteMode == InformationRegisterRecorder:
+		if err := requireFields(ctx, definition.ID, PermissionRead, "recorder"); err != nil {
+			return bytecode.Undefined(), err
+		}
 		document, ok := runtime.catalog.DocumentByID(record.Recorder.DocumentID)
 		if !ok {
 			return bytecode.Undefined(), fmt.Errorf("unknown recorder document %s", record.Recorder.DocumentID)
 		}
 		return runtime.wrapDocumentReference(document, record.Recorder)
 	case propertyName(name, "НомерСтроки", "LineNumber") && definition.WriteMode == InformationRegisterRecorder:
+		if err := requireFields(ctx, definition.ID, PermissionRead, "linenumber"); err != nil {
+			return bytecode.Undefined(), err
+		}
 		return bytecode.Number(float64(record.LineNumber)), nil
 	case propertyName(name, "Активность", "Active") && definition.WriteMode == InformationRegisterRecorder:
+		if err := requireFields(ctx, definition.ID, PermissionRead, "active"); err != nil {
+			return bytecode.Undefined(), err
+		}
 		return bytecode.Boolean(record.Active), nil
 	}
 	field, values, ok := informationRegisterRecordField(definition, record, name)
 	if !ok {
 		return bytecode.Undefined(), fmt.Errorf("%s has no property %s", object.RuntimeTypeName(), name)
+	}
+	if err := requireFields(ctx, definition.ID, PermissionRead, field.ID.String()); err != nil {
+		return bytecode.Undefined(), err
 	}
 	stored, present := values[field.ID]
 	if !present {
@@ -332,7 +350,7 @@ func (runtime *Runtime) informationRegisterRecordProperty(object *informationReg
 	return runtime.applicationValueToBSL(field.Types, stored)
 }
 
-func (runtime *Runtime) setInformationRegisterProperty(value bytecode.RuntimeObject, name string, assigned bytecode.Value) (bool, error) {
+func (runtime *Runtime) setInformationRegisterProperty(ctx context.Context, value bytecode.RuntimeObject, name string, assigned bytecode.Value) (bool, error) {
 	switch object := value.(type) {
 	case *informationRegisterRecordSetObject:
 		if object.runtime != runtime {
@@ -378,7 +396,7 @@ func (runtime *Runtime) setInformationRegisterProperty(value bytecode.RuntimeObj
 		if object.owner.runtime != runtime {
 			return true, fmt.Errorf("information register record belongs to another metadata runtime")
 		}
-		return true, runtime.setInformationRegisterRecordProperty(object, name, assigned)
+		return true, runtime.setInformationRegisterRecordProperty(ctx, object, name, assigned)
 	case *informationRegisterFilterObject:
 		return true, fmt.Errorf("%s property %s is not writable", value.RuntimeTypeName(), name)
 	default:
@@ -386,7 +404,7 @@ func (runtime *Runtime) setInformationRegisterProperty(value bytecode.RuntimeObj
 	}
 }
 
-func (runtime *Runtime) setInformationRegisterRecordProperty(object *informationRegisterRecordObject, name string, assigned bytecode.Value) error {
+func (runtime *Runtime) setInformationRegisterRecordProperty(ctx context.Context, object *informationRegisterRecordObject, name string, assigned bytecode.Value) error {
 	object.owner.mu.Lock()
 	defer object.owner.mu.Unlock()
 	if object.owner.readOnly {
@@ -395,6 +413,9 @@ func (runtime *Runtime) setInformationRegisterRecordProperty(object *information
 	definition, record := object.owner.definition, object.record
 	switch {
 	case propertyName(name, "Период", "Period") && definition.Periodicity != InformationRegisterPeriodNone:
+		if err := requireFields(ctx, definition.ID, PermissionUpdate, "period"); err != nil {
+			return err
+		}
 		date, ok := assigned.AsDate()
 		if !ok {
 			return fmt.Errorf("information register period must be a date")
@@ -402,6 +423,9 @@ func (runtime *Runtime) setInformationRegisterRecordProperty(object *information
 		record.Period = date
 		return nil
 	case propertyName(name, "Регистратор", "Recorder") && definition.WriteMode == InformationRegisterRecorder:
+		if err := requireFields(ctx, definition.ID, PermissionUpdate, "recorder"); err != nil {
+			return err
+		}
 		opaque, ok := assigned.AsRuntimeObject()
 		reference, okReference := opaque.(*documentReferenceObject)
 		if !ok || !okReference || reference.runtime != runtime || !allowedInformationRegisterRecorder(definition, reference.reference) {
@@ -410,6 +434,9 @@ func (runtime *Runtime) setInformationRegisterRecordProperty(object *information
 		record.Recorder = reference.reference
 		return nil
 	case propertyName(name, "НомерСтроки", "LineNumber") && definition.WriteMode == InformationRegisterRecorder:
+		if err := requireFields(ctx, definition.ID, PermissionUpdate, "linenumber"); err != nil {
+			return err
+		}
 		line, ok := assigned.NumberInteger()
 		if !ok || line < 0 || line > maxInformationRegisterLineNumber {
 			return fmt.Errorf("information register line number must be 0..%d", maxInformationRegisterLineNumber)
@@ -417,6 +444,9 @@ func (runtime *Runtime) setInformationRegisterRecordProperty(object *information
 		record.LineNumber = int(line)
 		return nil
 	case propertyName(name, "Активность", "Active") && definition.WriteMode == InformationRegisterRecorder:
+		if err := requireFields(ctx, definition.ID, PermissionUpdate, "active"); err != nil {
+			return err
+		}
 		active, ok := assigned.AsBoolean()
 		if !ok {
 			return fmt.Errorf("information register Active must be a boolean")
@@ -427,6 +457,9 @@ func (runtime *Runtime) setInformationRegisterRecordProperty(object *information
 	field, values, ok := informationRegisterRecordField(definition, record, name)
 	if !ok {
 		return fmt.Errorf("%s has no property %s", object.RuntimeTypeName(), name)
+	}
+	if err := requireFields(ctx, definition.ID, PermissionUpdate, field.ID.String()); err != nil {
+		return err
 	}
 	if assigned.Kind() == bytecode.UndefinedKind {
 		if field.Required {
@@ -536,6 +569,9 @@ func (runtime *Runtime) callInformationRegisterMethod(ctx context.Context, value
 			if len(arguments) != 0 {
 				return bytecode.Undefined(), true, fmt.Errorf("%s expects no arguments", name)
 			}
+			if err := requireObject(ctx, object.definition.ID, PermissionRead); err != nil {
+				return bytecode.Undefined(), true, err
+			}
 			original := cloneInformationRegisterRecordSet(object.set)
 			if err := runtime.informationRegisterRepository.Read(ctx, object.set); err != nil {
 				return bytecode.Undefined(), true, err
@@ -559,6 +595,9 @@ func (runtime *Runtime) callInformationRegisterMethod(ctx context.Context, value
 				if !ok {
 					return bytecode.Undefined(), true, fmt.Errorf("%s expects a boolean argument", name)
 				}
+			}
+			if err := requireObject(ctx, object.definition.ID, PermissionUpdate); err != nil {
+				return bytecode.Undefined(), true, err
 			}
 			if err := runtime.informationRegisterRepository.WriteWithHandler(ctx, object.set, replace, runtime.informationRegisterEventHandler(object.definition.ID)); err != nil {
 				return bytecode.Undefined(), true, err

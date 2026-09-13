@@ -374,6 +374,8 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 		}
 		var value any
 		switch metadata.Kind(parts[1]) {
+		case metadata.RoleKind:
+			value, err = metadata.DecodeRole(relative, bytes.NewReader(content), manifest)
 		case metadata.ConstantKind:
 			value, err = metadata.DecodeConstant(relative, bytes.NewReader(content), manifest)
 		case metadata.EnumerationKind:
@@ -396,6 +398,8 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 			filenameID, _ := uuid.Parse(strings.TrimSuffix(parts[2], ".yaml"))
 			var metadataID uuid.UUID
 			switch item := value.(type) {
+			case metadata.RoleDefinition:
+				metadataID = item.ID
 			case metadata.Constant:
 				metadataID = item.ID
 			case metadata.Enumeration:

@@ -10,6 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 const defaultDataLockWait = 20 * time.Second
@@ -63,12 +65,26 @@ func (runtime *Runtime) BeginTestExecution(ctx context.Context) (context.Context
 }
 
 // BeginTestExecutionWithOptions creates an isolated test boundary for one role.
+// An unknown role name is rejected rather than silently running unrestricted.
 func (runtime *Runtime) BeginTestExecutionWithOptions(ctx context.Context, role string) (context.Context, func(error) error, error) {
 	if ctx == nil {
 		return nil, nil, fmt.Errorf("test execution context is required")
 	}
 	if _, ok := ctx.Value(transactionContextKey{}).(*transactionScope); ok {
 		return nil, nil, fmt.Errorf("test execution already has a transaction scope")
+	}
+	trimmedRole := strings.TrimSpace(role)
+	var permissions *Permissions
+	if trimmedRole != "" {
+		definition, ok := runtime.catalog.Role(trimmedRole)
+		if !ok {
+			return nil, nil, fmt.Errorf("unknown role %q", trimmedRole)
+		}
+		compiled, err := CompilePermissions(runtime.catalog, []uuid.UUID{definition.ID})
+		if err != nil {
+			return nil, nil, err
+		}
+		permissions = compiled
 	}
 	pool, err := runtime.databasePool()
 	if err != nil {
@@ -80,7 +96,10 @@ func (runtime *Runtime) BeginTestExecutionWithOptions(ctx context.Context, role 
 	}
 	scope.testBoundary = true
 	scoped := context.WithValue(ctx, transactionContextKey{}, scope)
-	scoped = context.WithValue(scoped, testExecutionContextKey{}, TestExecutionProfile{Role: strings.TrimSpace(role)})
+	scoped = context.WithValue(scoped, testExecutionContextKey{}, TestExecutionProfile{Role: trimmedRole})
+	if permissions != nil {
+		scoped = WithPermissions(scoped, permissions)
+	}
 	return scoped, func(cause error) error { return scope.finishTest(cause) }, nil
 }
 

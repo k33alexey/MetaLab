@@ -97,6 +97,9 @@ func (runtime *Runtime) GetDocumentObject(ctx context.Context, name string, valu
 	if !ok {
 		return bytecode.Undefined(), fmt.Errorf("unknown document %q", name)
 	}
+	if err := requireObject(ctx, definition.ID, PermissionRead); err != nil {
+		return bytecode.Undefined(), err
+	}
 	reference, err := runtime.documentReference(definition, value)
 	if err != nil {
 		return bytecode.Undefined(), err
@@ -111,6 +114,13 @@ func (runtime *Runtime) GetDocumentObject(ctx context.Context, name string, valu
 func (runtime *Runtime) FindDocumentByNumber(ctx context.Context, name string, value, dateValue bytecode.Value) (bytecode.Value, error) {
 	if runtime.documentRepository == nil {
 		return bytecode.Undefined(), fmt.Errorf("document repository is not configured")
+	}
+	definition, ok := runtime.catalog.DocumentDefinition(name)
+	if !ok {
+		return bytecode.Undefined(), fmt.Errorf("unknown document %q", name)
+	}
+	if err := requireObject(ctx, definition.ID, PermissionRead); err != nil {
+		return bytecode.Undefined(), err
 	}
 	number, err := bslScalarText(value)
 	if err != nil {
@@ -127,10 +137,6 @@ func (runtime *Runtime) FindDocumentByNumber(ctx context.Context, name string, v
 	reference, found, err := runtime.documentRepository.FindByNumber(ctx, name, number, date)
 	if err != nil {
 		return bytecode.Undefined(), err
-	}
-	definition, ok := runtime.catalog.DocumentDefinition(name)
-	if !ok {
-		return bytecode.Undefined(), fmt.Errorf("unknown document %q", name)
 	}
 	if !found {
 		reference = DocumentReference{DocumentID: definition.ID}
@@ -158,8 +164,10 @@ func (runtime *Runtime) GetDocumentReference(_ context.Context, name string, val
 	return runtime.wrapDocumentReference(definition, reference)
 }
 
-func (runtime *Runtime) getDocumentProperty(object *documentObject, name string) (bytecode.Value, error) {
+func (runtime *Runtime) getDocumentProperty(ctx context.Context, object *documentObject, name string) (bytecode.Value, error) {
 	if propertyName(name, "Движения", "Movements") {
+		// Movements is a handle to register record sets, not a document field;
+		// the referenced registers enforce their own permissions when used.
 		object.mu.Lock()
 		defer object.mu.Unlock()
 		if object.movements == nil {
@@ -175,22 +183,43 @@ func (runtime *Runtime) getDocumentProperty(object *documentObject, name string)
 	defer object.mu.RUnlock()
 	switch {
 	case propertyName(name, "Ссылка", "Ref"):
+		if err := requireFields(ctx, object.definition.ID, PermissionRead, "ref"); err != nil {
+			return bytecode.Undefined(), err
+		}
 		return runtime.wrapDocumentReference(object.definition, object.record.Reference)
 	case propertyName(name, "Номер", "Number"):
+		if err := requireFields(ctx, object.definition.ID, PermissionRead, "number"); err != nil {
+			return bytecode.Undefined(), err
+		}
 		if object.definition.Number.Type == NumberType {
 			return bytecode.ParseNumber(object.record.Number)
 		}
 		return bytecode.String(object.record.Number), nil
 	case propertyName(name, "Дата", "Date"):
+		if err := requireFields(ctx, object.definition.ID, PermissionRead, "date"); err != nil {
+			return bytecode.Undefined(), err
+		}
 		return bytecode.Date(object.record.Date)
 	case propertyName(name, "Проведен", "Posted"), propertyName(name, "Проведён", "Posted"):
+		if err := requireFields(ctx, object.definition.ID, PermissionRead, "posted"); err != nil {
+			return bytecode.Undefined(), err
+		}
 		return bytecode.Boolean(object.record.Posted), nil
 	case propertyName(name, "Версия", "Version"):
+		if err := requireFields(ctx, object.definition.ID, PermissionRead, "version"); err != nil {
+			return bytecode.Undefined(), err
+		}
 		return bytecode.ParseNumber(fmt.Sprint(object.record.Version))
 	case propertyName(name, "ПометкаУдаления", "DeletionMark"):
+		if err := requireFields(ctx, object.definition.ID, PermissionRead, "deletionmark"); err != nil {
+			return bytecode.Undefined(), err
+		}
 		return bytecode.Boolean(object.record.DeletionMark), nil
 	}
 	if attribute, ok := findCatalogAttribute(object.definition.Attributes, name); ok {
+		if err := requireFields(ctx, object.definition.ID, PermissionRead, attribute.ID.String()); err != nil {
+			return bytecode.Undefined(), err
+		}
 		stored, present := object.record.Attributes[attribute.ID]
 		if !present {
 			return bytecode.Undefined(), nil
@@ -198,16 +227,26 @@ func (runtime *Runtime) getDocumentProperty(object *documentObject, name string)
 		return runtime.applicationValueToBSL(attribute.Types, stored)
 	}
 	if part, ok := findCatalogTablePart(object.definition.TableParts, name); ok {
+		if err := requireFields(ctx, object.definition.ID, PermissionRead, part.ID.String()); err != nil {
+			return bytecode.Undefined(), err
+		}
 		return object.tables[part.ID], nil
 	}
 	return bytecode.Undefined(), fmt.Errorf("%s has no property %s", object.RuntimeTypeName(), name)
 }
 
-func (runtime *Runtime) setDocumentProperty(object *documentObject, name string, assigned bytecode.Value) error {
+func (runtime *Runtime) setDocumentProperty(ctx context.Context, object *documentObject, name string, assigned bytecode.Value) error {
 	object.mu.Lock()
 	defer object.mu.Unlock()
+	fieldOperation := PermissionUpdate
+	if object.record.Version == 0 {
+		fieldOperation = PermissionCreate
+	}
 	switch {
 	case propertyName(name, "Номер", "Number"):
+		if err := requireFields(ctx, object.definition.ID, fieldOperation, "number"); err != nil {
+			return err
+		}
 		text, err := bslScalarText(assigned)
 		if err != nil {
 			return err
@@ -219,6 +258,9 @@ func (runtime *Runtime) setDocumentProperty(object *documentObject, name string,
 		object.record.Number = text
 		return nil
 	case propertyName(name, "Дата", "Date"):
+		if err := requireFields(ctx, object.definition.ID, fieldOperation, "date"); err != nil {
+			return err
+		}
 		date, ok := assigned.AsDate()
 		if !ok {
 			return fmt.Errorf("document date must be a date")
@@ -239,6 +281,9 @@ func (runtime *Runtime) setDocumentProperty(object *documentObject, name string,
 			return fmt.Errorf("document table part %s is read-only", name)
 		}
 		return fmt.Errorf("%s has no property %s", object.RuntimeTypeName(), name)
+	}
+	if err := requireFields(ctx, object.definition.ID, fieldOperation, attribute.ID.String()); err != nil {
+		return err
 	}
 	if assigned.Kind() == bytecode.UndefinedKind {
 		if attribute.Required {
@@ -298,6 +343,9 @@ func (runtime *Runtime) callDocumentMethod(ctx context.Context, object *document
 		}
 		object.mu.Lock()
 		defer object.mu.Unlock()
+		if err := requireFields(ctx, object.definition.ID, PermissionUpdate, "deletionmark"); err != nil {
+			return bytecode.Undefined(), err
+		}
 		previous := cloneDocumentRecord(object.record)
 		object.record.DeletionMark = mark
 		if err := runtime.syncDocumentTables(object); err != nil {
@@ -315,6 +363,9 @@ func (runtime *Runtime) callDocumentMethod(ctx context.Context, object *document
 		}
 		object.mu.Lock()
 		defer object.mu.Unlock()
+		if err := requireObject(ctx, object.definition.ID, PermissionDelete); err != nil {
+			return bytecode.Undefined(), err
+		}
 		if _, err := runtime.documentRepository.Delete(ctx, object.record, runtime.documentEventHandler(object.definition.ID), runtime.actor); err != nil {
 			return bytecode.Undefined(), err
 		}
@@ -330,8 +381,24 @@ func (runtime *Runtime) writeDocumentObject(ctx context.Context, object *documen
 	}
 	object.mu.Lock()
 	defer object.mu.Unlock()
+	objectOperation, tablePartOperation := PermissionUpdate, PermissionUpdate
+	if object.record.Version == 0 {
+		objectOperation, tablePartOperation = PermissionCreate, PermissionCreate
+	}
+	switch writeMode {
+	case DocumentPost:
+		objectOperation = PermissionPost
+	case DocumentUndoPosting:
+		objectOperation = PermissionUndoPosting
+	}
+	if err := requireObject(ctx, object.definition.ID, objectOperation); err != nil {
+		return err
+	}
 	previous := cloneDocumentRecord(object.record)
 	if err := runtime.syncDocumentTables(object); err != nil {
+		return err
+	}
+	if err := requireTablePartWrites(ctx, object.definition.ID, tablePartOperation, object.definition.TableParts, object.record.TableParts); err != nil {
 		return err
 	}
 	handler := runtime.documentEventHandler(object.definition.ID)
@@ -458,6 +525,9 @@ func (runtime *Runtime) callDocumentReferenceMethod(ctx context.Context, object 
 		}
 		if object.reference.ObjectID.IsZero() {
 			return bytecode.Undefined(), ErrDocumentRecordNotFound
+		}
+		if err := requireObject(ctx, object.definition.ID, PermissionRead); err != nil {
+			return bytecode.Undefined(), err
 		}
 		record, err := runtime.documentRepository.Get(ctx, object.reference)
 		if err != nil {
