@@ -1,0 +1,20 @@
+#!/bin/sh
+# Blocks a commit if any staged .go file is not gofmt-formatted — the same
+# check CI runs, so a bad commit never reaches the "Check formatting" step
+# on GitHub. Install once per clone: git config core.hooksPath scripts/git-hooks
+
+staged_go_files="$(git diff --cached --name-only --diff-filter=ACMR -- '*.go')"
+if [ -z "$staged_go_files" ]; then
+    exit 0
+fi
+
+unformatted="$(printf '%s\n' "$staged_go_files" | xargs gofmt -l)"
+if [ -n "$unformatted" ]; then
+    echo "gofmt found unformatted files (commit blocked):"
+    printf '%s\n' "$unformatted"
+    echo
+    echo "Fix with: gofmt -w $(printf '%s ' "$unformatted")"
+    exit 1
+fi
+
+exit 0
