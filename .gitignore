@@ -1,7 +1,10 @@
 .DS_Store
 .idea/
 .vscode/
+.claude/
 docs/
+CLAUDE.md
+AGENTS.md
 
 *.log
 *.tmp
