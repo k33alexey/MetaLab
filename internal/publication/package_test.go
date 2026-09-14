@@ -213,7 +213,7 @@ func TestPackageCarriesCatalogSchemaIdentity(t *testing.T) {
 	root := publicationProject(t)
 	id := uuid.MustNew()
 	attributeID := uuid.MustNew()
-	relative, _ := project.MetadataPath("catalogs", id)
+	relative, _ := project.ObjectMetadataPath("catalogs", id)
 	absolute := filepath.Join(root, filepath.FromSlash(relative))
 	if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
 		t.Fatal(err)
@@ -239,15 +239,21 @@ func TestPackageCarriesDocumentSchemaAndSources(t *testing.T) {
 	t.Parallel()
 	root := publicationProject(t)
 	documentID, moduleID, formID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
-	modulePath, _ := project.ModulePath(moduleID)
-	formPath, _ := project.FormPath(formID)
+	modulePath, _ := project.ObjectModulePath("documents", documentID, moduleID)
+	formPath, _ := project.ObjectFormPath("documents", documentID, formID)
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(root, filepath.FromSlash(modulePath))), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(modulePath)), []byte("Процедура ПриЗаписи(Отказ)\nКонецПроцедуры\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(root, filepath.FromSlash(formPath))), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(formPath)), managedFormYAML(t, formID, "DocumentForm"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	relative, _ := project.MetadataPath("documents", documentID)
+	relative, _ := project.ObjectMetadataPath("documents", documentID)
 	absolute := filepath.Join(root, filepath.FromSlash(relative))
 	if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
 		t.Fatal(err)
@@ -283,7 +289,7 @@ func TestPackageCarriesInformationRegisterSchema(t *testing.T) {
 	t.Parallel()
 	root := publicationProject(t)
 	registerID, dimensionID, resourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
-	relative, _ := project.MetadataPath("information-registers", registerID)
+	relative, _ := project.ObjectMetadataPath("information-registers", registerID)
 	absolute := filepath.Join(root, filepath.FromSlash(relative))
 	if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
 		t.Fatal(err)
@@ -310,7 +316,7 @@ func TestPackageCarriesAccumulationRegisterSchema(t *testing.T) {
 	t.Parallel()
 	root := publicationProject(t)
 	documentID, registerID, dimensionID, resourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
-	documentRelative, _ := project.MetadataPath("documents", documentID)
+	documentRelative, _ := project.ObjectMetadataPath("documents", documentID)
 	documentAbsolute := filepath.Join(root, filepath.FromSlash(documentRelative))
 	if err := os.MkdirAll(filepath.Dir(documentAbsolute), 0o755); err != nil {
 		t.Fatal(err)
@@ -318,7 +324,7 @@ func TestPackageCarriesAccumulationRegisterSchema(t *testing.T) {
 	if err := os.WriteFile(documentAbsolute, []byte("format: 1\nid: "+documentID.String()+"\nname: Продажа\ntitle: {ru: Продажа}\nnumber: {type: string, length: 11, periodicity: year}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	relative, _ := project.MetadataPath("accumulation-registers", registerID)
+	relative, _ := project.ObjectMetadataPath("accumulation-registers", registerID)
 	absolute := filepath.Join(root, filepath.FromSlash(relative))
 	if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
 		t.Fatal(err)

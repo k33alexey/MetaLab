@@ -35,7 +35,7 @@ func TestActivateRejectsSchemaNotDerivedFromPackage(t *testing.T) {
 	t.Parallel()
 	root := publicationProject(t)
 	id := uuid.MustNew()
-	relative, err := project.MetadataPath("catalogs", id)
+	relative, err := project.ObjectMetadataPath("catalogs", id)
 	if err != nil {
 		t.Fatal(err)
 	}

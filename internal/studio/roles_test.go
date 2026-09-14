@@ -27,11 +27,11 @@ func roleWorkspace(t *testing.T) (*Workspace, metadata.CatalogDefinition) {
 	if err := metadata.Encode(&content, object); err != nil {
 		t.Fatal(err)
 	}
-	directory := filepath.Join(root, "metadata", "catalogs")
+	directory := filepath.Join(root, "metadata", "catalogs", object.ID.String())
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(directory, object.ID.String()+".yaml"), content.Bytes(), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, "object.yaml"), content.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	workspace, err := Open(root)

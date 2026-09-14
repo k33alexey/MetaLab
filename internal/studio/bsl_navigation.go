@@ -854,16 +854,31 @@ func (workspace *Workspace) indexMetadataDefinitions(index *bslNavigationIndex) 
 		"constants":              {"константы", "constants"}, "enumerations": {"перечисления", "enums"},
 		"defined-types": {"определяемыетипы", "definedtypes"},
 	}
+	objectFolderKind := make(map[string]bool, len(project.ObjectFolderKinds()))
+	for _, kind := range project.ObjectFolderKinds() {
+		objectFolderKind[kind] = true
+	}
 	for kind, roots := range aliases {
 		entries, err := os.ReadDir(filepath.Join(workspace.root, "metadata", kind))
 		if err != nil {
 			continue
 		}
 		for _, entry := range entries {
-			if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || filepath.Ext(entry.Name()) != ".yaml" {
-				continue
+			var path string
+			if objectFolderKind[kind] {
+				if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
+					continue
+				}
+				if _, err := uuid.Parse(entry.Name()); err != nil {
+					continue
+				}
+				path = filepath.ToSlash(filepath.Join("metadata", kind, entry.Name(), "object.yaml"))
+			} else {
+				if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || filepath.Ext(entry.Name()) != ".yaml" {
+					continue
+				}
+				path = filepath.ToSlash(filepath.Join("metadata", kind, entry.Name()))
 			}
-			path := filepath.ToSlash(filepath.Join("metadata", kind, entry.Name()))
 			file, err := workspace.readSource(path)
 			if err != nil {
 				continue
@@ -968,7 +983,14 @@ func (workspace *Workspace) buildProjectSearchIndex() (*projectSearchIndex, erro
 			}
 		}
 	}
+	objectFolderKinds := make(map[string]bool, len(project.ObjectFolderKinds()))
+	for _, kind := range project.ObjectFolderKinds() {
+		objectFolderKinds[kind] = true
+	}
 	for _, kind := range project.MetadataKinds() {
+		if objectFolderKinds[kind] {
+			continue
+		}
 		entries, err := os.ReadDir(filepath.Join(workspace.root, "metadata", kind))
 		if err != nil {
 			continue
@@ -979,6 +1001,11 @@ func (workspace *Workspace) buildProjectSearchIndex() (*projectSearchIndex, erro
 			}
 		}
 	}
+	objectPaths, err := project.ObjectFolderSourcePaths(workspace.root)
+	if err != nil {
+		return nil, err
+	}
+	paths = append(paths, objectPaths...)
 	sort.Strings(paths)
 	total := 0
 	for _, path := range paths {

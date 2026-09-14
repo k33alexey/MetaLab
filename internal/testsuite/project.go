@@ -11,6 +11,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 	"github.com/k33alexey/MetaLab/internal/metadata"
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -34,6 +35,7 @@ func CompileProject(root string) (*bytecode.Program, error) {
 	descriptors := projectModuleDescriptors(catalog)
 	sources := make([]compiler.ModuleSource, 0, 32)
 	sourceBytes := 0
+	var relativePaths []string
 	for _, directory := range []string{"modules", "tests"} {
 		entries, err := os.ReadDir(filepath.Join(root, directory))
 		if err != nil {
@@ -43,32 +45,46 @@ func CompileProject(root string) (*bytecode.Program, error) {
 			if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || filepath.Ext(entry.Name()) != ".bsl" {
 				continue
 			}
-			if len(sources) >= maxProjectModules {
-				return nil, fmt.Errorf("test runner supports at most %d BSL modules", maxProjectModules)
-			}
-			relative := filepath.ToSlash(filepath.Join(directory, entry.Name()))
-			content, err := readBoundedFile(filepath.Join(root, filepath.FromSlash(relative)), maxProjectSource-sourceBytes)
-			if err != nil {
-				return nil, fmt.Errorf("read %s: %w", relative, err)
-			}
-			if len(content) > maxProjectSource-sourceBytes {
-				return nil, fmt.Errorf("test BSL source exceeds %d bytes", maxProjectSource)
-			}
-			sourceBytes += len(content)
-			id := strings.TrimSuffix(entry.Name(), ".bsl")
-			descriptor := descriptors[id]
-			if descriptor.name == "" {
-				descriptor.name = "Модуль" + strings.ReplaceAll(id, "-", "")
-				if directory == "tests" {
-					descriptor.name = "Тест" + strings.ReplaceAll(id, "-", "")
-				}
-			}
-			sources = append(sources, compiler.ModuleSource{
-				Name: descriptor.name, Filename: relative, Source: string(content),
-				PredefinedVariables: append([]string(nil), descriptor.predefined...),
-				DefaultContext:      descriptor.defaultContext,
-			})
+			relativePaths = append(relativePaths, filepath.ToSlash(filepath.Join(directory, entry.Name())))
 		}
+	}
+	// Object, manager and record-set modules live inside their owning
+	// catalog/document/register folder rather than the flat modules/
+	// directory, but they compile alongside common modules just the same.
+	objectPaths, err := project.ObjectFolderSourcePaths(root)
+	if err != nil {
+		return nil, err
+	}
+	for _, relative := range objectPaths {
+		if filepath.Ext(relative) == ".bsl" {
+			relativePaths = append(relativePaths, relative)
+		}
+	}
+	for _, relative := range relativePaths {
+		if len(sources) >= maxProjectModules {
+			return nil, fmt.Errorf("test runner supports at most %d BSL modules", maxProjectModules)
+		}
+		content, err := readBoundedFile(filepath.Join(root, filepath.FromSlash(relative)), maxProjectSource-sourceBytes)
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", relative, err)
+		}
+		if len(content) > maxProjectSource-sourceBytes {
+			return nil, fmt.Errorf("test BSL source exceeds %d bytes", maxProjectSource)
+		}
+		sourceBytes += len(content)
+		id := strings.TrimSuffix(filepath.Base(relative), ".bsl")
+		descriptor := descriptors[id]
+		if descriptor.name == "" {
+			descriptor.name = "Модуль" + strings.ReplaceAll(id, "-", "")
+			if strings.HasPrefix(relative, "tests/") {
+				descriptor.name = "Тест" + strings.ReplaceAll(id, "-", "")
+			}
+		}
+		sources = append(sources, compiler.ModuleSource{
+			Name: descriptor.name, Filename: relative, Source: string(content),
+			PredefinedVariables: append([]string(nil), descriptor.predefined...),
+			DefaultContext:      descriptor.defaultContext,
+		})
 	}
 	program, diagnostics := compiler.CompileModules(sources)
 	if len(diagnostics) != 0 {

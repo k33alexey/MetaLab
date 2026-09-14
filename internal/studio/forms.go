@@ -259,10 +259,17 @@ func findFormHandler(module SourceFile, name string) (StudioLocation, bool, erro
 
 func validateFormPath(relative string) error {
 	canonical, language, err := validateEditablePath(relative)
-	if err != nil || language != "yaml" || !strings.HasPrefix(canonical, "forms/") {
+	if err != nil || language != "yaml" {
 		return ErrInvalidSourcePath
 	}
-	return nil
+	if strings.HasPrefix(canonical, "forms/") {
+		return nil
+	}
+	parts := strings.Split(canonical, "/")
+	if len(parts) == 5 && parts[0] == "metadata" && parts[3] == "forms" {
+		return nil
+	}
+	return ErrInvalidSourcePath
 }
 
 func (workspace *Workspace) formDataPaths(formID uuid.UUID, manifest project.Project) []FormDataPath {

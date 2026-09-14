@@ -282,6 +282,19 @@ func validateEditablePath(relative string) (string, string, error) {
 		path.Ext(parts[2]) == ".yaml" && validUUIDFile(parts[2], ".yaml") {
 		return relative, "yaml", nil
 	}
+	if len(parts) >= 4 && parts[0] == "metadata" && slices.Contains(project.ObjectFolderKinds(), parts[1]) {
+		if _, err := uuid.Parse(parts[2]); err == nil {
+			if len(parts) == 4 && parts[3] == "object.yaml" {
+				return relative, "yaml", nil
+			}
+			if len(parts) == 4 && validUUIDFile(parts[3], ".bsl") {
+				return relative, "bsl", nil
+			}
+			if len(parts) == 5 && parts[3] == "forms" && validUUIDFile(parts[4], ".yaml") {
+				return relative, "yaml", nil
+			}
+		}
+	}
 	return "", "", ErrInvalidSourcePath
 }
 
@@ -367,13 +380,38 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 		}
 		return canonical.Bytes(), nil
 	}
+	if len(parts) == 5 && parts[0] == "metadata" && parts[3] == "forms" && slices.Contains(project.ObjectFolderKinds(), parts[1]) {
+		manifest, err := project.ValidateLayout(workspace.root)
+		if err != nil {
+			return nil, err
+		}
+		value, err := metadata.DecodeManagedForm(relative, bytes.NewReader(content), manifest)
+		if err != nil {
+			return nil, err
+		}
+		filenameID, _ := uuid.Parse(strings.TrimSuffix(parts[4], ".yaml"))
+		if value.ID != filenameID {
+			return nil, fmt.Errorf("form UUID %s does not match filename UUID %s", value.ID, filenameID)
+		}
+		var canonical bytes.Buffer
+		if err := metadata.Encode(&canonical, value); err != nil {
+			return nil, err
+		}
+		return canonical.Bytes(), nil
+	}
+	kindPart, filenameIDPart := "", ""
 	if len(parts) == 3 && parts[0] == "metadata" {
+		kindPart, filenameIDPart = parts[1], strings.TrimSuffix(parts[2], ".yaml")
+	} else if len(parts) == 4 && parts[0] == "metadata" && parts[3] == "object.yaml" && slices.Contains(project.ObjectFolderKinds(), parts[1]) {
+		kindPart, filenameIDPart = parts[1], parts[2]
+	}
+	if kindPart != "" {
 		manifest, err := project.ValidateLayout(workspace.root)
 		if err != nil {
 			return nil, err
 		}
 		var value any
-		switch metadata.Kind(parts[1]) {
+		switch metadata.Kind(kindPart) {
 		case metadata.RoleKind:
 			value, err = metadata.DecodeRole(relative, bytes.NewReader(content), manifest)
 		case metadata.SubsystemKind:
@@ -405,7 +443,7 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 			return nil, err
 		}
 		if value != nil {
-			filenameID, _ := uuid.Parse(strings.TrimSuffix(parts[2], ".yaml"))
+			filenameID, _ := uuid.Parse(filenameIDPart)
 			var metadataID uuid.UUID
 			switch item := value.(type) {
 			case metadata.RoleDefinition:

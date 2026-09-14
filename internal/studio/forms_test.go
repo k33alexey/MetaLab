@@ -190,17 +190,6 @@ func createManagedFormSource(t *testing.T) (*Workspace, string, metadata.Managed
 	form := metadata.ManagedForm{Format: metadata.CurrentFormat, ID: uuid.MustNew(), Name: "ФормаТовара", Title: metadata.LocalizedText{"ru": "Форма товара"}, Kind: metadata.ObjectForm}
 	form.Commands = []metadata.ManagedFormCommand{{ID: uuid.MustNew(), Name: "Заполнить", Title: metadata.LocalizedText{"ru": "Заполнить"}, Action: metadata.FormCommandCustom, Handler: "Заполнить"}}
 	form.Items = []metadata.ManagedFormElement{{ID: uuid.MustNew(), Name: "ОсновнаяГруппа", Kind: metadata.FormElementGroup, Orientation: metadata.FormVertical, Children: []metadata.ManagedFormElement{{ID: uuid.MustNew(), Name: "Наименование", Kind: metadata.FormElementField, Title: metadata.LocalizedText{"ru": "Наименование"}}}}}
-	relative, err := project.FormPath(form.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var source bytes.Buffer
-	if err := metadata.Encode(&source, form); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(relative)), source.Bytes(), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	catalog := metadata.CatalogDefinition{
 		Format: metadata.CurrentFormat, ID: uuid.MustNew(), Name: "Контрагенты", Title: metadata.LocalizedText{"ru": "Контрагенты"},
 		Code: metadata.CatalogCode{Type: metadata.StringType, Length: 20, Auto: true, Unique: true}, DescriptionLength: 150,
@@ -208,7 +197,21 @@ func createManagedFormSource(t *testing.T) (*Workspace, string, metadata.Managed
 		TableParts: []metadata.TablePart{{ID: uuid.MustNew(), Name: "Контакты", Title: metadata.LocalizedText{"ru": "Контакты"}, Attributes: []metadata.Attribute{{ID: uuid.MustNew(), Name: "Телефон", Title: metadata.LocalizedText{"ru": "Телефон"}, Types: []metadata.Type{{Kind: metadata.StringType, Length: 30}}}}}},
 		Forms:      metadata.ObjectForms{Object: &form.ID},
 	}
-	catalogRelative, err := project.MetadataPath(string(metadata.CatalogKind), catalog.ID)
+	relative, err := project.ObjectFormPath("catalogs", catalog.ID, form.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var source bytes.Buffer
+	if err := metadata.Encode(&source, form); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(root, filepath.FromSlash(relative))), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(relative)), source.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	catalogRelative, err := project.ObjectMetadataPath("catalogs", catalog.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

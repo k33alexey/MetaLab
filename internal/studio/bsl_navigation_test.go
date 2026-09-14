@@ -57,7 +57,7 @@ func TestNavigateBSLFindsMetadataDefinition(t *testing.T) {
 	root := createProject(t)
 	moduleID, catalogID := uuid.MustNew(), uuid.MustNew()
 	modulePath, _ := project.ModulePath(moduleID)
-	catalogPath, _ := project.MetadataPath("catalogs", catalogID)
+	catalogPath, _ := project.ObjectMetadataPath("catalogs", catalogID)
 	source := "Процедура Запустить()\n\tЭлемент = Справочники.Товары.СоздатьЭлемент();\nКонецПроцедуры\n"
 	writeBSLTestSource(t, root, modulePath, source)
 	writeBSLTestSource(t, root, catalogPath, "format: 1\nid: "+catalogID.String()+"\nname: Товары\ntitle: {ru: Товары}\ncode: {type: string, length: 9, auto: true, unique: true}\ndescription_length: 100\n")
@@ -327,7 +327,7 @@ func BenchmarkNavigateBSL(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	path := "modules/10000000-0000-4000-8000-000000000401.bsl"
+	path := "metadata/documents/10000000-0000-4000-8000-000000000201/10000000-0000-4000-8000-000000000401.bsl"
 	file, err := workspace.ReadSource(path)
 	if err != nil {
 		b.Fatal(err)

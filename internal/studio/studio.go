@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -797,7 +798,11 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 		node := Node{ID: "metadata/" + kind, Kind: "metadata-group", Title: metadataTitle(kind), Path: filepath.ToSlash(relative)}
 		path := filepath.Join(workspace.root, relative)
 		if _, err := os.Stat(path); err == nil {
-			node.Children, err = workspace.sourceFiles(path, filepath.ToSlash(relative), ".yaml", "metadata", language, languages)
+			if slices.Contains(project.ObjectFolderKinds(), kind) {
+				node.Children, err = workspace.objectFolderNodes(path, filepath.ToSlash(relative), "metadata", language, languages)
+			} else {
+				node.Children, err = workspace.sourceFiles(path, filepath.ToSlash(relative), ".yaml", "metadata", language, languages)
+			}
 			if err != nil {
 				return Node{}, err
 			}
@@ -891,6 +896,104 @@ func (workspace *Workspace) sourceFiles(directory, relative, extension, kind, la
 			}
 		}
 		nodes = append(nodes, node)
+	}
+	sort.Slice(nodes, func(left, right int) bool { return nodes[left].Path < nodes[right].Path })
+	return nodes, nil
+}
+
+// objectFolderNodes lists one metadata kind's per-object folders (catalogs,
+// documents, information/accumulation registers): each node represents one
+// object, titled from its own object.yaml, with its module(s) and managed
+// forms as children — everything physically grouped under that one folder.
+func (workspace *Workspace) objectFolderNodes(directory, relative, kind, language string, languages []project.Language) ([]Node, error) {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return nil, fmt.Errorf("read project directory %q: %w", relative, err)
+	}
+	nodes := make([]Node, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Name() == ".gitkeep" {
+			continue
+		}
+		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("unexpected source path %q", filepath.ToSlash(filepath.Join(relative, entry.Name())))
+		}
+		id, err := uuid.Parse(entry.Name())
+		if err != nil {
+			return nil, fmt.Errorf("metadata object %q must use a UUID directory name: %w", entry.Name(), err)
+		}
+		objectDirectory := filepath.Join(directory, entry.Name())
+		objectRelative := filepath.ToSlash(filepath.Join(relative, entry.Name()))
+		descriptionPath := filepath.ToSlash(filepath.Join(objectRelative, "object.yaml"))
+		info, err := os.Stat(filepath.Join(objectDirectory, "object.yaml"))
+		if err != nil {
+			return nil, fmt.Errorf("inspect metadata object %q: %w", descriptionPath, err)
+		}
+		title, err := yamlSourceTitle(filepath.Join(objectDirectory, "object.yaml"), descriptionPath, id.String(), info.Size(), language, languages)
+		if err != nil {
+			return nil, err
+		}
+		children, err := objectOwnedFileNodes(objectDirectory, objectRelative)
+		if err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, Node{
+			ID: id.String(), Kind: kind, Title: title, Path: descriptionPath, Children: children,
+			Properties: []Property{{Name: "UUID", Value: id.String()}, {Name: "Путь", Value: descriptionPath}, {Name: "Размер", Value: fmt.Sprintf("%d байт", info.Size())}},
+		})
+	}
+	sort.Slice(nodes, func(left, right int) bool { return nodes[left].Path < nodes[right].Path })
+	return nodes, nil
+}
+
+// objectOwnedFileNodes lists one object's own module(s) and managed forms,
+// physically stored alongside its object.yaml.
+func objectOwnedFileNodes(objectDirectory, objectRelative string) ([]Node, error) {
+	entries, err := os.ReadDir(objectDirectory)
+	if err != nil {
+		return nil, fmt.Errorf("read metadata object %q: %w", objectRelative, err)
+	}
+	var nodes []Node
+	for _, entry := range entries {
+		if entry.Name() == "object.yaml" {
+			continue
+		}
+		if entry.IsDir() {
+			if entry.Name() != "forms" || entry.Type()&os.ModeSymlink != 0 {
+				return nil, fmt.Errorf("unexpected source path %q", filepath.ToSlash(filepath.Join(objectRelative, entry.Name())))
+			}
+			formEntries, err := os.ReadDir(filepath.Join(objectDirectory, "forms"))
+			if err != nil {
+				return nil, fmt.Errorf("read metadata object forms %q: %w", objectRelative, err)
+			}
+			for _, formEntry := range formEntries {
+				if formEntry.IsDir() || formEntry.Type()&os.ModeSymlink != 0 || filepath.Ext(formEntry.Name()) != ".yaml" {
+					return nil, fmt.Errorf("unexpected form source %q", filepath.ToSlash(filepath.Join(objectRelative, "forms", formEntry.Name())))
+				}
+				id, err := uuid.Parse(strings.TrimSuffix(formEntry.Name(), ".yaml"))
+				if err != nil {
+					return nil, fmt.Errorf("form source %q must use a UUID name: %w", formEntry.Name(), err)
+				}
+				path := filepath.ToSlash(filepath.Join(objectRelative, "forms", formEntry.Name()))
+				nodes = append(nodes, Node{
+					ID: id.String(), Kind: "forms", Title: id.String(), Path: path,
+					Properties: []Property{{Name: "UUID", Value: id.String()}, {Name: "Путь", Value: path}},
+				})
+			}
+			continue
+		}
+		if entry.Type()&os.ModeSymlink != 0 || filepath.Ext(entry.Name()) != ".bsl" {
+			return nil, fmt.Errorf("unexpected source path %q", filepath.ToSlash(filepath.Join(objectRelative, entry.Name())))
+		}
+		id, err := uuid.Parse(strings.TrimSuffix(entry.Name(), ".bsl"))
+		if err != nil {
+			return nil, fmt.Errorf("source file %q must use a UUID name: %w", entry.Name(), err)
+		}
+		path := filepath.ToSlash(filepath.Join(objectRelative, entry.Name()))
+		nodes = append(nodes, Node{
+			ID: id.String(), Kind: "modules", Title: id.String(), Path: path,
+			Properties: []Property{{Name: "UUID", Value: id.String()}, {Name: "Путь", Value: path}},
+		})
 	}
 	sort.Slice(nodes, func(left, right int) bool { return nodes[left].Path < nodes[right].Path })
 	return nodes, nil

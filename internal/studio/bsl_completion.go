@@ -13,6 +13,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/bsl/spec"
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 	"github.com/k33alexey/MetaLab/internal/metadata"
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 	"go.yaml.in/yaml/v3"
 )
@@ -167,6 +168,7 @@ func (workspace *Workspace) buildBSLSymbolIndex() (*BSLSymbolIndex, error) {
 	}
 	metadataCatalog, _ := metadata.Load(workspace.root)
 	descriptors := workspace.moduleDescriptors(metadataCatalog)
+	var relativePaths []string
 	for _, directory := range []string{"modules", "tests"} {
 		entries, err := os.ReadDir(filepath.Join(workspace.root, directory))
 		if err != nil {
@@ -176,28 +178,39 @@ func (workspace *Workspace) buildBSLSymbolIndex() (*BSLSymbolIndex, error) {
 			if entry.Name() == ".gitkeep" {
 				continue
 			}
-			if len(result.modules) >= 10_000 {
-				result.truncated = true
-				break
+			relativePaths = append(relativePaths, filepath.ToSlash(filepath.Join(directory, entry.Name())))
+		}
+	}
+	objectPaths, err := project.ObjectFolderSourcePaths(workspace.root)
+	if err != nil {
+		return nil, err
+	}
+	for _, relative := range objectPaths {
+		if filepath.Ext(relative) == ".bsl" {
+			relativePaths = append(relativePaths, relative)
+		}
+	}
+	for _, relative := range relativePaths {
+		if len(result.modules) >= 10_000 {
+			result.truncated = true
+			break
+		}
+		file, err := workspace.readSource(relative)
+		if err != nil {
+			return nil, err
+		}
+		id := strings.TrimSuffix(filepath.Base(relative), ".bsl")
+		descriptor := descriptors[id]
+		if descriptor.name == "" {
+			descriptor.name = "Модуль" + strings.ReplaceAll(id, "-", "")
+			if strings.HasPrefix(relative, "tests/") {
+				descriptor.name = "Тест" + strings.ReplaceAll(id, "-", "")
 			}
-			relative := filepath.ToSlash(filepath.Join(directory, entry.Name()))
-			file, err := workspace.readSource(relative)
-			if err != nil {
-				return nil, err
-			}
-			id := strings.TrimSuffix(entry.Name(), ".bsl")
-			descriptor := descriptors[id]
-			if descriptor.name == "" {
-				descriptor.name = "Модуль" + strings.ReplaceAll(id, "-", "")
-				if directory == "tests" {
-					descriptor.name = "Тест" + strings.ReplaceAll(id, "-", "")
-				}
-			}
-			module := indexBSLModule(relative, descriptor, file.Content)
-			result.modules[relative] = module
-			if module.public {
-				result.public[strings.ToLower(module.name)] = module
-			}
+		}
+		module := indexBSLModule(relative, descriptor, file.Content)
+		result.modules[relative] = module
+		if module.public {
+			result.public[strings.ToLower(module.name)] = module
 		}
 	}
 	if metadataCatalog != nil {

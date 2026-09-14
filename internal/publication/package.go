@@ -191,7 +191,7 @@ func inspect(ctx context.Context, root string, state SourceState) (Manifest, []s
 		if err != nil {
 			return Manifest{}, nil, err
 		}
-		if strings.HasPrefix(relative, "forms/") {
+		if isManagedFormSourcePath(relative) {
 			file, openErr := os.Open(absolute)
 			if openErr != nil {
 				return Manifest{}, nil, openErr
@@ -296,6 +296,9 @@ func validateSourcePath(relative string, directory bool) error {
 		if !directory && len(parts) == 3 && parts[2] == ".gitkeep" && contains(project.MetadataKinds(), parts[1]) {
 			return nil
 		}
+		if contains(project.ObjectFolderKinds(), parts[1]) {
+			return validateObjectFolderSourcePath(parts, relative, directory)
+		}
 		if !directory && len(parts) == 3 {
 			id, err := uuid.Parse(strings.TrimSuffix(parts[2], ".yaml"))
 			expected, pathErr := project.MetadataPath(parts[1], id)
@@ -343,6 +346,88 @@ func contains(items []string, value string) bool {
 		}
 	}
 	return false
+}
+
+// validateObjectFolderSourcePath validates the shapes physically grouped
+// under one catalog/document/register's own folder: the object's
+// description, its module(s) directly inside it, and its managed forms
+// inside a forms/ subdirectory.
+func validateObjectFolderSourcePath(parts []string, relative string, directory bool) error {
+	if len(parts) < 3 {
+		return fmt.Errorf("unexpected publication source path %q", relative)
+	}
+	objectID, err := uuid.Parse(parts[2])
+	if err != nil {
+		return fmt.Errorf("unexpected publication source path %q", relative)
+	}
+	if directory && len(parts) == 3 {
+		return nil
+	}
+	if directory && len(parts) == 4 && parts[3] == "forms" {
+		return nil
+	}
+	if !directory && len(parts) == 4 && parts[3] == "object.yaml" {
+		if expected, err := project.ObjectMetadataPath(parts[1], objectID); err == nil && expected == relative {
+			return nil
+		}
+	}
+	if !directory {
+		if moduleID, ok := objectFolderModuleID(relative); ok {
+			if expected, err := project.ObjectModulePath(parts[1], objectID, moduleID); err == nil && expected == relative {
+				return nil
+			}
+		}
+		if formID, ok := objectFolderFormID(relative); ok {
+			if expected, err := project.ObjectFormPath(parts[1], objectID, formID); err == nil && expected == relative {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("unexpected publication source path %q", relative)
+}
+
+// objectFolderModuleID reports the module UUID if relative is one of an
+// object's own module files (metadata/<kind>/<id>/<module>.bsl).
+func objectFolderModuleID(relative string) (uuid.UUID, bool) {
+	parts := strings.Split(relative, "/")
+	if len(parts) != 4 || parts[0] != "metadata" || !contains(project.ObjectFolderKinds(), parts[1]) {
+		return uuid.UUID{}, false
+	}
+	if _, err := uuid.Parse(parts[2]); err != nil {
+		return uuid.UUID{}, false
+	}
+	id, err := uuid.Parse(strings.TrimSuffix(parts[3], ".bsl"))
+	if err != nil || parts[3] != id.String()+".bsl" {
+		return uuid.UUID{}, false
+	}
+	return id, true
+}
+
+// objectFolderFormID reports the form UUID if relative is one of an
+// object's own managed forms (metadata/<kind>/<id>/forms/<form>.yaml).
+func objectFolderFormID(relative string) (uuid.UUID, bool) {
+	parts := strings.Split(relative, "/")
+	if len(parts) != 5 || parts[0] != "metadata" || parts[3] != "forms" || !contains(project.ObjectFolderKinds(), parts[1]) {
+		return uuid.UUID{}, false
+	}
+	if _, err := uuid.Parse(parts[2]); err != nil {
+		return uuid.UUID{}, false
+	}
+	id, err := uuid.Parse(strings.TrimSuffix(parts[4], ".yaml"))
+	if err != nil || parts[4] != id.String()+".yaml" {
+		return uuid.UUID{}, false
+	}
+	return id, true
+}
+
+// isManagedFormSourcePath reports whether relative is any managed form
+// source: flat (forms/<id>.yaml) or nested under its owning object.
+func isManagedFormSourcePath(relative string) bool {
+	if strings.HasPrefix(relative, "forms/") {
+		return true
+	}
+	_, ok := objectFolderFormID(relative)
+	return ok
 }
 
 func inspectFile(absolute, relative string) (FileEntry, fs.FileInfo, error) {

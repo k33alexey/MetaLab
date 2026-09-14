@@ -19,7 +19,7 @@ func TestWorkspaceSnapshotBuildsCanonicalTree(t *testing.T) {
 
 	root := createProject(t)
 	catalogID, moduleID := uuid.MustNew(), uuid.MustNew()
-	metadataPath, err := project.MetadataPath("catalogs", catalogID)
+	metadataPath, err := project.ObjectMetadataPath("catalogs", catalogID)
 	if err != nil {
 		t.Fatal(err)
 	}

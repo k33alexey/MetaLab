@@ -24,7 +24,7 @@ func TestSalesAndWarehouseDemoProject(t *testing.T) {
 		if document.ObjectModule == nil {
 			t.Fatalf("document %s has no posting module", document.Name)
 		}
-		source, err := os.ReadFile(filepath.Join(root, "modules", document.ObjectModule.String()+".bsl"))
+		source, err := os.ReadFile(filepath.Join(root, "metadata", "documents", document.ID.String(), document.ObjectModule.String()+".bsl"))
 		if err != nil {
 			t.Fatal(err)
 		}

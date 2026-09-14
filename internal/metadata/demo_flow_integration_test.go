@@ -78,7 +78,7 @@ func TestSalesAndWarehouseVerticalFlowIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, definition := range catalog.Documents {
-		modulePath := filepath.Join(root, "modules", definition.ObjectModule.String()+".bsl")
+		modulePath := filepath.Join(root, "metadata", "documents", definition.ID.String(), definition.ObjectModule.String()+".bsl")
 		source, err := os.ReadFile(modulePath)
 		if err != nil {
 			t.Fatal(err)

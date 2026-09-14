@@ -136,12 +136,18 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) (metadata.Ru
 			}
 			formIDs[id] = true
 		}
+		if id, ok := objectFolderModuleID(entry.Path); ok {
+			moduleIDs[id] = true
+		}
+		if id, ok := objectFolderFormID(entry.Path); ok {
+			formIDs[id] = true
+		}
 	}
 	if projectManifest.ID.IsZero() {
 		return metadata.RuntimeSnapshot{}, fmt.Errorf("publication project manifest is invalid")
 	}
 	for index, entry := range manifest.Files {
-		if strings.HasPrefix(entry.Path, "forms/") {
+		if isManagedFormSourcePath(entry.Path) {
 			content, err := readMetadataEntry(archive.File[index+1], entry.Size)
 			if err != nil {
 				return metadata.RuntimeSnapshot{}, err
@@ -177,13 +183,13 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) (metadata.Ru
 			kind = metadata.EnumerationKind
 		case strings.HasPrefix(entry.Path, "metadata/defined-types/"):
 			kind = metadata.DefinedTypeKind
-		case strings.HasPrefix(entry.Path, "metadata/catalogs/"):
+		case strings.HasPrefix(entry.Path, "metadata/catalogs/") && strings.HasSuffix(entry.Path, "/object.yaml"):
 			kind = metadata.CatalogKind
-		case strings.HasPrefix(entry.Path, "metadata/documents/"):
+		case strings.HasPrefix(entry.Path, "metadata/documents/") && strings.HasSuffix(entry.Path, "/object.yaml"):
 			kind = metadata.DocumentKind
-		case strings.HasPrefix(entry.Path, "metadata/information-registers/"):
+		case strings.HasPrefix(entry.Path, "metadata/information-registers/") && strings.HasSuffix(entry.Path, "/object.yaml"):
 			kind = metadata.InformationRegisterKind
-		case strings.HasPrefix(entry.Path, "metadata/accumulation-registers/"):
+		case strings.HasPrefix(entry.Path, "metadata/accumulation-registers/") && strings.HasSuffix(entry.Path, "/object.yaml"):
 			kind = metadata.AccumulationRegisterKind
 		}
 		if kind == "" {
@@ -274,7 +280,11 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) (metadata.Ru
 			}
 			id, accumulationRegisters = value.ID, append(accumulationRegisters, value)
 		}
-		filenameID, err := uuid.Parse(strings.TrimSuffix(path.Base(entry.Path), ".yaml"))
+		expectedIDText := strings.TrimSuffix(path.Base(entry.Path), ".yaml")
+		if contains(project.ObjectFolderKinds(), string(kind)) {
+			expectedIDText = path.Base(path.Dir(entry.Path))
+		}
+		filenameID, err := uuid.Parse(expectedIDText)
 		if err != nil || filenameID != id {
 			return metadata.RuntimeSnapshot{}, fmt.Errorf("metadata UUID does not match %q", entry.Path)
 		}

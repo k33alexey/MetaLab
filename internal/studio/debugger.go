@@ -279,6 +279,42 @@ func (workspace *Workspace) compileDebugProgramLocked(currentPath, currentConten
 	descriptors := workspace.moduleDescriptors(catalog)
 	sources := make([]compiler.ModuleSource, 0, 32)
 	currentFound, currentModule, sourceBytes := false, "", 0
+	appendFile := func(relative string) error {
+		if len(sources) >= maxStudioDebugModules {
+			return fmt.Errorf("debugger supports at most %d BSL modules", maxStudioDebugModules)
+		}
+		content := currentContent
+		if relative != currentPath {
+			file, readErr := workspace.readSource(relative)
+			if readErr != nil {
+				return readErr
+			}
+			content = file.Content
+		} else {
+			currentFound = true
+		}
+		if sourceBytes > maxStudioDebugSource-len(content) {
+			return fmt.Errorf("debugger BSL source exceeds %d bytes", maxStudioDebugSource)
+		}
+		sourceBytes += len(content)
+		id := strings.TrimSuffix(filepath.Base(relative), ".bsl")
+		descriptor := descriptors[id]
+		if descriptor.name == "" {
+			descriptor.name = "Модуль" + strings.ReplaceAll(id, "-", "")
+			if strings.HasPrefix(relative, "tests/") {
+				descriptor.name = "Тест" + strings.ReplaceAll(id, "-", "")
+			}
+		}
+		if relative == currentPath {
+			currentModule = descriptor.name
+		}
+		sources = append(sources, compiler.ModuleSource{
+			Name: descriptor.name, Filename: relative, Source: content,
+			PredefinedVariables: append([]string(nil), descriptor.predefined...),
+			DefaultContext:      descriptor.defaultContext,
+		})
+		return nil
+	}
 	appendDirectory := func(directory string, onlyCurrent bool) error {
 		entries, err := os.ReadDir(filepath.Join(workspace.root, directory))
 		if err != nil {
@@ -292,44 +328,29 @@ func (workspace *Workspace) compileDebugProgramLocked(currentPath, currentConten
 			if onlyCurrent && relative != currentPath {
 				continue
 			}
-			if len(sources) >= maxStudioDebugModules {
-				return fmt.Errorf("debugger supports at most %d BSL modules", maxStudioDebugModules)
+			if err := appendFile(relative); err != nil {
+				return err
 			}
-			content := currentContent
-			if relative != currentPath {
-				file, readErr := workspace.readSource(relative)
-				if readErr != nil {
-					return readErr
-				}
-				content = file.Content
-			} else {
-				currentFound = true
-			}
-			if sourceBytes > maxStudioDebugSource-len(content) {
-				return fmt.Errorf("debugger BSL source exceeds %d bytes", maxStudioDebugSource)
-			}
-			sourceBytes += len(content)
-			id := strings.TrimSuffix(entry.Name(), ".bsl")
-			descriptor := descriptors[id]
-			if descriptor.name == "" {
-				descriptor.name = "Модуль" + strings.ReplaceAll(id, "-", "")
-				if directory == "tests" {
-					descriptor.name = "Тест" + strings.ReplaceAll(id, "-", "")
-				}
-			}
-			if relative == currentPath {
-				currentModule = descriptor.name
-			}
-			sources = append(sources, compiler.ModuleSource{
-				Name: descriptor.name, Filename: relative, Source: content,
-				PredefinedVariables: append([]string(nil), descriptor.predefined...),
-				DefaultContext:      descriptor.defaultContext,
-			})
 		}
 		return nil
 	}
 	if err := appendDirectory("modules", false); err != nil {
 		return nil, "", err
+	}
+	// Object, manager and record-set modules live inside their owning
+	// catalog/document/register folder; they always compile alongside
+	// common modules, just like modules/*.bsl does above.
+	objectPaths, err := project.ObjectFolderSourcePaths(workspace.root)
+	if err != nil {
+		return nil, "", err
+	}
+	for _, relative := range objectPaths {
+		if filepath.Ext(relative) != ".bsl" {
+			continue
+		}
+		if err := appendFile(relative); err != nil {
+			return nil, "", err
+		}
 	}
 	if strings.HasPrefix(currentPath, "tests/") {
 		if err := appendDirectory("tests", true); err != nil {

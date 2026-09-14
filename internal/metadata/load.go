@@ -136,10 +136,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadKind(root, CatalogKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, CatalogKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeCatalog(source, file, manifest)
 		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
 		}
 		if err == nil {
 			catalog.Catalogs = append(catalog.Catalogs, value)
@@ -148,10 +148,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadKind(root, DocumentKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, DocumentKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeDocument(source, file, manifest)
 		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
 		}
 		if err == nil {
 			catalog.Documents = append(catalog.Documents, value)
@@ -160,10 +160,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadKind(root, InformationRegisterKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, InformationRegisterKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeInformationRegister(source, file, manifest)
 		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
 		}
 		if err == nil {
 			catalog.InformationRegisters = append(catalog.InformationRegisters, value)
@@ -172,10 +172,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadKind(root, AccumulationRegisterKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, AccumulationRegisterKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeAccumulationRegister(source, file, manifest)
 		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
 		}
 		if err == nil {
 			catalog.AccumulationRegisters = append(catalog.AccumulationRegisters, value)
@@ -327,6 +327,61 @@ func loadKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) e
 		}
 		relative := filepath.ToSlash(filepath.Join("metadata", string(kind), entry.Name()))
 		file, err := os.Open(filepath.Join(directory, entry.Name()))
+		if err != nil {
+			return fmt.Errorf("open %s: %w", relative, err)
+		}
+		decodeErr := decode(relative, file, id)
+		closeErr := file.Close()
+		if decodeErr != nil {
+			return fmt.Errorf("load %s: %w", relative, decodeErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("close %s: %w", relative, closeErr)
+		}
+	}
+	return nil
+}
+
+// loadObjectKind scans metadata/<kind>/ for per-object folders (named by the
+// object's own UUID) and decodes the fixed-name object.yaml inside each one.
+// Unlike loadKind, entries are directories, not flat <uuid>.yaml files — this
+// is how catalogs, documents and registers group their own description with
+// their module(s) and managed forms, physically located inside that same
+// folder (see validateObjectFileSources).
+func loadObjectKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) error) error {
+	directory := filepath.Join(root, "metadata", string(kind))
+	info, err := os.Lstat(directory)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("inspect metadata %s: %w", kind, err)
+	}
+	if !info.IsDir() || info.Mode()&fs.ModeSymlink != 0 {
+		return fmt.Errorf("metadata path %q must be a directory without symbolic links", filepath.Join("metadata", string(kind)))
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return fmt.Errorf("read metadata %s: %w", kind, err)
+	}
+	count := 0
+	for _, entry := range entries {
+		if entry.Name() == ".gitkeep" {
+			continue
+		}
+		count++
+		if count > maxObjectsPerKind {
+			return fmt.Errorf("metadata %s exceeds %d objects", kind, maxObjectsPerKind)
+		}
+		if !entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("unexpected metadata source %q", filepath.Join("metadata", string(kind), entry.Name()))
+		}
+		id, err := uuid.Parse(entry.Name())
+		if err != nil {
+			return fmt.Errorf("metadata object %q must use a UUID directory name: %w", entry.Name(), err)
+		}
+		relative := filepath.ToSlash(filepath.Join("metadata", string(kind), entry.Name(), "object.yaml"))
+		file, err := os.Open(filepath.Join(directory, entry.Name(), "object.yaml"))
 		if err != nil {
 			return fmt.Errorf("open %s: %w", relative, err)
 		}
@@ -570,7 +625,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	for _, item := range catalog.CommonModules {
-		if err := validateObjectSources(root, "common module", item.Name, &item.Module, nil, ObjectForms{}); err != nil {
+		if err := validateCommonModuleSource(root, item.Name, item.Module); err != nil {
 			return err
 		}
 	}
@@ -605,7 +660,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("predefined catalog item %s.%s: %w", item.Name, predefined.Name, err)
 			}
 		}
-		if err := validateObjectSources(root, "catalog", item.Name, item.ObjectModule, item.ManagerModule, item.Forms); err != nil {
+		if err := validateObjectFileSources(root, CatalogKind, item.ID, "catalog", item.Name, item.ObjectModule, item.ManagerModule, item.Forms); err != nil {
 			return err
 		}
 	}
@@ -622,7 +677,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				}
 			}
 		}
-		if err := validateObjectSources(root, "document", item.Name, item.ObjectModule, item.ManagerModule, item.Forms); err != nil {
+		if err := validateObjectFileSources(root, DocumentKind, item.ID, "document", item.Name, item.ObjectModule, item.ManagerModule, item.Forms); err != nil {
 			return err
 		}
 	}
@@ -637,7 +692,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("information register %s references unknown recorder document %s", item.Name, recorder)
 			}
 		}
-		if err := validateObjectSources(root, "information register", item.Name, item.RecordSetModule, item.ManagerModule, item.Forms); err != nil {
+		if err := validateObjectFileSources(root, InformationRegisterKind, item.ID, "information register", item.Name, item.RecordSetModule, item.ManagerModule, item.Forms); err != nil {
 			return err
 		}
 	}
@@ -657,7 +712,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("accumulation register %s references unknown recorder document %s", item.Name, recorder)
 			}
 		}
-		if err := validateObjectSources(root, "accumulation register", item.Name, item.RecordSetModule, item.ManagerModule, item.Forms); err != nil {
+		if err := validateObjectFileSources(root, AccumulationRegisterKind, item.ID, "accumulation register", item.Name, item.RecordSetModule, item.ManagerModule, item.Forms); err != nil {
 			return err
 		}
 	}
@@ -700,27 +755,54 @@ func (catalog *Catalog) validateReferences(owner string, types []Type) error {
 	return nil
 }
 
-func validateObjectSources(root, kind, name string, objectModule, managerModule *uuid.UUID, forms ObjectForms) error {
+// validateCommonModuleSource checks that a common module's source file
+// exists at the shared top-level modules/ directory — common modules are
+// not owned by any single prikladnoy object, so they keep the flat layout.
+func validateCommonModuleSource(root, name string, module uuid.UUID) error {
 	if root == "" {
 		return nil
 	}
+	path := filepath.Join(root, "modules", module.String()+".bsl")
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&fs.ModeSymlink != 0 {
+		return fmt.Errorf("common module %s module %s is missing or unsafe", name, module)
+	}
+	return nil
+}
+
+// validateObjectFileSources checks that a catalog/document/register's own
+// module(s) and managed forms exist inside its per-object folder
+// (metadata/<kind>/<id>/), physically grouped with its own description.
+func validateObjectFileSources(root string, directoryKind Kind, id uuid.UUID, kind, name string, objectModule, managerModule *uuid.UUID, forms ObjectForms) error {
+	if root == "" {
+		return nil
+	}
+	directory := filepath.Join(root, "metadata", string(directoryKind), id.String())
 	type source struct {
-		role, directory, extension string
-		id                         *uuid.UUID
+		role, path string
+		id         *uuid.UUID
+	}
+	build := func(role string, sourceID *uuid.UUID, isForm bool) source {
+		if sourceID == nil {
+			return source{role: role}
+		}
+		if isForm {
+			return source{role: role, id: sourceID, path: filepath.Join(directory, "forms", sourceID.String()+".yaml")}
+		}
+		return source{role: role, id: sourceID, path: filepath.Join(directory, sourceID.String()+".bsl")}
 	}
 	sources := []source{
-		{role: "object module", directory: "modules", extension: ".bsl", id: objectModule},
-		{role: "manager module", directory: "modules", extension: ".bsl", id: managerModule},
-		{role: "object form", directory: "forms", extension: ".yaml", id: forms.Object},
-		{role: "list form", directory: "forms", extension: ".yaml", id: forms.List},
-		{role: "choice form", directory: "forms", extension: ".yaml", id: forms.Choice},
+		build("object module", objectModule, false),
+		build("manager module", managerModule, false),
+		build("object form", forms.Object, true),
+		build("list form", forms.List, true),
+		build("choice form", forms.Choice, true),
 	}
 	for _, source := range sources {
 		if source.id == nil {
 			continue
 		}
-		path := filepath.Join(root, source.directory, source.id.String()+source.extension)
-		info, err := os.Lstat(path)
+		info, err := os.Lstat(source.path)
 		if err != nil || !info.Mode().IsRegular() || info.Mode()&fs.ModeSymlink != 0 {
 			return fmt.Errorf("%s %s %s %s is missing or unsafe", kind, name, source.role, source.id)
 		}

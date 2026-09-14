@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -28,7 +29,12 @@ var (
 	ErrProjectIdentityChanged = errors.New("ML Project identity cannot be changed")
 
 	rootDirectories = []string{"metadata", "modules", "forms", "reports", "tests", "assets"}
-	metadataKinds   = []string{
+	// objectFolderKinds lists metadata kinds whose objects group their own
+	// description, module(s) and managed forms under one folder named by
+	// the object's stable UUID, instead of scattering them across the flat
+	// modules/ and forms/ roots.
+	objectFolderKinds = []string{"catalogs", "documents", "information-registers", "accumulation-registers"}
+	metadataKinds     = []string{
 		"subsystems",
 		"common-modules",
 		"session-parameters",
@@ -66,6 +72,10 @@ func RootDirectories() []string { return slices.Clone(rootDirectories) }
 
 // MetadataKinds returns the supported physical metadata directory names.
 func MetadataKinds() []string { return slices.Clone(metadataKinds) }
+
+// ObjectFolderKinds returns the metadata kinds whose objects use a
+// per-object folder layout instead of a single flat YAML file.
+func ObjectFolderKinds() []string { return slices.Clone(objectFolderKinds) }
 
 // Initialize atomically creates a new canonical ML Project at a previously unused path.
 func Initialize(root string, manifest Project) error {
@@ -235,6 +245,107 @@ func sourcePath(directory string, id uuid.UUID, extension string) (string, error
 		return "", fmt.Errorf("source UUID must not be zero")
 	}
 	return path.Join(directory, id.String()+extension), nil
+}
+
+// ObjectDirectory returns the per-object folder for one of ObjectFolderKinds,
+// named by the object's own stable UUID.
+func ObjectDirectory(kind string, id uuid.UUID) (string, error) {
+	if !slices.Contains(objectFolderKinds, kind) {
+		return "", fmt.Errorf("kind %q does not use a per-object folder", kind)
+	}
+	if id.IsZero() {
+		return "", fmt.Errorf("source UUID must not be zero")
+	}
+	return path.Join("metadata", kind, id.String()), nil
+}
+
+// ObjectMetadataPath returns the fixed-name description file inside an
+// object's own folder.
+func ObjectMetadataPath(kind string, id uuid.UUID) (string, error) {
+	directory, err := ObjectDirectory(kind, id)
+	if err != nil {
+		return "", err
+	}
+	return path.Join(directory, "object.yaml"), nil
+}
+
+// ObjectModulePath returns one of an object's own BSL modules (object,
+// manager or record-set module), named by its own stable module UUID.
+func ObjectModulePath(kind string, objectID, moduleID uuid.UUID) (string, error) {
+	directory, err := ObjectDirectory(kind, objectID)
+	if err != nil {
+		return "", err
+	}
+	if moduleID.IsZero() {
+		return "", fmt.Errorf("source UUID must not be zero")
+	}
+	return path.Join(directory, moduleID.String()+".bsl"), nil
+}
+
+// ObjectFormPath returns one of an object's own managed forms (object, list
+// or choice form), named by its own stable form UUID.
+func ObjectFormPath(kind string, objectID, formID uuid.UUID) (string, error) {
+	directory, err := ObjectDirectory(kind, objectID)
+	if err != nil {
+		return "", err
+	}
+	if formID.IsZero() {
+		return "", fmt.Errorf("source UUID must not be zero")
+	}
+	return path.Join(directory, "forms", formID.String()+".yaml"), nil
+}
+
+// ObjectFolderSourcePaths walks every per-object folder (ObjectFolderKinds)
+// and returns every real file it physically holds: the object's own
+// description, its module(s) and its managed forms — sorted canonical
+// relative paths. Missing kind directories are treated as empty, matching
+// loadKind's tolerance for an ML Project that has not used a kind yet.
+func ObjectFolderSourcePaths(root string) ([]string, error) {
+	var paths []string
+	for _, kind := range objectFolderKinds {
+		directory := filepath.Join(root, "metadata", kind)
+		objectEntries, err := os.ReadDir(directory)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("read metadata %s: %w", kind, err)
+		}
+		for _, objectEntry := range objectEntries {
+			if !objectEntry.IsDir() || objectEntry.Type()&fs.ModeSymlink != 0 {
+				continue
+			}
+			objectDirectory := filepath.Join(directory, objectEntry.Name())
+			fileEntries, err := os.ReadDir(objectDirectory)
+			if err != nil {
+				return nil, fmt.Errorf("read metadata %s object %s: %w", kind, objectEntry.Name(), err)
+			}
+			for _, fileEntry := range fileEntries {
+				if fileEntry.Type()&fs.ModeSymlink != 0 {
+					continue
+				}
+				if fileEntry.IsDir() {
+					if fileEntry.Name() != "forms" {
+						continue
+					}
+					formEntries, err := os.ReadDir(filepath.Join(objectDirectory, "forms"))
+					if err != nil {
+						return nil, fmt.Errorf("read metadata %s object %s forms: %w", kind, objectEntry.Name(), err)
+					}
+					for _, formEntry := range formEntries {
+						if formEntry.IsDir() || formEntry.Type()&fs.ModeSymlink != 0 {
+							continue
+						}
+						paths = append(paths, path.Join("metadata", kind, objectEntry.Name(), "forms", formEntry.Name()))
+					}
+					continue
+				}
+				paths = append(paths, path.Join("metadata", kind, objectEntry.Name(), fileEntry.Name()))
+			}
+		}
+	}
+	sort.Strings(paths)
+	return paths, nil
 }
 
 func cleanRoot(root string) (string, error) {

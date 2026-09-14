@@ -255,7 +255,7 @@ func TestSaveValidatesAndCanonicalizesCatalogMetadata(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
 	id, attributeID := uuid.MustNew(), uuid.MustNew()
-	relative, err := project.MetadataPath("catalogs", id)
+	relative, err := project.ObjectMetadataPath("catalogs", id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +291,7 @@ func TestSaveValidatesAndCanonicalizesDocumentMetadata(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
 	id, attributeID := uuid.MustNew(), uuid.MustNew()
-	relative, err := project.MetadataPath("documents", id)
+	relative, err := project.ObjectMetadataPath("documents", id)
 	if err != nil {
 		t.Fatal(err)
 	}
