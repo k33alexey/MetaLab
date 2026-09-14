@@ -130,7 +130,7 @@ func TestApplicationRoleBypassAttemptsIntegration(t *testing.T) {
 		Roles:                 []RoleDefinition{fullRole, noPostRole, noLinesRole, noAccumulationRole},
 		documentByName:        map[string]int{"поступление": 0}, documentByID: map[uuid.UUID]int{documentID: 0},
 		accumulationRegisterByName: map[string]int{"остатки": 0}, accumulationRegisterByID: map[uuid.UUID]int{accumulationID: 0},
-		informationRegisterByName:  map[string]int{"последняяцена": 0}, informationRegisterByID: map[uuid.UUID]int{informationID: 0},
+		informationRegisterByName: map[string]int{"последняяцена": 0}, informationRegisterByID: map[uuid.UUID]int{informationID: 0},
 		roleByName: map[string]int{"полные": 0, "безпроведения": 1, "безстрок": 2, "безрегистров": 3},
 		roleByID:   map[uuid.UUID]int{fullRoleID: 0, noPostRoleID: 1, noLinesRoleID: 2, noAccumulationRoleID: 3},
 	}

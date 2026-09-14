@@ -141,7 +141,7 @@ func TestDocumentEventSubscriptionHandlerFiresOnlyForItsOwnEventAndCancels(t *te
 		definition: definition, subscription: subscription, module: "ОбщегоНазначения",
 	}
 	record := &DocumentRecord{
-		Reference: DocumentReference{DocumentID: definition.ID, ObjectID: uuid.MustNew()},
+		Reference:  DocumentReference{DocumentID: definition.ID, ObjectID: uuid.MustNew()},
 		Attributes: map[uuid.UUID]Value{}, TableParts: map[uuid.UUID][]DocumentRow{},
 	}
 	cancelled, err := handler.HandleDocumentEvent(context.Background(), DocumentEventAfter, record)

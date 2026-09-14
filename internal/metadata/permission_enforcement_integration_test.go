@@ -67,9 +67,9 @@ func TestApplicationRoleEnforcementIntegration(t *testing.T) {
 		}},
 	}
 	catalog := &Catalog{
-		Project:  project.Project{ID: projectID},
-		Catalogs: []CatalogDefinition{catalogDefinition},
-		Roles:    []RoleDefinition{readerRole, editorRole},
+		Project:       project.Project{ID: projectID},
+		Catalogs:      []CatalogDefinition{catalogDefinition},
+		Roles:         []RoleDefinition{readerRole, editorRole},
 		catalogByName: map[string]int{"товары": 0}, catalogByID: map[uuid.UUID]int{catalogID: 0},
 		roleByName: map[string]int{"читательбезцены": 0, "редактор": 1}, roleByID: map[uuid.UUID]int{readerRoleID: 0, editorRoleID: 1},
 	}

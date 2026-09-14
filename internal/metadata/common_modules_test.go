@@ -30,11 +30,11 @@ func TestDecodeCommonModuleStrictAndBounded(t *testing.T) {
 		t.Fatalf("decode common module = %+v, %v", decoded, err)
 	}
 	tests := map[string]func(*CommonModuleDefinition){
-		"format":               func(m *CommonModuleDefinition) { m.Format++ },
-		"zero identity":        func(m *CommonModuleDefinition) { m.ID = uuid.UUID{} },
-		"name":                 func(m *CommonModuleDefinition) { m.Name = "Invalid Name" },
-		"language":             func(m *CommonModuleDefinition) { m.Title = LocalizedText{"de": "Allgemein"} },
-		"zero module":          func(m *CommonModuleDefinition) { m.Module = uuid.UUID{} },
+		"format":        func(m *CommonModuleDefinition) { m.Format++ },
+		"zero identity": func(m *CommonModuleDefinition) { m.ID = uuid.UUID{} },
+		"name":          func(m *CommonModuleDefinition) { m.Name = "Invalid Name" },
+		"language":      func(m *CommonModuleDefinition) { m.Title = LocalizedText{"de": "Allgemein"} },
+		"zero module":   func(m *CommonModuleDefinition) { m.Module = uuid.UUID{} },
 		"neither client nor server": func(m *CommonModuleDefinition) {
 			m.Server, m.Client = false, false
 		},

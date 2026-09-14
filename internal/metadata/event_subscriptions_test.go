@@ -38,8 +38,8 @@ func TestDecodeEventSubscriptionStrictAndBounded(t *testing.T) {
 		"duplicate object": func(s *EventSubscriptionDefinition) {
 			s.Objects = append(s.Objects, s.Objects[0])
 		},
-		"unknown event": func(s *EventSubscriptionDefinition) { s.Event = "on-open" },
-		"zero module":   func(s *EventSubscriptionDefinition) { s.Module = uuid.UUID{} },
+		"unknown event":     func(s *EventSubscriptionDefinition) { s.Event = "on-open" },
+		"zero module":       func(s *EventSubscriptionDefinition) { s.Module = uuid.UUID{} },
 		"invalid procedure": func(s *EventSubscriptionDefinition) { s.Procedure = "Перед Записью" },
 	}
 	for name, mutate := range tests {
