@@ -376,8 +376,18 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 		switch metadata.Kind(parts[1]) {
 		case metadata.RoleKind:
 			value, err = metadata.DecodeRole(relative, bytes.NewReader(content), manifest)
+		case metadata.SubsystemKind:
+			value, err = metadata.DecodeSubsystem(relative, bytes.NewReader(content), manifest)
 		case metadata.ConstantKind:
 			value, err = metadata.DecodeConstant(relative, bytes.NewReader(content), manifest)
+		case metadata.SessionParameterKind:
+			value, err = metadata.DecodeSessionParameter(relative, bytes.NewReader(content), manifest)
+		case metadata.CommonAttributeKind:
+			value, err = metadata.DecodeCommonAttribute(relative, bytes.NewReader(content), manifest)
+		case metadata.CommonModuleKind:
+			value, err = metadata.DecodeCommonModule(relative, bytes.NewReader(content), manifest)
+		case metadata.EventSubscriptionKind:
+			value, err = metadata.DecodeEventSubscription(relative, bytes.NewReader(content), manifest)
 		case metadata.EnumerationKind:
 			value, err = metadata.DecodeEnumeration(relative, bytes.NewReader(content), manifest)
 		case metadata.DefinedTypeKind:
@@ -400,7 +410,17 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 			switch item := value.(type) {
 			case metadata.RoleDefinition:
 				metadataID = item.ID
+			case metadata.SubsystemDefinition:
+				metadataID = item.ID
 			case metadata.Constant:
+				metadataID = item.ID
+			case metadata.SessionParameter:
+				metadataID = item.ID
+			case metadata.CommonAttributeDefinition:
+				metadataID = item.ID
+			case metadata.CommonModuleDefinition:
+				metadataID = item.ID
+			case metadata.EventSubscriptionDefinition:
 				metadataID = item.ID
 			case metadata.Enumeration:
 				metadataID = item.ID

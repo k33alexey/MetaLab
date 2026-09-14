@@ -9,9 +9,9 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
 	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
+	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/uuid"
-	"go.yaml.in/yaml/v3"
 )
 
 const (
@@ -20,8 +20,9 @@ const (
 )
 
 type moduleDescriptor struct {
-	name       string
-	predefined []string
+	name           string
+	predefined     []string
+	defaultContext syntax.ExecutionContext
 }
 
 // CompileProject builds one test program from application and test modules.
@@ -30,7 +31,7 @@ func CompileProject(root string) (*bytecode.Program, error) {
 	if err != nil {
 		return nil, err
 	}
-	descriptors := projectModuleDescriptors(root, catalog)
+	descriptors := projectModuleDescriptors(catalog)
 	sources := make([]compiler.ModuleSource, 0, 32)
 	sourceBytes := 0
 	for _, directory := range []string{"modules", "tests"} {
@@ -65,6 +66,7 @@ func CompileProject(root string) (*bytecode.Program, error) {
 			sources = append(sources, compiler.ModuleSource{
 				Name: descriptor.name, Filename: relative, Source: string(content),
 				PredefinedVariables: append([]string(nil), descriptor.predefined...),
+				DefaultContext:      descriptor.defaultContext,
 			})
 		}
 	}
@@ -75,7 +77,7 @@ func CompileProject(root string) (*bytecode.Program, error) {
 	return program, nil
 }
 
-func projectModuleDescriptors(root string, catalog *metadata.Catalog) map[string]moduleDescriptor {
+func projectModuleDescriptors(catalog *metadata.Catalog) map[string]moduleDescriptor {
 	result := make(map[string]moduleDescriptor)
 	add := func(id *uuid.UUID, name string, predefined ...string) {
 		if id != nil {
@@ -98,25 +100,8 @@ func projectModuleDescriptors(root string, catalog *metadata.Catalog) map[string
 		add(item.RecordSetModule, "МодульНабораЗаписейРегистраНакопления."+item.Name, "ЭтотОбъект", "ThisObject")
 		add(item.ManagerModule, "МодульМенеджераРегистраНакопления."+item.Name)
 	}
-	entries, err := os.ReadDir(filepath.Join(root, "metadata", "common-modules"))
-	if err != nil {
-		return result
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || filepath.Ext(entry.Name()) != ".yaml" {
-			continue
-		}
-		data, err := readBoundedFile(filepath.Join(root, "metadata", "common-modules", entry.Name()), 4<<20)
-		if err != nil {
-			continue
-		}
-		var value struct {
-			Name   string    `yaml:"name"`
-			Module uuid.UUID `yaml:"module"`
-		}
-		if yaml.Unmarshal(data, &value) == nil && value.Name != "" && !value.Module.IsZero() {
-			result[value.Module.String()] = moduleDescriptor{name: value.Name}
-		}
+	for _, item := range catalog.CommonModules {
+		result[item.Module.String()] = moduleDescriptor{name: item.Name, defaultContext: item.DefaultContext()}
 	}
 	return result
 }

@@ -14,7 +14,12 @@ type RuntimeSnapshot struct {
 	Format                int                              `json:"format"`
 	Project               project.Project                  `json:"project"`
 	Roles                 []RoleDefinition                 `json:"roles,omitempty"`
+	Subsystems            []SubsystemDefinition            `json:"subsystems,omitempty"`
 	Constants             []Constant                       `json:"constants,omitempty"`
+	SessionParameters     []SessionParameter               `json:"sessionParameters,omitempty"`
+	CommonAttributes      []CommonAttributeDefinition      `json:"commonAttributes,omitempty"`
+	CommonModules         []CommonModuleDefinition         `json:"commonModules,omitempty"`
+	EventSubscriptions    []EventSubscriptionDefinition    `json:"eventSubscriptions,omitempty"`
 	Enumerations          []Enumeration                    `json:"enumerations,omitempty"`
 	DefinedTypes          []DefinedTypeObject              `json:"definedTypes,omitempty"`
 	Catalogs              []CatalogDefinition              `json:"catalogs,omitempty"`
@@ -29,17 +34,18 @@ func NewRuntimeSnapshot(catalog *Catalog, forms []ManagedForm) (RuntimeSnapshot,
 	if catalog == nil {
 		return RuntimeSnapshot{}, fmt.Errorf("runtime metadata catalog is required")
 	}
-	validated, err := NewCatalogSnapshotWithRoles(
+	validated, err := NewCatalogSnapshotWithEventSubscriptions(
 		catalog.Project, catalog.Constants, catalog.Enumerations, catalog.DefinedTypes,
-		catalog.Catalogs, catalog.Documents, catalog.InformationRegisters, catalog.AccumulationRegisters, catalog.Roles,
+		catalog.Catalogs, catalog.Documents, catalog.InformationRegisters, catalog.AccumulationRegisters, catalog.Roles, catalog.Subsystems, catalog.SessionParameters, catalog.CommonAttributes, catalog.CommonModules, catalog.EventSubscriptions,
 	)
 	if err != nil {
 		return RuntimeSnapshot{}, err
 	}
 	result := RuntimeSnapshot{
 		Format: CurrentFormat, Project: validated.Project,
-		Roles:     validated.Roles,
-		Constants: validated.Constants, Enumerations: validated.Enumerations, DefinedTypes: validated.DefinedTypes,
+		Roles:      validated.Roles,
+		Subsystems: validated.Subsystems,
+		Constants:  validated.Constants, SessionParameters: validated.SessionParameters, CommonAttributes: validated.CommonAttributes, CommonModules: validated.CommonModules, EventSubscriptions: validated.EventSubscriptions, Enumerations: validated.Enumerations, DefinedTypes: validated.DefinedTypes,
 		Catalogs: validated.Catalogs, Documents: validated.Documents,
 		InformationRegisters: validated.InformationRegisters, AccumulationRegisters: validated.AccumulationRegisters,
 		Forms: make([]ManagedForm, len(forms)),
@@ -58,8 +64,23 @@ func NewRuntimeSnapshot(catalog *Catalog, forms []ManagedForm) (RuntimeSnapshot,
 	if err := result.validateRoleCommands(); err != nil {
 		return RuntimeSnapshot{}, err
 	}
+	if len(result.Subsystems) == 0 {
+		result.Subsystems = nil
+	}
 	if len(result.Constants) == 0 {
 		result.Constants = nil
+	}
+	if len(result.SessionParameters) == 0 {
+		result.SessionParameters = nil
+	}
+	if len(result.CommonAttributes) == 0 {
+		result.CommonAttributes = nil
+	}
+	if len(result.CommonModules) == 0 {
+		result.CommonModules = nil
+	}
+	if len(result.EventSubscriptions) == 0 {
+		result.EventSubscriptions = nil
 	}
 	if len(result.Enumerations) == 0 {
 		result.Enumerations = nil
@@ -91,9 +112,9 @@ func (snapshot RuntimeSnapshot) Catalog() (*Catalog, error) {
 	if snapshot.Format != CurrentFormat {
 		return nil, fmt.Errorf("unsupported runtime metadata format %d", snapshot.Format)
 	}
-	catalog, err := NewCatalogSnapshotWithRoles(
+	catalog, err := NewCatalogSnapshotWithEventSubscriptions(
 		snapshot.Project, snapshot.Constants, snapshot.Enumerations, snapshot.DefinedTypes,
-		snapshot.Catalogs, snapshot.Documents, snapshot.InformationRegisters, snapshot.AccumulationRegisters, snapshot.Roles,
+		snapshot.Catalogs, snapshot.Documents, snapshot.InformationRegisters, snapshot.AccumulationRegisters, snapshot.Roles, snapshot.Subsystems, snapshot.SessionParameters, snapshot.CommonAttributes, snapshot.CommonModules, snapshot.EventSubscriptions,
 	)
 	if err != nil {
 		return nil, err

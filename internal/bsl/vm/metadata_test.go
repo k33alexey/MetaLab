@@ -67,6 +67,55 @@ EndFunction`)
 	}
 }
 
+func TestSessionParameterAssignmentAndReadDispatch(t *testing.T) {
+	t.Parallel()
+	sources := []string{
+		`&НаСервере
+Функция Проверить()
+ПараметрыСеанса.ТекущийПользователь = "Иванов";
+Возврат ПараметрыСеанса.ТекущийПользователь;
+КонецФункции`,
+		`&AtServer
+Function Run()
+SessionParameters.CurrentUser = "Ivanov";
+Return SessionParameters.CurrentUser;
+EndFunction`,
+	}
+	expected := []string{"Иванов", "Ivanov"}
+	for index, source := range sources {
+		program, diagnostics := compiler.CompileSource("session-parameter.bsl", source)
+		if len(diagnostics) != 0 {
+			t.Fatalf("source %d diagnostics = %v", index, diagnostics)
+		}
+		machine, err := New(program)
+		if err != nil {
+			t.Fatal(err)
+		}
+		runtime := &metadataRuntimeStub{}
+		name := "Проверить"
+		if index == 1 {
+			name = "Run"
+		}
+		result, err := machine.NewContextWithMetadata(runtime).Call(name)
+		if err != nil || result.String() != expected[index] || runtime.sessionParameter.String() != expected[index] {
+			t.Fatalf("source %d result=%v stored=%v error=%v", index, result, runtime.sessionParameter, err)
+		}
+	}
+}
+
+func TestSessionParameterAssignmentRequiresServerContext(t *testing.T) {
+	t.Parallel()
+	contexts := []string{"", "&AtClient\n", "&AtClientAtServer\n"}
+	for _, directive := range contexts {
+		_, diagnostics := compiler.CompileSource("session-parameter.bsl", directive+`Procedure Run()
+SessionParameters.CurrentUser = "Ivanov";
+EndProcedure`)
+		if len(diagnostics) != 1 || diagnostics[0].Code != "BSL3042" {
+			t.Fatalf("directive %q diagnostics = %v", directive, diagnostics)
+		}
+	}
+}
+
 func TestCompilerRejectsMetadataOutsideServerOnlyRoutine(t *testing.T) {
 	t.Parallel()
 	contexts := []string{"", "&AtClient\n", "&AtClientAtServer\n"}
@@ -242,10 +291,22 @@ func TestAccumulationRegisterManagerDispatch(t *testing.T) {
 	}
 }
 
-type metadataRuntimeStub struct{ value bytecode.Value }
+type metadataRuntimeStub struct {
+	value            bytecode.Value
+	sessionParameter bytecode.Value
+}
 
 func (runtime *metadataRuntimeStub) GetConstant(_ context.Context, _ string) (bytecode.Value, error) {
 	return runtime.value, nil
+}
+
+func (runtime *metadataRuntimeStub) GetSessionParameter(_ context.Context, _ string) (bytecode.Value, error) {
+	return runtime.sessionParameter, nil
+}
+
+func (runtime *metadataRuntimeStub) SetSessionParameter(_ context.Context, _ string, value bytecode.Value) error {
+	runtime.sessionParameter = value
+	return nil
 }
 
 type catalogRuntimeStub struct {

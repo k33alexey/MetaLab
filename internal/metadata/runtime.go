@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,6 +28,8 @@ type Runtime struct {
 	informationRegisterEvents      map[uuid.UUID]InformationRegisterEventHandler
 	accumulationRegisterEvents     map[uuid.UUID]AccumulationRegisterEventHandler
 	dataLockWait                   atomic.Int64
+	sessionParametersMu            sync.RWMutex
+	sessionParameters              map[string]bytecode.Value
 }
 
 func NewRuntime(repository *ConstantRepository, catalog *Catalog, actor *uuid.UUID) (*Runtime, error) {
@@ -48,6 +51,7 @@ func NewRuntime(repository *ConstantRepository, catalog *Catalog, actor *uuid.UU
 		events: make(map[uuid.UUID]CatalogEventHandler), documentEvents: make(map[uuid.UUID]DocumentEventHandler),
 		informationRegisterEvents:  make(map[uuid.UUID]InformationRegisterEventHandler),
 		accumulationRegisterEvents: make(map[uuid.UUID]AccumulationRegisterEventHandler),
+		sessionParameters:          make(map[string]bytecode.Value),
 	}
 	if _, err := runtime.databasePool(); err != nil {
 		return nil, err
@@ -84,6 +88,7 @@ func NewRuntimeWithAllRegisters(constants *ConstantRepository, catalogs *Catalog
 		events: make(map[uuid.UUID]CatalogEventHandler), documentEvents: make(map[uuid.UUID]DocumentEventHandler),
 		informationRegisterEvents:  make(map[uuid.UUID]InformationRegisterEventHandler),
 		accumulationRegisterEvents: make(map[uuid.UUID]AccumulationRegisterEventHandler),
+		sessionParameters:          make(map[string]bytecode.Value),
 	}
 	if actor != nil {
 		if actor.IsZero() {
@@ -218,6 +223,87 @@ func (runtime *Runtime) SetConstant(ctx context.Context, name string, value byte
 	}
 	_, err = runtime.repository.Set(ctx, name, converted, runtime.actor)
 	return err
+}
+
+// GetSessionParameter reads a session parameter from server-process memory.
+// Session parameters are never persisted to PostgreSQL: an unset parameter
+// resolves to its declared default for the lifetime of this Runtime.
+func (runtime *Runtime) GetSessionParameter(_ context.Context, name string) (bytecode.Value, error) {
+	parameter, ok := runtime.catalog.SessionParameter(name)
+	if !ok {
+		return bytecode.Undefined(), fmt.Errorf("unknown session parameter %q", name)
+	}
+	runtime.sessionParametersMu.RLock()
+	stored, set := runtime.sessionParameters[strings.ToLower(name)]
+	runtime.sessionParametersMu.RUnlock()
+	if set {
+		return stored, nil
+	}
+	if parameter.Default == nil {
+		return bytecode.Undefined(), nil
+	}
+	return runtime.applicationValueToBSL(parameter.Types, *parameter.Default)
+}
+
+// SetSessionParameter stores a session parameter in server-process memory
+// for the lifetime of this Runtime.
+func (runtime *Runtime) SetSessionParameter(_ context.Context, name string, value bytecode.Value) error {
+	parameter, ok := runtime.catalog.SessionParameter(name)
+	if !ok {
+		return fmt.Errorf("unknown session parameter %q", name)
+	}
+	converted, err := runtime.valueFromBSLForSessionParameter(parameter, value)
+	if err != nil {
+		return err
+	}
+	normalized, err := valueToBSL(converted)
+	if err != nil {
+		return err
+	}
+	runtime.sessionParametersMu.Lock()
+	runtime.sessionParameters[strings.ToLower(name)] = normalized
+	runtime.sessionParametersMu.Unlock()
+	return nil
+}
+
+func (runtime *Runtime) valueFromBSLForSessionParameter(parameter SessionParameter, value bytecode.Value) (Value, error) {
+	if _, ok := value.AsRuntimeObject(); ok {
+		return runtime.applicationValueFromBSL(parameter.Types, value, "session parameter "+parameter.Name)
+	}
+	switch value.Kind() {
+	case bytecode.StringKind:
+		text, _ := value.AsString()
+		types, _ := runtime.catalog.expandTypes(parameter.Types, nil)
+		for _, item := range types {
+			if item.Kind == EnumerationType {
+				if normalized, valid, _ := runtime.catalog.normalizeAs(Value{Kind: EnumerationType, Data: text}, item); valid {
+					return normalized, nil
+				}
+			}
+		}
+		for _, item := range types {
+			if item.Kind == UUIDType {
+				if normalized, valid, _ := runtime.catalog.normalizeAs(Value{Kind: UUIDType, Data: text}, item); valid {
+					return normalized, nil
+				}
+			}
+		}
+		return runtime.catalog.NormalizeSessionParameterValue(parameter, Value{Kind: StringType, Data: text})
+	case bytecode.NumberKind:
+		text, _ := value.NumberText()
+		return runtime.catalog.NormalizeSessionParameterValue(parameter, Value{Kind: NumberType, Data: text})
+	case bytecode.BooleanKind:
+		boolean, _ := value.AsBoolean()
+		if boolean {
+			return runtime.catalog.NormalizeSessionParameterValue(parameter, Value{Kind: BooleanType, Data: "true"})
+		}
+		return runtime.catalog.NormalizeSessionParameterValue(parameter, Value{Kind: BooleanType, Data: "false"})
+	case bytecode.DateKind:
+		date, _ := value.AsDate()
+		return runtime.catalog.NormalizeSessionParameterValue(parameter, Value{Kind: DateType, Data: date.Format("2006-01-02T15:04:05.999999999Z07:00")})
+	default:
+		return Value{}, fmt.Errorf("session parameter %s cannot store BSL value kind %s", parameter.Name, value.Kind())
+	}
 }
 
 func (runtime *Runtime) GetEnumerationValue(_ context.Context, enumeration, value string) (bytecode.Value, error) {

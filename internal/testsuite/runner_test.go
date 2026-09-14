@@ -19,6 +19,10 @@ func (*runtimeStub) GetConstant(context.Context, string) (bytecode.Value, error)
 	return bytecode.Undefined(), nil
 }
 func (*runtimeStub) SetConstant(context.Context, string, bytecode.Value) error { return nil }
+func (*runtimeStub) GetSessionParameter(context.Context, string) (bytecode.Value, error) {
+	return bytecode.Undefined(), nil
+}
+func (*runtimeStub) SetSessionParameter(context.Context, string, bytecode.Value) error { return nil }
 func (*runtimeStub) GetEnumerationValue(context.Context, string, string) (bytecode.Value, error) {
 	return bytecode.Undefined(), nil
 }

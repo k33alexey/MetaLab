@@ -17,6 +17,13 @@ type ModuleSource struct {
 	Filename            string
 	Source              string
 	PredefinedVariables []string
+	// DefaultContext, when set, is applied to every routine that carries no
+	// explicit &AtClient/&AtServer directive. Common modules use this so
+	// their routines need no per-routine directives, matching how 1C common
+	// modules are authored: one module-level classification, not one per
+	// procedure. Object/form modules leave this at ContextUnspecified, so an
+	// undirected routine keeps today's ContextShared (usable everywhere).
+	DefaultContext syntax.ExecutionContext
 }
 
 // CompileSource performs the complete frontend and compilation pass.
@@ -42,6 +49,13 @@ func CompileModules(sources []ModuleSource) (*bytecode.Program, []syntax.Diagnos
 		diagnostics = append(diagnostics, current...)
 		for _, name := range source.PredefinedVariables {
 			module.Variables = append(module.Variables, syntax.Variable{Name: name})
+		}
+		if source.DefaultContext != syntax.ContextUnspecified {
+			for _, routine := range module.Routines {
+				if routine.Context == syntax.ContextUnspecified {
+					routine.Context = source.DefaultContext
+				}
+			}
 		}
 		parsed = append(parsed, parsedModule{name: name, filename: source.Filename, syntax: module})
 	}
@@ -572,6 +586,16 @@ func (c *functionCompiler) compileAssignment(statement *syntax.AssignmentStateme
 			c.compileStore(identifier.Name, target.Name, statement.SourceSpan)
 			return
 		}
+		if path, ok := sessionParameterAssignPath(target); ok {
+			if !metadataAllowed(c.routine.Context) {
+				c.owner.report(c.filename, target.SourceSpan, "BSL3042", "application metadata is only available in server context")
+			}
+			c.compileExpression(statement.Value)
+			operation := c.addObjectOperation(path, 1, false, nil, target.SourceSpan)
+			c.emit(bytecode.OpMetadataCall, operation, statement.SourceSpan)
+			c.emit(bytecode.OpPop, 0, statement.SourceSpan)
+			return
+		}
 		c.compileExpression(target.Receiver)
 		c.compileExpression(statement.Value)
 		c.emit(bytecode.OpSetProperty, c.addObjectOperation(target.Name, 0, false, nil, target.SourceSpan), statement.SourceSpan)
@@ -866,6 +890,9 @@ func metadataMemberPath(member *syntax.MemberExpression) (string, bool) {
 	if len(parts) == 2 && (strings.EqualFold(parts[0], "ОпределяемыеТипы") || strings.EqualFold(parts[0], "DefinedTypes")) {
 		return "defined-type/" + parts[1], true
 	}
+	if len(parts) == 2 && (strings.EqualFold(parts[0], "ПараметрыСеанса") || strings.EqualFold(parts[0], "SessionParameters")) {
+		return "session-parameter/" + parts[1] + "/get", true
+	}
 	if len(parts) == 2 && (strings.EqualFold(parts[0], "РежимБлокировкиДанных") || strings.EqualFold(parts[0], "DataLockMode")) {
 		switch {
 		case strings.EqualFold(parts[1], "Исключительный"), strings.EqualFold(parts[1], "Exclusive"):
@@ -899,6 +926,21 @@ func metadataMemberPath(member *syntax.MemberExpression) (string, bool) {
 		case strings.EqualFold(parts[1], "Оперативный"), strings.EqualFold(parts[1], "RealTime"):
 			return "document-posting-mode/real-time", true
 		}
+	}
+	return "", false
+}
+
+// sessionParameterAssignPath recognizes ПараметрыСеанса.Х/SessionParameters.X
+// as an assignable target. Session parameters are the only metadataMemberPath
+// case that is writable; every other case (enums, defined types, lock/write
+// modes) is a read-only constant.
+func sessionParameterAssignPath(member *syntax.MemberExpression) (string, bool) {
+	parts, ok := expressionPath(member)
+	if !ok || len(parts) != 2 {
+		return "", false
+	}
+	if strings.EqualFold(parts[0], "ПараметрыСеанса") || strings.EqualFold(parts[0], "SessionParameters") {
+		return "session-parameter/" + parts[1] + "/set", true
 	}
 	return "", false
 }

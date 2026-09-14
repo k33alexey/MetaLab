@@ -59,8 +59,9 @@ func TestCompleteBSLIndexesPublicModulesAndMetadata(t *testing.T) {
 	writeBSLTestSource(t, root, publicPath, "Функция ПолучитьДанные(Ключ) Экспорт\nВозврат Ключ;\nКонецФункции\n")
 	caller := "Процедура Запуск()\n\tОбмен.Пол\nКонецПроцедуры\n"
 	writeBSLTestSource(t, root, callerPath, caller)
-	commonPath, _ := project.MetadataPath("common-modules", uuid.MustNew())
-	writeBSLTestSource(t, root, commonPath, "format: 1\nname: Обмен\nmodule: "+publicID.String()+"\n")
+	commonID := uuid.MustNew()
+	commonPath, _ := project.MetadataPath("common-modules", commonID)
+	writeBSLTestSource(t, root, commonPath, "format: 1\nid: "+commonID.String()+"\nname: Обмен\ntitle: {ru: Обмен}\nserver: true\nmodule: "+publicID.String()+"\n")
 	catalogPath, _ := project.MetadataPath("catalogs", catalogID)
 	writeBSLTestSource(t, root, catalogPath, `format: 1
 id: `+catalogID.String()+`
@@ -228,8 +229,9 @@ func TestCompleteBSLRebuildsIndexAfterStudioSave(t *testing.T) {
 	oldSource := "Функция СтароеИмя() Экспорт\nКонецФункции\n"
 	writeBSLTestSource(t, root, publicPath, oldSource)
 	writeBSLTestSource(t, root, callerPath, "")
-	commonPath, _ := project.MetadataPath("common-modules", uuid.MustNew())
-	writeBSLTestSource(t, root, commonPath, "format: 1\nname: Обмен\nmodule: "+publicID.String()+"\n")
+	commonID := uuid.MustNew()
+	commonPath, _ := project.MetadataPath("common-modules", commonID)
+	writeBSLTestSource(t, root, commonPath, "format: 1\nid: "+commonID.String()+"\nname: Обмен\ntitle: {ru: Обмен}\nserver: true\nmodule: "+publicID.String()+"\n")
 	workspace, _ := Open(root)
 	first := "Обмен.Стар"
 	if completion := completeAt(t, workspace, callerPath, first, len(first)); !hasCompletion(completion.Items, "СтароеИмя", "function") {

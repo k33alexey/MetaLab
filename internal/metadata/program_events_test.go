@@ -32,7 +32,11 @@ func TestConfigureProgramEventsUsesCompiledModuleIdentity(t *testing.T) {
 	if err := runtime.ConfigureProgramEvents(program); err != nil {
 		t.Fatal(err)
 	}
-	handler, ok := runtime.catalogEventHandler(id).(*CatalogBSLEvents)
+	handlers, ok := runtime.catalogEventHandler(id).(catalogEventHandlers)
+	if !ok || len(handlers) != 1 {
+		t.Fatalf("handlers=%+v", handlers)
+	}
+	handler, ok := handlers[0].(*CatalogBSLEvents)
 	if !ok || handler.module != moduleName {
 		t.Fatalf("handler=%+v", handler)
 	}

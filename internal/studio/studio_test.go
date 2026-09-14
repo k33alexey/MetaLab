@@ -45,7 +45,9 @@ func TestWorkspaceSnapshotBuildsCanonicalTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Manifest.Name != "SalesDemo" || len(snapshot.Tree.Children) != len(project.RootDirectories()) {
+	// "reports" (Компоновка данных) has no content here and is hidden: report
+	// layouts belong to Отчёты/Обработки objects, which do not exist yet.
+	if snapshot.Manifest.Name != "SalesDemo" || len(snapshot.Tree.Children) != len(project.RootDirectories())-1 {
 		t.Fatalf("snapshot = %+v", snapshot)
 	}
 	if !treeContains(snapshot.Tree, metadataPath) || !treeContains(snapshot.Tree, modulePath) {
@@ -53,6 +55,12 @@ func TestWorkspaceSnapshotBuildsCanonicalTree(t *testing.T) {
 	}
 	if !treeContainsTitle(snapshot.Tree, "Контрагенты") {
 		t.Fatalf("tree does not expose metadata title: %+v", snapshot.Tree)
+	}
+	if treeContains(snapshot.Tree, "reports") || treeContainsTitle(snapshot.Tree, "Компоновка данных") {
+		t.Fatalf("empty report layouts branch should be hidden: %+v", snapshot.Tree)
+	}
+	if treeContains(snapshot.Tree, "metadata/folders") || treeContainsTitle(snapshot.Tree, "Каталоги Studio") {
+		t.Fatalf("empty Studio folders branch should be hidden: %+v", snapshot.Tree)
 	}
 }
 

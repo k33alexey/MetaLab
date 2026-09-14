@@ -36,59 +36,118 @@ func (runtime *Runtime) ConfigureProgramEventsWithObserver(program *bytecode.Pro
 		name, ok := moduleNames["modules/"+id.String()+".bsl"]
 		return name, ok
 	}
-	for _, definition := range runtime.catalog.Catalogs {
-		name, ok := moduleName(definition.ObjectModule)
+	subscriptionModule := func(subscription EventSubscriptionDefinition) (string, bool) {
+		common, ok := runtime.catalog.CommonModuleByID(subscription.Module)
 		if !ok {
+			return "", false
+		}
+		return moduleName(&common.Module)
+	}
+	for _, definition := range runtime.catalog.Catalogs {
+		var handlers catalogEventHandlers
+		if name, ok := moduleName(definition.ObjectModule); ok {
+			handler, err := NewCatalogBSLEvents(runtime, machine.NewContextWithMetadataAndObserver(runtime, observer), definition)
+			if err != nil {
+				return err
+			}
+			handler.module = name
+			handlers = append(handlers, handler)
+		}
+		for _, subscription := range runtime.catalog.eventSubscriptionsForObject(definition.ID) {
+			name, ok := subscriptionModule(subscription)
+			if !ok {
+				continue
+			}
+			handlers = append(handlers, &catalogEventSubscriptionHandler{
+				runtime: runtime, context: machine.NewContextWithMetadataAndObserver(runtime, observer),
+				definition: definition, subscription: subscription, module: name,
+			})
+		}
+		if len(handlers) == 0 {
 			continue
 		}
-		handler, err := NewCatalogBSLEvents(runtime, machine.NewContextWithMetadataAndObserver(runtime, observer), definition)
-		if err != nil {
-			return err
-		}
-		handler.module = name
-		if err := runtime.SetCatalogEventHandler(definition.Name, handler); err != nil {
+		if err := runtime.SetCatalogEventHandler(definition.Name, handlers); err != nil {
 			return err
 		}
 	}
 	for _, definition := range runtime.catalog.Documents {
-		name, ok := moduleName(definition.ObjectModule)
-		if !ok {
+		var handlers documentEventHandlers
+		if name, ok := moduleName(definition.ObjectModule); ok {
+			handler, err := NewDocumentBSLEvents(runtime, machine.NewContextWithMetadataAndObserver(runtime, observer), definition)
+			if err != nil {
+				return err
+			}
+			handler.module = name
+			handlers = append(handlers, handler)
+		}
+		for _, subscription := range runtime.catalog.eventSubscriptionsForObject(definition.ID) {
+			name, ok := subscriptionModule(subscription)
+			if !ok {
+				continue
+			}
+			handlers = append(handlers, &documentEventSubscriptionHandler{
+				runtime: runtime, context: machine.NewContextWithMetadataAndObserver(runtime, observer),
+				definition: definition, subscription: subscription, module: name,
+			})
+		}
+		if len(handlers) == 0 {
 			continue
 		}
-		handler, err := NewDocumentBSLEvents(runtime, machine.NewContextWithMetadataAndObserver(runtime, observer), definition)
-		if err != nil {
-			return err
-		}
-		handler.module = name
-		if err := runtime.SetDocumentEventHandler(definition.Name, handler); err != nil {
+		if err := runtime.SetDocumentEventHandler(definition.Name, handlers); err != nil {
 			return err
 		}
 	}
 	for _, definition := range runtime.catalog.InformationRegisters {
-		name, ok := moduleName(definition.RecordSetModule)
-		if !ok {
+		var handlers informationRegisterEventHandlers
+		if name, ok := moduleName(definition.RecordSetModule); ok {
+			handler, err := NewInformationRegisterBSLEvents(runtime, machine.NewContextWithMetadataAndObserver(runtime, observer), definition)
+			if err != nil {
+				return err
+			}
+			handler.module = name
+			handlers = append(handlers, handler)
+		}
+		for _, subscription := range runtime.catalog.eventSubscriptionsForObject(definition.ID) {
+			name, ok := subscriptionModule(subscription)
+			if !ok {
+				continue
+			}
+			handlers = append(handlers, &informationRegisterEventSubscriptionHandler{
+				runtime: runtime, context: machine.NewContextWithMetadataAndObserver(runtime, observer),
+				definition: definition, subscription: subscription, module: name,
+			})
+		}
+		if len(handlers) == 0 {
 			continue
 		}
-		handler, err := NewInformationRegisterBSLEvents(runtime, machine.NewContextWithMetadataAndObserver(runtime, observer), definition)
-		if err != nil {
-			return err
-		}
-		handler.module = name
-		if err := runtime.SetInformationRegisterEventHandler(definition.Name, handler); err != nil {
+		if err := runtime.SetInformationRegisterEventHandler(definition.Name, handlers); err != nil {
 			return err
 		}
 	}
 	for _, definition := range runtime.catalog.AccumulationRegisters {
-		name, ok := moduleName(definition.RecordSetModule)
-		if !ok {
+		var handlers accumulationRegisterEventHandlers
+		if name, ok := moduleName(definition.RecordSetModule); ok {
+			handler, err := NewAccumulationRegisterBSLEvents(runtime, machine.NewContextWithMetadataAndObserver(runtime, observer), definition)
+			if err != nil {
+				return err
+			}
+			handler.module = name
+			handlers = append(handlers, handler)
+		}
+		for _, subscription := range runtime.catalog.eventSubscriptionsForObject(definition.ID) {
+			name, ok := subscriptionModule(subscription)
+			if !ok {
+				continue
+			}
+			handlers = append(handlers, &accumulationRegisterEventSubscriptionHandler{
+				runtime: runtime, context: machine.NewContextWithMetadataAndObserver(runtime, observer),
+				definition: definition, subscription: subscription, module: name,
+			})
+		}
+		if len(handlers) == 0 {
 			continue
 		}
-		handler, err := NewAccumulationRegisterBSLEvents(runtime, machine.NewContextWithMetadataAndObserver(runtime, observer), definition)
-		if err != nil {
-			return err
-		}
-		handler.module = name
-		if err := runtime.SetAccumulationRegisterEventHandler(definition.Name, handler); err != nil {
+		if err := runtime.SetAccumulationRegisterEventHandler(definition.Name, handlers); err != nil {
 			return err
 		}
 	}

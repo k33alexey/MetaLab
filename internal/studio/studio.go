@@ -174,6 +174,11 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 		if err != nil {
 			return Snapshot{}, err
 		}
+		// Report layouts belong to Отчёты/Обработки objects, never to a
+		// standalone top-level branch alongside them.
+		if directory == "reports" {
+			continue
+		}
 		root.Children = append(root.Children, node)
 	}
 	return Snapshot{ProjectPath: workspace.root, Manifest: manifest, Tree: root}, nil
@@ -798,6 +803,11 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 			}
 		} else if !os.IsNotExist(err) {
 			return Node{}, fmt.Errorf("inspect metadata directory %q: %w", kind, err)
+		}
+		// Studio-only navigation grouping belongs inside each category's own
+		// list, never as its own top-level metadata category.
+		if kind == "folders" {
+			continue
 		}
 		node.Properties = countProperties(node.Path, len(node.Children))
 		root.Children = append(root.Children, node)

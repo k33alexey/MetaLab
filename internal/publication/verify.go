@@ -96,6 +96,10 @@ func VerifyFile(ctx context.Context, packagePath string) (Manifest, error) {
 func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) (metadata.RuntimeSnapshot, error) {
 	var projectManifest project.Project
 	var constants []metadata.Constant
+	var sessionParameters []metadata.SessionParameter
+	var commonAttributes []metadata.CommonAttributeDefinition
+	var commonModules []metadata.CommonModuleDefinition
+	var eventSubscriptions []metadata.EventSubscriptionDefinition
 	var enumerations []metadata.Enumeration
 	var definedTypes []metadata.DefinedTypeObject
 	var catalogs []metadata.CatalogDefinition
@@ -103,6 +107,7 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) (metadata.Ru
 	var informationRegisters []metadata.InformationRegisterDefinition
 	var accumulationRegisters []metadata.AccumulationRegisterDefinition
 	var roles []metadata.RoleDefinition
+	var subsystems []metadata.SubsystemDefinition
 	var forms []metadata.ManagedForm
 	moduleIDs := make(map[uuid.UUID]bool)
 	formIDs := make(map[uuid.UUID]bool)
@@ -156,8 +161,18 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) (metadata.Ru
 		switch {
 		case strings.HasPrefix(entry.Path, "metadata/roles/"):
 			kind = metadata.RoleKind
+		case strings.HasPrefix(entry.Path, "metadata/subsystems/"):
+			kind = metadata.SubsystemKind
 		case strings.HasPrefix(entry.Path, "metadata/constants/"):
 			kind = metadata.ConstantKind
+		case strings.HasPrefix(entry.Path, "metadata/session-parameters/"):
+			kind = metadata.SessionParameterKind
+		case strings.HasPrefix(entry.Path, "metadata/common-attributes/"):
+			kind = metadata.CommonAttributeKind
+		case strings.HasPrefix(entry.Path, "metadata/common-modules/"):
+			kind = metadata.CommonModuleKind
+		case strings.HasPrefix(entry.Path, "metadata/event-subscriptions/"):
+			kind = metadata.EventSubscriptionKind
 		case strings.HasPrefix(entry.Path, "metadata/enumerations/"):
 			kind = metadata.EnumerationKind
 		case strings.HasPrefix(entry.Path, "metadata/defined-types/"):
@@ -186,12 +201,42 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) (metadata.Ru
 				return metadata.RuntimeSnapshot{}, err
 			}
 			id, roles = value.ID, append(roles, value)
+		case metadata.SubsystemKind:
+			value, err := metadata.DecodeSubsystem(entry.Path, bytes.NewReader(content), projectManifest)
+			if err != nil {
+				return metadata.RuntimeSnapshot{}, err
+			}
+			id, subsystems = value.ID, append(subsystems, value)
 		case metadata.ConstantKind:
 			value, err := metadata.DecodeConstant(entry.Path, bytes.NewReader(content), projectManifest)
 			if err != nil {
 				return metadata.RuntimeSnapshot{}, err
 			}
 			id, constants = value.ID, append(constants, value)
+		case metadata.SessionParameterKind:
+			value, err := metadata.DecodeSessionParameter(entry.Path, bytes.NewReader(content), projectManifest)
+			if err != nil {
+				return metadata.RuntimeSnapshot{}, err
+			}
+			id, sessionParameters = value.ID, append(sessionParameters, value)
+		case metadata.CommonAttributeKind:
+			value, err := metadata.DecodeCommonAttribute(entry.Path, bytes.NewReader(content), projectManifest)
+			if err != nil {
+				return metadata.RuntimeSnapshot{}, err
+			}
+			id, commonAttributes = value.ID, append(commonAttributes, value)
+		case metadata.CommonModuleKind:
+			value, err := metadata.DecodeCommonModule(entry.Path, bytes.NewReader(content), projectManifest)
+			if err != nil {
+				return metadata.RuntimeSnapshot{}, err
+			}
+			id, commonModules = value.ID, append(commonModules, value)
+		case metadata.EventSubscriptionKind:
+			value, err := metadata.DecodeEventSubscription(entry.Path, bytes.NewReader(content), projectManifest)
+			if err != nil {
+				return metadata.RuntimeSnapshot{}, err
+			}
+			id, eventSubscriptions = value.ID, append(eventSubscriptions, value)
 		case metadata.EnumerationKind:
 			value, err := metadata.DecodeEnumeration(entry.Path, bytes.NewReader(content), projectManifest)
 			if err != nil {
@@ -234,9 +279,15 @@ func verifyMetadataManifest(archive *zip.Reader, manifest Manifest) (metadata.Ru
 			return metadata.RuntimeSnapshot{}, fmt.Errorf("metadata UUID does not match %q", entry.Path)
 		}
 	}
-	catalog, err := metadata.NewCatalogSnapshotWithRoles(projectManifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, roles)
+	catalog, err := metadata.NewCatalogSnapshotWithEventSubscriptions(projectManifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, roles, subsystems, sessionParameters, commonAttributes, commonModules, eventSubscriptions)
 	if err != nil {
 		return metadata.RuntimeSnapshot{}, fmt.Errorf("validate packaged metadata: %w", err)
+	}
+	for _, definition := range catalog.CommonModules {
+		module := definition.Module
+		if err := verifyPackagedObjectSources("common module", definition.Name, &module, nil, metadata.ObjectForms{}, moduleIDs, formIDs); err != nil {
+			return metadata.RuntimeSnapshot{}, err
+		}
 	}
 	for _, definition := range catalog.Catalogs {
 		if err := verifyPackagedObjectSources("catalog", definition.Name, definition.ObjectModule, definition.ManagerModule, definition.Forms, moduleIDs, formIDs); err != nil {

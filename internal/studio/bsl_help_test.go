@@ -142,8 +142,9 @@ func TestBSLHelpDocumentsProjectRoutineAndStructuredComment(t *testing.T) {
 	callerSource := "Процедура Запустить()\n\tЦена = Цены.ПолучитьЦену(\"001\");\nКонецПроцедуры\n"
 	writeBSLTestSource(t, root, publicPath, publicSource)
 	writeBSLTestSource(t, root, callerPath, callerSource)
-	commonPath, _ := project.MetadataPath("common-modules", uuid.MustNew())
-	writeBSLTestSource(t, root, commonPath, "format: 1\nname: Цены\nmodule: "+publicID.String()+"\n")
+	commonID := uuid.MustNew()
+	commonPath, _ := project.MetadataPath("common-modules", commonID)
+	writeBSLTestSource(t, root, commonPath, "format: 1\nid: "+commonID.String()+"\nname: Цены\ntitle: {ru: Цены}\nserver: true\nmodule: "+publicID.String()+"\n")
 	workspace, _ := Open(root)
 
 	offset := strings.Index(callerSource, "ПолучитьЦену") + len("Получить")

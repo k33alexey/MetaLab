@@ -23,6 +23,11 @@ func (catalog *Catalog) NormalizeValue(constant Constant, value Value) (Value, e
 	return catalog.normalizeTypes("constant "+constant.Name, constant.Types, value)
 }
 
+// NormalizeSessionParameterValue validates a value against a session parameter and canonicalizes it.
+func (catalog *Catalog) NormalizeSessionParameterValue(parameter SessionParameter, value Value) (Value, error) {
+	return catalog.normalizeTypes("session parameter "+parameter.Name, parameter.Types, value)
+}
+
 func (catalog *Catalog) normalizeTypes(owner string, types []Type, value Value) (Value, error) {
 	types, err := catalog.expandTypes(types, nil)
 	if err != nil {

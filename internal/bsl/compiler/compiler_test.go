@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
+	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 )
 
 func TestCompileSourceProducesDeterministicBytecode(t *testing.T) {
@@ -272,6 +273,44 @@ func TestCompileEnforcesModuleExports(t *testing.T) {
 				t.Fatalf("diagnostics = %v", diagnostics)
 			}
 		})
+	}
+}
+
+func TestCompileModulesAppliesDefaultContextToUndirectedRoutines(t *testing.T) {
+	t.Parallel()
+
+	// Common modules are authored without per-routine &AtClient/&AtServer
+	// directives, like real 1C common modules: DefaultContext classifies
+	// every undirected routine at once.
+	_, diagnostics := CompileModules([]ModuleSource{
+		{Name: "Общий", Filename: "common.bsl", Source: `Функция Значение() Экспорт Возврат 1; КонецФункции`, DefaultContext: syntax.ContextClient},
+		{Name: "Сервер", Filename: "server.bsl", Source: `&НаСервере
+Функция Тест() Экспорт Возврат Общий.Значение(); КонецФункции`},
+	})
+	if len(diagnostics) != 1 || diagnostics[0].Code != "BSL3039" {
+		t.Fatalf("server calling a default-client common module routine = %v", diagnostics)
+	}
+
+	_, diagnostics = CompileModules([]ModuleSource{
+		{Name: "Общий", Filename: "common.bsl", Source: `Функция Значение() Экспорт Возврат 1; КонецФункции`, DefaultContext: syntax.ContextServer},
+		{Name: "Клиент", Filename: "client.bsl", Source: `&НаКлиенте
+Функция Тест() Экспорт Возврат Общий.Значение(); КонецФункции`},
+	})
+	if len(diagnostics) != 0 {
+		t.Fatalf("client calling a default-server common module routine unexpectedly rejected: %v", diagnostics)
+	}
+
+	// An explicit directive inside a DefaultContext module overrides the default.
+	program, diagnostics := CompileModules([]ModuleSource{
+		{Name: "Общий", Filename: "common.bsl", Source: `&НаСервере
+Функция Значение() Экспорт Возврат 1; КонецФункции`, DefaultContext: syntax.ContextClient},
+	})
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	function, ok := program.Lookup("Общий.Значение")
+	if !ok || function.Context != bytecode.ContextServer {
+		t.Fatalf("explicit directive was overridden by DefaultContext: %+v", function)
 	}
 }
 

@@ -91,13 +91,14 @@ type BSLSymbolIndex struct {
 }
 
 type moduleDescriptor struct {
-	name         string
-	public       bool
-	predefined   []string
-	objectRU     []string
-	objectEN     []string
-	objectKind   string
-	movementSets []bslMovementSet
+	name           string
+	public         bool
+	predefined     []string
+	defaultContext syntax.ExecutionContext
+	objectRU       []string
+	objectEN       []string
+	objectKind     string
+	movementSets   []bslMovementSet
 }
 
 type bslMovementSet struct {
@@ -267,25 +268,9 @@ func (workspace *Workspace) moduleDescriptors(catalog *metadata.Catalog) map[str
 			addModuleDescriptor(result, item.ManagerModule, "МодульМенеджераРегистраНакопления."+item.Name, false)
 		}
 	}
-	directory := filepath.Join(workspace.root, "metadata", "common-modules")
-	entries, err := os.ReadDir(directory)
-	if err != nil {
-		return result
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || filepath.Ext(entry.Name()) != ".yaml" {
-			continue
-		}
-		data, err := readBSLIndexFile(filepath.Join(directory, entry.Name()))
-		if err != nil {
-			continue
-		}
-		var value struct {
-			Name   string    `yaml:"name"`
-			Module uuid.UUID `yaml:"module"`
-		}
-		if yaml.Unmarshal(data, &value) == nil && value.Name != "" && !value.Module.IsZero() {
-			result[value.Module.String()] = moduleDescriptor{name: value.Name, public: true}
+	if catalog != nil {
+		for _, item := range catalog.CommonModules {
+			result[item.Module.String()] = moduleDescriptor{name: item.Name, public: true, defaultContext: item.DefaultContext()}
 		}
 	}
 	return result

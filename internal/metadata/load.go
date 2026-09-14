@@ -40,6 +40,18 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 			return nil, err
 		}
 	}
+	if err := loadKind(root, SubsystemKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeSubsystem(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.Subsystems = append(catalog.Subsystems, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadKind(root, ConstantKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeConstant(source, file, manifest)
 		if err == nil && value.ID != id {
@@ -47,6 +59,54 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		}
 		if err == nil {
 			catalog.Constants = append(catalog.Constants, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	if err := loadKind(root, SessionParameterKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeSessionParameter(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.SessionParameters = append(catalog.SessionParameters, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	if err := loadKind(root, CommonAttributeKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeCommonAttribute(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.CommonAttributes = append(catalog.CommonAttributes, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	if err := loadKind(root, CommonModuleKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeCommonModule(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.CommonModules = append(catalog.CommonModules, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	if err := loadKind(root, EventSubscriptionKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeEventSubscription(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.EventSubscriptions = append(catalog.EventSubscriptions, value)
 		}
 		return err
 	}); err != nil {
@@ -141,21 +201,73 @@ func NewCatalogSnapshotWithAccumulationRegisters(manifest project.Project, const
 	return NewCatalogSnapshotWithRoles(manifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, nil)
 }
 
-// NewCatalogSnapshotWithRoles validates decoded metadata and role object/field
-// references. Form command references require the full RuntimeSnapshot.
+// NewCatalogSnapshotWithRoles is the compatibility constructor for metadata
+// without project subsystems.
 func NewCatalogSnapshotWithRoles(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition) (*Catalog, error) {
+	return NewCatalogSnapshotWithSubsystems(manifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, roles, nil)
+}
+
+// NewCatalogSnapshotWithSubsystems is the compatibility constructor for
+// metadata without project session parameters.
+func NewCatalogSnapshotWithSubsystems(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition, subsystems []SubsystemDefinition) (*Catalog, error) {
+	return NewCatalogSnapshotWithSessionParameters(manifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, roles, subsystems, nil)
+}
+
+// NewCatalogSnapshotWithSessionParameters is the compatibility constructor
+// for metadata without project common attributes.
+func NewCatalogSnapshotWithSessionParameters(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition, subsystems []SubsystemDefinition, sessionParameters []SessionParameter) (*Catalog, error) {
+	return NewCatalogSnapshotWithCommonAttributes(manifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, roles, subsystems, sessionParameters, nil)
+}
+
+// NewCatalogSnapshotWithCommonAttributes is the compatibility constructor
+// for metadata without project common modules.
+func NewCatalogSnapshotWithCommonAttributes(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition, subsystems []SubsystemDefinition, sessionParameters []SessionParameter, commonAttributes []CommonAttributeDefinition) (*Catalog, error) {
+	return NewCatalogSnapshotWithCommonModules(manifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, roles, subsystems, sessionParameters, commonAttributes, nil)
+}
+
+// NewCatalogSnapshotWithCommonModules is the compatibility constructor for
+// metadata without project event subscriptions.
+func NewCatalogSnapshotWithCommonModules(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition, subsystems []SubsystemDefinition, sessionParameters []SessionParameter, commonAttributes []CommonAttributeDefinition, commonModules []CommonModuleDefinition) (*Catalog, error) {
+	return NewCatalogSnapshotWithEventSubscriptions(manifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, roles, subsystems, sessionParameters, commonAttributes, commonModules, nil)
+}
+
+// NewCatalogSnapshotWithEventSubscriptions validates decoded metadata, role
+// object/field references, subsystem membership, common attribute
+// propagation and event subscription references. Form command references
+// require the full RuntimeSnapshot.
+func NewCatalogSnapshotWithEventSubscriptions(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition, subsystems []SubsystemDefinition, sessionParameters []SessionParameter, commonAttributes []CommonAttributeDefinition, commonModules []CommonModuleDefinition, eventSubscriptions []EventSubscriptionDefinition) (*Catalog, error) {
 	result := &Catalog{
 		Project: manifest, Constants: slices.Clone(constants), Enumerations: slices.Clone(enumerations),
 		DefinedTypes: slices.Clone(definedTypes), Catalogs: slices.Clone(catalogs), Documents: slices.Clone(documents),
 		InformationRegisters:  slices.Clone(informationRegisters),
 		AccumulationRegisters: slices.Clone(accumulationRegisters),
 		Roles:                 slices.Clone(roles),
+		Subsystems:            slices.Clone(subsystems),
+		SessionParameters:     slices.Clone(sessionParameters),
+		CommonAttributes:      slices.Clone(commonAttributes),
+		CommonModules:         slices.Clone(commonModules),
+		EventSubscriptions:    slices.Clone(eventSubscriptions),
 	}
 	for index := range result.Roles {
 		result.Roles[index] = cloneRole(result.Roles[index])
 	}
+	for index := range result.Subsystems {
+		result.Subsystems[index] = cloneSubsystemDefinition(result.Subsystems[index])
+	}
 	for index := range result.Constants {
 		result.Constants[index] = cloneConstant(result.Constants[index])
+	}
+	for index := range result.CommonModules {
+		result.CommonModules[index] = cloneCommonModuleDefinition(result.CommonModules[index])
+	}
+	for index := range result.EventSubscriptions {
+		result.EventSubscriptions[index] = cloneEventSubscriptionDefinition(result.EventSubscriptions[index])
+	}
+	for index := range result.SessionParameters {
+		result.SessionParameters[index] = cloneSessionParameter(result.SessionParameters[index])
+	}
+	for index := range result.CommonAttributes {
+		result.CommonAttributes[index] = cloneCommonAttributeDefinition(result.CommonAttributes[index])
 	}
 	for index := range result.Enumerations {
 		result.Enumerations[index] = cloneEnumeration(result.Enumerations[index])
@@ -231,9 +343,31 @@ func loadKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) e
 }
 
 func (catalog *Catalog) indexAndValidate(root string) error {
+	if err := catalog.propagateCommonAttributes(); err != nil {
+		return err
+	}
 	sort.Slice(catalog.Roles, func(i, j int) bool { return catalog.Roles[i].ID.String() < catalog.Roles[j].ID.String() })
 	catalog.roleByName, catalog.roleByID = make(map[string]int, len(catalog.Roles)), make(map[uuid.UUID]int, len(catalog.Roles))
+	sort.Slice(catalog.Subsystems, func(i, j int) bool { return catalog.Subsystems[i].ID.String() < catalog.Subsystems[j].ID.String() })
+	catalog.subsystemByName, catalog.subsystemByID = make(map[string]int, len(catalog.Subsystems)), make(map[uuid.UUID]int, len(catalog.Subsystems))
 	sort.Slice(catalog.Constants, func(i, j int) bool { return catalog.Constants[i].ID.String() < catalog.Constants[j].ID.String() })
+	sort.Slice(catalog.SessionParameters, func(i, j int) bool {
+		return catalog.SessionParameters[i].ID.String() < catalog.SessionParameters[j].ID.String()
+	})
+	catalog.sessionParameterByName, catalog.sessionParameterByID = make(map[string]int, len(catalog.SessionParameters)), make(map[uuid.UUID]int, len(catalog.SessionParameters))
+	sort.Slice(catalog.CommonAttributes, func(i, j int) bool {
+		return catalog.CommonAttributes[i].ID.String() < catalog.CommonAttributes[j].ID.String()
+	})
+	catalog.commonAttributeByName, catalog.commonAttributeByID = make(map[string]int, len(catalog.CommonAttributes)), make(map[uuid.UUID]int, len(catalog.CommonAttributes))
+	sort.Slice(catalog.CommonModules, func(i, j int) bool {
+		return catalog.CommonModules[i].ID.String() < catalog.CommonModules[j].ID.String()
+	})
+	catalog.commonModuleByName, catalog.commonModuleByID = make(map[string]int, len(catalog.CommonModules)), make(map[uuid.UUID]int, len(catalog.CommonModules))
+	catalog.commonModuleByModuleID = make(map[uuid.UUID]int, len(catalog.CommonModules))
+	sort.Slice(catalog.EventSubscriptions, func(i, j int) bool {
+		return catalog.EventSubscriptions[i].ID.String() < catalog.EventSubscriptions[j].ID.String()
+	})
+	catalog.eventSubscriptionByName, catalog.eventSubscriptionByID = make(map[string]int, len(catalog.EventSubscriptions)), make(map[uuid.UUID]int, len(catalog.EventSubscriptions))
 	sort.Slice(catalog.Enumerations, func(i, j int) bool { return catalog.Enumerations[i].ID.String() < catalog.Enumerations[j].ID.String() })
 	sort.Slice(catalog.DefinedTypes, func(i, j int) bool { return catalog.DefinedTypes[i].ID.String() < catalog.DefinedTypes[j].ID.String() })
 	sort.Slice(catalog.Catalogs, func(i, j int) bool { return catalog.Catalogs[i].ID.String() < catalog.Catalogs[j].ID.String() })
@@ -274,8 +408,37 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 	}
+	for index, item := range catalog.Subsystems {
+		if err := add("subsystem", item.ID, item.Name, index, catalog.subsystemByName, catalog.subsystemByID); err != nil {
+			return err
+		}
+	}
 	for index, item := range catalog.Constants {
 		if err := add("constant", item.ID, item.Name, index, catalog.constantByName, catalog.constantByID); err != nil {
+			return err
+		}
+	}
+	for index, item := range catalog.SessionParameters {
+		if err := add("session parameter", item.ID, item.Name, index, catalog.sessionParameterByName, catalog.sessionParameterByID); err != nil {
+			return err
+		}
+	}
+	for index, item := range catalog.CommonAttributes {
+		if err := add("common attribute", item.ID, item.Name, index, catalog.commonAttributeByName, catalog.commonAttributeByID); err != nil {
+			return err
+		}
+	}
+	for index, item := range catalog.CommonModules {
+		if err := add("common module", item.ID, item.Name, index, catalog.commonModuleByName, catalog.commonModuleByID); err != nil {
+			return err
+		}
+		if previous, exists := catalog.commonModuleByModuleID[item.Module]; exists {
+			return fmt.Errorf("%w: common module %s and %s share the same module source %s", ErrDuplicateID, catalog.CommonModules[previous].Name, item.Name, item.Module)
+		}
+		catalog.commonModuleByModuleID[item.Module] = index
+	}
+	for index, item := range catalog.EventSubscriptions {
+		if err := add("event subscription", item.ID, item.Name, index, catalog.eventSubscriptionByName, catalog.eventSubscriptionByID); err != nil {
 			return err
 		}
 	}
@@ -306,6 +469,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			allIDs[predefined.ID] = "predefined catalog item " + item.Name + "." + predefined.Name
 		}
 		for _, attribute := range item.Attributes {
+			if _, common := catalog.commonAttributeByID[attribute.ID]; common {
+				continue
+			}
 			if previous, ok := allIDs[attribute.ID]; ok {
 				return fmt.Errorf("%w: %s and catalog attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
 			}
@@ -329,6 +495,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 		for _, attribute := range item.Attributes {
+			if _, common := catalog.commonAttributeByID[attribute.ID]; common {
+				continue
+			}
 			if previous, ok := allIDs[attribute.ID]; ok {
 				return fmt.Errorf("%w: %s and document attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
 			}
@@ -352,6 +521,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 		for _, field := range informationRegisterFields(item) {
+			if _, common := catalog.commonAttributeByID[field.ID]; common {
+				continue
+			}
 			if previous, ok := allIDs[field.ID]; ok {
 				return fmt.Errorf("%w: %s and information register field %s.%s use %s", ErrDuplicateID, previous, item.Name, field.Name, field.ID)
 			}
@@ -363,6 +535,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 		for _, field := range accumulationRegisterFields(item) {
+			if _, common := catalog.commonAttributeByID[field.ID]; common {
+				continue
+			}
 			if previous, ok := allIDs[field.ID]; ok {
 				return fmt.Errorf("%w: %s and accumulation register field %s.%s use %s", ErrDuplicateID, previous, item.Name, field.Name, field.ID)
 			}
@@ -377,6 +552,26 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			if _, err := catalog.NormalizeValue(item, *item.Default); err != nil {
 				return fmt.Errorf("constant %s default: %w", item.Name, err)
 			}
+		}
+	}
+	for _, item := range catalog.SessionParameters {
+		if err := catalog.validateReferences("session parameter "+item.Name, item.Types); err != nil {
+			return err
+		}
+		if item.Default != nil {
+			if _, err := catalog.NormalizeSessionParameterValue(item, *item.Default); err != nil {
+				return fmt.Errorf("session parameter %s default: %w", item.Name, err)
+			}
+		}
+	}
+	for _, item := range catalog.CommonAttributes {
+		if err := catalog.validateReferences("common attribute "+item.Name, item.Types); err != nil {
+			return err
+		}
+	}
+	for _, item := range catalog.CommonModules {
+		if err := validateObjectSources(root, "common module", item.Name, &item.Module, nil, ObjectForms{}); err != nil {
+			return err
 		}
 	}
 	for _, item := range catalog.DefinedTypes {
@@ -467,6 +662,12 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	if err := catalog.validateRoleReferences(root); err != nil {
+		return err
+	}
+	if err := catalog.validateSubsystemReferences(); err != nil {
+		return err
+	}
+	if err := catalog.validateEventSubscriptionReferences(); err != nil {
 		return err
 	}
 	return catalog.validateDefinedTypeCycles()

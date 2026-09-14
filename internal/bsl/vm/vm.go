@@ -57,6 +57,8 @@ type ServerCaller interface {
 type MetadataRuntime interface {
 	GetConstant(context.Context, string) (bytecode.Value, error)
 	SetConstant(context.Context, string, bytecode.Value) error
+	GetSessionParameter(context.Context, string) (bytecode.Value, error)
+	SetSessionParameter(context.Context, string, bytecode.Value) error
 	GetEnumerationValue(context.Context, string, string) (bytecode.Value, error)
 	GetDefinedType(context.Context, string) (bytecode.Value, error)
 }
@@ -1435,6 +1437,13 @@ func dispatchMetadata(ctx context.Context, env executionEnvironment, path string
 		return env.metadata.GetConstant(ctx, parts[1])
 	case len(parts) == 3 && parts[0] == "constant" && parts[2] == "set" && len(arguments) == 1:
 		if err := env.metadata.SetConstant(ctx, parts[1], arguments[0]); err != nil {
+			return bytecode.Undefined(), err
+		}
+		return bytecode.Undefined(), nil
+	case len(parts) == 3 && parts[0] == "session-parameter" && parts[2] == "get" && len(arguments) == 0:
+		return env.metadata.GetSessionParameter(ctx, parts[1])
+	case len(parts) == 3 && parts[0] == "session-parameter" && parts[2] == "set" && len(arguments) == 1:
+		if err := env.metadata.SetSessionParameter(ctx, parts[1], arguments[0]); err != nil {
 			return bytecode.Undefined(), err
 		}
 		return bytecode.Undefined(), nil

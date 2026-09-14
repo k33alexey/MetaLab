@@ -28,6 +28,7 @@ type Kind string
 
 const (
 	ConstantKind             Kind = "constants"
+	SessionParameterKind     Kind = "session-parameters"
 	EnumerationKind          Kind = "enumerations"
 	DefinedTypeKind          Kind = "defined-types"
 	CatalogKind              Kind = "catalogs"
@@ -92,6 +93,17 @@ type Type struct {
 }
 
 type Constant struct {
+	Format  int           `yaml:"format"`
+	ID      uuid.UUID     `yaml:"id"`
+	Name    string        `yaml:"name"`
+	Title   LocalizedText `yaml:"title"`
+	Types   []Type        `yaml:"types"`
+	Default *Value        `yaml:"default,omitempty"`
+}
+
+// SessionParameter is a server-memory-only value scoped to one session's lifetime.
+// Unlike Constant it is never persisted to PostgreSQL.
+type SessionParameter struct {
 	Format  int           `yaml:"format"`
 	ID      uuid.UUID     `yaml:"id"`
 	Name    string        `yaml:"name"`
@@ -183,7 +195,23 @@ type Catalog struct {
 	Roles                      []RoleDefinition
 	roleByName                 map[string]int
 	roleByID                   map[uuid.UUID]int
+	Subsystems                 []SubsystemDefinition
+	subsystemByName            map[string]int
+	subsystemByID              map[uuid.UUID]int
 	Constants                  []Constant
+	SessionParameters          []SessionParameter
+	sessionParameterByName     map[string]int
+	sessionParameterByID       map[uuid.UUID]int
+	CommonAttributes           []CommonAttributeDefinition
+	commonAttributeByName      map[string]int
+	commonAttributeByID        map[uuid.UUID]int
+	CommonModules              []CommonModuleDefinition
+	commonModuleByName         map[string]int
+	commonModuleByID           map[uuid.UUID]int
+	commonModuleByModuleID     map[uuid.UUID]int
+	EventSubscriptions         []EventSubscriptionDefinition
+	eventSubscriptionByName    map[string]int
+	eventSubscriptionByID      map[uuid.UUID]int
 	Enumerations               []Enumeration
 	DefinedTypes               []DefinedTypeObject
 	Catalogs                   []CatalogDefinition
@@ -231,6 +259,22 @@ func (catalog *Catalog) Constant(name string) (Constant, bool) {
 		return Constant{}, false
 	}
 	return cloneConstant(catalog.Constants[index]), true
+}
+
+func (catalog *Catalog) SessionParameterByID(id uuid.UUID) (SessionParameter, bool) {
+	index, ok := catalog.sessionParameterByID[id]
+	if !ok {
+		return SessionParameter{}, false
+	}
+	return cloneSessionParameter(catalog.SessionParameters[index]), true
+}
+
+func (catalog *Catalog) SessionParameter(name string) (SessionParameter, bool) {
+	index, ok := catalog.sessionParameterByName[strings.ToLower(name)]
+	if !ok {
+		return SessionParameter{}, false
+	}
+	return cloneSessionParameter(catalog.SessionParameters[index]), true
 }
 
 func (catalog *Catalog) Enumeration(name string) (Enumeration, bool) {
@@ -408,6 +452,19 @@ func DecodeConstant(source string, reader io.Reader, manifest project.Project) (
 	issues = append(issues, validateTypes("types", value.Types, uuid.UUID{})...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return Constant{}, err
+	}
+	return value, nil
+}
+
+func DecodeSessionParameter(source string, reader io.Reader, manifest project.Project) (SessionParameter, error) {
+	var value SessionParameter
+	if err := decodeStrict(source, reader, &value); err != nil {
+		return SessionParameter{}, err
+	}
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues = append(issues, validateTypes("types", value.Types, uuid.UUID{})...)
+	if err := issuesError(source, value.Format, issues); err != nil {
+		return SessionParameter{}, err
 	}
 	return value, nil
 }
@@ -817,6 +874,14 @@ func cloneTitle(value LocalizedText) LocalizedText {
 	return result
 }
 func cloneConstant(value Constant) Constant {
+	value.Title, value.Types = cloneTitle(value.Title), cloneTypes(value.Types)
+	if value.Default != nil {
+		defaultValue := *value.Default
+		value.Default = &defaultValue
+	}
+	return value
+}
+func cloneSessionParameter(value SessionParameter) SessionParameter {
 	value.Title, value.Types = cloneTitle(value.Title), cloneTypes(value.Types)
 	if value.Default != nil {
 		defaultValue := *value.Default
