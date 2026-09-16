@@ -25,6 +25,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/publication"
 	"github.com/k33alexey/MetaLab/internal/querylang"
+	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 	"go.yaml.in/yaml/v3"
 )
@@ -47,6 +48,7 @@ type Workspace struct {
 	debugDatabase uuid.UUID
 	testRuntime   TestRuntimeProvider
 	testRunning   bool
+	saveData      SaveDataProvider
 }
 
 // Snapshot is the read-only project model rendered by the Studio shell.
@@ -62,6 +64,7 @@ type Node struct {
 	Kind       string     `json:"kind"`
 	Title      string     `json:"title"`
 	Path       string     `json:"path,omitempty"`
+	Fragment   string     `json:"fragment,omitempty"`
 	Properties []Property `json:"properties,omitempty"`
 	Children   []Node     `json:"children,omitempty"`
 	Line       int        `json:"line,omitempty"`
@@ -158,7 +161,7 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	root := Node{
-		ID: "project", Kind: "project", Title: manifest.Title, Path: project.ManifestFile,
+		ID: "project", Kind: "project", Title: manifest.Name, Path: project.ManifestFile,
 		Properties: []Property{
 			{Name: "Имя", Value: manifest.Name}, {Name: "Заголовок", Value: manifest.Title},
 			{Name: "UUID", Value: manifest.ID.String()}, {Name: "Основной язык", Value: manifest.DefaultLanguage},
@@ -185,38 +188,29 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 	return Snapshot{ProjectPath: workspace.root, Manifest: manifest, Tree: root}, nil
 }
 
-// BuildPublicationPackage snapshots validated sources under the same lock as Studio saves.
-func (workspace *Workspace) BuildPublicationPackage(ctx context.Context, destination string) (publication.Manifest, error) {
+// SaveDataProvider runs "Сохранить данные" (096) against this Studio's
+// database - the package-free replacement for the retired
+// BuildPublicationPackage/BuildFile+Activate flow (021/024).
+type SaveDataProvider func(ctx context.Context, root string, allowDestructive bool) (publication.SavedState, schemadiff.MigrationRecord, error)
+
+// SetSaveDataProvider connects this database-bound Studio to its database.
+func (workspace *Workspace) SetSaveDataProvider(provider SaveDataProvider) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
-	client, err := gitclient.Open(ctx, workspace.root)
-	if err != nil {
-		return publication.Manifest{}, err
+	workspace.saveData = provider
+}
+
+// SaveData validates open sources are saved, then migrates PostgreSQL and
+// refreshes the stored metadata/BSL snapshot directly from the project
+// directory under the same lock as Studio's own file saves.
+func (workspace *Workspace) SaveData(ctx context.Context, allowDestructive bool) (publication.SavedState, schemadiff.MigrationRecord, error) {
+	workspace.mu.Lock()
+	provider, root := workspace.saveData, workspace.root
+	workspace.mu.Unlock()
+	if provider == nil {
+		return publication.SavedState{}, schemadiff.MigrationRecord{}, fmt.Errorf("saving data is unavailable in this build")
 	}
-	status, err := client.Status(ctx)
-	if err != nil {
-		return publication.Manifest{}, err
-	}
-	if status.Revision == "" {
-		return publication.Manifest{}, fmt.Errorf("ML Project must have at least one Git commit before packaging")
-	}
-	state := publication.SourceState{
-		GitCommit: status.Revision,
-		Dirty:     len(status.Entries) != 0,
-	}
-	manifest, err := publication.BuildFile(ctx, workspace.root, destination, state)
-	if err != nil {
-		return publication.Manifest{}, err
-	}
-	current, err := client.Status(ctx)
-	if err != nil || current.Revision != state.GitCommit || (len(current.Entries) != 0) != state.Dirty {
-		_ = os.Remove(destination)
-		if err != nil {
-			return publication.Manifest{}, err
-		}
-		return publication.Manifest{}, publication.ErrSourceChanged
-	}
-	return manifest, nil
+	return provider(ctx, root, allowDestructive)
 }
 
 // NewHandler serves the local read-only Studio shell for one workspace.
@@ -225,6 +219,8 @@ func NewHandler(workspace *Workspace) http.Handler {
 	registerDebugRoutes(routes, workspace)
 	registerTestRoutes(routes, workspace)
 	registerRoleRoutes(routes, workspace)
+	registerCatalogEditorRoutes(routes, workspace)
+	registerProjectEditorRoutes(routes, workspace)
 	routes.Handle("GET /ui/", http.FileServer(http.FS(assets)))
 	routes.HandleFunc("GET /{$}", func(response http.ResponseWriter, _ *http.Request) {
 		page, err := assets.ReadFile("ui/index.html")
@@ -664,34 +660,29 @@ func NewHandler(workspace *Workspace) http.Handler {
 		}
 		writeGitError(response, err)
 	})
-	routes.HandleFunc("POST /api/publication/package", func(response http.ResponseWriter, request *http.Request) {
+	routes.HandleFunc("POST /api/save-data", func(response http.ResponseWriter, request *http.Request) {
 		if !validateStudioMutation(response, request) {
 			return
 		}
-		temporaryDirectory, err := os.MkdirTemp("", "metalab-publication-*")
+		var input struct {
+			AllowDestructive bool `json:"allowDestructive"`
+		}
+		_ = json.NewDecoder(io.LimitReader(request.Body, 1<<10)).Decode(&input)
+		saved, migration, err := workspace.SaveData(request.Context(), input.AllowDestructive)
 		if err != nil {
-			http.Error(response, "Unable to create publication package", http.StatusInternalServerError)
+			writeSaveDataError(response, err)
 			return
 		}
-		defer os.RemoveAll(temporaryDirectory)
-		destination := filepath.Join(temporaryDirectory, "publication"+publication.PackageExtension)
-		manifest, err := workspace.BuildPublicationPackage(request.Context(), destination)
-		if err != nil {
-			writeGitError(response, err)
-			return
-		}
-		file, err := os.Open(destination)
-		if err != nil {
-			http.Error(response, "Unable to open publication package", http.StatusInternalServerError)
-			return
-		}
-		defer file.Close()
-		response.Header().Set("Content-Type", "application/vnd.metalab.package")
-		response.Header().Set("Content-Disposition", `attachment; filename="publication.mlpkg"`)
-		response.Header().Set("X-ML-Package-Digest", manifest.ContentSHA256)
-		if _, err := io.Copy(response, file); err != nil {
-			return
-		}
+		writeStudioJSON(response, struct {
+			GitCommit        string `json:"gitCommit"`
+			SchemaSHA256     string `json:"schemaSha256"`
+			SavedAt          string `json:"savedAt"`
+			MigrationStatus  string `json:"migrationStatus"`
+			DestructiveCount int    `json:"destructiveCount"`
+		}{
+			GitCommit: saved.GitCommit, SchemaSHA256: saved.SchemaSHA256, SavedAt: saved.SavedAt.Format("2006-01-02T15:04:05Z07:00"),
+			MigrationStatus: migration.Status, DestructiveCount: migration.DestructiveCount,
+		})
 	})
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
@@ -730,6 +721,19 @@ func decodeStudioMutation(response http.ResponseWriter, request *http.Request, v
 		return false
 	}
 	return true
+}
+
+func writeSaveDataError(response http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, publication.ErrDirtyPrimary):
+		http.Error(response, "Сохраните и закоммитьте изменения в Git перед сохранением данных на основной базе", http.StatusConflict)
+	case errors.Is(err, schemadiff.ErrDestructiveDenied):
+		http.Error(response, "Изменения удаляют или сужают существующие данные — требуется явное подтверждение", http.StatusConflict)
+	case errors.Is(err, gitclient.ErrGitUnavailable), errors.Is(err, gitclient.ErrNotRepository), errors.Is(err, gitclient.ErrUnsafeRepository):
+		writeGitError(response, err)
+	default:
+		http.Error(response, err.Error(), http.StatusBadRequest)
+	}
 }
 
 func writeGitError(response http.ResponseWriter, err error) {
@@ -793,21 +797,49 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 			return Node{}, fmt.Errorf("unexpected metadata path %q", filepath.Join("metadata", entry.Name()))
 		}
 	}
+	// A tree listing must stay usable even while some object's metadata
+	// doesn't yet fully validate (e.g. mid-edit, or an older/minimal
+	// fixture) — so a load failure here just means the per-kind data
+	// groups below (Реквизиты, Измерения, ...) come back empty, not a
+	// broken tree.
+	loaded, _ := metadata.Load(workspace.root)
 	for _, kind := range project.MetadataKinds() {
 		relative := filepath.Join("metadata", kind)
 		node := Node{ID: "metadata/" + kind, Kind: "metadata-group", Title: metadataTitle(kind), Path: filepath.ToSlash(relative)}
 		path := filepath.Join(workspace.root, relative)
-		if _, err := os.Stat(path); err == nil {
-			if slices.Contains(project.ObjectFolderKinds(), kind) {
-				node.Children, err = workspace.objectFolderNodes(path, filepath.ToSlash(relative), "metadata", language, languages)
-			} else {
-				node.Children, err = workspace.sourceFiles(path, filepath.ToSlash(relative), ".yaml", "metadata", language, languages)
+		switch {
+		case kind == "languages":
+			// Languages have no per-object UUID or file of their own (they're
+			// a plain list inside mlproject.yaml), so this branch is
+			// synthesized directly from the already in-memory list rather
+			// than scanned from disk like every other metadata kind.
+			// The group node itself stays inert — matching every other
+			// metadata-group node (e.g. "Справочники" shows nothing until
+			// you open a specific catalog) — only an individual language
+			// leaf carries a Path/Fragment, opening the project editor and
+			// switching straight to that one language's own properties.
+			for _, item := range languages {
+				node.Children = append(node.Children, Node{
+					ID: "language:" + item.Code, Kind: "language", Title: item.Name,
+					Path: project.ManifestFile, Fragment: "language:" + item.Code,
+					Properties: []Property{{Name: "Код", Value: item.Code}, {Name: "Имя", Value: item.Name}},
+				})
 			}
-			if err != nil {
-				return Node{}, err
+			sortNodesByTitle(node.Children)
+		default:
+			if _, err := os.Stat(path); err == nil {
+				var buildErr error
+				if slices.Contains(project.ObjectFolderKinds(), kind) {
+					node.Children, buildErr = workspace.objectFolderNodes(path, filepath.ToSlash(relative), "metadata", language, languages, objectDataGroups(loaded, kind, language, languages))
+				} else {
+					node.Children, buildErr = workspace.sourceFiles(path, filepath.ToSlash(relative), ".yaml", "metadata", language, languages)
+				}
+				if buildErr != nil {
+					return Node{}, buildErr
+				}
+			} else if !os.IsNotExist(err) {
+				return Node{}, fmt.Errorf("inspect metadata directory %q: %w", kind, err)
 			}
-		} else if !os.IsNotExist(err) {
-			return Node{}, fmt.Errorf("inspect metadata directory %q: %w", kind, err)
 		}
 		// Studio-only navigation grouping belongs inside each category's own
 		// list, never as its own top-level metadata category.
@@ -897,15 +929,16 @@ func (workspace *Workspace) sourceFiles(directory, relative, extension, kind, la
 		}
 		nodes = append(nodes, node)
 	}
-	sort.Slice(nodes, func(left, right int) bool { return nodes[left].Path < nodes[right].Path })
+	sortNodesByTitle(nodes)
 	return nodes, nil
 }
 
 // objectFolderNodes lists one metadata kind's per-object folders (catalogs,
 // documents, information/accumulation registers): each node represents one
-// object, titled from its own object.yaml, with its module(s) and managed
-// forms as children — everything physically grouped under that one folder.
-func (workspace *Workspace) objectFolderNodes(directory, relative, kind, language string, languages []project.Language) ([]Node, error) {
+// object, titled from its own object.yaml, with its data groups (Реквизиты,
+// Табличные части, ...), Формы/Команды/Макеты, and module(s) as children —
+// everything physically grouped under that one folder.
+func (workspace *Workspace) objectFolderNodes(directory, relative, kind, language string, languages []project.Language, dataGroups func(id uuid.UUID, descriptionPath string) []Node) ([]Node, error) {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return nil, fmt.Errorf("read project directory %q: %w", relative, err)
@@ -933,49 +966,65 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, kind, languag
 		if err != nil {
 			return nil, err
 		}
-		children, err := objectOwnedFileNodes(objectDirectory, objectRelative)
+		moduleNodes, formNodes, err := objectOwnedFileNodes(objectDirectory, objectRelative)
 		if err != nil {
 			return nil, err
 		}
+		var children []Node
+		if dataGroups != nil {
+			children = append(children, dataGroups(id, descriptionPath)...)
+		}
+		children = append(children,
+			Node{ID: id.String() + ":forms", Kind: "group", Title: "Формы", Children: formNodes},
+			// "Команды" and "Макеты" have no backing metadata model yet — they
+			// stand in, always visible but empty, so the tree already matches
+			// 1C's per-object folder shape; a future iteration will give them
+			// real content.
+			Node{ID: id.String() + ":commands", Kind: "group", Title: "Команды"},
+			Node{ID: id.String() + ":templates", Kind: "group", Title: "Макеты"},
+		)
+		children = append(children, moduleNodes...)
 		nodes = append(nodes, Node{
 			ID: id.String(), Kind: kind, Title: title, Path: descriptionPath, Children: children,
 			Properties: []Property{{Name: "UUID", Value: id.String()}, {Name: "Путь", Value: descriptionPath}, {Name: "Размер", Value: fmt.Sprintf("%d байт", info.Size())}},
 		})
 	}
-	sort.Slice(nodes, func(left, right int) bool { return nodes[left].Path < nodes[right].Path })
+	sortNodesByTitle(nodes)
 	return nodes, nil
 }
 
 // objectOwnedFileNodes lists one object's own module(s) and managed forms,
-// physically stored alongside its object.yaml.
-func objectOwnedFileNodes(objectDirectory, objectRelative string) ([]Node, error) {
+// physically stored alongside its object.yaml, keeping the two apart so the
+// caller can group forms under their own "Формы" tree node while modules
+// stay flat leaves (matching how 1C shows an object's module and manager
+// module directly, without a wrapping folder).
+func objectOwnedFileNodes(objectDirectory, objectRelative string) (moduleNodes, formNodes []Node, err error) {
 	entries, err := os.ReadDir(objectDirectory)
 	if err != nil {
-		return nil, fmt.Errorf("read metadata object %q: %w", objectRelative, err)
+		return nil, nil, fmt.Errorf("read metadata object %q: %w", objectRelative, err)
 	}
-	var nodes []Node
 	for _, entry := range entries {
 		if entry.Name() == "object.yaml" {
 			continue
 		}
 		if entry.IsDir() {
 			if entry.Name() != "forms" || entry.Type()&os.ModeSymlink != 0 {
-				return nil, fmt.Errorf("unexpected source path %q", filepath.ToSlash(filepath.Join(objectRelative, entry.Name())))
+				return nil, nil, fmt.Errorf("unexpected source path %q", filepath.ToSlash(filepath.Join(objectRelative, entry.Name())))
 			}
 			formEntries, err := os.ReadDir(filepath.Join(objectDirectory, "forms"))
 			if err != nil {
-				return nil, fmt.Errorf("read metadata object forms %q: %w", objectRelative, err)
+				return nil, nil, fmt.Errorf("read metadata object forms %q: %w", objectRelative, err)
 			}
 			for _, formEntry := range formEntries {
 				if formEntry.IsDir() || formEntry.Type()&os.ModeSymlink != 0 || filepath.Ext(formEntry.Name()) != ".yaml" {
-					return nil, fmt.Errorf("unexpected form source %q", filepath.ToSlash(filepath.Join(objectRelative, "forms", formEntry.Name())))
+					return nil, nil, fmt.Errorf("unexpected form source %q", filepath.ToSlash(filepath.Join(objectRelative, "forms", formEntry.Name())))
 				}
 				id, err := uuid.Parse(strings.TrimSuffix(formEntry.Name(), ".yaml"))
 				if err != nil {
-					return nil, fmt.Errorf("form source %q must use a UUID name: %w", formEntry.Name(), err)
+					return nil, nil, fmt.Errorf("form source %q must use a UUID name: %w", formEntry.Name(), err)
 				}
 				path := filepath.ToSlash(filepath.Join(objectRelative, "forms", formEntry.Name()))
-				nodes = append(nodes, Node{
+				formNodes = append(formNodes, Node{
 					ID: id.String(), Kind: "forms", Title: id.String(), Path: path,
 					Properties: []Property{{Name: "UUID", Value: id.String()}, {Name: "Путь", Value: path}},
 				})
@@ -983,20 +1032,135 @@ func objectOwnedFileNodes(objectDirectory, objectRelative string) ([]Node, error
 			continue
 		}
 		if entry.Type()&os.ModeSymlink != 0 || filepath.Ext(entry.Name()) != ".bsl" {
-			return nil, fmt.Errorf("unexpected source path %q", filepath.ToSlash(filepath.Join(objectRelative, entry.Name())))
+			return nil, nil, fmt.Errorf("unexpected source path %q", filepath.ToSlash(filepath.Join(objectRelative, entry.Name())))
 		}
 		id, err := uuid.Parse(strings.TrimSuffix(entry.Name(), ".bsl"))
 		if err != nil {
-			return nil, fmt.Errorf("source file %q must use a UUID name: %w", entry.Name(), err)
+			return nil, nil, fmt.Errorf("source file %q must use a UUID name: %w", entry.Name(), err)
 		}
 		path := filepath.ToSlash(filepath.Join(objectRelative, entry.Name()))
-		nodes = append(nodes, Node{
+		moduleNodes = append(moduleNodes, Node{
 			ID: id.String(), Kind: "modules", Title: id.String(), Path: path,
 			Properties: []Property{{Name: "UUID", Value: id.String()}, {Name: "Путь", Value: path}},
 		})
 	}
-	sort.Slice(nodes, func(left, right int) bool { return nodes[left].Path < nodes[right].Path })
-	return nodes, nil
+	sort.Slice(moduleNodes, func(left, right int) bool { return moduleNodes[left].Path < moduleNodes[right].Path })
+	sort.Slice(formNodes, func(left, right int) bool { return formNodes[left].Path < formNodes[right].Path })
+	return moduleNodes, formNodes, nil
+}
+
+// objectDataGroups returns, per metadata kind, a function building that
+// object's data-shape tree groups (Реквизиты, Измерения, Ресурсы, Табличные
+// части, ...) — always present, even empty, so a catalog/document/register
+// node has the same fixed subtree shape 1C shows regardless of content.
+// loaded may be nil (metadata failed to fully validate); the resulting
+// groups then simply come back empty rather than breaking the whole tree.
+func objectDataGroups(loaded *metadata.Catalog, kind, language string, languages []project.Language) func(id uuid.UUID, descriptionPath string) []Node {
+	switch kind {
+	case "catalogs":
+		return func(id uuid.UUID, descriptionPath string) []Node {
+			var definition metadata.CatalogDefinition
+			if loaded != nil {
+				definition, _ = loaded.CatalogByID(id)
+			}
+			return []Node{
+				attributeGroupNode(id.String()+":attributes", "Реквизиты", definition.Attributes, descriptionPath, language, languages),
+				tablePartGroupNode(id.String()+":table-parts", "Табличные части", definition.TableParts, descriptionPath, language, languages),
+			}
+		}
+	case "documents":
+		return func(id uuid.UUID, descriptionPath string) []Node {
+			var definition metadata.DocumentDefinition
+			if loaded != nil {
+				definition, _ = loaded.DocumentByID(id)
+			}
+			return []Node{
+				attributeGroupNode(id.String()+":attributes", "Реквизиты", definition.Attributes, descriptionPath, language, languages),
+				tablePartGroupNode(id.String()+":table-parts", "Табличные части", definition.TableParts, descriptionPath, language, languages),
+			}
+		}
+	case "information-registers":
+		return func(id uuid.UUID, descriptionPath string) []Node {
+			var definition metadata.InformationRegisterDefinition
+			if loaded != nil {
+				definition, _ = loaded.InformationRegisterByID(id)
+			}
+			return []Node{
+				attributeGroupNode(id.String()+":dimensions", "Измерения", definition.Dimensions, descriptionPath, language, languages),
+				attributeGroupNode(id.String()+":resources", "Ресурсы", definition.Resources, descriptionPath, language, languages),
+				attributeGroupNode(id.String()+":attributes", "Реквизиты", definition.Attributes, descriptionPath, language, languages),
+			}
+		}
+	case "accumulation-registers":
+		return func(id uuid.UUID, descriptionPath string) []Node {
+			var definition metadata.AccumulationRegisterDefinition
+			if loaded != nil {
+				definition, _ = loaded.AccumulationRegisterByID(id)
+			}
+			return []Node{
+				attributeGroupNode(id.String()+":dimensions", "Измерения", definition.Dimensions, descriptionPath, language, languages),
+				attributeGroupNode(id.String()+":resources", "Ресурсы", definition.Resources, descriptionPath, language, languages),
+				attributeGroupNode(id.String()+":attributes", "Реквизиты", definition.Attributes, descriptionPath, language, languages),
+			}
+		}
+	default:
+		return nil
+	}
+}
+
+// attributeGroupNode builds one always-visible tree group (Реквизиты,
+// Измерения, Ресурсы, ...) listing one object's plain attributes. Each leaf
+// carries the object's own object.yaml as Path (so selecting it opens the
+// matching visual editor once one exists for this kind) and a Fragment
+// identifying which attribute to select there.
+func attributeGroupNode(groupID, title string, attributes []metadata.Attribute, descriptionPath, language string, languages []project.Language) Node {
+	children := make([]Node, 0, len(attributes))
+	for _, attribute := range attributes {
+		children = append(children, Node{
+			ID: attribute.ID.String(), Kind: "attribute",
+			Title: attribute.Name,
+			Path:  descriptionPath, Fragment: "attribute:" + attribute.ID.String(),
+			Properties: []Property{{Name: "UUID", Value: attribute.ID.String()}},
+		})
+	}
+	sortNodesByTitle(children)
+	return Node{ID: groupID, Kind: "group", Title: title, Path: descriptionPath, Children: children}
+}
+
+// tablePartGroupNode builds the always-visible "Табличные части" group,
+// nesting each table part's own attributes as informational children.
+func tablePartGroupNode(groupID, title string, tableParts []metadata.TablePart, descriptionPath, language string, languages []project.Language) Node {
+	children := make([]Node, 0, len(tableParts))
+	for _, part := range tableParts {
+		fragment := "tablepart:" + part.ID.String()
+		partAttributes := make([]Node, 0, len(part.Attributes))
+		for _, attribute := range part.Attributes {
+			partAttributes = append(partAttributes, Node{
+				ID: part.ID.String() + ":" + attribute.ID.String(), Kind: "attribute",
+				Title: attribute.Name,
+				Path:  descriptionPath, Fragment: fragment,
+				Properties: []Property{{Name: "UUID", Value: attribute.ID.String()}},
+			})
+		}
+		sortNodesByTitle(partAttributes)
+		children = append(children, Node{
+			ID: part.ID.String(), Kind: "tablepart",
+			Title: part.Name,
+			Path:  descriptionPath, Fragment: fragment, Children: partAttributes,
+			Properties: []Property{{Name: "UUID", Value: part.ID.String()}},
+		})
+	}
+	sortNodesByTitle(children)
+	return Node{ID: groupID, Kind: "group", Title: title, Path: descriptionPath, Children: children}
+}
+
+// sortNodesByTitle orders tree nodes by their display title so that
+// user-created objects (catalogs, attributes, languages, ...) always appear
+// alphabetically within their group — recomputed on every tree build, not a
+// persisted order, so a newly created or renamed object lands in its
+// alphabetical place immediately without any separate "sort"/"move" action.
+func sortNodesByTitle(nodes []Node) {
+	sort.Slice(nodes, func(left, right int) bool { return nodes[left].Title < nodes[right].Title })
 }
 
 func yamlSourceTitle(filePath, relative, fallback string, size int64, language string, languages []project.Language) (string, error) {
@@ -1015,51 +1179,17 @@ func yamlSourceTitle(filePath, relative, fallback string, size int64, language s
 	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
 		return fallback, nil
 	}
+	// The tree always shows an object's Имя (Name), never its Заголовок
+	// (Title) — matching 1C Configurator, where the tree is the developer's
+	// technical view and the localized title is only what end users see.
 	mapping := document.Content[0]
-	name, title := "", ""
-	localizedTitles := map[string]string{}
 	for index := 0; index+1 < len(mapping.Content); index += 2 {
 		key, value := mapping.Content[index], mapping.Content[index+1]
-		switch key.Value {
-		case "name":
-			if value.Kind == yaml.ScalarNode {
-				name = strings.TrimSpace(value.Value)
-			}
-		case "title":
-			if value.Kind == yaml.ScalarNode {
-				title = strings.TrimSpace(value.Value)
-			} else if value.Kind == yaml.MappingNode {
-				for item := 0; item+1 < len(value.Content); item += 2 {
-					if value.Content[item].Kind == yaml.ScalarNode && value.Content[item+1].Kind == yaml.ScalarNode {
-						localizedTitles[value.Content[item].Value] = strings.TrimSpace(value.Content[item+1].Value)
-					}
-				}
+		if key.Value == "name" && value.Kind == yaml.ScalarNode {
+			if name := strings.TrimSpace(value.Value); name != "" {
+				return name, nil
 			}
 		}
-	}
-	if title != "" {
-		return title, nil
-	}
-	if title = localizedTitles[language]; title != "" {
-		return title, nil
-	}
-	for _, configured := range languages {
-		if title = localizedTitles[configured.Code]; title != "" {
-			return title, nil
-		}
-	}
-	localizedCodes := make([]string, 0, len(localizedTitles))
-	for code := range localizedTitles {
-		localizedCodes = append(localizedCodes, code)
-	}
-	sort.Strings(localizedCodes)
-	for _, code := range localizedCodes {
-		if title = localizedTitles[code]; title != "" {
-			return title, nil
-		}
-	}
-	if name != "" {
-		return name, nil
 	}
 	return fallback, nil
 }

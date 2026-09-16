@@ -14,6 +14,8 @@ import (
 	"github.com/k33alexey/MetaLab/internal/appconfig"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/platform"
+	"github.com/k33alexey/MetaLab/internal/publication"
+	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/secretstore"
 	"github.com/k33alexey/MetaLab/internal/studio"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
@@ -52,6 +54,9 @@ func runStudio(ctx context.Context, configuration appconfig.Config, projectPath,
 			return nil, nil, err
 		}
 		return runtime, pool.Close, nil
+	})
+	workspace.SetSaveDataProvider(func(saveContext context.Context, root string, allowDestructive bool) (publication.SavedState, schemadiff.MigrationRecord, error) {
+		return platformRuntime.SaveApplicationData(saveContext, databaseID, root, allowDestructive)
 	})
 	lease, err := openStudioLease(ctx, platformRuntime, databaseID, snapshot.Manifest.ID)
 	if err != nil {

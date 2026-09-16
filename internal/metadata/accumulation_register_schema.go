@@ -53,7 +53,12 @@ func (catalog *Catalog) accumulationRegisterTables(definition AccumulationRegist
 	if definition.Kind == AccumulationRegisterBalance {
 		movements.Columns = append(movements.Columns, schemadiff.Column{Name: "movement_kind", Type: "smallint", Nullable: false})
 		movements.Constraints = append(movements.Constraints, schemadiff.Constraint{
-			Name: physicalObjectName("cm", definition.ID), Type: "check", Definition: "CHECK (movement_kind IN (1, 2))",
+			// PostgreSQL rewrites a scalar IN-list against constants into
+			// "= ANY (ARRAY[...])" internally and echoes that form back from
+			// pg_get_constraintdef - writing it that way here keeps every
+			// re-application of an unchanged schema a true no-op instead of
+			// a spurious "replace constraint" (destructive) diff each time.
+			Name: physicalObjectName("cm", definition.ID), Type: "check", Definition: "CHECK (movement_kind = ANY (ARRAY[1, 2]))",
 		})
 	}
 	totals := schemadiff.Table{

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -27,6 +28,20 @@ type RuntimeSnapshot struct {
 	InformationRegisters  []InformationRegisterDefinition  `json:"informationRegisters,omitempty"`
 	AccumulationRegisters []AccumulationRegisterDefinition `json:"accumulationRegisters,omitempty"`
 	Forms                 []ManagedForm                    `json:"forms,omitempty"`
+	// Modules holds every project BSL module's source text. ML Service
+	// compiles BSL exclusively from here - it never reads project files
+	// from disk, so it can run on a different machine than Studio.
+	Modules []RuntimeModule `json:"modules,omitempty"`
+}
+
+// RuntimeModule is one compilable BSL module, persisted as source text
+// (not bytecode) so it survives compiler version changes.
+type RuntimeModule struct {
+	Name                string                  `json:"name"`
+	Filename            string                  `json:"filename"`
+	Source              string                  `json:"source"`
+	PredefinedVariables []string                `json:"predefinedVariables,omitempty"`
+	DefaultContext      syntax.ExecutionContext `json:"defaultContext,omitempty"`
 }
 
 // NewRuntimeSnapshot creates an isolated, deterministic publication snapshot.
@@ -107,6 +122,29 @@ func NewRuntimeSnapshot(catalog *Catalog, forms []ManagedForm) (RuntimeSnapshot,
 	return result, nil
 }
 
+// WithModules attaches BSL module source text to an already-built snapshot.
+// Kept as a separate step from NewRuntimeSnapshot so callers that have no
+// BSL to compile yet (most existing tests, the retiring package pipeline)
+// are unaffected.
+func (snapshot RuntimeSnapshot) WithModules(modules []RuntimeModule) (RuntimeSnapshot, error) {
+	seen := make(map[string]bool, len(modules))
+	for _, module := range modules {
+		if module.Name == "" || module.Filename == "" {
+			return RuntimeSnapshot{}, fmt.Errorf("runtime module requires a name and filename")
+		}
+		if seen[module.Name] {
+			return RuntimeSnapshot{}, fmt.Errorf("duplicate runtime module name %q", module.Name)
+		}
+		seen[module.Name] = true
+	}
+	snapshot.Modules = append([]RuntimeModule(nil), modules...)
+	if len(snapshot.Modules) == 0 {
+		snapshot.Modules = nil
+	}
+	sort.Slice(snapshot.Modules, func(left, right int) bool { return snapshot.Modules[left].Name < snapshot.Modules[right].Name })
+	return snapshot, nil
+}
+
 // Catalog reconstructs indexed immutable metadata from a published snapshot.
 func (snapshot RuntimeSnapshot) Catalog() (*Catalog, error) {
 	if snapshot.Format != CurrentFormat {
@@ -134,6 +172,14 @@ func (snapshot RuntimeSnapshot) Validate() error {
 	for index := 1; index < len(snapshot.Roles); index++ {
 		if snapshot.Roles[index-1].ID.String() >= snapshot.Roles[index].ID.String() {
 			return fmt.Errorf("runtime roles must have unique UUIDs in stable order")
+		}
+	}
+	for index, module := range snapshot.Modules {
+		if module.Name == "" || module.Filename == "" {
+			return fmt.Errorf("runtime module requires a name and filename")
+		}
+		if index > 0 && snapshot.Modules[index-1].Name >= module.Name {
+			return fmt.Errorf("runtime modules must have unique names in stable order")
 		}
 	}
 	var previous string

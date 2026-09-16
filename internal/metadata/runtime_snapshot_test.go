@@ -64,3 +64,38 @@ func TestRuntimeSnapshotRejectsNonCanonicalFormOrder(t *testing.T) {
 		t.Fatal("non-canonical runtime form order was accepted")
 	}
 }
+
+func TestRuntimeSnapshotWithModulesSortsAndValidates(t *testing.T) {
+	t.Parallel()
+	manifest := project.Project{
+		Format: project.CurrentFormat, ID: uuid.MustNew(), Name: "Demo", Title: "Demo",
+		DefaultLanguage: "ru", Languages: []project.Language{{Name: "Русский", Title: "Русский", Code: "ru"}},
+	}
+	catalog, err := NewCatalogSnapshotWithAccumulationRegisters(manifest, nil, nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := NewRuntimeSnapshot(catalog, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err = snapshot.WithModules([]RuntimeModule{
+		{Name: "ModuleB", Filename: "modules/second.bsl", Source: "// second"},
+		{Name: "ModuleA", Filename: "modules/first.bsl", Source: "// first"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Modules) != 2 || snapshot.Modules[0].Name != "ModuleA" || snapshot.Modules[1].Name != "ModuleB" {
+		t.Fatalf("modules were not sorted: %+v", snapshot.Modules)
+	}
+	if err := snapshot.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := snapshot.WithModules([]RuntimeModule{{Name: "Дубль", Filename: "a.bsl"}, {Name: "Дубль", Filename: "b.bsl"}}); err == nil {
+		t.Fatal("duplicate runtime module name was accepted")
+	}
+	if _, err := snapshot.WithModules([]RuntimeModule{{Name: "", Filename: "a.bsl"}}); err == nil {
+		t.Fatal("runtime module without a name was accepted")
+	}
+}

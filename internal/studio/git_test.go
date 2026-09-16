@@ -69,15 +69,6 @@ func TestGitAPIStatusDiffCommitAndBranches(t *testing.T) {
 	if committed.Code != http.StatusOK || !strings.Contains(committed.Body.String(), "Add module") {
 		t.Fatalf("commit status=%d body=%s", committed.Code, committed.Body.String())
 	}
-	packaged := httptest.NewRecorder()
-	request = httptest.NewRequest(http.MethodPost, "/api/publication/package", nil)
-	request.Header.Set("X-ML-CSRF", "1")
-	handler.ServeHTTP(packaged, request)
-	prefixLength := min(20, packaged.Body.Len())
-	if packaged.Code != http.StatusOK || !bytes.HasPrefix(packaged.Body.Bytes(), []byte("PK")) || packaged.Header().Get("X-ML-Package-Digest") == "" {
-		t.Fatalf("package status=%d headers=%v body-prefix=%q", packaged.Code, packaged.Header(), packaged.Body.Bytes()[:prefixLength])
-	}
-
 	switched := httptest.NewRecorder()
 	request = httptest.NewRequest(http.MethodPost, "/api/git/branches/switch", strings.NewReader(`{"name":"feature/forms","create":true}`))
 	request.Header.Set("Content-Type", "application/json")
@@ -90,6 +81,30 @@ func TestGitAPIStatusDiffCommitAndBranches(t *testing.T) {
 	handler.ServeHTTP(branches, httptest.NewRequest(http.MethodGet, "/api/git/branches", nil))
 	if branches.Code != http.StatusOK || !strings.Contains(branches.Body.String(), `"current":"feature/forms"`) {
 		t.Fatalf("branches status=%d body=%s", branches.Code, branches.Body.String())
+	}
+}
+
+func TestSaveDataRequiresCSRFAndProvider(t *testing.T) {
+	root := createProject(t)
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(workspace)
+
+	denied := httptest.NewRecorder()
+	handler.ServeHTTP(denied, httptest.NewRequest(http.MethodPost, "/api/save-data", nil))
+	if denied.Code != http.StatusForbidden {
+		t.Fatalf("save-data without CSRF status = %d", denied.Code)
+	}
+
+	unavailable := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/save-data", strings.NewReader("{}"))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-ML-CSRF", "1")
+	handler.ServeHTTP(unavailable, request)
+	if unavailable.Code != http.StatusBadRequest || !strings.Contains(unavailable.Body.String(), "unavailable") {
+		t.Fatalf("save-data without a provider status=%d body=%s", unavailable.Code, unavailable.Body.String())
 	}
 }
 

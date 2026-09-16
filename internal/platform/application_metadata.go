@@ -2,7 +2,6 @@ package platform
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -191,24 +190,19 @@ func (runtime *Runtime) loadPublishedMetadata(ctx context.Context, databaseID uu
 	if err != nil {
 		return metadata.RuntimeSnapshot{}, nil, err
 	}
-	active, found, err := publication.Current(ctx, pool)
+	snapshot, found, err := publication.CurrentDatabaseState(ctx, pool)
 	if err != nil || !found {
 		pool.Close()
 		if err != nil {
 			return metadata.RuntimeSnapshot{}, nil, err
 		}
-		return metadata.RuntimeSnapshot{}, nil, fmt.Errorf("application database has no active publication")
+		return metadata.RuntimeSnapshot{}, nil, fmt.Errorf("application database has no saved data yet")
 	}
-	var manifest publication.Manifest
-	if err := json.Unmarshal(active.Manifest, &manifest); err != nil {
+	if err := snapshot.Validate(); err != nil {
 		pool.Close()
-		return metadata.RuntimeSnapshot{}, nil, fmt.Errorf("decode active publication metadata: %w", err)
+		return metadata.RuntimeSnapshot{}, nil, fmt.Errorf("validate saved database state: %w", err)
 	}
-	if err := manifest.Runtime.Validate(); err != nil {
-		pool.Close()
-		return metadata.RuntimeSnapshot{}, nil, fmt.Errorf("validate active publication metadata: %w", err)
-	}
-	return manifest.Runtime, pool, nil
+	return snapshot, pool, nil
 }
 
 func (runtime *Runtime) openApplicationPool(ctx context.Context, id uuid.UUID) (*pgxpool.Pool, systemdb.RegisteredDatabase, error) {

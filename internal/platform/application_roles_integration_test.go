@@ -5,9 +5,9 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -17,7 +17,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/postgresadmin"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/publication"
-	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -119,24 +118,16 @@ func TestManagerApplicationRolesUseActivePublicationIntegration(t *testing.T) {
 	}
 	write("metadata/constants/"+constant.ID.String()+".yaml", constant)
 	write("metadata/roles/"+reader.ID.String()+".yaml", reader)
-	packagePath := filepath.Join(t.TempDir(), "roles.mlpkg")
-	commit := strings.Repeat("a", 40)
-	if _, err := publication.BuildFile(ctx, root, packagePath, publication.SourceState{GitCommit: commit, Dirty: true}); err != nil {
+	runTestGit(t, root, "init", "-b", "main")
+	runTestGit(t, root, "config", "user.name", "MetaLab Test")
+	runTestGit(t, root, "config", "user.email", "metalab-test@example.invalid")
+	runTestGit(t, root, "add", "--all")
+	runTestGit(t, root, "commit", "-m", "Initial project")
+	if _, _, err := publication.SaveData(ctx, pool, publication.SaveDataRequest{Root: root, Mode: publication.ActivationDebug, Confirmed: true}); err != nil {
 		t.Fatal(err)
 	}
 	catalog, err := metadata.Load(root)
 	if err != nil {
-		t.Fatal(err)
-	}
-	desired, err := catalog.ApplicationSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
-	plan, err := schemadiff.Prepare(ctx, pool, desired)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := publication.Activate(ctx, pool, publication.ActivationRequest{PackagePath: packagePath, Desired: desired, Prepared: plan, ExpectedGitCommit: commit, Mode: publication.ActivationDebug, Confirmed: true}); err != nil {
 		t.Fatal(err)
 	}
 	view, err := runtime.GetManagerApplicationRoles(adminContext, registered.ID, member.ID)
@@ -171,5 +162,13 @@ func TestManagerApplicationRolesUseActivePublicationIntegration(t *testing.T) {
 	view, err = runtime.GetManagerApplicationRoles(adminContext, registered.ID, member.ID)
 	if err != nil || len(view.Available) != 1 || view.Assignment.Revision != 1 || len(view.Assignment.RoleIDs) != 1 {
 		t.Fatalf("role editor did not read active stored selection: %+v %v", view, err)
+	}
+}
+
+func runTestGit(t *testing.T, root string, arguments ...string) {
+	t.Helper()
+	command := exec.Command("git", append([]string{"-C", root}, arguments...)...)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", arguments, err, output)
 	}
 }
