@@ -78,7 +78,7 @@ func buildHandler(ctx context.Context, configuration appconfig.Config, secrets p
 	}
 	runtime, err := prototype.OpenRuntime(ctx, databaseURL)
 	if err != nil {
-		return nil, nil, err
+		return degradedHandler(), func() {}, err
 	}
 	return runtime.Service.Handler(), runtime.Close, nil
 }
