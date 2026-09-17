@@ -19,7 +19,7 @@ func TestDynamicListBuildsBoundedParameterizedQuery(t *testing.T) {
 		return catalogListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
 		return catalogListField(definition, field)
-	})
+	}, rowRestriction{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,13 +37,13 @@ func TestDynamicListRejectsInvalidRequests(t *testing.T) {
 	if _, err := normalizeDynamicListRequest(DynamicListRequest{Limit: 25}, ListSettings{}); err == nil {
 		t.Fatal("unsupported page size was accepted")
 	}
-	if _, _, err := buildDynamicListSQL("t_demo", DynamicListRequest{Limit: 20, Search: "value"}, nil, func(string) (string, bool) { return "", false }, func(string) (listColumn, bool) { return listColumn{}, false }); err == nil {
+	if _, _, err := buildDynamicListSQL("t_demo", DynamicListRequest{Limit: 20, Search: "value"}, nil, func(string) (string, bool) { return "", false }, func(string) (listColumn, bool) { return listColumn{}, false }, rowRestriction{}); err == nil {
 		t.Fatal("search without configured fields was accepted")
 	}
-	if _, _, err := buildDynamicListSQL("t_demo", DynamicListRequest{Limit: 20, Filters: []ListFilter{{Field: "x;drop", Value: "1"}}}, nil, func(string) (string, bool) { return "", false }, func(string) (listColumn, bool) { return listColumn{}, false }); err == nil {
+	if _, _, err := buildDynamicListSQL("t_demo", DynamicListRequest{Limit: 20, Filters: []ListFilter{{Field: "x;drop", Value: "1"}}}, nil, func(string) (string, bool) { return "", false }, func(string) (listColumn, bool) { return listColumn{}, false }, rowRestriction{}); err == nil {
 		t.Fatal("unknown filter field was accepted")
 	}
-	if _, _, err := buildDynamicListSQL("t_demo", DynamicListRequest{Limit: 20, SortField: "x;drop"}, nil, func(string) (string, bool) { return "", false }, func(string) (listColumn, bool) { return listColumn{}, false }); err == nil {
+	if _, _, err := buildDynamicListSQL("t_demo", DynamicListRequest{Limit: 20, SortField: "x;drop"}, nil, func(string) (string, bool) { return "", false }, func(string) (listColumn, bool) { return listColumn{}, false }, rowRestriction{}); err == nil {
 		t.Fatal("unknown sort field was accepted")
 	}
 	definition := CatalogDefinition{Code: CatalogCode{Type: StringType}}
@@ -51,7 +51,7 @@ func TestDynamicListRejectsInvalidRequests(t *testing.T) {
 		return catalogListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
 		return catalogListField(definition, field)
-	}); err == nil {
+	}, rowRestriction{}); err == nil {
 		t.Fatal("advanced search outside input-by-string fields was accepted")
 	}
 }
@@ -63,7 +63,7 @@ func TestDynamicListSearchesNumericFieldByExactValue(t *testing.T) {
 		return catalogListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
 		return catalogListField(definition, field)
-	})
+	}, rowRestriction{})
 	if err != nil {
 		t.Fatal(err)
 	}

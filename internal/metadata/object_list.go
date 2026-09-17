@@ -70,7 +70,9 @@ func (repository *CatalogRepository) ListDynamic(ctx context.Context, name strin
 		return catalogListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
 		return catalogListField(definition, field)
-	})
+	}, listRowRestriction(ctx, definition.ID, policyListColumn(func(field string) (listColumn, bool) {
+		return catalogListField(definition, field)
+	}, definition.Attributes)))
 	if err != nil {
 		return CatalogListPage{}, err
 	}
@@ -171,7 +173,9 @@ func (repository *DocumentRepository) ListDynamic(ctx context.Context, name stri
 		return documentListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
 		return documentListField(definition, field)
-	})
+	}, listRowRestriction(ctx, definition.ID, policyListColumn(func(field string) (listColumn, bool) {
+		return documentListField(definition, field)
+	}, definition.Attributes)))
 	if err != nil {
 		return DocumentListPage{}, err
 	}
@@ -244,7 +248,7 @@ func normalizeDynamicListRequest(request DynamicListRequest, settings ListSettin
 	return request, nil
 }
 
-func buildDynamicListSQL(table string, request DynamicListRequest, searchFields []string, resolve func(string) (string, bool), resolveSearch func(string) (listColumn, bool)) (string, []any, error) {
+func buildDynamicListSQL(table string, request DynamicListRequest, searchFields []string, resolve func(string) (string, bool), resolveSearch func(string) (listColumn, bool), restriction rowRestriction) (string, []any, error) {
 	arguments := []any{basicListCursor(request.Cursor)}
 	sortColumn := "ref"
 	if request.SortField != "" {
@@ -277,6 +281,15 @@ func buildDynamicListSQL(table string, request DynamicListRequest, searchFields 
 		seenFilters[folded] = true
 		arguments = append(arguments, filter.Value)
 		conditions = append(conditions, fmt.Sprintf("%s = $%d", column, len(arguments)))
+	}
+	// Row-level access restrictions narrow the same WHERE clause as ordinary
+	// filters, so a restricted row is never fetched, counted or paged over.
+	policy, err := restriction.predicate(&arguments)
+	if err != nil {
+		return "", nil, err
+	}
+	if policy != "" {
+		conditions = append(conditions, policy)
 	}
 	if request.Search != "" && len(searchFields) == 0 {
 		return "", nil, fmt.Errorf("dynamic list search fields are not configured")

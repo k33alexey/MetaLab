@@ -201,6 +201,57 @@ func TestCatalogRepositoryLifecycleIntegration(t *testing.T) {
 	if err != nil || len(filtered.Records) != 1 || filtered.Records[0].Description != "Второй" {
 		t.Fatalf("filtered=%+v error=%v", filtered, err)
 	}
+
+	// Row-level access policies: the same list, read by a user whose role admits
+	// only some rows. PostgreSQL must do the filtering, so a restricted row is
+	// never fetched, never paged over and cannot be reached through a filter.
+	restrictedRead := func(rule PolicyRule) (*Permissions, error) {
+		role := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Ограниченный", Title: LocalizedText{"ru": "Ограниченный"},
+			Objects: []ObjectPermission{{Object: catalogID, Operations: []PermissionOperation{PermissionRead},
+				Policies: []AccessPolicy{{Operations: []PermissionOperation{PermissionRead}, Rule: &rule}}}}}
+		catalog.Project.ID = projectID
+		catalog.Roles, catalog.roleByID = []RoleDefinition{role}, map[uuid.UUID]int{role.ID: 0}
+		return CompilePermissions(catalog, []uuid.UUID{role.ID})
+	}
+	policy, err := restrictedRead(PolicyRule{Field: "code", Operator: PolicyEqual, Values: []Value{{Kind: StringType, Data: "K001"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	restrictedCtx := WithPermissions(ctx, policy)
+	restrictedPage, err := repository.ListDynamic(restrictedCtx, "Контрагенты", DynamicListRequest{Limit: 20})
+	if err != nil || len(restrictedPage.Records) != 1 || restrictedPage.Records[0].Code != "K001" || restrictedPage.NextCursor != nil {
+		t.Fatalf("restricted page=%+v error=%v", restrictedPage, err)
+	}
+	// A filter must not widen the restriction: asking for a row the policy hides
+	// returns nothing rather than that row.
+	hidden, err := repository.ListDynamic(restrictedCtx, "Контрагенты", DynamicListRequest{Limit: 20, Filters: []ListFilter{{Field: "Code", Value: "K002"}}})
+	if err != nil || len(hidden.Records) != 0 {
+		t.Fatalf("filter reached a row the policy hides: %+v error=%v", hidden, err)
+	}
+	// Neither must search.
+	searchedRestricted, err := repository.ListDynamic(restrictedCtx, "Контрагенты", DynamicListRequest{Limit: 20, Search: "bsl@"})
+	if err != nil || len(searchedRestricted.Records) != 0 {
+		t.Fatalf("search reached a row the policy hides: %+v error=%v", searchedRestricted, err)
+	}
+	// Restricting by an attribute exercises the UUID-named physical column.
+	policy, err = restrictedRead(PolicyRule{Field: emailID.String(), Operator: PolicyIn,
+		Values: []Value{{Kind: StringType, Data: "bsl@example.test"}, {Kind: StringType, Data: "partner001@example.test"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byAttribute, err := repository.ListDynamic(WithPermissions(ctx, policy), "Контрагенты", DynamicListRequest{Limit: 20})
+	if err != nil || len(byAttribute.Records) != 2 {
+		t.Fatalf("restricted by attribute: %+v error=%v", byAttribute, err)
+	}
+	// A policy naming a session parameter cannot be evaluated yet, and the read
+	// must fail rather than quietly return every row.
+	policy, err = restrictedRead(PolicyRule{Field: "code", Operator: PolicyEqual, Parameter: "ТекущийСклад"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.ListDynamic(WithPermissions(ctx, policy), "Контрагенты", DynamicListRequest{Limit: 20}); err == nil {
+		t.Fatal("a policy on an unresolvable session parameter was silently ignored")
+	}
 	sortedFirst, err := repository.ListDynamic(ctx, "Контрагенты", DynamicListRequest{Limit: 20, SortField: "Description", Descending: true})
 	if err != nil || len(sortedFirst.Records) != 20 || sortedFirst.NextCursor == nil {
 		t.Fatalf("sorted first page records=%d cursor=%v error=%v", len(sortedFirst.Records), sortedFirst.NextCursor, err)
