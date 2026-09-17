@@ -105,6 +105,13 @@ func (runtime *Runtime) BeginTestExecutionWithOptions(ctx context.Context, role 
 
 // BeginExecution creates one transaction boundary for a top-level BSL call.
 // Nested VM calls inherit it from context and never finalize it independently.
+//
+// It deliberately does not attach a permission policy. Enforcement is keyed to
+// who the caller is, which only the hosting layer knows: platform attaches the
+// signed-in ML App user's policy to the context before any BSL runs (see
+// openApplicationRuntime), and that policy flows through here into every
+// requireObject/requireFields check. Studio, the CLI and role-free tests
+// intentionally execute without one.
 func (runtime *Runtime) BeginExecution(ctx context.Context) (context.Context, func(error) error, error) {
 	if ctx == nil {
 		return nil, nil, fmt.Errorf("execution context is required")

@@ -37,7 +37,7 @@ func (runtime *Runtime) GetApplicationObject(ctx context.Context, token string, 
 	if err != nil {
 		return ApplicationObjectState{}, err
 	}
-	applicationRuntime, catalog, closePool, err := runtime.openApplicationRuntime(ctx, databaseID, session.UserID)
+	ctx, applicationRuntime, catalog, closePool, err := runtime.openApplicationRuntime(ctx, databaseID, session.UserID)
 	if err != nil {
 		return ApplicationObjectState{}, err
 	}
@@ -56,7 +56,7 @@ func (runtime *Runtime) SaveApplicationObject(ctx context.Context, token string,
 	if err != nil {
 		return ApplicationObjectState{}, err
 	}
-	applicationRuntime, catalog, closePool, err := runtime.openApplicationRuntime(ctx, databaseID, session.UserID)
+	ctx, applicationRuntime, catalog, closePool, err := runtime.openApplicationRuntime(ctx, databaseID, session.UserID)
 	if err != nil {
 		return ApplicationObjectState{}, err
 	}
@@ -96,7 +96,7 @@ func (runtime *Runtime) SetApplicationDeletionMark(ctx context.Context, token st
 	if err != nil {
 		return ApplicationObjectState{}, err
 	}
-	applicationRuntime, catalog, closePool, err := runtime.openApplicationRuntime(ctx, databaseID, session.UserID)
+	ctx, applicationRuntime, catalog, closePool, err := runtime.openApplicationRuntime(ctx, databaseID, session.UserID)
 	if err != nil {
 		return ApplicationObjectState{}, err
 	}
@@ -120,7 +120,7 @@ func (runtime *Runtime) callApplicationDocumentMethod(ctx context.Context, token
 	if err != nil {
 		return ApplicationObjectState{}, err
 	}
-	applicationRuntime, catalog, closePool, err := runtime.openApplicationRuntime(ctx, databaseID, session.UserID)
+	ctx, applicationRuntime, catalog, closePool, err := runtime.openApplicationRuntime(ctx, databaseID, session.UserID)
 	if err != nil {
 		return ApplicationObjectState{}, err
 	}
@@ -144,33 +144,43 @@ func (runtime *Runtime) callApplicationDocumentMethod(ctx context.Context, token
 // (openApplicationPool) already opens a brand-new pool per call, and BSL
 // compilation cost can be revisited later if it proves to matter in
 // practice - building it in now would be speculative.
-func (runtime *Runtime) openApplicationRuntime(ctx context.Context, databaseID, actor uuid.UUID) (*metadata.Runtime, *metadata.Catalog, func(), error) {
+// openApplicationRuntime returns the context to use for the whole operation:
+// it carries the caller's compiled permissions, which is what makes the
+// requireObject/requireFields checks inside the metadata runtime - and every
+// BSL call that inherits this context - actually enforce anything. Callers must
+// use the returned context rather than the one they passed in.
+func (runtime *Runtime) openApplicationRuntime(ctx context.Context, databaseID, actor uuid.UUID) (context.Context, *metadata.Runtime, *metadata.Catalog, func(), error) {
 	snapshot, pool, err := runtime.loadPublishedMetadata(ctx, databaseID)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	catalog, err := snapshot.Catalog()
 	if err != nil {
 		pool.Close()
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
+	}
+	permissions, err := runtime.applicationPermissions(ctx, databaseID, actor, catalog)
+	if err != nil {
+		pool.Close()
+		return nil, nil, nil, nil, err
 	}
 	applicationRuntime, err := metadata.NewApplicationRuntime(pool, catalog, &actor)
 	if err != nil {
 		pool.Close()
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	if len(snapshot.Modules) > 0 {
 		program, diagnostics, err := snapshot.CompileModules()
 		if err != nil {
 			pool.Close()
-			return nil, nil, nil, fmt.Errorf("compile BSL: %w (%v)", err, diagnostics)
+			return nil, nil, nil, nil, fmt.Errorf("compile BSL: %w (%v)", err, diagnostics)
 		}
 		if err := metadata.WireBSLEvents(applicationRuntime, program, catalog); err != nil {
 			pool.Close()
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 	}
-	return applicationRuntime, catalog, pool.Close, nil
+	return metadata.WithPermissions(ctx, permissions), applicationRuntime, catalog, pool.Close, nil
 }
 
 func openApplicationObjectValue(ctx context.Context, applicationRuntime *metadata.Runtime, catalog *metadata.Catalog, objectKind metadata.Kind, name, reference string) (bytecode.Value, bool, error) {

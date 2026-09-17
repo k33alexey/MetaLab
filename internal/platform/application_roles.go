@@ -100,6 +100,23 @@ func (runtime *Runtime) SetManagerApplicationRoles(ctx context.Context, database
 	return database.DatabaseAccess.SetApplicationRoles(ctx, actor.UserID, userID, databaseID, catalog.Project.ID, update.RoleIDs, update.ExpectedRevision)
 }
 
+// applicationPermissions resolves the policy of one already authenticated ML App
+// user on one database and is re-read at every execution boundary rather than
+// cached alongside the session: revoking a role must take effect on the user's
+// next request, not at their next login. A user with no selection gets a policy
+// that denies everything, because the absence of a grant is never itself a grant.
+func (runtime *Runtime) applicationPermissions(ctx context.Context, databaseID, userID uuid.UUID, catalog *metadata.Catalog) (*metadata.Permissions, error) {
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return nil, err
+	}
+	assignment, err := database.DatabaseAccess.ApplicationRoles(ctx, userID, databaseID)
+	if err != nil {
+		return nil, err
+	}
+	return permissionsForAssignment(catalog, assignment)
+}
+
 // permissionsForAssignment binds an ML System selection to exactly one project.
 // No selection, including in a role-free project, means no application grants.
 // Callers must authenticate and reload the selection for each execution boundary.

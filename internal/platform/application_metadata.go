@@ -38,8 +38,12 @@ type ApplicationListRow struct {
 }
 
 // LoadApplicationObjects returns objects from the exact active publication.
+// LoadApplicationObjects lists only what the caller may actually read: an object
+// the user has no grant on is absent from the menu rather than present and
+// failing when opened.
 func (runtime *Runtime) LoadApplicationObjects(ctx context.Context, token string, databaseID uuid.UUID, language string) ([]ApplicationObject, error) {
-	if _, err := runtime.ResumePortalDatabase(ctx, token, databaseID); err != nil {
+	session, err := runtime.ResumePortalDatabase(ctx, token, databaseID)
+	if err != nil {
 		return nil, err
 	}
 	snapshot, pool, err := runtime.loadPublishedMetadata(ctx, databaseID)
@@ -48,22 +52,72 @@ func (runtime *Runtime) LoadApplicationObjects(ctx context.Context, token string
 	}
 	defer pool.Close()
 	catalog, err := snapshot.Catalog()
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := runtime.applicationPermissions(ctx, databaseID, session.UserID, catalog)
 	if err != nil {
 		return nil, err
 	}
 	result := make([]ApplicationObject, 0, len(catalog.Catalogs)+len(catalog.Documents))
 	for _, item := range catalog.Catalogs {
+		if !permissions.AllowsObject(item.ID, metadata.PermissionRead) {
+			continue
+		}
 		result = append(result, ApplicationObject{Kind: metadata.CatalogKind, Name: item.Name, Title: resolvedApplicationTitle(item.Title, item.Name, language, catalog)})
 	}
 	for _, item := range catalog.Documents {
+		if !permissions.AllowsObject(item.ID, metadata.PermissionRead) {
+			continue
+		}
 		result = append(result, ApplicationObject{Kind: metadata.DocumentKind, Name: item.Name, Title: resolvedApplicationTitle(item.Title, item.Name, language, catalog)})
 	}
 	return result, nil
 }
 
+// applicationObjectID resolves the metadata identity a read permission is keyed
+// by. An unknown name is reported as unknown, never as denied, since the name
+// came from the developer's own metadata, not from the caller's grants.
+func applicationObjectID(catalog *metadata.Catalog, objectKind metadata.Kind, name string) (uuid.UUID, error) {
+	switch objectKind {
+	case metadata.CatalogKind:
+		definition, ok := catalog.CatalogDefinition(name)
+		if !ok {
+			return uuid.UUID{}, fmt.Errorf("unknown catalog %q", name)
+		}
+		return definition.ID, nil
+	case metadata.DocumentKind:
+		definition, ok := catalog.DocumentDefinition(name)
+		if !ok {
+			return uuid.UUID{}, fmt.Errorf("unknown document %q", name)
+		}
+		return definition.ID, nil
+	default:
+		return uuid.UUID{}, fmt.Errorf("unsupported application object kind %q", objectKind)
+	}
+}
+
+// requireApplicationRead resolves the caller's policy and refuses the whole
+// operation when they may not read the object at all.
+func (runtime *Runtime) requireApplicationRead(ctx context.Context, databaseID, userID uuid.UUID, catalog *metadata.Catalog, objectKind metadata.Kind, name string) (context.Context, error) {
+	objectID, err := applicationObjectID(catalog, objectKind, name)
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := runtime.applicationPermissions(ctx, databaseID, userID, catalog)
+	if err != nil {
+		return nil, err
+	}
+	if err := permissions.RequireObject(objectID, metadata.PermissionRead); err != nil {
+		return nil, err
+	}
+	return metadata.WithPermissions(ctx, permissions), nil
+}
+
 // LoadApplicationForm resolves generated or custom managed-form metadata.
 func (runtime *Runtime) LoadApplicationForm(ctx context.Context, token string, databaseID uuid.UUID, objectKind metadata.Kind, name string, formKind metadata.FormKind, language string) (ApplicationForm, error) {
-	if _, err := runtime.ResumePortalDatabase(ctx, token, databaseID); err != nil {
+	session, err := runtime.ResumePortalDatabase(ctx, token, databaseID)
+	if err != nil {
 		return ApplicationForm{}, err
 	}
 	snapshot, pool, err := runtime.loadPublishedMetadata(ctx, databaseID)
@@ -73,6 +127,9 @@ func (runtime *Runtime) LoadApplicationForm(ctx context.Context, token string, d
 	defer pool.Close()
 	catalog, err := snapshot.Catalog()
 	if err != nil {
+		return ApplicationForm{}, err
+	}
+	if _, err := runtime.requireApplicationRead(ctx, databaseID, session.UserID, catalog, objectKind, name); err != nil {
 		return ApplicationForm{}, err
 	}
 	var descriptor metadata.FormDescriptor
@@ -100,7 +157,8 @@ func (runtime *Runtime) LoadApplicationForm(ctx context.Context, token string, d
 
 // LoadApplicationList returns one bounded metadata-aware page from PostgreSQL.
 func (runtime *Runtime) LoadApplicationList(ctx context.Context, token string, databaseID uuid.UUID, objectKind metadata.Kind, name string, request metadata.DynamicListRequest) (ApplicationListPage, error) {
-	if _, err := runtime.ResumePortalDatabase(ctx, token, databaseID); err != nil {
+	session, err := runtime.ResumePortalDatabase(ctx, token, databaseID)
+	if err != nil {
 		return ApplicationListPage{}, err
 	}
 	snapshot, pool, err := runtime.loadPublishedMetadata(ctx, databaseID)
@@ -109,6 +167,12 @@ func (runtime *Runtime) LoadApplicationList(ctx context.Context, token string, d
 	}
 	defer pool.Close()
 	catalog, err := snapshot.Catalog()
+	if err != nil {
+		return ApplicationListPage{}, err
+	}
+	// The context carries the policy onward so row filtering can use it without
+	// resolving the assignment a second time.
+	ctx, err = runtime.requireApplicationRead(ctx, databaseID, session.UserID, catalog, objectKind, name)
 	if err != nil {
 		return ApplicationListPage{}, err
 	}

@@ -3,6 +3,7 @@ package platform
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -142,6 +143,21 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 КонецПроцедуры`), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// ML App grants nothing without an assigned role - not even to the platform
+	// administrator - so an authorized user has to be modelled explicitly.
+	schema, err := metadata.LoadPermissionSchema(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	role := metadata.RoleDefinition{Format: 1, ID: uuid.MustNew(), Name: "Полный", Title: metadata.LocalizedText{"ru": "Полный"}}
+	for _, object := range schema.Objects {
+		permission := metadata.ObjectPermission{Object: object.ID, Operations: object.Operations}
+		for _, field := range object.Fields {
+			permission.Fields = append(permission.Fields, metadata.FieldPermission{Field: field.Key, Operations: field.Operations})
+		}
+		role.Objects = append(role.Objects, permission)
+	}
+	write("metadata/roles/"+role.ID.String()+".yaml", role)
 	runTestGit(t, root, "init", "-b", "main")
 	runTestGit(t, root, "config", "user.name", "MetaLab Test")
 	runTestGit(t, root, "config", "user.email", "metalab-test@example.invalid")
@@ -153,6 +169,14 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 	}
 	defer pool.Close()
 	if _, _, err := publication.SaveData(ctx, pool, publication.SaveDataRequest{Root: root, Mode: publication.ActivationDebug, Confirmed: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.database.DatabaseAccess.SetApplicationRoles(ctx, admin.ID, admin.ID, registered.ID, manifest.ID, []uuid.UUID{role.ID}, 0); err != nil {
+		t.Fatal(err)
+	}
+	// Changing an assignment terminates that user's application sessions on
+	// purpose, so a revoked role cannot outlive the request that revoked it.
+	if _, err := runtime.OpenPortalDatabase(ctx, portalLogin.Token, registered.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -214,6 +238,63 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 	marked, err := runtime.SetApplicationDeletionMark(ctx, portalLogin.Token, registered.ID, metadata.DocumentKind, "Поступление", created.Reference, true)
 	if err != nil || !marked.DeletionMark {
 		t.Fatalf("set deletion mark: %+v error=%v", marked, err)
+	}
+
+	// Revoking the role must close every path immediately, on the same user,
+	// same database and same document that worked a moment ago - otherwise the
+	// grants above prove nothing about enforcement.
+	if _, err := runtime.database.DatabaseAccess.SetApplicationRoles(ctx, admin.ID, admin.ID, registered.ID, manifest.ID, nil, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.OpenPortalDatabase(ctx, portalLogin.Token, registered.ID); err != nil {
+		t.Fatal(err)
+	}
+	visible, err := runtime.LoadApplicationObjects(ctx, portalLogin.Token, registered.ID, "ru")
+	if err != nil || len(visible) != 0 {
+		t.Fatalf("objects still listed without a role: %+v error=%v", visible, err)
+	}
+	denied := map[string]func() error{
+		"form": func() error {
+			_, err := runtime.LoadApplicationForm(ctx, portalLogin.Token, registered.ID, metadata.DocumentKind, "Поступление", metadata.ObjectForm, "ru")
+			return err
+		},
+		"list": func() error {
+			_, err := runtime.LoadApplicationList(ctx, portalLogin.Token, registered.ID, metadata.DocumentKind, "Поступление", metadata.DynamicListRequest{Limit: 10})
+			return err
+		},
+		"read object": func() error {
+			_, err := runtime.GetApplicationObject(ctx, portalLogin.Token, registered.ID, metadata.DocumentKind, "Поступление", created.Reference)
+			return err
+		},
+		"save object": func() error {
+			_, err := runtime.SaveApplicationObject(ctx, portalLogin.Token, registered.ID, metadata.DocumentKind, "Поступление", ApplicationObjectWrite{
+				Reference: created.Reference, Fields: map[string]metadata.Value{"Товар": {Kind: metadata.StringType, Data: "B"}}})
+			return err
+		},
+		"post document": func() error {
+			_, err := runtime.PostApplicationDocument(ctx, portalLogin.Token, registered.ID, "Поступление", created.Reference)
+			return err
+		},
+		"deletion mark": func() error {
+			_, err := runtime.SetApplicationDeletionMark(ctx, portalLogin.Token, registered.ID, metadata.DocumentKind, "Поступление", created.Reference, false)
+			return err
+		},
+	}
+	for name, call := range denied {
+		if err := call(); !errors.Is(err, metadata.ErrPermissionDenied) {
+			t.Fatalf("%s was allowed without a role: %v", name, err)
+		}
+	}
+	// The document itself must be untouched by the refused write attempts.
+	if _, err := runtime.database.DatabaseAccess.SetApplicationRoles(ctx, admin.ID, admin.ID, registered.ID, manifest.ID, []uuid.UUID{role.ID}, 2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.OpenPortalDatabase(ctx, portalLogin.Token, registered.ID); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := runtime.GetApplicationObject(ctx, portalLogin.Token, registered.ID, metadata.DocumentKind, "Поступление", created.Reference)
+	if err != nil || restored.Fields["Товар"].Data != "A" || !restored.DeletionMark {
+		t.Fatalf("refused writes changed the document: %+v error=%v", restored, err)
 	}
 }
 
