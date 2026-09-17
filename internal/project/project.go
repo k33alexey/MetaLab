@@ -56,19 +56,19 @@ func (validation *ValidationError) Is(target error) bool {
 
 // Project is the root manifest stored in mlproject.yaml.
 type Project struct {
-	Format          int        `yaml:"format"`
-	ID              uuid.UUID  `yaml:"id"`
-	Name            string     `yaml:"name"`
-	Title           string     `yaml:"title"`
-	DefaultLanguage string     `yaml:"default_language"`
-	Languages       []Language `yaml:"languages"`
+	Format          int        `yaml:"format" json:"format"`
+	ID              uuid.UUID  `yaml:"id" json:"id"`
+	Name            string     `yaml:"name" json:"name"`
+	Title           string     `yaml:"title" json:"title"`
+	DefaultLanguage string     `yaml:"default_language" json:"defaultLanguage"`
+	Languages       []Language `yaml:"languages" json:"languages"`
 }
 
 // Language defines an interface language available in an ML Project.
 type Language struct {
-	Name  string `yaml:"name"`
-	Title string `yaml:"title"`
-	Code  string `yaml:"code"`
+	Name  string `yaml:"name" json:"name"`
+	Title string `yaml:"title" json:"title"`
+	Code  string `yaml:"code" json:"code"`
 }
 
 // Decode reads one strict YAML document and validates it.

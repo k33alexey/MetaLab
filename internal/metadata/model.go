@@ -85,11 +85,11 @@ func (text LocalizedText) Resolve(language string, configured []project.Language
 
 // Type describes one allowed scalar value. References use stable metadata UUIDs.
 type Type struct {
-	Kind      TypeKind   `yaml:"kind"`
-	Reference *uuid.UUID `yaml:"reference,omitempty"`
-	Length    int        `yaml:"length,omitempty"`
-	Precision int        `yaml:"precision,omitempty"`
-	Scale     int        `yaml:"scale,omitempty"`
+	Kind      TypeKind   `yaml:"kind" json:"kind"`
+	Reference *uuid.UUID `yaml:"reference,omitempty" json:"reference,omitempty"`
+	Length    int        `yaml:"length,omitempty" json:"length,omitempty"`
+	Precision int        `yaml:"precision,omitempty" json:"precision,omitempty"`
+	Scale     int        `yaml:"scale,omitempty" json:"scale,omitempty"`
 }
 
 type Constant struct {
@@ -135,35 +135,35 @@ type DefinedTypeObject struct {
 }
 
 type CatalogCode struct {
-	Type   TypeKind `yaml:"type"`
-	Length int      `yaml:"length"`
-	Auto   bool     `yaml:"auto"`
-	Unique bool     `yaml:"unique"`
+	Type   TypeKind `yaml:"type" json:"type"`
+	Length int      `yaml:"length" json:"length"`
+	Auto   bool     `yaml:"auto" json:"auto"`
+	Unique bool     `yaml:"unique" json:"unique"`
 }
 
 // PredefinedCatalogItem binds configuration identity to one stable catalog reference.
 type PredefinedCatalogItem struct {
-	ID          uuid.UUID        `yaml:"id"`
-	Name        string           `yaml:"name"`
-	Code        string           `yaml:"code,omitempty"`
-	Description string           `yaml:"description,omitempty"`
-	Attributes  map[string]Value `yaml:"attributes,omitempty"`
+	ID          uuid.UUID        `yaml:"id" json:"id"`
+	Name        string           `yaml:"name" json:"name"`
+	Code        string           `yaml:"code,omitempty" json:"code,omitempty"`
+	Description string           `yaml:"description,omitempty" json:"description,omitempty"`
+	Attributes  map[string]Value `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 }
 
 type Attribute struct {
-	ID       uuid.UUID     `yaml:"id"`
-	Name     string        `yaml:"name"`
-	Title    LocalizedText `yaml:"title"`
-	Types    []Type        `yaml:"types"`
-	Required bool          `yaml:"required,omitempty"`
-	Indexed  bool          `yaml:"indexed,omitempty"`
+	ID       uuid.UUID     `yaml:"id" json:"id"`
+	Name     string        `yaml:"name" json:"name"`
+	Title    LocalizedText `yaml:"title" json:"title"`
+	Types    []Type        `yaml:"types" json:"types"`
+	Required bool          `yaml:"required,omitempty" json:"required,omitempty"`
+	Indexed  bool          `yaml:"indexed,omitempty" json:"indexed,omitempty"`
 }
 
 type TablePart struct {
-	ID         uuid.UUID     `yaml:"id"`
-	Name       string        `yaml:"name"`
-	Title      LocalizedText `yaml:"title"`
-	Attributes []Attribute   `yaml:"attributes"`
+	ID         uuid.UUID     `yaml:"id" json:"id"`
+	Name       string        `yaml:"name" json:"name"`
+	Title      LocalizedText `yaml:"title" json:"title"`
+	Attributes []Attribute   `yaml:"attributes" json:"attributes"`
 }
 
 // ListSettings controls bounded server-side lists without embedding SQL in metadata.
@@ -174,19 +174,19 @@ type ListSettings struct {
 
 // CatalogDefinition describes one ML catalog and its persistent record shape.
 type CatalogDefinition struct {
-	Format            int                     `yaml:"format"`
-	ID                uuid.UUID               `yaml:"id"`
-	Name              string                  `yaml:"name"`
-	Title             LocalizedText           `yaml:"title"`
-	Code              CatalogCode             `yaml:"code"`
-	DescriptionLength int                     `yaml:"description_length"`
-	Attributes        []Attribute             `yaml:"attributes,omitempty"`
-	TableParts        []TablePart             `yaml:"table_parts,omitempty"`
-	ObjectModule      *uuid.UUID              `yaml:"object_module,omitempty"`
-	ManagerModule     *uuid.UUID              `yaml:"manager_module,omitempty"`
-	Forms             ObjectForms             `yaml:"forms,omitempty"`
-	List              ListSettings            `yaml:"list,omitempty"`
-	Predefined        []PredefinedCatalogItem `yaml:"predefined,omitempty"`
+	Format            int                     `yaml:"format" json:"format"`
+	ID                uuid.UUID               `yaml:"id" json:"id"`
+	Name              string                  `yaml:"name" json:"name"`
+	Title             LocalizedText           `yaml:"title" json:"title"`
+	Code              CatalogCode             `yaml:"code" json:"code"`
+	DescriptionLength int                     `yaml:"description_length" json:"descriptionLength"`
+	Attributes        []Attribute             `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts        []TablePart             `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	ObjectModule      *uuid.UUID              `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
+	ManagerModule     *uuid.UUID              `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
+	Forms             ObjectForms             `yaml:"forms,omitempty" json:"forms,omitempty"`
+	List              ListSettings            `yaml:"list,omitempty" json:"list,omitempty"`
+	Predefined        []PredefinedCatalogItem `yaml:"predefined,omitempty" json:"predefined,omitempty"`
 }
 
 // Catalog is an immutable-by-convention snapshot of the supported metadata kinds.

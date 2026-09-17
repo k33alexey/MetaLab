@@ -96,6 +96,27 @@ func (workspace *Workspace) SaveRole(relative string, role metadata.RoleDefiniti
 	return opened, nil
 }
 
+// DeleteRole permanently removes one role's YAML file, after confirming the
+// caller still has the latest revision. Reference existence (e.g. a common
+// module still granting this role) is not checked here — same as SaveRole,
+// that is caught at the next full project Load, not at delete time.
+func (workspace *Workspace) DeleteRole(relative, expectedRevision string) error {
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
+	opened, err := workspace.readRoleLocked(relative)
+	if err != nil {
+		return err
+	}
+	if opened.Revision != expectedRevision {
+		return ErrSourceChanged
+	}
+	if err := os.Remove(filepath.Join(workspace.root, filepath.FromSlash(relative))); err != nil {
+		return fmt.Errorf("delete role %q: %w", relative, err)
+	}
+	workspace.invalidateStudioIndexesLocked()
+	return nil
+}
+
 func (workspace *Workspace) checkRoleNameLocked(role metadata.RoleDefinition) error {
 	entries, err := os.ReadDir(filepath.Join(workspace.root, "metadata", "roles"))
 	if os.IsNotExist(err) {
@@ -204,7 +225,7 @@ func registerRoleRoutes(routes *http.ServeMux, workspace *Workspace) {
 			ExpectedRevision string                  `json:"expectedRevision"`
 			Role             metadata.RoleDefinition `json:"role"`
 		}
-		if !decodeRoleRequest(response, request, &input) {
+		if !decodeStudioJSONRequest(response, request, &input) {
 			return
 		}
 		role, err := workspace.SaveRole(input.Path, input.Role, input.ExpectedRevision)
@@ -218,7 +239,7 @@ func registerRoleRoutes(routes *http.ServeMux, workspace *Workspace) {
 		var input struct {
 			Name string `json:"name"`
 		}
-		if !decodeRoleRequest(response, request, &input) {
+		if !decodeStudioJSONRequest(response, request, &input) {
 			return
 		}
 		role, err := workspace.CreateRole(input.Name)
@@ -228,9 +249,19 @@ func registerRoleRoutes(routes *http.ServeMux, workspace *Workspace) {
 		}
 		writeStudioJSON(response, role)
 	})
+	routes.HandleFunc("DELETE /api/role", func(response http.ResponseWriter, request *http.Request) {
+		if !validateStudioMutation(response, request) {
+			return
+		}
+		if err := workspace.DeleteRole(request.URL.Query().Get("path"), request.URL.Query().Get("expectedRevision")); err != nil {
+			writeSourceError(response, err)
+			return
+		}
+		response.WriteHeader(http.StatusNoContent)
+	})
 }
 
-func decodeRoleRequest(response http.ResponseWriter, request *http.Request, target any) bool {
+func decodeStudioJSONRequest(response http.ResponseWriter, request *http.Request, target any) bool {
 	if !validateStudioMutation(response, request) {
 		return false
 	}

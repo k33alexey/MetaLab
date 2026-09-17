@@ -155,6 +155,34 @@ func TestRoleEditorRoutesValidateMutations(t *testing.T) {
 	}
 }
 
+func TestDeleteRoleRemovesFileAndChecksRevision(t *testing.T) {
+	t.Parallel()
+	workspace, _ := roleWorkspace(t)
+	created, err := workspace.CreateRole("Продавец")
+	if err != nil {
+		t.Fatal(err)
+	}
+	absolute := filepath.Join(workspace.root, filepath.FromSlash(created.Path))
+	if _, err := os.Stat(absolute); err != nil {
+		t.Fatalf("role file missing before delete: %v", err)
+	}
+	if err := workspace.DeleteRole(created.Path, "stale-revision"); !errors.Is(err, ErrSourceChanged) {
+		t.Fatalf("stale revision accepted: %v", err)
+	}
+	if _, err := os.Stat(absolute); err != nil {
+		t.Fatalf("role file removed despite stale revision: %v", err)
+	}
+	if err := workspace.DeleteRole(created.Path, created.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(absolute); !os.IsNotExist(err) {
+		t.Fatalf("role file still present after delete: %v", err)
+	}
+	if err := workspace.DeleteRole(created.Path, created.Revision); !errors.Is(err, ErrSourceNotFound) {
+		t.Fatalf("deleting an already-deleted role: %v", err)
+	}
+}
+
 func TestRoleEditorUI(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {

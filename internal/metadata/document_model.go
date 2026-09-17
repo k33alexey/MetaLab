@@ -30,9 +30,9 @@ type DocumentNumber struct {
 
 // ObjectForms binds optional managed forms to their stable source UUIDs.
 type ObjectForms struct {
-	Object *uuid.UUID `yaml:"object,omitempty"`
-	List   *uuid.UUID `yaml:"list,omitempty"`
-	Choice *uuid.UUID `yaml:"choice,omitempty"`
+	Object *uuid.UUID `yaml:"object,omitempty" json:"object,omitempty"`
+	List   *uuid.UUID `yaml:"list,omitempty" json:"list,omitempty"`
+	Choice *uuid.UUID `yaml:"choice,omitempty" json:"choice,omitempty"`
 }
 
 // DocumentDefinition describes one ML document and its persistent record shape.

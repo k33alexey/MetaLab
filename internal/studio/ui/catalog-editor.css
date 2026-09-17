@@ -1,0 +1,26 @@
+#catalog-editor{display:flex;flex-direction:column;min-height:0;flex:1;background:var(--editor-bg,#1e1f22);color:var(--text,#dfe1e5);overflow:auto}
+#catalog-editor[hidden]{display:none}
+.catalog-body{display:grid;grid-template-columns:minmax(180px,28%) minmax(0,1fr);min-height:0;flex:1}
+.catalog-sidebar{overflow:auto;border-right:1px solid var(--border,#393b40);padding:10px}
+.catalog-group summary{cursor:pointer;padding:7px 0;font-size:12px}
+.catalog-list{display:flex;flex-direction:column}
+.catalog-list-item{display:block;width:100%;text-align:left;margin:2px 0;padding:6px 10px!important;background:transparent!important;overflow:hidden;text-overflow:ellipsis;border-radius:4px}
+.catalog-list-item:hover,.catalog-list-item:focus{background:#365880!important}
+.catalog-list-item.selected{background:#416b9b!important;color:#fff}
+.catalog-detail{overflow:auto;padding:12px 18px}
+.catalog-detail h3{margin:0 0 14px;font-size:15px}
+.catalog-uuid{margin-bottom:12px;color:#92959d;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.catalog-field{display:grid;grid-template-columns:minmax(120px,220px) 1fr;align-items:center;gap:10px;margin:8px 0;font-size:12px}
+.catalog-field input,.catalog-field select{padding:6px 8px;max-width:280px;border:1px solid #4a4d54;border-radius:4px;background:var(--panel-bg,#2b2d30);color:inherit}
+.catalog-check{display:flex;align-items:center;gap:7px;margin:8px 0;font-size:13px}
+.catalog-check input{accent-color:#589df6;margin:0}
+.catalog-titles{border-top:1px solid var(--border,#393b40);margin:12px 0;padding-top:8px}
+.catalog-titles summary{cursor:pointer;padding:6px 0;font-size:12px;color:#aeb1b8}
+.catalog-section-title{margin:16px 0 8px;font-size:12px;font-weight:600;color:#aeb1b8;text-transform:uppercase;letter-spacing:.03em}
+.catalog-code{border-top:1px solid var(--border,#393b40);padding-top:4px;margin-top:12px}
+.catalog-types{border-top:1px solid var(--border,#393b40);padding-top:4px;margin-top:12px}
+.catalog-type-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:8px;margin:6px 0;background:#25262a;border-radius:5px}
+.catalog-type-row label{margin:0}
+.catalog-danger{margin-top:18px;background:#5a2e2e}
+.catalog-danger:hover{background:#733a3a}
+@media(max-width:900px){.catalog-body{grid-template-columns:180px minmax(0,1fr)}.catalog-field{grid-template-columns:1fr}}

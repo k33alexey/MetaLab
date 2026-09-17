@@ -64,7 +64,95 @@ func TestWorkspaceSnapshotBuildsCanonicalTree(t *testing.T) {
 	}
 }
 
-func TestWorkspaceTreeUsesLocalizedMetadataTitle(t *testing.T) {
+func TestWorkspaceTreeAlwaysShowsFixedGroupsForDocumentsAndRegisters(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	for _, kind := range []string{"documents", "information-registers", "accumulation-registers"} {
+		id := uuid.MustNew()
+		metadataPath, err := project.ObjectMetadataPath(kind, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, filepath.FromSlash(metadataPath))), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(metadataPath)), []byte("format: 1\nname: Тест\ntitle: {ru: Тест}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		workspace, err := Open(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		snapshot, err := workspace.Snapshot()
+		if err != nil {
+			t.Fatal(err)
+		}
+		objectNode, ok := findNodeByID(snapshot.Tree, id.String())
+		if !ok {
+			t.Fatalf("%s: object node not found: %+v", kind, snapshot.Tree)
+		}
+		wantGroups := []string{"Формы", "Команды", "Макеты"}
+		if kind == "documents" {
+			wantGroups = append(wantGroups, "Реквизиты", "Табличные части")
+		} else {
+			wantGroups = append(wantGroups, "Измерения", "Ресурсы", "Реквизиты")
+		}
+		for _, want := range wantGroups {
+			if !treeContainsTitle(objectNode, want) {
+				t.Fatalf("%s: missing always-visible group %q: %+v", kind, want, objectNode)
+			}
+		}
+	}
+}
+
+func TestWorkspaceTreeExposesLanguagesAsOneNodeAfterStyles(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := workspace.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadataNode, ok := findNodeByID(snapshot.Tree, "metadata")
+	if !ok {
+		t.Fatalf("metadata node not found: %+v", snapshot.Tree)
+	}
+	var matches []int
+	stylesIndex, constantsIndex := -1, -1
+	for index, child := range metadataNode.Children {
+		if child.ID == "metadata/languages" {
+			matches = append(matches, index)
+		}
+		if child.ID == "metadata/styles" {
+			stylesIndex = index
+		}
+		if child.ID == "metadata/constants" {
+			constantsIndex = index
+		}
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected exactly one languages node, found %d: %+v", len(matches), metadataNode.Children)
+	}
+	languagesIndex := matches[0]
+	if stylesIndex == -1 || constantsIndex == -1 || languagesIndex != stylesIndex+1 || constantsIndex != languagesIndex+1 {
+		t.Fatalf("languages node must sit directly between styles and constants: styles=%d languages=%d constants=%d", stylesIndex, languagesIndex, constantsIndex)
+	}
+	languagesNode := metadataNode.Children[languagesIndex]
+	if len(languagesNode.Children) != 1 || languagesNode.Children[0].ID != "language:ru" || languagesNode.Children[0].Path != project.ManifestFile {
+		t.Fatalf("unexpected languages node children: %+v", languagesNode.Children)
+	}
+	// The group node itself must stay inert (no Path), matching every other
+	// metadata-group node — only individual languages are openable.
+	if languagesNode.Path == project.ManifestFile {
+		t.Fatalf("the languages GROUP node must not itself be openable: %+v", languagesNode)
+	}
+}
+
+func TestWorkspaceTreeAlwaysShowsNameNeverLocalizedTitle(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
 	id := uuid.MustNew()
@@ -76,6 +164,10 @@ func TestWorkspaceTreeUsesLocalizedMetadataTitle(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// The tree is the developer's technical view (1C Configurator style) —
+	// it must show the object's Имя (Name) even when a localized Заголовок
+	// (Title) is configured, since that Title is what end users see, not
+	// what a developer navigates the tree by.
 	content := "format: 1\nid: " + id.String() + "\nname: Режим\ntitle: {uk: Режим роботи, ru: Рабочий режим}\ntypes: [{kind: boolean}]\n"
 	if err := os.WriteFile(absolute, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
@@ -85,8 +177,11 @@ func TestWorkspaceTreeUsesLocalizedMetadataTitle(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshot, err := workspace.Snapshot()
-	if err != nil || !treeContainsTitle(snapshot.Tree, "Рабочий режим") {
-		t.Fatalf("localized tree error=%v tree=%+v", err, snapshot.Tree)
+	if err != nil || !treeContainsTitle(snapshot.Tree, "Режим") {
+		t.Fatalf("tree does not show the object's Name: error=%v tree=%+v", err, snapshot.Tree)
+	}
+	if treeContainsTitle(snapshot.Tree, "Рабочий режим") {
+		t.Fatalf("tree must not show the localized Title instead of Name: %+v", snapshot.Tree)
 	}
 }
 

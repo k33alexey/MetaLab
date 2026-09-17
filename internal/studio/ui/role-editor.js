@@ -94,7 +94,8 @@ function createRoleModel(source) {
 }
 
 function createRoleEditor(host, onChange) {
-  let source, model, selected, panel, tree, warning, fieldsExpanded = false;
+  let source, model, selected, panel, tree, warning, fieldsExpanded = false, titleFieldCleanup = null;
+  function clearTitleField() { titleFieldCleanup?.(); titleFieldCleanup = null; }
   const operations = {read:'Чтение',create:'Добавление',update:'Изменение',delete:'Удаление',post:'Проведение','undo-posting':'Отмена проведения'};
   const kinds = {constants:'Константы',enumerations:'Перечисления',catalogs:'Справочники',documents:'Документы','information-registers':'Регистры сведений','accumulation-registers':'Регистры накопления'};
   const standard = {ref:'Ссылка',code:'Код',description:'Наименование',deletionmark:'Пометка удаления',version:'Версия',predefined:'Предопределённый',predefineddataname:'Имя предопределённых данных',number:'Номер',date:'Дата',posted:'Проведён',recordid:'Идентификатор записи',period:'Период',recorder:'Регистратор',linenumber:'Номер строки',active:'Активность',movementkind:'Вид движения',value:'Значение',order:'Порядок'};
@@ -143,15 +144,16 @@ function createRoleEditor(host, onChange) {
   }
   return {
     open(value, preserveSelection=false) {
+      clearTitleField();
       const previous=preserveSelection?selected:null,expanded=preserveSelection&&fieldsExpanded;source=structuredClone(value);model=createRoleModel(source);selected=null;if(previous?.object){const object=source.schema.objects.find(item=>item.id===previous.object.id);if(object)selected={object};}if(previous?.form){const form=source.schema.forms.find(item=>item.id===previous.form.id);if(form)selected={form};}fieldsExpanded=expanded;host.hidden=false;host.replaceChildren();
       const identity=node('div',undefined,'role-identity'),label=node('label','Имя роли'),name=node('input');name.value=source.role.name;name.maxLength=128;name.addEventListener('input',()=>{model.setName(name.value);changed();});label.append(name);identity.append(label);
-      const titles=node('details');titles.append(node('summary','Заголовки на языках проекта'));
-      for(const language of source.languages){const label=node('label',language.code),input=node('input');input.value=source.role.title[language.code]||'';input.maxLength=512;input.addEventListener('input',()=>{model.setTitle(language.code,input.value);changed();});label.append(input);titles.append(label);}identity.append(titles);host.append(identity);
+      const titleLabel=node('label','Заголовок'),titleField=createLocalizedTitleField(source.languages,code=>source.role.title[code],(code,value)=>model.setTitle(code,value),changed);
+      titleFieldCleanup=titleField.destroy;titleLabel.append(titleField);identity.append(titleLabel);host.append(identity);
       warning=node('div',undefined,'role-warning');warning.append(node('span','В роли есть права на удалённые или изменённые объекты. '));const repair=node('button','Убрать недоступные права');repair.type='button';repair.addEventListener('click',()=>{model.removeUnavailable();changed();renderPanel();});warning.append(repair);warning.hidden=!model.hasUnavailable();host.append(warning);
       const body=node('div',undefined,'role-body'),sidebar=node('div',undefined,'role-sidebar'),search=node('input');search.type='search';search.placeholder='Поиск объекта';search.setAttribute('aria-label','Поиск объекта');search.addEventListener('input',()=>renderTree(search.value));tree=node('div',undefined,'role-tree');sidebar.append(search,tree);panel=node('section',undefined,'role-permissions');body.append(sidebar,panel);host.append(body);renderTree();renderPanel();
     },
     value(){return model?.value();},
-    close(){source=null;model=null;host.hidden=true;host.replaceChildren();},
+    close(){clearTitleField();source=null;model=null;host.hidden=true;host.replaceChildren();},
     setDisabled(disabled){host.inert=disabled;},
   };
 }

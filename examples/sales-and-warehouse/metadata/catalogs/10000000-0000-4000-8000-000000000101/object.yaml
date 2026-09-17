@@ -3,7 +3,7 @@ id: 10000000-0000-4000-8000-000000000101
 name: Товары
 title: {ru: Товары, uk: Товари, en: Products}
 code: {type: string, length: 9, auto: true, unique: true}
-description_length: 250
+description_length: 64
 attributes:
   - id: 10000000-0000-4000-8000-000000001101
     name: Артикул

@@ -12,7 +12,7 @@ function fixture(){return {role:{id:'role',name:'Продавец',title:{ru:'П
 test('Studio inline script remains valid JavaScript',()=>{
   const html=readFileSync(new URL('../internal/studio/ui/index.html',import.meta.url),'utf8');
   for(const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g))new vm.Script(match[1]);
-  assert.match(html,/\/api\/role/);assert.match(html,/id="role-create"/);
+  assert.match(html,/\/api\/role/);assert.match(html,/id="role-create-dialog"/);assert.match(html,/id="tree-add"/);
 });
 test('empty role has no implicit grants and model never mutates input',()=>{
   const source=fixture(),model=create(source);assert.equal(model.hasObject('goods','read'),false);
