@@ -129,12 +129,57 @@ func (workspace *Workspace) SaveCatalogEditor(relative string, value metadata.Ca
 	if err := metadata.Encode(&encoded, value); err != nil {
 		return CatalogEditorSource{}, err
 	}
+	newFieldIDs := newCatalogFieldIDs(opened.Catalog, value)
 	saved, err := workspace.saveSourceLocked(relative, encoded.String(), revision)
 	if err != nil {
 		return CatalogEditorSource{}, err
 	}
+	if len(newFieldIDs) > 0 {
+		if err := workspace.applyRoleAutoGrantsLocked(func(role *metadata.RoleDefinition) bool {
+			if !role.GrantNewFieldsByDefault {
+				return false
+			}
+			changed := false
+			for _, fieldID := range newFieldIDs {
+				if role.GrantFieldReadByDefault(value.ID, fieldID.String()) {
+					changed = true
+				}
+			}
+			return changed
+		}); err != nil {
+			return CatalogEditorSource{}, fmt.Errorf("grant default access to new catalog fields: %w", err)
+		}
+	}
 	opened.Catalog, opened.Revision = value, saved.Revision
 	return opened, nil
+}
+
+// newCatalogFieldIDs collects the IDs of attributes and table parts (whole
+// table parts, and their own nested attributes) present in after but not in
+// before - a table part added earlier that only gained a new nested
+// attribute counts too, since that attribute alone is separately grantable.
+func newCatalogFieldIDs(before, after metadata.CatalogDefinition) []uuid.UUID {
+	collect := func(value metadata.CatalogDefinition) map[uuid.UUID]bool {
+		ids := make(map[uuid.UUID]bool)
+		for _, attribute := range value.Attributes {
+			ids[attribute.ID] = true
+		}
+		for _, part := range value.TableParts {
+			ids[part.ID] = true
+			for _, attribute := range part.Attributes {
+				ids[attribute.ID] = true
+			}
+		}
+		return ids
+	}
+	existing := collect(before)
+	var result []uuid.UUID
+	for id := range collect(after) {
+		if !existing[id] {
+			result = append(result, id)
+		}
+	}
+	return result
 }
 
 func (workspace *Workspace) checkCatalogNameLocked(value metadata.CatalogDefinition) error {
@@ -226,6 +271,14 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 		return CatalogEditorSource{}, fmt.Errorf("create catalog: write=%v, close=%v", writeErr, closeErr)
 	}
 	workspace.invalidateStudioIndexesLocked()
+	if err := workspace.applyRoleAutoGrantsLocked(func(role *metadata.RoleDefinition) bool {
+		if !role.GrantNewObjectsByDefault {
+			return false
+		}
+		return role.GrantObjectReadByDefault(id)
+	}); err != nil {
+		return CatalogEditorSource{}, fmt.Errorf("grant default access to new catalog: %w", err)
+	}
 	choices, err := loadTypeChoices(workspace.root)
 	if err != nil {
 		return CatalogEditorSource{}, err

@@ -61,3 +61,12 @@ test('bulk edits remain bounded for a large object',()=>{
   const model=create(source);model.setAll('goods',true);assert.equal(model.value().objects[0].fields.length,9000);
   model.setAll('goods',false);assert.equal(model.value().objects.length,0);
 });
+test('comment and default-grant flags round-trip through the model without touching objects/fields',()=>{
+  const model=create(fixture());
+  assert.equal(model.value().comment,undefined);assert.equal(model.value().grantNewObjectsByDefault,undefined);assert.equal(model.value().grantNewFieldsByDefault,undefined);
+  model.setComment('Только чтение справочников склада');model.setGrantNewObjectsByDefault(true);model.setGrantNewFieldsByDefault(true);
+  const value=model.value();
+  assert.equal(value.comment,'Только чтение справочников склада');assert.equal(value.grantNewObjectsByDefault,true);assert.equal(value.grantNewFieldsByDefault,true);
+  assert.equal(value.objects.length,0);
+  model.setGrantNewObjectsByDefault(false);assert.equal(model.value().grantNewObjectsByDefault,false);
+});

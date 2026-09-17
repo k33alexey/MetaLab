@@ -78,6 +78,9 @@ function createRoleModel(source) {
     value: clean,
     setName(name) { value.role.name = name; },
     setTitle(language, title) { if(title.trim())value.role.title[language]=title;else delete value.role.title[language]; },
+    setComment(comment) { value.role.comment = comment; },
+    setGrantNewObjectsByDefault(enabled) { value.role.grantNewObjectsByDefault = enabled; },
+    setGrantNewFieldsByDefault(enabled) { value.role.grantNewFieldsByDefault = enabled; },
     setObject, setField,
     hasObject(id, operation) { return objects.get(id)?.operations?.includes(operation) || false; },
     hasField(id, key, operation) { return fieldGrants.get(id)?.get(key)?.operations.includes(operation) || false; },
@@ -148,7 +151,12 @@ function createRoleEditor(host, onChange) {
       const previous=preserveSelection?selected:null,expanded=preserveSelection&&fieldsExpanded;source=structuredClone(value);model=createRoleModel(source);selected=null;if(previous?.object){const object=source.schema.objects.find(item=>item.id===previous.object.id);if(object)selected={object};}if(previous?.form){const form=source.schema.forms.find(item=>item.id===previous.form.id);if(form)selected={form};}fieldsExpanded=expanded;host.hidden=false;host.replaceChildren();
       const identity=node('div',undefined,'role-identity'),label=node('label','Имя роли'),name=node('input');name.value=source.role.name;name.maxLength=128;name.addEventListener('input',()=>{model.setName(name.value);changed();});label.append(name);identity.append(label);
       const titleLabel=node('label','Заголовок'),titleField=createLocalizedTitleField(source.languages,code=>source.role.title[code],(code,value)=>model.setTitle(code,value),changed);
-      titleFieldCleanup=titleField.destroy;titleLabel.append(titleField);identity.append(titleLabel);host.append(identity);
+      titleFieldCleanup=titleField.destroy;titleLabel.append(titleField);identity.append(titleLabel);
+      const commentLabel=node('label','Комментарий'),comment=node('textarea');comment.value=source.role.comment||'';comment.maxLength=4000;comment.rows=2;
+      comment.addEventListener('change',()=>{model.setComment(comment.value);changed();});commentLabel.append(comment);identity.append(commentLabel);
+      identity.append(checkbox('Устанавливать права для новых объектов',!!source.role.grantNewObjectsByDefault,enabled=>model.setGrantNewObjectsByDefault(enabled)));
+      identity.append(checkbox('Устанавливать права для реквизитов и табличных частей по умолчанию',!!source.role.grantNewFieldsByDefault,enabled=>model.setGrantNewFieldsByDefault(enabled)));
+      host.append(identity);
       warning=node('div',undefined,'role-warning');warning.append(node('span','В роли есть права на удалённые или изменённые объекты. '));const repair=node('button','Убрать недоступные права');repair.type='button';repair.addEventListener('click',()=>{model.removeUnavailable();changed();renderPanel();});warning.append(repair);warning.hidden=!model.hasUnavailable();host.append(warning);
       const body=node('div',undefined,'role-body'),sidebar=node('div',undefined,'role-sidebar'),search=node('input');search.type='search';search.placeholder='Поиск объекта';search.setAttribute('aria-label','Поиск объекта');search.addEventListener('input',()=>renderTree(search.value));tree=node('div',undefined,'role-tree');sidebar.append(search,tree);panel=node('section',undefined,'role-permissions');body.append(sidebar,panel);host.append(body);renderTree();renderPanel();
     },

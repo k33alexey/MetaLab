@@ -6,9 +6,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -360,5 +362,76 @@ func TestRuntimeRolesStableOrderAndValidation(t *testing.T) {
 	}
 	if err := snapshot.Validate(); err == nil {
 		t.Fatal("runtime validation accepted unknown command")
+	}
+}
+
+func TestRoleAutoGrantDefaults(t *testing.T) {
+	t.Parallel()
+	objectID := uuid.MustNew()
+
+	// No existing entry for the object at all: creates one with Read.
+	role := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "R", Title: LocalizedText{"ru": "R"}}
+	if !role.GrantObjectReadByDefault(objectID) {
+		t.Fatal("expected the first grant to change the role")
+	}
+	if len(role.Objects) != 1 || role.Objects[0].Object != objectID || !slices.Contains(role.Objects[0].Operations, PermissionRead) {
+		t.Fatalf("role after first grant: %+v", role)
+	}
+
+	// Already has Read: idempotent, reports no change, no duplicate operation.
+	if role.GrantObjectReadByDefault(objectID) {
+		t.Fatal("expected the second grant to be a no-op")
+	}
+	if len(role.Objects[0].Operations) != 1 {
+		t.Fatalf("operations duplicated: %+v", role.Objects[0].Operations)
+	}
+
+	// Has the object with a different operation only: Read is added alongside it.
+	other := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "R2", Title: LocalizedText{"ru": "R2"},
+		Objects: []ObjectPermission{{Object: objectID, Operations: []PermissionOperation{PermissionUpdate}}}}
+	if !other.GrantObjectReadByDefault(objectID) {
+		t.Fatal("expected Read to be added alongside an existing different operation")
+	}
+	if !slices.Contains(other.Objects[0].Operations, PermissionUpdate) || !slices.Contains(other.Objects[0].Operations, PermissionRead) {
+		t.Fatalf("operations after grant: %+v", other.Objects[0].Operations)
+	}
+
+	// GrantFieldReadByDefault never grants a field on an object the role has
+	// no ObjectPermission entry for at all.
+	fieldless := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "R3", Title: LocalizedText{"ru": "R3"}}
+	if fieldless.GrantFieldReadByDefault(objectID, "attribute") {
+		t.Fatal("expected no field grant without an existing object entry")
+	}
+	if len(fieldless.Objects) != 0 {
+		t.Fatalf("unexpected object entry created: %+v", fieldless.Objects)
+	}
+
+	// With an existing object entry, a new field is added with Read.
+	if !role.GrantFieldReadByDefault(objectID, "attribute") {
+		t.Fatal("expected the first field grant to change the role")
+	}
+	if len(role.Objects[0].Fields) != 1 || role.Objects[0].Fields[0].Field != "attribute" {
+		t.Fatalf("role fields after grant: %+v", role.Objects[0].Fields)
+	}
+
+	// Idempotent: field already has Read.
+	if role.GrantFieldReadByDefault(objectID, "attribute") {
+		t.Fatal("expected the second field grant to be a no-op")
+	}
+	if len(role.Objects[0].Fields[0].Operations) != 1 {
+		t.Fatalf("field operations duplicated: %+v", role.Objects[0].Fields[0].Operations)
+	}
+}
+
+func TestRoleCommentLimit(t *testing.T) {
+	t.Parallel()
+	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "P", Title: "P", DefaultLanguage: "ru", Languages: []project.Language{{Name: "Русский", Title: "Русский", Code: "ru"}}}
+	role := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "R", Title: LocalizedText{"ru": "R"}, Comment: strings.Repeat("a", MaxRoleComment)}
+	if err := ValidateRole("role", role, manifest); err != nil {
+		t.Fatalf("comment at the limit rejected: %v", err)
+	}
+	role.Comment += "a"
+	if err := ValidateRole("role", role, manifest); err == nil {
+		t.Fatal("comment over the limit accepted")
 	}
 }

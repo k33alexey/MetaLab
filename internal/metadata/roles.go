@@ -5,6 +5,7 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -14,6 +15,7 @@ const RoleKind Kind = "roles"
 
 // Limits apply to decoded JSON as well as bounded YAML sources.
 const MaxRolePermissions = 10_000
+const MaxRoleComment = 4_000
 
 type PermissionOperation string
 
@@ -34,8 +36,18 @@ type RoleDefinition struct {
 	ID       uuid.UUID           `yaml:"id" json:"id"`
 	Name     string              `yaml:"name" json:"name"`
 	Title    LocalizedText       `yaml:"title" json:"title"`
+	Comment  string              `yaml:"comment,omitempty" json:"comment,omitempty"`
 	Objects  []ObjectPermission  `yaml:"objects,omitempty" json:"objects,omitempty"`
 	Commands []CommandPermission `yaml:"commands,omitempty" json:"commands,omitempty"`
+	// GrantNewObjectsByDefault: a newly created metadata object automatically
+	// gets PermissionRead in this role, instead of staying inaccessible until
+	// a developer configures it by hand.
+	GrantNewObjectsByDefault bool `yaml:"grant_new_objects_by_default,omitempty" json:"grantNewObjectsByDefault,omitempty"`
+	// GrantNewFieldsByDefault: the same, but for a new attribute/table part
+	// added to an object this role already has some access to - it never
+	// grants a field on an object the role has no ObjectPermission entry
+	// for at all.
+	GrantNewFieldsByDefault bool `yaml:"grant_new_fields_by_default,omitempty" json:"grantNewFieldsByDefault,omitempty"`
 }
 
 type ObjectPermission struct {
@@ -75,6 +87,9 @@ func DecodeRole(source string, reader io.Reader, manifest project.Project) (Role
 // and field ownership; publication validates every referenced form command.
 func ValidateRole(source string, value RoleDefinition, manifest project.Project) error {
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	if !utf8.ValidString(value.Comment) || utf8.RuneCountInString(value.Comment) > MaxRoleComment {
+		issues = append(issues, fmt.Sprintf("comment must be valid UTF-8 of at most %d characters", MaxRoleComment))
+	}
 	if len(value.Objects)+len(value.Commands) > MaxRolePermissions {
 		return fmt.Errorf("validate %s: role exceeds %d permissions", source, MaxRolePermissions)
 	}
@@ -181,4 +196,48 @@ func cloneRole(value RoleDefinition) RoleDefinition {
 	}
 	value.Commands = slices.Clone(value.Commands)
 	return value
+}
+
+// GrantObjectReadByDefault adds PermissionRead for objectID if the role does
+// not already grant any operation on it - used when GrantNewObjectsByDefault
+// is set, right after a new metadata object is created. Reports whether it
+// changed the role.
+func (role *RoleDefinition) GrantObjectReadByDefault(objectID uuid.UUID) bool {
+	for index := range role.Objects {
+		if role.Objects[index].Object == objectID {
+			if slices.Contains(role.Objects[index].Operations, PermissionRead) {
+				return false
+			}
+			role.Objects[index].Operations = append(role.Objects[index].Operations, PermissionRead)
+			return true
+		}
+	}
+	role.Objects = append(role.Objects, ObjectPermission{Object: objectID, Operations: []PermissionOperation{PermissionRead}})
+	return true
+}
+
+// GrantFieldReadByDefault adds PermissionRead for fieldKey on objectID, but
+// only when the role already has an ObjectPermission entry for objectID -
+// used when GrantNewFieldsByDefault is set, right after a new attribute or
+// table part is added to an object. A role with no access to the object at
+// all does not get access to one of its fields in isolation. Reports whether
+// it changed the role.
+func (role *RoleDefinition) GrantFieldReadByDefault(objectID uuid.UUID, fieldKey string) bool {
+	for index := range role.Objects {
+		if role.Objects[index].Object != objectID {
+			continue
+		}
+		for fieldIndex := range role.Objects[index].Fields {
+			if role.Objects[index].Fields[fieldIndex].Field == fieldKey {
+				if slices.Contains(role.Objects[index].Fields[fieldIndex].Operations, PermissionRead) {
+					return false
+				}
+				role.Objects[index].Fields[fieldIndex].Operations = append(role.Objects[index].Fields[fieldIndex].Operations, PermissionRead)
+				return true
+			}
+		}
+		role.Objects[index].Fields = append(role.Objects[index].Fields, FieldPermission{Field: fieldKey, Operations: []PermissionOperation{PermissionRead}})
+		return true
+	}
+	return false
 }

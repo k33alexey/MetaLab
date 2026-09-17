@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -88,6 +89,82 @@ func TestCatalogEditorCreateReadSaveAndConflicts(t *testing.T) {
 	}
 	if _, err := metadata.Load(workspace.root); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCatalogAutoGrantsDefaultAccessToRoles(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A role that opts in to auto-granting new objects.
+	granting, err := workspace.CreateRole("Автопривилегированная")
+	if err != nil {
+		t.Fatal(err)
+	}
+	granting.Role.GrantNewObjectsByDefault = true
+	granting.Role.GrantNewFieldsByDefault = true
+	granting, err = workspace.SaveRole(granting.Path, granting.Role, granting.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A role that does not opt in - must stay untouched throughout.
+	plain, err := workspace.CreateRole("Обычная")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := workspace.CreateCatalog("Товары")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	grantingAfterCreate, err := workspace.ReadRole(granting.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(grantingAfterCreate.Role.Objects) != 1 || grantingAfterCreate.Role.Objects[0].Object != created.Catalog.ID ||
+		!slices.Contains(grantingAfterCreate.Role.Objects[0].Operations, metadata.PermissionRead) {
+		t.Fatalf("opted-in role did not gain default read access: %+v", grantingAfterCreate.Role.Objects)
+	}
+	plainAfterCreate, err := workspace.ReadRole(plain.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plainAfterCreate.Role.Objects) != 0 {
+		t.Fatalf("role without opt-in must stay untouched: %+v", plainAfterCreate.Role.Objects)
+	}
+
+	// Add a new attribute: the opted-in role (which already has the object)
+	// gains default field access; the plain role has no object entry at all
+	// and must not gain field access in isolation, even though it exists.
+	updated := created.Catalog
+	attributeID := uuid.MustNew()
+	updated.Attributes = []metadata.Attribute{{
+		ID: attributeID, Name: "Артикул", Title: metadata.LocalizedText{"ru": "Артикул"},
+		Types: []metadata.Type{{Kind: metadata.StringType, Length: 50}},
+	}}
+	if _, err := workspace.SaveCatalogEditor(created.Path, updated, created.Revision); err != nil {
+		t.Fatal(err)
+	}
+
+	grantingAfterField, err := workspace.ReadRole(granting.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(grantingAfterField.Role.Objects[0].Fields) != 1 || grantingAfterField.Role.Objects[0].Fields[0].Field != attributeID.String() {
+		t.Fatalf("opted-in role did not gain default field access: %+v", grantingAfterField.Role.Objects[0].Fields)
+	}
+	plainAfterField, err := workspace.ReadRole(plain.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plainAfterField.Role.Objects) != 0 {
+		t.Fatalf("role without any object access must not gain a field grant: %+v", plainAfterField.Role.Objects)
 	}
 }
 

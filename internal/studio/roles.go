@@ -202,6 +202,51 @@ func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {
 	return RoleSource{Path: relative, Revision: sourceFile(relative, "yaml", content.Bytes()).Revision, Role: role, Schema: schema, Languages: roleLanguages(manifest), DefaultLanguage: manifest.DefaultLanguage}, nil
 }
 
+// applyRoleAutoGrantsLocked visits every role file and lets mutate decide
+// whether to change it (returning true if it did) - used right after a new
+// metadata object is created (GrantNewObjectsByDefault) or a new attribute/
+// table part is added to an existing one (GrantNewFieldsByDefault). The
+// caller must already hold workspace.mu; this only uses the already-locked
+// read/save helpers, never the exported (re-locking) ones.
+func (workspace *Workspace) applyRoleAutoGrantsLocked(mutate func(*metadata.RoleDefinition) bool) error {
+	entries, err := os.ReadDir(filepath.Join(workspace.root, "metadata", "roles"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	manifest, err := project.ValidateLayout(workspace.root)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.Name() == ".gitkeep" || entry.IsDir() {
+			continue
+		}
+		relative := "metadata/roles/" + entry.Name()
+		file, err := workspace.readSource(relative)
+		if err != nil {
+			return err
+		}
+		role, err := metadata.DecodeRole(relative, strings.NewReader(file.Content), manifest)
+		if err != nil {
+			return err
+		}
+		if !mutate(&role) {
+			continue
+		}
+		var encoded bytes.Buffer
+		if err := metadata.Encode(&encoded, role); err != nil {
+			return err
+		}
+		if _, err := workspace.saveSourceLocked(relative, encoded.String(), file.Revision); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func roleLanguages(manifest project.Project) []FormLanguage {
 	result := make([]FormLanguage, len(manifest.Languages))
 	for index, language := range manifest.Languages {
