@@ -48,12 +48,18 @@ type RoleDefinition struct {
 	// grants a field on an object the role has no ObjectPermission entry
 	// for at all.
 	GrantNewFieldsByDefault bool `yaml:"grant_new_fields_by_default,omitempty" json:"grantNewFieldsByDefault,omitempty"`
+	// PolicyTemplates are rules named once and reused by this role's own
+	// restrictions. They grant nothing by themselves.
+	PolicyTemplates []PolicyTemplate `yaml:"policy_templates,omitempty" json:"policyTemplates,omitempty"`
 }
 
 type ObjectPermission struct {
 	Object     uuid.UUID             `yaml:"object" json:"object"`
 	Operations []PermissionOperation `yaml:"operations,omitempty" json:"operations,omitempty"`
 	Fields     []FieldPermission     `yaml:"fields,omitempty" json:"fields,omitempty"`
+	// Policies narrow which rows the granted operations reach. They never widen
+	// access: an object with no operation grant stays unreachable regardless.
+	Policies []AccessPolicy `yaml:"policies,omitempty" json:"policies,omitempty"`
 }
 
 // Field is a canonical UUID for an attribute/table part or a lowercase standard
@@ -93,6 +99,11 @@ func ValidateRole(source string, value RoleDefinition, manifest project.Project)
 	if len(value.Objects)+len(value.Commands) > MaxRolePermissions {
 		return fmt.Errorf("validate %s: role exceeds %d permissions", source, MaxRolePermissions)
 	}
+	issues = append(issues, validatePolicyTemplates(value.PolicyTemplates)...)
+	templates := make(map[string]bool, len(value.PolicyTemplates))
+	for _, template := range value.PolicyTemplates {
+		templates[template.Name] = true
+	}
 	count := len(value.Objects) + len(value.Commands)
 	objects := make(map[uuid.UUID]bool, len(value.Objects))
 	for index, object := range value.Objects {
@@ -102,7 +113,8 @@ func ValidateRole(source string, value RoleDefinition, manifest project.Project)
 		}
 		objects[object.Object] = true
 		issues = append(issues, validatePermissionOperations(prefix+".operations", object.Operations, false)...)
-		count += len(object.Fields)
+		issues = append(issues, validatePolicies(prefix+".policies", object.Policies, templates)...)
+		count += len(object.Fields) + len(object.Policies)
 		if count > MaxRolePermissions {
 			return fmt.Errorf("validate %s: role exceeds %d permissions including fields", source, MaxRolePermissions)
 		}
@@ -193,8 +205,10 @@ func cloneRole(value RoleDefinition) RoleDefinition {
 		for field := range object.Fields {
 			object.Fields[field].Operations = slices.Clone(object.Fields[field].Operations)
 		}
+		object.Policies = clonePolicies(object.Policies)
 	}
 	value.Commands = slices.Clone(value.Commands)
+	value.PolicyTemplates = clonePolicyTemplates(value.PolicyTemplates)
 	return value
 }
 

@@ -15,6 +15,10 @@ import (
 type PermissionSchema struct {
 	Objects []PermissionObject `json:"objects"`
 	Forms   []PermissionForm   `json:"forms"`
+	// SessionParameters lists the names an access policy may compare a field
+	// against, so the editor offers a choice instead of a free-text field that
+	// only fails later, at publication.
+	SessionParameters []string `json:"sessionParameters"`
 }
 
 type PermissionObject struct {
@@ -54,7 +58,11 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	if err != nil {
 		return PermissionSchema{}, err
 	}
-	result := PermissionSchema{Objects: []PermissionObject{}, Forms: []PermissionForm{}}
+	result := PermissionSchema{Objects: []PermissionObject{}, Forms: []PermissionForm{}, SessionParameters: []string{}}
+	for _, item := range catalog.SessionParameters {
+		result.SessionParameters = append(result.SessionParameters, item.Name)
+	}
+	sort.Strings(result.SessionParameters)
 	appendObject := func(kind Kind, id uuid.UUID, name string, title LocalizedText, attributes []Attribute, parts []TablePart) {
 		target, _ := catalog.permissionTarget(id)
 		object := PermissionObject{ID: id, Kind: kind, Name: name, Title: cloneTitle(title), Fields: []PermissionField{}}

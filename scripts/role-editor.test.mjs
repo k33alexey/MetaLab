@@ -61,6 +61,49 @@ test('bulk edits remain bounded for a large object',()=>{
   const model=create(source);model.setAll('goods',true);assert.equal(model.value().objects[0].fields.length,9000);
   model.setAll('goods',false);assert.equal(model.value().objects.length,0);
 });
+test('access policies round-trip and survive cleaning even without operation grants',()=>{
+  const model=create(fixture());
+  model.addPolicy('goods',{operations:['read'],rule:{field:'name',operator:'in',values:[{kind:'string',data:'Основной'},{kind:'string',data:'Розничный'}]}});
+  const value=model.value();
+  assert.equal(value.objects.length,1);
+  assert.equal(value.objects[0].policies.length,1);
+  assert.equal(value.objects[0].policies[0].rule.operator,'in');
+  assert.equal(value.objects[0].policies[0].rule.values.length,2);
+  assert.equal(model.hasUnavailable(),false);
+});
+test('named templates are reusable and removing one removes the restrictions using it',()=>{
+  const model=create(fixture());
+  assert.equal(model.addTemplate('ПоСкладу',{field:'name',operator:'eq',parameter:'ТекущийСклад'}),true);
+  assert.equal(model.addTemplate('ПоСкладу',{field:'name',operator:'eq',values:[]}),false,'duplicate name');
+  model.addPolicy('goods',{operations:['read'],template:'ПоСкладу'});
+  model.addPolicy('goods',{operations:['update'],template:'ПоСкладу'});
+  assert.equal(model.policies('goods').length,2);
+  model.removeTemplate('ПоСкладу');
+  assert.equal(model.templates().length,0);
+  assert.equal(model.policies('goods').length,0,'restrictions referencing a removed template must not survive');
+});
+test('policies on fields that no longer exist are reported and repaired',()=>{
+  const source=fixture();
+  source.role.objects=[{object:'goods',operations:['read'],fields:[],policies:[
+    {operations:['read'],rule:{field:'name',operator:'eq',values:[{kind:'string',data:'x'}]}},
+    {operations:['read'],rule:{field:'gone',operator:'eq',values:[{kind:'string',data:'x'}]}}]}];
+  const model=create(source);
+  assert.equal(model.hasUnavailable(),true);
+  model.removeUnavailable();
+  assert.equal(model.hasUnavailable(),false);
+  const policies=model.policies('goods');
+  assert.equal(policies.length,1);
+  assert.equal(policies[0].rule.field,'name');
+});
+test('a restriction naming a template that was never declared is repaired away',()=>{
+  const source=fixture();
+  source.role.objects=[{object:'goods',operations:['read'],fields:[],policies:[{operations:['read'],template:'Отсутствует'}]}];
+  const model=create(source);
+  assert.equal(model.hasUnavailable(),true);
+  model.removeUnavailable();
+  assert.equal(model.policies('goods').length,0);
+  assert.equal(model.value().objects.length,1,'the read grant itself stays');
+});
 test('comment and default-grant flags round-trip through the model without touching objects/fields',()=>{
   const model=create(fixture());
   assert.equal(model.value().comment,undefined);assert.equal(model.value().grantNewObjectsByDefault,undefined);assert.equal(model.value().grantNewFieldsByDefault,undefined);

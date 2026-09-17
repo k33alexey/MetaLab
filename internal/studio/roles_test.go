@@ -94,6 +94,61 @@ func TestRoleEditorCreateReadSaveAndConflicts(t *testing.T) {
 	}
 }
 
+// Restrictions must survive a real save/read cycle, and a restriction the
+// project cannot resolve must be refused before it reaches the working copy.
+func TestRoleEditorSavesAccessPolicies(t *testing.T) {
+	t.Parallel()
+	workspace, object := roleWorkspace(t)
+	created, err := workspace.CreateRole("Кладовщик")
+	if err != nil {
+		t.Fatal(err)
+	}
+	attribute := object.Attributes[0].ID.String()
+	created.Role.PolicyTemplates = []metadata.PolicyTemplate{{Name: "ПоЦене", Rule: metadata.PolicyRule{Field: attribute,
+		Operator: metadata.PolicyIn, Values: []metadata.Value{{Kind: metadata.NumberType, Data: "10"}, {Kind: metadata.NumberType, Data: "20"}}}}}
+	created.Role.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
+		Policies: []metadata.AccessPolicy{{Operations: []metadata.PermissionOperation{metadata.PermissionRead}, Template: "ПоЦене"}}}}
+	saved, err := workspace.SaveRole(created.Path, created.Role, created.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := workspace.ReadRole(saved.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again.Role.PolicyTemplates) != 1 || again.Role.PolicyTemplates[0].Rule.Operator != metadata.PolicyIn {
+		t.Fatalf("templates did not round-trip: %+v", again.Role.PolicyTemplates)
+	}
+	if policies := again.Role.Objects[0].Policies; len(policies) != 1 || policies[0].Template != "ПоЦене" {
+		t.Fatalf("policies did not round-trip: %+v", policies)
+	}
+	if _, err := metadata.Load(workspace.root); err != nil {
+		t.Fatalf("saved role does not load as a project: %v", err)
+	}
+
+	broken := map[string]func(*metadata.RoleDefinition){
+		"field of another object": func(r *metadata.RoleDefinition) { r.PolicyTemplates[0].Rule.Field = uuid.MustNew().String() },
+		"template never declared": func(r *metadata.RoleDefinition) { r.Objects[0].Policies[0].Template = "Отсутствует" },
+		"unknown session parameter": func(r *metadata.RoleDefinition) {
+			r.PolicyTemplates[0].Rule = metadata.PolicyRule{Field: attribute, Operator: metadata.PolicyEqual, Parameter: "НетТакого"}
+		},
+	}
+	for name, mutate := range broken {
+		invalid := again.Role
+		invalid.PolicyTemplates = append([]metadata.PolicyTemplate(nil), again.Role.PolicyTemplates...)
+		invalid.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
+			Policies: []metadata.AccessPolicy{{Operations: []metadata.PermissionOperation{metadata.PermissionRead}, Template: "ПоЦене"}}}}
+		mutate(&invalid)
+		if _, err := workspace.SaveRole(again.Path, invalid, again.Revision); err == nil {
+			t.Fatalf("accepted a role with %s", name)
+		}
+	}
+	unchanged, err := workspace.ReadRole(saved.Path)
+	if err != nil || unchanged.Revision != again.Revision {
+		t.Fatalf("refused save still modified the file: %v", err)
+	}
+}
+
 func TestRoleEditorRepairsDanglingReferences(t *testing.T) {
 	t.Parallel()
 	workspace, object := roleWorkspace(t)

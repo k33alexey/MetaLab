@@ -104,6 +104,9 @@ func (catalog *Catalog) validateRoleReferences(root string) error {
 					}
 				}
 			}
+			if err := catalog.validateRolePolicies(role, permission, target); err != nil {
+				return err
+			}
 		}
 	}
 	if root == "" {
@@ -112,6 +115,41 @@ func (catalog *Catalog) validateRoleReferences(root string) error {
 	return validateRoleCommands(catalog.Roles, func(id uuid.UUID) (ManagedForm, error) {
 		return catalog.readRoleForm(root, id)
 	})
+}
+
+// validateRolePolicies resolves every restriction of one object down to the rule
+// it actually applies - inline or through a role template - and checks it against
+// the real object and the declared session parameters. A template is role-scoped
+// and may be reused across objects, so its field is checked per use, not once.
+func (catalog *Catalog) validateRolePolicies(role RoleDefinition, permission ObjectPermission, target roleTarget) error {
+	for _, policy := range permission.Policies {
+		rule := policy.Rule
+		if rule == nil {
+			for index := range role.PolicyTemplates {
+				if role.PolicyTemplates[index].Name == policy.Template {
+					rule = &role.PolicyTemplates[index].Rule
+					break
+				}
+			}
+		}
+		if rule == nil {
+			return fmt.Errorf("role %s: policy template %s is not declared", role.Name, policy.Template)
+		}
+		for _, operation := range policy.Operations {
+			if !target.operations[operation] {
+				return fmt.Errorf("role %s: policy operation %s is unsupported for object %s", role.Name, operation, permission.Object)
+			}
+		}
+		if _, ok := target.fields[rule.Field]; !ok {
+			return fmt.Errorf("role %s: policy field %s does not belong to object %s", role.Name, rule.Field, permission.Object)
+		}
+		if rule.Parameter != "" {
+			if _, ok := catalog.SessionParameter(rule.Parameter); !ok {
+				return fmt.Errorf("role %s: policy references unknown session parameter %s", role.Name, rule.Parameter)
+			}
+		}
+	}
+	return nil
 }
 
 func (catalog *Catalog) readRoleForm(root string, id uuid.UUID) (ManagedForm, error) {
