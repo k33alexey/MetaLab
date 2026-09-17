@@ -94,7 +94,7 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 	productDimensionID, quantityResourceID := uuid.MustNew(), uuid.MustNew()
 	document := metadata.DocumentDefinition{
 		Format: 1, ID: documentID, Name: "Поступление", Title: metadata.LocalizedText{"ru": "Поступление"}, Posting: true,
-		Number: metadata.DocumentNumber{Type: metadata.StringType, Length: 20, Unique: true, Periodicity: metadata.NumberPeriodYear},
+		Number: metadata.DocumentNumber{Type: metadata.StringType, Length: 20, Auto: true, Unique: true, Periodicity: metadata.NumberPeriodYear},
 		Attributes: []metadata.Attribute{
 			{ID: productAttributeID, Name: "Товар", Title: metadata.LocalizedText{"ru": "Товар"}, Required: true, Types: []metadata.Type{{Kind: metadata.StringType, Length: 100}}},
 			{ID: quantityAttributeID, Name: "Количество", Title: metadata.LocalizedText{"ru": "Количество"}, Required: true, Types: []metadata.Type{{Kind: metadata.NumberType, Precision: 15, Scale: 3}}},
@@ -173,6 +173,17 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 	reloaded, err := runtime.GetApplicationObject(ctx, portalLogin.Token, registered.ID, metadata.DocumentKind, "Поступление", created.Reference)
 	if err != nil || reloaded.Reference != created.Reference || reloaded.Fields["Товар"].Data != "A" {
 		t.Fatalf("reload saved document: %+v error=%v", reloaded, err)
+	}
+
+	// Leaving Number out entirely (as the client does when its input is
+	// blank) must let DocumentRepository.Write auto-number it, exactly like
+	// an explicit empty string does for a catalog's auto Code - not fail
+	// validation the way sending Number="" would.
+	autoNumbered, err := runtime.SaveApplicationObject(ctx, portalLogin.Token, registered.ID, metadata.DocumentKind, "Поступление", ApplicationObjectWrite{
+		Fields: map[string]metadata.Value{"Date": date, "Товар": {Kind: metadata.StringType, Data: "B"}, "Количество": {Kind: metadata.NumberType, Data: "3"}},
+	})
+	if err != nil || autoNumbered.Fields["Number"].Data == "" {
+		t.Fatalf("auto-numbered document: %+v error=%v", autoNumbered, err)
 	}
 
 	posted, err := runtime.PostApplicationDocument(ctx, portalLogin.Token, registered.ID, "Поступление", created.Reference)
