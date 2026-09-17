@@ -163,7 +163,7 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			http.NotFound(response, request)
 		case errors.Is(err, systemdb.ErrDatabaseNotFound):
 			http.Error(response, err.Error(), http.StatusNotFound)
-		case errors.Is(err, systemdb.ErrDatabaseNotRunning), errors.Is(err, systemdb.ErrNewSessionsForbidden):
+		case errors.Is(err, systemdb.ErrDatabaseNotRunning), errors.Is(err, systemdb.ErrNewSessionsForbidden), errors.Is(err, systemdb.ErrApplicationSessionActive):
 			http.Error(response, err.Error(), http.StatusConflict)
 		case err != nil:
 			http.Error(response, "Unable to open database", http.StatusServiceUnavailable)

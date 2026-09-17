@@ -157,3 +157,132 @@ VALUES ($1, $2, $3, TRUE, TRUE)`, userID.String(), "operations-"+suffix, passwor
 		t.Fatal(err)
 	}
 }
+
+// TestOpenDatabaseRejectsConcurrentApplicationSessionAcrossDevices exercises
+// the scoping this iteration fixed: database_sessions_one_active_idx used to
+// key on (portal_session_id, database_id), so the same user logging in from
+// a second device (a different portal session) silently got a second,
+// concurrent application session in the same database - exactly what
+// REQUIREMENTS.md:501 forbids ("попытка создать параллельный сеанс под тем
+// же пользователем отклоняется"). Unlike the existing
+// TestSessionsAuditAndBackupCatalogIntegration, this keeps the database's
+// own AllowNewSessions flag TRUE throughout, so any rejection observed here
+// is specifically the per-user uniqueness, not that unrelated admin lock.
+func TestOpenDatabaseRejectsConcurrentApplicationSessionAcrossDevices(t *testing.T) {
+	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("ML_TEST_DATABASE_URL is not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	database, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(database.Close)
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	firstUserID, secondUserID, databaseID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	passwordHash, err := auth.HashPassword("integration password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []uuid.UUID{firstUserID, secondUserID} {
+		if _, err := database.pool.Exec(ctx, `
+INSERT INTO ml_system.users(id, login, password_hash, platform_administrator, metadata_administrator)
+VALUES ($1, $2, $3, TRUE, TRUE)`, id.String(), "concurrent-"+id.String()+"-"+suffix, passwordHash); err != nil {
+			t.Fatal(err)
+		}
+	}
+	registered, err := database.Databases.Register(ctx, DatabaseRegistration{
+		ID: databaseID, Name: "Concurrent " + suffix, PhysicalID: uuid.MustNew(), Mode: DatabasePrimary,
+		Connection: postgresconn.Descriptor{
+			Host: "localhost", Port: 5432, Database: "concurrent", User: "ml", SSLMode: "disable",
+			SecretKey: "database." + suffix + ".password",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []uuid.UUID{firstUserID, secondUserID} {
+		if _, err := database.DatabaseAccess.GrantApp(ctx, id, id, databaseID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cleanupCancel()
+		_, _ = database.pool.Exec(cleanupCtx, "DELETE FROM ml_system.audit_events WHERE database_id = $1", databaseID.String())
+		_, _ = database.pool.Exec(cleanupCtx, "UPDATE ml_system.databases SET state = 'stopped' WHERE id = $1", databaseID.String())
+		_, _ = database.Databases.Unregister(cleanupCtx, databaseID)
+		for _, id := range []uuid.UUID{firstUserID, secondUserID} {
+			_, _ = database.pool.Exec(cleanupCtx, "DELETE FROM ml_system.portal_sessions WHERE user_id = $1", id.String())
+			_, _ = database.pool.Exec(cleanupCtx, "DELETE FROM ml_system.users WHERE id = $1", id.String())
+		}
+	})
+	starting, err := database.Databases.Transition(ctx, registered.ID, registered.State, registered.StateRevision, DatabaseStarting, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Databases.Transition(ctx, registered.ID, DatabaseStarting, starting.StateRevision, DatabaseRunning, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	deviceADigest := auth.SessionTokenDigest("device-a-" + suffix)
+	deviceA, err := database.Sessions.CreatePortal(ctx, firstUserID, deviceADigest[:], "127.0.0.1", "device-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deviceBDigest := auth.SessionTokenDigest("device-b-" + suffix)
+	deviceB, err := database.Sessions.CreatePortal(ctx, firstUserID, deviceBDigest[:], "127.0.0.2", "device-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Device A opens the database - the only active application session for this user.
+	sessionA, err := database.Sessions.OpenDatabase(ctx, deviceA.ID, databaseID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reopening from device A itself must resume, not reject or duplicate.
+	if resumed, err := database.Sessions.OpenDatabase(ctx, deviceA.ID, databaseID); err != nil || resumed.ID != sessionA.ID {
+		t.Fatalf("resume from same device: session=%+v error=%v", resumed, err)
+	}
+
+	// Device B, same user, database still allows new sessions: must be
+	// rejected as a concurrent application session, not silently take over.
+	if _, err := database.Sessions.OpenDatabase(ctx, deviceB.ID, databaseID); !errors.Is(err, ErrApplicationSessionActive) {
+		t.Fatalf("second device open error = %v, want ErrApplicationSessionActive", err)
+	}
+	sessions, err := database.Sessions.ListDatabaseSessions(ctx, &databaseID)
+	if err != nil || len(sessions) != 1 || sessions[0].ID != sessionA.ID {
+		t.Fatalf("sessions after rejected second device = %+v, error = %v", sessions, err)
+	}
+
+	// A different user must be able to open the same database concurrently -
+	// the uniqueness is per (user, database), not per database alone.
+	secondUserDigest := auth.SessionTokenDigest("second-user-" + suffix)
+	secondUserPortal, err := database.Sessions.CreatePortal(ctx, secondUserID, secondUserDigest[:], "127.0.0.3", "second-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondUserSession, err := database.Sessions.OpenDatabase(ctx, secondUserPortal.ID, databaseID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secondUserSession.UserID != secondUserID {
+		t.Fatalf("second user session=%+v", secondUserSession)
+	}
+
+	// Once device A's session ends, device B must be able to open a new one.
+	if err := database.Sessions.TerminateDatabaseSession(ctx, sessionA.ID); err != nil {
+		t.Fatal(err)
+	}
+	sessionB, err := database.Sessions.OpenDatabase(ctx, deviceB.ID, databaseID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sessionB.ID == sessionA.ID {
+		t.Fatalf("device B reused the terminated session: %+v", sessionB)
+	}
+}

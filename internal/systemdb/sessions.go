@@ -20,10 +20,11 @@ const (
 )
 
 var (
-	ErrSessionNotFound        = errors.New("session not found or expired")
-	ErrDatabaseNotRunning     = errors.New("database is not running")
-	ErrNewSessionsForbidden   = errors.New("new sessions are forbidden for this database")
-	ErrPasswordChangeRequired = errors.New("password change is required")
+	ErrSessionNotFound          = errors.New("session not found or expired")
+	ErrDatabaseNotRunning       = errors.New("database is not running")
+	ErrNewSessionsForbidden     = errors.New("new sessions are forbidden for this database")
+	ErrPasswordChangeRequired   = errors.New("password change is required")
+	ErrApplicationSessionActive = errors.New("an application session for this user and database is already active elsewhere")
 )
 
 // PortalSession is a revocable authentication session. Its bearer token is never persisted.
@@ -229,12 +230,24 @@ FOR SHARE OF access`, portalSessionID.String(), databaseID.String()).Scan(&runni
 	if err != nil {
 		return DatabaseSession{}, err
 	}
+	// The unique index is scoped to (user_id, database_id), not
+	// (portal_session_id, database_id): the same user opening the same
+	// database from a second portal session (a different device/tab) must
+	// conflict with their own already-active session there, not create a
+	// second one. ON CONFLICT ... DO UPDATE ... WHERE only applies the
+	// update (and returns the row) when the conflicting row already belongs
+	// to THIS portal session - resuming the same tab. When it belongs to a
+	// different portal session, the WHERE makes the whole statement a
+	// no-op and RETURNING yields zero rows, which surfaces below as
+	// pgx.ErrNoRows and is mapped to ErrApplicationSessionActive.
 	session, err := scanDatabaseSession(transaction.QueryRow(ctx, `
 WITH opened AS (
-    INSERT INTO ml_system.database_sessions(id, portal_session_id, database_id)
-    VALUES ($1, $2, $3)
-    ON CONFLICT (portal_session_id, database_id) WHERE terminated_at IS NULL
+    INSERT INTO ml_system.database_sessions(id, portal_session_id, database_id, user_id)
+    SELECT $1, $2, $3, portal.user_id
+    FROM ml_system.portal_sessions AS portal WHERE portal.id = $2
+    ON CONFLICT (user_id, database_id) WHERE terminated_at IS NULL
     DO UPDATE SET last_seen_at = clock_timestamp()
+    WHERE ml_system.database_sessions.portal_session_id = EXCLUDED.portal_session_id
     RETURNING *
 )
 SELECT sessions.id::text, sessions.portal_session_id::text, sessions.database_id::text, databases.name,
@@ -245,6 +258,9 @@ JOIN ml_system.portal_sessions AS portal ON portal.id = sessions.portal_session_
 JOIN ml_system.users AS users ON users.id = portal.user_id
 JOIN ml_system.databases AS databases ON databases.id = sessions.database_id`,
 		id.String(), portalSessionID.String(), databaseID.String()))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return DatabaseSession{}, ErrApplicationSessionActive
+	}
 	if err != nil {
 		return DatabaseSession{}, fmt.Errorf("open database session: %w", err)
 	}
