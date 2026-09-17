@@ -64,7 +64,7 @@ func generatedCommands(commands []metadata.FormCommand) []Command {
 func formField(field metadata.FormField) Element {
 	return Element{
 		ID: "field-" + field.Name, Kind: "field", Title: field.Title,
-		InputType: inputType(field.Types), DataPath: field.Name, ReadOnly: field.ReadOnly,
+		InputType: inputType(field.Types), ValueKind: string(valueKind(field.Types)), DataPath: field.Name, ReadOnly: field.ReadOnly,
 	}
 }
 
@@ -82,6 +82,16 @@ func inputType(types []metadata.Type) string {
 	default:
 		return "text"
 	}
+}
+
+// valueKind is the exact metadata.TypeKind backing a field, defaulting to
+// StringType for a union of several types (matching how ML App's plain text
+// input already collapses everything it doesn't special-case in inputType).
+func valueKind(types []metadata.Type) metadata.TypeKind {
+	if len(types) != 1 {
+		return metadata.StringType
+	}
+	return types[0].Kind
 }
 
 func customForm(descriptor metadata.FormDescriptor, source metadata.ManagedForm, language string) Form {

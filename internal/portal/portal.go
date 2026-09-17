@@ -40,6 +40,11 @@ type runtime interface {
 	LoadApplicationObjects(context.Context, string, uuid.UUID, string) ([]platform.ApplicationObject, error)
 	LoadApplicationForm(context.Context, string, uuid.UUID, metadata.Kind, string, metadata.FormKind, string) (platform.ApplicationForm, error)
 	LoadApplicationList(context.Context, string, uuid.UUID, metadata.Kind, string, metadata.DynamicListRequest) (platform.ApplicationListPage, error)
+	GetApplicationObject(context.Context, string, uuid.UUID, metadata.Kind, string, string) (platform.ApplicationObjectState, error)
+	SaveApplicationObject(context.Context, string, uuid.UUID, metadata.Kind, string, platform.ApplicationObjectWrite) (platform.ApplicationObjectState, error)
+	PostApplicationDocument(context.Context, string, uuid.UUID, string, string) (platform.ApplicationObjectState, error)
+	UndoApplicationDocumentPosting(context.Context, string, uuid.UUID, string, string) (platform.ApplicationObjectState, error)
+	SetApplicationDeletionMark(context.Context, string, uuid.UUID, metadata.Kind, string, string, bool) (platform.ApplicationObjectState, error)
 }
 
 // NewHandler creates the public Portal HTTP surface.
@@ -277,6 +282,141 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			return
 		}
 		writeJSON(response, http.StatusOK, page)
+	})
+	routes.HandleFunc("GET /api/databases/{id}/objects/{objectKind}/{name}/{reference}", func(response http.ResponseWriter, request *http.Request) {
+		token, ok := requireToken(response, request)
+		if !ok {
+			return
+		}
+		id, err := uuid.Parse(request.PathValue("id"))
+		if err != nil {
+			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
+			return
+		}
+		objectKind := metadata.Kind(request.PathValue("objectKind"))
+		if objectKind != metadata.CatalogKind && objectKind != metadata.DocumentKind {
+			http.Error(response, "Invalid application object address", http.StatusBadRequest)
+			return
+		}
+		state, err := platformRuntime.GetApplicationObject(request.Context(), token, id, objectKind, request.PathValue("name"), request.PathValue("reference"))
+		if err != nil {
+			http.Error(response, "Application object unavailable", http.StatusBadRequest)
+			return
+		}
+		writeJSON(response, http.StatusOK, state)
+	})
+	routes.HandleFunc("POST /api/databases/{id}/objects/{objectKind}/{name}/save", func(response http.ResponseWriter, request *http.Request) {
+		if !requireCSRF(response, request) {
+			return
+		}
+		token, ok := requireToken(response, request)
+		if !ok {
+			return
+		}
+		id, err := uuid.Parse(request.PathValue("id"))
+		if err != nil {
+			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
+			return
+		}
+		objectKind := metadata.Kind(request.PathValue("objectKind"))
+		if objectKind != metadata.CatalogKind && objectKind != metadata.DocumentKind {
+			http.Error(response, "Invalid application object address", http.StatusBadRequest)
+			return
+		}
+		var input platform.ApplicationObjectWrite
+		if !decodeJSON(response, request, &input) {
+			return
+		}
+		state, err := platformRuntime.SaveApplicationObject(request.Context(), token, id, objectKind, request.PathValue("name"), input)
+		if err != nil {
+			http.Error(response, "Unable to save application object", http.StatusBadRequest)
+			return
+		}
+		writeJSON(response, http.StatusOK, state)
+	})
+	routes.HandleFunc("POST /api/databases/{id}/objects/{objectKind}/{name}/deletion-mark", func(response http.ResponseWriter, request *http.Request) {
+		if !requireCSRF(response, request) {
+			return
+		}
+		token, ok := requireToken(response, request)
+		if !ok {
+			return
+		}
+		id, err := uuid.Parse(request.PathValue("id"))
+		if err != nil {
+			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
+			return
+		}
+		objectKind := metadata.Kind(request.PathValue("objectKind"))
+		if objectKind != metadata.CatalogKind && objectKind != metadata.DocumentKind {
+			http.Error(response, "Invalid application object address", http.StatusBadRequest)
+			return
+		}
+		var input struct {
+			Reference string `json:"reference"`
+			Mark      bool   `json:"mark"`
+		}
+		if !decodeJSON(response, request, &input) {
+			return
+		}
+		state, err := platformRuntime.SetApplicationDeletionMark(request.Context(), token, id, objectKind, request.PathValue("name"), input.Reference, input.Mark)
+		if err != nil {
+			http.Error(response, "Unable to set deletion mark", http.StatusBadRequest)
+			return
+		}
+		writeJSON(response, http.StatusOK, state)
+	})
+	routes.HandleFunc("POST /api/databases/{id}/documents/{name}/post", func(response http.ResponseWriter, request *http.Request) {
+		if !requireCSRF(response, request) {
+			return
+		}
+		token, ok := requireToken(response, request)
+		if !ok {
+			return
+		}
+		id, err := uuid.Parse(request.PathValue("id"))
+		if err != nil {
+			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
+			return
+		}
+		var input struct {
+			Reference string `json:"reference"`
+		}
+		if !decodeJSON(response, request, &input) {
+			return
+		}
+		state, err := platformRuntime.PostApplicationDocument(request.Context(), token, id, request.PathValue("name"), input.Reference)
+		if err != nil {
+			http.Error(response, "Unable to post document", http.StatusBadRequest)
+			return
+		}
+		writeJSON(response, http.StatusOK, state)
+	})
+	routes.HandleFunc("POST /api/databases/{id}/documents/{name}/undo-posting", func(response http.ResponseWriter, request *http.Request) {
+		if !requireCSRF(response, request) {
+			return
+		}
+		token, ok := requireToken(response, request)
+		if !ok {
+			return
+		}
+		id, err := uuid.Parse(request.PathValue("id"))
+		if err != nil {
+			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
+			return
+		}
+		var input struct {
+			Reference string `json:"reference"`
+		}
+		if !decodeJSON(response, request, &input) {
+			return
+		}
+		state, err := platformRuntime.UndoApplicationDocumentPosting(request.Context(), token, id, request.PathValue("name"), input.Reference)
+		if err != nil {
+			http.Error(response, "Unable to undo document posting", http.StatusBadRequest)
+			return
+		}
+		writeJSON(response, http.StatusOK, state)
 	})
 	routes.HandleFunc("GET /api/databases/{id}/session", func(response http.ResponseWriter, request *http.Request) {
 		token, ok := requireToken(response, request)

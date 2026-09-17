@@ -71,6 +71,11 @@ ml-command-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; 
 .table-sort { width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font-weight: 700; text-align: left; }
 .table-row:last-child { border-bottom: 0; }
 .table-row:hover { background: #f7f9fc; }
+.table-row.editable { cursor: default; }
+.table-row.editable span { padding: 5px; }
+.table-row.editable input { width: 100%; min-height: 32px; padding: 6px 8px; border: 1px solid #b9c1ce; border-radius: var(--ml-radius-sm); background: white; color: var(--ml-color-text); }
+.icon-button { min-width: 32px; min-height: 32px; padding: 0; border: 1px solid var(--ml-color-border); border-radius: var(--ml-radius-sm); background: var(--ml-color-surface); color: var(--ml-color-text); }
+.icon-button:hover { border-color: #98a2b3; background: var(--ml-color-surface-muted); }
 .list-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px; border: 1px solid var(--ml-color-border); border-bottom: 0; background: var(--ml-color-surface); }
 .list-controls input, .list-controls select { min-height: 36px; padding: 6px 9px; border: 1px solid #b9c1ce; border-radius: var(--ml-radius-sm); background: white; }
 .list-controls input[type="search"] { min-width: min(300px, 100%); }

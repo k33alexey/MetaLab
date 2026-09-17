@@ -3,7 +3,6 @@ package metadata
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
@@ -12,8 +11,13 @@ import (
 	"github.com/k33alexey/MetaLab/internal/bsl/vm"
 )
 
+// DocumentObjectModuleName returns the canonical module name used both when
+// compiling a standalone document object module and when locating that same
+// module inside a whole-project program compiled via
+// RuntimeSnapshot.CompileModules - see moduleNameDescriptors, which must stay
+// in sync with this scheme.
 func DocumentObjectModuleName(definition DocumentDefinition) string {
-	return "DocumentObject" + strings.ReplaceAll(definition.ID.String(), "-", "")
+	return "МодульОбъектаДокумента." + definition.Name
 }
 
 func CompileDocumentObjectModule(definition DocumentDefinition, filename, source string) (*bytecode.Program, []syntax.Diagnostic) {

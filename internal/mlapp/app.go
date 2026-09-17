@@ -73,11 +73,19 @@ type Command struct {
 }
 
 type Element struct {
-	ID          string    `json:"id"`
-	Kind        string    `json:"kind"`
-	Title       string    `json:"title,omitempty"`
-	Value       string    `json:"value,omitempty"`
-	InputType   string    `json:"inputType,omitempty"`
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Title     string `json:"title,omitempty"`
+	Value     string `json:"value,omitempty"`
+	InputType string `json:"inputType,omitempty"`
+	// ValueKind is the metadata.TypeKind ("string"/"number"/"catalog"/...)
+	// backing this field or table column - coarser than InputType, InputType
+	// only tells an <input> which widget to render, but the client also
+	// needs the exact Kind to send back a well-formed {kind,data} value on
+	// save, including for a table row with no existing data to infer it
+	// from (a brand-new row) and for reference-typed columns InputType
+	// flattens to plain "text".
+	ValueKind   string    `json:"valueKind,omitempty"`
 	DataPath    string    `json:"dataPath,omitempty"`
 	ReadOnly    bool      `json:"readOnly,omitempty"`
 	Disabled    bool      `json:"disabled,omitempty"`

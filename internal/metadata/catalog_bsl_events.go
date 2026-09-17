@@ -3,7 +3,6 @@ package metadata
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
@@ -17,9 +16,13 @@ const (
 	catalogThisObjectEN = "ThisObject"
 )
 
-// CatalogObjectModuleName returns the deterministic internal name of an object module.
+// CatalogObjectModuleName returns the canonical module name used both when
+// compiling a standalone catalog object module and when locating that same
+// module inside a whole-project program compiled via
+// RuntimeSnapshot.CompileModules - see moduleNameDescriptors, which must stay
+// in sync with this scheme.
 func CatalogObjectModuleName(definition CatalogDefinition) string {
-	return "CatalogObject" + strings.ReplaceAll(definition.ID.String(), "-", "")
+	return "МодульОбъектаСправочника." + definition.Name
 }
 
 // CompileCatalogObjectModule compiles a catalog object module with its predefined object context.

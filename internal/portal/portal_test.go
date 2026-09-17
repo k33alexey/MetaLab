@@ -247,3 +247,18 @@ func (runtime *fakeRuntime) LoadApplicationList(_ context.Context, _ string, _ u
 	runtime.listRequest = request
 	return platform.ApplicationListPage{PageSize: request.Limit, Rows: []platform.ApplicationListRow{{Reference: uuid.MustNew(), Values: map[string]string{"Description": "Болт"}}}}, runtime.failure
 }
+func (runtime *fakeRuntime) GetApplicationObject(context.Context, string, uuid.UUID, metadata.Kind, string, string) (platform.ApplicationObjectState, error) {
+	return platform.ApplicationObjectState{Reference: uuid.MustNew().String(), Fields: map[string]metadata.Value{}}, runtime.failure
+}
+func (runtime *fakeRuntime) SaveApplicationObject(context.Context, string, uuid.UUID, metadata.Kind, string, platform.ApplicationObjectWrite) (platform.ApplicationObjectState, error) {
+	return platform.ApplicationObjectState{Reference: uuid.MustNew().String(), Fields: map[string]metadata.Value{}}, runtime.failure
+}
+func (runtime *fakeRuntime) PostApplicationDocument(context.Context, string, uuid.UUID, string, string) (platform.ApplicationObjectState, error) {
+	return platform.ApplicationObjectState{Posted: true, Fields: map[string]metadata.Value{}}, runtime.failure
+}
+func (runtime *fakeRuntime) UndoApplicationDocumentPosting(context.Context, string, uuid.UUID, string, string) (platform.ApplicationObjectState, error) {
+	return platform.ApplicationObjectState{Fields: map[string]metadata.Value{}}, runtime.failure
+}
+func (runtime *fakeRuntime) SetApplicationDeletionMark(_ context.Context, _ string, _ uuid.UUID, _ metadata.Kind, _ string, _ string, mark bool) (platform.ApplicationObjectState, error) {
+	return platform.ApplicationObjectState{DeletionMark: mark, Fields: map[string]metadata.Value{}}, runtime.failure
+}
