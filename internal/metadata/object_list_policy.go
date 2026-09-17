@@ -33,6 +33,22 @@ func listRowRestriction(ctx context.Context, objectID uuid.UUID, column func(str
 	return rowRestriction{restricted: restricted, alternatives: alternatives, column: column}
 }
 
+// readRowPredicate renders the caller's row policy as an extra AND-condition for
+// a read that already selects by key, returning "" when nothing is restricted.
+// A hidden row then simply does not come back, which is exactly what "not found"
+// has to look like: answering with a distinct access error would confirm the
+// object exists to someone not allowed to know it.
+//
+// It returns the fragment rather than a finished statement because these reads
+// end in ORDER BY/LIMIT, and the condition has to go before that, not after.
+func readRowPredicate(ctx context.Context, objectID uuid.UUID, column func(string) (listColumn, bool), arguments *[]any) (string, error) {
+	predicate, err := listRowRestriction(ctx, objectID, column).predicate(arguments)
+	if err != nil || predicate == "" {
+		return "", err
+	}
+	return " AND " + predicate, nil
+}
+
 // predicate renders the restriction as one SQL condition and appends whatever
 // arguments it needs. Alternatives are OR-ed; no alternatives admits no rows.
 func (restriction rowRestriction) predicate(arguments *[]any) (string, error) {
@@ -85,6 +101,18 @@ func (restriction rowRestriction) renderRule(rule PolicyRule, arguments *[]any) 
 		return column.name + " NOT IN (" + strings.Join(placeholders, ",") + ")", nil
 	}
 	return "", fmt.Errorf("unsupported access policy operator %q", rule.Operator)
+}
+
+func catalogPolicyColumn(definition CatalogDefinition) func(string) (listColumn, bool) {
+	return policyListColumn(func(field string) (listColumn, bool) {
+		return catalogListField(definition, field)
+	}, definition.Attributes)
+}
+
+func documentPolicyColumn(definition DocumentDefinition) func(string) (listColumn, bool) {
+	return policyListColumn(func(field string) (listColumn, bool) {
+		return documentListField(definition, field)
+	}, definition.Attributes)
 }
 
 // policyListColumn maps a policy field key - an attribute UUID or a lowercase

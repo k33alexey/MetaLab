@@ -168,13 +168,18 @@ func (repository *CatalogRepository) Get(ctx context.Context, reference CatalogR
 		return nil, ErrCatalogRecordNotFound
 	}
 	table, _ := PhysicalCatalogTable(definition.ID)
-	statement := "SELECT to_jsonb(item) FROM " + qualifiedCatalogTable(table) + " AS item WHERE ref = $1"
+	arguments := []any{reference.ObjectID.String()}
+	restriction, err := readRowPredicate(ctx, definition.ID, catalogPolicyColumn(definition), &arguments)
+	if err != nil {
+		return nil, err
+	}
+	statement := "SELECT to_jsonb(item) FROM " + qualifiedCatalogTable(table) + " AS item WHERE ref = $1" + restriction
 	var encoded []byte
 	query, err := queryData(ctx, repository.pool)
 	if err != nil {
 		return nil, err
 	}
-	if err := query.QueryRow(ctx, statement, reference.ObjectID.String()).Scan(&encoded); errors.Is(err, pgx.ErrNoRows) {
+	if err := query.QueryRow(ctx, statement, arguments...).Scan(&encoded); errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrCatalogRecordNotFound
 	} else if err != nil {
 		return nil, recordDataError(ctx, repository.pool, fmt.Errorf("read catalog %s: %w", definition.Name, err))
@@ -199,13 +204,18 @@ func (repository *CatalogRepository) FindByCode(ctx context.Context, name, code 
 		return CatalogReference{}, false, err
 	}
 	table, _ := PhysicalCatalogTable(definition.ID)
-	statement := "SELECT ref::text FROM " + qualifiedCatalogTable(table) + " WHERE code = $1 ORDER BY ref LIMIT 1"
+	arguments := []any{code}
+	restriction, err := readRowPredicate(ctx, definition.ID, catalogPolicyColumn(definition), &arguments)
+	if err != nil {
+		return CatalogReference{}, false, err
+	}
+	statement := "SELECT ref::text FROM " + qualifiedCatalogTable(table) + " WHERE code = $1" + restriction + " ORDER BY ref LIMIT 1"
 	var idText string
 	query, err := queryData(ctx, repository.pool)
 	if err != nil {
 		return CatalogReference{}, false, err
 	}
-	if err := query.QueryRow(ctx, statement, code).Scan(&idText); errors.Is(err, pgx.ErrNoRows) {
+	if err := query.QueryRow(ctx, statement, arguments...).Scan(&idText); errors.Is(err, pgx.ErrNoRows) {
 		return CatalogReference{}, false, nil
 	} else if err != nil {
 		return CatalogReference{}, false, recordDataError(ctx, repository.pool, fmt.Errorf("find catalog %s by code: %w", definition.Name, err))

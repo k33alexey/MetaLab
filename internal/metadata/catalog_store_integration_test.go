@@ -233,6 +233,36 @@ func TestCatalogRepositoryLifecycleIntegration(t *testing.T) {
 	if err != nil || len(searchedRestricted.Records) != 0 {
 		t.Fatalf("search reached a row the policy hides: %+v error=%v", searchedRestricted, err)
 	}
+	// Reading by reference must report a hidden row as "not found" and never as a
+	// distinct access error - a different answer would confirm it exists.
+	visible := restrictedPage.Records[0].Reference
+	var hiddenReference CatalogReference
+	for _, record := range firstDynamic.Records {
+		if record.Code != "K001" {
+			hiddenReference = record.Reference
+			break
+		}
+	}
+	if hiddenReference.ObjectID.IsZero() {
+		t.Fatal("test data has no row outside the restriction")
+	}
+	if _, err := repository.Get(restrictedCtx, visible); err != nil {
+		t.Fatalf("visible row must stay readable by reference: %v", err)
+	}
+	if _, err := repository.Get(restrictedCtx, hiddenReference); !errors.Is(err, ErrCatalogRecordNotFound) {
+		t.Fatalf("hidden row must read as not found, got %v", err)
+	}
+	if _, err := repository.Get(ctx, hiddenReference); err != nil {
+		t.Fatalf("the same row must still be readable without a policy: %v", err)
+	}
+	// The same must hold for a lookup by code, which is otherwise an existence
+	// oracle for rows the policy hides.
+	if _, found, err := repository.FindByCode(restrictedCtx, "Контрагенты", "K001"); err != nil || !found {
+		t.Fatalf("visible row must stay findable by code: found=%v error=%v", found, err)
+	}
+	if _, found, err := repository.FindByCode(restrictedCtx, "Контрагенты", "K003"); err != nil || found {
+		t.Fatalf("hidden row was revealed by code lookup: found=%v error=%v", found, err)
+	}
 	// Restricting by an attribute exercises the UUID-named physical column.
 	policy, err = restrictedRead(PolicyRule{Field: emailID.String(), Operator: PolicyIn,
 		Values: []Value{{Kind: StringType, Data: "bsl@example.test"}, {Kind: StringType, Data: "partner001@example.test"}}})

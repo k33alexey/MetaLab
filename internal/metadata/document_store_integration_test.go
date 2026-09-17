@@ -173,6 +173,42 @@ func TestDocumentRepositoryLifecycleIntegration(t *testing.T) {
 		t.Fatalf("dynamic document list page=%+v error=%v", dynamicPage, err)
 	}
 
+	// Row-level access on documents: restrict to one of the two rows and check
+	// every way of reaching the other one. FindByNumber matters most here - its
+	// restriction lands after two existing placeholders, which is where
+	// parameter numbering goes wrong if it is going to.
+	role := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Ограниченный", Title: LocalizedText{"ru": "Ограниченный"},
+		Objects: []ObjectPermission{{Object: documentID, Operations: []PermissionOperation{PermissionRead},
+			Policies: []AccessPolicy{{Operations: []PermissionOperation{PermissionRead},
+				Rule: &PolicyRule{Field: "ref", Operator: PolicyEqual, Values: []Value{{Kind: StringType, Data: loaded.Reference.ObjectID.String()}}}}}}}}
+	catalog.Project.ID = projectID
+	catalog.Roles, catalog.roleByID = []RoleDefinition{role}, map[uuid.UUID]int{role.ID: 0}
+	policy, err := CompilePermissions(catalog, []uuid.UUID{role.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	restrictedCtx := WithPermissions(ctx, policy)
+	if _, err := repository.Get(restrictedCtx, loaded.Reference); err != nil {
+		t.Fatalf("visible document must stay readable: %v", err)
+	}
+	if _, err := repository.Get(restrictedCtx, duplicate.Reference); !errors.Is(err, ErrDocumentRecordNotFound) {
+		t.Fatalf("hidden document must read as not found, got %v", err)
+	}
+	if reference, ok, err := repository.FindByNumber(restrictedCtx, "Продажа", "SALE-2", &fixedDate); err != nil || !ok || reference != loaded.Reference {
+		t.Fatalf("visible document must stay findable by number: %+v ok=%v error=%v", reference, ok, err)
+	}
+	if reference, ok, err := repository.FindByNumber(restrictedCtx, "Продажа", "SALE-2", &duplicate.Date); err != nil || ok {
+		t.Fatalf("hidden document was revealed by number lookup: %+v ok=%v error=%v", reference, ok, err)
+	}
+	restrictedList, err := repository.ListDynamic(restrictedCtx, "Продажа", DynamicListRequest{})
+	if err != nil || len(restrictedList.Records) != 1 || restrictedList.Records[0].Reference != loaded.Reference {
+		t.Fatalf("restricted document list=%+v error=%v", restrictedList, err)
+	}
+	basicList, err := repository.List(restrictedCtx, "Продажа", nil, 20)
+	if err != nil || len(basicList.Records) != 1 || basicList.Records[0].Reference != loaded.Reference {
+		t.Fatalf("restricted basic list=%+v error=%v", basicList, err)
+	}
+
 	runtime, err := NewRuntimeWithObjects(nil, catalogRepository, repository, catalog, nil)
 	if err != nil {
 		t.Fatal(err)

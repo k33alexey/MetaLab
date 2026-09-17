@@ -216,13 +216,18 @@ func (repository *DocumentRepository) Get(ctx context.Context, reference Documen
 		return nil, ErrDocumentRecordNotFound
 	}
 	table, _ := PhysicalDocumentTable(definition.ID)
-	statement := "SELECT to_jsonb(item) FROM " + qualifiedCatalogTable(table) + " AS item WHERE ref = $1"
+	arguments := []any{reference.ObjectID.String()}
+	restriction, err := readRowPredicate(ctx, definition.ID, documentPolicyColumn(definition), &arguments)
+	if err != nil {
+		return nil, err
+	}
+	statement := "SELECT to_jsonb(item) FROM " + qualifiedCatalogTable(table) + " AS item WHERE ref = $1" + restriction
 	var encoded []byte
 	query, err := queryData(ctx, repository.pool)
 	if err != nil {
 		return nil, err
 	}
-	if err := query.QueryRow(ctx, statement, reference.ObjectID.String()).Scan(&encoded); errors.Is(err, pgx.ErrNoRows) {
+	if err := query.QueryRow(ctx, statement, arguments...).Scan(&encoded); errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrDocumentRecordNotFound
 	} else if err != nil {
 		return nil, recordDataError(ctx, repository.pool, fmt.Errorf("read document %s: %w", definition.Name, err))
@@ -258,13 +263,18 @@ func (repository *DocumentRepository) FindByNumber(ctx context.Context, name, nu
 		period = documentNumberPeriod(definition.Number.Periodicity, normalized)
 	}
 	table, _ := PhysicalDocumentTable(definition.ID)
-	statement := "SELECT ref::text FROM " + qualifiedCatalogTable(table) + " WHERE number_period = $1 AND number = $2 ORDER BY date DESC, ref LIMIT 1"
+	arguments := []any{period, number}
+	restriction, err := readRowPredicate(ctx, definition.ID, documentPolicyColumn(definition), &arguments)
+	if err != nil {
+		return DocumentReference{}, false, err
+	}
+	statement := "SELECT ref::text FROM " + qualifiedCatalogTable(table) + " WHERE number_period = $1 AND number = $2" + restriction + " ORDER BY date DESC, ref LIMIT 1"
 	var idText string
 	query, err := queryData(ctx, repository.pool)
 	if err != nil {
 		return DocumentReference{}, false, err
 	}
-	if err := query.QueryRow(ctx, statement, period, number).Scan(&idText); errors.Is(err, pgx.ErrNoRows) {
+	if err := query.QueryRow(ctx, statement, arguments...).Scan(&idText); errors.Is(err, pgx.ErrNoRows) {
 		return DocumentReference{}, false, nil
 	} else if err != nil {
 		return DocumentReference{}, false, recordDataError(ctx, repository.pool, fmt.Errorf("find document %s by number: %w", definition.Name, err))

@@ -52,7 +52,13 @@ func (repository *CatalogRepository) List(ctx context.Context, name string, curs
 		return CatalogListPage{}, err
 	}
 	table, _ := PhysicalCatalogTable(definition.ID)
-	return repository.listPage(ctx, definition, "SELECT to_jsonb(item) FROM "+qualifiedCatalogTable(table)+" AS item WHERE ref > $1 ORDER BY ref LIMIT $2", cursor, limit)
+	arguments := []any{basicListCursor(cursor), limit + 1}
+	restriction, err := readRowPredicate(ctx, definition.ID, catalogPolicyColumn(definition), &arguments)
+	if err != nil {
+		return CatalogListPage{}, err
+	}
+	statement := "SELECT to_jsonb(item) FROM " + qualifiedCatalogTable(table) + " AS item WHERE ref > $1" + restriction + " ORDER BY ref LIMIT $2"
+	return repository.listPageArguments(ctx, definition, statement, arguments, limit)
 }
 
 // ListDynamic returns a filtered keyset page using only metadata-owned fields.
@@ -70,17 +76,11 @@ func (repository *CatalogRepository) ListDynamic(ctx context.Context, name strin
 		return catalogListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
 		return catalogListField(definition, field)
-	}, listRowRestriction(ctx, definition.ID, policyListColumn(func(field string) (listColumn, bool) {
-		return catalogListField(definition, field)
-	}, definition.Attributes)))
+	}, listRowRestriction(ctx, definition.ID, catalogPolicyColumn(definition)))
 	if err != nil {
 		return CatalogListPage{}, err
 	}
 	return repository.listPageArguments(ctx, definition, statement, arguments, request.Limit)
-}
-
-func (repository *CatalogRepository) listPage(ctx context.Context, definition CatalogDefinition, statement string, cursor *uuid.UUID, limit int) (CatalogListPage, error) {
-	return repository.listPageArguments(ctx, definition, statement, []any{basicListCursor(cursor), limit + 1}, limit)
 }
 
 func (repository *CatalogRepository) listPageArguments(ctx context.Context, definition CatalogDefinition, statement string, arguments []any, limit int) (CatalogListPage, error) {
@@ -126,11 +126,16 @@ func (repository *DocumentRepository) List(ctx context.Context, name string, cur
 		return DocumentListPage{}, err
 	}
 	table, _ := PhysicalDocumentTable(definition.ID)
+	arguments := []any{basicListCursor(cursor), limit + 1}
+	restriction, err := readRowPredicate(ctx, definition.ID, documentPolicyColumn(definition), &arguments)
+	if err != nil {
+		return DocumentListPage{}, err
+	}
 	query, err := queryData(ctx, repository.pool)
 	if err != nil {
 		return DocumentListPage{}, err
 	}
-	rows, err := query.Query(ctx, "SELECT to_jsonb(item) FROM "+qualifiedCatalogTable(table)+" AS item WHERE ref > $1 ORDER BY ref LIMIT $2", basicListCursor(cursor), limit+1)
+	rows, err := query.Query(ctx, "SELECT to_jsonb(item) FROM "+qualifiedCatalogTable(table)+" AS item WHERE ref > $1"+restriction+" ORDER BY ref LIMIT $2", arguments...)
 	if err != nil {
 		return DocumentListPage{}, recordDataError(ctx, repository.pool, fmt.Errorf("list document %s: %w", definition.Name, err))
 	}
@@ -173,9 +178,7 @@ func (repository *DocumentRepository) ListDynamic(ctx context.Context, name stri
 		return documentListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
 		return documentListField(definition, field)
-	}, listRowRestriction(ctx, definition.ID, policyListColumn(func(field string) (listColumn, bool) {
-		return documentListField(definition, field)
-	}, definition.Attributes)))
+	}, listRowRestriction(ctx, definition.ID, documentPolicyColumn(definition)))
 	if err != nil {
 		return DocumentListPage{}, err
 	}
