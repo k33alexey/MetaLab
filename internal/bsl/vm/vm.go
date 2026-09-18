@@ -326,7 +326,8 @@ func (machine *Machine) Call(name string, arguments ...bytecode.Value) (bytecode
 }
 
 // CallContext executes a routine with cancellation and deadline propagation.
-func (machine *Machine) CallContext(ctx context.Context, name string, arguments ...bytecode.Value) (bytecode.Value, error) {
+func (machine *Machine) CallContext(ctx context.Context, name string, arguments ...bytecode.Value) (result bytecode.Value, resultErr error) {
+	defer recoverExecution(name, &result, &resultErr)
 	function, ok := machine.lookup(name)
 	if !ok {
 		return bytecode.Undefined(), fmt.Errorf("routine %q not found", name)
@@ -420,6 +421,7 @@ func (runtimeContext *Context) HasRoutine(module, name string) bool {
 
 // CallContext executes a routine in this session with cancellation support.
 func (runtimeContext *Context) CallContext(ctx context.Context, name string, arguments ...bytecode.Value) (result bytecode.Value, resultErr error) {
+	defer recoverExecution(name, &result, &resultErr)
 	function, ok := runtimeContext.machine.lookup(name)
 	if !ok {
 		return bytecode.Undefined(), fmt.Errorf("routine %q not found", name)
@@ -495,6 +497,7 @@ func (runtimeContext *Context) CallContext(ctx context.Context, name string, arg
 
 // CallContextMutable executes a server routine and returns final values of by-reference parameters.
 func (runtimeContext *Context) CallContextMutable(ctx context.Context, name string, arguments ...bytecode.Value) (result bytecode.Value, final []bytecode.Value, resultErr error) {
+	defer recoverExecution(name, &result, &resultErr)
 	function, ok := runtimeContext.machine.lookup(name)
 	if !ok {
 		return bytecode.Undefined(), nil, fmt.Errorf("routine %q not found", name)
