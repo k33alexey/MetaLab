@@ -4,12 +4,15 @@ name: ПродажиИСклад
 title: Продажи и склад
 default_language: ru
 languages:
-  - name: Русский
+  - id: 13824885-a18e-8751-8297-b323cdd46b5b
+    name: Русский
     title: Русский
     code: ru
-  - name: Українська
+  - id: ce0ca7e8-86bd-817d-bc37-ff019241e93e
+    name: Українська
     title: Українська
     code: uk
-  - name: English
+  - id: 2749086b-ca2c-80fe-88f2-6e38a20dcea7
+    name: English
     title: English
     code: en

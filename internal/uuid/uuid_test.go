@@ -75,3 +75,28 @@ func TestZeroUUIDCannotBeMarshaled(t *testing.T) {
 		t.Fatal("MarshalText() returned no error for zero UUID")
 	}
 }
+
+// A derived identity has to be the same on every call and different for every
+// name: it stands in for an identity that was never written down, and two reads
+// of the same thing must agree.
+func TestDeriveIsStableAndDistinct(t *testing.T) {
+	t.Parallel()
+	namespace := MustNew()
+	first, second := Derive(namespace, "language:ru"), Derive(namespace, "language:ru")
+	if first != second || first.IsZero() {
+		t.Fatalf("derived identity is not stable: %s vs %s", first, second)
+	}
+	if Derive(namespace, "language:uk") == first {
+		t.Fatal("two names derived the same identity")
+	}
+	if Derive(MustNew(), "language:ru") == first {
+		t.Fatal("two namespaces derived the same identity")
+	}
+	parsed, err := Parse(first.String())
+	if err != nil || parsed != first {
+		t.Fatalf("derived identity is not a canonical UUID: %v", err)
+	}
+	if first[6]&0xf0 != 0x80 || first[8]&0xc0 != 0x80 {
+		t.Fatalf("derived identity does not carry the version and variant bits: %s", first)
+	}
+}

@@ -3,6 +3,7 @@ package uuid
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -24,6 +25,23 @@ func New() (UUID, error) {
 	id[8] = id[8]&0x3f | 0x80
 
 	return id, nil
+}
+
+// Derive builds a stable UUID from a namespace and a name, the way RFC 9562
+// version 8 allows: a hash of both, with the version and variant bits set. Two
+// callers with the same namespace and name always get the same identifier and
+// never need to agree on anything else.
+//
+// It exists for identities that must be reproducible rather than random - an
+// object that acquires an identity it never had, where inventing a fresh one on
+// every read would make two reads of the same file disagree.
+func Derive(namespace UUID, name string) UUID {
+	digest := sha256.Sum256(append(append([]byte(nil), namespace[:]...), name...))
+	var id UUID
+	copy(id[:], digest[:16])
+	id[6] = id[6]&0x0f | 0x80
+	id[8] = id[8]&0x3f | 0x80
+	return id
 }
 
 // MustNew creates a random UUID and panics if the operating system random

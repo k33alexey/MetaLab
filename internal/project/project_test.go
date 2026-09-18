@@ -16,15 +16,32 @@ name: SalesDemo
 title: Продажи и склад
 default_language: ru
 languages:
+  - id: 018f1f72-3b4c-7d6e-8f90-000000000001
+    name: Русский
+    title: Русский
+    code: ru
+  - id: 018f1f72-3b4c-7d6e-8f90-000000000002
+    name: Українська
+    title: Українська
+    code: uk
+  - id: 018f1f72-3b4c-7d6e-8f90-000000000003
+    name: English
+    title: English
+    code: en
+`
+
+// legacyYAML is a manifest written before languages had identities. Reading it
+// must keep working - the identity is the platform's own bookkeeping, and the
+// data it addresses (translations) is keyed by code, not by it.
+const legacyYAML = `format: 1
+id: 018f1f72-3b4c-7d6e-8f90-123456789abc
+name: SalesDemo
+title: Продажи и склад
+default_language: ru
+languages:
   - name: Русский
     title: Русский
     code: ru
-  - name: Українська
-    title: Українська
-    code: uk
-  - name: English
-    title: English
-    code: en
 `
 
 func TestDecodeValidProject(t *testing.T) {
@@ -177,7 +194,7 @@ func TestValidateRejectsUnboundedOrControlText(t *testing.T) {
 	value := Project{
 		Format: CurrentFormat, ID: uuid.MustNew(), Name: "A" + strings.Repeat("b", 128),
 		Title: "Unsafe\nTitle", DefaultLanguage: "ru",
-		Languages: []Language{{Name: "Русский", Title: "Русский", Code: "ru"}},
+		Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
 	}
 	err := value.Validate()
 	if err == nil || !strings.Contains(err.Error(), "name must not exceed 128") || !strings.Contains(err.Error(), "title must contain") {
@@ -195,7 +212,7 @@ func TestValidateAcceptsUnicodeIdentifiersAndRegion(t *testing.T) {
 		Title:           "Торгівля",
 		DefaultLanguage: "uk-UA",
 		Languages: []Language{
-			{Name: "Українська", Title: "Українська", Code: "uk-UA"},
+			{ID: uuid.MustNew(), Name: "Українська", Title: "Українська", Code: "uk-UA"},
 		},
 	}
 
@@ -230,4 +247,76 @@ type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) {
 	return 0, errors.New("write failed")
+}
+
+// Old manifests gain identities when they are read, and keep them from the
+// moment they are written back: nothing has to be migrated by hand, and the
+// project stops being the one metadata object without a stable identity.
+func TestLanguagesWithoutIdentitiesGainThemOnDecode(t *testing.T) {
+	t.Parallel()
+	value, err := Decode(strings.NewReader(legacyYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(value.Languages) != 1 || value.Languages[0].ID.IsZero() {
+		t.Fatalf("decoded languages = %+v", value.Languages)
+	}
+	var encoded bytes.Buffer
+	if err := Encode(&encoded, value); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(encoded.String(), "id: "+value.Languages[0].ID.String()) {
+		t.Fatalf("written manifest does not carry the identity:\n%s", encoded.String())
+	}
+	restored, err := Decode(strings.NewReader(encoded.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.Languages[0].ID != value.Languages[0].ID {
+		t.Fatalf("identity changed on the next read: %s -> %s", value.Languages[0].ID, restored.Languages[0].ID)
+	}
+}
+
+// Reading the same file twice must produce the same project. Publication
+// compares two independently read snapshots of one project, so an identity
+// invented per read would make a project differ from itself and every save
+// would look like a change.
+func TestLanguageIdentitiesAreDerivedNotInvented(t *testing.T) {
+	t.Parallel()
+	first, err := Decode(strings.NewReader(legacyYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := Decode(strings.NewReader(legacyYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Languages[0].ID != second.Languages[0].ID {
+		t.Fatalf("two reads produced different identities: %s vs %s", first.Languages[0].ID, second.Languages[0].ID)
+	}
+	// Derived from the project and the code, so another project does not get
+	// the same identity for its own Russian.
+	other := strings.Replace(legacyYAML, "018f1f72-3b4c-7d6e-8f90-123456789abc", "018f1f72-3b4c-7d6e-8f90-cba987654321", 1)
+	elsewhere, err := Decode(strings.NewReader(other))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elsewhere.Languages[0].ID == first.Languages[0].ID {
+		t.Fatal("two projects derived the same identity for their own language")
+	}
+}
+
+func TestValidateRejectsDuplicateLanguageIdentities(t *testing.T) {
+	t.Parallel()
+	shared := uuid.MustNew()
+	value := Project{
+		Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo", Title: "Demo", DefaultLanguage: "ru",
+		Languages: []Language{
+			{ID: shared, Name: "Русский", Title: "Русский", Code: "ru"},
+			{ID: shared, Name: "English", Title: "English", Code: "en"},
+		},
+	}
+	if err := value.Validate(); err == nil {
+		t.Fatal("two languages with one identity were accepted")
+	}
 }

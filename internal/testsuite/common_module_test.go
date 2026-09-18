@@ -16,7 +16,7 @@ func commonModuleTestProject(t *testing.T, flags string) string {
 	root := filepath.Join(t.TempDir(), "project")
 	manifest := project.Project{
 		Format: project.CurrentFormat, ID: uuid.MustNew(), Name: "CommonModuleTest", Title: "Common Module Test", DefaultLanguage: "ru",
-		Languages: []project.Language{{Name: "Русский", Title: "Русский", Code: "ru"}},
+		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
 	}
 	if err := project.Initialize(root, manifest); err != nil {
 		t.Fatal(err)

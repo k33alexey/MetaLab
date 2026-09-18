@@ -159,7 +159,7 @@ func initializeProject(t *testing.T, root string) {
 	t.Helper()
 	manifest := project.Project{
 		Format: project.CurrentFormat, ID: uuid.MustNew(), Name: "GitDemo", Title: "Git Demo",
-		DefaultLanguage: "ru", Languages: []project.Language{{Name: "Русский", Title: "Русский", Code: "ru"}},
+		DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
 	}
 	if err := project.Initialize(root, manifest); err != nil {
 		t.Fatal(err)

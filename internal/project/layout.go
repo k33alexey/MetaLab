@@ -86,10 +86,16 @@ func ObjectFolderKinds() []string { return slices.Clone(objectFolderKinds) }
 
 // Initialize atomically creates a new canonical ML Project at a previously unused path.
 func Initialize(root string, manifest Project) error {
+	// A manifest built in code names its languages but does not invent their
+	// identities; that is this layer's job, here and in SaveManifest.
+	manifest, err := EnsureLanguageIdentities(manifest)
+	if err != nil {
+		return err
+	}
 	if err := manifest.Validate(); err != nil {
 		return err
 	}
-	root, err := cleanRoot(root)
+	root, err = cleanRoot(root)
 	if err != nil {
 		return err
 	}
@@ -173,15 +179,24 @@ func ValidateLayout(root string) (Project, error) {
 
 // SaveManifest atomically writes a validated manifest without allowing its stable UUID to change.
 func SaveManifest(root string, manifest Project) error {
-	if err := manifest.Validate(); err != nil {
-		return err
-	}
 	root, err := cleanRoot(root)
 	if err != nil {
 		return err
 	}
 	current, err := ValidateLayout(root)
 	if err != nil {
+		return err
+	}
+	// A language that is already in the project keeps the identity it has, even
+	// when the caller hands back a manifest built without one: saving the same
+	// manifest twice has to produce the same file, and a language does not
+	// become a different object because someone rebuilt the struct.
+	manifest = carryLanguageIdentities(manifest, current)
+	manifest, err = EnsureLanguageIdentities(manifest)
+	if err != nil {
+		return err
+	}
+	if err := manifest.Validate(); err != nil {
 		return err
 	}
 	if current.ID != manifest.ID {
@@ -390,4 +405,24 @@ func readManifest(path string) (Project, error) {
 	}
 	defer file.Close()
 	return DecodeSource(path, file)
+}
+
+// carryLanguageIdentities copies identities from the manifest on disk onto a
+// manifest that lacks them, matching by language code - the only thing the two
+// have in common when the caller built the value in code.
+func carryLanguageIdentities(manifest, current Project) Project {
+	known := make(map[string]uuid.UUID, len(current.Languages))
+	for _, language := range current.Languages {
+		known[strings.ToLower(language.Code)] = language.ID
+	}
+	manifest.Languages = append([]Language(nil), manifest.Languages...)
+	for index := range manifest.Languages {
+		if !manifest.Languages[index].ID.IsZero() {
+			continue
+		}
+		if id, ok := known[strings.ToLower(manifest.Languages[index].Code)]; ok {
+			manifest.Languages[index].ID = id
+		}
+	}
+	return manifest
 }

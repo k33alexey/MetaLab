@@ -93,7 +93,7 @@ func TestSaveManifestIsStableAndPreservesIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest.Title = "Новое название"
-	manifest.Languages = append(manifest.Languages, Language{Name: "English", Title: "English", Code: "en"})
+	manifest.Languages = append(manifest.Languages, Language{ID: uuid.MustNew(), Name: "English", Title: "English", Code: "en"})
 	if err := SaveManifest(root, manifest); err != nil {
 		t.Fatal(err)
 	}
@@ -203,6 +203,6 @@ func TestDirectoryCatalogCannotBeMutatedByCaller(t *testing.T) {
 func testManifest() Project {
 	return Project{
 		Format: CurrentFormat, ID: uuid.MustNew(), Name: "SalesDemo", Title: "Продажи и склад",
-		DefaultLanguage: "ru", Languages: []Language{{Name: "Русский", Title: "Русский", Code: "ru"}},
+		DefaultLanguage: "ru", Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
 	}
 }

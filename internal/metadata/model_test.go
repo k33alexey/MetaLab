@@ -572,7 +572,7 @@ func metadataManifest() project.Project {
 	return project.Project{
 		Format: project.CurrentFormat,
 		ID:     uuid.MustNew(), Name: "MetadataTest", Title: "Metadata Test", DefaultLanguage: "ru",
-		Languages: []project.Language{{Name: "Русский", Title: "Русский", Code: "ru"}, {Name: "Українська", Title: "Українська", Code: "uk"}},
+		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}, {ID: uuid.MustNew(), Name: "Українська", Title: "Українська", Code: "uk"}},
 	}
 }
 

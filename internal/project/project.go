@@ -65,10 +65,16 @@ type Project struct {
 }
 
 // Language defines an interface language available in an ML Project.
+// Language is a configured project language. Like every other metadata object
+// of the platform it has a stable UUID: the code is what translations are keyed
+// by and what a user's language setting names, so it cannot also serve as the
+// object's identity - renaming a code would then silently mean "another
+// language" everywhere the object itself is referenced.
 type Language struct {
-	Name  string `yaml:"name" json:"name"`
-	Title string `yaml:"title" json:"title"`
-	Code  string `yaml:"code" json:"code"`
+	ID    uuid.UUID `yaml:"id" json:"id"`
+	Name  string    `yaml:"name" json:"name"`
+	Title string    `yaml:"title" json:"title"`
+	Code  string    `yaml:"code" json:"code"`
 }
 
 // Decode reads one strict YAML document and validates it.
@@ -101,11 +107,35 @@ func DecodeSource(source string, reader io.Reader) (Project, error) {
 		return Project{}, fmt.Errorf("decode %s: multiple YAML documents are not allowed", source)
 	}
 
+	// A manifest written before languages had identities is read, not refused:
+	// translations are keyed by language CODE, so nothing in the data depends on
+	// the identity yet. The missing ones are filled here and become permanent at
+	// the next save, which is what keeps old projects working without a
+	// migration nobody has written.
+	if err := result.assignLanguageIdentities(); err != nil {
+		return Project{}, fmt.Errorf("decode %s: %w", source, err)
+	}
 	if err := result.Validate(); err != nil {
 		return Project{}, fmt.Errorf("validate %s: %w", source, err)
 	}
 
 	return result, nil
+}
+
+// assignLanguageIdentities gives every language that has none an identity
+// DERIVED from the project and the language code, not a random one. Reading the
+// same file twice has to produce the same project: publication compares two
+// independently read snapshots, and a fresh identity per read would make a
+// project differ from itself. The derived value is written out at the next save
+// and from then on is an ordinary stored identity, free to outlive the code it
+// was derived from.
+func (p Project) assignLanguageIdentities() error {
+	for index := range p.Languages {
+		if p.Languages[index].ID.IsZero() {
+			p.Languages[index].ID = uuid.Derive(p.ID, "language:"+strings.ToLower(p.Languages[index].Code))
+		}
+	}
+	return nil
 }
 
 // Encode validates and writes a stable YAML representation.
@@ -132,6 +162,26 @@ func Encode(writer io.Writer, value Project) error {
 	}
 
 	return nil
+}
+
+// NewLanguage creates a configured language with a fresh identity.
+func NewLanguage(name, title, code string) (Language, error) {
+	id, err := uuid.New()
+	if err != nil {
+		return Language{}, err
+	}
+	return Language{ID: id, Name: name, Title: title, Code: code}, nil
+}
+
+// EnsureLanguageIdentities fills in the identity of every language that has
+// none, so a manifest built in code or edited in a browser - where UUIDs are
+// not invented - is saved complete.
+func EnsureLanguageIdentities(manifest Project) (Project, error) {
+	manifest.Languages = append([]Language(nil), manifest.Languages...)
+	if err := manifest.assignLanguageIdentities(); err != nil {
+		return Project{}, err
+	}
+	return manifest, nil
 }
 
 // Validate checks the project invariants used by all readers and writers.
@@ -161,8 +211,15 @@ func (p Project) Validate() error {
 
 	seenNames := make(map[string]struct{}, len(p.Languages))
 	seenCodes := make(map[string]struct{}, len(p.Languages))
+	seenIDs := make(map[uuid.UUID]struct{}, len(p.Languages))
 	for index, language := range p.Languages {
 		prefix := fmt.Sprintf("languages[%d]", index)
+		if language.ID.IsZero() {
+			add(prefix+".id", "must be a non-zero UUID")
+		} else if _, exists := seenIDs[language.ID]; exists {
+			add(prefix+".id", "must be unique")
+		}
+		seenIDs[language.ID] = struct{}{}
 		if !isIdentifier(language.Name) {
 			add(prefix+".name", "must start with a letter and contain only letters or digits")
 		} else if utf8.RuneCountInString(language.Name) > 128 {

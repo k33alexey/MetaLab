@@ -105,7 +105,7 @@ func TestManagedFormValidatesBindingsAndCommands(t *testing.T) {
 }
 
 func managedFormManifest() project.Project {
-	return project.Project{Format: 1, ID: uuid.MustNew(), Name: "Demo", Title: "Demo", DefaultLanguage: "ru", Languages: []project.Language{{Name: "\u0420\u0443\u0441\u0441\u043a\u0438\u0439", Title: "\u0420\u0443\u0441\u0441\u043a\u0438\u0439", Code: "ru"}, {Name: "English", Title: "English", Code: "en"}}}
+	return project.Project{Format: 1, ID: uuid.MustNew(), Name: "Demo", Title: "Demo", DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "\u0420\u0443\u0441\u0441\u043a\u0438\u0439", Title: "\u0420\u0443\u0441\u0441\u043a\u0438\u0439", Code: "ru"}, {ID: uuid.MustNew(), Name: "English", Title: "English", Code: "en"}}}
 }
 
 func BenchmarkDecodeManagedForm(b *testing.B) {

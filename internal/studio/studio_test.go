@@ -297,7 +297,7 @@ func createProject(t testing.TB) string {
 	root := filepath.Join(t.TempDir(), "SalesDemo")
 	manifest := project.Project{
 		Format: project.CurrentFormat, ID: uuid.MustNew(), Name: "SalesDemo", Title: "Продажи и склад",
-		DefaultLanguage: "ru", Languages: []project.Language{{Name: "Русский", Title: "Русский", Code: "ru"}},
+		DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
 	}
 	if err := project.Initialize(root, manifest); err != nil {
 		t.Fatal(err)

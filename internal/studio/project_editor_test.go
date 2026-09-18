@@ -27,22 +27,27 @@ func TestProjectEditorAlwaysIncludesCanonicalEnglish(t *testing.T) {
 		t.Fatal(err)
 	}
 	english, ok := findLanguage(opened.Manifest.Languages, "en")
-	if !ok || english != englishLanguage {
+	if !ok || english.Name != englishLanguage.Name || english.Title != englishLanguage.Title || english.ID.IsZero() {
 		t.Fatalf("English was not injected on read: %+v", opened.Manifest.Languages)
 	}
 
 	// Try to corrupt English (rename it) and remove the "ru" language while
 	// setting the default language to the (attempted) corrupted English.
 	corrupted := opened.Manifest
-	corrupted.Languages = []project.Language{{Name: "NotEnglish", Title: "Not English", Code: "en"}}
+	corrupted.Languages = []project.Language{{ID: uuid.MustNew(), Name: "NotEnglish", Title: "Not English", Code: "en"}}
 	corrupted.DefaultLanguage = "en"
 	saved, err := workspace.SaveProjectEditor(corrupted, opened.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
 	english, ok = findLanguage(saved.Manifest.Languages, "en")
-	if !ok || english != englishLanguage {
+	if !ok || english.Name != englishLanguage.Name || english.Title != englishLanguage.Title {
 		t.Fatalf("English was not restored to its canonical value: %+v", saved.Manifest.Languages)
+	}
+	// Личность языка не меняется от того, что кто-то поправил его заголовок:
+	// при сохранении без идентификатора он берётся из уже сохранённого проекта.
+	if english.ID.IsZero() {
+		t.Fatalf("restored English lost its identity: %+v", english)
 	}
 	if len(saved.Manifest.Languages) != 1 {
 		t.Fatalf("unexpected language list: %+v", saved.Manifest.Languages)
@@ -142,13 +147,4 @@ func runNodeTest(t *testing.T, script string) {
 	if err != nil {
 		t.Fatalf("%s: %v\n%s", script, err, output)
 	}
-}
-
-func findLanguage(languages []project.Language, code string) (project.Language, bool) {
-	for _, language := range languages {
-		if language.Code == code {
-			return language, true
-		}
-	}
-	return project.Language{}, false
 }

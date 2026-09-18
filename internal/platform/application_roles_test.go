@@ -13,7 +13,7 @@ import (
 
 func TestApplicationPermissionsBindProjectAndDenyUnassigned(t *testing.T) {
 	t.Parallel()
-	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "RolesTest", Title: "Roles test", DefaultLanguage: "ru", Languages: []project.Language{{Name: "Русский", Title: "Русский", Code: "ru"}}}
+	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "RolesTest", Title: "Roles test", DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
 	role := metadata.RoleDefinition{Format: 1, ID: uuid.MustNew(), Name: "Читатель", Title: metadata.LocalizedText{"ru": "Читатель"}}
 	catalog, err := metadata.NewCatalogSnapshotWithRoles(manifest, nil, nil, nil, nil, nil, nil, nil, []metadata.RoleDefinition{role})
 	if err != nil {
@@ -70,7 +70,7 @@ func TestApplicationPermissionsBindProjectAndDenyUnassigned(t *testing.T) {
 func TestAllowedOperationsReportOnlyWhatTheRoleGrants(t *testing.T) {
 	t.Parallel()
 	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "OperationsTest", Title: "Operations test", DefaultLanguage: "ru",
-		Languages: []project.Language{{Name: "Русский", Title: "Русский", Code: "ru"}}}
+		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
 	goods := metadata.CatalogDefinition{Format: 1, ID: uuid.MustNew(), Name: "Товары", Title: metadata.LocalizedText{"ru": "Товары"},
 		Code: metadata.CatalogCode{Type: metadata.StringType, Length: 9}, DescriptionLength: 150}
 	partners := metadata.CatalogDefinition{Format: 1, ID: uuid.MustNew(), Name: "Контрагенты", Title: metadata.LocalizedText{"ru": "Контрагенты"},

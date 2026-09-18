@@ -98,7 +98,7 @@ func TestSessionParameterRestrictsListReadsIntegration(t *testing.T) {
 		Types: []metadata.Type{{Kind: metadata.StringType, Length: 50}},
 	}
 	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "SessionDemo", Title: "Session demo", DefaultLanguage: "ru",
-		Languages: []project.Language{{Name: "Русский", Title: "Русский", Code: "ru"}}}
+		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
 	root := filepath.Join(t.TempDir(), "project")
 	if err := project.Initialize(root, manifest); err != nil {
 		t.Fatal(err)

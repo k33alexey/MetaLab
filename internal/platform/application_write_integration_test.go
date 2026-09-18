@@ -109,7 +109,7 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 		Dimensions: []metadata.Attribute{{ID: productDimensionID, Name: "Товар", Title: metadata.LocalizedText{"ru": "Товар"}, Required: true, Types: []metadata.Type{{Kind: metadata.StringType, Length: 100}}}},
 		Resources:  []metadata.Attribute{{ID: quantityResourceID, Name: "Количество", Title: metadata.LocalizedText{"ru": "Количество"}, Required: true, Types: []metadata.Type{{Kind: metadata.NumberType, Precision: 15, Scale: 3}}}},
 	}
-	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "WriteDemo", Title: "Write demo", DefaultLanguage: "ru", Languages: []project.Language{{Name: "Русский", Title: "Русский", Code: "ru"}}}
+	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "WriteDemo", Title: "Write demo", DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
 	root := filepath.Join(t.TempDir(), "project")
 	if err := project.Initialize(root, manifest); err != nil {
 		t.Fatal(err)
