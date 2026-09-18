@@ -30,6 +30,7 @@ type Runtime struct {
 	dataLockWait                   atomic.Int64
 	sessionParametersMu            sync.RWMutex
 	sessionParameters              map[string]bytecode.Value
+	sessionParameterLists          map[string][]Value
 	sessionModule                  *SessionBSLEvents
 	sessionModuleRunning           bool
 }
@@ -54,6 +55,7 @@ func NewRuntime(repository *ConstantRepository, catalog *Catalog, actor *uuid.UU
 		informationRegisterEvents:  make(map[uuid.UUID]InformationRegisterEventHandler),
 		accumulationRegisterEvents: make(map[uuid.UUID]AccumulationRegisterEventHandler),
 		sessionParameters:          make(map[string]bytecode.Value),
+		sessionParameterLists:      make(map[string][]Value),
 	}
 	if _, err := runtime.databasePool(); err != nil {
 		return nil, err
@@ -91,6 +93,7 @@ func NewRuntimeWithAllRegisters(constants *ConstantRepository, catalogs *Catalog
 		informationRegisterEvents:  make(map[uuid.UUID]InformationRegisterEventHandler),
 		accumulationRegisterEvents: make(map[uuid.UUID]AccumulationRegisterEventHandler),
 		sessionParameters:          make(map[string]bytecode.Value),
+		sessionParameterLists:      make(map[string][]Value),
 	}
 	if actor != nil {
 		if actor.IsZero() {
@@ -262,25 +265,109 @@ func (runtime *Runtime) storedSessionParameter(name string) (bytecode.Value, boo
 	return stored, set
 }
 
+// MaxSessionParameterValues bounds one list-valued session parameter. The list
+// becomes an IN(...) list inside every restricted read, so it is bounded for the
+// same reason a policy's literal list is.
+const MaxSessionParameterValues = 1000
+
 // SetSessionParameter stores a session parameter in server-process memory
 // for the lifetime of this Runtime.
+//
+// The value may be a LIST, not only a single value: "the warehouses this user
+// may see" is the shape real restrictions are written against, and the
+// declarative operators В/НЕ В exist precisely to consume it.
 func (runtime *Runtime) SetSessionParameter(_ context.Context, name string, value bytecode.Value) error {
 	parameter, ok := runtime.catalog.SessionParameter(name)
 	if !ok {
 		return fmt.Errorf("unknown session parameter %q", name)
 	}
-	converted, err := runtime.valueFromBSLForSessionParameter(parameter, value)
-	if err != nil {
-		return err
-	}
-	normalized, err := valueToBSL(converted)
+	converted, normalized, err := runtime.sessionParameterValues(parameter, value)
 	if err != nil {
 		return err
 	}
 	runtime.sessionParametersMu.Lock()
+	// Both views are created on first write: a Runtime built as a literal (as
+	// several tests do) has neither, and a panic there would say nothing about
+	// the real problem.
+	if runtime.sessionParameters == nil {
+		runtime.sessionParameters = make(map[string]bytecode.Value)
+	}
+	if runtime.sessionParameterLists == nil {
+		runtime.sessionParameterLists = make(map[string][]Value)
+	}
 	runtime.sessionParameters[strings.ToLower(name)] = normalized
+	runtime.sessionParameterLists[strings.ToLower(name)] = converted
 	runtime.sessionParametersMu.Unlock()
 	return nil
+}
+
+// sessionParameterValues normalizes what BSL assigned, in both representations
+// this runtime keeps: the application values a restriction compares against, and
+// the BSL value the same parameter reads back as. They are produced here
+// together so the two views cannot drift apart.
+func (runtime *Runtime) sessionParameterValues(parameter SessionParameter, value bytecode.Value) ([]Value, bytecode.Value, error) {
+	if length, ok := value.ArrayLength(); ok {
+		if length > MaxSessionParameterValues {
+			return nil, bytecode.Undefined(), fmt.Errorf("session parameter %s must not hold more than %d values", parameter.Name, MaxSessionParameterValues)
+		}
+		values := make([]Value, 0, length)
+		elements := make([]bytecode.Value, 0, length)
+		for index := 0; index < length; index++ {
+			element, _ := value.ArrayElement(index)
+			converted, err := runtime.valueFromBSLForSessionParameter(parameter, element)
+			if err != nil {
+				return nil, bytecode.Undefined(), err
+			}
+			normalized, err := valueToBSL(converted)
+			if err != nil {
+				return nil, bytecode.Undefined(), err
+			}
+			values = append(values, converted)
+			elements = append(elements, normalized)
+		}
+		return values, bytecode.Array(elements...), nil
+	}
+	converted, err := runtime.valueFromBSLForSessionParameter(parameter, value)
+	if err != nil {
+		return nil, bytecode.Undefined(), err
+	}
+	normalized, err := valueToBSL(converted)
+	if err != nil {
+		return nil, bytecode.Undefined(), err
+	}
+	return []Value{converted}, normalized, nil
+}
+
+// SessionParameterValues resolves one session parameter into the application
+// values a row restriction compares against, running the session module if the
+// solution has not set it yet. A parameter with neither a value nor a default is
+// reported as absent: a restriction that cannot be evaluated must refuse the
+// read, never widen it.
+func (runtime *Runtime) SessionParameterValues(ctx context.Context, name string) ([]Value, bool, error) {
+	parameter, ok := runtime.catalog.SessionParameter(name)
+	if !ok {
+		return nil, false, fmt.Errorf("unknown session parameter %q", name)
+	}
+	if values, set := runtime.storedSessionParameterValues(name); set {
+		return values, true, nil
+	}
+	if _, err := runtime.runSessionModule(ctx, []string{parameter.Name}); err != nil {
+		return nil, false, err
+	}
+	if values, set := runtime.storedSessionParameterValues(name); set {
+		return values, true, nil
+	}
+	if parameter.Default == nil {
+		return nil, false, nil
+	}
+	return []Value{*parameter.Default}, true, nil
+}
+
+func (runtime *Runtime) storedSessionParameterValues(name string) ([]Value, bool) {
+	runtime.sessionParametersMu.RLock()
+	defer runtime.sessionParametersMu.RUnlock()
+	values, set := runtime.sessionParameterLists[strings.ToLower(name)]
+	return values, set
 }
 
 func (runtime *Runtime) valueFromBSLForSessionParameter(parameter SessionParameter, value bytecode.Value) (Value, error) {

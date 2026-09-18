@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -15,7 +16,7 @@ func TestDynamicListBuildsBoundedParameterizedQuery(t *testing.T) {
 		Limit: 50, Search: `Ива%_`, SortField: "ИНН", Descending: true,
 		Filters: []ListFilter{{Field: "ИНН", Value: `1' OR TRUE`}},
 	}
-	statement, arguments, err := buildDynamicListSQL("t_demo", request, []string{"ИНН"}, func(field string) (string, bool) {
+	statement, arguments, err := buildDynamicListSQL(context.Background(), "t_demo", request, []string{"ИНН"}, func(field string) (string, bool) {
 		return catalogListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
 		return catalogListField(definition, field)
@@ -37,17 +38,17 @@ func TestDynamicListRejectsInvalidRequests(t *testing.T) {
 	if _, err := normalizeDynamicListRequest(DynamicListRequest{Limit: 25}, ListSettings{}); err == nil {
 		t.Fatal("unsupported page size was accepted")
 	}
-	if _, _, err := buildDynamicListSQL("t_demo", DynamicListRequest{Limit: 20, Search: "value"}, nil, func(string) (string, bool) { return "", false }, func(string) (listColumn, bool) { return listColumn{}, false }, rowRestriction{}); err == nil {
+	if _, _, err := buildDynamicListSQL(context.Background(), "t_demo", DynamicListRequest{Limit: 20, Search: "value"}, nil, func(string) (string, bool) { return "", false }, func(string) (listColumn, bool) { return listColumn{}, false }, rowRestriction{}); err == nil {
 		t.Fatal("search without configured fields was accepted")
 	}
-	if _, _, err := buildDynamicListSQL("t_demo", DynamicListRequest{Limit: 20, Filters: []ListFilter{{Field: "x;drop", Value: "1"}}}, nil, func(string) (string, bool) { return "", false }, func(string) (listColumn, bool) { return listColumn{}, false }, rowRestriction{}); err == nil {
+	if _, _, err := buildDynamicListSQL(context.Background(), "t_demo", DynamicListRequest{Limit: 20, Filters: []ListFilter{{Field: "x;drop", Value: "1"}}}, nil, func(string) (string, bool) { return "", false }, func(string) (listColumn, bool) { return listColumn{}, false }, rowRestriction{}); err == nil {
 		t.Fatal("unknown filter field was accepted")
 	}
-	if _, _, err := buildDynamicListSQL("t_demo", DynamicListRequest{Limit: 20, SortField: "x;drop"}, nil, func(string) (string, bool) { return "", false }, func(string) (listColumn, bool) { return listColumn{}, false }, rowRestriction{}); err == nil {
+	if _, _, err := buildDynamicListSQL(context.Background(), "t_demo", DynamicListRequest{Limit: 20, SortField: "x;drop"}, nil, func(string) (string, bool) { return "", false }, func(string) (listColumn, bool) { return listColumn{}, false }, rowRestriction{}); err == nil {
 		t.Fatal("unknown sort field was accepted")
 	}
 	definition := CatalogDefinition{Code: CatalogCode{Type: StringType}}
-	if _, _, err := buildDynamicListSQL("t_demo", DynamicListRequest{Limit: 20, Search: "x", SearchField: "Code"}, []string{"Description"}, func(field string) (string, bool) {
+	if _, _, err := buildDynamicListSQL(context.Background(), "t_demo", DynamicListRequest{Limit: 20, Search: "x", SearchField: "Code"}, []string{"Description"}, func(field string) (string, bool) {
 		return catalogListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
 		return catalogListField(definition, field)
@@ -59,7 +60,7 @@ func TestDynamicListRejectsInvalidRequests(t *testing.T) {
 func TestDynamicListSearchesNumericFieldByExactValue(t *testing.T) {
 	t.Parallel()
 	definition := CatalogDefinition{Code: CatalogCode{Type: NumberType}}
-	statement, arguments, err := buildDynamicListSQL("t_demo", DynamicListRequest{Limit: 20, Search: "12,5", SearchField: "Code"}, []string{"Description", "Code"}, func(field string) (string, bool) {
+	statement, arguments, err := buildDynamicListSQL(context.Background(), "t_demo", DynamicListRequest{Limit: 20, Search: "12,5", SearchField: "Code"}, []string{"Description", "Code"}, func(field string) (string, bool) {
 		return catalogListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
 		return catalogListField(definition, field)

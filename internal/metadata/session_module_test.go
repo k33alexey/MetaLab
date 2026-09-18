@@ -207,3 +207,62 @@ func TestSessionModuleFailureIsReportedNotSwallowed(t *testing.T) {
 		t.Fatalf("handler failure = %v", err)
 	}
 }
+
+// A list is what a real restriction compares against: "the warehouses this user
+// may see" is a set, and the В/НЕ В operators exist to consume it.
+func TestSessionModuleSuppliesAListOfValues(t *testing.T) {
+	t.Parallel()
+	runtime := sessionModuleRuntime(t, `
+Процедура УстановкаПараметровСеанса(ИменаПараметровСеанса)
+	Склады = Новый Массив;
+	Склады.Добавить("Основной");
+	Склады.Добавить("Розничный");
+	ПараметрыСеанса.ДоступныеСклады = Склады;
+КонецПроцедуры
+`)
+	values, ok, err := runtime.SessionParameterValues(context.Background(), "ДоступныеСклады")
+	if err != nil || !ok || len(values) != 2 || values[0].Data != "Основной" || values[1].Data != "Розничный" {
+		t.Fatalf("list parameter = %+v, ok=%v, error=%v", values, ok, err)
+	}
+	// The same parameter read from BSL is the same list, not a flattened value.
+	value, err := runtime.GetSessionParameter(context.Background(), "ДоступныеСклады")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if length, ok := value.ArrayLength(); !ok || length != 2 {
+		t.Fatalf("BSL view of the list = %v (length %v, array %v)", value, length, ok)
+	}
+}
+
+// Every element is checked against the declared type: a list is not a way to
+// smuggle in a value the parameter could not hold on its own.
+func TestSessionModuleListRejectsAValueOfTheWrongType(t *testing.T) {
+	t.Parallel()
+	runtime := sessionModuleRuntime(t, `
+Процедура УстановкаПараметровСеанса(ИменаПараметровСеанса)
+	Склады = Новый Массив;
+	Склады.Добавить("Основной");
+	Склады.Добавить(42);
+	ПараметрыСеанса.ДоступныеСклады = Склады;
+КонецПроцедуры
+`)
+	_, _, err := runtime.SessionParameterValues(context.Background(), "ДоступныеСклады")
+	if err == nil {
+		t.Fatal("a list element of the wrong type was accepted")
+	}
+}
+
+// A parameter nobody set and that declares no default stays absent, so the
+// restriction naming it refuses the read instead of widening it.
+func TestSessionParameterValuesReportsAnUnsetParameterAsAbsent(t *testing.T) {
+	t.Parallel()
+	runtime := sessionModuleRuntime(t, `
+Процедура УстановкаПараметровСеанса(ИменаПараметровСеанса)
+	ПараметрыСеанса.ДоступныеСклады = "Основной";
+КонецПроцедуры
+`)
+	values, ok, err := runtime.SessionParameterValues(context.Background(), "ДоступныеОрганизации")
+	if err != nil || ok || values != nil {
+		t.Fatalf("unset parameter = %+v, ok=%v, error=%v", values, ok, err)
+	}
+}

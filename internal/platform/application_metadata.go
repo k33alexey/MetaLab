@@ -99,7 +99,12 @@ func applicationObjectID(catalog *metadata.Catalog, objectKind metadata.Kind, na
 
 // requireApplicationRead resolves the caller's policy and refuses the whole
 // operation when they may not read the object at all.
-func (runtime *Runtime) requireApplicationRead(ctx context.Context, databaseID, userID uuid.UUID, catalog *metadata.Catalog, objectKind metadata.Kind, name string) (context.Context, error) {
+//
+// snapshot and pool are what a restriction needs when it compares a field with
+// a session parameter the PROJECT computes: answering that requires running the
+// session module, and the runtime for it is built from them - but only if such
+// a restriction is actually reached, never for an ordinary read.
+func (runtime *Runtime) requireApplicationRead(ctx context.Context, databaseID, userID uuid.UUID, snapshot metadata.RuntimeSnapshot, pool *pgxpool.Pool, catalog *metadata.Catalog, objectKind metadata.Kind, name string) (context.Context, error) {
 	objectID, err := applicationObjectID(catalog, objectKind, name)
 	if err != nil {
 		return nil, err
@@ -111,7 +116,8 @@ func (runtime *Runtime) requireApplicationRead(ctx context.Context, databaseID, 
 	if err := permissions.RequireObject(objectID, metadata.PermissionRead); err != nil {
 		return nil, err
 	}
-	return metadata.WithSessionValues(metadata.WithPermissions(ctx, permissions), applicationSessionValues(userID)), nil
+	ctx = metadata.WithSessionValues(metadata.WithPermissions(ctx, permissions), applicationSessionValues(userID))
+	return metadata.WithSessionResolver(ctx, applicationSessionResolver(snapshot, pool, catalog, userID)), nil
 }
 
 // LoadApplicationForm resolves generated or custom managed-form metadata.
@@ -129,7 +135,7 @@ func (runtime *Runtime) LoadApplicationForm(ctx context.Context, token string, d
 	if err != nil {
 		return ApplicationForm{}, err
 	}
-	if _, err := runtime.requireApplicationRead(ctx, databaseID, session.UserID, catalog, objectKind, name); err != nil {
+	if _, err := runtime.requireApplicationRead(ctx, databaseID, session.UserID, snapshot, pool, catalog, objectKind, name); err != nil {
 		return ApplicationForm{}, err
 	}
 	var descriptor metadata.FormDescriptor
@@ -172,7 +178,7 @@ func (runtime *Runtime) LoadApplicationList(ctx context.Context, token string, d
 	}
 	// The context carries the policy onward so row filtering can use it without
 	// resolving the assignment a second time.
-	ctx, err = runtime.requireApplicationRead(ctx, databaseID, session.UserID, catalog, objectKind, name)
+	ctx, err = runtime.requireApplicationRead(ctx, databaseID, session.UserID, snapshot, pool, catalog, objectKind, name)
 	if err != nil {
 		return ApplicationListPage{}, err
 	}

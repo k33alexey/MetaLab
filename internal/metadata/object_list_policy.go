@@ -18,7 +18,7 @@ type rowRestriction struct {
 	restricted   bool
 	alternatives []PolicyRule
 	column       func(string) (listColumn, bool)
-	parameter    func(string) ([]Value, bool)
+	parameter    func(context.Context, string) ([]Value, bool, error)
 	catalog      *Catalog
 }
 
@@ -33,7 +33,7 @@ func listRowRestriction(ctx context.Context, catalog *Catalog, objectID uuid.UUI
 	}
 	alternatives, restricted := permissions.RowFilter(objectID, PermissionRead)
 	return rowRestriction{restricted: restricted, alternatives: alternatives, column: column, catalog: catalog,
-		parameter: func(name string) ([]Value, bool) { return sessionValue(ctx, name) }}
+		parameter: sessionValue}
 }
 
 // readRowPredicate renders the caller's row policy as an extra AND-condition for
@@ -45,7 +45,7 @@ func listRowRestriction(ctx context.Context, catalog *Catalog, objectID uuid.UUI
 // It returns the fragment rather than a finished statement because these reads
 // end in ORDER BY/LIMIT, and the condition has to go before that, not after.
 func readRowPredicate(ctx context.Context, catalog *Catalog, objectID uuid.UUID, column func(string) (listColumn, bool), arguments *[]any) (string, error) {
-	predicate, err := listRowRestriction(ctx, catalog, objectID, column).predicate(arguments)
+	predicate, err := listRowRestriction(ctx, catalog, objectID, column).predicate(ctx, arguments)
 	if err != nil || predicate == "" {
 		return "", err
 	}
@@ -54,7 +54,7 @@ func readRowPredicate(ctx context.Context, catalog *Catalog, objectID uuid.UUID,
 
 // predicate renders the restriction as one SQL condition and appends whatever
 // arguments it needs. Alternatives are OR-ed; no alternatives admits no rows.
-func (restriction rowRestriction) predicate(arguments *[]any) (string, error) {
+func (restriction rowRestriction) predicate(ctx context.Context, arguments *[]any) (string, error) {
 	if !restriction.restricted {
 		return "", nil
 	}
@@ -63,7 +63,7 @@ func (restriction rowRestriction) predicate(arguments *[]any) (string, error) {
 	}
 	rendered := make([]string, 0, len(restriction.alternatives))
 	for _, rule := range restriction.alternatives {
-		clause, err := restriction.renderRule(rule, arguments)
+		clause, err := restriction.renderRule(ctx, rule, arguments)
 		if err != nil {
 			return "", err
 		}
@@ -72,19 +72,22 @@ func (restriction rowRestriction) predicate(arguments *[]any) (string, error) {
 	return "(" + strings.Join(rendered, " OR ") + ")", nil
 }
 
-func (restriction rowRestriction) renderRule(rule PolicyRule, arguments *[]any) (string, error) {
+func (restriction rowRestriction) renderRule(ctx context.Context, rule PolicyRule, arguments *[]any) (string, error) {
 	column, ok := restriction.column(rule.Field)
 	if !ok {
 		return "", fmt.Errorf("access policy field %q is not available in this list", rule.Field)
 	}
 	if rule.Subquery != nil {
-		return restriction.renderSubquery(column, rule, arguments)
+		return restriction.renderSubquery(ctx, column, rule, arguments)
 	}
 	operands := rule.Values
 	if rule.Parameter != "" {
 		resolved, ok := []Value(nil), false
 		if restriction.parameter != nil {
-			resolved, ok = restriction.parameter(rule.Parameter)
+			var err error
+			if resolved, ok, err = restriction.parameter(ctx, rule.Parameter); err != nil {
+				return "", fmt.Errorf("access policy references session parameter %q: %w", rule.Parameter, err)
+			}
 		}
 		if !ok {
 			return "", fmt.Errorf("access policy references session parameter %q, which this session has no value for", rule.Parameter)
@@ -131,7 +134,7 @@ func (restriction rowRestriction) renderRule(rule PolicyRule, arguments *[]any) 
 // would turn a restriction into a condition that is always true.
 const policySubqueryAlias = "policy_source"
 
-func (restriction rowRestriction) renderSubquery(column listColumn, rule PolicyRule, arguments *[]any) (string, error) {
+func (restriction rowRestriction) renderSubquery(ctx context.Context, column listColumn, rule PolicyRule, arguments *[]any) (string, error) {
 	if restriction.catalog == nil {
 		return "", fmt.Errorf("access policy subquery cannot be resolved without metadata")
 	}
@@ -147,7 +150,7 @@ func (restriction rowRestriction) renderSubquery(column listColumn, rule PolicyR
 	}
 	conditions := make([]string, 0, len(rule.Subquery.Where))
 	for _, condition := range rule.Subquery.Where {
-		clause, err := inner.renderRule(condition, arguments)
+		clause, err := inner.renderRule(ctx, condition, arguments)
 		if err != nil {
 			return "", err
 		}

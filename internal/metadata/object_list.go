@@ -72,7 +72,7 @@ func (repository *CatalogRepository) ListDynamic(ctx context.Context, name strin
 		return CatalogListPage{}, err
 	}
 	table, _ := PhysicalCatalogTable(definition.ID)
-	statement, arguments, err := buildDynamicListSQL(table, request, effectiveListSearchFields(definition.List, []string{"Description", "Code"}), func(field string) (string, bool) {
+	statement, arguments, err := buildDynamicListSQL(ctx, table, request, effectiveListSearchFields(definition.List, []string{"Description", "Code"}), func(field string) (string, bool) {
 		return catalogListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
 		return catalogListField(definition, field)
@@ -174,7 +174,7 @@ func (repository *DocumentRepository) ListDynamic(ctx context.Context, name stri
 		return DocumentListPage{}, err
 	}
 	table, _ := PhysicalDocumentTable(definition.ID)
-	statement, arguments, err := buildDynamicListSQL(table, request, effectiveListSearchFields(definition.List, []string{"Number"}), func(field string) (string, bool) {
+	statement, arguments, err := buildDynamicListSQL(ctx, table, request, effectiveListSearchFields(definition.List, []string{"Number"}), func(field string) (string, bool) {
 		return documentListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
 		return documentListField(definition, field)
@@ -251,7 +251,7 @@ func normalizeDynamicListRequest(request DynamicListRequest, settings ListSettin
 	return request, nil
 }
 
-func buildDynamicListSQL(table string, request DynamicListRequest, searchFields []string, resolve func(string) (string, bool), resolveSearch func(string) (listColumn, bool), restriction rowRestriction) (string, []any, error) {
+func buildDynamicListSQL(ctx context.Context, table string, request DynamicListRequest, searchFields []string, resolve func(string) (string, bool), resolveSearch func(string) (listColumn, bool), restriction rowRestriction) (string, []any, error) {
 	arguments := []any{basicListCursor(request.Cursor)}
 	sortColumn := "ref"
 	if request.SortField != "" {
@@ -287,7 +287,7 @@ func buildDynamicListSQL(table string, request DynamicListRequest, searchFields 
 	}
 	// Row-level access restrictions narrow the same WHERE clause as ordinary
 	// filters, so a restricted row is never fetched, counted or paged over.
-	policy, err := restriction.predicate(&arguments)
+	policy, err := restriction.predicate(ctx, &arguments)
 	if err != nil {
 		return "", nil, err
 	}

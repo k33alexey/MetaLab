@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
@@ -129,6 +132,43 @@ func applicationSessionValues(userID uuid.UUID) map[string][]metadata.Value {
 	return map[string][]metadata.Value{
 		metadata.CurrentUserParameter: {{Kind: metadata.UUIDType, Data: userID.String()}},
 	}
+}
+
+// applicationSessionResolver answers for the session parameters the PROJECT
+// computes - "the warehouses this user may see" and the like. Only the session
+// module can produce them, so the resolver builds a BSL runtime; it does so
+// lazily and once, because the overwhelming majority of reads never reach a
+// restriction that names such a parameter, and compiling the project's modules
+// for every list page would be a real cost paid for nothing.
+func applicationSessionResolver(snapshot metadata.RuntimeSnapshot, pool *pgxpool.Pool, catalog *metadata.Catalog, actor uuid.UUID) metadata.SessionValueResolver {
+	var once sync.Once
+	var sessionRuntime *metadata.Runtime
+	var failure error
+	return func(ctx context.Context, name string) ([]metadata.Value, bool, error) {
+		once.Do(func() { sessionRuntime, failure = newSessionParameterRuntime(snapshot, pool, catalog, actor) })
+		if failure != nil {
+			return nil, false, failure
+		}
+		return sessionRuntime.SessionParameterValues(ctx, name)
+	}
+}
+
+func newSessionParameterRuntime(snapshot metadata.RuntimeSnapshot, pool *pgxpool.Pool, catalog *metadata.Catalog, actor uuid.UUID) (*metadata.Runtime, error) {
+	sessionRuntime, err := metadata.NewApplicationRuntime(pool, catalog, &actor)
+	if err != nil {
+		return nil, err
+	}
+	if len(snapshot.Modules) == 0 {
+		return sessionRuntime, nil
+	}
+	program, diagnostics, err := snapshot.CompileModules()
+	if err != nil {
+		return nil, fmt.Errorf("compile BSL: %w (%v)", err, diagnostics)
+	}
+	if err := metadata.WireBSLEvents(sessionRuntime, program, catalog); err != nil {
+		return nil, err
+	}
+	return sessionRuntime, nil
 }
 
 // permissionsForAssignment binds an ML System selection to exactly one project.

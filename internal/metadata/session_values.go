@@ -30,8 +30,9 @@ type sessionValuesContextKey struct{}
 // case rather than the exception.
 //
 // The hosting layer resolves these once per request, the same way it resolves
-// permissions - a read path must never need a BSL runtime just to evaluate a
-// row restriction.
+// permissions. What goes here is what the PLATFORM knows by itself, so an
+// ordinary read never builds a BSL runtime; values the project computes come
+// from WithSessionResolver instead, and only when a restriction asks.
 func WithSessionValues(ctx context.Context, values map[string][]Value) context.Context {
 	folded := make(map[string][]Value, len(values))
 	for name, value := range values {
@@ -40,15 +41,35 @@ func WithSessionValues(ctx context.Context, values map[string][]Value) context.C
 	return context.WithValue(ctx, sessionValuesContextKey{}, folded)
 }
 
+type sessionResolverContextKey struct{}
+
+// SessionValueResolver supplies the values the PROJECT computes, as opposed to
+// the ones the platform knows by itself. Resolving one runs application code -
+// the session module - so it is a function called only if a restriction actually
+// names such a parameter, never work done up front for every read.
+type SessionValueResolver func(ctx context.Context, name string) ([]Value, bool, error)
+
+// WithSessionResolver attaches the project's own supplier of session parameter
+// values. Platform-owned names are answered from WithSessionValues and never
+// reach the resolver: the platform's answer for ТекущийПользователь must not
+// depend on application code.
+func WithSessionResolver(ctx context.Context, resolver SessionValueResolver) context.Context {
+	return context.WithValue(ctx, sessionResolverContextKey{}, resolver)
+}
+
 // sessionValue returns the resolved value of one parameter. A missing parameter
 // is reported as absent rather than as an empty set, so a restriction that
 // cannot be evaluated refuses the read instead of silently matching nothing or
 // everything.
-func sessionValue(ctx context.Context, name string) ([]Value, bool) {
-	values, ok := ctx.Value(sessionValuesContextKey{}).(map[string][]Value)
-	if !ok {
-		return nil, false
+func sessionValue(ctx context.Context, name string) ([]Value, bool, error) {
+	if values, ok := ctx.Value(sessionValuesContextKey{}).(map[string][]Value); ok {
+		if value, ok := values[strings.ToLower(name)]; ok {
+			return value, true, nil
+		}
 	}
-	value, ok := values[strings.ToLower(name)]
-	return value, ok
+	resolver, ok := ctx.Value(sessionResolverContextKey{}).(SessionValueResolver)
+	if !ok || resolver == nil {
+		return nil, false, nil
+	}
+	return resolver(ctx, name)
 }

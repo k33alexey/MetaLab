@@ -3,6 +3,7 @@ package metadata
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -114,10 +115,10 @@ func TestRowRestrictionPredicate(t *testing.T) {
 		return result
 	}
 
-	if predicate, _ := (rowRestriction{}).predicate(&[]any{}); predicate != "" {
+	if predicate, _ := (rowRestriction{}).predicate(context.Background(), &[]any{}); predicate != "" {
 		t.Fatalf("unrestricted read must add no condition, got %q", predicate)
 	}
-	if predicate, _ := (rowRestriction{restricted: true}).predicate(&[]any{}); predicate != "FALSE" {
+	if predicate, _ := (rowRestriction{restricted: true}).predicate(context.Background(), &[]any{}); predicate != "FALSE" {
 		t.Fatalf("a restriction with no alternatives must admit no rows, got %q", predicate)
 	}
 
@@ -133,7 +134,7 @@ func TestRowRestrictionPredicate(t *testing.T) {
 	}
 	for name, test := range tests {
 		arguments := []any{}
-		predicate, err := rowRestriction{restricted: true, alternatives: []PolicyRule{test.rule}, column: column}.predicate(&arguments)
+		predicate, err := rowRestriction{restricted: true, alternatives: []PolicyRule{test.rule}, column: column}.predicate(context.Background(), &arguments)
 		if err != nil || predicate != test.want || len(arguments) != test.arguments {
 			t.Fatalf("%s: predicate=%q arguments=%v error=%v", name, predicate, arguments, err)
 		}
@@ -141,7 +142,7 @@ func TestRowRestrictionPredicate(t *testing.T) {
 
 	arguments := []any{}
 	predicate, err := rowRestriction{restricted: true, column: column,
-		alternatives: []PolicyRule{rule(PolicyEqual, "A"), rule(PolicyEqual, "B")}}.predicate(&arguments)
+		alternatives: []PolicyRule{rule(PolicyEqual, "A"), rule(PolicyEqual, "B")}}.predicate(context.Background(), &arguments)
 	if err != nil || predicate != "(code = $1 OR code = $2)" {
 		t.Fatalf("alternatives must be OR-ed: %q error=%v", predicate, err)
 	}
@@ -165,7 +166,7 @@ func TestRowRestrictionRefusesWhatItCannotApply(t *testing.T) {
 	}
 	for name, test := range tests {
 		arguments := []any{}
-		_, err := rowRestriction{restricted: true, alternatives: []PolicyRule{test.rule}, column: test.column}.predicate(&arguments)
+		_, err := rowRestriction{restricted: true, alternatives: []PolicyRule{test.rule}, column: test.column}.predicate(context.Background(), &arguments)
 		if err == nil || !strings.Contains(err.Error(), test.message) {
 			t.Fatalf("%s: error=%v", name, err)
 		}
@@ -179,11 +180,9 @@ func TestRowRestrictionResolvesSessionParameters(t *testing.T) {
 	column := func(string) (listColumn, bool) { return listColumn{name: "owner"}, true }
 	render := func(values map[string][]Value, rule PolicyRule) (string, []any, error) {
 		restriction := rowRestriction{restricted: true, alternatives: []PolicyRule{rule}, column: column,
-			parameter: func(name string) ([]Value, bool) {
-				return sessionValue(WithSessionValues(context.Background(), values), name)
-			}}
+			parameter: sessionValue}
 		arguments := []any{}
-		predicate, err := restriction.predicate(&arguments)
+		predicate, err := restriction.predicate(WithSessionValues(context.Background(), values), &arguments)
 		return predicate, arguments, err
 	}
 	user := Value{Kind: UUIDType, Data: uuid.MustNew().String()}
@@ -283,5 +282,60 @@ func TestListRowRestrictionFollowsContext(t *testing.T) {
 	restriction := listRowRestriction(WithPermissions(context.Background(), policy), catalog, definition.ID, nil)
 	if !restriction.restricted || len(restriction.alternatives) != 1 {
 		t.Fatalf("restriction=%+v", restriction)
+	}
+}
+
+// Values the PROJECT computes reach a restriction through a resolver, because
+// producing them means running the session module - work no read should do
+// unless a restriction actually asks for it.
+func TestRowRestrictionAsksTheProjectResolverForItsOwnParameters(t *testing.T) {
+	t.Parallel()
+	column := func(string) (listColumn, bool) { return listColumn{name: "warehouse"}, true }
+	render := func(ctx context.Context, rule PolicyRule) (string, []any, error) {
+		restriction := rowRestriction{restricted: true, alternatives: []PolicyRule{rule}, column: column, parameter: sessionValue}
+		arguments := []any{}
+		predicate, err := restriction.predicate(ctx, &arguments)
+		return predicate, arguments, err
+	}
+	rule := PolicyRule{Field: "warehouse", Operator: PolicyIn, Parameter: "ДоступныеСклады"}
+
+	asked := 0
+	resolver := func(_ context.Context, name string) ([]Value, bool, error) {
+		asked++
+		if name != "ДоступныеСклады" {
+			return nil, false, nil
+		}
+		return []Value{{Kind: StringType, Data: "Основной"}, {Kind: StringType, Data: "Розничный"}}, true, nil
+	}
+	ctx := WithSessionResolver(WithSessionValues(context.Background(), map[string][]Value{
+		CurrentUserParameter: {{Kind: UUIDType, Data: uuid.MustNew().String()}},
+	}), resolver)
+	predicate, arguments, err := render(ctx, rule)
+	if err != nil || predicate != "(warehouse IN ($1,$2))" || len(arguments) != 2 {
+		t.Fatalf("resolved list: %q %v error=%v", predicate, arguments, err)
+	}
+
+	// A platform-owned name is answered by the platform: application code must
+	// not be able to decide who the current user is.
+	if _, _, err := render(ctx, PolicyRule{Field: "warehouse", Operator: PolicyEqual, Parameter: CurrentUserParameter}); err != nil {
+		t.Fatal(err)
+	}
+	if asked != 1 {
+		t.Fatalf("resolver consulted %d times, want once - the platform name must not reach it", asked)
+	}
+
+	// A resolver that fails fails the read, and says why: the alternative is
+	// answering as if the restriction were satisfied.
+	failing := WithSessionResolver(context.Background(), func(context.Context, string) ([]Value, bool, error) {
+		return nil, false, errors.New("склады недоступны")
+	})
+	if _, _, err := render(failing, rule); err == nil || !strings.Contains(err.Error(), "склады недоступны") {
+		t.Fatalf("failing resolver: %v", err)
+	}
+
+	// A resolver with no answer is not an empty answer: the read refuses.
+	absent := WithSessionResolver(context.Background(), func(context.Context, string) ([]Value, bool, error) { return nil, false, nil })
+	if _, _, err := render(absent, rule); err == nil || !strings.Contains(err.Error(), "has no value for") {
+		t.Fatalf("resolver without an answer: %v", err)
 	}
 }
