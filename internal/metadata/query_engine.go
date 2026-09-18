@@ -49,6 +49,14 @@ type querySource struct {
 	sqlAlias    string
 	columns     []queryColumn
 	byName      map[string]int
+	// objectID and policyColumn carry what row-level access policies need: which
+	// metadata object this source is, and how to name one of its fields inside
+	// this query. policyColumn stays nil for sources no policy can address yet
+	// (temporary tables, registers), which makes an unenforceable restriction
+	// refuse the query instead of silently reading everything.
+	objectID     uuid.UUID
+	policyColumn func(string) (listColumn, bool)
+	restriction  string
 }
 
 type queryOutput struct {
@@ -101,6 +109,11 @@ func (runtime *Runtime) newQueryCompiler(ctx context.Context, query querylang.Qu
 		if existing := compiler.sourceNames[foldedAlias]; existing != 0 {
 			return nil, querySemanticError(definition.Position, "псевдоним источника "+source.alias+" указан повторно")
 		}
+		restriction, err := compiler.sourceRestriction(ctx, source, definition.Position)
+		if err != nil {
+			return nil, err
+		}
+		source.restriction = restriction
 		compiler.sources = append(compiler.sources, source)
 		compiler.sourceNames[foldedAlias] = len(compiler.sources)
 		foldedLogical := strings.ToLower(source.logicalName)
@@ -112,6 +125,33 @@ func (runtime *Runtime) newQueryCompiler(ctx context.Context, query querylang.Qu
 	}
 	compiler.visibleSources = len(compiler.sources)
 	return compiler, nil
+}
+
+// sourceRestriction renders one source's row-level access policy. A source the
+// policy cannot address - a register today - refuses the whole query rather than
+// reading every row, so the BSL query engine can never become the way around a
+// restriction that the lists and reads already honour.
+func (compiler *queryCompiler) sourceRestriction(ctx context.Context, source querySource, position querylang.Position) (string, error) {
+	if source.objectID.IsZero() {
+		return "", nil
+	}
+	if source.policyColumn == nil {
+		if _, restricted := permissionsRowFilter(ctx, source.objectID); restricted {
+			return "", querySemanticError(position, "ограничения доступа к строкам пока не поддерживаются для источника "+source.logicalName)
+		}
+		return "", nil
+	}
+	return readRowPredicate(ctx, source.objectID, queryPolicyColumn(source.sqlAlias, source.policyColumn), &compiler.arguments)
+}
+
+// permissionsRowFilter answers whether ctx restricts rows at all, without
+// building a predicate - a context carrying no policy is not restricted.
+func permissionsRowFilter(ctx context.Context, objectID uuid.UUID) ([]PolicyRule, bool) {
+	permissions, ok := PermissionsFromContext(ctx)
+	if !ok {
+		return nil, false
+	}
+	return permissions.RowFilter(objectID, PermissionRead)
 }
 
 func (runtime *Runtime) executeQuery(ctx context.Context, text string, parameters map[string]bytecode.Value) (*queryResultObject, error) {
@@ -399,6 +439,27 @@ func (compiler *queryCompiler) compile(query querylang.Query) (string, error) {
 		if err != nil {
 			return "", err
 		}
+	}
+	// A joined source's restriction belongs in its ON clause, not in WHERE:
+	// moving it to WHERE would quietly turn a left join into an inner one and
+	// drop rows of the main table that have no match. A cross join has no ON,
+	// and no outer semantics to protect, so its restriction goes to WHERE.
+	andRestriction := func(target, restriction string) string {
+		if restriction == "" {
+			return target
+		}
+		if target == "" {
+			return strings.TrimPrefix(restriction, " AND ")
+		}
+		return target + restriction
+	}
+	predicate = andRestriction(predicate, compiler.sources[0].restriction)
+	for index, join := range query.Joins {
+		if join.Kind == querylang.JoinCross {
+			predicate = andRestriction(predicate, compiler.sources[index+1].restriction)
+			continue
+		}
+		joinConditions[index] = andRestriction(joinConditions[index], compiler.sources[index+1].restriction)
 	}
 	group := make([]string, 0, len(query.Group))
 	grouped := make(map[string]struct{}, len(query.Group))
@@ -1284,6 +1345,7 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		}
 		table, _ := PhysicalCatalogTable(definition.ID)
 		result.fromSQL = qualifiedCatalogTable(table)
+		result.objectID, result.policyColumn = definition.ID, catalogPolicyColumn(definition)
 		result.addStored("Ссылка", querySourceColumnSQL(sqlAlias, "ref"), []Type{referenceType(CatalogType, definition.ID)}, "Ref")
 		result.addStored("Версия", querySourceColumnSQL(sqlAlias, "version"), []Type{{Kind: NumberType, Precision: 19}}, "Version")
 		result.addStored("Код", querySourceColumnSQL(sqlAlias, "code"), []Type{catalogCodeType(definition.Code)}, "Code")
@@ -1303,6 +1365,7 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		}
 		table, _ := PhysicalDocumentTable(definition.ID)
 		result.fromSQL = qualifiedCatalogTable(table)
+		result.objectID, result.policyColumn = definition.ID, documentPolicyColumn(definition)
 		result.addStored("Ссылка", querySourceColumnSQL(sqlAlias, "ref"), []Type{referenceType(DocumentType, definition.ID)}, "Ref")
 		result.addStored("Версия", querySourceColumnSQL(sqlAlias, "version"), []Type{{Kind: NumberType, Precision: 19}}, "Version")
 		result.addStored("Номер", querySourceColumnSQL(sqlAlias, "number"), []Type{documentNumberType(definition.Number)}, "Number")
@@ -1322,6 +1385,7 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		}
 		table, _ := PhysicalInformationRegisterTable(definition.ID)
 		result.fromSQL = qualifiedCatalogTable(table)
+		result.objectID = definition.ID
 		result.addStored("ИдентификаторЗаписи", querySourceColumnSQL(sqlAlias, "record_id"), []Type{{Kind: UUIDType}}, "RecordID")
 		if definition.Periodicity != InformationRegisterPeriodNone {
 			result.addStored("Период", querySourceColumnSQL(sqlAlias, "period"), []Type{{Kind: DateType}}, "Period")
@@ -1344,6 +1408,7 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		}
 		table, _ := PhysicalAccumulationRegisterTable(definition.ID)
 		result.fromSQL = qualifiedCatalogTable(table)
+		result.objectID = definition.ID
 		result.addStored("ИдентификаторЗаписи", querySourceColumnSQL(sqlAlias, "record_id"), []Type{{Kind: UUIDType}}, "RecordID")
 		result.addStored("Период", querySourceColumnSQL(sqlAlias, "period"), []Type{{Kind: DateType}}, "Period")
 		result.addRecorder()

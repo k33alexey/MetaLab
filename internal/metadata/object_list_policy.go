@@ -103,6 +103,19 @@ func (restriction rowRestriction) renderRule(rule PolicyRule, arguments *[]any) 
 	return "", fmt.Errorf("unsupported access policy operator %q", rule.Operator)
 }
 
+// queryPolicyColumn qualifies a policy column with the source alias the query
+// engine gave that table, so a restriction survives joins and self-joins.
+func queryPolicyColumn(sqlAlias string, base func(string) (listColumn, bool)) func(string) (listColumn, bool) {
+	return func(field string) (listColumn, bool) {
+		column, ok := base(field)
+		if !ok {
+			return listColumn{}, false
+		}
+		column.name = querySourceColumnSQL(sqlAlias, column.name)
+		return column, true
+	}
+}
+
 func catalogPolicyColumn(definition CatalogDefinition) func(string) (listColumn, bool) {
 	return policyListColumn(func(field string) (listColumn, bool) {
 		return catalogListField(definition, field)

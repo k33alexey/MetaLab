@@ -180,6 +180,50 @@ func TestBasicQueryLanguageIntegration(t *testing.T) {
 	if err != nil || len(joined.rows) != 2 {
 		t.Fatalf("joined query rows=%d error=%v", len(joined.rows), err)
 	}
+	// Row-level access policies must reach the BSL query engine too, or
+	// Запрос.Выполнить() becomes the way around every restriction the lists and
+	// reads enforce (REQUIREMENTS.md §17).
+	restrictedRole := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Ограниченный", Title: LocalizedText{"ru": "Ограниченный"},
+		Objects: []ObjectPermission{{Object: catalogID, Operations: []PermissionOperation{PermissionRead},
+			Policies: []AccessPolicy{{Operations: []PermissionOperation{PermissionRead},
+				Rule: &PolicyRule{Field: "code", Operator: PolicyEqual, Values: []Value{{Kind: StringType, Data: "K1"}}}}}}}}
+	catalog.Project.ID = projectID
+	catalog.Roles, catalog.roleByID = []RoleDefinition{restrictedRole}, map[uuid.UUID]int{restrictedRole.ID: 0}
+	restrictedPolicy, err := CompilePermissions(catalog, []uuid.UUID{restrictedRole.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	restrictedCtx := WithPermissions(ctx, restrictedPolicy)
+	restrictedQuery, err := runtime.executeQuery(restrictedCtx, `ВЫБРАТЬ Код ИЗ Справочник.Товары УПОРЯДОЧИТЬ ПО Код`, nil)
+	if err != nil || len(restrictedQuery.rows) != 1 {
+		t.Fatalf("restricted query rows=%d error=%v", len(restrictedQuery.rows), err)
+	}
+	if code, _ := restrictedQuery.rows[0][0].AsString(); code != "K1" {
+		t.Fatalf("restricted query returned %q", code)
+	}
+	// A joined source's restriction must live in its ON clause: in WHERE it would
+	// turn this left join into an inner one and drop the main table's row.
+	joinedRestricted, err := runtime.executeQuery(restrictedCtx, `ВЫБРАТЬ Л.Код, П.Код КАК ПравыйКод
+ИЗ Справочник.Товары КАК Л
+ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Товары КАК П ПО Л.Код = П.Код И П.Код = &Нет`, map[string]bytecode.Value{"нет": bytecode.String("НЕСУЩЕСТВУЕТ")})
+	if err != nil || len(joinedRestricted.rows) != 1 {
+		t.Fatalf("left join dropped the main row: rows=%d error=%v", len(joinedRestricted.rows), err)
+	}
+	// A source the policy cannot address must refuse the query rather than read
+	// every row of it.
+	registerRole := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Регистровый", Title: LocalizedText{"ru": "Регистровый"},
+		Objects: []ObjectPermission{{Object: accumulationID, Operations: []PermissionOperation{PermissionRead},
+			Policies: []AccessPolicy{{Operations: []PermissionOperation{PermissionRead},
+				Rule: &PolicyRule{Field: "period", Operator: PolicyEqual, Values: []Value{{Kind: StringType, Data: "x"}}}}}}}}
+	catalog.Roles, catalog.roleByID = []RoleDefinition{registerRole}, map[uuid.UUID]int{registerRole.ID: 0}
+	registerPolicy, err := CompilePermissions(catalog, []uuid.UUID{registerRole.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.executeQuery(WithPermissions(ctx, registerPolicy), `ВЫБРАТЬ Количество ИЗ РегистрНакопления.ТоварыНаСкладах`, nil); err == nil {
+		t.Fatal("a restriction that cannot be applied to a register was silently ignored")
+	}
+
 	aggregated, err := runtime.executeQuery(ctx, `ВЫБРАТЬ ПометкаУдаления, КОЛИЧЕСТВО(*) КАК Количество, СУММА(Цена) КАК Сумма
 ИЗ Справочник.Товары
 СГРУППИРОВАТЬ ПО ПометкаУдаления
