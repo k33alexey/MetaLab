@@ -160,7 +160,15 @@ func alterColumnSQL(schema, table string, before, after Column) ([]string, error
 		if err := safeFragment(after.Type); err != nil {
 			return nil, err
 		}
-		result = append(result, prefix+" TYPE "+after.Type)
+		conversion, err := conversionExpression(before, after)
+		if err != nil {
+			return nil, err
+		}
+		statement := prefix + " TYPE " + after.Type
+		if conversion != "" {
+			statement += " USING " + conversion
+		}
+		result = append(result, statement)
 	}
 	if before.Default != after.Default {
 		if after.Default == "" {

@@ -114,6 +114,7 @@
   <script src="/ui/catalog-editor.js"></script>
   <script src="/ui/project-editor.js"></script>
   <script src="/ui/languages-editor.js"></script>
+  <dialog id="save-data-dialog" aria-labelledby="save-data-title"><form id="save-data-form" method="dialog"><h3 id="save-data-title">Изменения затрагивают существующие данные</h3><p class="muted">Ниже — только то, что касается уже сохранённых данных. Остальные изменения применяются без подтверждения.</p><div id="save-data-changes"></div><label id="save-data-object-loss" hidden><input type="checkbox" id="save-data-object-loss-input"> Подтверждаю удаление объектов и данных, которые в них хранятся</label><label id="save-data-value-rewrite" hidden><input type="checkbox" id="save-data-value-rewrite-input"> Подтверждаю изменение значений в существующих строках</label><div class="role-bulk"><button id="save-data-submit" class="primary" type="submit" disabled>Сохранить данные</button><button id="save-data-cancel" type="button">Отмена</button></div></form></dialog>
   <dialog id="role-create-dialog" aria-labelledby="role-create-title"><form id="role-create-form"><h3 id="role-create-title">Новая роль</h3><label>Имя роли<input id="role-create-name" required maxlength="128" placeholder="Например, Продавец" autocomplete="off"></label><p class="muted">Начните с буквы. Используйте буквы и цифры без пробелов.</p><p id="role-create-error" class="error" role="alert"></p><div class="role-bulk"><button id="role-create-submit" class="primary" type="submit">Создать</button><button id="role-create-cancel" type="button">Отмена</button></div></form></dialog>
   <dialog id="catalog-create-dialog" aria-labelledby="catalog-create-title"><form id="catalog-create-form"><h3 id="catalog-create-title">Новый справочник</h3><label>Имя справочника<input id="catalog-create-name" required maxlength="128" placeholder="Например, Товары" autocomplete="off"></label><p class="muted">Начните с буквы. Используйте буквы и цифры без пробелов.</p><p id="catalog-create-error" class="error" role="alert"></p><div class="role-bulk"><button id="catalog-create-submit" class="primary" type="submit">Создать</button><button id="catalog-create-cancel" type="button">Отмена</button></div></form></dialog>
   <script src="/ui/query-designer.js"></script>
@@ -275,7 +276,67 @@
     function closeFile(){roleOverview.close();currentFile=null;dirty=false;editor.value='';editor.disabled=true;editorHost.hidden=false;roleEditor.close();catalogEditor.close();projectEditor.close();languagesEditor.close();formDesigner.close();saveButton.disabled=true;filePath.textContent='Выберите файл';bslEditor.close()}
     document.querySelector('#git-commit').addEventListener('click',async()=>{if(await gitAction('/api/git/commit',{message:document.querySelector('#git-message').value}))document.querySelector('#git-message').value=''});document.querySelector('#git-pull').addEventListener('click',async()=>{if(await gitAction('/api/git/pull')){closeFile();await loadTree()}});document.querySelector('#git-push').addEventListener('click',()=>gitAction('/api/git/push'));
     document.querySelector('#git-switch').addEventListener('click',async()=>{if(await gitAction('/api/git/branches/switch',{name:document.querySelector('#git-branch').value,create:false})){closeFile();await loadTree()}});document.querySelector('#git-create-branch').addEventListener('click',async()=>{const input=document.querySelector('#git-new-branch');if(await gitAction('/api/git/branches/switch',{name:input.value,create:true})){input.value='';closeFile();await loadTree()}});
-    document.querySelector('#save-data').addEventListener('click',async()=>{if(dirty){status.textContent=t('save-data-dirty');status.className='warning';return}status.textContent=t('save-data-progress');status.className='';const response=await fetch('/api/save-data',{method:'POST',headers:{'X-ML-CSRF':'1','Content-Type':'application/json'},body:'{}'});const text=await response.text();if(!response.ok){status.textContent=text;status.className='error';return}let result={};try{result=JSON.parse(text)}catch{}status.textContent=`${t('save-data-done')} · ${(result.gitCommit||'').slice(0,12)}`;status.className=''});
+    // «Сохранить данные» спрашивает подтверждение ровно тогда, когда сервер
+    // отказался: отказ приходит вместе с перечнем изменений и числом строк,
+    // которых они коснутся, поэтому диалог показывает факты, а не общую фразу
+    // «изменения разрушающие».
+    const saveDataDialog=document.querySelector('#save-data-dialog'),saveDataChanges=document.querySelector('#save-data-changes');
+    const saveDataObjectLoss=document.querySelector('#save-data-object-loss'),saveDataValueRewrite=document.querySelector('#save-data-value-rewrite');
+    const saveDataObjectInput=document.querySelector('#save-data-object-loss-input'),saveDataValueInput=document.querySelector('#save-data-value-rewrite-input');
+    const saveDataSubmit=document.querySelector('#save-data-submit');
+    const impactTitles={object_loss:'Будет удалено',value_rewrite:'Значения будут изменены',may_fail:'Может не примениться'};
+    function renderSaveDataChanges(changes){
+      saveDataChanges.replaceChildren();
+      for(const impact of ['object_loss','value_rewrite','may_fail']){
+        const rows=changes.filter(item=>item.impact===impact);
+        if(!rows.length)continue;
+        const block=document.createElement('section');block.className='save-data-group';
+        const head=document.createElement('h4');head.textContent=impactTitles[impact];block.append(head);
+        for(const row of rows){
+          const line=document.createElement('div');line.className='save-data-change';
+          const name=document.createElement('span');name.textContent=row.title;line.append(name);
+          if(row.measured){
+            const count=document.createElement('span');count.className=row.rows>0?'save-data-rows':'save-data-rows muted';
+            count.textContent=row.rows>0?`Строк: ${row.rows} — ${row.reason||'затронуты'}`:'ни одной строки не затронуто';
+            line.append(count);
+          }
+          block.append(line);
+        }
+        saveDataChanges.append(block);
+      }
+    }
+    function updateSaveDataSubmit(){
+      saveDataSubmit.disabled=(!saveDataObjectLoss.hidden&&!saveDataObjectInput.checked)||(!saveDataValueRewrite.hidden&&!saveDataValueInput.checked);
+    }
+    saveDataObjectInput.addEventListener('change',updateSaveDataSubmit);
+    saveDataValueInput.addEventListener('change',updateSaveDataSubmit);
+    document.querySelector('#save-data-cancel').addEventListener('click',()=>saveDataDialog.close());
+    async function postSaveData(consent){
+      const response=await fetch('/api/save-data',{method:'POST',headers:{'X-ML-CSRF':'1','Content-Type':'application/json'},body:JSON.stringify({consent})});
+      const text=await response.text();
+      if(response.ok){let result={};try{result=JSON.parse(text)}catch{}return{ok:true,result};}
+      if(response.status===409){try{const details=JSON.parse(text);if(details&&Array.isArray(details.changes))return{ok:false,details};}catch{}}
+      return{ok:false,message:text};
+    }
+    document.querySelector('#save-data-form').addEventListener('submit',async event=>{
+      event.preventDefault();saveDataDialog.close();
+      status.textContent=t('save-data-progress');status.className='';
+      const attempt=await postSaveData({objectLoss:saveDataObjectInput.checked,valueRewrite:saveDataValueInput.checked});
+      if(attempt.ok){status.textContent=`${t('save-data-done')} · ${(attempt.result.gitCommit||'').slice(0,12)}`;status.className='';return}
+      status.textContent=attempt.message||attempt.details?.error||'Сохранение отклонено';status.className='error';
+    });
+    document.querySelector('#save-data').addEventListener('click',async()=>{
+      if(dirty){status.textContent=t('save-data-dirty');status.className='warning';return}
+      status.textContent=t('save-data-progress');status.className='';
+      const attempt=await postSaveData({objectLoss:false,valueRewrite:false});
+      if(attempt.ok){status.textContent=`${t('save-data-done')} · ${(attempt.result.gitCommit||'').slice(0,12)}`;status.className='';return}
+      if(!attempt.details){status.textContent=attempt.message||'Сохранение отклонено';status.className='error';return}
+      renderSaveDataChanges(attempt.details.changes);
+      saveDataObjectLoss.hidden=!attempt.details.objectLoss;saveDataValueRewrite.hidden=!attempt.details.valueRewrite;
+      saveDataObjectInput.checked=false;saveDataValueInput.checked=false;updateSaveDataSubmit();
+      status.textContent=attempt.details.error;status.className='warning';
+      saveDataDialog.showModal();
+    });
     editor.addEventListener('input',()=>{if(!currentFile||currentFile.isForm)return;bslEditor.change(editor.value);dirty=bslEditor.source()!==currentFile.content;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Изменён':'Готово'});editor.addEventListener('keydown',event=>{if(event.key==='Tab'&&!editor.readOnly){event.preventDefault();const start=editor.selectionStart;editor.setRangeText('    ',start,editor.selectionEnd,'end');editor.dispatchEvent(new Event('input'))}});document.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='s'){event.preventDefault();save()}});saveButton.addEventListener('click',save);window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue=''}});
     document.querySelector('#refresh').addEventListener('click',async()=>{if(loadingFile)return;if(dirty&&!confirm('Отменить несохранённые изменения и перечитать проект?'))return;closeFile();await loadTree()});loadTree();setInterval(pollExternalChange,3000);
     const roleCreateDialog=document.querySelector('#role-create-dialog'),roleCreateName=document.querySelector('#role-create-name'),roleCreateError=document.querySelector('#role-create-error');

@@ -55,8 +55,11 @@ func runStudio(ctx context.Context, configuration appconfig.Config, projectPath,
 		}
 		return runtime, pool.Close, nil
 	})
-	workspace.SetSaveDataProvider(func(saveContext context.Context, root string, allowDestructive bool) (publication.SavedState, schemadiff.MigrationRecord, error) {
-		return platformRuntime.SaveApplicationData(saveContext, databaseID, root, allowDestructive)
+	workspace.SetSavedNamesProvider(func(namesContext context.Context) map[string]string {
+		return platformRuntime.ApplicationPhysicalNames(namesContext, databaseID)
+	})
+	workspace.SetSaveDataProvider(func(saveContext context.Context, root string, consent schemadiff.MigrationConsent) (publication.SavedState, schemadiff.MigrationRecord, error) {
+		return platformRuntime.SaveApplicationData(saveContext, databaseID, root, consent)
 	})
 	lease, err := openStudioLease(ctx, platformRuntime, databaseID, snapshot.Manifest.ID)
 	if err != nil {

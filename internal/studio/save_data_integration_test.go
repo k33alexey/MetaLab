@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -64,10 +65,23 @@ func TestSaveDataButtonEndToEndIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	workspace.SetSaveDataProvider(func(saveContext context.Context, projectRoot string, allowDestructive bool) (publication.SavedState, schemadiff.MigrationRecord, error) {
+	workspace.SetSaveDataProvider(func(saveContext context.Context, projectRoot string, consent schemadiff.MigrationConsent) (publication.SavedState, schemadiff.MigrationRecord, error) {
 		return publication.SaveData(saveContext, pool, publication.SaveDataRequest{
-			Root: projectRoot, Mode: publication.ActivationPrimary, Confirmed: true, AllowDestructive: allowDestructive,
+			Root: projectRoot, Mode: publication.ActivationPrimary, Confirmed: true, Consent: consent,
 		})
+	})
+	// Studio in the desktop app gets saved names from the platform; here the
+	// same provider is wired straight to the database under test.
+	workspace.SetSavedNamesProvider(func(namesContext context.Context) map[string]string {
+		snapshot, found, err := publication.CurrentDatabaseState(namesContext, pool)
+		if err != nil || !found {
+			return map[string]string{}
+		}
+		catalog, err := snapshot.Catalog()
+		if err != nil {
+			return map[string]string{}
+		}
+		return catalog.PhysicalNames()
 	})
 	handler := NewHandler(workspace)
 
@@ -109,6 +123,61 @@ func TestSaveDataButtonEndToEndIntegration(t *testing.T) {
 	snapshot, found, err := publication.CurrentDatabaseState(ctx, pool)
 	if err != nil || !found || len(snapshot.Modules) != 2 || len(snapshot.Documents) != 2 {
 		t.Fatalf("saved database state: found=%v snapshot=%+v err=%v", found, snapshot, err)
+	}
+
+	// Removing an attribute drops a column, which the same click must refuse
+	// until it is confirmed - and the refusal has to say WHAT is being dropped,
+	// in the names the developer wrote, not as t_1000… · c_1000….
+	goods := filepath.Join(root, "metadata", "catalogs", "10000000-0000-4000-8000-000000000101", "object.yaml")
+	source, err := os.ReadFile(goods)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trimmed := source[:bytes.Index(source, []byte("attributes:"))]
+	if err := os.WriteFile(goods, trimmed, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runStudioGit(t, root, "add", "--all")
+	runStudioGit(t, root, "commit", "-m", "Drop the SKU attribute")
+
+	deniedResponse := httptest.NewRecorder()
+	deniedRequest := httptest.NewRequest(http.MethodPost, "/api/save-data", bytes.NewReader([]byte("{}")))
+	deniedRequest.Header.Set("Content-Type", "application/json")
+	deniedRequest.Header.Set("X-ML-CSRF", "1")
+	handler.ServeHTTP(deniedResponse, deniedRequest)
+	if deniedResponse.Code != http.StatusConflict {
+		t.Fatalf("dropping a column without consent status=%d body=%s", deniedResponse.Code, deniedResponse.Body.String())
+	}
+	var denied struct {
+		ObjectLoss   bool `json:"objectLoss"`
+		ValueRewrite bool `json:"valueRewrite"`
+		Changes      []struct {
+			Kind, Impact, Title string
+		} `json:"changes"`
+	}
+	if err := json.Unmarshal(deniedResponse.Body.Bytes(), &denied); err != nil {
+		t.Fatalf("confirmation details body=%s err=%v", deniedResponse.Body.String(), err)
+	}
+	if !denied.ObjectLoss || denied.ValueRewrite || len(denied.Changes) == 0 {
+		t.Fatalf("confirmation details = %+v", denied)
+	}
+	named := false
+	for _, change := range denied.Changes {
+		if change.Impact == "object_loss" && strings.Contains(change.Title, "Справочник.Товары · Артикул") {
+			named = true
+		}
+	}
+	if !named {
+		t.Fatalf("the dropped attribute is not named in the configuration's own terms: %+v", denied.Changes)
+	}
+
+	confirmedResponse := httptest.NewRecorder()
+	confirmedRequest := httptest.NewRequest(http.MethodPost, "/api/save-data", bytes.NewReader([]byte(`{"consent":{"objectLoss":true}}`)))
+	confirmedRequest.Header.Set("Content-Type", "application/json")
+	confirmedRequest.Header.Set("X-ML-CSRF", "1")
+	handler.ServeHTTP(confirmedResponse, confirmedRequest)
+	if confirmedResponse.Code != http.StatusOK {
+		t.Fatalf("confirmed save-data status=%d body=%s", confirmedResponse.Code, confirmedResponse.Body.String())
 	}
 }
 
@@ -153,4 +222,17 @@ func copyDemoProjectForStudioTest(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return destination
+}
+
+func TestSaveDataDialogUI(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node.js is required for save-data dialog tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, node, "--test", "../../scripts/save-data-dialog.test.mjs").CombinedOutput()
+	if err != nil {
+		t.Fatalf("save-data dialog tests: %v\n%s", err, output)
+	}
 }

@@ -41,10 +41,12 @@ func validSHA256(value string) bool {
 // (iterations 021/024). It migrates PostgreSQL directly from the live
 // project directory instead of an intermediate .mlpkg artifact.
 type SaveDataRequest struct {
-	Root             string
-	Mode             ActivationMode
-	Confirmed        bool
-	AllowDestructive bool
+	Root      string
+	Mode      ActivationMode
+	Confirmed bool
+	// Consent carries what the operator agreed to, per kind of damage; see
+	// schemadiff.MigrationConsent.
+	Consent schemadiff.MigrationConsent
 }
 
 // SavedState is what "Сохранить данные" leaves behind once it succeeds -
@@ -110,7 +112,7 @@ func SaveData(ctx context.Context, pool *pgxpool.Pool, request SaveDataRequest) 
 	migrationRequest := schemadiff.MigrationRequest{
 		ProjectID: manifest.ProjectID, PackageSHA256: manifest.ContentSHA256, GitCommit: manifest.GitCommit,
 		Desired: desired, ExpectedPlanSHA256: prepared.SHA256, ExpectedSchemaSHA256: prepared.ActualSHA256,
-		Confirmed: true, AllowDestructive: request.AllowDestructive,
+		Confirmed: true, Consent: request.Consent,
 	}
 	saved := SavedState{
 		ProjectID: manifest.ProjectID, GitCommit: manifest.GitCommit,

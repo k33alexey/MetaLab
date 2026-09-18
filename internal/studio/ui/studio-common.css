@@ -9,3 +9,18 @@
 .localized-title-dialog label{display:grid;gap:6px;font-size:12px;color:#aeb1b8}
 .localized-title-dialog input{padding:7px 9px;border:1px solid #4a4d54;border-radius:5px;background:#1e1f22;color:#dfe1e5}
 .localized-title-actions{display:flex;justify-content:flex-end;margin-top:8px}
+
+/* Диалог подтверждения «Сохранить данные»: перечень того, что коснётся уже
+   сохранённых данных, с числом реально затронутых строк. */
+#save-data-dialog{width:min(640px,calc(100% - 40px));height:fit-content;max-height:calc(100% - 40px);padding:20px}
+#save-data-form h3{margin:0 0 10px}
+#save-data-form p.muted{white-space:normal;font-size:12px;line-height:1.5;margin:0 0 12px}
+#save-data-changes{max-height:min(46vh,420px);overflow:auto;margin-bottom:12px}
+.save-data-group{margin-bottom:14px}
+.save-data-group h4{margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#aeb1b8}
+.save-data-change{display:flex;justify-content:space-between;gap:16px;padding:6px 8px;border-bottom:1px solid var(--border,#393b40);font-size:12px}
+.save-data-change span:first-child{overflow-wrap:anywhere}
+.save-data-rows{white-space:normal;text-align:right;color:#f6cf8b}
+.save-data-rows.muted{color:#aeb1b8}
+#save-data-form label{display:flex;align-items:flex-start;gap:8px;margin:8px 0;font-size:12px;line-height:1.5}
+#save-data-form label[hidden]{display:none}

@@ -49,6 +49,7 @@ type Workspace struct {
 	testRuntime   TestRuntimeProvider
 	testRunning   bool
 	saveData      SaveDataProvider
+	savedNames    SavedNamesProvider
 }
 
 // Snapshot is the read-only project model rendered by the Studio shell.
@@ -192,7 +193,20 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 // SaveDataProvider runs "Сохранить данные" (096) against this Studio's
 // database - the package-free replacement for the retired
 // BuildPublicationPackage/BuildFile+Activate flow (021/024).
-type SaveDataProvider func(ctx context.Context, root string, allowDestructive bool) (publication.SavedState, schemadiff.MigrationRecord, error)
+type SaveDataProvider func(ctx context.Context, root string, consent schemadiff.MigrationConsent) (publication.SavedState, schemadiff.MigrationRecord, error)
+
+// SavedNamesProvider reads the names of what is currently SAVED in the
+// database. The project on disk cannot name an object that is being dropped -
+// the developer just deleted it - and "будет удалено: c_1000…" is precisely the
+// line that must be readable.
+type SavedNamesProvider func(ctx context.Context) map[string]string
+
+// SetSavedNamesProvider connects the migration dialog to the saved metadata.
+func (workspace *Workspace) SetSavedNamesProvider(provider SavedNamesProvider) {
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
+	workspace.savedNames = provider
+}
 
 // SetSaveDataProvider connects this database-bound Studio to its database.
 func (workspace *Workspace) SetSaveDataProvider(provider SaveDataProvider) {
@@ -204,14 +218,14 @@ func (workspace *Workspace) SetSaveDataProvider(provider SaveDataProvider) {
 // SaveData validates open sources are saved, then migrates PostgreSQL and
 // refreshes the stored metadata/BSL snapshot directly from the project
 // directory under the same lock as Studio's own file saves.
-func (workspace *Workspace) SaveData(ctx context.Context, allowDestructive bool) (publication.SavedState, schemadiff.MigrationRecord, error) {
+func (workspace *Workspace) SaveData(ctx context.Context, consent schemadiff.MigrationConsent) (publication.SavedState, schemadiff.MigrationRecord, error) {
 	workspace.mu.Lock()
 	provider, root := workspace.saveData, workspace.root
 	workspace.mu.Unlock()
 	if provider == nil {
 		return publication.SavedState{}, schemadiff.MigrationRecord{}, fmt.Errorf("saving data is unavailable in this build")
 	}
-	return provider(ctx, root, allowDestructive)
+	return provider(ctx, root, consent)
 }
 
 // NewHandler serves the local read-only Studio shell for one workspace.
@@ -667,12 +681,12 @@ func NewHandler(workspace *Workspace) http.Handler {
 			return
 		}
 		var input struct {
-			AllowDestructive bool `json:"allowDestructive"`
+			Consent schemadiff.MigrationConsent `json:"consent"`
 		}
 		_ = json.NewDecoder(io.LimitReader(request.Body, 1<<10)).Decode(&input)
-		saved, migration, err := workspace.SaveData(request.Context(), input.AllowDestructive)
+		saved, migration, err := workspace.SaveData(request.Context(), input.Consent)
 		if err != nil {
-			writeSaveDataError(response, err)
+			writeSaveDataError(response, workspace.PhysicalNames(request.Context()), err)
 			return
 		}
 		writeStudioJSON(response, struct {
@@ -725,12 +739,29 @@ func decodeStudioMutation(response http.ResponseWriter, request *http.Request, v
 	return true
 }
 
-func writeSaveDataError(response http.ResponseWriter, err error) {
+func writeSaveDataError(response http.ResponseWriter, names map[string]string, err error) {
+	// A refused migration is answered with WHAT needs confirming and HOW MUCH
+	// data each part touches, not with a sentence telling the developer that
+	// something somewhere is destructive.
+	var needed *schemadiff.ConfirmationNeeded
+	if errors.As(err, &needed) {
+		response.Header().Set("Content-Type", "application/json; charset=utf-8")
+		response.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(response).Encode(struct {
+			Error        string            `json:"error"`
+			ObjectLoss   bool              `json:"objectLoss"`
+			ValueRewrite bool              `json:"valueRewrite"`
+			Changes      []migrationDetail `json:"changes"`
+		}{
+			Error:      "Изменения затрагивают существующие данные — требуется явное подтверждение",
+			ObjectLoss: needed.Plan.ObjectLossCount > 0, ValueRewrite: needed.Plan.ValueRewriteCount > 0,
+			Changes: describeMigration(names, needed),
+		})
+		return
+	}
 	switch {
 	case errors.Is(err, publication.ErrDirtyPrimary):
 		http.Error(response, "Сохраните и закоммитьте изменения в Git перед сохранением данных на основной базе", http.StatusConflict)
-	case errors.Is(err, schemadiff.ErrDestructiveDenied):
-		http.Error(response, "Изменения удаляют или сужают существующие данные — требуется явное подтверждение", http.StatusConflict)
 	case errors.Is(err, gitclient.ErrGitUnavailable), errors.Is(err, gitclient.ErrNotRepository), errors.Is(err, gitclient.ErrUnsafeRepository):
 		writeGitError(response, err)
 	default:
@@ -1219,4 +1250,73 @@ func metadataTitle(kind string) string {
 		}
 	}
 	return strings.Join(words, " ")
+}
+
+// migrationDetail is one line of the confirmation dialog: what will happen, to
+// which object of the configuration, and to how many rows. The physical name is
+// kept alongside the readable one - when something goes wrong afterwards, the
+// PostgreSQL name is what the investigation needs.
+type migrationDetail struct {
+	Kind     string `json:"kind"`
+	Impact   string `json:"impact"`
+	Table    string `json:"table"`
+	Object   string `json:"object,omitempty"`
+	Title    string `json:"title"`
+	Rows     int64  `json:"rows"`
+	Measured bool   `json:"measured"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+func describeMigration(names map[string]string, needed *schemadiff.ConfirmationNeeded) []migrationDetail {
+	measured := make(map[string]schemadiff.ImpactMeasurement, len(needed.Impacts))
+	for _, impact := range needed.Impacts {
+		measured[impact.Table+"\x00"+impact.Column] = impact
+	}
+	title := func(physical string) string {
+		if human, ok := names[physical]; ok && human != "" {
+			return human
+		}
+		return physical
+	}
+	result := make([]migrationDetail, 0, len(needed.Plan.Changes))
+	for _, change := range needed.Plan.Changes {
+		if change.Impact == schemadiff.ImpactNone {
+			continue
+		}
+		detail := migrationDetail{Kind: string(change.Kind), Impact: string(change.Impact), Table: change.Table, Object: change.Object, Title: title(change.Table)}
+		if change.Object != "" {
+			// An attribute's name already carries its owner, so the owner is not
+			// repeated: "Справочник.Товары · Цена", not the same words twice.
+			object := strings.TrimPrefix(title(change.Object), detail.Title+".")
+			detail.Title += " · " + object
+		}
+		if impact, ok := measured[change.Table+"\x00"+change.Object]; ok {
+			detail.Rows, detail.Measured, detail.Reason = impact.Rows, true, impact.Reason
+		}
+		result = append(result, detail)
+	}
+	return result
+}
+
+// PhysicalNames translates this project's PostgreSQL names into configuration
+// names for the migration dialog. A project that cannot be read yields no
+// translations rather than failing the answer the caller is in the middle of.
+func (workspace *Workspace) PhysicalNames(ctx context.Context) map[string]string {
+	workspace.mu.Lock()
+	root, saved := workspace.root, workspace.savedNames
+	workspace.mu.Unlock()
+	result := map[string]string{}
+	// Saved names first, project names over them: what is being dropped is only
+	// in the former, what was renamed is correct in the latter.
+	if saved != nil {
+		for physical, title := range saved(ctx) {
+			result[physical] = title
+		}
+	}
+	if catalog, err := metadata.Load(root); err == nil {
+		for physical, title := range catalog.PhysicalNames() {
+			result[physical] = title
+		}
+	}
+	return result
 }

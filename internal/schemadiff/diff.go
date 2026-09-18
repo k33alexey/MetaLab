@@ -23,19 +23,51 @@ const (
 	DropConstraint    ChangeKind = "drop_constraint"
 )
 
+// ChangeImpact says what a change does to data that already exists. One flag
+// for "destructive" is not enough to decide anything: dropping an attribute and
+// rounding every price in the table are both destructive, and an operator who
+// meant the first must not be silently granting the second.
+type ChangeImpact string
+
+const (
+	// ImpactNone - existing rows are untouched.
+	ImpactNone ChangeImpact = ""
+	// ImpactObjectLoss - something is removed: a table, a column, an index, a
+	// constraint. What it held is gone and cannot be recovered from the database.
+	ImpactObjectLoss ChangeImpact = "object_loss"
+	// ImpactValueRewrite - rows keep existing but their values change, silently:
+	// PostgreSQL rounds numeric(10,2) to numeric(10,0) without a word. This is
+	// the dangerous one, because nothing reports it afterwards.
+	ImpactValueRewrite ChangeImpact = "value_rewrite"
+	// ImpactMayFail - the change can be rejected by the data itself: a value too
+	// long for the narrowed type, a NULL where NOT NULL is now required, a
+	// duplicate under a new unique index. The whole migration then rolls back,
+	// so data is safe - but the operator deserves to know before starting.
+	ImpactMayFail ChangeImpact = "may_fail"
+)
+
 type Change struct {
-	Kind        ChangeKind `json:"kind"`
-	Table       string     `json:"table,omitempty"`
-	Object      string     `json:"object,omitempty"`
-	Destructive bool       `json:"destructive"`
-	Before      any        `json:"before,omitempty"`
-	After       any        `json:"after,omitempty"`
+	Kind ChangeKind `json:"kind"`
+	// Destructive stays as the coarse answer to "does this touch existing
+	// data", with Impact saying in which way.
+	Destructive bool         `json:"destructive"`
+	Impact      ChangeImpact `json:"impact,omitempty"`
+	Table       string       `json:"table,omitempty"`
+	Object      string       `json:"object,omitempty"`
+	Before      any          `json:"before,omitempty"`
+	After       any          `json:"after,omitempty"`
 }
 
 type Plan struct {
 	Schema           string   `json:"schema"`
 	Changes          []Change `json:"changes"`
 	DestructiveCount int      `json:"destructiveCount"`
+	// ObjectLossCount and ValueRewriteCount are what the two separate
+	// confirmations are about; MayFailCount needs no permission - it cannot
+	// damage anything, it can only abort the migration.
+	ObjectLossCount   int `json:"objectLossCount"`
+	ValueRewriteCount int `json:"valueRewriteCount"`
+	MayFailCount      int `json:"mayFailCount"`
 }
 
 func Compare(desired, actual Schema) (Plan, error) {
@@ -61,7 +93,7 @@ func Compare(desired, actual Schema) (Plan, error) {
 		case wanted && !exists:
 			plan.Changes = append(plan.Changes, Change{Kind: CreateTable, Table: name, After: desiredTable})
 		case !wanted && exists:
-			plan.add(Change{Kind: DropTable, Table: name, Destructive: true, Before: actualTable})
+			plan.add(Change{Kind: DropTable, Table: name, Impact: ImpactObjectLoss, Before: actualTable})
 		default:
 			compareTable(&plan, desiredTable, actualTable)
 		}
@@ -76,12 +108,17 @@ func compareTable(plan *Plan, desired, actual Table) {
 		current, currentOK := actualColumns[name]
 		switch {
 		case wantedOK && !currentOK:
-			plan.add(Change{Kind: AddColumn, Table: desired.Name, Object: name, Destructive: !wanted.Nullable && wanted.Default == "", After: wanted})
+			// A new column that is NOT NULL without a default cannot be added to
+			// a table that has rows - the migration aborts, nothing is lost.
+			impact := ImpactNone
+			if !wanted.Nullable && wanted.Default == "" {
+				impact = ImpactMayFail
+			}
+			plan.add(Change{Kind: AddColumn, Table: desired.Name, Object: name, Impact: impact, After: wanted})
 		case !wantedOK && currentOK:
-			plan.add(Change{Kind: DropColumn, Table: desired.Name, Object: name, Destructive: true, Before: current})
+			plan.add(Change{Kind: DropColumn, Table: desired.Name, Object: name, Impact: ImpactObjectLoss, Before: current})
 		case !reflect.DeepEqual(wanted, current):
-			destructive := wanted.Type != current.Type || !wanted.Nullable && current.Nullable
-			plan.add(Change{Kind: AlterColumn, Table: desired.Name, Object: name, Destructive: destructive, Before: current, After: wanted})
+			plan.add(Change{Kind: AlterColumn, Table: desired.Name, Object: name, Impact: columnImpact(current, wanted), Before: current, After: wanted})
 		}
 	}
 	compareNamed(plan, desired.Name, desired.Indexes, actual.Indexes, CreateIndex, ReplaceIndex, DropIndex)
@@ -97,17 +134,29 @@ func compareNamed[T any](plan *Plan, table string, desired, actual []T, create, 
 		case wantedOK && !currentOK:
 			plan.add(Change{Kind: create, Table: table, Object: name, After: wanted})
 		case !wantedOK && currentOK:
-			plan.add(Change{Kind: drop, Table: table, Object: name, Destructive: true, Before: current})
+			plan.add(Change{Kind: drop, Table: table, Object: name, Impact: ImpactObjectLoss, Before: current})
 		case !reflect.DeepEqual(wanted, current):
-			plan.add(Change{Kind: replace, Table: table, Object: name, Destructive: true, Before: current, After: wanted})
+			// Replacing an index or a constraint drops the old one first, and the
+			// new one can be rejected by data the old one allowed.
+			plan.add(Change{Kind: replace, Table: table, Object: name, Impact: ImpactObjectLoss, Before: current, After: wanted})
 		}
 	}
 }
 
 func (plan *Plan) add(change Change) {
+	change.Destructive = change.Impact != ImpactNone
 	plan.Changes = append(plan.Changes, change)
-	if change.Destructive {
-		plan.DestructiveCount++
+	if !change.Destructive {
+		return
+	}
+	plan.DestructiveCount++
+	switch change.Impact {
+	case ImpactObjectLoss:
+		plan.ObjectLossCount++
+	case ImpactValueRewrite:
+		plan.ValueRewriteCount++
+	case ImpactMayFail:
+		plan.MayFailCount++
 	}
 }
 

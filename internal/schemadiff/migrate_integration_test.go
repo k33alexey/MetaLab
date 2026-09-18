@@ -109,7 +109,7 @@ func TestMigrationConfirmationExecutionRecheckAndJournalIntegration(t *testing.T
 	if _, err := Execute(ctx, pool, request); !errors.Is(err, ErrDestructiveDenied) {
 		t.Fatalf("destructive Execute() error = %v", err)
 	}
-	request.AllowDestructive = true
+	request.Consent.ObjectLoss = true
 	if record, err = Execute(ctx, pool, request); err != nil || record.Status != "succeeded" {
 		t.Fatalf("destructive record=%+v error=%v", record, err)
 	}

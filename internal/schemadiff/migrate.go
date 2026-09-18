@@ -21,7 +21,11 @@ const migrationLockID int64 = 0x4d4c534348454d41 // "MLSCHEMA"
 var (
 	ErrConfirmationRequired = errors.New("schema migration confirmation is required")
 	ErrDestructiveDenied    = errors.New("destructive schema migration was not explicitly allowed")
-	ErrPlanChanged          = errors.New("PostgreSQL schema changed after the migration plan was prepared")
+	// ErrValueRewriteDenied is deliberately separate: allowing a column to be
+	// dropped says nothing about agreeing to have every value in another column
+	// rounded, and one flag for both is how the second happens unnoticed.
+	ErrValueRewriteDenied = errors.New("schema migration rewriting existing values was not explicitly allowed")
+	ErrPlanChanged        = errors.New("PostgreSQL schema changed after the migration plan was prepared")
 )
 
 type PreparedPlan struct {
@@ -29,6 +33,10 @@ type PreparedPlan struct {
 	SHA256       string `json:"sha256"`
 	ActualSHA256 string `json:"actualSha256"`
 	TargetSHA256 string `json:"targetSha256"`
+	// Impacts counts the rows each data-touching change would affect, measured
+	// against the data as it is now. The plan says what will happen; this says
+	// to how much.
+	Impacts []ImpactMeasurement `json:"impacts"`
 }
 
 type MigrationRequest struct {
@@ -39,8 +47,31 @@ type MigrationRequest struct {
 	ExpectedPlanSHA256   string
 	ExpectedSchemaSHA256 string
 	Confirmed            bool
-	AllowDestructive     bool
+	Consent              MigrationConsent
 }
+
+// MigrationConsent is what the operator explicitly agreed to, one field per
+// decision. A single "destructive" flag cannot express the difference between
+// "yes, drop that attribute" and "yes, round every price", and the operator who
+// wants the first should not be granting the second by the same click.
+type MigrationConsent struct {
+	ObjectLoss   bool `json:"objectLoss"`
+	ValueRewrite bool `json:"valueRewrite"`
+}
+
+// ConfirmationNeeded reports a refused migration together with everything the
+// operator needs in order to decide: which kinds of change are waiting for
+// consent, and how many rows each of them actually touches - measured under the
+// same lock and transaction as the migration itself, so the numbers cannot be
+// stale by the time they are shown.
+type ConfirmationNeeded struct {
+	Reason  error
+	Plan    Plan
+	Impacts []ImpactMeasurement
+}
+
+func (needed *ConfirmationNeeded) Error() string { return needed.Reason.Error() }
+func (needed *ConfirmationNeeded) Unwrap() error { return needed.Reason }
 
 // TransactionHooks let a higher-level publisher validate and activate a version
 // under the same PostgreSQL lock and transaction as its schema migration.
@@ -85,7 +116,17 @@ func Prepare(ctx context.Context, pool *pgxpool.Pool, desired Schema) (PreparedP
 	if err != nil {
 		return PreparedPlan{}, err
 	}
-	return PreparedPlan{Plan: plan, SHA256: digest, ActualSHA256: actualDigest, TargetSHA256: targetDigest}, nil
+	// Rendering the statements here is what turns "PostgreSQL refused something"
+	// into a message the operator sees BEFORE confirming: a type change with no
+	// safe conversion is reported now, not in the middle of the migration.
+	if _, err := migrationStatements(plan); err != nil {
+		return PreparedPlan{}, err
+	}
+	impacts, err := Measure(ctx, pool, plan, actual)
+	if err != nil {
+		return PreparedPlan{}, err
+	}
+	return PreparedPlan{Plan: plan, SHA256: digest, ActualSHA256: actualDigest, TargetSHA256: targetDigest, Impacts: impacts}, nil
 }
 
 func PlanSHA256(plan Plan) (string, error) {
@@ -197,8 +238,21 @@ func ExecuteWithHooks(ctx context.Context, pool *pgxpool.Pool, request Migration
 	if digest != request.ExpectedPlanSHA256 {
 		return MigrationRecord{}, ErrPlanChanged
 	}
-	if plan.DestructiveCount > 0 && !request.AllowDestructive {
-		return MigrationRecord{}, ErrDestructiveDenied
+	// Two gates, because they answer two questions. Losing an object and
+	// rewriting values are confirmed separately; a change that can only fail
+	// needs no permission at all - it cannot damage anything.
+	var denied error
+	if plan.ObjectLossCount > 0 && !request.Consent.ObjectLoss {
+		denied = ErrDestructiveDenied
+	} else if plan.ValueRewriteCount > 0 && !request.Consent.ValueRewrite {
+		denied = ErrValueRewriteDenied
+	}
+	if denied != nil {
+		impacts, err := Measure(ctx, transaction, plan, actual)
+		if err != nil {
+			return MigrationRecord{}, err
+		}
+		return MigrationRecord{}, &ConfirmationNeeded{Reason: denied, Plan: plan, Impacts: impacts}
 	}
 	statements, err := migrationStatements(plan)
 	if err != nil {
