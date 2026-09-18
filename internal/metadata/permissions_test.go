@@ -160,3 +160,24 @@ func TestPermissionsBoundCombinedRoleSize(t *testing.T) {
 		t.Fatalf("unbounded combined roles: %v", err)
 	}
 }
+
+// Каждое право обязано иметь свой бит: право без бита не выдаётся никогда, и
+// именно так «Просмотр» однажды оказался невыдаваемым — модель его знала, а
+// компиляция прав молча теряла.
+func TestEveryObjectOperationHasItsOwnBit(t *testing.T) {
+	t.Parallel()
+	seen := map[permissionBits]PermissionOperation{}
+	for _, operation := range ObjectOperations() {
+		bit := operationBit(operation)
+		if bit == 0 {
+			t.Fatalf("operation %q has no bit", operation)
+		}
+		if other, exists := seen[bit]; exists {
+			t.Fatalf("operations %q and %q share a bit", operation, other)
+		}
+		seen[bit] = operation
+	}
+	if operationBit("не существует") != 0 {
+		t.Fatal("an unknown operation must not map to a bit")
+	}
+}

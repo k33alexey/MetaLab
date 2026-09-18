@@ -71,7 +71,7 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	appendObject := func(kind Kind, id uuid.UUID, name string, title LocalizedText, attributes []Attribute, parts []TablePart) {
 		target, _ := catalog.permissionTarget(id)
 		object := PermissionObject{ID: id, Kind: kind, Name: name, Title: cloneTitle(title), Fields: []PermissionField{}}
-		for _, operation := range []PermissionOperation{PermissionRead, PermissionCreate, PermissionUpdate, PermissionDelete, PermissionPost, PermissionUndoPosting} {
+		for _, operation := range objectOperations {
 			if target.operations[operation] {
 				object.Operations = append(object.Operations, operation)
 			}

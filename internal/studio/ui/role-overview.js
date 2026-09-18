@@ -168,7 +168,7 @@ function createRoleOverviewModel(source) {
 
 function createRoleOverview(host, openRole) {
   let source, model, selected = null, tree, panel, tab = 'roles', body, filter = '';
-  const operations = {read:'Чтение',create:'Добавление',update:'Изменение',delete:'Удаление',post:'Проведение','undo-posting':'Отмена проведения'};
+  const operations = {read:'Чтение',view:'Просмотр',create:'Добавление',update:'Изменение',delete:'Удаление',post:'Проведение','undo-posting':'Отмена проведения','totals-control':'Управление итогами'};
   const kinds = {constants:'Константы',enumerations:'Перечисления',catalogs:'Справочники',documents:'Документы','information-registers':'Регистры сведений','accumulation-registers':'Регистры накопления'};
   function node(tag, text, className) {
     const element = document.createElement(tag);

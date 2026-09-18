@@ -3,6 +3,7 @@ package platform
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -183,6 +184,38 @@ func TestSessionParameterRestrictsListReadsIntegration(t *testing.T) {
 		}
 	}
 
+	// Просмотр — отдельное право: та же роль без него видит объект из кода, но
+	// ни в навигации, ни в списке приложения его не получает.
+	withoutView := role
+	withoutView.Objects = append([]metadata.ObjectPermission(nil), role.Objects...)
+	for index := range withoutView.Objects {
+		operations := make([]metadata.PermissionOperation, 0, len(withoutView.Objects[index].Operations))
+		for _, operation := range withoutView.Objects[index].Operations {
+			if operation != metadata.PermissionView {
+				operations = append(operations, operation)
+			}
+		}
+		withoutView.Objects[index].Operations = operations
+	}
+	write("metadata/roles/"+role.ID.String()+".yaml", withoutView)
+	runTestGit(t, root, "add", "--all")
+	runTestGit(t, root, "commit", "-m", "Role without the view right")
+	if _, _, err := publication.SaveData(ctx, pool, publication.SaveDataRequest{Root: root, Mode: publication.ActivationDebug, Confirmed: true}); err != nil {
+		t.Fatal(err)
+	}
+	if listed, err := runtime.LoadApplicationObjects(ctx, login.Token, registered.ID, nil); err != nil || len(listed.Objects) != 0 {
+		t.Fatalf("navigation without the view right = %+v error=%v", listed.Objects, err)
+	}
+	if _, err := runtime.LoadApplicationList(ctx, login.Token, registered.ID, metadata.CatalogKind, "Заказы", metadata.DynamicListRequest{Limit: 20}); !errors.Is(err, metadata.ErrPermissionDenied) {
+		t.Fatalf("list without the view right = %v, want permission denied", err)
+	}
+	// Возвращаем право и убеждаемся, что дело именно в нём.
+	write("metadata/roles/"+role.ID.String()+".yaml", role)
+	runTestGit(t, root, "add", "--all")
+	runTestGit(t, root, "commit", "-m", "Role with the view right")
+	if _, _, err := publication.SaveData(ctx, pool, publication.SaveDataRequest{Root: root, Mode: publication.ActivationDebug, Confirmed: true}); err != nil {
+		t.Fatal(err)
+	}
 	page, err := runtime.LoadApplicationList(ctx, login.Token, registered.ID, metadata.CatalogKind, "Заказы", metadata.DynamicListRequest{Limit: 20})
 	if err != nil {
 		t.Fatalf("restricted list read: %v", err)

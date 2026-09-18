@@ -14,24 +14,19 @@ const MaxEffectivePermissions = 100_000
 var ErrPermissionDenied = errors.New("application permission denied")
 var ErrInvalidRoleSelection = errors.New("invalid application role selection")
 
-type permissionBits uint8
+type permissionBits uint16
 
+// operationBit derives a right's bit from its position in objectOperations
+// rather than from a list of its own. The two lists disagreeing is not a
+// theoretical risk: adding a right to the model while this switch kept
+// returning zero for it made the right silently ungrantable, which is how it
+// was found.
 func operationBit(operation PermissionOperation) permissionBits {
-	switch operation {
-	case PermissionRead:
-		return 1
-	case PermissionCreate:
-		return 2
-	case PermissionUpdate:
-		return 4
-	case PermissionDelete:
-		return 8
-	case PermissionPost:
-		return 16
-	case PermissionUndoPosting:
-		return 32
+	index := slices.Index(objectOperations, operation)
+	if index < 0 || index >= 16 {
+		return 0
 	}
-	return 0
+	return 1 << index
 }
 
 type objectPermissions struct {

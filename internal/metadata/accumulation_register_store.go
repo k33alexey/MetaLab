@@ -643,10 +643,18 @@ func (repository *AccumulationRegisterRepository) totalUpsert(definition Accumul
 }
 
 // RebuildTotals restores all monthly totals from primary movement rows.
+//
+// It is guarded by its own right rather than by write access to the register:
+// rebuilding reads every movement there has ever been and replaces the numbers
+// every balance query answers from. Someone allowed to record movements is not
+// by that fact someone allowed to recompute the whole register's totals.
 func (repository *AccumulationRegisterRepository) RebuildTotals(ctx context.Context, name string) error {
 	definition, ok := repository.catalog.AccumulationRegisterDefinition(name)
 	if !ok {
 		return fmt.Errorf("unknown accumulation register %q", name)
+	}
+	if err := requireObject(ctx, definition.ID, PermissionTotalsControl); err != nil {
+		return err
 	}
 	return runDataTransaction(ctx, repository.pool, nil, func(transactionContext context.Context, transaction pgx.Tx) error {
 		tableKey := objectLockKey("accumulation-register", definition.ID, definition.ID)

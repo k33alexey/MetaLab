@@ -130,3 +130,46 @@ func TestApplicationLanguagePicksWhatTheProjectActuallyHas(t *testing.T) {
 		}
 	}
 }
+
+// Просмотр — право видеть объект в интерфейсе, отдельное от чтения: код,
+// который считает по данным, — это не то же самое, что человек, которому
+// позволено открыть список.
+func TestViewIsSeparateFromRead(t *testing.T) {
+	t.Parallel()
+	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "ViewTest", Title: "View test", DefaultLanguage: "ru",
+		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
+	goods := metadata.CatalogDefinition{Format: 1, ID: uuid.MustNew(), Name: "Товары", Title: metadata.LocalizedText{"ru": "Товары"},
+		Code: metadata.CatalogCode{Type: metadata.StringType, Length: 9}, DescriptionLength: 150}
+	role := metadata.RoleDefinition{Format: 1, ID: uuid.MustNew(), Name: "Счётчик", Title: metadata.LocalizedText{"ru": "Счётчик"},
+		Objects: []metadata.ObjectPermission{{Object: goods.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead}}}}
+	catalog, err := metadata.NewCatalogSnapshotWithRoles(manifest, nil, nil, nil, []metadata.CatalogDefinition{goods}, nil, nil, nil, []metadata.RoleDefinition{role})
+	if err != nil {
+		t.Fatal(err)
+	}
+	permissions, err := metadata.CompilePermissions(catalog, []uuid.UUID{role.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !permissions.AllowsObject(goods.ID, metadata.PermissionRead) {
+		t.Fatal("read was not granted")
+	}
+	if permissions.AllowsObject(goods.ID, metadata.PermissionView) {
+		t.Fatal("reading an object also granted the right to see it")
+	}
+	if operations := allowedOperations(permissions, goods.ID); len(operations) != 1 || operations[0] != metadata.PermissionRead {
+		t.Fatalf("reported operations = %v", operations)
+	}
+	// А роль, которой просмотр выдан, получает оба права.
+	role.Objects[0].Operations = []metadata.PermissionOperation{metadata.PermissionRead, metadata.PermissionView}
+	catalog, err = metadata.NewCatalogSnapshotWithRoles(manifest, nil, nil, nil, []metadata.CatalogDefinition{goods}, nil, nil, nil, []metadata.RoleDefinition{role})
+	if err != nil {
+		t.Fatal(err)
+	}
+	permissions, err = metadata.CompilePermissions(catalog, []uuid.UUID{role.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !permissions.AllowsObject(goods.ID, metadata.PermissionView) {
+		t.Fatal("the view right was granted but not compiled")
+	}
+}

@@ -80,14 +80,17 @@ func (runtime *Runtime) LoadApplicationObjects(ctx context.Context, token string
 	language := ApplicationLanguage(catalog.Project, preferences)
 	result := make([]ApplicationObject, 0, len(catalog.Catalogs)+len(catalog.Documents))
 	for _, item := range catalog.Catalogs {
-		if !permissions.AllowsObject(item.ID, metadata.PermissionRead) {
+		// The navigation lists what the person may OPEN, not what code may
+		// read: an object shown in the menu that refuses to open would be a
+		// promise the next click breaks.
+		if !permissions.AllowsObject(item.ID, metadata.PermissionRead) || !permissions.AllowsObject(item.ID, metadata.PermissionView) {
 			continue
 		}
 		result = append(result, ApplicationObject{Kind: metadata.CatalogKind, Name: item.Name,
 			Title: resolvedApplicationTitle(item.Title, item.Name, language), Operations: allowedOperations(permissions, item.ID)})
 	}
 	for _, item := range catalog.Documents {
-		if !permissions.AllowsObject(item.ID, metadata.PermissionRead) {
+		if !permissions.AllowsObject(item.ID, metadata.PermissionRead) || !permissions.AllowsObject(item.ID, metadata.PermissionView) {
 			continue
 		}
 		result = append(result, ApplicationObject{Kind: metadata.DocumentKind, Name: item.Name,
@@ -118,14 +121,19 @@ func applicationObjectID(catalog *metadata.Catalog, objectKind metadata.Kind, na
 	}
 }
 
-// requireApplicationRead resolves the caller's policy and refuses the whole
-// operation when they may not read the object at all.
+// requireApplicationView resolves the caller's policy for one INTERACTIVE
+// entry point and refuses the whole operation when they may not see the object.
+//
+// Seeing is a right of its own, beside reading: code that computes with an
+// object is not by that fact a person allowed to open its list. Every path that
+// exists because someone is looking at a screen goes through here; BSL and
+// queries keep asking for read alone.
 //
 // snapshot and pool are what a restriction needs when it compares a field with
 // a session parameter the PROJECT computes: answering that requires running the
 // session module, and the runtime for it is built from them - but only if such
 // a restriction is actually reached, never for an ordinary read.
-func (runtime *Runtime) requireApplicationRead(ctx context.Context, databaseID, userID uuid.UUID, snapshot metadata.RuntimeSnapshot, pool *pgxpool.Pool, catalog *metadata.Catalog, objectKind metadata.Kind, name string) (context.Context, error) {
+func (runtime *Runtime) requireApplicationView(ctx context.Context, databaseID, userID uuid.UUID, snapshot metadata.RuntimeSnapshot, pool *pgxpool.Pool, catalog *metadata.Catalog, objectKind metadata.Kind, name string) (context.Context, error) {
 	objectID, err := applicationObjectID(catalog, objectKind, name)
 	if err != nil {
 		return nil, err
@@ -135,6 +143,9 @@ func (runtime *Runtime) requireApplicationRead(ctx context.Context, databaseID, 
 		return nil, err
 	}
 	if err := permissions.RequireObject(objectID, metadata.PermissionRead); err != nil {
+		return nil, err
+	}
+	if err := permissions.RequireObject(objectID, metadata.PermissionView); err != nil {
 		return nil, err
 	}
 	ctx = metadata.WithSessionValues(metadata.WithPermissions(ctx, permissions), applicationSessionValues(userID))
@@ -156,7 +167,7 @@ func (runtime *Runtime) LoadApplicationForm(ctx context.Context, token string, d
 	if err != nil {
 		return ApplicationForm{}, err
 	}
-	if _, err := runtime.requireApplicationRead(ctx, databaseID, session.UserID, snapshot, pool, catalog, objectKind, name); err != nil {
+	if _, err := runtime.requireApplicationView(ctx, databaseID, session.UserID, snapshot, pool, catalog, objectKind, name); err != nil {
 		return ApplicationForm{}, err
 	}
 	language := ApplicationLanguage(catalog.Project, preferences)
@@ -200,7 +211,7 @@ func (runtime *Runtime) LoadApplicationList(ctx context.Context, token string, d
 	}
 	// The context carries the policy onward so row filtering can use it without
 	// resolving the assignment a second time.
-	ctx, err = runtime.requireApplicationRead(ctx, databaseID, session.UserID, snapshot, pool, catalog, objectKind, name)
+	ctx, err = runtime.requireApplicationView(ctx, databaseID, session.UserID, snapshot, pool, catalog, objectKind, name)
 	if err != nil {
 		return ApplicationListPage{}, err
 	}
@@ -379,10 +390,7 @@ func ApplicationLanguage(manifest project.Project, preferences []string) metadat
 // order. It answers only about the object as a whole: a restriction on rows or
 // on fields narrows what a granted operation reaches, never whether it exists.
 func allowedOperations(permissions *metadata.Permissions, objectID uuid.UUID) []metadata.PermissionOperation {
-	all := []metadata.PermissionOperation{
-		metadata.PermissionRead, metadata.PermissionCreate, metadata.PermissionUpdate,
-		metadata.PermissionDelete, metadata.PermissionPost, metadata.PermissionUndoPosting,
-	}
+	all := metadata.ObjectOperations()
 	result := make([]metadata.PermissionOperation, 0, len(all))
 	for _, operation := range all {
 		if permissions.AllowsObject(objectID, operation) {

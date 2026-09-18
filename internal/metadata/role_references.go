@@ -16,7 +16,10 @@ type roleTarget struct {
 }
 
 func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
-	target := roleTarget{operations: map[PermissionOperation]bool{PermissionRead: true}, fields: map[string]bool{}}
+	// Everything that can be read can also be shown, so View travels with Read;
+	// which objects accept the other rights is decided per kind below, from
+	// what the object actually has.
+	target := roleTarget{operations: map[PermissionOperation]bool{PermissionRead: true, PermissionView: true}, fields: map[string]bool{}}
 	addAttributes := func(attributes []Attribute) {
 		for _, attribute := range attributes {
 			target.fields[attribute.ID.String()] = true
@@ -65,6 +68,14 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 	} else if index, ok := catalog.accumulationRegisterByID[id]; ok {
 		item := catalog.AccumulationRegisters[index]
 		target.operations[PermissionUpdate] = true
+		// Totals are the pre-aggregated balances an accumulation register keeps
+		// beside its movements. In the reference configuration this right sits
+		// on information registers, because there the materialized slices are
+		// the totals; ours are on accumulation registers, and slices are not
+		// materialized at all - so the right guards what we actually have.
+		if item.Kind == AccumulationRegisterBalance {
+			target.operations[PermissionTotalsControl] = true
+		}
 		target.fields = map[string]bool{"recordid": false, "period": true, "recorder": true, "linenumber": false, "active": true}
 		if item.Kind == AccumulationRegisterBalance {
 			target.fields["movementkind"] = true

@@ -164,7 +164,7 @@ function createRoleModel(source) {
 function createRoleEditor(host, onChange) {
   let source, model, selected, panel, tree, warning, templates, fieldsExpanded = false, policiesExpanded = false, titleFieldCleanup = null;
   function clearTitleField() { titleFieldCleanup?.(); titleFieldCleanup = null; }
-  const operations = {read:'Чтение',create:'Добавление',update:'Изменение',delete:'Удаление',post:'Проведение','undo-posting':'Отмена проведения'};
+  const operations = {read:'Чтение',view:'Просмотр',create:'Добавление',update:'Изменение',delete:'Удаление',post:'Проведение','undo-posting':'Отмена проведения','totals-control':'Управление итогами'};
   const kinds = {constants:'Константы',enumerations:'Перечисления',catalogs:'Справочники',documents:'Документы','information-registers':'Регистры сведений','accumulation-registers':'Регистры накопления'};
   const standard = {ref:'Ссылка',code:'Код',description:'Наименование',deletionmark:'Пометка удаления',version:'Версия',predefined:'Предопределённый',predefineddataname:'Имя предопределённых данных',number:'Номер',date:'Дата',posted:'Проведён',recordid:'Идентификатор записи',period:'Период',recorder:'Регистратор',linenumber:'Номер строки',active:'Активность',movementkind:'Вид движения',value:'Значение',order:'Порядок'};
   function node(tag, text, className) {
