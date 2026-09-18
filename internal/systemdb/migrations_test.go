@@ -12,8 +12,8 @@ func TestEmbeddedMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(migrations) != 10 {
-		t.Fatalf("migration count = %d, want 10", len(migrations))
+	if len(migrations) != 11 {
+		t.Fatalf("migration count = %d, want 11", len(migrations))
 	}
 	migration := migrations[0]
 	if migration.version != 1 || migration.name != "settings" || len(migration.checksum) != 64 {
@@ -48,5 +48,8 @@ func TestEmbeddedMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	}
 	if migrations[9].version != 10 || migrations[9].name != "database_session_user_scope" || !strings.Contains(migrations[9].sql, "database_sessions_one_active_idx") {
 		t.Fatalf("tenth migration = %+v", migrations[9])
+	}
+	if migrations[10].version != 11 || migrations[10].name != "single_portal_session" || !strings.Contains(migrations[10].sql, "portal_sessions_one_active_idx") {
+		t.Fatalf("eleventh migration = %+v", migrations[10])
 	}
 }

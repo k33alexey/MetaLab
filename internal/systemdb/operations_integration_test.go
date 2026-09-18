@@ -97,12 +97,18 @@ VALUES ($1, $2, $3, TRUE, TRUE)`, userID.String(), "operations-"+suffix, passwor
 	if err := database.Sessions.AcknowledgeMessage(ctx, portalSession.ID, applicationSession.ID); err != nil {
 		t.Fatal(err)
 	}
+	// Учётная запись держит один Portal-сеанс: пока первый жив, второй вход
+	// отклоняется, а не вытесняет его молча.
 	secondDigest := auth.SessionTokenDigest("second-token")
-	secondPortal, err := database.Sessions.CreatePortal(ctx, userID, secondDigest[:], "127.0.0.2", "integration-test")
-	if err != nil {
+	if _, err := database.Sessions.CreatePortal(ctx, userID, secondDigest[:], "127.0.0.2", "integration-test"); !errors.Is(err, ErrPortalSessionActive) {
+		t.Fatalf("second portal login error = %v, want ErrPortalSessionActive", err)
+	}
+	// База закрыта для новых сеансов: уже открытый продолжает работать, но
+	// открыть заново после его завершения нельзя.
+	if err := database.Sessions.TerminateDatabaseSession(ctx, applicationSession.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.Sessions.OpenDatabase(ctx, secondPortal.ID, databaseID); !errors.Is(err, ErrNewSessionsForbidden) {
+	if _, err := database.Sessions.OpenDatabase(ctx, portalSession.ID, databaseID); !errors.Is(err, ErrNewSessionsForbidden) {
 		t.Fatalf("forbidden open error = %v", err)
 	}
 	if err := database.Administrators.ChangePasswordKeepingSession(
@@ -115,9 +121,6 @@ VALUES ($1, $2, $3, TRUE, TRUE)`, userID.String(), "operations-"+suffix, passwor
 	}
 	if _, err := database.Sessions.AuthenticatePortal(ctx, digest[:]); err != nil {
 		t.Fatalf("kept session after password change error = %v", err)
-	}
-	if err := database.Sessions.TerminateDatabaseSession(ctx, applicationSession.ID); err != nil {
-		t.Fatal(err)
 	}
 	if sessions, err := database.Sessions.ListDatabaseSessions(ctx, &databaseID); err != nil || len(sessions) != 0 {
 		t.Fatalf("active sessions=%+v error=%v", sessions, err)
@@ -232,11 +235,6 @@ VALUES ($1, $2, $3, TRUE, TRUE)`, id.String(), "concurrent-"+id.String()+"-"+suf
 	if err != nil {
 		t.Fatal(err)
 	}
-	deviceBDigest := auth.SessionTokenDigest("device-b-" + suffix)
-	deviceB, err := database.Sessions.CreatePortal(ctx, firstUserID, deviceBDigest[:], "127.0.0.2", "device-b")
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// Device A opens the database - the only active application session for this user.
 	sessionA, err := database.Sessions.OpenDatabase(ctx, deviceA.ID, databaseID)
@@ -249,14 +247,36 @@ VALUES ($1, $2, $3, TRUE, TRUE)`, id.String(), "concurrent-"+id.String()+"-"+suf
 		t.Fatalf("resume from same device: session=%+v error=%v", resumed, err)
 	}
 
-	// Device B, same user, database still allows new sessions: must be
-	// rejected as a concurrent application session, not silently take over.
-	if _, err := database.Sessions.OpenDatabase(ctx, deviceB.ID, databaseID); !errors.Is(err, ErrApplicationSessionActive) {
-		t.Fatalf("second device open error = %v, want ErrApplicationSessionActive", err)
+	// Вход со второго устройства той же учётной записью: пока первый сеанс
+	// жив, он отклоняется целиком - на уровне Portal, а не приложения.
+	deviceBDigest := auth.SessionTokenDigest("device-b-" + suffix)
+	if _, err := database.Sessions.CreatePortal(ctx, firstUserID, deviceBDigest[:], "127.0.0.2", "device-b"); !errors.Is(err, ErrPortalSessionActive) {
+		t.Fatalf("second device login error = %v, want ErrPortalSessionActive", err)
 	}
 	sessions, err := database.Sessions.ListDatabaseSessions(ctx, &databaseID)
 	if err != nil || len(sessions) != 1 || sessions[0].ID != sessionA.ID {
 		t.Fatalf("sessions after rejected second device = %+v, error = %v", sessions, err)
+	}
+
+	// Брошенный сеанс не держит учётную запись вечно: после двух минут
+	// молчания вход со второго устройства проходит, а прикладной сеанс
+	// первого закрывается вместе с его Portal-сеансом.
+	if _, err := database.pool.Exec(ctx, `UPDATE ml_system.portal_sessions SET last_seen_at = clock_timestamp() - interval '5 minutes' WHERE id = $1`, deviceA.ID.String()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.pool.Exec(ctx, `UPDATE ml_system.database_sessions SET last_seen_at = clock_timestamp() - interval '5 minutes' WHERE id = $1`, sessionA.ID.String()); err != nil {
+		t.Fatal(err)
+	}
+	deviceB, err := database.Sessions.CreatePortal(ctx, firstUserID, deviceBDigest[:], "127.0.0.2", "device-b")
+	if err != nil {
+		t.Fatalf("login after the abandoned session went quiet: %v", err)
+	}
+	if _, err := database.Sessions.ResumeDatabase(ctx, deviceA.ID, databaseID); !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("abandoned application session survived the takeover: %v", err)
+	}
+	sessionB, err := database.Sessions.OpenDatabase(ctx, deviceB.ID, databaseID)
+	if err != nil || sessionB.ID == sessionA.ID {
+		t.Fatalf("second device could not open the database: session=%+v error=%v", sessionB, err)
 	}
 
 	// A different user must be able to open the same database concurrently -
@@ -274,15 +294,90 @@ VALUES ($1, $2, $3, TRUE, TRUE)`, id.String(), "concurrent-"+id.String()+"-"+suf
 		t.Fatalf("second user session=%+v", secondUserSession)
 	}
 
-	// Once device A's session ends, device B must be able to open a new one.
-	if err := database.Sessions.TerminateDatabaseSession(ctx, sessionA.ID); err != nil {
+	// Прикладной сеанс, завершённый администратором, не воскресает: следующее
+	// открытие создаёт новый, а не возвращает закрытый.
+	if err := database.Sessions.TerminateDatabaseSession(ctx, sessionB.ID); err != nil {
 		t.Fatal(err)
 	}
-	sessionB, err := database.Sessions.OpenDatabase(ctx, deviceB.ID, databaseID)
+	reopened, err := database.Sessions.OpenDatabase(ctx, deviceB.ID, databaseID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sessionB.ID == sessionA.ID {
-		t.Fatalf("device B reused the terminated session: %+v", sessionB)
+	if reopened.ID == sessionB.ID || reopened.ID == sessionA.ID {
+		t.Fatalf("terminated session was reused: %+v", reopened)
+	}
+}
+
+// Единственность Portal-сеанса обеспечивает база, а не проверка в коде: двум
+// одновременным входам проверка «есть ли активный сеанс» не помешала бы, а
+// уникальный индекс - помешает. Здесь это проверяется гонкой.
+func TestPortalSessionUniquenessHoldsUnderConcurrentLoginsIntegration(t *testing.T) {
+	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("ML_TEST_DATABASE_URL is not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	database, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(database.Close)
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	userID := uuid.MustNew()
+	passwordHash, err := auth.HashPassword("race password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.pool.Exec(ctx, `
+INSERT INTO ml_system.users(id, login, password_hash, platform_administrator, metadata_administrator)
+VALUES ($1, $2, $3, TRUE, TRUE)`, userID.String(), "race-"+suffix, passwordHash); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cleanupCancel()
+		_, _ = database.pool.Exec(cleanupCtx, "DELETE FROM ml_system.portal_sessions WHERE user_id = $1", userID.String())
+		_, _ = database.pool.Exec(cleanupCtx, "DELETE FROM ml_system.users WHERE id = $1", userID.String())
+	})
+	type attempt struct {
+		session PortalSession
+		err     error
+	}
+	const logins = 6
+	start := make(chan struct{})
+	results := make(chan attempt, logins)
+	for index := range logins {
+		go func() {
+			digest := auth.SessionTokenDigest(fmt.Sprintf("race-%s-%d", suffix, index))
+			<-start
+			session, err := database.Sessions.CreatePortal(ctx, userID, digest[:], "127.0.0.1", "race")
+			results <- attempt{session: session, err: err}
+		}()
+	}
+	close(start)
+	granted, refused := 0, 0
+	for range logins {
+		result := <-results
+		switch {
+		case result.err == nil:
+			granted++
+		case errors.Is(result.err, ErrPortalSessionActive):
+			refused++
+		default:
+			t.Fatalf("concurrent login error = %v", result.err)
+		}
+	}
+	if granted != 1 || refused != logins-1 {
+		t.Fatalf("concurrent logins granted=%d refused=%d, want exactly one granted", granted, refused)
+	}
+	var active int
+	if err := database.pool.QueryRow(ctx,
+		`SELECT count(*) FROM ml_system.portal_sessions WHERE user_id = $1 AND purpose = 'portal' AND revoked_at IS NULL`,
+		userID.String()).Scan(&active); err != nil {
+		t.Fatal(err)
+	}
+	if active != 1 {
+		t.Fatalf("active portal sessions = %d, want 1", active)
 	}
 }

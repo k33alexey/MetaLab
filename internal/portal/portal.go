@@ -86,6 +86,13 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			request.Context(), input.Login, input.Password, remoteHost(request.RemoteAddr), request.UserAgent(),
 		)
 		if err != nil {
+			// A refused second login is not a failed one: the credentials were
+			// right, and counting it against the rate limit would let a user
+			// lock themselves out by reloading a page they are already using.
+			if errors.Is(err, systemdb.ErrPortalSessionActive) {
+				http.Error(response, "Вход уже выполнен на другом устройстве. Завершите тот сеанс или подождите, пока он освободится.", http.StatusConflict)
+				return
+			}
 			loginLimits.Failed(limitKey, time.Now())
 			http.Error(response, "Invalid credentials", http.StatusUnauthorized)
 			return

@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -17,6 +18,13 @@ import (
 const (
 	portalIdleLifetime     = 12 * time.Hour
 	portalAbsoluteLifetime = 7 * 24 * time.Hour
+	// sessionAbandonedAfter is how long a session may go unseen before it is
+	// treated as abandoned and released. A live client touches its session at
+	// most once a minute (see the throttle in authenticateSession and
+	// resumeDatabase), so two minutes of silence means nobody is there - while
+	// a browser closed without logging out would otherwise hold the account's
+	// only session for the whole idle lifetime.
+	sessionAbandonedAfter = 2 * time.Minute
 )
 
 var (
@@ -25,6 +33,7 @@ var (
 	ErrNewSessionsForbidden     = errors.New("new sessions are forbidden for this database")
 	ErrPasswordChangeRequired   = errors.New("password change is required")
 	ErrApplicationSessionActive = errors.New("an application session for this user and database is already active elsewhere")
+	ErrPortalSessionActive      = errors.New("a portal session for this account is already active elsewhere")
 )
 
 // PortalSession is a revocable authentication session. Its bearer token is never persisted.
@@ -82,14 +91,33 @@ func (repository *SessionRepository) createSession(ctx context.Context, userID u
 	}
 	remoteAddress = boundedText(remoteAddress, 512)
 	userAgent = boundedText(userAgent, 1000)
-	return scanPortalSession(repository.pool.QueryRow(ctx, `
-WITH inserted AS (
+	session, err := scanPortalSession(repository.pool.QueryRow(ctx, `
+WITH released AS (
+    -- An account has one portal session. A session nobody has touched for
+    -- longer than the abandonment window is released here so the account can
+    -- sign in again; one that is still being used is not, and the unique
+    -- index below turns this login into a refusal rather than a takeover.
+    UPDATE ml_system.portal_sessions SET revoked_at = clock_timestamp()
+    WHERE user_id = $2 AND purpose = $8 AND $8 = 'portal' AND revoked_at IS NULL
+      AND (idle_expires_at <= clock_timestamp() OR absolute_expires_at <= clock_timestamp()
+           OR last_seen_at <= clock_timestamp() - $9::interval)
+    RETURNING id
+), closed AS (
+    UPDATE ml_system.database_sessions SET terminated_at = clock_timestamp()
+    WHERE portal_session_id IN (SELECT id FROM released) AND terminated_at IS NULL
+    RETURNING 1
+), inserted AS (
     INSERT INTO ml_system.portal_sessions(
         id, user_id, token_hash, remote_address, user_agent, idle_expires_at, absolute_expires_at, purpose
     )
+    -- The count of released sessions is read here so that releasing runs
+    -- BEFORE the insert: the order of data-modifying CTEs is otherwise
+    -- unspecified, and an insert that ran first would collide with the very
+    -- row this statement is about to free.
     SELECT $1, users.id, $3, $4, $5, clock_timestamp() + $6::interval, clock_timestamp() + $7::interval, $8
     FROM ml_system.users AS users
-    WHERE users.id = $2 AND users.enabled AND ($8 = 'portal' OR
+    WHERE (SELECT count(*) FROM released) >= 0
+      AND users.id = $2 AND users.enabled AND ($8 = 'portal' OR
         users.platform_administrator OR users.metadata_administrator OR EXISTS (
             SELECT 1 FROM ml_system.database_access AS access
             WHERE access.user_id = users.id AND access.revoked_at IS NULL AND access.database_administrator
@@ -102,7 +130,14 @@ SELECT sessions.id::text, sessions.user_id::text, users.login,
        sessions.idle_expires_at, sessions.absolute_expires_at
 FROM inserted AS sessions JOIN ml_system.users AS users ON users.id = sessions.user_id`,
 		id.String(), userID.String(), tokenHash, remoteAddress, userAgent,
-		portalIdleLifetime.String(), portalAbsoluteLifetime.String(), purpose))
+		portalIdleLifetime.String(), portalAbsoluteLifetime.String(), purpose, sessionAbandonedAfter.String()))
+	// The refusal comes from the database, not from a check before the insert:
+	// two logins racing each other would both pass such a check.
+	var violation *pgconn.PgError
+	if errors.As(err, &violation) && violation.Code == "23505" && violation.ConstraintName == "portal_sessions_one_active_idx" {
+		return PortalSession{}, ErrPortalSessionActive
+	}
+	return session, err
 }
 
 // AuthenticatePortal verifies and touches a live bearer session by digest.
@@ -241,7 +276,17 @@ FOR SHARE OF access`, portalSessionID.String(), databaseID.String()).Scan(&runni
 	// no-op and RETURNING yields zero rows, which surfaces below as
 	// pgx.ErrNoRows and is mapped to ErrApplicationSessionActive.
 	session, err := scanDatabaseSession(transaction.QueryRow(ctx, `
-WITH opened AS (
+WITH released AS (
+    -- The same rule as for the portal session: a session nobody has touched
+    -- for longer than the abandonment window is not "in use elsewhere", it is
+    -- a browser that was closed. Without this the user is locked out of their
+    -- own database until the portal session itself expires.
+    UPDATE ml_system.database_sessions SET terminated_at = clock_timestamp()
+    WHERE database_id = $3 AND terminated_at IS NULL
+      AND last_seen_at <= clock_timestamp() - $4::interval
+      AND user_id = (SELECT user_id FROM ml_system.portal_sessions WHERE id = $2)
+    RETURNING 1
+), opened AS (
     INSERT INTO ml_system.database_sessions(id, portal_session_id, database_id, user_id)
     SELECT $1, $2, $3, portal.user_id
     FROM ml_system.portal_sessions AS portal WHERE portal.id = $2
@@ -257,7 +302,7 @@ FROM opened AS sessions
 JOIN ml_system.portal_sessions AS portal ON portal.id = sessions.portal_session_id
 JOIN ml_system.users AS users ON users.id = portal.user_id
 JOIN ml_system.databases AS databases ON databases.id = sessions.database_id`,
-		id.String(), portalSessionID.String(), databaseID.String()))
+		id.String(), portalSessionID.String(), databaseID.String(), sessionAbandonedAfter.String()))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return DatabaseSession{}, ErrApplicationSessionActive
 	}

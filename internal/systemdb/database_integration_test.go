@@ -31,8 +31,8 @@ func TestDatabaseMigrationAndSettingsIntegration(t *testing.T) {
 	if err := database.pool.QueryRow(ctx, "SELECT COUNT(*) FROM ml_system.schema_migrations").Scan(&migrations); err != nil {
 		t.Fatal(err)
 	}
-	if migrations != 10 {
-		t.Fatalf("migration count = %d, want 10", migrations)
+	if migrations != 11 {
+		t.Fatalf("migration count = %d, want 11", migrations)
 	}
 
 	key := fmt.Sprintf("test.setting-%d", time.Now().UnixNano())

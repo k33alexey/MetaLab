@@ -206,16 +206,20 @@ func TestLoginLimiterIsBoundedAndExpires(t *testing.T) {
 }
 
 type fakeRuntime struct {
-	token       string
-	session     systemdb.PortalSession
-	databases   []platform.PortalDatabase
-	opened      uuid.UUID
-	loggedOut   bool
-	failure     error
-	listRequest metadata.DynamicListRequest
+	token        string
+	session      systemdb.PortalSession
+	databases    []platform.PortalDatabase
+	opened       uuid.UUID
+	loggedOut    bool
+	failure      error
+	loginFailure error
+	listRequest  metadata.DynamicListRequest
 }
 
 func (runtime *fakeRuntime) LoginPortal(context.Context, string, string, string, string) (platform.PortalLogin, error) {
+	if runtime.loginFailure != nil {
+		return platform.PortalLogin{}, runtime.loginFailure
+	}
 	return platform.PortalLogin{Token: runtime.token, Session: runtime.session}, runtime.failure
 }
 func (runtime *fakeRuntime) AuthenticatePortal(context.Context, string) (systemdb.PortalSession, error) {
@@ -311,6 +315,43 @@ func TestRequestLanguagesReadsThePreferenceOrder(t *testing.T) {
 			if got[index] != want[index] {
 				t.Fatalf("%q -> %v, want %v", header, got, want)
 			}
+		}
+	}
+}
+
+// Отказ во втором входе — не неудачная попытка: пароль верный, и считать её
+// в счёт лимита значит позволить пользователю заблокировать себе вход
+// перезагрузкой страницы, которой он уже пользуется.
+func TestSecondLoginIsRefusedWithItsOwnStatusAndDoesNotCountAsFailure(t *testing.T) {
+	t.Parallel()
+	runtime := &fakeRuntime{loginFailure: systemdb.ErrPortalSessionActive}
+	handler := NewHandler(runtime)
+	for range 12 {
+		request := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(`{"login":"admin","password":"secret"}`))
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusConflict {
+			t.Fatalf("refused login status = %d, body = %s", response.Code, response.Body.String())
+		}
+		if !strings.Contains(response.Body.String(), "другом устройстве") {
+			t.Fatalf("refusal does not say why: %s", response.Body.String())
+		}
+	}
+}
+
+// Живая страница обязана подавать признак жизни, иначе её собственный сеанс
+// через две минуты выглядит брошенным.
+func TestPortalPageKeepsItsSessionAlive(t *testing.T) {
+	t.Parallel()
+	page, err := assets.ReadFile("ui/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(page)
+	for _, fragment := range []string{"startHeartbeat", "setInterval", "60000", "stopHeartbeat"} {
+		if !strings.Contains(source, fragment) {
+			t.Fatalf("portal page has no heartbeat: %q is missing", fragment)
 		}
 	}
 }

@@ -312,11 +312,16 @@ func TestCreateDebugDatabaseCopiesOrStartsCleanIntegration(t *testing.T) {
 	if _, err := runtime.SetDatabaseSessionAccess(ctx, registeredSource.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	secondLogin, err := runtime.LoginPortal(ctx, "admin-"+suffix, "platform integration password", "127.0.0.2", "integration-test")
-	if err != nil {
+	// Учётная запись держит один Portal-сеанс, поэтому повторный вход с другого
+	// устройства отклоняется, пока первый жив.
+	if _, err := runtime.LoginPortal(ctx, "admin-"+suffix, "platform integration password", "127.0.0.2", "integration-test"); !errors.Is(err, systemdb.ErrPortalSessionActive) {
+		t.Fatalf("second portal login error = %v, want ErrPortalSessionActive", err)
+	}
+	// База закрыта для новых сеансов: уже открытый работает, а новый - нет.
+	if err := runtime.TerminateDatabaseSession(ctx, applicationSession.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runtime.OpenPortalDatabase(ctx, secondLogin.Token, registeredSource.ID); !errors.Is(err, systemdb.ErrNewSessionsForbidden) {
+	if _, err := runtime.OpenPortalDatabase(ctx, portalLogin.Token, registeredSource.ID); !errors.Is(err, systemdb.ErrNewSessionsForbidden) {
 		t.Fatalf("new session while forbidden error = %v", err)
 	}
 	backup, err := runtime.CreateDatabaseBackup(ctx, registeredSource.ID)
