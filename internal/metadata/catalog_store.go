@@ -169,7 +169,7 @@ func (repository *CatalogRepository) Get(ctx context.Context, reference CatalogR
 	}
 	table, _ := PhysicalCatalogTable(definition.ID)
 	arguments := []any{reference.ObjectID.String()}
-	restriction, err := readRowPredicate(ctx, definition.ID, catalogPolicyColumn(definition), &arguments)
+	restriction, err := readRowPredicate(ctx, repository.catalog, definition.ID, catalogPolicyColumn(definition), &arguments)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +205,7 @@ func (repository *CatalogRepository) FindByCode(ctx context.Context, name, code 
 	}
 	table, _ := PhysicalCatalogTable(definition.ID)
 	arguments := []any{code}
-	restriction, err := readRowPredicate(ctx, definition.ID, catalogPolicyColumn(definition), &arguments)
+	restriction, err := readRowPredicate(ctx, repository.catalog, definition.ID, catalogPolicyColumn(definition), &arguments)
 	if err != nil {
 		return CatalogReference{}, false, err
 	}

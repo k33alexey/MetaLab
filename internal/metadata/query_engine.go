@@ -141,7 +141,7 @@ func (compiler *queryCompiler) sourceRestriction(ctx context.Context, source que
 		}
 		return "", nil
 	}
-	return readRowPredicate(ctx, source.objectID, queryPolicyColumn(source.sqlAlias, source.policyColumn), &compiler.arguments)
+	return readRowPredicate(ctx, compiler.runtime.catalog, source.objectID, queryPolicyColumn(source.sqlAlias, source.policyColumn), &compiler.arguments)
 }
 
 // permissionsRowFilter answers whether ctx restricts rows at all, without

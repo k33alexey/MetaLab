@@ -71,6 +71,84 @@ func TestCatalogAcceptsPolicyBoundToSessionParameter(t *testing.T) {
 	}
 }
 
+// A template exists to be reused for a different field on each object; without
+// parameters it is one fixed rule and reuse is impossible.
+func TestParameterizedPolicyTemplates(t *testing.T) {
+	t.Parallel()
+	owner, warehouse := uuid.MustNew(), uuid.MustNew()
+	role := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Кладовщик", Title: LocalizedText{"ru": "Кладовщик"},
+		PolicyTemplates: []PolicyTemplate{{Name: "Своё", Parameters: []string{"Поле"},
+			Rule: PolicyRule{Field: "$Поле", Operator: PolicyEqual, Parameter: CurrentUserParameter}}},
+		Objects: []ObjectPermission{{Object: uuid.MustNew(), Operations: []PermissionOperation{PermissionRead},
+			Policies: []AccessPolicy{
+				{Operations: []PermissionOperation{PermissionRead}, Template: "Своё", Arguments: []string{owner.String()}},
+				{Operations: []PermissionOperation{PermissionUpdate}, Template: "Своё", Arguments: []string{warehouse.String()}},
+			}}}}
+	role.Objects[0].Operations = append(role.Objects[0].Operations, PermissionUpdate)
+	if err := ValidateRole("role.yaml", role, metadataManifest()); err != nil {
+		t.Fatal(err)
+	}
+	// The same template resolves to a different field for each use.
+	read, err := resolveRolePolicies(role, role.Objects[0], PermissionRead)
+	if err != nil || len(read) != 1 || read[0].Field != owner.String() {
+		t.Fatalf("read: %+v error=%v", read, err)
+	}
+	update, err := resolveRolePolicies(role, role.Objects[0], PermissionUpdate)
+	if err != nil || len(update) != 1 || update[0].Field != warehouse.String() {
+		t.Fatalf("update: %+v error=%v", update, err)
+	}
+
+	broken := map[string]func(*RoleDefinition){
+		"too few arguments":      func(r *RoleDefinition) { r.Objects[0].Policies[0].Arguments = nil },
+		"too many arguments":     func(r *RoleDefinition) { r.Objects[0].Policies[0].Arguments = []string{"code", "description"} },
+		"undeclared placeholder": func(r *RoleDefinition) { r.PolicyTemplates[0].Rule.Field = "$Другое" },
+		"placeholder inline": func(r *RoleDefinition) {
+			r.Objects[0].Policies[0] = AccessPolicy{Operations: []PermissionOperation{PermissionRead}, Rule: &PolicyRule{Field: "$Поле", Operator: PolicyEqual, Parameter: CurrentUserParameter}}
+		},
+		"arguments on inline": func(r *RoleDefinition) {
+			r.Objects[0].Policies[0] = AccessPolicy{Operations: []PermissionOperation{PermissionRead}, Rule: &PolicyRule{Field: "code", Operator: PolicyEqual, Parameter: CurrentUserParameter}, Arguments: []string{"code"}}
+		},
+		"duplicate parameter": func(r *RoleDefinition) { r.PolicyTemplates[0].Parameters = []string{"Поле", "Поле"} },
+	}
+	for name, mutate := range broken {
+		invalid := cloneRole(role)
+		mutate(&invalid)
+		if err := ValidateRole("role.yaml", invalid, metadataManifest()); err == nil {
+			t.Fatalf("accepted a role with %s", name)
+		}
+	}
+}
+
+// Membership in a set read from another table is the shape real restrictions
+// use; comparing against a literal or a parameter cannot express it.
+func TestPolicySubqueryValidation(t *testing.T) {
+	t.Parallel()
+	field, source := uuid.MustNew().String(), uuid.MustNew()
+	valid := PolicyRule{Field: field, Operator: PolicyIn, Subquery: &PolicySubquery{Object: source, Field: "code",
+		Where: []PolicyRule{{Field: "description", Operator: PolicyEqual, Parameter: CurrentUserParameter}}}}
+	role := func(rule PolicyRule) RoleDefinition {
+		return RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Кладовщик", Title: LocalizedText{"ru": "Кладовщик"},
+			Objects: []ObjectPermission{{Object: uuid.MustNew(), Operations: []PermissionOperation{PermissionRead},
+				Policies: []AccessPolicy{{Operations: []PermissionOperation{PermissionRead}, Rule: &rule}}}}}
+	}
+	if err := ValidateRole("role.yaml", role(valid), metadataManifest()); err != nil {
+		t.Fatal(err)
+	}
+	broken := map[string]PolicyRule{
+		"wrong operator": {Field: field, Operator: PolicyEqual, Subquery: &PolicySubquery{Object: source, Field: "code"}},
+		"zero object":    {Field: field, Operator: PolicyIn, Subquery: &PolicySubquery{Field: "code"}},
+		"bad field":      {Field: field, Operator: PolicyIn, Subquery: &PolicySubquery{Object: source, Field: "Код"}},
+		"with values":    {Field: field, Operator: PolicyIn, Values: []Value{{Data: "x"}}, Subquery: &PolicySubquery{Object: source, Field: "code"}},
+		"nested": {Field: field, Operator: PolicyIn, Subquery: &PolicySubquery{Object: source, Field: "code",
+			Where: []PolicyRule{{Field: "code", Operator: PolicyIn, Subquery: &PolicySubquery{Object: source, Field: "code"}}}}},
+	}
+	for name, rule := range broken {
+		if err := ValidateRole("role.yaml", role(rule), metadataManifest()); err == nil {
+			t.Fatalf("accepted a subquery with %s", name)
+		}
+	}
+}
+
 func TestDecodeRoleWithAccessPolicies(t *testing.T) {
 	t.Parallel()
 	role, _ := policyRoleFixture()

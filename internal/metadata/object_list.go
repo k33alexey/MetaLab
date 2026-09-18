@@ -53,7 +53,7 @@ func (repository *CatalogRepository) List(ctx context.Context, name string, curs
 	}
 	table, _ := PhysicalCatalogTable(definition.ID)
 	arguments := []any{basicListCursor(cursor), limit + 1}
-	restriction, err := readRowPredicate(ctx, definition.ID, catalogPolicyColumn(definition), &arguments)
+	restriction, err := readRowPredicate(ctx, repository.catalog, definition.ID, catalogPolicyColumn(definition), &arguments)
 	if err != nil {
 		return CatalogListPage{}, err
 	}
@@ -76,7 +76,7 @@ func (repository *CatalogRepository) ListDynamic(ctx context.Context, name strin
 		return catalogListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
 		return catalogListField(definition, field)
-	}, listRowRestriction(ctx, definition.ID, catalogPolicyColumn(definition)))
+	}, listRowRestriction(ctx, repository.catalog, definition.ID, catalogPolicyColumn(definition)))
 	if err != nil {
 		return CatalogListPage{}, err
 	}
@@ -127,7 +127,7 @@ func (repository *DocumentRepository) List(ctx context.Context, name string, cur
 	}
 	table, _ := PhysicalDocumentTable(definition.ID)
 	arguments := []any{basicListCursor(cursor), limit + 1}
-	restriction, err := readRowPredicate(ctx, definition.ID, documentPolicyColumn(definition), &arguments)
+	restriction, err := readRowPredicate(ctx, repository.catalog, definition.ID, documentPolicyColumn(definition), &arguments)
 	if err != nil {
 		return DocumentListPage{}, err
 	}
@@ -178,7 +178,7 @@ func (repository *DocumentRepository) ListDynamic(ctx context.Context, name stri
 		return documentListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
 		return documentListField(definition, field)
-	}, listRowRestriction(ctx, definition.ID, documentPolicyColumn(definition)))
+	}, listRowRestriction(ctx, repository.catalog, definition.ID, documentPolicyColumn(definition)))
 	if err != nil {
 		return DocumentListPage{}, err
 	}

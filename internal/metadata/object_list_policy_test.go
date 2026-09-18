@@ -247,7 +247,7 @@ func TestSessionParameterNameIsReserved(t *testing.T) {
 func TestListRowRestrictionFollowsContext(t *testing.T) {
 	t.Parallel()
 	object := uuid.MustNew()
-	if restriction := listRowRestriction(context.Background(), object, nil); restriction.restricted {
+	if restriction := listRowRestriction(context.Background(), nil, object, nil); restriction.restricted {
 		t.Fatal("a context without a policy must read unrestricted")
 	}
 	role := readPolicyRole("Кладовщик", "code", "A")
@@ -256,7 +256,7 @@ func TestListRowRestrictionFollowsContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	restriction := listRowRestriction(WithPermissions(context.Background(), policy), definition.ID, nil)
+	restriction := listRowRestriction(WithPermissions(context.Background(), policy), catalog, definition.ID, nil)
 	if !restriction.restricted || len(restriction.alternatives) != 1 {
 		t.Fatalf("restriction=%+v", restriction)
 	}

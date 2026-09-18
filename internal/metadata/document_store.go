@@ -217,7 +217,7 @@ func (repository *DocumentRepository) Get(ctx context.Context, reference Documen
 	}
 	table, _ := PhysicalDocumentTable(definition.ID)
 	arguments := []any{reference.ObjectID.String()}
-	restriction, err := readRowPredicate(ctx, definition.ID, documentPolicyColumn(definition), &arguments)
+	restriction, err := readRowPredicate(ctx, repository.catalog, definition.ID, documentPolicyColumn(definition), &arguments)
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +264,7 @@ func (repository *DocumentRepository) FindByNumber(ctx context.Context, name, nu
 	}
 	table, _ := PhysicalDocumentTable(definition.ID)
 	arguments := []any{period, number}
-	restriction, err := readRowPredicate(ctx, definition.ID, documentPolicyColumn(definition), &arguments)
+	restriction, err := readRowPredicate(ctx, repository.catalog, definition.ID, documentPolicyColumn(definition), &arguments)
 	if err != nil {
 		return DocumentReference{}, false, err
 	}

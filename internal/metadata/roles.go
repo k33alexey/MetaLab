@@ -100,9 +100,11 @@ func ValidateRole(source string, value RoleDefinition, manifest project.Project)
 		return fmt.Errorf("validate %s: role exceeds %d permissions", source, MaxRolePermissions)
 	}
 	issues = append(issues, validatePolicyTemplates(value.PolicyTemplates)...)
-	templates := make(map[string]bool, len(value.PolicyTemplates))
+	// Name to declared parameter count: a restriction must supply one field per
+	// template parameter, so the arity travels with the name.
+	templates := make(map[string]int, len(value.PolicyTemplates))
 	for _, template := range value.PolicyTemplates {
-		templates[template.Name] = true
+		templates[template.Name] = len(template.Parameters)
 	}
 	count := len(value.Objects) + len(value.Commands)
 	objects := make(map[uuid.UUID]bool, len(value.Objects))

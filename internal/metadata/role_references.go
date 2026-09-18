@@ -143,11 +143,46 @@ func (catalog *Catalog) validateRolePolicies(role RoleDefinition, permission Obj
 		if _, ok := target.fields[rule.Field]; !ok {
 			return fmt.Errorf("role %s: policy field %s does not belong to object %s", role.Name, rule.Field, permission.Object)
 		}
-		if rule.Parameter != "" {
-			if _, ok := catalog.SessionParameter(rule.Parameter); !ok {
-				return fmt.Errorf("role %s: policy references unknown session parameter %s", role.Name, rule.Parameter)
+		if err := catalog.validatePolicyOperand(role, *rule); err != nil {
+			return err
+		}
+		if rule.Subquery == nil {
+			continue
+		}
+		// The subquery reads another object, so its own field and conditions are
+		// checked against THAT object - a policy must not be able to name a field
+		// of the restricted table and have it silently resolve elsewhere.
+		source, ok := catalog.permissionTarget(rule.Subquery.Object)
+		if !ok {
+			return fmt.Errorf("role %s: policy subquery reads unknown or unsupported object %s", role.Name, rule.Subquery.Object)
+		}
+		if _, ok := source.fields[rule.Subquery.Field]; !ok {
+			return fmt.Errorf("role %s: policy subquery field %s does not belong to object %s", role.Name, rule.Subquery.Field, rule.Subquery.Object)
+		}
+		for _, condition := range rule.Subquery.Where {
+			if _, ok := source.fields[condition.Field]; !ok {
+				return fmt.Errorf("role %s: policy subquery condition field %s does not belong to object %s", role.Name, condition.Field, rule.Subquery.Object)
+			}
+			if err := catalog.validatePolicyOperand(role, condition); err != nil {
+				return err
 			}
 		}
+	}
+	return nil
+}
+
+// validatePolicyOperand checks what a rule compares against, independently of
+// which object the field itself belongs to.
+func (catalog *Catalog) validatePolicyOperand(role RoleDefinition, rule PolicyRule) error {
+	if rule.Parameter == "" {
+		return nil
+	}
+	if ReservedSessionParameter(rule.Parameter) {
+		// The platform supplies this one, so a project never declares it.
+		return nil
+	}
+	if _, ok := catalog.SessionParameter(rule.Parameter); !ok {
+		return fmt.Errorf("role %s: policy references unknown session parameter %s", role.Name, rule.Parameter)
 	}
 	return nil
 }

@@ -297,6 +297,35 @@ func TestCatalogRepositoryLifecycleIntegration(t *testing.T) {
 	if _, err := repository.ListDynamic(WithPermissions(ctx, policy), "Контрагенты", DynamicListRequest{Limit: 20}); err == nil {
 		t.Fatal("a policy on an unresolved session parameter was silently ignored")
 	}
+
+	// Membership in a set read from another table - the shape real restrictions
+	// use, and the one a literal or a parameter cannot express. The subquery runs
+	// with platform authority: it reads rows this caller may not read directly.
+	policy, err = restrictedRead(PolicyRule{Field: "code", Operator: PolicyIn,
+		Subquery: &PolicySubquery{Object: catalogID, Field: "code",
+			Where: []PolicyRule{{Field: "description", Operator: PolicyEqual, Values: []Value{{Kind: StringType, Data: "Второй"}}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bySubquery, err := repository.ListDynamic(WithPermissions(ctx, policy), "Контрагенты", DynamicListRequest{Limit: 20})
+	if err != nil || len(bySubquery.Records) != 1 || bySubquery.Records[0].Description != "Второй" {
+		t.Fatalf("restricted by subquery: %+v error=%v", bySubquery, err)
+	}
+	// Negated membership is the complement, over the same 22 rows.
+	policy, err = restrictedRead(PolicyRule{Field: "code", Operator: PolicyNotIn,
+		Subquery: &PolicySubquery{Object: catalogID, Field: "code",
+			Where: []PolicyRule{{Field: "description", Operator: PolicyEqual, Values: []Value{{Kind: StringType, Data: "Второй"}}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	excluded, err := repository.ListDynamic(WithPermissions(ctx, policy), "Контрагенты", DynamicListRequest{Limit: 50})
+	if err != nil || len(excluded.Records) != 21 {
+		t.Fatalf("negated subquery: %d records error=%v", len(excluded.Records), err)
+	}
+	// Reading by reference honours it too, and a hidden row reads as not found.
+	if _, err := repository.Get(WithPermissions(ctx, policy), visible); !errors.Is(err, ErrCatalogRecordNotFound) {
+		t.Fatalf("subquery restriction ignored by read-by-key: %v", err)
+	}
 	sortedFirst, err := repository.ListDynamic(ctx, "Контрагенты", DynamicListRequest{Limit: 20, SortField: "Description", Descending: true})
 	if err != nil || len(sortedFirst.Records) != 20 || sortedFirst.NextCursor == nil {
 		t.Fatalf("sorted first page records=%d cursor=%v error=%v", len(sortedFirst.Records), sortedFirst.NextCursor, err)

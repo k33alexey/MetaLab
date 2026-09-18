@@ -157,7 +157,12 @@ func resolveRolePolicies(role RoleDefinition, grant ObjectPermission, operation 
 		if index < 0 {
 			return nil, fmt.Errorf("role %s references undeclared policy template %q", role.Name, policy.Template)
 		}
-		rules = append(rules, clonePolicyRule(role.PolicyTemplates[index].Rule))
+		template := role.PolicyTemplates[index]
+		resolved, err := substitutePolicyPlaceholders(template.Rule, template.Parameters, policy.Arguments)
+		if err != nil {
+			return nil, fmt.Errorf("role %s, template %s: %w", role.Name, template.Name, err)
+		}
+		rules = append(rules, resolved)
 	}
 	return rules, nil
 }

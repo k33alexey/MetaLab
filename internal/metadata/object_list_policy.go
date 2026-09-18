@@ -19,19 +19,20 @@ type rowRestriction struct {
 	alternatives []PolicyRule
 	column       func(string) (listColumn, bool)
 	parameter    func(string) ([]Value, bool)
+	catalog      *Catalog
 }
 
 // listRowRestriction reads the caller's policy from ctx. A context without one
 // (Studio, CLI, role-free tests) reads unrestricted, the same convention
 // requireObject follows - the hosting layer decides whether a caller is subject
 // to application permissions at all.
-func listRowRestriction(ctx context.Context, objectID uuid.UUID, column func(string) (listColumn, bool)) rowRestriction {
+func listRowRestriction(ctx context.Context, catalog *Catalog, objectID uuid.UUID, column func(string) (listColumn, bool)) rowRestriction {
 	permissions, ok := PermissionsFromContext(ctx)
 	if !ok {
 		return rowRestriction{}
 	}
 	alternatives, restricted := permissions.RowFilter(objectID, PermissionRead)
-	return rowRestriction{restricted: restricted, alternatives: alternatives, column: column,
+	return rowRestriction{restricted: restricted, alternatives: alternatives, column: column, catalog: catalog,
 		parameter: func(name string) ([]Value, bool) { return sessionValue(ctx, name) }}
 }
 
@@ -43,8 +44,8 @@ func listRowRestriction(ctx context.Context, objectID uuid.UUID, column func(str
 //
 // It returns the fragment rather than a finished statement because these reads
 // end in ORDER BY/LIMIT, and the condition has to go before that, not after.
-func readRowPredicate(ctx context.Context, objectID uuid.UUID, column func(string) (listColumn, bool), arguments *[]any) (string, error) {
-	predicate, err := listRowRestriction(ctx, objectID, column).predicate(arguments)
+func readRowPredicate(ctx context.Context, catalog *Catalog, objectID uuid.UUID, column func(string) (listColumn, bool), arguments *[]any) (string, error) {
+	predicate, err := listRowRestriction(ctx, catalog, objectID, column).predicate(arguments)
 	if err != nil || predicate == "" {
 		return "", err
 	}
@@ -75,6 +76,9 @@ func (restriction rowRestriction) renderRule(rule PolicyRule, arguments *[]any) 
 	column, ok := restriction.column(rule.Field)
 	if !ok {
 		return "", fmt.Errorf("access policy field %q is not available in this list", rule.Field)
+	}
+	if rule.Subquery != nil {
+		return restriction.renderSubquery(column, rule, arguments)
 	}
 	operands := rule.Values
 	if rule.Parameter != "" {
@@ -121,6 +125,47 @@ func (restriction rowRestriction) renderRule(rule PolicyRule, arguments *[]any) 
 	return "", fmt.Errorf("unsupported access policy operator %q", rule.Operator)
 }
 
+// policySubqueryAlias names the subquery's own table explicitly. Without it an
+// inner column that does not exist would silently resolve against the OUTER
+// query instead of failing - PostgreSQL's scoping rules make that legal, and it
+// would turn a restriction into a condition that is always true.
+const policySubqueryAlias = "policy_source"
+
+func (restriction rowRestriction) renderSubquery(column listColumn, rule PolicyRule, arguments *[]any) (string, error) {
+	if restriction.catalog == nil {
+		return "", fmt.Errorf("access policy subquery cannot be resolved without metadata")
+	}
+	table, resolve, ok := restriction.catalog.policySubqueryTarget(rule.Subquery.Object)
+	if !ok {
+		return "", fmt.Errorf("access policy subquery reads an object that is not a catalog or document")
+	}
+	inner := rowRestriction{restricted: true, catalog: restriction.catalog, parameter: restriction.parameter,
+		column: queryPolicyColumn(policySubqueryAlias, resolve)}
+	source, ok := inner.column(rule.Subquery.Field)
+	if !ok {
+		return "", fmt.Errorf("access policy subquery field %q does not belong to the object it reads", rule.Subquery.Field)
+	}
+	conditions := make([]string, 0, len(rule.Subquery.Where))
+	for _, condition := range rule.Subquery.Where {
+		clause, err := inner.renderRule(condition, arguments)
+		if err != nil {
+			return "", err
+		}
+		conditions = append(conditions, clause)
+	}
+	statement := "SELECT " + source.name + " FROM " + table + " AS " + policySubqueryAlias
+	if len(conditions) != 0 {
+		// Conditions narrow one set, so they combine with AND - unlike the
+		// alternatives of different roles, which describe separate allowed sets.
+		statement += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	operator := "IN"
+	if rule.Operator == PolicyNotIn {
+		operator = "NOT IN"
+	}
+	return column.name + " " + operator + " (" + statement + ")", nil
+}
+
 // queryPolicyColumn qualifies a policy column with the source alias the query
 // engine gave that table, so a restriction survives joins and self-joins.
 func queryPolicyColumn(sqlAlias string, base func(string) (listColumn, bool)) func(string) (listColumn, bool) {
@@ -144,6 +189,30 @@ func documentPolicyColumn(definition DocumentDefinition) func(string) (listColum
 	return policyListColumn(func(field string) (listColumn, bool) {
 		return documentListField(definition, field)
 	}, definition.Attributes)
+}
+
+// policySubqueryTarget resolves the object a subquery reads: its physical table
+// and how to name its fields. Only catalogs and documents qualify - the same
+// coverage the restricted side has, so a policy cannot reach through a subquery
+// into something the restriction itself could not address.
+func (catalog *Catalog) policySubqueryTarget(objectID uuid.UUID) (string, func(string) (listColumn, bool), bool) {
+	if index, ok := catalog.catalogByID[objectID]; ok {
+		definition := catalog.Catalogs[index]
+		table, err := PhysicalCatalogTable(definition.ID)
+		if err != nil {
+			return "", nil, false
+		}
+		return qualifiedCatalogTable(table), catalogPolicyColumn(definition), true
+	}
+	if index, ok := catalog.documentByID[objectID]; ok {
+		definition := catalog.Documents[index]
+		table, err := PhysicalDocumentTable(definition.ID)
+		if err != nil {
+			return "", nil, false
+		}
+		return qualifiedCatalogTable(table), documentPolicyColumn(definition), true
+	}
+	return "", nil, false
 }
 
 // policyListColumn maps a policy field key - an attribute UUID or a lowercase
