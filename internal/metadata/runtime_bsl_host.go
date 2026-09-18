@@ -26,6 +26,15 @@ func WireBSLEvents(runtime *Runtime, program *bytecode.Program, catalog *Catalog
 		return fmt.Errorf("start BSL machine: %w", err)
 	}
 	eventContext := machine.NewContextWithMetadata(runtime)
+	// The session module gets a BSL context of its own, never the one the
+	// object events run on: the handler is called from INSIDE another running
+	// routine (application code reads a session parameter mid-write), and a
+	// context cannot be executing two calls at once.
+	sessionModule, err := NewSessionBSLEvents(machine.NewContextWithMetadata(runtime))
+	if err != nil {
+		return err
+	}
+	runtime.SetSessionModuleHandler(sessionModule)
 	for _, definition := range catalog.Documents {
 		bridge, err := NewDocumentBSLEvents(runtime, eventContext, definition)
 		if err != nil {

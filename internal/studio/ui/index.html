@@ -149,7 +149,7 @@
     const languagesEditor=createLanguagesEditor(languagesHost,()=>{if(!currentFile?.isLanguages)return;dirty=JSON.stringify(languagesEditor.value())!==currentFile.initialProject;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Языки изменены':'Готово'});
     let selectedElement,selectedNode=null,currentFile=null,dirty=false,loadingFile=false,projectName='project';
     function editablePath(value){return value==='mlproject.yaml'||value?.endsWith('.yaml')||value?.endsWith('.bsl')}
-    async function select(node,element){if(node.id==='metadata/roles'){if(!await openRoleOverview())return;}else if(editablePath(node.path)&&currentFile?.path!==node.path&&!await openFile(node.path))return;if(node.fragment&&currentFile?.isCatalog)catalogEditor.selectFragment(node.fragment);if(currentFile?.path==='mlproject.yaml'){if((node.fragment||'').startsWith('language:'))showLanguagesEditor(currentFile);else if(node.id==='project')showProjectEditor(currentFile);if(node.fragment)languagesEditor.selectFragment(node.fragment)}if(selectedElement)selectedElement.classList.remove('selected');selectedElement=element;element.classList.add('selected');selectedNode=node;updateTreeToolbar();document.querySelector('#selection').textContent=node.title;if(currentFile?.isForm&&currentFile.path===node.path)return;properties.replaceChildren();for(const item of node.properties||[]){const row=document.createElement('div');row.className='property';const name=document.createElement('span'),value=document.createElement('span');name.textContent=item.name;value.textContent=item.value;row.append(name,value);properties.append(row)}}
+    async function select(node,element){if(node.id==='session-module'){if(!await openSessionModule(node))return;}else if(node.id==='metadata/roles'){if(!await openRoleOverview())return;}else if(editablePath(node.path)&&currentFile?.path!==node.path&&!await openFile(node.path))return;if(node.fragment&&currentFile?.isCatalog)catalogEditor.selectFragment(node.fragment);if(currentFile?.path==='mlproject.yaml'){if((node.fragment||'').startsWith('language:'))showLanguagesEditor(currentFile);else if(node.id==='project')showProjectEditor(currentFile);if(node.fragment)languagesEditor.selectFragment(node.fragment)}if(selectedElement)selectedElement.classList.remove('selected');selectedElement=element;element.classList.add('selected');selectedNode=node;updateTreeToolbar();document.querySelector('#selection').textContent=node.title;if(currentFile?.isForm&&currentFile.path===node.path)return;properties.replaceChildren();for(const item of node.properties||[]){const row=document.createElement('div');row.className='property';const name=document.createElement('span'),value=document.createElement('span');name.textContent=item.name;value.textContent=item.value;row.append(name,value);properties.append(row)}}
     function renderNode(node){if(node.children&&node.children.length){const details=document.createElement('details');details.open=node.id==='project'||node.id==='metadata';const summary=document.createElement('summary');const icon=document.createElement('span');icon.className='icon';icon.textContent='◆';const title=document.createElement('span');title.textContent=node.title;summary.append(icon,title);summary.addEventListener('click',event=>{event.stopPropagation();select(node,summary)});const children=document.createElement('div');children.className='children';for(const child of node.children)children.append(renderNode(child));details.append(summary,children);return details}const leaf=document.createElement('div');leaf.className='leaf';const icon=document.createElement('span');icon.className='icon';icon.textContent=node.kind==='group'||node.kind==='metadata-group'?'◆':'●';const title=document.createElement('span');title.textContent=node.title;leaf.append(icon,title);leaf.addEventListener('click',async()=>{await select(node,leaf);if(node.line)bslEditor.goTo({line:node.line,column:1})});return leaf}
     function showSourceEditor(file){roleOverview.close();roleEditor.close();catalogEditor.close();projectEditor.close();languagesEditor.close();formDesigner.close(true);formHost.hidden=true;editorHost.hidden=false;editor.value=file.content;editor.disabled=false;bslEditor.open(file);bslEditor.setBreakpoints(Array.from(debugBreakpoints.get(file.path)||[]))}
     function insertDesignedQuery(query){if(!currentFile||currentFile.isForm||currentFile.language!=='bsl'){status.textContent='Откройте BSL-модуль для вставки запроса.';status.className='warning';return false}const lines=query.replaceAll('"','""').split('\n'),literal='"'+lines[0]+lines.slice(1).map(line=>'\n|'+line).join('')+'"',expression='Новый Запрос('+literal+')';editor.setRangeText(expression,editor.selectionStart,editor.selectionEnd,'end');editor.dispatchEvent(new Event('input'));editor.focus();return true}
@@ -159,6 +159,31 @@
     function showProjectEditor(value){roleOverview.close();formDesigner.close();roleEditor.close();catalogEditor.close();languagesEditor.close();editorHost.hidden=true;bslEditor.close();projectEditor.open(value);value.isProject=true;value.isLanguages=false;value.initialProject=JSON.stringify(projectEditor.value());status.className='';status.textContent='Редактор проекта · Готово'}
     function showLanguagesEditor(value){roleOverview.close();formDesigner.close();roleEditor.close();catalogEditor.close();projectEditor.close();editorHost.hidden=true;bslEditor.close();languagesEditor.open(value);value.isProject=true;value.isLanguages=true;value.initialProject=JSON.stringify(languagesEditor.value());status.className='';status.textContent='Языки · Готово'}
     async function loadRole(path){const response=await fetch(`/api/role?path=${encodeURIComponent(path)}`);if(!response.ok)throw new Error(await response.text());const value=await response.json();showRoleEditor(value);currentFile=value}
+    // Модуль сеанса принадлежит корню конфигурации и в проекте ровно один,
+    // поэтому открытие его же и создаёт: выбирать «создавать ли» не из чего,
+    // выбирают только содержимое.
+    async function openSessionModule(node){
+      if(loadingFile)return false;
+      if(currentFile?.path==='session-module.bsl')return true;
+      if(dirty&&!confirm('Текущий файл изменён. Отменить несохранённые изменения?'))return false;
+      loadingFile=true;status.className='';status.textContent='Открытие файла…';
+      try{
+        const response=await fetch('/api/session-module',{method:'POST',headers:{'X-ML-CSRF':'1'}});
+        if(!response.ok)throw new Error(await response.text());
+        currentFile=await response.json();currentFile.isForm=false;
+        showSourceEditor(currentFile);
+        filePath.textContent=currentFile.path;dirty=false;saveButton.disabled=true;
+        // Дерево перечитывается сразу: открытие могло создать файл, и узел
+        // должен об этом сказать. Свойства берём из свежего дерева, иначе
+        // панель показала бы состояние до создания.
+        const refreshed=await loadTree(false);
+        const fresh=(refreshed?.tree?.children||[]).find(item=>item.id==='session-module');
+        if(fresh&&node)node.properties=fresh.properties;
+        status.className='';status.textContent='Модуль сеанса · Готово';
+        return true;
+      }catch(error){status.textContent=String(error.message||error).trim();status.className='error';return false;}
+      finally{loadingFile=false;}
+    }
     // Узел группы «Роли» открывает не файл, а сводное окно: одна и та же роль
     // редактируется по-прежнему в своём редакторе, а здесь виден весь набор
     // ролей сразу по одному выбранному объекту.
@@ -208,7 +233,7 @@
       for(const language of languages||[]){const option=document.createElement('option');option.value=language.code;option.textContent=language.title||language.code;option.selected=language.code===current;studioLanguageSelect.append(option)}
       studioLanguageSelect.hidden=(languages||[]).length<=1;
     }
-    async function loadTree(selectRoot=true){status.textContent='Обновление…';status.className='';const response=await fetch('/api/project');if(!response.ok){status.textContent=await response.text();status.className='error';return}const data=await response.json(),manifest=data.manifest;projectName=manifest.name||manifest.Name;const title=manifest.title||manifest.Title;document.title=`ML Studio — ${title}`;document.querySelector('#project-name').textContent=title;document.querySelector('#project-path').textContent=data.projectPath;refreshLanguageSelector(manifest.languages||manifest.Languages,manifest.defaultLanguage||manifest.DefaultLanguage);tree.replaceChildren(renderNode(data.tree));if(selectRoot)await select(data.tree,tree.querySelector('summary'));if(!dirty){status.className='';status.textContent='Готово'}}
+    async function loadTree(selectRoot=true){status.textContent='Обновление…';status.className='';const response=await fetch('/api/project');if(!response.ok){status.textContent=await response.text();status.className='error';return}const data=await response.json(),manifest=data.manifest;projectName=manifest.name||manifest.Name;const title=manifest.title||manifest.Title;document.title=`ML Studio — ${title}`;document.querySelector('#project-name').textContent=title;document.querySelector('#project-path').textContent=data.projectPath;refreshLanguageSelector(manifest.languages||manifest.Languages,manifest.defaultLanguage||manifest.DefaultLanguage);tree.replaceChildren(renderNode(data.tree));if(selectRoot)await select(data.tree,tree.querySelector('summary'));if(!dirty){status.className='';status.textContent='Готово'}return data}
     async function pollExternalChange(){
       if(!currentFile||loadingFile)return;
       const opened=currentFile,knownRevision=opened.externalRevision||opened.revision;

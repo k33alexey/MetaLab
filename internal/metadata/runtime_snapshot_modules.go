@@ -40,6 +40,11 @@ func LoadProjectModules(root string, catalog *Catalog) ([]RuntimeModule, error) 
 		}
 		relativePaths = append(relativePaths, filepath.ToSlash(filepath.Join("modules", entry.Name())))
 	}
+	if _, err := os.Stat(filepath.Join(root, project.SessionModuleFile)); err == nil {
+		relativePaths = append(relativePaths, project.SessionModuleFile)
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("read session module: %w", err)
+	}
 	objectPaths, err := project.ObjectFolderSourcePaths(root)
 	if err != nil {
 		return nil, err
@@ -62,6 +67,9 @@ func LoadProjectModules(root string, catalog *Catalog) ([]RuntimeModule, error) 
 		sourceBytes += len(content)
 		id := strings.TrimSuffix(filepath.Base(relative), ".bsl")
 		descriptor := descriptors[id]
+		if relative == project.SessionModuleFile {
+			descriptor = moduleNameDescriptor{name: SessionModuleName, defaultContext: syntax.ContextServer}
+		}
 		if descriptor.name == "" {
 			descriptor.name = "Модуль" + strings.ReplaceAll(id, "-", "")
 		}

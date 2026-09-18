@@ -260,6 +260,9 @@ func validateEditablePath(relative string) (string, string, error) {
 	if relative == project.ManifestFile {
 		return relative, "yaml", nil
 	}
+	if relative == project.SessionModuleFile {
+		return relative, "bsl", nil
+	}
 	parts := strings.Split(relative, "/")
 	if len(parts) == 2 {
 		extension := path.Ext(parts[1])

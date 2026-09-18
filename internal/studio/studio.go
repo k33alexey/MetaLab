@@ -168,6 +168,7 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 			{Name: "Формат", Value: fmt.Sprint(manifest.Format)},
 		},
 	}
+	root.Children = append(root.Children, workspace.sessionModuleNodeLocked())
 	for _, directory := range project.RootDirectories() {
 		var node Node
 		if directory == "metadata" {
@@ -219,6 +220,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 	registerDebugRoutes(routes, workspace)
 	registerTestRoutes(routes, workspace)
 	registerRoleRoutes(routes, workspace)
+	registerSessionModuleRoutes(routes, workspace)
 	registerCatalogEditorRoutes(routes, workspace)
 	registerProjectEditorRoutes(routes, workspace)
 	routes.Handle("GET /ui/", http.FileServer(http.FS(assets)))

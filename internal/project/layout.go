@@ -17,7 +17,14 @@ import (
 const (
 	// ManifestFile is the single root manifest of an ML Project.
 	ManifestFile = "mlproject.yaml"
-	keepFile     = ".gitkeep"
+	// SessionModuleFile is the session module of an ML Project. Like the
+	// manifest it is a single file with a fixed name at the project root,
+	// not an entry in a UUID-named pool: the configuration root owns exactly
+	// one of it, so a UUID would name something that never has a second
+	// instance. The file is optional - a project without one simply has no
+	// session parameter handler.
+	SessionModuleFile = "session-module.bsl"
+	keepFile          = ".gitkeep"
 )
 
 var (

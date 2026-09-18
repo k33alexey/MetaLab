@@ -25,6 +25,11 @@ func (runtime *Runtime) ConfigureProgramEventsWithObserver(program *bytecode.Pro
 	if err != nil {
 		return err
 	}
+	sessionModule, err := NewSessionBSLEvents(machine.NewContextWithMetadataAndObserver(runtime, observer))
+	if err != nil {
+		return err
+	}
+	runtime.SetSessionModuleHandler(sessionModule)
 	moduleNames := make(map[string]string, len(program.Modules))
 	for _, module := range program.Modules {
 		moduleNames[filepath.ToSlash(module.Source)] = module.Name

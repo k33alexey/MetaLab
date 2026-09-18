@@ -91,7 +91,7 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 	}
 
 	documentID, moduleID, registerID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
-	productAttributeID, quantityAttributeID := uuid.MustNew(), uuid.MustNew()
+	productAttributeID, quantityAttributeID, warehouseAttributeID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	productDimensionID, quantityResourceID := uuid.MustNew(), uuid.MustNew()
 	document := metadata.DocumentDefinition{
 		Format: 1, ID: documentID, Name: "Поступление", Title: metadata.LocalizedText{"ru": "Поступление"}, Posting: true,
@@ -99,6 +99,7 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 		Attributes: []metadata.Attribute{
 			{ID: productAttributeID, Name: "Товар", Title: metadata.LocalizedText{"ru": "Товар"}, Required: true, Types: []metadata.Type{{Kind: metadata.StringType, Length: 100}}},
 			{ID: quantityAttributeID, Name: "Количество", Title: metadata.LocalizedText{"ru": "Количество"}, Required: true, Types: []metadata.Type{{Kind: metadata.NumberType, Precision: 15, Scale: 3}}},
+			{ID: warehouseAttributeID, Name: "Склад", Title: metadata.LocalizedText{"ru": "Склад"}, Types: []metadata.Type{{Kind: metadata.StringType, Length: 50}}},
 		},
 		ObjectModule: &moduleID,
 	}
@@ -127,9 +128,27 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Сессионный параметр и модуль сеанса: значение не хранится нигде, его
+	// вычисляет решение, и здесь проверяется, что оно доходит до прикладного
+	// BSL на настоящем пути записи, а не только в модульном тесте.
+	warehouseParameter := metadata.SessionParameter{
+		Format: 1, ID: uuid.MustNew(), Name: "ДоступныйСклад", Title: metadata.LocalizedText{"ru": "Доступный склад"},
+		Types: []metadata.Type{{Kind: metadata.StringType, Length: 50}},
+	}
+	write("metadata/session-parameters/"+warehouseParameter.ID.String()+".yaml", warehouseParameter)
+	if err := os.WriteFile(filepath.Join(root, project.SessionModuleFile), []byte(`Процедура УстановкаПараметровСеанса(ИменаПараметровСеанса)
+    ПараметрыСеанса.ДоступныйСклад = "Основной";
+КонецПроцедуры`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	write("metadata/documents/"+documentID.String()+"/object.yaml", document)
 	write("metadata/accumulation-registers/"+registerID.String()+"/object.yaml", register)
 	if err := os.WriteFile(filepath.Join(root, "metadata/documents", documentID.String(), moduleID.String()+".bsl"), []byte(`&НаСервере
+Процедура ПередЗаписью(Отказ, РежимЗаписи, РежимПроведения)
+    ЭтотОбъект.Склад = ПараметрыСеанса.ДоступныйСклад;
+КонецПроцедуры
+
+&НаСервере
 Процедура ОбработкаПроведения(Отказ, РежимПроведения)
     Набор = РегистрыНакопления.ОстаткиТоваров.СоздатьНаборЗаписей();
     Набор.Отбор.Регистратор.Установить(ЭтотОбъект.Ссылка);
@@ -192,6 +211,11 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 	}
 	if created.Fields["Товар"].Data != "A" || created.Fields["Количество"].Data != "5" {
 		t.Fatalf("saved fields not round-tripped: %+v", created.Fields)
+	}
+	// Значение пришло из модуля сеанса: клиент его не передавал, в базе его
+	// нет, и без вызова обработчика поле осталось бы пустым.
+	if created.Fields["Склад"].Data != "Основной" {
+		t.Fatalf("session module did not supply the session parameter on the write path: %+v", created.Fields)
 	}
 
 	reloaded, err := runtime.GetApplicationObject(ctx, portalLogin.Token, registered.ID, metadata.DocumentKind, "Поступление", created.Reference)

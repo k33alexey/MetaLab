@@ -30,6 +30,8 @@ type Runtime struct {
 	dataLockWait                   atomic.Int64
 	sessionParametersMu            sync.RWMutex
 	sessionParameters              map[string]bytecode.Value
+	sessionModule                  *SessionBSLEvents
+	sessionModuleRunning           bool
 }
 
 func NewRuntime(repository *ConstantRepository, catalog *Catalog, actor *uuid.UUID) (*Runtime, error) {
@@ -228,21 +230,36 @@ func (runtime *Runtime) SetConstant(ctx context.Context, name string, value byte
 // GetSessionParameter reads a session parameter from server-process memory.
 // Session parameters are never persisted to PostgreSQL: an unset parameter
 // resolves to its declared default for the lifetime of this Runtime.
-func (runtime *Runtime) GetSessionParameter(_ context.Context, name string) (bytecode.Value, error) {
+//
+// Reading one the solution has not set yet is what triggers the session module:
+// the handler is asked for this parameter by name, and the value is re-read
+// afterwards. The handler is allowed to set a whole group at once, so the
+// second read - not the handler's answer - decides what this call returns.
+func (runtime *Runtime) GetSessionParameter(ctx context.Context, name string) (bytecode.Value, error) {
 	parameter, ok := runtime.catalog.SessionParameter(name)
 	if !ok {
 		return bytecode.Undefined(), fmt.Errorf("unknown session parameter %q", name)
 	}
-	runtime.sessionParametersMu.RLock()
-	stored, set := runtime.sessionParameters[strings.ToLower(name)]
-	runtime.sessionParametersMu.RUnlock()
-	if set {
+	if stored, set := runtime.storedSessionParameter(name); set {
+		return stored, nil
+	}
+	if _, err := runtime.runSessionModule(ctx, []string{parameter.Name}); err != nil {
+		return bytecode.Undefined(), err
+	}
+	if stored, set := runtime.storedSessionParameter(name); set {
 		return stored, nil
 	}
 	if parameter.Default == nil {
 		return bytecode.Undefined(), nil
 	}
 	return runtime.applicationValueToBSL(parameter.Types, *parameter.Default)
+}
+
+func (runtime *Runtime) storedSessionParameter(name string) (bytecode.Value, bool) {
+	runtime.sessionParametersMu.RLock()
+	defer runtime.sessionParametersMu.RUnlock()
+	stored, set := runtime.sessionParameters[strings.ToLower(name)]
+	return stored, set
 }
 
 // SetSessionParameter stores a session parameter in server-process memory

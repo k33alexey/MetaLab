@@ -46,9 +46,15 @@ func TestWorkspaceSnapshotBuildsCanonicalTree(t *testing.T) {
 		t.Fatal(err)
 	}
 	// "reports" (Компоновка данных) has no content here and is hidden: report
-	// layouts belong to Отчёты/Обработки objects, which do not exist yet.
-	if snapshot.Manifest.Name != "SalesDemo" || len(snapshot.Tree.Children) != len(project.RootDirectories())-1 {
+	// layouts belong to Отчёты/Обработки objects, which do not exist yet. The
+	// session module is a leaf of the configuration root itself, so it stands
+	// beside the directories rather than inside one.
+	wantChildren := len(project.RootDirectories()) - 1 + 1
+	if snapshot.Manifest.Name != "SalesDemo" || len(snapshot.Tree.Children) != wantChildren {
 		t.Fatalf("snapshot = %+v", snapshot)
+	}
+	if first := snapshot.Tree.Children[0]; first.ID != "session-module" || first.Path != project.SessionModuleFile {
+		t.Fatalf("session module node = %+v", first)
 	}
 	if !treeContains(snapshot.Tree, metadataPath) || !treeContains(snapshot.Tree, modulePath) {
 		t.Fatalf("tree does not contain created sources: %+v", snapshot.Tree)
