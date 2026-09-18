@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/metadata"
@@ -63,6 +64,61 @@ func (workspace *Workspace) readRoleLocked(relative string) (RoleSource, error) 
 		return RoleSource{}, err
 	}
 	return RoleSource{Path: relative, Revision: file.Revision, Role: role, Schema: schema, Languages: roleLanguages(manifest), DefaultLanguage: manifest.DefaultLanguage}, nil
+}
+
+// RoleOverview is what the cross-role screens read. Opening one role at a time
+// answers "what may this role do"; these screens answer the question a developer
+// actually asks before a release - "who can reach this object, and under what
+// restriction" - which no single role can show.
+type RoleOverview struct {
+	Roles           []RoleOverviewEntry       `json:"roles"`
+	Schema          metadata.PermissionSchema `json:"schema"`
+	Languages       []FormLanguage            `json:"languages"`
+	DefaultLanguage string                    `json:"defaultLanguage"`
+}
+
+type RoleOverviewEntry struct {
+	Path string                  `json:"path"`
+	Role metadata.RoleDefinition `json:"role"`
+}
+
+// ReadAllRoles reads every role of the project. A role that does not decode is
+// reported rather than skipped: silently omitting it would understate who has
+// access, which is the one mistake this screen must not make.
+func (workspace *Workspace) ReadAllRoles() (RoleOverview, error) {
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
+	manifest, err := project.ValidateLayout(workspace.root)
+	if err != nil {
+		return RoleOverview{}, err
+	}
+	entries, err := os.ReadDir(filepath.Join(workspace.root, "metadata", "roles"))
+	if err != nil && !os.IsNotExist(err) {
+		return RoleOverview{}, err
+	}
+	result := RoleOverview{Roles: []RoleOverviewEntry{}, Languages: roleLanguages(manifest), DefaultLanguage: manifest.DefaultLanguage}
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Name() == ".gitkeep" {
+			continue
+		}
+		relative := "metadata/roles/" + entry.Name()
+		file, err := workspace.readSource(relative)
+		if err != nil {
+			return RoleOverview{}, err
+		}
+		role, err := metadata.DecodeRole(relative, strings.NewReader(file.Content), manifest)
+		if err != nil {
+			return RoleOverview{}, err
+		}
+		result.Roles = append(result.Roles, RoleOverviewEntry{Path: relative, Role: role})
+	}
+	sort.Slice(result.Roles, func(i, j int) bool {
+		return strings.ToLower(result.Roles[i].Role.Name) < strings.ToLower(result.Roles[j].Role.Name)
+	})
+	if result.Schema, err = metadata.LoadPermissionSchema(workspace.root); err != nil {
+		return RoleOverview{}, err
+	}
+	return result, nil
 }
 
 func (workspace *Workspace) SaveRole(relative string, role metadata.RoleDefinition, revision string) (RoleSource, error) {
@@ -256,6 +312,14 @@ func roleLanguages(manifest project.Project) []FormLanguage {
 }
 
 func registerRoleRoutes(routes *http.ServeMux, workspace *Workspace) {
+	routes.HandleFunc("GET /api/roles", func(response http.ResponseWriter, request *http.Request) {
+		overview, err := workspace.ReadAllRoles()
+		if err != nil {
+			writeSourceError(response, err)
+			return
+		}
+		writeStudioJSON(response, overview)
+	})
 	routes.HandleFunc("GET /api/role", func(response http.ResponseWriter, request *http.Request) {
 		role, err := workspace.ReadRole(request.URL.Query().Get("path"))
 		if err != nil {

@@ -126,10 +126,18 @@ func (catalog *Catalog) validateRolePolicies(role RoleDefinition, permission Obj
 		rule := policy.Rule
 		if rule == nil {
 			for index := range role.PolicyTemplates {
-				if role.PolicyTemplates[index].Name == policy.Template {
-					rule = &role.PolicyTemplates[index].Rule
-					break
+				if role.PolicyTemplates[index].Name != policy.Template {
+					continue
 				}
+				// The template's own field may be a parameter; what is checked
+				// against this object is the rule after the restriction supplied
+				// its fields, exactly as the compiled permission will apply it.
+				resolved, err := substitutePolicyPlaceholders(role.PolicyTemplates[index].Rule, role.PolicyTemplates[index].Parameters, policy.Arguments)
+				if err != nil {
+					return fmt.Errorf("role %s: policy template %s: %w", role.Name, policy.Template, err)
+				}
+				rule = &resolved
+				break
 			}
 		}
 		if rule == nil {

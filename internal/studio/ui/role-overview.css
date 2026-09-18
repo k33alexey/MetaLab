@@ -1,0 +1,29 @@
+#role-overview{display:flex;flex-direction:column;min-height:0;flex:1;background:var(--editor-bg,#1e1f22);color:var(--text,#dfe1e5);overflow:hidden}
+#role-overview[hidden]{display:none}
+.overview-header{display:flex;align-items:baseline;gap:14px;padding:12px;border-bottom:1px solid var(--border,#393b40)}
+.overview-header strong{font-size:14px}
+.overview-header .muted,#role-overview p.muted{font-size:12px;color:#aeb1b8}
+.overview-body{display:grid;grid-template-columns:minmax(180px,28%) minmax(0,1fr);min-height:0;flex:1}
+.overview-sidebar{overflow:auto;border-right:1px solid var(--border,#393b40);padding:10px}
+.overview-sidebar>input{width:100%;margin-bottom:10px;padding:6px 8px;border:1px solid #4a4d54;border-radius:4px;background:var(--panel-bg,#2b2d30);color:inherit}
+.overview-tree summary{cursor:pointer;padding:7px 0;font-size:12px}
+.overview-tree .role-tree-item{display:block;width:100%;text-align:left;margin:2px 0;padding-left:20px!important;background:transparent!important;overflow:hidden;text-overflow:ellipsis}
+.overview-tree .role-tree-item:focus,.overview-tree .role-tree-item:hover{background:#365880!important}
+.overview-tree .role-tree-item.selected{background:#2f4a6d!important}
+.overview-panel{overflow:auto;padding:12px 18px}
+.overview-panel h3{margin:0 0 14px;font-size:15px}
+.overview-panel p{font-size:12px;line-height:1.5;white-space:normal}
+.overview-block{margin-bottom:22px}
+.overview-block h4{margin:0 0 8px;font-size:13px;color:#aeb1b8;text-transform:uppercase;letter-spacing:.04em}
+.overview-block table{border-collapse:collapse;width:100%;font-size:12px}
+.overview-block th,.overview-block td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--border,#393b40);vertical-align:top}
+.overview-block th{font-weight:500;color:#aeb1b8;white-space:nowrap}
+.overview-block td:first-child{white-space:nowrap}
+.overview-condition{overflow-wrap:anywhere;white-space:normal}
+.overview-yes{color:#7ec699;text-align:center}
+.overview-no{color:#6b6e76;text-align:center}
+.overview-empty td:first-child{opacity:.65}
+.overview-broken{color:#f6cf8b}
+.overview-role{background:transparent!important;border:none!important;padding:0!important;color:#589df6;cursor:pointer;text-align:left;font:inherit}
+.overview-role:hover{text-decoration:underline}
+@media(max-width:900px){.overview-body{grid-template-columns:150px minmax(0,1fr)}}

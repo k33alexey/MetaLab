@@ -403,6 +403,10 @@ function createRoleEditor(host, onChange) {
       warning=node('div',undefined,'role-warning');warning.append(node('span','В роли есть права на удалённые или изменённые объекты. '));const repair=node('button','Убрать недоступные права');repair.type='button';repair.addEventListener('click',()=>{model.removeUnavailable();changed();renderPanel();});warning.append(repair);warning.hidden=!model.hasUnavailable();host.append(warning);
       const body=node('div',undefined,'role-body'),sidebar=node('div',undefined,'role-sidebar'),search=node('input');search.type='search';search.placeholder='Поиск объекта';search.setAttribute('aria-label','Поиск объекта');search.addEventListener('input',()=>renderTree(search.value));tree=node('div',undefined,'role-tree');sidebar.append(search,tree);panel=node('section',undefined,'role-permissions');body.append(sidebar,panel);host.append(body);renderTree();renderTemplates();renderPanel();
     },
+    // Переход из окна «Все роли» происходит по конкретному объекту, а не по
+    // роли вообще: открывать роль на пустом месте значило бы заставить искать
+    // в дереве то, что только что было на экране.
+    selectObject(id){const object=source?.schema.objects.find(item=>item.id===id);if(!object)return;selected={object};fieldsExpanded=false;renderTree();renderPanel();},
     value(){return model?.value();},
     close(){clearTitleField();source=null;model=null;host.hidden=true;host.replaceChildren();},
     setDisabled(disabled){host.inert=disabled;},

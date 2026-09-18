@@ -63,6 +63,11 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 		result.SessionParameters = append(result.SessionParameters, item.Name)
 	}
 	sort.Strings(result.SessionParameters)
+	// The platform's own current-user parameter is never declared by a project,
+	// yet "restrict to the rows of the current user" is the restriction most
+	// policies are written for. Listing it first makes it reachable in the
+	// editor instead of being a name only a hand-edited YAML could use.
+	result.SessionParameters = append([]string{CurrentUserParameter}, result.SessionParameters...)
 	appendObject := func(kind Kind, id uuid.UUID, name string, title LocalizedText, attributes []Attribute, parts []TablePart) {
 		target, _ := catalog.permissionTarget(id)
 		object := PermissionObject{ID: id, Kind: kind, Name: name, Title: cloneTitle(title), Fields: []PermissionField{}}

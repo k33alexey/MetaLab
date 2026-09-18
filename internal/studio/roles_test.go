@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -248,5 +249,180 @@ func TestRoleEditorUI(t *testing.T) {
 	output, err := exec.CommandContext(ctx, node, "--test", "../../scripts/role-editor.test.mjs").CombinedOutput()
 	if err != nil {
 		t.Fatalf("role editor tests: %v\n%s", err, output)
+	}
+}
+
+func TestReadAllRolesReturnsEveryRoleOrderedAndWithSchema(t *testing.T) {
+	t.Parallel()
+	workspace, object := roleWorkspace(t)
+	for _, name := range []string{"Продавец", "Кладовщик", "Администратор"} {
+		if _, err := workspace.CreateRole(name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seller, err := workspace.ReadRole(overviewPathOf(t, workspace, "Продавец"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seller.Role.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
+		Policies: []metadata.AccessPolicy{{Operations: []metadata.PermissionOperation{metadata.PermissionRead},
+			Rule: &metadata.PolicyRule{Field: object.Attributes[0].ID.String(), Operator: metadata.PolicyEqual,
+				Values: []metadata.Value{{Kind: metadata.NumberType, Data: "10"}}}}}}}
+	if _, err := workspace.SaveRole(seller.Path, seller.Role, seller.Revision); err != nil {
+		t.Fatal(err)
+	}
+	overview, err := workspace.ReadAllRoles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, entry := range overview.Roles {
+		names = append(names, entry.Role.Name)
+	}
+	if want := []string{"Администратор", "Кладовщик", "Продавец"}; !slices.Equal(names, want) {
+		t.Fatalf("roles are not listed in name order: %v", names)
+	}
+	if len(overview.Schema.Objects) != 1 || len(overview.Languages) == 0 || overview.DefaultLanguage == "" {
+		t.Fatalf("overview is missing what the screen renders: %+v", overview.Schema)
+	}
+	for _, entry := range overview.Roles {
+		if entry.Role.Name != "Продавец" {
+			continue
+		}
+		if policies := entry.Role.Objects[0].Policies; len(policies) != 1 || policies[0].Rule == nil {
+			t.Fatalf("restriction lost on the way to the screen: %+v", entry.Role.Objects)
+		}
+	}
+}
+
+// A role file that cannot be decoded must fail the whole screen: showing the
+// other roles as if they were all of them would understate who has access.
+func TestReadAllRolesRefusesToHideAnUnreadableRole(t *testing.T) {
+	t.Parallel()
+	workspace, _ := roleWorkspace(t)
+	created, err := workspace.CreateRole("Продавец")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace.root, filepath.FromSlash(created.Path)), []byte("format: 1\nname: [\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.ReadAllRoles(); err == nil {
+		t.Fatal("an unreadable role was silently omitted")
+	}
+	request := httptest.NewRequest(http.MethodGet, "http://localhost/api/roles", nil)
+	response := httptest.NewRecorder()
+	NewHandler(workspace).ServeHTTP(response, request)
+	if response.Code == http.StatusOK {
+		t.Fatalf("the route reported success for an unreadable project: %s", response.Body.String())
+	}
+}
+
+func TestRoleOverviewRouteServesEveryRole(t *testing.T) {
+	t.Parallel()
+	workspace, _ := roleWorkspace(t)
+	if _, err := workspace.CreateRole("Продавец"); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "http://localhost/api/roles", nil)
+	response := httptest.NewRecorder()
+	NewHandler(workspace).ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET roles: %d %s", response.Code, response.Body.String())
+	}
+	var overview RoleOverview
+	if err := json.Unmarshal(response.Body.Bytes(), &overview); err != nil {
+		t.Fatal(err)
+	}
+	if len(overview.Roles) != 1 || overview.Roles[0].Role.Name != "Продавец" || overview.Roles[0].Path == "" {
+		t.Fatalf("unexpected overview: %s", response.Body.String())
+	}
+}
+
+func overviewPathOf(t *testing.T, workspace *Workspace, name string) string {
+	t.Helper()
+	overview, err := workspace.ReadAllRoles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range overview.Roles {
+		if entry.Role.Name == name {
+			return entry.Path
+		}
+	}
+	t.Fatalf("role %q not found", name)
+	return ""
+}
+
+func TestRoleOverviewUI(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node.js is required for role overview tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, node, "--test", "../../scripts/role-overview.test.mjs").CombinedOutput()
+	if err != nil {
+		t.Fatalf("role overview tests: %v\n%s", err, output)
+	}
+}
+
+// The current-user parameter belongs to the platform, so no project declares
+// it — yet "only the rows of the current user" is what most restrictions are
+// written for. Unless the schema names it, the editor cannot offer it at all.
+func TestPermissionSchemaOffersTheCurrentUserParameter(t *testing.T) {
+	t.Parallel()
+	workspace, object := roleWorkspace(t)
+	created, err := workspace.CreateRole("Продавец")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(created.Schema.SessionParameters, metadata.CurrentUserParameter) {
+		t.Fatalf("editor is not offered the current-user parameter: %v", created.Schema.SessionParameters)
+	}
+	created.Role.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
+		Policies: []metadata.AccessPolicy{{Operations: []metadata.PermissionOperation{metadata.PermissionRead},
+			Rule: &metadata.PolicyRule{Field: object.Attributes[0].ID.String(), Operator: metadata.PolicyEqual, Parameter: metadata.CurrentUserParameter}}}}}
+	if _, err := workspace.SaveRole(created.Path, created.Role, created.Revision); err != nil {
+		t.Fatalf("a restriction on the offered parameter was refused: %v", err)
+	}
+	overview, err := workspace.ReadAllRoles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(overview.Schema.SessionParameters, metadata.CurrentUserParameter) {
+		t.Fatalf("overview schema is missing it: %v", overview.Schema.SessionParameters)
+	}
+}
+
+// A template with parameters is the reusable form of a restriction: one rule,
+// each object naming its own column. Validation must therefore check the rule
+// AFTER the restriction supplied its fields — checking "$Поле" against the
+// object rejects every parameterized template there can be.
+func TestParameterizedPolicyTemplateSavesAndLoads(t *testing.T) {
+	t.Parallel()
+	workspace, object := roleWorkspace(t)
+	created, err := workspace.CreateRole("Продавец")
+	if err != nil {
+		t.Fatal(err)
+	}
+	created.Role.PolicyTemplates = []metadata.PolicyTemplate{{Name: "ПоПолю", Parameters: []string{"Поле"},
+		Rule: metadata.PolicyRule{Field: "$Поле", Operator: metadata.PolicyEqual, Parameter: metadata.CurrentUserParameter}}}
+	created.Role.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
+		Policies: []metadata.AccessPolicy{{Operations: []metadata.PermissionOperation{metadata.PermissionRead},
+			Template: "ПоПолю", Arguments: []string{object.Attributes[0].ID.String()}}}}}
+	saved, err := workspace.SaveRole(created.Path, created.Role, created.Revision)
+	if err != nil {
+		t.Fatalf("a parameterized template was refused: %v", err)
+	}
+	if _, err := metadata.Load(workspace.root); err != nil {
+		t.Fatalf("saved role does not load as a project: %v", err)
+	}
+	invalid := saved.Role
+	invalid.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
+		Policies: []metadata.AccessPolicy{{Operations: []metadata.PermissionOperation{metadata.PermissionRead},
+			Template: "ПоПолю", Arguments: []string{uuid.MustNew().String()}}}}}
+	if _, err := workspace.SaveRole(saved.Path, invalid, saved.Revision); err == nil {
+		t.Fatal("a template argument naming a field of no object was accepted")
 	}
 }
