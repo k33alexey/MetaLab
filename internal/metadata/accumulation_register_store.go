@@ -699,9 +699,6 @@ func (repository *AccumulationRegisterRepository) Balances(ctx context.Context, 
 	if !ok {
 		return nil, fmt.Errorf("unknown accumulation register %q", name)
 	}
-	if err := requireUnrestrictedRegisterRead(ctx, definition.ID, definition.Name); err != nil {
-		return nil, err
-	}
 	if definition.Kind != AccumulationRegisterBalance {
 		return nil, fmt.Errorf("accumulation register %s does not store balances", definition.Name)
 	}
@@ -716,9 +713,6 @@ func (repository *AccumulationRegisterRepository) Turnovers(ctx context.Context,
 	definition, ok := repository.catalog.AccumulationRegisterDefinition(name)
 	if !ok {
 		return nil, fmt.Errorf("unknown accumulation register %q", name)
-	}
-	if err := requireUnrestrictedRegisterRead(ctx, definition.ID, definition.Name); err != nil {
-		return nil, err
 	}
 	begin, err := normalizeAccumulationPeriod(begin)
 	if err != nil {
@@ -786,10 +780,21 @@ func (repository *AccumulationRegisterRepository) queryBalancesAndTurnovers(ctx 
 		turnoverSelects = append(turnoverSelects, "0::numeric AS "+openingAlias, "CASE WHEN movement_kind = 1 THEN "+amount+" ELSE 0 END AS "+receiptAlias, "CASE WHEN movement_kind = 2 THEN "+amount+" ELSE 0 END AS "+expenseAlias, signed+" AS "+netAlias)
 		outerSelects = append(outerSelects, "SUM("+openingAlias+") AS "+openingAlias, "SUM("+receiptAlias+") AS "+receiptAlias, "SUM("+expenseAlias+") AS "+expenseAlias, "SUM("+netAlias+") AS "+netAlias)
 	}
-	union := "SELECT " + strings.Join(totalSelects, ", ") + " FROM " + qualifiedCatalogTable(totalsTable) + " WHERE total_period < $1 UNION ALL SELECT " +
-		strings.Join(beforeSelects, ", ") + " FROM " + qualifiedCatalogTable(movementTable) + " WHERE active = true AND period >= $1 AND period < $2 UNION ALL SELECT " +
-		strings.Join(turnoverSelects, ", ") + " FROM " + qualifiedCatalogTable(movementTable) + " WHERE active = true AND period >= $2 AND period <= $3"
 	conditions, arguments := []string{}, []any{month, begin, end}
+	// Same substitution as the balance path: the opening total is replaced by the
+	// movements it was summed from, because a row restriction cannot narrow a
+	// number that has already been added up.
+	restriction, err := repository.restrictedMovements(ctx, definition, &arguments)
+	if err != nil {
+		return nil, err
+	}
+	opening := "SELECT " + strings.Join(totalSelects, ", ") + " FROM " + qualifiedCatalogTable(totalsTable) + " WHERE total_period < $1"
+	if restriction != "" {
+		opening = "SELECT " + strings.Join(beforeSelects, ", ") + " FROM " + qualifiedCatalogTable(movementTable) + " WHERE active = true AND period < $1" + restriction
+	}
+	union := opening + " UNION ALL SELECT " +
+		strings.Join(beforeSelects, ", ") + " FROM " + qualifiedCatalogTable(movementTable) + " WHERE active = true AND period >= $1 AND period < $2" + restriction + " UNION ALL SELECT " +
+		strings.Join(turnoverSelects, ", ") + " FROM " + qualifiedCatalogTable(movementTable) + " WHERE active = true AND period >= $2 AND period <= $3" + restriction
 	for _, dimension := range definition.Dimensions {
 		value, present := filter[dimension.ID]
 		if !present {
@@ -921,6 +926,43 @@ func accumulationAggregateZero(resources []Attribute, aggregate AccumulationRegi
 	return true
 }
 
+// maxRestrictedBalanceMovements bounds the work a restricted aggregate may do.
+// Reading pre-summed totals is cheap and predictable; summing movements live is
+// neither, so a restricted caller gets a clear refusal instead of a query that
+// may never return - the same bargain the paged lists and the query row limit
+// already make. The number is provisional: it was chosen without measuring real
+// registers and should be revisited against actual volumes.
+const maxRestrictedBalanceMovements = 200_000
+
+// restrictedMovements returns the predicate that narrows movement rows for this
+// caller, or "" when nothing is restricted. It also refuses up front when the
+// live summation the restriction forces would be unbounded.
+func (repository *AccumulationRegisterRepository) restrictedMovements(ctx context.Context, definition AccumulationRegisterDefinition, arguments *[]any) (string, error) {
+	// The measuring query is rendered into its own argument list: it does not
+	// reference the caller's period bounds, and binding parameters a statement
+	// never mentions leaves their type undetermined.
+	countArguments := []any{}
+	countRestriction, err := readRowPredicate(ctx, repository.catalog, definition.ID, accumulationRegisterPolicyColumn(definition), &countArguments)
+	if err != nil || countRestriction == "" {
+		return "", err
+	}
+	table, _ := PhysicalAccumulationRegisterTable(definition.ID)
+	query, err := queryData(ctx, repository.pool)
+	if err != nil {
+		return "", err
+	}
+	var movements int64
+	statement := "SELECT count(*) FROM (SELECT 1 FROM " + qualifiedCatalogTable(table) + " WHERE active = true" + countRestriction +
+		fmt.Sprintf(" LIMIT %d) AS bounded", maxRestrictedBalanceMovements+1)
+	if err := query.QueryRow(ctx, statement, countArguments...).Scan(&movements); err != nil {
+		return "", recordDataError(ctx, repository.pool, fmt.Errorf("measure accumulation register %s movements: %w", definition.Name, err))
+	}
+	if movements > maxRestrictedBalanceMovements {
+		return "", fmt.Errorf("accumulation register %s has a row-level restriction, and computing it from more than %d movements is refused", definition.Name, maxRestrictedBalanceMovements)
+	}
+	return readRowPredicate(ctx, repository.catalog, definition.ID, accumulationRegisterPolicyColumn(definition), arguments)
+}
+
 func (repository *AccumulationRegisterRepository) balanceAt(ctx context.Context, definition AccumulationRegisterDefinition, period time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterAggregate, error) {
 	month := time.Date(period.UTC().Year(), period.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
 	filter, err := repository.normalizeDimensions(definition, dimensions)
@@ -945,9 +987,21 @@ func (repository *AccumulationRegisterRepository) balanceAt(ctx context.Context,
 		movementSelects = append(movementSelects, "CASE WHEN movement_kind = 1 THEN COALESCE("+quoted+", 0) ELSE -COALESCE("+quoted+", 0) END AS "+alias)
 		outerSelects = append(outerSelects, "SUM("+alias+") AS "+alias)
 	}
+	conditions, arguments := []string{}, []any{month, period}
+	// A row restriction cannot be applied to a pre-aggregated total, so when one
+	// is active the totals branch is replaced by the movements it was summed
+	// from. The substitution is exact - a total IS the net sum of movements
+	// before the period - so only the cost changes, never the answer.
+	restriction, err := repository.restrictedMovements(ctx, definition, &arguments)
+	if err != nil {
+		return nil, err
+	}
 	union := "SELECT " + strings.Join(totalSelects, ", ") + " FROM " + qualifiedCatalogTable(totalsTable) + " WHERE total_period < $1 UNION ALL SELECT " +
 		strings.Join(movementSelects, ", ") + " FROM " + qualifiedCatalogTable(movementTable) + " WHERE active = true AND period >= $1 AND period <= $2"
-	conditions, arguments := []string{}, []any{month, period}
+	if restriction != "" {
+		union = "SELECT " + strings.Join(movementSelects, ", ") + " FROM " + qualifiedCatalogTable(movementTable) + " WHERE active = true AND period < $1" + restriction +
+			" UNION ALL SELECT " + strings.Join(movementSelects, ", ") + " FROM " + qualifiedCatalogTable(movementTable) + " WHERE active = true AND period >= $1 AND period <= $2" + restriction
+	}
 	for _, dimension := range definition.Dimensions {
 		value, present := filter[dimension.ID]
 		if !present {

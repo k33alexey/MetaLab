@@ -162,6 +162,42 @@ func TestAccumulationRegisterRepositoryIntegration(t *testing.T) {
 	if err != nil || turnovers[0].Turnover[quantityID].Data != "7" || turnovers[0].Receipt[quantityID].Data != "10" || turnovers[0].Expense[quantityID].Data != "3" {
 		t.Fatalf("turnovers=%+v error=%v", turnovers, err)
 	}
+
+	// A row restriction cannot narrow a pre-aggregated total, so a restricted
+	// caller is served from the movements instead. The substitution has to be
+	// exact: the same restriction that admits every row must produce the very
+	// same numbers as the fast path above.
+	restricted := func(values ...string) context.Context {
+		t.Helper()
+		rule := PolicyRule{Field: productID.String(), Operator: PolicyIn}
+		for _, value := range values {
+			rule.Values = append(rule.Values, Value{Kind: StringType, Data: value})
+		}
+		role := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Кладовщик", Title: LocalizedText{"ru": "Кладовщик"},
+			Objects: []ObjectPermission{{Object: registerID, Operations: []PermissionOperation{PermissionRead},
+				Policies: []AccessPolicy{{Operations: []PermissionOperation{PermissionRead}, Rule: &rule}}}}}
+		catalog.Project.ID = projectID
+		catalog.Roles, catalog.roleByID = []RoleDefinition{role}, map[uuid.UUID]int{role.ID: 0}
+		policy, err := CompilePermissions(catalog, []uuid.UUID{role.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return WithPermissions(ctx, policy)
+	}
+	sameBalances, err := repository.Balances(restricted("A", "B"), "ОстаткиТоваров", january.Add(time.Hour), filter)
+	if err != nil || len(sameBalances) != 1 || sameBalances[0].Turnover[quantityID].Data != "7" {
+		t.Fatalf("a restriction admitting every row must match the totals path: %+v error=%v", sameBalances, err)
+	}
+	sameTurnovers, err := repository.Turnovers(restricted("A", "B"), "ОстаткиТоваров", january.Add(-time.Hour), january.Add(time.Hour), filter)
+	if err != nil || sameTurnovers[0].Turnover[quantityID].Data != "7" || sameTurnovers[0].Receipt[quantityID].Data != "10" || sameTurnovers[0].Expense[quantityID].Data != "3" {
+		t.Fatalf("restricted turnovers must match the totals path: %+v error=%v", sameTurnovers, err)
+	}
+	// And a restriction that admits nothing yields nothing, rather than the
+	// numbers the totals table still holds.
+	hiddenBalances, err := repository.Balances(restricted("Z"), "ОстаткиТоваров", january.Add(time.Hour), filter)
+	if err != nil || len(hiddenBalances) != 0 {
+		t.Fatalf("a restriction excluding every row must hide the balance: %+v error=%v", hiddenBalances, err)
+	}
 	turnoverSet, _ := repository.NewRecordSet("Продажи")
 	turnoverSet.Filter.Recorder = &firstDocument.Reference
 	turnoverRow, _ := turnoverSet.Add()

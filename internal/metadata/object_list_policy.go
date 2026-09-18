@@ -191,18 +191,19 @@ func documentPolicyColumn(definition DocumentDefinition) func(string) (listColum
 	}, definition.Attributes)
 }
 
-// requireUnrestrictedRegisterRead refuses a register read that cannot honour an
-// active row restriction, instead of answering with rows the policy meant to
-// hide.
+// requireUnrestrictedRegisterRead refuses to read a register RECORD SET while a
+// row restriction is active. This is not a gap waiting to be filled - filtering
+// here would be the wrong thing to do.
 //
-// Balances and turnovers are the reason this exists: they are served from a
-// PRE-AGGREGATED totals table, and those totals were summed over every movement
-// regardless of who reads them. A per-row restriction cannot be applied to a
-// number that has already been added up - filtering the movements alone would
-// contradict the totals, and using the totals as they are would leak exactly
-// what the restriction forbids. Until that is resolved (061.11), refusing is the
-// only answer that is neither wrong nor silent. Queries through the BSL engine
-// are unaffected: they read movements and do honour restrictions.
+// A record set is a read-modify-write unit: application code reads the movements
+// of one recorder, changes them and writes the set back, and the write replaces
+// everything the set holds. Handing back a filtered set would therefore delete
+// the rows the restriction hid, the moment that set was saved. Losing data is a
+// far worse outcome than refusing to read, so the read refuses.
+//
+// The paths that only read do honour restrictions: queries filter movements
+// directly, and balances and turnovers are computed from movements instead of
+// from the pre-aggregated totals, which no per-row rule could narrow.
 func requireUnrestrictedRegisterRead(ctx context.Context, objectID uuid.UUID, register string) error {
 	permissions, ok := PermissionsFromContext(ctx)
 	if !ok {
