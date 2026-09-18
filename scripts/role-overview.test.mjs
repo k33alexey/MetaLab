@@ -94,6 +94,38 @@ test('a broken template is named as broken rather than read as no restriction',(
   assert.match(create(source).restrictions('goods')[0].error,/ожидает полей: 1/);
 });
 
+test('the project-wide list carries every restriction of every role, ordered',()=>{
+  const source=fixture();
+  source.roles[1].role.objects=[{object:'users',operations:['read'],
+    policies:[{operations:['read'],rule:{field:'person',operator:'ne',values:[{kind:'string',data:'—'}]}}]}];
+  const rows=create(source).allRestrictions();
+  assert.deepEqual(plain(rows.map(row=>`${row.object}/${row.role}/${row.operation}`)),
+    ['Пользователи/Кладовщик/read','Товары/Продавец/read']);
+  assert.equal(rows[1].fields,'2 из 3');
+  assert.equal(rows[0].fields,'0 из 2');
+  assert.equal(rows[1].objectID,'goods');
+});
+
+test('a restriction on an object that no longer exists is left out of the list',()=>{
+  const source=fixture();
+  source.roles[0].role.objects.push({object:'gone',operations:['read'],
+    policies:[{operations:['read'],rule:{field:'owner',operator:'eq',values:[{kind:'string',data:'x'}]}}]});
+  assert.equal(create(source).allRestrictions().length,1);
+});
+
+test('templates are listed per role with their parameters left unsubstituted',()=>{
+  const source=fixture();
+  source.roles[0].role.policyTemplates=[{name:'ПоВладельцу',parameters:['Поле'],
+    rule:{field:'$Поле',operator:'eq',parameter:'ТекущийПользователь'}}];
+  source.roles[1].role.policyTemplates=[{name:'ПоЦене',rule:{field:'price',operator:'in',values:[{kind:'number',data:'10'}]}}];
+  const rows=create(source).allTemplates();
+  assert.deepEqual(plain(rows.map(row=>[row.role,row.name,row.parameters,row.field,row.condition])),[
+    ['Кладовщик','ПоЦене','','Цена','В списке «10»'],
+    ['Продавец','ПоВладельцу','$Поле','$Поле','Равно параметр сеанса ТекущийПользователь'],
+  ]);
+  assert.deepEqual(plain(create(fixture()).allTemplates()),[]);
+});
+
 test('the view file keeps the model free of the DOM',()=>{
   const model=script.slice(script.indexOf('function createRoleOverviewModel'),script.indexOf('function createRoleOverview('));
   assert.equal(/document\.|window\./.test(model),false);
@@ -107,4 +139,9 @@ test('the Studio page loads the overview and opens it from the roles group node'
   assert.match(html,/id="role-overview"/);
   assert.match(html,/fetch\('\/api\/roles'\)/);
   assert.match(html,/node\.id==='metadata\/roles'/);
+});
+
+test('the overview offers all three tables of the roles group node',()=>{
+  const view=script.slice(script.indexOf('function createRoleOverview('));
+  for(const label of ['Все роли','Ограничения доступа','Шаблоны политик'])assert.ok(view.includes(label),label);
 });

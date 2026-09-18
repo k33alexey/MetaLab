@@ -16,7 +16,18 @@ function createRoleOverviewModel(source) {
     const object = objects.get(id);
     return object ? localized(object) : 'удалённый объект';
   }
+  // Поле шаблона не привязано к объекту: шаблон живёт в роли и применяется к
+  // разным объектам, поэтому его имя ищется по всей конфигурации.
+  let shared = null;
+  function anyFieldTitle(key) {
+    if (!shared) {
+      shared = new Map();
+      for (const object of objects.values()) for (const field of object.fields) if (!shared.has(field.key)) shared.set(field.key, localized(field));
+    }
+    return shared.get(key) || standard[key] || key;
+  }
   function fieldTitle(objectID, key) {
+    if (!objectID) return anyFieldTitle(key);
     const field = objects.get(objectID)?.fields.find(item => item.key === key);
     return field ? localized(field) : (standard[key] || key);
   }
@@ -72,6 +83,13 @@ function createRoleOverviewModel(source) {
     return {field: fieldTitle(objectID, rule.field), condition: `${operators[rule.operator] || rule.operator} ${operand(rule, objectID)}`};
   }
   function grantOf(entry, objectID) { return (entry.role.objects || []).find(item => item.object === objectID); }
+  function readableFields(objectID) { return (objects.get(objectID)?.fields || []).filter(field => field.operations.includes('read')).length; }
+  function fieldSummary(grant, objectID) {
+    const total = readableFields(objectID);
+    if (!grant?.operations?.includes('read') || !total) return '—';
+    const granted = Math.min((grant.fields || []).filter(field => (field.operations || []).includes('read')).length, total);
+    return granted >= total ? 'все' : `${granted} из ${total}`;
+  }
   return {
     objects() { return source.schema.objects || []; },
     title(item) { return localized(item); },
@@ -94,6 +112,44 @@ function createRoleOverviewModel(source) {
         };
       });
     },
+    // Один список по всему проекту: здесь вопрос не «что с этим объектом»,
+    // а «где вообще в конфигурации стоят ограничения» — перед выпуском это
+    // единственный способ увидеть их все, не открывая роли по одной.
+    allRestrictions() {
+      const rows = [];
+      for (const entry of entries) {
+        for (const grant of entry.role.objects || []) {
+          if (!objects.has(grant.object)) continue;
+          for (const policy of grant.policies || []) {
+            const described = describe(entry.role, grant.object, policy);
+            for (const operation of policy.operations || []) {
+              rows.push({path: entry.path, objectID: grant.object, object: objectTitle(grant.object),
+                role: localized(entry.role), operation, fields: fieldSummary(grant, grant.object),
+                origin: policy.template ? `шаблон ${policy.template}` : 'своё правило', ...described});
+            }
+          }
+        }
+      }
+      rows.sort((left, right) => left.object.localeCompare(right.object) || left.role.localeCompare(right.role));
+      return rows;
+    },
+    // Шаблон показывается как он написан — с «$Имя» на месте параметра:
+    // именно незаполненность и делает его переиспользуемым, а конкретное
+    // поле подставляет уже ограничение, и оно видно в таблице выше.
+    allTemplates() {
+      const rows = [];
+      for (const entry of entries) {
+        for (const template of entry.role.policyTemplates || []) {
+          const rule = template.rule;
+          rows.push({path: entry.path, role: localized(entry.role), name: template.name,
+            parameters: (template.parameters || []).map(name => '$' + name).join(', '),
+            field: fieldTitle(null, rule.field),
+            condition: `${operators[rule.operator] || rule.operator} ${operand(rule, null)}`});
+        }
+      }
+      rows.sort((left, right) => left.role.localeCompare(right.role) || left.name.localeCompare(right.name));
+      return rows;
+    },
     restrictions(objectID) {
       const rows = [];
       for (const entry of entries) {
@@ -111,7 +167,7 @@ function createRoleOverviewModel(source) {
 }
 
 function createRoleOverview(host, openRole) {
-  let source, model, selected = null, tree, panel;
+  let source, model, selected = null, tree, panel, tab = 'roles', body, filter = '';
   const operations = {read:'Чтение',create:'Добавление',update:'Изменение',delete:'Удаление',post:'Проведение','undo-posting':'Отмена проведения'};
   const kinds = {constants:'Константы',enumerations:'Перечисления',catalogs:'Справочники',documents:'Документы','information-registers':'Регистры сведений','accumulation-registers':'Регистры накопления'};
   function node(tag, text, className) {
@@ -120,9 +176,9 @@ function createRoleOverview(host, openRole) {
     if (className) element.className = className;
     return element;
   }
-  function renderTree(filter = '') {
+  function renderTree(query = '') {
     tree.replaceChildren();
-    const groups = new Map(), needle = filter.toLocaleLowerCase().trim();
+    const groups = new Map(), needle = query.toLocaleLowerCase().trim();
     for (const item of model.objects()) {
       if (!`${item.name} ${model.title(item)}`.toLocaleLowerCase().includes(needle)) continue;
       let group = groups.get(item.kind);
@@ -130,7 +186,7 @@ function createRoleOverview(host, openRole) {
       const button = node('button', model.title(item), 'role-tree-item');
       button.type = 'button'; button.title = item.name; button.dataset.object = item.id;
       if (selected?.id === item.id) button.classList.add('selected');
-      button.addEventListener('click', () => { selected = item; renderTree(filter); renderPanel(); });
+      button.addEventListener('click', () => { selected = item; renderTree(query); renderPanel(); });
       group.append(button);
     }
     if (!tree.childElementCount) tree.append(node('p', 'Нет подходящих объектов', 'muted'));
@@ -193,30 +249,115 @@ function createRoleOverview(host, openRole) {
     block.append(table);
     return block;
   }
+  function roleLink(text, path, objectID) {
+    const cell = node('td'), link = node('button', text, 'overview-role');
+    link.type = 'button';
+    link.addEventListener('click', () => openRole(path, objectID));
+    cell.append(link);
+    return cell;
+  }
+  function matches(row, columns) {
+    if (!filter.trim()) return true;
+    const needle = filter.toLocaleLowerCase().trim();
+    return columns.some(value => (value || '').toLocaleLowerCase().includes(needle));
+  }
+  // «Все ограничения» первого окна 1С — это две таблицы; Studio показывает их
+  // как две вкладки одной полосы вместе с «Всеми ролями», потому что
+  // отдельных окон здесь нет и вкладка дешевле лишнего представления.
+  function renderAllRestrictions() {
+    const block = node('section', undefined, 'overview-block');
+    const rows = model.allRestrictions().filter(row => matches(row, [row.object, row.role, row.field, row.condition, row.origin]));
+    if (!rows.length) { block.append(node('p', model.allRestrictions().length ? 'Ничего не найдено.' : 'В проекте нет ни одного ограничения доступа.', 'muted')); return block; }
+    block.append(node('p', 'Каждая строка — одно ограничение одной роли на одно право. Поля показывают, сколько реквизитов объекта эта роль вообще читает: ограничение сужает строки, права на реквизиты — столбцы.', 'muted'));
+    const table = node('table'), head = node('tr');
+    head.append(node('th', 'Объект'), node('th', 'Роль'), node('th', 'Право'), node('th', 'Поля'), node('th', 'Правило доступа'), node('th', 'Источник'));
+    table.append(head);
+    for (const row of rows) {
+      const line = node('tr');
+      line.append(node('td', row.object));
+      line.append(roleLink(row.role, row.path, row.objectID));
+      line.append(node('td', operations[row.operation] || row.operation), node('td', row.fields));
+      if (row.error) line.append(node('td', row.error, 'overview-broken'));
+      else line.append(node('td', `${row.field} ${row.condition}`, 'overview-condition'));
+      line.append(node('td', row.origin));
+      table.append(line);
+    }
+    block.append(table);
+    return block;
+  }
+  function renderAllTemplates() {
+    const block = node('section', undefined, 'overview-block');
+    const all = model.allTemplates();
+    const rows = all.filter(row => matches(row, [row.role, row.name, row.parameters, row.field, row.condition]));
+    if (!rows.length) { block.append(node('p', all.length ? 'Ничего не найдено.' : 'Ни одна роль не объявила шаблонов политик.', 'muted')); return block; }
+    block.append(node('p', 'Шаблон принадлежит роли и переиспользуется её ограничениями. Параметр «$Имя» стоит там, где ограничение подставит поле своего объекта.', 'muted'));
+    const table = node('table'), head = node('tr');
+    head.append(node('th', 'Роль'), node('th', 'Наименование'), node('th', 'Параметры'), node('th', 'Правило'));
+    table.append(head);
+    for (const row of rows) {
+      const line = node('tr');
+      line.append(roleLink(row.role, row.path));
+      line.append(node('td', row.name), node('td', row.parameters || '—'));
+      line.append(node('td', `${row.field} ${row.condition}`, 'overview-condition'));
+      table.append(line);
+    }
+    block.append(table);
+    return block;
+  }
+  function renderBody() {
+    body.replaceChildren();
+    if (tab === 'roles') {
+      const sidebar = node('div', undefined, 'overview-sidebar'), search = node('input');
+      search.type = 'search'; search.placeholder = 'Поиск объекта'; search.setAttribute('aria-label', 'Поиск объекта');
+      search.value = filter;
+      search.addEventListener('input', () => { filter = search.value; renderTree(filter); });
+      tree = node('div', undefined, 'overview-tree'); sidebar.append(search, tree);
+      panel = node('section', undefined, 'overview-panel');
+      body.append(sidebar, panel);
+      body.className = 'overview-body';
+      renderTree(filter); renderPanel();
+      return;
+    }
+    body.className = 'overview-list';
+    const search = node('input');
+    search.type = 'search'; search.placeholder = 'Поиск по таблице'; search.setAttribute('aria-label', 'Поиск по таблице');
+    search.value = filter;
+    // Перерисовывается только сама таблица: поле поиска остаётся тем же
+    // элементом, иначе каждая набранная буква уводила бы из него фокус.
+    const list = node('div');
+    const fill = () => list.replaceChildren(tab === 'restrictions' ? renderAllRestrictions() : renderAllTemplates());
+    search.addEventListener('input', () => { filter = search.value; fill(); });
+    fill();
+    body.append(search, list);
+  }
   function renderPanel() {
     panel.replaceChildren();
     if (!selected) { panel.append(node('p', 'Выберите объект слева, чтобы увидеть его права и ограничения по всем ролям сразу.', 'muted')); return; }
     panel.append(node('h3', model.title(selected)));
     panel.append(renderGrants(selected), renderRestrictions(selected));
   }
-  return {
-    open(value) {
+  function open(value) {
       source = structuredClone(value); model = createRoleOverviewModel(source);
       const previous = selected?.id;
       selected = model.objects().find(item => item.id === previous) || null;
       host.hidden = false; host.replaceChildren();
       const header = node('div', undefined, 'overview-header');
-      header.append(node('strong', 'Все роли'));
-      header.append(node('span', `Ролей в проекте: ${model.roleCount()}`, 'muted'));
+      const strip = node('div', undefined, 'overview-tabs');
+      for (const [key, text] of [['roles', 'Все роли'], ['restrictions', 'Ограничения доступа'], ['templates', 'Шаблоны политик']]) {
+        const button = node('button', text, 'overview-tab');
+        button.type = 'button';
+        if (tab === key) button.classList.add('selected');
+        button.setAttribute('aria-pressed', String(tab === key));
+        button.addEventListener('click', () => { if (tab === key) return; tab = key; filter = ''; open(source); });
+        strip.append(button);
+      }
+      header.append(strip, node('span', `Ролей в проекте: ${model.roleCount()}`, 'muted'));
       host.append(header);
-      const body = node('div', undefined, 'overview-body'), sidebar = node('div', undefined, 'overview-sidebar'), search = node('input');
-      search.type = 'search'; search.placeholder = 'Поиск объекта'; search.setAttribute('aria-label', 'Поиск объекта');
-      search.addEventListener('input', () => renderTree(search.value));
-      tree = node('div', undefined, 'overview-tree'); sidebar.append(search, tree);
-      panel = node('section', undefined, 'overview-panel');
-      body.append(sidebar, panel); host.append(body);
-      renderTree(); renderPanel();
-    },
+      body = node('div'); host.append(body);
+      renderBody();
+  }
+  return {
+    open,
     close() { source = null; model = null; host.hidden = true; host.replaceChildren(); },
     setDisabled(disabled) { host.inert = disabled; },
   };
