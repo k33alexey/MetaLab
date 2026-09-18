@@ -217,9 +217,14 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		}
 		bootstrap := mlapp.NewBootstrap(id, session)
 		for _, object := range objects {
+			operations := make([]string, 0, len(object.Operations))
+			for _, operation := range object.Operations {
+				operations = append(operations, string(operation))
+			}
 			bootstrap.Navigation = append(bootstrap.Navigation, mlapp.NavigationItem{
 				ID: string(object.Kind) + "/" + object.Name, Title: object.Title,
-				Kind: string(object.Kind), Name: object.Name,
+				Kind: string(object.Kind), KindTitle: mlapp.KindTitle(string(object.Kind)),
+				Name: object.Name, Operations: operations,
 			})
 		}
 		if err := bootstrap.Validate(); err != nil {

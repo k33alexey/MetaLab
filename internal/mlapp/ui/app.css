@@ -127,3 +127,17 @@ ml-command-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; 
 @media (prefers-reduced-motion: no-preference) {
   .skip-link, button, .app-nav { transition: color .12s ease, background-color .12s ease, border-color .12s ease, transform .16s ease; }
 }
+
+/* Глобальный поиск: выпадающий список совпадений по названиям объектов и их
+   стандартных команд. Подпись вида объекта — мелким шрифтом, потому что два
+   объекта разных видов сплошь и рядом называются одинаково. Список рисуется
+   на светлой поверхности, а не на тёмном фоне шапки: это содержимое рабочей
+   области, просто всплывающее из шапки. */
+.global-search { position: relative; }
+.global-search-results { position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; right: 0; margin: 0; padding: 4px 0; list-style: none; background: var(--ml-color-surface); border: 1px solid var(--ml-color-border); border-radius: var(--ml-radius-md); box-shadow: var(--ml-shadow); max-height: min(60vh, 420px); overflow: auto; color: var(--ml-color-text); }
+.global-search-results[hidden] { display: none; }
+.global-search-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 8px 12px; cursor: pointer; }
+.global-search-row.current, .global-search-row:hover { background: color-mix(in srgb, var(--ml-color-accent) 12%, white); }
+.global-search-title { overflow-wrap: anywhere; }
+.global-search-caption { font-size: 11px; color: var(--ml-color-muted); white-space: nowrap; }
+.global-search-empty { padding: 8px 12px; font-size: 12px; color: var(--ml-color-muted); }

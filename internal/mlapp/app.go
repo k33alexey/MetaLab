@@ -38,11 +38,37 @@ type User struct {
 }
 
 type NavigationItem struct {
-	ID      string `json:"id"`
-	Title   string `json:"title"`
-	Kind    string `json:"kind,omitempty"`
-	Name    string `json:"name,omitempty"`
-	Current bool   `json:"current,omitempty"`
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Kind  string `json:"kind,omitempty"`
+	// KindTitle is what the global search prints under a match - "Справочник"
+	// beside "Товары". Two objects of different kinds routinely share a name,
+	// so the kind is not decoration: without it the two results are the same
+	// line twice.
+	KindTitle string `json:"kindTitle,omitempty"`
+	Name      string `json:"name,omitempty"`
+	// Operations lists what this user may do with the object, which is what
+	// decides whether the search offers "создать" next to "открыть список".
+	Operations []string `json:"operations,omitempty"`
+	Current    bool     `json:"current,omitempty"`
+}
+
+// kindTitles names the metadata kinds ML App can navigate to. It is here rather
+// than in the browser because the kind is metadata, and the day interface
+// localization arrives (092) this is where the translation belongs.
+var kindTitles = map[string]string{
+	"catalogs": "Справочник", "documents": "Документ",
+	"information-registers": "Регистр сведений", "accumulation-registers": "Регистр накопления",
+	"reports": "Отчёт", "data-processors": "Обработка",
+}
+
+// KindTitle returns the human name of a metadata kind, or the kind itself when
+// it has none - an unknown kind must still be visible, not silently blank.
+func KindTitle(kind string) string {
+	if title, ok := kindTitles[kind]; ok {
+		return title
+	}
+	return kind
 }
 
 type Form struct {
@@ -179,6 +205,9 @@ func (bootstrap Bootstrap) Validate() error {
 		}
 		if item.ID != "home" && (strings.TrimSpace(item.Kind) == "" || strings.TrimSpace(item.Name) == "") {
 			return fmt.Errorf("invalid ML App navigation target")
+		}
+		if len(item.Operations) > 16 {
+			return fmt.Errorf("invalid ML App navigation operations")
 		}
 		navigationIDs[item.ID] = true
 	}

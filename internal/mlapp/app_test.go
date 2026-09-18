@@ -1,12 +1,15 @@
 package mlapp
 
 import (
+	"context"
 	"encoding/json"
 	"image/png"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/k33alexey/MetaLab/internal/systemdb"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -124,5 +127,18 @@ func TestEmbeddedApplicationAssetsAreSafeAndCacheable(t *testing.T) {
 	ServeAsset(missing, httptest.NewRequest(http.MethodGet, "/", nil), "../index.html")
 	if missing.Code != http.StatusNotFound {
 		t.Fatalf("unknown asset status=%d", missing.Code)
+	}
+}
+
+func TestGlobalSearchUI(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node.js is required for ML App global search tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, node, "--test", "../../scripts/mlapp-global-search.test.mjs").CombinedOutput()
+	if err != nil {
+		t.Fatalf("ML App global search tests: %v\n%s", err, output)
 	}
 }

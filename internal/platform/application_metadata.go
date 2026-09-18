@@ -19,6 +19,11 @@ type ApplicationObject struct {
 	Kind  metadata.Kind `json:"kind"`
 	Name  string        `json:"name"`
 	Title string        `json:"title"`
+	// Operations lists what this user may actually do with the object. ML App
+	// needs it to offer the standard commands - "открыть список" is implied by
+	// the object being here at all, "создать" is not - and offering a command
+	// the caller cannot perform would be an invitation to an error message.
+	Operations []metadata.PermissionOperation `json:"operations"`
 }
 
 type ApplicationForm struct {
@@ -64,13 +69,15 @@ func (runtime *Runtime) LoadApplicationObjects(ctx context.Context, token string
 		if !permissions.AllowsObject(item.ID, metadata.PermissionRead) {
 			continue
 		}
-		result = append(result, ApplicationObject{Kind: metadata.CatalogKind, Name: item.Name, Title: resolvedApplicationTitle(item.Title, item.Name, language, catalog)})
+		result = append(result, ApplicationObject{Kind: metadata.CatalogKind, Name: item.Name,
+			Title: resolvedApplicationTitle(item.Title, item.Name, language, catalog), Operations: allowedOperations(permissions, item.ID)})
 	}
 	for _, item := range catalog.Documents {
 		if !permissions.AllowsObject(item.ID, metadata.PermissionRead) {
 			continue
 		}
-		result = append(result, ApplicationObject{Kind: metadata.DocumentKind, Name: item.Name, Title: resolvedApplicationTitle(item.Title, item.Name, language, catalog)})
+		result = append(result, ApplicationObject{Kind: metadata.DocumentKind, Name: item.Name,
+			Title: resolvedApplicationTitle(item.Title, item.Name, language, catalog), Operations: allowedOperations(permissions, item.ID)})
 	}
 	return result, nil
 }
@@ -324,4 +331,21 @@ func resolvedApplicationTitle(title metadata.LocalizedText, fallback, language s
 		return fallback
 	}
 	return value
+}
+
+// allowedOperations reports what the caller may do with one object, in a stable
+// order. It answers only about the object as a whole: a restriction on rows or
+// on fields narrows what a granted operation reaches, never whether it exists.
+func allowedOperations(permissions *metadata.Permissions, objectID uuid.UUID) []metadata.PermissionOperation {
+	all := []metadata.PermissionOperation{
+		metadata.PermissionRead, metadata.PermissionCreate, metadata.PermissionUpdate,
+		metadata.PermissionDelete, metadata.PermissionPost, metadata.PermissionUndoPosting,
+	}
+	result := make([]metadata.PermissionOperation, 0, len(all))
+	for _, operation := range all {
+		if permissions.AllowsObject(objectID, operation) {
+			result = append(result, operation)
+		}
+	}
+	return result
 }

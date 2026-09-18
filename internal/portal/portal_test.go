@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -129,14 +130,27 @@ func TestMLAppPageBootstrapAndAssets(t *testing.T) {
 			Login string `json:"login"`
 		} `json:"user"`
 		Navigation []struct {
-			Name string `json:"name"`
+			Name       string   `json:"name"`
+			Kind       string   `json:"kind"`
+			KindTitle  string   `json:"kindTitle"`
+			Operations []string `json:"operations"`
 		} `json:"navigation"`
 	}
 	if err := json.Unmarshal(bootstrapResponse.Body.Bytes(), &bootstrap); err != nil {
 		t.Fatal(err)
 	}
-	if bootstrapResponse.Code != http.StatusOK || bootstrap.Database.Name != "Продажи" || bootstrap.User.Login != "admin" || len(bootstrap.Navigation) != 2 || bootstrap.Navigation[1].Name != "Товары" {
+	if bootstrapResponse.Code != http.StatusOK || bootstrap.Database.Name != "Продажи" || bootstrap.User.Login != "admin" || len(bootstrap.Navigation) != 3 || bootstrap.Navigation[1].Name != "Товары" {
 		t.Fatalf("bootstrap status=%d value=%+v body=%s", bootstrapResponse.Code, bootstrap, bootstrapResponse.Body.String())
+	}
+	// Глобальный поиск строится из этих полей: без вида объекта два одинаково
+	// названных объекта неразличимы, а без прав он предложил бы «создать» там,
+	// где создание запрещено.
+	goods, document := bootstrap.Navigation[1], bootstrap.Navigation[2]
+	if goods.KindTitle != "Справочник" || !slices.Contains(goods.Operations, "create") {
+		t.Fatalf("catalog navigation item = %+v", goods)
+	}
+	if document.KindTitle != "Документ" || slices.Contains(document.Operations, "create") {
+		t.Fatalf("document navigation item = %+v", document)
 	}
 
 	formRequest := httptest.NewRequest(http.MethodGet, "/api/databases/"+databaseID.String()+"/forms/catalogs/Товары/list", nil)
@@ -234,7 +248,10 @@ func (runtime *fakeRuntime) AcknowledgeSessionMessage(context.Context, string, u
 	return runtime.failure
 }
 func (runtime *fakeRuntime) LoadApplicationObjects(context.Context, string, uuid.UUID, string) ([]platform.ApplicationObject, error) {
-	return []platform.ApplicationObject{{Kind: metadata.CatalogKind, Name: "Товары", Title: "Товары"}}, runtime.failure
+	return []platform.ApplicationObject{
+		{Kind: metadata.CatalogKind, Name: "Товары", Title: "Товары", Operations: []metadata.PermissionOperation{metadata.PermissionRead, metadata.PermissionCreate}},
+		{Kind: metadata.DocumentKind, Name: "ПродажаТоваров", Title: "Продажа товаров", Operations: []metadata.PermissionOperation{metadata.PermissionRead}},
+	}, runtime.failure
 }
 func (runtime *fakeRuntime) LoadApplicationForm(_ context.Context, _ string, _ uuid.UUID, kind metadata.Kind, name string, formKind metadata.FormKind, _ string) (platform.ApplicationForm, error) {
 	return platform.ApplicationForm{Descriptor: metadata.FormDescriptor{

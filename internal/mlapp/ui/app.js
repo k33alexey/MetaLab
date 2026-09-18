@@ -30,6 +30,47 @@ function applyObjectState(form, state) {
   walk(form.items);
 }
 
+// globalSearchEntries turns what this user may reach into the lines the global
+// search offers. It searches METADATA - names of objects and their standard
+// commands - not data: "Товар" finds the catalog «Товары» and «Товары: создать»,
+// never a particular product. Searching data is a different feature with a
+// different cost, and confusing the two is how a search box becomes slow.
+//
+// Only objects already in the navigation are considered, and those are exactly
+// the ones the caller may read; "создать" appears only where the create right
+// is among the object's operations, so the search never offers what the answer
+// would refuse.
+function globalSearchEntries(navigation) {
+  const entries = [];
+  for (const item of navigation || []) {
+    if (item.id === "home" || !item.kind || !item.name) continue;
+    entries.push({item, action: "list", title: item.title, caption: item.kindTitle || item.kind});
+    if ((item.operations || []).includes("create")) {
+      entries.push({item, action: "create", title: `${item.title}: создать`, caption: `${item.kindTitle || item.kind} · команда`});
+    }
+  }
+  return entries;
+}
+
+// globalSearchMatches ranks by where the query is found: a name that STARTS
+// with what was typed is what the person meant far more often than one that
+// merely contains it, and an object outranks its own command so that typing a
+// name and pressing Enter opens the list rather than creating something.
+function globalSearchMatches(navigation, query, limit = 12) {
+  const needle = (query || "").trim().toLocaleLowerCase();
+  if (!needle) return [];
+  const scored = [];
+  for (const entry of globalSearchEntries(navigation)) {
+    const haystack = `${entry.title} ${entry.item.name}`.toLocaleLowerCase();
+    const at = haystack.indexOf(needle);
+    if (at < 0) continue;
+    const starts = entry.title.toLocaleLowerCase().startsWith(needle) || entry.item.name.toLocaleLowerCase().startsWith(needle);
+    scored.push({entry, rank: (starts ? 0 : 1) * 10 + (entry.action === "list" ? 0 : 1)});
+  }
+  scored.sort((left, right) => left.rank - right.rank || left.entry.title.localeCompare(right.entry.title));
+  return scored.slice(0, limit).map(item => item.entry);
+}
+
 class MLCommandBar extends HTMLElement {
   set commands(value) { this._commands = Array.isArray(value) ? value : []; this.render(); }
   connectedCallback() { this.setAttribute("role", "toolbar"); this.setAttribute("aria-label", "Команды формы"); this.render(); }
@@ -149,8 +190,15 @@ class MLAppShell extends HTMLElement {
     const brand = document.createElement("a"); brand.className = "brand"; brand.href = "/"; brand.textContent = "ML"; brand.setAttribute("aria-label", "ML Portal");
     const navToggle = document.createElement("button"); navToggle.type = "button"; navToggle.className = "nav-toggle"; navToggle.textContent = "☰"; navToggle.setAttribute("aria-label", "Открыть разделы"); navToggle.setAttribute("aria-controls", "ml-navigation"); navToggle.setAttribute("aria-expanded", String(this.navOpen)); navToggle.addEventListener("click", () => this.toggleNavigation());
     const database = document.createElement("strong"); database.textContent = data.database.name;
-    const search = document.createElement("input"); search.type = "search"; search.placeholder = "Поиск команд и объектов"; search.setAttribute("aria-label", "Глобальный поиск"); search.disabled = true;
-    const user = document.createElement("span"); user.className = "user"; user.textContent = data.user.login; header.append(brand, navToggle, database, search, user);
+    const search = document.createElement("input"); search.type = "search"; search.placeholder = "Поиск команд и объектов"; search.setAttribute("aria-label", "Глобальный поиск");
+    search.autocomplete = "off"; search.setAttribute("role", "combobox"); search.setAttribute("aria-expanded", "false"); search.setAttribute("aria-controls", "ml-global-search-results");
+    const results = document.createElement("ul"); results.id = "ml-global-search-results"; results.className = "global-search-results"; results.setAttribute("role", "listbox"); results.hidden = true;
+    const searchBox = document.createElement("div"); searchBox.className = "global-search"; searchBox.append(search, results);
+    this.globalSearch = {input: search, results, matches: [], active: -1};
+    search.addEventListener("input", () => this.updateGlobalSearch());
+    search.addEventListener("keydown", event => this.handleGlobalSearchKey(event));
+    search.addEventListener("blur", () => setTimeout(() => this.closeGlobalSearch(), 150));
+    const user = document.createElement("span"); user.className = "user"; user.textContent = data.user.login; header.append(brand, navToggle, database, searchBox, user);
     const body = document.createElement("div"); body.className = "app-body";
     const nav = document.createElement("nav"); nav.id = "ml-navigation"; nav.className = "app-nav"; nav.setAttribute("aria-label", "Разделы");
     for (const item of data.navigation || []) { const selected = this.currentObject ? item.id === this.currentObject.id : item.id === "home"; const button = document.createElement("button"); button.type = "button"; button.textContent = item.title; button.className = selected ? "current" : ""; if (selected) button.setAttribute("aria-current", "page"); button.addEventListener("click", () => { this.closeNavigation(); item.id === "home" ? this.openHome() : this.openForm(item, "list"); }); nav.append(button); }
@@ -208,6 +256,60 @@ class MLAppShell extends HTMLElement {
       else this.announce(`Команда «${id}» требует выбранного объекта`);
     }
     finally { this._busy = false; }
+  }
+  updateGlobalSearch() {
+    const search = this.globalSearch;
+    if (!search) return;
+    search.matches = globalSearchMatches(this.bootstrap.navigation, search.input.value);
+    search.active = search.matches.length ? 0 : -1;
+    this.renderGlobalSearch();
+  }
+  renderGlobalSearch() {
+    const search = this.globalSearch;
+    search.results.replaceChildren();
+    const query = search.input.value.trim();
+    if (!query) { search.results.hidden = true; search.input.setAttribute("aria-expanded", "false"); return; }
+    if (!search.matches.length) {
+      const empty = document.createElement("li"); empty.className = "global-search-empty"; empty.textContent = "Ничего не найдено";
+      search.results.append(empty);
+    }
+    search.matches.forEach((entry, index) => {
+      const row = document.createElement("li"); row.setAttribute("role", "option"); row.setAttribute("aria-selected", String(index === search.active));
+      row.className = index === search.active ? "global-search-row current" : "global-search-row";
+      const title = document.createElement("span"); title.className = "global-search-title"; title.textContent = entry.title;
+      const caption = document.createElement("span"); caption.className = "global-search-caption"; caption.textContent = entry.caption;
+      row.append(title, caption);
+      row.addEventListener("mousedown", event => { event.preventDefault(); this.runGlobalSearch(entry); });
+      search.results.append(row);
+    });
+    search.results.hidden = false; search.input.setAttribute("aria-expanded", "true");
+  }
+  handleGlobalSearchKey(event) {
+    const search = this.globalSearch;
+    if (!search || search.results.hidden) { if (event.key === "Escape") this.closeGlobalSearch(); return; }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (!search.matches.length) return;
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      search.active = (search.active + step + search.matches.length) % search.matches.length;
+      this.renderGlobalSearch();
+      return;
+    }
+    if (event.key === "Enter") { event.preventDefault(); const entry = search.matches[search.active]; if (entry) this.runGlobalSearch(entry); return; }
+    if (event.key === "Escape") { event.preventDefault(); this.closeGlobalSearch(); }
+  }
+  closeGlobalSearch() {
+    const search = this.globalSearch;
+    if (!search) return;
+    search.results.hidden = true; search.results.replaceChildren(); search.matches = []; search.active = -1;
+    search.input.setAttribute("aria-expanded", "false");
+  }
+  async runGlobalSearch(entry) {
+    this.closeGlobalSearch();
+    this.globalSearch.input.value = "";
+    this.closeNavigation();
+    if (entry.action === "create") { await this.openObjectRecord(entry.item, "new"); return; }
+    await this.openForm(entry.item, "list");
   }
   openHome() { this.currentObject = null; this.currentFormKind = null; this.currentReference = undefined; this.objectState = null; this.listState = null; this.bootstrap.form = this.homeForm; this.render(); }
   async openObjectRecord(item, reference) {
