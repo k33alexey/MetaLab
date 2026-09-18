@@ -1385,7 +1385,7 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		}
 		table, _ := PhysicalInformationRegisterTable(definition.ID)
 		result.fromSQL = qualifiedCatalogTable(table)
-		result.objectID = definition.ID
+		result.objectID, result.policyColumn = definition.ID, informationRegisterPolicyColumn(definition)
 		result.addStored("ИдентификаторЗаписи", querySourceColumnSQL(sqlAlias, "record_id"), []Type{{Kind: UUIDType}}, "RecordID")
 		if definition.Periodicity != InformationRegisterPeriodNone {
 			result.addStored("Период", querySourceColumnSQL(sqlAlias, "period"), []Type{{Kind: DateType}}, "Period")
@@ -1408,7 +1408,7 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		}
 		table, _ := PhysicalAccumulationRegisterTable(definition.ID)
 		result.fromSQL = qualifiedCatalogTable(table)
-		result.objectID = definition.ID
+		result.objectID, result.policyColumn = definition.ID, accumulationRegisterPolicyColumn(definition)
 		result.addStored("ИдентификаторЗаписи", querySourceColumnSQL(sqlAlias, "record_id"), []Type{{Kind: UUIDType}}, "RecordID")
 		result.addStored("Период", querySourceColumnSQL(sqlAlias, "period"), []Type{{Kind: DateType}}, "Period")
 		result.addRecorder()

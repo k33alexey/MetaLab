@@ -243,6 +243,30 @@ func TestSessionParameterNameIsReserved(t *testing.T) {
 	}
 }
 
+// Totals are summed over every movement, so a per-row restriction cannot be
+// applied to them after the fact. Refusing beats answering with rows the policy
+// meant to hide.
+func TestRegisterAggregateReadRefusesUnappliedRestriction(t *testing.T) {
+	t.Parallel()
+	role := readPolicyRole("Кладовщик", "code", "A")
+	catalog, definition, _ := policyCatalog(t, role)
+	policy, err := CompilePermissions(catalog, []uuid.UUID{role.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := requireUnrestrictedRegisterRead(context.Background(), definition.ID, "ОстаткиТоваров"); err != nil {
+		t.Fatalf("a caller with no policy must not be refused: %v", err)
+	}
+	restricted := WithPermissions(context.Background(), policy)
+	if err := requireUnrestrictedRegisterRead(restricted, definition.ID, "ОстаткиТоваров"); err == nil {
+		t.Fatal("an aggregate read answered despite a restriction it cannot apply")
+	}
+	// An object the policy does not restrict at all still reads normally.
+	if err := requireUnrestrictedRegisterRead(restricted, uuid.MustNew(), "Другой"); err == nil {
+		t.Fatal("an ungranted object must be refused as well")
+	}
+}
+
 // A context without a policy reads unrestricted - Studio and the CLI rely on it.
 func TestListRowRestrictionFollowsContext(t *testing.T) {
 	t.Parallel()

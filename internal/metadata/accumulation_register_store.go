@@ -696,6 +696,9 @@ func (repository *AccumulationRegisterRepository) Balances(ctx context.Context, 
 	if !ok {
 		return nil, fmt.Errorf("unknown accumulation register %q", name)
 	}
+	if err := requireUnrestrictedRegisterRead(ctx, definition.ID, definition.Name); err != nil {
+		return nil, err
+	}
 	if definition.Kind != AccumulationRegisterBalance {
 		return nil, fmt.Errorf("accumulation register %s does not store balances", definition.Name)
 	}
@@ -710,6 +713,9 @@ func (repository *AccumulationRegisterRepository) Turnovers(ctx context.Context,
 	definition, ok := repository.catalog.AccumulationRegisterDefinition(name)
 	if !ok {
 		return nil, fmt.Errorf("unknown accumulation register %q", name)
+	}
+	if err := requireUnrestrictedRegisterRead(ctx, definition.ID, definition.Name); err != nil {
+		return nil, err
 	}
 	begin, err := normalizeAccumulationPeriod(begin)
 	if err != nil {

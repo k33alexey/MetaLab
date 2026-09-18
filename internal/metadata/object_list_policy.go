@@ -191,6 +191,67 @@ func documentPolicyColumn(definition DocumentDefinition) func(string) (listColum
 	}, definition.Attributes)
 }
 
+// requireUnrestrictedRegisterRead refuses a register read that cannot honour an
+// active row restriction, instead of answering with rows the policy meant to
+// hide.
+//
+// Balances and turnovers are the reason this exists: they are served from a
+// PRE-AGGREGATED totals table, and those totals were summed over every movement
+// regardless of who reads them. A per-row restriction cannot be applied to a
+// number that has already been added up - filtering the movements alone would
+// contradict the totals, and using the totals as they are would leak exactly
+// what the restriction forbids. Until that is resolved (061.11), refusing is the
+// only answer that is neither wrong nor silent. Queries through the BSL engine
+// are unaffected: they read movements and do honour restrictions.
+func requireUnrestrictedRegisterRead(ctx context.Context, objectID uuid.UUID, register string) error {
+	permissions, ok := PermissionsFromContext(ctx)
+	if !ok {
+		return nil
+	}
+	if _, restricted := permissions.RowFilter(objectID, PermissionRead); !restricted {
+		return nil
+	}
+	return fmt.Errorf("register %s has a row-level access restriction, which this read cannot apply; use a query instead", register)
+}
+
+// registerPolicyColumn maps a policy field key to a register column. Registers
+// have their own vocabulary - period, line number, activity, movement kind -
+// rather than the code/description of a catalog.
+//
+// "Регистратор" is deliberately absent: it is stored as a type/reference pair,
+// and a rule compares one column, so a restriction naming it cannot be rendered.
+// Refusing it by name gives a clear message instead of a confusing one about an
+// unknown field - and refusing is the only safe answer, since silently dropping
+// the condition would widen access.
+func registerPolicyColumn(periodic, subordinate bool, movementKind bool, attributes []Attribute) func(string) (listColumn, bool) {
+	standard := map[string]listColumn{
+		"recordid": {name: "record_id", kind: UUIDType},
+		"active":   {name: "active", kind: BooleanType},
+	}
+	if periodic {
+		standard["period"] = listColumn{name: "period", kind: DateType}
+	}
+	if subordinate {
+		standard["linenumber"] = listColumn{name: "line_no", kind: NumberType}
+	}
+	if movementKind {
+		standard["movementkind"] = listColumn{name: "movement_kind", kind: NumberType}
+	}
+	return policyListColumn(func(field string) (listColumn, bool) {
+		column, ok := standard[strings.ToLower(strings.TrimSpace(field))]
+		return column, ok
+	}, attributes)
+}
+
+func informationRegisterPolicyColumn(definition InformationRegisterDefinition) func(string) (listColumn, bool) {
+	return registerPolicyColumn(definition.Periodicity != InformationRegisterPeriodNone,
+		definition.WriteMode == InformationRegisterRecorder, false, informationRegisterFields(definition))
+}
+
+func accumulationRegisterPolicyColumn(definition AccumulationRegisterDefinition) func(string) (listColumn, bool) {
+	return registerPolicyColumn(true, true, definition.Kind == AccumulationRegisterBalance, accumulationRegisterFields(definition))
+}
+
 // policySubqueryTarget resolves the object a subquery reads: its physical table
 // and how to name its fields. Only catalogs and documents qualify - the same
 // coverage the restricted side has, so a policy cannot reach through a subquery
@@ -211,6 +272,24 @@ func (catalog *Catalog) policySubqueryTarget(objectID uuid.UUID) (string, func(s
 			return "", nil, false
 		}
 		return qualifiedCatalogTable(table), documentPolicyColumn(definition), true
+	}
+	// A register is the usual home of "which rows is this user allowed" tables,
+	// so reading one from a subquery is the main reason subqueries exist here.
+	if index, ok := catalog.informationRegisterByID[objectID]; ok {
+		definition := catalog.InformationRegisters[index]
+		table, err := PhysicalInformationRegisterTable(definition.ID)
+		if err != nil {
+			return "", nil, false
+		}
+		return qualifiedCatalogTable(table), informationRegisterPolicyColumn(definition), true
+	}
+	if index, ok := catalog.accumulationRegisterByID[objectID]; ok {
+		definition := catalog.AccumulationRegisters[index]
+		table, err := PhysicalAccumulationRegisterTable(definition.ID)
+		if err != nil {
+			return "", nil, false
+		}
+		return qualifiedCatalogTable(table), accumulationRegisterPolicyColumn(definition), true
 	}
 	return "", nil, false
 }
