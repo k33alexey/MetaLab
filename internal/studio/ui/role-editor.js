@@ -67,6 +67,36 @@ function createRoleModel(source) {
     if(policy.rule)return policy.rule;
     return (role.policyTemplates||[]).find(template=>template.name===policy.template)?.rule;
   }
+  // A restriction survives repair only if everything it names still exists: the
+  // field it restricts, the operations it narrows, the template it invokes with
+  // the right number of fields, and the object a subquery reads.
+  function policyStillApplies(role, objectID, definition, policy) {
+    const own = fields.get(objectID);
+    if (!policy.operations.every(operation => definition.operations.includes(operation))) return false;
+    const template = policy.template ? (role.policyTemplates||[]).find(item => item.name === policy.template) : null;
+    if (policy.template && !template) return false;
+    if (template) {
+      const parameters = template.parameters || [], supplied = policy.arguments || [];
+      if (parameters.length !== supplied.length) return false;
+      if (!supplied.every(field => own.has(field))) return false;
+    }
+    const rule = template ? template.rule : policy.rule;
+    if (!rule) return false;
+    const resolveField = field => {
+      if (!field.startsWith('$')) return field;
+      const at = (template?.parameters||[]).indexOf(field.slice(1));
+      return at < 0 ? null : (policy.arguments||[])[at];
+    };
+    const field = resolveField(rule.field);
+    if (!field || !own.has(field)) return false;
+    if (!rule.subquery) return true;
+    const source = fields.get(rule.subquery.object);
+    if (!source || !source.has(rule.subquery.field)) return false;
+    return (rule.subquery.where||[]).every(condition => {
+      const conditionField = resolveField(condition.field);
+      return conditionField && source.has(conditionField);
+    });
+  }
   function repaired() {
     const result = clean();
     result.objects = result.objects.filter(item => definitions.has(item.object));
@@ -80,10 +110,7 @@ function createRoleModel(source) {
       }
       item.fields = item.fields.filter(field => field.operations.length);
       if (item.policies) {
-        item.policies = item.policies.filter(policy => {
-          const rule = resolveRule(result, policy);
-          return rule && fields.get(item.object).has(rule.field) && policy.operations.every(operation => definition.operations.includes(operation));
-        });
+        item.policies = item.policies.filter(policy => policyStillApplies(result, item.object, definition, policy));
         if(!item.policies.length)delete item.policies;
       }
     }
@@ -109,9 +136,14 @@ function createRoleModel(source) {
       if(enabled)value.role.commands.push({form,command});
     },
     templates() { return structuredClone(value.role.policyTemplates); },
-    addTemplate(name, rule) {
+    addTemplate(name, parameters, rule) {
       if(!name || value.role.policyTemplates.some(item=>item.name===name))return false;
-      value.role.policyTemplates.push({name, rule}); return true;
+      const template={name, rule}; if(parameters?.length)template.parameters=parameters;
+      value.role.policyTemplates.push(template); return true;
+    },
+    setTemplateParameters(name, parameters) {
+      const item=value.role.policyTemplates.find(entry=>entry.name===name); if(!item)return;
+      if(parameters.length)item.parameters=parameters; else delete item.parameters;
     },
     setTemplateRule(name, rule) { const item=value.role.policyTemplates.find(entry=>entry.name===name); if(item)item.rule=rule; },
     // Removing a template also removes the restrictions that referenced it:
@@ -166,28 +198,75 @@ function createRoleEditor(host, onChange) {
     const values=(operator==='in'||operator==='not-in')?parts:parts.slice(0,1);
     return values.map(data=>({kind:'string',data}));
   }
-  function ruleEditor(rule, fieldOptions, apply) {
+  // A rule compares a field with literal values, a session parameter, or the set
+  // of values found in another table. The third form is the one real
+  // restrictions use, and it is why nested subqueries are refused: one level
+  // expresses the pattern and keeps the cost of a policy predictable.
+  function ruleEditor(rule, fieldOptions, apply, allowSubquery=true) {
     const row=node('div',undefined,'role-rule');
     row.append(select(fieldOptions,rule.field,field=>apply({...rule,field}),'Поле ограничения'));
-    row.append(select(Object.entries(operators),rule.operator,operator=>apply({...rule,operator,
-      ...(rule.parameter?{}:{values:parseOperand(operandText(rule),operator)})}),'Оператор'));
-    // Offering "session parameter" with none declared would be a dead choice:
-    // the rule needs a name, so picking it could not change anything.
-    const names=source.schema.sessionParameters||[],usesParameter=!!rule.parameter;
-    const kinds=[['values','Значение'],...(names.length?[['parameter','Параметр сеанса']]:[])];
-    row.append(select(kinds,usesParameter?'parameter':'values',
-      kind=>apply(kind==='parameter'?{field:rule.field,operator:rule.operator,parameter:names[0]}
-        :{field:rule.field,operator:rule.operator,values:[]}),'Вид операнда'));
-    if(usesParameter){
+    const listOnly=!!rule.subquery;
+    const operatorChoices=listOnly?Object.entries(operators).filter(([key])=>key==='in'||key==='not-in'):Object.entries(operators);
+    row.append(select(operatorChoices,rule.operator,operator=>apply({...rule,operator,
+      ...(rule.parameter||rule.subquery?{}:{values:parseOperand(operandText(rule),operator)})}),'Оператор'));
+    const names=source.schema.sessionParameters||[];
+    const kind=rule.subquery?'subquery':(rule.parameter?'parameter':'values');
+    const kinds=[['values','Значение'],...(names.length?[['parameter','Параметр сеанса']]:[]),
+      ...(allowSubquery&&source.schema.objects.length?[['subquery','Подзапрос']]:[])];
+    row.append(select(kinds,kind,chosen=>{
+      if(chosen==='parameter')apply({field:rule.field,operator:rule.operator,parameter:names[0]});
+      else if(chosen==='subquery'){
+        const object=source.schema.objects[0];
+        apply({field:rule.field,operator:'in',subquery:{object:object.id,field:object.fields[0]?.key||'ref',where:[]}});
+      } else apply({...blankRule(rule.field),operator:rule.operator});
+    },'Вид операнда'));
+    if(kind==='parameter'){
       row.append(select(names.map(name=>[name,name]),rule.parameter,parameter=>apply({...rule,parameter}),'Параметр сеанса'));
-    } else {
-      const operand=node('input');operand.value=operandText(rule);operand.placeholder=(rule.operator==='in'||rule.operator==='not-in')?'Значения через запятую':'Значение';
-      operand.setAttribute('aria-label','Значение ограничения');
-      operand.addEventListener('change',()=>{apply({...rule,values:parseOperand(operand.value,rule.operator)});changed();renderPanel();});
-      row.append(operand);
+      return row;
     }
+    if(kind==='subquery'){
+      const block=node('div',undefined,'role-subquery');block.append(row);
+      const chosen=source.schema.objects.find(item=>item.id===rule.subquery.object)||source.schema.objects[0];
+      const line=node('div',undefined,'role-rule');
+      line.append(node('span','из','muted'));
+      line.append(select(source.schema.objects.map(item=>[item.id,title(item)]),rule.subquery.object,id=>{
+        const next=source.schema.objects.find(item=>item.id===id);
+        apply({...rule,subquery:{object:id,field:next.fields[0]?.key||'ref',where:[]}});
+      },'Объект подзапроса'));
+      line.append(node('span','по полю','muted'));
+      line.append(select(objectFieldOptions(chosen),rule.subquery.field,
+        field=>apply({...rule,subquery:{...rule.subquery,field}}),'Поле подзапроса'));
+      block.append(line);
+      (rule.subquery.where||[]).forEach((condition,index)=>{
+        const nested=ruleEditor(condition,objectFieldOptions(chosen),next=>{
+          const where=[...rule.subquery.where];where[index]=next;
+          apply({...rule,subquery:{...rule.subquery,where}});
+        },false);
+        const remove=node('button','Убрать условие');remove.type='button';
+        remove.addEventListener('click',()=>{
+          const where=rule.subquery.where.filter((_,at)=>at!==index);
+          apply({...rule,subquery:{...rule.subquery,where}});changed();renderPanel();renderTemplates();
+        });
+        nested.append(remove);block.append(nested);
+      });
+      const add=node('button','Добавить условие подзапроса');add.type='button';
+      add.addEventListener('click',()=>{
+        const where=[...(rule.subquery.where||[]),blankRule(chosen.fields[0]?.key||'ref')];
+        apply({...rule,subquery:{...rule.subquery,where}});changed();renderPanel();renderTemplates();
+      });
+      block.append(add);
+      return block;
+    }
+    const operand=node('input');operand.value=operandText(rule);operand.placeholder=(rule.operator==='in'||rule.operator==='not-in')?'Значения через запятую':'Значение';
+    operand.setAttribute('aria-label','Значение ограничения');
+    operand.addEventListener('change',()=>{apply({...rule,values:parseOperand(operand.value,rule.operator)});changed();renderPanel();});
+    row.append(operand);
     return row;
   }
+  // A new rule starts with one empty value rather than none: a rule with no
+  // operand at all is refused on save, and the editor must not be able to build
+  // something the project cannot store.
+  function blankRule(field) { return {field, operator:'eq', values:[{kind:'string',data:''}]}; }
   function objectFieldOptions(object) { return object.fields.map(field=>[field.key,(field.parent?'↳ ':'')+title(field)]); }
   function allFieldOptions() {
     const result=new Map();
@@ -206,14 +285,25 @@ function createRoleEditor(host, onChange) {
       const remove=node('button','Удалить');remove.type='button';remove.setAttribute('aria-label',`Удалить шаблон ${template.name}`);
       remove.addEventListener('click',()=>{model.removeTemplate(template.name);changed();renderPanel();renderTemplates();});
       head.append(remove);block.append(head);
-      block.append(ruleEditor(template.rule,options,rule=>{model.setTemplateRule(template.name,rule);renderTemplates();}));
+      const parameterLine=node('div',undefined,'role-rule'),parameters=node('input');
+      parameters.value=(template.parameters||[]).join(', ');parameters.placeholder='Параметры через запятую';
+      parameters.setAttribute('aria-label',`Параметры шаблона ${template.name}`);
+      parameters.addEventListener('change',()=>{
+        model.setTemplateParameters(template.name,parameters.value.split(',').map(item=>item.trim()).filter(Boolean));
+        changed();renderTemplates();renderPanel();
+      });
+      parameterLine.append(node('span','Параметры','muted'),parameters);block.append(parameterLine);
+      // A parameter is used by naming it where a field would go, so it belongs
+      // in the same list the field select offers.
+      const templateFields=[...(template.parameters||[]).map(name=>['$'+name,'$'+name]),...options];
+      block.append(ruleEditor(template.rule,templateFields,rule=>{model.setTemplateRule(template.name,rule);renderTemplates();}));
       templates.append(block);
     }
     const add=node('div',undefined,'role-template-add'),name=node('input');
     name.placeholder='Имя шаблона';name.maxLength=128;name.setAttribute('aria-label','Имя нового шаблона политики');
     const button=node('button','Добавить шаблон');button.type='button';
     button.addEventListener('click',()=>{
-      if(!model.addTemplate(name.value.trim(),{field:options[0][0],operator:'eq',values:[]}))return;
+      if(!model.addTemplate(name.value.trim(),[],blankRule(options[0][0])))return;
       name.value='';changed();renderTemplates();renderPanel();
     });
     add.append(name,button);templates.append(add);
@@ -225,26 +315,43 @@ function createRoleEditor(host, onChange) {
     block.append(node('p','Ограничение сужает уже выданные права: строки, не прошедшие правило, не видны и не изменяются. Ограничения разных ролей объединяются по ИЛИ.','muted'));
     const options=objectFieldOptions(object);
     if(!options.length){block.append(node('p','У объекта нет реквизитов, по которым можно ограничить строки.','muted'));return block;}
-    const list=model.policies(object.id),names=model.templates().map(item=>item.name);
+    const declared=model.templates(),names=declared.map(item=>item.name);
+    const arity=name=>(declared.find(item=>item.name===name)?.parameters||[]).length;
+    const list=model.policies(object.id);
     list.forEach((policy,index)=>{
       const row=node('div',undefined,'role-policy');
       const head=node('div',undefined,'role-policy-head');
       head.append(select(object.operations.map(operation=>[operation,operations[operation]]),policy.operations[0],
         operation=>model.setPolicy(object.id,index,{...policy,operations:[operation]}),'Право, которое ограничивается'));
       head.append(select([['rule','Своё правило'],...(names.length?[['template','Шаблон политики']]:[])],policy.template?'template':'rule',
-        kind=>model.setPolicy(object.id,index,kind==='template'?{operations:policy.operations,template:names[0]}
-          :{operations:policy.operations,rule:{field:options[0][0],operator:'eq',values:[]}}),'Источник правила'));
+        kind=>model.setPolicy(object.id,index,kind==='template'
+          ?{operations:policy.operations,template:names[0],arguments:Array(arity(names[0])).fill(options[0][0])}
+          :{operations:policy.operations,rule:blankRule(options[0][0])}),'Источник правила'));
       const remove=node('button','Удалить');remove.type='button';remove.setAttribute('aria-label',`Удалить ограничение ${index+1}`);
       remove.addEventListener('click',()=>{model.removePolicy(object.id,index);changed();renderPanel();});
       head.append(remove);row.append(head);
-      if(policy.template!==undefined)row.append(select(names.map(name=>[name,name]),policy.template,
-        template=>model.setPolicy(object.id,index,{...policy,template}),'Шаблон политики'));
+      if(policy.template!==undefined){
+        row.append(select(names.map(name=>[name,name]),policy.template,
+          template=>model.setPolicy(object.id,index,{...policy,template,arguments:Array(arity(template)).fill(options[0][0])}),'Шаблон политики'));
+        // One field per declared parameter: the template says WHAT to check, the
+        // restriction says on which column of this particular object.
+        const declaredParameters=(declared.find(item=>item.name===policy.template)?.parameters)||[];
+        declaredParameters.forEach((parameter,at)=>{
+          const line=node('div',undefined,'role-rule');
+          line.append(node('span','$'+parameter,'muted'));
+          line.append(select(options,(policy.arguments||[])[at]||options[0][0],field=>{
+            const values=[...(policy.arguments||[])];values[at]=field;
+            model.setPolicy(object.id,index,{...policy,arguments:values});
+          },`Поле для параметра ${parameter}`));
+          row.append(line);
+        });
+      }
       else row.append(ruleEditor(policy.rule,options,rule=>model.setPolicy(object.id,index,{...policy,rule})));
       block.append(row);
     });
     const add=node('button','Добавить ограничение');add.type='button';
     add.addEventListener('click',()=>{
-      model.addPolicy(object.id,{operations:[object.operations[0]],rule:{field:options[0][0],operator:'eq',values:[]}});
+      model.addPolicy(object.id,{operations:[object.operations[0]],rule:blankRule(options[0][0])});
       policiesExpanded=true;changed();renderPanel();
     });
     block.append(add);

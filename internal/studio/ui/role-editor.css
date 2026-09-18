@@ -21,5 +21,8 @@
 .role-template-head strong{flex:1;font-size:13px;overflow-wrap:anywhere}
 .role-template-add{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .role-rule{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.role-rule input{flex:1;min-width:150px}
+.role-rule .muted{font-size:12px;color:#aeb1b8;white-space:nowrap}
+.role-subquery{display:flex;flex-direction:column;gap:8px;border-left:2px solid #4a4d54;padding-left:10px}
+.role-subquery .role-rule{margin:0}
 .role-policies{border-top:1px solid var(--border,#393b40);margin-top:16px}
 @media(max-width:900px){.role-body{grid-template-columns:180px minmax(0,1fr)}.role-operation-list{grid-template-columns:1fr}.role-identity{flex-wrap:wrap}.role-rule,.role-policy-head{flex-direction:column;align-items:stretch}}

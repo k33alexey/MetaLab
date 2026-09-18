@@ -104,6 +104,35 @@ test('a restriction naming a template that was never declared is repaired away',
   assert.equal(model.policies('goods').length,0);
   assert.equal(model.value().objects.length,1,'the read grant itself stays');
 });
+test('a template with parameters is reusable and its arguments are checked on repair',()=>{
+  const model=create(fixture());
+  assert.equal(model.addTemplate('Своё',['Поле'],{field:'$Поле',operator:'eq',parameter:'ТекущийПользователь'}),true);
+  model.addPolicy('goods',{operations:['read'],template:'Своё',arguments:['name']});
+  assert.equal(model.hasUnavailable(),false,'a template used with a real field must survive');
+  model.setPolicy('goods',0,{operations:['read'],template:'Своё',arguments:['gone']});
+  assert.equal(model.hasUnavailable(),true,'an argument naming a missing field must be reported');
+  model.removeUnavailable();
+  assert.equal(model.policies('goods').length,0);
+});
+test('a template invoked with the wrong number of fields is repaired away',()=>{
+  const model=create(fixture());
+  model.addTemplate('Своё',['Поле'],{field:'$Поле',operator:'eq',parameter:'П'});
+  model.addPolicy('goods',{operations:['read'],template:'Своё'});
+  assert.equal(model.hasUnavailable(),true,'a missing argument must be reported');
+  model.removeUnavailable();
+  assert.equal(model.policies('goods').length,0);
+});
+test('a subquery survives while the table it reads exists and is repaired away when it does not',()=>{
+  const model=create(fixture());
+  model.addPolicy('goods',{operations:['read'],rule:{field:'name',operator:'in',
+    subquery:{object:'goods',field:'ref',where:[{field:'name',operator:'eq',parameter:'ТекущийПользователь'}]}}});
+  assert.equal(model.hasUnavailable(),false);
+  model.setPolicy('goods',0,{operations:['read'],rule:{field:'name',operator:'in',
+    subquery:{object:'отсутствует',field:'ref',where:[]}}});
+  assert.equal(model.hasUnavailable(),true,'a subquery over a removed object must be reported');
+  model.removeUnavailable();
+  assert.equal(model.policies('goods').length,0);
+});
 test('comment and default-grant flags round-trip through the model without touching objects/fields',()=>{
   const model=create(fixture());
   assert.equal(model.value().comment,undefined);assert.equal(model.value().grantNewObjectsByDefault,undefined);assert.equal(model.value().grantNewFieldsByDefault,undefined);
