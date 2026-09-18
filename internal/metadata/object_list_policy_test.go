@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"bytes"
 	"context"
 	"strings"
 	"testing"
@@ -168,6 +169,77 @@ func TestRowRestrictionRefusesWhatItCannotApply(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), test.message) {
 			t.Fatalf("%s: error=%v", name, err)
 		}
+	}
+}
+
+// A rule comparing against a session parameter is evaluated from values the
+// hosting layer resolved, without any BSL runtime on the read path.
+func TestRowRestrictionResolvesSessionParameters(t *testing.T) {
+	t.Parallel()
+	column := func(string) (listColumn, bool) { return listColumn{name: "owner"}, true }
+	render := func(values map[string][]Value, rule PolicyRule) (string, []any, error) {
+		restriction := rowRestriction{restricted: true, alternatives: []PolicyRule{rule}, column: column,
+			parameter: func(name string) ([]Value, bool) {
+				return sessionValue(WithSessionValues(context.Background(), values), name)
+			}}
+		arguments := []any{}
+		predicate, err := restriction.predicate(&arguments)
+		return predicate, arguments, err
+	}
+	user := Value{Kind: UUIDType, Data: uuid.MustNew().String()}
+
+	predicate, arguments, err := render(map[string][]Value{CurrentUserParameter: {user}},
+		PolicyRule{Field: "owner", Operator: PolicyEqual, Parameter: CurrentUserParameter})
+	if err != nil || predicate != "(owner = $1)" || len(arguments) != 1 || arguments[0] != user.Data {
+		t.Fatalf("single value: %q %v error=%v", predicate, arguments, err)
+	}
+
+	// A collection is the ordinary case, not the exception.
+	warehouses := []Value{{Kind: StringType, Data: "Основной"}, {Kind: StringType, Data: "Розничный"}}
+	predicate, arguments, err = render(map[string][]Value{"ДоступныеСклады": warehouses},
+		PolicyRule{Field: "owner", Operator: PolicyIn, Parameter: "ДоступныеСклады"})
+	if err != nil || predicate != "(owner IN ($1,$2))" || len(arguments) != 2 {
+		t.Fatalf("collection: %q %v error=%v", predicate, arguments, err)
+	}
+
+	// An empty collection is a real answer - no accessible warehouses means no
+	// rows - and must not be read as "no restriction".
+	predicate, _, err = render(map[string][]Value{"ДоступныеСклады": {}},
+		PolicyRule{Field: "owner", Operator: PolicyIn, Parameter: "ДоступныеСклады"})
+	if err != nil || predicate != "(FALSE)" {
+		t.Fatalf("empty collection must admit no rows: %q error=%v", predicate, err)
+	}
+	// Its negation is the mirror image: excluded from nothing means everything.
+	predicate, _, err = render(map[string][]Value{"ДоступныеСклады": {}},
+		PolicyRule{Field: "owner", Operator: PolicyNotIn, Parameter: "ДоступныеСклады"})
+	if err != nil || predicate != "(TRUE)" {
+		t.Fatalf("empty negated collection: %q error=%v", predicate, err)
+	}
+
+	// A parameter this session has no value for refuses the read rather than
+	// quietly matching everything.
+	if _, _, err := render(map[string][]Value{}, PolicyRule{Field: "owner", Operator: PolicyEqual, Parameter: "НетТакого"}); err == nil {
+		t.Fatal("unresolved session parameter was ignored")
+	}
+}
+
+// The platform owns this name, so a project must not be able to declare it too.
+func TestSessionParameterNameIsReserved(t *testing.T) {
+	t.Parallel()
+	if !ReservedSessionParameter(CurrentUserParameter) || !ReservedSessionParameter("currentuser") {
+		t.Fatal("reserved names are not recognised")
+	}
+	if ReservedSessionParameter("ТекущийСклад") {
+		t.Fatal("an ordinary name was treated as reserved")
+	}
+	parameter := SessionParameter{Format: CurrentFormat, ID: uuid.MustNew(), Name: CurrentUserParameter,
+		Title: LocalizedText{"ru": "Текущий пользователь"}, Types: []Type{{Kind: UUIDType}}}
+	var encoded bytes.Buffer
+	if err := Encode(&encoded, parameter); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DecodeSessionParameter("p.yaml", bytes.NewReader(encoded.Bytes()), metadataManifest()); err == nil {
+		t.Fatal("a project was allowed to declare the platform's own session parameter")
 	}
 }
 

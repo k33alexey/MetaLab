@@ -180,7 +180,8 @@ func (runtime *Runtime) openApplicationRuntime(ctx context.Context, databaseID, 
 			return nil, nil, nil, nil, err
 		}
 	}
-	return metadata.WithPermissions(ctx, permissions), applicationRuntime, catalog, pool.Close, nil
+	ctx = metadata.WithSessionValues(metadata.WithPermissions(ctx, permissions), applicationSessionValues(actor))
+	return ctx, applicationRuntime, catalog, pool.Close, nil
 }
 
 func openApplicationObjectValue(ctx context.Context, applicationRuntime *metadata.Runtime, catalog *metadata.Catalog, objectKind metadata.Kind, name, reference string) (bytecode.Value, bool, error) {

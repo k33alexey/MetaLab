@@ -19,9 +19,9 @@ func TestDecodeSessionParameterStrictAndLocalized(t *testing.T) {
 	manifest := metadataManifest()
 	parameter, err := DecodeSessionParameter("session-parameter.yaml", strings.NewReader(`format: 1
 id: `+sessionParameterID+`
-name: ТекущийПользователь
+name: ТекущийСотрудник
 title:
-  ru: Текущий пользователь
+  ru: Текущий сотрудник
   uk: Поточний користувач
 types:
   - kind: string
@@ -30,7 +30,7 @@ types:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parameter.Title.Resolve("uk", manifest.Languages) != "Поточний користувач" || parameter.Title.Resolve("en", manifest.Languages) != "Текущий пользователь" {
+	if parameter.Title.Resolve("uk", manifest.Languages) != "Поточний користувач" || parameter.Title.Resolve("en", manifest.Languages) != "Текущий сотрудник" {
 		t.Fatalf("localized title fallback = %q", parameter.Title.Resolve("en", manifest.Languages))
 	}
 	_, err = DecodeSessionParameter("session-parameter.yaml", strings.NewReader(`format: 1
@@ -57,19 +57,19 @@ types: [{kind: string}]
 func TestCatalogSessionParameterLookupReturnsIsolatedCopies(t *testing.T) {
 	t.Parallel()
 	parameter := SessionParameter{
-		Format: CurrentFormat, ID: uuid.MustNew(), Name: "ТекущийПользователь", Title: LocalizedText{"ru": "Текущий пользователь"},
+		Format: CurrentFormat, ID: uuid.MustNew(), Name: "ТекущийСотрудник", Title: LocalizedText{"ru": "Текущий сотрудник"},
 		Types: []Type{{Kind: StringType, Length: 50}},
 	}
 	catalog, err := NewCatalogSnapshotWithSessionParameters(metadataManifest(), nil, nil, nil, nil, nil, nil, nil, nil, nil, []SessionParameter{parameter})
 	if err != nil {
 		t.Fatal(err)
 	}
-	byName, ok := catalog.SessionParameter("ТекущийПользователь")
+	byName, ok := catalog.SessionParameter("ТекущийСотрудник")
 	if !ok || byName.ID != parameter.ID {
 		t.Fatalf("session parameter by name = %+v, %v", byName, ok)
 	}
 	byID, ok := catalog.SessionParameterByID(parameter.ID)
-	if !ok || byID.Name != "ТекущийПользователь" {
+	if !ok || byID.Name != "ТекущийСотрудник" {
 		t.Fatalf("session parameter by id = %+v, %v", byID, ok)
 	}
 	byID.Types[0].Length = 999
@@ -87,12 +87,12 @@ func TestLoadValidatesSessionParameterDefaults(t *testing.T) {
 	}
 	validID := uuid.MustNew()
 	writeMetadata(t, root, SessionParameterKind, validID.String(), "format: 1\nid: "+validID.String()+
-		"\nname: ТекущийПользователь\ntitle: {ru: Текущий пользователь}\ntypes: [{kind: string, length: 50}]\ndefault: {kind: string, data: Гость}\n")
+		"\nname: ТекущийСотрудник\ntitle: {ru: Текущий сотрудник}\ntypes: [{kind: string, length: 50}]\ndefault: {kind: string, data: Гость}\n")
 	if _, err := load(root, true); err != nil {
 		t.Fatalf("valid session parameter default rejected: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "metadata", string(SessionParameterKind), validID.String()+".yaml"),
-		[]byte("format: 1\nid: "+validID.String()+"\nname: ТекущийПользователь\ntitle: {ru: Текущий пользователь}\ntypes: [{kind: string, length: 50}]\ndefault: {kind: number, data: \"5\"}\n"), 0o644); err != nil {
+		[]byte("format: 1\nid: "+validID.String()+"\nname: ТекущийСотрудник\ntitle: {ru: Текущий сотрудник}\ntypes: [{kind: string, length: 50}]\ndefault: {kind: number, data: \"5\"}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := load(root, true); err == nil || !strings.Contains(err.Error(), "session parameter") {
@@ -104,7 +104,7 @@ func TestRuntimeSessionParameterGetSetRoundTrip(t *testing.T) {
 	t.Parallel()
 	defaultValue := Value{Kind: StringType, Data: "Гость"}
 	withDefault := SessionParameter{
-		Format: CurrentFormat, ID: uuid.MustNew(), Name: "ТекущийПользователь", Title: LocalizedText{"ru": "Текущий пользователь"},
+		Format: CurrentFormat, ID: uuid.MustNew(), Name: "ТекущийСотрудник", Title: LocalizedText{"ru": "Текущий сотрудник"},
 		Types: []Type{{Kind: StringType, Length: 50}}, Default: &defaultValue,
 	}
 	withoutDefault := SessionParameter{
@@ -119,22 +119,22 @@ func TestRuntimeSessionParameterGetSetRoundTrip(t *testing.T) {
 	runtime := &Runtime{catalog: catalog, sessionParameters: make(map[string]bytecode.Value)}
 	ctx := context.Background()
 
-	if value, err := runtime.GetSessionParameter(ctx, "ТекущийПользователь"); err != nil || value.String() != "Гость" {
+	if value, err := runtime.GetSessionParameter(ctx, "ТекущийСотрудник"); err != nil || value.String() != "Гость" {
 		t.Fatalf("default value = %v, error = %v", value, err)
 	}
 	if value, err := runtime.GetSessionParameter(ctx, "СчётчикЗапросов"); err != nil || value.Kind() != bytecode.UndefinedKind {
 		t.Fatalf("unset value without default = %v, error = %v", value, err)
 	}
-	if err := runtime.SetSessionParameter(ctx, "текущийпользователь", bytecode.String("Иванов")); err != nil {
+	if err := runtime.SetSessionParameter(ctx, "текущийсотрудник", bytecode.String("Иванов")); err != nil {
 		t.Fatal(err)
 	}
-	if value, err := runtime.GetSessionParameter(ctx, "ТЕКУЩИЙПОЛЬЗОВАТЕЛЬ"); err != nil || value.String() != "Иванов" {
+	if value, err := runtime.GetSessionParameter(ctx, "ТЕКУЩИЙСОТРУДНИК"); err != nil || value.String() != "Иванов" {
 		t.Fatalf("stored value not case-insensitive = %v, error = %v", value, err)
 	}
-	if err := runtime.SetSessionParameter(ctx, "ТекущийПользователь", bytecode.Number(42)); err == nil {
+	if err := runtime.SetSessionParameter(ctx, "ТекущийСотрудник", bytecode.Number(42)); err == nil {
 		t.Fatal("session parameter accepted a value of a disallowed kind")
 	}
-	if value, _ := runtime.GetSessionParameter(ctx, "ТекущийПользователь"); value.String() != "Иванов" {
+	if value, _ := runtime.GetSessionParameter(ctx, "ТекущийСотрудник"); value.String() != "Иванов" {
 		t.Fatalf("rejected set must not change the stored value, got %v", value)
 	}
 	if _, err := runtime.GetSessionParameter(ctx, "Неизвестный"); err == nil || err.Error() != `unknown session parameter "Неизвестный"` {

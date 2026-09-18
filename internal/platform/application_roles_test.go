@@ -32,6 +32,16 @@ func TestApplicationPermissionsBindProjectAndDenyUnassigned(t *testing.T) {
 			t.Fatalf("foreign/invalid assignment accepted: %v", err)
 		}
 	}
+	user := uuid.MustNew()
+	values := applicationSessionValues(user)
+	current, ok := values[metadata.CurrentUserParameter]
+	if !ok || len(current) != 1 || current[0].Data != user.String() {
+		t.Fatalf("the platform must resolve the current user itself: %+v", values)
+	}
+	if len(values) != 1 {
+		t.Fatalf("only names the platform can resolve without BSL belong here: %+v", values)
+	}
+
 	if _, err := permissionsForAssignment(nil, systemdb.ApplicationRoleAssignment{}); !errors.Is(err, metadata.ErrPermissionDenied) {
 		t.Fatal(err)
 	}

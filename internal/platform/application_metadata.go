@@ -111,7 +111,7 @@ func (runtime *Runtime) requireApplicationRead(ctx context.Context, databaseID, 
 	if err := permissions.RequireObject(objectID, metadata.PermissionRead); err != nil {
 		return nil, err
 	}
-	return metadata.WithPermissions(ctx, permissions), nil
+	return metadata.WithSessionValues(metadata.WithPermissions(ctx, permissions), applicationSessionValues(userID)), nil
 }
 
 // LoadApplicationForm resolves generated or custom managed-form metadata.

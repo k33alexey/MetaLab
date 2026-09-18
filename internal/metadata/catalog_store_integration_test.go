@@ -273,14 +273,29 @@ func TestCatalogRepositoryLifecycleIntegration(t *testing.T) {
 	if err != nil || len(byAttribute.Records) != 2 {
 		t.Fatalf("restricted by attribute: %+v error=%v", byAttribute, err)
 	}
-	// A policy naming a session parameter cannot be evaluated yet, and the read
-	// must fail rather than quietly return every row.
-	policy, err = restrictedRead(PolicyRule{Field: "code", Operator: PolicyEqual, Parameter: "ТекущийСклад"})
+	// A policy bound to a session parameter is evaluated from values the hosting
+	// layer resolved, with no BSL runtime anywhere on this read path.
+	policy, err = restrictedRead(PolicyRule{Field: "code", Operator: PolicyIn, Parameter: CurrentUserParameter})
 	if err != nil {
 		t.Fatal(err)
 	}
+	byParameter, err := repository.ListDynamic(WithSessionValues(WithPermissions(ctx, policy),
+		map[string][]Value{CurrentUserParameter: {{Kind: StringType, Data: "K001"}, {Kind: StringType, Data: "K003"}}}),
+		"Контрагенты", DynamicListRequest{Limit: 20})
+	if err != nil || len(byParameter.Records) != 2 {
+		t.Fatalf("restricted by session parameter: %+v error=%v", byParameter, err)
+	}
+	// An empty value is a real answer - this caller reaches nothing - and must
+	// not be read as "no restriction".
+	empty, err := repository.ListDynamic(WithSessionValues(WithPermissions(ctx, policy),
+		map[string][]Value{CurrentUserParameter: {}}), "Контрагенты", DynamicListRequest{Limit: 20})
+	if err != nil || len(empty.Records) != 0 {
+		t.Fatalf("an empty session parameter must admit no rows: %+v error=%v", empty, err)
+	}
+	// A parameter this session has no value for refuses the read rather than
+	// quietly returning every row.
 	if _, err := repository.ListDynamic(WithPermissions(ctx, policy), "Контрагенты", DynamicListRequest{Limit: 20}); err == nil {
-		t.Fatal("a policy on an unresolvable session parameter was silently ignored")
+		t.Fatal("a policy on an unresolved session parameter was silently ignored")
 	}
 	sortedFirst, err := repository.ListDynamic(ctx, "Контрагенты", DynamicListRequest{Limit: 20, SortField: "Description", Descending: true})
 	if err != nil || len(sortedFirst.Records) != 20 || sortedFirst.NextCursor == nil {

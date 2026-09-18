@@ -117,6 +117,20 @@ func (runtime *Runtime) applicationPermissions(ctx context.Context, databaseID, 
 	return permissionsForAssignment(catalog, assignment)
 }
 
+// applicationSessionValues resolves the session parameters the platform owns.
+// They are deliberately few: a read path must be able to evaluate a row
+// restriction without compiling and running a session module, so only values
+// the platform already knows about the authenticated caller qualify.
+//
+// The current user is carried as the ML platform user identifier. An applied
+// solution restricting rows by owner therefore has to store that identifier in
+// its own data - the platform does not assume a "Users" catalog exists.
+func applicationSessionValues(userID uuid.UUID) map[string][]metadata.Value {
+	return map[string][]metadata.Value{
+		metadata.CurrentUserParameter: {{Kind: metadata.UUIDType, Data: userID.String()}},
+	}
+}
+
 // permissionsForAssignment binds an ML System selection to exactly one project.
 // No selection, including in a role-free project, means no application grants.
 // Callers must authenticate and reload the selection for each execution boundary.

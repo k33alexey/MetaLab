@@ -18,6 +18,7 @@ type rowRestriction struct {
 	restricted   bool
 	alternatives []PolicyRule
 	column       func(string) (listColumn, bool)
+	parameter    func(string) ([]Value, bool)
 }
 
 // listRowRestriction reads the caller's policy from ctx. A context without one
@@ -30,7 +31,8 @@ func listRowRestriction(ctx context.Context, objectID uuid.UUID, column func(str
 		return rowRestriction{}
 	}
 	alternatives, restricted := permissions.RowFilter(objectID, PermissionRead)
-	return rowRestriction{restricted: restricted, alternatives: alternatives, column: column}
+	return rowRestriction{restricted: restricted, alternatives: alternatives, column: column,
+		parameter: func(name string) ([]Value, bool) { return sessionValue(ctx, name) }}
 }
 
 // readRowPredicate renders the caller's row policy as an extra AND-condition for
@@ -70,21 +72,37 @@ func (restriction rowRestriction) predicate(arguments *[]any) (string, error) {
 }
 
 func (restriction rowRestriction) renderRule(rule PolicyRule, arguments *[]any) (string, error) {
-	if rule.Parameter != "" {
-		// Platform-provided session parameters are a separate, deliberate step;
-		// until then such a rule cannot be evaluated, and refusing the read is
-		// the only honest outcome.
-		return "", fmt.Errorf("access policy on session parameter %q cannot be applied yet", rule.Parameter)
-	}
 	column, ok := restriction.column(rule.Field)
 	if !ok {
 		return "", fmt.Errorf("access policy field %q is not available in this list", rule.Field)
 	}
-	if len(rule.Values) == 0 {
+	operands := rule.Values
+	if rule.Parameter != "" {
+		resolved, ok := []Value(nil), false
+		if restriction.parameter != nil {
+			resolved, ok = restriction.parameter(rule.Parameter)
+		}
+		if !ok {
+			return "", fmt.Errorf("access policy references session parameter %q, which this session has no value for", rule.Parameter)
+		}
+		if len(resolved) == 0 {
+			// A parameter resolving to an empty set is a real answer, not a
+			// missing one: a user with no accessible warehouses sees no rows.
+			// Matching everything here would invert the restriction.
+			if rule.Operator == PolicyIn || rule.Operator == PolicyEqual {
+				return "FALSE", nil
+			}
+			return "TRUE", nil
+		}
+		operands = resolved
+	}
+	if len(operands) == 0 {
+		// A literal rule with nothing to compare against is malformed, not a
+		// legitimately empty set - validation should have refused it earlier.
 		return "", fmt.Errorf("access policy on %q has no value to compare against", rule.Field)
 	}
-	placeholders := make([]string, 0, len(rule.Values))
-	for _, value := range rule.Values {
+	placeholders := make([]string, 0, len(operands))
+	for _, value := range operands {
 		// Values travel as text and PostgreSQL coerces them per column, the same
 		// way ordinary dynamic list filters already pass their values.
 		*arguments = append(*arguments, value.Data)

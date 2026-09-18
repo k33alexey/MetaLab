@@ -463,6 +463,12 @@ func DecodeSessionParameter(source string, reader io.Reader, manifest project.Pr
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
 	issues = append(issues, validateTypes("types", value.Types, uuid.UUID{})...)
+	if ReservedSessionParameter(value.Name) {
+		// The platform resolves this name itself on every read path, without
+		// running BSL. Letting a project declare it too would make the value
+		// depend on which layer happened to answer first.
+		issues = append(issues, fmt.Sprintf("name %q is reserved by the platform", value.Name))
+	}
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return SessionParameter{}, err
 	}
