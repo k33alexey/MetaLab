@@ -142,3 +142,16 @@ func TestGlobalSearchUI(t *testing.T) {
 		t.Fatalf("ML App global search tests: %v\n%s", err, output)
 	}
 }
+
+func TestWindowPanelUI(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node.js is required for ML App window panel tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, node, "--test", "../../scripts/mlapp-windows.test.mjs").CombinedOutput()
+	if err != nil {
+		t.Fatalf("ML App window panel tests: %v\n%s", err, output)
+	}
+}

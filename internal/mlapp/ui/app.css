@@ -141,3 +141,22 @@ ml-command-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; 
 .global-search-title { overflow-wrap: anywhere; }
 .global-search-caption { font-size: 11px; color: var(--ml-color-muted); white-space: nowrap; }
 .global-search-empty { padding: 8px 12px; font-size: 12px; color: var(--ml-color-muted); }
+
+/* Панель открытых окон: несколько окон приложения внутри одной вкладки
+   браузера, с пометкой несохранённых изменений и крестиком закрытия. */
+.window-tabs { overflow-x: auto; scrollbar-width: thin; }
+.window-tab { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; max-width: 220px; }
+.window-tab > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.window-tab-close { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; font-size: 15px; line-height: 1; color: var(--ml-color-muted); }
+.window-tab-close:hover { background: color-mix(in srgb, var(--ml-color-danger) 14%, white); color: var(--ml-color-danger); }
+.window-dialog { width: min(520px, calc(100% - 32px)); padding: 22px; border: 1px solid var(--ml-color-border); border-radius: var(--ml-radius-md); background: var(--ml-color-surface); color: var(--ml-color-text); box-shadow: var(--ml-shadow); }
+.window-dialog::backdrop { background: rgb(16 24 40 / 45%); }
+.window-dialog h2 { margin: 0 0 8px; font-size: 17px; }
+.window-dialog p { margin: 0 0 14px; color: var(--ml-color-muted); }
+.window-dialog-list { margin: 0 0 16px; padding: 0; list-style: none; max-height: min(46vh, 360px); overflow: auto; }
+.window-dialog-list li { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--ml-color-border); }
+.window-dialog-list li span:first-child { flex: 1; overflow-wrap: anywhere; }
+.window-dialog-mark { font-size: 11px; color: var(--ml-color-danger); white-space: nowrap; }
+.window-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.window-dialog-actions .primary { background: var(--ml-color-accent); color: white; border: 0; border-radius: var(--ml-radius-sm); padding: 9px 16px; }
+.window-dialog-actions .secondary, .window-dialog-list .secondary { background: var(--ml-color-surface-muted); color: var(--ml-color-text); border: 1px solid var(--ml-color-border); border-radius: var(--ml-radius-sm); padding: 8px 14px; }

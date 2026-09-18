@@ -71,6 +71,62 @@ function globalSearchMatches(navigation, query, limit = 12) {
   return scored.slice(0, limit).map(item => item.entry);
 }
 
+// Панель открытых окон ML App: несколько окон приложения внутри одной вкладки
+// браузера. Модель отделена от разметки и от сети - она отвечает только на
+// вопросы «какие окна открыты», «какое активно» и «что будет, если открыть
+// ещё одно», и потому проверяется тестами напрямую.
+
+// MAX_WINDOWS - около десяти одновременно открытых окон. Предел существует не
+// ради памяти, а ради самого пользователя: панель из тридцати вкладок перестаёт
+// быть навигацией.
+const MAX_WINDOWS = 10;
+
+// windowKey опознаёт окно по тому, ЧТО в нём открыто: повторное открытие того
+// же списка или той же записи переключает на уже открытое окно, а не плодит
+// одинаковые. Новая (ещё не записанная) запись - исключение: каждая такая
+// - самостоятельное окно, у них нет общей ссылки.
+function windowKey(descriptor) {
+  if (descriptor.kind === "home") return "home";
+  const object = descriptor.object || {};
+  if (descriptor.kind === "object") {
+    const reference = descriptor.reference === "new" ? `new:${descriptor.id}` : descriptor.reference;
+    return `object/${object.kind}/${object.name}/${reference}`;
+  }
+  return `list/${object.kind}/${object.name}`;
+}
+
+// storedWindows is what survives F5: what was open, not what was typed. The
+// panel is restored from it, and each window reloads its own content when it is
+// activated - a stale copy of a record would be worse than a short wait.
+function storedWindows(windows, activeId) {
+  return {
+    activeId,
+    windows: windows.map(item => ({
+      id: item.id, kind: item.kind, title: item.title, reference: item.reference,
+      modified: !!item.modified,
+      object: item.object ? {kind: item.object.kind, name: item.object.name, title: item.object.title, id: item.object.id} : null,
+    })),
+  };
+}
+
+// restoreWindows accepts only what it can act on. A stored panel from another
+// database, or an entry without an address to reopen, is discarded rather than
+// shown as a window that cannot be opened.
+function restoreWindows(stored) {
+  if (!stored || !Array.isArray(stored.windows)) return {windows: [], activeId: null};
+  const windows = [];
+  for (const item of stored.windows) {
+    if (!item || typeof item.id !== "string" || typeof item.kind !== "string") continue;
+    if (item.kind !== "home" && (!item.object || !item.object.kind || !item.object.name)) continue;
+    if (item.kind === "object" && !item.reference) continue;
+    if (windows.some(existing => existing.id === item.id)) continue;
+    windows.push({id: item.id, kind: item.kind, title: item.title || "Окно", reference: item.reference, object: item.object, modified: !!item.modified});
+    if (windows.length >= MAX_WINDOWS) break;
+  }
+  const activeId = windows.some(item => item.id === stored.activeId) ? stored.activeId : windows.at(0)?.id || null;
+  return {windows, activeId};
+}
+
 class MLCommandBar extends HTMLElement {
   set commands(value) { this._commands = Array.isArray(value) ? value : []; this.render(); }
   connectedCallback() { this.setAttribute("role", "toolbar"); this.setAttribute("aria-label", "Команды формы"); this.render(); }
@@ -174,14 +230,19 @@ class MLForm extends HTMLElement {
 }
 
 class MLAppShell extends HTMLElement {
-  constructor() { super(); this._busy = false; this.navOpen = false; this.addEventListener("ml-command", event => this.runCommand(event.detail.id)); this.addEventListener("ml-sort", event => this.sortList(event.detail.field)); this.addEventListener("ml-advanced-search", () => this.toggleAdvancedSearch()); this.addEventListener("keydown", event => this.handleNavigationKey(event)); this.addEventListener("ml-open-record", event => this.openObjectRecord(this.currentObject, event.detail.reference)); }
+  constructor() { super(); this._busy = false; this.navOpen = false; this.windows = []; this.activeWindowId = null;
+    this.addEventListener("input", () => this.markWindowModified(true));
+    this.addEventListener("change", () => this.markWindowModified(true));
+    this.addEventListener("ml-command", event => this.runCommand(event.detail.id)); this.addEventListener("ml-sort", event => this.sortList(event.detail.field)); this.addEventListener("ml-advanced-search", () => this.toggleAdvancedSearch()); this.addEventListener("keydown", event => this.handleNavigationKey(event)); this.addEventListener("ml-open-record", event => this.openObjectRecord(this.currentObject, event.detail.reference)); }
   connectedCallback() { this.load(); }
   async load() {
     const databaseId = location.pathname.split("/").filter(Boolean).at(-1);
     try {
       const response = await fetch(`/api/databases/${encodeURIComponent(databaseId)}/app-bootstrap`, {headers: {"Accept": "application/json"}});
       if (!response.ok) throw new Error(response.status === 401 ? "Требуется вход" : "База недоступна");
-      this.databaseId = databaseId; this.bootstrap = await response.json(); this.homeForm = this.bootstrap.form; document.documentElement.lang = this.bootstrap.locale || "ru"; this.render(); this.startSessionMonitor(databaseId);
+      this.databaseId = databaseId; this.bootstrap = await response.json(); this.homeForm = this.bootstrap.form; document.documentElement.lang = this.bootstrap.locale || "ru";
+      this.restorePanel(); this.guardUnload(); this.render(); this.startSessionMonitor(databaseId);
+      await this.reopenActiveWindow();
     } catch (error) { this.renderError(error.message); }
   }
   render() {
@@ -204,8 +265,7 @@ class MLAppShell extends HTMLElement {
     for (const item of data.navigation || []) { const selected = this.currentObject ? item.id === this.currentObject.id : item.id === "home"; const button = document.createElement("button"); button.type = "button"; button.textContent = item.title; button.className = selected ? "current" : ""; if (selected) button.setAttribute("aria-current", "page"); button.addEventListener("click", () => { this.closeNavigation(); item.id === "home" ? this.openHome() : this.openForm(item, "list"); }); nav.append(button); }
     const backdrop = document.createElement("button"); backdrop.type = "button"; backdrop.className = "nav-backdrop"; backdrop.setAttribute("aria-label", "Закрыть разделы"); backdrop.addEventListener("click", () => this.closeNavigation());
     const main = document.createElement("main"); main.id = "ml-workspace"; main.className = "workspace"; main.tabIndex = -1;
-    const tabs = document.createElement("div"); tabs.className = "window-tabs"; tabs.setAttribute("role", "tablist");
-    const tab = document.createElement("button"); tab.type = "button"; tab.className = "window-tab current"; tab.setAttribute("role", "tab"); tab.setAttribute("aria-selected", "true"); tab.textContent = data.form.title; tabs.append(tab);
+    const tabs = this.renderWindowTabs();
     const form = document.createElement("ml-form"); form.model = data.form; main.append(tabs); if (data.form.list && this.listState) main.append(this.renderListControls()); main.append(form); body.append(nav, backdrop, main); this.append(header, body); this.classList.toggle("navigation-open", this.navOpen);
   }
   renderListControls() {
@@ -248,7 +308,7 @@ class MLAppShell extends HTMLElement {
     try {
       if (id === "refresh" || id === "Refresh") { if (this.listState) await this.loadList(false); else if (this.currentReference !== undefined) await this.openObjectRecord(this.currentObject, this.currentReference); else if (this.currentObject) await this.openForm(this.currentObject, this.currentFormKind); else await this.load(); }
       else if (id === "Create" && this.currentObject) await this.openObjectRecord(this.currentObject, "new");
-      else if (id === "Close" && this.currentObject) { this.currentReference = undefined; this.objectState = null; await this.openForm(this.currentObject, "list"); }
+      else if (id === "Close" && this.currentObject) await this.closeWindow(this.activeWindowId);
       else if ((id === "Save" || id === "SaveAndClose") && this.currentObject) await this.saveCurrentObject(id === "SaveAndClose");
       else if (id === "Post" && this.currentObject && this.currentReference && this.currentReference !== "new") await this.postCurrentDocument();
       else if (id === "UndoPosting" && this.currentObject && this.currentReference && this.currentReference !== "new") await this.undoCurrentDocumentPosting();
@@ -311,8 +371,109 @@ class MLAppShell extends HTMLElement {
     if (entry.action === "create") { await this.openObjectRecord(entry.item, "new"); return; }
     await this.openForm(entry.item, "list");
   }
-  openHome() { this.currentObject = null; this.currentFormKind = null; this.currentReference = undefined; this.objectState = null; this.listState = null; this.bootstrap.form = this.homeForm; this.render(); }
-  async openObjectRecord(item, reference) {
+  // --- панель открытых окон -------------------------------------------------
+  panelStorageKey() { return `ml-app-windows:${this.databaseId}`; }
+  savePanel() {
+    this.captureActiveWindow();
+    try { sessionStorage.setItem(this.panelStorageKey(), JSON.stringify(storedWindows(this.windows || [], this.activeWindowId))); }
+    catch { /* приватный режим или переполнение - панель просто не переживёт F5 */ }
+  }
+  restorePanel() {
+    let stored = null;
+    try { stored = JSON.parse(sessionStorage.getItem(this.panelStorageKey()) || "null"); } catch { stored = null; }
+    const restored = restoreWindows(stored);
+    this.windows = restored.windows; this.activeWindowId = restored.activeId;
+    if (!this.windows.length) {
+      this.windows = [{id: "home", kind: "home", title: this.homeForm.title, object: null, reference: null, modified: false}];
+      this.activeWindowId = "home";
+    }
+  }
+  activeWindow() { return (this.windows || []).find(item => item.id === this.activeWindowId) || null; }
+  // captureActiveWindow stores what is on screen INTO the window it belongs to,
+  // so switching away and back does not refetch or lose the list page, the
+  // sorting or the record being edited.
+  captureActiveWindow() {
+    const active = this.activeWindow();
+    if (!active) return;
+    active.object = this.currentObject; active.reference = this.currentReference ?? null;
+    active.form = this.bootstrap.form; active.objectState = this.objectState; active.listState = this.listState;
+    active.formKind = this.currentFormKind;
+  }
+  applyWindow(item) {
+    this.activeWindowId = item.id;
+    this.currentObject = item.object || null; this.currentFormKind = item.formKind || (item.kind === "object" ? "object" : item.kind === "list" ? "list" : null);
+    this.currentReference = item.kind === "object" ? item.reference : undefined;
+    this.objectState = item.objectState || null; this.listState = item.listState || null;
+    this.bootstrap.form = item.form || (item.kind === "home" ? this.homeForm : this.bootstrap.form);
+  }
+  async activateWindow(id) {
+    if (id === this.activeWindowId) return;
+    const target = (this.windows || []).find(item => item.id === id);
+    if (!target) return;
+    this.captureActiveWindow();
+    this.applyWindow(target);
+    this.savePanel();
+    if (!target.form) { await this.reopenWindow(target); return; }
+    this.render();
+  }
+  // reopenWindow loads a window that has an address but no content yet - after
+  // F5, or after it was opened in the background.
+  async reopenWindow(item) {
+    if (item.kind === "home") { this.applyWindow(item); this.bootstrap.form = this.homeForm; this.render(); this.savePanel(); return; }
+    if (item.kind === "object") { await this.openObjectRecord(item.object, item.reference, item.id); return; }
+    await this.openForm(item.object, "list", item.id);
+  }
+  async reopenActiveWindow() {
+    const active = this.activeWindow();
+    if (!active || active.form) return;
+    await this.reopenWindow(active);
+  }
+  // openWindow is the single door: it reuses a window that already shows the
+  // same thing, and refuses to exceed the limit without asking - the choice of
+  // what to close belongs to the person, not to a least-recently-used rule.
+  async openWindow(descriptor, load) {
+    const key = windowKey({...descriptor, id: descriptor.id || ""});
+    const existing = (this.windows || []).find(item => windowKey(item) === key);
+    if (existing) { this.captureActiveWindow(); this.applyWindow(existing); this.savePanel(); if (!existing.form) { await this.reopenWindow(existing); return existing; } this.render(); return existing; }
+    if ((this.windows || []).length >= MAX_WINDOWS) { this.askWhichWindowToClose(descriptor, load); return null; }
+    const item = {id: descriptor.id || `w${Date.now()}${Math.random().toString(36).slice(2, 6)}`, kind: descriptor.kind, title: descriptor.title, object: descriptor.object, reference: descriptor.reference ?? null, modified: false};
+    this.captureActiveWindow();
+    this.windows.push(item); this.activeWindowId = item.id;
+    await load(item);
+    this.savePanel();
+    return item;
+  }
+  renderWindowTabs() {
+    const tabs = document.createElement("div"); tabs.className = "window-tabs"; tabs.setAttribute("role", "tablist");
+    for (const item of this.windows || []) {
+      const tab = document.createElement("button"); tab.type = "button"; tab.setAttribute("role", "tab");
+      const current = item.id === this.activeWindowId;
+      tab.className = current ? "window-tab current" : "window-tab"; tab.setAttribute("aria-selected", String(current));
+      const title = document.createElement("span"); title.textContent = (item.modified ? "• " : "") + (item.title || "Окно");
+      if (item.modified) tab.title = "Есть несохранённые изменения";
+      tab.append(title);
+      tab.addEventListener("click", () => this.activateWindow(item.id));
+      if (item.kind !== "home") {
+        const close = document.createElement("span"); close.className = "window-tab-close"; close.textContent = "×"; close.setAttribute("role", "button"); close.setAttribute("aria-label", `Закрыть окно ${item.title || ""}`.trim());
+        close.addEventListener("click", event => { event.stopPropagation(); this.closeWindow(item.id); });
+        tab.append(close);
+      }
+      tabs.append(tab);
+    }
+    return tabs;
+  }
+  async openHome() {
+    await this.openWindow({kind: "home", id: "home", title: this.homeForm.title, object: null, reference: null}, async () => {
+      this.currentObject = null; this.currentFormKind = null; this.currentReference = undefined; this.objectState = null; this.listState = null;
+      this.bootstrap.form = this.homeForm; this.render();
+    });
+  }
+  async openObjectRecord(item, reference, windowID) {
+    if (!windowID) {
+      const title = reference === "new" ? `${item.title}: новая` : item.title;
+      await this.openWindow({kind: "object", object: item, reference, title}, async created => this.openObjectRecord(item, reference, created.id));
+      return;
+    }
     const formResponse = await fetch(`/api/databases/${encodeURIComponent(this.databaseId)}/forms/${encodeURIComponent(item.kind)}/${encodeURIComponent(item.name)}/object`, {headers: {"Accept": "application/json"}});
     if (!formResponse.ok) { this.announce("Не удалось открыть форму"); return; }
     const stateResponse = await fetch(`/api/databases/${encodeURIComponent(this.databaseId)}/objects/${encodeURIComponent(item.kind)}/${encodeURIComponent(item.name)}/${encodeURIComponent(reference)}`, {headers: {"Accept": "application/json"}});
@@ -324,7 +485,102 @@ class MLAppShell extends HTMLElement {
     // without saving it, so Save must still see "new", not that reference.
     this.currentObject = item; this.currentFormKind = "object"; this.currentReference = reference === "new" ? "new" : state.reference;
     this.objectState = state; this.listState = null;
-    this.bootstrap.form = form; this.render();
+    this.bootstrap.form = form; this.activeWindowId = windowID;
+    const target = (this.windows || []).find(entry => entry.id === windowID);
+    if (target) { target.kind = "object"; target.object = item; target.reference = this.currentReference; target.title = reference === "new" ? `${item.title}: новая` : form.title || item.title; target.modified = false; }
+    this.render(); this.savePanel();
+  }
+  // closeWindow never discards work quietly: a window with unsaved changes asks
+  // what to do with them, and "Отмена" means the window stays open.
+  async closeWindow(id, options = {}) {
+    const index = (this.windows || []).findIndex(item => item.id === id);
+    if (index < 0) return false;
+    const item = this.windows[index];
+    if (item.kind === "home") return false;
+    if (item.modified && !options.discard) {
+      const decision = await this.askUnsavedDecision(item);
+      if (decision === "cancel") return false;
+      if (decision === "save") {
+        const saved = await this.saveWindow(item);
+        if (!saved) return false;
+      }
+    }
+    const wasActive = item.id === this.activeWindowId;
+    this.windows.splice(index, 1);
+    if (!this.windows.length) this.windows = [{id: "home", kind: "home", title: this.homeForm.title, object: null, reference: null, modified: false}];
+    if (wasActive) {
+      const next = this.windows[Math.min(index, this.windows.length - 1)];
+      this.activeWindowId = next.id;
+      this.applyWindow(next);
+      if (!next.form && next.kind !== "home") { await this.reopenWindow(next); return true; }
+      if (next.kind === "home") this.bootstrap.form = this.homeForm;
+    }
+    this.render(); this.savePanel();
+    return true;
+  }
+  // saveWindow saves a window that is not on screen by switching to it first:
+  // the values being saved are the ones in the form, and the form is the DOM.
+  async saveWindow(item) {
+    if (item.id !== this.activeWindowId) {
+      await this.activateWindow(item.id);
+      if (item.id !== this.activeWindowId) return false;
+    }
+    const before = this.objectState?.reference;
+    await this.saveCurrentObject(false);
+    const stillModified = (this.windows || []).find(entry => entry.id === item.id)?.modified;
+    return !stillModified || this.objectState?.reference !== before;
+  }
+  markWindowModified(modified) {
+    const active = this.activeWindow();
+    if (!active || active.kind !== "object" || active.modified === modified) return;
+    active.modified = modified;
+    const tabs = this.querySelector(".window-tabs");
+    if (tabs) tabs.replaceWith(this.renderWindowTabs());
+    this.savePanel();
+  }
+  // askUnsavedDecision offers exactly the three answers the situation has.
+  askUnsavedDecision(item) {
+    return new Promise(resolve => {
+      const dialog = document.createElement("dialog"); dialog.className = "window-dialog";
+      const title = document.createElement("h2"); title.textContent = "Несохранённые изменения";
+      const text = document.createElement("p"); text.textContent = `В окне «${item.title}» есть изменения, которые не сохранены.`;
+      const actions = document.createElement("div"); actions.className = "window-dialog-actions";
+      for (const [answer, label, className] of [["save", "Сохранить", "primary"], ["discard", "Не сохранять", "secondary"], ["cancel", "Отмена", "secondary"]]) {
+        const button = document.createElement("button"); button.type = "button"; button.className = className; button.textContent = label;
+        button.addEventListener("click", () => { dialog.close(); dialog.remove(); resolve(answer); });
+        actions.append(button);
+      }
+      dialog.addEventListener("cancel", event => { event.preventDefault(); dialog.close(); dialog.remove(); resolve("cancel"); });
+      dialog.append(title, text, actions); this.append(dialog); dialog.showModal();
+    });
+  }
+  // askWhichWindowToClose is what happens at the limit: nothing is closed
+  // automatically and nothing is opened behind the person's back - they see
+  // what is open, which of it is unsaved, and decide.
+  askWhichWindowToClose(descriptor, load) {
+    const dialog = document.createElement("dialog"); dialog.className = "window-dialog";
+    const title = document.createElement("h2"); title.textContent = "Открыто предельное число окон";
+    const text = document.createElement("p"); text.textContent = `Одновременно может быть открыто не больше ${MAX_WINDOWS} окон. Закройте одно, чтобы открыть новое.`;
+    const list = document.createElement("ul"); list.className = "window-dialog-list";
+    for (const item of this.windows || []) {
+      if (item.kind === "home") continue;
+      const row = document.createElement("li");
+      const name = document.createElement("span"); name.textContent = item.title || "Окно";
+      const mark = document.createElement("span"); mark.className = "window-dialog-mark"; mark.textContent = item.modified ? "есть несохранённые изменения" : "";
+      const close = document.createElement("button"); close.type = "button"; close.className = "secondary"; close.textContent = "Закрыть";
+      close.addEventListener("click", async () => {
+        if (!await this.closeWindow(item.id)) return;
+        dialog.close(); dialog.remove();
+        await this.openWindow(descriptor, load);
+      });
+      row.append(name, mark, close); list.append(row);
+    }
+    const actions = document.createElement("div"); actions.className = "window-dialog-actions";
+    const cancel = document.createElement("button"); cancel.type = "button"; cancel.className = "secondary"; cancel.textContent = "Отмена";
+    cancel.addEventListener("click", () => { dialog.close(); dialog.remove(); });
+    actions.append(cancel);
+    dialog.addEventListener("cancel", event => { event.preventDefault(); dialog.close(); dialog.remove(); });
+    dialog.append(title, text, list, actions); this.append(dialog); dialog.showModal();
   }
   collectObjectFormValues() {
     // A blank input means "leave unset" (e.g. an auto-generated Код/Номер),
@@ -360,9 +616,10 @@ class MLAppShell extends HTMLElement {
     });
     const text = await response.text();
     if (!response.ok) { this.announce(text); return; }
-    if (close) { this.currentReference = undefined; this.objectState = null; await this.openForm(this.currentObject, "list"); return; }
+    if (close) { this.markWindowModified(false); await this.closeWindow(this.activeWindowId, {discard: true}); return; }
     const state = JSON.parse(text);
-    await this.openObjectRecord(this.currentObject, state.reference);
+    await this.openObjectRecord(this.currentObject, state.reference, this.activeWindowId);
+    this.markWindowModified(false);
     this.announce("Сохранено");
   }
   async postCurrentDocument() {
@@ -393,15 +650,23 @@ class MLAppShell extends HTMLElement {
     await this.openObjectRecord(this.currentObject, this.currentReference);
     this.announce(mark ? "Помечен на удаление" : "Пометка на удаление снята");
   }
-  async openForm(item, formKind) {
+  async openForm(item, formKind, windowID) {
+    if (!windowID) {
+      await this.openWindow({kind: formKind === "list" ? "list" : "object", object: item, reference: null, title: item.title},
+        async created => this.openForm(item, formKind, created.id));
+      return;
+    }
     const response = await fetch(`/api/databases/${encodeURIComponent(this.databaseId)}/forms/${encodeURIComponent(item.kind)}/${encodeURIComponent(item.name)}/${formKind}`, {headers: {"Accept": "application/json"}});
     if (!response.ok) { this.announce("Не удалось открыть форму"); return; }
     this.currentObject = item; this.currentFormKind = formKind; this.bootstrap.form = await response.json();
+    this.activeWindowId = windowID;
+    const target = (this.windows || []).find(entry => entry.id === windowID);
+    if (target) { target.object = item; target.reference = null; target.title = this.bootstrap.form.title || item.title; target.modified = false; }
     if (this.bootstrap.form.list) {
       this.listState = {limit: this.bootstrap.form.list.pageSize, search: "", searchField: "", advancedVisible: false, sort: "", descending: false, filters: [], cursor: null, nextCursor: null, history: []};
-      await this.loadList(true); return;
+      await this.loadList(true); this.savePanel(); return;
     }
-    this.listState = null; this.render();
+    this.listState = null; this.render(); this.savePanel();
   }
   async loadList(reset) {
     const state = this.listState; if (!state || !this.currentObject) return;
@@ -442,7 +707,18 @@ class MLAppShell extends HTMLElement {
       if (session.message) { this.announce(session.message); await fetch(`/api/sessions/${session.id}/message/ack`, {method: "POST", headers: {"X-ML-CSRF": "1"}}); }
     }, 5000);
   }
-  disconnectedCallback() { clearInterval(this._monitor); }
+  // The browser's own confirmation is the only guard that works for closing a
+  // tab; it is asked for only when something would actually be lost.
+  guardUnload() {
+    if (this._unloadGuard) return;
+    this._unloadGuard = event => {
+      if (!(this.windows || []).some(item => item.modified)) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", this._unloadGuard);
+  }
+  disconnectedCallback() { clearInterval(this._monitor); if (this._unloadGuard) window.removeEventListener("beforeunload", this._unloadGuard); }
 }
 
 customElements.define("ml-command-bar", MLCommandBar);
