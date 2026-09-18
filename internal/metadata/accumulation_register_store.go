@@ -116,6 +116,9 @@ func (repository *AccumulationRegisterRepository) Read(ctx context.Context, set 
 	if err != nil {
 		return err
 	}
+	if err := requireUnrestrictedRegisterRead(ctx, definition.ID, definition.Name); err != nil {
+		return err
+	}
 	query, err := queryData(ctx, repository.pool)
 	if err != nil {
 		return err

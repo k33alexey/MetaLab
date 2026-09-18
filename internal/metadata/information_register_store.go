@@ -100,6 +100,9 @@ func (repository *InformationRegisterRepository) Read(ctx context.Context, set *
 	if err != nil {
 		return err
 	}
+	if err := requireUnrestrictedRegisterRead(ctx, definition.ID, definition.Name); err != nil {
+		return err
+	}
 	records, err := repository.read(ctx, definition, filter, "", nil)
 	if err != nil {
 		return err
@@ -290,6 +293,9 @@ func (repository *InformationRegisterRepository) slice(ctx context.Context, name
 	definition, ok := repository.catalog.InformationRegisterDefinition(name)
 	if !ok {
 		return nil, fmt.Errorf("unknown information register %q", name)
+	}
+	if err := requireUnrestrictedRegisterRead(ctx, definition.ID, definition.Name); err != nil {
+		return nil, err
 	}
 	if definition.Periodicity == InformationRegisterPeriodNone {
 		return nil, fmt.Errorf("information register %s is not periodic", definition.Name)
