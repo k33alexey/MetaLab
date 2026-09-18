@@ -391,3 +391,23 @@ func allowedOperations(permissions *metadata.Permissions, objectID uuid.UUID) []
 	}
 	return result
 }
+
+// ApplicationPublication reports what the caller's database is currently saved
+// as. ML App polls it while a session is open so that a configuration saved
+// while someone is working shows up as an offer to refresh rather than as a
+// form that silently no longer matches the data behind it.
+func (runtime *Runtime) ApplicationPublication(ctx context.Context, token string, databaseID uuid.UUID) (publication.PublicationMarker, error) {
+	if _, err := runtime.ResumePortalDatabase(ctx, token, databaseID); err != nil {
+		return publication.PublicationMarker{}, err
+	}
+	pool, _, err := runtime.openApplicationPool(ctx, databaseID)
+	if err != nil {
+		return publication.PublicationMarker{}, err
+	}
+	defer pool.Close()
+	marker, _, err := publication.CurrentPublicationMarker(ctx, pool)
+	if err != nil {
+		return publication.PublicationMarker{}, err
+	}
+	return marker, nil
+}

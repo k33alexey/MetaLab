@@ -224,3 +224,37 @@ RETURNING saved_at`, saved.ProjectID.String(), saved.GitCommit, saved.ContentSHA
 	}
 	return nil
 }
+
+// PublicationMarker identifies what is currently saved in one application
+// database, without reading the snapshot itself. ML App polls it to notice that
+// the configuration changed under an open session: the whole runtime metadata
+// is megabytes, this is two short strings.
+type PublicationMarker struct {
+	ContentSHA256 string    `json:"contentSha256"`
+	SavedAt       time.Time `json:"savedAt"`
+}
+
+// CurrentPublicationMarker reports what the database was last saved as. A
+// database that has never been saved has no marker and no error - that is an
+// ordinary state, not a failure.
+func CurrentPublicationMarker(ctx context.Context, pool *pgxpool.Pool) (PublicationMarker, bool, error) {
+	if pool == nil {
+		return PublicationMarker{}, false, fmt.Errorf("publication database is required")
+	}
+	var exists bool
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('ml_core.database_state') IS NOT NULL").Scan(&exists); err != nil {
+		return PublicationMarker{}, false, fmt.Errorf("inspect saved database state: %w", err)
+	}
+	if !exists {
+		return PublicationMarker{}, false, nil
+	}
+	var marker PublicationMarker
+	err := pool.QueryRow(ctx, "SELECT content_sha256, saved_at FROM ml_core.database_state WHERE singleton").Scan(&marker.ContentSHA256, &marker.SavedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return PublicationMarker{}, false, nil
+	}
+	if err != nil {
+		return PublicationMarker{}, false, fmt.Errorf("read saved database state: %w", err)
+	}
+	return marker, true, nil
+}

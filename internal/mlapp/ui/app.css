@@ -160,3 +160,11 @@ ml-command-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; 
 .window-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .window-dialog-actions .primary { background: var(--ml-color-accent); color: white; border: 0; border-radius: var(--ml-radius-sm); padding: 9px 16px; }
 .window-dialog-actions .secondary, .window-dialog-list .secondary { background: var(--ml-color-surface-muted); color: var(--ml-color-text); border: 1px solid var(--ml-color-border); border-radius: var(--ml-radius-sm); padding: 8px 14px; }
+
+/* Предложение обновиться после сохранения конфигурации: ненавязчивая полоса
+   сверху, а не принудительная перезагрузка — в открытой форме может быть
+   несохранённая работа. */
+.app-update { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: color-mix(in srgb, var(--ml-color-accent) 12%, white); border-bottom: 1px solid var(--ml-color-border); color: var(--ml-color-text); font-size: 13px; }
+.app-update span { flex: 1; }
+.app-update .primary { background: var(--ml-color-accent); color: white; border: 0; border-radius: var(--ml-radius-sm); padding: 7px 14px; }
+.app-update .secondary { background: transparent; color: var(--ml-color-muted); border: 1px solid var(--ml-color-border); border-radius: var(--ml-radius-sm); padding: 6px 12px; }

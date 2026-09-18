@@ -241,7 +241,7 @@ class MLAppShell extends HTMLElement {
       const response = await fetch(`/api/databases/${encodeURIComponent(databaseId)}/app-bootstrap`, {headers: {"Accept": "application/json"}});
       if (!response.ok) throw new Error(response.status === 401 ? "Требуется вход" : "База недоступна");
       this.databaseId = databaseId; this.bootstrap = await response.json(); this.homeForm = this.bootstrap.form; document.documentElement.lang = this.bootstrap.locale || "ru";
-      this.restorePanel(); this.guardUnload(); this.render(); this.startSessionMonitor(databaseId);
+      this.restorePanel(); this.guardUnload(); this.render(); this.startSessionMonitor(databaseId); this.startPublicationWatch(databaseId);
       await this.reopenActiveWindow();
     } catch (error) { this.renderError(error.message); }
   }
@@ -699,6 +699,40 @@ class MLAppShell extends HTMLElement {
     status.textContent = message;
   }
   renderError(message) { this.replaceChildren(); const panel = document.createElement("main"); panel.className = "error-panel"; const title = document.createElement("h1"); title.textContent = "ML App"; const text = document.createElement("p"); text.textContent = message; const back = document.createElement("a"); back.href = "/"; back.textContent = "Вернуться в Portal"; panel.append(title, text, back); this.append(panel); }
+  // startPublicationWatch notices that the configuration was saved while this
+  // session is open. It does NOT reload anything: an open form may hold
+  // unsaved work, and taking that decision away from the person is exactly
+  // what "безопасное обновление" must not do.
+  startPublicationWatch(databaseId) {
+    clearInterval(this._publicationWatch);
+    const read = async () => {
+      try {
+        const response = await fetch(`/api/databases/${encodeURIComponent(databaseId)}/publication`, {headers: {"Accept": "application/json"}});
+        if (!response.ok) return null;
+        const marker = await response.json();
+        return marker && marker.contentSha256 ? marker.contentSha256 : null;
+      } catch { return null; }
+    };
+    read().then(marker => { this._publication = marker; });
+    this._publicationWatch = setInterval(async () => {
+      const marker = await read();
+      if (!marker || !this._publication) { this._publication = this._publication || marker; return; }
+      if (marker === this._publication) return;
+      this._publication = marker;
+      this.showUpdateBanner();
+    }, 30000);
+  }
+  showUpdateBanner() {
+    if (this.querySelector(".app-update")) return;
+    const banner = document.createElement("div"); banner.className = "app-update"; banner.setAttribute("role", "status");
+    const text = document.createElement("span"); text.textContent = "Конфигурация обновлена. Открытые окна продолжают работать на прежней версии.";
+    const refresh = document.createElement("button"); refresh.type = "button"; refresh.className = "primary"; refresh.textContent = "Обновить";
+    refresh.addEventListener("click", () => location.reload());
+    const later = document.createElement("button"); later.type = "button"; later.className = "secondary"; later.textContent = "Позже";
+    later.addEventListener("click", () => banner.remove());
+    banner.append(text, refresh, later);
+    this.prepend(banner);
+  }
   startSessionMonitor(databaseId) {
     clearInterval(this._monitor); this._monitor = setInterval(async () => {
       const response = await fetch(`/api/databases/${encodeURIComponent(databaseId)}/session`);
@@ -718,7 +752,7 @@ class MLAppShell extends HTMLElement {
     };
     window.addEventListener("beforeunload", this._unloadGuard);
   }
-  disconnectedCallback() { clearInterval(this._monitor); if (this._unloadGuard) window.removeEventListener("beforeunload", this._unloadGuard); }
+  disconnectedCallback() { clearInterval(this._monitor); clearInterval(this._publicationWatch); if (this._unloadGuard) window.removeEventListener("beforeunload", this._unloadGuard); }
 }
 
 customElements.define("ml-command-bar", MLCommandBar);

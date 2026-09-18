@@ -12,6 +12,7 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/platform"
+	"github.com/k33alexey/MetaLab/internal/publication"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -213,6 +214,7 @@ type fakeRuntime struct {
 	loggedOut    bool
 	failure      error
 	loginFailure error
+	publication  string
 	listRequest  metadata.DynamicListRequest
 }
 
@@ -260,6 +262,9 @@ func (runtime *fakeRuntime) LoadApplicationObjects(_ context.Context, _ string, 
 		{Kind: metadata.CatalogKind, Name: "Товары", Title: "Товары", Operations: []metadata.PermissionOperation{metadata.PermissionRead, metadata.PermissionCreate}},
 		{Kind: metadata.DocumentKind, Name: "ПродажаТоваров", Title: "Продажа товаров", Operations: []metadata.PermissionOperation{metadata.PermissionRead}},
 	}}, runtime.failure
+}
+func (runtime *fakeRuntime) ApplicationPublication(context.Context, string, uuid.UUID) (publication.PublicationMarker, error) {
+	return publication.PublicationMarker{ContentSHA256: runtime.publication}, runtime.failure
 }
 func (runtime *fakeRuntime) LoadApplicationForm(_ context.Context, _ string, _ uuid.UUID, kind metadata.Kind, name string, formKind metadata.FormKind, _ []string) (platform.ApplicationForm, error) {
 	return platform.ApplicationForm{Descriptor: metadata.FormDescriptor{
@@ -353,5 +358,33 @@ func TestPortalPageKeepsItsSessionAlive(t *testing.T) {
 		if !strings.Contains(source, fragment) {
 			t.Fatalf("portal page has no heartbeat: %q is missing", fragment)
 		}
+	}
+}
+
+// ML App узнаёт об обновлении конфигурации отдельной лёгкой отметкой: снимок
+// метаданных весит мегабайты, отметка — две короткие строки.
+func TestPublicationMarkerIsServedToTheApplication(t *testing.T) {
+	t.Parallel()
+	runtime := &fakeRuntime{token: "token", publication: strings.Repeat("a", 64)}
+	handler := NewHandler(runtime)
+	request := httptest.NewRequest(http.MethodGet, "/api/databases/"+uuid.MustNew().String()+"/publication", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookie, Value: "token"})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("publication status = %d body = %s", response.Code, response.Body.String())
+	}
+	var marker struct {
+		ContentSHA256 string `json:"contentSha256"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &marker); err != nil || marker.ContentSHA256 != runtime.publication {
+		t.Fatalf("marker = %+v error = %v body = %s", marker, err, response.Body.String())
+	}
+	// Без сеанса отметка не выдаётся: это сведения о конкретной базе.
+	anonymous := httptest.NewRequest(http.MethodGet, "/api/databases/"+uuid.MustNew().String()+"/publication", nil)
+	anonymousResponse := httptest.NewRecorder()
+	handler.ServeHTTP(anonymousResponse, anonymous)
+	if anonymousResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous publication status = %d", anonymousResponse.Code)
 	}
 }

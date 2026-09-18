@@ -70,3 +70,15 @@ test('восстанавливается не больше предела око
 test('предел — около десяти окон',()=>{
   assert.equal(MAX_WINDOWS,10);
 });
+
+// Баннер обновления: ML App не перезагружает открытую форму сам — в ней может
+// быть несохранённая работа.
+test('обновление предлагается, а не навязывается',()=>{
+  const shell=source.slice(source.indexOf('startPublicationWatch(databaseId) {'),source.indexOf('showUpdateBanner() {'));
+  assert.match(shell,/30000/,'отметка публикации опрашивается отдельно от частого опроса сеанса');
+  assert.doesNotMatch(shell,/location\.reload\(\)/,'сама по себе страница не перезагружается');
+  const banner=source.slice(source.indexOf('showUpdateBanner() {'),source.indexOf('startSessionMonitor(databaseId) {'));
+  assert.match(banner,/Обновить/);
+  assert.match(banner,/Позже/);
+  assert.match(banner,/location\.reload\(\)/,'перезагрузка только по кнопке');
+});

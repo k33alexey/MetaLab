@@ -21,6 +21,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/mlapp"
 	"github.com/k33alexey/MetaLab/internal/platform"
+	"github.com/k33alexey/MetaLab/internal/publication"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -39,6 +40,7 @@ type runtime interface {
 	ResumePortalDatabase(context.Context, string, uuid.UUID) (systemdb.DatabaseSession, error)
 	AcknowledgeSessionMessage(context.Context, string, uuid.UUID) error
 	LoadApplicationObjects(context.Context, string, uuid.UUID, []string) (platform.ApplicationObjects, error)
+	ApplicationPublication(context.Context, string, uuid.UUID) (publication.PublicationMarker, error)
 	LoadApplicationForm(context.Context, string, uuid.UUID, metadata.Kind, string, metadata.FormKind, []string) (platform.ApplicationForm, error)
 	LoadApplicationList(context.Context, string, uuid.UUID, metadata.Kind, string, metadata.DynamicListRequest) (platform.ApplicationListPage, error)
 	GetApplicationObject(context.Context, string, uuid.UUID, metadata.Kind, string, string) (platform.ApplicationObjectState, error)
@@ -202,6 +204,26 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			return
 		}
 		mlapp.ServePage(response)
+	})
+	// Открытая форма не перезагружается сама: ML App спрашивает эту отметку и,
+	// если она изменилась, показывает ненавязчивое предложение обновиться.
+	// Решает человек - у него могут быть несохранённые данные.
+	routes.HandleFunc("GET /api/databases/{id}/publication", func(response http.ResponseWriter, request *http.Request) {
+		token, ok := requireToken(response, request)
+		if !ok {
+			return
+		}
+		id, err := uuid.Parse(request.PathValue("id"))
+		if err != nil {
+			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
+			return
+		}
+		marker, err := platformRuntime.ApplicationPublication(request.Context(), token, id)
+		if err != nil {
+			http.Error(response, "Publication state unavailable", http.StatusConflict)
+			return
+		}
+		writeJSON(response, http.StatusOK, marker)
 	})
 	routes.HandleFunc("GET /api/databases/{id}/app-bootstrap", func(response http.ResponseWriter, request *http.Request) {
 		token, ok := requireToken(response, request)
