@@ -273,13 +273,13 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 	if _, err := runtime.OpenPortalDatabase(ctx, portalLogin.Token, registered.ID); err != nil {
 		t.Fatal(err)
 	}
-	visible, err := runtime.LoadApplicationObjects(ctx, portalLogin.Token, registered.ID, "ru")
-	if err != nil || len(visible) != 0 {
-		t.Fatalf("objects still listed without a role: %+v error=%v", visible, err)
+	loaded, err := runtime.LoadApplicationObjects(ctx, portalLogin.Token, registered.ID, []string{"ru"})
+	if err != nil || len(loaded.Objects) != 0 {
+		t.Fatalf("objects still listed without a role: %+v error=%v", loaded.Objects, err)
 	}
 	denied := map[string]func() error{
 		"form": func() error {
-			_, err := runtime.LoadApplicationForm(ctx, portalLogin.Token, registered.ID, metadata.DocumentKind, "Поступление", metadata.ObjectForm, "ru")
+			_, err := runtime.LoadApplicationForm(ctx, portalLogin.Token, registered.ID, metadata.DocumentKind, "Поступление", metadata.ObjectForm, []string{"ru"})
 			return err
 		},
 		"list": func() error {

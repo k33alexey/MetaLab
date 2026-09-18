@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/k33alexey/MetaLab/internal/appdb"
 	"github.com/k33alexey/MetaLab/internal/metadata"
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/publication"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -29,6 +30,10 @@ type ApplicationObject struct {
 type ApplicationForm struct {
 	Descriptor metadata.FormDescriptor `json:"descriptor"`
 	Custom     *metadata.ManagedForm   `json:"custom,omitempty"`
+	// Language is the chain this form's titles were resolved through, so the
+	// component that renders the custom part resolves the rest the same way
+	// instead of guessing a language of its own.
+	Language metadata.TitleLanguage `json:"language"`
 }
 
 type ApplicationListPage struct {
@@ -42,44 +47,53 @@ type ApplicationListRow struct {
 	Values    map[string]string `json:"values"`
 }
 
+// ApplicationObjects is what ML App starts from: the objects this user may
+// reach and the language their titles were resolved in, which is also the
+// language the interface should present itself in.
+type ApplicationObjects struct {
+	Objects  []ApplicationObject    `json:"objects"`
+	Language metadata.TitleLanguage `json:"language"`
+}
+
 // LoadApplicationObjects returns objects from the exact active publication.
 // LoadApplicationObjects lists only what the caller may actually read: an object
 // the user has no grant on is absent from the menu rather than present and
 // failing when opened.
-func (runtime *Runtime) LoadApplicationObjects(ctx context.Context, token string, databaseID uuid.UUID, language string) ([]ApplicationObject, error) {
+func (runtime *Runtime) LoadApplicationObjects(ctx context.Context, token string, databaseID uuid.UUID, preferences []string) (ApplicationObjects, error) {
 	session, err := runtime.ResumePortalDatabase(ctx, token, databaseID)
 	if err != nil {
-		return nil, err
+		return ApplicationObjects{}, err
 	}
 	snapshot, pool, err := runtime.loadPublishedMetadata(ctx, databaseID)
 	if err != nil {
-		return nil, err
+		return ApplicationObjects{}, err
 	}
 	defer pool.Close()
 	catalog, err := snapshot.Catalog()
 	if err != nil {
-		return nil, err
+		return ApplicationObjects{}, err
 	}
 	permissions, err := runtime.applicationPermissions(ctx, databaseID, session.UserID, catalog)
 	if err != nil {
-		return nil, err
+		return ApplicationObjects{}, err
 	}
+	language := ApplicationLanguage(catalog.Project, preferences)
 	result := make([]ApplicationObject, 0, len(catalog.Catalogs)+len(catalog.Documents))
 	for _, item := range catalog.Catalogs {
 		if !permissions.AllowsObject(item.ID, metadata.PermissionRead) {
 			continue
 		}
 		result = append(result, ApplicationObject{Kind: metadata.CatalogKind, Name: item.Name,
-			Title: resolvedApplicationTitle(item.Title, item.Name, language, catalog), Operations: allowedOperations(permissions, item.ID)})
+			Title: resolvedApplicationTitle(item.Title, item.Name, language), Operations: allowedOperations(permissions, item.ID)})
 	}
 	for _, item := range catalog.Documents {
 		if !permissions.AllowsObject(item.ID, metadata.PermissionRead) {
 			continue
 		}
 		result = append(result, ApplicationObject{Kind: metadata.DocumentKind, Name: item.Name,
-			Title: resolvedApplicationTitle(item.Title, item.Name, language, catalog), Operations: allowedOperations(permissions, item.ID)})
+			Title: resolvedApplicationTitle(item.Title, item.Name, language), Operations: allowedOperations(permissions, item.ID)})
 	}
-	return result, nil
+	return ApplicationObjects{Objects: result, Language: language}, nil
 }
 
 // applicationObjectID resolves the metadata identity a read permission is keyed
@@ -128,7 +142,7 @@ func (runtime *Runtime) requireApplicationRead(ctx context.Context, databaseID, 
 }
 
 // LoadApplicationForm resolves generated or custom managed-form metadata.
-func (runtime *Runtime) LoadApplicationForm(ctx context.Context, token string, databaseID uuid.UUID, objectKind metadata.Kind, name string, formKind metadata.FormKind, language string) (ApplicationForm, error) {
+func (runtime *Runtime) LoadApplicationForm(ctx context.Context, token string, databaseID uuid.UUID, objectKind metadata.Kind, name string, formKind metadata.FormKind, preferences []string) (ApplicationForm, error) {
 	session, err := runtime.ResumePortalDatabase(ctx, token, databaseID)
 	if err != nil {
 		return ApplicationForm{}, err
@@ -145,19 +159,20 @@ func (runtime *Runtime) LoadApplicationForm(ctx context.Context, token string, d
 	if _, err := runtime.requireApplicationRead(ctx, databaseID, session.UserID, snapshot, pool, catalog, objectKind, name); err != nil {
 		return ApplicationForm{}, err
 	}
+	language := ApplicationLanguage(catalog.Project, preferences)
 	var descriptor metadata.FormDescriptor
 	switch objectKind {
 	case metadata.CatalogKind:
-		descriptor, err = catalog.CatalogForm(name, formKind, language)
+		descriptor, err = catalog.CatalogForm(name, formKind, language.Code)
 	case metadata.DocumentKind:
-		descriptor, err = catalog.DocumentForm(name, formKind, language)
+		descriptor, err = catalog.DocumentForm(name, formKind, language.Code)
 	default:
 		err = fmt.Errorf("unsupported application object kind %q", objectKind)
 	}
 	if err != nil {
 		return ApplicationForm{}, err
 	}
-	result := ApplicationForm{Descriptor: descriptor}
+	result := ApplicationForm{Descriptor: descriptor, Language: language}
 	if descriptor.SourceID != nil {
 		form, ok := snapshot.Form(*descriptor.SourceID)
 		if !ok {
@@ -325,12 +340,39 @@ func (runtime *Runtime) openApplicationPool(ctx context.Context, id uuid.UUID) (
 	return pool, registered, nil
 }
 
-func resolvedApplicationTitle(title metadata.LocalizedText, fallback, language string, catalog *metadata.Catalog) string {
-	value := title.Resolve(strings.ToLower(strings.TrimSpace(language)), catalog.Project.Languages)
-	if value == "" {
-		return fallback
+func resolvedApplicationTitle(title metadata.LocalizedText, fallback string, language metadata.TitleLanguage) string {
+	if value := language.Resolve(title); value != "" {
+		return value
 	}
-	return value
+	return fallback
+}
+
+// ApplicationLanguage picks the language one reader sees an application in:
+// their first preference the project actually has, otherwise the project's own
+// default. The choice is made here, where the project's languages are known -
+// a caller holding only an HTTP header cannot make it correctly.
+//
+// Preferences come from the request today; when accounts carry a language of
+// their own (092) that value goes in front of them, and nothing else changes.
+func ApplicationLanguage(manifest project.Project, preferences []string) metadata.TitleLanguage {
+	for _, preference := range preferences {
+		code := strings.ToLower(strings.TrimSpace(preference))
+		if code == "" {
+			continue
+		}
+		for _, language := range manifest.Languages {
+			if strings.EqualFold(language.Code, code) {
+				return metadata.ProjectLanguage(manifest, language.Code)
+			}
+		}
+		base, _, _ := strings.Cut(code, "-")
+		for _, language := range manifest.Languages {
+			if configured, _, _ := strings.Cut(strings.ToLower(language.Code), "-"); configured == base {
+				return metadata.ProjectLanguage(manifest, language.Code)
+			}
+		}
+	}
+	return metadata.ProjectLanguage(manifest, manifest.DefaultLanguage)
 }
 
 // allowedOperations reports what the caller may do with one object, in a stable

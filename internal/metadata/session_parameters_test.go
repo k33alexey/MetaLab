@@ -30,8 +30,8 @@ types:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parameter.Title.Resolve("uk", manifest.Languages) != "Поточний користувач" || parameter.Title.Resolve("en", manifest.Languages) != "Текущий сотрудник" {
-		t.Fatalf("localized title fallback = %q", parameter.Title.Resolve("en", manifest.Languages))
+	if parameter.Title.Resolve("uk", manifest.DefaultLanguage, manifest.Languages) != "Поточний користувач" || parameter.Title.Resolve("en", manifest.DefaultLanguage, manifest.Languages) != "Текущий сотрудник" {
+		t.Fatalf("localized title fallback = %q", parameter.Title.Resolve("en", manifest.DefaultLanguage, manifest.Languages))
 	}
 	_, err = DecodeSessionParameter("session-parameter.yaml", strings.NewReader(`format: 1
 id: `+sessionParameterID+`

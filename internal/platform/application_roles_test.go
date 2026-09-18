@@ -100,3 +100,33 @@ func TestAllowedOperationsReportOnlyWhatTheRoleGrants(t *testing.T) {
 		t.Fatalf("an object no role mentions = %v", operations)
 	}
 }
+
+// Which language an application speaks to one reader is decided where the
+// project's languages are known: a browser header naming a language the project
+// does not have must not leave the reader with nothing.
+func TestApplicationLanguagePicksWhatTheProjectActuallyHas(t *testing.T) {
+	t.Parallel()
+	manifest := project.Project{
+		Format: 1, ID: uuid.MustNew(), Name: "LanguageTest", Title: "Language test", DefaultLanguage: "ru",
+		Languages: []project.Language{
+			{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"},
+			{ID: uuid.MustNew(), Name: "Українська", Title: "Українська", Code: "uk"},
+		},
+	}
+	for name, test := range map[string]struct {
+		preferences []string
+		want        string
+	}{
+		"first preference the project has": {[]string{"uk", "ru"}, "uk"},
+		"unknown languages are skipped":    {[]string{"de", "fr", "uk"}, "uk"},
+		"region matches the base language": {[]string{"uk-UA"}, "uk"},
+		"nothing matches":                  {[]string{"de"}, "ru"},
+		"no preferences at all":            {nil, "ru"},
+		"blank preference":                 {[]string{"  "}, "ru"},
+	} {
+		language := ApplicationLanguage(manifest, test.preferences)
+		if language.Code != test.want || language.Default != "ru" || len(language.Configured) != 2 {
+			t.Fatalf("%s: language = %+v, want code %q", name, language, test.want)
+		}
+	}
+}

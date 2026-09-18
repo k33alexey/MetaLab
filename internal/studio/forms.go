@@ -293,14 +293,14 @@ func (workspace *Workspace) formDataPaths(formID uuid.UUID, manifest project.Pro
 		appendField(prefix, "Код", "Код", "field")
 		appendField(prefix, "Наименование", "Наименование", "field")
 		for _, attribute := range object.Attributes {
-			appendField(prefix, attribute.Name, attribute.Title.Resolve(manifest.DefaultLanguage, manifest.Languages), "field")
+			appendField(prefix, attribute.Name, attribute.Title.Resolve(manifest.DefaultLanguage, manifest.DefaultLanguage, manifest.Languages), "field")
 		}
 		if kind == metadata.ObjectForm {
 			for _, part := range object.TableParts {
 				partPath := prefix + "." + part.Name
-				appendField(prefix, part.Name, part.Title.Resolve(manifest.DefaultLanguage, manifest.Languages), "table")
+				appendField(prefix, part.Name, part.Title.Resolve(manifest.DefaultLanguage, manifest.DefaultLanguage, manifest.Languages), "table")
 				for _, attribute := range part.Attributes {
-					appendField(partPath, attribute.Name, attribute.Title.Resolve(manifest.DefaultLanguage, manifest.Languages), "column")
+					appendField(partPath, attribute.Name, attribute.Title.Resolve(manifest.DefaultLanguage, manifest.DefaultLanguage, manifest.Languages), "column")
 				}
 			}
 		}
@@ -315,14 +315,14 @@ func (workspace *Workspace) formDataPaths(formID uuid.UUID, manifest project.Pro
 			appendField(prefix, system.name, system.title, "field")
 		}
 		for _, attribute := range object.Attributes {
-			appendField(prefix, attribute.Name, attribute.Title.Resolve(manifest.DefaultLanguage, manifest.Languages), "field")
+			appendField(prefix, attribute.Name, attribute.Title.Resolve(manifest.DefaultLanguage, manifest.DefaultLanguage, manifest.Languages), "field")
 		}
 		if kind == metadata.ObjectForm {
 			for _, part := range object.TableParts {
 				partPath := prefix + "." + part.Name
-				appendField(prefix, part.Name, part.Title.Resolve(manifest.DefaultLanguage, manifest.Languages), "table")
+				appendField(prefix, part.Name, part.Title.Resolve(manifest.DefaultLanguage, manifest.DefaultLanguage, manifest.Languages), "table")
 				for _, attribute := range part.Attributes {
-					appendField(partPath, attribute.Name, attribute.Title.Resolve(manifest.DefaultLanguage, manifest.Languages), "column")
+					appendField(partPath, attribute.Name, attribute.Title.Resolve(manifest.DefaultLanguage, manifest.DefaultLanguage, manifest.Languages), "column")
 				}
 			}
 		}

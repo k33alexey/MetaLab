@@ -9,7 +9,7 @@ import (
 
 // FormFromMetadata converts a validated runtime descriptor into the stable
 // browser component contract.
-func FormFromMetadata(descriptor metadata.FormDescriptor, custom *metadata.ManagedForm, language string) (Form, error) {
+func FormFromMetadata(descriptor metadata.FormDescriptor, custom *metadata.ManagedForm, language metadata.TitleLanguage) (Form, error) {
 	if descriptor.ObjectID.IsZero() || descriptor.ObjectName == "" || descriptor.Title == "" {
 		return Form{}, fmt.Errorf("invalid application form descriptor")
 	}
@@ -94,15 +94,15 @@ func valueKind(types []metadata.Type) metadata.TypeKind {
 	return types[0].Kind
 }
 
-func customForm(descriptor metadata.FormDescriptor, source metadata.ManagedForm, language string) Form {
-	title := source.Title.Resolve(language, nil)
+func customForm(descriptor metadata.FormDescriptor, source metadata.ManagedForm, language metadata.TitleLanguage) Form {
+	title := language.Resolve(source.Title)
 	if title == "" {
 		title = descriptor.Title
 	}
 	commands := make([]Command, len(source.Commands))
 	commandNames := make(map[string]string, len(source.Commands))
 	for index, command := range source.Commands {
-		commandTitle := command.Title.Resolve(language, nil)
+		commandTitle := language.Resolve(command.Title)
 		if commandTitle == "" {
 			commandTitle = command.Name
 		}
@@ -138,13 +138,13 @@ func applyListOptions(form *Form, descriptor metadata.FormDescriptor) {
 	form.List = &ListOptions{PageSize: pageSize, SearchEnabled: len(descriptor.List.SearchFields) > 0, SearchFields: searchFields, FilterFields: fields}
 }
 
-func customElements(source []metadata.ManagedFormElement, language string, commands map[string]string) []Element {
+func customElements(source []metadata.ManagedFormElement, language metadata.TitleLanguage, commands map[string]string) []Element {
 	result := make([]Element, 0, len(source))
 	for _, item := range source {
 		if item.Hidden {
 			continue
 		}
-		title := item.Title.Resolve(language, nil)
+		title := language.Resolve(item.Title)
 		if title == "" {
 			title = item.Name
 		}

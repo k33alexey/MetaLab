@@ -69,8 +69,8 @@ func (catalog *Catalog) CatalogForm(name string, kind FormKind, language string)
 		systemFormField("Description", StringType, language, kind != ObjectForm),
 	}
 	if kind == ObjectForm {
-		form.Fields = append(form.Fields, attributeFormFields(definition.Attributes, language)...)
-		form.TableParts = tablePartForms(definition.TableParts, language)
+		form.Fields = append(form.Fields, catalog.attributeFormFields(definition.Attributes, language)...)
+		form.TableParts = catalog.tablePartForms(definition.TableParts, language)
 		form.Commands = standardObjectCommands(language, false, false)
 	} else {
 		form.Commands = standardListCommands(language, kind)
@@ -96,8 +96,8 @@ func (catalog *Catalog) DocumentForm(name string, kind FormKind, language string
 		systemFormField("Posted", BooleanType, language, true),
 	}
 	if kind == ObjectForm {
-		form.Fields = append(form.Fields, attributeFormFields(definition.Attributes, language)...)
-		form.TableParts = tablePartForms(definition.TableParts, language)
+		form.Fields = append(form.Fields, catalog.attributeFormFields(definition.Attributes, language)...)
+		form.TableParts = catalog.tablePartForms(definition.TableParts, language)
 		form.Commands = standardObjectCommands(language, definition.Posting, catalog.documentHasMovements(definition.ID))
 	} else {
 		form.Commands = standardListCommands(language, kind)
@@ -111,7 +111,7 @@ func (catalog *Catalog) baseForm(objectKind Kind, id uuid.UUID, name string, tit
 	}
 	result := FormDescriptor{
 		Kind: kind, ObjectKind: objectKind, ObjectID: id, ObjectName: name,
-		Title: title.Resolve(language, catalog.Project.Languages), Generated: true,
+		Title: catalog.resolveTitle(title, language), Generated: true,
 	}
 	if result.Title == "" {
 		result.Title = name
@@ -155,10 +155,10 @@ func containsUUID(values []uuid.UUID, expected uuid.UUID) bool {
 	return false
 }
 
-func attributeFormFields(attributes []Attribute, language string) []FormField {
+func (catalog *Catalog) attributeFormFields(attributes []Attribute, language string) []FormField {
 	result := make([]FormField, len(attributes))
 	for index, attribute := range attributes {
-		title := attribute.Title.Resolve(language, nil)
+		title := catalog.resolveTitle(attribute.Title, language)
 		if title == "" {
 			title = attribute.Name
 		}
@@ -167,14 +167,14 @@ func attributeFormFields(attributes []Attribute, language string) []FormField {
 	return result
 }
 
-func tablePartForms(parts []TablePart, language string) []FormTablePart {
+func (catalog *Catalog) tablePartForms(parts []TablePart, language string) []FormTablePart {
 	result := make([]FormTablePart, len(parts))
 	for index, part := range parts {
-		title := part.Title.Resolve(language, nil)
+		title := catalog.resolveTitle(part.Title, language)
 		if title == "" {
 			title = part.Name
 		}
-		result[index] = FormTablePart{Name: part.Name, Title: title, Columns: attributeFormFields(part.Attributes, language)}
+		result[index] = FormTablePart{Name: part.Name, Title: title, Columns: catalog.attributeFormFields(part.Attributes, language)}
 	}
 	return result
 }
@@ -220,4 +220,13 @@ func formText(language, key string) string {
 		return text
 	}
 	return texts["en"][key]
+}
+
+// resolveTitle answers with the project's own fallback chain rather than with
+// whatever translation happens to be stored first - see LocalizedText.Resolve.
+func (catalog *Catalog) resolveTitle(text LocalizedText, language string) string {
+	if catalog == nil {
+		return text.Resolve(language, "", nil)
+	}
+	return text.Resolve(language, catalog.Project.DefaultLanguage, catalog.Project.Languages)
 }

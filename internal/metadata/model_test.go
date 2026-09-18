@@ -45,8 +45,8 @@ types:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if constant.Title.Resolve("uk", manifest.Languages) != "Основна валюта" || constant.Title.Resolve("en", manifest.Languages) != "Основная валюта" {
-		t.Fatalf("localized title fallback = %q", constant.Title.Resolve("en", manifest.Languages))
+	if constant.Title.Resolve("uk", manifest.DefaultLanguage, manifest.Languages) != "Основна валюта" || constant.Title.Resolve("en", manifest.DefaultLanguage, manifest.Languages) != "Основная валюта" {
+		t.Fatalf("localized title fallback = %q", constant.Title.Resolve("en", manifest.DefaultLanguage, manifest.Languages))
 	}
 	_, err = DecodeConstant("constant.yaml", strings.NewReader(`format: 1
 id: `+constantID+`
@@ -615,5 +615,43 @@ types: [{kind: string, length: 10}]
 	}
 	if err := Encode(&second, restored); err != nil || first.String() != second.String() {
 		t.Fatalf("stable encode error=%v\nfirst=%s\nsecond=%s", err, first.String(), second.String())
+	}
+}
+
+// What a reader sees when their own language is missing is a decision, and it
+// belongs to the project: its default language, not whichever translation
+// happens to be stored first.
+func TestLocalizedTextFallsBackThroughTheProjectDefault(t *testing.T) {
+	t.Parallel()
+	configured := []project.Language{
+		{ID: uuid.MustNew(), Name: "Українська", Title: "Українська", Code: "uk"},
+		{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"},
+		{ID: uuid.MustNew(), Name: "English", Title: "English", Code: "en"},
+	}
+	text := LocalizedText{"ru": "Товары", "uk": "Товари"}
+	if value := text.Resolve("en", "ru", configured); value != "Товары" {
+		t.Fatalf("missing translation resolved to %q, want the project default", value)
+	}
+	if value := text.Resolve("uk", "ru", configured); value != "Товари" {
+		t.Fatalf("own language resolved to %q", value)
+	}
+	// Без основного языка остаётся прежний порядок: первый настроенный.
+	if value := text.Resolve("en", "", configured); value != "Товари" {
+		t.Fatalf("without a default the configured order decides, got %q", value)
+	}
+	// Регион — уточнение языка, а не другой язык, в обе стороны.
+	if value := text.Resolve("uk-UA", "ru", configured); value != "Товари" {
+		t.Fatalf("regional code resolved to %q", value)
+	}
+	regional := LocalizedText{"uk-UA": "Товари", "ru": "Товары"}
+	if value := regional.Resolve("uk", "ru", configured); value != "Товари" {
+		t.Fatalf("base code did not reach the regional translation, got %q", value)
+	}
+	// Ничего настроенного и ничего по умолчанию — хоть что-то непустое.
+	if value := (LocalizedText{"de": "Waren"}).Resolve("en", "ru", configured); value != "Waren" {
+		t.Fatalf("last resort resolved to %q", value)
+	}
+	if value := (LocalizedText{}).Resolve("en", "ru", configured); value != "" {
+		t.Fatalf("empty text resolved to %q", value)
 	}
 }

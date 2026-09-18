@@ -247,13 +247,17 @@ func (runtime *fakeRuntime) ResumePortalDatabase(ctx context.Context, token stri
 func (runtime *fakeRuntime) AcknowledgeSessionMessage(context.Context, string, uuid.UUID) error {
 	return runtime.failure
 }
-func (runtime *fakeRuntime) LoadApplicationObjects(context.Context, string, uuid.UUID, string) ([]platform.ApplicationObject, error) {
-	return []platform.ApplicationObject{
+func (runtime *fakeRuntime) LoadApplicationObjects(_ context.Context, _ string, _ uuid.UUID, preferences []string) (platform.ApplicationObjects, error) {
+	language := metadata.TitleLanguage{Code: "ru", Default: "ru"}
+	if len(preferences) > 0 {
+		language.Code = preferences[0]
+	}
+	return platform.ApplicationObjects{Language: language, Objects: []platform.ApplicationObject{
 		{Kind: metadata.CatalogKind, Name: "Товары", Title: "Товары", Operations: []metadata.PermissionOperation{metadata.PermissionRead, metadata.PermissionCreate}},
 		{Kind: metadata.DocumentKind, Name: "ПродажаТоваров", Title: "Продажа товаров", Operations: []metadata.PermissionOperation{metadata.PermissionRead}},
-	}, runtime.failure
+	}}, runtime.failure
 }
-func (runtime *fakeRuntime) LoadApplicationForm(_ context.Context, _ string, _ uuid.UUID, kind metadata.Kind, name string, formKind metadata.FormKind, _ string) (platform.ApplicationForm, error) {
+func (runtime *fakeRuntime) LoadApplicationForm(_ context.Context, _ string, _ uuid.UUID, kind metadata.Kind, name string, formKind metadata.FormKind, _ []string) (platform.ApplicationForm, error) {
 	return platform.ApplicationForm{Descriptor: metadata.FormDescriptor{
 		Kind: formKind, ObjectKind: kind, ObjectID: uuid.MustNew(), ObjectName: name, Title: name, Generated: true,
 		Fields:   []metadata.FormField{{Name: "Description", Title: "Наименование", Types: []metadata.Type{{Kind: metadata.StringType}}}},
@@ -278,4 +282,35 @@ func (runtime *fakeRuntime) UndoApplicationDocumentPosting(context.Context, stri
 }
 func (runtime *fakeRuntime) SetApplicationDeletionMark(_ context.Context, _ string, _ uuid.UUID, _ metadata.Kind, _ string, _ string, mark bool) (platform.ApplicationObjectState, error) {
 	return platform.ApplicationObjectState{DeletionMark: mark, Fields: map[string]metadata.Value{}}, runtime.failure
+}
+
+// The reader's language comes from the request until accounts carry one of
+// their own: the browser states preferences in order, and the order is what
+// decides - a q-value is a preference, not decoration.
+func TestRequestLanguagesReadsThePreferenceOrder(t *testing.T) {
+	t.Parallel()
+	for header, want := range map[string][]string{
+		"":                                 nil,
+		"   ":                              nil,
+		"uk":                               {"uk"},
+		"uk-UA,uk;q=0.9,ru;q=0.8,en;q=0.7": {"uk-UA", "uk", "ru", "en"},
+		"ru;q=0.3, uk;q=0.9, en;q=0.6":     {"uk", "en", "ru"},
+		"*":                                nil,
+		"uk;q=0":                           nil,
+		"uk;q=bad":                         nil,
+	} {
+		request := httptest.NewRequest(http.MethodGet, "/", nil)
+		if header != "" {
+			request.Header.Set("Accept-Language", header)
+		}
+		got := requestLanguages(request)
+		if len(got) != len(want) {
+			t.Fatalf("%q -> %v, want %v", header, got, want)
+		}
+		for index := range want {
+			if got[index] != want[index] {
+				t.Fatalf("%q -> %v, want %v", header, got, want)
+			}
+		}
+	}
 }

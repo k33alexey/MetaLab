@@ -83,7 +83,7 @@ func (workspace *Workspace) queryDesignerSchemaLocked() (*QueryDesignerSchema, e
 	configured := catalog.Project.Languages
 	var result QueryDesignerSchema
 	appendSource := func(kind, name string, title metadata.LocalizedText, fields []QueryDesignerField) {
-		resolved := title.Resolve(language, configured)
+		resolved := title.Resolve(language, language, configured)
 		if resolved == "" {
 			resolved = name
 		}
@@ -137,7 +137,7 @@ func cloneQueryDesignerSchema(source QueryDesignerSchema) QueryDesignerSchema {
 func queryDesignerAttributes(attributes []metadata.Attribute, language string, configured []project.Language) []QueryDesignerField {
 	result := make([]QueryDesignerField, len(attributes))
 	for index, attribute := range attributes {
-		title := attribute.Title.Resolve(language, configured)
+		title := attribute.Title.Resolve(language, language, configured)
 		if title == "" {
 			title = attribute.Name
 		}

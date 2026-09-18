@@ -19,7 +19,7 @@ func TestGeneratedObjectFormUsesStandardComponents(t *testing.T) {
 		TableParts: []metadata.FormTablePart{{Name: "Товары", Title: "Товары", Columns: []metadata.FormField{{Name: "Количество", Title: "Количество", Types: []metadata.Type{{Kind: metadata.NumberType}}}}}},
 		Commands:   []metadata.FormCommand{{Name: "Save", Title: "Записать"}, {Name: "Close", Title: "Закрыть"}},
 	}
-	form, err := FormFromMetadata(descriptor, nil, "ru")
+	form, err := FormFromMetadata(descriptor, nil, metadata.TitleLanguage{Code: "ru", Default: "ru"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestGeneratedListAndChoiceFormsUseTableAndCommands(t *testing.T) {
 			Commands: []metadata.FormCommand{{Name: test.command, Title: test.command}},
 			List:     metadata.ListSettings{PageSize: 50, SearchFields: []string{"Description"}},
 		}
-		form, err := FormFromMetadata(descriptor, nil, "ru")
+		form, err := FormFromMetadata(descriptor, nil, metadata.TitleLanguage{Code: "ru", Default: "ru"})
 		if err != nil || len(form.Items) != 1 || form.Items[0].Kind != "table" || form.Commands[0].ID != test.command || form.List == nil || form.List.PageSize != 50 || !form.List.SearchEnabled || form.List.SearchFields[0].Name != "Description" || form.List.FilterFields[0].Title != "Наименование" {
 			t.Fatalf("kind=%s form=%+v error=%v", test.kind, form, err)
 		}
@@ -69,7 +69,7 @@ func TestCustomFormKeepsLayoutBindingsAndLocalizedCommands(t *testing.T) {
 		Commands: []metadata.ManagedFormCommand{{ID: commandID, Name: "Save", Title: metadata.LocalizedText{"ru": "Записать"}, Action: metadata.FormCommandSave}},
 		Items:    []metadata.ManagedFormElement{{ID: fieldID, Name: "Наименование", Kind: metadata.FormElementField, DataPath: "Description", Command: nil}},
 	}
-	form, err := FormFromMetadata(descriptor, &source, "ru")
+	form, err := FormFromMetadata(descriptor, &source, metadata.TitleLanguage{Code: "ru", Default: "ru"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,8 +38,8 @@ type runtime interface {
 	OpenPortalDatabase(context.Context, string, uuid.UUID) (systemdb.DatabaseSession, error)
 	ResumePortalDatabase(context.Context, string, uuid.UUID) (systemdb.DatabaseSession, error)
 	AcknowledgeSessionMessage(context.Context, string, uuid.UUID) error
-	LoadApplicationObjects(context.Context, string, uuid.UUID, string) ([]platform.ApplicationObject, error)
-	LoadApplicationForm(context.Context, string, uuid.UUID, metadata.Kind, string, metadata.FormKind, string) (platform.ApplicationForm, error)
+	LoadApplicationObjects(context.Context, string, uuid.UUID, []string) (platform.ApplicationObjects, error)
+	LoadApplicationForm(context.Context, string, uuid.UUID, metadata.Kind, string, metadata.FormKind, []string) (platform.ApplicationForm, error)
 	LoadApplicationList(context.Context, string, uuid.UUID, metadata.Kind, string, metadata.DynamicListRequest) (platform.ApplicationListPage, error)
 	GetApplicationObject(context.Context, string, uuid.UUID, metadata.Kind, string, string) (platform.ApplicationObjectState, error)
 	SaveApplicationObject(context.Context, string, uuid.UUID, metadata.Kind, string, platform.ApplicationObjectWrite) (platform.ApplicationObjectState, error)
@@ -210,13 +211,16 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			http.Error(response, "Database session unavailable", http.StatusConflict)
 			return
 		}
-		objects, err := platformRuntime.LoadApplicationObjects(request.Context(), token, id, "ru")
+		objects, err := platformRuntime.LoadApplicationObjects(request.Context(), token, id, requestLanguages(request))
 		if err != nil {
 			http.Error(response, "ML App metadata unavailable", http.StatusConflict)
 			return
 		}
 		bootstrap := mlapp.NewBootstrap(id, session)
-		for _, object := range objects {
+		// The language the titles were resolved in is also the language the
+		// page declares: a document in Ukrainian must not claim to be Russian.
+		bootstrap.Locale = objects.Language.Code
+		for _, object := range objects.Objects {
 			operations := make([]string, 0, len(object.Operations))
 			for _, operation := range object.Operations {
 				operations = append(operations, string(operation))
@@ -249,12 +253,12 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			http.Error(response, "Invalid managed form address", http.StatusBadRequest)
 			return
 		}
-		applicationForm, err := platformRuntime.LoadApplicationForm(request.Context(), token, id, objectKind, request.PathValue("name"), formKind, "ru")
+		applicationForm, err := platformRuntime.LoadApplicationForm(request.Context(), token, id, objectKind, request.PathValue("name"), formKind, requestLanguages(request))
 		if err != nil {
 			http.Error(response, "Managed form unavailable", http.StatusNotFound)
 			return
 		}
-		form, err := mlapp.FormFromMetadata(applicationForm.Descriptor, applicationForm.Custom, "ru")
+		form, err := mlapp.FormFromMetadata(applicationForm.Descriptor, applicationForm.Custom, applicationForm.Language)
 		if err != nil {
 			http.Error(response, "Managed form unavailable", http.StatusInternalServerError)
 			return
@@ -630,4 +634,53 @@ func securityHeaders(next http.Handler) http.Handler {
 		response.Header().Set("X-Frame-Options", "DENY")
 		next.ServeHTTP(response, request)
 	})
+}
+
+// requestLanguages reports the languages this reader asked for, best first, as
+// the browser sent them. Which of them the application actually speaks is
+// decided by the platform, where the project's languages are known.
+//
+// The account itself will carry a language once profiles have one (092); it
+// then goes in front of this list and nothing else changes.
+func requestLanguages(request *http.Request) []string {
+	header := request.Header.Get("Accept-Language")
+	if strings.TrimSpace(header) == "" {
+		return nil
+	}
+	type preference struct {
+		code    string
+		quality float64
+		order   int
+	}
+	preferences := make([]preference, 0, 8)
+	for index, part := range strings.Split(header, ",") {
+		code, parameters, _ := strings.Cut(strings.TrimSpace(part), ";")
+		code = strings.TrimSpace(code)
+		if code == "" || code == "*" {
+			continue
+		}
+		quality := 1.0
+		if value, ok := strings.CutPrefix(strings.TrimSpace(parameters), "q="); ok {
+			parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+			if err != nil || parsed <= 0 {
+				continue
+			}
+			quality = parsed
+		}
+		preferences = append(preferences, preference{code: code, quality: quality, order: index})
+		if len(preferences) == 16 {
+			break
+		}
+	}
+	sort.SliceStable(preferences, func(left, right int) bool {
+		if preferences[left].quality != preferences[right].quality {
+			return preferences[left].quality > preferences[right].quality
+		}
+		return preferences[left].order < preferences[right].order
+	})
+	result := make([]string, 0, len(preferences))
+	for _, item := range preferences {
+		result = append(result, item.code)
+	}
+	return result
 }
