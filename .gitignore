@@ -6,6 +6,11 @@ docs/
 CLAUDE.md
 AGENTS.md
 
+# Reference material only: a 1C demo configuration export kept locally to check
+# our own requirements against. Proprietary, so it must never enter this
+# Apache-2.0 repository - see REQUIREMENTS.md §1 on reference vs copying.
+examples/demo-base/
+
 *.log
 *.tmp
 *.swp
