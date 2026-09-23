@@ -1,12 +1,12 @@
 package studio
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -36,6 +36,19 @@ func TestWorkspaceSnapshotBuildsCanonicalTree(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(modulePath)), []byte("Процедура Тест()\nКонецПроцедуры\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	commonModuleID := uuid.MustNew()
+	commonModulePath, err := project.MetadataPath("common-modules", commonModuleID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commonModule := "format: 1\nid: " + commonModuleID.String() + "\nname: ОбщегоНазначения\ntitle: {ru: Общего назначения}\n" +
+		"module: " + moduleID.String() + "\nserver: true\n"
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(root, filepath.FromSlash(commonModulePath))), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(commonModulePath)), []byte(commonModule), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	workspace, err := Open(root)
 	if err != nil {
@@ -45,25 +58,42 @@ func TestWorkspaceSnapshotBuildsCanonicalTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// "reports" (Компоновка данных) has no content here and is hidden: report
-	// layouts belong to Отчёты/Обработки objects, which do not exist yet. The
-	// session module is a leaf of the configuration root itself, so it stands
-	// beside the directories rather than inside one.
-	wantChildren := len(project.RootDirectories()) - 1 + 1
-	if snapshot.Manifest.Name != "SalesDemo" || len(snapshot.Tree.Children) != wantChildren {
-		t.Fatalf("snapshot = %+v", snapshot)
+	// The top level is the configuration itself: the session module, the
+	// "Общие" group, then the object kinds. Storage directories are not
+	// branches - a module or a form is reached through the object owning it.
+	wantTop := []string{
+		"session-module", "metadata/common", "metadata/constants", "metadata/catalogs",
+		"metadata/documents", "metadata/document-journals", "metadata/enumerations",
+		"metadata/reports", "metadata/data-processors", "metadata/charts-of-characteristic-types",
+		"metadata/charts-of-accounts", "metadata/information-registers",
+		"metadata/accumulation-registers", "metadata/accounting-registers",
 	}
-	if first := snapshot.Tree.Children[0]; first.ID != "session-module" || first.Path != project.SessionModuleFile {
+	var top []string
+	for _, child := range snapshot.Tree.Children {
+		top = append(top, child.ID)
+	}
+	if snapshot.Manifest.Name != "SalesDemo" || !reflect.DeepEqual(top, wantTop) {
+		t.Fatalf("top level = %v, want %v", top, wantTop)
+	}
+	if first := snapshot.Tree.Children[0]; first.Path != project.SessionModuleFile {
 		t.Fatalf("session module node = %+v", first)
 	}
-	if !treeContains(snapshot.Tree, metadataPath) || !treeContains(snapshot.Tree, modulePath) {
+	if !treeContains(snapshot.Tree, metadataPath) || !treeContains(snapshot.Tree, commonModulePath) {
 		t.Fatalf("tree does not contain created sources: %+v", snapshot.Tree)
+	}
+	// The common module's own BSL hangs under the common module, which is the
+	// only thing that can lead a developer to it.
+	commonModuleNode, ok := findNodeByID(snapshot.Tree, commonModuleID.String())
+	if !ok || len(commonModuleNode.Children) != 1 || commonModuleNode.Children[0].Path != modulePath {
+		t.Fatalf("common module node = %+v found=%v", commonModuleNode, ok)
 	}
 	if !treeContainsTitle(snapshot.Tree, "Контрагенты") {
 		t.Fatalf("tree does not expose metadata title: %+v", snapshot.Tree)
 	}
-	if treeContains(snapshot.Tree, "reports") || treeContainsTitle(snapshot.Tree, "Компоновка данных") {
-		t.Fatalf("empty report layouts branch should be hidden: %+v", snapshot.Tree)
+	for _, title := range []string{"Модули", "Компоновка данных", "Ресурсы", "Метаданные"} {
+		if treeContainsTitle(snapshot.Tree, title) {
+			t.Fatalf("storage directory %q must not be a tree branch: %+v", title, snapshot.Tree)
+		}
 	}
 	if treeContains(snapshot.Tree, "metadata/folders") || treeContainsTitle(snapshot.Tree, "Каталоги Studio") {
 		t.Fatalf("empty Studio folders branch should be hidden: %+v", snapshot.Tree)
@@ -123,12 +153,12 @@ func TestWorkspaceTreeExposesLanguagesAsOneNodeAfterStyles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	metadataNode, ok := findNodeByID(snapshot.Tree, "metadata")
+	metadataNode, ok := findNodeByID(snapshot.Tree, "metadata/common")
 	if !ok {
-		t.Fatalf("metadata node not found: %+v", snapshot.Tree)
+		t.Fatalf("\"Общие\" node not found: %+v", snapshot.Tree)
 	}
 	var matches []int
-	stylesIndex, constantsIndex := -1, -1
+	stylesIndex := -1
 	for index, child := range metadataNode.Children {
 		if child.ID == "metadata/languages" {
 			matches = append(matches, index)
@@ -136,16 +166,16 @@ func TestWorkspaceTreeExposesLanguagesAsOneNodeAfterStyles(t *testing.T) {
 		if child.ID == "metadata/styles" {
 			stylesIndex = index
 		}
-		if child.ID == "metadata/constants" {
-			constantsIndex = index
-		}
 	}
 	if len(matches) != 1 {
 		t.Fatalf("expected exactly one languages node, found %d: %+v", len(matches), metadataNode.Children)
 	}
 	languagesIndex := matches[0]
-	if stylesIndex == -1 || constantsIndex == -1 || languagesIndex != stylesIndex+1 || constantsIndex != languagesIndex+1 {
-		t.Fatalf("languages node must sit directly between styles and constants: styles=%d languages=%d constants=%d", stylesIndex, languagesIndex, constantsIndex)
+	if stylesIndex == -1 || languagesIndex != stylesIndex+1 || languagesIndex != len(metadataNode.Children)-1 {
+		t.Fatalf("languages node must close \"Общие\" directly after styles: styles=%d languages=%d of %d", stylesIndex, languagesIndex, len(metadataNode.Children))
+	}
+	if _, ok := findNodeByID(snapshot.Tree, "metadata/constants"); !ok {
+		t.Fatalf("constants must stand beside \"Общие\", not inside it: %+v", snapshot.Tree)
 	}
 	languagesNode := metadataNode.Children[languagesIndex]
 	if len(languagesNode.Children) != 1 || languagesNode.Children[0].ID != "language:ru" || languagesNode.Children[0].Path != project.ManifestFile {
@@ -204,7 +234,6 @@ func TestStudioHandlerServesShellAndSnapshot(t *testing.T) {
 	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "ML Studio") || !strings.Contains(page.Body.String(), "bsl-editor.js") ||
 		!strings.Contains(page.Body.String(), "data-bsl-action=\"definition\"") || !strings.Contains(page.Body.String(), "/api/search?query=") ||
 		!strings.Contains(page.Body.String(), "data-bsl-action=\"help\"") || !strings.Contains(page.Body.String(), "/api/bsl/help?query=") ||
-		!strings.Contains(page.Body.String(), "tests.js") || !strings.Contains(page.Body.String(), "id=\"tests-open\"") ||
 		page.Header().Get("Content-Security-Policy") == "" {
 		t.Fatalf("page status=%d headers=%v body=%s", page.Code, page.Header(), page.Body.String())
 	}
@@ -225,46 +254,6 @@ func TestStudioHandlerServesShellAndSnapshot(t *testing.T) {
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &snapshot); err != nil || snapshot.Manifest.Title != "Продажи и склад" {
 		t.Fatalf("snapshot=%+v error=%v", snapshot, err)
-	}
-}
-
-func TestWorkspaceDiscoversTestProceduresAndServesTestAPI(t *testing.T) {
-	t.Parallel()
-	root := createProject(t)
-	id := uuid.MustNew()
-	relative, err := project.TestPath(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	content := "Процедура Проверить() Экспорт\nКонецПроцедуры\nФункция НеТест() Экспорт\nВозврат Истина;\nКонецФункции\n"
-	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(relative)), []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	workspace, err := Open(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cases, err := workspace.TestCases()
-	if err != nil || len(cases) != 1 || cases[0].Routine != "Проверить" || cases[0].Path != relative {
-		t.Fatalf("cases=%+v error=%v", cases, err)
-	}
-	snapshot, err := workspace.Snapshot()
-	if err != nil || !treeContainsTitle(snapshot.Tree, "Проверить") {
-		t.Fatalf("test tree error=%v tree=%+v", err, snapshot.Tree)
-	}
-	handler := NewHandler(workspace)
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/tests", nil))
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Проверить") {
-		t.Fatalf("test API status=%d body=%s", response.Code, response.Body.String())
-	}
-	run := httptest.NewRequest(http.MethodPost, "/api/tests/run", bytes.NewBufferString(`{}`))
-	run.Header.Set("Content-Type", "application/json")
-	run.Header.Set("X-ML-CSRF", "1")
-	runResponse := httptest.NewRecorder()
-	handler.ServeHTTP(runResponse, run)
-	if runResponse.Code != http.StatusConflict || !strings.Contains(runResponse.Body.String(), "Debug database") {
-		t.Fatalf("test run status=%d body=%s", runResponse.Code, runResponse.Body.String())
 	}
 }
 

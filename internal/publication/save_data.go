@@ -78,7 +78,7 @@ func SaveData(ctx context.Context, pool *pgxpool.Pool, request SaveDataRequest) 
 	if request.Mode == ActivationPrimary && dirty {
 		return SavedState{}, schemadiff.MigrationRecord{}, ErrDirtyPrimary
 	}
-	manifest, _, err := inspect(ctx, request.Root, SourceState{GitCommit: revision, Dirty: dirty})
+	manifest, err := inspect(ctx, request.Root, SourceState{GitCommit: revision, Dirty: dirty})
 	if err != nil {
 		return SavedState{}, schemadiff.MigrationRecord{}, fmt.Errorf("read ML Project: %w", err)
 	}

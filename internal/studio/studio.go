@@ -17,7 +17,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 	"github.com/k33alexey/MetaLab/internal/bsl/vm"
 	"github.com/k33alexey/MetaLab/internal/debugtarget"
 	"github.com/k33alexey/MetaLab/internal/gitclient"
@@ -46,8 +45,6 @@ type Workspace struct {
 	debugTargets  *debugtarget.Registry
 	debugTarget   *debugtarget.Lease
 	debugDatabase uuid.UUID
-	testRuntime   TestRuntimeProvider
-	testRunning   bool
 	saveData      SaveDataProvider
 	savedNames    SavedNamesProvider
 }
@@ -77,10 +74,27 @@ type Property struct {
 	Value string `json:"value"`
 }
 
-var rootTitles = map[string]string{
-	"metadata": "Метаданные", "modules": "Модули", "forms": "Формы",
-	"reports": "Компоновка данных", "tests": "Тесты", "assets": "Ресурсы",
-}
+// commonKindOrder and topLevelKindOrder fix the configuration tree's shape:
+// "Общие" collects the configuration-wide objects, every other kind stands
+// at the top level beside it. Order is the one the specification fixes, not
+// the physical directory order, and kinds not implemented yet simply leave
+// a gap rather than shifting their neighbours.
+var (
+	commonKindOrder = []string{
+		"subsystems", "common-modules", "session-parameters", "roles",
+		"common-attributes", "event-subscriptions", "scheduled-jobs",
+		"defined-types", "settings-storages", "common-commands",
+		"common-forms", "common-templates", "common-pictures",
+		"http-services", "styles", "languages",
+	}
+	topLevelKindOrder = []string{
+		"constants", "catalogs", "documents", "document-journals",
+		"enumerations", "reports", "data-processors",
+		"charts-of-characteristic-types", "charts-of-accounts",
+		"information-registers", "accumulation-registers",
+		"accounting-registers",
+	}
+)
 
 var metadataTitles = map[string]string{
 	"subsystems":                     "Подсистемы",
@@ -170,23 +184,11 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 		},
 	}
 	root.Children = append(root.Children, workspace.sessionModuleNodeLocked())
-	for _, directory := range project.RootDirectories() {
-		var node Node
-		if directory == "metadata" {
-			node, err = workspace.metadataTree(manifest.DefaultLanguage, manifest.Languages)
-		} else {
-			node, err = workspace.sourceTree(directory, manifest.DefaultLanguage, manifest.Languages)
-		}
-		if err != nil {
-			return Snapshot{}, err
-		}
-		// Report layouts belong to Отчёты/Обработки objects, never to a
-		// standalone top-level branch alongside them.
-		if directory == "reports" {
-			continue
-		}
-		root.Children = append(root.Children, node)
+	branches, err := workspace.metadataTree(manifest.DefaultLanguage, manifest.Languages)
+	if err != nil {
+		return Snapshot{}, err
 	}
+	root.Children = append(root.Children, branches...)
 	return Snapshot{ProjectPath: workspace.root, Manifest: manifest, Tree: root}, nil
 }
 
@@ -232,7 +234,6 @@ func (workspace *Workspace) SaveData(ctx context.Context, consent schemadiff.Mig
 func NewHandler(workspace *Workspace) http.Handler {
 	routes := http.NewServeMux()
 	registerDebugRoutes(routes, workspace)
-	registerTestRoutes(routes, workspace)
 	registerRoleRoutes(routes, workspace)
 	registerSessionModuleRoutes(routes, workspace)
 	registerCatalogEditorRoutes(routes, workspace)
@@ -812,11 +813,14 @@ func writeBSLNavigationError(response http.ResponseWriter, err error) {
 	http.Error(response, err.Error(), status)
 }
 
-func (workspace *Workspace) metadataTree(language string, languages []project.Language) (Node, error) {
-	root := Node{ID: "metadata", Kind: "group", Title: rootTitles["metadata"], Path: "metadata"}
+// metadataTree builds the configuration tree's top-level branches: the
+// "Общие" group and the object kinds standing beside it. Sources never form
+// branches of their own - a module or a form is always reached through the
+// object that owns it, the way the specification fixes the tree.
+func (workspace *Workspace) metadataTree(language string, languages []project.Language) ([]Node, error) {
 	entries, err := os.ReadDir(filepath.Join(workspace.root, "metadata"))
 	if err != nil {
-		return Node{}, fmt.Errorf("read metadata directory: %w", err)
+		return nil, fmt.Errorf("read metadata directory: %w", err)
 	}
 	known := make(map[string]bool, len(project.MetadataKinds()))
 	for _, kind := range project.MetadataKinds() {
@@ -827,7 +831,7 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 			continue
 		}
 		if !known[entry.Name()] || !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
-			return Node{}, fmt.Errorf("unexpected metadata path %q", filepath.Join("metadata", entry.Name()))
+			return nil, fmt.Errorf("unexpected metadata path %q", filepath.Join("metadata", entry.Name()))
 		}
 	}
 	// A tree listing must stay usable even while some object's metadata
@@ -835,7 +839,15 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 	// fixture) — so a load failure here just means the per-kind data
 	// groups below (Реквизиты, Измерения, ...) come back empty, not a
 	// broken tree.
+	// Modules form no branch of their own - each one is reached through the
+	// object that owns it - but the directory is still checked here, so a
+	// stray file is reported when the tree is read and not only when data is
+	// saved into the database.
+	if _, err := workspace.sourceFiles(filepath.Join(workspace.root, "modules"), "modules", ".bsl", "modules", language, languages); err != nil {
+		return nil, err
+	}
 	loaded, _ := metadata.Load(workspace.root)
+	built := make(map[string]Node, len(project.MetadataKinds()))
 	for _, kind := range project.MetadataKinds() {
 		relative := filepath.Join("metadata", kind)
 		node := Node{ID: "metadata/" + kind, Kind: "metadata-group", Title: metadataTitle(kind), Path: filepath.ToSlash(relative)}
@@ -868,10 +880,10 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 					node.Children, buildErr = workspace.sourceFiles(path, filepath.ToSlash(relative), ".yaml", "metadata", language, languages)
 				}
 				if buildErr != nil {
-					return Node{}, buildErr
+					return nil, buildErr
 				}
 			} else if !os.IsNotExist(err) {
-				return Node{}, fmt.Errorf("inspect metadata directory %q: %w", kind, err)
+				return nil, fmt.Errorf("inspect metadata directory %q: %w", kind, err)
 			}
 		}
 		// Studio-only navigation grouping belongs inside each category's own
@@ -879,31 +891,57 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 		if kind == "folders" {
 			continue
 		}
+		// A common module keeps its BSL in the shared modules directory, so
+		// without this leaf the code would have no place in the tree at all:
+		// unlike a catalog, a common module has nothing else to open.
+		if kind == "common-modules" {
+			workspace.attachCommonModuleSources(&node)
+		}
 		node.Properties = countProperties(node.Path, len(node.Children))
-		root.Children = append(root.Children, node)
+		built[kind] = node
 	}
-	root.Properties = countProperties(root.Path, countDescendants(root))
-	return root, nil
+	common := Node{ID: "metadata/common", Kind: "group", Title: "Общие", Path: "metadata"}
+	for _, kind := range commonKindOrder {
+		if node, ok := built[kind]; ok {
+			common.Children = append(common.Children, node)
+		}
+	}
+	common.Properties = countProperties(common.Path, countDescendants(common))
+	branches := []Node{common}
+	for _, kind := range topLevelKindOrder {
+		if node, ok := built[kind]; ok {
+			branches = append(branches, node)
+		}
+	}
+	return branches, nil
 }
 
-func (workspace *Workspace) sourceTree(directory, language string, languages []project.Language) (Node, error) {
-	extension, kind := "", directory
-	switch directory {
-	case "modules", "tests":
-		extension = ".bsl"
-	case "forms", "reports":
-		extension = ".yaml"
-	case "assets":
-		kind = "asset"
+// attachCommonModuleSources hangs each common module's BSL file under its own
+// node, matching how every other object reaches its module through itself.
+// The reference is read from the description file rather than from the loaded
+// catalogue on purpose: the tree has to stay usable while some unrelated
+// object is mid-edit and the catalogue as a whole does not yet validate.
+func (workspace *Workspace) attachCommonModuleSources(node *Node) {
+	for index := range node.Children {
+		file, err := workspace.readSource(node.Children[index].Path)
+		if err != nil {
+			continue
+		}
+		var descriptor struct {
+			Module uuid.UUID `yaml:"module"`
+		}
+		if yaml.Unmarshal([]byte(file.Content), &descriptor) != nil || descriptor.Module.IsZero() {
+			continue
+		}
+		path, err := project.ModulePath(descriptor.Module)
+		if err != nil {
+			continue
+		}
+		node.Children[index].Children = append(node.Children[index].Children, Node{
+			ID: descriptor.Module.String(), Kind: "modules", Title: "Модуль", Path: path,
+			Properties: []Property{{Name: "UUID", Value: descriptor.Module.String()}, {Name: "Путь", Value: path}},
+		})
 	}
-	children, err := workspace.sourceFiles(filepath.Join(workspace.root, directory), directory, extension, kind, language, languages)
-	if err != nil {
-		return Node{}, err
-	}
-	return Node{
-		ID: directory, Kind: "group", Title: rootTitles[directory], Path: directory,
-		Properties: countProperties(directory, len(children)), Children: children,
-	}, nil
 }
 
 func (workspace *Workspace) sourceFiles(directory, relative, extension, kind, language string, languages []project.Language) ([]Node, error) {
@@ -942,23 +980,6 @@ func (workspace *Workspace) sourceFiles(directory, relative, extension, kind, la
 		node := Node{
 			ID: id.String(), Kind: kind, Title: title, Path: path,
 			Properties: []Property{{Name: "UUID", Value: id.String()}, {Name: "Путь", Value: path}, {Name: "Размер", Value: fmt.Sprintf("%d байт", info.Size())}},
-		}
-		if relative == "tests" {
-			file, readErr := workspace.readSource(path)
-			if readErr != nil {
-				return nil, readErr
-			}
-			module, _ := syntax.Parse(path, file.Content)
-			for _, routine := range module.Routines {
-				if routine.Function || !routine.Export {
-					continue
-				}
-				node.Children = append(node.Children, Node{
-					ID: "test:" + id.String() + ":" + strings.ToLower(routine.Name), Kind: "test",
-					Title: routine.Name, Path: path, Line: routine.SourceSpan.Start.Line,
-					Properties: []Property{{Name: "Тест", Value: routine.Name}, {Name: "Строка", Value: fmt.Sprint(routine.SourceSpan.Start.Line)}},
-				})
-			}
 		}
 		nodes = append(nodes, node)
 	}

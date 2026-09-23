@@ -6,19 +6,17 @@ import (
 	"testing"
 )
 
-func TestSalesAndWarehouseDemoBuildsAndVerifies(t *testing.T) {
+// The bundled example project is the one source tree that is not built by a
+// test: if inspection of it ever stops working, everything downstream of
+// "Сохранить данные" is broken for a real project, not just a fixture.
+func TestSalesAndWarehouseDemoInspects(t *testing.T) {
 	t.Parallel()
 	root := filepath.Join("..", "..", "examples", "sales-and-warehouse")
-	packagePath := filepath.Join(t.TempDir(), "sales-and-warehouse"+PackageExtension)
-	built, err := BuildFile(context.Background(), root, packagePath, SourceState{Dirty: true})
+	manifest, err := inspect(context.Background(), root, SourceState{Dirty: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	verified, err := VerifyFile(context.Background(), packagePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if built.ProjectName != "ПродажиИСклад" || verified.ContentSHA256 != built.ContentSHA256 || len(verified.DocumentIDs) != 2 || len(verified.AccumulationRegisterIDs) != 1 {
-		t.Fatalf("built=%+v verified=%+v", built, verified)
+	if manifest.ProjectName != "ПродажиИСклад" || len(manifest.DocumentIDs) != 2 || len(manifest.AccumulationRegisterIDs) != 1 {
+		t.Fatalf("manifest = %+v", manifest)
 	}
 }

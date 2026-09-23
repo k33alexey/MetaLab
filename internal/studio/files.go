@@ -268,13 +268,9 @@ func validateEditablePath(relative string) (string, string, error) {
 		extension := path.Ext(parts[1])
 		language := ""
 		switch parts[0] {
-		case "modules", "tests":
+		case "modules":
 			if extension == ".bsl" {
 				language = "bsl"
-			}
-		case "forms", "reports":
-			if extension == ".yaml" {
-				language = "yaml"
 			}
 		}
 		if language != "" && validUUIDFile(parts[1], extension) {
@@ -364,7 +360,7 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 		return canonical.Bytes(), nil
 	}
 	parts := strings.Split(relative, "/")
-	if len(parts) == 2 && parts[0] == "forms" {
+	if len(parts) == 3 && parts[0] == "metadata" && parts[1] == "common-forms" {
 		manifest, err := project.ValidateLayout(workspace.root)
 		if err != nil {
 			return nil, err
@@ -373,7 +369,7 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 		if err != nil {
 			return nil, err
 		}
-		filenameID, _ := uuid.Parse(strings.TrimSuffix(parts[1], ".yaml"))
+		filenameID, _ := uuid.Parse(strings.TrimSuffix(parts[2], ".yaml"))
 		if value.ID != filenameID {
 			return nil, fmt.Errorf("form UUID %s does not match filename UUID %s", value.ID, filenameID)
 		}

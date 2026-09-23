@@ -207,7 +207,7 @@ func (catalog *Catalog) validatePolicyOperand(role RoleDefinition, rule PolicyRu
 }
 
 func (catalog *Catalog) readRoleForm(root string, id uuid.UUID) (ManagedForm, error) {
-	path := filepath.Join(root, "forms", id.String()+".yaml")
+	path := filepath.Join(root, "metadata", "common-forms", id.String()+".yaml")
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() {
 		return ManagedForm{}, fmt.Errorf("form %s is missing or unsafe", id)

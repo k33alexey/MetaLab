@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
-	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/platform"
 	"github.com/k33alexey/MetaLab/internal/publication"
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
@@ -38,23 +37,6 @@ func runStudio(ctx context.Context, configuration appconfig.Config, projectPath,
 	}
 	platformRuntime := platform.New(ctx, configuration, secretstore.New())
 	defer platformRuntime.Close()
-	workspace.SetTestRuntimeProvider(func(runContext context.Context) (*metadata.Runtime, func(), error) {
-		pool, _, err := platformRuntime.OpenDebugDatabase(runContext, databaseID)
-		if err != nil {
-			return nil, nil, err
-		}
-		catalog, err := metadata.Load(projectPath)
-		if err != nil {
-			pool.Close()
-			return nil, nil, err
-		}
-		runtime, err := metadata.NewApplicationRuntime(pool, catalog, nil)
-		if err != nil {
-			pool.Close()
-			return nil, nil, err
-		}
-		return runtime, pool.Close, nil
-	})
 	workspace.SetSavedNamesProvider(func(namesContext context.Context) map[string]string {
 		return platformRuntime.ApplicationPhysicalNames(namesContext, databaseID)
 	})

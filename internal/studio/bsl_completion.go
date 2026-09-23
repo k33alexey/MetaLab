@@ -169,7 +169,7 @@ func (workspace *Workspace) buildBSLSymbolIndex() (*BSLSymbolIndex, error) {
 	metadataCatalog, _ := metadata.Load(workspace.root)
 	descriptors := workspace.moduleDescriptors(metadataCatalog)
 	var relativePaths []string
-	for _, directory := range []string{"modules", "tests"} {
+	for _, directory := range []string{"modules"} {
 		entries, err := os.ReadDir(filepath.Join(workspace.root, directory))
 		if err != nil {
 			return nil, fmt.Errorf("read BSL %s: %w", directory, err)

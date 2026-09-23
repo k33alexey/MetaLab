@@ -129,8 +129,10 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 		}
 		return strings.ToLower(a.Name) < strings.ToLower(b.Name)
 	})
-	entries, err := os.ReadDir(filepath.Join(root, "forms"))
-	if err != nil {
+	// A configuration without common forms has no directory for them, the
+	// same as any other metadata kind nobody has used yet.
+	entries, err := os.ReadDir(filepath.Join(root, "metadata", "common-forms"))
+	if err != nil && !os.IsNotExist(err) {
 		return PermissionSchema{}, err
 	}
 	if len(entries) > maxObjectsPerKind+1 {

@@ -4,9 +4,18 @@ build:
 	mkdir -p bin
 	go build -o bin/ml ./cmd/ml
 
+# The desktop build is the only one that links against system frameworks, so
+# it is the only one that cares which macOS SDK is in the way. Command Line
+# Tools can carry an SDK newer than the linker in the selected Xcode, and the
+# link then fails on architectures that linker has never heard of. Pinning the
+# SDK of the selected developer directory keeps the two in step, and naming
+# the deployment target explicitly keeps the compiler and the linker from
+# disagreeing about it; on every other system both settings change nothing.
+DESKTOP_SDKROOT := $(shell [ "$$(uname)" = Darwin ] && DEVELOPER_DIR="$$(xcode-select -p 2>/dev/null)" xcrun --sdk macosx --show-sdk-path 2>/dev/null)
+
 build-desktop:
 	mkdir -p bin
-	go build -tags desktop -ldflags='-s -w' -o bin/ml-desktop ./cmd/ml
+	SDKROOT='$(DESKTOP_SDKROOT)' MACOSX_DEPLOYMENT_TARGET=11.0 go build -tags desktop -ldflags='-s -w' -o bin/ml-desktop ./cmd/ml
 
 build-wasm:
 	mkdir -p bin

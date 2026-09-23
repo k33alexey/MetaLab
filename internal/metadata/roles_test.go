@@ -215,7 +215,7 @@ func TestLoadRolesAndCommandSources(t *testing.T) {
 				}
 			}
 			write("metadata/catalogs/"+catalog.Catalogs[0].ID.String()+"/object.yaml", catalog.Catalogs[0])
-			formPath := "forms/" + form.ID.String() + ".yaml"
+			formPath := "metadata/common-forms/" + form.ID.String() + ".yaml"
 			if broken == "form filename" {
 				form.ID = uuid.MustNew()
 			}

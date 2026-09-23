@@ -35,7 +35,7 @@ var (
 	// ErrProjectIdentityChanged prevents accidental replacement with another project manifest.
 	ErrProjectIdentityChanged = errors.New("ML Project identity cannot be changed")
 
-	rootDirectories = []string{"metadata", "modules", "forms", "reports", "tests", "assets"}
+	rootDirectories = []string{"metadata", "modules"}
 	// objectFolderKinds lists metadata kinds whose objects group their own
 	// description, module(s) and managed forms under one folder named by
 	// the object's stable UUID, instead of scattering them across the flat
@@ -241,27 +241,9 @@ func MetadataPath(kind string, id uuid.UUID) (string, error) {
 func ModulePath(id uuid.UUID) (string, error) { return sourcePath("modules", id, ".bsl") }
 
 // FormPath returns the canonical relative YAML path for a managed form.
-func FormPath(id uuid.UUID) (string, error) { return sourcePath("forms", id, ".yaml") }
-
 // ReportPath returns the canonical relative YAML path for a data composition schema.
-func ReportPath(id uuid.UUID) (string, error) { return sourcePath("reports", id, ".yaml") }
-
 // TestPath returns the canonical relative BSL path for a test module.
-func TestPath(id uuid.UUID) (string, error) { return sourcePath("tests", id, ".bsl") }
-
 // AssetPath returns a stable relative resource path while preserving its format extension.
-func AssetPath(id uuid.UUID, extension string) (string, error) {
-	if len(extension) < 2 || len(extension) > 17 || extension[0] != '.' || extension != strings.ToLower(extension) {
-		return "", fmt.Errorf("asset extension must be lowercase and start with a dot")
-	}
-	for _, symbol := range extension[1:] {
-		if (symbol < 'a' || symbol > 'z') && (symbol < '0' || symbol > '9') {
-			return "", fmt.Errorf("asset extension contains an unsupported character")
-		}
-	}
-	return sourcePath("assets", id, extension)
-}
-
 func sourcePath(directory string, id uuid.UUID, extension string) (string, error) {
 	if id.IsZero() {
 		return "", fmt.Errorf("source UUID must not be zero")

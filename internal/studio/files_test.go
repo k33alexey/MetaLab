@@ -149,8 +149,7 @@ func TestSaveRejectsMalformedYAML(t *testing.T) {
 	t.Parallel()
 
 	root := createProject(t)
-	id := uuid.MustNew()
-	relative, err := project.FormPath(id)
+	relative, err := project.ObjectFormPath("catalogs", uuid.MustNew(), uuid.MustNew())
 	if err != nil {
 		t.Fatal(err)
 	}

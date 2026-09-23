@@ -352,11 +352,6 @@ func (workspace *Workspace) compileDebugProgramLocked(currentPath, currentConten
 			return nil, "", err
 		}
 	}
-	if strings.HasPrefix(currentPath, "tests/") {
-		if err := appendDirectory("tests", true); err != nil {
-			return nil, "", err
-		}
-	}
 	if !currentFound {
 		return nil, "", ErrSourceNotFound
 	}

@@ -326,7 +326,7 @@ func (workspace *Workspace) buildBSLNavigationIndex() (*bslNavigationIndex, erro
 	catalog, _ := metadata.Load(workspace.root)
 	descriptors := workspace.moduleDescriptors(catalog)
 	occurrenceCount := 0
-	for _, directory := range []string{"modules", "tests"} {
+	for _, directory := range []string{"modules"} {
 		entries, err := os.ReadDir(filepath.Join(workspace.root, directory))
 		if err != nil {
 			return nil, fmt.Errorf("read BSL %s: %w", directory, err)
@@ -348,9 +348,6 @@ func (workspace *Workspace) buildBSLNavigationIndex() (*bslNavigationIndex, erro
 			descriptor := descriptors[id]
 			if descriptor.name == "" {
 				descriptor.name = "Модуль" + strings.ReplaceAll(id, "-", "")
-				if directory == "tests" {
-					descriptor.name = "Тест" + strings.ReplaceAll(id, "-", "")
-				}
 			}
 			module := buildBSLSemanticModule(relative, file.Content, descriptor.name, descriptor.public, descriptor.predefined)
 			module.revision = file.Revision
@@ -972,7 +969,7 @@ func yamlNodeRange(node *yaml.Node) BSLRange {
 func (workspace *Workspace) buildProjectSearchIndex() (*projectSearchIndex, error) {
 	result := &projectSearchIndex{}
 	paths := []string{project.ManifestFile}
-	for _, directory := range []string{"modules", "tests", "forms", "reports"} {
+	for _, directory := range []string{"modules"} {
 		entries, err := os.ReadDir(filepath.Join(workspace.root, directory))
 		if err != nil {
 			return nil, err

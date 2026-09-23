@@ -73,10 +73,10 @@ func TestValidateLayoutRejectsMissingDirectory(t *testing.T) {
 	if err := Initialize(root, testManifest()); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(filepath.Join(root, "forms", keepFile)); err != nil {
+	if err := os.Remove(filepath.Join(root, "modules", keepFile)); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(filepath.Join(root, "forms")); err != nil {
+	if err := os.Remove(filepath.Join(root, "modules")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := ValidateLayout(root); !errors.Is(err, ErrInvalidLayout) {
@@ -136,9 +136,6 @@ func TestCanonicalSourcePathsUseStableUUIDs(t *testing.T) {
 		want string
 	}{
 		{name: "module", path: ModulePath, want: path.Join("modules", id.String()+".bsl")},
-		{name: "form", path: FormPath, want: path.Join("forms", id.String()+".yaml")},
-		{name: "report", path: ReportPath, want: path.Join("reports", id.String()+".yaml")},
-		{name: "test", path: TestPath, want: path.Join("tests", id.String()+".bsl")},
 	}
 	for _, test := range tests {
 		test := test
@@ -153,13 +150,6 @@ func TestCanonicalSourcePathsUseStableUUIDs(t *testing.T) {
 	metadata, err := MetadataPath("catalogs", id)
 	if err != nil || metadata != path.Join("metadata", "catalogs", id.String()+".yaml") {
 		t.Fatalf("metadata path = %q, error=%v", metadata, err)
-	}
-	asset, err := AssetPath(id, ".png")
-	if err != nil || asset != path.Join("assets", id.String()+".png") {
-		t.Fatalf("asset path = %q, error=%v", asset, err)
-	}
-	if _, err := AssetPath(id, "../png"); err == nil {
-		t.Fatal("AssetPath() accepted an unsafe extension")
 	}
 	if _, err := MetadataPath("unknown", id); err == nil {
 		t.Fatal("MetadataPath() accepted an unknown kind")
