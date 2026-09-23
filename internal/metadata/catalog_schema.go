@@ -194,7 +194,7 @@ func (catalog *Catalog) attributeStorage(types []Type) (attributeStorage, error)
 		storage.sqlType = "boolean"
 	case DateType:
 		storage.sqlType = "timestamp with time zone"
-	case UUIDType, EnumerationType, CatalogType, DocumentType:
+	case ObjectUUIDType, EnumerationType, CatalogType, DocumentType:
 		storage.sqlType = "uuid"
 		if item.Kind == CatalogType || item.Kind == DocumentType {
 			id := *item.Reference

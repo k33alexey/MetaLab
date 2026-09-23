@@ -64,7 +64,6 @@ func TestEmbeddedApplicationAssetsAreSafeAndCacheable(t *testing.T) {
 		{"app.js", "text/javascript", `customElements.define("ml-form"`},
 		{"app.css", "text/css", "@media (pointer: coarse)"},
 		{"manifest.webmanifest", "application/manifest+json", `"display": "standalone"`},
-		{"icon.svg", "image/svg+xml", "<svg"},
 	} {
 		response := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, "/assets/ml-app/"+asset.name, nil)
@@ -100,7 +99,7 @@ func TestEmbeddedApplicationAssetsAreSafeAndCacheable(t *testing.T) {
 	for _, icon := range []struct {
 		name string
 		size int
-	}{{"icon-192.png", 192}, {"icon-512.png", 512}} {
+	}{{"icon.png", 512}, {"icon-192.png", 192}, {"icon-512.png", 512}} {
 		response := httptest.NewRecorder()
 		ServeAsset(response, httptest.NewRequest(http.MethodGet, "/assets/ml-app/"+icon.name, nil), icon.name)
 		configuration, err := png.DecodeConfig(response.Body)

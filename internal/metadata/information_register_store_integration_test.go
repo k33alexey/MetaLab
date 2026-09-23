@@ -51,13 +51,13 @@ func TestInformationRegisterRepositoryIntegration(t *testing.T) {
 		InformationRegisters: []InformationRegisterDefinition{
 			{
 				ID: independentID, Name: "КурсыВалют", WriteMode: InformationRegisterIndependent, Periodicity: InformationRegisterPeriodDay,
-				Dimensions: []Attribute{{ID: currencyID, Name: "Валюта", Required: true, Types: []Type{{Kind: UUIDType}}}},
+				Dimensions: []Attribute{{ID: currencyID, Name: "Валюта", Required: true, Types: []Type{{Kind: ObjectUUIDType}}}},
 				Resources:  []Attribute{{ID: rateID, Name: "Курс", Required: true, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 4}}}},
 			},
 			{
 				ID: recorderID, Name: "Цены", WriteMode: InformationRegisterRecorder, Periodicity: InformationRegisterPeriodRecorderPosition,
 				Recorders:  []uuid.UUID{documentID},
-				Dimensions: []Attribute{{ID: productID, Name: "Товар", Required: true, Types: []Type{{Kind: UUIDType}}}},
+				Dimensions: []Attribute{{ID: productID, Name: "Товар", Required: true, Types: []Type{{Kind: ObjectUUIDType}}}},
 				Resources:  []Attribute{{ID: priceID, Name: "Цена", Required: true, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}},
 			},
 		},
@@ -98,13 +98,13 @@ func TestInformationRegisterRepositoryIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	set.Filter.Period = &firstPeriod
-	set.Filter.Dimensions[currencyID] = Value{Kind: UUIDType, Data: currency.String()}
+	set.Filter.Dimensions[currencyID] = Value{Kind: ObjectUUIDType, Data: currency.String()}
 	record, err := set.Add()
 	if err != nil {
 		t.Fatal(err)
 	}
 	record.Period = firstPeriod
-	record.Dimensions[currencyID] = Value{Kind: UUIDType, Data: currency.String()}
+	record.Dimensions[currencyID] = Value{Kind: ObjectUUIDType, Data: currency.String()}
 	record.Resources[rateID] = Value{Kind: NumberType, Data: "40.2500"}
 	var events []InformationRegisterEvent
 	handler := InformationRegisterEventHandlerFunc(func(_ context.Context, event InformationRegisterEvent, _ *InformationRegisterRecordSet, replace bool) (bool, error) {
@@ -136,19 +136,19 @@ func TestInformationRegisterRepositoryIntegration(t *testing.T) {
 	secondPeriod := firstPeriod.AddDate(0, 0, 1)
 	second, _ := repository.NewRecordSet("КурсыВалют")
 	second.Filter.Period = &secondPeriod
-	second.Filter.Dimensions[currencyID] = Value{Kind: UUIDType, Data: currency.String()}
+	second.Filter.Dimensions[currencyID] = Value{Kind: ObjectUUIDType, Data: currency.String()}
 	secondRecord, _ := second.Add()
 	secondRecord.Period = secondPeriod
-	secondRecord.Dimensions[currencyID] = Value{Kind: UUIDType, Data: currency.String()}
+	secondRecord.Dimensions[currencyID] = Value{Kind: ObjectUUIDType, Data: currency.String()}
 	secondRecord.Resources[rateID] = Value{Kind: NumberType, Data: "41.5"}
 	if err := repository.Write(ctx, second, true); err != nil {
 		t.Fatal(err)
 	}
-	last, err := repository.SliceLast(ctx, "КурсыВалют", secondPeriod.AddDate(0, 0, 1), map[uuid.UUID]Value{currencyID: {Kind: UUIDType, Data: currency.String()}})
+	last, err := repository.SliceLast(ctx, "КурсыВалют", secondPeriod.AddDate(0, 0, 1), map[uuid.UUID]Value{currencyID: {Kind: ObjectUUIDType, Data: currency.String()}})
 	if err != nil || len(last) != 1 || last[0].Resources[rateID].Data != "41.5" {
 		t.Fatalf("last slice=%+v error=%v", last, err)
 	}
-	first, err := repository.SliceFirst(ctx, "КурсыВалют", firstPeriod, map[uuid.UUID]Value{currencyID: {Kind: UUIDType, Data: currency.String()}})
+	first, err := repository.SliceFirst(ctx, "КурсыВалют", firstPeriod, map[uuid.UUID]Value{currencyID: {Kind: ObjectUUIDType, Data: currency.String()}})
 	if err != nil || len(first) != 1 || first[0].Resources[rateID].Data != "40.25" {
 		t.Fatalf("first slice=%+v error=%v", first, err)
 	}
@@ -170,7 +170,7 @@ func TestInformationRegisterRepositoryIntegration(t *testing.T) {
 	for index := 0; index < 2; index++ {
 		price, _ := prices.Add()
 		price.Period, price.Recorder = document.Date, document.Reference
-		price.Dimensions[productID] = Value{Kind: UUIDType, Data: uuid.MustNew().String()}
+		price.Dimensions[productID] = Value{Kind: ObjectUUIDType, Data: uuid.MustNew().String()}
 		price.Resources[priceID] = Value{Kind: NumberType, Data: "100"}
 	}
 	if err := repository.Write(ctx, prices, true); err != nil || prices.Records[0].LineNumber != 1 || prices.Records[1].LineNumber != 2 {
@@ -189,7 +189,7 @@ func TestInformationRegisterRepositoryIntegration(t *testing.T) {
 	duplicateLine.Filter.Recorder = &document.Reference
 	duplicateLineRecord, _ := duplicateLine.Add()
 	duplicateLineRecord.Period, duplicateLineRecord.Recorder, duplicateLineRecord.LineNumber = document.Date.Add(time.Second), document.Reference, 1
-	duplicateLineRecord.Dimensions[productID] = Value{Kind: UUIDType, Data: uuid.MustNew().String()}
+	duplicateLineRecord.Dimensions[productID] = Value{Kind: ObjectUUIDType, Data: uuid.MustNew().String()}
 	duplicateLineRecord.Resources[priceID] = Value{Kind: NumberType, Data: "102"}
 	if err := repository.Write(ctx, duplicateLine, false); err == nil {
 		t.Fatal("duplicate recorder and line number were accepted")
@@ -199,7 +199,7 @@ func TestInformationRegisterRepositoryIntegration(t *testing.T) {
 	missingRecorder.Filter.Recorder = &missingReference
 	missingRecord, _ := missingRecorder.Add()
 	missingRecord.Period, missingRecord.Recorder = document.Date, missingReference
-	missingRecord.Dimensions[productID] = Value{Kind: UUIDType, Data: uuid.MustNew().String()}
+	missingRecord.Dimensions[productID] = Value{Kind: ObjectUUIDType, Data: uuid.MustNew().String()}
 	missingRecord.Resources[priceID] = Value{Kind: NumberType, Data: "103"}
 	if err := repository.Write(ctx, missingRecorder, true); err == nil {
 		t.Fatal("nonexistent recorder was accepted")
@@ -212,7 +212,7 @@ func TestInformationRegisterRepositoryIntegration(t *testing.T) {
 	replacement.Filter.Recorder = &document.Reference
 	replacementRecord, _ := replacement.Add()
 	replacementRecord.Period, replacementRecord.Recorder = document.Date, document.Reference
-	replacementRecord.Dimensions[productID] = Value{Kind: UUIDType, Data: uuid.MustNew().String()}
+	replacementRecord.Dimensions[productID] = Value{Kind: ObjectUUIDType, Data: uuid.MustNew().String()}
 	replacementRecord.Resources[priceID] = Value{Kind: NumberType, Data: "250"}
 	if err := repository.Write(ctx, replacement, true); err != nil {
 		t.Fatal(err)
@@ -316,7 +316,7 @@ func TestInformationRegisterRepositoryIntegration(t *testing.T) {
 	conflicting, _ := repository.NewRecordSet("КурсыВалют")
 	conflictingPeriod := time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC)
 	conflicting.Filter.Period = &conflictingPeriod
-	conflicting.Filter.Dimensions[currencyID] = Value{Kind: UUIDType, Data: bslCurrency.String()}
+	conflicting.Filter.Dimensions[currencyID] = Value{Kind: ObjectUUIDType, Data: bslCurrency.String()}
 	conflictingRecord, _ := conflicting.Add()
 	conflictingRecord.Period = conflictingPeriod
 	conflictingRecord.Dimensions = mapsCloneValues(conflicting.Filter.Dimensions)
@@ -373,7 +373,7 @@ func TestInformationRegisterRepositoryIntegration(t *testing.T) {
 	rollbackSet, _ := repository.NewRecordSet("КурсыВалют")
 	rollbackPeriod := firstPeriod.AddDate(0, 0, 10)
 	rollbackSet.Filter.Period = &rollbackPeriod
-	rollbackSet.Filter.Dimensions[currencyID] = Value{Kind: UUIDType, Data: uuid.MustNew().String()}
+	rollbackSet.Filter.Dimensions[currencyID] = Value{Kind: ObjectUUIDType, Data: uuid.MustNew().String()}
 	rollbackRecord, _ := rollbackSet.Add()
 	rollbackRecord.Period = rollbackPeriod
 	rollbackRecord.Dimensions = mapsCloneValues(rollbackSet.Filter.Dimensions)

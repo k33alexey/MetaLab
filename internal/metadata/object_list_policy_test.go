@@ -185,7 +185,7 @@ func TestRowRestrictionResolvesSessionParameters(t *testing.T) {
 		predicate, err := restriction.predicate(WithSessionValues(context.Background(), values), &arguments)
 		return predicate, arguments, err
 	}
-	user := Value{Kind: UUIDType, Data: uuid.MustNew().String()}
+	user := Value{Kind: ObjectUUIDType, Data: uuid.MustNew().String()}
 
 	predicate, arguments, err := render(map[string][]Value{CurrentUserParameter: {user}},
 		PolicyRule{Field: "owner", Operator: PolicyEqual, Parameter: CurrentUserParameter})
@@ -232,7 +232,7 @@ func TestSessionParameterNameIsReserved(t *testing.T) {
 		t.Fatal("an ordinary name was treated as reserved")
 	}
 	parameter := SessionParameter{Format: CurrentFormat, ID: uuid.MustNew(), Name: CurrentUserParameter,
-		Title: LocalizedText{"ru": "Текущий пользователь"}, Types: []Type{{Kind: UUIDType}}}
+		Title: LocalizedText{"ru": "Текущий пользователь"}, Types: []Type{{Kind: ObjectUUIDType}}}
 	var encoded bytes.Buffer
 	if err := Encode(&encoded, parameter); err != nil {
 		t.Fatal(err)
@@ -308,7 +308,7 @@ func TestRowRestrictionAsksTheProjectResolverForItsOwnParameters(t *testing.T) {
 		return []Value{{Kind: StringType, Data: "Основной"}, {Kind: StringType, Data: "Розничный"}}, true, nil
 	}
 	ctx := WithSessionResolver(WithSessionValues(context.Background(), map[string][]Value{
-		CurrentUserParameter: {{Kind: UUIDType, Data: uuid.MustNew().String()}},
+		CurrentUserParameter: {{Kind: ObjectUUIDType, Data: uuid.MustNew().String()}},
 	}), resolver)
 	predicate, arguments, err := render(ctx, rule)
 	if err != nil || predicate != "(warehouse IN ($1,$2))" || len(arguments) != 2 {

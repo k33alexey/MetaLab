@@ -65,8 +65,10 @@ func TestWorkspaceSnapshotBuildsCanonicalTree(t *testing.T) {
 		"session-module", "metadata/common", "metadata/constants", "metadata/catalogs",
 		"metadata/documents", "metadata/document-journals", "metadata/enumerations",
 		"metadata/reports", "metadata/data-processors", "metadata/charts-of-characteristic-types",
-		"metadata/charts-of-accounts", "metadata/information-registers",
-		"metadata/accumulation-registers", "metadata/accounting-registers",
+		"metadata/charts-of-accounts", "metadata/charts-of-calculation-types",
+		"metadata/information-registers", "metadata/accumulation-registers",
+		"metadata/accounting-registers", "metadata/calculation-registers",
+		"metadata/business-processes", "metadata/tasks", "metadata/external-data-sources",
 	}
 	var top []string
 	for _, child := range snapshot.Tree.Children {
@@ -86,6 +88,14 @@ func TestWorkspaceSnapshotBuildsCanonicalTree(t *testing.T) {
 	commonModuleNode, ok := findNodeByID(snapshot.Tree, commonModuleID.String())
 	if !ok || len(commonModuleNode.Children) != 1 || commonModuleNode.Children[0].Path != modulePath {
 		t.Fatalf("common module node = %+v found=%v", commonModuleNode, ok)
+	}
+	// Нумераторы и последовательности ветвями верхнего уровня не стоят: обе
+	// живут в корне «Документов», рядом с самими документами.
+	documents, ok := findNodeByID(snapshot.Tree, "metadata/documents")
+	if !ok || len(documents.Children) < 2 ||
+		documents.Children[0].ID != "metadata/document-numerators" ||
+		documents.Children[1].ID != "metadata/sequences" {
+		t.Fatalf("documents branch = %+v found=%v", documents, ok)
 	}
 	if !treeContainsTitle(snapshot.Tree, "Контрагенты") {
 		t.Fatalf("tree does not expose metadata title: %+v", snapshot.Tree)

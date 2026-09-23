@@ -41,35 +41,58 @@ var (
 	// the object's stable UUID, instead of scattering them across the flat
 	// modules/ and forms/ roots.
 	objectFolderKinds = []string{"catalogs", "documents", "information-registers", "accumulation-registers"}
-	metadataKinds     = []string{
+	// Порядок — тот, в котором виды показываются в дереве конфигурации, а не
+	// алфавитный: сначала группа «Общие», затем объекты верхнего уровня.
+	// Нумераторы и последовательности стоят рядом с документами, потому что
+	// в дереве они ветви внутри «Документов».
+	metadataKinds = []string{
 		"subsystems",
 		"common-modules",
 		"session-parameters",
 		"roles",
 		"common-attributes",
+		"exchange-plans",
+		"filter-criteria",
 		"event-subscriptions",
 		"scheduled-jobs",
+		"bots",
+		"functional-options",
+		"functional-options-parameters",
 		"defined-types",
+		"settings-storages",
 		"common-commands",
+		"command-groups",
 		"common-forms",
 		"common-templates",
 		"common-pictures",
+		"xdto-packages",
+		"web-services",
 		"http-services",
+		"ws-references",
+		"websocket-clients",
+		"integration-services",
+		"style-items",
 		"styles",
 		"languages",
 		"constants",
-		"settings-storages",
 		"catalogs",
 		"documents",
+		"document-numerators",
+		"sequences",
 		"document-journals",
 		"enumerations",
 		"reports",
 		"data-processors",
 		"charts-of-characteristic-types",
 		"charts-of-accounts",
+		"charts-of-calculation-types",
 		"information-registers",
 		"accumulation-registers",
 		"accounting-registers",
+		"calculation-registers",
+		"business-processes",
+		"tasks",
+		"external-data-sources",
 		"folders",
 	}
 )

@@ -130,7 +130,7 @@ func (runtime *Runtime) applicationPermissions(ctx context.Context, databaseID, 
 // its own data - the platform does not assume a "Users" catalog exists.
 func applicationSessionValues(userID uuid.UUID) map[string][]metadata.Value {
 	return map[string][]metadata.Value{
-		metadata.CurrentUserParameter: {{Kind: metadata.UUIDType, Data: userID.String()}},
+		metadata.CurrentUserParameter: {{Kind: metadata.ObjectUUIDType, Data: userID.String()}},
 	}
 }
 

@@ -40,11 +40,17 @@ const (
 type TypeKind string
 
 const (
-	StringType      TypeKind = "string"
-	NumberType      TypeKind = "number"
-	BooleanType     TypeKind = "boolean"
-	DateType        TypeKind = "date"
-	UUIDType        TypeKind = "uuid"
+	StringType  TypeKind = "string"
+	NumberType  TypeKind = "number"
+	BooleanType TypeKind = "boolean"
+	DateType    TypeKind = "date"
+	// ObjectUUIDType is how the platform stores its own object identity -
+	// record identifiers, references, the current-user session parameter. It
+	// is not a type a developer can give an attribute: the prototype has no
+	// such attribute type, and a reference declared as a bare identifier
+	// loses referential integrity, presentation, filtering and input by
+	// string - everything that makes a reference worth having.
+	ObjectUUIDType  TypeKind = "obj-uuid"
 	EnumerationType TypeKind = "enumeration"
 	DefinedType     TypeKind = "defined-type"
 	CatalogType     TypeKind = "catalog"
@@ -865,6 +871,10 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 		if item.Kind == DefinedType && item.Reference != nil && *item.Reference == self {
 			issues = append(issues, prefix+" cannot reference itself")
 		}
+		if item.Kind == ObjectUUIDType {
+			issues = append(issues, prefix+".kind obj-uuid is reserved for platform identity and cannot be declared; use a reference type")
+			continue
+		}
 		switch item.Kind {
 		case StringType:
 			if item.Length < 0 || item.Length > 1_048_576 {
@@ -883,7 +893,7 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 			if item.Length != 0 {
 				issues = append(issues, prefix+".length is not allowed")
 			}
-		case BooleanType, DateType, UUIDType, EnumerationType, DefinedType, CatalogType, DocumentType:
+		case BooleanType, DateType, EnumerationType, DefinedType, CatalogType, DocumentType:
 			if item.Length != 0 || item.Precision != 0 || item.Scale != 0 {
 				issues = append(issues, prefix+" has unsupported qualifiers")
 			}

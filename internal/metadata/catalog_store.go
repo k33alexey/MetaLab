@@ -539,7 +539,7 @@ func databaseAttributeValue(storage attributeStorage, value Value) (any, error) 
 		return value.Data == "true", nil
 	case DateType:
 		return time.Parse(time.RFC3339Nano, value.Data)
-	case UUIDType, EnumerationType, CatalogType, DocumentType:
+	case ObjectUUIDType, EnumerationType, CatalogType, DocumentType:
 		return value.Data, nil
 	default:
 		return nil, fmt.Errorf("unsupported database value type %s", storage.valueType)
@@ -556,7 +556,7 @@ func decodeDatabaseAttribute(storage attributeStorage, raw json.RawMessage) (Val
 	}
 	value := Value{Kind: storage.valueType}
 	switch storage.valueType {
-	case StringType, DateType, UUIDType, EnumerationType, CatalogType, DocumentType:
+	case StringType, DateType, ObjectUUIDType, EnumerationType, CatalogType, DocumentType:
 		if err := json.Unmarshal(raw, &value.Data); err != nil {
 			return Value{}, err
 		}

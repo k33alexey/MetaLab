@@ -34,14 +34,14 @@ func TestInformationRegisterPeriodNormalizationAndKeys(t *testing.T) {
 		ID: registerID, WriteMode: InformationRegisterIndependent, Periodicity: InformationRegisterPeriodDay,
 		Dimensions: []Attribute{{ID: dimensionID}},
 	}
-	first := InformationRegisterRecord{Period: tests[1].want, Dimensions: map[uuid.UUID]Value{dimensionID: {Kind: UUIDType, Data: uuid.MustNew().String()}}}
+	first := InformationRegisterRecord{Period: tests[1].want, Dimensions: map[uuid.UUID]Value{dimensionID: {Kind: ObjectUUIDType, Data: uuid.MustNew().String()}}}
 	second := first
 	second.RecordID = uuid.MustNew()
 	if informationRegisterRecordKey(definition, first) != informationRegisterRecordKey(definition, second) {
 		t.Fatal("internal record UUID changed the semantic register key")
 	}
 	second.Dimensions = mapsCloneValues(first.Dimensions)
-	second.Dimensions[dimensionID] = Value{Kind: UUIDType, Data: uuid.MustNew().String()}
+	second.Dimensions[dimensionID] = Value{Kind: ObjectUUIDType, Data: uuid.MustNew().String()}
 	if informationRegisterRecordKey(definition, first) == informationRegisterRecordKey(definition, second) {
 		t.Fatal("different dimensions produced the same register key")
 	}
@@ -71,7 +71,7 @@ func TestRecorderInformationRegisterHasBothSemanticAndRecorderKeys(t *testing.T)
 	firstRecorder := DocumentReference{DocumentID: documentID, ObjectID: uuid.MustNew()}
 	secondRecorder := DocumentReference{DocumentID: documentID, ObjectID: uuid.MustNew()}
 	period := time.Date(2026, 9, 7, 12, 30, 0, 0, time.UTC)
-	value := Value{Kind: UUIDType, Data: uuid.MustNew().String()}
+	value := Value{Kind: ObjectUUIDType, Data: uuid.MustNew().String()}
 	record := InformationRegisterRecord{
 		Period: period, Recorder: firstRecorder, LineNumber: 1,
 		Dimensions: map[uuid.UUID]Value{dimensionID: value},
@@ -127,15 +127,15 @@ func TestInformationRegisterAssignsLineAfterHighestExistingLine(t *testing.T) {
 	recorder := DocumentReference{DocumentID: documentID, ObjectID: uuid.MustNew()}
 	definition := InformationRegisterDefinition{
 		ID: registerID, Name: "Движения", WriteMode: InformationRegisterRecorder, Periodicity: InformationRegisterPeriodRecorderPosition,
-		Recorders: []uuid.UUID{documentID}, Dimensions: []Attribute{{ID: dimensionID, Name: "Ключ", Required: true, Types: []Type{{Kind: UUIDType}}}},
+		Recorders: []uuid.UUID{documentID}, Dimensions: []Attribute{{ID: dimensionID, Name: "Ключ", Required: true, Types: []Type{{Kind: ObjectUUIDType}}}},
 	}
 	firstPeriod := time.Date(2026, 9, 7, 10, 0, 0, 0, time.UTC)
 	secondPeriod := firstPeriod.Add(time.Second)
 	set := &InformationRegisterRecordSet{
 		RegisterID: registerID, Filter: InformationRegisterFilter{Recorder: &recorder, Dimensions: map[uuid.UUID]Value{}},
 		Records: []*InformationRegisterRecord{
-			{Period: firstPeriod, Recorder: recorder, LineNumber: 3, Dimensions: map[uuid.UUID]Value{dimensionID: {Kind: UUIDType, Data: uuid.MustNew().String()}}, Resources: map[uuid.UUID]Value{}, Attributes: map[uuid.UUID]Value{}},
-			{Period: secondPeriod, Recorder: recorder, Dimensions: map[uuid.UUID]Value{dimensionID: {Kind: UUIDType, Data: uuid.MustNew().String()}}, Resources: map[uuid.UUID]Value{}, Attributes: map[uuid.UUID]Value{}},
+			{Period: firstPeriod, Recorder: recorder, LineNumber: 3, Dimensions: map[uuid.UUID]Value{dimensionID: {Kind: ObjectUUIDType, Data: uuid.MustNew().String()}}, Resources: map[uuid.UUID]Value{}, Attributes: map[uuid.UUID]Value{}},
+			{Period: secondPeriod, Recorder: recorder, Dimensions: map[uuid.UUID]Value{dimensionID: {Kind: ObjectUUIDType, Data: uuid.MustNew().String()}}, Resources: map[uuid.UUID]Value{}, Attributes: map[uuid.UUID]Value{}},
 		},
 	}
 	repository := &InformationRegisterRepository{catalog: &Catalog{}}

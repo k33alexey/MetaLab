@@ -417,6 +417,13 @@ attributes:
 func TestLoadInformationRegisterValidatesRecorderAndClonesFields(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
+	writeMetadata(t, root, CatalogKind, catalogID, `format: 1
+id: `+catalogID+`
+name: Контрагенты
+title: {ru: Контрагенты}
+code: {type: string, length: 9}
+description_length: 250
+`)
 	writeMetadata(t, root, DocumentKind, documentID, `format: 1
 id: `+documentID+`
 name: УстановкаЦен
@@ -434,7 +441,7 @@ dimensions:
   - id: `+registerDimensionID+`
     name: Товар
     title: {ru: Товар}
-    types: [{kind: uuid}]
+    types: [{kind: catalog, reference: `+catalogID+`}]
 resources:
   - id: `+registerResourceID+`
     name: Цена
@@ -469,7 +476,7 @@ dimensions:
   - id: `+registerDimensionID+`
     name: Период
     title: {ru: Период}
-    types: [{kind: uuid}]
+    types: [{kind: catalog, reference: `+catalogID+`}]
 resources:
   - id: `+registerResourceID+`
     name: Значение
@@ -487,6 +494,28 @@ attributes:
 	}
 }
 
+// obj-uuid is how the platform stores its own object identity, never a type a
+// developer chooses: a reference declared as a bare identifier loses
+// referential integrity, presentation, filtering and input by string.
+func TestDeclaringPlatformIdentityAsAnAttributeTypeIsRejected(t *testing.T) {
+	t.Parallel()
+	_, err := DecodeInformationRegister("identity.yaml", strings.NewReader(`format: 1
+id: `+informationRegisterID+`
+name: Цены
+title: {ru: Цены}
+write_mode: independent
+periodicity: none
+dimensions:
+  - id: `+registerDimensionID+`
+    name: Объект
+    title: {ru: Объект}
+    types: [{kind: obj-uuid}]
+`), metadataManifest())
+	if err == nil || !strings.Contains(err.Error(), "obj-uuid is reserved") {
+		t.Fatalf("DecodeInformationRegister() error = %v", err)
+	}
+}
+
 func TestDecodeInformationRegisterAllowsDimensionOnly(t *testing.T) {
 	t.Parallel()
 	value, err := DecodeInformationRegister("dimension-only.yaml", strings.NewReader(`format: 1
@@ -499,7 +528,7 @@ dimensions:
   - id: `+registerDimensionID+`
     name: Объект
     title: {ru: Объект}
-    types: [{kind: uuid}]
+    types: [{kind: catalog, reference: `+catalogID+`}]
 `), metadataManifest())
 	if err != nil || len(value.Dimensions) != 1 || len(value.Resources) != 0 {
 		t.Fatalf("dimension-only register=%+v error=%v", value, err)
@@ -515,6 +544,13 @@ id: `+numericType.String()+`
 name: ДенежнаяСумма
 title: {ru: Денежная сумма}
 types: [{kind: number, precision: 15, scale: 2}]
+`)
+	writeMetadata(t, root, CatalogKind, catalogID, `format: 1
+id: `+catalogID+`
+name: Контрагенты
+title: {ru: Контрагенты}
+code: {type: string, length: 9}
+description_length: 250
 `)
 	writeMetadata(t, root, DocumentKind, recorder.String(), `format: 1
 id: `+recorder.String()+`
@@ -532,7 +568,7 @@ dimensions:
   - id: `+dimension.String()+`
     name: Товар
     title: {ru: Товар}
-    types: [{kind: uuid}]
+    types: [{kind: catalog, reference: `+catalogID+`}]
 resources:
   - id: `+resource.String()+`
     name: Сумма

@@ -1041,7 +1041,7 @@ func (compiler *queryCompiler) databaseValueForColumn(column queryColumn, value 
 				return nil, "", fmt.Errorf("query field %s requires a date", column.name)
 			}
 			return date, "::timestamptz", nil
-		case UUIDType:
+		case ObjectUUIDType:
 			text, ok := value.AsString()
 			if !ok {
 				return nil, "", fmt.Errorf("query field %s requires a UUID", column.name)
@@ -1386,7 +1386,7 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		table, _ := PhysicalInformationRegisterTable(definition.ID)
 		result.fromSQL = qualifiedCatalogTable(table)
 		result.objectID, result.policyColumn = definition.ID, informationRegisterPolicyColumn(definition)
-		result.addStored("ИдентификаторЗаписи", querySourceColumnSQL(sqlAlias, "record_id"), []Type{{Kind: UUIDType}}, "RecordID")
+		result.addStored("ИдентификаторЗаписи", querySourceColumnSQL(sqlAlias, "record_id"), []Type{{Kind: ObjectUUIDType}}, "RecordID")
 		if definition.Periodicity != InformationRegisterPeriodNone {
 			result.addStored("Период", querySourceColumnSQL(sqlAlias, "period"), []Type{{Kind: DateType}}, "Period")
 		}
@@ -1409,7 +1409,7 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		table, _ := PhysicalAccumulationRegisterTable(definition.ID)
 		result.fromSQL = qualifiedCatalogTable(table)
 		result.objectID, result.policyColumn = definition.ID, accumulationRegisterPolicyColumn(definition)
-		result.addStored("ИдентификаторЗаписи", querySourceColumnSQL(sqlAlias, "record_id"), []Type{{Kind: UUIDType}}, "RecordID")
+		result.addStored("ИдентификаторЗаписи", querySourceColumnSQL(sqlAlias, "record_id"), []Type{{Kind: ObjectUUIDType}}, "RecordID")
 		result.addStored("Период", querySourceColumnSQL(sqlAlias, "period"), []Type{{Kind: DateType}}, "Period")
 		result.addRecorder()
 		result.addStored("НомерСтроки", querySourceColumnSQL(sqlAlias, "line_no"), []Type{{Kind: NumberType, Precision: 10}}, "LineNumber")
@@ -1499,7 +1499,7 @@ func queryStorageCast(storage attributeStorage) string {
 		return "::boolean"
 	case DateType:
 		return "::timestamptz"
-	case UUIDType, EnumerationType, CatalogType, DocumentType:
+	case ObjectUUIDType, EnumerationType, CatalogType, DocumentType:
 		return "::uuid"
 	default:
 		return "::text"

@@ -386,8 +386,8 @@ func (runtime *Runtime) valueFromBSLForSessionParameter(parameter SessionParamet
 			}
 		}
 		for _, item := range types {
-			if item.Kind == UUIDType {
-				if normalized, valid, _ := runtime.catalog.normalizeAs(Value{Kind: UUIDType, Data: text}, item); valid {
+			if item.Kind == ObjectUUIDType {
+				if normalized, valid, _ := runtime.catalog.normalizeAs(Value{Kind: ObjectUUIDType, Data: text}, item); valid {
 					return normalized, nil
 				}
 			}
@@ -460,8 +460,8 @@ func (runtime *Runtime) valueFromBSL(constant Constant, value bytecode.Value) (V
 			}
 		}
 		for _, item := range types {
-			if item.Kind == UUIDType {
-				if normalized, valid, _ := runtime.catalog.normalizeAs(Value{Kind: UUIDType, Data: text}, item); valid {
+			if item.Kind == ObjectUUIDType {
+				if normalized, valid, _ := runtime.catalog.normalizeAs(Value{Kind: ObjectUUIDType, Data: text}, item); valid {
 					return normalized, nil
 				}
 			}
@@ -486,7 +486,7 @@ func (runtime *Runtime) valueFromBSL(constant Constant, value bytecode.Value) (V
 
 func valueToBSL(value Value) (bytecode.Value, error) {
 	switch value.Kind {
-	case StringType, UUIDType, EnumerationType:
+	case StringType, ObjectUUIDType, EnumerationType:
 		return bytecode.String(value.Data), nil
 	case NumberType:
 		return bytecode.ParseNumber(value.Data)

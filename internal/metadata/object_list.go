@@ -357,7 +357,7 @@ func catalogListColumn(definition CatalogDefinition, field string) (string, bool
 func catalogListField(definition CatalogDefinition, field string) (listColumn, bool) {
 	switch strings.ToLower(strings.TrimSpace(field)) {
 	case "ref":
-		return listColumn{name: "ref", kind: UUIDType}, true
+		return listColumn{name: "ref", kind: ObjectUUIDType}, true
 	case "code":
 		return listColumn{name: "code", kind: definition.Code.Type}, true
 	case "description":
@@ -376,7 +376,7 @@ func documentListColumn(definition DocumentDefinition, field string) (string, bo
 func documentListField(definition DocumentDefinition, field string) (listColumn, bool) {
 	switch strings.ToLower(strings.TrimSpace(field)) {
 	case "ref":
-		return listColumn{name: "ref", kind: UUIDType}, true
+		return listColumn{name: "ref", kind: ObjectUUIDType}, true
 	case "number":
 		return listColumn{name: "number", kind: definition.Number.Type}, true
 	case "date":

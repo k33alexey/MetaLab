@@ -82,23 +82,52 @@ type Property struct {
 var (
 	commonKindOrder = []string{
 		"subsystems", "common-modules", "session-parameters", "roles",
-		"common-attributes", "event-subscriptions", "scheduled-jobs",
+		"common-attributes", "exchange-plans", "filter-criteria",
+		"event-subscriptions", "scheduled-jobs", "bots",
+		"functional-options", "functional-options-parameters",
 		"defined-types", "settings-storages", "common-commands",
-		"common-forms", "common-templates", "common-pictures",
-		"http-services", "styles", "languages",
+		"command-groups", "common-forms", "common-templates",
+		"common-pictures", "xdto-packages", "web-services", "http-services",
+		"ws-references", "websocket-clients", "integration-services",
+		"style-items", "styles", "languages",
 	}
 	topLevelKindOrder = []string{
 		"constants", "catalogs", "documents", "document-journals",
 		"enumerations", "reports", "data-processors",
 		"charts-of-characteristic-types", "charts-of-accounts",
-		"information-registers", "accumulation-registers",
-		"accounting-registers",
+		"charts-of-calculation-types", "information-registers",
+		"accumulation-registers", "accounting-registers",
+		"calculation-registers", "business-processes", "tasks",
+		"external-data-sources",
 	}
+	// Нумераторы и последовательности в верхнем уровне не стоят: обе ветви
+	// живут в корне «Документов», рядом с самими документами - там же, где
+	// создаются их виды.
+	documentNestedKindOrder = []string{"document-numerators", "sequences"}
 )
 
 var metadataTitles = map[string]string{
 	"subsystems":                     "Подсистемы",
 	"common-modules":                 "Общие модули",
+	"exchange-plans":                 "Планы обмена",
+	"filter-criteria":                "Критерии отбора",
+	"bots":                           "Боты",
+	"functional-options":             "Функциональные опции",
+	"functional-options-parameters":  "Параметры функциональных опций",
+	"command-groups":                 "Группы команд",
+	"xdto-packages":                  "XDTO-пакеты",
+	"web-services":                   "Web-сервисы",
+	"ws-references":                  "WS-ссылки",
+	"websocket-clients":              "WebSocket-клиенты",
+	"integration-services":           "Сервисы интеграции",
+	"style-items":                    "Элементы стиля",
+	"document-numerators":            "Нумераторы",
+	"sequences":                      "Последовательности",
+	"charts-of-calculation-types":    "Планы видов расчёта",
+	"calculation-registers":          "Регистры расчёта",
+	"business-processes":             "Бизнес-процессы",
+	"tasks":                          "Задачи",
+	"external-data-sources":          "Внешние источники данных",
 	"session-parameters":             "Параметры сеанса",
 	"roles":                          "Роли",
 	"common-attributes":              "Общие реквизиты",
@@ -899,6 +928,18 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 		}
 		node.Properties = countProperties(node.Path, len(node.Children))
 		built[kind] = node
+	}
+	if documents, ok := built["documents"]; ok {
+		var nested []Node
+		for _, kind := range documentNestedKindOrder {
+			if node, exists := built[kind]; exists {
+				nested = append(nested, node)
+			}
+		}
+		// Счётчик у «Документов» уже посчитан и остаётся числом документов:
+		// вложенные ветви - не документы.
+		documents.Children = append(nested, documents.Children...)
+		built["documents"] = documents
 	}
 	common := Node{ID: "metadata/common", Kind: "group", Title: "Общие", Path: "metadata"}
 	for _, kind := range commonKindOrder {

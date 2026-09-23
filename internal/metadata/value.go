@@ -139,7 +139,7 @@ func (catalog *Catalog) normalizeAs(value Value, allowed Type) (Value, bool, str
 			return Value{}, false, "date must be RFC3339 within years 1..3999"
 		}
 		return Value{Kind: DateType, Data: parsed.UTC().Format(time.RFC3339Nano)}, true, ""
-	case UUIDType, CatalogType, DocumentType:
+	case ObjectUUIDType, CatalogType, DocumentType:
 		id, err := uuid.Parse(value.Data)
 		if err != nil {
 			return Value{}, false, "invalid UUID reference"

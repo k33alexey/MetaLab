@@ -134,7 +134,7 @@ func TestInformationRegisterSchemaContainsStableKeyAndSystemFields(t *testing.T)
 	resourceID := parseTestUUID(t, "60000000-0000-4000-8000-000000000003")
 	catalog := &Catalog{InformationRegisters: []InformationRegisterDefinition{{
 		ID: registerID, Name: "Цены", WriteMode: InformationRegisterRecorder, Periodicity: InformationRegisterPeriodRecorderPosition,
-		Dimensions: []Attribute{{ID: dimensionID, Name: "Товар", Types: []Type{{Kind: UUIDType}}}},
+		Dimensions: []Attribute{{ID: dimensionID, Name: "Товар", Types: []Type{{Kind: ObjectUUIDType}}}},
 		Resources:  []Attribute{{ID: resourceID, Name: "Цена", Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}},
 	}}}
 	schema, err := catalog.ApplicationSchema()
