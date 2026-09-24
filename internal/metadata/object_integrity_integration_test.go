@@ -33,7 +33,7 @@ func TestObjectIntegrityLifecycleIntegration(t *testing.T) {
 	catalogID, predefinedID, documentID, constantID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	directID, compositeID := uuid.MustNew(), uuid.MustNew()
 	targetID := uuid.MustNew()
-	defaultTarget := Value{Kind: CatalogType, Data: targetID.String()}
+	defaultTarget := Value{Kind: CatalogType, Data: targetID.String(), Object: catalogID}
 	t.Cleanup(func() {
 		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
 		defer stop()
@@ -229,7 +229,7 @@ func TestObjectIntegrityLifecycleIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	direct := saveAutomaticDocument(t, ctx, documents, firstDate, map[uuid.UUID]Value{
-		directID: {Kind: CatalogType, Data: target.Reference.ObjectID.String()},
+		directID: {Kind: CatalogType, Data: target.Reference.ObjectID.String(), Object: target.Reference.CatalogID},
 	})
 	if uses, err := catalogs.FindReferences(ctx, target.Reference, 10); err != nil || !hasReferenceUse(uses, "document", "Товар") || !hasReferenceUse(uses, "constant-default", "default") {
 		t.Fatalf("direct references=%+v error=%v", uses, err)
@@ -245,7 +245,7 @@ func TestObjectIntegrityLifecycleIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	composite := saveAutomaticDocument(t, ctx, documents, firstDate, map[uuid.UUID]Value{
-		compositeID: {Kind: CatalogType, Data: target.Reference.ObjectID.String()},
+		compositeID: {Kind: CatalogType, Data: target.Reference.ObjectID.String(), Object: target.Reference.CatalogID},
 	})
 	if uses, err := catalogs.FindReferences(ctx, target.Reference, 10); err != nil || !hasReferenceUse(uses, "document", "Выбор") || !hasReferenceUse(uses, "constant-default", "default") {
 		t.Fatalf("composite references=%+v error=%v", uses, err)
@@ -264,7 +264,7 @@ func TestObjectIntegrityLifecycleIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := constants.Set(ctx, "ОсновнойТовар", Value{Kind: CatalogType, Data: predefinedID.String()}, nil); err != nil {
+	if _, err := constants.Set(ctx, "ОсновнойТовар", Value{Kind: CatalogType, Data: predefinedID.String(), Object: catalogID}, nil); err != nil {
 		t.Fatal(err)
 	}
 	actor := uuid.MustNew()

@@ -166,7 +166,7 @@ func TestSalesAndWarehouseVerticalFlowIntegration(t *testing.T) {
 	productDimension := register.Dimensions[0].ID
 	quantityResource, amountResource := register.Resources[0].ID, register.Resources[1].ID
 	rows, err := registers.Balances(ctx, register.Name, date.Add(time.Hour), map[uuid.UUID]Value{
-		productDimension: {Kind: CatalogType, Data: product.Reference.ObjectID.String()},
+		productDimension: {Kind: CatalogType, Data: product.Reference.ObjectID.String(), Object: product.Reference.CatalogID},
 	})
 	if err != nil || len(rows) != 1 || rows[0].Turnover[quantityResource].Data != "7" || rows[0].Turnover[amountResource].Data != "80" {
 		t.Fatalf("demo balances=%+v error=%v", rows, err)

@@ -559,6 +559,9 @@ func decodeDatabaseAttribute(storage attributeStorage, raw json.RawMessage) (Val
 		return value, nil
 	}
 	value := Value{Kind: storage.valueType}
+	if storage.referenceObject != nil {
+		value.Object = *storage.referenceObject
+	}
 	switch storage.valueType {
 	case StringType, DateType, ObjectUUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType, BusinessProcessType, TaskType, ExchangePlanType, RoutePointType:
 		if err := json.Unmarshal(raw, &value.Data); err != nil {

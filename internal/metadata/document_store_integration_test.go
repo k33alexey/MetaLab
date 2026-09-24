@@ -107,7 +107,7 @@ func TestDocumentRepositoryLifecycleIntegration(t *testing.T) {
 		events = append(events, event)
 		if event == DocumentEventFill {
 			record.Number = "SALE-1"
-			record.Attributes[partnerID] = Value{Kind: CatalogType, Data: partner.Reference.ObjectID.String()}
+			record.Attributes[partnerID] = Value{Kind: CatalogType, Data: partner.Reference.ObjectID.String(), Object: partner.Reference.CatalogID}
 		}
 		return false, nil
 	})
@@ -156,7 +156,7 @@ func TestDocumentRepositoryLifecycleIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	duplicate.Number, duplicate.Date = "SALE-2", fixedDate
-	duplicate.Attributes[partnerID] = Value{Kind: CatalogType, Data: partner.Reference.ObjectID.String()}
+	duplicate.Attributes[partnerID] = Value{Kind: CatalogType, Data: partner.Reference.ObjectID.String(), Object: partner.Reference.CatalogID}
 	if err := repository.Save(ctx, duplicate, nil); err == nil {
 		t.Fatal("duplicate periodic number was accepted")
 	}

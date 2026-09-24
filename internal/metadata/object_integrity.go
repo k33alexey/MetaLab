@@ -288,8 +288,13 @@ func (catalog *Catalog) findObjectReferences(ctx context.Context, transaction pg
 		predicate := column + " = $1::uuid"
 		arguments := []any{target.objectID.String()}
 		if source.composite {
-			predicate = column + "->>'kind' = $2 AND " + column + "->>'data' = $1"
-			arguments = append(arguments, string(target.kind))
+			// A composite column has no foreign key, so the search is the only
+			// thing standing between a deleted object and a reference left
+			// pointing at it. Now that a stored reference names its object,
+			// the search asks for that object instead of trusting item
+			// identifiers to be unique across every table in the base.
+			predicate = column + "->>'kind' = $2 AND " + column + "->>'data' = $1 AND " + column + "->>'object' = $3"
+			arguments = append(arguments, string(target.kind), target.metadataID.String())
 		}
 		if source.discriminator != "" {
 			arguments = append(arguments, source.discriminatorID.String())

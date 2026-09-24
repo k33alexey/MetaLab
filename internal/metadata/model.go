@@ -85,11 +85,48 @@ const (
 	// ExchangePlanType is a reference to one node of an exchange plan.
 	ExchangePlanType TypeKind = "exchange-plan"
 	RoutePointType   TypeKind = "route-point"
+	// The eleven reference sets. A set is not the name of a type: it is an
+	// element of a type description in its own right, standing beside concrete
+	// types and mixing freely with them. What a set contains is never written
+	// down in the attribute - it is read off the configuration, so an object
+	// added tomorrow falls into the set by itself, without anybody reopening
+	// the attribute that uses it.
+	AnyReferenceSet        TypeKind = "any-ref"
+	CatalogSet             TypeKind = "catalog-ref"
+	DocumentSet            TypeKind = "document-ref"
+	EnumerationSet         TypeKind = "enumeration-ref"
+	CharacteristicTypesSet TypeKind = "chart-of-characteristic-types-ref"
+	AccountSet             TypeKind = "chart-of-accounts-ref"
+	CalculationTypeSet     TypeKind = "chart-of-calculation-types-ref"
+	BusinessProcessSet     TypeKind = "business-process-ref"
+	RoutePointSet          TypeKind = "route-point-ref"
+	TaskSet                TypeKind = "task-ref"
+	ExchangePlanSet        TypeKind = "exchange-plan-ref"
+	// CharacteristicSet is the twelfth set and the thirteenth element: what it
+	// contains is decided by a chart of characteristic types, not by a kind of
+	// object. DefinedType is the other one of that pair.
+	CharacteristicSet TypeKind = "characteristic"
 	// ValueStorageType holds a value of any shape, opaque to the database.
 	// It is storable but cannot be form data - reading it costs a round trip
 	// and it has no presentation to show in a field.
 	ValueStorageType TypeKind = "value-storage"
 )
+
+// referenceSets are the sets read off the kind of object alone. The two that
+// are read off the configuration instead - a defined type and a characteristic
+// - carry a reference and are handled beside them.
+var referenceSets = map[TypeKind]bool{
+	AnyReferenceSet: true, CatalogSet: true, DocumentSet: true, EnumerationSet: true,
+	CharacteristicTypesSet: true, AccountSet: true, CalculationTypeSet: true,
+	BusinessProcessSet: true, RoutePointSet: true, TaskSet: true, ExchangePlanSet: true,
+}
+
+// IsTypeSet says whether an element of a type description is a set rather than
+// a concrete type. Storage turns on this: a set stores the way a composite
+// type stores, whatever it happens to contain today.
+func IsTypeSet(kind TypeKind) bool {
+	return referenceSets[kind] || kind == CharacteristicSet || kind == DefinedType
+}
 
 // HierarchyKind is what a parent may be. With folders and items only a folder
 // may be a parent, and an element is one or the other; with items alone every
@@ -1062,7 +1099,8 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 			issues = append(issues, prefix+" duplicates an allowed type")
 		}
 		seen[key] = true
-		referenced := item.Kind == EnumerationType || item.Kind == DefinedType || item.Kind == CatalogType ||
+		referenced := item.Kind == CharacteristicSet ||
+			item.Kind == EnumerationType || item.Kind == DefinedType || item.Kind == CatalogType ||
 			item.Kind == DocumentType || item.Kind == CharacteristicTypesType || item.Kind == AccountType ||
 			item.Kind == CalculationTypeType || item.Kind == BusinessProcessType || item.Kind == TaskType ||
 			item.Kind == ExchangePlanType ||
@@ -1073,7 +1111,7 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 		if !referenced && item.Reference != nil {
 			issues = append(issues, prefix+".reference is not allowed")
 		}
-		if item.Kind == DefinedType && item.Reference != nil && *item.Reference == self {
+		if (item.Kind == DefinedType || item.Kind == CharacteristicSet) && item.Reference != nil && *item.Reference == self {
 			issues = append(issues, prefix+" cannot reference itself")
 		}
 		if item.Kind == ObjectUUIDType {
@@ -1122,7 +1160,9 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 				issues = append(issues, prefix+" has unsupported qualifiers")
 			}
 		case BooleanType, ValueStorageType, EnumerationType, DefinedType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType,
-			BusinessProcessType, TaskType, ExchangePlanType, RoutePointType:
+			BusinessProcessType, TaskType, ExchangePlanType, RoutePointType,
+			AnyReferenceSet, CatalogSet, DocumentSet, EnumerationSet, CharacteristicTypesSet, AccountSet,
+			CalculationTypeSet, BusinessProcessSet, RoutePointSet, TaskSet, ExchangePlanSet, CharacteristicSet:
 			if item.Length != 0 || item.Precision != 0 || item.Scale != 0 {
 				issues = append(issues, prefix+" has unsupported qualifiers")
 			}

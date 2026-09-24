@@ -203,15 +203,20 @@ types: [{kind: defined-type, reference: `+definedTypeID+`}]
 	if err != nil || number.Data != "1.2" {
 		t.Fatalf("number = %+v, error=%v", number, err)
 	}
-	enumeration, err := catalog.NormalizeValue(constant, Value{Kind: EnumerationType, Data: enumValueID})
+	enumeration, err := catalog.NormalizeValue(constant, Value{Kind: EnumerationType, Data: enumValueID, Object: mustUUID(t, enumerationID)})
 	if err != nil || enumeration.Data != enumValueID {
 		t.Fatalf("enumeration = %+v, error=%v", enumeration, err)
 	}
 	if _, err := catalog.NormalizeValue(constant, Value{Kind: NumberType, Data: "1234.56"}); err == nil {
 		t.Fatal("NormalizeValue accepted excess precision")
 	}
-	if _, err := catalog.NormalizeValue(constant, Value{Kind: EnumerationType, Data: constantID}); err == nil {
+	if _, err := catalog.NormalizeValue(constant, Value{Kind: EnumerationType, Data: constantID, Object: mustUUID(t, enumerationID)}); err == nil {
 		t.Fatal("NormalizeValue accepted a foreign enumeration UUID")
+	}
+	// A value naming an enumeration the constant does not allow is refused by
+	// the object it names, not by the value it carries.
+	if _, err := catalog.NormalizeValue(constant, Value{Kind: EnumerationType, Data: enumValueID, Object: mustUUID(t, constantID)}); err == nil {
+		t.Fatal("NormalizeValue accepted a value of a foreign enumeration")
 	}
 }
 

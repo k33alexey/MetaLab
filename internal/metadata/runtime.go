@@ -379,8 +379,8 @@ func (runtime *Runtime) valueFromBSLForSessionParameter(parameter SessionParamet
 		text, _ := value.AsString()
 		types, _ := runtime.catalog.expandTypes(parameter.Types, nil)
 		for _, item := range types {
-			if item.Kind == EnumerationType {
-				if normalized, valid, _ := runtime.catalog.normalizeAs(Value{Kind: EnumerationType, Data: text}, item); valid {
+			if item.Kind == EnumerationType && item.Reference != nil {
+				if normalized, valid, _ := runtime.catalog.normalizeAs(Value{Kind: EnumerationType, Data: text, Object: *item.Reference}, item); valid {
 					return normalized, nil
 				}
 			}
@@ -453,8 +453,8 @@ func (runtime *Runtime) valueFromBSL(constant Constant, value bytecode.Value) (V
 		text, _ := value.AsString()
 		types, _ := runtime.catalog.expandTypes(constant.Types, nil)
 		for _, item := range types {
-			if item.Kind == EnumerationType {
-				if normalized, valid, _ := runtime.catalog.normalizeAs(Value{Kind: EnumerationType, Data: text}, item); valid {
+			if item.Kind == EnumerationType && item.Reference != nil {
+				if normalized, valid, _ := runtime.catalog.normalizeAs(Value{Kind: EnumerationType, Data: text, Object: *item.Reference}, item); valid {
 					return normalized, nil
 				}
 			}

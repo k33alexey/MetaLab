@@ -619,7 +619,7 @@ func (runtime *Runtime) applicationValueFromBSL(types []Type, value bytecode.Val
 		if !allowed {
 			return Value{}, fmt.Errorf("%s does not allow %s", owner, runtimeType)
 		}
-		return runtime.catalog.normalizeTypes(owner, types, Value{Kind: kind, Data: objectID.String()})
+		return runtime.catalog.normalizeTypes(owner, types, Value{Kind: kind, Data: objectID.String(), Object: metadataID})
 	}
 	constant := Constant{Name: owner, Types: types}
 	return runtime.valueFromBSL(constant, value)
@@ -629,29 +629,37 @@ func (runtime *Runtime) applicationValueToBSL(types []Type, value Value) (byteco
 	if value.Kind != CatalogType && value.Kind != DocumentType {
 		return valueToBSL(value)
 	}
+	// The value says which object it points at, and that is the only thing
+	// allowed to decide. Picking the first type of the description that
+	// matched by kind used to hand back an item of one catalog wearing the
+	// name of another, and nothing anywhere said so.
+	if value.Object.IsZero() {
+		return bytecode.Undefined(), fmt.Errorf("a stored reference does not say which object it points at")
+	}
 	resolved, err := runtime.catalog.expandTypes(types, nil)
 	if err != nil {
 		return bytecode.Undefined(), err
 	}
 	for _, item := range resolved {
-		if item.Kind == value.Kind && item.Reference != nil {
-			id, err := uuid.Parse(value.Data)
-			if err != nil {
-				return bytecode.Undefined(), err
-			}
-			if item.Kind == DocumentType {
-				definition, ok := runtime.catalog.DocumentByID(*item.Reference)
-				if !ok {
-					return bytecode.Undefined(), fmt.Errorf("unknown document %s", item.Reference)
-				}
-				return runtime.wrapDocumentReference(definition, DocumentReference{DocumentID: definition.ID, ObjectID: id})
-			}
-			definition, ok := runtime.catalog.CatalogByID(*item.Reference)
-			if !ok {
-				return bytecode.Undefined(), fmt.Errorf("unknown catalog %s", item.Reference)
-			}
-			return runtime.wrapCatalogReference(definition, CatalogReference{CatalogID: definition.ID, ObjectID: id})
+		if item.Kind != value.Kind || item.Reference == nil || *item.Reference != value.Object {
+			continue
 		}
+		id, err := uuid.Parse(value.Data)
+		if err != nil {
+			return bytecode.Undefined(), err
+		}
+		if item.Kind == DocumentType {
+			definition, ok := runtime.catalog.DocumentByID(value.Object)
+			if !ok {
+				return bytecode.Undefined(), fmt.Errorf("unknown document %s", value.Object)
+			}
+			return runtime.wrapDocumentReference(definition, DocumentReference{DocumentID: definition.ID, ObjectID: id})
+		}
+		definition, ok := runtime.catalog.CatalogByID(value.Object)
+		if !ok {
+			return bytecode.Undefined(), fmt.Errorf("unknown catalog %s", value.Object)
+		}
+		return runtime.wrapCatalogReference(definition, CatalogReference{CatalogID: definition.ID, ObjectID: id})
 	}
 	return bytecode.Undefined(), fmt.Errorf("object reference type is missing")
 }

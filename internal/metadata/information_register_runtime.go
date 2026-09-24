@@ -703,7 +703,8 @@ func informationRegisterFilterItemValueLocked(item *informationRegisterFilterIte
 		if item.owner.set.Filter.Recorder == nil {
 			return Value{}, false
 		}
-		return Value{Kind: DocumentType, Data: item.owner.set.Filter.Recorder.ObjectID.String()}, true
+		return Value{Kind: DocumentType, Data: item.owner.set.Filter.Recorder.ObjectID.String(),
+			Object: item.owner.set.Filter.Recorder.DocumentID}, true
 	default:
 		if item.dimension == nil {
 			return Value{}, false

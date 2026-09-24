@@ -1409,6 +1409,10 @@ func (catalog *Catalog) validateReferences(owner string, types []Type) error {
 			if _, ok := catalog.exchangePlanByID[*item.Reference]; !ok {
 				return fmt.Errorf("%s references unknown exchange plan %s", owner, item.Reference)
 			}
+		case CharacteristicSet:
+			if _, ok := catalog.chartOfCharacteristicTypesByID[*item.Reference]; !ok {
+				return fmt.Errorf("%s is typed by the characteristics of unknown chart %s", owner, item.Reference)
+			}
 		}
 	}
 	return nil

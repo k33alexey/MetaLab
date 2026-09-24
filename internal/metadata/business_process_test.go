@@ -77,7 +77,7 @@ route:
       location: {top: 100, left: 340, bottom: 160, right: 460}
       addressing:
         - attribute: РольИсполнителя
-          value: {kind: catalog, data: `+roleValueID+`}
+          value: {kind: catalog, data: `+roleValueID+`, object: `+roleCatalogID+`}
     - {id: b0000000-0000-4000-8000-000000000032, name: НужнаПроверка, kind: condition}
     - {id: b0000000-0000-4000-8000-000000000033, name: Проверить, kind: activity, task_description: Проверить, addressing: [{attribute: РольИсполнителя}]}
     - {id: b0000000-0000-4000-8000-000000000034, name: Завершение, kind: completion}
@@ -355,7 +355,7 @@ route:
 		t.Fatal("the business process did not load")
 	}
 	types := []Type{{Kind: RoutePointType, Reference: &process.ID}}
-	normalized, err := catalog.normalizeTypes("attribute Шаг", types, Value{Kind: RoutePointType, Data: "выполнить"})
+	normalized, err := catalog.normalizeTypes("attribute Шаг", types, Value{Kind: RoutePointType, Data: "выполнить", Object: process.ID})
 	if err != nil {
 		t.Fatalf("a point of the map was refused: %v", err)
 	}
@@ -363,12 +363,12 @@ route:
 	if normalized.Data != "Выполнить" {
 		t.Fatalf("the point was not stored as the map spells it: %q", normalized.Data)
 	}
-	if _, err := catalog.normalizeTypes("attribute Шаг", types, Value{Kind: RoutePointType, Data: "Небывалая"}); err == nil {
+	if _, err := catalog.normalizeTypes("attribute Шаг", types, Value{Kind: RoutePointType, Data: "Небывалая", Object: process.ID}); err == nil {
 		t.Fatal("a point no map has was accepted")
 	}
 	// A task that has not reached a point yet stands nowhere, and nowhere is a
 	// value it must be able to hold.
-	if _, err := catalog.normalizeTypes("attribute Шаг", types, Value{Kind: RoutePointType}); err != nil {
+	if _, err := catalog.normalizeTypes("attribute Шаг", types, Value{Kind: RoutePointType, Object: process.ID}); err != nil {
 		t.Fatalf("the empty point was refused: %v", err)
 	}
 }

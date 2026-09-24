@@ -246,6 +246,19 @@ type attributeStorage struct {
 }
 
 func (catalog *Catalog) attributeStorage(types []Type) (attributeStorage, error) {
+	// A set is stored the way a composite type is stored, and the question is
+	// asked before anything is counted. A set holding a single object today
+	// would otherwise get that object's own column and a foreign key to its
+	// table, and the day a second object joined the set the table would have
+	// to be rebuilt - while the whole promise of a set is that nothing has to
+	// be touched for a new object to fall into it.
+	open, err := catalog.typesOpenToConfiguration(types, nil)
+	if err != nil {
+		return attributeStorage{}, fmt.Errorf("resolve attribute types: %w", err)
+	}
+	if open {
+		return attributeStorage{sqlType: "jsonb", composite: true}, nil
+	}
 	resolved, err := catalog.expandTypes(types, nil)
 	if err != nil || len(resolved) == 0 {
 		return attributeStorage{}, fmt.Errorf("resolve attribute types: %w", err)
