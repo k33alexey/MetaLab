@@ -124,6 +124,18 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := loadKind(root, FunctionalOptionKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeFunctionalOption(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.FunctionalOptions = append(catalog.FunctionalOptions, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadKind(root, DefinedTypeKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeDefinedType(source, file, manifest)
 		if err == nil && value.ID != id {
@@ -601,6 +613,10 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	sort.Slice(catalog.Subsystems, func(i, j int) bool { return catalog.Subsystems[i].ID.String() < catalog.Subsystems[j].ID.String() })
 	catalog.subsystemByName, catalog.subsystemByID = make(map[string]int, len(catalog.Subsystems)), make(map[uuid.UUID]int, len(catalog.Subsystems))
 	sort.Slice(catalog.Constants, func(i, j int) bool { return catalog.Constants[i].ID.String() < catalog.Constants[j].ID.String() })
+	sort.Slice(catalog.FunctionalOptions, func(i, j int) bool {
+		return catalog.FunctionalOptions[i].ID.String() < catalog.FunctionalOptions[j].ID.String()
+	})
+	catalog.functionalOptionByName, catalog.functionalOptionByID = make(map[string]int, len(catalog.FunctionalOptions)), make(map[uuid.UUID]int, len(catalog.FunctionalOptions))
 	sort.Slice(catalog.SessionParameters, func(i, j int) bool {
 		return catalog.SessionParameters[i].ID.String() < catalog.SessionParameters[j].ID.String()
 	})
@@ -726,6 +742,11 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	}
 	for index, item := range catalog.Constants {
 		if err := add("constant", item.ID, item.Name, index, catalog.constantByName, catalog.constantByID); err != nil {
+			return err
+		}
+	}
+	for index, item := range catalog.FunctionalOptions {
+		if err := add("functional option", item.ID, item.Name, index, catalog.functionalOptionByName, catalog.functionalOptionByID); err != nil {
 			return err
 		}
 	}
@@ -1446,6 +1467,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return err
 	}
 	if err := catalog.validateEventSubscriptionReferences(); err != nil {
+		return err
+	}
+	if err := catalog.validateFunctionalOptions(); err != nil {
 		return err
 	}
 	return catalog.validateDefinedTypeCycles()

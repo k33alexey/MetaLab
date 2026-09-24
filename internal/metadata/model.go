@@ -512,6 +512,9 @@ type Catalog struct {
 	CalculationRegisters             []CalculationRegisterDefinition
 	Reports                          []ReportDefinition
 	DataProcessors                   []DataProcessorDefinition
+	FunctionalOptions                []FunctionalOptionDefinition
+	functionalOptionByName           map[string]int
+	functionalOptionByID             map[uuid.UUID]int
 	constantByName                   map[string]int
 	constantByID                     map[uuid.UUID]int
 	enumerationByName                map[string]int
