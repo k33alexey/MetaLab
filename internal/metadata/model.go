@@ -521,6 +521,9 @@ type Catalog struct {
 	FilterCriteria                   []FilterCriterionDefinition
 	filterCriterionByName            map[string]int
 	filterCriterionByID              map[uuid.UUID]int
+	SettingsStorages                 []SettingsStorageDefinition
+	settingsStorageByName            map[string]int
+	settingsStorageByID              map[uuid.UUID]int
 	constantByName                   map[string]int
 	constantByID                     map[uuid.UUID]int
 	enumerationByName                map[string]int

@@ -148,6 +148,18 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := loadObjectKind(root, SettingsStorageKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeSettingsStorage(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.SettingsStorages = append(catalog.SettingsStorages, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadObjectKind(root, FilterCriterionKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeFilterCriterion(source, file, manifest)
 		if err == nil && value.ID != id {
@@ -649,6 +661,10 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return catalog.FilterCriteria[i].ID.String() < catalog.FilterCriteria[j].ID.String()
 	})
 	catalog.filterCriterionByName, catalog.filterCriterionByID = make(map[string]int, len(catalog.FilterCriteria)), make(map[uuid.UUID]int, len(catalog.FilterCriteria))
+	sort.Slice(catalog.SettingsStorages, func(i, j int) bool {
+		return catalog.SettingsStorages[i].ID.String() < catalog.SettingsStorages[j].ID.String()
+	})
+	catalog.settingsStorageByName, catalog.settingsStorageByID = make(map[string]int, len(catalog.SettingsStorages)), make(map[uuid.UUID]int, len(catalog.SettingsStorages))
 	sort.Slice(catalog.SessionParameters, func(i, j int) bool {
 		return catalog.SessionParameters[i].ID.String() < catalog.SessionParameters[j].ID.String()
 	})
@@ -779,6 +795,11 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	}
 	for index, item := range catalog.FunctionalOptions {
 		if err := add("functional option", item.ID, item.Name, index, catalog.functionalOptionByName, catalog.functionalOptionByID); err != nil {
+			return err
+		}
+	}
+	for index, item := range catalog.SettingsStorages {
+		if err := add("settings storage", item.ID, item.Name, index, catalog.settingsStorageByName, catalog.settingsStorageByID); err != nil {
 			return err
 		}
 	}
@@ -1255,6 +1276,16 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 	}
+	for _, item := range catalog.SettingsStorages {
+		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: SettingsStorageKind,
+			id: item.ID, kind: "settings storage", name: item.Name, managerModule: item.ManagerModule,
+			extraForms: []namedSource{
+				{"save form", item.Forms.Save}, {"load form", item.Forms.Load},
+				{"auxiliary save form", item.Forms.AuxiliarySave}, {"auxiliary load form", item.Forms.AuxiliaryLoad},
+			}}); err != nil {
+			return err
+		}
+	}
 	for _, item := range catalog.FilterCriteria {
 		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: FilterCriterionKind,
 			id: item.ID, kind: "filter criterion", name: item.Name, managerModule: item.ManagerModule,
@@ -1527,6 +1558,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return err
 	}
 	if err := catalog.validateFilterCriteria(); err != nil {
+		return err
+	}
+	if err := catalog.validateSettingsStorageReferences(); err != nil {
 		return err
 	}
 	return catalog.validateDefinedTypeCycles()

@@ -44,7 +44,7 @@ var (
 	// описание лежит рядом со своим кодом и формами, а не в общей куче.
 	objectFolderKinds = []string{"catalogs", "documents", "enumerations", "information-registers", "accumulation-registers",
 		"charts-of-characteristic-types", "charts-of-accounts", "charts-of-calculation-types", "business-processes", "tasks",
-		"filter-criteria",
+		"filter-criteria", "settings-storages",
 		"exchange-plans", "document-journals", "accounting-registers", "calculation-registers",
 		"reports", "data-processors"}
 	// Порядок — тот, в котором виды показываются в дереве конфигурации, а не
