@@ -37,18 +37,22 @@ type ObjectForms struct {
 
 // DocumentDefinition describes one ML document and its persistent record shape.
 type DocumentDefinition struct {
-	Format        int            `yaml:"format"`
-	ID            uuid.UUID      `yaml:"id"`
-	Name          string         `yaml:"name"`
-	Title         LocalizedText  `yaml:"title"`
-	Number        DocumentNumber `yaml:"number"`
-	Posting       bool           `yaml:"posting,omitempty"`
-	Attributes    []Attribute    `yaml:"attributes,omitempty"`
-	TableParts    []TablePart    `yaml:"table_parts,omitempty"`
-	ObjectModule  *uuid.UUID     `yaml:"object_module,omitempty"`
-	ManagerModule *uuid.UUID     `yaml:"manager_module,omitempty"`
-	Forms         ObjectForms    `yaml:"forms,omitempty"`
-	List          ListSettings   `yaml:"list,omitempty"`
+	Format int            `yaml:"format"`
+	ID     uuid.UUID      `yaml:"id"`
+	Name   string         `yaml:"name"`
+	Title  LocalizedText  `yaml:"title"`
+	Number DocumentNumber `yaml:"number"`
+	// Numerator names a numbering shared with other kinds of document. When it
+	// is named the document declares no number of its own: two sources for one
+	// number is one too many, and the shared one wins by definition.
+	Numerator     *uuid.UUID   `yaml:"numerator,omitempty"`
+	Posting       bool         `yaml:"posting,omitempty"`
+	Attributes    []Attribute  `yaml:"attributes,omitempty"`
+	TableParts    []TablePart  `yaml:"table_parts,omitempty"`
+	ObjectModule  *uuid.UUID   `yaml:"object_module,omitempty"`
+	ManagerModule *uuid.UUID   `yaml:"manager_module,omitempty"`
+	Forms         ObjectForms  `yaml:"forms,omitempty"`
+	List          ListSettings `yaml:"list,omitempty"`
 }
 
 func DecodeDocument(source string, reader io.Reader, manifest project.Project) (DocumentDefinition, error) {
@@ -57,7 +61,7 @@ func DecodeDocument(source string, reader io.Reader, manifest project.Project) (
 		return DocumentDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
-	issues = append(issues, validateNumberedObjectShape(numberedObjectShape{
+	shape := numberedObjectShape{
 		number:        value.Number,
 		attributes:    value.Attributes,
 		tableParts:    value.TableParts,
@@ -66,7 +70,20 @@ func DecodeDocument(source string, reader io.Reader, manifest project.Project) (
 		forms:         value.Forms,
 		list:          value.List,
 		reservedName:  reservedDocumentObjectName,
-	}, manifest)...)
+	}
+	if value.Numerator != nil {
+		// The number comes from the numerator, and it is filled in once the
+		// whole project is read. Checking the empty block here would report a
+		// missing type for a number this document does not declare.
+		shape.numberFromElsewhere = true
+		if value.Numerator.IsZero() {
+			issues = append(issues, "numerator must be a non-zero UUID")
+		}
+		if value.Number != (DocumentNumber{}) {
+			issues = append(issues, "number is set by the numerator this document shares, so it must not be declared here as well")
+		}
+	}
+	issues = append(issues, validateNumberedObjectShape(shape, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return DocumentDefinition{}, err
 	}
@@ -87,26 +104,39 @@ type numberedObjectShape struct {
 	forms         ObjectForms
 	list          ListSettings
 	reservedName  func(string) bool
+	// numberFromElsewhere says the number is not declared here and will be
+	// filled in from the object that owns it.
+	numberFromElsewhere bool
 }
 
-func validateNumberedObjectShape(shape numberedObjectShape, manifest project.Project) []string {
+// validateNumberShape checks a number on its own, apart from the object that
+// carries it: a numerator is nothing but one of these.
+func validateNumberShape(number DocumentNumber) []string {
 	var issues []string
-	switch shape.number.Type {
+	switch number.Type {
 	case StringType:
-		if shape.number.Length < 1 || shape.number.Length > 128 {
+		if number.Length < 1 || number.Length > 128 {
 			issues = append(issues, "number.length must be 1..128 for string numbers")
 		}
 	case NumberType:
-		if shape.number.Length < 1 || shape.number.Length > 38 {
+		if number.Length < 1 || number.Length > 38 {
 			issues = append(issues, "number.length must be 1..38 for numeric numbers")
 		}
 	default:
 		issues = append(issues, "number.type must be string or number")
 	}
-	switch shape.number.Periodicity {
+	switch number.Periodicity {
 	case NumberPeriodNone, NumberPeriodYear, NumberPeriodQuarter, NumberPeriodMonth, NumberPeriodDay:
 	default:
 		issues = append(issues, "number.periodicity must be none, year, quarter, month or day")
+	}
+	return issues
+}
+
+func validateNumberedObjectShape(shape numberedObjectShape, manifest project.Project) []string {
+	var issues []string
+	if !shape.numberFromElsewhere {
+		issues = validateNumberShape(shape.number)
 	}
 	reserved := shape.reservedName
 	if reserved == nil {

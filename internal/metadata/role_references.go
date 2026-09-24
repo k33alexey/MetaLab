@@ -140,6 +140,22 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 			"version": false, "thisnode": false, "sentno": false, "receivedno": false}
 		addAttributes(item.Attributes)
 		addParts(item.TableParts)
+	} else if index, ok := catalog.sequenceByID[id]; ok {
+		item := catalog.Sequences[index]
+		// A sequence is read and it is rebuilt; there is nothing in it to
+		// create or delete by hand, because every record of it belongs to the
+		// document that made it.
+		target.operations[PermissionUpdate] = true
+		target.fields = map[string]bool{"period": false, "recorder": false}
+		for _, dimension := range item.Dimensions {
+			target.fields[dimension.ID.String()] = false
+		}
+	} else if _, ok := catalog.documentJournalByID[id]; ok {
+		// A journal has no data of its own: it shows documents, and what a
+		// role may see in it is decided by the rights on those documents. So
+		// it carries the one right that is its own - whether it is visible at
+		// all - and no fields.
+		target.fields = map[string]bool{}
 	} else if index, ok := catalog.informationRegisterByID[id]; ok {
 		item := catalog.InformationRegisters[index]
 		target.fields["recordid"] = false

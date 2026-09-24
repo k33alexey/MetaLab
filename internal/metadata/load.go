@@ -196,6 +196,42 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := loadKind(root, NumeratorKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeNumerator(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.Numerators = append(catalog.Numerators, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	if err := loadKind(root, SequenceKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeSequence(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.Sequences = append(catalog.Sequences, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	if err := loadObjectKind(root, DocumentJournalKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeDocumentJournal(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.DocumentJournals = append(catalog.DocumentJournals, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadObjectKind(root, ExchangePlanKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeExchangePlan(source, file, manifest)
 		if err == nil && value.ID != id {
@@ -371,6 +407,15 @@ func NewCatalogSnapshotWithEventSubscriptions(manifest project.Project, constant
 	for index := range result.ExchangePlans {
 		result.ExchangePlans[index] = cloneExchangePlan(result.ExchangePlans[index])
 	}
+	for index := range result.Numerators {
+		result.Numerators[index] = cloneNumerator(result.Numerators[index])
+	}
+	for index := range result.Sequences {
+		result.Sequences[index] = cloneSequence(result.Sequences[index])
+	}
+	for index := range result.DocumentJournals {
+		result.DocumentJournals[index] = cloneDocumentJournal(result.DocumentJournals[index])
+	}
 	for index := range result.InformationRegisters {
 		result.InformationRegisters[index] = cloneInformationRegisterDefinition(result.InformationRegisters[index])
 	}
@@ -533,6 +578,15 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	sort.Slice(catalog.ExchangePlans, func(i, j int) bool {
 		return catalog.ExchangePlans[i].ID.String() < catalog.ExchangePlans[j].ID.String()
 	})
+	sort.Slice(catalog.Numerators, func(i, j int) bool {
+		return catalog.Numerators[i].ID.String() < catalog.Numerators[j].ID.String()
+	})
+	sort.Slice(catalog.Sequences, func(i, j int) bool {
+		return catalog.Sequences[i].ID.String() < catalog.Sequences[j].ID.String()
+	})
+	sort.Slice(catalog.DocumentJournals, func(i, j int) bool {
+		return catalog.DocumentJournals[i].ID.String() < catalog.DocumentJournals[j].ID.String()
+	})
 	sort.Slice(catalog.InformationRegisters, func(i, j int) bool {
 		return catalog.InformationRegisters[i].ID.String() < catalog.InformationRegisters[j].ID.String()
 	})
@@ -556,6 +610,12 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.taskByID = make(map[uuid.UUID]int, len(catalog.Tasks))
 	catalog.exchangePlanByName = make(map[string]int, len(catalog.ExchangePlans))
 	catalog.exchangePlanByID = make(map[uuid.UUID]int, len(catalog.ExchangePlans))
+	catalog.numeratorByName = make(map[string]int, len(catalog.Numerators))
+	catalog.numeratorByID = make(map[uuid.UUID]int, len(catalog.Numerators))
+	catalog.sequenceByName = make(map[string]int, len(catalog.Sequences))
+	catalog.sequenceByID = make(map[uuid.UUID]int, len(catalog.Sequences))
+	catalog.documentJournalByName = make(map[string]int, len(catalog.DocumentJournals))
+	catalog.documentJournalByID = make(map[uuid.UUID]int, len(catalog.DocumentJournals))
 	catalog.informationRegisterByName, catalog.informationRegisterByID = make(map[string]int, len(catalog.InformationRegisters)), make(map[uuid.UUID]int, len(catalog.InformationRegisters))
 	catalog.accumulationRegisterByName, catalog.accumulationRegisterByID = make(map[string]int, len(catalog.AccumulationRegisters)), make(map[uuid.UUID]int, len(catalog.AccumulationRegisters))
 	allIDs := map[uuid.UUID]string{}
@@ -785,6 +845,33 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("%w: %s and task table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
 			}
 			allIDs[part.ID] = "task table part " + item.Name + "." + part.Name
+		}
+	}
+	for index, item := range catalog.Numerators {
+		if err := add("numerator", item.ID, item.Name, index, catalog.numeratorByName, catalog.numeratorByID); err != nil {
+			return err
+		}
+	}
+	for index, item := range catalog.Sequences {
+		if err := add("sequence", item.ID, item.Name, index, catalog.sequenceByName, catalog.sequenceByID); err != nil {
+			return err
+		}
+		for _, dimension := range item.Dimensions {
+			if previous, ok := allIDs[dimension.ID]; ok {
+				return fmt.Errorf("%w: %s and sequence dimension %s.%s use %s", ErrDuplicateID, previous, item.Name, dimension.Name, dimension.ID)
+			}
+			allIDs[dimension.ID] = "sequence dimension " + item.Name + "." + dimension.Name
+		}
+	}
+	for index, item := range catalog.DocumentJournals {
+		if err := add("document journal", item.ID, item.Name, index, catalog.documentJournalByName, catalog.documentJournalByID); err != nil {
+			return err
+		}
+		for _, column := range item.Columns {
+			if previous, ok := allIDs[column.ID]; ok {
+				return fmt.Errorf("%w: %s and journal column %s.%s use %s", ErrDuplicateID, previous, item.Name, column.Name, column.ID)
+			}
+			allIDs[column.ID] = "journal column " + item.Name + "." + column.Name
 		}
 	}
 	for index, item := range catalog.ExchangePlans {
@@ -1050,6 +1137,32 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 	}
+	owners := catalog.documentAttributeOwners()
+	for index, item := range catalog.Documents {
+		if item.Numerator == nil {
+			continue
+		}
+		numerator, ok := catalog.numeratorByID[*item.Numerator]
+		if !ok {
+			return fmt.Errorf("document %s is numbered by unknown numerator %s", item.Name, item.Numerator)
+		}
+		// The shared numbering becomes the document's own settings here, once,
+		// so that everything downstream reads one number and not two.
+		catalog.Documents[index].Number = catalog.Numerators[numerator].Number
+	}
+	for _, item := range catalog.Sequences {
+		if err := catalog.validateSequence("sequence "+item.Name, item, owners); err != nil {
+			return err
+		}
+	}
+	for _, item := range catalog.DocumentJournals {
+		if err := catalog.validateDocumentJournal("document journal "+item.Name, item, owners); err != nil {
+			return err
+		}
+		if err := validateObjectFileSources(root, DocumentJournalKind, item.ID, "document journal", item.Name, nil, nil, item.Forms); err != nil {
+			return err
+		}
+	}
 	for _, item := range catalog.ExchangePlans {
 		owner := "exchange plan " + item.Name
 		if err := catalog.validateExchangePlanRegistration(owner, item); err != nil {
@@ -1277,6 +1390,110 @@ func (catalog *Catalog) validateTaskAddressing(owner string, item TaskDefinition
 		}
 	}
 	return nil
+}
+
+// documentAttributeOwners maps every attribute of every document - its own and
+// those of its table parts - to the document that owns it. Sequences and
+// journals both point at attributes across several kinds of document, and
+// without this they would be pointing at identifiers nobody resolves.
+func (catalog *Catalog) documentAttributeOwners() map[uuid.UUID]uuid.UUID {
+	owners := map[uuid.UUID]uuid.UUID{}
+	for _, document := range catalog.Documents {
+		for _, attribute := range document.Attributes {
+			owners[attribute.ID] = document.ID
+		}
+		for _, part := range document.TableParts {
+			for _, attribute := range part.Attributes {
+				owners[attribute.ID] = document.ID
+			}
+		}
+	}
+	return owners
+}
+
+// validateSequence resolves what a sequence follows. Every pointer here is one
+// that fails silently if it is wrong: a dimension mapped to an attribute of a
+// document outside the sequence gets no value, and a boundary that gets no
+// value is a boundary that never moves.
+func (catalog *Catalog) validateSequence(owner string, item SequenceDefinition, owners map[uuid.UUID]uuid.UUID) error {
+	documents := map[uuid.UUID]bool{}
+	for _, id := range item.Documents {
+		if _, ok := catalog.documentByID[id]; !ok {
+			return fmt.Errorf("%s follows unknown document %s", owner, id)
+		}
+		documents[id] = true
+	}
+	registerDimensions := map[uuid.UUID]bool{}
+	for _, id := range item.Movements {
+		switch {
+		case hasID(catalog.informationRegisterByID, id):
+			for _, dimension := range catalog.InformationRegisters[catalog.informationRegisterByID[id]].Dimensions {
+				registerDimensions[dimension.ID] = true
+			}
+		case hasID(catalog.accumulationRegisterByID, id):
+			for _, dimension := range catalog.AccumulationRegisters[catalog.accumulationRegisterByID[id]].Dimensions {
+				registerDimensions[dimension.ID] = true
+			}
+		default:
+			return fmt.Errorf("%s watches unknown register %s", owner, id)
+		}
+	}
+	for _, dimension := range item.Dimensions {
+		if err := catalog.validateReferences(owner+" dimension "+dimension.Name, dimension.Types); err != nil {
+			return err
+		}
+		for _, attribute := range dimension.DocumentAttributes {
+			document, ok := owners[attribute]
+			if !ok {
+				return fmt.Errorf("%s dimension %s is taken from unknown attribute %s", owner, dimension.Name, attribute)
+			}
+			if !documents[document] {
+				return fmt.Errorf("%s dimension %s is taken from an attribute of a document the sequence does not follow", owner, dimension.Name)
+			}
+		}
+		for _, target := range dimension.RegisterDimensions {
+			if !registerDimensions[target] {
+				return fmt.Errorf("%s dimension %s is matched against %s, which is not a dimension of any register it watches", owner, dimension.Name, target)
+			}
+		}
+	}
+	return nil
+}
+
+// validateDocumentJournal resolves the documents a journal shows and the
+// attributes each of its columns shows for them.
+func (catalog *Catalog) validateDocumentJournal(owner string, item DocumentJournalDefinition, owners map[uuid.UUID]uuid.UUID) error {
+	documents := map[uuid.UUID]bool{}
+	for _, id := range item.Documents {
+		if _, ok := catalog.documentByID[id]; !ok {
+			return fmt.Errorf("%s shows unknown document %s", owner, id)
+		}
+		documents[id] = true
+	}
+	for _, column := range item.Columns {
+		shown := map[uuid.UUID]bool{}
+		for _, attribute := range column.References {
+			document, ok := owners[attribute]
+			if !ok {
+				return fmt.Errorf("%s column %s shows unknown attribute %s", owner, column.Name, attribute)
+			}
+			if !documents[document] {
+				return fmt.Errorf("%s column %s shows an attribute of a document the journal does not list", owner, column.Name)
+			}
+			// One column shows one attribute per document. Two would be two
+			// answers to "what goes in this cell" for the same row.
+			if shown[document] {
+				return fmt.Errorf("%s column %s shows two attributes of one document", owner, column.Name)
+			}
+			shown[document] = true
+		}
+	}
+	return nil
+}
+
+func hasID(index map[uuid.UUID]int, id uuid.UUID) bool {
+	_, ok := index[id]
+	return ok
 }
 
 // validateExchangePlanRegistration resolves every entry of the content: an

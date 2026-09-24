@@ -49,6 +49,11 @@ const (
 	// ExchangePlanKind holds what enters an exchange and who it is exchanged
 	// with.
 	ExchangePlanKind Kind = "exchange-plans"
+	// The three kinds that live around documents: numbering shared by several
+	// of them, the order they must be posted in, and a common list of them.
+	NumeratorKind       Kind = "document-numerators"
+	SequenceKind        Kind = "sequences"
+	DocumentJournalKind Kind = "document-journals"
 )
 
 type TypeKind string
@@ -429,6 +434,9 @@ type Catalog struct {
 	BusinessProcesses                []BusinessProcessDefinition
 	Tasks                            []TaskDefinition
 	ExchangePlans                    []ExchangePlanDefinition
+	Numerators                       []NumeratorDefinition
+	Sequences                        []SequenceDefinition
+	DocumentJournals                 []DocumentJournalDefinition
 	InformationRegisters             []InformationRegisterDefinition
 	AccumulationRegisters            []AccumulationRegisterDefinition
 	constantByName                   map[string]int
@@ -457,6 +465,12 @@ type Catalog struct {
 	taskByID                         map[uuid.UUID]int
 	exchangePlanByName               map[string]int
 	exchangePlanByID                 map[uuid.UUID]int
+	numeratorByName                  map[string]int
+	numeratorByID                    map[uuid.UUID]int
+	sequenceByName                   map[string]int
+	sequenceByID                     map[uuid.UUID]int
+	documentJournalByName            map[string]int
+	documentJournalByID              map[uuid.UUID]int
 }
 
 func (catalog *Catalog) ConstantByID(id uuid.UUID) (Constant, bool) {

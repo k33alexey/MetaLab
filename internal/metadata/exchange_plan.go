@@ -73,7 +73,7 @@ type ExchangePlanDefinition struct {
 // not by omission: an enumeration has no data to change, and a report has no
 // data at all.
 var registrableKinds = []Kind{
-	ConstantKind, CatalogKind, DocumentKind,
+	ConstantKind, CatalogKind, DocumentKind, SequenceKind,
 	ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind,
 	BusinessProcessKind, TaskKind,
 	InformationRegisterKind, AccumulationRegisterKind,
@@ -83,7 +83,7 @@ var registrableKinds = []Kind{
 // them yet. Naming them apart is what separates "this kind cannot be
 // registered" from "this kind is not described yet" - two different answers,
 // and a plan arriving from another system deserves the true one.
-var pendingRegistrableKinds = []Kind{"sequences", "accounting-registers", "calculation-registers"}
+var pendingRegistrableKinds = []Kind{"accounting-registers", "calculation-registers"}
 
 // DecodeExchangePlan reads and validates one exchange plan.
 func DecodeExchangePlan(source string, reader io.Reader, manifest project.Project) (ExchangePlanDefinition, error) {

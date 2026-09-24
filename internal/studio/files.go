@@ -441,6 +441,12 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 			value, err = metadata.DecodeBusinessProcess(relative, bytes.NewReader(content), manifest)
 		case metadata.ExchangePlanKind:
 			value, err = metadata.DecodeExchangePlan(relative, bytes.NewReader(content), manifest)
+		case metadata.NumeratorKind:
+			value, err = metadata.DecodeNumerator(relative, bytes.NewReader(content), manifest)
+		case metadata.SequenceKind:
+			value, err = metadata.DecodeSequence(relative, bytes.NewReader(content), manifest)
+		case metadata.DocumentJournalKind:
+			value, err = metadata.DecodeDocumentJournal(relative, bytes.NewReader(content), manifest)
 		case metadata.TaskKind:
 			value, err = metadata.DecodeTask(relative, bytes.NewReader(content), manifest)
 		case metadata.DocumentKind:
