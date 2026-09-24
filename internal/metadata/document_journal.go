@@ -38,6 +38,7 @@ type DocumentJournalDefinition struct {
 	Documents []uuid.UUID     `yaml:"documents,omitempty" json:"documents,omitempty"`
 	Columns   []JournalColumn `yaml:"columns,omitempty" json:"columns,omitempty"`
 	Forms     ObjectForms     `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands  []ObjectCommand `yaml:"commands,omitempty" json:"commands,omitempty"`
 	List      ListSettings    `yaml:"list,omitempty" json:"list,omitempty"`
 }
 
@@ -84,6 +85,7 @@ func DecodeDocumentJournal(source string, reader io.Reader, manifest project.Pro
 	issues = append(issues, validateListSettings(value.List, nil, map[string]TypeKind{
 		"number": StringType, "date": DateType,
 	})...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return DocumentJournalDefinition{}, err
 	}
@@ -100,6 +102,7 @@ func cloneDocumentJournal(value DocumentJournalDefinition) DocumentJournalDefini
 	}
 	value.Forms = cloneObjectForms(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
+	value.Commands = cloneObjectCommands(value.Commands)
 	return value
 }
 

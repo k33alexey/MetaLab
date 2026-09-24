@@ -68,6 +68,7 @@ type ChartOfCalculationTypesDefinition struct {
 	ObjectModule  *uuid.UUID                  `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
 	ManagerModule *uuid.UUID                  `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
 	Forms         ObjectForms                 `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands      []ObjectCommand             `yaml:"commands,omitempty" json:"commands,omitempty"`
 	List          ListSettings                `yaml:"list,omitempty" json:"list,omitempty"`
 	Predefined    []PredefinedCalculationType `yaml:"predefined,omitempty" json:"predefined,omitempty"`
 }
@@ -117,6 +118,7 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, manifest pro
 		seen[chart] = true
 	}
 	issues = append(issues, validatePredefinedCalculationTypes(value)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ObjectModule, value.ManagerModule)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ChartOfCalculationTypesDefinition{}, err
 	}
@@ -219,6 +221,7 @@ func cloneChartOfCalculationTypes(value ChartOfCalculationTypesDefinition) Chart
 		value.Predefined[index].Displacing = slices.Clone(value.Predefined[index].Displacing)
 		value.Predefined[index].Base = slices.Clone(value.Predefined[index].Base)
 	}
+	value.Commands = cloneObjectCommands(value.Commands)
 	return value
 }
 

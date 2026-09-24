@@ -100,6 +100,7 @@ type CalculationRegisterDefinition struct {
 	RecordSetModule *uuid.UUID                     `yaml:"record_set_module,omitempty" json:"recordSetModule,omitempty"`
 	ManagerModule   *uuid.UUID                     `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
 	Forms           ObjectForms                    `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands        []ObjectCommand                `yaml:"commands,omitempty" json:"commands,omitempty"`
 }
 
 // DecodeCalculationRegister reads and validates one calculation register.
@@ -151,6 +152,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, manifest project
 		return names[strings.ToLower(name)] || reservedCalculationRegisterName(name)
 	})...)
 	issues = append(issues, validateRecalculations(value, manifest)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.RecordSetModule, value.ManagerModule)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return CalculationRegisterDefinition{}, err
 	}
@@ -293,6 +295,7 @@ func cloneCalculationRegister(value CalculationRegisterDefinition) CalculationRe
 		}
 	}
 	value.Forms = cloneObjectForms(value.Forms)
+	value.Commands = cloneObjectCommands(value.Commands)
 	return value
 }
 

@@ -46,6 +46,7 @@ type InformationRegisterDefinition struct {
 	RecordSetModule *uuid.UUID                     `yaml:"record_set_module,omitempty"`
 	ManagerModule   *uuid.UUID                     `yaml:"manager_module,omitempty"`
 	Forms           ObjectForms                    `yaml:"forms,omitempty"`
+	Commands        []ObjectCommand                `yaml:"commands,omitempty"`
 }
 
 func DecodeInformationRegister(source string, reader io.Reader, manifest project.Project) (InformationRegisterDefinition, error) {
@@ -130,6 +131,7 @@ func DecodeInformationRegister(source string, reader io.Reader, manifest project
 		issues = append(issues, "record_set_module and manager_module must be different")
 	}
 	issues = append(issues, validateObjectForms(value.Forms)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.RecordSetModule, value.ManagerModule)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return InformationRegisterDefinition{}, err
 	}
@@ -160,6 +162,7 @@ func cloneInformationRegisterDefinition(value InformationRegisterDefinition) Inf
 		value.ManagerModule = &id
 	}
 	value.Forms = cloneObjectForms(value.Forms)
+	value.Commands = cloneObjectCommands(value.Commands)
 	return value
 }
 

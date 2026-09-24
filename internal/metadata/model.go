@@ -407,6 +407,7 @@ type CatalogDefinition struct {
 	ObjectModule      *uuid.UUID              `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
 	ManagerModule     *uuid.UUID              `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
 	Forms             ObjectForms             `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands          []ObjectCommand         `yaml:"commands,omitempty" json:"commands,omitempty"`
 	List              ListSettings            `yaml:"list,omitempty" json:"list,omitempty"`
 	Predefined        []PredefinedCatalogItem `yaml:"predefined,omitempty" json:"predefined,omitempty"`
 }
@@ -803,6 +804,7 @@ func DecodeCatalog(source string, reader io.Reader, manifest project.Project) (C
 		predefined:        value.Predefined,
 		reservedName:      reservedCatalogObjectName,
 	}, manifest)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ObjectModule, value.ManagerModule)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return CatalogDefinition{}, err
 	}
@@ -1312,6 +1314,7 @@ func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
 	for index := range value.Predefined {
 		value.Predefined[index] = clonePredefinedCatalogItem(value.Predefined[index])
 	}
+	value.Commands = cloneObjectCommands(value.Commands)
 	return value
 }
 

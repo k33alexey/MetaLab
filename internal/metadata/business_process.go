@@ -146,14 +146,15 @@ type BusinessProcessDefinition struct {
 	Task *uuid.UUID `yaml:"task,omitempty" json:"task,omitempty"`
 	// CreateTasksPrivileged creates tasks past the rights of whoever moved the
 	// process: the step is the application's decision, not the user's.
-	CreateTasksPrivileged bool         `yaml:"create_tasks_privileged,omitempty" json:"createTasksPrivileged,omitempty"`
-	Route                 RouteMap     `yaml:"route,omitempty" json:"route,omitempty"`
-	Attributes            []Attribute  `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	TableParts            []TablePart  `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	ObjectModule          *uuid.UUID   `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
-	ManagerModule         *uuid.UUID   `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
-	Forms                 ObjectForms  `yaml:"forms,omitempty" json:"forms,omitempty"`
-	List                  ListSettings `yaml:"list,omitempty" json:"list,omitempty"`
+	CreateTasksPrivileged bool            `yaml:"create_tasks_privileged,omitempty" json:"createTasksPrivileged,omitempty"`
+	Route                 RouteMap        `yaml:"route,omitempty" json:"route,omitempty"`
+	Attributes            []Attribute     `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts            []TablePart     `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	ObjectModule          *uuid.UUID      `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
+	ManagerModule         *uuid.UUID      `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
+	Forms                 ObjectForms     `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands              []ObjectCommand `yaml:"commands,omitempty" json:"commands,omitempty"`
+	List                  ListSettings    `yaml:"list,omitempty" json:"list,omitempty"`
 }
 
 // DecodeBusinessProcess reads and validates one business process.
@@ -177,6 +178,7 @@ func DecodeBusinessProcess(source string, reader io.Reader, manifest project.Pro
 		issues = append(issues, "task must be a non-zero UUID")
 	}
 	issues = append(issues, validateRouteMap(value.Route, manifest)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ObjectModule, value.ManagerModule)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return BusinessProcessDefinition{}, err
 	}
@@ -454,6 +456,7 @@ func cloneBusinessProcess(value BusinessProcessDefinition) BusinessProcessDefini
 	}
 	value.Forms = cloneObjectForms(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
+	value.Commands = cloneObjectCommands(value.Commands)
 	return value
 }
 

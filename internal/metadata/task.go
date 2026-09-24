@@ -57,13 +57,14 @@ type TaskDefinition struct {
 	MainAddressingAttribute string `yaml:"main_addressing_attribute,omitempty" json:"mainAddressingAttribute,omitempty"`
 	// CurrentPerformer is the session parameter the platform reads to know
 	// whose tasks to show, without any application code.
-	CurrentPerformer *uuid.UUID   `yaml:"current_performer,omitempty" json:"currentPerformer,omitempty"`
-	Attributes       []Attribute  `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	TableParts       []TablePart  `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	ObjectModule     *uuid.UUID   `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
-	ManagerModule    *uuid.UUID   `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
-	Forms            ObjectForms  `yaml:"forms,omitempty" json:"forms,omitempty"`
-	List             ListSettings `yaml:"list,omitempty" json:"list,omitempty"`
+	CurrentPerformer *uuid.UUID      `yaml:"current_performer,omitempty" json:"currentPerformer,omitempty"`
+	Attributes       []Attribute     `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts       []TablePart     `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	ObjectModule     *uuid.UUID      `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
+	ManagerModule    *uuid.UUID      `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
+	Forms            ObjectForms     `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands         []ObjectCommand `yaml:"commands,omitempty" json:"commands,omitempty"`
+	List             ListSettings    `yaml:"list,omitempty" json:"list,omitempty"`
 }
 
 // DecodeTask reads and validates one kind of task.
@@ -97,6 +98,7 @@ func DecodeTask(source string, reader io.Reader, manifest project.Project) (Task
 		issues = append(issues, "number_prefix must be none or business-process-number")
 	}
 	issues = append(issues, validateAddressing(value, manifest)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ObjectModule, value.ManagerModule)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return TaskDefinition{}, err
 	}
@@ -204,6 +206,7 @@ func cloneTask(value TaskDefinition) TaskDefinition {
 	}
 	value.Forms = cloneObjectForms(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
+	value.Commands = cloneObjectCommands(value.Commands)
 	return value
 }
 
