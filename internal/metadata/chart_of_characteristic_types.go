@@ -42,6 +42,7 @@ type ChartOfCharacteristicTypesDefinition struct {
 	ManagerModule    *uuid.UUID              `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
 	Forms            ObjectForms             `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands         []ObjectCommand         `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates        []ObjectTemplate        `yaml:"templates,omitempty" json:"templates,omitempty"`
 	List             ListSettings            `yaml:"list,omitempty" json:"list,omitempty"`
 	Predefined       []PredefinedCatalogItem `yaml:"predefined,omitempty" json:"predefined,omitempty"`
 }
@@ -73,6 +74,7 @@ func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, manifest 
 		issues = append(issues, "additional_values must be a non-zero UUID")
 	}
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ObjectModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ChartOfCharacteristicTypesDefinition{}, err
 	}
@@ -119,6 +121,7 @@ func cloneChartOfCharacteristicTypes(value ChartOfCharacteristicTypesDefinition)
 		value.Predefined[index] = clonePredefinedCatalogItem(value.Predefined[index])
 	}
 	value.Commands = cloneObjectCommands(value.Commands)
+	value.Templates = cloneObjectTemplates(value.Templates)
 	return value
 }
 

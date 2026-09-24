@@ -58,6 +58,7 @@ type AccountingRegisterDefinition struct {
 	ManagerModule   *uuid.UUID                `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
 	Forms           ObjectForms               `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands        []ObjectCommand           `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates       []ObjectTemplate          `yaml:"templates,omitempty" json:"templates,omitempty"`
 }
 
 // DecodeAccountingRegister reads and validates one accounting register.
@@ -119,6 +120,7 @@ func DecodeAccountingRegister(source string, reader io.Reader, manifest project.
 		return names[strings.ToLower(name)] || reservedAccountingRegisterName(name)
 	})...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.RecordSetModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return AccountingRegisterDefinition{}, err
 	}
@@ -168,6 +170,7 @@ func cloneAccountingRegister(value AccountingRegisterDefinition) AccountingRegis
 	}
 	value.Forms = cloneObjectForms(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
+	value.Templates = cloneObjectTemplates(value.Templates)
 	return value
 }
 

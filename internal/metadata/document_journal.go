@@ -31,15 +31,16 @@ type JournalColumn struct {
 // It stores nothing of its own: it shows documents, and every column of it is
 // an attribute of one of them.
 type DocumentJournalDefinition struct {
-	Format    int             `yaml:"format" json:"format"`
-	ID        uuid.UUID       `yaml:"id" json:"id"`
-	Name      string          `yaml:"name" json:"name"`
-	Title     LocalizedText   `yaml:"title" json:"title"`
-	Documents []uuid.UUID     `yaml:"documents,omitempty" json:"documents,omitempty"`
-	Columns   []JournalColumn `yaml:"columns,omitempty" json:"columns,omitempty"`
-	Forms     ObjectForms     `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands  []ObjectCommand `yaml:"commands,omitempty" json:"commands,omitempty"`
-	List      ListSettings    `yaml:"list,omitempty" json:"list,omitempty"`
+	Format    int              `yaml:"format" json:"format"`
+	ID        uuid.UUID        `yaml:"id" json:"id"`
+	Name      string           `yaml:"name" json:"name"`
+	Title     LocalizedText    `yaml:"title" json:"title"`
+	Documents []uuid.UUID      `yaml:"documents,omitempty" json:"documents,omitempty"`
+	Columns   []JournalColumn  `yaml:"columns,omitempty" json:"columns,omitempty"`
+	Forms     ObjectForms      `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands  []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
+	List      ListSettings     `yaml:"list,omitempty" json:"list,omitempty"`
 }
 
 // DecodeDocumentJournal reads and validates one journal.
@@ -86,6 +87,7 @@ func DecodeDocumentJournal(source string, reader io.Reader, manifest project.Pro
 		"number": StringType, "date": DateType,
 	})...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return DocumentJournalDefinition{}, err
 	}
@@ -103,6 +105,7 @@ func cloneDocumentJournal(value DocumentJournalDefinition) DocumentJournalDefini
 	value.Forms = cloneObjectForms(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Commands = cloneObjectCommands(value.Commands)
+	value.Templates = cloneObjectTemplates(value.Templates)
 	return value
 }
 

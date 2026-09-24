@@ -45,15 +45,16 @@ type DocumentDefinition struct {
 	// Numerator names a numbering shared with other kinds of document. When it
 	// is named the document declares no number of its own: two sources for one
 	// number is one too many, and the shared one wins by definition.
-	Numerator     *uuid.UUID      `yaml:"numerator,omitempty"`
-	Posting       bool            `yaml:"posting,omitempty"`
-	Attributes    []Attribute     `yaml:"attributes,omitempty"`
-	TableParts    []TablePart     `yaml:"table_parts,omitempty"`
-	ObjectModule  *uuid.UUID      `yaml:"object_module,omitempty"`
-	ManagerModule *uuid.UUID      `yaml:"manager_module,omitempty"`
-	Forms         ObjectForms     `yaml:"forms,omitempty"`
-	Commands      []ObjectCommand `yaml:"commands,omitempty"`
-	List          ListSettings    `yaml:"list,omitempty"`
+	Numerator     *uuid.UUID       `yaml:"numerator,omitempty"`
+	Posting       bool             `yaml:"posting,omitempty"`
+	Attributes    []Attribute      `yaml:"attributes,omitempty"`
+	TableParts    []TablePart      `yaml:"table_parts,omitempty"`
+	ObjectModule  *uuid.UUID       `yaml:"object_module,omitempty"`
+	ManagerModule *uuid.UUID       `yaml:"manager_module,omitempty"`
+	Forms         ObjectForms      `yaml:"forms,omitempty"`
+	Commands      []ObjectCommand  `yaml:"commands,omitempty"`
+	Templates     []ObjectTemplate `yaml:"templates,omitempty"`
+	List          ListSettings     `yaml:"list,omitempty"`
 }
 
 func DecodeDocument(source string, reader io.Reader, manifest project.Project) (DocumentDefinition, error) {
@@ -86,6 +87,7 @@ func DecodeDocument(source string, reader io.Reader, manifest project.Project) (
 	}
 	issues = append(issues, validateNumberedObjectShape(shape, manifest)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ObjectModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return DocumentDefinition{}, err
 	}
@@ -263,6 +265,7 @@ func cloneDocumentDefinition(value DocumentDefinition) DocumentDefinition {
 	value.Forms = cloneObjectForms(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Commands = cloneObjectCommands(value.Commands)
+	value.Templates = cloneObjectTemplates(value.Templates)
 	return value
 }
 

@@ -30,8 +30,9 @@ type ReportDefinition struct {
 	ManagerModule   *uuid.UUID `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
 	// Forms of a report may be its own or common to the configuration, and
 	// the second is the usual case rather than the exception.
-	Forms    ReportForms     `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands []ObjectCommand `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Forms     ReportForms      `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands  []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
 }
 
 // ReportForms are the three forms a report shows itself through: the report
@@ -46,16 +47,17 @@ type ReportForms struct {
 // the parts that exist for showing numbers: no composition schema, no variants
 // and no settings to store.
 type DataProcessorDefinition struct {
-	Format        int             `yaml:"format" json:"format"`
-	ID            uuid.UUID       `yaml:"id" json:"id"`
-	Name          string          `yaml:"name" json:"name"`
-	Title         LocalizedText   `yaml:"title" json:"title"`
-	Attributes    []Attribute     `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	TableParts    []TablePart     `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	ObjectModule  *uuid.UUID      `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
-	ManagerModule *uuid.UUID      `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
-	Forms         ObjectForms     `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands      []ObjectCommand `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Format        int              `yaml:"format" json:"format"`
+	ID            uuid.UUID        `yaml:"id" json:"id"`
+	Name          string           `yaml:"name" json:"name"`
+	Title         LocalizedText    `yaml:"title" json:"title"`
+	Attributes    []Attribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts    []TablePart      `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	ObjectModule  *uuid.UUID       `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
+	ManagerModule *uuid.UUID       `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
+	Forms         ObjectForms      `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands      []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates     []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
 }
 
 // DecodeReport reads and validates one report.
@@ -77,6 +79,7 @@ func DecodeReport(source string, reader io.Reader, manifest project.Project) (Re
 		}
 	}
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ObjectModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ReportDefinition{}, err
 	}
@@ -100,6 +103,7 @@ func DecodeDataProcessor(source string, reader io.Reader, manifest project.Proje
 		}
 	}
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ObjectModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return DataProcessorDefinition{}, err
 	}
@@ -141,6 +145,7 @@ func cloneReport(value ReportDefinition) ReportDefinition {
 		}
 	}
 	value.Commands = cloneObjectCommands(value.Commands)
+	value.Templates = cloneObjectTemplates(value.Templates)
 	return value
 }
 
@@ -156,6 +161,7 @@ func cloneDataProcessor(value DataProcessorDefinition) DataProcessorDefinition {
 	}
 	value.Forms = cloneObjectForms(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
+	value.Templates = cloneObjectTemplates(value.Templates)
 	return value
 }
 

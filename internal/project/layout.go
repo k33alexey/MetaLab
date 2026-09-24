@@ -327,10 +327,43 @@ func ObjectFormPath(kind string, objectID, formID uuid.UUID) (string, error) {
 	return path.Join(directory, "forms", formID.String()+".yaml"), nil
 }
 
+// ObjectTemplateDirectory returns the folder holding the content of one of an
+// object's own templates. A template keeps a folder rather than a single file
+// because its content is not always one file: an HTML template holds one per
+// language, and a template may legitimately hold none at all while its editor
+// has not been written yet.
+func ObjectTemplateDirectory(kind string, objectID, templateID uuid.UUID) (string, error) {
+	directory, err := ObjectDirectory(kind, objectID)
+	if err != nil {
+		return "", err
+	}
+	if templateID.IsZero() {
+		return "", fmt.Errorf("source UUID must not be zero")
+	}
+	return path.Join(directory, "templates", templateID.String()), nil
+}
+
+// ObjectTemplateContentPath returns one file of a template's content, named as
+// the kind of template dictates.
+func ObjectTemplateContentPath(kind string, objectID, templateID uuid.UUID, file string) (string, error) {
+	directory, err := ObjectTemplateDirectory(kind, objectID, templateID)
+	if err != nil {
+		return "", err
+	}
+	if file == "" || strings.ContainsAny(file, `/\`) {
+		return "", fmt.Errorf("template content file must be a plain name")
+	}
+	return path.Join(directory, file), nil
+}
+
 // ObjectFolderSourcePaths walks every per-object folder (ObjectFolderKinds)
-// and returns every real file it physically holds: the object's own
-// description, its module(s) and its managed forms — sorted canonical
-// relative paths. Missing kind directories are treated as empty, matching
+// and returns the source files it holds: the object's own description, its
+// module(s) and its managed forms — sorted canonical relative paths.
+//
+// Template content is deliberately left out. Everything that calls this reads
+// what it gets as source text, and a template holds a spreadsheet, an archive
+// or a component - listing it would put binary content into code search and
+// into the module index. Publication walks the tree itself and does see it. Missing kind directories are treated as empty, matching
 // loadKind's tolerance for an ML Project that has not used a kind yet.
 func ObjectFolderSourcePaths(root string) ([]string, error) {
 	var paths []string

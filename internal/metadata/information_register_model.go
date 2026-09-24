@@ -47,6 +47,7 @@ type InformationRegisterDefinition struct {
 	ManagerModule   *uuid.UUID                     `yaml:"manager_module,omitempty"`
 	Forms           ObjectForms                    `yaml:"forms,omitempty"`
 	Commands        []ObjectCommand                `yaml:"commands,omitempty"`
+	Templates       []ObjectTemplate               `yaml:"templates,omitempty"`
 }
 
 func DecodeInformationRegister(source string, reader io.Reader, manifest project.Project) (InformationRegisterDefinition, error) {
@@ -132,6 +133,7 @@ func DecodeInformationRegister(source string, reader io.Reader, manifest project
 	}
 	issues = append(issues, validateObjectForms(value.Forms)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.RecordSetModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return InformationRegisterDefinition{}, err
 	}
@@ -163,6 +165,7 @@ func cloneInformationRegisterDefinition(value InformationRegisterDefinition) Inf
 	}
 	value.Forms = cloneObjectForms(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
+	value.Templates = cloneObjectTemplates(value.Templates)
 	return value
 }
 

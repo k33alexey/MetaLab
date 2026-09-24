@@ -98,6 +98,7 @@ type ChartOfAccountsDefinition struct {
 	ManagerModule               *uuid.UUID          `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
 	Forms                       ObjectForms         `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands                    []ObjectCommand     `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates                   []ObjectTemplate    `yaml:"templates,omitempty" json:"templates,omitempty"`
 	List                        ListSettings        `yaml:"list,omitempty" json:"list,omitempty"`
 	Predefined                  []PredefinedAccount `yaml:"predefined,omitempty" json:"predefined,omitempty"`
 }
@@ -145,6 +146,7 @@ func DecodeChartOfAccounts(source string, reader io.Reader, manifest project.Pro
 	issues = append(issues, validateCodeMask(value)...)
 	issues = append(issues, validatePredefinedAccounts(value)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ObjectModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ChartOfAccountsDefinition{}, err
 	}
@@ -405,6 +407,7 @@ func cloneChartOfAccounts(value ChartOfAccountsDefinition) ChartOfAccountsDefini
 		value.Predefined[index].ExtDimensions = dimensions
 	}
 	value.Commands = cloneObjectCommands(value.Commands)
+	value.Templates = cloneObjectTemplates(value.Templates)
 	return value
 }
 

@@ -63,8 +63,6 @@ type FileEntry struct {
 	SHA256 string `json:"sha256"`
 }
 
-// BuildFile validates a project and atomically writes its deterministic package.
-// Build writes a deterministic ZIP stream. Callers should discard the stream on error.
 func validateGitCommit(commit string) error {
 	if commit == "" {
 		return nil
@@ -275,8 +273,21 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 	if directory && len(parts) == 3 {
 		return nil
 	}
-	if directory && len(parts) == 4 && parts[3] == "forms" {
+	if directory && len(parts) == 4 && (parts[3] == "forms" || parts[3] == "templates") {
 		return nil
+	}
+	// A template keeps a folder named by its own UUID; what the folder may
+	// hold is decided by the kind of template, and that is checked where the
+	// metadata is read rather than here, where only the shape of the path is.
+	if directory && len(parts) == 5 && parts[3] == "templates" {
+		if _, err := uuid.Parse(parts[4]); err == nil {
+			return nil
+		}
+	}
+	if !directory && len(parts) == 6 && parts[3] == "templates" {
+		if _, err := uuid.Parse(parts[4]); err == nil && templateContentName(parts[5]) {
+			return nil
+		}
 	}
 	if !directory && len(parts) == 4 && parts[3] == "object.yaml" {
 		if expected, err := project.ObjectMetadataPath(parts[1], objectID); err == nil && expected == relative {
@@ -296,6 +307,28 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 		}
 	}
 	return fmt.Errorf("unexpected publication source path %q", relative)
+}
+
+// templateContentName says whether a file name is one a template's content
+// may use: the fixed name of a single-file template, or a language code for an
+// HTML template, which keeps one document per language.
+func templateContentName(file string) bool {
+	switch file {
+	case "content.yaml", "content.txt", "content.bin":
+		return true
+	}
+	code, found := strings.CutSuffix(file, ".html")
+	if !found || len(code) < 1 || len(code) > 8 {
+		return false
+	}
+	for _, symbol := range code {
+		switch {
+		case symbol >= 'a' && symbol <= 'z', symbol >= '0' && symbol <= '9', symbol == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // objectFolderModuleID reports the module UUID if relative is one of an

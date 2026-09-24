@@ -59,14 +59,15 @@ type ExchangePlanDefinition struct {
 	// configuration and dropped on the way in would be a silent loss, which is
 	// the one thing forbidden here. The import report shows it as transferred
 	// and not implemented.
-	DistributedInfoBase bool            `yaml:"distributed_info_base,omitempty" json:"distributedInfoBase,omitempty"`
-	Attributes          []Attribute     `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	TableParts          []TablePart     `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	ObjectModule        *uuid.UUID      `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
-	ManagerModule       *uuid.UUID      `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
-	Forms               ObjectForms     `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands            []ObjectCommand `yaml:"commands,omitempty" json:"commands,omitempty"`
-	List                ListSettings    `yaml:"list,omitempty" json:"list,omitempty"`
+	DistributedInfoBase bool             `yaml:"distributed_info_base,omitempty" json:"distributedInfoBase,omitempty"`
+	Attributes          []Attribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts          []TablePart      `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	ObjectModule        *uuid.UUID       `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
+	ManagerModule       *uuid.UUID       `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
+	Forms               ObjectForms      `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands            []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates           []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
+	List                ListSettings     `yaml:"list,omitempty" json:"list,omitempty"`
 }
 
 // registrableKinds are the kinds of object whose changes an exchange plan can
@@ -108,6 +109,7 @@ func DecodeExchangePlan(source string, reader io.Reader, manifest project.Projec
 	}, manifest)...)
 	issues = append(issues, validateExchangePlanContent(value)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ObjectModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ExchangePlanDefinition{}, err
 	}
@@ -185,6 +187,7 @@ func cloneExchangePlan(value ExchangePlanDefinition) ExchangePlanDefinition {
 	value.Forms = cloneObjectForms(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Commands = cloneObjectCommands(value.Commands)
+	value.Templates = cloneObjectTemplates(value.Templates)
 	return value
 }
 

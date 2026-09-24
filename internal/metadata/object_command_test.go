@@ -30,11 +30,11 @@ const (
 	commandGroup  = "cd000000-0000-4000-8000-000000000102"
 )
 
-// oneCommand is what every kind of object gets in the test below: the same
-// command, described the same way, because the point of the iteration is that
-// a command does not depend on what it hangs off. Only the identifiers differ,
-// and they differ because two objects never share a module file.
-func oneCommand(command, module string) string {
+// oneOfEach is what every kind of object gets in the tests below: the same
+// command and the same template, described the same way, because the point of
+// both iterations is that neither depends on what it hangs off. Only the
+// identifiers differ, and they differ because two objects never share a file.
+func oneOfEach(command, module, template string) string {
 	return `
 commands:
   - id: ` + command + `
@@ -42,6 +42,11 @@ commands:
     title: {ru: Открыть список}
     group: navigation-panel-ordinary
     module: ` + module + `
+templates:
+  - id: ` + template + `
+    name: ПечатнаяФорма
+    title: {ru: Печатная форма}
+    kind: spreadsheet
 `
 }
 
@@ -51,7 +56,7 @@ commands:
 // transferred, so it is checked here for every kind that can hold one.
 func TestEveryObjectKindCarriesItsOwnCommands(t *testing.T) {
 	t.Parallel()
-	root := commandProject(t)
+	root := subordinateProject(t)
 	catalog, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
@@ -318,6 +323,19 @@ description_length: 150
 	}
 }
 
+// writeTemplateContent writes one file of a template's content into the folder
+// that template keeps beside its object.
+func writeTemplateContent(t *testing.T, root string, kind Kind, objectID, templateID, file, content string) {
+	t.Helper()
+	directory := filepath.Join(root, "metadata", string(kind), objectID, "templates", templateID)
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, file), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // writeCommandModule writes the body of one command beside the object it
 // belongs to, the way the object's own module is written.
 func writeCommandModule(t *testing.T, root string, kind Kind, objectID, moduleID string) {
@@ -335,24 +353,27 @@ func objectFolderKindsForTest() []string {
 		"reports", "data-processors"}
 }
 
-// commandProject writes one object of every kind that keeps commands, each
-// with the same single command.
-func commandProject(t *testing.T) string {
+// subordinateProject writes one object of every kind that keeps subordinate
+// entities of its own, each with the same single command and the same single
+// template.
+func subordinateProject(t *testing.T) string {
 	t.Helper()
 	root := metadataProject(t)
-	// Identifiers of the commands and of their modules, handed out in the
-	// order the objects are written below.
+	// Identifiers of the commands, of their modules and of the templates,
+	// handed out in the order the objects are written below.
 	next := 0
-	ids := func() (string, string) {
+	ids := func() (string, string, string) {
 		next++
 		return fmt.Sprintf("cd000000-0000-4000-8000-0000000003%02x", next),
-			fmt.Sprintf("cd000000-0000-4000-8000-0000000004%02x", next)
+			fmt.Sprintf("cd000000-0000-4000-8000-0000000004%02x", next),
+			fmt.Sprintf("cd000000-0000-4000-8000-0000000005%02x", next)
 	}
 	withCommand := func(kind Kind, objectID, body string) {
 		t.Helper()
-		command, module := ids()
-		writeMetadata(t, root, kind, objectID, body+oneCommand(command, module))
+		command, module, template := ids()
+		writeMetadata(t, root, kind, objectID, body+oneOfEach(command, module, template))
 		writeCommandModule(t, root, kind, objectID, module)
+		writeTemplateContent(t, root, kind, objectID, template, "content.yaml", "format: 1\n")
 	}
 	withCommand(CatalogKind, commandCatalog, `format: 1
 id: `+commandCatalog+`
