@@ -26,6 +26,7 @@ type ChartOfCharacteristicTypesDefinition struct {
 	Title             LocalizedText `yaml:"title" json:"title"`
 	Code              CatalogCode   `yaml:"code" json:"code"`
 	DescriptionLength int           `yaml:"description_length" json:"descriptionLength"`
+	Hierarchy         Hierarchy     `yaml:"hierarchy,omitempty" json:"hierarchy,omitempty"`
 	// ValueType is what a value of a characteristic of this chart may be. It
 	// is the ceiling, not the value: each element narrows it further to its
 	// own type, and an attribute typed by this chart accepts what the chart
@@ -60,6 +61,7 @@ func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, manifest 
 		managerModule:     value.ManagerModule,
 		forms:             value.Forms,
 		list:              value.List,
+		hierarchy:         value.Hierarchy,
 		predefined:        value.Predefined,
 		reservedName:      reservedChartOfCharacteristicTypesName,
 	}, manifest)...)
@@ -165,6 +167,7 @@ func (catalog *Catalog) chartOfCharacteristicTypesTables(definition ChartOfChara
 	} else {
 		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("ic", definition.ID), Method: "btree", Keys: []string{"code"}})
 	}
+	appendHierarchyColumns(&table, definition.ID, definition.Hierarchy)
 	for _, attribute := range definition.Attributes {
 		if err := catalog.appendAttributeSchema(&table, attribute); err != nil {
 			return schemadiff.Table{}, nil, fmt.Errorf("chart of characteristic types %s attribute %s: %w", definition.Name, attribute.Name, err)

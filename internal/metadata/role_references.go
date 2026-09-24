@@ -25,6 +25,18 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 			target.fields[attribute.ID.String()] = true
 		}
 	}
+	// The parent and the folder flag are standard fields where nesting exists:
+	// moving a row to another parent is an edit like any other, and a role may
+	// well be allowed to read a tree without rearranging it.
+	addHierarchy := func(hierarchy Hierarchy) {
+		if !hierarchy.Enabled {
+			return
+		}
+		target.fields["parent"] = true
+		if hierarchy.Kind == FoldersAndItemsHierarchy {
+			target.fields["isfolder"] = false
+		}
+	}
 	addParts := func(parts []TablePart) {
 		for _, part := range parts {
 			target.fields[part.ID.String()] = true
@@ -41,6 +53,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		item := catalog.Catalogs[index]
 		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
 		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "deletionmark": true, "version": false, "predefined": false, "predefineddataname": false}
+		addHierarchy(item.Hierarchy)
 		addAttributes(item.Attributes)
 		addParts(item.TableParts)
 	} else if index, ok := catalog.chartOfCharacteristicTypesByID[id]; ok {
@@ -52,6 +65,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
 		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "valuetype": true,
 			"deletionmark": true, "version": false, "predefined": false, "predefineddataname": false}
+		addHierarchy(item.Hierarchy)
 		addAttributes(item.Attributes)
 		addParts(item.TableParts)
 	} else if index, ok := catalog.chartOfAccountsByID[id]; ok {
@@ -72,6 +86,8 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		for _, flag := range item.ExtDimensionAccountingFlags {
 			target.fields[flag.ID.String()] = true
 		}
+		// Accounts nest always, so the parent is a field of every chart.
+		addHierarchy(Hierarchy{Enabled: true, Kind: ItemsHierarchy})
 		addAttributes(item.Attributes)
 		addParts(item.TableParts)
 	} else if index, ok := catalog.documentByID[id]; ok {

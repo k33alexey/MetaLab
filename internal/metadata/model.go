@@ -72,6 +72,26 @@ const (
 	ValueStorageType TypeKind = "value-storage"
 )
 
+// HierarchyKind is what a parent may be. With folders and items only a folder
+// may be a parent, and an element is one or the other; with items alone every
+// element is equal and any of them may be a parent.
+type HierarchyKind string
+
+const (
+	FoldersAndItemsHierarchy HierarchyKind = "folders-and-items"
+	ItemsHierarchy           HierarchyKind = "items"
+)
+
+// CodeSeries says within what a code is unique and auto-numbered: the whole
+// object, or one level of subordination.
+type CodeSeries string
+
+const (
+	WholeObjectSeries      CodeSeries = "whole"
+	SubordinationSeries    CodeSeries = "within-subordination"
+	maxHierarchyLevelCount            = 32
+)
+
 // DateParts is the prototype's "состав даты" qualifier: which parts of a
 // moment an attribute is about. Storage does not change - a date is always a
 // moment - but what is shown, entered and compared does.
@@ -247,13 +267,37 @@ type CatalogCode struct {
 	Unique bool     `yaml:"unique" json:"unique"`
 }
 
+// Hierarchy is how an object nests inside itself. It is off by default: a flat
+// object is the common case, and a hierarchy nobody asked for costs a column
+// and an index on every table.
+type Hierarchy struct {
+	Enabled bool          `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	Kind    HierarchyKind `yaml:"kind,omitempty" json:"kind,omitempty"`
+	// FoldersOnTop is about showing, not storing: folders stand above items in
+	// a hierarchical list. It says nothing about who may be a parent.
+	FoldersOnTop bool `yaml:"folders_on_top,omitempty" json:"foldersOnTop,omitempty"`
+	// LimitLevels caps how deep the nesting may go; without it depth is
+	// unlimited.
+	LimitLevels bool `yaml:"limit_levels,omitempty" json:"limitLevels,omitempty"`
+	LevelCount  int  `yaml:"level_count,omitempty" json:"levelCount,omitempty"`
+	// Series says whether an automatic code is unique across the whole object
+	// or within one parent.
+	Series CodeSeries `yaml:"series,omitempty" json:"series,omitempty"`
+}
+
 // PredefinedCatalogItem binds configuration identity to one stable catalog reference.
 type PredefinedCatalogItem struct {
-	ID          uuid.UUID        `yaml:"id" json:"id"`
-	Name        string           `yaml:"name" json:"name"`
-	Code        string           `yaml:"code,omitempty" json:"code,omitempty"`
-	Description string           `yaml:"description,omitempty" json:"description,omitempty"`
-	Attributes  map[string]Value `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	ID          uuid.UUID `yaml:"id" json:"id"`
+	Name        string    `yaml:"name" json:"name"`
+	Code        string    `yaml:"code,omitempty" json:"code,omitempty"`
+	Description string    `yaml:"description,omitempty" json:"description,omitempty"`
+	// Parent names the predefined item this one sits under, and IsFolder says
+	// it is a folder rather than an item. A configuration brings whole trees
+	// of predefined data, and flattening them on the way in would lose the
+	// only thing that made them a tree.
+	Parent     string           `yaml:"parent,omitempty" json:"parent,omitempty"`
+	IsFolder   bool             `yaml:"is_folder,omitempty" json:"isFolder,omitempty"`
+	Attributes map[string]Value `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 }
 
 type Attribute struct {
@@ -286,6 +330,7 @@ type CatalogDefinition struct {
 	Title             LocalizedText           `yaml:"title" json:"title"`
 	Code              CatalogCode             `yaml:"code" json:"code"`
 	DescriptionLength int                     `yaml:"description_length" json:"descriptionLength"`
+	Hierarchy         Hierarchy               `yaml:"hierarchy,omitempty" json:"hierarchy,omitempty"`
 	Attributes        []Attribute             `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 	TableParts        []TablePart             `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
 	ObjectModule      *uuid.UUID              `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
@@ -650,6 +695,7 @@ func DecodeCatalog(source string, reader io.Reader, manifest project.Project) (C
 		managerModule:     value.ManagerModule,
 		forms:             value.Forms,
 		list:              value.List,
+		hierarchy:         value.Hierarchy,
 		predefined:        value.Predefined,
 		reservedName:      reservedCatalogObjectName,
 	}, manifest)...)
@@ -674,10 +720,47 @@ type referenceObjectShape struct {
 	managerModule     *uuid.UUID
 	forms             ObjectForms
 	list              ListSettings
+	hierarchy         Hierarchy
 	predefined        []PredefinedCatalogItem
 	// reservedName says which attribute names the kind keeps for itself. A
 	// kind with standard attributes of its own passes its own answer.
 	reservedName func(string) bool
+}
+
+// validateHierarchy checks the settings against each other, because each of
+// them is meaningless without the one it depends on: a kind of hierarchy on a
+// flat object, a level count nobody limits, folders on top where there are no
+// folders. Left unchecked, such a setting reads as working and does nothing.
+func validateHierarchy(hierarchy Hierarchy) []string {
+	var issues []string
+	if !hierarchy.Enabled {
+		if hierarchy.Kind != "" || hierarchy.FoldersOnTop || hierarchy.LimitLevels || hierarchy.LevelCount != 0 {
+			issues = append(issues, "hierarchy settings need hierarchy.enabled")
+		}
+		return issues
+	}
+	switch hierarchy.Kind {
+	case FoldersAndItemsHierarchy, ItemsHierarchy:
+	case "":
+		issues = append(issues, "hierarchy.kind is required: folders-and-items or items")
+	default:
+		issues = append(issues, "hierarchy.kind must be folders-and-items or items")
+	}
+	if hierarchy.FoldersOnTop && hierarchy.Kind == ItemsHierarchy {
+		issues = append(issues, "hierarchy.folders_on_top is meaningless without folders")
+	}
+	if hierarchy.LimitLevels && (hierarchy.LevelCount < 1 || hierarchy.LevelCount > maxHierarchyLevelCount) {
+		issues = append(issues, fmt.Sprintf("hierarchy.level_count must be 1..%d when levels are limited", maxHierarchyLevelCount))
+	}
+	if !hierarchy.LimitLevels && hierarchy.LevelCount != 0 {
+		issues = append(issues, "hierarchy.level_count needs hierarchy.limit_levels")
+	}
+	switch hierarchy.Series {
+	case "", WholeObjectSeries, SubordinationSeries:
+	default:
+		issues = append(issues, "hierarchy.series must be whole or within-subordination")
+	}
+	return issues
 }
 
 func validateReferenceObjectShape(shape referenceObjectShape, manifest project.Project) []string {
@@ -697,6 +780,7 @@ func validateReferenceObjectShape(shape referenceObjectShape, manifest project.P
 	if shape.descriptionLength < 1 || shape.descriptionLength > 1_048_576 {
 		issues = append(issues, "description_length must be 1..1048576")
 	}
+	issues = append(issues, validateHierarchy(shape.hierarchy)...)
 	reserved := shape.reservedName
 	if reserved == nil {
 		reserved = reservedCatalogObjectName
@@ -774,6 +858,12 @@ func validatePredefinedItems(shape referenceObjectShape) []string {
 			issues = append(issues, prefix+".name must be unique")
 		}
 		names[folded] = true
+		if item.IsFolder && shape.hierarchy.Kind != FoldersAndItemsHierarchy {
+			issues = append(issues, prefix+".is_folder needs a hierarchy of folders and items")
+		}
+		if item.Parent != "" && !shape.hierarchy.Enabled {
+			issues = append(issues, prefix+".parent needs a hierarchy")
+		}
 		if item.Code == "" {
 			if !shape.code.Auto {
 				issues = append(issues, prefix+".code is required when automatic codes are disabled")

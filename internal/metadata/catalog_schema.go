@@ -101,6 +101,7 @@ func (catalog *Catalog) catalogTables(definition CatalogDefinition) (schemadiff.
 	} else {
 		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("ic", definition.ID), Method: "btree", Keys: []string{"code"}})
 	}
+	appendHierarchyColumns(&table, definition.ID, definition.Hierarchy)
 	for _, attribute := range definition.Attributes {
 		if err := catalog.appendAttributeSchema(&table, attribute); err != nil {
 			return schemadiff.Table{}, nil, fmt.Errorf("catalog %s attribute %s: %w", definition.Name, attribute.Name, err)
@@ -114,6 +115,30 @@ func (catalog *Catalog) catalogTables(definition CatalogDefinition) (schemadiff.
 		return schemadiff.Table{}, nil, err
 	}
 	return table, parts, nil
+}
+
+// appendHierarchyColumns gives a table the columns nesting needs: the parent,
+// and - where folders exist - whether the row is one.
+//
+// The parent points at the same table, so the key is deferrable: a whole tree
+// is written in one transaction, and the order inside it is the application's
+// business, not ours. Deletion is restricted rather than cascading: losing a
+// folder must not silently take its contents with it.
+func appendHierarchyColumns(table *schemadiff.Table, id uuid.UUID, hierarchy Hierarchy) {
+	if !hierarchy.Enabled {
+		return
+	}
+	table.Columns = append(table.Columns, schemadiff.Column{Name: "parent", Type: "uuid", Nullable: true})
+	if hierarchy.Kind == FoldersAndItemsHierarchy {
+		table.Columns = append(table.Columns, schemadiff.Column{Name: "is_folder", Type: "boolean", Nullable: false, Default: "false"})
+	}
+	table.Constraints = append(table.Constraints, schemadiff.Constraint{
+		Name: physicalObjectName("fp", id), Type: "foreign_key",
+		Definition: "FOREIGN KEY (parent) REFERENCES " + schemadiff.ApplicationSchema + "." + table.Name + "(ref) DEFERRABLE INITIALLY DEFERRED",
+	})
+	// Reading the children of a parent is the query a hierarchical list makes
+	// on every open, so it gets its own index.
+	table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("ip", id), Method: "btree", Keys: []string{"parent"}})
 }
 
 func (catalog *Catalog) tablePartTables(ownerKind, ownerName string, ownerID uuid.UUID, definitions []TablePart) ([]schemadiff.Table, error) {

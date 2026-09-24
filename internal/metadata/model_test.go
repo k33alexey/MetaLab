@@ -772,3 +772,99 @@ func TestExpansionKeepsTypesThatDifferOnlyByQualifier(t *testing.T) {
 		t.Fatalf("expanded to %d types, want 4: %+v", len(expanded), expanded)
 	}
 }
+
+// Hierarchy is a set of settings that only make sense together: a kind of
+// nesting on a flat object, a depth nobody limits, folders on top where there
+// are no folders. Each of them reads as working and does nothing, so each is
+// refused rather than ignored.
+func TestHierarchySettingsAreCheckedAgainstEachOther(t *testing.T) {
+	t.Parallel()
+	for name, hierarchy := range map[string]string{
+		"вид иерархии без самой иерархии": "hierarchy: {kind: items}",
+		"группы сверху без групп":         "hierarchy: {enabled: true, kind: items, folders_on_top: true}",
+		"иерархия без вида":               "hierarchy: {enabled: true}",
+		"уровни без ограничения":          "hierarchy: {enabled: true, kind: items, level_count: 3}",
+		"ограничение без числа уровней":   "hierarchy: {enabled: true, kind: items, limit_levels: true}",
+		"неизвестный вид":                 "hierarchy: {enabled: true, kind: деревья}",
+		"неизвестная серия кодов":         "hierarchy: {enabled: true, kind: items, series: своя}",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := metadataProject(t)
+			writeMetadata(t, root, CatalogKind, catalogID, `format: 1
+id: `+catalogID+`
+name: Товары
+title: {ru: Товары}
+code: {type: string, length: 9}
+description_length: 100
+`+hierarchy+`
+`)
+			if _, err := Load(root); err == nil {
+				t.Fatal("a hierarchy setting that does nothing was accepted")
+			}
+		})
+	}
+}
+
+// A hierarchical object stores the parent, and where folders exist it stores
+// which rows are folders. Without the columns the tree arrives flat, which is
+// the silent loss the whole block exists to prevent.
+func TestHierarchyReachesStorage(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeMetadata(t, root, CatalogKind, catalogID, `format: 1
+id: `+catalogID+`
+name: Контрагенты
+title: {ru: Контрагенты}
+code: {type: string, length: 9, auto: true}
+description_length: 100
+hierarchy: {enabled: true, kind: folders-and-items, folders_on_top: true, limit_levels: true, level_count: 3, series: within-subordination}
+predefined:
+  - id: 40000000-0000-4000-8000-000000000020
+    name: Поставщики
+    description: Поставщики
+    is_folder: true
+  - id: 40000000-0000-4000-8000-000000000021
+    name: ОсновнойПоставщик
+    description: Основной поставщик
+    parent: Поставщики
+`)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _ := catalog.CatalogDefinition("Контрагенты")
+	if !item.Hierarchy.Enabled || item.Hierarchy.Kind != FoldersAndItemsHierarchy || item.Hierarchy.LevelCount != 3 {
+		t.Fatalf("hierarchy did not survive loading: %+v", item.Hierarchy)
+	}
+	if !item.Predefined[0].IsFolder || item.Predefined[1].Parent != "Поставщики" {
+		t.Fatalf("predefined tree was flattened: %+v", item.Predefined)
+	}
+	schema, err := catalog.ApplicationSchema()
+	if err != nil {
+		t.Fatal(err)
+	}
+	table, err := PhysicalCatalogTable(item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var columns, keys int
+	for _, candidate := range schema.Tables {
+		if candidate.Name != table {
+			continue
+		}
+		for _, column := range candidate.Columns {
+			if column.Name == "parent" || column.Name == "is_folder" {
+				columns++
+			}
+		}
+		for _, constraint := range candidate.Constraints {
+			if constraint.Type == "foreign_key" && strings.Contains(constraint.Definition, "(parent)") {
+				keys++
+			}
+		}
+	}
+	if columns != 2 || keys != 1 {
+		t.Fatalf("hierarchy columns = %d, parent keys = %d", columns, keys)
+	}
+}

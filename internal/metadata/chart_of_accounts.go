@@ -487,6 +487,10 @@ func (catalog *Catalog) chartOfAccountsTables(definition ChartOfAccountsDefiniti
 		}
 		table.Columns = append(table.Columns, schemadiff.Column{Name: column, Type: "boolean", Nullable: false, Default: "false"})
 	}
+	// A chart of accounts nests always: subaccounts are accounts under an
+	// account, and the prototype has no flag to turn that off. There are no
+	// folders either - every row is an account.
+	appendHierarchyColumns(&table, definition.ID, Hierarchy{Enabled: true, Kind: ItemsHierarchy, Series: SubordinationSeries})
 	for _, attribute := range definition.Attributes {
 		if err := catalog.appendAttributeSchema(&table, attribute); err != nil {
 			return schemadiff.Table{}, nil, fmt.Errorf("chart of accounts %s attribute %s: %w", definition.Name, attribute.Name, err)

@@ -12,6 +12,7 @@ import (
 var standardColumnTitles = map[string]string{
 	"ref": "Ссылка", "version": "Версия", "code": "Код", "description": "Наименование",
 	"value_type": "Тип значения", "account_order": "Порядок", "account_kind": "Вид счёта",
+	"parent": "Родитель", "is_folder": "Это группа",
 	"off_balance": "Забалансовый", "ext_dimension_type": "Вид субконто", "turnover_only": "Только обороты",
 	"deletion_mark": "Пометка удаления", "predefined_name": "Имя предопределённых данных",
 	"owner_ref": "Владелец строки", "line_no": "Номер строки", "number": "Номер", "date": "Дата",
