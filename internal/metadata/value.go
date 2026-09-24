@@ -91,7 +91,12 @@ func (catalog *Catalog) expandTypes(types []Type, stack map[uuid.UUID]bool) ([]T
 				delete(stack, *item.Reference)
 				continue
 			}
-			key := fmt.Sprintf("%s:%d:%d:%d", item.Kind, item.Length, item.Precision, item.Scale)
+			// Everything that makes two types behave differently belongs in
+			// the key, qualifiers included: a fixed-length string and a
+			// variable one are not the same type, and collapsing them here
+			// would quietly drop whichever came second.
+			key := fmt.Sprintf("%s:%d:%d:%d:%t:%t:%s", item.Kind, item.Length, item.Precision, item.Scale,
+				item.FixedLength, item.NonNegative, item.DateParts)
 			if item.Reference != nil {
 				key += ":" + item.Reference.String()
 			}

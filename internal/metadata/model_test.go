@@ -745,3 +745,24 @@ func TestDatePartsAndSignAreEnforcedOnWrite(t *testing.T) {
 		t.Fatalf("negative accepted for a non-negative number: %q", reason)
 	}
 }
+
+// Expansion drops duplicates, and a qualifier is what tells two otherwise
+// identical types apart. Leaving qualifiers out of that comparison loses a
+// member of a composite type without a word.
+func TestExpansionKeepsTypesThatDifferOnlyByQualifier(t *testing.T) {
+	t.Parallel()
+	catalog := &Catalog{}
+	expanded, err := catalog.expandTypes([]Type{
+		{Kind: DateType, DateParts: DateOnlyParts},
+		{Kind: DateType, DateParts: TimeOnlyParts},
+		{Kind: StringType, Length: 10},
+		{Kind: StringType, Length: 10, FixedLength: true},
+		{Kind: StringType, Length: 10},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(expanded) != 4 {
+		t.Fatalf("expanded to %d types, want 4: %+v", len(expanded), expanded)
+	}
+}
