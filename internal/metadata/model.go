@@ -57,9 +57,13 @@ const (
 	// CalculationRegisterKind holds results of calculation, with the period
 	// they act over and the displacement between them.
 	CalculationRegisterKind Kind = "calculation-registers"
-	NumeratorKind           Kind = "document-numerators"
-	SequenceKind            Kind = "sequences"
-	DocumentJournalKind     Kind = "document-journals"
+	// ReportKind and DataProcessorKind keep no data: their attributes and
+	// table parts live only while the object runs.
+	ReportKind          Kind = "reports"
+	DataProcessorKind   Kind = "data-processors"
+	NumeratorKind       Kind = "document-numerators"
+	SequenceKind        Kind = "sequences"
+	DocumentJournalKind Kind = "document-journals"
 )
 
 type TypeKind string
@@ -447,6 +451,8 @@ type Catalog struct {
 	AccumulationRegisters            []AccumulationRegisterDefinition
 	AccountingRegisters              []AccountingRegisterDefinition
 	CalculationRegisters             []CalculationRegisterDefinition
+	Reports                          []ReportDefinition
+	DataProcessors                   []DataProcessorDefinition
 	constantByName                   map[string]int
 	constantByID                     map[uuid.UUID]int
 	enumerationByName                map[string]int
@@ -483,6 +489,10 @@ type Catalog struct {
 	accountingRegisterByID           map[uuid.UUID]int
 	calculationRegisterByName        map[string]int
 	calculationRegisterByID          map[uuid.UUID]int
+	reportByName                     map[string]int
+	reportByID                       map[uuid.UUID]int
+	dataProcessorByName              map[string]int
+	dataProcessorByID                map[uuid.UUID]int
 }
 
 func (catalog *Catalog) ConstantByID(id uuid.UUID) (Constant, bool) {

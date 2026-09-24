@@ -220,6 +220,30 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := loadObjectKind(root, ReportKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeReport(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.Reports = append(catalog.Reports, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	if err := loadObjectKind(root, DataProcessorKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeDataProcessor(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.DataProcessors = append(catalog.DataProcessors, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadKind(root, NumeratorKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeNumerator(source, file, manifest)
 		if err == nil && value.ID != id {
@@ -437,6 +461,12 @@ func NewCatalogSnapshotWithEventSubscriptions(manifest project.Project, constant
 	for index := range result.CalculationRegisters {
 		result.CalculationRegisters[index] = cloneCalculationRegister(result.CalculationRegisters[index])
 	}
+	for index := range result.Reports {
+		result.Reports[index] = cloneReport(result.Reports[index])
+	}
+	for index := range result.DataProcessors {
+		result.DataProcessors[index] = cloneDataProcessor(result.DataProcessors[index])
+	}
 	for index := range result.Numerators {
 		result.Numerators[index] = cloneNumerator(result.Numerators[index])
 	}
@@ -614,6 +644,10 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	sort.Slice(catalog.CalculationRegisters, func(i, j int) bool {
 		return catalog.CalculationRegisters[i].ID.String() < catalog.CalculationRegisters[j].ID.String()
 	})
+	sort.Slice(catalog.Reports, func(i, j int) bool { return catalog.Reports[i].ID.String() < catalog.Reports[j].ID.String() })
+	sort.Slice(catalog.DataProcessors, func(i, j int) bool {
+		return catalog.DataProcessors[i].ID.String() < catalog.DataProcessors[j].ID.String()
+	})
 	sort.Slice(catalog.Numerators, func(i, j int) bool {
 		return catalog.Numerators[i].ID.String() < catalog.Numerators[j].ID.String()
 	})
@@ -650,6 +684,10 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.accountingRegisterByID = make(map[uuid.UUID]int, len(catalog.AccountingRegisters))
 	catalog.calculationRegisterByName = make(map[string]int, len(catalog.CalculationRegisters))
 	catalog.calculationRegisterByID = make(map[uuid.UUID]int, len(catalog.CalculationRegisters))
+	catalog.reportByName = make(map[string]int, len(catalog.Reports))
+	catalog.reportByID = make(map[uuid.UUID]int, len(catalog.Reports))
+	catalog.dataProcessorByName = make(map[string]int, len(catalog.DataProcessors))
+	catalog.dataProcessorByID = make(map[uuid.UUID]int, len(catalog.DataProcessors))
 	catalog.numeratorByName = make(map[string]int, len(catalog.Numerators))
 	catalog.numeratorByID = make(map[uuid.UUID]int, len(catalog.Numerators))
 	catalog.sequenceByName = make(map[string]int, len(catalog.Sequences))
@@ -931,6 +969,33 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 						ErrDuplicateID, previous, item.Name, recalculation.Name, dimension.Name, dimension.ID)
 				}
 				allIDs[dimension.ID] = "recalculation dimension " + item.Name + "." + recalculation.Name + "." + dimension.Name
+			}
+		}
+	}
+	for _, running := range []struct {
+		kind    string
+		names   map[string]int
+		ids     map[uuid.UUID]int
+		objects []runningObject
+	}{
+		{"report", catalog.reportByName, catalog.reportByID, reportsAsRunning(catalog.Reports)},
+		{"data processor", catalog.dataProcessorByName, catalog.dataProcessorByID, dataProcessorsAsRunning(catalog.DataProcessors)},
+	} {
+		for index, item := range running.objects {
+			if err := add(running.kind, item.id, item.name, index, running.names, running.ids); err != nil {
+				return err
+			}
+			for _, attribute := range item.attributes {
+				if previous, ok := allIDs[attribute.ID]; ok {
+					return fmt.Errorf("%w: %s and %s attribute %s.%s use %s", ErrDuplicateID, previous, running.kind, item.name, attribute.Name, attribute.ID)
+				}
+				allIDs[attribute.ID] = running.kind + " attribute " + item.name + "." + attribute.Name
+			}
+			for _, part := range item.parts {
+				if previous, ok := allIDs[part.ID]; ok {
+					return fmt.Errorf("%w: %s and %s table part %s.%s use %s", ErrDuplicateID, previous, running.kind, item.name, part.Name, part.ID)
+				}
+				allIDs[part.ID] = running.kind + " table part " + item.name + "." + part.Name
 			}
 		}
 	}
@@ -1340,6 +1405,28 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 	}
+	for _, item := range catalog.Reports {
+		owner := "report " + item.Name
+		for _, attribute := range append(slices.Clone(item.Attributes), tablePartAttributes(item.TableParts)...) {
+			if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
+				return err
+			}
+		}
+		if err := validateObjectFileSources(root, ReportKind, item.ID, "report", item.Name, item.ObjectModule, item.ManagerModule, ObjectForms{}); err != nil {
+			return err
+		}
+	}
+	for _, item := range catalog.DataProcessors {
+		owner := "data processor " + item.Name
+		for _, attribute := range append(slices.Clone(item.Attributes), tablePartAttributes(item.TableParts)...) {
+			if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
+				return err
+			}
+		}
+		if err := validateObjectFileSources(root, DataProcessorKind, item.ID, "data processor", item.Name, item.ObjectModule, item.ManagerModule, item.Forms); err != nil {
+			return err
+		}
+	}
 	if err := catalog.validateRoleReferences(root); err != nil {
 		return err
 	}
@@ -1538,6 +1625,15 @@ func (catalog *Catalog) validateAccountingRegister(root string, item AccountingR
 // would let a base period through on half the charts that have none.
 func takesABase(chart ChartOfCalculationTypesDefinition) bool {
 	return chart.BaseDependency != "" && chart.BaseDependency != NoBaseDependency
+}
+
+// tablePartAttributes is every attribute inside the parts, flattened.
+func tablePartAttributes(parts []TablePart) []Attribute {
+	var result []Attribute
+	for _, part := range parts {
+		result = append(result, part.Attributes...)
+	}
+	return result
 }
 
 // validateCalculationRegister resolves the chart a register calculates by, the

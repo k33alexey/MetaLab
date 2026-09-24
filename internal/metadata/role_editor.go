@@ -160,6 +160,12 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 		appendObject(AccountingRegisterKind, item.ID, item.Name, item.Title,
 			append(accountingRegisterFields(item), item.Attributes...), nil)
 	}
+	for _, item := range catalog.Reports {
+		appendObject(ReportKind, item.ID, item.Name, item.Title, item.Attributes, item.TableParts)
+	}
+	for _, item := range catalog.DataProcessors {
+		appendObject(DataProcessorKind, item.ID, item.Name, item.Title, item.Attributes, item.TableParts)
+	}
 	for _, item := range catalog.CalculationRegisters {
 		appendObject(CalculationRegisterKind, item.ID, item.Name, item.Title,
 			append(calculationRegisterFields(item), item.Attributes...), nil)

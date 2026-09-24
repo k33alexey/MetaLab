@@ -180,6 +180,18 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 			target.fields[field.ID.String()] = true
 		}
 		addAttributes(item.Attributes)
+	} else if index, ok := catalog.reportByID[id]; ok {
+		item := catalog.Reports[index]
+		// A report keeps no data, so there is nothing in it to create or
+		// delete. What a role is given or denied is the report itself.
+		target.fields = map[string]bool{}
+		addAttributes(item.Attributes)
+		addParts(item.TableParts)
+	} else if index, ok := catalog.dataProcessorByID[id]; ok {
+		item := catalog.DataProcessors[index]
+		target.fields = map[string]bool{}
+		addAttributes(item.Attributes)
+		addParts(item.TableParts)
 	} else if index, ok := catalog.calculationRegisterByID[id]; ok {
 		item := catalog.CalculationRegisters[index]
 		target.operations[PermissionUpdate] = true

@@ -147,11 +147,34 @@ func validateNumberedObjectShape(shape numberedObjectShape, manifest project.Pro
 	for _, attribute := range shape.attributes {
 		attributeNames[strings.ToLower(attribute.Name)] = true
 	}
-	if len(shape.tableParts) > 128 {
+	issues = append(issues, validateTableParts(shape.tableParts, attributeNames, manifest, reserved)...)
+	for name, module := range map[string]*uuid.UUID{"object_module": shape.objectModule, "manager_module": shape.managerModule} {
+		if module != nil && module.IsZero() {
+			issues = append(issues, name+" must be a non-zero UUID")
+		}
+	}
+	if shape.objectModule != nil && shape.managerModule != nil && *shape.objectModule == *shape.managerModule {
+		issues = append(issues, "object_module and manager_module must be different")
+	}
+	issues = append(issues, validateObjectForms(shape.forms)...)
+	return append(issues, validateListSettings(shape.list, shape.attributes, map[string]TypeKind{
+		"number": shape.number.Type,
+	})...)
+}
+
+// validateTableParts checks the table parts of any object that has them. The
+// names of parts and of attributes share one space: a part named like an
+// attribute would be two things answering to one name.
+func validateTableParts(parts []TablePart, attributeNames map[string]bool, manifest project.Project, reserved func(string) bool) []string {
+	var issues []string
+	if len(parts) > 128 {
 		issues = append(issues, "table_parts must not contain more than 128 items")
 	}
+	if reserved == nil {
+		reserved = func(string) bool { return false }
+	}
 	partNames, partIDs := map[string]bool{}, map[uuid.UUID]bool{}
-	for index, part := range shape.tableParts {
+	for index, part := range parts {
 		prefix := fmt.Sprintf("table_parts[%d]", index)
 		if part.ID.IsZero() {
 			issues = append(issues, prefix+".id must be a non-zero UUID")
@@ -177,18 +200,17 @@ func validateNumberedObjectShape(shape numberedObjectShape, manifest project.Pro
 		issues = append(issues, validateTitle(prefix+".title", part.Title, manifest)...)
 		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, manifest, nil)...)
 	}
-	for name, module := range map[string]*uuid.UUID{"object_module": shape.objectModule, "manager_module": shape.managerModule} {
-		if module != nil && module.IsZero() {
-			issues = append(issues, name+" must be a non-zero UUID")
-		}
+	return issues
+}
+
+// cloneTableParts copies the parts and everything inside them.
+func cloneTableParts(parts []TablePart) []TablePart {
+	parts = slices.Clone(parts)
+	for index := range parts {
+		parts[index].Title = cloneTitle(parts[index].Title)
+		parts[index].Attributes = cloneAttributes(parts[index].Attributes)
 	}
-	if shape.objectModule != nil && shape.managerModule != nil && *shape.objectModule == *shape.managerModule {
-		issues = append(issues, "object_module and manager_module must be different")
-	}
-	issues = append(issues, validateObjectForms(shape.forms)...)
-	return append(issues, validateListSettings(shape.list, shape.attributes, map[string]TypeKind{
-		"number": shape.number.Type,
-	})...)
+	return parts
 }
 
 func reservedDocumentObjectName(name string) bool {

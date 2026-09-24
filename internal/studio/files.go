@@ -443,6 +443,10 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 			value, err = metadata.DecodeExchangePlan(relative, bytes.NewReader(content), manifest)
 		case metadata.AccountingRegisterKind:
 			value, err = metadata.DecodeAccountingRegister(relative, bytes.NewReader(content), manifest)
+		case metadata.ReportKind:
+			value, err = metadata.DecodeReport(relative, bytes.NewReader(content), manifest)
+		case metadata.DataProcessorKind:
+			value, err = metadata.DecodeDataProcessor(relative, bytes.NewReader(content), manifest)
 		case metadata.CalculationRegisterKind:
 			value, err = metadata.DecodeCalculationRegister(relative, bytes.NewReader(content), manifest)
 		case metadata.NumeratorKind:
