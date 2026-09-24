@@ -172,6 +172,18 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := loadObjectKind(root, ChartOfCalculationTypesKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeChartOfCalculationTypes(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.ChartsOfCalculationTypes = append(catalog.ChartsOfCalculationTypes, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadObjectKind(root, DocumentKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeDocument(source, file, manifest)
 		if err == nil && value.ID != id {
@@ -310,6 +322,9 @@ func NewCatalogSnapshotWithEventSubscriptions(manifest project.Project, constant
 	}
 	for index := range result.ChartsOfAccounts {
 		result.ChartsOfAccounts[index] = cloneChartOfAccounts(result.ChartsOfAccounts[index])
+	}
+	for index := range result.ChartsOfCalculationTypes {
+		result.ChartsOfCalculationTypes[index] = cloneChartOfCalculationTypes(result.ChartsOfCalculationTypes[index])
 	}
 	for index := range result.InformationRegisters {
 		result.InformationRegisters[index] = cloneInformationRegisterDefinition(result.InformationRegisters[index])
@@ -463,6 +478,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	sort.Slice(catalog.ChartsOfAccounts, func(i, j int) bool {
 		return catalog.ChartsOfAccounts[i].ID.String() < catalog.ChartsOfAccounts[j].ID.String()
 	})
+	sort.Slice(catalog.ChartsOfCalculationTypes, func(i, j int) bool {
+		return catalog.ChartsOfCalculationTypes[i].ID.String() < catalog.ChartsOfCalculationTypes[j].ID.String()
+	})
 	sort.Slice(catalog.InformationRegisters, func(i, j int) bool {
 		return catalog.InformationRegisters[i].ID.String() < catalog.InformationRegisters[j].ID.String()
 	})
@@ -478,6 +496,8 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.chartOfCharacteristicTypesByID = make(map[uuid.UUID]int, len(catalog.ChartsOfCharacteristicTypes))
 	catalog.chartOfAccountsByName = make(map[string]int, len(catalog.ChartsOfAccounts))
 	catalog.chartOfAccountsByID = make(map[uuid.UUID]int, len(catalog.ChartsOfAccounts))
+	catalog.chartOfCalculationTypesByName = make(map[string]int, len(catalog.ChartsOfCalculationTypes))
+	catalog.chartOfCalculationTypesByID = make(map[uuid.UUID]int, len(catalog.ChartsOfCalculationTypes))
 	catalog.informationRegisterByName, catalog.informationRegisterByID = make(map[string]int, len(catalog.InformationRegisters)), make(map[uuid.UUID]int, len(catalog.InformationRegisters))
 	catalog.accumulationRegisterByName, catalog.accumulationRegisterByID = make(map[string]int, len(catalog.AccumulationRegisters)), make(map[uuid.UUID]int, len(catalog.AccumulationRegisters))
 	allIDs := map[uuid.UUID]string{}
@@ -654,6 +674,38 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 					return fmt.Errorf("%w: %s and chart of accounts table part attribute %s.%s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, attribute.Name, attribute.ID)
 				}
 				allIDs[attribute.ID] = "chart of accounts table part attribute " + item.Name + "." + part.Name + "." + attribute.Name
+			}
+		}
+	}
+	for index, item := range catalog.ChartsOfCalculationTypes {
+		if err := add("chart of calculation types", item.ID, item.Name, index, catalog.chartOfCalculationTypesByName, catalog.chartOfCalculationTypesByID); err != nil {
+			return err
+		}
+		for _, predefined := range item.Predefined {
+			if previous, ok := allIDs[predefined.ID]; ok {
+				return fmt.Errorf("%w: %s and predefined calculation type %s.%s use %s", ErrDuplicateID, previous, item.Name, predefined.Name, predefined.ID)
+			}
+			allIDs[predefined.ID] = "predefined calculation type " + item.Name + "." + predefined.Name
+		}
+		for _, attribute := range item.Attributes {
+			if _, common := catalog.commonAttributeByID[attribute.ID]; common {
+				continue
+			}
+			if previous, ok := allIDs[attribute.ID]; ok {
+				return fmt.Errorf("%w: %s and chart of calculation types attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
+			}
+			allIDs[attribute.ID] = "chart of calculation types attribute " + item.Name + "." + attribute.Name
+		}
+		for _, part := range item.TableParts {
+			if previous, ok := allIDs[part.ID]; ok {
+				return fmt.Errorf("%w: %s and chart of calculation types table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
+			}
+			allIDs[part.ID] = "chart of calculation types table part " + item.Name + "." + part.Name
+			for _, attribute := range part.Attributes {
+				if previous, ok := allIDs[attribute.ID]; ok {
+					return fmt.Errorf("%w: %s and chart of calculation types table part attribute %s.%s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, attribute.Name, attribute.ID)
+				}
+				allIDs[attribute.ID] = "chart of calculation types table part attribute " + item.Name + "." + part.Name + "." + attribute.Name
 			}
 		}
 	}
@@ -839,6 +891,27 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 	}
+	for _, item := range catalog.ChartsOfCalculationTypes {
+		owner := "chart of calculation types " + item.Name
+		if err := catalog.validateCalculationBase(owner, item); err != nil {
+			return err
+		}
+		for _, attribute := range item.Attributes {
+			if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
+				return err
+			}
+		}
+		for _, part := range item.TableParts {
+			for _, attribute := range part.Attributes {
+				if err := catalog.validateReferences(owner+" table part "+part.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
+					return err
+				}
+			}
+		}
+		if err := validateObjectFileSources(root, ChartOfCalculationTypesKind, item.ID, "chart of calculation types", item.Name, item.ObjectModule, item.ManagerModule, item.Forms); err != nil {
+			return err
+		}
+	}
 	for _, item := range catalog.Documents {
 		for _, attribute := range item.Attributes {
 			if err := catalog.validateReferences("document "+item.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
@@ -931,6 +1004,46 @@ func (catalog *Catalog) validateChartOfAccountsAnalytics(owner string, item Char
 	return nil
 }
 
+// validateCalculationBase resolves the charts a base is taken from and the
+// base types a predefined calculation type names. A base pointing at a chart
+// that is not there, or at a type nobody declared, computes a different number
+// while looking transferred - which is worse than failing to transfer.
+func (catalog *Catalog) validateCalculationBase(owner string, item ChartOfCalculationTypesDefinition) error {
+	own := map[string]bool{}
+	for _, predefined := range item.Predefined {
+		own[strings.ToLower(predefined.Name)] = true
+	}
+	charts := map[string]map[string]bool{strings.ToLower(item.Name): own}
+	for _, id := range item.BaseCharts {
+		index, ok := catalog.chartOfCalculationTypesByID[id]
+		if !ok {
+			return fmt.Errorf("%s takes its base from unknown chart of calculation types %s", owner, id)
+		}
+		base := catalog.ChartsOfCalculationTypes[index]
+		names := map[string]bool{}
+		for _, predefined := range base.Predefined {
+			names[strings.ToLower(predefined.Name)] = true
+		}
+		charts[strings.ToLower(base.Name)] = names
+	}
+	for _, predefined := range item.Predefined {
+		for _, name := range predefined.Base {
+			chart, kind := item.Name, name
+			if chartName, typeName, found := strings.Cut(name, "."); found {
+				chart, kind = chartName, typeName
+			}
+			names, ok := charts[strings.ToLower(chart)]
+			if !ok {
+				return fmt.Errorf("%s predefined %s takes its base from %s, which is not among its base charts", owner, predefined.Name, chart)
+			}
+			if !names[strings.ToLower(kind)] {
+				return fmt.Errorf("%s predefined %s takes its base from %s, which is not a calculation type of %s", owner, predefined.Name, kind, chart)
+			}
+		}
+	}
+	return nil
+}
+
 func (catalog *Catalog) validateReferences(owner string, types []Type) error {
 	for _, item := range types {
 		if item.Reference == nil {
@@ -960,6 +1073,10 @@ func (catalog *Catalog) validateReferences(owner string, types []Type) error {
 		case AccountType:
 			if _, ok := catalog.chartOfAccountsByID[*item.Reference]; !ok {
 				return fmt.Errorf("%s references unknown chart of accounts %s", owner, item.Reference)
+			}
+		case CalculationTypeType:
+			if _, ok := catalog.chartOfCalculationTypesByID[*item.Reference]; !ok {
+				return fmt.Errorf("%s references unknown chart of calculation types %s", owner, item.Reference)
 			}
 		}
 	}

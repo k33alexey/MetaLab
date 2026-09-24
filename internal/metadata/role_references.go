@@ -90,6 +90,16 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		addHierarchy(Hierarchy{Enabled: true, Kind: ItemsHierarchy})
 		addAttributes(item.Attributes)
 		addParts(item.TableParts)
+	} else if index, ok := catalog.chartOfCalculationTypesByID[id]; ok {
+		item := catalog.ChartsOfCalculationTypes[index]
+		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
+		target.fields = map[string]bool{"ref": false, "code": true, "description": true,
+			"deletionmark": true, "version": false, "predefined": false, "predefineddataname": false}
+		if item.ActionPeriodUse {
+			target.fields["actionperiodisbase"] = true
+		}
+		addAttributes(item.Attributes)
+		addParts(item.TableParts)
 	} else if index, ok := catalog.documentByID[id]; ok {
 		item := catalog.Documents[index]
 		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true

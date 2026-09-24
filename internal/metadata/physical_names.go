@@ -13,6 +13,8 @@ var standardColumnTitles = map[string]string{
 	"ref": "Ссылка", "version": "Версия", "code": "Код", "description": "Наименование",
 	"value_type": "Тип значения", "account_order": "Порядок", "account_kind": "Вид счёта",
 	"parent": "Родитель", "is_folder": "Это группа",
+	"action_period_is_base": "Период действия базовый", "calculation_type": "Вид расчёта",
+	"base_chart":  "План видов расчёта базы",
 	"off_balance": "Забалансовый", "ext_dimension_type": "Вид субконто", "turnover_only": "Только обороты",
 	"deletion_mark": "Пометка удаления", "predefined_name": "Имя предопределённых данных",
 	"owner_ref": "Владелец строки", "line_no": "Номер строки", "number": "Номер", "date": "Дата",
@@ -100,6 +102,19 @@ func (catalog *Catalog) PhysicalNames() map[string]string {
 		}
 		if item.ExtDimensionTypes != nil {
 			result[extDimensionTableName(item.ID)] = owner + ".ВидыСубконто"
+		}
+	}
+	for _, item := range catalog.ChartsOfCalculationTypes {
+		owner := "ПланВидовРасчёта." + item.Name
+		addTable(item.ID, owner)
+		addAttributes(owner, item.Attributes)
+		addParts(owner, item.TableParts)
+		result[competitionTableName("tl", item.ID)] = owner + ".ВедущиеВидыРасчёта"
+		if item.ActionPeriodUse {
+			result[competitionTableName("tw", item.ID)] = owner + ".ВытесняющиеВидыРасчёта"
+		}
+		if item.BaseDependency != "" && item.BaseDependency != NoBaseDependency {
+			result[competitionTableName("tb", item.ID)] = owner + ".БазовыеВидыРасчёта"
 		}
 	}
 	for _, item := range catalog.Documents {

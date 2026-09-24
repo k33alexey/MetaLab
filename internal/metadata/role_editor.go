@@ -126,6 +126,9 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 		}
 		appendObject(ChartOfAccountsKind, item.ID, item.Name, item.Title, fields, item.TableParts)
 	}
+	for _, item := range catalog.ChartsOfCalculationTypes {
+		appendObject(ChartOfCalculationTypesKind, item.ID, item.Name, item.Title, item.Attributes, item.TableParts)
+	}
 	for _, item := range catalog.Documents {
 		appendObject(DocumentKind, item.ID, item.Name, item.Title, item.Attributes, item.TableParts)
 	}
