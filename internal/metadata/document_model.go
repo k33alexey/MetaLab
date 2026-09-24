@@ -57,33 +57,71 @@ func DecodeDocument(source string, reader io.Reader, manifest project.Project) (
 		return DocumentDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
-	switch value.Number.Type {
+	issues = append(issues, validateNumberedObjectShape(numberedObjectShape{
+		number:        value.Number,
+		attributes:    value.Attributes,
+		tableParts:    value.TableParts,
+		objectModule:  value.ObjectModule,
+		managerModule: value.ManagerModule,
+		forms:         value.Forms,
+		list:          value.List,
+		reservedName:  reservedDocumentObjectName,
+	}, manifest)...)
+	if err := issuesError(source, value.Format, issues); err != nil {
+		return DocumentDefinition{}, err
+	}
+	return value, nil
+}
+
+// numberedObjectShape is what a numbered object repeats: a number with its
+// settings, attributes, table parts, its own modules, forms and list settings.
+// Documents, business processes and tasks all repeat it, and each adds its own
+// on top - so the repeated part is checked in one place rather than copied per
+// kind, where the copies drift.
+type numberedObjectShape struct {
+	number        DocumentNumber
+	attributes    []Attribute
+	tableParts    []TablePart
+	objectModule  *uuid.UUID
+	managerModule *uuid.UUID
+	forms         ObjectForms
+	list          ListSettings
+	reservedName  func(string) bool
+}
+
+func validateNumberedObjectShape(shape numberedObjectShape, manifest project.Project) []string {
+	var issues []string
+	switch shape.number.Type {
 	case StringType:
-		if value.Number.Length < 1 || value.Number.Length > 128 {
+		if shape.number.Length < 1 || shape.number.Length > 128 {
 			issues = append(issues, "number.length must be 1..128 for string numbers")
 		}
 	case NumberType:
-		if value.Number.Length < 1 || value.Number.Length > 38 {
+		if shape.number.Length < 1 || shape.number.Length > 38 {
 			issues = append(issues, "number.length must be 1..38 for numeric numbers")
 		}
 	default:
 		issues = append(issues, "number.type must be string or number")
 	}
-	switch value.Number.Periodicity {
+	switch shape.number.Periodicity {
 	case NumberPeriodNone, NumberPeriodYear, NumberPeriodQuarter, NumberPeriodMonth, NumberPeriodDay:
 	default:
 		issues = append(issues, "number.periodicity must be none, year, quarter, month or day")
 	}
-	issues = append(issues, validateAttributes("attributes", value.Attributes, manifest, reservedDocumentObjectName)...)
-	attributeNames := make(map[string]bool, len(value.Attributes))
-	for _, attribute := range value.Attributes {
+	reserved := shape.reservedName
+	if reserved == nil {
+		reserved = reservedDocumentObjectName
+	}
+	issues = append(issues, validateAttributes("attributes", shape.attributes, manifest, reserved)...)
+	attributeNames := make(map[string]bool, len(shape.attributes))
+	for _, attribute := range shape.attributes {
 		attributeNames[strings.ToLower(attribute.Name)] = true
 	}
-	if len(value.TableParts) > 128 {
+	if len(shape.tableParts) > 128 {
 		issues = append(issues, "table_parts must not contain more than 128 items")
 	}
 	partNames, partIDs := map[string]bool{}, map[uuid.UUID]bool{}
-	for index, part := range value.TableParts {
+	for index, part := range shape.tableParts {
 		prefix := fmt.Sprintf("table_parts[%d]", index)
 		if part.ID.IsZero() {
 			issues = append(issues, prefix+".id must be a non-zero UUID")
@@ -99,7 +137,7 @@ func DecodeDocument(source string, reader io.Reader, manifest project.Project) (
 		if partNames[folded] {
 			issues = append(issues, prefix+".name must be unique")
 		}
-		if reservedDocumentObjectName(folded) {
+		if reserved(folded) {
 			issues = append(issues, prefix+".name is reserved")
 		}
 		if attributeNames[folded] {
@@ -109,22 +147,18 @@ func DecodeDocument(source string, reader io.Reader, manifest project.Project) (
 		issues = append(issues, validateTitle(prefix+".title", part.Title, manifest)...)
 		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, manifest, nil)...)
 	}
-	for name, module := range map[string]*uuid.UUID{"object_module": value.ObjectModule, "manager_module": value.ManagerModule} {
+	for name, module := range map[string]*uuid.UUID{"object_module": shape.objectModule, "manager_module": shape.managerModule} {
 		if module != nil && module.IsZero() {
 			issues = append(issues, name+" must be a non-zero UUID")
 		}
 	}
-	if value.ObjectModule != nil && value.ManagerModule != nil && *value.ObjectModule == *value.ManagerModule {
+	if shape.objectModule != nil && shape.managerModule != nil && *shape.objectModule == *shape.managerModule {
 		issues = append(issues, "object_module and manager_module must be different")
 	}
-	issues = append(issues, validateObjectForms(value.Forms)...)
-	issues = append(issues, validateListSettings(value.List, value.Attributes, map[string]TypeKind{
-		"number": value.Number.Type,
+	issues = append(issues, validateObjectForms(shape.forms)...)
+	return append(issues, validateListSettings(shape.list, shape.attributes, map[string]TypeKind{
+		"number": shape.number.Type,
 	})...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return DocumentDefinition{}, err
-	}
-	return value, nil
 }
 
 func reservedDocumentObjectName(name string) bool {

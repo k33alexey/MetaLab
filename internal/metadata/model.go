@@ -42,6 +42,10 @@ const (
 	ChartOfAccountsKind Kind = "charts-of-accounts"
 	// ChartOfCalculationTypesKind holds kinds of accrual and deduction.
 	ChartOfCalculationTypesKind Kind = "charts-of-calculation-types"
+	// BusinessProcessKind holds routes a process walks; TaskKind holds the
+	// assignments created along the way.
+	BusinessProcessKind Kind = "business-processes"
+	TaskKind            Kind = "tasks"
 )
 
 type TypeKind string
@@ -70,6 +74,12 @@ const (
 	AccountType TypeKind = "chart-of-accounts"
 	// CalculationTypeType is a reference to one kind of accrual or deduction.
 	CalculationTypeType TypeKind = "chart-of-calculation-types"
+	// BusinessProcessType and TaskType are references to one process and one
+	// task; RoutePointType is a reference to a point of a process's route -
+	// there is no object kind behind it, the process itself produces it.
+	BusinessProcessType TypeKind = "business-process"
+	TaskType            TypeKind = "task"
+	RoutePointType      TypeKind = "route-point"
 	// ValueStorageType holds a value of any shape, opaque to the database.
 	// It is storable but cannot be form data - reading it costs a round trip
 	// and it has no presentation to show in a field.
@@ -374,6 +384,8 @@ type Catalog struct {
 	ChartsOfCharacteristicTypes      []ChartOfCharacteristicTypesDefinition
 	ChartsOfAccounts                 []ChartOfAccountsDefinition
 	ChartsOfCalculationTypes         []ChartOfCalculationTypesDefinition
+	BusinessProcesses                []BusinessProcessDefinition
+	Tasks                            []TaskDefinition
 	InformationRegisters             []InformationRegisterDefinition
 	AccumulationRegisters            []AccumulationRegisterDefinition
 	constantByName                   map[string]int
@@ -396,6 +408,10 @@ type Catalog struct {
 	chartOfAccountsByID              map[uuid.UUID]int
 	chartOfCalculationTypesByName    map[string]int
 	chartOfCalculationTypesByID      map[uuid.UUID]int
+	businessProcessByName            map[string]int
+	businessProcessByID              map[uuid.UUID]int
+	taskByName                       map[string]int
+	taskByID                         map[uuid.UUID]int
 }
 
 func (catalog *Catalog) ConstantByID(id uuid.UUID) (Constant, bool) {
@@ -1040,7 +1056,8 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 		seen[key] = true
 		referenced := item.Kind == EnumerationType || item.Kind == DefinedType || item.Kind == CatalogType ||
 			item.Kind == DocumentType || item.Kind == CharacteristicTypesType || item.Kind == AccountType ||
-			item.Kind == CalculationTypeType
+			item.Kind == CalculationTypeType || item.Kind == BusinessProcessType || item.Kind == TaskType ||
+			item.Kind == RoutePointType
 		if referenced && (item.Reference == nil || item.Reference.IsZero()) {
 			issues = append(issues, prefix+".reference is required")
 		}
@@ -1095,7 +1112,8 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 			if item.Length != 0 || item.Precision != 0 || item.Scale != 0 {
 				issues = append(issues, prefix+" has unsupported qualifiers")
 			}
-		case BooleanType, ValueStorageType, EnumerationType, DefinedType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType:
+		case BooleanType, ValueStorageType, EnumerationType, DefinedType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType,
+			BusinessProcessType, TaskType, RoutePointType:
 			if item.Length != 0 || item.Precision != 0 || item.Scale != 0 {
 				issues = append(issues, prefix+" has unsupported qualifiers")
 			}

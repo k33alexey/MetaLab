@@ -437,6 +437,10 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 			value, err = metadata.DecodeChartOfAccounts(relative, bytes.NewReader(content), manifest)
 		case metadata.ChartOfCalculationTypesKind:
 			value, err = metadata.DecodeChartOfCalculationTypes(relative, bytes.NewReader(content), manifest)
+		case metadata.BusinessProcessKind:
+			value, err = metadata.DecodeBusinessProcess(relative, bytes.NewReader(content), manifest)
+		case metadata.TaskKind:
+			value, err = metadata.DecodeTask(relative, bytes.NewReader(content), manifest)
 		case metadata.DocumentKind:
 			value, err = metadata.DecodeDocument(relative, bytes.NewReader(content), manifest)
 		case metadata.InformationRegisterKind:

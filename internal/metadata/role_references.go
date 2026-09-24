@@ -109,6 +109,26 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		target.fields = map[string]bool{"ref": false, "number": true, "date": true, "posted": false, "deletionmark": true, "version": false}
 		addAttributes(item.Attributes)
 		addParts(item.TableParts)
+	} else if index, ok := catalog.businessProcessByID[id]; ok {
+		item := catalog.BusinessProcesses[index]
+		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
+		// Started and completed are the platform's own record of where the
+		// process is: a role may read them, never write them by hand.
+		target.fields = map[string]bool{"ref": false, "number": true, "date": true, "deletionmark": true,
+			"version": false, "started": false, "completed": false, "headtask": false}
+		addAttributes(item.Attributes)
+		addParts(item.TableParts)
+	} else if index, ok := catalog.taskByID[id]; ok {
+		item := catalog.Tasks[index]
+		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
+		// Where the task stands is the platform's record too; what it is
+		// addressed to is the application's, and a role may well be kept away
+		// from it - seeing the performers of every task is not for everyone.
+		target.fields = map[string]bool{"ref": false, "number": true, "date": true, "description": true,
+			"deletionmark": true, "version": false, "executed": true, "businessprocess": false, "routepoint": false}
+		addAttributes(addressingAsAttributes(item))
+		addAttributes(item.Attributes)
+		addParts(item.TableParts)
 	} else if index, ok := catalog.informationRegisterByID[id]; ok {
 		item := catalog.InformationRegisters[index]
 		target.fields["recordid"] = false

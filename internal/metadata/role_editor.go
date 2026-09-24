@@ -129,6 +129,15 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	for _, item := range catalog.ChartsOfCalculationTypes {
 		appendObject(ChartOfCalculationTypesKind, item.ID, item.Name, item.Title, item.Attributes, item.TableParts)
 	}
+	for _, item := range catalog.BusinessProcesses {
+		appendObject(BusinessProcessKind, item.ID, item.Name, item.Title, item.Attributes, item.TableParts)
+	}
+	for _, item := range catalog.Tasks {
+		// Addressing attributes are shown beside the rest: a right on
+		// "Исполнитель" is exactly the kind of right an application restricts.
+		appendObject(TaskKind, item.ID, item.Name, item.Title,
+			append(addressingAsAttributes(item), item.Attributes...), item.TableParts)
+	}
 	for _, item := range catalog.Documents {
 		appendObject(DocumentKind, item.ID, item.Name, item.Title, item.Attributes, item.TableParts)
 	}

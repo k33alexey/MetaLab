@@ -14,6 +14,8 @@ var standardColumnTitles = map[string]string{
 	"value_type": "Тип значения", "account_order": "Порядок", "account_kind": "Вид счёта",
 	"parent": "Родитель", "is_folder": "Это группа",
 	"action_period_is_base": "Период действия базовый", "calculation_type": "Вид расчёта",
+	"started": "Стартован", "completed": "Завершён", "head_task": "Главная задача",
+	"executed": "Выполнена", "business_process": "Бизнес-процесс", "route_point": "Точка маршрута",
 	"base_chart":  "План видов расчёта базы",
 	"off_balance": "Забалансовый", "ext_dimension_type": "Вид субконто", "turnover_only": "Только обороты",
 	"deletion_mark": "Пометка удаления", "predefined_name": "Имя предопределённых данных",
@@ -116,6 +118,19 @@ func (catalog *Catalog) PhysicalNames() map[string]string {
 		if item.BaseDependency != "" && item.BaseDependency != NoBaseDependency {
 			result[competitionTableName("tb", item.ID)] = owner + ".БазовыеВидыРасчёта"
 		}
+	}
+	for _, item := range catalog.BusinessProcesses {
+		owner := "БизнесПроцесс." + item.Name
+		addTable(item.ID, owner)
+		addAttributes(owner, item.Attributes)
+		addParts(owner, item.TableParts)
+	}
+	for _, item := range catalog.Tasks {
+		owner := "Задача." + item.Name
+		addTable(item.ID, owner)
+		addAttributes(owner, item.Attributes)
+		addAttributes(owner+".Адресация", addressingAsAttributes(item))
+		addParts(owner, item.TableParts)
 	}
 	for _, item := range catalog.Documents {
 		owner := "Документ." + item.Name

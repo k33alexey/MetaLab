@@ -184,6 +184,30 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := loadObjectKind(root, TaskKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeTask(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.Tasks = append(catalog.Tasks, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	if err := loadObjectKind(root, BusinessProcessKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeBusinessProcess(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.BusinessProcesses = append(catalog.BusinessProcesses, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadObjectKind(root, DocumentKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeDocument(source, file, manifest)
 		if err == nil && value.ID != id {
@@ -325,6 +349,12 @@ func NewCatalogSnapshotWithEventSubscriptions(manifest project.Project, constant
 	}
 	for index := range result.ChartsOfCalculationTypes {
 		result.ChartsOfCalculationTypes[index] = cloneChartOfCalculationTypes(result.ChartsOfCalculationTypes[index])
+	}
+	for index := range result.BusinessProcesses {
+		result.BusinessProcesses[index] = cloneBusinessProcess(result.BusinessProcesses[index])
+	}
+	for index := range result.Tasks {
+		result.Tasks[index] = cloneTask(result.Tasks[index])
 	}
 	for index := range result.InformationRegisters {
 		result.InformationRegisters[index] = cloneInformationRegisterDefinition(result.InformationRegisters[index])
@@ -481,6 +511,10 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	sort.Slice(catalog.ChartsOfCalculationTypes, func(i, j int) bool {
 		return catalog.ChartsOfCalculationTypes[i].ID.String() < catalog.ChartsOfCalculationTypes[j].ID.String()
 	})
+	sort.Slice(catalog.BusinessProcesses, func(i, j int) bool {
+		return catalog.BusinessProcesses[i].ID.String() < catalog.BusinessProcesses[j].ID.String()
+	})
+	sort.Slice(catalog.Tasks, func(i, j int) bool { return catalog.Tasks[i].ID.String() < catalog.Tasks[j].ID.String() })
 	sort.Slice(catalog.InformationRegisters, func(i, j int) bool {
 		return catalog.InformationRegisters[i].ID.String() < catalog.InformationRegisters[j].ID.String()
 	})
@@ -498,6 +532,10 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.chartOfAccountsByID = make(map[uuid.UUID]int, len(catalog.ChartsOfAccounts))
 	catalog.chartOfCalculationTypesByName = make(map[string]int, len(catalog.ChartsOfCalculationTypes))
 	catalog.chartOfCalculationTypesByID = make(map[uuid.UUID]int, len(catalog.ChartsOfCalculationTypes))
+	catalog.businessProcessByName = make(map[string]int, len(catalog.BusinessProcesses))
+	catalog.businessProcessByID = make(map[uuid.UUID]int, len(catalog.BusinessProcesses))
+	catalog.taskByName = make(map[string]int, len(catalog.Tasks))
+	catalog.taskByID = make(map[uuid.UUID]int, len(catalog.Tasks))
 	catalog.informationRegisterByName, catalog.informationRegisterByID = make(map[string]int, len(catalog.InformationRegisters)), make(map[uuid.UUID]int, len(catalog.InformationRegisters))
 	catalog.accumulationRegisterByName, catalog.accumulationRegisterByID = make(map[string]int, len(catalog.AccumulationRegisters)), make(map[uuid.UUID]int, len(catalog.AccumulationRegisters))
 	allIDs := map[uuid.UUID]string{}
@@ -709,6 +747,52 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			}
 		}
 	}
+	for index, item := range catalog.Tasks {
+		if err := add("task", item.ID, item.Name, index, catalog.taskByName, catalog.taskByID); err != nil {
+			return err
+		}
+		for _, attribute := range append(slices.Clone(item.Attributes), addressingAsAttributes(item)...) {
+			if _, common := catalog.commonAttributeByID[attribute.ID]; common {
+				continue
+			}
+			if previous, ok := allIDs[attribute.ID]; ok {
+				return fmt.Errorf("%w: %s and task attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
+			}
+			allIDs[attribute.ID] = "task attribute " + item.Name + "." + attribute.Name
+		}
+		for _, part := range item.TableParts {
+			if previous, ok := allIDs[part.ID]; ok {
+				return fmt.Errorf("%w: %s and task table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
+			}
+			allIDs[part.ID] = "task table part " + item.Name + "." + part.Name
+		}
+	}
+	for index, item := range catalog.BusinessProcesses {
+		if err := add("business process", item.ID, item.Name, index, catalog.businessProcessByName, catalog.businessProcessByID); err != nil {
+			return err
+		}
+		for _, point := range item.Route.Points {
+			if previous, ok := allIDs[point.ID]; ok {
+				return fmt.Errorf("%w: %s and route point %s.%s use %s", ErrDuplicateID, previous, item.Name, point.Name, point.ID)
+			}
+			allIDs[point.ID] = "route point " + item.Name + "." + point.Name
+		}
+		for _, attribute := range item.Attributes {
+			if _, common := catalog.commonAttributeByID[attribute.ID]; common {
+				continue
+			}
+			if previous, ok := allIDs[attribute.ID]; ok {
+				return fmt.Errorf("%w: %s and business process attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
+			}
+			allIDs[attribute.ID] = "business process attribute " + item.Name + "." + attribute.Name
+		}
+		for _, part := range item.TableParts {
+			if previous, ok := allIDs[part.ID]; ok {
+				return fmt.Errorf("%w: %s and business process table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
+			}
+			allIDs[part.ID] = "business process table part " + item.Name + "." + part.Name
+		}
+	}
 	for index, item := range catalog.Documents {
 		if err := add("document", item.ID, item.Name, index, catalog.documentByName, catalog.documentByID); err != nil {
 			return err
@@ -912,6 +996,34 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 	}
+	for _, item := range catalog.Tasks {
+		owner := "task " + item.Name
+		if err := catalog.validateTaskAddressing(owner, item); err != nil {
+			return err
+		}
+		for _, attribute := range append(slices.Clone(item.Attributes), addressingAsAttributes(item)...) {
+			if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
+				return err
+			}
+		}
+		if err := validateObjectFileSources(root, TaskKind, item.ID, "task", item.Name, item.ObjectModule, item.ManagerModule, item.Forms); err != nil {
+			return err
+		}
+	}
+	for _, item := range catalog.BusinessProcesses {
+		owner := "business process " + item.Name
+		if err := catalog.validateBusinessProcessRoute(owner, item); err != nil {
+			return err
+		}
+		for _, attribute := range item.Attributes {
+			if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
+				return err
+			}
+		}
+		if err := validateObjectFileSources(root, BusinessProcessKind, item.ID, "business process", item.Name, item.ObjectModule, item.ManagerModule, item.Forms); err != nil {
+			return err
+		}
+	}
 	for _, item := range catalog.Documents {
 		for _, attribute := range item.Attributes {
 			if err := catalog.validateReferences("document "+item.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
@@ -1044,6 +1156,122 @@ func (catalog *Catalog) validateCalculationBase(owner string, item ChartOfCalcul
 	return nil
 }
 
+// addressingAsAttributes treats addressing attributes as the attributes they
+// are: each is a column of the task and carries types like any other.
+func addressingAsAttributes(item TaskDefinition) []Attribute {
+	result := make([]Attribute, 0, len(item.AddressingAttributes))
+	for _, attribute := range item.AddressingAttributes {
+		result = append(result, Attribute{ID: attribute.ID, Name: attribute.Name, Title: attribute.Title, Types: attribute.Types})
+	}
+	return result
+}
+
+// validateTaskAddressing resolves the register a task is addressed through and
+// the dimensions its attributes are matched against. Addressing that points at
+// a register that is not there, or at a dimension it does not have, would leave
+// the task reaching nobody - and a task nobody sees is worse than no task.
+func (catalog *Catalog) validateTaskAddressing(owner string, item TaskDefinition) error {
+	if item.CurrentPerformer != nil {
+		if _, ok := catalog.sessionParameterByID[*item.CurrentPerformer]; !ok {
+			return fmt.Errorf("%s names unknown session parameter %s as the current performer", owner, item.CurrentPerformer)
+		}
+	}
+	if item.Addressing == nil {
+		return nil
+	}
+	index, ok := catalog.informationRegisterByID[*item.Addressing]
+	if !ok {
+		return fmt.Errorf("%s is addressed through unknown information register %s", owner, item.Addressing)
+	}
+	register := catalog.InformationRegisters[index]
+	dimensions := map[uuid.UUID]bool{}
+	for _, dimension := range register.Dimensions {
+		dimensions[dimension.ID] = true
+	}
+	byID := map[uuid.UUID][]Type{}
+	for _, dimension := range register.Dimensions {
+		byID[dimension.ID] = dimension.Types
+	}
+	for _, attribute := range item.AddressingAttributes {
+		if attribute.Dimension == nil {
+			continue
+		}
+		if !dimensions[*attribute.Dimension] {
+			return fmt.Errorf("%s addressing attribute %s is matched against %s, which is not a dimension of %s",
+				owner, attribute.Name, attribute.Dimension, register.Name)
+		}
+		// A value the dimension cannot hold is a value the register will never
+		// be asked about: the task would be addressed to somebody the platform
+		// then fails to find, and nothing anywhere would say so.
+		allowed, err := catalog.expandTypes(byID[*attribute.Dimension], nil)
+		if err != nil {
+			return err
+		}
+		held := map[string]bool{}
+		for _, one := range allowed {
+			held[typeKey(one)] = true
+		}
+		addressed, err := catalog.expandTypes(attribute.Types, nil)
+		if err != nil {
+			return err
+		}
+		for _, one := range addressed {
+			if !held[typeKey(one)] {
+				return fmt.Errorf("%s addressing attribute %s holds %s, which the dimension it is matched against in %s cannot",
+					owner, attribute.Name, one.Kind, register.Name)
+			}
+		}
+	}
+	return nil
+}
+
+// validateBusinessProcessRoute resolves the kind of task a process creates and
+// the processes its nested points start.
+func (catalog *Catalog) validateBusinessProcessRoute(owner string, item BusinessProcessDefinition) error {
+	if item.Task != nil {
+		if _, ok := catalog.taskByID[*item.Task]; !ok {
+			return fmt.Errorf("%s creates tasks of unknown kind %s", owner, item.Task)
+		}
+	}
+	var addressed map[string][]Type
+	if item.Task != nil {
+		task := catalog.Tasks[catalog.taskByID[*item.Task]]
+		addressed = make(map[string][]Type, len(task.AddressingAttributes))
+		for _, attribute := range task.AddressingAttributes {
+			addressed[strings.ToLower(attribute.Name)] = attribute.Types
+		}
+	}
+	for _, point := range item.Route.Points {
+		if point.Kind == ActivityPoint && item.Task == nil {
+			return fmt.Errorf("%s has an activity point %s but names no kind of task to create there", owner, point.Name)
+		}
+		// A point that addresses its tasks by an attribute the kind of task
+		// does not have addresses nobody, and it does so silently.
+		for _, value := range point.Addressing {
+			types, ok := addressed[strings.ToLower(value.Attribute)]
+			if !ok {
+				return fmt.Errorf("%s point %s addresses tasks by %s, which is not an addressing attribute of the task it creates", owner, point.Name, value.Attribute)
+			}
+			if value.Value == nil {
+				continue
+			}
+			if _, err := catalog.normalizeTypes(fmt.Sprintf("%s point %s addressing %s", owner, point.Name, value.Attribute), types, *value.Value); err != nil {
+				return err
+			}
+		}
+		if point.NestedProcess == nil {
+			continue
+		}
+		if _, ok := catalog.businessProcessByID[*point.NestedProcess]; !ok {
+			return fmt.Errorf("%s point %s starts unknown business process %s", owner, point.Name, point.NestedProcess)
+		}
+		if *point.NestedProcess == item.ID {
+			return fmt.Errorf("%s point %s starts the process it belongs to", owner, point.Name)
+		}
+	}
+	return nil
+}
+
 func (catalog *Catalog) validateReferences(owner string, types []Type) error {
 	for _, item := range types {
 		if item.Reference == nil {
@@ -1077,6 +1305,14 @@ func (catalog *Catalog) validateReferences(owner string, types []Type) error {
 		case CalculationTypeType:
 			if _, ok := catalog.chartOfCalculationTypesByID[*item.Reference]; !ok {
 				return fmt.Errorf("%s references unknown chart of calculation types %s", owner, item.Reference)
+			}
+		case BusinessProcessType, RoutePointType:
+			if _, ok := catalog.businessProcessByID[*item.Reference]; !ok {
+				return fmt.Errorf("%s references unknown business process %s", owner, item.Reference)
+			}
+		case TaskType:
+			if _, ok := catalog.taskByID[*item.Reference]; !ok {
+				return fmt.Errorf("%s references unknown task %s", owner, item.Reference)
 			}
 		}
 	}

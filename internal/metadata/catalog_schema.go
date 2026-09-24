@@ -46,6 +46,22 @@ func (catalog *Catalog) ApplicationSchema() (schemadiff.Schema, error) {
 		schema.Tables = append(schema.Tables, table)
 		schema.Tables = append(schema.Tables, parts...)
 	}
+	for _, definition := range catalog.Tasks {
+		table, parts, err := catalog.taskTables(definition)
+		if err != nil {
+			return schemadiff.Schema{}, err
+		}
+		schema.Tables = append(schema.Tables, table)
+		schema.Tables = append(schema.Tables, parts...)
+	}
+	for _, definition := range catalog.BusinessProcesses {
+		table, parts, err := catalog.businessProcessTables(definition)
+		if err != nil {
+			return schemadiff.Schema{}, err
+		}
+		schema.Tables = append(schema.Tables, table)
+		schema.Tables = append(schema.Tables, parts...)
+	}
 	for _, definition := range catalog.Documents {
 		table, parts, err := catalog.documentTables(definition)
 		if err != nil {
@@ -251,7 +267,12 @@ func (catalog *Catalog) attributeStorage(types []Type) (attributeStorage, error)
 		storage.sqlType = "timestamp with time zone"
 	case ValueStorageType:
 		storage.sqlType = "bytea"
-	case ObjectUUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType:
+	case RoutePointType:
+		// A point of a route is not a row of any table: it is part of the map
+		// the configuration draws, and it is carried by name.
+		storage.sqlType = "character varying(128)"
+	case ObjectUUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType,
+		CalculationTypeType, BusinessProcessType, TaskType:
 		storage.sqlType = "uuid"
 		if item.Kind != ObjectUUIDType && item.Kind != EnumerationType {
 			id := *item.Reference

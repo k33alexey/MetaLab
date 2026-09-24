@@ -245,7 +245,7 @@ func temporarySQLType(column queryColumn) string {
 		return "boolean"
 	case DateType:
 		return "timestamptz"
-	case ObjectUUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType:
+	case ObjectUUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType, BusinessProcessType, TaskType:
 		return "uuid"
 	default:
 		return "text"

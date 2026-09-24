@@ -43,7 +43,7 @@ var (
 	// Виды, у которых есть собственные модули и формы, хранят объект папкой:
 	// описание лежит рядом со своим кодом и формами, а не в общей куче.
 	objectFolderKinds = []string{"catalogs", "documents", "information-registers", "accumulation-registers",
-		"charts-of-characteristic-types", "charts-of-accounts", "charts-of-calculation-types"}
+		"charts-of-characteristic-types", "charts-of-accounts", "charts-of-calculation-types", "business-processes", "tasks"}
 	// Порядок — тот, в котором виды показываются в дереве конфигурации, а не
 	// алфавитный: сначала группа «Общие», затем объекты верхнего уровня.
 	// Нумераторы и последовательности стоят рядом с документами, потому что

@@ -67,6 +67,18 @@ func (catalog *Catalog) allowsObjectReference(types []Type, kind TypeKind, objec
 	return false, nil
 }
 
+// typeKey tells two types apart. Everything that makes them behave differently
+// belongs in it, qualifiers included: a fixed-length string and a variable one
+// are not the same type, and collapsing them would quietly drop one of them.
+func typeKey(item Type) string {
+	key := fmt.Sprintf("%s:%d:%d:%d:%t:%t:%s", item.Kind, item.Length, item.Precision, item.Scale,
+		item.FixedLength, item.NonNegative, item.DateParts)
+	if item.Reference != nil {
+		key += ":" + item.Reference.String()
+	}
+	return key
+}
+
 func (catalog *Catalog) expandTypes(types []Type, stack map[uuid.UUID]bool) ([]Type, error) {
 	if stack == nil {
 		stack = make(map[uuid.UUID]bool)
@@ -91,15 +103,7 @@ func (catalog *Catalog) expandTypes(types []Type, stack map[uuid.UUID]bool) ([]T
 				delete(stack, *item.Reference)
 				continue
 			}
-			// Everything that makes two types behave differently belongs in
-			// the key, qualifiers included: a fixed-length string and a
-			// variable one are not the same type, and collapsing them here
-			// would quietly drop whichever came second.
-			key := fmt.Sprintf("%s:%d:%d:%d:%t:%t:%s", item.Kind, item.Length, item.Precision, item.Scale,
-				item.FixedLength, item.NonNegative, item.DateParts)
-			if item.Reference != nil {
-				key += ":" + item.Reference.String()
-			}
+			key := typeKey(item)
 			if !seen[key] {
 				seen[key] = true
 				result = append(result, item)
@@ -163,7 +167,7 @@ func (catalog *Catalog) normalizeAs(value Value, allowed Type) (Value, bool, str
 			return Value{}, false, "value storage must be base64"
 		}
 		return Value{Kind: ValueStorageType, Data: value.Data}, true, ""
-	case ObjectUUIDType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType:
+	case ObjectUUIDType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType, BusinessProcessType, TaskType:
 		id, err := uuid.Parse(value.Data)
 		if err != nil {
 			return Value{}, false, "invalid UUID reference"
@@ -172,6 +176,27 @@ func (catalog *Catalog) normalizeAs(value Value, allowed Type) (Value, bool, str
 			return Value{}, false, "object reference cannot be empty"
 		}
 		return Value{Kind: allowed.Kind, Data: id.String()}, true, ""
+	case RoutePointType:
+		// A point is carried by name, and the name means something only inside
+		// the process that drew the map: a value naming a point no map has
+		// would be stored and then match nothing for the rest of its life.
+		// The empty name is the point a task has not reached yet.
+		if allowed.Reference == nil {
+			return Value{}, false, "route point without the business process it belongs to"
+		}
+		index, ok := catalog.businessProcessByID[*allowed.Reference]
+		if !ok {
+			return Value{}, false, "unknown business process"
+		}
+		if value.Data == "" {
+			return Value{Kind: RoutePointType}, true, ""
+		}
+		for _, point := range catalog.BusinessProcesses[index].Route.Points {
+			if strings.EqualFold(point.Name, value.Data) {
+				return Value{Kind: RoutePointType, Data: point.Name}, true, ""
+			}
+		}
+		return Value{}, false, "value does not name a point of the route"
 	case EnumerationType:
 		id, err := uuid.Parse(value.Data)
 		if err != nil || allowed.Reference == nil {
