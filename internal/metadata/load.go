@@ -208,6 +208,18 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := loadObjectKind(root, CalculationRegisterKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeCalculationRegister(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.CalculationRegisters = append(catalog.CalculationRegisters, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadKind(root, NumeratorKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeNumerator(source, file, manifest)
 		if err == nil && value.ID != id {
@@ -422,6 +434,9 @@ func NewCatalogSnapshotWithEventSubscriptions(manifest project.Project, constant
 	for index := range result.AccountingRegisters {
 		result.AccountingRegisters[index] = cloneAccountingRegister(result.AccountingRegisters[index])
 	}
+	for index := range result.CalculationRegisters {
+		result.CalculationRegisters[index] = cloneCalculationRegister(result.CalculationRegisters[index])
+	}
 	for index := range result.Numerators {
 		result.Numerators[index] = cloneNumerator(result.Numerators[index])
 	}
@@ -596,6 +611,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	sort.Slice(catalog.AccountingRegisters, func(i, j int) bool {
 		return catalog.AccountingRegisters[i].ID.String() < catalog.AccountingRegisters[j].ID.String()
 	})
+	sort.Slice(catalog.CalculationRegisters, func(i, j int) bool {
+		return catalog.CalculationRegisters[i].ID.String() < catalog.CalculationRegisters[j].ID.String()
+	})
 	sort.Slice(catalog.Numerators, func(i, j int) bool {
 		return catalog.Numerators[i].ID.String() < catalog.Numerators[j].ID.String()
 	})
@@ -630,6 +648,8 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.exchangePlanByID = make(map[uuid.UUID]int, len(catalog.ExchangePlans))
 	catalog.accountingRegisterByName = make(map[string]int, len(catalog.AccountingRegisters))
 	catalog.accountingRegisterByID = make(map[uuid.UUID]int, len(catalog.AccountingRegisters))
+	catalog.calculationRegisterByName = make(map[string]int, len(catalog.CalculationRegisters))
+	catalog.calculationRegisterByID = make(map[uuid.UUID]int, len(catalog.CalculationRegisters))
 	catalog.numeratorByName = make(map[string]int, len(catalog.Numerators))
 	catalog.numeratorByID = make(map[uuid.UUID]int, len(catalog.Numerators))
 	catalog.sequenceByName = make(map[string]int, len(catalog.Sequences))
@@ -885,6 +905,33 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("%w: %s and accounting register attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
 			}
 			allIDs[attribute.ID] = "accounting register attribute " + item.Name + "." + attribute.Name
+		}
+	}
+	for index, item := range catalog.CalculationRegisters {
+		if err := add("calculation register", item.ID, item.Name, index, catalog.calculationRegisterByName, catalog.calculationRegisterByID); err != nil {
+			return err
+		}
+		for _, field := range append(calculationRegisterFields(item), item.Attributes...) {
+			if _, common := catalog.commonAttributeByID[field.ID]; common {
+				continue
+			}
+			if previous, ok := allIDs[field.ID]; ok {
+				return fmt.Errorf("%w: %s and calculation register field %s.%s use %s", ErrDuplicateID, previous, item.Name, field.Name, field.ID)
+			}
+			allIDs[field.ID] = "calculation register field " + item.Name + "." + field.Name
+		}
+		for _, recalculation := range item.Recalculations {
+			if previous, ok := allIDs[recalculation.ID]; ok {
+				return fmt.Errorf("%w: %s and recalculation %s.%s use %s", ErrDuplicateID, previous, item.Name, recalculation.Name, recalculation.ID)
+			}
+			allIDs[recalculation.ID] = "recalculation " + item.Name + "." + recalculation.Name
+			for _, dimension := range recalculation.Dimensions {
+				if previous, ok := allIDs[dimension.ID]; ok {
+					return fmt.Errorf("%w: %s and recalculation dimension %s.%s.%s use %s",
+						ErrDuplicateID, previous, item.Name, recalculation.Name, dimension.Name, dimension.ID)
+				}
+				allIDs[dimension.ID] = "recalculation dimension " + item.Name + "." + recalculation.Name + "." + dimension.Name
+			}
 		}
 	}
 	for index, item := range catalog.Numerators {
@@ -1288,6 +1335,11 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 	}
+	for _, item := range catalog.CalculationRegisters {
+		if err := catalog.validateCalculationRegister(root, item); err != nil {
+			return err
+		}
+	}
 	if err := catalog.validateRoleReferences(root); err != nil {
 		return err
 	}
@@ -1479,6 +1531,102 @@ func (catalog *Catalog) validateAccountingRegister(root string, item AccountingR
 		}
 	}
 	return validateObjectFileSources(root, AccountingRegisterKind, item.ID, "accounting register", item.Name, item.RecordSetModule, item.ManagerModule, item.Forms)
+}
+
+// takesABase says whether a chart gathers a base at all. An unset dependency
+// and one set to "none" are the same answer, and treating them differently
+// would let a base period through on half the charts that have none.
+func takesABase(chart ChartOfCalculationTypesDefinition) bool {
+	return chart.BaseDependency != "" && chart.BaseDependency != NoBaseDependency
+}
+
+// validateCalculationRegister resolves the chart a register calculates by, the
+// schedule it reads, and the two links every recalculation dimension carries.
+//
+// Everything checked here is a link whose absence shows up as a calculation
+// that quietly produces the wrong number rather than as an error: a base
+// dimension where nothing takes a base, a schedule link to a register that is
+// not the schedule, a recalculation that nothing ever sets off.
+func (catalog *Catalog) validateCalculationRegister(root string, item CalculationRegisterDefinition) error {
+	owner := "calculation register " + item.Name
+	index, ok := catalog.chartOfCalculationTypesByID[item.ChartOfCalculationTypes]
+	if !ok {
+		return fmt.Errorf("%s calculates by unknown chart of calculation types %s", owner, item.ChartOfCalculationTypes)
+	}
+	chart := catalog.ChartsOfCalculationTypes[index]
+	if item.ActionPeriod && !chart.ActionPeriodUse {
+		return fmt.Errorf("%s keeps a period of action, but %s has no competition over it, so nothing would ever displace anything", owner, chart.Name)
+	}
+	if item.BasePeriod && !takesABase(chart) {
+		return fmt.Errorf("%s keeps a base period, but %s takes no base, so the period would be gathered over nothing", owner, chart.Name)
+	}
+	scheduleDimensions := map[uuid.UUID]bool{}
+	if item.Schedule != nil {
+		scheduleIndex, ok := catalog.informationRegisterByID[*item.Schedule]
+		if !ok {
+			return fmt.Errorf("%s reads a schedule that is not an information register: %s", owner, item.Schedule)
+		}
+		schedule := catalog.InformationRegisters[scheduleIndex]
+		for _, dimension := range schedule.Dimensions {
+			scheduleDimensions[dimension.ID] = true
+		}
+		resources := map[uuid.UUID]bool{}
+		for _, resource := range schedule.Resources {
+			resources[resource.ID] = true
+		}
+		if item.ScheduleValue != nil && !resources[*item.ScheduleValue] {
+			return fmt.Errorf("%s takes the value of the schedule from %s, which is not a resource of %s", owner, item.ScheduleValue, schedule.Name)
+		}
+		if item.ScheduleDate != nil && !scheduleDimensions[*item.ScheduleDate] {
+			return fmt.Errorf("%s takes the date of the schedule from %s, which is not a dimension of %s", owner, item.ScheduleDate, schedule.Name)
+		}
+	}
+	dimensions := map[uuid.UUID]bool{}
+	for _, dimension := range item.Dimensions {
+		dimensions[dimension.ID] = true
+		if err := catalog.validateReferences(owner+" dimension "+dimension.Name, dimension.Types); err != nil {
+			return err
+		}
+		if dimension.Base && !takesABase(chart) {
+			return fmt.Errorf("%s dimension %s is a base dimension, but %s takes no base", owner, dimension.Name, chart.Name)
+		}
+		if dimension.ScheduleLink != nil && !scheduleDimensions[*dimension.ScheduleLink] {
+			return fmt.Errorf("%s dimension %s is linked to %s, which is not a dimension of the schedule", owner, dimension.Name, dimension.ScheduleLink)
+		}
+	}
+	for _, field := range append(slices.Clone(item.Resources), item.Attributes...) {
+		if err := catalog.validateReferences(owner+" field "+field.Name, field.Types); err != nil {
+			return err
+		}
+	}
+	for _, recorder := range item.Recorders {
+		if _, ok := catalog.documentByID[recorder]; !ok {
+			return fmt.Errorf("%s references unknown recorder document %s", owner, recorder)
+		}
+	}
+	// Leading data are dimensions of calculation registers - this one or
+	// another. A leading dimension that belongs to nothing sets nothing off.
+	leading := map[uuid.UUID]bool{}
+	for _, register := range catalog.CalculationRegisters {
+		for _, dimension := range register.Dimensions {
+			leading[dimension.ID] = true
+		}
+	}
+	for _, recalculation := range item.Recalculations {
+		for _, dimension := range recalculation.Dimensions {
+			if !dimensions[dimension.RegisterDimension] {
+				return fmt.Errorf("%s recalculation %s dimension %s corresponds to %s, which is not a dimension of this register",
+					owner, recalculation.Name, dimension.Name, dimension.RegisterDimension)
+			}
+			for _, source := range dimension.LeadingData {
+				if !leading[source] {
+					return fmt.Errorf("%s recalculation %s dimension %s is set off by %s, which is not a dimension of any calculation register",
+						owner, recalculation.Name, dimension.Name, source)
+				}
+			}
+		}
+	}
+	return validateObjectFileSources(root, CalculationRegisterKind, item.ID, "calculation register", item.Name, item.RecordSetModule, item.ManagerModule, item.Forms)
 }
 
 // documentAttributeOwners maps every attribute of every document - its own and

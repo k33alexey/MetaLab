@@ -61,6 +61,13 @@ func (catalog *Catalog) ApplicationSchema() (schemadiff.Schema, error) {
 		}
 		schema.Tables = append(schema.Tables, table)
 	}
+	for _, definition := range catalog.CalculationRegisters {
+		tables, err := catalog.calculationRegisterTables(definition)
+		if err != nil {
+			return schemadiff.Schema{}, err
+		}
+		schema.Tables = append(schema.Tables, tables...)
+	}
 	for _, definition := range catalog.Sequences {
 		table, err := catalog.sequenceTable(definition)
 		if err != nil {

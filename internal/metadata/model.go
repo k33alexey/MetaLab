@@ -54,9 +54,12 @@ const (
 	// AccountingRegisterKind holds entries: an account on each side, sums and
 	// the analytics behind them.
 	AccountingRegisterKind Kind = "accounting-registers"
-	NumeratorKind          Kind = "document-numerators"
-	SequenceKind           Kind = "sequences"
-	DocumentJournalKind    Kind = "document-journals"
+	// CalculationRegisterKind holds results of calculation, with the period
+	// they act over and the displacement between them.
+	CalculationRegisterKind Kind = "calculation-registers"
+	NumeratorKind           Kind = "document-numerators"
+	SequenceKind            Kind = "sequences"
+	DocumentJournalKind     Kind = "document-journals"
 )
 
 type TypeKind string
@@ -443,6 +446,7 @@ type Catalog struct {
 	InformationRegisters             []InformationRegisterDefinition
 	AccumulationRegisters            []AccumulationRegisterDefinition
 	AccountingRegisters              []AccountingRegisterDefinition
+	CalculationRegisters             []CalculationRegisterDefinition
 	constantByName                   map[string]int
 	constantByID                     map[uuid.UUID]int
 	enumerationByName                map[string]int
@@ -477,6 +481,8 @@ type Catalog struct {
 	documentJournalByID              map[uuid.UUID]int
 	accountingRegisterByName         map[string]int
 	accountingRegisterByID           map[uuid.UUID]int
+	calculationRegisterByName        map[string]int
+	calculationRegisterByID          map[uuid.UUID]int
 }
 
 func (catalog *Catalog) ConstantByID(id uuid.UUID) (Constant, bool) {

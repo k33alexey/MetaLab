@@ -180,6 +180,22 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 			target.fields[field.ID.String()] = true
 		}
 		addAttributes(item.Attributes)
+	} else if index, ok := catalog.calculationRegisterByID[id]; ok {
+		item := catalog.CalculationRegisters[index]
+		target.operations[PermissionUpdate] = true
+		// Which kind of accrual a record is, and whether it reverses an
+		// earlier one, are the platform's own account of the calculation: a
+		// role reads them and does not set them by hand.
+		target.fields = map[string]bool{"recordid": false, "period": true, "recorder": true,
+			"linenumber": false, "active": true, "calculationtype": true, "reversing": false}
+		if item.ActionPeriod {
+			target.fields["actionperiodstart"], target.fields["actionperiodend"] = true, true
+		}
+		if item.BasePeriod {
+			target.fields["baseperiodstart"], target.fields["baseperiodend"] = true, true
+		}
+		addAttributes(calculationRegisterFields(item))
+		addAttributes(item.Attributes)
 	} else if index, ok := catalog.accumulationRegisterByID[id]; ok {
 		item := catalog.AccumulationRegisters[index]
 		target.operations[PermissionUpdate] = true
