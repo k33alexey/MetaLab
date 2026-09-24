@@ -308,10 +308,19 @@ func (workspace *Workspace) scanBSLMetadata() bslMetadataIndex {
 			continue
 		}
 		for index, entry := range entries {
-			if index >= 100_000 || entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || filepath.Ext(entry.Name()) != ".yaml" {
+			if index >= 100_000 || entry.Type()&os.ModeSymlink != 0 {
 				continue
 			}
-			data, err := readBSLIndexFile(filepath.Join(workspace.root, "metadata", kind, entry.Name()))
+			// A kind that keeps a folder per object holds the description
+			// inside it; the rest keep one file per object.
+			source := filepath.Join(workspace.root, "metadata", kind, entry.Name())
+			switch {
+			case entry.IsDir():
+				source = filepath.Join(source, "object.yaml")
+			case filepath.Ext(entry.Name()) != ".yaml":
+				continue
+			}
+			data, err := readBSLIndexFile(source)
 			if err != nil {
 				continue
 			}

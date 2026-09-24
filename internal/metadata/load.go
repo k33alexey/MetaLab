@@ -112,10 +112,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadKind(root, EnumerationKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, EnumerationKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeEnumeration(source, file, manifest)
 		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
 		}
 		if err == nil {
 			catalog.Enumerations = append(catalog.Enumerations, value)
@@ -1191,6 +1191,18 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 	}
+	for _, item := range catalog.Enumerations {
+		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: EnumerationKind,
+			id: item.ID, kind: "enumeration", name: item.Name, managerModule: item.ManagerModule,
+			extraForms: []namedSource{
+				{"list form", item.Forms.List}, {"choice form", item.Forms.Choice},
+				{"auxiliary list form", item.Forms.AuxiliaryList},
+				{"auxiliary choice form", item.Forms.AuxiliaryChoice},
+			},
+			commands: item.Commands, templates: item.Templates}); err != nil {
+			return err
+		}
+	}
 	for _, item := range catalog.ChartsOfCharacteristicTypes {
 		owner := "chart of characteristic types " + item.Name
 		if err := catalog.validateReferences(owner+" value type", item.ValueType); err != nil {
@@ -1996,8 +2008,19 @@ type objectFiles struct {
 	objectModule  *uuid.UUID
 	managerModule *uuid.UUID
 	forms         ObjectForms
-	commands      []ObjectCommand
-	templates     []ObjectTemplate
+	// extraForms carries the forms of a kind whose set is not the usual three.
+	// An enumeration is the case that made it necessary: it has no form of a
+	// single value, and it has an auxiliary form beside each of the two it has.
+	extraForms []namedSource
+	commands   []ObjectCommand
+	templates  []ObjectTemplate
+}
+
+// namedSource is one file an object declares, with the name it is called by in
+// a message about it.
+type namedSource struct {
+	role string
+	id   *uuid.UUID
 }
 
 // validateObjectFileSources checks that what an object declares exists inside
@@ -2029,6 +2052,9 @@ func validateObjectFileSources(files objectFiles) error {
 		build("object form", forms.Object, true),
 		build("list form", forms.List, true),
 		build("choice form", forms.Choice, true),
+	}
+	for _, form := range files.extraForms {
+		sources = append(sources, build(form.role, form.id, true))
 	}
 	// A command keeps its module in the same folder as the object it belongs
 	// to, so it is checked here rather than anywhere of its own.

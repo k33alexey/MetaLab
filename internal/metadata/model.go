@@ -310,17 +310,74 @@ type SessionParameter struct {
 }
 
 type EnumerationValue struct {
-	ID    uuid.UUID     `yaml:"id"`
-	Name  string        `yaml:"name"`
-	Title LocalizedText `yaml:"title"`
+	ID      uuid.UUID     `yaml:"id"`
+	Name    string        `yaml:"name"`
+	Title   LocalizedText `yaml:"title"`
+	Comment string        `yaml:"comment,omitempty"`
 }
 
+// ChoiceMode says how a value of a reference kind is picked: from a list that
+// drops down under the field, from a form opened for the purpose, or either
+// way.
+type ChoiceMode string
+
+const (
+	ChoiceBothWays  ChoiceMode = "both-ways"
+	ChoiceFromForm  ChoiceMode = "from-form"
+	ChoiceQuickOnly ChoiceMode = "quick-choice"
+)
+
+// ChoiceHistory says whether what the user picked before is offered first.
+type ChoiceHistory string
+
+const (
+	ChoiceHistoryAuto    ChoiceHistory = "auto"
+	ChoiceHistoryUse     ChoiceHistory = "use"
+	ChoiceHistoryDontUse ChoiceHistory = "dont-use"
+)
+
+// EnumerationForms are the forms an enumeration shows itself through. It has
+// no form of a single value: a value is not edited, it is written by the
+// developer and only ever chosen.
+//
+// Each of the two has an auxiliary form beside it - a second list or a second
+// choice form, used where the main one does not fit.
+type EnumerationForms struct {
+	List            *uuid.UUID `yaml:"list,omitempty" json:"list,omitempty"`
+	Choice          *uuid.UUID `yaml:"choice,omitempty" json:"choice,omitempty"`
+	AuxiliaryList   *uuid.UUID `yaml:"auxiliary_list,omitempty" json:"auxiliaryList,omitempty"`
+	AuxiliaryChoice *uuid.UUID `yaml:"auxiliary_choice,omitempty" json:"auxiliaryChoice,omitempty"`
+}
+
+// Enumeration is a closed list of values the developer writes and the user
+// cannot change. That is all it keeps of its own - but it is shown, chosen
+// from and acted upon like any other object, so it has presentations, forms,
+// a manager module, commands and templates the same way.
 type Enumeration struct {
-	Format int                `yaml:"format"`
-	ID     uuid.UUID          `yaml:"id"`
-	Name   string             `yaml:"name"`
-	Title  LocalizedText      `yaml:"title"`
-	Values []EnumerationValue `yaml:"values"`
+	Format  int           `yaml:"format"`
+	ID      uuid.UUID     `yaml:"id"`
+	Name    string        `yaml:"name"`
+	Title   LocalizedText `yaml:"title"`
+	Comment string        `yaml:"comment,omitempty"`
+	// Explanation is the sentence shown where the object is offered - in the
+	// panel of actions, next to the command that opens it.
+	Explanation LocalizedText `yaml:"explanation,omitempty"`
+	// ListPresentation names the list of values for the user; the extended one
+	// is used where there is room for a longer wording.
+	ListPresentation         LocalizedText      `yaml:"list_presentation,omitempty"`
+	ExtendedListPresentation LocalizedText      `yaml:"extended_list_presentation,omitempty"`
+	Values                   []EnumerationValue `yaml:"values"`
+	// How a value of this enumeration is picked where it is asked for.
+	ChoiceMode           ChoiceMode    `yaml:"choice_mode,omitempty"`
+	QuickChoice          bool          `yaml:"quick_choice,omitempty"`
+	ChoiceHistoryOnInput ChoiceHistory `yaml:"choice_history_on_input,omitempty"`
+	// UseStandardCommands decides whether the platform offers its own commands
+	// for this object - opening the list and the rest.
+	UseStandardCommands bool             `yaml:"use_standard_commands,omitempty"`
+	ManagerModule       *uuid.UUID       `yaml:"manager_module,omitempty"`
+	Forms               EnumerationForms `yaml:"forms,omitempty"`
+	Commands            []ObjectCommand  `yaml:"commands,omitempty"`
+	Templates           []ObjectTemplate `yaml:"templates,omitempty"`
 }
 
 type DefinedTypeObject struct {
@@ -767,6 +824,40 @@ func DecodeEnumeration(source string, reader io.Reader, manifest project.Project
 		names[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", item.Title, manifest)...)
 	}
+	for name, text := range map[string]LocalizedText{
+		"explanation": value.Explanation, "list_presentation": value.ListPresentation,
+		"extended_list_presentation": value.ExtendedListPresentation,
+	} {
+		if len(text) > 0 {
+			issues = append(issues, validateTitle(name, text, manifest)...)
+		}
+	}
+	switch value.ChoiceMode {
+	case "", ChoiceBothWays, ChoiceFromForm, ChoiceQuickOnly:
+	default:
+		issues = append(issues, "choice_mode must be both-ways, from-form or quick-choice")
+	}
+	switch value.ChoiceHistoryOnInput {
+	case "", ChoiceHistoryAuto, ChoiceHistoryUse, ChoiceHistoryDontUse:
+	default:
+		issues = append(issues, "choice_history_on_input must be auto, use or dont-use")
+	}
+	// Choosing only from a form and offering a quick choice are two answers to
+	// one question, and the second one is then never asked.
+	if value.ChoiceMode == ChoiceFromForm && value.QuickChoice {
+		issues = append(issues, "quick_choice contradicts choice_mode from-form")
+	}
+	for name, id := range map[string]*uuid.UUID{
+		"manager_module": value.ManagerModule, "forms.list": value.Forms.List,
+		"forms.choice": value.Forms.Choice, "forms.auxiliary_list": value.Forms.AuxiliaryList,
+		"forms.auxiliary_choice": value.Forms.AuxiliaryChoice,
+	} {
+		if id != nil && id.IsZero() {
+			issues = append(issues, name+" must be a non-zero UUID")
+		}
+	}
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ManagerModule)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return Enumeration{}, err
 	}
@@ -1283,10 +1374,22 @@ func cloneSessionParameter(value SessionParameter) SessionParameter {
 }
 func cloneEnumeration(value Enumeration) Enumeration {
 	value.Title = cloneTitle(value.Title)
+	value.Explanation = cloneTitle(value.Explanation)
+	value.ListPresentation = cloneTitle(value.ListPresentation)
+	value.ExtendedListPresentation = cloneTitle(value.ExtendedListPresentation)
 	value.Values = slices.Clone(value.Values)
 	for index := range value.Values {
 		value.Values[index].Title = cloneTitle(value.Values[index].Title)
 	}
+	for _, id := range []**uuid.UUID{&value.ManagerModule, &value.Forms.List, &value.Forms.Choice,
+		&value.Forms.AuxiliaryList, &value.Forms.AuxiliaryChoice} {
+		if *id != nil {
+			copied := **id
+			*id = &copied
+		}
+	}
+	value.Commands = cloneObjectCommands(value.Commands)
+	value.Templates = cloneObjectTemplates(value.Templates)
 	return value
 }
 func cloneDefinedType(value DefinedTypeObject) DefinedTypeObject {
