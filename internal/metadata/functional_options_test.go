@@ -18,6 +18,7 @@ const (
 	optionDimension = "d0000000-0000-4000-8000-000000000015"
 	optionResource  = "d0000000-0000-4000-8000-000000000016"
 	optionSecond    = "d0000000-0000-4000-8000-000000000020"
+	optionParameter = "d0000000-0000-4000-8000-000000000021"
 )
 
 // optionProject writes an object rich enough to be switched off piece by
@@ -130,6 +131,15 @@ title: {ru: Учёт по складу}
 location: {kind: information-registers, object: `+optionRegister+`, element: `+optionResource+`}
 content:
   - {kind: catalogs, object: `+optionCatalog+`, element: `+optionAttribute+`}
+`)
+	// The value differs per warehouse, so something has to say which one:
+	// a parameter standing for that dimension of the register.
+	writeMetadata(t, root, FunctionalOptionParameterKind, optionParameter, `format: 1
+id: `+optionParameter+`
+name: Склад
+title: {ru: Склад}
+use:
+  - {kind: information-registers, object: `+optionRegister+`, element: `+optionDimension+`}
 `)
 	catalog, err := Load(root)
 	if err != nil {

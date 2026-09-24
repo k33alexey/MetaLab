@@ -515,6 +515,9 @@ type Catalog struct {
 	FunctionalOptions                []FunctionalOptionDefinition
 	functionalOptionByName           map[string]int
 	functionalOptionByID             map[uuid.UUID]int
+	FunctionalOptionParameters       []FunctionalOptionParameterDefinition
+	functionalOptionParameterByName  map[string]int
+	functionalOptionParameterByID    map[uuid.UUID]int
 	constantByName                   map[string]int
 	constantByID                     map[uuid.UUID]int
 	enumerationByName                map[string]int
