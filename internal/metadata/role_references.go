@@ -43,6 +43,37 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "deletionmark": true, "version": false, "predefined": false, "predefineddataname": false}
 		addAttributes(item.Attributes)
 		addParts(item.TableParts)
+	} else if index, ok := catalog.chartOfCharacteristicTypesByID[id]; ok {
+		item := catalog.ChartsOfCharacteristicTypes[index]
+		// A chart of characteristic types is a catalog of kinds of property,
+		// and rights on it are a catalog's rights. Its own standard attribute
+		// is the value type: a role may keep it out of reach while letting the
+		// rest of the element be edited.
+		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
+		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "valuetype": true,
+			"deletionmark": true, "version": false, "predefined": false, "predefineddataname": false}
+		addAttributes(item.Attributes)
+		addParts(item.TableParts)
+	} else if index, ok := catalog.chartOfAccountsByID[id]; ok {
+		item := catalog.ChartsOfAccounts[index]
+		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
+		// The order is derived from the code, so it is readable but not
+		// writable: letting a role grant what nobody may change would be a
+		// right over nothing.
+		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "accountorder": false,
+			"accountkind": true, "offbalance": true, "deletionmark": true, "version": false,
+			"predefined": false, "predefineddataname": false}
+		// Each declared flag is a field of its own, on the account and on the
+		// line of analytics alike: an application may well let a role see the
+		// accounts and not the flags its bookkeeping rests on.
+		for _, flag := range item.AccountingFlags {
+			target.fields[flag.ID.String()] = true
+		}
+		for _, flag := range item.ExtDimensionAccountingFlags {
+			target.fields[flag.ID.String()] = true
+		}
+		addAttributes(item.Attributes)
+		addParts(item.TableParts)
 	} else if index, ok := catalog.documentByID[id]; ok {
 		item := catalog.Documents[index]
 		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true

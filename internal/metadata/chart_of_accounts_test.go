@@ -1,6 +1,8 @@
 package metadata
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -257,5 +259,80 @@ func TestAccountOrderFollowsTheCodeMask(t *testing.T) {
 	}
 	if got := AccountCodeOrder("@@", "41", 5); !strings.HasPrefix(got, "41") || len(got) != 5 {
 		t.Fatalf("a long order must be padded to its length, got %q", got)
+	}
+}
+
+// A role must be able to reach the new kinds. Rights are resolved per kind, so
+// a kind the resolver does not know is not merely invisible in the editor: a
+// role that grants anything on it refuses to load at all, and the whole project
+// goes down with it rather than one line of the import report.
+func TestRightsReachChartsOfAccountsAndCharacteristics(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeMetadata(t, root, ChartOfCharacteristicTypesKind, characteristicsID, accountsChartYAML)
+	writeMetadata(t, root, ChartOfAccountsKind, accountsID, `format: 1
+id: `+accountsID+`
+name: Основной
+title: {ru: Основной}
+code: {type: string, length: 5, auto: true}
+description_length: 120
+ext_dimension_types: `+characteristicsID+`
+max_ext_dimension_count: 2
+accounting_flags:
+  - id: `+accountFlagID+`
+    name: Количественный
+    title: {ru: Количественный}
+`)
+	if err := os.MkdirAll(filepath.Join(root, "metadata", "roles"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	roleID := "90000000-0000-4000-8000-000000000001"
+	if err := os.WriteFile(filepath.Join(root, "metadata", "roles", roleID+".yaml"), []byte(`format: 1
+id: `+roleID+`
+name: Бухгалтер
+title: {ru: Бухгалтер}
+objects:
+  - object: `+accountsID+`
+    operations: [read, create, update]
+    fields:
+      - field: `+accountFlagID+`
+        operations: [read]
+      - field: accountkind
+        operations: [read, update]
+  - object: `+characteristicsID+`
+    operations: [read]
+    fields:
+      - field: valuetype
+        operations: [read]
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(root); err != nil {
+		t.Fatalf("a role granting rights on the new kinds was refused: %v", err)
+	}
+	schema, err := LoadPermissionSchema(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var accounts, characteristics *PermissionObject
+	for index := range schema.Objects {
+		switch schema.Objects[index].Kind {
+		case ChartOfAccountsKind:
+			accounts = &schema.Objects[index]
+		case ChartOfCharacteristicTypesKind:
+			characteristics = &schema.Objects[index]
+		}
+	}
+	if accounts == nil || characteristics == nil {
+		t.Fatal("the role editor does not show the new kinds at all")
+	}
+	var flagField bool
+	for _, field := range accounts.Fields {
+		if field.Name == "Количественный" {
+			flagField = true
+		}
+	}
+	if !flagField {
+		t.Fatal("an accounting flag must be a field a role can restrict, named as the application named it")
 	}
 }

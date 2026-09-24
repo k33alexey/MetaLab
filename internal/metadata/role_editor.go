@@ -113,6 +113,19 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	for _, item := range catalog.Catalogs {
 		appendObject(CatalogKind, item.ID, item.Name, item.Title, item.Attributes, item.TableParts)
 	}
+	for _, item := range catalog.ChartsOfCharacteristicTypes {
+		appendObject(ChartOfCharacteristicTypesKind, item.ID, item.Name, item.Title, item.Attributes, item.TableParts)
+	}
+	for _, item := range catalog.ChartsOfAccounts {
+		// Accounting flags are fields of the account, so the editor has to show
+		// them by name next to the attributes - a right on "Количественный" is
+		// meaningless if the editor calls it by its UUID.
+		fields := slices.Clone(item.Attributes)
+		for _, flag := range append(slices.Clone(item.AccountingFlags), item.ExtDimensionAccountingFlags...) {
+			fields = append(fields, Attribute{ID: flag.ID, Name: flag.Name, Title: flag.Title, Types: []Type{{Kind: BooleanType}}})
+		}
+		appendObject(ChartOfAccountsKind, item.ID, item.Name, item.Title, fields, item.TableParts)
+	}
 	for _, item := range catalog.Documents {
 		appendObject(DocumentKind, item.ID, item.Name, item.Title, item.Attributes, item.TableParts)
 	}
