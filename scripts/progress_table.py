@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Собрать docs/PROGRESS.md из docs/BLOCKS.md.
+"""Собрать docs/PROGRESS.md и docs/requirements/progress-table.rst из docs/BLOCKS.md.
 
 Карта блоков — единственный источник плана и галочек. Таблица прогресса
 целиком выводится из неё, поэтому расходиться им не с чем: любое изменение
@@ -16,8 +16,11 @@
 и переносятся из прежнего PROGRESS.md слово в слово. Всё остальное между
 прогонами перезаписывается, править его руками бесполезно — правится карта.
 
+Прогонять после каждой отметки итерации в карте — см. «Правило завершения
+итерации» в CLAUDE.md.
+
 Использование:
-    python3 scripts/progress_table.py           # перезаписать docs/PROGRESS.md
+    python3 scripts/progress_table.py           # перезаписать оба файла
     python3 scripts/progress_table.py --check   # не писать, сверить (код 1 при расхождении)
     python3 scripts/progress_table.py --stdout  # напечатать, ничего не трогая
 """
@@ -349,7 +352,9 @@ def render(
     add("")
     add(
         "1. Итерация закончена и подтверждена владельцем → галочка ставится в "
-        "`docs/BLOCKS.md`, затем `python3 scripts/progress_table.py`."
+        "`docs/BLOCKS.md`, затем `python3 scripts/progress_table.py`. Один "
+        "прогон пересобирает и этот файл, и короткую таблицу "
+        "`docs/requirements/progress-table.rst`."
     )
     add(
         "2. Блок закрыт → дата закрытия пишется в раздел «Текущее состояние» "
