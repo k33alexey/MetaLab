@@ -148,6 +148,18 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := loadObjectKind(root, ChartOfCharacteristicTypesKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeChartOfCharacteristicTypes(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.ChartsOfCharacteristicTypes = append(catalog.ChartsOfCharacteristicTypes, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadObjectKind(root, DocumentKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeDocument(source, file, manifest)
 		if err == nil && value.ID != id {
@@ -280,6 +292,9 @@ func NewCatalogSnapshotWithEventSubscriptions(manifest project.Project, constant
 	}
 	for index := range result.Documents {
 		result.Documents[index] = cloneDocumentDefinition(result.Documents[index])
+	}
+	for index := range result.ChartsOfCharacteristicTypes {
+		result.ChartsOfCharacteristicTypes[index] = cloneChartOfCharacteristicTypes(result.ChartsOfCharacteristicTypes[index])
 	}
 	for index := range result.InformationRegisters {
 		result.InformationRegisters[index] = cloneInformationRegisterDefinition(result.InformationRegisters[index])
@@ -427,6 +442,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	sort.Slice(catalog.DefinedTypes, func(i, j int) bool { return catalog.DefinedTypes[i].ID.String() < catalog.DefinedTypes[j].ID.String() })
 	sort.Slice(catalog.Catalogs, func(i, j int) bool { return catalog.Catalogs[i].ID.String() < catalog.Catalogs[j].ID.String() })
 	sort.Slice(catalog.Documents, func(i, j int) bool { return catalog.Documents[i].ID.String() < catalog.Documents[j].ID.String() })
+	sort.Slice(catalog.ChartsOfCharacteristicTypes, func(i, j int) bool {
+		return catalog.ChartsOfCharacteristicTypes[i].ID.String() < catalog.ChartsOfCharacteristicTypes[j].ID.String()
+	})
 	sort.Slice(catalog.InformationRegisters, func(i, j int) bool {
 		return catalog.InformationRegisters[i].ID.String() < catalog.InformationRegisters[j].ID.String()
 	})
@@ -438,6 +456,8 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.definedTypeByName, catalog.definedTypeByID = make(map[string]int, len(catalog.DefinedTypes)), make(map[uuid.UUID]int, len(catalog.DefinedTypes))
 	catalog.catalogByName, catalog.catalogByID = make(map[string]int, len(catalog.Catalogs)), make(map[uuid.UUID]int, len(catalog.Catalogs))
 	catalog.documentByName, catalog.documentByID = make(map[string]int, len(catalog.Documents)), make(map[uuid.UUID]int, len(catalog.Documents))
+	catalog.chartOfCharacteristicTypesByName = make(map[string]int, len(catalog.ChartsOfCharacteristicTypes))
+	catalog.chartOfCharacteristicTypesByID = make(map[uuid.UUID]int, len(catalog.ChartsOfCharacteristicTypes))
 	catalog.informationRegisterByName, catalog.informationRegisterByID = make(map[string]int, len(catalog.InformationRegisters)), make(map[uuid.UUID]int, len(catalog.InformationRegisters))
 	catalog.accumulationRegisterByName, catalog.accumulationRegisterByID = make(map[string]int, len(catalog.AccumulationRegisters)), make(map[uuid.UUID]int, len(catalog.AccumulationRegisters))
 	allIDs := map[uuid.UUID]string{}
@@ -542,6 +562,38 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 					return fmt.Errorf("%w: %s and catalog table part attribute %s.%s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, attribute.Name, attribute.ID)
 				}
 				allIDs[attribute.ID] = "catalog table part attribute " + item.Name + "." + part.Name + "." + attribute.Name
+			}
+		}
+	}
+	for index, item := range catalog.ChartsOfCharacteristicTypes {
+		if err := add("chart of characteristic types", item.ID, item.Name, index, catalog.chartOfCharacteristicTypesByName, catalog.chartOfCharacteristicTypesByID); err != nil {
+			return err
+		}
+		for _, predefined := range item.Predefined {
+			if previous, ok := allIDs[predefined.ID]; ok {
+				return fmt.Errorf("%w: %s and predefined characteristic %s.%s use %s", ErrDuplicateID, previous, item.Name, predefined.Name, predefined.ID)
+			}
+			allIDs[predefined.ID] = "predefined characteristic " + item.Name + "." + predefined.Name
+		}
+		for _, attribute := range item.Attributes {
+			if _, common := catalog.commonAttributeByID[attribute.ID]; common {
+				continue
+			}
+			if previous, ok := allIDs[attribute.ID]; ok {
+				return fmt.Errorf("%w: %s and chart of characteristic types attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
+			}
+			allIDs[attribute.ID] = "chart of characteristic types attribute " + item.Name + "." + attribute.Name
+		}
+		for _, part := range item.TableParts {
+			if previous, ok := allIDs[part.ID]; ok {
+				return fmt.Errorf("%w: %s and chart of characteristic types table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
+			}
+			allIDs[part.ID] = "chart of characteristic types table part " + item.Name + "." + part.Name
+			for _, attribute := range part.Attributes {
+				if previous, ok := allIDs[attribute.ID]; ok {
+					return fmt.Errorf("%w: %s and chart of characteristic types table part attribute %s.%s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, attribute.Name, attribute.ID)
+				}
+				allIDs[attribute.ID] = "chart of characteristic types table part attribute " + item.Name + "." + part.Name + "." + attribute.Name
 			}
 		}
 	}
@@ -664,6 +716,48 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 	}
+	for _, item := range catalog.ChartsOfCharacteristicTypes {
+		owner := "chart of characteristic types " + item.Name
+		if err := catalog.validateReferences(owner+" value type", item.ValueType); err != nil {
+			return err
+		}
+		// The catalog of additional values is where characteristics whose
+		// values fit no existing type keep them; a chart pointing at a catalog
+		// that is not there would lose those values silently.
+		if item.AdditionalValues != nil {
+			if _, ok := catalog.catalogByID[*item.AdditionalValues]; !ok {
+				return fmt.Errorf("%s references unknown catalog of additional values %s", owner, item.AdditionalValues)
+			}
+		}
+		for _, attribute := range item.Attributes {
+			if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
+				return err
+			}
+		}
+		for _, part := range item.TableParts {
+			for _, attribute := range part.Attributes {
+				if err := catalog.validateReferences(owner+" table part "+part.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
+					return err
+				}
+			}
+		}
+		for _, predefined := range item.Predefined {
+			values := make(map[uuid.UUID]Value, len(predefined.Attributes))
+			for name, value := range predefined.Attributes {
+				attribute, ok := findCatalogAttribute(item.Attributes, name)
+				if !ok {
+					return fmt.Errorf("predefined characteristic %s.%s has unknown attribute %s", item.Name, predefined.Name, name)
+				}
+				values[attribute.ID] = value
+			}
+			if _, err := catalog.normalizeAttributes(item.Name+"."+predefined.Name, item.Attributes, values); err != nil {
+				return fmt.Errorf("predefined characteristic %s.%s: %w", item.Name, predefined.Name, err)
+			}
+		}
+		if err := validateObjectFileSources(root, ChartOfCharacteristicTypesKind, item.ID, "chart of characteristic types", item.Name, item.ObjectModule, item.ManagerModule, item.Forms); err != nil {
+			return err
+		}
+	}
 	for _, item := range catalog.Documents {
 		for _, attribute := range item.Attributes {
 			if err := catalog.validateReferences("document "+item.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
@@ -749,6 +843,10 @@ func (catalog *Catalog) validateReferences(owner string, types []Type) error {
 		case DocumentType:
 			if _, ok := catalog.documentByID[*item.Reference]; !ok {
 				return fmt.Errorf("%s references unknown document %s", owner, item.Reference)
+			}
+		case CharacteristicTypesType:
+			if _, ok := catalog.chartOfCharacteristicTypesByID[*item.Reference]; !ok {
+				return fmt.Errorf("%s references unknown chart of characteristic types %s", owner, item.Reference)
 			}
 		}
 	}

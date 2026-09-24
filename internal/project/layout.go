@@ -40,7 +40,10 @@ var (
 	// description, module(s) and managed forms under one folder named by
 	// the object's stable UUID, instead of scattering them across the flat
 	// modules/ and forms/ roots.
-	objectFolderKinds = []string{"catalogs", "documents", "information-registers", "accumulation-registers"}
+	// Виды, у которых есть собственные модули и формы, хранят объект папкой:
+	// описание лежит рядом со своим кодом и формами, а не в общей куче.
+	objectFolderKinds = []string{"catalogs", "documents", "information-registers", "accumulation-registers",
+		"charts-of-characteristic-types"}
 	// Порядок — тот, в котором виды показываются в дереве конфигурации, а не
 	// алфавитный: сначала группа «Общие», затем объекты верхнего уровня.
 	// Нумераторы и последовательности стоят рядом с документами, потому что

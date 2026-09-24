@@ -35,6 +35,9 @@ const (
 	DocumentKind             Kind = "documents"
 	InformationRegisterKind  Kind = "information-registers"
 	AccumulationRegisterKind Kind = "accumulation-registers"
+	// ChartOfCharacteristicTypesKind holds the kinds of characteristic a
+	// configuration lets its users invent without changing the configuration.
+	ChartOfCharacteristicTypesKind Kind = "charts-of-characteristic-types"
 )
 
 type TypeKind string
@@ -55,6 +58,10 @@ const (
 	DefinedType     TypeKind = "defined-type"
 	CatalogType     TypeKind = "catalog"
 	DocumentType    TypeKind = "document"
+	// CharacteristicTypesType is a reference to one kind of characteristic -
+	// an element of a chart of characteristic types, the way a catalog
+	// reference points at one element of a catalog.
+	CharacteristicTypesType TypeKind = "chart-of-characteristic-types"
 	// ValueStorageType holds a value of any shape, opaque to the database.
 	// It is storable but cannot be form data - reading it costs a round trip
 	// and it has no presentation to show in a field.
@@ -286,47 +293,50 @@ type CatalogDefinition struct {
 
 // Catalog is an immutable-by-convention snapshot of the supported metadata kinds.
 type Catalog struct {
-	Project                    project.Project
-	Roles                      []RoleDefinition
-	roleByName                 map[string]int
-	roleByID                   map[uuid.UUID]int
-	Subsystems                 []SubsystemDefinition
-	subsystemByName            map[string]int
-	subsystemByID              map[uuid.UUID]int
-	Constants                  []Constant
-	SessionParameters          []SessionParameter
-	sessionParameterByName     map[string]int
-	sessionParameterByID       map[uuid.UUID]int
-	CommonAttributes           []CommonAttributeDefinition
-	commonAttributeByName      map[string]int
-	commonAttributeByID        map[uuid.UUID]int
-	CommonModules              []CommonModuleDefinition
-	commonModuleByName         map[string]int
-	commonModuleByID           map[uuid.UUID]int
-	commonModuleByModuleID     map[uuid.UUID]int
-	EventSubscriptions         []EventSubscriptionDefinition
-	eventSubscriptionByName    map[string]int
-	eventSubscriptionByID      map[uuid.UUID]int
-	Enumerations               []Enumeration
-	DefinedTypes               []DefinedTypeObject
-	Catalogs                   []CatalogDefinition
-	Documents                  []DocumentDefinition
-	InformationRegisters       []InformationRegisterDefinition
-	AccumulationRegisters      []AccumulationRegisterDefinition
-	constantByName             map[string]int
-	constantByID               map[uuid.UUID]int
-	enumerationByName          map[string]int
-	definedTypeByName          map[string]int
-	enumerationByID            map[uuid.UUID]int
-	definedTypeByID            map[uuid.UUID]int
-	catalogByName              map[string]int
-	catalogByID                map[uuid.UUID]int
-	documentByName             map[string]int
-	documentByID               map[uuid.UUID]int
-	informationRegisterByName  map[string]int
-	informationRegisterByID    map[uuid.UUID]int
-	accumulationRegisterByName map[string]int
-	accumulationRegisterByID   map[uuid.UUID]int
+	Project                          project.Project
+	Roles                            []RoleDefinition
+	roleByName                       map[string]int
+	roleByID                         map[uuid.UUID]int
+	Subsystems                       []SubsystemDefinition
+	subsystemByName                  map[string]int
+	subsystemByID                    map[uuid.UUID]int
+	Constants                        []Constant
+	SessionParameters                []SessionParameter
+	sessionParameterByName           map[string]int
+	sessionParameterByID             map[uuid.UUID]int
+	CommonAttributes                 []CommonAttributeDefinition
+	commonAttributeByName            map[string]int
+	commonAttributeByID              map[uuid.UUID]int
+	CommonModules                    []CommonModuleDefinition
+	commonModuleByName               map[string]int
+	commonModuleByID                 map[uuid.UUID]int
+	commonModuleByModuleID           map[uuid.UUID]int
+	EventSubscriptions               []EventSubscriptionDefinition
+	eventSubscriptionByName          map[string]int
+	eventSubscriptionByID            map[uuid.UUID]int
+	Enumerations                     []Enumeration
+	DefinedTypes                     []DefinedTypeObject
+	Catalogs                         []CatalogDefinition
+	Documents                        []DocumentDefinition
+	ChartsOfCharacteristicTypes      []ChartOfCharacteristicTypesDefinition
+	InformationRegisters             []InformationRegisterDefinition
+	AccumulationRegisters            []AccumulationRegisterDefinition
+	constantByName                   map[string]int
+	constantByID                     map[uuid.UUID]int
+	enumerationByName                map[string]int
+	definedTypeByName                map[string]int
+	enumerationByID                  map[uuid.UUID]int
+	definedTypeByID                  map[uuid.UUID]int
+	catalogByName                    map[string]int
+	catalogByID                      map[uuid.UUID]int
+	documentByName                   map[string]int
+	documentByID                     map[uuid.UUID]int
+	informationRegisterByName        map[string]int
+	informationRegisterByID          map[uuid.UUID]int
+	accumulationRegisterByName       map[string]int
+	accumulationRegisterByID         map[uuid.UUID]int
+	chartOfCharacteristicTypesByName map[string]int
+	chartOfCharacteristicTypesByID   map[uuid.UUID]int
 }
 
 func (catalog *Catalog) ConstantByID(id uuid.UUID) (Constant, bool) {
@@ -624,31 +634,76 @@ func DecodeCatalog(source string, reader io.Reader, manifest project.Project) (C
 		return CatalogDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
-	switch value.Code.Type {
+	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
+		code:              value.Code,
+		descriptionLength: value.DescriptionLength,
+		attributes:        value.Attributes,
+		tableParts:        value.TableParts,
+		objectModule:      value.ObjectModule,
+		managerModule:     value.ManagerModule,
+		forms:             value.Forms,
+		list:              value.List,
+		predefined:        value.Predefined,
+		reservedName:      reservedCatalogObjectName,
+	}, manifest)...)
+	if err := issuesError(source, value.Format, issues); err != nil {
+		return CatalogDefinition{}, err
+	}
+	return value, nil
+}
+
+// referenceObjectShape is everything a reference object repeats from the
+// catalog: a code, a description, attributes, table parts, its own modules,
+// forms, list settings and predefined elements. Charts of characteristic
+// types, charts of accounts, charts of calculation types, business processes
+// and tasks all repeat it, and each adds its own on top - so the repeated part
+// is checked in one place rather than copied per kind, where the copies drift.
+type referenceObjectShape struct {
+	code              CatalogCode
+	descriptionLength int
+	attributes        []Attribute
+	tableParts        []TablePart
+	objectModule      *uuid.UUID
+	managerModule     *uuid.UUID
+	forms             ObjectForms
+	list              ListSettings
+	predefined        []PredefinedCatalogItem
+	// reservedName says which attribute names the kind keeps for itself. A
+	// kind with standard attributes of its own passes its own answer.
+	reservedName func(string) bool
+}
+
+func validateReferenceObjectShape(shape referenceObjectShape, manifest project.Project) []string {
+	var issues []string
+	switch shape.code.Type {
 	case StringType:
-		if value.Code.Length < 1 || value.Code.Length > 128 {
+		if shape.code.Length < 1 || shape.code.Length > 128 {
 			issues = append(issues, "code.length must be 1..128 for string codes")
 		}
 	case NumberType:
-		if value.Code.Length < 1 || value.Code.Length > 38 {
+		if shape.code.Length < 1 || shape.code.Length > 38 {
 			issues = append(issues, "code.length must be 1..38 for number codes")
 		}
 	default:
 		issues = append(issues, "code.type must be string or number")
 	}
-	if value.DescriptionLength < 1 || value.DescriptionLength > 1_048_576 {
+	if shape.descriptionLength < 1 || shape.descriptionLength > 1_048_576 {
 		issues = append(issues, "description_length must be 1..1048576")
 	}
-	issues = append(issues, validateAttributes("attributes", value.Attributes, manifest, reservedCatalogObjectName)...)
-	attributeNames := make(map[string]bool, len(value.Attributes))
-	for _, attribute := range value.Attributes {
+	reserved := shape.reservedName
+	if reserved == nil {
+		reserved = reservedCatalogObjectName
+	}
+	issues = append(issues, validateAttributes("attributes", shape.attributes, manifest, reserved)...)
+	attributeNames := make(map[string]bool, len(shape.attributes))
+	for _, attribute := range shape.attributes {
 		attributeNames[strings.ToLower(attribute.Name)] = true
 	}
-	if len(value.TableParts) > 128 {
+	if len(shape.tableParts) > 128 {
 		issues = append(issues, "table_parts must not contain more than 128 items")
 	}
 	partNames, partIDs := map[string]bool{}, map[uuid.UUID]bool{}
-	for index, part := range value.TableParts {
+	for index, part := range shape.tableParts {
 		prefix := fmt.Sprintf("table_parts[%d]", index)
 		if part.ID.IsZero() {
 			issues = append(issues, prefix+".id must be a non-zero UUID")
@@ -664,7 +719,7 @@ func DecodeCatalog(source string, reader io.Reader, manifest project.Project) (C
 		if partNames[folded] {
 			issues = append(issues, prefix+".name must be unique")
 		}
-		if reservedCatalogObjectName(folded) {
+		if reserved(folded) {
 			issues = append(issues, prefix+".name is reserved")
 		}
 		if attributeNames[folded] {
@@ -674,32 +729,28 @@ func DecodeCatalog(source string, reader io.Reader, manifest project.Project) (C
 		issues = append(issues, validateTitle(prefix+".title", part.Title, manifest)...)
 		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, manifest, nil)...)
 	}
-	for name, module := range map[string]*uuid.UUID{"object_module": value.ObjectModule, "manager_module": value.ManagerModule} {
+	for name, module := range map[string]*uuid.UUID{"object_module": shape.objectModule, "manager_module": shape.managerModule} {
 		if module != nil && module.IsZero() {
 			issues = append(issues, name+" must be a non-zero UUID")
 		}
 	}
-	if value.ObjectModule != nil && value.ManagerModule != nil && *value.ObjectModule == *value.ManagerModule {
+	if shape.objectModule != nil && shape.managerModule != nil && *shape.objectModule == *shape.managerModule {
 		issues = append(issues, "object_module and manager_module must be different")
 	}
-	issues = append(issues, validateObjectForms(value.Forms)...)
-	issues = append(issues, validateListSettings(value.List, value.Attributes, map[string]TypeKind{
-		"code": value.Code.Type, "description": StringType,
+	issues = append(issues, validateObjectForms(shape.forms)...)
+	issues = append(issues, validateListSettings(shape.list, shape.attributes, map[string]TypeKind{
+		"code": shape.code.Type, "description": StringType,
 	})...)
-	issues = append(issues, validatePredefinedCatalogItems(value)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return CatalogDefinition{}, err
-	}
-	return value, nil
+	return append(issues, validatePredefinedItems(shape)...)
 }
 
-func validatePredefinedCatalogItems(definition CatalogDefinition) []string {
-	if len(definition.Predefined) > maxObjectsPerKind {
+func validatePredefinedItems(shape referenceObjectShape) []string {
+	if len(shape.predefined) > maxObjectsPerKind {
 		return []string{fmt.Sprintf("predefined must not contain more than %d items", maxObjectsPerKind)}
 	}
 	var issues []string
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
-	for index, item := range definition.Predefined {
+	for index, item := range shape.predefined {
 		prefix := fmt.Sprintf("predefined[%d]", index)
 		if item.ID.IsZero() {
 			issues = append(issues, prefix+".id must be a non-zero UUID")
@@ -717,18 +768,18 @@ func validatePredefinedCatalogItems(definition CatalogDefinition) []string {
 		}
 		names[folded] = true
 		if item.Code == "" {
-			if !definition.Code.Auto {
+			if !shape.code.Auto {
 				issues = append(issues, prefix+".code is required when automatic codes are disabled")
 			}
-		} else if _, err := normalizeCatalogCode(definition.Code, item.Code); err != nil {
+		} else if _, err := normalizeCatalogCode(shape.code, item.Code); err != nil {
 			issues = append(issues, prefix+".code is invalid: "+err.Error())
 		}
-		if !utf8.ValidString(item.Description) || utf8.RuneCountInString(item.Description) > definition.DescriptionLength {
-			issues = append(issues, fmt.Sprintf("%s.description must not exceed %d characters", prefix, definition.DescriptionLength))
+		if !utf8.ValidString(item.Description) || utf8.RuneCountInString(item.Description) > shape.descriptionLength {
+			issues = append(issues, fmt.Sprintf("%s.description must not exceed %d characters", prefix, shape.descriptionLength))
 		}
 		attributeNames := map[string]bool{}
 		for name := range item.Attributes {
-			attribute, ok := findCatalogAttribute(definition.Attributes, name)
+			attribute, ok := findCatalogAttribute(shape.attributes, name)
 			if !ok {
 				issues = append(issues, prefix+".attributes."+name+" is unknown")
 				continue
@@ -739,7 +790,7 @@ func validatePredefinedCatalogItems(definition CatalogDefinition) []string {
 			}
 			attributeNames[key] = true
 		}
-		for _, attribute := range definition.Attributes {
+		for _, attribute := range shape.attributes {
 			if attribute.Required && !attributeNames[strings.ToLower(attribute.Name)] {
 				issues = append(issues, prefix+".attributes."+attribute.Name+" is required")
 			}
@@ -883,7 +934,8 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 			issues = append(issues, prefix+" duplicates an allowed type")
 		}
 		seen[key] = true
-		referenced := item.Kind == EnumerationType || item.Kind == DefinedType || item.Kind == CatalogType || item.Kind == DocumentType
+		referenced := item.Kind == EnumerationType || item.Kind == DefinedType || item.Kind == CatalogType ||
+			item.Kind == DocumentType || item.Kind == CharacteristicTypesType
 		if referenced && (item.Reference == nil || item.Reference.IsZero()) {
 			issues = append(issues, prefix+".reference is required")
 		}
@@ -938,7 +990,7 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 			if item.Length != 0 || item.Precision != 0 || item.Scale != 0 {
 				issues = append(issues, prefix+" has unsupported qualifiers")
 			}
-		case BooleanType, ValueStorageType, EnumerationType, DefinedType, CatalogType, DocumentType:
+		case BooleanType, ValueStorageType, EnumerationType, DefinedType, CatalogType, DocumentType, CharacteristicTypesType:
 			if item.Length != 0 || item.Precision != 0 || item.Scale != 0 {
 				issues = append(issues, prefix+" has unsupported qualifiers")
 			}

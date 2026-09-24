@@ -27,6 +27,9 @@ const (
 	informationRegisterID = "60000000-0000-4000-8000-000000000001"
 	registerDimensionID   = "60000000-0000-4000-8000-000000000002"
 	registerResourceID    = "60000000-0000-4000-8000-000000000003"
+	characteristicsID     = "70000000-0000-4000-8000-000000000001"
+	characteristicAttrID  = "70000000-0000-4000-8000-000000000002"
+	characteristicPartID  = "70000000-0000-4000-8000-000000000003"
 )
 
 func TestDecodeMetadataIsStrictAndLocalized(t *testing.T) {
@@ -596,7 +599,7 @@ func metadataProject(t *testing.T) string {
 	if err := project.Initialize(root, metadataManifest()); err != nil {
 		t.Fatal(err)
 	}
-	for _, kind := range []Kind{ConstantKind, EnumerationKind, DefinedTypeKind, CatalogKind, DocumentKind, InformationRegisterKind, AccumulationRegisterKind} {
+	for _, kind := range []Kind{ConstantKind, EnumerationKind, DefinedTypeKind, CatalogKind, DocumentKind, InformationRegisterKind, AccumulationRegisterKind, ChartOfCharacteristicTypesKind} {
 		if err := os.MkdirAll(filepath.Join(root, "metadata", string(kind)), 0o755); err != nil {
 			t.Fatal(err)
 		}

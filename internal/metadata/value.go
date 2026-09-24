@@ -163,12 +163,12 @@ func (catalog *Catalog) normalizeAs(value Value, allowed Type) (Value, bool, str
 			return Value{}, false, "value storage must be base64"
 		}
 		return Value{Kind: ValueStorageType, Data: value.Data}, true, ""
-	case ObjectUUIDType, CatalogType, DocumentType:
+	case ObjectUUIDType, CatalogType, DocumentType, CharacteristicTypesType:
 		id, err := uuid.Parse(value.Data)
 		if err != nil {
 			return Value{}, false, "invalid UUID reference"
 		}
-		if (allowed.Kind == CatalogType || allowed.Kind == DocumentType) && id.IsZero() {
+		if allowed.Kind != ObjectUUIDType && id.IsZero() {
 			return Value{}, false, "object reference cannot be empty"
 		}
 		return Value{Kind: allowed.Kind, Data: id.String()}, true, ""
