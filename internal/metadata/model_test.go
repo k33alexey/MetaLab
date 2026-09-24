@@ -602,7 +602,7 @@ func metadataProject(t *testing.T) string {
 	if err := project.Initialize(root, metadataManifest()); err != nil {
 		t.Fatal(err)
 	}
-	for _, kind := range []Kind{ConstantKind, EnumerationKind, DefinedTypeKind, CatalogKind, DocumentKind, InformationRegisterKind, AccumulationRegisterKind, ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind, BusinessProcessKind, TaskKind} {
+	for _, kind := range []Kind{ConstantKind, EnumerationKind, DefinedTypeKind, CatalogKind, DocumentKind, InformationRegisterKind, AccumulationRegisterKind, ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind, BusinessProcessKind, TaskKind, ExchangePlanKind} {
 		if err := os.MkdirAll(filepath.Join(root, "metadata", string(kind)), 0o755); err != nil {
 			t.Fatal(err)
 		}

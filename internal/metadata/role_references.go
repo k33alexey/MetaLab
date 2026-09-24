@@ -129,6 +129,17 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		addAttributes(addressingAsAttributes(item))
 		addAttributes(item.Attributes)
 		addParts(item.TableParts)
+	} else if index, ok := catalog.exchangePlanByID[id]; ok {
+		item := catalog.ExchangePlans[index]
+		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
+		// Which node is this base and what the sides have exchanged is the
+		// platform's own record: a role reads it and never sets it by hand,
+		// because a node that declares itself this one breaks every exchange
+		// that touches it.
+		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "deletionmark": true,
+			"version": false, "thisnode": false, "sentno": false, "receivedno": false}
+		addAttributes(item.Attributes)
+		addParts(item.TableParts)
 	} else if index, ok := catalog.informationRegisterByID[id]; ok {
 		item := catalog.InformationRegisters[index]
 		target.fields["recordid"] = false

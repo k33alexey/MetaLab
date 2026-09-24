@@ -46,6 +46,9 @@ const (
 	// assignments created along the way.
 	BusinessProcessKind Kind = "business-processes"
 	TaskKind            Kind = "tasks"
+	// ExchangePlanKind holds what enters an exchange and who it is exchanged
+	// with.
+	ExchangePlanKind Kind = "exchange-plans"
 )
 
 type TypeKind string
@@ -79,7 +82,9 @@ const (
 	// there is no object kind behind it, the process itself produces it.
 	BusinessProcessType TypeKind = "business-process"
 	TaskType            TypeKind = "task"
-	RoutePointType      TypeKind = "route-point"
+	// ExchangePlanType is a reference to one node of an exchange plan.
+	ExchangePlanType TypeKind = "exchange-plan"
+	RoutePointType   TypeKind = "route-point"
 	// ValueStorageType holds a value of any shape, opaque to the database.
 	// It is storable but cannot be form data - reading it costs a round trip
 	// and it has no presentation to show in a field.
@@ -386,6 +391,7 @@ type Catalog struct {
 	ChartsOfCalculationTypes         []ChartOfCalculationTypesDefinition
 	BusinessProcesses                []BusinessProcessDefinition
 	Tasks                            []TaskDefinition
+	ExchangePlans                    []ExchangePlanDefinition
 	InformationRegisters             []InformationRegisterDefinition
 	AccumulationRegisters            []AccumulationRegisterDefinition
 	constantByName                   map[string]int
@@ -412,6 +418,8 @@ type Catalog struct {
 	businessProcessByID              map[uuid.UUID]int
 	taskByName                       map[string]int
 	taskByID                         map[uuid.UUID]int
+	exchangePlanByName               map[string]int
+	exchangePlanByID                 map[uuid.UUID]int
 }
 
 func (catalog *Catalog) ConstantByID(id uuid.UUID) (Constant, bool) {
@@ -1057,6 +1065,7 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 		referenced := item.Kind == EnumerationType || item.Kind == DefinedType || item.Kind == CatalogType ||
 			item.Kind == DocumentType || item.Kind == CharacteristicTypesType || item.Kind == AccountType ||
 			item.Kind == CalculationTypeType || item.Kind == BusinessProcessType || item.Kind == TaskType ||
+			item.Kind == ExchangePlanType ||
 			item.Kind == RoutePointType
 		if referenced && (item.Reference == nil || item.Reference.IsZero()) {
 			issues = append(issues, prefix+".reference is required")
@@ -1113,7 +1122,7 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 				issues = append(issues, prefix+" has unsupported qualifiers")
 			}
 		case BooleanType, ValueStorageType, EnumerationType, DefinedType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType,
-			BusinessProcessType, TaskType, RoutePointType:
+			BusinessProcessType, TaskType, ExchangePlanType, RoutePointType:
 			if item.Length != 0 || item.Precision != 0 || item.Scale != 0 {
 				issues = append(issues, prefix+" has unsupported qualifiers")
 			}

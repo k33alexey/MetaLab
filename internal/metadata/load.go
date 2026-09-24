@@ -196,6 +196,18 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := loadObjectKind(root, ExchangePlanKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeExchangePlan(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.ExchangePlans = append(catalog.ExchangePlans, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadObjectKind(root, BusinessProcessKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeBusinessProcess(source, file, manifest)
 		if err == nil && value.ID != id {
@@ -356,6 +368,9 @@ func NewCatalogSnapshotWithEventSubscriptions(manifest project.Project, constant
 	for index := range result.Tasks {
 		result.Tasks[index] = cloneTask(result.Tasks[index])
 	}
+	for index := range result.ExchangePlans {
+		result.ExchangePlans[index] = cloneExchangePlan(result.ExchangePlans[index])
+	}
 	for index := range result.InformationRegisters {
 		result.InformationRegisters[index] = cloneInformationRegisterDefinition(result.InformationRegisters[index])
 	}
@@ -515,6 +530,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return catalog.BusinessProcesses[i].ID.String() < catalog.BusinessProcesses[j].ID.String()
 	})
 	sort.Slice(catalog.Tasks, func(i, j int) bool { return catalog.Tasks[i].ID.String() < catalog.Tasks[j].ID.String() })
+	sort.Slice(catalog.ExchangePlans, func(i, j int) bool {
+		return catalog.ExchangePlans[i].ID.String() < catalog.ExchangePlans[j].ID.String()
+	})
 	sort.Slice(catalog.InformationRegisters, func(i, j int) bool {
 		return catalog.InformationRegisters[i].ID.String() < catalog.InformationRegisters[j].ID.String()
 	})
@@ -536,6 +554,8 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.businessProcessByID = make(map[uuid.UUID]int, len(catalog.BusinessProcesses))
 	catalog.taskByName = make(map[string]int, len(catalog.Tasks))
 	catalog.taskByID = make(map[uuid.UUID]int, len(catalog.Tasks))
+	catalog.exchangePlanByName = make(map[string]int, len(catalog.ExchangePlans))
+	catalog.exchangePlanByID = make(map[uuid.UUID]int, len(catalog.ExchangePlans))
 	catalog.informationRegisterByName, catalog.informationRegisterByID = make(map[string]int, len(catalog.InformationRegisters)), make(map[uuid.UUID]int, len(catalog.InformationRegisters))
 	catalog.accumulationRegisterByName, catalog.accumulationRegisterByID = make(map[string]int, len(catalog.AccumulationRegisters)), make(map[uuid.UUID]int, len(catalog.AccumulationRegisters))
 	allIDs := map[uuid.UUID]string{}
@@ -765,6 +785,26 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("%w: %s and task table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
 			}
 			allIDs[part.ID] = "task table part " + item.Name + "." + part.Name
+		}
+	}
+	for index, item := range catalog.ExchangePlans {
+		if err := add("exchange plan", item.ID, item.Name, index, catalog.exchangePlanByName, catalog.exchangePlanByID); err != nil {
+			return err
+		}
+		for _, attribute := range item.Attributes {
+			if _, common := catalog.commonAttributeByID[attribute.ID]; common {
+				continue
+			}
+			if previous, ok := allIDs[attribute.ID]; ok {
+				return fmt.Errorf("%w: %s and exchange plan attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
+			}
+			allIDs[attribute.ID] = "exchange plan attribute " + item.Name + "." + attribute.Name
+		}
+		for _, part := range item.TableParts {
+			if previous, ok := allIDs[part.ID]; ok {
+				return fmt.Errorf("%w: %s and exchange plan table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
+			}
+			allIDs[part.ID] = "exchange plan table part " + item.Name + "." + part.Name
 		}
 	}
 	for index, item := range catalog.BusinessProcesses {
@@ -1010,6 +1050,20 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 	}
+	for _, item := range catalog.ExchangePlans {
+		owner := "exchange plan " + item.Name
+		if err := catalog.validateExchangePlanRegistration(owner, item); err != nil {
+			return err
+		}
+		for _, attribute := range item.Attributes {
+			if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
+				return err
+			}
+		}
+		if err := validateObjectFileSources(root, ExchangePlanKind, item.ID, "exchange plan", item.Name, item.ObjectModule, item.ManagerModule, item.Forms); err != nil {
+			return err
+		}
+	}
 	for _, item := range catalog.BusinessProcesses {
 		owner := "business process " + item.Name
 		if err := catalog.validateBusinessProcessRoute(owner, item); err != nil {
@@ -1225,6 +1279,43 @@ func (catalog *Catalog) validateTaskAddressing(owner string, item TaskDefinition
 	return nil
 }
 
+// validateExchangePlanRegistration resolves every entry of the content: an
+// entry naming an object that is not there, or naming it under the wrong kind,
+// registers nothing. Nothing would say so either - the exchange would simply
+// carry less than the plan claims, and the difference shows up as missing data
+// on the other side, far from here.
+func (catalog *Catalog) validateExchangePlanRegistration(owner string, item ExchangePlanDefinition) error {
+	for _, entry := range item.Content {
+		found := false
+		switch entry.Kind {
+		case ConstantKind:
+			_, found = catalog.constantByID[entry.Object]
+		case CatalogKind:
+			_, found = catalog.catalogByID[entry.Object]
+		case DocumentKind:
+			_, found = catalog.documentByID[entry.Object]
+		case ChartOfCharacteristicTypesKind:
+			_, found = catalog.chartOfCharacteristicTypesByID[entry.Object]
+		case ChartOfAccountsKind:
+			_, found = catalog.chartOfAccountsByID[entry.Object]
+		case ChartOfCalculationTypesKind:
+			_, found = catalog.chartOfCalculationTypesByID[entry.Object]
+		case BusinessProcessKind:
+			_, found = catalog.businessProcessByID[entry.Object]
+		case TaskKind:
+			_, found = catalog.taskByID[entry.Object]
+		case InformationRegisterKind:
+			_, found = catalog.informationRegisterByID[entry.Object]
+		case AccumulationRegisterKind:
+			_, found = catalog.accumulationRegisterByID[entry.Object]
+		}
+		if !found {
+			return fmt.Errorf("%s registers changes of %s %s, which the project does not have", owner, entry.Kind, entry.Object)
+		}
+	}
+	return nil
+}
+
 // validateBusinessProcessRoute resolves the kind of task a process creates and
 // the processes its nested points start.
 func (catalog *Catalog) validateBusinessProcessRoute(owner string, item BusinessProcessDefinition) error {
@@ -1313,6 +1404,10 @@ func (catalog *Catalog) validateReferences(owner string, types []Type) error {
 		case TaskType:
 			if _, ok := catalog.taskByID[*item.Reference]; !ok {
 				return fmt.Errorf("%s references unknown task %s", owner, item.Reference)
+			}
+		case ExchangePlanType:
+			if _, ok := catalog.exchangePlanByID[*item.Reference]; !ok {
+				return fmt.Errorf("%s references unknown exchange plan %s", owner, item.Reference)
 			}
 		}
 	}

@@ -54,6 +54,14 @@ func (catalog *Catalog) ApplicationSchema() (schemadiff.Schema, error) {
 		schema.Tables = append(schema.Tables, table)
 		schema.Tables = append(schema.Tables, parts...)
 	}
+	for _, definition := range catalog.ExchangePlans {
+		table, parts, err := catalog.exchangePlanTables(definition)
+		if err != nil {
+			return schemadiff.Schema{}, err
+		}
+		schema.Tables = append(schema.Tables, table)
+		schema.Tables = append(schema.Tables, parts...)
+	}
 	for _, definition := range catalog.BusinessProcesses {
 		table, parts, err := catalog.businessProcessTables(definition)
 		if err != nil {
@@ -272,7 +280,7 @@ func (catalog *Catalog) attributeStorage(types []Type) (attributeStorage, error)
 		// the configuration draws, and it is carried by name.
 		storage.sqlType = "character varying(128)"
 	case ObjectUUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType,
-		CalculationTypeType, BusinessProcessType, TaskType:
+		CalculationTypeType, BusinessProcessType, TaskType, ExchangePlanType:
 		storage.sqlType = "uuid"
 		if item.Kind != ObjectUUIDType && item.Kind != EnumerationType {
 			id := *item.Reference
