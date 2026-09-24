@@ -691,3 +691,57 @@ func TestLocalizedTextFallsBackThroughTheProjectDefault(t *testing.T) {
 		t.Fatalf("empty text resolved to %q", value)
 	}
 }
+
+// Qualifiers are not decoration: each one changes what a value may be or what
+// it means, and a qualifier on the wrong kind is a mistake worth naming.
+func TestAttributeQualifiersConstrainValuesAndKinds(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name  string
+		types string
+		want  string
+	}{
+		{"date parts on a number", "[{kind: number, precision: 5, scale: 0, date_parts: date}]", "date_parts is allowed for dates only"},
+		{"fixed length on a number", "[{kind: number, precision: 5, scale: 0, fixed_length: true}]", "fixed_length is allowed for strings only"},
+		{"non-negative on a string", "[{kind: string, length: 5, non_negative: true}]", "non_negative is allowed for numbers only"},
+		{"fixed length without a length", "[{kind: string, fixed_length: true}]", "fixed_length requires a length"},
+		{"unknown date parts", "[{kind: date, date_parts: quarter}]", "date_parts must be date, time or date-time"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := DecodeInformationRegister("qualifiers.yaml", strings.NewReader(`format: 1
+id: `+informationRegisterID+`
+name: Цены
+title: {ru: Цены}
+write_mode: independent
+periodicity: none
+dimensions:
+  - id: `+registerDimensionID+`
+    name: Значение
+    title: {ru: Значение}
+    types: `+test.types+`
+`), metadataManifest())
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+// A date attribute that is about a day must not carry a time nobody entered:
+// every later comparison would trip over it.
+func TestDatePartsAndSignAreEnforcedOnWrite(t *testing.T) {
+	t.Parallel()
+	catalog := &Catalog{}
+	day, ok, reason := catalog.normalizeAs(Value{Kind: DateType, Data: "2026-09-23T14:35:07Z"}, Type{Kind: DateType, DateParts: DateOnlyParts})
+	if !ok || day.Data != "2026-09-23T00:00:00Z" {
+		t.Fatalf("date-only = %+v ok=%v reason=%q", day, ok, reason)
+	}
+	clock, ok, _ := catalog.normalizeAs(Value{Kind: DateType, Data: "2026-09-23T14:35:07Z"}, Type{Kind: DateType, DateParts: TimeOnlyParts})
+	if !ok || clock.Data != "0001-01-01T14:35:07Z" {
+		t.Fatalf("time-only = %+v", clock)
+	}
+	if _, ok, reason := catalog.normalizeAs(Value{Kind: NumberType, Data: "-1"}, Type{Kind: NumberType, Precision: 5, Scale: 0, NonNegative: true}); ok {
+		t.Fatalf("negative accepted for a non-negative number: %q", reason)
+	}
+}

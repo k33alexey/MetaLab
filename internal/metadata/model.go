@@ -55,6 +55,21 @@ const (
 	DefinedType     TypeKind = "defined-type"
 	CatalogType     TypeKind = "catalog"
 	DocumentType    TypeKind = "document"
+	// ValueStorageType holds a value of any shape, opaque to the database.
+	// It is storable but cannot be form data - reading it costs a round trip
+	// and it has no presentation to show in a field.
+	ValueStorageType TypeKind = "value-storage"
+)
+
+// DateParts is the prototype's "состав даты" qualifier: which parts of a
+// moment an attribute is about. Storage does not change - a date is always a
+// moment - but what is shown, entered and compared does.
+type DateParts string
+
+const (
+	DateAndTimeParts DateParts = "date-time"
+	DateOnlyParts    DateParts = "date"
+	TimeOnlyParts    DateParts = "time"
 )
 
 var (
@@ -163,6 +178,13 @@ type Type struct {
 	Length    int        `yaml:"length,omitempty" json:"length,omitempty"`
 	Precision int        `yaml:"precision,omitempty" json:"precision,omitempty"`
 	Scale     int        `yaml:"scale,omitempty" json:"scale,omitempty"`
+	// Qualifiers, one per prototype qualifier that changes meaning rather
+	// than kind: a fixed-length string is padded and compared as such, a
+	// non-negative number refuses negatives on write, and date parts say
+	// which half of a moment the attribute is actually about.
+	FixedLength bool      `yaml:"fixed_length,omitempty" json:"fixedLength,omitempty"`
+	NonNegative bool      `yaml:"non_negative,omitempty" json:"nonNegative,omitempty"`
+	DateParts   DateParts `yaml:"date_parts,omitempty" json:"dateParts,omitempty"`
 }
 
 type Constant struct {
@@ -875,6 +897,15 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 			issues = append(issues, prefix+".kind obj-uuid is reserved for platform identity and cannot be declared; use a reference type")
 			continue
 		}
+		if item.DateParts != "" && item.Kind != DateType {
+			issues = append(issues, prefix+".date_parts is allowed for dates only")
+		}
+		if item.FixedLength && item.Kind != StringType {
+			issues = append(issues, prefix+".fixed_length is allowed for strings only")
+		}
+		if item.NonNegative && item.Kind != NumberType {
+			issues = append(issues, prefix+".non_negative is allowed for numbers only")
+		}
 		switch item.Kind {
 		case StringType:
 			if item.Length < 0 || item.Length > 1_048_576 {
@@ -882,6 +913,11 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 			}
 			if item.Precision != 0 || item.Scale != 0 {
 				issues = append(issues, prefix+" has invalid numeric qualifiers")
+			}
+			// A fixed-length string is padded to its length, so there has to
+			// be a length to pad to.
+			if item.FixedLength && item.Length == 0 {
+				issues = append(issues, prefix+".fixed_length requires a length")
 			}
 		case NumberType:
 			if item.Precision < 1 || item.Precision > 38 {
@@ -893,7 +929,16 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 			if item.Length != 0 {
 				issues = append(issues, prefix+".length is not allowed")
 			}
-		case BooleanType, DateType, EnumerationType, DefinedType, CatalogType, DocumentType:
+		case DateType:
+			switch item.DateParts {
+			case "", DateAndTimeParts, DateOnlyParts, TimeOnlyParts:
+			default:
+				issues = append(issues, prefix+".date_parts must be date, time or date-time")
+			}
+			if item.Length != 0 || item.Precision != 0 || item.Scale != 0 {
+				issues = append(issues, prefix+" has unsupported qualifiers")
+			}
+		case BooleanType, ValueStorageType, EnumerationType, DefinedType, CatalogType, DocumentType:
 			if item.Length != 0 || item.Precision != 0 || item.Scale != 0 {
 				issues = append(issues, prefix+" has unsupported qualifiers")
 			}

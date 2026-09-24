@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"encoding/base64"
 	"fmt"
 	"sort"
 	"strings"
@@ -127,6 +128,9 @@ func (catalog *Catalog) normalizeAs(value Value, allowed Type) (Value, bool, str
 		if precision > allowed.Precision || scale > allowed.Scale {
 			return Value{}, false, fmt.Sprintf("number exceeds precision %d scale %d", allowed.Precision, allowed.Scale)
 		}
+		if allowed.NonNegative && strings.HasPrefix(canonical, "-") {
+			return Value{}, false, "number must not be negative"
+		}
 		return Value{Kind: NumberType, Data: canonical}, true, ""
 	case BooleanType:
 		if value.Data != "true" && value.Data != "false" {
@@ -138,7 +142,22 @@ func (catalog *Catalog) normalizeAs(value Value, allowed Type) (Value, bool, str
 		if err != nil || parsed.Year() < 1 || parsed.Year() > 3999 {
 			return Value{}, false, "date must be RFC3339 within years 1..3999"
 		}
-		return Value{Kind: DateType, Data: parsed.UTC().Format(time.RFC3339Nano)}, true, ""
+		// The date-parts qualifier is not decoration: an attribute that is
+		// about a day must not carry a time that nobody entered and every
+		// comparison then trips over.
+		moment := parsed.UTC()
+		switch allowed.DateParts {
+		case DateOnlyParts:
+			moment = time.Date(moment.Year(), moment.Month(), moment.Day(), 0, 0, 0, 0, time.UTC)
+		case TimeOnlyParts:
+			moment = time.Date(1, time.January, 1, moment.Hour(), moment.Minute(), moment.Second(), moment.Nanosecond(), time.UTC)
+		}
+		return Value{Kind: DateType, Data: moment.Format(time.RFC3339Nano)}, true, ""
+	case ValueStorageType:
+		if _, err := base64.StdEncoding.DecodeString(value.Data); err != nil {
+			return Value{}, false, "value storage must be base64"
+		}
+		return Value{Kind: ValueStorageType, Data: value.Data}, true, ""
 	case ObjectUUIDType, CatalogType, DocumentType:
 		id, err := uuid.Parse(value.Data)
 		if err != nil {

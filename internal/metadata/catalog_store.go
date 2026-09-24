@@ -2,6 +2,8 @@ package metadata
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -541,6 +543,8 @@ func databaseAttributeValue(storage attributeStorage, value Value) (any, error) 
 		return time.Parse(time.RFC3339Nano, value.Data)
 	case ObjectUUIDType, EnumerationType, CatalogType, DocumentType:
 		return value.Data, nil
+	case ValueStorageType:
+		return base64.StdEncoding.DecodeString(value.Data)
 	default:
 		return nil, fmt.Errorf("unsupported database value type %s", storage.valueType)
 	}
@@ -560,6 +564,20 @@ func decodeDatabaseAttribute(storage attributeStorage, raw json.RawMessage) (Val
 		if err := json.Unmarshal(raw, &value.Data); err != nil {
 			return Value{}, err
 		}
+	case ValueStorageType:
+		// The row arrives as to_jsonb, which renders bytea the way the server
+		// spells it - hex by default - while the canonical value carries
+		// base64. Reading the server's spelling back as if it were base64
+		// would hand out bytes nobody wrote and refuse to write them again.
+		var stored string
+		if err := json.Unmarshal(raw, &stored); err != nil {
+			return Value{}, err
+		}
+		decoded, err := decodeStoredBytes(stored)
+		if err != nil {
+			return Value{}, err
+		}
+		value.Data = base64.StdEncoding.EncodeToString(decoded)
 	case NumberType:
 		value.Data = string(raw)
 	case BooleanType:
@@ -568,6 +586,21 @@ func decodeDatabaseAttribute(storage attributeStorage, raw json.RawMessage) (Val
 		return Value{}, fmt.Errorf("unsupported database value type %s", storage.valueType)
 	}
 	return value, nil
+}
+
+// decodeStoredBytes reads the text PostgreSQL produces for a bytea inside
+// json. Only the hex form is accepted: the escape form is ambiguous enough
+// that guessing at it would silently corrupt a value, and the server setting
+// that produces it is ours to keep at the default.
+func decodeStoredBytes(stored string) ([]byte, error) {
+	if !strings.HasPrefix(stored, `\x`) {
+		return nil, fmt.Errorf("value storage expects the hex form of bytea, got %q; check bytea_output", stored)
+	}
+	decoded, err := hex.DecodeString(stored[2:])
+	if err != nil {
+		return nil, fmt.Errorf("value storage is not valid hex: %w", err)
+	}
+	return decoded, nil
 }
 
 func decodeCatalogCode(code CatalogCode, raw json.RawMessage) (string, error) {

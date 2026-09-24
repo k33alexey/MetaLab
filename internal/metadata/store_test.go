@@ -2,6 +2,9 @@ package metadata
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -63,4 +66,48 @@ func (executor *recordingExecutor) Exec(_ context.Context, statement string, arg
 	executor.statement = statement
 	executor.arguments = arguments
 	return pgconn.NewCommandTag("CREATE TABLE"), executor.err
+}
+
+// Value storage crosses the database as bytea, and the row comes back through
+// to_jsonb, which spells bytea in hex. The canonical value is base64, so the
+// pair has to agree - otherwise a value reads back as the server's spelling
+// and refuses to be written again.
+func TestValueStorageSurvivesTheHexFormOfBytea(t *testing.T) {
+	t.Parallel()
+	storage := attributeStorage{sqlType: "bytea", valueType: ValueStorageType}
+	original := Value{Kind: ValueStorageType, Data: base64.StdEncoding.EncodeToString([]byte("привет"))}
+
+	written, err := databaseAttributeValue(storage, original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bytes, ok := written.([]byte)
+	if !ok {
+		t.Fatalf("value storage must reach the database as bytes, got %T", written)
+	}
+
+	// What PostgreSQL puts in the json for those bytes, hex form.
+	raw, err := json.Marshal(`\x` + hex.EncodeToString(bytes))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, err := decodeDatabaseAttribute(storage, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read != original {
+		t.Fatalf("value storage did not survive the round trip: got %#v, want %#v", read, original)
+	}
+}
+
+func TestValueStorageRejectsAnUnexpectedByteaSpelling(t *testing.T) {
+	t.Parallel()
+	storage := attributeStorage{sqlType: "bytea", valueType: ValueStorageType}
+	raw, err := json.Marshal(`\160\162\438`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodeDatabaseAttribute(storage, raw); err == nil {
+		t.Fatal("the escape form of bytea must be refused, not guessed at")
+	}
 }

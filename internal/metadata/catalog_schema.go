@@ -187,13 +187,21 @@ func (catalog *Catalog) attributeStorage(types []Type) (attributeStorage, error)
 		storage.sqlType = "text"
 		if item.Length > 0 {
 			storage.sqlType = fmt.Sprintf("character varying(%d)", item.Length)
+			if item.FixedLength {
+				storage.sqlType = fmt.Sprintf("character(%d)", item.Length)
+			}
 		}
 	case NumberType:
 		storage.sqlType = fmt.Sprintf("numeric(%d,%d)", item.Precision, item.Scale)
 	case BooleanType:
 		storage.sqlType = "boolean"
 	case DateType:
+		// Storage does not follow the date-parts qualifier: a moment is a
+		// moment, and narrowing the column would lose what the developer can
+		// still widen back to later without a migration.
 		storage.sqlType = "timestamp with time zone"
+	case ValueStorageType:
+		storage.sqlType = "bytea"
 	case ObjectUUIDType, EnumerationType, CatalogType, DocumentType:
 		storage.sqlType = "uuid"
 		if item.Kind == CatalogType || item.Kind == DocumentType {
