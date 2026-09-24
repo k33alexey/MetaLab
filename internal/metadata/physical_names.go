@@ -11,6 +11,8 @@ import (
 // attributes of anything, so nothing else can translate them.
 var standardColumnTitles = map[string]string{
 	"ref": "Ссылка", "version": "Версия", "code": "Код", "description": "Наименование",
+	"value_type": "Тип значения", "account_order": "Порядок", "account_kind": "Вид счёта",
+	"off_balance": "Забалансовый", "ext_dimension_type": "Вид субконто", "turnover_only": "Только обороты",
 	"deletion_mark": "Пометка удаления", "predefined_name": "Имя предопределённых данных",
 	"owner_ref": "Владелец строки", "line_no": "Номер строки", "number": "Номер", "date": "Дата",
 	"posted": "Проведён", "period": "Период", "recorder_type": "Тип регистратора", "recorder_ref": "Регистратор",
@@ -75,6 +77,29 @@ func (catalog *Catalog) PhysicalNames() map[string]string {
 		addTable(item.ID, owner)
 		addAttributes(owner, item.Attributes)
 		addParts(owner, item.TableParts)
+	}
+	for _, item := range catalog.ChartsOfCharacteristicTypes {
+		owner := "ПланВидовХарактеристик." + item.Name
+		addTable(item.ID, owner)
+		addAttributes(owner, item.Attributes)
+		addParts(owner, item.TableParts)
+	}
+	for _, item := range catalog.ChartsOfAccounts {
+		owner := "ПланСчетов." + item.Name
+		addTable(item.ID, owner)
+		addAttributes(owner, item.Attributes)
+		addParts(owner, item.TableParts)
+		// A flag is a column of the account, and the confirmation dialog has to
+		// be able to say which flag it is about.
+		for _, flag := range item.AccountingFlags {
+			addColumn(flag.ID, owner+".ПризнакУчёта."+flag.Name)
+		}
+		for _, flag := range item.ExtDimensionAccountingFlags {
+			addColumn(flag.ID, owner+".ПризнакУчётаСубконто."+flag.Name)
+		}
+		if item.ExtDimensionTypes != nil {
+			result[extDimensionTableName(item.ID)] = owner + ".ВидыСубконто"
+		}
 	}
 	for _, item := range catalog.Documents {
 		owner := "Документ." + item.Name

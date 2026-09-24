@@ -30,6 +30,14 @@ func (catalog *Catalog) ApplicationSchema() (schemadiff.Schema, error) {
 		schema.Tables = append(schema.Tables, table)
 		schema.Tables = append(schema.Tables, parts...)
 	}
+	for _, definition := range catalog.ChartsOfAccounts {
+		table, parts, err := catalog.chartOfAccountsTables(definition)
+		if err != nil {
+			return schemadiff.Schema{}, err
+		}
+		schema.Tables = append(schema.Tables, table)
+		schema.Tables = append(schema.Tables, parts...)
+	}
 	for _, definition := range catalog.Documents {
 		table, parts, err := catalog.documentTables(definition)
 		if err != nil {
@@ -210,9 +218,9 @@ func (catalog *Catalog) attributeStorage(types []Type) (attributeStorage, error)
 		storage.sqlType = "timestamp with time zone"
 	case ValueStorageType:
 		storage.sqlType = "bytea"
-	case ObjectUUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType:
+	case ObjectUUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType:
 		storage.sqlType = "uuid"
-		if item.Kind == CatalogType || item.Kind == DocumentType || item.Kind == CharacteristicTypesType {
+		if item.Kind != ObjectUUIDType && item.Kind != EnumerationType {
 			id := *item.Reference
 			storage.referenceObject = &id
 		}

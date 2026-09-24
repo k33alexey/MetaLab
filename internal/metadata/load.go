@@ -160,6 +160,18 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := loadObjectKind(root, ChartOfAccountsKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeChartOfAccounts(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.ChartsOfAccounts = append(catalog.ChartsOfAccounts, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadObjectKind(root, DocumentKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeDocument(source, file, manifest)
 		if err == nil && value.ID != id {
@@ -295,6 +307,9 @@ func NewCatalogSnapshotWithEventSubscriptions(manifest project.Project, constant
 	}
 	for index := range result.ChartsOfCharacteristicTypes {
 		result.ChartsOfCharacteristicTypes[index] = cloneChartOfCharacteristicTypes(result.ChartsOfCharacteristicTypes[index])
+	}
+	for index := range result.ChartsOfAccounts {
+		result.ChartsOfAccounts[index] = cloneChartOfAccounts(result.ChartsOfAccounts[index])
 	}
 	for index := range result.InformationRegisters {
 		result.InformationRegisters[index] = cloneInformationRegisterDefinition(result.InformationRegisters[index])
@@ -445,6 +460,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	sort.Slice(catalog.ChartsOfCharacteristicTypes, func(i, j int) bool {
 		return catalog.ChartsOfCharacteristicTypes[i].ID.String() < catalog.ChartsOfCharacteristicTypes[j].ID.String()
 	})
+	sort.Slice(catalog.ChartsOfAccounts, func(i, j int) bool {
+		return catalog.ChartsOfAccounts[i].ID.String() < catalog.ChartsOfAccounts[j].ID.String()
+	})
 	sort.Slice(catalog.InformationRegisters, func(i, j int) bool {
 		return catalog.InformationRegisters[i].ID.String() < catalog.InformationRegisters[j].ID.String()
 	})
@@ -458,6 +476,8 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.documentByName, catalog.documentByID = make(map[string]int, len(catalog.Documents)), make(map[uuid.UUID]int, len(catalog.Documents))
 	catalog.chartOfCharacteristicTypesByName = make(map[string]int, len(catalog.ChartsOfCharacteristicTypes))
 	catalog.chartOfCharacteristicTypesByID = make(map[uuid.UUID]int, len(catalog.ChartsOfCharacteristicTypes))
+	catalog.chartOfAccountsByName = make(map[string]int, len(catalog.ChartsOfAccounts))
+	catalog.chartOfAccountsByID = make(map[uuid.UUID]int, len(catalog.ChartsOfAccounts))
 	catalog.informationRegisterByName, catalog.informationRegisterByID = make(map[string]int, len(catalog.InformationRegisters)), make(map[uuid.UUID]int, len(catalog.InformationRegisters))
 	catalog.accumulationRegisterByName, catalog.accumulationRegisterByID = make(map[string]int, len(catalog.AccumulationRegisters)), make(map[uuid.UUID]int, len(catalog.AccumulationRegisters))
 	allIDs := map[uuid.UUID]string{}
@@ -594,6 +614,46 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 					return fmt.Errorf("%w: %s and chart of characteristic types table part attribute %s.%s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, attribute.Name, attribute.ID)
 				}
 				allIDs[attribute.ID] = "chart of characteristic types table part attribute " + item.Name + "." + part.Name + "." + attribute.Name
+			}
+		}
+	}
+	for index, item := range catalog.ChartsOfAccounts {
+		if err := add("chart of accounts", item.ID, item.Name, index, catalog.chartOfAccountsByName, catalog.chartOfAccountsByID); err != nil {
+			return err
+		}
+		for _, account := range item.Predefined {
+			if previous, ok := allIDs[account.ID]; ok {
+				return fmt.Errorf("%w: %s and predefined account %s.%s use %s", ErrDuplicateID, previous, item.Name, account.Name, account.ID)
+			}
+			allIDs[account.ID] = "predefined account " + item.Name + "." + account.Name
+		}
+		// A flag is a column of its own on every account, so its identity has
+		// to be as unique as an attribute's.
+		for _, flag := range append(slices.Clone(item.AccountingFlags), item.ExtDimensionAccountingFlags...) {
+			if previous, ok := allIDs[flag.ID]; ok {
+				return fmt.Errorf("%w: %s and accounting flag %s.%s use %s", ErrDuplicateID, previous, item.Name, flag.Name, flag.ID)
+			}
+			allIDs[flag.ID] = "accounting flag " + item.Name + "." + flag.Name
+		}
+		for _, attribute := range item.Attributes {
+			if _, common := catalog.commonAttributeByID[attribute.ID]; common {
+				continue
+			}
+			if previous, ok := allIDs[attribute.ID]; ok {
+				return fmt.Errorf("%w: %s and chart of accounts attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
+			}
+			allIDs[attribute.ID] = "chart of accounts attribute " + item.Name + "." + attribute.Name
+		}
+		for _, part := range item.TableParts {
+			if previous, ok := allIDs[part.ID]; ok {
+				return fmt.Errorf("%w: %s and chart of accounts table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
+			}
+			allIDs[part.ID] = "chart of accounts table part " + item.Name + "." + part.Name
+			for _, attribute := range part.Attributes {
+				if previous, ok := allIDs[attribute.ID]; ok {
+					return fmt.Errorf("%w: %s and chart of accounts table part attribute %s.%s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, attribute.Name, attribute.ID)
+				}
+				allIDs[attribute.ID] = "chart of accounts table part attribute " + item.Name + "." + part.Name + "." + attribute.Name
 			}
 		}
 	}
@@ -758,6 +818,27 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 	}
+	for _, item := range catalog.ChartsOfAccounts {
+		owner := "chart of accounts " + item.Name
+		if err := catalog.validateChartOfAccountsAnalytics(owner, item); err != nil {
+			return err
+		}
+		for _, attribute := range item.Attributes {
+			if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
+				return err
+			}
+		}
+		for _, part := range item.TableParts {
+			for _, attribute := range part.Attributes {
+				if err := catalog.validateReferences(owner+" table part "+part.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
+					return err
+				}
+			}
+		}
+		if err := validateObjectFileSources(root, ChartOfAccountsKind, item.ID, "chart of accounts", item.Name, item.ObjectModule, item.ManagerModule, item.Forms); err != nil {
+			return err
+		}
+	}
 	for _, item := range catalog.Documents {
 		for _, attribute := range item.Attributes {
 			if err := catalog.validateReferences("document "+item.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
@@ -822,6 +903,34 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	return catalog.validateDefinedTypeCycles()
 }
 
+// validateChartOfAccountsAnalytics ties a chart of accounts to the chart of
+// characteristic types it takes its analytics from: the chart has to exist, and
+// every kind of analytics a predefined account carries has to be a predefined
+// characteristic of that chart. An account pointing at analytics nobody
+// declared would be a hole in the books that nothing reports.
+func (catalog *Catalog) validateChartOfAccountsAnalytics(owner string, item ChartOfAccountsDefinition) error {
+	if item.ExtDimensionTypes == nil {
+		return nil
+	}
+	index, ok := catalog.chartOfCharacteristicTypesByID[*item.ExtDimensionTypes]
+	if !ok {
+		return fmt.Errorf("%s references unknown chart of characteristic types %s for its analytics", owner, item.ExtDimensionTypes)
+	}
+	characteristics := map[string]bool{}
+	for _, predefined := range catalog.ChartsOfCharacteristicTypes[index].Predefined {
+		characteristics[strings.ToLower(predefined.Name)] = true
+	}
+	for _, account := range item.Predefined {
+		for _, dimension := range account.ExtDimensions {
+			if !characteristics[strings.ToLower(dimension.Characteristic)] {
+				return fmt.Errorf("%s predefined account %s carries analytics %s, which is not a predefined characteristic of %s",
+					owner, account.Name, dimension.Characteristic, catalog.ChartsOfCharacteristicTypes[index].Name)
+			}
+		}
+	}
+	return nil
+}
+
 func (catalog *Catalog) validateReferences(owner string, types []Type) error {
 	for _, item := range types {
 		if item.Reference == nil {
@@ -847,6 +956,10 @@ func (catalog *Catalog) validateReferences(owner string, types []Type) error {
 		case CharacteristicTypesType:
 			if _, ok := catalog.chartOfCharacteristicTypesByID[*item.Reference]; !ok {
 				return fmt.Errorf("%s references unknown chart of characteristic types %s", owner, item.Reference)
+			}
+		case AccountType:
+			if _, ok := catalog.chartOfAccountsByID[*item.Reference]; !ok {
+				return fmt.Errorf("%s references unknown chart of accounts %s", owner, item.Reference)
 			}
 		}
 	}

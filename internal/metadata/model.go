@@ -38,6 +38,8 @@ const (
 	// ChartOfCharacteristicTypesKind holds the kinds of characteristic a
 	// configuration lets its users invent without changing the configuration.
 	ChartOfCharacteristicTypesKind Kind = "charts-of-characteristic-types"
+	// ChartOfAccountsKind holds the accounts an application keeps its books on.
+	ChartOfAccountsKind Kind = "charts-of-accounts"
 )
 
 type TypeKind string
@@ -62,6 +64,8 @@ const (
 	// an element of a chart of characteristic types, the way a catalog
 	// reference points at one element of a catalog.
 	CharacteristicTypesType TypeKind = "chart-of-characteristic-types"
+	// AccountType is a reference to one account of a chart of accounts.
+	AccountType TypeKind = "chart-of-accounts"
 	// ValueStorageType holds a value of any shape, opaque to the database.
 	// It is storable but cannot be form data - reading it costs a round trip
 	// and it has no presentation to show in a field.
@@ -319,6 +323,7 @@ type Catalog struct {
 	Catalogs                         []CatalogDefinition
 	Documents                        []DocumentDefinition
 	ChartsOfCharacteristicTypes      []ChartOfCharacteristicTypesDefinition
+	ChartsOfAccounts                 []ChartOfAccountsDefinition
 	InformationRegisters             []InformationRegisterDefinition
 	AccumulationRegisters            []AccumulationRegisterDefinition
 	constantByName                   map[string]int
@@ -337,6 +342,8 @@ type Catalog struct {
 	accumulationRegisterByID         map[uuid.UUID]int
 	chartOfCharacteristicTypesByName map[string]int
 	chartOfCharacteristicTypesByID   map[uuid.UUID]int
+	chartOfAccountsByName            map[string]int
+	chartOfAccountsByID              map[uuid.UUID]int
 }
 
 func (catalog *Catalog) ConstantByID(id uuid.UUID) (Constant, bool) {
@@ -935,7 +942,7 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 		}
 		seen[key] = true
 		referenced := item.Kind == EnumerationType || item.Kind == DefinedType || item.Kind == CatalogType ||
-			item.Kind == DocumentType || item.Kind == CharacteristicTypesType
+			item.Kind == DocumentType || item.Kind == CharacteristicTypesType || item.Kind == AccountType
 		if referenced && (item.Reference == nil || item.Reference.IsZero()) {
 			issues = append(issues, prefix+".reference is required")
 		}
@@ -990,7 +997,7 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 			if item.Length != 0 || item.Precision != 0 || item.Scale != 0 {
 				issues = append(issues, prefix+" has unsupported qualifiers")
 			}
-		case BooleanType, ValueStorageType, EnumerationType, DefinedType, CatalogType, DocumentType, CharacteristicTypesType:
+		case BooleanType, ValueStorageType, EnumerationType, DefinedType, CatalogType, DocumentType, CharacteristicTypesType, AccountType:
 			if item.Length != 0 || item.Precision != 0 || item.Scale != 0 {
 				issues = append(issues, prefix+" has unsupported qualifiers")
 			}

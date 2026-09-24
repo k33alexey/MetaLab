@@ -1499,7 +1499,7 @@ func queryStorageCast(storage attributeStorage) string {
 		return "::boolean"
 	case DateType:
 		return "::timestamptz"
-	case ObjectUUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType:
+	case ObjectUUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType:
 		return "::uuid"
 	default:
 		return "::text"
