@@ -60,7 +60,7 @@ templates:
 	writeCommandModule(t, root, EnumerationKind, enumObject, enumManager)
 	writeCommandModule(t, root, EnumerationKind, enumObject, enumCommandMod)
 	for _, form := range []string{enumListForm, enumChoiceForm, enumAuxList, enumAuxChoice} {
-		writeEnumerationForm(t, root, enumObject, form)
+		writeObjectForm(t, root, EnumerationKind, enumObject, form)
 	}
 	writeTemplateContent(t, root, EnumerationKind, enumObject, enumTemplate, "content.txt", "текст")
 
@@ -136,7 +136,7 @@ values: [{id: `+enumValueOne+`, name: Новый, title: {ru: Новый}}]
 	if _, err := Load(root); err == nil {
 		t.Fatal("a form that does not exist was accepted")
 	}
-	writeEnumerationForm(t, root, enumObject, enumAuxChoice)
+	writeObjectForm(t, root, EnumerationKind, enumObject, enumAuxChoice)
 	if _, err := Load(root); err != nil {
 		t.Fatal(err)
 	}
@@ -184,11 +184,11 @@ values: [{id: `+enumValueOne+`, name: Новый, title: {ru: Новый}}]
 	}
 }
 
-// writeEnumerationForm writes an empty managed form file where an enumeration
-// keeps its forms.
-func writeEnumerationForm(t *testing.T, root, objectID, formID string) {
+// writeObjectForm writes an empty managed form file where an object keeps its
+// forms.
+func writeObjectForm(t *testing.T, root string, kind Kind, objectID, formID string) {
 	t.Helper()
-	directory := filepath.Join(root, "metadata", string(EnumerationKind), objectID, "forms")
+	directory := filepath.Join(root, "metadata", string(kind), objectID, "forms")
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		t.Fatal(err)
 	}

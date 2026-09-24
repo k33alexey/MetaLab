@@ -120,7 +120,7 @@ func (catalog *Catalog) validateFunctionalOptionParameters() error {
 			}
 			key := string(item.Kind) + ":" + item.Object.String()
 			if item.Element != nil {
-				if !elements.attributes[*item.Element] {
+				if !elements.has(*item.Element) {
 					return fmt.Errorf("%s stands for field %s, which that object does not have", where, item.Element)
 				}
 				key += ":" + item.Element.String()

@@ -148,6 +148,18 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := loadObjectKind(root, FilterCriterionKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeFilterCriterion(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.FilterCriteria = append(catalog.FilterCriteria, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadKind(root, DefinedTypeKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeDefinedType(source, file, manifest)
 		if err == nil && value.ID != id {
@@ -633,6 +645,10 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return catalog.FunctionalOptionParameters[i].ID.String() < catalog.FunctionalOptionParameters[j].ID.String()
 	})
 	catalog.functionalOptionParameterByName, catalog.functionalOptionParameterByID = make(map[string]int, len(catalog.FunctionalOptionParameters)), make(map[uuid.UUID]int, len(catalog.FunctionalOptionParameters))
+	sort.Slice(catalog.FilterCriteria, func(i, j int) bool {
+		return catalog.FilterCriteria[i].ID.String() < catalog.FilterCriteria[j].ID.String()
+	})
+	catalog.filterCriterionByName, catalog.filterCriterionByID = make(map[string]int, len(catalog.FilterCriteria)), make(map[uuid.UUID]int, len(catalog.FilterCriteria))
 	sort.Slice(catalog.SessionParameters, func(i, j int) bool {
 		return catalog.SessionParameters[i].ID.String() < catalog.SessionParameters[j].ID.String()
 	})
@@ -763,6 +779,11 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	}
 	for index, item := range catalog.FunctionalOptions {
 		if err := add("functional option", item.ID, item.Name, index, catalog.functionalOptionByName, catalog.functionalOptionByID); err != nil {
+			return err
+		}
+	}
+	for index, item := range catalog.FilterCriteria {
+		if err := add("filter criterion", item.ID, item.Name, index, catalog.filterCriterionByName, catalog.filterCriterionByID); err != nil {
 			return err
 		}
 	}
@@ -1234,6 +1255,14 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 	}
+	for _, item := range catalog.FilterCriteria {
+		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: FilterCriterionKind,
+			id: item.ID, kind: "filter criterion", name: item.Name, managerModule: item.ManagerModule,
+			extraForms: []namedSource{{"list form", item.Forms.List}, {"auxiliary form", item.Forms.Auxiliary}},
+			commands:   item.Commands, templates: item.Templates}); err != nil {
+			return err
+		}
+	}
 	for _, item := range catalog.Enumerations {
 		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: EnumerationKind,
 			id: item.ID, kind: "enumeration", name: item.Name, managerModule: item.ManagerModule,
@@ -1495,6 +1524,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return err
 	}
 	if err := catalog.validateFunctionalOptionParameters(); err != nil {
+		return err
+	}
+	if err := catalog.validateFilterCriteria(); err != nil {
 		return err
 	}
 	return catalog.validateDefinedTypeCycles()

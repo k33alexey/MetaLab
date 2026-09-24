@@ -186,23 +186,33 @@ func (catalog *Catalog) FunctionalOption(name string) (FunctionalOptionDefinitio
 	return cloneFunctionalOption(catalog.FunctionalOptions[index]), true
 }
 
-// objectElements is what one object holds that a functional option may switch
-// or keep its value in.
+// objectElements is what one object holds that something else may point at: a
+// functional option switching it, a parameter standing for it, a filter
+// criterion searching it.
+//
+// Attributes keep their types, because pointing at a field is not always
+// enough - a criterion has to know what the field can hold.
 type objectElements struct {
-	attributes map[uuid.UUID]bool
+	attributes map[uuid.UUID][]Type
 	tableParts map[uuid.UUID][]Attribute
 	commands   map[uuid.UUID]bool
 }
 
+// has says whether the object holds this attribute at all.
+func (elements objectElements) has(id uuid.UUID) bool {
+	_, ok := elements.attributes[id]
+	return ok
+}
+
 func elementsOf(attributes []Attribute, parts []TablePart, commands []ObjectCommand, extra ...[]Attribute) objectElements {
 	elements := objectElements{
-		attributes: make(map[uuid.UUID]bool, len(attributes)),
+		attributes: make(map[uuid.UUID][]Type, len(attributes)),
 		tableParts: make(map[uuid.UUID][]Attribute, len(parts)),
 		commands:   make(map[uuid.UUID]bool, len(commands)),
 	}
 	for _, group := range append([][]Attribute{attributes}, extra...) {
 		for _, attribute := range group {
-			elements.attributes[attribute.ID] = true
+			elements.attributes[attribute.ID] = attribute.Types
 		}
 	}
 	for _, part := range parts {
@@ -313,7 +323,7 @@ func (catalog *Catalog) objectElementsOf(kind Kind, id uuid.UUID) (objectElement
 		// The attributes a task is addressed by are attributes like any other
 		// as far as switching them off goes.
 		for _, attribute := range item.AddressingAttributes {
-			elements.attributes[attribute.ID] = true
+			elements.attributes[attribute.ID] = attribute.Types
 		}
 		return elements, true
 	case ExchangePlanKind:
@@ -366,7 +376,7 @@ func (catalog *Catalog) validateFunctionalOptions() error {
 			return fmt.Errorf("%s keeps its value in %s %s, which is not in the configuration",
 				owner, option.Location.Kind, option.Location.Object)
 		}
-		if element := option.Location.Element; element != nil && !elements.attributes[*element] {
+		if element := option.Location.Element; element != nil && !elements.has(*element) {
 			return fmt.Errorf("%s keeps its value in field %s, which that %s does not have",
 				owner, element, option.Location.Kind)
 		}
@@ -404,7 +414,7 @@ func checkOptionElement(where string, item FunctionalOptionItem, elements object
 	if item.Element == nil {
 		return nil
 	}
-	if elements.attributes[*item.Element] || elements.commands[*item.Element] {
+	if elements.has(*item.Element) || elements.commands[*item.Element] {
 		return nil
 	}
 	if _, ok := elements.tableParts[*item.Element]; ok {

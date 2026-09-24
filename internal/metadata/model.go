@@ -518,6 +518,9 @@ type Catalog struct {
 	FunctionalOptionParameters       []FunctionalOptionParameterDefinition
 	functionalOptionParameterByName  map[string]int
 	functionalOptionParameterByID    map[uuid.UUID]int
+	FilterCriteria                   []FilterCriterionDefinition
+	filterCriterionByName            map[string]int
+	filterCriterionByID              map[uuid.UUID]int
 	constantByName                   map[string]int
 	constantByID                     map[uuid.UUID]int
 	enumerationByName                map[string]int
