@@ -76,14 +76,14 @@ var registrableKinds = []Kind{
 	ConstantKind, CatalogKind, DocumentKind, SequenceKind,
 	ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind,
 	BusinessProcessKind, TaskKind,
-	InformationRegisterKind, AccumulationRegisterKind,
+	InformationRegisterKind, AccumulationRegisterKind, AccountingRegisterKind,
 }
 
 // pendingRegistrableKinds are registrable too, and this version does not model
 // them yet. Naming them apart is what separates "this kind cannot be
 // registered" from "this kind is not described yet" - two different answers,
 // and a plan arriving from another system deserves the true one.
-var pendingRegistrableKinds = []Kind{"accounting-registers", "calculation-registers"}
+var pendingRegistrableKinds = []Kind{"calculation-registers"}
 
 // DecodeExchangePlan reads and validates one exchange plan.
 func DecodeExchangePlan(source string, reader io.Reader, manifest project.Project) (ExchangePlanDefinition, error) {

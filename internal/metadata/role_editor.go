@@ -156,6 +156,10 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	for _, item := range catalog.AccumulationRegisters {
 		appendObject(AccumulationRegisterKind, item.ID, item.Name, item.Title, accumulationRegisterFields(item), nil)
 	}
+	for _, item := range catalog.AccountingRegisters {
+		appendObject(AccountingRegisterKind, item.ID, item.Name, item.Title,
+			append(accountingRegisterFields(item), item.Attributes...), nil)
+	}
 	sort.Slice(result.Objects, func(i, j int) bool {
 		a, b := result.Objects[i], result.Objects[j]
 		if a.Kind != b.Kind {

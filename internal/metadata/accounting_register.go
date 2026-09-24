@@ -1,0 +1,200 @@
+package metadata
+
+import (
+	"fmt"
+	"io"
+	"slices"
+	"strings"
+
+	"github.com/k33alexey/MetaLab/internal/project"
+	"github.com/k33alexey/MetaLab/internal/uuid"
+)
+
+// AccountingRegisterField is a dimension or a resource of an accounting
+// register. Beyond what any attribute carries it holds the three things double
+// entry needs.
+//
+// Balance says the value is one per entry rather than one per side: the company
+// an entry belongs to is the same in debit and in credit, while the analytics
+// of the two sides differ. A non-balance field is therefore kept twice, once
+// for each side, and a balance field once.
+//
+// The two flags tie the field to the chart of accounts: an account that does
+// not keep this flag does not keep this field either, and an entry that fills
+// it anyway is filling a column the account has no meaning for.
+type AccountingRegisterField struct {
+	ID                         uuid.UUID     `yaml:"id" json:"id"`
+	Name                       string        `yaml:"name" json:"name"`
+	Title                      LocalizedText `yaml:"title" json:"title"`
+	Types                      []Type        `yaml:"types" json:"types"`
+	Indexed                    bool          `yaml:"indexed,omitempty" json:"indexed,omitempty"`
+	Balance                    bool          `yaml:"balance,omitempty" json:"balance,omitempty"`
+	AccountingFlag             *uuid.UUID    `yaml:"accounting_flag,omitempty" json:"accountingFlag,omitempty"`
+	ExtDimensionAccountingFlag *uuid.UUID    `yaml:"ext_dimension_accounting_flag,omitempty" json:"extDimensionAccountingFlag,omitempty"`
+}
+
+// AccountingRegisterDefinition holds entries: an account on each side, sums and
+// the analytics behind them.
+type AccountingRegisterDefinition struct {
+	Format int           `yaml:"format" json:"format"`
+	ID     uuid.UUID     `yaml:"id" json:"id"`
+	Name   string        `yaml:"name" json:"name"`
+	Title  LocalizedText `yaml:"title" json:"title"`
+	// ChartOfAccounts is where the accounts come from, and with them the
+	// analytics: a register has no ext dimensions of its own.
+	ChartOfAccounts uuid.UUID `yaml:"chart_of_accounts" json:"chartOfAccounts"`
+	// Correspondence is double entry: an entry names a debit account and a
+	// credit account at once. Without it an entry touches one account, and
+	// there are no two sides to tell apart.
+	Correspondence bool `yaml:"correspondence,omitempty" json:"correspondence,omitempty"`
+	// TotalsSplitting lets concurrent writers keep their own rows of totals
+	// instead of queueing on one.
+	TotalsSplitting bool                      `yaml:"totals_splitting,omitempty" json:"totalsSplitting,omitempty"`
+	Dimensions      []AccountingRegisterField `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
+	Resources       []AccountingRegisterField `yaml:"resources" json:"resources"`
+	Attributes      []Attribute               `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	Recorders       []uuid.UUID               `yaml:"recorders" json:"recorders"`
+	RecordSetModule *uuid.UUID                `yaml:"record_set_module,omitempty" json:"recordSetModule,omitempty"`
+	ManagerModule   *uuid.UUID                `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
+	Forms           ObjectForms               `yaml:"forms,omitempty" json:"forms,omitempty"`
+}
+
+// DecodeAccountingRegister reads and validates one accounting register.
+func DecodeAccountingRegister(source string, reader io.Reader, manifest project.Project) (AccountingRegisterDefinition, error) {
+	var value AccountingRegisterDefinition
+	if err := decodeStrict(source, reader, &value); err != nil {
+		return AccountingRegisterDefinition{}, err
+	}
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	if value.ChartOfAccounts.IsZero() {
+		issues = append(issues, "chart_of_accounts is required: a register of entries without accounts records nothing")
+	}
+	if len(value.Resources) == 0 {
+		issues = append(issues, "resources must contain at least one item: an entry with no amount is not an entry")
+	}
+	if len(value.Recorders) == 0 || len(value.Recorders) > 128 {
+		issues = append(issues, "recorders must contain 1..128 documents")
+	}
+	issues = append(issues, validateUniqueIDs("recorders", value.Recorders)...)
+	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+	for _, group := range []struct {
+		path   string
+		fields []AccountingRegisterField
+	}{{"dimensions", value.Dimensions}, {"resources", value.Resources}} {
+		for index, field := range group.fields {
+			prefix := fmt.Sprintf("%s[%d]", group.path, index)
+			if field.ID.IsZero() {
+				issues = append(issues, prefix+".id must be a non-zero UUID")
+			}
+			if ids[field.ID] {
+				issues = append(issues, prefix+".id must be unique")
+			}
+			ids[field.ID] = true
+			if !validIdentifier(field.Name) {
+				issues = append(issues, prefix+".name must be a valid identifier")
+			}
+			folded := strings.ToLower(field.Name)
+			if names[folded] || reservedAccountingRegisterName(folded) {
+				issues = append(issues, prefix+".name is taken")
+			}
+			names[folded] = true
+			issues = append(issues, validateTitle(prefix+".title", field.Title, manifest)...)
+			issues = append(issues, validateTypes(prefix+".types", field.Types, value.ID)...)
+			// Two sides exist only under double entry. Marking a field as the
+			// same on both sides of an entry that has one side says nothing,
+			// and a setting that says nothing hides the one that would.
+			if field.Balance && !value.Correspondence {
+				issues = append(issues, prefix+".balance needs correspondence: without two sides there is nothing for a value to be the same on")
+			}
+			if field.AccountingFlag != nil && field.AccountingFlag.IsZero() {
+				issues = append(issues, prefix+".accounting_flag must be a non-zero UUID")
+			}
+			if field.ExtDimensionAccountingFlag != nil && field.ExtDimensionAccountingFlag.IsZero() {
+				issues = append(issues, prefix+".ext_dimension_accounting_flag must be a non-zero UUID")
+			}
+		}
+	}
+	issues = append(issues, validateAttributes("attributes", value.Attributes, manifest, func(name string) bool {
+		return names[strings.ToLower(name)] || reservedAccountingRegisterName(name)
+	})...)
+	if err := issuesError(source, value.Format, issues); err != nil {
+		return AccountingRegisterDefinition{}, err
+	}
+	return value, nil
+}
+
+// reservedAccountingRegisterName keeps the standard fields of an entry: when it
+// was made and by what, which line of it, whether it counts, and the accounts
+// of its two sides.
+func reservedAccountingRegisterName(name string) bool {
+	switch strings.ToLower(name) {
+	case "период", "period", "регистратор", "recorder", "номерстроки", "linenumber",
+		"активность", "active", "счет", "счёт", "account", "счетдт", "счётдт", "accountdr",
+		"счеткт", "счёткт", "accountcr", "recordid":
+		return true
+	default:
+		return false
+	}
+}
+
+func cloneAccountingRegisterFields(fields []AccountingRegisterField) []AccountingRegisterField {
+	fields = slices.Clone(fields)
+	for index := range fields {
+		fields[index].Title = cloneTitle(fields[index].Title)
+		fields[index].Types = cloneTypes(fields[index].Types)
+		for _, flag := range []**uuid.UUID{&fields[index].AccountingFlag, &fields[index].ExtDimensionAccountingFlag} {
+			if *flag != nil {
+				id := **flag
+				*flag = &id
+			}
+		}
+	}
+	return fields
+}
+
+func cloneAccountingRegister(value AccountingRegisterDefinition) AccountingRegisterDefinition {
+	value.Title = cloneTitle(value.Title)
+	value.Dimensions = cloneAccountingRegisterFields(value.Dimensions)
+	value.Resources = cloneAccountingRegisterFields(value.Resources)
+	value.Attributes = cloneAttributes(value.Attributes)
+	value.Recorders = slices.Clone(value.Recorders)
+	for _, module := range []**uuid.UUID{&value.RecordSetModule, &value.ManagerModule} {
+		if *module != nil {
+			id := **module
+			*module = &id
+		}
+	}
+	value.Forms = cloneObjectForms(value.Forms)
+	return value
+}
+
+// accountingRegisterFields is every field of an entry that carries a value of
+// its own, dimensions and resources alike, as plain attributes - which is what
+// they are to everything that does not care about double entry.
+func accountingRegisterFields(item AccountingRegisterDefinition) []Attribute {
+	fields := make([]Attribute, 0, len(item.Dimensions)+len(item.Resources))
+	for _, group := range [][]AccountingRegisterField{item.Dimensions, item.Resources} {
+		for _, field := range group {
+			fields = append(fields, Attribute{ID: field.ID, Name: field.Name, Title: field.Title, Types: field.Types, Indexed: field.Indexed})
+		}
+	}
+	return fields
+}
+
+// AccountingRegister returns one accounting register by name, folded case.
+func (catalog *Catalog) AccountingRegister(name string) (AccountingRegisterDefinition, bool) {
+	index, ok := catalog.accountingRegisterByName[strings.ToLower(name)]
+	if !ok {
+		return AccountingRegisterDefinition{}, false
+	}
+	return cloneAccountingRegister(catalog.AccountingRegisters[index]), true
+}
+
+// AccountingRegisterByID returns one accounting register by its identifier.
+func (catalog *Catalog) AccountingRegisterByID(id uuid.UUID) (AccountingRegisterDefinition, bool) {
+	index, ok := catalog.accountingRegisterByID[id]
+	if !ok {
+		return AccountingRegisterDefinition{}, false
+	}
+	return cloneAccountingRegister(catalog.AccountingRegisters[index]), true
+}

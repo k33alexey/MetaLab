@@ -169,6 +169,17 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 			target.fields["recorder"], target.fields["linenumber"], target.fields["active"] = true, false, true
 		}
 		addAttributes(informationRegisterFields(item))
+	} else if index, ok := catalog.accountingRegisterByID[id]; ok {
+		item := catalog.AccountingRegisters[index]
+		target.operations[PermissionUpdate] = true
+		// Totals of an accounting register are the balances by account, and
+		// they are exactly what a role may be kept away from managing.
+		target.operations[PermissionTotalsControl] = true
+		target.fields = map[string]bool{"recordid": false, "period": true, "recorder": true, "linenumber": false, "active": true}
+		for _, field := range accountingRegisterFields(item) {
+			target.fields[field.ID.String()] = true
+		}
+		addAttributes(item.Attributes)
 	} else if index, ok := catalog.accumulationRegisterByID[id]; ok {
 		item := catalog.AccumulationRegisters[index]
 		target.operations[PermissionUpdate] = true

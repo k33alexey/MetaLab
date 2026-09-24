@@ -196,6 +196,18 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := loadObjectKind(root, AccountingRegisterKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeAccountingRegister(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.AccountingRegisters = append(catalog.AccountingRegisters, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadKind(root, NumeratorKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeNumerator(source, file, manifest)
 		if err == nil && value.ID != id {
@@ -407,6 +419,9 @@ func NewCatalogSnapshotWithEventSubscriptions(manifest project.Project, constant
 	for index := range result.ExchangePlans {
 		result.ExchangePlans[index] = cloneExchangePlan(result.ExchangePlans[index])
 	}
+	for index := range result.AccountingRegisters {
+		result.AccountingRegisters[index] = cloneAccountingRegister(result.AccountingRegisters[index])
+	}
 	for index := range result.Numerators {
 		result.Numerators[index] = cloneNumerator(result.Numerators[index])
 	}
@@ -578,6 +593,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	sort.Slice(catalog.ExchangePlans, func(i, j int) bool {
 		return catalog.ExchangePlans[i].ID.String() < catalog.ExchangePlans[j].ID.String()
 	})
+	sort.Slice(catalog.AccountingRegisters, func(i, j int) bool {
+		return catalog.AccountingRegisters[i].ID.String() < catalog.AccountingRegisters[j].ID.String()
+	})
 	sort.Slice(catalog.Numerators, func(i, j int) bool {
 		return catalog.Numerators[i].ID.String() < catalog.Numerators[j].ID.String()
 	})
@@ -610,6 +628,8 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.taskByID = make(map[uuid.UUID]int, len(catalog.Tasks))
 	catalog.exchangePlanByName = make(map[string]int, len(catalog.ExchangePlans))
 	catalog.exchangePlanByID = make(map[uuid.UUID]int, len(catalog.ExchangePlans))
+	catalog.accountingRegisterByName = make(map[string]int, len(catalog.AccountingRegisters))
+	catalog.accountingRegisterByID = make(map[uuid.UUID]int, len(catalog.AccountingRegisters))
 	catalog.numeratorByName = make(map[string]int, len(catalog.Numerators))
 	catalog.numeratorByID = make(map[uuid.UUID]int, len(catalog.Numerators))
 	catalog.sequenceByName = make(map[string]int, len(catalog.Sequences))
@@ -845,6 +865,26 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("%w: %s and task table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
 			}
 			allIDs[part.ID] = "task table part " + item.Name + "." + part.Name
+		}
+	}
+	for index, item := range catalog.AccountingRegisters {
+		if err := add("accounting register", item.ID, item.Name, index, catalog.accountingRegisterByName, catalog.accountingRegisterByID); err != nil {
+			return err
+		}
+		for _, field := range append(slices.Clone(item.Dimensions), item.Resources...) {
+			if previous, ok := allIDs[field.ID]; ok {
+				return fmt.Errorf("%w: %s and accounting register field %s.%s use %s", ErrDuplicateID, previous, item.Name, field.Name, field.ID)
+			}
+			allIDs[field.ID] = "accounting register field " + item.Name + "." + field.Name
+		}
+		for _, attribute := range item.Attributes {
+			if _, common := catalog.commonAttributeByID[attribute.ID]; common {
+				continue
+			}
+			if previous, ok := allIDs[attribute.ID]; ok {
+				return fmt.Errorf("%w: %s and accounting register attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
+			}
+			allIDs[attribute.ID] = "accounting register attribute " + item.Name + "." + attribute.Name
 		}
 	}
 	for index, item := range catalog.Numerators {
@@ -1243,6 +1283,11 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 	}
+	for _, item := range catalog.AccountingRegisters {
+		if err := catalog.validateAccountingRegister(root, item); err != nil {
+			return err
+		}
+	}
 	if err := catalog.validateRoleReferences(root); err != nil {
 		return err
 	}
@@ -1390,6 +1435,50 @@ func (catalog *Catalog) validateTaskAddressing(owner string, item TaskDefinition
 		}
 	}
 	return nil
+}
+
+// validateAccountingRegister resolves the chart an entry is made against and
+// the flags its fields depend on. A flag from another chart is the quiet kind
+// of mistake: the field would exist, the accounts would never turn it on, and
+// the column would stay empty for as long as anybody cared to look.
+func (catalog *Catalog) validateAccountingRegister(root string, item AccountingRegisterDefinition) error {
+	owner := "accounting register " + item.Name
+	index, ok := catalog.chartOfAccountsByID[item.ChartOfAccounts]
+	if !ok {
+		return fmt.Errorf("%s makes entries against unknown chart of accounts %s", owner, item.ChartOfAccounts)
+	}
+	chart := catalog.ChartsOfAccounts[index]
+	flags, extFlags := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
+	for _, flag := range chart.AccountingFlags {
+		flags[flag.ID] = true
+	}
+	for _, flag := range chart.ExtDimensionAccountingFlags {
+		extFlags[flag.ID] = true
+	}
+	for _, field := range append(slices.Clone(item.Dimensions), item.Resources...) {
+		if err := catalog.validateReferences(owner+" field "+field.Name, field.Types); err != nil {
+			return err
+		}
+		if field.AccountingFlag != nil && !flags[*field.AccountingFlag] {
+			return fmt.Errorf("%s field %s depends on %s, which is not an accounting flag of %s",
+				owner, field.Name, field.AccountingFlag, chart.Name)
+		}
+		if field.ExtDimensionAccountingFlag != nil && !extFlags[*field.ExtDimensionAccountingFlag] {
+			return fmt.Errorf("%s field %s depends on %s, which is not an ext dimension accounting flag of %s",
+				owner, field.Name, field.ExtDimensionAccountingFlag, chart.Name)
+		}
+	}
+	for _, attribute := range item.Attributes {
+		if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
+			return err
+		}
+	}
+	for _, recorder := range item.Recorders {
+		if _, ok := catalog.documentByID[recorder]; !ok {
+			return fmt.Errorf("%s references unknown recorder document %s", owner, recorder)
+		}
+	}
+	return validateObjectFileSources(root, AccountingRegisterKind, item.ID, "accounting register", item.Name, item.RecordSetModule, item.ManagerModule, item.Forms)
 }
 
 // documentAttributeOwners maps every attribute of every document - its own and
