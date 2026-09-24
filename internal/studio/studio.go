@@ -221,9 +221,9 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 	return Snapshot{ProjectPath: workspace.root, Manifest: manifest, Tree: root}, nil
 }
 
-// SaveDataProvider runs "Сохранить данные" (096) against this Studio's
-// database - the package-free replacement for the retired
-// BuildPublicationPackage/BuildFile+Activate flow (021/024).
+// SaveDataProvider runs "Сохранить данные" against this Studio's database.
+// The project directory is the artifact: nothing is built into a package on
+// the way from what a developer edits to what the database holds.
 type SaveDataProvider func(ctx context.Context, root string, consent schemadiff.MigrationConsent) (publication.SavedState, schemadiff.MigrationRecord, error)
 
 // SavedNamesProvider reads the names of what is currently SAVED in the
