@@ -63,7 +63,7 @@ templates:
 	} {
 		writeObjectForm(t, root, EnumerationKind, "СтатусыЗаказа", form, id)
 	}
-	writeTemplateContent(t, root, EnumerationKind, "СтатусыЗаказа", enumTemplate, "content.txt", "текст")
+	writeTemplateContent(t, root, EnumerationKind, "СтатусыЗаказа", "Справка", "content.txt", "текст")
 
 	catalog, err := Load(root)
 	if err != nil {

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/k33alexey/MetaLab/internal/project"
 )
 
 const (
@@ -75,12 +77,12 @@ func TestEveryObjectKindCarriesItsOwnTemplates(t *testing.T) {
 func TestTemplateOfEveryKindIsStoredWhereItsKindSays(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
-	declared, ids := "", map[TemplateKind]string{}
+	declared, names := "", map[TemplateKind]string{}
 	for index, kind := range []TemplateKind{SpreadsheetTemplate, TextTemplate, BinaryTemplate, HTMLTemplate,
 		CompositionSchema, CompositionAppearance, GeographicalSchema, GraphicalSchema, ActiveDocument, AddInTemplate} {
-		id := templateIdentifier(index)
-		ids[kind] = id
-		declared += "  - {id: " + id + ", name: Макет" + string('A'+rune(index)) +
+		name := "Макет" + string('A'+rune(index))
+		names[kind] = name
+		declared += "  - {id: " + templateIdentifier(index) + ", name: " + name +
 			", title: {ru: Макет}, kind: " + string(kind) + "}\n"
 	}
 	writeMetadata(t, root, CatalogKind, templateCatalog, `format: 1
@@ -91,14 +93,14 @@ code: {type: string, length: 9, auto: true}
 description_length: 150
 templates:
 `+declared)
-	for kind, id := range ids {
+	for kind, name := range names {
 		switch kind {
 		case HTMLTemplate:
 			// One document per language, because it is read by a person.
-			writeTemplateContent(t, root, CatalogKind, "Контрагенты", id, "ru.html", "<p>Привет</p>")
-			writeTemplateContent(t, root, CatalogKind, "Контрагенты", id, "uk.html", "<p>Привіт</p>")
+			writeTemplateContent(t, root, CatalogKind, "Контрагенты", name, "ru.html", "<p>Привет</p>")
+			writeTemplateContent(t, root, CatalogKind, "Контрагенты", name, "uk.html", "<p>Привіт</p>")
 		default:
-			writeTemplateContent(t, root, CatalogKind, "Контрагенты", id, kind.contentFile(), "содержимое")
+			writeTemplateContent(t, root, CatalogKind, "Контрагенты", name, kind.contentFile(), "содержимое")
 		}
 	}
 	catalog, err := Load(root)
@@ -109,14 +111,14 @@ templates:
 	if !ok {
 		t.Fatal("the catalog did not load")
 	}
-	if len(definition.Templates) != len(ids) {
-		t.Fatalf("%d templates of %d survived: %+v", len(definition.Templates), len(ids), definition.Templates)
+	if len(definition.Templates) != len(names) {
+		t.Fatalf("%d templates of %d survived: %+v", len(definition.Templates), len(names), definition.Templates)
 	}
 	seen := map[TemplateKind]bool{}
 	for _, template := range definition.Templates {
 		seen[template.Kind] = true
 	}
-	for kind := range ids {
+	for kind := range names {
 		if !seen[kind] {
 			t.Fatalf("a template of kind %s was lost", kind)
 		}
@@ -156,11 +158,10 @@ templates:
 	for name, broken := range map[string]struct {
 		template, file, want string
 	}{
-		"табличный документ с текстом": {templateID, "content.txt", "cannot hold"},
-		"HTML без языка":               {templateSecond, "content.yaml", "cannot hold"},
-		"язык не язык":                 {templateSecond, "ЯЗЫК.html", "cannot hold"},
-		"содержимое без макета": {"ce000000-0000-4000-8000-0000000001ff", "content.yaml",
-			"which it does not declare"},
+		"табличный документ с текстом": {"ПечатнаяФорма", "content.txt", "cannot hold"},
+		"HTML без языка":               {"Письмо", "content.yaml", "cannot hold"},
+		"язык не язык":                 {"Письмо", "ЯЗЫК.html", "cannot hold"},
+		"содержимое без макета":        {"НикемНеОбъявленный", "content.yaml", "which it does not declare"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -180,16 +181,27 @@ templates:
 	// A file lying directly among the templates belongs to no template.
 	root = metadataProject(t)
 	writeMetadata(t, root, CatalogKind, templateCatalog, body)
-	directory := filepath.Join(root, "metadata", string(CatalogKind), templateCatalog, "templates")
+	directory := filepath.Join(root, "metadata", string(CatalogKind), "Контрагенты", "templates")
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(directory, "content.yaml"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Load(root); err == nil {
-		t.Fatal("a file lying beside the templates was accepted as one")
+	err := errorFromLoad(t, root)
+	if !strings.Contains(err.Error(), "a template is a folder") {
+		t.Fatalf("a file lying beside the templates was refused for another reason: %v", err)
 	}
+}
+
+// errorFromLoad loads and demands a refusal, so the caller can say which one.
+func errorFromLoad(t *testing.T, root string) error {
+	t.Helper()
+	_, err := Load(root)
+	if err == nil {
+		t.Fatal("accepted")
+	}
+	return err
 }
 
 // What a template is checked for is what makes it a template: a name of its
@@ -238,4 +250,57 @@ description_length: 150
 func templateIdentifier(index int) string {
 	const digits = "0123456789abcdef"
 	return "ce000000-0000-4000-8000-0000000002" + string([]byte{digits[index/16], digits[index%16]})
+}
+
+// A template's folder is named after the template, the way a command's and a
+// form's are. Only the folder changed: the file inside is still named after
+// the kind of template, because that is what says which of the ten it is.
+func TestTemplateFolderIsNamedAfterTheTemplate(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeMetadata(t, root, CatalogKind, templateCatalog, `format: 1
+id: `+templateCatalog+`
+name: Контрагенты
+title: {ru: Контрагенты}
+code: {type: string, length: 9, auto: true}
+description_length: 150
+templates:
+  - {id: `+templateID+`, name: ПечатнаяФорма, title: {ru: Печатная форма}, kind: spreadsheet}
+`)
+	writeTemplateContent(t, root, CatalogKind, "Контрагенты", "ПечатнаяФорма", "content.yaml", "format: 1\n")
+	if _, err := Load(root); err != nil {
+		t.Fatal(err)
+	}
+	expected, err := project.ObjectTemplateContentPath("catalogs", "Контрагенты", "ПечатнаяФорма", "content.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if expected != "metadata/catalogs/Контрагенты/templates/ПечатнаяФорма/content.yaml" {
+		t.Fatalf("a template's content lies at %q", expected)
+	}
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(expected))); err != nil {
+		t.Fatal(err)
+	}
+
+	// A name is unique among its siblings with case folded, so the folder is
+	// found whichever way the developer typed it.
+	if err := os.Rename(
+		filepath.Join(root, "metadata", string(CatalogKind), "Контрагенты", "templates", "ПечатнаяФорма"),
+		filepath.Join(root, "metadata", string(CatalogKind), "Контрагенты", "templates", "печатнаяформа")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(root); err != nil {
+		t.Fatal(err)
+	}
+
+	// A folder that is not a name at all cannot belong to any template.
+	if err := os.Rename(
+		filepath.Join(root, "metadata", string(CatalogKind), "Контрагенты", "templates", "печатнаяформа"),
+		filepath.Join(root, "metadata", string(CatalogKind), "Контрагенты", "templates", templateID)); err != nil {
+		t.Fatal(err)
+	}
+	err = errorFromLoad(t, root)
+	if !strings.Contains(err.Error(), "which is not a name") {
+		t.Fatalf("refused for another reason: %v", err)
+	}
 }

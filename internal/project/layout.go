@@ -464,25 +464,27 @@ func ObjectFormModulePath(kind, name, form string) (string, error) {
 }
 
 // ObjectTemplateDirectory returns the folder holding the content of one of an
-// object's own templates. A template keeps a folder rather than a single file
-// because its content is not always one file: an HTML template holds one per
-// language, and a template may legitimately hold none at all while its editor
-// has not been written yet.
-func ObjectTemplateDirectory(kind, name string, templateID uuid.UUID) (string, error) {
+// object's own templates, named after the template.
+//
+// A template keeps a folder rather than a single file because its content is
+// not always one file: an HTML template holds one per language, and a template
+// may legitimately hold none at all while its editor has not been written yet.
+func ObjectTemplateDirectory(kind, name, template string) (string, error) {
 	directory, err := ObjectDirectory(kind, name)
 	if err != nil {
 		return "", err
 	}
-	if templateID.IsZero() {
-		return "", fmt.Errorf("source UUID must not be zero")
+	if err := SubordinateName(template); err != nil {
+		return "", fmt.Errorf("template %w", err)
 	}
-	return path.Join(directory, "templates", templateID.String()), nil
+	return path.Join(directory, "templates", template), nil
 }
 
-// ObjectTemplateContentPath returns one file of a template's content, named as
-// the kind of template dictates.
-func ObjectTemplateContentPath(kind, name string, templateID uuid.UUID, file string) (string, error) {
-	directory, err := ObjectTemplateDirectory(kind, name, templateID)
+// ObjectTemplateContentPath returns one file of a template's content. The file
+// is still named after the kind of template: what changed is the folder it
+// lies in, not what a template's content is called inside it.
+func ObjectTemplateContentPath(kind, name, template, file string) (string, error) {
+	directory, err := ObjectTemplateDirectory(kind, name, template)
 	if err != nil {
 		return "", err
 	}

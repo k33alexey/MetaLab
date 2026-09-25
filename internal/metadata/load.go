@@ -2417,7 +2417,7 @@ func validateObjectCommandFiles(directory, kind, name string, commands []ObjectC
 func validateObjectTemplateFiles(directory, kind, name string, templates []ObjectTemplate) error {
 	declared := make(map[string]TemplateKind, len(templates))
 	for _, template := range templates {
-		declared[template.ID.String()] = template.Kind
+		declared[strings.ToLower(template.Name)] = template.Kind
 	}
 	entries, err := os.ReadDir(filepath.Join(directory, "templates"))
 	if err != nil {
@@ -2431,7 +2431,10 @@ func validateObjectTemplateFiles(directory, kind, name string, templates []Objec
 			return fmt.Errorf("%s %s keeps %q among its templates, and a template is a folder",
 				kind, name, entry.Name())
 		}
-		templateKind, ok := declared[entry.Name()]
+		if project.SubordinateName(entry.Name()) != nil {
+			return fmt.Errorf("%s %s keeps a template folder %q, which is not a name", kind, name, entry.Name())
+		}
+		templateKind, ok := declared[strings.ToLower(entry.Name())]
 		if !ok {
 			return fmt.Errorf("%s %s keeps content for template %s, which it does not declare",
 				kind, name, entry.Name())

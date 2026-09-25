@@ -275,9 +275,9 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 	if directory && len(parts) == 4 && contains(project.ObjectSubordinateDirectories(), parts[3]) {
 		return nil
 	}
-	// A command and a form each keep a folder named after themselves.
-	if directory && len(parts) == 5 && (parts[3] == "commands" || parts[3] == "forms") &&
-		project.SubordinateName(parts[4]) == nil {
+	// A command, a form and a template each keep a folder named after itself.
+	if directory && len(parts) == 5 && project.SubordinateName(parts[4]) == nil &&
+		contains(project.ObjectSubordinateDirectories(), parts[3]) {
 		return nil
 	}
 	if !directory && len(parts) == 6 && parts[3] == "forms" {
@@ -297,18 +297,12 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 			return nil
 		}
 	}
-	// A template keeps a folder named by its own UUID; what the folder may
-	// hold is decided by the kind of template, and that is checked where the
-	// metadata is read rather than here, where only the shape of the path is.
-	if directory && len(parts) == 5 && parts[3] == "templates" {
-		if _, err := uuid.Parse(parts[4]); err == nil {
-			return nil
-		}
-	}
-	if !directory && len(parts) == 6 && parts[3] == "templates" {
-		if _, err := uuid.Parse(parts[4]); err == nil && templateContentName(parts[5]) {
-			return nil
-		}
+	// What a template's folder may hold is decided by the kind of template,
+	// and that is checked where the metadata is read rather than here, where
+	// only the shape of the path is.
+	if !directory && len(parts) == 6 && parts[3] == "templates" &&
+		project.SubordinateName(parts[4]) == nil && templateContentName(parts[5]) {
+		return nil
 	}
 	if !directory && len(parts) == 4 && parts[3] == "object.yaml" {
 		if expected, err := project.ObjectMetadataPath(parts[1], objectName); err == nil && expected == relative {

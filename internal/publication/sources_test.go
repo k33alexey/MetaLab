@@ -207,3 +207,41 @@ func publicationProject(t *testing.T) string {
 	}
 	return root
 }
+
+// Everything an object keeps in a folder of its own - a command, a form, a
+// template - is now named after itself, and the shape of the path is what says
+// so before anything is read. A publication that accepted the old shapes would
+// carry files no loader can place.
+func TestObjectFolderPathShapes(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		relative  string
+		directory bool
+		accepted  bool
+	}{
+		"папка макета по имени": {"metadata/catalogs/Товары/templates/ПечатнаяФорма", true, true},
+		"содержимое макета":     {"metadata/catalogs/Товары/templates/ПечатнаяФорма/content.yaml", false, true},
+		"папка макета по идентификатору": {
+			"metadata/catalogs/Товары/templates/ce000000-0000-4000-8000-000000000100", true, false},
+		"папка формы по имени": {"metadata/catalogs/Товары/forms/ФормаЭлемента", true, true},
+		"описание формы":       {"metadata/catalogs/Товары/forms/ФормаЭлемента/form.yaml", false, true},
+		"модуль формы":         {"metadata/catalogs/Товары/forms/ФормаЭлемента/МодульФормы.bsl", false, true},
+		"посторонний файл у формы": {
+			"metadata/catalogs/Товары/forms/ФормаЭлемента/заметки.txt", false, false},
+		"папка команды":    {"metadata/catalogs/Товары/commands/Пересчитать", true, true},
+		"модуль команды":   {"metadata/catalogs/Товары/commands/Пересчитать/МодульКоманды.bsl", false, true},
+		"модуль объекта":   {"metadata/catalogs/Товары/МодульОбъекта.bsl", false, true},
+		"описание объекта": {"metadata/catalogs/Товары/object.yaml", false, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			err := validateObjectFolderSourcePath(strings.Split(test.relative, "/"), test.relative, test.directory)
+			if test.accepted && err != nil {
+				t.Fatalf("%s was refused: %v", test.relative, err)
+			}
+			if !test.accepted && err == nil {
+				t.Fatalf("%s was accepted", test.relative)
+			}
+		})
+	}
+}

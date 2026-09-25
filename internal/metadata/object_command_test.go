@@ -317,10 +317,11 @@ description_length: 150
 }
 
 // writeTemplateContent writes one file of a template's content into the folder
-// that template keeps beside its object.
-func writeTemplateContent(t *testing.T, root string, kind Kind, objectName, templateID, file, content string) {
+// that template keeps beside its object. The folder is named after the
+// template; the file inside is still named after the kind of template.
+func writeTemplateContent(t *testing.T, root string, kind Kind, objectName, template, file, content string) {
 	t.Helper()
-	directory := filepath.Join(root, "metadata", string(kind), objectName, "templates", templateID)
+	directory := filepath.Join(root, "metadata", string(kind), objectName, "templates", template)
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +388,7 @@ func subordinateProject(t *testing.T) string {
 		command, template := ids()
 		writeMetadata(t, root, kind, objectID, body+oneOfEach(command, template))
 		writeCommandModule(t, root, kind, objectName(body), "ОткрытьСписок")
-		writeTemplateContent(t, root, kind, objectName(body), template, "content.yaml", "format: 1\n")
+		writeTemplateContent(t, root, kind, objectName(body), "ПечатнаяФорма", "content.yaml", "format: 1\n")
 	}
 	withCommand(CatalogKind, commandCatalog, `format: 1
 id: `+commandCatalog+`
