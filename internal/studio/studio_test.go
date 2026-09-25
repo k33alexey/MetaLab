@@ -62,7 +62,8 @@ func TestWorkspaceSnapshotBuildsCanonicalTree(t *testing.T) {
 	// "Общие" group, then the object kinds. Storage directories are not
 	// branches - a module or a form is reached through the object owning it.
 	wantTop := []string{
-		"session-module", "application-module", "metadata/common", "metadata/constants", "metadata/catalogs",
+		"session-module", "application-module", "external-connection-module", "ordinary-application-module",
+		"metadata/common", "metadata/constants", "metadata/catalogs",
 		"metadata/documents", "metadata/document-journals", "metadata/enumerations",
 		"metadata/reports", "metadata/data-processors", "metadata/charts-of-characteristic-types",
 		"metadata/charts-of-accounts", "metadata/charts-of-calculation-types",

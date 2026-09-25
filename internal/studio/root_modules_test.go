@@ -254,3 +254,81 @@ func TestApplicationModuleIsCompiledIntoTheProjectProgram(t *testing.T) {
 	}
 	t.Fatalf("the application module did not reach the program: %+v", modules)
 }
+
+// All four modules of the root stand in the tree, and each opens. The ordinary
+// application module is the one that never runs — and it is exactly the one a
+// developer of a transferred configuration comes looking for, so it has to be
+// there to be found.
+func TestRootKeepsFourModules(t *testing.T) {
+	t.Parallel()
+	workspace, err := Open(createProject(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := workspace.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]string{}
+	for _, node := range snapshot.Tree.Children {
+		found[node.ID] = node.Path
+	}
+	for id, file := range map[string]string{
+		"session-module":              project.SessionModuleFile,
+		"application-module":          project.ApplicationModuleFile,
+		"external-connection-module":  project.ExternalConnectionModuleFile,
+		"ordinary-application-module": project.OrdinaryApplicationModuleFile,
+	} {
+		if found[id] != file {
+			t.Fatalf("module %s is not in the tree as %s: %q", id, file, found[id])
+		}
+		if _, err := workspace.OpenRootModule(id); err != nil {
+			t.Fatalf("module %s does not open: %v", id, err)
+		}
+	}
+}
+
+// The pictures of the root show up only when they are there: a configuration
+// without a logo is an ordinary configuration, and a branch offering to make
+// one would be an offer rather than a fact.
+func TestRootPicturesAppearOnlyWhenPresent(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := workspace.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, node := range snapshot.Tree.Children {
+		if strings.HasPrefix(node.ID, "root-picture:") {
+			t.Fatalf("a picture nobody added is in the tree: %+v", node)
+		}
+	}
+
+	directory := filepath.Join(root, project.LogoDirectory)
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "100.png"), []byte("image"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err = workspace.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var shown *Node
+	for index, node := range snapshot.Tree.Children {
+		if node.ID == "root-picture:"+project.LogoDirectory {
+			shown = &snapshot.Tree.Children[index]
+		}
+	}
+	if shown == nil || shown.Title != project.LogoDirectory {
+		t.Fatalf("the logo is not in the tree: %+v", snapshot.Tree.Children)
+	}
+	if len(shown.Properties) == 0 || !strings.Contains(shown.Properties[0].Value, "100.png") {
+		t.Fatalf("the tree does not say which images the logo has: %+v", shown.Properties)
+	}
+}

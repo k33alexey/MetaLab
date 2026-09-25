@@ -23,6 +23,19 @@ const SessionModuleName = "МодульСеанса"
 // what the root owes it here is a place to lie and a name to compile under.
 const ApplicationModuleName = "МодульПриложения"
 
+// ExternalConnectionModuleName is the module that runs when something outside
+// connects to the base with nobody sitting in front of it. It is named by its
+// role for the same reason as the two above.
+const ExternalConnectionModuleName = "МодульВнешнегоСоединения"
+
+// OrdinaryApplicationModuleName is the name the ordinary application module is
+// compiled under. Nothing calls it: ML has no ordinary application, and the
+// module is carried so that a transferred configuration does not lose what it
+// used to do at start-up. It is still compiled, because a module that is never
+// checked rots quietly, and a developer reading it deserves to be told that it
+// does not parse.
+const OrdinaryApplicationModuleName = "МодульОбычногоПриложения"
+
 const (
 	setSessionParametersRU = "УстановкаПараметровСеанса"
 	setSessionParametersEN = "SetSessionParameters"

@@ -1,6 +1,8 @@
 package metadata
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -315,6 +317,119 @@ types: [{kind: string, length: 100}]
 				t.Fatal("a dictionary pointing at nothing was accepted")
 			} else if !strings.Contains(err.Error(), "as a dictionary") {
 				t.Fatalf("the error does not say what is wrong: %v", err)
+			}
+		})
+	}
+}
+
+// The rest of the root's references resolve the same way the first fifteen do,
+// including the four that name a form nothing will ever open: a mechanism that
+// does not run is no reason to lose track of which form was meant.
+func TestRemainingConfigurationReferencesAreResolved(t *testing.T) {
+	t.Parallel()
+	for name, fill := range map[string]func(configuration *project.Project){
+		"хранилище внешних данных ссылок": func(configuration *project.Project) {
+			configuration.URLExternalDataStorage = mustParse(t, defaultsStranger)
+		},
+		"форма настроек динамического списка": func(configuration *project.Project) {
+			configuration.DefaultDynamicListSettingsForm = mustParse(t, defaultsStranger)
+		},
+		"вспомогательная форма констант": func(configuration *project.Project) {
+			configuration.AuxiliaryConstantsForm = mustParse(t, defaultsStranger)
+		},
+		"форма изменений истории данных": func(configuration *project.Project) {
+			configuration.DataHistoryChangesForm = mustParse(t, defaultsStranger)
+		},
+		"форма версии истории данных": func(configuration *project.Project) {
+			configuration.DataHistoryVersionForm = mustParse(t, defaultsStranger)
+		},
+		"форма различий версий": func(configuration *project.Project) {
+			configuration.DataHistoryVersionDifferenceForm = mustParse(t, defaultsStranger)
+		},
+		"форма выбора пользователей системы взаимодействия": func(configuration *project.Project) {
+			configuration.CollaborationSystemUsersChoiceForm = mustParse(t, defaultsStranger)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := defaultsProject(t)
+			saveDefaults(t, root, fill)
+			if _, err := Load(root); err == nil {
+				t.Fatal("a reference pointing at nothing was accepted")
+			}
+		})
+	}
+
+	// All seven at once, each naming what is actually there.
+	root := defaultsProject(t)
+	saveDefaults(t, root, func(configuration *project.Project) {
+		configuration.URLExternalDataStorage = mustParse(t, defaultsFormData)
+		configuration.DefaultDynamicListSettingsForm = mustParse(t, defaultsReportForm)
+		configuration.AuxiliaryConstantsForm = mustParse(t, defaultsConstantsForm)
+		configuration.DataHistoryChangesForm = mustParse(t, defaultsSettingsForm)
+		configuration.DataHistoryVersionForm = mustParse(t, defaultsVariantForm)
+		configuration.DataHistoryVersionDifferenceForm = mustParse(t, defaultsSearchForm)
+		configuration.CollaborationSystemUsersChoiceForm = mustParse(t, defaultsReportForm)
+	})
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if catalog.Project.URLExternalDataStorage == nil || catalog.Project.CollaborationSystemUsersChoiceForm == nil {
+		t.Fatalf("a reference was lost: %+v", catalog.Project)
+	}
+}
+
+// The logo and the splash are the root's own files, so nothing declares them:
+// the folder is the declaration. The rules are those of every picture - one
+// file per density, and never a ladder without its base.
+func TestRootPicturesAreCheckedLikeEveryPicture(t *testing.T) {
+	t.Parallel()
+	write := func(t *testing.T, root, picture, file string) {
+		t.Helper()
+		directory := filepath.Join(root, picture)
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, file), []byte("image"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// A configuration with no pictures at all is ordinary.
+	if _, err := Load(defaultsProject(t)); err != nil {
+		t.Fatalf("a configuration without a logo was refused: %v", err)
+	}
+
+	good := defaultsProject(t)
+	write(t, good, project.LogoDirectory, "100.png")
+	write(t, good, project.LogoDirectory, "200.png")
+	write(t, good, project.SplashDirectory, "100.svg")
+	if _, err := Load(good); err != nil {
+		t.Fatalf("a logo at two densities was refused: %v", err)
+	}
+
+	for name, broken := range map[string]func(t *testing.T, root string){
+		"без базовой плотности": func(t *testing.T, root string) {
+			write(t, root, project.LogoDirectory, "200.png")
+		},
+		"имя не плотность": func(t *testing.T, root string) {
+			write(t, root, project.SplashDirectory, "logo.png")
+		},
+		"формат, который нечем нарисовать": func(t *testing.T, root string) {
+			write(t, root, project.LogoDirectory, "100.psd")
+		},
+		"одна плотность дважды": func(t *testing.T, root string) {
+			write(t, root, project.LogoDirectory, "100.png")
+			write(t, root, project.LogoDirectory, "100.svg")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := defaultsProject(t)
+			broken(t, root)
+			if _, err := Load(root); err == nil {
+				t.Fatal("a broken picture of the root was accepted")
 			}
 		})
 	}

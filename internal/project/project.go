@@ -143,6 +143,30 @@ type Project struct {
 	ReportsVariantsStorage          *uuid.UUID `yaml:"reports_variants_storage,omitempty" json:"reportsVariantsStorage,omitempty"`
 	DynamicListsUserSettingsStorage *uuid.UUID `yaml:"dynamic_lists_user_settings_storage,omitempty" json:"dynamicListsUserSettingsStorage,omitempty"`
 	FormDataSettingsStorage         *uuid.UUID `yaml:"form_data_settings_storage,omitempty" json:"formDataSettingsStorage,omitempty"`
+	// URLExternalDataStorage is the sixth storage: where the data behind a
+	// navigation link is kept when the link carries more than a reference.
+	URLExternalDataStorage *uuid.UUID `yaml:"url_external_data_storage,omitempty" json:"urlExternalDataStorage,omitempty"`
+	// The forms below stand in the same place as the five above - a common
+	// form the root hands out when a nearer one is not named - and are listed
+	// apart only because each waits on something different.
+	//
+	// The settings form of a dynamic list is ours to open and works.
+	DefaultDynamicListSettingsForm *uuid.UUID `yaml:"default_dynamic_list_settings_form,omitempty" json:"defaultDynamicListSettingsForm,omitempty"`
+	// AuxiliaryConstantsForm is what opens when the main constants form is not
+	// named or cannot be used. A slot beside a main one is how the prototype
+	// describes every other form, and the root is no exception.
+	AuxiliaryConstantsForm *uuid.UUID `yaml:"auxiliary_constants_form,omitempty" json:"auxiliaryConstantsForm,omitempty"`
+	// The three data history forms are carried and never opened: data history
+	// is the prototype's mechanism, transferred and not implemented, and what
+	// answers the question it was switched on for is the change history of ML.
+	DataHistoryChangesForm           *uuid.UUID `yaml:"data_history_changes_form,omitempty" json:"dataHistoryChangesForm,omitempty"`
+	DataHistoryVersionForm           *uuid.UUID `yaml:"data_history_version_form,omitempty" json:"dataHistoryVersionForm,omitempty"`
+	DataHistoryVersionDifferenceForm *uuid.UUID `yaml:"data_history_version_difference_form,omitempty" json:"dataHistoryVersionDifferenceForm,omitempty"`
+	// CollaborationSystemUsersChoiceForm names a form for a mechanism ML does
+	// not have at all. It is carried for the same reason as everything else in
+	// this file that ML does not execute: a configuration that named it, named
+	// it.
+	CollaborationSystemUsersChoiceForm *uuid.UUID `yaml:"collaboration_system_users_choice_form,omitempty" json:"collaborationSystemUsersChoiceForm,omitempty"`
 	// What follows are the settings of the root that are not references: how
 	// data is locked, what happens to a number nobody used, in which variant
 	// of the language the configuration is written, what its names begin with
@@ -548,12 +572,19 @@ func (p Project) Validate() error {
 		"default_report_settings_form": p.DefaultReportSettingsForm,
 		"default_report_variant_form":  p.DefaultReportVariantForm,
 		"default_constants_form":       p.DefaultConstantsForm, "default_search_form": p.DefaultSearchForm,
-		"default_report_appearance_template":  p.DefaultReportAppearanceTemplate,
-		"common_settings_storage":             p.CommonSettingsStorage,
-		"reports_user_settings_storage":       p.ReportsUserSettingsStorage,
-		"reports_variants_storage":            p.ReportsVariantsStorage,
-		"dynamic_lists_user_settings_storage": p.DynamicListsUserSettingsStorage,
-		"form_data_settings_storage":          p.FormDataSettingsStorage,
+		"default_report_appearance_template":     p.DefaultReportAppearanceTemplate,
+		"common_settings_storage":                p.CommonSettingsStorage,
+		"reports_user_settings_storage":          p.ReportsUserSettingsStorage,
+		"reports_variants_storage":               p.ReportsVariantsStorage,
+		"dynamic_lists_user_settings_storage":    p.DynamicListsUserSettingsStorage,
+		"form_data_settings_storage":             p.FormDataSettingsStorage,
+		"url_external_data_storage":              p.URLExternalDataStorage,
+		"default_dynamic_list_settings_form":     p.DefaultDynamicListSettingsForm,
+		"auxiliary_constants_form":               p.AuxiliaryConstantsForm,
+		"data_history_changes_form":              p.DataHistoryChangesForm,
+		"data_history_version_form":              p.DataHistoryVersionForm,
+		"data_history_version_difference_form":   p.DataHistoryVersionDifferenceForm,
+		"collaboration_system_users_choice_form": p.CollaborationSystemUsersChoiceForm,
 	} {
 		if reference != nil && reference.IsZero() {
 			add(path, "must be a non-zero UUID")

@@ -223,6 +223,7 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 		Properties: properties,
 	}
 	root.Children = append(root.Children, workspace.rootModuleNodesLocked()...)
+	root.Children = append(root.Children, workspace.rootPictureNodesLocked()...)
 	branches, err := workspace.metadataTree(configuration.DefaultLanguage, configuration.Languages)
 	if err != nil {
 		return Snapshot{}, err

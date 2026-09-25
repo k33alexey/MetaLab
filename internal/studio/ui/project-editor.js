@@ -327,8 +327,22 @@ function createProjectEditor(host, onChange) {
     forms.append(referenceField('Форма варианта отчёта', 'defaultReportVariantForm', defaults.commonForms || []));
     forms.append(referenceField('Форма констант', 'defaultConstantsForm', defaults.commonForms || []));
     forms.append(referenceField('Форма поиска', 'defaultSearchForm', defaults.commonForms || []));
-    forms.append(note('Все пять — общие формы: они не принадлежат ни одному объекту, поэтому корень и '
-      + 'может выдать их всем объектам сразу.'));
+    forms.append(referenceField('Форма настроек динамического списка', 'defaultDynamicListSettingsForm',
+      defaults.commonForms || []));
+    forms.append(referenceField('Вспомогательная форма констант', 'auxiliaryConstantsForm',
+      defaults.commonForms || []));
+    forms.append(note('Все они — общие формы: они не принадлежат ни одному объекту, поэтому корень и '
+      + 'может выдать их всем объектам сразу. Вспомогательная форма констант открывается тогда, когда '
+      + 'основная не задана или не подходит.'));
+    forms.append(referenceField('История данных: изменения', 'dataHistoryChangesForm', defaults.commonForms || []));
+    forms.append(referenceField('История данных: версия', 'dataHistoryVersionForm', defaults.commonForms || []));
+    forms.append(referenceField('История данных: различия версий', 'dataHistoryVersionDifferenceForm',
+      defaults.commonForms || []));
+    forms.append(referenceField('Выбор пользователей системы взаимодействия', 'collaborationSystemUsersChoiceForm',
+      defaults.commonForms || []));
+    forms.append(note('Последние четыре не откроются: история данных переносится и не исполняется, а системы '
+      + 'взаимодействия в ML нет вовсе. Ссылка всё равно проверяется — указывающая в пустоту, она сообщает '
+      + 'не о механизме, а о том, что форму удалили.'));
     panel.append(forms);
 
     const storages = section('Где хранится то, что сохранил пользователь');
@@ -338,6 +352,7 @@ function createProjectEditor(host, onChange) {
     storages.append(referenceField('Варианты отчётов', 'reportsVariantsStorage', settingsStorages));
     storages.append(referenceField('Настройки динамических списков', 'dynamicListsUserSettingsStorage', settingsStorages));
     storages.append(referenceField('Данные форм', 'formDataSettingsStorage', settingsStorages));
+    storages.append(referenceField('Внешние данные навигационных ссылок', 'urlExternalDataStorage', settingsStorages));
     storages.append(note('Незаполненное хранилище означает хранилище платформы, а не потерянные настройки.'));
     panel.append(storages);
 

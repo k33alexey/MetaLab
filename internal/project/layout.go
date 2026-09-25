@@ -37,7 +37,28 @@ const (
 	// as the application starts and stops.
 	SessionModuleFile     = "МодульСеанса.bsl"
 	ApplicationModuleFile = "МодульПриложения.bsl"
-	keepFile              = ".gitkeep"
+	// ExternalConnectionModuleFile holds what runs when something outside
+	// connects to the base without a person in front of it.
+	ExternalConnectionModuleFile = "МодульВнешнегоСоединения.bsl"
+	// OrdinaryApplicationModuleFile is carried and never run: ML has no
+	// ordinary application. It is not a precaution - in a real configuration
+	// this is a file of several thousand characters, and dropping it would
+	// lose the only record of what used to happen at start-up. Kept beside the
+	// others so that a developer sees what was there, and named by its role
+	// like every module of the root.
+	OrdinaryApplicationModuleFile = "МодульОбычногоПриложения.bsl"
+	// LogoDirectory and SplashDirectory are the two pictures the configuration
+	// root owns: the logo it is shown by and the splash it opens with. They
+	// are the root's own files and not references to common pictures - a
+	// reference would make transferring a configuration with a splash create a
+	// common picture that was never in it, and the composition of the
+	// transferred configuration would then differ from the original.
+	//
+	// Each is a folder named after its role holding one file per screen
+	// density, the same way every picture of the platform is stored.
+	LogoDirectory   = "Логотип"
+	SplashDirectory = "Заставка"
+	keepFile        = ".gitkeep"
 
 	// ObjectMetadataFile is the description of the object owning a folder.
 	ObjectMetadataFile = "object.yaml"
@@ -172,7 +193,19 @@ var (
 
 // rootModuleFiles is every module the configuration root may keep, in the
 // order the tree shows them.
-var rootModuleFiles = []string{SessionModuleFile, ApplicationModuleFile}
+var rootModuleFiles = []string{SessionModuleFile, ApplicationModuleFile,
+	ExternalConnectionModuleFile, OrdinaryApplicationModuleFile}
+
+// rootPictureDirectories is every picture the configuration root may keep, in
+// the order the tree shows them.
+var rootPictureDirectories = []string{LogoDirectory, SplashDirectory}
+
+// RootPictureDirectories returns the pictures of the configuration root.
+func RootPictureDirectories() []string { return slices.Clone(rootPictureDirectories) }
+
+// IsRootPictureDirectory reports whether a project-root folder is one of the
+// root's own pictures.
+func IsRootPictureDirectory(name string) bool { return slices.Contains(rootPictureDirectories, name) }
 
 // RootModuleFiles returns the modules of the configuration root.
 func RootModuleFiles() []string { return slices.Clone(rootModuleFiles) }

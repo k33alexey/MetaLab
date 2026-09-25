@@ -2,6 +2,9 @@ package metadata
 
 import (
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -60,6 +63,7 @@ func (catalog *Catalog) validateConfigurationDefaults(root string) error {
 		{"report variants", configuration.ReportsVariantsStorage},
 		{"user dynamic list settings", configuration.DynamicListsUserSettingsStorage},
 		{"form data", configuration.FormDataSettingsStorage},
+		{"the data behind navigation links", configuration.URLExternalDataStorage},
 	} {
 		if storage.id == nil {
 			continue
@@ -82,6 +86,9 @@ func (catalog *Catalog) validateConfigurationDefaults(root string) error {
 		}
 	}
 	if err := catalog.validateFullTextSearchDictionaries(); err != nil {
+		return err
+	}
+	if err := validateRootPictures(root); err != nil {
 		return err
 	}
 	return catalog.validateConfigurationDefaultForms(root)
@@ -126,6 +133,12 @@ func (catalog *Catalog) validateConfigurationDefaultForms(root string) error {
 		{"report variants", configuration.DefaultReportVariantForm},
 		{"constants", configuration.DefaultConstantsForm},
 		{"full-text search", configuration.DefaultSearchForm},
+		{"dynamic list settings", configuration.DefaultDynamicListSettingsForm},
+		{"constants, when the main form cannot be used", configuration.AuxiliaryConstantsForm},
+		{"data history changes", configuration.DataHistoryChangesForm},
+		{"one data history version", configuration.DataHistoryVersionForm},
+		{"the difference between data history versions", configuration.DataHistoryVersionDifferenceForm},
+		{"the users of the collaboration system", configuration.CollaborationSystemUsersChoiceForm},
 	} {
 		if form.id == nil {
 			continue
@@ -143,6 +156,48 @@ func (catalog *Catalog) validateConfigurationDefaultForms(root string) error {
 		if !forms[*form.id] {
 			return fmt.Errorf("the configuration opens %s with common form %s, which is not in the configuration",
 				form.purpose, form.id)
+		}
+	}
+	return nil
+}
+
+// validateRootPictures checks the two pictures the root owns - the logo and
+// the splash. They are the root's own files rather than references, so nothing
+// declares them: the folder being there is the declaration, and a folder that
+// is not there is a configuration that simply has no logo.
+//
+// The rules are those of every picture of the platform, and for the same
+// reasons: one file per density, never two for one density, and never a ladder
+// without the base every other step falls back to.
+func validateRootPictures(root string) error {
+	for _, picture := range project.RootPictureDirectories() {
+		entries, err := os.ReadDir(filepath.Join(root, picture))
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return fmt.Errorf("picture %s of the configuration: %w", picture, err)
+		}
+		densities := map[ScreenDensity]string{}
+		for _, entry := range entries {
+			if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
+				return fmt.Errorf("picture %s of the configuration keeps %q, which is not one of its images",
+					picture, entry.Name())
+			}
+			density, ok := PictureDensity(entry.Name())
+			if !ok {
+				return fmt.Errorf("picture %s of the configuration keeps %q, and an image is named by the density it is drawn at",
+					picture, entry.Name())
+			}
+			if previous, taken := densities[density]; taken {
+				return fmt.Errorf("picture %s of the configuration keeps both %s and %s for density %d",
+					picture, previous, entry.Name(), density)
+			}
+			densities[density] = entry.Name()
+		}
+		if len(densities) > 0 && densities[BaseScreenDensity] == "" {
+			return fmt.Errorf("picture %s of the configuration has no image at density %d, which every other density falls back to",
+				picture, BaseScreenDensity)
 		}
 	}
 	return nil

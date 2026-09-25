@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/project"
 )
@@ -19,9 +21,12 @@ type rootModule struct {
 	stub  string
 }
 
-// rootModules are the two modules the configuration root owns. The session
-// module answers where session parameters get their values; the application
-// module is where the application itself starts and stops.
+// rootModules are the modules the configuration root owns. The session module
+// answers where session parameters get their values; the application module is
+// where the application itself starts and stops; the external connection
+// module is what runs when something outside connects with nobody in front of
+// it; the ordinary application module is carried from a transferred
+// configuration and never runs.
 //
 // Each stub is the predefined routines of that module, empty. A module always
 // stands in the tree whether or not its file exists, so opening one has to
@@ -37,6 +42,21 @@ var rootModules = []rootModule{
 			"Процедура ПриНачалеРаботыСистемы()\n\nКонецПроцедуры\n\n" +
 			"Процедура ПередЗавершениемРаботыСистемы(Отказ)\n\nКонецПроцедуры\n\n" +
 			"Процедура ПриЗавершенииРаботыСистемы()\n\nКонецПроцедуры\n",
+	},
+	{
+		id: "external-connection-module", title: "Модуль внешнего соединения",
+		file: project.ExternalConnectionModuleFile,
+		stub: "Процедура ПриНачалеРаботыСистемы()\n\nКонецПроцедуры\n\n" +
+			"Процедура ПриЗавершенииРаботыСистемы()\n\nКонецПроцедуры\n",
+	},
+	{
+		// Carried from a transferred configuration and never run: ML has no
+		// ordinary application. It stands in the tree so that a developer sees
+		// what used to happen at start-up, and it gets no stub - offering to
+		// create a module nothing will ever call would be an invitation to
+		// write code for nowhere.
+		id: "ordinary-application-module", title: "Модуль обычного приложения",
+		file: project.OrdinaryApplicationModuleFile,
 	},
 }
 
@@ -64,6 +84,33 @@ func (workspace *Workspace) rootModuleNodesLocked() []Node {
 		nodes = append(nodes, Node{
 			ID: module.id, Kind: "metadata", Title: module.title, Path: module.file,
 			Properties: []Property{{Name: "Файл", Value: module.file}, {Name: "Состояние", Value: value}},
+		})
+	}
+	return nodes
+}
+
+// rootPictureNodesLocked reports the two pictures the configuration root owns.
+// Unlike a module, a picture is shown only when it is there: a module always
+// exists and only its contents are a decision, while a configuration without a
+// logo is an ordinary configuration, and an empty branch offering to make one
+// would be an offer, not a fact.
+func (workspace *Workspace) rootPictureNodesLocked() []Node {
+	var nodes []Node
+	for _, picture := range project.RootPictureDirectories() {
+		entries, err := os.ReadDir(filepath.Join(workspace.root, picture))
+		if err != nil || len(entries) == 0 {
+			continue
+		}
+		images := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				images = append(images, entry.Name())
+			}
+		}
+		sort.Strings(images)
+		nodes = append(nodes, Node{
+			ID: "root-picture:" + picture, Kind: "metadata", Title: picture, Path: picture,
+			Properties: []Property{{Name: "Изображения", Value: strings.Join(images, ", ")}},
 		})
 	}
 	return nodes

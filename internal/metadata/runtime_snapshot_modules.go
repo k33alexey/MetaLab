@@ -75,6 +75,15 @@ func LoadProjectModules(root string, catalog *Catalog) ([]RuntimeModule, error) 
 			// application starts and stops, and both happen where the person
 			// is sitting.
 			descriptor = moduleNameDescriptor{name: ApplicationModuleName, defaultContext: syntax.ContextClient}
+		case project.ExternalConnectionModuleFile:
+			// An external connection has no client at all: whatever runs there
+			// runs on the server, because there is nowhere else.
+			descriptor = moduleNameDescriptor{name: ExternalConnectionModuleName, defaultContext: syntax.ContextServer}
+		case project.OrdinaryApplicationModuleFile:
+			// Carried, compiled and never called. The ordinary application ran
+			// on the client, so that is the context it is read in - reading it
+			// as server code would report errors that were never there.
+			descriptor = moduleNameDescriptor{name: OrdinaryApplicationModuleName, defaultContext: syntax.ContextClient}
 		}
 		if descriptor.name == "" {
 			descriptor.name = moduleNameFromPath(relative)
