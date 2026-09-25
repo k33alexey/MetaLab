@@ -6,9 +6,12 @@ docs/
 CLAUDE.md
 AGENTS.md
 
-# Reference material only: a 1C demo configuration export kept locally to check
-# our own requirements against. Proprietary, so it must never enter this
-# Apache-2.0 repository - see REQUIREMENTS.md §1 on reference vs copying.
+# Reference material only: an export of the prototype's demo configuration,
+# kept locally to check our own requirements against. Proprietary, so it must
+# never enter this Apache-2.0 repository - see CLAUDE.md on reference versus
+# copying. The material itself lives under docs/materials/, which is ignored
+# as a whole; this line stays so that a second copy unpacked here by mistake
+# cannot be committed either.
 examples/demo-base/
 
 *.log
