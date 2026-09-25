@@ -518,6 +518,9 @@ type Catalog struct {
 	CommonTemplates                  []CommonTemplateDefinition
 	commonTemplateByName             map[string]int
 	commonTemplateByID               map[uuid.UUID]int
+	XDTOPackages                     []XDTOPackageDefinition
+	xdtoPackageByName                map[string]int
+	xdtoPackageByID                  map[uuid.UUID]int
 	CommonPictures                   []CommonPictureDefinition
 	commonPictureByName              map[string]int
 	commonPictureByID                map[uuid.UUID]int

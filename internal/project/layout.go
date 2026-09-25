@@ -123,6 +123,11 @@ var (
 		// module index.
 		"common-templates": {ObjectMetadataFile},
 		"common-pictures":  {ObjectMetadataFile},
+		// A package of exchanged types keeps its description and its schema.
+		// The schema is XML - that is what a schema of exchanged types is
+		// everywhere it is read - and it is not source in our sense, so it is
+		// left out of the list the same way a picture's images are.
+		"xdto-packages": {ObjectMetadataFile},
 	}
 	// objectFolderKinds lists metadata kinds whose objects group their own
 	// description, modules, forms, commands and templates under one folder

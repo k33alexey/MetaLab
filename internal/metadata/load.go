@@ -181,6 +181,20 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	// A package of exchanged types keeps a folder too: the schema is its body
+	// and lies beside the description, not inside it.
+	if err := loadObjectKind(root, XDTOPackageKind, func(source string, file *os.File, name string) error {
+		value, err := DecodeXDTOPackage(source, file, configuration)
+		if err == nil && !strings.EqualFold(value.Name, name) {
+			err = fmt.Errorf("XDTO package %s lies in a folder called %s", value.Name, name)
+		}
+		if err == nil {
+			catalog.XDTOPackages = append(catalog.XDTOPackages, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadObjectKind(root, CommonPictureKind, func(source string, file *os.File, name string) error {
 		value, err := DecodeCommonPicture(source, file, configuration)
 		if err == nil && !strings.EqualFold(value.Name, name) {
@@ -775,6 +789,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return catalog.CommonTemplates[i].ID.String() < catalog.CommonTemplates[j].ID.String()
 	})
 	catalog.commonTemplateByName, catalog.commonTemplateByID = make(map[string]int, len(catalog.CommonTemplates)), make(map[uuid.UUID]int, len(catalog.CommonTemplates))
+	catalog.xdtoPackageByName, catalog.xdtoPackageByID = make(map[string]int, len(catalog.XDTOPackages)), make(map[uuid.UUID]int, len(catalog.XDTOPackages))
 	sort.Slice(catalog.CommonPictures, func(i, j int) bool {
 		return catalog.CommonPictures[i].ID.String() < catalog.CommonPictures[j].ID.String()
 	})
@@ -942,6 +957,11 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	}
 	for index, item := range catalog.CommonPictures {
 		if err := add("common picture", item.ID, item.Name, index, catalog.commonPictureByName, catalog.commonPictureByID); err != nil {
+			return err
+		}
+	}
+	for index, item := range catalog.XDTOPackages {
+		if err := add("XDTO package", item.ID, item.Name, index, catalog.xdtoPackageByName, catalog.xdtoPackageByID); err != nil {
 			return err
 		}
 	}
@@ -1745,6 +1765,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return err
 	}
 	if err := catalog.validateConfigurationDefaults(root); err != nil {
+		return err
+	}
+	if err := catalog.validateXDTOPackages(root); err != nil {
 		return err
 	}
 	return catalog.validateDefinedTypeCycles()
