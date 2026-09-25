@@ -27,7 +27,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	if err != nil {
 		return nil, err
 	}
-	catalog := &Catalog{Project: configuration}
+	catalog := &Catalog{Project: configuration, rolesLoaded: includeRoles}
 	if includeRoles {
 		if err := loadKind(root, RoleKind, func(source string, file *os.File, id uuid.UUID) error {
 			value, err := DecodeRole(source, file, configuration)
@@ -1742,6 +1742,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return err
 	}
 	if err := catalog.validateScheduledJobReferences(); err != nil {
+		return err
+	}
+	if err := catalog.validateConfigurationDefaults(root); err != nil {
 		return err
 	}
 	return catalog.validateDefinedTypeCycles()

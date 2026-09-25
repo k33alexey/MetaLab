@@ -445,3 +445,116 @@ func TestRootTextsAreCheckedAgainstTheProjectLanguages(t *testing.T) {
 		t.Fatalf("a root with only a synonym was refused: %v", err)
 	}
 }
+
+// The defaults of the root survive being written and read back, each one
+// still naming what it named. They are the file's own half of the answer:
+// whether the object on the other end exists is checked where the whole
+// configuration is known.
+func TestRootDefaultsSurviveTheFile(t *testing.T) {
+	t.Parallel()
+
+	const source = `format: 1
+id: 018f1f72-3b4c-7d6e-8f90-123456789abc
+name: SalesDemo
+title:
+  ru: Продажи и склад
+default_language: ru
+languages:
+  - id: 018f1f72-3b4c-7d6e-8f90-000000000001
+    name: Русский
+    title: Русский
+    code: ru
+default_style: 018f1f72-3b4c-7d6e-8f90-000000000010
+default_interface: ОсновнойИнтерфейс
+default_roles:
+  - 018f1f72-3b4c-7d6e-8f90-000000000020
+  - 018f1f72-3b4c-7d6e-8f90-000000000021
+default_report_form: 018f1f72-3b4c-7d6e-8f90-000000000030
+default_report_settings_form: 018f1f72-3b4c-7d6e-8f90-000000000031
+default_report_variant_form: 018f1f72-3b4c-7d6e-8f90-000000000032
+default_constants_form: 018f1f72-3b4c-7d6e-8f90-000000000033
+default_search_form: 018f1f72-3b4c-7d6e-8f90-000000000034
+default_report_appearance_template: 018f1f72-3b4c-7d6e-8f90-000000000040
+common_settings_storage: 018f1f72-3b4c-7d6e-8f90-000000000050
+reports_user_settings_storage: 018f1f72-3b4c-7d6e-8f90-000000000051
+reports_variants_storage: 018f1f72-3b4c-7d6e-8f90-000000000052
+dynamic_lists_user_settings_storage: 018f1f72-3b4c-7d6e-8f90-000000000053
+form_data_settings_storage: 018f1f72-3b4c-7d6e-8f90-000000000054
+`
+	value, err := Decode(strings.NewReader(source))
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	switch {
+	case value.DefaultStyle == nil || value.DefaultStyle.String() != "018f1f72-3b4c-7d6e-8f90-000000000010":
+		t.Fatalf("the default style came back as %v", value.DefaultStyle)
+	case value.DefaultInterface != "ОсновнойИнтерфейс":
+		t.Fatalf("the default interface came back as %q", value.DefaultInterface)
+	case len(value.DefaultRoles) != 2 ||
+		value.DefaultRoles[0].String() != "018f1f72-3b4c-7d6e-8f90-000000000020":
+		t.Fatalf("the default roles came back as %v", value.DefaultRoles)
+	case value.DefaultReportForm == nil || value.DefaultReportSettingsForm == nil ||
+		value.DefaultReportVariantForm == nil || value.DefaultConstantsForm == nil || value.DefaultSearchForm == nil:
+		t.Fatalf("one of the five default forms was lost: %+v", value)
+	case value.DefaultReportAppearanceTemplate == nil:
+		t.Fatal("the report appearance template was lost")
+	case value.CommonSettingsStorage == nil || value.ReportsUserSettingsStorage == nil ||
+		value.ReportsVariantsStorage == nil || value.DynamicListsUserSettingsStorage == nil ||
+		value.FormDataSettingsStorage == nil:
+		t.Fatalf("one of the five storages was lost: %+v", value)
+	}
+
+	var written bytes.Buffer
+	if err := Encode(&written, value); err != nil {
+		t.Fatal(err)
+	}
+	again, err := Decode(bytes.NewReader(written.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(value, again) {
+		t.Fatalf("the defaults did not survive a round trip:\n%+v\n%+v", value, again)
+	}
+}
+
+// A reference has to be a reference, and a role is granted once: the rest of
+// the checking belongs to the catalog, but a project that cannot say what it
+// points at is broken on its own terms.
+func TestRootDefaultsAreCheckedForShape(t *testing.T) {
+	t.Parallel()
+
+	base := func() Project {
+		return Project{
+			Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo",
+			Title: LocalizedText{"ru": "Демо"}, DefaultLanguage: "ru",
+			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
+		}
+	}
+	role := uuid.MustNew()
+	empty := uuid.UUID{}
+	for name, broken := range map[string]func(value *Project){
+		"пустая ссылка на стиль":       func(value *Project) { value.DefaultStyle = &empty },
+		"пустая ссылка на форму":       func(value *Project) { value.DefaultReportForm = &empty },
+		"пустая ссылка на хранилище":   func(value *Project) { value.FormDataSettingsStorage = &empty },
+		"пустая ссылка на макет":       func(value *Project) { value.DefaultReportAppearanceTemplate = &empty },
+		"пустая роль":                  func(value *Project) { value.DefaultRoles = []uuid.UUID{empty} },
+		"одна роль дважды":             func(value *Project) { value.DefaultRoles = []uuid.UUID{role, role} },
+		"интерфейс не идентификатор":   func(value *Project) { value.DefaultInterface = "Основной интерфейс" },
+		"интерфейс с переводом строки": func(value *Project) { value.DefaultInterface = "Основной\nИнтерфейс" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			value := base()
+			broken(&value)
+			if err := value.Validate(); err == nil {
+				t.Fatal("the root was accepted")
+			}
+		})
+	}
+
+	// A root that fills in none of them is ordinary: every default is the
+	// configuration's to leave to the platform.
+	if err := base().Validate(); err != nil {
+		t.Fatalf("a root without defaults was refused: %v", err)
+	}
+}

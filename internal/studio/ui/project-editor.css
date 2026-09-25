@@ -11,3 +11,12 @@
 #project-editor .project-language-chip{flex:0 0 auto;min-width:34px;padding:4px 6px;border:1px solid #4a4d54;border-radius:4px;background:#26282c;color:#9aa0a6;font-size:11px;text-align:center;text-transform:uppercase}
 #project-editor .project-localized-row input,#project-editor .project-localized-row textarea{flex:1 1 auto;min-width:0;max-width:420px;padding:6px 8px;border:1px solid #4a4d54;border-radius:4px;background:var(--panel-bg,#2b2d30);color:inherit;font:inherit;resize:vertical}
 @media(max-width:900px){#project-editor .project-localized{grid-template-columns:1fr}#project-editor .project-localized-label{padding-top:0}}
+#project-editor .catalog-field select{max-width:420px;width:100%;padding:6px 8px;border:1px solid #4a4d54;border-radius:4px;background:var(--panel-bg,#2b2d30);color:inherit;font:inherit}
+#project-editor .catalog-field select:focus-visible{outline:1px solid #589df6;outline-offset:1px}
+#project-editor .project-default-broken{border-color:#8b4b4b;background:#31262a}
+#project-editor .project-default-missing{color:#e07a7a}
+#project-editor .project-roles{display:flex;flex-wrap:wrap;gap:6px 14px;min-width:0;padding-top:4px}
+#project-editor .project-role{display:flex;align-items:center;gap:7px;margin:0;font-size:12px;cursor:pointer}
+#project-editor .project-role input{accent-color:#589df6;margin:0}
+#project-editor .project-empty{color:#7f858c;font-size:12px}
+#project-editor .project-note{margin:6px 0 0;max-width:640px;color:#8a9097;font-size:11px;line-height:1.5}

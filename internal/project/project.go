@@ -96,6 +96,53 @@ type Project struct {
 	VendorAddress        LocalizedText `yaml:"vendor_address,omitempty" json:"vendorAddress,omitempty"`
 	InformationAddress   LocalizedText `yaml:"information_address,omitempty" json:"informationAddress,omitempty"`
 	UpdateCatalogAddress LocalizedText `yaml:"update_catalog_address,omitempty" json:"updateCatalogAddress,omitempty"`
+	// What follows are the defaults of the root: what the application opens,
+	// draws with and saves into when nothing nearer says otherwise. Each of
+	// them names another object of the configuration, so each is stored by
+	// identifier, the way every reference between objects is - a name would
+	// break the moment the object it names is renamed.
+	//
+	// They are checked where the whole configuration is known, not here: this
+	// file alone cannot tell whether a role exists. A default pointing at
+	// nothing is a form that will not open, and a project has to be told that
+	// while it is being written, not when a user clicks.
+	//
+	// DefaultStyle is what the application is drawn with unless something
+	// nearer says otherwise.
+	DefaultStyle *uuid.UUID `yaml:"default_style,omitempty" json:"defaultStyle,omitempty"`
+	// DefaultInterface is carried and never resolved. It names the main menu
+	// and toolbars an ordinary application is built from, and ML builds only
+	// managed interfaces - there is no kind of object for it to point at.
+	// Dropping it instead would be the one thing we forbade ourselves: a
+	// silent loss. It is carried by name, because the only thing that could
+	// give it an identifier is the branch that does not exist.
+	DefaultInterface string `yaml:"default_interface,omitempty" json:"defaultInterface,omitempty"`
+	// DefaultRoles are the rights a user works with when the list of users is
+	// empty. The order is the configuration's own and is kept as written.
+	DefaultRoles []uuid.UUID `yaml:"default_roles,omitempty" json:"defaultRoles,omitempty"`
+	// The five forms below stand in for a report, a constant or a search that
+	// names no form of its own. All five are common forms: they belong to no
+	// object, which is exactly why the root can hand them to every object at
+	// once.
+	DefaultReportForm         *uuid.UUID `yaml:"default_report_form,omitempty" json:"defaultReportForm,omitempty"`
+	DefaultReportSettingsForm *uuid.UUID `yaml:"default_report_settings_form,omitempty" json:"defaultReportSettingsForm,omitempty"`
+	DefaultReportVariantForm  *uuid.UUID `yaml:"default_report_variant_form,omitempty" json:"defaultReportVariantForm,omitempty"`
+	DefaultConstantsForm      *uuid.UUID `yaml:"default_constants_form,omitempty" json:"defaultConstantsForm,omitempty"`
+	DefaultSearchForm         *uuid.UUID `yaml:"default_search_form,omitempty" json:"defaultSearchForm,omitempty"`
+	// DefaultReportAppearanceTemplate is how reports are painted when a report
+	// brings no appearance of its own. It is a common template, and one of a
+	// single kind: an appearance template. Left empty, reports are painted the
+	// way the platform paints them.
+	DefaultReportAppearanceTemplate *uuid.UUID `yaml:"default_report_appearance_template,omitempty" json:"defaultReportAppearanceTemplate,omitempty"`
+	// The five storages are where what a user saved is kept. They are named
+	// separately rather than as one storage, because a configuration is free
+	// to keep report variants in one place and form data in another - and
+	// most keep neither, letting the platform use its own.
+	CommonSettingsStorage           *uuid.UUID `yaml:"common_settings_storage,omitempty" json:"commonSettingsStorage,omitempty"`
+	ReportsUserSettingsStorage      *uuid.UUID `yaml:"reports_user_settings_storage,omitempty" json:"reportsUserSettingsStorage,omitempty"`
+	ReportsVariantsStorage          *uuid.UUID `yaml:"reports_variants_storage,omitempty" json:"reportsVariantsStorage,omitempty"`
+	DynamicListsUserSettingsStorage *uuid.UUID `yaml:"dynamic_lists_user_settings_storage,omitempty" json:"dynamicListsUserSettingsStorage,omitempty"`
+	FormDataSettingsStorage         *uuid.UUID `yaml:"form_data_settings_storage,omitempty" json:"formDataSettingsStorage,omitempty"`
 }
 
 // Language defines an interface language available in an ML Project.
@@ -321,6 +368,46 @@ func (p Project) Validate() error {
 	}
 	if p.Version != "" && !isDisplayText(p.Version, 128) {
 		add("version", "must contain 1 to 128 printable characters")
+	}
+
+	// The defaults are checked here for shape only - that a reference is a
+	// reference at all, and that a role is named once. Whether the object on
+	// the other end exists is a question about the whole configuration, and it
+	// is answered where the whole configuration is read.
+	for path, reference := range map[string]*uuid.UUID{
+		"default_style": p.DefaultStyle, "default_report_form": p.DefaultReportForm,
+		"default_report_settings_form": p.DefaultReportSettingsForm,
+		"default_report_variant_form":  p.DefaultReportVariantForm,
+		"default_constants_form":       p.DefaultConstantsForm, "default_search_form": p.DefaultSearchForm,
+		"default_report_appearance_template":  p.DefaultReportAppearanceTemplate,
+		"common_settings_storage":             p.CommonSettingsStorage,
+		"reports_user_settings_storage":       p.ReportsUserSettingsStorage,
+		"reports_variants_storage":            p.ReportsVariantsStorage,
+		"dynamic_lists_user_settings_storage": p.DynamicListsUserSettingsStorage,
+		"form_data_settings_storage":          p.FormDataSettingsStorage,
+	} {
+		if reference != nil && reference.IsZero() {
+			add(path, "must be a non-zero UUID")
+		}
+	}
+	if p.DefaultInterface != "" && !isIdentifier(p.DefaultInterface) {
+		add("default_interface", "must start with a letter and contain only letters or digits")
+	} else if utf8.RuneCountInString(p.DefaultInterface) > 128 {
+		add("default_interface", "must not exceed 128 characters")
+	}
+	seenRoles := make(map[uuid.UUID]struct{}, len(p.DefaultRoles))
+	for index, role := range p.DefaultRoles {
+		prefix := fmt.Sprintf("default_roles[%d]", index)
+		if role.IsZero() {
+			add(prefix, "must be a non-zero UUID")
+			continue
+		}
+		// A role granted twice grants nothing more than a role granted once,
+		// so a repeat is a mistake in the list rather than a stronger right.
+		if _, exists := seenRoles[role]; exists {
+			add(prefix, "must be unique")
+		}
+		seenRoles[role] = struct{}{}
 	}
 
 	if len(issues) > 0 {

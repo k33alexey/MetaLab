@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -32,6 +33,73 @@ type ProjectEditorSource struct {
 	Path          string          `json:"path"`
 	Revision      string          `json:"revision"`
 	Configuration project.Project `json:"configuration"`
+	Defaults      DefaultChoices  `json:"defaults"`
+}
+
+// DefaultChoice is one object a default of the root is allowed to name. The
+// name is what a developer knows the object by; the synonym is what stands in
+// the picker, in the language the project is read in.
+type DefaultChoice struct {
+	ID    uuid.UUID              `json:"id"`
+	Name  string                 `json:"name"`
+	Title metadata.LocalizedText `json:"title"`
+}
+
+// DefaultChoices lists what the defaults of the root may point at, grouped by
+// what each default needs: a style, a role, a common form, a common template
+// of the one kind an appearance is made of, or a settings storage.
+//
+// The defaults are references, and a reference is offered rather than typed:
+// an identifier written by hand is an identifier misspelled sooner or later,
+// and a default pointing at nothing is a form that will not open.
+type DefaultChoices struct {
+	Styles              []DefaultChoice `json:"styles"`
+	Roles               []DefaultChoice `json:"roles"`
+	CommonForms         []DefaultChoice `json:"commonForms"`
+	AppearanceTemplates []DefaultChoice `json:"appearanceTemplates"`
+	SettingsStorages    []DefaultChoice `json:"settingsStorages"`
+}
+
+// loadDefaultChoices reads what the root's defaults may name.
+//
+// A configuration that does not fully load comes back with empty lists rather
+// than an error: the root is where a broken reference is repaired, so the one
+// editor that can repair it must open even while something else in the project
+// is mid-edit. What the root already names is shown regardless - the browser
+// keeps a default it cannot find in the lists and says so, which is the whole
+// point of opening the editor in that state.
+func loadDefaultChoices(root string, configuration project.Project) DefaultChoices {
+	choices := DefaultChoices{}
+	catalog, err := metadata.Load(root)
+	if err != nil {
+		return choices
+	}
+	for _, item := range catalog.Styles {
+		choices.Styles = append(choices.Styles, DefaultChoice{ID: item.ID, Name: item.Name, Title: item.Title})
+	}
+	for _, item := range catalog.Roles {
+		choices.Roles = append(choices.Roles, DefaultChoice{ID: item.ID, Name: item.Name, Title: item.Title})
+	}
+	for _, item := range catalog.CommonTemplates {
+		// A template of another kind describes nothing an appearance is made
+		// of: a spreadsheet is a document, not a set of colours and fonts.
+		if item.Kind != metadata.CompositionAppearance {
+			continue
+		}
+		choices.AppearanceTemplates = append(choices.AppearanceTemplates,
+			DefaultChoice{ID: item.ID, Name: item.Name, Title: item.Title})
+	}
+	for _, item := range catalog.SettingsStorages {
+		choices.SettingsStorages = append(choices.SettingsStorages, DefaultChoice{ID: item.ID, Name: item.Name, Title: item.Title})
+	}
+	forms, err := metadata.ReadCommonForms(root, configuration)
+	if err != nil {
+		return choices
+	}
+	for _, form := range forms {
+		choices.CommonForms = append(choices.CommonForms, DefaultChoice{ID: form.ID, Name: form.Name, Title: form.Title})
+	}
+	return choices
 }
 
 func (workspace *Workspace) ReadProjectEditor() (ProjectEditorSource, error) {
@@ -49,7 +117,11 @@ func (workspace *Workspace) readProjectEditorLocked() (ProjectEditorSource, erro
 	if err != nil {
 		return ProjectEditorSource{}, err
 	}
-	return ProjectEditorSource{Path: project.ConfigurationFile, Revision: file.Revision, Configuration: withEnglishLanguage(configuration)}, nil
+	configuration = withEnglishLanguage(configuration)
+	return ProjectEditorSource{
+		Path: project.ConfigurationFile, Revision: file.Revision,
+		Configuration: configuration, Defaults: loadDefaultChoices(workspace.root, configuration),
+	}, nil
 }
 
 // withEnglishLanguage guarantees English is present and canonical — added
@@ -124,6 +196,7 @@ func (workspace *Workspace) SaveProjectEditor(configuration project.Project, rev
 		return ProjectEditorSource{}, err
 	}
 	opened.Configuration, opened.Revision = configuration, saved.Revision
+	opened.Defaults = loadDefaultChoices(workspace.root, configuration)
 	return opened, nil
 }
 

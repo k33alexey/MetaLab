@@ -31,6 +31,15 @@ function createProjectModel(source) {
       else configuration[field] = text;
     },
     setDefaultLanguage(code) { configuration.defaultLanguage = code; },
+    /* Роли перечислены в том порядке, в каком их перечислила конфигурация, и
+       порядок сохраняется: снятая и снова поставленная роль встаёт в конец,
+       потому что это и есть «добавили её сейчас». Роль, выданная дважды, не
+       даёт больше прав, чем выданная однажды, поэтому повтор невозможен. */
+    setRoleGranted(id, granted) {
+      const kept = (configuration.defaultRoles || []).filter(item => item !== id);
+      if (granted) kept.push(id);
+      if (kept.length === 0) delete configuration.defaultRoles; else configuration.defaultRoles = kept;
+    },
     addLanguage() {
       const language = {name: 'Язык', title: 'Новый язык', code: uniqueCode()};
       configuration.languages.push(language);
@@ -92,6 +101,69 @@ function createProjectEditor(host, onChange) {
     wrapper.append(rows);
     return wrapper;
   }
+  /* Умолчание называет другой объект конфигурации, поэтому оно выбирается из
+     того, что в конфигурации есть, а не набирается руками: набранный
+     идентификатор рано или поздно оказывается набран неверно.
+
+     То, что корень называет, а конфигурация уже не содержит, остаётся в списке
+     отдельной строкой и помечено. Умолчание, указывающее в пустоту, — это
+     форма, которая не откроется; молча выбросить его значило бы потерять
+     единственный след того, что имелось в виду, а показать его — единственный
+     способ дать его починить. */
+  function presentation(choice) {
+    return choice.title?.[source.configuration.defaultLanguage] || choice.name || choice.id;
+  }
+  function referenceField(label, field, choices) {
+    const wrapper = node('label', undefined, 'catalog-field');
+    wrapper.append(node('span', label));
+    const select = node('select');
+    const stored = source.configuration[field] || '';
+    const nothing = node('option', 'Не задано');
+    nothing.value = '';
+    select.append(nothing);
+    for (const choice of choices) {
+      const option = node('option', presentation(choice));
+      option.value = choice.id;
+      select.append(option);
+    }
+    if (stored && !choices.some(choice => choice.id === stored)) {
+      const missing = node('option', 'Не найдено в конфигурации: ' + stored, 'project-default-missing');
+      missing.value = stored;
+      select.append(missing);
+      select.classList.add('project-default-broken');
+    }
+    select.value = stored;
+    select.addEventListener('change', () => { model.setField(field, select.value); rerender(); });
+    wrapper.append(select);
+    return wrapper;
+  }
+  /* Ролей выдаётся сколько угодно, поэтому это не выбор одной строки, а список
+     с отметками: видно сразу и что выдано, и что можно выдать. */
+  function rolesField(label) {
+    const wrapper = node('div', undefined, 'project-localized');
+    wrapper.append(node('span', label, 'project-localized-label'));
+    const list = node('div', undefined, 'project-roles');
+    const granted = source.configuration.defaultRoles || [];
+    const known = source.defaults?.roles || [];
+    const rows = [...known.map(role => ({id: role.id, title: presentation(role), missing: false}))];
+    for (const id of granted) {
+      if (!known.some(role => role.id === id)) rows.push({id, title: 'Не найдена в конфигурации: ' + id, missing: true});
+    }
+    if (rows.length === 0) list.append(node('span', 'В конфигурации нет ни одной роли', 'project-empty'));
+    for (const role of rows) {
+      const row = node('label', undefined, role.missing ? 'project-role project-default-missing' : 'project-role');
+      const check = node('input');
+      check.type = 'checkbox';
+      check.checked = granted.includes(role.id);
+      check.addEventListener('change', () => { model.setRoleGranted(role.id, check.checked); rerender(); });
+      row.append(check);
+      row.append(node('span', role.title));
+      list.append(row);
+    }
+    wrapper.append(list);
+    return wrapper;
+  }
+  function note(text) { return node('p', text, 'project-note'); }
   function section(title) {
     const block = node('section', undefined, 'project-section');
     block.append(node('h4', title));
@@ -133,6 +205,43 @@ function createProjectEditor(host, onChange) {
       value => model.setField('version', value), {maxLength: 128, placeholder: '1.0.0.1'}));
     vendor.append(localizedField('Авторские права', 'copyright'));
     panel.append(vendor);
+
+    /* Пятнадцать умолчаний корня: чем приложение рисуется, под какими правами
+       работает, какие формы открывает за объект, который своей формы не
+       называет, и куда складывает то, что сохранил пользователь. Основной язык
+       стоит выше, среди языков: он проверяется вместе с ними и читается раньше
+       всего остального. */
+    const defaults = source.defaults || {};
+    const appearance = section('Чем рисуется и под какими правами');
+    appearance.append(referenceField('Основной стиль', 'defaultStyle', defaults.styles || []));
+    appearance.append(referenceField('Макет оформления отчётов', 'defaultReportAppearanceTemplate',
+      defaults.appearanceTemplates || []));
+    appearance.append(rolesField('Основные роли'));
+    appearance.append(textField('Основной интерфейс', source.configuration.defaultInterface,
+      value => model.setField('defaultInterface', value), {maxLength: 128}));
+    appearance.append(note('Основной интерфейс — меню и панели обычного приложения. ML строит только '
+      + 'управляемый интерфейс, поэтому значение хранится как написано и ни на что не влияет.'));
+    panel.append(appearance);
+
+    const forms = section('Формы по умолчанию');
+    forms.append(referenceField('Форма отчёта', 'defaultReportForm', defaults.commonForms || []));
+    forms.append(referenceField('Форма настроек отчёта', 'defaultReportSettingsForm', defaults.commonForms || []));
+    forms.append(referenceField('Форма варианта отчёта', 'defaultReportVariantForm', defaults.commonForms || []));
+    forms.append(referenceField('Форма констант', 'defaultConstantsForm', defaults.commonForms || []));
+    forms.append(referenceField('Форма поиска', 'defaultSearchForm', defaults.commonForms || []));
+    forms.append(note('Все пять — общие формы: они не принадлежат ни одному объекту, поэтому корень и '
+      + 'может выдать их всем объектам сразу.'));
+    panel.append(forms);
+
+    const storages = section('Где хранится то, что сохранил пользователь');
+    const settingsStorages = defaults.settingsStorages || [];
+    storages.append(referenceField('Общие настройки', 'commonSettingsStorage', settingsStorages));
+    storages.append(referenceField('Настройки отчётов', 'reportsUserSettingsStorage', settingsStorages));
+    storages.append(referenceField('Варианты отчётов', 'reportsVariantsStorage', settingsStorages));
+    storages.append(referenceField('Настройки динамических списков', 'dynamicListsUserSettingsStorage', settingsStorages));
+    storages.append(referenceField('Данные форм', 'formDataSettingsStorage', settingsStorages));
+    storages.append(note('Незаполненное хранилище означает хранилище платформы, а не потерянные настройки.'));
+    panel.append(storages);
 
     const addresses = section('Где о ней прочитать');
     addresses.append(localizedField('Адрес поставщика', 'vendorAddress'));

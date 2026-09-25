@@ -77,3 +77,28 @@ test('value() returns an independent clone',()=>{
   const value=model.value();value.languages.push({name:'x',title:'x',code:'x'});
   assert.equal(model.value().languages.length,2);
 });
+// Умолчание — ссылка на другой объект, и очищенное умолчание исчезает из
+// корня, а не остаётся пустой строкой: «не задано» означает, что платформа
+// возьмёт своё, а не что конфигурация назвала ничто.
+test('a default is a reference that vanishes when cleared',()=>{
+  const model=create(fixture());
+  model.setField('defaultStyle','s1');
+  model.setField('defaultReportForm','f1');
+  let saved=model.value();
+  assert.equal(saved.defaultStyle,'s1');assert.equal(saved.defaultReportForm,'f1');
+  model.setField('defaultStyle','');
+  saved=model.value();
+  assert.equal('defaultStyle' in saved,false);
+  assert.equal(saved.defaultReportForm,'f1');
+});
+// Роли перечислены в порядке конфигурации, роль не выдаётся дважды, а список
+// без единой роли пропадает целиком.
+test('default roles keep their order and are granted once',()=>{
+  const model=create(fixture());
+  model.setRoleGranted('r1',true);model.setRoleGranted('r2',true);model.setRoleGranted('r1',true);
+  assert.deepEqual(model.value().defaultRoles,['r2','r1']);
+  model.setRoleGranted('r2',false);
+  assert.deepEqual(model.value().defaultRoles,['r1']);
+  model.setRoleGranted('r1',false);
+  assert.equal('defaultRoles' in model.value(),false);
+});
