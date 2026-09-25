@@ -45,6 +45,9 @@ const (
 	// FormModuleFile is the module of one managed form, beside the form's own
 	// description in that same folder.
 	FormModuleFile = "МодульФормы.bsl"
+	// ValueModuleFile is the module of a constant's value: the one the
+	// platform calls when the value is checked and written.
+	ValueModuleFile = "МодульЗначения.bsl"
 )
 
 var (
@@ -60,9 +63,25 @@ var (
 	// in its own folder. Commands are not here - a command module lives in
 	// the folder of its command.
 	objectModuleFiles = []string{ObjectModuleFile, ManagerModuleFile, RecordSetModuleFile}
+	// moduleRoleFiles is every role a module may play inside the folder of
+	// whatever owns it, across all kinds - the three an object keeps plus the
+	// one a constant keeps around its value.
+	moduleRoleFiles = []string{ObjectModuleFile, ManagerModuleFile, RecordSetModuleFile, ValueModuleFile}
 	// objectSubordinateDirectories lists the folders an object may keep
 	// beside its own description and modules.
 	objectSubordinateDirectories = []string{"forms", "commands", "templates"}
+	// namedFolderKinds lists the kinds whose object keeps a folder named after
+	// it holding a fixed set of files and nothing else - no forms, commands or
+	// templates of its own. Each entry says which files that folder may hold.
+	//
+	// They keep a folder for the same reason an object does: they own files.
+	// What they do not own is subordinate entities, so they are kept apart
+	// from objectFolderKinds rather than given machinery they have no use for.
+	namedFolderKinds = map[string][]string{
+		"common-forms":    {FormMetadataFile, FormModuleFile},
+		"common-commands": {ObjectMetadataFile, CommandModuleFile},
+		"constants":       {ObjectMetadataFile, ValueModuleFile, ManagerModuleFile},
+	}
 	// objectFolderKinds lists metadata kinds whose objects group their own
 	// description, modules, forms, commands and templates under one folder
 	// named after the object, instead of scattering them across the flat
@@ -139,6 +158,24 @@ func MetadataKinds() []string { return slices.Clone(metadataKinds) }
 // ObjectFolderKinds returns the metadata kinds whose objects use a
 // per-object folder layout instead of a single flat YAML file.
 func ObjectFolderKinds() []string { return slices.Clone(objectFolderKinds) }
+
+// NamedFolderFiles returns the files one object of a named-folder kind may
+// keep in its folder, and whether the kind keeps such a folder at all.
+func NamedFolderFiles(kind string) ([]string, bool) {
+	files, ok := namedFolderKinds[kind]
+	return slices.Clone(files), ok
+}
+
+// NamedFolderKinds returns every kind whose object keeps a folder named after
+// it holding a fixed set of files.
+func NamedFolderKinds() []string {
+	result := make([]string, 0, len(namedFolderKinds))
+	for kind := range namedFolderKinds {
+		result = append(result, kind)
+	}
+	slices.Sort(result)
+	return result
+}
 
 // ObjectModuleFiles returns every module role name an object may keep
 // directly in its own folder.
@@ -347,8 +384,9 @@ func folderName(what, name string) error {
 	return nil
 }
 
-// ObjectDirectory returns the per-object folder for one of ObjectFolderKinds,
-// named by the object itself.
+// ObjectDirectory returns the folder one object keeps, named by the object
+// itself - for a kind that groups subordinate entities there (ObjectFolderKinds)
+// or one that only keeps files (NamedFolderKinds).
 //
 // The name rather than the identifier, because this is what a developer reads.
 // The prototype's own export is laid out the same way - names in the paths,
@@ -357,7 +395,7 @@ func folderName(what, name string) error {
 // folder and changes nothing in the database: a table is named by the
 // identifier, which the rename does not touch.
 func ObjectDirectory(kind, name string) (string, error) {
-	if !slices.Contains(objectFolderKinds, kind) {
+	if _, keepsFolder := namedFolderKinds[kind]; !keepsFolder && !slices.Contains(objectFolderKinds, kind) {
 		return "", fmt.Errorf("kind %q does not use a per-object folder", kind)
 	}
 	if err := ObjectName(name); err != nil {
@@ -388,7 +426,7 @@ func ObjectModulePath(kind, name, roleFile string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !slices.Contains(objectModuleFiles, roleFile) {
+	if !slices.Contains(moduleRoleFiles, roleFile) {
 		return "", fmt.Errorf("%q is not a module role of an object", roleFile)
 	}
 	return path.Join(directory, roleFile), nil
@@ -537,6 +575,34 @@ func ObjectTemplateContentPath(kind, name, template, file string) (string, error
 // loadKind's tolerance for an ML Project that has not used a kind yet.
 func ObjectFolderSourcePaths(root string) ([]string, error) {
 	var paths []string
+	// A kind that keeps only files keeps them in a folder all the same, and
+	// its modules are read from there like any other.
+	for _, kind := range NamedFolderKinds() {
+		directory := filepath.Join(root, "metadata", kind)
+		entries, err := os.ReadDir(directory)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("read metadata %s: %w", kind, err)
+		}
+		named, _ := NamedFolderFiles(kind)
+		for _, entry := range entries {
+			if !entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
+				continue
+			}
+			files, err := os.ReadDir(filepath.Join(directory, entry.Name()))
+			if err != nil {
+				return nil, fmt.Errorf("read metadata %s %s: %w", kind, entry.Name(), err)
+			}
+			for _, file := range files {
+				if file.IsDir() || file.Type()&fs.ModeSymlink != 0 || !slices.Contains(named, file.Name()) {
+					continue
+				}
+				paths = append(paths, path.Join("metadata", kind, entry.Name(), file.Name()))
+			}
+		}
+	}
 	for _, kind := range objectFolderKinds {
 		directory := filepath.Join(root, "metadata", kind)
 		objectEntries, err := os.ReadDir(directory)

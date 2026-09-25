@@ -216,12 +216,9 @@ func validateSourcePath(relative string, directory bool) error {
 		if contains(project.ObjectFolderKinds(), parts[1]) {
 			return validateObjectFolderSourcePath(parts, relative, directory)
 		}
-		// A common form and a common command each keep a folder named after
-		// themselves, holding a description and the file that runs it.
-		if named, ok := map[string][]string{
-			"common-forms":    {project.FormMetadataFile, project.FormModuleFile},
-			"common-commands": {project.ObjectMetadataFile, project.CommandModuleFile},
-		}[parts[1]]; ok && len(parts) > 2 && project.ObjectName(parts[2]) == nil {
+		// Some kinds keep a folder named after the object, holding a fixed
+		// set of files and nothing else.
+		if named, ok := project.NamedFolderFiles(parts[1]); ok && len(parts) > 2 && project.ObjectName(parts[2]) == nil {
 			if directory && len(parts) == 3 {
 				return nil
 			}

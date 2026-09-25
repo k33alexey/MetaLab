@@ -127,15 +127,19 @@ types:
 
 func TestLoadRejectsBrokenReferencesIdentityAndCycles(t *testing.T) {
 	t.Parallel()
-	t.Run("filename", func(t *testing.T) {
+	// A constant is found by the folder it lies in, so that is what its own
+	// name has to agree with - the identifier inside is its own.
+	t.Run("folder", func(t *testing.T) {
 		root := metadataProject(t)
-		writeMetadata(t, root, ConstantKind, constantID, `format: 1
-id: 10000000-0000-4000-8000-000000000002
-name: Значение
-title: {ru: Значение}
-types: [{kind: boolean}]
-`)
-		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "does not match filename") {
+		directory := filepath.Join(root, "metadata", string(ConstantKind), "ДругоеИмя")
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := "format: 1\nid: " + constantID + "\nname: Значение\ntitle: {ru: Значение}\ntypes: [{kind: boolean}]\n"
+		if err := os.WriteFile(filepath.Join(directory, project.ObjectMetadataFile), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "lies in a folder called") {
 			t.Fatalf("Load() error = %v", err)
 		}
 	})
@@ -643,7 +647,9 @@ func writeMetadata(t *testing.T, root string, kind Kind, id, content string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if slices.Contains(project.ObjectFolderKinds(), string(kind)) {
+	named, keepsFolder := project.NamedFolderFiles(string(kind))
+	if slices.Contains(project.ObjectFolderKinds(), string(kind)) ||
+		(keepsFolder && slices.Contains(named, project.ObjectMetadataFile)) {
 		directory := filepath.Join(root, "metadata", string(kind), objectFolderName(content, id))
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			t.Fatal(err)

@@ -33,7 +33,7 @@ func TestInspectCarriesRolesAndSeparatesThemFromTheSchema(t *testing.T) {
 		}
 		writeSourceFile(t, root, relative, encoded.Bytes())
 	}
-	write("metadata/constants/"+constant.ID.String()+".yaml", constant)
+	write("metadata/constants/"+constant.Name+"/"+project.ObjectMetadataFile, constant)
 	write("metadata/common-forms/"+form.Name+"/"+project.FormMetadataFile, form)
 	rolePath := "metadata/roles/" + role.ID.String() + ".yaml"
 	write(rolePath, role)

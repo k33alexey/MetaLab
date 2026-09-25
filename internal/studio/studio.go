@@ -905,12 +905,11 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 				var buildErr error
 				if slices.Contains(project.ObjectFolderKinds(), kind) {
 					node.Children, buildErr = workspace.objectFolderNodes(path, filepath.ToSlash(relative), "metadata", language, languages, objectDataGroups(loaded, kind, language, languages))
-				} else if kind == "common-forms" {
-					// A common form belongs to no object, but it keeps the same
-					// folder any other form keeps: the form and its module.
-					node.Children, buildErr = objectFormNodes(filepath.Dir(path), filepath.ToSlash(filepath.Dir(relative)), filepath.Base(path))
-				} else if kind == "common-commands" {
-					node.Children, buildErr = commonCommandNodes(path, filepath.ToSlash(relative))
+				} else if named, ok := project.NamedFolderFiles(kind); ok {
+					// A kind that keeps only files still keeps them in a folder
+					// named after the object: its description, and the modules
+					// that run it.
+					node.Children, buildErr = namedFolderNodes(path, filepath.ToSlash(relative), kind, named)
 				} else {
 					node.Children, buildErr = workspace.sourceFiles(path, filepath.ToSlash(relative), ".yaml", "metadata", language, languages)
 				}
@@ -1199,13 +1198,26 @@ func objectFormNodes(parentDirectory, parentRelative, forms string) ([]Node, err
 	return nodes, nil
 }
 
-// commonCommandNodes lists the commands that belong to no object. Each keeps a
-// folder named after it, holding its description and the module that runs it -
-// so the node opens the description and the module hangs beneath.
-func commonCommandNodes(directory, relative string) ([]Node, error) {
+// namedFolderFileTitles reads a file name as what the file is, so the tree
+// says "Модуль значения" where the folder says МодульЗначения.bsl.
+var namedFolderFileTitles = map[string]string{
+	project.CommandModuleFile: "Модуль команды",
+	project.FormModuleFile:    "Модуль формы",
+	project.ValueModuleFile:   "Модуль значения",
+	project.ManagerModuleFile: "Модуль менеджера",
+}
+
+// namedFolderNodes lists the objects of a kind that keeps only files: each in a
+// folder named after it, holding its description and the modules that run it.
+// The node opens the description; the modules hang beneath.
+func namedFolderNodes(directory, relative, kind string, named []string) ([]Node, error) {
+	description := project.ObjectMetadataFile
+	if slices.Contains(named, project.FormMetadataFile) {
+		description = project.FormMetadataFile
+	}
 	entries, err := os.ReadDir(directory)
 	if err != nil {
-		return nil, fmt.Errorf("read metadata common commands %q: %w", relative, err)
+		return nil, fmt.Errorf("read metadata %s %q: %w", kind, relative, err)
 	}
 	var nodes []Node
 	for _, entry := range entries {
@@ -1215,15 +1227,22 @@ func commonCommandNodes(directory, relative string) ([]Node, error) {
 		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || project.ObjectName(entry.Name()) != nil {
 			return nil, fmt.Errorf("unexpected source path %q", filepath.ToSlash(filepath.Join(relative, entry.Name())))
 		}
-		path := filepath.ToSlash(filepath.Join(relative, entry.Name(), project.ObjectMetadataFile))
-		modulePath := filepath.ToSlash(filepath.Join(relative, entry.Name(), project.CommandModuleFile))
+		path := filepath.ToSlash(filepath.Join(relative, entry.Name(), description))
 		node := Node{
-			ID: path, Kind: "common-commands", Title: entry.Name(), Path: path,
+			ID: path, Kind: kind, Title: entry.Name(), Path: path,
 			Properties: []Property{{Name: "Путь", Value: path}},
 		}
-		if info, err := os.Lstat(filepath.Join(directory, entry.Name(), project.CommandModuleFile)); err == nil && info.Mode().IsRegular() {
+		for _, file := range named {
+			if file == description {
+				continue
+			}
+			info, err := os.Lstat(filepath.Join(directory, entry.Name(), file))
+			if err != nil || !info.Mode().IsRegular() {
+				continue
+			}
+			modulePath := filepath.ToSlash(filepath.Join(relative, entry.Name(), file))
 			node.Children = append(node.Children, Node{
-				ID: modulePath, Kind: "modules", Title: "Модуль команды", Path: modulePath,
+				ID: modulePath, Kind: "modules", Title: namedFolderFileTitles[file], Path: modulePath,
 				Properties: []Property{{Name: "Путь", Value: modulePath}},
 			})
 		}

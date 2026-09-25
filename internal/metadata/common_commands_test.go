@@ -201,7 +201,7 @@ title: {ru: Открыть}
 			t.Fatal(err)
 		}
 		_, err := Load(root)
-		if err == nil || !strings.Contains(err.Error(), "only its description and its module") {
+		if err == nil || !strings.Contains(err.Error(), "it keeps only object.yaml") {
 			t.Fatalf("a common command keeping something else: %v", err)
 		}
 	})

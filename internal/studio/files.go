@@ -301,15 +301,14 @@ func validateEditablePath(relative string) (string, string, error) {
 		path.Ext(parts[2]) == ".yaml" && validUUIDFile(parts[2], ".yaml") {
 		return relative, "yaml", nil
 	}
-	// A common form and a common command belong to no object, but each lies
-	// the way its kind does everywhere else: a folder named after it, holding
-	// a description and the file that runs it.
+	// Some kinds keep a folder named after the object, holding a fixed set of
+	// files: a description and the modules that run it.
 	if len(parts) == 4 && parts[0] == "metadata" && project.ObjectName(parts[2]) == nil {
-		switch parts[1] + "/" + parts[3] {
-		case "common-forms/" + project.FormMetadataFile, "common-commands/" + project.ObjectMetadataFile:
+		if named, ok := project.NamedFolderFiles(parts[1]); ok && slices.Contains(named, parts[3]) {
+			if path.Ext(parts[3]) == ".bsl" {
+				return relative, "bsl", nil
+			}
 			return relative, "yaml", nil
-		case "common-forms/" + project.FormModuleFile, "common-commands/" + project.CommandModuleFile:
-			return relative, "bsl", nil
 		}
 	}
 	if len(parts) >= 4 && parts[0] == "metadata" && slices.Contains(project.ObjectFolderKinds(), parts[1]) {

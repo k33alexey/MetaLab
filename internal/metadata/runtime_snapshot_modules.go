@@ -113,6 +113,10 @@ func moduleNameDescriptors(catalog *Catalog) map[string]moduleNameDescriptor {
 		add(AccumulationRegisterKind, item.Name, project.RecordSetModuleFile, "МодульНабораЗаписейРегистраНакопления."+item.Name, "ЭтотОбъект", "ThisObject")
 		add(AccumulationRegisterKind, item.Name, project.ManagerModuleFile, "МодульМенеджераРегистраНакопления."+item.Name)
 	}
+	for _, item := range catalog.Constants {
+		add(ConstantKind, item.Name, project.ValueModuleFile, "МодульЗначенияКонстанты."+item.Name, "ЭтотОбъект", "ThisObject")
+		add(ConstantKind, item.Name, project.ManagerModuleFile, "МодульМенеджераКонстанты."+item.Name)
+	}
 	for _, item := range catalog.CommonModules {
 		if path, err := project.ModulePath(item.Module); err == nil {
 			result[path] = moduleNameDescriptor{name: item.Name, defaultContext: item.DefaultContext()}

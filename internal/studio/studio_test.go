@@ -202,7 +202,7 @@ func TestWorkspaceTreeAlwaysShowsNameNeverLocalizedTitle(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
 	id := uuid.MustNew()
-	relative, err := project.MetadataPath("constants", id)
+	relative, err := project.ObjectMetadataPath("constants", "Режим")
 	if err != nil {
 		t.Fatal(err)
 	}

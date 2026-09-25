@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -260,29 +261,40 @@ func (catalog *Catalog) validateCommonCommandFiles(root string) error {
 		return nil
 	}
 	for _, item := range catalog.CommonCommands {
-		directory := filepath.Join(root, "metadata", string(CommonCommandKind), item.Name)
-		entries, err := os.ReadDir(directory)
+		found, err := namedFolderContents(root, CommonCommandKind, "common command", item.Name)
 		if err != nil {
-			return fmt.Errorf("common command %s: %w", item.Name, err)
+			return err
 		}
-		module := false
-		for _, entry := range entries {
-			if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
-				return fmt.Errorf("common command %s keeps %q, and it keeps only its description and its module",
-					item.Name, entry.Name())
-			}
-			switch entry.Name() {
-			case project.ObjectMetadataFile:
-			case project.CommandModuleFile:
-				module = true
-			default:
-				return fmt.Errorf("common command %s keeps %q, and it keeps only its description and its module",
-					item.Name, entry.Name())
-			}
-		}
-		if !module {
+		if !found[project.CommandModuleFile] {
 			return fmt.Errorf("common command %s has no module", item.Name)
 		}
 	}
 	return nil
+}
+
+// namedFolderContents reads the folder of one object of a kind that keeps only
+// files there, checks it holds nothing else, and reports which of the allowed
+// files are actually present.
+//
+// Which of them are required is the kind's own business: a command without its
+// module answers a click with nothing, while a constant without one is simply a
+// constant nobody wrote code for.
+func namedFolderContents(root string, kind Kind, what, name string) (map[string]bool, error) {
+	allowed, ok := project.NamedFolderFiles(string(kind))
+	if !ok {
+		return nil, fmt.Errorf("kind %q keeps no folder of its own", kind)
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "metadata", string(kind), name))
+	if err != nil {
+		return nil, fmt.Errorf("%s %s: %w", what, name, err)
+	}
+	found := map[string]bool{}
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 || !slices.Contains(allowed, entry.Name()) {
+			return nil, fmt.Errorf("%s %s keeps %q, and it keeps only %s",
+				what, name, entry.Name(), strings.Join(allowed, ", "))
+		}
+		found[entry.Name()] = true
+	}
+	return found, nil
 }

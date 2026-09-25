@@ -289,13 +289,55 @@ type Type struct {
 	DateParts   DateParts `yaml:"date_parts,omitempty" json:"dateParts,omitempty"`
 }
 
+// DataHistoryMode says whether the platform keeps the history of a value's
+// changes. A constant of the reference configuration keeps none, but objects
+// that do are the majority, so the property is carried rather than assumed.
+type DataHistoryMode string
+
+const (
+	DataHistoryUse     DataHistoryMode = "use"
+	DataHistoryDontUse DataHistoryMode = "dont-use"
+)
+
+// DataLockMode is how the platform locks the value while it is written:
+// managed locks are taken by the code that needs them, automatic ones by the
+// platform around the whole transaction.
+type DataLockMode string
+
+const (
+	ManagedDataLock   DataLockMode = "managed"
+	AutomaticDataLock DataLockMode = "automatic"
+)
+
+// Constant is a single value existing in one instance.
+//
+// It is shown and edited like anything else, so it carries what that needs:
+// how it is described, which form opens it, whether the platform offers its
+// own commands for it, and how it is locked and historicised. The properties
+// of presenting and choosing the value itself - format, mask, choice
+// parameters and the rest - are the same ones an attribute has and are
+// described there, not twice.
 type Constant struct {
 	Format  int           `yaml:"format"`
 	ID      uuid.UUID     `yaml:"id"`
 	Name    string        `yaml:"name"`
 	Title   LocalizedText `yaml:"title"`
-	Types   []Type        `yaml:"types"`
-	Default *Value        `yaml:"default,omitempty"`
+	Comment string        `yaml:"comment,omitempty"`
+	// Explanation and ExtendedPresentation are how the value is described to
+	// the user: one as a sentence beside it, one as the name of its own form.
+	Explanation          LocalizedText `yaml:"explanation,omitempty"`
+	ExtendedPresentation LocalizedText `yaml:"extended_presentation,omitempty"`
+	Types                []Type        `yaml:"types"`
+	Default              *Value        `yaml:"default,omitempty"`
+	// DefaultForm names the form that opens the value. A constant keeps no
+	// forms of its own, so it is one of the configuration's common forms - a
+	// reference to another object, and therefore by identifier.
+	DefaultForm *uuid.UUID `yaml:"default_form,omitempty"`
+	// UseStandardCommands decides whether the platform offers its own commands
+	// for this constant.
+	UseStandardCommands bool            `yaml:"use_standard_commands,omitempty"`
+	DataHistory         DataHistoryMode `yaml:"data_history,omitempty"`
+	DataLock            DataLockMode    `yaml:"data_lock,omitempty"`
 }
 
 // SessionParameter is a server-memory-only value scoped to one session's lifetime.
@@ -796,6 +838,26 @@ func DecodeConstant(source string, reader io.Reader, manifest project.Project) (
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
 	issues = append(issues, validateTypes("types", value.Types, uuid.UUID{})...)
+	for name, text := range map[string]LocalizedText{
+		"explanation": value.Explanation, "extended_presentation": value.ExtendedPresentation,
+	} {
+		if len(text) > 0 {
+			issues = append(issues, validateTitle(name, text, manifest)...)
+		}
+	}
+	if value.DefaultForm != nil && value.DefaultForm.IsZero() {
+		issues = append(issues, "default_form must be a non-zero UUID")
+	}
+	switch value.DataHistory {
+	case "", DataHistoryUse, DataHistoryDontUse:
+	default:
+		issues = append(issues, "data_history must be use or dont-use")
+	}
+	switch value.DataLock {
+	case "", ManagedDataLock, AutomaticDataLock:
+	default:
+		issues = append(issues, "data_lock must be managed or automatic")
+	}
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return Constant{}, err
 	}
@@ -1367,9 +1429,15 @@ func cloneTitle(value LocalizedText) LocalizedText {
 }
 func cloneConstant(value Constant) Constant {
 	value.Title, value.Types = cloneTitle(value.Title), cloneTypes(value.Types)
+	value.Explanation = cloneTitle(value.Explanation)
+	value.ExtendedPresentation = cloneTitle(value.ExtendedPresentation)
 	if value.Default != nil {
 		defaultValue := *value.Default
 		value.Default = &defaultValue
+	}
+	if value.DefaultForm != nil {
+		id := *value.DefaultForm
+		value.DefaultForm = &id
 	}
 	return value
 }

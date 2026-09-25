@@ -54,10 +54,12 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadKind(root, ConstantKind, func(source string, file *os.File, id uuid.UUID) error {
+	// A constant keeps a folder, because it keeps two modules: the one the
+	// platform calls around its value and the one of its manager.
+	if err := loadObjectKind(root, ConstantKind, func(source string, file *os.File, name string) error {
 		value, err := DecodeConstant(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+		if err == nil && !strings.EqualFold(value.Name, name) {
+			err = fmt.Errorf("constant %s lies in a folder called %s", value.Name, name)
 		}
 		if err == nil {
 			catalog.Constants = append(catalog.Constants, value)
@@ -1627,6 +1629,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return err
 	}
 	if err := catalog.validateSettingsStorageReferences(); err != nil {
+		return err
+	}
+	if err := catalog.validateConstantFiles(root); err != nil {
 		return err
 	}
 	if err := catalog.validateCommonCommandFiles(root); err != nil {

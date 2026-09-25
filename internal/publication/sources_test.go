@@ -63,7 +63,7 @@ func TestInspectRejectsMalformedAndUnsupportedSources(t *testing.T) {
 	}
 
 	constantID := uuid.MustNew()
-	constantPath, _ := project.MetadataPath("constants", constantID)
+	constantPath, _ := project.ObjectMetadataPath("constants", "Invalid")
 	writeSourceFile(t, root, constantPath, []byte("format: 1\nid: "+constantID.String()+"\nname: Invalid\ntitle: {de: Ungültig}\ntypes: [{kind: boolean}]\n"))
 	if _, err := inspect(context.Background(), root, SourceState{}); err == nil || !strings.Contains(err.Error(), "unconfigured language") {
 		t.Fatalf("unconfigured language error = %v", err)
@@ -83,7 +83,7 @@ func TestInspectCarriesSchemaIdentityOfEveryStoredKind(t *testing.T) {
 	t.Parallel()
 	root := publicationProject(t)
 	constantID := uuid.MustNew()
-	constantPath, _ := project.MetadataPath("constants", constantID)
+	constantPath, _ := project.ObjectMetadataPath("constants", "Режим")
 	writeSourceFile(t, root, constantPath, []byte("format: 1\nid: "+constantID.String()+"\nname: Режим\ntitle: {ru: Режим}\ntypes: [{kind: boolean}]\n"))
 
 	catalogID, attributeID := uuid.MustNew(), uuid.MustNew()
