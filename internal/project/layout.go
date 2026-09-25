@@ -81,6 +81,15 @@ var (
 		"common-forms":    {FormMetadataFile, FormModuleFile},
 		"common-commands": {ObjectMetadataFile, CommandModuleFile},
 		"constants":       {ObjectMetadataFile, ValueModuleFile, ManagerModuleFile},
+		// A common template and a common picture keep a description and
+		// nothing else that is source: what else lies in their folder is
+		// content - a spreadsheet, an archive, an image - and content is
+		// named by the kind of template or by the density of the image, not
+		// by a role. It is checked where the metadata is read, and left out
+		// here so that binary content stays out of code search and out of the
+		// module index.
+		"common-templates": {ObjectMetadataFile},
+		"common-pictures":  {ObjectMetadataFile},
 	}
 	// objectFolderKinds lists metadata kinds whose objects group their own
 	// description, modules, forms, commands and templates under one folder
@@ -532,6 +541,46 @@ func CommonFormModulePath(name string) (string, error) {
 	return path.Join(directory, FormModuleFile), nil
 }
 
+// CommonTemplateContentPath returns one file of a common template's content.
+//
+// A common template's own folder is the template folder: nothing owns the
+// template, so the content lies beside its description rather than one level
+// down under an object's templates/. The file is still named after the kind of
+// template, exactly as an object's template names it.
+func CommonTemplateContentPath(template, file string) (string, error) {
+	directory, err := ObjectDirectory("common-templates", template)
+	if err != nil {
+		return "", err
+	}
+	if err := plainFileName("template content", file); err != nil {
+		return "", err
+	}
+	return path.Join(directory, file), nil
+}
+
+// CommonPictureImagePath returns one image of a common picture. Which density
+// the image stands for is what it is called, so the caller passes the name and
+// the metadata layer, which knows the ladder, decides whether it is one.
+func CommonPictureImagePath(picture, file string) (string, error) {
+	directory, err := ObjectDirectory("common-pictures", picture)
+	if err != nil {
+		return "", err
+	}
+	if err := plainFileName("picture image", file); err != nil {
+		return "", err
+	}
+	return path.Join(directory, file), nil
+}
+
+// plainFileName rejects anything that would leave the folder it is meant to
+// lie in.
+func plainFileName(what, file string) error {
+	if file == "" || file == "." || file == ".." || strings.ContainsAny(file, `/\`) {
+		return fmt.Errorf("%s must be a plain name", what)
+	}
+	return nil
+}
+
 // ObjectTemplateDirectory returns the folder holding the content of one of an
 // object's own templates, named after the template.
 //
@@ -557,8 +606,8 @@ func ObjectTemplateContentPath(kind, name, template, file string) (string, error
 	if err != nil {
 		return "", err
 	}
-	if file == "" || strings.ContainsAny(file, `/\`) {
-		return "", fmt.Errorf("template content file must be a plain name")
+	if err := plainFileName("template content", file); err != nil {
+		return "", err
 	}
 	return path.Join(directory, file), nil
 }

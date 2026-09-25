@@ -245,3 +245,40 @@ func TestObjectFolderPathShapes(t *testing.T) {
 		})
 	}
 }
+
+// A common template and a common picture keep their content in the folder that
+// is the template or the picture itself. Publication walks that folder, so the
+// shape of those paths has to be one it knows - otherwise a project carrying a
+// printed form or an icon would refuse to publish at all.
+func TestCommonTemplateAndPicturePathShapes(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		relative  string
+		directory bool
+		accepted  bool
+	}{
+		"папка общего макета":      {"metadata/common-templates/ПечатнаяФорма", true, true},
+		"описание общего макета":   {"metadata/common-templates/ПечатнаяФорма/object.yaml", false, true},
+		"содержимое общего макета": {"metadata/common-templates/ПечатнаяФорма/content.yaml", false, true},
+		"документ на язык":         {"metadata/common-templates/Инструкция/ru.html", false, true},
+		"посторонний файл у общего макета": {
+			"metadata/common-templates/ПечатнаяФорма/заметки.txt", false, false},
+		"папка общей картинки":    {"metadata/common-pictures/Печать", true, true},
+		"описание общей картинки": {"metadata/common-pictures/Печать/object.yaml", false, true},
+		"образ картинки":          {"metadata/common-pictures/Печать/100.png", false, true},
+		"образ картинки плотнее":  {"metadata/common-pictures/Печать/200.svg", false, true},
+		"образ не с лестницы":     {"metadata/common-pictures/Печать/110.png", false, false},
+		"образ без плотности":     {"metadata/common-pictures/Печать/Печать.png", false, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			err := validateSourcePath(test.relative, test.directory)
+			if test.accepted && err != nil {
+				t.Fatalf("%s was refused: %v", test.relative, err)
+			}
+			if !test.accepted && err == nil {
+				t.Fatalf("%s was accepted", test.relative)
+			}
+		})
+	}
+}

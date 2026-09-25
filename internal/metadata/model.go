@@ -580,6 +580,12 @@ type Catalog struct {
 	CommandGroups                    []CommandGroupDefinition
 	commandGroupByName               map[string]int
 	commandGroupByID                 map[uuid.UUID]int
+	CommonTemplates                  []CommonTemplateDefinition
+	commonTemplateByName             map[string]int
+	commonTemplateByID               map[uuid.UUID]int
+	CommonPictures                   []CommonPictureDefinition
+	commonPictureByName              map[string]int
+	commonPictureByID                map[uuid.UUID]int
 	constantByName                   map[string]int
 	constantByID                     map[uuid.UUID]int
 	enumerationByName                map[string]int

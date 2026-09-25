@@ -225,6 +225,20 @@ func validateSourcePath(relative string, directory bool) error {
 			if !directory && len(parts) == 4 && contains(named, parts[3]) {
 				return nil
 			}
+			// A common template and a common picture keep their content
+			// beside their description, because the folder is the template or
+			// the picture itself. Which content belongs to which is decided
+			// by the kind of template and by the ladder of densities, and
+			// both are checked where the metadata is read rather than here,
+			// where only the shape of the path is.
+			if !directory && len(parts) == 4 && parts[1] == "common-templates" && templateContentName(parts[3]) {
+				return nil
+			}
+			if !directory && len(parts) == 4 && parts[1] == "common-pictures" {
+				if _, ok := metadata.PictureDensity(parts[3]); ok {
+					return nil
+				}
+			}
 			return fmt.Errorf("unexpected publication source path %q", relative)
 		}
 		if !directory && len(parts) == 3 {

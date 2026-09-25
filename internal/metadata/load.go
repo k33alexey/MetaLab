@@ -166,6 +166,33 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	// A common template and a common picture each keep a folder: the folder is
+	// the template or the picture itself, and the content lies in it beside
+	// the description.
+	if err := loadObjectKind(root, CommonTemplateKind, func(source string, file *os.File, name string) error {
+		value, err := DecodeCommonTemplate(source, file, manifest)
+		if err == nil && !strings.EqualFold(value.Name, name) {
+			err = fmt.Errorf("common template %s lies in a folder called %s", value.Name, name)
+		}
+		if err == nil {
+			catalog.CommonTemplates = append(catalog.CommonTemplates, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	if err := loadObjectKind(root, CommonPictureKind, func(source string, file *os.File, name string) error {
+		value, err := DecodeCommonPicture(source, file, manifest)
+		if err == nil && !strings.EqualFold(value.Name, name) {
+			err = fmt.Errorf("common picture %s lies in a folder called %s", value.Name, name)
+		}
+		if err == nil {
+			catalog.CommonPictures = append(catalog.CommonPictures, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadKind(root, FunctionalOptionKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeFunctionalOption(source, file, manifest)
 		if err == nil && value.ID != id {
@@ -718,6 +745,14 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return catalog.CommandGroups[i].ID.String() < catalog.CommandGroups[j].ID.String()
 	})
 	catalog.commandGroupByName, catalog.commandGroupByID = make(map[string]int, len(catalog.CommandGroups)), make(map[uuid.UUID]int, len(catalog.CommandGroups))
+	sort.Slice(catalog.CommonTemplates, func(i, j int) bool {
+		return catalog.CommonTemplates[i].ID.String() < catalog.CommonTemplates[j].ID.String()
+	})
+	catalog.commonTemplateByName, catalog.commonTemplateByID = make(map[string]int, len(catalog.CommonTemplates)), make(map[uuid.UUID]int, len(catalog.CommonTemplates))
+	sort.Slice(catalog.CommonPictures, func(i, j int) bool {
+		return catalog.CommonPictures[i].ID.String() < catalog.CommonPictures[j].ID.String()
+	})
+	catalog.commonPictureByName, catalog.commonPictureByID = make(map[string]int, len(catalog.CommonPictures)), make(map[uuid.UUID]int, len(catalog.CommonPictures))
 	sort.Slice(catalog.SessionParameters, func(i, j int) bool {
 		return catalog.SessionParameters[i].ID.String() < catalog.SessionParameters[j].ID.String()
 	})
@@ -863,6 +898,16 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	}
 	for index, item := range catalog.CommandGroups {
 		if err := add("command group", item.ID, item.Name, index, catalog.commandGroupByName, catalog.commandGroupByID); err != nil {
+			return err
+		}
+	}
+	for index, item := range catalog.CommonTemplates {
+		if err := add("common template", item.ID, item.Name, index, catalog.commonTemplateByName, catalog.commonTemplateByID); err != nil {
+			return err
+		}
+	}
+	for index, item := range catalog.CommonPictures {
+		if err := add("common picture", item.ID, item.Name, index, catalog.commonPictureByName, catalog.commonPictureByID); err != nil {
 			return err
 		}
 	}
@@ -1638,6 +1683,15 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return err
 	}
 	if err := catalog.validateCommandGroupReferences(); err != nil {
+		return err
+	}
+	if err := catalog.validateCommonTemplateFiles(root); err != nil {
+		return err
+	}
+	if err := catalog.validateCommonPictureFiles(root); err != nil {
+		return err
+	}
+	if err := catalog.validateCommonPictureReferences(); err != nil {
 		return err
 	}
 	if err := catalog.validateScheduledJobReferences(); err != nil {
