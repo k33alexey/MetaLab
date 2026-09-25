@@ -97,12 +97,48 @@ func (forms HierarchicalObjectForms) folderSlots() []formSlot {
 	}
 }
 
-// validateFormSlots checks that every named slot carries something that can be
-// a form: a slot holds the name of a form, and a form is a folder named after
-// itself. That the form is actually there is checked against the object's own
-// folder, where forms live, and not here.
+// commonFormPrefix marks a role as pointing outside the object, at a common
+// form of the configuration. It is the folder such a form lies in, because the
+// folder is the only thing that tells the two apart: one report of the
+// demonstration configuration keeps its own ФормаОтчета and opens
+// common-forms/ФормаОтчета all the same, and by the name alone we would open
+// the wrong one and never know.
+const commonFormPrefix = "common-forms/"
+
+// formReference is where the form a role names lies: among the forms of the
+// object itself, or among the common forms of the configuration. A report is
+// the case that made it necessary - twenty-three of the twenty-six reports in
+// the demonstration configuration open a common form - but the platform allows
+// it in every role of every kind, and so do we.
+type formReference struct {
+	name   string
+	common bool
+}
+
+// parseFormReference reads what a role carries. It fails only on something that
+// cannot be a form at all: a name no folder can be called, or a folder other
+// than the one common forms live in. The second result is empty when the value
+// is a reference, and otherwise is the rest of the message about the role,
+// which its key is put in front of.
+func parseFormReference(value string) (formReference, string) {
+	reference := formReference{name: value}
+	if after, found := strings.CutPrefix(value, commonFormPrefix); found {
+		reference = formReference{name: after, common: true}
+	} else if strings.ContainsRune(value, '/') {
+		return formReference{}, " must name a form of the object or one under " + commonFormPrefix
+	}
+	if project.SubordinateName(reference.name) != nil {
+		return formReference{}, " must be the name of a form"
+	}
+	return reference, ""
+}
+
+// validateFormSlots checks that every filled role carries something that can
+// be a form: the name of a form, which is a folder named after itself, either
+// beside the object or among the common forms. That the form is actually there
+// is checked against those folders, and not here.
 //
-// Two slots may well name one form. The prototype's own catalog of users does
+// Two roles may well name one form. The prototype's own catalog of users does
 // exactly that - its ФормаСписка is both the main list form and the main
 // choice form - so refusing it would lose a real configuration at import.
 func validateFormSlots(slots []formSlot) []string {
@@ -111,8 +147,8 @@ func validateFormSlots(slots []formSlot) []string {
 		if slot.form == "" {
 			continue
 		}
-		if project.SubordinateName(slot.form) != nil {
-			issues = append(issues, slot.key+" must be the name of a form")
+		if _, problem := parseFormReference(slot.form); problem != "" {
+			issues = append(issues, slot.key+problem)
 		}
 	}
 	slices.Sort(issues)
@@ -135,4 +171,54 @@ func validateFolderForms(forms HierarchicalObjectForms, hierarchy Hierarchy) []s
 	}
 	slices.Sort(issues)
 	return issues
+}
+
+// RegisterForms is the role set of a register of totals: it shows a list of its
+// records and nothing else. A record of one is not opened on its own - it is
+// written by whatever moves the register - so there is no role for it, and the
+// list has its auxiliary form beside it like any main form.
+type RegisterForms struct {
+	List          string `yaml:"list,omitempty" json:"list,omitempty"`
+	AuxiliaryList string `yaml:"auxiliary_list,omitempty" json:"auxiliaryList,omitempty"`
+}
+
+func (forms RegisterForms) slots() []formSlot {
+	return []formSlot{
+		{"forms.list", forms.List},
+		{"forms.auxiliary_list", forms.AuxiliaryList},
+	}
+}
+
+// InformationRegisterForms is the role set of a register of information. It has
+// one role more than a register of totals: a record of it is edited by hand,
+// which no other register allows, so the record has a form of its own.
+type InformationRegisterForms struct {
+	List   string `yaml:"list,omitempty" json:"list,omitempty"`
+	Record string `yaml:"record,omitempty" json:"record,omitempty"`
+
+	AuxiliaryList   string `yaml:"auxiliary_list,omitempty" json:"auxiliaryList,omitempty"`
+	AuxiliaryRecord string `yaml:"auxiliary_record,omitempty" json:"auxiliaryRecord,omitempty"`
+}
+
+func (forms InformationRegisterForms) slots() []formSlot {
+	return []formSlot{
+		{"forms.list", forms.List},
+		{"forms.record", forms.Record},
+		{"forms.auxiliary_list", forms.AuxiliaryList},
+		{"forms.auxiliary_record", forms.AuxiliaryRecord},
+	}
+}
+
+// SingleRoleForms is the role set of a kind that opens one thing and nothing
+// else: a document journal opens its list, a filter criterion opens what it
+// found, a data processor opens itself. There is no second role to tell the
+// first one apart from, so it is just the main form, with its auxiliary beside
+// it.
+type SingleRoleForms struct {
+	Main      string `yaml:"main,omitempty" json:"main,omitempty"`
+	Auxiliary string `yaml:"auxiliary,omitempty" json:"auxiliary,omitempty"`
+}
+
+func (forms SingleRoleForms) slots() []formSlot {
+	return []formSlot{{"forms.main", forms.Main}, {"forms.auxiliary", forms.Auxiliary}}
 }

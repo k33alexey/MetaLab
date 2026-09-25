@@ -37,7 +37,7 @@ type DocumentJournalDefinition struct {
 	Title     LocalizedText    `yaml:"title" json:"title"`
 	Documents []uuid.UUID      `yaml:"documents,omitempty" json:"documents,omitempty"`
 	Columns   []JournalColumn  `yaml:"columns,omitempty" json:"columns,omitempty"`
-	Forms     ObjectForms      `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Forms     SingleRoleForms  `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands  []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
 	List      ListSettings     `yaml:"list,omitempty" json:"list,omitempty"`
@@ -86,6 +86,7 @@ func DecodeDocumentJournal(source string, reader io.Reader, configuration projec
 	issues = append(issues, validateListSettings(value.List, nil, map[string]TypeKind{
 		"number": StringType, "date": DateType,
 	})...)
+	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {

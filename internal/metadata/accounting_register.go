@@ -54,7 +54,7 @@ type AccountingRegisterDefinition struct {
 	Resources       []AccountingRegisterField `yaml:"resources" json:"resources"`
 	Attributes      []Attribute               `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 	Recorders       []uuid.UUID               `yaml:"recorders" json:"recorders"`
-	Forms           ObjectForms               `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Forms           RegisterForms             `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands        []ObjectCommand           `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates       []ObjectTemplate          `yaml:"templates,omitempty" json:"templates,omitempty"`
 }
@@ -117,6 +117,7 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, func(name string) bool {
 		return names[strings.ToLower(name)] || reservedAccountingRegisterName(name)
 	})...)
+	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {

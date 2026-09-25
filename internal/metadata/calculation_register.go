@@ -97,7 +97,7 @@ type CalculationRegisterDefinition struct {
 	Attributes     []Attribute                    `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 	Recorders      []uuid.UUID                    `yaml:"recorders" json:"recorders"`
 	Recalculations []Recalculation                `yaml:"recalculations,omitempty" json:"recalculations,omitempty"`
-	Forms          ObjectForms                    `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Forms          RegisterForms                  `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands       []ObjectCommand                `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates      []ObjectTemplate               `yaml:"templates,omitempty" json:"templates,omitempty"`
 }
@@ -151,6 +151,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 		return names[strings.ToLower(name)] || reservedCalculationRegisterName(name)
 	})...)
 	issues = append(issues, validateRecalculations(value, configuration)...)
+	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {

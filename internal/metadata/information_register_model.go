@@ -43,7 +43,7 @@ type InformationRegisterDefinition struct {
 	Resources   []Attribute                    `yaml:"resources,omitempty"`
 	Attributes  []Attribute                    `yaml:"attributes,omitempty"`
 	Recorders   []uuid.UUID                    `yaml:"recorders,omitempty"`
-	Forms       ObjectForms                    `yaml:"forms,omitempty"`
+	Forms       InformationRegisterForms       `yaml:"forms,omitempty"`
 	Commands    []ObjectCommand                `yaml:"commands,omitempty"`
 	Templates   []ObjectTemplate               `yaml:"templates,omitempty"`
 }

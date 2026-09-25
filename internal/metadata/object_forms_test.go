@@ -417,3 +417,164 @@ forms: {auxiliary_object: ДругаяФормаДокумента, auxiliary_li
 		t.Fatalf("the auxiliary roles of a document were lost: %+v", document.Forms)
 	}
 }
+
+// A role may open a form the object does not own. Twenty-three of the
+// twenty-six reports of the demonstration configuration open a common form, and
+// two of those twenty-three keep a form of their own under the very same name -
+// so the role has to say where the form lies, not only what it is called. By
+// the name alone we would open the report's own form and never know.
+func TestRoleOpensACommonFormWithoutConfusingItWithItsOwn(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeCommonForm(t, root, "ФормаОтчета", `format: 1
+id: `+commonFormID+`
+name: ФормаОтчета
+title: {ru: Форма отчёта}
+kind: common
+`)
+	writeMetadata(t, root, ReportKind, reportID, `format: 1
+id: `+reportID+`
+name: ОстаткиТоваров
+title: {ru: Остатки товаров}
+forms: {main: common-forms/ФормаОтчета, settings: ФормаНастроек}
+`)
+	// The report's own form of the same name: the one the role does not open.
+	writeObjectForm(t, root, ReportKind, "ОстаткиТоваров", "ФормаОтчета", formItem)
+	writeObjectForm(t, root, ReportKind, "ОстаткиТоваров", "ФормаНастроек", formList)
+
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, ok := catalog.Report("ОстаткиТоваров")
+	if !ok {
+		t.Fatal("the report did not load")
+	}
+	if report.Forms.Main != "common-forms/ФормаОтчета" {
+		t.Fatalf("the role no longer says where the form lies: %+v", report.Forms)
+	}
+	own, ok := catalog.ObjectFormID(ReportKind, "ОстаткиТоваров", "ФормаОтчета")
+	if !ok || own.String() != formItem {
+		t.Fatalf("the report's own form of the same name was lost: %s %v", own, ok)
+	}
+}
+
+// A role opening a common form that is not in the configuration is a form that
+// never opens, and the object says nothing about it.
+func TestRoleOpeningAMissingCommonFormIsRefused(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeMetadata(t, root, ReportKind, reportID, `format: 1
+id: `+reportID+`
+name: ОстаткиТоваров
+title: {ru: Остатки товаров}
+forms: {main: common-forms/ФормаОтчета}
+`)
+	_, err := Load(root)
+	if err == nil {
+		t.Fatal("a role opening a common form that is not there was accepted")
+	}
+	if !strings.Contains(err.Error(), "opens main form with common form ФормаОтчета, which is not in the configuration") {
+		t.Fatalf("refused for another reason: %v", err)
+	}
+}
+
+// A form lies either beside the object or among the common forms. Any other
+// place is not a place a form can be.
+func TestRoleRefusesAFormSomewhereElse(t *testing.T) {
+	t.Parallel()
+	_, err := DecodeReport("object.yaml", strings.NewReader(`format: 1
+id: `+reportID+`
+name: ОстаткиТоваров
+title: {ru: Остатки товаров}
+forms: {main: catalogs/Номенклатура}
+`), metadataConfiguration())
+	if err == nil ||
+		!strings.Contains(err.Error(), "forms.main must name a form of the object or one under common-forms/") {
+		t.Fatalf("DecodeReport() error = %v", err)
+	}
+}
+
+// The set of roles is what tells the kinds apart, and a kind has exactly the
+// roles the platform gives it. A role the kind does not have promises a form
+// that would never open, so it is refused where the description is read.
+func TestEachKindHasItsOwnSetOfRoles(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		decode func(string) error
+		accept string
+		refuse string
+	}{
+		"регистр накопления открывает только список": {
+			decode: func(body string) error {
+				_, err := DecodeAccumulationRegister("object.yaml", strings.NewReader(`format: 1
+id: `+formCatalog+`
+name: Остатки
+title: {ru: Остатки}
+kind: balance
+recorders: [`+formItem+`]
+dimensions: [{id: `+formList+`, name: Товар, title: {ru: Товар}, types: [{kind: string, length: 50}]}]
+resources: [{id: `+formPick+`, name: Количество, title: {ru: Количество}, types: [{kind: number, precision: 15, scale: 3}]}]
+`+body+`
+`), metadataConfiguration())
+				return err
+			},
+			accept: "forms: {list: ФормаСписка, auxiliary_list: ДругаяФормаСписка}",
+			refuse: "forms: {object: ФормаЗаписи}",
+		},
+		"регистр сведений открывает ещё и запись": {
+			decode: func(body string) error {
+				_, err := DecodeInformationRegister("object.yaml", strings.NewReader(`format: 1
+id: `+formCatalog+`
+name: Цены
+title: {ru: Цены}
+write_mode: independent
+periodicity: day
+dimensions: [{id: `+formList+`, name: Товар, title: {ru: Товар}, types: [{kind: string, length: 50}]}]
+resources: [{id: `+formPick+`, name: Цена, title: {ru: Цена}, types: [{kind: number, precision: 15, scale: 2}]}]
+`+body+`
+`), metadataConfiguration())
+				return err
+			},
+			accept: "forms: {list: ФормаСписка, record: ФормаЗаписи, auxiliary_record: ДругаяФормаЗаписи}",
+			refuse: "forms: {choice: ФормаВыбора}",
+		},
+		"у отчёта нет вспомогательной формы варианта": {
+			decode: func(body string) error {
+				_, err := DecodeReport("object.yaml", strings.NewReader(`format: 1
+id: `+reportID+`
+name: Остатки
+title: {ru: Остатки}
+`+body+`
+`), metadataConfiguration())
+				return err
+			},
+			accept: "forms: {main: ФормаОтчета, settings: ФормаНастроек, variant: ФормаВарианта, " +
+				"auxiliary: ДругаяФорма, auxiliary_settings: ДругаяФормаНастроек}",
+			refuse: "forms: {auxiliary_variant: ДругаяФормаВарианта}",
+		},
+		"у обработки одна роль": {
+			decode: func(body string) error {
+				_, err := DecodeDataProcessor("object.yaml", strings.NewReader(`format: 1
+id: `+dataProcessorID+`
+name: ЗагрузкаЦен
+title: {ru: Загрузка цен}
+`+body+`
+`), metadataConfiguration())
+				return err
+			},
+			accept: "forms: {main: ФормаОбработки, auxiliary: ДругаяФорма}",
+			refuse: "forms: {list: ФормаСписка}",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if err := test.decode(test.accept); err != nil {
+				t.Fatalf("the roles the kind has were refused: %v", err)
+			}
+			if err := test.decode(test.refuse); err == nil {
+				t.Fatal("a role the kind does not have was accepted")
+			}
+		})
+	}
+}

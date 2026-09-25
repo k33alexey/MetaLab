@@ -27,17 +27,6 @@ type CriterionField struct {
 	Attribute uuid.UUID  `yaml:"attribute" json:"attribute"`
 }
 
-// CriterionForms are the forms a criterion shows its result through. There is
-// one role - the list of what was found - with an auxiliary form beside it.
-type CriterionForms struct {
-	List      string `yaml:"list,omitempty" json:"list,omitempty"`
-	Auxiliary string `yaml:"auxiliary,omitempty" json:"auxiliary,omitempty"`
-}
-
-func (forms CriterionForms) slots() []formSlot {
-	return []formSlot{{"forms.list", forms.List}, {"forms.auxiliary", forms.Auxiliary}}
-}
-
 // FilterCriterionDefinition describes one filter criterion: a named set of
 // places a value is used, gathered so that a user standing on that value can
 // walk to all of them at once.
@@ -60,8 +49,8 @@ type FilterCriterionDefinition struct {
 	Fields []CriterionField `yaml:"fields,omitempty" json:"fields,omitempty"`
 	// UseStandardCommands decides whether the platform offers its own commands
 	// for this criterion.
-	UseStandardCommands bool           `yaml:"use_standard_commands,omitempty" json:"useStandardCommands,omitempty"`
-	Forms               CriterionForms `yaml:"forms,omitempty" json:"forms,omitempty"`
+	UseStandardCommands bool            `yaml:"use_standard_commands,omitempty" json:"useStandardCommands,omitempty"`
+	Forms               SingleRoleForms `yaml:"forms,omitempty" json:"forms,omitempty"`
 	// A criterion has forms and commands and nothing else: it prints nothing,
 	// so it keeps no templates.
 	Commands []ObjectCommand `yaml:"commands,omitempty" json:"commands,omitempty"`

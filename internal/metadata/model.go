@@ -469,7 +469,11 @@ type Catalog struct {
 	// Keys are folded, because a name is unique among its siblings with case
 	// ignored; the names themselves are kept as written, because they are read
 	// by people - in the tree, and in the name a form's module compiles under.
-	objectForms                     map[Kind]map[string]objectFormIndex
+	objectForms map[Kind]map[string]objectFormIndex
+	// commonFormNames is every common form of the configuration, folded, read
+	// once when the project is read. A role may open a common form instead of
+	// one of the object's own, and then this is what says the form is there.
+	commonFormNames                 map[string]bool
 	Constants                       []Constant
 	SessionParameters               []SessionParameter
 	sessionParameterByName          map[string]int

@@ -781,6 +781,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	if err := catalog.propagateCommonAttributes(); err != nil {
 		return err
 	}
+	if err := catalog.indexCommonForms(root); err != nil {
+		return err
+	}
 	sort.Slice(catalog.Roles, func(i, j int) bool { return catalog.Roles[i].ID.String() < catalog.Roles[j].ID.String() })
 	catalog.roleByName, catalog.roleByID = make(map[string]int, len(catalog.Roles)), make(map[uuid.UUID]int, len(catalog.Roles))
 	sort.Slice(catalog.Subsystems, func(i, j int) bool { return catalog.Subsystems[i].ID.String() < catalog.Subsystems[j].ID.String() })
@@ -2416,6 +2419,9 @@ func (catalog *Catalog) validateObjectFileSources(files objectFiles) error {
 	if err := catalog.indexObjectForms(directory, files.directoryKind, kind, name, files.formSlots); err != nil {
 		return err
 	}
+	if err := catalog.validateCommonFormSlots(kind, name, files.formSlots); err != nil {
+		return err
+	}
 	if err := validateObjectCommandFiles(directory, kind, name, files.commands); err != nil {
 		return err
 	}
@@ -2457,10 +2463,11 @@ func (catalog *Catalog) indexObjectForms(directory string, directoryKind Kind, k
 		found[strings.ToLower(entry.Name())] = objectFormRef{name: entry.Name(), id: id}
 	}
 	for _, slot := range slots {
-		if slot.form == "" {
+		reference, problem := parseFormReference(slot.form)
+		if slot.form == "" || problem != "" || reference.common {
 			continue
 		}
-		if _, ok := found[strings.ToLower(slot.form)]; !ok {
+		if _, ok := found[strings.ToLower(reference.name)]; !ok {
 			return fmt.Errorf("%s %s names %s %s, which it does not keep", kind, name, slot.role(), slot.form)
 		}
 	}
@@ -2474,6 +2481,44 @@ func (catalog *Catalog) indexObjectForms(directory string, directoryKind Kind, k
 		catalog.objectForms[directoryKind] = map[string]objectFormIndex{}
 	}
 	catalog.objectForms[directoryKind][strings.ToLower(name)] = objectFormIndex{object: name, forms: found}
+	return nil
+}
+
+// indexCommonForms reads the common forms once, so that every role pointing at
+// one is answered from memory. A configuration has as many roles as it has
+// objects, and reading the folder per role would read it hundreds of times.
+func (catalog *Catalog) indexCommonForms(root string) error {
+	if root == "" {
+		return nil
+	}
+	forms, err := ReadCommonForms(root, catalog.Project)
+	if err != nil {
+		return err
+	}
+	catalog.commonFormNames = make(map[string]bool, len(forms))
+	for _, form := range forms {
+		catalog.commonFormNames[strings.ToLower(form.Name)] = true
+	}
+	return nil
+}
+
+// validateCommonFormSlots checks the roles that open a form the object does not
+// own. A role pointing at a common form that is not in the configuration is a
+// form that never opens, and the object it belongs to says nothing about it.
+func (catalog *Catalog) validateCommonFormSlots(kind, name string, slots []formSlot) error {
+	for _, slot := range slots {
+		if slot.form == "" {
+			continue
+		}
+		reference, problem := parseFormReference(slot.form)
+		if problem != "" || !reference.common {
+			continue
+		}
+		if !catalog.commonFormNames[strings.ToLower(reference.name)] {
+			return fmt.Errorf("%s %s opens %s with common form %s, which is not in the configuration",
+				kind, name, slot.role(), reference.name)
+		}
+	}
 	return nil
 }
 

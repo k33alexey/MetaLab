@@ -33,19 +33,27 @@ type ReportDefinition struct {
 	Templates []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
 }
 
-// ReportForms are the three forms a report shows itself through: the report
-// itself, its settings and one of its variants.
+// ReportForms are the roles a report shows itself through: the report itself,
+// its settings and one of its variants. The first two have an auxiliary form
+// beside them; the variant has none, and that asymmetry is the platform's own -
+// the syntax assistant lists an auxiliary form for the report and for the
+// settings, and none for the variant.
 type ReportForms struct {
-	Report   string `yaml:"report,omitempty" json:"report,omitempty"`
+	Main     string `yaml:"main,omitempty" json:"main,omitempty"`
 	Settings string `yaml:"settings,omitempty" json:"settings,omitempty"`
 	Variant  string `yaml:"variant,omitempty" json:"variant,omitempty"`
+
+	Auxiliary         string `yaml:"auxiliary,omitempty" json:"auxiliary,omitempty"`
+	AuxiliarySettings string `yaml:"auxiliary_settings,omitempty" json:"auxiliarySettings,omitempty"`
 }
 
 func (forms ReportForms) slots() []formSlot {
 	return []formSlot{
-		{"forms.report", forms.Report},
+		{"forms.main", forms.Main},
 		{"forms.settings", forms.Settings},
 		{"forms.variant", forms.Variant},
+		{"forms.auxiliary", forms.Auxiliary},
+		{"forms.auxiliary_settings", forms.AuxiliarySettings},
 	}
 }
 
@@ -59,7 +67,7 @@ type DataProcessorDefinition struct {
 	Title      LocalizedText    `yaml:"title" json:"title"`
 	Attributes []Attribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 	TableParts []TablePart      `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	Forms      ObjectForms      `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Forms      SingleRoleForms  `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands   []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates  []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
 }

@@ -29,7 +29,7 @@ type AccumulationRegisterDefinition struct {
 	Resources  []Attribute                   `yaml:"resources"`
 	Attributes []Attribute                   `yaml:"attributes,omitempty"`
 	Recorders  []uuid.UUID                   `yaml:"recorders"`
-	Forms      ObjectForms                   `yaml:"forms,omitempty"`
+	Forms      RegisterForms                 `yaml:"forms,omitempty"`
 	Commands   []ObjectCommand               `yaml:"commands,omitempty"`
 	Templates  []ObjectTemplate              `yaml:"templates,omitempty"`
 }
