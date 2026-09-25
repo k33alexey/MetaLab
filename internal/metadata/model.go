@@ -521,6 +521,9 @@ type Catalog struct {
 	XDTOPackages                     []XDTOPackageDefinition
 	xdtoPackageByName                map[string]int
 	xdtoPackageByID                  map[uuid.UUID]int
+	WebServices                      []WebServiceDefinition
+	webServiceByName                 map[string]int
+	webServiceByID                   map[uuid.UUID]int
 	CommonPictures                   []CommonPictureDefinition
 	commonPictureByName              map[string]int
 	commonPictureByID                map[uuid.UUID]int

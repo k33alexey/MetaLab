@@ -69,6 +69,10 @@ const (
 	ObjectModuleFile    = "МодульОбъекта.bsl"
 	ManagerModuleFile   = "МодульМенеджера.bsl"
 	RecordSetModuleFile = "МодульНабораЗаписей.bsl"
+	// ServiceModuleFile is the module of one service, inside that service's
+	// own folder. A service owns exactly one module - the procedures its
+	// operations name - so there is nothing for an identifier to tell apart.
+	ServiceModuleFile = "МодульСервиса.bsl"
 	// CommandModuleFile is the module of one command, inside that command's
 	// own folder.
 	CommandModuleFile = "МодульКоманды.bsl"
@@ -128,6 +132,9 @@ var (
 		// everywhere it is read - and it is not source in our sense, so it is
 		// left out of the list the same way a picture's images are.
 		"xdto-packages": {ObjectMetadataFile},
+		// A service keeps its description and one module: the procedures its
+		// operations name lie there, and nowhere else.
+		"web-services": {ObjectMetadataFile, ServiceModuleFile},
 	}
 	// objectFolderKinds lists metadata kinds whose objects group their own
 	// description, modules, forms, commands and templates under one folder
