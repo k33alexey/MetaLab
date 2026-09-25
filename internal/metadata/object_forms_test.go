@@ -1,6 +1,8 @@
 package metadata
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -203,5 +205,215 @@ forms: {list: "Форма списка"}
 `), metadataConfiguration())
 	if err == nil || !strings.Contains(err.Error(), "forms.list must be the name of a form") {
 		t.Fatalf("DecodeCatalog() error = %v", err)
+	}
+}
+
+// Every role of form the prototype gives a hierarchical object has to survive
+// the trip. A catalog has ten: the object, the list and the choice, the folder
+// and the choice of a folder, and an auxiliary form beside each of the five.
+// A role nobody carries over is a form the platform quietly generates instead
+// of opening what the developer drew.
+func TestHierarchicalObjectKeepsEveryRoleOfFormItHas(t *testing.T) {
+	t.Parallel()
+	roles := []struct{ key, form string }{
+		{"object", "ФормаЭлемента"},
+		{"list", "ФормаСписка"},
+		{"choice", "ФормаВыбора"},
+		{"folder", "ФормаГруппы"},
+		{"folder_choice", "ФормаВыбораГруппы"},
+		{"auxiliary_object", "ДругаяФормаЭлемента"},
+		{"auxiliary_list", "ДругаяФормаСписка"},
+		{"auxiliary_choice", "ДругаяФормаВыбора"},
+		{"auxiliary_folder", "ДругаяФормаГруппы"},
+		{"auxiliary_folder_choice", "ДругаяФормаВыбораГруппы"},
+	}
+	root := metadataProject(t)
+	body := `format: 1
+id: ` + formCatalog + `
+name: Пользователи
+title: {ru: Пользователи}
+code: {type: string, length: 9, auto: true}
+description_length: 150
+hierarchy: {enabled: true, kind: folders-and-items}
+forms:
+`
+	for _, role := range roles {
+		body += "  " + role.key + ": " + role.form + "\n"
+	}
+	writeMetadata(t, root, CatalogKind, formCatalog, body)
+	for index, role := range roles {
+		writeObjectForm(t, root, CatalogKind, "Пользователи", role.form,
+			"d5000000-0000-4000-8000-0000000001"+fmt.Sprintf("%02d", index))
+	}
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	object, ok := catalog.CatalogDefinition("Пользователи")
+	if !ok {
+		t.Fatal("the catalog was lost")
+	}
+	for _, role := range roles {
+		if _, ok := catalog.ObjectFormID(CatalogKind, "Пользователи", role.form); !ok {
+			t.Fatalf("the form of role %s was not kept", role.key)
+		}
+	}
+	if object.Forms.Folder != "ФормаГруппы" || object.Forms.FolderChoice != "ФормаВыбораГруппы" {
+		t.Fatalf("the folder roles were lost: %+v", object.Forms)
+	}
+	if object.Forms.AuxiliaryObject != "ДругаяФормаЭлемента" ||
+		object.Forms.AuxiliaryFolderChoice != "ДругаяФормаВыбораГруппы" {
+		t.Fatalf("the auxiliary roles were lost: %+v", object.Forms)
+	}
+}
+
+// A role that names a form the object does not keep is reported by the name
+// the role goes by, so the message says which of the ten is wrong.
+func TestMissingFormIsReportedByItsRole(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeMetadata(t, root, CatalogKind, formCatalog, `format: 1
+id: `+formCatalog+`
+name: Пользователи
+title: {ru: Пользователи}
+code: {type: string, length: 9, auto: true}
+description_length: 150
+hierarchy: {enabled: true, kind: folders-and-items}
+forms: {auxiliary_folder_choice: ДругаяФормаВыбораГруппы}
+`)
+	_, err := Load(root)
+	if err == nil {
+		t.Fatal("a role naming a form that is not there was accepted")
+	}
+	if !strings.Contains(err.Error(), "names auxiliary folder choice form ДругаяФормаВыбораГруппы, which it does not keep") {
+		t.Fatalf("refused for another reason: %v", err)
+	}
+}
+
+// The folder roles come with the folders. On an object with no hierarchy, or
+// one whose hierarchy is of items alone, there is no folder to open a form of:
+// the form would read as working and never open, the same way a level count
+// nobody limits does.
+func TestFolderFormNeedsAHierarchyWithFolders(t *testing.T) {
+	t.Parallel()
+	for name, hierarchy := range map[string]string{
+		"без иерархии":       "",
+		"иерархия элементов": "hierarchy: {enabled: true, kind: items}",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := DecodeCatalog("object.yaml", strings.NewReader(`format: 1
+id: `+formCatalog+`
+name: Пользователи
+title: {ru: Пользователи}
+code: {type: string, length: 9, auto: true}
+description_length: 150
+`+hierarchy+`
+forms: {folder: ФормаГруппы, auxiliary_folder: ДругаяФормаГруппы}
+`), metadataConfiguration())
+			if err == nil {
+				t.Fatalf("%s: a folder form on an object with no folders was accepted", name)
+			}
+			for _, want := range []string{
+				"forms.folder needs a hierarchy of folders and items",
+				"forms.auxiliary_folder needs a hierarchy of folders and items",
+			} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("%s: %q missing from %v", name, want, err)
+				}
+			}
+		})
+	}
+}
+
+// A kind whose hierarchy has no folders at all does not have the roles either.
+// Every row of a chart of accounts is an account, so there is no group form to
+// name, and naming one is a mistake in the description rather than a setting
+// that does nothing.
+func TestChartOfAccountsHasNoFolderRoles(t *testing.T) {
+	t.Parallel()
+	_, err := DecodeChartOfAccounts("object.yaml", strings.NewReader(`format: 1
+id: `+formCatalog+`
+name: Основной
+title: {ru: Основной}
+code: {type: string, length: 9, auto: false}
+description_length: 150
+forms: {folder: ФормаГруппы}
+`), metadataConfiguration())
+	if err == nil || !strings.Contains(err.Error(), "folder") {
+		t.Fatalf("DecodeChartOfAccounts() error = %v", err)
+	}
+}
+
+// A hierarchical object writes its roles as one flat set: the five every
+// object has and the four a folder brings stand side by side under forms, with
+// no group of their own. That matters because Studio saves an edited catalog by
+// writing the description back, and a role that reads but does not write is a
+// form lost on the first save.
+func TestFolderRolesSurviveWritingTheDescriptionBack(t *testing.T) {
+	t.Parallel()
+	before, err := DecodeCatalog("object.yaml", strings.NewReader(`format: 1
+id: `+formCatalog+`
+name: Пользователи
+title: {ru: Пользователи}
+code: {type: string, length: 9, auto: true}
+description_length: 150
+hierarchy: {enabled: true, kind: folders-and-items}
+forms: {object: ФормаЭлемента, folder: ФормаГруппы, auxiliary_folder_choice: ДругаяФормаВыбораГруппы}
+`), metadataConfiguration())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var written bytes.Buffer
+	if err := Encode(&written, before); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(written.String(), "\n    folder: ФормаГруппы\n") &&
+		!strings.Contains(written.String(), "\n  folder: ФормаГруппы\n") {
+		t.Fatalf("the folder role was not written as a role of its own:\n%s", written.String())
+	}
+	after, err := DecodeCatalog("object.yaml", bytes.NewReader(written.Bytes()), metadataConfiguration())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Forms != before.Forms {
+		t.Fatalf("the roles did not survive the round trip: %+v want %+v", after.Forms, before.Forms)
+	}
+}
+
+// A chart of characteristic types is hierarchical the same way a catalog is, so
+// it has the same folder roles - and the kinds that are not keep the roles they
+// do have. A document has no folders and does have an auxiliary form beside
+// each of its three.
+func TestFolderRolesGoWithTheKindsThatHaveFolders(t *testing.T) {
+	t.Parallel()
+	chart, err := DecodeChartOfCharacteristicTypes("object.yaml", strings.NewReader(`format: 1
+id: `+formCatalog+`
+name: Свойства
+title: {ru: Свойства}
+code: {type: string, length: 9, auto: true}
+description_length: 150
+value_type: [{kind: string, length: 50}]
+hierarchy: {enabled: true, kind: folders-and-items}
+forms: {folder: ФормаГруппы, auxiliary_folder: ДругаяФормаГруппы}
+`), metadataConfiguration())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chart.Forms.Folder != "ФормаГруппы" || chart.Forms.AuxiliaryFolder != "ДругаяФормаГруппы" {
+		t.Fatalf("the folder roles of a chart of characteristic types were lost: %+v", chart.Forms)
+	}
+	document, err := DecodeDocument("object.yaml", strings.NewReader(`format: 1
+id: `+formCatalog+`
+name: Заказ
+title: {ru: Заказ}
+number: {type: string, length: 9, auto: true, periodicity: year}
+forms: {auxiliary_object: ДругаяФормаДокумента, auxiliary_list: ДругаяФормаСписка}
+`), metadataConfiguration())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if document.Forms.AuxiliaryObject != "ДругаяФормаДокумента" || document.Forms.AuxiliaryList != "ДругаяФормаСписка" {
+		t.Fatalf("the auxiliary roles of a document were lost: %+v", document.Forms)
 	}
 }

@@ -28,13 +28,6 @@ type DocumentNumber struct {
 	Periodicity NumberPeriodicity `yaml:"periodicity"`
 }
 
-// ObjectForms binds optional managed forms to their stable source UUIDs.
-type ObjectForms struct {
-	Object string `yaml:"object,omitempty" json:"object,omitempty"`
-	List   string `yaml:"list,omitempty" json:"list,omitempty"`
-	Choice string `yaml:"choice,omitempty" json:"choice,omitempty"`
-}
-
 // DocumentDefinition describes one ML document and its persistent record shape.
 type DocumentDefinition struct {
 	Format int            `yaml:"format"`
@@ -146,7 +139,7 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 		attributeNames[strings.ToLower(attribute.Name)] = true
 	}
 	issues = append(issues, validateTableParts(shape.tableParts, attributeNames, configuration, reserved)...)
-	issues = append(issues, validateObjectForms(shape.forms)...)
+	issues = append(issues, validateFormSlots(shape.forms.slots())...)
 	return append(issues, validateListSettings(shape.list, shape.attributes, map[string]TypeKind{
 		"number": shape.number.Type,
 	})...)
@@ -213,36 +206,6 @@ func reservedDocumentObjectName(name string) bool {
 	}
 }
 
-// validateObjectForms checks the slots naming an object's main forms. A slot
-// carries the name of a form, and nothing more is decided here: that the form
-// exists is checked against the object's folder, where forms live.
-//
-// Two slots may well name one form. The prototype's own catalog of users does
-// exactly that - its ФормаСписка is both the main list form and the main
-// choice form - so refusing it would lose a real configuration at import.
-func validateObjectForms(forms ObjectForms) []string {
-	return validateFormSlots(map[string]string{
-		"forms.object": forms.Object, "forms.list": forms.List, "forms.choice": forms.Choice,
-	})
-}
-
-// validateFormSlots checks that every named slot carries a form name that may
-// be a folder. Slots are shared by every kind that has forms, and each kind
-// has its own set of them.
-func validateFormSlots(slots map[string]string) []string {
-	var issues []string
-	for slot, form := range slots {
-		if form == "" {
-			continue
-		}
-		if project.SubordinateName(form) != nil {
-			issues = append(issues, slot+" must be the name of a form")
-		}
-	}
-	slices.Sort(issues)
-	return issues
-}
-
 func cloneDocumentDefinition(value DocumentDefinition) DocumentDefinition {
 	value.Title = cloneTitle(value.Title)
 	value.Attributes = cloneAttributes(value.Attributes)
@@ -251,14 +214,15 @@ func cloneDocumentDefinition(value DocumentDefinition) DocumentDefinition {
 		value.TableParts[index].Title = cloneTitle(value.TableParts[index].Title)
 		value.TableParts[index].Attributes = cloneAttributes(value.TableParts[index].Attributes)
 	}
-	value.Forms = cloneObjectForms(value.Forms)
+	value.Forms = cloneFormSet(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	return value
 }
 
-// cloneObjectForms is what a copy of the slots costs now that a slot is a
-// name: nothing. It is kept so the callers that hand out copies still read as
-// copying every part of what they hand out.
-func cloneObjectForms(forms ObjectForms) ObjectForms { return forms }
+// cloneFormSet is what a copy of a set of form roles costs now that a role is
+// a name: nothing. It is kept so the callers that hand out copies still read as
+// copying every part of what they hand out, and it takes any set because every
+// kind has its own.
+func cloneFormSet[Forms any](forms Forms) Forms { return forms }

@@ -118,7 +118,7 @@ func DecodeInformationRegister(source string, reader io.Reader, configuration pr
 	if value.WriteMode == InformationRegisterIndependent && len(value.Recorders) != 0 {
 		issues = append(issues, "recorders are only allowed for recorder write mode")
 	}
-	issues = append(issues, validateObjectForms(value.Forms)...)
+	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
@@ -142,7 +142,7 @@ func cloneInformationRegisterDefinition(value InformationRegisterDefinition) Inf
 	value.Resources = cloneAttributes(value.Resources)
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.Recorders = slices.Clone(value.Recorders)
-	value.Forms = cloneObjectForms(value.Forms)
+	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	return value

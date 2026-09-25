@@ -90,7 +90,7 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 		}
 		seenRecorders[recorder] = true
 	}
-	issues = append(issues, validateObjectForms(value.Forms)...)
+	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
@@ -114,7 +114,7 @@ func cloneAccumulationRegisterDefinition(value AccumulationRegisterDefinition) A
 	value.Resources = cloneAttributes(value.Resources)
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.Recorders = slices.Clone(value.Recorders)
-	value.Forms = cloneObjectForms(value.Forms)
+	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	return value

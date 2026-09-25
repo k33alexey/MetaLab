@@ -47,7 +47,7 @@ func TestCustomFormSuppressesAutomaticLayout(t *testing.T) {
 	// The slot names the form; the identifier comes from the index of what the
 	// object's forms folder actually held when the project was read.
 	catalog := &Catalog{
-		Catalogs:      []CatalogDefinition{{ID: catalogID, Name: "Товары", Title: LocalizedText{"ru": "Товары"}, Forms: ObjectForms{Object: "ФормаЭлемента"}}},
+		Catalogs:      []CatalogDefinition{{ID: catalogID, Name: "Товары", Title: LocalizedText{"ru": "Товары"}, Forms: HierarchicalObjectForms{ObjectForms: ObjectForms{Object: "ФормаЭлемента"}}}},
 		catalogByName: map[string]int{"товары": 0}, catalogByID: map[uuid.UUID]int{catalogID: 0},
 		objectForms: map[Kind]map[string]objectFormIndex{CatalogKind: {"товары": {
 			object: "Товары", forms: map[string]objectFormRef{"формаэлемента": {name: "ФормаЭлемента", id: formID}},

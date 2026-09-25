@@ -321,6 +321,15 @@ type EnumerationForms struct {
 	AuxiliaryChoice string `yaml:"auxiliary_choice,omitempty" json:"auxiliaryChoice,omitempty"`
 }
 
+func (forms EnumerationForms) slots() []formSlot {
+	return []formSlot{
+		{"forms.list", forms.List},
+		{"forms.choice", forms.Choice},
+		{"forms.auxiliary_list", forms.AuxiliaryList},
+		{"forms.auxiliary_choice", forms.AuxiliaryChoice},
+	}
+}
+
 // Enumeration is a closed list of values the developer writes and the user
 // cannot change. That is all it keeps of its own - but it is shown, chosen
 // from and acted upon like any other object, so it has presentations, forms,
@@ -432,7 +441,7 @@ type CatalogDefinition struct {
 	Hierarchy         Hierarchy               `yaml:"hierarchy,omitempty" json:"hierarchy,omitempty"`
 	Attributes        []Attribute             `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 	TableParts        []TablePart             `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	Forms             ObjectForms             `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Forms             HierarchicalObjectForms `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands          []ObjectCommand         `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates         []ObjectTemplate        `yaml:"templates,omitempty" json:"templates,omitempty"`
 	List              ListSettings            `yaml:"list,omitempty" json:"list,omitempty"`
@@ -895,10 +904,7 @@ func DecodeEnumeration(source string, reader io.Reader, configuration project.Pr
 	if value.ChoiceMode == ChoiceFromForm && value.QuickChoice {
 		issues = append(issues, "quick_choice contradicts choice_mode from-form")
 	}
-	issues = append(issues, validateFormSlots(map[string]string{
-		"forms.list": value.Forms.List, "forms.choice": value.Forms.Choice,
-		"forms.auxiliary_list": value.Forms.AuxiliaryList, "forms.auxiliary_choice": value.Forms.AuxiliaryChoice,
-	})...)
+	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
@@ -956,10 +962,14 @@ type referenceObjectShape struct {
 	descriptionLength int
 	attributes        []Attribute
 	tableParts        []TablePart
-	forms             ObjectForms
-	list              ListSettings
-	hierarchy         Hierarchy
-	predefined        []PredefinedCatalogItem
+	// forms carries the folder roles as well, because whether they are
+	// allowed at all is decided by the hierarchy, which is right here. A kind
+	// whose hierarchy has no folders - a chart of accounts, where every row is
+	// an account - simply leaves them empty.
+	forms      HierarchicalObjectForms
+	list       ListSettings
+	hierarchy  Hierarchy
+	predefined []PredefinedCatalogItem
 	// reservedName says which attribute names the kind keeps for itself. A
 	// kind with standard attributes of its own passes its own answer.
 	reservedName func(string) bool
@@ -1058,7 +1068,8 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 		issues = append(issues, validateTitle(prefix+".title", part.Title, configuration)...)
 		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, configuration, nil)...)
 	}
-	issues = append(issues, validateObjectForms(shape.forms)...)
+	issues = append(issues, validateFormSlots(shape.forms.slots())...)
+	issues = append(issues, validateFolderForms(shape.forms, shape.hierarchy)...)
 	issues = append(issues, validateListSettings(shape.list, shape.attributes, map[string]TypeKind{
 		"code": shape.code.Type, "description": StringType,
 	})...)
@@ -1435,7 +1446,7 @@ func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
 		value.TableParts[index].Title = cloneTitle(value.TableParts[index].Title)
 		value.TableParts[index].Attributes = cloneAttributes(value.TableParts[index].Attributes)
 	}
-	value.Forms = cloneObjectForms(value.Forms)
+	value.Forms = cloneFormSet(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Predefined = slices.Clone(value.Predefined)
 	for index := range value.Predefined {

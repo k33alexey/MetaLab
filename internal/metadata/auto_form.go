@@ -59,7 +59,7 @@ func (catalog *Catalog) CatalogForm(name string, kind FormKind, language string)
 	if !ok {
 		return FormDescriptor{}, fmt.Errorf("unknown catalog %q", name)
 	}
-	form, err := catalog.baseForm(CatalogKind, definition.ID, definition.Name, definition.Title, definition.Forms, kind, language)
+	form, err := catalog.baseForm(CatalogKind, definition.ID, definition.Name, definition.Title, definition.Forms.ObjectForms, kind, language)
 	form.List = definition.List
 	form.List.SearchFields = effectiveListSearchFields(definition.List, []string{"Description", "Code"})
 	if err != nil || !form.Generated {

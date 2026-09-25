@@ -99,7 +99,7 @@ func DecodeExchangePlan(source string, reader io.Reader, configuration project.P
 		descriptionLength: value.DescriptionLength,
 		attributes:        value.Attributes,
 		tableParts:        value.TableParts,
-		forms:             value.Forms,
+		forms:             HierarchicalObjectForms{ObjectForms: value.Forms},
 		list:              value.List,
 		reservedName:      reservedExchangePlanName,
 	}, configuration)...)
@@ -174,7 +174,7 @@ func cloneExchangePlan(value ExchangePlanDefinition) ExchangePlanDefinition {
 		value.TableParts[index].Title = cloneTitle(value.TableParts[index].Title)
 		value.TableParts[index].Attributes = cloneAttributes(value.TableParts[index].Attributes)
 	}
-	value.Forms = cloneObjectForms(value.Forms)
+	value.Forms = cloneFormSet(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)

@@ -298,7 +298,11 @@ func (workspace *Workspace) formDataPaths(formID uuid.UUID, configuration projec
 		result = append(result, FormDataPath{Path: prefix + "." + name, Title: title, Kind: kind})
 	}
 	for _, object := range catalog.Catalogs {
-		kind, ok := referencedFormKind(catalog, metadata.CatalogKind, object.Name, object.Forms, formID)
+		// The roles a folder brings are not among the three the data paths are
+		// built for: a folder form shows a folder, which holds almost none of
+		// what an item holds. A form standing only in a folder role is
+		// therefore left alone here, the same way any form no role names is.
+		kind, ok := referencedFormKind(catalog, metadata.CatalogKind, object.Name, object.Forms.ObjectForms, formID)
 		if !ok {
 			continue
 		}

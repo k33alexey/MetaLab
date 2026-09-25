@@ -203,7 +203,7 @@ func createManagedFormSource(t *testing.T) (*Workspace, string, metadata.Managed
 		Code: metadata.CatalogCode{Type: metadata.StringType, Length: 20, Auto: true, Unique: true}, DescriptionLength: 150,
 		Attributes: []metadata.Attribute{{ID: uuid.MustNew(), Name: "ИНН", Title: metadata.LocalizedText{"ru": "ИНН"}, Types: []metadata.Type{{Kind: metadata.StringType, Length: 12}}}},
 		TableParts: []metadata.TablePart{{ID: uuid.MustNew(), Name: "Контакты", Title: metadata.LocalizedText{"ru": "Контакты"}, Attributes: []metadata.Attribute{{ID: uuid.MustNew(), Name: "Телефон", Title: metadata.LocalizedText{"ru": "Телефон"}, Types: []metadata.Type{{Kind: metadata.StringType, Length: 30}}}}}},
-		Forms:      metadata.ObjectForms{Object: form.Name},
+		Forms:      metadata.HierarchicalObjectForms{ObjectForms: metadata.ObjectForms{Object: form.Name}},
 	}
 	relative, err := project.ObjectFormPath("catalogs", catalog.Name, form.Name)
 	if err != nil {

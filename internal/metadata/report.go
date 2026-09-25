@@ -41,6 +41,14 @@ type ReportForms struct {
 	Variant  string `yaml:"variant,omitempty" json:"variant,omitempty"`
 }
 
+func (forms ReportForms) slots() []formSlot {
+	return []formSlot{
+		{"forms.report", forms.Report},
+		{"forms.settings", forms.Settings},
+		{"forms.variant", forms.Variant},
+	}
+}
+
 // DataProcessorDefinition describes one data processor. It is a report without
 // the parts that exist for showing numbers: no composition schema, no variants
 // and no settings to store.
@@ -72,10 +80,7 @@ func DecodeReport(source string, reader io.Reader, configuration project.Project
 			issues = append(issues, name+" must be a non-zero UUID")
 		}
 	}
-	issues = append(issues, validateFormSlots(map[string]string{
-		"forms.report": value.Forms.Report, "forms.settings": value.Forms.Settings,
-		"forms.variant": value.Forms.Variant,
-	})...)
+	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
@@ -92,7 +97,7 @@ func DecodeDataProcessor(source string, reader io.Reader, configuration project.
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, configuration, reservedReportName)...)
-	issues = append(issues, validateObjectForms(value.Forms)...)
+	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
@@ -143,7 +148,7 @@ func cloneDataProcessor(value DataProcessorDefinition) DataProcessorDefinition {
 	value.Title = cloneTitle(value.Title)
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.TableParts = cloneTableParts(value.TableParts)
-	value.Forms = cloneObjectForms(value.Forms)
+	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	return value

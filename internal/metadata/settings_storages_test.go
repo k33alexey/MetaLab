@@ -102,31 +102,45 @@ variants_storage: `+storageMissing+`
 	}
 }
 
-// An auxiliary form stands beside a main one. Alone it is a form nothing ever
-// opens, and saying so is cheaper than finding out from a user.
-func TestBrokenSettingsStoragesAreRefused(t *testing.T) {
+// An auxiliary form stands beside a main one, not behind it: the platform
+// reaches for it exactly when the main form is missing or does not fit the
+// client it has to be shown in. Naming one alone is therefore the ordinary
+// case, and a storage that does so must be read, not refused.
+func TestSettingsStorageKeepsAnAuxiliaryFormWithNoMainForm(t *testing.T) {
 	t.Parallel()
-	for name, broken := range map[string]struct{ body, want string }{
-		"вспомогательная форма сохранения без основной": {"forms: {auxiliary_save: ВспомогательноеСохранение}",
-			"forms.auxiliary_save stands beside forms.save"},
-		"вспомогательная форма загрузки без основной": {"forms: {auxiliary_load: ВспомогательнаяЗагрузка}",
-			"forms.auxiliary_load stands beside forms.load"},
+	for name, body := range map[string]string{
+		"только вспомогательная форма сохранения": "forms: {auxiliary_save: ВспомогательноеСохранение}",
+		"только вспомогательная форма загрузки":   "forms: {auxiliary_load: ВспомогательнаяЗагрузка}",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			_, err := DecodeSettingsStorage("object.yaml", strings.NewReader(`format: 1
+			if _, err := DecodeSettingsStorage("object.yaml", strings.NewReader(`format: 1
 id: `+storageID+`
 name: Хранилище
 title: {ru: Хранилище}
-`+broken.body+`
-`), metadataConfiguration())
-			if err == nil {
-				t.Fatalf("%s: accepted", name)
-			}
-			if !strings.Contains(err.Error(), broken.want) {
-				t.Fatalf("%s: refused for another reason: %v", name, err)
+`+body+`
+`), metadataConfiguration()); err != nil {
+				t.Fatalf("%s: refused: %v", name, err)
 			}
 		})
+	}
+}
+
+// A role carries the name of a form, and a form is a folder named after
+// itself, so anything that cannot be a folder name is not a form.
+func TestSettingsStorageRefusesAFormThatIsNotAName(t *testing.T) {
+	t.Parallel()
+	_, err := DecodeSettingsStorage("object.yaml", strings.NewReader(`format: 1
+id: `+storageID+`
+name: Хранилище
+title: {ru: Хранилище}
+forms: {auxiliary_save: "Вспомогательное сохранение"}
+`), metadataConfiguration())
+	if err == nil {
+		t.Fatal("a form name that cannot be a folder was accepted")
+	}
+	if !strings.Contains(err.Error(), "forms.auxiliary_save must be the name of a form") {
+		t.Fatalf("refused for another reason: %v", err)
 	}
 }
 

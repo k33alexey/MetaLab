@@ -1490,37 +1490,29 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("predefined catalog item %s.%s: %w", item.Name, predefined.Name, err)
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: CatalogKind, kind: "catalog", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: CatalogKind, kind: "catalog", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
 	for _, item := range catalog.SettingsStorages {
 		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: SettingsStorageKind,
 			kind: "settings storage", name: item.Name, modules: managerKindModules,
-			extraForms: []namedSource{
-				{"save form", item.Forms.Save}, {"load form", item.Forms.Load},
-				{"auxiliary save form", item.Forms.AuxiliarySave}, {"auxiliary load form", item.Forms.AuxiliaryLoad},
-			}}); err != nil {
+			formSlots: item.Forms.slots()}); err != nil {
 			return err
 		}
 	}
 	for _, item := range catalog.FilterCriteria {
 		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: FilterCriterionKind,
 			kind: "filter criterion", name: item.Name, modules: managerKindModules,
-			extraForms: []namedSource{{"list form", item.Forms.List}, {"auxiliary form", item.Forms.Auxiliary}},
-			commands:   item.Commands}); err != nil {
+			formSlots: item.Forms.slots(), commands: item.Commands}); err != nil {
 			return err
 		}
 	}
 	for _, item := range catalog.Enumerations {
 		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: EnumerationKind,
 			kind: "enumeration", name: item.Name, modules: managerKindModules,
-			extraForms: []namedSource{
-				{"list form", item.Forms.List}, {"choice form", item.Forms.Choice},
-				{"auxiliary list form", item.Forms.AuxiliaryList},
-				{"auxiliary choice form", item.Forms.AuxiliaryChoice},
-			},
-			commands: item.Commands, templates: item.Templates}); err != nil {
+			formSlots: item.Forms.slots(),
+			commands:  item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1562,7 +1554,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("predefined characteristic %s.%s: %w", item.Name, predefined.Name, err)
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ChartOfCharacteristicTypesKind, kind: "chart of characteristic types", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ChartOfCharacteristicTypesKind, kind: "chart of characteristic types", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1583,7 +1575,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				}
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ChartOfAccountsKind, kind: "chart of accounts", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ChartOfAccountsKind, kind: "chart of accounts", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1604,7 +1596,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				}
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ChartOfCalculationTypesKind, kind: "chart of calculation types", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ChartOfCalculationTypesKind, kind: "chart of calculation types", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1618,7 +1610,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return err
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: TaskKind, kind: "task", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: TaskKind, kind: "task", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1644,7 +1636,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		if err := catalog.validateDocumentJournal("document journal "+item.Name, item, owners); err != nil {
 			return err
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: DocumentJournalKind, kind: "document journal", name: item.Name, modules: managerKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: DocumentJournalKind, kind: "document journal", name: item.Name, modules: managerKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1658,7 +1650,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return err
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ExchangePlanKind, kind: "exchange plan", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ExchangePlanKind, kind: "exchange plan", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1672,7 +1664,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return err
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: BusinessProcessKind, kind: "business process", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: BusinessProcessKind, kind: "business process", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1689,7 +1681,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				}
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: DocumentKind, kind: "document", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: DocumentKind, kind: "document", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1704,7 +1696,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("information register %s references unknown recorder document %s", item.Name, recorder)
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: InformationRegisterKind, kind: "information register", name: item.Name, modules: recordSetKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: InformationRegisterKind, kind: "information register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1724,7 +1716,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("accumulation register %s references unknown recorder document %s", item.Name, recorder)
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: AccumulationRegisterKind, kind: "accumulation register", name: item.Name, modules: recordSetKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: AccumulationRegisterKind, kind: "accumulation register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1745,7 +1737,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return err
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ReportKind, kind: "report", name: item.Name, modules: objectKindModules, forms: ObjectForms{}, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ReportKind, kind: "report", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1756,7 +1748,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return err
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: DataProcessorKind, kind: "data processor", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: DataProcessorKind, kind: "data processor", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -2001,7 +1993,7 @@ func (catalog *Catalog) validateAccountingRegister(root string, item AccountingR
 			return fmt.Errorf("%s references unknown recorder document %s", owner, recorder)
 		}
 	}
-	return catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: AccountingRegisterKind, kind: "accounting register", name: item.Name, modules: recordSetKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates})
+	return catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: AccountingRegisterKind, kind: "accounting register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates})
 }
 
 // takesABase says whether a chart gathers a base at all. An unset dependency
@@ -2106,7 +2098,7 @@ func (catalog *Catalog) validateCalculationRegister(root string, item Calculatio
 			}
 		}
 	}
-	return catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: CalculationRegisterKind, kind: "calculation register", name: item.Name, modules: recordSetKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates})
+	return catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: CalculationRegisterKind, kind: "calculation register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates})
 }
 
 // documentAttributeOwners maps every attribute of every document - its own and
@@ -2392,20 +2384,13 @@ type objectFiles struct {
 	// file is the declaration, so what is checked is the other direction —
 	// that a .bsl lying there plays a role this kind actually has.
 	modules []string
-	forms   ObjectForms
-	// extraForms carries the forms of a kind whose set is not the usual three.
-	// An enumeration is the case that made it necessary: it has no form of a
-	// single value, and it has an auxiliary form beside each of the two it has.
-	extraForms []namedSource
-	commands   []ObjectCommand
-	templates  []ObjectTemplate
-}
-
-// namedSource is one file an object declares, with the name it is called by in
-// a message about it.
-type namedSource struct {
-	role string
-	form string
+	// formSlots is the set of form roles this kind has, taken from what the
+	// object declared. Every kind hands over its own set - a register opens a
+	// list and nothing else, a catalog opens five different things - so there
+	// is nothing here that says which roles exist.
+	formSlots []formSlot
+	commands  []ObjectCommand
+	templates []ObjectTemplate
 }
 
 // validateObjectFileSources checks the per-object folder
@@ -2428,12 +2413,7 @@ func (catalog *Catalog) validateObjectFileSources(files objectFiles) error {
 	if err := validateObjectFolderEntries(directory, kind, name, files.modules); err != nil {
 		return err
 	}
-	slots := append([]namedSource{
-		{"object form", files.forms.Object},
-		{"list form", files.forms.List},
-		{"choice form", files.forms.Choice},
-	}, files.extraForms...)
-	if err := catalog.indexObjectForms(directory, files.directoryKind, kind, name, slots); err != nil {
+	if err := catalog.indexObjectForms(directory, files.directoryKind, kind, name, files.formSlots); err != nil {
 		return err
 	}
 	if err := validateObjectCommandFiles(directory, kind, name, files.commands); err != nil {
@@ -2453,7 +2433,7 @@ func (catalog *Catalog) validateObjectFileSources(files objectFiles) error {
 // What is recorded is the form's own identifier, because that is what a role,
 // the portal and ML App refer to a form by. The name finds the file; the
 // identifier travels.
-func (catalog *Catalog) indexObjectForms(directory string, directoryKind Kind, kind, name string, slots []namedSource) error {
+func (catalog *Catalog) indexObjectForms(directory string, directoryKind Kind, kind, name string, slots []formSlot) error {
 	entries, err := os.ReadDir(filepath.Join(directory, "forms"))
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("%s %s forms: %w", kind, name, err)
@@ -2481,7 +2461,7 @@ func (catalog *Catalog) indexObjectForms(directory string, directoryKind Kind, k
 			continue
 		}
 		if _, ok := found[strings.ToLower(slot.form)]; !ok {
-			return fmt.Errorf("%s %s names %s %s, which it does not keep", kind, name, slot.role, slot.form)
+			return fmt.Errorf("%s %s names %s %s, which it does not keep", kind, name, slot.role(), slot.form)
 		}
 	}
 	if len(found) == 0 {

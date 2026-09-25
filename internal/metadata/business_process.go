@@ -452,7 +452,7 @@ func cloneBusinessProcess(value BusinessProcessDefinition) BusinessProcessDefini
 			*module = &id
 		}
 	}
-	value.Forms = cloneObjectForms(value.Forms)
+	value.Forms = cloneFormSet(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)

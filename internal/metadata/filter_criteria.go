@@ -34,6 +34,10 @@ type CriterionForms struct {
 	Auxiliary string `yaml:"auxiliary,omitempty" json:"auxiliary,omitempty"`
 }
 
+func (forms CriterionForms) slots() []formSlot {
+	return []formSlot{{"forms.list", forms.List}, {"forms.auxiliary", forms.Auxiliary}}
+}
+
 // FilterCriterionDefinition describes one filter criterion: a named set of
 // places a value is used, gathered so that a user standing on that value can
 // walk to all of them at once.
@@ -103,9 +107,7 @@ func DecodeFilterCriterion(source string, reader io.Reader, configuration projec
 		}
 		seen[key] = true
 	}
-	issues = append(issues, validateFormSlots(map[string]string{
-		"forms.list": value.Forms.List, "forms.auxiliary": value.Forms.Auxiliary,
-	})...)
+	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return FilterCriterionDefinition{}, err

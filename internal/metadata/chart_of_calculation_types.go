@@ -84,7 +84,7 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, configuratio
 		descriptionLength: value.DescriptionLength,
 		attributes:        value.Attributes,
 		tableParts:        value.TableParts,
-		forms:             value.Forms,
+		forms:             HierarchicalObjectForms{ObjectForms: value.Forms},
 		list:              value.List,
 		reservedName:      reservedCalculationTypeName,
 	}, configuration)...)
@@ -203,7 +203,7 @@ func cloneChartOfCalculationTypes(value ChartOfCalculationTypesDefinition) Chart
 		value.TableParts[index].Attributes = cloneAttributes(value.TableParts[index].Attributes)
 	}
 	value.BaseCharts = slices.Clone(value.BaseCharts)
-	value.Forms = cloneObjectForms(value.Forms)
+	value.Forms = cloneFormSet(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Predefined = slices.Clone(value.Predefined)
 	for index := range value.Predefined {

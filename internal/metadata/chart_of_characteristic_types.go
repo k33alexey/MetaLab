@@ -38,7 +38,7 @@ type ChartOfCharacteristicTypesDefinition struct {
 	AdditionalValues *uuid.UUID              `yaml:"additional_values,omitempty" json:"additionalValues,omitempty"`
 	Attributes       []Attribute             `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 	TableParts       []TablePart             `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	Forms            ObjectForms             `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Forms            HierarchicalObjectForms `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands         []ObjectCommand         `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates        []ObjectTemplate        `yaml:"templates,omitempty" json:"templates,omitempty"`
 	List             ListSettings            `yaml:"list,omitempty" json:"list,omitempty"`
@@ -102,7 +102,7 @@ func cloneChartOfCharacteristicTypes(value ChartOfCharacteristicTypesDefinition)
 		id := *value.AdditionalValues
 		value.AdditionalValues = &id
 	}
-	value.Forms = cloneObjectForms(value.Forms)
+	value.Forms = cloneFormSet(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Predefined = slices.Clone(value.Predefined)
 	for index := range value.Predefined {

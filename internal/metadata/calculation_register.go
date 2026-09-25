@@ -294,7 +294,7 @@ func cloneCalculationRegister(value CalculationRegisterDefinition) CalculationRe
 			*id = &copied
 		}
 	}
-	value.Forms = cloneObjectForms(value.Forms)
+	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	return value

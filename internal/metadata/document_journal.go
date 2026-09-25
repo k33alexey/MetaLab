@@ -102,7 +102,7 @@ func cloneDocumentJournal(value DocumentJournalDefinition) DocumentJournalDefini
 		value.Columns[index].Title = cloneTitle(value.Columns[index].Title)
 		value.Columns[index].References = slices.Clone(value.Columns[index].References)
 	}
-	value.Forms = cloneObjectForms(value.Forms)
+	value.Forms = cloneFormSet(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)

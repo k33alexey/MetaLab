@@ -116,7 +116,7 @@ func DecodeChartOfAccounts(source string, reader io.Reader, configuration projec
 		descriptionLength: value.DescriptionLength,
 		attributes:        value.Attributes,
 		tableParts:        value.TableParts,
-		forms:             value.Forms,
+		forms:             HierarchicalObjectForms{ObjectForms: value.Forms},
 		list:              value.List,
 		reservedName:      reservedChartOfAccountsName,
 	}, configuration)...)
@@ -383,7 +383,7 @@ func cloneChartOfAccounts(value ChartOfAccountsDefinition) ChartOfAccountsDefini
 		id := *value.ExtDimensionTypes
 		value.ExtDimensionTypes = &id
 	}
-	value.Forms = cloneObjectForms(value.Forms)
+	value.Forms = cloneFormSet(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Predefined = slices.Clone(value.Predefined)
 	for index := range value.Predefined {

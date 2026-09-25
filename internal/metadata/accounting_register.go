@@ -160,7 +160,7 @@ func cloneAccountingRegister(value AccountingRegisterDefinition) AccountingRegis
 	value.Resources = cloneAccountingRegisterFields(value.Resources)
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.Recorders = slices.Clone(value.Recorders)
-	value.Forms = cloneObjectForms(value.Forms)
+	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	return value
