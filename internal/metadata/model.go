@@ -524,6 +524,9 @@ type Catalog struct {
 	WebServices                      []WebServiceDefinition
 	webServiceByName                 map[string]int
 	webServiceByID                   map[uuid.UUID]int
+	HTTPServices                     []HTTPServiceDefinition
+	httpServiceByName                map[string]int
+	httpServiceByID                  map[uuid.UUID]int
 	CommonPictures                   []CommonPictureDefinition
 	commonPictureByName              map[string]int
 	commonPictureByID                map[uuid.UUID]int

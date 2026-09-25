@@ -209,6 +209,18 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := loadObjectKind(root, HTTPServiceKind, func(source string, file *os.File, name string) error {
+		value, err := DecodeHTTPService(source, file, configuration)
+		if err == nil && !strings.EqualFold(value.Name, name) {
+			err = fmt.Errorf("HTTP service %s lies in a folder called %s", value.Name, name)
+		}
+		if err == nil {
+			catalog.HTTPServices = append(catalog.HTTPServices, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadObjectKind(root, CommonPictureKind, func(source string, file *os.File, name string) error {
 		value, err := DecodeCommonPicture(source, file, configuration)
 		if err == nil && !strings.EqualFold(value.Name, name) {
@@ -805,6 +817,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.commonTemplateByName, catalog.commonTemplateByID = make(map[string]int, len(catalog.CommonTemplates)), make(map[uuid.UUID]int, len(catalog.CommonTemplates))
 	catalog.xdtoPackageByName, catalog.xdtoPackageByID = make(map[string]int, len(catalog.XDTOPackages)), make(map[uuid.UUID]int, len(catalog.XDTOPackages))
 	catalog.webServiceByName, catalog.webServiceByID = make(map[string]int, len(catalog.WebServices)), make(map[uuid.UUID]int, len(catalog.WebServices))
+	catalog.httpServiceByName, catalog.httpServiceByID = make(map[string]int, len(catalog.HTTPServices)), make(map[uuid.UUID]int, len(catalog.HTTPServices))
 	sort.Slice(catalog.CommonPictures, func(i, j int) bool {
 		return catalog.CommonPictures[i].ID.String() < catalog.CommonPictures[j].ID.String()
 	})
@@ -982,6 +995,11 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	}
 	for index, item := range catalog.WebServices {
 		if err := add("web service", item.ID, item.Name, index, catalog.webServiceByName, catalog.webServiceByID); err != nil {
+			return err
+		}
+	}
+	for index, item := range catalog.HTTPServices {
+		if err := add("HTTP service", item.ID, item.Name, index, catalog.httpServiceByName, catalog.httpServiceByID); err != nil {
 			return err
 		}
 	}
@@ -1791,6 +1809,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return err
 	}
 	if err := catalog.validateWebServices(); err != nil {
+		return err
+	}
+	if err := catalog.validateHTTPServices(); err != nil {
 		return err
 	}
 	return catalog.validateDefinedTypeCycles()

@@ -134,7 +134,8 @@ var (
 		"xdto-packages": {ObjectMetadataFile},
 		// A service keeps its description and one module: the procedures its
 		// operations name lie there, and nowhere else.
-		"web-services": {ObjectMetadataFile, ServiceModuleFile},
+		"web-services":  {ObjectMetadataFile, ServiceModuleFile},
+		"http-services": {ObjectMetadataFile, ServiceModuleFile},
 	}
 	// objectFolderKinds lists metadata kinds whose objects group their own
 	// description, modules, forms, commands and templates under one folder
