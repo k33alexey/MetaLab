@@ -1,9 +1,14 @@
 'use strict';
 
-/* Project editor: ML Project manifest (mlproject.yaml) as fields instead of
-   hand-edited YAML. Managing the language list itself is a separate,
+/* Project editor: the configuration root (configuration.yaml) as fields instead of
+   hand-edited YAML. The root is the configuration itself, so this panel holds
+   what the configuration says about itself — its synonym, what it is, who made
+   it and where to read more. Managing the language list is a separate,
    dedicated editor (languages-editor.js) reached only through the "Языки"
-   branch of the configuration tree — not duplicated into this panel. */
+   branch of the configuration tree — not duplicated into this panel.
+
+   Texts a person reads are stored per language, so each of them is edited as
+   one field per configured language rather than one field. */
 function createProjectModel(source) {
   const manifest = source.manifest;
   manifest.languages ||= [];
@@ -16,7 +21,15 @@ function createProjectModel(source) {
   return {
     value() { return structuredClone(manifest); },
     setName(name) { manifest.name = name; },
-    setTitle(title) { manifest.title = title; },
+    setField(field, value) {
+      if (value === '') delete manifest[field]; else manifest[field] = value;
+    },
+    setText(field, code, value) {
+      const text = manifest[field] && typeof manifest[field] === 'object' ? manifest[field] : {};
+      if (value === '') delete text[code]; else text[code] = value;
+      if (Object.keys(text).length === 0) delete manifest[field];
+      else manifest[field] = text;
+    },
     setDefaultLanguage(code) { manifest.defaultLanguage = code; },
     addLanguage() {
       const language = {name: 'Язык', title: 'Новый язык', code: uniqueCode()};
@@ -46,23 +59,54 @@ function createProjectEditor(host, onChange) {
   }
   function rerender() { onChange(); render(); }
   function touch() { onChange(); }
-  function textField(label, value, apply, options = {}) {
-    const wrapper = node('label', undefined, 'catalog-field'), input = node('input');
-    wrapper.append(node('span', label));
-    input.type = 'text';
+  function control(kind, value, apply, options = {}) {
+    const input = node(kind === 'area' ? 'textarea' : 'input');
+    if (kind !== 'area') input.type = 'text';
     input.value = value ?? '';
-    input.disabled = !!options.disabled;
+    if (kind === 'area') input.rows = options.rows || 3;
     input.maxLength = options.maxLength || 512;
+    input.placeholder = options.placeholder || '';
     input.addEventListener('input', () => { apply(input.value); touch(); });
-    wrapper.append(input);
+    return input;
+  }
+  function textField(label, value, apply, options = {}) {
+    const wrapper = node('label', undefined, 'catalog-field');
+    wrapper.append(node('span', label));
+    wrapper.append(control(options.kind || 'input', value, apply, options));
     return wrapper;
+  }
+  /* One text in every language the project has: the language is shown beside
+     its own field, so which translation is being written is never a guess. */
+  function localizedField(label, field, options = {}) {
+    const wrapper = node('div', undefined, 'project-localized');
+    wrapper.append(node('span', label, 'project-localized-label'));
+    const rows = node('div', undefined, 'project-localized-rows');
+    const stored = source.manifest[field] || {};
+    for (const language of source.manifest.languages) {
+      const row = node('div', undefined, 'project-localized-row');
+      row.append(node('span', language.code, 'project-language-chip'));
+      row.append(control(options.kind || 'input', stored[language.code],
+        value => model.setText(field, language.code, value), options));
+      rows.append(row);
+    }
+    wrapper.append(rows);
+    return wrapper;
+  }
+  function section(title) {
+    const block = node('section', undefined, 'project-section');
+    block.append(node('h4', title));
+    return block;
   }
   function render() {
     host.replaceChildren();
     const panel = node('div', undefined, 'catalog-detail');
-    panel.append(node('h3', 'Свойства проекта'));
-    panel.append(textField('Имя', source.manifest.name, value => model.setName(value), {maxLength: 128}));
-    panel.append(textField('Заголовок', source.manifest.title, value => model.setTitle(value), {maxLength: 512}));
+    panel.append(node('h3', 'Корень конфигурации'));
+
+    const identity = section('Как называется');
+    identity.append(textField('Имя', source.manifest.name, value => model.setName(value), {maxLength: 128}));
+    identity.append(localizedField('Синоним', 'title'));
+    identity.append(textField('Комментарий', source.manifest.comment,
+      value => model.setField('comment', value), {maxLength: 1024}));
     const defaultLanguageField = node('label', undefined, 'catalog-field');
     defaultLanguageField.append(node('span', 'Язык по умолчанию'));
     const defaultLanguageSelect = node('select');
@@ -74,7 +118,28 @@ function createProjectEditor(host, onChange) {
     }
     defaultLanguageSelect.addEventListener('change', () => { model.setDefaultLanguage(defaultLanguageSelect.value); rerender(); });
     defaultLanguageField.append(defaultLanguageSelect);
-    panel.append(defaultLanguageField);
+    identity.append(defaultLanguageField);
+    panel.append(identity);
+
+    const about = section('Что это за конфигурация');
+    about.append(localizedField('Краткая информация', 'briefInformation'));
+    about.append(localizedField('Подробная информация', 'detailedInformation', {kind: 'area', rows: 3}));
+    panel.append(about);
+
+    const vendor = section('Кто её выпустил');
+    vendor.append(textField('Поставщик', source.manifest.vendor,
+      value => model.setField('vendor', value)));
+    vendor.append(textField('Версия', source.manifest.version,
+      value => model.setField('version', value), {maxLength: 128, placeholder: '1.0.0.1'}));
+    vendor.append(localizedField('Авторские права', 'copyright'));
+    panel.append(vendor);
+
+    const addresses = section('Где о ней прочитать');
+    addresses.append(localizedField('Адрес поставщика', 'vendorAddress'));
+    addresses.append(localizedField('Адрес конфигурации', 'informationAddress'));
+    addresses.append(localizedField('Адрес обновлений', 'updateCatalogAddress'));
+    panel.append(addresses);
+
     host.append(panel);
   }
   return {

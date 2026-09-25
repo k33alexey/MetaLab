@@ -967,7 +967,7 @@ func yamlNodeRange(node *yaml.Node) BSLRange {
 
 func (workspace *Workspace) buildProjectSearchIndex() (*projectSearchIndex, error) {
 	result := &projectSearchIndex{}
-	paths := []string{project.ManifestFile}
+	paths := []string{project.ConfigurationFile}
 	for _, directory := range []string{"modules"} {
 		entries, err := os.ReadDir(filepath.Join(workspace.root, directory))
 		if err != nil {

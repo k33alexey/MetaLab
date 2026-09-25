@@ -15,7 +15,7 @@ func TestDecodeAccumulationRegister(t *testing.T) {
 		"dimensions:\n  - id: " + dimensionID.String() + "\n    name: Товар\n    title: {ru: Товар}\n    types: [{kind: string, length: 100}]\n" +
 		"resources:\n  - id: " + resourceID.String() + "\n    name: Количество\n    title: {ru: Количество}\n    types: [{kind: number, precision: 15, scale: 3}]\n" +
 		"recorders: [" + recorderID.String() + "]\n"
-	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "Demo", Title: "Demo", DefaultLanguage: "ru", Languages: []project.Language{{Code: "ru", Name: "Русский"}}}
+	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "Demo", Title: project.LocalizedText{"ru": "Demo"}, DefaultLanguage: "ru", Languages: []project.Language{{Code: "ru", Name: "Русский"}}}
 	value, err := DecodeAccumulationRegister("register.yaml", strings.NewReader(source), manifest)
 	if err != nil || value.ID != registerID || value.Kind != AccumulationRegisterBalance || len(value.Resources) != 1 {
 		t.Fatalf("value=%+v error=%v", value, err)
@@ -27,7 +27,7 @@ func TestDecodeAccumulationRegisterRejectsNonNumericResource(t *testing.T) {
 	registerID, recorderID, resourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	source := "format: 1\nid: " + registerID.String() + "\nname: Продажи\ntitle: {ru: Продажи}\nkind: turnover\n" +
 		"resources:\n  - id: " + resourceID.String() + "\n    name: Сумма\n    title: {ru: Сумма}\n    types: [{kind: string, length: 20}]\nrecorders: [" + recorderID.String() + "]\n"
-	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "Demo", Title: "Demo", DefaultLanguage: "ru", Languages: []project.Language{{Code: "ru", Name: "Русский"}}}
+	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "Demo", Title: project.LocalizedText{"ru": "Demo"}, DefaultLanguage: "ru", Languages: []project.Language{{Code: "ru", Name: "Русский"}}}
 	if _, err := DecodeAccumulationRegister("register.yaml", strings.NewReader(source), manifest); err == nil || !strings.Contains(err.Error(), "exactly one number") {
 		t.Fatalf("error=%v", err)
 	}

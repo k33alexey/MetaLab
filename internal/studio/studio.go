@@ -204,15 +204,25 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	root := Node{
-		ID: "project", Kind: "project", Title: manifest.Name, Path: project.ManifestFile,
-		Properties: []Property{
-			{Name: "Имя", Value: manifest.Name}, {Name: "Заголовок", Value: manifest.Title},
-			{Name: "UUID", Value: manifest.ID.String()}, {Name: "Основной язык", Value: manifest.DefaultLanguage},
-			{Name: "Формат", Value: fmt.Sprint(manifest.Format)},
-		},
+	// The root's synonym is localized now, so the tree reads it the way it
+	// reads every other synonym: in the project's own default language.
+	synonym := manifest.Title.Resolve(manifest.DefaultLanguage, manifest.DefaultLanguage, manifest.Languages)
+	properties := []Property{
+		{Name: "Имя", Value: manifest.Name}, {Name: "Синоним", Value: synonym},
+		{Name: "UUID", Value: manifest.ID.String()}, {Name: "Основной язык", Value: manifest.DefaultLanguage},
+		{Name: "Формат", Value: fmt.Sprint(manifest.Format)},
 	}
-	root.Children = append(root.Children, workspace.sessionModuleNodeLocked())
+	if manifest.Vendor != "" {
+		properties = append(properties, Property{Name: "Поставщик", Value: manifest.Vendor})
+	}
+	if manifest.Version != "" {
+		properties = append(properties, Property{Name: "Версия", Value: manifest.Version})
+	}
+	root := Node{
+		ID: "project", Kind: "project", Title: manifest.Name, Path: project.ConfigurationFile,
+		Properties: properties,
+	}
+	root.Children = append(root.Children, workspace.rootModuleNodesLocked()...)
 	branches, err := workspace.metadataTree(manifest.DefaultLanguage, manifest.Languages)
 	if err != nil {
 		return Snapshot{}, err
@@ -264,7 +274,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 	routes := http.NewServeMux()
 	registerDebugRoutes(routes, workspace)
 	registerRoleRoutes(routes, workspace)
-	registerSessionModuleRoutes(routes, workspace)
+	registerRootModuleRoutes(routes, workspace)
 	registerCatalogEditorRoutes(routes, workspace)
 	registerProjectEditorRoutes(routes, workspace)
 	routes.Handle("GET /ui/", http.FileServer(http.FS(assets)))
@@ -884,7 +894,7 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 		switch {
 		case kind == "languages":
 			// Languages have no per-object UUID or file of their own (they're
-			// a plain list inside mlproject.yaml), so this branch is
+			// a plain list inside configuration.yaml), so this branch is
 			// synthesized directly from the already in-memory list rather
 			// than scanned from disk like every other metadata kind.
 			// The group node itself stays inert — matching every other
@@ -895,7 +905,7 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 			for _, item := range languages {
 				node.Children = append(node.Children, Node{
 					ID: "language:" + item.Code, Kind: "language", Title: item.Name,
-					Path: project.ManifestFile, Fragment: "language:" + item.Code,
+					Path: project.ConfigurationFile, Fragment: "language:" + item.Code,
 					Properties: []Property{{Name: "Код", Value: item.Code}, {Name: "Имя", Value: item.Name}},
 				})
 			}

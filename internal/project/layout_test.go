@@ -84,7 +84,7 @@ func TestValidateLayoutRejectsMissingDirectory(t *testing.T) {
 	}
 }
 
-func TestSaveManifestIsStableAndPreservesIdentity(t *testing.T) {
+func TestSaveConfigurationIsStableAndPreservesIdentity(t *testing.T) {
 	t.Parallel()
 
 	root := filepath.Join(t.TempDir(), "project")
@@ -92,19 +92,19 @@ func TestSaveManifestIsStableAndPreservesIdentity(t *testing.T) {
 	if err := Initialize(root, manifest); err != nil {
 		t.Fatal(err)
 	}
-	manifest.Title = "Новое название"
+	manifest.Title = LocalizedText{"ru": "Новое название"}
 	manifest.Languages = append(manifest.Languages, Language{ID: uuid.MustNew(), Name: "English", Title: "English", Code: "en"})
-	if err := SaveManifest(root, manifest); err != nil {
+	if err := SaveConfiguration(root, manifest); err != nil {
 		t.Fatal(err)
 	}
-	first, err := os.ReadFile(filepath.Join(root, ManifestFile))
+	first, err := os.ReadFile(filepath.Join(root, ConfigurationFile))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := SaveManifest(root, manifest); err != nil {
+	if err := SaveConfiguration(root, manifest); err != nil {
 		t.Fatal(err)
 	}
-	second, err := os.ReadFile(filepath.Join(root, ManifestFile))
+	second, err := os.ReadFile(filepath.Join(root, ConfigurationFile))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,10 +114,10 @@ func TestSaveManifestIsStableAndPreservesIdentity(t *testing.T) {
 
 	replacement := manifest
 	replacement.ID = uuid.MustNew()
-	if err := SaveManifest(root, replacement); !errors.Is(err, ErrProjectIdentityChanged) {
-		t.Fatalf("SaveManifest() error = %v, want ErrProjectIdentityChanged", err)
+	if err := SaveConfiguration(root, replacement); !errors.Is(err, ErrProjectIdentityChanged) {
+		t.Fatalf("SaveConfiguration() error = %v, want ErrProjectIdentityChanged", err)
 	}
-	afterRejectedSave, err := os.ReadFile(filepath.Join(root, ManifestFile))
+	afterRejectedSave, err := os.ReadFile(filepath.Join(root, ConfigurationFile))
 	if err != nil || string(afterRejectedSave) != string(second) {
 		t.Fatalf("manifest changed after rejected save: error=%v", err)
 	}
@@ -197,7 +197,7 @@ func TestDirectoryCatalogCannotBeMutatedByCaller(t *testing.T) {
 
 func testManifest() Project {
 	return Project{
-		Format: CurrentFormat, ID: uuid.MustNew(), Name: "SalesDemo", Title: "Продажи и склад",
+		Format: CurrentFormat, ID: uuid.MustNew(), Name: "SalesDemo", Title: LocalizedText{"ru": "Продажи и склад"},
 		DefaultLanguage: "ru", Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
 	}
 }

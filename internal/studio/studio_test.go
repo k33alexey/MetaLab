@@ -62,7 +62,7 @@ func TestWorkspaceSnapshotBuildsCanonicalTree(t *testing.T) {
 	// "Общие" group, then the object kinds. Storage directories are not
 	// branches - a module or a form is reached through the object owning it.
 	wantTop := []string{
-		"session-module", "metadata/common", "metadata/constants", "metadata/catalogs",
+		"session-module", "application-module", "metadata/common", "metadata/constants", "metadata/catalogs",
 		"metadata/documents", "metadata/document-journals", "metadata/enumerations",
 		"metadata/reports", "metadata/data-processors", "metadata/charts-of-characteristic-types",
 		"metadata/charts-of-accounts", "metadata/charts-of-calculation-types",
@@ -188,12 +188,12 @@ func TestWorkspaceTreeExposesLanguagesAsOneNodeAfterStyles(t *testing.T) {
 		t.Fatalf("constants must stand beside \"Общие\", not inside it: %+v", snapshot.Tree)
 	}
 	languagesNode := metadataNode.Children[languagesIndex]
-	if len(languagesNode.Children) != 1 || languagesNode.Children[0].ID != "language:ru" || languagesNode.Children[0].Path != project.ManifestFile {
+	if len(languagesNode.Children) != 1 || languagesNode.Children[0].ID != "language:ru" || languagesNode.Children[0].Path != project.ConfigurationFile {
 		t.Fatalf("unexpected languages node children: %+v", languagesNode.Children)
 	}
 	// The group node itself must stay inert (no Path), matching every other
 	// metadata-group node — only individual languages are openable.
-	if languagesNode.Path == project.ManifestFile {
+	if languagesNode.Path == project.ConfigurationFile {
 		t.Fatalf("the languages GROUP node must not itself be openable: %+v", languagesNode)
 	}
 }
@@ -262,7 +262,7 @@ func TestStudioHandlerServesShellAndSnapshot(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("snapshot status=%d body=%s", response.Code, response.Body.String())
 	}
-	if err := json.Unmarshal(response.Body.Bytes(), &snapshot); err != nil || snapshot.Manifest.Title != "Продажи и склад" {
+	if err := json.Unmarshal(response.Body.Bytes(), &snapshot); err != nil || snapshot.Manifest.Title["ru"] != "Продажи и склад" {
 		t.Fatalf("snapshot=%+v error=%v", snapshot, err)
 	}
 }
@@ -295,7 +295,7 @@ func createProject(t testing.TB) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "SalesDemo")
 	manifest := project.Project{
-		Format: project.CurrentFormat, ID: uuid.MustNew(), Name: "SalesDemo", Title: "Продажи и склад",
+		Format: project.CurrentFormat, ID: uuid.MustNew(), Name: "SalesDemo", Title: project.LocalizedText{"ru": "Продажи и склад"},
 		DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
 	}
 	if err := project.Initialize(root, manifest); err != nil {

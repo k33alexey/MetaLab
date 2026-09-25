@@ -72,7 +72,7 @@ func TestSaveDataRefusesADatabaseOfAnotherProjectIntegration(t *testing.T) {
 	// Now the same database, a different project: the identifier in the
 	// manifest is all that differs.
 	other := demoProjectCopy(t)
-	manifest := filepath.Join(other, "mlproject.yaml")
+	manifest := filepath.Join(other, "configuration.yaml")
 	content, err := os.ReadFile(manifest)
 	if err != nil {
 		t.Fatal(err)

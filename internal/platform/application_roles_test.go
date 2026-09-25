@@ -13,7 +13,7 @@ import (
 
 func TestApplicationPermissionsBindProjectAndDenyUnassigned(t *testing.T) {
 	t.Parallel()
-	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "RolesTest", Title: "Roles test", DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
+	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "RolesTest", Title: project.LocalizedText{"ru": "Roles test"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
 	role := metadata.RoleDefinition{Format: 1, ID: uuid.MustNew(), Name: "Читатель", Title: metadata.LocalizedText{"ru": "Читатель"}}
 	catalog, err := metadata.NewCatalogSnapshotWithRoles(manifest, nil, nil, nil, nil, nil, nil, nil, []metadata.RoleDefinition{role})
 	if err != nil {
@@ -69,7 +69,7 @@ func TestApplicationPermissionsBindProjectAndDenyUnassigned(t *testing.T) {
 // to an error message.
 func TestAllowedOperationsReportOnlyWhatTheRoleGrants(t *testing.T) {
 	t.Parallel()
-	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "OperationsTest", Title: "Operations test", DefaultLanguage: "ru",
+	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "OperationsTest", Title: project.LocalizedText{"ru": "Operations test"}, DefaultLanguage: "ru",
 		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
 	goods := metadata.CatalogDefinition{Format: 1, ID: uuid.MustNew(), Name: "Товары", Title: metadata.LocalizedText{"ru": "Товары"},
 		Code: metadata.CatalogCode{Type: metadata.StringType, Length: 9}, DescriptionLength: 150}
@@ -107,7 +107,7 @@ func TestAllowedOperationsReportOnlyWhatTheRoleGrants(t *testing.T) {
 func TestApplicationLanguagePicksWhatTheProjectActuallyHas(t *testing.T) {
 	t.Parallel()
 	manifest := project.Project{
-		Format: 1, ID: uuid.MustNew(), Name: "LanguageTest", Title: "Language test", DefaultLanguage: "ru",
+		Format: 1, ID: uuid.MustNew(), Name: "LanguageTest", Title: project.LocalizedText{"ru": "Language test"}, DefaultLanguage: "ru",
 		Languages: []project.Language{
 			{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"},
 			{ID: uuid.MustNew(), Name: "Українська", Title: "Українська", Code: "uk"},
@@ -136,7 +136,7 @@ func TestApplicationLanguagePicksWhatTheProjectActuallyHas(t *testing.T) {
 // позволено открыть список.
 func TestViewIsSeparateFromRead(t *testing.T) {
 	t.Parallel()
-	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "ViewTest", Title: "View test", DefaultLanguage: "ru",
+	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "ViewTest", Title: project.LocalizedText{"ru": "View test"}, DefaultLanguage: "ru",
 		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
 	goods := metadata.CatalogDefinition{Format: 1, ID: uuid.MustNew(), Name: "Товары", Title: metadata.LocalizedText{"ru": "Товары"},
 		Code: metadata.CatalogCode{Type: metadata.StringType, Length: 9}, DescriptionLength: 150}

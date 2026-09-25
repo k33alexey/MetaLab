@@ -27,7 +27,7 @@ func TestSaveDataIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The demo project's own fixed UUID (examples/sales-and-warehouse/mlproject.yaml).
+	// The demo project's own fixed UUID (examples/sales-and-warehouse/configuration.yaml).
 	projectID, err := uuid.Parse("10000000-0000-4000-8000-000000000001")
 	if err != nil {
 		t.Fatal(err)

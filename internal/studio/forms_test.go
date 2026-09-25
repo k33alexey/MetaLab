@@ -90,7 +90,7 @@ func TestManagedFormAPIRejectsNonFormAndUnknownJSON(t *testing.T) {
 	workspace, _, form := createManagedFormSource(t)
 	handler := NewHandler(workspace)
 	invalidPath := httptest.NewRecorder()
-	handler.ServeHTTP(invalidPath, httptest.NewRequest(http.MethodGet, "/api/form?path=mlproject.yaml", nil))
+	handler.ServeHTTP(invalidPath, httptest.NewRequest(http.MethodGet, "/api/form?path=configuration.yaml", nil))
 	if invalidPath.Code != http.StatusBadRequest {
 		t.Fatalf("non-form status = %d", invalidPath.Code)
 	}

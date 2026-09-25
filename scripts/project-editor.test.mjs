@@ -7,7 +7,7 @@ const script=readFileSync(new URL('../internal/studio/ui/project-editor.js',impo
 const context=vm.createContext({structuredClone});
 vm.runInContext(script,context);
 const create=context.createProjectModel;
-function fixture(){return {manifest:{format:1,id:'p1',name:'SalesDemo',title:'Продажи и склад',defaultLanguage:'ru',languages:[
+function fixture(){return {manifest:{format:1,id:'p1',name:'SalesDemo',title:{ru:'Продажи и склад'},defaultLanguage:'ru',languages:[
   {name:'English',title:'English',code:'en'},{name:'Русский',title:'Русский',code:'ru'},
 ]}};}
 
@@ -16,11 +16,37 @@ test('Studio inline script remains valid JavaScript',()=>{
   for(const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g))new vm.Script(match[1]);
   assert.match(html,/\/api\/project-manifest/);
 });
-test('name, title and default language round-trip',()=>{
+test('name, synonym and default language round-trip',()=>{
   const model=create(fixture());
-  model.setName('НовоеИмя');model.setTitle('Новый заголовок');model.setDefaultLanguage('en');
+  model.setName('НовоеИмя');model.setText('title','ru','Новый синоним');model.setDefaultLanguage('en');
   const saved=model.value();
-  assert.equal(saved.name,'НовоеИмя');assert.equal(saved.title,'Новый заголовок');assert.equal(saved.defaultLanguage,'en');
+  assert.equal(saved.name,'НовоеИмя');assert.equal(saved.title.ru,'Новый синоним');assert.equal(saved.defaultLanguage,'en');
+});
+// Синоним пишется по языку, и язык, в котором его стёрли, исчезает из текста
+// целиком: пустая строка — это не перевод, а его отсутствие.
+test('a text is stored per language and an emptied one disappears',()=>{
+  const model=create(fixture());
+  model.setText('title','en','Sales and warehouse');
+  model.setText('copyright','ru','© Пример');
+  let saved=model.value();
+  assert.deepEqual(saved.title,{ru:'Продажи и склад',en:'Sales and warehouse'});
+  assert.deepEqual(saved.copyright,{ru:'© Пример'});
+  model.setText('title','en','');
+  model.setText('copyright','ru','');
+  saved=model.value();
+  assert.deepEqual(saved.title,{ru:'Продажи и склад'});
+  assert.equal('copyright' in saved,false);
+});
+// Поставщик и версия одинаковы на всех языках, поэтому это простые поля - и
+// опустошённое поле пропадает, а не остаётся пустой строкой.
+test('vendor and version are plain fields that vanish when emptied',()=>{
+  const model=create(fixture());
+  model.setField('vendor','Пример');model.setField('version','1.0.0.1');
+  let saved=model.value();
+  assert.equal(saved.vendor,'Пример');assert.equal(saved.version,'1.0.0.1');
+  model.setField('vendor','');
+  saved=model.value();
+  assert.equal('vendor' in saved,false);
 });
 test('English cannot be removed or edited through the model',()=>{
   const model=create(fixture());

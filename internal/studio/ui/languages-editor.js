@@ -3,7 +3,7 @@
 /* Dedicated editor for the project's configured languages — reached only
    through the "Языки" branch of the configuration tree, 1C-style, never
    mixed into the project properties panel. Languages still live inline in
-   the same mlproject.yaml, so this reuses createProjectModel from
+   the same configuration.yaml, so this reuses createProjectModel from
    project-editor.js (loaded on the same page) rather than a model of its
    own. Same unified style as every other tree-driven panel (catalogs,
    attributes, ...): the group node itself stays inert — clicking "Языки"

@@ -39,10 +39,12 @@ func LoadProjectModules(root string, catalog *Catalog) ([]RuntimeModule, error) 
 		}
 		relativePaths = append(relativePaths, filepath.ToSlash(filepath.Join("modules", entry.Name())))
 	}
-	if _, err := os.Stat(filepath.Join(root, project.SessionModuleFile)); err == nil {
-		relativePaths = append(relativePaths, project.SessionModuleFile)
-	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("read session module: %w", err)
+	for _, module := range project.RootModuleFiles() {
+		if _, err := os.Stat(filepath.Join(root, module)); err == nil {
+			relativePaths = append(relativePaths, module)
+		} else if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("read %s: %w", module, err)
+		}
 	}
 	objectPaths, err := project.ObjectFolderSourcePaths(root)
 	if err != nil {
@@ -65,8 +67,14 @@ func LoadProjectModules(root string, catalog *Catalog) ([]RuntimeModule, error) 
 		}
 		sourceBytes += len(content)
 		descriptor := descriptors[relative]
-		if relative == project.SessionModuleFile {
+		switch relative {
+		case project.SessionModuleFile:
 			descriptor = moduleNameDescriptor{name: SessionModuleName, defaultContext: syntax.ContextServer}
+		case project.ApplicationModuleFile:
+			// The application module runs on the client: it is where the
+			// application starts and stops, and both happen where the person
+			// is sitting.
+			descriptor = moduleNameDescriptor{name: ApplicationModuleName, defaultContext: syntax.ContextClient}
 		}
 		if descriptor.name == "" {
 			descriptor.name = moduleNameFromPath(relative)

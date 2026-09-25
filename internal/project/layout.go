@@ -16,16 +16,28 @@ import (
 )
 
 const (
-	// ManifestFile is the single root manifest of an ML Project.
-	ManifestFile = "mlproject.yaml"
-	// SessionModuleFile is the session module of an ML Project. Like the
-	// manifest it is a single file with a fixed name at the project root,
-	// not an entry in a UUID-named pool: the configuration root owns exactly
-	// one of it, so a UUID would name something that never has a second
-	// instance. The file is optional - a project without one simply has no
-	// session parameter handler.
-	SessionModuleFile = "session-module.bsl"
-	keepFile          = ".gitkeep"
+	// ConfigurationFile is the description of the configuration root, and with
+	// it of the whole ML Project: the identifier, the name, the synonym, the
+	// languages and everything else the root says about itself.
+	//
+	// It is not a manifest standing beside the root - there is no such thing.
+	// The root is the configuration, so its description lies at the top of the
+	// project beside the branches of its kinds, which is where the prototype's
+	// own export puts it too.
+	ConfigurationFile = "configuration.yaml"
+	// SessionModuleFile and ApplicationModuleFile are the two modules of the
+	// configuration root. They lie at the project root beside its description,
+	// named after the role each plays - the same way every other object names
+	// its modules, and for the same reason: the root owns exactly one of each,
+	// so there is nothing for a UUID to tell apart, and the file lying under
+	// the name of its role is the whole declaration.
+	//
+	// Both are optional. A project without a session module has no handler for
+	// session parameters; one without an application module has nothing to run
+	// as the application starts and stops.
+	SessionModuleFile     = "МодульСеанса.bsl"
+	ApplicationModuleFile = "МодульПриложения.bsl"
+	keepFile              = ".gitkeep"
 
 	// ObjectMetadataFile is the description of the object owning a folder.
 	ObjectMetadataFile = "object.yaml"
@@ -158,6 +170,17 @@ var (
 	}
 )
 
+// rootModuleFiles is every module the configuration root may keep, in the
+// order the tree shows them.
+var rootModuleFiles = []string{SessionModuleFile, ApplicationModuleFile}
+
+// RootModuleFiles returns the modules of the configuration root.
+func RootModuleFiles() []string { return slices.Clone(rootModuleFiles) }
+
+// IsRootModuleFile reports whether a project-root file is one of the root's
+// own modules.
+func IsRootModuleFile(name string) bool { return slices.Contains(rootModuleFiles, name) }
+
 // RootDirectories returns the canonical Git-tracked source directories.
 func RootDirectories() []string { return slices.Clone(rootDirectories) }
 
@@ -197,7 +220,7 @@ func ObjectSubordinateDirectories() []string { return slices.Clone(objectSubordi
 // Initialize atomically creates a new canonical ML Project at a previously unused path.
 func Initialize(root string, manifest Project) error {
 	// A manifest built in code names its languages but does not invent their
-	// identities; that is this layer's job, here and in SaveManifest.
+	// identities; that is this layer's job, here and in SaveConfiguration.
 	manifest, err := EnsureLanguageIdentities(manifest)
 	if err != nil {
 		return err
@@ -228,7 +251,7 @@ func Initialize(root string, manifest Project) error {
 		return fmt.Errorf("set ML Project directory permissions: %w", err)
 	}
 
-	manifestPath := filepath.Join(staging, ManifestFile)
+	manifestPath := filepath.Join(staging, ConfigurationFile)
 	file, err := os.OpenFile(manifestPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return fmt.Errorf("create ML Project manifest: %w", err)
@@ -271,7 +294,7 @@ func ValidateLayout(root string) (Project, error) {
 	if err := requirePath(root, true); err != nil {
 		return Project{}, err
 	}
-	manifestPath := filepath.Join(root, ManifestFile)
+	manifestPath := filepath.Join(root, ConfigurationFile)
 	if err := requirePath(manifestPath, false); err != nil {
 		return Project{}, err
 	}
@@ -280,15 +303,15 @@ func ValidateLayout(root string) (Project, error) {
 			return Project{}, err
 		}
 	}
-	manifest, err := readManifest(manifestPath)
+	manifest, err := readConfiguration(manifestPath)
 	if err != nil {
 		return Project{}, fmt.Errorf("%w: %v", ErrInvalidLayout, err)
 	}
 	return manifest, nil
 }
 
-// SaveManifest atomically writes a validated manifest without allowing its stable UUID to change.
-func SaveManifest(root string, manifest Project) error {
+// SaveConfiguration atomically writes a validated manifest without allowing its stable UUID to change.
+func SaveConfiguration(root string, manifest Project) error {
 	root, err := cleanRoot(root)
 	if err != nil {
 		return err
@@ -312,7 +335,7 @@ func SaveManifest(root string, manifest Project) error {
 	if current.ID != manifest.ID {
 		return ErrProjectIdentityChanged
 	}
-	temporary, err := os.CreateTemp(root, ".mlproject-*.yaml")
+	temporary, err := os.CreateTemp(root, ".configuration-*.yaml")
 	if err != nil {
 		return fmt.Errorf("create temporary ML Project manifest: %w", err)
 	}
@@ -333,7 +356,7 @@ func SaveManifest(root string, manifest Project) error {
 	if err := temporary.Close(); err != nil {
 		return fmt.Errorf("close ML Project manifest: %w", err)
 	}
-	if err := replaceProjectFile(temporaryPath, filepath.Join(root, ManifestFile)); err != nil {
+	if err := replaceProjectFile(temporaryPath, filepath.Join(root, ConfigurationFile)); err != nil {
 		return fmt.Errorf("replace ML Project manifest: %w", err)
 	}
 	return nil
@@ -761,7 +784,7 @@ func requirePath(path string, directory bool) error {
 	return nil
 }
 
-func readManifest(path string) (Project, error) {
+func readConfiguration(path string) (Project, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return Project{}, fmt.Errorf("open manifest %q: %w", path, err)

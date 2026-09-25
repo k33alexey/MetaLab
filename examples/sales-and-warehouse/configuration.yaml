@@ -1,7 +1,10 @@
 format: 1
 id: 10000000-0000-4000-8000-000000000001
 name: ПродажиИСклад
-title: Продажи и склад
+title:
+  ru: Продажи и склад
+  uk: Продажі і склад
+  en: Sales and warehouse
 default_language: ru
 languages:
   - id: 13824885-a18e-8751-8297-b323cdd46b5b

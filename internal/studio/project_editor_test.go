@@ -66,12 +66,12 @@ func TestProjectEditorSaveConflictsAndIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	updated := opened.Manifest
-	updated.Title = "Новое название"
+	updated.Title = project.LocalizedText{"ru": "Новое название"}
 	saved, err := workspace.SaveProjectEditor(updated, opened.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.Revision == opened.Revision || saved.Manifest.Title != "Новое название" {
+	if saved.Revision == opened.Revision || saved.Manifest.Title["ru"] != "Новое название" {
 		t.Fatalf("save did not persist edits: %+v", saved)
 	}
 	if _, err := workspace.SaveProjectEditor(updated, opened.Revision); !errors.Is(err, ErrSourceChanged) {
@@ -101,7 +101,7 @@ func TestProjectEditorRoutesValidateMutations(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest := opened.Manifest
-	manifest.Title = "Через HTTP"
+	manifest.Title = project.LocalizedText{"ru": "Через HTTP"}
 	encodedManifest, err := json.Marshal(manifest)
 	if err != nil {
 		t.Fatal(err)
@@ -146,5 +146,73 @@ func runNodeTest(t *testing.T, script string) {
 	output, err := exec.CommandContext(ctx, node, "--test", "../../scripts/"+script).CombinedOutput()
 	if err != nil {
 		t.Fatalf("%s: %v\n%s", script, err, output)
+	}
+}
+
+// Removing a language removes what was written in it: keeping the text would
+// leave the project refusing to save over a translation nobody can read. The
+// synonym is the one text that cannot vanish, because a configuration without
+// one is not valid.
+func TestRemovingALanguageTakesItsTextsWithIt(t *testing.T) {
+	t.Parallel()
+	root := createProject(t) // single-language ("ru") fixture, English injected on read
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := workspace.ReadProjectEditor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := opened.Manifest
+	updated.Title = project.LocalizedText{"ru": "Продажи", "en": "Sales"}
+	updated.Copyright = project.LocalizedText{"ru": "© Пример"}
+	saved, err := workspace.SaveProjectEditor(updated, opened.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Manifest.Title["ru"] != "Продажи" || saved.Manifest.Copyright["ru"] != "© Пример" {
+		t.Fatalf("texts were lost while every language was still there: %+v", saved.Manifest)
+	}
+
+	// Now Russian goes, and with it everything written in Russian. English
+	// stays, so the synonym keeps its English translation.
+	withoutRussian := saved.Manifest
+	withoutRussian.Languages = []project.Language{{Name: "English", Title: "English", Code: "en"}}
+	withoutRussian.DefaultLanguage = "en"
+	saved, err = workspace.SaveProjectEditor(withoutRussian, saved.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	switch {
+	case len(saved.Manifest.Title) != 1 || saved.Manifest.Title["en"] != "Sales":
+		t.Fatalf("the synonym did not lose the language that went: %+v", saved.Manifest.Title)
+	case len(saved.Manifest.Copyright) != 0:
+		t.Fatalf("a text stayed in a language the project no longer has: %+v", saved.Manifest.Copyright)
+	}
+}
+
+// A synonym written only in the language that was removed cannot simply
+// vanish: the project's own name stands in, in the language it now reads in.
+func TestASynonymLeftWithNoLanguageFallsBackToTheName(t *testing.T) {
+	t.Parallel()
+	workspace, err := Open(createProject(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := workspace.ReadProjectEditor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := opened.Manifest
+	updated.Title = project.LocalizedText{"ru": "Продажи"}
+	updated.Languages = []project.Language{{Name: "English", Title: "English", Code: "en"}}
+	updated.DefaultLanguage = "en"
+	saved, err := workspace.SaveProjectEditor(updated, opened.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Manifest.Title["en"] != saved.Manifest.Name {
+		t.Fatalf("the synonym did not fall back to the name: %+v", saved.Manifest.Title)
 	}
 }

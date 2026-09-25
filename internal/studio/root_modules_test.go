@@ -152,15 +152,105 @@ func TestSessionModuleIsCompiledIntoTheProjectProgram(t *testing.T) {
 	}
 }
 
-func TestSessionModuleUI(t *testing.T) {
+func TestRootModulesUI(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("Node.js is required for session module UI tests")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	output, err := exec.CommandContext(ctx, node, "--test", "../../scripts/session-module.test.mjs").CombinedOutput()
+	output, err := exec.CommandContext(ctx, node, "--test", "../../scripts/root-modules.test.mjs").CombinedOutput()
 	if err != nil {
-		t.Fatalf("session module UI tests: %v\n%s", err, output)
+		t.Fatalf("root module UI tests: %v\n%s", err, output)
 	}
+}
+
+// The root owns two modules, and both stand in the tree whether or not their
+// file exists: a developer looking for "where does the application start" must
+// find it there instead of having to know it can be created.
+func TestBothRootModulesStandInTheTreeAndAreCreatedOnOpen(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := func(id string) string {
+		snapshot, err := workspace.Snapshot()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, child := range snapshot.Tree.Children {
+			if child.ID != id {
+				continue
+			}
+			for _, property := range child.Properties {
+				if property.Name == "Состояние" {
+					return property.Value
+				}
+			}
+		}
+		t.Fatalf("the tree has no node %s with a state", id)
+		return ""
+	}
+	for id, file := range map[string]string{
+		"session-module":     project.SessionModuleFile,
+		"application-module": project.ApplicationModuleFile,
+	} {
+		if state(id) != "не создан" {
+			t.Fatalf("%s before creation = %q", id, state(id))
+		}
+		opened, err := workspace.OpenRootModule(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if opened.Path != file || opened.Language != "bsl" || opened.Content == "" {
+			t.Fatalf("%s opened as %+v", id, opened)
+		}
+		if state(id) != "создан" {
+			t.Fatalf("%s after creation = %q", id, state(id))
+		}
+		// Opening again returns what is there rather than the stub again: the
+		// second open must not overwrite what was written in between.
+		again, err := workspace.OpenRootModule(id)
+		if err != nil || again.Content != opened.Content {
+			t.Fatalf("%s reopened as %+v (%v)", id, again, err)
+		}
+	}
+	if _, err := workspace.OpenRootModule("common-module"); err == nil {
+		t.Fatal("a module the root does not own was opened")
+	}
+}
+
+// The application module must reach the compiled program under its own name,
+// otherwise it is an editable file that never runs. It compiles as client code
+// because that is where an application starts and stops.
+func TestApplicationModuleIsCompiledIntoTheProjectProgram(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	source := "Процедура ПриНачалеРаботыСистемы()\n\nКонецПроцедуры\n"
+	if err := os.WriteFile(filepath.Join(root, project.ApplicationModuleFile), []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := metadata.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	modules, err := metadata.LoadProjectModules(root, catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, module := range modules {
+		if module.Filename != project.ApplicationModuleFile {
+			continue
+		}
+		if module.Name != metadata.ApplicationModuleName {
+			t.Fatalf("the application module compiles under %q", module.Name)
+		}
+		if module.Source != source {
+			t.Fatalf("the application module reached the program changed: %q", module.Source)
+		}
+		return
+	}
+	t.Fatalf("the application module did not reach the program: %+v", modules)
 }

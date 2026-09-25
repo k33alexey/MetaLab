@@ -62,7 +62,7 @@ func TestRoleEditorCreateReadSaveAndConflicts(t *testing.T) {
 	if _, err := workspace.CreateRole("../Роль"); err == nil {
 		t.Fatal("invalid name accepted")
 	}
-	if _, err := workspace.ReadRole("mlproject.yaml"); !errors.Is(err, ErrInvalidSourcePath) {
+	if _, err := workspace.ReadRole("configuration.yaml"); !errors.Is(err, ErrInvalidSourcePath) {
 		t.Fatalf("non-role path: %v", err)
 	}
 	created.Role.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead}, Fields: []metadata.FieldPermission{{Field: "description", Operations: []metadata.PermissionOperation{metadata.PermissionRead}}}}}

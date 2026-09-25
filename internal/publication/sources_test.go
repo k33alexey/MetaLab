@@ -37,7 +37,7 @@ func TestInspectIsDeterministicOverProjectSources(t *testing.T) {
 	if len(first.ContentSHA256) != 64 || first.Format != CurrentPackageFormat || first.ProjectName != "PackageDemo" {
 		t.Fatalf("manifest = %+v", first)
 	}
-	if !slicesContainPath(first.Files, project.ManifestFile) || !slicesContainPath(first.Files, modulePath) {
+	if !slicesContainPath(first.Files, project.ConfigurationFile) || !slicesContainPath(first.Files, modulePath) {
 		t.Fatalf("files = %+v", first.Files)
 	}
 	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(modulePath)), []byte("Процедура Другой()\nКонецПроцедуры\n"), 0o600); err != nil {
@@ -157,7 +157,7 @@ func TestInspectHonoursCancellationAndRejectsSymlinks(t *testing.T) {
 		return
 	}
 	linkPath, _ := project.ModulePath(uuid.MustNew())
-	if err := os.Symlink(filepath.Join(root, project.ManifestFile), filepath.Join(root, filepath.FromSlash(linkPath))); err != nil {
+	if err := os.Symlink(filepath.Join(root, project.ConfigurationFile), filepath.Join(root, filepath.FromSlash(linkPath))); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := inspect(context.Background(), root, SourceState{}); err == nil {
@@ -199,7 +199,7 @@ func publicationProject(t *testing.T) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "project")
 	manifest := project.Project{
-		Format: project.CurrentFormat, ID: uuid.MustNew(), Name: "PackageDemo", Title: "Package Demo",
+		Format: project.CurrentFormat, ID: uuid.MustNew(), Name: "PackageDemo", Title: project.LocalizedText{"ru": "Package Demo"},
 		DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
 	}
 	if err := project.Initialize(root, manifest); err != nil {

@@ -54,14 +54,48 @@ func (validation *ValidationError) Is(target error) bool {
 	return target == ErrUnsupportedFormat && validation.unsupportedFormat
 }
 
-// Project is the root manifest stored in mlproject.yaml.
+// Project is the configuration root, stored in configuration.yaml.
+//
+// It is the root itself and not a manifest standing beside it. Everything the
+// manifest used to hold - the identifier, the name, the synonym, the default
+// language and the list of languages - are properties of the root, and giving
+// the root an identifier of its own would be two identifiers for one thing:
+// they diverge, and the only question is when. The identifier written into a
+// database when a project is first applied, and checked before every later
+// one, is this one.
+//
+// The languages are read before anything else because every synonym in the
+// configuration is checked against them, and the root is what declares them.
 type Project struct {
-	Format          int        `yaml:"format" json:"format"`
-	ID              uuid.UUID  `yaml:"id" json:"id"`
-	Name            string     `yaml:"name" json:"name"`
-	Title           string     `yaml:"title" json:"title"`
-	DefaultLanguage string     `yaml:"default_language" json:"defaultLanguage"`
-	Languages       []Language `yaml:"languages" json:"languages"`
+	Format int       `yaml:"format" json:"format"`
+	ID     uuid.UUID `yaml:"id" json:"id"`
+	Name   string    `yaml:"name" json:"name"`
+	// Title is the root's synonym - what a person reads where the name is an
+	// identifier. It is localized like every other object's synonym: a
+	// configuration whose synonym is written in two languages would otherwise
+	// lose one of them without a word.
+	Title           LocalizedText `yaml:"title" json:"title"`
+	Comment         string        `yaml:"comment,omitempty" json:"comment,omitempty"`
+	DefaultLanguage string        `yaml:"default_language" json:"defaultLanguage"`
+	Languages       []Language    `yaml:"languages" json:"languages"`
+	// BriefInformation and DetailedInformation are what the application says
+	// about itself: the first in a line, the second at length.
+	BriefInformation    LocalizedText `yaml:"brief_information,omitempty" json:"briefInformation,omitempty"`
+	DetailedInformation LocalizedText `yaml:"detailed_information,omitempty" json:"detailedInformation,omitempty"`
+	// Vendor and Version are not localized: who made it and which release it
+	// is are the same in every language, and translating a version number
+	// would make two releases look like one.
+	Vendor  string `yaml:"vendor,omitempty" json:"vendor,omitempty"`
+	Version string `yaml:"version,omitempty" json:"version,omitempty"`
+	// Copyright is read by a person and is localized for the same reason the
+	// synonym is.
+	Copyright LocalizedText `yaml:"copyright,omitempty" json:"copyright,omitempty"`
+	// The three addresses are localized because each may lead to a different
+	// page per language: where to read about who made this, where to read
+	// about the configuration itself, and where its updates are published.
+	VendorAddress        LocalizedText `yaml:"vendor_address,omitempty" json:"vendorAddress,omitempty"`
+	InformationAddress   LocalizedText `yaml:"information_address,omitempty" json:"informationAddress,omitempty"`
+	UpdateCatalogAddress LocalizedText `yaml:"update_catalog_address,omitempty" json:"updateCatalogAddress,omitempty"`
 }
 
 // Language defines an interface language available in an ML Project.
@@ -200,9 +234,6 @@ func (p Project) Validate() error {
 	} else if utf8.RuneCountInString(p.Name) > 128 {
 		add("name", "must not exceed 128 characters")
 	}
-	if !isDisplayText(p.Title, 512) {
-		add("title", "must contain 1 to 512 printable characters")
-	}
 	if len(p.Languages) == 0 {
 		add("languages", "must contain at least one language")
 	} else if len(p.Languages) > 100 {
@@ -249,6 +280,47 @@ func (p Project) Validate() error {
 		return strings.EqualFold(language.Code, p.DefaultLanguage)
 	}) {
 		add("default_language", "must reference a configured language code")
+	}
+
+	// The texts of the root are checked against the languages the root itself
+	// declares - which is why they are checked here and not before the list is
+	// read. The synonym has to be there; the rest of them a configuration is
+	// free not to fill in.
+	configured := make(map[string]bool, len(p.Languages))
+	for _, language := range p.Languages {
+		configured[strings.ToLower(language.Code)] = true
+	}
+	checkText := func(path string, text LocalizedText, required bool) {
+		if len(text) == 0 {
+			if required {
+				add(path, "must contain at least one translation")
+			}
+			return
+		}
+		for _, code := range sortedKeys(text) {
+			if !configured[strings.ToLower(code)] {
+				add(path+"."+code, "uses an unconfigured language")
+			}
+			if !isDisplayText(text[code], 512) {
+				add(path+"."+code, "must contain 1 to 512 printable characters")
+			}
+		}
+	}
+	checkText("title", p.Title, true)
+	checkText("brief_information", p.BriefInformation, false)
+	checkText("detailed_information", p.DetailedInformation, false)
+	checkText("copyright", p.Copyright, false)
+	checkText("vendor_address", p.VendorAddress, false)
+	checkText("information_address", p.InformationAddress, false)
+	checkText("update_catalog_address", p.UpdateCatalogAddress, false)
+	if p.Comment != "" && !isDisplayText(p.Comment, 1024) {
+		add("comment", "must contain 1 to 1024 printable characters")
+	}
+	if p.Vendor != "" && !isDisplayText(p.Vendor, 512) {
+		add("vendor", "must contain 1 to 512 printable characters")
+	}
+	if p.Version != "" && !isDisplayText(p.Version, 128) {
+		add("version", "must contain 1 to 128 printable characters")
 	}
 
 	if len(issues) > 0 {

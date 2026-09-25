@@ -277,10 +277,10 @@ func validateEditablePath(relative string) (string, string, error) {
 	if relative == "" || strings.Contains(relative, `\`) || path.IsAbs(relative) || path.Clean(relative) != relative {
 		return "", "", ErrInvalidSourcePath
 	}
-	if relative == project.ManifestFile {
+	if relative == project.ConfigurationFile {
 		return relative, "yaml", nil
 	}
-	if relative == project.SessionModuleFile {
+	if project.IsRootModuleFile(relative) {
 		return relative, "bsl", nil
 	}
 	parts := strings.Split(relative, "/")
@@ -384,7 +384,7 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 	if len(content) > project.MaxYAMLDocumentBytes {
 		return nil, project.ErrYAMLDocumentTooLarge
 	}
-	if relative == project.ManifestFile {
+	if relative == project.ConfigurationFile {
 		manifest, err := project.DecodeSource(relative, bytes.NewReader(content))
 		if err != nil {
 			return nil, err

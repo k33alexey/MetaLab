@@ -629,7 +629,7 @@ func metadataProject(t *testing.T) string {
 func metadataManifest() project.Project {
 	return project.Project{
 		Format: project.CurrentFormat,
-		ID:     uuid.MustNew(), Name: "MetadataTest", Title: "Metadata Test", DefaultLanguage: "ru",
+		ID:     uuid.MustNew(), Name: "MetadataTest", Title: project.LocalizedText{"ru": "Metadata Test"}, DefaultLanguage: "ru",
 		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}, {ID: uuid.MustNew(), Name: "Українська", Title: "Українська", Code: "uk"}},
 	}
 }

@@ -99,7 +99,7 @@ func TestSourcePathsRejectTraversalAndSymlinks(t *testing.T) {
 	t.Parallel()
 
 	workspace, _, filePath := createModuleSource(t, "Тест();\n")
-	for _, unsafe := range []string{"../mlproject.yaml", "/etc/passwd", `modules\\file.bsl`, "assets/file.txt"} {
+	for _, unsafe := range []string{"../configuration.yaml", "/etc/passwd", `modules\\file.bsl`, "assets/file.txt"} {
 		if _, err := workspace.ReadSource(unsafe); !errors.Is(err, ErrInvalidSourcePath) {
 			t.Errorf("ReadSource(%q) error = %v", unsafe, err)
 		}
@@ -127,20 +127,20 @@ func TestManifestSaveIsValidatedCanonicalAndIdentitySafe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, err := workspace.ReadSource(project.ManifestFile)
+	opened, err := workspace.ReadSource(project.ConfigurationFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated := strings.Replace(opened.Content, "title: Продажи и склад", "title: Новое название", 1)
-	saved, err := workspace.SaveSource(project.ManifestFile, updated, opened.Revision)
+	updated := strings.Replace(opened.Content, "ru: Продажи и склад", "ru: Новое название", 1)
+	saved, err := workspace.SaveSource(project.ConfigurationFile, updated, opened.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(saved.Content, "title: Новое название\n") {
+	if !strings.Contains(saved.Content, "ru: Новое название\n") {
 		t.Fatalf("canonical manifest = %s", saved.Content)
 	}
 	changedID := strings.Replace(saved.Content, saved.Content[strings.Index(saved.Content, "id: ")+4:strings.Index(saved.Content, "id: ")+40], uuid.MustNew().String(), 1)
-	if _, err := workspace.SaveSource(project.ManifestFile, changedID, saved.Revision); !errors.Is(err, project.ErrProjectIdentityChanged) {
+	if _, err := workspace.SaveSource(project.ConfigurationFile, changedID, saved.Revision); !errors.Is(err, project.ErrProjectIdentityChanged) {
 		t.Fatalf("identity change error = %v", err)
 	}
 }

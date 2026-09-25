@@ -159,7 +159,7 @@ func inspect(ctx context.Context, root string, state SourceState) (Manifest, err
 }
 
 func canonicalSourcePaths(root string) ([]string, error) {
-	paths := []string{project.ManifestFile}
+	paths := []string{project.ConfigurationFile}
 	for _, directory := range project.RootDirectories() {
 		err := filepath.WalkDir(filepath.Join(root, directory), func(current string, entry fs.DirEntry, walkErr error) error {
 			if walkErr != nil {

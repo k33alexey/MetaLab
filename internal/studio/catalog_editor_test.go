@@ -35,7 +35,7 @@ func TestCatalogEditorCreateReadSaveAndConflicts(t *testing.T) {
 	if _, err := workspace.CreateCatalog("../Справочник"); err == nil {
 		t.Fatal("invalid name accepted")
 	}
-	if _, err := workspace.ReadCatalogEditor("mlproject.yaml"); !errors.Is(err, ErrInvalidSourcePath) {
+	if _, err := workspace.ReadCatalogEditor("configuration.yaml"); !errors.Is(err, ErrInvalidSourcePath) {
 		t.Fatalf("non-catalog path: %v", err)
 	}
 	if _, err := workspace.ReadCatalogEditor("metadata/catalogs/" + created.Catalog.ID.String() + ".yaml"); !errors.Is(err, ErrInvalidSourcePath) {

@@ -9,6 +9,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 	"github.com/k33alexey/MetaLab/internal/bsl/vm"
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -32,7 +33,7 @@ func sessionModuleRuntime(t *testing.T, source string) *Runtime {
 		return runtime
 	}
 	program, diagnostics := compiler.CompileModules([]compiler.ModuleSource{{
-		Name: SessionModuleName, Filename: "session-module.bsl", Source: source, DefaultContext: syntax.ContextServer,
+		Name: SessionModuleName, Filename: project.SessionModuleFile, Source: source, DefaultContext: syntax.ContextServer,
 	}})
 	if program == nil {
 		t.Fatalf("session module did not compile: %v", diagnostics)

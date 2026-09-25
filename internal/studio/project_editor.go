@@ -27,7 +27,7 @@ func canonicalEnglish(existing project.Language) project.Language {
 }
 
 // ProjectEditorSource is the typed, revision-safe representation the
-// visual project editor reads and writes, in place of raw mlproject.yaml.
+// visual project editor reads and writes, in place of raw configuration.yaml.
 type ProjectEditorSource struct {
 	Path     string          `json:"path"`
 	Revision string          `json:"revision"`
@@ -41,15 +41,15 @@ func (workspace *Workspace) ReadProjectEditor() (ProjectEditorSource, error) {
 }
 
 func (workspace *Workspace) readProjectEditorLocked() (ProjectEditorSource, error) {
-	file, err := workspace.readSource(project.ManifestFile)
+	file, err := workspace.readSource(project.ConfigurationFile)
 	if err != nil {
 		return ProjectEditorSource{}, err
 	}
-	manifest, err := project.DecodeSource(project.ManifestFile, strings.NewReader(file.Content))
+	manifest, err := project.DecodeSource(project.ConfigurationFile, strings.NewReader(file.Content))
 	if err != nil {
 		return ProjectEditorSource{}, err
 	}
-	return ProjectEditorSource{Path: project.ManifestFile, Revision: file.Revision, Manifest: withEnglishLanguage(manifest)}, nil
+	return ProjectEditorSource{Path: project.ConfigurationFile, Revision: file.Revision, Manifest: withEnglishLanguage(manifest)}, nil
 }
 
 // withEnglishLanguage guarantees English is present and canonical — added
@@ -114,16 +114,61 @@ func (workspace *Workspace) SaveProjectEditor(manifest project.Project, revision
 	if err != nil {
 		return ProjectEditorSource{}, err
 	}
+	manifest = withoutRemovedTranslations(manifest)
 	var encoded bytes.Buffer
 	if err := project.Encode(&encoded, manifest); err != nil {
 		return ProjectEditorSource{}, err
 	}
-	saved, err := workspace.saveSourceLocked(project.ManifestFile, encoded.String(), revision)
+	saved, err := workspace.saveSourceLocked(project.ConfigurationFile, encoded.String(), revision)
 	if err != nil {
 		return ProjectEditorSource{}, err
 	}
 	opened.Manifest, opened.Revision = manifest, saved.Revision
 	return opened, nil
+}
+
+// withoutRemovedTranslations drops the texts of the configuration root written
+// in languages the project no longer has.
+//
+// Removing a language removes what was written in it - that is what removing a
+// language means, and keeping the text would leave the project refusing to
+// save over a translation nobody can read any more. The synonym is the one
+// text that cannot simply vanish, because a configuration without one is not
+// valid: if its last translation went with the language, the project's own
+// name stands in, in the language the project now reads in. The name is an
+// identifier and says nothing in any particular language, so it is the one
+// honest thing to put there.
+func withoutRemovedTranslations(manifest project.Project) project.Project {
+	kept := make(map[string]bool, len(manifest.Languages))
+	for _, language := range manifest.Languages {
+		kept[strings.ToLower(language.Code)] = true
+	}
+	prune := func(text project.LocalizedText) project.LocalizedText {
+		if len(text) == 0 {
+			return text
+		}
+		result := make(project.LocalizedText, len(text))
+		for code, value := range text {
+			if kept[strings.ToLower(code)] {
+				result[code] = value
+			}
+		}
+		if len(result) == 0 {
+			return nil
+		}
+		return result
+	}
+	manifest.Title = prune(manifest.Title)
+	if len(manifest.Title) == 0 {
+		manifest.Title = project.LocalizedText{manifest.DefaultLanguage: manifest.Name}
+	}
+	manifest.BriefInformation = prune(manifest.BriefInformation)
+	manifest.DetailedInformation = prune(manifest.DetailedInformation)
+	manifest.Copyright = prune(manifest.Copyright)
+	manifest.VendorAddress = prune(manifest.VendorAddress)
+	manifest.InformationAddress = prune(manifest.InformationAddress)
+	manifest.UpdateCatalogAddress = prune(manifest.UpdateCatalogAddress)
+	return manifest
 }
 
 func registerProjectEditorRoutes(routes *http.ServeMux, workspace *Workspace) {

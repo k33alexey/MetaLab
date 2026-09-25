@@ -15,6 +15,14 @@ import (
 // than by a UUID - see moduleNameDescriptors, which must stay in sync.
 const SessionModuleName = "МодульСеанса"
 
+// ApplicationModuleName is the canonical name of the project's application
+// module inside a compiled program, named by its role for the same reason.
+//
+// What the module does - the routines the platform calls as the application
+// starts and stops - is the business of the block that runs an application;
+// what the root owes it here is a place to lie and a name to compile under.
+const ApplicationModuleName = "МодульПриложения"
+
 const (
 	setSessionParametersRU = "УстановкаПараметровСеанса"
 	setSessionParametersEN = "SetSessionParameters"

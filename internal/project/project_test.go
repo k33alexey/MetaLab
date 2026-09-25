@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -13,7 +14,8 @@ import (
 const validYAML = `format: 1
 id: 018f1f72-3b4c-7d6e-8f90-123456789abc
 name: SalesDemo
-title: Продажи и склад
+title:
+  ru: Продажи и склад
 default_language: ru
 languages:
   - id: 018f1f72-3b4c-7d6e-8f90-000000000001
@@ -36,7 +38,8 @@ languages:
 const legacyYAML = `format: 1
 id: 018f1f72-3b4c-7d6e-8f90-123456789abc
 name: SalesDemo
-title: Продажи и склад
+title:
+  ru: Продажи и склад
 default_language: ru
 languages:
   - name: Русский
@@ -146,9 +149,9 @@ func TestUnsupportedFormatIsMatchableAndStructured(t *testing.T) {
 func TestValidationDiagnosticIncludesNamedSource(t *testing.T) {
 	t.Parallel()
 
-	input := strings.Replace(validYAML, "title: Продажи и склад", "title: ''", 1)
-	_, err := DecodeSource("mlproject.yaml", strings.NewReader(input))
-	if err == nil || !strings.Contains(err.Error(), "validate mlproject.yaml") || !strings.Contains(err.Error(), "title") {
+	input := strings.Replace(validYAML, "  ru: Продажи и склад", "  ru: ''", 1)
+	_, err := DecodeSource("configuration.yaml", strings.NewReader(input))
+	if err == nil || !strings.Contains(err.Error(), "validate configuration.yaml") || !strings.Contains(err.Error(), "title") {
 		t.Fatalf("DecodeSource() error = %v", err)
 	}
 }
@@ -193,11 +196,11 @@ func TestValidateRejectsUnboundedOrControlText(t *testing.T) {
 
 	value := Project{
 		Format: CurrentFormat, ID: uuid.MustNew(), Name: "A" + strings.Repeat("b", 128),
-		Title: "Unsafe\nTitle", DefaultLanguage: "ru",
+		Title: LocalizedText{"ru": "Unsafe\nTitle"}, DefaultLanguage: "ru",
 		Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
 	}
 	err := value.Validate()
-	if err == nil || !strings.Contains(err.Error(), "name must not exceed 128") || !strings.Contains(err.Error(), "title must contain") {
+	if err == nil || !strings.Contains(err.Error(), "name must not exceed 128") || !strings.Contains(err.Error(), "title.ru must contain") {
 		t.Fatalf("Validate() error = %v", err)
 	}
 }
@@ -209,7 +212,7 @@ func TestValidateAcceptsUnicodeIdentifiersAndRegion(t *testing.T) {
 		Format:          CurrentFormat,
 		ID:              uuid.MustNew(),
 		Name:            "Торгівля2",
-		Title:           "Торгівля",
+		Title:           LocalizedText{"uk-UA": "Торгівля"},
 		DefaultLanguage: "uk-UA",
 		Languages: []Language{
 			{ID: uuid.MustNew(), Name: "Українська", Title: "Українська", Code: "uk-UA"},
@@ -310,7 +313,7 @@ func TestValidateRejectsDuplicateLanguageIdentities(t *testing.T) {
 	t.Parallel()
 	shared := uuid.MustNew()
 	value := Project{
-		Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo", Title: "Demo", DefaultLanguage: "ru",
+		Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo", Title: LocalizedText{"ru": "Demo"}, DefaultLanguage: "ru",
 		Languages: []Language{
 			{ID: shared, Name: "Русский", Title: "Русский", Code: "ru"},
 			{ID: shared, Name: "English", Title: "English", Code: "en"},
@@ -318,5 +321,127 @@ func TestValidateRejectsDuplicateLanguageIdentities(t *testing.T) {
 	}
 	if err := value.Validate(); err == nil {
 		t.Fatal("two languages with one identity were accepted")
+	}
+}
+
+// The root is the configuration itself, so it says what the configuration is,
+// who made it and where to read about it. None of it was in the model, so a
+// real configuration lost all of it at once.
+func TestRootCarriesWhatTheConfigurationSaysAboutItself(t *testing.T) {
+	t.Parallel()
+
+	const source = `format: 1
+id: 018f1f72-3b4c-7d6e-8f90-123456789abc
+name: SalesDemo
+title:
+  ru: Продажи и склад
+  en: Sales and warehouse
+comment: Для целей тестирования
+default_language: ru
+languages:
+  - id: 018f1f72-3b4c-7d6e-8f90-000000000001
+    name: Русский
+    title: Русский
+    code: ru
+  - id: 018f1f72-3b4c-7d6e-8f90-000000000003
+    name: English
+    title: English
+    code: en
+brief_information:
+  ru: Торговля со склада
+detailed_information:
+  ru: Закупки, продажи и остатки на складах
+vendor: MetaLab
+version: 1.0.0.1
+copyright:
+  ru: © MetaLab, 2026
+vendor_address:
+  ru: https://example.org/vendor
+information_address:
+  ru: https://example.org/configuration
+update_catalog_address:
+  ru: https://example.org/updates
+`
+	value, err := Decode(strings.NewReader(source))
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	switch {
+	case value.Title["ru"] != "Продажи и склад" || value.Title["en"] != "Sales and warehouse":
+		t.Fatalf("the synonym came back as %+v", value.Title)
+	case value.Comment != "Для целей тестирования":
+		t.Fatalf("comment = %q", value.Comment)
+	case value.BriefInformation["ru"] != "Торговля со склада":
+		t.Fatalf("brief information = %+v", value.BriefInformation)
+	case value.DetailedInformation["ru"] != "Закупки, продажи и остатки на складах":
+		t.Fatalf("detailed information = %+v", value.DetailedInformation)
+	case value.Vendor != "MetaLab" || value.Version != "1.0.0.1":
+		t.Fatalf("vendor = %q, version = %q", value.Vendor, value.Version)
+	case value.Copyright["ru"] != "© MetaLab, 2026":
+		t.Fatalf("copyright = %+v", value.Copyright)
+	case value.VendorAddress["ru"] != "https://example.org/vendor":
+		t.Fatalf("vendor address = %+v", value.VendorAddress)
+	case value.InformationAddress["ru"] != "https://example.org/configuration":
+		t.Fatalf("information address = %+v", value.InformationAddress)
+	case value.UpdateCatalogAddress["ru"] != "https://example.org/updates":
+		t.Fatalf("update catalog address = %+v", value.UpdateCatalogAddress)
+	}
+
+	// Writing it back and reading it again gives the same project: a property
+	// that survives one round trip but not two is a property that is lost the
+	// moment anyone edits the file.
+	var written bytes.Buffer
+	if err := Encode(&written, value); err != nil {
+		t.Fatal(err)
+	}
+	again, err := Decode(bytes.NewReader(written.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(value, again) {
+		t.Fatalf("the root did not survive a round trip:\n%+v\n%+v", value, again)
+	}
+}
+
+// Every text of the root is checked against the languages the root itself
+// declares. A synonym in a language the project does not have would be a
+// translation nobody can ever read.
+func TestRootTextsAreCheckedAgainstTheProjectLanguages(t *testing.T) {
+	t.Parallel()
+
+	base := func() Project {
+		return Project{
+			Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo",
+			Title: LocalizedText{"ru": "Демо"}, DefaultLanguage: "ru",
+			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
+		}
+	}
+	if err := base().Validate(); err != nil {
+		t.Fatalf("a correct root was refused: %v", err)
+	}
+	for name, broken := range map[string]func(value *Project){
+		"синонима нет вовсе":              func(value *Project) { value.Title = nil },
+		"синоним на языке, которого нет":  func(value *Project) { value.Title = LocalizedText{"de": "Demo"} },
+		"авторские права на чужом языке":  func(value *Project) { value.Copyright = LocalizedText{"de": "©"} },
+		"адрес с управляющим символом":    func(value *Project) { value.InformationAddress = LocalizedText{"ru": "http://a\nb"} },
+		"краткая информация пуста":        func(value *Project) { value.BriefInformation = LocalizedText{"ru": "  "} },
+		"версия с управляющим символом":   func(value *Project) { value.Version = "1.0\n0" },
+		"комментарий с управляющим сим-м": func(value *Project) { value.Comment = "первая\nвторая" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			value := base()
+			broken(&value)
+			if err := value.Validate(); err == nil {
+				t.Fatal("the root was accepted")
+			}
+		})
+	}
+
+	// What a configuration chose not to fill in is not an error: only the
+	// synonym has to be there.
+	value := base()
+	if err := value.Validate(); err != nil {
+		t.Fatalf("a root with only a synonym was refused: %v", err)
 	}
 }
