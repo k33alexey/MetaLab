@@ -102,3 +102,28 @@ test('default roles keep their order and are granted once',()=>{
   model.setRoleGranted('r1',false);
   assert.equal('defaultRoles' in model.value(),false);
 });
+// Словарь поиска — пара «вид и объект»: один и тот же идентификатор у макета и
+// у константы означает разные словари, и снятый последний словарь уносит
+// список целиком.
+test('a search dictionary is a kind and an object, not an identifier alone',()=>{
+  const model=create(fixture());
+  model.setDictionary('common-templates','d1',true);
+  model.setDictionary('constants','d1',true);
+  assert.deepEqual(model.value().additionalFullTextSearchDictionaries,
+    [{kind:'common-templates',object:'d1'},{kind:'constants',object:'d1'}]);
+  model.setDictionary('common-templates','d1',false);
+  assert.deepEqual(model.value().additionalFullTextSearchDictionaries,[{kind:'constants',object:'d1'}]);
+  model.setDictionary('constants','d1',false);
+  assert.equal('additionalFullTextSearchDictionaries' in model.value(),false);
+});
+// Режим — слово из набора, и «как в ML» — это отсутствие свойства, а не пустая
+// строка в файле.
+test('a mode set back to the platform default disappears from the root',()=>{
+  const model=create(fixture());
+  model.setField('dataLockControl','managed');model.setField('scriptVariant','russian');
+  assert.equal(model.value().dataLockControl,'managed');
+  model.setField('dataLockControl','');
+  const saved=model.value();
+  assert.equal('dataLockControl' in saved,false);
+  assert.equal(saved.scriptVariant,'russian');
+});

@@ -58,6 +58,21 @@ type DefaultChoices struct {
 	CommonForms         []DefaultChoice `json:"commonForms"`
 	AppearanceTemplates []DefaultChoice `json:"appearanceTemplates"`
 	SettingsStorages    []DefaultChoice `json:"settingsStorages"`
+	// Dictionaries is what may serve as an additional dictionary of the
+	// full-text search: any common template, or any constant. The two are one
+	// list rather than two, because the root chooses a dictionary and not a
+	// kind of object, and each entry says which kind it is.
+	Dictionaries []DictionaryChoice `json:"dictionaries"`
+}
+
+// DictionaryChoice is one object the full-text search may be given as a
+// dictionary, and the kind it is: without the kind the browser would send back
+// an identifier the root cannot store.
+type DictionaryChoice struct {
+	Kind  project.DictionaryKind `json:"kind"`
+	ID    uuid.UUID              `json:"id"`
+	Name  string                 `json:"name"`
+	Title metadata.LocalizedText `json:"title"`
 }
 
 // loadDefaultChoices reads what the root's defaults may name.
@@ -91,6 +106,14 @@ func loadDefaultChoices(root string, configuration project.Project) DefaultChoic
 	}
 	for _, item := range catalog.SettingsStorages {
 		choices.SettingsStorages = append(choices.SettingsStorages, DefaultChoice{ID: item.ID, Name: item.Name, Title: item.Title})
+	}
+	for _, item := range catalog.CommonTemplates {
+		choices.Dictionaries = append(choices.Dictionaries,
+			DictionaryChoice{Kind: project.TemplateDictionary, ID: item.ID, Name: item.Name, Title: item.Title})
+	}
+	for _, item := range catalog.Constants {
+		choices.Dictionaries = append(choices.Dictionaries,
+			DictionaryChoice{Kind: project.ConstantDictionary, ID: item.ID, Name: item.Name, Title: item.Title})
 	}
 	forms, err := metadata.ReadCommonForms(root, configuration)
 	if err != nil {

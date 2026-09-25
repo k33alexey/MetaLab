@@ -35,6 +35,16 @@ function createProjectModel(source) {
        порядок сохраняется: снятая и снова поставленная роль встаёт в конец,
        потому что это и есть «добавили её сейчас». Роль, выданная дважды, не
        даёт больше прав, чем выданная однажды, поэтому повтор невозможен. */
+    /* Словарь полнотекстового поиска лежит либо в общем макете, либо в
+       константе, поэтому хранится парой «вид и объект»: по одному
+       идентификатору читатель файла гадал бы, куда смотреть. */
+    setDictionary(kind, id, used) {
+      const kept = (configuration.additionalFullTextSearchDictionaries || [])
+        .filter(item => !(item.kind === kind && item.object === id));
+      if (used) kept.push({kind, object: id});
+      if (kept.length === 0) delete configuration.additionalFullTextSearchDictionaries;
+      else configuration.additionalFullTextSearchDictionaries = kept;
+    },
     setRoleGranted(id, granted) {
       const kept = (configuration.defaultRoles || []).filter(item => item !== id);
       if (granted) kept.push(id);
@@ -139,6 +149,53 @@ function createProjectEditor(host, onChange) {
   }
   /* Ролей выдаётся сколько угодно, поэтому это не выбор одной строки, а список
      с отметками: видно сразу и что выдано, и что можно выдать. */
+  /* Режим — слово из известного набора, поэтому он выбирается, а не пишется.
+     Пустое значение названо своим смыслом: платформа делает по-своему, а не
+     вопрос остался без ответа. */
+  function choiceField(label, field, options) {
+    const wrapper = node('label', undefined, 'catalog-field');
+    wrapper.append(node('span', label));
+    const select = node('select');
+    for (const [value, text] of options) {
+      const option = node('option', text);
+      option.value = value;
+      select.append(option);
+    }
+    select.value = source.configuration[field] || '';
+    select.addEventListener('change', () => { model.setField(field, select.value); rerender(); });
+    wrapper.append(select);
+    return wrapper;
+  }
+  /* Словарей может быть сколько угодно, и каждый из них — либо общий макет,
+     либо константа: вид написан рядом с именем, чтобы не гадать, что выбрано. */
+  function dictionariesField(label) {
+    const wrapper = node('div', undefined, 'project-localized');
+    wrapper.append(node('span', label, 'project-localized-label'));
+    const list = node('div', undefined, 'project-roles');
+    const chosen = source.configuration.additionalFullTextSearchDictionaries || [];
+    const known = source.defaults?.dictionaries || [];
+    const used = (item) => chosen.some(entry => entry.kind === item.kind && entry.object === item.id);
+    const rows = known.map(item => ({kind: item.kind, id: item.id, title: presentation(item), missing: false}));
+    for (const entry of chosen) {
+      if (!known.some(item => item.kind === entry.kind && item.id === entry.object)) {
+        rows.push({kind: entry.kind, id: entry.object, title: 'Не найден в конфигурации: ' + entry.object, missing: true});
+      }
+    }
+    if (rows.length === 0) list.append(node('span', 'В конфигурации нет ни макетов, ни констант', 'project-empty'));
+    for (const item of rows) {
+      const row = node('label', undefined, item.missing ? 'project-role project-default-missing' : 'project-role');
+      const check = node('input');
+      check.type = 'checkbox';
+      check.checked = used(item);
+      check.addEventListener('change', () => { model.setDictionary(item.kind, item.id, check.checked); rerender(); });
+      row.append(check);
+      row.append(node('span', item.kind === 'constants' ? 'константа' : 'макет', 'project-language-chip'));
+      row.append(node('span', item.title));
+      list.append(row);
+    }
+    wrapper.append(list);
+    return wrapper;
+  }
   function rolesField(label) {
     const wrapper = node('div', undefined, 'project-localized');
     wrapper.append(node('span', label, 'project-localized-label'));
@@ -206,6 +263,12 @@ function createProjectEditor(host, onChange) {
     vendor.append(localizedField('Авторские права', 'copyright'));
     panel.append(vendor);
 
+    const addresses = section('Где о ней прочитать');
+    addresses.append(localizedField('Адрес поставщика', 'vendorAddress'));
+    addresses.append(localizedField('Адрес конфигурации', 'informationAddress'));
+    addresses.append(localizedField('Адрес обновлений', 'updateCatalogAddress'));
+    panel.append(addresses);
+
     /* Пятнадцать умолчаний корня: чем приложение рисуется, под какими правами
        работает, какие формы открывает за объект, который своей формы не
        называет, и куда складывает то, что сохранил пользователь. Основной язык
@@ -243,11 +306,28 @@ function createProjectEditor(host, onChange) {
     storages.append(note('Незаполненное хранилище означает хранилище платформы, а не потерянные настройки.'));
     panel.append(storages);
 
-    const addresses = section('Где о ней прочитать');
-    addresses.append(localizedField('Адрес поставщика', 'vendorAddress'));
-    addresses.append(localizedField('Адрес конфигурации', 'informationAddress'));
-    addresses.append(localizedField('Адрес обновлений', 'updateCatalogAddress'));
-    panel.append(addresses);
+    /* Настройки, которые не называют другой объект: чем запирается то, что
+       читается и пишется, что становится с неиспользованным номером, на каком
+       варианте языка написана конфигурация, с чего начинаются её имена и о
+       каких словарях, кроме собственных, знает полнотекстовый поиск. */
+    const settings = section('Как устроена сама конфигурация');
+    settings.append(choiceField('Управление блокировкой данных', 'dataLockControl', [
+      ['', 'Как в ML'], ['managed', 'Управляемый'], ['automatic', 'Автоматический'],
+      ['automatic-and-managed', 'Автоматический и управляемый'],
+    ]));
+    settings.append(choiceField('Автонумерация объектов', 'objectAutonumeration', [
+      ['', 'Как в ML'], ['release', 'Освобождать номер'], ['keep', 'Не освобождать номер'],
+    ]));
+    settings.append(choiceField('Вариант встроенного языка', 'scriptVariant', [
+      ['', 'Как в ML'], ['russian', 'Русский'], ['english', 'Английский'],
+    ]));
+    settings.append(textField('Префикс имён', source.configuration.namePrefix,
+      value => model.setField('namePrefix', value), {maxLength: 128}));
+    settings.append(dictionariesField('Дополнительные словари поиска'));
+    settings.append(note('Освобождённый номер достаётся следующему объекту, и в нумерации нет дыр; '
+      + 'неосвобождённый потрачен, даже если объект так и не записали.'));
+    panel.append(settings);
+
 
     host.append(panel);
   }

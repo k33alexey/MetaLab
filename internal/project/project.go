@@ -143,6 +143,84 @@ type Project struct {
 	ReportsVariantsStorage          *uuid.UUID `yaml:"reports_variants_storage,omitempty" json:"reportsVariantsStorage,omitempty"`
 	DynamicListsUserSettingsStorage *uuid.UUID `yaml:"dynamic_lists_user_settings_storage,omitempty" json:"dynamicListsUserSettingsStorage,omitempty"`
 	FormDataSettingsStorage         *uuid.UUID `yaml:"form_data_settings_storage,omitempty" json:"formDataSettingsStorage,omitempty"`
+	// What follows are the settings of the root that are not references: how
+	// data is locked, what happens to a number nobody used, in which variant
+	// of the language the configuration is written, what its names begin with
+	// and which dictionaries the full-text search is told about besides its
+	// own.
+	//
+	// Each is empty by default, and empty means the platform's own behaviour
+	// rather than an unanswered question: a configuration that says nothing
+	// about locking is locked the way ML locks, and that is the same answer it
+	// would get by saying so.
+	DataLockControl      DataLockControlMode      `yaml:"data_lock_control,omitempty" json:"dataLockControl,omitempty"`
+	ObjectAutonumeration ObjectAutonumerationMode `yaml:"object_autonumeration,omitempty" json:"objectAutonumeration,omitempty"`
+	ScriptVariant        ScriptVariant            `yaml:"script_variant,omitempty" json:"scriptVariant,omitempty"`
+	// NamePrefix is what the names of this configuration's own objects begin
+	// with. A library merged into an application prefixes its names so that
+	// two libraries holding a catalog of the same purpose do not collide.
+	NamePrefix string `yaml:"name_prefix,omitempty" json:"namePrefix,omitempty"`
+	// AdditionalFullTextSearchDictionaries name what the search is told about
+	// the language besides what the platform itself knows - forms of words and
+	// synonyms. A dictionary is kept in a common template or in a constant,
+	// so each one says which of the two it is: an identifier alone would make
+	// the reader of the file guess where to look.
+	AdditionalFullTextSearchDictionaries []DictionaryReference `yaml:"additional_full_text_search_dictionaries,omitempty" json:"additionalFullTextSearchDictionaries,omitempty"`
+}
+
+// DataLockControlMode says how the configuration locks the data it reads and
+// writes. Managed locking is what ML does; the other two are carried because a
+// transferred configuration says which one it was written for, and answering
+// "we changed it for you" without a word is not an answer.
+type DataLockControlMode string
+
+const (
+	AutomaticDataLock           DataLockControlMode = "automatic"
+	ManagedDataLock             DataLockControlMode = "managed"
+	AutomaticAndManagedDataLock DataLockControlMode = "automatic-and-managed"
+)
+
+// ObjectAutonumerationMode says what becomes of an automatically given number
+// when the object that took it was never written. Released, the number is
+// handed to the next object and the sequence has no holes; kept, it is spent
+// and the sequence does. Which of the two is right is the application's to
+// decide: a hole in an invoice numbering is a question from an auditor, and a
+// number reused after a rollback is a different document under a known number.
+type ObjectAutonumerationMode string
+
+const (
+	// ReleaseAutonumber hands an unused number back to the next object.
+	ReleaseAutonumber ObjectAutonumerationMode = "release"
+	// KeepAutonumber spends the number whether or not it was written.
+	KeepAutonumber ObjectAutonumerationMode = "keep"
+)
+
+// ScriptVariant says in which variant of the built-in language the
+// configuration is written. The language has two keyword sets meaning exactly
+// the same thing, and a configuration written in one of them reads as noise in
+// the other.
+type ScriptVariant string
+
+const (
+	RussianScript ScriptVariant = "russian"
+	EnglishScript ScriptVariant = "english"
+)
+
+// DictionaryKind is where an additional full-text search dictionary is kept:
+// in a common template or in a constant. A dictionary in a constant is one the
+// application fills at run time; a dictionary in a template is one it ships
+// with.
+type DictionaryKind string
+
+const (
+	TemplateDictionary DictionaryKind = "common-templates"
+	ConstantDictionary DictionaryKind = "constants"
+)
+
+// DictionaryReference names one additional dictionary of the full-text search.
+type DictionaryReference struct {
+	Kind   DictionaryKind `yaml:"kind" json:"kind"`
+	Object uuid.UUID      `yaml:"object" json:"object"`
 }
 
 // Language defines an interface language available in an ML Project.
@@ -408,6 +486,53 @@ func (p Project) Validate() error {
 			add(prefix, "must be unique")
 		}
 		seenRoles[role] = struct{}{}
+	}
+
+	// A mode is a word from a known set, and a word outside it is not a
+	// stricter setting but an unanswerable question: nothing downstream could
+	// decide what to do with it.
+	switch p.DataLockControl {
+	case "", AutomaticDataLock, ManagedDataLock, AutomaticAndManagedDataLock:
+	default:
+		add("data_lock_control", "must be automatic, managed or automatic-and-managed")
+	}
+	switch p.ObjectAutonumeration {
+	case "", ReleaseAutonumber, KeepAutonumber:
+	default:
+		add("object_autonumeration", "must be release or keep")
+	}
+	switch p.ScriptVariant {
+	case "", RussianScript, EnglishScript:
+	default:
+		add("script_variant", "must be russian or english")
+	}
+	// The prefix stands in front of a name, so it has to be something a name
+	// may begin with: a prefix that cannot be part of an identifier produces
+	// objects that cannot be named.
+	if p.NamePrefix != "" {
+		if !isIdentifier(p.NamePrefix) {
+			add("name_prefix", "must start with a letter and contain only letters or digits")
+		} else if utf8.RuneCountInString(p.NamePrefix) > 128 {
+			add("name_prefix", "must not exceed 128 characters")
+		}
+	}
+	seenDictionaries := make(map[DictionaryReference]struct{}, len(p.AdditionalFullTextSearchDictionaries))
+	for index, dictionary := range p.AdditionalFullTextSearchDictionaries {
+		prefix := fmt.Sprintf("additional_full_text_search_dictionaries[%d]", index)
+		switch dictionary.Kind {
+		case TemplateDictionary, ConstantDictionary:
+		default:
+			add(prefix+".kind", "must be common-templates or constants")
+		}
+		if dictionary.Object.IsZero() {
+			add(prefix+".object", "must be a non-zero UUID")
+			continue
+		}
+		// The same dictionary named twice is read twice and helps once.
+		if _, exists := seenDictionaries[dictionary]; exists {
+			add(prefix, "must be unique")
+		}
+		seenDictionaries[dictionary] = struct{}{}
 	}
 
 	if len(issues) > 0 {

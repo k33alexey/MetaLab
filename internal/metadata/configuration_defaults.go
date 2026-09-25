@@ -3,6 +3,7 @@ package metadata
 import (
 	"fmt"
 
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -80,7 +81,36 @@ func (catalog *Catalog) validateConfigurationDefaults(root string) error {
 				template.Name, template.Kind, CompositionAppearance)
 		}
 	}
+	if err := catalog.validateFullTextSearchDictionaries(); err != nil {
+		return err
+	}
 	return catalog.validateConfigurationDefaultForms(root)
+}
+
+// validateFullTextSearchDictionaries resolves the dictionaries the full-text
+// search is told about besides its own. Each is kept either in a common
+// template or in a constant, and each says which, so resolving one is a lookup
+// in a single place rather than a search through two.
+//
+// A dictionary that is not there is not a search that works slightly worse: it
+// is a search that will not start, and the configuration is the only place
+// where anybody still knows which dictionary was meant.
+func (catalog *Catalog) validateFullTextSearchDictionaries() error {
+	for _, dictionary := range catalog.Project.AdditionalFullTextSearchDictionaries {
+		switch dictionary.Kind {
+		case project.TemplateDictionary:
+			if _, ok := catalog.commonTemplateByID[dictionary.Object]; !ok {
+				return fmt.Errorf("the full-text search is given common template %s as a dictionary, which is not in the configuration",
+					dictionary.Object)
+			}
+		case project.ConstantDictionary:
+			if _, ok := catalog.constantByID[dictionary.Object]; !ok {
+				return fmt.Errorf("the full-text search is given constant %s as a dictionary, which is not in the configuration",
+					dictionary.Object)
+			}
+		}
+	}
+	return nil
 }
 
 // validateConfigurationDefaultForms resolves the five common forms the root

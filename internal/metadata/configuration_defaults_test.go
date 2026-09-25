@@ -258,3 +258,64 @@ func TestConfigurationDefaultRolesSurviveRoleEditing(t *testing.T) {
 		t.Fatalf("a role cannot be edited while the root names default roles: %v", err)
 	}
 }
+
+const (
+	defaultsDictionaryTemplate = "f1000000-0000-4000-8000-000000000060"
+	defaultsDictionaryConstant = "f1000000-0000-4000-8000-000000000061"
+)
+
+// A dictionary of the full-text search is kept either in a common template or
+// in a constant, and both are resolved by the kind the root wrote beside the
+// identifier: a dictionary that is not there is not a search that works a
+// little worse, it is a search that will not start.
+func TestFullTextSearchDictionariesAreResolvedByTheirKind(t *testing.T) {
+	t.Parallel()
+	root := defaultsProject(t)
+	writeCommonTemplate(t, root, defaultsDictionaryTemplate, "СловарьСинонимов", BinaryTemplate)
+	writeMetadata(t, root, ConstantKind, defaultsDictionaryConstant, `format: 1
+id: `+defaultsDictionaryConstant+`
+name: СловарьМорфологии
+title: {ru: Словарь морфологии}
+types: [{kind: string, length: 100}]
+`)
+	saveDefaults(t, root, func(configuration *project.Project) {
+		configuration.AdditionalFullTextSearchDictionaries = []project.DictionaryReference{
+			{Kind: project.TemplateDictionary, Object: *mustParse(t, defaultsDictionaryTemplate)},
+			{Kind: project.ConstantDictionary, Object: *mustParse(t, defaultsDictionaryConstant)},
+		}
+	})
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Project.AdditionalFullTextSearchDictionaries) != 2 {
+		t.Fatalf("a dictionary was lost: %+v", catalog.Project.AdditionalFullTextSearchDictionaries)
+	}
+
+	for name, dictionary := range map[string]project.DictionaryReference{
+		"макета нет":            {Kind: project.TemplateDictionary, Object: *mustParse(t, defaultsStranger)},
+		"константы нет":         {Kind: project.ConstantDictionary, Object: *mustParse(t, defaultsStranger)},
+		"вид перепутан":         {Kind: project.ConstantDictionary, Object: *mustParse(t, defaultsDictionaryTemplate)},
+		"вид перепутан ещё раз": {Kind: project.TemplateDictionary, Object: *mustParse(t, defaultsDictionaryConstant)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			broken := defaultsProject(t)
+			writeCommonTemplate(t, broken, defaultsDictionaryTemplate, "СловарьСинонимов", BinaryTemplate)
+			writeMetadata(t, broken, ConstantKind, defaultsDictionaryConstant, `format: 1
+id: `+defaultsDictionaryConstant+`
+name: СловарьМорфологии
+title: {ru: Словарь морфологии}
+types: [{kind: string, length: 100}]
+`)
+			saveDefaults(t, broken, func(configuration *project.Project) {
+				configuration.AdditionalFullTextSearchDictionaries = []project.DictionaryReference{dictionary}
+			})
+			if _, err := Load(broken); err == nil {
+				t.Fatal("a dictionary pointing at nothing was accepted")
+			} else if !strings.Contains(err.Error(), "as a dictionary") {
+				t.Fatalf("the error does not say what is wrong: %v", err)
+			}
+		})
+	}
+}

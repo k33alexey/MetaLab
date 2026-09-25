@@ -558,3 +558,113 @@ func TestRootDefaultsAreCheckedForShape(t *testing.T) {
 		t.Fatalf("a root without defaults was refused: %v", err)
 	}
 }
+
+// The settings of the root that name no other object survive the file, and an
+// empty one means the platform's own behaviour rather than a question left
+// unanswered.
+func TestRootSettingsSurviveTheFile(t *testing.T) {
+	t.Parallel()
+
+	const source = `format: 1
+id: 018f1f72-3b4c-7d6e-8f90-123456789abc
+name: SalesDemo
+title:
+  ru: Продажи и склад
+default_language: ru
+languages:
+  - id: 018f1f72-3b4c-7d6e-8f90-000000000001
+    name: Русский
+    title: Русский
+    code: ru
+data_lock_control: managed
+object_autonumeration: keep
+script_variant: russian
+name_prefix: бсп
+additional_full_text_search_dictionaries:
+  - {kind: common-templates, object: 018f1f72-3b4c-7d6e-8f90-000000000070}
+  - {kind: constants, object: 018f1f72-3b4c-7d6e-8f90-000000000071}
+`
+	value, err := Decode(strings.NewReader(source))
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	switch {
+	case value.DataLockControl != ManagedDataLock:
+		t.Fatalf("the data lock mode came back as %q", value.DataLockControl)
+	case value.ObjectAutonumeration != KeepAutonumber:
+		t.Fatalf("the autonumeration mode came back as %q", value.ObjectAutonumeration)
+	case value.ScriptVariant != RussianScript:
+		t.Fatalf("the script variant came back as %q", value.ScriptVariant)
+	case value.NamePrefix != "бсп":
+		t.Fatalf("the name prefix came back as %q", value.NamePrefix)
+	case len(value.AdditionalFullTextSearchDictionaries) != 2 ||
+		value.AdditionalFullTextSearchDictionaries[0].Kind != TemplateDictionary ||
+		value.AdditionalFullTextSearchDictionaries[1].Kind != ConstantDictionary:
+		t.Fatalf("the dictionaries came back as %+v", value.AdditionalFullTextSearchDictionaries)
+	}
+
+	var written bytes.Buffer
+	if err := Encode(&written, value); err != nil {
+		t.Fatal(err)
+	}
+	again, err := Decode(bytes.NewReader(written.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(value, again) {
+		t.Fatalf("the settings did not survive a round trip:\n%+v\n%+v", value, again)
+	}
+}
+
+// A mode is a word from a known set: a word outside it is not a stricter
+// setting but a question nothing downstream could answer.
+func TestRootSettingsAreCheckedForShape(t *testing.T) {
+	t.Parallel()
+
+	base := func() Project {
+		return Project{
+			Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo",
+			Title: LocalizedText{"ru": "Демо"}, DefaultLanguage: "ru",
+			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
+		}
+	}
+	dictionary := DictionaryReference{Kind: ConstantDictionary, Object: uuid.MustNew()}
+	for name, broken := range map[string]func(value *Project){
+		"блокировка не из набора":    func(value *Project) { value.DataLockControl = "strict" },
+		"автонумерация не из набора": func(value *Project) { value.ObjectAutonumeration = "sometimes" },
+		"вариант языка не из набора": func(value *Project) { value.ScriptVariant = "esperanto" },
+		"префикс с пробелом":         func(value *Project) { value.NamePrefix = "бсп " },
+		"словарь неизвестного вида": func(value *Project) {
+			value.AdditionalFullTextSearchDictionaries = []DictionaryReference{{Kind: "catalogs", Object: uuid.MustNew()}}
+		},
+		"словарь без объекта": func(value *Project) {
+			value.AdditionalFullTextSearchDictionaries = []DictionaryReference{{Kind: ConstantDictionary}}
+		},
+		"один словарь дважды": func(value *Project) {
+			value.AdditionalFullTextSearchDictionaries = []DictionaryReference{dictionary, dictionary}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			value := base()
+			broken(&value)
+			if err := value.Validate(); err == nil {
+				t.Fatal("the root was accepted")
+			}
+		})
+	}
+
+	// The same object named once as a template and once as a constant is two
+	// dictionaries, not one named twice.
+	twice := base()
+	object := uuid.MustNew()
+	twice.AdditionalFullTextSearchDictionaries = []DictionaryReference{
+		{Kind: TemplateDictionary, Object: object}, {Kind: ConstantDictionary, Object: object},
+	}
+	if err := twice.Validate(); err != nil {
+		t.Fatalf("two dictionaries of different kinds were refused: %v", err)
+	}
+	if err := base().Validate(); err != nil {
+		t.Fatalf("a root without settings was refused: %v", err)
+	}
+}

@@ -365,3 +365,55 @@ func TestProjectEditorKeepsADefaultPointingAtNothing(t *testing.T) {
 		}
 	}
 }
+
+// The settings of the root that name no other object are saved through the
+// editor, and the dictionaries of the full-text search are offered with the
+// kind each of them is: a common template and a constant are both dictionaries
+// and are not the same thing.
+func TestProjectEditorSavesTheSettingsOfTheRoot(t *testing.T) {
+	t.Parallel()
+	workspace, written := defaultsWorkspace(t)
+	opened, err := workspace.ReadProjectEditor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	offered := map[project.DictionaryKind]bool{}
+	for _, choice := range opened.Defaults.Dictionaries {
+		if choice.ID == written["appearance"] || choice.ID == written["spreadsheet"] {
+			offered[choice.Kind] = true
+		}
+	}
+	if !offered[project.TemplateDictionary] {
+		t.Fatalf("a common template was not offered as a dictionary: %+v", opened.Defaults.Dictionaries)
+	}
+
+	updated := opened.Configuration
+	updated.DataLockControl = project.ManagedDataLock
+	updated.ObjectAutonumeration = project.KeepAutonumber
+	updated.ScriptVariant = project.RussianScript
+	updated.NamePrefix = "бсп"
+	updated.AdditionalFullTextSearchDictionaries = []project.DictionaryReference{
+		{Kind: project.TemplateDictionary, Object: written["spreadsheet"]},
+	}
+	if _, err := workspace.SaveProjectEditor(updated, opened.Revision); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := workspace.ReadProjectEditor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := reopened.Configuration
+	switch {
+	case saved.DataLockControl != project.ManagedDataLock:
+		t.Fatalf("the data lock mode was lost: %q", saved.DataLockControl)
+	case saved.ObjectAutonumeration != project.KeepAutonumber:
+		t.Fatalf("the autonumeration mode was lost: %q", saved.ObjectAutonumeration)
+	case saved.ScriptVariant != project.RussianScript:
+		t.Fatalf("the script variant was lost: %q", saved.ScriptVariant)
+	case saved.NamePrefix != "бсп":
+		t.Fatalf("the name prefix was lost: %q", saved.NamePrefix)
+	case len(saved.AdditionalFullTextSearchDictionaries) != 1 ||
+		saved.AdditionalFullTextSearchDictionaries[0].Object != written["spreadsheet"]:
+		t.Fatalf("the dictionary was lost: %+v", saved.AdditionalFullTextSearchDictionaries)
+	}
+}
