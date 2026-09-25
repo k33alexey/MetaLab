@@ -154,7 +154,6 @@ var metadataTitles = map[string]string{
 	"information-registers":          "Регистры сведений",
 	"accumulation-registers":         "Регистры накопления",
 	"accounting-registers":           "Регистры бухгалтерии",
-	"folders":                        "Каталоги Studio",
 }
 
 // Open validates and opens an ML Project without mutating its files.
@@ -930,11 +929,6 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 			} else if !os.IsNotExist(err) {
 				return nil, fmt.Errorf("inspect metadata directory %q: %w", kind, err)
 			}
-		}
-		// Studio-only navigation grouping belongs inside each category's own
-		// list, never as its own top-level metadata category.
-		if kind == "folders" {
-			continue
 		}
 		// A common module keeps its BSL in the shared modules directory, so
 		// without this leaf the code would have no place in the tree at all:

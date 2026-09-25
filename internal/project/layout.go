@@ -200,7 +200,6 @@ var (
 		"business-processes",
 		"tasks",
 		"external-data-sources",
-		"folders",
 	}
 )
 

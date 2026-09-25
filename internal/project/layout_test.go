@@ -173,7 +173,7 @@ func TestMetadataCatalogContainsAgreedObjectTypes(t *testing.T) {
 		"enumerations", "reports", "data-processors", "charts-of-characteristic-types",
 		"charts-of-accounts", "charts-of-calculation-types", "information-registers",
 		"accumulation-registers", "accounting-registers", "calculation-registers",
-		"business-processes", "tasks", "external-data-sources", "folders",
+		"business-processes", "tasks", "external-data-sources",
 	}
 	if !slices.Equal(MetadataKinds(), want) {
 		t.Fatalf("MetadataKinds() = %v, want %v", MetadataKinds(), want)

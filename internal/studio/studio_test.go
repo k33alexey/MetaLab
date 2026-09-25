@@ -106,9 +106,6 @@ func TestWorkspaceSnapshotBuildsCanonicalTree(t *testing.T) {
 			t.Fatalf("storage directory %q must not be a tree branch: %+v", title, snapshot.Tree)
 		}
 	}
-	if treeContains(snapshot.Tree, "metadata/folders") || treeContainsTitle(snapshot.Tree, "Каталоги Studio") {
-		t.Fatalf("empty Studio folders branch should be hidden: %+v", snapshot.Tree)
-	}
 }
 
 func TestWorkspaceTreeAlwaysShowsFixedGroupsForDocumentsAndRegisters(t *testing.T) {
