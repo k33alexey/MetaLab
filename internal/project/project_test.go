@@ -668,3 +668,119 @@ func TestRootSettingsAreCheckedForShape(t *testing.T) {
 		t.Fatalf("a root without settings was refused: %v", err)
 	}
 }
+
+// The modes of the root survive the file. They act on nothing in ML, which is
+// precisely why the only thing that can go wrong with them is losing them.
+func TestRootModesSurviveTheFile(t *testing.T) {
+	t.Parallel()
+
+	const source = `format: 1
+id: 018f1f72-3b4c-7d6e-8f90-123456789abc
+name: SalesDemo
+title:
+  ru: Продажи и склад
+default_language: ru
+languages:
+  - id: 018f1f72-3b4c-7d6e-8f90-000000000001
+    name: Русский
+    title: Русский
+    code: ru
+default_run_mode: managed-application
+use_purposes: [personal-computer, mobile-device]
+use_managed_forms_in_ordinary_application: true
+modality_use: use-with-warnings
+synchronous_platform_extension_call_use: use
+synchronous_extension_call_use: do-not-use
+interface_compatibility: taxi-allow-version-8-2
+main_window_mode: normal
+database_tablespaces_use: do-not-use
+binary_data_storage: use
+binary_data_block_storage_use: do-not-use
+compatibility_version: 8.3.21
+extension_compatibility_version: 8.3.27
+include_help_in_contents: true
+`
+	value, err := Decode(strings.NewReader(source))
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	switch {
+	case value.DefaultRunMode != ManagedApplicationRunMode:
+		t.Fatalf("the run mode came back as %q", value.DefaultRunMode)
+	case len(value.UsePurposes) != 2 || value.UsePurposes[0] != PersonalComputerPurpose:
+		t.Fatalf("the purposes came back as %+v", value.UsePurposes)
+	case !value.UseManagedFormsInOrdinaryApplication || value.UseOrdinaryFormsInManagedApplication:
+		t.Fatalf("the form flags came back as %+v", value)
+	case value.ModalityUse != UsedWithWarning || value.SynchronousPlatformExtensionCallUse != Used ||
+		value.SynchronousExtensionCallUse != NotUsed:
+		t.Fatalf("a use mode was lost: %+v", value)
+	case value.InterfaceCompatibility != TaxiAllowVersion82Interface || value.MainWindowMode != NormalWindow:
+		t.Fatalf("an interface mode was lost: %+v", value)
+	case value.DatabaseTablespacesUse != NotUsed || value.BinaryDataStorage != Used ||
+		value.BinaryDataBlockStorageUse != NotUsed:
+		t.Fatalf("a storage mode was lost: %+v", value)
+	case value.CompatibilityVersion != "8.3.21" || value.ExtensionCompatibilityVersion != "8.3.27":
+		t.Fatalf("a compatibility version was lost: %+v", value)
+	case !value.IncludeHelpInContents:
+		t.Fatal("the help flag was lost")
+	}
+
+	var written bytes.Buffer
+	if err := Encode(&written, value); err != nil {
+		t.Fatal(err)
+	}
+	again, err := Decode(bytes.NewReader(written.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(value, again) {
+		t.Fatalf("the modes did not survive a round trip:\n%+v\n%+v", value, again)
+	}
+}
+
+// A mode is checked for being a mode at all. The compatibility version is the
+// one that is not checked against a list: the list is another platform's
+// release history, and refusing a release we had not heard of would lose
+// exactly what carrying the mode was for.
+func TestRootModesAreCheckedForShape(t *testing.T) {
+	t.Parallel()
+
+	base := func() Project {
+		return Project{
+			Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo",
+			Title: LocalizedText{"ru": "Демо"}, DefaultLanguage: "ru",
+			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
+		}
+	}
+	for name, broken := range map[string]func(value *Project){
+		"режим запуска не из набора": func(value *Project) { value.DefaultRunMode = "web" },
+		"назначение не из набора":    func(value *Project) { value.UsePurposes = []UsePurpose{"watch"} },
+		"назначение дважды": func(value *Project) {
+			value.UsePurposes = []UsePurpose{PersonalComputerPurpose, PersonalComputerPurpose}
+		},
+		"модальность не из набора":              func(value *Project) { value.ModalityUse = "maybe" },
+		"предупреждение там, где его нет":       func(value *Project) { value.DatabaseTablespacesUse = UsedWithWarning },
+		"двоичные данные с предупреждением":     func(value *Project) { value.BinaryDataStorage = UsedWithWarning },
+		"совместимость интерфейса не из набора": func(value *Project) { value.InterfaceCompatibility = "версия 7.7" },
+		"окно не из набора":                     func(value *Project) { value.MainWindowMode = "widget" },
+		"версия не версия":                      func(value *Project) { value.CompatibilityVersion = "восьмая" },
+		"версия из одного числа":                func(value *Project) { value.ExtensionCompatibilityVersion = "8" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			value := base()
+			broken(&value)
+			if err := value.Validate(); err == nil {
+				t.Fatal("the root was accepted")
+			}
+		})
+	}
+
+	// A release we have never heard of is accepted, because the release
+	// history is not ours to enumerate.
+	future := base()
+	future.CompatibilityVersion = "8.4.99"
+	if err := future.Validate(); err != nil {
+		t.Fatalf("an unknown release was refused: %v", err)
+	}
+}

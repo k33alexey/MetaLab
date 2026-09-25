@@ -38,6 +38,13 @@ function createProjectModel(source) {
     /* Словарь полнотекстового поиска лежит либо в общем макете, либо в
        константе, поэтому хранится парой «вид и объект»: по одному
        идентификатору читатель файла гадал бы, куда смотреть. */
+    setFlag(field, on) { if (on) configuration[field] = true; else delete configuration[field]; },
+    /* Назначение, названное дважды, остаётся одним назначением. */
+    setPurpose(purpose, used) {
+      const kept = (configuration.usePurposes || []).filter(item => item !== purpose);
+      if (used) kept.push(purpose);
+      if (kept.length === 0) delete configuration.usePurposes; else configuration.usePurposes = kept;
+    },
     setDictionary(kind, id, used) {
       const kept = (configuration.additionalFullTextSearchDictionaries || [])
         .filter(item => !(item.kind === kind && item.object === id));
@@ -220,6 +227,34 @@ function createProjectEditor(host, onChange) {
     wrapper.append(list);
     return wrapper;
   }
+  function checkField(label, field) {
+    const wrapper = node('label', undefined, 'project-role');
+    const check = node('input');
+    check.type = 'checkbox';
+    check.checked = Boolean(source.configuration[field]);
+    check.addEventListener('change', () => { model.setFlag(field, check.checked); touch(); });
+    wrapper.append(check);
+    wrapper.append(node('span', label));
+    return wrapper;
+  }
+  function purposesField(label) {
+    const wrapper = node('div', undefined, 'project-localized');
+    wrapper.append(node('span', label, 'project-localized-label'));
+    const list = node('div', undefined, 'project-roles');
+    const chosen = source.configuration.usePurposes || [];
+    for (const [value, text] of [['personal-computer', 'Персональный компьютер'], ['mobile-device', 'Мобильное устройство']]) {
+      const row = node('label', undefined, 'project-role');
+      const check = node('input');
+      check.type = 'checkbox';
+      check.checked = chosen.includes(value);
+      check.addEventListener('change', () => { model.setPurpose(value, check.checked); touch(); });
+      row.append(check);
+      row.append(node('span', text));
+      list.append(row);
+    }
+    wrapper.append(list);
+    return wrapper;
+  }
   function note(text) { return node('p', text, 'project-note'); }
   function section(title) {
     const block = node('section', undefined, 'project-section');
@@ -327,6 +362,63 @@ function createProjectEditor(host, onChange) {
     settings.append(note('Освобождённый номер достаётся следующему объекту, и в нумерации нет дыр; '
       + 'неосвобождённый потрачен, даже если объект так и не записали.'));
     panel.append(settings);
+
+    /* Режимы прототипа. Почти все описывают поведение, которого в ML нет
+       вовсе: обычное приложение, модальные окна, синхронные вызовы расширений
+       и внешних компонент, табличные пространства и совместимость с прежними
+       выпусками. Они хранятся и показываются, но ни на что не влияют, — и
+       раздел говорит об этом прямо, чтобы никто не искал, почему выбранное
+       ничего не меняет. */
+    const modes = section('Режимы прототипа');
+    modes.append(note('ML исполняет только то, что умеет сам: управляемое приложение без модальных окон '
+      + 'и без синхронных вызовов. Всё в этом разделе переносится, показывается и ни на что не влияет — '
+      + 'но и не теряется: перенесённая конфигурация не должна молча лишаться части своих свойств.'));
+    modes.append(choiceField('Основной режим запуска', 'defaultRunMode', [
+      ['', 'Не задан'], ['managed-application', 'Управляемое приложение'],
+      ['ordinary-application', 'Обычное приложение'], ['auto', 'Автоматически'],
+    ]));
+    modes.append(purposesField('Назначение использования'));
+    modes.append(choiceField('Модальность', 'modalityUse', [
+      ['', 'Не задана'], ['do-not-use', 'Не использовать'], ['use', 'Использовать'],
+      ['use-with-warnings', 'Использовать с предупреждениями'],
+    ]));
+    modes.append(choiceField('Синхронные вызовы расширений платформы', 'synchronousPlatformExtensionCallUse', [
+      ['', 'Не задано'], ['do-not-use', 'Не использовать'], ['use', 'Использовать'],
+      ['use-with-warnings', 'Использовать с предупреждениями'],
+    ]));
+    modes.append(choiceField('Синхронные вызовы расширений (до 8.3.8)', 'synchronousExtensionCallUse', [
+      ['', 'Не задано'], ['do-not-use', 'Не использовать'], ['use', 'Использовать'],
+      ['use-with-warnings', 'Использовать с предупреждениями'],
+    ]));
+    modes.append(choiceField('Совместимость интерфейса', 'interfaceCompatibility', [
+      ['', 'Не задана'], ['taxi', 'Такси'], ['taxi-allow-version-8-2', 'Такси, разрешить 8.2'],
+      ['version-8-2-allow-taxi', '8.2, разрешить Такси'], ['version-8-2', 'Версия 8.2'],
+    ]));
+    modes.append(choiceField('Основное окно приложения', 'mainWindowMode', [
+      ['', 'Не задано'], ['normal', 'Обычное'], ['workplace', 'Рабочее место'],
+      ['fullscreen-workplace', 'Полноэкранное рабочее место'],
+      ['embedded-workplace', 'Встроенное рабочее место'], ['kiosk', 'Киоск'],
+    ]));
+    modes.append(choiceField('Табличные пространства базы', 'databaseTablespacesUse', [
+      ['', 'Не задано'], ['do-not-use', 'Не использовать'], ['use', 'Использовать'],
+    ]));
+    modes.append(choiceField('Хранилище двоичных данных', 'binaryDataStorage', [
+      ['', 'Не задано'], ['do-not-use', 'Не использовать'], ['use', 'Использовать'],
+    ]));
+    modes.append(choiceField('Блочное хранение двоичных данных', 'binaryDataBlockStorageUse', [
+      ['', 'Не задано'], ['do-not-use', 'Не использовать'], ['use', 'Использовать'],
+    ]));
+    modes.append(textField('Режим совместимости', source.configuration.compatibilityVersion,
+      value => model.setField('compatibilityVersion', value), {maxLength: 16, placeholder: '8.3.21'}));
+    modes.append(textField('Совместимость расширений', source.configuration.extensionCompatibilityVersion,
+      value => model.setField('extensionCompatibilityVersion', value), {maxLength: 16, placeholder: '8.3.27'}));
+    modes.append(checkField('Использовать управляемые формы в обычном приложении', 'useManagedFormsInOrdinaryApplication'));
+    modes.append(checkField('Использовать обычные формы в управляемом приложении', 'useOrdinaryFormsInManagedApplication'));
+    modes.append(checkField('Включать в содержание справки', 'includeHelpInContents'));
+    modes.append(note('Режим совместимости — выпуск прототипа, на который писалась конфигурация: '
+      + 'пустое поле означает, что ни на какой прежний выпуск она не оглядывается. Список выпусков '
+      + 'растёт без нас, поэтому он и не список, а версия.'));
+    panel.append(modes);
 
 
     host.append(panel);

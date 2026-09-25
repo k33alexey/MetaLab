@@ -417,3 +417,48 @@ func TestProjectEditorSavesTheSettingsOfTheRoot(t *testing.T) {
 		t.Fatalf("the dictionary was lost: %+v", saved.AdditionalFullTextSearchDictionaries)
 	}
 }
+
+// The modes of the root are saved through the editor and read back unchanged.
+// They act on nothing, so losing them is the only way they can fail — and the
+// editor is where they would be lost.
+func TestProjectEditorSavesTheModesOfTheRoot(t *testing.T) {
+	t.Parallel()
+	workspace, _ := defaultsWorkspace(t)
+	opened, err := workspace.ReadProjectEditor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := opened.Configuration
+	updated.DefaultRunMode = project.ManagedApplicationRunMode
+	updated.UsePurposes = []project.UsePurpose{project.PersonalComputerPurpose}
+	updated.ModalityUse = project.UsedWithWarning
+	updated.SynchronousPlatformExtensionCallUse = project.Used
+	updated.InterfaceCompatibility = project.TaxiAllowVersion82Interface
+	updated.MainWindowMode = project.NormalWindow
+	updated.DatabaseTablespacesUse = project.NotUsed
+	updated.CompatibilityVersion = "8.3.21"
+	updated.UseManagedFormsInOrdinaryApplication = true
+	updated.IncludeHelpInContents = true
+	if _, err := workspace.SaveProjectEditor(updated, opened.Revision); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := workspace.ReadProjectEditor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := reopened.Configuration
+	switch {
+	case saved.DefaultRunMode != project.ManagedApplicationRunMode:
+		t.Fatalf("the run mode was lost: %q", saved.DefaultRunMode)
+	case len(saved.UsePurposes) != 1 || saved.UsePurposes[0] != project.PersonalComputerPurpose:
+		t.Fatalf("the purposes were lost: %+v", saved.UsePurposes)
+	case saved.ModalityUse != project.UsedWithWarning || saved.SynchronousPlatformExtensionCallUse != project.Used:
+		t.Fatalf("a use mode was lost: %+v", saved)
+	case saved.InterfaceCompatibility != project.TaxiAllowVersion82Interface || saved.MainWindowMode != project.NormalWindow:
+		t.Fatalf("an interface mode was lost: %+v", saved)
+	case saved.DatabaseTablespacesUse != project.NotUsed || saved.CompatibilityVersion != "8.3.21":
+		t.Fatalf("a compatibility mode was lost: %+v", saved)
+	case !saved.UseManagedFormsInOrdinaryApplication || !saved.IncludeHelpInContents:
+		t.Fatalf("a flag was lost: %+v", saved)
+	}
+}
