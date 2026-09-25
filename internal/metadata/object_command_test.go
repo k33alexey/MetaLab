@@ -183,6 +183,9 @@ commands:
     on_server_unavailable: not-available
 `)
 	writeCommandModule(t, root, CatalogKind, "Контрагенты", "НачислитьБонусы")
+	// The command is placed in a group of the configuration, so that group has
+	// to exist: a command placed nowhere is drawn nowhere.
+	writeCommandGroup(t, root, commandGroup, "Бонусы")
 	catalog, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
@@ -314,6 +317,18 @@ description_length: 150
 			}
 		})
 	}
+}
+
+// writeCommandGroup writes one command group - a place the configuration makes
+// for its own commands.
+func writeCommandGroup(t *testing.T, root, id, name string) {
+	t.Helper()
+	writeMetadata(t, root, CommandGroupKind, id, `format: 1
+id: `+id+`
+name: `+name+`
+title: {ru: `+name+`}
+category: actions-panel
+`)
 }
 
 // writeTemplateContent writes one file of a template's content into the folder

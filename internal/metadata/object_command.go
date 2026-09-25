@@ -125,49 +125,59 @@ func validateObjectCommands(commands []ObjectCommand, self uuid.UUID, manifest p
 			issues = append(issues, prefix+".name must be unique")
 		}
 		names[folded] = true
-		issues = append(issues, validateTitle(prefix+".title", command.Title, manifest)...)
-		if len(command.Tooltip) > 0 {
-			issues = append(issues, validateTitle(prefix+".tooltip", command.Tooltip, manifest)...)
-		}
-		// A command is placed in one place, not in two.
-		if command.Group != "" && command.GroupRef != nil {
-			issues = append(issues, prefix+" names both a standard group and a group of the configuration")
-		}
-		if command.Group != "" && !standardCommandGroups[command.Group] {
-			issues = append(issues, prefix+".group is not a standard group of the platform")
-		}
-		if command.GroupRef != nil && command.GroupRef.IsZero() {
-			issues = append(issues, prefix+".group_ref must be a non-zero UUID")
-		}
-		if len(command.Parameter) > 0 {
-			issues = append(issues, validateTypes(prefix+".parameter", command.Parameter, self)...)
-		}
-		switch command.ParameterUse {
-		case "", CommandParameterSingle, CommandParameterMultiple:
-		default:
-			issues = append(issues, prefix+".parameter_use must be single or multiple")
-		}
-		// Saying how many objects a command takes, when it takes none, is an
-		// answer to a question nobody asked.
-		if command.ParameterUse != "" && len(command.Parameter) == 0 {
-			issues = append(issues, prefix+".parameter_use needs a parameter type")
-		}
-		issues = append(issues, validatePictureReference(prefix+".picture", command.Picture)...)
-		switch command.Representation {
-		case "", CommandAuto, CommandText, CommandPicture, CommandPictureAndText:
-		default:
-			issues = append(issues, prefix+".representation must be auto, text, picture or picture-and-text")
-		}
-		// A command drawn as a picture needs one, and asking for a picture the
-		// command does not have leaves an empty place in the interface.
-		if command.Representation == CommandPicture && command.Picture == nil {
-			issues = append(issues, prefix+".representation picture needs a picture")
-		}
-		switch command.OnServerUnavailable {
-		case "", ServerUnavailableAuto, ServerUnavailableAvailable, ServerUnavailableNotAvailable:
-		default:
-			issues = append(issues, prefix+".on_server_unavailable must be auto, available or not-available")
-		}
+		issues = append(issues, validateCommandShape(prefix, command, self, manifest)...)
+	}
+	return issues
+}
+
+// validateCommandShape checks what makes a command a command: where it is
+// shown, what it takes, and how it is drawn. It is shared by a command that
+// belongs to an object and one that belongs to no object - the two differ in
+// where they live, not in what they are.
+func validateCommandShape(prefix string, command ObjectCommand, self uuid.UUID, manifest project.Project) []string {
+	var issues []string
+	issues = append(issues, validateTitle(prefix+".title", command.Title, manifest)...)
+	if len(command.Tooltip) > 0 {
+		issues = append(issues, validateTitle(prefix+".tooltip", command.Tooltip, manifest)...)
+	}
+	// A command is placed in one place, not in two.
+	if command.Group != "" && command.GroupRef != nil {
+		issues = append(issues, prefix+" names both a standard group and a group of the configuration")
+	}
+	if command.Group != "" && !standardCommandGroups[command.Group] {
+		issues = append(issues, prefix+".group is not a standard group of the platform")
+	}
+	if command.GroupRef != nil && command.GroupRef.IsZero() {
+		issues = append(issues, prefix+".group_ref must be a non-zero UUID")
+	}
+	if len(command.Parameter) > 0 {
+		issues = append(issues, validateTypes(prefix+".parameter", command.Parameter, self)...)
+	}
+	switch command.ParameterUse {
+	case "", CommandParameterSingle, CommandParameterMultiple:
+	default:
+		issues = append(issues, prefix+".parameter_use must be single or multiple")
+	}
+	// Saying how many objects a command takes, when it takes none, is an
+	// answer to a question nobody asked.
+	if command.ParameterUse != "" && len(command.Parameter) == 0 {
+		issues = append(issues, prefix+".parameter_use needs a parameter type")
+	}
+	issues = append(issues, validatePictureReference(prefix+".picture", command.Picture)...)
+	switch command.Representation {
+	case "", CommandAuto, CommandText, CommandPicture, CommandPictureAndText:
+	default:
+		issues = append(issues, prefix+".representation must be auto, text, picture or picture-and-text")
+	}
+	// A command drawn as a picture needs one, and asking for a picture the
+	// command does not have leaves an empty place in the interface.
+	if command.Representation == CommandPicture && command.Picture == nil {
+		issues = append(issues, prefix+".representation picture needs a picture")
+	}
+	switch command.OnServerUnavailable {
+	case "", ServerUnavailableAuto, ServerUnavailableAvailable, ServerUnavailableNotAvailable:
+	default:
+		issues = append(issues, prefix+".on_server_unavailable must be auto, available or not-available")
 	}
 	return issues
 }

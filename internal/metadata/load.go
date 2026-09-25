@@ -138,6 +138,32 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := loadKind(root, CommandGroupKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeCommandGroup(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.CommandGroups = append(catalog.CommandGroups, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	// A common command keeps a folder, because it keeps the module that runs
+	// it; a command group keeps nothing, so it stays one file.
+	if err := loadObjectKind(root, CommonCommandKind, func(source string, file *os.File, name string) error {
+		value, err := DecodeCommonCommand(source, file, manifest)
+		if err == nil && !strings.EqualFold(value.Name, name) {
+			err = fmt.Errorf("common command %s lies in a folder called %s", value.Name, name)
+		}
+		if err == nil {
+			catalog.CommonCommands = append(catalog.CommonCommands, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadKind(root, FunctionalOptionKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeFunctionalOption(source, file, manifest)
 		if err == nil && value.ID != id {
@@ -682,6 +708,14 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return catalog.ScheduledJobs[i].ID.String() < catalog.ScheduledJobs[j].ID.String()
 	})
 	catalog.scheduledJobByName, catalog.scheduledJobByID = make(map[string]int, len(catalog.ScheduledJobs)), make(map[uuid.UUID]int, len(catalog.ScheduledJobs))
+	sort.Slice(catalog.CommonCommands, func(i, j int) bool {
+		return catalog.CommonCommands[i].ID.String() < catalog.CommonCommands[j].ID.String()
+	})
+	catalog.commonCommandByName, catalog.commonCommandByID = make(map[string]int, len(catalog.CommonCommands)), make(map[uuid.UUID]int, len(catalog.CommonCommands))
+	sort.Slice(catalog.CommandGroups, func(i, j int) bool {
+		return catalog.CommandGroups[i].ID.String() < catalog.CommandGroups[j].ID.String()
+	})
+	catalog.commandGroupByName, catalog.commandGroupByID = make(map[string]int, len(catalog.CommandGroups)), make(map[uuid.UUID]int, len(catalog.CommandGroups))
 	sort.Slice(catalog.SessionParameters, func(i, j int) bool {
 		return catalog.SessionParameters[i].ID.String() < catalog.SessionParameters[j].ID.String()
 	})
@@ -817,6 +851,16 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	}
 	for index, item := range catalog.ScheduledJobs {
 		if err := add("scheduled job", item.ID, item.Name, index, catalog.scheduledJobByName, catalog.scheduledJobByID); err != nil {
+			return err
+		}
+	}
+	for index, item := range catalog.CommonCommands {
+		if err := add("common command", item.ID, item.Name, index, catalog.commonCommandByName, catalog.commonCommandByID); err != nil {
+			return err
+		}
+	}
+	for index, item := range catalog.CommandGroups {
+		if err := add("command group", item.ID, item.Name, index, catalog.commandGroupByName, catalog.commandGroupByID); err != nil {
 			return err
 		}
 	}
@@ -1583,6 +1627,12 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return err
 	}
 	if err := catalog.validateSettingsStorageReferences(); err != nil {
+		return err
+	}
+	if err := catalog.validateCommonCommandFiles(root); err != nil {
+		return err
+	}
+	if err := catalog.validateCommandGroupReferences(); err != nil {
 		return err
 	}
 	if err := catalog.validateScheduledJobReferences(); err != nil {

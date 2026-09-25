@@ -532,6 +532,12 @@ type Catalog struct {
 	ScheduledJobs                    []ScheduledJobDefinition
 	scheduledJobByName               map[string]int
 	scheduledJobByID                 map[uuid.UUID]int
+	CommonCommands                   []CommonCommandDefinition
+	commonCommandByName              map[string]int
+	commonCommandByID                map[uuid.UUID]int
+	CommandGroups                    []CommandGroupDefinition
+	commandGroupByName               map[string]int
+	commandGroupByID                 map[uuid.UUID]int
 	constantByName                   map[string]int
 	constantByID                     map[uuid.UUID]int
 	enumerationByName                map[string]int

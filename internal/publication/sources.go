@@ -216,14 +216,16 @@ func validateSourcePath(relative string, directory bool) error {
 		if contains(project.ObjectFolderKinds(), parts[1]) {
 			return validateObjectFolderSourcePath(parts, relative, directory)
 		}
-		// A common form keeps a folder named after itself, holding the form
-		// and the module that runs it - the same shape as any other form.
-		if parts[1] == "common-forms" && len(parts) > 2 && project.ObjectName(parts[2]) == nil {
+		// A common form and a common command each keep a folder named after
+		// themselves, holding a description and the file that runs it.
+		if named, ok := map[string][]string{
+			"common-forms":    {project.FormMetadataFile, project.FormModuleFile},
+			"common-commands": {project.ObjectMetadataFile, project.CommandModuleFile},
+		}[parts[1]]; ok && len(parts) > 2 && project.ObjectName(parts[2]) == nil {
 			if directory && len(parts) == 3 {
 				return nil
 			}
-			if !directory && len(parts) == 4 &&
-				(parts[3] == project.FormMetadataFile || parts[3] == project.FormModuleFile) {
+			if !directory && len(parts) == 4 && contains(named, parts[3]) {
 				return nil
 			}
 			return fmt.Errorf("unexpected publication source path %q", relative)

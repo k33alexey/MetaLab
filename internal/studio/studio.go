@@ -909,6 +909,8 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 					// A common form belongs to no object, but it keeps the same
 					// folder any other form keeps: the form and its module.
 					node.Children, buildErr = objectFormNodes(filepath.Dir(path), filepath.ToSlash(filepath.Dir(relative)), filepath.Base(path))
+				} else if kind == "common-commands" {
+					node.Children, buildErr = commonCommandNodes(path, filepath.ToSlash(relative))
 				} else {
 					node.Children, buildErr = workspace.sourceFiles(path, filepath.ToSlash(relative), ".yaml", "metadata", language, languages)
 				}
@@ -1194,6 +1196,40 @@ func objectFormNodes(parentDirectory, parentRelative, forms string) ([]Node, err
 		}
 		nodes = append(nodes, node)
 	}
+	return nodes, nil
+}
+
+// commonCommandNodes lists the commands that belong to no object. Each keeps a
+// folder named after it, holding its description and the module that runs it -
+// so the node opens the description and the module hangs beneath.
+func commonCommandNodes(directory, relative string) ([]Node, error) {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return nil, fmt.Errorf("read metadata common commands %q: %w", relative, err)
+	}
+	var nodes []Node
+	for _, entry := range entries {
+		if entry.Name() == ".gitkeep" {
+			continue
+		}
+		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || project.ObjectName(entry.Name()) != nil {
+			return nil, fmt.Errorf("unexpected source path %q", filepath.ToSlash(filepath.Join(relative, entry.Name())))
+		}
+		path := filepath.ToSlash(filepath.Join(relative, entry.Name(), project.ObjectMetadataFile))
+		modulePath := filepath.ToSlash(filepath.Join(relative, entry.Name(), project.CommandModuleFile))
+		node := Node{
+			ID: path, Kind: "common-commands", Title: entry.Name(), Path: path,
+			Properties: []Property{{Name: "Путь", Value: path}},
+		}
+		if info, err := os.Lstat(filepath.Join(directory, entry.Name(), project.CommandModuleFile)); err == nil && info.Mode().IsRegular() {
+			node.Children = append(node.Children, Node{
+				ID: modulePath, Kind: "modules", Title: "Модуль команды", Path: modulePath,
+				Properties: []Property{{Name: "Путь", Value: modulePath}},
+			})
+		}
+		nodes = append(nodes, node)
+	}
+	sort.Slice(nodes, func(left, right int) bool { return nodes[left].Title < nodes[right].Title })
 	return nodes, nil
 }
 

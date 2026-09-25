@@ -640,6 +640,9 @@ func metadataManifest() project.Project {
 func writeMetadata(t *testing.T, root string, kind Kind, id, content string) {
 	t.Helper()
 	path := filepath.Join(root, "metadata", string(kind), id+".yaml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if slices.Contains(project.ObjectFolderKinds(), string(kind)) {
 		directory := filepath.Join(root, "metadata", string(kind), objectFolderName(content, id))
 		if err := os.MkdirAll(directory, 0o755); err != nil {
