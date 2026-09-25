@@ -209,6 +209,9 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := catalog.loadOutlinedKinds(root, configuration); err != nil {
+		return nil, err
+	}
 	if err := loadObjectKind(root, HTTPServiceKind, func(source string, file *os.File, name string) error {
 		value, err := DecodeHTTPService(source, file, configuration)
 		if err == nil && !strings.EqualFold(value.Name, name) {
@@ -1812,6 +1815,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return err
 	}
 	if err := catalog.validateHTTPServices(); err != nil {
+		return err
+	}
+	if err := catalog.validateOutlinedObjects(); err != nil {
 		return err
 	}
 	return catalog.validateDefinedTypeCycles()
