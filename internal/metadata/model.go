@@ -524,6 +524,9 @@ type Catalog struct {
 	SettingsStorages                 []SettingsStorageDefinition
 	settingsStorageByName            map[string]int
 	settingsStorageByID              map[uuid.UUID]int
+	ScheduledJobs                    []ScheduledJobDefinition
+	scheduledJobByName               map[string]int
+	scheduledJobByID                 map[uuid.UUID]int
 	constantByName                   map[string]int
 	constantByID                     map[uuid.UUID]int
 	enumerationByName                map[string]int

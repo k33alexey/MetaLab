@@ -56,11 +56,12 @@ type FilterCriterionDefinition struct {
 	Fields []CriterionField `yaml:"fields,omitempty" json:"fields,omitempty"`
 	// UseStandardCommands decides whether the platform offers its own commands
 	// for this criterion.
-	UseStandardCommands bool             `yaml:"use_standard_commands,omitempty" json:"useStandardCommands,omitempty"`
-	ManagerModule       *uuid.UUID       `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
-	Forms               CriterionForms   `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands            []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates           []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
+	UseStandardCommands bool           `yaml:"use_standard_commands,omitempty" json:"useStandardCommands,omitempty"`
+	ManagerModule       *uuid.UUID     `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
+	Forms               CriterionForms `yaml:"forms,omitempty" json:"forms,omitempty"`
+	// A criterion has forms and commands and nothing else: it prints nothing,
+	// so it keeps no templates.
+	Commands []ObjectCommand `yaml:"commands,omitempty" json:"commands,omitempty"`
 }
 
 // DecodeFilterCriterion reads and validates one filter criterion.
@@ -112,7 +113,6 @@ func DecodeFilterCriterion(source string, reader io.Reader, manifest project.Pro
 		}
 	}
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ManagerModule)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return FilterCriterionDefinition{}, err
 	}
@@ -139,7 +139,6 @@ func cloneFilterCriterion(value FilterCriterionDefinition) FilterCriterionDefini
 		}
 	}
 	value.Commands = cloneObjectCommands(value.Commands)
-	value.Templates = cloneObjectTemplates(value.Templates)
 	return value
 }
 

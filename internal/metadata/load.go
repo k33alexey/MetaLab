@@ -124,6 +124,18 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := loadKind(root, ScheduledJobKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeScheduledJob(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.ScheduledJobs = append(catalog.ScheduledJobs, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadKind(root, FunctionalOptionKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeFunctionalOption(source, file, manifest)
 		if err == nil && value.ID != id {
@@ -665,6 +677,10 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return catalog.SettingsStorages[i].ID.String() < catalog.SettingsStorages[j].ID.String()
 	})
 	catalog.settingsStorageByName, catalog.settingsStorageByID = make(map[string]int, len(catalog.SettingsStorages)), make(map[uuid.UUID]int, len(catalog.SettingsStorages))
+	sort.Slice(catalog.ScheduledJobs, func(i, j int) bool {
+		return catalog.ScheduledJobs[i].ID.String() < catalog.ScheduledJobs[j].ID.String()
+	})
+	catalog.scheduledJobByName, catalog.scheduledJobByID = make(map[string]int, len(catalog.ScheduledJobs)), make(map[uuid.UUID]int, len(catalog.ScheduledJobs))
 	sort.Slice(catalog.SessionParameters, func(i, j int) bool {
 		return catalog.SessionParameters[i].ID.String() < catalog.SessionParameters[j].ID.String()
 	})
@@ -795,6 +811,11 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	}
 	for index, item := range catalog.FunctionalOptions {
 		if err := add("functional option", item.ID, item.Name, index, catalog.functionalOptionByName, catalog.functionalOptionByID); err != nil {
+			return err
+		}
+	}
+	for index, item := range catalog.ScheduledJobs {
+		if err := add("scheduled job", item.ID, item.Name, index, catalog.scheduledJobByName, catalog.scheduledJobByID); err != nil {
 			return err
 		}
 	}
@@ -1290,7 +1311,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: FilterCriterionKind,
 			id: item.ID, kind: "filter criterion", name: item.Name, managerModule: item.ManagerModule,
 			extraForms: []namedSource{{"list form", item.Forms.List}, {"auxiliary form", item.Forms.Auxiliary}},
-			commands:   item.Commands, templates: item.Templates}); err != nil {
+			commands:   item.Commands}); err != nil {
 			return err
 		}
 	}
@@ -1561,6 +1582,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return err
 	}
 	if err := catalog.validateSettingsStorageReferences(); err != nil {
+		return err
+	}
+	if err := catalog.validateScheduledJobReferences(); err != nil {
 		return err
 	}
 	return catalog.validateDefinedTypeCycles()
