@@ -3,6 +3,8 @@ package metadata
 import (
 	"strings"
 	"testing"
+
+	"github.com/k33alexey/MetaLab/internal/project"
 )
 
 const (
@@ -65,13 +67,12 @@ list_presentation: {ru: Связанные документы}
 extended_list_presentation: {ru: Список связанных документов}
 types: [{kind: catalog, reference: `+criterionContracts+`}]
 use_standard_commands: true
-manager_module: `+criterionManager+`
 forms: {list: `+criterionListForm+`, auxiliary: `+criterionAuxForm+`}
 fields:
   - {kind: documents, object: `+criterionOrder+`, attribute: `+criterionContract+`}
   - {kind: documents, object: `+criterionInvoice+`, table_part: `+criterionPart+`, attribute: `+criterionPartField+`}
 `)
-	writeCommandModule(t, root, FilterCriterionKind, "СвязанныеДокументы", criterionManager)
+	writeObjectModule(t, root, FilterCriterionKind, "СвязанныеДокументы", project.ManagerModuleFile)
 	writeObjectForm(t, root, FilterCriterionKind, "СвязанныеДокументы", criterionListForm)
 	writeObjectForm(t, root, FilterCriterionKind, "СвязанныеДокументы", criterionAuxForm)
 
@@ -90,8 +91,8 @@ fields:
 		t.Fatalf("where it is searched was lost: %+v", criterion.Fields)
 	case criterion.Fields[1].TablePart == nil:
 		t.Fatalf("a field inside a table part lost half of its address: %+v", criterion.Fields[1])
-	case criterion.ManagerModule == nil || criterion.Forms.List == nil || criterion.Forms.Auxiliary == nil:
-		t.Fatalf("the module or the forms were lost: %+v", criterion)
+	case criterion.Forms.List == nil || criterion.Forms.Auxiliary == nil:
+		t.Fatalf("the forms were lost: %+v", criterion)
 	case !criterion.UseStandardCommands || len(criterion.Explanation) == 0:
 		t.Fatalf("the presentation settings were lost: %+v", criterion)
 	}

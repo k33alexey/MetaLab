@@ -57,7 +57,6 @@ type FilterCriterionDefinition struct {
 	// UseStandardCommands decides whether the platform offers its own commands
 	// for this criterion.
 	UseStandardCommands bool           `yaml:"use_standard_commands,omitempty" json:"useStandardCommands,omitempty"`
-	ManagerModule       *uuid.UUID     `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
 	Forms               CriterionForms `yaml:"forms,omitempty" json:"forms,omitempty"`
 	// A criterion has forms and commands and nothing else: it prints nothing,
 	// so it keeps no templates.
@@ -105,14 +104,14 @@ func DecodeFilterCriterion(source string, reader io.Reader, manifest project.Pro
 		seen[key] = true
 	}
 	for name, id := range map[string]*uuid.UUID{
-		"manager_module": value.ManagerModule, "forms.list": value.Forms.List,
+		"forms.list":      value.Forms.List,
 		"forms.auxiliary": value.Forms.Auxiliary,
 	} {
 		if id != nil && id.IsZero() {
 			issues = append(issues, name+" must be a non-zero UUID")
 		}
 	}
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ManagerModule)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return FilterCriterionDefinition{}, err
 	}
@@ -132,7 +131,7 @@ func cloneFilterCriterion(value FilterCriterionDefinition) FilterCriterionDefini
 			value.Fields[index].TablePart = &copied
 		}
 	}
-	for _, id := range []**uuid.UUID{&value.ManagerModule, &value.Forms.List, &value.Forms.Auxiliary} {
+	for _, id := range []**uuid.UUID{&value.Forms.List, &value.Forms.Auxiliary} {
 		if *id != nil {
 			copied := **id
 			*id = &copied

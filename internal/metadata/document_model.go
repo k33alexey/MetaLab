@@ -45,16 +45,14 @@ type DocumentDefinition struct {
 	// Numerator names a numbering shared with other kinds of document. When it
 	// is named the document declares no number of its own: two sources for one
 	// number is one too many, and the shared one wins by definition.
-	Numerator     *uuid.UUID       `yaml:"numerator,omitempty"`
-	Posting       bool             `yaml:"posting,omitempty"`
-	Attributes    []Attribute      `yaml:"attributes,omitempty"`
-	TableParts    []TablePart      `yaml:"table_parts,omitempty"`
-	ObjectModule  *uuid.UUID       `yaml:"object_module,omitempty"`
-	ManagerModule *uuid.UUID       `yaml:"manager_module,omitempty"`
-	Forms         ObjectForms      `yaml:"forms,omitempty"`
-	Commands      []ObjectCommand  `yaml:"commands,omitempty"`
-	Templates     []ObjectTemplate `yaml:"templates,omitempty"`
-	List          ListSettings     `yaml:"list,omitempty"`
+	Numerator  *uuid.UUID       `yaml:"numerator,omitempty"`
+	Posting    bool             `yaml:"posting,omitempty"`
+	Attributes []Attribute      `yaml:"attributes,omitempty"`
+	TableParts []TablePart      `yaml:"table_parts,omitempty"`
+	Forms      ObjectForms      `yaml:"forms,omitempty"`
+	Commands   []ObjectCommand  `yaml:"commands,omitempty"`
+	Templates  []ObjectTemplate `yaml:"templates,omitempty"`
+	List       ListSettings     `yaml:"list,omitempty"`
 }
 
 func DecodeDocument(source string, reader io.Reader, manifest project.Project) (DocumentDefinition, error) {
@@ -64,14 +62,12 @@ func DecodeDocument(source string, reader io.Reader, manifest project.Project) (
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
 	shape := numberedObjectShape{
-		number:        value.Number,
-		attributes:    value.Attributes,
-		tableParts:    value.TableParts,
-		objectModule:  value.ObjectModule,
-		managerModule: value.ManagerModule,
-		forms:         value.Forms,
-		list:          value.List,
-		reservedName:  reservedDocumentObjectName,
+		number:       value.Number,
+		attributes:   value.Attributes,
+		tableParts:   value.TableParts,
+		forms:        value.Forms,
+		list:         value.List,
+		reservedName: reservedDocumentObjectName,
 	}
 	if value.Numerator != nil {
 		// The number comes from the numerator, and it is filled in once the
@@ -86,7 +82,7 @@ func DecodeDocument(source string, reader io.Reader, manifest project.Project) (
 		}
 	}
 	issues = append(issues, validateNumberedObjectShape(shape, manifest)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ObjectModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return DocumentDefinition{}, err
@@ -100,14 +96,12 @@ func DecodeDocument(source string, reader io.Reader, manifest project.Project) (
 // on top - so the repeated part is checked in one place rather than copied per
 // kind, where the copies drift.
 type numberedObjectShape struct {
-	number        DocumentNumber
-	attributes    []Attribute
-	tableParts    []TablePart
-	objectModule  *uuid.UUID
-	managerModule *uuid.UUID
-	forms         ObjectForms
-	list          ListSettings
-	reservedName  func(string) bool
+	number       DocumentNumber
+	attributes   []Attribute
+	tableParts   []TablePart
+	forms        ObjectForms
+	list         ListSettings
+	reservedName func(string) bool
 	// numberFromElsewhere says the number is not declared here and will be
 	// filled in from the object that owns it.
 	numberFromElsewhere bool
@@ -152,14 +146,6 @@ func validateNumberedObjectShape(shape numberedObjectShape, manifest project.Pro
 		attributeNames[strings.ToLower(attribute.Name)] = true
 	}
 	issues = append(issues, validateTableParts(shape.tableParts, attributeNames, manifest, reserved)...)
-	for name, module := range map[string]*uuid.UUID{"object_module": shape.objectModule, "manager_module": shape.managerModule} {
-		if module != nil && module.IsZero() {
-			issues = append(issues, name+" must be a non-zero UUID")
-		}
-	}
-	if shape.objectModule != nil && shape.managerModule != nil && *shape.objectModule == *shape.managerModule {
-		issues = append(issues, "object_module and manager_module must be different")
-	}
 	issues = append(issues, validateObjectForms(shape.forms)...)
 	return append(issues, validateListSettings(shape.list, shape.attributes, map[string]TypeKind{
 		"number": shape.number.Type,
@@ -253,14 +239,6 @@ func cloneDocumentDefinition(value DocumentDefinition) DocumentDefinition {
 	for index := range value.TableParts {
 		value.TableParts[index].Title = cloneTitle(value.TableParts[index].Title)
 		value.TableParts[index].Attributes = cloneAttributes(value.TableParts[index].Attributes)
-	}
-	if value.ObjectModule != nil {
-		id := *value.ObjectModule
-		value.ObjectModule = &id
-	}
-	if value.ManagerModule != nil {
-		id := *value.ManagerModule
-		value.ManagerModule = &id
 	}
 	value.Forms = cloneObjectForms(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/k33alexey/MetaLab/internal/project"
 )
 
 const (
@@ -25,23 +27,24 @@ const (
 	commandReport        = "cd000000-0000-4000-8000-00000000000e"
 	commandDataProcessor = "cd000000-0000-4000-8000-00000000000f"
 
-	commandID     = "cd000000-0000-4000-8000-000000000100"
-	commandModule = "cd000000-0000-4000-8000-000000000101"
-	commandGroup  = "cd000000-0000-4000-8000-000000000102"
+	commandID    = "cd000000-0000-4000-8000-000000000100"
+	commandGroup = "cd000000-0000-4000-8000-000000000102"
 )
 
 // oneOfEach is what every kind of object gets in the tests below: the same
 // command and the same template, described the same way, because the point of
 // both iterations is that neither depends on what it hangs off. Only the
 // identifiers differ, and they differ because two objects never share a file.
-func oneOfEach(command, module, template string) string {
+//
+// The command names no module: it keeps a folder of its own, and the module
+// inside that folder is the command's by where it lies.
+func oneOfEach(command, template string) string {
 	return `
 commands:
   - id: ` + command + `
     name: ОткрытьСписок
     title: {ru: Открыть список}
     group: navigation-panel-ordinary
-    module: ` + module + `
 templates:
   - id: ` + template + `
     name: ПечатнаяФорма
@@ -178,9 +181,8 @@ commands:
     representation: picture-and-text
     shortcut: Ctrl+Shift+B
     on_server_unavailable: not-available
-    module: `+commandModule+`
 `)
-	writeCommandModule(t, root, CatalogKind, "Контрагенты", commandModule)
+	writeCommandModule(t, root, CatalogKind, "Контрагенты", "НачислитьБонусы")
 	catalog, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
@@ -214,8 +216,6 @@ commands:
 		t.Fatalf("the shortcut was lost: %+v", command)
 	case command.OnServerUnavailable != ServerUnavailableNotAvailable:
 		t.Fatalf("what the command does without the main server was lost: %+v", command)
-	case command.Module.String() != commandModule:
-		t.Fatalf("the module that runs the command was lost: %+v", command)
 	}
 
 	// The catalog hands out copies: a caller that edits what it was given must
@@ -227,9 +227,11 @@ commands:
 	}
 }
 
-// A command module is a file in the object's own folder, like the object's own
-// module. Declaring one and not writing it is the same mistake as declaring an
-// object module and not writing it, and it is caught in the same place.
+// A command keeps a folder of its own beside the object, holding the module
+// that runs it. Declaring a command and not writing that module is the same
+// mistake as declaring a form and not writing it, and it is caught in the same
+// place. A folder for a command nobody declares is the mistake seen from the
+// other side: nothing would ever run what is in it.
 func TestCommandModuleIsExpectedInTheObjectFolder(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
@@ -243,65 +245,56 @@ commands:
   - id: `+commandID+`
     name: НачислитьБонусы
     title: {ru: Начислить бонусы}
-    module: `+commandModule+`
 `)
 	if _, err := Load(root); err == nil {
 		t.Fatal("a command module that does not exist was accepted")
 	}
-	writeCommandModule(t, root, CatalogKind, "Контрагенты", commandModule)
+	writeCommandModule(t, root, CatalogKind, "Контрагенты", "НачислитьБонусы")
 	if _, err := Load(root); err != nil {
 		t.Fatal(err)
+	}
+	writeCommandModule(t, root, CatalogKind, "Контрагенты", "НачислитьПрочее")
+	if _, err := Load(root); err == nil {
+		t.Fatal("a folder for a command the object does not declare was accepted")
 	}
 }
 
 // What a command is checked for is what makes it a command: a name of its own,
-// a place to be shown in, a parameter that means something, and a body that is
-// not the object's own.
+// a place to be shown in, and a parameter that means something. The module is
+// not among it: a command declares none, so there is nothing here to be wrong.
 func TestBrokenCommandsAreRefused(t *testing.T) {
 	t.Parallel()
 	const second = "cd000000-0000-4000-8000-000000000103"
-	const secondModule = "cd000000-0000-4000-8000-000000000104"
 	// Each case says what it expects to hear back. A test that only demands a
 	// refusal passes for the wrong reason the moment a new rule refuses the
 	// body earlier than the rule under test does.
 	for name, broken := range map[string]struct{ body, want string }{
 		"два имени в одном объекте": {`commands:
-  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, module: ` + commandModule + `}
-  - {id: ` + second + `, name: открыть, title: {ru: Открыть ещё}, module: ` + secondModule + `}`,
+  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}}
+  - {id: ` + second + `, name: открыть, title: {ru: Открыть ещё}}`,
 			"commands[1].name must be unique"},
 		"один идентификатор на две команды": {`commands:
-  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, module: ` + commandModule + `}
-  - {id: ` + commandID + `, name: Закрыть, title: {ru: Закрыть}, module: ` + secondModule + `}`,
+  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}}
+  - {id: ` + commandID + `, name: Закрыть, title: {ru: Закрыть}}`,
 			"commands[1].id must be unique"},
 		"имя не идентификатор": {`commands:
-  - {id: ` + commandID + `, name: "Открыть список", title: {ru: Открыть}, module: ` + commandModule + `}`,
+  - {id: ` + commandID + `, name: "Открыть список", title: {ru: Открыть}}`,
 			"commands[0].name must be a valid identifier"},
 		"группы платформы с таким именем нет": {`commands:
-  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, group: nowhere, module: ` + commandModule + `}`,
+  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, group: nowhere}`,
 			"commands[0].group is not a standard group of the platform"},
 		"место указано дважды": {`commands:
-  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, group: actions-panel-tools, group_ref: ` + commandGroup + `, module: ` + commandModule + `}`,
+  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, group: actions-panel-tools, group_ref: ` + commandGroup + `}`,
 			"names both a standard group and a group of the configuration"},
 		"режим параметра без параметра": {`commands:
-  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, parameter_use: single, module: ` + commandModule + `}`,
+  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, parameter_use: single}`,
 			"commands[0].parameter_use needs a parameter type"},
 		"отображение картинкой без картинки": {`commands:
-  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, representation: picture, module: ` + commandModule + `}`,
+  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, representation: picture}`,
 			"commands[0].representation picture needs a picture"},
 		"картинка из двух источников": {`commands:
-  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, picture: {standard: Открыть, common: ` + commandGroup + `}, module: ` + commandModule + `}`,
+  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, picture: {standard: Открыть, common: ` + commandGroup + `}}`,
 			"names both a standard picture and a common picture"},
-		"команда без модуля": {`commands:
-  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}}`,
-			"commands[0].module is required"},
-		"модуль команды — модуль объекта": {`object_module: ` + commandModule + `
-commands:
-  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, module: ` + commandModule + `}`,
-			"commands[0].module is already a module of this object"},
-		"один модуль на две команды": {`commands:
-  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, module: ` + commandModule + `}
-  - {id: ` + second + `, name: Закрыть, title: {ru: Закрыть}, module: ` + commandModule + `}`,
-			"commands[1].module is already a module of this object"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -336,12 +329,27 @@ func writeTemplateContent(t *testing.T, root string, kind Kind, objectName, temp
 	}
 }
 
-// writeCommandModule writes the body of one command beside the object it
-// belongs to, the way the object's own module is written.
-func writeCommandModule(t *testing.T, root string, kind Kind, objectName, moduleID string) {
+// writeCommandModule writes the body of one command into the folder that
+// command keeps beside its object. The folder is named after the command, and
+// the file after the role it plays - a command has no identifier on disk.
+func writeCommandModule(t *testing.T, root string, kind Kind, objectName, command string) {
 	t.Helper()
-	path := filepath.Join(root, "metadata", string(kind), objectName, moduleID+".bsl")
+	directory := filepath.Join(root, "metadata", string(kind), objectName, "commands", command)
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(directory, project.CommandModuleFile)
 	if err := os.WriteFile(path, []byte("&НаКлиенте\nПроцедура ОбработкаКоманды(ПараметрКоманды, ПараметрыВыполненияКоманды)\nКонецПроцедуры\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// writeObjectModule writes one of an object's own modules under the name of
+// the role it plays, which is the whole of what says which module it is.
+func writeObjectModule(t *testing.T, root string, kind Kind, objectName, role string) {
+	t.Helper()
+	path := filepath.Join(root, "metadata", string(kind), objectName, role)
+	if err := os.WriteFile(path, []byte("// модуль\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -365,20 +373,20 @@ func objectFolderKindsForTest() []string {
 func subordinateProject(t *testing.T) string {
 	t.Helper()
 	root := metadataProject(t)
-	// Identifiers of the commands, of their modules and of the templates,
-	// handed out in the order the objects are written below.
+	// Identifiers of the commands and of the templates, handed out in the
+	// order the objects are written below. A module needs none: it is named
+	// after the role it plays, inside the folder of what owns it.
 	next := 0
-	ids := func() (string, string, string) {
+	ids := func() (string, string) {
 		next++
 		return fmt.Sprintf("cd000000-0000-4000-8000-0000000003%02x", next),
-			fmt.Sprintf("cd000000-0000-4000-8000-0000000004%02x", next),
 			fmt.Sprintf("cd000000-0000-4000-8000-0000000005%02x", next)
 	}
 	withCommand := func(kind Kind, objectID, body string) {
 		t.Helper()
-		command, module, template := ids()
-		writeMetadata(t, root, kind, objectID, body+oneOfEach(command, module, template))
-		writeCommandModule(t, root, kind, objectName(body), module)
+		command, template := ids()
+		writeMetadata(t, root, kind, objectID, body+oneOfEach(command, template))
+		writeCommandModule(t, root, kind, objectName(body), "ОткрытьСписок")
 		writeTemplateContent(t, root, kind, objectName(body), template, "content.yaml", "format: 1\n")
 	}
 	withCommand(CatalogKind, commandCatalog, `format: 1

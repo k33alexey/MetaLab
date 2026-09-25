@@ -90,7 +90,7 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	documentID, moduleID, registerID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	documentID, registerID := uuid.MustNew(), uuid.MustNew()
 	productAttributeID, quantityAttributeID, warehouseAttributeID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	productDimensionID, quantityResourceID := uuid.MustNew(), uuid.MustNew()
 	document := metadata.DocumentDefinition{
@@ -101,7 +101,6 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 			{ID: quantityAttributeID, Name: "Количество", Title: metadata.LocalizedText{"ru": "Количество"}, Required: true, Types: []metadata.Type{{Kind: metadata.NumberType, Precision: 15, Scale: 3}}},
 			{ID: warehouseAttributeID, Name: "Склад", Title: metadata.LocalizedText{"ru": "Склад"}, Types: []metadata.Type{{Kind: metadata.StringType, Length: 50}}},
 		},
-		ObjectModule: &moduleID,
 	}
 	register := metadata.AccumulationRegisterDefinition{
 		Format: 1, ID: registerID, Name: "ОстаткиТоваров", Title: metadata.LocalizedText{"ru": "Остатки товаров"},
@@ -141,9 +140,11 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 КонецПроцедуры`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	write("metadata/documents/"+documentID.String()+"/object.yaml", document)
-	write("metadata/accumulation-registers/"+registerID.String()+"/object.yaml", register)
-	if err := os.WriteFile(filepath.Join(root, "metadata/documents", documentID.String(), moduleID.String()+".bsl"), []byte(`&НаСервере
+	write("metadata/documents/"+document.Name+"/object.yaml", document)
+	write("metadata/accumulation-registers/"+register.Name+"/object.yaml", register)
+	// The object module is named after the role it plays, in the folder of the
+	// document it belongs to. Nothing declares it: the file is the declaration.
+	if err := os.WriteFile(filepath.Join(root, "metadata/documents", document.Name, project.ObjectModuleFile), []byte(`&НаСервере
 Процедура ПередЗаписью(Отказ, РежимЗаписи, РежимПроведения)
     ЭтотОбъект.Склад = ПараметрыСеанса.ДоступныйСклад;
 КонецПроцедуры

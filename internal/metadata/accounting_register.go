@@ -54,8 +54,6 @@ type AccountingRegisterDefinition struct {
 	Resources       []AccountingRegisterField `yaml:"resources" json:"resources"`
 	Attributes      []Attribute               `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 	Recorders       []uuid.UUID               `yaml:"recorders" json:"recorders"`
-	RecordSetModule *uuid.UUID                `yaml:"record_set_module,omitempty" json:"recordSetModule,omitempty"`
-	ManagerModule   *uuid.UUID                `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
 	Forms           ObjectForms               `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands        []ObjectCommand           `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates       []ObjectTemplate          `yaml:"templates,omitempty" json:"templates,omitempty"`
@@ -119,7 +117,7 @@ func DecodeAccountingRegister(source string, reader io.Reader, manifest project.
 	issues = append(issues, validateAttributes("attributes", value.Attributes, manifest, func(name string) bool {
 		return names[strings.ToLower(name)] || reservedAccountingRegisterName(name)
 	})...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.RecordSetModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return AccountingRegisterDefinition{}, err
@@ -162,12 +160,6 @@ func cloneAccountingRegister(value AccountingRegisterDefinition) AccountingRegis
 	value.Resources = cloneAccountingRegisterFields(value.Resources)
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.Recorders = slices.Clone(value.Recorders)
-	for _, module := range []**uuid.UUID{&value.RecordSetModule, &value.ManagerModule} {
-		if *module != nil {
-			id := **module
-			*module = &id
-		}
-	}
 	value.Forms = cloneObjectForms(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)

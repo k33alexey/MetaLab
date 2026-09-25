@@ -303,14 +303,20 @@ func validateEditablePath(relative string) (string, string, error) {
 	}
 	if len(parts) >= 4 && parts[0] == "metadata" && slices.Contains(project.ObjectFolderKinds(), parts[1]) {
 		if project.ObjectName(parts[2]) == nil {
-			if len(parts) == 4 && parts[3] == "object.yaml" {
+			if len(parts) == 4 && parts[3] == project.ObjectMetadataFile {
 				return relative, "yaml", nil
 			}
-			if len(parts) == 4 && validUUIDFile(parts[3], ".bsl") {
+			// A module is named after the role it plays, not after an
+			// identifier: the file is what says which module it is.
+			if len(parts) == 4 && slices.Contains(project.ObjectModuleFiles(), parts[3]) {
 				return relative, "bsl", nil
 			}
 			if len(parts) == 5 && parts[3] == "forms" && validUUIDFile(parts[4], ".yaml") {
 				return relative, "yaml", nil
+			}
+			if len(parts) == 6 && parts[3] == "commands" && project.SubordinateName(parts[4]) == nil &&
+				parts[5] == project.CommandModuleFile {
+				return relative, "bsl", nil
 			}
 		}
 	}

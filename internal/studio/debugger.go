@@ -297,13 +297,9 @@ func (workspace *Workspace) compileDebugProgramLocked(currentPath, currentConten
 			return fmt.Errorf("debugger BSL source exceeds %d bytes", maxStudioDebugSource)
 		}
 		sourceBytes += len(content)
-		id := strings.TrimSuffix(filepath.Base(relative), ".bsl")
-		descriptor := descriptors[id]
+		descriptor := descriptors[relative]
 		if descriptor.name == "" {
-			descriptor.name = "Модуль" + strings.ReplaceAll(id, "-", "")
-			if strings.HasPrefix(relative, "tests/") {
-				descriptor.name = "Тест" + strings.ReplaceAll(id, "-", "")
-			}
+			descriptor.name = fallbackModuleName(relative)
 		}
 		if relative == currentPath {
 			currentModule = descriptor.name

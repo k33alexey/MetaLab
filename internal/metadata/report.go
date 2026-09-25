@@ -26,8 +26,6 @@ type ReportDefinition struct {
 	// settings of this report are kept, when it does not use the common ones.
 	VariantsStorage *uuid.UUID `yaml:"variants_storage,omitempty" json:"variantsStorage,omitempty"`
 	SettingsStorage *uuid.UUID `yaml:"settings_storage,omitempty" json:"settingsStorage,omitempty"`
-	ObjectModule    *uuid.UUID `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
-	ManagerModule   *uuid.UUID `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
 	// Forms of a report may be its own or common to the configuration, and
 	// the second is the usual case rather than the exception.
 	Forms     ReportForms      `yaml:"forms,omitempty" json:"forms,omitempty"`
@@ -47,17 +45,15 @@ type ReportForms struct {
 // the parts that exist for showing numbers: no composition schema, no variants
 // and no settings to store.
 type DataProcessorDefinition struct {
-	Format        int              `yaml:"format" json:"format"`
-	ID            uuid.UUID        `yaml:"id" json:"id"`
-	Name          string           `yaml:"name" json:"name"`
-	Title         LocalizedText    `yaml:"title" json:"title"`
-	Attributes    []Attribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	TableParts    []TablePart      `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	ObjectModule  *uuid.UUID       `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
-	ManagerModule *uuid.UUID       `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
-	Forms         ObjectForms      `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands      []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates     []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
+	Format     int              `yaml:"format" json:"format"`
+	ID         uuid.UUID        `yaml:"id" json:"id"`
+	Name       string           `yaml:"name" json:"name"`
+	Title      LocalizedText    `yaml:"title" json:"title"`
+	Attributes []Attribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts []TablePart      `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	Forms      ObjectForms      `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands   []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates  []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
 }
 
 // DecodeReport reads and validates one report.
@@ -70,15 +66,14 @@ func DecodeReport(source string, reader io.Reader, manifest project.Project) (Re
 	issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, manifest, reservedReportName)...)
 	for name, id := range map[string]*uuid.UUID{
 		"main_schema": value.MainSchema, "variants_storage": value.VariantsStorage,
-		"settings_storage": value.SettingsStorage, "object_module": value.ObjectModule,
-		"manager_module": value.ManagerModule, "forms.report": value.Forms.Report,
+		"settings_storage": value.SettingsStorage, "forms.report": value.Forms.Report,
 		"forms.settings": value.Forms.Settings, "forms.variant": value.Forms.Variant,
 	} {
 		if id != nil && id.IsZero() {
 			issues = append(issues, name+" must be a non-zero UUID")
 		}
 	}
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ObjectModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ReportDefinition{}, err
@@ -95,14 +90,13 @@ func DecodeDataProcessor(source string, reader io.Reader, manifest project.Proje
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
 	issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, manifest, reservedReportName)...)
 	for name, id := range map[string]*uuid.UUID{
-		"object_module": value.ObjectModule, "manager_module": value.ManagerModule,
 		"forms.object": value.Forms.Object, "forms.list": value.Forms.List, "forms.choice": value.Forms.Choice,
 	} {
 		if id != nil && id.IsZero() {
 			issues = append(issues, name+" must be a non-zero UUID")
 		}
 	}
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ObjectModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return DataProcessorDefinition{}, err
@@ -137,8 +131,7 @@ func cloneReport(value ReportDefinition) ReportDefinition {
 	value.Title = cloneTitle(value.Title)
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.TableParts = cloneTableParts(value.TableParts)
-	for _, id := range []**uuid.UUID{&value.MainSchema, &value.VariantsStorage, &value.SettingsStorage,
-		&value.ObjectModule, &value.ManagerModule, &value.Forms.Report, &value.Forms.Settings, &value.Forms.Variant} {
+	for _, id := range []**uuid.UUID{&value.MainSchema, &value.VariantsStorage, &value.SettingsStorage, &value.Forms.Report, &value.Forms.Settings, &value.Forms.Variant} {
 		if *id != nil {
 			copied := **id
 			*id = &copied
@@ -153,12 +146,6 @@ func cloneDataProcessor(value DataProcessorDefinition) DataProcessorDefinition {
 	value.Title = cloneTitle(value.Title)
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.TableParts = cloneTableParts(value.TableParts)
-	for _, id := range []**uuid.UUID{&value.ObjectModule, &value.ManagerModule} {
-		if *id != nil {
-			copied := **id
-			*id = &copied
-		}
-	}
 	value.Forms = cloneObjectForms(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)

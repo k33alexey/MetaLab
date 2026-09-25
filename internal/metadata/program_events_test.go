@@ -4,13 +4,14 @@ import (
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 func TestConfigureProgramEventsUsesCompiledModuleIdentity(t *testing.T) {
 	t.Parallel()
 	id := uuid.MustNew()
-	definition := CatalogDefinition{ID: id, Name: "Товары", ObjectModule: &id}
+	definition := CatalogDefinition{ID: id, Name: "Товары"}
 	catalog := &Catalog{
 		Catalogs:      []CatalogDefinition{definition},
 		catalogByName: map[string]int{"товары": 0}, catalogByID: map[uuid.UUID]int{id: 0},
@@ -21,8 +22,14 @@ func TestConfigureProgramEventsUsesCompiledModuleIdentity(t *testing.T) {
 		accumulationRegisterEvents: make(map[uuid.UUID]AccumulationRegisterEventHandler),
 	}
 	moduleName := "МодульОбъектаСправочника.Товары"
+	// The compiled module is matched by where its source lies, which is all a
+	// module has now that nothing declares it.
+	modulePath, err := project.ObjectModulePath(string(CatalogKind), definition.Name, project.ObjectModuleFile)
+	if err != nil {
+		t.Fatal(err)
+	}
 	program, diagnostics := compiler.CompileModules([]compiler.ModuleSource{{
-		Name: moduleName, Filename: "modules/" + id.String() + ".bsl",
+		Name: moduleName, Filename: modulePath,
 		Source:              "Процедура ПередЗаписью(Отказ)\nКонецПроцедуры",
 		PredefinedVariables: []string{"ЭтотОбъект", "ThisObject"},
 	}})

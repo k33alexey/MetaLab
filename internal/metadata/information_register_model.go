@@ -33,21 +33,19 @@ const (
 
 // InformationRegisterDefinition describes one ML information register.
 type InformationRegisterDefinition struct {
-	Format          int                            `yaml:"format"`
-	ID              uuid.UUID                      `yaml:"id"`
-	Name            string                         `yaml:"name"`
-	Title           LocalizedText                  `yaml:"title"`
-	WriteMode       InformationRegisterWriteMode   `yaml:"write_mode"`
-	Periodicity     InformationRegisterPeriodicity `yaml:"periodicity"`
-	Dimensions      []Attribute                    `yaml:"dimensions,omitempty"`
-	Resources       []Attribute                    `yaml:"resources,omitempty"`
-	Attributes      []Attribute                    `yaml:"attributes,omitempty"`
-	Recorders       []uuid.UUID                    `yaml:"recorders,omitempty"`
-	RecordSetModule *uuid.UUID                     `yaml:"record_set_module,omitempty"`
-	ManagerModule   *uuid.UUID                     `yaml:"manager_module,omitempty"`
-	Forms           ObjectForms                    `yaml:"forms,omitempty"`
-	Commands        []ObjectCommand                `yaml:"commands,omitempty"`
-	Templates       []ObjectTemplate               `yaml:"templates,omitempty"`
+	Format      int                            `yaml:"format"`
+	ID          uuid.UUID                      `yaml:"id"`
+	Name        string                         `yaml:"name"`
+	Title       LocalizedText                  `yaml:"title"`
+	WriteMode   InformationRegisterWriteMode   `yaml:"write_mode"`
+	Periodicity InformationRegisterPeriodicity `yaml:"periodicity"`
+	Dimensions  []Attribute                    `yaml:"dimensions,omitempty"`
+	Resources   []Attribute                    `yaml:"resources,omitempty"`
+	Attributes  []Attribute                    `yaml:"attributes,omitempty"`
+	Recorders   []uuid.UUID                    `yaml:"recorders,omitempty"`
+	Forms       ObjectForms                    `yaml:"forms,omitempty"`
+	Commands    []ObjectCommand                `yaml:"commands,omitempty"`
+	Templates   []ObjectTemplate               `yaml:"templates,omitempty"`
 }
 
 func DecodeInformationRegister(source string, reader io.Reader, manifest project.Project) (InformationRegisterDefinition, error) {
@@ -120,19 +118,8 @@ func DecodeInformationRegister(source string, reader io.Reader, manifest project
 	if value.WriteMode == InformationRegisterIndependent && len(value.Recorders) != 0 {
 		issues = append(issues, "recorders are only allowed for recorder write mode")
 	}
-	for _, module := range []struct {
-		name string
-		id   *uuid.UUID
-	}{{"record_set_module", value.RecordSetModule}, {"manager_module", value.ManagerModule}} {
-		if module.id != nil && module.id.IsZero() {
-			issues = append(issues, module.name+" must be a non-zero UUID")
-		}
-	}
-	if value.RecordSetModule != nil && value.ManagerModule != nil && *value.RecordSetModule == *value.ManagerModule {
-		issues = append(issues, "record_set_module and manager_module must be different")
-	}
 	issues = append(issues, validateObjectForms(value.Forms)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.RecordSetModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return InformationRegisterDefinition{}, err
@@ -155,14 +142,6 @@ func cloneInformationRegisterDefinition(value InformationRegisterDefinition) Inf
 	value.Resources = cloneAttributes(value.Resources)
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.Recorders = slices.Clone(value.Recorders)
-	if value.RecordSetModule != nil {
-		id := *value.RecordSetModule
-		value.RecordSetModule = &id
-	}
-	if value.ManagerModule != nil {
-		id := *value.ManagerModule
-		value.ManagerModule = &id
-	}
 	value.Forms = cloneObjectForms(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)

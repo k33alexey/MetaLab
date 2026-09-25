@@ -92,15 +92,15 @@ func TestInspectCarriesSchemaIdentityOfEveryStoredKind(t *testing.T) {
 		"code: {type: string, length: 9, auto: true, unique: true}\ndescription_length: 250\n"+
 		"attributes:\n  - id: "+attributeID.String()+"\n    name: Артикул\n    title: {ru: Артикул}\n    types: [{kind: string, length: 32}]\n    indexed: true\n"))
 
-	documentID, moduleID, formID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
-	modulePath, _ := project.ObjectModulePath("documents", "Продажа", moduleID)
+	documentID, formID := uuid.MustNew(), uuid.MustNew()
+	modulePath, _ := project.ObjectModulePath("documents", "Продажа", project.ObjectModuleFile)
 	writeSourceFile(t, root, modulePath, []byte("Процедура ПриЗаписи(Отказ)\nКонецПроцедуры\n"))
 	formPath, _ := project.ObjectFormPath("documents", "Продажа", formID)
 	writeSourceFile(t, root, formPath, managedFormYAML(t, formID, "DocumentForm"))
 	documentPath, _ := project.ObjectMetadataPath("documents", "Продажа")
 	writeSourceFile(t, root, documentPath, []byte("format: 1\nid: "+documentID.String()+"\nname: Продажа\ntitle: {ru: Продажа}\n"+
 		"number: {type: string, length: 11, auto: false, unique: true, periodicity: year}\nposting: true\n"+
-		"object_module: "+moduleID.String()+"\nforms: {object: "+formID.String()+"}\n"))
+		"forms: {object: "+formID.String()+"}\n"))
 
 	informationID, informationDimensionID, informationResourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	informationPath, _ := project.ObjectMetadataPath("information-registers", "КурсыВалют")

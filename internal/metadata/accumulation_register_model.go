@@ -20,20 +20,18 @@ const (
 
 // AccumulationRegisterDefinition describes recorder-owned movements and rebuildable totals.
 type AccumulationRegisterDefinition struct {
-	Format          int                           `yaml:"format"`
-	ID              uuid.UUID                     `yaml:"id"`
-	Name            string                        `yaml:"name"`
-	Title           LocalizedText                 `yaml:"title"`
-	Kind            AccumulationRegisterKindValue `yaml:"kind"`
-	Dimensions      []Attribute                   `yaml:"dimensions,omitempty"`
-	Resources       []Attribute                   `yaml:"resources"`
-	Attributes      []Attribute                   `yaml:"attributes,omitempty"`
-	Recorders       []uuid.UUID                   `yaml:"recorders"`
-	RecordSetModule *uuid.UUID                    `yaml:"record_set_module,omitempty"`
-	ManagerModule   *uuid.UUID                    `yaml:"manager_module,omitempty"`
-	Forms           ObjectForms                   `yaml:"forms,omitempty"`
-	Commands        []ObjectCommand               `yaml:"commands,omitempty"`
-	Templates       []ObjectTemplate              `yaml:"templates,omitempty"`
+	Format     int                           `yaml:"format"`
+	ID         uuid.UUID                     `yaml:"id"`
+	Name       string                        `yaml:"name"`
+	Title      LocalizedText                 `yaml:"title"`
+	Kind       AccumulationRegisterKindValue `yaml:"kind"`
+	Dimensions []Attribute                   `yaml:"dimensions,omitempty"`
+	Resources  []Attribute                   `yaml:"resources"`
+	Attributes []Attribute                   `yaml:"attributes,omitempty"`
+	Recorders  []uuid.UUID                   `yaml:"recorders"`
+	Forms      ObjectForms                   `yaml:"forms,omitempty"`
+	Commands   []ObjectCommand               `yaml:"commands,omitempty"`
+	Templates  []ObjectTemplate              `yaml:"templates,omitempty"`
 }
 
 func DecodeAccumulationRegister(source string, reader io.Reader, manifest project.Project) (AccumulationRegisterDefinition, error) {
@@ -92,19 +90,8 @@ func DecodeAccumulationRegister(source string, reader io.Reader, manifest projec
 		}
 		seenRecorders[recorder] = true
 	}
-	for _, module := range []struct {
-		name string
-		id   *uuid.UUID
-	}{{"record_set_module", value.RecordSetModule}, {"manager_module", value.ManagerModule}} {
-		if module.id != nil && module.id.IsZero() {
-			issues = append(issues, module.name+" must be a non-zero UUID")
-		}
-	}
-	if value.RecordSetModule != nil && value.ManagerModule != nil && *value.RecordSetModule == *value.ManagerModule {
-		issues = append(issues, "record_set_module and manager_module must be different")
-	}
 	issues = append(issues, validateObjectForms(value.Forms)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.RecordSetModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return AccumulationRegisterDefinition{}, err
@@ -127,14 +114,6 @@ func cloneAccumulationRegisterDefinition(value AccumulationRegisterDefinition) A
 	value.Resources = cloneAttributes(value.Resources)
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.Recorders = slices.Clone(value.Recorders)
-	if value.RecordSetModule != nil {
-		id := *value.RecordSetModule
-		value.RecordSetModule = &id
-	}
-	if value.ManagerModule != nil {
-		id := *value.ManagerModule
-		value.ManagerModule = &id
-	}
 	value.Forms = cloneObjectForms(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)

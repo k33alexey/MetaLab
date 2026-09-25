@@ -353,13 +353,14 @@ title: {ru: Контрагенты}
 code: {type: string, length: 9}
 description_length: 250
 `)
-	objectModule, managerModule := uuid.MustNew(), uuid.MustNew()
 	objectForm, listForm, choiceForm := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	if err := os.MkdirAll(filepath.Join(root, "metadata", "documents", "Продажа", "forms"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []uuid.UUID{objectModule, managerModule} {
-		relative, _ := project.ObjectModulePath("documents", "Продажа", id)
+	// Nothing declares a module: the file lying under the name of its role is
+	// the whole of the declaration.
+	for _, role := range []string{project.ObjectModuleFile, project.ManagerModuleFile} {
+		relative, _ := project.ObjectModulePath("documents", "Продажа", role)
 		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(relative)), []byte("// module\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -381,8 +382,6 @@ attributes:
     name: Контрагент
     title: {ru: Контрагент}
     types: [{kind: catalog, reference: `+catalogID+`}]
-object_module: `+objectModule.String()+`
-manager_module: `+managerModule.String()+`
 forms:
   object: `+objectForm.String()+`
   list: `+listForm.String()+`

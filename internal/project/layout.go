@@ -26,6 +26,19 @@ const (
 	// session parameter handler.
 	SessionModuleFile = "session-module.bsl"
 	keepFile          = ".gitkeep"
+
+	// ObjectMetadataFile is the description of the object owning a folder.
+	ObjectMetadataFile = "object.yaml"
+	// ObjectModuleFile, ManagerModuleFile and RecordSetModuleFile are the
+	// modules an object keeps in its own folder, named after the role each
+	// one plays. Which of them a kind may have is decided by the kind: a
+	// register keeps a record set where a catalog keeps an object.
+	ObjectModuleFile    = "МодульОбъекта.bsl"
+	ManagerModuleFile   = "МодульМенеджера.bsl"
+	RecordSetModuleFile = "МодульНабораЗаписей.bsl"
+	// CommandModuleFile is the module of one command, inside that command's
+	// own folder.
+	CommandModuleFile = "МодульКоманды.bsl"
 )
 
 var (
@@ -37,6 +50,13 @@ var (
 	ErrProjectIdentityChanged = errors.New("ML Project identity cannot be changed")
 
 	rootDirectories = []string{"metadata", "modules"}
+	// objectModuleFiles lists every module role an object may keep directly
+	// in its own folder. Commands are not here - a command module lives in
+	// the folder of its command.
+	objectModuleFiles = []string{ObjectModuleFile, ManagerModuleFile, RecordSetModuleFile}
+	// objectSubordinateDirectories lists the folders an object may keep
+	// beside its own description and modules.
+	objectSubordinateDirectories = []string{"forms", "commands", "templates"}
 	// objectFolderKinds lists metadata kinds whose objects group their own
 	// description, module(s) and managed forms under one folder named by
 	// the object's stable UUID, instead of scattering them across the flat
@@ -113,6 +133,14 @@ func MetadataKinds() []string { return slices.Clone(metadataKinds) }
 // ObjectFolderKinds returns the metadata kinds whose objects use a
 // per-object folder layout instead of a single flat YAML file.
 func ObjectFolderKinds() []string { return slices.Clone(objectFolderKinds) }
+
+// ObjectModuleFiles returns every module role name an object may keep
+// directly in its own folder.
+func ObjectModuleFiles() []string { return slices.Clone(objectModuleFiles) }
+
+// ObjectSubordinateDirectories returns the folders an object may keep beside
+// its own description and modules.
+func ObjectSubordinateDirectories() []string { return slices.Clone(objectSubordinateDirectories) }
 
 // Initialize atomically creates a new canonical ML Project at a previously unused path.
 func Initialize(root string, manifest Project) error {
@@ -286,12 +314,20 @@ func sourcePath(directory string, id uuid.UUID, extension string) (string, error
 // nothing has to be escaped, and names are already unique within a kind with
 // case folded, so two folders cannot collide on a file system that ignores
 // case.
-func ObjectName(name string) error {
+func ObjectName(name string) error { return folderName("object", name) }
+
+// SubordinateName reports whether the name of something an object owns - a
+// command, a form, a template - may be a folder inside that object's folder.
+// The rule is the object's own, and for the same reason: such a name is an
+// identifier too, and unique among its siblings with case folded.
+func SubordinateName(name string) error { return folderName("name", name) }
+
+func folderName(what, name string) error {
 	if name == "" {
-		return fmt.Errorf("object name must not be empty")
+		return fmt.Errorf("%s must not be empty", what)
 	}
 	if len(name) > 128 {
-		return fmt.Errorf("object name must not be longer than 128 characters")
+		return fmt.Errorf("%s must not be longer than 128 characters", what)
 	}
 	for index, symbol := range name {
 		switch {
@@ -299,7 +335,7 @@ func ObjectName(name string) error {
 		case unicode.IsLetter(symbol):
 		case unicode.IsDigit(symbol) && index > 0:
 		default:
-			return fmt.Errorf("object name %q is not an identifier", name)
+			return fmt.Errorf("%s %q is not an identifier", what, name)
 		}
 	}
 	return nil
@@ -331,20 +367,50 @@ func ObjectMetadataPath(kind, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return path.Join(directory, "object.yaml"), nil
+	return path.Join(directory, ObjectMetadataFile), nil
 }
 
-// ObjectModulePath returns one of an object's own BSL modules (object,
-// manager or record-set module), named by its own stable module UUID.
-func ObjectModulePath(kind, name string, moduleID uuid.UUID) (string, error) {
+// ObjectModulePath returns one of an object's own BSL modules, named by the
+// role it plays rather than by an identifier of its own.
+//
+// A module has no identity apart from that role: an object has at most one
+// object module, and calling the file after the role is what the prototype's
+// own export does. It also means the module needs no declaration - the file
+// is the declaration, and there is no second place to keep in step with it.
+func ObjectModulePath(kind, name, roleFile string) (string, error) {
 	directory, err := ObjectDirectory(kind, name)
 	if err != nil {
 		return "", err
 	}
-	if moduleID.IsZero() {
-		return "", fmt.Errorf("source UUID must not be zero")
+	if !slices.Contains(objectModuleFiles, roleFile) {
+		return "", fmt.Errorf("%q is not a module role of an object", roleFile)
 	}
-	return path.Join(directory, moduleID.String()+".bsl"), nil
+	return path.Join(directory, roleFile), nil
+}
+
+// ObjectCommandDirectory returns the folder of one command of an object.
+// A command keeps a folder rather than a bare file for the same reason a
+// template does: its module is one of the files it may own, not the whole of
+// it, and an object has several commands whose modules would otherwise all
+// want the same name.
+func ObjectCommandDirectory(kind, name, command string) (string, error) {
+	directory, err := ObjectDirectory(kind, name)
+	if err != nil {
+		return "", err
+	}
+	if err := SubordinateName(command); err != nil {
+		return "", fmt.Errorf("command %w", err)
+	}
+	return path.Join(directory, "commands", command), nil
+}
+
+// ObjectCommandModulePath returns the module that runs one command.
+func ObjectCommandModulePath(kind, name, command string) (string, error) {
+	directory, err := ObjectCommandDirectory(kind, name, command)
+	if err != nil {
+		return "", err
+	}
+	return path.Join(directory, CommandModuleFile), nil
 }
 
 // ObjectFormPath returns one of an object's own managed forms (object, list
@@ -391,7 +457,8 @@ func ObjectTemplateContentPath(kind, name string, templateID uuid.UUID, file str
 
 // ObjectFolderSourcePaths walks every per-object folder (ObjectFolderKinds)
 // and returns the source files it holds: the object's own description, its
-// module(s) and its managed forms — sorted canonical relative paths.
+// module(s), its managed forms and the module of each of its commands —
+// sorted canonical relative paths.
 //
 // Template content is deliberately left out. Everything that calls this reads
 // what it gets as source text, and a template holds a spreadsheet, an archive
@@ -423,18 +490,21 @@ func ObjectFolderSourcePaths(root string) ([]string, error) {
 					continue
 				}
 				if fileEntry.IsDir() {
-					if fileEntry.Name() != "forms" {
-						continue
-					}
-					formEntries, err := os.ReadDir(filepath.Join(objectDirectory, "forms"))
-					if err != nil {
-						return nil, fmt.Errorf("read metadata %s object %s forms: %w", kind, objectEntry.Name(), err)
-					}
-					for _, formEntry := range formEntries {
-						if formEntry.IsDir() || formEntry.Type()&fs.ModeSymlink != 0 {
-							continue
+					switch fileEntry.Name() {
+					case "forms":
+						// A form is one file; its own name is the file's.
+						nested, err := objectNestedSources(objectDirectory, kind, objectEntry.Name(), "forms", false)
+						if err != nil {
+							return nil, err
 						}
-						paths = append(paths, path.Join("metadata", kind, objectEntry.Name(), "forms", formEntry.Name()))
+						paths = append(paths, nested...)
+					case "commands":
+						// A command is a folder holding its module.
+						nested, err := objectNestedSources(objectDirectory, kind, objectEntry.Name(), "commands", true)
+						if err != nil {
+							return nil, err
+						}
+						paths = append(paths, nested...)
 					}
 					continue
 				}
@@ -443,6 +513,37 @@ func ObjectFolderSourcePaths(root string) ([]string, error) {
 		}
 	}
 	sort.Strings(paths)
+	return paths, nil
+}
+
+// objectNestedSources lists the source files under one of an object's
+// subordinate folders. nested says whether that folder holds a folder per
+// entity (a command, which owns its module) or a file per entity (a form).
+func objectNestedSources(objectDirectory, kind, object, subordinate string, nested bool) ([]string, error) {
+	entries, err := os.ReadDir(filepath.Join(objectDirectory, subordinate))
+	if err != nil {
+		return nil, fmt.Errorf("read metadata %s object %s %s: %w", kind, object, subordinate, err)
+	}
+	var paths []string
+	for _, entry := range entries {
+		if entry.Type()&fs.ModeSymlink != 0 || entry.IsDir() != nested {
+			continue
+		}
+		if !nested {
+			paths = append(paths, path.Join("metadata", kind, object, subordinate, entry.Name()))
+			continue
+		}
+		files, err := os.ReadDir(filepath.Join(objectDirectory, subordinate, entry.Name()))
+		if err != nil {
+			return nil, fmt.Errorf("read metadata %s object %s %s %s: %w", kind, object, subordinate, entry.Name(), err)
+		}
+		for _, file := range files {
+			if file.IsDir() || file.Type()&fs.ModeSymlink != 0 {
+				continue
+			}
+			paths = append(paths, path.Join("metadata", kind, object, subordinate, entry.Name(), file.Name()))
+		}
+	}
 	return paths, nil
 }
 

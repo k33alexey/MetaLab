@@ -92,32 +92,22 @@ type ObjectCommand struct {
 	Representation      CommandRepresentation     `yaml:"representation,omitempty" json:"representation,omitempty"`
 	Shortcut            string                    `yaml:"shortcut,omitempty" json:"shortcut,omitempty"`
 	OnServerUnavailable ServerUnavailableBehavior `yaml:"on_server_unavailable,omitempty" json:"onServerUnavailable,omitempty"`
-	// Module holds the procedure that runs the command, and every command has
-	// one: a command without a body is a place in the interface that answers a
-	// click with nothing, which is worse than not offering it at all.
-	Module uuid.UUID `yaml:"module" json:"module"`
 }
 
 // validateObjectCommands checks the commands of one object. Names and
 // identifiers are kept apart from the object's own, because a command is not an
 // attribute and the two never collide in practice.
 //
-// owned are the modules the object itself already has - its object, manager or
-// record-set module. A command module is a file in the same folder, named by
-// the same kind of identifier, so a command that reuses one of them would quietly
-// share a body with the object instead of having one of its own.
-func validateObjectCommands(commands []ObjectCommand, self uuid.UUID, manifest project.Project, owned ...*uuid.UUID) []string {
+// The module of a command is not among what is checked here: it has no
+// identifier to check. A command keeps a folder of its own named after it, and
+// the module inside that folder is the command's by where it lies. That the
+// file is there at all is checked against the folder, in validateObjectFiles.
+func validateObjectCommands(commands []ObjectCommand, self uuid.UUID, manifest project.Project) []string {
 	if len(commands) > maxCommandsPerObject {
 		return []string{fmt.Sprintf("commands must not contain more than %d items", maxCommandsPerObject)}
 	}
 	var issues []string
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
-	modules := map[uuid.UUID]bool{}
-	for _, module := range owned {
-		if module != nil {
-			modules[*module] = true
-		}
-	}
 	for index, command := range commands {
 		prefix := fmt.Sprintf("commands[%d]", index)
 		if command.ID.IsZero() {
@@ -177,14 +167,6 @@ func validateObjectCommands(commands []ObjectCommand, self uuid.UUID, manifest p
 		case "", ServerUnavailableAuto, ServerUnavailableAvailable, ServerUnavailableNotAvailable:
 		default:
 			issues = append(issues, prefix+".on_server_unavailable must be auto, available or not-available")
-		}
-		switch {
-		case command.Module.IsZero():
-			issues = append(issues, prefix+".module is required: a command runs a procedure of its own")
-		case modules[command.Module]:
-			issues = append(issues, prefix+".module is already a module of this object")
-		default:
-			modules[command.Module] = true
 		}
 	}
 	return issues

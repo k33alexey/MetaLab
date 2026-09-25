@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -46,11 +47,11 @@ func TestWireBSLEventsMatchesRuntimeSnapshotModuleNamingIntegration(t *testing.T
 		t.Fatal(err)
 	}
 
-	documentID, registerID, objectModuleID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	documentID, registerID := uuid.MustNew(), uuid.MustNew()
 	productAttributeID, quantityAttributeID := uuid.MustNew(), uuid.MustNew()
 	productDimensionID, quantityResourceID := uuid.MustNew(), uuid.MustNew()
 	document := DocumentDefinition{
-		ID: documentID, Name: "Поступление", Posting: true, ObjectModule: &objectModuleID,
+		ID: documentID, Name: "Поступление", Posting: true,
 		Number: DocumentNumber{Type: StringType, Length: 20, Unique: true, Periodicity: NumberPeriodYear},
 		Attributes: []Attribute{
 			{ID: productAttributeID, Name: "Товар", Required: true, Types: []Type{{Kind: StringType, Length: 100}}},
@@ -99,7 +100,11 @@ func TestWireBSLEventsMatchesRuntimeSnapshotModuleNamingIntegration(t *testing.T
 	// scheme LoadProjectModules uses - not from DocumentObjectModuleName
 	// itself, so this test genuinely proves the two schemes agree instead of
 	// trivially matching a function against itself.
-	descriptor := moduleNameDescriptors(catalog)[objectModuleID.String()]
+	objectModulePath, err := project.ObjectModulePath(string(DocumentKind), document.Name, project.ObjectModuleFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	descriptor := moduleNameDescriptors(catalog)[objectModulePath]
 	snapshot, err := RuntimeSnapshot{Format: CurrentFormat}.WithModules([]RuntimeModule{{
 		Name: descriptor.name, Filename: "receipt-object.bsl",
 		PredefinedVariables: descriptor.predefined,

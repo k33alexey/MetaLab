@@ -167,7 +167,7 @@ func TestCompleteBSLUsesDocumentContextFromDemoProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := "metadata/documents/ПоступлениеТоваров/10000000-0000-4000-8000-000000000401.bsl"
+	path := "metadata/documents/ПоступлениеТоваров/" + project.ObjectModuleFile
 	for _, test := range []struct {
 		source string
 		label  string

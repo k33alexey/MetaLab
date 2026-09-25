@@ -374,7 +374,6 @@ type Enumeration struct {
 	// UseStandardCommands decides whether the platform offers its own commands
 	// for this object - opening the list and the rest.
 	UseStandardCommands bool             `yaml:"use_standard_commands,omitempty"`
-	ManagerModule       *uuid.UUID       `yaml:"manager_module,omitempty"`
 	Forms               EnumerationForms `yaml:"forms,omitempty"`
 	Commands            []ObjectCommand  `yaml:"commands,omitempty"`
 	Templates           []ObjectTemplate `yaml:"templates,omitempty"`
@@ -461,8 +460,6 @@ type CatalogDefinition struct {
 	Hierarchy         Hierarchy               `yaml:"hierarchy,omitempty" json:"hierarchy,omitempty"`
 	Attributes        []Attribute             `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 	TableParts        []TablePart             `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	ObjectModule      *uuid.UUID              `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
-	ManagerModule     *uuid.UUID              `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
 	Forms             ObjectForms             `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands          []ObjectCommand         `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates         []ObjectTemplate        `yaml:"templates,omitempty" json:"templates,omitempty"`
@@ -863,7 +860,7 @@ func DecodeEnumeration(source string, reader io.Reader, manifest project.Project
 		issues = append(issues, "quick_choice contradicts choice_mode from-form")
 	}
 	for name, id := range map[string]*uuid.UUID{
-		"manager_module": value.ManagerModule, "forms.list": value.Forms.List,
+		"forms.list":   value.Forms.List,
 		"forms.choice": value.Forms.Choice, "forms.auxiliary_list": value.Forms.AuxiliaryList,
 		"forms.auxiliary_choice": value.Forms.AuxiliaryChoice,
 	} {
@@ -871,7 +868,7 @@ func DecodeEnumeration(source string, reader io.Reader, manifest project.Project
 			issues = append(issues, name+" must be a non-zero UUID")
 		}
 	}
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ManagerModule)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return Enumeration{}, err
@@ -903,15 +900,13 @@ func DecodeCatalog(source string, reader io.Reader, manifest project.Project) (C
 		descriptionLength: value.DescriptionLength,
 		attributes:        value.Attributes,
 		tableParts:        value.TableParts,
-		objectModule:      value.ObjectModule,
-		managerModule:     value.ManagerModule,
 		forms:             value.Forms,
 		list:              value.List,
 		hierarchy:         value.Hierarchy,
 		predefined:        value.Predefined,
 		reservedName:      reservedCatalogObjectName,
 	}, manifest)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ObjectModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return CatalogDefinition{}, err
@@ -920,8 +915,8 @@ func DecodeCatalog(source string, reader io.Reader, manifest project.Project) (C
 }
 
 // referenceObjectShape is everything a reference object repeats from the
-// catalog: a code, a description, attributes, table parts, its own modules,
-// forms, list settings and predefined elements. Charts of characteristic
+// catalog: a code, a description, attributes, table parts, forms, list
+// settings and predefined elements. Charts of characteristic
 // types, charts of accounts, charts of calculation types, business processes
 // and tasks all repeat it, and each adds its own on top - so the repeated part
 // is checked in one place rather than copied per kind, where the copies drift.
@@ -930,8 +925,6 @@ type referenceObjectShape struct {
 	descriptionLength int
 	attributes        []Attribute
 	tableParts        []TablePart
-	objectModule      *uuid.UUID
-	managerModule     *uuid.UUID
 	forms             ObjectForms
 	list              ListSettings
 	hierarchy         Hierarchy
@@ -1033,14 +1026,6 @@ func validateReferenceObjectShape(shape referenceObjectShape, manifest project.P
 		partNames[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", part.Title, manifest)...)
 		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, manifest, nil)...)
-	}
-	for name, module := range map[string]*uuid.UUID{"object_module": shape.objectModule, "manager_module": shape.managerModule} {
-		if module != nil && module.IsZero() {
-			issues = append(issues, name+" must be a non-zero UUID")
-		}
-	}
-	if shape.objectModule != nil && shape.managerModule != nil && *shape.objectModule == *shape.managerModule {
-		issues = append(issues, "object_module and manager_module must be different")
 	}
 	issues = append(issues, validateObjectForms(shape.forms)...)
 	issues = append(issues, validateListSettings(shape.list, shape.attributes, map[string]TypeKind{
@@ -1396,7 +1381,7 @@ func cloneEnumeration(value Enumeration) Enumeration {
 	for index := range value.Values {
 		value.Values[index].Title = cloneTitle(value.Values[index].Title)
 	}
-	for _, id := range []**uuid.UUID{&value.ManagerModule, &value.Forms.List, &value.Forms.Choice,
+	for _, id := range []**uuid.UUID{&value.Forms.List, &value.Forms.Choice,
 		&value.Forms.AuxiliaryList, &value.Forms.AuxiliaryChoice} {
 		if *id != nil {
 			copied := **id
@@ -1419,14 +1404,6 @@ func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
 	for index := range value.TableParts {
 		value.TableParts[index].Title = cloneTitle(value.TableParts[index].Title)
 		value.TableParts[index].Attributes = cloneAttributes(value.TableParts[index].Attributes)
-	}
-	if value.ObjectModule != nil {
-		id := *value.ObjectModule
-		value.ObjectModule = &id
-	}
-	if value.ManagerModule != nil {
-		id := *value.ManagerModule
-		value.ManagerModule = &id
 	}
 	value.Forms = cloneObjectForms(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)

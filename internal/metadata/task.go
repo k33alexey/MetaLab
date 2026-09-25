@@ -60,8 +60,6 @@ type TaskDefinition struct {
 	CurrentPerformer *uuid.UUID       `yaml:"current_performer,omitempty" json:"currentPerformer,omitempty"`
 	Attributes       []Attribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 	TableParts       []TablePart      `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	ObjectModule     *uuid.UUID       `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
-	ManagerModule    *uuid.UUID       `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
 	Forms            ObjectForms      `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands         []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates        []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
@@ -76,14 +74,12 @@ func DecodeTask(source string, reader io.Reader, manifest project.Project) (Task
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
 	issues = append(issues, validateNumberedObjectShape(numberedObjectShape{
-		number:        value.Number,
-		attributes:    value.Attributes,
-		tableParts:    value.TableParts,
-		objectModule:  value.ObjectModule,
-		managerModule: value.ManagerModule,
-		forms:         value.Forms,
-		list:          value.List,
-		reservedName:  reservedTaskName,
+		number:       value.Number,
+		attributes:   value.Attributes,
+		tableParts:   value.TableParts,
+		forms:        value.Forms,
+		list:         value.List,
+		reservedName: reservedTaskName,
 	}, manifest)...)
 	if value.DescriptionLength < 1 || value.DescriptionLength > 1_048_576 {
 		issues = append(issues, "description_length must be 1..1048576")
@@ -99,7 +95,7 @@ func DecodeTask(source string, reader io.Reader, manifest project.Project) (Task
 		issues = append(issues, "number_prefix must be none or business-process-number")
 	}
 	issues = append(issues, validateAddressing(value, manifest)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ObjectModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return TaskDefinition{}, err
@@ -200,7 +196,7 @@ func cloneTask(value TaskDefinition) TaskDefinition {
 			value.AddressingAttributes[index].Dimension = &id
 		}
 	}
-	for _, id := range []**uuid.UUID{&value.Addressing, &value.CurrentPerformer, &value.ObjectModule, &value.ManagerModule} {
+	for _, id := range []**uuid.UUID{&value.Addressing, &value.CurrentPerformer} {
 		if *id != nil {
 			copied := **id
 			*id = &copied

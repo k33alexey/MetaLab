@@ -38,8 +38,6 @@ type ChartOfCharacteristicTypesDefinition struct {
 	AdditionalValues *uuid.UUID              `yaml:"additional_values,omitempty" json:"additionalValues,omitempty"`
 	Attributes       []Attribute             `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 	TableParts       []TablePart             `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	ObjectModule     *uuid.UUID              `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
-	ManagerModule    *uuid.UUID              `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
 	Forms            ObjectForms             `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands         []ObjectCommand         `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates        []ObjectTemplate        `yaml:"templates,omitempty" json:"templates,omitempty"`
@@ -59,8 +57,6 @@ func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, manifest 
 		descriptionLength: value.DescriptionLength,
 		attributes:        value.Attributes,
 		tableParts:        value.TableParts,
-		objectModule:      value.ObjectModule,
-		managerModule:     value.ManagerModule,
 		forms:             value.Forms,
 		list:              value.List,
 		hierarchy:         value.Hierarchy,
@@ -73,7 +69,7 @@ func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, manifest 
 	if value.AdditionalValues != nil && value.AdditionalValues.IsZero() {
 		issues = append(issues, "additional_values must be a non-zero UUID")
 	}
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ObjectModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ChartOfCharacteristicTypesDefinition{}, err
@@ -105,14 +101,6 @@ func cloneChartOfCharacteristicTypes(value ChartOfCharacteristicTypesDefinition)
 	if value.AdditionalValues != nil {
 		id := *value.AdditionalValues
 		value.AdditionalValues = &id
-	}
-	if value.ObjectModule != nil {
-		id := *value.ObjectModule
-		value.ObjectModule = &id
-	}
-	if value.ManagerModule != nil {
-		id := *value.ManagerModule
-		value.ManagerModule = &id
 	}
 	value.Forms = cloneObjectForms(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)

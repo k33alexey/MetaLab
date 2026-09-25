@@ -344,10 +344,9 @@ func (workspace *Workspace) buildBSLNavigationIndex() (*bslNavigationIndex, erro
 			if err != nil {
 				return nil, err
 			}
-			id := strings.TrimSuffix(entry.Name(), ".bsl")
-			descriptor := descriptors[id]
+			descriptor := descriptors[relative]
 			if descriptor.name == "" {
-				descriptor.name = "Модуль" + strings.ReplaceAll(id, "-", "")
+				descriptor.name = fallbackModuleName(relative)
 			}
 			module := buildBSLSemanticModule(relative, file.Content, descriptor.name, descriptor.public, descriptor.predefined)
 			module.revision = file.Revision

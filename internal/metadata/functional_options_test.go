@@ -14,7 +14,6 @@ const (
 	optionPart      = "d0000000-0000-4000-8000-000000000011"
 	optionPartField = "d0000000-0000-4000-8000-000000000012"
 	optionCommand   = "d0000000-0000-4000-8000-000000000013"
-	optionCommandMd = "d0000000-0000-4000-8000-000000000014"
 	optionDimension = "d0000000-0000-4000-8000-000000000015"
 	optionResource  = "d0000000-0000-4000-8000-000000000016"
 	optionSecond    = "d0000000-0000-4000-8000-000000000020"
@@ -50,9 +49,8 @@ commands:
   - id: `+optionCommand+`
     name: ПоказатьОстатки
     title: {ru: Показать остатки}
-    module: `+optionCommandMd+`
 `)
-	writeCommandModule(t, root, CatalogKind, "Номенклатура", optionCommandMd)
+	writeCommandModule(t, root, CatalogKind, "Номенклатура", "ПоказатьОстатки")
 	writeMetadata(t, root, InformationRegisterKind, optionRegister, `format: 1
 id: `+optionRegister+`
 name: НастройкиСкладов

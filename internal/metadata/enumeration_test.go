@@ -5,19 +5,19 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/k33alexey/MetaLab/internal/project"
 )
 
 const (
 	enumObject     = "cf000000-0000-4000-8000-000000000001"
 	enumValueOne   = "cf000000-0000-4000-8000-000000000010"
 	enumValueTwo   = "cf000000-0000-4000-8000-000000000011"
-	enumManager    = "cf000000-0000-4000-8000-000000000020"
 	enumListForm   = "cf000000-0000-4000-8000-000000000021"
 	enumChoiceForm = "cf000000-0000-4000-8000-000000000022"
 	enumAuxList    = "cf000000-0000-4000-8000-000000000023"
 	enumAuxChoice  = "cf000000-0000-4000-8000-000000000024"
 	enumCommand    = "cf000000-0000-4000-8000-000000000030"
-	enumCommandMod = "cf000000-0000-4000-8000-000000000031"
 	enumTemplate   = "cf000000-0000-4000-8000-000000000040"
 )
 
@@ -39,7 +39,6 @@ extended_list_presentation: {ru: Статусы заказов покупате�
 choice_mode: from-form
 choice_history_on_input: dont-use
 use_standard_commands: true
-manager_module: `+enumManager+`
 forms:
   list: `+enumListForm+`
   choice: `+enumChoiceForm+`
@@ -53,12 +52,11 @@ commands:
     name: ОткрытьСписок
     title: {ru: Открыть список}
     group: navigation-panel-ordinary
-    module: `+enumCommandMod+`
 templates:
   - {id: `+enumTemplate+`, name: Справка, title: {ru: Справка}, kind: text}
 `)
-	writeCommandModule(t, root, EnumerationKind, "СтатусыЗаказа", enumManager)
-	writeCommandModule(t, root, EnumerationKind, "СтатусыЗаказа", enumCommandMod)
+	writeObjectModule(t, root, EnumerationKind, "СтатусыЗаказа", project.ManagerModuleFile)
+	writeCommandModule(t, root, EnumerationKind, "СтатусыЗаказа", "ОткрытьСписок")
 	for _, form := range []string{enumListForm, enumChoiceForm, enumAuxList, enumAuxChoice} {
 		writeObjectForm(t, root, EnumerationKind, "СтатусыЗаказа", form)
 	}
@@ -83,8 +81,6 @@ templates:
 		t.Fatalf("the choice history setting was lost: %+v", enumeration)
 	case !enumeration.UseStandardCommands:
 		t.Fatalf("whether the platform offers its own commands was lost: %+v", enumeration)
-	case enumeration.ManagerModule == nil || enumeration.ManagerModule.String() != enumManager:
-		t.Fatalf("the manager module was lost: %+v", enumeration)
 	case enumeration.Forms.List == nil || enumeration.Forms.Choice == nil:
 		t.Fatalf("the forms were lost: %+v", enumeration.Forms)
 	case enumeration.Forms.AuxiliaryList == nil || enumeration.Forms.AuxiliaryChoice == nil:
@@ -152,15 +148,8 @@ func TestBrokenEnumerationsAreRefused(t *testing.T) {
 			"choice_history_on_input must be auto, use or dont-use"},
 		"быстрый выбор при выборе из формы": {"choice_mode: from-form\nquick_choice: true",
 			"quick_choice contradicts choice_mode from-form"},
-		"модуль менеджера нулевой": {"manager_module: 00000000-0000-0000-0000-000000000000",
-			"manager_module must be a non-zero UUID"},
 		"форма нулевая": {"forms: {auxiliary_list: 00000000-0000-0000-0000-000000000000}",
 			"forms.auxiliary_list must be a non-zero UUID"},
-		"команда без модуля": {"commands:\n  - {id: " + enumCommand + ", name: Открыть, title: {ru: Открыть}}",
-			"commands[0].module is required"},
-		"модуль команды — модуль менеджера": {"manager_module: " + enumManager + "\ncommands:\n  - {id: " +
-			enumCommand + ", name: Открыть, title: {ru: Открыть}, module: " + enumManager + "}",
-			"commands[0].module is already a module of this object"},
 		"вида макета не существует": {"templates:\n  - {id: " + enumTemplate +
 			", name: Макет, title: {ru: Макет}, kind: слайды}",
 			"templates[0].kind is not a kind of template"},

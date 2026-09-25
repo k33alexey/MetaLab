@@ -199,13 +199,9 @@ func (workspace *Workspace) buildBSLSymbolIndex() (*BSLSymbolIndex, error) {
 		if err != nil {
 			return nil, err
 		}
-		id := strings.TrimSuffix(filepath.Base(relative), ".bsl")
-		descriptor := descriptors[id]
+		descriptor := descriptors[relative]
 		if descriptor.name == "" {
-			descriptor.name = "Модуль" + strings.ReplaceAll(id, "-", "")
-			if strings.HasPrefix(relative, "tests/") {
-				descriptor.name = "Тест" + strings.ReplaceAll(id, "-", "")
-			}
+			descriptor.name = fallbackModuleName(relative)
 		}
 		module := indexBSLModule(relative, descriptor, file.Content)
 		result.modules[relative] = module
@@ -236,57 +232,72 @@ func (workspace *Workspace) moduleDescriptors(catalog *metadata.Catalog) map[str
 			}
 		}
 		for _, item := range catalog.Catalogs {
-			addModuleDescriptor(result, item.ObjectModule, "МодульОбъектаСправочника."+item.Name, false, "ЭтотОбъект", "ThisObject")
-			if item.ObjectModule != nil {
-				descriptor := result[item.ObjectModule.String()]
+			if path := addModuleDescriptor(result, metadata.CatalogKind, item.Name, project.ObjectModuleFile, "МодульОбъектаСправочника."+item.Name, false, "ЭтотОбъект", "ThisObject"); path != "" {
+				descriptor := result[path]
 				descriptor.objectKind = "catalog"
 				descriptor.objectRU = append([]string{"Ссылка", "Код", "Наименование", "Версия", "ПометкаУдаления", "ИмяПредопределенныхДанных"}, objectFieldNames(item.Attributes, item.TableParts)...)
 				descriptor.objectEN = append([]string{"Ref", "Code", "Description", "Version", "DeletionMark", "PredefinedDataName"}, objectFieldNames(item.Attributes, item.TableParts)...)
-				result[item.ObjectModule.String()] = descriptor
+				result[path] = descriptor
 			}
-			addModuleDescriptor(result, item.ManagerModule, "МодульМенеджераСправочника."+item.Name, false)
+			addModuleDescriptor(result, metadata.CatalogKind, item.Name, project.ManagerModuleFile, "МодульМенеджераСправочника."+item.Name, false)
 		}
 		for _, item := range catalog.Documents {
-			addModuleDescriptor(result, item.ObjectModule, "МодульОбъектаДокумента."+item.Name, false, "ЭтотОбъект", "ThisObject", "Движения", "Movements")
-			if item.ObjectModule != nil {
-				descriptor := result[item.ObjectModule.String()]
+			if path := addModuleDescriptor(result, metadata.DocumentKind, item.Name, project.ObjectModuleFile, "МодульОбъектаДокумента."+item.Name, false, "ЭтотОбъект", "ThisObject", "Движения", "Movements"); path != "" {
+				descriptor := result[path]
 				descriptor.objectKind = "document"
 				descriptor.objectRU = append([]string{"Ссылка", "Номер", "Дата", "Проведен", "Версия", "ПометкаУдаления", "Движения"}, objectFieldNames(item.Attributes, item.TableParts)...)
 				descriptor.objectEN = append([]string{"Ref", "Number", "Date", "Posted", "Version", "DeletionMark", "Movements"}, objectFieldNames(item.Attributes, item.TableParts)...)
 				descriptor.movementSets = append([]bslMovementSet(nil), movements[item.ID]...)
-				result[item.ObjectModule.String()] = descriptor
+				result[path] = descriptor
 			}
-			addModuleDescriptor(result, item.ManagerModule, "МодульМенеджераДокумента."+item.Name, false)
+			addModuleDescriptor(result, metadata.DocumentKind, item.Name, project.ManagerModuleFile, "МодульМенеджераДокумента."+item.Name, false)
 		}
 		for _, item := range catalog.InformationRegisters {
-			addModuleDescriptor(result, item.RecordSetModule, "МодульНабораЗаписейРегистраСведений."+item.Name, false, "ЭтотОбъект", "ThisObject")
-			if item.RecordSetModule != nil {
-				descriptor := result[item.RecordSetModule.String()]
+			if path := addModuleDescriptor(result, metadata.InformationRegisterKind, item.Name, project.RecordSetModuleFile, "МодульНабораЗаписейРегистраСведений."+item.Name, false, "ЭтотОбъект", "ThisObject"); path != "" {
+				descriptor := result[path]
 				descriptor.objectKind = "information-set"
 				descriptor.objectRU = []string{"Отбор", "Количество", "Записывать"}
 				descriptor.objectEN = []string{"Filter", "Count", "Write"}
-				result[item.RecordSetModule.String()] = descriptor
+				result[path] = descriptor
 			}
-			addModuleDescriptor(result, item.ManagerModule, "МодульМенеджераРегистраСведений."+item.Name, false)
+			addModuleDescriptor(result, metadata.InformationRegisterKind, item.Name, project.ManagerModuleFile, "МодульМенеджераРегистраСведений."+item.Name, false)
 		}
 		for _, item := range catalog.AccumulationRegisters {
-			addModuleDescriptor(result, item.RecordSetModule, "МодульНабораЗаписейРегистраНакопления."+item.Name, false, "ЭтотОбъект", "ThisObject")
-			if item.RecordSetModule != nil {
-				descriptor := result[item.RecordSetModule.String()]
+			if path := addModuleDescriptor(result, metadata.AccumulationRegisterKind, item.Name, project.RecordSetModuleFile, "МодульНабораЗаписейРегистраНакопления."+item.Name, false, "ЭтотОбъект", "ThisObject"); path != "" {
+				descriptor := result[path]
 				descriptor.objectKind = "accumulation-set"
 				descriptor.objectRU = []string{"Отбор", "Количество", "Записывать", "БлокироватьДляИзменения"}
 				descriptor.objectEN = []string{"Filter", "Count", "Write", "LockForUpdate"}
-				result[item.RecordSetModule.String()] = descriptor
+				result[path] = descriptor
 			}
-			addModuleDescriptor(result, item.ManagerModule, "МодульМенеджераРегистраНакопления."+item.Name, false)
+			addModuleDescriptor(result, metadata.AccumulationRegisterKind, item.Name, project.ManagerModuleFile, "МодульМенеджераРегистраНакопления."+item.Name, false)
 		}
 	}
 	if catalog != nil {
 		for _, item := range catalog.CommonModules {
-			result[item.Module.String()] = moduleDescriptor{name: item.Name, public: true, defaultContext: item.DefaultContext()}
+			path, err := project.ModulePath(item.Module)
+			if err != nil {
+				continue
+			}
+			result[path] = moduleDescriptor{name: item.Name, public: true, defaultContext: item.DefaultContext()}
 		}
 	}
 	return result
+}
+
+// fallbackModuleName names a BSL file the catalog does not claim - a module of
+// a kind of object that has no canonical name yet, or a test. A module carries
+// no identifier of its own, so the name is built from where the file lies: that
+// is unique by construction, and it reads in a stack trace, where the previous
+// fallback - a UUID with its dashes removed - did not.
+func fallbackModuleName(relative string) string {
+	trimmed := strings.TrimSuffix(filepath.ToSlash(relative), ".bsl")
+	prefix := "Модуль."
+	if strings.HasPrefix(trimmed, "tests/") {
+		prefix = "Тест."
+	}
+	trimmed = strings.TrimPrefix(strings.TrimPrefix(trimmed, "metadata/"), "tests/")
+	return prefix + strings.ReplaceAll(trimmed, "/", ".")
 }
 
 func objectFieldNames(attributes []metadata.Attribute, parts []metadata.TablePart) []string {
@@ -376,10 +387,18 @@ func readBSLIndexFile(path string) ([]byte, error) {
 	return data, nil
 }
 
-func addModuleDescriptor(target map[string]moduleDescriptor, id *uuid.UUID, name string, public bool, predefined ...string) {
-	if id != nil && !id.IsZero() {
-		target[id.String()] = moduleDescriptor{name: name, public: public, predefined: predefined}
+// addModuleDescriptor registers one of an object's own modules under the path
+// it lies at. A module is identified by that path and nothing else, so the key
+// is built from the object and the role rather than read from the object's
+// description, which no longer names its modules. It returns the key so the
+// caller can go on filling in the object context of that module.
+func addModuleDescriptor(target map[string]moduleDescriptor, kind metadata.Kind, object, role, name string, public bool, predefined ...string) string {
+	path, err := project.ObjectModulePath(string(kind), object, role)
+	if err != nil {
+		return ""
 	}
+	target[path] = moduleDescriptor{name: name, public: public, predefined: predefined}
+	return path
 }
 
 func indexBSLModule(path string, descriptor moduleDescriptor, source string) bslModuleIndex {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
 	"github.com/k33alexey/MetaLab/internal/bsl/vm"
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -78,7 +79,7 @@ func TestSalesAndWarehouseVerticalFlowIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, definition := range catalog.Documents {
-		modulePath := filepath.Join(root, "metadata", "documents", definition.Name, definition.ObjectModule.String()+".bsl")
+		modulePath := filepath.Join(root, "metadata", "documents", definition.Name, project.ObjectModuleFile)
 		source, err := os.ReadFile(modulePath)
 		if err != nil {
 			t.Fatal(err)

@@ -94,8 +94,6 @@ type ChartOfAccountsDefinition struct {
 	ExtDimensionAccountingFlags []AccountingFlag    `yaml:"ext_dimension_accounting_flags,omitempty" json:"extDimensionAccountingFlags,omitempty"`
 	Attributes                  []Attribute         `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 	TableParts                  []TablePart         `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	ObjectModule                *uuid.UUID          `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
-	ManagerModule               *uuid.UUID          `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
 	Forms                       ObjectForms         `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands                    []ObjectCommand     `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates                   []ObjectTemplate    `yaml:"templates,omitempty" json:"templates,omitempty"`
@@ -118,8 +116,6 @@ func DecodeChartOfAccounts(source string, reader io.Reader, manifest project.Pro
 		descriptionLength: value.DescriptionLength,
 		attributes:        value.Attributes,
 		tableParts:        value.TableParts,
-		objectModule:      value.ObjectModule,
-		managerModule:     value.ManagerModule,
 		forms:             value.Forms,
 		list:              value.List,
 		reservedName:      reservedChartOfAccountsName,
@@ -145,7 +141,7 @@ func DecodeChartOfAccounts(source string, reader io.Reader, manifest project.Pro
 	}
 	issues = append(issues, validateCodeMask(value)...)
 	issues = append(issues, validatePredefinedAccounts(value)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ObjectModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ChartOfAccountsDefinition{}, err
@@ -386,14 +382,6 @@ func cloneChartOfAccounts(value ChartOfAccountsDefinition) ChartOfAccountsDefini
 	if value.ExtDimensionTypes != nil {
 		id := *value.ExtDimensionTypes
 		value.ExtDimensionTypes = &id
-	}
-	if value.ObjectModule != nil {
-		id := *value.ObjectModule
-		value.ObjectModule = &id
-	}
-	if value.ManagerModule != nil {
-		id := *value.ManagerModule
-		value.ManagerModule = &id
 	}
 	value.Forms = cloneObjectForms(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)

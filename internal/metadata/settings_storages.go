@@ -36,11 +36,12 @@ type SettingsStorageDefinition struct {
 	Name    string        `yaml:"name" json:"name"`
 	Title   LocalizedText `yaml:"title" json:"title"`
 	Comment string        `yaml:"comment,omitempty" json:"comment,omitempty"`
-	// ManagerModule holds the four procedures the platform calls to save, load
-	// and describe settings. Without it the storage does nothing at all: the
-	// platform has nowhere to put what the user saved.
-	ManagerModule *uuid.UUID           `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
-	Forms         SettingsStorageForms `yaml:"forms,omitempty" json:"forms,omitempty"`
+	// The manager module of a storage is МодульМенеджера.bsl in the storage's
+	// own folder, and it is not named here: the file is the declaration. It
+	// holds the four procedures the platform calls to save, load and describe
+	// settings, and without it the storage does nothing at all - the platform
+	// has nowhere to put what the user saved.
+	Forms SettingsStorageForms `yaml:"forms,omitempty" json:"forms,omitempty"`
 }
 
 // DecodeSettingsStorage reads and validates one settings storage.
@@ -51,7 +52,7 @@ func DecodeSettingsStorage(source string, reader io.Reader, manifest project.Pro
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
 	for name, id := range map[string]*uuid.UUID{
-		"manager_module": value.ManagerModule, "forms.save": value.Forms.Save, "forms.load": value.Forms.Load,
+		"forms.save": value.Forms.Save, "forms.load": value.Forms.Load,
 		"forms.auxiliary_save": value.Forms.AuxiliarySave, "forms.auxiliary_load": value.Forms.AuxiliaryLoad,
 	} {
 		if id != nil && id.IsZero() {
@@ -74,7 +75,7 @@ func DecodeSettingsStorage(source string, reader io.Reader, manifest project.Pro
 
 func cloneSettingsStorage(value SettingsStorageDefinition) SettingsStorageDefinition {
 	value.Title = cloneTitle(value.Title)
-	for _, id := range []**uuid.UUID{&value.ManagerModule, &value.Forms.Save, &value.Forms.Load,
+	for _, id := range []**uuid.UUID{&value.Forms.Save, &value.Forms.Load,
 		&value.Forms.AuxiliarySave, &value.Forms.AuxiliaryLoad} {
 		if *id != nil {
 			copied := **id

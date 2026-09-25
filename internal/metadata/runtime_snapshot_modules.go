@@ -9,7 +9,6 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 	"github.com/k33alexey/MetaLab/internal/project"
-	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 const (
@@ -65,13 +64,12 @@ func LoadProjectModules(root string, catalog *Catalog) ([]RuntimeModule, error) 
 			return nil, fmt.Errorf("read %s: %w", relative, err)
 		}
 		sourceBytes += len(content)
-		id := strings.TrimSuffix(filepath.Base(relative), ".bsl")
-		descriptor := descriptors[id]
+		descriptor := descriptors[relative]
 		if relative == project.SessionModuleFile {
 			descriptor = moduleNameDescriptor{name: SessionModuleName, defaultContext: syntax.ContextServer}
 		}
 		if descriptor.name == "" {
-			descriptor.name = "Модуль" + strings.ReplaceAll(id, "-", "")
+			descriptor.name = moduleNameFromPath(relative)
 		}
 		modules = append(modules, RuntimeModule{
 			Name: descriptor.name, Filename: relative, Source: string(content),
@@ -82,33 +80,54 @@ func LoadProjectModules(root string, catalog *Catalog) ([]RuntimeModule, error) 
 	return modules, nil
 }
 
+// moduleNameDescriptors maps the path of every module the configuration knows
+// to the name it is compiled and reported under.
+//
+// The path, because that is now the whole of a module's identity: a module is
+// the object module of a catalog by lying in that catalog's folder under the
+// name of that role. Nothing declares it, so nothing can disagree with it -
+// which is also why the map is keyed by what LoadProjectModules walks rather
+// than by anything read out of a file.
 func moduleNameDescriptors(catalog *Catalog) map[string]moduleNameDescriptor {
 	result := make(map[string]moduleNameDescriptor)
-	add := func(id *uuid.UUID, name string, predefined ...string) {
-		if id != nil {
-			result[id.String()] = moduleNameDescriptor{name: name, predefined: predefined}
+	add := func(kind Kind, object, role, name string, predefined ...string) {
+		path, err := project.ObjectModulePath(string(kind), object, role)
+		if err != nil {
+			return
 		}
+		result[path] = moduleNameDescriptor{name: name, predefined: predefined}
 	}
 	for _, item := range catalog.Catalogs {
-		add(item.ObjectModule, "МодульОбъектаСправочника."+item.Name, "ЭтотОбъект", "ThisObject")
-		add(item.ManagerModule, "МодульМенеджераСправочника."+item.Name)
+		add(CatalogKind, item.Name, project.ObjectModuleFile, "МодульОбъектаСправочника."+item.Name, "ЭтотОбъект", "ThisObject")
+		add(CatalogKind, item.Name, project.ManagerModuleFile, "МодульМенеджераСправочника."+item.Name)
 	}
 	for _, item := range catalog.Documents {
-		add(item.ObjectModule, "МодульОбъектаДокумента."+item.Name, "ЭтотОбъект", "ThisObject", "Движения", "Movements")
-		add(item.ManagerModule, "МодульМенеджераДокумента."+item.Name)
+		add(DocumentKind, item.Name, project.ObjectModuleFile, "МодульОбъектаДокумента."+item.Name, "ЭтотОбъект", "ThisObject", "Движения", "Movements")
+		add(DocumentKind, item.Name, project.ManagerModuleFile, "МодульМенеджераДокумента."+item.Name)
 	}
 	for _, item := range catalog.InformationRegisters {
-		add(item.RecordSetModule, "МодульНабораЗаписейРегистраСведений."+item.Name, "ЭтотОбъект", "ThisObject")
-		add(item.ManagerModule, "МодульМенеджераРегистраСведений."+item.Name)
+		add(InformationRegisterKind, item.Name, project.RecordSetModuleFile, "МодульНабораЗаписейРегистраСведений."+item.Name, "ЭтотОбъект", "ThisObject")
+		add(InformationRegisterKind, item.Name, project.ManagerModuleFile, "МодульМенеджераРегистраСведений."+item.Name)
 	}
 	for _, item := range catalog.AccumulationRegisters {
-		add(item.RecordSetModule, "МодульНабораЗаписейРегистраНакопления."+item.Name, "ЭтотОбъект", "ThisObject")
-		add(item.ManagerModule, "МодульМенеджераРегистраНакопления."+item.Name)
+		add(AccumulationRegisterKind, item.Name, project.RecordSetModuleFile, "МодульНабораЗаписейРегистраНакопления."+item.Name, "ЭтотОбъект", "ThisObject")
+		add(AccumulationRegisterKind, item.Name, project.ManagerModuleFile, "МодульМенеджераРегистраНакопления."+item.Name)
 	}
 	for _, item := range catalog.CommonModules {
-		result[item.Module.String()] = moduleNameDescriptor{name: item.Name, defaultContext: item.DefaultContext()}
+		if path, err := project.ModulePath(item.Module); err == nil {
+			result[path] = moduleNameDescriptor{name: item.Name, defaultContext: item.DefaultContext()}
+		}
 	}
 	return result
+}
+
+// moduleNameFromPath names a module nothing in the catalog claims. A module
+// keeps no identifier any more, so the fallback is built out of where the file
+// lies, which is unique by construction and readable in a stack trace - where
+// the previous fallback, a UUID with its dashes removed, was neither.
+func moduleNameFromPath(relative string) string {
+	trimmed := strings.TrimSuffix(filepath.ToSlash(relative), ".bsl")
+	return "Модуль." + strings.ReplaceAll(strings.TrimPrefix(trimmed, "metadata/"), "/", ".")
 }
 
 func readBoundedModuleFile(path string, maximum int) ([]byte, error) {

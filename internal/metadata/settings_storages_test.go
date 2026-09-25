@@ -3,11 +3,12 @@ package metadata
 import (
 	"strings"
 	"testing"
+
+	"github.com/k33alexey/MetaLab/internal/project"
 )
 
 const (
 	storageID       = "d3000000-0000-4000-8000-000000000001"
-	storageManager  = "d3000000-0000-4000-8000-000000000002"
 	storageSaveForm = "d3000000-0000-4000-8000-000000000003"
 	storageLoadForm = "d3000000-0000-4000-8000-000000000004"
 	storageAuxSave  = "d3000000-0000-4000-8000-000000000005"
@@ -28,14 +29,13 @@ id: `+storageID+`
 name: ХранилищеВариантовОтчетов
 title: {ru: Хранилище вариантов отчётов}
 comment: Варианты отчётов, сохранённые пользователями
-manager_module: `+storageManager+`
 forms:
   save: `+storageSaveForm+`
   load: `+storageLoadForm+`
   auxiliary_save: `+storageAuxSave+`
   auxiliary_load: `+storageAuxLoad+`
 `)
-	writeCommandModule(t, root, SettingsStorageKind, "ХранилищеВариантовОтчетов", storageManager)
+	writeObjectModule(t, root, SettingsStorageKind, "ХранилищеВариантовОтчетов", project.ManagerModuleFile)
 	for _, form := range []string{storageSaveForm, storageLoadForm, storageAuxSave, storageAuxLoad} {
 		writeObjectForm(t, root, SettingsStorageKind, "ХранилищеВариантовОтчетов", form)
 	}
@@ -48,8 +48,6 @@ forms:
 		t.Fatal("the settings storage did not load")
 	}
 	switch {
-	case storage.ManagerModule == nil || storage.ManagerModule.String() != storageManager:
-		t.Fatalf("the manager module was lost: %+v", storage)
 	case storage.Forms.Save == nil || storage.Forms.Load == nil:
 		t.Fatalf("the main forms were lost: %+v", storage.Forms)
 	case storage.Forms.AuxiliarySave == nil || storage.Forms.AuxiliaryLoad == nil:
@@ -110,8 +108,6 @@ func TestBrokenSettingsStoragesAreRefused(t *testing.T) {
 			"forms.auxiliary_save stands beside forms.save"},
 		"вспомогательная форма загрузки без основной": {"forms: {auxiliary_load: " + storageAuxLoad + "}",
 			"forms.auxiliary_load stands beside forms.load"},
-		"модуль нулевой": {"manager_module: 00000000-0000-0000-0000-000000000000",
-			"manager_module must be a non-zero UUID"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

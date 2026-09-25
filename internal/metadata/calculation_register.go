@@ -92,16 +92,14 @@ type CalculationRegisterDefinition struct {
 	ScheduleValue *uuid.UUID `yaml:"schedule_value,omitempty" json:"scheduleValue,omitempty"`
 	ScheduleDate  *uuid.UUID `yaml:"schedule_date,omitempty" json:"scheduleDate,omitempty"`
 
-	Dimensions      []CalculationRegisterDimension `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
-	Resources       []Attribute                    `yaml:"resources" json:"resources"`
-	Attributes      []Attribute                    `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	Recorders       []uuid.UUID                    `yaml:"recorders" json:"recorders"`
-	Recalculations  []Recalculation                `yaml:"recalculations,omitempty" json:"recalculations,omitempty"`
-	RecordSetModule *uuid.UUID                     `yaml:"record_set_module,omitempty" json:"recordSetModule,omitempty"`
-	ManagerModule   *uuid.UUID                     `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
-	Forms           ObjectForms                    `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands        []ObjectCommand                `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates       []ObjectTemplate               `yaml:"templates,omitempty" json:"templates,omitempty"`
+	Dimensions     []CalculationRegisterDimension `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
+	Resources      []Attribute                    `yaml:"resources" json:"resources"`
+	Attributes     []Attribute                    `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	Recorders      []uuid.UUID                    `yaml:"recorders" json:"recorders"`
+	Recalculations []Recalculation                `yaml:"recalculations,omitempty" json:"recalculations,omitempty"`
+	Forms          ObjectForms                    `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands       []ObjectCommand                `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates      []ObjectTemplate               `yaml:"templates,omitempty" json:"templates,omitempty"`
 }
 
 // DecodeCalculationRegister reads and validates one calculation register.
@@ -153,7 +151,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, manifest project
 		return names[strings.ToLower(name)] || reservedCalculationRegisterName(name)
 	})...)
 	issues = append(issues, validateRecalculations(value, manifest)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.RecordSetModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return CalculationRegisterDefinition{}, err
@@ -290,7 +288,7 @@ func cloneCalculationRegister(value CalculationRegisterDefinition) CalculationRe
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.Recorders = slices.Clone(value.Recorders)
 	value.Recalculations = cloneRecalculations(value.Recalculations)
-	for _, id := range []**uuid.UUID{&value.Schedule, &value.ScheduleValue, &value.ScheduleDate, &value.RecordSetModule, &value.ManagerModule} {
+	for _, id := range []**uuid.UUID{&value.Schedule, &value.ScheduleValue, &value.ScheduleDate} {
 		if *id != nil {
 			copied := **id
 			*id = &copied

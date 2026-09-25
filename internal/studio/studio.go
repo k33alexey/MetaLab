@@ -1060,7 +1060,7 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, kind, languag
 		if err != nil {
 			return nil, err
 		}
-		moduleNodes, formNodes, err := objectOwnedFileNodes(objectDirectory, objectRelative)
+		owned, err := objectOwnedFileNodes(objectDirectory, objectRelative)
 		if err != nil {
 			return nil, err
 		}
@@ -1069,15 +1069,14 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, kind, languag
 			children = append(children, dataGroups(id, descriptionPath)...)
 		}
 		children = append(children,
-			Node{ID: id.String() + ":forms", Kind: "group", Title: "Формы", Children: formNodes},
-			// "Команды" and "Макеты" have no backing metadata model yet — they
-			// stand in, always visible but empty, so the tree already matches
-			// 1C's per-object folder shape; a future iteration will give them
-			// real content.
-			Node{ID: id.String() + ":commands", Kind: "group", Title: "Команды"},
+			Node{ID: id.String() + ":forms", Kind: "group", Title: "Формы", Children: owned.forms},
+			// A command shows the module that runs it, because that is the
+			// whole of what a command keeps on disk. "Макеты" still stands in
+			// empty: a template's content has no editor yet.
+			Node{ID: id.String() + ":commands", Kind: "group", Title: "Команды", Children: owned.commands},
 			Node{ID: id.String() + ":templates", Kind: "group", Title: "Макеты"},
 		)
-		children = append(children, moduleNodes...)
+		children = append(children, owned.modules...)
 		nodes = append(nodes, Node{
 			ID: id.String(), Kind: kind, Title: title, Path: descriptionPath, Children: children,
 			Properties: []Property{{Name: "UUID", Value: id.String()}, {Name: "Путь", Value: descriptionPath}, {Name: "Размер", Value: fmt.Sprintf("%d байт", info.Size())}},
@@ -1087,60 +1086,121 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, kind, languag
 	return nodes, nil
 }
 
-// objectOwnedFileNodes lists one object's own module(s) and managed forms,
-// physically stored alongside its object.yaml, keeping the two apart so the
-// caller can group forms under their own "Формы" tree node while modules
-// stay flat leaves (matching how 1C shows an object's module and manager
-// module directly, without a wrapping folder).
-func objectOwnedFileNodes(objectDirectory, objectRelative string) (moduleNodes, formNodes []Node, err error) {
+// objectModuleTitles reads a module file name as what the module is, so the
+// tree says "Модуль объекта" where the file says МодульОбъекта.bsl.
+var objectModuleTitles = map[string]string{
+	project.ObjectModuleFile:    "Модуль объекта",
+	project.ManagerModuleFile:   "Модуль менеджера",
+	project.RecordSetModuleFile: "Модуль набора записей",
+}
+
+// objectOwnedNodes are the tree nodes for what one object keeps in its folder,
+// kept apart because each goes to a different place in the tree: forms and
+// commands under groups of their own, modules as flat leaves beside them -
+// which is how the prototype shows an object's own modules too.
+type objectOwnedNodes struct {
+	modules, forms, commands []Node
+}
+
+// objectOwnedFileNodes lists one object's own modules, managed forms and
+// commands, physically stored alongside its object.yaml.
+//
+// A module is recognised by its name, because the name is the whole of its
+// identity: МодульОбъекта.bsl is the object module of whatever object's folder
+// it lies in, and nothing declares it anywhere else.
+func objectOwnedFileNodes(objectDirectory, objectRelative string) (objectOwnedNodes, error) {
+	var owned objectOwnedNodes
 	entries, err := os.ReadDir(objectDirectory)
 	if err != nil {
-		return nil, nil, fmt.Errorf("read metadata object %q: %w", objectRelative, err)
+		return objectOwnedNodes{}, fmt.Errorf("read metadata object %q: %w", objectRelative, err)
 	}
 	for _, entry := range entries {
-		if entry.Name() == "object.yaml" {
+		if entry.Name() == project.ObjectMetadataFile {
 			continue
+		}
+		unexpected := func(name string) error {
+			return fmt.Errorf("unexpected source path %q", filepath.ToSlash(filepath.Join(objectRelative, name)))
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return objectOwnedNodes{}, unexpected(entry.Name())
 		}
 		if entry.IsDir() {
-			if entry.Name() != "forms" || entry.Type()&os.ModeSymlink != 0 {
-				return nil, nil, fmt.Errorf("unexpected source path %q", filepath.ToSlash(filepath.Join(objectRelative, entry.Name())))
+			switch entry.Name() {
+			case "forms":
+				owned.forms, err = objectFormNodes(objectDirectory, objectRelative)
+			case "commands":
+				owned.commands, err = objectCommandNodes(objectDirectory, objectRelative)
+			case "templates":
+				continue
+			default:
+				return objectOwnedNodes{}, unexpected(entry.Name())
 			}
-			formEntries, err := os.ReadDir(filepath.Join(objectDirectory, "forms"))
 			if err != nil {
-				return nil, nil, fmt.Errorf("read metadata object forms %q: %w", objectRelative, err)
-			}
-			for _, formEntry := range formEntries {
-				if formEntry.IsDir() || formEntry.Type()&os.ModeSymlink != 0 || filepath.Ext(formEntry.Name()) != ".yaml" {
-					return nil, nil, fmt.Errorf("unexpected form source %q", filepath.ToSlash(filepath.Join(objectRelative, "forms", formEntry.Name())))
-				}
-				id, err := uuid.Parse(strings.TrimSuffix(formEntry.Name(), ".yaml"))
-				if err != nil {
-					return nil, nil, fmt.Errorf("form source %q must use a UUID name: %w", formEntry.Name(), err)
-				}
-				path := filepath.ToSlash(filepath.Join(objectRelative, "forms", formEntry.Name()))
-				formNodes = append(formNodes, Node{
-					ID: id.String(), Kind: "forms", Title: id.String(), Path: path,
-					Properties: []Property{{Name: "UUID", Value: id.String()}, {Name: "Путь", Value: path}},
-				})
+				return objectOwnedNodes{}, err
 			}
 			continue
 		}
-		if entry.Type()&os.ModeSymlink != 0 || filepath.Ext(entry.Name()) != ".bsl" {
-			return nil, nil, fmt.Errorf("unexpected source path %q", filepath.ToSlash(filepath.Join(objectRelative, entry.Name())))
-		}
-		id, err := uuid.Parse(strings.TrimSuffix(entry.Name(), ".bsl"))
-		if err != nil {
-			return nil, nil, fmt.Errorf("source file %q must use a UUID name: %w", entry.Name(), err)
+		title, ok := objectModuleTitles[entry.Name()]
+		if !ok {
+			return objectOwnedNodes{}, unexpected(entry.Name())
 		}
 		path := filepath.ToSlash(filepath.Join(objectRelative, entry.Name()))
-		moduleNodes = append(moduleNodes, Node{
-			ID: id.String(), Kind: "modules", Title: id.String(), Path: path,
+		owned.modules = append(owned.modules, Node{
+			ID: path, Kind: "modules", Title: title, Path: path,
+			Properties: []Property{{Name: "Путь", Value: path}},
+		})
+	}
+	sort.Slice(owned.modules, func(left, right int) bool { return owned.modules[left].Path < owned.modules[right].Path })
+	sort.Slice(owned.forms, func(left, right int) bool { return owned.forms[left].Path < owned.forms[right].Path })
+	sort.Slice(owned.commands, func(left, right int) bool { return owned.commands[left].Title < owned.commands[right].Title })
+	return owned, nil
+}
+
+// objectFormNodes lists the managed forms of one object. A form is still named
+// by its identifier; it is named after itself one iteration from here.
+func objectFormNodes(objectDirectory, objectRelative string) ([]Node, error) {
+	entries, err := os.ReadDir(filepath.Join(objectDirectory, "forms"))
+	if err != nil {
+		return nil, fmt.Errorf("read metadata object forms %q: %w", objectRelative, err)
+	}
+	var nodes []Node
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || filepath.Ext(entry.Name()) != ".yaml" {
+			return nil, fmt.Errorf("unexpected form source %q", filepath.ToSlash(filepath.Join(objectRelative, "forms", entry.Name())))
+		}
+		id, err := uuid.Parse(strings.TrimSuffix(entry.Name(), ".yaml"))
+		if err != nil {
+			return nil, fmt.Errorf("form source %q must use a UUID name: %w", entry.Name(), err)
+		}
+		path := filepath.ToSlash(filepath.Join(objectRelative, "forms", entry.Name()))
+		nodes = append(nodes, Node{
+			ID: id.String(), Kind: "forms", Title: id.String(), Path: path,
 			Properties: []Property{{Name: "UUID", Value: id.String()}, {Name: "Путь", Value: path}},
 		})
 	}
-	sort.Slice(moduleNodes, func(left, right int) bool { return moduleNodes[left].Path < moduleNodes[right].Path })
-	sort.Slice(formNodes, func(left, right int) bool { return formNodes[left].Path < formNodes[right].Path })
-	return moduleNodes, formNodes, nil
+	return nodes, nil
+}
+
+// objectCommandNodes lists the commands of one object. A command is a folder
+// named after the command, and what it holds is the module that runs it - so
+// the node carries the command's name and opens its module.
+func objectCommandNodes(objectDirectory, objectRelative string) ([]Node, error) {
+	entries, err := os.ReadDir(filepath.Join(objectDirectory, "commands"))
+	if err != nil {
+		return nil, fmt.Errorf("read metadata object commands %q: %w", objectRelative, err)
+	}
+	var nodes []Node
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || project.SubordinateName(entry.Name()) != nil {
+			return nil, fmt.Errorf("unexpected command source %q", filepath.ToSlash(filepath.Join(objectRelative, "commands", entry.Name())))
+		}
+		path := filepath.ToSlash(filepath.Join(objectRelative, "commands", entry.Name(), project.CommandModuleFile))
+		nodes = append(nodes, Node{
+			ID: path, Kind: "commands", Title: entry.Name(), Path: path,
+			Properties: []Property{{Name: "Путь", Value: path}},
+		})
+	}
+	return nodes, nil
 }
 
 // objectDataGroups returns, per metadata kind, a function building that

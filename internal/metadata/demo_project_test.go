@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/k33alexey/MetaLab/internal/project"
 )
 
 func TestSalesAndWarehouseDemoProject(t *testing.T) {
@@ -21,12 +23,9 @@ func TestSalesAndWarehouseDemoProject(t *testing.T) {
 		if err != nil || !form.Generated || !hasFormCommand(form.Commands, "Post") || !hasFormCommand(form.Commands, "Movements") {
 			t.Fatalf("document %s form=%+v error=%v", document.Name, form, err)
 		}
-		if document.ObjectModule == nil {
-			t.Fatalf("document %s has no posting module", document.Name)
-		}
-		source, err := os.ReadFile(filepath.Join(root, "metadata", "documents", document.Name, document.ObjectModule.String()+".bsl"))
+		source, err := os.ReadFile(filepath.Join(root, "metadata", "documents", document.Name, project.ObjectModuleFile))
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("document %s has no posting module: %v", document.Name, err)
 		}
 		if _, diagnostics := CompileDocumentObjectModule(document, document.Name+".bsl", string(source)); len(diagnostics) != 0 {
 			t.Fatalf("document %s module diagnostics: %v", document.Name, diagnostics)

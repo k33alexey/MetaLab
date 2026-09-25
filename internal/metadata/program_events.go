@@ -6,7 +6,7 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
 	"github.com/k33alexey/MetaLab/internal/bsl/vm"
-	"github.com/k33alexey/MetaLab/internal/uuid"
+	"github.com/k33alexey/MetaLab/internal/project"
 )
 
 // ConfigureProgramEvents connects object and record-set modules from one
@@ -34,11 +34,15 @@ func (runtime *Runtime) ConfigureProgramEventsWithObserver(program *bytecode.Pro
 	for _, module := range program.Modules {
 		moduleNames[filepath.ToSlash(module.Source)] = module.Name
 	}
-	moduleName := func(id *uuid.UUID) (string, bool) {
-		if id == nil {
+	// A module is found by where it lies. It carries no identifier of its own
+	// any more, so the object it belongs to and the role it plays give its
+	// path, and the path is what the compiled program was keyed by.
+	moduleName := func(kind Kind, object, role string) (string, bool) {
+		path, err := project.ObjectModulePath(string(kind), object, role)
+		if err != nil {
 			return "", false
 		}
-		name, ok := moduleNames["modules/"+id.String()+".bsl"]
+		name, ok := moduleNames[path]
 		return name, ok
 	}
 	subscriptionModule := func(subscription EventSubscriptionDefinition) (string, bool) {
@@ -46,11 +50,16 @@ func (runtime *Runtime) ConfigureProgramEventsWithObserver(program *bytecode.Pro
 		if !ok {
 			return "", false
 		}
-		return moduleName(&common.Module)
+		path, err := project.ModulePath(common.Module)
+		if err != nil {
+			return "", false
+		}
+		name, ok := moduleNames[path]
+		return name, ok
 	}
 	for _, definition := range runtime.catalog.Catalogs {
 		var handlers catalogEventHandlers
-		if name, ok := moduleName(definition.ObjectModule); ok {
+		if name, ok := moduleName(CatalogKind, definition.Name, project.ObjectModuleFile); ok {
 			handler, err := NewCatalogBSLEvents(runtime, machine.NewContextWithMetadataAndObserver(runtime, observer), definition)
 			if err != nil {
 				return err
@@ -77,7 +86,7 @@ func (runtime *Runtime) ConfigureProgramEventsWithObserver(program *bytecode.Pro
 	}
 	for _, definition := range runtime.catalog.Documents {
 		var handlers documentEventHandlers
-		if name, ok := moduleName(definition.ObjectModule); ok {
+		if name, ok := moduleName(DocumentKind, definition.Name, project.ObjectModuleFile); ok {
 			handler, err := NewDocumentBSLEvents(runtime, machine.NewContextWithMetadataAndObserver(runtime, observer), definition)
 			if err != nil {
 				return err
@@ -104,7 +113,7 @@ func (runtime *Runtime) ConfigureProgramEventsWithObserver(program *bytecode.Pro
 	}
 	for _, definition := range runtime.catalog.InformationRegisters {
 		var handlers informationRegisterEventHandlers
-		if name, ok := moduleName(definition.RecordSetModule); ok {
+		if name, ok := moduleName(InformationRegisterKind, definition.Name, project.RecordSetModuleFile); ok {
 			handler, err := NewInformationRegisterBSLEvents(runtime, machine.NewContextWithMetadataAndObserver(runtime, observer), definition)
 			if err != nil {
 				return err
@@ -131,7 +140,7 @@ func (runtime *Runtime) ConfigureProgramEventsWithObserver(program *bytecode.Pro
 	}
 	for _, definition := range runtime.catalog.AccumulationRegisters {
 		var handlers accumulationRegisterEventHandlers
-		if name, ok := moduleName(definition.RecordSetModule); ok {
+		if name, ok := moduleName(AccumulationRegisterKind, definition.Name, project.RecordSetModuleFile); ok {
 			handler, err := NewAccumulationRegisterBSLEvents(runtime, machine.NewContextWithMetadataAndObserver(runtime, observer), definition)
 			if err != nil {
 				return err

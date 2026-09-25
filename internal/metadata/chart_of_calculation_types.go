@@ -62,16 +62,14 @@ type ChartOfCalculationTypesDefinition struct {
 	ActionPeriodUse bool           `yaml:"action_period_use,omitempty" json:"actionPeriodUse,omitempty"`
 	BaseDependency  BaseDependency `yaml:"base_dependency,omitempty" json:"baseDependency,omitempty"`
 	// BaseCharts are the charts a base may be taken from, this one included.
-	BaseCharts    []uuid.UUID                 `yaml:"base_charts,omitempty" json:"baseCharts,omitempty"`
-	Attributes    []Attribute                 `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	TableParts    []TablePart                 `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	ObjectModule  *uuid.UUID                  `yaml:"object_module,omitempty" json:"objectModule,omitempty"`
-	ManagerModule *uuid.UUID                  `yaml:"manager_module,omitempty" json:"managerModule,omitempty"`
-	Forms         ObjectForms                 `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands      []ObjectCommand             `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates     []ObjectTemplate            `yaml:"templates,omitempty" json:"templates,omitempty"`
-	List          ListSettings                `yaml:"list,omitempty" json:"list,omitempty"`
-	Predefined    []PredefinedCalculationType `yaml:"predefined,omitempty" json:"predefined,omitempty"`
+	BaseCharts []uuid.UUID                 `yaml:"base_charts,omitempty" json:"baseCharts,omitempty"`
+	Attributes []Attribute                 `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts []TablePart                 `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	Forms      ObjectForms                 `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands   []ObjectCommand             `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates  []ObjectTemplate            `yaml:"templates,omitempty" json:"templates,omitempty"`
+	List       ListSettings                `yaml:"list,omitempty" json:"list,omitempty"`
+	Predefined []PredefinedCalculationType `yaml:"predefined,omitempty" json:"predefined,omitempty"`
 }
 
 // DecodeChartOfCalculationTypes reads and validates one chart of calculation types.
@@ -86,8 +84,6 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, manifest pro
 		descriptionLength: value.DescriptionLength,
 		attributes:        value.Attributes,
 		tableParts:        value.TableParts,
-		objectModule:      value.ObjectModule,
-		managerModule:     value.ManagerModule,
 		forms:             value.Forms,
 		list:              value.List,
 		reservedName:      reservedCalculationTypeName,
@@ -119,7 +115,7 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, manifest pro
 		seen[chart] = true
 	}
 	issues = append(issues, validatePredefinedCalculationTypes(value)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest, value.ObjectModule, value.ManagerModule)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ChartOfCalculationTypesDefinition{}, err
@@ -207,14 +203,6 @@ func cloneChartOfCalculationTypes(value ChartOfCalculationTypesDefinition) Chart
 		value.TableParts[index].Attributes = cloneAttributes(value.TableParts[index].Attributes)
 	}
 	value.BaseCharts = slices.Clone(value.BaseCharts)
-	if value.ObjectModule != nil {
-		id := *value.ObjectModule
-		value.ObjectModule = &id
-	}
-	if value.ManagerModule != nil {
-		id := *value.ManagerModule
-		value.ManagerModule = &id
-	}
 	value.Forms = cloneObjectForms(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Predefined = slices.Clone(value.Predefined)

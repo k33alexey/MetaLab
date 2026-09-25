@@ -30,4 +30,3 @@ table_parts:
         title: {ru: Цена, uk: Ціна, en: Price}
         types: [{kind: number, precision: 15, scale: 2}]
         required: true
-object_module: 10000000-0000-4000-8000-000000000401

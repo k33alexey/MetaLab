@@ -273,8 +273,17 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 	if directory && len(parts) == 3 {
 		return nil
 	}
-	if directory && len(parts) == 4 && (parts[3] == "forms" || parts[3] == "templates") {
+	if directory && len(parts) == 4 && contains(project.ObjectSubordinateDirectories(), parts[3]) {
 		return nil
+	}
+	// A command keeps a folder named after itself, holding its module.
+	if directory && len(parts) == 5 && parts[3] == "commands" && project.SubordinateName(parts[4]) == nil {
+		return nil
+	}
+	if !directory && len(parts) == 6 && parts[3] == "commands" && parts[5] == project.CommandModuleFile {
+		if expected, err := project.ObjectCommandModulePath(parts[1], objectName, parts[4]); err == nil && expected == relative {
+			return nil
+		}
 	}
 	// A template keeps a folder named by its own UUID; what the folder may
 	// hold is decided by the kind of template, and that is checked where the
@@ -295,8 +304,8 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 		}
 	}
 	if !directory {
-		if moduleID, ok := objectFolderModuleID(relative); ok {
-			if expected, err := project.ObjectModulePath(parts[1], objectName, moduleID); err == nil && expected == relative {
+		if len(parts) == 4 {
+			if expected, err := project.ObjectModulePath(parts[1], objectName, parts[3]); err == nil && expected == relative {
 				return nil
 			}
 		}
@@ -329,23 +338,6 @@ func templateContentName(file string) bool {
 		}
 	}
 	return true
-}
-
-// objectFolderModuleID reports the module UUID if relative is one of an
-// object's own module files (metadata/<kind>/<id>/<module>.bsl).
-func objectFolderModuleID(relative string) (uuid.UUID, bool) {
-	parts := strings.Split(relative, "/")
-	if len(parts) != 4 || parts[0] != "metadata" || !contains(project.ObjectFolderKinds(), parts[1]) {
-		return uuid.UUID{}, false
-	}
-	if project.ObjectName(parts[2]) != nil {
-		return uuid.UUID{}, false
-	}
-	id, err := uuid.Parse(strings.TrimSuffix(parts[3], ".bsl"))
-	if err != nil || parts[3] != id.String()+".bsl" {
-		return uuid.UUID{}, false
-	}
-	return id, true
 }
 
 // objectFolderFormID reports the form UUID if relative is one of an
