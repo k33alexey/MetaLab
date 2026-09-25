@@ -193,6 +193,32 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	// A style item and a style keep no files of their own - no module, no
+	// form, no content - so each is one file named by its identifier.
+	if err := loadKind(root, StyleItemKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeStyleItem(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.StyleItems = append(catalog.StyleItems, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	if err := loadKind(root, StyleKind, func(source string, file *os.File, id uuid.UUID) error {
+		value, err := DecodeStyle(source, file, manifest)
+		if err == nil && value.ID != id {
+			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
+		}
+		if err == nil {
+			catalog.Styles = append(catalog.Styles, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := loadKind(root, FunctionalOptionKind, func(source string, file *os.File, id uuid.UUID) error {
 		value, err := DecodeFunctionalOption(source, file, manifest)
 		if err == nil && value.ID != id {
@@ -753,6 +779,14 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return catalog.CommonPictures[i].ID.String() < catalog.CommonPictures[j].ID.String()
 	})
 	catalog.commonPictureByName, catalog.commonPictureByID = make(map[string]int, len(catalog.CommonPictures)), make(map[uuid.UUID]int, len(catalog.CommonPictures))
+	sort.Slice(catalog.StyleItems, func(i, j int) bool {
+		return catalog.StyleItems[i].ID.String() < catalog.StyleItems[j].ID.String()
+	})
+	catalog.styleItemByName, catalog.styleItemByID = make(map[string]int, len(catalog.StyleItems)), make(map[uuid.UUID]int, len(catalog.StyleItems))
+	sort.Slice(catalog.Styles, func(i, j int) bool {
+		return catalog.Styles[i].ID.String() < catalog.Styles[j].ID.String()
+	})
+	catalog.styleByName, catalog.styleByID = make(map[string]int, len(catalog.Styles)), make(map[uuid.UUID]int, len(catalog.Styles))
 	sort.Slice(catalog.SessionParameters, func(i, j int) bool {
 		return catalog.SessionParameters[i].ID.String() < catalog.SessionParameters[j].ID.String()
 	})
@@ -908,6 +942,16 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	}
 	for index, item := range catalog.CommonPictures {
 		if err := add("common picture", item.ID, item.Name, index, catalog.commonPictureByName, catalog.commonPictureByID); err != nil {
+			return err
+		}
+	}
+	for index, item := range catalog.StyleItems {
+		if err := add("style item", item.ID, item.Name, index, catalog.styleItemByName, catalog.styleItemByID); err != nil {
+			return err
+		}
+	}
+	for index, item := range catalog.Styles {
+		if err := add("style", item.ID, item.Name, index, catalog.styleByName, catalog.styleByID); err != nil {
 			return err
 		}
 	}
@@ -1692,6 +1736,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return err
 	}
 	if err := catalog.validateCommonPictureReferences(); err != nil {
+		return err
+	}
+	if err := catalog.validateStyleReferences(); err != nil {
 		return err
 	}
 	if err := catalog.validateScheduledJobReferences(); err != nil {

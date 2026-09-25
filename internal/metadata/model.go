@@ -586,6 +586,12 @@ type Catalog struct {
 	CommonPictures                   []CommonPictureDefinition
 	commonPictureByName              map[string]int
 	commonPictureByID                map[uuid.UUID]int
+	StyleItems                       []StyleItemDefinition
+	styleItemByName                  map[string]int
+	styleItemByID                    map[uuid.UUID]int
+	Styles                           []StyleDefinition
+	styleByName                      map[string]int
+	styleByID                        map[uuid.UUID]int
 	constantByName                   map[string]int
 	constantByID                     map[uuid.UUID]int
 	enumerationByName                map[string]int
