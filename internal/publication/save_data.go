@@ -53,6 +53,7 @@ type SaveDataRequest struct {
 // the single current state of the database, not a version history.
 type SavedState struct {
 	ProjectID     uuid.UUID
+	ProjectName   string
 	GitCommit     string
 	ContentSHA256 string
 	SchemaSHA256  string
@@ -101,6 +102,11 @@ func SaveData(ctx context.Context, pool *pgxpool.Pool, request SaveDataRequest) 
 	if err != nil {
 		return SavedState{}, schemadiff.MigrationRecord{}, fmt.Errorf("encode runtime metadata: %w", err)
 	}
+	// Before anything is read from the schema and long before a plan is built:
+	// this database has to belong to this project.
+	if err := checkDatabaseBelongsToProject(ctx, pool, manifest.ProjectID, manifest.ProjectName); err != nil {
+		return SavedState{}, schemadiff.MigrationRecord{}, err
+	}
 	desired, err := catalog.ApplicationSchema()
 	if err != nil {
 		return SavedState{}, schemadiff.MigrationRecord{}, err
@@ -115,7 +121,7 @@ func SaveData(ctx context.Context, pool *pgxpool.Pool, request SaveDataRequest) 
 		Confirmed: true, Consent: request.Consent,
 	}
 	saved := SavedState{
-		ProjectID: manifest.ProjectID, GitCommit: manifest.GitCommit,
+		ProjectID: manifest.ProjectID, ProjectName: manifest.ProjectName, GitCommit: manifest.GitCommit,
 		ContentSHA256: manifest.ContentSHA256, SchemaSHA256: manifest.SchemaSHA256,
 	}
 	hooks := schemadiff.TransactionHooks{
@@ -196,6 +202,7 @@ func ensureDatabaseStateStore(ctx context.Context, transaction pgx.Tx) error {
 CREATE TABLE IF NOT EXISTS ml_core.database_state (
     singleton boolean PRIMARY KEY DEFAULT TRUE CHECK (singleton),
     project_id uuid NOT NULL,
+    project_name text NOT NULL DEFAULT '',
     git_commit text NOT NULL,
     content_sha256 text NOT NULL CHECK (length(content_sha256) = 64),
     schema_sha256 text NOT NULL CHECK (length(schema_sha256) = 64),
@@ -206,18 +213,22 @@ CREATE TABLE IF NOT EXISTS ml_core.database_state (
 	if err != nil {
 		return fmt.Errorf("initialize saved database state store: %w", err)
 	}
+	if _, err = transaction.Exec(ctx,
+		"ALTER TABLE ml_core.database_state ADD COLUMN IF NOT EXISTS project_name text NOT NULL DEFAULT ''"); err != nil {
+		return fmt.Errorf("initialize saved database state store: %w", err)
+	}
 	return nil
 }
 
 func saveDatabaseState(ctx context.Context, transaction pgx.Tx, snapshotJSON []byte, saved *SavedState) error {
 	err := transaction.QueryRow(ctx, `
-INSERT INTO ml_core.database_state(singleton, project_id, git_commit, content_sha256, schema_sha256, migration_id, runtime)
-VALUES (TRUE, $1, $2, $3, $4, $5, $6)
+INSERT INTO ml_core.database_state(singleton, project_id, project_name, git_commit, content_sha256, schema_sha256, migration_id, runtime)
+VALUES (TRUE, $1, $2, $3, $4, $5, $6, $7)
 ON CONFLICT (singleton) DO UPDATE
-SET project_id = EXCLUDED.project_id, git_commit = EXCLUDED.git_commit,
+SET project_name = EXCLUDED.project_name, git_commit = EXCLUDED.git_commit,
     content_sha256 = EXCLUDED.content_sha256, schema_sha256 = EXCLUDED.schema_sha256,
     migration_id = EXCLUDED.migration_id, runtime = EXCLUDED.runtime, saved_at = clock_timestamp()
-RETURNING saved_at`, saved.ProjectID.String(), saved.GitCommit, saved.ContentSHA256, saved.SchemaSHA256,
+RETURNING saved_at`, saved.ProjectID.String(), saved.ProjectName, saved.GitCommit, saved.ContentSHA256, saved.SchemaSHA256,
 		saved.MigrationID.String(), snapshotJSON).Scan(&saved.SavedAt)
 	if err != nil {
 		return fmt.Errorf("save database state: %w", err)
@@ -257,4 +268,103 @@ func CurrentPublicationMarker(ctx context.Context, pool *pgxpool.Pool) (Publicat
 		return PublicationMarker{}, false, fmt.Errorf("read saved database state: %w", err)
 	}
 	return marker, true, nil
+}
+
+// ErrForeignDatabase says the database belongs to another project, or is not
+// free to be bound to this one.
+var ErrForeignDatabase = errors.New("database does not belong to this ML Project")
+
+// checkDatabaseBelongsToProject refuses to apply a project to a database that
+// is not its own, before the schema is read and long before a plan is built.
+//
+// Consent is no protection here. A plan that says "drop every table and create
+// different ones" looks like an ordinary request to lose objects, and the
+// developer has just pressed save and is expecting to confirm something - they
+// will read it and agree. And the situation is an everyday one: two databases
+// of one customer, two clones of the repository, the wrong shortcut.
+//
+// Four outcomes, and each has to be told apart from the others:
+//
+//   - the record is there and matches - go on;
+//   - the record is there and does not - refuse, naming both sides;
+//   - no record and no application tables - a free database, which this save
+//     binds to this project;
+//   - no record but application tables are there - refuse: the database is
+//     occupied by something, and what that something is nobody knows.
+func checkDatabaseBelongsToProject(ctx context.Context, pool *pgxpool.Pool, projectID uuid.UUID, projectName string) error {
+	var stateExists bool
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('ml_core.database_state') IS NOT NULL").Scan(&stateExists); err != nil {
+		return fmt.Errorf("inspect saved database state: %w", err)
+	}
+	var database string
+	if err := pool.QueryRow(ctx, "SELECT current_database()").Scan(&database); err != nil {
+		return fmt.Errorf("read database name: %w", err)
+	}
+	if stateExists {
+		var ownerText, ownerName string
+		err := pool.QueryRow(ctx,
+			"SELECT project_id::text, project_name FROM ml_core.database_state WHERE singleton").Scan(&ownerText, &ownerName)
+		switch {
+		case err == nil:
+			owner, parseErr := uuid.Parse(ownerText)
+			if parseErr != nil {
+				return fmt.Errorf("%w: database %q carries an unreadable project identifier %q",
+					ErrForeignDatabase, database, ownerText)
+			}
+			if owner == projectID {
+				return nil
+			}
+			// Three names, because there are exactly two causes and the
+			// developer tells them apart by reading which one is unexpected:
+			// the wrong project is open, or the wrong database is selected.
+			return fmt.Errorf("%w: project %s (%s) is open, database %q belongs to project %s (%s)",
+				ErrForeignDatabase, projectName, projectID, database, displayName(ownerName), owner)
+		case errors.Is(err, pgx.ErrNoRows):
+			// The store exists but holds nothing: fall through to the checks
+			// for a free database.
+		default:
+			return fmt.Errorf("read saved database state: %w", err)
+		}
+	}
+	occupied, err := applicationTablesExist(ctx, pool)
+	if err != nil {
+		return err
+	}
+	if occupied {
+		return fmt.Errorf("%w: database %q holds application tables but no record of what was applied to it",
+			ErrForeignDatabase, database)
+	}
+	return nil
+}
+
+// applicationTablesExist reports whether the database already holds tables this
+// platform made. Only our own are counted: a table of ours is named t_ and the
+// identifier of the object it stores. What an administrator keeps elsewhere in
+// the database is not our business and does not make the database occupied.
+//
+// Inside our own schema it is a different matter, and not this check's: what
+// lies in ml_data is ours to manage, so the migration plan proposes to remove
+// what the configuration does not describe - and asks for consent, as it does
+// for any other loss.
+func applicationTablesExist(ctx context.Context, pool *pgxpool.Pool) (bool, error) {
+	var found bool
+	err := pool.QueryRow(ctx, `
+SELECT EXISTS (
+    SELECT 1 FROM pg_class AS class
+    JOIN pg_namespace AS namespace ON namespace.oid = class.relnamespace
+    WHERE class.relkind = 'r' AND namespace.nspname = $1 AND class.relname LIKE 't\_%'
+)`, schemadiff.ApplicationSchema).Scan(&found)
+	if err != nil {
+		return false, fmt.Errorf("inspect application tables: %w", err)
+	}
+	return found, nil
+}
+
+// displayName keeps a message readable when the binding was written before the
+// project name was stored beside the identifier.
+func displayName(name string) string {
+	if name == "" {
+		return "без имени"
+	}
+	return name
 }
