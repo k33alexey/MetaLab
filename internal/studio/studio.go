@@ -1170,10 +1170,20 @@ func objectFormNodes(objectDirectory, objectRelative string) ([]Node, error) {
 			return nil, fmt.Errorf("unexpected form source %q", filepath.ToSlash(filepath.Join(objectRelative, "forms", entry.Name())))
 		}
 		path := filepath.ToSlash(filepath.Join(objectRelative, "forms", entry.Name(), project.FormMetadataFile))
-		nodes = append(nodes, Node{
+		node := Node{
 			ID: path, Kind: "forms", Title: entry.Name(), Path: path,
 			Properties: []Property{{Name: "Путь", Value: path}},
-		})
+		}
+		// The module hangs under its form, because that is where it lies and
+		// the only thing that says it exists is that it lies there.
+		modulePath := filepath.ToSlash(filepath.Join(objectRelative, "forms", entry.Name(), project.FormModuleFile))
+		if info, err := os.Lstat(filepath.Join(objectDirectory, "forms", entry.Name(), project.FormModuleFile)); err == nil && info.Mode().IsRegular() {
+			node.Children = append(node.Children, Node{
+				ID: modulePath, Kind: "modules", Title: "Модуль формы", Path: modulePath,
+				Properties: []Property{{Name: "Путь", Value: modulePath}},
+			})
+		}
+		nodes = append(nodes, node)
 	}
 	return nodes, nil
 }

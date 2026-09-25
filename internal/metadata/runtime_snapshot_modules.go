@@ -118,7 +118,45 @@ func moduleNameDescriptors(catalog *Catalog) map[string]moduleNameDescriptor {
 			result[path] = moduleNameDescriptor{name: item.Name, defaultContext: item.DefaultContext()}
 		}
 	}
+	// A form's module lies beside the form. Which forms an object keeps is
+	// known only from the folders, so the names come from the index built
+	// while reading them rather than from anything an object declared.
+	for _, form := range catalog.ObjectForms() {
+		path, err := project.ObjectFormModulePath(string(form.ObjectKind), form.Object, form.Name)
+		if err != nil {
+			continue
+		}
+		result[path] = moduleNameDescriptor{
+			name:       FormModuleName(form.ObjectKind, form.Object, form.Name),
+			predefined: []string{"ЭтаФорма", "ThisForm"},
+		}
+	}
 	return result
+}
+
+// formModuleKindNames is what a form's module is called after, per kind of
+// object. A kind missing here falls back to the kind's own folder name, which
+// is readable enough and cannot be wrong.
+var formModuleKindNames = map[Kind]string{
+	CatalogKind: "Справочника", DocumentKind: "Документа", EnumerationKind: "Перечисления",
+	InformationRegisterKind: "РегистраСведений", AccumulationRegisterKind: "РегистраНакопления",
+	AccountingRegisterKind: "РегистраБухгалтерии", CalculationRegisterKind: "РегистраРасчета",
+	ChartOfCharacteristicTypesKind: "ПланаВидовХарактеристик", ChartOfAccountsKind: "ПланаСчетов",
+	ChartOfCalculationTypesKind: "ПланаВидовРасчета", BusinessProcessKind: "БизнесПроцесса",
+	TaskKind: "Задачи", ExchangePlanKind: "ПланаОбмена", DocumentJournalKind: "ЖурналаДокументов",
+	ReportKind: "Отчета", DataProcessorKind: "Обработки", FilterCriterionKind: "КритерияОтбора",
+	SettingsStorageKind: "ХранилищаНастроек",
+}
+
+// FormModuleName is the name one form's module is compiled and reported
+// under. It names the object and the form, because that pair is what the form
+// is: two objects may well each keep a ФормаСписка.
+func FormModuleName(objectKind Kind, object, form string) string {
+	kind, ok := formModuleKindNames[objectKind]
+	if !ok {
+		kind = string(objectKind)
+	}
+	return "МодульФормы" + kind + "." + object + "." + form
 }
 
 // moduleNameFromPath names a module nothing in the catalog claims. A module

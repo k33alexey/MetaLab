@@ -477,10 +477,13 @@ type Catalog struct {
 	subsystemByName map[string]int
 	subsystemByID   map[uuid.UUID]int
 	// objectForms is what each object's forms folder held when the project was
-	// read: kind -> object -> form name -> the identifier that form keeps in
-	// its own description, all folded. Nothing declares a form, so this is the
-	// only place that knows an object has one.
-	objectForms                      map[Kind]map[string]map[string]uuid.UUID
+	// read, kind by kind and object by object. Nothing declares a form, so
+	// this is the only place that knows an object has one.
+	//
+	// Keys are folded, because a name is unique among its siblings with case
+	// ignored; the names themselves are kept as written, because they are read
+	// by people - in the tree, and in the name a form's module compiles under.
+	objectForms                      map[Kind]map[string]objectFormIndex
 	Constants                        []Constant
 	SessionParameters                []SessionParameter
 	sessionParameterByName           map[string]int

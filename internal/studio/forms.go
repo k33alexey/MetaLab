@@ -134,15 +134,30 @@ func (workspace *Workspace) EnsureManagedFormHandler(relative, expectedRevision 
 		return ManagedFormHandlerResult{}, fmt.Errorf("form command %s does not use a BSL handler", command.Name)
 	}
 
-	if opened.Form.Module == nil {
-		moduleID, idErr := uuid.New()
-		if idErr != nil {
-			return ManagedFormHandlerResult{}, idErr
-		}
-		opened.Form.Module = &moduleID
-		modulePath, pathErr := project.ModulePath(moduleID)
-		if pathErr != nil {
-			return ManagedFormHandlerResult{}, pathErr
+	// A form of an object keeps its module beside it, under the name of its
+	// role, and declares nothing: the file is the declaration. A common form
+	// still names one, because it is still a single file with nowhere to put
+	// a module of its own - that is the next iteration's business.
+	modulePath, owned, err := formModulePath(relative)
+	if err != nil {
+		return ManagedFormHandlerResult{}, err
+	}
+	declared := opened.Form.Module != nil
+	if owned {
+		_, statErr := workspace.readSource(modulePath)
+		declared = statErr == nil
+	}
+	if !declared {
+		if !owned {
+			moduleID, idErr := uuid.New()
+			if idErr != nil {
+				return ManagedFormHandlerResult{}, idErr
+			}
+			opened.Form.Module = &moduleID
+			modulePath, err = project.ModulePath(moduleID)
+			if err != nil {
+				return ManagedFormHandlerResult{}, err
+			}
 		}
 		module, createErr := workspace.createFormModuleLocked(modulePath, formHandlerSource(command.Handler))
 		if createErr != nil {
@@ -160,9 +175,11 @@ func (workspace *Workspace) EnsureManagedFormHandler(relative, expectedRevision 
 		return ManagedFormHandlerResult{Form: saved, Module: module, Location: location, Created: true}, nil
 	}
 
-	modulePath, err := project.ModulePath(*opened.Form.Module)
-	if err != nil {
-		return ManagedFormHandlerResult{}, err
+	if !owned {
+		modulePath, err = project.ModulePath(*opened.Form.Module)
+		if err != nil {
+			return ManagedFormHandlerResult{}, err
+		}
 	}
 	module, err := workspace.readSource(modulePath)
 	if err != nil {
@@ -187,6 +204,21 @@ func (workspace *Workspace) EnsureManagedFormHandler(relative, expectedRevision 
 		return ManagedFormHandlerResult{}, err
 	}
 	return ManagedFormHandlerResult{Form: opened, Module: module, Location: location, Created: true}, nil
+}
+
+// formModulePath returns where one form's module lies, and whether the form
+// owns that place. A form of an object owns it: the module is МодульФормы.bsl
+// in the form's own folder, and there is no second place to say so.
+func formModulePath(relative string) (string, bool, error) {
+	parts := strings.Split(relative, "/")
+	if len(parts) != 6 || parts[0] != "metadata" || parts[3] != "forms" || parts[5] != project.FormMetadataFile {
+		return "", false, nil
+	}
+	modulePath, err := project.ObjectFormModulePath(parts[1], parts[2], parts[4])
+	if err != nil {
+		return "", false, err
+	}
+	return modulePath, true, nil
 }
 
 func (workspace *Workspace) createFormModuleLocked(relative, content string) (SourceFile, error) {
@@ -259,12 +291,16 @@ func findFormHandler(module SourceFile, name string) (StudioLocation, bool, erro
 // form are checked against different halves of themselves: a common form is
 // one file named by its identifier, so the identifier has to agree; a form of
 // an object lies in a folder named after the form, so the name has to agree,
-// and the identifier inside is free.
+// the identifier inside is free, and no module may be named at all - the
+// module is the file beside it.
 func formAgreesWithItsPath(form metadata.ManagedForm, relative string) error {
 	parts := strings.Split(relative, "/")
 	if len(parts) == 6 && parts[0] == "metadata" && parts[3] == "forms" && parts[5] == project.FormMetadataFile {
 		if !strings.EqualFold(form.Name, parts[4]) {
 			return fmt.Errorf("form %s does not match the folder %s it lies in", form.Name, parts[4])
+		}
+		if form.Module != nil {
+			return fmt.Errorf("form %s names a module, and its module is %s beside it", form.Name, project.FormModuleFile)
 		}
 		return nil
 	}

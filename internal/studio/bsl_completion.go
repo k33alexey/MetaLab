@@ -281,6 +281,20 @@ func (workspace *Workspace) moduleDescriptors(catalog *metadata.Catalog) map[str
 			}
 			result[path] = moduleDescriptor{name: item.Name, public: true, defaultContext: item.DefaultContext()}
 		}
+		// A form's module lies beside the form, and which forms an object
+		// keeps is known only from the folders - so the whole list comes from
+		// the catalog's own index of them, kind by kind, rather than from the
+		// four kinds spelled out above.
+		for _, form := range catalog.ObjectForms() {
+			path, err := project.ObjectFormModulePath(string(form.ObjectKind), form.Object, form.Name)
+			if err != nil {
+				continue
+			}
+			result[path] = moduleDescriptor{
+				name:       metadata.FormModuleName(form.ObjectKind, form.Object, form.Name),
+				predefined: []string{"ЭтаФорма", "ThisForm"},
+			}
+		}
 	}
 	return result
 }

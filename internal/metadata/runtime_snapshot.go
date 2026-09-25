@@ -78,7 +78,7 @@ func NewRuntimeSnapshot(catalog *Catalog, forms []ManagedForm) (RuntimeSnapshot,
 		Constants:  validated.Constants, SessionParameters: validated.SessionParameters, CommonAttributes: validated.CommonAttributes, CommonModules: validated.CommonModules, EventSubscriptions: validated.EventSubscriptions, Enumerations: validated.Enumerations, DefinedTypes: validated.DefinedTypes,
 		Catalogs: validated.Catalogs, Documents: validated.Documents,
 		InformationRegisters: validated.InformationRegisters, AccumulationRegisters: validated.AccumulationRegisters,
-		Forms: make([]ManagedForm, len(forms)), ObjectForms: catalog.objectFormList(),
+		Forms: make([]ManagedForm, len(forms)), ObjectForms: catalog.ObjectForms(),
 	}
 	seen := make(map[uuid.UUID]bool, len(forms))
 	for index, form := range forms {

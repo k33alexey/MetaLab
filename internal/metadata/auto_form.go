@@ -135,15 +135,50 @@ func (catalog *Catalog) baseForm(objectKind Kind, id uuid.UUID, name string, tit
 	return result, nil
 }
 
-// objectFormList flattens the index of what forms each object keeps, so a
-// published snapshot can carry it. Sorted, because a snapshot is compared
-// byte for byte against the one already applied to the database.
-func (catalog *Catalog) objectFormList() []RuntimeObjectForm {
+// objectFormIndex is what one object's forms folder held: the object's name as
+// written, and its forms by folded name.
+type objectFormIndex struct {
+	object string
+	forms  map[string]objectFormRef
+}
+
+// objectFormRef is one form of an object: the name its folder was called, and
+// the identifier the form declared inside itself.
+type objectFormRef struct {
+	name string
+	id   uuid.UUID
+}
+
+// ObjectFormNames returns the names of the forms one object keeps, as written
+// and sorted. The folder is the list of forms, so this is the only answer to
+// "what forms does this object have".
+func (catalog *Catalog) ObjectFormNames(objectKind Kind, object string) []string {
+	index, ok := catalog.objectForms[objectKind][strings.ToLower(object)]
+	if !ok {
+		return nil
+	}
+	result := make([]string, 0, len(index.forms))
+	for _, form := range index.forms {
+		result = append(result, form.name)
+	}
+	sort.Strings(result)
+	return result
+}
+
+// ObjectForms flattens the index of what forms each object keeps: every form
+// of every object, with the object it belongs to and the identifier the form
+// declared. It is what a published snapshot carries, and what anything else
+// asking "which forms exist" goes through - the folders are the only place
+// that knows. Sorted, because a snapshot is compared byte for byte against the
+// one already applied to the database.
+func (catalog *Catalog) ObjectForms() []RuntimeObjectForm {
 	var result []RuntimeObjectForm
 	for objectKind, objects := range catalog.objectForms {
-		for object, forms := range objects {
-			for form, id := range forms {
-				result = append(result, RuntimeObjectForm{ObjectKind: objectKind, Object: object, Name: form, ID: id})
+		for _, index := range objects {
+			for _, form := range index.forms {
+				result = append(result, RuntimeObjectForm{
+					ObjectKind: objectKind, Object: index.object, Name: form.name, ID: form.id,
+				})
 			}
 		}
 	}
@@ -165,16 +200,18 @@ func (catalog *Catalog) objectFormList() []RuntimeObjectForm {
 func (catalog *Catalog) indexRuntimeObjectForms(forms []RuntimeObjectForm) {
 	for _, form := range forms {
 		if catalog.objectForms == nil {
-			catalog.objectForms = map[Kind]map[string]map[string]uuid.UUID{}
+			catalog.objectForms = map[Kind]map[string]objectFormIndex{}
 		}
 		if catalog.objectForms[form.ObjectKind] == nil {
-			catalog.objectForms[form.ObjectKind] = map[string]map[string]uuid.UUID{}
+			catalog.objectForms[form.ObjectKind] = map[string]objectFormIndex{}
 		}
 		object := strings.ToLower(form.Object)
-		if catalog.objectForms[form.ObjectKind][object] == nil {
-			catalog.objectForms[form.ObjectKind][object] = map[string]uuid.UUID{}
+		index, ok := catalog.objectForms[form.ObjectKind][object]
+		if !ok {
+			index = objectFormIndex{object: form.Object, forms: map[string]objectFormRef{}}
 		}
-		catalog.objectForms[form.ObjectKind][object][strings.ToLower(form.Name)] = form.ID
+		index.forms[strings.ToLower(form.Name)] = objectFormRef{name: form.Name, id: form.ID}
+		catalog.objectForms[form.ObjectKind][object] = index
 	}
 }
 
@@ -186,8 +223,8 @@ func (catalog *Catalog) ObjectFormID(objectKind Kind, object, form string) (uuid
 	if form == "" {
 		return uuid.UUID{}, false
 	}
-	id, ok := catalog.objectForms[objectKind][strings.ToLower(object)][strings.ToLower(form)]
-	return id, ok
+	found, ok := catalog.objectForms[objectKind][strings.ToLower(object)].forms[strings.ToLower(form)]
+	return found.id, ok
 }
 
 func (catalog *Catalog) documentHasMovements(documentID uuid.UUID) bool {

@@ -311,10 +311,15 @@ func validateEditablePath(relative string) (string, string, error) {
 			if len(parts) == 4 && slices.Contains(project.ObjectModuleFiles(), parts[3]) {
 				return relative, "bsl", nil
 			}
-			// A form is a folder named after itself, holding its description.
-			if len(parts) == 6 && parts[3] == "forms" && project.SubordinateName(parts[4]) == nil &&
-				parts[5] == project.FormMetadataFile {
-				return relative, "yaml", nil
+			// A form is a folder named after itself, holding its description
+			// and, under the name of its role, the module that runs it.
+			if len(parts) == 6 && parts[3] == "forms" && project.SubordinateName(parts[4]) == nil {
+				switch parts[5] {
+				case project.FormMetadataFile:
+					return relative, "yaml", nil
+				case project.FormModuleFile:
+					return relative, "bsl", nil
+				}
 			}
 			if len(parts) == 6 && parts[3] == "commands" && project.SubordinateName(parts[4]) == nil &&
 				parts[5] == project.CommandModuleFile {

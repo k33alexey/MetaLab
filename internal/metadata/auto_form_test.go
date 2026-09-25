@@ -49,7 +49,9 @@ func TestCustomFormSuppressesAutomaticLayout(t *testing.T) {
 	catalog := &Catalog{
 		Catalogs:      []CatalogDefinition{{ID: catalogID, Name: "Товары", Title: LocalizedText{"ru": "Товары"}, Forms: ObjectForms{Object: "ФормаЭлемента"}}},
 		catalogByName: map[string]int{"товары": 0}, catalogByID: map[uuid.UUID]int{catalogID: 0},
-		objectForms: map[Kind]map[string]map[string]uuid.UUID{CatalogKind: {"товары": {"формаэлемента": formID}}},
+		objectForms: map[Kind]map[string]objectFormIndex{CatalogKind: {"товары": {
+			object: "Товары", forms: map[string]objectFormRef{"формаэлемента": {name: "ФормаЭлемента", id: formID}},
+		}}},
 	}
 	form, err := catalog.CatalogForm("Товары", ObjectForm, "ru")
 	if err != nil || form.Generated || form.SourceID == nil || *form.SourceID != formID || len(form.Fields) != 0 {

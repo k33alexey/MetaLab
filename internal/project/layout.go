@@ -42,6 +42,9 @@ const (
 	// FormMetadataFile is the description of one managed form, inside the
 	// folder named after that form.
 	FormMetadataFile = "form.yaml"
+	// FormModuleFile is the module of one managed form, beside the form's own
+	// description in that same folder.
+	FormModuleFile = "МодульФормы.bsl"
 )
 
 var (
@@ -445,6 +448,19 @@ func ObjectFormPath(kind, name, form string) (string, error) {
 		return "", err
 	}
 	return path.Join(directory, FormMetadataFile), nil
+}
+
+// ObjectFormModulePath returns the module of one of an object's own managed
+// forms, beside the form itself.
+//
+// Like every other module, it carries no identifier: the file lying under the
+// name of its role, in the folder of what owns it, is the whole declaration.
+func ObjectFormModulePath(kind, name, form string) (string, error) {
+	directory, err := ObjectFormDirectory(kind, name, form)
+	if err != nil {
+		return "", err
+	}
+	return path.Join(directory, FormModuleFile), nil
 }
 
 // ObjectTemplateDirectory returns the folder holding the content of one of an

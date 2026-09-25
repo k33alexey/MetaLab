@@ -2226,7 +2226,7 @@ func (catalog *Catalog) indexObjectForms(directory string, directoryKind Kind, k
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("%s %s forms: %w", kind, name, err)
 	}
-	found := map[string]uuid.UUID{}
+	found := map[string]objectFormRef{}
 	for _, entry := range entries {
 		if !entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
 			return fmt.Errorf("%s %s keeps %q among its forms, and a form is a folder",
@@ -2239,7 +2239,10 @@ func (catalog *Catalog) indexObjectForms(directory string, directoryKind Kind, k
 		if err != nil {
 			return fmt.Errorf("%s %s form %s: %w", kind, name, entry.Name(), err)
 		}
-		found[strings.ToLower(entry.Name())] = id
+		if err := validateObjectFormFolder(directory, entry.Name()); err != nil {
+			return fmt.Errorf("%s %s form %s: %w", kind, name, entry.Name(), err)
+		}
+		found[strings.ToLower(entry.Name())] = objectFormRef{name: entry.Name(), id: id}
 	}
 	for _, slot := range slots {
 		if slot.form == "" {
@@ -2253,12 +2256,32 @@ func (catalog *Catalog) indexObjectForms(directory string, directoryKind Kind, k
 		return nil
 	}
 	if catalog.objectForms == nil {
-		catalog.objectForms = map[Kind]map[string]map[string]uuid.UUID{}
+		catalog.objectForms = map[Kind]map[string]objectFormIndex{}
 	}
 	if catalog.objectForms[directoryKind] == nil {
-		catalog.objectForms[directoryKind] = map[string]map[string]uuid.UUID{}
+		catalog.objectForms[directoryKind] = map[string]objectFormIndex{}
 	}
-	catalog.objectForms[directoryKind][strings.ToLower(name)] = found
+	catalog.objectForms[directoryKind][strings.ToLower(name)] = objectFormIndex{object: name, forms: found}
+	return nil
+}
+
+// validateObjectFormFolder checks that a form's folder holds the form and its
+// module, and nothing else. The module is not declared anywhere - the file
+// lying there under the name of its role is the whole declaration - so the
+// only thing that can be wrong is a file nobody can name.
+func validateObjectFormFolder(directory, form string) error {
+	entries, err := os.ReadDir(filepath.Join(directory, "forms", form))
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("keeps %q, and a form keeps only its description and its module", entry.Name())
+		}
+		if entry.Name() != project.FormMetadataFile && entry.Name() != project.FormModuleFile {
+			return fmt.Errorf("keeps %q, and a form keeps only its description and its module", entry.Name())
+		}
+	}
 	return nil
 }
 
@@ -2280,14 +2303,21 @@ func readObjectFormIdentity(directory, form string) (uuid.UUID, error) {
 		return uuid.UUID{}, err
 	}
 	var identity struct {
-		ID   uuid.UUID `yaml:"id"`
-		Name string    `yaml:"name"`
+		ID     uuid.UUID  `yaml:"id"`
+		Name   string     `yaml:"name"`
+		Module *uuid.UUID `yaml:"module"`
 	}
 	if err := yaml.Unmarshal(content, &identity); err != nil {
 		return uuid.UUID{}, err
 	}
 	if identity.ID.IsZero() {
 		return uuid.UUID{}, fmt.Errorf("has no identifier of its own")
+	}
+	// A form of an object does not name its module: the module is the file
+	// beside it. Naming one would be a second place to keep in step, and the
+	// two would disagree the first time either moved.
+	if identity.Module != nil {
+		return uuid.UUID{}, fmt.Errorf("names a module, and its module is %s beside it", project.FormModuleFile)
 	}
 	if !strings.EqualFold(identity.Name, form) {
 		return uuid.UUID{}, fmt.Errorf("calls itself %s, and lies in a folder called %s", identity.Name, form)

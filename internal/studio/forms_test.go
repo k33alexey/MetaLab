@@ -116,7 +116,11 @@ func TestManagedFormHandlerCreatesModuleAndReopensProcedure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !created.Created || created.Form.Form.Module == nil || !strings.Contains(created.Module.Content, "Процедура Заполнить(Команда)") || created.Location.Range.Start.Line != 1 {
+	// The form declares no module: it is the file that appeared beside it,
+	// under the name of its role, and nowhere else.
+	if !created.Created || created.Form.Form.Module != nil ||
+		created.Module.Path != "metadata/catalogs/Контрагенты/forms/ФормаТовара/"+project.FormModuleFile ||
+		!strings.Contains(created.Module.Content, "Процедура Заполнить(Команда)") || created.Location.Range.Start.Line != 1 {
 		t.Fatalf("created handler = %+v", created)
 	}
 	reopened, err := workspace.EnsureManagedFormHandler(relative, created.Form.Revision, form.Commands[0].ID)

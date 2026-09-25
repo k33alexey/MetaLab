@@ -280,9 +280,16 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 		project.SubordinateName(parts[4]) == nil {
 		return nil
 	}
-	if !directory && len(parts) == 6 && parts[3] == "forms" && parts[5] == project.FormMetadataFile {
-		if expected, err := project.ObjectFormPath(parts[1], objectName, parts[4]); err == nil && expected == relative {
-			return nil
+	if !directory && len(parts) == 6 && parts[3] == "forms" {
+		switch parts[5] {
+		case project.FormMetadataFile:
+			if expected, err := project.ObjectFormPath(parts[1], objectName, parts[4]); err == nil && expected == relative {
+				return nil
+			}
+		case project.FormModuleFile:
+			if expected, err := project.ObjectFormModulePath(parts[1], objectName, parts[4]); err == nil && expected == relative {
+				return nil
+			}
 		}
 	}
 	if !directory && len(parts) == 6 && parts[3] == "commands" && parts[5] == project.CommandModuleFile {
@@ -371,11 +378,15 @@ func isManagedFormSourcePath(relative string) bool {
 // A common form is still one file named by its identifier, so the identifier
 // is what has to agree. A form of an object lies in a folder named after the
 // form, so its name is what has to agree - the identifier inside it is free,
-// and is what roles, the portal and ML App go on referring to it by.
+// and is what roles, the portal and ML App go on referring to it by. Such a
+// form also names no module: its module is the file lying beside it.
 func formAgreesWithItsPath(form metadata.ManagedForm, relative string) error {
 	if name, ok := objectFolderFormName(relative); ok {
 		if !strings.EqualFold(form.Name, name) {
 			return fmt.Errorf("form name does not match %q", relative)
+		}
+		if form.Module != nil {
+			return fmt.Errorf("form %s names a module, and its module is %s beside it", form.Name, project.FormModuleFile)
 		}
 		return nil
 	}
