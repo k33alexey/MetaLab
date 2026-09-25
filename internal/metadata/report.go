@@ -36,9 +36,9 @@ type ReportDefinition struct {
 // ReportForms are the three forms a report shows itself through: the report
 // itself, its settings and one of its variants.
 type ReportForms struct {
-	Report   *uuid.UUID `yaml:"report,omitempty" json:"report,omitempty"`
-	Settings *uuid.UUID `yaml:"settings,omitempty" json:"settings,omitempty"`
-	Variant  *uuid.UUID `yaml:"variant,omitempty" json:"variant,omitempty"`
+	Report   string `yaml:"report,omitempty" json:"report,omitempty"`
+	Settings string `yaml:"settings,omitempty" json:"settings,omitempty"`
+	Variant  string `yaml:"variant,omitempty" json:"variant,omitempty"`
 }
 
 // DataProcessorDefinition describes one data processor. It is a report without
@@ -66,13 +66,16 @@ func DecodeReport(source string, reader io.Reader, manifest project.Project) (Re
 	issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, manifest, reservedReportName)...)
 	for name, id := range map[string]*uuid.UUID{
 		"main_schema": value.MainSchema, "variants_storage": value.VariantsStorage,
-		"settings_storage": value.SettingsStorage, "forms.report": value.Forms.Report,
-		"forms.settings": value.Forms.Settings, "forms.variant": value.Forms.Variant,
+		"settings_storage": value.SettingsStorage,
 	} {
 		if id != nil && id.IsZero() {
 			issues = append(issues, name+" must be a non-zero UUID")
 		}
 	}
+	issues = append(issues, validateFormSlots(map[string]string{
+		"forms.report": value.Forms.Report, "forms.settings": value.Forms.Settings,
+		"forms.variant": value.Forms.Variant,
+	})...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
@@ -89,13 +92,7 @@ func DecodeDataProcessor(source string, reader io.Reader, manifest project.Proje
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
 	issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, manifest, reservedReportName)...)
-	for name, id := range map[string]*uuid.UUID{
-		"forms.object": value.Forms.Object, "forms.list": value.Forms.List, "forms.choice": value.Forms.Choice,
-	} {
-		if id != nil && id.IsZero() {
-			issues = append(issues, name+" must be a non-zero UUID")
-		}
-	}
+	issues = append(issues, validateObjectForms(value.Forms)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
@@ -131,7 +128,7 @@ func cloneReport(value ReportDefinition) ReportDefinition {
 	value.Title = cloneTitle(value.Title)
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.TableParts = cloneTableParts(value.TableParts)
-	for _, id := range []**uuid.UUID{&value.MainSchema, &value.VariantsStorage, &value.SettingsStorage, &value.Forms.Report, &value.Forms.Settings, &value.Forms.Variant} {
+	for _, id := range []**uuid.UUID{&value.MainSchema, &value.VariantsStorage, &value.SettingsStorage} {
 		if *id != nil {
 			copied := **id
 			*id = &copied

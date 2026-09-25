@@ -343,10 +343,10 @@ const (
 // Each of the two has an auxiliary form beside it - a second list or a second
 // choice form, used where the main one does not fit.
 type EnumerationForms struct {
-	List            *uuid.UUID `yaml:"list,omitempty" json:"list,omitempty"`
-	Choice          *uuid.UUID `yaml:"choice,omitempty" json:"choice,omitempty"`
-	AuxiliaryList   *uuid.UUID `yaml:"auxiliary_list,omitempty" json:"auxiliaryList,omitempty"`
-	AuxiliaryChoice *uuid.UUID `yaml:"auxiliary_choice,omitempty" json:"auxiliaryChoice,omitempty"`
+	List            string `yaml:"list,omitempty" json:"list,omitempty"`
+	Choice          string `yaml:"choice,omitempty" json:"choice,omitempty"`
+	AuxiliaryList   string `yaml:"auxiliary_list,omitempty" json:"auxiliaryList,omitempty"`
+	AuxiliaryChoice string `yaml:"auxiliary_choice,omitempty" json:"auxiliaryChoice,omitempty"`
 }
 
 // Enumeration is a closed list of values the developer writes and the user
@@ -469,13 +469,18 @@ type CatalogDefinition struct {
 
 // Catalog is an immutable-by-convention snapshot of the supported metadata kinds.
 type Catalog struct {
-	Project                          project.Project
-	Roles                            []RoleDefinition
-	roleByName                       map[string]int
-	roleByID                         map[uuid.UUID]int
-	Subsystems                       []SubsystemDefinition
-	subsystemByName                  map[string]int
-	subsystemByID                    map[uuid.UUID]int
+	Project         project.Project
+	Roles           []RoleDefinition
+	roleByName      map[string]int
+	roleByID        map[uuid.UUID]int
+	Subsystems      []SubsystemDefinition
+	subsystemByName map[string]int
+	subsystemByID   map[uuid.UUID]int
+	// objectForms is what each object's forms folder held when the project was
+	// read: kind -> object -> form name -> the identifier that form keeps in
+	// its own description, all folded. Nothing declares a form, so this is the
+	// only place that knows an object has one.
+	objectForms                      map[Kind]map[string]map[string]uuid.UUID
 	Constants                        []Constant
 	SessionParameters                []SessionParameter
 	sessionParameterByName           map[string]int
@@ -859,15 +864,10 @@ func DecodeEnumeration(source string, reader io.Reader, manifest project.Project
 	if value.ChoiceMode == ChoiceFromForm && value.QuickChoice {
 		issues = append(issues, "quick_choice contradicts choice_mode from-form")
 	}
-	for name, id := range map[string]*uuid.UUID{
-		"forms.list":   value.Forms.List,
-		"forms.choice": value.Forms.Choice, "forms.auxiliary_list": value.Forms.AuxiliaryList,
-		"forms.auxiliary_choice": value.Forms.AuxiliaryChoice,
-	} {
-		if id != nil && id.IsZero() {
-			issues = append(issues, name+" must be a non-zero UUID")
-		}
-	}
+	issues = append(issues, validateFormSlots(map[string]string{
+		"forms.list": value.Forms.List, "forms.choice": value.Forms.Choice,
+		"forms.auxiliary_list": value.Forms.AuxiliaryList, "forms.auxiliary_choice": value.Forms.AuxiliaryChoice,
+	})...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
@@ -1380,13 +1380,6 @@ func cloneEnumeration(value Enumeration) Enumeration {
 	value.Values = slices.Clone(value.Values)
 	for index := range value.Values {
 		value.Values[index].Title = cloneTitle(value.Values[index].Title)
-	}
-	for _, id := range []**uuid.UUID{&value.Forms.List, &value.Forms.Choice,
-		&value.Forms.AuxiliaryList, &value.Forms.AuxiliaryChoice} {
-		if *id != nil {
-			copied := **id
-			*id = &copied
-		}
 	}
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)

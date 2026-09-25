@@ -40,10 +40,10 @@ choice_mode: from-form
 choice_history_on_input: dont-use
 use_standard_commands: true
 forms:
-  list: `+enumListForm+`
-  choice: `+enumChoiceForm+`
-  auxiliary_list: `+enumAuxList+`
-  auxiliary_choice: `+enumAuxChoice+`
+  list: ФормаСписка
+  choice: ФормаВыбора
+  auxiliary_list: ВспомогательныйСписок
+  auxiliary_choice: ВспомогательныйВыбор
 values:
   - {id: `+enumValueOne+`, name: Новый, title: {ru: Новый}, comment: Только что создан}
   - {id: `+enumValueTwo+`, name: Отгружен, title: {ru: Отгружен}}
@@ -57,8 +57,11 @@ templates:
 `)
 	writeObjectModule(t, root, EnumerationKind, "СтатусыЗаказа", project.ManagerModuleFile)
 	writeCommandModule(t, root, EnumerationKind, "СтатусыЗаказа", "ОткрытьСписок")
-	for _, form := range []string{enumListForm, enumChoiceForm, enumAuxList, enumAuxChoice} {
-		writeObjectForm(t, root, EnumerationKind, "СтатусыЗаказа", form)
+	for form, id := range map[string]string{
+		"ФормаСписка": enumListForm, "ФормаВыбора": enumChoiceForm,
+		"ВспомогательныйСписок": enumAuxList, "ВспомогательныйВыбор": enumAuxChoice,
+	} {
+		writeObjectForm(t, root, EnumerationKind, "СтатусыЗаказа", form, id)
 	}
 	writeTemplateContent(t, root, EnumerationKind, "СтатусыЗаказа", enumTemplate, "content.txt", "текст")
 
@@ -81,9 +84,9 @@ templates:
 		t.Fatalf("the choice history setting was lost: %+v", enumeration)
 	case !enumeration.UseStandardCommands:
 		t.Fatalf("whether the platform offers its own commands was lost: %+v", enumeration)
-	case enumeration.Forms.List == nil || enumeration.Forms.Choice == nil:
+	case enumeration.Forms.List == "" || enumeration.Forms.Choice == "":
 		t.Fatalf("the forms were lost: %+v", enumeration.Forms)
-	case enumeration.Forms.AuxiliaryList == nil || enumeration.Forms.AuxiliaryChoice == nil:
+	case enumeration.Forms.AuxiliaryList == "" || enumeration.Forms.AuxiliaryChoice == "":
 		t.Fatalf("the auxiliary forms were lost: %+v", enumeration.Forms)
 	case len(enumeration.Commands) != 1 || len(enumeration.Templates) != 1:
 		t.Fatalf("the commands or the templates were lost: %+v", enumeration)
@@ -126,13 +129,13 @@ values: [{id: `+enumValueOne+`, name: Новый, title: {ru: Новый}}]
 id: `+enumObject+`
 name: СтатусыЗаказа
 title: {ru: Статусы заказа}
-forms: {auxiliary_choice: `+enumAuxChoice+`}
+forms: {auxiliary_choice: ВспомогательныйВыбор}
 values: [{id: `+enumValueOne+`, name: Новый, title: {ru: Новый}}]
 `)
 	if _, err := Load(root); err == nil {
 		t.Fatal("a form that does not exist was accepted")
 	}
-	writeObjectForm(t, root, EnumerationKind, "СтатусыЗаказа", enumAuxChoice)
+	writeObjectForm(t, root, EnumerationKind, "СтатусыЗаказа", "ВспомогательныйВыбор", enumAuxChoice)
 	if _, err := Load(root); err != nil {
 		t.Fatal(err)
 	}
@@ -148,8 +151,8 @@ func TestBrokenEnumerationsAreRefused(t *testing.T) {
 			"choice_history_on_input must be auto, use or dont-use"},
 		"быстрый выбор при выборе из формы": {"choice_mode: from-form\nquick_choice: true",
 			"quick_choice contradicts choice_mode from-form"},
-		"форма нулевая": {"forms: {auxiliary_list: 00000000-0000-0000-0000-000000000000}",
-			"forms.auxiliary_list must be a non-zero UUID"},
+		"имя формы не имя": {"forms: {auxiliary_list: \"Вспомогательный список\"}",
+			"forms.auxiliary_list must be the name of a form"},
 		"вида макета не существует": {"templates:\n  - {id: " + enumTemplate +
 			", name: Макет, title: {ru: Макет}, kind: слайды}",
 			"templates[0].kind is not a kind of template"},
@@ -173,15 +176,17 @@ values: [{id: `+enumValueOne+`, name: Новый, title: {ru: Новый}}]
 	}
 }
 
-// writeObjectForm writes an empty managed form file where an object keeps its
-// forms.
-func writeObjectForm(t *testing.T, root string, kind Kind, objectName, formID string) {
+// writeObjectForm writes one managed form into the folder that form keeps
+// beside its object. The folder is named after the form; the identifier the
+// form carries inside is its own and is not what finds the file.
+func writeObjectForm(t *testing.T, root string, kind Kind, objectName, form, formID string) {
 	t.Helper()
-	directory := filepath.Join(root, "metadata", string(kind), objectName, "forms")
+	directory := filepath.Join(root, "metadata", string(kind), objectName, "forms", form)
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(directory, formID+".yaml"), []byte("format: 1\n"), 0o644); err != nil {
+	body := "format: 1\nid: " + formID + "\nname: " + form + "\ntitle: {ru: " + form + "}\nkind: list\n"
+	if err := os.WriteFile(filepath.Join(directory, project.FormMetadataFile), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

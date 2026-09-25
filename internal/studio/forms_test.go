@@ -35,8 +35,12 @@ func TestManagedFormWorkspaceRoundTripAndIdentity(t *testing.T) {
 	if err != nil || len(saved.Form.Items[0].Children) != 2 || saved.Revision == opened.Revision {
 		t.Fatalf("saved form = %+v, error=%v", saved, err)
 	}
-	saved.Form.ID = uuid.MustNew()
-	if _, err := workspace.SaveManagedForm(relative, saved.Form, saved.Revision); err == nil || !strings.Contains(err.Error(), "does not match filename") {
+	// A form of an object is identified by the folder it lies in, so renaming
+	// it in place is what cannot be saved: the file would then say one name
+	// and lie under another, and the slot pointing at it would find neither.
+	saved.Form.Name = "ДругаяФорма"
+	if _, err := workspace.SaveManagedForm(relative, saved.Form, saved.Revision); err == nil ||
+		!strings.Contains(err.Error(), "does not match the folder") {
 		t.Fatalf("identity error = %v", err)
 	}
 }
@@ -195,9 +199,9 @@ func createManagedFormSource(t *testing.T) (*Workspace, string, metadata.Managed
 		Code: metadata.CatalogCode{Type: metadata.StringType, Length: 20, Auto: true, Unique: true}, DescriptionLength: 150,
 		Attributes: []metadata.Attribute{{ID: uuid.MustNew(), Name: "ИНН", Title: metadata.LocalizedText{"ru": "ИНН"}, Types: []metadata.Type{{Kind: metadata.StringType, Length: 12}}}},
 		TableParts: []metadata.TablePart{{ID: uuid.MustNew(), Name: "Контакты", Title: metadata.LocalizedText{"ru": "Контакты"}, Attributes: []metadata.Attribute{{ID: uuid.MustNew(), Name: "Телефон", Title: metadata.LocalizedText{"ru": "Телефон"}, Types: []metadata.Type{{Kind: metadata.StringType, Length: 30}}}}}},
-		Forms:      metadata.ObjectForms{Object: &form.ID},
+		Forms:      metadata.ObjectForms{Object: form.Name},
 	}
-	relative, err := project.ObjectFormPath("catalogs", catalog.Name, form.ID)
+	relative, err := project.ObjectFormPath("catalogs", catalog.Name, form.Name)
 	if err != nil {
 		t.Fatal(err)
 	}

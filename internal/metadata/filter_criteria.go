@@ -30,8 +30,8 @@ type CriterionField struct {
 // CriterionForms are the forms a criterion shows its result through. There is
 // one role - the list of what was found - with an auxiliary form beside it.
 type CriterionForms struct {
-	List      *uuid.UUID `yaml:"list,omitempty" json:"list,omitempty"`
-	Auxiliary *uuid.UUID `yaml:"auxiliary,omitempty" json:"auxiliary,omitempty"`
+	List      string `yaml:"list,omitempty" json:"list,omitempty"`
+	Auxiliary string `yaml:"auxiliary,omitempty" json:"auxiliary,omitempty"`
 }
 
 // FilterCriterionDefinition describes one filter criterion: a named set of
@@ -103,14 +103,9 @@ func DecodeFilterCriterion(source string, reader io.Reader, manifest project.Pro
 		}
 		seen[key] = true
 	}
-	for name, id := range map[string]*uuid.UUID{
-		"forms.list":      value.Forms.List,
-		"forms.auxiliary": value.Forms.Auxiliary,
-	} {
-		if id != nil && id.IsZero() {
-			issues = append(issues, name+" must be a non-zero UUID")
-		}
-	}
+	issues = append(issues, validateFormSlots(map[string]string{
+		"forms.list": value.Forms.List, "forms.auxiliary": value.Forms.Auxiliary,
+	})...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return FilterCriterionDefinition{}, err
@@ -129,12 +124,6 @@ func cloneFilterCriterion(value FilterCriterionDefinition) FilterCriterionDefini
 		if value.Fields[index].TablePart != nil {
 			copied := *value.Fields[index].TablePart
 			value.Fields[index].TablePart = &copied
-		}
-	}
-	for _, id := range []**uuid.UUID{&value.Forms.List, &value.Forms.Auxiliary} {
-		if *id != nil {
-			copied := **id
-			*id = &copied
 		}
 	}
 	value.Commands = cloneObjectCommands(value.Commands)

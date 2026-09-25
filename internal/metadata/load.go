@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 
+	"go.yaml.in/yaml/v3"
+
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -597,11 +599,11 @@ func loadKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) e
 	return nil
 }
 
-// loadObjectKind scans metadata/<kind>/ for per-object folders (named by the
-// object's own UUID) and decodes the fixed-name object.yaml inside each one.
-// Unlike loadKind, entries are directories, not flat <uuid>.yaml files — this
-// is how catalogs, documents and registers group their own description with
-// their module(s) and managed forms, physically located inside that same
+// loadObjectKind scans metadata/<kind>/ for per-object folders (named after
+// the object) and decodes the fixed-name object.yaml inside each one. Unlike
+// loadKind, entries are directories, not flat <uuid>.yaml files — this is how
+// catalogs, documents and registers group their own description with their
+// modules, forms, commands and templates, physically located inside that same
 // folder (see validateObjectFileSources).
 func loadObjectKind(root string, kind Kind, decode func(string, *os.File, string) error) error {
 	directory := filepath.Join(root, "metadata", string(kind))
@@ -1292,12 +1294,12 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("predefined catalog item %s.%s: %w", item.Name, predefined.Name, err)
 			}
 		}
-		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: CatalogKind, kind: "catalog", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: CatalogKind, kind: "catalog", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
 	for _, item := range catalog.SettingsStorages {
-		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: SettingsStorageKind,
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: SettingsStorageKind,
 			kind: "settings storage", name: item.Name, modules: managerKindModules,
 			extraForms: []namedSource{
 				{"save form", item.Forms.Save}, {"load form", item.Forms.Load},
@@ -1307,7 +1309,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	for _, item := range catalog.FilterCriteria {
-		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: FilterCriterionKind,
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: FilterCriterionKind,
 			kind: "filter criterion", name: item.Name, modules: managerKindModules,
 			extraForms: []namedSource{{"list form", item.Forms.List}, {"auxiliary form", item.Forms.Auxiliary}},
 			commands:   item.Commands}); err != nil {
@@ -1315,7 +1317,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	for _, item := range catalog.Enumerations {
-		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: EnumerationKind,
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: EnumerationKind,
 			kind: "enumeration", name: item.Name, modules: managerKindModules,
 			extraForms: []namedSource{
 				{"list form", item.Forms.List}, {"choice form", item.Forms.Choice},
@@ -1364,7 +1366,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("predefined characteristic %s.%s: %w", item.Name, predefined.Name, err)
 			}
 		}
-		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: ChartOfCharacteristicTypesKind, kind: "chart of characteristic types", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ChartOfCharacteristicTypesKind, kind: "chart of characteristic types", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1385,7 +1387,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				}
 			}
 		}
-		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: ChartOfAccountsKind, kind: "chart of accounts", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ChartOfAccountsKind, kind: "chart of accounts", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1406,7 +1408,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				}
 			}
 		}
-		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: ChartOfCalculationTypesKind, kind: "chart of calculation types", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ChartOfCalculationTypesKind, kind: "chart of calculation types", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1420,7 +1422,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return err
 			}
 		}
-		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: TaskKind, kind: "task", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: TaskKind, kind: "task", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1446,7 +1448,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		if err := catalog.validateDocumentJournal("document journal "+item.Name, item, owners); err != nil {
 			return err
 		}
-		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: DocumentJournalKind, kind: "document journal", name: item.Name, modules: managerKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: DocumentJournalKind, kind: "document journal", name: item.Name, modules: managerKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1460,7 +1462,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return err
 			}
 		}
-		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: ExchangePlanKind, kind: "exchange plan", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ExchangePlanKind, kind: "exchange plan", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1474,7 +1476,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return err
 			}
 		}
-		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: BusinessProcessKind, kind: "business process", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: BusinessProcessKind, kind: "business process", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1491,7 +1493,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				}
 			}
 		}
-		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: DocumentKind, kind: "document", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: DocumentKind, kind: "document", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1506,7 +1508,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("information register %s references unknown recorder document %s", item.Name, recorder)
 			}
 		}
-		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: InformationRegisterKind, kind: "information register", name: item.Name, modules: recordSetKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: InformationRegisterKind, kind: "information register", name: item.Name, modules: recordSetKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1526,7 +1528,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("accumulation register %s references unknown recorder document %s", item.Name, recorder)
 			}
 		}
-		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: AccumulationRegisterKind, kind: "accumulation register", name: item.Name, modules: recordSetKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: AccumulationRegisterKind, kind: "accumulation register", name: item.Name, modules: recordSetKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1547,7 +1549,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return err
 			}
 		}
-		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: ReportKind, kind: "report", name: item.Name, modules: objectKindModules, forms: ObjectForms{}, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ReportKind, kind: "report", name: item.Name, modules: objectKindModules, forms: ObjectForms{}, commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1558,7 +1560,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return err
 			}
 		}
-		if err := validateObjectFileSources(objectFiles{root: root, directoryKind: DataProcessorKind, kind: "data processor", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: DataProcessorKind, kind: "data processor", name: item.Name, modules: objectKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1767,7 +1769,7 @@ func (catalog *Catalog) validateAccountingRegister(root string, item AccountingR
 			return fmt.Errorf("%s references unknown recorder document %s", owner, recorder)
 		}
 	}
-	return validateObjectFileSources(objectFiles{root: root, directoryKind: AccountingRegisterKind, kind: "accounting register", name: item.Name, modules: recordSetKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates})
+	return catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: AccountingRegisterKind, kind: "accounting register", name: item.Name, modules: recordSetKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates})
 }
 
 // takesABase says whether a chart gathers a base at all. An unset dependency
@@ -1872,7 +1874,7 @@ func (catalog *Catalog) validateCalculationRegister(root string, item Calculatio
 			}
 		}
 	}
-	return validateObjectFileSources(objectFiles{root: root, directoryKind: CalculationRegisterKind, kind: "calculation register", name: item.Name, modules: recordSetKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates})
+	return catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: CalculationRegisterKind, kind: "calculation register", name: item.Name, modules: recordSetKindModules, forms: item.Forms, commands: item.Commands, templates: item.Templates})
 }
 
 // documentAttributeOwners maps every attribute of every document - its own and
@@ -2171,7 +2173,7 @@ type objectFiles struct {
 // a message about it.
 type namedSource struct {
 	role string
-	id   *uuid.UUID
+	form string
 }
 
 // validateObjectFileSources checks the per-object folder
@@ -2185,47 +2187,112 @@ type namedSource struct {
 // object module. What can still be wrong is a module in a role this kind of
 // object does not have - the record set of something that keeps no records -
 // and that is what is caught here.
-func validateObjectFileSources(files objectFiles) error {
+func (catalog *Catalog) validateObjectFileSources(files objectFiles) error {
 	if files.root == "" {
 		return nil
 	}
 	root, kind, name := files.root, files.kind, files.name
-	forms := files.forms
 	directory := filepath.Join(root, "metadata", string(files.directoryKind), name)
-	type source struct {
-		role, path string
-		id         *uuid.UUID
-	}
-	build := func(role string, sourceID *uuid.UUID) source {
-		if sourceID == nil {
-			return source{role: role}
-		}
-		return source{role: role, id: sourceID, path: filepath.Join(directory, "forms", sourceID.String()+".yaml")}
-	}
-	sources := []source{
-		build("object form", forms.Object),
-		build("list form", forms.List),
-		build("choice form", forms.Choice),
-	}
-	for _, form := range files.extraForms {
-		sources = append(sources, build(form.role, form.id))
-	}
-	for _, source := range sources {
-		if source.id == nil {
-			continue
-		}
-		info, err := os.Lstat(source.path)
-		if err != nil || !info.Mode().IsRegular() || info.Mode()&fs.ModeSymlink != 0 {
-			return fmt.Errorf("%s %s %s %s is missing or unsafe", kind, name, source.role, source.id)
-		}
-	}
 	if err := validateObjectFolderEntries(directory, kind, name, files.modules); err != nil {
+		return err
+	}
+	slots := append([]namedSource{
+		{"object form", files.forms.Object},
+		{"list form", files.forms.List},
+		{"choice form", files.forms.Choice},
+	}, files.extraForms...)
+	if err := catalog.indexObjectForms(directory, files.directoryKind, kind, name, slots); err != nil {
 		return err
 	}
 	if err := validateObjectCommandFiles(directory, kind, name, files.commands); err != nil {
 		return err
 	}
 	return validateObjectTemplateFiles(directory, kind, name, files.templates)
+}
+
+// indexObjectForms reads the forms folder of one object and records what it
+// found, then checks that every slot names one of those forms.
+//
+// The folder is the list of forms; the slots only say which of them the
+// platform opens by default. There are normally more forms than slots - the
+// prototype's catalog of users keeps seven forms behind three slots - so a
+// form no slot names is an ordinary form, not an orphan, and is kept.
+//
+// What is recorded is the form's own identifier, because that is what a role,
+// the portal and ML App refer to a form by. The name finds the file; the
+// identifier travels.
+func (catalog *Catalog) indexObjectForms(directory string, directoryKind Kind, kind, name string, slots []namedSource) error {
+	entries, err := os.ReadDir(filepath.Join(directory, "forms"))
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("%s %s forms: %w", kind, name, err)
+	}
+	found := map[string]uuid.UUID{}
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("%s %s keeps %q among its forms, and a form is a folder",
+				kind, name, entry.Name())
+		}
+		if project.SubordinateName(entry.Name()) != nil {
+			return fmt.Errorf("%s %s keeps a form folder %q, which is not a name", kind, name, entry.Name())
+		}
+		id, err := readObjectFormIdentity(directory, entry.Name())
+		if err != nil {
+			return fmt.Errorf("%s %s form %s: %w", kind, name, entry.Name(), err)
+		}
+		found[strings.ToLower(entry.Name())] = id
+	}
+	for _, slot := range slots {
+		if slot.form == "" {
+			continue
+		}
+		if _, ok := found[strings.ToLower(slot.form)]; !ok {
+			return fmt.Errorf("%s %s names %s %s, which it does not keep", kind, name, slot.role, slot.form)
+		}
+	}
+	if len(found) == 0 {
+		return nil
+	}
+	if catalog.objectForms == nil {
+		catalog.objectForms = map[Kind]map[string]map[string]uuid.UUID{}
+	}
+	if catalog.objectForms[directoryKind] == nil {
+		catalog.objectForms[directoryKind] = map[string]map[string]uuid.UUID{}
+	}
+	catalog.objectForms[directoryKind][strings.ToLower(name)] = found
+	return nil
+}
+
+// readObjectFormIdentity reads the identifier one form keeps in its own
+// description, and checks the description agrees about the form's name.
+//
+// Only the two fields are read. The rest of a form is a tree of elements that
+// nothing here needs, and a form whose body is half-written must not stop the
+// whole configuration from loading - it is the form designer's business to
+// refuse it, not the loader's.
+func readObjectFormIdentity(directory, form string) (uuid.UUID, error) {
+	path := filepath.Join(directory, "forms", form, project.FormMetadataFile)
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return uuid.UUID{}, fmt.Errorf("has no %s", project.FormMetadataFile)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return uuid.UUID{}, err
+	}
+	var identity struct {
+		ID   uuid.UUID `yaml:"id"`
+		Name string    `yaml:"name"`
+	}
+	if err := yaml.Unmarshal(content, &identity); err != nil {
+		return uuid.UUID{}, err
+	}
+	if identity.ID.IsZero() {
+		return uuid.UUID{}, fmt.Errorf("has no identifier of its own")
+	}
+	if !strings.EqualFold(identity.Name, form) {
+		return uuid.UUID{}, fmt.Errorf("calls itself %s, and lies in a folder called %s", identity.Name, form)
+	}
+	return identity.ID, nil
 }
 
 // validateObjectFolderEntries checks that the object's own folder holds only

@@ -1156,8 +1156,9 @@ func objectOwnedFileNodes(objectDirectory, objectRelative string) (objectOwnedNo
 	return owned, nil
 }
 
-// objectFormNodes lists the managed forms of one object. A form is still named
-// by its identifier; it is named after itself one iteration from here.
+// objectFormNodes lists the managed forms of one object. A form is a folder
+// named after the form, and the tree shows that name - the identifier the form
+// keeps inside is what other things refer to it by, not what a developer reads.
 func objectFormNodes(objectDirectory, objectRelative string) ([]Node, error) {
 	entries, err := os.ReadDir(filepath.Join(objectDirectory, "forms"))
 	if err != nil {
@@ -1165,17 +1166,13 @@ func objectFormNodes(objectDirectory, objectRelative string) ([]Node, error) {
 	}
 	var nodes []Node
 	for _, entry := range entries {
-		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || filepath.Ext(entry.Name()) != ".yaml" {
+		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || project.SubordinateName(entry.Name()) != nil {
 			return nil, fmt.Errorf("unexpected form source %q", filepath.ToSlash(filepath.Join(objectRelative, "forms", entry.Name())))
 		}
-		id, err := uuid.Parse(strings.TrimSuffix(entry.Name(), ".yaml"))
-		if err != nil {
-			return nil, fmt.Errorf("form source %q must use a UUID name: %w", entry.Name(), err)
-		}
-		path := filepath.ToSlash(filepath.Join(objectRelative, "forms", entry.Name()))
+		path := filepath.ToSlash(filepath.Join(objectRelative, "forms", entry.Name(), project.FormMetadataFile))
 		nodes = append(nodes, Node{
-			ID: id.String(), Kind: "forms", Title: id.String(), Path: path,
-			Properties: []Property{{Name: "UUID", Value: id.String()}, {Name: "Путь", Value: path}},
+			ID: path, Kind: "forms", Title: entry.Name(), Path: path,
+			Properties: []Property{{Name: "Путь", Value: path}},
 		})
 	}
 	return nodes, nil

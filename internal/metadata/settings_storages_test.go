@@ -30,14 +30,17 @@ name: ХранилищеВариантовОтчетов
 title: {ru: Хранилище вариантов отчётов}
 comment: Варианты отчётов, сохранённые пользователями
 forms:
-  save: `+storageSaveForm+`
-  load: `+storageLoadForm+`
-  auxiliary_save: `+storageAuxSave+`
-  auxiliary_load: `+storageAuxLoad+`
+  save: ФормаСохранения
+  load: ФормаЗагрузки
+  auxiliary_save: ВспомогательноеСохранение
+  auxiliary_load: ВспомогательнаяЗагрузка
 `)
 	writeObjectModule(t, root, SettingsStorageKind, "ХранилищеВариантовОтчетов", project.ManagerModuleFile)
-	for _, form := range []string{storageSaveForm, storageLoadForm, storageAuxSave, storageAuxLoad} {
-		writeObjectForm(t, root, SettingsStorageKind, "ХранилищеВариантовОтчетов", form)
+	for form, id := range map[string]string{
+		"ФормаСохранения": storageSaveForm, "ФормаЗагрузки": storageLoadForm,
+		"ВспомогательноеСохранение": storageAuxSave, "ВспомогательнаяЗагрузка": storageAuxLoad,
+	} {
+		writeObjectForm(t, root, SettingsStorageKind, "ХранилищеВариантовОтчетов", form, id)
 	}
 	catalog, err := Load(root)
 	if err != nil {
@@ -48,17 +51,17 @@ forms:
 		t.Fatal("the settings storage did not load")
 	}
 	switch {
-	case storage.Forms.Save == nil || storage.Forms.Load == nil:
+	case storage.Forms.Save == "" || storage.Forms.Load == "":
 		t.Fatalf("the main forms were lost: %+v", storage.Forms)
-	case storage.Forms.AuxiliarySave == nil || storage.Forms.AuxiliaryLoad == nil:
+	case storage.Forms.AuxiliarySave == "" || storage.Forms.AuxiliaryLoad == "":
 		t.Fatalf("the auxiliary forms were lost: %+v", storage.Forms)
 	case storage.Comment == "":
 		t.Fatalf("the comment was lost: %+v", storage)
 	}
 
-	storage.Forms.Save = nil
+	storage.Forms.Save = ""
 	again, _ := catalog.SettingsStorage("ХранилищеВариантовОтчетов")
-	if again.Forms.Save == nil {
+	if again.Forms.Save == "" {
 		t.Fatal("a settings storage was handed out by reference")
 	}
 }
@@ -104,9 +107,9 @@ variants_storage: `+storageMissing+`
 func TestBrokenSettingsStoragesAreRefused(t *testing.T) {
 	t.Parallel()
 	for name, broken := range map[string]struct{ body, want string }{
-		"вспомогательная форма сохранения без основной": {"forms: {auxiliary_save: " + storageAuxSave + "}",
+		"вспомогательная форма сохранения без основной": {"forms: {auxiliary_save: ВспомогательноеСохранение}",
 			"forms.auxiliary_save stands beside forms.save"},
-		"вспомогательная форма загрузки без основной": {"forms: {auxiliary_load: " + storageAuxLoad + "}",
+		"вспомогательная форма загрузки без основной": {"forms: {auxiliary_load: ВспомогательнаяЗагрузка}",
 			"forms.auxiliary_load stands beside forms.load"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -136,12 +139,12 @@ func TestSettingsStorageFormsAreExpectedInItsFolder(t *testing.T) {
 id: `+storageID+`
 name: Хранилище
 title: {ru: Хранилище}
-forms: {load: `+storageLoadForm+`}
+forms: {load: ФормаЗагрузки}
 `)
 	if _, err := Load(root); err == nil {
 		t.Fatal("a form that does not exist was accepted")
 	}
-	writeObjectForm(t, root, SettingsStorageKind, "Хранилище", storageLoadForm)
+	writeObjectForm(t, root, SettingsStorageKind, "Хранилище", "ФормаЗагрузки", storageLoadForm)
 	if _, err := Load(root); err != nil {
 		t.Fatal(err)
 	}

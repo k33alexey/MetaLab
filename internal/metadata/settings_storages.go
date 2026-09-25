@@ -17,10 +17,10 @@ const SettingsStorageKind Kind = "settings-storages"
 // save the current ones under a name, and pick a saved one to load. Each has
 // an auxiliary form beside it.
 type SettingsStorageForms struct {
-	Save          *uuid.UUID `yaml:"save,omitempty" json:"save,omitempty"`
-	Load          *uuid.UUID `yaml:"load,omitempty" json:"load,omitempty"`
-	AuxiliarySave *uuid.UUID `yaml:"auxiliary_save,omitempty" json:"auxiliarySave,omitempty"`
-	AuxiliaryLoad *uuid.UUID `yaml:"auxiliary_load,omitempty" json:"auxiliaryLoad,omitempty"`
+	Save          string `yaml:"save,omitempty" json:"save,omitempty"`
+	Load          string `yaml:"load,omitempty" json:"load,omitempty"`
+	AuxiliarySave string `yaml:"auxiliary_save,omitempty" json:"auxiliarySave,omitempty"`
+	AuxiliaryLoad string `yaml:"auxiliary_load,omitempty" json:"auxiliaryLoad,omitempty"`
 }
 
 // SettingsStorageDefinition describes one settings storage: where the settings
@@ -51,20 +51,16 @@ func DecodeSettingsStorage(source string, reader io.Reader, manifest project.Pro
 		return SettingsStorageDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
-	for name, id := range map[string]*uuid.UUID{
+	issues = append(issues, validateFormSlots(map[string]string{
 		"forms.save": value.Forms.Save, "forms.load": value.Forms.Load,
 		"forms.auxiliary_save": value.Forms.AuxiliarySave, "forms.auxiliary_load": value.Forms.AuxiliaryLoad,
-	} {
-		if id != nil && id.IsZero() {
-			issues = append(issues, name+" must be a non-zero UUID")
-		}
-	}
+	})...)
 	// An auxiliary form stands beside a main one; alone it is a form nothing
 	// ever opens.
-	if value.Forms.AuxiliarySave != nil && value.Forms.Save == nil {
+	if value.Forms.AuxiliarySave != "" && value.Forms.Save == "" {
 		issues = append(issues, "forms.auxiliary_save stands beside forms.save, which is not named")
 	}
-	if value.Forms.AuxiliaryLoad != nil && value.Forms.Load == nil {
+	if value.Forms.AuxiliaryLoad != "" && value.Forms.Load == "" {
 		issues = append(issues, "forms.auxiliary_load stands beside forms.load, which is not named")
 	}
 	if err := issuesError(source, value.Format, issues); err != nil {
@@ -75,13 +71,6 @@ func DecodeSettingsStorage(source string, reader io.Reader, manifest project.Pro
 
 func cloneSettingsStorage(value SettingsStorageDefinition) SettingsStorageDefinition {
 	value.Title = cloneTitle(value.Title)
-	for _, id := range []**uuid.UUID{&value.Forms.Save, &value.Forms.Load,
-		&value.Forms.AuxiliarySave, &value.Forms.AuxiliaryLoad} {
-		if *id != nil {
-			copied := **id
-			*id = &copied
-		}
-	}
 	return value
 }
 

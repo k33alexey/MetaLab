@@ -53,7 +53,7 @@ func TestInspectRejectsMalformedAndUnsupportedSources(t *testing.T) {
 	t.Parallel()
 	root := publicationProject(t)
 	formID := uuid.MustNew()
-	formPath, _ := project.ObjectFormPath("documents", "Продажа", formID)
+	formPath, _ := project.ObjectFormPath("documents", "Продажа", "Invalid")
 	writeSourceFile(t, root, formPath, []byte("format: 1\nid: "+formID.String()+"\nname: Invalid\ntitle: {ru: Invalid}\nkind: unsupported\n"))
 	if _, err := inspect(context.Background(), root, SourceState{}); err == nil {
 		t.Fatal("inspect accepted a malformed managed form")
@@ -95,12 +95,12 @@ func TestInspectCarriesSchemaIdentityOfEveryStoredKind(t *testing.T) {
 	documentID, formID := uuid.MustNew(), uuid.MustNew()
 	modulePath, _ := project.ObjectModulePath("documents", "Продажа", project.ObjectModuleFile)
 	writeSourceFile(t, root, modulePath, []byte("Процедура ПриЗаписи(Отказ)\nКонецПроцедуры\n"))
-	formPath, _ := project.ObjectFormPath("documents", "Продажа", formID)
+	formPath, _ := project.ObjectFormPath("documents", "Продажа", "DocumentForm")
 	writeSourceFile(t, root, formPath, managedFormYAML(t, formID, "DocumentForm"))
 	documentPath, _ := project.ObjectMetadataPath("documents", "Продажа")
 	writeSourceFile(t, root, documentPath, []byte("format: 1\nid: "+documentID.String()+"\nname: Продажа\ntitle: {ru: Продажа}\n"+
 		"number: {type: string, length: 11, auto: false, unique: true, periodicity: year}\nposting: true\n"+
-		"forms: {object: "+formID.String()+"}\n"))
+		"forms: {object: DocumentForm}\n"))
 
 	informationID, informationDimensionID, informationResourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	informationPath, _ := project.ObjectMetadataPath("information-registers", "КурсыВалют")

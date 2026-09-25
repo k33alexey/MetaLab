@@ -64,9 +64,8 @@ func (workspace *Workspace) readManagedForm(relative string) (ManagedFormSource,
 	if err != nil {
 		return ManagedFormSource{}, err
 	}
-	filenameID, _ := uuid.Parse(strings.TrimSuffix(path.Base(relative), ".yaml"))
-	if form.ID != filenameID {
-		return ManagedFormSource{}, fmt.Errorf("form UUID %s does not match filename UUID %s", form.ID, filenameID)
+	if err := formAgreesWithItsPath(form, relative); err != nil {
+		return ManagedFormSource{}, err
 	}
 	languages := make([]FormLanguage, len(manifest.Languages))
 	for index, language := range manifest.Languages {
@@ -96,9 +95,8 @@ func (workspace *Workspace) saveManagedFormLocked(relative string, form metadata
 	if err := metadata.ValidateManagedForm(relative, form, manifest); err != nil {
 		return ManagedFormSource{}, err
 	}
-	filenameID, _ := uuid.Parse(strings.TrimSuffix(path.Base(relative), ".yaml"))
-	if form.ID != filenameID {
-		return ManagedFormSource{}, fmt.Errorf("form UUID %s does not match filename UUID %s", form.ID, filenameID)
+	if err := formAgreesWithItsPath(form, relative); err != nil {
+		return ManagedFormSource{}, err
 	}
 	var content bytes.Buffer
 	if err := metadata.Encode(&content, form); err != nil {
@@ -257,6 +255,26 @@ func findFormHandler(module SourceFile, name string) (StudioLocation, bool, erro
 	return StudioLocation{}, false, nil
 }
 
+// formAgreesWithItsPath checks a form against where it lies. The two kinds of
+// form are checked against different halves of themselves: a common form is
+// one file named by its identifier, so the identifier has to agree; a form of
+// an object lies in a folder named after the form, so the name has to agree,
+// and the identifier inside is free.
+func formAgreesWithItsPath(form metadata.ManagedForm, relative string) error {
+	parts := strings.Split(relative, "/")
+	if len(parts) == 6 && parts[0] == "metadata" && parts[3] == "forms" && parts[5] == project.FormMetadataFile {
+		if !strings.EqualFold(form.Name, parts[4]) {
+			return fmt.Errorf("form %s does not match the folder %s it lies in", form.Name, parts[4])
+		}
+		return nil
+	}
+	filenameID, _ := uuid.Parse(strings.TrimSuffix(path.Base(relative), ".yaml"))
+	if form.ID != filenameID {
+		return fmt.Errorf("form UUID %s does not match filename UUID %s", form.ID, filenameID)
+	}
+	return nil
+}
+
 func validateFormPath(relative string) error {
 	canonical, language, err := validateEditablePath(relative)
 	if err != nil || language != "yaml" {
@@ -266,7 +284,7 @@ func validateFormPath(relative string) error {
 		return nil
 	}
 	parts := strings.Split(canonical, "/")
-	if len(parts) == 5 && parts[0] == "metadata" && parts[3] == "forms" {
+	if len(parts) == 6 && parts[0] == "metadata" && parts[3] == "forms" && parts[5] == project.FormMetadataFile {
 		return nil
 	}
 	return ErrInvalidSourcePath
@@ -285,7 +303,7 @@ func (workspace *Workspace) formDataPaths(formID uuid.UUID, manifest project.Pro
 		result = append(result, FormDataPath{Path: prefix + "." + name, Title: title, Kind: kind})
 	}
 	for _, object := range catalog.Catalogs {
-		kind, ok := referencedFormKind(object.Forms, formID)
+		kind, ok := referencedFormKind(catalog, metadata.CatalogKind, object.Name, object.Forms, formID)
 		if !ok {
 			continue
 		}
@@ -306,7 +324,7 @@ func (workspace *Workspace) formDataPaths(formID uuid.UUID, manifest project.Pro
 		}
 	}
 	for _, object := range catalog.Documents {
-		kind, ok := referencedFormKind(object.Forms, formID)
+		kind, ok := referencedFormKind(catalog, metadata.DocumentKind, object.Name, object.Forms, formID)
 		if !ok {
 			continue
 		}
@@ -330,12 +348,17 @@ func (workspace *Workspace) formDataPaths(formID uuid.UUID, manifest project.Pro
 	return result
 }
 
-func referencedFormKind(forms metadata.ObjectForms, id uuid.UUID) (metadata.FormKind, bool) {
+// referencedFormKind says which of an object's three slots names the form the
+// designer has open. A slot carries a name, so the name is resolved back to the
+// identifier the form keeps in its own description - which is what the designer
+// knows the open form by, and what a role or ML App refers to it by.
+func referencedFormKind(catalog *metadata.Catalog, objectKind metadata.Kind, object string,
+	forms metadata.ObjectForms, id uuid.UUID) (metadata.FormKind, bool) {
 	for _, item := range []struct {
-		id   *uuid.UUID
+		form string
 		kind metadata.FormKind
 	}{{forms.Object, metadata.ObjectForm}, {forms.List, metadata.ListForm}, {forms.Choice, metadata.ChoiceForm}} {
-		if item.id != nil && *item.id == id {
+		if found, ok := catalog.ObjectFormID(objectKind, object, item.form); ok && found == id {
 			return item.kind, true
 		}
 	}

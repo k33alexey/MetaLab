@@ -125,9 +125,8 @@ func inspect(ctx context.Context, root string, state SourceState) (Manifest, err
 			if decodeErr != nil {
 				return Manifest{}, decodeErr
 			}
-			filenameID, parseErr := uuid.Parse(strings.TrimSuffix(filepath.Base(relative), ".yaml"))
-			if parseErr != nil || form.ID != filenameID {
-				return Manifest{}, fmt.Errorf("form UUID does not match %q", relative)
+			if err := formAgreesWithItsPath(form, relative); err != nil {
+				return Manifest{}, err
 			}
 			forms = append(forms, form)
 			if closeErr != nil {
@@ -260,8 +259,8 @@ func contains(items []string, value string) bool {
 
 // validateObjectFolderSourcePath validates the shapes physically grouped
 // under one catalog/document/register's own folder: the object's
-// description, its module(s) directly inside it, and its managed forms
-// inside a forms/ subdirectory.
+// description, its module(s) directly inside it, and the folders its forms,
+// commands and templates keep inside it.
 func validateObjectFolderSourcePath(parts []string, relative string, directory bool) error {
 	if len(parts) < 3 {
 		return fmt.Errorf("unexpected publication source path %q", relative)
@@ -276,9 +275,15 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 	if directory && len(parts) == 4 && contains(project.ObjectSubordinateDirectories(), parts[3]) {
 		return nil
 	}
-	// A command keeps a folder named after itself, holding its module.
-	if directory && len(parts) == 5 && parts[3] == "commands" && project.SubordinateName(parts[4]) == nil {
+	// A command and a form each keep a folder named after themselves.
+	if directory && len(parts) == 5 && (parts[3] == "commands" || parts[3] == "forms") &&
+		project.SubordinateName(parts[4]) == nil {
 		return nil
+	}
+	if !directory && len(parts) == 6 && parts[3] == "forms" && parts[5] == project.FormMetadataFile {
+		if expected, err := project.ObjectFormPath(parts[1], objectName, parts[4]); err == nil && expected == relative {
+			return nil
+		}
 	}
 	if !directory && len(parts) == 6 && parts[3] == "commands" && parts[5] == project.CommandModuleFile {
 		if expected, err := project.ObjectCommandModulePath(parts[1], objectName, parts[4]); err == nil && expected == relative {
@@ -309,11 +314,6 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 				return nil
 			}
 		}
-		if formID, ok := objectFolderFormID(relative); ok {
-			if expected, err := project.ObjectFormPath(parts[1], objectName, formID); err == nil && expected == relative {
-				return nil
-			}
-		}
 	}
 	return fmt.Errorf("unexpected publication source path %q", relative)
 }
@@ -340,31 +340,50 @@ func templateContentName(file string) bool {
 	return true
 }
 
-// objectFolderFormID reports the form UUID if relative is one of an
-// object's own managed forms (metadata/<kind>/<id>/forms/<form>.yaml).
-func objectFolderFormID(relative string) (uuid.UUID, bool) {
+// objectFolderFormName reports the form's name if relative is one of an
+// object's own managed forms (metadata/<kind>/<object>/forms/<form>/form.yaml).
+func objectFolderFormName(relative string) (string, bool) {
 	parts := strings.Split(relative, "/")
-	if len(parts) != 5 || parts[0] != "metadata" || parts[3] != "forms" || !contains(project.ObjectFolderKinds(), parts[1]) {
-		return uuid.UUID{}, false
+	if len(parts) != 6 || parts[0] != "metadata" || parts[3] != "forms" ||
+		parts[5] != project.FormMetadataFile || !contains(project.ObjectFolderKinds(), parts[1]) {
+		return "", false
 	}
-	if project.ObjectName(parts[2]) != nil {
-		return uuid.UUID{}, false
+	if project.ObjectName(parts[2]) != nil || project.SubordinateName(parts[4]) != nil {
+		return "", false
 	}
-	id, err := uuid.Parse(strings.TrimSuffix(parts[4], ".yaml"))
-	if err != nil || parts[4] != id.String()+".yaml" {
-		return uuid.UUID{}, false
-	}
-	return id, true
+	return parts[4], true
 }
 
 // isManagedFormSourcePath reports whether relative is any managed form
-// source: flat (forms/<id>.yaml) or nested under its owning object.
+// source: a common form, still one file named by its identifier, or one of an
+// object's own, in a folder named after the form.
 func isManagedFormSourcePath(relative string) bool {
 	if strings.HasPrefix(relative, "metadata/common-forms/") {
 		return true
 	}
-	_, ok := objectFolderFormID(relative)
+	_, ok := objectFolderFormName(relative)
 	return ok
+}
+
+// formAgreesWithItsPath checks a form against where it lies, and the two kinds
+// of form are checked against different halves of themselves.
+//
+// A common form is still one file named by its identifier, so the identifier
+// is what has to agree. A form of an object lies in a folder named after the
+// form, so its name is what has to agree - the identifier inside it is free,
+// and is what roles, the portal and ML App go on referring to it by.
+func formAgreesWithItsPath(form metadata.ManagedForm, relative string) error {
+	if name, ok := objectFolderFormName(relative); ok {
+		if !strings.EqualFold(form.Name, name) {
+			return fmt.Errorf("form name does not match %q", relative)
+		}
+		return nil
+	}
+	filenameID, err := uuid.Parse(strings.TrimSuffix(filepath.Base(relative), ".yaml"))
+	if err != nil || form.ID != filenameID {
+		return fmt.Errorf("form UUID does not match %q", relative)
+	}
+	return nil
 }
 
 func inspectFile(absolute, relative string) (FileEntry, error) {

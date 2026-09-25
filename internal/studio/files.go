@@ -311,7 +311,9 @@ func validateEditablePath(relative string) (string, string, error) {
 			if len(parts) == 4 && slices.Contains(project.ObjectModuleFiles(), parts[3]) {
 				return relative, "bsl", nil
 			}
-			if len(parts) == 5 && parts[3] == "forms" && validUUIDFile(parts[4], ".yaml") {
+			// A form is a folder named after itself, holding its description.
+			if len(parts) == 6 && parts[3] == "forms" && project.SubordinateName(parts[4]) == nil &&
+				parts[5] == project.FormMetadataFile {
 				return relative, "yaml", nil
 			}
 			if len(parts) == 6 && parts[3] == "commands" && project.SubordinateName(parts[4]) == nil &&
@@ -405,7 +407,12 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 		}
 		return canonical.Bytes(), nil
 	}
-	if len(parts) == 5 && parts[0] == "metadata" && parts[3] == "forms" && slices.Contains(project.ObjectFolderKinds(), parts[1]) {
+	// A form of an object lies in a folder named after the form, so it is the
+	// name that has to agree with where the file is. The identifier inside is
+	// the form's own and is not checked against anything here: it is what
+	// roles, the portal and ML App refer to the form by, not what finds it.
+	if len(parts) == 6 && parts[0] == "metadata" && parts[3] == "forms" &&
+		parts[5] == project.FormMetadataFile && slices.Contains(project.ObjectFolderKinds(), parts[1]) {
 		manifest, err := project.ValidateLayout(workspace.root)
 		if err != nil {
 			return nil, err
@@ -414,9 +421,8 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 		if err != nil {
 			return nil, err
 		}
-		filenameID, _ := uuid.Parse(strings.TrimSuffix(parts[4], ".yaml"))
-		if value.ID != filenameID {
-			return nil, fmt.Errorf("form UUID %s does not match filename UUID %s", value.ID, filenameID)
+		if !strings.EqualFold(value.Name, parts[4]) {
+			return nil, fmt.Errorf("form %s does not match the folder %s it lies in", value.Name, parts[4])
 		}
 		var canonical bytes.Buffer
 		if err := metadata.Encode(&canonical, value); err != nil {

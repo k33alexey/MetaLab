@@ -44,9 +44,12 @@ func TestAutomaticDocumentFormsAndCommands(t *testing.T) {
 func TestCustomFormSuppressesAutomaticLayout(t *testing.T) {
 	t.Parallel()
 	catalogID, formID := uuid.MustNew(), uuid.MustNew()
+	// The slot names the form; the identifier comes from the index of what the
+	// object's forms folder actually held when the project was read.
 	catalog := &Catalog{
-		Catalogs:      []CatalogDefinition{{ID: catalogID, Name: "Товары", Title: LocalizedText{"ru": "Товары"}, Forms: ObjectForms{Object: &formID}}},
+		Catalogs:      []CatalogDefinition{{ID: catalogID, Name: "Товары", Title: LocalizedText{"ru": "Товары"}, Forms: ObjectForms{Object: "ФормаЭлемента"}}},
 		catalogByName: map[string]int{"товары": 0}, catalogByID: map[uuid.UUID]int{catalogID: 0},
+		objectForms: map[Kind]map[string]map[string]uuid.UUID{CatalogKind: {"товары": {"формаэлемента": formID}}},
 	}
 	form, err := catalog.CatalogForm("Товары", ObjectForm, "ru")
 	if err != nil || form.Generated || form.SourceID == nil || *form.SourceID != formID || len(form.Fields) != 0 {

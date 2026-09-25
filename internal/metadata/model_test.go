@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -353,7 +354,7 @@ title: {ru: Контрагенты}
 code: {type: string, length: 9}
 description_length: 250
 `)
-	objectForm, listForm, choiceForm := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	objectForm, listForm := uuid.MustNew(), uuid.MustNew()
 	if err := os.MkdirAll(filepath.Join(root, "metadata", "documents", "Продажа", "forms"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -365,9 +366,15 @@ description_length: 250
 			t.Fatal(err)
 		}
 	}
-	for _, id := range []uuid.UUID{objectForm, listForm, choiceForm} {
-		relative, _ := project.ObjectFormPath("documents", "Продажа", id)
-		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(relative)), []byte("format: 1\n"), 0o644); err != nil {
+	// Two forms, three slots: the same list form is both the main list and the
+	// main choice, the way the prototype's own catalog of users does it.
+	for form, id := range map[string]uuid.UUID{"ФормаДокумента": objectForm, "ФормаСписка": listForm} {
+		relative, _ := project.ObjectFormPath("documents", "Продажа", form)
+		if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(path.Dir(relative))), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := "format: 1\nid: " + id.String() + "\nname: " + form + "\ntitle: {ru: " + form + "}\nkind: list\n"
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(relative)), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -383,22 +390,27 @@ attributes:
     title: {ru: Контрагент}
     types: [{kind: catalog, reference: `+catalogID+`}]
 forms:
-  object: `+objectForm.String()+`
-  list: `+listForm.String()+`
-  choice: `+choiceForm.String()+`
+  object: ФормаДокумента
+  list: ФормаСписка
+  choice: ФормаСписка
 `)
 	catalog, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	document, ok := catalog.DocumentDefinition("продажа")
-	if !ok || document.ID.String() != documentID || document.Number.Periodicity != NumberPeriodYear || document.Forms.Object == nil || *document.Forms.Object != objectForm {
+	if !ok || document.ID.String() != documentID || document.Number.Periodicity != NumberPeriodYear ||
+		document.Forms.Object != "ФормаДокумента" || document.Forms.List != document.Forms.Choice {
 		t.Fatalf("document=%+v found=%v", document, ok)
 	}
-	*document.Forms.Object = uuid.MustNew()
-	again, _ := catalog.DocumentDefinition("Продажа")
-	if *again.Forms.Object != objectForm {
-		t.Fatal("document lookup exposed mutable form identity")
+	// The slot carries a name; the identifier comes from the form itself, and
+	// that is what the descriptor handed to the portal and ML App says.
+	descriptor, err := catalog.DocumentForm("Продажа", ObjectForm, "ru")
+	if err != nil || descriptor.Generated || descriptor.SourceID == nil || *descriptor.SourceID != objectForm {
+		t.Fatalf("descriptor=%+v error=%v", descriptor, err)
+	}
+	if id, ok := catalog.ObjectFormID(DocumentKind, "ПРОДАЖА", "формасписка"); !ok || id != listForm {
+		t.Fatalf("the list form was not found by name: %s %v", id, ok)
 	}
 }
 

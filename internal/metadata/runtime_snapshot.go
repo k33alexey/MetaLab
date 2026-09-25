@@ -28,10 +28,25 @@ type RuntimeSnapshot struct {
 	InformationRegisters  []InformationRegisterDefinition  `json:"informationRegisters,omitempty"`
 	AccumulationRegisters []AccumulationRegisterDefinition `json:"accumulationRegisters,omitempty"`
 	Forms                 []ManagedForm                    `json:"forms,omitempty"`
+	// ObjectForms carries the forms each object keeps, resolved to their
+	// identifiers. On disk an object's forms are the folders beside it, and a
+	// slot names one of them; a published application has no folders, so what
+	// the folders said has to travel with it or every custom form silently
+	// becomes a generated one.
+	ObjectForms []RuntimeObjectForm `json:"objectForms,omitempty"`
 	// Modules holds every project BSL module's source text. ML Service
 	// compiles BSL exclusively from here - it never reads project files
 	// from disk, so it can run on a different machine than Studio.
 	Modules []RuntimeModule `json:"modules,omitempty"`
+}
+
+// RuntimeObjectForm is one form an object keeps, named as its folder was and
+// carrying the identifier that form declared inside itself.
+type RuntimeObjectForm struct {
+	ObjectKind Kind      `json:"objectKind"`
+	Object     string    `json:"object"`
+	Name       string    `json:"name"`
+	ID         uuid.UUID `json:"id"`
 }
 
 // RuntimeModule is one compilable BSL module, persisted as source text
@@ -63,7 +78,7 @@ func NewRuntimeSnapshot(catalog *Catalog, forms []ManagedForm) (RuntimeSnapshot,
 		Constants:  validated.Constants, SessionParameters: validated.SessionParameters, CommonAttributes: validated.CommonAttributes, CommonModules: validated.CommonModules, EventSubscriptions: validated.EventSubscriptions, Enumerations: validated.Enumerations, DefinedTypes: validated.DefinedTypes,
 		Catalogs: validated.Catalogs, Documents: validated.Documents,
 		InformationRegisters: validated.InformationRegisters, AccumulationRegisters: validated.AccumulationRegisters,
-		Forms: make([]ManagedForm, len(forms)),
+		Forms: make([]ManagedForm, len(forms)), ObjectForms: catalog.objectFormList(),
 	}
 	seen := make(map[uuid.UUID]bool, len(forms))
 	for index, form := range forms {
@@ -160,6 +175,7 @@ func (snapshot RuntimeSnapshot) Catalog() (*Catalog, error) {
 	if err := snapshot.validateRoleCommands(); err != nil {
 		return nil, err
 	}
+	catalog.indexRuntimeObjectForms(snapshot.ObjectForms)
 	return catalog, nil
 }
 

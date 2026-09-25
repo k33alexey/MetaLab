@@ -215,7 +215,7 @@ func TestSearchProjectFindsBSLFormsAndKeepsLineNumbers(t *testing.T) {
 	root := createProject(t)
 	modulePath, _ := project.ModulePath(uuid.MustNew())
 	formID := uuid.MustNew()
-	formPath, _ := project.ObjectFormPath("catalogs", "Контрагенты", formID)
+	formPath, _ := project.ObjectFormPath("catalogs", "Контрагенты", "Форма")
 	writeBSLTestSource(t, root, modulePath, "Процедура Запустить()\n\n\tКонтрагент = Неопределено;\nКонецПроцедуры\n")
 	formSource := "format: 1\nid: " + formID.String() + "\nname: Форма\ntitle: {ru: Карточка контрагента}\nkind: object\n"
 	writeBSLTestSource(t, root, formPath, formSource)

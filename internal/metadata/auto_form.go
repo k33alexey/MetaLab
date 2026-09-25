@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -116,20 +117,77 @@ func (catalog *Catalog) baseForm(objectKind Kind, id uuid.UUID, name string, tit
 	if result.Title == "" {
 		result.Title = name
 	}
-	var source *uuid.UUID
+	var slot string
 	switch kind {
 	case ObjectForm:
-		source = forms.Object
+		slot = forms.Object
 	case ListForm:
-		source = forms.List
+		slot = forms.List
 	case ChoiceForm:
-		source = forms.Choice
+		slot = forms.Choice
 	}
-	if source != nil {
-		copy := *source
-		result.SourceID, result.Generated = &copy, false
+	// The slot names the form; the identifier comes from the form itself. That
+	// is the part that travels: roles, the portal and ML App all refer to a
+	// form by identifier, and none of them has to learn where the file lies.
+	if id, ok := catalog.ObjectFormID(objectKind, name, slot); ok {
+		result.SourceID, result.Generated = &id, false
 	}
 	return result, nil
+}
+
+// objectFormList flattens the index of what forms each object keeps, so a
+// published snapshot can carry it. Sorted, because a snapshot is compared
+// byte for byte against the one already applied to the database.
+func (catalog *Catalog) objectFormList() []RuntimeObjectForm {
+	var result []RuntimeObjectForm
+	for objectKind, objects := range catalog.objectForms {
+		for object, forms := range objects {
+			for form, id := range forms {
+				result = append(result, RuntimeObjectForm{ObjectKind: objectKind, Object: object, Name: form, ID: id})
+			}
+		}
+	}
+	sort.Slice(result, func(left, right int) bool {
+		if result[left].ObjectKind != result[right].ObjectKind {
+			return result[left].ObjectKind < result[right].ObjectKind
+		}
+		if result[left].Object != result[right].Object {
+			return result[left].Object < result[right].Object
+		}
+		return result[left].Name < result[right].Name
+	})
+	return result
+}
+
+// indexRuntimeObjectForms rebuilds the index out of what a published snapshot
+// carried, so a running application resolves a slot to a form exactly as
+// Studio does against the folders on disk.
+func (catalog *Catalog) indexRuntimeObjectForms(forms []RuntimeObjectForm) {
+	for _, form := range forms {
+		if catalog.objectForms == nil {
+			catalog.objectForms = map[Kind]map[string]map[string]uuid.UUID{}
+		}
+		if catalog.objectForms[form.ObjectKind] == nil {
+			catalog.objectForms[form.ObjectKind] = map[string]map[string]uuid.UUID{}
+		}
+		object := strings.ToLower(form.Object)
+		if catalog.objectForms[form.ObjectKind][object] == nil {
+			catalog.objectForms[form.ObjectKind][object] = map[string]uuid.UUID{}
+		}
+		catalog.objectForms[form.ObjectKind][object][strings.ToLower(form.Name)] = form.ID
+	}
+}
+
+// ObjectFormID returns the identifier of one of an object's own forms, found
+// by the name a slot calls it. It reports false when the slot names nothing,
+// which is how an object says it has no form of that role and takes the one
+// the platform generates instead.
+func (catalog *Catalog) ObjectFormID(objectKind Kind, object, form string) (uuid.UUID, bool) {
+	if form == "" {
+		return uuid.UUID{}, false
+	}
+	id, ok := catalog.objectForms[objectKind][strings.ToLower(object)][strings.ToLower(form)]
+	return id, ok
 }
 
 func (catalog *Catalog) documentHasMovements(documentID uuid.UUID) bool {

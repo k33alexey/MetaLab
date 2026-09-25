@@ -39,6 +39,9 @@ const (
 	// CommandModuleFile is the module of one command, inside that command's
 	// own folder.
 	CommandModuleFile = "МодульКоманды.bsl"
+	// FormMetadataFile is the description of one managed form, inside the
+	// folder named after that form.
+	FormMetadataFile = "form.yaml"
 )
 
 var (
@@ -58,8 +61,8 @@ var (
 	// beside its own description and modules.
 	objectSubordinateDirectories = []string{"forms", "commands", "templates"}
 	// objectFolderKinds lists metadata kinds whose objects group their own
-	// description, module(s) and managed forms under one folder named by
-	// the object's stable UUID, instead of scattering them across the flat
+	// description, modules, forms, commands and templates under one folder
+	// named after the object, instead of scattering them across the flat
 	// modules/ and forms/ roots.
 	// Виды, у которых есть собственные модули и формы, хранят объект папкой:
 	// описание лежит рядом со своим кодом и формами, а не в общей куче.
@@ -413,17 +416,35 @@ func ObjectCommandModulePath(kind, name, command string) (string, error) {
 	return path.Join(directory, CommandModuleFile), nil
 }
 
-// ObjectFormPath returns one of an object's own managed forms (object, list
-// or choice form), named by its own stable form UUID.
-func ObjectFormPath(kind, name string, formID uuid.UUID) (string, error) {
+// ObjectFormDirectory returns the folder of one of an object's own managed
+// forms, named after the form.
+//
+// A form keeps a folder rather than a bare file because it owns more than its
+// description: the module that runs it lies beside it under a name of its own.
+func ObjectFormDirectory(kind, name, form string) (string, error) {
 	directory, err := ObjectDirectory(kind, name)
 	if err != nil {
 		return "", err
 	}
-	if formID.IsZero() {
-		return "", fmt.Errorf("source UUID must not be zero")
+	if err := SubordinateName(form); err != nil {
+		return "", fmt.Errorf("form %w", err)
 	}
-	return path.Join(directory, "forms", formID.String()+".yaml"), nil
+	return path.Join(directory, "forms", form), nil
+}
+
+// ObjectFormPath returns the description of one of an object's own managed
+// forms, found by the form's name rather than by an identifier.
+//
+// The form keeps an identifier of its own inside that description - roles, the
+// portal and ML App refer to a form by it - but it is not what finds the file.
+// The prototype's export works the same way: a form carries both a uuid and a
+// name, and the name is what the folder is called.
+func ObjectFormPath(kind, name, form string) (string, error) {
+	directory, err := ObjectFormDirectory(kind, name, form)
+	if err != nil {
+		return "", err
+	}
+	return path.Join(directory, FormMetadataFile), nil
 }
 
 // ObjectTemplateDirectory returns the folder holding the content of one of an
@@ -492,8 +513,8 @@ func ObjectFolderSourcePaths(root string) ([]string, error) {
 				if fileEntry.IsDir() {
 					switch fileEntry.Name() {
 					case "forms":
-						// A form is one file; its own name is the file's.
-						nested, err := objectNestedSources(objectDirectory, kind, objectEntry.Name(), "forms", false)
+						// A form is a folder holding its description.
+						nested, err := objectNestedSources(objectDirectory, kind, objectEntry.Name(), "forms", true)
 						if err != nil {
 							return nil, err
 						}
@@ -518,7 +539,8 @@ func ObjectFolderSourcePaths(root string) ([]string, error) {
 
 // objectNestedSources lists the source files under one of an object's
 // subordinate folders. nested says whether that folder holds a folder per
-// entity (a command, which owns its module) or a file per entity (a form).
+// entity - a command or a form, each of which owns more than one file - or a
+// file per entity.
 func objectNestedSources(objectDirectory, kind, object, subordinate string, nested bool) ([]string, error) {
 	entries, err := os.ReadDir(filepath.Join(objectDirectory, subordinate))
 	if err != nil {

@@ -30,9 +30,9 @@ type DocumentNumber struct {
 
 // ObjectForms binds optional managed forms to their stable source UUIDs.
 type ObjectForms struct {
-	Object *uuid.UUID `yaml:"object,omitempty" json:"object,omitempty"`
-	List   *uuid.UUID `yaml:"list,omitempty" json:"list,omitempty"`
-	Choice *uuid.UUID `yaml:"choice,omitempty" json:"choice,omitempty"`
+	Object string `yaml:"object,omitempty" json:"object,omitempty"`
+	List   string `yaml:"list,omitempty" json:"list,omitempty"`
+	Choice string `yaml:"choice,omitempty" json:"choice,omitempty"`
 }
 
 // DocumentDefinition describes one ML document and its persistent record shape.
@@ -213,22 +213,33 @@ func reservedDocumentObjectName(name string) bool {
 	}
 }
 
+// validateObjectForms checks the slots naming an object's main forms. A slot
+// carries the name of a form, and nothing more is decided here: that the form
+// exists is checked against the object's folder, where forms live.
+//
+// Two slots may well name one form. The prototype's own catalog of users does
+// exactly that - its ФормаСписка is both the main list form and the main
+// choice form - so refusing it would lose a real configuration at import.
 func validateObjectForms(forms ObjectForms) []string {
+	return validateFormSlots(map[string]string{
+		"forms.object": forms.Object, "forms.list": forms.List, "forms.choice": forms.Choice,
+	})
+}
+
+// validateFormSlots checks that every named slot carries a form name that may
+// be a folder. Slots are shared by every kind that has forms, and each kind
+// has its own set of them.
+func validateFormSlots(slots map[string]string) []string {
 	var issues []string
-	seen := map[uuid.UUID]string{}
-	for name, id := range map[string]*uuid.UUID{"forms.object": forms.Object, "forms.list": forms.List, "forms.choice": forms.Choice} {
-		if id == nil {
+	for slot, form := range slots {
+		if form == "" {
 			continue
 		}
-		if id.IsZero() {
-			issues = append(issues, name+" must be a non-zero UUID")
-			continue
+		if project.SubordinateName(form) != nil {
+			issues = append(issues, slot+" must be the name of a form")
 		}
-		if previous, exists := seen[*id]; exists {
-			issues = append(issues, name+" duplicates "+previous)
-		}
-		seen[*id] = name
 	}
+	slices.Sort(issues)
 	return issues
 }
 
@@ -247,18 +258,7 @@ func cloneDocumentDefinition(value DocumentDefinition) DocumentDefinition {
 	return value
 }
 
-func cloneObjectForms(forms ObjectForms) ObjectForms {
-	if forms.Object != nil {
-		id := *forms.Object
-		forms.Object = &id
-	}
-	if forms.List != nil {
-		id := *forms.List
-		forms.List = &id
-	}
-	if forms.Choice != nil {
-		id := *forms.Choice
-		forms.Choice = &id
-	}
-	return forms
-}
+// cloneObjectForms is what a copy of the slots costs now that a slot is a
+// name: nothing. It is kept so the callers that hand out copies still read as
+// copying every part of what they hand out.
+func cloneObjectForms(forms ObjectForms) ObjectForms { return forms }
