@@ -146,6 +146,27 @@ def validate(repository: Path) -> list[str]:
     except (OSError, ET.ParseError) as error:
         errors.append(f"docs/materials/demo-base/Configuration.xml: {error}")
 
+    # Разобранные книги: без проверки «валидация прошла» означало бы, что
+    # реестр книг цел, хотя страницы мог стереть прерванный разбор.
+    books_index_path = repository / "docs/materials/books/index.json"
+    if books_index_path.exists():
+        try:
+            books_index = json.loads(books_index_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            errors.append(f"docs/materials/books/index.json: {error}")
+        else:
+            unique(books_index.get("books", []), "slug", "books", errors)
+            for book in books_index.get("books", []):
+                directory = repository / book.get("path", "")
+                pages = sorted((directory / "pages").glob("*.txt")) if directory.is_dir() else []
+                if len(pages) != book.get("page_count"):
+                    errors.append(
+                        f"{book.get('path')}: страниц разобрано {len(pages)}, "
+                        f"в книге {book.get('page_count')} — прогоните scripts/books_index.py"
+                    )
+                if not (directory / "toc.json").is_file():
+                    errors.append(f"{book.get('path')}: нет toc.json")
+
     obsolete = repository / "docs/materials/its/8.5.1.1150"
     if obsolete.exists():
         errors.append("obsolete 8.5.1.1150 materials are present")
