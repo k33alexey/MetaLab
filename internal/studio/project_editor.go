@@ -16,7 +16,9 @@ const englishLanguageCode = "en"
 // englishLanguage is the platform's baseline interchange language: BSL
 // itself has an English keyword syntax, so every ML Project keeps it
 // available regardless of which languages the project owner configures.
-var englishLanguage = project.Language{Name: "English", Title: "English", Code: englishLanguageCode}
+var englishLanguage = project.Language{
+	Name: "English", Title: project.LocalizedText{englishLanguageCode: "English"}, Code: englishLanguageCode,
+}
 
 // canonicalEnglish keeps the identity a project already gave to English while
 // restoring its name and title. Resetting the identity too would make the
@@ -264,6 +266,19 @@ func withoutRemovedTranslations(configuration project.Project) project.Project {
 	configuration.VendorAddress = prune(configuration.VendorAddress)
 	configuration.InformationAddress = prune(configuration.InformationAddress)
 	configuration.UpdateCatalogAddress = prune(configuration.UpdateCatalogAddress)
+	// A language's own synonym is a text of the configuration like any other,
+	// so it loses the translations written in a language that is gone. What it
+	// cannot lose is all of them: a language without a synonym is a blank line
+	// in the list of languages, and its name stands in - the same answer the
+	// root gives when its last translation leaves with a language.
+	configuration.Languages = append([]project.Language(nil), configuration.Languages...)
+	for index, language := range configuration.Languages {
+		title := prune(language.Title)
+		if len(title) == 0 {
+			title = project.LocalizedText{language.Code: language.Name}
+		}
+		configuration.Languages[index].Title = title
+	}
 	return configuration
 }
 

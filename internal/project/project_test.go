@@ -20,15 +20,18 @@ default_language: ru
 languages:
   - id: 018f1f72-3b4c-7d6e-8f90-000000000001
     name: Русский
-    title: Русский
+    title:
+      ru: Русский
     code: ru
   - id: 018f1f72-3b4c-7d6e-8f90-000000000002
     name: Українська
-    title: Українська
+    title:
+      uk: Українська
     code: uk
   - id: 018f1f72-3b4c-7d6e-8f90-000000000003
     name: English
-    title: English
+    title:
+      en: English
     code: en
 `
 
@@ -43,7 +46,8 @@ title:
 default_language: ru
 languages:
   - name: Русский
-    title: Русский
+    title:
+      ru: Русский
     code: ru
 `
 
@@ -164,8 +168,8 @@ func TestValidateReportsAllProblems(t *testing.T) {
 		Name:            "1 invalid",
 		DefaultLanguage: "de",
 		Languages: []Language{
-			{Name: "Русский", Title: "", Code: "RU"},
-			{Name: "русский", Title: "Українська", Code: "RU"},
+			{Name: "Русский", Title: LocalizedText{"RU": ""}, Code: "RU"},
+			{Name: "русский", Title: LocalizedText{"RU": "Українська"}, Code: "RU"},
 		},
 	}
 
@@ -178,8 +182,8 @@ func TestValidateReportsAllProblems(t *testing.T) {
 		"format must be 1",
 		"id must be a non-zero UUID",
 		"name must start with a letter",
-		"title must contain 1 to 512 printable characters",
-		"languages[0].title must contain 1 to 512 printable characters",
+		"title must contain at least one translation",
+		"languages[0].title.RU must contain 1 to 512 printable characters",
 		"languages[0].code",
 		"languages[1].name must be unique",
 		"languages[1].code must be unique",
@@ -197,7 +201,7 @@ func TestValidateRejectsUnboundedOrControlText(t *testing.T) {
 	value := Project{
 		Format: CurrentFormat, ID: uuid.MustNew(), Name: "A" + strings.Repeat("b", 128),
 		Title: LocalizedText{"ru": "Unsafe\nTitle"}, DefaultLanguage: "ru",
-		Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
+		Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: LocalizedText{"ru": "Русский"}, Code: "ru"}},
 	}
 	err := value.Validate()
 	if err == nil || !strings.Contains(err.Error(), "name must not exceed 128") || !strings.Contains(err.Error(), "title.ru must contain") {
@@ -215,7 +219,7 @@ func TestValidateAcceptsUnicodeIdentifiersAndRegion(t *testing.T) {
 		Title:           LocalizedText{"uk-UA": "Торгівля"},
 		DefaultLanguage: "uk-UA",
 		Languages: []Language{
-			{ID: uuid.MustNew(), Name: "Українська", Title: "Українська", Code: "uk-UA"},
+			{ID: uuid.MustNew(), Name: "Українська", Title: LocalizedText{"uk-UA": "Українська"}, Code: "uk-UA"},
 		},
 	}
 
@@ -315,8 +319,8 @@ func TestValidateRejectsDuplicateLanguageIdentities(t *testing.T) {
 	value := Project{
 		Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo", Title: LocalizedText{"ru": "Demo"}, DefaultLanguage: "ru",
 		Languages: []Language{
-			{ID: shared, Name: "Русский", Title: "Русский", Code: "ru"},
-			{ID: shared, Name: "English", Title: "English", Code: "en"},
+			{ID: shared, Name: "Русский", Title: LocalizedText{"ru": "Русский"}, Code: "ru"},
+			{ID: shared, Name: "English", Title: LocalizedText{"en": "English"}, Code: "en"},
 		},
 	}
 	if err := value.Validate(); err == nil {
@@ -341,11 +345,13 @@ default_language: ru
 languages:
   - id: 018f1f72-3b4c-7d6e-8f90-000000000001
     name: Русский
-    title: Русский
+    title:
+      ru: Русский
     code: ru
   - id: 018f1f72-3b4c-7d6e-8f90-000000000003
     name: English
-    title: English
+    title:
+      en: English
     code: en
 brief_information:
   ru: Торговля со склада
@@ -413,7 +419,7 @@ func TestRootTextsAreCheckedAgainstTheProjectLanguages(t *testing.T) {
 		return Project{
 			Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo",
 			Title: LocalizedText{"ru": "Демо"}, DefaultLanguage: "ru",
-			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
+			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: LocalizedText{"ru": "Русский"}, Code: "ru"}},
 		}
 	}
 	if err := base().Validate(); err != nil {
@@ -462,7 +468,8 @@ default_language: ru
 languages:
   - id: 018f1f72-3b4c-7d6e-8f90-000000000001
     name: Русский
-    title: Русский
+    title:
+      ru: Русский
     code: ru
 default_style: 018f1f72-3b4c-7d6e-8f90-000000000010
 default_interface: ОсновнойИнтерфейс
@@ -527,7 +534,7 @@ func TestRootDefaultsAreCheckedForShape(t *testing.T) {
 		return Project{
 			Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo",
 			Title: LocalizedText{"ru": "Демо"}, DefaultLanguage: "ru",
-			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
+			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: LocalizedText{"ru": "Русский"}, Code: "ru"}},
 		}
 	}
 	role := uuid.MustNew()
@@ -574,7 +581,8 @@ default_language: ru
 languages:
   - id: 018f1f72-3b4c-7d6e-8f90-000000000001
     name: Русский
-    title: Русский
+    title:
+      ru: Русский
     code: ru
 data_lock_control: managed
 object_autonumeration: keep
@@ -625,7 +633,7 @@ func TestRootSettingsAreCheckedForShape(t *testing.T) {
 		return Project{
 			Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo",
 			Title: LocalizedText{"ru": "Демо"}, DefaultLanguage: "ru",
-			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
+			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: LocalizedText{"ru": "Русский"}, Code: "ru"}},
 		}
 	}
 	dictionary := DictionaryReference{Kind: ConstantDictionary, Object: uuid.MustNew()}
@@ -683,7 +691,8 @@ default_language: ru
 languages:
   - id: 018f1f72-3b4c-7d6e-8f90-000000000001
     name: Русский
-    title: Русский
+    title:
+      ru: Русский
     code: ru
 default_run_mode: managed-application
 use_purposes: [personal-computer, mobile-device]
@@ -749,7 +758,7 @@ func TestRootModesAreCheckedForShape(t *testing.T) {
 		return Project{
 			Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo",
 			Title: LocalizedText{"ru": "Демо"}, DefaultLanguage: "ru",
-			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
+			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: LocalizedText{"ru": "Русский"}, Code: "ru"}},
 		}
 	}
 	for name, broken := range map[string]func(value *Project){
@@ -799,7 +808,8 @@ default_language: ru
 languages:
   - id: 018f1f72-3b4c-7d6e-8f90-000000000001
     name: Русский
-    title: Русский
+    title:
+      ru: Русский
     code: ru
 used_mobile_functionalities: [Звонки, Геолокация]
 required_mobile_permissions: [Камера]
@@ -854,7 +864,7 @@ func TestRootMobileApplicationIsCheckedForShape(t *testing.T) {
 		return Project{
 			Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo",
 			Title: LocalizedText{"ru": "Демо"}, DefaultLanguage: "ru",
-			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
+			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: LocalizedText{"ru": "Русский"}, Code: "ru"}},
 		}
 	}
 	object := ObjectReference{Kind: "catalogs", Object: uuid.MustNew()}
@@ -887,5 +897,105 @@ func TestRootMobileApplicationIsCheckedForShape(t *testing.T) {
 	unknown.AllowedShareRequestTypes = []string{"application/x-невиданное"}
 	if err := unknown.Validate(); err != nil {
 		t.Fatalf("an unknown word was refused: %v", err)
+	}
+}
+
+// A language is an object of the configuration, and its synonym is localized
+// like every other: the list of languages is exactly the place where a reader
+// sees two of them at once.
+func TestLanguageCarriesALocalizedSynonymAndAComment(t *testing.T) {
+	t.Parallel()
+
+	const source = `format: 1
+id: 018f1f72-3b4c-7d6e-8f90-123456789abc
+name: SalesDemo
+title:
+  ru: Продажи и склад
+default_language: ru
+languages:
+  - id: 018f1f72-3b4c-7d6e-8f90-000000000001
+    name: Русский
+    title:
+      ru: Русский
+      en: Russian
+    comment: Язык, на котором ведётся учёт
+    code: ru
+  - id: 018f1f72-3b4c-7d6e-8f90-000000000002
+    name: English
+    title:
+      ru: Английский
+      en: English
+    code: en
+`
+	value, err := Decode(strings.NewReader(source))
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	switch {
+	case len(value.Languages) != 2:
+		t.Fatalf("a language was lost: %+v", value.Languages)
+	case value.Languages[0].Title["en"] != "Russian" || value.Languages[0].Title["ru"] != "Русский":
+		t.Fatalf("the synonym of a language came back as %+v", value.Languages[0].Title)
+	case value.Languages[0].Comment != "Язык, на котором ведётся учёт":
+		t.Fatalf("the comment of a language came back as %q", value.Languages[0].Comment)
+	case value.Languages[1].Comment != "":
+		t.Fatalf("a comment appeared from nowhere: %q", value.Languages[1].Comment)
+	}
+
+	var written bytes.Buffer
+	if err := Encode(&written, value); err != nil {
+		t.Fatal(err)
+	}
+	again, err := Decode(bytes.NewReader(written.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(value, again) {
+		t.Fatalf("the languages did not survive a round trip:\n%+v\n%+v", value.Languages, again.Languages)
+	}
+}
+
+// The synonym of a language is checked against the very list it belongs to.
+// That is not a circle: the languages and their synonyms lie in one file and
+// are read together, so by the time a synonym is checked the list is whole.
+func TestLanguageSynonymIsCheckedAgainstTheLanguages(t *testing.T) {
+	t.Parallel()
+
+	base := func() Project {
+		return Project{
+			Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo",
+			Title: LocalizedText{"ru": "Демо"}, DefaultLanguage: "ru",
+			Languages: []Language{
+				{ID: uuid.MustNew(), Name: "Русский", Title: LocalizedText{"ru": "Русский"}, Code: "ru"},
+			},
+		}
+	}
+	unknown := base()
+	unknown.Languages[0].Title = LocalizedText{"de": "Russisch"}
+	if err := unknown.Validate(); err == nil {
+		t.Fatal("a synonym written in a language nobody configured was accepted")
+	}
+
+	empty := base()
+	empty.Languages[0].Title = nil
+	if err := empty.Validate(); err == nil {
+		t.Fatal("a language without a synonym was accepted")
+	}
+
+	noisy := base()
+	noisy.Languages[0].Comment = "строка\nс переводом"
+	if err := noisy.Validate(); err == nil {
+		t.Fatal("a comment with a line break was accepted")
+	}
+
+	// Two languages naming each other in both is ordinary, and the point of
+	// making the synonym localized at all.
+	both := base()
+	both.Languages = []Language{
+		{ID: uuid.MustNew(), Name: "Русский", Title: LocalizedText{"ru": "Русский", "en": "Russian"}, Code: "ru"},
+		{ID: uuid.MustNew(), Name: "English", Title: LocalizedText{"ru": "Английский", "en": "English"}, Code: "en"},
+	}
+	if err := both.Validate(); err != nil {
+		t.Fatalf("two languages naming each other were refused: %v", err)
 	}
 }

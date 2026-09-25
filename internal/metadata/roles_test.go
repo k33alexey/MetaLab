@@ -426,7 +426,7 @@ func TestRoleAutoGrantDefaults(t *testing.T) {
 
 func TestRoleCommentLimit(t *testing.T) {
 	t.Parallel()
-	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "P", Title: project.LocalizedText{"ru": "P"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
+	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "P", Title: project.LocalizedText{"ru": "P"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: project.LocalizedText{"ru": "Русский"}, Code: "ru"}}}
 	role := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "R", Title: LocalizedText{"ru": "R"}, Comment: strings.Repeat("a", MaxRoleComment)}
 	if err := ValidateRole("role", role, configuration); err != nil {
 		t.Fatalf("comment at the limit rejected: %v", err)

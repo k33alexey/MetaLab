@@ -66,15 +66,8 @@ func (workspace *Workspace) readManagedForm(relative string) (ManagedFormSource,
 	if err := formAgreesWithItsPath(form, relative); err != nil {
 		return ManagedFormSource{}, err
 	}
-	languages := make([]FormLanguage, len(configuration.Languages))
-	for index, language := range configuration.Languages {
-		title := language.Title
-		if strings.TrimSpace(title) == "" {
-			title = language.Name
-		}
-		languages[index] = FormLanguage{Code: language.Code, Title: title}
-	}
-	return ManagedFormSource{Path: relative, Revision: file.Revision, Form: form, Languages: languages, DataPaths: workspace.formDataPaths(form.ID, configuration)}, nil
+	return ManagedFormSource{Path: relative, Revision: file.Revision, Form: form,
+		Languages: roleLanguages(configuration), DataPaths: workspace.formDataPaths(form.ID, configuration)}, nil
 }
 
 func (workspace *Workspace) SaveManagedForm(relative string, form metadata.ManagedForm, expectedRevision string) (ManagedFormSource, error) {

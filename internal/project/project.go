@@ -382,10 +382,19 @@ type DictionaryReference struct {
 // object's identity - renaming a code would then silently mean "another
 // language" everywhere the object itself is referenced.
 type Language struct {
-	ID    uuid.UUID `yaml:"id" json:"id"`
-	Name  string    `yaml:"name" json:"name"`
-	Title string    `yaml:"title" json:"title"`
-	Code  string    `yaml:"code" json:"code"`
+	ID   uuid.UUID `yaml:"id" json:"id"`
+	Name string    `yaml:"name" json:"name"`
+	// Title is localized, like the synonym of every other object. A language
+	// whose synonym is written in two languages would otherwise lose one, and
+	// the list of languages is precisely the place where two of them are in
+	// front of the reader at once.
+	//
+	// That this is checked against the very list it belongs to is not a
+	// circle: the languages and their synonyms lie in one file and are read
+	// together, so by the time a synonym is checked the list is whole.
+	Title   LocalizedText `yaml:"title" json:"title"`
+	Comment string        `yaml:"comment,omitempty" json:"comment,omitempty"`
+	Code    string        `yaml:"code" json:"code"`
 }
 
 // Decode reads one strict YAML document and validates it.
@@ -475,13 +484,15 @@ func Encode(writer io.Writer, value Project) error {
 	return nil
 }
 
-// NewLanguage creates a configured language with a fresh identity.
+// NewLanguage creates a configured language with a fresh identity. The title
+// given is the language's synonym in itself - the one translation a new
+// language certainly has, because it is the language being added.
 func NewLanguage(name, title, code string) (Language, error) {
 	id, err := uuid.New()
 	if err != nil {
 		return Language{}, err
 	}
-	return Language{ID: id, Name: name, Title: title, Code: code}, nil
+	return Language{ID: id, Name: name, Title: LocalizedText{code: title}, Code: code}, nil
 }
 
 // EnsureLanguageIdentities fills in the identity of every language that has
@@ -533,8 +544,8 @@ func (p Project) Validate() error {
 		} else if utf8.RuneCountInString(language.Name) > 128 {
 			add(prefix+".name", "must not exceed 128 characters")
 		}
-		if !isDisplayText(language.Title, 512) {
-			add(prefix+".title", "must contain 1 to 512 printable characters")
+		if language.Comment != "" && !isDisplayText(language.Comment, 1024) {
+			add(prefix+".comment", "must contain 1 to 1024 printable characters")
 		}
 		if !isLocaleCode(language.Code) {
 			add(prefix+".code", "must be a lowercase language code with optional region")
@@ -584,6 +595,12 @@ func (p Project) Validate() error {
 		}
 	}
 	checkText("title", p.Title, true)
+	// A language's own synonym is checked here, with the texts of the root and
+	// against the same list: until the whole list is read there is nothing to
+	// check it against.
+	for index, language := range p.Languages {
+		checkText(fmt.Sprintf("languages[%d].title", index), language.Title, true)
+	}
 	checkText("brief_information", p.BriefInformation, false)
 	checkText("detailed_information", p.DetailedInformation, false)
 	checkText("copyright", p.Copyright, false)

@@ -8,7 +8,7 @@ const context=vm.createContext({structuredClone});
 vm.runInContext(script,context);
 const create=context.createProjectModel;
 function fixture(){return {configuration:{format:1,id:'p1',name:'SalesDemo',title:{ru:'Продажи и склад'},defaultLanguage:'ru',languages:[
-  {name:'English',title:'English',code:'en'},{name:'Русский',title:'Русский',code:'ru'},
+  {name:'English',title:{en:'English'},code:'en'},{name:'Русский',title:{ru:'Русский'},code:'ru'},
 ]}};}
 
 test('Studio inline script remains valid JavaScript',()=>{
@@ -164,4 +164,27 @@ test('a list of words is written a line at a time',()=>{
   assert.deepEqual(model.value().requiredMobilePermissions,['Камера','Геолокация']);
   model.setList('requiredMobilePermissions','\n  \n');
   assert.equal('requiredMobilePermissions' in model.value(),false);
+});
+// Синоним языка локализован: язык называется на каждом языке проекта, и
+// стёртый перевод исчезает, а не остаётся пустой строкой. Английский не
+// правится вовсе.
+test('a language synonym is written per language',()=>{
+  const model=create(fixture());
+  model.setLanguageTitle('ru','en','Russian');
+  model.setLanguageTitle('ru','ru','Русский');
+  let saved=model.value().languages.find(item=>item.code==='ru');
+  assert.deepEqual(saved.title,{en:'Russian',ru:'Русский'});
+  model.setLanguageTitle('ru','en','');
+  saved=model.value().languages.find(item=>item.code==='ru');
+  assert.deepEqual(saved.title,{ru:'Русский'});
+  model.setLanguageTitle('en','ru','Взломанный');
+  assert.deepEqual(model.value().languages.find(item=>item.code==='en').title,{en:'English'});
+});
+// Комментарий языка — обычное поле: опустошённое, оно пропадает.
+test('a language comment vanishes when emptied',()=>{
+  const model=create(fixture());
+  model.setLanguageField('ru','comment','Язык учёта');
+  assert.equal(model.value().languages.find(item=>item.code==='ru').comment,'Язык учёта');
+  model.setLanguageField('ru','comment','');
+  assert.equal('comment' in model.value().languages.find(item=>item.code==='ru'),false);
 });

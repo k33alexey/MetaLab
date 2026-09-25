@@ -630,7 +630,7 @@ func metadataConfiguration() project.Project {
 	return project.Project{
 		Format: project.CurrentFormat,
 		ID:     uuid.MustNew(), Name: "MetadataTest", Title: project.LocalizedText{"ru": "Metadata Test"}, DefaultLanguage: "ru",
-		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}, {ID: uuid.MustNew(), Name: "Українська", Title: "Українська", Code: "uk"}},
+		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: project.LocalizedText{"ru": "Русский"}, Code: "ru"}, {ID: uuid.MustNew(), Name: "Українська", Title: project.LocalizedText{"uk": "Українська"}, Code: "uk"}},
 	}
 }
 
@@ -701,9 +701,9 @@ types: [{kind: string, length: 10}]
 func TestLocalizedTextFallsBackThroughTheProjectDefault(t *testing.T) {
 	t.Parallel()
 	configured := []project.Language{
-		{ID: uuid.MustNew(), Name: "Українська", Title: "Українська", Code: "uk"},
-		{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"},
-		{ID: uuid.MustNew(), Name: "English", Title: "English", Code: "en"},
+		{ID: uuid.MustNew(), Name: "Українська", Title: project.LocalizedText{"uk": "Українська"}, Code: "uk"},
+		{ID: uuid.MustNew(), Name: "Русский", Title: project.LocalizedText{"ru": "Русский"}, Code: "ru"},
+		{ID: uuid.MustNew(), Name: "English", Title: project.LocalizedText{"en": "English"}, Code: "en"},
 	}
 	text := LocalizedText{"ru": "Товары", "uk": "Товари"}
 	if value := text.Resolve("en", "ru", configured); value != "Товары" {

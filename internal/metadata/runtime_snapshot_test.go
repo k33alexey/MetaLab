@@ -11,7 +11,7 @@ func TestRuntimeSnapshotSortsAndIsolatesForms(t *testing.T) {
 	t.Parallel()
 	configuration := project.Project{
 		Format: project.CurrentFormat, ID: uuid.MustNew(), Name: "Demo", Title: project.LocalizedText{"ru": "Demo"},
-		DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
+		DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: project.LocalizedText{"ru": "Русский"}, Code: "ru"}},
 	}
 	catalog, err := NewCatalogSnapshotWithAccumulationRegisters(configuration, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
@@ -52,7 +52,7 @@ func TestRuntimeSnapshotRejectsNonCanonicalFormOrder(t *testing.T) {
 	t.Parallel()
 	configuration := project.Project{
 		Format: project.CurrentFormat, ID: uuid.MustNew(), Name: "Demo", Title: project.LocalizedText{"ru": "Demo"},
-		DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
+		DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: project.LocalizedText{"ru": "Русский"}, Code: "ru"}},
 	}
 	firstID, _ := uuid.Parse("10000000-0000-4000-8000-000000000001")
 	secondID, _ := uuid.Parse("20000000-0000-4000-8000-000000000002")
@@ -69,7 +69,7 @@ func TestRuntimeSnapshotWithModulesSortsAndValidates(t *testing.T) {
 	t.Parallel()
 	configuration := project.Project{
 		Format: project.CurrentFormat, ID: uuid.MustNew(), Name: "Demo", Title: project.LocalizedText{"ru": "Demo"},
-		DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
+		DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: project.LocalizedText{"ru": "Русский"}, Code: "ru"}},
 	}
 	catalog, err := NewCatalogSnapshotWithAccumulationRegisters(configuration, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {

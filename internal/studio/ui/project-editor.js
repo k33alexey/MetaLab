@@ -78,7 +78,19 @@ function createProjectModel(source) {
     setLanguageField(code, field, value) {
       if (code === 'en') return;
       const language = configuration.languages.find(item => item.code === code);
-      if (language) language[field] = value;
+      if (!language) return;
+      if (value === '' && field === 'comment') delete language[field]; else language[field] = value;
+    },
+    /* Синоним языка локализован, как синоним всякого объекта: язык, названный
+       на двух языках, иначе терял бы одно из названий — а список языков ровно
+       то место, где два языка читатель видит разом. */
+    setLanguageTitle(code, translation, value) {
+      if (code === 'en') return;
+      const language = configuration.languages.find(item => item.code === code);
+      if (!language) return;
+      const text = language.title && typeof language.title === 'object' ? language.title : {};
+      if (value === '') delete text[translation]; else text[translation] = value;
+      language.title = text;
     },
   };
 }
@@ -135,6 +147,15 @@ function createProjectEditor(host, onChange) {
      форма, которая не откроется; молча выбросить его значило бы потерять
      единственный след того, что имелось в виду, а показать его — единственный
      способ дать его починить. */
+  /* Язык показывается своим синонимом на себе самом: список, где один язык
+     написан на другом, читается как ошибка. Без синонима остаётся имя —
+     пустая строка в списке языков хуже технической. */
+  function languageTitle(language) {
+    const text = language.title;
+    if (typeof text === 'string') return text || language.code;
+    return (text && (text[language.code] || text[source.configuration.defaultLanguage]
+      || Object.values(text).find(value => value))) || language.name || language.code;
+  }
   function presentation(choice) {
     return choice.title?.[source.configuration.defaultLanguage] || choice.name || choice.id;
   }
@@ -313,7 +334,7 @@ function createProjectEditor(host, onChange) {
     defaultLanguageField.append(node('span', 'Язык по умолчанию'));
     const defaultLanguageSelect = node('select');
     for (const language of source.configuration.languages) {
-      const option = node('option', language.title || language.code);
+      const option = node('option', languageTitle(language));
       option.value = language.code;
       option.selected = language.code === source.configuration.defaultLanguage;
       defaultLanguageSelect.append(option);

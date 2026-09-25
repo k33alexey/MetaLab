@@ -13,7 +13,7 @@ import (
 
 func TestApplicationPermissionsBindProjectAndDenyUnassigned(t *testing.T) {
 	t.Parallel()
-	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "RolesTest", Title: project.LocalizedText{"ru": "Roles test"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
+	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "RolesTest", Title: project.LocalizedText{"ru": "Roles test"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: project.LocalizedText{"ru": "Русский"}, Code: "ru"}}}
 	role := metadata.RoleDefinition{Format: 1, ID: uuid.MustNew(), Name: "Читатель", Title: metadata.LocalizedText{"ru": "Читатель"}}
 	catalog, err := metadata.NewCatalogSnapshotWithRoles(configuration, nil, nil, nil, nil, nil, nil, nil, []metadata.RoleDefinition{role})
 	if err != nil {
@@ -70,7 +70,7 @@ func TestApplicationPermissionsBindProjectAndDenyUnassigned(t *testing.T) {
 func TestAllowedOperationsReportOnlyWhatTheRoleGrants(t *testing.T) {
 	t.Parallel()
 	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "OperationsTest", Title: project.LocalizedText{"ru": "Operations test"}, DefaultLanguage: "ru",
-		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
+		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: project.LocalizedText{"ru": "Русский"}, Code: "ru"}}}
 	goods := metadata.CatalogDefinition{Format: 1, ID: uuid.MustNew(), Name: "Товары", Title: metadata.LocalizedText{"ru": "Товары"},
 		Code: metadata.CatalogCode{Type: metadata.StringType, Length: 9}, DescriptionLength: 150}
 	partners := metadata.CatalogDefinition{Format: 1, ID: uuid.MustNew(), Name: "Контрагенты", Title: metadata.LocalizedText{"ru": "Контрагенты"},
@@ -109,8 +109,8 @@ func TestApplicationLanguagePicksWhatTheProjectActuallyHas(t *testing.T) {
 	configuration := project.Project{
 		Format: 1, ID: uuid.MustNew(), Name: "LanguageTest", Title: project.LocalizedText{"ru": "Language test"}, DefaultLanguage: "ru",
 		Languages: []project.Language{
-			{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"},
-			{ID: uuid.MustNew(), Name: "Українська", Title: "Українська", Code: "uk"},
+			{ID: uuid.MustNew(), Name: "Русский", Title: project.LocalizedText{"ru": "Русский"}, Code: "ru"},
+			{ID: uuid.MustNew(), Name: "Українська", Title: project.LocalizedText{"uk": "Українська"}, Code: "uk"},
 		},
 	}
 	for name, test := range map[string]struct {
@@ -137,7 +137,7 @@ func TestApplicationLanguagePicksWhatTheProjectActuallyHas(t *testing.T) {
 func TestViewIsSeparateFromRead(t *testing.T) {
 	t.Parallel()
 	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "ViewTest", Title: project.LocalizedText{"ru": "View test"}, DefaultLanguage: "ru",
-		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
+		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: project.LocalizedText{"ru": "Русский"}, Code: "ru"}}}
 	goods := metadata.CatalogDefinition{Format: 1, ID: uuid.MustNew(), Name: "Товары", Title: metadata.LocalizedText{"ru": "Товары"},
 		Code: metadata.CatalogCode{Type: metadata.StringType, Length: 9}, DescriptionLength: 150}
 	role := metadata.RoleDefinition{Format: 1, ID: uuid.MustNew(), Name: "Счётчик", Title: metadata.LocalizedText{"ru": "Счётчик"},

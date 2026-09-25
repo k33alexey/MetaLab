@@ -93,7 +93,7 @@ func TestSaveConfigurationIsStableAndPreservesIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	configuration.Title = LocalizedText{"ru": "Новое название"}
-	configuration.Languages = append(configuration.Languages, Language{ID: uuid.MustNew(), Name: "English", Title: "English", Code: "en"})
+	configuration.Languages = append(configuration.Languages, Language{ID: uuid.MustNew(), Name: "English", Title: LocalizedText{"en": "English"}, Code: "en"})
 	if err := SaveConfiguration(root, configuration); err != nil {
 		t.Fatal(err)
 	}
@@ -198,6 +198,6 @@ func TestDirectoryCatalogCannotBeMutatedByCaller(t *testing.T) {
 func testConfiguration() Project {
 	return Project{
 		Format: CurrentFormat, ID: uuid.MustNew(), Name: "SalesDemo", Title: LocalizedText{"ru": "Продажи и склад"},
-		DefaultLanguage: "ru", Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
+		DefaultLanguage: "ru", Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: LocalizedText{"ru": "Русский"}, Code: "ru"}},
 	}
 }

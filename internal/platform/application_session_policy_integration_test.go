@@ -99,7 +99,7 @@ func TestSessionParameterRestrictsListReadsIntegration(t *testing.T) {
 		Types: []metadata.Type{{Kind: metadata.StringType, Length: 50}},
 	}
 	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "SessionDemo", Title: project.LocalizedText{"ru": "Session demo"}, DefaultLanguage: "ru",
-		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
+		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: project.LocalizedText{"ru": "Русский"}, Code: "ru"}}}
 	root := filepath.Join(t.TempDir(), "project")
 	if err := project.Initialize(root, configuration); err != nil {
 		t.Fatal(err)

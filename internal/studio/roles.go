@@ -303,10 +303,22 @@ func (workspace *Workspace) applyRoleAutoGrantsLocked(mutate func(*metadata.Role
 	return nil
 }
 
+// roleLanguages names every configured language for the browser: its code, and
+// the synonym to show it by.
+//
+// The synonym of a language is localized like every other, so it is resolved -
+// in that language itself first, because a language names itself in itself, and
+// a list where one language is written in another reads as a mistake. A
+// language with no synonym at all is shown by its name: an empty chip in a list
+// of languages is worse than a technical one.
 func roleLanguages(configuration project.Project) []FormLanguage {
 	result := make([]FormLanguage, len(configuration.Languages))
 	for index, language := range configuration.Languages {
-		result[index] = FormLanguage{Code: language.Code, Title: language.Title}
+		title := language.Title.Resolve(language.Code, configuration.DefaultLanguage, configuration.Languages)
+		if title == "" {
+			title = language.Name
+		}
+		result[index] = FormLanguage{Code: language.Code, Title: title}
 	}
 	return result
 }

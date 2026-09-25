@@ -95,7 +95,7 @@ func TestManagerApplicationRolesUseActivePublicationIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "RoleDemo", Title: project.LocalizedText{"ru": "Role demo"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
+	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "RoleDemo", Title: project.LocalizedText{"ru": "Role demo"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: project.LocalizedText{"ru": "Русский"}, Code: "ru"}}}
 	root := filepath.Join(t.TempDir(), "project")
 	if err := project.Initialize(root, configuration); err != nil {
 		t.Fatal(err)

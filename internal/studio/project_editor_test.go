@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -29,21 +30,21 @@ func TestProjectEditorAlwaysIncludesCanonicalEnglish(t *testing.T) {
 		t.Fatal(err)
 	}
 	english, ok := findLanguage(opened.Configuration.Languages, "en")
-	if !ok || english.Name != englishLanguage.Name || english.Title != englishLanguage.Title || english.ID.IsZero() {
+	if !ok || english.Name != englishLanguage.Name || !reflect.DeepEqual(english.Title, englishLanguage.Title) || english.ID.IsZero() {
 		t.Fatalf("English was not injected on read: %+v", opened.Configuration.Languages)
 	}
 
 	// Try to corrupt English (rename it) and remove the "ru" language while
 	// setting the default language to the (attempted) corrupted English.
 	corrupted := opened.Configuration
-	corrupted.Languages = []project.Language{{ID: uuid.MustNew(), Name: "NotEnglish", Title: "Not English", Code: "en"}}
+	corrupted.Languages = []project.Language{{ID: uuid.MustNew(), Name: "NotEnglish", Title: project.LocalizedText{"en": "Not English"}, Code: "en"}}
 	corrupted.DefaultLanguage = "en"
 	saved, err := workspace.SaveProjectEditor(corrupted, opened.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
 	english, ok = findLanguage(saved.Configuration.Languages, "en")
-	if !ok || english.Name != englishLanguage.Name || english.Title != englishLanguage.Title {
+	if !ok || english.Name != englishLanguage.Name || !reflect.DeepEqual(english.Title, englishLanguage.Title) {
 		t.Fatalf("English was not restored to its canonical value: %+v", saved.Configuration.Languages)
 	}
 	// Личность языка не меняется от того, что кто-то поправил его заголовок:
@@ -180,7 +181,7 @@ func TestRemovingALanguageTakesItsTextsWithIt(t *testing.T) {
 	// Now Russian goes, and with it everything written in Russian. English
 	// stays, so the synonym keeps its English translation.
 	withoutRussian := saved.Configuration
-	withoutRussian.Languages = []project.Language{{Name: "English", Title: "English", Code: "en"}}
+	withoutRussian.Languages = []project.Language{{Name: "English", Title: project.LocalizedText{"en": "English"}, Code: "en"}}
 	withoutRussian.DefaultLanguage = "en"
 	saved, err = workspace.SaveProjectEditor(withoutRussian, saved.Revision)
 	if err != nil {
@@ -208,7 +209,7 @@ func TestASynonymLeftWithNoLanguageFallsBackToTheName(t *testing.T) {
 	}
 	updated := opened.Configuration
 	updated.Title = project.LocalizedText{"ru": "Продажи"}
-	updated.Languages = []project.Language{{Name: "English", Title: "English", Code: "en"}}
+	updated.Languages = []project.Language{{Name: "English", Title: project.LocalizedText{"en": "English"}, Code: "en"}}
 	updated.DefaultLanguage = "en"
 	saved, err := workspace.SaveProjectEditor(updated, opened.Revision)
 	if err != nil {
@@ -498,5 +499,57 @@ func TestProjectEditorSavesTheMobileApplication(t *testing.T) {
 	case len(saved.StandaloneConfigurationRestrictionRoles) != 1 ||
 		saved.StandaloneConfigurationRestrictionRoles[0] != written["role"]:
 		t.Fatalf("the restriction roles were lost: %+v", saved.StandaloneConfigurationRestrictionRoles)
+	}
+}
+
+// Removing a language removes what was written in it, including the synonyms of
+// the languages that stay. What cannot vanish is a language's synonym as a
+// whole: its name stands in, the same answer the root gives for itself.
+func TestRemovingALanguageLeavesEveryLanguageNamed(t *testing.T) {
+	t.Parallel()
+	workspace, err := Open(createProject(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := workspace.ReadProjectEditor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Русский is named only in Ukrainian, which is about to leave.
+	updated := opened.Configuration
+	updated.Languages = append([]project.Language(nil), updated.Languages...)
+	for index := range updated.Languages {
+		if updated.Languages[index].Code == "ru" {
+			updated.Languages[index].Title = project.LocalizedText{"uk": "Російська"}
+		}
+	}
+	updated.Languages = append(updated.Languages,
+		project.Language{Name: "Українська", Title: project.LocalizedText{"uk": "Українська"}, Code: "uk"})
+	saved, err := workspace.SaveProjectEditor(updated, opened.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	withoutUkrainian := saved.Configuration
+	withoutUkrainian.Languages = nil
+	for _, language := range saved.Configuration.Languages {
+		if language.Code != "uk" {
+			withoutUkrainian.Languages = append(withoutUkrainian.Languages, language)
+		}
+	}
+	saved, err = workspace.SaveProjectEditor(withoutUkrainian, saved.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, language := range saved.Configuration.Languages {
+		if len(language.Title) == 0 {
+			t.Fatalf("a language lost its synonym entirely: %+v", language)
+		}
+		if _, orphaned := language.Title["uk"]; orphaned {
+			t.Fatalf("a synonym in a removed language survived: %+v", language)
+		}
+		if language.Code == "ru" && language.Title["ru"] != language.Name {
+			t.Fatalf("the synonym did not fall back to the name: %+v", language)
+		}
 	}
 }

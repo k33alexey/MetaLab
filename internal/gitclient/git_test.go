@@ -159,7 +159,7 @@ func initializeProject(t *testing.T, root string) {
 	t.Helper()
 	configuration := project.Project{
 		Format: project.CurrentFormat, ID: uuid.MustNew(), Name: "GitDemo", Title: project.LocalizedText{"ru": "Git Demo"},
-		DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
+		DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: project.LocalizedText{"ru": "Русский"}, Code: "ru"}},
 	}
 	if err := project.Initialize(root, configuration); err != nil {
 		t.Fatal(err)

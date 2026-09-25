@@ -200,7 +200,7 @@ func publicationProject(t *testing.T) string {
 	root := filepath.Join(t.TempDir(), "project")
 	configuration := project.Project{
 		Format: project.CurrentFormat, ID: uuid.MustNew(), Name: "PackageDemo", Title: project.LocalizedText{"ru": "Package Demo"},
-		DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
+		DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: project.LocalizedText{"ru": "Русский"}, Code: "ru"}},
 	}
 	if err := project.Initialize(root, configuration); err != nil {
 		t.Fatal(err)
