@@ -40,16 +40,21 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+# PyMuPDF нужен только для самого разбора. Обновление описания по готовому
+# разбору обходится без него, и обычный `python3` должен доводить такой
+# прогон до конца, а не падать на импорте.
 try:
     import pymupdf
-except ImportError:  # pragma: no cover - подсказка вместо трассировки
-    sys.exit(
-        "нужен PyMuPDF; запускать разбор так:\n"
-        "    docs/materials/books/.venv/bin/python scripts/books_index.py\n"
-        "окружение создаётся один раз:\n"
-        "    python3 -m venv docs/materials/books/.venv\n"
-        "    docs/materials/books/.venv/bin/pip install pymupdf"
-    )
+except ImportError:  # pragma: no cover - разбирать будет нечем, обновлять - есть чем
+    pymupdf = None
+
+NO_PYMUPDF = (
+    "нужен PyMuPDF; запускать разбор так:\n"
+    "    docs/materials/books/.venv/bin/python scripts/books_index.py\n"
+    "окружение создаётся один раз:\n"
+    "    python3 -m venv docs/materials/books/.venv\n"
+    "    docs/materials/books/.venv/bin/pip install pymupdf"
+)
 
 DEFAULT_BOOKS = Path("docs/materials/books")
 SCHEMA = "metalab.materials-books"
@@ -80,7 +85,7 @@ BOOKS: list[dict[str, Any]] = [
         "edition": "издание 2",
         "isbn": "978-5-9677-2509-8",
         "publisher": "1С-Паблишинг",
-        "blocks": [11, 12],
+        "blocks": [12, 13],
         "note": "устройство компоновки: схема, наборы данных, настройки, макет компоновки, процессоры",
     },
     {
@@ -91,7 +96,7 @@ BOOKS: list[dict[str, Any]] = [
         "author": "Хрусталева Е. Ю.",
         "isbn": "978-5-9677-2964-5",
         "publisher": "1С-Паблишинг",
-        "blocks": [15, 16],
+        "blocks": [16, 17],
         "note": "интернет-технологии, обмен данными, внешние компоненты, COM",
         "duplicates": [
             {
@@ -237,11 +242,45 @@ def build_toc(document: "pymupdf.Document") -> list[dict[str, Any]]:
     return entries
 
 
+def refresh(book: dict[str, Any], books_dir: Path) -> dict[str, Any]:
+    """Обновить описание книги по готовому разбору, без самого PDF.
+
+    Разбор — самостоятельный материал: искать по нему можно и тогда, когда
+    PDF рядом уже нет, а книги как раз держат не все и не всегда. Поэтому
+    отсутствие исходника не ошибка, пока страницы на месте: переписывается
+    только описание, страницы и оглавление остаются как были.
+    """
+    target = books_dir / book["slug"]
+    pages_dir = target / "pages"
+    pages = sorted(pages_dir.glob("*.txt"))
+    if not pages:
+        raise FileNotFoundError(
+            f"нет ни файла книги {books_dir / book['file']}, ни её разбора в {pages_dir}"
+        )
+    previous = json.loads((target / "book.json").read_text(encoding="utf-8"))
+    record = {key: value for key, value in book.items() if key != "sha256"}
+    record.update(
+        {
+            key: previous[key]
+            for key in ("schema", "schema_version", "source", "sha256", "page_count",
+                        "toc_entries", "pages_without_text", "characters", "running_titles")
+            if key in previous
+        }
+    )
+    record["source_present"] = False
+    (target / "book.json").write_text(
+        json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return record
+
+
 def process(book: dict[str, Any], books_dir: Path, threshold: float) -> dict[str, Any]:
     """Разобрать одну книгу и записать её разбор рядом с PDF."""
     source = books_dir / book["file"]
     if not source.is_file():
-        raise FileNotFoundError(f"нет файла книги: {source}")
+        return refresh(book, books_dir)
+    if pymupdf is None:
+        sys.exit(NO_PYMUPDF)
     actual = digest(source)
     if actual != book["sha256"]:
         raise ValueError(
@@ -325,11 +364,12 @@ def main() -> int:
     for book in BOOKS:
         record = process(book, arguments.books, arguments.running_threshold)
         records.append(record)
+        note = "" if record.get("source_present", True) else "  (PDF нет, обновлено описание)"
         print(
             f"{record['slug']:<18} {record['page_count']:>4} стр.  "
             f"{record['toc_entries']:>3} разделов  "
             f"{record['characters'] // 1000:>4}k символов  "
-            f"без текста: {record['pages_without_text']}"
+            f"без текста: {record['pages_without_text']}{note}"
         )
 
     index = {
