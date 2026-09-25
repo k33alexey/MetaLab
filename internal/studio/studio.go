@@ -905,6 +905,10 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 				var buildErr error
 				if slices.Contains(project.ObjectFolderKinds(), kind) {
 					node.Children, buildErr = workspace.objectFolderNodes(path, filepath.ToSlash(relative), "metadata", language, languages, objectDataGroups(loaded, kind, language, languages))
+				} else if kind == "common-forms" {
+					// A common form belongs to no object, but it keeps the same
+					// folder any other form keeps: the form and its module.
+					node.Children, buildErr = objectFormNodes(filepath.Dir(path), filepath.ToSlash(filepath.Dir(relative)), filepath.Base(path))
 				} else {
 					node.Children, buildErr = workspace.sourceFiles(path, filepath.ToSlash(relative), ".yaml", "metadata", language, languages)
 				}
@@ -1127,7 +1131,7 @@ func objectOwnedFileNodes(objectDirectory, objectRelative string) (objectOwnedNo
 		if entry.IsDir() {
 			switch entry.Name() {
 			case "forms":
-				owned.forms, err = objectFormNodes(objectDirectory, objectRelative)
+				owned.forms, err = objectFormNodes(objectDirectory, objectRelative, "forms")
 			case "commands":
 				owned.commands, err = objectCommandNodes(objectDirectory, objectRelative)
 			case "templates":
@@ -1159,25 +1163,30 @@ func objectOwnedFileNodes(objectDirectory, objectRelative string) (objectOwnedNo
 // objectFormNodes lists the managed forms of one object. A form is a folder
 // named after the form, and the tree shows that name - the identifier the form
 // keeps inside is what other things refer to it by, not what a developer reads.
-func objectFormNodes(objectDirectory, objectRelative string) ([]Node, error) {
-	entries, err := os.ReadDir(filepath.Join(objectDirectory, "forms"))
+// objectFormNodes lists the forms kept under one folder - an object's forms/,
+// or the configuration's common-forms/, which hold their forms the same way.
+func objectFormNodes(parentDirectory, parentRelative, forms string) ([]Node, error) {
+	entries, err := os.ReadDir(filepath.Join(parentDirectory, forms))
 	if err != nil {
-		return nil, fmt.Errorf("read metadata object forms %q: %w", objectRelative, err)
+		return nil, fmt.Errorf("read metadata forms %q: %w", parentRelative, err)
 	}
 	var nodes []Node
 	for _, entry := range entries {
-		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || project.SubordinateName(entry.Name()) != nil {
-			return nil, fmt.Errorf("unexpected form source %q", filepath.ToSlash(filepath.Join(objectRelative, "forms", entry.Name())))
+		if entry.Name() == ".gitkeep" {
+			continue
 		}
-		path := filepath.ToSlash(filepath.Join(objectRelative, "forms", entry.Name(), project.FormMetadataFile))
+		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || project.SubordinateName(entry.Name()) != nil {
+			return nil, fmt.Errorf("unexpected form source %q", filepath.ToSlash(filepath.Join(parentRelative, forms, entry.Name())))
+		}
+		path := filepath.ToSlash(filepath.Join(parentRelative, forms, entry.Name(), project.FormMetadataFile))
 		node := Node{
 			ID: path, Kind: "forms", Title: entry.Name(), Path: path,
 			Properties: []Property{{Name: "Путь", Value: path}},
 		}
 		// The module hangs under its form, because that is where it lies and
 		// the only thing that says it exists is that it lies there.
-		modulePath := filepath.ToSlash(filepath.Join(objectRelative, "forms", entry.Name(), project.FormModuleFile))
-		if info, err := os.Lstat(filepath.Join(objectDirectory, "forms", entry.Name(), project.FormModuleFile)); err == nil && info.Mode().IsRegular() {
+		modulePath := filepath.ToSlash(filepath.Join(parentRelative, forms, entry.Name(), project.FormModuleFile))
+		if info, err := os.Lstat(filepath.Join(parentDirectory, forms, entry.Name(), project.FormModuleFile)); err == nil && info.Mode().IsRegular() {
 			node.Children = append(node.Children, Node{
 				ID: modulePath, Kind: "modules", Title: "Модуль формы", Path: modulePath,
 				Properties: []Property{{Name: "Путь", Value: modulePath}},

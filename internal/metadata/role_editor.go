@@ -2,8 +2,6 @@ package metadata
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -179,25 +177,14 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	})
 	// A configuration without common forms has no directory for them, the
 	// same as any other metadata kind nobody has used yet.
-	entries, err := os.ReadDir(filepath.Join(root, "metadata", "common-forms"))
-	if err != nil && !os.IsNotExist(err) {
+	forms, err := ReadCommonForms(root, catalog.Project)
+	if err != nil {
 		return PermissionSchema{}, err
 	}
-	if len(entries) > maxObjectsPerKind+1 {
+	if len(forms) > maxObjectsPerKind {
 		return PermissionSchema{}, fmt.Errorf("too many form sources")
 	}
-	for _, entry := range entries {
-		if entry.Name() == ".gitkeep" {
-			continue
-		}
-		id, err := uuid.Parse(strings.TrimSuffix(entry.Name(), ".yaml"))
-		if err != nil || filepath.Ext(entry.Name()) != ".yaml" || !entry.Type().IsRegular() {
-			return PermissionSchema{}, fmt.Errorf("invalid form source %q", entry.Name())
-		}
-		form, err := catalog.readRoleForm(root, id)
-		if err != nil {
-			return PermissionSchema{}, err
-		}
+	for _, form := range forms {
 		if len(form.Commands) == 0 {
 			continue
 		}

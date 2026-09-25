@@ -216,6 +216,18 @@ func validateSourcePath(relative string, directory bool) error {
 		if contains(project.ObjectFolderKinds(), parts[1]) {
 			return validateObjectFolderSourcePath(parts, relative, directory)
 		}
+		// A common form keeps a folder named after itself, holding the form
+		// and the module that runs it - the same shape as any other form.
+		if parts[1] == "common-forms" && len(parts) > 2 && project.ObjectName(parts[2]) == nil {
+			if directory && len(parts) == 3 {
+				return nil
+			}
+			if !directory && len(parts) == 4 &&
+				(parts[3] == project.FormMetadataFile || parts[3] == project.FormModuleFile) {
+				return nil
+			}
+			return fmt.Errorf("unexpected publication source path %q", relative)
+		}
 		if !directory && len(parts) == 3 {
 			id, err := uuid.Parse(strings.TrimSuffix(parts[2], ".yaml"))
 			expected, pathErr := project.MetadataPath(parts[1], id)
@@ -356,37 +368,41 @@ func objectFolderFormName(relative string) (string, bool) {
 }
 
 // isManagedFormSourcePath reports whether relative is any managed form
-// source: a common form, still one file named by its identifier, or one of an
-// object's own, in a folder named after the form.
+// source. Both kinds now lie the same way - in a folder named after the form,
+// beside the module that runs it - and differ only in where that folder is.
 func isManagedFormSourcePath(relative string) bool {
-	if strings.HasPrefix(relative, "metadata/common-forms/") {
+	if _, ok := commonFormName(relative); ok {
 		return true
 	}
 	_, ok := objectFolderFormName(relative)
 	return ok
 }
 
-// formAgreesWithItsPath checks a form against where it lies, and the two kinds
-// of form are checked against different halves of themselves.
-//
-// A common form is still one file named by its identifier, so the identifier
-// is what has to agree. A form of an object lies in a folder named after the
-// form, so its name is what has to agree - the identifier inside it is free,
-// and is what roles, the portal and ML App go on referring to it by. Such a
-// form also names no module: its module is the file lying beside it.
-func formAgreesWithItsPath(form metadata.ManagedForm, relative string) error {
-	if name, ok := objectFolderFormName(relative); ok {
-		if !strings.EqualFold(form.Name, name) {
-			return fmt.Errorf("form name does not match %q", relative)
-		}
-		if form.Module != nil {
-			return fmt.Errorf("form %s names a module, and its module is %s beside it", form.Name, project.FormModuleFile)
-		}
-		return nil
+// commonFormName reports the form's name if relative is one common form
+// (metadata/common-forms/<form>/form.yaml).
+func commonFormName(relative string) (string, bool) {
+	parts := strings.Split(relative, "/")
+	if len(parts) != 4 || parts[0] != "metadata" || parts[1] != "common-forms" ||
+		parts[3] != project.FormMetadataFile || project.ObjectName(parts[2]) != nil {
+		return "", false
 	}
-	filenameID, err := uuid.Parse(strings.TrimSuffix(filepath.Base(relative), ".yaml"))
-	if err != nil || form.ID != filenameID {
-		return fmt.Errorf("form UUID does not match %q", relative)
+	return parts[2], true
+}
+
+// formAgreesWithItsPath checks a form against where it lies: the folder is
+// named after the form, so the name is what has to agree. The identifier
+// inside is free, and is what roles, the portal and ML App refer to the form
+// by - the name finds the file, the identifier travels.
+func formAgreesWithItsPath(form metadata.ManagedForm, relative string) error {
+	name, ok := objectFolderFormName(relative)
+	if !ok {
+		name, ok = commonFormName(relative)
+	}
+	if !ok {
+		return fmt.Errorf("unexpected form source %q", relative)
+	}
+	if !strings.EqualFold(form.Name, name) {
+		return fmt.Errorf("form name does not match %q", relative)
 	}
 	return nil
 }

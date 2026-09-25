@@ -3,6 +3,11 @@ id: 10000000-0000-4000-8000-000000000501
 name: ДемоФормаТовара
 title: {ru: Демо формы товара, uk: Демо форми товару, en: Product form demo}
 kind: object
+comment: Демонстрирует общую форму, не принадлежащую ни одному объекту
+explanation: {ru: Общая форма товара, uk: Загальна форма товару, en: Shared product form}
+type: managed
+purposes: [platform-application, mobile-platform-application]
+use_standard_commands: true
 items:
   - id: 10000000-0000-4000-8000-000000001501
     name: ОсновнаяГруппа

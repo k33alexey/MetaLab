@@ -463,6 +463,37 @@ func ObjectFormModulePath(kind, name, form string) (string, error) {
 	return path.Join(directory, FormModuleFile), nil
 }
 
+// CommonFormDirectory returns the folder of one common form - a form that
+// belongs to no object - named after the form.
+//
+// A common form keeps a folder for the same reason an object's form does: its
+// module lies beside it, under the name of its role, and a bare file has
+// nowhere to put one.
+func CommonFormDirectory(name string) (string, error) {
+	if err := ObjectName(name); err != nil {
+		return "", fmt.Errorf("common form %w", err)
+	}
+	return path.Join("metadata", "common-forms", name), nil
+}
+
+// CommonFormPath returns the description of one common form.
+func CommonFormPath(name string) (string, error) {
+	directory, err := CommonFormDirectory(name)
+	if err != nil {
+		return "", err
+	}
+	return path.Join(directory, FormMetadataFile), nil
+}
+
+// CommonFormModulePath returns the module of one common form.
+func CommonFormModulePath(name string) (string, error) {
+	directory, err := CommonFormDirectory(name)
+	if err != nil {
+		return "", err
+	}
+	return path.Join(directory, FormModuleFile), nil
+}
+
 // ObjectTemplateDirectory returns the folder holding the content of one of an
 // object's own templates, named after the template.
 //

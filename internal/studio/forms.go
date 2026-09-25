@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -134,56 +133,24 @@ func (workspace *Workspace) EnsureManagedFormHandler(relative, expectedRevision 
 		return ManagedFormHandlerResult{}, fmt.Errorf("form command %s does not use a BSL handler", command.Name)
 	}
 
-	// A form of an object keeps its module beside it, under the name of its
-	// role, and declares nothing: the file is the declaration. A common form
-	// still names one, because it is still a single file with nowhere to put
-	// a module of its own - that is the next iteration's business.
-	modulePath, owned, err := formModulePath(relative)
+	// Every form keeps its module beside it now, under the name of its role,
+	// and declares nothing: the file is the declaration, so whether there is a
+	// module at all is answered by looking rather than by asking the form.
+	modulePath, err := formModulePath(relative)
 	if err != nil {
 		return ManagedFormHandlerResult{}, err
 	}
-	declared := opened.Form.Module != nil
-	if owned {
-		_, statErr := workspace.readSource(modulePath)
-		declared = statErr == nil
-	}
-	if !declared {
-		if !owned {
-			moduleID, idErr := uuid.New()
-			if idErr != nil {
-				return ManagedFormHandlerResult{}, idErr
-			}
-			opened.Form.Module = &moduleID
-			modulePath, err = project.ModulePath(moduleID)
-			if err != nil {
-				return ManagedFormHandlerResult{}, err
-			}
-		}
-		module, createErr := workspace.createFormModuleLocked(modulePath, formHandlerSource(command.Handler))
+	module, err := workspace.readSource(modulePath)
+	if err != nil {
+		created, createErr := workspace.createFormModuleLocked(modulePath, formHandlerSource(command.Handler))
 		if createErr != nil {
 			return ManagedFormHandlerResult{}, createErr
 		}
-		saved, saveErr := workspace.saveManagedFormLocked(relative, opened.Form, opened.Revision)
-		if saveErr != nil {
-			_ = os.Remove(filepath.Join(workspace.root, filepath.FromSlash(modulePath)))
-			return ManagedFormHandlerResult{}, saveErr
-		}
-		location, locationErr := formHandlerLocation(module, command.Handler)
+		location, locationErr := formHandlerLocation(created, command.Handler)
 		if locationErr != nil {
 			return ManagedFormHandlerResult{}, locationErr
 		}
-		return ManagedFormHandlerResult{Form: saved, Module: module, Location: location, Created: true}, nil
-	}
-
-	if !owned {
-		modulePath, err = project.ModulePath(*opened.Form.Module)
-		if err != nil {
-			return ManagedFormHandlerResult{}, err
-		}
-	}
-	module, err := workspace.readSource(modulePath)
-	if err != nil {
-		return ManagedFormHandlerResult{}, fmt.Errorf("read form module: %w", err)
+		return ManagedFormHandlerResult{Form: opened, Module: created, Location: location, Created: true}, nil
 	}
 	if location, found, findErr := findFormHandler(module, command.Handler); findErr != nil {
 		return ManagedFormHandlerResult{}, findErr
@@ -206,19 +173,18 @@ func (workspace *Workspace) EnsureManagedFormHandler(relative, expectedRevision 
 	return ManagedFormHandlerResult{Form: opened, Module: module, Location: location, Created: true}, nil
 }
 
-// formModulePath returns where one form's module lies, and whether the form
-// owns that place. A form of an object owns it: the module is МодульФормы.bsl
-// in the form's own folder, and there is no second place to say so.
-func formModulePath(relative string) (string, bool, error) {
+// formModulePath returns where one form's module lies: МодульФормы.bsl in the
+// form's own folder, wherever that folder is. A common form and an object's
+// form differ only in where the folder sits.
+func formModulePath(relative string) (string, error) {
 	parts := strings.Split(relative, "/")
-	if len(parts) != 6 || parts[0] != "metadata" || parts[3] != "forms" || parts[5] != project.FormMetadataFile {
-		return "", false, nil
+	switch {
+	case len(parts) == 6 && parts[0] == "metadata" && parts[3] == "forms" && parts[5] == project.FormMetadataFile:
+		return project.ObjectFormModulePath(parts[1], parts[2], parts[4])
+	case len(parts) == 4 && parts[0] == "metadata" && parts[1] == "common-forms" && parts[3] == project.FormMetadataFile:
+		return project.CommonFormModulePath(parts[2])
 	}
-	modulePath, err := project.ObjectFormModulePath(parts[1], parts[2], parts[4])
-	if err != nil {
-		return "", false, err
-	}
-	return modulePath, true, nil
+	return "", ErrInvalidSourcePath
 }
 
 func (workspace *Workspace) createFormModuleLocked(relative, content string) (SourceFile, error) {
@@ -287,28 +253,32 @@ func findFormHandler(module SourceFile, name string) (StudioLocation, bool, erro
 	return StudioLocation{}, false, nil
 }
 
-// formAgreesWithItsPath checks a form against where it lies. The two kinds of
-// form are checked against different halves of themselves: a common form is
-// one file named by its identifier, so the identifier has to agree; a form of
-// an object lies in a folder named after the form, so the name has to agree,
-// the identifier inside is free, and no module may be named at all - the
-// module is the file beside it.
+// formAgreesWithItsPath checks a form against where it lies. Both kinds of
+// form lie the same way - in a folder named after the form - so the name is
+// what has to agree. The identifier inside is free: it is what roles, the
+// portal and ML App refer to the form by, not what finds the file.
 func formAgreesWithItsPath(form metadata.ManagedForm, relative string) error {
-	parts := strings.Split(relative, "/")
-	if len(parts) == 6 && parts[0] == "metadata" && parts[3] == "forms" && parts[5] == project.FormMetadataFile {
-		if !strings.EqualFold(form.Name, parts[4]) {
-			return fmt.Errorf("form %s does not match the folder %s it lies in", form.Name, parts[4])
-		}
-		if form.Module != nil {
-			return fmt.Errorf("form %s names a module, and its module is %s beside it", form.Name, project.FormModuleFile)
-		}
-		return nil
+	name, ok := formNameFromPath(relative)
+	if !ok {
+		return ErrInvalidSourcePath
 	}
-	filenameID, _ := uuid.Parse(strings.TrimSuffix(path.Base(relative), ".yaml"))
-	if form.ID != filenameID {
-		return fmt.Errorf("form UUID %s does not match filename UUID %s", form.ID, filenameID)
+	if !strings.EqualFold(form.Name, name) {
+		return fmt.Errorf("form %s does not match the folder %s it lies in", form.Name, name)
 	}
 	return nil
+}
+
+// formNameFromPath reads the form's name out of where the file lies, for
+// either kind of form.
+func formNameFromPath(relative string) (string, bool) {
+	parts := strings.Split(relative, "/")
+	switch {
+	case len(parts) == 6 && parts[0] == "metadata" && parts[3] == "forms" && parts[5] == project.FormMetadataFile:
+		return parts[4], true
+	case len(parts) == 4 && parts[0] == "metadata" && parts[1] == "common-forms" && parts[3] == project.FormMetadataFile:
+		return parts[2], true
+	}
+	return "", false
 }
 
 func validateFormPath(relative string) error {
@@ -316,14 +286,10 @@ func validateFormPath(relative string) error {
 	if err != nil || language != "yaml" {
 		return ErrInvalidSourcePath
 	}
-	if strings.HasPrefix(canonical, "forms/") {
-		return nil
+	if _, ok := formNameFromPath(canonical); !ok {
+		return ErrInvalidSourcePath
 	}
-	parts := strings.Split(canonical, "/")
-	if len(parts) == 6 && parts[0] == "metadata" && parts[3] == "forms" && parts[5] == project.FormMetadataFile {
-		return nil
-	}
-	return ErrInvalidSourcePath
+	return nil
 }
 
 func (workspace *Workspace) formDataPaths(formID uuid.UUID, manifest project.Project) []FormDataPath {

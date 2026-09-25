@@ -58,16 +58,57 @@ type ManagedFormCommand struct {
 	Handler string            `yaml:"handler,omitempty" json:"handler,omitempty"`
 }
 
+// FormType is how a form is built and shown. The platform builds managed
+// forms; an ordinary form is what the prototype's older configurations carry,
+// and it is kept so that importing one does not silently turn it into
+// something else.
+type FormType string
+
+const (
+	ManagedFormType  FormType = "managed"
+	OrdinaryFormType FormType = "ordinary"
+)
+
+// FormPurpose is one kind of application a form is meant for. A form may be
+// meant for several, and the set is a property of the form: the reference
+// configuration keeps forms offered on the desktop but not on a phone.
+type FormPurpose string
+
+const (
+	PlatformApplicationPurpose       FormPurpose = "platform-application"
+	MobilePlatformApplicationPurpose FormPurpose = "mobile-platform-application"
+)
+
 // ManagedForm is the versioned source model edited by the visual form designer.
+//
+// Its module is not named here. A form keeps a folder, and the module lies in
+// that folder under the name of its role: the file is the declaration, and
+// there is no second place to disagree with it.
 type ManagedForm struct {
-	Format   int                  `yaml:"format" json:"format"`
-	ID       uuid.UUID            `yaml:"id" json:"id"`
-	Name     string               `yaml:"name" json:"name"`
-	Title    LocalizedText        `yaml:"title" json:"title"`
-	Kind     FormKind             `yaml:"kind" json:"kind"`
-	Module   *uuid.UUID           `yaml:"module,omitempty" json:"module,omitempty"`
-	Commands []ManagedFormCommand `yaml:"commands,omitempty" json:"commands"`
-	Items    []ManagedFormElement `yaml:"items,omitempty" json:"items"`
+	Format int           `yaml:"format" json:"format"`
+	ID     uuid.UUID     `yaml:"id" json:"id"`
+	Name   string        `yaml:"name" json:"name"`
+	Title  LocalizedText `yaml:"title" json:"title"`
+	Kind   FormKind      `yaml:"kind" json:"kind"`
+	// Comment, Explanation and ExtendedPresentation are the three ways a form
+	// is described: to the developer reading the tree, to the user hovering
+	// over it, and to the user reading a list of forms.
+	Comment              string        `yaml:"comment,omitempty" json:"comment,omitempty"`
+	Explanation          LocalizedText `yaml:"explanation,omitempty" json:"explanation,omitempty"`
+	ExtendedPresentation LocalizedText `yaml:"extended_presentation,omitempty" json:"extendedPresentation,omitempty"`
+	// Type is managed unless the form says otherwise.
+	Type FormType `yaml:"type,omitempty" json:"type,omitempty"`
+	// Purposes says which kinds of application the form is meant for. Empty
+	// means the form makes no claim and is offered everywhere.
+	Purposes []FormPurpose `yaml:"purposes,omitempty" json:"purposes,omitempty"`
+	// UseStandardCommands decides whether the platform offers its own commands
+	// on this form beside the ones it declares.
+	UseStandardCommands bool `yaml:"use_standard_commands,omitempty" json:"useStandardCommands,omitempty"`
+	// IncludeHelpInContents puts this form's help into the table of contents
+	// of the configuration's help.
+	IncludeHelpInContents bool                 `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
+	Commands              []ManagedFormCommand `yaml:"commands,omitempty" json:"commands"`
+	Items                 []ManagedFormElement `yaml:"items,omitempty" json:"items"`
 }
 
 // ManagedFormElement is one stable node in a managed form tree. Hidden and
@@ -106,8 +147,32 @@ func ValidateManagedForm(source string, value ManagedForm, manifest project.Proj
 	default:
 		issues = append(issues, "kind must be object, list, choice or common")
 	}
-	if value.Module != nil && value.Module.IsZero() {
-		issues = append(issues, "module must be a non-zero UUID")
+	switch value.Type {
+	case "", ManagedFormType, OrdinaryFormType:
+	default:
+		issues = append(issues, "type must be managed or ordinary")
+	}
+	seenPurposes := map[FormPurpose]bool{}
+	for index, purpose := range value.Purposes {
+		switch purpose {
+		case PlatformApplicationPurpose, MobilePlatformApplicationPurpose:
+		default:
+			issues = append(issues, fmt.Sprintf("purposes[%d] is not a kind of application", index))
+			continue
+		}
+		if seenPurposes[purpose] {
+			issues = append(issues, fmt.Sprintf("purposes[%d] is already among the purposes", index))
+		}
+		seenPurposes[purpose] = true
+	}
+	// Both are optional, so only what is there is checked: a form that says
+	// nothing extra about itself is an ordinary form, not a broken one.
+	for name, text := range map[string]LocalizedText{
+		"explanation": value.Explanation, "extended_presentation": value.ExtendedPresentation,
+	} {
+		if len(text) > 0 {
+			issues = append(issues, validateTitle(name, text, manifest)...)
+		}
 	}
 	if len(value.Commands) > MaxManagedFormCommands {
 		issues = append(issues, fmt.Sprintf("commands must not contain more than %d items", MaxManagedFormCommands))

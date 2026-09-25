@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/metadata"
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -33,7 +34,7 @@ func TestInspectCarriesRolesAndSeparatesThemFromTheSchema(t *testing.T) {
 		writeSourceFile(t, root, relative, encoded.Bytes())
 	}
 	write("metadata/constants/"+constant.ID.String()+".yaml", constant)
-	write("metadata/common-forms/"+form.ID.String()+".yaml", form)
+	write("metadata/common-forms/"+form.Name+"/"+project.FormMetadataFile, form)
 	rolePath := "metadata/roles/" + role.ID.String() + ".yaml"
 	write(rolePath, role)
 

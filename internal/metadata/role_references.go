@@ -2,9 +2,13 @@ package metadata
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -266,8 +270,27 @@ func (catalog *Catalog) validateRoleReferences(root string) error {
 	if root == "" {
 		return nil
 	}
+	// The forms are read once, not once per reference: a common form is found
+	// by reading the folders now, and a configuration has as many roles
+	// referring to forms as it has rights to grant.
+	//
+	// They are read whether or not any role refers to one, because the folder
+	// is the whole declaration of a common form - if nothing read it, a form
+	// with a broken folder would load as a configuration without that form.
+	forms, err := ReadCommonForms(root, catalog.Project)
+	if err != nil {
+		return err
+	}
+	byID := make(map[uuid.UUID]ManagedForm, len(forms))
+	for _, form := range forms {
+		byID[form.ID] = form
+	}
 	return validateRoleCommands(catalog.Roles, func(id uuid.UUID) (ManagedForm, error) {
-		return catalog.readRoleForm(root, id)
+		form, ok := byID[id]
+		if !ok {
+			return ManagedForm{}, fmt.Errorf("form %s is missing or unsafe", id)
+		}
+		return form, nil
 	})
 }
 
@@ -349,23 +372,72 @@ func (catalog *Catalog) validatePolicyOperand(role RoleDefinition, rule PolicyRu
 	return nil
 }
 
-func (catalog *Catalog) readRoleForm(root string, id uuid.UUID) (ManagedForm, error) {
-	path := filepath.Join(root, "metadata", "common-forms", id.String()+".yaml")
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return ManagedForm{}, fmt.Errorf("form %s is missing or unsafe", id)
+// ReadCommonForms reads every common form of a project, sorted by name. The
+// folder is the list of them: a common form belongs to no object, so nothing
+// declares it anywhere else.
+func ReadCommonForms(root string, manifest project.Project) ([]ManagedForm, error) {
+	directory := filepath.Join(root, "metadata", "common-forms")
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read common forms: %w", err)
 	}
+	var result []ManagedForm
+	seen := map[uuid.UUID]string{}
+	for _, entry := range entries {
+		if entry.Name() == ".gitkeep" {
+			continue
+		}
+		if !entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
+			return nil, fmt.Errorf("common form %q must be a folder", entry.Name())
+		}
+		if project.ObjectName(entry.Name()) != nil {
+			return nil, fmt.Errorf("common form folder %q is not a name", entry.Name())
+		}
+		form, err := readCommonForm(directory, entry.Name(), manifest)
+		if err != nil {
+			return nil, fmt.Errorf("common form %s: %w", entry.Name(), err)
+		}
+		if previous, exists := seen[form.ID]; exists {
+			return nil, fmt.Errorf("common forms %s and %s share one identifier", previous, form.Name)
+		}
+		seen[form.ID] = form.Name
+		result = append(result, form)
+	}
+	sort.Slice(result, func(left, right int) bool {
+		return strings.ToLower(result[left].Name) < strings.ToLower(result[right].Name)
+	})
+	return result, nil
+}
+
+// readCommonForm reads one common form and checks its folder: the form calls
+// itself what the folder is called, and the folder holds the form and the
+// module that runs it, nothing else.
+func readCommonForm(directory, name string, manifest project.Project) (ManagedForm, error) {
+	entries, err := os.ReadDir(filepath.Join(directory, name))
+	if err != nil {
+		return ManagedForm{}, err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 ||
+			(entry.Name() != project.FormMetadataFile && entry.Name() != project.FormModuleFile) {
+			return ManagedForm{}, fmt.Errorf("keeps %q, and a form keeps only its description and its module", entry.Name())
+		}
+	}
+	path := filepath.Join(directory, name, project.FormMetadataFile)
 	file, err := os.Open(path)
 	if err != nil {
-		return ManagedForm{}, err
+		return ManagedForm{}, fmt.Errorf("has no %s", project.FormMetadataFile)
 	}
 	defer file.Close()
-	form, err := DecodeManagedForm(path, file, catalog.Project)
+	form, err := DecodeManagedForm(path, file, manifest)
 	if err != nil {
 		return ManagedForm{}, err
 	}
-	if form.ID != id {
-		return ManagedForm{}, fmt.Errorf("form UUID %s does not match filename UUID %s", form.ID, id)
+	if !strings.EqualFold(form.Name, name) {
+		return ManagedForm{}, fmt.Errorf("calls itself %s, and lies in a folder called %s", form.Name, name)
 	}
 	return form, nil
 }

@@ -301,6 +301,17 @@ func validateEditablePath(relative string) (string, string, error) {
 		path.Ext(parts[2]) == ".yaml" && validUUIDFile(parts[2], ".yaml") {
 		return relative, "yaml", nil
 	}
+	// A common form belongs to no object, but it lies the same way any other
+	// form does: a folder named after the form, holding the form and the
+	// module that runs it.
+	if len(parts) == 4 && parts[0] == "metadata" && parts[1] == "common-forms" && project.ObjectName(parts[2]) == nil {
+		switch parts[3] {
+		case project.FormMetadataFile:
+			return relative, "yaml", nil
+		case project.FormModuleFile:
+			return relative, "bsl", nil
+		}
+	}
 	if len(parts) >= 4 && parts[0] == "metadata" && slices.Contains(project.ObjectFolderKinds(), parts[1]) {
 		if project.ObjectName(parts[2]) == nil {
 			if len(parts) == 4 && parts[3] == project.ObjectMetadataFile {
@@ -393,7 +404,7 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 		return canonical.Bytes(), nil
 	}
 	parts := strings.Split(relative, "/")
-	if len(parts) == 3 && parts[0] == "metadata" && parts[1] == "common-forms" {
+	if len(parts) == 4 && parts[0] == "metadata" && parts[1] == "common-forms" && parts[3] == project.FormMetadataFile {
 		manifest, err := project.ValidateLayout(workspace.root)
 		if err != nil {
 			return nil, err
@@ -402,9 +413,8 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 		if err != nil {
 			return nil, err
 		}
-		filenameID, _ := uuid.Parse(strings.TrimSuffix(parts[2], ".yaml"))
-		if value.ID != filenameID {
-			return nil, fmt.Errorf("form UUID %s does not match filename UUID %s", value.ID, filenameID)
+		if !strings.EqualFold(value.Name, parts[2]) {
+			return nil, fmt.Errorf("form %s does not match the folder %s it lies in", value.Name, parts[2])
 		}
 		var canonical bytes.Buffer
 		if err := metadata.Encode(&canonical, value); err != nil {

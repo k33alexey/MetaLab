@@ -197,7 +197,7 @@ func TestRoleReferencesRejectInvalidRuntimeMetadata(t *testing.T) {
 
 func TestLoadRolesAndCommandSources(t *testing.T) {
 	t.Parallel()
-	for _, broken := range []string{"", "role filename", "form filename", "missing form", "symlink form", "missing command", "unknown YAML field"} {
+	for _, broken := range []string{"", "role filename", "form folder", "missing form", "symlink form", "missing command", "unknown YAML field"} {
 		t.Run(broken, func(t *testing.T) {
 			root := metadataProject(t)
 			catalog, role, form := roleCatalogFixture(t)
@@ -215,9 +215,10 @@ func TestLoadRolesAndCommandSources(t *testing.T) {
 				}
 			}
 			write("metadata/catalogs/"+catalog.Catalogs[0].Name+"/object.yaml", catalog.Catalogs[0])
-			formPath := "metadata/common-forms/" + form.ID.String() + ".yaml"
-			if broken == "form filename" {
-				form.ID = uuid.MustNew()
+			// A common form keeps a folder named after it, holding form.yaml.
+			formPath := "metadata/common-forms/" + form.Name + "/" + project.FormMetadataFile
+			if broken == "form folder" {
+				formPath = "metadata/common-forms/ДругоеИмя/" + project.FormMetadataFile
 			}
 			if broken == "missing command" {
 				form.Commands = nil
