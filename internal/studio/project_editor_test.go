@@ -462,3 +462,41 @@ func TestProjectEditorSavesTheModesOfTheRoot(t *testing.T) {
 		t.Fatalf("a flag was lost: %+v", saved)
 	}
 }
+
+// What the root says about a mobile application is saved through the editor.
+// Nothing here is executed, so the editor is the one place it can be lost.
+func TestProjectEditorSavesTheMobileApplication(t *testing.T) {
+	t.Parallel()
+	workspace, written := defaultsWorkspace(t)
+	opened, err := workspace.ReadProjectEditor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := opened.Configuration
+	updated.UsedMobileFunctionalities = []string{"Геолокация", "Звонки"}
+	updated.RequiredMobilePermissions = []string{"Камера"}
+	updated.MobileApplicationURLs = []string{"e1cib/navigationpoint/sales"}
+	updated.AllowedShareRequestTypes = []string{"image/png"}
+	updated.MobileClientSignature = "подпись"
+	updated.StandaloneConfigurationRestrictionRoles = []uuid.UUID{written["role"]}
+	if _, err := workspace.SaveProjectEditor(updated, opened.Revision); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := workspace.ReadProjectEditor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := reopened.Configuration
+	switch {
+	case len(saved.UsedMobileFunctionalities) != 2 || saved.UsedMobileFunctionalities[1] != "Звонки":
+		t.Fatalf("the functionalities were lost: %+v", saved.UsedMobileFunctionalities)
+	case len(saved.RequiredMobilePermissions) != 1 || len(saved.MobileApplicationURLs) != 1 ||
+		len(saved.AllowedShareRequestTypes) != 1:
+		t.Fatalf("a list was lost: %+v", saved)
+	case saved.MobileClientSignature != "подпись":
+		t.Fatalf("the signature was lost: %q", saved.MobileClientSignature)
+	case len(saved.StandaloneConfigurationRestrictionRoles) != 1 ||
+		saved.StandaloneConfigurationRestrictionRoles[0] != written["role"]:
+		t.Fatalf("the restriction roles were lost: %+v", saved.StandaloneConfigurationRestrictionRoles)
+	}
+}

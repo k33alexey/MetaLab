@@ -228,6 +228,43 @@ type Project struct {
 	CompatibilityVersion          string `yaml:"compatibility_version,omitempty" json:"compatibilityVersion,omitempty"`
 	ExtensionCompatibilityVersion string `yaml:"extension_compatibility_version,omitempty" json:"extensionCompatibilityVersion,omitempty"`
 	IncludeHelpInContents         bool   `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
+	// What follows describes a mobile application. ML does not build one, so
+	// none of it is acted upon - it is carried for the same reason the modes
+	// above are: a configuration that declared it, declared it, and a property
+	// that disappears at transfer is a property nobody can ask about later.
+	//
+	// Four of the seven are lists of words the prototype's own tooling knows:
+	// which of its abilities the application uses, which permissions of the
+	// operating system it asks for, which navigation links it intercepts and
+	// which kinds of data it accepts through "share". They are stored as
+	// written, because those lists belong to another platform and to the
+	// mobile operating systems, both of which grow without us - and a word we
+	// had not enumerated would be refused at transfer, which is the one thing
+	// a property carried for the sake of not losing it must never do.
+	UsedMobileFunctionalities []string `yaml:"used_mobile_functionalities,omitempty" json:"usedMobileFunctionalities,omitempty"`
+	RequiredMobilePermissions []string `yaml:"required_mobile_permissions,omitempty" json:"requiredMobilePermissions,omitempty"`
+	MobileApplicationURLs     []string `yaml:"mobile_application_urls,omitempty" json:"mobileApplicationUrls,omitempty"`
+	AllowedShareRequestTypes  []string `yaml:"allowed_share_request_types,omitempty" json:"allowedShareRequestTypes,omitempty"`
+	// MobileClientSignature is what the mobile client is signed with.
+	MobileClientSignature string `yaml:"mobile_client_signature,omitempty" json:"mobileClientSignature,omitempty"`
+	// StandaloneConfigurationContent is which objects go into the standalone
+	// application - the one that works without a connection and synchronises
+	// later. Each entry names an object of the configuration, so each says
+	// which kind it is: there is no single list to search, and an identifier
+	// alone would have to be looked for in all of them.
+	StandaloneConfigurationContent []ObjectReference `yaml:"standalone_configuration_content,omitempty" json:"standaloneConfigurationContent,omitempty"`
+	// StandaloneConfigurationRestrictionRoles narrow the rights a person has
+	// while working without a connection: what is safe to do against a copy
+	// nobody else sees is not the same as what is safe against the base.
+	StandaloneConfigurationRestrictionRoles []uuid.UUID `yaml:"standalone_configuration_restriction_roles,omitempty" json:"standaloneConfigurationRestrictionRoles,omitempty"`
+}
+
+// ObjectReference names one object of the configuration by the kind it belongs
+// to and its identifier. The kind is part of the reference and not a hint: an
+// identifier alone would have to be searched for in every kind there is.
+type ObjectReference struct {
+	Kind   string    `yaml:"kind" json:"kind"`
+	Object uuid.UUID `yaml:"object" json:"object"`
 }
 
 // ClientRunMode is which application the platform starts by default. ML builds
@@ -719,6 +756,64 @@ func (p Project) Validate() error {
 		if version != "" && !isVersion(version) {
 			add(path, "must be a version such as 8.3.21")
 		}
+	}
+
+	// A list of words is checked for being a list of words: an empty entry
+	// names nothing, a repeat asks for the same thing twice, and neither could
+	// be acted upon by the tooling that will read this back.
+	for path, list := range map[string][]string{
+		"used_mobile_functionalities": p.UsedMobileFunctionalities,
+		"required_mobile_permissions": p.RequiredMobilePermissions,
+		"mobile_application_urls":     p.MobileApplicationURLs,
+		"allowed_share_request_types": p.AllowedShareRequestTypes,
+	} {
+		seen := make(map[string]struct{}, len(list))
+		for index, item := range list {
+			where := fmt.Sprintf("%s[%d]", path, index)
+			if strings.TrimSpace(item) != item || item == "" {
+				add(where, "must be a word without surrounding spaces")
+				continue
+			}
+			if utf8.RuneCountInString(item) > 256 {
+				add(where, "must not exceed 256 characters")
+			}
+			if _, exists := seen[item]; exists {
+				add(where, "must be unique")
+			}
+			seen[item] = struct{}{}
+		}
+	}
+	if utf8.RuneCountInString(p.MobileClientSignature) > 4096 {
+		add("mobile_client_signature", "must not exceed 4096 characters")
+	}
+	seenContent := make(map[ObjectReference]struct{}, len(p.StandaloneConfigurationContent))
+	for index, item := range p.StandaloneConfigurationContent {
+		where := fmt.Sprintf("standalone_configuration_content[%d]", index)
+		if item.Kind == "" {
+			add(where+".kind", "must name a kind of metadata")
+		}
+		if item.Object.IsZero() {
+			add(where+".object", "must be a non-zero UUID")
+			continue
+		}
+		// The same object taken into the standalone application twice is taken
+		// once: the second entry adds nothing and hides a mistake in the list.
+		if _, exists := seenContent[item]; exists {
+			add(where, "must be unique")
+		}
+		seenContent[item] = struct{}{}
+	}
+	seenRestrictions := make(map[uuid.UUID]struct{}, len(p.StandaloneConfigurationRestrictionRoles))
+	for index, role := range p.StandaloneConfigurationRestrictionRoles {
+		where := fmt.Sprintf("standalone_configuration_restriction_roles[%d]", index)
+		if role.IsZero() {
+			add(where, "must be a non-zero UUID")
+			continue
+		}
+		if _, exists := seenRestrictions[role]; exists {
+			add(where, "must be unique")
+		}
+		seenRestrictions[role] = struct{}{}
 	}
 
 	if len(issues) > 0 {

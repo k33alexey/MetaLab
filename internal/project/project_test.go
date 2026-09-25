@@ -784,3 +784,108 @@ func TestRootModesAreCheckedForShape(t *testing.T) {
 		t.Fatalf("an unknown release was refused: %v", err)
 	}
 }
+
+// What the root says about a mobile application survives the file. ML builds
+// no mobile application, so losing it is the only thing that can go wrong.
+func TestRootMobileApplicationSurvivesTheFile(t *testing.T) {
+	t.Parallel()
+
+	const source = `format: 1
+id: 018f1f72-3b4c-7d6e-8f90-123456789abc
+name: SalesDemo
+title:
+  ru: Продажи и склад
+default_language: ru
+languages:
+  - id: 018f1f72-3b4c-7d6e-8f90-000000000001
+    name: Русский
+    title: Русский
+    code: ru
+used_mobile_functionalities: [Звонки, Геолокация]
+required_mobile_permissions: [Камера]
+mobile_application_urls: [e1cib/navigationpoint/sales]
+allowed_share_request_types: [image/png, application/pdf]
+mobile_client_signature: подпись
+standalone_configuration_content:
+  - {kind: catalogs, object: 018f1f72-3b4c-7d6e-8f90-000000000080}
+  - {kind: documents, object: 018f1f72-3b4c-7d6e-8f90-000000000081}
+standalone_configuration_restriction_roles:
+  - 018f1f72-3b4c-7d6e-8f90-000000000082
+`
+	value, err := Decode(strings.NewReader(source))
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	switch {
+	case len(value.UsedMobileFunctionalities) != 2 || value.UsedMobileFunctionalities[0] != "Звонки":
+		t.Fatalf("the functionalities came back as %+v", value.UsedMobileFunctionalities)
+	case len(value.RequiredMobilePermissions) != 1 || len(value.MobileApplicationURLs) != 1 ||
+		len(value.AllowedShareRequestTypes) != 2:
+		t.Fatalf("a list was lost: %+v", value)
+	case value.MobileClientSignature != "подпись":
+		t.Fatalf("the signature came back as %q", value.MobileClientSignature)
+	case len(value.StandaloneConfigurationContent) != 2 ||
+		value.StandaloneConfigurationContent[0].Kind != "catalogs":
+		t.Fatalf("the standalone content came back as %+v", value.StandaloneConfigurationContent)
+	case len(value.StandaloneConfigurationRestrictionRoles) != 1:
+		t.Fatalf("the restriction roles came back as %+v", value.StandaloneConfigurationRestrictionRoles)
+	}
+
+	var written bytes.Buffer
+	if err := Encode(&written, value); err != nil {
+		t.Fatal(err)
+	}
+	again, err := Decode(bytes.NewReader(written.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(value, again) {
+		t.Fatalf("the mobile application did not survive a round trip:\n%+v\n%+v", value, again)
+	}
+}
+
+// A word we have never heard of is kept: the lists belong to another platform
+// and to the mobile operating systems, and both grow without us. What is
+// refused is a list entry that names nothing at all.
+func TestRootMobileApplicationIsCheckedForShape(t *testing.T) {
+	t.Parallel()
+
+	base := func() Project {
+		return Project{
+			Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo",
+			Title: LocalizedText{"ru": "Демо"}, DefaultLanguage: "ru",
+			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
+		}
+	}
+	object := ObjectReference{Kind: "catalogs", Object: uuid.MustNew()}
+	role := uuid.MustNew()
+	for name, broken := range map[string]func(value *Project){
+		"пустая возможность":     func(value *Project) { value.UsedMobileFunctionalities = []string{""} },
+		"разрешение с пробелами": func(value *Project) { value.RequiredMobilePermissions = []string{" Камера"} },
+		"одна ссылка дважды":     func(value *Project) { value.MobileApplicationURLs = []string{"a", "a"} },
+		"состав без вида": func(value *Project) {
+			value.StandaloneConfigurationContent = []ObjectReference{{Object: uuid.MustNew()}}
+		},
+		"состав без объекта":      func(value *Project) { value.StandaloneConfigurationContent = []ObjectReference{{Kind: "catalogs"}} },
+		"один объект дважды":      func(value *Project) { value.StandaloneConfigurationContent = []ObjectReference{object, object} },
+		"роль ограничения дважды": func(value *Project) { value.StandaloneConfigurationRestrictionRoles = []uuid.UUID{role, role} },
+		"пустая роль ограничения": func(value *Project) { value.StandaloneConfigurationRestrictionRoles = []uuid.UUID{{}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			value := base()
+			broken(&value)
+			if err := value.Validate(); err == nil {
+				t.Fatal("the root was accepted")
+			}
+		})
+	}
+
+	// A possibility nobody enumerated for us is not a mistake.
+	unknown := base()
+	unknown.UsedMobileFunctionalities = []string{"ВозможностьКоторойМыНеЗнаем"}
+	unknown.AllowedShareRequestTypes = []string{"application/x-невиданное"}
+	if err := unknown.Validate(); err != nil {
+		t.Fatalf("an unknown word was refused: %v", err)
+	}
+}

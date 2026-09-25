@@ -434,3 +434,49 @@ func TestRootPicturesAreCheckedLikeEveryPicture(t *testing.T) {
 		})
 	}
 }
+
+// The standalone application is made of objects of this configuration, and the
+// roles narrowing it are its roles. ML builds no mobile application, and the
+// references are resolved anyway: an object named here and deleted there is a
+// mistake in the configuration whoever reads the list afterwards.
+func TestStandaloneConfigurationIsResolved(t *testing.T) {
+	t.Parallel()
+	root := defaultsProject(t)
+	saveDefaults(t, root, func(configuration *project.Project) {
+		configuration.StandaloneConfigurationRestrictionRoles = []uuid.UUID{*mustParse(t, defaultsRole)}
+		configuration.UsedMobileFunctionalities = []string{"Геолокация"}
+	})
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Project.StandaloneConfigurationRestrictionRoles) != 1 ||
+		len(catalog.Project.UsedMobileFunctionalities) != 1 {
+		t.Fatalf("what the root says about the mobile application was lost: %+v", catalog.Project)
+	}
+
+	for name, fill := range map[string]func(configuration *project.Project){
+		"роль ограничения": func(configuration *project.Project) {
+			configuration.StandaloneConfigurationRestrictionRoles = []uuid.UUID{*mustParse(t, defaultsStranger)}
+		},
+		"объект состава": func(configuration *project.Project) {
+			configuration.StandaloneConfigurationContent = []project.ObjectReference{
+				{Kind: "catalogs", Object: *mustParse(t, defaultsStranger)},
+			}
+		},
+		"вид, которого нет": func(configuration *project.Project) {
+			configuration.StandaloneConfigurationContent = []project.ObjectReference{
+				{Kind: "телефоны", Object: *mustParse(t, defaultsRole)},
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			broken := defaultsProject(t)
+			saveDefaults(t, broken, fill)
+			if _, err := Load(broken); err == nil {
+				t.Fatal("a standalone application made of nothing was accepted")
+			}
+		})
+	}
+}

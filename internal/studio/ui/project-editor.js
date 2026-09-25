@@ -38,6 +38,14 @@ function createProjectModel(source) {
     /* Словарь полнотекстового поиска лежит либо в общем макете, либо в
        константе, поэтому хранится парой «вид и объект»: по одному
        идентификатору читатель файла гадал бы, куда смотреть. */
+    /* Список слов пишется по строке на слово: перечень принадлежит не нам, и
+       строка, которую мы не знаем, — не ошибка, а слово, которого мы не
+       слышали. Пустые строки отбрасываются, потому что пустая строка не
+       называет ничего. */
+    setList(field, text) {
+      const items = text.split('\n').map(line => line.trim()).filter(line => line !== '');
+      if (items.length === 0) delete configuration[field]; else configuration[field] = items;
+    },
     setFlag(field, on) { if (on) configuration[field] = true; else delete configuration[field]; },
     /* Назначение, названное дважды, остаётся одним назначением. */
     setPurpose(purpose, used) {
@@ -52,10 +60,10 @@ function createProjectModel(source) {
       if (kept.length === 0) delete configuration.additionalFullTextSearchDictionaries;
       else configuration.additionalFullTextSearchDictionaries = kept;
     },
-    setRoleGranted(id, granted) {
-      const kept = (configuration.defaultRoles || []).filter(item => item !== id);
+    setRoleGranted(field, id, granted) {
+      const kept = (configuration[field] || []).filter(item => item !== id);
       if (granted) kept.push(id);
-      if (kept.length === 0) delete configuration.defaultRoles; else configuration.defaultRoles = kept;
+      if (kept.length === 0) delete configuration[field]; else configuration[field] = kept;
     },
     addLanguage() {
       const language = {name: 'Язык', title: 'Новый язык', code: uniqueCode()};
@@ -203,11 +211,11 @@ function createProjectEditor(host, onChange) {
     wrapper.append(list);
     return wrapper;
   }
-  function rolesField(label) {
+  function rolesField(label, field) {
     const wrapper = node('div', undefined, 'project-localized');
     wrapper.append(node('span', label, 'project-localized-label'));
     const list = node('div', undefined, 'project-roles');
-    const granted = source.configuration.defaultRoles || [];
+    const granted = source.configuration[field] || [];
     const known = source.defaults?.roles || [];
     const rows = [...known.map(role => ({id: role.id, title: presentation(role), missing: false}))];
     for (const id of granted) {
@@ -219,7 +227,7 @@ function createProjectEditor(host, onChange) {
       const check = node('input');
       check.type = 'checkbox';
       check.checked = granted.includes(role.id);
-      check.addEventListener('change', () => { model.setRoleGranted(role.id, check.checked); rerender(); });
+      check.addEventListener('change', () => { model.setRoleGranted(field, role.id, check.checked); rerender(); });
       row.append(check);
       row.append(node('span', role.title));
       list.append(row);
@@ -250,6 +258,36 @@ function createProjectEditor(host, onChange) {
       check.addEventListener('change', () => { model.setPurpose(value, check.checked); touch(); });
       row.append(check);
       row.append(node('span', text));
+      list.append(row);
+    }
+    wrapper.append(list);
+    return wrapper;
+  }
+  function listField(label, field, placeholder) {
+    const wrapper = node('label', undefined, 'catalog-field');
+    wrapper.append(node('span', label));
+    const area = node('textarea');
+    area.rows = 3;
+    area.placeholder = placeholder || '';
+    area.value = (source.configuration[field] || []).join('\n');
+    area.addEventListener('input', () => { model.setList(field, area.value); touch(); });
+    wrapper.append(area);
+    return wrapper;
+  }
+  /* Состав автономного приложения показывается и не правится: собирать его
+     руками в платформе, которая мобильного приложения не строит, значило бы
+     звать заполнять то, что никто не прочтёт. Показывается он потому, что
+     перенесённая конфигурация его объявляла, и разработчик вправе это видеть. */
+  function carriedContent(label) {
+    const wrapper = node('div', undefined, 'project-localized');
+    wrapper.append(node('span', label, 'project-localized-label'));
+    const list = node('div', undefined, 'project-roles');
+    const content = source.configuration.standaloneConfigurationContent || [];
+    if (content.length === 0) list.append(node('span', 'Пусто', 'project-empty'));
+    for (const item of content) {
+      const row = node('div', undefined, 'project-role');
+      row.append(node('span', item.kind, 'project-language-chip'));
+      row.append(node('span', item.object));
       list.append(row);
     }
     wrapper.append(list);
@@ -314,7 +352,7 @@ function createProjectEditor(host, onChange) {
     appearance.append(referenceField('Основной стиль', 'defaultStyle', defaults.styles || []));
     appearance.append(referenceField('Макет оформления отчётов', 'defaultReportAppearanceTemplate',
       defaults.appearanceTemplates || []));
-    appearance.append(rolesField('Основные роли'));
+    appearance.append(rolesField('Основные роли', 'defaultRoles'));
     appearance.append(textField('Основной интерфейс', source.configuration.defaultInterface,
       value => model.setField('defaultInterface', value), {maxLength: 128}));
     appearance.append(note('Основной интерфейс — меню и панели обычного приложения. ML строит только '
@@ -434,6 +472,26 @@ function createProjectEditor(host, onChange) {
       + 'пустое поле означает, что ни на какой прежний выпуск она не оглядывается. Список выпусков '
       + 'растёт без нас, поэтому он и не список, а версия.'));
     panel.append(modes);
+
+    /* Мобильное приложение. ML его не собирает, поэтому здесь ничего не
+       исполняется — но конфигурация, которая это объявляла, объявляла это, и
+       свойство, исчезнувшее при переносе, — свойство, о котором потом некого
+       спросить. */
+    const mobile = section('Мобильное приложение');
+    mobile.append(note('ML мобильного приложения не собирает. Всё в этом разделе переносится и хранится '
+      + 'как написано: перечни возможностей и разрешений принадлежат не нам, а прототипу и мобильным '
+      + 'операционным системам, и растут без нас.'));
+    mobile.append(listField('Используемая функциональность', 'usedMobileFunctionalities', 'По строке на возможность'));
+    mobile.append(listField('Требуемые разрешения', 'requiredMobilePermissions', 'По строке на разрешение'));
+    mobile.append(listField('Перехватываемые ссылки', 'mobileApplicationUrls', 'По строке на ссылку'));
+    mobile.append(listField('Типы входящих «Поделиться»', 'allowedShareRequestTypes', 'По строке на тип'));
+    mobile.append(textField('Подпись мобильного клиента', source.configuration.mobileClientSignature,
+      value => model.setField('mobileClientSignature', value), {maxLength: 4096}));
+    mobile.append(rolesField('Роли ограничения автономного приложения', 'standaloneConfigurationRestrictionRoles'));
+    mobile.append(carriedContent('Состав автономного приложения'));
+    mobile.append(note('Состав автономного приложения показывается, но не правится здесь: собирать его руками '
+      + 'в платформе, которая приложения не строит, значило бы звать заполнять то, что никто не прочтёт.'));
+    panel.append(mobile);
 
 
     host.append(panel);

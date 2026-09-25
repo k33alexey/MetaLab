@@ -91,6 +91,9 @@ func (catalog *Catalog) validateConfigurationDefaults(root string) error {
 	if err := validateRootPictures(root); err != nil {
 		return err
 	}
+	if err := catalog.validateStandaloneConfiguration(); err != nil {
+		return err
+	}
 	return catalog.validateConfigurationDefaultForms(root)
 }
 
@@ -198,6 +201,34 @@ func validateRootPictures(root string) error {
 		if len(densities) > 0 && densities[BaseScreenDensity] == "" {
 			return fmt.Errorf("picture %s of the configuration has no image at density %d, which every other density falls back to",
 				picture, BaseScreenDensity)
+		}
+	}
+	return nil
+}
+
+// validateStandaloneConfiguration resolves what the standalone application is
+// made of: the objects taken into it, and the roles narrowing the rights of
+// whoever works without a connection.
+//
+// ML builds no mobile application, and the check is made anyway. What is
+// checked here is not the mechanism but the reference: an object named in the
+// content and absent from the configuration is a mistake in the configuration
+// regardless of who reads the list afterwards, and the moment to notice it is
+// the one where the object was deleted.
+func (catalog *Catalog) validateStandaloneConfiguration() error {
+	configuration := catalog.Project
+	for _, item := range configuration.StandaloneConfigurationContent {
+		if _, ok := catalog.objectElementsOf(Kind(item.Kind), item.Object); !ok {
+			return fmt.Errorf("the standalone application is made of %s %s, which is not in the configuration",
+				item.Kind, item.Object)
+		}
+	}
+	if !catalog.rolesLoaded {
+		return nil
+	}
+	for _, role := range configuration.StandaloneConfigurationRestrictionRoles {
+		if _, ok := catalog.roleByID[role]; !ok {
+			return fmt.Errorf("the standalone application narrows rights by role %s, which is not in the configuration", role)
 		}
 	}
 	return nil

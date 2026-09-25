@@ -95,11 +95,11 @@ test('a default is a reference that vanishes when cleared',()=>{
 // без единой роли пропадает целиком.
 test('default roles keep their order and are granted once',()=>{
   const model=create(fixture());
-  model.setRoleGranted('r1',true);model.setRoleGranted('r2',true);model.setRoleGranted('r1',true);
+  model.setRoleGranted('defaultRoles','r1',true);model.setRoleGranted('defaultRoles','r2',true);model.setRoleGranted('defaultRoles','r1',true);
   assert.deepEqual(model.value().defaultRoles,['r2','r1']);
-  model.setRoleGranted('r2',false);
+  model.setRoleGranted('defaultRoles','r2',false);
   assert.deepEqual(model.value().defaultRoles,['r1']);
-  model.setRoleGranted('r1',false);
+  model.setRoleGranted('defaultRoles','r1',false);
   assert.equal('defaultRoles' in model.value(),false);
 });
 // Словарь поиска — пара «вид и объект»: один и тот же идентификатор у макета и
@@ -145,4 +145,23 @@ test('use purposes are named once and vanish together',()=>{
   assert.deepEqual(model.value().usePurposes,['mobile-device','personal-computer']);
   model.setPurpose('mobile-device',false);model.setPurpose('personal-computer',false);
   assert.equal('usePurposes' in model.value(),false);
+});
+// Один и тот же список ролей с двумя разными полями: основные роли корня и
+// роли ограничения автономного приложения не смешиваются.
+test('roles are granted per field and never leak into another',()=>{
+  const model=create(fixture());
+  model.setRoleGranted('defaultRoles','r1',true);
+  model.setRoleGranted('standaloneConfigurationRestrictionRoles','r2',true);
+  const saved=model.value();
+  assert.deepEqual(saved.defaultRoles,['r1']);
+  assert.deepEqual(saved.standaloneConfigurationRestrictionRoles,['r2']);
+});
+// Список слов пишется по строке на слово, пустые строки не слова, и опустевший
+// список исчезает из корня.
+test('a list of words is written a line at a time',()=>{
+  const model=create(fixture());
+  model.setList('requiredMobilePermissions','Камера\n\n  Геолокация  \n');
+  assert.deepEqual(model.value().requiredMobilePermissions,['Камера','Геолокация']);
+  model.setList('requiredMobilePermissions','\n  \n');
+  assert.equal('requiredMobilePermissions' in model.value(),false);
 });
