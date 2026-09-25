@@ -73,12 +73,12 @@ type ChartOfCalculationTypesDefinition struct {
 }
 
 // DecodeChartOfCalculationTypes reads and validates one chart of calculation types.
-func DecodeChartOfCalculationTypes(source string, reader io.Reader, manifest project.Project) (ChartOfCalculationTypesDefinition, error) {
+func DecodeChartOfCalculationTypes(source string, reader io.Reader, configuration project.Project) (ChartOfCalculationTypesDefinition, error) {
 	var value ChartOfCalculationTypesDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return ChartOfCalculationTypesDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
 		code:              value.Code,
 		descriptionLength: value.DescriptionLength,
@@ -87,7 +87,7 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, manifest pro
 		forms:             value.Forms,
 		list:              value.List,
 		reservedName:      reservedCalculationTypeName,
-	}, manifest)...)
+	}, configuration)...)
 	switch value.BaseDependency {
 	case "", NoBaseDependency, ActionPeriodBase, RegistrationPeriodBase:
 	default:
@@ -115,8 +115,8 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, manifest pro
 		seen[chart] = true
 	}
 	issues = append(issues, validatePredefinedCalculationTypes(value)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ChartOfCalculationTypesDefinition{}, err
 	}

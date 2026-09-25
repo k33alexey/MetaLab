@@ -44,12 +44,12 @@ type DocumentJournalDefinition struct {
 }
 
 // DecodeDocumentJournal reads and validates one journal.
-func DecodeDocumentJournal(source string, reader io.Reader, manifest project.Project) (DocumentJournalDefinition, error) {
+func DecodeDocumentJournal(source string, reader io.Reader, configuration project.Project) (DocumentJournalDefinition, error) {
 	var value DocumentJournalDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return DocumentJournalDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	if len(value.Documents) == 0 {
 		issues = append(issues, "documents must name at least one kind of document: a journal of nothing shows nothing")
 	}
@@ -75,7 +75,7 @@ func DecodeDocumentJournal(source string, reader io.Reader, manifest project.Pro
 			issues = append(issues, prefix+".name must be unique")
 		}
 		names[folded] = true
-		issues = append(issues, validateTitle(prefix+".title", column.Title, manifest)...)
+		issues = append(issues, validateTitle(prefix+".title", column.Title, configuration)...)
 		issues = append(issues, validateUniqueIDs(prefix+".references", column.References)...)
 		if len(column.References) == 0 {
 			issues = append(issues, prefix+" shows no attribute of any document, so it is an empty column")
@@ -86,8 +86,8 @@ func DecodeDocumentJournal(source string, reader io.Reader, manifest project.Pro
 	issues = append(issues, validateListSettings(value.List, nil, map[string]TypeKind{
 		"number": StringType, "date": DateType,
 	})...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return DocumentJournalDefinition{}, err
 	}

@@ -74,12 +74,12 @@ type FunctionalOptionDefinition struct {
 // DecodeFunctionalOption reads and validates one functional option. What it
 // points at is resolved against the configuration later, when every kind of
 // object is loaded.
-func DecodeFunctionalOption(source string, reader io.Reader, manifest project.Project) (FunctionalOptionDefinition, error) {
+func DecodeFunctionalOption(source string, reader io.Reader, configuration project.Project) (FunctionalOptionDefinition, error) {
 	var value FunctionalOptionDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return FunctionalOptionDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateOptionLocation(value.Location)...)
 	if len(value.Content) > maxFunctionalOptionContent {
 		issues = append(issues, fmt.Sprintf("content must not contain more than %d items", maxFunctionalOptionContent))

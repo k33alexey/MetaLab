@@ -102,7 +102,7 @@ type ObjectCommand struct {
 // identifier to check. A command keeps a folder of its own named after it, and
 // the module inside that folder is the command's by where it lies. That the
 // file is there at all is checked against the folder, in validateObjectFiles.
-func validateObjectCommands(commands []ObjectCommand, self uuid.UUID, manifest project.Project) []string {
+func validateObjectCommands(commands []ObjectCommand, self uuid.UUID, configuration project.Project) []string {
 	if len(commands) > maxCommandsPerObject {
 		return []string{fmt.Sprintf("commands must not contain more than %d items", maxCommandsPerObject)}
 	}
@@ -125,7 +125,7 @@ func validateObjectCommands(commands []ObjectCommand, self uuid.UUID, manifest p
 			issues = append(issues, prefix+".name must be unique")
 		}
 		names[folded] = true
-		issues = append(issues, validateCommandShape(prefix, command, self, manifest)...)
+		issues = append(issues, validateCommandShape(prefix, command, self, configuration)...)
 	}
 	return issues
 }
@@ -134,11 +134,11 @@ func validateObjectCommands(commands []ObjectCommand, self uuid.UUID, manifest p
 // shown, what it takes, and how it is drawn. It is shared by a command that
 // belongs to an object and one that belongs to no object - the two differ in
 // where they live, not in what they are.
-func validateCommandShape(prefix string, command ObjectCommand, self uuid.UUID, manifest project.Project) []string {
+func validateCommandShape(prefix string, command ObjectCommand, self uuid.UUID, configuration project.Project) []string {
 	var issues []string
-	issues = append(issues, validateTitle(prefix+".title", command.Title, manifest)...)
+	issues = append(issues, validateTitle(prefix+".title", command.Title, configuration)...)
 	if len(command.Tooltip) > 0 {
-		issues = append(issues, validateTitle(prefix+".tooltip", command.Tooltip, manifest)...)
+		issues = append(issues, validateTitle(prefix+".tooltip", command.Tooltip, configuration)...)
 	}
 	// A command is placed in one place, not in two.
 	if command.Group != "" && command.GroupRef != nil {

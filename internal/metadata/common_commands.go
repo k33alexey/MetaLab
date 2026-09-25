@@ -64,15 +64,15 @@ type CommandGroupDefinition struct {
 }
 
 // DecodeCommonCommand reads and validates one common command.
-func DecodeCommonCommand(source string, reader io.Reader, manifest project.Project) (CommonCommandDefinition, error) {
+func DecodeCommonCommand(source string, reader io.Reader, configuration project.Project) (CommonCommandDefinition, error) {
 	var value CommonCommandDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return CommonCommandDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	// The command is checked as any command is, against its own identifier:
 	// nothing owns it, so there is no object identifier to keep apart from.
-	issues = append(issues, validateCommandShape("command", value.ObjectCommand, value.ID, manifest)...)
+	issues = append(issues, validateCommandShape("command", value.ObjectCommand, value.ID, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return CommonCommandDefinition{}, err
 	}
@@ -80,14 +80,14 @@ func DecodeCommonCommand(source string, reader io.Reader, manifest project.Proje
 }
 
 // DecodeCommandGroup reads and validates one command group.
-func DecodeCommandGroup(source string, reader io.Reader, manifest project.Project) (CommandGroupDefinition, error) {
+func DecodeCommandGroup(source string, reader io.Reader, configuration project.Project) (CommandGroupDefinition, error) {
 	var value CommandGroupDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return CommandGroupDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	if len(value.Tooltip) > 0 {
-		issues = append(issues, validateTitle("tooltip", value.Tooltip, manifest)...)
+		issues = append(issues, validateTitle("tooltip", value.Tooltip, configuration)...)
 	}
 	switch value.Category {
 	case ActionsPanelCategory, FormCommandBarCategory:

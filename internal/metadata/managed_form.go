@@ -128,20 +128,20 @@ type ManagedFormElement struct {
 }
 
 // DecodeManagedForm reads and validates one strict managed-form YAML document.
-func DecodeManagedForm(source string, reader io.Reader, manifest project.Project) (ManagedForm, error) {
+func DecodeManagedForm(source string, reader io.Reader, configuration project.Project) (ManagedForm, error) {
 	var value ManagedForm
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return ManagedForm{}, err
 	}
-	if err := ValidateManagedForm(source, value, manifest); err != nil {
+	if err := ValidateManagedForm(source, value, configuration); err != nil {
 		return ManagedForm{}, err
 	}
 	return value, nil
 }
 
 // ValidateManagedForm validates a form received from either YAML or Studio JSON.
-func ValidateManagedForm(source string, value ManagedForm, manifest project.Project) error {
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+func ValidateManagedForm(source string, value ManagedForm, configuration project.Project) error {
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	switch value.Kind {
 	case ObjectForm, ListForm, ChoiceForm, CommonForm:
 	default:
@@ -171,7 +171,7 @@ func ValidateManagedForm(source string, value ManagedForm, manifest project.Proj
 		"explanation": value.Explanation, "extended_presentation": value.ExtendedPresentation,
 	} {
 		if len(text) > 0 {
-			issues = append(issues, validateTitle(name, text, manifest)...)
+			issues = append(issues, validateTitle(name, text, configuration)...)
 		}
 	}
 	if len(value.Commands) > MaxManagedFormCommands {
@@ -194,7 +194,7 @@ func ValidateManagedForm(source string, value ManagedForm, manifest project.Proj
 			issues = append(issues, prefix+".name must be unique within commands")
 		}
 		commandNames[folded] = true
-		issues = append(issues, validateTitle(prefix+".title", command.Title, manifest)...)
+		issues = append(issues, validateTitle(prefix+".title", command.Title, configuration)...)
 		switch command.Action {
 		case FormCommandCustom:
 			if !validIdentifier(command.Handler) || utf8.RuneCountInString(command.Handler) > 128 {
@@ -251,7 +251,7 @@ func ValidateManagedForm(source string, value ManagedForm, manifest project.Proj
 		}
 		names[folded] = true
 		if len(item.Title) != 0 {
-			issues = append(issues, validateTitle(current.path+".title", item.Title, manifest)...)
+			issues = append(issues, validateTitle(current.path+".title", item.Title, configuration)...)
 		}
 		if item.DataPath != "" {
 			if item.Kind != FormElementField && item.Kind != FormElementTable {

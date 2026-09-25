@@ -113,7 +113,7 @@ type PortalDatabase struct {
 // Runtime owns the live ML System connection used by local Manager operations.
 type Runtime struct {
 	mu                    sync.RWMutex
-	configuration         appconfig.Config
+	settings              appconfig.Config
 	secrets               Secrets
 	database              *systemdb.Database
 	connectionErr         error
@@ -125,16 +125,16 @@ type Runtime struct {
 }
 
 // New opens an already configured ML System. A connection problem remains visible in State.
-func New(ctx context.Context, configuration appconfig.Config, secrets Secrets) *Runtime {
-	runtime := &Runtime{configuration: configuration, secrets: secrets, environmentConfigured: os.Getenv("ML_SYSTEM_DATABASE_URL") != ""}
+func New(ctx context.Context, settings appconfig.Config, secrets Secrets) *Runtime {
+	runtime := &Runtime{settings: settings, secrets: secrets, environmentConfigured: os.Getenv("ML_SYSTEM_DATABASE_URL") != ""}
 	runtime.copier, runtime.copierErr = pgcopy.New()
 	runtime.backupTool, runtime.backupToolErr = pgbackup.New()
 	if secrets == nil {
 		runtime.connectionErr = fmt.Errorf("OS credential store is unavailable")
 		return runtime
 	}
-	if configuration.SystemDatabase != nil {
-		runtime.database, runtime.connectionErr = openSystemDatabase(ctx, *configuration.SystemDatabase, secrets)
+	if settings.SystemDatabase != nil {
+		runtime.database, runtime.connectionErr = openSystemDatabase(ctx, *settings.SystemDatabase, secrets)
 	} else if databaseURL := os.Getenv("ML_SYSTEM_DATABASE_URL"); databaseURL != "" {
 		runtime.database, runtime.connectionErr = systemdb.Open(ctx, databaseURL)
 	}
@@ -155,9 +155,9 @@ func (runtime *Runtime) Close() {
 func (runtime *Runtime) State() State {
 	runtime.mu.RLock()
 	defer runtime.mu.RUnlock()
-	state := State{Configured: runtime.configuration.SystemDatabase != nil || runtime.environmentConfigured, Connected: runtime.database != nil}
-	if runtime.configuration.SystemDatabase != nil {
-		copy := *runtime.configuration.SystemDatabase
+	state := State{Configured: runtime.settings.SystemDatabase != nil || runtime.environmentConfigured, Connected: runtime.database != nil}
+	if runtime.settings.SystemDatabase != nil {
+		copy := *runtime.settings.SystemDatabase
 		state.Connection = &copy
 	}
 	if runtime.connectionErr != nil {
@@ -179,7 +179,7 @@ func (runtime *Runtime) CheckPostgreSQL(ctx context.Context, request ProvisionRe
 func (runtime *Runtime) ProvisionPostgreSQL(ctx context.Context, request ProvisionRequest) (postgresadmin.Check, error) {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
-	if runtime.configuration.SystemDatabase != nil || runtime.database != nil {
+	if runtime.settings.SystemDatabase != nil || runtime.database != nil {
 		return postgresadmin.Check{}, fmt.Errorf("ML System PostgreSQL is already configured")
 	}
 	if runtime.secrets == nil {
@@ -220,22 +220,22 @@ func (runtime *Runtime) ProvisionPostgreSQL(ctx context.Context, request Provisi
 		database.Close()
 		return rollback(err)
 	}
-	configuration := runtime.configuration
-	configuration.SystemDatabase = &provisioned.Connection
-	path := configuration.SourcePath
+	settings := runtime.settings
+	settings.SystemDatabase = &provisioned.Connection
+	path := settings.SourcePath
 	if path == "" {
 		path, err = appconfig.DefaultPath()
 	}
 	if err == nil {
-		err = appconfig.Save(path, configuration)
+		err = appconfig.Save(path, settings)
 	}
 	if err != nil {
 		database.Close()
 		_ = runtime.secrets.Delete(provisioned.Connection.SecretKey)
 		return rollback(err)
 	}
-	configuration.SourcePath = path
-	runtime.configuration = configuration
+	settings.SourcePath = path
+	runtime.settings = settings
 	runtime.database = database
 	runtime.connectionErr = nil
 	return check, nil
@@ -309,12 +309,12 @@ func (runtime *Runtime) OpenDebugDatabase(ctx context.Context, id uuid.UUID) (*p
 	if physicalID != registered.PhysicalID {
 		return nil, systemdb.RegisteredDatabase{}, fmt.Errorf("physical PostgreSQL database identity changed")
 	}
-	configuration, err := registered.Connection.PoolConfig(password)
+	settings, err := registered.Connection.PoolConfig(password)
 	if err != nil {
 		return nil, systemdb.RegisteredDatabase{}, errors.New(safeOperationalError(err, password))
 	}
-	configuration.MaxConns = 8
-	pool, err := pgxpool.NewWithConfig(ctx, configuration)
+	settings.MaxConns = 8
+	pool, err := pgxpool.NewWithConfig(ctx, settings)
 	if err == nil {
 		err = pool.Ping(ctx)
 	}
@@ -871,7 +871,7 @@ func (runtime *Runtime) ListAuditEvents(ctx context.Context, databaseID *uuid.UU
 func (runtime *Runtime) CreateDatabaseBackup(ctx context.Context, databaseID uuid.UUID) (systemdb.Backup, error) {
 	runtime.mu.RLock()
 	database, tool, toolErr := runtime.database, runtime.backupTool, runtime.backupToolErr
-	configuration := runtime.configuration
+	settings := runtime.settings
 	runtime.mu.RUnlock()
 	if database == nil {
 		return systemdb.Backup{}, fmt.Errorf("ML System PostgreSQL is not configured")
@@ -890,7 +890,7 @@ func (runtime *Runtime) CreateDatabaseBackup(ctx context.Context, databaseID uui
 	if err != nil {
 		return systemdb.Backup{}, err
 	}
-	directory, err := configuration.BackupDirectory()
+	directory, err := settings.BackupDirectory()
 	if err != nil {
 		return systemdb.Backup{}, err
 	}
@@ -948,7 +948,7 @@ func (runtime *Runtime) DeleteDatabaseBackup(ctx context.Context, databaseID, ba
 	if backup.DatabaseID != databaseID {
 		return systemdb.ErrBackupNotFound
 	}
-	directory, err := runtime.configuration.BackupDirectory()
+	directory, err := runtime.settings.BackupDirectory()
 	if err != nil {
 		return err
 	}
@@ -1008,7 +1008,7 @@ func (runtime *Runtime) RestoreDatabaseBackup(ctx context.Context, databaseID, b
 	if err != nil {
 		return err
 	}
-	directory, err := runtime.configuration.BackupDirectory()
+	directory, err := runtime.settings.BackupDirectory()
 	if err != nil {
 		return err
 	}
@@ -1189,9 +1189,9 @@ func openSystemDatabase(ctx context.Context, descriptor postgresconn.Descriptor,
 	if err != nil {
 		return nil, err
 	}
-	configuration, err := descriptor.PoolConfig(password)
+	settings, err := descriptor.PoolConfig(password)
 	if err != nil {
 		return nil, err
 	}
-	return systemdb.OpenConfig(ctx, configuration)
+	return systemdb.OpenConfig(ctx, settings)
 }

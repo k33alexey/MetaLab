@@ -119,7 +119,7 @@ id: `+storageID+`
 name: Хранилище
 title: {ru: Хранилище}
 `+broken.body+`
-`), metadataManifest())
+`), metadataConfiguration())
 			if err == nil {
 				t.Fatalf("%s: accepted", name)
 			}

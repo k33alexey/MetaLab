@@ -55,26 +55,26 @@ func (workspace *Workspace) readManagedForm(relative string) (ManagedFormSource,
 	if err != nil {
 		return ManagedFormSource{}, err
 	}
-	manifest, err := project.ValidateLayout(workspace.root)
+	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return ManagedFormSource{}, err
 	}
-	form, err := metadata.DecodeManagedForm(relative, strings.NewReader(file.Content), manifest)
+	form, err := metadata.DecodeManagedForm(relative, strings.NewReader(file.Content), configuration)
 	if err != nil {
 		return ManagedFormSource{}, err
 	}
 	if err := formAgreesWithItsPath(form, relative); err != nil {
 		return ManagedFormSource{}, err
 	}
-	languages := make([]FormLanguage, len(manifest.Languages))
-	for index, language := range manifest.Languages {
+	languages := make([]FormLanguage, len(configuration.Languages))
+	for index, language := range configuration.Languages {
 		title := language.Title
 		if strings.TrimSpace(title) == "" {
 			title = language.Name
 		}
 		languages[index] = FormLanguage{Code: language.Code, Title: title}
 	}
-	return ManagedFormSource{Path: relative, Revision: file.Revision, Form: form, Languages: languages, DataPaths: workspace.formDataPaths(form.ID, manifest)}, nil
+	return ManagedFormSource{Path: relative, Revision: file.Revision, Form: form, Languages: languages, DataPaths: workspace.formDataPaths(form.ID, configuration)}, nil
 }
 
 func (workspace *Workspace) SaveManagedForm(relative string, form metadata.ManagedForm, expectedRevision string) (ManagedFormSource, error) {
@@ -87,11 +87,11 @@ func (workspace *Workspace) saveManagedFormLocked(relative string, form metadata
 	if err := validateFormPath(relative); err != nil {
 		return ManagedFormSource{}, err
 	}
-	manifest, err := project.ValidateLayout(workspace.root)
+	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return ManagedFormSource{}, err
 	}
-	if err := metadata.ValidateManagedForm(relative, form, manifest); err != nil {
+	if err := metadata.ValidateManagedForm(relative, form, configuration); err != nil {
 		return ManagedFormSource{}, err
 	}
 	if err := formAgreesWithItsPath(form, relative); err != nil {
@@ -292,7 +292,7 @@ func validateFormPath(relative string) error {
 	return nil
 }
 
-func (workspace *Workspace) formDataPaths(formID uuid.UUID, manifest project.Project) []FormDataPath {
+func (workspace *Workspace) formDataPaths(formID uuid.UUID, configuration project.Project) []FormDataPath {
 	catalog, err := metadata.Load(workspace.root)
 	if err != nil {
 		return nil
@@ -313,14 +313,14 @@ func (workspace *Workspace) formDataPaths(formID uuid.UUID, manifest project.Pro
 		appendField(prefix, "Код", "Код", "field")
 		appendField(prefix, "Наименование", "Наименование", "field")
 		for _, attribute := range object.Attributes {
-			appendField(prefix, attribute.Name, attribute.Title.Resolve(manifest.DefaultLanguage, manifest.DefaultLanguage, manifest.Languages), "field")
+			appendField(prefix, attribute.Name, attribute.Title.Resolve(configuration.DefaultLanguage, configuration.DefaultLanguage, configuration.Languages), "field")
 		}
 		if kind == metadata.ObjectForm {
 			for _, part := range object.TableParts {
 				partPath := prefix + "." + part.Name
-				appendField(prefix, part.Name, part.Title.Resolve(manifest.DefaultLanguage, manifest.DefaultLanguage, manifest.Languages), "table")
+				appendField(prefix, part.Name, part.Title.Resolve(configuration.DefaultLanguage, configuration.DefaultLanguage, configuration.Languages), "table")
 				for _, attribute := range part.Attributes {
-					appendField(partPath, attribute.Name, attribute.Title.Resolve(manifest.DefaultLanguage, manifest.DefaultLanguage, manifest.Languages), "column")
+					appendField(partPath, attribute.Name, attribute.Title.Resolve(configuration.DefaultLanguage, configuration.DefaultLanguage, configuration.Languages), "column")
 				}
 			}
 		}
@@ -335,14 +335,14 @@ func (workspace *Workspace) formDataPaths(formID uuid.UUID, manifest project.Pro
 			appendField(prefix, system.name, system.title, "field")
 		}
 		for _, attribute := range object.Attributes {
-			appendField(prefix, attribute.Name, attribute.Title.Resolve(manifest.DefaultLanguage, manifest.DefaultLanguage, manifest.Languages), "field")
+			appendField(prefix, attribute.Name, attribute.Title.Resolve(configuration.DefaultLanguage, configuration.DefaultLanguage, configuration.Languages), "field")
 		}
 		if kind == metadata.ObjectForm {
 			for _, part := range object.TableParts {
 				partPath := prefix + "." + part.Name
-				appendField(prefix, part.Name, part.Title.Resolve(manifest.DefaultLanguage, manifest.DefaultLanguage, manifest.Languages), "table")
+				appendField(prefix, part.Name, part.Title.Resolve(configuration.DefaultLanguage, configuration.DefaultLanguage, configuration.Languages), "table")
 				for _, attribute := range part.Attributes {
-					appendField(partPath, attribute.Name, attribute.Title.Resolve(manifest.DefaultLanguage, manifest.DefaultLanguage, manifest.Languages), "column")
+					appendField(partPath, attribute.Name, attribute.Title.Resolve(configuration.DefaultLanguage, configuration.DefaultLanguage, configuration.Languages), "column")
 				}
 			}
 		}

@@ -16,26 +16,26 @@ import (
 )
 
 const (
-	// CurrentFormat is the latest supported ML Project manifest format.
+	// CurrentFormat is the latest supported ML Project configuration format.
 	CurrentFormat = 1
 	// MaxYAMLDocumentBytes bounds individual source documents before parsing.
 	MaxYAMLDocumentBytes = 4 << 20
 )
 
 var (
-	// ErrUnsupportedFormat identifies a manifest written in an unsupported format version.
+	// ErrUnsupportedFormat identifies a configuration written in an unsupported format version.
 	ErrUnsupportedFormat = errors.New("unsupported ML Project format")
 	// ErrYAMLDocumentTooLarge prevents unbounded memory use while parsing project sources.
 	ErrYAMLDocumentTooLarge = errors.New("ML Project YAML document is too large")
 )
 
-// ValidationIssue points to one invalid manifest field.
+// ValidationIssue points to one invalid configuration field.
 type ValidationIssue struct {
 	Path    string
 	Message string
 }
 
-// ValidationError contains all independently detectable manifest problems.
+// ValidationError contains all independently detectable configuration problems.
 type ValidationError struct {
 	Issues            []ValidationIssue
 	unsupportedFormat bool
@@ -49,15 +49,15 @@ func (validation *ValidationError) Error() string {
 	return "invalid ML Project: " + strings.Join(problems, "; ")
 }
 
-// Is makes future or obsolete manifest versions programmatically distinguishable.
+// Is makes future or obsolete configuration versions programmatically distinguishable.
 func (validation *ValidationError) Is(target error) bool {
 	return target == ErrUnsupportedFormat && validation.unsupportedFormat
 }
 
 // Project is the configuration root, stored in configuration.yaml.
 //
-// It is the root itself and not a manifest standing beside it. Everything the
-// manifest used to hold - the identifier, the name, the synonym, the default
+// It is the root itself and not a configuration standing beside it. Everything the
+// configuration used to hold - the identifier, the name, the synonym, the default
 // language and the list of languages - are properties of the root, and giving
 // the root an identifier of its own would be two identifiers for one thing:
 // they diverge, and the only question is when. The identifier written into a
@@ -141,7 +141,7 @@ func DecodeSource(source string, reader io.Reader) (Project, error) {
 		return Project{}, fmt.Errorf("decode %s: multiple YAML documents are not allowed", source)
 	}
 
-	// A manifest written before languages had identities is read, not refused:
+	// A configuration written before languages had identities is read, not refused:
 	// translations are keyed by language CODE, so nothing in the data depends on
 	// the identity yet. The missing ones are filled here and become permanent at
 	// the next save, which is what keeps old projects working without a
@@ -208,14 +208,14 @@ func NewLanguage(name, title, code string) (Language, error) {
 }
 
 // EnsureLanguageIdentities fills in the identity of every language that has
-// none, so a manifest built in code or edited in a browser - where UUIDs are
+// none, so a configuration built in code or edited in a browser - where UUIDs are
 // not invented - is saved complete.
-func EnsureLanguageIdentities(manifest Project) (Project, error) {
-	manifest.Languages = append([]Language(nil), manifest.Languages...)
-	if err := manifest.assignLanguageIdentities(); err != nil {
+func EnsureLanguageIdentities(configuration Project) (Project, error) {
+	configuration.Languages = append([]Language(nil), configuration.Languages...)
+	if err := configuration.assignLanguageIdentities(); err != nil {
 		return Project{}, err
 	}
-	return manifest, nil
+	return configuration, nil
 }
 
 // Validate checks the project invariants used by all readers and writers.

@@ -42,10 +42,10 @@ func TestRunSimpleCommands(t *testing.T) {
 func TestNoArgumentsStartsManagerWithSharedConfiguration(t *testing.T) {
 	t.Setenv("ML_LANGUAGE", "uk")
 	called := false
-	commands := Commands{Manager: func(_ context.Context, configuration appconfig.Config) error {
+	commands := Commands{Manager: func(_ context.Context, settings appconfig.Config) error {
 		called = true
-		if configuration.Language != "uk" {
-			t.Fatalf("configuration = %+v", configuration)
+		if settings.Language != "uk" {
+			t.Fatalf("settings = %+v", settings)
 		}
 		return nil
 	}}
@@ -59,10 +59,10 @@ func TestServiceUsesExplicitConfiguration(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	writeConfiguration(t, path)
 	called := false
-	commands := Commands{Service: func(_ context.Context, configuration appconfig.Config) error {
+	commands := Commands{Service: func(_ context.Context, settings appconfig.Config) error {
 		called = true
-		if configuration.Service.Listen != "127.0.0.1:9200" {
-			t.Fatalf("configuration = %+v", configuration)
+		if settings.Service.Listen != "127.0.0.1:9200" {
+			t.Fatalf("settings = %+v", settings)
 		}
 		return nil
 	}}
@@ -77,11 +77,11 @@ func TestStudioUsesProjectAndSharedConfiguration(t *testing.T) {
 	writeConfiguration(t, path)
 	var gotProject string
 	var gotDatabase string
-	commands := Commands{Studio: func(_ context.Context, configuration appconfig.Config, projectPath, databaseID string) error {
+	commands := Commands{Studio: func(_ context.Context, settings appconfig.Config, projectPath, databaseID string) error {
 		gotProject = projectPath
 		gotDatabase = databaseID
-		if configuration.Service.Listen != "127.0.0.1:9200" {
-			t.Fatalf("configuration = %+v", configuration)
+		if settings.Service.Listen != "127.0.0.1:9200" {
+			t.Fatalf("settings = %+v", settings)
 		}
 		return nil
 	}}
@@ -156,11 +156,11 @@ func TestServiceInstallRequiresAndValidatesConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	writeConfiguration(t, path)
 	var installedPath string
-	commands := Commands{Control: func(action, configurationPath string) (string, error) {
+	commands := Commands{Control: func(action, settingsPath string) (string, error) {
 		if action != "install" {
 			t.Fatalf("action = %q", action)
 		}
-		installedPath = configurationPath
+		installedPath = settingsPath
 		return "install completed", nil
 	}}
 	code, _, stderr := run(t, commands, "service", "install", "--config", path)

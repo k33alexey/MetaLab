@@ -29,12 +29,12 @@ func TestBuildHandlerAllowsFirstRunWithoutDatabase(t *testing.T) {
 func TestBuildHandlerDegradesWhenConfiguredSecretIsUnavailable(t *testing.T) {
 	t.Parallel()
 
-	configuration := appconfig.Default()
-	configuration.SystemDatabase = &postgresconn.Descriptor{
+	settings := appconfig.Default()
+	settings.SystemDatabase = &postgresconn.Descriptor{
 		Host: "localhost", Port: 5432, Database: "metalab", User: "metalab",
 		SSLMode: "disable", SecretKey: postgresconn.DefaultSystemSecretKey,
 	}
-	handler, closeRuntime, err := buildHandler(context.Background(), configuration, fakeSecrets{failure: errors.New("locked")})
+	handler, closeRuntime, err := buildHandler(context.Background(), settings, fakeSecrets{failure: errors.New("locked")})
 	if err == nil {
 		t.Fatal("missing protected secret did not report an error")
 	}

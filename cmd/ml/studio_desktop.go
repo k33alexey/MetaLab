@@ -22,7 +22,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-func runStudio(ctx context.Context, configuration appconfig.Config, projectPath, databaseText string) error {
+func runStudio(ctx context.Context, settings appconfig.Config, projectPath, databaseText string) error {
 	databaseID, err := uuid.Parse(databaseText)
 	if err != nil {
 		return fmt.Errorf("invalid database identifier: %w", err)
@@ -35,7 +35,7 @@ func runStudio(ctx context.Context, configuration appconfig.Config, projectPath,
 	if err != nil {
 		return fmt.Errorf("read ML Project: %w", err)
 	}
-	platformRuntime := platform.New(ctx, configuration, secretstore.New())
+	platformRuntime := platform.New(ctx, settings, secretstore.New())
 	defer platformRuntime.Close()
 	workspace.SetSavedNamesProvider(func(namesContext context.Context) map[string]string {
 		return platformRuntime.ApplicationPhysicalNames(namesContext, databaseID)
@@ -43,7 +43,7 @@ func runStudio(ctx context.Context, configuration appconfig.Config, projectPath,
 	workspace.SetSaveDataProvider(func(saveContext context.Context, root string, consent schemadiff.MigrationConsent) (publication.SavedState, schemadiff.MigrationRecord, error) {
 		return platformRuntime.SaveApplicationData(saveContext, databaseID, root, consent)
 	})
-	lease, err := openStudioLease(ctx, platformRuntime, databaseID, snapshot.Manifest.ID)
+	lease, err := openStudioLease(ctx, platformRuntime, databaseID, snapshot.Settings.ID)
 	if err != nil {
 		return err
 	}
@@ -75,7 +75,7 @@ func runStudio(ctx context.Context, configuration appconfig.Config, projectPath,
 		Mac: application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
 	})
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title: "ML Studio — " + snapshot.Manifest.Title, Width: 1280, Height: 800,
+		Title: "ML Studio — " + snapshot.Settings.Title, Width: 1280, Height: 800,
 		MinWidth: 800, MinHeight: 560, BackgroundColour: application.NewRGB(30, 31, 34),
 		URL: "http://" + listener.Addr().String() + launchPath,
 	})

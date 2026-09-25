@@ -38,7 +38,7 @@ const (
 
 func TestDecodeMetadataIsStrictAndLocalized(t *testing.T) {
 	t.Parallel()
-	manifest := metadataManifest()
+	configuration := metadataConfiguration()
 	constant, err := DecodeConstant("constant.yaml", strings.NewReader(`format: 1
 id: `+constantID+`
 name: ОсновнаяВалюта
@@ -48,12 +48,12 @@ title:
 types:
   - kind: string
     length: 3
-`), manifest)
+`), configuration)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if constant.Title.Resolve("uk", manifest.DefaultLanguage, manifest.Languages) != "Основна валюта" || constant.Title.Resolve("en", manifest.DefaultLanguage, manifest.Languages) != "Основная валюта" {
-		t.Fatalf("localized title fallback = %q", constant.Title.Resolve("en", manifest.DefaultLanguage, manifest.Languages))
+	if constant.Title.Resolve("uk", configuration.DefaultLanguage, configuration.Languages) != "Основна валюта" || constant.Title.Resolve("en", configuration.DefaultLanguage, configuration.Languages) != "Основная валюта" {
+		t.Fatalf("localized title fallback = %q", constant.Title.Resolve("en", configuration.DefaultLanguage, configuration.Languages))
 	}
 	_, err = DecodeConstant("constant.yaml", strings.NewReader(`format: 1
 id: `+constantID+`
@@ -61,7 +61,7 @@ name: Invalid
 title: {de: Titel}
 types: [{kind: string}]
 unknown: true
-`), manifest)
+`), configuration)
 	if err == nil || !strings.Contains(err.Error(), "field unknown") {
 		t.Fatalf("strict decode error = %v", err)
 	}
@@ -70,7 +70,7 @@ id: `+constantID+`
 name: Invalid
 title: {ru: Заголовок}
 types: [{kind: string}]
-`, "format: 1", "format: 2", 1)), manifest)
+`, "format: 1", "format: 2", 1)), configuration)
 	if !errors.Is(err, ErrUnsupportedFormat) {
 		t.Fatalf("format error = %v", err)
 	}
@@ -282,7 +282,7 @@ attributes:
     name: Ссылка
     title: {ru: Ссылка}
     types: [{kind: string}]
-`), metadataManifest())
+`), metadataConfiguration())
 	if err == nil || !strings.Contains(err.Error(), "code.type") || !strings.Contains(err.Error(), "reserved") {
 		t.Fatalf("DecodeCatalog() error = %v", err)
 	}
@@ -306,7 +306,7 @@ table_parts:
     name: Контакты
     title: {ru: Контакты}
     attributes: []
-`), metadataManifest())
+`), metadataConfiguration())
 	if err == nil || !strings.Contains(err.Error(), "conflicts with an attribute") {
 		t.Fatalf("DecodeCatalog() error = %v", err)
 	}
@@ -333,7 +333,7 @@ predefined:
     description: Основной контрагент
     attributes:
       ИНН: {kind: string, data: "123456789012"}
-`), metadataManifest())
+`), metadataConfiguration())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,7 +430,7 @@ attributes:
     name: Дата
     title: {ru: Дата}
     types: [{kind: date}]
-`), metadataManifest())
+`), metadataConfiguration())
 	if err == nil || !strings.Contains(err.Error(), "number.type") || !strings.Contains(err.Error(), "periodicity") || !strings.Contains(err.Error(), "reserved") {
 		t.Fatalf("DecodeDocument() error = %v", err)
 	}
@@ -509,7 +509,7 @@ attributes:
     name: Значение
     title: {ru: Значение}
     types: [{kind: string}]
-`), metadataManifest())
+`), metadataConfiguration())
 	if err == nil || !strings.Contains(err.Error(), "recorder-position") || !strings.Contains(err.Error(), "only allowed") ||
 		!strings.Contains(err.Error(), "reserved") || !strings.Contains(err.Error(), "conflicts") {
 		t.Fatalf("DecodeInformationRegister() error = %v", err)
@@ -532,7 +532,7 @@ dimensions:
     name: Объект
     title: {ru: Объект}
     types: [{kind: obj-uuid}]
-`), metadataManifest())
+`), metadataConfiguration())
 	if err == nil || !strings.Contains(err.Error(), "obj-uuid is reserved") {
 		t.Fatalf("DecodeInformationRegister() error = %v", err)
 	}
@@ -551,7 +551,7 @@ dimensions:
     name: Объект
     title: {ru: Объект}
     types: [{kind: catalog, reference: `+catalogID+`}]
-`), metadataManifest())
+`), metadataConfiguration())
 	if err != nil || len(value.Dimensions) != 1 || len(value.Resources) != 0 {
 		t.Fatalf("dimension-only register=%+v error=%v", value, err)
 	}
@@ -615,7 +615,7 @@ resources:
 func metadataProject(t *testing.T) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "project")
-	if err := project.Initialize(root, metadataManifest()); err != nil {
+	if err := project.Initialize(root, metadataConfiguration()); err != nil {
 		t.Fatal(err)
 	}
 	for _, kind := range []Kind{ConstantKind, EnumerationKind, DefinedTypeKind, CatalogKind, DocumentKind, InformationRegisterKind, AccumulationRegisterKind, ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind, BusinessProcessKind, TaskKind, ExchangePlanKind, NumeratorKind, SequenceKind, DocumentJournalKind, AccountingRegisterKind, CalculationRegisterKind, ReportKind, DataProcessorKind, FunctionalOptionKind, FunctionalOptionParameterKind, FilterCriterionKind, SettingsStorageKind, ScheduledJobKind} {
@@ -626,7 +626,7 @@ func metadataProject(t *testing.T) string {
 	return root
 }
 
-func metadataManifest() project.Project {
+func metadataConfiguration() project.Project {
 	return project.Project{
 		Format: project.CurrentFormat,
 		ID:     uuid.MustNew(), Name: "MetadataTest", Title: project.LocalizedText{"ru": "Metadata Test"}, DefaultLanguage: "ru",
@@ -678,7 +678,7 @@ id: `+constantID+`
 name: Значение
 title: {uk: Значення, ru: Значение}
 types: [{kind: string, length: 10}]
-`), metadataManifest())
+`), metadataConfiguration())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -686,7 +686,7 @@ types: [{kind: string, length: 10}]
 	if err := Encode(&first, value); err != nil {
 		t.Fatal(err)
 	}
-	restored, err := DecodeConstant("constant.yaml", bytes.NewReader(first.Bytes()), metadataManifest())
+	restored, err := DecodeConstant("constant.yaml", bytes.NewReader(first.Bytes()), metadataConfiguration())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -761,7 +761,7 @@ dimensions:
     name: Значение
     title: {ru: Значение}
     types: `+test.types+`
-`), metadataManifest())
+`), metadataConfiguration())
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %v, want %q", err, test.want)
 			}

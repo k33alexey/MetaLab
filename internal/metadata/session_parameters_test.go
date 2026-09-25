@@ -16,7 +16,7 @@ const sessionParameterID = "70000000-0000-4000-8000-000000000001"
 
 func TestDecodeSessionParameterStrictAndLocalized(t *testing.T) {
 	t.Parallel()
-	manifest := metadataManifest()
+	configuration := metadataConfiguration()
 	parameter, err := DecodeSessionParameter("session-parameter.yaml", strings.NewReader(`format: 1
 id: `+sessionParameterID+`
 name: ТекущийСотрудник
@@ -26,12 +26,12 @@ title:
 types:
   - kind: string
     length: 50
-`), manifest)
+`), configuration)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parameter.Title.Resolve("uk", manifest.DefaultLanguage, manifest.Languages) != "Поточний користувач" || parameter.Title.Resolve("en", manifest.DefaultLanguage, manifest.Languages) != "Текущий сотрудник" {
-		t.Fatalf("localized title fallback = %q", parameter.Title.Resolve("en", manifest.DefaultLanguage, manifest.Languages))
+	if parameter.Title.Resolve("uk", configuration.DefaultLanguage, configuration.Languages) != "Поточний користувач" || parameter.Title.Resolve("en", configuration.DefaultLanguage, configuration.Languages) != "Текущий сотрудник" {
+		t.Fatalf("localized title fallback = %q", parameter.Title.Resolve("en", configuration.DefaultLanguage, configuration.Languages))
 	}
 	_, err = DecodeSessionParameter("session-parameter.yaml", strings.NewReader(`format: 1
 id: `+sessionParameterID+`
@@ -39,7 +39,7 @@ name: Invalid
 title: {de: Titel}
 types: [{kind: string}]
 unknown: true
-`), manifest)
+`), configuration)
 	if err == nil || !strings.Contains(err.Error(), "field unknown") {
 		t.Fatalf("strict decode error = %v", err)
 	}
@@ -48,7 +48,7 @@ id: `+sessionParameterID+`
 name: Invalid
 title: {ru: Заголовок}
 types: [{kind: string}]
-`, "format: 1", "format: 2", 1)), manifest)
+`, "format: 1", "format: 2", 1)), configuration)
 	if !errors.Is(err, ErrUnsupportedFormat) {
 		t.Fatalf("format error = %v", err)
 	}
@@ -60,7 +60,7 @@ func TestCatalogSessionParameterLookupReturnsIsolatedCopies(t *testing.T) {
 		Format: CurrentFormat, ID: uuid.MustNew(), Name: "ТекущийСотрудник", Title: LocalizedText{"ru": "Текущий сотрудник"},
 		Types: []Type{{Kind: StringType, Length: 50}},
 	}
-	catalog, err := NewCatalogSnapshotWithSessionParameters(metadataManifest(), nil, nil, nil, nil, nil, nil, nil, nil, nil, []SessionParameter{parameter})
+	catalog, err := NewCatalogSnapshotWithSessionParameters(metadataConfiguration(), nil, nil, nil, nil, nil, nil, nil, nil, nil, []SessionParameter{parameter})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestRuntimeSessionParameterGetSetRoundTrip(t *testing.T) {
 		Format: CurrentFormat, ID: uuid.MustNew(), Name: "СчётчикЗапросов", Title: LocalizedText{"ru": "Счётчик запросов"},
 		Types: []Type{{Kind: NumberType, Precision: 9}},
 	}
-	catalog, err := NewCatalogSnapshotWithSessionParameters(metadataManifest(), nil, nil, nil, nil, nil, nil, nil, nil, nil,
+	catalog, err := NewCatalogSnapshotWithSessionParameters(metadataConfiguration(), nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		[]SessionParameter{withDefault, withoutDefault})
 	if err != nil {
 		t.Fatal(err)

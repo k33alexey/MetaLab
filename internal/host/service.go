@@ -20,16 +20,16 @@ import (
 )
 
 // RunService starts ML Service and blocks until cancellation or failure.
-func RunService(ctx context.Context, configuration appconfig.Config) error {
-	handler, closeRuntime, err := buildHandler(ctx, configuration, secretstore.New())
+func RunService(ctx context.Context, settings appconfig.Config) error {
+	handler, closeRuntime, err := buildHandler(ctx, settings, secretstore.New())
 	if err != nil {
 		slog.Error("ML Service started in degraded mode", "error", err)
 	}
 	defer closeRuntime()
 
-	listener, err := net.Listen("tcp", configuration.Service.Listen)
+	listener, err := net.Listen("tcp", settings.Service.Listen)
 	if err != nil {
-		return fmt.Errorf("listen on %s: %w", configuration.Service.Listen, err)
+		return fmt.Errorf("listen on %s: %w", settings.Service.Listen, err)
 	}
 	server := &http.Server{
 		Handler: handler, ReadHeaderTimeout: 5 * time.Second,
@@ -59,9 +59,9 @@ func RunService(ctx context.Context, configuration appconfig.Config) error {
 	}
 }
 
-func buildHandler(ctx context.Context, configuration appconfig.Config, secrets platform.Secrets) (http.Handler, func(), error) {
-	if configuration.SystemDatabase != nil || os.Getenv("ML_SYSTEM_DATABASE_URL") != "" {
-		runtime := platform.New(ctx, configuration, secrets)
+func buildHandler(ctx context.Context, settings appconfig.Config, secrets platform.Secrets) (http.Handler, func(), error) {
+	if settings.SystemDatabase != nil || os.Getenv("ML_SYSTEM_DATABASE_URL") != "" {
+		runtime := platform.New(ctx, settings, secrets)
 		state := runtime.State()
 		if !state.Connected {
 			runtime.Close()

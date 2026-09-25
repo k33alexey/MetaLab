@@ -32,12 +32,12 @@ type CommonModuleDefinition struct {
 	Privileged bool          `yaml:"privileged,omitempty"`
 }
 
-func DecodeCommonModule(source string, reader io.Reader, manifest project.Project) (CommonModuleDefinition, error) {
+func DecodeCommonModule(source string, reader io.Reader, configuration project.Project) (CommonModuleDefinition, error) {
 	var value CommonModuleDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return CommonModuleDefinition{}, err
 	}
-	if err := ValidateCommonModule(source, value, manifest); err != nil {
+	if err := ValidateCommonModule(source, value, configuration); err != nil {
 		return CommonModuleDefinition{}, err
 	}
 	return value, nil
@@ -45,8 +45,8 @@ func DecodeCommonModule(source string, reader io.Reader, manifest project.Projec
 
 // ValidateCommonModule checks structure only; module source existence is
 // checked catalog-wide by indexAndValidate (validateObjectSources).
-func ValidateCommonModule(source string, value CommonModuleDefinition, manifest project.Project) error {
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+func ValidateCommonModule(source string, value CommonModuleDefinition, configuration project.Project) error {
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	if value.Module.IsZero() {
 		issues = append(issues, "module must be a non-zero UUID")
 	}

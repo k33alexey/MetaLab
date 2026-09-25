@@ -54,12 +54,12 @@ var eventSubscriptionEventsByKind = map[string]map[string]bool{
 	"accumulation register": {"before-write": true, "on-write": true, "after-write": true},
 }
 
-func DecodeEventSubscription(source string, reader io.Reader, manifest project.Project) (EventSubscriptionDefinition, error) {
+func DecodeEventSubscription(source string, reader io.Reader, configuration project.Project) (EventSubscriptionDefinition, error) {
 	var value EventSubscriptionDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return EventSubscriptionDefinition{}, err
 	}
-	if err := ValidateEventSubscription(source, value, manifest); err != nil {
+	if err := ValidateEventSubscription(source, value, configuration); err != nil {
 		return EventSubscriptionDefinition{}, err
 	}
 	return value, nil
@@ -68,8 +68,8 @@ func DecodeEventSubscription(source string, reader io.Reader, manifest project.P
 // ValidateEventSubscription checks structure only; object/module existence,
 // object kind and event compatibility are checked catalog-wide by
 // validateEventSubscriptionReferences.
-func ValidateEventSubscription(source string, value EventSubscriptionDefinition, manifest project.Project) error {
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+func ValidateEventSubscription(source string, value EventSubscriptionDefinition, configuration project.Project) error {
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	if len(value.Objects) == 0 {
 		issues = append(issues, "objects must list at least one target object")
 	}

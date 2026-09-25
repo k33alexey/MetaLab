@@ -194,8 +194,8 @@ type TitleLanguage struct {
 }
 
 // ProjectLanguage returns the chain for one project and one reader.
-func ProjectLanguage(manifest project.Project, code string) TitleLanguage {
-	return TitleLanguage{Code: code, Default: manifest.DefaultLanguage, Configured: manifest.Languages}
+func ProjectLanguage(configuration project.Project, code string) TitleLanguage {
+	return TitleLanguage{Code: code, Default: configuration.DefaultLanguage, Configured: configuration.Languages}
 }
 
 // Resolve answers with this chain.
@@ -773,18 +773,18 @@ func (catalog *Catalog) AccumulationRegisterIDs() []uuid.UUID {
 	return result
 }
 
-func DecodeConstant(source string, reader io.Reader, manifest project.Project) (Constant, error) {
+func DecodeConstant(source string, reader io.Reader, configuration project.Project) (Constant, error) {
 	var value Constant
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return Constant{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateTypes("types", value.Types, uuid.UUID{})...)
 	for name, text := range map[string]LocalizedText{
 		"explanation": value.Explanation, "extended_presentation": value.ExtendedPresentation,
 	} {
 		if len(text) > 0 {
-			issues = append(issues, validateTitle(name, text, manifest)...)
+			issues = append(issues, validateTitle(name, text, configuration)...)
 		}
 	}
 	if value.DefaultForm != nil && value.DefaultForm.IsZero() {
@@ -806,12 +806,12 @@ func DecodeConstant(source string, reader io.Reader, manifest project.Project) (
 	return value, nil
 }
 
-func DecodeSessionParameter(source string, reader io.Reader, manifest project.Project) (SessionParameter, error) {
+func DecodeSessionParameter(source string, reader io.Reader, configuration project.Project) (SessionParameter, error) {
 	var value SessionParameter
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return SessionParameter{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateTypes("types", value.Types, uuid.UUID{})...)
 	if ReservedSessionParameter(value.Name) {
 		// The platform resolves this name itself on every read path, without
@@ -825,12 +825,12 @@ func DecodeSessionParameter(source string, reader io.Reader, manifest project.Pr
 	return value, nil
 }
 
-func DecodeEnumeration(source string, reader io.Reader, manifest project.Project) (Enumeration, error) {
+func DecodeEnumeration(source string, reader io.Reader, configuration project.Project) (Enumeration, error) {
 	var value Enumeration
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return Enumeration{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	if len(value.Values) == 0 || len(value.Values) > maxEnumerationVals {
 		issues = append(issues, "values must contain 1..1048576 items")
 	}
@@ -852,14 +852,14 @@ func DecodeEnumeration(source string, reader io.Reader, manifest project.Project
 			issues = append(issues, prefix+".name must be unique")
 		}
 		names[folded] = true
-		issues = append(issues, validateTitle(prefix+".title", item.Title, manifest)...)
+		issues = append(issues, validateTitle(prefix+".title", item.Title, configuration)...)
 	}
 	for name, text := range map[string]LocalizedText{
 		"explanation": value.Explanation, "list_presentation": value.ListPresentation,
 		"extended_list_presentation": value.ExtendedListPresentation,
 	} {
 		if len(text) > 0 {
-			issues = append(issues, validateTitle(name, text, manifest)...)
+			issues = append(issues, validateTitle(name, text, configuration)...)
 		}
 	}
 	switch value.ChoiceMode {
@@ -881,20 +881,20 @@ func DecodeEnumeration(source string, reader io.Reader, manifest project.Project
 		"forms.list": value.Forms.List, "forms.choice": value.Forms.Choice,
 		"forms.auxiliary_list": value.Forms.AuxiliaryList, "forms.auxiliary_choice": value.Forms.AuxiliaryChoice,
 	})...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return Enumeration{}, err
 	}
 	return value, nil
 }
 
-func DecodeDefinedType(source string, reader io.Reader, manifest project.Project) (DefinedTypeObject, error) {
+func DecodeDefinedType(source string, reader io.Reader, configuration project.Project) (DefinedTypeObject, error) {
 	var value DefinedTypeObject
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return DefinedTypeObject{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateTypes("types", value.Types, value.ID)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return DefinedTypeObject{}, err
@@ -902,12 +902,12 @@ func DecodeDefinedType(source string, reader io.Reader, manifest project.Project
 	return value, nil
 }
 
-func DecodeCatalog(source string, reader io.Reader, manifest project.Project) (CatalogDefinition, error) {
+func DecodeCatalog(source string, reader io.Reader, configuration project.Project) (CatalogDefinition, error) {
 	var value CatalogDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return CatalogDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
 		code:              value.Code,
 		descriptionLength: value.DescriptionLength,
@@ -918,9 +918,9 @@ func DecodeCatalog(source string, reader io.Reader, manifest project.Project) (C
 		hierarchy:         value.Hierarchy,
 		predefined:        value.Predefined,
 		reservedName:      reservedCatalogObjectName,
-	}, manifest)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
+	}, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return CatalogDefinition{}, err
 	}
@@ -983,7 +983,7 @@ func validateHierarchy(hierarchy Hierarchy) []string {
 	return issues
 }
 
-func validateReferenceObjectShape(shape referenceObjectShape, manifest project.Project) []string {
+func validateReferenceObjectShape(shape referenceObjectShape, configuration project.Project) []string {
 	var issues []string
 	switch shape.code.Type {
 	case StringType:
@@ -1005,7 +1005,7 @@ func validateReferenceObjectShape(shape referenceObjectShape, manifest project.P
 	if reserved == nil {
 		reserved = reservedCatalogObjectName
 	}
-	issues = append(issues, validateAttributes("attributes", shape.attributes, manifest, reserved)...)
+	issues = append(issues, validateAttributes("attributes", shape.attributes, configuration, reserved)...)
 	attributeNames := make(map[string]bool, len(shape.attributes))
 	for _, attribute := range shape.attributes {
 		attributeNames[strings.ToLower(attribute.Name)] = true
@@ -1037,8 +1037,8 @@ func validateReferenceObjectShape(shape referenceObjectShape, manifest project.P
 			issues = append(issues, prefix+".name conflicts with an attribute")
 		}
 		partNames[folded] = true
-		issues = append(issues, validateTitle(prefix+".title", part.Title, manifest)...)
-		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, manifest, nil)...)
+		issues = append(issues, validateTitle(prefix+".title", part.Title, configuration)...)
+		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, configuration, nil)...)
 	}
 	issues = append(issues, validateObjectForms(shape.forms)...)
 	issues = append(issues, validateListSettings(shape.list, shape.attributes, map[string]TypeKind{
@@ -1108,7 +1108,7 @@ func validatePredefinedItems(shape referenceObjectShape) []string {
 	return issues
 }
 
-func validateAttributes(path string, attributes []Attribute, manifest project.Project, reserved func(string) bool) []string {
+func validateAttributes(path string, attributes []Attribute, configuration project.Project, reserved func(string) bool) []string {
 	if len(attributes) > 1024 {
 		return []string{path + " must not contain more than 1024 items"}
 	}
@@ -1134,7 +1134,7 @@ func validateAttributes(path string, attributes []Attribute, manifest project.Pr
 			issues = append(issues, prefix+".name is reserved")
 		}
 		names[folded] = true
-		issues = append(issues, validateTitle(prefix+".title", attribute.Title, manifest)...)
+		issues = append(issues, validateTitle(prefix+".title", attribute.Title, configuration)...)
 		issues = append(issues, validateTypes(prefix+".types", attribute.Types, uuid.UUID{})...)
 	}
 	return issues
@@ -1190,7 +1190,7 @@ func decodeStrict(source string, reader io.Reader, target any) error {
 	return nil
 }
 
-func validateBase(format int, id uuid.UUID, name string, title LocalizedText, manifest project.Project) []string {
+func validateBase(format int, id uuid.UUID, name string, title LocalizedText, configuration project.Project) []string {
 	var issues []string
 	if format != CurrentFormat {
 		issues = append(issues, fmt.Sprintf("format must be %d", CurrentFormat))
@@ -1204,13 +1204,13 @@ func validateBase(format int, id uuid.UUID, name string, title LocalizedText, ma
 	if utf8.RuneCountInString(name) > 128 {
 		issues = append(issues, "name must not exceed 128 characters")
 	}
-	return append(issues, validateTitle("title", title, manifest)...)
+	return append(issues, validateTitle("title", title, configuration)...)
 }
 
-func validateTitle(path string, title LocalizedText, manifest project.Project) []string {
+func validateTitle(path string, title LocalizedText, configuration project.Project) []string {
 	var issues []string
-	configured := make(map[string]bool, len(manifest.Languages))
-	for _, language := range manifest.Languages {
+	configured := make(map[string]bool, len(configuration.Languages))
+	for _, language := range configuration.Languages {
 		configured[language.Code] = true
 	}
 	if len(title) == 0 {

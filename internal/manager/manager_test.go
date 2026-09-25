@@ -28,8 +28,8 @@ func TestManagerServesUIAndRunningServiceStatus(t *testing.T) {
 		}
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("{}"))}, nil
 	})}
-	configuration := appconfig.Default()
-	handler := newHandler(configuration, client, nil, nil)
+	settings := appconfig.Default()
+	handler := newHandler(settings, client, nil, nil)
 
 	page := httptest.NewRecorder()
 	handler.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/", nil))
@@ -56,9 +56,9 @@ func TestManagerReportsStoppedService(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("connection refused")
 	})}
-	configuration := appconfig.Default()
+	settings := appconfig.Default()
 	response := httptest.NewRecorder()
-	newHandler(configuration, client, nil, nil).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/status", nil))
+	newHandler(settings, client, nil, nil).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/status", nil))
 	var status struct {
 		Running bool `json:"running"`
 	}

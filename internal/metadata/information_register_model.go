@@ -48,12 +48,12 @@ type InformationRegisterDefinition struct {
 	Templates   []ObjectTemplate               `yaml:"templates,omitempty"`
 }
 
-func DecodeInformationRegister(source string, reader io.Reader, manifest project.Project) (InformationRegisterDefinition, error) {
+func DecodeInformationRegister(source string, reader io.Reader, configuration project.Project) (InformationRegisterDefinition, error) {
 	var value InformationRegisterDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return InformationRegisterDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	switch value.WriteMode {
 	case InformationRegisterIndependent, InformationRegisterRecorder:
 	default:
@@ -69,9 +69,9 @@ func DecodeInformationRegister(source string, reader io.Reader, manifest project
 	default:
 		issues = append(issues, "periodicity must be none, second, day, month, quarter, year or recorder-position")
 	}
-	issues = append(issues, validateAttributes("dimensions", value.Dimensions, manifest, reservedInformationRegisterName)...)
-	issues = append(issues, validateAttributes("resources", value.Resources, manifest, reservedInformationRegisterName)...)
-	issues = append(issues, validateAttributes("attributes", value.Attributes, manifest, reservedInformationRegisterName)...)
+	issues = append(issues, validateAttributes("dimensions", value.Dimensions, configuration, reservedInformationRegisterName)...)
+	issues = append(issues, validateAttributes("resources", value.Resources, configuration, reservedInformationRegisterName)...)
+	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, reservedInformationRegisterName)...)
 	if len(value.Dimensions)+len(value.Resources)+len(value.Attributes) == 0 {
 		issues = append(issues, "dimensions, resources or attributes must contain at least one item")
 	}
@@ -119,8 +119,8 @@ func DecodeInformationRegister(source string, reader io.Reader, manifest project
 		issues = append(issues, "recorders are only allowed for recorder write mode")
 	}
 	issues = append(issues, validateObjectForms(value.Forms)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return InformationRegisterDefinition{}, err
 	}

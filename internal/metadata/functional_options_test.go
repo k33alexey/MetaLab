@@ -216,7 +216,7 @@ id: `+optionID+`
 name: Опция
 title: {ru: Опция}
 `+broken.body+`
-`), metadataManifest())
+`), metadataConfiguration())
 			if err == nil {
 				t.Fatalf("%s: accepted", name)
 			}

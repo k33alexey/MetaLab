@@ -30,9 +30,9 @@ func TestManagerApplicationRolesUseActivePublicationIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
-	configuration := appconfig.Default()
-	configuration.SourcePath = filepath.Join(t.TempDir(), "config.yaml")
-	runtime := New(ctx, configuration, &memorySecrets{values: map[string]string{}})
+	settings := appconfig.Default()
+	settings.SourcePath = filepath.Join(t.TempDir(), "config.yaml")
+	runtime := New(ctx, settings, &memorySecrets{values: map[string]string{}})
 	provisioned := []postgresadmin.Provisioned{}
 	t.Cleanup(func() {
 		runtime.Close()
@@ -95,9 +95,9 @@ func TestManagerApplicationRolesUseActivePublicationIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "RoleDemo", Title: project.LocalizedText{"ru": "Role demo"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
+	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "RoleDemo", Title: project.LocalizedText{"ru": "Role demo"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
 	root := filepath.Join(t.TempDir(), "project")
-	if err := project.Initialize(root, manifest); err != nil {
+	if err := project.Initialize(root, configuration); err != nil {
 		t.Fatal(err)
 	}
 	constant := metadata.Constant{Format: 1, ID: uuid.MustNew(), Name: "Режим", Title: metadata.LocalizedText{"ru": "Режим"}, Types: []metadata.Type{{Kind: metadata.BooleanType}}}
@@ -131,7 +131,7 @@ func TestManagerApplicationRolesUseActivePublicationIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	view, err := runtime.GetManagerApplicationRoles(adminContext, registered.ID, member.ID)
-	if err != nil || view.ProjectID != manifest.ID || len(view.Available) != 1 || view.Available[0].ID != reader.ID || view.Assignment.Revision != 0 {
+	if err != nil || view.ProjectID != configuration.ID || len(view.Available) != 1 || view.Available[0].ID != reader.ID || view.Assignment.Revision != 0 {
 		t.Fatalf("published role choices: %+v %v", view, err)
 	}
 	// An unpublished role in the working directory must never become assignable.
@@ -139,12 +139,12 @@ func TestManagerApplicationRolesUseActivePublicationIntegration(t *testing.T) {
 	unpublished.ID = uuid.MustNew()
 	unpublished.Name = "НеОпубликована"
 	write("metadata/roles/"+unpublished.ID.String()+".yaml", unpublished)
-	for _, update := range []ApplicationRoleUpdate{{ProjectID: uuid.MustNew(), RoleIDs: []uuid.UUID{reader.ID}}, {ProjectID: manifest.ID, RoleIDs: []uuid.UUID{unpublished.ID}}, {ProjectID: manifest.ID, RoleIDs: []uuid.UUID{reader.ID, reader.ID}}} {
+	for _, update := range []ApplicationRoleUpdate{{ProjectID: uuid.MustNew(), RoleIDs: []uuid.UUID{reader.ID}}, {ProjectID: configuration.ID, RoleIDs: []uuid.UUID{unpublished.ID}}, {ProjectID: configuration.ID, RoleIDs: []uuid.UUID{reader.ID, reader.ID}}} {
 		if _, err := runtime.SetManagerApplicationRoles(adminContext, registered.ID, member.ID, update); err == nil {
 			t.Fatal("invalid/unpublished role was assigned")
 		}
 	}
-	assignment, err := runtime.SetManagerApplicationRoles(adminContext, registered.ID, member.ID, ApplicationRoleUpdate{ProjectID: manifest.ID, RoleIDs: []uuid.UUID{reader.ID}})
+	assignment, err := runtime.SetManagerApplicationRoles(adminContext, registered.ID, member.ID, ApplicationRoleUpdate{ProjectID: configuration.ID, RoleIDs: []uuid.UUID{reader.ID}})
 	if err != nil || assignment.Revision != 1 {
 		t.Fatalf("assign published role: %+v %v", assignment, err)
 	}
@@ -156,7 +156,7 @@ func TestManagerApplicationRolesUseActivePublicationIntegration(t *testing.T) {
 	if err != nil || !policy.AllowsFields(constant.ID, metadata.PermissionRead, "value") || policy.AllowsFields(constant.ID, metadata.PermissionUpdate, "value") {
 		t.Fatalf("resolved stored permissions: %v", err)
 	}
-	if _, err := runtime.SetManagerApplicationRoles(adminContext, registered.ID, member.ID, ApplicationRoleUpdate{ProjectID: manifest.ID, ExpectedRevision: 0}); !errors.Is(err, systemdb.ErrApplicationRolesChanged) {
+	if _, err := runtime.SetManagerApplicationRoles(adminContext, registered.ID, member.ID, ApplicationRoleUpdate{ProjectID: configuration.ID, ExpectedRevision: 0}); !errors.Is(err, systemdb.ErrApplicationRolesChanged) {
 		t.Fatalf("stale role editor: %v", err)
 	}
 	view, err = runtime.GetManagerApplicationRoles(adminContext, registered.ID, member.ID)

@@ -157,12 +157,12 @@ type BusinessProcessDefinition struct {
 }
 
 // DecodeBusinessProcess reads and validates one business process.
-func DecodeBusinessProcess(source string, reader io.Reader, manifest project.Project) (BusinessProcessDefinition, error) {
+func DecodeBusinessProcess(source string, reader io.Reader, configuration project.Project) (BusinessProcessDefinition, error) {
 	var value BusinessProcessDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return BusinessProcessDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateNumberedObjectShape(numberedObjectShape{
 		number:       value.Number,
 		attributes:   value.Attributes,
@@ -170,20 +170,20 @@ func DecodeBusinessProcess(source string, reader io.Reader, manifest project.Pro
 		forms:        value.Forms,
 		list:         value.List,
 		reservedName: reservedBusinessProcessName,
-	}, manifest)...)
+	}, configuration)...)
 	if value.Task != nil && value.Task.IsZero() {
 		issues = append(issues, "task must be a non-zero UUID")
 	}
-	issues = append(issues, validateRouteMap(value.Route, manifest)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
+	issues = append(issues, validateRouteMap(value.Route, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return BusinessProcessDefinition{}, err
 	}
 	return value, nil
 }
 
-func validateRouteMap(route RouteMap, manifest project.Project) []string {
+func validateRouteMap(route RouteMap, configuration project.Project) []string {
 	if len(route.Points) == 0 && len(route.Transitions) == 0 {
 		return nil
 	}
@@ -216,7 +216,7 @@ func validateRouteMap(route RouteMap, manifest project.Project) []string {
 		// A caption is what the drawing shows; a point without one is drawn by
 		// its name, and the platform's own maps leave the start uncaptioned.
 		if len(point.Title) > 0 {
-			issues = append(issues, validateTitle(prefix+".title", point.Title, manifest)...)
+			issues = append(issues, validateTitle(prefix+".title", point.Title, configuration)...)
 		}
 		issues = append(issues, validateRouteArea(prefix+".location", point.Location)...)
 		switch point.Kind {
@@ -294,7 +294,7 @@ func validateRouteMap(route RouteMap, manifest project.Project) []string {
 			}
 		}
 	}
-	issues = append(issues, validateRouteDecorations(route.Decorations, manifest)...)
+	issues = append(issues, validateRouteDecorations(route.Decorations, configuration)...)
 	// A point nobody can reach is a step that never runs, and a map drawn with
 	// one is a map that lies about what the process does.
 	reachable := map[string]bool{}
@@ -351,7 +351,7 @@ func validateAddressingValues(prefix string, values []AddressingValue) []string 
 	return issues
 }
 
-func validateRouteDecorations(decorations []RouteDecoration, manifest project.Project) []string {
+func validateRouteDecorations(decorations []RouteDecoration, configuration project.Project) []string {
 	if len(decorations) > maxRouteDecorations {
 		return []string{fmt.Sprintf("route.decorations must not contain more than %d items", maxRouteDecorations)}
 	}
@@ -368,7 +368,7 @@ func validateRouteDecorations(decorations []RouteDecoration, manifest project.Pr
 		}
 		names[folded] = true
 		if len(decoration.Title) > 0 {
-			issues = append(issues, validateTitle(prefix+".title", decoration.Title, manifest)...)
+			issues = append(issues, validateTitle(prefix+".title", decoration.Title, configuration)...)
 		}
 		issues = append(issues, validateRouteArea(prefix+".location", decoration.Location)...)
 		if len(decoration.Line) > maxRouteVertices {

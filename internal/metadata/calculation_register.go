@@ -103,12 +103,12 @@ type CalculationRegisterDefinition struct {
 }
 
 // DecodeCalculationRegister reads and validates one calculation register.
-func DecodeCalculationRegister(source string, reader io.Reader, manifest project.Project) (CalculationRegisterDefinition, error) {
+func DecodeCalculationRegister(source string, reader io.Reader, configuration project.Project) (CalculationRegisterDefinition, error) {
 	var value CalculationRegisterDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return CalculationRegisterDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	if value.ChartOfCalculationTypes.IsZero() {
 		issues = append(issues, "chart_of_calculation_types is required: without kinds of accrual there is nothing to calculate")
 	}
@@ -137,7 +137,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, manifest project
 	for index, dimension := range value.Dimensions {
 		prefix := fmt.Sprintf("dimensions[%d]", index)
 		issues = append(issues, validateRegisterFieldShape(prefix, dimension.ID, dimension.Name, dimension.Title, dimension.Types,
-			value.ID, names, ids, manifest, reservedCalculationRegisterName)...)
+			value.ID, names, ids, configuration, reservedCalculationRegisterName)...)
 		if dimension.ScheduleLink != nil && value.Schedule == nil {
 			issues = append(issues, prefix+".schedule_link needs a schedule: there is no schedule for it to link to")
 		}
@@ -145,14 +145,14 @@ func DecodeCalculationRegister(source string, reader io.Reader, manifest project
 	for index, resource := range value.Resources {
 		prefix := fmt.Sprintf("resources[%d]", index)
 		issues = append(issues, validateRegisterFieldShape(prefix, resource.ID, resource.Name, resource.Title, resource.Types,
-			value.ID, names, ids, manifest, reservedCalculationRegisterName)...)
+			value.ID, names, ids, configuration, reservedCalculationRegisterName)...)
 	}
-	issues = append(issues, validateAttributes("attributes", value.Attributes, manifest, func(name string) bool {
+	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, func(name string) bool {
 		return names[strings.ToLower(name)] || reservedCalculationRegisterName(name)
 	})...)
-	issues = append(issues, validateRecalculations(value, manifest)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
+	issues = append(issues, validateRecalculations(value, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return CalculationRegisterDefinition{}, err
 	}
@@ -163,7 +163,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, manifest project
 // repeats, and keeps one set of names and identifiers across the groups: a
 // dimension and a resource of one register may not share a name.
 func validateRegisterFieldShape(prefix string, id uuid.UUID, name string, title LocalizedText, types []Type,
-	self uuid.UUID, names map[string]bool, ids map[uuid.UUID]bool, manifest project.Project, reserved func(string) bool) []string {
+	self uuid.UUID, names map[string]bool, ids map[uuid.UUID]bool, configuration project.Project, reserved func(string) bool) []string {
 	var issues []string
 	if id.IsZero() {
 		issues = append(issues, prefix+".id must be a non-zero UUID")
@@ -180,12 +180,12 @@ func validateRegisterFieldShape(prefix string, id uuid.UUID, name string, title 
 		issues = append(issues, prefix+".name is taken")
 	}
 	names[folded] = true
-	issues = append(issues, validateTitle(prefix+".title", title, manifest)...)
+	issues = append(issues, validateTitle(prefix+".title", title, configuration)...)
 	issues = append(issues, validateTypes(prefix+".types", types, self)...)
 	return issues
 }
 
-func validateRecalculations(value CalculationRegisterDefinition, manifest project.Project) []string {
+func validateRecalculations(value CalculationRegisterDefinition, configuration project.Project) []string {
 	if len(value.Recalculations) > maxRecalculationsPerRegister {
 		return []string{fmt.Sprintf("recalculations must not contain more than %d items", maxRecalculationsPerRegister)}
 	}
@@ -208,7 +208,7 @@ func validateRecalculations(value CalculationRegisterDefinition, manifest projec
 			issues = append(issues, prefix+".name must be unique")
 		}
 		names[folded] = true
-		issues = append(issues, validateTitle(prefix+".title", recalculation.Title, manifest)...)
+		issues = append(issues, validateTitle(prefix+".title", recalculation.Title, configuration)...)
 		if len(recalculation.Dimensions) == 0 {
 			issues = append(issues, prefix+" has no dimensions, so it finds no records to compute again")
 		}
@@ -229,7 +229,7 @@ func validateRecalculations(value CalculationRegisterDefinition, manifest projec
 				issues = append(issues, path+".name must be unique")
 			}
 			inner[strings.ToLower(dimension.Name)] = true
-			issues = append(issues, validateTitle(path+".title", dimension.Title, manifest)...)
+			issues = append(issues, validateTitle(path+".title", dimension.Title, configuration)...)
 			if dimension.RegisterDimension.IsZero() {
 				issues = append(issues, path+".register_dimension is required: without it nothing says which records to compute again")
 			}

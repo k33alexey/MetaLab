@@ -27,12 +27,12 @@ func TestDecodeRoleStrictAndBounded(t *testing.T) {
 	if err := Encode(&encoded, role); err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := DecodeRole("role.yaml", bytes.NewReader(encoded.Bytes()), metadataManifest())
+	decoded, err := DecodeRole("role.yaml", bytes.NewReader(encoded.Bytes()), metadataConfiguration())
 	if err != nil || decoded.ID != role.ID {
 		t.Fatalf("decode role = %+v, %v", decoded, err)
 	}
 	for _, suffix := range []string{"unknown: true\n", "---\nformat: 1\n"} {
-		if _, err := DecodeRole("role.yaml", strings.NewReader(encoded.String()+suffix), metadataManifest()); err == nil {
+		if _, err := DecodeRole("role.yaml", strings.NewReader(encoded.String()+suffix), metadataConfiguration()); err == nil {
 			t.Fatalf("accepted invalid suffix %q", suffix)
 		}
 	}
@@ -67,7 +67,7 @@ func TestDecodeRoleStrictAndBounded(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			value := cloneRole(role)
 			mutate(&value)
-			if err := ValidateRole("role.yaml", value, metadataManifest()); err == nil {
+			if err := ValidateRole("role.yaml", value, metadataConfiguration()); err == nil {
 				t.Fatal("invalid role accepted")
 			} else if name == "format" && !errors.Is(err, ErrUnsupportedFormat) {
 				t.Fatalf("format error = %v", err)
@@ -76,7 +76,7 @@ func TestDecodeRoleStrictAndBounded(t *testing.T) {
 	}
 	empty := cloneRole(role)
 	empty.Objects = nil
-	if err := ValidateRole("empty-role.yaml", empty, metadataManifest()); err != nil {
+	if err := ValidateRole("empty-role.yaml", empty, metadataConfiguration()); err != nil {
 		t.Fatalf("empty role must be valid and grant nothing: %v", err)
 	}
 }
@@ -93,7 +93,7 @@ func roleCatalogFixture(t *testing.T) (*Catalog, RoleDefinition, ManagedForm) {
 	form := ManagedForm{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Форма", Title: LocalizedText{"ru": "Форма"}, Kind: ObjectForm,
 		Commands: []ManagedFormCommand{{ID: uuid.MustNew(), Name: "Обновить", Title: LocalizedText{"ru": "Обновить"}, Action: FormCommandRefresh}}}
 	role.Commands = []CommandPermission{{Form: form.ID, Command: form.Commands[0].ID}}
-	catalog, err := NewCatalogSnapshotWithRoles(metadataManifest(), nil, nil, nil, []CatalogDefinition{definition}, nil, nil, nil, []RoleDefinition{role})
+	catalog, err := NewCatalogSnapshotWithRoles(metadataConfiguration(), nil, nil, nil, []CatalogDefinition{definition}, nil, nil, nil, []RoleDefinition{role})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,13 +426,13 @@ func TestRoleAutoGrantDefaults(t *testing.T) {
 
 func TestRoleCommentLimit(t *testing.T) {
 	t.Parallel()
-	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "P", Title: project.LocalizedText{"ru": "P"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
+	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "P", Title: project.LocalizedText{"ru": "P"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
 	role := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "R", Title: LocalizedText{"ru": "R"}, Comment: strings.Repeat("a", MaxRoleComment)}
-	if err := ValidateRole("role", role, manifest); err != nil {
+	if err := ValidateRole("role", role, configuration); err != nil {
 		t.Fatalf("comment at the limit rejected: %v", err)
 	}
 	role.Comment += "a"
-	if err := ValidateRole("role", role, manifest); err == nil {
+	if err := ValidateRole("role", role, configuration); err == nil {
 		t.Fatal("comment over the limit accepted")
 	}
 }

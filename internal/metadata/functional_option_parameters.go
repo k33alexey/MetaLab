@@ -46,12 +46,12 @@ type FunctionalOptionParameterDefinition struct {
 }
 
 // DecodeFunctionalOptionParameter reads and validates one parameter.
-func DecodeFunctionalOptionParameter(source string, reader io.Reader, manifest project.Project) (FunctionalOptionParameterDefinition, error) {
+func DecodeFunctionalOptionParameter(source string, reader io.Reader, configuration project.Project) (FunctionalOptionParameterDefinition, error) {
 	var value FunctionalOptionParameterDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return FunctionalOptionParameterDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	if len(value.Use) > maxParameterUse {
 		issues = append(issues, fmt.Sprintf("use must not contain more than %d items", maxParameterUse))
 	}

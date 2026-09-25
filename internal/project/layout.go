@@ -20,7 +20,7 @@ const (
 	// it of the whole ML Project: the identifier, the name, the synonym, the
 	// languages and everything else the root says about itself.
 	//
-	// It is not a manifest standing beside the root - there is no such thing.
+	// It is not a configuration standing beside the root - there is no such thing.
 	// The root is the configuration, so its description lies at the top of the
 	// project beside the branches of its kinds, which is where the prototype's
 	// own export puts it too.
@@ -67,7 +67,7 @@ var (
 	ErrProjectExists = errors.New("ML Project path already exists")
 	// ErrInvalidLayout indicates a missing, unsafe, or malformed project path.
 	ErrInvalidLayout = errors.New("invalid ML Project layout")
-	// ErrProjectIdentityChanged prevents accidental replacement with another project manifest.
+	// ErrProjectIdentityChanged prevents accidental replacement with another project configuration.
 	ErrProjectIdentityChanged = errors.New("ML Project identity cannot be changed")
 
 	rootDirectories = []string{"metadata", "modules"}
@@ -218,14 +218,14 @@ func ObjectModuleFiles() []string { return slices.Clone(objectModuleFiles) }
 func ObjectSubordinateDirectories() []string { return slices.Clone(objectSubordinateDirectories) }
 
 // Initialize atomically creates a new canonical ML Project at a previously unused path.
-func Initialize(root string, manifest Project) error {
-	// A manifest built in code names its languages but does not invent their
+func Initialize(root string, configuration Project) error {
+	// A configuration built in code names its languages but does not invent their
 	// identities; that is this layer's job, here and in SaveConfiguration.
-	manifest, err := EnsureLanguageIdentities(manifest)
+	configuration, err := EnsureLanguageIdentities(configuration)
 	if err != nil {
 		return err
 	}
-	if err := manifest.Validate(); err != nil {
+	if err := configuration.Validate(); err != nil {
 		return err
 	}
 	root, err = cleanRoot(root)
@@ -251,21 +251,21 @@ func Initialize(root string, manifest Project) error {
 		return fmt.Errorf("set ML Project directory permissions: %w", err)
 	}
 
-	manifestPath := filepath.Join(staging, ConfigurationFile)
-	file, err := os.OpenFile(manifestPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	configurationPath := filepath.Join(staging, ConfigurationFile)
+	file, err := os.OpenFile(configurationPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return fmt.Errorf("create ML Project manifest: %w", err)
+		return fmt.Errorf("create ML Project configuration: %w", err)
 	}
-	if err := Encode(file, manifest); err != nil {
+	if err := Encode(file, configuration); err != nil {
 		_ = file.Close()
 		return err
 	}
 	if err := file.Sync(); err != nil {
 		_ = file.Close()
-		return fmt.Errorf("sync ML Project manifest: %w", err)
+		return fmt.Errorf("sync ML Project configuration: %w", err)
 	}
 	if err := file.Close(); err != nil {
-		return fmt.Errorf("close ML Project manifest: %w", err)
+		return fmt.Errorf("close ML Project configuration: %w", err)
 	}
 	for _, directory := range rootDirectories {
 		path := filepath.Join(staging, directory)
@@ -285,7 +285,7 @@ func Initialize(root string, manifest Project) error {
 	return nil
 }
 
-// ValidateLayout verifies the safe root structure and the current manifest.
+// ValidateLayout verifies the safe root structure and the current configuration.
 func ValidateLayout(root string) (Project, error) {
 	root, err := cleanRoot(root)
 	if err != nil {
@@ -294,8 +294,8 @@ func ValidateLayout(root string) (Project, error) {
 	if err := requirePath(root, true); err != nil {
 		return Project{}, err
 	}
-	manifestPath := filepath.Join(root, ConfigurationFile)
-	if err := requirePath(manifestPath, false); err != nil {
+	configurationPath := filepath.Join(root, ConfigurationFile)
+	if err := requirePath(configurationPath, false); err != nil {
 		return Project{}, err
 	}
 	for _, directory := range rootDirectories {
@@ -303,15 +303,15 @@ func ValidateLayout(root string) (Project, error) {
 			return Project{}, err
 		}
 	}
-	manifest, err := readConfiguration(manifestPath)
+	configuration, err := readConfiguration(configurationPath)
 	if err != nil {
 		return Project{}, fmt.Errorf("%w: %v", ErrInvalidLayout, err)
 	}
-	return manifest, nil
+	return configuration, nil
 }
 
-// SaveConfiguration atomically writes a validated manifest without allowing its stable UUID to change.
-func SaveConfiguration(root string, manifest Project) error {
+// SaveConfiguration atomically writes a validated configuration without allowing its stable UUID to change.
+func SaveConfiguration(root string, configuration Project) error {
 	root, err := cleanRoot(root)
 	if err != nil {
 		return err
@@ -321,43 +321,43 @@ func SaveConfiguration(root string, manifest Project) error {
 		return err
 	}
 	// A language that is already in the project keeps the identity it has, even
-	// when the caller hands back a manifest built without one: saving the same
-	// manifest twice has to produce the same file, and a language does not
+	// when the caller hands back a configuration built without one: saving the same
+	// configuration twice has to produce the same file, and a language does not
 	// become a different object because someone rebuilt the struct.
-	manifest = carryLanguageIdentities(manifest, current)
-	manifest, err = EnsureLanguageIdentities(manifest)
+	configuration = carryLanguageIdentities(configuration, current)
+	configuration, err = EnsureLanguageIdentities(configuration)
 	if err != nil {
 		return err
 	}
-	if err := manifest.Validate(); err != nil {
+	if err := configuration.Validate(); err != nil {
 		return err
 	}
-	if current.ID != manifest.ID {
+	if current.ID != configuration.ID {
 		return ErrProjectIdentityChanged
 	}
 	temporary, err := os.CreateTemp(root, ".configuration-*.yaml")
 	if err != nil {
-		return fmt.Errorf("create temporary ML Project manifest: %w", err)
+		return fmt.Errorf("create temporary ML Project configuration: %w", err)
 	}
 	temporaryPath := temporary.Name()
 	defer os.Remove(temporaryPath)
 	if err := temporary.Chmod(0o644); err != nil {
 		_ = temporary.Close()
-		return fmt.Errorf("set temporary manifest permissions: %w", err)
+		return fmt.Errorf("set temporary configuration permissions: %w", err)
 	}
-	if err := Encode(temporary, manifest); err != nil {
+	if err := Encode(temporary, configuration); err != nil {
 		_ = temporary.Close()
 		return err
 	}
 	if err := temporary.Sync(); err != nil {
 		_ = temporary.Close()
-		return fmt.Errorf("sync ML Project manifest: %w", err)
+		return fmt.Errorf("sync ML Project configuration: %w", err)
 	}
 	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("close ML Project manifest: %w", err)
+		return fmt.Errorf("close ML Project configuration: %w", err)
 	}
 	if err := replaceProjectFile(temporaryPath, filepath.Join(root, ConfigurationFile)); err != nil {
-		return fmt.Errorf("replace ML Project manifest: %w", err)
+		return fmt.Errorf("replace ML Project configuration: %w", err)
 	}
 	return nil
 }
@@ -787,28 +787,28 @@ func requirePath(path string, directory bool) error {
 func readConfiguration(path string) (Project, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return Project{}, fmt.Errorf("open manifest %q: %w", path, err)
+		return Project{}, fmt.Errorf("open configuration %q: %w", path, err)
 	}
 	defer file.Close()
 	return DecodeSource(path, file)
 }
 
-// carryLanguageIdentities copies identities from the manifest on disk onto a
-// manifest that lacks them, matching by language code - the only thing the two
+// carryLanguageIdentities copies identities from the configuration on disk onto a
+// configuration that lacks them, matching by language code - the only thing the two
 // have in common when the caller built the value in code.
-func carryLanguageIdentities(manifest, current Project) Project {
+func carryLanguageIdentities(configuration, current Project) Project {
 	known := make(map[string]uuid.UUID, len(current.Languages))
 	for _, language := range current.Languages {
 		known[strings.ToLower(language.Code)] = language.ID
 	}
-	manifest.Languages = append([]Language(nil), manifest.Languages...)
-	for index := range manifest.Languages {
-		if !manifest.Languages[index].ID.IsZero() {
+	configuration.Languages = append([]Language(nil), configuration.Languages...)
+	for index := range configuration.Languages {
+		if !configuration.Languages[index].ID.IsZero() {
 			continue
 		}
-		if id, ok := known[strings.ToLower(manifest.Languages[index].Code)]; ok {
-			manifest.Languages[index].ID = id
+		if id, ok := known[strings.ToLower(configuration.Languages[index].Code)]; ok {
+			configuration.Languages[index].ID = id
 		}
 	}
-	return manifest
+	return configuration
 }

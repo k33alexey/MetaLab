@@ -32,7 +32,7 @@ languages:
     code: en
 `
 
-// legacyYAML is a manifest written before languages had identities. Reading it
+// legacyYAML is a configuration written before languages had identities. Reading it
 // must keep working - the identity is the platform's own bookkeeping, and the
 // data it addresses (translations) is keyed by code, not by it.
 const legacyYAML = `format: 1
@@ -269,7 +269,7 @@ func TestLanguagesWithoutIdentitiesGainThemOnDecode(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(encoded.String(), "id: "+value.Languages[0].ID.String()) {
-		t.Fatalf("written manifest does not carry the identity:\n%s", encoded.String())
+		t.Fatalf("written configuration does not carry the identity:\n%s", encoded.String())
 	}
 	restored, err := Decode(strings.NewReader(encoded.String()))
 	if err != nil {

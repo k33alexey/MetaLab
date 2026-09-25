@@ -48,11 +48,11 @@ func (workspace *Workspace) readRoleLocked(relative string) (RoleSource, error) 
 	if err != nil {
 		return RoleSource{}, err
 	}
-	manifest, err := project.ValidateLayout(workspace.root)
+	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return RoleSource{}, err
 	}
-	role, err := metadata.DecodeRole(relative, strings.NewReader(file.Content), manifest)
+	role, err := metadata.DecodeRole(relative, strings.NewReader(file.Content), configuration)
 	if err != nil {
 		return RoleSource{}, err
 	}
@@ -63,7 +63,7 @@ func (workspace *Workspace) readRoleLocked(relative string) (RoleSource, error) 
 	if err != nil {
 		return RoleSource{}, err
 	}
-	return RoleSource{Path: relative, Revision: file.Revision, Role: role, Schema: schema, Languages: roleLanguages(manifest), DefaultLanguage: manifest.DefaultLanguage}, nil
+	return RoleSource{Path: relative, Revision: file.Revision, Role: role, Schema: schema, Languages: roleLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage}, nil
 }
 
 // RoleOverview is what the cross-role screens read. Opening one role at a time
@@ -88,7 +88,7 @@ type RoleOverviewEntry struct {
 func (workspace *Workspace) ReadAllRoles() (RoleOverview, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
-	manifest, err := project.ValidateLayout(workspace.root)
+	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return RoleOverview{}, err
 	}
@@ -96,7 +96,7 @@ func (workspace *Workspace) ReadAllRoles() (RoleOverview, error) {
 	if err != nil && !os.IsNotExist(err) {
 		return RoleOverview{}, err
 	}
-	result := RoleOverview{Roles: []RoleOverviewEntry{}, Languages: roleLanguages(manifest), DefaultLanguage: manifest.DefaultLanguage}
+	result := RoleOverview{Roles: []RoleOverviewEntry{}, Languages: roleLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage}
 	for _, entry := range entries {
 		if entry.IsDir() || entry.Name() == ".gitkeep" {
 			continue
@@ -106,7 +106,7 @@ func (workspace *Workspace) ReadAllRoles() (RoleOverview, error) {
 		if err != nil {
 			return RoleOverview{}, err
 		}
-		role, err := metadata.DecodeRole(relative, strings.NewReader(file.Content), manifest)
+		role, err := metadata.DecodeRole(relative, strings.NewReader(file.Content), configuration)
 		if err != nil {
 			return RoleOverview{}, err
 		}
@@ -181,7 +181,7 @@ func (workspace *Workspace) checkRoleNameLocked(role metadata.RoleDefinition) er
 	if err != nil {
 		return err
 	}
-	manifest, err := project.ValidateLayout(workspace.root)
+	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return err
 	}
@@ -193,7 +193,7 @@ func (workspace *Workspace) checkRoleNameLocked(role metadata.RoleDefinition) er
 		if err != nil {
 			return err
 		}
-		other, err := metadata.DecodeRole(file.Path, strings.NewReader(file.Content), manifest)
+		other, err := metadata.DecodeRole(file.Path, strings.NewReader(file.Content), configuration)
 		if err != nil {
 			return err
 		}
@@ -207,7 +207,7 @@ func (workspace *Workspace) checkRoleNameLocked(role metadata.RoleDefinition) er
 func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
-	manifest, err := project.ValidateLayout(workspace.root)
+	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return RoleSource{}, err
 	}
@@ -215,8 +215,8 @@ func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {
 	if err != nil {
 		return RoleSource{}, err
 	}
-	role := metadata.RoleDefinition{Format: metadata.CurrentFormat, ID: id, Name: name, Title: metadata.LocalizedText{manifest.DefaultLanguage: name}}
-	if err := metadata.ValidateRole("new role", role, manifest); err != nil {
+	role := metadata.RoleDefinition{Format: metadata.CurrentFormat, ID: id, Name: name, Title: metadata.LocalizedText{configuration.DefaultLanguage: name}}
+	if err := metadata.ValidateRole("new role", role, configuration); err != nil {
 		return RoleSource{}, err
 	}
 	schema, err := metadata.LoadPermissionSchema(workspace.root)
@@ -255,7 +255,7 @@ func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {
 		return RoleSource{}, fmt.Errorf("create role: write=%v, close=%v", writeErr, closeErr)
 	}
 	workspace.invalidateStudioIndexesLocked()
-	return RoleSource{Path: relative, Revision: sourceFile(relative, "yaml", content.Bytes()).Revision, Role: role, Schema: schema, Languages: roleLanguages(manifest), DefaultLanguage: manifest.DefaultLanguage}, nil
+	return RoleSource{Path: relative, Revision: sourceFile(relative, "yaml", content.Bytes()).Revision, Role: role, Schema: schema, Languages: roleLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage}, nil
 }
 
 // applyRoleAutoGrantsLocked visits every role file and lets mutate decide
@@ -272,7 +272,7 @@ func (workspace *Workspace) applyRoleAutoGrantsLocked(mutate func(*metadata.Role
 	if err != nil {
 		return err
 	}
-	manifest, err := project.ValidateLayout(workspace.root)
+	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return err
 	}
@@ -285,7 +285,7 @@ func (workspace *Workspace) applyRoleAutoGrantsLocked(mutate func(*metadata.Role
 		if err != nil {
 			return err
 		}
-		role, err := metadata.DecodeRole(relative, strings.NewReader(file.Content), manifest)
+		role, err := metadata.DecodeRole(relative, strings.NewReader(file.Content), configuration)
 		if err != nil {
 			return err
 		}
@@ -303,9 +303,9 @@ func (workspace *Workspace) applyRoleAutoGrantsLocked(mutate func(*metadata.Role
 	return nil
 }
 
-func roleLanguages(manifest project.Project) []FormLanguage {
-	result := make([]FormLanguage, len(manifest.Languages))
-	for index, language := range manifest.Languages {
+func roleLanguages(configuration project.Project) []FormLanguage {
+	result := make([]FormLanguage, len(configuration.Languages))
+	for index, language := range configuration.Languages {
 		result[index] = FormLanguage{Code: language.Code, Title: language.Title}
 	}
 	return result

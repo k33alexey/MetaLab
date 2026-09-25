@@ -108,7 +108,7 @@ func (workspace *Workspace) startTargetDebug(input studioDebugStart, arguments [
 	}
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
-	manifest, err := project.ValidateLayout(workspace.root)
+	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return vm.DebugSnapshot{}, err
 	}
@@ -117,11 +117,11 @@ func (workspace *Workspace) startTargetDebug(input studioDebugStart, arguments [
 		workspace.debugSession.Stop()
 		workspace.debugSession = nil
 	}
-	lease, target, err := workspace.debugTargets.Attach(targetID, "ML Studio · "+manifest.Name)
+	lease, target, err := workspace.debugTargets.Attach(targetID, "ML Studio · "+configuration.Name)
 	if err != nil {
 		return vm.DebugSnapshot{}, err
 	}
-	if target.ProjectID != manifest.ID {
+	if target.ProjectID != configuration.ID {
 		_ = lease.Close()
 		return vm.DebugSnapshot{}, fmt.Errorf("debug target belongs to another ML Project")
 	}
@@ -143,13 +143,13 @@ func (workspace *Workspace) startTargetDebug(input studioDebugStart, arguments [
 // DebugTargets returns live client, user-session and job runtimes for this project.
 func (workspace *Workspace) DebugTargets() ([]debugtarget.View, error) {
 	workspace.mu.Lock()
-	manifest, err := project.ValidateLayout(workspace.root)
+	configuration, err := project.ValidateLayout(workspace.root)
 	registry := workspace.debugTargets
 	workspace.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
-	return registry.List(debugtarget.Filter{ProjectID: manifest.ID, DatabaseID: workspace.debugDatabase}), nil
+	return registry.List(debugtarget.Filter{ProjectID: configuration.ID, DatabaseID: workspace.debugDatabase}), nil
 }
 
 func (workspace *Workspace) DebugSnapshot() (vm.DebugSnapshot, error) {

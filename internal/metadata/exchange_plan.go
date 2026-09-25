@@ -88,12 +88,12 @@ var registrableKinds = []Kind{
 var pendingRegistrableKinds []Kind
 
 // DecodeExchangePlan reads and validates one exchange plan.
-func DecodeExchangePlan(source string, reader io.Reader, manifest project.Project) (ExchangePlanDefinition, error) {
+func DecodeExchangePlan(source string, reader io.Reader, configuration project.Project) (ExchangePlanDefinition, error) {
 	var value ExchangePlanDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return ExchangePlanDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
 		code:              value.Code,
 		descriptionLength: value.DescriptionLength,
@@ -102,10 +102,10 @@ func DecodeExchangePlan(source string, reader io.Reader, manifest project.Projec
 		forms:             value.Forms,
 		list:              value.List,
 		reservedName:      reservedExchangePlanName,
-	}, manifest)...)
+	}, configuration)...)
 	issues = append(issues, validateExchangePlanContent(value)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ExchangePlanDefinition{}, err
 	}

@@ -39,6 +39,15 @@ type SourceState struct {
 	Dirty     bool
 }
 
+// Manifest is the manifest of a published PACKAGE - what a .mlpkg says about
+// itself: which format it is written in, what it holds, and what each file in
+// it hashes to.
+//
+// It is not the configuration root, and the word "manifest" survives here for
+// that reason: a project no longer keeps a manifest, a package still does.
+// It does speak ABOUT the root, though - the identifier, the name and the
+// format below are the root's, carried so that a package can be checked
+// against the database it is applied to before anything is written.
 type Manifest struct {
 	Format                  int                      `json:"format"`
 	ProjectID               uuid.UUID                `json:"projectId"`

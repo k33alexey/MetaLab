@@ -46,7 +46,7 @@ include_help_in_contents: true
 	if _, err := Load(root); err != nil {
 		t.Fatal(err)
 	}
-	forms, err := ReadCommonForms(root, metadataManifest())
+	forms, err := ReadCommonForms(root, metadataConfiguration())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ name: АдреснаяКнига
 title: {ru: Адресная книга}
 kind: common
 `+broken.body+`
-`), metadataManifest())
+`), metadataConfiguration())
 			if err == nil {
 				t.Fatalf("%s: accepted", name)
 			}

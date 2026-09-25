@@ -53,12 +53,12 @@ type SequenceDefinition struct {
 }
 
 // DecodeSequence reads and validates one sequence.
-func DecodeSequence(source string, reader io.Reader, manifest project.Project) (SequenceDefinition, error) {
+func DecodeSequence(source string, reader io.Reader, configuration project.Project) (SequenceDefinition, error) {
 	var value SequenceDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return SequenceDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	// A sequence over no documents watches nothing happen.
 	if len(value.Documents) == 0 {
 		issues = append(issues, "documents must name at least one kind of document: a sequence over nothing follows nothing")
@@ -86,7 +86,7 @@ func DecodeSequence(source string, reader io.Reader, manifest project.Project) (
 			issues = append(issues, prefix+".name must be unique")
 		}
 		names[folded] = true
-		issues = append(issues, validateTitle(prefix+".title", dimension.Title, manifest)...)
+		issues = append(issues, validateTitle(prefix+".title", dimension.Title, configuration)...)
 		issues = append(issues, validateTypes(prefix+".types", dimension.Types, value.ID)...)
 		issues = append(issues, validateUniqueIDs(prefix+".document_attributes", dimension.DocumentAttributes)...)
 		issues = append(issues, validateUniqueIDs(prefix+".register_dimensions", dimension.RegisterDimensions)...)

@@ -13,21 +13,21 @@ import (
 
 func TestApplicationPermissionsBindProjectAndDenyUnassigned(t *testing.T) {
 	t.Parallel()
-	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "RolesTest", Title: project.LocalizedText{"ru": "Roles test"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
+	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "RolesTest", Title: project.LocalizedText{"ru": "Roles test"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
 	role := metadata.RoleDefinition{Format: 1, ID: uuid.MustNew(), Name: "Читатель", Title: metadata.LocalizedText{"ru": "Читатель"}}
-	catalog, err := metadata.NewCatalogSnapshotWithRoles(manifest, nil, nil, nil, nil, nil, nil, nil, []metadata.RoleDefinition{role})
+	catalog, err := metadata.NewCatalogSnapshotWithRoles(configuration, nil, nil, nil, nil, nil, nil, nil, []metadata.RoleDefinition{role})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, assignment := range []systemdb.ApplicationRoleAssignment{{}, {ProjectID: &manifest.ID, RoleIDs: []uuid.UUID{role.ID}, Revision: 1}} {
+	for _, assignment := range []systemdb.ApplicationRoleAssignment{{}, {ProjectID: &configuration.ID, RoleIDs: []uuid.UUID{role.ID}, Revision: 1}} {
 		policy, err := permissionsForAssignment(catalog, assignment)
-		if err != nil || policy.ProjectID() != manifest.ID || policy.AllowsObject(uuid.MustNew(), metadata.PermissionRead) {
+		if err != nil || policy.ProjectID() != configuration.ID || policy.AllowsObject(uuid.MustNew(), metadata.PermissionRead) {
 			t.Fatalf("valid empty policy: %v", err)
 		}
 	}
 	foreign := uuid.MustNew()
 	for _, assignment := range []systemdb.ApplicationRoleAssignment{
-		{RoleIDs: []uuid.UUID{role.ID}}, {Revision: 1}, {ProjectID: &foreign, RoleIDs: []uuid.UUID{role.ID}, Revision: 1}, {ProjectID: &manifest.ID, RoleIDs: []uuid.UUID{foreign}, Revision: 1},
+		{RoleIDs: []uuid.UUID{role.ID}}, {Revision: 1}, {ProjectID: &foreign, RoleIDs: []uuid.UUID{role.ID}, Revision: 1}, {ProjectID: &configuration.ID, RoleIDs: []uuid.UUID{foreign}, Revision: 1},
 	} {
 		if policy, err := permissionsForAssignment(catalog, assignment); !errors.Is(err, metadata.ErrPermissionDenied) || policy != nil {
 			t.Fatalf("foreign/invalid assignment accepted: %v", err)
@@ -54,7 +54,7 @@ func TestApplicationPermissionsBindProjectAndDenyUnassigned(t *testing.T) {
 		t.Fatal(err)
 	}
 	view := managerApplicationRoleView(snapshot, systemdb.ApplicationRoleAssignment{RoleIDs: []uuid.UUID{}, Revision: 0})
-	if view.ProjectID != manifest.ID || len(view.Available) != 1 || view.Available[0].Name != role.Name {
+	if view.ProjectID != configuration.ID || len(view.Available) != 1 || view.Available[0].Name != role.Name {
 		t.Fatalf("role choices: %+v", view)
 	}
 	view.Available[0].Title["ru"] = "changed"
@@ -69,7 +69,7 @@ func TestApplicationPermissionsBindProjectAndDenyUnassigned(t *testing.T) {
 // to an error message.
 func TestAllowedOperationsReportOnlyWhatTheRoleGrants(t *testing.T) {
 	t.Parallel()
-	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "OperationsTest", Title: project.LocalizedText{"ru": "Operations test"}, DefaultLanguage: "ru",
+	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "OperationsTest", Title: project.LocalizedText{"ru": "Operations test"}, DefaultLanguage: "ru",
 		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
 	goods := metadata.CatalogDefinition{Format: 1, ID: uuid.MustNew(), Name: "Товары", Title: metadata.LocalizedText{"ru": "Товары"},
 		Code: metadata.CatalogCode{Type: metadata.StringType, Length: 9}, DescriptionLength: 150}
@@ -80,7 +80,7 @@ func TestAllowedOperationsReportOnlyWhatTheRoleGrants(t *testing.T) {
 			{Object: goods.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead, metadata.PermissionCreate, metadata.PermissionUpdate}},
 			{Object: partners.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead}},
 		}}
-	catalog, err := metadata.NewCatalogSnapshotWithRoles(manifest, nil, nil, nil,
+	catalog, err := metadata.NewCatalogSnapshotWithRoles(configuration, nil, nil, nil,
 		[]metadata.CatalogDefinition{goods, partners}, nil, nil, nil, []metadata.RoleDefinition{role})
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +106,7 @@ func TestAllowedOperationsReportOnlyWhatTheRoleGrants(t *testing.T) {
 // does not have must not leave the reader with nothing.
 func TestApplicationLanguagePicksWhatTheProjectActuallyHas(t *testing.T) {
 	t.Parallel()
-	manifest := project.Project{
+	configuration := project.Project{
 		Format: 1, ID: uuid.MustNew(), Name: "LanguageTest", Title: project.LocalizedText{"ru": "Language test"}, DefaultLanguage: "ru",
 		Languages: []project.Language{
 			{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"},
@@ -124,7 +124,7 @@ func TestApplicationLanguagePicksWhatTheProjectActuallyHas(t *testing.T) {
 		"no preferences at all":            {nil, "ru"},
 		"blank preference":                 {[]string{"  "}, "ru"},
 	} {
-		language := ApplicationLanguage(manifest, test.preferences)
+		language := ApplicationLanguage(configuration, test.preferences)
 		if language.Code != test.want || language.Default != "ru" || len(language.Configured) != 2 {
 			t.Fatalf("%s: language = %+v, want code %q", name, language, test.want)
 		}
@@ -136,13 +136,13 @@ func TestApplicationLanguagePicksWhatTheProjectActuallyHas(t *testing.T) {
 // позволено открыть список.
 func TestViewIsSeparateFromRead(t *testing.T) {
 	t.Parallel()
-	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "ViewTest", Title: project.LocalizedText{"ru": "View test"}, DefaultLanguage: "ru",
+	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "ViewTest", Title: project.LocalizedText{"ru": "View test"}, DefaultLanguage: "ru",
 		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
 	goods := metadata.CatalogDefinition{Format: 1, ID: uuid.MustNew(), Name: "Товары", Title: metadata.LocalizedText{"ru": "Товары"},
 		Code: metadata.CatalogCode{Type: metadata.StringType, Length: 9}, DescriptionLength: 150}
 	role := metadata.RoleDefinition{Format: 1, ID: uuid.MustNew(), Name: "Счётчик", Title: metadata.LocalizedText{"ru": "Счётчик"},
 		Objects: []metadata.ObjectPermission{{Object: goods.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead}}}}
-	catalog, err := metadata.NewCatalogSnapshotWithRoles(manifest, nil, nil, nil, []metadata.CatalogDefinition{goods}, nil, nil, nil, []metadata.RoleDefinition{role})
+	catalog, err := metadata.NewCatalogSnapshotWithRoles(configuration, nil, nil, nil, []metadata.CatalogDefinition{goods}, nil, nil, nil, []metadata.RoleDefinition{role})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestViewIsSeparateFromRead(t *testing.T) {
 	}
 	// А роль, которой просмотр выдан, получает оба права.
 	role.Objects[0].Operations = []metadata.PermissionOperation{metadata.PermissionRead, metadata.PermissionView}
-	catalog, err = metadata.NewCatalogSnapshotWithRoles(manifest, nil, nil, nil, []metadata.CatalogDefinition{goods}, nil, nil, nil, []metadata.RoleDefinition{role})
+	catalog, err = metadata.NewCatalogSnapshotWithRoles(configuration, nil, nil, nil, []metadata.CatalogDefinition{goods}, nil, nil, nil, []metadata.RoleDefinition{role})
 	if err != nil {
 		t.Fatal(err)
 	}

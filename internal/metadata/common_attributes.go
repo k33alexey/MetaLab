@@ -29,12 +29,12 @@ type CommonAttributeDefinition struct {
 	Objects  []uuid.UUID   `yaml:"objects"`
 }
 
-func DecodeCommonAttribute(source string, reader io.Reader, manifest project.Project) (CommonAttributeDefinition, error) {
+func DecodeCommonAttribute(source string, reader io.Reader, configuration project.Project) (CommonAttributeDefinition, error) {
 	var value CommonAttributeDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return CommonAttributeDefinition{}, err
 	}
-	if err := ValidateCommonAttribute(source, value, manifest); err != nil {
+	if err := ValidateCommonAttribute(source, value, configuration); err != nil {
 		return CommonAttributeDefinition{}, err
 	}
 	return value, nil
@@ -42,8 +42,8 @@ func DecodeCommonAttribute(source string, reader io.Reader, manifest project.Pro
 
 // ValidateCommonAttribute checks structure only; object existence, object
 // kind and name collisions are checked catalog-wide by propagateCommonAttributes.
-func ValidateCommonAttribute(source string, value CommonAttributeDefinition, manifest project.Project) error {
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+func ValidateCommonAttribute(source string, value CommonAttributeDefinition, configuration project.Project) error {
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateTypes("types", value.Types, uuid.UUID{})...)
 	if len(value.Objects) == 0 {
 		issues = append(issues, "objects must list at least one target object")

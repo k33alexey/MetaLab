@@ -45,12 +45,12 @@ type SettingsStorageDefinition struct {
 }
 
 // DecodeSettingsStorage reads and validates one settings storage.
-func DecodeSettingsStorage(source string, reader io.Reader, manifest project.Project) (SettingsStorageDefinition, error) {
+func DecodeSettingsStorage(source string, reader io.Reader, configuration project.Project) (SettingsStorageDefinition, error) {
 	var value SettingsStorageDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return SettingsStorageDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateFormSlots(map[string]string{
 		"forms.save": value.Forms.Save, "forms.load": value.Forms.Load,
 		"forms.auxiliary_save": value.Forms.AuxiliarySave, "forms.auxiliary_load": value.Forms.AuxiliaryLoad,

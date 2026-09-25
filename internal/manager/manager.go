@@ -25,23 +25,23 @@ import (
 var assets embed.FS
 
 // NewHandler creates a Manager UI that observes, but does not own, ML Service.
-func NewHandler(configuration appconfig.Config) http.Handler {
-	return newHandler(configuration, http.DefaultClient, nil, nil)
+func NewHandler(settings appconfig.Config) http.Handler {
+	return newHandler(settings, http.DefaultClient, nil, nil)
 }
 
 // NewHandlerWithSetup adds the local first-run administrator wizard.
-func NewHandlerWithSetup(configuration appconfig.Config, setup administratorSetup) http.Handler {
-	return newHandler(configuration, http.DefaultClient, setup, nil)
+func NewHandlerWithSetup(settings appconfig.Config, setup administratorSetup) http.Handler {
+	return newHandler(settings, http.DefaultClient, setup, nil)
 }
 
 // NewHandlerWithPlatform adds PostgreSQL and first-administrator setup.
-func NewHandlerWithPlatform(configuration appconfig.Config, runtime platformSetup) http.Handler {
-	return secureManager(newHandler(configuration, http.DefaultClient, runtime, runtime), runtime)
+func NewHandlerWithPlatform(settings appconfig.Config, runtime platformSetup) http.Handler {
+	return secureManager(newHandler(settings, http.DefaultClient, runtime, runtime), runtime)
 }
 
 // NewHandlerWithPlatformAndStudio adds launching an independent ML Studio process.
-func NewHandlerWithPlatformAndStudio(configuration appconfig.Config, runtime platformSetup, launcher StudioLauncher) http.Handler {
-	return secureManager(newHandler(configuration, http.DefaultClient, runtime, runtime, launcher), runtime)
+func NewHandlerWithPlatformAndStudio(settings appconfig.Config, runtime platformSetup, launcher StudioLauncher) http.Handler {
+	return secureManager(newHandler(settings, http.DefaultClient, runtime, runtime, launcher), runtime)
 }
 
 // StudioLauncher opens a filesystem-backed project without tying its lifetime to Manager HTTP requests.
@@ -80,7 +80,7 @@ type platformSetup interface {
 	TerminateStudioSession(context.Context, uuid.UUID) error
 }
 
-func newHandler(configuration appconfig.Config, client *http.Client, setup administratorSetup, postgres platformSetup, launchers ...StudioLauncher) *http.ServeMux {
+func newHandler(settings appconfig.Config, client *http.Client, setup administratorSetup, postgres platformSetup, launchers ...StudioLauncher) *http.ServeMux {
 	routes := http.NewServeMux()
 	var launcher StudioLauncher
 	if len(launchers) > 0 {
@@ -102,7 +102,7 @@ func newHandler(configuration appconfig.Config, client *http.Client, setup admin
 		status := struct {
 			Running bool   `json:"running"`
 			URL     string `json:"url"`
-		}{URL: configuration.LocalServiceURL()}
+		}{URL: settings.LocalServiceURL()}
 		serviceRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, status.URL+"/api/health", nil)
 		if err == nil {
 			serviceResponse, requestErr := client.Do(serviceRequest)

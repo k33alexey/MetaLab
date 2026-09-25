@@ -38,9 +38,9 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
-	configuration := appconfig.Default()
-	configuration.SourcePath = filepath.Join(t.TempDir(), "config.yaml")
-	runtime := New(ctx, configuration, &memorySecrets{values: map[string]string{}})
+	settings := appconfig.Default()
+	settings.SourcePath = filepath.Join(t.TempDir(), "config.yaml")
+	runtime := New(ctx, settings, &memorySecrets{values: map[string]string{}})
 	provisioned := []postgresadmin.Provisioned{}
 	t.Cleanup(func() {
 		runtime.Close()
@@ -108,9 +108,9 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 		Dimensions: []metadata.Attribute{{ID: productDimensionID, Name: "Товар", Title: metadata.LocalizedText{"ru": "Товар"}, Required: true, Types: []metadata.Type{{Kind: metadata.StringType, Length: 100}}}},
 		Resources:  []metadata.Attribute{{ID: quantityResourceID, Name: "Количество", Title: metadata.LocalizedText{"ru": "Количество"}, Required: true, Types: []metadata.Type{{Kind: metadata.NumberType, Precision: 15, Scale: 3}}}},
 	}
-	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "WriteDemo", Title: project.LocalizedText{"ru": "Write demo"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
+	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "WriteDemo", Title: project.LocalizedText{"ru": "Write demo"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
 	root := filepath.Join(t.TempDir(), "project")
-	if err := project.Initialize(root, manifest); err != nil {
+	if err := project.Initialize(root, configuration); err != nil {
 		t.Fatal(err)
 	}
 	write := func(relative string, value any) {
@@ -191,7 +191,7 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 	if _, _, err := publication.SaveData(ctx, pool, publication.SaveDataRequest{Root: root, Mode: publication.ActivationDebug, Confirmed: true}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runtime.database.DatabaseAccess.SetApplicationRoles(ctx, admin.ID, admin.ID, registered.ID, manifest.ID, []uuid.UUID{role.ID}, 0); err != nil {
+	if _, err := runtime.database.DatabaseAccess.SetApplicationRoles(ctx, admin.ID, admin.ID, registered.ID, configuration.ID, []uuid.UUID{role.ID}, 0); err != nil {
 		t.Fatal(err)
 	}
 	// Changing an assignment terminates that user's application sessions on
@@ -268,7 +268,7 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 	// Revoking the role must close every path immediately, on the same user,
 	// same database and same document that worked a moment ago - otherwise the
 	// grants above prove nothing about enforcement.
-	if _, err := runtime.database.DatabaseAccess.SetApplicationRoles(ctx, admin.ID, admin.ID, registered.ID, manifest.ID, nil, 1); err != nil {
+	if _, err := runtime.database.DatabaseAccess.SetApplicationRoles(ctx, admin.ID, admin.ID, registered.ID, configuration.ID, nil, 1); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runtime.OpenPortalDatabase(ctx, portalLogin.Token, registered.ID); err != nil {
@@ -311,7 +311,7 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 		}
 	}
 	// The document itself must be untouched by the refused write attempts.
-	if _, err := runtime.database.DatabaseAccess.SetApplicationRoles(ctx, admin.ID, admin.ID, registered.ID, manifest.ID, []uuid.UUID{role.ID}, 2); err != nil {
+	if _, err := runtime.database.DatabaseAccess.SetApplicationRoles(ctx, admin.ID, admin.ID, registered.ID, configuration.ID, []uuid.UUID{role.ID}, 2); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runtime.OpenPortalDatabase(ctx, portalLogin.Token, registered.ID); err != nil {

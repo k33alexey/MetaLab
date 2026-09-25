@@ -13,14 +13,14 @@ func TestLoadStrictConfiguration(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "config.yaml")
 	writeFile(t, path, "version: 1\nlanguage: uk\nservice:\n  listen: 0.0.0.0:9000\n")
-	configuration, loadedPath, err := Load(path)
+	settings, loadedPath, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loadedPath != path || configuration.Language != "uk" || configuration.Service.Listen != "0.0.0.0:9000" {
-		t.Fatalf("configuration = %+v, path = %q", configuration, loadedPath)
+	if loadedPath != path || settings.Language != "uk" || settings.Service.Listen != "0.0.0.0:9000" {
+		t.Fatalf("settings = %+v, path = %q", settings, loadedPath)
 	}
-	if got := configuration.LocalServiceURL(); got != "http://127.0.0.1:9000" {
+	if got := settings.LocalServiceURL(); got != "http://127.0.0.1:9000" {
 		t.Fatalf("LocalServiceURL() = %q", got)
 	}
 }
@@ -30,12 +30,12 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("ML_SERVICE_LISTEN", "127.0.0.1:9100")
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	writeFile(t, path, "version: 1\nlanguage: ru\nservice:\n  listen: 127.0.0.1:8090\n")
-	configuration, _, err := Load(path)
+	settings, _, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if configuration.Language != "en" || configuration.Service.Listen != "127.0.0.1:9100" {
-		t.Fatalf("configuration = %+v", configuration)
+	if settings.Language != "en" || settings.Service.Listen != "127.0.0.1:9100" {
+		t.Fatalf("settings = %+v", settings)
 	}
 }
 
@@ -52,7 +52,7 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.yaml")
 			writeFile(t, path, content)
 			if _, _, err := Load(path); err == nil {
-				t.Fatal("Load() accepted invalid configuration")
+				t.Fatal("Load() accepted invalid settings")
 			}
 		})
 	}
@@ -60,7 +60,7 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 
 func TestLoadRequiresExplicitPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing.yaml")
-	if _, _, err := Load(path); err == nil || !strings.Contains(err.Error(), "open configuration") {
+	if _, _, err := Load(path); err == nil || !strings.Contains(err.Error(), "open settings") {
 		t.Fatalf("Load() error = %v", err)
 	}
 }
@@ -68,12 +68,12 @@ func TestLoadRequiresExplicitPath(t *testing.T) {
 func TestDefaultConfigurationIsValid(t *testing.T) {
 	t.Parallel()
 
-	configuration := Default()
-	if err := configuration.Validate(); err != nil {
+	settings := Default()
+	if err := settings.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if configuration.LocalServiceURL() != "http://127.0.0.1:8090" {
-		t.Fatalf("LocalServiceURL() = %q", configuration.LocalServiceURL())
+	if settings.LocalServiceURL() != "http://127.0.0.1:8090" {
+		t.Fatalf("LocalServiceURL() = %q", settings.LocalServiceURL())
 	}
 }
 
@@ -82,16 +82,16 @@ func TestBackupDirectoryRequiresAbsolutePathAndSupportsEnvironment(t *testing.T)
 	t.Setenv("ML_BACKUP_DIRECTORY", directory)
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	writeFile(t, path, "version: 1\nlanguage: ru\nservice: {listen: '127.0.0.1:8090'}\n")
-	configuration, _, err := Load(path)
+	settings, _, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := configuration.BackupDirectory()
+	resolved, err := settings.BackupDirectory()
 	if err != nil || resolved != directory {
 		t.Fatalf("backup directory=%q error=%v", resolved, err)
 	}
-	configuration.Backups.Directory = "relative"
-	if err := configuration.Validate(); err == nil {
+	settings.Backups.Directory = "relative"
+	if err := settings.Validate(); err == nil {
 		t.Fatal("relative backup directory was accepted")
 	}
 }
@@ -100,27 +100,27 @@ func TestSaveAndLoadSystemDatabaseWithoutPassword(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "nested", "config.yaml")
-	configuration := Default()
-	configuration.SystemDatabase = &postgresconn.Descriptor{
+	settings := Default()
+	settings.SystemDatabase = &postgresconn.Descriptor{
 		Host: "db.example.test", Port: 5432, Database: "metalab_system", User: "metalab_service",
 		SSLMode: "verify-full", SecretKey: postgresconn.DefaultSystemSecretKey,
 	}
-	if err := Save(path, configuration); err != nil {
+	if err := Save(path, settings); err != nil {
 		t.Fatal(err)
 	}
 	loaded, _, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.SystemDatabase == nil || *loaded.SystemDatabase != *configuration.SystemDatabase {
-		t.Fatalf("loaded configuration = %+v", loaded)
+	if loaded.SystemDatabase == nil || *loaded.SystemDatabase != *settings.SystemDatabase {
+		t.Fatalf("loaded settings = %+v", loaded)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(content), "password:") {
-		t.Fatalf("configuration contains password field: %s", content)
+		t.Fatalf("settings contains password field: %s", content)
 	}
 }
 

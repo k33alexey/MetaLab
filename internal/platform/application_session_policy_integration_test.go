@@ -35,9 +35,9 @@ func TestSessionParameterRestrictsListReadsIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
-	configuration := appconfig.Default()
-	configuration.SourcePath = filepath.Join(t.TempDir(), "config.yaml")
-	runtime := New(ctx, configuration, &memorySecrets{values: map[string]string{}})
+	settings := appconfig.Default()
+	settings.SourcePath = filepath.Join(t.TempDir(), "config.yaml")
+	runtime := New(ctx, settings, &memorySecrets{values: map[string]string{}})
 	provisioned := []postgresadmin.Provisioned{}
 	t.Cleanup(func() {
 		runtime.Close()
@@ -98,10 +98,10 @@ func TestSessionParameterRestrictsListReadsIntegration(t *testing.T) {
 		Format: 1, ID: uuid.MustNew(), Name: "ДоступныеСклады", Title: metadata.LocalizedText{"ru": "Доступные склады"},
 		Types: []metadata.Type{{Kind: metadata.StringType, Length: 50}},
 	}
-	manifest := project.Project{Format: 1, ID: uuid.MustNew(), Name: "SessionDemo", Title: project.LocalizedText{"ru": "Session demo"}, DefaultLanguage: "ru",
+	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "SessionDemo", Title: project.LocalizedText{"ru": "Session demo"}, DefaultLanguage: "ru",
 		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}}}
 	root := filepath.Join(t.TempDir(), "project")
-	if err := project.Initialize(root, manifest); err != nil {
+	if err := project.Initialize(root, configuration); err != nil {
 		t.Fatal(err)
 	}
 	write := func(relative string, value any) {
@@ -159,7 +159,7 @@ func TestSessionParameterRestrictsListReadsIntegration(t *testing.T) {
 	if _, _, err := publication.SaveData(ctx, pool, publication.SaveDataRequest{Root: root, Mode: publication.ActivationDebug, Confirmed: true}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runtime.database.DatabaseAccess.SetApplicationRoles(ctx, admin.ID, admin.ID, registered.ID, manifest.ID, []uuid.UUID{role.ID}, 0); err != nil {
+	if _, err := runtime.database.DatabaseAccess.SetApplicationRoles(ctx, admin.ID, admin.ID, registered.ID, configuration.ID, []uuid.UUID{role.ID}, 0); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runtime.OpenPortalDatabase(ctx, login.Token, registered.ID); err != nil {

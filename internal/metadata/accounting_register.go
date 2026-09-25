@@ -60,12 +60,12 @@ type AccountingRegisterDefinition struct {
 }
 
 // DecodeAccountingRegister reads and validates one accounting register.
-func DecodeAccountingRegister(source string, reader io.Reader, manifest project.Project) (AccountingRegisterDefinition, error) {
+func DecodeAccountingRegister(source string, reader io.Reader, configuration project.Project) (AccountingRegisterDefinition, error) {
 	var value AccountingRegisterDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return AccountingRegisterDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	if value.ChartOfAccounts.IsZero() {
 		issues = append(issues, "chart_of_accounts is required: a register of entries without accounts records nothing")
 	}
@@ -98,7 +98,7 @@ func DecodeAccountingRegister(source string, reader io.Reader, manifest project.
 				issues = append(issues, prefix+".name is taken")
 			}
 			names[folded] = true
-			issues = append(issues, validateTitle(prefix+".title", field.Title, manifest)...)
+			issues = append(issues, validateTitle(prefix+".title", field.Title, configuration)...)
 			issues = append(issues, validateTypes(prefix+".types", field.Types, value.ID)...)
 			// Two sides exist only under double entry. Marking a field as the
 			// same on both sides of an entry that has one side says nothing,
@@ -114,11 +114,11 @@ func DecodeAccountingRegister(source string, reader io.Reader, manifest project.
 			}
 		}
 	}
-	issues = append(issues, validateAttributes("attributes", value.Attributes, manifest, func(name string) bool {
+	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, func(name string) bool {
 		return names[strings.ToLower(name)] || reservedAccountingRegisterName(name)
 	})...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return AccountingRegisterDefinition{}, err
 	}

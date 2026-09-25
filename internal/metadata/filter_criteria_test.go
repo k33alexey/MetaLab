@@ -179,7 +179,7 @@ id: `+criterionID+`
 name: Критерий
 title: {ru: Критерий}
 `+broken.body+`
-`), metadataManifest())
+`), metadataConfiguration())
 			if err == nil {
 				t.Fatalf("%s: accepted", name)
 			}

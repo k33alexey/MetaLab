@@ -162,7 +162,7 @@ id: `+parameterID+`
 name: Параметр
 title: {ru: Параметр}
 `+broken.body+`
-`), metadataManifest())
+`), metadataConfiguration())
 			if err == nil {
 				t.Fatalf("%s: accepted", name)
 			}

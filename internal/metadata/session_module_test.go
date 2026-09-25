@@ -23,7 +23,7 @@ func sessionModuleRuntime(t *testing.T, source string) *Runtime {
 		return SessionParameter{Format: CurrentFormat, ID: uuid.MustNew(), Name: name, Title: LocalizedText{"ru": name},
 			Types: []Type{{Kind: StringType, Length: 50}}}
 	}
-	catalog, err := NewCatalogSnapshotWithSessionParameters(metadataManifest(), nil, nil, nil, nil, nil, nil, nil, nil, nil,
+	catalog, err := NewCatalogSnapshotWithSessionParameters(metadataConfiguration(), nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		[]SessionParameter{number("ЧислоВызовов"), text("ДоступныеСклады"), text("ДоступныеОрганизации"), text("Незаданный")})
 	if err != nil {
 		t.Fatal(err)

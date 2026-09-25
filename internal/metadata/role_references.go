@@ -375,7 +375,7 @@ func (catalog *Catalog) validatePolicyOperand(role RoleDefinition, rule PolicyRu
 // ReadCommonForms reads every common form of a project, sorted by name. The
 // folder is the list of them: a common form belongs to no object, so nothing
 // declares it anywhere else.
-func ReadCommonForms(root string, manifest project.Project) ([]ManagedForm, error) {
+func ReadCommonForms(root string, configuration project.Project) ([]ManagedForm, error) {
 	directory := filepath.Join(root, "metadata", "common-forms")
 	entries, err := os.ReadDir(directory)
 	if err != nil {
@@ -396,7 +396,7 @@ func ReadCommonForms(root string, manifest project.Project) ([]ManagedForm, erro
 		if project.ObjectName(entry.Name()) != nil {
 			return nil, fmt.Errorf("common form folder %q is not a name", entry.Name())
 		}
-		form, err := readCommonForm(directory, entry.Name(), manifest)
+		form, err := readCommonForm(directory, entry.Name(), configuration)
 		if err != nil {
 			return nil, fmt.Errorf("common form %s: %w", entry.Name(), err)
 		}
@@ -415,7 +415,7 @@ func ReadCommonForms(root string, manifest project.Project) ([]ManagedForm, erro
 // readCommonForm reads one common form and checks its folder: the form calls
 // itself what the folder is called, and the folder holds the form and the
 // module that runs it, nothing else.
-func readCommonForm(directory, name string, manifest project.Project) (ManagedForm, error) {
+func readCommonForm(directory, name string, configuration project.Project) (ManagedForm, error) {
 	entries, err := os.ReadDir(filepath.Join(directory, name))
 	if err != nil {
 		return ManagedForm{}, err
@@ -432,7 +432,7 @@ func readCommonForm(directory, name string, manifest project.Project) (ManagedFo
 		return ManagedForm{}, fmt.Errorf("has no %s", project.FormMetadataFile)
 	}
 	defer file.Close()
-	form, err := DecodeManagedForm(path, file, manifest)
+	form, err := DecodeManagedForm(path, file, configuration)
 	if err != nil {
 		return ManagedForm{}, err
 	}

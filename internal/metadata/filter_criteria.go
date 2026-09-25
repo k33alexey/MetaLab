@@ -64,19 +64,19 @@ type FilterCriterionDefinition struct {
 }
 
 // DecodeFilterCriterion reads and validates one filter criterion.
-func DecodeFilterCriterion(source string, reader io.Reader, manifest project.Project) (FilterCriterionDefinition, error) {
+func DecodeFilterCriterion(source string, reader io.Reader, configuration project.Project) (FilterCriterionDefinition, error) {
 	var value FilterCriterionDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return FilterCriterionDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateTypes("types", value.Types, value.ID)...)
 	for name, text := range map[string]LocalizedText{
 		"explanation": value.Explanation, "list_presentation": value.ListPresentation,
 		"extended_list_presentation": value.ExtendedListPresentation,
 	} {
 		if len(text) > 0 {
-			issues = append(issues, validateTitle(name, text, manifest)...)
+			issues = append(issues, validateTitle(name, text, configuration)...)
 		}
 	}
 	if len(value.Fields) > maxCriterionFields {
@@ -106,7 +106,7 @@ func DecodeFilterCriterion(source string, reader io.Reader, manifest project.Pro
 	issues = append(issues, validateFormSlots(map[string]string{
 		"forms.list": value.Forms.List, "forms.auxiliary": value.Forms.Auxiliary,
 	})...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return FilterCriterionDefinition{}, err
 	}

@@ -24,12 +24,12 @@ type SubsystemDefinition struct {
 	Members []uuid.UUID   `yaml:"members,omitempty"`
 }
 
-func DecodeSubsystem(source string, reader io.Reader, manifest project.Project) (SubsystemDefinition, error) {
+func DecodeSubsystem(source string, reader io.Reader, configuration project.Project) (SubsystemDefinition, error) {
 	var value SubsystemDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return SubsystemDefinition{}, err
 	}
-	if err := ValidateSubsystem(source, value, manifest); err != nil {
+	if err := ValidateSubsystem(source, value, configuration); err != nil {
 		return SubsystemDefinition{}, err
 	}
 	return value, nil
@@ -37,8 +37,8 @@ func DecodeSubsystem(source string, reader io.Reader, manifest project.Project) 
 
 // ValidateSubsystem checks structure only; membership and parent existence
 // are checked catalog-wide by validateSubsystemReferences.
-func ValidateSubsystem(source string, value SubsystemDefinition, manifest project.Project) error {
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+func ValidateSubsystem(source string, value SubsystemDefinition, configuration project.Project) error {
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	if value.Parent != nil && *value.Parent == value.ID {
 		issues = append(issues, "parent must not reference the subsystem itself")
 	}

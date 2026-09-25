@@ -29,12 +29,12 @@ type CommonTemplateDefinition struct {
 }
 
 // DecodeCommonTemplate reads and validates one common template.
-func DecodeCommonTemplate(source string, reader io.Reader, manifest project.Project) (CommonTemplateDefinition, error) {
+func DecodeCommonTemplate(source string, reader io.Reader, configuration project.Project) (CommonTemplateDefinition, error) {
 	var value CommonTemplateDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return CommonTemplateDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	if !validTemplateKind(value.Kind) {
 		issues = append(issues, "kind is not a kind of template")
 	}

@@ -24,7 +24,7 @@ func TestDecodeCommonAttributeStrictAndBounded(t *testing.T) {
 	if err := Encode(&encoded, attribute); err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := DecodeCommonAttribute("common-attribute.yaml", bytes.NewReader(encoded.Bytes()), metadataManifest())
+	decoded, err := DecodeCommonAttribute("common-attribute.yaml", bytes.NewReader(encoded.Bytes()), metadataConfiguration())
 	if err != nil || decoded.ID != attribute.ID || len(decoded.Objects) != 2 {
 		t.Fatalf("decode common attribute = %+v, %v", decoded, err)
 	}
@@ -44,12 +44,12 @@ func TestDecodeCommonAttributeStrictAndBounded(t *testing.T) {
 			mutated := attribute
 			mutated.Objects = append([]uuid.UUID{}, attribute.Objects...)
 			mutate(&mutated)
-			if err := ValidateCommonAttribute("common-attribute.yaml", mutated, metadataManifest()); err == nil {
+			if err := ValidateCommonAttribute("common-attribute.yaml", mutated, metadataConfiguration()); err == nil {
 				t.Fatalf("%s: accepted invalid common attribute", name)
 			}
 		})
 	}
-	if _, err := DecodeCommonAttribute("common-attribute.yaml", strings.NewReader(encoded.String()+"unknown: true\n"), metadataManifest()); err == nil {
+	if _, err := DecodeCommonAttribute("common-attribute.yaml", strings.NewReader(encoded.String()+"unknown: true\n"), metadataConfiguration()); err == nil {
 		t.Fatal("accepted unknown field")
 	}
 }
@@ -59,7 +59,7 @@ func TestCatalogCommonAttributeLookupReturnsIsolatedCopies(t *testing.T) {
 	target := CatalogDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Товары", Title: LocalizedText{"ru": "Товары"},
 		Code: CatalogCode{Type: StringType, Length: 9}, DescriptionLength: 100}
 	attribute := commonAttributeFixture(target.ID)
-	catalog, err := NewCatalogSnapshotWithCommonAttributes(metadataManifest(), nil, nil, nil, []CatalogDefinition{target}, nil, nil, nil, nil, nil, nil, []CommonAttributeDefinition{attribute})
+	catalog, err := NewCatalogSnapshotWithCommonAttributes(metadataConfiguration(), nil, nil, nil, []CatalogDefinition{target}, nil, nil, nil, nil, nil, nil, []CommonAttributeDefinition{attribute})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestPropagateCommonAttributesAcrossObjectKinds(t *testing.T) {
 		Number: DocumentNumber{Type: StringType, Length: 9}}
 	attribute := commonAttributeFixture(catalogTarget.ID, documentTarget.ID)
 
-	catalog, err := NewCatalogSnapshotWithCommonAttributes(metadataManifest(), nil, nil, nil,
+	catalog, err := NewCatalogSnapshotWithCommonAttributes(metadataConfiguration(), nil, nil, nil,
 		[]CatalogDefinition{catalogTarget}, []DocumentDefinition{documentTarget}, nil, nil, nil, nil, nil, []CommonAttributeDefinition{attribute})
 	if err != nil {
 		t.Fatal(err)
@@ -103,7 +103,7 @@ func TestPropagateCommonAttributesAcrossObjectKinds(t *testing.T) {
 	// indexAndValidate may run again on already-propagated data (RuntimeSnapshot
 	// round-trips reconstruct a Catalog from already-validated definitions);
 	// propagation must be idempotent, not duplicate the field on each pass.
-	again, err := NewCatalogSnapshotWithCommonAttributes(metadataManifest(), nil, nil, nil,
+	again, err := NewCatalogSnapshotWithCommonAttributes(metadataConfiguration(), nil, nil, nil,
 		catalog.Catalogs, catalog.Documents, nil, nil, nil, nil, nil, catalog.CommonAttributes)
 	if err != nil {
 		t.Fatal(err)
@@ -118,7 +118,7 @@ func TestPropagateCommonAttributesRejectsInvalidTargets(t *testing.T) {
 	t.Parallel()
 	t.Run("unknown object", func(t *testing.T) {
 		attribute := commonAttributeFixture(uuid.MustNew())
-		if _, err := NewCatalogSnapshotWithCommonAttributes(metadataManifest(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, []CommonAttributeDefinition{attribute}); err == nil || !strings.Contains(err.Error(), "unknown object") {
+		if _, err := NewCatalogSnapshotWithCommonAttributes(metadataConfiguration(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, []CommonAttributeDefinition{attribute}); err == nil || !strings.Contains(err.Error(), "unknown object") {
 			t.Fatalf("unknown object error = %v", err)
 		}
 	})
@@ -129,7 +129,7 @@ func TestPropagateCommonAttributesRejectsInvalidTargets(t *testing.T) {
 			Attributes: []Attribute{{ID: uuid.MustNew(), Name: "ОтветственныйМенеджер", Title: LocalizedText{"ru": "Ответственный"}, Types: []Type{{Kind: StringType, Length: 50}}}},
 		}
 		attribute := commonAttributeFixture(target.ID)
-		if _, err := NewCatalogSnapshotWithCommonAttributes(metadataManifest(), nil, nil, nil, []CatalogDefinition{target}, nil, nil, nil, nil, nil, nil, []CommonAttributeDefinition{attribute}); err == nil || !strings.Contains(err.Error(), "collides") {
+		if _, err := NewCatalogSnapshotWithCommonAttributes(metadataConfiguration(), nil, nil, nil, []CatalogDefinition{target}, nil, nil, nil, nil, nil, nil, []CommonAttributeDefinition{attribute}); err == nil || !strings.Contains(err.Error(), "collides") {
 			t.Fatalf("name collision error = %v", err)
 		}
 	})
@@ -140,7 +140,7 @@ func TestPropagatedCommonAttributeReachesApplicationSchema(t *testing.T) {
 	target := CatalogDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Товары", Title: LocalizedText{"ru": "Товары"},
 		Code: CatalogCode{Type: StringType, Length: 9}, DescriptionLength: 100}
 	attribute := commonAttributeFixture(target.ID)
-	catalog, err := NewCatalogSnapshotWithCommonAttributes(metadataManifest(), nil, nil, nil, []CatalogDefinition{target}, nil, nil, nil, nil, nil, nil, []CommonAttributeDefinition{attribute})
+	catalog, err := NewCatalogSnapshotWithCommonAttributes(metadataConfiguration(), nil, nil, nil, []CatalogDefinition{target}, nil, nil, nil, nil, nil, nil, []CommonAttributeDefinition{attribute})
 	if err != nil {
 		t.Fatal(err)
 	}

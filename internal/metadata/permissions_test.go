@@ -31,7 +31,7 @@ func TestPermissionsDenyByDefault(t *testing.T) {
 	if empty.ProjectID() != catalog.Project.ID {
 		t.Fatal("missing project binding")
 	}
-	withoutRoles, err := NewCatalogSnapshot(metadataManifest(), nil, nil, nil, nil, nil, nil)
+	withoutRoles, err := NewCatalogSnapshot(metadataConfiguration(), nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -89,11 +89,11 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 	if err != nil {
 		return CatalogEditorSource{}, err
 	}
-	manifest, err := project.ValidateLayout(workspace.root)
+	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return CatalogEditorSource{}, err
 	}
-	value, err := metadata.DecodeCatalog(relative, strings.NewReader(file.Content), manifest)
+	value, err := metadata.DecodeCatalog(relative, strings.NewReader(file.Content), configuration)
 	if err != nil {
 		return CatalogEditorSource{}, err
 	}
@@ -103,7 +103,7 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 	}
 	return CatalogEditorSource{
 		Path: relative, Revision: file.Revision, Catalog: value, TypeChoices: choices,
-		Languages: roleLanguages(manifest), DefaultLanguage: manifest.DefaultLanguage,
+		Languages: roleLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
 	}, nil
 }
 
@@ -190,7 +190,7 @@ func (workspace *Workspace) checkCatalogNameLocked(value metadata.CatalogDefinit
 	if err != nil {
 		return err
 	}
-	manifest, err := project.ValidateLayout(workspace.root)
+	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return err
 	}
@@ -204,7 +204,7 @@ func (workspace *Workspace) checkCatalogNameLocked(value metadata.CatalogDefinit
 		if err != nil {
 			return err
 		}
-		other, err := metadata.DecodeCatalog(file.Path, strings.NewReader(file.Content), manifest)
+		other, err := metadata.DecodeCatalog(file.Path, strings.NewReader(file.Content), configuration)
 		if err != nil {
 			return err
 		}
@@ -218,7 +218,7 @@ func (workspace *Workspace) checkCatalogNameLocked(value metadata.CatalogDefinit
 func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
-	manifest, err := project.ValidateLayout(workspace.root)
+	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return CatalogEditorSource{}, err
 	}
@@ -227,7 +227,7 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 		return CatalogEditorSource{}, err
 	}
 	value := metadata.CatalogDefinition{
-		Format: metadata.CurrentFormat, ID: id, Name: name, Title: metadata.LocalizedText{manifest.DefaultLanguage: name},
+		Format: metadata.CurrentFormat, ID: id, Name: name, Title: metadata.LocalizedText{configuration.DefaultLanguage: name},
 		Code:              metadata.CatalogCode{Type: metadata.StringType, Length: 9, Auto: true, Unique: true},
 		DescriptionLength: 64,
 	}
@@ -235,7 +235,7 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 	if err := metadata.Encode(&encoded, value); err != nil {
 		return CatalogEditorSource{}, err
 	}
-	if _, err := metadata.DecodeCatalog("new catalog", bytes.NewReader(encoded.Bytes()), manifest); err != nil {
+	if _, err := metadata.DecodeCatalog("new catalog", bytes.NewReader(encoded.Bytes()), configuration); err != nil {
 		return CatalogEditorSource{}, err
 	}
 	if err := workspace.checkCatalogNameLocked(value); err != nil {
@@ -287,7 +287,7 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 	}
 	return CatalogEditorSource{
 		Path: relative, Revision: sourceFile(relative, "yaml", encoded.Bytes()).Revision, Catalog: value, TypeChoices: choices,
-		Languages: roleLanguages(manifest), DefaultLanguage: manifest.DefaultLanguage,
+		Languages: roleLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
 	}, nil
 }
 

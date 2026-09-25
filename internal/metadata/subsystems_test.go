@@ -22,7 +22,7 @@ func TestDecodeSubsystemStrictAndBounded(t *testing.T) {
 	if err := Encode(&encoded, subsystem); err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := DecodeSubsystem("subsystem.yaml", bytes.NewReader(encoded.Bytes()), metadataManifest())
+	decoded, err := DecodeSubsystem("subsystem.yaml", bytes.NewReader(encoded.Bytes()), metadataConfiguration())
 	if err != nil || decoded.ID != subsystem.ID || len(decoded.Members) != 2 {
 		t.Fatalf("decode subsystem = %+v, %v", decoded, err)
 	}
@@ -41,12 +41,12 @@ func TestDecodeSubsystemStrictAndBounded(t *testing.T) {
 			mutated := subsystem
 			mutated.Members = append([]uuid.UUID{}, subsystem.Members...)
 			mutate(&mutated)
-			if err := ValidateSubsystem("subsystem.yaml", mutated, metadataManifest()); err == nil {
+			if err := ValidateSubsystem("subsystem.yaml", mutated, metadataConfiguration()); err == nil {
 				t.Fatalf("%s: accepted invalid subsystem", name)
 			}
 		})
 	}
-	if _, err := DecodeSubsystem("subsystem.yaml", strings.NewReader(encoded.String()+"unknown: true\n"), metadataManifest()); err == nil {
+	if _, err := DecodeSubsystem("subsystem.yaml", strings.NewReader(encoded.String()+"unknown: true\n"), metadataConfiguration()); err == nil {
 		t.Fatal("accepted unknown field")
 	}
 }
@@ -58,7 +58,7 @@ func TestCatalogSubsystemLookupReturnsIsolatedCopies(t *testing.T) {
 	memberID := member.ID
 	subsystem := subsystemFixture()
 	subsystem.Members = []uuid.UUID{memberID}
-	catalog, err := NewCatalogSnapshotWithSubsystems(metadataManifest(), nil, nil, nil, []CatalogDefinition{member}, nil, nil, nil, nil, []SubsystemDefinition{subsystem})
+	catalog, err := NewCatalogSnapshotWithSubsystems(metadataConfiguration(), nil, nil, nil, []CatalogDefinition{member}, nil, nil, nil, nil, []SubsystemDefinition{subsystem})
 	if err != nil {
 		t.Fatal(err)
 	}

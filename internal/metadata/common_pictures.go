@@ -62,12 +62,12 @@ type CommonPictureDefinition struct {
 }
 
 // DecodeCommonPicture reads and validates one common picture.
-func DecodeCommonPicture(source string, reader io.Reader, manifest project.Project) (CommonPictureDefinition, error) {
+func DecodeCommonPicture(source string, reader io.Reader, configuration project.Project) (CommonPictureDefinition, error) {
 	var value CommonPictureDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return CommonPictureDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return CommonPictureDefinition{}, err
 	}

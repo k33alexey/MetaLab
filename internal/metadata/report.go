@@ -57,13 +57,13 @@ type DataProcessorDefinition struct {
 }
 
 // DecodeReport reads and validates one report.
-func DecodeReport(source string, reader io.Reader, manifest project.Project) (ReportDefinition, error) {
+func DecodeReport(source string, reader io.Reader, configuration project.Project) (ReportDefinition, error) {
 	var value ReportDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return ReportDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
-	issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, manifest, reservedReportName)...)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
+	issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, configuration, reservedReportName)...)
 	for name, id := range map[string]*uuid.UUID{
 		"main_schema": value.MainSchema, "variants_storage": value.VariantsStorage,
 		"settings_storage": value.SettingsStorage,
@@ -76,8 +76,8 @@ func DecodeReport(source string, reader io.Reader, manifest project.Project) (Re
 		"forms.report": value.Forms.Report, "forms.settings": value.Forms.Settings,
 		"forms.variant": value.Forms.Variant,
 	})...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ReportDefinition{}, err
 	}
@@ -85,16 +85,16 @@ func DecodeReport(source string, reader io.Reader, manifest project.Project) (Re
 }
 
 // DecodeDataProcessor reads and validates one data processor.
-func DecodeDataProcessor(source string, reader io.Reader, manifest project.Project) (DataProcessorDefinition, error) {
+func DecodeDataProcessor(source string, reader io.Reader, configuration project.Project) (DataProcessorDefinition, error) {
 	var value DataProcessorDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return DataProcessorDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
-	issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, manifest, reservedReportName)...)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
+	issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, configuration, reservedReportName)...)
 	issues = append(issues, validateObjectForms(value.Forms)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return DataProcessorDefinition{}, err
 	}
@@ -105,13 +105,13 @@ func DecodeDataProcessor(source string, reader io.Reader, manifest project.Proje
 // attributes and table parts that exist only while the object runs. They are
 // checked like any others - a name is a name and a type is a type whether or
 // not the value is ever written down.
-func validateRunningObjectShape(attributes []Attribute, parts []TablePart, manifest project.Project, reserved func(string) bool) []string {
-	issues := validateAttributes("attributes", attributes, manifest, reserved)
+func validateRunningObjectShape(attributes []Attribute, parts []TablePart, configuration project.Project, reserved func(string) bool) []string {
+	issues := validateAttributes("attributes", attributes, configuration, reserved)
 	names := map[string]bool{}
 	for _, attribute := range attributes {
 		names[strings.ToLower(attribute.Name)] = true
 	}
-	return append(issues, validateTableParts(parts, names, manifest, reserved)...)
+	return append(issues, validateTableParts(parts, names, configuration, reserved)...)
 }
 
 // reservedReportName keeps the one standard attribute a running object has.

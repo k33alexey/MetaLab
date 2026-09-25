@@ -7,14 +7,14 @@ const script=readFileSync(new URL('../internal/studio/ui/project-editor.js',impo
 const context=vm.createContext({structuredClone});
 vm.runInContext(script,context);
 const create=context.createProjectModel;
-function fixture(){return {manifest:{format:1,id:'p1',name:'SalesDemo',title:{ru:'Продажи и склад'},defaultLanguage:'ru',languages:[
+function fixture(){return {configuration:{format:1,id:'p1',name:'SalesDemo',title:{ru:'Продажи и склад'},defaultLanguage:'ru',languages:[
   {name:'English',title:'English',code:'en'},{name:'Русский',title:'Русский',code:'ru'},
 ]}};}
 
 test('Studio inline script remains valid JavaScript',()=>{
   const html=readFileSync(new URL('../internal/studio/ui/index.html',import.meta.url),'utf8');
   for(const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g))new vm.Script(match[1]);
-  assert.match(html,/\/api\/project-manifest/);
+  assert.match(html,/\/api\/project-configuration/);
 });
 test('name, synonym and default language round-trip',()=>{
   const model=create(fixture());

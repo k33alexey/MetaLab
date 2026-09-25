@@ -51,9 +51,9 @@ type Workspace struct {
 
 // Snapshot is the read-only project model rendered by the Studio shell.
 type Snapshot struct {
-	ProjectPath string          `json:"projectPath"`
-	Manifest    project.Project `json:"manifest"`
-	Tree        Node            `json:"tree"`
+	ProjectPath   string          `json:"projectPath"`
+	Configuration project.Project `json:"configuration"`
+	Tree          Node            `json:"tree"`
 }
 
 // Node represents a stable item in the metadata tree.
@@ -200,35 +200,35 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
 	workspace.invalidateStudioIndexesLocked()
-	manifest, err := project.ValidateLayout(workspace.root)
+	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return Snapshot{}, err
 	}
 	// The root's synonym is localized now, so the tree reads it the way it
 	// reads every other synonym: in the project's own default language.
-	synonym := manifest.Title.Resolve(manifest.DefaultLanguage, manifest.DefaultLanguage, manifest.Languages)
+	synonym := configuration.Title.Resolve(configuration.DefaultLanguage, configuration.DefaultLanguage, configuration.Languages)
 	properties := []Property{
-		{Name: "Имя", Value: manifest.Name}, {Name: "Синоним", Value: synonym},
-		{Name: "UUID", Value: manifest.ID.String()}, {Name: "Основной язык", Value: manifest.DefaultLanguage},
-		{Name: "Формат", Value: fmt.Sprint(manifest.Format)},
+		{Name: "Имя", Value: configuration.Name}, {Name: "Синоним", Value: synonym},
+		{Name: "UUID", Value: configuration.ID.String()}, {Name: "Основной язык", Value: configuration.DefaultLanguage},
+		{Name: "Формат", Value: fmt.Sprint(configuration.Format)},
 	}
-	if manifest.Vendor != "" {
-		properties = append(properties, Property{Name: "Поставщик", Value: manifest.Vendor})
+	if configuration.Vendor != "" {
+		properties = append(properties, Property{Name: "Поставщик", Value: configuration.Vendor})
 	}
-	if manifest.Version != "" {
-		properties = append(properties, Property{Name: "Версия", Value: manifest.Version})
+	if configuration.Version != "" {
+		properties = append(properties, Property{Name: "Версия", Value: configuration.Version})
 	}
 	root := Node{
-		ID: "project", Kind: "project", Title: manifest.Name, Path: project.ConfigurationFile,
+		ID: "project", Kind: "project", Title: configuration.Name, Path: project.ConfigurationFile,
 		Properties: properties,
 	}
 	root.Children = append(root.Children, workspace.rootModuleNodesLocked()...)
-	branches, err := workspace.metadataTree(manifest.DefaultLanguage, manifest.Languages)
+	branches, err := workspace.metadataTree(configuration.DefaultLanguage, configuration.Languages)
 	if err != nil {
 		return Snapshot{}, err
 	}
 	root.Children = append(root.Children, branches...)
-	return Snapshot{ProjectPath: workspace.root, Manifest: manifest, Tree: root}, nil
+	return Snapshot{ProjectPath: workspace.root, Configuration: configuration, Tree: root}, nil
 }
 
 // SaveDataProvider runs "Сохранить данные" against this Studio's database.

@@ -105,12 +105,12 @@ type ChartOfAccountsDefinition struct {
 const maxExtDimensions = 8
 
 // DecodeChartOfAccounts reads and validates one chart of accounts.
-func DecodeChartOfAccounts(source string, reader io.Reader, manifest project.Project) (ChartOfAccountsDefinition, error) {
+func DecodeChartOfAccounts(source string, reader io.Reader, configuration project.Project) (ChartOfAccountsDefinition, error) {
 	var value ChartOfAccountsDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return ChartOfAccountsDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
 		code:              value.Code,
 		descriptionLength: value.DescriptionLength,
@@ -119,9 +119,9 @@ func DecodeChartOfAccounts(source string, reader io.Reader, manifest project.Pro
 		forms:             value.Forms,
 		list:              value.List,
 		reservedName:      reservedChartOfAccountsName,
-	}, manifest)...)
-	issues = append(issues, validateAccountingFlags("accounting_flags", value.AccountingFlags, manifest)...)
-	issues = append(issues, validateAccountingFlags("ext_dimension_accounting_flags", value.ExtDimensionAccountingFlags, manifest)...)
+	}, configuration)...)
+	issues = append(issues, validateAccountingFlags("accounting_flags", value.AccountingFlags, configuration)...)
+	issues = append(issues, validateAccountingFlags("ext_dimension_accounting_flags", value.ExtDimensionAccountingFlags, configuration)...)
 	if value.MaxExtDimensionCount < 0 || value.MaxExtDimensionCount > maxExtDimensions {
 		issues = append(issues, fmt.Sprintf("max_ext_dimension_count must be 0..%d", maxExtDimensions))
 	}
@@ -141,8 +141,8 @@ func DecodeChartOfAccounts(source string, reader io.Reader, manifest project.Pro
 	}
 	issues = append(issues, validateCodeMask(value)...)
 	issues = append(issues, validatePredefinedAccounts(value)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ChartOfAccountsDefinition{}, err
 	}
@@ -173,7 +173,7 @@ func validateCodeMask(value ChartOfAccountsDefinition) []string {
 	return issues
 }
 
-func validateAccountingFlags(path string, flags []AccountingFlag, manifest project.Project) []string {
+func validateAccountingFlags(path string, flags []AccountingFlag, configuration project.Project) []string {
 	if len(flags) > 64 {
 		return []string{path + " must not contain more than 64 flags"}
 	}
@@ -199,7 +199,7 @@ func validateAccountingFlags(path string, flags []AccountingFlag, manifest proje
 			issues = append(issues, prefix+".name is reserved")
 		}
 		names[folded] = true
-		issues = append(issues, validateTitle(prefix+".title", flag.Title, manifest)...)
+		issues = append(issues, validateTitle(prefix+".title", flag.Title, configuration)...)
 	}
 	return issues
 }

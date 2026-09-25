@@ -385,7 +385,7 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 		return nil, project.ErrYAMLDocumentTooLarge
 	}
 	if relative == project.ConfigurationFile {
-		manifest, err := project.DecodeSource(relative, bytes.NewReader(content))
+		configuration, err := project.DecodeSource(relative, bytes.NewReader(content))
 		if err != nil {
 			return nil, err
 		}
@@ -393,22 +393,22 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 		if err != nil {
 			return nil, err
 		}
-		if manifest.ID != current.ID {
+		if configuration.ID != current.ID {
 			return nil, project.ErrProjectIdentityChanged
 		}
 		var canonical bytes.Buffer
-		if err := project.Encode(&canonical, manifest); err != nil {
+		if err := project.Encode(&canonical, configuration); err != nil {
 			return nil, err
 		}
 		return canonical.Bytes(), nil
 	}
 	parts := strings.Split(relative, "/")
 	if len(parts) == 4 && parts[0] == "metadata" && parts[1] == "common-forms" && parts[3] == project.FormMetadataFile {
-		manifest, err := project.ValidateLayout(workspace.root)
+		configuration, err := project.ValidateLayout(workspace.root)
 		if err != nil {
 			return nil, err
 		}
-		value, err := metadata.DecodeManagedForm(relative, bytes.NewReader(content), manifest)
+		value, err := metadata.DecodeManagedForm(relative, bytes.NewReader(content), configuration)
 		if err != nil {
 			return nil, err
 		}
@@ -427,11 +427,11 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 	// roles, the portal and ML App refer to the form by, not what finds it.
 	if len(parts) == 6 && parts[0] == "metadata" && parts[3] == "forms" &&
 		parts[5] == project.FormMetadataFile && slices.Contains(project.ObjectFolderKinds(), parts[1]) {
-		manifest, err := project.ValidateLayout(workspace.root)
+		configuration, err := project.ValidateLayout(workspace.root)
 		if err != nil {
 			return nil, err
 		}
-		value, err := metadata.DecodeManagedForm(relative, bytes.NewReader(content), manifest)
+		value, err := metadata.DecodeManagedForm(relative, bytes.NewReader(content), configuration)
 		if err != nil {
 			return nil, err
 		}
@@ -455,64 +455,64 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 		kindPart, folderPart = parts[1], parts[2]
 	}
 	if kindPart != "" {
-		manifest, err := project.ValidateLayout(workspace.root)
+		configuration, err := project.ValidateLayout(workspace.root)
 		if err != nil {
 			return nil, err
 		}
 		var value any
 		switch metadata.Kind(kindPart) {
 		case metadata.RoleKind:
-			value, err = metadata.DecodeRole(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeRole(relative, bytes.NewReader(content), configuration)
 		case metadata.SubsystemKind:
-			value, err = metadata.DecodeSubsystem(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeSubsystem(relative, bytes.NewReader(content), configuration)
 		case metadata.ConstantKind:
-			value, err = metadata.DecodeConstant(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeConstant(relative, bytes.NewReader(content), configuration)
 		case metadata.SessionParameterKind:
-			value, err = metadata.DecodeSessionParameter(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeSessionParameter(relative, bytes.NewReader(content), configuration)
 		case metadata.CommonAttributeKind:
-			value, err = metadata.DecodeCommonAttribute(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeCommonAttribute(relative, bytes.NewReader(content), configuration)
 		case metadata.CommonModuleKind:
-			value, err = metadata.DecodeCommonModule(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeCommonModule(relative, bytes.NewReader(content), configuration)
 		case metadata.EventSubscriptionKind:
-			value, err = metadata.DecodeEventSubscription(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeEventSubscription(relative, bytes.NewReader(content), configuration)
 		case metadata.EnumerationKind:
-			value, err = metadata.DecodeEnumeration(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeEnumeration(relative, bytes.NewReader(content), configuration)
 		case metadata.DefinedTypeKind:
-			value, err = metadata.DecodeDefinedType(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeDefinedType(relative, bytes.NewReader(content), configuration)
 		case metadata.CatalogKind:
-			value, err = metadata.DecodeCatalog(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeCatalog(relative, bytes.NewReader(content), configuration)
 		case metadata.ChartOfCharacteristicTypesKind:
-			value, err = metadata.DecodeChartOfCharacteristicTypes(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeChartOfCharacteristicTypes(relative, bytes.NewReader(content), configuration)
 		case metadata.ChartOfAccountsKind:
-			value, err = metadata.DecodeChartOfAccounts(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeChartOfAccounts(relative, bytes.NewReader(content), configuration)
 		case metadata.ChartOfCalculationTypesKind:
-			value, err = metadata.DecodeChartOfCalculationTypes(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeChartOfCalculationTypes(relative, bytes.NewReader(content), configuration)
 		case metadata.BusinessProcessKind:
-			value, err = metadata.DecodeBusinessProcess(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeBusinessProcess(relative, bytes.NewReader(content), configuration)
 		case metadata.ExchangePlanKind:
-			value, err = metadata.DecodeExchangePlan(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeExchangePlan(relative, bytes.NewReader(content), configuration)
 		case metadata.AccountingRegisterKind:
-			value, err = metadata.DecodeAccountingRegister(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeAccountingRegister(relative, bytes.NewReader(content), configuration)
 		case metadata.ReportKind:
-			value, err = metadata.DecodeReport(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeReport(relative, bytes.NewReader(content), configuration)
 		case metadata.DataProcessorKind:
-			value, err = metadata.DecodeDataProcessor(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeDataProcessor(relative, bytes.NewReader(content), configuration)
 		case metadata.CalculationRegisterKind:
-			value, err = metadata.DecodeCalculationRegister(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeCalculationRegister(relative, bytes.NewReader(content), configuration)
 		case metadata.NumeratorKind:
-			value, err = metadata.DecodeNumerator(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeNumerator(relative, bytes.NewReader(content), configuration)
 		case metadata.SequenceKind:
-			value, err = metadata.DecodeSequence(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeSequence(relative, bytes.NewReader(content), configuration)
 		case metadata.DocumentJournalKind:
-			value, err = metadata.DecodeDocumentJournal(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeDocumentJournal(relative, bytes.NewReader(content), configuration)
 		case metadata.TaskKind:
-			value, err = metadata.DecodeTask(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeTask(relative, bytes.NewReader(content), configuration)
 		case metadata.DocumentKind:
-			value, err = metadata.DecodeDocument(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeDocument(relative, bytes.NewReader(content), configuration)
 		case metadata.InformationRegisterKind:
-			value, err = metadata.DecodeInformationRegister(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeInformationRegister(relative, bytes.NewReader(content), configuration)
 		case metadata.AccumulationRegisterKind:
-			value, err = metadata.DecodeAccumulationRegister(relative, bytes.NewReader(content), manifest)
+			value, err = metadata.DecodeAccumulationRegister(relative, bytes.NewReader(content), configuration)
 		}
 		if err != nil {
 			return nil, err

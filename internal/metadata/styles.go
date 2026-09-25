@@ -198,12 +198,12 @@ type StyleDefinition struct {
 }
 
 // DecodeStyleItem reads and validates one style item.
-func DecodeStyleItem(source string, reader io.Reader, manifest project.Project) (StyleItemDefinition, error) {
+func DecodeStyleItem(source string, reader io.Reader, configuration project.Project) (StyleItemDefinition, error) {
 	var value StyleItemDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return StyleItemDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateStyleItemValue("value", value.Type, value.Value, true)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return StyleItemDefinition{}, err
@@ -212,12 +212,12 @@ func DecodeStyleItem(source string, reader io.Reader, manifest project.Project) 
 }
 
 // DecodeStyle reads and validates one style.
-func DecodeStyle(source string, reader io.Reader, manifest project.Project) (StyleDefinition, error) {
+func DecodeStyle(source string, reader io.Reader, configuration project.Project) (StyleDefinition, error) {
 	var value StyleDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return StyleDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	if len(value.Items) > maxStyleItemsPerStyle {
 		issues = append(issues, fmt.Sprintf("items must not contain more than %d items", maxStyleItemsPerStyle))
 	} else {

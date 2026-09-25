@@ -170,7 +170,7 @@ id: `+jobID+`
 name: Задание
 title: {ru: Задание}
 `+broken.body+`
-`), metadataManifest())
+`), metadataConfiguration())
 			if err == nil {
 				t.Fatalf("%s: accepted", name)
 			}

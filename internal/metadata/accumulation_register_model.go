@@ -34,18 +34,18 @@ type AccumulationRegisterDefinition struct {
 	Templates  []ObjectTemplate              `yaml:"templates,omitempty"`
 }
 
-func DecodeAccumulationRegister(source string, reader io.Reader, manifest project.Project) (AccumulationRegisterDefinition, error) {
+func DecodeAccumulationRegister(source string, reader io.Reader, configuration project.Project) (AccumulationRegisterDefinition, error) {
 	var value AccumulationRegisterDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return AccumulationRegisterDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	if value.Kind != AccumulationRegisterBalance && value.Kind != AccumulationRegisterTurnover {
 		issues = append(issues, "kind must be balance or turnover")
 	}
-	issues = append(issues, validateAttributes("dimensions", value.Dimensions, manifest, reservedAccumulationRegisterName)...)
-	issues = append(issues, validateAttributes("resources", value.Resources, manifest, reservedAccumulationRegisterName)...)
-	issues = append(issues, validateAttributes("attributes", value.Attributes, manifest, reservedAccumulationRegisterName)...)
+	issues = append(issues, validateAttributes("dimensions", value.Dimensions, configuration, reservedAccumulationRegisterName)...)
+	issues = append(issues, validateAttributes("resources", value.Resources, configuration, reservedAccumulationRegisterName)...)
+	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, reservedAccumulationRegisterName)...)
 	if len(value.Resources) == 0 {
 		issues = append(issues, "resources must contain at least one numeric item")
 	}
@@ -91,8 +91,8 @@ func DecodeAccumulationRegister(source string, reader io.Reader, manifest projec
 		seenRecorders[recorder] = true
 	}
 	issues = append(issues, validateObjectForms(value.Forms)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return AccumulationRegisterDefinition{}, err
 	}

@@ -95,12 +95,12 @@ type CommandPermission struct {
 	Command uuid.UUID `yaml:"command" json:"command"`
 }
 
-func DecodeRole(source string, reader io.Reader, manifest project.Project) (RoleDefinition, error) {
+func DecodeRole(source string, reader io.Reader, configuration project.Project) (RoleDefinition, error) {
 	var value RoleDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return RoleDefinition{}, err
 	}
-	if err := ValidateRole(source, value, manifest); err != nil {
+	if err := ValidateRole(source, value, configuration); err != nil {
 		return RoleDefinition{}, err
 	}
 	return value, nil
@@ -108,8 +108,8 @@ func DecodeRole(source string, reader io.Reader, manifest project.Project) (Role
 
 // ValidateRole checks structure. Catalog validation additionally checks object
 // and field ownership; publication validates every referenced form command.
-func ValidateRole(source string, value RoleDefinition, manifest project.Project) error {
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+func ValidateRole(source string, value RoleDefinition, configuration project.Project) error {
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	if !utf8.ValidString(value.Comment) || utf8.RuneCountInString(value.Comment) > MaxRoleComment {
 		issues = append(issues, fmt.Sprintf("comment must be valid UTF-8 of at most %d characters", MaxRoleComment))
 	}

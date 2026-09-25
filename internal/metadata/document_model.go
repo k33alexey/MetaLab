@@ -55,12 +55,12 @@ type DocumentDefinition struct {
 	List       ListSettings     `yaml:"list,omitempty"`
 }
 
-func DecodeDocument(source string, reader io.Reader, manifest project.Project) (DocumentDefinition, error) {
+func DecodeDocument(source string, reader io.Reader, configuration project.Project) (DocumentDefinition, error) {
 	var value DocumentDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return DocumentDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	shape := numberedObjectShape{
 		number:       value.Number,
 		attributes:   value.Attributes,
@@ -81,9 +81,9 @@ func DecodeDocument(source string, reader io.Reader, manifest project.Project) (
 			issues = append(issues, "number is set by the numerator this document shares, so it must not be declared here as well")
 		}
 	}
-	issues = append(issues, validateNumberedObjectShape(shape, manifest)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
+	issues = append(issues, validateNumberedObjectShape(shape, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return DocumentDefinition{}, err
 	}
@@ -131,7 +131,7 @@ func validateNumberShape(number DocumentNumber) []string {
 	return issues
 }
 
-func validateNumberedObjectShape(shape numberedObjectShape, manifest project.Project) []string {
+func validateNumberedObjectShape(shape numberedObjectShape, configuration project.Project) []string {
 	var issues []string
 	if !shape.numberFromElsewhere {
 		issues = validateNumberShape(shape.number)
@@ -140,12 +140,12 @@ func validateNumberedObjectShape(shape numberedObjectShape, manifest project.Pro
 	if reserved == nil {
 		reserved = reservedDocumentObjectName
 	}
-	issues = append(issues, validateAttributes("attributes", shape.attributes, manifest, reserved)...)
+	issues = append(issues, validateAttributes("attributes", shape.attributes, configuration, reserved)...)
 	attributeNames := make(map[string]bool, len(shape.attributes))
 	for _, attribute := range shape.attributes {
 		attributeNames[strings.ToLower(attribute.Name)] = true
 	}
-	issues = append(issues, validateTableParts(shape.tableParts, attributeNames, manifest, reserved)...)
+	issues = append(issues, validateTableParts(shape.tableParts, attributeNames, configuration, reserved)...)
 	issues = append(issues, validateObjectForms(shape.forms)...)
 	return append(issues, validateListSettings(shape.list, shape.attributes, map[string]TypeKind{
 		"number": shape.number.Type,
@@ -155,7 +155,7 @@ func validateNumberedObjectShape(shape numberedObjectShape, manifest project.Pro
 // validateTableParts checks the table parts of any object that has them. The
 // names of parts and of attributes share one space: a part named like an
 // attribute would be two things answering to one name.
-func validateTableParts(parts []TablePart, attributeNames map[string]bool, manifest project.Project, reserved func(string) bool) []string {
+func validateTableParts(parts []TablePart, attributeNames map[string]bool, configuration project.Project, reserved func(string) bool) []string {
 	var issues []string
 	if len(parts) > 128 {
 		issues = append(issues, "table_parts must not contain more than 128 items")
@@ -187,8 +187,8 @@ func validateTableParts(parts []TablePart, attributeNames map[string]bool, manif
 			issues = append(issues, prefix+".name conflicts with an attribute")
 		}
 		partNames[folded] = true
-		issues = append(issues, validateTitle(prefix+".title", part.Title, manifest)...)
-		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, manifest, nil)...)
+		issues = append(issues, validateTitle(prefix+".title", part.Title, configuration)...)
+		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, configuration, nil)...)
 	}
 	return issues
 }

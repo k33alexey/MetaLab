@@ -24,12 +24,12 @@ type NumeratorDefinition struct {
 }
 
 // DecodeNumerator reads and validates one numerator.
-func DecodeNumerator(source string, reader io.Reader, manifest project.Project) (NumeratorDefinition, error) {
+func DecodeNumerator(source string, reader io.Reader, configuration project.Project) (NumeratorDefinition, error) {
 	var value NumeratorDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return NumeratorDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateNumberShape(value.Number)...)
 	if value.Number.Auto {
 		issues = append(issues, "number.auto belongs to the document, not to the numerator it shares")

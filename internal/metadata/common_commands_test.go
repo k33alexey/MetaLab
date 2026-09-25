@@ -234,7 +234,7 @@ id: `+commandGroupID+`
 name: Синхронизация
 title: {ru: Синхронизация}
 `+broken.body+`
-`), metadataManifest())
+`), metadataConfiguration())
 			if err == nil {
 				t.Fatalf("%s: accepted", name)
 			}

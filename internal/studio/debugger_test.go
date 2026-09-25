@@ -124,7 +124,7 @@ func TestStudioDebuggerHTTPAPIAndAssets(t *testing.T) {
 func TestWorkspaceDebugsRegisteredUserSessionTarget(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
-	manifest, err := project.ValidateLayout(root)
+	configuration, err := project.ValidateLayout(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestWorkspaceDebugsRegisteredUserSessionTarget(t *testing.T) {
 	registry := debugtarget.NewRegistry()
 	databaseID, sessionID := uuid.MustNew(), uuid.MustNew()
 	registration, target, err := registry.Register(debugtarget.Descriptor{
-		Kind: debugtarget.UserSession, ProjectID: manifest.ID, DatabaseID: databaseID, SessionID: &sessionID, Name: "alexey · Chrome",
+		Kind: debugtarget.UserSession, ProjectID: configuration.ID, DatabaseID: databaseID, SessionID: &sessionID, Name: "alexey · Chrome",
 	}, endpoint)
 	if err != nil {
 		t.Fatal(err)
@@ -224,7 +224,7 @@ func TestWorkspaceRejectsDebugTargetFromAnotherProject(t *testing.T) {
 func TestWorkspaceFiltersAndRejectsDebugTargetFromAnotherDatabase(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
-	manifest, err := project.ValidateLayout(root)
+	configuration, err := project.ValidateLayout(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestWorkspaceFiltersAndRejectsDebugTargetFromAnotherDatabase(t *testing.T) 
 	registry := debugtarget.NewRegistry()
 	foreignDatabaseID, currentDatabaseID, sessionID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	registration, target, err := registry.Register(debugtarget.Descriptor{
-		Kind: debugtarget.UserSession, ProjectID: manifest.ID, DatabaseID: foreignDatabaseID, SessionID: &sessionID, Name: "Foreign database session",
+		Kind: debugtarget.UserSession, ProjectID: configuration.ID, DatabaseID: foreignDatabaseID, SessionID: &sessionID, Name: "Foreign database session",
 	}, endpoint)
 	if err != nil {
 		t.Fatal(err)

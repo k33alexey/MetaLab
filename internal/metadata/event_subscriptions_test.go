@@ -24,7 +24,7 @@ func TestDecodeEventSubscriptionStrictAndBounded(t *testing.T) {
 	if err := Encode(&encoded, subscription); err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := DecodeEventSubscription("event-subscription.yaml", bytes.NewReader(encoded.Bytes()), metadataManifest())
+	decoded, err := DecodeEventSubscription("event-subscription.yaml", bytes.NewReader(encoded.Bytes()), metadataConfiguration())
 	if err != nil || decoded.ID != subscription.ID || len(decoded.Objects) != 2 || decoded.Procedure != subscription.Procedure {
 		t.Fatalf("decode event subscription = %+v, %v", decoded, err)
 	}
@@ -47,12 +47,12 @@ func TestDecodeEventSubscriptionStrictAndBounded(t *testing.T) {
 			mutated := subscription
 			mutated.Objects = append([]uuid.UUID{}, subscription.Objects...)
 			mutate(&mutated)
-			if err := ValidateEventSubscription("event-subscription.yaml", mutated, metadataManifest()); err == nil {
+			if err := ValidateEventSubscription("event-subscription.yaml", mutated, metadataConfiguration()); err == nil {
 				t.Fatalf("%s: accepted invalid event subscription", name)
 			}
 		})
 	}
-	if _, err := DecodeEventSubscription("event-subscription.yaml", strings.NewReader(encoded.String()+"unknown: true\n"), metadataManifest()); err == nil {
+	if _, err := DecodeEventSubscription("event-subscription.yaml", strings.NewReader(encoded.String()+"unknown: true\n"), metadataConfiguration()); err == nil {
 		t.Fatal("accepted unknown field")
 	}
 }
@@ -65,7 +65,7 @@ func TestCatalogEventSubscriptionLookupReturnsIsolatedCopies(t *testing.T) {
 	module.Server = true
 	subscription := eventSubscriptionFixture(target.ID)
 	subscription.Module = module.ID
-	catalog, err := NewCatalogSnapshotWithEventSubscriptions(metadataManifest(), nil, nil, nil, []CatalogDefinition{target}, nil, nil, nil, nil, nil, nil, nil, []CommonModuleDefinition{module}, []EventSubscriptionDefinition{subscription})
+	catalog, err := NewCatalogSnapshotWithEventSubscriptions(metadataConfiguration(), nil, nil, nil, []CatalogDefinition{target}, nil, nil, nil, nil, nil, nil, nil, []CommonModuleDefinition{module}, []EventSubscriptionDefinition{subscription})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestEventSubscriptionReferenceValidation(t *testing.T) {
 	t.Parallel()
 	t.Run("unknown module", func(t *testing.T) {
 		subscription := eventSubscriptionFixture(uuid.MustNew())
-		if _, err := NewCatalogSnapshotWithEventSubscriptions(metadataManifest(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, []EventSubscriptionDefinition{subscription}); err == nil || !strings.Contains(err.Error(), "unknown common module") {
+		if _, err := NewCatalogSnapshotWithEventSubscriptions(metadataConfiguration(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, []EventSubscriptionDefinition{subscription}); err == nil || !strings.Contains(err.Error(), "unknown common module") {
 			t.Fatalf("unknown module error = %v", err)
 		}
 	})
@@ -101,7 +101,7 @@ func TestEventSubscriptionReferenceValidation(t *testing.T) {
 		module.Server, module.Client = false, true
 		subscription := eventSubscriptionFixture(uuid.MustNew())
 		subscription.Module = module.ID
-		if _, err := NewCatalogSnapshotWithEventSubscriptions(metadataManifest(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, []CommonModuleDefinition{module}, []EventSubscriptionDefinition{subscription}); err == nil || !strings.Contains(err.Error(), "must be a server module") {
+		if _, err := NewCatalogSnapshotWithEventSubscriptions(metadataConfiguration(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, []CommonModuleDefinition{module}, []EventSubscriptionDefinition{subscription}); err == nil || !strings.Contains(err.Error(), "must be a server module") {
 			t.Fatalf("client-only module error = %v", err)
 		}
 	})
@@ -110,7 +110,7 @@ func TestEventSubscriptionReferenceValidation(t *testing.T) {
 		module.Server = true
 		subscription := eventSubscriptionFixture(uuid.MustNew())
 		subscription.Module = module.ID
-		if _, err := NewCatalogSnapshotWithEventSubscriptions(metadataManifest(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, []CommonModuleDefinition{module}, []EventSubscriptionDefinition{subscription}); err == nil || !strings.Contains(err.Error(), "unknown object") {
+		if _, err := NewCatalogSnapshotWithEventSubscriptions(metadataConfiguration(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, []CommonModuleDefinition{module}, []EventSubscriptionDefinition{subscription}); err == nil || !strings.Contains(err.Error(), "unknown object") {
 			t.Fatalf("unknown object error = %v", err)
 		}
 	})
@@ -124,7 +124,7 @@ func TestEventSubscriptionReferenceValidation(t *testing.T) {
 		subscription := eventSubscriptionFixture(register.ID)
 		subscription.Module = module.ID
 		subscription.Event = "posting"
-		if _, err := NewCatalogSnapshotWithEventSubscriptions(metadataManifest(), nil, nil, nil, nil, nil, []InformationRegisterDefinition{register}, nil, nil, nil, nil, nil, []CommonModuleDefinition{module}, []EventSubscriptionDefinition{subscription}); err == nil || !strings.Contains(err.Error(), "not valid for information register objects") {
+		if _, err := NewCatalogSnapshotWithEventSubscriptions(metadataConfiguration(), nil, nil, nil, nil, nil, []InformationRegisterDefinition{register}, nil, nil, nil, nil, nil, []CommonModuleDefinition{module}, []EventSubscriptionDefinition{subscription}); err == nil || !strings.Contains(err.Error(), "not valid for information register objects") {
 			t.Fatalf("invalid event for kind error = %v", err)
 		}
 	})
@@ -135,7 +135,7 @@ func TestEventSubscriptionReferenceValidation(t *testing.T) {
 		module.Server = true
 		subscription := eventSubscriptionFixture(target.ID)
 		subscription.Module = module.ID
-		if _, err := NewCatalogSnapshotWithEventSubscriptions(metadataManifest(), nil, nil, nil, []CatalogDefinition{target}, nil, nil, nil, nil, nil, nil, nil, []CommonModuleDefinition{module}, []EventSubscriptionDefinition{subscription}); err != nil {
+		if _, err := NewCatalogSnapshotWithEventSubscriptions(metadataConfiguration(), nil, nil, nil, []CatalogDefinition{target}, nil, nil, nil, nil, nil, nil, nil, []CommonModuleDefinition{module}, []EventSubscriptionDefinition{subscription}); err != nil {
 			t.Fatalf("valid event subscription rejected: %v", err)
 		}
 	})

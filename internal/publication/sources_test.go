@@ -198,11 +198,11 @@ func managedFormYAML(t *testing.T, id uuid.UUID, name string) []byte {
 func publicationProject(t *testing.T) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "project")
-	manifest := project.Project{
+	configuration := project.Project{
 		Format: project.CurrentFormat, ID: uuid.MustNew(), Name: "PackageDemo", Title: project.LocalizedText{"ru": "Package Demo"},
 		DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
 	}
-	if err := project.Initialize(root, manifest); err != nil {
+	if err := project.Initialize(root, configuration); err != nil {
 		t.Fatal(err)
 	}
 	return root

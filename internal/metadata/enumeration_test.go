@@ -165,7 +165,7 @@ name: СтатусыЗаказа
 title: {ru: Статусы заказа}
 values: [{id: `+enumValueOne+`, name: Новый, title: {ru: Новый}}]
 `+broken.body+`
-`), metadataManifest())
+`), metadataConfiguration())
 			if err == nil {
 				t.Fatalf("%s: accepted", name)
 			}

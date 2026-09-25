@@ -12,18 +12,18 @@ import (
 	"github.com/k33alexey/MetaLab/internal/systemdb"
 )
 
-func resetAdministrator(ctx context.Context, login string, configuration appconfig.Config) (cli.EmergencyCredentials, error) {
+func resetAdministrator(ctx context.Context, login string, settings appconfig.Config) (cli.EmergencyCredentials, error) {
 	if err := localadmin.Require(); err != nil {
 		return cli.EmergencyCredentials{}, err
 	}
 	var database *systemdb.Database
 	var err error
-	if configuration.SystemDatabase != nil {
-		password, secretErr := secretstore.New().Get(configuration.SystemDatabase.SecretKey)
+	if settings.SystemDatabase != nil {
+		password, secretErr := secretstore.New().Get(settings.SystemDatabase.SecretKey)
 		if secretErr != nil {
 			return cli.EmergencyCredentials{}, secretErr
 		}
-		poolConfiguration, configErr := configuration.SystemDatabase.PoolConfig(password)
+		poolConfiguration, configErr := settings.SystemDatabase.PoolConfig(password)
 		if configErr != nil {
 			return cli.EmergencyCredentials{}, configErr
 		}

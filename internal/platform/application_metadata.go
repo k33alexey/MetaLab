@@ -365,25 +365,25 @@ func resolvedApplicationTitle(title metadata.LocalizedText, fallback string, lan
 //
 // Preferences come from the request today; when accounts carry a language of
 // their own (092) that value goes in front of them, and nothing else changes.
-func ApplicationLanguage(manifest project.Project, preferences []string) metadata.TitleLanguage {
+func ApplicationLanguage(configuration project.Project, preferences []string) metadata.TitleLanguage {
 	for _, preference := range preferences {
 		code := strings.ToLower(strings.TrimSpace(preference))
 		if code == "" {
 			continue
 		}
-		for _, language := range manifest.Languages {
+		for _, language := range configuration.Languages {
 			if strings.EqualFold(language.Code, code) {
-				return metadata.ProjectLanguage(manifest, language.Code)
+				return metadata.ProjectLanguage(configuration, language.Code)
 			}
 		}
 		base, _, _ := strings.Cut(code, "-")
-		for _, language := range manifest.Languages {
+		for _, language := range configuration.Languages {
 			if configured, _, _ := strings.Cut(strings.ToLower(language.Code), "-"); configured == base {
-				return metadata.ProjectLanguage(manifest, language.Code)
+				return metadata.ProjectLanguage(configuration, language.Code)
 			}
 		}
 	}
-	return metadata.ProjectLanguage(manifest, manifest.DefaultLanguage)
+	return metadata.ProjectLanguage(configuration, configuration.DefaultLanguage)
 }
 
 // allowedOperations reports what the caller may do with one object, in a stable

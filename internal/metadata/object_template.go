@@ -82,7 +82,7 @@ type ObjectTemplate struct {
 }
 
 // validateObjectTemplates checks the templates of one object.
-func validateObjectTemplates(templates []ObjectTemplate, manifest project.Project) []string {
+func validateObjectTemplates(templates []ObjectTemplate, configuration project.Project) []string {
 	if len(templates) > maxTemplatesPerObject {
 		return []string{fmt.Sprintf("templates must not contain more than %d items", maxTemplatesPerObject)}
 	}
@@ -105,7 +105,7 @@ func validateObjectTemplates(templates []ObjectTemplate, manifest project.Projec
 			issues = append(issues, prefix+".name must be unique")
 		}
 		names[folded] = true
-		issues = append(issues, validateTitle(prefix+".title", template.Title, manifest)...)
+		issues = append(issues, validateTitle(prefix+".title", template.Title, configuration)...)
 		if !validTemplateKind(template.Kind) {
 			issues = append(issues, prefix+".kind is not a kind of template")
 		}

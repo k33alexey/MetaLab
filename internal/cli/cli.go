@@ -35,7 +35,7 @@ type Runner func(context.Context, appconfig.Config) error
 type StudioRunner func(context.Context, appconfig.Config, string, string) error
 
 // ServiceControl executes one native service-manager action.
-type ServiceControl func(action, configurationPath string) (string, error)
+type ServiceControl func(action, settingsPath string) (string, error)
 
 // EmergencyCredentials are displayed once after a local administrator reset.
 type EmergencyCredentials struct {
@@ -100,7 +100,7 @@ func (cli CLI) runStudio(ctx context.Context, args []string, stderr io.Writer) i
 	flags.SetOutput(stderr)
 	projectPath := flags.String("project", "", "path to ML Project")
 	databaseID := flags.String("database", "", "registered database UUID")
-	configurationPath := flags.String("config", "", "path to MetaLab YAML configuration")
+	settingsPath := flags.String("config", "", "path to MetaLab YAML settings")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || *projectPath == "" || *databaseID == "" {
 		if err == nil {
 			fmt.Fprintln(stderr, "usage: ml studio --database UUID --project PATH [--config PATH]")
@@ -111,12 +111,12 @@ func (cli CLI) runStudio(ctx context.Context, args []string, stderr io.Writer) i
 		fmt.Fprintln(stderr, "studio mode is unavailable in this build")
 		return 1
 	}
-	configuration, _, err := appconfig.Load(*configurationPath)
+	settings, _, err := appconfig.Load(*settingsPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "studio: %v\n", err)
 		return 1
 	}
-	if err := cli.commands.Studio(ctx, configuration, *projectPath, *databaseID); err != nil {
+	if err := cli.commands.Studio(ctx, settings, *projectPath, *databaseID); err != nil {
 		fmt.Fprintf(stderr, "studio: %v\n", err)
 		return 1
 	}
@@ -131,7 +131,7 @@ func (cli CLI) runAdmin(ctx context.Context, args []string, stdout, stderr io.Wr
 	flags := flag.NewFlagSet("admin reset-password", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	login := flags.String("login", "", "administrator login")
-	configurationPath := flags.String("config", "", "path to MetaLab YAML configuration")
+	settingsPath := flags.String("config", "", "path to MetaLab YAML settings")
 	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 || *login == "" {
 		if err == nil {
 			fmt.Fprintln(stderr, "usage: ml admin reset-password --login LOGIN [--config PATH]")
@@ -142,12 +142,12 @@ func (cli CLI) runAdmin(ctx context.Context, args []string, stdout, stderr io.Wr
 		fmt.Fprintln(stderr, "local administrator reset is unavailable in this build")
 		return 1
 	}
-	configuration, _, err := appconfig.Load(*configurationPath)
+	settings, _, err := appconfig.Load(*settingsPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "admin reset-password: %v\n", err)
 		return 1
 	}
-	credentials, err := cli.commands.Reset(ctx, *login, configuration)
+	credentials, err := cli.commands.Reset(ctx, *login, settings)
 	if err != nil {
 		fmt.Fprintf(stderr, "admin reset-password: %v\n", err)
 		return 1
@@ -209,7 +209,7 @@ func hasConfigFlag(args []string) bool {
 }
 
 func (cli CLI) runMode(ctx context.Context, name string, args []string, runner Runner, stderr io.Writer) int {
-	configuration, _, ok := loadConfiguration(name, args, stderr)
+	settings, _, ok := loadConfiguration(name, args, stderr)
 	if !ok {
 		return 2
 	}
@@ -217,7 +217,7 @@ func (cli CLI) runMode(ctx context.Context, name string, args []string, runner R
 		fmt.Fprintf(stderr, "%s mode is unavailable in this build\n", name)
 		return 1
 	}
-	if err := runner(ctx, configuration); err != nil {
+	if err := runner(ctx, settings); err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", name, err)
 		return 1
 	}
@@ -233,14 +233,14 @@ func (cli CLI) runConfig(args []string, stdout, stderr io.Writer) int {
 	if !ok {
 		return 2
 	}
-	fmt.Fprintf(stdout, "configuration is valid: %s\n", path)
+	fmt.Fprintf(stdout, "settings is valid: %s\n", path)
 	return 0
 }
 
 func loadConfiguration(name string, args []string, stderr io.Writer) (appconfig.Config, string, bool) {
 	flags := flag.NewFlagSet(name, flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	path := flags.String("config", "", "path to MetaLab YAML configuration")
+	path := flags.String("config", "", "path to MetaLab YAML settings")
 	if err := flags.Parse(args); err != nil {
 		return appconfig.Config{}, "", false
 	}
@@ -248,10 +248,10 @@ func loadConfiguration(name string, args []string, stderr io.Writer) (appconfig.
 		fmt.Fprintf(stderr, "%s: unexpected argument %q\n", name, flags.Arg(0))
 		return appconfig.Config{}, "", false
 	}
-	configuration, loadedPath, err := appconfig.Load(*path)
+	settings, loadedPath, err := appconfig.Load(*path)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return appconfig.Config{}, loadedPath, false
 	}
-	return configuration, loadedPath, true
+	return settings, loadedPath, true
 }

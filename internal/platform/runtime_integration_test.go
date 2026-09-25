@@ -34,14 +34,14 @@ func TestProvisionPersistsAndReopensMLSystemIntegration(t *testing.T) {
 		AdministratorPassword: administratorPassword, SSLMode: administrator.SSLMode,
 		SystemDatabase: "ml_platform_db_" + suffix, TechnicalUser: "ml_platform_role_" + suffix,
 	}
-	configuration := appconfig.Default()
+	settings := appconfig.Default()
 	workDirectory := t.TempDir()
-	configuration.SourcePath = workDirectory + "/config.yaml"
-	configuration.Backups.Directory = workDirectory + "/backups"
+	settings.SourcePath = workDirectory + "/config.yaml"
+	settings.Backups.Directory = workDirectory + "/backups"
 	secrets := &memorySecrets{values: make(map[string]string)}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	runtime := New(ctx, configuration, secrets)
+	runtime := New(ctx, settings, secrets)
 	check, err := runtime.ProvisionPostgreSQL(ctx, request)
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +63,7 @@ func TestProvisionPersistsAndReopensMLSystemIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime.Close()
-	loaded, _, err := appconfig.Load(configuration.SourcePath)
+	loaded, _, err := appconfig.Load(settings.SourcePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestProvisionPersistsAndReopensMLSystemIntegration(t *testing.T) {
 	reopened.Close()
 	connection := loaded.SystemDatabase
 	if connection == nil {
-		t.Fatalf("saved configuration = %+v", loaded)
+		t.Fatalf("saved settings = %+v", loaded)
 	}
 	if err := postgresadmin.RollbackProvisioned(ctx, administrator, administratorPassword, postgresadmin.Provisioned{Connection: *connection}); err != nil {
 		t.Fatal(err)
@@ -96,9 +96,9 @@ func TestProvisionRollsBackWhenProtectedStoreFailsIntegration(t *testing.T) {
 		AdministratorPassword: administratorPassword, SSLMode: administrator.SSLMode,
 		SystemDatabase: "ml_rollback_db_" + suffix, TechnicalUser: "ml_rollback_role_" + suffix,
 	}
-	configuration := appconfig.Default()
-	configuration.SourcePath = t.TempDir() + "/config.yaml"
-	runtime := New(context.Background(), configuration, failingSecrets{})
+	settings := appconfig.Default()
+	settings.SourcePath = t.TempDir() + "/config.yaml"
+	runtime := New(context.Background(), settings, failingSecrets{})
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if _, err := runtime.ProvisionPostgreSQL(ctx, request); err == nil || !strings.Contains(err.Error(), "protected store rejected secret") {
@@ -140,10 +140,10 @@ func TestApplicationDatabaseRegistryRejectsSamePhysicalDatabaseIntegration(t *te
 		AdministratorPassword: administratorPassword, SSLMode: administrator.SSLMode,
 		SystemDatabase: "ml_registry_system_" + suffix, TechnicalUser: "ml_registry_system_role_" + suffix,
 	}
-	configuration := appconfig.Default()
-	configuration.SourcePath = t.TempDir() + "/config.yaml"
+	settings := appconfig.Default()
+	settings.SourcePath = t.TempDir() + "/config.yaml"
 	secrets := &memorySecrets{values: make(map[string]string)}
-	runtime := New(ctx, configuration, secrets)
+	runtime := New(ctx, settings, secrets)
 	if _, err := runtime.ProvisionPostgreSQL(ctx, systemRequest); err != nil {
 		t.Fatal(err)
 	}
@@ -202,12 +202,12 @@ func TestCreateDebugDatabaseCopiesOrStartsCleanIntegration(t *testing.T) {
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	configuration := appconfig.Default()
+	settings := appconfig.Default()
 	workDirectory := t.TempDir()
-	configuration.SourcePath = workDirectory + "/config.yaml"
-	configuration.Backups.Directory = workDirectory + "/backups"
+	settings.SourcePath = workDirectory + "/config.yaml"
+	settings.Backups.Directory = workDirectory + "/backups"
 	secrets := &memorySecrets{values: make(map[string]string)}
-	runtime := New(ctx, configuration, secrets)
+	runtime := New(ctx, settings, secrets)
 	system, err := postgresadmin.Provision(
 		ctx, administrator, administratorPassword,
 		"ml_debug_system_"+suffix, "ml_debug_system_role_"+suffix,
@@ -502,11 +502,11 @@ func debugRequest(administrator postgresconn.Descriptor, password, suffix, varia
 
 func mustPoolConfig(t *testing.T, descriptor postgresconn.Descriptor, password string) *pgxpool.Config {
 	t.Helper()
-	configuration, err := descriptor.PoolConfig(password)
+	settings, err := descriptor.PoolConfig(password)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return configuration
+	return settings
 }
 
 type memorySecrets struct {
@@ -547,7 +547,7 @@ func (store *memorySecrets) Delete(key string) error {
 
 func platformDescriptorFromURL(t *testing.T, databaseURL string) (postgresconn.Descriptor, string) {
 	t.Helper()
-	configuration, err := pgxpool.ParseConfig(databaseURL)
+	settings, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -560,8 +560,8 @@ func platformDescriptorFromURL(t *testing.T, databaseURL string) (postgresconn.D
 		sslMode = "require"
 	}
 	return postgresconn.Descriptor{
-		Host: configuration.ConnConfig.Host, Port: configuration.ConnConfig.Port,
-		Database: configuration.ConnConfig.Database, User: configuration.ConnConfig.User,
+		Host: settings.ConnConfig.Host, Port: settings.ConnConfig.Port,
+		Database: settings.ConnConfig.Database, User: settings.ConnConfig.User,
 		SSLMode: sslMode, SecretKey: "test.admin.password",
-	}, configuration.ConnConfig.Password
+	}, settings.ConnConfig.Password
 }

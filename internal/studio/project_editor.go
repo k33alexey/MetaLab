@@ -29,9 +29,9 @@ func canonicalEnglish(existing project.Language) project.Language {
 // ProjectEditorSource is the typed, revision-safe representation the
 // visual project editor reads and writes, in place of raw configuration.yaml.
 type ProjectEditorSource struct {
-	Path     string          `json:"path"`
-	Revision string          `json:"revision"`
-	Manifest project.Project `json:"manifest"`
+	Path          string          `json:"path"`
+	Revision      string          `json:"revision"`
+	Configuration project.Project `json:"configuration"`
 }
 
 func (workspace *Workspace) ReadProjectEditor() (ProjectEditorSource, error) {
@@ -45,11 +45,11 @@ func (workspace *Workspace) readProjectEditorLocked() (ProjectEditorSource, erro
 	if err != nil {
 		return ProjectEditorSource{}, err
 	}
-	manifest, err := project.DecodeSource(project.ConfigurationFile, strings.NewReader(file.Content))
+	configuration, err := project.DecodeSource(project.ConfigurationFile, strings.NewReader(file.Content))
 	if err != nil {
 		return ProjectEditorSource{}, err
 	}
-	return ProjectEditorSource{Path: project.ConfigurationFile, Revision: file.Revision, Manifest: withEnglishLanguage(manifest)}, nil
+	return ProjectEditorSource{Path: project.ConfigurationFile, Revision: file.Revision, Configuration: withEnglishLanguage(configuration)}, nil
 }
 
 // withEnglishLanguage guarantees English is present and canonical — added
@@ -57,20 +57,20 @@ func (workspace *Workspace) readProjectEditorLocked() (ProjectEditorSource, erro
 // change it. This is enforced only here (the visual project editor), not
 // in the shared project.Validate rules used everywhere else, so it does
 // not retroactively reject any existing ML Project.
-func withEnglishLanguage(manifest project.Project) project.Project {
-	manifest.Languages = append([]project.Language(nil), manifest.Languages...)
-	for index, language := range manifest.Languages {
+func withEnglishLanguage(configuration project.Project) project.Project {
+	configuration.Languages = append([]project.Language(nil), configuration.Languages...)
+	for index, language := range configuration.Languages {
 		if language.Code == englishLanguageCode {
-			manifest.Languages[index] = canonicalEnglish(language)
-			return manifest
+			configuration.Languages[index] = canonicalEnglish(language)
+			return configuration
 		}
 	}
 	// English is added with an identity of its own: every language the editor
 	// hands out is a complete object, whether the project had it or not.
 	added := englishLanguage
-	added.ID = uuid.Derive(manifest.ID, "language:"+englishLanguageCode)
-	manifest.Languages = append([]project.Language{added}, manifest.Languages...)
-	return manifest
+	added.ID = uuid.Derive(configuration.ID, "language:"+englishLanguageCode)
+	configuration.Languages = append([]project.Language{added}, configuration.Languages...)
+	return configuration
 }
 
 // findLanguage returns the configured language with this code.
@@ -83,8 +83,8 @@ func findLanguage(languages []project.Language, code string) (project.Language, 
 	return project.Language{}, false
 }
 
-// SaveProjectEditor validates and writes an edited project manifest.
-func (workspace *Workspace) SaveProjectEditor(manifest project.Project, revision string) (ProjectEditorSource, error) {
+// SaveProjectEditor validates and writes an edited project configuration.
+func (workspace *Workspace) SaveProjectEditor(configuration project.Project, revision string) (ProjectEditorSource, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
 	opened, err := workspace.readProjectEditorLocked()
@@ -94,36 +94,36 @@ func (workspace *Workspace) SaveProjectEditor(manifest project.Project, revision
 	if opened.Revision != revision {
 		return ProjectEditorSource{}, ErrSourceChanged
 	}
-	if manifest.ID != opened.Manifest.ID {
+	if configuration.ID != opened.Configuration.ID {
 		return ProjectEditorSource{}, fmt.Errorf("project UUID cannot be changed")
 	}
-	manifest = withEnglishLanguage(manifest)
+	configuration = withEnglishLanguage(configuration)
 	// A language the browser did not send an identity for keeps the one the
 	// project already has for that code, and only a genuinely new language gets
 	// a new identity: editing a title must not replace the object.
-	manifest.Languages = append([]project.Language(nil), manifest.Languages...)
-	for index := range manifest.Languages {
-		if !manifest.Languages[index].ID.IsZero() {
+	configuration.Languages = append([]project.Language(nil), configuration.Languages...)
+	for index := range configuration.Languages {
+		if !configuration.Languages[index].ID.IsZero() {
 			continue
 		}
-		if previous, ok := findLanguage(opened.Manifest.Languages, manifest.Languages[index].Code); ok {
-			manifest.Languages[index].ID = previous.ID
+		if previous, ok := findLanguage(opened.Configuration.Languages, configuration.Languages[index].Code); ok {
+			configuration.Languages[index].ID = previous.ID
 		}
 	}
-	manifest, err = project.EnsureLanguageIdentities(manifest)
+	configuration, err = project.EnsureLanguageIdentities(configuration)
 	if err != nil {
 		return ProjectEditorSource{}, err
 	}
-	manifest = withoutRemovedTranslations(manifest)
+	configuration = withoutRemovedTranslations(configuration)
 	var encoded bytes.Buffer
-	if err := project.Encode(&encoded, manifest); err != nil {
+	if err := project.Encode(&encoded, configuration); err != nil {
 		return ProjectEditorSource{}, err
 	}
 	saved, err := workspace.saveSourceLocked(project.ConfigurationFile, encoded.String(), revision)
 	if err != nil {
 		return ProjectEditorSource{}, err
 	}
-	opened.Manifest, opened.Revision = manifest, saved.Revision
+	opened.Configuration, opened.Revision = configuration, saved.Revision
 	return opened, nil
 }
 
@@ -138,9 +138,9 @@ func (workspace *Workspace) SaveProjectEditor(manifest project.Project, revision
 // name stands in, in the language the project now reads in. The name is an
 // identifier and says nothing in any particular language, so it is the one
 // honest thing to put there.
-func withoutRemovedTranslations(manifest project.Project) project.Project {
-	kept := make(map[string]bool, len(manifest.Languages))
-	for _, language := range manifest.Languages {
+func withoutRemovedTranslations(configuration project.Project) project.Project {
+	kept := make(map[string]bool, len(configuration.Languages))
+	for _, language := range configuration.Languages {
 		kept[strings.ToLower(language.Code)] = true
 	}
 	prune := func(text project.LocalizedText) project.LocalizedText {
@@ -158,21 +158,21 @@ func withoutRemovedTranslations(manifest project.Project) project.Project {
 		}
 		return result
 	}
-	manifest.Title = prune(manifest.Title)
-	if len(manifest.Title) == 0 {
-		manifest.Title = project.LocalizedText{manifest.DefaultLanguage: manifest.Name}
+	configuration.Title = prune(configuration.Title)
+	if len(configuration.Title) == 0 {
+		configuration.Title = project.LocalizedText{configuration.DefaultLanguage: configuration.Name}
 	}
-	manifest.BriefInformation = prune(manifest.BriefInformation)
-	manifest.DetailedInformation = prune(manifest.DetailedInformation)
-	manifest.Copyright = prune(manifest.Copyright)
-	manifest.VendorAddress = prune(manifest.VendorAddress)
-	manifest.InformationAddress = prune(manifest.InformationAddress)
-	manifest.UpdateCatalogAddress = prune(manifest.UpdateCatalogAddress)
-	return manifest
+	configuration.BriefInformation = prune(configuration.BriefInformation)
+	configuration.DetailedInformation = prune(configuration.DetailedInformation)
+	configuration.Copyright = prune(configuration.Copyright)
+	configuration.VendorAddress = prune(configuration.VendorAddress)
+	configuration.InformationAddress = prune(configuration.InformationAddress)
+	configuration.UpdateCatalogAddress = prune(configuration.UpdateCatalogAddress)
+	return configuration
 }
 
 func registerProjectEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
-	routes.HandleFunc("GET /api/project-manifest", func(response http.ResponseWriter, _ *http.Request) {
+	routes.HandleFunc("GET /api/project-configuration", func(response http.ResponseWriter, _ *http.Request) {
 		value, err := workspace.ReadProjectEditor()
 		if err != nil {
 			writeSourceError(response, err)
@@ -180,15 +180,15 @@ func registerProjectEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
 		}
 		writeStudioJSON(response, value)
 	})
-	routes.HandleFunc("PUT /api/project-manifest", func(response http.ResponseWriter, request *http.Request) {
+	routes.HandleFunc("PUT /api/project-configuration", func(response http.ResponseWriter, request *http.Request) {
 		var input struct {
 			ExpectedRevision string          `json:"expectedRevision"`
-			Manifest         project.Project `json:"manifest"`
+			Configuration    project.Project `json:"configuration"`
 		}
 		if !decodeStudioJSONRequest(response, request, &input) {
 			return
 		}
-		value, err := workspace.SaveProjectEditor(input.Manifest, input.ExpectedRevision)
+		value, err := workspace.SaveProjectEditor(input.Configuration, input.ExpectedRevision)
 		if err != nil {
 			writeSourceError(response, err)
 			return

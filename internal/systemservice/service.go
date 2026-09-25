@@ -44,14 +44,14 @@ func New(runner Runner) *Controller {
 }
 
 // Run enters the operating-system service lifecycle.
-func (controller *Controller) Run(ctx context.Context, configuration appconfig.Config) error {
+func (controller *Controller) Run(ctx context.Context, settings appconfig.Config) error {
 	if controller.runner == nil {
 		return fmt.Errorf("ML Service runner is nil")
 	}
 	if controller.interactive != nil && controller.interactive() {
-		return controller.runner(ctx, configuration)
+		return controller.runner(ctx, settings)
 	}
-	program := newProgram(ctx, configuration, controller.runner)
+	program := newProgram(ctx, settings, controller.runner)
 	definition, err := serviceDefinition("")
 	if err != nil {
 		return err
@@ -68,25 +68,25 @@ func (controller *Controller) Run(ctx context.Context, configuration appconfig.C
 }
 
 // Control executes an install, lifecycle or status action.
-func (controller *Controller) Control(action, configurationPath string) (string, error) {
+func (controller *Controller) Control(action, settingsPath string) (string, error) {
 	if action == "install" {
-		if configurationPath == "" {
-			return "", fmt.Errorf("service install requires an explicit configuration path")
+		if settingsPath == "" {
+			return "", fmt.Errorf("service install requires an explicit settings path")
 		}
-		absolute, err := filepath.Abs(configurationPath)
+		absolute, err := filepath.Abs(settingsPath)
 		if err != nil {
-			return "", fmt.Errorf("resolve configuration path: %w", err)
+			return "", fmt.Errorf("resolve settings path: %w", err)
 		}
-		configurationPath = absolute
-		information, err := os.Stat(configurationPath)
+		settingsPath = absolute
+		information, err := os.Stat(settingsPath)
 		if err != nil {
-			return "", fmt.Errorf("read service configuration %q: %w", configurationPath, err)
+			return "", fmt.Errorf("read service settings %q: %w", settingsPath, err)
 		}
 		if !information.Mode().IsRegular() {
-			return "", fmt.Errorf("service configuration %q is not a regular file", configurationPath)
+			return "", fmt.Errorf("service settings %q is not a regular file", settingsPath)
 		}
 	}
-	definition, err := serviceDefinition(configurationPath)
+	definition, err := serviceDefinition(settingsPath)
 	if err != nil {
 		return "", err
 	}
@@ -110,7 +110,7 @@ func (controller *Controller) Control(action, configurationPath string) (string,
 	return action + " completed", nil
 }
 
-func serviceDefinition(configurationPath string) (*kservice.Config, error) {
+func serviceDefinition(settingsPath string) (*kservice.Config, error) {
 	executable, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("resolve MetaLab executable: %w", err)
@@ -120,8 +120,8 @@ func serviceDefinition(configurationPath string) (*kservice.Config, error) {
 		return nil, fmt.Errorf("resolve MetaLab executable path: %w", err)
 	}
 	arguments := []string{"service", "run"}
-	if configurationPath != "" {
-		arguments = append(arguments, "--config", configurationPath)
+	if settingsPath != "" {
+		arguments = append(arguments, "--config", settingsPath)
 	}
 	definition := &kservice.Config{
 		Name: "metalab", DisplayName: "MetaLab Service",
@@ -161,9 +161,9 @@ func isControlAction(action string) bool {
 }
 
 type program struct {
-	parent        context.Context
-	configuration appconfig.Config
-	runner        Runner
+	parent   context.Context
+	settings appconfig.Config
+	runner   Runner
 
 	mu     sync.Mutex
 	cancel context.CancelFunc
@@ -171,8 +171,8 @@ type program struct {
 	err    error
 }
 
-func newProgram(parent context.Context, configuration appconfig.Config, runner Runner) *program {
-	return &program{parent: parent, configuration: configuration, runner: runner, done: make(chan struct{})}
+func newProgram(parent context.Context, settings appconfig.Config, runner Runner) *program {
+	return &program{parent: parent, settings: settings, runner: runner, done: make(chan struct{})}
 }
 
 func (program *program) Start(service kservice.Service) error {
@@ -185,7 +185,7 @@ func (program *program) Start(service kservice.Service) error {
 	program.cancel = cancel
 	program.mu.Unlock()
 	go func() {
-		err := program.runner(ctx, program.configuration)
+		err := program.runner(ctx, program.settings)
 		program.mu.Lock()
 		program.err = err
 		program.mu.Unlock()

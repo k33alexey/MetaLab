@@ -179,7 +179,7 @@ name: Режим
 title: {ru: Режим}
 types: [{kind: boolean}]
 `+broken.body+`
-`), metadataManifest())
+`), metadataConfiguration())
 			if err == nil {
 				t.Fatalf("%s: accepted", name)
 			}

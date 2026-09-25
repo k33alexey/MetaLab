@@ -308,7 +308,7 @@ title: {ru: Контрагенты}
 code: {type: string, length: 9, auto: true}
 description_length: 150
 `+broken.body+`
-`), metadataManifest())
+`), metadataConfiguration())
 			if err == nil {
 				t.Fatalf("%s: accepted", name)
 			}

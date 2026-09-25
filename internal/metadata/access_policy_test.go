@@ -52,7 +52,7 @@ func TestCatalogRejectsUnresolvablePolicies(t *testing.T) {
 	for name, mutate := range tests {
 		role, definition := publishablePolicyRole()
 		mutate(&role, definition)
-		if _, err := NewCatalogSnapshotWithRoles(metadataManifest(), nil, nil, nil, []CatalogDefinition{definition}, nil, nil, nil, []RoleDefinition{role}); err == nil {
+		if _, err := NewCatalogSnapshotWithRoles(metadataConfiguration(), nil, nil, nil, []CatalogDefinition{definition}, nil, nil, nil, []RoleDefinition{role}); err == nil {
 			t.Fatalf("catalog accepted a policy with %s", name)
 		}
 	}
@@ -65,7 +65,7 @@ func TestCatalogAcceptsPolicyBoundToSessionParameter(t *testing.T) {
 	role.PolicyTemplates[0].Rule = PolicyRule{Field: role.PolicyTemplates[0].Rule.Field, Operator: PolicyEqual, Parameter: "ТекущийСклад"}
 	parameter := SessionParameter{Format: CurrentFormat, ID: uuid.MustNew(), Name: "ТекущийСклад", Title: LocalizedText{"ru": "Текущий склад"},
 		Types: []Type{{Kind: StringType, Length: 50}}}
-	if _, err := NewCatalogSnapshotWithSessionParameters(metadataManifest(), nil, nil, nil, []CatalogDefinition{definition}, nil, nil, nil,
+	if _, err := NewCatalogSnapshotWithSessionParameters(metadataConfiguration(), nil, nil, nil, []CatalogDefinition{definition}, nil, nil, nil,
 		[]RoleDefinition{role}, nil, []SessionParameter{parameter}); err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestParameterizedPolicyTemplates(t *testing.T) {
 				{Operations: []PermissionOperation{PermissionUpdate}, Template: "Своё", Arguments: []string{warehouse.String()}},
 			}}}}
 	role.Objects[0].Operations = append(role.Objects[0].Operations, PermissionUpdate)
-	if err := ValidateRole("role.yaml", role, metadataManifest()); err != nil {
+	if err := ValidateRole("role.yaml", role, metadataConfiguration()); err != nil {
 		t.Fatal(err)
 	}
 	// The same template resolves to a different field for each use.
@@ -113,7 +113,7 @@ func TestParameterizedPolicyTemplates(t *testing.T) {
 	for name, mutate := range broken {
 		invalid := cloneRole(role)
 		mutate(&invalid)
-		if err := ValidateRole("role.yaml", invalid, metadataManifest()); err == nil {
+		if err := ValidateRole("role.yaml", invalid, metadataConfiguration()); err == nil {
 			t.Fatalf("accepted a role with %s", name)
 		}
 	}
@@ -131,7 +131,7 @@ func TestPolicySubqueryValidation(t *testing.T) {
 			Objects: []ObjectPermission{{Object: uuid.MustNew(), Operations: []PermissionOperation{PermissionRead},
 				Policies: []AccessPolicy{{Operations: []PermissionOperation{PermissionRead}, Rule: &rule}}}}}
 	}
-	if err := ValidateRole("role.yaml", role(valid), metadataManifest()); err != nil {
+	if err := ValidateRole("role.yaml", role(valid), metadataConfiguration()); err != nil {
 		t.Fatal(err)
 	}
 	broken := map[string]PolicyRule{
@@ -143,7 +143,7 @@ func TestPolicySubqueryValidation(t *testing.T) {
 			Where: []PolicyRule{{Field: "code", Operator: PolicyIn, Subquery: &PolicySubquery{Object: source, Field: "code"}}}}},
 	}
 	for name, rule := range broken {
-		if err := ValidateRole("role.yaml", role(rule), metadataManifest()); err == nil {
+		if err := ValidateRole("role.yaml", role(rule), metadataConfiguration()); err == nil {
 			t.Fatalf("accepted a subquery with %s", name)
 		}
 	}
@@ -156,7 +156,7 @@ func TestDecodeRoleWithAccessPolicies(t *testing.T) {
 	if err := Encode(&encoded, role); err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := DecodeRole("role.yaml", bytes.NewReader(encoded.Bytes()), metadataManifest())
+	decoded, err := DecodeRole("role.yaml", bytes.NewReader(encoded.Bytes()), metadataConfiguration())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestValidateRoleRejectsBrokenPolicies(t *testing.T) {
 	for name, mutate := range tests {
 		role, _ := policyRoleFixture()
 		mutate(&role)
-		if err := ValidateRole("role.yaml", role, metadataManifest()); err == nil {
+		if err := ValidateRole("role.yaml", role, metadataConfiguration()); err == nil {
 			t.Fatalf("accepted role with %s", name)
 		}
 	}
@@ -206,7 +206,7 @@ func TestValidateRoleRejectsBrokenPolicies(t *testing.T) {
 		"parameter is not a name": {Field: field, Operator: PolicyEqual, Parameter: "не имя"},
 	}
 	for name, rule := range rules {
-		if err := ValidateRole("role.yaml", inline(rule), metadataManifest()); err == nil {
+		if err := ValidateRole("role.yaml", inline(rule), metadataConfiguration()); err == nil {
 			t.Fatalf("accepted rule with %s", name)
 		}
 	}
@@ -227,7 +227,7 @@ func TestValidateRoleAcceptsListAndLiteralRules(t *testing.T) {
 		role, _ := policyRoleFixture()
 		role.PolicyTemplates = nil
 		role.Objects[0].Policies = []AccessPolicy{{Operations: []PermissionOperation{PermissionRead}, Rule: &rule}}
-		if err := ValidateRole("role.yaml", role, metadataManifest()); err != nil {
+		if err := ValidateRole("role.yaml", role, metadataConfiguration()); err != nil {
 			t.Fatalf("rejected %s: %v", name, err)
 		}
 	}
@@ -244,7 +244,7 @@ func TestPolicyLiteralListRoundTrip(t *testing.T) {
 	if err := Encode(&encoded, role); err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := DecodeRole("role.yaml", bytes.NewReader(encoded.Bytes()), metadataManifest())
+	decoded, err := DecodeRole("role.yaml", bytes.NewReader(encoded.Bytes()), metadataConfiguration())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +262,7 @@ func TestPolicyLiteralListRoundTrip(t *testing.T) {
 func TestCatalogRoleClonesPolicies(t *testing.T) {
 	t.Parallel()
 	role, definition := publishablePolicyRole()
-	catalog, err := NewCatalogSnapshotWithRoles(metadataManifest(), nil, nil, nil, []CatalogDefinition{definition}, nil, nil, nil, []RoleDefinition{role})
+	catalog, err := NewCatalogSnapshotWithRoles(metadataConfiguration(), nil, nil, nil, []CatalogDefinition{definition}, nil, nil, nil, []RoleDefinition{role})
 	if err != nil {
 		t.Fatal(err)
 	}

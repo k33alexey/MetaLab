@@ -46,12 +46,12 @@ type ChartOfCharacteristicTypesDefinition struct {
 }
 
 // DecodeChartOfCharacteristicTypes reads and validates one chart description.
-func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, manifest project.Project) (ChartOfCharacteristicTypesDefinition, error) {
+func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, configuration project.Project) (ChartOfCharacteristicTypesDefinition, error) {
 	var value ChartOfCharacteristicTypesDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return ChartOfCharacteristicTypesDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
 		code:              value.Code,
 		descriptionLength: value.DescriptionLength,
@@ -62,15 +62,15 @@ func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, manifest 
 		hierarchy:         value.Hierarchy,
 		predefined:        value.Predefined,
 		reservedName:      reservedChartOfCharacteristicTypesName,
-	}, manifest)...)
+	}, configuration)...)
 	// The value type is the point of the whole object: a chart that allows
 	// nothing describes characteristics nobody can fill in.
 	issues = append(issues, validateTypes("value_type", value.ValueType, value.ID)...)
 	if value.AdditionalValues != nil && value.AdditionalValues.IsZero() {
 		issues = append(issues, "additional_values must be a non-zero UUID")
 	}
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ChartOfCharacteristicTypesDefinition{}, err
 	}

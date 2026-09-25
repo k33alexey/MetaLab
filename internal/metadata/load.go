@@ -23,14 +23,14 @@ func Load(root string) (*Catalog, error) {
 // Role editing must also work when an existing role has a dangling reference.
 // Only the editor-schema path skips roles; runtime Load always validates them.
 func load(root string, includeRoles bool) (*Catalog, error) {
-	manifest, err := project.ValidateLayout(root)
+	configuration, err := project.ValidateLayout(root)
 	if err != nil {
 		return nil, err
 	}
-	catalog := &Catalog{Project: manifest}
+	catalog := &Catalog{Project: configuration}
 	if includeRoles {
 		if err := loadKind(root, RoleKind, func(source string, file *os.File, id uuid.UUID) error {
-			value, err := DecodeRole(source, file, manifest)
+			value, err := DecodeRole(source, file, configuration)
 			if err == nil && value.ID != id {
 				err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
 			}
@@ -43,7 +43,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		}
 	}
 	if err := loadKind(root, SubsystemKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeSubsystem(source, file, manifest)
+		value, err := DecodeSubsystem(source, file, configuration)
 		if err == nil && value.ID != id {
 			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
 		}
@@ -57,7 +57,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	// A constant keeps a folder, because it keeps two modules: the one the
 	// platform calls around its value and the one of its manager.
 	if err := loadObjectKind(root, ConstantKind, func(source string, file *os.File, name string) error {
-		value, err := DecodeConstant(source, file, manifest)
+		value, err := DecodeConstant(source, file, configuration)
 		if err == nil && !strings.EqualFold(value.Name, name) {
 			err = fmt.Errorf("constant %s lies in a folder called %s", value.Name, name)
 		}
@@ -69,7 +69,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadKind(root, SessionParameterKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeSessionParameter(source, file, manifest)
+		value, err := DecodeSessionParameter(source, file, configuration)
 		if err == nil && value.ID != id {
 			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
 		}
@@ -81,7 +81,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadKind(root, CommonAttributeKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeCommonAttribute(source, file, manifest)
+		value, err := DecodeCommonAttribute(source, file, configuration)
 		if err == nil && value.ID != id {
 			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
 		}
@@ -93,7 +93,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadKind(root, CommonModuleKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeCommonModule(source, file, manifest)
+		value, err := DecodeCommonModule(source, file, configuration)
 		if err == nil && value.ID != id {
 			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
 		}
@@ -105,7 +105,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadKind(root, EventSubscriptionKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeEventSubscription(source, file, manifest)
+		value, err := DecodeEventSubscription(source, file, configuration)
 		if err == nil && value.ID != id {
 			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
 		}
@@ -117,7 +117,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, EnumerationKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeEnumeration(source, file, manifest)
+		value, err := DecodeEnumeration(source, file, configuration)
 		if err == nil && value.Name != folder {
 			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
@@ -129,7 +129,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadKind(root, ScheduledJobKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeScheduledJob(source, file, manifest)
+		value, err := DecodeScheduledJob(source, file, configuration)
 		if err == nil && value.ID != id {
 			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
 		}
@@ -141,7 +141,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadKind(root, CommandGroupKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeCommandGroup(source, file, manifest)
+		value, err := DecodeCommandGroup(source, file, configuration)
 		if err == nil && value.ID != id {
 			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
 		}
@@ -155,7 +155,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	// A common command keeps a folder, because it keeps the module that runs
 	// it; a command group keeps nothing, so it stays one file.
 	if err := loadObjectKind(root, CommonCommandKind, func(source string, file *os.File, name string) error {
-		value, err := DecodeCommonCommand(source, file, manifest)
+		value, err := DecodeCommonCommand(source, file, configuration)
 		if err == nil && !strings.EqualFold(value.Name, name) {
 			err = fmt.Errorf("common command %s lies in a folder called %s", value.Name, name)
 		}
@@ -170,7 +170,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	// the template or the picture itself, and the content lies in it beside
 	// the description.
 	if err := loadObjectKind(root, CommonTemplateKind, func(source string, file *os.File, name string) error {
-		value, err := DecodeCommonTemplate(source, file, manifest)
+		value, err := DecodeCommonTemplate(source, file, configuration)
 		if err == nil && !strings.EqualFold(value.Name, name) {
 			err = fmt.Errorf("common template %s lies in a folder called %s", value.Name, name)
 		}
@@ -182,7 +182,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, CommonPictureKind, func(source string, file *os.File, name string) error {
-		value, err := DecodeCommonPicture(source, file, manifest)
+		value, err := DecodeCommonPicture(source, file, configuration)
 		if err == nil && !strings.EqualFold(value.Name, name) {
 			err = fmt.Errorf("common picture %s lies in a folder called %s", value.Name, name)
 		}
@@ -196,7 +196,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	// A style item and a style keep no files of their own - no module, no
 	// form, no content - so each is one file named by its identifier.
 	if err := loadKind(root, StyleItemKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeStyleItem(source, file, manifest)
+		value, err := DecodeStyleItem(source, file, configuration)
 		if err == nil && value.ID != id {
 			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
 		}
@@ -208,7 +208,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadKind(root, StyleKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeStyle(source, file, manifest)
+		value, err := DecodeStyle(source, file, configuration)
 		if err == nil && value.ID != id {
 			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
 		}
@@ -220,7 +220,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadKind(root, FunctionalOptionKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeFunctionalOption(source, file, manifest)
+		value, err := DecodeFunctionalOption(source, file, configuration)
 		if err == nil && value.ID != id {
 			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
 		}
@@ -232,7 +232,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadKind(root, FunctionalOptionParameterKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeFunctionalOptionParameter(source, file, manifest)
+		value, err := DecodeFunctionalOptionParameter(source, file, configuration)
 		if err == nil && value.ID != id {
 			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
 		}
@@ -244,7 +244,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, SettingsStorageKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeSettingsStorage(source, file, manifest)
+		value, err := DecodeSettingsStorage(source, file, configuration)
 		if err == nil && value.Name != folder {
 			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
@@ -256,7 +256,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, FilterCriterionKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeFilterCriterion(source, file, manifest)
+		value, err := DecodeFilterCriterion(source, file, configuration)
 		if err == nil && value.Name != folder {
 			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
@@ -268,7 +268,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadKind(root, DefinedTypeKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeDefinedType(source, file, manifest)
+		value, err := DecodeDefinedType(source, file, configuration)
 		if err == nil && value.ID != id {
 			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
 		}
@@ -280,7 +280,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, CatalogKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeCatalog(source, file, manifest)
+		value, err := DecodeCatalog(source, file, configuration)
 		if err == nil && value.Name != folder {
 			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
@@ -292,7 +292,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, ChartOfCharacteristicTypesKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeChartOfCharacteristicTypes(source, file, manifest)
+		value, err := DecodeChartOfCharacteristicTypes(source, file, configuration)
 		if err == nil && value.Name != folder {
 			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
@@ -304,7 +304,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, ChartOfAccountsKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeChartOfAccounts(source, file, manifest)
+		value, err := DecodeChartOfAccounts(source, file, configuration)
 		if err == nil && value.Name != folder {
 			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
@@ -316,7 +316,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, ChartOfCalculationTypesKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeChartOfCalculationTypes(source, file, manifest)
+		value, err := DecodeChartOfCalculationTypes(source, file, configuration)
 		if err == nil && value.Name != folder {
 			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
@@ -328,7 +328,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, TaskKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeTask(source, file, manifest)
+		value, err := DecodeTask(source, file, configuration)
 		if err == nil && value.Name != folder {
 			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
@@ -340,7 +340,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, AccountingRegisterKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeAccountingRegister(source, file, manifest)
+		value, err := DecodeAccountingRegister(source, file, configuration)
 		if err == nil && value.Name != folder {
 			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
@@ -352,7 +352,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, CalculationRegisterKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeCalculationRegister(source, file, manifest)
+		value, err := DecodeCalculationRegister(source, file, configuration)
 		if err == nil && value.Name != folder {
 			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
@@ -364,7 +364,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, ReportKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeReport(source, file, manifest)
+		value, err := DecodeReport(source, file, configuration)
 		if err == nil && value.Name != folder {
 			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
@@ -376,7 +376,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, DataProcessorKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeDataProcessor(source, file, manifest)
+		value, err := DecodeDataProcessor(source, file, configuration)
 		if err == nil && value.Name != folder {
 			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
@@ -388,7 +388,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadKind(root, NumeratorKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeNumerator(source, file, manifest)
+		value, err := DecodeNumerator(source, file, configuration)
 		if err == nil && value.ID != id {
 			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
 		}
@@ -400,7 +400,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadKind(root, SequenceKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeSequence(source, file, manifest)
+		value, err := DecodeSequence(source, file, configuration)
 		if err == nil && value.ID != id {
 			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
 		}
@@ -412,7 +412,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, DocumentJournalKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeDocumentJournal(source, file, manifest)
+		value, err := DecodeDocumentJournal(source, file, configuration)
 		if err == nil && value.Name != folder {
 			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
@@ -424,7 +424,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, ExchangePlanKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeExchangePlan(source, file, manifest)
+		value, err := DecodeExchangePlan(source, file, configuration)
 		if err == nil && value.Name != folder {
 			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
@@ -436,7 +436,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, BusinessProcessKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeBusinessProcess(source, file, manifest)
+		value, err := DecodeBusinessProcess(source, file, configuration)
 		if err == nil && value.Name != folder {
 			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
@@ -448,7 +448,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, DocumentKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeDocument(source, file, manifest)
+		value, err := DecodeDocument(source, file, configuration)
 		if err == nil && value.Name != folder {
 			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
@@ -460,7 +460,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, InformationRegisterKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeInformationRegister(source, file, manifest)
+		value, err := DecodeInformationRegister(source, file, configuration)
 		if err == nil && value.Name != folder {
 			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
@@ -472,7 +472,7 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := loadObjectKind(root, AccumulationRegisterKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeAccumulationRegister(source, file, manifest)
+		value, err := DecodeAccumulationRegister(source, file, configuration)
 		if err == nil && value.Name != folder {
 			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
@@ -490,53 +490,53 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 }
 
 // NewCatalogSnapshot validates already decoded metadata, for example from a publication package.
-func NewCatalogSnapshot(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition) (*Catalog, error) {
-	return NewCatalogSnapshotWithAccumulationRegisters(manifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, nil)
+func NewCatalogSnapshot(configuration project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition) (*Catalog, error) {
+	return NewCatalogSnapshotWithAccumulationRegisters(configuration, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, nil)
 }
 
 // NewCatalogSnapshotWithAccumulationRegisters is the compatibility constructor
 // for metadata without project roles.
-func NewCatalogSnapshotWithAccumulationRegisters(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition) (*Catalog, error) {
-	return NewCatalogSnapshotWithRoles(manifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, nil)
+func NewCatalogSnapshotWithAccumulationRegisters(configuration project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition) (*Catalog, error) {
+	return NewCatalogSnapshotWithRoles(configuration, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, nil)
 }
 
 // NewCatalogSnapshotWithRoles is the compatibility constructor for metadata
 // without project subsystems.
-func NewCatalogSnapshotWithRoles(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition) (*Catalog, error) {
-	return NewCatalogSnapshotWithSubsystems(manifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, roles, nil)
+func NewCatalogSnapshotWithRoles(configuration project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition) (*Catalog, error) {
+	return NewCatalogSnapshotWithSubsystems(configuration, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, roles, nil)
 }
 
 // NewCatalogSnapshotWithSubsystems is the compatibility constructor for
 // metadata without project session parameters.
-func NewCatalogSnapshotWithSubsystems(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition, subsystems []SubsystemDefinition) (*Catalog, error) {
-	return NewCatalogSnapshotWithSessionParameters(manifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, roles, subsystems, nil)
+func NewCatalogSnapshotWithSubsystems(configuration project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition, subsystems []SubsystemDefinition) (*Catalog, error) {
+	return NewCatalogSnapshotWithSessionParameters(configuration, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, roles, subsystems, nil)
 }
 
 // NewCatalogSnapshotWithSessionParameters is the compatibility constructor
 // for metadata without project common attributes.
-func NewCatalogSnapshotWithSessionParameters(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition, subsystems []SubsystemDefinition, sessionParameters []SessionParameter) (*Catalog, error) {
-	return NewCatalogSnapshotWithCommonAttributes(manifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, roles, subsystems, sessionParameters, nil)
+func NewCatalogSnapshotWithSessionParameters(configuration project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition, subsystems []SubsystemDefinition, sessionParameters []SessionParameter) (*Catalog, error) {
+	return NewCatalogSnapshotWithCommonAttributes(configuration, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, roles, subsystems, sessionParameters, nil)
 }
 
 // NewCatalogSnapshotWithCommonAttributes is the compatibility constructor
 // for metadata without project common modules.
-func NewCatalogSnapshotWithCommonAttributes(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition, subsystems []SubsystemDefinition, sessionParameters []SessionParameter, commonAttributes []CommonAttributeDefinition) (*Catalog, error) {
-	return NewCatalogSnapshotWithCommonModules(manifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, roles, subsystems, sessionParameters, commonAttributes, nil)
+func NewCatalogSnapshotWithCommonAttributes(configuration project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition, subsystems []SubsystemDefinition, sessionParameters []SessionParameter, commonAttributes []CommonAttributeDefinition) (*Catalog, error) {
+	return NewCatalogSnapshotWithCommonModules(configuration, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, roles, subsystems, sessionParameters, commonAttributes, nil)
 }
 
 // NewCatalogSnapshotWithCommonModules is the compatibility constructor for
 // metadata without project event subscriptions.
-func NewCatalogSnapshotWithCommonModules(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition, subsystems []SubsystemDefinition, sessionParameters []SessionParameter, commonAttributes []CommonAttributeDefinition, commonModules []CommonModuleDefinition) (*Catalog, error) {
-	return NewCatalogSnapshotWithEventSubscriptions(manifest, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, roles, subsystems, sessionParameters, commonAttributes, commonModules, nil)
+func NewCatalogSnapshotWithCommonModules(configuration project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition, subsystems []SubsystemDefinition, sessionParameters []SessionParameter, commonAttributes []CommonAttributeDefinition, commonModules []CommonModuleDefinition) (*Catalog, error) {
+	return NewCatalogSnapshotWithEventSubscriptions(configuration, constants, enumerations, definedTypes, catalogs, documents, informationRegisters, accumulationRegisters, roles, subsystems, sessionParameters, commonAttributes, commonModules, nil)
 }
 
 // NewCatalogSnapshotWithEventSubscriptions validates decoded metadata, role
 // object/field references, subsystem membership, common attribute
 // propagation and event subscription references. Form command references
 // require the full RuntimeSnapshot.
-func NewCatalogSnapshotWithEventSubscriptions(manifest project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition, subsystems []SubsystemDefinition, sessionParameters []SessionParameter, commonAttributes []CommonAttributeDefinition, commonModules []CommonModuleDefinition, eventSubscriptions []EventSubscriptionDefinition) (*Catalog, error) {
+func NewCatalogSnapshotWithEventSubscriptions(configuration project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition, subsystems []SubsystemDefinition, sessionParameters []SessionParameter, commonAttributes []CommonAttributeDefinition, commonModules []CommonModuleDefinition, eventSubscriptions []EventSubscriptionDefinition) (*Catalog, error) {
 	result := &Catalog{
-		Project: manifest, Constants: slices.Clone(constants), Enumerations: slices.Clone(enumerations),
+		Project: configuration, Constants: slices.Clone(constants), Enumerations: slices.Clone(enumerations),
 		DefinedTypes: slices.Clone(definedTypes), Catalogs: slices.Clone(catalogs), Documents: slices.Clone(documents),
 		InformationRegisters:  slices.Clone(informationRegisters),
 		AccumulationRegisters: slices.Clone(accumulationRegisters),

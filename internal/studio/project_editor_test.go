@@ -26,31 +26,31 @@ func TestProjectEditorAlwaysIncludesCanonicalEnglish(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	english, ok := findLanguage(opened.Manifest.Languages, "en")
+	english, ok := findLanguage(opened.Configuration.Languages, "en")
 	if !ok || english.Name != englishLanguage.Name || english.Title != englishLanguage.Title || english.ID.IsZero() {
-		t.Fatalf("English was not injected on read: %+v", opened.Manifest.Languages)
+		t.Fatalf("English was not injected on read: %+v", opened.Configuration.Languages)
 	}
 
 	// Try to corrupt English (rename it) and remove the "ru" language while
 	// setting the default language to the (attempted) corrupted English.
-	corrupted := opened.Manifest
+	corrupted := opened.Configuration
 	corrupted.Languages = []project.Language{{ID: uuid.MustNew(), Name: "NotEnglish", Title: "Not English", Code: "en"}}
 	corrupted.DefaultLanguage = "en"
 	saved, err := workspace.SaveProjectEditor(corrupted, opened.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
-	english, ok = findLanguage(saved.Manifest.Languages, "en")
+	english, ok = findLanguage(saved.Configuration.Languages, "en")
 	if !ok || english.Name != englishLanguage.Name || english.Title != englishLanguage.Title {
-		t.Fatalf("English was not restored to its canonical value: %+v", saved.Manifest.Languages)
+		t.Fatalf("English was not restored to its canonical value: %+v", saved.Configuration.Languages)
 	}
 	// Личность языка не меняется от того, что кто-то поправил его заголовок:
 	// при сохранении без идентификатора он берётся из уже сохранённого проекта.
 	if english.ID.IsZero() {
 		t.Fatalf("restored English lost its identity: %+v", english)
 	}
-	if len(saved.Manifest.Languages) != 1 {
-		t.Fatalf("unexpected language list: %+v", saved.Manifest.Languages)
+	if len(saved.Configuration.Languages) != 1 {
+		t.Fatalf("unexpected language list: %+v", saved.Configuration.Languages)
 	}
 }
 
@@ -65,19 +65,19 @@ func TestProjectEditorSaveConflictsAndIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated := opened.Manifest
+	updated := opened.Configuration
 	updated.Title = project.LocalizedText{"ru": "Новое название"}
 	saved, err := workspace.SaveProjectEditor(updated, opened.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.Revision == opened.Revision || saved.Manifest.Title["ru"] != "Новое название" {
+	if saved.Revision == opened.Revision || saved.Configuration.Title["ru"] != "Новое название" {
 		t.Fatalf("save did not persist edits: %+v", saved)
 	}
 	if _, err := workspace.SaveProjectEditor(updated, opened.Revision); !errors.Is(err, ErrSourceChanged) {
 		t.Fatalf("stale save: %v", err)
 	}
-	invalid := saved.Manifest
+	invalid := saved.Configuration
 	invalid.ID = uuid.MustNew()
 	if _, err := workspace.SaveProjectEditor(invalid, saved.Revision); err == nil {
 		t.Fatal("identity change accepted")
@@ -100,13 +100,13 @@ func TestProjectEditorRoutesValidateMutations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest := opened.Manifest
-	manifest.Title = project.LocalizedText{"ru": "Через HTTP"}
-	encodedManifest, err := json.Marshal(manifest)
+	configuration := opened.Configuration
+	configuration.Title = project.LocalizedText{"ru": "Через HTTP"}
+	encodedConfiguration, err := json.Marshal(configuration)
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := `{"expectedRevision":"` + opened.Revision + `","manifest":` + string(encodedManifest) + `}`
+	body := `{"expectedRevision":"` + opened.Revision + `","configuration":` + string(encodedConfiguration) + `}`
 	for _, test := range []struct {
 		body, contentType, csrf string
 		status                  int
@@ -116,13 +116,13 @@ func TestProjectEditorRoutesValidateMutations(t *testing.T) {
 		{body + " {}", "application/json", "1", http.StatusBadRequest},
 		{body, "application/json", "1", http.StatusOK},
 	} {
-		request := httptest.NewRequest(http.MethodPut, "http://localhost/api/project-manifest", strings.NewReader(test.body))
+		request := httptest.NewRequest(http.MethodPut, "http://localhost/api/project-configuration", strings.NewReader(test.body))
 		request.Header.Set("Content-Type", test.contentType)
 		request.Header.Set("X-ML-CSRF", test.csrf)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
 		if response.Code != test.status {
-			t.Fatalf("PUT project-manifest: %d %s", response.Code, response.Body.String())
+			t.Fatalf("PUT project-configuration: %d %s", response.Code, response.Body.String())
 		}
 	}
 }
@@ -164,20 +164,20 @@ func TestRemovingALanguageTakesItsTextsWithIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated := opened.Manifest
+	updated := opened.Configuration
 	updated.Title = project.LocalizedText{"ru": "Продажи", "en": "Sales"}
 	updated.Copyright = project.LocalizedText{"ru": "© Пример"}
 	saved, err := workspace.SaveProjectEditor(updated, opened.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.Manifest.Title["ru"] != "Продажи" || saved.Manifest.Copyright["ru"] != "© Пример" {
-		t.Fatalf("texts were lost while every language was still there: %+v", saved.Manifest)
+	if saved.Configuration.Title["ru"] != "Продажи" || saved.Configuration.Copyright["ru"] != "© Пример" {
+		t.Fatalf("texts were lost while every language was still there: %+v", saved.Configuration)
 	}
 
 	// Now Russian goes, and with it everything written in Russian. English
 	// stays, so the synonym keeps its English translation.
-	withoutRussian := saved.Manifest
+	withoutRussian := saved.Configuration
 	withoutRussian.Languages = []project.Language{{Name: "English", Title: "English", Code: "en"}}
 	withoutRussian.DefaultLanguage = "en"
 	saved, err = workspace.SaveProjectEditor(withoutRussian, saved.Revision)
@@ -185,10 +185,10 @@ func TestRemovingALanguageTakesItsTextsWithIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	switch {
-	case len(saved.Manifest.Title) != 1 || saved.Manifest.Title["en"] != "Sales":
-		t.Fatalf("the synonym did not lose the language that went: %+v", saved.Manifest.Title)
-	case len(saved.Manifest.Copyright) != 0:
-		t.Fatalf("a text stayed in a language the project no longer has: %+v", saved.Manifest.Copyright)
+	case len(saved.Configuration.Title) != 1 || saved.Configuration.Title["en"] != "Sales":
+		t.Fatalf("the synonym did not lose the language that went: %+v", saved.Configuration.Title)
+	case len(saved.Configuration.Copyright) != 0:
+		t.Fatalf("a text stayed in a language the project no longer has: %+v", saved.Configuration.Copyright)
 	}
 }
 
@@ -204,7 +204,7 @@ func TestASynonymLeftWithNoLanguageFallsBackToTheName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated := opened.Manifest
+	updated := opened.Configuration
 	updated.Title = project.LocalizedText{"ru": "Продажи"}
 	updated.Languages = []project.Language{{Name: "English", Title: "English", Code: "en"}}
 	updated.DefaultLanguage = "en"
@@ -212,7 +212,7 @@ func TestASynonymLeftWithNoLanguageFallsBackToTheName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.Manifest.Title["en"] != saved.Manifest.Name {
-		t.Fatalf("the synonym did not fall back to the name: %+v", saved.Manifest.Title)
+	if saved.Configuration.Title["en"] != saved.Configuration.Name {
+		t.Fatalf("the synonym did not fall back to the name: %+v", saved.Configuration.Title)
 	}
 }

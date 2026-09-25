@@ -54,12 +54,12 @@ type ScheduledJobDefinition struct {
 }
 
 // DecodeScheduledJob reads and validates one scheduled job.
-func DecodeScheduledJob(source string, reader io.Reader, manifest project.Project) (ScheduledJobDefinition, error) {
+func DecodeScheduledJob(source string, reader io.Reader, configuration project.Project) (ScheduledJobDefinition, error) {
 	var value ScheduledJobDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return ScheduledJobDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	if value.Module.IsZero() {
 		issues = append(issues, "module is required: a job runs a procedure of a common module")
 	}

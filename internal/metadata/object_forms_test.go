@@ -200,7 +200,7 @@ title: {ru: Пользователи}
 code: {type: string, length: 9, auto: true}
 description_length: 150
 forms: {list: "Форма списка"}
-`), metadataManifest())
+`), metadataConfiguration())
 	if err == nil || !strings.Contains(err.Error(), "forms.list must be the name of a form") {
 		t.Fatalf("DecodeCatalog() error = %v", err)
 	}

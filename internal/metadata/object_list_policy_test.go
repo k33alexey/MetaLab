@@ -22,7 +22,7 @@ func policyCatalog(t *testing.T, roles ...RoleDefinition) (*Catalog, CatalogDefi
 			roles[index].Objects[objectIndex].Object = definition.ID
 		}
 	}
-	catalog, err := NewCatalogSnapshotWithRoles(metadataManifest(), nil, nil, nil, []CatalogDefinition{definition}, nil, nil, nil, roles)
+	catalog, err := NewCatalogSnapshotWithRoles(metadataConfiguration(), nil, nil, nil, []CatalogDefinition{definition}, nil, nil, nil, roles)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestSessionParameterNameIsReserved(t *testing.T) {
 	if err := Encode(&encoded, parameter); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := DecodeSessionParameter("p.yaml", bytes.NewReader(encoded.Bytes()), metadataManifest()); err == nil {
+	if _, err := DecodeSessionParameter("p.yaml", bytes.NewReader(encoded.Bytes()), metadataConfiguration()); err == nil {
 		t.Fatal("a project was allowed to declare the platform's own session parameter")
 	}
 }

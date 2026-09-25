@@ -67,12 +67,12 @@ type TaskDefinition struct {
 }
 
 // DecodeTask reads and validates one kind of task.
-func DecodeTask(source string, reader io.Reader, manifest project.Project) (TaskDefinition, error) {
+func DecodeTask(source string, reader io.Reader, configuration project.Project) (TaskDefinition, error) {
 	var value TaskDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return TaskDefinition{}, err
 	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, manifest)
+	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateNumberedObjectShape(numberedObjectShape{
 		number:       value.Number,
 		attributes:   value.Attributes,
@@ -80,7 +80,7 @@ func DecodeTask(source string, reader io.Reader, manifest project.Project) (Task
 		forms:        value.Forms,
 		list:         value.List,
 		reservedName: reservedTaskName,
-	}, manifest)...)
+	}, configuration)...)
 	if value.DescriptionLength < 1 || value.DescriptionLength > 1_048_576 {
 		issues = append(issues, "description_length must be 1..1048576")
 	}
@@ -94,16 +94,16 @@ func DecodeTask(source string, reader io.Reader, manifest project.Project) (Task
 	default:
 		issues = append(issues, "number_prefix must be none or business-process-number")
 	}
-	issues = append(issues, validateAddressing(value, manifest)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, manifest)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, manifest)...)
+	issues = append(issues, validateAddressing(value, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return TaskDefinition{}, err
 	}
 	return value, nil
 }
 
-func validateAddressing(value TaskDefinition, manifest project.Project) []string {
+func validateAddressing(value TaskDefinition, configuration project.Project) []string {
 	var issues []string
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	attributeNames := map[string]bool{}
@@ -133,7 +133,7 @@ func validateAddressing(value TaskDefinition, manifest project.Project) []string
 			issues = append(issues, prefix+".name is reserved")
 		}
 		names[folded] = true
-		issues = append(issues, validateTitle(prefix+".title", attribute.Title, manifest)...)
+		issues = append(issues, validateTitle(prefix+".title", attribute.Title, configuration)...)
 		issues = append(issues, validateTypes(prefix+".types", attribute.Types, value.ID)...)
 		if attribute.Dimension != nil && attribute.Dimension.IsZero() {
 			issues = append(issues, prefix+".dimension must be a non-zero UUID")

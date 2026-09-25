@@ -24,9 +24,9 @@ func TestManagerIdentityAndDatabaseScopeIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
-	configuration := appconfig.Default()
-	configuration.SourcePath = t.TempDir() + "/config.yaml"
-	runtime := New(ctx, configuration, &memorySecrets{values: make(map[string]string)})
+	settings := appconfig.Default()
+	settings.SourcePath = t.TempDir() + "/config.yaml"
+	runtime := New(ctx, settings, &memorySecrets{values: make(map[string]string)})
 	_, err := runtime.ProvisionPostgreSQL(ctx, ProvisionRequest{Host: administrator.Host, Port: administrator.Port, AdministratorDatabase: administrator.Database, AdministratorUser: administrator.User, AdministratorPassword: password, SSLMode: administrator.SSLMode, SystemDatabase: "ml_manager_" + suffix, TechnicalUser: "ml_mgr_role_" + suffix})
 	if err != nil {
 		runtime.Close()

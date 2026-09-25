@@ -21,8 +21,8 @@ func TestControllerBuildsAbsoluteInstallDefinition(t *testing.T) {
 
 	var captured *kservice.Config
 	native := &fakeBackend{}
-	controller := &Controller{factory: func(_ kservice.Interface, configuration *kservice.Config) (backend, error) {
-		captured = configuration
+	controller := &Controller{factory: func(_ kservice.Interface, settings *kservice.Config) (backend, error) {
+		captured = settings
 		return native, nil
 	}}
 	path := filepath.Join(t.TempDir(), "config.yaml")

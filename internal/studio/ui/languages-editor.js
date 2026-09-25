@@ -39,7 +39,7 @@ function createLanguagesEditor(host, onChange) {
   function renderOverview() {
     const panel = node('div', undefined, 'catalog-detail');
     panel.append(node('h3', 'Языки'));
-    for (const language of source.manifest.languages) panel.append(node('div', language.title || language.code, 'catalog-uuid'));
+    for (const language of source.configuration.languages) panel.append(node('div', language.title || language.code, 'catalog-uuid'));
     return panel;
   }
   function renderLanguage(language) {
@@ -54,7 +54,7 @@ function createLanguagesEditor(host, onChange) {
   }
   function render() {
     host.replaceChildren();
-    const language = selected && source.manifest.languages.find(item => item.code === selected);
+    const language = selected && source.configuration.languages.find(item => item.code === selected);
     host.append(language ? renderLanguage(language) : renderOverview());
   }
   return {

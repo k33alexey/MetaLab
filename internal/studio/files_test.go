@@ -137,7 +137,7 @@ func TestManifestSaveIsValidatedCanonicalAndIdentitySafe(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(saved.Content, "ru: Новое название\n") {
-		t.Fatalf("canonical manifest = %s", saved.Content)
+		t.Fatalf("canonical configuration = %s", saved.Content)
 	}
 	changedID := strings.Replace(saved.Content, saved.Content[strings.Index(saved.Content, "id: ")+4:strings.Index(saved.Content, "id: ")+40], uuid.MustNew().String(), 1)
 	if _, err := workspace.SaveSource(project.ConfigurationFile, changedID, saved.Revision); !errors.Is(err, project.ErrProjectIdentityChanged) {

@@ -25,7 +25,7 @@ func TestDecodeCommonModuleStrictAndBounded(t *testing.T) {
 	if err := Encode(&encoded, module); err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := DecodeCommonModule("common-module.yaml", bytes.NewReader(encoded.Bytes()), metadataManifest())
+	decoded, err := DecodeCommonModule("common-module.yaml", bytes.NewReader(encoded.Bytes()), metadataConfiguration())
 	if err != nil || decoded.ID != module.ID || decoded.Module != module.Module {
 		t.Fatalf("decode common module = %+v, %v", decoded, err)
 	}
@@ -51,12 +51,12 @@ func TestDecodeCommonModuleStrictAndBounded(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			mutated := module
 			mutate(&mutated)
-			if err := ValidateCommonModule("common-module.yaml", mutated, metadataManifest()); err == nil {
+			if err := ValidateCommonModule("common-module.yaml", mutated, metadataConfiguration()); err == nil {
 				t.Fatalf("%s: accepted invalid common module", name)
 			}
 		})
 	}
-	if _, err := DecodeCommonModule("common-module.yaml", strings.NewReader(encoded.String()+"unknown: true\n"), metadataManifest()); err == nil {
+	if _, err := DecodeCommonModule("common-module.yaml", strings.NewReader(encoded.String()+"unknown: true\n"), metadataConfiguration()); err == nil {
 		t.Fatal("accepted unknown field")
 	}
 }
@@ -64,7 +64,7 @@ func TestDecodeCommonModuleStrictAndBounded(t *testing.T) {
 func TestCatalogCommonModuleLookupReturnsIsolatedCopies(t *testing.T) {
 	t.Parallel()
 	module := commonModuleFixture()
-	catalog, err := NewCatalogSnapshotWithCommonModules(metadataManifest(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, []CommonModuleDefinition{module})
+	catalog, err := NewCatalogSnapshotWithCommonModules(metadataConfiguration(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, []CommonModuleDefinition{module})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -22,15 +22,15 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-func runManager(ctx context.Context, configuration appconfig.Config) error {
-	platformRuntime := platform.New(ctx, configuration, secretstore.New())
+func runManager(ctx context.Context, settings appconfig.Config) error {
+	platformRuntime := platform.New(ctx, settings, secretstore.New())
 	defer platformRuntime.Close()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return fmt.Errorf("start ML Manager UI: %w", err)
 	}
 	server := &http.Server{
-		Handler: manager.NewHandlerWithPlatformAndStudio(configuration, platformRuntime, executableStudioLauncher{configurationPath: configuration.SourcePath, runtime: platformRuntime}), ReadHeaderTimeout: 5 * time.Second,
+		Handler: manager.NewHandlerWithPlatformAndStudio(settings, platformRuntime, executableStudioLauncher{settingsPath: settings.SourcePath, runtime: platformRuntime}), ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second,
 	}
 	serverErrors := make(chan error, 1)
@@ -74,8 +74,8 @@ const (
 )
 
 type executableStudioLauncher struct {
-	configurationPath string
-	runtime           *platform.Runtime
+	settingsPath string
+	runtime      *platform.Runtime
 }
 
 func (launcher executableStudioLauncher) CloneProject(ctx context.Context, repository, destination string) error {
@@ -95,7 +95,7 @@ func (launcher executableStudioLauncher) OpenStudio(ctx context.Context, databas
 	if current, hostErr := os.Hostname(); hostErr == nil && current != "" {
 		hostName = current
 	}
-	lease, err := launcher.runtime.AcquireStudioSession(ctx, databaseID, snapshot.Manifest.ID, "", hostName, int64(os.Getpid()))
+	lease, err := launcher.runtime.AcquireStudioSession(ctx, databaseID, snapshot.Settings.ID, "", hostName, int64(os.Getpid()))
 	if err != nil {
 		return err
 	}
@@ -105,8 +105,8 @@ func (launcher executableStudioLauncher) OpenStudio(ctx context.Context, databas
 		return fmt.Errorf("locate MetaLab executable: %w", err)
 	}
 	arguments := []string{"studio", "--database", databaseID.String(), "--project", projectPath}
-	if launcher.configurationPath != "" {
-		arguments = append(arguments, "--config", launcher.configurationPath)
+	if launcher.settingsPath != "" {
+		arguments = append(arguments, "--config", launcher.settingsPath)
 	}
 	command := exec.Command(executable, arguments...)
 	command.Env = append(os.Environ(), studioSessionIDEnvironment+"="+lease.Session.ID.String(), studioSessionTokenEnvironment+"="+lease.Token)

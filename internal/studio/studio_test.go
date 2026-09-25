@@ -74,7 +74,7 @@ func TestWorkspaceSnapshotBuildsCanonicalTree(t *testing.T) {
 	for _, child := range snapshot.Tree.Children {
 		top = append(top, child.ID)
 	}
-	if snapshot.Manifest.Name != "SalesDemo" || !reflect.DeepEqual(top, wantTop) {
+	if snapshot.Configuration.Name != "SalesDemo" || !reflect.DeepEqual(top, wantTop) {
 		t.Fatalf("top level = %v, want %v", top, wantTop)
 	}
 	if first := snapshot.Tree.Children[0]; first.Path != project.SessionModuleFile {
@@ -262,7 +262,7 @@ func TestStudioHandlerServesShellAndSnapshot(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("snapshot status=%d body=%s", response.Code, response.Body.String())
 	}
-	if err := json.Unmarshal(response.Body.Bytes(), &snapshot); err != nil || snapshot.Manifest.Title["ru"] != "Продажи и склад" {
+	if err := json.Unmarshal(response.Body.Bytes(), &snapshot); err != nil || snapshot.Configuration.Title["ru"] != "Продажи и склад" {
 		t.Fatalf("snapshot=%+v error=%v", snapshot, err)
 	}
 }
@@ -294,11 +294,11 @@ func TestOpenRejectsIncompleteProject(t *testing.T) {
 func createProject(t testing.TB) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "SalesDemo")
-	manifest := project.Project{
+	configuration := project.Project{
 		Format: project.CurrentFormat, ID: uuid.MustNew(), Name: "SalesDemo", Title: project.LocalizedText{"ru": "Продажи и склад"},
 		DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: "Русский", Code: "ru"}},
 	}
-	if err := project.Initialize(root, manifest); err != nil {
+	if err := project.Initialize(root, configuration); err != nil {
 		t.Fatal(err)
 	}
 	return root
