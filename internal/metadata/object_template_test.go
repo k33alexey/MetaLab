@@ -95,10 +95,10 @@ templates:
 		switch kind {
 		case HTMLTemplate:
 			// One document per language, because it is read by a person.
-			writeTemplateContent(t, root, CatalogKind, templateCatalog, id, "ru.html", "<p>Привет</p>")
-			writeTemplateContent(t, root, CatalogKind, templateCatalog, id, "uk.html", "<p>Привіт</p>")
+			writeTemplateContent(t, root, CatalogKind, "Контрагенты", id, "ru.html", "<p>Привет</p>")
+			writeTemplateContent(t, root, CatalogKind, "Контрагенты", id, "uk.html", "<p>Привіт</p>")
 		default:
-			writeTemplateContent(t, root, CatalogKind, templateCatalog, id, kind.contentFile(), "содержимое")
+			writeTemplateContent(t, root, CatalogKind, "Контрагенты", id, kind.contentFile(), "содержимое")
 		}
 	}
 	catalog, err := Load(root)
@@ -166,7 +166,7 @@ templates:
 			t.Parallel()
 			root := metadataProject(t)
 			writeMetadata(t, root, CatalogKind, templateCatalog, body)
-			writeTemplateContent(t, root, CatalogKind, templateCatalog, broken.template, broken.file, "x")
+			writeTemplateContent(t, root, CatalogKind, "Контрагенты", broken.template, broken.file, "x")
 			_, err := Load(root)
 			if err == nil {
 				t.Fatalf("%s: accepted", name)

@@ -62,7 +62,7 @@ func TestCompleteBSLIndexesPublicModulesAndMetadata(t *testing.T) {
 	commonID := uuid.MustNew()
 	commonPath, _ := project.MetadataPath("common-modules", commonID)
 	writeBSLTestSource(t, root, commonPath, "format: 1\nid: "+commonID.String()+"\nname: Обмен\ntitle: {ru: Обмен}\nserver: true\nmodule: "+publicID.String()+"\n")
-	catalogPath, _ := project.ObjectMetadataPath("catalogs", catalogID)
+	catalogPath, _ := project.ObjectMetadataPath("catalogs", "Товары")
 	writeBSLTestSource(t, root, catalogPath, `format: 1
 id: `+catalogID.String()+`
 name: Товары
@@ -167,7 +167,7 @@ func TestCompleteBSLUsesDocumentContextFromDemoProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := "metadata/documents/10000000-0000-4000-8000-000000000201/10000000-0000-4000-8000-000000000401.bsl"
+	path := "metadata/documents/ПоступлениеТоваров/10000000-0000-4000-8000-000000000401.bsl"
 	for _, test := range []struct {
 		source string
 		label  string

@@ -149,7 +149,7 @@ func TestSaveRejectsMalformedYAML(t *testing.T) {
 	t.Parallel()
 
 	root := createProject(t)
-	relative, err := project.ObjectFormPath("catalogs", uuid.MustNew(), uuid.MustNew())
+	relative, err := project.ObjectFormPath("catalogs", "Контрагенты", uuid.MustNew())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestSaveValidatesAndCanonicalizesCatalogMetadata(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
 	id, attributeID := uuid.MustNew(), uuid.MustNew()
-	relative, err := project.ObjectMetadataPath("catalogs", id)
+	relative, err := project.ObjectMetadataPath("catalogs", "Товары")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +290,7 @@ func TestSaveValidatesAndCanonicalizesDocumentMetadata(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
 	id, attributeID := uuid.MustNew(), uuid.MustNew()
-	relative, err := project.ObjectMetadataPath("documents", id)
+	relative, err := project.ObjectMetadataPath("documents", "Продажа")
 	if err != nil {
 		t.Fatal(err)
 	}

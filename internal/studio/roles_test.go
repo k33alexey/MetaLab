@@ -28,7 +28,7 @@ func roleWorkspace(t *testing.T) (*Workspace, metadata.CatalogDefinition) {
 	if err := metadata.Encode(&content, object); err != nil {
 		t.Fatal(err)
 	}
-	directory := filepath.Join(root, "metadata", "catalogs", object.ID.String())
+	directory := filepath.Join(root, "metadata", "catalogs", object.Name)
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		t.Fatal(err)
 	}

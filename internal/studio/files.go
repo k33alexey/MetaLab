@@ -253,6 +253,26 @@ func sourceFile(relative, language string, content []byte) SourceFile {
 	return SourceFile{Path: relative, Language: language, Content: string(content), Revision: hex.EncodeToString(digest[:])}
 }
 
+// yamlScalarField reads one top-level scalar out of a YAML document without
+// decoding the whole of it into a type. It is used where the type is not known
+// at the point of the check.
+func yamlScalarField(content []byte, key string) string {
+	var document yaml.Node
+	if err := yaml.Unmarshal(content, &document); err != nil {
+		return ""
+	}
+	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
+		return ""
+	}
+	mapping := document.Content[0]
+	for index := 0; index+1 < len(mapping.Content); index += 2 {
+		if mapping.Content[index].Value == key && mapping.Content[index+1].Kind == yaml.ScalarNode {
+			return strings.TrimSpace(mapping.Content[index+1].Value)
+		}
+	}
+	return ""
+}
+
 func validateEditablePath(relative string) (string, string, error) {
 	if relative == "" || strings.Contains(relative, `\`) || path.IsAbs(relative) || path.Clean(relative) != relative {
 		return "", "", ErrInvalidSourcePath
@@ -282,7 +302,7 @@ func validateEditablePath(relative string) (string, string, error) {
 		return relative, "yaml", nil
 	}
 	if len(parts) >= 4 && parts[0] == "metadata" && slices.Contains(project.ObjectFolderKinds(), parts[1]) {
-		if _, err := uuid.Parse(parts[2]); err == nil {
+		if project.ObjectName(parts[2]) == nil {
 			if len(parts) == 4 && parts[3] == "object.yaml" {
 				return relative, "yaml", nil
 			}
@@ -398,11 +418,15 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 		}
 		return canonical.Bytes(), nil
 	}
-	kindPart, filenameIDPart := "", ""
+	// A flat kind is addressed by the identifier in its file name; a kind that
+	// keeps a folder is addressed by the name of that folder. So one is
+	// checked against the identifier inside the file and the other against the
+	// name inside it.
+	kindPart, filenameIDPart, folderPart := "", "", ""
 	if len(parts) == 3 && parts[0] == "metadata" {
 		kindPart, filenameIDPart = parts[1], strings.TrimSuffix(parts[2], ".yaml")
 	} else if len(parts) == 4 && parts[0] == "metadata" && parts[3] == "object.yaml" && slices.Contains(project.ObjectFolderKinds(), parts[1]) {
-		kindPart, filenameIDPart = parts[1], parts[2]
+		kindPart, folderPart = parts[1], parts[2]
 	}
 	if kindPart != "" {
 		manifest, err := project.ValidateLayout(workspace.root)
@@ -498,7 +522,11 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 			case metadata.AccumulationRegisterDefinition:
 				metadataID = item.ID
 			}
-			if metadataID != filenameID {
+			if folderPart != "" {
+				if name := yamlScalarField(content, "name"); name != folderPart {
+					return nil, fmt.Errorf("object %s lies in folder %s", name, folderPart)
+				}
+			} else if metadataID != filenameID {
 				return nil, fmt.Errorf("metadata UUID %s does not match filename UUID %s", metadataID, filenameID)
 			}
 			var canonical bytes.Buffer

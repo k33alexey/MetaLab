@@ -353,23 +353,19 @@ title: {ru: Контрагенты}
 code: {type: string, length: 9}
 description_length: 250
 `)
-	documentUUID, err := uuid.Parse(documentID)
-	if err != nil {
-		t.Fatal(err)
-	}
 	objectModule, managerModule := uuid.MustNew(), uuid.MustNew()
 	objectForm, listForm, choiceForm := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
-	if err := os.MkdirAll(filepath.Join(root, "metadata", "documents", documentID, "forms"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "metadata", "documents", "Продажа", "forms"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []uuid.UUID{objectModule, managerModule} {
-		relative, _ := project.ObjectModulePath("documents", documentUUID, id)
+		relative, _ := project.ObjectModulePath("documents", "Продажа", id)
 		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(relative)), []byte("// module\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for _, id := range []uuid.UUID{objectForm, listForm, choiceForm} {
-		relative, _ := project.ObjectFormPath("documents", documentUUID, id)
+		relative, _ := project.ObjectFormPath("documents", "Продажа", id)
 		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(relative)), []byte("format: 1\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -624,13 +620,17 @@ func metadataManifest() project.Project {
 }
 
 // writeMetadata writes one metadata object's source file, using the
-// per-object folder layout (metadata/<kind>/<id>/object.yaml) for catalogs,
+// per-object folder layout (metadata/<kind>/<name>/object.yaml) for catalogs,
 // documents and registers, and the flat layout for every other kind.
+//
+// The folder is named by the object, so the helper reads the name out of what
+// it is about to write. A body with no name at all keeps the identifier, which
+// is how a test writes a folder the loader will refuse.
 func writeMetadata(t *testing.T, root string, kind Kind, id, content string) {
 	t.Helper()
 	path := filepath.Join(root, "metadata", string(kind), id+".yaml")
 	if slices.Contains(project.ObjectFolderKinds(), string(kind)) {
-		directory := filepath.Join(root, "metadata", string(kind), id)
+		directory := filepath.Join(root, "metadata", string(kind), objectFolderName(content, id))
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -639,6 +639,16 @@ func writeMetadata(t *testing.T, root string, kind Kind, id, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// objectFolderName reads the object's name out of the body being written.
+func objectFolderName(content, fallback string) string {
+	for _, line := range strings.Split(content, "\n") {
+		if name, found := strings.CutPrefix(line, "name: "); found {
+			return strings.TrimSpace(name)
+		}
+	}
+	return fallback
 }
 
 func TestMetadataEncodeIsStable(t *testing.T) {

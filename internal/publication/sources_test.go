@@ -52,8 +52,8 @@ func TestInspectIsDeterministicOverProjectSources(t *testing.T) {
 func TestInspectRejectsMalformedAndUnsupportedSources(t *testing.T) {
 	t.Parallel()
 	root := publicationProject(t)
-	documentID, formID := uuid.MustNew(), uuid.MustNew()
-	formPath, _ := project.ObjectFormPath("documents", documentID, formID)
+	formID := uuid.MustNew()
+	formPath, _ := project.ObjectFormPath("documents", "Продажа", formID)
 	writeSourceFile(t, root, formPath, []byte("format: 1\nid: "+formID.String()+"\nname: Invalid\ntitle: {ru: Invalid}\nkind: unsupported\n"))
 	if _, err := inspect(context.Background(), root, SourceState{}); err == nil {
 		t.Fatal("inspect accepted a malformed managed form")
@@ -87,30 +87,30 @@ func TestInspectCarriesSchemaIdentityOfEveryStoredKind(t *testing.T) {
 	writeSourceFile(t, root, constantPath, []byte("format: 1\nid: "+constantID.String()+"\nname: Режим\ntitle: {ru: Режим}\ntypes: [{kind: boolean}]\n"))
 
 	catalogID, attributeID := uuid.MustNew(), uuid.MustNew()
-	catalogPath, _ := project.ObjectMetadataPath("catalogs", catalogID)
+	catalogPath, _ := project.ObjectMetadataPath("catalogs", "Товары")
 	writeSourceFile(t, root, catalogPath, []byte("format: 1\nid: "+catalogID.String()+"\nname: Товары\ntitle: {ru: Товары}\n"+
 		"code: {type: string, length: 9, auto: true, unique: true}\ndescription_length: 250\n"+
 		"attributes:\n  - id: "+attributeID.String()+"\n    name: Артикул\n    title: {ru: Артикул}\n    types: [{kind: string, length: 32}]\n    indexed: true\n"))
 
 	documentID, moduleID, formID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
-	modulePath, _ := project.ObjectModulePath("documents", documentID, moduleID)
+	modulePath, _ := project.ObjectModulePath("documents", "Продажа", moduleID)
 	writeSourceFile(t, root, modulePath, []byte("Процедура ПриЗаписи(Отказ)\nКонецПроцедуры\n"))
-	formPath, _ := project.ObjectFormPath("documents", documentID, formID)
+	formPath, _ := project.ObjectFormPath("documents", "Продажа", formID)
 	writeSourceFile(t, root, formPath, managedFormYAML(t, formID, "DocumentForm"))
-	documentPath, _ := project.ObjectMetadataPath("documents", documentID)
+	documentPath, _ := project.ObjectMetadataPath("documents", "Продажа")
 	writeSourceFile(t, root, documentPath, []byte("format: 1\nid: "+documentID.String()+"\nname: Продажа\ntitle: {ru: Продажа}\n"+
 		"number: {type: string, length: 11, auto: false, unique: true, periodicity: year}\nposting: true\n"+
 		"object_module: "+moduleID.String()+"\nforms: {object: "+formID.String()+"}\n"))
 
 	informationID, informationDimensionID, informationResourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
-	informationPath, _ := project.ObjectMetadataPath("information-registers", informationID)
+	informationPath, _ := project.ObjectMetadataPath("information-registers", "КурсыВалют")
 	writeSourceFile(t, root, informationPath, []byte("format: 1\nid: "+informationID.String()+"\nname: КурсыВалют\ntitle: {ru: Курсы валют}\n"+
 		"write_mode: independent\nperiodicity: day\n"+
 		"dimensions:\n  - id: "+informationDimensionID.String()+"\n    name: Валюта\n    title: {ru: Валюта}\n    types: [{kind: catalog, reference: "+catalogID.String()+"}]\n"+
 		"resources:\n  - id: "+informationResourceID.String()+"\n    name: Курс\n    title: {ru: Курс}\n    types: [{kind: number, precision: 15, scale: 4}]\n"))
 
 	accumulationID, accumulationDimensionID, accumulationResourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
-	accumulationPath, _ := project.ObjectMetadataPath("accumulation-registers", accumulationID)
+	accumulationPath, _ := project.ObjectMetadataPath("accumulation-registers", "Продажи")
 	writeSourceFile(t, root, accumulationPath, []byte("format: 1\nid: "+accumulationID.String()+"\nname: Продажи\ntitle: {ru: Продажи}\nkind: turnover\n"+
 		"dimensions:\n  - id: "+accumulationDimensionID.String()+"\n    name: Товар\n    title: {ru: Товар}\n    types: [{kind: string, length: 100}]\n"+
 		"resources:\n  - id: "+accumulationResourceID.String()+"\n    name: Сумма\n    title: {ru: Сумма}\n    types: [{kind: number, precision: 15, scale: 2}]\n"+

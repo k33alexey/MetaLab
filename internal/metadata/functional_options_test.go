@@ -52,7 +52,7 @@ commands:
     title: {ru: Показать остатки}
     module: `+optionCommandMd+`
 `)
-	writeCommandModule(t, root, CatalogKind, optionCatalog, optionCommandMd)
+	writeCommandModule(t, root, CatalogKind, "Номенклатура", optionCommandMd)
 	writeMetadata(t, root, InformationRegisterKind, optionRegister, `format: 1
 id: `+optionRegister+`
 name: НастройкиСкладов

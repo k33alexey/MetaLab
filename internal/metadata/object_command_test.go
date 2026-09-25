@@ -180,7 +180,7 @@ commands:
     on_server_unavailable: not-available
     module: `+commandModule+`
 `)
-	writeCommandModule(t, root, CatalogKind, commandCatalog, commandModule)
+	writeCommandModule(t, root, CatalogKind, "Контрагенты", commandModule)
 	catalog, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
@@ -248,7 +248,7 @@ commands:
 	if _, err := Load(root); err == nil {
 		t.Fatal("a command module that does not exist was accepted")
 	}
-	writeCommandModule(t, root, CatalogKind, commandCatalog, commandModule)
+	writeCommandModule(t, root, CatalogKind, "Контрагенты", commandModule)
 	if _, err := Load(root); err != nil {
 		t.Fatal(err)
 	}
@@ -325,9 +325,9 @@ description_length: 150
 
 // writeTemplateContent writes one file of a template's content into the folder
 // that template keeps beside its object.
-func writeTemplateContent(t *testing.T, root string, kind Kind, objectID, templateID, file, content string) {
+func writeTemplateContent(t *testing.T, root string, kind Kind, objectName, templateID, file, content string) {
 	t.Helper()
-	directory := filepath.Join(root, "metadata", string(kind), objectID, "templates", templateID)
+	directory := filepath.Join(root, "metadata", string(kind), objectName, "templates", templateID)
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -338,12 +338,18 @@ func writeTemplateContent(t *testing.T, root string, kind Kind, objectID, templa
 
 // writeCommandModule writes the body of one command beside the object it
 // belongs to, the way the object's own module is written.
-func writeCommandModule(t *testing.T, root string, kind Kind, objectID, moduleID string) {
+func writeCommandModule(t *testing.T, root string, kind Kind, objectName, moduleID string) {
 	t.Helper()
-	path := filepath.Join(root, "metadata", string(kind), objectID, moduleID+".bsl")
+	path := filepath.Join(root, "metadata", string(kind), objectName, moduleID+".bsl")
 	if err := os.WriteFile(path, []byte("&НаКлиенте\nПроцедура ОбработкаКоманды(ПараметрКоманды, ПараметрыВыполненияКоманды)\nКонецПроцедуры\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// objectName reads the name out of a body about to be written, the way the
+// folder holding it is named.
+func objectName(body string) string {
+	return objectFolderName(body, "")
 }
 
 func objectFolderKindsForTest() []string {
@@ -372,8 +378,8 @@ func subordinateProject(t *testing.T) string {
 		t.Helper()
 		command, module, template := ids()
 		writeMetadata(t, root, kind, objectID, body+oneOfEach(command, module, template))
-		writeCommandModule(t, root, kind, objectID, module)
-		writeTemplateContent(t, root, kind, objectID, template, "content.yaml", "format: 1\n")
+		writeCommandModule(t, root, kind, objectName(body), module)
+		writeTemplateContent(t, root, kind, objectName(body), template, "content.yaml", "format: 1\n")
 	}
 	withCommand(CatalogKind, commandCatalog, `format: 1
 id: `+commandCatalog+`

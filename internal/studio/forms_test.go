@@ -197,7 +197,7 @@ func createManagedFormSource(t *testing.T) (*Workspace, string, metadata.Managed
 		TableParts: []metadata.TablePart{{ID: uuid.MustNew(), Name: "Контакты", Title: metadata.LocalizedText{"ru": "Контакты"}, Attributes: []metadata.Attribute{{ID: uuid.MustNew(), Name: "Телефон", Title: metadata.LocalizedText{"ru": "Телефон"}, Types: []metadata.Type{{Kind: metadata.StringType, Length: 30}}}}}},
 		Forms:      metadata.ObjectForms{Object: &form.ID},
 	}
-	relative, err := project.ObjectFormPath("catalogs", catalog.ID, form.ID)
+	relative, err := project.ObjectFormPath("catalogs", catalog.Name, form.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func createManagedFormSource(t *testing.T) (*Workspace, string, metadata.Managed
 	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(relative)), source.Bytes(), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	catalogRelative, err := project.ObjectMetadataPath("catalogs", catalog.ID)
+	catalogRelative, err := project.ObjectMetadataPath("catalogs", catalog.Name)
 	if err != nil {
 		t.Fatal(err)
 	}

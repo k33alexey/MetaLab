@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -280,22 +281,53 @@ func sourcePath(directory string, id uuid.UUID, extension string) (string, error
 	return path.Join(directory, id.String()+extension), nil
 }
 
+// ObjectName reports whether a name may be a folder on disk. Every metadata
+// name already has to be an identifier - letters, digits and underscore - so
+// nothing has to be escaped, and names are already unique within a kind with
+// case folded, so two folders cannot collide on a file system that ignores
+// case.
+func ObjectName(name string) error {
+	if name == "" {
+		return fmt.Errorf("object name must not be empty")
+	}
+	if len(name) > 128 {
+		return fmt.Errorf("object name must not be longer than 128 characters")
+	}
+	for index, symbol := range name {
+		switch {
+		case symbol == '_':
+		case unicode.IsLetter(symbol):
+		case unicode.IsDigit(symbol) && index > 0:
+		default:
+			return fmt.Errorf("object name %q is not an identifier", name)
+		}
+	}
+	return nil
+}
+
 // ObjectDirectory returns the per-object folder for one of ObjectFolderKinds,
-// named by the object's own stable UUID.
-func ObjectDirectory(kind string, id uuid.UUID) (string, error) {
+// named by the object itself.
+//
+// The name rather than the identifier, because this is what a developer reads.
+// The prototype's own export is laid out the same way - names in the paths,
+// identifiers inside the files - and a developer coming from it opens the
+// repository and sees a tree they already know. Renaming an object renames the
+// folder and changes nothing in the database: a table is named by the
+// identifier, which the rename does not touch.
+func ObjectDirectory(kind, name string) (string, error) {
 	if !slices.Contains(objectFolderKinds, kind) {
 		return "", fmt.Errorf("kind %q does not use a per-object folder", kind)
 	}
-	if id.IsZero() {
-		return "", fmt.Errorf("source UUID must not be zero")
+	if err := ObjectName(name); err != nil {
+		return "", err
 	}
-	return path.Join("metadata", kind, id.String()), nil
+	return path.Join("metadata", kind, name), nil
 }
 
 // ObjectMetadataPath returns the fixed-name description file inside an
 // object's own folder.
-func ObjectMetadataPath(kind string, id uuid.UUID) (string, error) {
-	directory, err := ObjectDirectory(kind, id)
+func ObjectMetadataPath(kind, name string) (string, error) {
+	directory, err := ObjectDirectory(kind, name)
 	if err != nil {
 		return "", err
 	}
@@ -304,8 +336,8 @@ func ObjectMetadataPath(kind string, id uuid.UUID) (string, error) {
 
 // ObjectModulePath returns one of an object's own BSL modules (object,
 // manager or record-set module), named by its own stable module UUID.
-func ObjectModulePath(kind string, objectID, moduleID uuid.UUID) (string, error) {
-	directory, err := ObjectDirectory(kind, objectID)
+func ObjectModulePath(kind, name string, moduleID uuid.UUID) (string, error) {
+	directory, err := ObjectDirectory(kind, name)
 	if err != nil {
 		return "", err
 	}
@@ -317,8 +349,8 @@ func ObjectModulePath(kind string, objectID, moduleID uuid.UUID) (string, error)
 
 // ObjectFormPath returns one of an object's own managed forms (object, list
 // or choice form), named by its own stable form UUID.
-func ObjectFormPath(kind string, objectID, formID uuid.UUID) (string, error) {
-	directory, err := ObjectDirectory(kind, objectID)
+func ObjectFormPath(kind, name string, formID uuid.UUID) (string, error) {
+	directory, err := ObjectDirectory(kind, name)
 	if err != nil {
 		return "", err
 	}
@@ -333,8 +365,8 @@ func ObjectFormPath(kind string, objectID, formID uuid.UUID) (string, error) {
 // because its content is not always one file: an HTML template holds one per
 // language, and a template may legitimately hold none at all while its editor
 // has not been written yet.
-func ObjectTemplateDirectory(kind string, objectID, templateID uuid.UUID) (string, error) {
-	directory, err := ObjectDirectory(kind, objectID)
+func ObjectTemplateDirectory(kind, name string, templateID uuid.UUID) (string, error) {
+	directory, err := ObjectDirectory(kind, name)
 	if err != nil {
 		return "", err
 	}
@@ -346,8 +378,8 @@ func ObjectTemplateDirectory(kind string, objectID, templateID uuid.UUID) (strin
 
 // ObjectTemplateContentPath returns one file of a template's content, named as
 // the kind of template dictates.
-func ObjectTemplateContentPath(kind string, objectID, templateID uuid.UUID, file string) (string, error) {
-	directory, err := ObjectTemplateDirectory(kind, objectID, templateID)
+func ObjectTemplateContentPath(kind, name string, templateID uuid.UUID, file string) (string, error) {
+	directory, err := ObjectTemplateDirectory(kind, name, templateID)
 	if err != nil {
 		return "", err
 	}

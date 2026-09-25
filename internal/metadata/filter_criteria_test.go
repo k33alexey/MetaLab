@@ -71,9 +71,9 @@ fields:
   - {kind: documents, object: `+criterionOrder+`, attribute: `+criterionContract+`}
   - {kind: documents, object: `+criterionInvoice+`, table_part: `+criterionPart+`, attribute: `+criterionPartField+`}
 `)
-	writeCommandModule(t, root, FilterCriterionKind, criterionID, criterionManager)
-	writeObjectForm(t, root, FilterCriterionKind, criterionID, criterionListForm)
-	writeObjectForm(t, root, FilterCriterionKind, criterionID, criterionAuxForm)
+	writeCommandModule(t, root, FilterCriterionKind, "СвязанныеДокументы", criterionManager)
+	writeObjectForm(t, root, FilterCriterionKind, "СвязанныеДокументы", criterionListForm)
+	writeObjectForm(t, root, FilterCriterionKind, "СвязанныеДокументы", criterionAuxForm)
 
 	catalog, err := Load(root)
 	if err != nil {

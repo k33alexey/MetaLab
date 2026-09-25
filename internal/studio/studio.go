@@ -1046,9 +1046,8 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, kind, languag
 		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
 			return nil, fmt.Errorf("unexpected source path %q", filepath.ToSlash(filepath.Join(relative, entry.Name())))
 		}
-		id, err := uuid.Parse(entry.Name())
-		if err != nil {
-			return nil, fmt.Errorf("metadata object %q must use a UUID directory name: %w", entry.Name(), err)
+		if err := project.ObjectName(entry.Name()); err != nil {
+			return nil, fmt.Errorf("metadata object folder %q: %w", entry.Name(), err)
 		}
 		objectDirectory := filepath.Join(directory, entry.Name())
 		objectRelative := filepath.ToSlash(filepath.Join(relative, entry.Name()))
@@ -1057,7 +1056,7 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, kind, languag
 		if err != nil {
 			return nil, fmt.Errorf("inspect metadata object %q: %w", descriptionPath, err)
 		}
-		title, err := yamlSourceTitle(filepath.Join(objectDirectory, "object.yaml"), descriptionPath, id.String(), info.Size(), language, languages)
+		title, id, err := yamlSourceTitleAndID(filepath.Join(objectDirectory, "object.yaml"), descriptionPath, entry.Name(), info.Size())
 		if err != nil {
 			return nil, err
 		}
@@ -1259,34 +1258,52 @@ func sortNodesByTitle(nodes []Node) {
 }
 
 func yamlSourceTitle(filePath, relative, fallback string, size int64, language string, languages []project.Language) (string, error) {
+	title, _, err := yamlSourceTitleAndID(filePath, relative, fallback, size)
+	return title, err
+}
+
+// yamlSourceTitleAndID reads the two things the tree needs from an object's
+// description: the name it is shown by, and the identifier everything else
+// addresses it with. The folder is named by the name now, so the identifier
+// has to come from inside the file.
+func yamlSourceTitleAndID(filePath, relative, fallback string, size int64) (string, uuid.UUID, error) {
 	if size > project.MaxYAMLDocumentBytes {
-		return "", fmt.Errorf("read source %q: %w", relative, project.ErrYAMLDocumentTooLarge)
+		return "", uuid.UUID{}, fmt.Errorf("read source %q: %w", relative, project.ErrYAMLDocumentTooLarge)
 	}
 	file, err := os.Open(filePath)
 	if err != nil {
-		return "", fmt.Errorf("open source %q: %w", relative, err)
+		return "", uuid.UUID{}, fmt.Errorf("open source %q: %w", relative, err)
 	}
 	defer file.Close()
 	var document yaml.Node
 	if err := yaml.NewDecoder(io.LimitReader(file, project.MaxYAMLDocumentBytes+1)).Decode(&document); err != nil {
-		return "", fmt.Errorf("decode source %q: %w", relative, err)
+		return "", uuid.UUID{}, fmt.Errorf("decode source %q: %w", relative, err)
 	}
 	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
-		return fallback, nil
+		return fallback, uuid.UUID{}, nil
 	}
 	// The tree always shows an object's Имя (Name), never its Заголовок
 	// (Title) — matching 1C Configurator, where the tree is the developer's
 	// technical view and the localized title is only what end users see.
 	mapping := document.Content[0]
+	title, id := fallback, uuid.UUID{}
 	for index := 0; index+1 < len(mapping.Content); index += 2 {
 		key, value := mapping.Content[index], mapping.Content[index+1]
-		if key.Value == "name" && value.Kind == yaml.ScalarNode {
+		if value.Kind != yaml.ScalarNode {
+			continue
+		}
+		switch key.Value {
+		case "name":
 			if name := strings.TrimSpace(value.Value); name != "" {
-				return name, nil
+				title = name
+			}
+		case "id":
+			if parsed, err := uuid.Parse(strings.TrimSpace(value.Value)); err == nil {
+				id = parsed
 			}
 		}
 	}
-	return fallback, nil
+	return title, id, nil
 }
 
 func countProperties(path string, count int) []Property {

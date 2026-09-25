@@ -57,12 +57,12 @@ commands:
 templates:
   - {id: `+enumTemplate+`, name: Справка, title: {ru: Справка}, kind: text}
 `)
-	writeCommandModule(t, root, EnumerationKind, enumObject, enumManager)
-	writeCommandModule(t, root, EnumerationKind, enumObject, enumCommandMod)
+	writeCommandModule(t, root, EnumerationKind, "СтатусыЗаказа", enumManager)
+	writeCommandModule(t, root, EnumerationKind, "СтатусыЗаказа", enumCommandMod)
 	for _, form := range []string{enumListForm, enumChoiceForm, enumAuxList, enumAuxChoice} {
-		writeObjectForm(t, root, EnumerationKind, enumObject, form)
+		writeObjectForm(t, root, EnumerationKind, "СтатусыЗаказа", form)
 	}
-	writeTemplateContent(t, root, EnumerationKind, enumObject, enumTemplate, "content.txt", "текст")
+	writeTemplateContent(t, root, EnumerationKind, "СтатусыЗаказа", enumTemplate, "content.txt", "текст")
 
 	catalog, err := Load(root)
 	if err != nil {
@@ -116,7 +116,7 @@ name: СтатусыЗаказа
 title: {ru: Статусы заказа}
 values: [{id: `+enumValueOne+`, name: Новый, title: {ru: Новый}}]
 `)
-	description := filepath.Join(root, "metadata", string(EnumerationKind), enumObject, "object.yaml")
+	description := filepath.Join(root, "metadata", string(EnumerationKind), "СтатусыЗаказа", "object.yaml")
 	if _, err := os.Stat(description); err != nil {
 		t.Fatalf("the enumeration was not written into a folder of its own: %v", err)
 	}
@@ -136,7 +136,7 @@ values: [{id: `+enumValueOne+`, name: Новый, title: {ru: Новый}}]
 	if _, err := Load(root); err == nil {
 		t.Fatal("a form that does not exist was accepted")
 	}
-	writeObjectForm(t, root, EnumerationKind, enumObject, enumAuxChoice)
+	writeObjectForm(t, root, EnumerationKind, "СтатусыЗаказа", enumAuxChoice)
 	if _, err := Load(root); err != nil {
 		t.Fatal(err)
 	}
@@ -186,9 +186,9 @@ values: [{id: `+enumValueOne+`, name: Новый, title: {ru: Новый}}]
 
 // writeObjectForm writes an empty managed form file where an object keeps its
 // forms.
-func writeObjectForm(t *testing.T, root string, kind Kind, objectID, formID string) {
+func writeObjectForm(t *testing.T, root string, kind Kind, objectName, formID string) {
 	t.Helper()
-	directory := filepath.Join(root, "metadata", string(kind), objectID, "forms")
+	directory := filepath.Join(root, "metadata", string(kind), objectName, "forms")
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		t.Fatal(err)
 	}

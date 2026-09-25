@@ -866,7 +866,7 @@ func (workspace *Workspace) indexMetadataDefinitions(index *bslNavigationIndex) 
 				if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
 					continue
 				}
-				if _, err := uuid.Parse(entry.Name()); err != nil {
+				if project.ObjectName(entry.Name()) != nil {
 					continue
 				}
 				path = filepath.ToSlash(filepath.Join("metadata", kind, entry.Name(), "object.yaml"))

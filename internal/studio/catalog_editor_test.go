@@ -212,7 +212,7 @@ func TestDeleteCatalogRemovesFolderAndChecksRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	objectDirectory := filepath.Join(workspace.root, "metadata", "catalogs", created.Catalog.ID.String())
+	objectDirectory := filepath.Join(workspace.root, "metadata", "catalogs", created.Catalog.Name)
 	if _, err := os.Stat(objectDirectory); err != nil {
 		t.Fatalf("catalog folder missing before delete: %v", err)
 	}

@@ -112,10 +112,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadObjectKind(root, EnumerationKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, EnumerationKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeEnumeration(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.Enumerations = append(catalog.Enumerations, value)
@@ -160,10 +160,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadObjectKind(root, SettingsStorageKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, SettingsStorageKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeSettingsStorage(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.SettingsStorages = append(catalog.SettingsStorages, value)
@@ -172,10 +172,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadObjectKind(root, FilterCriterionKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, FilterCriterionKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeFilterCriterion(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.FilterCriteria = append(catalog.FilterCriteria, value)
@@ -196,10 +196,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadObjectKind(root, CatalogKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, CatalogKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeCatalog(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.Catalogs = append(catalog.Catalogs, value)
@@ -208,10 +208,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadObjectKind(root, ChartOfCharacteristicTypesKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, ChartOfCharacteristicTypesKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeChartOfCharacteristicTypes(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.ChartsOfCharacteristicTypes = append(catalog.ChartsOfCharacteristicTypes, value)
@@ -220,10 +220,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadObjectKind(root, ChartOfAccountsKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, ChartOfAccountsKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeChartOfAccounts(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.ChartsOfAccounts = append(catalog.ChartsOfAccounts, value)
@@ -232,10 +232,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadObjectKind(root, ChartOfCalculationTypesKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, ChartOfCalculationTypesKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeChartOfCalculationTypes(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.ChartsOfCalculationTypes = append(catalog.ChartsOfCalculationTypes, value)
@@ -244,10 +244,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadObjectKind(root, TaskKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, TaskKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeTask(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.Tasks = append(catalog.Tasks, value)
@@ -256,10 +256,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadObjectKind(root, AccountingRegisterKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, AccountingRegisterKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeAccountingRegister(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.AccountingRegisters = append(catalog.AccountingRegisters, value)
@@ -268,10 +268,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadObjectKind(root, CalculationRegisterKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, CalculationRegisterKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeCalculationRegister(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.CalculationRegisters = append(catalog.CalculationRegisters, value)
@@ -280,10 +280,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadObjectKind(root, ReportKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, ReportKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeReport(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.Reports = append(catalog.Reports, value)
@@ -292,10 +292,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadObjectKind(root, DataProcessorKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, DataProcessorKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeDataProcessor(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.DataProcessors = append(catalog.DataProcessors, value)
@@ -328,10 +328,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadObjectKind(root, DocumentJournalKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, DocumentJournalKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeDocumentJournal(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.DocumentJournals = append(catalog.DocumentJournals, value)
@@ -340,10 +340,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadObjectKind(root, ExchangePlanKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, ExchangePlanKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeExchangePlan(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.ExchangePlans = append(catalog.ExchangePlans, value)
@@ -352,10 +352,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadObjectKind(root, BusinessProcessKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, BusinessProcessKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeBusinessProcess(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.BusinessProcesses = append(catalog.BusinessProcesses, value)
@@ -364,10 +364,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadObjectKind(root, DocumentKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, DocumentKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeDocument(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.Documents = append(catalog.Documents, value)
@@ -376,10 +376,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadObjectKind(root, InformationRegisterKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, InformationRegisterKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeInformationRegister(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.InformationRegisters = append(catalog.InformationRegisters, value)
@@ -388,10 +388,10 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadObjectKind(root, AccumulationRegisterKind, func(source string, file *os.File, id uuid.UUID) error {
+	if err := loadObjectKind(root, AccumulationRegisterKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeAccumulationRegister(source, file, manifest)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.AccumulationRegisters = append(catalog.AccumulationRegisters, value)
@@ -603,7 +603,7 @@ func loadKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) e
 // is how catalogs, documents and registers group their own description with
 // their module(s) and managed forms, physically located inside that same
 // folder (see validateObjectFileSources).
-func loadObjectKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) error) error {
+func loadObjectKind(root string, kind Kind, decode func(string, *os.File, string) error) error {
 	directory := filepath.Join(root, "metadata", string(kind))
 	info, err := os.Lstat(directory)
 	if err != nil {
@@ -631,16 +631,15 @@ func loadObjectKind(root string, kind Kind, decode func(string, *os.File, uuid.U
 		if !entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
 			return fmt.Errorf("unexpected metadata source %q", filepath.Join("metadata", string(kind), entry.Name()))
 		}
-		id, err := uuid.Parse(entry.Name())
-		if err != nil {
-			return fmt.Errorf("metadata object %q must use a UUID directory name: %w", entry.Name(), err)
+		if err := project.ObjectName(entry.Name()); err != nil {
+			return fmt.Errorf("metadata object folder %q: %w", entry.Name(), err)
 		}
 		relative := filepath.ToSlash(filepath.Join("metadata", string(kind), entry.Name(), "object.yaml"))
 		file, err := os.Open(filepath.Join(directory, entry.Name(), "object.yaml"))
 		if err != nil {
 			return fmt.Errorf("open %s: %w", relative, err)
 		}
-		decodeErr := decode(relative, file, id)
+		decodeErr := decode(relative, file, entry.Name())
 		closeErr := file.Close()
 		if decodeErr != nil {
 			return fmt.Errorf("load %s: %w", relative, decodeErr)
@@ -2163,15 +2162,15 @@ type namedSource struct {
 }
 
 // validateObjectFileSources checks that what an object declares exists inside
-// its per-object folder (metadata/<kind>/<id>/), physically grouped with its
+// its per-object folder (metadata/<kind>/<name>/), physically grouped with its
 // own description, and that the folder holds nothing else.
 func validateObjectFileSources(files objectFiles) error {
 	if files.root == "" {
 		return nil
 	}
-	root, id, kind, name := files.root, files.id, files.kind, files.name
+	root, kind, name := files.root, files.kind, files.name
 	forms, commands := files.forms, files.commands
-	directory := filepath.Join(root, "metadata", string(files.directoryKind), id.String())
+	directory := filepath.Join(root, "metadata", string(files.directoryKind), name)
 	type source struct {
 		role, path string
 		id         *uuid.UUID

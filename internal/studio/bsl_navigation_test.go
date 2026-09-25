@@ -57,7 +57,7 @@ func TestNavigateBSLFindsMetadataDefinition(t *testing.T) {
 	root := createProject(t)
 	moduleID, catalogID := uuid.MustNew(), uuid.MustNew()
 	modulePath, _ := project.ModulePath(moduleID)
-	catalogPath, _ := project.ObjectMetadataPath("catalogs", catalogID)
+	catalogPath, _ := project.ObjectMetadataPath("catalogs", "Товары")
 	source := "Процедура Запустить()\n\tЭлемент = Справочники.Товары.СоздатьЭлемент();\nКонецПроцедуры\n"
 	writeBSLTestSource(t, root, modulePath, source)
 	writeBSLTestSource(t, root, catalogPath, "format: 1\nid: "+catalogID.String()+"\nname: Товары\ntitle: {ru: Товары}\ncode: {type: string, length: 9, auto: true, unique: true}\ndescription_length: 100\n")
@@ -215,7 +215,7 @@ func TestSearchProjectFindsBSLFormsAndKeepsLineNumbers(t *testing.T) {
 	root := createProject(t)
 	modulePath, _ := project.ModulePath(uuid.MustNew())
 	formID := uuid.MustNew()
-	formPath, _ := project.ObjectFormPath("catalogs", uuid.MustNew(), formID)
+	formPath, _ := project.ObjectFormPath("catalogs", "Контрагенты", formID)
 	writeBSLTestSource(t, root, modulePath, "Процедура Запустить()\n\n\tКонтрагент = Неопределено;\nКонецПроцедуры\n")
 	formSource := "format: 1\nid: " + formID.String() + "\nname: Форма\ntitle: {ru: Карточка контрагента}\nkind: object\n"
 	writeBSLTestSource(t, root, formPath, formSource)

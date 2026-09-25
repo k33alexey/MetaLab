@@ -195,7 +195,9 @@ func (workspace *Workspace) checkCatalogNameLocked(value metadata.CatalogDefinit
 		return err
 	}
 	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() == value.ID.String() {
+		// The folder is named by the object, so the object's own folder is the
+		// one bearing its name - that is the one a rename is allowed to keep.
+		if !entry.IsDir() || entry.Name() == value.Name {
 			continue
 		}
 		file, err := workspace.readSource("metadata/catalogs/" + entry.Name() + "/object.yaml")
@@ -239,7 +241,7 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 	if err := workspace.checkCatalogNameLocked(value); err != nil {
 		return CatalogEditorSource{}, err
 	}
-	relative, err := project.ObjectMetadataPath("catalogs", id)
+	relative, err := project.ObjectMetadataPath("catalogs", name)
 	if err != nil {
 		return CatalogEditorSource{}, err
 	}
@@ -251,7 +253,7 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return CatalogEditorSource{}, ErrInvalidSourcePath
 	}
-	objectDirectory := filepath.Join(directory, id.String())
+	objectDirectory := filepath.Join(directory, name)
 	if err := os.Mkdir(objectDirectory, 0o755); err != nil {
 		return CatalogEditorSource{}, err
 	}

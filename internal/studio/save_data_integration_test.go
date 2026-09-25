@@ -128,7 +128,7 @@ func TestSaveDataButtonEndToEndIntegration(t *testing.T) {
 	// Removing an attribute drops a column, which the same click must refuse
 	// until it is confirmed - and the refusal has to say WHAT is being dropped,
 	// in the names the developer wrote, not as t_1000… · c_1000….
-	goods := filepath.Join(root, "metadata", "catalogs", "10000000-0000-4000-8000-000000000101", "object.yaml")
+	goods := filepath.Join(root, "metadata", "catalogs", "Товары", "object.yaml")
 	source, err := os.ReadFile(goods)
 	if err != nil {
 		t.Fatal(err)

@@ -35,9 +35,9 @@ forms:
   auxiliary_save: `+storageAuxSave+`
   auxiliary_load: `+storageAuxLoad+`
 `)
-	writeCommandModule(t, root, SettingsStorageKind, storageID, storageManager)
+	writeCommandModule(t, root, SettingsStorageKind, "ХранилищеВариантовОтчетов", storageManager)
 	for _, form := range []string{storageSaveForm, storageLoadForm, storageAuxSave, storageAuxLoad} {
-		writeObjectForm(t, root, SettingsStorageKind, storageID, form)
+		writeObjectForm(t, root, SettingsStorageKind, "ХранилищеВариантовОтчетов", form)
 	}
 	catalog, err := Load(root)
 	if err != nil {
@@ -145,7 +145,7 @@ forms: {load: `+storageLoadForm+`}
 	if _, err := Load(root); err == nil {
 		t.Fatal("a form that does not exist was accepted")
 	}
-	writeObjectForm(t, root, SettingsStorageKind, storageID, storageLoadForm)
+	writeObjectForm(t, root, SettingsStorageKind, "Хранилище", storageLoadForm)
 	if _, err := Load(root); err != nil {
 		t.Fatal(err)
 	}

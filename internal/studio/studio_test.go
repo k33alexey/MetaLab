@@ -18,8 +18,8 @@ func TestWorkspaceSnapshotBuildsCanonicalTree(t *testing.T) {
 	t.Parallel()
 
 	root := createProject(t)
-	catalogID, moduleID := uuid.MustNew(), uuid.MustNew()
-	metadataPath, err := project.ObjectMetadataPath("catalogs", catalogID)
+	moduleID := uuid.MustNew()
+	metadataPath, err := project.ObjectMetadataPath("catalogs", "Контрагенты")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,14 +115,14 @@ func TestWorkspaceTreeAlwaysShowsFixedGroupsForDocumentsAndRegisters(t *testing.
 	root := createProject(t)
 	for _, kind := range []string{"documents", "information-registers", "accumulation-registers"} {
 		id := uuid.MustNew()
-		metadataPath, err := project.ObjectMetadataPath(kind, id)
+		metadataPath, err := project.ObjectMetadataPath(kind, "Тест")
 		if err != nil {
 			t.Fatal(err)
 		}
 		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, filepath.FromSlash(metadataPath))), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(metadataPath)), []byte("format: 1\nname: Тест\ntitle: {ru: Тест}\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(metadataPath)), []byte("format: 1\nid: "+id.String()+"\nname: Тест\ntitle: {ru: Тест}\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 

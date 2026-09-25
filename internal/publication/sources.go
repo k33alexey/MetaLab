@@ -266,8 +266,8 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 	if len(parts) < 3 {
 		return fmt.Errorf("unexpected publication source path %q", relative)
 	}
-	objectID, err := uuid.Parse(parts[2])
-	if err != nil {
+	objectName := parts[2]
+	if err := project.ObjectName(objectName); err != nil {
 		return fmt.Errorf("unexpected publication source path %q", relative)
 	}
 	if directory && len(parts) == 3 {
@@ -290,18 +290,18 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 		}
 	}
 	if !directory && len(parts) == 4 && parts[3] == "object.yaml" {
-		if expected, err := project.ObjectMetadataPath(parts[1], objectID); err == nil && expected == relative {
+		if expected, err := project.ObjectMetadataPath(parts[1], objectName); err == nil && expected == relative {
 			return nil
 		}
 	}
 	if !directory {
 		if moduleID, ok := objectFolderModuleID(relative); ok {
-			if expected, err := project.ObjectModulePath(parts[1], objectID, moduleID); err == nil && expected == relative {
+			if expected, err := project.ObjectModulePath(parts[1], objectName, moduleID); err == nil && expected == relative {
 				return nil
 			}
 		}
 		if formID, ok := objectFolderFormID(relative); ok {
-			if expected, err := project.ObjectFormPath(parts[1], objectID, formID); err == nil && expected == relative {
+			if expected, err := project.ObjectFormPath(parts[1], objectName, formID); err == nil && expected == relative {
 				return nil
 			}
 		}
@@ -338,7 +338,7 @@ func objectFolderModuleID(relative string) (uuid.UUID, bool) {
 	if len(parts) != 4 || parts[0] != "metadata" || !contains(project.ObjectFolderKinds(), parts[1]) {
 		return uuid.UUID{}, false
 	}
-	if _, err := uuid.Parse(parts[2]); err != nil {
+	if project.ObjectName(parts[2]) != nil {
 		return uuid.UUID{}, false
 	}
 	id, err := uuid.Parse(strings.TrimSuffix(parts[3], ".bsl"))
@@ -355,7 +355,7 @@ func objectFolderFormID(relative string) (uuid.UUID, bool) {
 	if len(parts) != 5 || parts[0] != "metadata" || parts[3] != "forms" || !contains(project.ObjectFolderKinds(), parts[1]) {
 		return uuid.UUID{}, false
 	}
-	if _, err := uuid.Parse(parts[2]); err != nil {
+	if project.ObjectName(parts[2]) != nil {
 		return uuid.UUID{}, false
 	}
 	id, err := uuid.Parse(strings.TrimSuffix(parts[4], ".yaml"))
