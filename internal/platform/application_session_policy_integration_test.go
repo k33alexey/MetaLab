@@ -118,7 +118,7 @@ func TestSessionParameterRestrictsListReadsIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("metadata/catalogs/"+catalogID.String()+"/object.yaml", definition)
+	write("metadata/catalogs/"+definition.Name+"/object.yaml", definition)
 	write("metadata/session-parameters/"+parameter.ID.String()+".yaml", parameter)
 	if err := os.WriteFile(filepath.Join(root, project.SessionModuleFile), []byte(`Процедура УстановкаПараметровСеанса(ИменаПараметровСеанса)
     Склады = Новый Массив;

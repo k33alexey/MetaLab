@@ -44,7 +44,11 @@ func TestDocumentPostingIsAtomicAndReplacesMovementsIntegration(t *testing.T) {
 	productDimensionID, quantityResourceID := uuid.MustNew(), uuid.MustNew()
 	document := DocumentDefinition{
 		ID: documentID, Name: "Поступление", Posting: true,
-		Number: DocumentNumber{Type: StringType, Length: 20, Unique: true, Periodicity: NumberPeriodYear},
+		// The register the document writes into is declared on the document -
+		// see document_registers.go. Without it the posting is a write into a
+		// register this document has nothing to do with, and it is refused.
+		Movements: []uuid.UUID{registerID},
+		Number:    DocumentNumber{Type: StringType, Length: 20, Unique: true, Periodicity: NumberPeriodYear},
 		Attributes: []Attribute{
 			{ID: productAttributeID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 100}}},
 			{ID: quantityAttributeID, Name: "Количество", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}},

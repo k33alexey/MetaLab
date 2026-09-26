@@ -95,7 +95,7 @@ func (launcher executableStudioLauncher) OpenStudio(ctx context.Context, databas
 	if current, hostErr := os.Hostname(); hostErr == nil && current != "" {
 		hostName = current
 	}
-	lease, err := launcher.runtime.AcquireStudioSession(ctx, databaseID, snapshot.Settings.ID, "", hostName, int64(os.Getpid()))
+	lease, err := launcher.runtime.AcquireStudioSession(ctx, databaseID, snapshot.Configuration.ID, "", hostName, int64(os.Getpid()))
 	if err != nil {
 		return err
 	}

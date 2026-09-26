@@ -52,7 +52,8 @@ func TestWireBSLEventsMatchesRuntimeSnapshotModuleNamingIntegration(t *testing.T
 	productDimensionID, quantityResourceID := uuid.MustNew(), uuid.MustNew()
 	document := DocumentDefinition{
 		ID: documentID, Name: "Поступление", Posting: true,
-		Number: DocumentNumber{Type: StringType, Length: 20, Unique: true, Periodicity: NumberPeriodYear},
+		Movements: []uuid.UUID{registerID},
+		Number:    DocumentNumber{Type: StringType, Length: 20, Unique: true, Periodicity: NumberPeriodYear},
 		Attributes: []Attribute{
 			{ID: productAttributeID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 100}}},
 			{ID: quantityAttributeID, Name: "Количество", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}},

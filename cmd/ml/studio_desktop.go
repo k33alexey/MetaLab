@@ -13,6 +13,7 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
 	"github.com/k33alexey/MetaLab/internal/platform"
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/publication"
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/secretstore"
@@ -21,6 +22,17 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
+
+// studioWindowTitle is what the window is called: the configuration's synonym
+// in the project's own default language, and its name where no synonym was
+// written down - a window titled "ML Studio — " and nothing else says less
+// than the folder the project was opened from.
+func studioWindowTitle(configuration project.Project) string {
+	if synonym := configuration.Title.Resolve(configuration.DefaultLanguage, configuration.DefaultLanguage, configuration.Languages); synonym != "" {
+		return synonym
+	}
+	return configuration.Name
+}
 
 func runStudio(ctx context.Context, settings appconfig.Config, projectPath, databaseText string) error {
 	databaseID, err := uuid.Parse(databaseText)
@@ -43,7 +55,7 @@ func runStudio(ctx context.Context, settings appconfig.Config, projectPath, data
 	workspace.SetSaveDataProvider(func(saveContext context.Context, root string, consent schemadiff.MigrationConsent) (publication.SavedState, schemadiff.MigrationRecord, error) {
 		return platformRuntime.SaveApplicationData(saveContext, databaseID, root, consent)
 	})
-	lease, err := openStudioLease(ctx, platformRuntime, databaseID, snapshot.Settings.ID)
+	lease, err := openStudioLease(ctx, platformRuntime, databaseID, snapshot.Configuration.ID)
 	if err != nil {
 		return err
 	}
@@ -75,7 +87,7 @@ func runStudio(ctx context.Context, settings appconfig.Config, projectPath, data
 		Mac: application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
 	})
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title: "ML Studio — " + snapshot.Settings.Title, Width: 1280, Height: 800,
+		Title: "ML Studio — " + studioWindowTitle(snapshot.Configuration), Width: 1280, Height: 800,
 		MinWidth: 800, MinHeight: 560, BackgroundColour: application.NewRGB(30, 31, 34),
 		URL: "http://" + listener.Addr().String() + launchPath,
 	})

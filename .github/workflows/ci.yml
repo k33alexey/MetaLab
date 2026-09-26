@@ -58,8 +58,17 @@ jobs:
       - name: Check browser modules
         run: node --check internal/mlapp/ui/app.js
 
+      # -p 1 runs one package's tests at a time. It is not a speed setting: the
+      # integration tests of internal/metadata, internal/platform,
+      # internal/publication and internal/studio create, migrate and drop the
+      # same ml_data schema in the one test database. Run in parallel, one
+      # package drops the schema while another works in it, and the job fails
+      # with 'schema "ml_data" does not exist', 'relation "ml_data.t_..." does
+      # not exist' or 'PostgreSQL schema changed after the migration plan was
+      # prepared' - every one of which reads as a regression and is not one.
+      # See AGENTS.md, "PostgreSQL integration tests".
       - name: Test with race detector
-        run: go test -race -coverprofile=coverage.out ./...
+        run: go test -race -p 1 -coverprofile=coverage.out ./...
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v6

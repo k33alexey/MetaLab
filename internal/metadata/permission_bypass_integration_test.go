@@ -51,7 +51,8 @@ func TestApplicationRoleBypassAttemptsIntegration(t *testing.T) {
 
 	document := DocumentDefinition{
 		ID: documentID, Name: "Поступление", Posting: true,
-		Number: DocumentNumber{Type: StringType, Length: 10, Unique: true, Periodicity: NumberPeriodNone},
+		Movements: []uuid.UUID{accumulationID, informationID},
+		Number:    DocumentNumber{Type: StringType, Length: 10, Unique: true, Periodicity: NumberPeriodNone},
 		Attributes: []Attribute{
 			{ID: productAttrID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 50}}},
 		},

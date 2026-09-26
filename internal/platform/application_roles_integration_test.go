@@ -116,7 +116,7 @@ func TestManagerApplicationRolesUseActivePublicationIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("metadata/constants/"+constant.ID.String()+".yaml", constant)
+	write("metadata/constants/"+constant.Name+"/object.yaml", constant)
 	write("metadata/roles/"+reader.ID.String()+".yaml", reader)
 	runTestGit(t, root, "init", "-b", "main")
 	runTestGit(t, root, "config", "user.name", "MetaLab Test")
