@@ -7,6 +7,13 @@ function createCatalogModel(source) {
   const catalog = source.catalog;
   catalog.attributes ||= [];
   catalog.tableParts ||= [];
+  // The platform indexes a field in one of three ways, not two. What the third
+  // one adds over the second its help does not say, so it is offered, stored
+  // and carried on unchanged.
+  const indexingModes = [
+    ['dont-index', 'Не индексировать'], ['index', 'Индексировать'],
+    ['index-with-additional-order', 'Индексировать с доп. упорядочиванием'],
+  ];
   const typeKinds = [
     ['string', 'Строка'], ['number', 'Число'], ['boolean', 'Булево'], ['date', 'Дата'], ['uuid', 'УникальныйИдентификатор'],
     ['enumeration', 'Перечисление'], ['defined-type', 'Определяемый тип'], ['catalog', 'СправочникСсылка'], ['document', 'ДокументСсылка'],
@@ -35,7 +42,7 @@ function createCatalogModel(source) {
   }
   return {
     value() { return structuredClone(catalog); },
-    typeKinds, referenceChoices, attributeList,
+    typeKinds, indexingModes, referenceChoices, attributeList,
     setName(name) { catalog.name = name; },
     setTitle(language, text) { catalog.title ||= {}; if (text.trim()) catalog.title[language] = text; else delete catalog.title[language]; },
     setCodeType(type) { catalog.code.type = type; },
@@ -63,7 +70,11 @@ function createCatalogModel(source) {
       if (text.trim()) attribute.title[language] = text; else delete attribute.title[language];
     },
     setAttributeRequired(container, id, required) { const attribute = attributeList(container)?.find(item => item.id === id); if (attribute) attribute.required = required; },
-    setAttributeIndexed(container, id, indexed) { const attribute = attributeList(container)?.find(item => item.id === id); if (attribute) attribute.indexed = indexed; },
+    setAttributeIndexing(container, id, indexing) {
+      const attribute = attributeList(container)?.find(item => item.id === id);
+      if (!attribute) return;
+      if (indexing === 'dont-index') delete attribute.indexing; else attribute.indexing = indexing;
+    },
     addType(container, id) {
       const attribute = attributeList(container)?.find(item => item.id === id);
       if (!attribute || attribute.types.length >= 32) return;
@@ -198,7 +209,8 @@ function createCatalogEditor(host, onChange) {
     panel.append(textField('Имя', attribute.name, value => model.setAttributeName(container, attribute.id, value), {maxLength: 128}));
     panel.append(localizedTitleField(attribute, (language, value) => model.setAttributeTitle(container, attribute.id, language, value)));
     panel.append(checkboxField('Обязательный', !!attribute.required, value => model.setAttributeRequired(container, attribute.id, value)));
-    panel.append(checkboxField('Индексировать', !!attribute.indexed, value => model.setAttributeIndexed(container, attribute.id, value)));
+    panel.append(selectField('Индексирование', attribute.indexing || 'dont-index', indexingModes,
+      value => model.setAttributeIndexing(container, attribute.id, value)));
     const types = node('div', undefined, 'catalog-types');
     types.append(node('div', 'Типы значения', 'catalog-section-title'));
     for (const [index, type] of attribute.types.entries()) types.append(renderTypeRow(container, attribute, type, index));

@@ -64,7 +64,7 @@ func (catalog *Catalog) appendInformationRegisterField(table *schemadiff.Table, 
 	if err := catalog.appendAttributeSchema(table, field); err != nil {
 		return err
 	}
-	if !dimension || field.Indexed {
+	if !dimension || field.Indexing.indexes() {
 		return nil
 	}
 	column, err := PhysicalAttributeColumn(field.ID)

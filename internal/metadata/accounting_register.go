@@ -27,7 +27,7 @@ type AccountingRegisterField struct {
 	Name                       string        `yaml:"name" json:"name"`
 	Title                      LocalizedText `yaml:"title" json:"title"`
 	Types                      []Type        `yaml:"types" json:"types"`
-	Indexed                    bool          `yaml:"indexed,omitempty" json:"indexed,omitempty"`
+	Indexing                   IndexMode     `yaml:"indexing,omitempty" json:"indexing,omitempty"`
 	Balance                    bool          `yaml:"balance,omitempty" json:"balance,omitempty"`
 	AccountingFlag             *uuid.UUID    `yaml:"accounting_flag,omitempty" json:"accountingFlag,omitempty"`
 	ExtDimensionAccountingFlag *uuid.UUID    `yaml:"ext_dimension_accounting_flag,omitempty" json:"extDimensionAccountingFlag,omitempty"`
@@ -112,12 +112,16 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 			if field.ExtDimensionAccountingFlag != nil && field.ExtDimensionAccountingFlag.IsZero() {
 				issues = append(issues, prefix+".ext_dimension_accounting_flag must be a non-zero UUID")
 			}
+			if !validIndexMode(field.Indexing) {
+				issues = append(issues, prefix+".indexing must be dont-index, index or index-with-additional-order")
+			}
 		}
 	}
 	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, func(name string) bool {
 		return names[strings.ToLower(name)] || reservedAccountingRegisterName(name)
 	})...)
 	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", value.Attributes}}, nil)...)
+	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", value.Attributes}}, nil, false, false)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
@@ -175,7 +179,7 @@ func accountingRegisterFields(item AccountingRegisterDefinition) []Attribute {
 	fields := make([]Attribute, 0, len(item.Dimensions)+len(item.Resources))
 	for _, group := range [][]AccountingRegisterField{item.Dimensions, item.Resources} {
 		for _, field := range group {
-			fields = append(fields, Attribute{ID: field.ID, Name: field.Name, Title: field.Title, Types: field.Types, Indexed: field.Indexed})
+			fields = append(fields, Attribute{ID: field.ID, Name: field.Name, Title: field.Title, Types: field.Types, Indexing: field.Indexing})
 		}
 	}
 	return fields

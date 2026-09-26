@@ -269,7 +269,7 @@ func (catalog *Catalog) taskTables(definition TaskDefinition) (schemadiff.Table,
 	// Addressing attributes are columns of the task: a task carries the role it
 	// is addressed to, and the register turns that into people.
 	for _, attribute := range definition.AddressingAttributes {
-		if err := catalog.appendAttributeSchema(&table, Attribute{ID: attribute.ID, Name: attribute.Name, Title: attribute.Title, Types: attribute.Types, Indexed: true}); err != nil {
+		if err := catalog.appendAttributeSchema(&table, Attribute{ID: attribute.ID, Name: attribute.Name, Title: attribute.Title, Types: attribute.Types, Indexing: IndexField}); err != nil {
 			return schemadiff.Table{}, nil, fmt.Errorf("task %s addressing attribute %s: %w", definition.Name, attribute.Name, err)
 		}
 	}

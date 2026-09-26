@@ -17,10 +17,10 @@ const maxJournalColumns = 128
 // not share a name - a journal exists precisely to put "storage" of one
 // document and "source storage" of another under one heading.
 type JournalColumn struct {
-	ID      uuid.UUID     `yaml:"id" json:"id"`
-	Name    string        `yaml:"name" json:"name"`
-	Title   LocalizedText `yaml:"title" json:"title"`
-	Indexed bool          `yaml:"indexed,omitempty" json:"indexed,omitempty"`
+	ID       uuid.UUID     `yaml:"id" json:"id"`
+	Name     string        `yaml:"name" json:"name"`
+	Title    LocalizedText `yaml:"title" json:"title"`
+	Indexing IndexMode     `yaml:"indexing,omitempty" json:"indexing,omitempty"`
 	// References are the attributes this column shows, one per kind of
 	// document at most.
 	References []uuid.UUID `yaml:"references,omitempty" json:"references,omitempty"`
@@ -76,6 +76,9 @@ func DecodeDocumentJournal(source string, reader io.Reader, configuration projec
 		}
 		names[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", column.Title, configuration)...)
+		if !validIndexMode(column.Indexing) {
+			issues = append(issues, prefix+".indexing must be dont-index, index or index-with-additional-order")
+		}
 		issues = append(issues, validateUniqueIDs(prefix+".references", column.References)...)
 		if len(column.References) == 0 {
 			issues = append(issues, prefix+" shows no attribute of any document, so it is an empty column")

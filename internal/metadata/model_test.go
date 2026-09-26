@@ -242,7 +242,7 @@ attributes:
     name: Родитель
     title: {ru: Родитель}
     types: [{kind: catalog, reference: `+catalogID+`}]
-    indexed: true
+    indexing: index
 table_parts:
   - id: `+tablePartID+`
     name: Контакты

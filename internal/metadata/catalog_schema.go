@@ -236,7 +236,7 @@ func (catalog *Catalog) appendAttributeSchema(table *schemadiff.Table, attribute
 		return err
 	}
 	table.Columns = append(table.Columns, schemadiff.Column{Name: columnName, Type: storage.sqlType, Nullable: !attribute.Required})
-	if attribute.Indexed {
+	if attribute.Indexing.indexes() {
 		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("i", attribute.ID), Method: "btree", Keys: []string{columnName}})
 	}
 	if storage.referenceObject != nil {

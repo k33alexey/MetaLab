@@ -142,7 +142,7 @@ func (catalog *Catalog) recalculationTable(definition CalculationRegisterDefinit
 		// The column takes its own identifier and the register dimension's
 		// types: it holds the same values, for the same reason.
 		if err := catalog.appendAttributeSchema(&table, Attribute{
-			ID: dimension.ID, Name: dimension.Name, Title: dimension.Title, Types: source.Types, Indexed: true,
+			ID: dimension.ID, Name: dimension.Name, Title: dimension.Title, Types: source.Types, Indexing: IndexField,
 		}); err != nil {
 			return schemadiff.Table{}, fmt.Errorf("recalculation %s dimension %s: %w", recalculation.Name, dimension.Name, err)
 		}

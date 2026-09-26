@@ -77,7 +77,7 @@ dimensions:
     title: {ru: Физическое лицо}
     types: [{kind: catalog, reference: ` + calcPeople + `}]
     base: true
-    indexed: true
+    indexing: index
     schedule_link: ` + calcSchedulePerson + `
 resources:
   - {id: ` + calcResult + `, name: Результат, title: {ru: Результат}, types: [{kind: number, precision: 15, scale: 2}]}

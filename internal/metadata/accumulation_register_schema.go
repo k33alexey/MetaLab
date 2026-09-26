@@ -78,7 +78,7 @@ func (catalog *Catalog) accumulationRegisterTables(definition AccumulationRegist
 			return schemadiff.Table{}, schemadiff.Table{}, fmt.Errorf("accumulation register %s dimension %s: %w", definition.Name, dimension.Name, err)
 		}
 		totalDimension := dimension
-		totalDimension.Indexed = false
+		totalDimension.Indexing = DontIndex
 		if err := catalog.appendAttributeSchema(&totals, totalDimension); err != nil {
 			return schemadiff.Table{}, schemadiff.Table{}, fmt.Errorf("accumulation register %s total dimension %s: %w", definition.Name, dimension.Name, err)
 		}

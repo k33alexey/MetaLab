@@ -48,7 +48,7 @@ func TestCatalogRepositoryLifecycleIntegration(t *testing.T) {
 			List: ListSettings{PageSize: 20, SearchFields: []string{"Description", "Email"}},
 			Attributes: []Attribute{
 				{ID: emailID, Name: "Email", Required: true, Types: []Type{{Kind: StringType, Length: 100}}},
-				{ID: parentID, Name: "Родитель", Indexed: true, Types: []Type{{Kind: CatalogType, Reference: &catalogID}}},
+				{ID: parentID, Name: "Родитель", Indexing: IndexField, Types: []Type{{Kind: CatalogType, Reference: &catalogID}}},
 			},
 			TableParts: []TablePart{{ID: phonesID, Name: "Телефоны", Attributes: []Attribute{{ID: phoneID, Name: "Номер", Required: true, Types: []Type{{Kind: StringType, Length: 32}}}}}},
 		}},

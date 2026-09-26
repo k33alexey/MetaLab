@@ -68,7 +68,7 @@ recorders: [`+entriesDocument+`]
 }
 
 const entriesStandardFields = `dimensions:
-  - {id: ` + entriesCompany + `, name: Организация, title: {ru: Организация}, types: [{kind: catalog, reference: ` + entriesCompanies + `}], balance: true, indexed: true}
+  - {id: ` + entriesCompany + `, name: Организация, title: {ru: Организация}, types: [{kind: catalog, reference: ` + entriesCompanies + `}], balance: true, indexing: index}
   - {id: ` + entriesCurrency + `, name: Валюта, title: {ru: Валюта}, types: [{kind: catalog, reference: ` + entriesCompanies + `}], accounting_flag: ` + entriesFlag + `}
 resources:
   - {id: ` + entriesSum + `, name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}], balance: true}

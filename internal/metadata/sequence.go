@@ -176,7 +176,7 @@ func (catalog *Catalog) sequenceTable(definition SequenceDefinition) (schemadiff
 	}
 	for _, dimension := range definition.Dimensions {
 		if err := catalog.appendAttributeSchema(&table, Attribute{
-			ID: dimension.ID, Name: dimension.Name, Title: dimension.Title, Types: dimension.Types, Indexed: true,
+			ID: dimension.ID, Name: dimension.Name, Title: dimension.Title, Types: dimension.Types, Indexing: IndexField,
 		}); err != nil {
 			return schemadiff.Table{}, fmt.Errorf("sequence %s dimension %s: %w", definition.Name, dimension.Name, err)
 		}

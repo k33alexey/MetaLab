@@ -30,11 +30,11 @@ const (
 // CalculationRegisterDimension is a dimension of a calculation register. Beyond
 // what any field carries it holds the two links that make calculation work.
 type CalculationRegisterDimension struct {
-	ID      uuid.UUID     `yaml:"id" json:"id"`
-	Name    string        `yaml:"name" json:"name"`
-	Title   LocalizedText `yaml:"title" json:"title"`
-	Types   []Type        `yaml:"types" json:"types"`
-	Indexed bool          `yaml:"indexed,omitempty" json:"indexed,omitempty"`
+	ID       uuid.UUID     `yaml:"id" json:"id"`
+	Name     string        `yaml:"name" json:"name"`
+	Title    LocalizedText `yaml:"title" json:"title"`
+	Types    []Type        `yaml:"types" json:"types"`
+	Indexing IndexMode     `yaml:"indexing,omitempty" json:"indexing,omitempty"`
 	// Base says a record is tied to its base by this dimension. Without it
 	// there is nothing to say whose base to gather, and one person's salary
 	// would be computed from everybody's bonuses.
@@ -141,6 +141,9 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 		if dimension.ScheduleLink != nil && value.Schedule == nil {
 			issues = append(issues, prefix+".schedule_link needs a schedule: there is no schedule for it to link to")
 		}
+		if !validIndexMode(dimension.Indexing) {
+			issues = append(issues, prefix+".indexing must be dont-index, index or index-with-additional-order")
+		}
 	}
 	for index, resource := range value.Resources {
 		prefix := fmt.Sprintf("resources[%d]", index)
@@ -151,9 +154,9 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, func(name string) bool {
 		return names[strings.ToLower(name)] || reservedCalculationRegisterName(name)
 	})...)
-	issues = append(issues, validateFieldLinks([]fieldGroup{
-		{"resources", value.Resources}, {"attributes", value.Attributes},
-	}, nil)...)
+	calculationFields := []fieldGroup{{"resources", value.Resources}, {"attributes", value.Attributes}}
+	issues = append(issues, validateFieldLinks(calculationFields, nil)...)
+	issues = append(issues, validateAttributeUse(calculationFields, nil, false, false)...)
 	issues = append(issues, validateRecalculations(value, configuration)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
@@ -311,7 +314,7 @@ func calculationRegisterFields(item CalculationRegisterDefinition) []Attribute {
 	fields := make([]Attribute, 0, len(item.Dimensions)+len(item.Resources))
 	for _, dimension := range item.Dimensions {
 		fields = append(fields, Attribute{ID: dimension.ID, Name: dimension.Name, Title: dimension.Title,
-			Types: dimension.Types, Indexed: dimension.Indexed})
+			Types: dimension.Types, Indexing: dimension.Indexing})
 	}
 	return append(fields, item.Resources...)
 }

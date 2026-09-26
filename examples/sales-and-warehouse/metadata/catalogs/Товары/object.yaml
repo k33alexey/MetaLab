@@ -9,4 +9,4 @@ attributes:
     name: Артикул
     title: {ru: Артикул, uk: Артикул, en: SKU}
     types: [{kind: string, length: 50}]
-    indexed: true
+    indexing: index

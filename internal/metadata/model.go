@@ -416,7 +416,16 @@ type Attribute struct {
 	Comment  string        `yaml:"comment,omitempty" json:"comment,omitempty"`
 	Types    []Type        `yaml:"types" json:"types"`
 	Required bool          `yaml:"required,omitempty" json:"required,omitempty"`
-	Indexed  bool          `yaml:"indexed,omitempty" json:"indexed,omitempty"`
+	// Indexing is what the database is asked to build for this field. It
+	// replaced a flag: the prototype has three answers, not two.
+	Indexing IndexMode `yaml:"indexing,omitempty" json:"indexing,omitempty"`
+	// Filling is what a new value starts as; FullTextSearch and DataHistory
+	// say whether the field is searched and whether its versions are kept;
+	// Use says whether the field belongs to items, to folders or to both.
+	Filling        FieldFilling `yaml:"filling,omitempty" json:"filling,omitempty"`
+	FullTextSearch UsageMode    `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
+	DataHistory    UsageMode    `yaml:"data_history,omitempty" json:"dataHistory,omitempty"`
+	Use            AttributeUse `yaml:"use,omitempty" json:"use,omitempty"`
 	// How the value is shown and entered, and how it is picked. Neither
 	// changes what is stored, and both change what the user gets - see
 	// attribute_presentation.go.
@@ -955,6 +964,7 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 		hierarchy:         value.Hierarchy,
 		predefined:        value.Predefined,
 		reservedName:      reservedCatalogObjectName,
+		attributeUse:      true,
 	}, configuration)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
@@ -987,6 +997,11 @@ type referenceObjectShape struct {
 	// reservedName says which attribute names the kind keeps for itself. A
 	// kind with standard attributes of its own passes its own answer.
 	reservedName func(string) bool
+	// attributeUse says this kind's attributes may say whom they belong to -
+	// items, folders or both. Only a catalog and a chart of characteristic
+	// types may: the help says so, and the demonstration configuration writes
+	// the setting on those two kinds and on no other.
+	attributeUse bool
 }
 
 // validateHierarchy checks the settings against each other, because each of
@@ -1083,6 +1098,8 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, configuration, nil)...)
 	}
 	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts)...)
+	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts,
+		shape.attributeUse, shape.hierarchy.Enabled && shape.hierarchy.Kind == FoldersAndItemsHierarchy)...)
 	issues = append(issues, validateFormSlots(shape.forms.slots())...)
 	issues = append(issues, validateFolderForms(shape.forms, shape.hierarchy)...)
 	issues = append(issues, validateListSettings(shape.list, shape.attributes, map[string]TypeKind{
@@ -1181,6 +1198,7 @@ func validateAttributes(path string, attributes []Attribute, configuration proje
 		issues = append(issues, validateTitle(prefix+".title", attribute.Title, configuration)...)
 		issues = append(issues, validateTypes(prefix+".types", attribute.Types, uuid.UUID{})...)
 		issues = append(issues, validateFieldSettings(prefix, attribute, configuration)...)
+		issues = append(issues, validateFieldStorage(prefix, attribute)...)
 	}
 	return issues
 }
@@ -1488,7 +1506,7 @@ func cloneAttributes(value []Attribute) []Attribute {
 	for index := range result {
 		result[index].Title = cloneTitle(result[index].Title)
 		result[index].Types = cloneTypes(result[index].Types)
-		result[index] = cloneFieldSettings(result[index])
+		result[index] = cloneFieldFilling(cloneFieldSettings(result[index]))
 	}
 	return result
 }

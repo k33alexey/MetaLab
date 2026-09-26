@@ -72,9 +72,11 @@ func DecodeInformationRegister(source string, reader io.Reader, configuration pr
 	issues = append(issues, validateAttributes("dimensions", value.Dimensions, configuration, reservedInformationRegisterName)...)
 	issues = append(issues, validateAttributes("resources", value.Resources, configuration, reservedInformationRegisterName)...)
 	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, reservedInformationRegisterName)...)
-	issues = append(issues, validateFieldLinks([]fieldGroup{
+	registerFields := []fieldGroup{
 		{"dimensions", value.Dimensions}, {"resources", value.Resources}, {"attributes", value.Attributes},
-	}, nil)...)
+	}
+	issues = append(issues, validateFieldLinks(registerFields, nil)...)
+	issues = append(issues, validateAttributeUse(registerFields, nil, false, false)...)
 	if len(value.Dimensions)+len(value.Resources)+len(value.Attributes) == 0 {
 		issues = append(issues, "dimensions, resources or attributes must contain at least one item")
 	}

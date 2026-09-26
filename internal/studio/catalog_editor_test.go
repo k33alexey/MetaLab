@@ -46,7 +46,7 @@ func TestCatalogEditorCreateReadSaveAndConflicts(t *testing.T) {
 	updated.DescriptionLength = 300
 	updated.Attributes = []metadata.Attribute{{
 		ID: uuid.MustNew(), Name: "Артикул", Title: metadata.LocalizedText{"ru": "Артикул"},
-		Types: []metadata.Type{{Kind: metadata.StringType, Length: 50}}, Indexed: true,
+		Types: []metadata.Type{{Kind: metadata.StringType, Length: 50}}, Indexing: metadata.IndexField,
 	}}
 	updated.TableParts = []metadata.TablePart{{
 		ID: uuid.MustNew(), Name: "Партии", Title: metadata.LocalizedText{"ru": "Партии"},

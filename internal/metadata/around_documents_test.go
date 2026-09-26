@@ -111,7 +111,7 @@ columns:
   - id: `+aroundColumn+`
     name: Контрагент
     title: {ru: Контрагент}
-    indexed: true
+    indexing: index
     references: [`+aroundFirstParty+`, `+aroundSecondParty+`]
 `)
 	catalog, err := Load(root)

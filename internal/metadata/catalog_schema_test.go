@@ -19,7 +19,7 @@ func TestCatalogApplicationSchemaUsesStableUUIDNames(t *testing.T) {
 			Code: CatalogCode{Type: StringType, Length: 9, Unique: true}, DescriptionLength: 250,
 			List: ListSettings{SearchFields: []string{"Description"}},
 			Attributes: []Attribute{{
-				ID: attributeID, Name: "Родитель", Indexed: true,
+				ID: attributeID, Name: "Родитель", Indexing: IndexField,
 				Types: []Type{{Kind: CatalogType, Reference: &catalogID}},
 			}},
 			TableParts: []TablePart{{

@@ -136,7 +136,7 @@ func (catalog *Catalog) appendAccountingField(table *schemadiff.Table, definitio
 	}
 	for index, name := range columns {
 		table.Columns = append(table.Columns, schemadiff.Column{Name: name, Type: storage.sqlType, Nullable: true})
-		if field.Indexed {
+		if field.Indexing.indexes() {
 			table.Indexes = append(table.Indexes, schemadiff.Index{
 				Name: physicalObjectName(fmt.Sprintf("i%d", index), field.ID), Method: "btree", Keys: []string{name},
 			})

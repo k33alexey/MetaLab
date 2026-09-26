@@ -46,9 +46,11 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 	issues = append(issues, validateAttributes("dimensions", value.Dimensions, configuration, reservedAccumulationRegisterName)...)
 	issues = append(issues, validateAttributes("resources", value.Resources, configuration, reservedAccumulationRegisterName)...)
 	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, reservedAccumulationRegisterName)...)
-	issues = append(issues, validateFieldLinks([]fieldGroup{
+	registerFields := []fieldGroup{
 		{"dimensions", value.Dimensions}, {"resources", value.Resources}, {"attributes", value.Attributes},
-	}, nil)...)
+	}
+	issues = append(issues, validateFieldLinks(registerFields, nil)...)
+	issues = append(issues, validateAttributeUse(registerFields, nil, false, false)...)
 	if len(value.Resources) == 0 {
 		issues = append(issues, "resources must contain at least one numeric item")
 	}

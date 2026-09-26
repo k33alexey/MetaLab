@@ -25,7 +25,7 @@ type CommonAttributeDefinition struct {
 	Title    LocalizedText `yaml:"title"`
 	Types    []Type        `yaml:"types"`
 	Required bool          `yaml:"required,omitempty"`
-	Indexed  bool          `yaml:"indexed,omitempty"`
+	Indexing IndexMode     `yaml:"indexing,omitempty"`
 	Objects  []uuid.UUID   `yaml:"objects"`
 }
 
@@ -45,6 +45,9 @@ func DecodeCommonAttribute(source string, reader io.Reader, configuration projec
 func ValidateCommonAttribute(source string, value CommonAttributeDefinition, configuration project.Project) error {
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateTypes("types", value.Types, uuid.UUID{})...)
+	if !validIndexMode(value.Indexing) {
+		issues = append(issues, "indexing must be dont-index, index or index-with-additional-order")
+	}
 	if len(value.Objects) == 0 {
 		issues = append(issues, "objects must list at least one target object")
 	}
@@ -118,7 +121,7 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 	for _, common := range catalog.CommonAttributes {
 		attribute := Attribute{
 			ID: common.ID, Name: common.Name, Title: cloneTitle(common.Title), Types: cloneTypes(common.Types),
-			Required: common.Required, Indexed: common.Indexed,
+			Required: common.Required, Indexing: common.Indexing,
 		}
 		for _, objectID := range common.Objects {
 			location, ok := targets[objectID]

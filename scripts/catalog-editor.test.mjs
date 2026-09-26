@@ -39,10 +39,17 @@ test('attribute name, title and flags round-trip',()=>{
   model.setAttributeTitle('catalog',attribute.id,'ru','Артикул товара');
   model.setAttributeTitle('catalog',attribute.id,'en','');
   model.setAttributeRequired('catalog',attribute.id,true);
-  model.setAttributeIndexed('catalog',attribute.id,true);
+  model.setAttributeIndexing('catalog',attribute.id,'index-with-additional-order');
   const saved=model.value().attributes[0];
   assert.equal(saved.name,'Артикул');assert.deepEqual(saved.title,{ru:'Артикул товара'});
-  assert.equal(saved.required,true);assert.equal(saved.indexed,true);
+  assert.equal(saved.required,true);assert.equal(saved.indexing,'index-with-additional-order');
+});
+test('an unindexed field says nothing instead of saying dont-index',()=>{
+  const model=create(fixture());
+  const attribute=model.addAttribute('catalog');
+  model.setAttributeIndexing('catalog',attribute.id,'index');
+  model.setAttributeIndexing('catalog',attribute.id,'dont-index');
+  assert.equal('indexing' in model.value().attributes[0],false);
 });
 test('a composite type can be added and the last type cannot be removed',()=>{
   const model=create(fixture());

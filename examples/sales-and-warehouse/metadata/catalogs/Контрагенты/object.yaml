@@ -9,4 +9,4 @@ attributes:
     name: ИНН
     title: {ru: ИНН, uk: ІПН, en: Tax ID}
     types: [{kind: string, length: 20}]
-    indexed: true
+    indexing: index
