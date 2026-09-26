@@ -58,7 +58,7 @@ func (runtime *Runtime) newDocumentMovements(definition DocumentDefinition, reco
 		information: map[string]*informationRegisterRecordSetObject{}, accumulation: map[string]*accumulationRegisterRecordSetObject{},
 	}
 	for _, register := range runtime.catalog.InformationRegisters {
-		if register.WriteMode != InformationRegisterRecorder || !allowedInformationRegisterRecorder(register, record.Reference) {
+		if register.WriteMode != InformationRegisterRecorder || !allowedInformationRegisterRecorder(runtime.catalog, register, record.Reference) {
 			continue
 		}
 		if runtime.informationRegisterRepository == nil {
@@ -75,7 +75,7 @@ func (runtime *Runtime) newDocumentMovements(definition DocumentDefinition, reco
 		}
 	}
 	for _, register := range runtime.catalog.AccumulationRegisters {
-		if !allowedAccumulationRegisterRecorder(register, record.Reference) {
+		if !allowedAccumulationRegisterRecorder(runtime.catalog, register, record.Reference) {
 			continue
 		}
 		if runtime.accumulationRegisterRepository == nil {

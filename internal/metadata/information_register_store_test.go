@@ -127,7 +127,7 @@ func TestInformationRegisterAssignsLineAfterHighestExistingLine(t *testing.T) {
 	recorder := DocumentReference{DocumentID: documentID, ObjectID: uuid.MustNew()}
 	definition := InformationRegisterDefinition{
 		ID: registerID, Name: "Движения", WriteMode: InformationRegisterRecorder, Periodicity: InformationRegisterPeriodRecorderPosition,
-		Recorders: []uuid.UUID{documentID}, Dimensions: []Attribute{{ID: dimensionID, Name: "Ключ", FillChecking: ShowFillingError, Types: []Type{{Kind: ObjectUUIDType}}}},
+		Dimensions: []Attribute{{ID: dimensionID, Name: "Ключ", FillChecking: ShowFillingError, Types: []Type{{Kind: ObjectUUIDType}}}},
 	}
 	firstPeriod := time.Date(2026, 9, 7, 10, 0, 0, 0, time.UTC)
 	secondPeriod := firstPeriod.Add(time.Second)
@@ -138,7 +138,9 @@ func TestInformationRegisterAssignsLineAfterHighestExistingLine(t *testing.T) {
 			{Period: secondPeriod, Recorder: recorder, Dimensions: map[uuid.UUID]Value{dimensionID: {Kind: ObjectUUIDType, Data: uuid.MustNew().String()}}, Resources: map[uuid.UUID]Value{}, Attributes: map[uuid.UUID]Value{}},
 		},
 	}
-	repository := &InformationRegisterRepository{catalog: &Catalog{}}
+	repository := &InformationRegisterRepository{catalog: &Catalog{Documents: []DocumentDefinition{
+		{ID: documentID, Name: "Движение", Movements: []uuid.UUID{registerID}},
+	}}}
 	if err := repository.normalizeRecordSetRecords(definition, set.Filter, set); err != nil {
 		t.Fatal(err)
 	}

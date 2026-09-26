@@ -3,7 +3,6 @@ package metadata
 import (
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -42,7 +41,6 @@ type InformationRegisterDefinition struct {
 	Dimensions  []Attribute                    `yaml:"dimensions,omitempty"`
 	Resources   []Attribute                    `yaml:"resources,omitempty"`
 	Attributes  []Attribute                    `yaml:"attributes,omitempty"`
-	Recorders   []uuid.UUID                    `yaml:"recorders,omitempty"`
 	Forms       InformationRegisterForms       `yaml:"forms,omitempty"`
 	Commands    []ObjectCommand                `yaml:"commands,omitempty"`
 	Templates   []ObjectTemplate               `yaml:"templates,omitempty"`
@@ -104,25 +102,6 @@ func DecodeInformationRegister(source string, reader io.Reader, configuration pr
 			fieldIDs[field.ID] = group.kind + "." + field.Name
 		}
 	}
-	if len(value.Recorders) > 128 {
-		issues = append(issues, "recorders must not contain more than 128 items")
-	}
-	seenRecorders := map[uuid.UUID]bool{}
-	for index, recorder := range value.Recorders {
-		if recorder.IsZero() {
-			issues = append(issues, fmt.Sprintf("recorders[%d] must be a non-zero UUID", index))
-		}
-		if seenRecorders[recorder] {
-			issues = append(issues, fmt.Sprintf("recorders[%d] must be unique", index))
-		}
-		seenRecorders[recorder] = true
-	}
-	if value.WriteMode == InformationRegisterRecorder && len(value.Recorders) == 0 {
-		issues = append(issues, "recorders must contain at least one document for recorder write mode")
-	}
-	if value.WriteMode == InformationRegisterIndependent && len(value.Recorders) != 0 {
-		issues = append(issues, "recorders are only allowed for recorder write mode")
-	}
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
@@ -146,7 +125,6 @@ func cloneInformationRegisterDefinition(value InformationRegisterDefinition) Inf
 	value.Dimensions = cloneAttributes(value.Dimensions)
 	value.Resources = cloneAttributes(value.Resources)
 	value.Attributes = cloneAttributes(value.Attributes)
-	value.Recorders = slices.Clone(value.Recorders)
 	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)

@@ -47,12 +47,12 @@ func TestBasicQueryLanguageIntegration(t *testing.T) {
 		}},
 		Documents: []DocumentDefinition{{
 			ID: documentID, Name: "Продажа", Number: DocumentNumber{Type: StringType, Length: 20},
+			Movements: []uuid.UUID{accumulationID},
 		}},
 		AccumulationRegisters: []AccumulationRegisterDefinition{{
 			ID: accumulationID, Name: "ТоварыНаСкладах", Kind: AccumulationRegisterBalance,
 			Dimensions: []Attribute{{ID: warehouseID, Name: "Склад", Types: []Type{{Kind: StringType, Length: 50}}}},
 			Resources:  []Attribute{{ID: quantityID, Name: "Количество", Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}},
-			Recorders:  []uuid.UUID{documentID},
 		}},
 		catalogByName: map[string]int{"товары": 0}, catalogByID: map[uuid.UUID]int{catalogID: 0},
 		documentByName: map[string]int{"продажа": 0}, documentByID: map[uuid.UUID]int{documentID: 0},

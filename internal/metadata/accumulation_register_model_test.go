@@ -10,11 +10,11 @@ import (
 
 func TestDecodeAccumulationRegister(t *testing.T) {
 	t.Parallel()
-	registerID, recorderID, dimensionID, resourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	registerID, dimensionID, resourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	source := "format: 1\nid: " + registerID.String() + "\nname: ОстаткиТоваров\ntitle: {ru: Остатки товаров}\nkind: balance\n" +
 		"dimensions:\n  - id: " + dimensionID.String() + "\n    name: Товар\n    title: {ru: Товар}\n    types: [{kind: string, length: 100}]\n" +
 		"resources:\n  - id: " + resourceID.String() + "\n    name: Количество\n    title: {ru: Количество}\n    types: [{kind: number, precision: 15, scale: 3}]\n" +
-		"recorders: [" + recorderID.String() + "]\n"
+		""
 	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "Demo", Title: project.LocalizedText{"ru": "Demo"}, DefaultLanguage: "ru", Languages: []project.Language{{Code: "ru", Name: "Русский"}}}
 	value, err := DecodeAccumulationRegister("register.yaml", strings.NewReader(source), configuration)
 	if err != nil || value.ID != registerID || value.Kind != AccumulationRegisterBalance || len(value.Resources) != 1 {
@@ -24,9 +24,9 @@ func TestDecodeAccumulationRegister(t *testing.T) {
 
 func TestDecodeAccumulationRegisterRejectsNonNumericResource(t *testing.T) {
 	t.Parallel()
-	registerID, recorderID, resourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	registerID, resourceID := uuid.MustNew(), uuid.MustNew()
 	source := "format: 1\nid: " + registerID.String() + "\nname: Продажи\ntitle: {ru: Продажи}\nkind: turnover\n" +
-		"resources:\n  - id: " + resourceID.String() + "\n    name: Сумма\n    title: {ru: Сумма}\n    types: [{kind: string, length: 20}]\nrecorders: [" + recorderID.String() + "]\n"
+		"resources:\n  - id: " + resourceID.String() + "\n    name: Сумма\n    title: {ru: Сумма}\n    types: [{kind: string, length: 20}]\n"
 	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "Demo", Title: project.LocalizedText{"ru": "Demo"}, DefaultLanguage: "ru", Languages: []project.Language{{Code: "ru", Name: "Русский"}}}
 	if _, err := DecodeAccumulationRegister("register.yaml", strings.NewReader(source), configuration); err == nil || !strings.Contains(err.Error(), "exactly one number") {
 		t.Fatalf("error=%v", err)
@@ -35,9 +35,9 @@ func TestDecodeAccumulationRegisterRejectsNonNumericResource(t *testing.T) {
 
 func TestAccumulationRegisterSchemaHasMovementsAndTotals(t *testing.T) {
 	t.Parallel()
-	registerID, recorderID, dimensionID, resourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	registerID, dimensionID, resourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	catalog := &Catalog{AccumulationRegisters: []AccumulationRegisterDefinition{{
-		ID: registerID, Name: "Остатки", Kind: AccumulationRegisterBalance, Recorders: []uuid.UUID{recorderID},
+		ID: registerID, Name: "Остатки", Kind: AccumulationRegisterBalance,
 		Dimensions: []Attribute{{ID: dimensionID, Name: "Склад", Types: []Type{{Kind: StringType, Length: 50}}}},
 		Resources:  []Attribute{{ID: resourceID, Name: "Количество", Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}},
 	}}}

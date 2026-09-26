@@ -227,18 +227,12 @@ func (catalog *Catalog) ObjectFormID(objectKind Kind, object, form string) (uuid
 	return found.id, ok
 }
 
+// documentHasMovements asks the document, and only the document: whether the
+// registers it names are in the configuration is a question the loader has
+// already answered, and a form offering the command is not the place to
+// re-open it.
 func (catalog *Catalog) documentHasMovements(documentID uuid.UUID) bool {
-	for _, register := range catalog.InformationRegisters {
-		if register.WriteMode == InformationRegisterRecorder && containsUUID(register.Recorders, documentID) {
-			return true
-		}
-	}
-	for _, register := range catalog.AccumulationRegisters {
-		if containsUUID(register.Recorders, documentID) {
-			return true
-		}
-	}
-	return false
+	return len(catalog.documentMovements(documentID)) > 0
 }
 
 func containsUUID(values []uuid.UUID, expected uuid.UUID) bool {

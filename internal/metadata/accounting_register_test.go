@@ -50,6 +50,7 @@ name: Операция
 title: {ru: Операция}
 number: {type: string, length: 9, auto: true, periodicity: none}
 posting: true
+movements: [`+entriesRegister+`]
 `)
 	correspondenceLine := "correspondence: false"
 	if correspondence {
@@ -61,7 +62,6 @@ name: Хозрасчетный
 title: {ru: Хозрасчётный}
 chart_of_accounts: `+entriesChart+`
 `+correspondenceLine+`
-recorders: [`+entriesDocument+`]
 `+fields+`
 `)
 	return root

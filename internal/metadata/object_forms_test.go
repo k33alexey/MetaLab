@@ -512,7 +512,6 @@ id: `+formCatalog+`
 name: Остатки
 title: {ru: Остатки}
 kind: balance
-recorders: [`+formItem+`]
 dimensions: [{id: `+formList+`, name: Товар, title: {ru: Товар}, types: [{kind: string, length: 50}]}]
 resources: [{id: `+formPick+`, name: Количество, title: {ru: Количество}, types: [{kind: number, precision: 15, scale: 3}]}]
 `+body+`

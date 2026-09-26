@@ -220,15 +220,17 @@ func (workspace *Workspace) buildBSLSymbolIndex() (*BSLSymbolIndex, error) {
 func (workspace *Workspace) moduleDescriptors(catalog *metadata.Catalog) map[string]moduleDescriptor {
 	result := make(map[string]moduleDescriptor)
 	if catalog != nil {
+		// A document names its own registers, so the map is read off the
+		// documents rather than gathered from every register in turn.
 		movements := make(map[uuid.UUID][]bslMovementSet)
-		for _, item := range catalog.InformationRegisters {
-			for _, recorder := range item.Recorders {
-				movements[recorder] = append(movements[recorder], bslMovementSet{name: item.Name, kind: "information"})
-			}
-		}
-		for _, item := range catalog.AccumulationRegisters {
-			for _, recorder := range item.Recorders {
-				movements[recorder] = append(movements[recorder], bslMovementSet{name: item.Name, kind: "accumulation"})
+		for _, item := range catalog.Documents {
+			for _, target := range catalog.DocumentMovements(item.ID) {
+				switch target.Kind {
+				case metadata.InformationRegisterKind:
+					movements[item.ID] = append(movements[item.ID], bslMovementSet{name: target.Name, kind: "information"})
+				case metadata.AccumulationRegisterKind:
+					movements[item.ID] = append(movements[item.ID], bslMovementSet{name: target.Name, kind: "accumulation"})
+				}
 			}
 		}
 		for _, item := range catalog.Catalogs {

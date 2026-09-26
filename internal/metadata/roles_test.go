@@ -273,16 +273,17 @@ func TestRoleTargetsMatchObjectCapabilities(t *testing.T) {
 	catalog.Constants = []Constant{{Format: CurrentFormat, ID: constant, Name: "Константа", Title: role.Title, Types: []Type{{Kind: BooleanType}}}}
 	catalog.Enumerations = []Enumeration{{Format: CurrentFormat, ID: enumeration, Name: "Перечисление", Title: role.Title, Values: []EnumerationValue{{ID: uuid.MustNew(), Name: "Первый", Title: role.Title}}}}
 	catalog.Documents = []DocumentDefinition{
-		{Format: CurrentFormat, ID: document, Name: "Документ", Title: role.Title, Posting: true, Number: DocumentNumber{Type: StringType, Length: 9, Periodicity: NumberPeriodNone}},
+		{Format: CurrentFormat, ID: document, Name: "Документ", Title: role.Title, Posting: true, Number: DocumentNumber{Type: StringType, Length: 9, Periodicity: NumberPeriodNone},
+			Movements: []uuid.UUID{recorder, balance, turnover}},
 		{Format: CurrentFormat, ID: unpostable, Name: "Непроводимый", Title: role.Title, Number: DocumentNumber{Type: StringType, Length: 9, Periodicity: NumberPeriodNone}},
 	}
 	catalog.InformationRegisters = []InformationRegisterDefinition{
 		{Format: CurrentFormat, ID: independent, Name: "Независимый", Title: role.Title, WriteMode: InformationRegisterIndependent, Periodicity: InformationRegisterPeriodNone, Resources: []Attribute{attribute()}},
-		{Format: CurrentFormat, ID: recorder, Name: "Подчиненный", Title: role.Title, WriteMode: InformationRegisterRecorder, Periodicity: InformationRegisterPeriodMonth, Recorders: []uuid.UUID{document}, Resources: []Attribute{attribute()}},
+		{Format: CurrentFormat, ID: recorder, Name: "Подчиненный", Title: role.Title, WriteMode: InformationRegisterRecorder, Periodicity: InformationRegisterPeriodMonth, Resources: []Attribute{attribute()}},
 	}
 	catalog.AccumulationRegisters = []AccumulationRegisterDefinition{
-		{Format: CurrentFormat, ID: balance, Name: "Остатки", Title: role.Title, Kind: AccumulationRegisterBalance, Recorders: []uuid.UUID{document}, Resources: []Attribute{attribute()}},
-		{Format: CurrentFormat, ID: turnover, Name: "Обороты", Title: role.Title, Kind: AccumulationRegisterTurnover, Recorders: []uuid.UUID{document}, Resources: []Attribute{attribute()}},
+		{Format: CurrentFormat, ID: balance, Name: "Остатки", Title: role.Title, Kind: AccumulationRegisterBalance, Resources: []Attribute{attribute()}},
+		{Format: CurrentFormat, ID: turnover, Name: "Обороты", Title: role.Title, Kind: AccumulationRegisterTurnover, Resources: []Attribute{attribute()}},
 	}
 	cases := []struct {
 		name           string

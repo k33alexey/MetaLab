@@ -69,7 +69,6 @@ id: `+aroundRegister+`
 name: ОстаткиТоваров
 title: {ru: Остатки товаров}
 kind: balance
-recorders: [`+aroundFirstDoc+`, `+aroundSecondDoc+`]
 dimensions:
   - id: `+aroundRegisterGood+`
     name: Номенклатура

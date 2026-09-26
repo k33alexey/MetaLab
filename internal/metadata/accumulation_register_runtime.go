@@ -509,7 +509,7 @@ func (runtime *Runtime) setAccumulationRegisterProperty(ctx context.Context, val
 func (runtime *Runtime) setAccumulationRecorderFilter(object *accumulationRegisterRecorderFilterObject, assigned bytecode.Value) error {
 	opaque, ok := assigned.AsRuntimeObject()
 	reference, valid := opaque.(*documentReferenceObject)
-	if !ok || !valid || reference.runtime != runtime || !allowedAccumulationRegisterRecorder(object.owner.definition, reference.reference) {
+	if !ok || !valid || reference.runtime != runtime || !allowedAccumulationRegisterRecorder(runtime.catalog, object.owner.definition, reference.reference) {
 		return fmt.Errorf("accumulation register recorder filter is invalid")
 	}
 	value := reference.reference
@@ -543,7 +543,7 @@ func (runtime *Runtime) setAccumulationRecordProperty(ctx context.Context, objec
 		}
 		opaque, ok := assigned.AsRuntimeObject()
 		reference, valid := opaque.(*documentReferenceObject)
-		if !ok || !valid || reference.runtime != runtime || !allowedAccumulationRegisterRecorder(definition, reference.reference) {
+		if !ok || !valid || reference.runtime != runtime || !allowedAccumulationRegisterRecorder(runtime.catalog, definition, reference.reference) {
 			return fmt.Errorf("accumulation register recorder is invalid")
 		}
 		record.Recorder = reference.reference

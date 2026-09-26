@@ -356,7 +356,7 @@ func (repository *InformationRegisterRepository) normalizeSetIdentity(set *Infor
 		filter.Period = &normalized
 	}
 	if filter.Recorder != nil {
-		if definition.WriteMode != InformationRegisterRecorder || !allowedInformationRegisterRecorder(definition, *filter.Recorder) {
+		if definition.WriteMode != InformationRegisterRecorder || !allowedInformationRegisterRecorder(repository.catalog, definition, *filter.Recorder) {
 			return InformationRegisterDefinition{}, InformationRegisterFilter{}, fmt.Errorf("information register %s filter has an invalid recorder", definition.Name)
 		}
 		copy := *filter.Recorder
@@ -380,7 +380,7 @@ func (repository *InformationRegisterRepository) normalizeRecord(definition Info
 		return fmt.Errorf("information register %s record %d period: %w", definition.Name, line, err)
 	}
 	if definition.WriteMode == InformationRegisterRecorder {
-		if !allowedInformationRegisterRecorder(definition, record.Recorder) {
+		if !allowedInformationRegisterRecorder(repository.catalog, definition, record.Recorder) {
 			return fmt.Errorf("information register %s record %d has an invalid recorder", definition.Name, line)
 		}
 		if record.LineNumber < 1 || int64(record.LineNumber) > maxInformationRegisterLineNumber {
@@ -404,11 +404,13 @@ func (repository *InformationRegisterRepository) normalizeRecord(definition Info
 	return nil
 }
 
-func allowedInformationRegisterRecorder(definition InformationRegisterDefinition, recorder DocumentReference) bool {
+// allowedInformationRegisterRecorder asks the document, because the document
+// is where the link now lives.
+func allowedInformationRegisterRecorder(catalog *Catalog, definition InformationRegisterDefinition, recorder DocumentReference) bool {
 	if recorder.ObjectID.IsZero() || recorder.DocumentID.IsZero() {
 		return false
 	}
-	return slices.Contains(definition.Recorders, recorder.DocumentID)
+	return catalog.writesInto(recorder.DocumentID, definition.ID)
 }
 
 func normalizeInformationRegisterPeriod(periodicity InformationRegisterPeriodicity, value time.Time) (time.Time, error) {

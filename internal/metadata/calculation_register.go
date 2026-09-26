@@ -95,7 +95,6 @@ type CalculationRegisterDefinition struct {
 	Dimensions     []CalculationRegisterDimension `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
 	Resources      []Attribute                    `yaml:"resources" json:"resources"`
 	Attributes     []Attribute                    `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	Recorders      []uuid.UUID                    `yaml:"recorders" json:"recorders"`
 	Recalculations []Recalculation                `yaml:"recalculations,omitempty" json:"recalculations,omitempty"`
 	Forms          RegisterForms                  `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands       []ObjectCommand                `yaml:"commands,omitempty" json:"commands,omitempty"`
@@ -121,10 +120,6 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 	if len(value.Resources) == 0 {
 		issues = append(issues, "resources must contain at least one item: a calculation with no result is not a calculation")
 	}
-	if len(value.Recorders) == 0 || len(value.Recorders) > 128 {
-		issues = append(issues, "recorders must contain 1..128 documents")
-	}
-	issues = append(issues, validateUniqueIDs("recorders", value.Recorders)...)
 	// The three schedule settings are one setting in three parts. Two of them
 	// without the first point into nothing.
 	if value.Schedule == nil && (value.ScheduleValue != nil || value.ScheduleDate != nil) {
@@ -294,7 +289,6 @@ func cloneCalculationRegister(value CalculationRegisterDefinition) CalculationRe
 	}
 	value.Resources = cloneAttributes(value.Resources)
 	value.Attributes = cloneAttributes(value.Attributes)
-	value.Recorders = slices.Clone(value.Recorders)
 	value.Recalculations = cloneRecalculations(value.Recalculations)
 	for _, id := range []**uuid.UUID{&value.Schedule, &value.ScheduleValue, &value.ScheduleDate} {
 		if *id != nil {

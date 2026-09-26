@@ -1694,11 +1694,6 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return err
 			}
 		}
-		for _, recorder := range item.Recorders {
-			if _, ok := catalog.documentByID[recorder]; !ok {
-				return fmt.Errorf("information register %s references unknown recorder document %s", item.Name, recorder)
-			}
-		}
 		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: InformationRegisterKind, kind: "information register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
@@ -1712,11 +1707,6 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		for _, resource := range item.Resources {
 			if _, err := catalog.accumulationResourceType(resource); err != nil {
 				return fmt.Errorf("accumulation register %s: %w", item.Name, err)
-			}
-		}
-		for _, recorder := range item.Recorders {
-			if _, ok := catalog.documentByID[recorder]; !ok {
-				return fmt.Errorf("accumulation register %s references unknown recorder document %s", item.Name, recorder)
 			}
 		}
 		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: AccumulationRegisterKind, kind: "accumulation register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
@@ -1774,6 +1764,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return err
 	}
 	if err := catalog.validateCharacteristics(); err != nil {
+		return err
+	}
+	if err := catalog.validateDocumentMovements(); err != nil {
 		return err
 	}
 	if err := catalog.validateSettingsStorageReferences(); err != nil {
@@ -1994,11 +1987,6 @@ func (catalog *Catalog) validateAccountingRegister(root string, item AccountingR
 			return err
 		}
 	}
-	for _, recorder := range item.Recorders {
-		if _, ok := catalog.documentByID[recorder]; !ok {
-			return fmt.Errorf("%s references unknown recorder document %s", owner, recorder)
-		}
-	}
 	return catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: AccountingRegisterKind, kind: "accounting register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates})
 }
 
@@ -2075,11 +2063,6 @@ func (catalog *Catalog) validateCalculationRegister(root string, item Calculatio
 	for _, field := range append(slices.Clone(item.Resources), item.Attributes...) {
 		if err := catalog.validateReferences(owner+" field "+field.Name, field.Types); err != nil {
 			return err
-		}
-	}
-	for _, recorder := range item.Recorders {
-		if _, ok := catalog.documentByID[recorder]; !ok {
-			return fmt.Errorf("%s references unknown recorder document %s", owner, recorder)
 		}
 	}
 	// Leading data are dimensions of calculation registers - this one or

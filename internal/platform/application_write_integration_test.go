@@ -95,7 +95,8 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 	productDimensionID, quantityResourceID := uuid.MustNew(), uuid.MustNew()
 	document := metadata.DocumentDefinition{
 		Format: 1, ID: documentID, Name: "Поступление", Title: metadata.LocalizedText{"ru": "Поступление"}, Posting: true,
-		Number: metadata.DocumentNumber{Type: metadata.StringType, Length: 20, Auto: true, Unique: true, Periodicity: metadata.NumberPeriodYear},
+		Movements: []uuid.UUID{registerID},
+		Number:    metadata.DocumentNumber{Type: metadata.StringType, Length: 20, Auto: true, Unique: true, Periodicity: metadata.NumberPeriodYear},
 		Attributes: []metadata.Attribute{
 			{ID: productAttributeID, Name: "Товар", Title: metadata.LocalizedText{"ru": "Товар"}, FillChecking: metadata.ShowFillingError, Types: []metadata.Type{{Kind: metadata.StringType, Length: 100}}},
 			{ID: quantityAttributeID, Name: "Количество", Title: metadata.LocalizedText{"ru": "Количество"}, FillChecking: metadata.ShowFillingError, Types: []metadata.Type{{Kind: metadata.NumberType, Precision: 15, Scale: 3}}},
@@ -104,7 +105,7 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 	}
 	register := metadata.AccumulationRegisterDefinition{
 		Format: 1, ID: registerID, Name: "ОстаткиТоваров", Title: metadata.LocalizedText{"ru": "Остатки товаров"},
-		Kind: metadata.AccumulationRegisterBalance, Recorders: []uuid.UUID{documentID},
+		Kind:       metadata.AccumulationRegisterBalance,
 		Dimensions: []metadata.Attribute{{ID: productDimensionID, Name: "Товар", Title: metadata.LocalizedText{"ru": "Товар"}, FillChecking: metadata.ShowFillingError, Types: []metadata.Type{{Kind: metadata.StringType, Length: 100}}}},
 		Resources:  []metadata.Attribute{{ID: quantityResourceID, Name: "Количество", Title: metadata.LocalizedText{"ru": "Количество"}, FillChecking: metadata.ShowFillingError, Types: []metadata.Type{{Kind: metadata.NumberType, Precision: 15, Scale: 3}}}},
 	}

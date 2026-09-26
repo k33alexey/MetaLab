@@ -16,11 +16,12 @@ func TestAutomaticDocumentFormsAndCommands(t *testing.T) {
 		Project: project.Project{Languages: []project.Language{{Code: "ru"}, {Code: "uk"}, {Code: "en"}}},
 		Documents: []DocumentDefinition{{
 			ID: documentID, Name: "Продажа", Title: LocalizedText{"ru": "Продажа", "uk": "Продаж"}, Posting: true,
+			Movements:  []uuid.UUID{registerID},
 			Number:     DocumentNumber{Type: StringType, Length: 10},
 			Attributes: []Attribute{{ID: attributeID, Name: "Контрагент", Title: LocalizedText{"ru": "Контрагент"}, Types: []Type{{Kind: StringType, Length: 100}}, FillChecking: ShowFillingError}},
 			TableParts: []TablePart{{ID: partID, Name: "Товары", Title: LocalizedText{"ru": "Товары"}, Attributes: []Attribute{{ID: columnID, Name: "Количество", Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}}}},
 		}},
-		AccumulationRegisters: []AccumulationRegisterDefinition{{ID: registerID, Recorders: []uuid.UUID{documentID}}},
+		AccumulationRegisters: []AccumulationRegisterDefinition{{ID: registerID}},
 		documentByName:        map[string]int{"продажа": 0}, documentByID: map[uuid.UUID]int{documentID: 0},
 	}
 	form, err := catalog.DocumentForm("продажа", ObjectForm, "uk")

@@ -441,7 +441,6 @@ id: `+commandAccumRegister+`
 name: ОстаткиТоваров
 title: {ru: Остатки товаров}
 kind: balance
-recorders: [`+commandDocument+`]
 dimensions:
   - {id: cd000000-0000-4000-8000-000000000203, name: Контрагент, title: {ru: Контрагент}, types: [{kind: catalog, reference: `+commandCatalog+`}]}
 resources:
@@ -513,7 +512,6 @@ name: Хозрасчетный
 title: {ru: Хозрасчётный}
 chart_of_accounts: `+commandAccounts+`
 correspondence: true
-recorders: [`+commandDocument+`]
 resources:
   - {id: cd000000-0000-4000-8000-000000000208, name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}], balance: false}
 `)
@@ -523,7 +521,6 @@ name: ОсновныеНачисления
 title: {ru: Основные начисления}
 chart_of_calculation_types: `+commandCalcTypes+`
 periodicity: month
-recorders: [`+commandDocument+`]
 resources:
   - {id: cd000000-0000-4000-8000-000000000209, name: Результат, title: {ru: Результат}, types: [{kind: number, precision: 15, scale: 2}]}
 `)

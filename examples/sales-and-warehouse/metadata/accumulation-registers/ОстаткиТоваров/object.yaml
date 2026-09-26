@@ -20,6 +20,3 @@ resources:
     title: {ru: Сумма, uk: Сума, en: Amount}
     types: [{kind: number, precision: 18, scale: 2}]
     fill_checking: show-error
-recorders:
-  - 10000000-0000-4000-8000-000000000201
-  - 10000000-0000-4000-8000-000000000202

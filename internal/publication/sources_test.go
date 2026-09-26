@@ -97,9 +97,13 @@ func TestInspectCarriesSchemaIdentityOfEveryStoredKind(t *testing.T) {
 	writeSourceFile(t, root, modulePath, []byte("Процедура ПриЗаписи(Отказ)\nКонецПроцедуры\n"))
 	formPath, _ := project.ObjectFormPath("documents", "Продажа", "DocumentForm")
 	writeSourceFile(t, root, formPath, managedFormYAML(t, formID, "DocumentForm"))
+	// The register the document writes into is named by the document, so its
+	// identifier is needed before the document is written.
+	accumulationID, accumulationDimensionID, accumulationResourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	documentPath, _ := project.ObjectMetadataPath("documents", "Продажа")
 	writeSourceFile(t, root, documentPath, []byte("format: 1\nid: "+documentID.String()+"\nname: Продажа\ntitle: {ru: Продажа}\n"+
 		"number: {type: string, length: 11, auto: false, unique: true, periodicity: year}\nposting: true\n"+
+		"movements: ["+accumulationID.String()+"]\n"+
 		"forms: {object: DocumentForm}\n"))
 
 	informationID, informationDimensionID, informationResourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
@@ -109,12 +113,10 @@ func TestInspectCarriesSchemaIdentityOfEveryStoredKind(t *testing.T) {
 		"dimensions:\n  - id: "+informationDimensionID.String()+"\n    name: Валюта\n    title: {ru: Валюта}\n    types: [{kind: catalog, reference: "+catalogID.String()+"}]\n"+
 		"resources:\n  - id: "+informationResourceID.String()+"\n    name: Курс\n    title: {ru: Курс}\n    types: [{kind: number, precision: 15, scale: 4}]\n"))
 
-	accumulationID, accumulationDimensionID, accumulationResourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	accumulationPath, _ := project.ObjectMetadataPath("accumulation-registers", "Продажи")
 	writeSourceFile(t, root, accumulationPath, []byte("format: 1\nid: "+accumulationID.String()+"\nname: Продажи\ntitle: {ru: Продажи}\nkind: turnover\n"+
 		"dimensions:\n  - id: "+accumulationDimensionID.String()+"\n    name: Товар\n    title: {ru: Товар}\n    types: [{kind: string, length: 100}]\n"+
-		"resources:\n  - id: "+accumulationResourceID.String()+"\n    name: Сумма\n    title: {ru: Сумма}\n    types: [{kind: number, precision: 15, scale: 2}]\n"+
-		"recorders: ["+documentID.String()+"]\n"))
+		"resources:\n  - id: "+accumulationResourceID.String()+"\n    name: Сумма\n    title: {ru: Сумма}\n    types: [{kind: number, precision: 15, scale: 2}]\n"))
 
 	manifest, err := inspect(context.Background(), root, SourceState{})
 	if err != nil {

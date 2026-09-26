@@ -451,6 +451,7 @@ id: `+documentID+`
 name: УстановкаЦен
 title: {ru: Установка цен}
 number: {type: string, length: 11, periodicity: year}
+movements: [`+informationRegisterID+`]
 `)
 	writeMetadata(t, root, InformationRegisterKind, informationRegisterID, `format: 1
 id: `+informationRegisterID+`
@@ -458,7 +459,6 @@ name: Цены
 title: {ru: Цены}
 write_mode: recorder
 periodicity: recorder-position
-recorders: [`+documentID+`]
 dimensions:
   - id: `+registerDimensionID+`
     name: Товар
@@ -475,7 +475,8 @@ resources:
 		t.Fatal(err)
 	}
 	register, ok := catalog.InformationRegisterDefinition("цены")
-	if !ok || register.Periodicity != InformationRegisterPeriodRecorderPosition || register.Recorders[0].String() != documentID {
+	recorders := catalog.RegisterRecorders(register.ID)
+	if !ok || register.Periodicity != InformationRegisterPeriodRecorderPosition || len(recorders) != 1 || recorders[0].String() != documentID {
 		t.Fatalf("register=%+v found=%v", register, ok)
 	}
 	register.Resources[0].Name = "Изменено"
@@ -493,7 +494,6 @@ name: Цены
 title: {ru: Цены}
 write_mode: independent
 periodicity: recorder-position
-recorders: [`+documentID+`]
 dimensions:
   - id: `+registerDimensionID+`
     name: Период
@@ -510,7 +510,7 @@ attributes:
     title: {ru: Значение}
     types: [{kind: string}]
 `), metadataConfiguration())
-	if err == nil || !strings.Contains(err.Error(), "recorder-position") || !strings.Contains(err.Error(), "only allowed") ||
+	if err == nil || !strings.Contains(err.Error(), "recorder-position") ||
 		!strings.Contains(err.Error(), "reserved") || !strings.Contains(err.Error(), "conflicts") {
 		t.Fatalf("DecodeInformationRegister() error = %v", err)
 	}
@@ -579,13 +579,13 @@ id: `+recorder.String()+`
 name: Продажа
 title: {ru: Продажа}
 number: {type: string, length: 11, periodicity: year}
+movements: [`+register.String()+`]
 `)
 	writeMetadata(t, root, AccumulationRegisterKind, register.String(), `format: 1
 id: `+register.String()+`
 name: Продажи
 title: {ru: Продажи}
 kind: turnover
-recorders: [`+recorder.String()+`]
 dimensions:
   - id: `+dimension.String()+`
     name: Товар
@@ -602,7 +602,7 @@ resources:
 		t.Fatal(err)
 	}
 	value, ok := catalog.AccumulationRegisterDefinition("продажи")
-	if !ok || value.Kind != AccumulationRegisterTurnover || value.Recorders[0] != recorder {
+	if !ok || value.Kind != AccumulationRegisterTurnover || catalog.RegisterRecorders(value.ID)[0] != recorder {
 		t.Fatalf("register=%+v found=%v", value, ok)
 	}
 	value.Resources[0].Name = "Изменено"

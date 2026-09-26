@@ -249,7 +249,7 @@ func (runtime *Runtime) setInformationRegisterDataLockValue(element *dataLockEle
 	case propertyName(field, "Регистратор", "Recorder") && definition.WriteMode == InformationRegisterRecorder:
 		opaque, ok := value.AsRuntimeObject()
 		reference, valid := opaque.(*documentReferenceObject)
-		if !ok || !valid || reference.runtime != runtime || !allowedInformationRegisterRecorder(definition, reference.reference) {
+		if !ok || !valid || reference.runtime != runtime || !allowedInformationRegisterRecorder(runtime.catalog, definition, reference.reference) {
 			return fmt.Errorf("information register data lock recorder is invalid")
 		}
 		stored := reference.reference

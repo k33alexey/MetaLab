@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -212,7 +211,7 @@ func (catalog *Catalog) referenceSources(target objectIdentity) ([]referenceSour
 	}
 	for _, definition := range catalog.InformationRegisters {
 		table, _ := PhysicalInformationRegisterTable(definition.ID)
-		if target.kind == DocumentType && slices.Contains(definition.Recorders, target.metadataID) {
+		if target.kind == DocumentType && catalog.writesInto(target.metadataID, definition.ID) {
 			result = append(result, referenceSource{
 				table: table, ownerKind: "information-register", ownerName: definition.Name, ownerMetadataID: definition.ID,
 				field: "Recorder", column: "recorder_ref", ownerColumn: "record_id",
@@ -225,7 +224,7 @@ func (catalog *Catalog) referenceSources(target objectIdentity) ([]referenceSour
 	}
 	for _, definition := range catalog.AccumulationRegisters {
 		table, _ := PhysicalAccumulationRegisterTable(definition.ID)
-		if target.kind == DocumentType && slices.Contains(definition.Recorders, target.metadataID) {
+		if target.kind == DocumentType && catalog.writesInto(target.metadataID, definition.ID) {
 			result = append(result, referenceSource{
 				table: table, ownerKind: "accumulation-register", ownerName: definition.Name, ownerMetadataID: definition.ID,
 				field: "Recorder", column: "recorder_ref", ownerColumn: "record_id",

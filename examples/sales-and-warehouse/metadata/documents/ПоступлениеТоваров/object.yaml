@@ -4,6 +4,8 @@ name: ПоступлениеТоваров
 title: {ru: Поступление товаров, uk: Надходження товарів, en: Goods receipt}
 number: {type: string, length: 11, auto: true, unique: true, periodicity: year}
 posting: true
+movements:
+  - 10000000-0000-4000-8000-000000000301
 attributes:
   - id: 10000000-0000-4000-8000-000000001201
     name: Контрагент

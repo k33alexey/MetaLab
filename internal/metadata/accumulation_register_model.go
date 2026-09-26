@@ -3,7 +3,6 @@ package metadata
 import (
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -28,7 +27,6 @@ type AccumulationRegisterDefinition struct {
 	Dimensions []Attribute                   `yaml:"dimensions,omitempty"`
 	Resources  []Attribute                   `yaml:"resources"`
 	Attributes []Attribute                   `yaml:"attributes,omitempty"`
-	Recorders  []uuid.UUID                   `yaml:"recorders"`
 	Forms      RegisterForms                 `yaml:"forms,omitempty"`
 	Commands   []ObjectCommand               `yaml:"commands,omitempty"`
 	Templates  []ObjectTemplate              `yaml:"templates,omitempty"`
@@ -82,19 +80,6 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 			issues = append(issues, fmt.Sprintf("resources[%d].types must contain exactly one number or numeric defined type", index))
 		}
 	}
-	if len(value.Recorders) == 0 || len(value.Recorders) > 128 {
-		issues = append(issues, "recorders must contain 1..128 documents")
-	}
-	seenRecorders := map[uuid.UUID]bool{}
-	for index, recorder := range value.Recorders {
-		if recorder.IsZero() {
-			issues = append(issues, fmt.Sprintf("recorders[%d] must be a non-zero UUID", index))
-		}
-		if seenRecorders[recorder] {
-			issues = append(issues, fmt.Sprintf("recorders[%d] must be unique", index))
-		}
-		seenRecorders[recorder] = true
-	}
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
@@ -118,7 +103,6 @@ func cloneAccumulationRegisterDefinition(value AccumulationRegisterDefinition) A
 	value.Dimensions = cloneAttributes(value.Dimensions)
 	value.Resources = cloneAttributes(value.Resources)
 	value.Attributes = cloneAttributes(value.Attributes)
-	value.Recorders = slices.Clone(value.Recorders)
 	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)

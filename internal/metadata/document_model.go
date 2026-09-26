@@ -10,6 +10,9 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
+// maxDocumentMovements is where a list of registers stops being a list.
+const maxDocumentMovements = 256
+
 type NumberPeriodicity string
 
 const (
@@ -38,8 +41,16 @@ type DocumentDefinition struct {
 	// Numerator names a numbering shared with other kinds of document. When it
 	// is named the document declares no number of its own: two sources for one
 	// number is one too many, and the shared one wins by definition.
-	Numerator       *uuid.UUID             `yaml:"numerator,omitempty"`
-	Posting         bool                   `yaml:"posting,omitempty"`
+	Numerator *uuid.UUID `yaml:"numerator,omitempty"`
+	Posting   bool       `yaml:"posting,omitempty"`
+	// Movements are the registers this document writes records into. The link
+	// is described from the document's side, and only from there: in the
+	// prototype not one of the four kinds of register has a property listing
+	// its documents, while a document names its registers outright. Held the
+	// other way round, a register had to be reopened every time a document
+	// started writing into it, and the document - the thing that does the
+	// writing - said nothing about it.
+	Movements       []uuid.UUID            `yaml:"movements,omitempty"`
 	Attributes      []Attribute            `yaml:"attributes,omitempty"`
 	TableParts      []TablePart            `yaml:"table_parts,omitempty"`
 	Characteristics []ObjectCharacteristic `yaml:"characteristics,omitempty"`
@@ -76,6 +87,10 @@ func DecodeDocument(source string, reader io.Reader, configuration project.Proje
 		}
 	}
 	issues = append(issues, validateNumberedObjectShape(shape, configuration)...)
+	if len(value.Movements) > maxDocumentMovements {
+		issues = append(issues, fmt.Sprintf("movements must not contain more than %d registers", maxDocumentMovements))
+	}
+	issues = append(issues, validateUniqueIDs("movements", value.Movements)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
@@ -223,6 +238,7 @@ func cloneDocumentDefinition(value DocumentDefinition) DocumentDefinition {
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
+	value.Movements = slices.Clone(value.Movements)
 	return value
 }
 

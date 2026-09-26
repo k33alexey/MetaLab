@@ -44,15 +44,16 @@ func TestAccumulationRegisterRepositoryIntegration(t *testing.T) {
 	documentID, registerID, productID, quantityID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	turnoverID, turnoverProductID, amountID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	catalog := &Catalog{
-		Documents: []DocumentDefinition{{ID: documentID, Name: "Приходная", Number: DocumentNumber{Type: StringType, Length: 20, Unique: true, Periodicity: NumberPeriodYear}}},
+		Documents: []DocumentDefinition{{ID: documentID, Name: "Приходная", Number: DocumentNumber{Type: StringType, Length: 20, Unique: true, Periodicity: NumberPeriodYear},
+			Movements: []uuid.UUID{registerID, turnoverID}}},
 		AccumulationRegisters: []AccumulationRegisterDefinition{
 			{
-				ID: registerID, Name: "ОстаткиТоваров", Kind: AccumulationRegisterBalance, Recorders: []uuid.UUID{documentID},
+				ID: registerID, Name: "ОстаткиТоваров", Kind: AccumulationRegisterBalance,
 				Dimensions: []Attribute{{ID: productID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 100}}}},
 				Resources:  []Attribute{{ID: quantityID, Name: "Количество", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}},
 			},
 			{
-				ID: turnoverID, Name: "Продажи", Kind: AccumulationRegisterTurnover, Recorders: []uuid.UUID{documentID},
+				ID: turnoverID, Name: "Продажи", Kind: AccumulationRegisterTurnover,
 				Dimensions: []Attribute{{ID: turnoverProductID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 100}}}},
 				Resources:  []Attribute{{ID: amountID, Name: "Сумма", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}},
 			},

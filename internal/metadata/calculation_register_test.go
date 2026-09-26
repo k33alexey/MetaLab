@@ -42,6 +42,7 @@ name: НачислениеЗарплаты
 title: {ru: Начисление зарплаты}
 number: {type: string, length: 9, auto: true, periodicity: none}
 posting: true
+movements: [`+calcRegister+`]
 `)
 	writeMetadata(t, root, InformationRegisterKind, calcSchedule, `format: 1
 id: `+calcSchedule+`
@@ -70,7 +71,6 @@ base_period: true
 schedule: ` + calcSchedule + `
 schedule_value: ` + calcScheduleValue + `
 schedule_date: ` + calcScheduleDate + `
-recorders: [` + calcDocument + `]
 dimensions:
   - id: ` + calcPerson + `
     name: ФизическоеЛицо
@@ -172,7 +172,6 @@ name: Разовые
 title: {ru: Разовые начисления}
 chart_of_calculation_types: `+calcChart+`
 periodicity: day
-recorders: [`+calcDocument+`]
 resources:
   - {id: `+calcResult+`, name: Результат, title: {ru: Результат}, types: [{kind: number, precision: 15, scale: 2}]}
 `)
@@ -211,7 +210,6 @@ name: ОсновныеНачисления
 title: {ru: Основные начисления}
 chart_of_calculation_types: ` + calcChart + `
 periodicity: month
-recorders: [` + calcDocument + `]
 resources:
   - {id: ` + calcResult + `, name: Результат, title: {ru: Результат}, types: [{kind: number, precision: 15, scale: 2}]}
 `
@@ -244,7 +242,6 @@ name: ОсновныеНачисления
 title: {ru: Основные начисления}
 chart_of_calculation_types: ` + calcChart + `
 periodicity: fortnight
-recorders: [` + calcDocument + `]
 resources:
   - {id: ` + calcResult + `, name: Результат, title: {ru: Результат}, types: [{kind: number, precision: 15, scale: 2}]}
 `,
@@ -280,6 +277,7 @@ name: НачислениеЗарплаты
 title: {ru: Начисление зарплаты}
 number: {type: string, length: 9, auto: true, periodicity: none}
 posting: true
+movements: [`+calcRegister+`]
 `)
 		return root
 	}
@@ -301,7 +299,6 @@ name: Простые
 title: {ru: Простые начисления}
 chart_of_calculation_types: `+calcChart+`
 periodicity: month
-recorders: [`+calcDocument+`]
 resources:
   - {id: `+calcResult+`, name: Результат, title: {ru: Результат}, types: [{kind: number, precision: 15, scale: 2}]}
 `+body)

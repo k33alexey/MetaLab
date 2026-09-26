@@ -53,7 +53,6 @@ type AccountingRegisterDefinition struct {
 	Dimensions      []AccountingRegisterField `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
 	Resources       []AccountingRegisterField `yaml:"resources" json:"resources"`
 	Attributes      []Attribute               `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	Recorders       []uuid.UUID               `yaml:"recorders" json:"recorders"`
 	Forms           RegisterForms             `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands        []ObjectCommand           `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates       []ObjectTemplate          `yaml:"templates,omitempty" json:"templates,omitempty"`
@@ -72,10 +71,6 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	if len(value.Resources) == 0 {
 		issues = append(issues, "resources must contain at least one item: an entry with no amount is not an entry")
 	}
-	if len(value.Recorders) == 0 || len(value.Recorders) > 128 {
-		issues = append(issues, "recorders must contain 1..128 documents")
-	}
-	issues = append(issues, validateUniqueIDs("recorders", value.Recorders)...)
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for _, group := range []struct {
 		path   string
@@ -165,7 +160,6 @@ func cloneAccountingRegister(value AccountingRegisterDefinition) AccountingRegis
 	value.Dimensions = cloneAccountingRegisterFields(value.Dimensions)
 	value.Resources = cloneAccountingRegisterFields(value.Resources)
 	value.Attributes = cloneAttributes(value.Attributes)
-	value.Recorders = slices.Clone(value.Recorders)
 	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)

@@ -226,7 +226,7 @@ func (repository *AccumulationRegisterRepository) normalizeSetIdentity(set *Accu
 		}
 		return definition, filter, nil
 	}
-	if !allowedAccumulationRegisterRecorder(definition, *filter.Recorder) {
+	if !allowedAccumulationRegisterRecorder(repository.catalog, definition, *filter.Recorder) {
 		return AccumulationRegisterDefinition{}, AccumulationRegisterFilter{}, fmt.Errorf("accumulation register %s recorder filter is invalid", definition.Name)
 	}
 	return definition, filter, nil
@@ -280,7 +280,7 @@ func (repository *AccumulationRegisterRepository) normalizeRecord(definition Acc
 	if err != nil {
 		return fmt.Errorf("accumulation register %s record %d period: %w", definition.Name, line, err)
 	}
-	if !allowedAccumulationRegisterRecorder(definition, record.Recorder) {
+	if !allowedAccumulationRegisterRecorder(repository.catalog, definition, record.Recorder) {
 		return fmt.Errorf("accumulation register %s record %d has an invalid recorder", definition.Name, line)
 	}
 	if record.LineNumber < 1 || int64(record.LineNumber) > maxInformationRegisterLineNumber {
@@ -324,8 +324,8 @@ func normalizeAccumulationPeriod(value time.Time) (time.Time, error) {
 	return value, nil
 }
 
-func allowedAccumulationRegisterRecorder(definition AccumulationRegisterDefinition, recorder DocumentReference) bool {
-	return !recorder.DocumentID.IsZero() && !recorder.ObjectID.IsZero() && slices.Contains(definition.Recorders, recorder.DocumentID)
+func allowedAccumulationRegisterRecorder(catalog *Catalog, definition AccumulationRegisterDefinition, recorder DocumentReference) bool {
+	return !recorder.DocumentID.IsZero() && !recorder.ObjectID.IsZero() && catalog.writesInto(recorder.DocumentID, definition.ID)
 }
 
 func (repository *AccumulationRegisterRepository) validateRecorder(ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition, recorder DocumentReference) error {

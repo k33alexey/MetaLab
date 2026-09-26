@@ -60,7 +60,7 @@ func TestApplicationRoleBypassAttemptsIntegration(t *testing.T) {
 		}}},
 	}
 	accumulation := AccumulationRegisterDefinition{
-		ID: accumulationID, Name: "Остатки", Kind: AccumulationRegisterBalance, Recorders: []uuid.UUID{documentID},
+		ID: accumulationID, Name: "Остатки", Kind: AccumulationRegisterBalance,
 		Dimensions: []Attribute{{ID: accumulationProductID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 50}}}},
 		Resources:  []Attribute{{ID: accumulationQuantityID, Name: "Количество", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}},
 	}

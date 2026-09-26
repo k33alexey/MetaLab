@@ -51,7 +51,7 @@ func TestDocumentPostingIsAtomicAndReplacesMovementsIntegration(t *testing.T) {
 		},
 	}
 	register := AccumulationRegisterDefinition{
-		ID: registerID, Name: "ОстаткиТоваров", Kind: AccumulationRegisterBalance, Recorders: []uuid.UUID{documentID},
+		ID: registerID, Name: "ОстаткиТоваров", Kind: AccumulationRegisterBalance,
 		Dimensions: []Attribute{{ID: productDimensionID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 100}}}},
 		Resources:  []Attribute{{ID: quantityResourceID, Name: "Количество", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}},
 	}

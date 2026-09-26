@@ -47,6 +47,7 @@ func TestInformationRegisterRepositoryIntegration(t *testing.T) {
 	catalog := &Catalog{
 		Documents: []DocumentDefinition{{
 			ID: documentID, Name: "УстановкаЦен", Number: DocumentNumber{Type: StringType, Length: 11, Unique: true, Periodicity: NumberPeriodYear},
+			Movements: []uuid.UUID{recorderID},
 		}},
 		InformationRegisters: []InformationRegisterDefinition{
 			{
@@ -56,7 +57,6 @@ func TestInformationRegisterRepositoryIntegration(t *testing.T) {
 			},
 			{
 				ID: recorderID, Name: "Цены", WriteMode: InformationRegisterRecorder, Periodicity: InformationRegisterPeriodRecorderPosition,
-				Recorders:  []uuid.UUID{documentID},
 				Dimensions: []Attribute{{ID: productID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: ObjectUUIDType}}}},
 				Resources:  []Attribute{{ID: priceID, Name: "Цена", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}},
 			},

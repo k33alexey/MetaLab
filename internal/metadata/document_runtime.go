@@ -419,7 +419,7 @@ func (runtime *Runtime) writeDocumentObject(ctx context.Context, object *documen
 func (runtime *Runtime) clearDocumentMovements(ctx context.Context, recorder DocumentReference) error {
 	if runtime.informationRegisterRepository != nil {
 		for _, definition := range runtime.catalog.InformationRegisters {
-			if definition.WriteMode != InformationRegisterRecorder || !allowedInformationRegisterRecorder(definition, recorder) {
+			if definition.WriteMode != InformationRegisterRecorder || !allowedInformationRegisterRecorder(runtime.catalog, definition, recorder) {
 				continue
 			}
 			set := &InformationRegisterRecordSet{
@@ -434,7 +434,7 @@ func (runtime *Runtime) clearDocumentMovements(ctx context.Context, recorder Doc
 	}
 	if runtime.accumulationRegisterRepository != nil {
 		for _, definition := range runtime.catalog.AccumulationRegisters {
-			if !allowedAccumulationRegisterRecorder(definition, recorder) {
+			if !allowedAccumulationRegisterRecorder(runtime.catalog, definition, recorder) {
 				continue
 			}
 			set := &AccumulationRegisterRecordSet{

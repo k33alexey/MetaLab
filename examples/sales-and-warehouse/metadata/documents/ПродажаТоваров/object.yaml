@@ -4,6 +4,8 @@ name: ПродажаТоваров
 title: {ru: Продажа товаров, uk: Продаж товарів, en: Goods sale}
 number: {type: string, length: 11, auto: true, unique: true, periodicity: year}
 posting: true
+movements:
+  - 10000000-0000-4000-8000-000000000301
 attributes:
   - id: 10000000-0000-4000-8000-000000001202
     name: Контрагент

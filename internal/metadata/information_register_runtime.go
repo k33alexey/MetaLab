@@ -428,7 +428,7 @@ func (runtime *Runtime) setInformationRegisterRecordProperty(ctx context.Context
 		}
 		opaque, ok := assigned.AsRuntimeObject()
 		reference, okReference := opaque.(*documentReferenceObject)
-		if !ok || !okReference || reference.runtime != runtime || !allowedInformationRegisterRecorder(definition, reference.reference) {
+		if !ok || !okReference || reference.runtime != runtime || !allowedInformationRegisterRecorder(runtime.catalog, definition, reference.reference) {
 			return fmt.Errorf("information register recorder is invalid")
 		}
 		record.Recorder = reference.reference
@@ -646,7 +646,7 @@ func (runtime *Runtime) setInformationRegisterFilterItem(item *informationRegist
 	case "recorder":
 		opaque, ok := assigned.AsRuntimeObject()
 		reference, okReference := opaque.(*documentReferenceObject)
-		if !ok || !okReference || reference.runtime != runtime || !allowedInformationRegisterRecorder(item.owner.definition, reference.reference) {
+		if !ok || !okReference || reference.runtime != runtime || !allowedInformationRegisterRecorder(runtime.catalog, item.owner.definition, reference.reference) {
 			return fmt.Errorf("information register recorder filter is invalid")
 		}
 		value := reference.reference
