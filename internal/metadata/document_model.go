@@ -50,14 +50,15 @@ type DocumentDefinition struct {
 	// other way round, a register had to be reopened every time a document
 	// started writing into it, and the document - the thing that does the
 	// writing - said nothing about it.
-	Movements       []uuid.UUID            `yaml:"movements,omitempty"`
-	Attributes      []Attribute            `yaml:"attributes,omitempty"`
-	TableParts      []TablePart            `yaml:"table_parts,omitempty"`
-	Characteristics []ObjectCharacteristic `yaml:"characteristics,omitempty"`
-	Forms           ObjectForms            `yaml:"forms,omitempty"`
-	Commands        []ObjectCommand        `yaml:"commands,omitempty"`
-	Templates       []ObjectTemplate       `yaml:"templates,omitempty"`
-	List            ListSettings           `yaml:"list,omitempty"`
+	Movements          []uuid.UUID            `yaml:"movements,omitempty"`
+	Attributes         []Attribute            `yaml:"attributes,omitempty"`
+	TableParts         []TablePart            `yaml:"table_parts,omitempty"`
+	Characteristics    []ObjectCharacteristic `yaml:"characteristics,omitempty"`
+	StandardAttributes []StandardAttribute    `yaml:"standard_attributes,omitempty"`
+	Forms              ObjectForms            `yaml:"forms,omitempty"`
+	Commands           []ObjectCommand        `yaml:"commands,omitempty"`
+	Templates          []ObjectTemplate       `yaml:"templates,omitempty"`
+	List               ListSettings           `yaml:"list,omitempty"`
 }
 
 func DecodeDocument(source string, reader io.Reader, configuration project.Project) (DocumentDefinition, error) {
@@ -67,12 +68,14 @@ func DecodeDocument(source string, reader io.Reader, configuration project.Proje
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	shape := numberedObjectShape{
-		number:       value.Number,
-		attributes:   value.Attributes,
-		tableParts:   value.TableParts,
-		forms:        value.Forms,
-		list:         value.List,
-		reservedName: reservedDocumentObjectName,
+		number:             value.Number,
+		attributes:         value.Attributes,
+		tableParts:         value.TableParts,
+		forms:              value.Forms,
+		list:               value.List,
+		reservedName:       reservedDocumentObjectName,
+		kind:               DocumentKind,
+		standardAttributes: value.StandardAttributes,
 	}
 	if value.Numerator != nil {
 		// The number comes from the numerator, and it is filled in once the
@@ -115,6 +118,12 @@ type numberedObjectShape struct {
 	// numberFromElsewhere says the number is not declared here and will be
 	// filled in from the object that owns it.
 	numberFromElsewhere bool
+	// kind says which kind of object this is, so that the standard fields the
+	// platform gives it can be looked up; standardAttributes is what the
+	// developer wrote about them. None of the numbered kinds has a standard
+	// table part.
+	kind               Kind
+	standardAttributes []StandardAttribute
 }
 
 // validateNumberShape checks a number on its own, apart from the object that
@@ -156,7 +165,9 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 		attributeNames[strings.ToLower(attribute.Name)] = true
 	}
 	issues = append(issues, validateTableParts(shape.tableParts, attributeNames, configuration, reserved)...)
-	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts)...)
+	issues = append(issues, validateStandardAttributes("standard_attributes", shape.standardAttributes, standardFieldsOfKind(shape.kind), configuration)...)
+	links := append(standardAttributeChoices("standard_attributes", shape.standardAttributes), tablePartStandardChoices(shape.tableParts)...)
+	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, links...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, false, false)...)
 	issues = append(issues, validateFormSlots(shape.forms.slots())...)
 	return append(issues, validateListSettings(shape.list, shape.attributes, map[string]TypeKind{
@@ -201,6 +212,7 @@ func validateTableParts(parts []TablePart, attributeNames map[string]bool, confi
 		partNames[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", part.Title, configuration)...)
 		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, configuration, nil)...)
+		issues = append(issues, validateStandardAttributes(prefix+".standard_attributes", part.StandardAttributes, tablePartStandardFields, configuration)...)
 	}
 	return issues
 }
@@ -211,34 +223,26 @@ func cloneTableParts(parts []TablePart) []TablePart {
 	for index := range parts {
 		parts[index].Title = cloneTitle(parts[index].Title)
 		parts[index].Attributes = cloneAttributes(parts[index].Attributes)
+		parts[index].StandardAttributes = cloneStandardAttributes(parts[index].StandardAttributes)
 	}
 	return parts
 }
 
 func reservedDocumentObjectName(name string) bool {
-	switch strings.ToLower(name) {
-	case "ссылка", "ref", "номер", "number", "дата", "date", "проведен", "проведён", "posted", "версия", "version",
-		"пометкаудаления", "deletionmark":
-		return true
-	default:
-		return false
-	}
+	return reservedStandardName(DocumentKind, name) || reservedRowVersionName(name)
 }
 
 func cloneDocumentDefinition(value DocumentDefinition) DocumentDefinition {
 	value.Title = cloneTitle(value.Title)
 	value.Attributes = cloneAttributes(value.Attributes)
-	value.TableParts = slices.Clone(value.TableParts)
-	for index := range value.TableParts {
-		value.TableParts[index].Title = cloneTitle(value.TableParts[index].Title)
-		value.TableParts[index].Attributes = cloneAttributes(value.TableParts[index].Attributes)
-	}
+	value.TableParts = cloneTableParts(value.TableParts)
 	value.Forms = cloneFormSet(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.Movements = slices.Clone(value.Movements)
+	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	return value
 }
 

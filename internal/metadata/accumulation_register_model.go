@@ -19,17 +19,18 @@ const (
 
 // AccumulationRegisterDefinition describes recorder-owned movements and rebuildable totals.
 type AccumulationRegisterDefinition struct {
-	Format     int                           `yaml:"format"`
-	ID         uuid.UUID                     `yaml:"id"`
-	Name       string                        `yaml:"name"`
-	Title      LocalizedText                 `yaml:"title"`
-	Kind       AccumulationRegisterKindValue `yaml:"kind"`
-	Dimensions []Attribute                   `yaml:"dimensions,omitempty"`
-	Resources  []Attribute                   `yaml:"resources"`
-	Attributes []Attribute                   `yaml:"attributes,omitempty"`
-	Forms      RegisterForms                 `yaml:"forms,omitempty"`
-	Commands   []ObjectCommand               `yaml:"commands,omitempty"`
-	Templates  []ObjectTemplate              `yaml:"templates,omitempty"`
+	Format             int                           `yaml:"format"`
+	ID                 uuid.UUID                     `yaml:"id"`
+	Name               string                        `yaml:"name"`
+	Title              LocalizedText                 `yaml:"title"`
+	Kind               AccumulationRegisterKindValue `yaml:"kind"`
+	Dimensions         []Attribute                   `yaml:"dimensions,omitempty"`
+	Resources          []Attribute                   `yaml:"resources"`
+	Attributes         []Attribute                   `yaml:"attributes,omitempty"`
+	StandardAttributes []StandardAttribute           `yaml:"standard_attributes,omitempty"`
+	Forms              RegisterForms                 `yaml:"forms,omitempty"`
+	Commands           []ObjectCommand               `yaml:"commands,omitempty"`
+	Templates          []ObjectTemplate              `yaml:"templates,omitempty"`
 }
 
 func DecodeAccumulationRegister(source string, reader io.Reader, configuration project.Project) (AccumulationRegisterDefinition, error) {
@@ -47,7 +48,8 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 	registerFields := []fieldGroup{
 		{"dimensions", value.Dimensions}, {"resources", value.Resources}, {"attributes", value.Attributes},
 	}
-	issues = append(issues, validateFieldLinks(registerFields, nil)...)
+	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accumulationStandardFields(value.Kind), configuration)...)
+	issues = append(issues, validateFieldLinks(registerFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 	issues = append(issues, validateAttributeUse(registerFields, nil, false, false)...)
 	if len(value.Resources) == 0 {
 		issues = append(issues, "resources must contain at least one numeric item")
@@ -90,11 +92,14 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 }
 
 func reservedAccumulationRegisterName(name string) bool {
-	switch strings.ToLower(name) {
-	case "период", "period", "регистратор", "recorder", "номерстроки", "linenumber", "активность", "active", "виддвижения", "movementkind", "recordid":
+	switch foldStandardName(name) {
+	case "movementkind", "recordid":
+		// movementkind is not the prototype's name for the kind of movement -
+		// that is RecordType - and recordid is the key of a stored row, which
+		// is ours.
 		return true
 	default:
-		return false
+		return reservedStandardName(AccumulationRegisterKind, name)
 	}
 }
 
@@ -106,6 +111,7 @@ func cloneAccumulationRegisterDefinition(value AccumulationRegisterDefinition) A
 	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	return value
 }
 

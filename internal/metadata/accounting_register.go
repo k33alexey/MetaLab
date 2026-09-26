@@ -49,13 +49,14 @@ type AccountingRegisterDefinition struct {
 	Correspondence bool `yaml:"correspondence,omitempty" json:"correspondence,omitempty"`
 	// TotalsSplitting lets concurrent writers keep their own rows of totals
 	// instead of queueing on one.
-	TotalsSplitting bool                      `yaml:"totals_splitting,omitempty" json:"totalsSplitting,omitempty"`
-	Dimensions      []AccountingRegisterField `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
-	Resources       []AccountingRegisterField `yaml:"resources" json:"resources"`
-	Attributes      []Attribute               `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	Forms           RegisterForms             `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands        []ObjectCommand           `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates       []ObjectTemplate          `yaml:"templates,omitempty" json:"templates,omitempty"`
+	TotalsSplitting    bool                      `yaml:"totals_splitting,omitempty" json:"totalsSplitting,omitempty"`
+	Dimensions         []AccountingRegisterField `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
+	Resources          []AccountingRegisterField `yaml:"resources" json:"resources"`
+	Attributes         []Attribute               `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	StandardAttributes []StandardAttribute       `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
+	Forms              RegisterForms             `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands           []ObjectCommand           `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates          []ObjectTemplate          `yaml:"templates,omitempty" json:"templates,omitempty"`
 }
 
 // DecodeAccountingRegister reads and validates one accounting register.
@@ -115,7 +116,11 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, func(name string) bool {
 		return names[strings.ToLower(name)] || reservedAccountingRegisterName(name)
 	})...)
-	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", value.Attributes}}, nil)...)
+	// How many ext dimensions an entry really has is the chart's to say, and
+	// the chart is in another file: here the platform's ceiling is allowed and
+	// load.go narrows it once the chart is read.
+	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accountingStandardFields(value.Correspondence, maxExtDimensions), configuration)...)
+	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", value.Attributes}}, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", value.Attributes}}, nil, false, false)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
@@ -130,13 +135,13 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 // was made and by what, which line of it, whether it counts, and the accounts
 // of its two sides.
 func reservedAccountingRegisterName(name string) bool {
-	switch strings.ToLower(name) {
-	case "период", "period", "регистратор", "recorder", "номерстроки", "linenumber",
-		"активность", "active", "счет", "счёт", "account", "счетдт", "счётдт", "accountdr",
-		"счеткт", "счёткт", "accountcr", "recordid":
+	switch foldStandardName(name) {
+	case "счетдт", "accountdr", "счеткт", "accountcr", "recordid":
+		// The accounts of the two sides are how the one standard field Счет is
+		// stored under double entry, and recordid is the key of a stored row.
 		return true
 	default:
-		return false
+		return reservedStandardName(AccountingRegisterKind, name)
 	}
 }
 
@@ -163,6 +168,7 @@ func cloneAccountingRegister(value AccountingRegisterDefinition) AccountingRegis
 	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	return value
 }
 

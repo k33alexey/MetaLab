@@ -365,10 +365,11 @@ type Enumeration struct {
 	ChoiceHistoryOnInput ChoiceHistory `yaml:"choice_history_on_input,omitempty"`
 	// UseStandardCommands decides whether the platform offers its own commands
 	// for this object - opening the list and the rest.
-	UseStandardCommands bool             `yaml:"use_standard_commands,omitempty"`
-	Forms               EnumerationForms `yaml:"forms,omitempty"`
-	Commands            []ObjectCommand  `yaml:"commands,omitempty"`
-	Templates           []ObjectTemplate `yaml:"templates,omitempty"`
+	UseStandardCommands bool                `yaml:"use_standard_commands,omitempty"`
+	StandardAttributes  []StandardAttribute `yaml:"standard_attributes,omitempty"`
+	Forms               EnumerationForms    `yaml:"forms,omitempty"`
+	Commands            []ObjectCommand     `yaml:"commands,omitempty"`
+	Templates           []ObjectTemplate    `yaml:"templates,omitempty"`
 }
 
 type DefinedTypeObject struct {
@@ -450,6 +451,9 @@ type TablePart struct {
 	Name       string        `yaml:"name" json:"name"`
 	Title      LocalizedText `yaml:"title" json:"title"`
 	Attributes []Attribute   `yaml:"attributes" json:"attributes"`
+	// StandardAttributes is what the developer changed about the one field the
+	// platform gives a line - its number. See standard_attributes.go.
+	StandardAttributes []StandardAttribute `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
 }
 
 // ListSettings controls bounded server-side lists without embedding SQL in metadata.
@@ -470,16 +474,17 @@ type CatalogDefinition struct {
 	// Owners are the objects whose elements a row of this catalog belongs to,
 	// and Subordination says whether it belongs to their items, their folders
 	// or either - see catalog_owners.go.
-	Owners          []uuid.UUID             `yaml:"owners,omitempty" json:"owners,omitempty"`
-	Subordination   SubordinationKind       `yaml:"subordination,omitempty" json:"subordination,omitempty"`
-	Attributes      []Attribute             `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	TableParts      []TablePart             `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	Characteristics []ObjectCharacteristic  `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
-	Forms           HierarchicalObjectForms `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands        []ObjectCommand         `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates       []ObjectTemplate        `yaml:"templates,omitempty" json:"templates,omitempty"`
-	List            ListSettings            `yaml:"list,omitempty" json:"list,omitempty"`
-	Predefined      []PredefinedCatalogItem `yaml:"predefined,omitempty" json:"predefined,omitempty"`
+	Owners             []uuid.UUID             `yaml:"owners,omitempty" json:"owners,omitempty"`
+	Subordination      SubordinationKind       `yaml:"subordination,omitempty" json:"subordination,omitempty"`
+	Attributes         []Attribute             `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts         []TablePart             `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	Characteristics    []ObjectCharacteristic  `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
+	StandardAttributes []StandardAttribute     `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
+	Forms              HierarchicalObjectForms `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands           []ObjectCommand         `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates          []ObjectTemplate        `yaml:"templates,omitempty" json:"templates,omitempty"`
+	List               ListSettings            `yaml:"list,omitempty" json:"list,omitempty"`
+	Predefined         []PredefinedCatalogItem `yaml:"predefined,omitempty" json:"predefined,omitempty"`
 }
 
 // Catalog is an immutable-by-convention snapshot of the supported metadata kinds.
@@ -942,6 +947,8 @@ func DecodeEnumeration(source string, reader io.Reader, configuration project.Pr
 	if value.ChoiceMode == ChoiceFromForm && value.QuickChoice {
 		issues = append(issues, "quick_choice contradicts choice_mode from-form")
 	}
+	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(EnumerationKind), configuration)...)
+	issues = append(issues, validateFieldLinks(nil, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
@@ -972,18 +979,20 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
-		code:              value.Code,
-		descriptionLength: value.DescriptionLength,
-		attributes:        value.Attributes,
-		tableParts:        value.TableParts,
-		forms:             value.Forms,
-		list:              value.List,
-		hierarchy:         value.Hierarchy,
-		predefined:        value.Predefined,
-		reservedName:      reservedCatalogObjectName,
-		attributeUse:      true,
-		codeSeries:        true,
-		ownerSeries:       true,
+		code:               value.Code,
+		descriptionLength:  value.DescriptionLength,
+		attributes:         value.Attributes,
+		tableParts:         value.TableParts,
+		forms:              value.Forms,
+		list:               value.List,
+		hierarchy:          value.Hierarchy,
+		predefined:         value.Predefined,
+		reservedName:       reservedCatalogObjectName,
+		attributeUse:       true,
+		codeSeries:         true,
+		ownerSeries:        true,
+		kind:               CatalogKind,
+		standardAttributes: value.StandardAttributes,
 	}, configuration)...)
 	issues = append(issues, validateCatalogSubordination(value.Owners, value.Subordination, value.Code)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
@@ -1029,6 +1038,12 @@ type referenceObjectShape struct {
 	// types may: the help says so, and the demonstration configuration writes
 	// the setting on those two kinds and on no other.
 	attributeUse bool
+	// kind says which kind of object this is, so that the standard fields and
+	// the standard table parts the platform gives it can be looked up. The
+	// descriptions the developer wrote about them are below.
+	kind               Kind
+	standardAttributes []StandardAttribute
+	standardTableParts []StandardTablePart
 }
 
 // validateHierarchy checks the settings against each other, because each of
@@ -1144,8 +1159,14 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 		partNames[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", part.Title, configuration)...)
 		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, configuration, nil)...)
+		issues = append(issues, validateStandardAttributes(prefix+".standard_attributes", part.StandardAttributes, tablePartStandardFields, configuration)...)
 	}
-	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts)...)
+	issues = append(issues, validateStandardAttributes("standard_attributes", shape.standardAttributes, standardFieldsOfKind(shape.kind), configuration)...)
+	issues = append(issues, validateStandardTableParts("standard_table_parts", shape.standardTableParts, standardTablePartsOfKind(shape.kind), configuration)...)
+	links := append(standardAttributeChoices("standard_attributes", shape.standardAttributes),
+		standardTablePartChoices("standard_table_parts", shape.standardTableParts)...)
+	links = append(links, tablePartStandardChoices(shape.tableParts)...)
+	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, links...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts,
 		shape.attributeUse, shape.hierarchy.Enabled && shape.hierarchy.Kind == FoldersAndItemsHierarchy)...)
 	issues = append(issues, validateFormSlots(shape.forms.slots())...)
@@ -1247,9 +1268,15 @@ func validateAttributes(path string, attributes []Attribute, configuration proje
 }
 
 func reservedCatalogObjectName(name string) bool {
-	switch strings.ToLower(name) {
-	case "ссылка", "ref", "код", "code", "наименование", "description", "версия", "version",
-		"пометкаудаления", "deletionmark", "имяпредопределенныхданных", "имяпредопределённыхданных", "predefineddataname":
+	return reservedStandardName(CatalogKind, name) || reservedRowVersionName(name)
+}
+
+// reservedRowVersionName is the one name that is ours and not the prototype's:
+// the row version every stored object carries, by which a concurrent write is
+// caught. Every kind that stores objects keeps it.
+func reservedRowVersionName(name string) bool {
+	switch foldStandardName(name) {
+	case "версия", "version":
 		return true
 	default:
 		return false
@@ -1509,6 +1536,7 @@ func cloneEnumeration(value Enumeration) Enumeration {
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
+	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	return value
 }
 func cloneDefinedType(value DefinedTypeObject) DefinedTypeObject {
@@ -1520,11 +1548,7 @@ func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
 	value.Title = cloneTitle(value.Title)
 	value.Owners = slices.Clone(value.Owners)
 	value.Attributes = cloneAttributes(value.Attributes)
-	value.TableParts = slices.Clone(value.TableParts)
-	for index := range value.TableParts {
-		value.TableParts[index].Title = cloneTitle(value.TableParts[index].Title)
-		value.TableParts[index].Attributes = cloneAttributes(value.TableParts[index].Attributes)
-	}
+	value.TableParts = cloneTableParts(value.TableParts)
 	value.Forms = cloneFormSet(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Predefined = slices.Clone(value.Predefined)
@@ -1534,6 +1558,7 @@ func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
+	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	return value
 }
 

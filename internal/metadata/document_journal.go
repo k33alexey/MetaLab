@@ -31,16 +31,17 @@ type JournalColumn struct {
 // It stores nothing of its own: it shows documents, and every column of it is
 // an attribute of one of them.
 type DocumentJournalDefinition struct {
-	Format    int              `yaml:"format" json:"format"`
-	ID        uuid.UUID        `yaml:"id" json:"id"`
-	Name      string           `yaml:"name" json:"name"`
-	Title     LocalizedText    `yaml:"title" json:"title"`
-	Documents []uuid.UUID      `yaml:"documents,omitempty" json:"documents,omitempty"`
-	Columns   []JournalColumn  `yaml:"columns,omitempty" json:"columns,omitempty"`
-	Forms     SingleRoleForms  `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands  []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
-	List      ListSettings     `yaml:"list,omitempty" json:"list,omitempty"`
+	Format             int                 `yaml:"format" json:"format"`
+	ID                 uuid.UUID           `yaml:"id" json:"id"`
+	Name               string              `yaml:"name" json:"name"`
+	Title              LocalizedText       `yaml:"title" json:"title"`
+	Documents          []uuid.UUID         `yaml:"documents,omitempty" json:"documents,omitempty"`
+	Columns            []JournalColumn     `yaml:"columns,omitempty" json:"columns,omitempty"`
+	StandardAttributes []StandardAttribute `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
+	Forms              SingleRoleForms     `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands           []ObjectCommand     `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates          []ObjectTemplate    `yaml:"templates,omitempty" json:"templates,omitempty"`
+	List               ListSettings        `yaml:"list,omitempty" json:"list,omitempty"`
 }
 
 // DecodeDocumentJournal reads and validates one journal.
@@ -89,6 +90,8 @@ func DecodeDocumentJournal(source string, reader io.Reader, configuration projec
 	issues = append(issues, validateListSettings(value.List, nil, map[string]TypeKind{
 		"number": StringType, "date": DateType,
 	})...)
+	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(DocumentJournalKind), configuration)...)
+	issues = append(issues, validateFieldLinks(nil, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
@@ -110,6 +113,7 @@ func cloneDocumentJournal(value DocumentJournalDefinition) DocumentJournalDefini
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	return value
 }
 

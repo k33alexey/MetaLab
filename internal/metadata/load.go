@@ -1990,6 +1990,13 @@ func (catalog *Catalog) validateAccountingRegister(root string, item AccountingR
 			return err
 		}
 	}
+	// The ext dimensions of an entry are as many as the chart allows, and the
+	// chart was not in hand when the register was decoded: a description of
+	// Субконто4 on a chart that allows three passed there and is caught here.
+	if issues := validateStandardAttributes("standard_attributes", item.StandardAttributes,
+		accountingStandardFields(item.Correspondence, chart.MaxExtDimensionCount), catalog.Project); len(issues) > 0 {
+		return fmt.Errorf("%s: %s", owner, strings.Join(issues, "; "))
+	}
 	return catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: AccountingRegisterKind, kind: "accounting register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates})
 }
 

@@ -62,15 +62,17 @@ type ChartOfCalculationTypesDefinition struct {
 	ActionPeriodUse bool           `yaml:"action_period_use,omitempty" json:"actionPeriodUse,omitempty"`
 	BaseDependency  BaseDependency `yaml:"base_dependency,omitempty" json:"baseDependency,omitempty"`
 	// BaseCharts are the charts a base may be taken from, this one included.
-	BaseCharts      []uuid.UUID                 `yaml:"base_charts,omitempty" json:"baseCharts,omitempty"`
-	Attributes      []Attribute                 `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	TableParts      []TablePart                 `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	Characteristics []ObjectCharacteristic      `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
-	Forms           ObjectForms                 `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands        []ObjectCommand             `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates       []ObjectTemplate            `yaml:"templates,omitempty" json:"templates,omitempty"`
-	List            ListSettings                `yaml:"list,omitempty" json:"list,omitempty"`
-	Predefined      []PredefinedCalculationType `yaml:"predefined,omitempty" json:"predefined,omitempty"`
+	BaseCharts         []uuid.UUID                 `yaml:"base_charts,omitempty" json:"baseCharts,omitempty"`
+	Attributes         []Attribute                 `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts         []TablePart                 `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	Characteristics    []ObjectCharacteristic      `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
+	StandardAttributes []StandardAttribute         `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
+	StandardTableParts []StandardTablePart         `yaml:"standard_table_parts,omitempty" json:"standardTableParts,omitempty"`
+	Forms              ObjectForms                 `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands           []ObjectCommand             `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates          []ObjectTemplate            `yaml:"templates,omitempty" json:"templates,omitempty"`
+	List               ListSettings                `yaml:"list,omitempty" json:"list,omitempty"`
+	Predefined         []PredefinedCalculationType `yaml:"predefined,omitempty" json:"predefined,omitempty"`
 }
 
 // DecodeChartOfCalculationTypes reads and validates one chart of calculation types.
@@ -81,13 +83,16 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, configuratio
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
-		code:              value.Code,
-		descriptionLength: value.DescriptionLength,
-		attributes:        value.Attributes,
-		tableParts:        value.TableParts,
-		forms:             HierarchicalObjectForms{ObjectForms: value.Forms},
-		list:              value.List,
-		reservedName:      reservedCalculationTypeName,
+		code:               value.Code,
+		descriptionLength:  value.DescriptionLength,
+		attributes:         value.Attributes,
+		tableParts:         value.TableParts,
+		forms:              HierarchicalObjectForms{ObjectForms: value.Forms},
+		list:               value.List,
+		reservedName:       reservedCalculationTypeName,
+		kind:               ChartOfCalculationTypesKind,
+		standardAttributes: value.StandardAttributes,
+		standardTableParts: value.StandardTableParts,
 	}, configuration)...)
 	switch value.BaseDependency {
 	case "", NoBaseDependency, ActionPeriodBase, RegistrationPeriodBase:
@@ -188,22 +193,20 @@ func validatePredefinedCalculationTypes(value ChartOfCalculationTypesDefinition)
 // reservedCalculationTypeName keeps the catalog's own names and the one standard
 // attribute of a calculation type.
 func reservedCalculationTypeName(name string) bool {
-	switch strings.ToLower(name) {
-	case "периоддействиябазовый", "actionperiodisbase":
+	switch foldStandardName(name) {
+	case "actionperiodisbase":
+		// Not the prototype's name for it - that is ActionPeriodIsBasic - but
+		// close enough that a developer writes it and shadows the field.
 		return true
 	default:
-		return reservedCatalogObjectName(name)
+		return reservedStandardName(ChartOfCalculationTypesKind, name) || reservedRowVersionName(name)
 	}
 }
 
 func cloneChartOfCalculationTypes(value ChartOfCalculationTypesDefinition) ChartOfCalculationTypesDefinition {
 	value.Title = cloneTitle(value.Title)
 	value.Attributes = cloneAttributes(value.Attributes)
-	value.TableParts = slices.Clone(value.TableParts)
-	for index := range value.TableParts {
-		value.TableParts[index].Title = cloneTitle(value.TableParts[index].Title)
-		value.TableParts[index].Attributes = cloneAttributes(value.TableParts[index].Attributes)
-	}
+	value.TableParts = cloneTableParts(value.TableParts)
 	value.BaseCharts = slices.Clone(value.BaseCharts)
 	value.Forms = cloneFormSet(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
@@ -216,6 +219,8 @@ func cloneChartOfCalculationTypes(value ChartOfCalculationTypesDefinition) Chart
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
+	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
+	value.StandardTableParts = cloneStandardTableParts(value.StandardTableParts)
 	return value
 }
 

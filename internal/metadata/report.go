@@ -125,7 +125,7 @@ func validateRunningObjectShape(attributes []Attribute, parts []TablePart, confi
 		names[strings.ToLower(attribute.Name)] = true
 	}
 	issues = append(issues, validateTableParts(parts, names, configuration, reserved)...)
-	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", attributes}}, parts)...)
+	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", attributes}}, parts, tablePartStandardChoices(parts)...)...)
 	return append(issues, validateAttributeUse([]fieldGroup{{"attributes", attributes}}, parts, false, false)...)
 }
 

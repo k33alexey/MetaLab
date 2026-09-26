@@ -95,6 +95,8 @@ type ChartOfAccountsDefinition struct {
 	Attributes                  []Attribute            `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 	TableParts                  []TablePart            `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
 	Characteristics             []ObjectCharacteristic `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
+	StandardAttributes          []StandardAttribute    `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
+	StandardTableParts          []StandardTablePart    `yaml:"standard_table_parts,omitempty" json:"standardTableParts,omitempty"`
 	Forms                       ObjectForms            `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands                    []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates                   []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
@@ -113,14 +115,17 @@ func DecodeChartOfAccounts(source string, reader io.Reader, configuration projec
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
-		code:              value.Code,
-		descriptionLength: value.DescriptionLength,
-		attributes:        value.Attributes,
-		tableParts:        value.TableParts,
-		forms:             HierarchicalObjectForms{ObjectForms: value.Forms},
-		list:              value.List,
-		reservedName:      reservedChartOfAccountsName,
-		codeSeries:        true,
+		code:               value.Code,
+		descriptionLength:  value.DescriptionLength,
+		attributes:         value.Attributes,
+		tableParts:         value.TableParts,
+		forms:              HierarchicalObjectForms{ObjectForms: value.Forms},
+		list:               value.List,
+		reservedName:       reservedChartOfAccountsName,
+		codeSeries:         true,
+		kind:               ChartOfAccountsKind,
+		standardAttributes: value.StandardAttributes,
+		standardTableParts: value.StandardTableParts,
 	}, configuration)...)
 	issues = append(issues, validateAccountingFlags("accounting_flags", value.AccountingFlags, configuration)...)
 	issues = append(issues, validateAccountingFlags("ext_dimension_accounting_flags", value.ExtDimensionAccountingFlags, configuration)...)
@@ -296,11 +301,14 @@ func validatePredefinedAccounts(value ChartOfAccountsDefinition) []string {
 // standard attributes: order, whether it is off balance, and what its balance
 // means.
 func reservedChartOfAccountsName(name string) bool {
-	switch strings.ToLower(name) {
-	case "порядок", "order", "забалансовый", "offbalance", "вид", "accounttype", "видсчета", "видсчёта":
+	switch foldStandardName(name) {
+	case "accounttype", "видсчета":
+		// Two spellings of the kind of account that are not the prototype's
+		// own - the prototype calls the field Вид - but which a developer
+		// reaches for, and which would then shadow it.
 		return true
 	default:
-		return reservedCatalogObjectName(name)
+		return reservedStandardName(ChartOfAccountsKind, name) || reservedRowVersionName(name)
 	}
 }
 
@@ -375,11 +383,7 @@ func cloneAccountingFlags(values []AccountingFlag) []AccountingFlag {
 func cloneChartOfAccounts(value ChartOfAccountsDefinition) ChartOfAccountsDefinition {
 	value.Title = cloneTitle(value.Title)
 	value.Attributes = cloneAttributes(value.Attributes)
-	value.TableParts = slices.Clone(value.TableParts)
-	for index := range value.TableParts {
-		value.TableParts[index].Title = cloneTitle(value.TableParts[index].Title)
-		value.TableParts[index].Attributes = cloneAttributes(value.TableParts[index].Attributes)
-	}
+	value.TableParts = cloneTableParts(value.TableParts)
 	value.AccountingFlags = cloneAccountingFlags(value.AccountingFlags)
 	value.ExtDimensionAccountingFlags = cloneAccountingFlags(value.ExtDimensionAccountingFlags)
 	if value.ExtDimensionTypes != nil {
@@ -400,6 +404,8 @@ func cloneChartOfAccounts(value ChartOfAccountsDefinition) ChartOfAccountsDefini
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
+	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
+	value.StandardTableParts = cloneStandardTableParts(value.StandardTableParts)
 	return value
 }
 

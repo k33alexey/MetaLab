@@ -92,13 +92,14 @@ type CalculationRegisterDefinition struct {
 	ScheduleValue *uuid.UUID `yaml:"schedule_value,omitempty" json:"scheduleValue,omitempty"`
 	ScheduleDate  *uuid.UUID `yaml:"schedule_date,omitempty" json:"scheduleDate,omitempty"`
 
-	Dimensions     []CalculationRegisterDimension `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
-	Resources      []Attribute                    `yaml:"resources" json:"resources"`
-	Attributes     []Attribute                    `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	Recalculations []Recalculation                `yaml:"recalculations,omitempty" json:"recalculations,omitempty"`
-	Forms          RegisterForms                  `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands       []ObjectCommand                `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates      []ObjectTemplate               `yaml:"templates,omitempty" json:"templates,omitempty"`
+	Dimensions         []CalculationRegisterDimension `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
+	Resources          []Attribute                    `yaml:"resources" json:"resources"`
+	Attributes         []Attribute                    `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	StandardAttributes []StandardAttribute            `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
+	Recalculations     []Recalculation                `yaml:"recalculations,omitempty" json:"recalculations,omitempty"`
+	Forms              RegisterForms                  `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands           []ObjectCommand                `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates          []ObjectTemplate               `yaml:"templates,omitempty" json:"templates,omitempty"`
 }
 
 // DecodeCalculationRegister reads and validates one calculation register.
@@ -150,7 +151,8 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 		return names[strings.ToLower(name)] || reservedCalculationRegisterName(name)
 	})...)
 	calculationFields := []fieldGroup{{"resources", value.Resources}, {"attributes", value.Attributes}}
-	issues = append(issues, validateFieldLinks(calculationFields, nil)...)
+	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(CalculationRegisterKind), configuration)...)
+	issues = append(issues, validateFieldLinks(calculationFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 	issues = append(issues, validateAttributeUse(calculationFields, nil, false, false)...)
 	issues = append(issues, validateRecalculations(value, configuration)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
@@ -249,16 +251,15 @@ func validateRecalculations(value CalculationRegisterDefinition, configuration p
 // it was registered and by what, the kind of accrual, the periods it acts and
 // gathers its base over, and whether it reverses an earlier record.
 func reservedCalculationRegisterName(name string) bool {
-	switch strings.ToLower(name) {
-	case "период", "period", "регистратор", "recorder", "номерстроки", "linenumber",
-		"активность", "active", "видрасчета", "видрасчёта", "calculationtype",
-		"периоддействия", "actionperiod",
-		"периоддействияначало", "actionperiodstart", "периоддействияконец", "actionperiodend",
-		"базовыйпериодначало", "baseperiodstart", "базовыйпериодконец", "baseperiodend",
-		"сторно", "reversing", "recordid":
+	switch foldStandardName(name) {
+	case "период", "period",
+		// Not the prototype's names - it says BegOfActionPeriod and the rest -
+		// but the obvious ones to reach for, and each would shadow a field.
+		"actionperiodstart", "actionperiodend", "baseperiodstart", "baseperiodend",
+		"reversing", "recordid":
 		return true
 	default:
-		return false
+		return reservedStandardName(CalculationRegisterKind, name)
 	}
 }
 
@@ -299,6 +300,7 @@ func cloneCalculationRegister(value CalculationRegisterDefinition) CalculationRe
 	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	return value
 }
 

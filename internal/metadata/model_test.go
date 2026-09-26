@@ -239,8 +239,8 @@ list:
   search_fields: [Description]
 attributes:
   - id: `+attributeID+`
-    name: Родитель
-    title: {ru: Родитель}
+    name: ГоловнойКонтрагент
+    title: {ru: Головной контрагент}
     types: [{kind: catalog, reference: `+catalogID+`}]
     indexing: index
 table_parts:
@@ -264,7 +264,7 @@ table_parts:
 	definition.Attributes[0].Name = "Changed"
 	definition.List.SearchFields[0] = "Changed"
 	again, _ := catalog.CatalogDefinition("Контрагенты")
-	if again.Attributes[0].Name != "Родитель" || again.List.SearchFields[0] != "Description" {
+	if again.Attributes[0].Name != "ГоловнойКонтрагент" || again.List.SearchFields[0] != "Description" {
 		t.Fatal("catalog lookup exposed mutable attribute storage")
 	}
 }

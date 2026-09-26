@@ -32,18 +32,19 @@ const (
 
 // InformationRegisterDefinition describes one ML information register.
 type InformationRegisterDefinition struct {
-	Format      int                            `yaml:"format"`
-	ID          uuid.UUID                      `yaml:"id"`
-	Name        string                         `yaml:"name"`
-	Title       LocalizedText                  `yaml:"title"`
-	WriteMode   InformationRegisterWriteMode   `yaml:"write_mode"`
-	Periodicity InformationRegisterPeriodicity `yaml:"periodicity"`
-	Dimensions  []Attribute                    `yaml:"dimensions,omitempty"`
-	Resources   []Attribute                    `yaml:"resources,omitempty"`
-	Attributes  []Attribute                    `yaml:"attributes,omitempty"`
-	Forms       InformationRegisterForms       `yaml:"forms,omitempty"`
-	Commands    []ObjectCommand                `yaml:"commands,omitempty"`
-	Templates   []ObjectTemplate               `yaml:"templates,omitempty"`
+	Format             int                            `yaml:"format"`
+	ID                 uuid.UUID                      `yaml:"id"`
+	Name               string                         `yaml:"name"`
+	Title              LocalizedText                  `yaml:"title"`
+	WriteMode          InformationRegisterWriteMode   `yaml:"write_mode"`
+	Periodicity        InformationRegisterPeriodicity `yaml:"periodicity"`
+	Dimensions         []Attribute                    `yaml:"dimensions,omitempty"`
+	Resources          []Attribute                    `yaml:"resources,omitempty"`
+	Attributes         []Attribute                    `yaml:"attributes,omitempty"`
+	StandardAttributes []StandardAttribute            `yaml:"standard_attributes,omitempty"`
+	Forms              InformationRegisterForms       `yaml:"forms,omitempty"`
+	Commands           []ObjectCommand                `yaml:"commands,omitempty"`
+	Templates          []ObjectTemplate               `yaml:"templates,omitempty"`
 }
 
 func DecodeInformationRegister(source string, reader io.Reader, configuration project.Project) (InformationRegisterDefinition, error) {
@@ -73,7 +74,8 @@ func DecodeInformationRegister(source string, reader io.Reader, configuration pr
 	registerFields := []fieldGroup{
 		{"dimensions", value.Dimensions}, {"resources", value.Resources}, {"attributes", value.Attributes},
 	}
-	issues = append(issues, validateFieldLinks(registerFields, nil)...)
+	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(InformationRegisterKind), configuration)...)
+	issues = append(issues, validateFieldLinks(registerFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 	issues = append(issues, validateAttributeUse(registerFields, nil, false, false)...)
 	if len(value.Dimensions)+len(value.Resources)+len(value.Attributes) == 0 {
 		issues = append(issues, "dimensions, resources or attributes must contain at least one item")
@@ -112,11 +114,11 @@ func DecodeInformationRegister(source string, reader io.Reader, configuration pr
 }
 
 func reservedInformationRegisterName(name string) bool {
-	switch strings.ToLower(name) {
-	case "период", "period", "регистратор", "recorder", "номерстроки", "linenumber", "активность", "active", "recordid":
+	switch foldStandardName(name) {
+	case "recordid":
 		return true
 	default:
-		return false
+		return reservedStandardName(InformationRegisterKind, name)
 	}
 }
 
@@ -128,6 +130,7 @@ func cloneInformationRegisterDefinition(value InformationRegisterDefinition) Inf
 	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	return value
 }
 

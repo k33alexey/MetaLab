@@ -63,6 +63,7 @@ type ExchangePlanDefinition struct {
 	Attributes          []Attribute            `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 	TableParts          []TablePart            `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
 	Characteristics     []ObjectCharacteristic `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
+	StandardAttributes  []StandardAttribute    `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
 	Forms               ObjectForms            `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands            []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates           []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
@@ -96,13 +97,15 @@ func DecodeExchangePlan(source string, reader io.Reader, configuration project.P
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
-		code:              value.Code,
-		descriptionLength: value.DescriptionLength,
-		attributes:        value.Attributes,
-		tableParts:        value.TableParts,
-		forms:             HierarchicalObjectForms{ObjectForms: value.Forms},
-		list:              value.List,
-		reservedName:      reservedExchangePlanName,
+		code:               value.Code,
+		descriptionLength:  value.DescriptionLength,
+		attributes:         value.Attributes,
+		tableParts:         value.TableParts,
+		forms:              HierarchicalObjectForms{ObjectForms: value.Forms},
+		list:               value.List,
+		reservedName:       reservedExchangePlanName,
+		kind:               ExchangePlanKind,
+		standardAttributes: value.StandardAttributes,
 	}, configuration)...)
 	issues = append(issues, validateExchangePlanContent(value)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
@@ -157,30 +160,20 @@ func validateExchangePlanContent(value ExchangePlanDefinition) []string {
 // this one, and the two counters the sides keep of what they have sent and
 // received.
 func reservedExchangePlanName(name string) bool {
-	switch strings.ToLower(name) {
-	case "ссылка", "ref", "код", "code", "наименование", "description", "версия", "version",
-		"пометкаудаления", "deletionmark", "этотузел", "thisnode",
-		"номеротправленного", "sentno", "номерпринятого", "receivedno":
-		return true
-	default:
-		return false
-	}
+	return reservedStandardName(ExchangePlanKind, name) || reservedRowVersionName(name)
 }
 
 func cloneExchangePlan(value ExchangePlanDefinition) ExchangePlanDefinition {
 	value.Title = cloneTitle(value.Title)
 	value.Content = slices.Clone(value.Content)
 	value.Attributes = cloneAttributes(value.Attributes)
-	value.TableParts = slices.Clone(value.TableParts)
-	for index := range value.TableParts {
-		value.TableParts[index].Title = cloneTitle(value.TableParts[index].Title)
-		value.TableParts[index].Attributes = cloneAttributes(value.TableParts[index].Attributes)
-	}
+	value.TableParts = cloneTableParts(value.TableParts)
 	value.Forms = cloneFormSet(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
+	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	return value
 }
 

@@ -224,6 +224,11 @@ func validateFieldSettings(prefix string, attribute Attribute, configuration pro
 // a defined type stands for types that are not written down here, and what the
 // field may hold is then known only with the whole configuration in hand.
 func validateFieldBound(path string, bound Value, types []Type) []string {
+	// A field whose types the description does not carry - a standard field,
+	// whose type is the platform's - has nothing here to be judged against.
+	if len(types) == 0 {
+		return nil
+	}
 	for _, item := range types {
 		if IsTypeSet(item.Kind) {
 			return nil
@@ -329,11 +334,18 @@ type fieldGroup struct {
 	fields []Attribute
 }
 
+// choiceHolder is anything that draws a link without being a field the link
+// may point at: a standard field, whose identity is the platform's.
+type choiceHolder struct {
+	path   string
+	choice FieldChoice
+}
+
 // validateFieldLinks resolves the links one object's fields draw between each
 // other. A link to a field that is not there takes its parameter from nowhere:
 // the list is never narrowed, and the user picks out of everything with no
 // sign that anything was meant to narrow it.
-func validateFieldLinks(groups []fieldGroup, parts []TablePart) []string {
+func validateFieldLinks(groups []fieldGroup, parts []TablePart, extra ...choiceHolder) []string {
 	within := map[uuid.UUID]bool{}
 	partFields := map[uuid.UUID]map[uuid.UUID]bool{}
 	for _, group := range groups {
@@ -375,6 +387,9 @@ func validateFieldLinks(groups []fieldGroup, parts []TablePart) []string {
 		for index, attribute := range part.Attributes {
 			check(fmt.Sprintf("table_parts[%d].attributes[%d]", partIndex, index), attribute)
 		}
+	}
+	for _, holder := range extra {
+		check(holder.path, Attribute{Choice: holder.choice})
 	}
 	return issues
 }

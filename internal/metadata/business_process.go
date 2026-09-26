@@ -151,6 +151,7 @@ type BusinessProcessDefinition struct {
 	Attributes            []Attribute            `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 	TableParts            []TablePart            `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
 	Characteristics       []ObjectCharacteristic `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
+	StandardAttributes    []StandardAttribute    `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
 	Forms                 ObjectForms            `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands              []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates             []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
@@ -165,12 +166,14 @@ func DecodeBusinessProcess(source string, reader io.Reader, configuration projec
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateNumberedObjectShape(numberedObjectShape{
-		number:       value.Number,
-		attributes:   value.Attributes,
-		tableParts:   value.TableParts,
-		forms:        value.Forms,
-		list:         value.List,
-		reservedName: reservedBusinessProcessName,
+		number:             value.Number,
+		attributes:         value.Attributes,
+		tableParts:         value.TableParts,
+		forms:              value.Forms,
+		list:               value.List,
+		reservedName:       reservedBusinessProcessName,
+		kind:               BusinessProcessKind,
+		standardAttributes: value.StandardAttributes,
 	}, configuration)...)
 	if value.Task != nil && value.Task.IsZero() {
 		issues = append(issues, "task must be a non-zero UUID")
@@ -391,12 +394,13 @@ func validateRouteDecorations(decorations []RouteDecoration, configuration proje
 // process: its number and date, whether it is started and completed, and the
 // task that heads it.
 func reservedBusinessProcessName(name string) bool {
-	switch strings.ToLower(name) {
-	case "ссылка", "ref", "номер", "number", "дата", "date", "пометкаудаления", "deletionmark",
-		"стартован", "started", "завершен", "завершён", "completed", "главнаязадача", "headtask", "версия", "version":
+	switch foldStandardName(name) {
+	case "главнаязадача":
+		// The prototype calls it ВедущаяЗадача; this is the other word for the
+		// same thing, and a field under it would read as the standard one.
 		return true
 	default:
-		return false
+		return reservedStandardName(BusinessProcessKind, name) || reservedRowVersionName(name)
 	}
 }
 
@@ -442,11 +446,7 @@ func cloneRouteMap(route RouteMap) RouteMap {
 func cloneBusinessProcess(value BusinessProcessDefinition) BusinessProcessDefinition {
 	value.Title = cloneTitle(value.Title)
 	value.Attributes = cloneAttributes(value.Attributes)
-	value.TableParts = slices.Clone(value.TableParts)
-	for index := range value.TableParts {
-		value.TableParts[index].Title = cloneTitle(value.TableParts[index].Title)
-		value.TableParts[index].Attributes = cloneAttributes(value.TableParts[index].Attributes)
-	}
+	value.TableParts = cloneTableParts(value.TableParts)
 	value.Route = cloneRouteMap(value.Route)
 	for _, module := range []**uuid.UUID{&value.Task} {
 		if *module != nil {
@@ -459,6 +459,7 @@ func cloneBusinessProcess(value BusinessProcessDefinition) BusinessProcessDefini
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
+	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	return value
 }
 

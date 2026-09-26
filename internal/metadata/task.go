@@ -57,14 +57,15 @@ type TaskDefinition struct {
 	MainAddressingAttribute string `yaml:"main_addressing_attribute,omitempty" json:"mainAddressingAttribute,omitempty"`
 	// CurrentPerformer is the session parameter the platform reads to know
 	// whose tasks to show, without any application code.
-	CurrentPerformer *uuid.UUID             `yaml:"current_performer,omitempty" json:"currentPerformer,omitempty"`
-	Attributes       []Attribute            `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	TableParts       []TablePart            `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	Characteristics  []ObjectCharacteristic `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
-	Forms            ObjectForms            `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands         []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates        []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
-	List             ListSettings           `yaml:"list,omitempty" json:"list,omitempty"`
+	CurrentPerformer   *uuid.UUID             `yaml:"current_performer,omitempty" json:"currentPerformer,omitempty"`
+	Attributes         []Attribute            `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts         []TablePart            `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	Characteristics    []ObjectCharacteristic `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
+	StandardAttributes []StandardAttribute    `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
+	Forms              ObjectForms            `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands           []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates          []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
+	List               ListSettings           `yaml:"list,omitempty" json:"list,omitempty"`
 }
 
 // DecodeTask reads and validates one kind of task.
@@ -75,12 +76,14 @@ func DecodeTask(source string, reader io.Reader, configuration project.Project) 
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateNumberedObjectShape(numberedObjectShape{
-		number:       value.Number,
-		attributes:   value.Attributes,
-		tableParts:   value.TableParts,
-		forms:        value.Forms,
-		list:         value.List,
-		reservedName: reservedTaskName,
+		number:             value.Number,
+		attributes:         value.Attributes,
+		tableParts:         value.TableParts,
+		forms:              value.Forms,
+		list:               value.List,
+		reservedName:       reservedTaskName,
+		kind:               TaskKind,
+		standardAttributes: value.StandardAttributes,
 	}, configuration)...)
 	if value.DescriptionLength < 1 || value.DescriptionLength > 1_048_576 {
 		issues = append(issues, "description_length must be 1..1048576")
@@ -171,24 +174,13 @@ func validateAddressing(value TaskDefinition, configuration project.Project) []s
 // and description, whether it is executed, and where it stands - the business
 // process and the point of its route.
 func reservedTaskName(name string) bool {
-	switch strings.ToLower(name) {
-	case "ссылка", "ref", "номер", "number", "дата", "date", "наименование", "description",
-		"выполнена", "executed", "бизнеспроцесс", "businessprocess", "точкамаршрута", "routepoint",
-		"пометкаудаления", "deletionmark", "версия", "version":
-		return true
-	default:
-		return false
-	}
+	return reservedStandardName(TaskKind, name) || reservedRowVersionName(name)
 }
 
 func cloneTask(value TaskDefinition) TaskDefinition {
 	value.Title = cloneTitle(value.Title)
 	value.Attributes = cloneAttributes(value.Attributes)
-	value.TableParts = slices.Clone(value.TableParts)
-	for index := range value.TableParts {
-		value.TableParts[index].Title = cloneTitle(value.TableParts[index].Title)
-		value.TableParts[index].Attributes = cloneAttributes(value.TableParts[index].Attributes)
-	}
+	value.TableParts = cloneTableParts(value.TableParts)
 	value.AddressingAttributes = slices.Clone(value.AddressingAttributes)
 	for index := range value.AddressingAttributes {
 		value.AddressingAttributes[index].Title = cloneTitle(value.AddressingAttributes[index].Title)
@@ -209,6 +201,7 @@ func cloneTask(value TaskDefinition) TaskDefinition {
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
+	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	return value
 }
 
