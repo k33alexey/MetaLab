@@ -146,14 +146,15 @@ type BusinessProcessDefinition struct {
 	Task *uuid.UUID `yaml:"task,omitempty" json:"task,omitempty"`
 	// CreateTasksPrivileged creates tasks past the rights of whoever moved the
 	// process: the step is the application's decision, not the user's.
-	CreateTasksPrivileged bool             `yaml:"create_tasks_privileged,omitempty" json:"createTasksPrivileged,omitempty"`
-	Route                 RouteMap         `yaml:"route,omitempty" json:"route,omitempty"`
-	Attributes            []Attribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	TableParts            []TablePart      `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	Forms                 ObjectForms      `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands              []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates             []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
-	List                  ListSettings     `yaml:"list,omitempty" json:"list,omitempty"`
+	CreateTasksPrivileged bool                   `yaml:"create_tasks_privileged,omitempty" json:"createTasksPrivileged,omitempty"`
+	Route                 RouteMap               `yaml:"route,omitempty" json:"route,omitempty"`
+	Attributes            []Attribute            `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts            []TablePart            `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	Characteristics       []ObjectCharacteristic `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
+	Forms                 ObjectForms            `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands              []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates             []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
+	List                  ListSettings           `yaml:"list,omitempty" json:"list,omitempty"`
 }
 
 // DecodeBusinessProcess reads and validates one business process.
@@ -177,6 +178,7 @@ func DecodeBusinessProcess(source string, reader io.Reader, configuration projec
 	issues = append(issues, validateRouteMap(value.Route, configuration)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return BusinessProcessDefinition{}, err
 	}
@@ -456,6 +458,7 @@ func cloneBusinessProcess(value BusinessProcessDefinition) BusinessProcessDefini
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	return value
 }
 

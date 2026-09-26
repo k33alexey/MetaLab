@@ -38,14 +38,15 @@ type DocumentDefinition struct {
 	// Numerator names a numbering shared with other kinds of document. When it
 	// is named the document declares no number of its own: two sources for one
 	// number is one too many, and the shared one wins by definition.
-	Numerator  *uuid.UUID       `yaml:"numerator,omitempty"`
-	Posting    bool             `yaml:"posting,omitempty"`
-	Attributes []Attribute      `yaml:"attributes,omitempty"`
-	TableParts []TablePart      `yaml:"table_parts,omitempty"`
-	Forms      ObjectForms      `yaml:"forms,omitempty"`
-	Commands   []ObjectCommand  `yaml:"commands,omitempty"`
-	Templates  []ObjectTemplate `yaml:"templates,omitempty"`
-	List       ListSettings     `yaml:"list,omitempty"`
+	Numerator       *uuid.UUID             `yaml:"numerator,omitempty"`
+	Posting         bool                   `yaml:"posting,omitempty"`
+	Attributes      []Attribute            `yaml:"attributes,omitempty"`
+	TableParts      []TablePart            `yaml:"table_parts,omitempty"`
+	Characteristics []ObjectCharacteristic `yaml:"characteristics,omitempty"`
+	Forms           ObjectForms            `yaml:"forms,omitempty"`
+	Commands        []ObjectCommand        `yaml:"commands,omitempty"`
+	Templates       []ObjectTemplate       `yaml:"templates,omitempty"`
+	List            ListSettings           `yaml:"list,omitempty"`
 }
 
 func DecodeDocument(source string, reader io.Reader, configuration project.Project) (DocumentDefinition, error) {
@@ -77,6 +78,7 @@ func DecodeDocument(source string, reader io.Reader, configuration project.Proje
 	issues = append(issues, validateNumberedObjectShape(shape, configuration)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return DocumentDefinition{}, err
 	}
@@ -218,6 +220,7 @@ func cloneDocumentDefinition(value DocumentDefinition) DocumentDefinition {
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	return value
 }
 

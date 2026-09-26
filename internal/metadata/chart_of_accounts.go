@@ -88,17 +88,18 @@ type ChartOfAccountsDefinition struct {
 	// ExtDimensionTypes is the chart of characteristic types that supplies the
 	// kinds of analytics; MaxExtDimensionCount is how many an account may
 	// carry at once.
-	ExtDimensionTypes           *uuid.UUID          `yaml:"ext_dimension_types,omitempty" json:"extDimensionTypes,omitempty"`
-	MaxExtDimensionCount        int                 `yaml:"max_ext_dimension_count,omitempty" json:"maxExtDimensionCount,omitempty"`
-	AccountingFlags             []AccountingFlag    `yaml:"accounting_flags,omitempty" json:"accountingFlags,omitempty"`
-	ExtDimensionAccountingFlags []AccountingFlag    `yaml:"ext_dimension_accounting_flags,omitempty" json:"extDimensionAccountingFlags,omitempty"`
-	Attributes                  []Attribute         `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	TableParts                  []TablePart         `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	Forms                       ObjectForms         `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands                    []ObjectCommand     `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates                   []ObjectTemplate    `yaml:"templates,omitempty" json:"templates,omitempty"`
-	List                        ListSettings        `yaml:"list,omitempty" json:"list,omitempty"`
-	Predefined                  []PredefinedAccount `yaml:"predefined,omitempty" json:"predefined,omitempty"`
+	ExtDimensionTypes           *uuid.UUID             `yaml:"ext_dimension_types,omitempty" json:"extDimensionTypes,omitempty"`
+	MaxExtDimensionCount        int                    `yaml:"max_ext_dimension_count,omitempty" json:"maxExtDimensionCount,omitempty"`
+	AccountingFlags             []AccountingFlag       `yaml:"accounting_flags,omitempty" json:"accountingFlags,omitempty"`
+	ExtDimensionAccountingFlags []AccountingFlag       `yaml:"ext_dimension_accounting_flags,omitempty" json:"extDimensionAccountingFlags,omitempty"`
+	Attributes                  []Attribute            `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts                  []TablePart            `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	Characteristics             []ObjectCharacteristic `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
+	Forms                       ObjectForms            `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands                    []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates                   []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
+	List                        ListSettings           `yaml:"list,omitempty" json:"list,omitempty"`
+	Predefined                  []PredefinedAccount    `yaml:"predefined,omitempty" json:"predefined,omitempty"`
 }
 
 // maxExtDimensions is the prototype's own ceiling on analytics per account.
@@ -143,6 +144,7 @@ func DecodeChartOfAccounts(source string, reader io.Reader, configuration projec
 	issues = append(issues, validatePredefinedAccounts(value)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ChartOfAccountsDefinition{}, err
 	}
@@ -396,6 +398,7 @@ func cloneChartOfAccounts(value ChartOfAccountsDefinition) ChartOfAccountsDefini
 	}
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	return value
 }
 

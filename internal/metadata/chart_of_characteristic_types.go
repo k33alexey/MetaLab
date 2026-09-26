@@ -38,6 +38,7 @@ type ChartOfCharacteristicTypesDefinition struct {
 	AdditionalValues *uuid.UUID              `yaml:"additional_values,omitempty" json:"additionalValues,omitempty"`
 	Attributes       []Attribute             `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 	TableParts       []TablePart             `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	Characteristics  []ObjectCharacteristic  `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
 	Forms            HierarchicalObjectForms `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands         []ObjectCommand         `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates        []ObjectTemplate        `yaml:"templates,omitempty" json:"templates,omitempty"`
@@ -71,6 +72,7 @@ func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, configura
 	}
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ChartOfCharacteristicTypesDefinition{}, err
 	}
@@ -110,6 +112,7 @@ func cloneChartOfCharacteristicTypes(value ChartOfCharacteristicTypesDefinition)
 	}
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	return value
 }
 

@@ -1773,6 +1773,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	if err := catalog.validateFilterCriteria(); err != nil {
 		return err
 	}
+	if err := catalog.validateCharacteristics(); err != nil {
+		return err
+	}
 	if err := catalog.validateSettingsStorageReferences(); err != nil {
 		return err
 	}

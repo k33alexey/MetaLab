@@ -345,9 +345,10 @@ type Enumeration struct {
 	Explanation LocalizedText `yaml:"explanation,omitempty"`
 	// ListPresentation names the list of values for the user; the extended one
 	// is used where there is room for a longer wording.
-	ListPresentation         LocalizedText      `yaml:"list_presentation,omitempty"`
-	ExtendedListPresentation LocalizedText      `yaml:"extended_list_presentation,omitempty"`
-	Values                   []EnumerationValue `yaml:"values"`
+	ListPresentation         LocalizedText          `yaml:"list_presentation,omitempty"`
+	ExtendedListPresentation LocalizedText          `yaml:"extended_list_presentation,omitempty"`
+	Values                   []EnumerationValue     `yaml:"values"`
+	Characteristics          []ObjectCharacteristic `yaml:"characteristics,omitempty"`
 	// How a value of this enumeration is picked where it is asked for.
 	ChoiceMode           ChoiceMode    `yaml:"choice_mode,omitempty"`
 	QuickChoice          bool          `yaml:"quick_choice,omitempty"`
@@ -441,6 +442,7 @@ type CatalogDefinition struct {
 	Hierarchy         Hierarchy               `yaml:"hierarchy,omitempty" json:"hierarchy,omitempty"`
 	Attributes        []Attribute             `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 	TableParts        []TablePart             `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	Characteristics   []ObjectCharacteristic  `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
 	Forms             HierarchicalObjectForms `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands          []ObjectCommand         `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates         []ObjectTemplate        `yaml:"templates,omitempty" json:"templates,omitempty"`
@@ -911,6 +913,7 @@ func DecodeEnumeration(source string, reader io.Reader, configuration project.Pr
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return Enumeration{}, err
 	}
@@ -949,6 +952,7 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 	}, configuration)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return CatalogDefinition{}, err
 	}
@@ -1435,6 +1439,7 @@ func cloneEnumeration(value Enumeration) Enumeration {
 	}
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	return value
 }
 func cloneDefinedType(value DefinedTypeObject) DefinedTypeObject {
@@ -1458,6 +1463,7 @@ func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
 	}
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	return value
 }
 
