@@ -821,7 +821,6 @@ func TestHierarchySettingsAreCheckedAgainstEachOther(t *testing.T) {
 		"уровни без ограничения":          "hierarchy: {enabled: true, kind: items, level_count: 3}",
 		"ограничение без числа уровней":   "hierarchy: {enabled: true, kind: items, limit_levels: true}",
 		"неизвестный вид":                 "hierarchy: {enabled: true, kind: деревья}",
-		"неизвестная серия кодов":         "hierarchy: {enabled: true, kind: items, series: своя}",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -839,6 +838,19 @@ description_length: 100
 			}
 		})
 	}
+
+	// The range a code is numbered within belongs to the code, not to the
+	// hierarchy, so it is refused there.
+	_, err := DecodeCatalog("object.yaml", strings.NewReader(`format: 1
+id: `+catalogID+`
+name: Товары
+title: {ru: Товары}
+code: {type: string, length: 9, series: своя}
+description_length: 100
+`), metadataConfiguration())
+	if err == nil || !strings.Contains(err.Error(), "code.series must be") {
+		t.Fatalf("an unknown code series was accepted: %v", err)
+	}
 }
 
 // A hierarchical object stores the parent, and where folders exist it stores
@@ -851,9 +863,9 @@ func TestHierarchyReachesStorage(t *testing.T) {
 id: `+catalogID+`
 name: Контрагенты
 title: {ru: Контрагенты}
-code: {type: string, length: 9, auto: true}
+code: {type: string, length: 9, auto: true, series: within-subordination}
 description_length: 100
-hierarchy: {enabled: true, kind: folders-and-items, folders_on_top: true, limit_levels: true, level_count: 3, series: within-subordination}
+hierarchy: {enabled: true, kind: folders-and-items, folders_on_top: true, limit_levels: true, level_count: 3}
 predefined:
   - id: 40000000-0000-4000-8000-000000000020
     name: Поставщики

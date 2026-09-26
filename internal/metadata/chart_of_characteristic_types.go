@@ -64,6 +64,7 @@ func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, configura
 		predefined:        value.Predefined,
 		reservedName:      reservedChartOfCharacteristicTypesName,
 		attributeUse:      true,
+		codeSeries:        true,
 	}, configuration)...)
 	// The value type is the point of the whole object: a chart that allows
 	// nothing describes characteristics nobody can fill in.

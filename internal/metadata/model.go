@@ -152,13 +152,23 @@ const (
 	ItemsHierarchy           HierarchyKind = "items"
 )
 
-// CodeSeries says within what a code is unique and auto-numbered: the whole
-// object, or one level of subordination.
+// CodeSeries says within what a code is unique and automatically assigned:
+// the whole object, one place in the subordination, or one owner whatever the
+// parent.
+//
+// It belongs to the code and not to the hierarchy, and the demonstration
+// configuration says why: three of the five catalogs numbered within their
+// owner have no hierarchy at all. Held under the hierarchy, their numbering
+// had nowhere to be written down.
 type CodeSeries string
 
 const (
-	WholeObjectSeries      CodeSeries = "whole"
-	SubordinationSeries    CodeSeries = "within-subordination"
+	WholeObjectSeries   CodeSeries = "whole"
+	SubordinationSeries CodeSeries = "within-subordination"
+	// WithinOwnerSeries numbers and checks among the rows of one owner, across
+	// different parents. Only a catalog has it - an account and a kind of
+	// characteristic have no owner - and only a subordinate one.
+	WithinOwnerSeries      CodeSeries = "within-owner-subordination"
 	maxHierarchyLevelCount            = 32
 )
 
@@ -374,6 +384,8 @@ type CatalogCode struct {
 	Length int      `yaml:"length" json:"length"`
 	Auto   bool     `yaml:"auto" json:"auto"`
 	Unique bool     `yaml:"unique" json:"unique"`
+	// Series is the range a code is unique and auto-assigned within.
+	Series CodeSeries `yaml:"series,omitempty" json:"series,omitempty"`
 }
 
 // Hierarchy is how an object nests inside itself. It is off by default: a flat
@@ -389,9 +401,6 @@ type Hierarchy struct {
 	// unlimited.
 	LimitLevels bool `yaml:"limit_levels,omitempty" json:"limitLevels,omitempty"`
 	LevelCount  int  `yaml:"level_count,omitempty" json:"levelCount,omitempty"`
-	// Series says whether an automatic code is unique across the whole object
-	// or within one parent.
-	Series CodeSeries `yaml:"series,omitempty" json:"series,omitempty"`
 }
 
 // PredefinedCatalogItem binds configuration identity to one stable catalog reference.
@@ -451,21 +460,26 @@ type ListSettings struct {
 
 // CatalogDefinition describes one ML catalog and its persistent record shape.
 type CatalogDefinition struct {
-	Format            int                     `yaml:"format" json:"format"`
-	ID                uuid.UUID               `yaml:"id" json:"id"`
-	Name              string                  `yaml:"name" json:"name"`
-	Title             LocalizedText           `yaml:"title" json:"title"`
-	Code              CatalogCode             `yaml:"code" json:"code"`
-	DescriptionLength int                     `yaml:"description_length" json:"descriptionLength"`
-	Hierarchy         Hierarchy               `yaml:"hierarchy,omitempty" json:"hierarchy,omitempty"`
-	Attributes        []Attribute             `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	TableParts        []TablePart             `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	Characteristics   []ObjectCharacteristic  `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
-	Forms             HierarchicalObjectForms `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands          []ObjectCommand         `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates         []ObjectTemplate        `yaml:"templates,omitempty" json:"templates,omitempty"`
-	List              ListSettings            `yaml:"list,omitempty" json:"list,omitempty"`
-	Predefined        []PredefinedCatalogItem `yaml:"predefined,omitempty" json:"predefined,omitempty"`
+	Format            int           `yaml:"format" json:"format"`
+	ID                uuid.UUID     `yaml:"id" json:"id"`
+	Name              string        `yaml:"name" json:"name"`
+	Title             LocalizedText `yaml:"title" json:"title"`
+	Code              CatalogCode   `yaml:"code" json:"code"`
+	DescriptionLength int           `yaml:"description_length" json:"descriptionLength"`
+	Hierarchy         Hierarchy     `yaml:"hierarchy,omitempty" json:"hierarchy,omitempty"`
+	// Owners are the objects whose elements a row of this catalog belongs to,
+	// and Subordination says whether it belongs to their items, their folders
+	// or either - see catalog_owners.go.
+	Owners          []uuid.UUID             `yaml:"owners,omitempty" json:"owners,omitempty"`
+	Subordination   SubordinationKind       `yaml:"subordination,omitempty" json:"subordination,omitempty"`
+	Attributes      []Attribute             `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts      []TablePart             `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	Characteristics []ObjectCharacteristic  `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
+	Forms           HierarchicalObjectForms `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands        []ObjectCommand         `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates       []ObjectTemplate        `yaml:"templates,omitempty" json:"templates,omitempty"`
+	List            ListSettings            `yaml:"list,omitempty" json:"list,omitempty"`
+	Predefined      []PredefinedCatalogItem `yaml:"predefined,omitempty" json:"predefined,omitempty"`
 }
 
 // Catalog is an immutable-by-convention snapshot of the supported metadata kinds.
@@ -968,7 +982,10 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 		predefined:        value.Predefined,
 		reservedName:      reservedCatalogObjectName,
 		attributeUse:      true,
+		codeSeries:        true,
+		ownerSeries:       true,
 	}, configuration)...)
+	issues = append(issues, validateCatalogSubordination(value.Owners, value.Subordination, value.Code)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
@@ -1000,6 +1017,13 @@ type referenceObjectShape struct {
 	// reservedName says which attribute names the kind keeps for itself. A
 	// kind with standard attributes of its own passes its own answer.
 	reservedName func(string) bool
+	// codeSeries says this kind numbers its codes within a range at all, and
+	// ownerSeries that one of the ranges may be an owner. In the prototype a
+	// catalog has all three ranges, a chart of characteristic types and a
+	// chart of accounts have two - neither of them has an owner - and a chart
+	// of calculation types and an exchange plan have no such property at all.
+	codeSeries  bool
+	ownerSeries bool
 	// attributeUse says this kind's attributes may say whom they belong to -
 	// items, folders or both. Only a catalog and a chart of characteristic
 	// types may: the help says so, and the demonstration configuration writes
@@ -1035,12 +1059,32 @@ func validateHierarchy(hierarchy Hierarchy) []string {
 	if !hierarchy.LimitLevels && hierarchy.LevelCount != 0 {
 		issues = append(issues, "hierarchy.level_count needs hierarchy.limit_levels")
 	}
-	switch hierarchy.Series {
-	case "", WholeObjectSeries, SubordinationSeries:
-	default:
-		issues = append(issues, "hierarchy.series must be whole or within-subordination")
-	}
 	return issues
+}
+
+// validateCodeSeries checks the range a code is numbered within against the
+// kind that carries it. A range a kind does not have is a setting nothing
+// reads, and the code then numbers itself by a rule nobody wrote.
+func validateCodeSeries(shape referenceObjectShape) []string {
+	if shape.code.Series == "" {
+		return nil
+	}
+	if !shape.codeSeries {
+		return []string{"code.series belongs to a kind that numbers within a range, and this is not one"}
+	}
+	switch shape.code.Series {
+	case WholeObjectSeries, SubordinationSeries:
+		return nil
+	case WithinOwnerSeries:
+		if shape.ownerSeries {
+			return nil
+		}
+		return []string{"code.series within-owner-subordination belongs to a catalog, which is the only kind with an owner"}
+	}
+	if shape.ownerSeries {
+		return []string{"code.series must be whole, within-subordination or within-owner-subordination"}
+	}
+	return []string{"code.series must be whole or within-subordination"}
 }
 
 func validateReferenceObjectShape(shape referenceObjectShape, configuration project.Project) []string {
@@ -1061,6 +1105,7 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 		issues = append(issues, "description_length must be 1..1048576")
 	}
 	issues = append(issues, validateHierarchy(shape.hierarchy)...)
+	issues = append(issues, validateCodeSeries(shape)...)
 	reserved := shape.reservedName
 	if reserved == nil {
 		reserved = reservedCatalogObjectName
@@ -1473,6 +1518,7 @@ func cloneDefinedType(value DefinedTypeObject) DefinedTypeObject {
 
 func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
 	value.Title = cloneTitle(value.Title)
+	value.Owners = slices.Clone(value.Owners)
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.TableParts = slices.Clone(value.TableParts)
 	for index := range value.TableParts {

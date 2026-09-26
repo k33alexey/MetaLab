@@ -1769,6 +1769,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	if err := catalog.validateDocumentMovements(); err != nil {
 		return err
 	}
+	if err := catalog.validateCatalogOwners(); err != nil {
+		return err
+	}
 	if err := catalog.validateSettingsStorageReferences(); err != nil {
 		return err
 	}

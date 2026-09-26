@@ -120,6 +120,7 @@ func DecodeChartOfAccounts(source string, reader io.Reader, configuration projec
 		forms:             HierarchicalObjectForms{ObjectForms: value.Forms},
 		list:              value.List,
 		reservedName:      reservedChartOfAccountsName,
+		codeSeries:        true,
 	}, configuration)...)
 	issues = append(issues, validateAccountingFlags("accounting_flags", value.AccountingFlags, configuration)...)
 	issues = append(issues, validateAccountingFlags("ext_dimension_accounting_flags", value.ExtDimensionAccountingFlags, configuration)...)
@@ -487,7 +488,7 @@ func (catalog *Catalog) chartOfAccountsTables(definition ChartOfAccountsDefiniti
 	// A chart of accounts nests always: subaccounts are accounts under an
 	// account, and the prototype has no flag to turn that off. There are no
 	// folders either - every row is an account.
-	appendHierarchyColumns(&table, definition.ID, Hierarchy{Enabled: true, Kind: ItemsHierarchy, Series: SubordinationSeries})
+	appendHierarchyColumns(&table, definition.ID, Hierarchy{Enabled: true, Kind: ItemsHierarchy})
 	for _, attribute := range definition.Attributes {
 		if err := catalog.appendAttributeSchema(&table, attribute); err != nil {
 			return schemadiff.Table{}, nil, fmt.Errorf("chart of accounts %s attribute %s: %w", definition.Name, attribute.Name, err)

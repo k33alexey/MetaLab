@@ -155,6 +155,9 @@ func (catalog *Catalog) catalogTables(definition CatalogDefinition) (schemadiff.
 		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("ic", definition.ID), Method: "btree", Keys: []string{"code"}})
 	}
 	appendHierarchyColumns(&table, definition.ID, definition.Hierarchy)
+	if err := catalog.ownerColumns(&table, definition); err != nil {
+		return schemadiff.Table{}, nil, fmt.Errorf("catalog %s owner: %w", definition.Name, err)
+	}
 	for _, attribute := range definition.Attributes {
 		if err := catalog.appendAttributeSchema(&table, attribute); err != nil {
 			return schemadiff.Table{}, nil, fmt.Errorf("catalog %s attribute %s: %w", definition.Name, attribute.Name, err)
