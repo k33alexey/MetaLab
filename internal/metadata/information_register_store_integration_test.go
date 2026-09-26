@@ -51,14 +51,14 @@ func TestInformationRegisterRepositoryIntegration(t *testing.T) {
 		InformationRegisters: []InformationRegisterDefinition{
 			{
 				ID: independentID, Name: "КурсыВалют", WriteMode: InformationRegisterIndependent, Periodicity: InformationRegisterPeriodDay,
-				Dimensions: []Attribute{{ID: currencyID, Name: "Валюта", Required: true, Types: []Type{{Kind: ObjectUUIDType}}}},
-				Resources:  []Attribute{{ID: rateID, Name: "Курс", Required: true, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 4}}}},
+				Dimensions: []Attribute{{ID: currencyID, Name: "Валюта", FillChecking: ShowFillingError, Types: []Type{{Kind: ObjectUUIDType}}}},
+				Resources:  []Attribute{{ID: rateID, Name: "Курс", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 4}}}},
 			},
 			{
 				ID: recorderID, Name: "Цены", WriteMode: InformationRegisterRecorder, Periodicity: InformationRegisterPeriodRecorderPosition,
 				Recorders:  []uuid.UUID{documentID},
-				Dimensions: []Attribute{{ID: productID, Name: "Товар", Required: true, Types: []Type{{Kind: ObjectUUIDType}}}},
-				Resources:  []Attribute{{ID: priceID, Name: "Цена", Required: true, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}},
+				Dimensions: []Attribute{{ID: productID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: ObjectUUIDType}}}},
+				Resources:  []Attribute{{ID: priceID, Name: "Цена", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}},
 			},
 		},
 		documentByName: map[string]int{"установкацен": 0}, documentByID: map[uuid.UUID]int{documentID: 0},

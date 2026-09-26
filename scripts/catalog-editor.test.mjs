@@ -38,11 +38,11 @@ test('attribute name, title and flags round-trip',()=>{
   model.setAttributeName('catalog',attribute.id,'Артикул');
   model.setAttributeTitle('catalog',attribute.id,'ru','Артикул товара');
   model.setAttributeTitle('catalog',attribute.id,'en','');
-  model.setAttributeRequired('catalog',attribute.id,true);
+  model.setAttributeFillChecking('catalog',attribute.id,true);
   model.setAttributeIndexing('catalog',attribute.id,'index-with-additional-order');
   const saved=model.value().attributes[0];
   assert.equal(saved.name,'Артикул');assert.deepEqual(saved.title,{ru:'Артикул товара'});
-  assert.equal(saved.required,true);assert.equal(saved.indexing,'index-with-additional-order');
+  assert.equal(saved.fillChecking,'show-error');assert.equal(saved.indexing,'index-with-additional-order');
 });
 test('an unindexed field says nothing instead of saying dont-index',()=>{
   const model=create(fixture());

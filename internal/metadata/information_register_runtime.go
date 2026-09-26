@@ -462,9 +462,6 @@ func (runtime *Runtime) setInformationRegisterRecordProperty(ctx context.Context
 		return err
 	}
 	if assigned.Kind() == bytecode.UndefinedKind {
-		if field.Required {
-			return fmt.Errorf("information register field %s is required", field.Name)
-		}
 		delete(values, field.ID)
 		return nil
 	}

@@ -257,7 +257,7 @@ func (catalog *Catalog) attributeFormFields(attributes []Attribute, language str
 		if title == "" {
 			title = attribute.Name
 		}
-		result[index] = FormField{Name: attribute.Name, Title: title, Types: cloneTypes(attribute.Types), Required: attribute.Required}
+		result[index] = FormField{Name: attribute.Name, Title: title, Types: cloneTypes(attribute.Types), Required: attribute.FillChecking.checked()}
 	}
 	return result
 }

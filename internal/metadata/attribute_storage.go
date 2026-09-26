@@ -97,6 +97,9 @@ func validateFieldStorage(prefix string, attribute Attribute) []string {
 			issues = append(issues, prefix+"."+name+" must be use or dont-use")
 		}
 	}
+	if !validFillCheck(attribute.FillChecking) {
+		issues = append(issues, prefix+".fill_checking must be dont-check or show-error")
+	}
 	if !validAttributeUse(attribute.Use) {
 		issues = append(issues, prefix+".use must be for-item, for-folder or for-folder-and-item")
 	}
@@ -145,3 +148,31 @@ func cloneFieldFilling(attribute Attribute) Attribute {
 	attribute.Filling.Value = cloneValuePointer(attribute.Filling.Value)
 	return attribute
 }
+
+// FillCheck is the prototype's check of whether a field was filled in. It is
+// not a constraint of the database and never was: the help of 8.3.27 says the
+// check runs in ПроверитьЗаполнение, raises ОбработкаПроверкиЗаполнения and
+// tells the user where to fix it, while the value itself sits in the table
+// untroubled. Unfilled there means equal to the default of the field's type,
+// which is why the database never sees a NULL to refuse.
+//
+// The one hard refusal the platform does have belongs to a register dimension
+// and is a setting of its own - deny incomplete values - not this one.
+type FillCheck string
+
+const (
+	DontCheckFilling FillCheck = "dont-check"
+	ShowFillingError FillCheck = "show-error"
+)
+
+func validFillCheck(check FillCheck) bool {
+	switch check {
+	case "", DontCheckFilling, ShowFillingError:
+		return true
+	default:
+		return false
+	}
+}
+
+// checked says whether the field takes part in the automatic check.
+func (check FillCheck) checked() bool { return check == ShowFillingError }

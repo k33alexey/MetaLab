@@ -17,7 +17,7 @@ func TestAutomaticDocumentFormsAndCommands(t *testing.T) {
 		Documents: []DocumentDefinition{{
 			ID: documentID, Name: "Продажа", Title: LocalizedText{"ru": "Продажа", "uk": "Продаж"}, Posting: true,
 			Number:     DocumentNumber{Type: StringType, Length: 10},
-			Attributes: []Attribute{{ID: attributeID, Name: "Контрагент", Title: LocalizedText{"ru": "Контрагент"}, Types: []Type{{Kind: StringType, Length: 100}}, Required: true}},
+			Attributes: []Attribute{{ID: attributeID, Name: "Контрагент", Title: LocalizedText{"ru": "Контрагент"}, Types: []Type{{Kind: StringType, Length: 100}}, FillChecking: ShowFillingError}},
 			TableParts: []TablePart{{ID: partID, Name: "Товары", Title: LocalizedText{"ru": "Товары"}, Attributes: []Attribute{{ID: columnID, Name: "Количество", Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}}}},
 		}},
 		AccumulationRegisters: []AccumulationRegisterDefinition{{ID: registerID, Recorders: []uuid.UUID{documentID}}},

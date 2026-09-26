@@ -235,7 +235,11 @@ func (catalog *Catalog) appendAttributeSchema(table *schemadiff.Table, attribute
 	if err != nil {
 		return err
 	}
-	table.Columns = append(table.Columns, schemadiff.Column{Name: columnName, Type: storage.sqlType, Nullable: !attribute.Required})
+	// Nullable without exception. The prototype keeps no field that the
+	// database refuses to leave empty: an unfilled field there holds the
+	// default of its type, and whether that is acceptable is a question asked
+	// of the user by the filling check, not of the writer by the table.
+	table.Columns = append(table.Columns, schemadiff.Column{Name: columnName, Type: storage.sqlType, Nullable: true})
 	if attribute.Indexing.indexes() {
 		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("i", attribute.ID), Method: "btree", Keys: []string{columnName}})
 	}

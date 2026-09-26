@@ -326,7 +326,7 @@ attributes:
     name: ИНН
     title: {ru: ИНН}
     types: [{kind: string, length: 12}]
-    required: true
+    fill_checking: show-error
 predefined:
   - id: `+predefinedID.String()+`
     name: Основной

@@ -9,7 +9,7 @@ attributes:
     name: Контрагент
     title: {ru: Контрагент, uk: Контрагент, en: Counterparty}
     types: [{kind: catalog, reference: 10000000-0000-4000-8000-000000000102}]
-    required: true
+    fill_checking: show-error
 table_parts:
   - id: 10000000-0000-4000-8000-000000002201
     name: Товары
@@ -19,14 +19,14 @@ table_parts:
         name: Товар
         title: {ru: Товар, uk: Товар, en: Product}
         types: [{kind: catalog, reference: 10000000-0000-4000-8000-000000000101}]
-        required: true
+        fill_checking: show-error
       - id: 10000000-0000-4000-8000-000000003202
         name: Количество
         title: {ru: Количество, uk: Кількість, en: Quantity}
         types: [{kind: number, precision: 15, scale: 3}]
-        required: true
+        fill_checking: show-error
       - id: 10000000-0000-4000-8000-000000003203
         name: Цена
         title: {ru: Цена, uk: Ціна, en: Price}
         types: [{kind: number, precision: 15, scale: 2}]
-        required: true
+        fill_checking: show-error

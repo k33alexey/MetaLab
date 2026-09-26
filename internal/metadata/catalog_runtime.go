@@ -342,9 +342,6 @@ func (runtime *Runtime) SetObjectProperty(ctx context.Context, value bytecode.Ru
 		return err
 	}
 	if assigned.Kind() == bytecode.UndefinedKind {
-		if attribute.Required {
-			return fmt.Errorf("catalog attribute %s is required", attribute.Name)
-		}
 		delete(object.record.Attributes, attribute.ID)
 		return nil
 	}
@@ -575,9 +572,6 @@ func (runtime *Runtime) syncCatalogTables(object *catalogObject) error {
 					return err
 				}
 				if value.Kind() == bytecode.UndefinedKind {
-					if attribute.Required {
-						return fmt.Errorf("catalog table part %s attribute %s is required", part.Name, attribute.Name)
-					}
 					continue
 				}
 				stored, err := runtime.applicationValueFromBSL(attribute.Types, value, "attribute "+part.Name+"."+attribute.Name)

@@ -410,12 +410,15 @@ type PredefinedCatalogItem struct {
 }
 
 type Attribute struct {
-	ID       uuid.UUID     `yaml:"id" json:"id"`
-	Name     string        `yaml:"name" json:"name"`
-	Title    LocalizedText `yaml:"title" json:"title"`
-	Comment  string        `yaml:"comment,omitempty" json:"comment,omitempty"`
-	Types    []Type        `yaml:"types" json:"types"`
-	Required bool          `yaml:"required,omitempty" json:"required,omitempty"`
+	ID      uuid.UUID     `yaml:"id" json:"id"`
+	Name    string        `yaml:"name" json:"name"`
+	Title   LocalizedText `yaml:"title" json:"title"`
+	Comment string        `yaml:"comment,omitempty" json:"comment,omitempty"`
+	Types   []Type        `yaml:"types" json:"types"`
+	// FillChecking is whether the platform checks that the field was filled
+	// in, and it replaced a flag that made the column NOT NULL. The prototype
+	// has no such column and no such refusal - see attribute_storage.go.
+	FillChecking FillCheck `yaml:"fill_checking,omitempty" json:"fillChecking,omitempty"`
 	// Indexing is what the database is asked to build for this field. It
 	// replaced a flag: the prototype has three answers, not two.
 	Indexing IndexMode `yaml:"indexing,omitempty" json:"indexing,omitempty"`
@@ -1159,11 +1162,6 @@ func validatePredefinedItems(shape referenceObjectShape) []string {
 				issues = append(issues, prefix+".attributes contains duplicate "+attribute.Name)
 			}
 			attributeNames[key] = true
-		}
-		for _, attribute := range shape.attributes {
-			if attribute.Required && !attributeNames[strings.ToLower(attribute.Name)] {
-				issues = append(issues, prefix+".attributes."+attribute.Name+" is required")
-			}
 		}
 	}
 	return issues

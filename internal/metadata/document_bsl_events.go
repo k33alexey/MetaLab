@@ -136,7 +136,7 @@ func documentEventRoutine(ctx context.Context, event DocumentEvent, definition D
 	case DocumentEventFillCheck:
 		names := make([]bytecode.Value, 0)
 		for _, attribute := range definition.Attributes {
-			if attribute.Required {
+			if attribute.FillChecking.checked() {
 				names = append(names, bytecode.String(attribute.Name))
 			}
 		}

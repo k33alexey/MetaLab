@@ -24,7 +24,7 @@ func TestCatalogApplicationSchemaUsesStableUUIDNames(t *testing.T) {
 			}},
 			TableParts: []TablePart{{
 				ID: partID, Name: "Контакты", Attributes: []Attribute{{
-					ID: partAttributeID, Name: "Телефон", Required: true,
+					ID: partAttributeID, Name: "Телефон", FillChecking: ShowFillingError,
 					Types: []Type{{Kind: StringType, Length: 32}},
 				}},
 			}},

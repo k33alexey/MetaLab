@@ -116,7 +116,7 @@ func catalogEventRoutine(event CatalogEvent, definition CatalogDefinition) (stri
 	case CatalogEventFillCheck:
 		names := make([]bytecode.Value, 0)
 		for _, attribute := range definition.Attributes {
-			if attribute.Required {
+			if attribute.FillChecking.checked() {
 				names = append(names, bytecode.String(attribute.Name))
 			}
 		}

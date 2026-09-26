@@ -594,7 +594,7 @@ func (runtime *Runtime) setAccumulationRecordProperty(ctx context.Context, objec
 		return err
 	}
 	if assigned.Kind() == bytecode.UndefinedKind {
-		if field.Required || slicesContainsAttribute(definition.Resources, field.ID) {
+		if slicesContainsAttribute(definition.Resources, field.ID) {
 			return fmt.Errorf("accumulation register field %s is required", field.Name)
 		}
 		delete(values, field.ID)

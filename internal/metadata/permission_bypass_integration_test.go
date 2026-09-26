@@ -53,7 +53,7 @@ func TestApplicationRoleBypassAttemptsIntegration(t *testing.T) {
 		ID: documentID, Name: "Поступление", Posting: true,
 		Number: DocumentNumber{Type: StringType, Length: 10, Unique: true, Periodicity: NumberPeriodNone},
 		Attributes: []Attribute{
-			{ID: productAttrID, Name: "Товар", Required: true, Types: []Type{{Kind: StringType, Length: 50}}},
+			{ID: productAttrID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 50}}},
 		},
 		TableParts: []TablePart{{ID: linesPartID, Name: "Строки", Attributes: []Attribute{
 			{ID: quantityAttrID, Name: "Количество", Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}},
@@ -61,13 +61,13 @@ func TestApplicationRoleBypassAttemptsIntegration(t *testing.T) {
 	}
 	accumulation := AccumulationRegisterDefinition{
 		ID: accumulationID, Name: "Остатки", Kind: AccumulationRegisterBalance, Recorders: []uuid.UUID{documentID},
-		Dimensions: []Attribute{{ID: accumulationProductID, Name: "Товар", Required: true, Types: []Type{{Kind: StringType, Length: 50}}}},
-		Resources:  []Attribute{{ID: accumulationQuantityID, Name: "Количество", Required: true, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}},
+		Dimensions: []Attribute{{ID: accumulationProductID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 50}}}},
+		Resources:  []Attribute{{ID: accumulationQuantityID, Name: "Количество", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}},
 	}
 	information := InformationRegisterDefinition{
 		ID: informationID, Name: "ПоследняяЦена", WriteMode: InformationRegisterIndependent, Periodicity: InformationRegisterPeriodNone,
-		Dimensions: []Attribute{{ID: priceProductID, Name: "Товар", Required: true, Types: []Type{{Kind: StringType, Length: 50}}}},
-		Resources:  []Attribute{{ID: priceValueID, Name: "Цена", Required: true, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}},
+		Dimensions: []Attribute{{ID: priceProductID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 50}}}},
+		Resources:  []Attribute{{ID: priceValueID, Name: "Цена", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}},
 	}
 	documentFields := []FieldPermission{
 		{Field: "number", Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},

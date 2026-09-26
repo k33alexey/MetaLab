@@ -48,13 +48,13 @@ func TestAccumulationRegisterRepositoryIntegration(t *testing.T) {
 		AccumulationRegisters: []AccumulationRegisterDefinition{
 			{
 				ID: registerID, Name: "ОстаткиТоваров", Kind: AccumulationRegisterBalance, Recorders: []uuid.UUID{documentID},
-				Dimensions: []Attribute{{ID: productID, Name: "Товар", Required: true, Types: []Type{{Kind: StringType, Length: 100}}}},
-				Resources:  []Attribute{{ID: quantityID, Name: "Количество", Required: true, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}},
+				Dimensions: []Attribute{{ID: productID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 100}}}},
+				Resources:  []Attribute{{ID: quantityID, Name: "Количество", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}},
 			},
 			{
 				ID: turnoverID, Name: "Продажи", Kind: AccumulationRegisterTurnover, Recorders: []uuid.UUID{documentID},
-				Dimensions: []Attribute{{ID: turnoverProductID, Name: "Товар", Required: true, Types: []Type{{Kind: StringType, Length: 100}}}},
-				Resources:  []Attribute{{ID: amountID, Name: "Сумма", Required: true, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}},
+				Dimensions: []Attribute{{ID: turnoverProductID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 100}}}},
+				Resources:  []Attribute{{ID: amountID, Name: "Сумма", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}},
 			},
 		},
 		documentByName: map[string]int{"приходная": 0}, documentByID: map[uuid.UUID]int{documentID: 0},

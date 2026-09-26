@@ -50,10 +50,10 @@ func TestDocumentRepositoryLifecycleIntegration(t *testing.T) {
 			ID: documentID, Name: "Продажа", Posting: true,
 			Number:     DocumentNumber{Type: StringType, Length: 11, Unique: true, Periodicity: NumberPeriodYear},
 			List:       ListSettings{PageSize: 20, SearchFields: []string{"Number"}},
-			Attributes: []Attribute{{ID: partnerID, Name: "Контрагент", Required: true, Types: []Type{{Kind: CatalogType, Reference: &catalogID}}}},
+			Attributes: []Attribute{{ID: partnerID, Name: "Контрагент", FillChecking: ShowFillingError, Types: []Type{{Kind: CatalogType, Reference: &catalogID}}}},
 			TableParts: []TablePart{{ID: linesID, Name: "Товары", Attributes: []Attribute{
-				{ID: productID, Name: "Товар", Required: true, Types: []Type{{Kind: StringType, Length: 100}}},
-				{ID: quantityID, Name: "Количество", Required: true, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}},
+				{ID: productID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 100}}},
+				{ID: quantityID, Name: "Количество", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}},
 			}}},
 		}},
 		catalogByName:  map[string]int{"контрагенты": 0},

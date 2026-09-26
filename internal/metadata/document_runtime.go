@@ -286,9 +286,6 @@ func (runtime *Runtime) setDocumentProperty(ctx context.Context, object *documen
 		return err
 	}
 	if assigned.Kind() == bytecode.UndefinedKind {
-		if attribute.Required {
-			return fmt.Errorf("document attribute %s is required", attribute.Name)
-		}
 		delete(object.record.Attributes, attribute.ID)
 		return nil
 	}
@@ -594,9 +591,6 @@ func (runtime *Runtime) syncDocumentTables(object *documentObject) error {
 					return err
 				}
 				if value.Kind() == bytecode.UndefinedKind {
-					if attribute.Required {
-						return fmt.Errorf("document table part %s attribute %s is required", part.Name, attribute.Name)
-					}
 					continue
 				}
 				stored, err := runtime.applicationValueFromBSL(attribute.Types, value, "attribute "+part.Name+"."+attribute.Name)

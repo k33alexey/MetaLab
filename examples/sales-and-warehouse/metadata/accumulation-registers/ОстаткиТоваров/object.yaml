@@ -8,18 +8,18 @@ dimensions:
     name: Товар
     title: {ru: Товар, uk: Товар, en: Product}
     types: [{kind: catalog, reference: 10000000-0000-4000-8000-000000000101}]
-    required: true
+    fill_checking: show-error
 resources:
   - id: 10000000-0000-4000-8000-000000001302
     name: Количество
     title: {ru: Количество, uk: Кількість, en: Quantity}
     types: [{kind: number, precision: 15, scale: 3}]
-    required: true
+    fill_checking: show-error
   - id: 10000000-0000-4000-8000-000000001303
     name: Сумма
     title: {ru: Сумма, uk: Сума, en: Amount}
     types: [{kind: number, precision: 18, scale: 2}]
-    required: true
+    fill_checking: show-error
 recorders:
   - 10000000-0000-4000-8000-000000000201
   - 10000000-0000-4000-8000-000000000202

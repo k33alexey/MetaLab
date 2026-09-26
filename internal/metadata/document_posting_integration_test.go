@@ -46,14 +46,14 @@ func TestDocumentPostingIsAtomicAndReplacesMovementsIntegration(t *testing.T) {
 		ID: documentID, Name: "Поступление", Posting: true,
 		Number: DocumentNumber{Type: StringType, Length: 20, Unique: true, Periodicity: NumberPeriodYear},
 		Attributes: []Attribute{
-			{ID: productAttributeID, Name: "Товар", Required: true, Types: []Type{{Kind: StringType, Length: 100}}},
-			{ID: quantityAttributeID, Name: "Количество", Required: true, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}},
+			{ID: productAttributeID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 100}}},
+			{ID: quantityAttributeID, Name: "Количество", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}},
 		},
 	}
 	register := AccumulationRegisterDefinition{
 		ID: registerID, Name: "ОстаткиТоваров", Kind: AccumulationRegisterBalance, Recorders: []uuid.UUID{documentID},
-		Dimensions: []Attribute{{ID: productDimensionID, Name: "Товар", Required: true, Types: []Type{{Kind: StringType, Length: 100}}}},
-		Resources:  []Attribute{{ID: quantityResourceID, Name: "Количество", Required: true, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}},
+		Dimensions: []Attribute{{ID: productDimensionID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 100}}}},
+		Resources:  []Attribute{{ID: quantityResourceID, Name: "Количество", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}},
 	}
 	catalog := &Catalog{
 		Documents: []DocumentDefinition{document}, AccumulationRegisters: []AccumulationRegisterDefinition{register},

@@ -69,7 +69,11 @@ function createCatalogModel(source) {
       attribute.title ||= {};
       if (text.trim()) attribute.title[language] = text; else delete attribute.title[language];
     },
-    setAttributeRequired(container, id, required) { const attribute = attributeList(container)?.find(item => item.id === id); if (attribute) attribute.required = required; },
+    setAttributeFillChecking(container, id, checked) {
+      const attribute = attributeList(container)?.find(item => item.id === id);
+      if (!attribute) return;
+      if (checked) attribute.fillChecking = 'show-error'; else delete attribute.fillChecking;
+    },
     setAttributeIndexing(container, id, indexing) {
       const attribute = attributeList(container)?.find(item => item.id === id);
       if (!attribute) return;
@@ -208,7 +212,8 @@ function createCatalogEditor(host, onChange) {
     panel.append(node('h3', 'Реквизит'));
     panel.append(textField('Имя', attribute.name, value => model.setAttributeName(container, attribute.id, value), {maxLength: 128}));
     panel.append(localizedTitleField(attribute, (language, value) => model.setAttributeTitle(container, attribute.id, language, value)));
-    panel.append(checkboxField('Обязательный', !!attribute.required, value => model.setAttributeRequired(container, attribute.id, value)));
+    panel.append(checkboxField('Проверять заполнение', attribute.fillChecking === 'show-error',
+      value => model.setAttributeFillChecking(container, attribute.id, value)));
     panel.append(selectField('Индексирование', attribute.indexing || 'dont-index', indexingModes,
       value => model.setAttributeIndexing(container, attribute.id, value)));
     const types = node('div', undefined, 'catalog-types');

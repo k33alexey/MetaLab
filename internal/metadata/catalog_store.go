@@ -289,9 +289,6 @@ func (catalog *Catalog) normalizeAttributes(owner string, definitions []Attribut
 		known[attribute.ID] = attribute
 		value, present := values[attribute.ID]
 		if !present {
-			if attribute.Required {
-				return nil, fmt.Errorf("%s attribute %s is required", owner, attribute.Name)
-			}
 			continue
 		}
 		normalized, err := catalog.normalizeTypes("attribute "+owner+"."+attribute.Name, attribute.Types, value)
