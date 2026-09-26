@@ -146,10 +146,14 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 		prefix := fmt.Sprintf("resources[%d]", index)
 		issues = append(issues, validateRegisterFieldShape(prefix, resource.ID, resource.Name, resource.Title, resource.Types,
 			value.ID, names, ids, configuration, reservedCalculationRegisterName)...)
+		issues = append(issues, validateFieldSettings(prefix, resource, configuration)...)
 	}
 	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, func(name string) bool {
 		return names[strings.ToLower(name)] || reservedCalculationRegisterName(name)
 	})...)
+	issues = append(issues, validateFieldLinks([]fieldGroup{
+		{"resources", value.Resources}, {"attributes", value.Attributes},
+	}, nil)...)
 	issues = append(issues, validateRecalculations(value, configuration)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)

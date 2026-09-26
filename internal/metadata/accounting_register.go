@@ -117,6 +117,7 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, func(name string) bool {
 		return names[strings.ToLower(name)] || reservedAccountingRegisterName(name)
 	})...)
+	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", value.Attributes}}, nil)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)

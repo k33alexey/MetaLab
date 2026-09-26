@@ -141,6 +141,7 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 		attributeNames[strings.ToLower(attribute.Name)] = true
 	}
 	issues = append(issues, validateTableParts(shape.tableParts, attributeNames, configuration, reserved)...)
+	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts)...)
 	issues = append(issues, validateFormSlots(shape.forms.slots())...)
 	return append(issues, validateListSettings(shape.list, shape.attributes, map[string]TypeKind{
 		"number": shape.number.Type,

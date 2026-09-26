@@ -413,9 +413,15 @@ type Attribute struct {
 	ID       uuid.UUID     `yaml:"id" json:"id"`
 	Name     string        `yaml:"name" json:"name"`
 	Title    LocalizedText `yaml:"title" json:"title"`
+	Comment  string        `yaml:"comment,omitempty" json:"comment,omitempty"`
 	Types    []Type        `yaml:"types" json:"types"`
 	Required bool          `yaml:"required,omitempty" json:"required,omitempty"`
 	Indexed  bool          `yaml:"indexed,omitempty" json:"indexed,omitempty"`
+	// How the value is shown and entered, and how it is picked. Neither
+	// changes what is stored, and both change what the user gets - see
+	// attribute_presentation.go.
+	Presentation FieldPresentation `yaml:"presentation,omitempty" json:"presentation,omitempty"`
+	Choice       FieldChoice       `yaml:"choice,omitempty" json:"choice,omitempty"`
 }
 
 type TablePart struct {
@@ -1076,6 +1082,7 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 		issues = append(issues, validateTitle(prefix+".title", part.Title, configuration)...)
 		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, configuration, nil)...)
 	}
+	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts)...)
 	issues = append(issues, validateFormSlots(shape.forms.slots())...)
 	issues = append(issues, validateFolderForms(shape.forms, shape.hierarchy)...)
 	issues = append(issues, validateListSettings(shape.list, shape.attributes, map[string]TypeKind{
@@ -1173,6 +1180,7 @@ func validateAttributes(path string, attributes []Attribute, configuration proje
 		names[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", attribute.Title, configuration)...)
 		issues = append(issues, validateTypes(prefix+".types", attribute.Types, uuid.UUID{})...)
+		issues = append(issues, validateFieldSettings(prefix, attribute, configuration)...)
 	}
 	return issues
 }
@@ -1480,6 +1488,7 @@ func cloneAttributes(value []Attribute) []Attribute {
 	for index := range result {
 		result[index].Title = cloneTitle(result[index].Title)
 		result[index].Types = cloneTypes(result[index].Types)
+		result[index] = cloneFieldSettings(result[index])
 	}
 	return result
 }

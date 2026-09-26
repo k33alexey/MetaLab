@@ -124,7 +124,8 @@ func validateRunningObjectShape(attributes []Attribute, parts []TablePart, confi
 	for _, attribute := range attributes {
 		names[strings.ToLower(attribute.Name)] = true
 	}
-	return append(issues, validateTableParts(parts, names, configuration, reserved)...)
+	issues = append(issues, validateTableParts(parts, names, configuration, reserved)...)
+	return append(issues, validateFieldLinks([]fieldGroup{{"attributes", attributes}}, parts)...)
 }
 
 // reservedReportName keeps the one standard attribute a running object has.
