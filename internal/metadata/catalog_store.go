@@ -167,10 +167,16 @@ func (repository *CatalogRepository) Save(ctx context.Context, record *CatalogRe
 		if err := repository.normalizeRecord(definition, working); err != nil {
 			return err
 		}
+		// The tree lock, where one is needed at all, is taken before the row
+		// lock and never after - see prepareTreeWrite.
+		tree, err := repository.prepareTreeWrite(ctx, transaction, definition, working)
+		if err != nil {
+			return err
+		}
 		if err := lockObjectForWrite(ctx, transaction, CatalogType, definition.ID, working.Reference.ObjectID); err != nil {
 			return err
 		}
-		if err := repository.checkPlacement(ctx, transaction, definition, working); err != nil {
+		if err := repository.checkPlacement(ctx, transaction, definition, working, tree); err != nil {
 			return err
 		}
 		version, err := repository.writeRecord(ctx, transaction, definition, working)

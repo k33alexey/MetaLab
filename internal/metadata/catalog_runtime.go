@@ -491,12 +491,24 @@ func (runtime *Runtime) CallObjectMethod(ctx context.Context, value bytecode.Run
 			defer object.mu.RUnlock()
 			return runtime.wrapCatalogReference(object.definition, object.record.Reference)
 		case propertyName(name, "УстановитьПометкуУдаления", "SetDeletionMark"):
-			if len(arguments) != 1 {
-				return bytecode.Undefined(), fmt.Errorf("%s expects one boolean argument", name)
+			// Two arguments, and the second one defaults to marking the whole
+			// branch. That default is the prototype's and it is the half of
+			// this method that surprises: marking one row usually marks
+			// everything below it, in this catalog and in the catalogs
+			// subordinate to it.
+			if len(arguments) != 1 && len(arguments) != 2 {
+				return bytecode.Undefined(), fmt.Errorf("%s expects a boolean and an optional boolean", name)
 			}
 			mark, ok := arguments[0].AsBoolean()
 			if !ok {
-				return bytecode.Undefined(), fmt.Errorf("%s expects one boolean argument", name)
+				return bytecode.Undefined(), fmt.Errorf("%s expects a boolean and an optional boolean", name)
+			}
+			includeSubordinate := true
+			if len(arguments) == 2 && arguments[1].Kind() != bytecode.UndefinedKind {
+				includeSubordinate, ok = arguments[1].AsBoolean()
+				if !ok {
+					return bytecode.Undefined(), fmt.Errorf("%s expects a boolean and an optional boolean", name)
+				}
 			}
 			object.mu.Lock()
 			defer object.mu.Unlock()
@@ -504,12 +516,11 @@ func (runtime *Runtime) CallObjectMethod(ctx context.Context, value bytecode.Run
 				return bytecode.Undefined(), err
 			}
 			previous := cloneCatalogRecord(object.record)
-			object.record.DeletionMark = mark
 			if err := runtime.syncCatalogTables(object); err != nil {
 				object.record = previous
 				return bytecode.Undefined(), err
 			}
-			if err := runtime.catalogRepository.Save(ctx, object.record, runtime.catalogEventHandler(object.definition.ID)); err != nil {
+			if err := runtime.catalogRepository.SetDeletionMark(ctx, object.record, mark, includeSubordinate, runtime.catalogEventHandler); err != nil {
 				object.record = previous
 				return bytecode.Undefined(), err
 			}

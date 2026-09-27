@@ -191,7 +191,7 @@ func (repository *CatalogRepository) normalizePlacement(definition CatalogDefini
 //     and there is no method that turns an item into a folder: a folder is
 //     made as a folder. Without the check the flag would be quietly rewritten
 //     by a save of a record read as an item.
-func (repository *CatalogRepository) checkPlacement(ctx context.Context, transaction pgx.Tx, definition CatalogDefinition, record *CatalogRecord) error {
+func (repository *CatalogRepository) checkPlacement(ctx context.Context, transaction pgx.Tx, definition CatalogDefinition, record *CatalogRecord, tree treeWrite) error {
 	if !record.Parent.IsZero() {
 		folder, found, err := repository.rowIsFolder(ctx, transaction, definition.ID, catalogHasFolders(definition), record.Parent)
 		if err != nil {
@@ -207,14 +207,27 @@ func (repository *CatalogRepository) checkPlacement(ctx context.Context, transac
 	if err := repository.checkOwnerRow(ctx, transaction, definition, record); err != nil {
 		return err
 	}
+	storedParent, stored := uuid.UUID{}, false
+	if record.Version != 0 && catalogHasParent(definition) {
+		var err error
+		storedParent, stored, err = repository.storedRowParent(ctx, transaction, definition, record.Reference.ObjectID)
+		if err != nil {
+			return fmt.Errorf("catalog %s: %w", definition.Name, err)
+		}
+	}
+	if catalogHasParent(definition) {
+		if err := repository.checkTreePlacement(ctx, transaction, definition, record, tree, storedParent, stored); err != nil {
+			return err
+		}
+	}
 	if record.Version == 0 || !catalogHasFolders(definition) {
 		return nil
 	}
-	stored, found, err := repository.rowIsFolder(ctx, transaction, definition.ID, true, record.Reference.ObjectID)
+	folder, found, err := repository.rowIsFolder(ctx, transaction, definition.ID, true, record.Reference.ObjectID)
 	if err != nil {
 		return fmt.Errorf("catalog %s: %w", definition.Name, err)
 	}
-	if found && stored != record.IsFolder {
+	if found && folder != record.IsFolder {
 		return fmt.Errorf("catalog %s cannot turn a folder into an item or back: whether a row is a folder is decided when it is made", definition.Name)
 	}
 	return nil

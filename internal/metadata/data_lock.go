@@ -119,6 +119,29 @@ func lockObjectForWrite(ctx context.Context, transaction pgx.Tx, kind TypeKind, 
 	return nil
 }
 
+// lockCatalogTree holds the whole tree of one catalog for the rest of the
+// transaction. It is taken only by a write that moves a row under a new
+// parent, and it is what makes the walk for a ring mean anything: two such
+// writes in one catalog are each correct alone and wrong together - see
+// prepareTreeWrite.
+func lockCatalogTree(ctx context.Context, transaction pgx.Tx, metadataID uuid.UUID) error {
+	if transaction == nil || metadataID.IsZero() {
+		return fmt.Errorf("invalid catalog tree lock")
+	}
+	if _, err := transaction.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", treeLockKey(metadataID)); err != nil {
+		return fmt.Errorf("lock catalog tree: %w", err)
+	}
+	return nil
+}
+
+// treeLockKey is a key of its own rather than an object key with a made-up
+// row: a tree and a row of it are different things to wait for, and one key
+// space for both would have a row block a tree by coincidence.
+func treeLockKey(metadataID uuid.UUID) int64 {
+	sum := sha256.Sum256([]byte("catalog-tree:" + metadataID.String()))
+	return int64(binary.BigEndian.Uint64(sum[:8]))
+}
+
 func objectLockKey(kind TypeKind, metadataID, objectID uuid.UUID) int64 {
 	sum := sha256.Sum256([]byte(string(kind) + ":" + metadataID.String() + ":" + objectID.String()))
 	return int64(binary.BigEndian.Uint64(sum[:8]))
