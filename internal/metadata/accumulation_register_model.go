@@ -19,18 +19,24 @@ const (
 
 // AccumulationRegisterDefinition describes recorder-owned movements and rebuildable totals.
 type AccumulationRegisterDefinition struct {
-	Format             int                           `yaml:"format"`
-	ID                 uuid.UUID                     `yaml:"id"`
-	Name               string                        `yaml:"name"`
-	Title              LocalizedText                 `yaml:"title"`
-	Kind               AccumulationRegisterKindValue `yaml:"kind"`
-	Dimensions         []Attribute                   `yaml:"dimensions,omitempty"`
-	Resources          []Attribute                   `yaml:"resources"`
-	Attributes         []Attribute                   `yaml:"attributes,omitempty"`
-	StandardAttributes []StandardAttribute           `yaml:"standard_attributes,omitempty"`
-	Forms              RegisterForms                 `yaml:"forms,omitempty"`
-	Commands           []ObjectCommand               `yaml:"commands,omitempty"`
-	Templates          []ObjectTemplate              `yaml:"templates,omitempty"`
+	Format int                           `yaml:"format"`
+	ID     uuid.UUID                     `yaml:"id"`
+	Name   string                        `yaml:"name"`
+	Title  LocalizedText                 `yaml:"title"`
+	Kind   AccumulationRegisterKindValue `yaml:"kind"`
+	// TotalsSplitting keeps the totals of concurrent writers in rows of their
+	// own instead of making them queue on one. The accounting register has
+	// carried this since it was modelled; this register had the mechanism and
+	// no way to ask for it - see BLOCKS.md, where making it follow the setting
+	// is a point of its own.
+	TotalsSplitting    bool                `yaml:"totals_splitting,omitempty"`
+	Dimensions         []Attribute         `yaml:"dimensions,omitempty"`
+	Resources          []Attribute         `yaml:"resources"`
+	Attributes         []Attribute         `yaml:"attributes,omitempty"`
+	StandardAttributes []StandardAttribute `yaml:"standard_attributes,omitempty"`
+	Forms              RegisterForms       `yaml:"forms,omitempty"`
+	Commands           []ObjectCommand     `yaml:"commands,omitempty"`
+	Templates          []ObjectTemplate    `yaml:"templates,omitempty"`
 }
 
 func DecodeAccumulationRegister(source string, reader io.Reader, configuration project.Project) (AccumulationRegisterDefinition, error) {

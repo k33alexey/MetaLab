@@ -49,14 +49,18 @@ type AccountingRegisterDefinition struct {
 	Correspondence bool `yaml:"correspondence,omitempty" json:"correspondence,omitempty"`
 	// TotalsSplitting lets concurrent writers keep their own rows of totals
 	// instead of queueing on one.
-	TotalsSplitting    bool                      `yaml:"totals_splitting,omitempty" json:"totalsSplitting,omitempty"`
-	Dimensions         []AccountingRegisterField `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
-	Resources          []AccountingRegisterField `yaml:"resources" json:"resources"`
-	Attributes         []Attribute               `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	StandardAttributes []StandardAttribute       `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
-	Forms              RegisterForms             `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands           []ObjectCommand           `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates          []ObjectTemplate          `yaml:"templates,omitempty" json:"templates,omitempty"`
+	TotalsSplitting bool `yaml:"totals_splitting,omitempty" json:"totalsSplitting,omitempty"`
+	// PeriodAdjustmentLength orders entries beyond their period: of two with
+	// equal periods, the smaller refinement is the earlier. Zero means the
+	// register does not support refinement - see register_properties.go.
+	PeriodAdjustmentLength int                       `yaml:"period_adjustment_length,omitempty" json:"periodAdjustmentLength,omitempty"`
+	Dimensions             []AccountingRegisterField `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
+	Resources              []AccountingRegisterField `yaml:"resources" json:"resources"`
+	Attributes             []Attribute               `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	StandardAttributes     []StandardAttribute       `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
+	Forms                  RegisterForms             `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands               []ObjectCommand           `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates              []ObjectTemplate          `yaml:"templates,omitempty" json:"templates,omitempty"`
 }
 
 // DecodeAccountingRegister reads and validates one accounting register.
@@ -119,6 +123,7 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	// How many ext dimensions an entry really has is the chart's to say, and
 	// the chart is in another file: here the platform's ceiling is allowed and
 	// load.go narrows it once the chart is read.
+	issues = append(issues, validatePeriodAdjustmentLength(value.PeriodAdjustmentLength)...)
 	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accountingStandardFields(value.Correspondence, maxExtDimensions), configuration)...)
 	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", value.Attributes}}, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", value.Attributes}}, nil, false, false)...)

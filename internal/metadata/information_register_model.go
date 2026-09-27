@@ -42,9 +42,16 @@ type InformationRegisterDefinition struct {
 	Resources          []Attribute                    `yaml:"resources,omitempty"`
 	Attributes         []Attribute                    `yaml:"attributes,omitempty"`
 	StandardAttributes []StandardAttribute            `yaml:"standard_attributes,omitempty"`
-	Forms              InformationRegisterForms       `yaml:"forms,omitempty"`
-	Commands           []ObjectCommand                `yaml:"commands,omitempty"`
-	Templates          []ObjectTemplate               `yaml:"templates,omitempty"`
+	// EditType is how a row is entered and edited; Totals asks for the extra
+	// tables that answer a slice quickly; MainFilterOnPeriod puts the period
+	// into the main filter. All three belong to this register and to no other -
+	// see register_properties.go.
+	EditType           EditType                  `yaml:"edit_type,omitempty"`
+	Totals             InformationRegisterTotals `yaml:"totals,omitempty"`
+	MainFilterOnPeriod bool                      `yaml:"main_filter_on_period,omitempty"`
+	Forms              InformationRegisterForms  `yaml:"forms,omitempty"`
+	Commands           []ObjectCommand           `yaml:"commands,omitempty"`
+	Templates          []ObjectTemplate          `yaml:"templates,omitempty"`
 }
 
 func DecodeInformationRegister(source string, reader io.Reader, configuration project.Project) (InformationRegisterDefinition, error) {
@@ -74,6 +81,7 @@ func DecodeInformationRegister(source string, reader io.Reader, configuration pr
 	registerFields := []fieldGroup{
 		{"dimensions", value.Dimensions}, {"resources", value.Resources}, {"attributes", value.Attributes},
 	}
+	issues = append(issues, validateInformationRegisterProperties(value)...)
 	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(InformationRegisterKind), configuration)...)
 	issues = append(issues, validateFieldLinks(registerFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 	issues = append(issues, validateAttributeUse(registerFields, nil, false, false)...)
