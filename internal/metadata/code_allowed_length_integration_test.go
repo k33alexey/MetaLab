@@ -38,10 +38,13 @@ func TestFixedLengthCodeIsPaddedAndStillNumberedIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	projectID := uuid.MustNew()
+	fixedID, variableID := uuid.MustNew(), uuid.MustNew()
 	t.Cleanup(func() {
 		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
 		defer stop()
 		_, _ = pool.Exec(cleanup, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE")
+		_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.object_sequences WHERE metadata_id = ANY($1::uuid[])",
+			[]string{fixedID.String(), variableID.String()})
 		_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.migration_journal WHERE project_id = $1", projectID.String())
 		pool.Close()
 	})
@@ -49,7 +52,6 @@ func TestFixedLengthCodeIsPaddedAndStillNumberedIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fixedID, variableID := uuid.MustNew(), uuid.MustNew()
 	catalog := &Catalog{
 		Catalogs: []CatalogDefinition{
 			{
@@ -76,6 +78,12 @@ func TestFixedLengthCodeIsPaddedAndStillNumberedIntegration(t *testing.T) {
 		ProjectID: projectID, PackageSHA256: repeatCatalogHex('c', 64), GitCommit: repeatCatalogHex('d', 40), Desired: desired,
 		ExpectedPlanSHA256: prepared.SHA256, ExpectedSchemaSHA256: prepared.ActualSHA256, Confirmed: true,
 	}); err != nil {
+		t.Fatal(err)
+	}
+	// Automatic codes are allocated through ml_core.object_sequences, which is
+	// not part of the application schema and has to be there before the first
+	// one is asked for.
+	if err := EnsureObjectIntegrityStorage(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
 	repository, err := NewCatalogRepository(pool, catalog)

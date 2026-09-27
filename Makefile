@@ -1,5 +1,5 @@
-.PHONY: build build-desktop build-windows-desktop build-wasm check ci ci-database fmt fmt-check
-.PHONY: test test-integration test-race test-wasm vet web-check
+.PHONY: build build-desktop build-windows-desktop build-wasm check ci ci-database ci-fresh-database
+.PHONY: fmt fmt-check test test-integration test-race test-wasm vet web-check
 
 build:
 	mkdir -p bin
@@ -97,9 +97,32 @@ ci-database:
 # check is the quick pass: everything that needs no database.
 check: fmt-check web-check vet test-race build test-wasm
 
+# ci-fresh-database drops what earlier runs left behind, because CI gets a brand
+# new PostgreSQL container every time and a development machine does not.
+#
+# It is not tidiness. Every ml_core table is created by an Ensure* call inside
+# the code under test, with IF NOT EXISTS: a test that allocates automatic
+# numbers has to ask for ml_core.object_sequences itself. On a warm database it
+# is already there from an earlier run, so a test that forgets to ask passes
+# locally and fails in CI on the fresh container - which is exactly what
+# happened, and why this target exists. Starting from nothing makes the local
+# run enforce the rule instead of hiding it.
+#
+# Dropping both schemas is safe for the same reason: nothing outside the tests
+# puts anything in them. ML_TEST_DATABASE_URL points at a throwaway database -
+# see AGENTS.md - and the integration tests already drop ml_data themselves.
+ci-fresh-database: ci-database
+	@command -v psql >/dev/null 2>&1 || { \
+		echo 'psql is not on PATH, so the test database cannot be reset.'; \
+		echo 'A warm database hides tests that forget to create what they need; install psql or run `make test-integration` knowingly.'; \
+		exit 1; }
+	@psql "$$ML_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -q \
+		-c 'DROP SCHEMA IF EXISTS ml_data CASCADE' \
+		-c 'DROP SCHEMA IF EXISTS ml_core CASCADE'
+
 # ci runs what GitHub runs, in the order GitHub runs it, so that red is found
 # here and not after the push. Run it before pushing; `make check` is the
 # quicker pass that leaves out the database.
-ci: fmt-check vet web-check test-integration build build-windows-desktop test-wasm
+ci: fmt-check vet web-check ci-fresh-database test-integration build build-windows-desktop test-wasm
 	@echo 'ci: every check GitHub runs passed.'
 
