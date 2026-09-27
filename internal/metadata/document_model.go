@@ -56,6 +56,9 @@ type DocumentDefinition struct {
 	// data_lock_settings.go.
 	DataLock       project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
 	DataLockFields []ObjectField               `yaml:"data_lock_fields,omitempty" json:"dataLockFields,omitempty"`
+	// FullTextSearch is whether this object is in the full-text index at all -
+	// see full_text_search.go.
+	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
 
 	Number DocumentNumber `yaml:"number"`
 	// Numerator names a numbering shared with other kinds of document. When it
@@ -103,6 +106,7 @@ func DecodeDocument(source string, reader io.Reader, configuration project.Proje
 		basedOn:            value.BasedOn,
 		dataLock:           value.DataLock,
 		dataLockFields:     value.DataLockFields,
+		fullTextSearch:     value.FullTextSearch,
 	}
 	if value.Numerator != nil {
 		// The number comes from the numerator, and it is filled in once the
@@ -166,6 +170,9 @@ type numberedObjectShape struct {
 	// both.
 	dataLock       project.DataLockControlMode
 	dataLockFields []ObjectField
+	// fullTextSearch is whether the object is in the index - see
+	// full_text_search.go.
+	fullTextSearch FullTextSearchMode
 }
 
 // validateNumberShape checks a number on its own, apart from the object that
@@ -222,6 +229,8 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 	issues = append(issues, validateBasedOn(shape.basedOn)...)
 	issues = append(issues, validateDataLockMode("data_lock", shape.dataLock)...)
 	issues = append(issues, validateDataLockFields(shape.dataLockFields, shape.kind, shape.attributes)...)
+	issues = append(issues, validateFullTextSearch("full_text_search", shape.fullTextSearch)...)
+	issues = append(issues, validateFullTextSearchOnInputPair(shape.fullTextSearch, shape.input.FullTextSearchOnInput)...)
 	links := append(standardAttributeChoices("standard_attributes", shape.standardAttributes), tablePartStandardChoices(shape.tableParts)...)
 	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, links...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, false, false)...)

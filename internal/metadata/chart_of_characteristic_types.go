@@ -37,6 +37,9 @@ type ChartOfCharacteristicTypesDefinition struct {
 	// data_lock_settings.go.
 	DataLock       project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
 	DataLockFields []ObjectField               `yaml:"data_lock_fields,omitempty" json:"dataLockFields,omitempty"`
+	// FullTextSearch is whether this object is in the full-text index at all -
+	// see full_text_search.go.
+	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
 
 	Code              CatalogCode `yaml:"code" json:"code"`
 	DescriptionLength int         `yaml:"description_length" json:"descriptionLength"`
@@ -88,6 +91,7 @@ func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, configura
 		basedOn:              value.BasedOn,
 		dataLock:             value.DataLock,
 		dataLockFields:       value.DataLockFields,
+		fullTextSearch:       value.FullTextSearch,
 		kind:                 ChartOfCharacteristicTypesKind,
 		standardAttributes:   value.StandardAttributes,
 	}, configuration)...)

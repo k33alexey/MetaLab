@@ -45,7 +45,10 @@ type InformationRegisterDefinition struct {
 	// are written - see data_lock_settings.go. A register has the mode and no
 	// fields: the prototype gives the list of fields only to the kinds that
 	// have an object of their own.
-	DataLock            project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
+	DataLock project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
+	// FullTextSearch is whether the records of this register are in the
+	// full-text index - see full_text_search.go.
+	FullTextSearch      FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
 	RecordPresentations `yaml:",inline" json:",inline"`
 
 	WriteMode          InformationRegisterWriteMode   `yaml:"write_mode"`
@@ -73,6 +76,7 @@ func DecodeInformationRegister(source string, reader io.Reader, configuration pr
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
+	issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
 	switch value.WriteMode {
 	case InformationRegisterIndependent, InformationRegisterRecorder:
 	default:

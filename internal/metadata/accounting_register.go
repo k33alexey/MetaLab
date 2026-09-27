@@ -49,6 +49,9 @@ type AccountingRegisterDefinition struct {
 	// fields: the prototype gives the list of fields only to the kinds that
 	// have an object of their own.
 	DataLock project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
+	// FullTextSearch is whether the records of this register are in the
+	// full-text index - see full_text_search.go.
+	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
 
 	// ChartOfAccounts is where the accounts come from, and with them the
 	// analytics: a register has no ext dimensions of its own.
@@ -81,6 +84,7 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
+	issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
 	if value.ChartOfAccounts.IsZero() {
 		issues = append(issues, "chart_of_accounts is required: a register of entries without accounts records nothing")
 	}

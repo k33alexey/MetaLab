@@ -497,6 +497,9 @@ type CatalogDefinition struct {
 	// data_lock_settings.go.
 	DataLock       project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
 	DataLockFields []ObjectField               `yaml:"data_lock_fields,omitempty" json:"dataLockFields,omitempty"`
+	// FullTextSearch is whether this object is in the full-text index at all -
+	// see full_text_search.go.
+	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
 
 	Code              CatalogCode `yaml:"code" json:"code"`
 	DescriptionLength int         `yaml:"description_length" json:"descriptionLength"`
@@ -1025,6 +1028,7 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 		basedOn:              value.BasedOn,
 		dataLock:             value.DataLock,
 		dataLockFields:       value.DataLockFields,
+		fullTextSearch:       value.FullTextSearch,
 		kind:                 CatalogKind,
 		standardAttributes:   value.StandardAttributes,
 	}, configuration)...)
@@ -1095,6 +1099,9 @@ type referenceObjectShape struct {
 	// by which fields - see data_lock_settings.go.
 	dataLock       project.DataLockControlMode
 	dataLockFields []ObjectField
+	// fullTextSearch is whether the object is in the index - see
+	// full_text_search.go.
+	fullTextSearch FullTextSearchMode
 	// attributeUse says this kind's attributes may say whom they belong to -
 	// items, folders or both. Only a catalog and a chart of characteristic
 	// types may: the help says so, and the demonstration configuration writes
@@ -1220,6 +1227,8 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	issues = append(issues, validateBasedOn(shape.basedOn)...)
 	issues = append(issues, validateDataLockMode("data_lock", shape.dataLock)...)
 	issues = append(issues, validateDataLockFields(shape.dataLockFields, shape.kind, shape.attributes)...)
+	issues = append(issues, validateFullTextSearch("full_text_search", shape.fullTextSearch)...)
+	issues = append(issues, validateFullTextSearchOnInputPair(shape.fullTextSearch, shape.choice.FullTextSearchOnInput)...)
 	reserved := shape.reservedName
 	if reserved == nil {
 		reserved = reservedCatalogObjectName

@@ -58,6 +58,9 @@ type TaskDefinition struct {
 	// data_lock_settings.go.
 	DataLock       project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
 	DataLockFields []ObjectField               `yaml:"data_lock_fields,omitempty" json:"dataLockFields,omitempty"`
+	// FullTextSearch is whether this object is in the full-text index at all -
+	// see full_text_search.go.
+	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
 
 	Number            DocumentNumber `yaml:"number" json:"number"`
 	DescriptionLength int            `yaml:"description_length" json:"descriptionLength"`
@@ -105,6 +108,7 @@ func DecodeTask(source string, reader io.Reader, configuration project.Project) 
 		basedOn:            value.BasedOn,
 		dataLock:           value.DataLock,
 		dataLockFields:     value.DataLockFields,
+		fullTextSearch:     value.FullTextSearch,
 	}, configuration)...)
 	if value.DescriptionLength < 1 || value.DescriptionLength > 1_048_576 {
 		issues = append(issues, "description_length must be 1..1048576")

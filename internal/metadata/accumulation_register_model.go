@@ -32,6 +32,9 @@ type AccumulationRegisterDefinition struct {
 	// fields: the prototype gives the list of fields only to the kinds that
 	// have an object of their own.
 	DataLock project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
+	// FullTextSearch is whether the records of this register are in the
+	// full-text index - see full_text_search.go.
+	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
 
 	Kind AccumulationRegisterKindValue `yaml:"kind"`
 	// TotalsSplitting keeps the totals of concurrent writers in rows of their
@@ -56,6 +59,7 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
+	issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
 	if value.Kind != AccumulationRegisterBalance && value.Kind != AccumulationRegisterTurnover {
 		issues = append(issues, "kind must be balance or turnover")
 	}

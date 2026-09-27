@@ -26,7 +26,12 @@ type CommonAttributeDefinition struct {
 	Types        []Type        `yaml:"types"`
 	FillChecking FillCheck     `yaml:"fill_checking,omitempty"`
 	Indexing     IndexMode     `yaml:"indexing,omitempty"`
-	Objects      []uuid.UUID   `yaml:"objects"`
+	// FullTextSearch is the field's own flag, which a common attribute carries
+	// like any other field - see full_text_search.go. The prototype gives it to
+	// a common attribute and the demonstration configuration writes it on all
+	// six of them.
+	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty"`
+	Objects        []uuid.UUID        `yaml:"objects"`
 }
 
 func DecodeCommonAttribute(source string, reader io.Reader, configuration project.Project) (CommonAttributeDefinition, error) {
@@ -44,6 +49,7 @@ func DecodeCommonAttribute(source string, reader io.Reader, configuration projec
 // kind and name collisions are checked catalog-wide by propagateCommonAttributes.
 func ValidateCommonAttribute(source string, value CommonAttributeDefinition, configuration project.Project) error {
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
+	issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
 	issues = append(issues, validateTypes("types", value.Types, uuid.UUID{})...)
 	if !validFillCheck(value.FillChecking) {
 		issues = append(issues, "fill_checking must be dont-check or show-error")

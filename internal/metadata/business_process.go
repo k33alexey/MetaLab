@@ -155,6 +155,9 @@ type BusinessProcessDefinition struct {
 	// data_lock_settings.go.
 	DataLock       project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
 	DataLockFields []ObjectField               `yaml:"data_lock_fields,omitempty" json:"dataLockFields,omitempty"`
+	// FullTextSearch is whether this object is in the full-text index at all -
+	// see full_text_search.go.
+	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
 
 	Number DocumentNumber `yaml:"number" json:"number"`
 	// Task is the kind of task this process creates at its points.
@@ -194,6 +197,7 @@ func DecodeBusinessProcess(source string, reader io.Reader, configuration projec
 		basedOn:            value.BasedOn,
 		dataLock:           value.DataLock,
 		dataLockFields:     value.DataLockFields,
+		fullTextSearch:     value.FullTextSearch,
 	}, configuration)...)
 	if value.Task != nil && value.Task.IsZero() {
 		issues = append(issues, "task must be a non-zero UUID")
