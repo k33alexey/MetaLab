@@ -496,6 +496,9 @@ type CatalogDefinition struct {
 	Presentations `yaml:",inline" json:",inline"` // ObjectChoice is how a value of this kind is entered and picked - see
 	// object_choice.go.
 	ObjectChoice `yaml:",inline" json:",inline"`
+	// BasedOn are the objects one of these may be made out of, the list the
+	// command to make it offers - see based_on.go.
+	BasedOn []uuid.UUID `yaml:"based_on,omitempty" json:"basedOn,omitempty"`
 
 	Code              CatalogCode `yaml:"code" json:"code"`
 	DescriptionLength int         `yaml:"description_length" json:"descriptionLength"`
@@ -1025,6 +1028,7 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 		predefinedDataUpdate: value.PredefinedDataUpdate,
 		presentation:         value.Presentations,
 		choice:               value.ObjectChoice,
+		basedOn:              value.BasedOn,
 		kind:                 CatalogKind,
 		standardAttributes:   value.StandardAttributes,
 	}, configuration)...)
@@ -1088,6 +1092,9 @@ type referenceObjectShape struct {
 	// choice is how a value of the kind is entered and picked. All five
 	// reference kinds carry the whole set - see object_choice.go.
 	choice ObjectChoice
+	// basedOn is what this object may be made out of - see based_on.go. All
+	// five reference kinds carry it, as do the three numbered ones.
+	basedOn []uuid.UUID
 	// attributeUse says this kind's attributes may say whom they belong to -
 	// items, folders or both. Only a catalog and a chart of characteristic
 	// types may: the help says so, and the demonstration configuration writes
@@ -1210,6 +1217,7 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	issues = append(issues, validatePresentations(shape.presentation, configuration)...)
 	issues = append(issues, validateObjectChoice(shape.choice)...)
 	issues = append(issues, validateInputByString(shape.choice.InputByString, shape.kind, shape.attributes)...)
+	issues = append(issues, validateBasedOn(shape.basedOn)...)
 	reserved := shape.reservedName
 	if reserved == nil {
 		reserved = reservedCatalogObjectName
@@ -1623,6 +1631,7 @@ func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.Presentations = clonePresentations(value.Presentations)
 	value.ObjectInput = cloneObjectInput(value.ObjectInput)
+	value.BasedOn = slices.Clone(value.BasedOn)
 	return value
 }
 

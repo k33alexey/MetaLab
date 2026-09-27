@@ -50,6 +50,9 @@ type ExchangePlanDefinition struct {
 	Presentations `yaml:",inline" json:",inline"` // ObjectChoice is how a value of this kind is entered and picked - see
 	// object_choice.go.
 	ObjectChoice `yaml:",inline" json:",inline"`
+	// BasedOn are the objects one of these may be made out of, the list the
+	// command to make it offers - see based_on.go.
+	BasedOn []uuid.UUID `yaml:"based_on,omitempty" json:"basedOn,omitempty"`
 
 	Code              CatalogCode `yaml:"code" json:"code"`
 	DescriptionLength int         `yaml:"description_length" json:"descriptionLength"`
@@ -114,6 +117,7 @@ func DecodeExchangePlan(source string, reader io.Reader, configuration project.P
 		kind:               ExchangePlanKind,
 		presentation:       value.Presentations,
 		choice:             value.ObjectChoice,
+		basedOn:            value.BasedOn,
 		standardAttributes: value.StandardAttributes,
 	}, configuration)...)
 	issues = append(issues, validateExchangePlanContent(value)...)
@@ -185,6 +189,7 @@ func cloneExchangePlan(value ExchangePlanDefinition) ExchangePlanDefinition {
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.Presentations = clonePresentations(value.Presentations)
 	value.ObjectInput = cloneObjectInput(value.ObjectInput)
+	value.BasedOn = slices.Clone(value.BasedOn)
 	return value
 }
 

@@ -60,6 +60,9 @@ type ChartOfCalculationTypesDefinition struct {
 	Presentations `yaml:",inline" json:",inline"` // ObjectChoice is how a value of this kind is entered and picked - see
 	// object_choice.go.
 	ObjectChoice `yaml:",inline" json:",inline"`
+	// BasedOn are the objects one of these may be made out of, the list the
+	// command to make it offers - see based_on.go.
+	BasedOn []uuid.UUID `yaml:"based_on,omitempty" json:"basedOn,omitempty"`
 
 	Code              CatalogCode `yaml:"code" json:"code"`
 	DescriptionLength int         `yaml:"description_length" json:"descriptionLength"`
@@ -102,6 +105,7 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, configuratio
 		predefinedDataUpdate: value.PredefinedDataUpdate,
 		presentation:         value.Presentations,
 		choice:               value.ObjectChoice,
+		basedOn:              value.BasedOn,
 		kind:                 ChartOfCalculationTypesKind,
 		standardAttributes:   value.StandardAttributes,
 		standardTableParts:   value.StandardTableParts,
@@ -235,6 +239,7 @@ func cloneChartOfCalculationTypes(value ChartOfCalculationTypesDefinition) Chart
 	value.StandardTableParts = cloneStandardTableParts(value.StandardTableParts)
 	value.Presentations = clonePresentations(value.Presentations)
 	value.ObjectInput = cloneObjectInput(value.ObjectInput)
+	value.BasedOn = slices.Clone(value.BasedOn)
 	return value
 }
 

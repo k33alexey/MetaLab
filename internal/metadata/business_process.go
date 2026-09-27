@@ -147,6 +147,9 @@ type BusinessProcessDefinition struct {
 	// line: the prototype gives it no presentation - see object_choice.go.
 	EditType    EditType `yaml:"edit_type,omitempty" json:"editType,omitempty"`
 	ObjectInput `yaml:",inline" json:",inline"`
+	// BasedOn are the objects one of these may be made out of, the list the
+	// command to make it offers - see based_on.go.
+	BasedOn []uuid.UUID `yaml:"based_on,omitempty" json:"basedOn,omitempty"`
 
 	Number DocumentNumber `yaml:"number" json:"number"`
 	// Task is the kind of task this process creates at its points.
@@ -183,6 +186,7 @@ func DecodeBusinessProcess(source string, reader io.Reader, configuration projec
 		standardAttributes: value.StandardAttributes,
 		presentation:       value.Presentations,
 		input:              value.ObjectInput,
+		basedOn:            value.BasedOn,
 	}, configuration)...)
 	if value.Task != nil && value.Task.IsZero() {
 		issues = append(issues, "task must be a non-zero UUID")
@@ -474,6 +478,7 @@ func cloneBusinessProcess(value BusinessProcessDefinition) BusinessProcessDefini
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.Presentations = clonePresentations(value.Presentations)
 	value.ObjectInput = cloneObjectInput(value.ObjectInput)
+	value.BasedOn = slices.Clone(value.BasedOn)
 	return value
 }
 

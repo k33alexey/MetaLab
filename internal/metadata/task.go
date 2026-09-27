@@ -50,6 +50,9 @@ type TaskDefinition struct {
 	EditType            EditType         `yaml:"edit_type,omitempty" json:"editType,omitempty"`
 	DefaultPresentation TaskPresentation `yaml:"default_presentation,omitempty" json:"defaultPresentation,omitempty"`
 	ObjectInput         `yaml:",inline" json:",inline"`
+	// BasedOn are the objects one of these may be made out of, the list the
+	// command to make it offers - see based_on.go.
+	BasedOn []uuid.UUID `yaml:"based_on,omitempty" json:"basedOn,omitempty"`
 
 	Number            DocumentNumber `yaml:"number" json:"number"`
 	DescriptionLength int            `yaml:"description_length" json:"descriptionLength"`
@@ -94,6 +97,7 @@ func DecodeTask(source string, reader io.Reader, configuration project.Project) 
 		standardAttributes: value.StandardAttributes,
 		presentation:       value.Presentations,
 		input:              value.ObjectInput,
+		basedOn:            value.BasedOn,
 	}, configuration)...)
 	if value.DescriptionLength < 1 || value.DescriptionLength > 1_048_576 {
 		issues = append(issues, "description_length must be 1..1048576")
@@ -222,6 +226,7 @@ func cloneTask(value TaskDefinition) TaskDefinition {
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.Presentations = clonePresentations(value.Presentations)
 	value.ObjectInput = cloneObjectInput(value.ObjectInput)
+	value.BasedOn = slices.Clone(value.BasedOn)
 	return value
 }
 

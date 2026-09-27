@@ -48,6 +48,9 @@ type DocumentDefinition struct {
 	Presentations `yaml:",inline" json:",inline"` // A document is picked but not edited in a list, and stands for nothing in
 	// one line: it keeps only the pair every referenced kind has.
 	ObjectInput `yaml:",inline" json:",inline"`
+	// BasedOn are the objects one of these may be made out of, the list the
+	// command to make it offers - see based_on.go.
+	BasedOn []uuid.UUID `yaml:"based_on,omitempty" json:"basedOn,omitempty"`
 
 	Number DocumentNumber `yaml:"number"`
 	// Numerator names a numbering shared with other kinds of document. When it
@@ -92,6 +95,7 @@ func DecodeDocument(source string, reader io.Reader, configuration project.Proje
 		standardAttributes: value.StandardAttributes,
 		presentation:       value.Presentations,
 		input:              value.ObjectInput,
+		basedOn:            value.BasedOn,
 	}
 	if value.Numerator != nil {
 		// The number comes from the numerator, and it is filled in once the
@@ -147,6 +151,9 @@ type numberedObjectShape struct {
 	// input is the pair of settings every referenced kind has. What each of the
 	// three numbered kinds adds to it is checked where that kind is decoded.
 	input ObjectInput
+	// basedOn is what this object may be made out of - see based_on.go. All
+	// three numbered kinds carry it, as do the five reference ones.
+	basedOn []uuid.UUID
 }
 
 // validateNumberShape checks a number on its own, apart from the object that
@@ -200,6 +207,7 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 	issues = append(issues, validatePresentations(shape.presentation, configuration)...)
 	issues = append(issues, validateObjectInput(shape.input)...)
 	issues = append(issues, validateInputByString(shape.input.InputByString, shape.kind, shape.attributes)...)
+	issues = append(issues, validateBasedOn(shape.basedOn)...)
 	links := append(standardAttributeChoices("standard_attributes", shape.standardAttributes), tablePartStandardChoices(shape.tableParts)...)
 	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, links...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, false, false)...)
@@ -334,6 +342,7 @@ func cloneDocumentDefinition(value DocumentDefinition) DocumentDefinition {
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.Presentations = clonePresentations(value.Presentations)
 	value.ObjectInput = cloneObjectInput(value.ObjectInput)
+	value.BasedOn = slices.Clone(value.BasedOn)
 	return value
 }
 
