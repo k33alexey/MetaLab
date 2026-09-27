@@ -121,8 +121,21 @@ func (repository *CatalogRepository) predefinedIdentities(ctx context.Context, t
 func (repository *CatalogRepository) newPredefinedRecord(ctx context.Context, transaction pgx.Tx, definition CatalogDefinition, item PredefinedCatalogItem) (*CatalogRecord, error) {
 	record := &CatalogRecord{
 		Reference: CatalogReference{CatalogID: definition.ID, ObjectID: item.ID}, Code: item.Code,
-		Description: item.Description, PredefinedName: item.Name, Attributes: make(map[uuid.UUID]Value),
-		TableParts: make(map[uuid.UUID][]CatalogRow),
+		Description: item.Description, PredefinedName: item.Name, IsFolder: item.IsFolder,
+		Attributes: make(map[uuid.UUID]Value), TableParts: make(map[uuid.UUID][]CatalogRow),
+	}
+	// A configuration brings whole trees of predefined data, and until the
+	// three standard fields reached the data every one of them arrived flat:
+	// the parent named in the description was read, validated and then
+	// dropped on the way to the row. The parent is named by the name of
+	// another predefined item, so it is resolved here against the same
+	// description; loading refuses a name that is not there.
+	if item.Parent != "" {
+		parent, ok := definition.PredefinedItem(item.Parent)
+		if !ok {
+			return nil, fmt.Errorf("predefined catalog item %s.%s sits under %s, which is not a predefined item of this catalog", definition.Name, item.Name, item.Parent)
+		}
+		record.Parent = parent.ID
 	}
 	for name, value := range item.Attributes {
 		attribute, ok := findCatalogAttribute(definition.Attributes, name)

@@ -196,6 +196,12 @@ func (catalog *Catalog) referenceSources(target objectIdentity) ([]referenceSour
 	}
 	for _, definition := range catalog.Catalogs {
 		table, _ := PhysicalCatalogTable(definition.ID)
+		// A row is pointed at by two things besides an attribute: the rows it
+		// is the parent of, and the rows that belong to it. Both were invisible
+		// here while nothing wrote them, and the first of them is the reason a
+		// folder holding rows has to be refused with a sentence rather than
+		// with a foreign key violation from the driver.
+		result = append(result, catalog.placementReferenceSources(target, definition, table)...)
 		if err := appendAttributes("catalog", definition.Name, definition.ID, table, "ref", "", definition.Attributes, false); err != nil {
 			return nil, err
 		}
@@ -245,6 +251,46 @@ func (catalog *Catalog) referenceSources(target objectIdentity) ([]referenceSour
 		}
 	}
 	return result, nil
+}
+
+// placementReferenceSources are the ways one catalog points at the object
+// being deleted through where its rows sit: the parent of a row, and its
+// owner. The owner is one column or two, exactly as it is stored, and the
+// composite one carries no foreign key at all - so for a catalog with several
+// owners this search is the only thing that stands between a deleted owner and
+// rows left pointing at it.
+func (catalog *Catalog) placementReferenceSources(target objectIdentity, definition CatalogDefinition, table string) []referenceSource {
+	var result []referenceSource
+	if catalogHasParent(definition) && target.kind == CatalogType && target.metadataID == definition.ID {
+		result = append(result, referenceSource{
+			table: table, ownerKind: "catalog", ownerName: definition.Name, ownerMetadataID: definition.ID,
+			field: "Родитель", column: "parent", ownerColumn: "ref",
+		})
+	}
+	if !catalogHasOwner(definition) {
+		return result
+	}
+	owns := false
+	for _, owner := range definition.Owners {
+		if owner != target.metadataID {
+			continue
+		}
+		kind, ok := catalog.ownerObject(owner)
+		if ok && ownerKindTypes[kind] == target.kind {
+			owns = true
+		}
+	}
+	if !owns {
+		return result
+	}
+	source := referenceSource{
+		table: table, ownerKind: "catalog", ownerName: definition.Name, ownerMetadataID: definition.ID,
+		field: "Владелец", column: "owner", ownerColumn: "ref",
+	}
+	if len(definition.Owners) > 1 {
+		source.column, source.discriminator, source.discriminatorID = "owner_ref", "owner_type", target.metadataID
+	}
+	return append(result, source)
 }
 
 func (catalog *Catalog) staticConstantReferences(target objectIdentity, stored map[uuid.UUID]bool, limit int) []ReferenceUse {

@@ -1276,6 +1276,9 @@ func validatePredefinedItems(shape referenceObjectShape) []string {
 		if item.Parent != "" && !shape.hierarchy.Enabled {
 			issues = append(issues, prefix+".parent needs a hierarchy")
 		}
+		if item.Parent != "" && strings.EqualFold(item.Parent, item.Name) {
+			issues = append(issues, prefix+".parent is the item itself")
+		}
 		if item.Code == "" {
 			if !shape.code.Auto {
 				issues = append(issues, prefix+".code is required when automatic codes are disabled")
@@ -1298,6 +1301,57 @@ func validatePredefinedItems(shape referenceObjectShape) []string {
 				issues = append(issues, prefix+".attributes contains duplicate "+attribute.Name)
 			}
 			attributeNames[key] = true
+		}
+	}
+	return append(issues, validatePredefinedTree(shape.predefined, shape.hierarchy)...)
+}
+
+// validatePredefinedTree resolves the parents the predefined items name.
+//
+// Until the three standard fields reached the data this could be left alone,
+// because the tree was never written: the synchronization created every
+// predefined row at the top level whatever the description said. Now that it
+// is written, a parent that is not there, one that is an item where only a
+// folder holds rows, or a ring of parents is a tree the database would refuse
+// halfway through creating it - with a message about a foreign key, naming
+// none of the items involved.
+func validatePredefinedTree(items []PredefinedCatalogItem, hierarchy Hierarchy) []string {
+	byName := make(map[string]PredefinedCatalogItem, len(items))
+	for _, item := range items {
+		byName[strings.ToLower(item.Name)] = item
+	}
+	var issues []string
+	for index, item := range items {
+		if item.Parent == "" {
+			continue
+		}
+		prefix := fmt.Sprintf("predefined[%d]", index)
+		parent, ok := byName[strings.ToLower(item.Parent)]
+		if !ok {
+			issues = append(issues, prefix+".parent "+item.Parent+" is not a predefined item of this object")
+			continue
+		}
+		if hierarchy.Kind == FoldersAndItemsHierarchy && !parent.IsFolder {
+			issues = append(issues, prefix+".parent "+parent.Name+" is an item, and only a folder holds rows")
+		}
+		// Walking up from every item is enough to find a ring, and the walk is
+		// bounded by the number of items: a ring is reached again before that.
+		seen := map[string]bool{strings.ToLower(item.Name): true}
+		for current := parent; ; {
+			key := strings.ToLower(current.Name)
+			if seen[key] {
+				issues = append(issues, prefix+".parent makes a ring through "+current.Name)
+				break
+			}
+			seen[key] = true
+			if current.Parent == "" {
+				break
+			}
+			next, ok := byName[strings.ToLower(current.Parent)]
+			if !ok {
+				break
+			}
+			current = next
 		}
 	}
 	return issues

@@ -66,6 +66,7 @@ type MetadataRuntime interface {
 // CatalogRuntime resolves catalog manager operations for server-side BSL.
 type CatalogRuntime interface {
 	CreateCatalogObject(context.Context, string) (bytecode.Value, error)
+	CreateCatalogFolder(context.Context, string) (bytecode.Value, error)
 	GetCatalogObject(context.Context, string, bytecode.Value) (bytecode.Value, error)
 	FindCatalogByCode(context.Context, string, bytecode.Value) (bytecode.Value, error)
 	GetCatalogReference(context.Context, string, bytecode.Value) (bytecode.Value, error)
@@ -1512,6 +1513,10 @@ func dispatchMetadata(ctx context.Context, env executionEnvironment, path string
 		case "create":
 			if len(arguments) == 0 {
 				return runtime.CreateCatalogObject(ctx, parts[1])
+			}
+		case "create-folder":
+			if len(arguments) == 0 {
+				return runtime.CreateCatalogFolder(ctx, parts[1])
 			}
 		case "get":
 			if len(arguments) == 1 {

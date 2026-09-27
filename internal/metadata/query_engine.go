@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -34,12 +35,16 @@ const (
 )
 
 type queryColumn struct {
-	name       string
-	sql        string
-	kind       queryColumnKind
-	storage    attributeStorage
-	types      []Type
-	metadataID uuid.UUID
+	name string
+	sql  string
+	kind queryColumnKind
+	// referenceKinds is what the type half of a composite reference column may
+	// name. Empty means a document, which is what a recorder is; an owner may
+	// be a row of any of the five kinds a catalog can belong to.
+	referenceKinds []Kind
+	storage        attributeStorage
+	types          []Type
+	metadataID     uuid.UUID
 }
 
 type querySource struct {
@@ -846,17 +851,44 @@ func (compiler *queryCompiler) compileRecorderComparison(value querylang.Binary,
 }
 
 func (compiler *queryCompiler) bindRecorder(column *queryColumn, value bytecode.Value) (string, error) {
-	object, ok := value.AsRuntimeObject()
-	reference, valid := object.(*documentReferenceObject)
-	if !ok || !valid || reference.runtime != compiler.runtime || reference.reference.ObjectID.IsZero() {
-		return "", fmt.Errorf("query field Регистратор requires a non-empty document reference")
+	metadataID, objectID, err := compiler.compositeReferenceHalves(column, value)
+	if err != nil {
+		return "", err
 	}
 	if len(compiler.arguments) > maxQueryArguments-2 {
 		return "", fmt.Errorf("query cannot contain more than %d SQL arguments", maxQueryArguments)
 	}
-	compiler.arguments = append(compiler.arguments, reference.reference.DocumentID.String(), reference.reference.ObjectID.String())
+	compiler.arguments = append(compiler.arguments, metadataID.String(), objectID.String())
 	first := len(compiler.arguments) - 1
 	return fmt.Sprintf("(%s->>'type' = $%d AND %s->>'ref' = $%d)", column.sql, first, column.sql, first+1), nil
+}
+
+// compositeReferenceHalves takes the two identifiers a composite reference
+// column is compared against. A recorder accepts a document and nothing else;
+// an owner accepts a reference to any of the kinds its column may name, and
+// only a catalog among them has a reference object so far.
+func (compiler *queryCompiler) compositeReferenceHalves(column *queryColumn, value bytecode.Value) (uuid.UUID, uuid.UUID, error) {
+	object, ok := value.AsRuntimeObject()
+	if !ok {
+		return uuid.UUID{}, uuid.UUID{}, fmt.Errorf("query field %s requires a non-empty object reference", column.name)
+	}
+	if document, valid := object.(*documentReferenceObject); valid {
+		if len(column.referenceKinds) != 0 && !slices.Contains(column.referenceKinds, DocumentKind) {
+			return uuid.UUID{}, uuid.UUID{}, fmt.Errorf("query field %s cannot point at a document", column.name)
+		}
+		if document.runtime != compiler.runtime || document.reference.ObjectID.IsZero() {
+			return uuid.UUID{}, uuid.UUID{}, fmt.Errorf("query field %s requires a non-empty document reference", column.name)
+		}
+		return document.reference.DocumentID, document.reference.ObjectID, nil
+	}
+	item, valid := object.(*catalogReferenceObject)
+	if !valid || len(column.referenceKinds) == 0 || !slices.Contains(column.referenceKinds, CatalogKind) {
+		return uuid.UUID{}, uuid.UUID{}, fmt.Errorf("query field %s requires a non-empty object reference", column.name)
+	}
+	if item.runtime != compiler.runtime || item.reference.ObjectID.IsZero() {
+		return uuid.UUID{}, uuid.UUID{}, fmt.Errorf("query field %s requires a non-empty catalog reference", column.name)
+	}
+	return item.reference.CatalogID, item.reference.ObjectID, nil
 }
 
 func (compiler *queryCompiler) compileValue(expression querylang.Expression, hint *queryColumn) (string, *queryColumn, *bytecode.Value, error) {
@@ -1282,11 +1314,18 @@ func (compiler *queryCompiler) decodeOutput(output queryOutput, raw json.RawMess
 		if err != nil {
 			return bytecode.Undefined(), err
 		}
-		definition, ok := compiler.runtime.catalog.DocumentByID(typeID)
-		if !ok {
-			return bytecode.Undefined(), fmt.Errorf("unknown recorder document %s", typeID)
+		if len(column.referenceKinds) == 0 {
+			definition, ok := compiler.runtime.catalog.DocumentByID(typeID)
+			if !ok {
+				return bytecode.Undefined(), fmt.Errorf("unknown recorder document %s", typeID)
+			}
+			return compiler.runtime.wrapDocumentReference(definition, DocumentReference{DocumentID: typeID, ObjectID: objectID})
 		}
-		return compiler.runtime.wrapDocumentReference(definition, DocumentReference{DocumentID: typeID, ObjectID: objectID})
+		kind, ok := compiler.runtime.catalog.objectOfKinds(column.referenceKinds, typeID)
+		if !ok {
+			return bytecode.Undefined(), fmt.Errorf("query field %s points at %s, which is not an object of the configuration", column.name, typeID)
+		}
+		return compiler.runtime.wrapObjectReference(kind, typeID, objectID)
 	case queryMovementKindColumn:
 		var movement int
 		if err := json.Unmarshal(raw, &movement); err != nil {
@@ -1352,6 +1391,7 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		result.addStored("Наименование", querySourceColumnSQL(sqlAlias, "description"), []Type{{Kind: StringType, Length: definition.DescriptionLength}}, "Description")
 		result.addStored("ПометкаУдаления", querySourceColumnSQL(sqlAlias, "deletion_mark"), []Type{{Kind: BooleanType}}, "DeletionMark")
 		result.addStored("ИмяПредопределенныхДанных", querySourceColumnSQL(sqlAlias, "predefined_name"), []Type{{Kind: StringType, Length: 128}}, "PredefinedDataName")
+		result.addPlacement(runtime.catalog, definition)
 		if err := runtime.addQueryAttributes(&result, definition.Attributes); err != nil {
 			return querySource{}, err
 		}
@@ -1448,6 +1488,42 @@ func (source *querySource) addStored(name, sql string, types []Type, aliases ...
 		storage = attributeStorage{sqlType: "uuid", valueType: types[0].Kind, referenceObject: types[0].Reference}
 	}
 	source.add(queryColumn{name: name, sql: sql, storage: storage, types: types}, aliases...)
+}
+
+// addPlacement gives a catalog source the three fields that say where a row
+// sits - see catalog_placement.go. Each of them appears only where the row
+// actually has it: a flat catalog has no Родитель to select, and a query
+// naming one is refused rather than answered with nothing.
+//
+// The owner is one column when the catalog belongs to one kind of object and
+// two when it may belong to several, exactly as it is stored. The composite
+// one is the shape a recorder already had, and it is read and compared the
+// same way.
+func (source *querySource) addPlacement(catalog *Catalog, definition CatalogDefinition) {
+	if catalogHasParent(definition) {
+		source.addStored("Родитель", querySourceColumnSQL(source.sqlAlias, "parent"),
+			[]Type{referenceType(CatalogType, definition.ID)}, "Parent")
+	}
+	if catalogHasFolders(definition) {
+		source.addStored("ЭтоГруппа", querySourceColumnSQL(source.sqlAlias, "is_folder"), []Type{{Kind: BooleanType}}, "IsFolder")
+	}
+	if !catalogHasOwner(definition) {
+		return
+	}
+	if len(definition.Owners) == 1 {
+		kind, ok := catalog.ownerObject(definition.Owners[0])
+		if !ok {
+			return
+		}
+		source.addStored("Владелец", querySourceColumnSQL(source.sqlAlias, "owner"),
+			[]Type{referenceType(ownerKindTypes[kind], definition.Owners[0])}, "Owner")
+		return
+	}
+	table := pgx.Identifier{source.sqlAlias}.Sanitize()
+	source.add(queryColumn{
+		name: "Владелец", kind: queryRecorderColumn, referenceKinds: catalogOwnerKinds,
+		sql: "jsonb_build_object('type', " + table + ".owner_type::text, 'ref', " + table + ".owner_ref::text)",
+	}, "Owner")
 }
 
 func (source *querySource) addRecorder() {

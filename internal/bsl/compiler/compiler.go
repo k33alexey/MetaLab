@@ -993,6 +993,11 @@ func catalogCallPath(catalog, method string, arity int) (string, bool) {
 	switch {
 	case strings.EqualFold(method, "СоздатьЭлемент"), strings.EqualFold(method, "CreateItem"):
 		operation, expected = "create", 0
+	// A folder is made by its own method rather than by a flag on the object:
+	// whether a row is a folder is decided when it is made and is read-only
+	// afterwards.
+	case strings.EqualFold(method, "СоздатьГруппу"), strings.EqualFold(method, "CreateFolder"):
+		operation, expected = "create-folder", 0
 	case strings.EqualFold(method, "ПолучитьОбъект"), strings.EqualFold(method, "GetObject"):
 		operation, expected = "get", 1
 	case strings.EqualFold(method, "НайтиПоКоду"), strings.EqualFold(method, "FindByCode"):

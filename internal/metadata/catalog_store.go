@@ -48,8 +48,16 @@ type CatalogRecord struct {
 	Description    string
 	DeletionMark   bool
 	PredefinedName string
-	Attributes     map[uuid.UUID]Value
-	TableParts     map[uuid.UUID][]CatalogRow
+	// Parent is the row this one sits under, IsFolder says it is a folder
+	// rather than an item, and Owner is whom it belongs to - see
+	// catalog_placement.go. A parent is always a row of the same catalog, so
+	// it is the row's identifier alone; an owner may be a row of any of five
+	// kinds, so it is a value that says which object it points at.
+	Parent     uuid.UUID
+	IsFolder   bool
+	Owner      Value
+	Attributes map[uuid.UUID]Value
+	TableParts map[uuid.UUID][]CatalogRow
 }
 
 type CatalogRepository struct {
@@ -65,9 +73,25 @@ func NewCatalogRepository(pool *pgxpool.Pool, catalog *Catalog) (*CatalogReposit
 }
 
 func (repository *CatalogRepository) New(ctx context.Context, name string, handler CatalogEventHandler) (*CatalogRecord, error) {
+	return repository.newRecord(ctx, name, false, handler)
+}
+
+// NewFolder makes a folder rather than an item. It is a second entry point
+// rather than a flag on the record because whether a row is a folder is
+// decided when the row is made and never afterwards: ЭтоГруппа is read-only
+// in the prototype, and the manager offers СоздатьГруппу beside
+// СоздатьЭлемент for exactly this reason.
+func (repository *CatalogRepository) NewFolder(ctx context.Context, name string, handler CatalogEventHandler) (*CatalogRecord, error) {
+	return repository.newRecord(ctx, name, true, handler)
+}
+
+func (repository *CatalogRepository) newRecord(ctx context.Context, name string, folder bool, handler CatalogEventHandler) (*CatalogRecord, error) {
 	definition, ok := repository.catalog.CatalogDefinition(name)
 	if !ok {
 		return nil, fmt.Errorf("unknown catalog %q", name)
+	}
+	if folder && !catalogHasFolders(definition) {
+		return nil, fmt.Errorf("catalog %s has no folders", definition.Name)
 	}
 	id, err := uuid.New()
 	if err != nil {
@@ -75,6 +99,7 @@ func (repository *CatalogRepository) New(ctx context.Context, name string, handl
 	}
 	record := &CatalogRecord{
 		Reference:  CatalogReference{CatalogID: definition.ID, ObjectID: id},
+		IsFolder:   folder,
 		Attributes: make(map[uuid.UUID]Value), TableParts: make(map[uuid.UUID][]CatalogRow),
 	}
 	reference := record.Reference
@@ -84,7 +109,7 @@ func (repository *CatalogRepository) New(ctx context.Context, name string, handl
 	if err := dispatchCatalogEvent(ctx, handler, CatalogEventFill, record); err != nil {
 		return nil, err
 	}
-	if record.Reference != reference || record.Version != 0 {
+	if record.Reference != reference || record.Version != 0 || record.IsFolder != folder {
 		return nil, fmt.Errorf("catalog fill event changed immutable record identity")
 	}
 	return record, nil
@@ -100,17 +125,20 @@ func (repository *CatalogRepository) Save(ctx context.Context, record *CatalogRe
 		return fmt.Errorf("unknown catalog %s", working.Reference.CatalogID)
 	}
 	reference, expectedVersion, predefinedName := working.Reference, working.Version, working.PredefinedName
+	// Whether the row is a folder belongs with the reference and the version:
+	// an event may fill a row, not turn it into a different kind of row.
+	isFolder := working.IsFolder
 	prepare := func() error {
 		if err := dispatchCatalogEvent(ctx, handler, CatalogEventFillCheck, working); err != nil {
 			return err
 		}
-		if working.Reference != reference || working.Version != expectedVersion || working.PredefinedName != predefinedName {
+		if working.Reference != reference || working.Version != expectedVersion || working.PredefinedName != predefinedName || working.IsFolder != isFolder {
 			return fmt.Errorf("catalog fill-check event changed immutable record identity")
 		}
 		if err := dispatchCatalogEvent(ctx, handler, CatalogEventBefore, working); err != nil {
 			return err
 		}
-		if working.Reference != reference || working.Version != expectedVersion || working.PredefinedName != predefinedName {
+		if working.Reference != reference || working.Version != expectedVersion || working.PredefinedName != predefinedName || working.IsFolder != isFolder {
 			return fmt.Errorf("catalog before-write event changed immutable record identity")
 		}
 		return nil
@@ -140,6 +168,9 @@ func (repository *CatalogRepository) Save(ctx context.Context, record *CatalogRe
 			return err
 		}
 		if err := lockObjectForWrite(ctx, transaction, CatalogType, definition.ID, working.Reference.ObjectID); err != nil {
+			return err
+		}
+		if err := repository.checkPlacement(ctx, transaction, definition, working); err != nil {
 			return err
 		}
 		version, err := repository.writeRecord(ctx, transaction, definition, working)
@@ -249,6 +280,9 @@ func (repository *CatalogRepository) normalizeRecord(definition CatalogDefinitio
 	if !utf8.ValidString(record.Description) || utf8.RuneCountInString(record.Description) > definition.DescriptionLength {
 		return fmt.Errorf("catalog %s description exceeds %d characters", definition.Name, definition.DescriptionLength)
 	}
+	if err := repository.normalizePlacement(definition, record); err != nil {
+		return err
+	}
 	attributes, err := repository.catalog.normalizeAttributes(definition.Name, definition.Attributes, record.Attributes)
 	if err != nil {
 		return err
@@ -313,6 +347,12 @@ func (repository *CatalogRepository) writeRecord(ctx context.Context, transactio
 		predefinedName = record.PredefinedName
 	}
 	arguments := []any{record.Reference.ObjectID.String(), record.Code, record.Description, record.DeletionMark, predefinedName}
+	placementColumns, placementArguments, err := repository.placementColumns(definition, record)
+	if err != nil {
+		return 0, err
+	}
+	columns = append(columns, placementColumns...)
+	arguments = append(arguments, placementArguments...)
 	for _, attribute := range definition.Attributes {
 		column, _ := PhysicalAttributeColumn(attribute.ID)
 		columns = append(columns, column)
@@ -429,6 +469,9 @@ func (repository *CatalogRepository) decodeRecord(definition CatalogDefinition, 
 		if err := json.Unmarshal(raw, &record.PredefinedName); err != nil {
 			return nil, fmt.Errorf("decode catalog %s predefined name: %w", definition.Name, err)
 		}
+	}
+	if err := repository.decodePlacement(definition, fields, record); err != nil {
+		return nil, err
 	}
 	for _, attribute := range definition.Attributes {
 		column, _ := PhysicalAttributeColumn(attribute.ID)

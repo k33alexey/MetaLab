@@ -81,6 +81,23 @@ func (runtime *Runtime) CreateCatalogObject(ctx context.Context, name string) (b
 	return runtime.wrapCatalogRecord(definition, record)
 }
 
+// CreateCatalogFolder is СоздатьГруппу: the other way a row of a catalog is
+// made, and the only way a folder is.
+func (runtime *Runtime) CreateCatalogFolder(ctx context.Context, name string) (bytecode.Value, error) {
+	if runtime.catalogRepository == nil {
+		return bytecode.Undefined(), fmt.Errorf("catalog repository is not configured")
+	}
+	definition, ok := runtime.catalog.CatalogDefinition(name)
+	if !ok {
+		return bytecode.Undefined(), fmt.Errorf("unknown catalog %q", name)
+	}
+	record, err := runtime.catalogRepository.NewFolder(ctx, name, runtime.catalogEventHandler(definition.ID))
+	if err != nil {
+		return bytecode.Undefined(), err
+	}
+	return runtime.wrapCatalogRecord(definition, record)
+}
+
 func (runtime *Runtime) GetCatalogObject(ctx context.Context, name string, value bytecode.Value) (bytecode.Value, error) {
 	if runtime.catalogRepository == nil {
 		return bytecode.Undefined(), fmt.Errorf("catalog repository is not configured")
@@ -218,6 +235,42 @@ func (runtime *Runtime) GetObjectProperty(ctx context.Context, value bytecode.Ru
 				return bytecode.Undefined(), err
 			}
 			return bytecode.String(object.record.PredefinedName), nil
+		case propertyName(name, "Родитель", "Parent"):
+			if !catalogHasParent(object.definition) {
+				break
+			}
+			if err := requireFields(ctx, object.definition.ID, PermissionRead, "parent"); err != nil {
+				return bytecode.Undefined(), err
+			}
+			return runtime.wrapCatalogReference(object.definition,
+				CatalogReference{CatalogID: object.definition.ID, ObjectID: object.record.Parent})
+		case propertyName(name, "ЭтоГруппа", "IsFolder"):
+			if !catalogHasFolders(object.definition) {
+				break
+			}
+			if err := requireFields(ctx, object.definition.ID, PermissionRead, "isfolder"); err != nil {
+				return bytecode.Undefined(), err
+			}
+			return bytecode.Boolean(object.record.IsFolder), nil
+		case propertyName(name, "Владелец", "Owner"):
+			if !catalogHasOwner(object.definition) {
+				break
+			}
+			if err := requireFields(ctx, object.definition.ID, PermissionRead, "owner"); err != nil {
+				return bytecode.Undefined(), err
+			}
+			if object.record.Owner == (Value{}) {
+				return bytecode.Undefined(), nil
+			}
+			kind, ok := runtime.catalog.ownerObject(object.record.Owner.Object)
+			if !ok {
+				return bytecode.Undefined(), fmt.Errorf("catalog %s owner %s is not an object of the configuration", object.definition.Name, object.record.Owner.Object)
+			}
+			id, err := uuid.Parse(object.record.Owner.Data)
+			if err != nil {
+				return bytecode.Undefined(), err
+			}
+			return runtime.wrapObjectReference(kind, object.record.Owner.Object, id)
 		}
 		if attribute, ok := findCatalogAttribute(object.definition.Attributes, name); ok {
 			if err := requireFields(ctx, object.definition.ID, PermissionRead, attribute.ID.String()); err != nil {
@@ -326,8 +379,40 @@ func (runtime *Runtime) SetObjectProperty(ctx context.Context, value bytecode.Ru
 		}
 		object.record.Description = text
 		return nil
+	case propertyName(name, "Родитель", "Parent") && catalogHasParent(object.definition):
+		if err := requireFields(ctx, object.definition.ID, fieldOperation, "parent"); err != nil {
+			return err
+		}
+		if assigned.Kind() == bytecode.UndefinedKind || assigned.Kind() == bytecode.NullKind {
+			object.record.Parent = uuid.UUID{}
+			return nil
+		}
+		reference, err := runtime.catalogReference(object.definition, assigned)
+		if err != nil {
+			return fmt.Errorf("catalog %s parent: %w", object.definition.Name, err)
+		}
+		object.record.Parent = reference.ObjectID
+		return nil
+	case propertyName(name, "Владелец", "Owner") && catalogHasOwner(object.definition):
+		if err := requireFields(ctx, object.definition.ID, fieldOperation, "owner"); err != nil {
+			return err
+		}
+		if assigned.Kind() == bytecode.UndefinedKind || assigned.Kind() == bytecode.NullKind {
+			object.record.Owner = Value{}
+			return nil
+		}
+		owner, err := runtime.applicationValueFromBSL(runtime.catalog.OwnerTypes(object.definition), assigned, "catalog "+object.definition.Name+" owner")
+		if err != nil {
+			return err
+		}
+		object.record.Owner = owner
+		return nil
 	case propertyName(name, "Ссылка", "Ref"), propertyName(name, "Версия", "Version"),
 		propertyName(name, "ПометкаУдаления", "DeletionMark"),
+		// Whether a row is a folder is decided when the row is made, and the
+		// prototype says so outright: ЭтоГруппа is read-only there too, and
+		// a folder is made by СоздатьГруппу rather than by assignment.
+		propertyName(name, "ЭтоГруппа", "IsFolder"),
 		propertyName(name, "ИмяПредопределенныхДанных", "PredefinedDataName"), propertyName(name, "ИмяПредопределённыхДанных", "PredefinedDataName"):
 		return fmt.Errorf("catalog property %s is read-only", name)
 	}

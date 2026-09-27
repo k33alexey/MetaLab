@@ -332,6 +332,9 @@ func (*runtimeObjectStub) RuntimeDynamicMemory(limit uint64) (uint64, bool) {
 func (runtime *catalogRuntimeStub) CreateCatalogObject(context.Context, string) (bytecode.Value, error) {
 	return bytecode.Object(&runtimeObjectStub{runtime: runtime, properties: map[string]bytecode.Value{}})
 }
+func (runtime *catalogRuntimeStub) CreateCatalogFolder(ctx context.Context, name string) (bytecode.Value, error) {
+	return runtime.CreateCatalogObject(ctx, name)
+}
 func (runtime *catalogRuntimeStub) GetCatalogObject(context.Context, string, bytecode.Value) (bytecode.Value, error) {
 	return runtime.CreateCatalogObject(context.Background(), "")
 }

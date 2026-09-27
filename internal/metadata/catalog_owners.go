@@ -49,22 +49,33 @@ func (kind SubordinationKind) reachesFolders() bool {
 }
 
 // ownerKindTypes are the kinds whose elements may own a catalog's rows, each
-// with the type of a reference to one. They are the kinds built like a catalog
-// - a code, a description, elements of their own to belong to. The
-// demonstration configuration uses two of the four; the other two are allowed
-// because refusing them would refuse a configuration we have no evidence
-// against, and carrying one we should not is harmless by comparison.
+// with the type of a reference to one. The demonstration configuration uses
+// two of them - a catalog and a chart of characteristic types - and the syntax
+// assistant names all five: the type of СправочникОбъект.Владелец is a
+// reference to a catalog, a chart of characteristic types, a chart of
+// accounts, a chart of calculation types or an exchange plan. That property is
+// what an owner is read back as, so it is the list.
+//
+// The exchange plan was missing here until the three fields reached the data.
+// Four kinds had been allowed on the reasoning that refusing a kind we have no
+// evidence against is worse than carrying one; the evidence turned out to
+// exist, one property along, and it named a fifth.
 var ownerKindTypes = map[Kind]TypeKind{
 	CatalogKind:                    CatalogType,
 	ChartOfCharacteristicTypesKind: CharacteristicTypesType,
 	ChartOfAccountsKind:            AccountType,
 	ChartOfCalculationTypesKind:    CalculationTypeType,
+	ExchangePlanKind:               ExchangePlanType,
 }
+
+// catalogOwnerKinds is the same list in the order a message walks it, so that two
+// loads of one configuration word a refusal the same way.
+var catalogOwnerKinds = []Kind{CatalogKind, ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind, ExchangePlanKind}
 
 // ownerObject finds one owner by identifier among the kinds allowed to own.
 // The second result is false when no such object is there to own anything.
 func (catalog *Catalog) ownerObject(id uuid.UUID) (Kind, bool) {
-	for _, kind := range []Kind{CatalogKind, ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind} {
+	for _, kind := range catalogOwnerKinds {
 		if catalog.hasObject(ownerKindTypes[kind], id) {
 			return kind, true
 		}
@@ -74,8 +85,8 @@ func (catalog *Catalog) ownerObject(id uuid.UUID) (Kind, bool) {
 
 // ownerHierarchy is the hierarchy of the owning object, and whether that
 // object has one at all. Only a catalog and a chart of characteristic types
-// keep one; an account and a calculation type have no folders to be subordinate
-// to.
+// keep one; an account, a calculation type and a node of an exchange plan have
+// no folders to be subordinate to.
 func (catalog *Catalog) ownerHierarchy(kind Kind, id uuid.UUID) Hierarchy {
 	switch kind {
 	case CatalogKind:
@@ -97,6 +108,8 @@ func (catalog *Catalog) ownerName(kind Kind, id uuid.UUID) string {
 		return catalog.ChartsOfAccounts[catalog.chartOfAccountsByID[id]].Name
 	case ChartOfCalculationTypesKind:
 		return catalog.ChartsOfCalculationTypes[catalog.chartOfCalculationTypesByID[id]].Name
+	case ExchangePlanKind:
+		return catalog.ExchangePlans[catalog.exchangePlanByID[id]].Name
 	}
 	return id.String()
 }
