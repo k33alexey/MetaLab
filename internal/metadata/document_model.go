@@ -24,10 +24,16 @@ const (
 )
 
 type DocumentNumber struct {
-	Type        TypeKind          `yaml:"type"`
-	Length      int               `yaml:"length"`
-	Auto        bool              `yaml:"auto"`
-	Unique      bool              `yaml:"unique"`
+	Type   TypeKind `yaml:"type"`
+	Length int      `yaml:"length"`
+	Auto   bool     `yaml:"auto"`
+	Unique bool     `yaml:"unique"`
+	// FixedLength is the allowed length of a string number, the same setting a
+	// code carries - see CatalogCode.FixedLength. It lives here rather than on
+	// each kind because a document, a business process, a task and a numerator
+	// all describe their number through this one shape, and the prototype gives
+	// the property to exactly those four.
+	FixedLength bool              `yaml:"fixed_length,omitempty"`
 	Periodicity NumberPeriodicity `yaml:"periodicity"`
 }
 
@@ -146,6 +152,11 @@ func validateNumberShape(number DocumentNumber) []string {
 	case NumberPeriodNone, NumberPeriodYear, NumberPeriodQuarter, NumberPeriodMonth, NumberPeriodDay:
 	default:
 		issues = append(issues, "number.periodicity must be none, year, quarter, month or day")
+	}
+	// A number padded to a width is a string padded to a width; a numeric
+	// number has digits, and nothing to pad with spaces.
+	if number.FixedLength && number.Type != StringType {
+		issues = append(issues, "number.fixed_length is allowed for string numbers only")
 	}
 	return issues
 }

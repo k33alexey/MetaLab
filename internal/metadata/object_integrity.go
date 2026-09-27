@@ -100,8 +100,17 @@ func nextObjectSequence(ctx context.Context, query sequenceQuery, metadataID uui
 	quotedColumn := pgx.Identifier{column}.Sanitize()
 	expression, predicates := quotedColumn, make([]string, 0, 2)
 	if textual {
-		expression = "(" + quotedColumn + ")::numeric"
-		predicates = append(predicates, quotedColumn+" ~ '^[0-9]+$'")
+		// The cast to text is not decoration. A fixed-length code or number is
+		// stored in character(n), which PostgreSQL pads with spaces on write;
+		// a regular expression applied to that column sees the padding, so
+		// "41" in a column nine wide fails ^[0-9]+$ and the highest number in
+		// use becomes invisible. The next number would then start again from
+		// one and collide with a row that is already there. Converting to text
+		// drops the padding - bpchar to text does, by definition - and changes
+		// nothing for a column that was never padded.
+		asText := "(" + quotedColumn + ")::text"
+		expression = "(" + asText + ")::numeric"
+		predicates = append(predicates, asText+" ~ '^[0-9]+$'")
 	}
 	if periodic {
 		predicates = append(predicates, "number_period = $2")

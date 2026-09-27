@@ -337,6 +337,12 @@ func codeSQLType(code CatalogCode) string {
 	if code.Type == NumberType {
 		return fmt.Sprintf("numeric(%d,0)", code.Length)
 	}
+	// A fixed code is padded to its width, and that is what character(n) is:
+	// the database pads on write and compares disregarding the padding, which
+	// is the prototype's behaviour exactly.
+	if code.FixedLength {
+		return fmt.Sprintf("character(%d)", code.Length)
+	}
 	return fmt.Sprintf("character varying(%d)", code.Length)
 }
 

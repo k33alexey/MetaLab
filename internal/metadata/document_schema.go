@@ -55,5 +55,8 @@ func documentNumberSQLType(number DocumentNumber) string {
 	if number.Type == NumberType {
 		return fmt.Sprintf("numeric(%d,0)", number.Length)
 	}
+	if number.FixedLength {
+		return fmt.Sprintf("character(%d)", number.Length)
+	}
 	return fmt.Sprintf("character varying(%d)", number.Length)
 }

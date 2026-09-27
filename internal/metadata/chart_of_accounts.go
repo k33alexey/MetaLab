@@ -115,14 +115,16 @@ func DecodeChartOfAccounts(source string, reader io.Reader, configuration projec
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
-		code:               value.Code,
-		descriptionLength:  value.DescriptionLength,
-		attributes:         value.Attributes,
-		tableParts:         value.TableParts,
-		forms:              HierarchicalObjectForms{ObjectForms: value.Forms},
-		list:               value.List,
-		reservedName:       reservedChartOfAccountsName,
-		codeSeries:         true,
+		code:              value.Code,
+		descriptionLength: value.DescriptionLength,
+		attributes:        value.Attributes,
+		tableParts:        value.TableParts,
+		forms:             HierarchicalObjectForms{ObjectForms: value.Forms},
+		list:              value.List,
+		reservedName:      reservedChartOfAccountsName,
+		codeSeries:        true,
+		// codeAllowedLength stays off: the shape of an account code is the code
+		// mask's to decide, and the prototype gives the chart no such property.
 		kind:               ChartOfAccountsKind,
 		standardAttributes: value.StandardAttributes,
 		standardTableParts: value.StandardTableParts,

@@ -385,6 +385,15 @@ type CatalogCode struct {
 	Length int      `yaml:"length" json:"length"`
 	Auto   bool     `yaml:"auto" json:"auto"`
 	Unique bool     `yaml:"unique" json:"unique"`
+	// FixedLength is the allowed length of a string code: a fixed one is padded
+	// with spaces to its full width, a variable one is stored as typed. It is
+	// the same setting a string attribute carries, spelled the same way - see
+	// Type.FixedLength - and it means nothing for a numeric code, which is why
+	// the help says the property has meaning only when the code is a string.
+	//
+	// Absent means variable, which is the prototype's own default and what 109
+	// of the 123 coded objects of the demonstration configuration say.
+	FixedLength bool `yaml:"fixed_length,omitempty" json:"fixedLength,omitempty"`
 	// Series is the range a code is unique and auto-assigned within.
 	Series CodeSeries `yaml:"series,omitempty" json:"series,omitempty"`
 }
@@ -991,6 +1000,7 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 		attributeUse:       true,
 		codeSeries:         true,
 		ownerSeries:        true,
+		codeAllowedLength:  true,
 		kind:               CatalogKind,
 		standardAttributes: value.StandardAttributes,
 	}, configuration)...)
@@ -1033,6 +1043,11 @@ type referenceObjectShape struct {
 	// of calculation types and an exchange plan have no such property at all.
 	codeSeries  bool
 	ownerSeries bool
+	// codeAllowedLength says this kind lets the developer choose between a
+	// fixed and a variable code. A chart of accounts does not: the shape of an
+	// account's code is the code mask's to decide, and the prototype gives the
+	// chart no such property at all.
+	codeAllowedLength bool
 	// attributeUse says this kind's attributes may say whom they belong to -
 	// items, folders or both. Only a catalog and a chart of characteristic
 	// types may: the help says so, and the demonstration configuration writes
@@ -1102,6 +1117,23 @@ func validateCodeSeries(shape referenceObjectShape) []string {
 	return []string{"code.series must be whole or within-subordination"}
 }
 
+// validateCodeAllowedLength checks the choice between a fixed and a variable
+// code against the kind that made it and against the code it is about.
+func validateCodeAllowedLength(shape referenceObjectShape) []string {
+	if !shape.code.FixedLength {
+		return nil
+	}
+	if !shape.codeAllowedLength {
+		return []string{"code.fixed_length belongs to a kind that chooses the length of its code, and this one takes it from the code mask"}
+	}
+	// A number is not padded to a width: its length is a count of digits, and
+	// a setting about spaces on the right says nothing about it.
+	if shape.code.Type != StringType {
+		return []string{"code.fixed_length is allowed for string codes only"}
+	}
+	return nil
+}
+
 func validateReferenceObjectShape(shape referenceObjectShape, configuration project.Project) []string {
 	var issues []string
 	switch shape.code.Type {
@@ -1121,6 +1153,7 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	}
 	issues = append(issues, validateHierarchy(shape.hierarchy)...)
 	issues = append(issues, validateCodeSeries(shape)...)
+	issues = append(issues, validateCodeAllowedLength(shape)...)
 	reserved := shape.reservedName
 	if reserved == nil {
 		reserved = reservedCatalogObjectName

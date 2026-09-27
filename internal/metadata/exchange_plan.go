@@ -104,6 +104,7 @@ func DecodeExchangePlan(source string, reader io.Reader, configuration project.P
 		forms:              HierarchicalObjectForms{ObjectForms: value.Forms},
 		list:               value.List,
 		reservedName:       reservedExchangePlanName,
+		codeAllowedLength:  true,
 		kind:               ExchangePlanKind,
 		standardAttributes: value.StandardAttributes,
 	}, configuration)...)

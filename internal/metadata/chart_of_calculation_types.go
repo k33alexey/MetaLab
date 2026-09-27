@@ -90,6 +90,7 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, configuratio
 		forms:              HierarchicalObjectForms{ObjectForms: value.Forms},
 		list:               value.List,
 		reservedName:       reservedCalculationTypeName,
+		codeAllowedLength:  true,
 		kind:               ChartOfCalculationTypesKind,
 		standardAttributes: value.StandardAttributes,
 		standardTableParts: value.StandardTableParts,

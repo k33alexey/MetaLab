@@ -66,6 +66,7 @@ func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, configura
 		reservedName:       reservedChartOfCharacteristicTypesName,
 		attributeUse:       true,
 		codeSeries:         true,
+		codeAllowedLength:  true,
 		kind:               ChartOfCharacteristicTypesKind,
 		standardAttributes: value.StandardAttributes,
 	}, configuration)...)
