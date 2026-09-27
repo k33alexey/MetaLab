@@ -91,6 +91,7 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, configuratio
 		list:               value.List,
 		reservedName:       reservedCalculationTypeName,
 		codeAllowedLength:  true,
+		codeType:           true,
 		kind:               ChartOfCalculationTypesKind,
 		standardAttributes: value.StandardAttributes,
 		standardTableParts: value.StandardTableParts,

@@ -1001,6 +1001,7 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 		codeSeries:         true,
 		ownerSeries:        true,
 		codeAllowedLength:  true,
+		codeType:           true,
 		kind:               CatalogKind,
 		standardAttributes: value.StandardAttributes,
 	}, configuration)...)
@@ -1048,6 +1049,12 @@ type referenceObjectShape struct {
 	// account's code is the code mask's to decide, and the prototype gives the
 	// chart no such property at all.
 	codeAllowedLength bool
+	// codeType says this kind lets the developer choose whether the code is a
+	// string or a number. Three kinds do not, and their code is always a
+	// string: a chart of characteristic types, an exchange plan and a chart of
+	// accounts have no such property in the prototype at all. A code declared
+	// numeric on one of them describes a setting the platform would not read.
+	codeType bool
 	// attributeUse says this kind's attributes may say whom they belong to -
 	// items, folders or both. Only a catalog and a chart of characteristic
 	// types may: the help says so, and the demonstration configuration writes
@@ -1134,6 +1141,17 @@ func validateCodeAllowedLength(shape referenceObjectShape) []string {
 	return nil
 }
 
+// validateCodeType checks the choice of what a code is against the kind that
+// made it. Only a catalog and a chart of calculation types have the choice; for
+// the rest the code is a string, and saying otherwise is describing a property
+// the prototype does not give that kind.
+func validateCodeType(shape referenceObjectShape) []string {
+	if shape.codeType || shape.code.Type == StringType {
+		return nil
+	}
+	return []string{"code.type must be string: this kind of object has no choice of what its code is"}
+}
+
 func validateReferenceObjectShape(shape referenceObjectShape, configuration project.Project) []string {
 	var issues []string
 	switch shape.code.Type {
@@ -1154,6 +1172,7 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	issues = append(issues, validateHierarchy(shape.hierarchy)...)
 	issues = append(issues, validateCodeSeries(shape)...)
 	issues = append(issues, validateCodeAllowedLength(shape)...)
+	issues = append(issues, validateCodeType(shape)...)
 	reserved := shape.reservedName
 	if reserved == nil {
 		reserved = reservedCatalogObjectName

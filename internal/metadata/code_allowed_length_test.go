@@ -213,4 +213,116 @@ number: {type: string, length: 11, unique: true, periodicity: year, fixed_length
 	}
 }
 
+// Having a code is not the same as choosing what the code is. A catalog and a
+// chart of calculation types may number their codes instead of spelling them; a
+// chart of characteristic types, an exchange plan and a chart of accounts may
+// not - the prototype gives those three no "code type" property at all, and
+// their code is always a string. Accepting a numeric one there would let a
+// configuration describe a setting the platform never reads, which is the
+// quietest way to lose a meaning in an import.
+func TestOnlyTheKindsThatChooseTheirCodeTypeMayDeclareIt(t *testing.T) {
+	t.Parallel()
+	for name, body := range map[string]struct {
+		kind    Kind
+		id      string
+		content string
+		accepts bool
+	}{
+		"справочник выбирает": {CatalogKind, catalogID, `format: 1
+id: ` + catalogID + `
+name: Номенклатура
+title: {ru: Номенклатура}
+code: {type: number, length: 9, auto: true}
+description_length: 150
+`, true},
+		"план видов расчёта выбирает": {ChartOfCalculationTypesKind, calcTypesStandardID, `format: 1
+id: ` + calcTypesStandardID + `
+name: Начисления
+title: {ru: Начисления}
+code: {type: number, length: 9, auto: true}
+description_length: 100
+`, true},
+		"план видов характеристик не выбирает": {ChartOfCharacteristicTypesKind, characteristicsID, `format: 1
+id: ` + characteristicsID + `
+name: Свойства
+title: {ru: Свойства}
+code: {type: number, length: 9, auto: true}
+description_length: 100
+value_type: [{kind: string, length: 100}]
+`, false},
+		"план обмена не выбирает": {ExchangePlanKind, exchangePlanID, `format: 1
+id: ` + exchangePlanID + `
+name: Филиалы
+title: {ru: Филиалы}
+code: {type: number, length: 9, auto: false}
+description_length: 150
+`, false},
+		"план счетов не выбирает": {ChartOfAccountsKind, accountsID, `format: 1
+id: ` + accountsID + `
+name: Основной
+title: {ru: Основной}
+code: {type: number, length: 5, auto: false}
+description_length: 120
+`, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := metadataProject(t)
+			writeMetadata(t, root, body.kind, body.id, body.content)
+			_, err := Load(root)
+			switch {
+			case body.accepts && err != nil:
+				t.Fatalf("a kind that chooses its code type was refused: %v", err)
+			case !body.accepts && err == nil:
+				t.Fatal("a numeric code was accepted on a kind whose code is always a string")
+			case !body.accepts && !strings.Contains(err.Error(), "no choice of what its code is"):
+				t.Fatalf("err = %v", err)
+			}
+		})
+	}
+}
+
+// A string code stays right for every one of them: the check is about the
+// choice, not about the code.
+func TestAStringCodeSuitsEveryCodedKind(t *testing.T) {
+	t.Parallel()
+	for name, body := range map[string]struct {
+		kind    Kind
+		id      string
+		content string
+	}{
+		"план видов характеристик": {ChartOfCharacteristicTypesKind, characteristicsID, `format: 1
+id: ` + characteristicsID + `
+name: Свойства
+title: {ru: Свойства}
+code: {type: string, length: 9, auto: true}
+description_length: 100
+value_type: [{kind: string, length: 100}]
+`},
+		"план обмена": {ExchangePlanKind, exchangePlanID, `format: 1
+id: ` + exchangePlanID + `
+name: Филиалы
+title: {ru: Филиалы}
+code: {type: string, length: 36, auto: false}
+description_length: 150
+`},
+		"план счетов": {ChartOfAccountsKind, accountsID, `format: 1
+id: ` + accountsID + `
+name: Основной
+title: {ru: Основной}
+code: {type: string, length: 5, auto: false}
+description_length: 120
+`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := metadataProject(t)
+			writeMetadata(t, root, body.kind, body.id, body.content)
+			if _, err := Load(root); err != nil {
+				t.Fatalf("a string code was refused: %v", err)
+			}
+		})
+	}
+}
+
 const numeratorAllowedLengthID = "a0000000-0000-4000-8000-000000000031"
