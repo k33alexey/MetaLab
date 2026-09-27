@@ -35,16 +35,17 @@ type ChartOfCharacteristicTypesDefinition struct {
 	// AdditionalValues is the catalog holding values that fit no existing
 	// type - a characteristic whose values are a list the user writes
 	// themselves has nowhere else to put them.
-	AdditionalValues   *uuid.UUID              `yaml:"additional_values,omitempty" json:"additionalValues,omitempty"`
-	Attributes         []Attribute             `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	TableParts         []TablePart             `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	Characteristics    []ObjectCharacteristic  `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
-	StandardAttributes []StandardAttribute     `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
-	Forms              HierarchicalObjectForms `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands           []ObjectCommand         `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates          []ObjectTemplate        `yaml:"templates,omitempty" json:"templates,omitempty"`
-	List               ListSettings            `yaml:"list,omitempty" json:"list,omitempty"`
-	Predefined         []PredefinedCatalogItem `yaml:"predefined,omitempty" json:"predefined,omitempty"`
+	AdditionalValues     *uuid.UUID              `yaml:"additional_values,omitempty" json:"additionalValues,omitempty"`
+	Attributes           []Attribute             `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts           []TablePart             `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	Characteristics      []ObjectCharacteristic  `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
+	StandardAttributes   []StandardAttribute     `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
+	Forms                HierarchicalObjectForms `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands             []ObjectCommand         `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates            []ObjectTemplate        `yaml:"templates,omitempty" json:"templates,omitempty"`
+	List                 ListSettings            `yaml:"list,omitempty" json:"list,omitempty"`
+	Predefined           []PredefinedCatalogItem `yaml:"predefined,omitempty" json:"predefined,omitempty"`
+	PredefinedDataUpdate PredefinedDataUpdate    `yaml:"predefined_data_update,omitempty" json:"predefinedDataUpdate,omitempty"`
 }
 
 // DecodeChartOfCharacteristicTypes reads and validates one chart description.
@@ -55,20 +56,21 @@ func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, configura
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
-		code:               value.Code,
-		descriptionLength:  value.DescriptionLength,
-		attributes:         value.Attributes,
-		tableParts:         value.TableParts,
-		forms:              value.Forms,
-		list:               value.List,
-		hierarchy:          value.Hierarchy,
-		predefined:         value.Predefined,
-		reservedName:       reservedChartOfCharacteristicTypesName,
-		attributeUse:       true,
-		codeSeries:         true,
-		codeAllowedLength:  true,
-		kind:               ChartOfCharacteristicTypesKind,
-		standardAttributes: value.StandardAttributes,
+		code:                 value.Code,
+		descriptionLength:    value.DescriptionLength,
+		attributes:           value.Attributes,
+		tableParts:           value.TableParts,
+		forms:                value.Forms,
+		list:                 value.List,
+		hierarchy:            value.Hierarchy,
+		predefined:           value.Predefined,
+		reservedName:         reservedChartOfCharacteristicTypesName,
+		attributeUse:         true,
+		codeSeries:           true,
+		codeAllowedLength:    true,
+		predefinedDataUpdate: value.PredefinedDataUpdate,
+		kind:                 ChartOfCharacteristicTypesKind,
+		standardAttributes:   value.StandardAttributes,
 	}, configuration)...)
 	// The value type is the point of the whole object: a chart that allows
 	// nothing describes characteristics nobody can fill in.

@@ -494,6 +494,9 @@ type CatalogDefinition struct {
 	Templates          []ObjectTemplate        `yaml:"templates,omitempty" json:"templates,omitempty"`
 	List               ListSettings            `yaml:"list,omitempty" json:"list,omitempty"`
 	Predefined         []PredefinedCatalogItem `yaml:"predefined,omitempty" json:"predefined,omitempty"`
+	// PredefinedDataUpdate decides what happens to the rows behind Predefined
+	// when the configuration is updated - see predefined_data_update.go.
+	PredefinedDataUpdate PredefinedDataUpdate `yaml:"predefined_data_update,omitempty" json:"predefinedDataUpdate,omitempty"`
 }
 
 // Catalog is an immutable-by-convention snapshot of the supported metadata kinds.
@@ -988,22 +991,23 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
-		code:               value.Code,
-		descriptionLength:  value.DescriptionLength,
-		attributes:         value.Attributes,
-		tableParts:         value.TableParts,
-		forms:              value.Forms,
-		list:               value.List,
-		hierarchy:          value.Hierarchy,
-		predefined:         value.Predefined,
-		reservedName:       reservedCatalogObjectName,
-		attributeUse:       true,
-		codeSeries:         true,
-		ownerSeries:        true,
-		codeAllowedLength:  true,
-		codeType:           true,
-		kind:               CatalogKind,
-		standardAttributes: value.StandardAttributes,
+		code:                 value.Code,
+		descriptionLength:    value.DescriptionLength,
+		attributes:           value.Attributes,
+		tableParts:           value.TableParts,
+		forms:                value.Forms,
+		list:                 value.List,
+		hierarchy:            value.Hierarchy,
+		predefined:           value.Predefined,
+		reservedName:         reservedCatalogObjectName,
+		attributeUse:         true,
+		codeSeries:           true,
+		ownerSeries:          true,
+		codeAllowedLength:    true,
+		codeType:             true,
+		predefinedDataUpdate: value.PredefinedDataUpdate,
+		kind:                 CatalogKind,
+		standardAttributes:   value.StandardAttributes,
 	}, configuration)...)
 	issues = append(issues, validateCatalogSubordination(value.Owners, value.Subordination, value.Code)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
@@ -1055,6 +1059,10 @@ type referenceObjectShape struct {
 	// accounts have no such property in the prototype at all. A code declared
 	// numeric on one of them describes a setting the platform would not read.
 	codeType bool
+	// predefinedDataUpdate is what the object says happens to its predefined
+	// rows when the configuration is updated. Only the four kinds that keep
+	// predefined data carry it - see predefined_data_update.go.
+	predefinedDataUpdate PredefinedDataUpdate
 	// attributeUse says this kind's attributes may say whom they belong to -
 	// items, folders or both. Only a catalog and a chart of characteristic
 	// types may: the help says so, and the demonstration configuration writes
@@ -1173,6 +1181,7 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	issues = append(issues, validateCodeSeries(shape)...)
 	issues = append(issues, validateCodeAllowedLength(shape)...)
 	issues = append(issues, validateCodeType(shape)...)
+	issues = append(issues, validatePredefinedDataUpdate(shape.predefinedDataUpdate)...)
 	reserved := shape.reservedName
 	if reserved == nil {
 		reserved = reservedCatalogObjectName

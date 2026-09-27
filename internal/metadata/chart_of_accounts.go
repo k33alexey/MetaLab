@@ -102,6 +102,7 @@ type ChartOfAccountsDefinition struct {
 	Templates                   []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
 	List                        ListSettings           `yaml:"list,omitempty" json:"list,omitempty"`
 	Predefined                  []PredefinedAccount    `yaml:"predefined,omitempty" json:"predefined,omitempty"`
+	PredefinedDataUpdate        PredefinedDataUpdate   `yaml:"predefined_data_update,omitempty" json:"predefinedDataUpdate,omitempty"`
 }
 
 // maxExtDimensions is the prototype's own ceiling on analytics per account.
@@ -125,9 +126,10 @@ func DecodeChartOfAccounts(source string, reader io.Reader, configuration projec
 		codeSeries:        true,
 		// codeAllowedLength stays off: the shape of an account code is the code
 		// mask's to decide, and the prototype gives the chart no such property.
-		kind:               ChartOfAccountsKind,
-		standardAttributes: value.StandardAttributes,
-		standardTableParts: value.StandardTableParts,
+		predefinedDataUpdate: value.PredefinedDataUpdate,
+		kind:                 ChartOfAccountsKind,
+		standardAttributes:   value.StandardAttributes,
+		standardTableParts:   value.StandardTableParts,
 	}, configuration)...)
 	issues = append(issues, validateAccountingFlags("accounting_flags", value.AccountingFlags, configuration)...)
 	issues = append(issues, validateAccountingFlags("ext_dimension_accounting_flags", value.ExtDimensionAccountingFlags, configuration)...)

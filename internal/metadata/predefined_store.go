@@ -14,10 +14,21 @@ type PredefinedSyncResult struct {
 	Created  int
 	Assigned int
 	Detached int
+	// Skipped counts the catalogs left alone because they said so - see
+	// PredefinedDataUpdate. It is reported rather than silent: "nothing was
+	// created" and "nothing was allowed to be created" look the same in a
+	// result of zero, and they are not the same thing at all.
+	Skipped int
 }
 
 // SynchronizePredefined creates missing predefined items and synchronizes their
 // stable metadata identity. Existing user-editable values are preserved.
+//
+// A catalog that says its predefined data is not updated automatically is left
+// untouched, whole: not created, not re-identified and not detached. That is
+// what the setting is for - a classifier filled from outside must not be
+// rewritten from its own description - and doing two of the three would be
+// worse than doing none.
 func (repository *CatalogRepository) SynchronizePredefined(ctx context.Context) (PredefinedSyncResult, error) {
 	var result PredefinedSyncResult
 	transaction, err := repository.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -26,6 +37,10 @@ func (repository *CatalogRepository) SynchronizePredefined(ctx context.Context) 
 	}
 	defer func() { _ = transaction.Rollback(ctx) }()
 	for _, definition := range repository.catalog.Catalogs {
+		if !UpdatesPredefinedDataAutomatically(definition.PredefinedDataUpdate) {
+			result.Skipped++
+			continue
+		}
 		current, err := repository.predefinedIdentities(ctx, transaction, definition)
 		if err != nil {
 			return result, err
