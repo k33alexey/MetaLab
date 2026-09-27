@@ -102,7 +102,7 @@ func TestInspectCarriesSchemaIdentityOfEveryStoredKind(t *testing.T) {
 	accumulationID, accumulationDimensionID, accumulationResourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	documentPath, _ := project.ObjectMetadataPath("documents", "Продажа")
 	writeSourceFile(t, root, documentPath, []byte("format: 1\nid: "+documentID.String()+"\nname: Продажа\ntitle: {ru: Продажа}\n"+
-		"number: {type: string, length: 11, auto: false, unique: true, periodicity: year}\nposting: true\n"+
+		"number: {type: string, length: 11, auto: false, unique: true, periodicity: year}\nposting: {allowed: true}\n"+
 		"movements: ["+accumulationID.String()+"]\n"+
 		"forms: {object: DocumentForm}\n"))
 

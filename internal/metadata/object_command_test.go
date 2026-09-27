@@ -417,7 +417,7 @@ id: `+commandDocument+`
 name: РасходТовара
 title: {ru: Расход товара}
 number: {type: string, length: 9, auto: true, periodicity: none}
-posting: true
+posting: {allowed: true}
 `)
 	withCommand(DocumentJournalKind, commandJournal, `format: 1
 id: `+commandJournal+`

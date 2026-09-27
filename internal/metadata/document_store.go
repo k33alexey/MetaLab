@@ -204,8 +204,16 @@ func validateDocumentWriteMode(definition DocumentDefinition, writeMode Document
 	if postingMode != DocumentPostingRegular && postingMode != DocumentPostingRealTime {
 		return fmt.Errorf("document %s posting mode %q is invalid", definition.Name, postingMode)
 	}
-	if writeMode != DocumentWrite && !definition.Posting {
+	if writeMode != DocumentWrite && !definition.Posting.Allowed {
 		return fmt.Errorf("document %s does not allow posting", definition.Name)
+	}
+	// Real-time posting is posting by the current moment, and a document that
+	// denies it is never posted that way. Refusing here rather than quietly
+	// posting in the regular mode matters: the caller asked to compete for the
+	// present, and getting an after-the-fact posting instead would look like
+	// success.
+	if postingMode == DocumentPostingRealTime && !AllowsRealTimePosting(definition.Posting.RealTime) {
+		return fmt.Errorf("document %s does not allow real-time posting", definition.Name)
 	}
 	return nil
 }
@@ -299,7 +307,7 @@ func (repository *DocumentRepository) normalizeRecord(definition DocumentDefinit
 	if err := validateDocumentDate(record.Date); err != nil {
 		return fmt.Errorf("document %s date: %w", definition.Name, err)
 	}
-	if record.Posted && !definition.Posting {
+	if record.Posted && !definition.Posting.Allowed {
 		return fmt.Errorf("document %s does not allow posting", definition.Name)
 	}
 	attributes, err := repository.catalog.normalizeAttributes(definition.Name, definition.Attributes, record.Attributes)

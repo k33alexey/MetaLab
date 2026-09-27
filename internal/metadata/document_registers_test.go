@@ -64,7 +64,7 @@ id: `+movementDocument+`
 name: Поступление
 title: {ru: Поступление}
 number: {type: string, length: 9, auto: true, periodicity: none}
-posting: true
+posting: {allowed: true}
 `+first+`
 `)
 	writeMetadata(t, root, DocumentKind, movementSecondDoc, `format: 1
@@ -72,7 +72,7 @@ id: `+movementSecondDoc+`
 name: Продажа
 title: {ru: Продажа}
 number: {type: string, length: 9, auto: true, periodicity: none}
-posting: true
+posting: {allowed: true}
 `+second+`
 `)
 	return root

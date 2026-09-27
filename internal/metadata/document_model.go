@@ -48,7 +48,9 @@ type DocumentDefinition struct {
 	// is named the document declares no number of its own: two sources for one
 	// number is one too many, and the shared one wins by definition.
 	Numerator *uuid.UUID `yaml:"numerator,omitempty"`
-	Posting   bool       `yaml:"posting,omitempty"`
+	// Posting is the six settings that describe being posted, not one flag -
+	// see document_posting.go.
+	Posting DocumentPosting `yaml:"posting,omitempty"`
 	// Movements are the registers this document writes records into. The link
 	// is described from the document's side, and only from there: in the
 	// prototype not one of the four kinds of register has a property listing
@@ -95,6 +97,7 @@ func DecodeDocument(source string, reader io.Reader, configuration project.Proje
 			issues = append(issues, "number is set by the numerator this document shares, so it must not be declared here as well")
 		}
 	}
+	issues = append(issues, validateDocumentPosting(value.Posting)...)
 	issues = append(issues, validateNumberedObjectShape(shape, configuration)...)
 	if len(value.Movements) > maxDocumentMovements {
 		issues = append(issues, fmt.Sprintf("movements must not contain more than %d registers", maxDocumentMovements))

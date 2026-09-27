@@ -49,7 +49,7 @@ id: `+entriesDocument+`
 name: Операция
 title: {ru: Операция}
 number: {type: string, length: 9, auto: true, periodicity: none}
-posting: true
+posting: {allowed: true}
 movements: [`+entriesRegister+`]
 `)
 	correspondenceLine := "correspondence: false"

@@ -400,8 +400,14 @@ func (runtime *Runtime) writeDocumentObject(ctx context.Context, object *documen
 	}
 	handler := runtime.documentEventHandler(object.definition.ID)
 	postingAction := func(operationContext context.Context, record *DocumentRecord, mode DocumentWriteMode, posting DocumentPostingMode) error {
-		if err := runtime.clearDocumentMovements(operationContext, record.Reference); err != nil {
-			return err
+		// Whether last time's records are wiped before the handler runs is the
+		// document's to say - see RegisterRecordsDeletion. Deleting on
+		// unposting only is not a nicety: the handler then sees what it wrote
+		// last time and decides, and wiping first would take that away.
+		if DeletesRegisterRecords(object.definition.Posting.RecordsDeletion, mode) {
+			if err := runtime.clearDocumentMovements(operationContext, record.Reference); err != nil {
+				return err
+			}
 		}
 		event := DocumentEventPosting
 		if mode == DocumentUndoPosting {

@@ -47,7 +47,7 @@ id: `+document.id+`
 name: `+document.name+`
 title: {ru: `+document.name+`}
 numerator: `+aroundNumerator+`
-posting: true
+posting: {allowed: true}
 attributes:
   - id: `+document.party+`
     name: Контрагент

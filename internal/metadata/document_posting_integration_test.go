@@ -43,7 +43,7 @@ func TestDocumentPostingIsAtomicAndReplacesMovementsIntegration(t *testing.T) {
 	productAttributeID, quantityAttributeID := uuid.MustNew(), uuid.MustNew()
 	productDimensionID, quantityResourceID := uuid.MustNew(), uuid.MustNew()
 	document := DocumentDefinition{
-		ID: documentID, Name: "Поступление", Posting: true,
+		ID: documentID, Name: "Поступление", Posting: DocumentPosting{Allowed: true},
 		// The register the document writes into is declared on the document -
 		// see document_registers.go. Without it the posting is a write into a
 		// register this document has nothing to do with, and it is refused.

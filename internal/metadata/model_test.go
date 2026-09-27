@@ -387,7 +387,7 @@ id: `+documentID+`
 name: Продажа
 title: {ru: Продажа}
 number: {type: string, length: 11, auto: true, unique: true, periodicity: year}
-posting: true
+posting: {allowed: true}
 attributes:
   - id: `+docAttributeID+`
     name: Контрагент

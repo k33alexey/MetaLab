@@ -15,7 +15,7 @@ func TestAutomaticDocumentFormsAndCommands(t *testing.T) {
 	catalog := &Catalog{
 		Project: project.Project{Languages: []project.Language{{Code: "ru"}, {Code: "uk"}, {Code: "en"}}},
 		Documents: []DocumentDefinition{{
-			ID: documentID, Name: "Продажа", Title: LocalizedText{"ru": "Продажа", "uk": "Продаж"}, Posting: true,
+			ID: documentID, Name: "Продажа", Title: LocalizedText{"ru": "Продажа", "uk": "Продаж"}, Posting: DocumentPosting{Allowed: true},
 			Movements:  []uuid.UUID{registerID},
 			Number:     DocumentNumber{Type: StringType, Length: 10},
 			Attributes: []Attribute{{ID: attributeID, Name: "Контрагент", Title: LocalizedText{"ru": "Контрагент"}, Types: []Type{{Kind: StringType, Length: 100}}, FillChecking: ShowFillingError}},

@@ -99,7 +99,7 @@ func (catalog *Catalog) DocumentForm(name string, kind FormKind, language string
 	if kind == ObjectForm {
 		form.Fields = append(form.Fields, catalog.attributeFormFields(definition.Attributes, language)...)
 		form.TableParts = catalog.tablePartForms(definition.TableParts, language)
-		form.Commands = standardObjectCommands(language, definition.Posting, catalog.documentHasMovements(definition.ID))
+		form.Commands = standardObjectCommands(language, definition.Posting.Allowed, catalog.documentHasMovements(definition.ID))
 	} else {
 		form.Commands = standardListCommands(language, kind)
 	}

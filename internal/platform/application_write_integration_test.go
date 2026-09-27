@@ -94,7 +94,7 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 	productAttributeID, quantityAttributeID, warehouseAttributeID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	productDimensionID, quantityResourceID := uuid.MustNew(), uuid.MustNew()
 	document := metadata.DocumentDefinition{
-		Format: 1, ID: documentID, Name: "Поступление", Title: metadata.LocalizedText{"ru": "Поступление"}, Posting: true,
+		Format: 1, ID: documentID, Name: "Поступление", Title: metadata.LocalizedText{"ru": "Поступление"}, Posting: metadata.DocumentPosting{Allowed: true},
 		Movements: []uuid.UUID{registerID},
 		Number:    metadata.DocumentNumber{Type: metadata.StringType, Length: 20, Auto: true, Unique: true, Periodicity: metadata.NumberPeriodYear},
 		Attributes: []metadata.Attribute{

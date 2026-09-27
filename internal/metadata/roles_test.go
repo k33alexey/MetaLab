@@ -273,7 +273,7 @@ func TestRoleTargetsMatchObjectCapabilities(t *testing.T) {
 	catalog.Constants = []Constant{{Format: CurrentFormat, ID: constant, Name: "Константа", Title: role.Title, Types: []Type{{Kind: BooleanType}}}}
 	catalog.Enumerations = []Enumeration{{Format: CurrentFormat, ID: enumeration, Name: "Перечисление", Title: role.Title, Values: []EnumerationValue{{ID: uuid.MustNew(), Name: "Первый", Title: role.Title}}}}
 	catalog.Documents = []DocumentDefinition{
-		{Format: CurrentFormat, ID: document, Name: "Документ", Title: role.Title, Posting: true, Number: DocumentNumber{Type: StringType, Length: 9, Periodicity: NumberPeriodNone},
+		{Format: CurrentFormat, ID: document, Name: "Документ", Title: role.Title, Posting: DocumentPosting{Allowed: true}, Number: DocumentNumber{Type: StringType, Length: 9, Periodicity: NumberPeriodNone},
 			Movements: []uuid.UUID{recorder, balance, turnover}},
 		{Format: CurrentFormat, ID: unpostable, Name: "Непроводимый", Title: role.Title, Number: DocumentNumber{Type: StringType, Length: 9, Periodicity: NumberPeriodNone}},
 	}

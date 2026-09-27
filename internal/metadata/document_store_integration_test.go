@@ -47,7 +47,7 @@ func TestDocumentRepositoryLifecycleIntegration(t *testing.T) {
 			ID: catalogID, Name: "Контрагенты", Code: CatalogCode{Type: StringType, Length: 9, Unique: true}, DescriptionLength: 250,
 		}},
 		Documents: []DocumentDefinition{{
-			ID: documentID, Name: "Продажа", Posting: true,
+			ID: documentID, Name: "Продажа", Posting: DocumentPosting{Allowed: true},
 			Number:     DocumentNumber{Type: StringType, Length: 11, Unique: true, Periodicity: NumberPeriodYear},
 			List:       ListSettings{PageSize: 20, SearchFields: []string{"Number"}},
 			Attributes: []Attribute{{ID: partnerID, Name: "Контрагент", FillChecking: ShowFillingError, Types: []Type{{Kind: CatalogType, Reference: &catalogID}}}},

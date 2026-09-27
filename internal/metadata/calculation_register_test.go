@@ -41,7 +41,7 @@ id: `+calcDocument+`
 name: НачислениеЗарплаты
 title: {ru: Начисление зарплаты}
 number: {type: string, length: 9, auto: true, periodicity: none}
-posting: true
+posting: {allowed: true}
 movements: [`+calcRegister+`]
 `)
 	writeMetadata(t, root, InformationRegisterKind, calcSchedule, `format: 1
@@ -276,7 +276,7 @@ id: `+calcDocument+`
 name: НачислениеЗарплаты
 title: {ru: Начисление зарплаты}
 number: {type: string, length: 9, auto: true, periodicity: none}
-posting: true
+posting: {allowed: true}
 movements: [`+calcRegister+`]
 `)
 		return root

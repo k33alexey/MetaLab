@@ -107,7 +107,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 	} else if index, ok := catalog.documentByID[id]; ok {
 		item := catalog.Documents[index]
 		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
-		if item.Posting {
+		if item.Posting.Allowed {
 			target.operations[PermissionPost], target.operations[PermissionUndoPosting] = true, true
 		}
 		target.fields = map[string]bool{"ref": false, "number": true, "date": true, "posted": false, "deletionmark": true, "version": false}

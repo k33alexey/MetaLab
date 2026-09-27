@@ -50,7 +50,7 @@ func TestApplicationRoleBypassAttemptsIntegration(t *testing.T) {
 	fullRoleID, noPostRoleID, noLinesRoleID, noAccumulationRoleID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 
 	document := DocumentDefinition{
-		ID: documentID, Name: "Поступление", Posting: true,
+		ID: documentID, Name: "Поступление", Posting: DocumentPosting{Allowed: true},
 		Movements: []uuid.UUID{accumulationID, informationID},
 		Number:    DocumentNumber{Type: StringType, Length: 10, Unique: true, Periodicity: NumberPeriodNone},
 		Attributes: []Attribute{
