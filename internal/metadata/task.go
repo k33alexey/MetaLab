@@ -45,7 +45,11 @@ type TaskDefinition struct {
 	Title  LocalizedText `yaml:"title" json:"title"`
 	// Presentations is how this object is named to the person using it -
 	// see object_presentation.go.
-	Presentations `yaml:",inline" json:",inline"`
+	Presentations `yaml:",inline" json:",inline"` // A task is edited and picked like a reference object, but it has no code:
+	// its presentation is the number or the description - see object_choice.go.
+	EditType            EditType         `yaml:"edit_type,omitempty" json:"editType,omitempty"`
+	DefaultPresentation TaskPresentation `yaml:"default_presentation,omitempty" json:"defaultPresentation,omitempty"`
+	ObjectInput         `yaml:",inline" json:",inline"`
 
 	Number            DocumentNumber `yaml:"number" json:"number"`
 	DescriptionLength int            `yaml:"description_length" json:"descriptionLength"`
@@ -89,6 +93,7 @@ func DecodeTask(source string, reader io.Reader, configuration project.Project) 
 		kind:               TaskKind,
 		standardAttributes: value.StandardAttributes,
 		presentation:       value.Presentations,
+		input:              value.ObjectInput,
 	}, configuration)...)
 	if value.DescriptionLength < 1 || value.DescriptionLength > 1_048_576 {
 		issues = append(issues, "description_length must be 1..1048576")
@@ -102,6 +107,14 @@ func DecodeTask(source string, reader io.Reader, configuration project.Project) 
 	case "", NoNumberPrefix, BusinessProcessNumberPrefix:
 	default:
 		issues = append(issues, "number_prefix must be none or business-process-number")
+	}
+	if !validEditType(value.EditType) {
+		issues = append(issues, "edit_type must be in-dialog, in-list or both-ways")
+	}
+	// A task has no code, so it stands for itself by its number or its
+	// description - see object_choice.go.
+	if !validTaskPresentation(value.DefaultPresentation) {
+		issues = append(issues, "default_presentation must be as-number or as-description")
 	}
 	issues = append(issues, validateAddressing(value, configuration)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)

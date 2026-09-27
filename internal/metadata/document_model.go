@@ -45,7 +45,9 @@ type DocumentDefinition struct {
 	Title  LocalizedText `yaml:"title"`
 	// Presentations is how this object is named to the person using it -
 	// see object_presentation.go.
-	Presentations `yaml:",inline" json:",inline"`
+	Presentations `yaml:",inline" json:",inline"` // A document is picked but not edited in a list, and stands for nothing in
+	// one line: it keeps only the pair every referenced kind has.
+	ObjectInput `yaml:",inline" json:",inline"`
 
 	Number DocumentNumber `yaml:"number"`
 	// Numerator names a numbering shared with other kinds of document. When it
@@ -89,6 +91,7 @@ func DecodeDocument(source string, reader io.Reader, configuration project.Proje
 		kind:               DocumentKind,
 		standardAttributes: value.StandardAttributes,
 		presentation:       value.Presentations,
+		input:              value.ObjectInput,
 	}
 	if value.Numerator != nil {
 		// The number comes from the numerator, and it is filled in once the
@@ -141,6 +144,9 @@ type numberedObjectShape struct {
 	// presentation is how the object is named to a person; all three numbered
 	// kinds carry the whole set.
 	presentation Presentations
+	// input is the pair of settings every referenced kind has. What each of the
+	// three numbered kinds adds to it is checked where that kind is decoded.
+	input ObjectInput
 }
 
 // validateNumberShape checks a number on its own, apart from the object that
@@ -192,6 +198,7 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 	issues = append(issues, validateTableParts(shape.tableParts, attributeNames, configuration, reserved, tablePartRules{stored: true})...)
 	issues = append(issues, validateStandardAttributes("standard_attributes", shape.standardAttributes, standardFieldsOfKind(shape.kind), configuration)...)
 	issues = append(issues, validatePresentations(shape.presentation, configuration)...)
+	issues = append(issues, validateObjectInput(shape.input)...)
 	links := append(standardAttributeChoices("standard_attributes", shape.standardAttributes), tablePartStandardChoices(shape.tableParts)...)
 	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, links...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, false, false)...)

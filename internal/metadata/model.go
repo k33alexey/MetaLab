@@ -493,7 +493,9 @@ type CatalogDefinition struct {
 	Title  LocalizedText `yaml:"title" json:"title"`
 	// Presentations is how this object is named to the person using it -
 	// see object_presentation.go.
-	Presentations `yaml:",inline" json:",inline"`
+	Presentations `yaml:",inline" json:",inline"` // ObjectChoice is how a value of this kind is entered and picked - see
+	// object_choice.go.
+	ObjectChoice `yaml:",inline" json:",inline"`
 
 	Code              CatalogCode `yaml:"code" json:"code"`
 	DescriptionLength int         `yaml:"description_length" json:"descriptionLength"`
@@ -962,18 +964,15 @@ func DecodeEnumeration(source string, reader io.Reader, configuration project.Pr
 			issues = append(issues, validateTitle(name, text, configuration)...)
 		}
 	}
-	switch value.ChoiceMode {
-	case "", ChoiceBothWays, ChoiceFromForm, ChoiceQuickOnly:
-	default:
+	// An enumeration has three of the six settings of choice, and they mean here
+	// exactly what they mean on the kinds that have all six - so they are checked
+	// by the same code. See object_choice.go.
+	if !validChoiceMode(value.ChoiceMode) {
 		issues = append(issues, "choice_mode must be both-ways, from-form or quick-choice")
 	}
-	switch value.ChoiceHistoryOnInput {
-	case "", ChoiceHistoryAuto, ChoiceHistoryUse, ChoiceHistoryDontUse:
-	default:
+	if !validChoiceHistory(value.ChoiceHistoryOnInput) {
 		issues = append(issues, "choice_history_on_input must be auto, use or dont-use")
 	}
-	// Choosing only from a form and offering a quick choice are two answers to
-	// one question, and the second one is then never asked.
 	if value.ChoiceMode == ChoiceFromForm && value.QuickChoice {
 		issues = append(issues, "quick_choice contradicts choice_mode from-form")
 	}
@@ -1025,6 +1024,7 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 		codeType:             true,
 		predefinedDataUpdate: value.PredefinedDataUpdate,
 		presentation:         value.Presentations,
+		choice:               value.ObjectChoice,
 		kind:                 CatalogKind,
 		standardAttributes:   value.StandardAttributes,
 	}, configuration)...)
@@ -1085,6 +1085,9 @@ type referenceObjectShape struct {
 	// presentation is how the object is named to a person. All five reference
 	// kinds carry the whole set - see object_presentation.go.
 	presentation Presentations
+	// choice is how a value of the kind is entered and picked. All five
+	// reference kinds carry the whole set - see object_choice.go.
+	choice ObjectChoice
 	// attributeUse says this kind's attributes may say whom they belong to -
 	// items, folders or both. Only a catalog and a chart of characteristic
 	// types may: the help says so, and the demonstration configuration writes
@@ -1205,6 +1208,7 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	issues = append(issues, validateCodeType(shape)...)
 	issues = append(issues, validatePredefinedDataUpdate(shape.predefinedDataUpdate)...)
 	issues = append(issues, validatePresentations(shape.presentation, configuration)...)
+	issues = append(issues, validateObjectChoice(shape.choice)...)
 	reserved := shape.reservedName
 	if reserved == nil {
 		reserved = reservedCatalogObjectName

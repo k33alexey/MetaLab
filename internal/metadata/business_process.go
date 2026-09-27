@@ -143,7 +143,10 @@ type BusinessProcessDefinition struct {
 	Title  LocalizedText `yaml:"title" json:"title"`
 	// Presentations is how this object is named to the person using it -
 	// see object_presentation.go.
-	Presentations `yaml:",inline" json:",inline"`
+	Presentations `yaml:",inline" json:",inline"` // A business process is edited and picked, but stands for nothing in one
+	// line: the prototype gives it no presentation - see object_choice.go.
+	EditType    EditType `yaml:"edit_type,omitempty" json:"editType,omitempty"`
+	ObjectInput `yaml:",inline" json:",inline"`
 
 	Number DocumentNumber `yaml:"number" json:"number"`
 	// Task is the kind of task this process creates at its points.
@@ -179,9 +182,13 @@ func DecodeBusinessProcess(source string, reader io.Reader, configuration projec
 		kind:               BusinessProcessKind,
 		standardAttributes: value.StandardAttributes,
 		presentation:       value.Presentations,
+		input:              value.ObjectInput,
 	}, configuration)...)
 	if value.Task != nil && value.Task.IsZero() {
 		issues = append(issues, "task must be a non-zero UUID")
+	}
+	if !validEditType(value.EditType) {
+		issues = append(issues, "edit_type must be in-dialog, in-list or both-ways")
 	}
 	issues = append(issues, validateRouteMap(value.Route, configuration)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)

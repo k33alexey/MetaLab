@@ -57,7 +57,9 @@ type ChartOfCalculationTypesDefinition struct {
 	Title  LocalizedText `yaml:"title" json:"title"`
 	// Presentations is how this object is named to the person using it -
 	// see object_presentation.go.
-	Presentations `yaml:",inline" json:",inline"`
+	Presentations `yaml:",inline" json:",inline"` // ObjectChoice is how a value of this kind is entered and picked - see
+	// object_choice.go.
+	ObjectChoice `yaml:",inline" json:",inline"`
 
 	Code              CatalogCode `yaml:"code" json:"code"`
 	DescriptionLength int         `yaml:"description_length" json:"descriptionLength"`
@@ -99,6 +101,7 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, configuratio
 		codeType:             true,
 		predefinedDataUpdate: value.PredefinedDataUpdate,
 		presentation:         value.Presentations,
+		choice:               value.ObjectChoice,
 		kind:                 ChartOfCalculationTypesKind,
 		standardAttributes:   value.StandardAttributes,
 		standardTableParts:   value.StandardTableParts,
