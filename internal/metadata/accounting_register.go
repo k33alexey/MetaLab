@@ -39,7 +39,12 @@ type AccountingRegisterDefinition struct {
 	Format int           `yaml:"format" json:"format"`
 	ID     uuid.UUID     `yaml:"id" json:"id"`
 	Name   string        `yaml:"name" json:"name"`
-	Title  LocalizedText `yaml:"title" json:"title"`
+	Title  LocalizedText `yaml:"title" json:"title"` // ListPresentations and the help flag: a row of this kind is not an object a
+	// person opens, so there is a list to name and no object - see
+	// object_presentation.go.
+	ListPresentations     `yaml:",inline" json:",inline"`
+	IncludeHelpInContents bool `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
+
 	// ChartOfAccounts is where the accounts come from, and with them the
 	// analytics: a register has no ext dimensions of its own.
 	ChartOfAccounts uuid.UUID `yaml:"chart_of_accounts" json:"chartOfAccounts"`
@@ -123,6 +128,7 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	// How many ext dimensions an entry really has is the chart's to say, and
 	// the chart is in another file: here the platform's ceiling is allowed and
 	// load.go narrows it once the chart is read.
+	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
 	issues = append(issues, validatePeriodAdjustmentLength(value.PeriodAdjustmentLength)...)
 	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accountingStandardFields(value.Correspondence, maxExtDimensions), configuration)...)
 	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", value.Attributes}}, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
@@ -174,6 +180,7 @@ func cloneAccountingRegister(value AccountingRegisterDefinition) AccountingRegis
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
+	value.ListPresentations = cloneListPresentations(value.ListPresentations)
 	return value
 }
 

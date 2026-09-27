@@ -31,10 +31,15 @@ type JournalColumn struct {
 // It stores nothing of its own: it shows documents, and every column of it is
 // an attribute of one of them.
 type DocumentJournalDefinition struct {
-	Format             int                 `yaml:"format" json:"format"`
-	ID                 uuid.UUID           `yaml:"id" json:"id"`
-	Name               string              `yaml:"name" json:"name"`
-	Title              LocalizedText       `yaml:"title" json:"title"`
+	Format int           `yaml:"format" json:"format"`
+	ID     uuid.UUID     `yaml:"id" json:"id"`
+	Name   string        `yaml:"name" json:"name"`
+	Title  LocalizedText `yaml:"title" json:"title"` // ListPresentations and the help flag: a row of this kind is not an object a
+	// person opens, so there is a list to name and no object - see
+	// object_presentation.go.
+	ListPresentations     `yaml:",inline" json:",inline"`
+	IncludeHelpInContents bool `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
+
 	Documents          []uuid.UUID         `yaml:"documents,omitempty" json:"documents,omitempty"`
 	Columns            []JournalColumn     `yaml:"columns,omitempty" json:"columns,omitempty"`
 	StandardAttributes []StandardAttribute `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
@@ -90,6 +95,7 @@ func DecodeDocumentJournal(source string, reader io.Reader, configuration projec
 	issues = append(issues, validateListSettings(value.List, nil, map[string]TypeKind{
 		"number": StringType, "date": DateType,
 	})...)
+	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
 	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(DocumentJournalKind), configuration)...)
 	issues = append(issues, validateFieldLinks(nil, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
@@ -114,6 +120,7 @@ func cloneDocumentJournal(value DocumentJournalDefinition) DocumentJournalDefini
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
+	value.ListPresentations = cloneListPresentations(value.ListPresentations)
 	return value
 }
 

@@ -170,3 +170,213 @@ description_length: 150
 		t.Fatalf("an unstated presentation came out as %+v", presentation)
 	}
 }
+
+// A row of a register is not an object a person opens, so there is a list to
+// name and no object. The refusal happens when the file is read, because the
+// field is simply not there - the strictest refusal available, and the reason
+// the set is built out of pieces rather than carried whole.
+func TestAKindWithoutAnObjectCannotNameOne(t *testing.T) {
+	t.Parallel()
+	for name, body := range map[string]struct {
+		kind    Kind
+		content string
+	}{
+		"регистр накопления": {AccumulationRegisterKind, `kind: balance
+dimensions: [{id: ` + registerPropsDimension + `, name: Товар, title: {ru: Товар}, types: [{kind: string, length: 50}]}]
+resources: [{id: ` + registerPropsResource + `, name: Количество, title: {ru: Количество}, types: [{kind: number, precision: 15, scale: 3}]}]
+`},
+		"журнал документов": {DocumentJournalKind, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := metadataProject(t)
+			writeMetadata(t, root, body.kind, presentationID, `format: 1
+id: `+presentationID+`
+name: Объект
+title: {ru: Объект}
+`+body.content+`object_presentation: {ru: Один}
+`)
+			_, err := Load(root)
+			if err == nil || !strings.Contains(err.Error(), "object_presentation") {
+				t.Fatalf("err = %v", err)
+			}
+		})
+	}
+}
+
+// The list's names, the explanation and the two flags on the five kinds that
+// have a list and a help topic but no object of their own. Two of the five need
+// a neighbour to exist at all - a journal needs a document to list, a register of
+// calculations needs a chart to take its kinds of accrual from - so those two
+// bring one along.
+func TestAListKindKeepsItsListNames(t *testing.T) {
+	t.Parallel()
+	for name, content := range map[string]struct {
+		kind      Kind
+		body      string
+		neighbour func(t *testing.T, root string)
+	}{
+		"журнал документов": {DocumentJournalKind, "documents: [" + documentID + "]\n", func(t *testing.T, root string) {
+			writeMetadata(t, root, DocumentKind, documentID, `format: 1
+id: `+documentID+`
+name: Накладная
+title: {ru: Накладная}
+number: {type: string, length: 11, auto: true, periodicity: year}
+`)
+		}},
+		"регистр сведений": {InformationRegisterKind, `write_mode: independent
+periodicity: day
+dimensions: [{id: ` + registerPropsDimension + `, name: Товар, title: {ru: Товар}, types: [{kind: string, length: 50}]}]
+resources: [{id: ` + registerPropsResource + `, name: Цена, title: {ru: Цена}, types: [{kind: number, precision: 15, scale: 2}]}]
+`, nil},
+		"регистр накопления": {AccumulationRegisterKind, `kind: balance
+dimensions: [{id: ` + registerPropsDimension + `, name: Товар, title: {ru: Товар}, types: [{kind: string, length: 50}]}]
+resources: [{id: ` + registerPropsResource + `, name: Количество, title: {ru: Количество}, types: [{kind: number, precision: 15, scale: 3}]}]
+`, nil},
+		"регистр расчёта": {CalculationRegisterKind, `periodicity: month
+chart_of_calculation_types: ` + calcTypesStandardID + `
+resources: [{id: ` + registerPropsResource + `, name: Результат, title: {ru: Результат}, types: [{kind: number, precision: 15, scale: 2}]}]
+`, func(t *testing.T, root string) {
+			writeMetadata(t, root, ChartOfCalculationTypesKind, calcTypesStandardID, `format: 1
+id: `+calcTypesStandardID+`
+name: Начисления
+title: {ru: Начисления}
+code: {type: string, length: 9, auto: true}
+description_length: 100
+`)
+		}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := metadataProject(t)
+			if content.neighbour != nil {
+				content.neighbour(t, root)
+			}
+			writeMetadata(t, root, content.kind, presentationID, `format: 1
+id: `+presentationID+`
+name: Объект
+title: {ru: Объект}
+`+content.body+`list_presentation: {ru: Многие}
+extended_list_presentation: {ru: Многие подробно}
+explanation: {ru: Пояснение}
+comment: комментарий
+use_standard_commands: true
+include_help_in_contents: true
+`)
+			if _, err := Load(root); err != nil {
+				t.Fatalf("a kind with a list refused part of its names: %v", err)
+			}
+		})
+	}
+}
+
+// A record of an information register gets a name of its own, and no other kind
+// has one: its row is neither an object a person opens nor a mere line.
+func TestOnlyAnInformationRegisterNamesItsRecord(t *testing.T) {
+	t.Parallel()
+	registerBody := `write_mode: independent
+periodicity: day
+dimensions: [{id: ` + registerPropsDimension + `, name: Товар, title: {ru: Товар}, types: [{kind: string, length: 50}]}]
+resources: [{id: ` + registerPropsResource + `, name: Цена, title: {ru: Цена}, types: [{kind: number, precision: 15, scale: 2}]}]
+`
+	t.Run("регистр сведений называет запись", func(t *testing.T) {
+		t.Parallel()
+		root := metadataProject(t)
+		writeMetadata(t, root, InformationRegisterKind, presentationID, `format: 1
+id: `+presentationID+`
+name: Цены
+title: {ru: Цены}
+`+registerBody+`record_presentation: {ru: Цена товара}
+extended_record_presentation: {ru: Цена товара на дату}
+`)
+		catalog, err := Load(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		register, ok := catalog.InformationRegisterDefinition("цены")
+		if !ok || register.RecordPresentation["ru"] != "Цена товара" ||
+			register.ExtendedRecordPresentation["ru"] != "Цена товара на дату" {
+			t.Fatalf("register = %+v, found=%v", register.RecordPresentations, ok)
+		}
+		register.RecordPresentation["ru"] = "Изменено"
+		again, _ := catalog.InformationRegisterDefinition("Цены")
+		if again.RecordPresentation["ru"] != "Цена товара" {
+			t.Fatal("the register handed out its own record presentation")
+		}
+	})
+	t.Run("регистр накопления записи не называет", func(t *testing.T) {
+		t.Parallel()
+		root := metadataProject(t)
+		writeMetadata(t, root, AccumulationRegisterKind, presentationID, `format: 1
+id: `+presentationID+`
+name: Остатки
+title: {ru: Остатки}
+kind: balance
+dimensions: [{id: `+registerPropsDimension+`, name: Товар, title: {ru: Товар}, types: [{kind: string, length: 50}]}]
+resources: [{id: `+registerPropsResource+`, name: Количество, title: {ru: Количество}, types: [{kind: number, precision: 15, scale: 3}]}]
+record_presentation: {ru: Запись}
+`)
+		_, err := Load(root)
+		if err == nil || !strings.Contains(err.Error(), "record_presentation") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+}
+
+// A report and a data processor show their own result, so there is nothing to
+// list. A subsystem has the same minus the standard commands: it has none of its
+// own to offer, and the help gives it no such property.
+func TestAKindWithNothingToListStillExplainsItself(t *testing.T) {
+	t.Parallel()
+	t.Run("отчёт", func(t *testing.T) {
+		t.Parallel()
+		root := metadataProject(t)
+		writeMetadata(t, root, ReportKind, presentationID, `format: 1
+id: `+presentationID+`
+name: Ведомость
+title: {ru: Ведомость}
+explanation: {ru: Что продано за период}
+comment: перенесено
+use_standard_commands: true
+include_help_in_contents: true
+`)
+		catalog, err := Load(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, ok := catalog.Report("ведомость")
+		if !ok || report.Explanation["ru"] != "Что продано за период" || report.Comment != "перенесено" ||
+			!report.UseStandardCommands || !report.IncludeHelpInContents {
+			t.Fatalf("report = %+v, found=%v", report.RunningObjectPresentations, ok)
+		}
+	})
+	t.Run("у отчёта нет списка, который можно назвать", func(t *testing.T) {
+		t.Parallel()
+		root := metadataProject(t)
+		writeMetadata(t, root, ReportKind, presentationID, `format: 1
+id: `+presentationID+`
+name: Ведомость
+title: {ru: Ведомость}
+list_presentation: {ru: Ведомости}
+`)
+		_, err := Load(root)
+		if err == nil || !strings.Contains(err.Error(), "list_presentation") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("у подсистемы нет стандартных команд", func(t *testing.T) {
+		t.Parallel()
+		root := metadataProject(t)
+		writeMetadata(t, root, SubsystemKind, presentationID, `format: 1
+id: `+presentationID+`
+name: Продажи
+title: {ru: Продажи}
+explanation: {ru: Всё про продажи}
+use_standard_commands: true
+`)
+		_, err := Load(root)
+		if err == nil || !strings.Contains(err.Error(), "use_standard_commands") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+}

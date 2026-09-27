@@ -32,10 +32,17 @@ const (
 
 // InformationRegisterDefinition describes one ML information register.
 type InformationRegisterDefinition struct {
-	Format             int                            `yaml:"format"`
-	ID                 uuid.UUID                      `yaml:"id"`
-	Name               string                         `yaml:"name"`
-	Title              LocalizedText                  `yaml:"title"`
+	Format int           `yaml:"format"`
+	ID     uuid.UUID     `yaml:"id"`
+	Name   string        `yaml:"name"`
+	Title  LocalizedText `yaml:"title"` // ListPresentations and the help flag: a row of this kind is not an object a
+	// person opens, so there is a list to name and no object - see
+	// object_presentation.go. A record of an information register gets a name of
+	// its own, which no other kind has.
+	ListPresentations     `yaml:",inline" json:",inline"`
+	IncludeHelpInContents bool `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
+	RecordPresentations   `yaml:",inline" json:",inline"`
+
 	WriteMode          InformationRegisterWriteMode   `yaml:"write_mode"`
 	Periodicity        InformationRegisterPeriodicity `yaml:"periodicity"`
 	Dimensions         []Attribute                    `yaml:"dimensions,omitempty"`
@@ -81,6 +88,8 @@ func DecodeInformationRegister(source string, reader io.Reader, configuration pr
 	registerFields := []fieldGroup{
 		{"dimensions", value.Dimensions}, {"resources", value.Resources}, {"attributes", value.Attributes},
 	}
+	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
+	issues = append(issues, validateRecordPresentations(value.RecordPresentations, configuration)...)
 	issues = append(issues, validateInformationRegisterProperties(value)...)
 	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(InformationRegisterKind), configuration)...)
 	issues = append(issues, validateFieldLinks(registerFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
@@ -139,6 +148,8 @@ func cloneInformationRegisterDefinition(value InformationRegisterDefinition) Inf
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
+	value.ListPresentations = cloneListPresentations(value.ListPresentations)
+	value.RecordPresentations = cloneRecordPresentations(value.RecordPresentations)
 	return value
 }
 

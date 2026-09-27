@@ -19,11 +19,16 @@ const (
 
 // AccumulationRegisterDefinition describes recorder-owned movements and rebuildable totals.
 type AccumulationRegisterDefinition struct {
-	Format int                           `yaml:"format"`
-	ID     uuid.UUID                     `yaml:"id"`
-	Name   string                        `yaml:"name"`
-	Title  LocalizedText                 `yaml:"title"`
-	Kind   AccumulationRegisterKindValue `yaml:"kind"`
+	Format int           `yaml:"format"`
+	ID     uuid.UUID     `yaml:"id"`
+	Name   string        `yaml:"name"`
+	Title  LocalizedText `yaml:"title"` // ListPresentations and the help flag: a row of this kind is not an object a
+	// person opens, so there is a list to name and no object - see
+	// object_presentation.go.
+	ListPresentations     `yaml:",inline" json:",inline"`
+	IncludeHelpInContents bool `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
+
+	Kind AccumulationRegisterKindValue `yaml:"kind"`
 	// TotalsSplitting keeps the totals of concurrent writers in rows of their
 	// own instead of making them queue on one. The accounting register has
 	// carried this since it was modelled; this register had the mechanism and
@@ -54,6 +59,7 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 	registerFields := []fieldGroup{
 		{"dimensions", value.Dimensions}, {"resources", value.Resources}, {"attributes", value.Attributes},
 	}
+	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
 	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accumulationStandardFields(value.Kind), configuration)...)
 	issues = append(issues, validateFieldLinks(registerFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 	issues = append(issues, validateAttributeUse(registerFields, nil, false, false)...)
@@ -118,6 +124,7 @@ func cloneAccumulationRegisterDefinition(value AccumulationRegisterDefinition) A
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
+	value.ListPresentations = cloneListPresentations(value.ListPresentations)
 	return value
 }
 

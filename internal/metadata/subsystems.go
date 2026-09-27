@@ -16,12 +16,17 @@ const SubsystemKind Kind = "subsystems"
 // section of ML App navigation. Membership and nesting are purely
 // navigational: they do not affect execution, rights or storage.
 type SubsystemDefinition struct {
-	Format  int           `yaml:"format"`
-	ID      uuid.UUID     `yaml:"id"`
-	Name    string        `yaml:"name"`
-	Title   LocalizedText `yaml:"title"`
-	Parent  *uuid.UUID    `yaml:"parent,omitempty"`
-	Members []uuid.UUID   `yaml:"members,omitempty"`
+	Format int           `yaml:"format"`
+	ID     uuid.UUID     `yaml:"id"`
+	Name   string        `yaml:"name"`
+	Title  LocalizedText `yaml:"title"`
+	// A subsystem is offered to a user and has a help topic, but no commands of
+	// its own to offer: the help gives it the explanation and the help flag and
+	// no standard commands - see object_presentation.go.
+	ObjectExplanation     `yaml:",inline"`
+	IncludeHelpInContents bool        `yaml:"include_help_in_contents,omitempty"`
+	Parent                *uuid.UUID  `yaml:"parent,omitempty"`
+	Members               []uuid.UUID `yaml:"members,omitempty"`
 }
 
 func DecodeSubsystem(source string, reader io.Reader, configuration project.Project) (SubsystemDefinition, error) {
@@ -39,6 +44,9 @@ func DecodeSubsystem(source string, reader io.Reader, configuration project.Proj
 // are checked catalog-wide by validateSubsystemReferences.
 func ValidateSubsystem(source string, value SubsystemDefinition, configuration project.Project) error {
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
+	if len(value.Explanation) > 0 {
+		issues = append(issues, validateTitle("explanation", value.Explanation, configuration)...)
+	}
 	if value.Parent != nil && *value.Parent == value.ID {
 		issues = append(issues, "parent must not reference the subsystem itself")
 	}
@@ -82,6 +90,7 @@ func cloneSubsystemDefinition(value SubsystemDefinition) SubsystemDefinition {
 		value.Parent = &parent
 	}
 	value.Members = slices.Clone(value.Members)
+	value.Explanation = cloneTitle(value.Explanation)
 	return value
 }
 

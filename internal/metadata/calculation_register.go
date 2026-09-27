@@ -76,7 +76,12 @@ type CalculationRegisterDefinition struct {
 	Format int           `yaml:"format" json:"format"`
 	ID     uuid.UUID     `yaml:"id" json:"id"`
 	Name   string        `yaml:"name" json:"name"`
-	Title  LocalizedText `yaml:"title" json:"title"`
+	Title  LocalizedText `yaml:"title" json:"title"` // ListPresentations and the help flag: a row of this kind is not an object a
+	// person opens, so there is a list to name and no object - see
+	// object_presentation.go.
+	ListPresentations     `yaml:",inline" json:",inline"`
+	IncludeHelpInContents bool `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
+
 	// ChartOfCalculationTypes supplies the kinds of accrual and the rules by
 	// which they compete for a period.
 	ChartOfCalculationTypes uuid.UUID              `yaml:"chart_of_calculation_types" json:"chartOfCalculationTypes"`
@@ -151,6 +156,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 		return names[strings.ToLower(name)] || reservedCalculationRegisterName(name)
 	})...)
 	calculationFields := []fieldGroup{{"resources", value.Resources}, {"attributes", value.Attributes}}
+	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
 	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(CalculationRegisterKind), configuration)...)
 	issues = append(issues, validateFieldLinks(calculationFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 	issues = append(issues, validateAttributeUse(calculationFields, nil, false, false)...)
@@ -301,6 +307,7 @@ func cloneCalculationRegister(value CalculationRegisterDefinition) CalculationRe
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
+	value.ListPresentations = cloneListPresentations(value.ListPresentations)
 	return value
 }
 

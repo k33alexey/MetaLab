@@ -12,12 +12,15 @@ import (
 // shown. A report keeps no data of its own - its attributes and table parts
 // live only while it runs, and that is why it has no table.
 type ReportDefinition struct {
-	Format     int           `yaml:"format" json:"format"`
-	ID         uuid.UUID     `yaml:"id" json:"id"`
-	Name       string        `yaml:"name" json:"name"`
-	Title      LocalizedText `yaml:"title" json:"title"`
-	Attributes []Attribute   `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	TableParts []TablePart   `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	Format int           `yaml:"format" json:"format"`
+	ID     uuid.UUID     `yaml:"id" json:"id"`
+	Name   string        `yaml:"name" json:"name"`
+	Title  LocalizedText `yaml:"title" json:"title"` // RunningObjectPresentations: a report shows its own result, so there is no
+	// list of rows to name - see object_presentation.go.
+	RunningObjectPresentations `yaml:",inline" json:",inline"`
+
+	Attributes []Attribute `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts []TablePart `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
 	// MainSchema is the composition schema the report is built by. It names
 	// one of the report's own templates: a schema is a kind of template, not a
 	// thing beside them.
@@ -61,10 +64,13 @@ func (forms ReportForms) slots() []formSlot {
 // the parts that exist for showing numbers: no composition schema, no variants
 // and no settings to store.
 type DataProcessorDefinition struct {
-	Format     int              `yaml:"format" json:"format"`
-	ID         uuid.UUID        `yaml:"id" json:"id"`
-	Name       string           `yaml:"name" json:"name"`
-	Title      LocalizedText    `yaml:"title" json:"title"`
+	Format int           `yaml:"format" json:"format"`
+	ID     uuid.UUID     `yaml:"id" json:"id"`
+	Name   string        `yaml:"name" json:"name"`
+	Title  LocalizedText `yaml:"title" json:"title"` // RunningObjectPresentations: a report shows its own result, so there is no
+	// list of rows to name - see object_presentation.go.
+	RunningObjectPresentations `yaml:",inline" json:",inline"`
+
 	Attributes []Attribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 	TableParts []TablePart      `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
 	Forms      SingleRoleForms  `yaml:"forms,omitempty" json:"forms,omitempty"`
@@ -80,6 +86,7 @@ func DecodeReport(source string, reader io.Reader, configuration project.Project
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, configuration, reservedReportName)...)
+	issues = append(issues, validateRunningObjectPresentations(value.RunningObjectPresentations, configuration)...)
 	for name, id := range map[string]*uuid.UUID{
 		"main_schema": value.MainSchema, "variants_storage": value.VariantsStorage,
 		"settings_storage": value.SettingsStorage,
@@ -105,6 +112,7 @@ func DecodeDataProcessor(source string, reader io.Reader, configuration project.
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, configuration, reservedReportName)...)
+	issues = append(issues, validateRunningObjectPresentations(value.RunningObjectPresentations, configuration)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
@@ -154,6 +162,7 @@ func cloneReport(value ReportDefinition) ReportDefinition {
 	}
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.RunningObjectPresentations = cloneRunningObjectPresentations(value.RunningObjectPresentations)
 	return value
 }
 
@@ -164,6 +173,7 @@ func cloneDataProcessor(value DataProcessorDefinition) DataProcessorDefinition {
 	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.RunningObjectPresentations = cloneRunningObjectPresentations(value.RunningObjectPresentations)
 	return value
 }
 
