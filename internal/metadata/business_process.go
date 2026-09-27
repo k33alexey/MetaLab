@@ -137,10 +137,14 @@ type RouteMap struct {
 // them. Tasks are created by the kind of task it names; the route itself is
 // modelled here and executed later.
 type BusinessProcessDefinition struct {
-	Format int            `yaml:"format" json:"format"`
-	ID     uuid.UUID      `yaml:"id" json:"id"`
-	Name   string         `yaml:"name" json:"name"`
-	Title  LocalizedText  `yaml:"title" json:"title"`
+	Format int           `yaml:"format" json:"format"`
+	ID     uuid.UUID     `yaml:"id" json:"id"`
+	Name   string        `yaml:"name" json:"name"`
+	Title  LocalizedText `yaml:"title" json:"title"`
+	// Presentations is how this object is named to the person using it -
+	// see object_presentation.go.
+	Presentations `yaml:",inline" json:",inline"`
+
 	Number DocumentNumber `yaml:"number" json:"number"`
 	// Task is the kind of task this process creates at its points.
 	Task *uuid.UUID `yaml:"task,omitempty" json:"task,omitempty"`
@@ -174,6 +178,7 @@ func DecodeBusinessProcess(source string, reader io.Reader, configuration projec
 		reservedName:       reservedBusinessProcessName,
 		kind:               BusinessProcessKind,
 		standardAttributes: value.StandardAttributes,
+		presentation:       value.Presentations,
 	}, configuration)...)
 	if value.Task != nil && value.Task.IsZero() {
 		issues = append(issues, "task must be a non-zero UUID")
@@ -460,6 +465,7 @@ func cloneBusinessProcess(value BusinessProcessDefinition) BusinessProcessDefini
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
+	value.Presentations = clonePresentations(value.Presentations)
 	return value
 }
 

@@ -487,13 +487,17 @@ type ListSettings struct {
 
 // CatalogDefinition describes one ML catalog and its persistent record shape.
 type CatalogDefinition struct {
-	Format            int           `yaml:"format" json:"format"`
-	ID                uuid.UUID     `yaml:"id" json:"id"`
-	Name              string        `yaml:"name" json:"name"`
-	Title             LocalizedText `yaml:"title" json:"title"`
-	Code              CatalogCode   `yaml:"code" json:"code"`
-	DescriptionLength int           `yaml:"description_length" json:"descriptionLength"`
-	Hierarchy         Hierarchy     `yaml:"hierarchy,omitempty" json:"hierarchy,omitempty"`
+	Format int           `yaml:"format" json:"format"`
+	ID     uuid.UUID     `yaml:"id" json:"id"`
+	Name   string        `yaml:"name" json:"name"`
+	Title  LocalizedText `yaml:"title" json:"title"`
+	// Presentations is how this object is named to the person using it -
+	// see object_presentation.go.
+	Presentations `yaml:",inline" json:",inline"`
+
+	Code              CatalogCode `yaml:"code" json:"code"`
+	DescriptionLength int         `yaml:"description_length" json:"descriptionLength"`
+	Hierarchy         Hierarchy   `yaml:"hierarchy,omitempty" json:"hierarchy,omitempty"`
 	// Owners are the objects whose elements a row of this catalog belongs to,
 	// and Subordination says whether it belongs to their items, their folders
 	// or either - see catalog_owners.go.
@@ -1020,6 +1024,7 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 		codeAllowedLength:    true,
 		codeType:             true,
 		predefinedDataUpdate: value.PredefinedDataUpdate,
+		presentation:         value.Presentations,
 		kind:                 CatalogKind,
 		standardAttributes:   value.StandardAttributes,
 	}, configuration)...)
@@ -1077,6 +1082,9 @@ type referenceObjectShape struct {
 	// rows when the configuration is updated. Only the four kinds that keep
 	// predefined data carry it - see predefined_data_update.go.
 	predefinedDataUpdate PredefinedDataUpdate
+	// presentation is how the object is named to a person. All five reference
+	// kinds carry the whole set - see object_presentation.go.
+	presentation Presentations
 	// attributeUse says this kind's attributes may say whom they belong to -
 	// items, folders or both. Only a catalog and a chart of characteristic
 	// types may: the help says so, and the demonstration configuration writes
@@ -1196,6 +1204,7 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	issues = append(issues, validateCodeAllowedLength(shape)...)
 	issues = append(issues, validateCodeType(shape)...)
 	issues = append(issues, validatePredefinedDataUpdate(shape.predefinedDataUpdate)...)
+	issues = append(issues, validatePresentations(shape.presentation, configuration)...)
 	reserved := shape.reservedName
 	if reserved == nil {
 		reserved = reservedCatalogObjectName
@@ -1607,6 +1616,7 @@ func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
+	value.Presentations = clonePresentations(value.Presentations)
 	return value
 }
 

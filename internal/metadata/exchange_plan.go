@@ -41,12 +41,16 @@ type ExchangePlanContentItem struct {
 // a description, attributes and table parts - and carries on top of them what
 // the two sides still owe each other.
 type ExchangePlanDefinition struct {
-	Format            int           `yaml:"format" json:"format"`
-	ID                uuid.UUID     `yaml:"id" json:"id"`
-	Name              string        `yaml:"name" json:"name"`
-	Title             LocalizedText `yaml:"title" json:"title"`
-	Code              CatalogCode   `yaml:"code" json:"code"`
-	DescriptionLength int           `yaml:"description_length" json:"descriptionLength"`
+	Format int           `yaml:"format" json:"format"`
+	ID     uuid.UUID     `yaml:"id" json:"id"`
+	Name   string        `yaml:"name" json:"name"`
+	Title  LocalizedText `yaml:"title" json:"title"`
+	// Presentations is how this object is named to the person using it -
+	// see object_presentation.go.
+	Presentations `yaml:",inline" json:",inline"`
+
+	Code              CatalogCode `yaml:"code" json:"code"`
+	DescriptionLength int         `yaml:"description_length" json:"descriptionLength"`
 	// Content is what is registered, with the kind of registration beside each
 	// entry. A plan with no content registers nothing and exchanges nothing.
 	Content []ExchangePlanContentItem `yaml:"content,omitempty" json:"content,omitempty"`
@@ -106,6 +110,7 @@ func DecodeExchangePlan(source string, reader io.Reader, configuration project.P
 		reservedName:       reservedExchangePlanName,
 		codeAllowedLength:  true,
 		kind:               ExchangePlanKind,
+		presentation:       value.Presentations,
 		standardAttributes: value.StandardAttributes,
 	}, configuration)...)
 	issues = append(issues, validateExchangePlanContent(value)...)
@@ -175,6 +180,7 @@ func cloneExchangePlan(value ExchangePlanDefinition) ExchangePlanDefinition {
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
+	value.Presentations = clonePresentations(value.Presentations)
 	return value
 }
 

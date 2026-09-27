@@ -39,10 +39,14 @@ type DocumentNumber struct {
 
 // DocumentDefinition describes one ML document and its persistent record shape.
 type DocumentDefinition struct {
-	Format int            `yaml:"format"`
-	ID     uuid.UUID      `yaml:"id"`
-	Name   string         `yaml:"name"`
-	Title  LocalizedText  `yaml:"title"`
+	Format int           `yaml:"format"`
+	ID     uuid.UUID     `yaml:"id"`
+	Name   string        `yaml:"name"`
+	Title  LocalizedText `yaml:"title"`
+	// Presentations is how this object is named to the person using it -
+	// see object_presentation.go.
+	Presentations `yaml:",inline" json:",inline"`
+
 	Number DocumentNumber `yaml:"number"`
 	// Numerator names a numbering shared with other kinds of document. When it
 	// is named the document declares no number of its own: two sources for one
@@ -84,6 +88,7 @@ func DecodeDocument(source string, reader io.Reader, configuration project.Proje
 		reservedName:       reservedDocumentObjectName,
 		kind:               DocumentKind,
 		standardAttributes: value.StandardAttributes,
+		presentation:       value.Presentations,
 	}
 	if value.Numerator != nil {
 		// The number comes from the numerator, and it is filled in once the
@@ -133,6 +138,9 @@ type numberedObjectShape struct {
 	// table part.
 	kind               Kind
 	standardAttributes []StandardAttribute
+	// presentation is how the object is named to a person; all three numbered
+	// kinds carry the whole set.
+	presentation Presentations
 }
 
 // validateNumberShape checks a number on its own, apart from the object that
@@ -183,6 +191,7 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 	// characteristic types' alone.
 	issues = append(issues, validateTableParts(shape.tableParts, attributeNames, configuration, reserved, tablePartRules{stored: true})...)
 	issues = append(issues, validateStandardAttributes("standard_attributes", shape.standardAttributes, standardFieldsOfKind(shape.kind), configuration)...)
+	issues = append(issues, validatePresentations(shape.presentation, configuration)...)
 	links := append(standardAttributeChoices("standard_attributes", shape.standardAttributes), tablePartStandardChoices(shape.tableParts)...)
 	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, links...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, false, false)...)
@@ -315,6 +324,7 @@ func cloneDocumentDefinition(value DocumentDefinition) DocumentDefinition {
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.Movements = slices.Clone(value.Movements)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
+	value.Presentations = clonePresentations(value.Presentations)
 	return value
 }
 

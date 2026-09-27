@@ -39,10 +39,14 @@ type AddressingAttribute struct {
 // TaskDefinition describes assignments to people, addressed by role rather than
 // by name.
 type TaskDefinition struct {
-	Format            int            `yaml:"format" json:"format"`
-	ID                uuid.UUID      `yaml:"id" json:"id"`
-	Name              string         `yaml:"name" json:"name"`
-	Title             LocalizedText  `yaml:"title" json:"title"`
+	Format int           `yaml:"format" json:"format"`
+	ID     uuid.UUID     `yaml:"id" json:"id"`
+	Name   string        `yaml:"name" json:"name"`
+	Title  LocalizedText `yaml:"title" json:"title"`
+	// Presentations is how this object is named to the person using it -
+	// see object_presentation.go.
+	Presentations `yaml:",inline" json:",inline"`
+
 	Number            DocumentNumber `yaml:"number" json:"number"`
 	DescriptionLength int            `yaml:"description_length" json:"descriptionLength"`
 	// NumberPrefix takes the start of the number from the business process that
@@ -84,6 +88,7 @@ func DecodeTask(source string, reader io.Reader, configuration project.Project) 
 		reservedName:       reservedTaskName,
 		kind:               TaskKind,
 		standardAttributes: value.StandardAttributes,
+		presentation:       value.Presentations,
 	}, configuration)...)
 	if value.DescriptionLength < 1 || value.DescriptionLength > 1_048_576 {
 		issues = append(issues, "description_length must be 1..1048576")
@@ -202,6 +207,7 @@ func cloneTask(value TaskDefinition) TaskDefinition {
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
+	value.Presentations = clonePresentations(value.Presentations)
 	return value
 }
 

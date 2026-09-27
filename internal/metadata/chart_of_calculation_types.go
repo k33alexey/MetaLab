@@ -51,12 +51,16 @@ type PredefinedCalculationType struct {
 // It repeats a catalog but never nests: the prototype has no hierarchy here at
 // all, and inventing one would give the object a switch it must not have.
 type ChartOfCalculationTypesDefinition struct {
-	Format            int           `yaml:"format" json:"format"`
-	ID                uuid.UUID     `yaml:"id" json:"id"`
-	Name              string        `yaml:"name" json:"name"`
-	Title             LocalizedText `yaml:"title" json:"title"`
-	Code              CatalogCode   `yaml:"code" json:"code"`
-	DescriptionLength int           `yaml:"description_length" json:"descriptionLength"`
+	Format int           `yaml:"format" json:"format"`
+	ID     uuid.UUID     `yaml:"id" json:"id"`
+	Name   string        `yaml:"name" json:"name"`
+	Title  LocalizedText `yaml:"title" json:"title"`
+	// Presentations is how this object is named to the person using it -
+	// see object_presentation.go.
+	Presentations `yaml:",inline" json:",inline"`
+
+	Code              CatalogCode `yaml:"code" json:"code"`
+	DescriptionLength int         `yaml:"description_length" json:"descriptionLength"`
 	// ActionPeriodUse turns on competition over the period an entry acts in.
 	// Without it there is nothing to displace.
 	ActionPeriodUse bool           `yaml:"action_period_use,omitempty" json:"actionPeriodUse,omitempty"`
@@ -94,6 +98,7 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, configuratio
 		codeAllowedLength:    true,
 		codeType:             true,
 		predefinedDataUpdate: value.PredefinedDataUpdate,
+		presentation:         value.Presentations,
 		kind:                 ChartOfCalculationTypesKind,
 		standardAttributes:   value.StandardAttributes,
 		standardTableParts:   value.StandardTableParts,
@@ -225,6 +230,7 @@ func cloneChartOfCalculationTypes(value ChartOfCalculationTypesDefinition) Chart
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.StandardTableParts = cloneStandardTableParts(value.StandardTableParts)
+	value.Presentations = clonePresentations(value.Presentations)
 	return value
 }
 

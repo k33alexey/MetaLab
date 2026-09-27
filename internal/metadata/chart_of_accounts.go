@@ -71,12 +71,16 @@ type PredefinedAccount struct {
 // application keeps its books on, what analytics each of them carries, and the
 // flags a bookkeeping register checks its movements against.
 type ChartOfAccountsDefinition struct {
-	Format            int           `yaml:"format" json:"format"`
-	ID                uuid.UUID     `yaml:"id" json:"id"`
-	Name              string        `yaml:"name" json:"name"`
-	Title             LocalizedText `yaml:"title" json:"title"`
-	Code              CatalogCode   `yaml:"code" json:"code"`
-	DescriptionLength int           `yaml:"description_length" json:"descriptionLength"`
+	Format int           `yaml:"format" json:"format"`
+	ID     uuid.UUID     `yaml:"id" json:"id"`
+	Name   string        `yaml:"name" json:"name"`
+	Title  LocalizedText `yaml:"title" json:"title"`
+	// Presentations is how this object is named to the person using it -
+	// see object_presentation.go.
+	Presentations `yaml:",inline" json:",inline"`
+
+	Code              CatalogCode `yaml:"code" json:"code"`
+	DescriptionLength int         `yaml:"description_length" json:"descriptionLength"`
 	// CodeMask describes how an account code is built - "@@.@@" is two
 	// positions, a dot, two more. The order of accounts is derived from it.
 	CodeMask string `yaml:"code_mask,omitempty" json:"codeMask,omitempty"`
@@ -127,6 +131,7 @@ func DecodeChartOfAccounts(source string, reader io.Reader, configuration projec
 		// codeAllowedLength stays off: the shape of an account code is the code
 		// mask's to decide, and the prototype gives the chart no such property.
 		predefinedDataUpdate: value.PredefinedDataUpdate,
+		presentation:         value.Presentations,
 		kind:                 ChartOfAccountsKind,
 		standardAttributes:   value.StandardAttributes,
 		standardTableParts:   value.StandardTableParts,
@@ -410,6 +415,7 @@ func cloneChartOfAccounts(value ChartOfAccountsDefinition) ChartOfAccountsDefini
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.StandardTableParts = cloneStandardTableParts(value.StandardTableParts)
+	value.Presentations = clonePresentations(value.Presentations)
 	return value
 }
 

@@ -20,13 +20,17 @@ import (
 // chart of characteristic types rather than another catalog: what a value of a
 // characteristic may be, and where the values that fit no existing type live.
 type ChartOfCharacteristicTypesDefinition struct {
-	Format            int           `yaml:"format" json:"format"`
-	ID                uuid.UUID     `yaml:"id" json:"id"`
-	Name              string        `yaml:"name" json:"name"`
-	Title             LocalizedText `yaml:"title" json:"title"`
-	Code              CatalogCode   `yaml:"code" json:"code"`
-	DescriptionLength int           `yaml:"description_length" json:"descriptionLength"`
-	Hierarchy         Hierarchy     `yaml:"hierarchy,omitempty" json:"hierarchy,omitempty"`
+	Format int           `yaml:"format" json:"format"`
+	ID     uuid.UUID     `yaml:"id" json:"id"`
+	Name   string        `yaml:"name" json:"name"`
+	Title  LocalizedText `yaml:"title" json:"title"`
+	// Presentations is how this object is named to the person using it -
+	// see object_presentation.go.
+	Presentations `yaml:",inline" json:",inline"`
+
+	Code              CatalogCode `yaml:"code" json:"code"`
+	DescriptionLength int         `yaml:"description_length" json:"descriptionLength"`
+	Hierarchy         Hierarchy   `yaml:"hierarchy,omitempty" json:"hierarchy,omitempty"`
 	// ValueType is what a value of a characteristic of this chart may be. It
 	// is the ceiling, not the value: each element narrows it further to its
 	// own type, and an attribute typed by this chart accepts what the chart
@@ -69,6 +73,7 @@ func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, configura
 		codeSeries:           true,
 		codeAllowedLength:    true,
 		predefinedDataUpdate: value.PredefinedDataUpdate,
+		presentation:         value.Presentations,
 		kind:                 ChartOfCharacteristicTypesKind,
 		standardAttributes:   value.StandardAttributes,
 	}, configuration)...)
@@ -113,6 +118,7 @@ func cloneChartOfCharacteristicTypes(value ChartOfCharacteristicTypesDefinition)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
+	value.Presentations = clonePresentations(value.Presentations)
 	return value
 }
 
