@@ -84,8 +84,8 @@ type ObjectInput struct {
 	// thirty-nine objects search Наименование before Код and three the other way
 	// round. An empty list means the object is not entered by string at all, and
 	// two catalogs of the demonstration configuration say exactly that.
-	InputByString    []InputByStringField `yaml:"input_by_string,omitempty" json:"inputByString,omitempty"`
-	SearchStringMode SearchStringMode     `yaml:"search_string_mode,omitempty" json:"searchStringMode,omitempty"`
+	InputByString    []ObjectField    `yaml:"input_by_string,omitempty" json:"inputByString,omitempty"`
+	SearchStringMode SearchStringMode `yaml:"search_string_mode,omitempty" json:"searchStringMode,omitempty"`
 	// FullTextSearchOnInput searches the full-text index instead of comparing
 	// the field, and ChoiceDataGetMode says whether the user waits for the
 	// search. Both are constant across the demonstration configuration, which

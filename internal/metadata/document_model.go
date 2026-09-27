@@ -51,6 +51,11 @@ type DocumentDefinition struct {
 	// BasedOn are the objects one of these may be made out of, the list the
 	// command to make it offers - see based_on.go.
 	BasedOn []uuid.UUID `yaml:"based_on,omitempty" json:"basedOn,omitempty"`
+	// DataLock is how the platform locks a row of this object while it is
+	// written, and DataLockFields are the fields it may be locked by - see
+	// data_lock_settings.go.
+	DataLock       project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
+	DataLockFields []ObjectField               `yaml:"data_lock_fields,omitempty" json:"dataLockFields,omitempty"`
 
 	Number DocumentNumber `yaml:"number"`
 	// Numerator names a numbering shared with other kinds of document. When it
@@ -96,6 +101,8 @@ func DecodeDocument(source string, reader io.Reader, configuration project.Proje
 		presentation:       value.Presentations,
 		input:              value.ObjectInput,
 		basedOn:            value.BasedOn,
+		dataLock:           value.DataLock,
+		dataLockFields:     value.DataLockFields,
 	}
 	if value.Numerator != nil {
 		// The number comes from the numerator, and it is filled in once the
@@ -154,6 +161,11 @@ type numberedObjectShape struct {
 	// basedOn is what this object may be made out of - see based_on.go. All
 	// three numbered kinds carry it, as do the five reference ones.
 	basedOn []uuid.UUID
+	// dataLock and dataLockFields are how a row of this object is locked and
+	// by which fields - see data_lock_settings.go. The same eight kinds carry
+	// both.
+	dataLock       project.DataLockControlMode
+	dataLockFields []ObjectField
 }
 
 // validateNumberShape checks a number on its own, apart from the object that
@@ -208,6 +220,8 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 	issues = append(issues, validateObjectInput(shape.input)...)
 	issues = append(issues, validateInputByString(shape.input.InputByString, shape.kind, shape.attributes)...)
 	issues = append(issues, validateBasedOn(shape.basedOn)...)
+	issues = append(issues, validateDataLockMode("data_lock", shape.dataLock)...)
+	issues = append(issues, validateDataLockFields(shape.dataLockFields, shape.kind, shape.attributes)...)
 	links := append(standardAttributeChoices("standard_attributes", shape.standardAttributes), tablePartStandardChoices(shape.tableParts)...)
 	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, links...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, false, false)...)
@@ -343,6 +357,7 @@ func cloneDocumentDefinition(value DocumentDefinition) DocumentDefinition {
 	value.Presentations = clonePresentations(value.Presentations)
 	value.ObjectInput = cloneObjectInput(value.ObjectInput)
 	value.BasedOn = slices.Clone(value.BasedOn)
+	value.DataLockFields = cloneDataLockFields(value.DataLockFields)
 	return value
 }
 

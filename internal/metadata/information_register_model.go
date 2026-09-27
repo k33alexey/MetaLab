@@ -41,7 +41,12 @@ type InformationRegisterDefinition struct {
 	// its own, which no other kind has.
 	ListPresentations     `yaml:",inline" json:",inline"`
 	IncludeHelpInContents bool `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
-	RecordPresentations   `yaml:",inline" json:",inline"`
+	// DataLock is how the platform locks records of this register while they
+	// are written - see data_lock_settings.go. A register has the mode and no
+	// fields: the prototype gives the list of fields only to the kinds that
+	// have an object of their own.
+	DataLock            project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
+	RecordPresentations `yaml:",inline" json:",inline"`
 
 	WriteMode          InformationRegisterWriteMode   `yaml:"write_mode"`
 	Periodicity        InformationRegisterPeriodicity `yaml:"periodicity"`
@@ -67,6 +72,7 @@ func DecodeInformationRegister(source string, reader io.Reader, configuration pr
 		return InformationRegisterDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
+	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
 	switch value.WriteMode {
 	case InformationRegisterIndependent, InformationRegisterRecorder:
 	default:

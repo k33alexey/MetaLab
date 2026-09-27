@@ -72,7 +72,7 @@ data_lock: automatic
 		t.Fatalf("whether the platform offers its own commands was lost: %+v", constant)
 	case constant.DataHistory != DataHistoryUse:
 		t.Fatalf("whether the history of the value is kept was lost: %+v", constant)
-	case constant.DataLock != AutomaticDataLock:
+	case constant.DataLock != project.AutomaticDataLock:
 		t.Fatalf("how the value is locked was lost: %+v", constant)
 	}
 
@@ -166,7 +166,7 @@ func TestBrokenConstantPropertiesAreRefused(t *testing.T) {
 	t.Parallel()
 	for name, broken := range map[string]struct{ body, want string }{
 		"истории данных не существует": {"data_history: иногда", "data_history must be use or dont-use"},
-		"блокировки не существует":     {"data_lock: ручная", "data_lock must be managed or automatic"},
+		"блокировки не существует":     {"data_lock: ручная", "data_lock must be automatic, managed or automatic-and-managed"},
 		"форма нулевая":                {"default_form: 00000000-0000-0000-0000-000000000000", "default_form must be a non-zero UUID"},
 		"пояснение на незаявленном языке": {"explanation: {de: Modus}",
 			"explanation.de uses an unconfigured language"},

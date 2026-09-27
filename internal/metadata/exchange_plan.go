@@ -53,6 +53,11 @@ type ExchangePlanDefinition struct {
 	// BasedOn are the objects one of these may be made out of, the list the
 	// command to make it offers - see based_on.go.
 	BasedOn []uuid.UUID `yaml:"based_on,omitempty" json:"basedOn,omitempty"`
+	// DataLock is how the platform locks a row of this object while it is
+	// written, and DataLockFields are the fields it may be locked by - see
+	// data_lock_settings.go.
+	DataLock       project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
+	DataLockFields []ObjectField               `yaml:"data_lock_fields,omitempty" json:"dataLockFields,omitempty"`
 
 	Code              CatalogCode `yaml:"code" json:"code"`
 	DescriptionLength int         `yaml:"description_length" json:"descriptionLength"`
@@ -118,6 +123,8 @@ func DecodeExchangePlan(source string, reader io.Reader, configuration project.P
 		presentation:       value.Presentations,
 		choice:             value.ObjectChoice,
 		basedOn:            value.BasedOn,
+		dataLock:           value.DataLock,
+		dataLockFields:     value.DataLockFields,
 		standardAttributes: value.StandardAttributes,
 	}, configuration)...)
 	issues = append(issues, validateExchangePlanContent(value)...)
@@ -190,6 +197,7 @@ func cloneExchangePlan(value ExchangePlanDefinition) ExchangePlanDefinition {
 	value.Presentations = clonePresentations(value.Presentations)
 	value.ObjectInput = cloneObjectInput(value.ObjectInput)
 	value.BasedOn = slices.Clone(value.BasedOn)
+	value.DataLockFields = cloneDataLockFields(value.DataLockFields)
 	return value
 }
 

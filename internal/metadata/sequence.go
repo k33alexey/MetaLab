@@ -42,6 +42,9 @@ type SequenceDefinition struct {
 	ID     uuid.UUID     `yaml:"id" json:"id"`
 	Name   string        `yaml:"name" json:"name"`
 	Title  LocalizedText `yaml:"title" json:"title"`
+	// DataLock is how the platform locks the sequence's records while they are
+	// written - see data_lock_settings.go.
+	DataLock project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
 	// Documents are the kinds of document the sequence follows.
 	Documents []uuid.UUID `yaml:"documents,omitempty" json:"documents,omitempty"`
 	// Movements are the registers whose records the boundary is watched by.
@@ -59,6 +62,7 @@ func DecodeSequence(source string, reader io.Reader, configuration project.Proje
 		return SequenceDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
+	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
 	// A sequence over no documents watches nothing happen.
 	if len(value.Documents) == 0 {
 		issues = append(issues, "documents must name at least one kind of document: a sequence over nothing follows nothing")

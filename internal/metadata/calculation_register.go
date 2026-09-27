@@ -64,10 +64,14 @@ type RecalculationDimension struct {
 // the data they depend on has changed. A calculation type is not named here:
 // it is a field of the recalculation record, beside the recorder.
 type Recalculation struct {
-	ID         uuid.UUID                `yaml:"id" json:"id"`
-	Name       string                   `yaml:"name" json:"name"`
-	Title      LocalizedText            `yaml:"title" json:"title"`
-	Dimensions []RecalculationDimension `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
+	ID    uuid.UUID     `yaml:"id" json:"id"`
+	Name  string        `yaml:"name" json:"name"`
+	Title LocalizedText `yaml:"title" json:"title"`
+	// DataLock is how the recalculation's own records are locked - see
+	// data_lock_settings.go. A recalculation is a subordinate entity and still
+	// carries the setting, because it has records of its own to lock.
+	DataLock   project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
+	Dimensions []RecalculationDimension    `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
 }
 
 // CalculationRegisterDefinition holds the results of calculation, with a period
@@ -81,6 +85,11 @@ type CalculationRegisterDefinition struct {
 	// object_presentation.go.
 	ListPresentations     `yaml:",inline" json:",inline"`
 	IncludeHelpInContents bool `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
+	// DataLock is how the platform locks records of this register while they
+	// are written - see data_lock_settings.go. A register has the mode and no
+	// fields: the prototype gives the list of fields only to the kinds that
+	// have an object of their own.
+	DataLock project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
 
 	// ChartOfCalculationTypes supplies the kinds of accrual and the rules by
 	// which they compete for a period.
@@ -114,6 +123,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 		return CalculationRegisterDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
+	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
 	if value.ChartOfCalculationTypes.IsZero() {
 		issues = append(issues, "chart_of_calculation_types is required: without kinds of accrual there is nothing to calculate")
 	}
@@ -220,6 +230,7 @@ func validateRecalculations(value CalculationRegisterDefinition, configuration p
 		}
 		names[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", recalculation.Title, configuration)...)
+		issues = append(issues, validateDataLockMode(prefix+".data_lock", recalculation.DataLock)...)
 		if len(recalculation.Dimensions) == 0 {
 			issues = append(issues, prefix+" has no dimensions, so it finds no records to compute again")
 		}

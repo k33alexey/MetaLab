@@ -27,6 +27,11 @@ type AccumulationRegisterDefinition struct {
 	// object_presentation.go.
 	ListPresentations     `yaml:",inline" json:",inline"`
 	IncludeHelpInContents bool `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
+	// DataLock is how the platform locks records of this register while they
+	// are written - see data_lock_settings.go. A register has the mode and no
+	// fields: the prototype gives the list of fields only to the kinds that
+	// have an object of their own.
+	DataLock project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
 
 	Kind AccumulationRegisterKindValue `yaml:"kind"`
 	// TotalsSplitting keeps the totals of concurrent writers in rows of their
@@ -50,6 +55,7 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 		return AccumulationRegisterDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
+	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
 	if value.Kind != AccumulationRegisterBalance && value.Kind != AccumulationRegisterTurnover {
 		issues = append(issues, "kind must be balance or turnover")
 	}

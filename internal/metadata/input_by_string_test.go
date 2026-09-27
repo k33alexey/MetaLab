@@ -64,7 +64,7 @@ choice_data_get_mode: background
 	if !ok {
 		t.Fatal("the catalog was not read")
 	}
-	want := []InputByStringField{{Standard: "Наименование"}, {Standard: "Код"}, {Attribute: "ИНН"}}
+	want := []ObjectField{{Standard: "Наименование"}, {Standard: "Код"}, {Attribute: "ИНН"}}
 	if len(definition.InputByString) != len(want) {
 		t.Fatalf("input_by_string = %+v", definition.InputByString)
 	}
@@ -96,7 +96,7 @@ func TestCopyOfAnObjectDoesNotShareItsSearchedFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	first, _ := catalog.CatalogDefinition("контрагенты")
-	first.InputByString[0] = InputByStringField{Standard: "Код"}
+	first.InputByString[0] = ObjectField{Standard: "Код"}
 	second, _ := catalog.CatalogDefinition("контрагенты")
 	if second.InputByString[0].Standard != "Наименование" {
 		t.Fatalf("the order was changed through a copy: %+v", second.InputByString)

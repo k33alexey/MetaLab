@@ -150,6 +150,11 @@ type BusinessProcessDefinition struct {
 	// BasedOn are the objects one of these may be made out of, the list the
 	// command to make it offers - see based_on.go.
 	BasedOn []uuid.UUID `yaml:"based_on,omitempty" json:"basedOn,omitempty"`
+	// DataLock is how the platform locks a row of this object while it is
+	// written, and DataLockFields are the fields it may be locked by - see
+	// data_lock_settings.go.
+	DataLock       project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
+	DataLockFields []ObjectField               `yaml:"data_lock_fields,omitempty" json:"dataLockFields,omitempty"`
 
 	Number DocumentNumber `yaml:"number" json:"number"`
 	// Task is the kind of task this process creates at its points.
@@ -187,6 +192,8 @@ func DecodeBusinessProcess(source string, reader io.Reader, configuration projec
 		presentation:       value.Presentations,
 		input:              value.ObjectInput,
 		basedOn:            value.BasedOn,
+		dataLock:           value.DataLock,
+		dataLockFields:     value.DataLockFields,
 	}, configuration)...)
 	if value.Task != nil && value.Task.IsZero() {
 		issues = append(issues, "task must be a non-zero UUID")
@@ -479,6 +486,7 @@ func cloneBusinessProcess(value BusinessProcessDefinition) BusinessProcessDefini
 	value.Presentations = clonePresentations(value.Presentations)
 	value.ObjectInput = cloneObjectInput(value.ObjectInput)
 	value.BasedOn = slices.Clone(value.BasedOn)
+	value.DataLockFields = cloneDataLockFields(value.DataLockFields)
 	return value
 }
 

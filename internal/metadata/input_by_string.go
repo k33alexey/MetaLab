@@ -30,15 +30,21 @@ import (
 // at all.
 const maxInputByStringFields = 128
 
-// InputByStringField is one field the search walks.
+// ObjectField names one field of an object, either one the platform gave it or
+// one the developer declared.
 //
-// Exactly one of the two names is given, because the platform's own list says of
+// Exactly one of the two names is given, because the platform's own lists say of
 // every field which of the two it is: the demonstration configuration writes
 // Catalog.X.StandardAttribute.Description beside Catalog.X.Attribute.ИНН. The
 // role could be guessed from the name - a declared attribute may not shadow a
 // standard field - but guessing it would make the file say less than the export
 // it was read from.
-type InputByStringField struct {
+//
+// The prototype has one type here too, СписокПолей, and uses it for every list
+// of fields an object carries: the fields input by string searches and the
+// fields the object may be locked by. What may be in each list differs, and
+// that is checked per list; the shape does not.
+type ObjectField struct {
 	// Standard names a field the platform gave the object; Attribute names one
 	// the developer declared.
 	Standard  string `yaml:"standard,omitempty" json:"standard,omitempty"`
@@ -146,7 +152,7 @@ func searchableStandardFields(kind Kind) map[string]string {
 // A field that is not there, or one the platform would never search, describes a
 // search that silently never matches - the object is simply not found by what
 // the user typed, and nobody is told why.
-func validateInputByString(fields []InputByStringField, kind Kind, attributes []Attribute) []string {
+func validateInputByString(fields []ObjectField, kind Kind, attributes []Attribute) []string {
 	if len(fields) > maxInputByStringFields {
 		return []string{fmt.Sprintf("input_by_string must not contain more than %d items", maxInputByStringFields)}
 	}
