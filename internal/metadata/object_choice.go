@@ -36,6 +36,19 @@ func validReferencePresentation(mode ReferencePresentation) bool {
 // same: a task has no code. It is numbered, so the choice is between the number
 // and the description, and the prototype gives the task an enumeration of its
 // own for exactly that reason.
+//
+// Beware the help here, because it reads the other way at first. The property
+// page for Задача.ОсновноеПредставление carries the same boilerplate sentence as
+// every other kind's - "например, ВВидеКода, ВВидеНаименования" - and that
+// sentence is wrong for a task. The type it names, ОсновноеПредставлениеЗадачи,
+// has exactly two values on its own page: ВВидеНаименования and ВВидеНомера.
+// The type page enumerates, the property page gives a generic example, and the
+// enumeration wins.
+//
+// The structure agrees. A task's standard fields are Ссылка, Номер, Дата,
+// Наименование, Выполнена, ТочкаМаршрута, БизнесПроцесс and ПометкаУдаления -
+// see standard_attributes.go, checked against the demonstration configuration.
+// There is no Код for "as code" to point at.
 type TaskPresentation string
 
 const (
@@ -70,9 +83,19 @@ type ObjectChoice struct {
 	// object in one line.
 	DefaultPresentation ReferencePresentation `yaml:"default_presentation,omitempty" json:"defaultPresentation,omitempty"`
 	// QuickChoice offers the values in a drop-down list instead of opening a
-	// form. It is a plain flag here, unlike the three-valued setting an
-	// attribute carries: an object either offers a quick choice or does not,
-	// while an attribute may also defer to the object it points at.
+	// form. The prototype spells one idea three ways, and each spelling belongs
+	// to a different thing:
+	//
+	//	the object itself        Булево                     - this field
+	//	an attribute of it       ИспользованиеБыстрогоВыбора: Авто/Использовать/
+	//	                         НеИспользовать             - UsageMode, see
+	//	                                                      attribute_presentation.go
+	//	a field on a form        Булево, Неопределено       - belongs to the form,
+	//	                                                      not here
+	//
+	// So a plain flag here is not a simplification: an object either offers a
+	// quick choice or does not. Deferring is what an attribute may do, because
+	// an attribute can leave the answer to the object it points at.
 	QuickChoice bool `yaml:"quick_choice,omitempty" json:"quickChoice,omitempty"`
 	// ChoiceMode is how the choice happens at all - from a form, quickly, or
 	// either way.
