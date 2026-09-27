@@ -463,6 +463,20 @@ type TablePart struct {
 	// StandardAttributes is what the developer changed about the one field the
 	// platform gives a line - its number. See standard_attributes.go.
 	StandardAttributes []StandardAttribute `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
+	Comment            string              `yaml:"comment,omitempty" json:"comment,omitempty"`
+	// ToolTip is the sentence shown beside the part.
+	ToolTip LocalizedText `yaml:"tooltip,omitempty" json:"tooltip,omitempty"`
+	// FillChecking puts the part into the automatic check of filling: an empty
+	// table part then stops a write the way an empty attribute does.
+	FillChecking FillCheck `yaml:"fill_checking,omitempty" json:"fillChecking,omitempty"`
+	// LineNumberLength is the decimal width the line number of a row is stored
+	// in, 5 to 9. It is about storage, so a part whose rows never reach the
+	// database has none - see tablePartRules.
+	LineNumberLength int `yaml:"line_number_length,omitempty" json:"lineNumberLength,omitempty"`
+	// Use is whom the part belongs to - items, folders or both. It is the same
+	// setting an attribute carries, and the prototype writes it on the part
+	// itself and never on a field of one.
+	Use AttributeUse `yaml:"use,omitempty" json:"use,omitempty"`
 }
 
 // ListSettings controls bounded server-side lists without embedding SQL in metadata.
@@ -1191,37 +1205,10 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	for _, attribute := range shape.attributes {
 		attributeNames[strings.ToLower(attribute.Name)] = true
 	}
-	if len(shape.tableParts) > 128 {
-		issues = append(issues, "table_parts must not contain more than 128 items")
-	}
-	partNames, partIDs := map[string]bool{}, map[uuid.UUID]bool{}
-	for index, part := range shape.tableParts {
-		prefix := fmt.Sprintf("table_parts[%d]", index)
-		if part.ID.IsZero() {
-			issues = append(issues, prefix+".id must be a non-zero UUID")
-		}
-		if partIDs[part.ID] {
-			issues = append(issues, prefix+".id must be unique")
-		}
-		partIDs[part.ID] = true
-		if !validIdentifier(part.Name) {
-			issues = append(issues, prefix+".name must be a valid identifier")
-		}
-		folded := strings.ToLower(part.Name)
-		if partNames[folded] {
-			issues = append(issues, prefix+".name must be unique")
-		}
-		if reserved(folded) {
-			issues = append(issues, prefix+".name is reserved")
-		}
-		if attributeNames[folded] {
-			issues = append(issues, prefix+".name conflicts with an attribute")
-		}
-		partNames[folded] = true
-		issues = append(issues, validateTitle(prefix+".title", part.Title, configuration)...)
-		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, configuration, nil)...)
-		issues = append(issues, validateStandardAttributes(prefix+".standard_attributes", part.StandardAttributes, tablePartStandardFields, configuration)...)
-	}
+	issues = append(issues, validateTableParts(shape.tableParts, attributeNames, configuration, reserved, tablePartRules{
+		stored: true, use: shape.attributeUse,
+		folders: shape.hierarchy.Enabled && shape.hierarchy.Kind == FoldersAndItemsHierarchy,
+	})...)
 	issues = append(issues, validateStandardAttributes("standard_attributes", shape.standardAttributes, standardFieldsOfKind(shape.kind), configuration)...)
 	issues = append(issues, validateStandardTableParts("standard_table_parts", shape.standardTableParts, standardTablePartsOfKind(shape.kind), configuration)...)
 	links := append(standardAttributeChoices("standard_attributes", shape.standardAttributes),

@@ -178,7 +178,10 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 	for _, attribute := range shape.attributes {
 		attributeNames[strings.ToLower(attribute.Name)] = true
 	}
-	issues = append(issues, validateTableParts(shape.tableParts, attributeNames, configuration, reserved)...)
+	// A numbered object stores its rows, and none of the numbered kinds lets a
+	// part say whom it belongs to: that is a catalog's and a chart of
+	// characteristic types' alone.
+	issues = append(issues, validateTableParts(shape.tableParts, attributeNames, configuration, reserved, tablePartRules{stored: true})...)
 	issues = append(issues, validateStandardAttributes("standard_attributes", shape.standardAttributes, standardFieldsOfKind(shape.kind), configuration)...)
 	links := append(standardAttributeChoices("standard_attributes", shape.standardAttributes), tablePartStandardChoices(shape.tableParts)...)
 	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, links...)...)
@@ -189,10 +192,34 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 	})...)
 }
 
+// tablePartRules are the things about a table part that its owner decides rather
+// than the part itself.
+type tablePartRules struct {
+	// stored says the rows live in the database. A report's table part exists
+	// only while the report runs, so the width the line number is stored in
+	// means nothing there - and the help lists the kinds that have the property
+	// without naming reports or data processors.
+	stored bool
+	// use says this kind lets a part say whom it belongs to - items, folders or
+	// both. Only a catalog and a chart of characteristic types may, exactly as
+	// for an attribute, and the demonstration configuration writes the setting
+	// on 111 parts, all of them theirs.
+	use bool
+	// folders says the object has folders, so a part that reaches them can.
+	folders bool
+}
+
+// maxLineNumberLength and minLineNumberLength bound the decimal width the line
+// number of a row is stored in. The help gives the range outright: 5 to 9.
+const (
+	minLineNumberLength = 5
+	maxLineNumberLength = 9
+)
+
 // validateTableParts checks the table parts of any object that has them. The
 // names of parts and of attributes share one space: a part named like an
 // attribute would be two things answering to one name.
-func validateTableParts(parts []TablePart, attributeNames map[string]bool, configuration project.Project, reserved func(string) bool) []string {
+func validateTableParts(parts []TablePart, attributeNames map[string]bool, configuration project.Project, reserved func(string) bool, rules tablePartRules) []string {
 	var issues []string
 	if len(parts) > 128 {
 		issues = append(issues, "table_parts must not contain more than 128 items")
@@ -227,6 +254,36 @@ func validateTableParts(parts []TablePart, attributeNames map[string]bool, confi
 		issues = append(issues, validateTitle(prefix+".title", part.Title, configuration)...)
 		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, configuration, nil)...)
 		issues = append(issues, validateStandardAttributes(prefix+".standard_attributes", part.StandardAttributes, tablePartStandardFields, configuration)...)
+		issues = append(issues, validateTablePartProperties(prefix, part, rules, configuration)...)
+	}
+	return issues
+}
+
+// validateTablePartProperties checks the five settings a part carries beyond its
+// name and its fields.
+func validateTablePartProperties(prefix string, part TablePart, rules tablePartRules, configuration project.Project) []string {
+	var issues []string
+	if len(part.ToolTip) > 0 {
+		issues = append(issues, validateTitle(prefix+".tooltip", part.ToolTip, configuration)...)
+	}
+	if !validFillCheck(part.FillChecking) {
+		issues = append(issues, prefix+".fill_checking must be dont-check or show-error")
+	}
+	switch {
+	case part.LineNumberLength == 0:
+	case !rules.stored:
+		issues = append(issues, prefix+".line_number_length is the width a line number is stored in, and the rows of this kind of table part are never stored")
+	case part.LineNumberLength < minLineNumberLength || part.LineNumberLength > maxLineNumberLength:
+		issues = append(issues, fmt.Sprintf("%s.line_number_length must be %d..%d", prefix, minLineNumberLength, maxLineNumberLength))
+	}
+	switch {
+	case part.Use == "":
+	case !validAttributeUse(part.Use):
+		issues = append(issues, prefix+".use must be for-item, for-folder or for-folder-and-item")
+	case !rules.use:
+		issues = append(issues, prefix+".use belongs to a table part of a catalog or a chart of characteristic types, and this is neither")
+	case part.Use.forFolders() && !rules.folders:
+		issues = append(issues, prefix+".use reaches folders, and this object has none")
 	}
 	return issues
 }
@@ -236,6 +293,7 @@ func cloneTableParts(parts []TablePart) []TablePart {
 	parts = slices.Clone(parts)
 	for index := range parts {
 		parts[index].Title = cloneTitle(parts[index].Title)
+		parts[index].ToolTip = cloneTitle(parts[index].ToolTip)
 		parts[index].Attributes = cloneAttributes(parts[index].Attributes)
 		parts[index].StandardAttributes = cloneStandardAttributes(parts[index].StandardAttributes)
 	}

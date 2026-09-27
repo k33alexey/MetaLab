@@ -124,7 +124,10 @@ func validateRunningObjectShape(attributes []Attribute, parts []TablePart, confi
 	for _, attribute := range attributes {
 		names[strings.ToLower(attribute.Name)] = true
 	}
-	issues = append(issues, validateTableParts(parts, names, configuration, reserved)...)
+	// A running object's table part is not stored: its rows live as long as the
+	// report does. So no width for a line number, and nothing for a part to
+	// belong to either.
+	issues = append(issues, validateTableParts(parts, names, configuration, reserved, tablePartRules{})...)
 	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", attributes}}, parts, tablePartStandardChoices(parts)...)...)
 	return append(issues, validateAttributeUse([]fieldGroup{{"attributes", attributes}}, parts, false, false)...)
 }
