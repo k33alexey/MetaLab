@@ -419,6 +419,7 @@ func cloneChartOfAccounts(value ChartOfAccountsDefinition) ChartOfAccountsDefini
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.StandardTableParts = cloneStandardTableParts(value.StandardTableParts)
 	value.Presentations = clonePresentations(value.Presentations)
+	value.ObjectInput = cloneObjectInput(value.ObjectInput)
 	return value
 }
 

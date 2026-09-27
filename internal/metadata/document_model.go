@@ -199,6 +199,7 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 	issues = append(issues, validateStandardAttributes("standard_attributes", shape.standardAttributes, standardFieldsOfKind(shape.kind), configuration)...)
 	issues = append(issues, validatePresentations(shape.presentation, configuration)...)
 	issues = append(issues, validateObjectInput(shape.input)...)
+	issues = append(issues, validateInputByString(shape.input.InputByString, shape.kind, shape.attributes)...)
 	links := append(standardAttributeChoices("standard_attributes", shape.standardAttributes), tablePartStandardChoices(shape.tableParts)...)
 	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, links...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, false, false)...)
@@ -332,6 +333,7 @@ func cloneDocumentDefinition(value DocumentDefinition) DocumentDefinition {
 	value.Movements = slices.Clone(value.Movements)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.Presentations = clonePresentations(value.Presentations)
+	value.ObjectInput = cloneObjectInput(value.ObjectInput)
 	return value
 }
 

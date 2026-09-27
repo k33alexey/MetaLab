@@ -122,6 +122,7 @@ func cloneChartOfCharacteristicTypes(value ChartOfCharacteristicTypesDefinition)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.Presentations = clonePresentations(value.Presentations)
+	value.ObjectInput = cloneObjectInput(value.ObjectInput)
 	return value
 }
 

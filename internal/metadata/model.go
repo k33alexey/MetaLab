@@ -1209,6 +1209,7 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	issues = append(issues, validatePredefinedDataUpdate(shape.predefinedDataUpdate)...)
 	issues = append(issues, validatePresentations(shape.presentation, configuration)...)
 	issues = append(issues, validateObjectChoice(shape.choice)...)
+	issues = append(issues, validateInputByString(shape.choice.InputByString, shape.kind, shape.attributes)...)
 	reserved := shape.reservedName
 	if reserved == nil {
 		reserved = reservedCatalogObjectName
@@ -1621,6 +1622,7 @@ func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.Presentations = clonePresentations(value.Presentations)
+	value.ObjectInput = cloneObjectInput(value.ObjectInput)
 	return value
 }
 

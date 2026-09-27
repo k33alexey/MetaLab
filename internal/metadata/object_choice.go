@@ -12,7 +12,9 @@ package metadata
 //	БизнесПроцесс           +          -            -           -        +
 //	Документ                -          -            -           -        +
 //
-// Input is the pair below that every referenced kind has.
+// Input is the group below that every referenced kind has, and it is six settings
+// rather than the two it started as: the four about typing joined it, and they
+// have the same eight carriers - see input_by_string.go.
 
 // ReferencePresentation is which of an object's two names stands for it where
 // one line is all there is room for.
@@ -65,12 +67,32 @@ func validTaskPresentation(mode TaskPresentation) bool {
 	}
 }
 
-// ObjectInput is what every kind that can be referenced carries: whether a new
-// one may be made out of what the user typed, and whether what this user picked
-// before is offered again.
+// ObjectInput is what every kind that can be referenced carries: how the object
+// is found by what the user typed, whether a new one may be made out of it, and
+// whether what this user picked before is offered again.
+//
+// The six settings are the whole of the "Поле ввода" tab that the syntax
+// assistant gives to these eight kinds and to no others. The four that are about
+// typing live in input_by_string.go.
 type ObjectInput struct {
 	CreateOnInput        UsageMode     `yaml:"create_on_input,omitempty" json:"createOnInput,omitempty"`
 	ChoiceHistoryOnInput ChoiceHistory `yaml:"choice_history_on_input,omitempty" json:"choiceHistoryOnInput,omitempty"`
+	// InputByString is the fields the typed text is looked for in, in the order
+	// they are searched. The order is data, not presentation: the found objects
+	// are offered in the order of the fields they were found by, and the
+	// demonstration configuration disagrees with itself about it on purpose -
+	// thirty-nine objects search Наименование before Код and three the other way
+	// round. An empty list means the object is not entered by string at all, and
+	// two catalogs of the demonstration configuration say exactly that.
+	InputByString    []InputByStringField `yaml:"input_by_string,omitempty" json:"inputByString,omitempty"`
+	SearchStringMode SearchStringMode     `yaml:"search_string_mode,omitempty" json:"searchStringMode,omitempty"`
+	// FullTextSearchOnInput searches the full-text index instead of comparing
+	// the field, and ChoiceDataGetMode says whether the user waits for the
+	// search. Both are constant across the demonstration configuration, which
+	// proves nothing about the platform: the export shows what it uses, not what
+	// there is.
+	FullTextSearchOnInput FullTextSearchOnInput `yaml:"full_text_search_on_input,omitempty" json:"fullTextSearchOnInput,omitempty"`
+	ChoiceDataGetMode     ChoiceDataGetMode     `yaml:"choice_data_get_mode,omitempty" json:"choiceDataGetMode,omitempty"`
 }
 
 // ObjectChoice is the whole of it, for the five reference kinds.
@@ -126,6 +148,10 @@ func validChoiceHistory(mode ChoiceHistory) bool {
 	}
 }
 
+// validateObjectInput checks what is answerable about the group without the
+// object: the values of the enumerations. The list of searched fields is only
+// answerable beside the kind and the attributes that carry it, so it is checked
+// by validateInputByString, which both shape validators call.
 func validateObjectInput(input ObjectInput) []string {
 	var issues []string
 	if !validUsageMode(input.CreateOnInput) {
@@ -133,6 +159,15 @@ func validateObjectInput(input ObjectInput) []string {
 	}
 	if !validChoiceHistory(input.ChoiceHistoryOnInput) {
 		issues = append(issues, "choice_history_on_input must be auto, use or dont-use")
+	}
+	if !validSearchStringMode(input.SearchStringMode) {
+		issues = append(issues, "search_string_mode must be begin or any-part")
+	}
+	if !validFullTextSearchOnInput(input.FullTextSearchOnInput) {
+		issues = append(issues, "full_text_search_on_input must be use or dont-use")
+	}
+	if !validChoiceDataGetMode(input.ChoiceDataGetMode) {
+		issues = append(issues, "choice_data_get_mode must be directly or background")
 	}
 	return issues
 }
