@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,6 +30,11 @@ type Config struct {
 // ServiceConfig contains non-secret ML Service settings.
 type ServiceConfig struct {
 	Listen string `yaml:"listen"`
+	// PublicURL is where people reach the portal from outside, when that is
+	// not where the service listens. The default deployment is behind a
+	// reverse proxy and the service listens locally, so the listen address
+	// answers "where do I connect" and not "where do people go".
+	PublicURL string `yaml:"public_url,omitempty"`
 }
 
 // BackupConfig controls the local archive directory. Scheduling is added with the job engine.
@@ -109,6 +115,15 @@ func (settings Config) Validate() error {
 	if _, _, err := net.SplitHostPort(settings.Service.Listen); err != nil {
 		return fmt.Errorf("invalid service listen address %q: %w", settings.Service.Listen, err)
 	}
+	if settings.Service.PublicURL != "" {
+		address, err := url.Parse(settings.Service.PublicURL)
+		switch {
+		case err != nil:
+			return fmt.Errorf("invalid service public URL %q: %w", settings.Service.PublicURL, err)
+		case address.Host == "" || address.Scheme != "http" && address.Scheme != "https":
+			return fmt.Errorf("service public URL must be an absolute http or https address, got %q", settings.Service.PublicURL)
+		}
+	}
 	if settings.SystemDatabase != nil {
 		if err := settings.SystemDatabase.Validate(); err != nil {
 			return fmt.Errorf("invalid ML System database: %w", err)
@@ -170,6 +185,20 @@ func Save(path string, settings Config) error {
 	return nil
 }
 
+// PortalURL is where the portal is opened from Manager.
+//
+// The configured public address wins when there is one: the default
+// deployment puts a reverse proxy in front and lets the service listen
+// locally, and the listen address is then nobody's entrance but the proxy's.
+// Without it the local address is the answer, which is the right one for an
+// administrator sitting at the machine the service runs on.
+func (settings Config) PortalURL() string {
+	if settings.Service.PublicURL != "" {
+		return strings.TrimRight(settings.Service.PublicURL, "/")
+	}
+	return settings.LocalServiceURL()
+}
+
 // LocalServiceURL returns the URL that a local Manager can open.
 func (settings Config) LocalServiceURL() string {
 	host, port, _ := net.SplitHostPort(settings.Service.Listen)
@@ -186,6 +215,9 @@ func applyEnvironment(settings *Config) {
 	}
 	if listen := os.Getenv("ML_SERVICE_LISTEN"); listen != "" {
 		settings.Service.Listen = listen
+	}
+	if public := os.Getenv("ML_SERVICE_PUBLIC_URL"); public != "" {
+		settings.Service.PublicURL = public
 	}
 	if directory := os.Getenv("ML_BACKUP_DIRECTORY"); directory != "" {
 		settings.Backups.Directory = directory

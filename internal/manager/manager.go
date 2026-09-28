@@ -50,6 +50,19 @@ type StudioLauncher interface {
 	CloneProject(context.Context, string, string) error
 }
 
+// BrowserOpener opens an address in the machine's default browser.
+//
+// Manager is a window around its own local interface, so an ordinary link
+// would open inside that same window. Opening a browser, launching Studio and
+// cloning a repository are one kind of thing - what only the desktop side of
+// Manager can do, outside an HTTP request - so the desktop launcher carries
+// all of them and this interface is asked of it rather than passed separately.
+// Where it is absent, as in a Manager without a desktop, the button answers
+// with the address instead of opening it.
+type BrowserOpener interface {
+	OpenURL(string) error
+}
+
 type administratorSetup interface {
 	InitialSetupRequired(context.Context) (bool, error)
 	CreateInitial(context.Context, string, string) (systemdb.Administrator, []string, error)
@@ -114,6 +127,22 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 		response.Header().Set("Content-Type", "application/json; charset=utf-8")
 		response.Header().Set("Cache-Control", "no-store")
 		_ = json.NewEncoder(response).Encode(status)
+	})
+	routes.HandleFunc("POST /api/portal/open", func(response http.ResponseWriter, _ *http.Request) {
+		result := struct {
+			URL    string `json:"url"`
+			Opened bool   `json:"opened"`
+		}{URL: settings.PortalURL()}
+		if browser, ok := launcher.(BrowserOpener); ok && browser != nil {
+			if err := browser.OpenURL(result.URL); err != nil {
+				http.Error(response, "Не удалось открыть браузер: "+err.Error(), http.StatusBadGateway)
+				return
+			}
+			result.Opened = true
+		}
+		response.Header().Set("Content-Type", "application/json; charset=utf-8")
+		response.Header().Set("Cache-Control", "no-store")
+		_ = json.NewEncoder(response).Encode(result)
 	})
 	routes.HandleFunc("POST /api/studio/open", func(response http.ResponseWriter, request *http.Request) {
 		if launcher == nil {

@@ -3,6 +3,11 @@ language: ru
 
 service:
   listen: 127.0.0.1:8090
+  # Where people reach the portal from outside, when that is not where the
+  # service listens. The default deployment puts a reverse proxy in front and
+  # lets the service listen locally; the "Портал" button in ML Manager opens
+  # this address when it is set, and the listen address when it is not.
+  # public_url: https://ml.example.test
 
 # Optional absolute directory. By default ML uses the MetaLab user configuration directory.
 # backups:

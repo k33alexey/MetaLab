@@ -29,13 +29,10 @@ func runManager(ctx context.Context, settings appconfig.Config) error {
 	if err != nil {
 		return fmt.Errorf("start ML Manager UI: %w", err)
 	}
-	server := &http.Server{
-		Handler: manager.NewHandlerWithPlatformAndStudio(settings, platformRuntime, executableStudioLauncher{settingsPath: settings.SourcePath, runtime: platformRuntime}), ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second,
-	}
-	serverErrors := make(chan error, 1)
-	go func() { serverErrors <- server.Serve(listener) }()
-
+	// The application is built before the HTTP server because the launcher
+	// needs it: opening the portal in the machine's browser is the
+	// application's job, and Manager's own window cannot do it - it would
+	// replace Manager with the portal.
 	app := application.New(application.Options{
 		Name:        "MetaLab",
 		Description: "ML Manager",
@@ -43,6 +40,15 @@ func runManager(ctx context.Context, settings appconfig.Config) error {
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 	})
+	server := &http.Server{
+		Handler: manager.NewHandlerWithPlatformAndStudio(settings, platformRuntime,
+			executableStudioLauncher{settingsPath: settings.SourcePath, runtime: platformRuntime, browser: app.Browser}),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second, IdleTimeout: 60 * time.Second,
+	}
+	serverErrors := make(chan error, 1)
+	go func() { serverErrors <- server.Serve(listener) }()
+
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title: "ML Manager", Width: 900, Height: 640, MinWidth: 560, MinHeight: 480,
 		BackgroundColour: application.NewRGB(15, 20, 29),
@@ -76,10 +82,22 @@ const (
 type executableStudioLauncher struct {
 	settingsPath string
 	runtime      *platform.Runtime
+	browser      *application.BrowserManager
 }
 
 func (launcher executableStudioLauncher) CloneProject(ctx context.Context, repository, destination string) error {
 	return gitclient.Clone(ctx, repository, destination)
+}
+
+// OpenURL sends the portal to the machine's default browser. Manager's own
+// window is a webview around its local interface, so opening the address in it
+// would replace Manager with the portal instead of opening one beside the
+// other.
+func (launcher executableStudioLauncher) OpenURL(address string) error {
+	if launcher.browser == nil {
+		return fmt.Errorf("browser is unavailable")
+	}
+	return launcher.browser.OpenURL(address)
 }
 
 func (launcher executableStudioLauncher) OpenStudio(ctx context.Context, databaseID uuid.UUID, projectPath string) error {

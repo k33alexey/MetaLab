@@ -130,3 +130,48 @@ func writeFile(t *testing.T, path, content string) {
 		t.Fatal(err)
 	}
 }
+
+// The portal's address: the configured public one when there is one, and the
+// listen address otherwise, with "every interface" turned into one anybody can
+// actually open.
+func TestPortalURLPrefersThePublicAddress(t *testing.T) {
+	t.Parallel()
+	for name, want := range map[string]struct {
+		listen, public, url string
+	}{
+		"локальный адрес прослушивания":        {"127.0.0.1:8090", "", "http://127.0.0.1:8090"},
+		"все интерфейсы — не адрес входа":      {"0.0.0.0:8090", "", "http://127.0.0.1:8090"},
+		"за обратным прокси":                   {"127.0.0.1:8090", "https://ml.example.test", "https://ml.example.test"},
+		"хвостовая косая черта не едет дальше": {"127.0.0.1:8090", "https://ml.example.test/", "https://ml.example.test"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			settings := Default()
+			settings.Service.Listen, settings.Service.PublicURL = want.listen, want.public
+			if address := settings.PortalURL(); address != want.url {
+				t.Fatalf("%s: %q", name, address)
+			}
+		})
+	}
+}
+
+// A public address that is not an address is refused at the door: the button
+// would send the browser nowhere and say nothing.
+func TestAnInvalidPublicAddressIsRefused(t *testing.T) {
+	t.Parallel()
+	for name, public := range map[string]string{
+		"без схемы":      "ml.example.test",
+		"чужая схема":    "ftp://ml.example.test",
+		"только схема":   "https://",
+		"не адрес вовсе": "://",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			settings := Default()
+			settings.Service.PublicURL = public
+			if err := settings.Validate(); err == nil {
+				t.Fatalf("%s: accepted %q", name, public)
+			}
+		})
+	}
+}
