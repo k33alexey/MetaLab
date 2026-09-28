@@ -37,7 +37,17 @@ type CommonAttributeDefinition struct {
 	// not to a field. The demonstration configuration writes it on all six
 	// common attributes, and on all six it is Использовать.
 	DataHistory DataHistoryMode `yaml:"data_history,omitempty"`
-	Objects     []uuid.UUID     `yaml:"objects"`
+	// Comment, Presentation, Choice and Filling are the rest of what any field
+	// carries. ТЗ asks for «полный набор свойств реквизита» here, and it asks
+	// for a reason: a common attribute becomes an ordinary attribute of every
+	// object it targets, so a format or a choice form it cannot hold is a
+	// format or a choice form none of those objects get. All six common
+	// attributes of the demonstration configuration carry them.
+	Comment      string            `yaml:"comment,omitempty"`
+	Presentation FieldPresentation `yaml:"presentation,omitempty"`
+	Choice       FieldChoice       `yaml:"choice,omitempty"`
+	Filling      FieldFilling      `yaml:"filling,omitempty"`
+	Objects      []uuid.UUID       `yaml:"objects"`
 }
 
 func DecodeCommonAttribute(source string, reader io.Reader, configuration project.Project) (CommonAttributeDefinition, error) {
@@ -64,6 +74,22 @@ func ValidateCommonAttribute(source string, value CommonAttributeDefinition, con
 	if !validIndexMode(value.Indexing) {
 		issues = append(issues, "indexing must be dont-index, index or index-with-additional-order")
 	}
+	// The settings of the field are checked the way any field's are. The paths
+	// carry no prefix: the file is the field, there is no field of an object to
+	// name. A bound of another type than the field is compared with nothing and
+	// rejects nothing, and it would reject nothing in every object the attribute
+	// is propagated into.
+	issues = append(issues, validateValueSettings(Attribute{
+		Types: value.Types, Presentation: value.Presentation, Choice: value.Choice,
+	}, configuration)...)
+	if filling := value.Filling.Value; filling != nil {
+		issues = append(issues, validateFieldBound("filling.value", *filling, value.Types)...)
+	}
+	// A common attribute is declared on its own, away from the objects it will
+	// join, so there are no sibling fields for a choice parameter link to take
+	// its value from - and which siblings it would have depends on the object,
+	// which is exactly why the prototype does not let it draw one.
+	issues = append(issues, validateFieldLinks(nil, nil, choiceHolder{"", value.Choice})...)
 	if len(value.Objects) == 0 {
 		issues = append(issues, "objects must list at least one target object")
 	}
@@ -100,6 +126,10 @@ func (catalog *Catalog) CommonAttributeByID(id uuid.UUID) (CommonAttributeDefini
 func cloneCommonAttributeDefinition(value CommonAttributeDefinition) CommonAttributeDefinition {
 	value.Title, value.Types = cloneTitle(value.Title), cloneTypes(value.Types)
 	value.Objects = slices.Clone(value.Objects)
+	settings := cloneFieldFilling(cloneFieldSettings(Attribute{
+		Presentation: value.Presentation, Choice: value.Choice, Filling: value.Filling,
+	}))
+	value.Presentation, value.Choice, value.Filling = settings.Presentation, settings.Choice, settings.Filling
 	return value
 }
 
@@ -146,6 +176,10 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 			// the third value for exactly these two.
 			FullTextSearch: UsageMode(common.FullTextSearch),
 			DataHistory:    UsageMode(common.DataHistory),
+			// The rest of the field travels with it for the same reason: a
+			// format kept on the definition alone formats nothing.
+			Comment: common.Comment, Presentation: common.Presentation,
+			Choice: common.Choice, Filling: common.Filling,
 		}
 		for _, objectID := range common.Objects {
 			location, ok := targets[objectID]
@@ -162,7 +196,14 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 			if names[strings.ToLower(common.Name)] {
 				return fmt.Errorf("common attribute %s collides with an existing field of %s %s", common.Name, location.kind, name)
 			}
-			catalog.appendPropagatedAttribute(location, attribute)
+			// A copy per object, not the one attribute in all of them. The
+			// attribute is built once outside the loop, so every object it
+			// joins would otherwise share the very same maps - its title, its
+			// format, its choice parameters. Nothing changes a propagated
+			// attribute in place today, so nothing has gone wrong yet; the copy
+			// is here so that the first thing that does change one changes it
+			// in one object rather than in all of them at once.
+			catalog.appendPropagatedAttribute(location, cloneAttribute(attribute))
 		}
 	}
 	return nil
