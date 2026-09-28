@@ -58,6 +58,12 @@ jobs:
       - name: Check browser modules
         run: node --check internal/mlapp/ui/app.js
 
+      # The sweep itself needs the prototype's export, which is not in the
+      # repository; its matcher needs only names. The matcher went quiet on a
+      # real gap five times in one day, so its own checks run here.
+      - name: Check the metadata sweep matcher
+        run: python3 scripts/metadata_sweep.py --self-check
+
       # -p 1 runs one package's tests at a time. It is not a speed setting: the
       # integration tests of internal/metadata, internal/platform,
       # internal/publication and internal/studio create, migrate and drop the

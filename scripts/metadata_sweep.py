@@ -64,6 +64,7 @@ RENAMED = {
 FLAT_ALIAS = {
     "PasswordMode": "password",
     "FillValue": "value",
+    "FillFromFillingValue": "from_filling_value",
 }
 
 # Переименования, которые верны только у одного вида: одно и то же слово
@@ -73,7 +74,6 @@ RENAMED_BY_KIND = {
     ("Sequence", "RegisterRecords"): "movements",
     ("Subsystem", "Content"): "members",
     ("FilterCriterion", "Content"): "fields",
-    ("CommonAttribute", "Content"): "objects",
     ("CommonTemplate", "TemplateType"): "kind",
     ("EventSubscription", "Handler"): "procedure",
     ("EventSubscription", "Source"): "objects",
@@ -84,6 +84,29 @@ RENAMED_BY_KIND = {
     ("AccumulationRegister", "RegisterType"): "kind",
     ("ChartOfCalculationTypes", "BaseCalculationTypes"): "base_charts",
     ("ChartOfCalculationTypes", "DependenceOnCalculationTypes"): "base_dependency",
+    # Проведение: прототип называет каждое свойство от глагола, у нас они лежат
+    # внутри структуры posting. Проверено по модели поимённо - именно этих пять
+    # строк не было, и остаток выглядел так, будто у документа нет
+    # привилегированного проведения вовсе.
+    ("Document", "PostInPrivilegedMode"): "privileged",
+    ("Document", "UnpostInPrivilegedMode"): "unpost_privileged",
+    ("Document", "RealTimePosting"): "real_time",
+    ("Document", "RegisterRecordsDeletion"): "records_deletion",
+    ("Document", "RegisterRecordsWritingOnPost"): "records_writing",
+    ("BusinessProcess", "CreateTaskInPrivilegedMode"): "create_tasks_privileged",
+    ("ExchangePlan", "IncludeConfigurationExtensions"): "include_extensions",
+    ("ScheduledJob", "MethodName"): "procedure",
+    ("InformationRegister", "EnableTotalsSliceFirst"): "slice_first",
+    ("InformationRegister", "EnableTotalsSliceLast"): "slice_last",
+    ("InformationRegister", "InformationRegisterPeriodicity"): "periodicity",
+    ("DocumentJournal", "RegisteredDocuments"): "documents",
+    ("Report", "MainDataCompositionSchema"): "main_schema",
+    ("CommonCommand", "CommandParameterType"): "parameter",
+    ("Catalog", "LimitLevelCount"): "limit_levels",
+    ("ChartOfAccounts", "StandardTabularSections"): "standard_table_parts",
+    ("ChartOfCalculationTypes", "StandardTabularSections"): "standard_table_parts",
+    ("ChartOfCharacteristicTypes", "CharacteristicExtValues"): "additional_values",
+    ("Task", "TaskNumberAutoPrefix"): "number_prefix",
 }
 
 
@@ -102,14 +125,17 @@ OURS_ONLY = {"format", "id"}
 # реквизита нет» с причиной «одна организация — одна база». Сверка нашла, а
 # читатель завёл.
 ACCEPTED = {
-    ("CommonAttribute", "AuthenticationSeparation"): "METADATA-OBJECTS.md, Общие: общие реквизиты",
-    ("CommonAttribute", "ConditionalSeparation"): "METADATA-OBJECTS.md, Общие: общие реквизиты",
-    ("CommonAttribute", "ConfigurationExtensionsSeparation"): "METADATA-OBJECTS.md, Общие: общие реквизиты",
-    ("CommonAttribute", "DataSeparation"): "METADATA-OBJECTS.md, Общие: общие реквизиты",
-    ("CommonAttribute", "DataSeparationUse"): "METADATA-OBJECTS.md, Общие: общие реквизиты",
-    ("CommonAttribute", "DataSeparationValue"): "METADATA-OBJECTS.md, Общие: общие реквизиты",
-    ("CommonAttribute", "SeparatedDataUse"): "METADATA-OBJECTS.md, Общие: общие реквизиты",
-    ("CommonAttribute", "UsersSeparation"): "METADATA-OBJECTS.md, Общие: общие реквизиты",
+    # Пока пусто, и это решение, а не недосмотр. По составу метаданных
+    # расхождений с прототипом мы не держим: свойство, которого нет в модели,
+    # исчезает при импорте, а это потеря смысла. Осознанное решение выражается
+    # иначе - свойство несём, поведение не делаем, причину пишем в
+    # docs/requirements. Такое свойство в модели есть, и сверка его не видит.
+    #
+    # Что здесь стояло и почему снято: девять свойств разделения данных общего
+    # реквизита. Их отсутствие было записано как принципиальное, а оказалось
+    # потерей: условное разделение живёт внутри элемента состава, и не неся его,
+    # нельзя нести и состав - а один из шести общих реквизитов живой
+    # конфигурации задан списком исключений из 331 объекта.
 }
 
 # Виды объектов, названные у нас иначе. Остальные, о которых скрипт сообщает в
@@ -127,6 +153,12 @@ def tokens(name: str) -> frozenset[str]:
 
 def flat(name: str) -> str:
     return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
+def ordered(name: str) -> list[str]:
+    """Слова имени по порядку: для группирующей подстановки порядок решает."""
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
+    return [part for part in re.split(r"[^A-Za-z0-9]+", spaced.lower()) if part]
 
 
 def stems_match(left: frozenset[str], right: frozenset[str]) -> bool:
@@ -173,14 +205,93 @@ def matches(prototype: str, ours: dict[frozenset[str], str], kind: str = "", top
         # делает два свойства одним свойством.
         if theirs <= our_tokens or renamed <= our_tokens:
             return True
-        # Наше имя внутри их имени - только для имён верхнего уровня: одно наше
-        # имя часто стоит за несколькими их свойствами (`code` за CodeLength,
-        # CodeType, CheckUnique). Для вложенного листа эта подстановка лжёт.
-        if our_name in top and (our_tokens <= theirs or our_tokens <= renamed):
-            return True
+        # Наше имя в начале их имени - и только в начале. Прототип называет
+        # свойства группы «группа плюс признак»: CodeLength, CodeType,
+        # NumberPeriodicity, - поэтому наше `code` стоит за всеми тремя. А
+        # `types` в конце `LinkByType` не группа, а признак, и подстановка по
+        # вхождению куда угодно хватала связь по типу за наш набор типов.
+        # Вдобавок имя должно быть верхнеуровневым: лист группой не бывает.
+        if our_name in top:
+            theirs_words = [RENAMED.get(word, word) for word in ordered(prototype)]
+            our_words = ordered(our_name)
+            if theirs_words[: len(our_words)] == our_words:
+                return True
         if stems_match(theirs, our_tokens) or stems_match(renamed, our_tokens):
             return True
     return False
+
+
+# Проверки на сам сопоставитель. Каждая строка: вид объекта, имя прототипа,
+# наши имена, наши имена верхнего уровня, ожидание.
+#
+# Зачем они есть. Инструмент, который ищет ложную тишину, сам врал ложным
+# совпадением пять раз за один день — то есть молчал на настоящем пробеле, — и
+# каждый раз это находилось разглядыванием вывода, а не проверкой. Все пять
+# случаев ниже стоят поимённо; если сопоставитель снова начнёт хватать чужое
+# имя по одному общему слову, красной станет эта таблица, а не чей-то отчёт
+# через месяц.
+SELF_CHECK = [
+    # (вид, имя прототипа, наши имена, наши верхнеуровневые, ожидание)
+    ("CommonCommand", "ToolTip", ["tooltip"], ["tooltip"], True),
+    ("CommonPicture", "AvailabilityForAppearance", ["available_for_appearance"], ["available_for_appearance"], True),
+    # Врал: одно общее слово «тип» не делает связь по типу нашим набором типов.
+    ("Constant", "LinkByType", ["types"], ["types"], False),
+    # Врал: наш лист `value` внутри заполнения хватал их разделение данных.
+    ("CommonAttribute", "DataSeparationValue", ["filling", "value"], ["filling"], False),
+    # Врал: слоты форм прототип называет по одному, у нас они в одной структуре.
+    ("DataProcessor", "DefaultForm", ["forms", "main"], ["forms", "main"], True),
+    ("Report", "DefaultSettingsForm", ["forms", "settings"], ["forms", "settings"], True),
+    # Нужное направление: одно наше имя стоит за несколькими их свойствами.
+    ("Catalog", "CodeLength", ["code"], ["code"], True),
+    ("Document", "NumberPeriodicity", ["number"], ["number"], True),
+    # То же направление, но от листа - запрещено.
+    ("Catalog", "DescriptionLength", ["description"], [], False),
+    # Точные алиасы вложенных.
+    ("Constant", "PasswordMode", ["presentation", "password"], ["presentation"], True),
+    ("CommonAttribute", "FillValue", ["filling", "value"], ["filling"], True),
+    # Осознанные переименования.
+    ("Catalog", "Synonym", ["title"], ["title"], True),
+    ("Document", "RegisterRecords", ["movements"], ["movements"], True),
+    ("Sequence", "RegisterRecords", ["movements"], ["movements"], True),
+    ("AccumulationRegister", "EnableTotalsSplitting", ["allow_totals_splitting"], ["allow_totals_splitting"], True),
+    # Совпадение имя в имя.
+    ("Catalog", "Indexing", ["indexing"], ["indexing"], True),
+    ("CommonModule", "Comment", ["comment"], ["comment"], True),
+    # Настоящие пробелы должны остаться пробелами.
+    ("CommonModule", "Global", ["client", "server", "privileged"], ["client", "server", "privileged"], False),
+    ("ChartOfAccounts", "StandardTabularSections", ["standard_attributes"], ["standard_attributes"], False),
+    ("Subsystem", "UseOneCommand", ["members", "parent"], ["members", "parent"], False),
+    # Врал молчанием наоборот: у документа эти свойства есть, лежат внутри
+    # posting, и остаток объявил их отсутствующими. Отсюда же вывод, который
+    # стоит помнить: позицию остатка надо сверить с моделью по имени, прежде чем
+    # называть её пробелом.
+    ("Document", "PostInPrivilegedMode", ["posting", "privileged"], ["posting"], True),
+    ("Document", "RealTimePosting", ["posting", "real_time"], ["posting"], True),
+    ("BusinessProcess", "CreateTaskInPrivilegedMode", ["create_tasks_privileged"], ["create_tasks_privileged"], True),
+    ("InformationRegister", "EnableTotalsSliceFirst", ["slice_first"], ["slice_first"], True),
+    # Свойство элемента состава - свойство вида: выгрузка считает так же.
+    ("CommonAttribute", "ConditionalSeparation", ["content", "conditional_separation"], ["content"], True),
+    ("Catalog", "LimitLevelCount", ["hierarchy", "limit_levels"], ["hierarchy"], True),
+    ("ChartOfAccounts", "StandardTabularSections", ["standard_table_parts"], ["standard_table_parts"], True),
+    # И то, что осталось пробелом после проверки по модели поимённо.
+    ("DataProcessor", "ExtendedPresentation", ["explanation", "title"], ["explanation", "title"], False),
+    ("Sequence", "Comment", ["name", "documents"], ["name", "documents"], False),
+]
+
+
+def self_check() -> int:
+    """Прогнать таблицу выше. Материалы не нужны: проверяется сопоставитель."""
+    failures = []
+    for kind, prototype, names, top, expected in SELF_CHECK:
+        ours = {tokens(name): name for name in names}
+        got = matches(prototype, ours, kind, frozenset(top))
+        if got != expected:
+            wanted = "совпадение" if expected else "расхождение"
+            failures.append(f"{kind}.{prototype} против {names}: ожидалось {wanted}, вышло наоборот")
+    for line in failures:
+        print("  " + line)
+    print(f"проверок сопоставителя: {len(SELF_CHECK)}, не прошло: {len(failures)}")
+    return 1 if failures else 0
 
 
 def dump_model() -> dict:
@@ -199,7 +310,11 @@ def dump_model() -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description="сверка состава модели метаданных с выгрузкой")
     parser.add_argument("--kind", help="один вид объекта метаданных, как он назван в выгрузке")
+    parser.add_argument("--self-check", action="store_true",
+                        help="прогнать проверки на сам сопоставитель; материалы не нужны")
     arguments = parser.parse_args()
+    if arguments.self_check:
+        return self_check()
     if not EXPORT.exists():
         print(f"нет {EXPORT.relative_to(ROOT)}: выгрузка не входит в репозиторий, сверка запускается локально")
         return 0
@@ -211,7 +326,14 @@ def main() -> int:
         # убираются - иначе они ловят чужие имена и скрывают настоящий пробел.
         # `format` у нас версия формата файла метаданных, и она совпадала с
         # «Форматом» прототипа, из-за чего константа выглядела полной.
+        # Свойства подчинённых структур считаются свойствами вида, потому что
+        # так их считает и выгрузка: property-index собран по видам, и
+        # `ConditionalSeparation` элемента состава стоит там у общего реквизита.
+        # Отдельная сверка самих подчинённых объектов - это другая работа, и её
+        # тут нет.
         names = [name for name in body["own"] if name not in OURS_ONLY]
+        for child in body.get("children", {}).values():
+            names.extend(name for name in child if name not in OURS_ONLY)
         ours[kind.lower()] = {tokens(name): name for name in names}
         tops[kind.lower()] = frozenset(name for name in body.get("top", []) if name not in OURS_ONLY)
     export: dict[str, dict[str, int]] = {}

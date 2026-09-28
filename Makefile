@@ -1,5 +1,5 @@
 .PHONY: build build-desktop build-windows-desktop build-wasm check ci ci-database ci-fresh-database
-.PHONY: fmt fmt-check test test-integration test-race test-wasm vet web-check
+.PHONY: fmt fmt-check sweep-check test test-integration test-race test-wasm vet web-check
 
 build:
 	mkdir -p bin
@@ -75,6 +75,14 @@ test-integration: ci-database
 vet:
 	go vet ./...
 
+# sweep-check проверяет сопоставитель сверки состава, а не саму сверку: сверке
+# нужна выгрузка прототипа, которой в репозитории нет, а сопоставителю нужны
+# только имена. Он врал пять раз за день, каждый раз ложным совпадением, то
+# есть молчанием на настоящем пробеле - поэтому проверка стоит в CI, а не
+# рядом со скриптом на память.
+sweep-check:
+	python3 scripts/metadata_sweep.py --self-check
+
 web-check:
 	node --check internal/mlapp/ui/app.js
 
@@ -95,7 +103,7 @@ ci-database:
 		exit 1; }
 
 # check is the quick pass: everything that needs no database.
-check: fmt-check web-check vet test-race build test-wasm
+check: fmt-check web-check vet sweep-check test-race build test-wasm
 
 # ci-fresh-database drops what earlier runs left behind, because CI gets a brand
 # new PostgreSQL container every time and a development machine does not.
@@ -123,6 +131,6 @@ ci-fresh-database: ci-database
 # ci runs what GitHub runs, in the order GitHub runs it, so that red is found
 # here and not after the push. Run it before pushing; `make check` is the
 # quicker pass that leaves out the database.
-ci: fmt-check vet web-check ci-fresh-database test-integration build build-windows-desktop test-wasm
+ci: fmt-check vet web-check sweep-check ci-fresh-database test-integration build build-windows-desktop test-wasm
 	@echo 'ci: every check GitHub runs passed.'
 
