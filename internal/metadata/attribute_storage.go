@@ -80,6 +80,31 @@ type FieldFilling struct {
 
 // validateFieldStorage checks what a field says about filling, finding and
 // belonging.
+// validateMovementFieldStorage refuses what a field of a register of movements
+// does not have: a filling value, filling from filling data, and data history.
+//
+// All three belong to a field a person fills in on a new object. A movement is
+// not filled in by hand - it is written by posting, from the document - so there
+// is no new record for a filling value to prefill. And data history keeps
+// versions of an object; a movement has no object of its own, it has a recorder,
+// and the versions live in that recorder's history.
+//
+// The export says the same, and says it in a complete record: a catalog
+// attribute is written with 29 properties, a field of an accumulation,
+// accounting or calculation register with 24, and the five missing are these
+// three plus indexing and use. An information register is the exception on every
+// count - its records are entered by hand - and keeps them all.
+func validateMovementFieldStorage(prefix string, field Attribute) []string {
+	var issues []string
+	if field.Filling.Value != nil || field.Filling.FromFillingValue {
+		issues = append(issues, prefix+".filling belongs to a field somebody fills in: a movement is written by posting, not by hand")
+	}
+	if field.DataHistory != "" {
+		issues = append(issues, prefix+".data_history belongs to an object: a movement has a recorder, and its versions live in that recorder's history")
+	}
+	return issues
+}
+
 // validateResourceIndexing refuses an index on a resource of a register that is
 // not an information register: «ОбъектМетаданных: Ресурс.Индексирование — для
 // ресурсов регистра сведений». A record of a register of movements is found by

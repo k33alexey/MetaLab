@@ -44,10 +44,6 @@ resources:
       format: {ru: "ЧДЦ=2"}
       mark_negatives: true
       min_value: {kind: number, data: "0"}
-    # Заполнение мы принимаем и храним, но выгрузка не даёт его ни одному
-    # ресурсу регистров бухгалтерии, расчёта и накопления - вопрос открыт и
-    # заведён пунктом в карте. Тест держит текущее поведение, а не эталон.
-    filling: {value: {kind: number, data: "0"}}
   - id: ` + entriesFxSum + `
     name: ВалютнаяСумма
     title: {ru: Валютная сумма}
@@ -84,9 +80,6 @@ resources:
 	}
 	if resource.Presentation.MinValue == nil || resource.Presentation.MinValue.Data != "0" {
 		t.Fatalf("resource min value = %+v", resource.Presentation.MinValue)
-	}
-	if resource.Filling.Value == nil || resource.Filling.Value.Data != "0" {
-		t.Fatalf("resource filling = %+v", resource.Filling)
 	}
 	if flag := register.Resources[1].ExtDimensionAccountingFlag; flag == nil {
 		t.Fatal("the resource lost its ext dimension flag")
@@ -149,6 +142,20 @@ resources:
   - {id: ` + entriesCompany + `, name: Организация, title: {ru: Организация}, types: [{kind: catalog, reference: ` + entriesCompanies + `}], высота_строки: 3}
 resources:
   - {id: ` + entriesSum + `, name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}]}`, "высота_строки"},
+		// Filling and data history belong to a field a person fills in on a new
+		// object. A movement is written by posting, from the document, and its
+		// versions live in the history of that document - so the export writes
+		// neither on any field of these three registers, while writing both on
+		// every field of an information register, whose records are entered by
+		// hand.
+		"значение заполнения у ресурса": {`dimensions:
+  - {id: ` + entriesCompany + `, name: Организация, title: {ru: Организация}, types: [{kind: catalog, reference: ` + entriesCompanies + `}]}
+resources:
+  - {id: ` + entriesSum + `, name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}], filling: {value: {kind: number, data: "0"}}}`, "filling belongs to a field somebody fills in"},
+		"история данных у измерения": {`dimensions:
+  - {id: ` + entriesCompany + `, name: Организация, title: {ru: Организация}, types: [{kind: catalog, reference: ` + entriesCompanies + `}], data_history: use}
+resources:
+  - {id: ` + entriesSum + `, name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}]}`, "data_history belongs to an object"},
 		// «Индексирование» of a resource is «для ресурсов регистра сведений»,
 		// and this is not one.
 		"индексирование у ресурса": {`dimensions:
@@ -403,4 +410,53 @@ resources:
 	if !strings.Contains(err.Error(), "dimensions[0].use belongs to an attribute of a catalog") {
 		t.Fatalf("error = %q", err)
 	}
+}
+
+// The same refusal on the other two registers of movements, and the opposite on
+// the information register: its records are entered by hand, so filling and data
+// history are exactly what its fields are for. The rule is narrow, and a rule
+// this narrow is easy to widen by one kind - in the demonstration configuration
+// all 699 fields of its registers carry both.
+func TestMovementFieldsRefuseFillingWhileAnInformationRegisterKeepsIt(t *testing.T) {
+	t.Parallel()
+	t.Run("регистр накопления", func(t *testing.T) {
+		registerID, dimensionID, resourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+		source := "format: 1\nid: " + registerID.String() + "\nname: ОстаткиТоваров\ntitle: {ru: Остатки товаров}\nkind: balance\n" +
+			"dimensions:\n  - {id: " + dimensionID.String() + ", name: Товар, title: {ru: Товар}, types: [{kind: string, length: 100}]}\n" +
+			"resources:\n  - {id: " + resourceID.String() + ", name: Количество, title: {ru: Количество}, types: [{kind: number, precision: 15, scale: 3}], data_history: use}\n"
+		_, err := DecodeAccumulationRegister("register.yaml", strings.NewReader(source), demoConfiguration())
+		if err == nil || !strings.Contains(err.Error(), "data_history belongs to an object") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+	t.Run("регистр расчёта", func(t *testing.T) {
+		body := `format: 1
+id: ` + calcRegister + `
+name: ОсновныеНачисления
+title: {ru: Основные начисления}
+chart_of_calculation_types: ` + calcChart + `
+periodicity: month
+dimensions:
+  - {id: ` + calcPerson + `, name: ФизическоеЛицо, title: {ru: Физическое лицо}, types: [{kind: catalog, reference: ` + calcPeople + `}], filling: {value: {kind: string, data: ""}, from_filling_value: true}}
+resources:
+  - {id: ` + calcResult + `, name: Результат, title: {ru: Результат}, types: [{kind: number, precision: 15, scale: 2}]}
+`
+		_, err := Load(calculationProject(t, body))
+		if err == nil || !strings.Contains(err.Error(), "filling belongs to a field somebody fills in") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+	t.Run("регистр сведений сохраняет и то и другое", func(t *testing.T) {
+		registerID, dimensionID, resourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+		source := "format: 1\nid: " + registerID.String() + "\nname: Цены\ntitle: {ru: Цены}\nwrite_mode: independent\nperiodicity: none\n" +
+			"dimensions:\n  - {id: " + dimensionID.String() + ", name: Товар, title: {ru: Товар}, types: [{kind: string, length: 100}], data_history: use}\n" +
+			"resources:\n  - {id: " + resourceID.String() + ", name: Цена, title: {ru: Цена}, types: [{kind: number, precision: 15, scale: 2}], filling: {value: {kind: number, data: \"0\"}}}\n"
+		value, err := DecodeInformationRegister("register.yaml", strings.NewReader(source), demoConfiguration())
+		if err != nil {
+			t.Fatalf("an information register was refused what its fields are for: %v", err)
+		}
+		if value.Dimensions[0].DataHistory != UsageUse || value.Resources[0].Filling.Value == nil {
+			t.Fatalf("dimension=%+v resource=%+v", value.Dimensions[0], value.Resources[0])
+		}
+	})
 }

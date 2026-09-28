@@ -158,6 +158,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 		prefix := fmt.Sprintf("dimensions[%d]", index)
 		issues = append(issues, validateRegisterField(prefix, dimension.Attribute,
 			value.ID, names, ids, configuration, reservedCalculationRegisterName)...)
+		issues = append(issues, validateMovementFieldStorage(prefix, dimension.Attribute)...)
 		if dimension.ScheduleLink != nil && value.Schedule == nil {
 			issues = append(issues, prefix+".schedule_link needs a schedule: there is no schedule for it to link to")
 		}
@@ -167,10 +168,14 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 		issues = append(issues, validateRegisterField(prefix, resource,
 			value.ID, names, ids, configuration, reservedCalculationRegisterName)...)
 		issues = append(issues, validateResourceIndexing(prefix, resource.Indexing)...)
+		issues = append(issues, validateMovementFieldStorage(prefix, resource)...)
 	}
 	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, func(name string) bool {
 		return names[strings.ToLower(name)] || reservedCalculationRegisterName(name)
 	})...)
+	for index, attribute := range value.Attributes {
+		issues = append(issues, validateMovementFieldStorage(fmt.Sprintf("attributes[%d]", index), attribute)...)
+	}
 	// The dimensions belong here too - see the accounting register for what
 	// leaving a group out of these checks costs on both sides.
 	dimensionFields := make([]Attribute, 0, len(value.Dimensions))

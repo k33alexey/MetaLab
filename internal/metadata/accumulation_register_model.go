@@ -78,6 +78,14 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 	for index, resource := range value.Resources {
 		issues = append(issues, validateResourceIndexing(fmt.Sprintf("resources[%d]", index), resource.Indexing)...)
 	}
+	for _, group := range []struct {
+		path   string
+		fields []Attribute
+	}{{"dimensions", value.Dimensions}, {"resources", value.Resources}, {"attributes", value.Attributes}} {
+		for index, field := range group.fields {
+			issues = append(issues, validateMovementFieldStorage(fmt.Sprintf("%s[%d]", group.path, index), field)...)
+		}
+	}
 	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, reservedAccumulationRegisterName)...)
 	registerFields := []fieldGroup{
 		{"dimensions", value.Dimensions}, {"resources", value.Resources}, {"attributes", value.Attributes},

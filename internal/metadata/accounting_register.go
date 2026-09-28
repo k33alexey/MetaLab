@@ -133,11 +133,15 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 			if !group.dimension {
 				issues = append(issues, validateResourceIndexing(prefix, field.Indexing)...)
 			}
+			issues = append(issues, validateMovementFieldStorage(prefix, field.Attribute)...)
 		}
 	}
 	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, func(name string) bool {
 		return names[strings.ToLower(name)] || reservedAccountingRegisterName(name)
 	})...)
+	for index, attribute := range value.Attributes {
+		issues = append(issues, validateMovementFieldStorage(fmt.Sprintf("attributes[%d]", index), attribute)...)
+	}
 	// How many ext dimensions an entry really has is the chart's to say, and
 	// the chart is in another file: here the platform's ceiling is allowed and
 	// load.go narrows it once the chart is read.
