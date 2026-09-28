@@ -53,6 +53,9 @@ type SequenceDefinition struct {
 	// in order, instead of leaving it where it was.
 	MoveBoundaryOnPosting bool                `yaml:"move_boundary_on_posting,omitempty" json:"moveBoundaryOnPosting,omitempty"`
 	Dimensions            []SequenceDimension `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
+	// AdditionalIndexes are the indexes this object asks the database for
+	// beside the ones the platform builds - see additional_indexes.go.
+	AdditionalIndexes []AdditionalIndex `yaml:"additional_indexes,omitempty" json:"additionalIndexes,omitempty"`
 }
 
 // DecodeSequence reads and validates one sequence.
@@ -69,6 +72,8 @@ func DecodeSequence(source string, reader io.Reader, configuration project.Proje
 	}
 	issues = append(issues, validateUniqueIDs("documents", value.Documents)...)
 	issues = append(issues, validateUniqueIDs("movements", value.Movements)...)
+	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, SequenceKind,
+		recordIndexTables(sequenceStandardFields, sequenceDimensionNames(value.Dimensions)))...)
 	if len(value.Dimensions) > maxSequenceDimensions {
 		issues = append(issues, fmt.Sprintf("dimensions must not contain more than %d items", maxSequenceDimensions))
 	}

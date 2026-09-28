@@ -496,6 +496,9 @@ type CatalogDefinition struct {
 	// DataHistorySettings is whether this object takes part in data history
 	// and the two flags that go with it - see data_history.go.
 	DataHistorySettings `yaml:",inline" json:",inline"`
+	// AdditionalIndexes are the indexes this object asks the database for
+	// beside the ones the platform builds - see additional_indexes.go.
+	AdditionalIndexes []AdditionalIndex `yaml:"additional_indexes,omitempty" json:"additionalIndexes,omitempty"`
 
 	Code              CatalogCode `yaml:"code" json:"code"`
 	DescriptionLength int         `yaml:"description_length" json:"descriptionLength"`
@@ -1022,6 +1025,7 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 		dataLockFields:       value.DataLockFields,
 		fullTextSearch:       value.FullTextSearch,
 		dataHistory:          value.DataHistorySettings,
+		additionalIndexes:    value.AdditionalIndexes,
 		kind:                 CatalogKind,
 		standardAttributes:   value.StandardAttributes,
 	}, configuration)...)
@@ -1098,6 +1102,9 @@ type referenceObjectShape struct {
 	// dataHistory is whether the object takes part in data history, and what
 	// it asks for while it does - see data_history.go.
 	dataHistory DataHistorySettings
+	// additionalIndexes are the indexes asked for by hand - see
+	// additional_indexes.go.
+	additionalIndexes []AdditionalIndex
 	// attributeUse says this kind's attributes may say whom they belong to -
 	// items, folders or both. Only a catalog and a chart of characteristic
 	// types may: the help says so, and the demonstration configuration writes
@@ -1226,6 +1233,8 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	issues = append(issues, validateFullTextSearch("full_text_search", shape.fullTextSearch)...)
 	issues = append(issues, validateFullTextSearchOnInputPair(shape.fullTextSearch, shape.choice.FullTextSearchOnInput)...)
 	issues = append(issues, validateDataHistory(shape.dataHistory)...)
+	issues = append(issues, validateAdditionalIndexes(shape.additionalIndexes, shape.kind,
+		objectIndexTables(shape.kind, shape.attributes, shape.tableParts))...)
 	reserved := shape.reservedName
 	if reserved == nil {
 		reserved = reservedCatalogObjectName
@@ -1695,6 +1704,7 @@ func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
 	value.ObjectInput = cloneObjectInput(value.ObjectInput)
 	value.BasedOn = slices.Clone(value.BasedOn)
 	value.DataLockFields = cloneDataLockFields(value.DataLockFields)
+	value.AdditionalIndexes = cloneAdditionalIndexes(value.AdditionalIndexes)
 	return value
 }
 

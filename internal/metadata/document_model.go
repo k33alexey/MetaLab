@@ -62,6 +62,9 @@ type DocumentDefinition struct {
 	// DataHistorySettings is whether this object takes part in data history
 	// and the two flags that go with it - see data_history.go.
 	DataHistorySettings `yaml:",inline" json:",inline"`
+	// AdditionalIndexes are the indexes this object asks the database for
+	// beside the ones the platform builds - see additional_indexes.go.
+	AdditionalIndexes []AdditionalIndex `yaml:"additional_indexes,omitempty" json:"additionalIndexes,omitempty"`
 
 	Number DocumentNumber `yaml:"number"`
 	// Numerator names a numbering shared with other kinds of document. When it
@@ -111,6 +114,7 @@ func DecodeDocument(source string, reader io.Reader, configuration project.Proje
 		dataLockFields:     value.DataLockFields,
 		fullTextSearch:     value.FullTextSearch,
 		dataHistory:        value.DataHistorySettings,
+		additionalIndexes:  value.AdditionalIndexes,
 	}
 	if value.Numerator != nil {
 		// The number comes from the numerator, and it is filled in once the
@@ -180,6 +184,9 @@ type numberedObjectShape struct {
 	// dataHistory is whether the object takes part in data history, and what
 	// it asks for while it does - see data_history.go.
 	dataHistory DataHistorySettings
+	// additionalIndexes are the indexes asked for by hand - see
+	// additional_indexes.go.
+	additionalIndexes []AdditionalIndex
 }
 
 // validateNumberShape checks a number on its own, apart from the object that
@@ -239,6 +246,8 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 	issues = append(issues, validateFullTextSearch("full_text_search", shape.fullTextSearch)...)
 	issues = append(issues, validateFullTextSearchOnInputPair(shape.fullTextSearch, shape.input.FullTextSearchOnInput)...)
 	issues = append(issues, validateDataHistory(shape.dataHistory)...)
+	issues = append(issues, validateAdditionalIndexes(shape.additionalIndexes, shape.kind,
+		objectIndexTables(shape.kind, shape.attributes, shape.tableParts))...)
 	links := append(standardAttributeChoices("standard_attributes", shape.standardAttributes), tablePartStandardChoices(shape.tableParts)...)
 	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, links...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, false, false)...)
@@ -375,6 +384,7 @@ func cloneDocumentDefinition(value DocumentDefinition) DocumentDefinition {
 	value.ObjectInput = cloneObjectInput(value.ObjectInput)
 	value.BasedOn = slices.Clone(value.BasedOn)
 	value.DataLockFields = cloneDataLockFields(value.DataLockFields)
+	value.AdditionalIndexes = cloneAdditionalIndexes(value.AdditionalIndexes)
 	return value
 }
 

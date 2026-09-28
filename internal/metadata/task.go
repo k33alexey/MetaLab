@@ -64,6 +64,9 @@ type TaskDefinition struct {
 	// DataHistorySettings is whether this object takes part in data history
 	// and the two flags that go with it - see data_history.go.
 	DataHistorySettings `yaml:",inline" json:",inline"`
+	// AdditionalIndexes are the indexes this object asks the database for
+	// beside the ones the platform builds - see additional_indexes.go.
+	AdditionalIndexes []AdditionalIndex `yaml:"additional_indexes,omitempty" json:"additionalIndexes,omitempty"`
 
 	Number            DocumentNumber `yaml:"number" json:"number"`
 	DescriptionLength int            `yaml:"description_length" json:"descriptionLength"`
@@ -113,6 +116,7 @@ func DecodeTask(source string, reader io.Reader, configuration project.Project) 
 		dataLockFields:     value.DataLockFields,
 		fullTextSearch:     value.FullTextSearch,
 		dataHistory:        value.DataHistorySettings,
+		additionalIndexes:  value.AdditionalIndexes,
 	}, configuration)...)
 	if value.DescriptionLength < 1 || value.DescriptionLength > 1_048_576 {
 		issues = append(issues, "description_length must be 1..1048576")

@@ -49,6 +49,9 @@ type InformationRegisterDefinition struct {
 	// FullTextSearch is whether the records of this register are in the
 	// full-text index - see full_text_search.go.
 	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
+	// AdditionalIndexes are the indexes this register asks the database for
+	// beside the ones the platform builds - see additional_indexes.go.
+	AdditionalIndexes []AdditionalIndex `yaml:"additional_indexes,omitempty" json:"additionalIndexes,omitempty"`
 	// DataHistorySettings is whether the records take part in data history and
 	// the two flags that go with it - see data_history.go. Of the four
 	// registers only this one carries them, and it is the one place where
@@ -86,6 +89,9 @@ func DecodeInformationRegister(source string, reader io.Reader, configuration pr
 	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
 	issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
 	issues = append(issues, validateDataHistory(value.DataHistorySettings)...)
+	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, InformationRegisterKind,
+		recordIndexTables(standardFieldsOfKind(InformationRegisterKind), attributeNames(value.Dimensions),
+			attributeNames(value.Resources), attributeNames(value.Attributes)))...)
 	switch value.WriteMode {
 	case InformationRegisterIndependent, InformationRegisterRecorder:
 	default:
@@ -169,6 +175,7 @@ func cloneInformationRegisterDefinition(value InformationRegisterDefinition) Inf
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.ListPresentations = cloneListPresentations(value.ListPresentations)
 	value.RecordPresentations = cloneRecordPresentations(value.RecordPresentations)
+	value.AdditionalIndexes = cloneAdditionalIndexes(value.AdditionalIndexes)
 	return value
 }
 

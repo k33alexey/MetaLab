@@ -40,8 +40,11 @@ type DocumentJournalDefinition struct {
 	ListPresentations     `yaml:",inline" json:",inline"`
 	IncludeHelpInContents bool `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
 
-	Documents          []uuid.UUID         `yaml:"documents,omitempty" json:"documents,omitempty"`
-	Columns            []JournalColumn     `yaml:"columns,omitempty" json:"columns,omitempty"`
+	Documents []uuid.UUID     `yaml:"documents,omitempty" json:"documents,omitempty"`
+	Columns   []JournalColumn `yaml:"columns,omitempty" json:"columns,omitempty"`
+	// AdditionalIndexes are the indexes this object asks the database for
+	// beside the ones the platform builds - see additional_indexes.go.
+	AdditionalIndexes  []AdditionalIndex   `yaml:"additional_indexes,omitempty" json:"additionalIndexes,omitempty"`
 	StandardAttributes []StandardAttribute `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
 	Forms              SingleRoleForms     `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands           []ObjectCommand     `yaml:"commands,omitempty" json:"commands,omitempty"`
@@ -60,6 +63,8 @@ func DecodeDocumentJournal(source string, reader io.Reader, configuration projec
 		issues = append(issues, "documents must name at least one kind of document: a journal of nothing shows nothing")
 	}
 	issues = append(issues, validateUniqueIDs("documents", value.Documents)...)
+	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, DocumentJournalKind,
+		recordIndexTables(standardFieldsOfKind(DocumentJournalKind), journalColumnNames(value.Columns)))...)
 	if len(value.Columns) > maxJournalColumns {
 		issues = append(issues, fmt.Sprintf("columns must not contain more than %d items", maxJournalColumns))
 	}

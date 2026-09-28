@@ -52,6 +52,9 @@ type AccountingRegisterDefinition struct {
 	// FullTextSearch is whether the records of this register are in the
 	// full-text index - see full_text_search.go.
 	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
+	// AdditionalIndexes are the indexes this register asks the database for
+	// beside the ones the platform builds - see additional_indexes.go.
+	AdditionalIndexes []AdditionalIndex `yaml:"additional_indexes,omitempty" json:"additionalIndexes,omitempty"`
 
 	// ChartOfAccounts is where the accounts come from, and with them the
 	// analytics: a register has no ext dimensions of its own.
@@ -141,6 +144,10 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
 	issues = append(issues, validatePeriodAdjustmentLength(value.PeriodAdjustmentLength)...)
 	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accountingStandardFields(value.Correspondence, maxExtDimensions), configuration)...)
+	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, AccountingRegisterKind,
+		recordIndexTables(accountingStandardFields(value.Correspondence, maxExtDimensions),
+			accountingFieldNames(value.Dimensions), accountingFieldNames(value.Resources),
+			attributeNames(value.Attributes)))...)
 	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", value.Attributes}}, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", value.Attributes}}, nil, false, false)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)

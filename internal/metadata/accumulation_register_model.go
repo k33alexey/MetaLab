@@ -35,6 +35,9 @@ type AccumulationRegisterDefinition struct {
 	// FullTextSearch is whether the records of this register are in the
 	// full-text index - see full_text_search.go.
 	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
+	// AdditionalIndexes are the indexes this register asks the database for
+	// beside the ones the platform builds - see additional_indexes.go.
+	AdditionalIndexes []AdditionalIndex `yaml:"additional_indexes,omitempty" json:"additionalIndexes,omitempty"`
 
 	Kind AccumulationRegisterKindValue `yaml:"kind"`
 	// TotalsSplitting keeps the totals of concurrent writers in rows of their
@@ -110,6 +113,9 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 		}
 	}
 	issues = append(issues, validateAccumulationAggregates(value.Aggregates, value.Dimensions)...)
+	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, AccumulationRegisterKind,
+		recordIndexTables(accumulationStandardFields(value.Kind), attributeNames(value.Dimensions),
+			attributeNames(value.Resources), attributeNames(value.Attributes)))...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
@@ -142,6 +148,7 @@ func cloneAccumulationRegisterDefinition(value AccumulationRegisterDefinition) A
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.ListPresentations = cloneListPresentations(value.ListPresentations)
+	value.AdditionalIndexes = cloneAdditionalIndexes(value.AdditionalIndexes)
 	return value
 }
 

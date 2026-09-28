@@ -93,6 +93,9 @@ type CalculationRegisterDefinition struct {
 	// FullTextSearch is whether the records of this register are in the
 	// full-text index - see full_text_search.go.
 	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
+	// AdditionalIndexes are the indexes this register asks the database for
+	// beside the ones the platform builds - see additional_indexes.go.
+	AdditionalIndexes []AdditionalIndex `yaml:"additional_indexes,omitempty" json:"additionalIndexes,omitempty"`
 
 	// ChartOfCalculationTypes supplies the kinds of accrual and the rules by
 	// which they compete for a period.
@@ -128,6 +131,10 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
 	issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
+	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, CalculationRegisterKind,
+		recordIndexTables(standardFieldsOfKind(CalculationRegisterKind),
+			calculationDimensionNames(value.Dimensions), attributeNames(value.Resources),
+			attributeNames(value.Attributes)))...)
 	if value.ChartOfCalculationTypes.IsZero() {
 		issues = append(issues, "chart_of_calculation_types is required: without kinds of accrual there is nothing to calculate")
 	}
