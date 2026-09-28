@@ -75,8 +75,8 @@ func TestBasicQueryLanguageIntegration(t *testing.T) {
 	movementTable, _ := PhysicalAccumulationRegisterTable(accumulationID)
 	warehouseColumn, _ := PhysicalAttributeColumn(warehouseID)
 	quantityColumn, _ := PhysicalAttributeColumn(quantityID)
-	insertMovement := "INSERT INTO " + qualifiedCatalogTable(movementTable) + " (record_id, dimension_key, period, recorder_type, recorder_ref, line_no, active, totals_split, movement_kind, " +
-		pgx.Identifier{warehouseColumn}.Sanitize() + ", " + pgx.Identifier{quantityColumn}.Sanitize() + ") VALUES ($1, $2, $3, $4, $5, 1, true, 0, 1, $6, $7)"
+	insertMovement := "INSERT INTO " + qualifiedCatalogTable(movementTable) + " (record_id, dimension_key, period, recorder_type, recorder_ref, line_no, active, movement_kind, " +
+		pgx.Identifier{warehouseColumn}.Sanitize() + ", " + pgx.Identifier{quantityColumn}.Sanitize() + ") VALUES ($1, $2, $3, $4, $5, 1, true, 1, $6, $7)"
 	if _, err := pool.Exec(ctx, insertMovement, uuid.MustNew().String(), strings.Repeat("a", 64), time.Now().UTC(), documentID.String(), recorderID.String(), "Основной", "5.500"); err != nil {
 		t.Fatal(err)
 	}

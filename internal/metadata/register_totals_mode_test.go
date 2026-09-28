@@ -49,26 +49,6 @@ func TestSwitchingIsRefusedWhereTheConfigurationDoesNotAllowIt(t *testing.T) {
 	}
 }
 
-// With the mode off every movement goes to one row of totals per combination
-// of dimensions, which is what a register that does not split them means. With
-// it on the recorder decides the row.
-func TestTheModeDecidesWhichRowOfTotalsAWriteTouches(t *testing.T) {
-	t.Parallel()
-	recorder := DocumentReference{DocumentID: uuid.MustNew(), ObjectID: uuid.MustNew()}
-	if split := accumulationTotalsSplit(recorder, false); split != 0 {
-		t.Fatalf("a register that does not split its totals used row %d", split)
-	}
-	split := accumulationTotalsSplit(recorder, true)
-	if split < 0 || split >= accumulationTotalsSplitCount {
-		t.Fatalf("the row is outside the table's check constraint: %d", split)
-	}
-	// The same recorder always lands in the same row: the movements of one
-	// document must not spread themselves over the totals.
-	if again := accumulationTotalsSplit(recorder, true); again != split {
-		t.Fatalf("one recorder used two rows: %d and %d", split, again)
-	}
-}
-
 func boolPointer(value bool) *bool { return &value }
 
 // storedTotalsMode stands in for the base's answer without needing a base.

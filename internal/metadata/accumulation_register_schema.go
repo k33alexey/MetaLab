@@ -38,12 +38,10 @@ func (catalog *Catalog) accumulationRegisterTables(definition AccumulationRegist
 			{Name: "recorder_ref", Type: "uuid", Nullable: false},
 			{Name: "line_no", Type: "integer", Nullable: false},
 			{Name: "active", Type: "boolean", Nullable: false, Default: "true"},
-			{Name: "totals_split", Type: "smallint", Nullable: false},
 		},
 		Constraints: []schemadiff.Constraint{
 			{Name: physicalObjectName("pk", definition.ID), Type: "primary_key", Definition: "PRIMARY KEY (record_id)"},
 			{Name: physicalObjectName("ur", definition.ID), Type: "unique", Definition: "UNIQUE (recorder_type, recorder_ref, line_no)"},
-			{Name: physicalObjectName("cs", definition.ID), Type: "check", Definition: "CHECK (totals_split >= 0 AND totals_split < 16)"},
 		},
 		Indexes: []schemadiff.Index{
 			{Name: physicalObjectName("ip", definition.ID), Method: "btree", Keys: []string{"period", "record_id"}},
@@ -70,7 +68,15 @@ func (catalog *Catalog) accumulationRegisterTables(definition AccumulationRegist
 		},
 		Constraints: []schemadiff.Constraint{
 			{Name: physicalObjectName("pt", definition.ID), Type: "primary_key", Definition: "PRIMARY KEY (total_period, totals_split, dimension_key)"},
-			{Name: physicalObjectName("ct", definition.ID), Type: "check", Definition: "CHECK (totals_split >= 0 AND totals_split < 16)"},
+			// No ceiling on the number. Rows of totals appear when writers
+			// collide, and their count follows the concurrency the base has
+			// actually seen - «их количество по каждой комбинации измерений
+			// будет зависеть от максимального количества одновременно
+			// выполняемых транзакций». A ceiling of sixteen was the old
+			// mechanism's, where the number addressed one of sixteen rows
+			// chosen by a hash; here the seventeenth concurrent writer would
+			// simply be refused.
+			{Name: physicalObjectName("ct", definition.ID), Type: "check", Definition: "CHECK (totals_split >= 0)"},
 		},
 	}
 	for _, dimension := range definition.Dimensions {

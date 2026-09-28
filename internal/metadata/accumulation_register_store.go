@@ -25,7 +25,11 @@ import (
 const (
 	maxAccumulationRegisterRecords = 1_000_000
 	maxAccumulationRegisterMemory  = 64 << 20
-	accumulationTotalsSplitCount   = 16
+	// maxAccumulationTotalsAttempts bounds the walk from "take a row of
+	// totals" to "make one". Each attempt fails only by losing a race to
+	// another writer, and the last one waits instead of racing, so the walk
+	// always ends - see applyTotalsChanges.
+	maxAccumulationTotalsAttempts = 8
 )
 
 // AccumulationMovementKind is the direction of a balance-register movement.
@@ -204,7 +208,7 @@ func (repository *AccumulationRegisterRepository) WriteWithHandler(ctx context.C
 		if err != nil {
 			return err
 		}
-		if err := repository.insertMovements(transactionContext, transaction, definition, working.Records, splitting); err != nil {
+		if err := repository.insertMovements(transactionContext, transaction, definition, working.Records); err != nil {
 			return err
 		}
 		if err := repository.applyTotalsChanges(transactionContext, transaction, definition, old, working.Records, splitting); err != nil {
@@ -356,12 +360,17 @@ func (repository *AccumulationRegisterRepository) validateRecorder(ctx context.C
 	return nil
 }
 
-func (repository *AccumulationRegisterRepository) insertMovements(ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition, records []*AccumulationRegisterRecord, splitting bool) error {
+func (repository *AccumulationRegisterRepository) insertMovements(ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition, records []*AccumulationRegisterRecord) error {
 	if len(records) == 0 {
 		return nil
 	}
 	table, _ := PhysicalAccumulationRegisterTable(definition.ID)
-	columns := []string{"record_id", "dimension_key", "period", "recorder_type", "recorder_ref", "line_no", "active", "totals_split"}
+	// The movement does not carry the row of totals it contributed to, and
+	// cannot: with rows multiplying on contention the row is decided by who
+	// held what at that moment, not by anything about the movement. The
+	// column was written and never read even before that - the rebuild stopped
+	// grouping by it when it started folding the rows together.
+	columns := []string{"record_id", "dimension_key", "period", "recorder_type", "recorder_ref", "line_no", "active"}
 	if definition.Kind == AccumulationRegisterBalance {
 		columns = append(columns, "movement_kind")
 	}
@@ -372,7 +381,7 @@ func (repository *AccumulationRegisterRepository) insertMovements(ctx context.Co
 	source := pgx.CopyFromSlice(len(records), func(index int) ([]any, error) {
 		record := records[index]
 		arguments := []any{record.RecordID.String(), accumulationDimensionKey(definition, record.Dimensions), record.Period,
-			record.Recorder.DocumentID.String(), record.Recorder.ObjectID.String(), record.LineNumber, record.Active, accumulationTotalsSplit(record.Recorder, splitting)}
+			record.Recorder.DocumentID.String(), record.Recorder.ObjectID.String(), record.LineNumber, record.Active}
 		if definition.Kind == AccumulationRegisterBalance {
 			arguments = append(arguments, int16(record.MovementKind))
 		}
@@ -510,9 +519,11 @@ func (repository *AccumulationRegisterRepository) decodeMovement(definition Accu
 	return record, nil
 }
 
+// accumulationTotalDelta is what one combination of month and dimensions is
+// changed by. Which row of totals carries the change is not part of it: the
+// row is chosen when the change is written, by who is holding what.
 type accumulationTotalDelta struct {
 	period       time.Time
-	split        int16
 	dimensionKey string
 	dimensions   map[uuid.UUID]Value
 	resources    map[uuid.UUID]*big.Rat
@@ -525,11 +536,11 @@ func (repository *AccumulationRegisterRepository) applyTotalsChanges(ctx context
 			return nil
 		}
 		period := time.Date(record.Period.UTC().Year(), record.Period.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
-		split, dimensionKey := accumulationTotalsSplit(record.Recorder, splitting), accumulationDimensionKey(definition, record.Dimensions)
-		key := period.Format(time.RFC3339Nano) + ":" + fmt.Sprint(split) + ":" + dimensionKey
+		dimensionKey := accumulationDimensionKey(definition, record.Dimensions)
+		key := period.Format(time.RFC3339Nano) + ":" + dimensionKey
 		delta := deltas[key]
 		if delta == nil {
-			delta = &accumulationTotalDelta{period: period, split: split, dimensionKey: dimensionKey, dimensions: mapsCloneValues(record.Dimensions), resources: map[uuid.UUID]*big.Rat{}}
+			delta = &accumulationTotalDelta{period: period, dimensionKey: dimensionKey, dimensions: mapsCloneValues(record.Dimensions), resources: map[uuid.UUID]*big.Rat{}}
 			deltas[key] = delta
 		}
 		direction := replacementSign
@@ -570,35 +581,200 @@ func (repository *AccumulationRegisterRepository) applyTotalsChanges(ctx context
 		keys = append(keys, key)
 	}
 	slices.Sort(keys)
-	for start := 0; start < len(keys); start += 256 {
-		end := start + 256
-		if end > len(keys) {
-			end = len(keys)
+	return repository.applyTotalDeltas(ctx, transaction, definition, deltas, keys, splitting)
+}
+
+// applyTotalDeltas puts each change into a row of totals, making a new row
+// when it cannot have an existing one.
+//
+// Разделение итогов, as the prototype describes it: «система при одновременной
+// записи движений несколькими сеансами будет не обновлять одни и те же записи
+// итогов, а записывать изменения итогов в отдельные записи», and «записи будут
+// "размножаться" только при параллельно выполняемых транзакциях, их количество
+// по каждой комбинации измерений будет зависеть от максимального количества
+// одновременно выполняемых транзакций».
+//
+// So a row is not addressed, it is taken. A write asks for any row of its
+// combination that nobody is holding; if it gets one it adds to it, and if it
+// gets none - because there are none, or because every one of them is held -
+// it makes another. The count then follows the concurrency that actually
+// happened instead of a constant, which is the whole difference from what was
+// here before: sixteen rows per combination chosen by hashing the recorder,
+// written even by a database with one person in it.
+//
+// **Which row gets the change does not matter, and that is what makes this
+// work at all.** Reading totals sums the rows of a combination, so a change
+// may land anywhere among them - including a subtraction that leaves one row
+// negative while the sum stays right. The prototype says the same of its own
+// mechanism: «влияет только на параллельность работы системы и никак не
+// сказывается на бизнес-логике».
+//
+// With splitting off there is one row per combination and a write waits for
+// it rather than making a second - that is what not splitting means.
+func (repository *AccumulationRegisterRepository) applyTotalDeltas(
+	ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition,
+	deltas map[string]*accumulationTotalDelta, keys []string, splitting bool,
+) error {
+	type applied struct {
+		delta *accumulationTotalDelta
+		split int16
+	}
+	var touched []applied
+	pending := keys
+	for attempt := 0; len(pending) > 0; attempt++ {
+		if attempt >= maxAccumulationTotalsAttempts {
+			return fmt.Errorf("update accumulation register %s totals: no row of totals could be taken", definition.Name)
 		}
+		// The last two attempts stop racing and wait. A writer that keeps
+		// losing must still finish, and waiting for one row is what it would
+		// have done all along without the mechanism. Two of them, because one
+		// round may go entirely into making a row that another writer made
+		// first - the round after that takes the row it left.
+		race := splitting && attempt < maxAccumulationTotalsAttempts-2
+		taken, missing, err := repository.takeTotalRows(ctx, transaction, definition, deltas, pending, race)
+		if err != nil {
+			return err
+		}
+		for _, row := range taken {
+			touched = append(touched, applied{deltas[row.key], row.split})
+		}
+		if len(missing) == 0 {
+			break
+		}
+		made, failed, err := repository.makeTotalRows(ctx, transaction, definition, deltas, missing, attempt)
+		if err != nil {
+			return err
+		}
+		for _, row := range made {
+			touched = append(touched, applied{deltas[row.key], row.split})
+		}
+		pending = failed
+	}
+	return repository.dropEmptyTotals(ctx, transaction, definition, func(yield func(*accumulationTotalDelta, int16)) {
+		for _, row := range touched {
+			yield(row.delta, row.split)
+		}
+	})
+}
+
+type totalRow struct {
+	key   string
+	split int16
+}
+
+// takeTotalRows adds each change to a row of its combination that nobody is
+// holding. The ones with no such row come back as missing.
+func (repository *AccumulationRegisterRepository) takeTotalRows(
+	ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition,
+	deltas map[string]*accumulationTotalDelta, keys []string, race bool,
+) ([]totalRow, []string, error) {
+	statement, err := repository.totalRowUpdate(definition, race)
+	if err != nil {
+		return nil, nil, err
+	}
+	var taken []totalRow
+	var missing []string
+	for start := 0; start < len(keys); start += 256 {
+		end := min(start+256, len(keys))
 		batch := &pgx.Batch{}
 		for _, key := range keys[start:end] {
-			delta := deltas[key]
-			statement, arguments, err := repository.totalUpsert(definition, delta)
+			arguments, err := repository.totalRowUpdateArguments(definition, deltas[key])
 			if err != nil {
-				return err
+				return nil, nil, err
 			}
 			batch.Queue(statement, arguments...)
-			batch.Queue(accumulationZeroTotalDelete(definition), arguments[0], arguments[1], arguments[2])
 		}
 		results := transaction.SendBatch(ctx, batch)
-		for range keys[start:end] {
-			if _, err := results.Exec(); err != nil {
+		for _, key := range keys[start:end] {
+			var split int16
+			switch scanErr := results.QueryRow().Scan(&split); {
+			case scanErr == pgx.ErrNoRows:
+				missing = append(missing, key)
+			case scanErr != nil:
 				_ = results.Close()
-				return fmt.Errorf("update accumulation register %s totals: %w", definition.Name, err)
-			}
-			if _, err := results.Exec(); err != nil {
-				_ = results.Close()
-				return fmt.Errorf("clean accumulation register %s totals: %w", definition.Name, err)
+				return nil, nil, fmt.Errorf("update accumulation register %s totals: %w", definition.Name, scanErr)
+			default:
+				taken = append(taken, totalRow{key, split})
 			}
 		}
 		if err := results.Close(); err != nil {
-			return fmt.Errorf("update accumulation register %s totals: %w", definition.Name, err)
+			return nil, nil, fmt.Errorf("update accumulation register %s totals: %w", definition.Name, err)
 		}
+	}
+	return taken, missing, nil
+}
+
+// makeTotalRows writes a new row of totals for each change that could not have
+// an existing one. A row that another writer made first comes back as failed,
+// and the caller goes round again - by then there is a row to take.
+func (repository *AccumulationRegisterRepository) makeTotalRows(
+	ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition,
+	deltas map[string]*accumulationTotalDelta, keys []string, attempt int,
+) ([]totalRow, []string, error) {
+	statement, err := repository.totalRowInsert(definition)
+	if err != nil {
+		return nil, nil, err
+	}
+	var made []totalRow
+	var failed []string
+	for start := 0; start < len(keys); start += 256 {
+		end := min(start+256, len(keys))
+		batch := &pgx.Batch{}
+		for _, key := range keys[start:end] {
+			arguments, err := repository.totalRowInsertArguments(definition, deltas[key])
+			if err != nil {
+				return nil, nil, err
+			}
+			// The offset walks past the row another writer took while this one
+			// was choosing a number, so two racers do not keep colliding.
+			batch.Queue(statement, append(arguments, int16(attempt+1))...)
+		}
+		results := transaction.SendBatch(ctx, batch)
+		for _, key := range keys[start:end] {
+			var split int16
+			switch scanErr := results.QueryRow().Scan(&split); {
+			case scanErr == pgx.ErrNoRows:
+				failed = append(failed, key)
+			case scanErr != nil:
+				_ = results.Close()
+				return nil, nil, fmt.Errorf("write accumulation register %s totals: %w", definition.Name, scanErr)
+			default:
+				made = append(made, totalRow{key, split})
+			}
+		}
+		if err := results.Close(); err != nil {
+			return nil, nil, fmt.Errorf("write accumulation register %s totals: %w", definition.Name, err)
+		}
+	}
+	return made, failed, nil
+}
+
+// dropEmptyTotals removes the rows this write left at zero. Only the rows it
+// touched, because those are the ones it holds: deleting a row held by another
+// writer would wait for it, which is the waiting the mechanism exists to avoid.
+func (repository *AccumulationRegisterRepository) dropEmptyTotals(
+	ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition,
+	rows func(func(*accumulationTotalDelta, int16)),
+) error {
+	statement := accumulationZeroTotalDelete(definition)
+	batch := &pgx.Batch{}
+	queued := 0
+	rows(func(delta *accumulationTotalDelta, split int16) {
+		batch.Queue(statement, delta.period, split, delta.dimensionKey)
+		queued++
+	})
+	if queued == 0 {
+		return nil
+	}
+	results := transaction.SendBatch(ctx, batch)
+	for index := 0; index < queued; index++ {
+		if _, err := results.Exec(); err != nil {
+			_ = results.Close()
+			return fmt.Errorf("clean accumulation register %s totals: %w", definition.Name, err)
+		}
+	}
+	if err := results.Close(); err != nil {
+		return fmt.Errorf("clean accumulation register %s totals: %w", definition.Name, err)
 	}
 	return nil
 }
@@ -613,13 +789,20 @@ func accumulationZeroTotalDelete(definition AccumulationRegisterDefinition) stri
 	return "DELETE FROM " + qualifiedCatalogTable(table) + " WHERE " + strings.Join(conditions, " AND ")
 }
 
-func (repository *AccumulationRegisterRepository) totalUpsert(definition AccumulationRegisterDefinition, delta *accumulationTotalDelta) (string, []any, error) {
-	table, _ := PhysicalAccumulationRegisterTotalsTable(definition.ID)
-	columns := []string{"total_period", "totals_split", "dimension_key"}
-	arguments := []any{delta.period, delta.split, delta.dimensionKey}
+// totalRowUpdateArguments is what the update takes: period, dimension key and
+// the amounts. It does not take the dimensions themselves - an existing row
+// already holds them, and a parameter a statement never mentions is one
+// PostgreSQL cannot find a type for.
+func (repository *AccumulationRegisterRepository) totalRowUpdateArguments(definition AccumulationRegisterDefinition, delta *accumulationTotalDelta) ([]any, error) {
+	arguments := []any{delta.period, delta.dimensionKey}
+	return repository.appendTotalResources(definition, delta, arguments)
+}
+
+// totalRowInsertArguments is what the insert takes: the same, with the
+// dimensions in between, because a new row has to be given them.
+func (repository *AccumulationRegisterRepository) totalRowInsertArguments(definition AccumulationRegisterDefinition, delta *accumulationTotalDelta) ([]any, error) {
+	arguments := []any{delta.period, delta.dimensionKey}
 	for _, dimension := range definition.Dimensions {
-		column, _ := PhysicalAttributeColumn(dimension.ID)
-		columns = append(columns, column)
 		value, present := delta.dimensions[dimension.ID]
 		if !present {
 			arguments = append(arguments, nil)
@@ -628,31 +811,83 @@ func (repository *AccumulationRegisterRepository) totalUpsert(definition Accumul
 		storage, _ := repository.catalog.attributeStorage(dimension.Types)
 		encoded, err := databaseAttributeValue(storage, value)
 		if err != nil {
-			return "", nil, err
+			return nil, err
 		}
 		arguments = append(arguments, encoded)
 	}
-	updates := make([]string, 0, len(definition.Resources))
+	return repository.appendTotalResources(definition, delta, arguments)
+}
+
+func (repository *AccumulationRegisterRepository) appendTotalResources(definition AccumulationRegisterDefinition, delta *accumulationTotalDelta, arguments []any) ([]any, error) {
 	for _, resource := range definition.Resources {
-		column, _ := PhysicalAttributeColumn(resource.ID)
-		columns = append(columns, column)
 		numberType, err := repository.catalog.accumulationResourceType(resource)
 		if err != nil {
-			return "", nil, err
+			return nil, err
 		}
-		scale := numberType.Scale
-		arguments = append(arguments, delta.resources[resource.ID].FloatString(scale))
+		arguments = append(arguments, delta.resources[resource.ID].FloatString(numberType.Scale))
+	}
+	return arguments, nil
+}
+
+// totalRowUpdate adds the change to one row of the combination and says which
+// row it was, or says nothing when there is no row to be had.
+//
+// Racing means SKIP LOCKED: a row another writer is holding is not a row this
+// one can have, and waiting for it is precisely what разделение итогов exists
+// to avoid. Without racing the statement waits for the lowest row instead,
+// which is how a register that does not split its totals writes them.
+func (repository *AccumulationRegisterRepository) totalRowUpdate(definition AccumulationRegisterDefinition, race bool) (string, error) {
+	table, _ := PhysicalAccumulationRegisterTotalsTable(definition.ID)
+	qualified := qualifiedCatalogTable(table)
+	// The arguments are period, dimension key and then the amounts - see
+	// totalRowUpdateArguments.
+	updates := make([]string, 0, len(definition.Resources))
+	firstResource := 3
+	for index, resource := range definition.Resources {
+		column, _ := PhysicalAttributeColumn(resource.ID)
 		quoted := pgx.Identifier{column}.Sanitize()
-		updates = append(updates, quoted+" = "+pgx.Identifier{table}.Sanitize()+"."+quoted+" + EXCLUDED."+quoted)
+		updates = append(updates, fmt.Sprintf("%s = %s + $%d", quoted, quoted, firstResource+index))
 	}
-	quotedColumns := quoteCatalogColumns(columns)
-	placeholders := make([]string, len(arguments))
-	for index := range placeholders {
-		placeholders[index] = fmt.Sprintf("$%d", index+1)
+	locking := "FOR UPDATE"
+	if race {
+		locking = "FOR UPDATE SKIP LOCKED"
 	}
-	statement := "INSERT INTO " + qualifiedCatalogTable(table) + " (" + strings.Join(quotedColumns, ", ") + ") VALUES (" + strings.Join(placeholders, ", ") + ") " +
-		"ON CONFLICT (total_period, totals_split, dimension_key) DO UPDATE SET " + strings.Join(updates, ", ")
-	return statement, arguments, nil
+	return "UPDATE " + qualified + " SET " + strings.Join(updates, ", ") +
+		" WHERE total_period = $1 AND dimension_key = $2 AND totals_split = (" +
+		"SELECT totals_split FROM " + qualified + " WHERE total_period = $1 AND dimension_key = $2 " +
+		"ORDER BY totals_split " + locking + " LIMIT 1) RETURNING totals_split", nil
+}
+
+// totalRowInsert writes another row for the combination and says which one it
+// is, or says nothing when another writer took that number first.
+//
+// The number is one past the highest there is, so rows are numbered as they
+// appear rather than addressed by anything. Two writers can still choose the
+// same one, because neither sees the other's uncommitted row; the conflict is
+// left alone rather than merged, and the caller goes round again.
+func (repository *AccumulationRegisterRepository) totalRowInsert(definition AccumulationRegisterDefinition) (string, error) {
+	table, _ := PhysicalAccumulationRegisterTotalsTable(definition.ID)
+	qualified := qualifiedCatalogTable(table)
+	columns := []string{"total_period", "totals_split", "dimension_key"}
+	values := []string{"$1",
+		"COALESCE((SELECT MAX(totals_split) FROM " + qualified + " WHERE total_period = $1 AND dimension_key = $2), -1) + $%d",
+		"$2"}
+	position := 2
+	for _, dimension := range definition.Dimensions {
+		column, _ := PhysicalAttributeColumn(dimension.ID)
+		position++
+		columns = append(columns, column)
+		values = append(values, fmt.Sprintf("$%d", position))
+	}
+	for _, resource := range definition.Resources {
+		column, _ := PhysicalAttributeColumn(resource.ID)
+		position++
+		columns = append(columns, column)
+		values = append(values, fmt.Sprintf("$%d", position))
+	}
+	values[1] = fmt.Sprintf(values[1], position+1)
+	return "INSERT INTO " + qualified + " (" + strings.Join(quoteCatalogColumns(columns), ", ") + ") VALUES (" +
+		strings.Join(values, ", ") + ") ON CONFLICT (total_period, totals_split, dimension_key) DO NOTHING RETURNING totals_split", nil
 }
 
 // RebuildTotals restores all monthly totals from primary movement rows.
@@ -1486,28 +1721,6 @@ func accumulationDimensionKey(definition AccumulationRegisterDefinition, dimensi
 		writeHashPart(hash, value.Data)
 	}
 	return hex.EncodeToString(hash.Sum(nil))
-}
-
-// accumulationTotalsSplit says which row of totals this recorder's movements
-// belong to.
-//
-// With the mode off there is one row per combination of dimensions, which is
-// what a register that does not split its totals means. With it on, the
-// recorder is hashed into a fixed number of rows - and that is not yet what
-// the prototype does: it multiplies a row only when a concurrent transaction
-// is already holding it, so the count follows the real concurrency instead of
-// a constant. Replacing the hash is a point of its own in BLOCKS.md; it is a
-// change of how a write behaves under contention, not of whether the setting
-// is obeyed.
-func accumulationTotalsSplit(recorder DocumentReference, splitting bool) int16 {
-	if !splitting {
-		return 0
-	}
-	hash := sha256.New()
-	writeHashPart(hash, "accumulation-totals-split")
-	writeHashPart(hash, recorder.DocumentID.String())
-	writeHashPart(hash, recorder.ObjectID.String())
-	return int16(binary.BigEndian.Uint64(hash.Sum(nil)[:8]) % accumulationTotalsSplitCount)
 }
 
 func lockAccumulationRegisterWriteGate(ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition, recorder DocumentReference, lockForUpdate bool) error {

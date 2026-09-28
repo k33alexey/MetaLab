@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,19 +14,20 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// The whole point of the iteration, checked against a real database: the mode
-// lives in the base, a write follows it, and switching it changes no number.
+// The point of the iteration: rows of totals multiply when writers collide and
+// only then. «Записи будут "размножаться" только при параллельно выполняемых
+// транзакциях, их количество по каждой комбинации измерений будет зависеть от
+// максимального количества одновременно выполняемых транзакций.»
 //
-// Switching is cheap precisely because reading sums the rows across splits.
-// Rows written under one mode are read beside rows written under the other,
-// and a rebuild folds them together - «при пересчете итогов накопленные
-// отдельные записи сворачиваются».
-func TestTotalsModeIsFollowedAndSwitchingChangesNoNumber(t *testing.T) {
+// The old mechanism hashed the recorder into one of sixteen rows and wrote
+// them whether or not anybody else was there, so a database with one person in
+// it carried sixteen times the totals it needed.
+func TestTotalsMultiplyOnlyUnderContention(t *testing.T) {
 	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("ML_TEST_DATABASE_URL is not set")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
@@ -69,12 +71,11 @@ func TestTotalsModeIsFollowedAndSwitchingChangesNoNumber(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := schemadiff.Execute(ctx, pool, schemadiff.MigrationRequest{
-		ProjectID: projectID, PackageSHA256: repeatCatalogHex('c', 64), GitCommit: repeatCatalogHex('d', 40),
+		ProjectID: projectID, PackageSHA256: repeatCatalogHex('e', 64), GitCommit: repeatCatalogHex('f', 40),
 		Desired: desired, ExpectedPlanSHA256: prepared.SHA256, ExpectedSchemaSHA256: prepared.ActualSHA256, Confirmed: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
-
 	documents, err := NewDocumentRepository(pool, catalog)
 	if err != nil {
 		t.Fatal(err)
@@ -83,51 +84,39 @@ func TestTotalsModeIsFollowedAndSwitchingChangesNoNumber(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	month := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
-	sell := func(number, amount string) DocumentReference {
+	month := time.Date(2026, 4, 12, 9, 0, 0, 0, time.UTC)
+	write := func(number, amount string) error {
 		document, createErr := documents.New(ctx, "Продажа", nil)
 		if createErr != nil {
-			t.Fatal(createErr)
+			return createErr
 		}
 		document.Number, document.Date = number, month
 		if saveErr := documents.Save(ctx, document, nil); saveErr != nil {
-			t.Fatal(saveErr)
+			return saveErr
 		}
 		set, setErr := registers.NewRecordSet("Продажи")
 		if setErr != nil {
-			t.Fatal(setErr)
+			return setErr
 		}
 		set.Filter.Recorder = &document.Reference
 		row, addErr := set.Add()
 		if addErr != nil {
-			t.Fatal(addErr)
+			return addErr
 		}
 		row.Period, row.Recorder, row.Active = month, document.Reference, true
 		row.Dimensions[productID] = Value{Kind: StringType, Data: "A"}
 		row.Resources[amountID] = Value{Kind: NumberType, Data: amount}
-		if writeErr := registers.Write(ctx, set, true); writeErr != nil {
-			t.Fatal(writeErr)
-		}
-		return document.Reference
+		return registers.Write(ctx, set, true)
 	}
 	totalsTable, _ := PhysicalAccumulationRegisterTotalsTable(registerID)
-	splits := func() []int16 {
-		rows, queryErr := pool.Query(ctx, "SELECT totals_split FROM "+qualifiedCatalogTable(totalsTable)+" ORDER BY totals_split")
-		if queryErr != nil {
-			t.Fatal(queryErr)
+	rowCount := func() int {
+		var count int
+		if err := pool.QueryRow(ctx, "SELECT count(*) FROM "+qualifiedCatalogTable(totalsTable)).Scan(&count); err != nil {
+			t.Fatal(err)
 		}
-		defer rows.Close()
-		var found []int16
-		for rows.Next() {
-			var split int16
-			if scanErr := rows.Scan(&split); scanErr != nil {
-				t.Fatal(scanErr)
-			}
-			found = append(found, split)
-		}
-		return found
+		return count
 	}
-	turnover := func() string {
+	sum := func() string {
 		result, queryErr := registers.Turnovers(ctx, "Продажи", month, month, map[uuid.UUID]Value{productID: {Kind: StringType, Data: "A"}})
 		if queryErr != nil {
 			t.Fatal(queryErr)
@@ -138,48 +127,62 @@ func TestTotalsModeIsFollowedAndSwitchingChangesNoNumber(t *testing.T) {
 		return result[0].Turnover[amountID].Data
 	}
 
-	// Two documents written one after the other collide with nobody, so the
-	// mode being on costs nothing: both changes go into the same single row.
-	// Rows multiply under concurrency and only under it - see the test below.
-	sell("S-1", "100")
-	sell("S-2", "200")
-	if turnover() != "300" {
-		t.Fatalf("turnover with the mode on = %q", turnover())
+	// Twenty writes one after another meet nobody, so they share one row.
+	for index := 0; index < 20; index++ {
+		if err := write("Q-"+string(rune('a'+index)), "1"); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if rows := splits(); len(rows) != 1 || rows[0] != 0 {
-		t.Fatalf("writes that met nobody still multiplied the totals: %v", rows)
+	if rows := rowCount(); rows != 1 {
+		t.Fatalf("twenty writes in a row made %d rows of totals, and met nobody", rows)
 	}
-
-	// Switching the mode off changes no number and makes no row.
-	if err := SetTotalsSplitting(ctx, pool, registerID, true, false); err != nil {
-		t.Fatal(err)
-	}
-	sell("S-3", "50")
-	if turnover() != "350" {
-		t.Fatalf("turnover across both modes = %q", turnover())
-	}
-	if rows := splits(); len(rows) != 1 {
-		t.Fatalf("a write with the mode off made a second row: %v", rows)
+	if sum() != "20" {
+		t.Fatalf("turnover after twenty writes = %q", sum())
 	}
 
-	// A rebuild folds the rows of both modes into one per combination, and the
-	// number does not move.
+	// Eight at once do meet each other, and the totals give way instead of
+	// queueing. How many rows appear depends on the collisions that really
+	// happened, so the test says what must hold whatever they were: more than
+	// one writer got through without waiting for the first, no row went
+	// missing, and the sum is exact.
+	const writers = 8
+	var group sync.WaitGroup
+	errs := make(chan error, writers)
+	start := make(chan struct{})
+	for index := 0; index < writers; index++ {
+		group.Add(1)
+		go func(index int) {
+			defer group.Done()
+			<-start
+			errs <- write("P-"+string(rune('a'+index)), "3")
+		}(index)
+	}
+	close(start)
+	group.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("a concurrent write failed: %v", err)
+		}
+	}
+	if sum() != "44" {
+		t.Fatalf("turnover after twenty and eight writes = %q, rows = %d", sum(), rowCount())
+	}
+	concurrent := rowCount()
+	t.Logf("%d одновременных писателей оставили %d записей итогов", writers, concurrent)
+	if concurrent < 1 || concurrent > writers+1 {
+		t.Fatalf("rows of totals = %d, writers = %d", concurrent, writers)
+	}
+
+	// A rebuild folds whatever the concurrency left behind, and the number
+	// does not move.
 	if err := registers.RebuildTotals(ctx, "Продажи"); err != nil {
 		t.Fatal(err)
 	}
-	if folded := splits(); len(folded) != 1 || folded[0] != 0 {
-		t.Fatalf("the rebuild did not fold the rows: %v", folded)
+	if rows := rowCount(); rows != 1 {
+		t.Fatalf("the rebuild left %d rows", rows)
 	}
-	if turnover() != "350" {
-		t.Fatalf("turnover after the rebuild = %q", turnover())
-	}
-
-	// Turning it back on is the same switch in reverse, and the number stays.
-	if err := SetTotalsSplitting(ctx, pool, registerID, true, true); err != nil {
-		t.Fatal(err)
-	}
-	sell("S-4", "10")
-	if turnover() != "360" {
-		t.Fatalf("turnover after switching back on = %q", turnover())
+	if sum() != "44" {
+		t.Fatalf("turnover after the rebuild = %q", sum())
 	}
 }
