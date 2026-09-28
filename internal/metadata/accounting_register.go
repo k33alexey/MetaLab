@@ -130,12 +130,8 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 			if group.dimension && field.ExtDimensionAccountingFlag != nil {
 				issues = append(issues, prefix+".ext_dimension_accounting_flag belongs to a resource: a dimension holds no amount to keep by ext dimension")
 			}
-			// Indexing a resource is an information register's setting alone -
-			// «для ресурсов регистра сведений». Entries are read by account,
-			// period and analytics, never by an amount, so an index on an
-			// amount is a table nobody queries and a write everybody pays for.
-			if !group.dimension && field.Indexing != "" && field.Indexing != DontIndex {
-				issues = append(issues, prefix+".indexing belongs to a dimension: an entry is never found by an amount")
+			if !group.dimension {
+				issues = append(issues, validateResourceIndexing(prefix, field.Indexing)...)
 			}
 		}
 	}

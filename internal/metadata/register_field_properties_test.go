@@ -3,6 +3,9 @@ package metadata
 import (
 	"strings"
 	"testing"
+
+	"github.com/k33alexey/MetaLab/internal/project"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // The defect this catches: a field of an accounting register carried a name, a
@@ -237,5 +240,57 @@ resources:
 	}
 	if !strings.Contains(err.Error(), "indexing belongs to a dimension") {
 		t.Fatalf("error = %q", err)
+	}
+}
+
+// demoConfiguration is the smallest configuration a register decodes against.
+func demoConfiguration() project.Project {
+	return project.Project{Format: 1, ID: uuid.MustNew(), Name: "Demo", Title: project.LocalizedText{"ru": "Demo"},
+		DefaultLanguage: "ru", Languages: []project.Language{{Code: "ru", Name: "Русский"}}}
+}
+
+// A movement of an accumulation register is found by its dimensions and its
+// period, never by a quantity, and «ОбъектМетаданных: Ресурс.Индексирование» is
+// «для ресурсов регистра сведений». Ours accepted it and the schema even built
+// the index - a table nobody queries, on every write of the register.
+//
+// Refused rather than quietly turned off: a property silently dropped is what
+// the import report calls a loss of meaning, and the export shows nothing real
+// is refused - not one resource of the accumulation, accounting and calculation
+// registers of the demo configuration is indexed.
+func TestAccumulationRegisterResourceRefusesIndexing(t *testing.T) {
+	t.Parallel()
+	registerID, dimensionID, resourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	source := "format: 1\nid: " + registerID.String() + "\nname: ОстаткиТоваров\ntitle: {ru: Остатки товаров}\nkind: balance\n" +
+		"dimensions:\n  - {id: " + dimensionID.String() + ", name: Товар, title: {ru: Товар}, types: [{kind: string, length: 100}], indexing: index}\n" +
+		"resources:\n  - {id: " + resourceID.String() + ", name: Количество, title: {ru: Количество}, types: [{kind: number, precision: 15, scale: 3}], indexing: index}\n"
+	_, err := DecodeAccumulationRegister("register.yaml", strings.NewReader(source), demoConfiguration())
+	if err == nil {
+		t.Fatal("the register was accepted")
+	}
+	if !strings.Contains(err.Error(), "resources[0].indexing belongs to a dimension") {
+		t.Fatalf("error = %q", err)
+	}
+	if strings.Contains(err.Error(), "dimensions[0]") {
+		t.Fatalf("the dimension was refused its index too: %q", err)
+	}
+}
+
+// The other side of the same rule, and the one that keeps it from spreading: a
+// resource of an information register may be indexed, and in the demo
+// configuration 52 of 699 are. Records there are read by resource - a price
+// list is searched by price - which is why the property is theirs alone.
+func TestInformationRegisterResourceKeepsItsIndexing(t *testing.T) {
+	t.Parallel()
+	registerID, dimensionID, resourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	source := "format: 1\nid: " + registerID.String() + "\nname: Цены\ntitle: {ru: Цены}\nwrite_mode: independent\nperiodicity: none\n" +
+		"dimensions:\n  - {id: " + dimensionID.String() + ", name: Товар, title: {ru: Товар}, types: [{kind: string, length: 100}]}\n" +
+		"resources:\n  - {id: " + resourceID.String() + ", name: Цена, title: {ru: Цена}, types: [{kind: number, precision: 15, scale: 2}], indexing: index}\n"
+	value, err := DecodeInformationRegister("register.yaml", strings.NewReader(source), demoConfiguration())
+	if err != nil {
+		t.Fatalf("an indexed resource of an information register was refused: %v", err)
+	}
+	if value.Resources[0].Indexing != IndexField {
+		t.Fatalf("resource indexing = %q", value.Resources[0].Indexing)
 	}
 }

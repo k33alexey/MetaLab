@@ -75,6 +75,9 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 	}
 	issues = append(issues, validateAttributes("dimensions", value.Dimensions, configuration, reservedAccumulationRegisterName)...)
 	issues = append(issues, validateAttributes("resources", value.Resources, configuration, reservedAccumulationRegisterName)...)
+	for index, resource := range value.Resources {
+		issues = append(issues, validateResourceIndexing(fmt.Sprintf("resources[%d]", index), resource.Indexing)...)
+	}
 	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, reservedAccumulationRegisterName)...)
 	registerFields := []fieldGroup{
 		{"dimensions", value.Dimensions}, {"resources", value.Resources}, {"attributes", value.Attributes},

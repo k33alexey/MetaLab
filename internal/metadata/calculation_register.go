@@ -166,13 +166,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 		prefix := fmt.Sprintf("resources[%d]", index)
 		issues = append(issues, validateRegisterField(prefix, resource,
 			value.ID, names, ids, configuration, reservedCalculationRegisterName)...)
-		// Indexing a resource is an information register's setting alone -
-		// «для ресурсов регистра сведений». A record of a calculation register
-		// is found by its dimensions and its periods, never by an accrued
-		// amount, so an index on one is a table nobody queries.
-		if resource.Indexing != "" && resource.Indexing != DontIndex {
-			issues = append(issues, prefix+".indexing belongs to a dimension: a record is never found by an amount")
-		}
+		issues = append(issues, validateResourceIndexing(prefix, resource.Indexing)...)
 	}
 	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, func(name string) bool {
 		return names[strings.ToLower(name)] || reservedCalculationRegisterName(name)

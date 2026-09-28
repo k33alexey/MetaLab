@@ -80,6 +80,25 @@ type FieldFilling struct {
 
 // validateFieldStorage checks what a field says about filling, finding and
 // belonging.
+// validateResourceIndexing refuses an index on a resource of a register that is
+// not an information register: «ОбъектМетаданных: Ресурс.Индексирование — для
+// ресурсов регистра сведений». A record of a register of movements is found by
+// its dimensions and its periods, never by an amount, so an index on an amount
+// is a table nobody queries and a write everybody pays for.
+//
+// Refusing rather than quietly turning it off: a property silently dropped is
+// exactly what the import report calls «перенесено с потерей смысла», and a
+// register whose resource was meant to be indexed would come out looking
+// migrated. The demo export shows nothing is lost by refusing - not one
+// resource of the accumulation, accounting and calculation registers is
+// indexed, while 52 of 699 information register resources are.
+func validateResourceIndexing(prefix string, indexing IndexMode) []string {
+	if indexing == "" || indexing == DontIndex {
+		return nil
+	}
+	return []string{prefix + ".indexing belongs to a dimension: a record of this register is never found by an amount"}
+}
+
 func validateFieldStorage(prefix string, attribute Attribute) []string {
 	var issues []string
 	if !validIndexMode(attribute.Indexing) {
