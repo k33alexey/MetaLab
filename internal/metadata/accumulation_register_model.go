@@ -42,14 +42,19 @@ type AccumulationRegisterDefinition struct {
 	// carried this since it was modelled; this register had the mechanism and
 	// no way to ask for it - see BLOCKS.md, where making it follow the setting
 	// is a point of its own.
-	TotalsSplitting    bool                `yaml:"totals_splitting,omitempty"`
-	Dimensions         []Attribute         `yaml:"dimensions,omitempty"`
-	Resources          []Attribute         `yaml:"resources"`
-	Attributes         []Attribute         `yaml:"attributes,omitempty"`
-	StandardAttributes []StandardAttribute `yaml:"standard_attributes,omitempty"`
-	Forms              RegisterForms       `yaml:"forms,omitempty"`
-	Commands           []ObjectCommand     `yaml:"commands,omitempty"`
-	Templates          []ObjectTemplate    `yaml:"templates,omitempty"`
+	TotalsSplitting bool `yaml:"totals_splitting,omitempty"`
+	// Aggregates are precomputed cuts of the movements, a subordinate entity
+	// and not a property - see accumulation_aggregates.go. Declared here,
+	// switched on in the working database, and an alternative to totals rather
+	// than a layer above them.
+	Aggregates         []AccumulationRegisterAggregate `yaml:"aggregates,omitempty" json:"aggregates,omitempty"`
+	Dimensions         []Attribute                     `yaml:"dimensions,omitempty"`
+	Resources          []Attribute                     `yaml:"resources"`
+	Attributes         []Attribute                     `yaml:"attributes,omitempty"`
+	StandardAttributes []StandardAttribute             `yaml:"standard_attributes,omitempty"`
+	Forms              RegisterForms                   `yaml:"forms,omitempty"`
+	Commands           []ObjectCommand                 `yaml:"commands,omitempty"`
+	Templates          []ObjectTemplate                `yaml:"templates,omitempty"`
 }
 
 func DecodeAccumulationRegister(source string, reader io.Reader, configuration project.Project) (AccumulationRegisterDefinition, error) {
@@ -104,6 +109,7 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 			issues = append(issues, fmt.Sprintf("resources[%d].types must contain exactly one number or numeric defined type", index))
 		}
 	}
+	issues = append(issues, validateAccumulationAggregates(value.Aggregates, value.Dimensions)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
@@ -127,6 +133,7 @@ func reservedAccumulationRegisterName(name string) bool {
 
 func cloneAccumulationRegisterDefinition(value AccumulationRegisterDefinition) AccumulationRegisterDefinition {
 	value.Title = cloneTitle(value.Title)
+	value.Aggregates = cloneAccumulationAggregates(value.Aggregates)
 	value.Dimensions = cloneAttributes(value.Dimensions)
 	value.Resources = cloneAttributes(value.Resources)
 	value.Attributes = cloneAttributes(value.Attributes)

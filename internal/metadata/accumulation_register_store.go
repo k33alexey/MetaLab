@@ -81,8 +81,13 @@ func (set *AccumulationRegisterRecordSet) Add() (*AccumulationRegisterRecord, er
 	return record, nil
 }
 
-// AccumulationRegisterAggregate is one row returned by a basic virtual table.
-type AccumulationRegisterAggregate struct {
+// AccumulationRegisterTotalsRow is one row returned by a basic virtual table.
+//
+// It was called an aggregate until the register got real ones. Агрегат is the
+// prototype's word for a precomputed cut declared in the configuration - see
+// accumulation_aggregates.go - and leaving it on a row of a virtual table
+// would have made every later reader ask which of the two was meant.
+type AccumulationRegisterTotalsRow struct {
 	Dimensions map[uuid.UUID]Value
 	Opening    map[uuid.UUID]Value
 	Receipt    map[uuid.UUID]Value
@@ -702,7 +707,7 @@ func (repository *AccumulationRegisterRepository) RebuildTotals(ctx context.Cont
 	})
 }
 
-func (repository *AccumulationRegisterRepository) Balances(ctx context.Context, name string, period time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterAggregate, error) {
+func (repository *AccumulationRegisterRepository) Balances(ctx context.Context, name string, period time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterTotalsRow, error) {
 	definition, ok := repository.catalog.AccumulationRegisterDefinition(name)
 	if !ok {
 		return nil, fmt.Errorf("unknown accumulation register %q", name)
@@ -717,7 +722,7 @@ func (repository *AccumulationRegisterRepository) Balances(ctx context.Context, 
 	return repository.balanceAt(ctx, definition, period, dimensions)
 }
 
-func (repository *AccumulationRegisterRepository) Turnovers(ctx context.Context, name string, begin, end time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterAggregate, error) {
+func (repository *AccumulationRegisterRepository) Turnovers(ctx context.Context, name string, begin, end time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterTotalsRow, error) {
 	definition, ok := repository.catalog.AccumulationRegisterDefinition(name)
 	if !ok {
 		return nil, fmt.Errorf("unknown accumulation register %q", name)
@@ -736,7 +741,7 @@ func (repository *AccumulationRegisterRepository) Turnovers(ctx context.Context,
 	return repository.queryAggregates(ctx, definition, &begin, &end, dimensions)
 }
 
-func (repository *AccumulationRegisterRepository) BalancesAndTurnovers(ctx context.Context, name string, begin, end time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterAggregate, error) {
+func (repository *AccumulationRegisterRepository) BalancesAndTurnovers(ctx context.Context, name string, begin, end time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterTotalsRow, error) {
 	definition, ok := repository.catalog.AccumulationRegisterDefinition(name)
 	if !ok {
 		return nil, fmt.Errorf("unknown accumulation register %q", name)
@@ -758,7 +763,7 @@ func (repository *AccumulationRegisterRepository) BalancesAndTurnovers(ctx conte
 	return repository.queryBalancesAndTurnovers(ctx, definition, begin, end, dimensions)
 }
 
-func (repository *AccumulationRegisterRepository) queryBalancesAndTurnovers(ctx context.Context, definition AccumulationRegisterDefinition, begin, end time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterAggregate, error) {
+func (repository *AccumulationRegisterRepository) queryBalancesAndTurnovers(ctx context.Context, definition AccumulationRegisterDefinition, begin, end time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterTotalsRow, error) {
 	filter, err := repository.normalizeDimensions(definition, dimensions)
 	if err != nil {
 		return nil, err
@@ -840,7 +845,7 @@ func (repository *AccumulationRegisterRepository) queryBalancesAndTurnovers(ctx 
 		return nil, recordDataError(ctx, repository.pool, fmt.Errorf("read accumulation register %s balances and turnovers: %w", definition.Name, err))
 	}
 	defer rows.Close()
-	result := make([]AccumulationRegisterAggregate, 0)
+	result := make([]AccumulationRegisterTotalsRow, 0)
 	memory := uint64(512)
 	for rows.Next() {
 		if len(result) >= maxAccumulationRegisterRecords {
@@ -868,12 +873,12 @@ func (repository *AccumulationRegisterRepository) queryBalancesAndTurnovers(ctx 
 	return result, nil
 }
 
-func (repository *AccumulationRegisterRepository) decodeBalancesAndTurnovers(definition AccumulationRegisterDefinition, dimensionColumns []string, encoded []byte) (AccumulationRegisterAggregate, error) {
+func (repository *AccumulationRegisterRepository) decodeBalancesAndTurnovers(definition AccumulationRegisterDefinition, dimensionColumns []string, encoded []byte) (AccumulationRegisterTotalsRow, error) {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(encoded, &fields); err != nil {
-		return AccumulationRegisterAggregate{}, err
+		return AccumulationRegisterTotalsRow{}, err
 	}
-	result := AccumulationRegisterAggregate{Dimensions: map[uuid.UUID]Value{}, Opening: map[uuid.UUID]Value{}, Receipt: map[uuid.UUID]Value{}, Expense: map[uuid.UUID]Value{}, Turnover: map[uuid.UUID]Value{}, Closing: map[uuid.UUID]Value{}}
+	result := AccumulationRegisterTotalsRow{Dimensions: map[uuid.UUID]Value{}, Opening: map[uuid.UUID]Value{}, Receipt: map[uuid.UUID]Value{}, Expense: map[uuid.UUID]Value{}, Turnover: map[uuid.UUID]Value{}, Closing: map[uuid.UUID]Value{}}
 	for index, dimension := range definition.Dimensions {
 		raw := fields[dimensionColumns[index]]
 		if len(raw) == 0 || string(raw) == "null" {
@@ -918,7 +923,7 @@ func (repository *AccumulationRegisterRepository) decodeBalancesAndTurnovers(def
 	return result, nil
 }
 
-func accumulationAggregateZero(resources []Attribute, aggregate AccumulationRegisterAggregate) bool {
+func accumulationAggregateZero(resources []Attribute, aggregate AccumulationRegisterTotalsRow) bool {
 	for _, resource := range resources {
 		for _, values := range []map[uuid.UUID]Value{aggregate.Opening, aggregate.Receipt, aggregate.Expense, aggregate.Turnover, aggregate.Closing} {
 			value := values[resource.ID]
@@ -971,7 +976,7 @@ func (repository *AccumulationRegisterRepository) restrictedMovements(ctx contex
 	return readRowPredicate(ctx, repository.catalog, definition.ID, accumulationRegisterPolicyColumn(definition), arguments)
 }
 
-func (repository *AccumulationRegisterRepository) balanceAt(ctx context.Context, definition AccumulationRegisterDefinition, period time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterAggregate, error) {
+func (repository *AccumulationRegisterRepository) balanceAt(ctx context.Context, definition AccumulationRegisterDefinition, period time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterTotalsRow, error) {
 	month := time.Date(period.UTC().Year(), period.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
 	filter, err := repository.normalizeDimensions(definition, dimensions)
 	if err != nil {
@@ -1047,7 +1052,7 @@ func (repository *AccumulationRegisterRepository) balanceAt(ctx context.Context,
 		return nil, recordDataError(ctx, repository.pool, fmt.Errorf("read accumulation register %s balances: %w", definition.Name, err))
 	}
 	defer rows.Close()
-	result := make([]AccumulationRegisterAggregate, 0)
+	result := make([]AccumulationRegisterTotalsRow, 0)
 	memory := uint64(512)
 	for rows.Next() {
 		if len(result) >= maxAccumulationRegisterRecords {
@@ -1086,7 +1091,7 @@ func accumulationResourcesZero(resources []Attribute, values map[uuid.UUID]Value
 	return true
 }
 
-func (repository *AccumulationRegisterRepository) queryTotalsBefore(ctx context.Context, definition AccumulationRegisterDefinition, period time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterAggregate, error) {
+func (repository *AccumulationRegisterRepository) queryTotalsBefore(ctx context.Context, definition AccumulationRegisterDefinition, period time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterTotalsRow, error) {
 	filter, err := repository.normalizeDimensions(definition, dimensions)
 	if err != nil {
 		return nil, err
@@ -1140,7 +1145,7 @@ func (repository *AccumulationRegisterRepository) queryTotalsBefore(ctx context.
 		return nil, recordDataError(ctx, repository.pool, fmt.Errorf("read accumulation register %s totals: %w", definition.Name, err))
 	}
 	defer rows.Close()
-	result := make([]AccumulationRegisterAggregate, 0)
+	result := make([]AccumulationRegisterTotalsRow, 0)
 	memory := uint64(512)
 	for rows.Next() {
 		if len(result) >= maxAccumulationRegisterRecords {
@@ -1168,14 +1173,14 @@ func (repository *AccumulationRegisterRepository) queryTotalsBefore(ctx context.
 	return result, nil
 }
 
-func mergeAccumulationBalanceParts(definition AccumulationRegisterDefinition, parts ...[]AccumulationRegisterAggregate) ([]AccumulationRegisterAggregate, error) {
-	combined := map[string]*AccumulationRegisterAggregate{}
+func mergeAccumulationBalanceParts(definition AccumulationRegisterDefinition, parts ...[]AccumulationRegisterTotalsRow) ([]AccumulationRegisterTotalsRow, error) {
+	combined := map[string]*AccumulationRegisterTotalsRow{}
 	for _, source := range parts {
 		for _, row := range source {
 			key := accumulationDimensionKey(definition, row.Dimensions)
 			target := combined[key]
 			if target == nil {
-				target = &AccumulationRegisterAggregate{Dimensions: mapsCloneValues(row.Dimensions), Turnover: map[uuid.UUID]Value{}}
+				target = &AccumulationRegisterTotalsRow{Dimensions: mapsCloneValues(row.Dimensions), Turnover: map[uuid.UUID]Value{}}
 				combined[key] = target
 			}
 			for _, resource := range definition.Resources {
@@ -1202,14 +1207,14 @@ func mergeAccumulationBalanceParts(definition AccumulationRegisterDefinition, pa
 		keys = append(keys, key)
 	}
 	slices.Sort(keys)
-	result := make([]AccumulationRegisterAggregate, 0, len(keys))
+	result := make([]AccumulationRegisterTotalsRow, 0, len(keys))
 	for _, key := range keys {
 		result = append(result, *combined[key])
 	}
 	return result, nil
 }
 
-func (repository *AccumulationRegisterRepository) queryAggregates(ctx context.Context, definition AccumulationRegisterDefinition, begin, end *time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterAggregate, error) {
+func (repository *AccumulationRegisterRepository) queryAggregates(ctx context.Context, definition AccumulationRegisterDefinition, begin, end *time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterTotalsRow, error) {
 	filter, err := repository.normalizeDimensions(definition, dimensions)
 	if err != nil {
 		return nil, err
@@ -1280,7 +1285,7 @@ func (repository *AccumulationRegisterRepository) queryAggregates(ctx context.Co
 		return nil, recordDataError(ctx, repository.pool, fmt.Errorf("read accumulation register %s virtual table: %w", definition.Name, err))
 	}
 	defer rows.Close()
-	result := make([]AccumulationRegisterAggregate, 0)
+	result := make([]AccumulationRegisterTotalsRow, 0)
 	memory := uint64(512)
 	for rows.Next() {
 		if len(result) >= maxAccumulationRegisterRecords {
@@ -1329,12 +1334,12 @@ func (repository *AccumulationRegisterRepository) normalizeDimensions(definition
 	return result, nil
 }
 
-func (repository *AccumulationRegisterRepository) decodeAggregate(definition AccumulationRegisterDefinition, dimensionColumns []string, encoded []byte) (AccumulationRegisterAggregate, error) {
+func (repository *AccumulationRegisterRepository) decodeAggregate(definition AccumulationRegisterDefinition, dimensionColumns []string, encoded []byte) (AccumulationRegisterTotalsRow, error) {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(encoded, &fields); err != nil {
-		return AccumulationRegisterAggregate{}, err
+		return AccumulationRegisterTotalsRow{}, err
 	}
-	result := AccumulationRegisterAggregate{Dimensions: map[uuid.UUID]Value{}, Receipt: map[uuid.UUID]Value{}, Expense: map[uuid.UUID]Value{}, Turnover: map[uuid.UUID]Value{}}
+	result := AccumulationRegisterTotalsRow{Dimensions: map[uuid.UUID]Value{}, Receipt: map[uuid.UUID]Value{}, Expense: map[uuid.UUID]Value{}, Turnover: map[uuid.UUID]Value{}}
 	for index, dimension := range definition.Dimensions {
 		raw := fields[dimensionColumns[index]]
 		if len(raw) == 0 || string(raw) == "null" {
@@ -1383,13 +1388,13 @@ func accumulationAggregateNumber(raw json.RawMessage) (Value, error) {
 	return Value{Kind: NumberType, Data: value.String()}, nil
 }
 
-func mergeAccumulationAggregates(definition AccumulationRegisterDefinition, opening, turnover []AccumulationRegisterAggregate) ([]AccumulationRegisterAggregate, error) {
-	combined := map[string]*AccumulationRegisterAggregate{}
-	add := func(source AccumulationRegisterAggregate, isOpening bool) error {
+func mergeAccumulationAggregates(definition AccumulationRegisterDefinition, opening, turnover []AccumulationRegisterTotalsRow) ([]AccumulationRegisterTotalsRow, error) {
+	combined := map[string]*AccumulationRegisterTotalsRow{}
+	add := func(source AccumulationRegisterTotalsRow, isOpening bool) error {
 		key := accumulationDimensionKey(definition, source.Dimensions)
 		target := combined[key]
 		if target == nil {
-			target = &AccumulationRegisterAggregate{Dimensions: mapsCloneValues(source.Dimensions), Opening: map[uuid.UUID]Value{}, Receipt: map[uuid.UUID]Value{}, Expense: map[uuid.UUID]Value{}, Turnover: map[uuid.UUID]Value{}, Closing: map[uuid.UUID]Value{}}
+			target = &AccumulationRegisterTotalsRow{Dimensions: mapsCloneValues(source.Dimensions), Opening: map[uuid.UUID]Value{}, Receipt: map[uuid.UUID]Value{}, Expense: map[uuid.UUID]Value{}, Turnover: map[uuid.UUID]Value{}, Closing: map[uuid.UUID]Value{}}
 			combined[key] = target
 		}
 		for _, resource := range definition.Resources {
@@ -1416,7 +1421,7 @@ func mergeAccumulationAggregates(definition AccumulationRegisterDefinition, open
 		keys = append(keys, key)
 	}
 	slices.Sort(keys)
-	result := make([]AccumulationRegisterAggregate, 0, len(keys))
+	result := make([]AccumulationRegisterTotalsRow, 0, len(keys))
 	for _, key := range keys {
 		item := combined[key]
 		for _, resource := range definition.Resources {

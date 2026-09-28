@@ -39,8 +39,8 @@ func TestMergeAccumulationAggregates(t *testing.T) {
 	definition := AccumulationRegisterDefinition{ID: uuid.MustNew(), Dimensions: []Attribute{{ID: dimensionID}}, Resources: []Attribute{{ID: resourceID}}}
 	dimensions := map[uuid.UUID]Value{dimensionID: {Kind: StringType, Data: "A"}}
 	result, err := mergeAccumulationAggregates(definition,
-		[]AccumulationRegisterAggregate{{Dimensions: dimensions, Turnover: map[uuid.UUID]Value{resourceID: {Kind: NumberType, Data: "10"}}}},
-		[]AccumulationRegisterAggregate{{Dimensions: dimensions, Turnover: map[uuid.UUID]Value{resourceID: {Kind: NumberType, Data: "-3"}}, Receipt: map[uuid.UUID]Value{resourceID: {Kind: NumberType, Data: "2"}}, Expense: map[uuid.UUID]Value{resourceID: {Kind: NumberType, Data: "5"}}}},
+		[]AccumulationRegisterTotalsRow{{Dimensions: dimensions, Turnover: map[uuid.UUID]Value{resourceID: {Kind: NumberType, Data: "10"}}}},
+		[]AccumulationRegisterTotalsRow{{Dimensions: dimensions, Turnover: map[uuid.UUID]Value{resourceID: {Kind: NumberType, Data: "-3"}}, Receipt: map[uuid.UUID]Value{resourceID: {Kind: NumberType, Data: "2"}}, Expense: map[uuid.UUID]Value{resourceID: {Kind: NumberType, Data: "5"}}}},
 	)
 	if err != nil || len(result) != 1 || result[0].Closing[resourceID].Data != "7" {
 		t.Fatalf("result=%+v error=%v", result, err)

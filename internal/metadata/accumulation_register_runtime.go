@@ -36,13 +36,13 @@ type accumulationRegisterRecorderFilterObject struct {
 type accumulationVirtualTableObject struct {
 	definition AccumulationRegisterDefinition
 	kind       string
-	rows       []AccumulationRegisterAggregate
+	rows       []AccumulationRegisterTotalsRow
 	runtime    *Runtime
 }
 
 type accumulationVirtualRowObject struct {
 	owner *accumulationVirtualTableObject
-	row   *AccumulationRegisterAggregate
+	row   *AccumulationRegisterTotalsRow
 }
 
 func (object *accumulationRegisterRecordSetObject) RuntimeTypeName() string {
@@ -289,7 +289,7 @@ func (runtime *Runtime) accumulationDimensionsFromBSL(definition AccumulationReg
 	return result, nil
 }
 
-func (runtime *Runtime) wrapAccumulationVirtualTable(definition AccumulationRegisterDefinition, kind string, rows []AccumulationRegisterAggregate) (bytecode.Value, error) {
+func (runtime *Runtime) wrapAccumulationVirtualTable(definition AccumulationRegisterDefinition, kind string, rows []AccumulationRegisterTotalsRow) (bytecode.Value, error) {
 	return bytecode.Object(&accumulationVirtualTableObject{definition: definition, kind: kind, rows: rows, runtime: runtime})
 }
 
