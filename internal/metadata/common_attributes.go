@@ -3,6 +3,7 @@ package metadata
 import (
 	"fmt"
 	"io"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -354,6 +355,7 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 	for index, item := range catalog.Tasks {
 		add(item.ID, "task", index)
 	}
+	known := catalog.knownObjectIDs()
 	for _, common := range catalog.CommonAttributes {
 		attribute := Attribute{
 			ID: common.ID, Name: common.Name, Title: cloneTitle(common.Title), Types: cloneTypes(common.Types),
@@ -371,10 +373,20 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 			Comment: common.Comment, Presentation: common.Presentation,
 			Choice: common.Choice, Filling: common.Filling,
 		}
-		// An item naming an object of a kind that cannot take a common attribute
-		// - or no object at all - is caught before anything is propagated.
+		// An item naming nothing at all is caught before anything is
+		// propagated. Naming something that cannot hold a field is not an
+		// error: in the real configuration compositions name constants,
+		// scheduled jobs, charts of characteristic types and exchange plans -
+		// 138 constants and 70 scheduled jobs among six common attributes -
+		// and for those, being in the composition does not mean getting a
+		// field. There is no field to get: a constant is one value and a
+		// scheduled job has no table. It means being separated by the area,
+		// which is the half of the mechanism we carry and do not execute.
+		//
+		// Refusing them would reject a real configuration outright, which is
+		// the worst thing an importer can do.
 		for _, item := range common.Content {
-			if _, ok := targets[item.Metadata]; !ok {
+			if !known[item.Metadata] {
 				return fmt.Errorf("common attribute %s references unknown object %s", common.Name, item.Metadata)
 			}
 		}
@@ -403,6 +415,139 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 		}
 	}
 	return nil
+}
+
+// validateConditionalSeparationReferences resolves what every condition of
+// every composition names, and it is a pass over the whole catalog because one
+// file cannot answer it: the condition points at a constant or at an attribute
+// of another object.
+//
+// Three things are checked, and all three come from the prototype's own
+// description of the property. The boolean has to exist - a condition pointing
+// at nothing separates nothing and says it separates. It has to be boolean -
+// «константой логического типа... или реквизитом логического типа». And the
+// object it lives on has to form the reference type of the common attribute:
+// «причём тип ссылки, образуемый этим объектом метаданных, является типом
+// общего реквизита». That last one is what ties the condition to the data area
+// it decides about, and it also means a register cannot hold one - a register
+// forms no reference.
+func (catalog *Catalog) validateConditionalSeparationReferences() error {
+	for _, common := range catalog.CommonAttributes {
+		for index, item := range common.Content {
+			separation := item.ConditionalSeparation
+			if separation == nil {
+				continue
+			}
+			where := fmt.Sprintf("common attribute %s content[%d].conditional_separation", common.Name, index)
+			if separation.Constant != nil {
+				constant, ok := catalog.ConstantByID(*separation.Constant)
+				if !ok {
+					return fmt.Errorf("%s names unknown constant %s", where, separation.Constant)
+				}
+				if !isBooleanOnly(constant.Types) {
+					return fmt.Errorf("%s names constant %s, which is not boolean", where, constant.Name)
+				}
+				continue
+			}
+			if separation.Object == nil || separation.Attribute == nil {
+				continue
+			}
+			name, fields, reference, ok := catalog.referableObject(*separation.Object)
+			if !ok {
+				return fmt.Errorf("%s names unknown object %s", where, separation.Object)
+			}
+			field, ok := findAttributeByID(fields, *separation.Attribute)
+			if !ok {
+				return fmt.Errorf("%s names an attribute that %s does not have", where, name)
+			}
+			if !isBooleanOnly(field.Types) {
+				return fmt.Errorf("%s names attribute %s.%s, which is not boolean", where, name, field.Name)
+			}
+			if !typesReference(common.Types, reference, *separation.Object) {
+				return fmt.Errorf("%s lives on %s, whose reference is not among the types of the common attribute", where, name)
+			}
+		}
+	}
+	return nil
+}
+
+func isBooleanOnly(types []Type) bool {
+	return len(types) == 1 && types[0].Kind == BooleanType
+}
+
+func findAttributeByID(fields []Attribute, id uuid.UUID) (Attribute, bool) {
+	for _, field := range fields {
+		if field.ID == id {
+			return field, true
+		}
+	}
+	return Attribute{}, false
+}
+
+func typesReference(types []Type, kind TypeKind, id uuid.UUID) bool {
+	for _, item := range types {
+		if item.Kind == kind && item.Reference != nil && *item.Reference == id {
+			return true
+		}
+	}
+	return false
+}
+
+// referableObject is one object that forms a reference type, with its own
+// attributes. Registers are absent on purpose: a register record is not
+// referable, so a condition cannot live on one.
+func (catalog *Catalog) referableObject(id uuid.UUID) (string, []Attribute, TypeKind, bool) {
+	for _, item := range catalog.Catalogs {
+		if item.ID == id {
+			return item.Name, item.Attributes, CatalogType, true
+		}
+	}
+	for _, item := range catalog.Documents {
+		if item.ID == id {
+			return item.Name, item.Attributes, DocumentType, true
+		}
+	}
+	for _, item := range catalog.BusinessProcesses {
+		if item.ID == id {
+			return item.Name, item.Attributes, BusinessProcessType, true
+		}
+	}
+	for _, item := range catalog.Tasks {
+		if item.ID == id {
+			return item.Name, item.Attributes, TaskType, true
+		}
+	}
+	return "", nil, "", false
+}
+
+// knownObjectIDs is every metadata object of the configuration, of every kind.
+//
+// It is gathered by walking the collections of the catalog rather than by
+// listing them, and that is deliberate: the list would be twenty-odd names
+// today and would quietly fall behind on the first kind added, turning a
+// perfectly good object into an "unknown object" at load time. A collection
+// added to the catalog is known here the moment it is added.
+func (catalog *Catalog) knownObjectIDs() map[uuid.UUID]bool {
+	known := map[uuid.UUID]bool{}
+	value := reflect.ValueOf(*catalog)
+	for index := 0; index < value.NumField(); index++ {
+		field := value.Field(index)
+		if !field.CanInterface() || field.Kind() != reflect.Slice {
+			continue
+		}
+		for item := 0; item < field.Len(); item++ {
+			element := field.Index(item)
+			if element.Kind() != reflect.Struct {
+				break
+			}
+			id := element.FieldByName("ID")
+			if !id.IsValid() || id.Type() != reflect.TypeOf(uuid.UUID{}) {
+				break
+			}
+			known[id.Interface().(uuid.UUID)] = true
+		}
+	}
+	return known
 }
 
 func (catalog *Catalog) objectFieldName(location commonAttributeTarget) string {

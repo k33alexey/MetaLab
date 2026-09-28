@@ -1793,6 +1793,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	if err := catalog.validateCommonPictureFiles(root); err != nil {
 		return err
 	}
+	if err := catalog.validateConditionalSeparationReferences(); err != nil {
+		return err
+	}
 	if err := catalog.validateCommonPictureReferences(); err != nil {
 		return err
 	}

@@ -175,3 +175,177 @@ func TestConditionalSeparationNamesOneBooleanOutsideTheComposition(t *testing.T)
 		})
 	}
 }
+
+// TestCommonAttributeReachesTheSchemaByAutoUse is here because auto-use makes
+// one line of one file change hundreds of tables: an attribute that reaches
+// every object gets a column in every object's table. The prototype does the
+// same - that is how a separator of data areas works - but it is the first
+// setting of ours with that reach, so the reach is checked rather than assumed.
+func TestCommonAttributeReachesTheSchemaByAutoUse(t *testing.T) {
+	t.Parallel()
+	first := CatalogDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Товары", Title: LocalizedText{"ru": "Товары"},
+		Code: CatalogCode{Type: StringType, Length: 9}, DescriptionLength: 100}
+	second := CatalogDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Склады", Title: LocalizedText{"ru": "Склады"},
+		Code: CatalogCode{Type: StringType, Length: 9}, DescriptionLength: 100}
+	excluded := CatalogDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Файлы", Title: LocalizedText{"ru": "Файлы"},
+		Code: CatalogCode{Type: StringType, Length: 9}, DescriptionLength: 100}
+	common := CommonAttributeDefinition{
+		Format: CurrentFormat, ID: uuid.MustNew(), Name: "Организация", Title: LocalizedText{"ru": "Организация"},
+		Types: []Type{{Kind: StringType, Length: 100}}, AutoUse: CommonAttributeAutoUseUse,
+		Content: []CommonAttributeContentItem{{Metadata: excluded.ID, Use: CommonAttributeUseDontUse}},
+	}
+	catalog, err := NewCatalogSnapshotWithCommonAttributes(metadataConfiguration(), nil, nil, nil,
+		[]CatalogDefinition{first, second, excluded}, nil, nil, nil, nil, nil, nil, []CommonAttributeDefinition{common})
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema, err := catalog.ApplicationSchema()
+	if err != nil {
+		t.Fatal(err)
+	}
+	column, err := PhysicalAttributeColumn(common.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	carries := map[string]bool{}
+	for _, definition := range []CatalogDefinition{first, second, excluded} {
+		table, err := PhysicalCatalogTable(definition.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, candidate := range schema.Tables {
+			if candidate.Name != table {
+				continue
+			}
+			for _, field := range candidate.Columns {
+				if field.Name == column {
+					carries[definition.Name] = true
+				}
+			}
+		}
+	}
+	if !carries["Товары"] || !carries["Склады"] {
+		t.Fatalf("the attribute reached the objects and not their tables: %v", carries)
+	}
+	if carries["Файлы"] {
+		t.Fatal("the object the composition excludes got a column all the same")
+	}
+}
+
+// A condition points outside the file it is written in, so what it points at can
+// only be checked with the whole configuration in hand. Three things are checked
+// and each closes a different silence: a condition pointing at nothing separates
+// nothing while saying it separates; a condition on a value that is not boolean
+// has no true or false to read; and a condition living on an object the
+// attribute does not reference is not tied to the data it decides about.
+func TestConditionalSeparationIsResolvedAcrossTheConfiguration(t *testing.T) {
+	t.Parallel()
+	areas := CatalogDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Организации", Title: LocalizedText{"ru": "Организации"},
+		Code: CatalogCode{Type: StringType, Length: 9}, DescriptionLength: 100}
+	separate := Attribute{ID: uuid.MustNew(), Name: "Обособленная", Title: LocalizedText{"ru": "Обособленная"},
+		Types: []Type{{Kind: BooleanType}}}
+	text := Attribute{ID: uuid.MustNew(), Name: "Примечание", Title: LocalizedText{"ru": "Примечание"},
+		Types: []Type{{Kind: StringType, Length: 10}}}
+	areas.Attributes = []Attribute{separate, text}
+	goods := CatalogDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Товары", Title: LocalizedText{"ru": "Товары"},
+		Code: CatalogCode{Type: StringType, Length: 9}, DescriptionLength: 100}
+	flag := Constant{Format: CurrentFormat, ID: uuid.MustNew(), Name: "РазделятьУчет", Title: LocalizedText{"ru": "Разделять учёт"},
+		Types: []Type{{Kind: BooleanType}}}
+	number := Constant{Format: CurrentFormat, ID: uuid.MustNew(), Name: "КурсПоУмолчанию", Title: LocalizedText{"ru": "Курс"},
+		Types: []Type{{Kind: NumberType, Precision: 10, Scale: 2}}}
+
+	attribute := func(separation *ConditionalSeparation, types ...Type) CommonAttributeDefinition {
+		if len(types) == 0 {
+			types = []Type{{Kind: CatalogType, Reference: &areas.ID}}
+		}
+		return CommonAttributeDefinition{
+			Format: CurrentFormat, ID: uuid.MustNew(), Name: "Организация", Title: LocalizedText{"ru": "Организация"},
+			Types: types, Content: []CommonAttributeContentItem{
+				{Metadata: goods.ID, Use: CommonAttributeUseUse, ConditionalSeparation: separation},
+			},
+		}
+	}
+	load := func(common CommonAttributeDefinition) error {
+		_, err := NewCatalogSnapshotWithCommonAttributes(metadataConfiguration(), []Constant{flag, number}, nil, nil,
+			[]CatalogDefinition{areas, goods}, nil, nil, nil, nil, nil, nil, []CommonAttributeDefinition{common})
+		return err
+	}
+
+	if err := load(attribute(&ConditionalSeparation{Constant: &flag.ID})); err != nil {
+		t.Fatalf("a boolean constant was refused: %v", err)
+	}
+	if err := load(attribute(&ConditionalSeparation{Object: &areas.ID, Attribute: &separate.ID})); err != nil {
+		t.Fatalf("a boolean attribute of the referenced object was refused: %v", err)
+	}
+
+	unknown := uuid.MustNew()
+	cases := map[string]struct {
+		separation *ConditionalSeparation
+		types      []Type
+		message    string
+	}{
+		"неизвестная константа":       {&ConditionalSeparation{Constant: &unknown}, nil, "unknown constant"},
+		"константа не булева":         {&ConditionalSeparation{Constant: &number.ID}, nil, "not boolean"},
+		"неизвестный объект":          {&ConditionalSeparation{Object: &unknown, Attribute: &separate.ID}, nil, "unknown object"},
+		"нет такого реквизита":        {&ConditionalSeparation{Object: &areas.ID, Attribute: &unknown}, nil, "does not have"},
+		"реквизит не булев":           {&ConditionalSeparation{Object: &areas.ID, Attribute: &text.ID}, nil, "not boolean"},
+		"объект не в типах реквизита": {&ConditionalSeparation{Object: &areas.ID, Attribute: &separate.ID}, []Type{{Kind: StringType, Length: 100}}, "reference is not among the types"},
+	}
+	for name, testCase := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := load(attribute(testCase.separation, testCase.types...))
+			if err == nil {
+				t.Fatal("the condition was accepted")
+			}
+			if !strings.Contains(err.Error(), testCase.message) {
+				t.Fatalf("error = %q, expected it to name %q", err, testCase.message)
+			}
+		})
+	}
+}
+
+// The composition of a real configuration names things that cannot hold a field
+// at all. Among the six common attributes of the demonstration configuration the
+// items name 142 information registers and 50 catalogs - which do take a field -
+// and also 138 constants, 70 scheduled jobs, 3 charts of characteristic types
+// and one exchange plan, which do not: a constant is one value, a scheduled job
+// has no table. For those, being in the composition means being separated by the
+// data area, which is the half of the mechanism we carry and do not execute.
+//
+// The defect this catches is the one that would hurt most: refusing such a
+// composition outright, so a real configuration could not be read at all.
+func TestCommonAttributeCompositionMayNameWhatCannotHoldAField(t *testing.T) {
+	t.Parallel()
+	goods := CatalogDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Товары", Title: LocalizedText{"ru": "Товары"},
+		Code: CatalogCode{Type: StringType, Length: 9}, DescriptionLength: 100}
+	flag := Constant{Format: CurrentFormat, ID: uuid.MustNew(), Name: "РазделятьУчет", Title: LocalizedText{"ru": "Разделять учёт"},
+		Types: []Type{{Kind: BooleanType}}}
+	common := CommonAttributeDefinition{
+		Format: CurrentFormat, ID: uuid.MustNew(), Name: "Организация", Title: LocalizedText{"ru": "Организация"},
+		Types: []Type{{Kind: StringType, Length: 100}},
+		Content: []CommonAttributeContentItem{
+			{Metadata: goods.ID, Use: CommonAttributeUseUse},
+			{Metadata: flag.ID, Use: CommonAttributeUseUse},
+		},
+	}
+	catalog, err := NewCatalogSnapshotWithCommonAttributes(metadataConfiguration(), []Constant{flag}, nil, nil,
+		[]CatalogDefinition{goods}, nil, nil, nil, nil, nil, nil, []CommonAttributeDefinition{common})
+	if err != nil {
+		t.Fatalf("a composition naming a constant was refused: %v", err)
+	}
+	loaded, ok := catalog.CatalogDefinition("Товары")
+	if !ok || len(loaded.Attributes) != 1 {
+		t.Fatalf("the catalog of the composition did not get the field: %+v", loaded.Attributes)
+	}
+
+	// A name that belongs to nothing is still an error: it separates nothing and
+	// gives the field to nobody, while reading as though it did both.
+	dangling := common
+	dangling.Content = append([]CommonAttributeContentItem{}, common.Content...)
+	dangling.Content[1].Metadata = uuid.MustNew()
+	_, err = NewCatalogSnapshotWithCommonAttributes(metadataConfiguration(), []Constant{flag}, nil, nil,
+		[]CatalogDefinition{goods}, nil, nil, nil, nil, nil, nil, []CommonAttributeDefinition{dangling})
+	if err == nil || !strings.Contains(err.Error(), "unknown object") {
+		t.Fatalf("error = %v", err)
+	}
+}
