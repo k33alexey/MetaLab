@@ -141,14 +141,14 @@ func (catalog *Catalog) PhysicalNames() map[string]string {
 	for _, item := range catalog.InformationRegisters {
 		owner := "РегистрСведений." + item.Name
 		addTable(item.ID, owner)
-		addAttributes(owner, item.Dimensions)
+		addAttributes(owner, RegisterDimensionAttributes(item.Dimensions))
 		addAttributes(owner, item.Resources)
 		addAttributes(owner, item.Attributes)
 	}
 	for _, item := range catalog.AccumulationRegisters {
 		owner := "РегистрНакопления." + item.Name
 		addTable(item.ID, owner)
-		addAttributes(owner, item.Dimensions)
+		addAttributes(owner, RegisterDimensionAttributes(item.Dimensions))
 		addAttributes(owner, item.Resources)
 		addAttributes(owner, item.Attributes)
 	}

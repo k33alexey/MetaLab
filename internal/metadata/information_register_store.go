@@ -329,7 +329,7 @@ func (repository *InformationRegisterRepository) normalizeSetIdentity(set *Infor
 	filter := cloneInformationRegisterFilter(set.Filter)
 	known := make(map[uuid.UUID]Attribute, len(definition.Dimensions))
 	for _, dimension := range definition.Dimensions {
-		known[dimension.ID] = dimension
+		known[dimension.ID] = dimension.Attribute
 		value, present := filter.Dimensions[dimension.ID]
 		if !present {
 			continue
@@ -389,7 +389,7 @@ func (repository *InformationRegisterRepository) normalizeRecord(definition Info
 	} else {
 		record.Recorder, record.LineNumber, record.Active = DocumentReference{}, 0, true
 	}
-	record.Dimensions, err = repository.catalog.normalizeAttributes(definition.Name, definition.Dimensions, record.Dimensions)
+	record.Dimensions, err = repository.catalog.normalizeAttributes(definition.Name, RegisterDimensionAttributes(definition.Dimensions), record.Dimensions)
 	if err != nil {
 		return fmt.Errorf("information register %s record %d dimensions: %w", definition.Name, line, err)
 	}
@@ -466,7 +466,7 @@ func (repository *InformationRegisterRepository) insertRecords(ctx context.Conte
 		groups := []struct {
 			definitions []Attribute
 			values      map[uuid.UUID]Value
-		}{{definition.Dimensions, record.Dimensions}, {definition.Resources, record.Resources}, {definition.Attributes, record.Attributes}}
+		}{{RegisterDimensionAttributes(definition.Dimensions), record.Dimensions}, {definition.Resources, record.Resources}, {definition.Attributes, record.Attributes}}
 		for _, group := range groups {
 			for _, field := range group.definitions {
 				value, present := group.values[field.ID]
@@ -667,7 +667,7 @@ func (repository *InformationRegisterRepository) decodeRecord(definition Informa
 	groups := []struct {
 		definitions []Attribute
 		values      map[uuid.UUID]Value
-	}{{definition.Dimensions, record.Dimensions}, {definition.Resources, record.Resources}, {definition.Attributes, record.Attributes}}
+	}{{RegisterDimensionAttributes(definition.Dimensions), record.Dimensions}, {definition.Resources, record.Resources}, {definition.Attributes, record.Attributes}}
 	for _, group := range groups {
 		for _, field := range group.definitions {
 			column, _ := PhysicalAttributeColumn(field.ID)

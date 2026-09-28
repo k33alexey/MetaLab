@@ -1316,7 +1316,7 @@ func objectDataGroups(loaded *metadata.Catalog, kind, language string, languages
 				definition, _ = loaded.InformationRegisterByID(id)
 			}
 			return []Node{
-				attributeGroupNode(id.String()+":dimensions", "Измерения", definition.Dimensions, descriptionPath, language, languages),
+				attributeGroupNode(id.String()+":dimensions", "Измерения", metadata.RegisterDimensionAttributes(definition.Dimensions), descriptionPath, language, languages),
 				attributeGroupNode(id.String()+":resources", "Ресурсы", definition.Resources, descriptionPath, language, languages),
 				attributeGroupNode(id.String()+":attributes", "Реквизиты", definition.Attributes, descriptionPath, language, languages),
 			}
@@ -1328,7 +1328,7 @@ func objectDataGroups(loaded *metadata.Catalog, kind, language string, languages
 				definition, _ = loaded.AccumulationRegisterByID(id)
 			}
 			return []Node{
-				attributeGroupNode(id.String()+":dimensions", "Измерения", definition.Dimensions, descriptionPath, language, languages),
+				attributeGroupNode(id.String()+":dimensions", "Измерения", metadata.RegisterDimensionAttributes(definition.Dimensions), descriptionPath, language, languages),
 				attributeGroupNode(id.String()+":resources", "Ресурсы", definition.Resources, descriptionPath, language, languages),
 				attributeGroupNode(id.String()+":attributes", "Реквизиты", definition.Attributes, descriptionPath, language, languages),
 			}

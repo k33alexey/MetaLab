@@ -106,7 +106,7 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 	register := metadata.AccumulationRegisterDefinition{
 		Format: 1, ID: registerID, Name: "ОстаткиТоваров", Title: metadata.LocalizedText{"ru": "Остатки товаров"},
 		Kind:       metadata.AccumulationRegisterBalance,
-		Dimensions: []metadata.Attribute{{ID: productDimensionID, Name: "Товар", Title: metadata.LocalizedText{"ru": "Товар"}, FillChecking: metadata.ShowFillingError, Types: []metadata.Type{{Kind: metadata.StringType, Length: 100}}}},
+		Dimensions: []metadata.RegisterDimension{{Attribute: metadata.Attribute{ID: productDimensionID, Name: "Товар", Title: metadata.LocalizedText{"ru": "Товар"}, FillChecking: metadata.ShowFillingError, Types: []metadata.Type{{Kind: metadata.StringType, Length: 100}}}}},
 		Resources:  []metadata.Attribute{{ID: quantityResourceID, Name: "Количество", Title: metadata.LocalizedText{"ru": "Количество"}, FillChecking: metadata.ShowFillingError, Types: []metadata.Type{{Kind: metadata.NumberType, Precision: 15, Scale: 3}}}},
 	}
 	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "WriteDemo", Title: project.LocalizedText{"ru": "Write demo"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: project.LocalizedText{"ru": "Русский"}, Code: "ru"}}}

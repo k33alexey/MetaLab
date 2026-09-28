@@ -53,7 +53,7 @@ type AccumulationRegisterDefinition struct {
 	// switched on in the working database, and an alternative to totals rather
 	// than a layer above them.
 	Aggregates         []AccumulationRegisterAggregate `yaml:"aggregates,omitempty" json:"aggregates,omitempty"`
-	Dimensions         []Attribute                     `yaml:"dimensions,omitempty"`
+	Dimensions         []RegisterDimension             `yaml:"dimensions,omitempty"`
 	Resources          []Attribute                     `yaml:"resources"`
 	Attributes         []Attribute                     `yaml:"attributes,omitempty"`
 	StandardAttributes []StandardAttribute             `yaml:"standard_attributes,omitempty"`
@@ -73,7 +73,11 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 	if value.Kind != AccumulationRegisterBalance && value.Kind != AccumulationRegisterTurnover {
 		issues = append(issues, "kind must be balance or turnover")
 	}
-	issues = append(issues, validateAttributes("dimensions", value.Dimensions, configuration, reservedAccumulationRegisterName)...)
+	issues = append(issues, validateAttributes("dimensions", RegisterDimensionAttributes(value.Dimensions), configuration, reservedAccumulationRegisterName)...)
+	for index, dimension := range value.Dimensions {
+		issues = append(issues, validateRegisterDimension(fmt.Sprintf("dimensions[%d]", index), dimension,
+			accumulationRegisterDimensions(value.Kind == AccumulationRegisterBalance))...)
+	}
 	issues = append(issues, validateAttributes("resources", value.Resources, configuration, reservedAccumulationRegisterName)...)
 	for index, resource := range value.Resources {
 		issues = append(issues, validateResourceIndexing(fmt.Sprintf("resources[%d]", index), resource.Indexing)...)
@@ -81,14 +85,14 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 	for _, group := range []struct {
 		path   string
 		fields []Attribute
-	}{{"dimensions", value.Dimensions}, {"resources", value.Resources}, {"attributes", value.Attributes}} {
+	}{{"dimensions", RegisterDimensionAttributes(value.Dimensions)}, {"resources", value.Resources}, {"attributes", value.Attributes}} {
 		for index, field := range group.fields {
 			issues = append(issues, validateMovementFieldStorage(fmt.Sprintf("%s[%d]", group.path, index), field)...)
 		}
 	}
 	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, reservedAccumulationRegisterName)...)
 	registerFields := []fieldGroup{
-		{"dimensions", value.Dimensions}, {"resources", value.Resources}, {"attributes", value.Attributes},
+		{"dimensions", RegisterDimensionAttributes(value.Dimensions)}, {"resources", value.Resources}, {"attributes", value.Attributes},
 	}
 	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
 	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accumulationStandardFields(value.Kind), configuration)...)
@@ -107,7 +111,7 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 	for _, group := range []struct {
 		kind   string
 		fields []Attribute
-	}{{"dimensions", value.Dimensions}, {"resources", value.Resources}, {"attributes", value.Attributes}} {
+	}{{"dimensions", RegisterDimensionAttributes(value.Dimensions)}, {"resources", value.Resources}, {"attributes", value.Attributes}} {
 		for _, field := range group.fields {
 			folded := strings.ToLower(field.Name)
 			if previous, exists := fieldNames[folded]; exists {
@@ -125,9 +129,9 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 			issues = append(issues, fmt.Sprintf("resources[%d].types must contain exactly one number or numeric defined type", index))
 		}
 	}
-	issues = append(issues, validateAccumulationAggregates(value.Aggregates, value.Dimensions)...)
+	issues = append(issues, validateAccumulationAggregates(value.Aggregates, RegisterDimensionAttributes(value.Dimensions))...)
 	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, AccumulationRegisterKind,
-		recordIndexTables(accumulationStandardFields(value.Kind), attributeNames(value.Dimensions),
+		recordIndexTables(accumulationStandardFields(value.Kind), attributeNames(RegisterDimensionAttributes(value.Dimensions)),
 			attributeNames(value.Resources), attributeNames(value.Attributes)))...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
@@ -153,7 +157,7 @@ func reservedAccumulationRegisterName(name string) bool {
 func cloneAccumulationRegisterDefinition(value AccumulationRegisterDefinition) AccumulationRegisterDefinition {
 	value.Title = cloneTitle(value.Title)
 	value.Aggregates = cloneAccumulationAggregates(value.Aggregates)
-	value.Dimensions = cloneAttributes(value.Dimensions)
+	value.Dimensions = cloneRegisterDimensions(value.Dimensions)
 	value.Resources = cloneAttributes(value.Resources)
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.Forms = cloneFormSet(value.Forms)
@@ -167,7 +171,7 @@ func cloneAccumulationRegisterDefinition(value AccumulationRegisterDefinition) A
 
 func accumulationRegisterFields(value AccumulationRegisterDefinition) []Attribute {
 	result := make([]Attribute, 0, len(value.Dimensions)+len(value.Resources)+len(value.Attributes))
-	result = append(result, value.Dimensions...)
+	result = append(result, RegisterDimensionAttributes(value.Dimensions)...)
 	result = append(result, value.Resources...)
 	result = append(result, value.Attributes...)
 	return result

@@ -324,7 +324,7 @@ func (repository *AccumulationRegisterRepository) normalizeRecord(definition Acc
 	} else {
 		record.MovementKind = 0
 	}
-	record.Dimensions, err = repository.catalog.normalizeAttributes(definition.Name, definition.Dimensions, record.Dimensions)
+	record.Dimensions, err = repository.catalog.normalizeAttributes(definition.Name, RegisterDimensionAttributes(definition.Dimensions), record.Dimensions)
 	if err != nil {
 		return fmt.Errorf("accumulation register %s record %d dimensions: %w", definition.Name, line, err)
 	}
@@ -403,7 +403,7 @@ func (repository *AccumulationRegisterRepository) insertMovements(ctx context.Co
 			fields []Attribute
 			values map[uuid.UUID]Value
 		}{
-			{definition.Dimensions, record.Dimensions}, {definition.Resources, record.Resources}, {definition.Attributes, record.Attributes},
+			{RegisterDimensionAttributes(definition.Dimensions), record.Dimensions}, {definition.Resources, record.Resources}, {definition.Attributes, record.Attributes},
 		} {
 			for _, field := range group.fields {
 				value, present := group.values[field.ID]
@@ -510,7 +510,7 @@ func (repository *AccumulationRegisterRepository) decodeMovement(definition Accu
 		fields []Attribute
 		values map[uuid.UUID]Value
 	}{
-		{definition.Dimensions, record.Dimensions}, {definition.Resources, record.Resources}, {definition.Attributes, record.Attributes},
+		{RegisterDimensionAttributes(definition.Dimensions), record.Dimensions}, {definition.Resources, record.Resources}, {definition.Attributes, record.Attributes},
 	} {
 		for _, field := range group.fields {
 			column, _ := PhysicalAttributeColumn(field.ID)
@@ -1606,7 +1606,7 @@ func (repository *AccumulationRegisterRepository) normalizeDimensions(definition
 	result := mapsCloneValues(dimensions)
 	known := map[uuid.UUID]Attribute{}
 	for _, dimension := range definition.Dimensions {
-		known[dimension.ID] = dimension
+		known[dimension.ID] = dimension.Attribute
 		value, present := result[dimension.ID]
 		if !present {
 			continue

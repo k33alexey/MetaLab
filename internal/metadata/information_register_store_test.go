@@ -32,7 +32,7 @@ func TestInformationRegisterPeriodNormalizationAndKeys(t *testing.T) {
 	registerID, dimensionID := uuid.MustNew(), uuid.MustNew()
 	definition := InformationRegisterDefinition{
 		ID: registerID, WriteMode: InformationRegisterIndependent, Periodicity: InformationRegisterPeriodDay,
-		Dimensions: []Attribute{{ID: dimensionID}},
+		Dimensions: []RegisterDimension{{Attribute: Attribute{ID: dimensionID}}},
 	}
 	first := InformationRegisterRecord{Period: tests[1].want, Dimensions: map[uuid.UUID]Value{dimensionID: {Kind: ObjectUUIDType, Data: uuid.MustNew().String()}}}
 	second := first
@@ -78,7 +78,7 @@ func TestRecorderInformationRegisterHasBothSemanticAndRecorderKeys(t *testing.T)
 	}
 	definition := InformationRegisterDefinition{
 		ID: registerID, WriteMode: InformationRegisterRecorder, Periodicity: InformationRegisterPeriodDay,
-		Dimensions: []Attribute{{ID: dimensionID}},
+		Dimensions: []RegisterDimension{{Attribute: Attribute{ID: dimensionID}}},
 	}
 	otherLineAndRecorder := record
 	otherLineAndRecorder.LineNumber = 2
@@ -127,7 +127,7 @@ func TestInformationRegisterAssignsLineAfterHighestExistingLine(t *testing.T) {
 	recorder := DocumentReference{DocumentID: documentID, ObjectID: uuid.MustNew()}
 	definition := InformationRegisterDefinition{
 		ID: registerID, Name: "Движения", WriteMode: InformationRegisterRecorder, Periodicity: InformationRegisterPeriodRecorderPosition,
-		Dimensions: []Attribute{{ID: dimensionID, Name: "Ключ", FillChecking: ShowFillingError, Types: []Type{{Kind: ObjectUUIDType}}}},
+		Dimensions: []RegisterDimension{{Attribute: Attribute{ID: dimensionID, Name: "Ключ", FillChecking: ShowFillingError, Types: []Type{{Kind: ObjectUUIDType}}}}},
 	}
 	firstPeriod := time.Date(2026, 9, 7, 10, 0, 0, 0, time.UTC)
 	secondPeriod := firstPeriod.Add(time.Second)

@@ -64,7 +64,7 @@ type InformationRegisterDefinition struct {
 
 	WriteMode          InformationRegisterWriteMode   `yaml:"write_mode"`
 	Periodicity        InformationRegisterPeriodicity `yaml:"periodicity"`
-	Dimensions         []Attribute                    `yaml:"dimensions,omitempty"`
+	Dimensions         []RegisterDimension            `yaml:"dimensions,omitempty"`
 	Resources          []Attribute                    `yaml:"resources,omitempty"`
 	Attributes         []Attribute                    `yaml:"attributes,omitempty"`
 	StandardAttributes []StandardAttribute            `yaml:"standard_attributes,omitempty"`
@@ -90,7 +90,7 @@ func DecodeInformationRegister(source string, reader io.Reader, configuration pr
 	issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
 	issues = append(issues, validateDataHistory(value.DataHistorySettings)...)
 	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, InformationRegisterKind,
-		recordIndexTables(standardFieldsOfKind(InformationRegisterKind), attributeNames(value.Dimensions),
+		recordIndexTables(standardFieldsOfKind(InformationRegisterKind), attributeNames(RegisterDimensionAttributes(value.Dimensions)),
 			attributeNames(value.Resources), attributeNames(value.Attributes)))...)
 	switch value.WriteMode {
 	case InformationRegisterIndependent, InformationRegisterRecorder:
@@ -107,11 +107,14 @@ func DecodeInformationRegister(source string, reader io.Reader, configuration pr
 	default:
 		issues = append(issues, "periodicity must be none, second, day, month, quarter, year or recorder-position")
 	}
-	issues = append(issues, validateAttributes("dimensions", value.Dimensions, configuration, reservedInformationRegisterName)...)
+	issues = append(issues, validateAttributes("dimensions", RegisterDimensionAttributes(value.Dimensions), configuration, reservedInformationRegisterName)...)
+	for index, dimension := range value.Dimensions {
+		issues = append(issues, validateRegisterDimension(fmt.Sprintf("dimensions[%d]", index), dimension, informationRegisterDimensions())...)
+	}
 	issues = append(issues, validateAttributes("resources", value.Resources, configuration, reservedInformationRegisterName)...)
 	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, reservedInformationRegisterName)...)
 	registerFields := []fieldGroup{
-		{"dimensions", value.Dimensions}, {"resources", value.Resources}, {"attributes", value.Attributes},
+		{"dimensions", RegisterDimensionAttributes(value.Dimensions)}, {"resources", value.Resources}, {"attributes", value.Attributes},
 	}
 	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
 	issues = append(issues, validateRecordPresentations(value.RecordPresentations, configuration)...)
@@ -133,7 +136,7 @@ func DecodeInformationRegister(source string, reader io.Reader, configuration pr
 	for _, group := range []struct {
 		kind   string
 		fields []Attribute
-	}{{"dimensions", value.Dimensions}, {"resources", value.Resources}, {"attributes", value.Attributes}} {
+	}{{"dimensions", RegisterDimensionAttributes(value.Dimensions)}, {"resources", value.Resources}, {"attributes", value.Attributes}} {
 		for _, field := range group.fields {
 			folded := strings.ToLower(field.Name)
 			if previous, exists := fieldNames[folded]; exists {
@@ -166,7 +169,7 @@ func reservedInformationRegisterName(name string) bool {
 
 func cloneInformationRegisterDefinition(value InformationRegisterDefinition) InformationRegisterDefinition {
 	value.Title = cloneTitle(value.Title)
-	value.Dimensions = cloneAttributes(value.Dimensions)
+	value.Dimensions = cloneRegisterDimensions(value.Dimensions)
 	value.Resources = cloneAttributes(value.Resources)
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.Forms = cloneFormSet(value.Forms)
@@ -181,7 +184,7 @@ func cloneInformationRegisterDefinition(value InformationRegisterDefinition) Inf
 
 func informationRegisterFields(value InformationRegisterDefinition) []Attribute {
 	result := make([]Attribute, 0, len(value.Dimensions)+len(value.Resources)+len(value.Attributes))
-	result = append(result, value.Dimensions...)
+	result = append(result, RegisterDimensionAttributes(value.Dimensions)...)
 	result = append(result, value.Resources...)
 	result = append(result, value.Attributes...)
 	return result

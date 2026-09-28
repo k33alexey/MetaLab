@@ -237,7 +237,7 @@ func (runtime *Runtime) setAccumulationRegisterDataLockValue(element *dataLockEl
 	element.mu.RLock()
 	definition := cloneAccumulationRegisterDefinition(*element.accumulationRegister)
 	element.mu.RUnlock()
-	dimension, ok := findCatalogAttribute(definition.Dimensions, field)
+	dimension, ok := findCatalogAttribute(RegisterDimensionAttributes(definition.Dimensions), field)
 	if !ok {
 		return fmt.Errorf("accumulation register data lock field %q is not supported", field)
 	}
@@ -281,7 +281,7 @@ func (runtime *Runtime) setInformationRegisterDataLockValue(element *dataLockEle
 		element.mu.Unlock()
 		return nil
 	}
-	dimension, ok := findCatalogAttribute(definition.Dimensions, field)
+	dimension, ok := findCatalogAttribute(RegisterDimensionAttributes(definition.Dimensions), field)
 	if !ok {
 		return fmt.Errorf("information register data lock field %q is not supported", field)
 	}

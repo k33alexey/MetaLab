@@ -52,12 +52,12 @@ func TestInformationRegisterRepositoryIntegration(t *testing.T) {
 		InformationRegisters: []InformationRegisterDefinition{
 			{
 				ID: independentID, Name: "КурсыВалют", WriteMode: InformationRegisterIndependent, Periodicity: InformationRegisterPeriodDay,
-				Dimensions: []Attribute{{ID: currencyID, Name: "Валюта", FillChecking: ShowFillingError, Types: []Type{{Kind: ObjectUUIDType}}}},
+				Dimensions: []RegisterDimension{{Attribute: Attribute{ID: currencyID, Name: "Валюта", FillChecking: ShowFillingError, Types: []Type{{Kind: ObjectUUIDType}}}}},
 				Resources:  []Attribute{{ID: rateID, Name: "Курс", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 4}}}},
 			},
 			{
 				ID: recorderID, Name: "Цены", WriteMode: InformationRegisterRecorder, Periodicity: InformationRegisterPeriodRecorderPosition,
-				Dimensions: []Attribute{{ID: productID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: ObjectUUIDType}}}},
+				Dimensions: []RegisterDimension{{Attribute: Attribute{ID: productID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: ObjectUUIDType}}}}},
 				Resources:  []Attribute{{ID: priceID, Name: "Цена", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}},
 			},
 		},

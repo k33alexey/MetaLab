@@ -38,7 +38,7 @@ func TestAccumulationRegisterSchemaHasMovementsAndTotals(t *testing.T) {
 	registerID, dimensionID, resourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	catalog := &Catalog{AccumulationRegisters: []AccumulationRegisterDefinition{{
 		ID: registerID, Name: "Остатки", Kind: AccumulationRegisterBalance,
-		Dimensions: []Attribute{{ID: dimensionID, Name: "Склад", Types: []Type{{Kind: StringType, Length: 50}}}},
+		Dimensions: []RegisterDimension{{Attribute: Attribute{ID: dimensionID, Name: "Склад", Types: []Type{{Kind: StringType, Length: 50}}}}},
 		Resources:  []Attribute{{ID: resourceID, Name: "Количество", Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}},
 	}}}
 	schema, err := catalog.ApplicationSchema()

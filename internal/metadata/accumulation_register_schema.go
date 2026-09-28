@@ -87,10 +87,13 @@ func (catalog *Catalog) accumulationRegisterTables(definition AccumulationRegist
 		},
 	}
 	for _, dimension := range definition.Dimensions {
-		if err := catalog.appendInformationRegisterField(&movements, dimension, true); err != nil {
+		if err := catalog.appendInformationRegisterField(&movements, dimension.Attribute, true); err != nil {
 			return schemadiff.Table{}, schemadiff.Table{}, fmt.Errorf("accumulation register %s dimension %s: %w", definition.Name, dimension.Name, err)
 		}
-		totalDimension := dimension
+		// The totals keep the dimension as a plain column and never index it:
+		// a row of totals is found by its combination, and the combination is
+		// hashed into a key of its own - see the primary key of the table.
+		totalDimension := dimension.Attribute
 		totalDimension.Indexing = DontIndex
 		if err := catalog.appendAttributeSchema(&totals, totalDimension); err != nil {
 			return schemadiff.Table{}, schemadiff.Table{}, fmt.Errorf("accumulation register %s total dimension %s: %w", definition.Name, dimension.Name, err)

@@ -1435,7 +1435,7 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 			result.addStored("НомерСтроки", querySourceColumnSQL(sqlAlias, "line_no"), []Type{{Kind: NumberType, Precision: 10}}, "LineNumber")
 			result.addStored("Активность", querySourceColumnSQL(sqlAlias, "active"), []Type{{Kind: BooleanType}}, "Active")
 		}
-		if err := runtime.addQueryAttributes(&result, appendQueryAttributes(definition.Dimensions, definition.Resources, definition.Attributes)); err != nil {
+		if err := runtime.addQueryAttributes(&result, appendQueryAttributes(RegisterDimensionAttributes(definition.Dimensions), definition.Resources, definition.Attributes)); err != nil {
 			return querySource{}, err
 		}
 	case queryName(kind, "РегистрНакопления", "AccumulationRegister"):
@@ -1457,7 +1457,7 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		if definition.Kind == AccumulationRegisterBalance {
 			result.add(queryColumn{name: "ВидДвижения", sql: querySourceColumnSQL(sqlAlias, "movement_kind"), kind: queryMovementKindColumn, storage: attributeStorage{sqlType: "smallint", valueType: NumberType}}, "MovementKind")
 		}
-		if err := runtime.addQueryAttributes(&result, appendQueryAttributes(definition.Dimensions, definition.Resources, definition.Attributes)); err != nil {
+		if err := runtime.addQueryAttributes(&result, appendQueryAttributes(RegisterDimensionAttributes(definition.Dimensions), definition.Resources, definition.Attributes)); err != nil {
 			return querySource{}, err
 		}
 	default:

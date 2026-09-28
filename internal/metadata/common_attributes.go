@@ -763,12 +763,12 @@ func (catalog *Catalog) objectFields(location commonAttributeTarget) []Attribute
 	case "information register":
 		definition := catalog.InformationRegisters[location.index]
 		fields = append(fields, definition.Attributes...)
-		fields = append(fields, definition.Dimensions...)
+		fields = append(fields, RegisterDimensionAttributes(definition.Dimensions)...)
 		fields = append(fields, definition.Resources...)
 	case "accumulation register":
 		definition := catalog.AccumulationRegisters[location.index]
 		fields = append(fields, definition.Attributes...)
-		fields = append(fields, definition.Dimensions...)
+		fields = append(fields, RegisterDimensionAttributes(definition.Dimensions)...)
 		fields = append(fields, definition.Resources...)
 	case "business process":
 		definition := catalog.BusinessProcesses[location.index]

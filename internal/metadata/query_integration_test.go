@@ -51,7 +51,7 @@ func TestBasicQueryLanguageIntegration(t *testing.T) {
 		}},
 		AccumulationRegisters: []AccumulationRegisterDefinition{{
 			ID: accumulationID, Name: "ТоварыНаСкладах", Kind: AccumulationRegisterBalance,
-			Dimensions: []Attribute{{ID: warehouseID, Name: "Склад", Types: []Type{{Kind: StringType, Length: 50}}}},
+			Dimensions: []RegisterDimension{{Attribute: Attribute{ID: warehouseID, Name: "Склад", Types: []Type{{Kind: StringType, Length: 50}}}}},
 			Resources:  []Attribute{{ID: quantityID, Name: "Количество", Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}},
 		}},
 		catalogByName: map[string]int{"товары": 0}, catalogByID: map[uuid.UUID]int{catalogID: 0},

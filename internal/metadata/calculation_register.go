@@ -33,6 +33,9 @@ type CalculationRegisterDimension struct {
 	// Attribute is the whole common set - see AccountingRegisterField for why a
 	// field of a register carries it entire.
 	Attribute `yaml:",inline" json:",inline"`
+	// DenyIncompleteValues refuses an empty value in this dimension - see the
+	// same property on a dimension of the other three registers.
+	DenyIncompleteValues bool `yaml:"deny_incomplete_values,omitempty" json:"denyIncompleteValues,omitempty"`
 	// Base says a record is tied to its base by this dimension. Without it
 	// there is nothing to say whose base to gather, and one person's salary
 	// would be computed from everybody's bonuses.

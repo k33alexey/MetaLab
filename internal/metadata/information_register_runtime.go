@@ -213,7 +213,7 @@ func (runtime *Runtime) informationRegisterDimensionsFromBSL(definition Informat
 		return nil, fmt.Errorf("information register slice filter must be a Structure")
 	}
 	for _, name := range names {
-		dimension, ok := findCatalogAttribute(definition.Dimensions, name)
+		dimension, ok := findCatalogAttribute(RegisterDimensionAttributes(definition.Dimensions), name)
 		if !ok {
 			return nil, fmt.Errorf("information register %s has no dimension %s", definition.Name, name)
 		}
@@ -267,7 +267,7 @@ func (runtime *Runtime) getInformationRegisterProperty(ctx context.Context, valu
 		case propertyName(name, "Регистратор", "Recorder") && object.owner.definition.WriteMode == InformationRegisterRecorder:
 			item.system = "recorder"
 		default:
-			dimension, ok := findCatalogAttribute(object.owner.definition.Dimensions, name)
+			dimension, ok := findCatalogAttribute(RegisterDimensionAttributes(object.owner.definition.Dimensions), name)
 			if !ok {
 				return bytecode.Undefined(), true, fmt.Errorf("information register %s has no filter field %s", object.owner.definition.Name, name)
 			}
@@ -477,7 +477,7 @@ func informationRegisterRecordField(definition InformationRegisterDefinition, re
 	for _, group := range []struct {
 		fields []Attribute
 		values map[uuid.UUID]Value
-	}{{definition.Dimensions, record.Dimensions}, {definition.Resources, record.Resources}, {definition.Attributes, record.Attributes}} {
+	}{{RegisterDimensionAttributes(definition.Dimensions), record.Dimensions}, {definition.Resources, record.Resources}, {definition.Attributes, record.Attributes}} {
 		if field, ok := findCatalogAttribute(group.fields, name); ok {
 			return field, group.values, true
 		}

@@ -62,12 +62,12 @@ func TestApplicationRoleBypassAttemptsIntegration(t *testing.T) {
 	}
 	accumulation := AccumulationRegisterDefinition{
 		ID: accumulationID, Name: "Остатки", Kind: AccumulationRegisterBalance,
-		Dimensions: []Attribute{{ID: accumulationProductID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 50}}}},
+		Dimensions: []RegisterDimension{{Attribute: Attribute{ID: accumulationProductID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 50}}}}},
 		Resources:  []Attribute{{ID: accumulationQuantityID, Name: "Количество", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}},
 	}
 	information := InformationRegisterDefinition{
 		ID: informationID, Name: "ПоследняяЦена", WriteMode: InformationRegisterIndependent, Periodicity: InformationRegisterPeriodNone,
-		Dimensions: []Attribute{{ID: priceProductID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 50}}}},
+		Dimensions: []RegisterDimension{{Attribute: Attribute{ID: priceProductID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 50}}}}},
 		Resources:  []Attribute{{ID: priceValueID, Name: "Цена", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}},
 	}
 	documentFields := []FieldPermission{

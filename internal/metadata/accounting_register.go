@@ -30,7 +30,13 @@ type AccountingRegisterField struct {
 	// matter of applicability, not of a different type. A field of an
 	// accounting register that carried only a name, a type and indexing was a
 	// field the editor could not offer a format or a choice form for.
-	Attribute                  `yaml:",inline" json:",inline"`
+	Attribute `yaml:",inline" json:",inline"`
+	// DenyIncompleteValues refuses an empty value, and it belongs to a dimension
+	// of all four registers: «используется для измерений регистра бухгалтерии,
+	// регистра накопления, регистра расчета, регистра сведений». A resource
+	// holds an amount and is refused it here, the same way it is refused an
+	// index.
+	DenyIncompleteValues       bool       `yaml:"deny_incomplete_values,omitempty" json:"denyIncompleteValues,omitempty"`
 	Balance                    bool       `yaml:"balance,omitempty" json:"balance,omitempty"`
 	AccountingFlag             *uuid.UUID `yaml:"accounting_flag,omitempty" json:"accountingFlag,omitempty"`
 	ExtDimensionAccountingFlag *uuid.UUID `yaml:"ext_dimension_accounting_flag,omitempty" json:"extDimensionAccountingFlag,omitempty"`
@@ -132,6 +138,9 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 			}
 			if !group.dimension {
 				issues = append(issues, validateResourceIndexing(prefix, field.Indexing)...)
+				if field.DenyIncompleteValues {
+					issues = append(issues, prefix+".deny_incomplete_values belongs to a dimension: a resource holds an amount")
+				}
 			}
 			issues = append(issues, validateMovementFieldStorage(prefix, field.Attribute)...)
 		}

@@ -77,7 +77,7 @@ func newAccumulationTotalsFixture(ctx context.Context, t *testing.T, splitting b
 		}},
 		AccumulationRegisters: []AccumulationRegisterDefinition{{
 			ID: registerID, Name: "Продажи", Kind: AccumulationRegisterTurnover, AllowTotalsSplitting: splitting,
-			Dimensions: []Attribute{{ID: productID, Name: "Товар", Types: []Type{{Kind: StringType, Length: 100}}}},
+			Dimensions: []RegisterDimension{{Attribute: Attribute{ID: productID, Name: "Товар", Types: []Type{{Kind: StringType, Length: 100}}}}},
 			Resources:  []Attribute{{ID: amountID, Name: "Сумма", Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}},
 		}},
 		documentByName: map[string]int{"продажа": 0}, documentByID: map[uuid.UUID]int{documentID: 0},

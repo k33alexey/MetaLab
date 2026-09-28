@@ -272,7 +272,7 @@ func (runtime *Runtime) accumulationDimensionsFromBSL(definition AccumulationReg
 		return nil, fmt.Errorf("accumulation register filter must be a Structure")
 	}
 	for _, name := range names {
-		dimension, ok := findCatalogAttribute(definition.Dimensions, name)
+		dimension, ok := findCatalogAttribute(RegisterDimensionAttributes(definition.Dimensions), name)
 		if !ok {
 			return nil, fmt.Errorf("accumulation register %s has no dimension %s", definition.Name, name)
 		}
@@ -417,7 +417,7 @@ func (runtime *Runtime) accumulationRecordProperty(ctx context.Context, object *
 }
 
 func (runtime *Runtime) accumulationVirtualRowProperty(ctx context.Context, object *accumulationVirtualRowObject, name string) (bytecode.Value, error) {
-	if dimension, ok := findCatalogAttribute(object.owner.definition.Dimensions, name); ok {
+	if dimension, ok := findCatalogAttribute(RegisterDimensionAttributes(object.owner.definition.Dimensions), name); ok {
 		if err := requireFields(ctx, object.owner.definition.ID, PermissionRead, dimension.ID.String()); err != nil {
 			return bytecode.Undefined(), err
 		}
@@ -621,7 +621,7 @@ func accumulationRecordField(definition AccumulationRegisterDefinition, record *
 	for _, group := range []struct {
 		fields []Attribute
 		values map[uuid.UUID]Value
-	}{{definition.Dimensions, record.Dimensions}, {definition.Resources, record.Resources}, {definition.Attributes, record.Attributes}} {
+	}{{RegisterDimensionAttributes(definition.Dimensions), record.Dimensions}, {definition.Resources, record.Resources}, {definition.Attributes, record.Attributes}} {
 		if field, ok := findCatalogAttribute(group.fields, name); ok {
 			return field, group.values, true
 		}

@@ -11,7 +11,7 @@ import (
 func TestAccumulationDimensionKeyIsStableAndOrdered(t *testing.T) {
 	t.Parallel()
 	firstID, secondID := uuid.MustNew(), uuid.MustNew()
-	definition := AccumulationRegisterDefinition{ID: uuid.MustNew(), Dimensions: []Attribute{{ID: firstID}, {ID: secondID}}}
+	definition := AccumulationRegisterDefinition{ID: uuid.MustNew(), Dimensions: []RegisterDimension{{Attribute: Attribute{ID: firstID}}, {Attribute: Attribute{ID: secondID}}}}
 	values := map[uuid.UUID]Value{firstID: {Kind: StringType, Data: "A"}, secondID: {Kind: NumberType, Data: "1"}}
 	first := accumulationDimensionKey(definition, values)
 	second := accumulationDimensionKey(definition, map[uuid.UUID]Value{secondID: values[secondID], firstID: values[firstID]})
@@ -36,7 +36,7 @@ func TestNormalizeAccumulationPeriod(t *testing.T) {
 func TestMergeAccumulationAggregates(t *testing.T) {
 	t.Parallel()
 	dimensionID, resourceID := uuid.MustNew(), uuid.MustNew()
-	definition := AccumulationRegisterDefinition{ID: uuid.MustNew(), Dimensions: []Attribute{{ID: dimensionID}}, Resources: []Attribute{{ID: resourceID}}}
+	definition := AccumulationRegisterDefinition{ID: uuid.MustNew(), Dimensions: []RegisterDimension{{Attribute: Attribute{ID: dimensionID}}}, Resources: []Attribute{{ID: resourceID}}}
 	dimensions := map[uuid.UUID]Value{dimensionID: {Kind: StringType, Data: "A"}}
 	result, err := mergeAccumulationAggregates(definition,
 		[]AccumulationRegisterTotalsRow{{Dimensions: dimensions, Turnover: map[uuid.UUID]Value{resourceID: {Kind: NumberType, Data: "10"}}}},

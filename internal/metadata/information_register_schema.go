@@ -42,7 +42,7 @@ func (catalog *Catalog) informationRegisterTable(definition InformationRegisterD
 		})
 	}
 	for _, dimension := range definition.Dimensions {
-		if err := catalog.appendInformationRegisterField(&table, dimension, true); err != nil {
+		if err := catalog.appendInformationRegisterField(&table, dimension.Attribute, true); err != nil {
 			return schemadiff.Table{}, fmt.Errorf("information register %s dimension %s: %w", definition.Name, dimension.Name, err)
 		}
 	}

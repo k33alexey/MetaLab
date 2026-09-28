@@ -54,8 +54,8 @@ func TestBasicQuerySourcesExposeSupportedMetadataFields(t *testing.T) {
 	catalog := &Catalog{
 		Catalogs:              []CatalogDefinition{{ID: catalogID, Name: "Товары", Code: CatalogCode{Type: StringType, Length: 20}, DescriptionLength: 100}},
 		Documents:             []DocumentDefinition{{ID: documentID, Name: "Продажа", Number: DocumentNumber{Type: StringType, Length: 20}}},
-		InformationRegisters:  []InformationRegisterDefinition{{ID: informationID, Name: "Цены", Periodicity: InformationRegisterPeriodDay, Dimensions: []Attribute{{ID: dimensionID, Name: "Товар", Types: []Type{referenceType(CatalogType, catalogID)}}}}},
-		AccumulationRegisters: []AccumulationRegisterDefinition{{ID: accumulationID, Name: "Остатки", Kind: AccumulationRegisterBalance, Dimensions: []Attribute{{ID: dimensionID, Name: "Товар", Types: []Type{referenceType(CatalogType, catalogID)}}}, Resources: []Attribute{{ID: resourceID, Name: "Количество", Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}}}},
+		InformationRegisters:  []InformationRegisterDefinition{{ID: informationID, Name: "Цены", Periodicity: InformationRegisterPeriodDay, Dimensions: []RegisterDimension{{Attribute: Attribute{ID: dimensionID, Name: "Товар", Types: []Type{referenceType(CatalogType, catalogID)}}}}}},
+		AccumulationRegisters: []AccumulationRegisterDefinition{{ID: accumulationID, Name: "Остатки", Kind: AccumulationRegisterBalance, Dimensions: []RegisterDimension{{Attribute: Attribute{ID: dimensionID, Name: "Товар", Types: []Type{referenceType(CatalogType, catalogID)}}}}, Resources: []Attribute{{ID: resourceID, Name: "Количество", Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}}}},
 		catalogByName:         map[string]int{"товары": 0}, catalogByID: map[uuid.UUID]int{catalogID: 0},
 		documentByName: map[string]int{"продажа": 0}, documentByID: map[uuid.UUID]int{documentID: 0},
 		informationRegisterByName: map[string]int{"цены": 0}, informationRegisterByID: map[uuid.UUID]int{informationID: 0},

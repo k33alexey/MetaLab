@@ -49,12 +49,12 @@ func TestAccumulationRegisterRepositoryIntegration(t *testing.T) {
 		AccumulationRegisters: []AccumulationRegisterDefinition{
 			{
 				ID: registerID, Name: "ОстаткиТоваров", Kind: AccumulationRegisterBalance,
-				Dimensions: []Attribute{{ID: productID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 100}}}},
+				Dimensions: []RegisterDimension{{Attribute: Attribute{ID: productID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 100}}}}},
 				Resources:  []Attribute{{ID: quantityID, Name: "Количество", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}},
 			},
 			{
 				ID: turnoverID, Name: "Продажи", Kind: AccumulationRegisterTurnover,
-				Dimensions: []Attribute{{ID: turnoverProductID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 100}}}},
+				Dimensions: []RegisterDimension{{Attribute: Attribute{ID: turnoverProductID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 100}}}}},
 				Resources:  []Attribute{{ID: amountID, Name: "Сумма", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}},
 			},
 		},

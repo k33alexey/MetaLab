@@ -107,7 +107,7 @@ func (workspace *Workspace) queryDesignerSchemaLocked() (*QueryDesignerSchema, e
 		if object.WriteMode == metadata.InformationRegisterRecorder {
 			fields = append(fields, recorderQueryDesignerFields()...)
 		}
-		fields = append(fields, queryDesignerAttributes(append(append(append([]metadata.Attribute{}, object.Dimensions...), object.Resources...), object.Attributes...), language, configured)...)
+		fields = append(fields, queryDesignerAttributes(append(append(append([]metadata.Attribute{}, metadata.RegisterDimensionAttributes(object.Dimensions)...), object.Resources...), object.Attributes...), language, configured)...)
 		appendSource("РегистрСведений", object.Name, object.Title, fields)
 	}
 	for _, object := range catalog.AccumulationRegisters {
@@ -116,7 +116,7 @@ func (workspace *Workspace) queryDesignerSchemaLocked() (*QueryDesignerSchema, e
 		if object.Kind == metadata.AccumulationRegisterBalance {
 			fields = append(fields, QueryDesignerField{Name: "ВидДвижения", Title: "Вид движения", Type: "movement-kind"})
 		}
-		fields = append(fields, queryDesignerAttributes(append(append(append([]metadata.Attribute{}, object.Dimensions...), object.Resources...), object.Attributes...), language, configured)...)
+		fields = append(fields, queryDesignerAttributes(append(append(append([]metadata.Attribute{}, metadata.RegisterDimensionAttributes(object.Dimensions)...), object.Resources...), object.Attributes...), language, configured)...)
 		appendSource("РегистрНакопления", object.Name, object.Title, fields)
 	}
 	sort.Slice(result.Sources, func(i, j int) bool {

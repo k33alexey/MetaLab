@@ -339,14 +339,14 @@ func (catalog *Catalog) objectElementsOf(kind Kind, id uuid.UUID) (objectElement
 			return objectElements{}, false
 		}
 		item := catalog.InformationRegisters[index]
-		return elementsOf(item.Attributes, nil, item.Commands, item.Dimensions, item.Resources), true
+		return elementsOf(item.Attributes, nil, item.Commands, RegisterDimensionAttributes(item.Dimensions), item.Resources), true
 	case AccumulationRegisterKind:
 		index, ok := catalog.accumulationRegisterByID[id]
 		if !ok {
 			return objectElements{}, false
 		}
 		item := catalog.AccumulationRegisters[index]
-		return elementsOf(item.Attributes, nil, item.Commands, item.Dimensions, item.Resources), true
+		return elementsOf(item.Attributes, nil, item.Commands, RegisterDimensionAttributes(item.Dimensions), item.Resources), true
 	case ReportKind:
 		index, ok := catalog.reportByID[id]
 		if !ok {
