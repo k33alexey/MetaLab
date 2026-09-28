@@ -21,7 +21,14 @@ func contentCatalog(common CommonAttributeDefinition, fields ...Attribute) *Cata
 		AccumulationRegisters: []AccumulationRegisterDefinition{{ID: contentAccumulation, Name: "Остатки"}},
 		BusinessProcesses:     []BusinessProcessDefinition{{ID: contentProcess, Name: "Согласование"}},
 		Tasks:                 []TaskDefinition{{ID: contentTask, Name: "ЗадачаИсполнителя"}},
-		CommonAttributes:      []CommonAttributeDefinition{common},
+		ChartsOfCharacteristicTypes: []ChartOfCharacteristicTypesDefinition{
+			{ID: contentCharacteristics, Name: "ВидыХарактеристик"}},
+		ChartsOfAccounts:         []ChartOfAccountsDefinition{{ID: contentAccounts, Name: "Хозрасчетный"}},
+		ChartsOfCalculationTypes: []ChartOfCalculationTypesDefinition{{ID: contentCalculationTypes, Name: "ОсновныеНачисления"}},
+		ExchangePlans:            []ExchangePlanDefinition{{ID: contentExchange, Name: "ОбменСФилиалами"}},
+		AccountingRegisters:      []AccountingRegisterDefinition{{ID: contentAccounting, Name: "Проводки"}},
+		CalculationRegisters:     []CalculationRegisterDefinition{{ID: contentCalculation, Name: "Начисления"}},
+		CommonAttributes:         []CommonAttributeDefinition{common},
 	}
 }
 
@@ -33,6 +40,13 @@ var (
 	contentAccumulation = uuid.MustNew()
 	contentProcess      = uuid.MustNew()
 	contentTask         = uuid.MustNew()
+
+	contentCharacteristics  = uuid.MustNew()
+	contentAccounts         = uuid.MustNew()
+	contentCalculationTypes = uuid.MustNew()
+	contentExchange         = uuid.MustNew()
+	contentAccounting       = uuid.MustNew()
+	contentCalculation      = uuid.MustNew()
 )
 
 func contentAttribute(autoUse CommonAttributeAutoUse, items ...CommonAttributeContentItem) CommonAttributeDefinition {
@@ -65,6 +79,24 @@ func reached(t *testing.T, catalog *Catalog) map[string]bool {
 		got[item.Name] = len(item.Attributes) > 0
 	}
 	for _, item := range catalog.Tasks {
+		got[item.Name] = len(item.Attributes) > 0
+	}
+	for _, item := range catalog.ChartsOfCharacteristicTypes {
+		got[item.Name] = len(item.Attributes) > 0
+	}
+	for _, item := range catalog.ChartsOfAccounts {
+		got[item.Name] = len(item.Attributes) > 0
+	}
+	for _, item := range catalog.ChartsOfCalculationTypes {
+		got[item.Name] = len(item.Attributes) > 0
+	}
+	for _, item := range catalog.ExchangePlans {
+		got[item.Name] = len(item.Attributes) > 0
+	}
+	for _, item := range catalog.AccountingRegisters {
+		got[item.Name] = len(item.Attributes) > 0
+	}
+	for _, item := range catalog.CalculationRegisters {
 		got[item.Name] = len(item.Attributes) > 0
 	}
 	return got
@@ -111,14 +143,20 @@ func TestCommonAttributeContentIsAVerdictPerObject(t *testing.T) {
 	})
 }
 
-// The kinds are the prototype's list, checked in its configurator: catalogs,
-// documents, document journals, information registers, accumulation registers,
-// business processes, tasks. Journals keep columns rather than attributes and
-// have a point of their own; the other six are here.
+// The kinds are the prototype's own list, from the configurator page «Состав
+// общего реквизита». Twelve of the fourteen are here; sequences and
+// recalculations keep no list of attributes and have a point of their own.
+//
+// The list matters more than it looks, and only since auto-use: a kind missing
+// from it is a kind the attribute silently fails to reach, and a configuration
+// with auto-use on expects it in every one of the fourteen.
 func TestCommonAttributeReachesEveryKindOfItsComposition(t *testing.T) {
 	t.Parallel()
 	got := reached(t, contentCatalog(contentAttribute(CommonAttributeAutoUseUse)))
-	for _, name := range []string{"Товары", "Склады", "Продажа", "Цены", "Остатки", "Согласование", "ЗадачаИсполнителя"} {
+	for _, name := range []string{
+		"Товары", "Склады", "Продажа", "Цены", "Остатки", "Согласование", "ЗадачаИсполнителя",
+		"ВидыХарактеристик", "Хозрасчетный", "ОсновныеНачисления", "ОбменСФилиалами", "Проводки", "Начисления",
+	} {
 		if !got[name] {
 			t.Fatalf("%s did not get the attribute: %v", name, got)
 		}
@@ -427,4 +465,98 @@ func TestCommonAttributeCarriesDataSeparation(t *testing.T) {
 			t.Fatal("an unknown session parameter was accepted")
 		}
 	})
+}
+
+// The name rule is the prototype's own, word for word: «Имя общего реквизита не
+// должно совпадать ни с одним из имен полей всех объектов метаданных, входящих в
+// состав общего реквизита». Fields means every field of the table, not only the
+// ones called attributes - and the kinds added last have fields of other sorts:
+// the flags of a chart of accounts, the dimensions and resources of a register.
+// Two fields of one name in one table is not something a table can hold.
+func TestCommonAttributeCollidesWithFieldsOfOtherSorts(t *testing.T) {
+	t.Parallel()
+	taken := "Организация"
+	cases := map[string]func(*Catalog){
+		"признак учёта плана счетов": func(catalog *Catalog) {
+			catalog.ChartsOfAccounts[0].AccountingFlags = []AccountingFlag{
+				{ID: uuid.MustNew(), Name: taken, Title: LocalizedText{"ru": taken}}}
+		},
+		"измерение регистра бухгалтерии": func(catalog *Catalog) {
+			catalog.AccountingRegisters[0].Dimensions = []AccountingRegisterField{
+				{Attribute: Attribute{ID: uuid.MustNew(), Name: taken}}}
+		},
+		"ресурс регистра бухгалтерии": func(catalog *Catalog) {
+			catalog.AccountingRegisters[0].Resources = []AccountingRegisterField{
+				{Attribute: Attribute{ID: uuid.MustNew(), Name: taken}}}
+		},
+		"измерение регистра расчёта": func(catalog *Catalog) {
+			catalog.CalculationRegisters[0].Dimensions = []CalculationRegisterDimension{
+				{Attribute: Attribute{ID: uuid.MustNew(), Name: taken}}}
+		},
+		"табличная часть плана обмена": func(catalog *Catalog) {
+			catalog.ExchangePlans[0].TableParts = []TablePart{{ID: uuid.MustNew(), Name: taken}}
+		},
+	}
+	for name, occupy := range cases {
+		t.Run(name, func(t *testing.T) {
+			catalog := contentCatalog(contentAttribute(CommonAttributeAutoUseUse))
+			occupy(catalog)
+			err := catalog.propagateCommonAttributes()
+			if err == nil {
+				t.Fatal("the attribute was propagated into an object whose field already has that name")
+			}
+			if !strings.Contains(err.Error(), "collides") {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
+// And the field has to reach the table of every kind, not only the model of it:
+// a chart of accounts and an accounting register keep their data in tables of
+// their own, and the column is what makes the attribute real.
+func TestCommonAttributeReachesTheTablesOfTheKindsAddedLast(t *testing.T) {
+	t.Parallel()
+	chart := ChartOfAccountsDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Хозрасчетный",
+		Title: LocalizedText{"ru": "Хозрасчётный"}, Code: CatalogCode{Type: StringType, Length: 9},
+		DescriptionLength: 100}
+	common := CommonAttributeDefinition{
+		Format: CurrentFormat, ID: uuid.MustNew(), Name: "Организация", Title: LocalizedText{"ru": "Организация"},
+		Types: []Type{{Kind: StringType, Length: 100}}, AutoUse: CommonAttributeAutoUseUse,
+	}
+	catalog := &Catalog{
+		Project: metadataConfiguration(), ChartsOfAccounts: []ChartOfAccountsDefinition{chart},
+		CommonAttributes: []CommonAttributeDefinition{common},
+	}
+	if err := catalog.propagateCommonAttributes(); err != nil {
+		t.Fatal(err)
+	}
+	schema, err := catalog.ApplicationSchema()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A chart of accounts keeps its accounts in a table named the way a
+	// catalog's is - see chartOfAccountsTables.
+	table, err := PhysicalCatalogTable(chart.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	column, err := PhysicalAttributeColumn(common.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, candidate := range schema.Tables {
+		if candidate.Name != table {
+			continue
+		}
+		for _, field := range candidate.Columns {
+			if field.Name == column {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("the attribute reached the chart of accounts and not its table")
+	}
 }

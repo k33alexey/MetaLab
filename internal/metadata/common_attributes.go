@@ -417,12 +417,23 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 	// objects rather than the list, and walking a map would put the field in a
 	// different place on every run.
 	//
-	// Which kinds these are is the prototype's list, checked in its
-	// configurator: catalogs, documents, document journals, information
-	// registers, accumulation registers, business processes, tasks. Registers of
-	// accounting and of calculation are not among them. The document journal is
-	// missing here and has a point of its own: it keeps columns rather than
-	// attributes, and where the field lands in one is not yet known.
+	// Which kinds these are is the prototype's own list, from the configurator
+	// page «Состав общего реквизита»: catalogs, documents, sequences, charts of
+	// characteristic types, charts of accounts, charts of calculation types,
+	// business processes, tasks, information, accumulation, accounting and
+	// calculation registers, recalculations, exchange plans.
+	//
+	// Twelve of the fourteen are here. Sequences and recalculations are not, and
+	// have a point of their own: neither keeps a list of attributes - a sequence
+	// keeps dimensions bound to the attributes of a document, a recalculation
+	// keeps dimensions of its own - so there is nowhere to put the field without
+	// deciding something about the model first.
+	//
+	// Four more kinds join a composition only when the attribute separates data:
+	// constants, scheduled jobs, users of the database and document journals,
+	// the last implicitly. They get no field - a journal «не добавляет новых
+	// данных в систему», a constant is one value, a job has no table - so
+	// membership means separation for them and nothing else.
 	var ordered []commonAttributeTarget
 	targets := map[uuid.UUID]commonAttributeTarget{}
 	add := func(id uuid.UUID, kind string, index int) {
@@ -447,6 +458,24 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 	}
 	for index, item := range catalog.Tasks {
 		add(item.ID, "task", index)
+	}
+	for index, item := range catalog.ChartsOfCharacteristicTypes {
+		add(item.ID, "chart of characteristic types", index)
+	}
+	for index, item := range catalog.ChartsOfAccounts {
+		add(item.ID, "chart of accounts", index)
+	}
+	for index, item := range catalog.ChartsOfCalculationTypes {
+		add(item.ID, "chart of calculation types", index)
+	}
+	for index, item := range catalog.ExchangePlans {
+		add(item.ID, "exchange plan", index)
+	}
+	for index, item := range catalog.AccountingRegisters {
+		add(item.ID, "accounting register", index)
+	}
+	for index, item := range catalog.CalculationRegisters {
+		add(item.ID, "calculation register", index)
 	}
 	known := catalog.knownObjectIDs()
 	for _, common := range catalog.CommonAttributes {
@@ -670,6 +699,18 @@ func (catalog *Catalog) objectFieldName(location commonAttributeTarget) string {
 		return catalog.BusinessProcesses[location.index].Name
 	case "task":
 		return catalog.Tasks[location.index].Name
+	case "chart of characteristic types":
+		return catalog.ChartsOfCharacteristicTypes[location.index].Name
+	case "chart of accounts":
+		return catalog.ChartsOfAccounts[location.index].Name
+	case "chart of calculation types":
+		return catalog.ChartsOfCalculationTypes[location.index].Name
+	case "exchange plan":
+		return catalog.ExchangePlans[location.index].Name
+	case "accounting register":
+		return catalog.AccountingRegisters[location.index].Name
+	case "calculation register":
+		return catalog.CalculationRegisters[location.index].Name
 	}
 	return ""
 }
@@ -688,6 +729,18 @@ func (catalog *Catalog) objectID(location commonAttributeTarget) uuid.UUID {
 		return catalog.BusinessProcesses[location.index].ID
 	case "task":
 		return catalog.Tasks[location.index].ID
+	case "chart of characteristic types":
+		return catalog.ChartsOfCharacteristicTypes[location.index].ID
+	case "chart of accounts":
+		return catalog.ChartsOfAccounts[location.index].ID
+	case "chart of calculation types":
+		return catalog.ChartsOfCalculationTypes[location.index].ID
+	case "exchange plan":
+		return catalog.ExchangePlans[location.index].ID
+	case "accounting register":
+		return catalog.AccountingRegisters[location.index].ID
+	case "calculation register":
+		return catalog.CalculationRegisters[location.index].ID
 	}
 	return uuid.UUID{}
 }
@@ -734,6 +787,47 @@ func (catalog *Catalog) objectFields(location commonAttributeTarget) []Attribute
 		for _, addressing := range definition.AddressingAttributes {
 			fields = append(fields, Attribute{ID: addressing.ID, Name: addressing.Name})
 		}
+	case "chart of characteristic types":
+		definition := catalog.ChartsOfCharacteristicTypes[location.index]
+		fields = append(fields, definition.Attributes...)
+		fields = append(fields, tablePartNames(definition.TableParts)...)
+	case "chart of accounts":
+		definition := catalog.ChartsOfAccounts[location.index]
+		fields = append(fields, definition.Attributes...)
+		fields = append(fields, tablePartNames(definition.TableParts)...)
+		// The flags of a chart of accounts are fields of its own table, and a
+		// name taken by one of them is taken.
+		for _, flag := range definition.AccountingFlags {
+			fields = append(fields, Attribute{ID: flag.ID, Name: flag.Name})
+		}
+	case "chart of calculation types":
+		definition := catalog.ChartsOfCalculationTypes[location.index]
+		fields = append(fields, definition.Attributes...)
+		fields = append(fields, tablePartNames(definition.TableParts)...)
+	case "exchange plan":
+		definition := catalog.ExchangePlans[location.index]
+		fields = append(fields, definition.Attributes...)
+		fields = append(fields, tablePartNames(definition.TableParts)...)
+	case "accounting register":
+		definition := catalog.AccountingRegisters[location.index]
+		fields = append(fields, definition.Attributes...)
+		fields = append(fields, accountingFieldAttributes(definition.Dimensions)...)
+		fields = append(fields, accountingFieldAttributes(definition.Resources)...)
+	case "calculation register":
+		definition := catalog.CalculationRegisters[location.index]
+		fields = append(fields, definition.Attributes...)
+		fields = append(fields, definition.Resources...)
+		for _, dimension := range definition.Dimensions {
+			fields = append(fields, dimension.Attribute)
+		}
+	}
+	return fields
+}
+
+func tablePartNames(parts []TablePart) []Attribute {
+	fields := make([]Attribute, 0, len(parts))
+	for _, part := range parts {
+		fields = append(fields, Attribute{Name: part.Name})
 	}
 	return fields
 }
@@ -774,5 +868,17 @@ func (catalog *Catalog) appendPropagatedAttribute(location commonAttributeTarget
 		catalog.BusinessProcesses[location.index].Attributes = append(catalog.BusinessProcesses[location.index].Attributes, attribute)
 	case "task":
 		catalog.Tasks[location.index].Attributes = append(catalog.Tasks[location.index].Attributes, attribute)
+	case "chart of characteristic types":
+		catalog.ChartsOfCharacteristicTypes[location.index].Attributes = append(catalog.ChartsOfCharacteristicTypes[location.index].Attributes, attribute)
+	case "chart of accounts":
+		catalog.ChartsOfAccounts[location.index].Attributes = append(catalog.ChartsOfAccounts[location.index].Attributes, attribute)
+	case "chart of calculation types":
+		catalog.ChartsOfCalculationTypes[location.index].Attributes = append(catalog.ChartsOfCalculationTypes[location.index].Attributes, attribute)
+	case "exchange plan":
+		catalog.ExchangePlans[location.index].Attributes = append(catalog.ExchangePlans[location.index].Attributes, attribute)
+	case "accounting register":
+		catalog.AccountingRegisters[location.index].Attributes = append(catalog.AccountingRegisters[location.index].Attributes, attribute)
+	case "calculation register":
+		catalog.CalculationRegisters[location.index].Attributes = append(catalog.CalculationRegisters[location.index].Attributes, attribute)
 	}
 }
