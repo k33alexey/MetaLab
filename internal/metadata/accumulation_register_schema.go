@@ -67,7 +67,14 @@ func (catalog *Catalog) accumulationRegisterTables(definition AccumulationRegist
 			{Name: "dimension_key", Type: "character(64)", Nullable: false},
 		},
 		Constraints: []schemadiff.Constraint{
-			{Name: physicalObjectName("pt", definition.ID), Type: "primary_key", Definition: "PRIMARY KEY (total_period, totals_split, dimension_key)"},
+			// The combination comes first and the row number last, because
+			// that is the order everything asks in: a write looks for a free
+			// row of one combination, and so does the statement that makes
+			// another one. With the number in the middle - where it sat while
+			// it was a hash and every statement knew it in advance - the same
+			// lookup could only use the period and had to read a whole month
+			// of rows to find one combination.
+			{Name: physicalObjectName("pt", definition.ID), Type: "primary_key", Definition: "PRIMARY KEY (total_period, dimension_key, totals_split)"},
 			// No ceiling on the number. Rows of totals appear when writers
 			// collide, and their count follows the concurrency the base has
 			// actually seen - «их количество по каждой комбинации измерений

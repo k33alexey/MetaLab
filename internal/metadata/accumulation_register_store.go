@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"math/rand/v2"
 	"slices"
 	"strings"
 	"time"
@@ -25,6 +26,19 @@ import (
 const (
 	maxAccumulationRegisterRecords = 1_000_000
 	maxAccumulationRegisterMemory  = 64 << 20
+	// accumulationTotalRowSpread is how wide the random step is when two
+	// writers pick the same number for a new row of totals - see
+	// accumulationTotalRowOffset. Wide enough that a handful of writers rarely
+	// collide twice, small enough that the numbering stays a short list.
+	accumulationTotalRowSpread = 64
+	// maxAccumulationTotalRowNumber is the highest number a row of totals can
+	// carry, and it is the ceiling of the smallint column that holds it. The
+	// number is not allowed past it: a number PostgreSQL refuses would fail a
+	// write for arithmetic, and a write of movements must not fail for
+	// arithmetic. At the ceiling the new row collides with the highest existing
+	// one instead, which the caller already knows how to handle - it goes round
+	// again, and the rounds that no longer race wait for a row that exists.
+	maxAccumulationTotalRowNumber = 32767
 	// maxAccumulationTotalsAttempts bounds the walk from "take a row of
 	// totals" to "make one". Each attempt fails only by losing a race to
 	// another writer, and the last one waits instead of racing, so the walk
@@ -662,6 +676,28 @@ type totalRow struct {
 	split int16
 }
 
+// accumulationTotalRowOffset is how far past the highest existing number a new
+// row of totals is placed.
+//
+// The first try goes straight after it, so a register nobody is competing over
+// numbers its rows 0, 1, 2 and reads plainly. A retry means another writer took
+// that number while this one was choosing it, and stepping by a fixed amount
+// would not help: both writers see the same highest number, because neither
+// sees the other's uncommitted row, both add the same step, and both collide
+// again on the next round and the round after. They have to disagree, so the
+// step is drawn at random - each round they differ with high probability, and
+// the few that still collide try again.
+//
+// Gaps in the numbering cost nothing. The number stopped being an address when
+// rows stopped being chosen by a hash: it only tells one row of a combination
+// from another, reading sums them all, and a rebuild folds them back into one.
+func accumulationTotalRowOffset(attempt int) int16 {
+	if attempt == 0 {
+		return 1
+	}
+	return int16(1 + rand.IntN(accumulationTotalRowSpread))
+}
+
 // takeTotalRows adds each change to a row of its combination that nobody is
 // holding. The ones with no such row come back as missing.
 func (repository *AccumulationRegisterRepository) takeTotalRows(
@@ -725,9 +761,7 @@ func (repository *AccumulationRegisterRepository) makeTotalRows(
 			if err != nil {
 				return nil, nil, err
 			}
-			// The offset walks past the row another writer took while this one
-			// was choosing a number, so two racers do not keep colliding.
-			batch.Queue(statement, append(arguments, int16(attempt+1))...)
+			batch.Queue(statement, append(arguments, accumulationTotalRowOffset(attempt))...)
 		}
 		results := transaction.SendBatch(ctx, batch)
 		for _, key := range keys[start:end] {
@@ -861,16 +895,20 @@ func (repository *AccumulationRegisterRepository) totalRowUpdate(definition Accu
 // totalRowInsert writes another row for the combination and says which one it
 // is, or says nothing when another writer took that number first.
 //
-// The number is one past the highest there is, so rows are numbered as they
-// appear rather than addressed by anything. Two writers can still choose the
-// same one, because neither sees the other's uncommitted row; the conflict is
-// left alone rather than merged, and the caller goes round again.
+// The number is past the highest there is - one past it on the first try, a
+// random step past it on a retry, see accumulationTotalRowOffset - so rows are
+// numbered as they appear rather than addressed by anything. Two writers can
+// still choose the same one, because neither sees the other's uncommitted row;
+// the conflict is left alone rather than merged, and the caller goes round
+// again. The number stops at the ceiling of its column, where it collides with
+// the highest row on purpose: see maxAccumulationTotalRowNumber.
 func (repository *AccumulationRegisterRepository) totalRowInsert(definition AccumulationRegisterDefinition) (string, error) {
 	table, _ := PhysicalAccumulationRegisterTotalsTable(definition.ID)
 	qualified := qualifiedCatalogTable(table)
 	columns := []string{"total_period", "totals_split", "dimension_key"}
 	values := []string{"$1",
-		"COALESCE((SELECT MAX(totals_split) FROM " + qualified + " WHERE total_period = $1 AND dimension_key = $2), -1) + $%d",
+		"LEAST(COALESCE((SELECT MAX(totals_split) FROM " + qualified + " WHERE total_period = $1 AND dimension_key = $2), -1) + $%d, " +
+			fmt.Sprint(maxAccumulationTotalRowNumber) + ")",
 		"$2"}
 	position := 2
 	for _, dimension := range definition.Dimensions {
@@ -887,7 +925,7 @@ func (repository *AccumulationRegisterRepository) totalRowInsert(definition Accu
 	}
 	values[1] = fmt.Sprintf(values[1], position+1)
 	return "INSERT INTO " + qualified + " (" + strings.Join(quoteCatalogColumns(columns), ", ") + ") VALUES (" +
-		strings.Join(values, ", ") + ") ON CONFLICT (total_period, totals_split, dimension_key) DO NOTHING RETURNING totals_split", nil
+		strings.Join(values, ", ") + ") ON CONFLICT (total_period, dimension_key, totals_split) DO NOTHING RETURNING totals_split", nil
 }
 
 // RebuildTotals restores all monthly totals from primary movement rows.
