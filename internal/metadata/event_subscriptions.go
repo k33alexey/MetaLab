@@ -32,6 +32,7 @@ type EventSubscriptionDefinition struct {
 	Event     string        `yaml:"event"`
 	Module    uuid.UUID     `yaml:"module"`
 	Procedure string        `yaml:"procedure"`
+	Comment   string        `yaml:"comment,omitempty"`
 }
 
 var validEventSubscriptionEvents = map[string]bool{

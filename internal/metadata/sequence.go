@@ -45,6 +45,7 @@ type SequenceDefinition struct {
 	// DataLock is how the platform locks the sequence's records while they are
 	// written - see data_lock_settings.go.
 	DataLock project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
+	Comment  string                      `yaml:"comment,omitempty" json:"comment,omitempty"`
 	// Documents are the kinds of document the sequence follows.
 	Documents []uuid.UUID `yaml:"documents,omitempty" json:"documents,omitempty"`
 	// Movements are the registers whose records the boundary is watched by.

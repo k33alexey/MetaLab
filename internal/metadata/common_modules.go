@@ -30,6 +30,42 @@ type CommonModuleDefinition struct {
 	Server     bool          `yaml:"server,omitempty"`
 	ServerCall bool          `yaml:"server_call,omitempty"`
 	Privileged bool          `yaml:"privileged,omitempty"`
+	// Comment is for the developer and is not localized. All 739 common modules
+	// of the demonstration configuration carry one.
+	Comment string `yaml:"comment,omitempty"`
+	// Global puts the exported procedures of this module into the global
+	// context: they are called by name alone, without the module in front. It
+	// is not decoration - code carried over from the prototype calls them that
+	// way, and without this flag the call finds nothing.
+	Global bool `yaml:"global,omitempty"`
+	// ExternalConnection lets the procedures of this module be used over an
+	// external connection.
+	ExternalConnection bool `yaml:"external_connection,omitempty"`
+	// ReturnValuesReuse caches what the exported functions of this module
+	// return. It is not a flag but a choice of three - see below.
+	ReturnValuesReuse ReturnValuesReuse `yaml:"return_values_reuse,omitempty"`
+}
+
+// ReturnValuesReuse is how long the result of an exported function of a common
+// module is kept: not at all, for the one server call, or for the session. The
+// prototype has three values here and not two, and the difference is visible
+// to an application: a function reused for the session keeps returning what it
+// returned first, however the data has changed since.
+type ReturnValuesReuse string
+
+const (
+	ReturnValuesReuseDontUse       ReturnValuesReuse = "dont-use"
+	ReturnValuesReuseDuringRequest ReturnValuesReuse = "during-request"
+	ReturnValuesReuseDuringSession ReturnValuesReuse = "during-session"
+)
+
+func validReturnValuesReuse(value ReturnValuesReuse) bool {
+	switch value {
+	case "", ReturnValuesReuseDontUse, ReturnValuesReuseDuringRequest, ReturnValuesReuseDuringSession:
+		return true
+	default:
+		return false
+	}
 }
 
 func DecodeCommonModule(source string, reader io.Reader, configuration project.Project) (CommonModuleDefinition, error) {
@@ -58,6 +94,9 @@ func ValidateCommonModule(source string, value CommonModuleDefinition, configura
 	}
 	if value.Privileged && !value.Server {
 		issues = append(issues, "privileged requires server")
+	}
+	if !validReturnValuesReuse(value.ReturnValuesReuse) {
+		issues = append(issues, "return_values_reuse must be dont-use, during-request or during-session")
 	}
 	return issuesError(source, value.Format, issues)
 }

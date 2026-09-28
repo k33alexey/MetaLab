@@ -60,6 +60,11 @@ type ListPresentations struct {
 // subsystem has the same minus the standard commands, which it has none of.
 type RunningObjectPresentations struct {
 	ObjectExplanation `yaml:",inline" json:",inline"`
+	// ExtendedPresentation is the longer name of the report or the data
+	// processor, shown where there is room for it. The eight object kinds have
+	// two of these - one for the object, one for the list; a report shows its
+	// own result and has one.
+	ExtendedPresentation LocalizedText `yaml:"extended_presentation,omitempty" json:"extendedPresentation,omitempty"`
 	// UseStandardCommands offers the platform's own command to open this report
 	// or run this data processor.
 	UseStandardCommands bool `yaml:"use_standard_commands,omitempty" json:"useStandardCommands,omitempty"`
@@ -108,7 +113,10 @@ func validateListPresentations(presentation ListPresentations, configuration pro
 }
 
 func validateRunningObjectPresentations(presentation RunningObjectPresentations, configuration project.Project) []string {
-	return validateLocalizedTexts(configuration, map[string]LocalizedText{"explanation": presentation.Explanation})
+	return validateLocalizedTexts(configuration, map[string]LocalizedText{
+		"explanation":           presentation.Explanation,
+		"extended_presentation": presentation.ExtendedPresentation,
+	})
 }
 
 func validateRecordPresentations(presentation RecordPresentations, configuration project.Project) []string {

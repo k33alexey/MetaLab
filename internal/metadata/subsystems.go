@@ -27,6 +27,15 @@ type SubsystemDefinition struct {
 	IncludeHelpInContents bool        `yaml:"include_help_in_contents,omitempty"`
 	Parent                *uuid.UUID  `yaml:"parent,omitempty"`
 	Members               []uuid.UUID `yaml:"members,omitempty"`
+	// IncludeInCommandInterface decides whether the subsystem becomes a section
+	// of the command interface at all. Without it a subsystem groups objects for
+	// the developer and shows the user nothing.
+	IncludeInCommandInterface bool `yaml:"include_in_command_interface,omitempty"`
+	// Picture is the icon of the section.
+	Picture *PictureReference `yaml:"picture,omitempty"`
+	// UseOneCommand puts the commands of the section behind one command instead
+	// of listing them.
+	UseOneCommand bool `yaml:"use_one_command,omitempty"`
 }
 
 func DecodeSubsystem(source string, reader io.Reader, configuration project.Project) (SubsystemDefinition, error) {
@@ -47,6 +56,7 @@ func ValidateSubsystem(source string, value SubsystemDefinition, configuration p
 	if len(value.Explanation) > 0 {
 		issues = append(issues, validateTitle("explanation", value.Explanation, configuration)...)
 	}
+	issues = append(issues, validatePictureReference("picture", value.Picture)...)
 	if value.Parent != nil && *value.Parent == value.ID {
 		issues = append(issues, "parent must not reference the subsystem itself")
 	}

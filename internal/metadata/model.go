@@ -289,6 +289,7 @@ type SessionParameter struct {
 	Title   LocalizedText `yaml:"title"`
 	Types   []Type        `yaml:"types"`
 	Default *Value        `yaml:"default,omitempty"`
+	Comment string        `yaml:"comment,omitempty"`
 }
 
 type EnumerationValue struct {
@@ -378,6 +379,10 @@ type DefinedTypeObject struct {
 	Name   string        `yaml:"name"`
 	Title  LocalizedText `yaml:"title"`
 	Types  []Type        `yaml:"types"`
+	// Comment is for the developer and is not localized. Every metadata object
+	// of the prototype has one, and the demonstration configuration writes it on
+	// all 73 defined types.
+	Comment string `yaml:"comment,omitempty"`
 }
 
 type CatalogCode struct {
