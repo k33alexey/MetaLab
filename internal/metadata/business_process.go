@@ -158,6 +158,9 @@ type BusinessProcessDefinition struct {
 	// FullTextSearch is whether this object is in the full-text index at all -
 	// see full_text_search.go.
 	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
+	// DataHistorySettings is whether this object takes part in data history
+	// and the two flags that go with it - see data_history.go.
+	DataHistorySettings `yaml:",inline" json:",inline"`
 
 	Number DocumentNumber `yaml:"number" json:"number"`
 	// Task is the kind of task this process creates at its points.
@@ -198,6 +201,7 @@ func DecodeBusinessProcess(source string, reader io.Reader, configuration projec
 		dataLock:           value.DataLock,
 		dataLockFields:     value.DataLockFields,
 		fullTextSearch:     value.FullTextSearch,
+		dataHistory:        value.DataHistorySettings,
 	}, configuration)...)
 	if value.Task != nil && value.Task.IsZero() {
 		issues = append(issues, "task must be a non-zero UUID")

@@ -229,16 +229,6 @@ type Type struct {
 	DateParts   DateParts `yaml:"date_parts,omitempty" json:"dateParts,omitempty"`
 }
 
-// DataHistoryMode says whether the platform keeps the history of a value's
-// changes. A constant of the reference configuration keeps none, but objects
-// that do are the majority, so the property is carried rather than assumed.
-type DataHistoryMode string
-
-const (
-	DataHistoryUse     DataHistoryMode = "use"
-	DataHistoryDontUse DataHistoryMode = "dont-use"
-)
-
 // Constant is a single value existing in one instance.
 //
 // It is shown and edited like anything else, so it carries what that needs:
@@ -265,8 +255,11 @@ type Constant struct {
 	DefaultForm *uuid.UUID `yaml:"default_form,omitempty"`
 	// UseStandardCommands decides whether the platform offers its own commands
 	// for this constant.
-	UseStandardCommands bool            `yaml:"use_standard_commands,omitempty"`
-	DataHistory         DataHistoryMode `yaml:"data_history,omitempty"`
+	UseStandardCommands bool `yaml:"use_standard_commands,omitempty"`
+	// DataHistorySettings is whether the value takes part in data history and
+	// the two flags that go with it - see data_history.go. A constant is one
+	// of the ten kinds that carry all three.
+	DataHistorySettings `yaml:",inline"`
 	// DataLock is how the value is locked while it is written - see
 	// data_lock_settings.go. A constant has the mode and no fields: it is one
 	// value, and there is nothing in it to lock by.
@@ -500,6 +493,9 @@ type CatalogDefinition struct {
 	// FullTextSearch is whether this object is in the full-text index at all -
 	// see full_text_search.go.
 	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
+	// DataHistorySettings is whether this object takes part in data history
+	// and the two flags that go with it - see data_history.go.
+	DataHistorySettings `yaml:",inline" json:",inline"`
 
 	Code              CatalogCode `yaml:"code" json:"code"`
 	DescriptionLength int         `yaml:"description_length" json:"descriptionLength"`
@@ -896,11 +892,7 @@ func DecodeConstant(source string, reader io.Reader, configuration project.Proje
 	if value.DefaultForm != nil && value.DefaultForm.IsZero() {
 		issues = append(issues, "default_form must be a non-zero UUID")
 	}
-	switch value.DataHistory {
-	case "", DataHistoryUse, DataHistoryDontUse:
-	default:
-		issues = append(issues, "data_history must be use or dont-use")
-	}
+	issues = append(issues, validateDataHistory(value.DataHistorySettings)...)
 	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return Constant{}, err
@@ -1029,6 +1021,7 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 		dataLock:             value.DataLock,
 		dataLockFields:       value.DataLockFields,
 		fullTextSearch:       value.FullTextSearch,
+		dataHistory:          value.DataHistorySettings,
 		kind:                 CatalogKind,
 		standardAttributes:   value.StandardAttributes,
 	}, configuration)...)
@@ -1102,6 +1095,9 @@ type referenceObjectShape struct {
 	// fullTextSearch is whether the object is in the index - see
 	// full_text_search.go.
 	fullTextSearch FullTextSearchMode
+	// dataHistory is whether the object takes part in data history, and what
+	// it asks for while it does - see data_history.go.
+	dataHistory DataHistorySettings
 	// attributeUse says this kind's attributes may say whom they belong to -
 	// items, folders or both. Only a catalog and a chart of characteristic
 	// types may: the help says so, and the demonstration configuration writes
@@ -1229,6 +1225,7 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	issues = append(issues, validateDataLockFields(shape.dataLockFields, shape.kind, shape.attributes)...)
 	issues = append(issues, validateFullTextSearch("full_text_search", shape.fullTextSearch)...)
 	issues = append(issues, validateFullTextSearchOnInputPair(shape.fullTextSearch, shape.choice.FullTextSearchOnInput)...)
+	issues = append(issues, validateDataHistory(shape.dataHistory)...)
 	reserved := shape.reservedName
 	if reserved == nil {
 		reserved = reservedCatalogObjectName

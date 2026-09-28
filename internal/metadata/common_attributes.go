@@ -31,7 +31,13 @@ type CommonAttributeDefinition struct {
 	// a common attribute and the demonstration configuration writes it on all
 	// six of them.
 	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty"`
-	Objects        []uuid.UUID        `yaml:"objects"`
+	// DataHistory is the field's half of data history, which a common
+	// attribute carries the same way - see data_history.go. Only the
+	// participation flag: the two booleans beside it belong to the object,
+	// not to a field. The demonstration configuration writes it on all six
+	// common attributes, and on all six it is Использовать.
+	DataHistory DataHistoryMode `yaml:"data_history,omitempty"`
+	Objects     []uuid.UUID     `yaml:"objects"`
 }
 
 func DecodeCommonAttribute(source string, reader io.Reader, configuration project.Project) (CommonAttributeDefinition, error) {
@@ -50,6 +56,7 @@ func DecodeCommonAttribute(source string, reader io.Reader, configuration projec
 func ValidateCommonAttribute(source string, value CommonAttributeDefinition, configuration project.Project) error {
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
+	issues = append(issues, validateDataHistory(DataHistorySettings{DataHistory: value.DataHistory})...)
 	issues = append(issues, validateTypes("types", value.Types, uuid.UUID{})...)
 	if !validFillCheck(value.FillChecking) {
 		issues = append(issues, "fill_checking must be dont-check or show-error")
@@ -131,6 +138,14 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 		attribute := Attribute{
 			ID: common.ID, Name: common.Name, Title: cloneTitle(common.Title), Types: cloneTypes(common.Types),
 			FillChecking: common.FillChecking, Indexing: common.Indexing,
+			// A common attribute becomes an ordinary attribute of every object
+			// it targets, so both field flags have to travel with it: kept on
+			// the definition alone they would describe a field nothing sees.
+			// Each is the field's two-valued pair written in the three-valued
+			// type an attribute uses - see attribute_storage.go, which refuses
+			// the third value for exactly these two.
+			FullTextSearch: UsageMode(common.FullTextSearch),
+			DataHistory:    UsageMode(common.DataHistory),
 		}
 		for _, objectID := range common.Objects {
 			location, ok := targets[objectID]

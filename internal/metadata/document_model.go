@@ -59,6 +59,9 @@ type DocumentDefinition struct {
 	// FullTextSearch is whether this object is in the full-text index at all -
 	// see full_text_search.go.
 	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
+	// DataHistorySettings is whether this object takes part in data history
+	// and the two flags that go with it - see data_history.go.
+	DataHistorySettings `yaml:",inline" json:",inline"`
 
 	Number DocumentNumber `yaml:"number"`
 	// Numerator names a numbering shared with other kinds of document. When it
@@ -107,6 +110,7 @@ func DecodeDocument(source string, reader io.Reader, configuration project.Proje
 		dataLock:           value.DataLock,
 		dataLockFields:     value.DataLockFields,
 		fullTextSearch:     value.FullTextSearch,
+		dataHistory:        value.DataHistorySettings,
 	}
 	if value.Numerator != nil {
 		// The number comes from the numerator, and it is filled in once the
@@ -173,6 +177,9 @@ type numberedObjectShape struct {
 	// fullTextSearch is whether the object is in the index - see
 	// full_text_search.go.
 	fullTextSearch FullTextSearchMode
+	// dataHistory is whether the object takes part in data history, and what
+	// it asks for while it does - see data_history.go.
+	dataHistory DataHistorySettings
 }
 
 // validateNumberShape checks a number on its own, apart from the object that
@@ -231,6 +238,7 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 	issues = append(issues, validateDataLockFields(shape.dataLockFields, shape.kind, shape.attributes)...)
 	issues = append(issues, validateFullTextSearch("full_text_search", shape.fullTextSearch)...)
 	issues = append(issues, validateFullTextSearchOnInputPair(shape.fullTextSearch, shape.input.FullTextSearchOnInput)...)
+	issues = append(issues, validateDataHistory(shape.dataHistory)...)
 	links := append(standardAttributeChoices("standard_attributes", shape.standardAttributes), tablePartStandardChoices(shape.tableParts)...)
 	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, links...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, false, false)...)

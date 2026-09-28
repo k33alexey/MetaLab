@@ -61,6 +61,9 @@ type TaskDefinition struct {
 	// FullTextSearch is whether this object is in the full-text index at all -
 	// see full_text_search.go.
 	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
+	// DataHistorySettings is whether this object takes part in data history
+	// and the two flags that go with it - see data_history.go.
+	DataHistorySettings `yaml:",inline" json:",inline"`
 
 	Number            DocumentNumber `yaml:"number" json:"number"`
 	DescriptionLength int            `yaml:"description_length" json:"descriptionLength"`
@@ -109,6 +112,7 @@ func DecodeTask(source string, reader io.Reader, configuration project.Project) 
 		dataLock:           value.DataLock,
 		dataLockFields:     value.DataLockFields,
 		fullTextSearch:     value.FullTextSearch,
+		dataHistory:        value.DataHistorySettings,
 	}, configuration)...)
 	if value.DescriptionLength < 1 || value.DescriptionLength > 1_048_576 {
 		issues = append(issues, "description_length must be 1..1048576")

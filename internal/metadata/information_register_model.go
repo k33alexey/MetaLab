@@ -48,7 +48,15 @@ type InformationRegisterDefinition struct {
 	DataLock project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
 	// FullTextSearch is whether the records of this register are in the
 	// full-text index - see full_text_search.go.
-	FullTextSearch      FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
+	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
+	// DataHistorySettings is whether the records take part in data history and
+	// the two flags that go with it - see data_history.go. Of the four
+	// registers only this one carries them, and it is the one place where
+	// data history and the full-text flag part company: the syntax assistant
+	// gives data history to the information register alone, and the
+	// demonstration configuration writes it on all 247 of them and on no
+	// other register.
+	DataHistorySettings `yaml:",inline" json:",inline"`
 	RecordPresentations `yaml:",inline" json:",inline"`
 
 	WriteMode          InformationRegisterWriteMode   `yaml:"write_mode"`
@@ -77,6 +85,7 @@ func DecodeInformationRegister(source string, reader io.Reader, configuration pr
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
 	issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
+	issues = append(issues, validateDataHistory(value.DataHistorySettings)...)
 	switch value.WriteMode {
 	case InformationRegisterIndependent, InformationRegisterRecorder:
 	default:

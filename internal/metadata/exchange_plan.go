@@ -61,6 +61,9 @@ type ExchangePlanDefinition struct {
 	// FullTextSearch is whether this object is in the full-text index at all -
 	// see full_text_search.go.
 	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
+	// DataHistorySettings is whether this object takes part in data history
+	// and the two flags that go with it - see data_history.go.
+	DataHistorySettings `yaml:",inline" json:",inline"`
 
 	Code              CatalogCode `yaml:"code" json:"code"`
 	DescriptionLength int         `yaml:"description_length" json:"descriptionLength"`
@@ -129,6 +132,7 @@ func DecodeExchangePlan(source string, reader io.Reader, configuration project.P
 		dataLock:           value.DataLock,
 		dataLockFields:     value.DataLockFields,
 		fullTextSearch:     value.FullTextSearch,
+		dataHistory:        value.DataHistorySettings,
 		standardAttributes: value.StandardAttributes,
 	}, configuration)...)
 	issues = append(issues, validateExchangePlanContent(value)...)
