@@ -256,6 +256,20 @@ type Constant struct {
 	// UseStandardCommands decides whether the platform offers its own commands
 	// for this constant.
 	UseStandardCommands bool `yaml:"use_standard_commands,omitempty"`
+	// Presentation, Choice and FillChecking are the settings of a value that
+	// somebody types in, and a constant is exactly that: it has a type, a form
+	// and a person entering it. The prototype gives it the format and the
+	// format of editing, the tooltip, the mask, the multi-line and password
+	// modes, the marking of negatives, the bounds, the extended editing and
+	// the whole of choice.
+	//
+	// It does not give a constant indexing, use, a filling value or full-text
+	// search, and neither do we: there is one row of one value, so there is
+	// nothing to index and nothing to search; there is nowhere for it to
+	// belong; and a value that exists once is not filled in anew.
+	Presentation FieldPresentation `yaml:"presentation,omitempty"`
+	Choice       FieldChoice       `yaml:"choice,omitempty"`
+	FillChecking FillCheck         `yaml:"fill_checking,omitempty"`
 	// DataHistorySettings is whether the value takes part in data history and
 	// the two flags that go with it - see data_history.go. A constant is one
 	// of the ten kinds that carry all three.
@@ -895,6 +909,16 @@ func DecodeConstant(source string, reader io.Reader, configuration project.Proje
 	if value.DefaultForm != nil && value.DefaultForm.IsZero() {
 		issues = append(issues, "default_form must be a non-zero UUID")
 	}
+	issues = append(issues, validateValueSettings(Attribute{
+		Types: value.Types, Presentation: value.Presentation, Choice: value.Choice,
+	}, configuration)...)
+	if !validFillCheck(value.FillChecking) {
+		issues = append(issues, "fill_checking must be dont-check or show-error")
+	}
+	// A constant stands alone: there are no sibling fields for a choice
+	// parameter link to take its value from, so a link that names one names
+	// something that is not there.
+	issues = append(issues, validateFieldLinks(nil, nil, choiceHolder{"", value.Choice})...)
 	issues = append(issues, validateDataHistory(value.DataHistorySettings)...)
 	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
@@ -1655,6 +1679,8 @@ func cloneConstant(value Constant) Constant {
 		id := *value.DefaultForm
 		value.DefaultForm = &id
 	}
+	settings := cloneFieldSettings(Attribute{Presentation: value.Presentation, Choice: value.Choice})
+	value.Presentation, value.Choice = settings.Presentation, settings.Choice
 	return value
 }
 func cloneSessionParameter(value SessionParameter) SessionParameter {

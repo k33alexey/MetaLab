@@ -216,6 +216,17 @@ func validateFieldSettings(prefix string, attribute Attribute, configuration pro
 	return issues
 }
 
+// validateValueSettings checks the settings of a value that is the whole object
+// rather than a field of one - a constant. The paths it reports have no field
+// prefix, because there is no field to name: the object is the value.
+func validateValueSettings(field Attribute, configuration project.Project) []string {
+	issues := validateFieldSettings("", field, configuration)
+	for index, issue := range issues {
+		issues[index] = strings.TrimPrefix(issue, ".")
+	}
+	return issues
+}
+
 // validateFieldBound checks a bound against the field it bounds. A bound of
 // another type than the field is compared with nothing and rejects nothing:
 // the field accepts values that were meant to be out of range.
