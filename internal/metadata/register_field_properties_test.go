@@ -294,3 +294,113 @@ func TestInformationRegisterResourceKeepsItsIndexing(t *testing.T) {
 		t.Fatalf("resource indexing = %q", value.Resources[0].Indexing)
 	}
 }
+
+// TestAccountingRegisterFieldLinksReachDimensions is the defect that came out
+// of looking at where the converted fields were not: the list of fields a
+// choice link may reach was built from attributes alone, so a link to a
+// dimension of the same register was refused as pointing outside the object,
+// and a link drawn from a dimension was not looked at at all.
+//
+// Both halves are here, because the fix has to hold both: the legitimate link
+// is accepted, and the one pointing nowhere is refused.
+func TestAccountingRegisterFieldLinksReachDimensions(t *testing.T) {
+	t.Parallel()
+	toDimension := `dimensions:
+  - {id: ` + entriesCompany + `, name: Организация, title: {ru: Организация}, types: [{kind: catalog, reference: ` + entriesCompanies + `}]}
+resources:
+  - {id: ` + entriesSum + `, name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}]}
+attributes:
+  - id: ` + entriesFxSum + `
+    name: Договор
+    title: {ru: Договор}
+    types: [{kind: catalog, reference: ` + entriesCompanies + `}]
+    choice:
+      parameter_links:
+        - {name: Отбор.Владелец, source: {attribute: ` + entriesCompany + `}, change: clear}
+`
+	if _, err := Load(entriesProject(t, true, toDimension)); err != nil {
+		t.Fatalf("a link to a dimension of the same register was refused: %v", err)
+	}
+
+	fromDimension := `dimensions:
+  - id: ` + entriesCompany + `
+    name: Организация
+    title: {ru: Организация}
+    types: [{kind: catalog, reference: ` + entriesCompanies + `}]
+    choice:
+      parameter_links:
+        - {name: Отбор.Владелец, source: {attribute: ` + entriesKinds + `}, change: clear}
+resources:
+  - {id: ` + entriesSum + `, name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}]}
+`
+	err := entriesError(t, fromDimension)
+	if err == nil {
+		t.Fatal("a link from a dimension to something that is not a field of this register was accepted")
+	}
+	if !strings.Contains(err.Error(), "dimensions[0].choice.parameter_links[0].source is not a field of this object") {
+		t.Fatalf("error = %q", err)
+	}
+}
+
+// entriesError loads the entries project and returns only the error, which is
+// all the refusal cases care about.
+func entriesError(t *testing.T, fields string) error {
+	t.Helper()
+	_, err := Load(entriesProject(t, true, fields))
+	return err
+}
+
+// «Использование» is «для реквизитов справочников или планов видов
+// характеристик», and a register is neither. It said where a field belongs -
+// to items, to folders, to both - and a register has no folders to belong to,
+// so the setting could only ever be read by nobody.
+//
+// The check existed and the converted fields were simply not passed to it.
+func TestRegisterFieldRefusesUse(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"измерение регистра бухгалтерии": `dimensions:
+  - {id: ` + entriesCompany + `, name: Организация, title: {ru: Организация}, types: [{kind: catalog, reference: ` + entriesCompanies + `}], use: for-item}
+resources:
+  - {id: ` + entriesSum + `, name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}]}`,
+		"ресурс регистра бухгалтерии": `dimensions:
+  - {id: ` + entriesCompany + `, name: Организация, title: {ru: Организация}, types: [{kind: catalog, reference: ` + entriesCompanies + `}]}
+resources:
+  - {id: ` + entriesSum + `, name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}], use: for-folder-and-item}`,
+	}
+	for name, fields := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := entriesError(t, fields)
+			if err == nil {
+				t.Fatal("the field was accepted with a use of its own")
+			}
+			if !strings.Contains(err.Error(), ".use belongs to an attribute of a catalog") {
+				t.Fatalf("error = %q", err)
+			}
+		})
+	}
+}
+
+// The same for a dimension of a calculation register, which was left out of the
+// same two checks for the same reason.
+func TestCalculationRegisterDimensionRefusesUse(t *testing.T) {
+	t.Parallel()
+	body := `format: 1
+id: ` + calcRegister + `
+name: ОсновныеНачисления
+title: {ru: Основные начисления}
+chart_of_calculation_types: ` + calcChart + `
+periodicity: month
+dimensions:
+  - {id: ` + calcPerson + `, name: ФизическоеЛицо, title: {ru: Физическое лицо}, types: [{kind: catalog, reference: ` + calcPeople + `}], use: for-item}
+resources:
+  - {id: ` + calcResult + `, name: Результат, title: {ru: Результат}, types: [{kind: number, precision: 15, scale: 2}]}
+`
+	_, err := Load(calculationProject(t, body))
+	if err == nil {
+		t.Fatal("the dimension was accepted with a use of its own")
+	}
+	if !strings.Contains(err.Error(), "dimensions[0].use belongs to an attribute of a catalog") {
+		t.Fatalf("error = %q", err)
+	}
+}

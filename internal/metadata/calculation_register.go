@@ -171,7 +171,15 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, func(name string) bool {
 		return names[strings.ToLower(name)] || reservedCalculationRegisterName(name)
 	})...)
-	calculationFields := []fieldGroup{{"resources", value.Resources}, {"attributes", value.Attributes}}
+	// The dimensions belong here too - see the accounting register for what
+	// leaving a group out of these checks costs on both sides.
+	dimensionFields := make([]Attribute, 0, len(value.Dimensions))
+	for _, dimension := range value.Dimensions {
+		dimensionFields = append(dimensionFields, dimension.Attribute)
+	}
+	calculationFields := []fieldGroup{
+		{"dimensions", dimensionFields}, {"resources", value.Resources}, {"attributes", value.Attributes},
+	}
 	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
 	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(CalculationRegisterKind), configuration)...)
 	issues = append(issues, validateFieldLinks(calculationFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)

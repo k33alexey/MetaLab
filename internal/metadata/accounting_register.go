@@ -148,8 +148,20 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 		recordIndexTables(accountingStandardFields(value.Correspondence, maxExtDimensions),
 			accountingFieldNames(value.Dimensions), accountingFieldNames(value.Resources),
 			attributeNames(value.Attributes)))...)
-	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", value.Attributes}}, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
-	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", value.Attributes}}, nil, false, false)...)
+	// Dimensions and resources belong in these two checks, and until now only
+	// attributes were in them. That cost both ways. A choice parameter link
+	// from an attribute to a dimension of the same register - «отбор по
+	// организации проводки» - was refused as pointing outside the object,
+	// because the list of fields the link could reach was built from
+	// attributes alone. And a link drawn from a dimension was not looked at at
+	// all, so one pointing nowhere went in and failed when the form opened.
+	registerFields := []fieldGroup{
+		{"dimensions", accountingFieldAttributes(value.Dimensions)},
+		{"resources", accountingFieldAttributes(value.Resources)},
+		{"attributes", value.Attributes},
+	}
+	issues = append(issues, validateFieldLinks(registerFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
+	issues = append(issues, validateAttributeUse(registerFields, nil, false, false)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
@@ -198,6 +210,16 @@ func cloneAccountingRegister(value AccountingRegisterDefinition) AccountingRegis
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.ListPresentations = cloneListPresentations(value.ListPresentations)
 	return value
+}
+
+// accountingFieldAttributes is one group of fields as plain attributes, which is
+// what the checks shared by every kind of object take.
+func accountingFieldAttributes(fields []AccountingRegisterField) []Attribute {
+	result := make([]Attribute, 0, len(fields))
+	for _, field := range fields {
+		result = append(result, field.Attribute)
+	}
+	return result
 }
 
 // accountingRegisterFields is every field of an entry that carries a value of
