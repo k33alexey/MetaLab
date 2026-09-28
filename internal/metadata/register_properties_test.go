@@ -181,7 +181,7 @@ id: `+accumulationStandardID+`
 name: ОстаткиТоваров
 title: {ru: Остатки товаров}
 kind: balance
-totals_splitting: true
+allow_totals_splitting: true
 dimensions:
   - id: `+accumulationDimensionID+`
     name: Товар
@@ -198,8 +198,8 @@ resources:
 			t.Fatal(err)
 		}
 		register, ok := catalog.AccumulationRegisterDefinition("остаткитоваров")
-		if !ok || !register.TotalsSplitting {
-			t.Fatalf("register = %+v, found=%v", register.TotalsSplitting, ok)
+		if !ok || !register.AllowTotalsSplitting {
+			t.Fatalf("register = %+v, found=%v", register.AllowTotalsSplitting, ok)
 		}
 	})
 	// A register of calculations has no totals at all, so the key is refused
@@ -212,14 +212,14 @@ id: `+calcRegisterStandardID+`
 name: Начисления
 title: {ru: Начисления}
 periodicity: month
-totals_splitting: true
+allow_totals_splitting: true
 resources:
   - id: `+calcResourceStandardID+`
     name: Результат
     title: {ru: Результат}
     types: [{kind: number, precision: 15, scale: 2}]
 `)
-		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "totals_splitting") {
+		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "allow_totals_splitting") {
 			t.Fatalf("err = %v", err)
 		}
 	})

@@ -63,9 +63,12 @@ type AccountingRegisterDefinition struct {
 	// credit account at once. Without it an entry touches one account, and
 	// there are no two sides to tell apart.
 	Correspondence bool `yaml:"correspondence,omitempty" json:"correspondence,omitempty"`
-	// TotalsSplitting lets concurrent writers keep their own rows of totals
-	// instead of queueing on one.
-	TotalsSplitting bool `yaml:"totals_splitting,omitempty" json:"totalsSplitting,omitempty"`
+	// AllowTotalsSplitting permits concurrent writers to keep their own rows
+	// of totals instead of queueing on one - see register_totals_mode.go. It
+	// permits and does not switch, and this register has nothing yet to
+	// switch: its totals arrive with posting, which is 1.0.2. The property is
+	// carried and not executed.
+	AllowTotalsSplitting bool `yaml:"allow_totals_splitting,omitempty" json:"allowTotalsSplitting,omitempty"`
 	// PeriodAdjustmentLength orders entries beyond their period: of two with
 	// equal periods, the smaller refinement is the earlier. Zero means the
 	// register does not support refinement - see register_properties.go.

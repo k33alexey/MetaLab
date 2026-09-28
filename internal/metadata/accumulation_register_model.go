@@ -40,12 +40,14 @@ type AccumulationRegisterDefinition struct {
 	AdditionalIndexes []AdditionalIndex `yaml:"additional_indexes,omitempty" json:"additionalIndexes,omitempty"`
 
 	Kind AccumulationRegisterKindValue `yaml:"kind"`
-	// TotalsSplitting keeps the totals of concurrent writers in rows of their
-	// own instead of making them queue on one. The accounting register has
-	// carried this since it was modelled; this register had the mechanism and
-	// no way to ask for it - see BLOCKS.md, where making it follow the setting
-	// is a point of its own.
-	TotalsSplitting bool `yaml:"totals_splitting,omitempty"`
+	// AllowTotalsSplitting permits the totals of concurrent writers to be kept
+	// in rows of their own instead of making them queue on one.
+	//
+	// It permits and does not switch: the prototype calls the property
+	// РазрешитьРазделениеИтогов and keeps the switch itself in the working
+	// database - see register_totals_mode.go. The register used to split its
+	// totals always and had no way to be asked about it at all.
+	AllowTotalsSplitting bool `yaml:"allow_totals_splitting,omitempty"`
 	// Aggregates are precomputed cuts of the movements, a subordinate entity
 	// and not a property - see accumulation_aggregates.go. Declared here,
 	// switched on in the working database, and an alternative to totals rather

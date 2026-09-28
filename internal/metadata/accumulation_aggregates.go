@@ -30,10 +30,10 @@ import (
 // **Aggregates and totals are alternatives, not layers.** The same help says
 // switching the mode on clears the totals, and switching it off clears the
 // aggregates and recomputes the totals. That is worth writing down beside the
-// register's own TotalsSplitting: a register running on aggregates has no
-// totals to split. It is not a contradiction in the configuration, because the
-// mode is data and both may be declared, and it is not refused for that
-// reason.
+// register's own AllowTotalsSplitting: a register running on aggregates has no
+// totals to split. It is not a contradiction in the configuration, because
+// both modes are data of the base and both may be permitted at once - see
+// register_totals_mode.go - and it is not refused for that reason.
 //
 // **Open question: which kind of register may carry them.** The help gives
 // Агрегаты to ОбъектМетаданных: РегистрНакопления without distinguishing a

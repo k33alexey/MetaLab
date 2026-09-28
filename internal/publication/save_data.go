@@ -132,6 +132,9 @@ func SaveData(ctx context.Context, pool *pgxpool.Pool, request SaveDataRequest) 
 			if err := metadata.EnsureObjectIntegrityStorage(ctx, transaction); err != nil {
 				return err
 			}
+			if err := metadata.EnsureRegisterTotalsStorage(ctx, transaction); err != nil {
+				return err
+			}
 			if err := metadata.EnsureConstantStorage(ctx, transaction); err != nil {
 				return err
 			}

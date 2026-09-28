@@ -196,10 +196,18 @@ func (repository *AccumulationRegisterRepository) WriteWithHandler(ctx context.C
 				return err
 			}
 		}
-		if err := repository.insertMovements(transactionContext, transaction, definition, working.Records); err != nil {
+		// The mode is data of this base, read inside the write's own
+		// transaction - see register_totals_mode.go. It decides where the
+		// totals of this write land and nothing else: rows written under the
+		// other mode are summed beside these ones on reading.
+		splitting, err := effectiveTotalsSplitting(transactionContext, transaction, definition.ID, definition.AllowTotalsSplitting)
+		if err != nil {
 			return err
 		}
-		if err := repository.applyTotalsChanges(transactionContext, transaction, definition, old, working.Records); err != nil {
+		if err := repository.insertMovements(transactionContext, transaction, definition, working.Records, splitting); err != nil {
+			return err
+		}
+		if err := repository.applyTotalsChanges(transactionContext, transaction, definition, old, working.Records, splitting); err != nil {
 			return err
 		}
 		for _, event := range []AccumulationRegisterEvent{AccumulationRegisterEventOnWrite, AccumulationRegisterEventAfterWrite} {
@@ -348,7 +356,7 @@ func (repository *AccumulationRegisterRepository) validateRecorder(ctx context.C
 	return nil
 }
 
-func (repository *AccumulationRegisterRepository) insertMovements(ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition, records []*AccumulationRegisterRecord) error {
+func (repository *AccumulationRegisterRepository) insertMovements(ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition, records []*AccumulationRegisterRecord, splitting bool) error {
 	if len(records) == 0 {
 		return nil
 	}
@@ -364,7 +372,7 @@ func (repository *AccumulationRegisterRepository) insertMovements(ctx context.Co
 	source := pgx.CopyFromSlice(len(records), func(index int) ([]any, error) {
 		record := records[index]
 		arguments := []any{record.RecordID.String(), accumulationDimensionKey(definition, record.Dimensions), record.Period,
-			record.Recorder.DocumentID.String(), record.Recorder.ObjectID.String(), record.LineNumber, record.Active, accumulationTotalsSplit(record.Recorder)}
+			record.Recorder.DocumentID.String(), record.Recorder.ObjectID.String(), record.LineNumber, record.Active, accumulationTotalsSplit(record.Recorder, splitting)}
 		if definition.Kind == AccumulationRegisterBalance {
 			arguments = append(arguments, int16(record.MovementKind))
 		}
@@ -510,14 +518,14 @@ type accumulationTotalDelta struct {
 	resources    map[uuid.UUID]*big.Rat
 }
 
-func (repository *AccumulationRegisterRepository) applyTotalsChanges(ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition, removed, added []*AccumulationRegisterRecord) error {
+func (repository *AccumulationRegisterRepository) applyTotalsChanges(ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition, removed, added []*AccumulationRegisterRecord, splitting bool) error {
 	deltas := map[string]*accumulationTotalDelta{}
 	accumulate := func(record *AccumulationRegisterRecord, replacementSign int64) error {
 		if record == nil || !record.Active {
 			return nil
 		}
 		period := time.Date(record.Period.UTC().Year(), record.Period.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
-		split, dimensionKey := accumulationTotalsSplit(record.Recorder), accumulationDimensionKey(definition, record.Dimensions)
+		split, dimensionKey := accumulationTotalsSplit(record.Recorder, splitting), accumulationDimensionKey(definition, record.Dimensions)
 		key := period.Format(time.RFC3339Nano) + ":" + fmt.Sprint(split) + ":" + dimensionKey
 		delta := deltas[key]
 		if delta == nil {
@@ -673,8 +681,18 @@ func (repository *AccumulationRegisterRepository) RebuildTotals(ctx context.Cont
 		}
 		columns := []string{"total_period", "totals_split", "dimension_key"}
 		monthExpression := "date_trunc('month', period AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'"
-		selects := []string{monthExpression, "totals_split", "dimension_key"}
-		groups := []string{monthExpression, "totals_split", "dimension_key"}
+		// A rebuild collapses the split rows into one, whatever mode the
+		// register is in: «при пересчете итогов накопленные отдельные записи
+		// сворачиваются». Grouping by the split stored on the movements would
+		// reproduce the old spread instead, and a register switched out of
+		// splitting would keep its multiplied rows for ever.
+		//
+		// Later writes spread themselves again if the mode says so, and that
+		// costs nothing: a change to a movement written before the rebuild
+		// subtracts its delta in the row its recorder belongs to, which is
+		// then a row of its own, and reading sums the two.
+		selects := []string{monthExpression, "0", "dimension_key"}
+		groups := []string{monthExpression, "dimension_key"}
 		for _, dimension := range definition.Dimensions {
 			column, _ := PhysicalAttributeColumn(dimension.ID)
 			quoted := pgx.Identifier{column}.Sanitize()
@@ -1470,7 +1488,21 @@ func accumulationDimensionKey(definition AccumulationRegisterDefinition, dimensi
 	return hex.EncodeToString(hash.Sum(nil))
 }
 
-func accumulationTotalsSplit(recorder DocumentReference) int16 {
+// accumulationTotalsSplit says which row of totals this recorder's movements
+// belong to.
+//
+// With the mode off there is one row per combination of dimensions, which is
+// what a register that does not split its totals means. With it on, the
+// recorder is hashed into a fixed number of rows - and that is not yet what
+// the prototype does: it multiplies a row only when a concurrent transaction
+// is already holding it, so the count follows the real concurrency instead of
+// a constant. Replacing the hash is a point of its own in BLOCKS.md; it is a
+// change of how a write behaves under contention, not of whether the setting
+// is obeyed.
+func accumulationTotalsSplit(recorder DocumentReference, splitting bool) int16 {
+	if !splitting {
+		return 0
+	}
 	hash := sha256.New()
 	writeHashPart(hash, "accumulation-totals-split")
 	writeHashPart(hash, recorder.DocumentID.String())

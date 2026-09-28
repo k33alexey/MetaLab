@@ -170,7 +170,7 @@ id: `+aggregateRegisterID+`
 name: ОстаткиТоваров
 title: {ru: Остатки товаров}
 kind: balance
-totals_splitting: true
+allow_totals_splitting: true
 dimensions:
   - {id: `+aggregateGoodID+`, name: Номенклатура, title: {ru: Номенклатура}, types: [{kind: string, length: 50}]}
 resources:
@@ -186,7 +186,7 @@ aggregates:
 	// of the two a register runs on is a setting of the working database, and
 	// the configuration may declare both.
 	register, _ := catalog.AccumulationRegisterDefinition("ОстаткиТоваров")
-	if len(register.Aggregates) != 1 || !register.TotalsSplitting {
+	if len(register.Aggregates) != 1 || !register.AllowTotalsSplitting {
 		t.Fatalf("the declaration was not kept as written: %+v", register.Aggregates)
 	}
 }

@@ -67,12 +67,13 @@ func (catalog *Catalog) accountingRegisterTable(definition AccountingRegisterDef
 			{Name: physicalObjectName("ir", definition.ID), Method: "btree", Keys: []string{"recorder_type", "recorder_ref", "line_no"}},
 		},
 	}
-	if definition.TotalsSplitting {
-		table.Columns = append(table.Columns, schemadiff.Column{Name: "totals_split", Type: "smallint", Nullable: false, Default: "0"})
-		table.Constraints = append(table.Constraints, schemadiff.Constraint{
-			Name: physicalObjectName("cs", definition.ID), Type: "check", Definition: "CHECK (totals_split >= 0 AND totals_split < 16)",
-		})
-	}
+	// No splitting column here, although the register carries the property.
+	// Splitting spreads rows of a totals table, and this register has no
+	// totals table: its totals arrive with posting, which is 1.0.2. The column
+	// used to be created whenever the property was set, on the table of
+	// entries rather than of totals, and nothing ever wrote or read it - a
+	// schema that promised a mechanism that did not exist. When the totals
+	// come, splitting comes with them and in the right place.
 	accountsTable, err := PhysicalCatalogTable(definition.ChartOfAccounts)
 	if err != nil {
 		return schemadiff.Table{}, err
