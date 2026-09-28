@@ -1719,9 +1719,19 @@ func clonePredefinedCatalogItem(value PredefinedCatalogItem) PredefinedCatalogIt
 func cloneAttributes(value []Attribute) []Attribute {
 	result := slices.Clone(value)
 	for index := range result {
-		result[index].Title = cloneTitle(result[index].Title)
-		result[index].Types = cloneTypes(result[index].Types)
-		result[index] = cloneFieldFilling(cloneFieldSettings(result[index]))
+		result[index] = cloneAttribute(result[index])
 	}
 	return result
+}
+
+// cloneAttribute copies one field with everything it owns. It exists apart from
+// cloneAttributes because the fields of a register are not a plain slice of
+// attributes: a dimension of a calculation register and a field of an
+// accounting register carry an attribute plus their own, and they have to copy
+// the attribute part the same way or the copy would share what it shows and how
+// it is chosen with the original.
+func cloneAttribute(value Attribute) Attribute {
+	value.Title = cloneTitle(value.Title)
+	value.Types = cloneTypes(value.Types)
+	return cloneFieldFilling(cloneFieldSettings(value))
 }

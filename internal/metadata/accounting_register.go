@@ -23,14 +23,17 @@ import (
 // not keep this flag does not keep this field either, and an entry that fills
 // it anyway is filling a column the account has no meaning for.
 type AccountingRegisterField struct {
-	ID                         uuid.UUID     `yaml:"id" json:"id"`
-	Name                       string        `yaml:"name" json:"name"`
-	Title                      LocalizedText `yaml:"title" json:"title"`
-	Types                      []Type        `yaml:"types" json:"types"`
-	Indexing                   IndexMode     `yaml:"indexing,omitempty" json:"indexing,omitempty"`
-	Balance                    bool          `yaml:"balance,omitempty" json:"balance,omitempty"`
-	AccountingFlag             *uuid.UUID    `yaml:"accounting_flag,omitempty" json:"accountingFlag,omitempty"`
-	ExtDimensionAccountingFlag *uuid.UUID    `yaml:"ext_dimension_accounting_flag,omitempty" json:"extDimensionAccountingFlag,omitempty"`
+	// Attribute is the whole common set - how the value is shown, how it is
+	// chosen, what it starts as, whether it is checked and searched. The
+	// prototype has one metadata object «Измерение» and one «Ресурс» for all
+	// four kinds of register, and what a particular kind may set of it is a
+	// matter of applicability, not of a different type. A field of an
+	// accounting register that carried only a name, a type and indexing was a
+	// field the editor could not offer a format or a choice form for.
+	Attribute                  `yaml:",inline" json:",inline"`
+	Balance                    bool       `yaml:"balance,omitempty" json:"balance,omitempty"`
+	AccountingFlag             *uuid.UUID `yaml:"accounting_flag,omitempty" json:"accountingFlag,omitempty"`
+	ExtDimensionAccountingFlag *uuid.UUID `yaml:"ext_dimension_accounting_flag,omitempty" json:"extDimensionAccountingFlag,omitempty"`
 }
 
 // AccountingRegisterDefinition holds entries: an account on each side, sums and
@@ -99,28 +102,14 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	}
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for _, group := range []struct {
-		path   string
-		fields []AccountingRegisterField
-	}{{"dimensions", value.Dimensions}, {"resources", value.Resources}} {
+		path      string
+		fields    []AccountingRegisterField
+		dimension bool
+	}{{"dimensions", value.Dimensions, true}, {"resources", value.Resources, false}} {
 		for index, field := range group.fields {
 			prefix := fmt.Sprintf("%s[%d]", group.path, index)
-			if field.ID.IsZero() {
-				issues = append(issues, prefix+".id must be a non-zero UUID")
-			}
-			if ids[field.ID] {
-				issues = append(issues, prefix+".id must be unique")
-			}
-			ids[field.ID] = true
-			if !validIdentifier(field.Name) {
-				issues = append(issues, prefix+".name must be a valid identifier")
-			}
-			folded := strings.ToLower(field.Name)
-			if names[folded] || reservedAccountingRegisterName(folded) {
-				issues = append(issues, prefix+".name is taken")
-			}
-			names[folded] = true
-			issues = append(issues, validateTitle(prefix+".title", field.Title, configuration)...)
-			issues = append(issues, validateTypes(prefix+".types", field.Types, value.ID)...)
+			issues = append(issues, validateRegisterField(prefix, field.Attribute, value.ID,
+				names, ids, configuration, reservedAccountingRegisterName)...)
 			// Two sides exist only under double entry. Marking a field as the
 			// same on both sides of an entry that has one side says nothing,
 			// and a setting that says nothing hides the one that would.
@@ -133,8 +122,20 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 			if field.ExtDimensionAccountingFlag != nil && field.ExtDimensionAccountingFlag.IsZero() {
 				issues = append(issues, prefix+".ext_dimension_accounting_flag must be a non-zero UUID")
 			}
-			if !validIndexMode(field.Indexing) {
-				issues = append(issues, prefix+".indexing must be dont-index, index or index-with-additional-order")
+			// The ext dimension flag belongs to a resource and to nothing else:
+			// «используется для объектов метаданных, описывающих ресурсы
+			// регистра бухгалтерии». It says in which kinds of ext dimension
+			// the amount of that resource is kept, and a dimension keeps no
+			// amount - the setting would be read by nobody.
+			if group.dimension && field.ExtDimensionAccountingFlag != nil {
+				issues = append(issues, prefix+".ext_dimension_accounting_flag belongs to a resource: a dimension holds no amount to keep by ext dimension")
+			}
+			// Indexing a resource is an information register's setting alone -
+			// «для ресурсов регистра сведений». Entries are read by account,
+			// period and analytics, never by an amount, so an index on an
+			// amount is a table nobody queries and a write everybody pays for.
+			if !group.dimension && field.Indexing != "" && field.Indexing != DontIndex {
+				issues = append(issues, prefix+".indexing belongs to a dimension: an entry is never found by an amount")
 			}
 		}
 	}
@@ -179,8 +180,7 @@ func reservedAccountingRegisterName(name string) bool {
 func cloneAccountingRegisterFields(fields []AccountingRegisterField) []AccountingRegisterField {
 	fields = slices.Clone(fields)
 	for index := range fields {
-		fields[index].Title = cloneTitle(fields[index].Title)
-		fields[index].Types = cloneTypes(fields[index].Types)
+		fields[index].Attribute = cloneAttribute(fields[index].Attribute)
 		for _, flag := range []**uuid.UUID{&fields[index].AccountingFlag, &fields[index].ExtDimensionAccountingFlag} {
 			if *flag != nil {
 				id := **flag
@@ -211,7 +211,7 @@ func accountingRegisterFields(item AccountingRegisterDefinition) []Attribute {
 	fields := make([]Attribute, 0, len(item.Dimensions)+len(item.Resources))
 	for _, group := range [][]AccountingRegisterField{item.Dimensions, item.Resources} {
 		for _, field := range group {
-			fields = append(fields, Attribute{ID: field.ID, Name: field.Name, Title: field.Title, Types: field.Types, Indexing: field.Indexing})
+			fields = append(fields, cloneAttribute(field.Attribute))
 		}
 	}
 	return fields

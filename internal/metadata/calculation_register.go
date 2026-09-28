@@ -30,11 +30,9 @@ const (
 // CalculationRegisterDimension is a dimension of a calculation register. Beyond
 // what any field carries it holds the two links that make calculation work.
 type CalculationRegisterDimension struct {
-	ID       uuid.UUID     `yaml:"id" json:"id"`
-	Name     string        `yaml:"name" json:"name"`
-	Title    LocalizedText `yaml:"title" json:"title"`
-	Types    []Type        `yaml:"types" json:"types"`
-	Indexing IndexMode     `yaml:"indexing,omitempty" json:"indexing,omitempty"`
+	// Attribute is the whole common set - see AccountingRegisterField for why a
+	// field of a register carries it entire.
+	Attribute `yaml:",inline" json:",inline"`
 	// Base says a record is tied to its base by this dimension. Without it
 	// there is nothing to say whose base to gather, and one person's salary
 	// would be computed from everybody's bonuses.
@@ -158,20 +156,23 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, dimension := range value.Dimensions {
 		prefix := fmt.Sprintf("dimensions[%d]", index)
-		issues = append(issues, validateRegisterFieldShape(prefix, dimension.ID, dimension.Name, dimension.Title, dimension.Types,
+		issues = append(issues, validateRegisterField(prefix, dimension.Attribute,
 			value.ID, names, ids, configuration, reservedCalculationRegisterName)...)
 		if dimension.ScheduleLink != nil && value.Schedule == nil {
 			issues = append(issues, prefix+".schedule_link needs a schedule: there is no schedule for it to link to")
 		}
-		if !validIndexMode(dimension.Indexing) {
-			issues = append(issues, prefix+".indexing must be dont-index, index or index-with-additional-order")
-		}
 	}
 	for index, resource := range value.Resources {
 		prefix := fmt.Sprintf("resources[%d]", index)
-		issues = append(issues, validateRegisterFieldShape(prefix, resource.ID, resource.Name, resource.Title, resource.Types,
+		issues = append(issues, validateRegisterField(prefix, resource,
 			value.ID, names, ids, configuration, reservedCalculationRegisterName)...)
-		issues = append(issues, validateFieldSettings(prefix, resource, configuration)...)
+		// Indexing a resource is an information register's setting alone -
+		// «для ресурсов регистра сведений». A record of a calculation register
+		// is found by its dimensions and its periods, never by an accrued
+		// amount, so an index on one is a table nobody queries.
+		if resource.Indexing != "" && resource.Indexing != DontIndex {
+			issues = append(issues, prefix+".indexing belongs to a dimension: a record is never found by an amount")
+		}
 	}
 	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, func(name string) bool {
 		return names[strings.ToLower(name)] || reservedCalculationRegisterName(name)
@@ -194,8 +195,14 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 // validateRegisterFieldShape checks what every named field of a register
 // repeats, and keeps one set of names and identifiers across the groups: a
 // dimension and a resource of one register may not share a name.
-func validateRegisterFieldShape(prefix string, id uuid.UUID, name string, title LocalizedText, types []Type,
+// validateRegisterField checks one field of a register: its shape, and then
+// everything a field carries - how it is shown, how it is chosen, what it
+// starts as. The last part used to be checked only for attributes, so a
+// dimension or a resource could hold a format bound to no type and a choice
+// form that does not exist, and nothing would say so until the form was opened.
+func validateRegisterField(prefix string, field Attribute,
 	self uuid.UUID, names map[string]bool, ids map[uuid.UUID]bool, configuration project.Project, reserved func(string) bool) []string {
+	id, name, title, types := field.ID, field.Name, field.Title, field.Types
 	var issues []string
 	if id.IsZero() {
 		issues = append(issues, prefix+".id must be a non-zero UUID")
@@ -214,6 +221,8 @@ func validateRegisterFieldShape(prefix string, id uuid.UUID, name string, title 
 	names[folded] = true
 	issues = append(issues, validateTitle(prefix+".title", title, configuration)...)
 	issues = append(issues, validateTypes(prefix+".types", types, self)...)
+	issues = append(issues, validateFieldSettings(prefix, field, configuration)...)
+	issues = append(issues, validateFieldStorage(prefix, field)...)
 	return issues
 }
 
@@ -309,8 +318,7 @@ func cloneCalculationRegister(value CalculationRegisterDefinition) CalculationRe
 	value.Title = cloneTitle(value.Title)
 	value.Dimensions = slices.Clone(value.Dimensions)
 	for index := range value.Dimensions {
-		value.Dimensions[index].Title = cloneTitle(value.Dimensions[index].Title)
-		value.Dimensions[index].Types = cloneTypes(value.Dimensions[index].Types)
+		value.Dimensions[index].Attribute = cloneAttribute(value.Dimensions[index].Attribute)
 		if value.Dimensions[index].ScheduleLink != nil {
 			id := *value.Dimensions[index].ScheduleLink
 			value.Dimensions[index].ScheduleLink = &id
