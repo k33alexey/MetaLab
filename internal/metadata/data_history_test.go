@@ -141,7 +141,8 @@ name: Организация
 title: {ru: Организация}
 types: [{kind: string, length: 50}]
 data_history: use
-objects: [`+historyRegisterID+`]
+content:
+  - {metadata: `+historyRegisterID+`, use: use}
 `)
 	catalog, err := Load(root)
 	if err != nil {
@@ -199,7 +200,8 @@ title: {ru: Организация}
 types: [{kind: string, length: 50}]
 data_history: use
 update_data_history_immediately_after_write: true
-objects: [`+historyRegisterID+`]
+content:
+  - {metadata: `+historyRegisterID+`, use: use}
 `)
 	if _, err := Load(root); err == nil {
 		t.Fatal("a common attribute took an object's flag")

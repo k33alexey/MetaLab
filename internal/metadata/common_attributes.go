@@ -47,7 +47,102 @@ type CommonAttributeDefinition struct {
 	Presentation FieldPresentation `yaml:"presentation,omitempty"`
 	Choice       FieldChoice       `yaml:"choice,omitempty"`
 	Filling      FieldFilling      `yaml:"filling,omitempty"`
-	Objects      []uuid.UUID       `yaml:"objects"`
+	// AutoUse decides the objects the composition says nothing definite about:
+	// those it does not mention at all, and those it marks «auto». The
+	// prototype's default is not to use them, and that is the safe way round -
+	// an object nobody spoke about does not silently grow a column.
+	AutoUse CommonAttributeAutoUse `yaml:"auto_use,omitempty"`
+	// Content is the composition, and it is not a list of the objects that get
+	// the attribute: it is a list of objects with a verdict on each. That
+	// difference is the whole of it. Of the six common attributes of the
+	// demonstration configuration five are «only these, explicitly», and the
+	// sixth - the separator of the main data area - is the other way round:
+	// auto-use on, and all 331 items marked «do not use», so the composition
+	// works as a list of exceptions. Read as a list of the included, it would
+	// give the attribute to precisely the objects that must not have it.
+	Content []CommonAttributeContentItem `yaml:"content,omitempty"`
+}
+
+// CommonAttributeUse is the verdict of one item of the composition.
+type CommonAttributeUse string
+
+const (
+	CommonAttributeUseAuto    CommonAttributeUse = "auto"
+	CommonAttributeUseUse     CommonAttributeUse = "use"
+	CommonAttributeUseDontUse CommonAttributeUse = "dont-use"
+)
+
+// CommonAttributeAutoUse is what «auto» means for this attribute.
+type CommonAttributeAutoUse string
+
+const (
+	CommonAttributeAutoUseDontUse CommonAttributeAutoUse = "dont-use"
+	CommonAttributeAutoUseUse     CommonAttributeAutoUse = "use"
+)
+
+// CommonAttributeContentItem is one object of the composition and what the
+// attribute does with it.
+type CommonAttributeContentItem struct {
+	Metadata uuid.UUID          `yaml:"metadata"`
+	Use      CommonAttributeUse `yaml:"use,omitempty"`
+	// ConditionalSeparation is the condition under which the attribute
+	// separates this object's data. It is part of the composition and not of
+	// the attribute, because the condition is per object - see
+	// ConditionalSeparation. We carry it and do not act on it: separation of
+	// data is not ours, and the reason is in METADATA-OBJECTS.md.
+	ConditionalSeparation *ConditionalSeparation `yaml:"conditional_separation,omitempty"`
+}
+
+// ConditionalSeparation names the boolean that decides whether the attribute
+// separates one object's data: either a constant, or an attribute of an object.
+//
+// Both must stand outside the composition, and that is the prototype's rule,
+// not our caution: a condition that lived on a separated object would have to
+// be read to decide whether to separate it, and reading it needs the answer.
+type ConditionalSeparation struct {
+	Constant *uuid.UUID `yaml:"constant,omitempty"`
+	// Object and Attribute are named together: an attribute of an object, and
+	// the object is needed because the condition may live anywhere.
+	Object    *uuid.UUID `yaml:"object,omitempty"`
+	Attribute *uuid.UUID `yaml:"attribute,omitempty"`
+}
+
+func validCommonAttributeUse(value CommonAttributeUse) bool {
+	switch value {
+	case "", CommonAttributeUseAuto, CommonAttributeUseUse, CommonAttributeUseDontUse:
+		return true
+	default:
+		return false
+	}
+}
+
+func validCommonAttributeAutoUse(value CommonAttributeAutoUse) bool {
+	switch value {
+	case "", CommonAttributeAutoUseDontUse, CommonAttributeAutoUseUse:
+		return true
+	default:
+		return false
+	}
+}
+
+// reaches says whether this object gets the attribute. An object the
+// composition mentions is decided by its item; one it does not mention is
+// decided by auto-use, the same as an item that says «auto».
+func (value CommonAttributeDefinition) reaches(objectID uuid.UUID) bool {
+	for _, item := range value.Content {
+		if item.Metadata != objectID {
+			continue
+		}
+		switch item.Use {
+		case CommonAttributeUseUse:
+			return true
+		case CommonAttributeUseDontUse:
+			return false
+		default:
+			return value.AutoUse == CommonAttributeAutoUseUse
+		}
+	}
+	return value.AutoUse == CommonAttributeAutoUseUse
 }
 
 func DecodeCommonAttribute(source string, reader io.Reader, configuration project.Project) (CommonAttributeDefinition, error) {
@@ -90,21 +185,80 @@ func ValidateCommonAttribute(source string, value CommonAttributeDefinition, con
 	// its value from - and which siblings it would have depends on the object,
 	// which is exactly why the prototype does not let it draw one.
 	issues = append(issues, validateFieldLinks(nil, nil, choiceHolder{"", value.Choice})...)
-	if len(value.Objects) == 0 {
-		issues = append(issues, "objects must list at least one target object")
+	if !validCommonAttributeAutoUse(value.AutoUse) {
+		issues = append(issues, "auto_use must be use or dont-use")
 	}
-	seen := make(map[uuid.UUID]bool, len(value.Objects))
-	for index, target := range value.Objects {
-		prefix := fmt.Sprintf("objects[%d]", index)
-		if target.IsZero() {
-			issues = append(issues, prefix+" must be a non-zero UUID")
+	seen := make(map[uuid.UUID]bool, len(value.Content))
+	reaches := value.AutoUse == CommonAttributeAutoUseUse
+	for index, item := range value.Content {
+		prefix := fmt.Sprintf("content[%d]", index)
+		if item.Metadata.IsZero() {
+			issues = append(issues, prefix+".metadata must be a non-zero UUID")
 		}
-		if seen[target] {
-			issues = append(issues, prefix+" must be unique")
+		if seen[item.Metadata] {
+			issues = append(issues, prefix+".metadata must be unique")
 		}
-		seen[target] = true
+		seen[item.Metadata] = true
+		if !validCommonAttributeUse(item.Use) {
+			issues = append(issues, prefix+".use must be auto, use or dont-use")
+		}
+		if item.Use == CommonAttributeUseUse {
+			reaches = true
+		}
+		issues = append(issues, validateConditionalSeparation(prefix, item.ConditionalSeparation, seen)...)
+	}
+	// An attribute that reaches nobody is a field declared and given to no
+	// object: the setting reads as working and does nothing.
+	if !reaches {
+		issues = append(issues, "the composition reaches no object: either list an object with use or set auto_use to use")
 	}
 	return issuesError(source, value.Format, issues)
+}
+
+// validateConditionalSeparation checks the condition of one item: it names one
+// boolean and not two, and what it names stands outside the composition.
+//
+// Outside the composition is the prototype's rule and it is not a formality: a
+// condition kept on a separated object would have to be read to decide whether
+// that object is separated, and reading it needs the answer. `inside` holds the
+// objects the composition has named so far, which is why the items are checked
+// in order.
+func validateConditionalSeparation(prefix string, separation *ConditionalSeparation, inside map[uuid.UUID]bool) []string {
+	if separation == nil {
+		return nil
+	}
+	path := prefix + ".conditional_separation"
+	var issues []string
+	named := 0
+	if separation.Constant != nil {
+		named++
+		if separation.Constant.IsZero() {
+			issues = append(issues, path+".constant must be a non-zero UUID")
+		}
+	}
+	switch {
+	case separation.Object != nil && separation.Attribute != nil:
+		named++
+		if separation.Object.IsZero() || separation.Attribute.IsZero() {
+			issues = append(issues, path+".object and .attribute must be non-zero UUIDs")
+		}
+		if inside[*separation.Object] {
+			issues = append(issues, path+".object is in the composition: the condition would have to be read to decide whether to read it")
+		}
+	case separation.Object != nil || separation.Attribute != nil:
+		issues = append(issues, path+" names an object without an attribute or the other way round")
+	}
+	switch named {
+	case 1:
+	case 0:
+		issues = append(issues, path+" must name a constant or an attribute of an object")
+	default:
+		issues = append(issues, path+" names both a constant and an attribute, and a condition is one boolean")
+	}
+	if separation.Constant != nil && inside[*separation.Constant] {
+		issues = append(issues, path+".constant is in the composition")
+	}
+	return issues
 }
 
 func (catalog *Catalog) CommonAttribute(name string) (CommonAttributeDefinition, bool) {
@@ -125,7 +279,19 @@ func (catalog *Catalog) CommonAttributeByID(id uuid.UUID) (CommonAttributeDefini
 
 func cloneCommonAttributeDefinition(value CommonAttributeDefinition) CommonAttributeDefinition {
 	value.Title, value.Types = cloneTitle(value.Title), cloneTypes(value.Types)
-	value.Objects = slices.Clone(value.Objects)
+	value.Content = slices.Clone(value.Content)
+	for index := range value.Content {
+		if separation := value.Content[index].ConditionalSeparation; separation != nil {
+			copied := *separation
+			for _, field := range []**uuid.UUID{&copied.Constant, &copied.Object, &copied.Attribute} {
+				if *field != nil {
+					id := **field
+					*field = &id
+				}
+			}
+			value.Content[index].ConditionalSeparation = &copied
+		}
+	}
 	settings := cloneFieldFilling(cloneFieldSettings(Attribute{
 		Presentation: value.Presentation, Choice: value.Choice, Filling: value.Filling,
 	}))
@@ -151,18 +317,42 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 	sort.Slice(catalog.CommonAttributes, func(i, j int) bool {
 		return catalog.CommonAttributes[i].ID.String() < catalog.CommonAttributes[j].ID.String()
 	})
-	targets := make(map[uuid.UUID]commonAttributeTarget, len(catalog.Catalogs)+len(catalog.Documents)+len(catalog.InformationRegisters)+len(catalog.AccumulationRegisters))
+	// The kinds that can take a common attribute, in a fixed order. The order
+	// matters now in a way it did not before: with auto-use the attribute
+	// reaches objects the composition never mentions, so propagation walks the
+	// objects rather than the list, and walking a map would put the field in a
+	// different place on every run.
+	//
+	// Which kinds these are is the prototype's list, checked in its
+	// configurator: catalogs, documents, document journals, information
+	// registers, accumulation registers, business processes, tasks. Registers of
+	// accounting and of calculation are not among them. The document journal is
+	// missing here and has a point of its own: it keeps columns rather than
+	// attributes, and where the field lands in one is not yet known.
+	var ordered []commonAttributeTarget
+	targets := map[uuid.UUID]commonAttributeTarget{}
+	add := func(id uuid.UUID, kind string, index int) {
+		location := commonAttributeTarget{kind, index}
+		targets[id] = location
+		ordered = append(ordered, location)
+	}
 	for index, item := range catalog.Catalogs {
-		targets[item.ID] = commonAttributeTarget{"catalog", index}
+		add(item.ID, "catalog", index)
 	}
 	for index, item := range catalog.Documents {
-		targets[item.ID] = commonAttributeTarget{"document", index}
+		add(item.ID, "document", index)
 	}
 	for index, item := range catalog.InformationRegisters {
-		targets[item.ID] = commonAttributeTarget{"information register", index}
+		add(item.ID, "information register", index)
 	}
 	for index, item := range catalog.AccumulationRegisters {
-		targets[item.ID] = commonAttributeTarget{"accumulation register", index}
+		add(item.ID, "accumulation register", index)
+	}
+	for index, item := range catalog.BusinessProcesses {
+		add(item.ID, "business process", index)
+	}
+	for index, item := range catalog.Tasks {
+		add(item.ID, "task", index)
 	}
 	for _, common := range catalog.CommonAttributes {
 		attribute := Attribute{
@@ -181,10 +371,16 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 			Comment: common.Comment, Presentation: common.Presentation,
 			Choice: common.Choice, Filling: common.Filling,
 		}
-		for _, objectID := range common.Objects {
-			location, ok := targets[objectID]
-			if !ok {
-				return fmt.Errorf("common attribute %s references unknown object %s", common.Name, objectID)
+		// An item naming an object of a kind that cannot take a common attribute
+		// - or no object at all - is caught before anything is propagated.
+		for _, item := range common.Content {
+			if _, ok := targets[item.Metadata]; !ok {
+				return fmt.Errorf("common attribute %s references unknown object %s", common.Name, item.Metadata)
+			}
+		}
+		for _, location := range ordered {
+			if !common.reaches(catalog.objectID(location)) {
+				continue
 			}
 			name, names, ids := catalog.objectFieldName(location), catalog.objectFieldNames(location), catalog.objectFieldIDs(location)
 			if ids[common.ID] {
@@ -219,8 +415,30 @@ func (catalog *Catalog) objectFieldName(location commonAttributeTarget) string {
 		return catalog.InformationRegisters[location.index].Name
 	case "accumulation register":
 		return catalog.AccumulationRegisters[location.index].Name
+	case "business process":
+		return catalog.BusinessProcesses[location.index].Name
+	case "task":
+		return catalog.Tasks[location.index].Name
 	}
 	return ""
+}
+
+func (catalog *Catalog) objectID(location commonAttributeTarget) uuid.UUID {
+	switch location.kind {
+	case "catalog":
+		return catalog.Catalogs[location.index].ID
+	case "document":
+		return catalog.Documents[location.index].ID
+	case "information register":
+		return catalog.InformationRegisters[location.index].ID
+	case "accumulation register":
+		return catalog.AccumulationRegisters[location.index].ID
+	case "business process":
+		return catalog.BusinessProcesses[location.index].ID
+	case "task":
+		return catalog.Tasks[location.index].ID
+	}
+	return uuid.UUID{}
 }
 
 func (catalog *Catalog) objectFields(location commonAttributeTarget) []Attribute {
@@ -248,6 +466,23 @@ func (catalog *Catalog) objectFields(location commonAttributeTarget) []Attribute
 		fields = append(fields, definition.Attributes...)
 		fields = append(fields, definition.Dimensions...)
 		fields = append(fields, definition.Resources...)
+	case "business process":
+		definition := catalog.BusinessProcesses[location.index]
+		fields = append(fields, definition.Attributes...)
+		for _, part := range definition.TableParts {
+			fields = append(fields, Attribute{Name: part.Name})
+		}
+	case "task":
+		definition := catalog.Tasks[location.index]
+		fields = append(fields, definition.Attributes...)
+		for _, part := range definition.TableParts {
+			fields = append(fields, Attribute{Name: part.Name})
+		}
+		// The addressing attributes are fields of the task as well, and a name
+		// taken by one of them is taken.
+		for _, addressing := range definition.AddressingAttributes {
+			fields = append(fields, Attribute{ID: addressing.ID, Name: addressing.Name})
+		}
 	}
 	return fields
 }
@@ -284,5 +519,9 @@ func (catalog *Catalog) appendPropagatedAttribute(location commonAttributeTarget
 		catalog.InformationRegisters[location.index].Attributes = append(catalog.InformationRegisters[location.index].Attributes, attribute)
 	case "accumulation register":
 		catalog.AccumulationRegisters[location.index].Attributes = append(catalog.AccumulationRegisters[location.index].Attributes, attribute)
+	case "business process":
+		catalog.BusinessProcesses[location.index].Attributes = append(catalog.BusinessProcesses[location.index].Attributes, attribute)
+	case "task":
+		catalog.Tasks[location.index].Attributes = append(catalog.Tasks[location.index].Attributes, attribute)
 	}
 }

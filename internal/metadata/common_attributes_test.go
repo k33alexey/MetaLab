@@ -10,10 +10,20 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
+// commonAttributeContent is the composition as «only these, explicitly», which
+// is how five of the six common attributes of the real configuration are set.
+func commonAttributeContent(objects ...uuid.UUID) []CommonAttributeContentItem {
+	items := make([]CommonAttributeContentItem, 0, len(objects))
+	for _, object := range objects {
+		items = append(items, CommonAttributeContentItem{Metadata: object, Use: CommonAttributeUseUse})
+	}
+	return items
+}
+
 func commonAttributeFixture(objects ...uuid.UUID) CommonAttributeDefinition {
 	return CommonAttributeDefinition{
 		Format: CurrentFormat, ID: uuid.MustNew(), Name: "ОтветственныйМенеджер", Title: LocalizedText{"ru": "Ответственный менеджер"},
-		Types: []Type{{Kind: StringType, Length: 100}}, Objects: objects,
+		Types: []Type{{Kind: StringType, Length: 100}}, Content: commonAttributeContent(objects...),
 	}
 }
 
@@ -25,7 +35,7 @@ func TestDecodeCommonAttributeStrictAndBounded(t *testing.T) {
 		t.Fatal(err)
 	}
 	decoded, err := DecodeCommonAttribute("common-attribute.yaml", bytes.NewReader(encoded.Bytes()), metadataConfiguration())
-	if err != nil || decoded.ID != attribute.ID || len(decoded.Objects) != 2 {
+	if err != nil || decoded.ID != attribute.ID || len(decoded.Content) != 2 {
 		t.Fatalf("decode common attribute = %+v, %v", decoded, err)
 	}
 	tests := map[string]func(*CommonAttributeDefinition){
@@ -33,16 +43,21 @@ func TestDecodeCommonAttributeStrictAndBounded(t *testing.T) {
 		"zero identity": func(a *CommonAttributeDefinition) { a.ID = uuid.UUID{} },
 		"name":          func(a *CommonAttributeDefinition) { a.Name = "Invalid Name" },
 		"language":      func(a *CommonAttributeDefinition) { a.Title = LocalizedText{"de": "Verantwortlich"} },
-		"no objects":    func(a *CommonAttributeDefinition) { a.Objects = nil },
-		"zero object":   func(a *CommonAttributeDefinition) { a.Objects = append(a.Objects, uuid.UUID{}) },
-		"duplicate object": func(a *CommonAttributeDefinition) {
-			a.Objects = append(a.Objects, a.Objects[0])
+		// A composition that reaches nobody is a field given to no object.
+		"состав никого не достаёт": func(a *CommonAttributeDefinition) { a.Content = nil },
+		"нулевой объект в составе": func(a *CommonAttributeDefinition) {
+			a.Content = append(a.Content, CommonAttributeContentItem{Use: CommonAttributeUseUse})
+		},
+		"неизвестное использование":     func(a *CommonAttributeDefinition) { a.Content[0].Use = "иногда" },
+		"неизвестное автоиспользование": func(a *CommonAttributeDefinition) { a.AutoUse = "иногда" },
+		"повторённый объект в составе": func(a *CommonAttributeDefinition) {
+			a.Content = append(a.Content, a.Content[0])
 		},
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {
 			mutated := attribute
-			mutated.Objects = append([]uuid.UUID{}, attribute.Objects...)
+			mutated.Content = append([]CommonAttributeContentItem{}, attribute.Content...)
 			mutate(&mutated)
 			if err := ValidateCommonAttribute("common-attribute.yaml", mutated, metadataConfiguration()); err == nil {
 				t.Fatalf("%s: accepted invalid common attribute", name)
@@ -71,9 +86,9 @@ func TestCatalogCommonAttributeLookupReturnsIsolatedCopies(t *testing.T) {
 	if !ok || byID.Name != "ОтветственныйМенеджер" {
 		t.Fatalf("common attribute by id = %+v, %v", byID, ok)
 	}
-	byID.Objects[0] = uuid.MustNew()
+	byID.Content[0].Metadata = uuid.MustNew()
 	again, _ := catalog.CommonAttributeByID(attribute.ID)
-	if again.Objects[0] != target.ID {
+	if again.Content[0].Metadata != target.ID {
 		t.Fatal("common attribute lookup exposed mutable metadata")
 	}
 }
@@ -167,7 +182,7 @@ func TestLoadPropagatesCommonAttributesFromProjectFiles(t *testing.T) {
 		"\nname: Товары\ntitle: {ru: Товары}\ncode: {type: string, length: 9}\ndescription_length: 100\n")
 	commonAttributeID := uuid.MustNew()
 	writeMetadata(t, root, CommonAttributeKind, commonAttributeID.String(), "format: 1\nid: "+commonAttributeID.String()+
-		"\nname: ОтветственныйМенеджер\ntitle: {ru: Ответственный менеджер}\ntypes: [{kind: string, length: 100}]\nobjects: ["+catalogTargetID.String()+"]\n")
+		"\nname: ОтветственныйМенеджер\ntitle: {ru: Ответственный менеджер}\ntypes: [{kind: string, length: 100}]\ncontent: [{metadata: "+catalogTargetID.String()+", use: use}]\n")
 	catalog, err := load(root, true)
 	if err != nil {
 		t.Fatalf("Load() with a valid common attribute = %v", err)
@@ -180,7 +195,7 @@ func TestLoadPropagatesCommonAttributesFromProjectFiles(t *testing.T) {
 	unknownID := uuid.MustNew()
 	if err := os.WriteFile(filepath.Join(root, "metadata", string(CommonAttributeKind), commonAttributeID.String()+".yaml"),
 		[]byte("format: 1\nid: "+commonAttributeID.String()+
-			"\nname: ОтветственныйМенеджер\ntitle: {ru: Ответственный менеджер}\ntypes: [{kind: string, length: 100}]\nobjects: ["+unknownID.String()+"]\n"), 0o644); err != nil {
+			"\nname: ОтветственныйМенеджер\ntitle: {ru: Ответственный менеджер}\ntypes: [{kind: string, length: 100}]\ncontent: [{metadata: "+unknownID.String()+", use: use}]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := load(root, true); err == nil || !strings.Contains(err.Error(), "unknown object") {

@@ -151,7 +151,8 @@ name: Организация
 title: {ru: Организация}
 types: [{kind: string, length: 50}]
 full_text_search: use
-objects: [`+searchRegisterID+`]
+content:
+  - {metadata: `+searchRegisterID+`, use: use}
 `)
 	catalog, err := Load(root)
 	if err != nil {
