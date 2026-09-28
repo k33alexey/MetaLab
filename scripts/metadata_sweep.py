@@ -82,6 +82,28 @@ RENAMED_BY_KIND = {
 # Наши поля, которых у прототипа нет: они не участвуют в сопоставлении.
 OURS_ONLY = {"format", "id"}
 
+# Осознанные расхождения: свойство у прототипа есть, у нас его нет нарочно, и
+# причина записана в docs/requirements. Правило закрытия блока требует записывать
+# такие решения именно для того, «чтобы следующая сверка не нашла его снова и не
+# завела как ошибку», — а сверка про docs/requirements ничего не знает, поэтому
+# список нужен здесь. Справа — где искать причину, чтобы строку можно было
+# проверить, а не принять на веру.
+#
+# Прецедент: разделение данных общего реквизита было заведено пунктом карты как
+# пробел, хотя в METADATA-OBJECTS.md стоял абзац «Разделения данных у общего
+# реквизита нет» с причиной «одна организация — одна база». Сверка нашла, а
+# читатель завёл.
+ACCEPTED = {
+    ("CommonAttribute", "AuthenticationSeparation"): "METADATA-OBJECTS.md, Общие: общие реквизиты",
+    ("CommonAttribute", "ConditionalSeparation"): "METADATA-OBJECTS.md, Общие: общие реквизиты",
+    ("CommonAttribute", "ConfigurationExtensionsSeparation"): "METADATA-OBJECTS.md, Общие: общие реквизиты",
+    ("CommonAttribute", "DataSeparation"): "METADATA-OBJECTS.md, Общие: общие реквизиты",
+    ("CommonAttribute", "DataSeparationUse"): "METADATA-OBJECTS.md, Общие: общие реквизиты",
+    ("CommonAttribute", "DataSeparationValue"): "METADATA-OBJECTS.md, Общие: общие реквизиты",
+    ("CommonAttribute", "SeparatedDataUse"): "METADATA-OBJECTS.md, Общие: общие реквизиты",
+    ("CommonAttribute", "UsersSeparation"): "METADATA-OBJECTS.md, Общие: общие реквизиты",
+}
+
 # Виды объектов, названные у нас иначе. Остальные, о которых скрипт сообщает в
 # конце, лежат не в коллекциях каталога, а рядом: конфигурация и языки - в
 # project, общие формы - в папке форм, параметр функциональной опции - у самой
@@ -182,20 +204,32 @@ def main() -> int:
         if mine.lower() in ours:
             ours[exported.lower()] = ours[mine.lower()]
     unknown = sorted(kind for kind in export if kind.lower() not in ours)
-    total = 0
+    total, accepted_total = 0, 0
     for kind in sorted(export):
         if arguments.kind and kind.lower() != arguments.kind.lower():
             continue
         fields = ours.get(kind.lower())
         if fields is None:
             continue
-        missing = [(name, count) for name, count in sorted(export[kind].items()) if not matches(name, fields, kind)]
+        missing, accepted = [], []
+        for name, count in sorted(export[kind].items()):
+            if matches(name, fields, kind):
+                continue
+            where = ACCEPTED.get((kind, name))
+            if where is not None:
+                accepted.append(name)
+                continue
+            missing.append((name, count))
+        if accepted:
+            accepted_total += len(accepted)
         if not missing:
             continue
         total += len(missing)
         print(f"=== {kind}: {len(missing)}")
         print("    " + ", ".join(f"{name} ({count})" for name, count in missing))
     print(f"\nв остатке свойств: {total}")
+    if accepted_total:
+        print(f"принятых расхождений пропущено: {accepted_total} (см. ACCEPTED в этом скрипте)")
     if unknown and not arguments.kind:
         print(f"видов выгрузки без структуры у нас: {', '.join(unknown)}")
     print("Остаток - вопросы к синтакс-помощнику, а не перечень ошибок: отсутствие")
