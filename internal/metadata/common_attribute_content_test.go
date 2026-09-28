@@ -349,3 +349,82 @@ func TestCommonAttributeCompositionMayNameWhatCannotHoldAField(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+// The seven properties of data separation are carried and not executed: in the
+// prototype the same metadata object carries a second mechanism - one database
+// shared between independent companies - and we have one company per database.
+// Carried, because a property missing from the model disappears on import, and
+// that is a loss of meaning, while carried-and-not-executed imports whole.
+func TestCommonAttributeCarriesDataSeparation(t *testing.T) {
+	t.Parallel()
+	areaValue := SessionParameter{Format: CurrentFormat, ID: uuid.MustNew(), Name: "ОбластьДанныхЗначение",
+		Title: LocalizedText{"ru": "Область данных: значение"}, Types: []Type{{Kind: StringType, Length: 20}}}
+	areaUse := SessionParameter{Format: CurrentFormat, ID: uuid.MustNew(), Name: "ОбластьДанныхИспользование",
+		Title: LocalizedText{"ru": "Область данных: использование"}, Types: []Type{{Kind: BooleanType}}}
+	goods := CatalogDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Товары", Title: LocalizedText{"ru": "Товары"},
+		Code: CatalogCode{Type: StringType, Length: 9}, DescriptionLength: 100}
+	separator := func() CommonAttributeDefinition {
+		return CommonAttributeDefinition{
+			Format: CurrentFormat, ID: uuid.MustNew(), Name: "ОбластьДанных", Title: LocalizedText{"ru": "Область данных"},
+			Types:          []Type{{Kind: StringType, Length: 20}},
+			Content:        []CommonAttributeContentItem{{Metadata: goods.ID, Use: CommonAttributeUseUse}},
+			DataSeparation: SeparationSeparate, SeparatedDataUse: SeparatedDataIndependently,
+			DataSeparationValue: &areaValue.ID, DataSeparationUse: &areaUse.ID,
+			UsersSeparation: SeparationSeparate, AuthenticationSeparation: SeparationSeparate,
+			ConfigurationExtensionsSeparation: SeparationSeparate,
+		}
+	}
+	load := func(common CommonAttributeDefinition) error {
+		_, err := NewCatalogSnapshotWithCommonAttributes(metadataConfiguration(), nil, nil, nil,
+			[]CatalogDefinition{goods}, nil, nil, nil, nil, nil,
+			[]SessionParameter{areaValue, areaUse}, []CommonAttributeDefinition{common})
+		return err
+	}
+	if err := load(separator()); err != nil {
+		t.Fatalf("a separator of data areas was refused: %v", err)
+	}
+
+	// The shape of the four common attributes of the real configuration that
+	// separate nothing: the separation is off and the properties are written all
+	// the same - «independently» among them, which has no «do not» to write. A
+	// rule that demanded they be empty would refuse four real attributes out of
+	// six.
+	quiet := separator()
+	quiet.DataSeparation = SeparationDontUse
+	quiet.UsersSeparation, quiet.AuthenticationSeparation = SeparationDontUse, SeparationDontUse
+	quiet.ConfigurationExtensionsSeparation = SeparationDontUse
+	quiet.DataSeparationValue, quiet.DataSeparationUse = nil, nil
+	if err := load(quiet); err != nil {
+		t.Fatalf("an attribute that separates nothing was refused: %v", err)
+	}
+
+	// The shape of the file is checked when the file is read, and what the file
+	// points at when the whole configuration is in hand. The cases are split the
+	// same way.
+	local := map[string]func(*CommonAttributeDefinition){
+		"неизвестный режим разделения": func(a *CommonAttributeDefinition) { a.DataSeparation = "иногда" },
+		"неизвестный уровень":          func(a *CommonAttributeDefinition) { a.SeparatedDataUse = "иногда" },
+		// Separation cannot work without the parameters: nothing would say which
+		// area the session is in.
+		"разделение без параметров сеанса": func(a *CommonAttributeDefinition) {
+			a.DataSeparationValue, a.DataSeparationUse = nil, nil
+		},
+	}
+	for name, mutate := range local {
+		t.Run(name, func(t *testing.T) {
+			common := separator()
+			mutate(&common)
+			if err := ValidateCommonAttribute("common-attribute.yaml", common, metadataConfiguration()); err == nil {
+				t.Fatal("the separation was accepted")
+			}
+		})
+	}
+	t.Run("неизвестный параметр сеанса", func(t *testing.T) {
+		unknown := uuid.MustNew()
+		common := separator()
+		common.DataSeparationValue = &unknown
+		if err := load(common); err == nil {
+			t.Fatal("an unknown session parameter was accepted")
+		}
+	})
+}

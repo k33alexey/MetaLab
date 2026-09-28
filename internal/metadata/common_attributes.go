@@ -62,6 +62,65 @@ type CommonAttributeDefinition struct {
 	// works as a list of exceptions. Read as a list of the included, it would
 	// give the attribute to precisely the objects that must not have it.
 	Content []CommonAttributeContentItem `yaml:"content,omitempty"`
+	// The seven properties of data separation. In the prototype the same
+	// metadata object carries a second, unrelated mechanism: one database shared
+	// between independent companies, each with its own users and authentication,
+	// told apart by the value of this attribute. We have one company per
+	// database and do not do it - **but we carry all seven**, because a property
+	// missing from the model disappears on import, and that is a loss of
+	// meaning, while a property carried and not executed imports whole and the
+	// report says «carried, not implemented». The reason is in
+	// METADATA-OBJECTS.md.
+	//
+	// The two session parameters are how the platform learns which area it is
+	// in: one holds the value of the separator for this session, the other says
+	// whether separation is in force. Both separators of the demonstration
+	// configuration name both.
+	DataSeparation                    SeparationMode   `yaml:"data_separation,omitempty"`
+	SeparatedDataUse                  SeparatedDataUse `yaml:"separated_data_use,omitempty"`
+	DataSeparationValue               *uuid.UUID       `yaml:"data_separation_value,omitempty"`
+	DataSeparationUse                 *uuid.UUID       `yaml:"data_separation_use,omitempty"`
+	UsersSeparation                   SeparationMode   `yaml:"users_separation,omitempty"`
+	AuthenticationSeparation          SeparationMode   `yaml:"authentication_separation,omitempty"`
+	ConfigurationExtensionsSeparation SeparationMode   `yaml:"configuration_extensions_separation,omitempty"`
+}
+
+// SeparationMode is the two-valued answer four of the seven give: separate by
+// this attribute, or do not.
+type SeparationMode string
+
+const (
+	SeparationDontUse  SeparationMode = "dont-use"
+	SeparationSeparate SeparationMode = "separate"
+)
+
+// SeparatedDataUse is the level of separation, and it has no «do not» among its
+// values: the prototype writes «independently» even on an attribute that
+// separates nothing, which is why an empty value here means nothing was said
+// rather than nothing is done.
+type SeparatedDataUse string
+
+const (
+	SeparatedDataIndependently                  SeparatedDataUse = "independently"
+	SeparatedDataIndependentlyAndSimultaneously SeparatedDataUse = "independently-and-simultaneously"
+)
+
+func validSeparationMode(value SeparationMode) bool {
+	switch value {
+	case "", SeparationDontUse, SeparationSeparate:
+		return true
+	default:
+		return false
+	}
+}
+
+func validSeparatedDataUse(value SeparatedDataUse) bool {
+	switch value {
+	case "", SeparatedDataIndependently, SeparatedDataIndependentlyAndSimultaneously:
+		return true
+	default:
+		return false
+	}
 }
 
 // CommonAttributeUse is the verdict of one item of the composition.
@@ -189,6 +248,34 @@ func ValidateCommonAttribute(source string, value CommonAttributeDefinition, con
 	if !validCommonAttributeAutoUse(value.AutoUse) {
 		issues = append(issues, "auto_use must be use or dont-use")
 	}
+	for name, mode := range map[string]SeparationMode{
+		"data_separation": value.DataSeparation, "users_separation": value.UsersSeparation,
+		"authentication_separation":           value.AuthenticationSeparation,
+		"configuration_extensions_separation": value.ConfigurationExtensionsSeparation,
+	} {
+		if !validSeparationMode(mode) {
+			issues = append(issues, name+" must be dont-use or separate")
+		}
+	}
+	if !validSeparatedDataUse(value.SeparatedDataUse) {
+		issues = append(issues, "separated_data_use must be independently or independently-and-simultaneously")
+	}
+	for name, parameter := range map[string]*uuid.UUID{
+		"data_separation_value": value.DataSeparationValue, "data_separation_use": value.DataSeparationUse,
+	} {
+		if parameter != nil && parameter.IsZero() {
+			issues = append(issues, name+" must be a non-zero UUID")
+		}
+	}
+	// Separation cannot work without the two session parameters: they are how
+	// the platform learns which area this session is in and whether separation
+	// is in force at all. Both separators of the demonstration configuration
+	// name both.
+	if value.DataSeparation == SeparationSeparate {
+		if value.DataSeparationValue == nil || value.DataSeparationUse == nil {
+			issues = append(issues, "data_separation needs data_separation_value and data_separation_use: without them nothing says which area the session is in")
+		}
+	}
 	seen := make(map[uuid.UUID]bool, len(value.Content))
 	reaches := value.AutoUse == CommonAttributeAutoUseUse
 	for index, item := range value.Content {
@@ -280,6 +367,12 @@ func (catalog *Catalog) CommonAttributeByID(id uuid.UUID) (CommonAttributeDefini
 
 func cloneCommonAttributeDefinition(value CommonAttributeDefinition) CommonAttributeDefinition {
 	value.Title, value.Types = cloneTitle(value.Title), cloneTypes(value.Types)
+	for _, parameter := range []**uuid.UUID{&value.DataSeparationValue, &value.DataSeparationUse} {
+		if *parameter != nil {
+			id := **parameter
+			*parameter = &id
+		}
+	}
 	value.Content = slices.Clone(value.Content)
 	for index := range value.Content {
 		if separation := value.Content[index].ConditionalSeparation; separation != nil {
@@ -465,6 +558,19 @@ func (catalog *Catalog) validateConditionalSeparationReferences() error {
 			}
 			if !typesReference(common.Types, reference, *separation.Object) {
 				return fmt.Errorf("%s lives on %s, whose reference is not among the types of the common attribute", where, name)
+			}
+		}
+		// The two session parameters of separation point outside the file as
+		// well, and a parameter that is not there leaves the platform with no
+		// way to learn which area the session is in.
+		for name, parameter := range map[string]*uuid.UUID{
+			"data_separation_value": common.DataSeparationValue, "data_separation_use": common.DataSeparationUse,
+		} {
+			if parameter == nil {
+				continue
+			}
+			if _, ok := catalog.SessionParameterByID(*parameter); !ok {
+				return fmt.Errorf("common attribute %s %s names unknown session parameter %s", common.Name, name, parameter)
 			}
 		}
 	}
