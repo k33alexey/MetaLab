@@ -45,7 +45,18 @@ func TestDumpMetadataComposition(t *testing.T) {
 			}
 			children[sub.Name] = metadataFieldNames(sub.Type.Elem())
 		}
-		dump[element.Name()] = map[string]any{"own": metadataFieldNames(element), "children": children}
+		dump[element.Name()] = map[string]any{
+			"own": metadataFieldNames(element),
+			// The names of the structure itself, without those of the
+			// structures it folds in. The sweep needs the difference: one name
+			// of ours often stands for several of the prototype's - our `code`
+			// covers its CodeLength, CodeType and CheckUnique - and that
+			// substitution is only safe for a name that heads a group. Applied
+			// to a leaf it lies: our `value` inside filling once matched their
+			// DataSeparationValue on the strength of one shared word.
+			"top":      metadataTopFieldNames(element),
+			"children": children,
+		}
 	}
 	encoded, err := json.MarshalIndent(dump, "", "  ")
 	if err != nil {
@@ -55,6 +66,46 @@ func TestDumpMetadataComposition(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("выгружено структур: %d", len(dump))
+}
+
+// metadataTopFieldNames is the names of the structure itself: its own fields
+// and those of the structures it folds in, without going into named structures
+// below them.
+func metadataTopFieldNames(structType reflect.Type) []string {
+	seen := map[string]bool{}
+	var walk func(reflect.Type)
+	walk = func(current reflect.Type) {
+		if current.Kind() == reflect.Pointer {
+			current = current.Elem()
+		}
+		if current.Kind() != reflect.Struct {
+			return
+		}
+		for index := 0; index < current.NumField(); index++ {
+			field := current.Field(index)
+			if field.PkgPath != "" {
+				continue
+			}
+			name := strings.Split(field.Tag.Get("yaml"), ",")[0]
+			kind := field.Type
+			if kind.Kind() == reflect.Pointer {
+				kind = kind.Elem()
+			}
+			if name == "" {
+				if kind.Kind() == reflect.Struct {
+					walk(kind)
+				}
+				continue
+			}
+			seen[name] = true
+		}
+	}
+	walk(structType)
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	return names
 }
 
 // metadataFieldNames is every YAML name a structure carries, its own and those

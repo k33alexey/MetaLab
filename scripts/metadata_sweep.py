@@ -56,6 +56,14 @@ RENAMED = {
     "autonumbering": "auto",
     "xdto": "",                  # XDTOPackages -> packages
     "behavior": "",              # OnMainServerUnavalableBehavior
+    "check": "",                 # CheckUnique -> unique внутри code и number
+}
+
+# Свойства, которые у нас лежат вложенными и потому не совпадают ни по словам,
+# ни по уровню: имя прототипа целиком слева, наше имя листа справа.
+FLAT_ALIAS = {
+    "PasswordMode": "password",
+    "FillValue": "value",
 }
 
 # Переименования, которые верны только у одного вида: одно и то же слово
@@ -139,27 +147,36 @@ def stems_match(left: frozenset[str], right: frozenset[str]) -> bool:
     return True
 
 
-def matches(prototype: str, ours: dict[frozenset[str], str], kind: str = "") -> bool:
-    named = RENAMED_BY_KIND.get((kind, prototype))
+def matches(prototype: str, ours: dict[frozenset[str], str], kind: str = "", top: frozenset[str] = frozenset()) -> bool:
+    named = RENAMED_BY_KIND.get((kind, prototype), FLAT_ALIAS.get(prototype))
     if named is not None:
         return any(name == named for name in ours.values())
     theirs = tokens(prototype)
     # Прототип называет каждый слот формы отдельным свойством - DefaultForm,
     # DefaultListForm, DefaultFolderChoiceForm; у нас слоты лежат в одной
     # структуре forms, и сверять их состав надо отдельно, а не по этим именам.
-    if "form" in theirs and ("default" in theirs or len(theirs) == 2):
-        if any(name == "forms" for name in ours.values()):
-            return True
+    if "form" in theirs and any(name == "forms" for name in ours.values()):
+        return True
     renamed = frozenset(filter(None, (RENAMED.get(word, word) for word in theirs)))
     flat_theirs = flat(prototype)
-    for our_tokens, our_name in ours.items():
+    for our_tokens, our_name in ours.items():  # noqa: PLR1702
         if theirs == our_tokens or renamed == our_tokens:
             return True
         if flat_theirs == flat(our_name):
             return True
         # Имя прототипа целиком внутри нашего или наоборот: у нас свойство
         # часто сложено в структуру, и её имя несёт лишнее слово.
-        if theirs <= our_tokens or our_tokens <= theirs or renamed <= our_tokens:
+        # Только одно направление: имя прототипа целиком внутри нашего. Наше
+        # имя внутри их имени - подстановка опасная, и она уже врала: наше
+        # `value` внутри filling схватило их `DataSeparationValue`, и принятое
+        # расхождение перестало считаться расхождением. Одно общее слово не
+        # делает два свойства одним свойством.
+        if theirs <= our_tokens or renamed <= our_tokens:
+            return True
+        # Наше имя внутри их имени - только для имён верхнего уровня: одно наше
+        # имя часто стоит за несколькими их свойствами (`code` за CodeLength,
+        # CodeType, CheckUnique). Для вложенного листа эта подстановка лжёт.
+        if our_name in top and (our_tokens <= theirs or our_tokens <= renamed):
             return True
         if stems_match(theirs, our_tokens) or stems_match(renamed, our_tokens):
             return True
@@ -187,7 +204,7 @@ def main() -> int:
         print(f"нет {EXPORT.relative_to(ROOT)}: выгрузка не входит в репозиторий, сверка запускается локально")
         return 0
     model = dump_model()
-    ours = {}
+    ours, tops = {}, {}
     for typename, body in model.items():
         kind = typename[: -len("Definition")] if typename.endswith("Definition") else typename
         # OURS_ONLY: наши поля, которых у прототипа нет вовсе, из сопоставления
@@ -196,6 +213,7 @@ def main() -> int:
         # «Форматом» прототипа, из-за чего константа выглядела полной.
         names = [name for name in body["own"] if name not in OURS_ONLY]
         ours[kind.lower()] = {tokens(name): name for name in names}
+        tops[kind.lower()] = frozenset(name for name in body.get("top", []) if name not in OURS_ONLY)
     export: dict[str, dict[str, int]] = {}
     for prop in json.loads(EXPORT.read_text(encoding="utf-8"))["properties"]:
         for kind, count in prop["object_kinds"].items():
@@ -203,6 +221,7 @@ def main() -> int:
     for exported, mine in KIND_ALIAS.items():
         if mine.lower() in ours:
             ours[exported.lower()] = ours[mine.lower()]
+            tops[exported.lower()] = tops[mine.lower()]
     unknown = sorted(kind for kind in export if kind.lower() not in ours)
     total, accepted_total = 0, 0
     for kind in sorted(export):
@@ -213,7 +232,7 @@ def main() -> int:
             continue
         missing, accepted = [], []
         for name, count in sorted(export[kind].items()):
-            if matches(name, fields, kind):
+            if matches(name, fields, kind, tops.get(kind.lower(), frozenset())):
                 continue
             where = ACCEPTED.get((kind, name))
             if where is not None:
