@@ -17,10 +17,14 @@ const maxJournalColumns = 128
 // not share a name - a journal exists precisely to put "storage" of one
 // document and "source storage" of another under one heading.
 type JournalColumn struct {
-	ID       uuid.UUID     `yaml:"id" json:"id"`
-	Name     string        `yaml:"name" json:"name"`
-	Title    LocalizedText `yaml:"title" json:"title"`
-	Indexing IndexMode     `yaml:"indexing,omitempty" json:"indexing,omitempty"`
+	ID    uuid.UUID     `yaml:"id" json:"id"`
+	Name  string        `yaml:"name" json:"name"`
+	Title LocalizedText `yaml:"title" json:"title"`
+	// Comment is the developer's note on the column. «ОбъектМетаданных: Графа»
+	// has seven properties and this was the only one of them we did not carry;
+	// the export writes it on all 27 columns of the demonstration configuration.
+	Comment  string    `yaml:"comment,omitempty" json:"comment,omitempty"`
+	Indexing IndexMode `yaml:"indexing,omitempty" json:"indexing,omitempty"`
 	// References are the attributes this column shows, one per kind of
 	// document at most.
 	References []uuid.UUID `yaml:"references,omitempty" json:"references,omitempty"`

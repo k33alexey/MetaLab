@@ -26,7 +26,12 @@ type SequenceDimension struct {
 	ID    uuid.UUID     `yaml:"id" json:"id"`
 	Name  string        `yaml:"name" json:"name"`
 	Title LocalizedText `yaml:"title" json:"title"`
-	Types []Type        `yaml:"types" json:"types"`
+	// Comment is the developer's note on the dimension. It is the sixth and
+	// last property the export writes on one - name, synonym, comment, type,
+	// and the two correspondences below - and it was the only one of the six we
+	// did not carry.
+	Comment string `yaml:"comment,omitempty" json:"comment,omitempty"`
+	Types   []Type `yaml:"types" json:"types"`
 	// DocumentAttributes are the attributes the value is taken from. An
 	// attribute of a table part is as good as one of the document itself: the
 	// product a boundary is kept by lives in the lines, not in the header.

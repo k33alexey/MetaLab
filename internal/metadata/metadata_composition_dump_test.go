@@ -37,14 +37,12 @@ func TestDumpMetadataComposition(t *testing.T) {
 		if element.Kind() != reflect.Struct {
 			continue
 		}
-		children := map[string][]string{}
-		for inner := 0; inner < element.NumField(); inner++ {
-			sub := element.Field(inner)
-			if sub.PkgPath != "" || sub.Type.Kind() != reflect.Slice || sub.Type.Elem().Kind() != reflect.Struct {
-				continue
-			}
-			children[sub.Name] = metadataFieldNames(sub.Type.Elem())
-		}
+		// A child object is dumped the way a kind is - its whole set of names
+		// and, separately, the names of the structure itself. The sweep needs
+		// both: the substitution «one name of ours stands for several of
+		// theirs» is safe only for a name that heads a group, and a dimension
+		// or a command has groups of its own, presentation and choice among
+		// them.
 		dump[element.Name()] = map[string]any{
 			"own": metadataFieldNames(element),
 			// The names of the structure itself, without those of the
@@ -55,7 +53,7 @@ func TestDumpMetadataComposition(t *testing.T) {
 			// to a leaf it lies: our `value` inside filling once matched their
 			// DataSeparationValue on the strength of one shared word.
 			"top":      metadataTopFieldNames(element),
-			"children": children,
+			"children": metadataChildren(element),
 		}
 	}
 	encoded, err := json.MarshalIndent(dump, "", "  ")
@@ -66,6 +64,44 @@ func TestDumpMetadataComposition(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("выгружено структур: %d", len(dump))
+}
+
+// metadataChildren is the subordinate objects of a structure: every slice of
+// structures it holds, by the name of the collection, with the same pair of
+// name lists and with their own subordinates below them.
+//
+// Two levels are needed and not one. The export names a relation by three
+// things - the kind, the owner and the child - and two of its relations are a
+// grandchild: a method of a URL template of an HTTP service and a parameter of
+// an operation of a web service. Stopping at one level would drop both from the
+// sweep, and a relation nobody compares is silence that reads as agreement.
+func metadataChildren(structType reflect.Type) map[string]any {
+	return metadataChildrenAtDepth(structType, 0)
+}
+
+// maxChildDepth stops the walk where the export stops: kind, child, grandchild.
+// It is a guard as much as a limit - a structure that holds a slice of its own
+// kind would otherwise walk for ever.
+const maxChildDepth = 2
+
+func metadataChildrenAtDepth(structType reflect.Type, depth int) map[string]any {
+	children := map[string]any{}
+	if depth >= maxChildDepth {
+		return children
+	}
+	for index := 0; index < structType.NumField(); index++ {
+		field := structType.Field(index)
+		if field.PkgPath != "" || field.Type.Kind() != reflect.Slice || field.Type.Elem().Kind() != reflect.Struct {
+			continue
+		}
+		element := field.Type.Elem()
+		children[field.Name] = map[string]any{
+			"own":      metadataFieldNames(element),
+			"top":      metadataTopFieldNames(element),
+			"children": metadataChildrenAtDepth(element, depth+1),
+		}
+	}
+	return children
 }
 
 // metadataTopFieldNames is the names of the structure itself: its own fields

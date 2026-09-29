@@ -1115,6 +1115,11 @@ type referenceObjectShape struct {
 	// presentation is how the object is named to a person. All five reference
 	// kinds carry the whole set - see object_presentation.go.
 	presentation Presentations
+	// extraFields are fields of the object that do not lie in `attributes`: a
+	// chart of accounts' accounting flags and ext dimension accounting flags.
+	// They are here so that a choice link written on one of them is resolved
+	// against the object it belongs to, the same way an ordinary attribute's is.
+	extraFields []fieldGroup
 	// choice is how a value of the kind is entered and picked. All five
 	// reference kinds carry the whole set - see object_choice.go.
 	choice ObjectChoice
@@ -1282,7 +1287,8 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	links := append(standardAttributeChoices("standard_attributes", shape.standardAttributes),
 		standardTablePartChoices("standard_table_parts", shape.standardTableParts)...)
 	links = append(links, tablePartStandardChoices(shape.tableParts)...)
-	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, links...)...)
+	fields := append([]fieldGroup{{"attributes", shape.attributes}}, shape.extraFields...)
+	issues = append(issues, validateFieldLinks(fields, shape.tableParts, links...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts,
 		shape.attributeUse, shape.hierarchy.Enabled && shape.hierarchy.Kind == FoldersAndItemsHierarchy)...)
 	issues = append(issues, validateFormSlots(shape.forms.slots())...)

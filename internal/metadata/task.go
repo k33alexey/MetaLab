@@ -26,11 +26,15 @@ const (
 // Each of them is bound to a dimension of the addressing register: that binding
 // is the whole mechanism, because it is how the platform turns "this task is
 // for the role of accountant" into the people who hold that role.
+//
+// It is a field, and it carries a field's whole palette. A name, a synonym, a
+// type and the dimension were all we had; the export writes twenty-nine
+// properties on an addressing attribute - everything a catalog attribute has,
+// plus the dimension - and «ОбъектМетаданных: РеквизитАдресации» of the syntax
+// assistant lists the same set. Only «использование» is missing on both counts,
+// and it is refused here: it divides items from folders, and a task has neither.
 type AddressingAttribute struct {
-	ID    uuid.UUID     `yaml:"id" json:"id"`
-	Name  string        `yaml:"name" json:"name"`
-	Title LocalizedText `yaml:"title" json:"title"`
-	Types []Type        `yaml:"types" json:"types"`
+	Attribute `yaml:",inline" json:",inline"`
 	// Dimension is the dimension of the addressing register this attribute is
 	// matched against.
 	Dimension *uuid.UUID `yaml:"dimension,omitempty" json:"dimension,omitempty"`
@@ -117,6 +121,7 @@ func DecodeTask(source string, reader io.Reader, configuration project.Project) 
 		fullTextSearch:     value.FullTextSearch,
 		dataHistory:        value.DataHistorySettings,
 		additionalIndexes:  value.AdditionalIndexes,
+		extraFields:        []fieldGroup{{"addressing_attributes", addressingAttributeFields(value.AddressingAttributes)}},
 	}, configuration)...)
 	if value.DescriptionLength < 1 || value.DescriptionLength > 1_048_576 {
 		issues = append(issues, "description_length must be 1..1048576")
@@ -147,6 +152,16 @@ func DecodeTask(source string, reader io.Reader, configuration project.Project) 
 		return TaskDefinition{}, err
 	}
 	return value, nil
+}
+
+// addressingAttributeFields is the addressing attributes as plain fields, for
+// the checks that do not care which kind of field this is.
+func addressingAttributeFields(attributes []AddressingAttribute) []Attribute {
+	result := make([]Attribute, 0, len(attributes))
+	for _, attribute := range attributes {
+		result = append(result, attribute.Attribute)
+	}
+	return result
 }
 
 func validateAddressing(value TaskDefinition, configuration project.Project) []string {
@@ -181,6 +196,15 @@ func validateAddressing(value TaskDefinition, configuration project.Project) []s
 		names[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", attribute.Title, configuration)...)
 		issues = append(issues, validateTypes(prefix+".types", attribute.Types, value.ID)...)
+		issues = append(issues, validateFieldSettings(prefix, attribute.Attribute, configuration)...)
+		issues = append(issues, validateFieldStorage(prefix, attribute.Attribute)...)
+		// «Использование» divides the fields of items from the fields of
+		// folders. A task has neither, so the setting would read as a division
+		// nothing performs - the export writes it on no addressing attribute,
+		// and the syntax assistant does not list it among their properties.
+		if attribute.Use != "" {
+			issues = append(issues, prefix+".use belongs to an attribute of a catalog or a chart of characteristic types, and this is neither")
+		}
 		if attribute.Dimension != nil && attribute.Dimension.IsZero() {
 			issues = append(issues, prefix+".dimension must be a non-zero UUID")
 		}
@@ -224,8 +248,7 @@ func cloneTask(value TaskDefinition) TaskDefinition {
 	value.TableParts = cloneTableParts(value.TableParts)
 	value.AddressingAttributes = slices.Clone(value.AddressingAttributes)
 	for index := range value.AddressingAttributes {
-		value.AddressingAttributes[index].Title = cloneTitle(value.AddressingAttributes[index].Title)
-		value.AddressingAttributes[index].Types = cloneTypes(value.AddressingAttributes[index].Types)
+		value.AddressingAttributes[index].Attribute = cloneAttribute(value.AddressingAttributes[index].Attribute)
 		if value.AddressingAttributes[index].Dimension != nil {
 			id := *value.AddressingAttributes[index].Dimension
 			value.AddressingAttributes[index].Dimension = &id
@@ -306,8 +329,14 @@ func (catalog *Catalog) taskTables(definition TaskDefinition) (schemadiff.Table,
 	}
 	// Addressing attributes are columns of the task: a task carries the role it
 	// is addressed to, and the register turns that into people.
+	//
+	// The index is the field's own answer now that the field carries one. It
+	// used to be forced on here, because an addressing attribute had no
+	// indexing of its own to read - and a setting the developer writes and the
+	// schema overrules is worse than no setting at all. Nothing is lost by
+	// reading it: every addressing attribute of the export asks for the index.
 	for _, attribute := range definition.AddressingAttributes {
-		if err := catalog.appendAttributeSchema(&table, Attribute{ID: attribute.ID, Name: attribute.Name, Title: attribute.Title, Types: attribute.Types, Indexing: IndexField}); err != nil {
+		if err := catalog.appendAttributeSchema(&table, attribute.Attribute); err != nil {
 			return schemadiff.Table{}, nil, fmt.Errorf("task %s addressing attribute %s: %w", definition.Name, attribute.Name, err)
 		}
 	}

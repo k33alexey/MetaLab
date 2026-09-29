@@ -31,10 +31,39 @@ const (
 // names in advance - the application names them, every account gets a checkbox
 // per declared flag, and a register later refuses a movement that fills a
 // field the account's flag does not allow.
+//
+// It is a field, and the whole palette of a field is on it. A name, a synonym
+// and an identifier were all we carried, and the export writes twenty-six
+// properties on every accounting flag and on every ext dimension accounting
+// flag: the format the checkbox is shown in, its tooltip, its filling value,
+// its choice form and the rest. Three of the twenty-nine an attribute has are
+// missing there, and the syntax assistant agrees with the silence - an
+// accounting flag has no indexing, no full-text search and no «использование»,
+// which is why validateAccountingFlagStorage refuses all three.
+//
+// The type is not a choice. «Тип: Булево» is what the help says of the value on
+// an account and of the field in a query alike, so an empty list means boolean
+// and anything else is refused. Carrying the property still matters: the export
+// writes <Type> on every flag, and a property dropped on import is the report's
+// third category.
 type AccountingFlag struct {
-	ID    uuid.UUID     `yaml:"id" json:"id"`
-	Name  string        `yaml:"name" json:"name"`
-	Title LocalizedText `yaml:"title" json:"title"`
+	Attribute `yaml:",inline" json:",inline"`
+}
+
+// accountingFlagTypes is the one type a flag's value has. An empty list in a
+// file means the same thing: a property with a single possible value is not
+// worth a line in every chart of accounts.
+func accountingFlagTypes(flag AccountingFlag) []Type {
+	if len(flag.Types) == 0 {
+		return []Type{{Kind: BooleanType}}
+	}
+	return flag.Types
+}
+
+// isBooleanType says whether a declared type is the boolean an accounting flag
+// is allowed, and nothing else - no qualifiers, no second type in the set.
+func isBooleanType(types []Type) bool {
+	return len(types) == 1 && types[0].Kind == BooleanType && types[0].Reference == nil
 }
 
 // PredefinedAccountExtDimension is one kind of analytics on a predefined
@@ -161,6 +190,10 @@ func DecodeChartOfAccounts(source string, reader io.Reader, configuration projec
 		kind:                 ChartOfAccountsKind,
 		standardAttributes:   value.StandardAttributes,
 		standardTableParts:   value.StandardTableParts,
+		extraFields: []fieldGroup{
+			{"accounting_flags", accountingFlagFields(value.AccountingFlags)},
+			{"ext_dimension_accounting_flags", accountingFlagFields(value.ExtDimensionAccountingFlags)},
+		},
 	}, configuration)...)
 	issues = append(issues, validateAccountingFlags("accounting_flags", value.AccountingFlags, configuration)...)
 	issues = append(issues, validateAccountingFlags("ext_dimension_accounting_flags", value.ExtDimensionAccountingFlags, configuration)...)
@@ -216,6 +249,16 @@ func validateCodeMask(value ChartOfAccountsDefinition) []string {
 	return issues
 }
 
+// accountingFlagFields is the flags as plain fields, for the checks that do not
+// care which kind of field this is.
+func accountingFlagFields(flags []AccountingFlag) []Attribute {
+	result := make([]Attribute, 0, len(flags))
+	for _, flag := range flags {
+		result = append(result, flag.Attribute)
+	}
+	return result
+}
+
 func validateAccountingFlags(path string, flags []AccountingFlag, configuration project.Project) []string {
 	if len(flags) > 64 {
 		return []string{path + " must not contain more than 64 flags"}
@@ -243,6 +286,38 @@ func validateAccountingFlags(path string, flags []AccountingFlag, configuration 
 		}
 		names[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", flag.Title, configuration)...)
+		if !isBooleanType(accountingFlagTypes(flag)) {
+			issues = append(issues, prefix+".types must be boolean alone: an accounting flag is a checkbox and has no other type")
+		}
+		field := flag.Attribute
+		field.Types = accountingFlagTypes(flag)
+		issues = append(issues, validateFieldSettings(prefix, field, configuration)...)
+		issues = append(issues, validateFieldStorage(prefix, field)...)
+		issues = append(issues, validateAccountingFlagStorage(prefix, flag)...)
+	}
+	return issues
+}
+
+// validateAccountingFlagStorage refuses the three properties of a field that an
+// accounting flag does not have. The export writes twenty-six properties on a
+// flag and twenty-nine on a catalog attribute, and these three are the
+// difference; the syntax assistant lists neither of them among the properties of
+// ПризнакУчетаПланаСчетов or ПризнакУчетаСубконтоПланаСчетов.
+//
+// Why refuse rather than ignore: a setting nobody reads looks like a setting.
+// Indexing an account's checkbox reads as a promise that a query by it is fast,
+// and there is no index; «использование» reads as a division between items and
+// folders, and a chart of accounts has neither.
+func validateAccountingFlagStorage(prefix string, flag AccountingFlag) []string {
+	var issues []string
+	if flag.Indexing != "" {
+		issues = append(issues, prefix+".indexing belongs to an attribute: an account is found by its code, never by a checkbox")
+	}
+	if flag.FullTextSearch != "" {
+		issues = append(issues, prefix+".full_text_search belongs to an attribute: a checkbox carries no text to search")
+	}
+	if flag.Use != "" {
+		issues = append(issues, prefix+".use belongs to an attribute of a catalog or a chart of characteristic types, and this is neither")
 	}
 	return issues
 }
@@ -410,7 +485,7 @@ func splitCodeBySeparators(code string, separators []rune) []string {
 func cloneAccountingFlags(values []AccountingFlag) []AccountingFlag {
 	result := slices.Clone(values)
 	for index := range result {
-		result[index].Title = cloneTitle(result[index].Title)
+		result[index].Attribute = cloneAttribute(result[index].Attribute)
 	}
 	return result
 }

@@ -187,6 +187,12 @@ type numberedObjectShape struct {
 	// additionalIndexes are the indexes asked for by hand - see
 	// additional_indexes.go.
 	additionalIndexes []AdditionalIndex
+	// extraFields are fields of the object that do not lie in `attributes`: a
+	// task's addressing attributes. They are here so that a choice link written
+	// on one of them is resolved against the object it belongs to, the same way
+	// an ordinary attribute's is. Carrying the link and never checking where it
+	// points would leave a broken reference to be found at run time.
+	extraFields []fieldGroup
 }
 
 // validateNumberShape checks a number on its own, apart from the object that
@@ -249,7 +255,8 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 	issues = append(issues, validateAdditionalIndexes(shape.additionalIndexes, shape.kind,
 		objectIndexTables(shape.kind, shape.attributes, shape.tableParts))...)
 	links := append(standardAttributeChoices("standard_attributes", shape.standardAttributes), tablePartStandardChoices(shape.tableParts)...)
-	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, links...)...)
+	fields := append([]fieldGroup{{"attributes", shape.attributes}}, shape.extraFields...)
+	issues = append(issues, validateFieldLinks(fields, shape.tableParts, links...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, false, false)...)
 	issues = append(issues, validateFormSlots(shape.forms.slots())...)
 	return append(issues, validateListSettings(shape.list, shape.attributes, map[string]TypeKind{

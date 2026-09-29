@@ -9,6 +9,22 @@
 способ: так нашлись индексирование у ресурса, признак учёта субконто у
 измерения и связи параметров выбора, не достающие до измерений.
 
+Сверка идёт двумя проходами. Первый — свойства самих видов по
+`property-index.json`. Второй — свойства **подчинённых объектов** по
+`child-objects.json`: измерений, ресурсов, реквизитов, табличных частей,
+команд, макетов, признаков учёта, реквизитов адресации, граф журнала, операций
+веб-сервиса и шаблонов URL, — а также двух объектов второй ступени: метода
+шаблона URL и параметра операции. Второй проход нужен
+отдельно потому, что `property-index.json` собран по видам и свойств измерения
+— ведущее, основной отбор, использование в итогах — в нём нет вовсе. Пока его
+не было, четыре свойства измерения отсутствовали у нас незамеченными и нашлись
+чтением справки, а не прогоном; первый же его прогон нашёл ещё четыре пробела,
+среди них признак учёта плана счетов с тремя свойствами из двадцати шести.
+
+Область сопоставления во втором проходе — **сам подчинённый вид**, а не его
+владелец: команда значит одно и то же у справочника, документа и обработки, и
+алиас для неё пишется один раз, а не по разу на владельца.
+
 Чего сверка НЕ делает, и это важнее того, что делает:
 
 - она сверяет **состав, а не поведение**. Механику — порядок шагов, кто кого
@@ -45,6 +61,45 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 EXPORT = ROOT / "docs" / "materials" / "platform-model" / "01-metadata" / "property-index.json"
+CHILDREN = ROOT / "docs" / "materials" / "platform-model" / "01-metadata" / "child-objects.json"
+
+# Имена наших коллекций против имён дочерних видов выгрузки. Сверка по дочерним
+# объектам нужна отдельно, потому что property-index собран только по свойствам
+# самих видов: свойств измерения - ведущее, основной отбор, использование в
+# итогах - в нём нет вовсе. Пока сверка их не смотрела, четыре свойства измерения
+# отсутствовали у нас незамеченными, и нашлись чтением справки, а не прогоном.
+CHILD_COLLECTIONS = {
+    "Dimensions": "Dimension",
+    "Resources": "Resource",
+    "Attributes": "Attribute",
+    "TableParts": "TabularSection",
+    "AddressingAttributes": "AddressingAttribute",
+    "AccountingFlags": "AccountingFlag",
+    "ExtDimensionAccountingFlags": "ExtDimensionAccountingFlag",
+    "Recalculations": "Recalculation",
+    "Predefined": "PredefinedItem",
+    "Commands": "Command",
+    "Templates": "Template",
+    "Characteristics": "Characteristic",
+    "Columns": "Column",
+    "Values": "EnumValue",
+    "Operations": "Operation",
+}
+
+# Одна и та же коллекция значит у разных видов разное: макеты у объекта - это
+# макеты, а `Templates` у HTTP-сервиса - шаблоны URL. Разбирается по владельцу.
+CHILD_COLLECTIONS_BY_KIND = {
+    ("HTTPService", "Templates"): "URLTemplate",
+}
+
+# Внуки: выгрузка называет отношение тройкой «вид, владелец, дочерний вид», и
+# два её отношения лежат на второй ступени - метод шаблона URL и параметр
+# операции веб-сервиса. Ключ здесь - вид дочернего объекта-владельца.
+GRANDCHILD_COLLECTIONS = {
+    ("URLTemplate", "Methods"): "Method",
+    ("Operation", "Parameters"): "Parameter",
+    ("TabularSection", "Attributes"): "Attribute",
+}
 
 # Осознанные переименования: слово прототипа -> наше слово. Каждая строка -
 # решение, а не догадка, и держится тем, что записано в docs/requirements.
@@ -107,6 +162,28 @@ RENAMED_BY_KIND = {
     ("ChartOfCalculationTypes", "StandardTabularSections"): "standard_table_parts",
     ("ChartOfCharacteristicTypes", "CharacteristicExtValues"): "additional_values",
     ("Task", "TaskNumberAutoPrefix"): "number_prefix",
+    # Дочерние объекты: область - сам дочерний вид, не его владелец. Команда
+    # значит одно и то же у справочника, документа, журнала, регистра сведений,
+    # отчёта, обработки и задачи, и до этих двух строк остаток повторял её
+    # семь раз подряд.
+    ("Command", "CommandParameterType"): "parameter",
+    ("Command", "OnMainServerUnavalableBehavior"): "on_server_unavailable",
+    # Измерение последовательности: соответствие документам - это реквизиты
+    # документа, из которых берётся значение, соответствие движениям - это
+    # измерения регистров, где то же значение лежит.
+    ("Dimension", "DocumentMap"): "document_attributes",
+    ("Dimension", "RegisterRecordsMap"): "register_dimensions",
+    # Реквизит адресации: измерение регистра адресации, с которым он сверяется.
+    ("AddressingAttribute", "AddressingDimension"): "dimension",
+    # Операция веб-сервиса: тип возвращаемого значения XDTO - это и есть наш
+    # тип ответа, названный без упоминания XDTO, как и сам пакет.
+    ("Operation", "XDTOReturningValueType"): "return_type",
+    # Параметр операции: тип значения XDTO и направление передачи. Оба названы
+    # у нас короче, потому что другого типа и другой передачи у параметра нет.
+    ("Parameter", "XDTOValueType"): "type",
+    ("Parameter", "TransferDirection"): "direction",
+    # Метод шаблона URL: HTTP-метод - единственный метод, который у него есть.
+    ("Method", "HTTPMethod"): "method",
 }
 
 
@@ -276,6 +353,20 @@ SELF_CHECK = [
     # И то, что осталось пробелом после проверки по модели поимённо.
     ("DataProcessor", "ExtendedPresentation", ["explanation", "title"], ["explanation", "title"], False),
     ("Sequence", "Comment", ["name", "documents"], ["name", "documents"], False),
+    # Дочерние объекты. Область сверки - дочерний вид, и это не мелочь: под
+    # именем владельца те же два свойства команды не совпадали ни разу и стояли
+    # в остатке у семи видов сразу.
+    ("Command", "CommandParameterType", ["parameter", "parameter_use"], ["parameter", "parameter_use"], True),
+    ("Command", "OnMainServerUnavalableBehavior", ["on_server_unavailable"], ["on_server_unavailable"], True),
+    ("Dimension", "DocumentMap", ["document_attributes"], ["document_attributes"], True),
+    ("Dimension", "RegisterRecordsMap", ["register_dimensions"], ["register_dimensions"], True),
+    ("AddressingAttribute", "AddressingDimension", ["dimension"], ["dimension"], True),
+    ("Operation", "XDTOReturningValueType", ["return_type"], ["return_type"], True),
+    ("Parameter", "XDTOValueType", ["type"], ["type"], True),
+    ("Parameter", "TransferDirection", ["direction"], ["direction"], True),
+    ("Method", "HTTPMethod", ["method"], ["method"], True),
+    # И то, что осталось пробелом: у команды под именем владельца алиаса нет.
+    ("Catalog", "CommandParameterType", ["parameter", "parameter_use"], ["parameter"], False),
 ]
 
 
@@ -333,7 +424,7 @@ def main() -> int:
         # тут нет.
         names = [name for name in body["own"] if name not in OURS_ONLY]
         for child in body.get("children", {}).values():
-            names.extend(name for name in child if name not in OURS_ONLY)
+            names.extend(name for name in child["own"] if name not in OURS_ONLY)
         ours[kind.lower()] = {tokens(name): name for name in names}
         tops[kind.lower()] = frozenset(name for name in body.get("top", []) if name not in OURS_ONLY)
     export: dict[str, dict[str, int]] = {}
@@ -368,6 +459,7 @@ def main() -> int:
         total += len(missing)
         print(f"=== {kind}: {len(missing)}")
         print("    " + ", ".join(f"{name} ({count})" for name, count in missing))
+    total += sweep_children(model, arguments.kind)
     print(f"\nв остатке свойств: {total}")
     if accepted_total:
         print(f"принятых расхождений пропущено: {accepted_total} (см. ACCEPTED в этом скрипте)")
@@ -376,6 +468,77 @@ def main() -> int:
     print("Остаток - вопросы к синтакс-помощнику, а не перечень ошибок: отсутствие")
     print("свойства в выгрузке значит только, что она им не пользуется.")
     return 0
+
+
+def sweep_children(model: dict, only: str | None) -> int:
+    """Сверить состав дочерних объектов: измерений, ресурсов, реквизитов, частей.
+
+    Отдельным проходом, потому что источник другой - child-objects.json, где
+    состав свойств лежит по тройке «вид, владелец, дочерний вид». Тройка, а не
+    пара: два отношения выгрузки живут на второй ступени - метод шаблона URL и
+    параметр операции веб-сервиса, - и по паре они бы не нашлись.
+
+    Пара, которой у нас нет, называется вслух. Молчание здесь неотличимо от
+    «расхождений нет», а именно молчанием четыре свойства измерения и простояли
+    без сверки, пока этого прохода не было вовсе.
+    """
+    if not CHILDREN.exists():
+        return 0
+    relations = {}
+    for relation in json.loads(CHILDREN.read_text(encoding="utf-8"))["relations"]:
+        relations[(relation["metadata_kind"], relation["owner_kind"], relation["child_kind"])] = relation
+    ours, tops = {}, {}
+    for typename, body in model.items():
+        kind = typename[: -len("Definition")] if typename.endswith("Definition") else typename
+        for collection, dumped in body.get("children", {}).items():
+            child = CHILD_COLLECTIONS_BY_KIND.get((kind, collection), CHILD_COLLECTIONS.get(collection))
+            if child is None:
+                continue
+            key = (kind.lower(), kind, child)
+            ours[key] = {tokens(name): name for name in dumped["own"] if name not in OURS_ONLY}
+            tops[key] = frozenset(name for name in dumped["top"] if name not in OURS_ONLY)
+            for nested, below in dumped.get("children", {}).items():
+                grandchild = GRANDCHILD_COLLECTIONS.get((child, nested))
+                if grandchild is None:
+                    continue
+                key = (kind.lower(), child, grandchild)
+                ours[key] = {tokens(name): name for name in below["own"] if name not in OURS_ONLY}
+                tops[key] = frozenset(name for name in below["top"] if name not in OURS_ONLY)
+    # Виды, названные у нас иначе, - тот же список, что и в первом проходе.
+    for exported, mine in KIND_ALIAS.items():
+        for (kind, owner, child), fields in list(ours.items()):
+            if kind == mine.lower():
+                renamed = (exported.lower(), exported if owner == mine else owner, child)
+                ours[renamed] = fields
+                tops[renamed] = tops[(kind, owner, child)]
+    total, unseen = 0, []
+    for (kind, owner, child), relation in sorted(relations.items()):
+        if only and kind.lower() != only.lower():
+            continue
+        fields = ours.get((kind.lower(), owner, child))
+        if fields is None:
+            # Пропуск называется вслух. Пропущенная пара - это молчание, а
+            # молчание здесь неотличимо от «расхождений нет»: ровно так четыре
+            # свойства измерения и простояли без сверки, пока второго прохода
+            # не было вовсе.
+            if relation["properties"]:
+                unseen.append(f"{kind}.{child}" if owner == kind else f"{kind}.{owner}.{child}")
+            continue
+        # Имя свойства дочернего объекта сверяется в области самого дочернего
+        # вида, а не его владельца: `CommandParameterType` значит у команды
+        # одно и то же под справочником, документом и обработкой - потому она и
+        # стояла в остатке семь раз подряд.
+        missing = [(name, count) for name, count in sorted(relation["properties"].items())
+                   if not matches(name, fields, child, tops[(kind.lower(), owner, child)])]
+        if not missing:
+            continue
+        total += len(missing)
+        path = f"{kind}.{child}" if owner == kind else f"{kind}.{owner}.{child}"
+        print(f"=== {path} ({relation['count']}): {len(missing)}")
+        print("    " + ", ".join(f"{name} ({count})" for name, count in missing))
+    if unseen:
+        print(f"дочерних видов выгрузки без коллекции у нас: {', '.join(unseen)}")
+    return total
 
 
 if __name__ == "__main__":
