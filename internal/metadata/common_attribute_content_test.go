@@ -489,7 +489,7 @@ func TestCommonAttributeCollidesWithFieldsOfOtherSorts(t *testing.T) {
 				{Attribute: Attribute{ID: uuid.MustNew(), Name: taken}}}
 		},
 		"измерение регистра расчёта": func(catalog *Catalog) {
-			catalog.CalculationRegisters[0].Dimensions = []CalculationRegisterDimension{
+			catalog.CalculationRegisters[0].Dimensions = []RegisterDimension{
 				{Attribute: Attribute{ID: uuid.MustNew(), Name: taken}}}
 		},
 		"табличная часть плана обмена": func(catalog *Catalog) {

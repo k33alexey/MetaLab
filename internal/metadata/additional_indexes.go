@@ -271,22 +271,13 @@ func cloneAdditionalIndexes(indexes []AdditionalIndex) []AdditionalIndex {
 	return cloned
 }
 
-// accountingFieldNames and calculationDimensionNames are the same thing for
-// the two registers that keep structures of their own instead of the ordinary
-// field. Until they share one - a point of its own further down the block -
-// the name has to be fetched from each.
+// accountingFieldNames is the same thing for the accounting register, which
+// still keeps a structure of its own for its fields. Until it shares the
+// dimension of the other registers the name has to be fetched from it.
 func accountingFieldNames(fields []AccountingRegisterField) []string {
 	names := make([]string, len(fields))
 	for position, field := range fields {
 		names[position] = field.Name
-	}
-	return names
-}
-
-func calculationDimensionNames(dimensions []CalculationRegisterDimension) []string {
-	names := make([]string, len(dimensions))
-	for position, dimension := range dimensions {
-		names[position] = dimension.Name
 	}
 	return names
 }

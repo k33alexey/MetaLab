@@ -27,25 +27,6 @@ const (
 	maxRecalculationsPerRegister = 32
 )
 
-// CalculationRegisterDimension is a dimension of a calculation register. Beyond
-// what any field carries it holds the two links that make calculation work.
-type CalculationRegisterDimension struct {
-	// Attribute is the whole common set - see AccountingRegisterField for why a
-	// field of a register carries it entire.
-	Attribute `yaml:",inline" json:",inline"`
-	// DenyIncompleteValues refuses an empty value in this dimension - see the
-	// same property on a dimension of the other three registers.
-	DenyIncompleteValues bool `yaml:"deny_incomplete_values,omitempty" json:"denyIncompleteValues,omitempty"`
-	// Base says a record is tied to its base by this dimension. Without it
-	// there is nothing to say whose base to gather, and one person's salary
-	// would be computed from everybody's bonuses.
-	Base bool `yaml:"base,omitempty" json:"base,omitempty"`
-	// ScheduleLink is the dimension of the schedule this one corresponds to.
-	// The register knows where the schedule's value and date are; this is what
-	// tells it whose value that is.
-	ScheduleLink *uuid.UUID `yaml:"schedule_link,omitempty" json:"scheduleLink,omitempty"`
-}
-
 // RecalculationDimension carries both links a recalculation needs: which
 // dimension of the register it corresponds to, and which data, when changed,
 // makes the recalculation necessary.
@@ -117,14 +98,14 @@ type CalculationRegisterDefinition struct {
 	ScheduleValue *uuid.UUID `yaml:"schedule_value,omitempty" json:"scheduleValue,omitempty"`
 	ScheduleDate  *uuid.UUID `yaml:"schedule_date,omitempty" json:"scheduleDate,omitempty"`
 
-	Dimensions         []CalculationRegisterDimension `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
-	Resources          []Attribute                    `yaml:"resources" json:"resources"`
-	Attributes         []Attribute                    `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	StandardAttributes []StandardAttribute            `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
-	Recalculations     []Recalculation                `yaml:"recalculations,omitempty" json:"recalculations,omitempty"`
-	Forms              RegisterForms                  `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands           []ObjectCommand                `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates          []ObjectTemplate               `yaml:"templates,omitempty" json:"templates,omitempty"`
+	Dimensions         []RegisterDimension `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
+	Resources          []Attribute         `yaml:"resources" json:"resources"`
+	Attributes         []Attribute         `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	StandardAttributes []StandardAttribute `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
+	Recalculations     []Recalculation     `yaml:"recalculations,omitempty" json:"recalculations,omitempty"`
+	Forms              RegisterForms       `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands           []ObjectCommand     `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates          []ObjectTemplate    `yaml:"templates,omitempty" json:"templates,omitempty"`
 }
 
 // DecodeCalculationRegister reads and validates one calculation register.
@@ -138,7 +119,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 	issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
 	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, CalculationRegisterKind,
 		recordIndexTables(standardFieldsOfKind(CalculationRegisterKind),
-			calculationDimensionNames(value.Dimensions), attributeNames(value.Resources),
+			attributeNames(RegisterDimensionAttributes(value.Dimensions)), attributeNames(value.Resources),
 			attributeNames(value.Attributes)))...)
 	if value.ChartOfCalculationTypes.IsZero() {
 		issues = append(issues, "chart_of_calculation_types is required: without kinds of accrual there is nothing to calculate")
@@ -163,6 +144,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, dimension := range value.Dimensions {
 		prefix := fmt.Sprintf("dimensions[%d]", index)
+		issues = append(issues, validateRegisterDimension(prefix, dimension, calculationRegisterDimensions())...)
 		issues = append(issues, validateRegisterField(prefix, dimension.Attribute,
 			value.ID, names, ids, configuration, reservedCalculationRegisterName)...)
 		issues = append(issues, validateMovementFieldStorage(prefix, dimension.Attribute)...)
@@ -331,14 +313,7 @@ func cloneRecalculations(items []Recalculation) []Recalculation {
 
 func cloneCalculationRegister(value CalculationRegisterDefinition) CalculationRegisterDefinition {
 	value.Title = cloneTitle(value.Title)
-	value.Dimensions = slices.Clone(value.Dimensions)
-	for index := range value.Dimensions {
-		value.Dimensions[index].Attribute = cloneAttribute(value.Dimensions[index].Attribute)
-		if value.Dimensions[index].ScheduleLink != nil {
-			id := *value.Dimensions[index].ScheduleLink
-			value.Dimensions[index].ScheduleLink = &id
-		}
-	}
+	value.Dimensions = cloneRegisterDimensions(value.Dimensions)
 	value.Resources = cloneAttributes(value.Resources)
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.Recalculations = cloneRecalculations(value.Recalculations)

@@ -129,7 +129,7 @@ func (catalog *Catalog) recalculationTable(definition CalculationRegisterDefinit
 			{Name: physicalObjectName("ir", recalculation.ID), Method: "btree", Keys: []string{"recorder_type", "recorder_ref"}},
 		},
 	}
-	byID := map[uuid.UUID]CalculationRegisterDimension{}
+	byID := map[uuid.UUID]RegisterDimension{}
 	for _, dimension := range definition.Dimensions {
 		byID[dimension.ID] = dimension
 	}
