@@ -433,15 +433,39 @@ fields:
 	}
 }
 
-// The reference to a table of a source is not a type of the configuration's own
-// objects yet. Catches it leaking into the type system through the one
-// function every type goes through, where it would be accepted and stored as
-// nothing.
-func TestAReferenceToAnExternalTableIsNotYetATypeOfACatalogAttribute(t *testing.T) {
+// A reference to something of a source is not a type of the configuration's own
+// objects, and that is the prototype's rule: its configurator does not offer
+// it to an attribute of a catalog. Catches either kind of reference - to a
+// table and to a dimension table - leaking into the one function every type
+// of the infobase goes through, where it would be accepted with no storage
+// behind it, and a refusal that does not say why.
+func TestAReferenceToSomethingOfASourceIsNotATypeOfTheInfobase(t *testing.T) {
 	t.Parallel()
-	issues := validateTypes("types", []Type{{Kind: ExternalTableType, Reference: ptr(mustUUID(t, goodsTable))}}, uuid.UUID{})
-	if len(issues) == 0 {
-		t.Fatal("an attribute of the configuration's own object accepted a reference to a table of a source")
+	for _, kind := range []TypeKind{ExternalTableType, ExternalDimensionTableType} {
+		issues := validateTypes("types", []Type{{Kind: kind, Reference: ptr(mustUUID(t, goodsTable))}}, uuid.UUID{})
+		if len(issues) != 1 || !strings.Contains(issues[0], "is a type of a field of an external data source") {
+			t.Errorf("%s as a type of the infobase gave %v", kind, issues)
+		}
+	}
+	// And through a real catalog, not only the function: an attribute typed
+	// by a table of a source refuses the catalog.
+	root := metadataProject(t)
+	writeExternalSource(t, root, warehouseSource, "Склад", "")
+	writeExternalTable(t, root, "Склад", goodsTable, "Товары", goodsBody)
+	writeMetadata(t, root, CatalogKind, "f8000000-0000-4000-8000-000000000091", `format: 1
+id: f8000000-0000-4000-8000-000000000091
+name: Контрагенты
+title: {ru: Контрагенты}
+code: {type: string, length: 9, auto: true}
+description_length: 150
+attributes:
+  - id: f8000000-0000-4000-8000-000000000092
+    name: Товар
+    title: {ru: Товар}
+    types: [{kind: external-data-source-table, reference: `+goodsTable+`}]
+`)
+	if message := loadRefused(t, root, "a catalog attribute typed by a table of a source"); !strings.Contains(message, "is a type of a field of an external data source") {
+		t.Fatalf("the error does not say why: %v", message)
 	}
 }
 

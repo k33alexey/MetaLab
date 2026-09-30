@@ -28,12 +28,12 @@ const ExternalDataSourceTableKind Kind = "external-data-source-tables"
 // ExternalTableType is a reference to one record of an object table of an
 // external data source. The reference is the table's identifier.
 //
-// Only a field of a table of the same source may have it for now. The prototype
-// lets any attribute of the configuration hold such a reference, and carrying
-// that needs a storage and a resolution the rest of the type system does not
-// have yet - so validateTypes does not know the kind, and an attribute of a
-// catalog that names it is refused as a kind it does not support rather than
-// accepted and stored as nothing.
+// Only a field of the same source may have it, and that is the prototype's rule,
+// not a gap of ours: the configurator does not offer it to an attribute of the
+// configuration's own objects, so the infobase never stores one. validateTypes
+// refuses it by name; validateExternalFieldTypes takes it off first for a
+// field of a source. A managed form's attribute may have it, per the help -
+// that belongs to the forms.
 const ExternalTableType TypeKind = "external-data-source-table"
 
 // ExternalDataSourceTablesDirectory is the folder of a source that holds its

@@ -1572,7 +1572,8 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 			item.Kind == DocumentType || item.Kind == CharacteristicTypesType || item.Kind == AccountType ||
 			item.Kind == CalculationTypeType || item.Kind == BusinessProcessType || item.Kind == TaskType ||
 			item.Kind == ExchangePlanType ||
-			item.Kind == RoutePointType
+			item.Kind == RoutePointType ||
+			item.Kind == ExternalTableType || item.Kind == ExternalDimensionTableType
 		if referenced && (item.Reference == nil || item.Reference.IsZero()) {
 			issues = append(issues, prefix+".reference is required")
 		}
@@ -1584,6 +1585,16 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 		}
 		if item.Kind == ObjectUUIDType {
 			issues = append(issues, prefix+".kind obj-uuid is reserved for platform identity and cannot be declared; use a reference type")
+			continue
+		}
+		// A reference to something of an external data source is a type of
+		// that source's own fields and of a managed form's attributes, and of
+		// nothing the infobase stores: the configurator does not offer it to
+		// an attribute of the configuration's own objects. Fields of a source
+		// are checked by validateExternalFieldTypes, which takes these two
+		// kinds off before calling here.
+		if item.Kind == ExternalTableType || item.Kind == ExternalDimensionTableType {
+			issues = append(issues, prefix+".kind "+string(item.Kind)+" is a type of a field of an external data source and not of an attribute the infobase stores")
 			continue
 		}
 		if item.DateParts != "" && item.Kind != DateType {
