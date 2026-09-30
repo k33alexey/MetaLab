@@ -110,6 +110,11 @@ func (catalog *Catalog) accumulationRegisterTables(definition AccumulationRegist
 			return schemadiff.Table{}, schemadiff.Table{}, fmt.Errorf("accumulation register %s totals index: %w", definition.Name, err)
 		}
 		totals.Indexes = append(totals.Indexes, schemadiff.Index{Name: physicalObjectName("it", definition.ID), Method: "btree", Keys: keys})
+		dimensionIndexes, err := catalog.balanceTotalsDimensionIndexes(definition)
+		if err != nil {
+			return schemadiff.Table{}, schemadiff.Table{}, fmt.Errorf("accumulation register %s totals index: %w", definition.Name, err)
+		}
+		totals.Indexes = append(totals.Indexes, dimensionIndexes...)
 	}
 	for _, resource := range definition.Resources {
 		if err := catalog.appendAttributeSchema(&movements, resource); err != nil {

@@ -447,3 +447,41 @@ func TestConcurrentBackdatedPostingsNeitherDeadlockNorLoseAChange(t *testing.T) 
 		})
 	}
 }
+
+// TestAnIndexedDimensionIsFoundWithoutTheOnesBeforeIt is the index a developer
+// asks for by marking a dimension "Индексировать". A filter on the second
+// dimension alone cannot use the index of the balances beyond its period: the
+// first dimension stands in between, and every entry of the period is walked.
+// With two thousand warehouses and the product marked, the plan must go
+// through the index of the period and the product.
+func TestAnIndexedDimensionIsFoundWithoutTheOnesBeforeIt(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	fixture := newBalanceTotalsFixtureWith(ctx, t, false, 0, IndexField)
+	warehouse, _ := PhysicalAttributeColumn(fixture.warehouseID)
+	product, _ := PhysicalAttributeColumn(fixture.productID)
+	quantity, _ := PhysicalAttributeColumn(fixture.quantityID)
+	totals := qualifiedCatalogTable(fixture.totalsTable)
+	if _, err := fixture.pool.Exec(ctx, "INSERT INTO "+totals+" (total_period, totals_split, dimension_key, "+pgx.Identifier{warehouse}.Sanitize()+", "+pgx.Identifier{product}.Sanitize()+", "+pgx.Identifier{quantity}.Sanitize()+")"+
+		" SELECT $1, 0, lpad(md5(ws::text || '/' || ps::text), 64, '0'), 'W' || ws, 'P' || ps, 1 FROM generate_series(1, 2000) ws, generate_series(1, 10) ps", accumulationPresentTotalsPeriod); err != nil {
+		t.Fatal(err)
+	}
+	if err := markBalanceTotalsFormat(ctx, fixture.pool, fixture.definition.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.pool.Exec(ctx, "ANALYZE "+totals); err != nil {
+		t.Fatal(err)
+	}
+	statement, arguments, _, err := fixture.registers.balanceStatement(ctx, fixture.definition, utcDate(2026, 9, 20, 0), utcDate(2026, 9, 30, 0),
+		map[uuid.UUID]Value{fixture.productID: {Kind: StringType, Data: "P7"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := explainPlan(ctx, t, fixture.pool, statement, arguments...)
+	if !strings.Contains(plan, physicalObjectName("itd", fixture.productID)) {
+		t.Fatalf("a filter on the indexed second dimension does not use its index:\n%s", plan)
+	}
+	if strings.Contains(plan, "Seq Scan on "+fixture.totalsTable) {
+		t.Fatalf("the totals are read sequentially:\n%s", plan)
+	}
+}

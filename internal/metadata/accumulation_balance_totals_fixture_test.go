@@ -46,6 +46,13 @@ type balanceMovement struct {
 
 func newBalanceTotalsFixture(ctx context.Context, t *testing.T, splitting bool, maxConnections int) *balanceTotalsFixture {
 	t.Helper()
+	return newBalanceTotalsFixtureWith(ctx, t, splitting, maxConnections, DontIndex)
+}
+
+// newBalanceTotalsFixtureWith lets the second dimension, the product, be
+// marked "Индексировать".
+func newBalanceTotalsFixtureWith(ctx context.Context, t *testing.T, splitting bool, maxConnections int, productIndexing IndexMode) *balanceTotalsFixture {
+	t.Helper()
 	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("ML_TEST_DATABASE_URL is not set")
@@ -86,7 +93,7 @@ func newBalanceTotalsFixture(ctx context.Context, t *testing.T, splitting bool, 
 			ID: registerID, Name: "Остатки", Kind: AccumulationRegisterBalance, AllowTotalsSplitting: splitting,
 			Dimensions: []RegisterDimension{
 				{Attribute: Attribute{ID: warehouseID, Name: "Склад", Types: []Type{{Kind: StringType, Length: 20}}}},
-				{Attribute: Attribute{ID: productID, Name: "Товар", Types: []Type{{Kind: StringType, Length: 50}}}},
+				{Attribute: Attribute{ID: productID, Name: "Товар", Indexing: productIndexing, Types: []Type{{Kind: StringType, Length: 50}}}},
 			},
 			Resources: []Attribute{{ID: quantityID, Name: "Количество", Types: []Type{{Kind: NumberType, Precision: 15, Scale: 3}}}},
 		}},

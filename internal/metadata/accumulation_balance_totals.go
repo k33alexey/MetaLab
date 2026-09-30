@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -194,6 +195,42 @@ func (catalog *Catalog) balanceTotalsIndexKeys(definition AccumulationRegisterDe
 		keys, used = append(keys, column), used+size
 	}
 	return keys, nil
+}
+
+// balanceTotalsDimensionIndexes are the indexes a developer asks for by marking
+// a dimension "Индексировать": the period and that dimension alone.
+//
+// The index of the balances leads with the period and then the dimensions in
+// their order, and an index serves only a prefix of its fields - a filter on
+// the third dimension without the first two walks every entry of the period.
+// Marking the dimension is how the developer answers that, the same way as in
+// the prototype, whose list of platform indexes has this one for a dimension
+// with the property set, from the second on. The first needs none: it stands
+// right after the period in the index of the balances already.
+//
+// A dimension whose value has no bound on its size is left without one, for
+// the reason the index of the balances leaves it out - see
+// balanceTotalsIndexKeys.
+func (catalog *Catalog) balanceTotalsDimensionIndexes(definition AccumulationRegisterDefinition) ([]schemadiff.Index, error) {
+	var indexes []schemadiff.Index
+	for position, dimension := range definition.Dimensions {
+		if position == 0 || !dimension.Indexing.indexes() {
+			continue
+		}
+		storage, err := catalog.attributeStorage(dimension.Types)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := btreeEntryBytes(storage); !ok {
+			continue
+		}
+		column, err := PhysicalAttributeColumn(dimension.ID)
+		if err != nil {
+			return nil, err
+		}
+		indexes = append(indexes, schemadiff.Index{Name: physicalObjectName("itd", dimension.ID), Method: "btree", Keys: []string{"total_period", column}})
+	}
+	return indexes, nil
 }
 
 // btreeEntryBytes is the largest a value of this storage can take in an index
