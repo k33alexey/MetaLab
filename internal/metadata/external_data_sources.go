@@ -100,6 +100,8 @@ type ExternalDataSourceDefinition struct {
 	// DataLock is the locking mode the source's tables take unless they say
 	// otherwise.
 	DataLock project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
+	// Functions lie in this file: see ExternalFunction.
+	Functions []ExternalFunction `yaml:"functions,omitempty" json:"functions,omitempty"`
 	// Tables and Cubes are read from the source's folders of them, not from
 	// this file.
 	Tables []ExternalTable `yaml:"-" json:"tables,omitempty"`
@@ -221,6 +223,7 @@ func DecodeExternalDataSource(source string, reader io.Reader, configuration pro
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
+	issues = append(issues, validateExternalFunctions(value.Functions, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ExternalDataSourceDefinition{}, err
 	}
@@ -600,6 +603,7 @@ func cloneExternalTable(table ExternalTable) ExternalTable {
 
 func cloneExternalDataSource(source ExternalDataSourceDefinition) ExternalDataSourceDefinition {
 	source.Title = cloneTitle(source.Title)
+	source.Functions = cloneExternalFunctions(source.Functions)
 	tables := make([]ExternalTable, len(source.Tables))
 	for index, table := range source.Tables {
 		tables[index] = cloneExternalTable(table)
@@ -773,6 +777,14 @@ func (catalog *Catalog) validateExternalDataSources() error {
 				if _, err := catalog.normalizeTypes(owner+" hierarchy.unfilled_parent_value", key.Types, *table.Hierarchy.UnfilledParentValue); err != nil {
 					return fmt.Errorf("%w: the value a row without a parent holds is a value of the key", err)
 				}
+			}
+		}
+		// A function's value is typed like a field of the source, and what
+		// the type refers to is resolved the same way.
+		for _, function := range source.Functions {
+			result := ExternalField{Attribute: Attribute{Name: function.Name, Types: function.Types}}
+			if err := catalog.validateExternalFieldReferences(source, fmt.Sprintf("external data source %s function %s", source.Name, function.Name), []ExternalField{result}, nil); err != nil {
+				return err
 			}
 		}
 		for _, cube := range source.Cubes {

@@ -1068,6 +1068,11 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			}
 			catalog.externalTableByID[table.ID] = externalTableLocation{source: index, table: tableIndex}
 		}
+		for _, function := range item.Functions {
+			if err := add("external data source function", function.ID, item.Name+".function."+function.Name, 0, externalTableNames, nil); err != nil {
+				return err
+			}
+		}
 		// A cube is named within its source and a dimension table within its
 		// cube; every identifier is unique across the configuration.
 		for cubeIndex, cube := range item.Cubes {
