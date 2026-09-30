@@ -51,8 +51,12 @@ fmt-check:
 test:
 	go test ./...
 
+# test-race needs -p 1 for the same reason test-integration does: the
+# integration tests of every package share one application schema of the test
+# database, and two packages run at once drop each other's tables. Without it
+# the race run with a database fails on missing relations, not on races.
 test-race:
-	go test -race ./...
+	go test -race -p 1 ./...
 
 # test-integration is the test step as CI runs it, and the two flags are the
 # point of having a target at all.

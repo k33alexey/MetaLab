@@ -62,6 +62,86 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 EXPORT = ROOT / "docs" / "materials" / "platform-model" / "01-metadata" / "property-index.json"
 CHILDREN = ROOT / "docs" / "materials" / "platform-model" / "01-metadata" / "child-objects.json"
+HELP = ROOT / "docs" / "materials" / "its" / "8.3.27.2342" / "json" / "shcntx_ru.json"
+
+# Имена объектов метаданных в синтакс-помощнике, которые не совпадают с именами
+# выгрузки. Справка называет подчинённые виды полнее: операция и параметр
+# веб-сервиса, шаблон URL и метод HTTP-сервиса, графа журнала.
+HELP_KIND_ALIAS = {
+    "WebServiceOperation": "Operation",
+    "WebServiceParameter": "Parameter",
+    "HTTPServiceURLTemplate": "URLTemplate",
+    "HttpServiceMethod": "Method",
+    "Graph": "Column",
+    "DocumentNumerator": "Numerator",
+    "FunctionalOptionsParameter": "FunctionalOptionParameter",
+}
+
+# Подчинённые виды, которые в выгрузке состава лежат глубже, чем в справке:
+# таблицы, поля, кубы, таблицы измерений и функции внешнего источника, а также
+# измерения перерасчёта - он сам подчинён регистру расчёта.
+HELP_CHILD_COLLECTIONS = {
+    "Tables": "Table",
+    "Fields": "Field",
+    "Cubes": "Cube",
+    "DimensionTables": "DimensionTable",
+    "Functions": "Function",
+}
+
+# Свойство справки под нашим именем, которое сопоставитель по словам не находит:
+# вложено или названо иначе. Каждая строка проверена по коду.
+HELP_RENAMED = {
+    ("Document", "ActionsWritingOnPost"): "records_writing",     # posting.records_writing
+    ("Document", "PrivilegedPostingMode"): "privileged",         # posting.privileged
+    ("Document", "PrivilegedUnpostingMode"): "unpost_privileged",
+    ("Template", "TemplateType"): "kind",
+    ("Subsystem", "Subsystems"): "parent",                       # вложенность записана ссылкой на родителя
+    ("Enum", "EnumValues"): "values",
+    ("HTTPService", "URLTemplates"): "templates",
+    ("Role", "Rights"): "objects",                               # права на объекты и на команды
+    ("Dimension", "LeadingRegisterData"): "leading_data",        # измерение перерасчёта
+    ("Table", "TableDataType"): "data_type",
+    ("BusinessProcess", "Flowchart"): "route",                   # карта маршрута
+    ("Table", "TransactionsIsolationLevel"): "isolation_level",
+    ("Attribute", "BinaryDataStorageLocationUse"): "binary_data_storage",
+    ("Attribute", "BinaryDataStorageLocationUseField"): "binary_data_storage_field",
+    ("Resource", "BinaryDataStorageLocationUse"): "binary_data_storage",
+    ("Resource", "BinaryDataStorageLocationUseField"): "binary_data_storage_field",
+}
+# То же для любого вида: табличные части у нас называются table_parts.
+HELP_RENAMED_ANY = {"TabularSections": "table_parts"}
+
+# Свойства, которые у нас не поля описания, а файлы рядом с ним: модули и тела
+# объектов. Выгрузка состава их не видит, а в проекте они есть.
+HELP_AS_FILES = {"ManagerModule", "ObjectModule", "RecordSetModule", "ValueManagerModule",
+                 "CommandModule", "Module"}
+HELP_AS_FILES_BY_KIND = {
+    ("CommonPicture", "Picture"), ("Template", "Template"), ("XDTOPackage", "Package"),
+    ("WSReference", "WSDefinition"), ("Style", "Style"),
+}
+
+# Решено в docs/requirements: свойство есть у прототипа, у нас его нет нарочно.
+HELP_DECIDED = {
+    ("ScheduledJob", "Schedule"): "METADATA-OBJECTS.md: расписание - данные базы, а не метаданные",
+    ("FilterCriterion", "StandardAttributes"): "METADATA-OBJECTS.md: у критерия отбора стандартных реквизитов нет",
+    ("WebSocketClient", "StandardAttributes"): "METADATA-OBJECTS.md: у WebSocket-клиента стандартных реквизитов нет",
+}
+
+# Объекты справки, которых у нас нет в модели нарочно, и где это записано.
+HELP_DECIDED_KINDS = {
+    "Bot": "METADATA-OBJECTS.md: боты не переносятся - отказ владельца",
+    "IntegrationService": "METADATA-OBJECTS.md: сервисы интеграции не переносятся - отказ владельца",
+    "IntegrationServiceChannel": "METADATA-OBJECTS.md: канал сервиса интеграции - вместе с ним",
+    "Interface": "METADATA-OBJECTS.md: интерфейс обычного приложения не переносится",
+    "Form": "форма - файл описания формы рядом с объектом, её состав сверяется конструктором форм",
+    "Language": "языки лежат в описании проекта (internal/project), состав сверен руками",
+}
+
+# Свойства, которые имеют смысл только у объекта расширения конфигурации:
+# принадлежность объекта расширению и заимствованный объект основной
+# конфигурации. Расширения не поддерживаются - решение владельца, записано в
+# METADATA-OBJECTS.md, - поэтому это не пробел у каждого вида.
+HELP_EXTENSIONS = {"ExtendedConfigurationObject", "ObjectBelonging"}
 
 # Имена наших коллекций против имён дочерних видов выгрузки. Сверка по дочерним
 # объектам нужна отдельно, потому что property-index собран только по свойствам
@@ -219,7 +299,8 @@ ACCEPTED = {
 # конце, лежат не в коллекциях каталога, а рядом: конфигурация и языки - в
 # project, общие формы - в папке форм, параметр функциональной опции - у самой
 # опции. Их состав сверяется руками, машинно здесь их не видно.
-KIND_ALIAS = {"Enum": "Enumeration", "DefinedType": "DefinedTypeObject"}
+KIND_ALIAS = {"Enum": "Enumeration", "DefinedType": "DefinedTypeObject",
+              "FunctionalOptionsParameter": "FunctionalOptionParameter"}
 
 
 def tokens(name: str) -> frozenset[str]:
@@ -401,6 +482,8 @@ def dump_model() -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description="сверка состава модели метаданных с выгрузкой")
     parser.add_argument("--kind", help="один вид объекта метаданных, как он назван в выгрузке")
+    parser.add_argument("--help-pass", action="store_true",
+                        help="третий проход: свойства объектов метаданных по синтакс-помощнику 8.3.27")
     parser.add_argument("--self-check", action="store_true",
                         help="прогнать проверки на сам сопоставитель; материалы не нужны")
     arguments = parser.parse_args()
@@ -410,6 +493,8 @@ def main() -> int:
         print(f"нет {EXPORT.relative_to(ROOT)}: выгрузка не входит в репозиторий, сверка запускается локально")
         return 0
     model = dump_model()
+    if arguments.help_pass:
+        return sweep_help(model, arguments.kind)
     ours, tops = {}, {}
     for typename, body in model.items():
         kind = typename[: -len("Definition")] if typename.endswith("Definition") else typename
@@ -539,6 +624,103 @@ def sweep_children(model: dict, only: str | None) -> int:
     if unseen:
         print(f"дочерних видов выгрузки без коллекции у нас: {', '.join(unseen)}")
     return total
+
+
+def sweep_help(model: dict, only: str | None) -> int:
+    """Сверить состав модели со свойствами объектов метаданных синтакс-помощника.
+
+    Выгрузка показывает, чем пользуется ОНА, и отсутствие свойства в ней
+    ничего не доказывает. Синтакс-помощник перечисляет свойства объекта
+    метаданных целиком - страницы «ОбъектМетаданных: Вид.Свойство» в разделе
+    свойств, без методов. Английские имена в скобках там те же, что в
+    выгрузке, поэтому сопоставитель и переименования общие.
+
+    Подчинённый вид - измерение, ресурс, реквизит - сверяется с объединением
+    одноимённых коллекций всех владельцев: свойство несём, если оно есть хоть
+    у одного. Применимость по владельцу - другой вопрос, и этот проход его не
+    решает.
+    """
+    if not HELP.exists():
+        print(f"нет {HELP.relative_to(ROOT)}: справка не входит в репозиторий")
+        return 0
+    help_props: dict[str, set[str]] = {}
+    pattern = re.compile(r"ОбъектМетаданных: [^.()]+\.[^ ()]+ \(MetadataObject: ([^.()]+)\.([^ ()]+)\)")
+    for page in json.loads(HELP.read_text(encoding="utf-8"))["pages"]:
+        found = pattern.match(page["title"])
+        if found and "/properties/" in page["path"]:
+            kind = HELP_KIND_ALIAS.get(found.group(1), found.group(1))
+            help_props.setdefault(kind, set()).add(found.group(2))
+    ours: dict[str, dict] = {}
+    tops: dict[str, frozenset] = {}
+
+    def add(kind: str, names, top) -> None:
+        fields = ours.setdefault(kind.lower(), {})
+        fields.update({tokens(name): name for name in names if name not in OURS_ONLY})
+        tops[kind.lower()] = tops.get(kind.lower(), frozenset()) | frozenset(name for name in top if name not in OURS_ONLY)
+
+    for typename, body in model.items():
+        kind = typename[: -len("Definition")] if typename.endswith("Definition") else typename
+        names = list(body["own"])
+        for child in body.get("children", {}).values():
+            names.extend(child["own"])
+        add(kind, names, body.get("top", []))
+        def walk(owner: str, children: dict) -> None:
+            for collection, dumped in children.items():
+                child = (CHILD_COLLECTIONS_BY_KIND.get((owner, collection))
+                         or GRANDCHILD_COLLECTIONS.get((owner, collection))
+                         or HELP_CHILD_COLLECTIONS.get(collection)
+                         or CHILD_COLLECTIONS.get(collection))
+                if child is None:
+                    continue
+                add(child, dumped["own"], dumped["top"])
+                walk(child, dumped.get("children", {}))
+
+        walk(kind, body.get("children", {}))
+    for exported, mine in KIND_ALIAS.items():
+        if mine.lower() in ours:
+            ours[exported.lower()] = ours[mine.lower()]
+            tops[exported.lower()] = tops[mine.lower()]
+    total, unseen = 0, []
+    extensions, as_files, decided = 0, 0, 0
+    for kind in sorted(help_props):
+        if only and kind.lower() != only.lower():
+            continue
+        fields = ours.get(kind.lower())
+        if fields is None:
+            if kind not in HELP_DECIDED_KINDS:
+                unseen.append(kind)
+            continue
+        missing = []
+        for name in sorted(help_props[kind]):
+            if matches(name, fields, kind, tops.get(kind.lower(), frozenset())) or (kind, name) in ACCEPTED:
+                continue
+            renamed = HELP_RENAMED.get((kind, name), HELP_RENAMED_ANY.get(name))
+            if renamed is not None and renamed in fields.values():
+                continue
+            if name in HELP_EXTENSIONS:
+                extensions += 1
+                continue
+            if name in HELP_AS_FILES or (kind, name) in HELP_AS_FILES_BY_KIND:
+                as_files += 1
+                continue
+            if (kind, name) in HELP_DECIDED:
+                decided += 1
+                continue
+            missing.append(name)
+        if not missing:
+            continue
+        total += len(missing)
+        print(f"=== {kind}: {len(missing)} из {len(help_props[kind])}")
+        print("    " + ", ".join(missing))
+    print(f"\nв остатке свойств по синтакс-помощнику: {total}")
+    print(f"лежат файлами рядом с описанием (модули, тела объектов): {as_files}")
+    print(f"решены в docs/requirements: {decided}")
+    print(f"свойства расширений конфигурации, расширения не поддерживаются: {extensions}")
+    if unseen:
+        print(f"объектов метаданных справки без структуры у нас: {', '.join(unseen)}")
+    print("Остаток - вопросы: свойство может лежать у нас под другим именем или")
+    print("вложенным, и каждое проверяется глазами, прежде чем стать пунктом.")
+    return 0
 
 
 if __name__ == "__main__":

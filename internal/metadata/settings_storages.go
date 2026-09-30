@@ -56,6 +56,9 @@ type SettingsStorageDefinition struct {
 	// settings, and without it the storage does nothing at all - the platform
 	// has nowhere to put what the user saved.
 	Forms SettingsStorageForms `yaml:"forms,omitempty" json:"forms,omitempty"`
+	// Templates are the storage's own templates - what its forms print the
+	// saved settings with.
+	Templates []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
 }
 
 // DecodeSettingsStorage reads and validates one settings storage.
@@ -66,6 +69,7 @@ func DecodeSettingsStorage(source string, reader io.Reader, configuration projec
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
+	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return SettingsStorageDefinition{}, err
 	}
@@ -74,6 +78,7 @@ func DecodeSettingsStorage(source string, reader io.Reader, configuration projec
 
 func cloneSettingsStorage(value SettingsStorageDefinition) SettingsStorageDefinition {
 	value.Title = cloneTitle(value.Title)
+	value.Templates = cloneObjectTemplates(value.Templates)
 	return value
 }
 

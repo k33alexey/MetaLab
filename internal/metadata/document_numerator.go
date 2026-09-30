@@ -16,11 +16,14 @@ import (
 // the platform or typed by hand is a property of the document, and two
 // documents sharing a numerator may well differ in it.
 type NumeratorDefinition struct {
-	Format int            `yaml:"format" json:"format"`
-	ID     uuid.UUID      `yaml:"id" json:"id"`
-	Name   string         `yaml:"name" json:"name"`
-	Title  LocalizedText  `yaml:"title" json:"title"`
-	Number DocumentNumber `yaml:"number" json:"number"`
+	Format int           `yaml:"format" json:"format"`
+	ID     uuid.UUID     `yaml:"id" json:"id"`
+	Name   string        `yaml:"name" json:"name"`
+	Title  LocalizedText `yaml:"title" json:"title"`
+	// Comment is the developer's note, as on every object of the
+	// configuration.
+	Comment string         `yaml:"comment,omitempty" json:"comment,omitempty"`
+	Number  DocumentNumber `yaml:"number" json:"number"`
 }
 
 // DecodeNumerator reads and validates one numerator.

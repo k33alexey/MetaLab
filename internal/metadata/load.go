@@ -1578,7 +1578,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	for _, item := range catalog.SettingsStorages {
 		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: SettingsStorageKind,
 			kind: "settings storage", name: item.Name, modules: managerKindModules,
-			formSlots: item.Forms.slots()}); err != nil {
+			formSlots: item.Forms.slots(), templates: item.Templates}); err != nil {
 			return err
 		}
 	}

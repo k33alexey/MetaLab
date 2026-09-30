@@ -458,6 +458,16 @@ type Attribute struct {
 	// attribute_presentation.go.
 	Presentation FieldPresentation `yaml:"presentation,omitempty" json:"presentation,omitempty"`
 	Choice       FieldChoice       `yaml:"choice,omitempty" json:"choice,omitempty"`
+	// BinaryDataStorage and BinaryDataStorageField put a value of the type
+	// ХранилищеЗначения into a binary data storage of the base instead of the
+	// table - since 8.3.26, on an attribute and on a resource. The mode is use
+	// or do not use; with use, the field may name a boolean field of the same
+	// object that decides it row by row. The storages themselves, built in or
+	// external over S3, are a setting of the running base, not of the
+	// configuration. Carried and checked; the writing into a storage is not
+	// done - see validateBinaryDataStorage.
+	BinaryDataStorage      UsageMode  `yaml:"binary_data_storage,omitempty" json:"binaryDataStorage,omitempty"`
+	BinaryDataStorageField *uuid.UUID `yaml:"binary_data_storage_field,omitempty" json:"binaryDataStorageField,omitempty"`
 }
 
 type TablePart struct {
@@ -1796,5 +1806,9 @@ func cloneAttributes(value []Attribute) []Attribute {
 func cloneAttribute(value Attribute) Attribute {
 	value.Title = cloneTitle(value.Title)
 	value.Types = cloneTypes(value.Types)
+	if value.BinaryDataStorageField != nil {
+		id := *value.BinaryDataStorageField
+		value.BinaryDataStorageField = &id
+	}
 	return cloneFieldFilling(cloneFieldSettings(value))
 }

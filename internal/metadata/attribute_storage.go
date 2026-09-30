@@ -1,6 +1,11 @@
 package metadata
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+
+	"github.com/k33alexey/MetaLab/internal/uuid"
+)
 
 // Beside how a field is shown and picked, a field says what is put in it to
 // begin with, and how the database is to help find it later. The prototype
@@ -174,6 +179,10 @@ func validateAttributeUse(groups []fieldGroup, parts []TablePart, kindHasFolders
 			}
 		}
 	}
+	// Every kind hands its field groups over here, so the check of the binary
+	// data storage rides along: it needs the same groups, to find the field
+	// the switch names.
+	issues = append(issues, validateBinaryDataStorage(groups, parts)...)
 	// A line of a table part belongs to the row that holds it, and the row
 	// belongs to one object: there is nothing for a line to belong to apart
 	// from that. The prototype writes the setting on the table part itself and
@@ -220,3 +229,65 @@ func validFillCheck(check FillCheck) bool {
 
 // checked says whether the field takes part in the automatic check.
 func (check FillCheck) checked() bool { return check == ShowFillingError }
+
+// validateBinaryDataStorage checks where a value is kept in a binary data
+// storage. Three rules, each against a setting that would be read by nothing:
+// the mode is use or do not use, and only a value of the type ХранилищеЗначения
+// has anything to put there; the switch appears only with use; and the switch
+// is a boolean attribute of the same object - of the same table part for a
+// field of one - because it is read on the same row as the value it decides
+// about. An attribute and nothing else: the configurator offers the attributes
+// of the object to pick from, and neither a dimension nor a resource of a
+// register, even for the switch of a resource.
+func validateBinaryDataStorage(groups []fieldGroup, parts []TablePart) []string {
+	var issues []string
+	check := func(path string, field Attribute, siblings map[uuid.UUID]Attribute) {
+		switch field.BinaryDataStorage {
+		case "", UsageUse, UsageDontUse:
+		default:
+			issues = append(issues, path+".binary_data_storage must be use or dont-use")
+		}
+		if field.BinaryDataStorage != "" && !slices.ContainsFunc(field.Types, func(item Type) bool { return item.Kind == ValueStorageType }) {
+			issues = append(issues, path+".binary_data_storage belongs to a field of the type value storage: nothing else is kept in a binary data storage")
+		}
+		if field.BinaryDataStorageField == nil {
+			return
+		}
+		if field.BinaryDataStorage != UsageUse {
+			issues = append(issues, path+".binary_data_storage_field needs binary_data_storage: use - with the storage not in use there is nothing to switch")
+			return
+		}
+		switcher, ok := siblings[*field.BinaryDataStorageField]
+		if !ok {
+			issues = append(issues, path+".binary_data_storage_field names no attribute of this object")
+			return
+		}
+		if len(switcher.Types) != 1 || switcher.Types[0].Kind != BooleanType {
+			issues = append(issues, path+".binary_data_storage_field must name a boolean field: it decides yes or no for each row")
+		}
+	}
+	siblings := map[uuid.UUID]Attribute{}
+	for _, group := range groups {
+		if group.path != "attributes" {
+			continue
+		}
+		for _, field := range group.fields {
+			siblings[field.ID] = field
+		}
+	}
+	for _, group := range groups {
+		for index, field := range group.fields {
+			check(fmt.Sprintf("%s[%d]", group.path, index), field, siblings)
+		}
+	}
+	for partIndex, part := range parts {
+		lines := map[uuid.UUID]Attribute{}
+		for _, field := range part.Attributes {
+			lines[field.ID] = field
+		}
+		for index, field := range part.Attributes {
+			check(fmt.Sprintf("table_parts[%d].attributes[%d]", partIndex, index), field, lines)
+		}
+	}
+	return issues
+}
