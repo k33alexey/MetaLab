@@ -47,12 +47,27 @@ func EnsureRegisterTotalsStorage(ctx context.Context, executor sqlExecutor) erro
 	if executor == nil {
 		return fmt.Errorf("register totals storage executor is required")
 	}
+	// Every mode of a register lives in one row, and a row may exist for any
+	// one of them alone: an administrator who only sets the period of the
+	// totals has said nothing about splitting. So every column but the key
+	// means "not said" when empty, and the defaults are applied on reading,
+	// where the configuration is known - see balanceTotalsState.
+	//
+	// The ALTERs are for a base made before the columns existed. They are
+	// idempotent, and they run in the transaction of "Сохранить данные", so a
+	// base either has all of them or none.
 	_, err := executor.Exec(ctx, `
 CREATE SCHEMA IF NOT EXISTS ml_core;
 CREATE TABLE IF NOT EXISTS ml_core.register_totals_modes (
     metadata_id uuid PRIMARY KEY,
-    splitting boolean NOT NULL
-)`)
+    splitting boolean
+);
+ALTER TABLE ml_core.register_totals_modes ALTER COLUMN splitting DROP NOT NULL;
+ALTER TABLE ml_core.register_totals_modes ADD COLUMN IF NOT EXISTS totals_format smallint;
+ALTER TABLE ml_core.register_totals_modes ADD COLUMN IF NOT EXISTS min_period timestamp with time zone;
+ALTER TABLE ml_core.register_totals_modes ADD COLUMN IF NOT EXISTS max_period timestamp with time zone;
+ALTER TABLE ml_core.register_totals_modes ADD COLUMN IF NOT EXISTS present_totals boolean;
+ALTER TABLE ml_core.register_totals_modes ADD COLUMN IF NOT EXISTS use_totals boolean`)
 	if err != nil {
 		return fmt.Errorf("ensure register totals storage: %w", err)
 	}
@@ -66,7 +81,7 @@ func totalsSplittingMode(ctx context.Context, query sequenceQuery, metadataID uu
 	if query == nil || metadataID.IsZero() {
 		return false, false, fmt.Errorf("invalid totals mode request")
 	}
-	var splitting bool
+	var splitting *bool
 	err := query.QueryRow(ctx,
 		"SELECT splitting FROM ml_core.register_totals_modes WHERE metadata_id = $1", metadataID).Scan(&splitting)
 	switch {
@@ -74,8 +89,11 @@ func totalsSplittingMode(ctx context.Context, query sequenceQuery, metadataID uu
 		return false, false, nil
 	case err != nil:
 		return false, false, fmt.Errorf("read totals mode: %w", err)
+	case splitting == nil:
+		// A row kept for another mode says nothing about this one.
+		return false, false, nil
 	}
-	return splitting, true, nil
+	return *splitting, true, nil
 }
 
 // effectiveTotalsSplitting is the answer a write needs: is this register

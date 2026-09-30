@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -88,6 +89,33 @@ func TestSaveDataIntegration(t *testing.T) {
 	resaved, _, err := SaveData(ctx, pool, SaveDataRequest{Root: root, Mode: ActivationPrimary, Confirmed: true})
 	if err != nil || resaved.ProjectID != projectID {
 		t.Fatalf("re-save data: %+v %v", resaved, err)
+	}
+
+	// A base the old code wrote: the balance register's totals hold a monthly
+	// turnover and carry no format mark. Saving must rebuild them as balances
+	// in its own transaction - here from no movements at all, so the stale row
+	// has to go - and mark the register.
+	registerID := "10000000-0000-4000-8000-000000000301"
+	totals := pgx.Identifier{schemadiff.ApplicationSchema, "ta_" + strings.ReplaceAll(registerID, "-", "")}.Sanitize()
+	if _, err := pool.Exec(ctx, "INSERT INTO "+totals+" (total_period, totals_split, dimension_key) VALUES ('2025-10-01T00:00:00Z', 0, repeat('a', 64))"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "UPDATE ml_core.register_totals_modes SET totals_format = NULL WHERE metadata_id = $1", registerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := SaveData(ctx, pool, SaveDataRequest{Root: root, Mode: ActivationPrimary, Confirmed: true}); err != nil {
+		t.Fatalf("save data over old totals: %v", err)
+	}
+	var rows int
+	var format *int16
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM "+totals).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT totals_format FROM ml_core.register_totals_modes WHERE metadata_id = $1", registerID).Scan(&format); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 0 || format == nil || *format != 2 {
+		t.Fatalf("after saving over old totals: %d rows of totals, format %v - the old rows must be rebuilt away and the register marked", rows, format)
 	}
 }
 

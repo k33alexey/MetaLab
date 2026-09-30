@@ -222,10 +222,22 @@ func (repository *AccumulationRegisterRepository) WriteWithHandler(ctx context.C
 		if err != nil {
 			return err
 		}
+		// The rest of the totals settings are read the same way and under
+		// the same shared lock, which a change of them waits out - see
+		// manageTotals. A register whose totals are still turnovers refuses
+		// the write: adding a balance to a row that holds a turnover would
+		// make it neither.
+		totalsState, err := readBalanceTotalsState(transactionContext, transaction, definition.ID)
+		if err != nil {
+			return err
+		}
+		if err := requireBalanceTotalsFormat(transactionContext, transaction, transaction, definition, totalsState); err != nil {
+			return err
+		}
 		if err := repository.insertMovements(transactionContext, transaction, definition, working.Records); err != nil {
 			return err
 		}
-		if err := repository.applyTotalsChanges(transactionContext, transaction, definition, old, working.Records, splitting); err != nil {
+		if err := repository.applyTotalsChanges(transactionContext, transaction, definition, old, working.Records, splitting, totalsState); err != nil {
 			return err
 		}
 		for _, event := range []AccumulationRegisterEvent{AccumulationRegisterEventOnWrite, AccumulationRegisterEventAfterWrite} {
@@ -543,24 +555,34 @@ type accumulationTotalDelta struct {
 	resources    map[uuid.UUID]*big.Rat
 }
 
-func (repository *AccumulationRegisterRepository) applyTotalsChanges(ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition, removed, added []*AccumulationRegisterRecord, splitting bool) error {
+// applyTotalsChanges turns the movements a write removed and added into the
+// changes of the rows of totals they belong to.
+//
+// A turnover register has one row per month of a movement. A balance register
+// has a row for the beginning of every stored month after the movement and
+// one for the present totals, so a movement dated into the past changes more
+// rows than one dated today - see balanceTargets.
+func (repository *AccumulationRegisterRepository) applyTotalsChanges(ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition, removed, added []*AccumulationRegisterRecord, splitting bool, state balanceTotalsState) error {
+	if !state.use {
+		// Switched-off totals are not kept by a write at all; they are
+		// rebuilt when switched back on.
+		return nil
+	}
 	deltas := map[string]*accumulationTotalDelta{}
 	accumulate := func(record *AccumulationRegisterRecord, replacementSign int64) error {
 		if record == nil || !record.Active {
 			return nil
 		}
-		period := time.Date(record.Period.UTC().Year(), record.Period.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
-		dimensionKey := accumulationDimensionKey(definition, record.Dimensions)
-		key := period.Format(time.RFC3339Nano) + ":" + dimensionKey
-		delta := deltas[key]
-		if delta == nil {
-			delta = &accumulationTotalDelta{period: period, dimensionKey: dimensionKey, dimensions: mapsCloneValues(record.Dimensions), resources: map[uuid.UUID]*big.Rat{}}
-			deltas[key] = delta
+		periods := []time.Time{accumulationMonth(record.Period)}
+		if definition.Kind == AccumulationRegisterBalance {
+			periods = state.balanceTargets(record.Period)
 		}
+		dimensionKey := accumulationDimensionKey(definition, record.Dimensions)
 		direction := replacementSign
 		if definition.Kind == AccumulationRegisterBalance && record.MovementKind == AccumulationMovementExpense {
 			direction = -direction
 		}
+		amounts := make(map[uuid.UUID]*big.Rat, len(definition.Resources))
 		for _, resource := range definition.Resources {
 			value := record.Resources[resource.ID]
 			amount, ok := new(big.Rat).SetString(value.Data)
@@ -570,10 +592,24 @@ func (repository *AccumulationRegisterRepository) applyTotalsChanges(ctx context
 			if direction < 0 {
 				amount.Neg(amount)
 			}
-			if delta.resources[resource.ID] == nil {
-				delta.resources[resource.ID] = new(big.Rat)
+			amounts[resource.ID] = amount
+		}
+		for _, period := range periods {
+			// The key sorts by period first, and the sorted keys are the
+			// order rows are taken in: every writer takes the rows of the
+			// same combinations in the same order, the present totals last.
+			key := period.Format(time.RFC3339Nano) + ":" + dimensionKey
+			delta := deltas[key]
+			if delta == nil {
+				delta = &accumulationTotalDelta{period: period, dimensionKey: dimensionKey, dimensions: mapsCloneValues(record.Dimensions), resources: map[uuid.UUID]*big.Rat{}}
+				deltas[key] = delta
 			}
-			delta.resources[resource.ID].Add(delta.resources[resource.ID], amount)
+			for _, resource := range definition.Resources {
+				if delta.resources[resource.ID] == nil {
+					delta.resources[resource.ID] = new(big.Rat)
+				}
+				delta.resources[resource.ID].Add(delta.resources[resource.ID], amounts[resource.ID])
+			}
 		}
 		return nil
 	}
@@ -634,10 +670,57 @@ func (repository *AccumulationRegisterRepository) applyTotalDeltas(
 		split int16
 	}
 	var touched []applied
-	pending := keys
-	for attempt := 0; len(pending) > 0; attempt++ {
-		if attempt >= maxAccumulationTotalsAttempts {
-			return fmt.Errorf("update accumulation register %s totals: no row of totals could be taken", definition.Name)
+	// **Only what cannot wait goes in a batch.** Taking a free row with
+	// splitting on skips the rows others hold and never waits, so every
+	// combination is asked at once. Everything that can wait - making a row,
+	// which waits for another writer's uncommitted row of the same number,
+	// and the last attempts, which wait for a held row - is done one
+	// combination at a time in the order of the keys, which is the same for
+	// every writer.
+	//
+	// That order is what keeps writers from waiting for each other in a
+	// circle. A writer waits only for one that has already made the row it
+	// wants, so one that has gone further along the same order, and that one
+	// never waits for a combination behind it. Doing the waits in rounds over
+	// all combinations - the way it was done while one write touched a row or
+	// two - broke the order as soon as a write touched many: a backdated
+	// movement of a balance register changes a row for every stored month
+	// after it, and two such postings deadlocked at once.
+	taken, missing, err := repository.takeTotalRows(ctx, transaction, definition, deltas, keys, splitting)
+	if err != nil {
+		return err
+	}
+	for _, row := range taken {
+		touched = append(touched, applied{deltas[row.key], row.split})
+	}
+	for _, key := range missing {
+		split, err := repository.resolveTotalRow(ctx, transaction, definition, deltas, key, splitting)
+		if err != nil {
+			return err
+		}
+		touched = append(touched, applied{deltas[key], split})
+	}
+	return repository.dropEmptyTotals(ctx, transaction, definition, func(yield func(*accumulationTotalDelta, int16)) {
+		for _, row := range touched {
+			yield(row.delta, row.split)
+		}
+	})
+}
+
+// resolveTotalRow puts the change of one combination that found no free row
+// into a row: a new one, or one that another writer made meanwhile.
+func (repository *AccumulationRegisterRepository) resolveTotalRow(
+	ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition,
+	deltas map[string]*accumulationTotalDelta, key string, splitting bool,
+) (int16, error) {
+	single := []string{key}
+	for attempt := 0; attempt < maxAccumulationTotalsAttempts; attempt++ {
+		made, _, err := repository.makeTotalRows(ctx, transaction, definition, deltas, single, attempt)
+		if err != nil {
+			return 0, err
+		}
+		if len(made) == 1 {
+			return made[0].split, nil
 		}
 		// The last two attempts stop racing and wait. A writer that keeps
 		// losing must still finish, and waiting for one row is what it would
@@ -645,30 +728,15 @@ func (repository *AccumulationRegisterRepository) applyTotalDeltas(
 		// round may go entirely into making a row that another writer made
 		// first - the round after that takes the row it left.
 		race := splitting && attempt < maxAccumulationTotalsAttempts-2
-		taken, missing, err := repository.takeTotalRows(ctx, transaction, definition, deltas, pending, race)
+		taken, _, err := repository.takeTotalRows(ctx, transaction, definition, deltas, single, race)
 		if err != nil {
-			return err
+			return 0, err
 		}
-		for _, row := range taken {
-			touched = append(touched, applied{deltas[row.key], row.split})
+		if len(taken) == 1 {
+			return taken[0].split, nil
 		}
-		if len(missing) == 0 {
-			break
-		}
-		made, failed, err := repository.makeTotalRows(ctx, transaction, definition, deltas, missing, attempt)
-		if err != nil {
-			return err
-		}
-		for _, row := range made {
-			touched = append(touched, applied{deltas[row.key], row.split})
-		}
-		pending = failed
 	}
-	return repository.dropEmptyTotals(ctx, transaction, definition, func(yield func(*accumulationTotalDelta, int16)) {
-		for _, row := range touched {
-			yield(row.delta, row.split)
-		}
-	})
+	return 0, fmt.Errorf("update accumulation register %s totals: no row of totals could be taken", definition.Name)
 }
 
 type totalRow struct {
@@ -928,7 +996,7 @@ func (repository *AccumulationRegisterRepository) totalRowInsert(definition Accu
 		strings.Join(values, ", ") + ") ON CONFLICT (total_period, dimension_key, totals_split) DO NOTHING RETURNING totals_split", nil
 }
 
-// RebuildTotals restores all monthly totals from primary movement rows.
+// RebuildTotals restores all totals from primary movement rows - ПересчитатьИтоги.
 //
 // It is guarded by its own right rather than by write access to the register:
 // rebuilding reads every movement there has ever been and replaces the numbers
@@ -942,60 +1010,59 @@ func (repository *AccumulationRegisterRepository) RebuildTotals(ctx context.Cont
 	if err := requireObject(ctx, definition.ID, PermissionTotalsControl); err != nil {
 		return err
 	}
-	return runDataTransaction(ctx, repository.pool, nil, func(transactionContext context.Context, transaction pgx.Tx) error {
-		tableKey := objectLockKey("accumulation-register", definition.ID, definition.ID)
-		if _, err := transaction.Exec(transactionContext, "SELECT pg_advisory_xact_lock($1)", tableKey); err != nil {
-			return err
-		}
-		movementTable, _ := PhysicalAccumulationRegisterTable(definition.ID)
-		totalsTable, _ := PhysicalAccumulationRegisterTotalsTable(definition.ID)
-		if _, err := transaction.Exec(transactionContext, "DELETE FROM "+qualifiedCatalogTable(totalsTable)); err != nil {
-			return fmt.Errorf("clear accumulation register %s totals: %w", definition.Name, err)
-		}
-		columns := []string{"total_period", "totals_split", "dimension_key"}
-		monthExpression := "date_trunc('month', period AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'"
-		// A rebuild collapses the split rows into one, whatever mode the
-		// register is in: «при пересчете итогов накопленные отдельные записи
-		// сворачиваются». Grouping by the split stored on the movements would
-		// reproduce the old spread instead, and a register switched out of
-		// splitting would keep its multiplied rows for ever.
-		//
-		// Later writes spread themselves again if the mode says so, and that
-		// costs nothing: a change to a movement written before the rebuild
-		// subtracts its delta in the row its recorder belongs to, which is
-		// then a row of its own, and reading sums the two.
-		selects := []string{monthExpression, "0", "dimension_key"}
-		groups := []string{monthExpression, "dimension_key"}
-		for _, dimension := range definition.Dimensions {
-			column, _ := PhysicalAttributeColumn(dimension.ID)
-			quoted := pgx.Identifier{column}.Sanitize()
-			columns, selects, groups = append(columns, column), append(selects, quoted), append(groups, quoted)
-		}
-		for _, resource := range definition.Resources {
-			column, _ := PhysicalAttributeColumn(resource.ID)
-			quoted := pgx.Identifier{column}.Sanitize()
-			columns = append(columns, column)
-			expression := "SUM(" + quoted + ")"
-			if definition.Kind == AccumulationRegisterBalance {
-				expression = "SUM(CASE WHEN movement_kind = 1 THEN " + quoted + " ELSE -" + quoted + " END)"
-			}
-			selects = append(selects, expression)
-		}
-		statement := "INSERT INTO " + qualifiedCatalogTable(totalsTable) + " (" + strings.Join(quoteCatalogColumns(columns), ", ") + ") SELECT " +
-			strings.Join(selects, ", ") + " FROM " + qualifiedCatalogTable(movementTable) + " WHERE active = true GROUP BY " + strings.Join(groups, ", ")
-		if _, err := transaction.Exec(transactionContext, statement); err != nil {
-			return fmt.Errorf("rebuild accumulation register %s totals: %w", definition.Name, err)
-		}
-		zeroConditions := make([]string, 0, len(definition.Resources))
-		for _, resource := range definition.Resources {
-			column, _ := PhysicalAttributeColumn(resource.ID)
-			zeroConditions = append(zeroConditions, pgx.Identifier{column}.Sanitize()+" = 0")
-		}
-		if _, err := transaction.Exec(transactionContext, "DELETE FROM "+qualifiedCatalogTable(totalsTable)+" WHERE "+strings.Join(zeroConditions, " AND ")); err != nil {
+	return repository.manageTotals(ctx, definition, func(transactionContext context.Context, transaction pgx.Tx, state balanceTotalsState) error {
+		return rebuildRegisterTotals(transactionContext, transaction, definition, state)
+	})
+}
+
+// rebuildTurnoverTotals restores the monthly turnovers of a turnover register.
+func rebuildTurnoverTotals(ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition) error {
+	movementTable, _ := PhysicalAccumulationRegisterTable(definition.ID)
+	totalsTable, _ := PhysicalAccumulationRegisterTotalsTable(definition.ID)
+	if _, err := transaction.Exec(ctx, "DELETE FROM "+qualifiedCatalogTable(totalsTable)); err != nil {
+		return fmt.Errorf("clear accumulation register %s totals: %w", definition.Name, err)
+	}
+	columns := []string{"total_period", "totals_split", "dimension_key"}
+	monthExpression := "date_trunc('month', period AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'"
+	// A rebuild collapses the split rows into one, whatever mode the
+	// register is in: «при пересчете итогов накопленные отдельные записи
+	// сворачиваются». Grouping by the split stored on the movements would
+	// reproduce the old spread instead, and a register switched out of
+	// splitting would keep its multiplied rows for ever.
+	//
+	// Later writes spread themselves again if the mode says so, and that
+	// costs nothing: a change to a movement written before the rebuild
+	// subtracts its delta in the row its recorder belongs to, which is
+	// then a row of its own, and reading sums the two.
+	selects := []string{monthExpression, "0", "dimension_key"}
+	groups := []string{monthExpression, "dimension_key"}
+	for _, dimension := range definition.Dimensions {
+		column, _ := PhysicalAttributeColumn(dimension.ID)
+		quoted := pgx.Identifier{column}.Sanitize()
+		columns, selects, groups = append(columns, column), append(selects, quoted), append(groups, quoted)
+	}
+	for _, resource := range definition.Resources {
+		column, _ := PhysicalAttributeColumn(resource.ID)
+		quoted := pgx.Identifier{column}.Sanitize()
+		columns = append(columns, column)
+		selects = append(selects, "SUM("+quoted+")")
+	}
+	statement := "INSERT INTO " + qualifiedCatalogTable(totalsTable) + " (" + strings.Join(quoteCatalogColumns(columns), ", ") + ") SELECT " +
+		strings.Join(selects, ", ") + " FROM " + qualifiedCatalogTable(movementTable) + " WHERE active = true GROUP BY " + strings.Join(groups, ", ")
+	if _, err := transaction.Exec(ctx, statement); err != nil {
+		return fmt.Errorf("rebuild accumulation register %s totals: %w", definition.Name, err)
+	}
+	zeroConditions := make([]string, 0, len(definition.Resources))
+	for _, resource := range definition.Resources {
+		column, _ := PhysicalAttributeColumn(resource.ID)
+		zeroConditions = append(zeroConditions, pgx.Identifier{column}.Sanitize()+" = 0")
+	}
+	if len(zeroConditions) != 0 {
+		if _, err := transaction.Exec(ctx, "DELETE FROM "+qualifiedCatalogTable(totalsTable)+" WHERE "+strings.Join(zeroConditions, " AND ")); err != nil {
 			return fmt.Errorf("clean accumulation register %s totals: %w", definition.Name, err)
 		}
-		return nil
-	})
+	}
+	return nil
 }
 
 func (repository *AccumulationRegisterRepository) Balances(ctx context.Context, name string, period time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterTotalsRow, error) {
@@ -1029,6 +1096,13 @@ func (repository *AccumulationRegisterRepository) Turnovers(ctx context.Context,
 	if end.Before(begin) {
 		return nil, fmt.Errorf("accumulation register turnover end precedes begin")
 	}
+	query, err := queryData(ctx, repository.pool)
+	if err != nil {
+		return nil, err
+	}
+	if err := repository.requireReadableTotals(ctx, query, definition); err != nil {
+		return nil, err
+	}
 	return repository.queryAggregates(ctx, definition, &begin, &end, dimensions)
 }
 
@@ -1059,61 +1133,47 @@ func (repository *AccumulationRegisterRepository) queryBalancesAndTurnovers(ctx 
 	if err != nil {
 		return nil, err
 	}
-	month := time.Date(begin.UTC().Year(), begin.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
 	movementTable, _ := PhysicalAccumulationRegisterTable(definition.ID)
-	totalsTable, _ := PhysicalAccumulationRegisterTotalsTable(definition.ID)
 	dimensionColumns := make([]string, len(definition.Dimensions))
-	totalSelects, beforeSelects, turnoverSelects, outerSelects, groups := []string{}, []string{}, []string{}, []string{}, []string{}
+	turnoverSelects, outerSelects, groups := []string{}, []string{}, []string{}
 	for index, dimension := range definition.Dimensions {
 		column, _ := PhysicalAttributeColumn(dimension.ID)
 		quoted := pgx.Identifier{column}.Sanitize()
 		dimensionColumns[index] = column
-		totalSelects, beforeSelects, turnoverSelects, outerSelects, groups = append(totalSelects, quoted), append(beforeSelects, quoted), append(turnoverSelects, quoted), append(outerSelects, quoted), append(groups, quoted)
+		turnoverSelects, outerSelects, groups = append(turnoverSelects, quoted), append(outerSelects, quoted), append(groups, quoted)
+	}
+	aliases := func(index int) (string, string, string, string) {
+		return pgx.Identifier{fmt.Sprintf("r%d_opening", index)}.Sanitize(), pgx.Identifier{fmt.Sprintf("r%d_receipt", index)}.Sanitize(),
+			pgx.Identifier{fmt.Sprintf("r%d_expense", index)}.Sanitize(), pgx.Identifier{fmt.Sprintf("r%d_net", index)}.Sanitize()
 	}
 	for index, resource := range definition.Resources {
 		column, _ := PhysicalAttributeColumn(resource.ID)
 		quoted := pgx.Identifier{column}.Sanitize()
 		amount := "COALESCE(" + quoted + ", 0)"
 		signed := "CASE WHEN movement_kind = 1 THEN " + amount + " ELSE -" + amount + " END"
-		openingAlias := pgx.Identifier{fmt.Sprintf("r%d_opening", index)}.Sanitize()
-		receiptAlias := pgx.Identifier{fmt.Sprintf("r%d_receipt", index)}.Sanitize()
-		expenseAlias := pgx.Identifier{fmt.Sprintf("r%d_expense", index)}.Sanitize()
-		netAlias := pgx.Identifier{fmt.Sprintf("r%d_net", index)}.Sanitize()
-		totalSelects = append(totalSelects, quoted+" AS "+openingAlias, "0::numeric AS "+receiptAlias, "0::numeric AS "+expenseAlias, "0::numeric AS "+netAlias)
-		beforeSelects = append(beforeSelects, signed+" AS "+openingAlias, "0::numeric AS "+receiptAlias, "0::numeric AS "+expenseAlias, "0::numeric AS "+netAlias)
+		openingAlias, receiptAlias, expenseAlias, netAlias := aliases(index)
 		turnoverSelects = append(turnoverSelects, "0::numeric AS "+openingAlias, "CASE WHEN movement_kind = 1 THEN "+amount+" ELSE 0 END AS "+receiptAlias, "CASE WHEN movement_kind = 2 THEN "+amount+" ELSE 0 END AS "+expenseAlias, signed+" AS "+netAlias)
 		outerSelects = append(outerSelects, "SUM("+openingAlias+") AS "+openingAlias, "SUM("+receiptAlias+") AS "+receiptAlias, "SUM("+expenseAlias+") AS "+expenseAlias, "SUM("+netAlias+") AS "+netAlias)
 	}
-	conditions, arguments := []string{}, []any{month, begin, end}
-	// Same substitution as the balance path: the opening total is replaced by the
-	// movements it was summed from, because a row restriction cannot narrow a
-	// number that has already been added up.
+	arguments := []any{}
+	// The opening balance is the balance before the first moment of the
+	// period, read the same way as a balance at a date; the turnovers of the
+	// period come from its movements.
 	restriction, err := repository.restrictedMovements(ctx, definition, &arguments)
 	if err != nil {
 		return nil, err
 	}
-	opening := "SELECT " + strings.Join(totalSelects, ", ") + " FROM " + qualifiedCatalogTable(totalsTable) + " WHERE total_period < $1"
-	if restriction != "" {
-		opening = "SELECT " + strings.Join(beforeSelects, ", ") + " FROM " + qualifiedCatalogTable(movementTable) + " WHERE active = true AND period < $1" + restriction
+	with, parts := balanceParts(definition, begin, false, time.Now(), &arguments, restriction, func(index int, amount string) []string {
+		openingAlias, receiptAlias, expenseAlias, netAlias := aliases(index)
+		return []string{amount + " AS " + openingAlias, "0::numeric AS " + receiptAlias, "0::numeric AS " + expenseAlias, "0::numeric AS " + netAlias}
+	})
+	from, to := placeholder(&arguments, begin), placeholder(&arguments, end)
+	parts = append(parts, "SELECT "+strings.Join(turnoverSelects, ", ")+" FROM "+qualifiedCatalogTable(movementTable)+" WHERE active = true AND period >= "+from+" AND period <= "+to+restriction)
+	conditions, err := repository.balanceFilterConditions(definition, filter, &arguments)
+	if err != nil {
+		return nil, err
 	}
-	union := opening + " UNION ALL SELECT " +
-		strings.Join(beforeSelects, ", ") + " FROM " + qualifiedCatalogTable(movementTable) + " WHERE active = true AND period >= $1 AND period < $2" + restriction + " UNION ALL SELECT " +
-		strings.Join(turnoverSelects, ", ") + " FROM " + qualifiedCatalogTable(movementTable) + " WHERE active = true AND period >= $2 AND period <= $3" + restriction
-	for _, dimension := range definition.Dimensions {
-		value, present := filter[dimension.ID]
-		if !present {
-			continue
-		}
-		storage, _ := repository.catalog.attributeStorage(dimension.Types)
-		encoded, err := databaseAttributeValue(storage, value)
-		if err != nil {
-			return nil, err
-		}
-		column, _ := PhysicalAttributeColumn(dimension.ID)
-		arguments = append(arguments, encoded)
-		conditions = append(conditions, pgx.Identifier{column}.Sanitize()+fmt.Sprintf(" = $%d", len(arguments)))
-	}
-	inner := "SELECT " + strings.Join(outerSelects, ", ") + " FROM (" + union + ") AS source"
+	inner := with + "SELECT " + strings.Join(outerSelects, ", ") + " FROM (" + strings.Join(parts, " UNION ALL ") + ") AS source"
 	if len(conditions) != 0 {
 		inner += " WHERE " + strings.Join(conditions, " AND ")
 	}
@@ -1129,6 +1189,9 @@ func (repository *AccumulationRegisterRepository) queryBalancesAndTurnovers(ctx 
 	inner += " LIMIT " + fmt.Sprint(maxAccumulationRegisterRecords+1)
 	query, err := queryData(ctx, repository.pool)
 	if err != nil {
+		return nil, err
+	}
+	if err := repository.requireReadableTotals(ctx, query, definition); err != nil {
 		return nil, err
 	}
 	rows, err := query.Query(ctx, "SELECT to_jsonb(item) FROM ("+inner+") AS item", arguments...)
@@ -1268,77 +1331,18 @@ func (repository *AccumulationRegisterRepository) restrictedMovements(ctx contex
 }
 
 func (repository *AccumulationRegisterRepository) balanceAt(ctx context.Context, definition AccumulationRegisterDefinition, period time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterTotalsRow, error) {
-	month := time.Date(period.UTC().Year(), period.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
-	filter, err := repository.normalizeDimensions(definition, dimensions)
+	statement, arguments, dimensionColumns, err := repository.balanceStatement(ctx, definition, period, time.Now(), dimensions)
 	if err != nil {
 		return nil, err
 	}
-	movementTable, _ := PhysicalAccumulationRegisterTable(definition.ID)
-	totalsTable, _ := PhysicalAccumulationRegisterTotalsTable(definition.ID)
-	dimensionColumns := make([]string, len(definition.Dimensions))
-	totalSelects, movementSelects, outerSelects, groups := []string{}, []string{}, []string{}, []string{}
-	for index, dimension := range definition.Dimensions {
-		column, _ := PhysicalAttributeColumn(dimension.ID)
-		quoted := pgx.Identifier{column}.Sanitize()
-		dimensionColumns[index] = column
-		totalSelects, movementSelects, outerSelects, groups = append(totalSelects, quoted), append(movementSelects, quoted), append(outerSelects, quoted), append(groups, quoted)
-	}
-	for index, resource := range definition.Resources {
-		column, _ := PhysicalAttributeColumn(resource.ID)
-		quoted := pgx.Identifier{column}.Sanitize()
-		alias := pgx.Identifier{fmt.Sprintf("r%d_net", index)}.Sanitize()
-		totalSelects = append(totalSelects, quoted+" AS "+alias)
-		movementSelects = append(movementSelects, "CASE WHEN movement_kind = 1 THEN COALESCE("+quoted+", 0) ELSE -COALESCE("+quoted+", 0) END AS "+alias)
-		outerSelects = append(outerSelects, "SUM("+alias+") AS "+alias)
-	}
-	conditions, arguments := []string{}, []any{month, period}
-	// A row restriction cannot be applied to a pre-aggregated total, so when one
-	// is active the totals branch is replaced by the movements it was summed
-	// from. The substitution is exact - a total IS the net sum of movements
-	// before the period - so only the cost changes, never the answer.
-	restriction, err := repository.restrictedMovements(ctx, definition, &arguments)
-	if err != nil {
-		return nil, err
-	}
-	union := "SELECT " + strings.Join(totalSelects, ", ") + " FROM " + qualifiedCatalogTable(totalsTable) + " WHERE total_period < $1 UNION ALL SELECT " +
-		strings.Join(movementSelects, ", ") + " FROM " + qualifiedCatalogTable(movementTable) + " WHERE active = true AND period >= $1 AND period <= $2"
-	if restriction != "" {
-		union = "SELECT " + strings.Join(movementSelects, ", ") + " FROM " + qualifiedCatalogTable(movementTable) + " WHERE active = true AND period < $1" + restriction +
-			" UNION ALL SELECT " + strings.Join(movementSelects, ", ") + " FROM " + qualifiedCatalogTable(movementTable) + " WHERE active = true AND period >= $1 AND period <= $2" + restriction
-	}
-	for _, dimension := range definition.Dimensions {
-		value, present := filter[dimension.ID]
-		if !present {
-			continue
-		}
-		storage, _ := repository.catalog.attributeStorage(dimension.Types)
-		encoded, err := databaseAttributeValue(storage, value)
-		if err != nil {
-			return nil, err
-		}
-		column, _ := PhysicalAttributeColumn(dimension.ID)
-		arguments = append(arguments, encoded)
-		conditions = append(conditions, pgx.Identifier{column}.Sanitize()+fmt.Sprintf(" = $%d", len(arguments)))
-	}
-	inner := "SELECT " + strings.Join(outerSelects, ", ") + " FROM (" + union + ") AS source"
-	if len(conditions) != 0 {
-		inner += " WHERE " + strings.Join(conditions, " AND ")
-	}
-	if len(groups) != 0 {
-		inner += " GROUP BY " + strings.Join(groups, ", ")
-	}
-	inner += " ORDER BY "
-	if len(groups) == 0 {
-		inner += "1"
-	} else {
-		inner += strings.Join(groups, ", ")
-	}
-	inner += " LIMIT " + fmt.Sprint(maxAccumulationRegisterRecords+1)
 	query, err := queryData(ctx, repository.pool)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := query.Query(ctx, "SELECT to_jsonb(item) FROM ("+inner+") AS item", arguments...)
+	if err := repository.requireReadableTotals(ctx, query, definition); err != nil {
+		return nil, err
+	}
+	rows, err := query.Query(ctx, statement, arguments...)
 	if err != nil {
 		return nil, recordDataError(ctx, repository.pool, fmt.Errorf("read accumulation register %s balances: %w", definition.Name, err))
 	}
@@ -1371,37 +1375,58 @@ func (repository *AccumulationRegisterRepository) balanceAt(ctx context.Context,
 	return result, nil
 }
 
-func accumulationResourcesZero(resources []Attribute, values map[uuid.UUID]Value) bool {
-	for _, resource := range resources {
-		value := values[resource.ID]
-		number, err := bslnumber.Parse(value.Data)
-		if err != nil || !number.IsZero() {
-			return false
-		}
-	}
-	return true
-}
-
-func (repository *AccumulationRegisterRepository) queryTotalsBefore(ctx context.Context, definition AccumulationRegisterDefinition, period time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterTotalsRow, error) {
+// balanceStatement is the statement a balance at a date is read by, apart from
+// its execution so that its plan can be asked about.
+func (repository *AccumulationRegisterRepository) balanceStatement(ctx context.Context, definition AccumulationRegisterDefinition, period, now time.Time, dimensions map[uuid.UUID]Value) (string, []any, []string, error) {
 	filter, err := repository.normalizeDimensions(definition, dimensions)
 	if err != nil {
-		return nil, err
+		return "", nil, nil, err
 	}
-	table, _ := PhysicalAccumulationRegisterTotalsTable(definition.ID)
 	dimensionColumns := make([]string, len(definition.Dimensions))
-	selects := make([]string, 0, len(definition.Dimensions)+len(definition.Resources))
-	groups := make([]string, 0, len(definition.Dimensions))
+	outerSelects, groups := []string{}, []string{}
 	for index, dimension := range definition.Dimensions {
 		column, _ := PhysicalAttributeColumn(dimension.ID)
 		quoted := pgx.Identifier{column}.Sanitize()
-		dimensionColumns[index], selects, groups = column, append(selects, quoted), append(groups, quoted)
+		dimensionColumns[index] = column
+		outerSelects, groups = append(outerSelects, quoted), append(groups, quoted)
 	}
-	for index, resource := range definition.Resources {
-		column, _ := PhysicalAttributeColumn(resource.ID)
-		quoted := pgx.Identifier{column}.Sanitize()
-		selects = append(selects, "SUM("+quoted+") AS "+pgx.Identifier{fmt.Sprintf("r%d_net", index)}.Sanitize())
+	for index := range definition.Resources {
+		alias := pgx.Identifier{fmt.Sprintf("r%d_net", index)}.Sanitize()
+		outerSelects = append(outerSelects, "SUM("+alias+") AS "+alias)
 	}
-	conditions, arguments := []string{"total_period < $1"}, []any{period}
+	arguments := []any{}
+	restriction, err := repository.restrictedMovements(ctx, definition, &arguments)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	with, parts := balanceParts(definition, period, true, now, &arguments, restriction, func(index int, amount string) []string {
+		return []string{amount + " AS " + pgx.Identifier{fmt.Sprintf("r%d_net", index)}.Sanitize()}
+	})
+	conditions, err := repository.balanceFilterConditions(definition, filter, &arguments)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	inner := with + "SELECT " + strings.Join(outerSelects, ", ") + " FROM (" + strings.Join(parts, " UNION ALL ") + ") AS source"
+	if len(conditions) != 0 {
+		inner += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	if len(groups) != 0 {
+		inner += " GROUP BY " + strings.Join(groups, ", ")
+	}
+	inner += " ORDER BY "
+	if len(groups) == 0 {
+		inner += "1"
+	} else {
+		inner += strings.Join(groups, ", ")
+	}
+	inner += " LIMIT " + fmt.Sprint(maxAccumulationRegisterRecords+1)
+	return "SELECT to_jsonb(item) FROM (" + inner + ") AS item", arguments, dimensionColumns, nil
+}
+
+// balanceFilterConditions are the equality filters on dimensions, applied to
+// every part of the balance at once.
+func (repository *AccumulationRegisterRepository) balanceFilterConditions(definition AccumulationRegisterDefinition, filter map[uuid.UUID]Value, arguments *[]any) ([]string, error) {
+	var conditions []string
 	for _, dimension := range definition.Dimensions {
 		value, present := filter[dimension.ID]
 		if !present {
@@ -1413,96 +1438,36 @@ func (repository *AccumulationRegisterRepository) queryTotalsBefore(ctx context.
 			return nil, err
 		}
 		column, _ := PhysicalAttributeColumn(dimension.ID)
-		arguments = append(arguments, encoded)
-		conditions = append(conditions, pgx.Identifier{column}.Sanitize()+fmt.Sprintf(" = $%d", len(arguments)))
+		conditions = append(conditions, pgx.Identifier{column}.Sanitize()+" = "+placeholder(arguments, encoded))
 	}
-	inner := "SELECT " + strings.Join(selects, ", ") + " FROM " + qualifiedCatalogTable(table) + " WHERE " + strings.Join(conditions, " AND ")
-	if len(groups) != 0 {
-		inner += " GROUP BY " + strings.Join(groups, ", ")
-	}
-	inner += " ORDER BY "
-	if len(groups) == 0 {
-		inner += "1"
-	} else {
-		inner += strings.Join(groups, ", ")
-	}
-	inner += " LIMIT " + fmt.Sprint(maxAccumulationRegisterRecords+1)
-	query, err := queryData(ctx, repository.pool)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := query.Query(ctx, "SELECT to_jsonb(item) FROM ("+inner+") AS item", arguments...)
-	if err != nil {
-		return nil, recordDataError(ctx, repository.pool, fmt.Errorf("read accumulation register %s totals: %w", definition.Name, err))
-	}
-	defer rows.Close()
-	result := make([]AccumulationRegisterTotalsRow, 0)
-	memory := uint64(512)
-	for rows.Next() {
-		if len(result) >= maxAccumulationRegisterRecords {
-			return nil, fmt.Errorf("accumulation register %s totals exceed row limit", definition.Name)
-		}
-		var encoded []byte
-		if err := rows.Scan(&encoded); err != nil {
-			return nil, err
-		}
-		if uint64(len(encoded))+256 > maxAccumulationRegisterMemory-memory {
-			return nil, fmt.Errorf("accumulation register %s totals exceed memory limit", definition.Name)
-		}
-		memory += uint64(len(encoded)) + 256
-		item, err := repository.decodeAggregate(definition, dimensionColumns, encoded)
-		if err != nil {
-			return nil, err
-		}
-		if definition.Kind == AccumulationRegisterBalance && (!accumulationResourcesZero(definition.Resources, item.Receipt) || !accumulationResourcesZero(definition.Resources, item.Expense)) || definition.Kind == AccumulationRegisterTurnover && !accumulationResourcesZero(definition.Resources, item.Turnover) {
-			result = append(result, item)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, recordDataError(ctx, repository.pool, err)
-	}
-	return result, nil
+	return conditions, nil
 }
 
-func mergeAccumulationBalanceParts(definition AccumulationRegisterDefinition, parts ...[]AccumulationRegisterTotalsRow) ([]AccumulationRegisterTotalsRow, error) {
-	combined := map[string]*AccumulationRegisterTotalsRow{}
-	for _, source := range parts {
-		for _, row := range source {
-			key := accumulationDimensionKey(definition, row.Dimensions)
-			target := combined[key]
-			if target == nil {
-				target = &AccumulationRegisterTotalsRow{Dimensions: mapsCloneValues(row.Dimensions), Turnover: map[uuid.UUID]Value{}}
-				combined[key] = target
-			}
-			for _, resource := range definition.Resources {
-				leftText := target.Turnover[resource.ID].Data
-				if leftText == "" {
-					leftText = "0"
-				}
-				rightText := row.Turnover[resource.ID].Data
-				if rightText == "" {
-					rightText = "0"
-				}
-				left, _ := bslnumber.Parse(leftText)
-				right, _ := bslnumber.Parse(rightText)
-				sum, err := left.Add(right)
-				if err != nil {
-					return nil, err
-				}
-				target.Turnover[resource.ID] = Value{Kind: NumberType, Data: sum.String()}
-			}
+// requireReadableTotals refuses a read the totals cannot answer: totals
+// switched off, or still in the old format. It is checked apart from the
+// statement, and that is safe - the format only ever changes once, to the
+// current one, and a switch of the totals seen late by this check is seen on
+// time by the statement, which then sums the movements and answers right.
+func (repository *AccumulationRegisterRepository) requireReadableTotals(ctx context.Context, query dataQueryer, definition AccumulationRegisterDefinition) error {
+	state, err := readBalanceTotalsState(ctx, query, definition.ID)
+	if err != nil {
+		return recordDataError(ctx, repository.pool, err)
+	}
+	if !state.use {
+		return fmt.Errorf("accumulation register %s: %w", definition.Name, ErrAccumulationTotalsDisabled)
+	}
+	return requireBalanceTotalsFormat(ctx, query, nil, definition, state)
+}
+
+func accumulationResourcesZero(resources []Attribute, values map[uuid.UUID]Value) bool {
+	for _, resource := range resources {
+		value := values[resource.ID]
+		number, err := bslnumber.Parse(value.Data)
+		if err != nil || !number.IsZero() {
+			return false
 		}
 	}
-	keys := make([]string, 0, len(combined))
-	for key := range combined {
-		keys = append(keys, key)
-	}
-	slices.Sort(keys)
-	result := make([]AccumulationRegisterTotalsRow, 0, len(keys))
-	for _, key := range keys {
-		result = append(result, *combined[key])
-	}
-	return result, nil
+	return true
 }
 
 func (repository *AccumulationRegisterRepository) queryAggregates(ctx context.Context, definition AccumulationRegisterDefinition, begin, end *time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterTotalsRow, error) {

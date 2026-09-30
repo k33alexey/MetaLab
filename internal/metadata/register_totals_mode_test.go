@@ -67,11 +67,14 @@ func (row storedTotalsRow) Scan(destination ...any) error {
 	if len(destination) != 1 {
 		return fmt.Errorf("totals mode row takes one destination")
 	}
-	target, ok := destination[0].(*bool)
+	// The column may be empty - a row kept for another mode - so it is read
+	// into a pointer.
+	target, ok := destination[0].(**bool)
 	if !ok {
-		return fmt.Errorf("totals mode row is a boolean")
+		return fmt.Errorf("totals mode row is a nullable boolean")
 	}
-	*target = *row.value
+	value := *row.value
+	*target = &value
 	return nil
 }
 

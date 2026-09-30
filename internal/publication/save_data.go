@@ -135,6 +135,13 @@ func SaveData(ctx context.Context, pool *pgxpool.Pool, request SaveDataRequest) 
 			if err := metadata.EnsureRegisterTotalsStorage(ctx, transaction); err != nil {
 				return err
 			}
+			// After the schema, before the state: a balance register whose
+			// totals the old code wrote as turnovers gets them rebuilt as
+			// balances in this very transaction, so a base is never saved
+			// with totals that read as wrong balances.
+			if err := metadata.UpgradeAccumulationTotals(ctx, transaction, catalog); err != nil {
+				return err
+			}
 			if err := metadata.EnsureConstantStorage(ctx, transaction); err != nil {
 				return err
 			}

@@ -40,6 +40,11 @@ func TestAccumulationRegisterRepositoryIntegration(t *testing.T) {
 	if _, err := pool.Exec(ctx, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE"); err != nil {
 		t.Fatal(err)
 	}
+	// The store of totals modes is made by "Сохранить данные", which this
+	// test skips; without it the test ran only after another one had made it.
+	if err := EnsureRegisterTotalsStorage(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
 
 	documentID, registerID, productID, quantityID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	turnoverID, turnoverProductID, amountID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()

@@ -99,6 +99,18 @@ func (catalog *Catalog) accumulationRegisterTables(definition AccumulationRegist
 			return schemadiff.Table{}, schemadiff.Table{}, fmt.Errorf("accumulation register %s total dimension %s: %w", definition.Name, dimension.Name, err)
 		}
 	}
+	if definition.Kind == AccumulationRegisterBalance {
+		// A balance is read at one period - a month start or the present
+		// totals - and filtered by dimensions inside it; see
+		// balanceTotalsIndexKeys. A turnover register's totals are not read
+		// by anything yet, and an index nobody reads is a write everybody
+		// pays for.
+		keys, err := catalog.balanceTotalsIndexKeys(definition)
+		if err != nil {
+			return schemadiff.Table{}, schemadiff.Table{}, fmt.Errorf("accumulation register %s totals index: %w", definition.Name, err)
+		}
+		totals.Indexes = append(totals.Indexes, schemadiff.Index{Name: physicalObjectName("it", definition.ID), Method: "btree", Keys: keys})
+	}
 	for _, resource := range definition.Resources {
 		if err := catalog.appendAttributeSchema(&movements, resource); err != nil {
 			return schemadiff.Table{}, schemadiff.Table{}, fmt.Errorf("accumulation register %s resource %s: %w", definition.Name, resource.Name, err)
