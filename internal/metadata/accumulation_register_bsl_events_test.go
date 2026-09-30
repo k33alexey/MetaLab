@@ -14,12 +14,11 @@ func TestAccumulationRegisterBSLEvents(t *testing.T) {
 	definition := AccumulationRegisterDefinition{ID: registerID, Name: "Продажи", Kind: AccumulationRegisterTurnover, Resources: []Attribute{{ID: resourceID, Name: "Сумма", Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}}}
 	catalog := &Catalog{AccumulationRegisters: []AccumulationRegisterDefinition{definition}, accumulationRegisterByName: map[string]int{"продажи": 0}, accumulationRegisterByID: map[uuid.UUID]int{registerID: 0}}
 	repository := &AccumulationRegisterRepository{catalog: catalog}
-	runtime, err := NewRuntimeWithAllRegisters(nil, nil, nil, nil, repository, catalog, nil)
-	if err == nil {
+	if _, err := NewRuntimeWithAllRegisters(nil, nil, nil, nil, repository, catalog, nil); err == nil {
 		t.Fatal("repository without PostgreSQL was accepted")
 	}
 	// Event execution itself does not touch PostgreSQL, so use a runtime value with the same validated catalog.
-	runtime = &Runtime{catalog: catalog, accumulationRegisterRepository: repository, accumulationRegisterEvents: map[uuid.UUID]AccumulationRegisterEventHandler{}}
+	runtime := &Runtime{catalog: catalog, accumulationRegisterRepository: repository, accumulationRegisterEvents: map[uuid.UUID]AccumulationRegisterEventHandler{}}
 	program, diagnostics := CompileAccumulationRegisterRecordSetModule(definition, "record-set.bsl", `&НаСервере
 Процедура ПередЗаписью(Отказ, Замещение)
     ЭтотОбъект[0].Сумма = 25;

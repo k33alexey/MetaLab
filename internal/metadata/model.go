@@ -168,9 +168,11 @@ const (
 	// WithinOwnerSeries numbers and checks among the rows of one owner, across
 	// different parents. Only a catalog has it - an account and a kind of
 	// characteristic have no owner - and only a subordinate one.
-	WithinOwnerSeries      CodeSeries = "within-owner-subordination"
-	maxHierarchyLevelCount            = 32
+	WithinOwnerSeries CodeSeries = "within-owner-subordination"
 )
+
+// maxHierarchyLevelCount is the most levels a hierarchy may be limited to.
+const maxHierarchyLevelCount = 32
 
 // DateParts is the prototype's "состав даты" qualifier: which parts of a
 // moment an attribute is about. Storage does not change - a date is always a

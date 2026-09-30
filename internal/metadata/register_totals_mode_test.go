@@ -55,7 +55,7 @@ func boolPointer(value bool) *bool { return &value }
 type storedTotalsMode struct{ value *bool }
 
 func (mode storedTotalsMode) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
-	return storedTotalsRow{value: mode.value}
+	return storedTotalsRow(mode)
 }
 
 type storedTotalsRow struct{ value *bool }

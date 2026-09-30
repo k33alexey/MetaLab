@@ -235,15 +235,6 @@ func (catalog *Catalog) documentHasMovements(documentID uuid.UUID) bool {
 	return len(catalog.documentMovements(documentID)) > 0
 }
 
-func containsUUID(values []uuid.UUID, expected uuid.UUID) bool {
-	for _, value := range values {
-		if value == expected {
-			return true
-		}
-	}
-	return false
-}
-
 func (catalog *Catalog) attributeFormFields(attributes []Attribute, language string) []FormField {
 	result := make([]FormField, len(attributes))
 	for index, attribute := range attributes {

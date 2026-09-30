@@ -93,7 +93,7 @@ func TestQueryRuntimeObjectValidation(t *testing.T) {
 	if handled, err := runtime.setQueryProperty(object, "Текст", bytecode.String("")); !handled || err == nil {
 		t.Fatalf("empty text handled=%v error=%v", handled, err)
 	}
-	if _, handled, err := runtime.callQueryMethod(nil, object, "УстановитьПараметр", []bytecode.Value{bytecode.String("bad-name"), bytecode.String("x")}); !handled || err == nil {
+	if _, handled, err := runtime.callQueryMethod(context.Background(), object, "УстановитьПараметр", []bytecode.Value{bytecode.String("bad-name"), bytecode.String("x")}); !handled || err == nil {
 		t.Fatalf("invalid parameter handled=%v error=%v", handled, err)
 	}
 }
@@ -196,7 +196,7 @@ func TestTemporaryTableManagerReferenceAndClose(t *testing.T) {
 	if memory, ok := manager.RuntimeDynamicMemory(4096); !ok || memory <= 256 {
 		t.Fatalf("manager memory=%d ok=%v", memory, ok)
 	}
-	if _, handled, err := runtime.callQueryMethod(nil, manager, "Закрыть", nil); !handled || err != nil {
+	if _, handled, err := runtime.callQueryMethod(context.Background(), manager, "Закрыть", nil); !handled || err != nil {
 		t.Fatalf("close handled=%v error=%v", handled, err)
 	}
 	if memory, ok := manager.RuntimeDynamicMemory(256); !ok || memory != 256 {

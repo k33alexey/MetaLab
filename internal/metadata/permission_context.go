@@ -45,15 +45,6 @@ func requireFields(ctx context.Context, id uuid.UUID, operation PermissionOperat
 	return nil
 }
 
-// requireCommand enforces a form command grant only when ctx carries an
-// enforced policy.
-func requireCommand(ctx context.Context, form, command uuid.UUID) error {
-	if permissions, ok := PermissionsFromContext(ctx); ok {
-		return permissions.RequireCommand(form, command)
-	}
-	return nil
-}
-
 // requireTablePartWrites gates each non-empty table part written by a catalog
 // or document Write() as a whole, since BSL edits table part rows through the
 // generic ТаблицаЗначений collection API rather than through this runtime, so

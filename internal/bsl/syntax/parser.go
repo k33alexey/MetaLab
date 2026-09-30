@@ -773,10 +773,6 @@ func (p *parser) checkAny(kinds ...Kind) bool {
 	return false
 }
 
-func (p *parser) checkNext(kind Kind) bool {
-	return p.current+1 < len(p.tokens) && p.tokens[p.current+1].Kind == kind
-}
-
 func (p *parser) isAssignmentStart() bool {
 	parentheses, brackets := 0, 0
 	for index := p.current + 1; index < len(p.tokens); index++ {

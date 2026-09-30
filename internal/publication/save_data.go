@@ -2,8 +2,6 @@ package publication
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,11 +28,6 @@ const (
 // database - re-implemented on the base_package/ path (096) against Git
 // status directly, replacing the retired package-manifest Dirty flag (021).
 var ErrDirtyPrimary = errors.New("an uncommitted ML Project cannot be saved to a primary database")
-
-func validSHA256(value string) bool {
-	decoded, err := hex.DecodeString(value)
-	return err == nil && len(decoded) == sha256.Size
-}
 
 // SaveDataRequest describes one "Сохранить данные" invocation - the
 // package-free replacement for the retired BuildFile+Activate flow

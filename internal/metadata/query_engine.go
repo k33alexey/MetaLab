@@ -44,7 +44,6 @@ type queryColumn struct {
 	referenceKinds []Kind
 	storage        attributeStorage
 	types          []Type
-	metadataID     uuid.UUID
 }
 
 type querySource struct {

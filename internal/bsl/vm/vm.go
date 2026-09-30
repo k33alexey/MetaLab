@@ -1168,7 +1168,7 @@ func executeAdvanced(
 		case bytecode.OpConstruct:
 			operation := function.Objects[instruction.Operand]
 			var inlineArguments [8]bytecode.Value
-			arguments := inlineArguments[:0]
+			var arguments []bytecode.Value
 			if int(operation.Arity) <= len(inlineArguments) {
 				arguments = inlineArguments[:int(operation.Arity)]
 			} else {
@@ -1213,7 +1213,7 @@ func executeAdvanced(
 		case bytecode.OpCallMethod:
 			operation := function.Objects[instruction.Operand]
 			var inlineArguments [8]bytecode.Value
-			arguments := inlineArguments[:0]
+			var arguments []bytecode.Value
 			if int(operation.Arity) <= len(inlineArguments) {
 				arguments = inlineArguments[:int(operation.Arity)]
 			} else {
@@ -1302,7 +1302,6 @@ func executeAdvanced(
 			}
 			if err != nil {
 				failure = runtimeFailure(function, instruction, err.Error())
-				break
 			}
 		case bytecode.OpGetIndex:
 			key, receiver := pop(), pop()
@@ -1353,7 +1352,6 @@ func executeAdvanced(
 			}
 			if err != nil {
 				failure = runtimeFailure(function, instruction, err.Error())
-				break
 			}
 		case bytecode.OpMetadataGet, bytecode.OpMetadataCall:
 			operation := function.Objects[instruction.Operand]

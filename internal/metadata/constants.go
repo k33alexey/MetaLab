@@ -3,14 +3,8 @@ package metadata
 import (
 	"fmt"
 
-	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
-
-// constantKindModules are the modules a constant may keep beside its own
-// description: the one the platform calls around the value itself, and the one
-// of its manager.
-var constantKindModules = []string{project.ValueModuleFile, project.ManagerModuleFile}
 
 // validateConstantFiles checks the folder of every constant and resolves the
 // form each one names.

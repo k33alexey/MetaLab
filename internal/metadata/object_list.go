@@ -389,11 +389,6 @@ func documentListField(definition DocumentDefinition, field string) (listColumn,
 	return attributeListField(definition.Attributes, field)
 }
 
-func attributeListColumn(attributes []Attribute, field string) (string, bool) {
-	resolved, ok := attributeListField(attributes, field)
-	return resolved.name, ok
-}
-
 func attributeListField(attributes []Attribute, field string) (listColumn, bool) {
 	for _, attribute := range attributes {
 		if strings.EqualFold(attribute.Name, strings.TrimSpace(field)) {
