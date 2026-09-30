@@ -43,8 +43,15 @@ func TestBalanceTotalsIndexAnIndexedDimensionFromTheSecondOn(t *testing.T) {
 			}
 		}
 	}
-	if len(dimensionIndexes) != 1 {
-		t.Fatalf("dimension indexes of the balances = %v, want only the marked second dimension", dimensionIndexes)
+	// The marked second dimension, and it alone: counting indexes is not
+	// enough, because an index given to the first dimension instead would be
+	// one index too.
+	found := false
+	for _, index := range totals.Indexes {
+		found = found || index.Name == physicalObjectName("itd", marked)
+	}
+	if !found || len(dimensionIndexes) != 1 {
+		t.Fatalf("dimension indexes of the balances = %v, the marked one present=%v; want only the marked second dimension", dimensionIndexes, found)
 	}
 
 	// A turnover register's totals are not read by anything yet, so its
