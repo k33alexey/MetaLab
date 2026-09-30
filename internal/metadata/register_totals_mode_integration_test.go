@@ -13,13 +13,20 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// The whole point of the iteration, checked against a real database: the mode
-// lives in the base, a write follows it, and switching it changes no number.
+// The mode lives in the base, a write follows it, and switching it changes no
+// number.
 //
-// Switching is cheap precisely because reading sums the rows across splits.
-// Rows written under one mode are read beside rows written under the other,
-// and a rebuild folds them together - «при пересчете итогов накопленные
-// отдельные записи сворачиваются».
+// **A write following the mode is visible only where writers meet.** Writes
+// one after another collide with nobody, and then splitting on and off make
+// the same single row - so the first version of this test passed with the
+// mode ignored outright. What the mode decides is what a write does when the
+// row of its combination is held: on, it leaves the row alone and makes
+// another; off, it waits for it. Both are asserted here with the row held by a
+// second transaction.
+//
+// Switching is cheap precisely because reading sums the rows across splits:
+// rows written under one mode are read beside rows written under the other,
+// and a rebuild folds them together into one per combination.
 func TestTotalsModeIsFollowedAndSwitchingChangesNoNumber(t *testing.T) {
 	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -84,33 +91,51 @@ func TestTotalsModeIsFollowedAndSwitchingChangesNoNumber(t *testing.T) {
 		t.Fatal(err)
 	}
 	month := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
-	sell := func(number, amount string) DocumentReference {
+	totalsTable, _ := PhysicalAccumulationRegisterTotalsTable(registerID)
+	sellWith := func(writeContext context.Context, number, amount string) error {
 		document, createErr := documents.New(ctx, "Продажа", nil)
 		if createErr != nil {
-			t.Fatal(createErr)
+			return createErr
 		}
 		document.Number, document.Date = number, month
 		if saveErr := documents.Save(ctx, document, nil); saveErr != nil {
-			t.Fatal(saveErr)
+			return saveErr
 		}
 		set, setErr := registers.NewRecordSet("Продажи")
 		if setErr != nil {
-			t.Fatal(setErr)
+			return setErr
 		}
 		set.Filter.Recorder = &document.Reference
 		row, addErr := set.Add()
 		if addErr != nil {
-			t.Fatal(addErr)
+			return addErr
 		}
 		row.Period, row.Recorder, row.Active = month, document.Reference, true
 		row.Dimensions[productID] = Value{Kind: StringType, Data: "A"}
 		row.Resources[amountID] = Value{Kind: NumberType, Data: amount}
-		if writeErr := registers.Write(ctx, set, true); writeErr != nil {
-			t.Fatal(writeErr)
-		}
-		return document.Reference
+		return registers.Write(writeContext, set, true)
 	}
-	totalsTable, _ := PhysicalAccumulationRegisterTotalsTable(registerID)
+	sell := func(number, amount string) {
+		t.Helper()
+		if err := sellWith(ctx, number, amount); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// holdRow keeps the lowest row of totals locked, the way another writer's
+	// open transaction would, until the returned function releases it.
+	holdRow := func() func() {
+		t.Helper()
+		holder, beginErr := pool.Begin(ctx)
+		if beginErr != nil {
+			t.Fatal(beginErr)
+		}
+		var held int16
+		if lockErr := holder.QueryRow(ctx, "SELECT totals_split FROM "+qualifiedCatalogTable(totalsTable)+" ORDER BY totals_split LIMIT 1 FOR UPDATE").Scan(&held); lockErr != nil {
+			_ = holder.Rollback(ctx)
+			t.Fatal(lockErr)
+		}
+		return func() { _ = holder.Rollback(ctx) }
+	}
 	splits := func() []int16 {
 		rows, queryErr := pool.Query(ctx, "SELECT totals_split FROM "+qualifiedCatalogTable(totalsTable)+" ORDER BY totals_split")
 		if queryErr != nil {
@@ -154,6 +179,20 @@ func TestTotalsModeIsFollowedAndSwitchingChangesNoNumber(t *testing.T) {
 	if err := SetTotalsSplitting(ctx, pool, registerID, true, false); err != nil {
 		t.Fatal(err)
 	}
+	// Off means waiting: with the only row held, the write does not make a
+	// second one, and with no time to wait it fails and leaves the totals as
+	// they were.
+	release := holdRow()
+	short, stop := context.WithTimeout(ctx, 3*time.Second)
+	refused := sellWith(short, "S-3-held", "7")
+	stop()
+	release()
+	if refused == nil {
+		t.Fatal("with the mode off and the row held the write went through: it did not wait for the row, so it split the totals the mode forbids")
+	}
+	if rows := splits(); len(rows) != 1 || turnover() != "300" {
+		t.Fatalf("a refused write with the mode off changed the totals: rows %v, turnover %s", rows, turnover())
+	}
 	sell("S-3", "50")
 	if turnover() != "350" {
 		t.Fatalf("turnover across both modes = %q", turnover())
@@ -181,5 +220,22 @@ func TestTotalsModeIsFollowedAndSwitchingChangesNoNumber(t *testing.T) {
 	sell("S-4", "10")
 	if turnover() != "360" {
 		t.Fatalf("turnover after switching back on = %q", turnover())
+	}
+
+	// On means not waiting: with the row held, the write leaves it alone and
+	// makes a second one, and the sum of the two is the turnover.
+	release = holdRow()
+	onTime, stop := context.WithTimeout(ctx, 3*time.Second)
+	passed := sellWith(onTime, "S-5", "5")
+	stop()
+	release()
+	if passed != nil {
+		t.Fatalf("with the mode on and the row held the write did not get through: it waited for the row instead of splitting: %v", passed)
+	}
+	if rows := splits(); len(rows) != 2 {
+		t.Fatalf("with the mode on and the row held the write made rows %v, want a second one beside the held row", rows)
+	}
+	if turnover() != "365" {
+		t.Fatalf("turnover across the split rows = %q", turnover())
 	}
 }
