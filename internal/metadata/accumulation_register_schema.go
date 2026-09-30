@@ -77,9 +77,8 @@ func (catalog *Catalog) accumulationRegisterTables(definition AccumulationRegist
 			{Name: physicalObjectName("pt", definition.ID), Type: "primary_key", Definition: "PRIMARY KEY (total_period, dimension_key, totals_split)"},
 			// No ceiling on the number. Rows of totals appear when writers
 			// collide, and their count follows the concurrency the base has
-			// actually seen - «их количество по каждой комбинации измерений
-			// будет зависеть от максимального количества одновременно
-			// выполняемых транзакций». A ceiling of sixteen was the old
+			// actually seen: the prototype has as many rows per combination as
+			// the most transactions that ever wrote it at once. A ceiling of sixteen was the old
 			// mechanism's, where the number addressed one of sixteen rows
 			// chosen by a hash; here the seventeenth concurrent writer would
 			// simply be refused.

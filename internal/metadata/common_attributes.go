@@ -437,8 +437,8 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 	//
 	// Four more kinds join a composition only when the attribute separates data:
 	// constants, scheduled jobs, users of the database and document journals,
-	// the last implicitly. They get no field - a journal «не добавляет новых
-	// данных в систему», a constant is one value, a job has no table - so
+	// the last implicitly. They get no field - a journal stores no data of
+	// its own, a constant is one value, a job has no table - so
 	// membership means separation for them and nothing else.
 	var ordered []commonAttributeTarget
 	targets := map[uuid.UUID]commonAttributeTarget{}
@@ -566,10 +566,9 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 // Three things are checked, and all three come from the prototype's own
 // description of the property. The boolean has to exist - a condition pointing
 // at nothing separates nothing and says it separates. It has to be boolean -
-// «константой логического типа... или реквизитом логического типа». And the
-// object it lives on has to form the reference type of the common attribute:
-// «причём тип ссылки, образуемый этим объектом метаданных, является типом
-// общего реквизита». That last one is what ties the condition to the data area
+// a boolean constant or a boolean attribute. And the object it lives on has to
+// be the one whose reference type is the type of the common attribute. That
+// last one is what ties the condition to the data area
 // it decides about, and it also means a register cannot hold one - a register
 // forms no reference.
 func (catalog *Catalog) validateConditionalSeparationReferences() error {

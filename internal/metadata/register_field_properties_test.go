@@ -128,8 +128,8 @@ resources:
   - {id: ` + entriesCompany + `, name: Организация, title: {ru: Организация}, types: [{kind: catalog, reference: ` + entriesCompanies + `}], fill_checking: сомневаться}
 resources:
   - {id: ` + entriesSum + `, name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}]}`, "fill_checking"},
-		// «Признак учета субконто» - «используется для объектов метаданных,
-		// описывающих ресурсы регистра бухгалтерии». A dimension holds no
+		// ПризнакУчетаСубконто belongs to the resources of an accounting
+		// register only. A dimension holds no
 		// amount, so there is nothing for it to keep by ext dimension.
 		"признак учёта субконто у измерения": {`dimensions:
   - {id: ` + entriesCompany + `, name: Организация, title: {ru: Организация}, types: [{kind: catalog, reference: ` + entriesCompanies + `}], ext_dimension_accounting_flag: ` + entriesExtFlag + `}
@@ -156,8 +156,8 @@ resources:
   - {id: ` + entriesCompany + `, name: Организация, title: {ru: Организация}, types: [{kind: catalog, reference: ` + entriesCompanies + `}], data_history: use}
 resources:
   - {id: ` + entriesSum + `, name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}]}`, "data_history belongs to an object"},
-		// «Индексирование» of a resource is «для ресурсов регистра сведений»,
-		// and this is not one.
+		// Индексирование of a resource belongs to information registers, and
+		// this is not one.
 		"индексирование у ресурса": {`dimensions:
   - {id: ` + entriesCompany + `, name: Организация, title: {ru: Организация}, types: [{kind: catalog, reference: ` + entriesCompanies + `}]}
 resources:
@@ -226,8 +226,8 @@ resources:
 	}
 }
 
-// A resource of a calculation register is found by nothing: «индексирование»
-// of a resource is «для ресурсов регистра сведений», and this is not one.
+// A resource of a calculation register is found by nothing: Индексирование of
+// a resource belongs to information registers, and this is not one.
 func TestCalculationRegisterResourceRefusesIndexing(t *testing.T) {
 	t.Parallel()
 	body := `format: 1
@@ -257,8 +257,8 @@ func demoConfiguration() project.Project {
 }
 
 // A movement of an accumulation register is found by its dimensions and its
-// period, never by a quantity, and «ОбъектМетаданных: Ресурс.Индексирование» is
-// «для ресурсов регистра сведений». Ours accepted it and the schema even built
+// period, never by a quantity, and «ОбъектМетаданных: Ресурс.Индексирование»
+// belongs to information registers only. Ours accepted it and the schema even built
 // the index - a table nobody queries, on every write of the register.
 //
 // Refused rather than quietly turned off: a property silently dropped is what
@@ -357,8 +357,8 @@ func entriesError(t *testing.T, fields string) error {
 	return err
 }
 
-// «Использование» is «для реквизитов справочников или планов видов
-// характеристик», and a register is neither. It said where a field belongs -
+// Использование belongs to the attributes of catalogs and of charts of
+// characteristic types, and a register is neither. It said where a field belongs -
 // to items, to folders, to both - and a register has no folders to belong to,
 // so the setting could only ever be read by nobody.
 //

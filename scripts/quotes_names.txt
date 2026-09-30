@@ -1,0 +1,8 @@
+# Names the check does not look up: properties, commands and captions of the
+# prototype that we carry on purpose, because a developer moving over must find
+# them under the same name. A name is composition, not wording; a sentence of
+# the help never belongs here. One name per line, as it stands between « and ».
+включать в командный интерфейс
+включать в содержание справки
+Конструктор схемы компоновки данных
+Использовать группировки запроса если возможно

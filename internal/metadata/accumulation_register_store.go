@@ -637,12 +637,11 @@ func (repository *AccumulationRegisterRepository) applyTotalsChanges(ctx context
 // applyTotalDeltas puts each change into a row of totals, making a new row
 // when it cannot have an existing one.
 //
-// Разделение итогов, as the prototype describes it: «система при одновременной
-// записи движений несколькими сеансами будет не обновлять одни и те же записи
-// итогов, а записывать изменения итогов в отдельные записи», and «записи будут
-// "размножаться" только при параллельно выполняемых транзакциях, их количество
-// по каждой комбинации измерений будет зависеть от максимального количества
-// одновременно выполняемых транзакций».
+// Разделение итогов, as the prototype describes it: sessions writing
+// movements at the same time put their changes of the totals into separate
+// rows instead of updating the same ones, the rows multiply only while
+// transactions actually run in parallel, and a combination ends up with as
+// many rows as the most transactions that ever wrote it at once.
 //
 // So a row is not addressed, it is taken. A write asks for any row of its
 // combination that nobody is holding; if it gets one it adds to it, and if it
@@ -656,8 +655,8 @@ func (repository *AccumulationRegisterRepository) applyTotalsChanges(ctx context
 // work at all.** Reading totals sums the rows of a combination, so a change
 // may land anywhere among them - including a subtraction that leaves one row
 // negative while the sum stays right. The prototype says the same of its own
-// mechanism: «влияет только на параллельность работы системы и никак не
-// сказывается на бизнес-логике».
+// mechanism: it changes how much can run in parallel and nothing of what the
+// application sees.
 //
 // With splitting off there is one row per combination and a write waits for
 // it rather than making a second - that is what not splitting means.
@@ -1025,8 +1024,8 @@ func rebuildTurnoverTotals(ctx context.Context, transaction pgx.Tx, definition A
 	columns := []string{"total_period", "totals_split", "dimension_key"}
 	monthExpression := "date_trunc('month', period AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'"
 	// A rebuild collapses the split rows into one, whatever mode the
-	// register is in: «при пересчете итогов накопленные отдельные записи
-	// сворачиваются». Grouping by the split stored on the movements would
+	// register is in - the prototype folds them on recalculation too.
+	// Grouping by the split stored on the movements would
 	// reproduce the old spread instead, and a register switched out of
 	// splitting would keep its multiplied rows for ever.
 	//

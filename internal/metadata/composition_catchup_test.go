@@ -59,7 +59,7 @@ func TestCommonModuleCarriesItsExecutionContext(t *testing.T) {
 	}
 }
 
-// Without «включать в командный интерфейс» a subsystem groups objects for the
+// Without ВключатьВКомандныйИнтерфейс a subsystem groups objects for the
 // developer and shows the user nothing, so the section a configuration was
 // built around would simply not appear.
 func TestSubsystemCarriesItsCommandInterface(t *testing.T) {

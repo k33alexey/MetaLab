@@ -14,8 +14,8 @@ import (
 // The configuration property is called РазрешитьРазделениеИтогов, and the word
 // is the whole point: it permits the mechanism, it does not switch it on. The
 // prototype switches it in the working database - «Управление итогами» has a
-// tab of its own where the registers "для которых при конфигурировании
-// предусмотрен режим разделения итогов" are listed and the administrator turns
+// tab of its own that lists the registers whose configuration allows the
+// mode, and there the administrator turns
 // the mode on or off - and the manager carries the pair of methods
 // УстановитьРежимРазделенияИтогов and ПолучитьРежимРазделенияИтогов.
 //
@@ -28,9 +28,9 @@ import (
 // table and its primary key. The splitting column stays in the schema whatever
 // the mode says, and the mode only decides where a write puts its row.
 //
-// Nothing is lost by that, and the prototype says why: «Установка режима
-// разделения влияет только на параллельность работы системы и никак не
-// сказывается на бизнес-логике решаемых задач». Reading totals sums the rows
+// Nothing is lost by that, and the prototype says why: the mode changes how
+// much can run in parallel and nothing of what the application computes.
+// Reading totals sums the rows
 // across splits, so switching the mode changes no number - the rows written
 // before the switch are read beside the ones written after, and a rebuild of
 // the totals collapses them when someone asks for one.

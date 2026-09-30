@@ -467,9 +467,8 @@ func TestCommonAttributeCarriesDataSeparation(t *testing.T) {
 	})
 }
 
-// The name rule is the prototype's own, word for word: «Имя общего реквизита не
-// должно совпадать ни с одним из имен полей всех объектов метаданных, входящих в
-// состав общего реквизита». Fields means every field of the table, not only the
+// The name rule is the prototype's own: the name of a common attribute may
+// coincide with no field name of any object in its composition. Fields means every field of the table, not only the
 // ones called attributes - and the kinds added last have fields of other sorts:
 // the flags of a chart of accounts, the dimensions and resources of a register.
 // Two fields of one name in one table is not something a table can hold.

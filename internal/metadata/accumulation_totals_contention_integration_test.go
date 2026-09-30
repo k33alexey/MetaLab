@@ -9,9 +9,8 @@ import (
 )
 
 // The point of the iteration: rows of totals multiply when writers collide and
-// only then. «Записи будут "размножаться" только при параллельно выполняемых
-// транзакциях, их количество по каждой комбинации измерений будет зависеть от
-// максимального количества одновременно выполняемых транзакций.»
+// only then, and a combination has as many rows as the most transactions that
+// ever wrote it at once - which is how the prototype describes its own.
 //
 // The old mechanism hashed the recorder into one of sixteen rows and wrote
 // them whether or not anybody else was there, so a database with one person in

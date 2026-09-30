@@ -32,8 +32,8 @@ type AccountingRegisterField struct {
 	// field the editor could not offer a format or a choice form for.
 	Attribute `yaml:",inline" json:",inline"`
 	// DenyIncompleteValues refuses an empty value, and it belongs to a dimension
-	// of all four registers: «используется для измерений регистра бухгалтерии,
-	// регистра накопления, регистра расчета, регистра сведений». A resource
+	// of all four registers - the help lists the dimensions of accounting,
+	// accumulation, calculation and information registers. A resource
 	// holds an amount and is refused it here, the same way it is refused an
 	// index.
 	DenyIncompleteValues       bool       `yaml:"deny_incomplete_values,omitempty" json:"denyIncompleteValues,omitempty"`
@@ -129,8 +129,8 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 				issues = append(issues, prefix+".ext_dimension_accounting_flag must be a non-zero UUID")
 			}
 			// The ext dimension flag belongs to a resource and to nothing else:
-			// «используется для объектов метаданных, описывающих ресурсы
-			// регистра бухгалтерии». It says in which kinds of ext dimension
+			// the help gives it to the resources of an accounting register
+			// only. It says in which kinds of ext dimension
 			// the amount of that resource is kept, and a dimension keeps no
 			// amount - the setting would be read by nobody.
 			if group.dimension && field.ExtDimensionAccountingFlag != nil {

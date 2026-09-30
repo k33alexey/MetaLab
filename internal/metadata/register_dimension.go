@@ -19,12 +19,11 @@ package metadata
 // of a register is refused anyway.
 type RegisterDimension struct {
 	Attribute `yaml:",inline" json:",inline"`
-	// DenyIncompleteValues refuses an empty value in this dimension.
-	// «Используется для измерений регистра бухгалтерии, регистра накопления,
-	// регистра расчета, регистра сведений» - all four.
+	// DenyIncompleteValues refuses an empty value in this dimension, and the
+	// help gives it to the dimensions of all four kinds of register.
 	DenyIncompleteValues bool `yaml:"deny_incomplete_values,omitempty" json:"denyIncompleteValues,omitempty"`
-	// Master and MainFilter belong to a dimension of an information register:
-	// «используется для измерений регистров сведений». Of the 498 dimensions of
+	// Master and MainFilter belong to a dimension of an information register
+	// and to no other. Of the 498 dimensions of
 	// the demonstration configuration 153 are master and 463 are the main filter.
 	Master     bool `yaml:"master,omitempty" json:"master,omitempty"`
 	MainFilter bool `yaml:"main_filter,omitempty" json:"mainFilter,omitempty"`
@@ -90,10 +89,10 @@ type dimensionProperties struct {
 }
 
 // informationRegisterDimensions and accumulationRegisterDimensions are the two
-// answers the prototype gives. «Ведущее» and «основной отбор» are «используется
-// для измерений регистров сведений»; «использование в итогах» is «используется
-// для измерений регистров накопления», and for a register of balances «это
-// свойство не используется» - so a balance register allows none of the four.
+// answers the prototype gives. Ведущее and ОсновнойОтбор belong to the
+// dimensions of information registers; ИспользованиеВИтогах belongs to the
+// dimensions of accumulation registers and means nothing for a register of
+// balances - so a balance register allows none of the four.
 func informationRegisterDimensions() dimensionProperties {
 	return dimensionProperties{master: true, mainFilter: true, typeReduction: true}
 }
