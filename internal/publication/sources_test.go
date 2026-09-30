@@ -271,6 +271,13 @@ func TestCommonTemplateAndPicturePathShapes(t *testing.T) {
 		"образ картинки плотнее":  {"metadata/common-pictures/Печать/200.svg", false, true},
 		"образ не с лестницы":     {"metadata/common-pictures/Печать/110.png", false, false},
 		"образ без плотности":     {"metadata/common-pictures/Печать/Печать.png", false, false},
+		// The schema of an XDTO package and the service description of a WS
+		// reference are content under a fixed name, and nothing else is.
+		"схема пакета XDTO":         {"metadata/xdto-packages/Обмен/content.xml", false, true},
+		"описание WS-ссылки":        {"metadata/ws-references/Склад/definition.xml", false, true},
+		"чужое имя у пакета XDTO":   {"metadata/xdto-packages/Обмен/schema.xml", false, false},
+		"схема пакета у WS-ссылки":  {"metadata/ws-references/Склад/content.xml", false, false},
+		"описание WS у пакета XDTO": {"metadata/xdto-packages/Обмен/definition.xml", false, false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

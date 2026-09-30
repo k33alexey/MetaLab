@@ -243,6 +243,16 @@ func validateSourcePath(relative string, directory bool) error {
 			if !directory && len(parts) == 4 && parts[1] == "common-templates" && templateContentName(parts[3]) {
 				return nil
 			}
+			// An XDTO package keeps its schema and a WS reference the service
+			// description it was imported with, each beside its description
+			// and under one name. Without these two a project carrying either
+			// refused to publish - a WS reference always, because its
+			// description is required.
+			if !directory && len(parts) == 4 &&
+				(parts[1] == string(metadata.XDTOPackageKind) && parts[3] == metadata.XDTOPackageContentFile ||
+					parts[1] == string(metadata.WSReferenceKind) && parts[3] == metadata.WSReferenceDefinitionFile) {
+				return nil
+			}
 			if !directory && len(parts) == 4 && parts[1] == "common-pictures" {
 				if _, ok := metadata.PictureDensity(parts[3]); ok {
 					return nil
