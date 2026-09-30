@@ -164,11 +164,11 @@ func TestMetadataCatalogContainsAgreedObjectTypes(t *testing.T) {
 
 	want := []string{
 		"subsystems", "common-modules", "session-parameters", "roles", "common-attributes",
-		"exchange-plans", "filter-criteria", "event-subscriptions", "scheduled-jobs", "bots",
+		"exchange-plans", "filter-criteria", "event-subscriptions", "scheduled-jobs",
 		"functional-options", "functional-options-parameters", "defined-types", "settings-storages",
 		"common-commands", "command-groups", "common-forms", "common-templates", "common-pictures",
 		"xdto-packages", "web-services", "http-services", "ws-references", "websocket-clients",
-		"integration-services", "style-items", "styles", "languages",
+		"style-items", "styles", "languages",
 		"constants", "catalogs", "documents", "document-numerators", "sequences", "document-journals",
 		"enumerations", "reports", "data-processors", "charts-of-characteristic-types",
 		"charts-of-accounts", "charts-of-calculation-types", "information-registers",

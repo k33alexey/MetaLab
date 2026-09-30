@@ -83,12 +83,12 @@ var (
 	commonKindOrder = []string{
 		"subsystems", "common-modules", "session-parameters", "roles",
 		"common-attributes", "exchange-plans", "filter-criteria",
-		"event-subscriptions", "scheduled-jobs", "bots",
+		"event-subscriptions", "scheduled-jobs",
 		"functional-options", "functional-options-parameters",
 		"defined-types", "settings-storages", "common-commands",
 		"command-groups", "common-forms", "common-templates",
 		"common-pictures", "xdto-packages", "web-services", "http-services",
-		"ws-references", "websocket-clients", "integration-services",
+		"ws-references", "websocket-clients",
 		"style-items", "styles", "languages",
 	}
 	topLevelKindOrder = []string{
@@ -111,7 +111,6 @@ var metadataTitles = map[string]string{
 	"common-modules":                 "Общие модули",
 	"exchange-plans":                 "Планы обмена",
 	"filter-criteria":                "Критерии отбора",
-	"bots":                           "Боты",
 	"functional-options":             "Функциональные опции",
 	"functional-options-parameters":  "Параметры функциональных опций",
 	"command-groups":                 "Группы команд",
@@ -119,7 +118,6 @@ var metadataTitles = map[string]string{
 	"web-services":                   "Web-сервисы",
 	"ws-references":                  "WS-ссылки",
 	"websocket-clients":              "WebSocket-клиенты",
-	"integration-services":           "Сервисы интеграции",
 	"style-items":                    "Элементы стиля",
 	"document-numerators":            "Нумераторы",
 	"sequences":                      "Последовательности",
@@ -865,13 +863,19 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 	for _, kind := range project.MetadataKinds() {
 		known[kind] = true
 	}
+	// Every such folder is named at once - see ML-STUDIO.md, a folder the
+	// platform does not know blocks the work with the project until it is gone.
+	var unexpected []string
 	for _, entry := range entries {
 		if entry.Name() == ".gitkeep" {
 			continue
 		}
 		if !known[entry.Name()] || !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
-			return nil, fmt.Errorf("unexpected metadata path %q", filepath.Join("metadata", entry.Name()))
+			unexpected = append(unexpected, fmt.Sprintf("%q", filepath.ToSlash(filepath.Join("metadata", entry.Name()))))
 		}
+	}
+	if len(unexpected) != 0 {
+		return nil, fmt.Errorf("unexpected metadata paths: %s", strings.Join(unexpected, ", "))
 	}
 	// A tree listing must stay usable even while some object's metadata
 	// doesn't yet fully validate (e.g. mid-edit, or an older/minimal

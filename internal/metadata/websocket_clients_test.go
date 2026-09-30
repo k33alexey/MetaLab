@@ -90,9 +90,6 @@ timeout: 0
 	if plain.Name != "Склад" || plain.ConnectionTimeout() != 30 || plain.PasswordSet {
 		t.Fatalf("a client that names nothing came back as %+v with timeout %d", plain, plain.ConnectionTimeout())
 	}
-	if len(catalog.OutlinedObjectsOf(WebSocketClientKind)) != 0 {
-		t.Fatal("a WebSocket client is still read as an object known by identity alone")
-	}
 }
 
 // A copy handed out is a copy. Catches a clone that copies the structure and

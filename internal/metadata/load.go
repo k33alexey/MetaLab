@@ -27,6 +27,9 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := validateMetadataDirectories(root); err != nil {
+		return nil, err
+	}
 	catalog := &Catalog{Project: configuration, rolesLoaded: includeRoles}
 	if includeRoles {
 		if err := loadKind(root, RoleKind, func(source string, file *os.File, id uuid.UUID) error {
@@ -238,9 +241,6 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	if err := catalog.loadExternalDataSources(root, configuration); err != nil {
-		return nil, err
-	}
-	if err := catalog.loadOutlinedKinds(root, configuration); err != nil {
 		return nil, err
 	}
 	if err := loadObjectKind(root, HTTPServiceKind, func(source string, file *os.File, name string) error {
@@ -1910,9 +1910,6 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	if err := catalog.validateExternalCubeFiles(root); err != nil {
 		return err
 	}
-	if err := catalog.validateOutlinedObjects(); err != nil {
-		return err
-	}
 	return catalog.validateDefinedTypeCycles()
 }
 
@@ -2889,6 +2886,50 @@ func (catalog *Catalog) validateDefinedTypeCycles() error {
 		if err := visit(item.ID); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// refusedMetadataKinds are the kinds of the prototype MetaLab does not carry at
+// all - METADATA-OBJECTS.md, «От четырёх механизмов прототипа…». A folder of
+// one in a project is refused with that reason rather than as an unknown one.
+var refusedMetadataKinds = map[string]string{
+	"bots":                 "bots are not carried by MetaLab",
+	"integration-services": "integration services are not carried by MetaLab",
+}
+
+// validateMetadataDirectories refuses anything in metadata/ that is not the
+// folder of a kind the platform reads. A folder nobody reads is a set of
+// objects passed over in silence - the one outcome the conformance report
+// calls unacceptable - and Studio's tree refused it while saving the data did
+// not.
+func validateMetadataDirectories(root string) error {
+	entries, err := os.ReadDir(filepath.Join(root, "metadata"))
+	if err != nil {
+		return fmt.Errorf("read metadata directory: %w", err)
+	}
+	known := map[string]bool{}
+	for _, kind := range project.MetadataKinds() {
+		known[kind] = true
+	}
+	// Every such folder is named at once: removing them one error at a time is
+	// a round trip per folder for no reason.
+	var issues []string
+	for _, entry := range entries {
+		if entry.Name() == ".gitkeep" {
+			continue
+		}
+		path := filepath.ToSlash(filepath.Join("metadata", entry.Name()))
+		if reason, refused := refusedMetadataKinds[entry.Name()]; refused {
+			issues = append(issues, fmt.Sprintf("%q: %s", path, reason))
+			continue
+		}
+		if !known[entry.Name()] || !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
+			issues = append(issues, fmt.Sprintf("%q: not a kind of metadata object", path))
+		}
+	}
+	if len(issues) != 0 {
+		return fmt.Errorf("unexpected metadata paths: %s", strings.Join(issues, "; "))
 	}
 	return nil
 }

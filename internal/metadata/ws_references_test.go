@@ -78,9 +78,6 @@ func TestWSReferenceCarriesItsAddressAndIsFoundByNameAndIdentifier(t *testing.T)
 	if bank, ok := catalog.WSReference("Банк"); !ok || bank.LocationURL != "" {
 		t.Fatalf("a reference without an address came back as %+v", bank)
 	}
-	if len(catalog.OutlinedObjectsOf(WSReferenceKind)) != 0 {
-		t.Fatal("a WS reference is still read as an object known by identity alone")
-	}
 }
 
 // A reference may lie without its description: an export of the platform

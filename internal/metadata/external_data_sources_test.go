@@ -228,9 +228,6 @@ func TestExternalDataSourceCarriesItsTablesAndTheirFields(t *testing.T) {
 		stock.ObjectTable() || stock.Forms.Record != "ФормаЗаписи" || stock.RecordPresentation["ru"] != "Остаток" {
 		t.Fatalf("the table of records lost its properties: %+v", stock)
 	}
-	if len(catalog.OutlinedObjectsOf(ExternalDataSourceKind)) != 0 {
-		t.Fatal("a source is still read as an object known by identity alone")
-	}
 }
 
 // A copy handed out is a copy, down to the fields. Catches a clone that copies

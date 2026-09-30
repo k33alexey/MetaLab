@@ -657,11 +657,7 @@ type Catalog struct {
 	externalTableByID map[uuid.UUID]externalTableLocation
 	// externalDimensionTableByID finds a dimension table of any cube the same
 	// way.
-	externalDimensionTableByID map[uuid.UUID]externalDimensionTableLocation
-	// OutlinedObjects are the objects of the kinds carried by identity
-	// alone. They share one list because nothing tells them apart yet beyond
-	// the kind each one names.
-	OutlinedObjects                  []OutlinedObject
+	externalDimensionTableByID       map[uuid.UUID]externalDimensionTableLocation
 	CommonPictures                   []CommonPictureDefinition
 	commonPictureByName              map[string]int
 	commonPictureByID                map[uuid.UUID]int
