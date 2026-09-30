@@ -311,33 +311,45 @@ func validateEditablePath(relative string) (string, string, error) {
 			return relative, "yaml", nil
 		}
 	}
-	if len(parts) >= 4 && parts[0] == "metadata" && slices.Contains(project.ObjectFolderKinds(), parts[1]) {
-		if project.ObjectName(parts[2]) == nil {
-			if len(parts) == 4 && parts[3] == project.ObjectMetadataFile {
+	// An object folder is read from its address, wherever it lies: a table
+	// of an external data source keeps the same files a catalog does, one
+	// folder deeper, and the project is what knows how much deeper.
+	if kind, _, rest, ok := project.SplitObjectPath(relative); ok && project.IsObjectFolderKind(kind) {
+		if len(rest) == 1 && rest[0] == project.ObjectMetadataFile {
+			return relative, "yaml", nil
+		}
+		// A module is named after the role it plays, not after an
+		// identifier: the file is what says which module it is.
+		if len(rest) == 1 && slices.Contains(project.ObjectModuleFiles(), rest[0]) {
+			return relative, "bsl", nil
+		}
+		// A form is a folder named after itself, holding its description
+		// and, under the name of its role, the module that runs it.
+		if len(rest) == 3 && rest[0] == "forms" && project.SubordinateName(rest[1]) == nil {
+			switch rest[2] {
+			case project.FormMetadataFile:
 				return relative, "yaml", nil
-			}
-			// A module is named after the role it plays, not after an
-			// identifier: the file is what says which module it is.
-			if len(parts) == 4 && slices.Contains(project.ObjectModuleFiles(), parts[3]) {
-				return relative, "bsl", nil
-			}
-			// A form is a folder named after itself, holding its description
-			// and, under the name of its role, the module that runs it.
-			if len(parts) == 6 && parts[3] == "forms" && project.SubordinateName(parts[4]) == nil {
-				switch parts[5] {
-				case project.FormMetadataFile:
-					return relative, "yaml", nil
-				case project.FormModuleFile:
-					return relative, "bsl", nil
-				}
-			}
-			if len(parts) == 6 && parts[3] == "commands" && project.SubordinateName(parts[4]) == nil &&
-				parts[5] == project.CommandModuleFile {
+			case project.FormModuleFile:
 				return relative, "bsl", nil
 			}
 		}
+		if len(rest) == 3 && rest[0] == "commands" && project.SubordinateName(rest[1]) == nil &&
+			rest[2] == project.CommandModuleFile {
+			return relative, "bsl", nil
+		}
 	}
 	return "", "", ErrInvalidSourcePath
+}
+
+// objectFormName reports the form's name if relative is the description of a
+// form of an object, wherever the object's folder lies.
+func objectFormName(relative string) (string, bool) {
+	kind, _, rest, ok := project.SplitObjectPath(relative)
+	if !ok || !project.IsObjectFolderKind(kind) || len(rest) != 3 || rest[0] != "forms" ||
+		rest[2] != project.FormMetadataFile || project.SubordinateName(rest[1]) != nil {
+		return "", false
+	}
+	return rest[1], true
 }
 
 func validUUIDFile(name, extension string) bool {
@@ -425,8 +437,7 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 	// name that has to agree with where the file is. The identifier inside is
 	// the form's own and is not checked against anything here: it is what
 	// roles, the portal and ML App refer to the form by, not what finds it.
-	if len(parts) == 6 && parts[0] == "metadata" && parts[3] == "forms" &&
-		parts[5] == project.FormMetadataFile && slices.Contains(project.ObjectFolderKinds(), parts[1]) {
+	if formName, ok := objectFormName(relative); ok {
 		configuration, err := project.ValidateLayout(workspace.root)
 		if err != nil {
 			return nil, err
@@ -435,8 +446,8 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 		if err != nil {
 			return nil, err
 		}
-		if !strings.EqualFold(value.Name, parts[4]) {
-			return nil, fmt.Errorf("form %s does not match the folder %s it lies in", value.Name, parts[4])
+		if !strings.EqualFold(value.Name, formName) {
+			return nil, fmt.Errorf("form %s does not match the folder %s it lies in", value.Name, formName)
 		}
 		var canonical bytes.Buffer
 		if err := metadata.Encode(&canonical, value); err != nil {
@@ -451,8 +462,11 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 	kindPart, filenameIDPart, folderPart := "", "", ""
 	if len(parts) == 3 && parts[0] == "metadata" {
 		kindPart, filenameIDPart = parts[1], strings.TrimSuffix(parts[2], ".yaml")
-	} else if len(parts) == 4 && parts[0] == "metadata" && parts[3] == "object.yaml" && slices.Contains(project.ObjectFolderKinds(), parts[1]) {
-		kindPart, folderPart = parts[1], parts[2]
+	} else if kind, name, rest, ok := project.SplitObjectPath(relative); ok && len(rest) == 1 && rest[0] == project.ObjectMetadataFile &&
+		(project.IsObjectFolderKind(kind) || metadata.Kind(kind) == metadata.ExternalDataSourceKind) {
+		// The folder is named after the object's own name, which for an
+		// object inside another is what follows the owner's.
+		kindPart, folderPart = kind, name[strings.LastIndexByte(name, '.')+1:]
 	}
 	if kindPart != "" {
 		configuration, err := project.ValidateLayout(workspace.root)
@@ -513,6 +527,10 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 			value, err = metadata.DecodeInformationRegister(relative, bytes.NewReader(content), configuration)
 		case metadata.AccumulationRegisterKind:
 			value, err = metadata.DecodeAccumulationRegister(relative, bytes.NewReader(content), configuration)
+		case metadata.ExternalDataSourceKind:
+			value, err = metadata.DecodeExternalDataSource(relative, bytes.NewReader(content), configuration)
+		case metadata.ExternalDataSourceTableKind:
+			value, err = metadata.DecodeExternalTable(relative, bytes.NewReader(content), configuration)
 		}
 		if err != nil {
 			return nil, err

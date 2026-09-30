@@ -222,6 +222,17 @@ func validateSourcePath(relative string, directory bool) error {
 		if !directory && len(parts) == 3 && parts[2] == ".gitkeep" && contains(project.MetadataKinds(), parts[1]) {
 			return nil
 		}
+		// An object inside another - a table of an external data source -
+		// is checked the way any object folder is, from its own address; and
+		// the collection folder holding such objects belongs to the owner.
+		if kind, name, rest, ok := project.SplitObjectPath(relative); ok {
+			if project.IsSubordinateObjectKind(kind) {
+				return validateObjectFolderSourcePath(append([]string{"metadata", kind, name}, rest...), relative, directory)
+			}
+			if directory && len(rest) == 1 && contains(project.SubordinateCollections(kind), rest[0]) {
+				return nil
+			}
+		}
 		if contains(project.ObjectFolderKinds(), parts[1]) {
 			return validateObjectFolderSourcePath(parts, relative, directory)
 		}
@@ -302,15 +313,26 @@ func contains(items []string, value string) bool {
 }
 
 // validateObjectFolderSourcePath validates the shapes physically grouped
-// under one catalog/document/register's own folder: the object's
-// description, its module(s) directly inside it, and the folders its forms,
-// commands and templates keep inside it.
+// under one object's own folder: the object's description, its module(s)
+// directly inside it, and the folders its forms, commands and templates keep
+// inside it.
+//
+// parts is the object's address followed by what lies below its folder -
+// metadata, kind, name, rest - and not necessarily the path itself: a table of
+// a source is addressed as external-data-source-tables, Склад.Товары, one
+// folder deeper than a catalog. Every file is compared against the path the
+// project would build for it from that address, so the depth is the project's
+// business and not this function's.
 func validateObjectFolderSourcePath(parts []string, relative string, directory bool) error {
 	if len(parts) < 3 {
 		return fmt.Errorf("unexpected publication source path %q", relative)
 	}
 	objectName := parts[2]
-	if err := project.ObjectName(objectName); err != nil {
+	objectDirectory, err := project.ObjectDirectory(parts[1], objectName)
+	if err != nil {
+		return fmt.Errorf("unexpected publication source path %q", relative)
+	}
+	if directory && len(parts) == 3 && objectDirectory != relative {
 		return fmt.Errorf("unexpected publication source path %q", relative)
 	}
 	if directory && len(parts) == 3 {
@@ -388,15 +410,12 @@ func templateContentName(file string) bool {
 // objectFolderFormName reports the form's name if relative is one of an
 // object's own managed forms (metadata/<kind>/<object>/forms/<form>/form.yaml).
 func objectFolderFormName(relative string) (string, bool) {
-	parts := strings.Split(relative, "/")
-	if len(parts) != 6 || parts[0] != "metadata" || parts[3] != "forms" ||
-		parts[5] != project.FormMetadataFile || !contains(project.ObjectFolderKinds(), parts[1]) {
+	kind, _, rest, ok := project.SplitObjectPath(relative)
+	if !ok || !project.IsObjectFolderKind(kind) || len(rest) != 3 || rest[0] != "forms" ||
+		rest[2] != project.FormMetadataFile || project.SubordinateName(rest[1]) != nil {
 		return "", false
 	}
-	if project.ObjectName(parts[2]) != nil || project.SubordinateName(parts[4]) != nil {
-		return "", false
-	}
-	return parts[4], true
+	return rest[1], true
 }
 
 // isManagedFormSourcePath reports whether relative is any managed form

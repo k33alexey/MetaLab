@@ -488,6 +488,23 @@ func folderName(what, name string) error {
 // folder and changes nothing in the database: a table is named by the
 // identifier, which the rename does not touch.
 func ObjectDirectory(kind, name string) (string, error) {
+	if subordinate, ok := subordinateObjectKinds[kind]; ok {
+		// The owner may itself be subordinate, so only what follows the last
+		// dot is the object's own name.
+		index := strings.LastIndexByte(name, '.')
+		if index < 0 {
+			return "", fmt.Errorf("%s %q must be named as <owner>.<name>", kind, name)
+		}
+		owner, own := name[:index], name[index+1:]
+		if err := ObjectName(own); err != nil {
+			return "", err
+		}
+		ownerDirectory, err := ObjectDirectory(subordinate.owner, owner)
+		if err != nil {
+			return "", err
+		}
+		return path.Join(ownerDirectory, subordinate.collection, own), nil
+	}
 	if _, keepsFolder := namedFolderKinds[kind]; !keepsFolder && !slices.Contains(objectFolderKinds, kind) {
 		return "", fmt.Errorf("kind %q does not use a per-object folder", kind)
 	}
@@ -495,6 +512,116 @@ func ObjectDirectory(kind, name string) (string, error) {
 		return "", err
 	}
 	return path.Join("metadata", kind, name), nil
+}
+
+// subordinateKind says where the objects of a subordinate kind lie: in a
+// collection folder inside an object of the owner kind.
+type subordinateKind struct {
+	owner      string
+	collection string
+}
+
+// subordinateObjectKinds are the kinds whose objects lie inside an object of
+// another kind rather than directly under metadata/. The prototype's export
+// lays out a subordinate object that is an object of development in its own
+// right the same way - a folder in its owner's collection, beside the owner's
+// description - and a table of an external data source is one: it has its own
+// modules, forms, commands and templates, exactly as a catalog does.
+//
+// Such an object is addressed like any other, by a kind and a name, and the
+// name carries the owner: Склад.Товары is the table Товары of the source
+// Склад. The address is what forms, modules and the published snapshot know
+// an object by, so none of them needed a new field; only the translation of
+// an address into a folder, here, knows the folder is deeper.
+var subordinateObjectKinds = map[string]subordinateKind{
+	"external-data-source-tables": {owner: "external-data-sources", collection: "tables"},
+}
+
+// SubordinateObjectKinds returns the kinds whose objects lie inside another
+// object, sorted.
+func SubordinateObjectKinds() []string {
+	result := make([]string, 0, len(subordinateObjectKinds))
+	for kind := range subordinateObjectKinds {
+		result = append(result, kind)
+	}
+	slices.Sort(result)
+	return result
+}
+
+// IsSubordinateObjectKind reports whether a kind's objects lie inside another
+// object.
+func IsSubordinateObjectKind(kind string) bool {
+	_, ok := subordinateObjectKinds[kind]
+	return ok
+}
+
+// SubordinateCollections returns the collection folders an object of a kind
+// keeps for subordinate objects, sorted: "tables" for an external data source.
+func SubordinateCollections(kind string) []string {
+	var result []string
+	for _, subordinate := range subordinateObjectKinds {
+		if subordinate.owner == kind {
+			result = append(result, subordinate.collection)
+		}
+	}
+	slices.Sort(result)
+	return result
+}
+
+// SubordinateObjectKind returns the kind of the objects an object of the owner
+// kind keeps in one of its collections: external-data-source-tables for the
+// tables of an external data source.
+func SubordinateObjectKind(owner, collection string) (string, bool) {
+	for kind, subordinate := range subordinateObjectKinds {
+		if subordinate.owner == owner && subordinate.collection == collection {
+			return kind, true
+		}
+	}
+	return "", false
+}
+
+// IsObjectFolderKind reports whether an object of a kind keeps an object
+// folder - its description, its modules and its forms, commands and templates
+// - wherever that folder lies.
+func IsObjectFolderKind(kind string) bool {
+	return slices.Contains(objectFolderKinds, kind) || IsSubordinateObjectKind(kind)
+}
+
+// SplitObjectPath reads a path of the project as the object it belongs to and
+// what lies below that object's folder. It is the one place that knows how
+// deep an object's folder is, so that nothing reading paths has to count
+// segments: metadata/catalogs/Товары/forms/Ф/form.yaml is the catalog Товары
+// and forms/Ф/form.yaml below it; metadata/external-data-sources/Склад/tables/
+// Товары/МодульОбъекта.bsl is the table Склад.Товары and МодульОбъекта.bsl.
+//
+// The path is walked as deep as it goes: a collection of subordinate objects
+// followed by an object's name moves the address into that object. A path
+// that stops at a collection folder belongs to the owner, with the collection
+// as what lies below. ok is false for anything that is not under an object's
+// folder at all.
+func SplitObjectPath(relative string) (kind, name string, rest []string, ok bool) {
+	parts := strings.Split(relative, "/")
+	if len(parts) < 3 || parts[0] != "metadata" || ObjectName(parts[2]) != nil {
+		return "", "", nil, false
+	}
+	kind, name, rest = parts[1], parts[2], parts[3:]
+	if _, keepsFolder := namedFolderKinds[kind]; !keepsFolder && !slices.Contains(objectFolderKinds, kind) {
+		return "", "", nil, false
+	}
+	for len(rest) >= 2 {
+		moved := false
+		for subordinateName, subordinate := range subordinateObjectKinds {
+			if subordinate.owner == kind && rest[0] == subordinate.collection && ObjectName(rest[1]) == nil {
+				kind, name, rest = subordinateName, name+"."+rest[1], rest[2:]
+				moved = true
+				break
+			}
+		}
+		if !moved {
+			break
+		}
+	}
+	return kind, name, rest, true
 }
 
 // ObjectMetadataPath returns the fixed-name description file inside an
@@ -749,69 +876,117 @@ func ObjectFolderSourcePaths(root string) ([]string, error) {
 			if !objectEntry.IsDir() || objectEntry.Type()&fs.ModeSymlink != 0 {
 				continue
 			}
-			objectDirectory := filepath.Join(directory, objectEntry.Name())
-			fileEntries, err := os.ReadDir(objectDirectory)
+			nested, err := objectFolderSources(root, path.Join("metadata", kind, objectEntry.Name()))
 			if err != nil {
-				return nil, fmt.Errorf("read metadata %s object %s: %w", kind, objectEntry.Name(), err)
+				return nil, err
 			}
-			for _, fileEntry := range fileEntries {
-				if fileEntry.Type()&fs.ModeSymlink != 0 {
-					continue
-				}
-				if fileEntry.IsDir() {
-					switch fileEntry.Name() {
-					case "forms":
-						// A form is a folder holding its description.
-						nested, err := objectNestedSources(objectDirectory, kind, objectEntry.Name(), "forms", true)
-						if err != nil {
-							return nil, err
-						}
-						paths = append(paths, nested...)
-					case "commands":
-						// A command is a folder holding its module.
-						nested, err := objectNestedSources(objectDirectory, kind, objectEntry.Name(), "commands", true)
-						if err != nil {
-							return nil, err
-						}
-						paths = append(paths, nested...)
-					}
-					continue
-				}
-				paths = append(paths, path.Join("metadata", kind, objectEntry.Name(), fileEntry.Name()))
+			paths = append(paths, nested...)
+		}
+	}
+	// An object that lies inside another is walked the same way, from its
+	// own folder: a table of a source keeps its modules and forms exactly as
+	// a catalog does, one level deeper.
+	for _, kind := range SubordinateObjectKinds() {
+		objects, err := subordinateObjectDirectories(root, kind)
+		if err != nil {
+			return nil, err
+		}
+		for _, directory := range objects {
+			nested, err := objectFolderSources(root, directory)
+			if err != nil {
+				return nil, err
 			}
+			paths = append(paths, nested...)
 		}
 	}
 	sort.Strings(paths)
 	return paths, nil
 }
 
-// objectNestedSources lists the source files under one of an object's
-// subordinate folders. nested says whether that folder holds a folder per
-// entity - a command or a form, each of which owns more than one file - or a
-// file per entity.
-func objectNestedSources(objectDirectory, kind, object, subordinate string, nested bool) ([]string, error) {
-	entries, err := os.ReadDir(filepath.Join(objectDirectory, subordinate))
+// subordinateObjectDirectories lists the folders of every object of a
+// subordinate kind, as project-relative paths: every folder in the collection
+// of every object of the owner kind, however deep the owner itself lies.
+func subordinateObjectDirectories(root, kind string) ([]string, error) {
+	subordinate := subordinateObjectKinds[kind]
+	var owners []string
+	if IsSubordinateObjectKind(subordinate.owner) {
+		nested, err := subordinateObjectDirectories(root, subordinate.owner)
+		if err != nil {
+			return nil, err
+		}
+		owners = nested
+	} else {
+		entries, err := os.ReadDir(filepath.Join(root, "metadata", subordinate.owner))
+		if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("read metadata %s: %w", subordinate.owner, err)
+		}
+		for _, entry := range entries {
+			if entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 {
+				owners = append(owners, path.Join("metadata", subordinate.owner, entry.Name()))
+			}
+		}
+	}
+	var result []string
+	for _, owner := range owners {
+		entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(owner), subordinate.collection))
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("read %s/%s: %w", owner, subordinate.collection, err)
+		}
+		for _, entry := range entries {
+			if entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 {
+				result = append(result, path.Join(owner, subordinate.collection, entry.Name()))
+			}
+		}
+	}
+	return result, nil
+}
+
+// objectFolderSources lists the source files of one object folder, given as a
+// project-relative path: the files directly inside it, and the files of its
+// forms and commands. Templates are left out - their content is not source -
+// and so are collections of subordinate objects, which are walked as objects
+// of their own.
+func objectFolderSources(root, relative string) ([]string, error) {
+	directory := filepath.Join(root, filepath.FromSlash(relative))
+	entries, err := os.ReadDir(directory)
 	if err != nil {
-		return nil, fmt.Errorf("read metadata %s object %s %s: %w", kind, object, subordinate, err)
+		return nil, fmt.Errorf("read %s: %w", relative, err)
 	}
 	var paths []string
 	for _, entry := range entries {
-		if entry.Type()&fs.ModeSymlink != 0 || entry.IsDir() != nested {
+		if entry.Type()&fs.ModeSymlink != 0 {
 			continue
 		}
-		if !nested {
-			paths = append(paths, path.Join("metadata", kind, object, subordinate, entry.Name()))
+		if !entry.IsDir() {
+			paths = append(paths, path.Join(relative, entry.Name()))
 			continue
 		}
-		files, err := os.ReadDir(filepath.Join(objectDirectory, subordinate, entry.Name()))
+		// A form is a folder holding its description, a command a folder
+		// holding its module.
+		if entry.Name() != "forms" && entry.Name() != "commands" {
+			continue
+		}
+		items, err := os.ReadDir(filepath.Join(directory, entry.Name()))
 		if err != nil {
-			return nil, fmt.Errorf("read metadata %s object %s %s %s: %w", kind, object, subordinate, entry.Name(), err)
+			return nil, fmt.Errorf("read %s/%s: %w", relative, entry.Name(), err)
 		}
-		for _, file := range files {
-			if file.IsDir() || file.Type()&fs.ModeSymlink != 0 {
+		for _, item := range items {
+			if !item.IsDir() || item.Type()&fs.ModeSymlink != 0 {
 				continue
 			}
-			paths = append(paths, path.Join("metadata", kind, object, subordinate, entry.Name(), file.Name()))
+			files, err := os.ReadDir(filepath.Join(directory, entry.Name(), item.Name()))
+			if err != nil {
+				return nil, fmt.Errorf("read %s/%s/%s: %w", relative, entry.Name(), item.Name(), err)
+			}
+			for _, file := range files {
+				if file.IsDir() || file.Type()&fs.ModeSymlink != 0 {
+					continue
+				}
+				paths = append(paths, path.Join(relative, entry.Name(), item.Name(), file.Name()))
+			}
 		}
 	}
 	return paths, nil

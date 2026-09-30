@@ -291,3 +291,49 @@ func TestCommonTemplateAndPicturePathShapes(t *testing.T) {
 		})
 	}
 }
+
+// A table of an external data source keeps the files a catalog keeps, one level
+// deeper, and publication walks it. Catches a project with a table refusing to
+// publish at all - which it did - and the depth letting through what a
+// catalog's folder would refuse.
+func TestSubordinateObjectPathShapes(t *testing.T) {
+	t.Parallel()
+	const table = "metadata/external-data-sources/Склад/tables/Товары"
+	for name, test := range map[string]struct {
+		relative  string
+		directory bool
+		accepted  bool
+	}{
+		"папка источника":          {"metadata/external-data-sources/Склад", true, true},
+		"описание источника":       {"metadata/external-data-sources/Склад/object.yaml", false, true},
+		"коллекция таблиц":         {"metadata/external-data-sources/Склад/tables", true, true},
+		"папка таблицы":            {table, true, true},
+		"описание таблицы":         {table + "/object.yaml", false, true},
+		"модуль объекта таблицы":   {table + "/МодульОбъекта.bsl", false, true},
+		"папка форм таблицы":       {table + "/forms", true, true},
+		"форма таблицы":            {table + "/forms/ФормаСписка/form.yaml", false, true},
+		"модуль формы таблицы":     {table + "/forms/ФормаСписка/МодульФормы.bsl", false, true},
+		"модуль команды таблицы":   {table + "/commands/Печать/МодульКоманды.bsl", false, true},
+		"макет таблицы":            {table + "/templates/Макет/content.yaml", false, true},
+		"чужая коллекция":          {"metadata/external-data-sources/Склад/cubes", true, false},
+		"файл в коллекции":         {"metadata/external-data-sources/Склад/tables/Товары.yaml", false, false},
+		"посторонний файл таблицы": {table + "/заметки.txt", false, false},
+		"не модуль у таблицы":      {table + "/МодульСервиса.bsl", false, false},
+		"не форма в формах":        {table + "/forms/ФормаСписка/заметки.yaml", false, false},
+		"таблица с точкой в имени": {"metadata/external-data-sources/Склад/tables/Тов.ары", true, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			err := validateSourcePath(test.relative, test.directory)
+			if test.accepted && err != nil {
+				t.Fatalf("%s was refused: %v", test.relative, err)
+			}
+			if !test.accepted && err == nil {
+				t.Fatalf("%s was accepted", test.relative)
+			}
+		})
+	}
+	if name, ok := objectFolderFormName(table + "/forms/ФормаСписка/form.yaml"); !ok || name != "ФормаСписка" {
+		t.Fatalf("a form of a table is not recognised as a form: %q %v", name, ok)
+	}
+}

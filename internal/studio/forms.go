@@ -170,10 +170,12 @@ func (workspace *Workspace) EnsureManagedFormHandler(relative, expectedRevision 
 // form's own folder, wherever that folder is. A common form and an object's
 // form differ only in where the folder sits.
 func formModulePath(relative string) (string, error) {
+	if form, ok := objectFormName(relative); ok {
+		kind, name, _, _ := project.SplitObjectPath(relative)
+		return project.ObjectFormModulePath(kind, name, form)
+	}
 	parts := strings.Split(relative, "/")
 	switch {
-	case len(parts) == 6 && parts[0] == "metadata" && parts[3] == "forms" && parts[5] == project.FormMetadataFile:
-		return project.ObjectFormModulePath(parts[1], parts[2], parts[4])
 	case len(parts) == 4 && parts[0] == "metadata" && parts[1] == "common-forms" && parts[3] == project.FormMetadataFile:
 		return project.CommonFormModulePath(parts[2])
 	}
@@ -264,10 +266,11 @@ func formAgreesWithItsPath(form metadata.ManagedForm, relative string) error {
 // formNameFromPath reads the form's name out of where the file lies, for
 // either kind of form.
 func formNameFromPath(relative string) (string, bool) {
+	if form, ok := objectFormName(relative); ok {
+		return form, true
+	}
 	parts := strings.Split(relative, "/")
 	switch {
-	case len(parts) == 6 && parts[0] == "metadata" && parts[3] == "forms" && parts[5] == project.FormMetadataFile:
-		return parts[4], true
 	case len(parts) == 4 && parts[0] == "metadata" && parts[1] == "common-forms" && parts[3] == project.FormMetadataFile:
 		return parts[2], true
 	}

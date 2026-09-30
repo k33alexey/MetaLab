@@ -920,6 +920,9 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 					// named after the object: its description, and the modules
 					// that run it.
 					node.Children, buildErr = namedFolderNodes(path, filepath.ToSlash(relative), kind, named)
+					if buildErr == nil {
+						buildErr = workspace.attachSubordinateObjects(node.Children, path, filepath.ToSlash(relative), kind, language, languages)
+					}
 				} else {
 					node.Children, buildErr = workspace.sourceFiles(path, filepath.ToSlash(relative), ".yaml", "metadata", language, languages)
 				}
@@ -1201,6 +1204,46 @@ func objectFormNodes(parentDirectory, parentRelative, forms string) ([]Node, err
 		nodes = append(nodes, node)
 	}
 	return nodes, nil
+}
+
+// subordinateCollectionTitles names the collections of subordinate objects
+// the way the configuration tree names them.
+var subordinateCollectionTitles = map[string]string{
+	"tables": "Таблицы",
+}
+
+// attachSubordinateObjects hangs under each object the collections of objects
+// that lie inside it - the tables of an external data source - each object
+// shown the way an object of the configuration is, with its forms, commands,
+// templates and modules. A collection stands even when it is empty, the way
+// a branch of the tree does: an empty branch in its place says there is
+// nothing, a missing one says nothing at all.
+func (workspace *Workspace) attachSubordinateObjects(owners []Node, directory, relative, kind, language string, languages []project.Language) error {
+	collections := project.SubordinateCollections(kind)
+	if len(collections) == 0 {
+		return nil
+	}
+	for index := range owners {
+		ownerName := owners[index].Title
+		for _, collection := range collections {
+			subordinateKind, _ := project.SubordinateObjectKind(kind, collection)
+			group := Node{
+				ID: relative + "/" + ownerName + "/" + collection, Kind: "group", Title: subordinateCollectionTitles[collection],
+			}
+			collectionDirectory := filepath.Join(directory, ownerName, collection)
+			if _, err := os.Stat(collectionDirectory); err == nil {
+				children, err := workspace.objectFolderNodes(collectionDirectory, group.ID, subordinateKind, language, languages, nil)
+				if err != nil {
+					return err
+				}
+				group.Children = children
+			} else if !os.IsNotExist(err) {
+				return fmt.Errorf("inspect %s: %w", group.ID, err)
+			}
+			owners[index].Children = append(owners[index].Children, group)
+		}
+	}
+	return nil
 }
 
 // namedFolderFileTitles reads a file name as what the file is, so the tree

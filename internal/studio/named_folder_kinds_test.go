@@ -3,6 +3,7 @@ package studio
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -85,5 +86,69 @@ func TestEveryNamedFolderModuleHasATitle(t *testing.T) {
 				t.Errorf("%s keeps %s, and the tree has no name for it", kind, file)
 			}
 		}
+	}
+}
+
+// A source shows its tables, and a table shows what a catalog shows: its
+// forms, commands, templates and modules. Catches the tables missing from the
+// tree - which they were - a table's files that do not open, and a table's
+// description saved without the strict reading every description gets.
+func TestExternalDataSourceTablesStandInTheTreeAndOpen(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	const table = "metadata/external-data-sources/Склад/tables/Товары"
+	writeProjectFile(t, root, "metadata/external-data-sources/Склад/object.yaml",
+		"format: 1\nid: f9000000-0000-4000-8000-000000000011\nname: Склад\ntitle: {ru: Склад}\n")
+	const description = "format: 1\nid: f9000000-0000-4000-8000-000000000012\nname: Товары\ntitle: {ru: Товары}\n" +
+		"name_in_data_source: dbo.Goods\ndata_type: non-object\n"
+	writeProjectFile(t, root, table+"/object.yaml", description)
+	writeProjectFile(t, root, "metadata/external-data-sources/Пустой/object.yaml",
+		"format: 1\nid: f9000000-0000-4000-8000-000000000013\nname: Пустой\ntitle: {ru: Пустой}\n")
+
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := workspace.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, ok := findNodeByID(snapshot.Tree, "metadata/external-data-sources/Склад/tables")
+	if !ok || tables.Title != "Таблицы" || len(tables.Children) != 1 || tables.Children[0].Title != "Товары" ||
+		tables.Children[0].Path != table+"/object.yaml" || tables.Children[0].Kind != "external-data-source-tables" {
+		t.Fatalf("the tables of the source stand in the tree as %+v", tables)
+	}
+	groups := map[string]bool{}
+	for _, child := range tables.Children[0].Children {
+		groups[child.Title] = true
+	}
+	for _, group := range []string{"Формы", "Команды", "Макеты"} {
+		if !groups[group] {
+			t.Errorf("the table has no %s group: %+v", group, tables.Children[0].Children)
+		}
+	}
+	// A source with no tables still shows the branch, empty.
+	if empty, ok := findNodeByID(snapshot.Tree, "metadata/external-data-sources/Пустой/tables"); !ok || len(empty.Children) != 0 {
+		t.Fatalf("a source without tables stands in the tree as %+v %v", empty, ok)
+	}
+
+	opened, err := workspace.ReadSource(table + "/object.yaml")
+	if err != nil {
+		t.Fatalf("the table's description does not open: %v", err)
+	}
+	if _, err := workspace.SaveSource(table+"/object.yaml", description+"unknown_property: 1\n", opened.Revision); err == nil ||
+		!strings.Contains(err.Error(), "unknown_property") {
+		t.Fatalf("a table's description was saved without being read strictly: %v", err)
+	}
+	if _, err := workspace.SaveSource(table+"/object.yaml", strings.Replace(description, "name: Товары", "name: Остатки", 1), opened.Revision); err == nil {
+		t.Fatal("a table's description was saved under the name of another folder")
+	}
+	for _, path := range []string{table + "/МодульОбъекта.bsl", table + "/forms/ФормаСписка/form.yaml", table + "/commands/Печать/МодульКоманды.bsl"} {
+		if _, _, err := validateEditablePath(path); err != nil {
+			t.Errorf("%s is not a path Studio edits: %v", path, err)
+		}
+	}
+	if module, err := formModulePath(table + "/forms/ФормаСписка/form.yaml"); err != nil || module != table+"/forms/ФормаСписка/МодульФормы.bsl" {
+		t.Fatalf("the module of a table's form is %q, %v", module, err)
 	}
 }
