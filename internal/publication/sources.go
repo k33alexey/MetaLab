@@ -226,11 +226,11 @@ func validateSourcePath(relative string, directory bool) error {
 		// is checked the way any object folder is, from its own address; and
 		// the collection folder holding such objects belongs to the owner.
 		if kind, name, rest, ok := project.SplitObjectPath(relative); ok {
-			if project.IsSubordinateObjectKind(kind) {
-				return validateObjectFolderSourcePath(append([]string{"metadata", kind, name}, rest...), relative, directory)
-			}
 			if directory && len(rest) == 1 && contains(project.SubordinateCollections(kind), rest[0]) {
 				return nil
+			}
+			if project.IsSubordinateObjectKind(kind) {
+				return validateObjectFolderSourcePath(append([]string{"metadata", kind, name}, rest...), relative, directory)
 			}
 		}
 		if contains(project.ObjectFolderKinds(), parts[1]) {

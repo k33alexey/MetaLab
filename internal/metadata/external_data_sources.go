@@ -100,8 +100,10 @@ type ExternalDataSourceDefinition struct {
 	// DataLock is the locking mode the source's tables take unless they say
 	// otherwise.
 	DataLock project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
-	// Tables are read from the source's tables folder, not from this file.
+	// Tables and Cubes are read from the source's folders of them, not from
+	// this file.
 	Tables []ExternalTable `yaml:"-" json:"tables,omitempty"`
+	Cubes  []ExternalCube  `yaml:"-" json:"cubes,omitempty"`
 }
 
 // ExternalTableForms are the default forms of a table. A table has no
@@ -325,41 +327,75 @@ func validateNameInDataSource(path, value string) []string {
 // validateExternalFields checks every field on its own and returns them by
 // folded name for the checks of the lists that name them.
 func validateExternalFields(table ExternalTable, configuration project.Project) (map[string]ExternalField, []string) {
-	fields := make(map[string]ExternalField, len(table.Fields))
 	if len(table.Fields) > maxExternalFieldsPerTable {
-		return fields, []string{fmt.Sprintf("fields must not contain more than %d items", maxExternalFieldsPerTable)}
+		return map[string]ExternalField{}, []string{fmt.Sprintf("fields must not contain more than %d items", maxExternalFieldsPerTable)}
 	}
+	return checkExternalFieldGroups(configuration, externalFieldGroup{"fields", table.Fields})
+}
+
+// externalFieldGroup is one list of fields of a source's object under the
+// path its messages name it by: the fields of a table, the dimensions of a
+// cube, its resources.
+type externalFieldGroup struct {
+	path   string
+	fields []ExternalField
+}
+
+// validateExternalFieldGroups checks the lists of fields of one object as one
+// namespace, for an object that needs nothing back from the check.
+func validateExternalFieldGroups(configuration project.Project, groups ...externalFieldGroup) []string {
+	_, issues := checkExternalFieldGroups(configuration, groups...)
+	return issues
+}
+
+// checkExternalFieldGroups checks every field of one object on its own, and
+// the groups together as one namespace: a dimension and a resource of a cube
+// are both fields of the cube to a query, and two of one name would be one
+// field read twice. It returns the fields by folded name for the checks of the
+// lists that name them.
+func checkExternalFieldGroups(configuration project.Project, groups ...externalFieldGroup) (map[string]ExternalField, []string) {
+	fields := map[string]ExternalField{}
 	var issues []string
 	ids := map[uuid.UUID]bool{}
-	attributes := make([]Attribute, 0, len(table.Fields))
-	for index, field := range table.Fields {
-		prefix := fmt.Sprintf("fields[%d]", index)
-		if field.ID.IsZero() {
-			issues = append(issues, prefix+".id must be a non-zero UUID")
-		} else if ids[field.ID] {
-			issues = append(issues, prefix+".id is used twice")
+	var linked []fieldGroup
+	for _, group := range groups {
+		attributes := make([]Attribute, 0, len(group.fields))
+		for index, field := range group.fields {
+			prefix := fmt.Sprintf("%s[%d]", group.path, index)
+			if field.ID.IsZero() {
+				issues = append(issues, prefix+".id must be a non-zero UUID")
+			} else if ids[field.ID] {
+				issues = append(issues, prefix+".id is used twice")
+			}
+			ids[field.ID] = true
+			if !validIdentifier(field.Name) || utf8.RuneCountInString(field.Name) > 128 {
+				issues = append(issues, prefix+".name must start with a letter, contain only letters or digits and not exceed 128 characters")
+			} else if _, taken := fields[strings.ToLower(field.Name)]; taken {
+				issues = append(issues, prefix+".name is used twice")
+			} else {
+				fields[strings.ToLower(field.Name)] = field
+			}
+			issues = append(issues, validateTitle(prefix+".title", field.Title, configuration)...)
+			if field.NameInDataSource == "" {
+				issues = append(issues, prefix+".name_in_data_source must name the column this field is")
+			}
+			issues = append(issues, validateNameInDataSource(prefix+".name_in_data_source", field.NameInDataSource)...)
+			issues = append(issues, validateExternalFieldTypes(prefix+".types", field.Types)...)
+			issues = append(issues, validateFieldSettings(prefix, field.Attribute, configuration)...)
+			issues = append(issues, validateFieldStorage(prefix, field.Attribute)...)
+			issues = append(issues, validateExternalFieldStorage(prefix, field)...)
+			attributes = append(attributes, field.Attribute)
 		}
-		ids[field.ID] = true
-		if !validIdentifier(field.Name) || utf8.RuneCountInString(field.Name) > 128 {
-			issues = append(issues, prefix+".name must start with a letter, contain only letters or digits and not exceed 128 characters")
-		} else if _, taken := fields[strings.ToLower(field.Name)]; taken {
-			issues = append(issues, prefix+".name is used twice")
-		} else {
-			fields[strings.ToLower(field.Name)] = field
-		}
-		issues = append(issues, validateTitle(prefix+".title", field.Title, configuration)...)
-		if field.NameInDataSource == "" {
-			issues = append(issues, prefix+".name_in_data_source must name the column this field is")
-		}
-		issues = append(issues, validateNameInDataSource(prefix+".name_in_data_source", field.NameInDataSource)...)
-		issues = append(issues, validateExternalFieldTypes(prefix+".types", field.Types)...)
-		issues = append(issues, validateFieldSettings(prefix, field.Attribute, configuration)...)
-		issues = append(issues, validateFieldStorage(prefix, field.Attribute)...)
-		issues = append(issues, validateExternalFieldStorage(prefix, field)...)
-		attributes = append(attributes, field.Attribute)
+		linked = append(linked, fieldGroup{group.path, attributes})
 	}
-	issues = append(issues, validateFieldLinks([]fieldGroup{{"fields", attributes}}, nil)...)
+	issues = append(issues, validateFieldLinks(linked, nil)...)
 	return fields, issues
+}
+
+// isExternalReference says whether a type is a reference to something of a
+// source: a row of an object table, or a member of a dimension.
+func isExternalReference(kind TypeKind) bool {
+	return kind == ExternalTableType || kind == ExternalDimensionTableType
 }
 
 // validateExternalFieldTypes checks the types of a field: the reference to a
@@ -369,7 +405,7 @@ func validateExternalFieldTypes(path string, types []Type) []string {
 	var rest []Type
 	var restIndexes []int
 	for index, item := range types {
-		if item.Kind != ExternalTableType {
+		if !isExternalReference(item.Kind) {
 			rest, restIndexes = append(rest, item), append(restIndexes, index)
 			continue
 		}
@@ -567,11 +603,19 @@ func cloneExternalDataSource(source ExternalDataSourceDefinition) ExternalDataSo
 		tables[index] = cloneExternalTable(table)
 	}
 	source.Tables = tables
+	cubes := make([]ExternalCube, len(source.Cubes))
+	for index, cube := range source.Cubes {
+		cubes[index] = cloneExternalCube(cube)
+	}
+	source.Cubes = cubes
 	return source
 }
 
 // externalTableLocation is where a table lies: which source, which table of it.
 type externalTableLocation struct{ source, table int }
+
+// externalDimensionTableLocation is where a dimension table lies.
+type externalDimensionTableLocation struct{ source, cube, table int }
 
 // ExternalDataSource returns one source by name, folded case, with its tables.
 func (catalog *Catalog) ExternalDataSource(name string) (ExternalDataSourceDefinition, bool) {
@@ -624,6 +668,11 @@ func (catalog *Catalog) loadExternalDataSources(root string, configuration proje
 			return err
 		}
 		value.Tables = tables
+		cubes, err := loadExternalCubes(directory, filepath.ToSlash(filepath.Dir(source)), configuration)
+		if err != nil {
+			return err
+		}
+		value.Cubes = cubes
 		catalog.ExternalDataSources = append(catalog.ExternalDataSources, value)
 		return nil
 	})
@@ -638,10 +687,10 @@ func loadExternalTables(directory, relative string, configuration project.Projec
 		if entry.Name() == project.ObjectMetadataFile && !entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 {
 			continue
 		}
-		if entry.Name() == ExternalDataSourceTablesDirectory && entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 {
+		if slices.Contains(project.SubordinateCollections(string(ExternalDataSourceKind)), entry.Name()) && entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 {
 			continue
 		}
-		return nil, fmt.Errorf("%s keeps %q, and a source keeps its description and the folder of its tables", relative, entry.Name())
+		return nil, fmt.Errorf("%s keeps %q, and a source keeps its description and the folders of its tables and cubes", relative, entry.Name())
 	}
 	tablesDirectory := filepath.Join(directory, ExternalDataSourceTablesDirectory)
 	tableEntries, err := os.ReadDir(tablesDirectory)
@@ -712,47 +761,83 @@ func (catalog *Catalog) validateExternalTableFiles(root string) error {
 // databases nobody else can see into each other.
 func (catalog *Catalog) validateExternalDataSources() error {
 	for _, source := range catalog.ExternalDataSources {
-		own := make(map[uuid.UUID]ExternalTable, len(source.Tables))
-		for _, table := range source.Tables {
-			own[table.ID] = table
-		}
 		for _, table := range source.Tables {
 			owner := fmt.Sprintf("external data source %s table %s", source.Name, table.Name)
-			for _, field := range table.Fields {
-				var primitive []Type
-				for _, item := range field.Types {
-					if item.Kind != ExternalTableType {
-						primitive = append(primitive, item)
-						continue
-					}
-					target, ok := own[*item.Reference]
-					if !ok {
-						if _, elsewhere := catalog.externalTableByID[*item.Reference]; elsewhere {
-							return fmt.Errorf("%s field %s refers to a table of another source: a reference is a key of one database", owner, field.Name)
-						}
-						return fmt.Errorf("%s field %s refers to unknown table %s", owner, field.Name, item.Reference)
-					}
-					if !target.ObjectTable() {
-						return fmt.Errorf("%s field %s refers to table %s, which holds records and has no reference", owner, field.Name, target.Name)
-					}
-				}
-				if err := catalog.validateReferences(owner+" field "+field.Name, primitive); err != nil {
-					return err
-				}
-				if field.Filling.Value != nil {
-					if len(primitive) == 0 {
-						return fmt.Errorf("%s field %s is filled with a value, and a reference to a table of a source is not a value a description can hold", owner, field.Name)
-					}
-					if _, err := catalog.normalizeTypes(owner+" field "+field.Name+" filling", primitive, *field.Filling.Value); err != nil {
-						return err
-					}
-				}
+			if err := catalog.validateExternalFieldReferences(source, owner, table.Fields); err != nil {
+				return err
 			}
 			if table.Hierarchy != nil && table.Hierarchy.UnfilledParentValue != nil && len(table.KeyFields) == 1 {
 				key, _ := table.Field(table.KeyFields[0])
 				if _, err := catalog.normalizeTypes(owner+" hierarchy.unfilled_parent_value", key.Types, *table.Hierarchy.UnfilledParentValue); err != nil {
 					return fmt.Errorf("%w: the value a row without a parent holds is a value of the key", err)
 				}
+			}
+		}
+		for _, cube := range source.Cubes {
+			owner := fmt.Sprintf("external data source %s cube %s", source.Name, cube.Name)
+			if err := catalog.validateExternalFieldReferences(source, owner, append(slices.Clone(cube.Dimensions), cube.Resources...)); err != nil {
+				return err
+			}
+			for _, table := range cube.DimensionTables {
+				if err := catalog.validateExternalFieldReferences(source, owner+" dimension table "+table.Name, table.Fields); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// validateExternalFieldReferences resolves what the fields of one object of a
+// source refer to: an object table or a dimension table of the same source,
+// and nothing of another. The rest of their types, and the values they are
+// filled with, are checked the way any field's are.
+func (catalog *Catalog) validateExternalFieldReferences(source ExternalDataSourceDefinition, owner string, fields []ExternalField) error {
+	tables := make(map[uuid.UUID]ExternalTable, len(source.Tables))
+	for _, table := range source.Tables {
+		tables[table.ID] = table
+	}
+	dimensionTables := map[uuid.UUID]bool{}
+	for _, cube := range source.Cubes {
+		for _, table := range cube.DimensionTables {
+			dimensionTables[table.ID] = true
+		}
+	}
+	for _, field := range fields {
+		var primitive []Type
+		for _, item := range field.Types {
+			switch item.Kind {
+			case ExternalTableType:
+				target, ok := tables[*item.Reference]
+				if !ok {
+					if _, elsewhere := catalog.externalTableByID[*item.Reference]; elsewhere {
+						return fmt.Errorf("%s field %s refers to a table of another source: a reference is a key of one database", owner, field.Name)
+					}
+					return fmt.Errorf("%s field %s refers to unknown table %s", owner, field.Name, item.Reference)
+				}
+				if !target.ObjectTable() {
+					return fmt.Errorf("%s field %s refers to table %s, which holds records and has no reference", owner, field.Name, target.Name)
+				}
+			case ExternalDimensionTableType:
+				if !dimensionTables[*item.Reference] {
+					if _, elsewhere := catalog.externalDimensionTableByID[*item.Reference]; elsewhere {
+						return fmt.Errorf("%s field %s refers to a dimension table of another source: a reference is a key of one database", owner, field.Name)
+					}
+					return fmt.Errorf("%s field %s refers to unknown dimension table %s", owner, field.Name, item.Reference)
+				}
+			default:
+				primitive = append(primitive, item)
+			}
+		}
+		if err := catalog.validateReferences(owner+" field "+field.Name, primitive); err != nil {
+			return err
+		}
+		if field.Filling.Value != nil {
+			if len(primitive) == 0 {
+				return fmt.Errorf("%s field %s is filled with a value, and a reference to something of a source is not a value a description can hold", owner, field.Name)
+			}
+			if _, err := catalog.normalizeTypes(owner+" field "+field.Name+" filling", primitive, *field.Filling.Value); err != nil {
+				return err
 			}
 		}
 	}

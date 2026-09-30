@@ -152,3 +152,48 @@ func TestExternalDataSourceTablesStandInTheTreeAndOpen(t *testing.T) {
 		t.Fatalf("the module of a table's form is %q, %v", module, err)
 	}
 }
+
+// A source shows its cubes, and a cube shows its dimension tables beneath its
+// own forms and modules, two levels below the source. Catches the cubes missing
+// from the tree, the dimension tables' folder refused as a stray folder of the
+// cube, and a cube's description saved without the strict reading.
+func TestExternalDataSourceCubesStandInTheTree(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	const cube = "metadata/external-data-sources/Склад/cubes/Продажи"
+	writeProjectFile(t, root, "metadata/external-data-sources/Склад/object.yaml",
+		"format: 1\nid: f9000000-0000-4000-8000-000000000021\nname: Склад\ntitle: {ru: Склад}\n")
+	const description = "format: 1\nid: f9000000-0000-4000-8000-000000000022\nname: Продажи\ntitle: {ru: Продажи}\nname_in_data_source: Sales\n"
+	writeProjectFile(t, root, cube+"/object.yaml", description)
+	writeProjectFile(t, root, cube+"/МодульМенеджера.bsl", "\n")
+	writeProjectFile(t, root, cube+"/dimension-tables/Товары/object.yaml",
+		"format: 1\nid: f9000000-0000-4000-8000-000000000023\nname: Товары\ntitle: {ru: Товары}\nname_in_data_source: Goods\n")
+
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := workspace.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cubes, ok := findNodeByID(snapshot.Tree, "metadata/external-data-sources/Склад/cubes")
+	if !ok || cubes.Title != "Кубы" || len(cubes.Children) != 1 || cubes.Children[0].Path != cube+"/object.yaml" {
+		t.Fatalf("the cubes of the source stand in the tree as %+v", cubes)
+	}
+	dimensions, ok := findNodeByID(snapshot.Tree, cube+"/dimension-tables")
+	if !ok || dimensions.Title != "Таблицы измерений" || len(dimensions.Children) != 1 ||
+		dimensions.Children[0].Path != cube+"/dimension-tables/Товары/object.yaml" {
+		t.Fatalf("the dimension tables of the cube stand in the tree as %+v", dimensions)
+	}
+	if module, ok := findNodeByID(snapshot.Tree, cube+"/МодульМенеджера.bsl"); !ok || module.Title != "Модуль менеджера" {
+		t.Fatalf("the cube's module stands in the tree as %+v", module)
+	}
+	opened, err := workspace.ReadSource(cube + "/object.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.SaveSource(cube+"/object.yaml", description+"measures: []\n", opened.Revision); err == nil || !strings.Contains(err.Error(), "measures") {
+		t.Fatalf("a cube's description was saved without being read strictly: %v", err)
+	}
+}

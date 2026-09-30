@@ -531,6 +531,10 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 			value, err = metadata.DecodeExternalDataSource(relative, bytes.NewReader(content), configuration)
 		case metadata.ExternalDataSourceTableKind:
 			value, err = metadata.DecodeExternalTable(relative, bytes.NewReader(content), configuration)
+		case metadata.ExternalCubeKind:
+			value, err = metadata.DecodeExternalCube(relative, bytes.NewReader(content), configuration)
+		case metadata.ExternalDimensionTableKind:
+			value, err = metadata.DecodeExternalDimensionTable(relative, bytes.NewReader(content), configuration)
 		}
 		if err != nil {
 			return nil, err

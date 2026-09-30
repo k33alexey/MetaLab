@@ -859,6 +859,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.webSocketClientByName, catalog.webSocketClientByID = make(map[string]int, len(catalog.WebSocketClients)), make(map[uuid.UUID]int, len(catalog.WebSocketClients))
 	catalog.externalDataSourceByName, catalog.externalDataSourceByID = make(map[string]int, len(catalog.ExternalDataSources)), make(map[uuid.UUID]int, len(catalog.ExternalDataSources))
 	catalog.externalTableByID = map[uuid.UUID]externalTableLocation{}
+	catalog.externalDimensionTableByID = map[uuid.UUID]externalDimensionTableLocation{}
 	sort.Slice(catalog.CommonPictures, func(i, j int) bool {
 		return catalog.CommonPictures[i].ID.String() < catalog.CommonPictures[j].ID.String()
 	})
@@ -1066,6 +1067,19 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return err
 			}
 			catalog.externalTableByID[table.ID] = externalTableLocation{source: index, table: tableIndex}
+		}
+		// A cube is named within its source and a dimension table within its
+		// cube; every identifier is unique across the configuration.
+		for cubeIndex, cube := range item.Cubes {
+			if err := add("external data source cube", cube.ID, item.Name+"."+cube.Name, cubeIndex, externalTableNames, nil); err != nil {
+				return err
+			}
+			for tableIndex, table := range cube.DimensionTables {
+				if err := add("external data source dimension table", table.ID, item.Name+"."+cube.Name+"."+table.Name, tableIndex, externalTableNames, nil); err != nil {
+					return err
+				}
+				catalog.externalDimensionTableByID[table.ID] = externalDimensionTableLocation{source: index, cube: cubeIndex, table: tableIndex}
+			}
 		}
 	}
 	for index, item := range catalog.StyleItems {
@@ -1888,6 +1902,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	if err := catalog.validateExternalTableFiles(root); err != nil {
 		return err
 	}
+	if err := catalog.validateExternalCubeFiles(root); err != nil {
+		return err
+	}
 	if err := catalog.validateOutlinedObjects(); err != nil {
 		return err
 	}
@@ -2492,7 +2509,7 @@ func (catalog *Catalog) validateObjectFileSources(files objectFiles) error {
 		return fmt.Errorf("%s %s: %w", kind, name, err)
 	}
 	directory := filepath.Join(root, filepath.FromSlash(relative))
-	if err := validateObjectFolderEntries(directory, kind, name, files.modules); err != nil {
+	if err := validateObjectFolderEntries(directory, kind, name, files.modules, project.SubordinateCollections(string(files.directoryKind))...); err != nil {
 		return err
 	}
 	if err := catalog.indexObjectForms(directory, files.directoryKind, kind, name, files.formSlots); err != nil {
@@ -2664,7 +2681,7 @@ func readObjectFormIdentity(directory, form string) (uuid.UUID, error) {
 // validateObjectFolderEntries checks that the object's own folder holds only
 // what an object may keep there: its description, a module in a role this kind
 // of object has, and the folders of its forms, commands and templates.
-func validateObjectFolderEntries(directory, kind, name string, modules []string) error {
+func validateObjectFolderEntries(directory, kind, name string, modules []string, collections ...string) error {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -2677,6 +2694,11 @@ func validateObjectFolderEntries(directory, kind, name string, modules []string)
 			return fmt.Errorf("%s %s keeps %q, which is a symbolic link", kind, name, entry.Name())
 		}
 		if entry.IsDir() {
+			// A collection of the objects that lie inside this one - the
+			// dimension tables of a cube - is read as objects of its own.
+			if slices.Contains(collections, entry.Name()) {
+				continue
+			}
 			if !slices.Contains(project.ObjectSubordinateDirectories(), entry.Name()) {
 				return fmt.Errorf("%s %s keeps a folder %q, which is not forms, commands or templates",
 					kind, name, entry.Name())

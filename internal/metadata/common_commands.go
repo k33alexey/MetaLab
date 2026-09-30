@@ -202,6 +202,12 @@ func (catalog *Catalog) everyObjectCommands() []ownedCommands {
 		for _, table := range source.Tables {
 			add("external data source table", source.Name+"."+table.Name, table.Commands)
 		}
+		for _, cube := range source.Cubes {
+			add("external data source cube", source.Name+"."+cube.Name, cube.Commands)
+			for _, table := range cube.DimensionTables {
+				add("external data source dimension table", source.Name+"."+cube.Name+"."+table.Name, table.Commands)
+			}
+		}
 	}
 	for _, item := range catalog.Documents {
 		add("document", item.Name, item.Commands)

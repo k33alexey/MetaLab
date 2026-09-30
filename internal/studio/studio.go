@@ -1073,7 +1073,7 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, kind, languag
 		if err != nil {
 			return nil, err
 		}
-		owned, err := objectOwnedFileNodes(objectDirectory, objectRelative)
+		owned, err := objectOwnedFileNodes(objectDirectory, objectRelative, project.SubordinateCollections(kind)...)
 		if err != nil {
 			return nil, err
 		}
@@ -1096,6 +1096,11 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, kind, languag
 		})
 	}
 	sortNodesByTitle(nodes)
+	// An object that keeps objects of its own - a cube its dimension tables -
+	// shows them under it the way a source shows its tables.
+	if err := workspace.attachSubordinateObjects(nodes, directory, relative, kind, language, languages); err != nil {
+		return nil, err
+	}
 	return nodes, nil
 }
 
@@ -1121,7 +1126,7 @@ type objectOwnedNodes struct {
 // A module is recognised by its name, because the name is the whole of its
 // identity: МодульОбъекта.bsl is the object module of whatever object's folder
 // it lies in, and nothing declares it anywhere else.
-func objectOwnedFileNodes(objectDirectory, objectRelative string) (objectOwnedNodes, error) {
+func objectOwnedFileNodes(objectDirectory, objectRelative string, collections ...string) (objectOwnedNodes, error) {
 	var owned objectOwnedNodes
 	entries, err := os.ReadDir(objectDirectory)
 	if err != nil {
@@ -1146,6 +1151,11 @@ func objectOwnedFileNodes(objectDirectory, objectRelative string) (objectOwnedNo
 			case "templates":
 				continue
 			default:
+				// A collection of objects inside this one is shown as
+				// objects, by attachSubordinateObjects.
+				if slices.Contains(collections, entry.Name()) {
+					continue
+				}
 				return objectOwnedNodes{}, unexpected(entry.Name())
 			}
 			if err != nil {
@@ -1209,7 +1219,9 @@ func objectFormNodes(parentDirectory, parentRelative, forms string) ([]Node, err
 // subordinateCollectionTitles names the collections of subordinate objects
 // the way the configuration tree names them.
 var subordinateCollectionTitles = map[string]string{
-	"tables": "Таблицы",
+	"tables":           "Таблицы",
+	"cubes":            "Кубы",
+	"dimension-tables": "Таблицы измерений",
 }
 
 // attachSubordinateObjects hangs under each object the collections of objects
@@ -1224,7 +1236,10 @@ func (workspace *Workspace) attachSubordinateObjects(owners []Node, directory, r
 		return nil
 	}
 	for index := range owners {
-		ownerName := owners[index].Title
+		// The folder's name, read off where the description lies: the title
+		// of a node may be the object's synonym, and the folder is named after
+		// the object's name.
+		ownerName := filepath.Base(filepath.Dir(filepath.FromSlash(owners[index].Path)))
 		for _, collection := range collections {
 			subordinateKind, _ := project.SubordinateObjectKind(kind, collection)
 			group := Node{

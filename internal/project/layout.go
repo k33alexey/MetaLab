@@ -535,6 +535,11 @@ type subordinateKind struct {
 // an address into a folder, here, knows the folder is deeper.
 var subordinateObjectKinds = map[string]subordinateKind{
 	"external-data-source-tables": {owner: "external-data-sources", collection: "tables"},
+	"external-data-source-cubes":  {owner: "external-data-sources", collection: "cubes"},
+	// A table of a cube's dimension lies inside the cube, two levels below
+	// the source: Склад.Продажи.Товары is the dimension table Товары of the
+	// cube Продажи of the source Склад.
+	"external-data-source-dimension-tables": {owner: "external-data-source-cubes", collection: "dimension-tables"},
 }
 
 // SubordinateObjectKinds returns the kinds whose objects lie inside another

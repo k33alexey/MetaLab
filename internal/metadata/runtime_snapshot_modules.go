@@ -142,6 +142,16 @@ func moduleNameDescriptors(catalog *Catalog) map[string]moduleNameDescriptor {
 			}
 			add(ExternalDataSourceTableKind, name, project.ManagerModuleFile, "МодульМенеджераТаблицыВнешнегоИсточника."+name)
 		}
+		for _, cube := range source.Cubes {
+			name := source.Name + "." + cube.Name
+			add(ExternalCubeKind, name, project.RecordSetModuleFile, "МодульНабораЗаписейКубаВнешнегоИсточника."+name, "ЭтотОбъект", "ThisObject")
+			add(ExternalCubeKind, name, project.ManagerModuleFile, "МодульМенеджераКубаВнешнегоИсточника."+name)
+			for _, table := range cube.DimensionTables {
+				tableName := name + "." + table.Name
+				add(ExternalDimensionTableKind, tableName, project.ObjectModuleFile, "МодульОбъектаТаблицыИзмеренияВнешнегоИсточника."+tableName, "ЭтотОбъект", "ThisObject")
+				add(ExternalDimensionTableKind, tableName, project.ManagerModuleFile, "МодульМенеджераТаблицыИзмеренияВнешнегоИсточника."+tableName)
+			}
+		}
 	}
 	for _, item := range catalog.Constants {
 		add(ConstantKind, item.Name, project.ValueModuleFile, "МодульЗначенияКонстанты."+item.Name, "ЭтотОбъект", "ThisObject")
@@ -180,6 +190,7 @@ var formModuleKindNames = map[Kind]string{
 	TaskKind: "Задачи", ExchangePlanKind: "ПланаОбмена", DocumentJournalKind: "ЖурналаДокументов",
 	ReportKind: "Отчета", DataProcessorKind: "Обработки", FilterCriterionKind: "КритерияОтбора",
 	SettingsStorageKind: "ХранилищаНастроек", ExternalDataSourceTableKind: "ТаблицыВнешнегоИсточника",
+	ExternalCubeKind: "КубаВнешнегоИсточника", ExternalDimensionTableKind: "ТаблицыИзмеренияВнешнегоИсточника",
 }
 
 // FormModuleName is the name one form's module is compiled and reported
