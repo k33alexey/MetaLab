@@ -73,6 +73,9 @@ const (
 	// own folder. A service owns exactly one module - the procedures its
 	// operations name - so there is nothing for an identifier to tell apart.
 	ServiceModuleFile = "МодульСервиса.bsl"
+	// ClientModuleFile is the module of one WebSocket client, inside that
+	// client's own folder: the handlers of its connection.
+	ClientModuleFile = "МодульКлиента.bsl"
 	// CommandModuleFile is the module of one command, inside that command's
 	// own folder.
 	CommandModuleFile = "МодульКоманды.bsl"
@@ -140,6 +143,9 @@ var (
 		// it was imported with. The latter is WSDL and not source in our
 		// sense, so it is left out the way an XDTO package's schema is.
 		"ws-references": {ObjectMetadataFile},
+		// A WebSocket client keeps its description and one module: the
+		// handlers of the connection it opens.
+		"websocket-clients": {ObjectMetadataFile, ClientModuleFile},
 	}
 	// objectFolderKinds lists metadata kinds whose objects group their own
 	// description, modules, forms, commands and templates under one folder

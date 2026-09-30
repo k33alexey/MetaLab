@@ -16,13 +16,12 @@ import (
 // over; the rest leave the list one by one as their composition is written.
 const (
 	BotKind                Kind = "bots"
-	WebSocketClientKind    Kind = "websocket-clients"
 	IntegrationServiceKind Kind = "integration-services"
 	ExternalDataSourceKind Kind = "external-data-sources"
 )
 
 // outlinedKinds is that list, in the order the tree shows them.
-var outlinedKinds = []Kind{BotKind, WebSocketClientKind, IntegrationServiceKind, ExternalDataSourceKind}
+var outlinedKinds = []Kind{BotKind, IntegrationServiceKind, ExternalDataSourceKind}
 
 // OutlinedKinds returns the kinds carried by identity alone.
 func OutlinedKinds() []Kind { return append([]Kind(nil), outlinedKinds...) }
