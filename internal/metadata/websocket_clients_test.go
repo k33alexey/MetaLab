@@ -244,3 +244,56 @@ func TestWebSocketClientIsReadStrictlyFromAFolderOfItsName(t *testing.T) {
 		t.Fatalf("the error does not say what is wrong: %v", message)
 	}
 }
+
+// The three headers that carry credentials by what the protocol says they are
+// never lie in a project file, whatever their case. Catches each of the three
+// accepted and kept - a password in the clear under another name - and a
+// message that repeats the value it refuses.
+func TestWebSocketClientCredentialHeadersAreNotKeptInAFile(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"Authorization", "proxy-authorization", "COOKIE"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			message := refusedWebSocketClient(t, "headers:\n  "+name+": Bearer s3cret\n", "a credential in a header")
+			if !strings.Contains(message, "headers."+name+" carries credentials") || !strings.Contains(message, "secret_headers") {
+				t.Fatalf("the error does not say where the header goes: %v", message)
+			}
+			if strings.Contains(message, "s3cret") {
+				t.Fatalf("the error repeats the credential: %v", message)
+			}
+		})
+	}
+}
+
+// A header kept as a secret is named and not written out. Catches a name that
+// is not a header, a name given twice, and a header that is both written out and
+// declared a secret - which of the two would be sent nobody could say.
+func TestWebSocketClientSecretHeadersAreNamedOnly(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeWebSocketClient(t, root, firstWebSocketClient, "Биржа", "secret_headers: [Authorization, X-Api-Key]\nheaders: {X-Api-Version: \"2\"}\n")
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("headers named as secrets were refused: %v", err)
+	}
+	client, _ := catalog.WebSocketClient("Биржа")
+	if strings.Join(client.SecretHeaders, ",") != "Authorization,X-Api-Key" {
+		t.Fatalf("the secret headers came back as %v", client.SecretHeaders)
+	}
+	client.SecretHeaders[0] = "Испорчено"
+	if again, _ := catalog.WebSocketClient("Биржа"); again.SecretHeaders[0] != "Authorization" {
+		t.Fatal("changing a copy changed the catalog")
+	}
+	for name, test := range map[string]struct{ body, says string }{
+		"not a header name":        {"secret_headers: [\"X Api Key\"]\n", `"X Api Key" is not a header name`},
+		"one name twice":           {"secret_headers: [X-Api-Key, x-api-key]\n", "names \"x-api-key\" twice"},
+		"a secret written out too": {"secret_headers: [X-Api-Key]\nheaders: {x-api-key: abc}\n", "a header is either a secret or not"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if message := refusedWebSocketClient(t, test.body, name); !strings.Contains(message, test.says) {
+				t.Fatalf("the error does not say what is wrong: %v", message)
+			}
+		})
+	}
+}

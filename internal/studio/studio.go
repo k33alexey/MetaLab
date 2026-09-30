@@ -1210,6 +1210,8 @@ var namedFolderFileTitles = map[string]string{
 	project.FormModuleFile:    "Модуль формы",
 	project.ValueModuleFile:   "Модуль значения",
 	project.ManagerModuleFile: "Модуль менеджера",
+	project.ServiceModuleFile: "Модуль сервиса",
+	project.ClientModuleFile:  "Модуль клиента",
 }
 
 // namedFolderNodes lists the objects of a kind that keeps only files: each in a

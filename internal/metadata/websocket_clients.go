@@ -59,6 +59,12 @@ type WebSocketClientDefinition struct {
 	ServerURL string `yaml:"server_url,omitempty" json:"serverUrl,omitempty"`
 	// Headers are added to the GET request that opens the connection.
 	Headers map[string]string `yaml:"headers,omitempty" json:"headers,omitempty"`
+	// SecretHeaders are headers whose values are credentials and so are kept
+	// where the password is, not here: only their names are in the file. Three
+	// names always carry credentials and are refused in Headers outright -
+	// see credentialHeaders; any other header may be put here by choice, an
+	// API key for one, because a name cannot tell a key from a version number.
+	SecretHeaders []string `yaml:"secret_headers,omitempty" json:"secretHeaders,omitempty"`
 	// UseOSAuthentication signs in to the server as the operating system
 	// account. With no user and password it is the account of whatever
 	// process serves the connection.
@@ -119,6 +125,7 @@ func DecodeWebSocketClient(source string, reader io.Reader, configuration projec
 	}
 	issues = append(issues, validateWebSocketServerURL(value.ServerURL)...)
 	issues = append(issues, validateWebSocketHeaders(value.Headers)...)
+	issues = append(issues, validateSecretHeaders(value.SecretHeaders, value.Headers)...)
 	if utf8.RuneCountInString(value.User) > maxWebSocketUserLength {
 		issues = append(issues, fmt.Sprintf("user must not exceed %d characters", maxWebSocketUserLength))
 	} else if strings.IndexFunc(value.User, unicode.IsControl) >= 0 {
@@ -153,6 +160,43 @@ func validateWebSocketServerURL(value string) []string {
 	return nil
 }
 
+// credentialHeaders are the headers whose value is a credential by what the
+// protocol says they are: who is calling, who is calling through a proxy, and
+// the session the server handed out. Their value in a project file is a
+// password in the clear in every clone of the repository, the same as the
+// password property would be.
+var credentialHeaders = []string{"authorization", "proxy-authorization", "cookie"}
+
+// validateSecretHeaders checks the names of the headers kept as secrets: each
+// a header name, none twice, none also among the headers written out.
+func validateSecretHeaders(names []string, headers map[string]string) []string {
+	if len(names) > maxWebSocketHeaders {
+		return []string{fmt.Sprintf("secret_headers must not contain more than %d items", maxWebSocketHeaders)}
+	}
+	written := make(map[string]bool, len(headers))
+	for name := range headers {
+		written[strings.ToLower(name)] = true
+	}
+	var issues []string
+	seen := map[string]bool{}
+	for index, name := range names {
+		prefix := fmt.Sprintf("secret_headers[%d]", index)
+		if !httpToken(name) {
+			issues = append(issues, fmt.Sprintf("%s: %q is not a header name", prefix, name))
+			continue
+		}
+		folded := strings.ToLower(name)
+		if seen[folded] {
+			issues = append(issues, fmt.Sprintf("%s names %q twice", prefix, name))
+		}
+		seen[folded] = true
+		if written[folded] {
+			issues = append(issues, fmt.Sprintf("%s names %q, which is also written out among the headers: a header is either a secret or not", prefix, name))
+		}
+	}
+	return issues
+}
+
 // validateWebSocketHeaders checks the additional headers: each name is a word
 // of HTTP, each value is one line, and no two names differ by case alone.
 //
@@ -181,6 +225,12 @@ func validateWebSocketHeaders(headers map[string]string) []string {
 			issues = append(issues, fmt.Sprintf("headers %q and %q are one header", previous, name))
 		}
 		seen[folded] = name
+		if slices.Contains(credentialHeaders, folded) {
+			// The value is not repeated in the message, for the same reason
+			// it is refused: it is a credential.
+			issues = append(issues, fmt.Sprintf("headers.%s carries credentials and is not kept in project files: its value lies in the store of secrets, and the file names it in secret_headers", name))
+			continue
+		}
 		if len(value) > maxWebSocketHeaderValue {
 			issues = append(issues, fmt.Sprintf("headers.%s must not exceed %d bytes", name, maxWebSocketHeaderValue))
 		} else if strings.IndexFunc(value, func(symbol rune) bool { return symbol != '\t' && unicode.IsControl(symbol) }) >= 0 {
@@ -214,6 +264,7 @@ func cloneWebSocketClient(value WebSocketClientDefinition) WebSocketClientDefini
 		}
 		value.Headers = headers
 	}
+	value.SecretHeaders = slices.Clone(value.SecretHeaders)
 	if value.Timeout != nil {
 		timeout := *value.Timeout
 		value.Timeout = &timeout
