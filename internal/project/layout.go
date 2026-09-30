@@ -136,6 +136,10 @@ var (
 		// operations name lie there, and nowhere else.
 		"web-services":  {ObjectMetadataFile, ServiceModuleFile},
 		"http-services": {ObjectMetadataFile, ServiceModuleFile},
+		// A WS reference keeps its description and the service description
+		// it was imported with. The latter is WSDL and not source in our
+		// sense, so it is left out the way an XDTO package's schema is.
+		"ws-references": {ObjectMetadataFile},
 	}
 	// objectFolderKinds lists metadata kinds whose objects group their own
 	// description, modules, forms, commands and templates under one folder

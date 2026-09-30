@@ -633,7 +633,10 @@ type Catalog struct {
 	HTTPServices                    []HTTPServiceDefinition
 	httpServiceByName               map[string]int
 	httpServiceByID                 map[uuid.UUID]int
-	// OutlinedObjects are the objects of the five kinds carried by identity
+	WSReferences                    []WSReferenceDefinition
+	wsReferenceByName               map[string]int
+	wsReferenceByID                 map[uuid.UUID]int
+	// OutlinedObjects are the objects of the kinds carried by identity
 	// alone. They share one list because nothing tells them apart yet beyond
 	// the kind each one names.
 	OutlinedObjects                  []OutlinedObject

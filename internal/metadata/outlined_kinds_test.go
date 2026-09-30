@@ -13,7 +13,6 @@ func TestOutlinedObjectsAreReadAndNotPassedOver(t *testing.T) {
 	root := metadataProject(t)
 	identifiers := map[Kind]string{
 		BotKind:                "f5000000-0000-4000-8000-000000000001",
-		WSReferenceKind:        "f5000000-0000-4000-8000-000000000002",
 		WebSocketClientKind:    "f5000000-0000-4000-8000-000000000003",
 		IntegrationServiceKind: "f5000000-0000-4000-8000-000000000004",
 		ExternalDataSourceKind: "f5000000-0000-4000-8000-000000000005",

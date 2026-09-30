@@ -209,6 +209,20 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	// A WS reference keeps a folder for the same reason an XDTO package does:
+	// the service description is its body and lies beside it.
+	if err := loadObjectKind(root, WSReferenceKind, func(source string, file *os.File, name string) error {
+		value, err := DecodeWSReference(source, file, configuration)
+		if err == nil && !strings.EqualFold(value.Name, name) {
+			err = fmt.Errorf("WS reference %s lies in a folder called %s", value.Name, name)
+		}
+		if err == nil {
+			catalog.WSReferences = append(catalog.WSReferences, value)
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	if err := catalog.loadOutlinedKinds(root, configuration); err != nil {
 		return nil, err
 	}
@@ -824,6 +838,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.xdtoPackageByName, catalog.xdtoPackageByID = make(map[string]int, len(catalog.XDTOPackages)), make(map[uuid.UUID]int, len(catalog.XDTOPackages))
 	catalog.webServiceByName, catalog.webServiceByID = make(map[string]int, len(catalog.WebServices)), make(map[uuid.UUID]int, len(catalog.WebServices))
 	catalog.httpServiceByName, catalog.httpServiceByID = make(map[string]int, len(catalog.HTTPServices)), make(map[uuid.UUID]int, len(catalog.HTTPServices))
+	catalog.wsReferenceByName, catalog.wsReferenceByID = make(map[string]int, len(catalog.WSReferences)), make(map[uuid.UUID]int, len(catalog.WSReferences))
 	sort.Slice(catalog.CommonPictures, func(i, j int) bool {
 		return catalog.CommonPictures[i].ID.String() < catalog.CommonPictures[j].ID.String()
 	})
@@ -1006,6 +1021,11 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	}
 	for index, item := range catalog.HTTPServices {
 		if err := add("HTTP service", item.ID, item.Name, index, catalog.httpServiceByName, catalog.httpServiceByID); err != nil {
+			return err
+		}
+	}
+	for index, item := range catalog.WSReferences {
+		if err := add("WS reference", item.ID, item.Name, index, catalog.wsReferenceByName, catalog.wsReferenceByID); err != nil {
 			return err
 		}
 	}
@@ -1815,6 +1835,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return err
 	}
 	if err := catalog.validateHTTPServices(); err != nil {
+		return err
+	}
+	if err := catalog.validateWSReferenceFiles(root); err != nil {
 		return err
 	}
 	if err := catalog.validateOutlinedObjects(); err != nil {

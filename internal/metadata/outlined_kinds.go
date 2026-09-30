@@ -10,19 +10,19 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// The five kinds the specification describes by the branch alone: what such an
-// object is made of is not written down anywhere yet, because no configuration
-// we have seen carries one.
+// The kinds carried by identity alone: what such an object is made of is not
+// described yet. Two of them - bots and integration services - stay here for
+// good, because they are the two kinds of the whole tree that are not carried
+// over; the rest leave the list one by one as their composition is written.
 const (
 	BotKind                Kind = "bots"
-	WSReferenceKind        Kind = "ws-references"
 	WebSocketClientKind    Kind = "websocket-clients"
 	IntegrationServiceKind Kind = "integration-services"
 	ExternalDataSourceKind Kind = "external-data-sources"
 )
 
 // outlinedKinds is that list, in the order the tree shows them.
-var outlinedKinds = []Kind{BotKind, WSReferenceKind, WebSocketClientKind, IntegrationServiceKind, ExternalDataSourceKind}
+var outlinedKinds = []Kind{BotKind, WebSocketClientKind, IntegrationServiceKind, ExternalDataSourceKind}
 
 // OutlinedKinds returns the kinds carried by identity alone.
 func OutlinedKinds() []Kind { return append([]Kind(nil), outlinedKinds...) }
@@ -79,7 +79,7 @@ func (catalog *Catalog) OutlinedObjectsOf(kind Kind) []OutlinedObject {
 	return result
 }
 
-// loadOutlinedKinds reads the objects of the five kinds carried by identity
+// loadOutlinedKinds reads the objects of the kinds carried by identity
 // alone. They share a loader because they share everything that is known about
 // them: a kind that grows a description of its own leaves this list.
 func (catalog *Catalog) loadOutlinedKinds(root string, configuration project.Project) error {
