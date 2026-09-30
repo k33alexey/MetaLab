@@ -26,24 +26,18 @@ import (
 const (
 	maxAccumulationRegisterRecords = 1_000_000
 	maxAccumulationRegisterMemory  = 64 << 20
-	// accumulationTotalRowSpread is how wide the random step is when two
-	// writers pick the same number for a new row of totals - see
-	// accumulationTotalRowOffset. Wide enough that a handful of writers rarely
-	// collide twice, small enough that the numbering stays a short list.
+	// accumulationTotalRowSpread is how wide the random step is when writers
+	// make rows of one combination at once - see accumulationTotalRowStep.
+	// Wide enough that a handful of writers rarely land on one number, small
+	// enough that the numbering stays a short list.
 	accumulationTotalRowSpread = 64
 	// maxAccumulationTotalRowNumber is the highest number a row of totals can
 	// carry, and it is the ceiling of the smallint column that holds it. The
 	// number is not allowed past it: a number PostgreSQL refuses would fail a
 	// write for arithmetic, and a write of movements must not fail for
-	// arithmetic. At the ceiling the new row collides with the highest existing
-	// one instead, which the caller already knows how to handle - it goes round
-	// again, and the rounds that no longer race wait for a row that exists.
+	// arithmetic. At the ceiling the new row lands on the highest existing one
+	// instead and the change is added to it - see totalRowTakeOrMake.
 	maxAccumulationTotalRowNumber = 32767
-	// maxAccumulationTotalsAttempts bounds the walk from "take a row of
-	// totals" to "make one". Each attempt fails only by losing a race to
-	// another writer, and the last one waits instead of racing, so the walk
-	// always ends - see applyTotalsChanges.
-	maxAccumulationTotalsAttempts = 8
 )
 
 // AccumulationMovementKind is the direction of a balance-register movement.
@@ -669,35 +663,35 @@ func (repository *AccumulationRegisterRepository) applyTotalDeltas(
 		split int16
 	}
 	var touched []applied
-	// **Only what cannot wait goes in a batch.** Taking a free row with
-	// splitting on skips the rows others hold and never waits, so every
-	// combination is asked at once. Everything that can wait - making a row,
-	// which waits for another writer's uncommitted row of the same number,
-	// and the last attempts, which wait for a held row - is done one
-	// combination at a time in the order of the keys, which is the same for
-	// every writer.
+	// **Every combination is taken or made by one statement, in the order of
+	// the keys, which is the same for every writer.** The order is what keeps
+	// writers from waiting for each other in a circle: while a writer is at a
+	// combination it holds rows of the combinations before it and of none
+	// after, so whoever it waits for has gone further along the same order and
+	// never waits back.
 	//
-	// That order is what keeps writers from waiting for each other in a
-	// circle. A writer waits only for one that has already made the row it
-	// wants, so one that has gone further along the same order, and that one
-	// never waits for a combination behind it. Doing the waits in rounds over
-	// all combinations - the way it was done while one write touched a row or
-	// two - broke the order as soon as a write touched many: a backdated
-	// movement of a balance register changes a row for every stored month
-	// after it, and two such postings deadlocked at once.
-	taken, missing, err := repository.takeTotalRows(ctx, transaction, definition, deltas, keys, splitting)
+	// The order has to hold for everything that can wait, and two kinds of
+	// statement can: taking a row, which with splitting off waits for a held
+	// one, and making a row, whose unique check waits for any writer that is
+	// inserting, updating or deleting a row with the same number. The second
+	// kind was missed twice. Taking all combinations first and making the
+	// missing ones afterwards let a writer hold a row of a later combination
+	// while it waited to make an earlier one - and another writer, making a
+	// row of that later combination under a number a third one had just
+	// committed, waited for it back. A backdated movement of a balance
+	// register changes a row for every stored month after it, which is what
+	// made the circle likely enough to show.
+	resolved, leftover, err := repository.takeOrMakeTotalRows(ctx, transaction, definition, deltas, keys, splitting)
 	if err != nil {
 		return err
 	}
-	for _, row := range taken {
+	for _, row := range resolved {
 		touched = append(touched, applied{deltas[row.key], row.split})
 	}
-	for _, key := range missing {
-		split, err := repository.resolveTotalRow(ctx, transaction, definition, deltas, key, splitting)
-		if err != nil {
-			return err
-		}
-		touched = append(touched, applied{deltas[key], split})
+	if len(leftover) != 0 {
+		// The statement takes, makes or merges, so one of the three always
+		// answers; silence here would be a change that went nowhere.
+		return fmt.Errorf("update accumulation register %s totals: no row of totals could be taken", definition.Name)
 	}
 	return repository.dropEmptyTotals(ctx, transaction, definition, func(yield func(*accumulationTotalDelta, int16)) {
 		for _, row := range touched {
@@ -706,120 +700,15 @@ func (repository *AccumulationRegisterRepository) applyTotalDeltas(
 	})
 }
 
-// resolveTotalRow puts the change of one combination that found no free row
-// into a row: a new one, or one that another writer made meanwhile.
-func (repository *AccumulationRegisterRepository) resolveTotalRow(
-	ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition,
-	deltas map[string]*accumulationTotalDelta, key string, splitting bool,
-) (int16, error) {
-	single := []string{key}
-	for attempt := 0; attempt < maxAccumulationTotalsAttempts; attempt++ {
-		made, _, err := repository.makeTotalRows(ctx, transaction, definition, deltas, single, attempt)
-		if err != nil {
-			return 0, err
-		}
-		if len(made) == 1 {
-			return made[0].split, nil
-		}
-		// The last two attempts stop racing and wait. A writer that keeps
-		// losing must still finish, and waiting for one row is what it would
-		// have done all along without the mechanism. Two of them, because one
-		// round may go entirely into making a row that another writer made
-		// first - the round after that takes the row it left.
-		race := splitting && attempt < maxAccumulationTotalsAttempts-2
-		taken, _, err := repository.takeTotalRows(ctx, transaction, definition, deltas, single, race)
-		if err != nil {
-			return 0, err
-		}
-		if len(taken) == 1 {
-			return taken[0].split, nil
-		}
-	}
-	return 0, fmt.Errorf("update accumulation register %s totals: no row of totals could be taken", definition.Name)
-}
-
-type totalRow struct {
-	key   string
-	split int16
-}
-
-// accumulationTotalRowOffset is how far past the highest existing number a new
-// row of totals is placed.
-//
-// The first try goes straight after it, so a register nobody is competing over
-// numbers its rows 0, 1, 2 and reads plainly. A retry means another writer took
-// that number while this one was choosing it, and stepping by a fixed amount
-// would not help: both writers see the same highest number, because neither
-// sees the other's uncommitted row, both add the same step, and both collide
-// again on the next round and the round after. They have to disagree, so the
-// step is drawn at random - each round they differ with high probability, and
-// the few that still collide try again.
-//
-// Gaps in the numbering cost nothing. The number stopped being an address when
-// rows stopped being chosen by a hash: it only tells one row of a combination
-// from another, reading sums them all, and a rebuild folds them back into one.
-func accumulationTotalRowOffset(attempt int) int16 {
-	if attempt == 0 {
-		return 1
-	}
-	return int16(1 + rand.IntN(accumulationTotalRowSpread))
-}
-
-// takeTotalRows adds each change to a row of its combination that nobody is
-// holding. The ones with no such row come back as missing.
-func (repository *AccumulationRegisterRepository) takeTotalRows(
+// takeOrMakeTotalRows gives each change a row in one statement per
+// combination, all of them in one batch and in the order of the keys.
+func (repository *AccumulationRegisterRepository) takeOrMakeTotalRows(
 	ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition,
 	deltas map[string]*accumulationTotalDelta, keys []string, race bool,
 ) ([]totalRow, []string, error) {
-	statement, err := repository.totalRowUpdate(definition, race)
-	if err != nil {
-		return nil, nil, err
-	}
-	var taken []totalRow
-	var missing []string
-	for start := 0; start < len(keys); start += 256 {
-		end := min(start+256, len(keys))
-		batch := &pgx.Batch{}
-		for _, key := range keys[start:end] {
-			arguments, err := repository.totalRowUpdateArguments(definition, deltas[key])
-			if err != nil {
-				return nil, nil, err
-			}
-			batch.Queue(statement, arguments...)
-		}
-		results := transaction.SendBatch(ctx, batch)
-		for _, key := range keys[start:end] {
-			var split int16
-			switch scanErr := results.QueryRow().Scan(&split); {
-			case scanErr == pgx.ErrNoRows:
-				missing = append(missing, key)
-			case scanErr != nil:
-				_ = results.Close()
-				return nil, nil, fmt.Errorf("update accumulation register %s totals: %w", definition.Name, scanErr)
-			default:
-				taken = append(taken, totalRow{key, split})
-			}
-		}
-		if err := results.Close(); err != nil {
-			return nil, nil, fmt.Errorf("update accumulation register %s totals: %w", definition.Name, err)
-		}
-	}
-	return taken, missing, nil
-}
-
-// makeTotalRows writes a new row of totals for each change that could not have
-// an existing one. A row that another writer made first comes back as failed,
-// and the caller goes round again - by then there is a row to take.
-func (repository *AccumulationRegisterRepository) makeTotalRows(
-	ctx context.Context, transaction pgx.Tx, definition AccumulationRegisterDefinition,
-	deltas map[string]*accumulationTotalDelta, keys []string, attempt int,
-) ([]totalRow, []string, error) {
-	statement, err := repository.totalRowInsert(definition)
-	if err != nil {
-		return nil, nil, err
-	}
-	var made []totalRow
-	var failed []string
+	statement := repository.totalRowTakeOrMake(definition, race)
+	var resolved []totalRow
+	var leftover []string
 	for start := 0; start < len(keys); start += 256 {
 		end := min(start+256, len(keys))
 		batch := &pgx.Batch{}
@@ -828,26 +717,122 @@ func (repository *AccumulationRegisterRepository) makeTotalRows(
 			if err != nil {
 				return nil, nil, err
 			}
-			batch.Queue(statement, append(arguments, accumulationTotalRowOffset(attempt))...)
+			batch.Queue(statement, append(arguments, accumulationTotalRowStep())...)
 		}
 		results := transaction.SendBatch(ctx, batch)
 		for _, key := range keys[start:end] {
 			var split int16
 			switch scanErr := results.QueryRow().Scan(&split); {
 			case scanErr == pgx.ErrNoRows:
-				failed = append(failed, key)
+				leftover = append(leftover, key)
 			case scanErr != nil:
 				_ = results.Close()
 				return nil, nil, fmt.Errorf("write accumulation register %s totals: %w", definition.Name, scanErr)
 			default:
-				made = append(made, totalRow{key, split})
+				resolved = append(resolved, totalRow{key, split})
 			}
 		}
 		if err := results.Close(); err != nil {
 			return nil, nil, fmt.Errorf("write accumulation register %s totals: %w", definition.Name, err)
 		}
 	}
-	return made, failed, nil
+	return resolved, leftover, nil
+}
+
+// totalRowTakeOrMake adds the change to a free row of the combination, and
+// when there is none makes a new one - in one statement, so that a combination
+// is settled completely before the next one is touched. The arguments are the
+// period, the key, the dimensions, the amounts and the step past the highest
+// number.
+//
+// Racing means SKIP LOCKED: a row another writer is holding is not a row this
+// one can have, and waiting for it is what разделение итогов exists to avoid.
+// Without racing the statement waits for the lowest row instead, which is how
+// a register that does not split its totals writes them.
+//
+// A new row is numbered 0 when the combination has none, and otherwise a
+// random step past the highest number: rows are made only when every existing
+// one is held, so the makers are writers meeting each other, and they see the
+// same highest number because none sees another's uncommitted row. The step
+// keeps them apart. When two still land on one number, the second adds its
+// change to the first one's row instead of giving up - it waits for that
+// writer to finish, but it never leaves the statement without a row, and that
+// is what keeps the order of the keys whole. Which row gets a change does not
+// matter: reading sums the rows of a combination. The number stops at the
+// ceiling of its column, where it lands on the highest row on purpose: see
+// maxAccumulationTotalRowNumber.
+func (repository *AccumulationRegisterRepository) totalRowTakeOrMake(definition AccumulationRegisterDefinition, race bool) string {
+	table, _ := PhysicalAccumulationRegisterTotalsTable(definition.ID)
+	qualified := qualifiedCatalogTable(table)
+	firstResource := 3 + len(definition.Dimensions)
+	updates := make([]string, 0, len(definition.Resources))
+	for index, resource := range definition.Resources {
+		column, _ := PhysicalAttributeColumn(resource.ID)
+		quoted := pgx.Identifier{column}.Sanitize()
+		updates = append(updates, fmt.Sprintf("%s = %s + $%d", quoted, quoted, firstResource+index))
+	}
+	locking := "FOR UPDATE"
+	if race {
+		locking = "FOR UPDATE SKIP LOCKED"
+	}
+	columns := []string{"total_period", "totals_split", "dimension_key"}
+	values := []string{"$1::timestamptz", "", "$2"}
+	position := 2
+	for _, dimension := range definition.Dimensions {
+		column, _ := PhysicalAttributeColumn(dimension.ID)
+		position++
+		columns = append(columns, column)
+		values = append(values, fmt.Sprintf("$%d", position))
+	}
+	for _, resource := range definition.Resources {
+		column, _ := PhysicalAttributeColumn(resource.ID)
+		position++
+		columns = append(columns, column)
+		values = append(values, fmt.Sprintf("$%d", position))
+	}
+	// Counted in integer and narrowed last: the highest number plus the step
+	// overflows smallint at the ceiling before LEAST could stop it.
+	values[1] = fmt.Sprintf("LEAST(COALESCE((SELECT MAX(totals_split) FROM %s WHERE total_period = $1 AND dimension_key = $2)::integer + $%d::integer, 0), %d)::smallint",
+		qualified, position+1, maxAccumulationTotalRowNumber)
+	merges := make([]string, 0, len(definition.Resources))
+	for _, resource := range definition.Resources {
+		column, _ := PhysicalAttributeColumn(resource.ID)
+		quoted := pgx.Identifier{column}.Sanitize()
+		merges = append(merges, quoted+" = "+qualified+"."+quoted+" + EXCLUDED."+quoted)
+	}
+	conflict := "DO NOTHING"
+	if len(merges) != 0 {
+		conflict = "DO UPDATE SET " + strings.Join(merges, ", ")
+	}
+	take := "UPDATE " + qualified + " SET " + strings.Join(updates, ", ") +
+		" WHERE total_period = $1 AND dimension_key = $2 AND totals_split = (" +
+		"SELECT totals_split FROM " + qualified + " WHERE total_period = $1 AND dimension_key = $2 " +
+		"ORDER BY totals_split " + locking + " LIMIT 1) RETURNING totals_split"
+	create := "INSERT INTO " + qualified + " (" + strings.Join(quoteCatalogColumns(columns), ", ") + ") SELECT " + strings.Join(values, ", ") +
+		" WHERE NOT EXISTS (SELECT 1 FROM taken)" +
+		" ON CONFLICT (total_period, dimension_key, totals_split) " + conflict + " RETURNING totals_split"
+	return "WITH taken AS (" + take + "), made AS (" + create + ") SELECT totals_split FROM taken UNION ALL SELECT totals_split FROM made"
+}
+
+type totalRow struct {
+	key   string
+	split int16
+}
+
+// accumulationTotalRowStep is how far past the highest existing number a new
+// row of totals is placed beside rows that are all held.
+//
+// The writers that make such rows are writers meeting each other, and they see
+// the same highest number, because none sees another's uncommitted row. A
+// fixed step would put all of them on one number, and all but the first would
+// wait for it - which is exactly the waiting splitting exists to avoid. So the
+// step is drawn at random, and the few that still land together share the row.
+//
+// Gaps in the numbering cost nothing. The number stopped being an address when
+// rows stopped being chosen by a hash: it only tells one row of a combination
+// from another, reading sums them all, and a rebuild folds them back into one.
+func accumulationTotalRowStep() int16 {
+	return int16(1 + rand.IntN(accumulationTotalRowSpread))
 }
 
 // dropEmptyTotals removes the rows this write left at zero. Only the rows it
@@ -890,15 +875,6 @@ func accumulationZeroTotalDelete(definition AccumulationRegisterDefinition) stri
 	return "DELETE FROM " + qualifiedCatalogTable(table) + " WHERE " + strings.Join(conditions, " AND ")
 }
 
-// totalRowUpdateArguments is what the update takes: period, dimension key and
-// the amounts. It does not take the dimensions themselves - an existing row
-// already holds them, and a parameter a statement never mentions is one
-// PostgreSQL cannot find a type for.
-func (repository *AccumulationRegisterRepository) totalRowUpdateArguments(definition AccumulationRegisterDefinition, delta *accumulationTotalDelta) ([]any, error) {
-	arguments := []any{delta.period, delta.dimensionKey}
-	return repository.appendTotalResources(definition, delta, arguments)
-}
-
 // totalRowInsertArguments is what the insert takes: the same, with the
 // dimensions in between, because a new row has to be given them.
 func (repository *AccumulationRegisterRepository) totalRowInsertArguments(definition AccumulationRegisterDefinition, delta *accumulationTotalDelta) ([]any, error) {
@@ -928,71 +904,6 @@ func (repository *AccumulationRegisterRepository) appendTotalResources(definitio
 		arguments = append(arguments, delta.resources[resource.ID].FloatString(numberType.Scale))
 	}
 	return arguments, nil
-}
-
-// totalRowUpdate adds the change to one row of the combination and says which
-// row it was, or says nothing when there is no row to be had.
-//
-// Racing means SKIP LOCKED: a row another writer is holding is not a row this
-// one can have, and waiting for it is precisely what разделение итогов exists
-// to avoid. Without racing the statement waits for the lowest row instead,
-// which is how a register that does not split its totals writes them.
-func (repository *AccumulationRegisterRepository) totalRowUpdate(definition AccumulationRegisterDefinition, race bool) (string, error) {
-	table, _ := PhysicalAccumulationRegisterTotalsTable(definition.ID)
-	qualified := qualifiedCatalogTable(table)
-	// The arguments are period, dimension key and then the amounts - see
-	// totalRowUpdateArguments.
-	updates := make([]string, 0, len(definition.Resources))
-	firstResource := 3
-	for index, resource := range definition.Resources {
-		column, _ := PhysicalAttributeColumn(resource.ID)
-		quoted := pgx.Identifier{column}.Sanitize()
-		updates = append(updates, fmt.Sprintf("%s = %s + $%d", quoted, quoted, firstResource+index))
-	}
-	locking := "FOR UPDATE"
-	if race {
-		locking = "FOR UPDATE SKIP LOCKED"
-	}
-	return "UPDATE " + qualified + " SET " + strings.Join(updates, ", ") +
-		" WHERE total_period = $1 AND dimension_key = $2 AND totals_split = (" +
-		"SELECT totals_split FROM " + qualified + " WHERE total_period = $1 AND dimension_key = $2 " +
-		"ORDER BY totals_split " + locking + " LIMIT 1) RETURNING totals_split", nil
-}
-
-// totalRowInsert writes another row for the combination and says which one it
-// is, or says nothing when another writer took that number first.
-//
-// The number is past the highest there is - one past it on the first try, a
-// random step past it on a retry, see accumulationTotalRowOffset - so rows are
-// numbered as they appear rather than addressed by anything. Two writers can
-// still choose the same one, because neither sees the other's uncommitted row;
-// the conflict is left alone rather than merged, and the caller goes round
-// again. The number stops at the ceiling of its column, where it collides with
-// the highest row on purpose: see maxAccumulationTotalRowNumber.
-func (repository *AccumulationRegisterRepository) totalRowInsert(definition AccumulationRegisterDefinition) (string, error) {
-	table, _ := PhysicalAccumulationRegisterTotalsTable(definition.ID)
-	qualified := qualifiedCatalogTable(table)
-	columns := []string{"total_period", "totals_split", "dimension_key"}
-	values := []string{"$1",
-		"LEAST(COALESCE((SELECT MAX(totals_split) FROM " + qualified + " WHERE total_period = $1 AND dimension_key = $2), -1) + $%d, " +
-			fmt.Sprint(maxAccumulationTotalRowNumber) + ")",
-		"$2"}
-	position := 2
-	for _, dimension := range definition.Dimensions {
-		column, _ := PhysicalAttributeColumn(dimension.ID)
-		position++
-		columns = append(columns, column)
-		values = append(values, fmt.Sprintf("$%d", position))
-	}
-	for _, resource := range definition.Resources {
-		column, _ := PhysicalAttributeColumn(resource.ID)
-		position++
-		columns = append(columns, column)
-		values = append(values, fmt.Sprintf("$%d", position))
-	}
-	values[1] = fmt.Sprintf(values[1], position+1)
-	return "INSERT INTO " + qualified + " (" + strings.Join(quoteCatalogColumns(columns), ", ") + ") VALUES (" +
-		strings.Join(values, ", ") + ") ON CONFLICT (total_period, dimension_key, totals_split) DO NOTHING RETURNING totals_split", nil
 }
 
 // RebuildTotals restores all totals from primary movement rows - ПересчитатьИтоги.

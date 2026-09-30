@@ -102,35 +102,19 @@ func TestTotalsStatementsFindTheCombinationByIndex(t *testing.T) {
 		resources:    map[uuid.UUID]*big.Rat{fixture.amountID: big.NewRat(1, 1)},
 	}
 
-	update, err := fixture.registers.totalRowUpdate(fixture.definition, true)
+	arguments, err := fixture.registers.totalRowInsertArguments(fixture.definition, delta)
 	if err != nil {
 		t.Fatal(err)
 	}
-	updateArguments, err := fixture.registers.totalRowUpdateArguments(fixture.definition, delta)
-	if err != nil {
-		t.Fatal(err)
+	arguments = append(arguments, accumulationTotalRowStep())
+	// One statement takes or makes the row of a combination, racing with
+	// splitting on and waiting with it off. Each half has to find the
+	// combination by index: the taking and the highest number the making
+	// counts from.
+	for _, race := range []bool{true, false} {
+		statement := fixture.registers.totalRowTakeOrMake(fixture.definition, race)
+		requireCombinationLookup(t, fmt.Sprintf("taking or making a row of totals (race=%v)", race), explainPlan(ctx, t, fixture.pool, statement, arguments...))
 	}
-	requireCombinationLookup(t, "taking a row of totals", explainPlan(ctx, t, fixture.pool, update, updateArguments...))
-
-	insert, err := fixture.registers.totalRowInsert(fixture.definition)
-	if err != nil {
-		t.Fatal(err)
-	}
-	insertArguments, err := fixture.registers.totalRowInsertArguments(fixture.definition, delta)
-	if err != nil {
-		t.Fatal(err)
-	}
-	insertArguments = append(insertArguments, accumulationTotalRowOffset(1))
-	requireCombinationLookup(t, "making a row of totals", explainPlan(ctx, t, fixture.pool, insert, insertArguments...))
-
-	// Without racing the statement waits for the lowest row instead of skipping
-	// it, and that is a different plan - a register that does not split its
-	// totals writes them this way, and it has to find the combination too.
-	waiting, err := fixture.registers.totalRowUpdate(fixture.definition, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	requireCombinationLookup(t, "waiting for a row of totals", explainPlan(ctx, t, fixture.pool, waiting, updateArguments...))
 }
 
 // TestTotalsWriteFailsRatherThanLosingAChange is the failure path of a register

@@ -8,35 +8,25 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// The defect this catches is the one the previous iteration shipped: a step
-// that is a function of the attempt number alone.
-//
-// Two writers that collide see the same highest number, because neither sees
-// the other's uncommitted row. Given the same step they add the same amount,
-// collide again, and go on colliding every round until the attempts run out -
-// and the write that runs out fails a write the base had every reason to
-// accept. So the step has to differ between writers, which means drawn at
-// random, which is what this checks. It also checks the two ends of the range,
-// because both ends are a defect of their own: a step of zero puts the new row
-// on the number the highest row already holds, so the insert conflicts for
-// ever, and a step below zero breaks the CHECK the table carries.
-func TestAccumulationTotalRowOffsetDisagreesBetweenWriters(t *testing.T) {
+// Writers that make rows of one combination at once see the same highest
+// number, and a step that does not differ between them puts them all on one
+// number: all but the first then wait for it, which is the waiting splitting
+// exists to avoid. So the step is drawn at random, which is what this checks.
+// It also checks the two ends of the range, each a defect of its own: a step
+// of zero puts the new row on the highest one already there, and a step below
+// zero breaks the CHECK the table carries.
+func TestAccumulationTotalRowStepDisagreesBetweenWriters(t *testing.T) {
 	t.Parallel()
-	if first := accumulationTotalRowOffset(0); first != 1 {
-		t.Fatalf("offset of the first try = %d, and a register nobody competes over must number its rows 0, 1, 2", first)
-	}
 	seen := map[int16]bool{}
-	for call := 0; call < 500; call++ {
-		for _, attempt := range []int{1, 2, 7} {
-			offset := accumulationTotalRowOffset(attempt)
-			if offset < 1 || offset > accumulationTotalRowSpread {
-				t.Fatalf("offset of attempt %d = %d, outside 1..%d", attempt, offset, accumulationTotalRowSpread)
-			}
-			seen[offset] = true
+	for call := 0; call < 1500; call++ {
+		step := accumulationTotalRowStep()
+		if step < 1 || step > accumulationTotalRowSpread {
+			t.Fatalf("step = %d, outside 1..%d", step, accumulationTotalRowSpread)
 		}
+		seen[step] = true
 	}
 	if len(seen) < 2 {
-		t.Fatalf("every retry offset was the same value: two writers that collide once would collide every round after")
+		t.Fatalf("every step was the same value: writers making rows at once would all land on one number")
 	}
 }
 
