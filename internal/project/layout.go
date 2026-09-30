@@ -146,6 +146,12 @@ var (
 		// A WebSocket client keeps its description and one module: the
 		// handlers of the connection it opens.
 		"websocket-clients": {ObjectMetadataFile, ClientModuleFile},
+		// An external data source keeps its description here and its tables
+		// one level down, in a folder of tables - see the metadata package.
+		// Only the description is listed: the tables are subordinate objects
+		// with folders of their own, and the walkers of object folders do not
+		// know the second level yet.
+		"external-data-sources": {ObjectMetadataFile},
 	}
 	// objectFolderKinds lists metadata kinds whose objects group their own
 	// description, modules, forms, commands and templates under one folder

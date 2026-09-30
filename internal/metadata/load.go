@@ -237,6 +237,9 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := catalog.loadExternalDataSources(root, configuration); err != nil {
+		return nil, err
+	}
 	if err := catalog.loadOutlinedKinds(root, configuration); err != nil {
 		return nil, err
 	}
@@ -854,6 +857,8 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.httpServiceByName, catalog.httpServiceByID = make(map[string]int, len(catalog.HTTPServices)), make(map[uuid.UUID]int, len(catalog.HTTPServices))
 	catalog.wsReferenceByName, catalog.wsReferenceByID = make(map[string]int, len(catalog.WSReferences)), make(map[uuid.UUID]int, len(catalog.WSReferences))
 	catalog.webSocketClientByName, catalog.webSocketClientByID = make(map[string]int, len(catalog.WebSocketClients)), make(map[uuid.UUID]int, len(catalog.WebSocketClients))
+	catalog.externalDataSourceByName, catalog.externalDataSourceByID = make(map[string]int, len(catalog.ExternalDataSources)), make(map[uuid.UUID]int, len(catalog.ExternalDataSources))
+	catalog.externalTableByID = map[uuid.UUID]externalTableLocation{}
 	sort.Slice(catalog.CommonPictures, func(i, j int) bool {
 		return catalog.CommonPictures[i].ID.String() < catalog.CommonPictures[j].ID.String()
 	})
@@ -1047,6 +1052,20 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	for index, item := range catalog.WebSocketClients {
 		if err := add("WebSocket client", item.ID, item.Name, index, catalog.webSocketClientByName, catalog.webSocketClientByID); err != nil {
 			return err
+		}
+	}
+	// A table is named within its source, and its identifier is unique across
+	// the whole configuration like every other.
+	externalTableNames := map[string]int{}
+	for index, item := range catalog.ExternalDataSources {
+		if err := add("external data source", item.ID, item.Name, index, catalog.externalDataSourceByName, catalog.externalDataSourceByID); err != nil {
+			return err
+		}
+		for tableIndex, table := range item.Tables {
+			if err := add("external data source table", table.ID, item.Name+"."+table.Name, tableIndex, externalTableNames, nil); err != nil {
+				return err
+			}
+			catalog.externalTableByID[table.ID] = externalTableLocation{source: index, table: tableIndex}
 		}
 	}
 	for index, item := range catalog.StyleItems {
@@ -1861,6 +1880,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return err
 	}
 	if err := catalog.validateWebSocketClientFiles(root); err != nil {
+		return err
+	}
+	if err := catalog.validateExternalDataSources(); err != nil {
 		return err
 	}
 	if err := catalog.validateOutlinedObjects(); err != nil {

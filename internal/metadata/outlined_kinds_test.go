@@ -14,7 +14,6 @@ func TestOutlinedObjectsAreReadAndNotPassedOver(t *testing.T) {
 	identifiers := map[Kind]string{
 		BotKind:                "f5000000-0000-4000-8000-000000000001",
 		IntegrationServiceKind: "f5000000-0000-4000-8000-000000000004",
-		ExternalDataSourceKind: "f5000000-0000-4000-8000-000000000005",
 	}
 	for kind, id := range identifiers {
 		writeMetadata(t, root, kind, id, `format: 1

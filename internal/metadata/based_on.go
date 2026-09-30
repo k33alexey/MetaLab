@@ -84,6 +84,17 @@ func (catalog *Catalog) basisCarriers() []basisCarrier {
 	for _, item := range catalog.ExchangePlans {
 		result = append(result, basisCarrier{ExchangePlanKind, item.ID, item.Name, item.BasedOn})
 	}
+	// A table of a source is entered on the basis of other objects and may be
+	// the basis of one, the help says - but only a table of object data: a
+	// basis is handed to the filling event as the object it is, and a record
+	// is not one.
+	for _, source := range catalog.ExternalDataSources {
+		for _, table := range source.Tables {
+			if table.ObjectTable() {
+				result = append(result, basisCarrier{ExternalDataSourceTableKind, table.ID, source.Name + "." + table.Name, table.BasedOn})
+			}
+		}
+	}
 	return result
 }
 

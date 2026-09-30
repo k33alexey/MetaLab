@@ -639,6 +639,12 @@ type Catalog struct {
 	WebSocketClients                []WebSocketClientDefinition
 	webSocketClientByName           map[string]int
 	webSocketClientByID             map[uuid.UUID]int
+	ExternalDataSources             []ExternalDataSourceDefinition
+	externalDataSourceByName        map[string]int
+	externalDataSourceByID          map[uuid.UUID]int
+	// externalTableByID finds a table of any source by its identifier, which
+	// is how a field that refers to it names it.
+	externalTableByID map[uuid.UUID]externalTableLocation
 	// OutlinedObjects are the objects of the kinds carried by identity
 	// alone. They share one list because nothing tells them apart yet beyond
 	// the kind each one names.
