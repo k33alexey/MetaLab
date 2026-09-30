@@ -1354,7 +1354,7 @@ func objectDataGroups(loaded *metadata.Catalog, kind, language string, languages
 				definition, _ = loaded.CatalogByID(id)
 			}
 			return []Node{
-				attributeGroupNode(id.String()+":attributes", "Реквизиты", definition.Attributes, descriptionPath, language, languages),
+				attributeGroupNode(id.String()+":attributes", "Реквизиты", loaded.OwnAttributes(definition.Attributes), descriptionPath, language, languages),
 				tablePartGroupNode(id.String()+":table-parts", "Табличные части", definition.TableParts, descriptionPath, language, languages),
 			}
 		}
@@ -1365,7 +1365,7 @@ func objectDataGroups(loaded *metadata.Catalog, kind, language string, languages
 				definition, _ = loaded.DocumentByID(id)
 			}
 			return []Node{
-				attributeGroupNode(id.String()+":attributes", "Реквизиты", definition.Attributes, descriptionPath, language, languages),
+				attributeGroupNode(id.String()+":attributes", "Реквизиты", loaded.OwnAttributes(definition.Attributes), descriptionPath, language, languages),
 				tablePartGroupNode(id.String()+":table-parts", "Табличные части", definition.TableParts, descriptionPath, language, languages),
 			}
 		}
@@ -1378,7 +1378,7 @@ func objectDataGroups(loaded *metadata.Catalog, kind, language string, languages
 			return []Node{
 				attributeGroupNode(id.String()+":dimensions", "Измерения", metadata.RegisterDimensionAttributes(definition.Dimensions), descriptionPath, language, languages),
 				attributeGroupNode(id.String()+":resources", "Ресурсы", definition.Resources, descriptionPath, language, languages),
-				attributeGroupNode(id.String()+":attributes", "Реквизиты", definition.Attributes, descriptionPath, language, languages),
+				attributeGroupNode(id.String()+":attributes", "Реквизиты", loaded.OwnAttributes(definition.Attributes), descriptionPath, language, languages),
 			}
 		}
 	case "accumulation-registers":
@@ -1390,7 +1390,7 @@ func objectDataGroups(loaded *metadata.Catalog, kind, language string, languages
 			return []Node{
 				attributeGroupNode(id.String()+":dimensions", "Измерения", metadata.RegisterDimensionAttributes(definition.Dimensions), descriptionPath, language, languages),
 				attributeGroupNode(id.String()+":resources", "Ресурсы", definition.Resources, descriptionPath, language, languages),
-				attributeGroupNode(id.String()+":attributes", "Реквизиты", definition.Attributes, descriptionPath, language, languages),
+				attributeGroupNode(id.String()+":attributes", "Реквизиты", loaded.OwnAttributes(definition.Attributes), descriptionPath, language, languages),
 			}
 		}
 	default:

@@ -59,6 +59,11 @@ type SequenceDefinition struct {
 	// in order, instead of leaving it where it was.
 	MoveBoundaryOnPosting bool                `yaml:"move_boundary_on_posting,omitempty" json:"moveBoundaryOnPosting,omitempty"`
 	Dimensions            []SequenceDimension `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
+	// CommonAttributeFields are the fields a sequence's record gains from the
+	// common attributes it is in: see propagateCommonAttributes. They are not
+	// written in the sequence's file, because a common attribute is described
+	// where it is and not in the objects it reaches.
+	CommonAttributeFields []Attribute `yaml:"-" json:"commonAttributeFields,omitempty"`
 	// AdditionalIndexes are the indexes this object asks the database for
 	// beside the ones the platform builds - see additional_indexes.go.
 	AdditionalIndexes []AdditionalIndex `yaml:"additional_indexes,omitempty" json:"additionalIndexes,omitempty"`
@@ -142,6 +147,7 @@ func cloneSequence(value SequenceDefinition) SequenceDefinition {
 		dimension.DocumentAttributes = slices.Clone(dimension.DocumentAttributes)
 		dimension.RegisterDimensions = slices.Clone(dimension.RegisterDimensions)
 	}
+	value.CommonAttributeFields = cloneAttributes(value.CommonAttributeFields)
 	return value
 }
 

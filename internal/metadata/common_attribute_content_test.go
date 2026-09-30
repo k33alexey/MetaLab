@@ -560,3 +560,116 @@ func TestCommonAttributeReachesTheTablesOfTheKindsAddedLast(t *testing.T) {
 		t.Fatal("the attribute reached the chart of accounts and not its table")
 	}
 }
+
+// sequenceAndRecalculationCatalog is a catalog with one sequence and one
+// recalculation, the two kinds whose field is a field of their record.
+func sequenceAndRecalculationCatalog(common CommonAttributeDefinition, sequence, recalculation uuid.UUID) *Catalog {
+	return &Catalog{
+		Sequences: []SequenceDefinition{{ID: sequence, Name: "ДокументыОрганизаций",
+			Dimensions: []SequenceDimension{{ID: uuid.MustNew(), Name: "Организация2"}}}},
+		CalculationRegisters: []CalculationRegisterDefinition{{ID: contentCalculation, Name: "Начисления",
+			Recalculations: []Recalculation{{ID: recalculation, Name: "ПерерасчетНачислений"}}}},
+		CommonAttributes: []CommonAttributeDefinition{common},
+	}
+}
+
+// A sequence and a recalculation take a common attribute as a field of their
+// record, the last two of the fourteen kinds the composition names. Catches
+// either left out of propagation - which both were - and a recalculation named
+// in a composition refused as unknown because it lies inside its register.
+func TestCommonAttributeReachesTheRecordsOfASequenceAndARecalculation(t *testing.T) {
+	t.Parallel()
+	sequence, recalculation := uuid.MustNew(), uuid.MustNew()
+	common := contentAttribute(CommonAttributeAutoUseDontUse,
+		CommonAttributeContentItem{Metadata: sequence, Use: CommonAttributeUseUse},
+		CommonAttributeContentItem{Metadata: recalculation, Use: CommonAttributeUseUse})
+	catalog := sequenceAndRecalculationCatalog(common, sequence, recalculation)
+	if err := catalog.propagateCommonAttributes(); err != nil {
+		t.Fatalf("a composition naming a sequence and a recalculation was refused: %v", err)
+	}
+	if fields := catalog.Sequences[0].CommonAttributeFields; len(fields) != 1 || fields[0].Name != "Организация" {
+		t.Fatalf("the sequence's record has %+v", fields)
+	}
+	if fields := catalog.CalculationRegisters[0].Recalculations[0].CommonAttributeFields; len(fields) != 1 || fields[0].Name != "Организация" {
+		t.Fatalf("the recalculation's record has %+v", fields)
+	}
+	if len(catalog.CalculationRegisters[0].Attributes) != 0 {
+		t.Fatal("the recalculation's field went to its register instead")
+	}
+	// Propagation runs again on validated data and must not add the field twice.
+	if err := catalog.propagateCommonAttributes(); err != nil || len(catalog.Sequences[0].CommonAttributeFields) != 1 {
+		t.Fatalf("propagating twice gave %+v, %v", catalog.Sequences[0].CommonAttributeFields, err)
+	}
+}
+
+// The help puts a condition on these two kinds that no other kind has: a
+// separator becomes a field of their record only when separated data is used
+// independently and simultaneously. Catches a separator used independently
+// alone given the field, and the condition applied where it does not belong -
+// to a catalog, which takes the field either way.
+func TestASeparatorReachesTheRecordsOnlyWhenUsedIndependentlyAndSimultaneously(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		use   SeparatedDataUse
+		field bool
+	}{
+		"independently":                    {SeparatedDataIndependently, false},
+		"independently and simultaneously": {SeparatedDataIndependentlyAndSimultaneously, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			sequence, recalculation := uuid.MustNew(), uuid.MustNew()
+			common := contentAttribute(CommonAttributeAutoUseUse)
+			common.DataSeparation, common.SeparatedDataUse = SeparationSeparate, test.use
+			catalog := sequenceAndRecalculationCatalog(common, sequence, recalculation)
+			catalog.Catalogs = []CatalogDefinition{{ID: contentFirst, Name: "Товары"}}
+			if err := catalog.propagateCommonAttributes(); err != nil {
+				t.Fatal(err)
+			}
+			if got := len(catalog.Sequences[0].CommonAttributeFields) == 1; got != test.field {
+				t.Errorf("the sequence has the field: %v, want %v", got, test.field)
+			}
+			if got := len(catalog.CalculationRegisters[0].Recalculations[0].CommonAttributeFields) == 1; got != test.field {
+				t.Errorf("the recalculation has the field: %v, want %v", got, test.field)
+			}
+			if len(catalog.Catalogs[0].Attributes) != 1 {
+				t.Error("the condition of the records reached a catalog, which takes the field either way")
+			}
+		})
+	}
+}
+
+// The field joins the dimensions of the record and cannot share a name with
+// one. Catches a common attribute of the same name as a sequence's dimension
+// silently shadowing it.
+func TestCommonAttributeCollidesWithADimensionOfASequence(t *testing.T) {
+	t.Parallel()
+	sequence := uuid.MustNew()
+	common := contentAttribute(CommonAttributeAutoUseUse)
+	common.Name = "Организация2"
+	catalog := sequenceAndRecalculationCatalog(common, sequence, uuid.MustNew())
+	if err := catalog.propagateCommonAttributes(); err == nil || !strings.Contains(err.Error(), "collides with an existing field of sequence") {
+		t.Fatalf("a field colliding with a dimension of a sequence gave %v", err)
+	}
+}
+
+// An object's own attributes do not include the common attributes it is in, as
+// the platform shows: Метаданные.Справочники.<Имя>.Реквизиты does not hold them.
+// Catches a common attribute answered as one of the object's attributes by
+// whatever asks for them, while the field stays where storage and queries need
+// it.
+func TestAnObjectsOwnAttributesLeaveOutTheCommonAttributes(t *testing.T) {
+	t.Parallel()
+	own := Attribute{ID: uuid.MustNew(), Name: "Марка"}
+	catalog := contentCatalog(contentAttribute(CommonAttributeAutoUseUse), own)
+	if err := catalog.propagateCommonAttributes(); err != nil {
+		t.Fatal(err)
+	}
+	all := catalog.Catalogs[0].Attributes
+	if len(all) != 2 {
+		t.Fatalf("the common attribute did not reach the object's field list: %+v", all)
+	}
+	if got := catalog.OwnAttributes(all); len(got) != 1 || got[0].Name != "Марка" {
+		t.Fatalf("the object's own attributes are %+v", got)
+	}
+}

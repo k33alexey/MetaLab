@@ -73,6 +73,10 @@ type Recalculation struct {
 	// carries the setting, because it has records of its own to lock.
 	DataLock   project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
 	Dimensions []RecalculationDimension    `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
+	// CommonAttributeFields are the fields a recalculation's record gains
+	// from the common attributes it is in - read only, as the help says of
+	// them. Not written in the file, for the reason a sequence's are not.
+	CommonAttributeFields []Attribute `yaml:"-" json:"commonAttributeFields,omitempty"`
 }
 
 // CalculationRegisterDefinition holds the results of calculation, with a period
@@ -320,6 +324,7 @@ func cloneRecalculations(items []Recalculation) []Recalculation {
 			dimension.Title = cloneTitle(dimension.Title)
 			dimension.LeadingData = slices.Clone(dimension.LeadingData)
 		}
+		items[index].CommonAttributeFields = cloneAttributes(items[index].CommonAttributeFields)
 	}
 	return items
 }

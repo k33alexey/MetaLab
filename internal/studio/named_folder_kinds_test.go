@@ -197,3 +197,27 @@ func TestExternalDataSourceCubesStandInTheTree(t *testing.T) {
 		t.Fatalf("a cube's description was saved without being read strictly: %v", err)
 	}
 }
+
+// The tree shows under a catalog the attributes it declares and not the common
+// attributes it is in, the way the configurator does. Catches the common
+// attribute shown as one of the catalog's own - which it was.
+func TestCatalogAttributesInTheTreeLeaveOutCommonAttributes(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	writeProjectFile(t, root, "metadata/catalogs/Автомобили/object.yaml", "format: 1\nid: f9100000-0000-4000-8000-000000000001\nname: Автомобили\ntitle: {ru: Автомобили}\n"+
+		"code: {type: string, length: 9, auto: true}\ndescription_length: 150\nattributes:\n  - id: f9100000-0000-4000-8000-000000000003\n    name: Марка\n    title: {ru: Марка}\n    types: [{kind: string, length: 50}]\n")
+	writeProjectFile(t, root, "metadata/common-attributes/f9100000-0000-4000-8000-000000000002.yaml",
+		"format: 1\nid: f9100000-0000-4000-8000-000000000002\nname: Организация\ntitle: {ru: Организация}\ntypes: [{kind: string, length: 10}]\nauto_use: use\n")
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := workspace.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	attributes, ok := findNodeByID(snapshot.Tree, "f9100000-0000-4000-8000-000000000001:attributes")
+	if !ok || len(attributes.Children) != 1 || attributes.Children[0].Title != "Марка" {
+		t.Fatalf("the catalog's attributes in the tree are %+v", attributes.Children)
+	}
+}

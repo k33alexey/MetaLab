@@ -398,6 +398,9 @@ func cloneCommonAttributeDefinition(value CommonAttributeDefinition) CommonAttri
 type commonAttributeTarget struct {
 	kind  string
 	index int
+	// sub is the recalculation within its calculation register, for the one
+	// kind that lies inside another.
+	sub int
 }
 
 // propagateCommonAttributes physically appends every common attribute to the
@@ -423,11 +426,14 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 	// business processes, tasks, information, accumulation, accounting and
 	// calculation registers, recalculations, exchange plans.
 	//
-	// Twelve of the fourteen are here. Sequences and recalculations are not, and
-	// have a point of their own: neither keeps a list of attributes - a sequence
-	// keeps dimensions bound to the attributes of a document, a recalculation
-	// keeps dimensions of its own - so there is nowhere to put the field without
-	// deciding something about the model first.
+	// All fourteen are here. A sequence and a recalculation keep no list of
+	// attributes, and the help says where the field goes on them: it is a field
+	// of their record - ПоследовательностьЗапись.<Имя>.<Имя общего реквизита>,
+	// ПерерасчетЗапись.<Имя>.<Имя общего реквизита>, read only on the second -
+	// kept in a list of its own beside their dimensions. And the help puts a
+	// condition on it that no other kind has: only an attribute that does not
+	// separate data, or one that separates it «независимо и совместно»,
+	// becomes such a field. See recordField.
 	//
 	// Four more kinds join a composition only when the attribute separates data:
 	// constants, scheduled jobs, users of the database and document journals,
@@ -437,7 +443,7 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 	var ordered []commonAttributeTarget
 	targets := map[uuid.UUID]commonAttributeTarget{}
 	add := func(id uuid.UUID, kind string, index int) {
-		location := commonAttributeTarget{kind, index}
+		location := commonAttributeTarget{kind: kind, index: index}
 		targets[id] = location
 		ordered = append(ordered, location)
 	}
@@ -477,6 +483,16 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 	for index, item := range catalog.CalculationRegisters {
 		add(item.ID, "calculation register", index)
 	}
+	for index, item := range catalog.Sequences {
+		add(item.ID, "sequence", index)
+	}
+	for index, register := range catalog.CalculationRegisters {
+		for sub, recalculation := range register.Recalculations {
+			location := commonAttributeTarget{kind: "recalculation", index: index, sub: sub}
+			targets[recalculation.ID] = location
+			ordered = append(ordered, location)
+		}
+	}
 	known := catalog.knownObjectIDs()
 	for _, common := range catalog.CommonAttributes {
 		attribute := Attribute{
@@ -514,6 +530,9 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 		}
 		for _, location := range ordered {
 			if !common.reaches(catalog.objectID(location)) {
+				continue
+			}
+			if (location.kind == "sequence" || location.kind == "recalculation") && !common.recordField() {
 				continue
 			}
 			name, names, ids := catalog.objectFieldName(location), catalog.objectFieldNames(location), catalog.objectFieldIDs(location)
@@ -662,8 +681,53 @@ func (catalog *Catalog) referableObject(id uuid.UUID) (string, []Attribute, Type
 // today and would quietly fall behind on the first kind added, turning a
 // perfectly good object into an "unknown object" at load time. A collection
 // added to the catalog is known here the moment it is added.
+// OwnAttributes returns the attributes an object declares itself, leaving out
+// the common attributes propagation has added to the same list.
+//
+// The prototype keeps the two apart where anybody can see: the collection of
+// attributes of an object's metadata does not hold the common attributes it is
+// in - established on the platform on 30.09.2026 with
+// Метаданные.Справочники.<Имя>.Реквизиты - and its configurator does not show
+// them among the object's attributes either. Propagation puts them into one
+// list because storage, queries and the object in code all need the field
+// there; whatever answers «what are this object's attributes» takes this
+// instead.
+func (catalog *Catalog) OwnAttributes(attributes []Attribute) []Attribute {
+	if catalog == nil || len(catalog.CommonAttributes) == 0 {
+		return attributes
+	}
+	common := make(map[uuid.UUID]bool, len(catalog.CommonAttributes))
+	for _, item := range catalog.CommonAttributes {
+		common[item.ID] = true
+	}
+	own := make([]Attribute, 0, len(attributes))
+	for _, attribute := range attributes {
+		if !common[attribute.ID] {
+			own = append(own, attribute)
+		}
+	}
+	return own
+}
+
+// recordField says whether the attribute becomes a field of the record of a
+// sequence or a recalculation it reaches. The help gives the rule in one
+// sentence for both: an attribute that does not separate data does, and one
+// that separates it does only when separated data is used «независимо и
+// совместно». A separator used independently alone keeps its area apart and
+// adds no field there.
+func (value CommonAttributeDefinition) recordField() bool {
+	return value.DataSeparation != SeparationSeparate || value.SeparatedDataUse == SeparatedDataIndependentlyAndSimultaneously
+}
+
 func (catalog *Catalog) knownObjectIDs() map[uuid.UUID]bool {
 	known := map[uuid.UUID]bool{}
+	// A recalculation lies inside its calculation register, and a composition
+	// names it all the same: it is one of the fourteen kinds.
+	for _, register := range catalog.CalculationRegisters {
+		for _, recalculation := range register.Recalculations {
+			known[recalculation.ID] = true
+		}
+	}
 	value := reflect.ValueOf(*catalog)
 	for index := 0; index < value.NumField(); index++ {
 		field := value.Field(index)
@@ -711,6 +775,11 @@ func (catalog *Catalog) objectFieldName(location commonAttributeTarget) string {
 		return catalog.AccountingRegisters[location.index].Name
 	case "calculation register":
 		return catalog.CalculationRegisters[location.index].Name
+	case "sequence":
+		return catalog.Sequences[location.index].Name
+	case "recalculation":
+		register := catalog.CalculationRegisters[location.index]
+		return register.Name + "." + register.Recalculations[location.sub].Name
 	}
 	return ""
 }
@@ -741,6 +810,10 @@ func (catalog *Catalog) objectID(location commonAttributeTarget) uuid.UUID {
 		return catalog.AccountingRegisters[location.index].ID
 	case "calculation register":
 		return catalog.CalculationRegisters[location.index].ID
+	case "sequence":
+		return catalog.Sequences[location.index].ID
+	case "recalculation":
+		return catalog.CalculationRegisters[location.index].Recalculations[location.sub].ID
 	}
 	return uuid.UUID{}
 }
@@ -820,6 +893,18 @@ func (catalog *Catalog) objectFields(location commonAttributeTarget) []Attribute
 		for _, dimension := range definition.Dimensions {
 			fields = append(fields, dimension.Attribute)
 		}
+	case "sequence":
+		definition := catalog.Sequences[location.index]
+		for _, dimension := range definition.Dimensions {
+			fields = append(fields, Attribute{ID: dimension.ID, Name: dimension.Name})
+		}
+		fields = append(fields, definition.CommonAttributeFields...)
+	case "recalculation":
+		definition := catalog.CalculationRegisters[location.index].Recalculations[location.sub]
+		for _, dimension := range definition.Dimensions {
+			fields = append(fields, Attribute{ID: dimension.ID, Name: dimension.Name})
+		}
+		fields = append(fields, definition.CommonAttributeFields...)
 	}
 	return fields
 }
@@ -880,5 +965,10 @@ func (catalog *Catalog) appendPropagatedAttribute(location commonAttributeTarget
 		catalog.AccountingRegisters[location.index].Attributes = append(catalog.AccountingRegisters[location.index].Attributes, attribute)
 	case "calculation register":
 		catalog.CalculationRegisters[location.index].Attributes = append(catalog.CalculationRegisters[location.index].Attributes, attribute)
+	case "sequence":
+		catalog.Sequences[location.index].CommonAttributeFields = append(catalog.Sequences[location.index].CommonAttributeFields, attribute)
+	case "recalculation":
+		recalculation := &catalog.CalculationRegisters[location.index].Recalculations[location.sub]
+		recalculation.CommonAttributeFields = append(recalculation.CommonAttributeFields, attribute)
 	}
 }
