@@ -95,11 +95,14 @@ func (catalog *Catalog) accountingRegisterTable(definition AccountingRegisterDef
 			Name: physicalObjectName("ia"+account.tag, definition.ID), Method: "btree", Keys: []string{account.column},
 		})
 	}
-	for _, group := range [][]AccountingRegisterField{definition.Dimensions, definition.Resources} {
-		for _, field := range group {
-			if err := catalog.appendAccountingField(&table, definition, field); err != nil {
-				return schemadiff.Table{}, err
-			}
+	for _, dimension := range definition.Dimensions {
+		if err := catalog.appendAccountingField(&table, definition, dimension.Attribute, dimension.Balance); err != nil {
+			return schemadiff.Table{}, err
+		}
+	}
+	for _, resource := range definition.Resources {
+		if err := catalog.appendAccountingField(&table, definition, resource.Attribute, resource.Balance); err != nil {
+			return schemadiff.Table{}, err
 		}
 	}
 	for _, attribute := range definition.Attributes {
@@ -111,7 +114,7 @@ func (catalog *Catalog) accountingRegisterTable(definition AccountingRegisterDef
 	return table, nil
 }
 
-func (catalog *Catalog) appendAccountingField(table *schemadiff.Table, definition AccountingRegisterDefinition, field AccountingRegisterField) error {
+func (catalog *Catalog) appendAccountingField(table *schemadiff.Table, definition AccountingRegisterDefinition, field Attribute, balance bool) error {
 	storage, err := catalog.attributeStorage(field.Types)
 	if err != nil {
 		return fmt.Errorf("accounting register %s field %s: %w", definition.Name, field.Name, err)
@@ -120,7 +123,7 @@ func (catalog *Catalog) appendAccountingField(table *schemadiff.Table, definitio
 	// keeps a value per side, because that is what "not the same on both
 	// sides" means.
 	columns := []string{}
-	if !definition.Correspondence || field.Balance {
+	if !definition.Correspondence || balance {
 		name, err := PhysicalAttributeColumn(field.ID)
 		if err != nil {
 			return err

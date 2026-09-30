@@ -56,6 +56,15 @@ type RegisterDimension struct {
 	// value that is.
 	Base         bool       `yaml:"base,omitempty" json:"base,omitempty"`
 	ScheduleLink *uuid.UUID `yaml:"schedule_link,omitempty" json:"scheduleLink,omitempty"`
+	// Balance and AccountingFlag belong to a dimension of an accounting
+	// register. Balance says the value is one per entry rather than one per
+	// side: the company an entry belongs to is the same in debit and in credit,
+	// while the analytics of the two sides differ, so a non-balance dimension
+	// is kept twice. AccountingFlag ties the dimension to the chart of
+	// accounts: an account that does not keep this flag does not keep this
+	// dimension either.
+	Balance        bool       `yaml:"balance,omitempty" json:"balance,omitempty"`
+	AccountingFlag *uuid.UUID `yaml:"accounting_flag,omitempty" json:"accountingFlag,omitempty"`
 }
 
 // usesInTotals answers the question the pointer leaves open: a dimension nobody
@@ -85,9 +94,11 @@ func cloneRegisterDimensions(dimensions []RegisterDimension) []RegisterDimension
 			value := *result[index].UseInTotals
 			result[index].UseInTotals = &value
 		}
-		if result[index].ScheduleLink != nil {
-			id := *result[index].ScheduleLink
-			result[index].ScheduleLink = &id
+		for _, link := range []**uuid.UUID{&result[index].ScheduleLink, &result[index].AccountingFlag} {
+			if *link != nil {
+				id := **link
+				*link = &id
+			}
 		}
 	}
 	return result
@@ -105,6 +116,8 @@ type dimensionProperties struct {
 	useInTotals   bool
 	base          bool
 	scheduleLink  bool
+	balance       bool
+	accounting    bool
 }
 
 // informationRegisterDimensions and accumulationRegisterDimensions are the two
@@ -126,6 +139,12 @@ func calculationRegisterDimensions() dimensionProperties {
 	return dimensionProperties{base: true, scheduleLink: true}
 }
 
+// accountingRegisterDimensions is the answer for an accounting register: the
+// balance flag and the accounting flag of the chart of accounts.
+func accountingRegisterDimensions() dimensionProperties {
+	return dimensionProperties{balance: true, accounting: true}
+}
+
 // validateRegisterDimension refuses a property the owner does not have. A
 // property nobody reads is worse than a missing one: it reads as a setting and
 // changes nothing, and the developer who wrote it goes looking for the effect.
@@ -135,12 +154,14 @@ func validateRegisterDimension(prefix string, dimension RegisterDimension, allow
 		issues = append(issues, prefix+".type_reduction must be deny, transform-values or delete-data")
 	}
 	for name, refused := range map[string]bool{
-		"master":         dimension.Master && !allowed.master,
-		"main_filter":    dimension.MainFilter && !allowed.mainFilter,
-		"type_reduction": dimension.TypeReduction != "" && !allowed.typeReduction,
-		"use_in_totals":  dimension.UseInTotals != nil && !allowed.useInTotals,
-		"base":           dimension.Base && !allowed.base,
-		"schedule_link":  dimension.ScheduleLink != nil && !allowed.scheduleLink,
+		"master":          dimension.Master && !allowed.master,
+		"main_filter":     dimension.MainFilter && !allowed.mainFilter,
+		"type_reduction":  dimension.TypeReduction != "" && !allowed.typeReduction,
+		"use_in_totals":   dimension.UseInTotals != nil && !allowed.useInTotals,
+		"base":            dimension.Base && !allowed.base,
+		"schedule_link":   dimension.ScheduleLink != nil && !allowed.scheduleLink,
+		"balance":         dimension.Balance && !allowed.balance,
+		"accounting_flag": dimension.AccountingFlag != nil && !allowed.accounting,
 	} {
 		if refused {
 			issues = append(issues, prefix+"."+name+" does not belong to a dimension of this register")

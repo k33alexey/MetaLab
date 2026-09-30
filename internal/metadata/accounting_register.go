@@ -10,33 +10,20 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// AccountingRegisterField is a dimension or a resource of an accounting
-// register. Beyond what any attribute carries it holds the three things double
-// entry needs.
+// AccountingRegisterResource is a resource of an accounting register. Its
+// dimensions are the dimension every register has - RegisterDimension, where
+// the balance and accounting flags of a dimension live - and the resource keeps
+// a structure of its own because it has one property no dimension has.
 //
-// Balance says the value is one per entry rather than one per side: the company
-// an entry belongs to is the same in debit and in credit, while the analytics
-// of the two sides differ. A non-balance field is therefore kept twice, once
-// for each side, and a balance field once.
-//
-// The two flags tie the field to the chart of accounts: an account that does
-// not keep this flag does not keep this field either, and an entry that fills
-// it anyway is filling a column the account has no meaning for.
-type AccountingRegisterField struct {
+// Balance says the amount is kept by double entry: the debit total equals the
+// credit total. AccountingFlag ties the amount to the chart of accounts, as it
+// does for a dimension. ExtDimensionAccountingFlag says in which kinds of ext
+// dimension the amount is kept, and a dimension keeps no amount - which is why
+// the help gives this one to the resource alone.
+type AccountingRegisterResource struct {
 	// Attribute is the whole common set - how the value is shown, how it is
-	// chosen, what it starts as, whether it is checked and searched. The
-	// prototype has one metadata object «Измерение» and one «Ресурс» for all
-	// four kinds of register, and what a particular kind may set of it is a
-	// matter of applicability, not of a different type. A field of an
-	// accounting register that carried only a name, a type and indexing was a
-	// field the editor could not offer a format or a choice form for.
-	Attribute `yaml:",inline" json:",inline"`
-	// DenyIncompleteValues refuses an empty value, and it belongs to a dimension
-	// of all four registers - the help lists the dimensions of accounting,
-	// accumulation, calculation and information registers. A resource
-	// holds an amount and is refused it here, the same way it is refused an
-	// index.
-	DenyIncompleteValues       bool       `yaml:"deny_incomplete_values,omitempty" json:"denyIncompleteValues,omitempty"`
+	// chosen, what it starts as, whether it is checked and searched.
+	Attribute                  `yaml:",inline" json:",inline"`
 	Balance                    bool       `yaml:"balance,omitempty" json:"balance,omitempty"`
 	AccountingFlag             *uuid.UUID `yaml:"accounting_flag,omitempty" json:"accountingFlag,omitempty"`
 	ExtDimensionAccountingFlag *uuid.UUID `yaml:"ext_dimension_accounting_flag,omitempty" json:"extDimensionAccountingFlag,omitempty"`
@@ -81,14 +68,14 @@ type AccountingRegisterDefinition struct {
 	// PeriodAdjustmentLength orders entries beyond their period: of two with
 	// equal periods, the smaller refinement is the earlier. Zero means the
 	// register does not support refinement - see register_properties.go.
-	PeriodAdjustmentLength int                       `yaml:"period_adjustment_length,omitempty" json:"periodAdjustmentLength,omitempty"`
-	Dimensions             []AccountingRegisterField `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
-	Resources              []AccountingRegisterField `yaml:"resources" json:"resources"`
-	Attributes             []Attribute               `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	StandardAttributes     []StandardAttribute       `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
-	Forms                  RegisterForms             `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands               []ObjectCommand           `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates              []ObjectTemplate          `yaml:"templates,omitempty" json:"templates,omitempty"`
+	PeriodAdjustmentLength int                          `yaml:"period_adjustment_length,omitempty" json:"periodAdjustmentLength,omitempty"`
+	Dimensions             []RegisterDimension          `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
+	Resources              []AccountingRegisterResource `yaml:"resources" json:"resources"`
+	Attributes             []Attribute                  `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	StandardAttributes     []StandardAttribute          `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
+	Forms                  RegisterForms                `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands               []ObjectCommand              `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates              []ObjectTemplate             `yaml:"templates,omitempty" json:"templates,omitempty"`
 }
 
 // DecodeAccountingRegister reads and validates one accounting register.
@@ -107,43 +94,34 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 		issues = append(issues, "resources must contain at least one item: an entry with no amount is not an entry")
 	}
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
-	for _, group := range []struct {
-		path      string
-		fields    []AccountingRegisterField
-		dimension bool
-	}{{"dimensions", value.Dimensions, true}, {"resources", value.Resources, false}} {
-		for index, field := range group.fields {
-			prefix := fmt.Sprintf("%s[%d]", group.path, index)
-			issues = append(issues, validateRegisterField(prefix, field.Attribute, value.ID,
-				names, ids, configuration, reservedAccountingRegisterName)...)
-			// Two sides exist only under double entry. Marking a field as the
-			// same on both sides of an entry that has one side says nothing,
-			// and a setting that says nothing hides the one that would.
-			if field.Balance && !value.Correspondence {
-				issues = append(issues, prefix+".balance needs correspondence: without two sides there is nothing for a value to be the same on")
-			}
-			if field.AccountingFlag != nil && field.AccountingFlag.IsZero() {
-				issues = append(issues, prefix+".accounting_flag must be a non-zero UUID")
-			}
-			if field.ExtDimensionAccountingFlag != nil && field.ExtDimensionAccountingFlag.IsZero() {
-				issues = append(issues, prefix+".ext_dimension_accounting_flag must be a non-zero UUID")
-			}
-			// The ext dimension flag belongs to a resource and to nothing else:
-			// the help gives it to the resources of an accounting register
-			// only. It says in which kinds of ext dimension
-			// the amount of that resource is kept, and a dimension keeps no
-			// amount - the setting would be read by nobody.
-			if group.dimension && field.ExtDimensionAccountingFlag != nil {
-				issues = append(issues, prefix+".ext_dimension_accounting_flag belongs to a resource: a dimension holds no amount to keep by ext dimension")
-			}
-			if !group.dimension {
-				issues = append(issues, validateResourceIndexing(prefix, field.Indexing)...)
-				if field.DenyIncompleteValues {
-					issues = append(issues, prefix+".deny_incomplete_values belongs to a dimension: a resource holds an amount")
-				}
-			}
-			issues = append(issues, validateMovementFieldStorage(prefix, field.Attribute)...)
+	// What a dimension and a resource share: the common set, the two sides,
+	// and the flag of the chart of accounts.
+	validateField := func(prefix string, field Attribute, balance bool, accountingFlag *uuid.UUID) {
+		issues = append(issues, validateRegisterField(prefix, field, value.ID,
+			names, ids, configuration, reservedAccountingRegisterName)...)
+		// Two sides exist only under double entry. Marking a field as the
+		// same on both sides of an entry that has one side says nothing, and
+		// a setting that says nothing hides the one that would.
+		if balance && !value.Correspondence {
+			issues = append(issues, prefix+".balance needs correspondence: without two sides there is nothing for a value to be the same on")
 		}
+		if accountingFlag != nil && accountingFlag.IsZero() {
+			issues = append(issues, prefix+".accounting_flag must be a non-zero UUID")
+		}
+		issues = append(issues, validateMovementFieldStorage(prefix, field)...)
+	}
+	for index, dimension := range value.Dimensions {
+		prefix := fmt.Sprintf("dimensions[%d]", index)
+		validateField(prefix, dimension.Attribute, dimension.Balance, dimension.AccountingFlag)
+		issues = append(issues, validateRegisterDimension(prefix, dimension, accountingRegisterDimensions())...)
+	}
+	for index, resource := range value.Resources {
+		prefix := fmt.Sprintf("resources[%d]", index)
+		validateField(prefix, resource.Attribute, resource.Balance, resource.AccountingFlag)
+		if resource.ExtDimensionAccountingFlag != nil && resource.ExtDimensionAccountingFlag.IsZero() {
+			issues = append(issues, prefix+".ext_dimension_accounting_flag must be a non-zero UUID")
+		}
+		issues = append(issues, validateResourceIndexing(prefix, resource.Indexing)...)
 	}
 	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, func(name string) bool {
 		return names[strings.ToLower(name)] || reservedAccountingRegisterName(name)
@@ -159,7 +137,7 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accountingStandardFields(value.Correspondence, maxExtDimensions), configuration)...)
 	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, AccountingRegisterKind,
 		recordIndexTables(accountingStandardFields(value.Correspondence, maxExtDimensions),
-			accountingFieldNames(value.Dimensions), accountingFieldNames(value.Resources),
+			attributeNames(RegisterDimensionAttributes(value.Dimensions)), attributeNames(accountingResourceAttributes(value.Resources)),
 			attributeNames(value.Attributes)))...)
 	// Dimensions and resources belong in these two checks, and until now only
 	// attributes were in them. That cost both ways. A choice parameter link
@@ -169,8 +147,8 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	// attributes alone. And a link drawn from a dimension was not looked at at
 	// all, so one pointing nowhere went in and failed when the form opened.
 	registerFields := []fieldGroup{
-		{"dimensions", accountingFieldAttributes(value.Dimensions)},
-		{"resources", accountingFieldAttributes(value.Resources)},
+		{"dimensions", RegisterDimensionAttributes(value.Dimensions)},
+		{"resources", accountingResourceAttributes(value.Resources)},
 		{"attributes", value.Attributes},
 	}
 	issues = append(issues, validateFieldLinks(registerFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
@@ -198,24 +176,24 @@ func reservedAccountingRegisterName(name string) bool {
 	}
 }
 
-func cloneAccountingRegisterFields(fields []AccountingRegisterField) []AccountingRegisterField {
-	fields = slices.Clone(fields)
-	for index := range fields {
-		fields[index].Attribute = cloneAttribute(fields[index].Attribute)
-		for _, flag := range []**uuid.UUID{&fields[index].AccountingFlag, &fields[index].ExtDimensionAccountingFlag} {
+func cloneAccountingRegisterResources(resources []AccountingRegisterResource) []AccountingRegisterResource {
+	resources = slices.Clone(resources)
+	for index := range resources {
+		resources[index].Attribute = cloneAttribute(resources[index].Attribute)
+		for _, flag := range []**uuid.UUID{&resources[index].AccountingFlag, &resources[index].ExtDimensionAccountingFlag} {
 			if *flag != nil {
 				id := **flag
 				*flag = &id
 			}
 		}
 	}
-	return fields
+	return resources
 }
 
 func cloneAccountingRegister(value AccountingRegisterDefinition) AccountingRegisterDefinition {
 	value.Title = cloneTitle(value.Title)
-	value.Dimensions = cloneAccountingRegisterFields(value.Dimensions)
-	value.Resources = cloneAccountingRegisterFields(value.Resources)
+	value.Dimensions = cloneRegisterDimensions(value.Dimensions)
+	value.Resources = cloneAccountingRegisterResources(value.Resources)
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
@@ -225,12 +203,12 @@ func cloneAccountingRegister(value AccountingRegisterDefinition) AccountingRegis
 	return value
 }
 
-// accountingFieldAttributes is one group of fields as plain attributes, which is
+// accountingResourceAttributes is the resources as plain attributes, which is
 // what the checks shared by every kind of object take.
-func accountingFieldAttributes(fields []AccountingRegisterField) []Attribute {
-	result := make([]Attribute, 0, len(fields))
-	for _, field := range fields {
-		result = append(result, field.Attribute)
+func accountingResourceAttributes(resources []AccountingRegisterResource) []Attribute {
+	result := make([]Attribute, 0, len(resources))
+	for _, resource := range resources {
+		result = append(result, resource.Attribute)
 	}
 	return result
 }
@@ -240,10 +218,8 @@ func accountingFieldAttributes(fields []AccountingRegisterField) []Attribute {
 // they are to everything that does not care about double entry.
 func accountingRegisterFields(item AccountingRegisterDefinition) []Attribute {
 	fields := make([]Attribute, 0, len(item.Dimensions)+len(item.Resources))
-	for _, group := range [][]AccountingRegisterField{item.Dimensions, item.Resources} {
-		for _, field := range group {
-			fields = append(fields, cloneAttribute(field.Attribute))
-		}
+	for _, field := range append(RegisterDimensionAttributes(item.Dimensions), accountingResourceAttributes(item.Resources)...) {
+		fields = append(fields, cloneAttribute(field))
 	}
 	return fields
 }

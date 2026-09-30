@@ -271,17 +271,6 @@ func cloneAdditionalIndexes(indexes []AdditionalIndex) []AdditionalIndex {
 	return cloned
 }
 
-// accountingFieldNames is the same thing for the accounting register, which
-// still keeps a structure of its own for its fields. Until it shares the
-// dimension of the other registers the name has to be fetched from it.
-func accountingFieldNames(fields []AccountingRegisterField) []string {
-	names := make([]string, len(fields))
-	for position, field := range fields {
-		names[position] = field.Name
-	}
-	return names
-}
-
 // sequenceStandardFields is what a sequence's own table holds beside its
 // dimensions: the recorder and the moment it sits at. It is written here and
 // not in standardFieldsOfKind because a sequence carries no descriptions of

@@ -1313,7 +1313,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		if err := add("accounting register", item.ID, item.Name, index, catalog.accountingRegisterByName, catalog.accountingRegisterByID); err != nil {
 			return err
 		}
-		for _, field := range append(slices.Clone(item.Dimensions), item.Resources...) {
+		for _, field := range accountingRegisterFields(item) {
 			if previous, ok := allIDs[field.ID]; ok {
 				return fmt.Errorf("%w: %s and accounting register field %s.%s use %s", ErrDuplicateID, previous, item.Name, field.Name, field.ID)
 			}
@@ -2071,17 +2071,31 @@ func (catalog *Catalog) validateAccountingRegister(root string, item AccountingR
 	for _, flag := range chart.ExtDimensionAccountingFlags {
 		extFlags[flag.ID] = true
 	}
-	for _, field := range append(slices.Clone(item.Dimensions), item.Resources...) {
+	// A dimension and a resource both depend on a flag of the chart; only a
+	// resource can depend on a flag of its ext dimensions.
+	type flaggedField struct {
+		field                 Attribute
+		accounting, extension *uuid.UUID
+	}
+	fields := make([]flaggedField, 0, len(item.Dimensions)+len(item.Resources))
+	for _, dimension := range item.Dimensions {
+		fields = append(fields, flaggedField{dimension.Attribute, dimension.AccountingFlag, nil})
+	}
+	for _, resource := range item.Resources {
+		fields = append(fields, flaggedField{resource.Attribute, resource.AccountingFlag, resource.ExtDimensionAccountingFlag})
+	}
+	for _, flagged := range fields {
+		field := flagged.field
 		if err := catalog.validateReferences(owner+" field "+field.Name, field.Types); err != nil {
 			return err
 		}
-		if field.AccountingFlag != nil && !flags[*field.AccountingFlag] {
+		if flagged.accounting != nil && !flags[*flagged.accounting] {
 			return fmt.Errorf("%s field %s depends on %s, which is not an accounting flag of %s",
-				owner, field.Name, field.AccountingFlag, chart.Name)
+				owner, field.Name, flagged.accounting, chart.Name)
 		}
-		if field.ExtDimensionAccountingFlag != nil && !extFlags[*field.ExtDimensionAccountingFlag] {
+		if flagged.extension != nil && !extFlags[*flagged.extension] {
 			return fmt.Errorf("%s field %s depends on %s, which is not an ext dimension accounting flag of %s",
-				owner, field.Name, field.ExtDimensionAccountingFlag, chart.Name)
+				owner, field.Name, flagged.extension, chart.Name)
 		}
 	}
 	for _, attribute := range item.Attributes {

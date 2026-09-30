@@ -481,11 +481,11 @@ func TestCommonAttributeCollidesWithFieldsOfOtherSorts(t *testing.T) {
 				{ID: uuid.MustNew(), Name: taken, Title: LocalizedText{"ru": taken}}}
 		},
 		"измерение регистра бухгалтерии": func(catalog *Catalog) {
-			catalog.AccountingRegisters[0].Dimensions = []AccountingRegisterField{
+			catalog.AccountingRegisters[0].Dimensions = []RegisterDimension{
 				{Attribute: Attribute{ID: uuid.MustNew(), Name: taken}}}
 		},
 		"ресурс регистра бухгалтерии": func(catalog *Catalog) {
-			catalog.AccountingRegisters[0].Resources = []AccountingRegisterField{
+			catalog.AccountingRegisters[0].Resources = []AccountingRegisterResource{
 				{Attribute: Attribute{ID: uuid.MustNew(), Name: taken}}}
 		},
 		"измерение регистра расчёта": func(catalog *Catalog) {
