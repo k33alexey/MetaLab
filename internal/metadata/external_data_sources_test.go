@@ -36,14 +36,37 @@ title: {ru: `+name+`}
 `+body)
 }
 
-// writeExternalTable writes one table of a source.
+// writeExternalTable writes one table of a source, and the forms its
+// description names by default: a default form names a form the table's folder
+// keeps, and a fixture that named forms without keeping them would be refused
+// for that before it said what it was written to say.
 func writeExternalTable(t *testing.T, root, source, id, name, body string) {
 	t.Helper()
-	writeFile(t, filepath.Join(root, "metadata", string(ExternalDataSourceKind), source, ExternalDataSourceTablesDirectory, name, "object.yaml"), `format: 1
+	directory := filepath.Join(root, "metadata", string(ExternalDataSourceKind), source, ExternalDataSourceTablesDirectory, name)
+	writeFile(t, filepath.Join(directory, "object.yaml"), `format: 1
 id: `+id+`
 name: `+name+`
 title: {ru: `+name+`}
 `+body)
+	for _, line := range strings.Split(body, "\n") {
+		forms, found := strings.CutPrefix(line, "forms: {")
+		if !found {
+			continue
+		}
+		for _, slot := range strings.Split(strings.TrimSuffix(forms, "}"), ",") {
+			_, form, _ := strings.Cut(slot, ":")
+			writeTableForm(t, directory, strings.TrimSpace(form))
+		}
+	}
+}
+
+// writeTableForm writes one form into a table's folder, with an identifier
+// derived from where it lies so that no two fixtures share one.
+func writeTableForm(t *testing.T, tableDirectory, form string) {
+	t.Helper()
+	id := uuid.Derive(uuid.UUID{}, filepath.Join(tableDirectory, form)).String()
+	writeFile(t, filepath.Join(tableDirectory, "forms", form, "form.yaml"),
+		"format: 1\nid: "+id+"\nname: "+form+"\ntitle: {ru: "+form+"}\nkind: list\n")
 }
 
 func writeFile(t *testing.T, path, content string) {
@@ -433,17 +456,34 @@ func TestExternalTableValuesAreValuesOfTheirFields(t *testing.T) {
 	}
 }
 
-// A table folder holds its description and nothing else yet, and a source
-// folder holds its description and its tables. Catches a module, a form or a
-// stray file passed over in silence - code in a folder nobody reads looks like
-// code that runs - and a table in a folder of another name.
-func TestExternalDataSourceFoldersHoldNothingUnread(t *testing.T) {
+// A table's folder is an object folder: it keeps the modules of the roles the
+// table has, the forms its defaults name, and nothing else. Catches a module of
+// a role the table has not - an object module on a table of records, which
+// nothing would ever run - a default form the folder does not keep, a stray
+// file, and a table in a folder of another name.
+func TestExternalTableFolderIsAnObjectFolder(t *testing.T) {
 	t.Parallel()
+	const goods, stock = "tables/Товары/", "tables/Остатки/"
+	root := metadataProject(t)
+	writeWarehouse(t, root)
+	for _, path := range []string{goods + "МодульОбъекта.bsl", goods + "МодульМенеджера.bsl", stock + "МодульНабораЗаписей.bsl",
+		goods + "forms/ФормаТовара/МодульФормы.bsl"} {
+		writeFile(t, filepath.Join(root, "metadata", string(ExternalDataSourceKind), "Склад", filepath.FromSlash(path)), "\n")
+	}
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a table folder with the modules of its roles was refused: %v", err)
+	}
+	if names := catalog.ObjectFormNames(ExternalDataSourceTableKind, "Склад.Товары"); len(names) != 3 {
+		t.Fatalf("the forms of the table were not indexed: %v", names)
+	}
 	for name, test := range map[string]struct{ path, says string }{
-		"a module of a table":          {"tables/Товары/МодульОбъекта.bsl", `keeps "МодульОбъекта.bsl"`},
-		"a form of a table":            {"tables/Товары/forms/ФормаТовара/form.yaml", `keeps "forms"`},
-		"a stray file of a source":     {"заметки.txt", `keeps "заметки.txt"`},
-		"a table that is not a folder": {"tables/Товары.yaml", "a table is a folder"},
+		"an object module on records":    {stock + "МодульОбъекта.bsl", "МодульОбъекта.bsl"},
+		"a record set module on objects": {goods + "МодульНабораЗаписей.bsl", "МодульНабораЗаписей.bsl"},
+		"a module of no role":            {goods + "МодульСервиса.bsl", "МодульСервиса.bsl"},
+		"a template nobody declared":     {goods + "templates/Макет/content.yaml", "Макет"},
+		"a stray file of a source":       {"заметки.txt", `keeps "заметки.txt"`},
+		"a table that is not a folder":   {"tables/Товары.yaml", "a table is a folder"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -455,14 +495,104 @@ func TestExternalDataSourceFoldersHoldNothingUnread(t *testing.T) {
 			}
 		})
 	}
+	t.Run("a default form the folder does not keep", func(t *testing.T) {
+		t.Parallel()
+		root := metadataProject(t)
+		writeWarehouse(t, root)
+		if err := os.RemoveAll(filepath.Join(root, "metadata", string(ExternalDataSourceKind), "Склад", "tables", "Товары", "forms", "ФормаВыбора")); err != nil {
+			t.Fatal(err)
+		}
+		if message := loadRefused(t, root, "a default form that is not there"); !strings.Contains(message, "ФормаВыбора") {
+			t.Fatalf("the error does not name the form: %v", message)
+		}
+	})
+	t.Run("a table in a folder of another name", func(t *testing.T) {
+		t.Parallel()
+		root := metadataProject(t)
+		writeWarehouse(t, root)
+		tables := filepath.Join(root, "metadata", string(ExternalDataSourceKind), "Склад", ExternalDataSourceTablesDirectory)
+		if err := os.Rename(filepath.Join(tables, "Товары"), filepath.Join(tables, "Номенклатура")); err != nil {
+			t.Fatal(err)
+		}
+		if message := loadRefused(t, root, "a table in a folder of another name"); !strings.Contains(message, "lies in a folder called Номенклатура") {
+			t.Fatalf("the error does not say what is wrong: %v", message)
+		}
+	})
+}
+
+// A table's commands and templates are declared and kept the way a catalog's
+// are. Catches a command declared with no module behind it, and a table's
+// command missing from the checks every command of the configuration goes
+// through.
+func TestExternalTableCommandsAndTemplatesAreDeclaredAndKept(t *testing.T) {
+	t.Parallel()
+	const command = "commands:\n  - id: f8000000-0000-4000-8000-000000000071\n    name: Печать\n    title: {ru: Печать}\n"
+	root := metadataProject(t)
+	writeExternalSource(t, root, warehouseSource, "Склад", "")
+	writeExternalTable(t, root, "Склад", goodsTable, "Товары", goodsBody+command)
+	if message := loadRefused(t, root, "a command with no module"); !strings.Contains(message, "Печать") {
+		t.Fatalf("the error does not name the command: %v", message)
+	}
+	writeFile(t, filepath.Join(root, "metadata", string(ExternalDataSourceKind), "Склад", "tables", "Товары", "commands", "Печать", "МодульКоманды.bsl"), "\n")
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a command with its module was refused: %v", err)
+	}
+	goods, _, _ := catalog.ExternalTableByID(mustUUID(t, goodsTable))
+	if len(goods.Commands) != 1 || goods.Commands[0].Name != "Печать" {
+		t.Fatalf("the command came back as %+v", goods.Commands)
+	}
+	// The description of a command is read the way a catalog's command is:
+	// two commands of one name are one command offered twice.
+	twice := command + "  - id: f8000000-0000-4000-8000-000000000072\n    name: печать\n    title: {ru: Печать}\n"
+	if message := refusedExternalTable(t, goodsBody+twice, "two commands of one name"); !strings.Contains(message, "commands[1]") {
+		t.Fatalf("the error does not name the command: %v", message)
+	}
+	// A declared template is kept in its folder and accepted there.
+	root = metadataProject(t)
+	writeExternalSource(t, root, warehouseSource, "Склад", "")
+	writeExternalTable(t, root, "Склад", goodsTable, "Товары", goodsBody+
+		"templates:\n  - id: f8000000-0000-4000-8000-000000000073\n    name: Макет\n    title: {ru: Макет}\n    kind: spreadsheet\n")
+	writeFile(t, filepath.Join(root, "metadata", string(ExternalDataSourceKind), "Склад", "tables", "Товары", "templates", "Макет", "content.yaml"), "rows: []\n")
+	if withTemplate, err := Load(root); err != nil {
+		t.Fatalf("a declared template in its folder was refused: %v", err)
+	} else if table, _, _ := withTemplate.ExternalTableByID(mustUUID(t, goodsTable)); len(table.Templates) != 1 {
+		t.Fatalf("the template came back as %+v", table.Templates)
+	}
+	owners := map[string]bool{}
+	for _, owned := range catalog.everyObjectCommands() {
+		owners[owned.owner] = true
+	}
+	if !owners["external data source table Склад.Товары"] {
+		t.Fatalf("the table's commands are not among the commands of the configuration: %v", owners)
+	}
+}
+
+// The modules of a table are compiled under names that carry the source, and
+// its forms' modules too. Catches two tables of one name in two sources being
+// compiled under one name, and a table's module falling back to a name built
+// from its path.
+func TestExternalTableModulesAreNamedWithTheirSource(t *testing.T) {
+	t.Parallel()
 	root := metadataProject(t)
 	writeWarehouse(t, root)
-	tables := filepath.Join(root, "metadata", string(ExternalDataSourceKind), "Склад", ExternalDataSourceTablesDirectory)
-	if err := os.Rename(filepath.Join(tables, "Товары"), filepath.Join(tables, "Номенклатура")); err != nil {
+	catalog, err := Load(root)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if message := loadRefused(t, root, "a table in a folder of another name"); !strings.Contains(message, "lies in a folder called Номенклатура") {
-		t.Fatalf("the error does not say what is wrong: %v", message)
+	names := moduleNameDescriptors(catalog)
+	for path, want := range map[string]string{
+		"metadata/external-data-sources/Склад/tables/Товары/МодульОбъекта.bsl":                 "МодульОбъектаТаблицыВнешнегоИсточника.Склад.Товары",
+		"metadata/external-data-sources/Склад/tables/Товары/МодульМенеджера.bsl":               "МодульМенеджераТаблицыВнешнегоИсточника.Склад.Товары",
+		"metadata/external-data-sources/Склад/tables/Остатки/МодульНабораЗаписей.bsl":          "МодульНабораЗаписейТаблицыВнешнегоИсточника.Склад.Остатки",
+		"metadata/external-data-sources/Склад/tables/Товары/forms/ФормаТовара/МодульФормы.bsl": "МодульФормыТаблицыВнешнегоИсточника.Склад.Товары.ФормаТовара",
+	} {
+		if got := names[path].name; got != want {
+			t.Errorf("%s is compiled as %q, want %q", path, got, want)
+		}
+	}
+	if _, ok := names["metadata/external-data-sources/Склад/tables/Остатки/МодульОбъекта.bsl"]; ok {
+		t.Error("a table of records was given an object module name")
 	}
 }
 

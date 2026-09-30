@@ -130,6 +130,19 @@ func moduleNameDescriptors(catalog *Catalog) map[string]moduleNameDescriptor {
 		add(AccumulationRegisterKind, item.Name, project.RecordSetModuleFile, "МодульНабораЗаписейРегистраНакопления."+item.Name, "ЭтотОбъект", "ThisObject")
 		add(AccumulationRegisterKind, item.Name, project.ManagerModuleFile, "МодульМенеджераРегистраНакопления."+item.Name)
 	}
+	// A table of a source is named with its source, because that pair is what
+	// the table is: two sources may well each keep a table called Товары.
+	for _, source := range catalog.ExternalDataSources {
+		for _, table := range source.Tables {
+			name := source.Name + "." + table.Name
+			if table.ObjectTable() {
+				add(ExternalDataSourceTableKind, name, project.ObjectModuleFile, "МодульОбъектаТаблицыВнешнегоИсточника."+name, "ЭтотОбъект", "ThisObject")
+			} else {
+				add(ExternalDataSourceTableKind, name, project.RecordSetModuleFile, "МодульНабораЗаписейТаблицыВнешнегоИсточника."+name, "ЭтотОбъект", "ThisObject")
+			}
+			add(ExternalDataSourceTableKind, name, project.ManagerModuleFile, "МодульМенеджераТаблицыВнешнегоИсточника."+name)
+		}
+	}
 	for _, item := range catalog.Constants {
 		add(ConstantKind, item.Name, project.ValueModuleFile, "МодульЗначенияКонстанты."+item.Name, "ЭтотОбъект", "ThisObject")
 		add(ConstantKind, item.Name, project.ManagerModuleFile, "МодульМенеджераКонстанты."+item.Name)
@@ -166,7 +179,7 @@ var formModuleKindNames = map[Kind]string{
 	ChartOfCalculationTypesKind: "ПланаВидовРасчета", BusinessProcessKind: "БизнесПроцесса",
 	TaskKind: "Задачи", ExchangePlanKind: "ПланаОбмена", DocumentJournalKind: "ЖурналаДокументов",
 	ReportKind: "Отчета", DataProcessorKind: "Обработки", FilterCriterionKind: "КритерияОтбора",
-	SettingsStorageKind: "ХранилищаНастроек",
+	SettingsStorageKind: "ХранилищаНастроек", ExternalDataSourceTableKind: "ТаблицыВнешнегоИсточника",
 }
 
 // FormModuleName is the name one form's module is compiled and reported

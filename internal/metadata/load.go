@@ -1885,6 +1885,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	if err := catalog.validateExternalDataSources(); err != nil {
 		return err
 	}
+	if err := catalog.validateExternalTableFiles(root); err != nil {
+		return err
+	}
 	if err := catalog.validateOutlinedObjects(); err != nil {
 		return err
 	}
@@ -2482,7 +2485,13 @@ func (catalog *Catalog) validateObjectFileSources(files objectFiles) error {
 		return nil
 	}
 	root, kind, name := files.root, files.kind, files.name
-	directory := filepath.Join(root, "metadata", string(files.directoryKind), name)
+	// The folder comes from the project's translation of the address, so an
+	// object inside another - a table of a source - is found where it lies.
+	relative, err := project.ObjectDirectory(string(files.directoryKind), name)
+	if err != nil {
+		return fmt.Errorf("%s %s: %w", kind, name, err)
+	}
+	directory := filepath.Join(root, filepath.FromSlash(relative))
 	if err := validateObjectFolderEntries(directory, kind, name, files.modules); err != nil {
 		return err
 	}

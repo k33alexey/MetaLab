@@ -198,6 +198,11 @@ func (catalog *Catalog) everyObjectCommands() []ownedCommands {
 	for _, item := range catalog.Catalogs {
 		add("catalog", item.Name, item.Commands)
 	}
+	for _, source := range catalog.ExternalDataSources {
+		for _, table := range source.Tables {
+			add("external data source table", source.Name+"."+table.Name, table.Commands)
+		}
+	}
 	for _, item := range catalog.Documents {
 		add("document", item.Name, item.Commands)
 	}

@@ -337,3 +337,48 @@ func TestSubordinateObjectPathShapes(t *testing.T) {
 		t.Fatalf("a form of a table is not recognised as a form: %q %v", name, ok)
 	}
 }
+
+// A project with a table of an external data source publishes whole: the
+// table's description, its module and its form go into the package, and the
+// form into the published snapshot under the table's address. Catches the
+// table's files missing from the package and its form missing from what the
+// server knows, each of which a check of path shapes alone would not see.
+func TestInspectPublishesATableOfAnExternalDataSource(t *testing.T) {
+	t.Parallel()
+	root := publicationProject(t)
+	const table = "metadata/external-data-sources/Склад/tables/Товары"
+	for relative, content := range map[string]string{
+		"metadata/external-data-sources/Склад/object.yaml": "format: 1\nid: fa000000-0000-4000-8000-000000000001\nname: Склад\ntitle: {ru: Склад}\n",
+		table + "/object.yaml": "format: 1\nid: fa000000-0000-4000-8000-000000000002\nname: Товары\ntitle: {ru: Товары}\n" +
+			"name_in_data_source: dbo.Goods\ndata_type: non-object\nforms: {list: ФормаСписка}\n",
+		table + "/МодульНабораЗаписей.bsl":           "Процедура ПередЗаписью(Отказ, Замещение)\nКонецПроцедуры\n",
+		table + "/forms/ФормаСписка/form.yaml":       "format: 1\nid: fa000000-0000-4000-8000-000000000003\nname: ФормаСписка\ntitle: {ru: Список}\nkind: list\n",
+		table + "/forms/ФормаСписка/МодульФормы.bsl": "\n",
+	} {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifest, err := inspect(context.Background(), root, SourceState{})
+	if err != nil {
+		t.Fatalf("a project with a table of a source did not publish: %v", err)
+	}
+	for _, relative := range []string{table + "/object.yaml", table + "/МодульНабораЗаписей.bsl", table + "/forms/ФормаСписка/form.yaml"} {
+		if !slicesContainPath(manifest.Files, relative) {
+			t.Errorf("the package misses %s", relative)
+		}
+	}
+	found := false
+	for _, form := range manifest.Runtime.ObjectForms {
+		if form.ObjectKind == metadata.ExternalDataSourceTableKind && form.Object == "Склад.Товары" && form.Name == "ФормаСписка" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the published snapshot does not know the table's form: %+v", manifest.Runtime.ObjectForms)
+	}
+}

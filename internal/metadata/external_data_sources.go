@@ -113,6 +113,17 @@ type ExternalTableForms struct {
 	Choice string `yaml:"choice,omitempty" json:"choice,omitempty"`
 }
 
+// slots are the four roles, for the check that each names a form the table's
+// folder holds.
+func (forms ExternalTableForms) slots() []formSlot {
+	return []formSlot{
+		{"forms.object", forms.Object},
+		{"forms.record", forms.Record},
+		{"forms.list", forms.List},
+		{"forms.choice", forms.Choice},
+	}
+}
+
 // ExternalTableHierarchy is how the rows of an object table nest.
 type ExternalTableHierarchy struct {
 	// ParentField holds the reference to the row's parent.
@@ -171,7 +182,11 @@ type ExternalTable struct {
 	BasedOn         []uuid.UUID            `yaml:"based_on,omitempty" json:"basedOn,omitempty"`
 	Characteristics []ObjectCharacteristic `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
 	Forms           ExternalTableForms     `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Fields          []ExternalField        `yaml:"fields,omitempty" json:"fields,omitempty"`
+	// Commands and Templates are the table's own, as a catalog's are: each
+	// keeps a folder in the table's folder.
+	Commands  []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
+	Fields    []ExternalField  `yaml:"fields,omitempty" json:"fields,omitempty"`
 }
 
 // ExternalField is one field of a table of a source.
@@ -255,6 +270,8 @@ func validateExternalTable(table ExternalTable, configuration project.Project) [
 	}
 	issues = append(issues, validateBasedOn(table.BasedOn)...)
 	issues = append(issues, validateObjectCharacteristics(table.Characteristics)...)
+	issues = append(issues, validateObjectCommands(table.Commands, table.ID, configuration)...)
+	issues = append(issues, validateObjectTemplates(table.Templates, configuration)...)
 	fields, fieldIssues := validateExternalFields(table, configuration)
 	issues = append(issues, fieldIssues...)
 	issues = append(issues, validateExternalTableShape(table, fields)...)
@@ -528,6 +545,8 @@ func cloneExternalTable(table ExternalTable) ExternalTable {
 	table.InputByString = slices.Clone(table.InputByString)
 	table.BasedOn = slices.Clone(table.BasedOn)
 	table.Characteristics = cloneObjectCharacteristics(table.Characteristics)
+	table.Commands = cloneObjectCommands(table.Commands)
+	table.Templates = cloneObjectTemplates(table.Templates)
 	if table.Hierarchy != nil {
 		hierarchy := *table.Hierarchy
 		hierarchy.UnfilledParentValue = cloneValuePointer(hierarchy.UnfilledParentValue)
@@ -587,12 +606,9 @@ func (catalog *Catalog) ExternalTableByID(id uuid.UUID) (ExternalTable, string, 
 // folder with its description and a folder of tables; a table is a folder with
 // its description.
 //
-// The folder of a table holds its description and nothing else for now. The
-// modules, forms, commands and templates of a table will lie there the way a
-// catalog's lie in its folder, and until the machinery that walks object
-// folders knows the second level they are refused by name rather than passed
-// over: code in a folder nobody reads is code nobody runs, and looks like code
-// that does.
+// The folder of a table is an object folder: its modules, forms, commands and
+// templates lie there the way a catalog's lie in its, and are checked the same
+// way, by validateExternalTableFiles once the whole configuration is read.
 func (catalog *Catalog) loadExternalDataSources(root string, configuration project.Project) error {
 	return loadObjectKind(root, ExternalDataSourceKind, func(source string, file *os.File, name string) error {
 		value, err := DecodeExternalDataSource(source, file, configuration)
@@ -647,15 +663,6 @@ func loadExternalTables(directory, relative string, configuration project.Projec
 		if err := project.ObjectName(entry.Name()); err != nil {
 			return nil, fmt.Errorf("table folder %q: %w", where, err)
 		}
-		files, err := os.ReadDir(filepath.Join(tablesDirectory, entry.Name()))
-		if err != nil {
-			return nil, err
-		}
-		for _, file := range files {
-			if file.Name() != project.ObjectMetadataFile || file.IsDir() || file.Type()&fs.ModeSymlink != 0 {
-				return nil, fmt.Errorf("%s keeps %q: a table keeps its description, and its modules, forms, commands and templates are not read yet", where, file.Name())
-			}
-		}
 		path := filepath.Join(tablesDirectory, entry.Name(), project.ObjectMetadataFile)
 		file, err := os.Open(path)
 		if err != nil {
@@ -672,6 +679,28 @@ func loadExternalTables(directory, relative string, configuration project.Projec
 		tables = append(tables, table)
 	}
 	return tables, nil
+}
+
+// validateExternalTableFiles checks the folder of every table the way the
+// folder of a catalog is checked: the modules it keeps play roles the table
+// has - an object module for object data, a record set module for records, a
+// manager module for either - and the forms, commands and templates it
+// declares are there, and nothing else is.
+func (catalog *Catalog) validateExternalTableFiles(root string) error {
+	for _, source := range catalog.ExternalDataSources {
+		for _, table := range source.Tables {
+			modules := recordSetKindModules
+			if table.ObjectTable() {
+				modules = objectKindModules
+			}
+			if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ExternalDataSourceTableKind,
+				kind: "external data source table", name: source.Name + "." + table.Name, modules: modules,
+				formSlots: table.Forms.slots(), commands: table.Commands, templates: table.Templates}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // validateExternalDataSources checks what a table cannot check about itself:
