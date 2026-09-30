@@ -633,3 +633,111 @@ func TestExternalTableIsEnteredOnTheBasisOfObjectsOfTheConfiguration(t *testing.
 }
 
 func ptr[T any](value T) *T { return &value }
+
+const (
+	propertyKindsTable  = "f8000000-0000-4000-8000-000000000081"
+	propertyKindsKey    = "f8000000-0000-4000-8000-000000000082"
+	propertyValuesTable = "f8000000-0000-4000-8000-000000000083"
+	propertyValuesOwner = "f8000000-0000-4000-8000-000000000084"
+	propertyValuesKind  = "f8000000-0000-4000-8000-000000000085"
+	propertyValuesValue = "f8000000-0000-4000-8000-000000000086"
+)
+
+// writePropertyTables writes the two tables of the source a characteristic of
+// the goods table is read from: the kinds of properties, an object table, and
+// their values, a table of records keyed by the goods row and the kind.
+func writePropertyTables(t *testing.T, root, ownerType string) {
+	t.Helper()
+	writeExternalTable(t, root, "Склад", propertyKindsTable, "ВидыСвойств", `name_in_data_source: dbo.PropertyKinds
+data_type: object
+key_fields: [Код]
+fields:
+  - id: `+propertyKindsKey+`
+    name: Код
+    title: {ru: Код}
+    types: [{kind: string, length: 10}]
+    name_in_data_source: code
+`)
+	writeExternalTable(t, root, "Склад", propertyValuesTable, "ЗначенияСвойств", `name_in_data_source: dbo.PropertyValues
+data_type: non-object
+key_fields: [Объект, Свойство]
+fields:
+  - id: `+propertyValuesOwner+`
+    name: Объект
+    title: {ru: Объект}
+    types: [`+ownerType+`]
+    name_in_data_source: object
+  - id: `+propertyValuesKind+`
+    name: Свойство
+    title: {ru: Свойство}
+    types: [{kind: external-data-source-table, reference: `+propertyKindsTable+`}]
+    name_in_data_source: kind
+  - id: `+propertyValuesValue+`
+    name: Значение
+    title: {ru: Значение}
+    types: [{kind: string, length: 100}]
+    name_in_data_source: value
+`)
+}
+
+// goodsCharacteristics describes where the goods table's characteristics are
+// read from, with the key of the kinds table given by the caller.
+func goodsCharacteristics(kindsTable, key string) string {
+	return `characteristics:
+  - types:
+      table: {kind: external-data-source-tables, object: ` + kindsTable + `}
+      key: ` + key + `
+    values:
+      table: {kind: external-data-source-tables, object: ` + propertyValuesTable + `}
+      object: {attribute: ` + propertyValuesOwner + `}
+      type: {attribute: ` + propertyValuesKind + `}
+      value: {attribute: ` + propertyValuesValue + `}
+`
+}
+
+// The characteristics of a table of a source are resolved against the tables
+// they name, and those are tables of the same source. Catches a description
+// that reads a table which is not there, a field of the values that cannot hold
+// a reference to the table it keeps values of, and a standard field a table of
+// a source does not have - each of which leaves the table silently without
+// any additional property.
+func TestExternalTableCharacteristicsAreResolved(t *testing.T) {
+	t.Parallel()
+	const goodsRef = "{kind: external-data-source-table, reference: " + goodsTable + "}"
+	root := metadataProject(t)
+	writeExternalSource(t, root, warehouseSource, "Склад", "")
+	writeExternalTable(t, root, "Склад", goodsTable, "Товары", goodsBody+goodsCharacteristics(propertyKindsTable, "{standard: ref}"))
+	writePropertyTables(t, root, goodsRef)
+	if _, err := Load(root); err != nil {
+		t.Fatalf("characteristics read from tables of the source were refused: %v", err)
+	}
+	for name, test := range map[string]struct{ kinds, key, owner, says string }{
+		"a table of kinds that is not there": {"f8000000-0000-4000-8000-0000000000ee", "{standard: ref}", goodsRef, "which is not in the configuration"},
+		"values that cannot hold the goods":  {propertyKindsTable, "{standard: ref}", "{kind: string, length: 10}", "values.object cannot hold a reference to external data source table Склад.Товары"},
+		"a code a table of a source has not": {propertyKindsTable, "{standard: code}", goodsRef, "names the standard field code"},
+		"a key the kinds table has not":      {propertyKindsTable, "{attribute: " + propertyValuesValue + "}", goodsRef, "names attribute " + propertyValuesValue},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := metadataProject(t)
+			writeExternalSource(t, root, warehouseSource, "Склад", "")
+			writeExternalTable(t, root, "Склад", goodsTable, "Товары", goodsBody+goodsCharacteristics(test.kinds, test.key))
+			writePropertyTables(t, root, test.owner)
+			if message := loadRefused(t, root, name); !strings.Contains(message, test.says) {
+				t.Fatalf("the error does not say what is wrong: %v", message)
+			}
+		})
+	}
+	// A table of records has no reference: it can keep values, but its rows
+	// cannot be the kinds a key refers to.
+	t.Run("a reference a table of records has not", func(t *testing.T) {
+		t.Parallel()
+		root := metadataProject(t)
+		writeExternalSource(t, root, warehouseSource, "Склад", "")
+		writeExternalTable(t, root, "Склад", goodsTable, "Товары", goodsBody+goodsCharacteristics(propertyValuesTable, "{standard: ref}"))
+		writePropertyTables(t, root, goodsRef)
+		if message := loadRefused(t, root, "a reference to a row of records"); !strings.Contains(message, "names the standard field ref") {
+			t.Fatalf("the error does not say what is wrong: %v", message)
+		}
+	})
+}

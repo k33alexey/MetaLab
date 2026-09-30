@@ -58,6 +58,12 @@ var characteristicKindTypes = map[Kind]TypeKind{
 	BusinessProcessKind:            BusinessProcessType,
 	TaskKind:                       TaskType,
 	ExchangePlanKind:               ExchangePlanType,
+	// A table of an external data source carries descriptions too, and its
+	// tables of kinds and values are, in practice, tables of the same source:
+	// a field of a source holds no reference to the configuration's own
+	// objects. Only a table of object data has a reference to hang a
+	// characteristic off - see standardFieldsOf and characteristicOwners.
+	ExternalDataSourceTableKind: ExternalTableType,
 }
 
 // CharacteristicTable addresses a table a characteristic reads: an object, or
@@ -348,6 +354,9 @@ func (catalog *Catalog) standardFieldsOf(kind Kind, id uuid.UUID) map[StandardFi
 	if !ok {
 		return map[StandardField][]Type{}
 	}
+	if kind == ExternalDataSourceTableKind {
+		return catalog.externalTableStandardFields(id)
+	}
 	fields := map[StandardField][]Type{RefStandardField: {referenceType(referenceKind, id)}}
 	addCode := func(code CatalogCode, descriptionLength int) {
 		if code.Length > 0 {
@@ -383,6 +392,28 @@ func (catalog *Catalog) standardFieldsOf(kind Kind, id uuid.UUID) map[StandardFi
 	case TaskKind:
 		item := catalog.Tasks[catalog.taskByID[id]]
 		addCode(CatalogCode{}, item.DescriptionLength)
+	}
+	return fields
+}
+
+// externalTableStandardFields is what the platform gives a table of a source:
+// a reference to the row when the table holds object data, and the parent when
+// it nests. Code and description it has not - its fields are the other
+// database's columns, declared one by one - and a table of records has no
+// reference either.
+func (catalog *Catalog) externalTableStandardFields(id uuid.UUID) map[StandardField][]Type {
+	fields := map[StandardField][]Type{}
+	location, ok := catalog.externalTableByID[id]
+	if !ok {
+		return fields
+	}
+	table := catalog.ExternalDataSources[location.source].Tables[location.table]
+	if !table.ObjectTable() {
+		return fields
+	}
+	fields[RefStandardField] = []Type{referenceType(ExternalTableType, id)}
+	if table.Hierarchy != nil {
+		fields[ParentStandardField] = []Type{referenceType(ExternalTableType, id)}
 	}
 	return fields
 }
@@ -431,6 +462,13 @@ func (catalog *Catalog) characteristicOwners() []characteristicOwner {
 	}
 	for _, item := range catalog.ExchangePlans {
 		add("exchange plan "+item.Name, ExchangePlanKind, item.ID, item.Characteristics)
+	}
+	// Only a table of object data carries characteristics - the decoder
+	// refuses them on a table of records, which has no row to hang them off.
+	for _, source := range catalog.ExternalDataSources {
+		for _, table := range source.Tables {
+			add("external data source table "+source.Name+"."+table.Name, ExternalDataSourceTableKind, table.ID, table.Characteristics)
+		}
 	}
 	return owners
 }

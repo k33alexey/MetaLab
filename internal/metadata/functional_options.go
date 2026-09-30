@@ -272,6 +272,17 @@ func (catalog *Catalog) objectElementsOf(kind Kind, id uuid.UUID) (objectElement
 		}
 		item := catalog.Catalogs[index]
 		return elementsOf(item.Attributes, item.TableParts, item.Commands), true
+	case ExternalDataSourceTableKind:
+		location, ok := catalog.externalTableByID[id]
+		if !ok {
+			return objectElements{}, false
+		}
+		table := catalog.ExternalDataSources[location.source].Tables[location.table]
+		fields := make([]Attribute, 0, len(table.Fields))
+		for _, field := range table.Fields {
+			fields = append(fields, field.Attribute)
+		}
+		return elementsOf(fields, nil, table.Commands), true
 	case DocumentKind:
 		index, ok := catalog.documentByID[id]
 		if !ok {
