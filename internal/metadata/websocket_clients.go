@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -140,22 +139,20 @@ func DecodeWebSocketClient(source string, reader io.Reader, configuration projec
 	return value, nil
 }
 
-// validateWebSocketServerURL checks the address in form: absolute, with a
-// scheme and a host, on one line. Which schemes the prototype accepts the help
-// does not say, so the scheme is not narrowed down.
+// validateWebSocketServerURL checks the address in form only: one line with
+// no spaces or control characters in it.
+//
+// Not as an absolute address. It was, and an export of the platform itself
+// refuted it: a client there keeps a server address of three letters, no
+// scheme and no host. What the prototype makes of such an address the help
+// does not say - it may well be completed at run time - and refusing it would
+// refuse a configuration the platform wrote.
 func validateWebSocketServerURL(value string) []string {
-	if value == "" {
-		return nil
-	}
 	if len([]rune(value)) > maxLocationURLLength {
 		return []string{fmt.Sprintf("server_url must not exceed %d characters", maxLocationURLLength)}
 	}
 	if strings.IndexFunc(value, func(symbol rune) bool { return unicode.IsControl(symbol) || unicode.IsSpace(symbol) }) >= 0 {
 		return []string{"server_url must be one line without spaces or control characters"}
-	}
-	address, err := url.Parse(value)
-	if err != nil || address.Scheme == "" || address.Host == "" {
-		return []string{"server_url must be an absolute address with a scheme and a host"}
 	}
 	return nil
 }

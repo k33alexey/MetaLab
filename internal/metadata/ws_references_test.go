@@ -83,17 +83,19 @@ func TestWSReferenceCarriesItsAddressAndIsFoundByNameAndIdentifier(t *testing.T)
 	}
 }
 
-// A reference without its description is a client with nothing to call, and
-// the prototype creates one only by importing a description. Catches a check
-// that walks the folder and finds nothing wrong in a folder that holds too
-// little.
-func TestWSReferenceWithoutADescriptionIsRefused(t *testing.T) {
+// A reference may lie without its description: an export of the platform
+// itself keeps one so. Catches the rule this replaced - a description required
+// - coming back and refusing a configuration the platform wrote.
+func TestWSReferenceWithoutADescriptionIsCarried(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
-	writeWSReference(t, root, firstWSReference, "Склад", "", "")
-	message := loadRefused(t, root, "a reference without a description")
-	if !strings.Contains(message, "has no "+WSReferenceDefinitionFile) {
-		t.Fatalf("the error does not say what is missing: %v", message)
+	writeWSReference(t, root, firstWSReference, "Склад", "location_url: http://example.org\n", "")
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a reference without a description was refused: %v", err)
+	}
+	if item, ok := catalog.WSReference("Склад"); !ok || item.LocationURL != "http://example.org" {
+		t.Fatalf("the reference came back as %+v", item)
 	}
 }
 

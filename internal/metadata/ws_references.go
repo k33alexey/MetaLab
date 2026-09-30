@@ -112,15 +112,15 @@ func (catalog *Catalog) WSReferenceByID(id uuid.UUID) (WSReferenceDefinition, bo
 }
 
 // validateWSReferenceFiles checks the folder of every WS reference: it holds
-// the description of the object and the description of the service, both of
-// them, and nothing else.
+// the description of the object, the description of the service when there is
+// one, and nothing else.
 //
-// The service description is required, unlike the schema of an XDTO package.
-// A reference without one is a client with nothing to call, and the prototype
-// creates a reference only by importing a description. It is also checked for
-// being a description: a file that does not read as XML is an import cut off
-// half way, and that is better seen when the project is read than on the first
-// call.
+// The service description is not required. It was, on the reasoning that the
+// prototype creates a reference only by importing a description, and an
+// export of the platform itself refuted it: a reference there lies with no
+// description at all. When there is one it is checked for being one: a file
+// that does not read as XML is an import cut off half way, and that is better
+// seen when the project is read than on the first call.
 func (catalog *Catalog) validateWSReferenceFiles(root string) error {
 	if root == "" {
 		return nil
@@ -141,8 +141,7 @@ func (catalog *Catalog) validateWSReferenceFiles(root string) error {
 			described = described || entry.Name() == WSReferenceDefinitionFile
 		}
 		if !described {
-			return fmt.Errorf("WS reference %s has no %s: a reference is the service description it was imported with",
-				item.Name, WSReferenceDefinitionFile)
+			continue
 		}
 		if err := checkWSDefinition(filepath.Join(directory, WSReferenceDefinitionFile)); err != nil {
 			return fmt.Errorf("WS reference %s: %s: %w", item.Name, WSReferenceDefinitionFile, err)

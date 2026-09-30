@@ -194,11 +194,15 @@ type ExternalTable struct {
 // ExternalField is one field of a table of a source.
 //
 // It is a field, and the palette of a field is on it: presentation, choice,
-// filling, the check of filling. Eight properties of an attribute are not, and
-// the syntax assistant agrees by silence - the field has no indexing, full-text
-// search, data history or «использование», no bounds of the value, no choice
-// of folders and items and no link by type. validateExternalFieldStorage
-// refuses all eight. Three properties are its own: the name of the column in
+// filling, the check of filling, the bounds of the value. Six properties of an
+// attribute are not - no indexing, full-text search, data history or
+// «использование», no choice of folders and items and no link by type - and an
+// export of the platform agrees: it writes every other property of a field and
+// none of these six. validateExternalFieldStorage refuses them.
+//
+// The bounds were refused too, once, because the syntax assistant does not list
+// them; the same export writes MinValue and MaxValue on every field of a table
+// and of a dimension table, and a property the export writes is carried. Three properties are its own: the name of the column in
 // the other database, whether the column may hold Null, and whether the field
 // is read only.
 type ExternalField struct {
@@ -434,7 +438,7 @@ func validateExternalFieldTypes(path string, types []Type) []string {
 	return issues
 }
 
-// validateExternalFieldStorage refuses the eight properties of an attribute a
+// validateExternalFieldStorage refuses the six properties of an attribute a
 // field of a source does not have. Why refuse and not ignore: a setting nobody
 // reads looks like a setting. An index on a column of somebody else's database
 // is a promise we cannot keep - the index is theirs to build - and full-text
@@ -450,8 +454,6 @@ func validateExternalFieldStorage(prefix string, field ExternalField) []string {
 		{field.FullTextSearch != "", "full_text_search"},
 		{field.DataHistory != "", "data_history"},
 		{field.Use != "", "use"},
-		{field.Presentation.MinValue != nil, "presentation.min_value"},
-		{field.Presentation.MaxValue != nil, "presentation.max_value"},
 		{field.Choice.FoldersAndItems != "", "choice.folders_and_items"},
 		{field.Choice.LinkByType != nil, "choice.link_by_type"},
 	}
@@ -763,7 +765,7 @@ func (catalog *Catalog) validateExternalDataSources() error {
 	for _, source := range catalog.ExternalDataSources {
 		for _, table := range source.Tables {
 			owner := fmt.Sprintf("external data source %s table %s", source.Name, table.Name)
-			if err := catalog.validateExternalFieldReferences(source, owner, table.Fields); err != nil {
+			if err := catalog.validateExternalFieldReferences(source, owner, table.Fields, nil); err != nil {
 				return err
 			}
 			if table.Hierarchy != nil && table.Hierarchy.UnfilledParentValue != nil && len(table.KeyFields) == 1 {
@@ -775,11 +777,20 @@ func (catalog *Catalog) validateExternalDataSources() error {
 		}
 		for _, cube := range source.Cubes {
 			owner := fmt.Sprintf("external data source %s cube %s", source.Name, cube.Name)
-			if err := catalog.validateExternalFieldReferences(source, owner, append(slices.Clone(cube.Dimensions), cube.Resources...)); err != nil {
+			// A cube is independent of every other cube of its source: its
+			// dimensions and the fields of its dimension tables refer to its
+			// own dimension tables and to no other cube's. Established on the
+			// platform: the configurator offers a dimension of one cube the
+			// dimension tables of that cube alone.
+			own := make(map[uuid.UUID]bool, len(cube.DimensionTables))
+			for _, table := range cube.DimensionTables {
+				own[table.ID] = true
+			}
+			if err := catalog.validateExternalFieldReferences(source, owner, cubeFields(cube), own); err != nil {
 				return err
 			}
 			for _, table := range cube.DimensionTables {
-				if err := catalog.validateExternalFieldReferences(source, owner+" dimension table "+table.Name, table.Fields); err != nil {
+				if err := catalog.validateExternalFieldReferences(source, owner+" dimension table "+table.Name, table.Fields, own); err != nil {
 					return err
 				}
 			}
@@ -790,9 +801,11 @@ func (catalog *Catalog) validateExternalDataSources() error {
 
 // validateExternalFieldReferences resolves what the fields of one object of a
 // source refer to: an object table or a dimension table of the same source,
-// and nothing of another. The rest of their types, and the values they are
-// filled with, are checked the way any field's are.
-func (catalog *Catalog) validateExternalFieldReferences(source ExternalDataSourceDefinition, owner string, fields []ExternalField) error {
+// and nothing of another. ownCube, when given, is the dimension tables of the
+// cube the fields belong to, and a reference to a dimension table outside it
+// is refused. The rest of their types, and the values they are filled with,
+// are checked the way any field's are.
+func (catalog *Catalog) validateExternalFieldReferences(source ExternalDataSourceDefinition, owner string, fields []ExternalField, ownCube map[uuid.UUID]bool) error {
 	tables := make(map[uuid.UUID]ExternalTable, len(source.Tables))
 	for _, table := range source.Tables {
 		tables[table.ID] = table
@@ -824,6 +837,9 @@ func (catalog *Catalog) validateExternalFieldReferences(source ExternalDataSourc
 						return fmt.Errorf("%s field %s refers to a dimension table of another source: a reference is a key of one database", owner, field.Name)
 					}
 					return fmt.Errorf("%s field %s refers to unknown dimension table %s", owner, field.Name, item.Reference)
+				}
+				if ownCube != nil && !ownCube[*item.Reference] {
+					return fmt.Errorf("%s field %s refers to a dimension table of another cube: a cube is independent of every other cube of its source", owner, field.Name)
 				}
 			default:
 				primitive = append(primitive, item)

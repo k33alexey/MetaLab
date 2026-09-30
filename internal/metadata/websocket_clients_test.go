@@ -168,18 +168,16 @@ func TestWebSocketClientHeadersAreCheckedForTheHandshake(t *testing.T) {
 	}
 }
 
-// The server address is checked in form. Catches a relative address and one
-// with a space, which no connection could open, and a check that demands an
-// address a client created by code need not have.
-func TestWebSocketClientServerAddressIsCheckedInForm(t *testing.T) {
+// The server address is checked in form and nothing more. Catches a space or a
+// line break, which no connection could open, and a check that demands more
+// than the platform does: an export of the platform itself keeps an address of
+// three letters with no scheme and no host, and it has to be carried.
+func TestWebSocketClientServerAddressIsCheckedInFormOnly(t *testing.T) {
 	t.Parallel()
 	for name, body := range map[string]string{
-		"a relative address":   "server_url: /stream\n",
-		"no scheme":            "server_url: quotes.example.org\n",
-		"a space in the path":  "server_url: wss://quotes.example.org/the stream\n",
-		"a line break inside":  "server_url: \"wss://quotes.example.org/\\nstream\"\n",
-		"past the bound":       "server_url: wss://" + strings.Repeat("a", maxLocationURLLength) + "\n",
-		"a scheme and no host": "server_url: \"wss:stream\"\n",
+		"a space in the path": "server_url: wss://quotes.example.org/the stream\n",
+		"a line break inside": "server_url: \"wss://quotes.example.org/\\nstream\"\n",
+		"past the bound":      "server_url: wss://" + strings.Repeat("a", maxLocationURLLength) + "\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -187,6 +185,13 @@ func TestWebSocketClientServerAddressIsCheckedInForm(t *testing.T) {
 				t.Fatalf("the error does not name the property: %v", message)
 			}
 		})
+	}
+	for _, address := range []string{"soc", "/stream", "quotes.example.org", "wss://quotes.example.org/stream"} {
+		root := metadataProject(t)
+		writeWebSocketClient(t, root, firstWebSocketClient, "Биржа", "server_url: "+address+"\n")
+		if _, err := Load(root); err != nil {
+			t.Errorf("the address %q the platform itself writes was refused: %v", address, err)
+		}
 	}
 }
 

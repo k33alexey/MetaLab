@@ -350,8 +350,6 @@ func TestExternalFieldRefusesWhatOnlyAnAttributeHas(t *testing.T) {
 		"full_text_search":         "    full_text_search: use\n",
 		"data_history":             "    data_history: use\n",
 		"use":                      "    use: for-item\n",
-		"presentation.min_value":   "    presentation: {min_value: {kind: string, data: a}}\n",
-		"presentation.max_value":   "    presentation: {max_value: {kind: string, data: z}}\n",
 		"choice.folders_and_items": "    choice: {folders_and_items: items}\n",
 		"choice.link_by_type":      "    choice: {link_by_type: {source: {attribute: " + goodsNameField + "}}}\n",
 	} {
@@ -363,6 +361,23 @@ func TestExternalFieldRefusesWhatOnlyAnAttributeHas(t *testing.T) {
 			}
 		})
 	}
+	// The bounds of the value are carried: an export writes them on every
+	// field of a table.
+	t.Run("the bounds of the value", func(t *testing.T) {
+		t.Parallel()
+		root := metadataProject(t)
+		writeExternalSource(t, root, warehouseSource, "Склад", "")
+		writeExternalTable(t, root, "Склад", goodsTable, "Товары", strings.Replace(goodsBody, anchor,
+			anchor+"    presentation: {min_value: {kind: string, data: a}, max_value: {kind: string, data: z}}\n", 1))
+		catalog, err := Load(root)
+		if err != nil {
+			t.Fatalf("a field with bounds was refused: %v", err)
+		}
+		goods, _, _ := catalog.ExternalTableByID(mustUUID(t, goodsTable))
+		if code, _ := goods.Field("Код"); code.Presentation.MinValue == nil || code.Presentation.MaxValue == nil {
+			t.Fatalf("the bounds were lost: %+v", code.Presentation)
+		}
+	})
 	t.Run("no column", func(t *testing.T) {
 		t.Parallel()
 		if message := refusedExternalTable(t, strings.Replace(goodsBody, anchor, "", 1), "a field with no column"); !strings.Contains(message, "fields[0].name_in_data_source must name the column") {

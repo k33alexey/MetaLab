@@ -31,12 +31,12 @@ dimensions:
     name: Товар
     title: {ru: Товар}
     types: [{kind: external-data-source-dimension-table, reference: ` + goodsDimTable + `}]
-    name_in_data_source: '[Goods]'
+    choice: {folders_and_items: items}
   - id: ` + periodDimension + `
     name: Период
     title: {ru: Период}
     types: [{kind: date}]
-    name_in_data_source: '[Date]'
+    presentation: {min_value: {kind: date, data: "2020-01-01T00:00:00Z"}}
 resources:
   - id: ` + quantityResource + `
     name: Количество
@@ -100,6 +100,9 @@ func TestExternalCubeCarriesItsDimensionsResourcesAndTables(t *testing.T) {
 	if !ok {
 		t.Fatal("the cube is not found by the names of its source and itself")
 	}
+	if cube.Dimensions[0].Choice.FoldersAndItems == "" || cube.Dimensions[1].Presentation.MinValue == nil || cube.Resources[0].NameInDataSource != "[Measures].[Quantity]" {
+		t.Fatalf("a property of a dimension or a resource was lost: %+v %+v", cube.Dimensions, cube.Resources)
+	}
 	if cube.NameInDataSource != "[Sales]" || len(cube.Dimensions) != 2 || len(cube.Resources) != 1 ||
 		cube.ListPresentation["ru"] != "Продажи" || cube.RecordPresentation["ru"] != "Продажа" || !cube.UseStandardCommands || cube.Forms.List != "ФормаСписка" {
 		t.Fatalf("a property of the cube was lost: %+v", cube)
@@ -134,7 +137,13 @@ func TestExternalCubeAndDimensionTableAreCheckedOnTheirOwn(t *testing.T) {
 		"a level on a hierarchical table":        {salesCubeBody, goodsDimTableBody + "level_number: 2\n", "level_number of a hierarchical dimension table is 0"},
 		"an unfilled parent without a hierarchy": {salesCubeBody, strings.Replace(goodsDimTableBody, "hierarchical: true\n", "", 1), "unfilled_parent_value belongs to a hierarchical dimension table"},
 		"a presentation field that is absent":    {salesCubeBody, strings.Replace(goodsDimTableBody, "presentation_field: Наименование", "presentation_field: Артикул", 1), `presentation_field names "Артикул"`},
-		"an attribute's property on a dimension": {strings.Replace(salesCubeBody, "    name_in_data_source: '[Date]'\n", "    name_in_data_source: '[Date]'\n    indexing: index\n", 1), goodsDimTableBody, "dimensions[1].indexing belongs to an attribute"},
+		"an attribute's property on a dimension": {strings.Replace(salesCubeBody, "    types: [{kind: date}]\n", "    types: [{kind: date}]\n    indexing: index\n", 1), goodsDimTableBody, "dimensions[1].indexing belongs to an attribute"},
+		// A dimension is found through its dimension table and has no column
+		// of its own: the strict reading names the property.
+		"a column on a dimension":   {strings.Replace(salesCubeBody, "    types: [{kind: date}]\n", "    types: [{kind: date}]\n    name_in_data_source: '[Date]'\n", 1), goodsDimTableBody, "name_in_data_source not found"},
+		"a filling on a resource":   {strings.Replace(salesCubeBody, "    name_in_data_source: '[Measures].[Quantity]'\n", "    name_in_data_source: '[Measures].[Quantity]'\n    filling: {value: {kind: number, data: \"0\"}}\n", 1), goodsDimTableBody, "resources[0].filling belongs to a field somebody enters"},
+		"bounds on a resource":      {strings.Replace(salesCubeBody, "    name_in_data_source: '[Measures].[Quantity]'\n", "    name_in_data_source: '[Measures].[Quantity]'\n    presentation: {max_value: {kind: number, data: \"9\"}}\n", 1), goodsDimTableBody, "resources[0].presentation.max_value belongs to"},
+		"a resource with no column": {strings.Replace(salesCubeBody, "    name_in_data_source: '[Measures].[Quantity]'\n", "", 1), goodsDimTableBody, "resources[0].name_in_data_source must name the measure"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -212,4 +221,60 @@ func TestExternalCubeFoldersAreObjectFolders(t *testing.T) {
 			t.Fatalf("the error does not name the form: %v", message)
 		}
 	})
+}
+
+// A cube carries characteristics: the syntax assistant does not give it any, an
+// export writes the property on a cube all the same. They are checked in shape
+// and not resolved - a record of a cube has no reference to hang them off.
+// Catches the property refused as unknown, and a malformed description let
+// through because it is not resolved.
+func TestExternalCubeCarriesCharacteristicsInShape(t *testing.T) {
+	t.Parallel()
+	const characteristics = `characteristics:
+  - types:
+      table: {kind: external-data-source-tables, object: ` + goodsTable + `}
+      key: {standard: ref}
+    values:
+      table: {kind: external-data-source-tables, object: ` + stockTable + `}
+      object: {attribute: ` + stockGoodsField + `}
+      type: {attribute: ` + stockWarehouseField + `}
+      value: {attribute: ` + stockQuantityField + `}
+`
+	root := metadataProject(t)
+	writeSalesCube(t, root, salesCubeBody+characteristics, goodsDimTableBody)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a cube with characteristics was refused: %v", err)
+	}
+	cube, _ := catalog.ExternalCube("Склад", "Продажи")
+	if len(cube.Characteristics) != 1 {
+		t.Fatalf("the characteristics were lost: %+v", cube.Characteristics)
+	}
+	cube.Characteristics[0].Types.Key.Standard = "испорчено"
+	if again, _ := catalog.ExternalCube("Склад", "Продажи"); again.Characteristics[0].Types.Key.Standard != RefStandardField {
+		t.Fatal("changing a copy's characteristics changed the catalog")
+	}
+	root = metadataProject(t)
+	writeSalesCube(t, root, salesCubeBody+strings.Replace(characteristics, "      key: {standard: ref}\n", "", 1), goodsDimTableBody)
+	if message := loadRefused(t, root, "a characteristic with no key"); !strings.Contains(message, "characteristics[0].types.key") {
+		t.Fatalf("the error does not name the property: %v", message)
+	}
+}
+
+// A cube is independent of every other cube of its source, as the platform
+// shows: its configurator offers a dimension of one cube the dimension tables
+// of that cube alone. Catches a dimension of one cube referring to a dimension
+// table of another, which the rule of the source alone would let through.
+func TestExternalCubeDimensionRefersOnlyToItsOwnCube(t *testing.T) {
+	t.Parallel()
+	const otherCube, otherTable = "f8100000-0000-4000-8000-000000000021", "f8100000-0000-4000-8000-000000000022"
+	root := metadataProject(t)
+	writeSalesCube(t, root, strings.Replace(salesCubeBody, "reference: "+goodsDimTable, "reference: "+otherTable, 1), goodsDimTableBody)
+	other := filepath.Join(root, "metadata", string(ExternalDataSourceKind), "Склад", ExternalDataSourceCubesDirectory, "Закупки")
+	writeFile(t, filepath.Join(other, "object.yaml"), "format: 1\nid: "+otherCube+"\nname: Закупки\ntitle: {ru: Закупки}\nname_in_data_source: Purchases\n")
+	writeFile(t, filepath.Join(other, ExternalDimensionTablesDirectory, "Поставщики", "object.yaml"),
+		"format: 1\nid: "+otherTable+"\nname: Поставщики\ntitle: {ru: Поставщики}\nname_in_data_source: Suppliers\n")
+	if message := loadRefused(t, root, "a dimension of another cube's table"); !strings.Contains(message, "refers to a dimension table of another cube") {
+		t.Fatalf("the error does not say what is wrong: %v", message)
+	}
 }

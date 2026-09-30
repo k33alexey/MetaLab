@@ -58,13 +58,11 @@ func (forms ExternalCubeForms) slots() []formSlot {
 // described by its dimensions, its resources and the tables its dimensions'
 // members lie in.
 //
-// The help gives the kinds of the elements of Измерения and Ресурсы no name. The
-// configurator calls them fields and requires of each a name in the data
-// source, and the one kind of field an external data source has in the help is
-// ОбъектМетаданных: Поле - so a dimension and a resource of a cube are fields
-// of a source here. If an export shows them made of something else, the
-// strict reading stops the import with the name of the property, which is what
-// it is for.
+// The help gives the kinds of the elements of Измерения and Ресурсы no name, and
+// they were taken for fields of a source, the one kind of field a source has in
+// the help. An export of the platform refuted it: a dimension and a resource
+// each have a composition of their own, and neither is a field of a table -
+// see ExternalCubeDimension and ExternalCubeResource.
 type ExternalCube struct {
 	Format int           `yaml:"format" json:"format"`
 	ID     uuid.UUID     `yaml:"id" json:"id"`
@@ -77,14 +75,42 @@ type ExternalCube struct {
 	RecordPresentations   `yaml:",inline" json:",inline"`
 	IncludeHelpInContents bool `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
 
-	NameInDataSource string            `yaml:"name_in_data_source" json:"nameInDataSource"`
-	Dimensions       []ExternalField   `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
-	Resources        []ExternalField   `yaml:"resources,omitempty" json:"resources,omitempty"`
-	Forms            ExternalCubeForms `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands         []ObjectCommand   `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates        []ObjectTemplate  `yaml:"templates,omitempty" json:"templates,omitempty"`
+	NameInDataSource string                  `yaml:"name_in_data_source" json:"nameInDataSource"`
+	Dimensions       []ExternalCubeDimension `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
+	Resources        []ExternalCubeResource  `yaml:"resources,omitempty" json:"resources,omitempty"`
+	// Characteristics are carried and not resolved. The syntax assistant does
+	// not give a cube any, an export writes the property on a cube all the
+	// same, and a property the export writes is carried. Our characteristics
+	// hang off a reference to the object they describe, and a record of a cube
+	// has none; what the prototype makes of them is a question for a run on
+	// the platform.
+	Characteristics []ObjectCharacteristic `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
+	Forms           ExternalCubeForms      `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands        []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates       []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
 	// DimensionTables are read from the cube's own folder of them.
 	DimensionTables []ExternalDimensionTable `yaml:"-" json:"dimensionTables,omitempty"`
+}
+
+// ExternalCubeDimension is one dimension of a cube. It is a field with the whole
+// palette of an attribute - bounds of the value, filling, the choice of folders
+// and items, a link by type - and without indexing, full-text search, data
+// history and «использование», none of which an export writes on it. Unlike a
+// field of a table it has no name in the data source, no read-only flag and no
+// Null allowed: a dimension is found in the other database through the
+// dimension table its type refers to.
+type ExternalCubeDimension struct {
+	Attribute `yaml:",inline" json:",inline"`
+}
+
+// ExternalCubeResource is one resource of a cube: a measured value, named in
+// the data source. It is shown and chosen like a field, and it is never
+// entered - so it has no filling, no check of filling, no creation on input
+// and no history of choice, no bounds, no choice of folders and items and no
+// link by type. An export writes exactly this composition.
+type ExternalCubeResource struct {
+	Attribute        `yaml:",inline" json:",inline"`
+	NameInDataSource string `yaml:"name_in_data_source" json:"nameInDataSource"`
 }
 
 // ExternalDimensionTableForms are the default forms of a dimension table: its
@@ -143,14 +169,8 @@ func DecodeExternalCube(source string, reader io.Reader, configuration project.P
 	issues = append(issues, validateRequiredNameInDataSource("name_in_data_source", value.NameInDataSource, "the cube")...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	// A dimension and a resource are one kind of field and share the
-	// namespace of the cube: a query names either as a field of the cube.
-	if len(value.Dimensions)+len(value.Resources) > maxExternalCubeFields {
-		issues = append(issues, fmt.Sprintf("dimensions and resources must not together exceed %d fields", maxExternalCubeFields))
-	} else {
-		issues = append(issues, validateExternalFieldGroups(configuration,
-			externalFieldGroup{"dimensions", value.Dimensions}, externalFieldGroup{"resources", value.Resources})...)
-	}
+	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
+	issues = append(issues, validateCubeFields(value, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ExternalCube{}, err
 	}
@@ -198,6 +218,91 @@ func DecodeExternalDimensionTable(source string, reader io.Reader, configuration
 	return value, nil
 }
 
+// validateCubeFields checks the dimensions and the resources of a cube. They
+// share one namespace: a query names either as a field of the cube, and two of
+// one name would be one field read twice.
+func validateCubeFields(cube ExternalCube, configuration project.Project) []string {
+	if len(cube.Dimensions)+len(cube.Resources) > maxExternalCubeFields {
+		return []string{fmt.Sprintf("dimensions and resources must not together exceed %d fields", maxExternalCubeFields)}
+	}
+	var issues []string
+	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+	check := func(prefix string, field Attribute) {
+		if field.ID.IsZero() {
+			issues = append(issues, prefix+".id must be a non-zero UUID")
+		} else if ids[field.ID] {
+			issues = append(issues, prefix+".id is used twice")
+		}
+		ids[field.ID] = true
+		if !validIdentifier(field.Name) || utf8.RuneCountInString(field.Name) > 128 {
+			issues = append(issues, prefix+".name must start with a letter, contain only letters or digits and not exceed 128 characters")
+		} else if names[strings.ToLower(field.Name)] {
+			issues = append(issues, prefix+".name is used twice")
+		}
+		names[strings.ToLower(field.Name)] = true
+		issues = append(issues, validateTitle(prefix+".title", field.Title, configuration)...)
+		issues = append(issues, validateExternalFieldTypes(prefix+".types", field.Types)...)
+		issues = append(issues, validateFieldSettings(prefix, field, configuration)...)
+		issues = append(issues, validateFieldStorage(prefix, field)...)
+		for _, property := range []struct {
+			set  bool
+			name string
+		}{
+			{field.Indexing != "", "indexing"},
+			{field.FullTextSearch != "", "full_text_search"},
+			{field.DataHistory != "", "data_history"},
+			{field.Use != "", "use"},
+		} {
+			if property.set {
+				issues = append(issues, prefix+"."+property.name+" belongs to an attribute of the configuration's own objects, and a field of a cube has none")
+			}
+		}
+	}
+	dimensions := make([]Attribute, 0, len(cube.Dimensions))
+	for index, dimension := range cube.Dimensions {
+		check(fmt.Sprintf("dimensions[%d]", index), dimension.Attribute)
+		dimensions = append(dimensions, dimension.Attribute)
+	}
+	resources := make([]Attribute, 0, len(cube.Resources))
+	for index, resource := range cube.Resources {
+		prefix := fmt.Sprintf("resources[%d]", index)
+		check(prefix, resource.Attribute)
+		issues = append(issues, validateRequiredNameInDataSource(prefix+".name_in_data_source", resource.NameInDataSource, "the measure")...)
+		for _, property := range []struct {
+			set  bool
+			name string
+		}{
+			{resource.Filling.Value != nil || resource.Filling.FromFillingValue, "filling"},
+			{resource.FillChecking != "", "fill_checking"},
+			{resource.Choice.CreateOnInput != "", "choice.create_on_input"},
+			{resource.Choice.HistoryOnInput != "", "choice.history_on_input"},
+			{resource.Presentation.MinValue != nil, "presentation.min_value"},
+			{resource.Presentation.MaxValue != nil, "presentation.max_value"},
+			{resource.Choice.FoldersAndItems != "", "choice.folders_and_items"},
+			{resource.Choice.LinkByType != nil, "choice.link_by_type"},
+		} {
+			if property.set {
+				issues = append(issues, prefix+"."+property.name+" belongs to a field somebody enters, and a resource of a cube is a measured value nobody does")
+			}
+		}
+		resources = append(resources, resource.Attribute)
+	}
+	return append(issues, validateFieldLinks([]fieldGroup{{"dimensions", dimensions}, {"resources", resources}}, nil)...)
+}
+
+// cubeFields is the dimensions and the resources of a cube as fields of a
+// source, for the resolution of what their types refer to.
+func cubeFields(cube ExternalCube) []ExternalField {
+	fields := make([]ExternalField, 0, len(cube.Dimensions)+len(cube.Resources))
+	for _, dimension := range cube.Dimensions {
+		fields = append(fields, ExternalField{Attribute: dimension.Attribute})
+	}
+	for _, resource := range cube.Resources {
+		fields = append(fields, ExternalField{Attribute: resource.Attribute, NameInDataSource: resource.NameInDataSource})
+	}
+	return fields
+}
+
 // validateRequiredNameInDataSource checks a name of the other database that has
 // to be there: a cube and a dimension table are nothing but a name of the
 // other database's object.
@@ -239,8 +344,21 @@ func cloneExternalCube(cube ExternalCube) ExternalCube {
 	cube.Explanation = cloneTitle(cube.Explanation)
 	cube.RecordPresentation = cloneTitle(cube.RecordPresentation)
 	cube.ExtendedRecordPresentation = cloneTitle(cube.ExtendedRecordPresentation)
-	cube.Dimensions = cloneExternalFields(cube.Dimensions)
-	cube.Resources = cloneExternalFields(cube.Resources)
+	if cube.Dimensions != nil {
+		dimensions := make([]ExternalCubeDimension, len(cube.Dimensions))
+		for index, dimension := range cube.Dimensions {
+			dimensions[index] = ExternalCubeDimension{Attribute: cloneAttribute(dimension.Attribute)}
+		}
+		cube.Dimensions = dimensions
+	}
+	if cube.Resources != nil {
+		resources := make([]ExternalCubeResource, len(cube.Resources))
+		for index, resource := range cube.Resources {
+			resources[index] = ExternalCubeResource{Attribute: cloneAttribute(resource.Attribute), NameInDataSource: resource.NameInDataSource}
+		}
+		cube.Resources = resources
+	}
+	cube.Characteristics = cloneObjectCharacteristics(cube.Characteristics)
 	cube.Commands = cloneObjectCommands(cube.Commands)
 	cube.Templates = cloneObjectTemplates(cube.Templates)
 	tables := make([]ExternalDimensionTable, len(cube.DimensionTables))
