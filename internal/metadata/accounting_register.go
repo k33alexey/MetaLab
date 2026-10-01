@@ -118,6 +118,7 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	for index, resource := range value.Resources {
 		prefix := fmt.Sprintf("resources[%d]", index)
 		validateField(prefix, resource.Attribute, resource.AccountingFlag)
+		issues = append(issues, validateNumericResource(prefix, resource.Attribute)...)
 		if resource.ExtDimensionAccountingFlag != nil && resource.ExtDimensionAccountingFlag.IsZero() {
 			issues = append(issues, prefix+".ext_dimension_accounting_flag must be a non-zero UUID")
 		}

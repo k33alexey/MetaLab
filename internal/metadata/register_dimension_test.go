@@ -143,7 +143,7 @@ func registerDimensionOf(kind, tail string) ([]RegisterDimension, error) {
 		value, err := DecodeAccountingRegister("register.yaml", strings.NewReader(head+"chart_of_accounts: "+uuid.MustNew().String()+"\ncorrespondence: true\n"+dimension+resource), demoConfiguration())
 		return value.Dimensions, err
 	case "calculation":
-		value, err := DecodeCalculationRegister("register.yaml", strings.NewReader(head+"chart_of_calculation_types: "+uuid.MustNew().String()+"\nperiodicity: month\n"+
+		value, err := DecodeCalculationRegister("register.yaml", strings.NewReader(head+"chart_of_calculation_types: "+uuid.MustNew().String()+"\nperiodicity: month\naction_period: true\n"+
 			"schedule: "+uuid.MustNew().String()+"\nschedule_value: "+uuid.MustNew().String()+"\nschedule_date: "+uuid.MustNew().String()+"\n"+dimension+resource), demoConfiguration())
 		return value.Dimensions, err
 	}

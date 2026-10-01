@@ -2086,6 +2086,11 @@ func (catalog *Catalog) validateAccountingRegister(root string, item AccountingR
 		}
 		chart = catalog.ChartsOfAccounts[index]
 	}
+	for _, resource := range item.Resources {
+		if _, err := catalog.accumulationResourceType(resource.Attribute); err != nil {
+			return fmt.Errorf("%s: %w", owner, err)
+		}
+	}
 	flags, extFlags := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
 	for _, flag := range chart.AccountingFlags {
 		flags[flag.ID] = true
@@ -2225,6 +2230,11 @@ func (catalog *Catalog) validateCalculationRegister(root string, item Calculatio
 	for _, attribute := range item.Attributes {
 		if attribute.ScheduleLink != nil && !scheduleDimensions[*attribute.ScheduleLink] {
 			return fmt.Errorf("%s attribute %s is linked to %s, which is not a dimension of the schedule", owner, attribute.Name, attribute.ScheduleLink)
+		}
+	}
+	for _, resource := range item.Resources {
+		if _, err := catalog.accumulationResourceType(resource); err != nil {
+			return fmt.Errorf("%s: %w", owner, err)
 		}
 	}
 	for _, field := range append(slices.Clone(item.Resources), item.attributeFields()...) {

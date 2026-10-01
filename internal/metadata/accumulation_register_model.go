@@ -119,9 +119,7 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 		}
 	}
 	for index, resource := range value.Resources {
-		if len(resource.Types) != 1 || resource.Types[0].Kind != NumberType && resource.Types[0].Kind != DefinedType {
-			issues = append(issues, fmt.Sprintf("resources[%d].types must contain exactly one number or numeric defined type", index))
-		}
+		issues = append(issues, validateNumericResource(fmt.Sprintf("resources[%d]", index), resource)...)
 	}
 	issues = append(issues, validateAccumulationAggregates(value.Aggregates, RegisterDimensionAttributes(value.Dimensions))...)
 	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, AccumulationRegisterKind,
@@ -171,6 +169,22 @@ func accumulationRegisterFields(value AccumulationRegisterDefinition) []Attribut
 	return result
 }
 
+// validateNumericResource checks a resource of a register of accumulation,
+// accounting or calculation where it is written: one number, or one defined
+// type - what it stands for is known only beside the defined types, and is
+// checked there by accumulationResourceType. A resource of these three holds
+// an amount; the owner checked it on the platform for accounting and
+// calculation (01.10.2026), and every resource of the materials and of the
+// configurations being moved is a number or a defined money amount.
+func validateNumericResource(prefix string, resource Attribute) []string {
+	if len(resource.Types) != 1 || resource.Types[0].Kind != NumberType && resource.Types[0].Kind != DefinedType {
+		return []string{prefix + ".types must contain exactly one number or numeric defined type"}
+	}
+	return nil
+}
+
+// accumulationResourceType resolves a resource of a register of accumulation,
+// accounting or calculation to the number it holds.
 func (catalog *Catalog) accumulationResourceType(resource Attribute) (Type, error) {
 	resolved, err := catalog.expandTypes(resource.Types, nil)
 	if err != nil {

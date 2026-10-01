@@ -240,9 +240,7 @@ schedule_date: ` + calcResult + `
 recalculations:
   - {id: ` + calcRecalc + `, name: Перерасчет, title: {ru: Перерасчёт}, dimensions: [{id: ` + calcRecalcDim + `, name: Лицо, title: {ru: Лицо}, register_dimension: ` + calcPerson + `, leading_data: []}]}
 `,
-		"перерасчёт без измерений": base + `recalculations:
-  - {id: ` + calcRecalc + `, name: Перерасчет, title: {ru: Перерасчёт}, dimensions: []}
-`,
+		"график без периода действия": strings.Replace(calcRegisterBody, "action_period: true\n", "", 1),
 		"неизвестная периодичность": `format: 1
 id: ` + calcRegister + `
 name: ОсновныеНачисления
@@ -463,5 +461,86 @@ func TestScheduleIsWhatTheSyntaxAssistantDescribes(t *testing.T) {
 				t.Fatal("accepted as a schedule")
 			}
 		})
+	}
+}
+
+// A recalculation with no dimensions is saved by the designer - the test
+// configuration of mdclasses keeps one, with no child objects at all.
+//
+// Defect caught: such a recalculation refused at load, with nothing in the
+// prototype to refuse it for.
+func TestRecalculationWithNoDimensionsIsKept(t *testing.T) {
+	t.Parallel()
+	body := strings.Replace(calcRegisterBody, `    dimensions:
+      - id: `+calcRecalcDim+`
+        name: ФизическоеЛицо
+        title: {ru: Физическое лицо}
+        register_dimension: `+calcPerson+`
+        leading_data: [`+calcPerson+`]
+`, "", 1)
+	if body == calcRegisterBody {
+		t.Fatal("fixture changed: the recalculation's dimensions were not found")
+	}
+	catalog, err := Load(calculationProject(t, body))
+	if err != nil {
+		t.Fatalf("a recalculation with no dimensions refused: %v", err)
+	}
+	register, _ := catalog.CalculationRegister("ОсновныеНачисления")
+	if len(register.Recalculations) != 1 || len(register.Recalculations[0].Dimensions) != 0 {
+		t.Fatalf("recalculations = %+v", register.Recalculations)
+	}
+}
+
+// A resource of a calculation or an accounting register is a number or a
+// defined type that stands for a number (checked by the owner on the platform,
+// 01.10.2026) - the rule a register of accumulation already kept.
+//
+// Defect caught: a string, a date or a reference accepted as the amount of a
+// payroll record or of an entry, and a defined type standing for something
+// other than a number accepted where an amount is kept.
+func TestCalculationAndAccountingResourcesAreNumbers(t *testing.T) {
+	t.Parallel()
+	textual := strings.Replace(calcRegisterBody, "name: Результат, title: {ru: Результат}, types: [{kind: number, precision: 15, scale: 2}]",
+		"name: Результат, title: {ru: Результат}, types: [{kind: string, length: 10}]", 1)
+	if _, err := DecodeCalculationRegister("register.yaml", strings.NewReader(textual), metadataConfiguration()); err == nil {
+		t.Fatal("a calculation register with a string resource accepted")
+	}
+	twice := strings.Replace(calcRegisterBody, "types: [{kind: number, precision: 15, scale: 2}]}\nrecalculations",
+		"types: [{kind: number, precision: 15, scale: 2}, {kind: date}]}\nrecalculations", 1)
+	if _, err := DecodeCalculationRegister("register.yaml", strings.NewReader(twice), metadataConfiguration()); err == nil {
+		t.Fatal("a calculation register with a composite resource accepted")
+	}
+
+	root := entriesProject(t, true, `resources:
+  - {id: `+entriesSum+`, name: Сумма, title: {ru: Сумма}, types: [{kind: string, length: 10}]}`)
+	if _, err := Load(root); err == nil {
+		t.Fatal("an accounting register with a string resource accepted")
+	}
+	// Where the file alone is read - an editor checking one object - the
+	// accounting register refuses it too, without the rest of the project.
+	if _, err := DecodeAccountingRegister("register.yaml", strings.NewReader(`format: 1
+id: `+entriesRegister+`
+name: Хозрасчетный
+title: {ru: Хозрасчётный}
+resources:
+  - {id: `+entriesSum+`, name: Сумма, title: {ru: Сумма}, types: [{kind: string, length: 10}]}
+`), metadataConfiguration()); err == nil {
+		t.Fatal("an accounting register with a string resource accepted where its file is read")
+	}
+
+	// A defined type is resolved where the defined types are known.
+	for name, value := range map[string]string{"число": "[{kind: number, precision: 15, scale: 2}]", "строка": "[{kind: string, length: 10}]"} {
+		root := entriesProject(t, true, `resources:
+  - {id: `+entriesSum+`, name: Сумма, title: {ru: Сумма}, types: [{kind: defined-type, reference: ca100000-0000-4000-8000-0000000000dd}]}`)
+		writeMetadata(t, root, DefinedTypeKind, "ca100000-0000-4000-8000-0000000000dd", `format: 1
+id: ca100000-0000-4000-8000-0000000000dd
+name: ДенежнаяСумма
+title: {ru: Денежная сумма}
+types: `+value+`
+`)
+		_, err := Load(root)
+		if (err == nil) != (name == "число") {
+			t.Errorf("defined type of %s: err = %v", name, err)
+		}
 	}
 }

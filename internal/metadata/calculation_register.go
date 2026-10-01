@@ -166,6 +166,13 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 	if value.Schedule == nil && (value.ScheduleValue != nil || value.ScheduleDate != nil) {
 		issues = append(issues, "schedule_value and schedule_date need the schedule they belong to")
 	}
+	// The three are offered only with the period of action: the help of the
+	// register's editor says so of each (calcui, the calculation register),
+	// and both registers of the configurations being moved that read a
+	// schedule keep the period of action.
+	if (value.Schedule != nil || value.ScheduleValue != nil || value.ScheduleDate != nil) && !value.ActionPeriod {
+		issues = append(issues, "a schedule needs the period of action: without it a record spreads over nothing")
+	}
 	if value.Schedule != nil && (value.ScheduleValue == nil || value.ScheduleDate == nil) {
 		issues = append(issues, "a schedule needs both the resource its value is in and the dimension its date is in")
 	}
@@ -184,6 +191,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 		prefix := fmt.Sprintf("resources[%d]", index)
 		issues = append(issues, validateRegisterField(prefix, resource,
 			value.ID, names, ids, configuration, reservedCalculationRegisterName)...)
+		issues = append(issues, validateNumericResource(prefix, resource)...)
 		issues = append(issues, validateResourceIndexing(prefix, resource.Indexing)...)
 		issues = append(issues, validateMovementFieldStorage(prefix, resource)...)
 	}
@@ -276,9 +284,9 @@ func validateRecalculations(value CalculationRegisterDefinition, configuration p
 		names[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", recalculation.Title, configuration)...)
 		issues = append(issues, validateDataLockMode(prefix+".data_lock", recalculation.DataLock)...)
-		if len(recalculation.Dimensions) == 0 {
-			issues = append(issues, prefix+" has no dimensions, so it finds no records to compute again")
-		}
+		// A recalculation with no dimensions is saved by the designer: the
+		// test configuration of mdclasses keeps one (РегистрРасчета1,
+		// Перерасчет, no child objects).
 		inner, innerIDs := map[string]bool{}, map[uuid.UUID]bool{}
 		for position, dimension := range recalculation.Dimensions {
 			path := fmt.Sprintf("%s.dimensions[%d]", prefix, position)
