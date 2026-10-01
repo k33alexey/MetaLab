@@ -36,6 +36,9 @@ type SubsystemDefinition struct {
 	// UseOneCommand puts the commands of the section behind one command instead
 	// of listing them.
 	UseOneCommand bool `yaml:"use_one_command,omitempty"`
+	// CommandInterface is what the section shows and in what order - see
+	// CommandInterface.
+	CommandInterface CommandInterface `yaml:"command_interface,omitempty"`
 }
 
 func DecodeSubsystem(source string, reader io.Reader, configuration project.Project) (SubsystemDefinition, error) {
@@ -63,6 +66,7 @@ func ValidateSubsystem(source string, value SubsystemDefinition, configuration p
 	if value.Parent != nil && value.Parent.IsZero() {
 		issues = append(issues, "parent must be a non-zero UUID")
 	}
+	issues = append(issues, validateCommandInterface("command_interface", value.CommandInterface)...)
 	seen := make(map[uuid.UUID]bool, len(value.Members))
 	for index, member := range value.Members {
 		prefix := fmt.Sprintf("members[%d]", index)
@@ -105,6 +109,7 @@ func cloneSubsystemDefinition(value SubsystemDefinition) SubsystemDefinition {
 	}
 	value.Members = slices.Clone(value.Members)
 	value.Explanation = cloneTitle(value.Explanation)
+	value.CommandInterface = cloneCommandInterface(value.CommandInterface)
 	return value
 }
 

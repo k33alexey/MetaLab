@@ -1842,6 +1842,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	if err := catalog.validateSubsystemReferences(); err != nil {
 		return err
 	}
+	catalog.resolveCommandInterfaces(root)
 	if err := catalog.validateEventSubscriptionReferences(); err != nil {
 		return err
 	}

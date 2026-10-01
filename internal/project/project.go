@@ -120,6 +120,13 @@ type Project struct {
 	// DefaultRoles are the rights a user works with when the list of users is
 	// empty. The order is the configuration's own and is kept as written.
 	DefaultRoles []uuid.UUID `yaml:"default_roles,omitempty" json:"defaultRoles,omitempty"`
+	// SubsystemsOrder and SubsystemsVisibility are the root's half of the
+	// command interface: the order the sections of the application stand in,
+	// and which of them a role sees. The order names top-level subsystems; one
+	// left out stands after those named. Both are carried and not yet acted
+	// upon - the command interface is built in block 18.
+	SubsystemsOrder      []uuid.UUID           `yaml:"subsystems_order,omitempty" json:"subsystemsOrder,omitempty"`
+	SubsystemsVisibility []SubsystemVisibility `yaml:"subsystems_visibility,omitempty" json:"subsystemsVisibility,omitempty"`
 	// The five forms below stand in for a report, a constant or a search that
 	// names no form of its own. All five are common forms: they belong to no
 	// object, which is exactly why the root can hand them to every object at
@@ -645,9 +652,13 @@ func (p Project) Validate() error {
 		}
 	}
 	if p.DefaultInterface != "" && !isIdentifier(p.DefaultInterface) {
-		add("default_interface", "must start with a letter and contain only letters or digits")
+		add("default_interface", "must start with a letter or an underscore and contain only letters, digits or underscores")
 	} else if utf8.RuneCountInString(p.DefaultInterface) > 128 {
 		add("default_interface", "must not exceed 128 characters")
+	}
+	for _, issue := range validateSubsystemsInterface(p.SubsystemsOrder, p.SubsystemsVisibility) {
+		field, message, _ := strings.Cut(issue, " ")
+		add(field, message)
 	}
 	seenRoles := make(map[uuid.UUID]struct{}, len(p.DefaultRoles))
 	for index, role := range p.DefaultRoles {
