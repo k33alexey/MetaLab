@@ -1435,6 +1435,39 @@ func validatePredefinedTree(items []PredefinedCatalogItem, hierarchy Hierarchy) 
 			current = next
 		}
 	}
+	return append(issues, validatePredefinedLevels(items, byName, hierarchy)...)
+}
+
+// validatePredefinedLevels holds the predefined tree to the limit of levels by
+// the rule a row written later is held to - see checkTreePlacement: the level
+// of items is a level, so a folder takes one more than it stands at. Without it
+// the description is read and the base refuses it when the items are created.
+// A ring or a missing parent is reported by the walk above, so here the walk
+// only stops on them.
+func validatePredefinedLevels(items []PredefinedCatalogItem, byName map[string]PredefinedCatalogItem, hierarchy Hierarchy) []string {
+	if !hierarchy.Enabled || !hierarchy.LimitLevels {
+		return nil
+	}
+	folders := hierarchy.Kind == FoldersAndItemsHierarchy
+	var issues []string
+	for index, item := range items {
+		levels := 1
+		if folders && item.IsFolder {
+			levels = 2
+		}
+		for current, steps := item, 0; current.Parent != "" && steps < len(items); steps++ {
+			parent, ok := byName[strings.ToLower(current.Parent)]
+			if !ok {
+				break
+			}
+			levels++
+			current = parent
+		}
+		if levels > hierarchy.LevelCount {
+			issues = append(issues, fmt.Sprintf("predefined[%d] %s takes %d levels counting the level of items, and the hierarchy allows %d",
+				index, item.Name, levels, hierarchy.LevelCount))
+		}
+	}
 	return issues
 }
 

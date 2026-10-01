@@ -101,32 +101,48 @@ func (repository *CatalogRepository) checkTreePlacement(ctx context.Context, tra
 		// tries again.
 		return ErrCatalogWriteConflict
 	}
-	if record.Parent.IsZero() {
-		return nil
-	}
-	depth, meetsRow, err := repository.ancestorChain(ctx, transaction, definition, record.Parent, record.Reference.ObjectID)
-	if err != nil {
-		return fmt.Errorf("catalog %s parent: %w", definition.Name, err)
-	}
-	if meetsRow {
-		return fmt.Errorf("catalog %s row %s cannot stand under %s, which is below it", definition.Name, record.Reference.ObjectID, record.Parent)
+	// A row at the top has nothing above it and no ring to close, but it is
+	// still counted: with one level a folder at the top is already too deep.
+	depth := 0
+	if !record.Parent.IsZero() {
+		var meetsRow bool
+		var err error
+		depth, meetsRow, err = repository.ancestorChain(ctx, transaction, definition, record.Parent, record.Reference.ObjectID)
+		if err != nil {
+			return fmt.Errorf("catalog %s parent: %w", definition.Name, err)
+		}
+		if meetsRow {
+			return fmt.Errorf("catalog %s row %s cannot stand under %s, which is below it", definition.Name, record.Reference.ObjectID, record.Parent)
+		}
 	}
 	if !definition.Hierarchy.LimitLevels {
 		return nil
 	}
 	// A row carries what is under it. Moving a branch deeper moves all of it,
-	// so the height of the branch counts towards the limit as much as the
-	// depth of the new place does.
-	height := 0
+	// so the levels the branch takes count towards the limit as much as the
+	// depth of the new place does. A folder takes one more level than it
+	// stands at, for what it holds: the level of items is a level, and with
+	// two of them a folder at the top holds items and a folder in a folder is
+	// refused - the prototype, checked on the platform 01.10.2026.
+	folders := catalogHasFolders(definition)
+	levels := 1
+	if folders && record.IsFolder {
+		levels = 2
+	}
 	if record.Version != 0 {
-		height, err = repository.subtreeHeight(ctx, transaction, definition, record.Reference.ObjectID)
+		below, err := repository.branchLevels(ctx, transaction, definition, record.Reference.ObjectID, folders)
 		if err != nil {
 			return fmt.Errorf("catalog %s: %w", definition.Name, err)
 		}
+		levels = max(levels, below)
 	}
-	if depth+1+height > definition.Hierarchy.LevelCount {
+	if depth+levels > definition.Hierarchy.LevelCount {
+		if folders {
+			return fmt.Errorf("catalog %s allows %d levels of nesting counting the level of items, and this branch would take %d",
+				definition.Name, definition.Hierarchy.LevelCount, depth+levels)
+		}
 		return fmt.Errorf("catalog %s allows %d levels of nesting, and this row would stand at %d",
-			definition.Name, definition.Hierarchy.LevelCount, depth+1+height)
+			definition.Name, definition.Hierarchy.LevelCount, depth+levels)
 	}
 	return nil
 }
@@ -177,26 +193,32 @@ SELECT coalesce(max(depth), 0), coalesce(bool_or(ref = $2), false) FROM chain`
 	return depth, meets, nil
 }
 
-// subtreeHeight walks down from one row: how many rows the longest branch
-// below it adds. A row with no children adds none.
-func (repository *CatalogRepository) subtreeHeight(ctx context.Context, transaction pgx.Tx, definition CatalogDefinition, root uuid.UUID) (int, error) {
+// branchLevels is how many levels the branch from one row takes, the row's
+// own level being the first: the deepest row counts, and a folder counts one
+// more, for the level of what it holds.
+func (repository *CatalogRepository) branchLevels(ctx context.Context, transaction pgx.Tx, definition CatalogDefinition, root uuid.UUID, folders bool) (int, error) {
 	table, err := PhysicalCatalogTable(definition.ID)
 	if err != nil {
 		return 0, err
 	}
 	qualified := qualifiedCatalogTable(table)
-	statement := `WITH RECURSIVE below(ref, depth) AS (
-	SELECT ref, 0 FROM ` + qualified + ` WHERE ref = $1
+	// Only a hierarchy of folders and items has the folder column.
+	rootRoom, itemRoom := "0", "0"
+	if folders {
+		rootRoom, itemRoom = "is_folder::integer", "item.is_folder::integer"
+	}
+	statement := `WITH RECURSIVE below(ref, depth, room) AS (
+	SELECT ref, 1, ` + rootRoom + ` FROM ` + qualified + ` WHERE ref = $1
 	UNION ALL
-	SELECT item.ref, below.depth + 1 FROM ` + qualified + ` AS item
-		JOIN below ON item.parent = below.ref WHERE below.depth < $2
+	SELECT item.ref, below.depth + 1, ` + itemRoom + ` FROM ` + qualified + ` AS item
+		JOIN below ON item.parent = below.ref WHERE below.depth <= $2
 )
-SELECT coalesce(max(depth), 0) FROM below`
-	var height int
-	if err := transaction.QueryRow(ctx, statement, root.String(), maxTreeWalk).Scan(&height); err != nil {
+SELECT coalesce(max(depth + room), 0) FROM below`
+	var levels int
+	if err := transaction.QueryRow(ctx, statement, root.String(), maxTreeWalk).Scan(&levels); err != nil {
 		return 0, err
 	}
-	return height, nil
+	return levels, nil
 }
 
 // SetDeletionMark marks a row for deletion, or takes the mark off, and by

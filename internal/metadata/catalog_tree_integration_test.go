@@ -20,6 +20,11 @@ import (
 // has to reach.
 func treeFixture(t *testing.T, ctx context.Context, levels int) (*CatalogRepository, uuid.UUID, uuid.UUID) {
 	t.Helper()
+	return treeFixtureOf(t, ctx, levels, FoldersAndItemsHierarchy)
+}
+
+func treeFixtureOf(t *testing.T, ctx context.Context, levels int, kind HierarchyKind) (*CatalogRepository, uuid.UUID, uuid.UUID) {
+	t.Helper()
 	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("ML_TEST_DATABASE_URL is not set")
@@ -41,7 +46,7 @@ func treeFixture(t *testing.T, ctx context.Context, levels int) (*CatalogReposit
 	if _, err := pool.Exec(ctx, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE"); err != nil {
 		t.Fatal(err)
 	}
-	hierarchy := Hierarchy{Enabled: true, Kind: FoldersAndItemsHierarchy}
+	hierarchy := Hierarchy{Enabled: true, Kind: kind}
 	if levels > 0 {
 		hierarchy.LimitLevels, hierarchy.LevelCount = true, levels
 	}
@@ -179,28 +184,34 @@ func TestTwoMovesCannotCloseARingTogetherIntegration(t *testing.T) {
 	}
 }
 
-// A nesting limit is a limit on rows, and a row carries what is under it: a
-// branch moved deeper takes its own height with it.
+// The level of items is a level, and a folder takes one more than it stands
+// at: with three levels a folder in a folder holds items, and a third folder
+// below them is refused - the prototype, checked on the platform 01.10.2026.
+// Counting rows alone, as before, let a folder stand on the last level, where
+// nothing can be put into it. A branch moved deeper takes its folders' room
+// with it, and a folder at the top is counted too: with one level there is no
+// room for a folder at all.
 func TestNestingStopsAtTheLimitIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	repository, _, _ := treeFixture(t, ctx, 3)
 	first := newFolderUnder(t, ctx, repository, "Дерево", "Первый", uuid.UUID{})
 	second := newFolderUnder(t, ctx, repository, "Дерево", "Второй", first.Reference.ObjectID)
-	third := newFolderUnder(t, ctx, repository, "Дерево", "Третий", second.Reference.ObjectID)
+	newItemUnder(t, ctx, repository, "Дерево", "Элемент на третьем", second.Reference.ObjectID)
 
-	// A fourth level at once.
-	deeper, err := repository.New(ctx, "Дерево", nil)
+	// A folder on the last level.
+	third, err := repository.NewFolder(ctx, "Дерево", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	deeper.Description, deeper.Parent = "Четвёртый", third.Reference.ObjectID
-	if err := repository.Save(ctx, deeper, nil); err == nil || !strings.Contains(err.Error(), "allows 3 levels") {
-		t.Fatalf("a fourth level was accepted: %v", err)
+	third.Description, third.Parent = "Третья группа", second.Reference.ObjectID
+	if err := repository.Save(ctx, third, nil); err == nil || !strings.Contains(err.Error(), "allows 3 levels") {
+		t.Fatalf("a folder on the last level was accepted: %v", err)
 	}
 
-	// A branch two rows tall moved one level down: the row itself would stand
-	// at the second level and its deepest row at the fourth.
+	// A branch of two folders moved one level down: its lower folder would
+	// stand on the last level. Moved one level down as an item would be fine,
+	// which is why the folder's room is what refuses it.
 	elsewhere := newFolderUnder(t, ctx, repository, "Дерево", "Сбоку", uuid.UUID{})
 	moved, err := repository.Get(ctx, first.Reference)
 	if err != nil {
@@ -209,6 +220,62 @@ func TestNestingStopsAtTheLimitIntegration(t *testing.T) {
 	moved.Parent = elsewhere.Reference.ObjectID
 	if err := repository.Save(ctx, moved, nil); err == nil || !strings.Contains(err.Error(), "allows 3 levels") {
 		t.Fatalf("a branch was moved past the limit: %v", err)
+	}
+	// The deepest row of the branch is an empty folder: by rows the branch
+	// would fit, and only the room the folder needs refuses it.
+	branch := newFolderUnder(t, ctx, repository, "Дерево", "Ветка", uuid.UUID{})
+	newFolderUnder(t, ctx, repository, "Дерево", "Пустая", branch.Reference.ObjectID)
+	moved, err = repository.Get(ctx, branch.Reference)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved.Parent = elsewhere.Reference.ObjectID
+	if err := repository.Save(ctx, moved, nil); err == nil || !strings.Contains(err.Error(), "allows 3 levels") {
+		t.Fatalf("a branch ending in a folder was moved onto the last level: %v", err)
+	}
+	// The lower folder alone, with its item, fits one level down from the top.
+	moved, err = repository.Get(ctx, second.Reference)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved.Parent = elsewhere.Reference.ObjectID
+	if err := repository.Save(ctx, moved, nil); err != nil {
+		t.Fatalf("a branch that fits was refused: %v", err)
+	}
+}
+
+// In a hierarchy of items an item is its own folder, and the limit counts rows:
+// with two levels an item at the top holds one level of items, and an item
+// under that one is refused - the same principle, checked on the platform
+// 01.10.2026. It is the case the room of a folder must not touch.
+func TestItemsNestOneLevelUnderTheTopWithTwoLevelsIntegration(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	repository, _, _ := treeFixtureOf(t, ctx, 2, ItemsHierarchy)
+	top := newItemUnder(t, ctx, repository, "Дерево", "Верх", uuid.UUID{})
+	middle := newItemUnder(t, ctx, repository, "Дерево", "Середина", top.Reference.ObjectID)
+	deeper, err := repository.New(ctx, "Дерево", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deeper.Description, deeper.Parent = "Низ", middle.Reference.ObjectID
+	if err := repository.Save(ctx, deeper, nil); err == nil || !strings.Contains(err.Error(), "allows 2 levels") {
+		t.Fatalf("a third level of items was accepted: %v", err)
+	}
+}
+
+func TestOneLevelHasNoRoomForAFolderIntegration(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	repository, _, _ := treeFixture(t, ctx, 1)
+	newItemUnder(t, ctx, repository, "Дерево", "Элемент", uuid.UUID{})
+	folder, err := repository.NewFolder(ctx, "Дерево", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	folder.Description = "Группа"
+	if err := repository.Save(ctx, folder, nil); err == nil || !strings.Contains(err.Error(), "allows 1 levels") {
+		t.Fatalf("a folder with one level was accepted: %v", err)
 	}
 }
 

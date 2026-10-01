@@ -956,3 +956,48 @@ predefined:
 		t.Fatalf("hierarchy columns = %d, parent keys = %d", columns, keys)
 	}
 }
+
+// The predefined tree is held to the limit of levels by the rule a written row
+// is: the level of items is a level, so with two levels a folder at the top
+// holds items and a folder in a folder is refused, and with one level a folder
+// has no room at all - the prototype, checked on the platform 01.10.2026. In a
+// hierarchy of items an item is its own folder and the limit counts rows: with
+// two levels an item at the top holds one level and that is all. Read without
+// the check, such a tree was accepted and refused by the base when its items
+// were created.
+func TestPredefinedTreeKeepsToTheLevels(t *testing.T) {
+	t.Parallel()
+	item := func(name, parent string, folder bool) PredefinedCatalogItem {
+		return PredefinedCatalogItem{ID: uuid.MustNew(), Name: name, Parent: parent, IsFolder: folder}
+	}
+	folders := func(levels int) Hierarchy {
+		return Hierarchy{Enabled: true, Kind: FoldersAndItemsHierarchy, LimitLevels: true, LevelCount: levels}
+	}
+	items := func(levels int) Hierarchy {
+		return Hierarchy{Enabled: true, Kind: ItemsHierarchy, LimitLevels: true, LevelCount: levels}
+	}
+	for name, testCase := range map[string]struct {
+		hierarchy Hierarchy
+		tree      []PredefinedCatalogItem
+		refused   bool
+	}{
+		"группа с элементами при двух уровнях": {folders(2), []PredefinedCatalogItem{item("Группа", "", true), item("Элемент", "Группа", false)}, false},
+		"группа в группе при двух уровнях":     {folders(2), []PredefinedCatalogItem{item("Группа", "", true), item("Вложенная", "Группа", true)}, true},
+		"группа при одном уровне":              {folders(1), []PredefinedCatalogItem{item("Группа", "", true)}, true},
+		"элемент при одном уровне":             {folders(1), []PredefinedCatalogItem{item("Элемент", "", false)}, false},
+		"элемент в элементе при двух уровнях":  {items(2), []PredefinedCatalogItem{item("Верх", "", false), item("Низ", "Верх", false)}, false},
+		"три элемента вглубь при двух уровнях": {items(2), []PredefinedCatalogItem{item("Верх", "", false), item("Середина", "Верх", false), item("Низ", "Середина", false)}, true},
+		"без ограничения":                      {Hierarchy{Enabled: true, Kind: FoldersAndItemsHierarchy}, []PredefinedCatalogItem{item("А", "", true), item("Б", "А", true), item("В", "Б", true)}, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			issues := validatePredefinedTree(testCase.tree, testCase.hierarchy)
+			if refused := len(issues) != 0; refused != testCase.refused {
+				t.Fatalf("refused = %v, want %v: %v", refused, testCase.refused, issues)
+			}
+			if testCase.refused && !strings.Contains(strings.Join(issues, "; "), "levels counting the level of items") {
+				t.Fatalf("refused for another reason: %v", issues)
+			}
+		})
+	}
+}
