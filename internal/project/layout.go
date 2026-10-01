@@ -456,12 +456,20 @@ func ObjectName(name string) error { return folderName("object", name) }
 // identifier too, and unique among its siblings with case folded.
 func SubordinateName(name string) error { return folderName("name", name) }
 
+const maxFolderNameBytes = 255
+
 func folderName(what, name string) error {
 	if name == "" {
 		return fmt.Errorf("%s must not be empty", what)
 	}
-	if len(name) > 128 {
-		return fmt.Errorf("%s must not be longer than 128 characters", what)
+	// The file system's limit, not ours: a path component is at most 255
+	// bytes on ext4 and APFS alike. It is counted in bytes on purpose - a
+	// Cyrillic letter takes two - so the model's 255 characters do not all fit,
+	// and a name that does not is refused here rather than failing to save.
+	// The configurations being moved stay far below it: the longest name is 96
+	// characters, 192 bytes.
+	if len(name) > maxFolderNameBytes {
+		return fmt.Errorf("%s must not be longer than %d bytes", what, maxFolderNameBytes)
 	}
 	for index, symbol := range name {
 		switch {

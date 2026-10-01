@@ -799,6 +799,7 @@ func loadObjectKind(root string, kind Kind, decode func(string, *os.File, string
 }
 
 func (catalog *Catalog) indexAndValidate(root string) error {
+	catalog.unresolved = nil
 	if err := catalog.propagateCommonAttributes(); err != nil {
 		return err
 	}
@@ -2577,7 +2578,7 @@ func (catalog *Catalog) indexObjectForms(directory string, directoryKind Kind, k
 	}
 	for _, slot := range slots {
 		reference, problem := parseFormReference(slot.form)
-		if slot.form == "" || problem != "" || reference.common {
+		if slot.form == "" || problem != "" || reference.common || !reference.unresolved.IsZero() {
 			continue
 		}
 		if _, ok := found[strings.ToLower(reference.name)]; !ok {
@@ -2624,6 +2625,10 @@ func (catalog *Catalog) validateCommonFormSlots(kind, name string, slots []formS
 			continue
 		}
 		reference, problem := parseFormReference(slot.form)
+		if problem == "" && !reference.unresolved.IsZero() {
+			catalog.noteUnresolved(kind+" "+name+" "+slot.role(), reference.unresolved)
+			continue
+		}
 		if problem != "" || !reference.common {
 			continue
 		}

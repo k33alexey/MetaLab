@@ -146,20 +146,21 @@ func (catalog *Catalog) CommandGroup(name string) (CommandGroupDefinition, bool)
 	return cloneCommandGroup(catalog.CommandGroups[index]), true
 }
 
-// validateCommandGroupReferences checks that every command placed in a group
-// of the configuration names a group that exists.
+// validateCommandGroupReferences notes every command placed in a group of the
+// configuration that does not exist.
 //
-// Until command groups were objects there was nothing to check this against,
-// and a command could name a group that had never existed: the platform would
-// then have nowhere to draw it, and the command would simply not appear.
+// A command naming a group nothing carries is not refused: the platform has
+// nowhere to draw it and simply does not show it, and the prototype saves such
+// a configuration - two catalogs of sb keep one, the group deleted and the
+// placement left behind. It is carried as written and listed among the
+// unresolved references for the import report.
 func (catalog *Catalog) validateCommandGroupReferences() error {
 	placed := func(owner string, command ObjectCommand) error {
 		if command.GroupRef == nil {
 			return nil
 		}
 		if _, ok := catalog.commandGroupByID[*command.GroupRef]; !ok {
-			return fmt.Errorf("%s command %s is placed in unknown command group %s",
-				owner, command.Name, command.GroupRef)
+			catalog.noteUnresolved(owner+" command "+command.Name+" group", *command.GroupRef)
 		}
 		return nil
 	}

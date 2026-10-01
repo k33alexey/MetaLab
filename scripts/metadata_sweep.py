@@ -211,7 +211,7 @@ RENAMED_BY_KIND = {
     ("FilterCriterion", "Content"): "fields",
     ("CommonTemplate", "TemplateType"): "kind",
     ("EventSubscription", "Handler"): "procedure",
-    ("EventSubscription", "Source"): "objects",
+    ("EventSubscription", "Source"): "source",
     ("CommonCommand", "OnMainServerUnavalableBehavior"): "on_server_unavailable",
     ("WebService", "XDTOPackages"): "packages",
     ("AccountingRegister", "EnableTotalsSplitting"): "allow_totals_splitting",

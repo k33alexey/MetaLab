@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/project"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // formSlot is one role of form an object may name: the key the role is written
@@ -110,9 +111,16 @@ const commonFormPrefix = "common-forms/"
 // the case that made it necessary - twenty-three of the twenty-six reports in
 // the demonstration configuration open a common form - but the platform allows
 // it in every role of every kind, and so do we.
+//
+// A role may also hold a bare identifier: the prototype writes the form by
+// identifier when it cannot write it by name, which happens when the form was
+// deleted and the role was not cleared. Such a role is carried as written and
+// opens nothing - see UnresolvedReference. It cannot be mistaken for a name:
+// a name never holds a hyphen.
 type formReference struct {
-	name   string
-	common bool
+	name       string
+	common     bool
+	unresolved uuid.UUID
 }
 
 // parseFormReference reads what a role carries. It fails only on something that
@@ -121,6 +129,9 @@ type formReference struct {
 // is a reference, and otherwise is the rest of the message about the role,
 // which its key is put in front of.
 func parseFormReference(value string) (formReference, string) {
+	if id, err := uuid.Parse(value); err == nil && !id.IsZero() {
+		return formReference{unresolved: id}, ""
+	}
 	reference := formReference{name: value}
 	if after, found := strings.CutPrefix(value, commonFormPrefix); found {
 		reference = formReference{name: after, common: true}

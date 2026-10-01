@@ -42,28 +42,33 @@ TABLE = ROOT / "docs" / "requirements" / "progress-table.rst"
 # табличка стоит рядом с требованиями и читается одним взглядом, поэтому имя
 # в ней сокращено. Сокращения заданы явно — вывести их из полного имени
 # нельзя, а угадывание давало бы разные имена от прогона к прогону.
+#
+# Номер блока — строка: разросшийся блок дробится на «2» и «2б», а не
+# сдвигает нумерацию всех следующих, на которую ссылаются код и ТЗ. Порядок
+# словаря — порядок блоков в табличке.
 SHORT_NAMES = {
-    1: "Расчистка",
-    2: "Модель метаданных",
-    3: "Миграция",
-    4: "Импорт",
-    5: "Язык",
-    6: "Запросы",
-    7: "Формы: каркас",
-    8: "Формы: оформление",
-    9: "Прикладные объекты",
-    10: "Права и ограничения",
-    11: "Табличный документ",
-    12: "Компоновка данных",
-    13: "Редакторы компоновки",
-    14: "Данные приложения",
-    15: "Задания и эксплуатация",
-    16: "Импорт данных",
-    17: "Интеграции",
-    18: "Интерфейс и локализация",
-    19: "Качество и выпуск",
-    20: "Оборудование",
-    21: "Инструменты разработчика",
+    "1": "Расчистка",
+    "2": "Модель метаданных",
+    "2б": "Реквизиты формы",
+    "3": "Миграция",
+    "4": "Импорт",
+    "5": "Язык",
+    "6": "Запросы",
+    "7": "Формы: каркас",
+    "8": "Формы: оформление",
+    "9": "Прикладные объекты",
+    "10": "Права и ограничения",
+    "11": "Табличный документ",
+    "12": "Компоновка данных",
+    "13": "Редакторы компоновки",
+    "14": "Данные приложения",
+    "15": "Задания и эксплуатация",
+    "16": "Импорт данных",
+    "17": "Интеграции",
+    "18": "Интерфейс и локализация",
+    "19": "Качество и выпуск",
+    "20": "Оборудование",
+    "21": "Инструменты разработчика",
 }
 
 # Состояние итерации: как отмечена в карте -> как показывается в таблице.
@@ -81,7 +86,7 @@ MANUAL_RE = re.compile(
 
 
 class Block:
-    def __init__(self, number: int, title: str) -> None:
+    def __init__(self, number: str, title: str) -> None:
         self.number = number
         self.title = title
         self.iterations: list[tuple[str, str]] = []
@@ -140,12 +145,12 @@ def parse(text: str) -> tuple[list[Block], list[str], str, str]:
         pending = []
 
     for line in lines:
-        heading = re.match(r"^## Блок (\d+)\.\s*(.+?)\s*$", line)
+        heading = re.match(r"^## Блок (\d+[а-я]?)\.\s*(.+?)\s*$", line)
         if heading:
             flush_iteration()
             flush_paragraph()
             in_later = False
-            current = Block(int(heading.group(1)), heading.group(2))
+            current = Block(heading.group(1), heading.group(2))
             blocks.append(current)
             continue
 
@@ -209,8 +214,8 @@ def parse(text: str) -> tuple[list[Block], list[str], str, str]:
 
     # Даты закрытия — из раздела «Текущее состояние».
     by_number = {block.number: block for block in blocks}
-    for number, when in re.findall(r"Блок (\d+) закрыт (\d{2}\.\d{2}\.\d{4})", text):
-        block = by_number.get(int(number))
+    for number, when in re.findall(r"Блок (\d+[а-я]?) закрыт (\d{2}\.\d{2}\.\d{4})", text):
+        block = by_number.get(number)
         if block:
             block.closed_on = when
 
@@ -399,14 +404,16 @@ def render_table(blocks: list[Block]) -> str:
     левого на одну строку, и последняя его ячейка остаётся пустой.
     """
     numbered = {block.number: block for block in blocks}
-    half = (len(SHORT_NAMES) + 1) // 2
+    order = list(SHORT_NAMES) + [n for n in numbered if n not in SHORT_NAMES]
+    half = (len(order) + 1) // 2
 
-    def name(number: int) -> str:
+    def name(number: str) -> str:
         if number not in numbered and number not in SHORT_NAMES:
             return ""
-        return f"{number}. {SHORT_NAMES.get(number, numbered[number].title)}"
+        short = SHORT_NAMES.get(number) or numbered[number].title
+        return f"{number}. {short}"
 
-    def counts(number: int) -> tuple[str, str]:
+    def counts(number: str) -> tuple[str, str]:
         block = numbered.get(number)
         if block is None:
             return ("—", "—") if number in SHORT_NAMES else ("", "")
@@ -417,7 +424,8 @@ def render_table(blocks: list[Block]) -> str:
     headers = ["Блок", "Всего", "Закрыто", "", "Блок", "Всего", "Закрыто"]
     rows = []
     for offset in range(half):
-        left, right = offset + 1, offset + 1 + half
+        left = order[offset]
+        right = order[offset + half] if offset + half < len(order) else ""
         total_left, done_left = counts(left)
         total_right, done_right = counts(right)
         rows.append([name(left), total_left, done_left, "",

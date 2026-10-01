@@ -863,12 +863,15 @@ func isVersion(value string) bool {
 	return true
 }
 
+// isIdentifier is the prototype's rule for a name, the same one a metadata
+// object follows: a letter or an underscore first, then letters, digits and
+// underscores.
 func isIdentifier(value string) bool {
 	for index, current := range []rune(value) {
-		if index == 0 && !unicode.IsLetter(current) {
-			return false
+		if current == '_' || unicode.IsLetter(current) {
+			continue
 		}
-		if !unicode.IsLetter(current) && !unicode.IsDigit(current) {
+		if index == 0 || !unicode.IsDigit(current) {
 			return false
 		}
 	}

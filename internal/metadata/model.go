@@ -667,27 +667,30 @@ type Catalog struct {
 	CommandGroups                   []CommandGroupDefinition
 	commandGroupByName              map[string]int
 	commandGroupByID                map[uuid.UUID]int
-	CommonTemplates                 []CommonTemplateDefinition
-	commonTemplateByName            map[string]int
-	commonTemplateByID              map[uuid.UUID]int
-	XDTOPackages                    []XDTOPackageDefinition
-	xdtoPackageByName               map[string]int
-	xdtoPackageByID                 map[uuid.UUID]int
-	WebServices                     []WebServiceDefinition
-	webServiceByName                map[string]int
-	webServiceByID                  map[uuid.UUID]int
-	HTTPServices                    []HTTPServiceDefinition
-	httpServiceByName               map[string]int
-	httpServiceByID                 map[uuid.UUID]int
-	WSReferences                    []WSReferenceDefinition
-	wsReferenceByName               map[string]int
-	wsReferenceByID                 map[uuid.UUID]int
-	WebSocketClients                []WebSocketClientDefinition
-	webSocketClientByName           map[string]int
-	webSocketClientByID             map[uuid.UUID]int
-	ExternalDataSources             []ExternalDataSourceDefinition
-	externalDataSourceByName        map[string]int
-	externalDataSourceByID          map[uuid.UUID]int
+	// unresolved is what the last load found pointing at nothing - see
+	// UnresolvedReference.
+	unresolved               []UnresolvedReference
+	CommonTemplates          []CommonTemplateDefinition
+	commonTemplateByName     map[string]int
+	commonTemplateByID       map[uuid.UUID]int
+	XDTOPackages             []XDTOPackageDefinition
+	xdtoPackageByName        map[string]int
+	xdtoPackageByID          map[uuid.UUID]int
+	WebServices              []WebServiceDefinition
+	webServiceByName         map[string]int
+	webServiceByID           map[uuid.UUID]int
+	HTTPServices             []HTTPServiceDefinition
+	httpServiceByName        map[string]int
+	httpServiceByID          map[uuid.UUID]int
+	WSReferences             []WSReferenceDefinition
+	wsReferenceByName        map[string]int
+	wsReferenceByID          map[uuid.UUID]int
+	WebSocketClients         []WebSocketClientDefinition
+	webSocketClientByName    map[string]int
+	webSocketClientByID      map[uuid.UUID]int
+	ExternalDataSources      []ExternalDataSourceDefinition
+	externalDataSourceByName map[string]int
+	externalDataSourceByID   map[uuid.UUID]int
 	// externalTableByID finds a table of any source by its identifier, which
 	// is how a field that refers to it names it.
 	externalTableByID map[uuid.UUID]externalTableLocation
@@ -1682,7 +1685,7 @@ func validateBase(format int, id uuid.UUID, name string, title LocalizedText, co
 		issues = append(issues, "id must be a non-zero UUID")
 	}
 	if !validIdentifier(name) {
-		issues = append(issues, "name must start with a letter and contain only letters or digits")
+		issues = append(issues, "name must start with a letter or an underscore and contain only letters, digits or underscores")
 	}
 	if utf8.RuneCountInString(name) > maxNameLength {
 		issues = append(issues, "name must not exceed 255 characters")
@@ -1696,9 +1699,10 @@ func validateTitle(path string, title LocalizedText, configuration project.Proje
 	for _, language := range configuration.Languages {
 		configured[language.Code] = true
 	}
-	if len(title) == 0 {
-		return []string{path + " must contain at least one translation"}
-	}
+	// No translation at all is a text left empty, and the prototype saves it:
+	// wherever it is shown, the name stands in (checked by the owner on the
+	// platform, 01.10.2026; the configurations being moved leave it empty 38,
+	// 37 and 24 times - attributes, forms, templates, modules, pictures).
 	for language, value := range title {
 		if !configured[language] {
 			issues = append(issues, path+"."+language+" uses an unconfigured language")
@@ -1840,12 +1844,19 @@ func issuesError(source string, format int, issues []string) error {
 	return err
 }
 
+// validIdentifier is the prototype's rule for a name: a letter or an
+// underscore first, then letters, digits and underscores. The designer's own
+// hint says a name starts with a letter, but it accepts "_1111" for an object
+// and an attribute alike - the underscore counts as a letter (checked by the
+// owner on the platform, 01.10.2026) - and the configurations being moved keep
+// such names: enumeration values _100 and _50_50, and some 3600 names with an
+// underscore inside.
 func validIdentifier(value string) bool {
 	for index, symbol := range []rune(value) {
-		if index == 0 && !unicode.IsLetter(symbol) {
-			return false
+		if symbol == '_' || unicode.IsLetter(symbol) {
+			continue
 		}
-		if !unicode.IsLetter(symbol) && !unicode.IsDigit(symbol) {
+		if index == 0 || !unicode.IsDigit(symbol) {
 			return false
 		}
 	}

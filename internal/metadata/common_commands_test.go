@@ -133,10 +133,14 @@ representation: picture-and-text
 	}
 }
 
-// A command placed in a group of the configuration has to name a group that
-// exists. Until groups were objects there was nothing to check this against,
-// and a command placed nowhere is simply drawn nowhere - with nobody told.
-func TestCommandPlacedInAGroupThatDoesNotExistIsRefused(t *testing.T) {
+// A command placed in a group nothing carries is carried, not refused: the
+// prototype saves it (two catalogs of sb keep one) and draws the command
+// nowhere. What must not happen is silence - the reference is listed among the
+// unresolved ones, which is what the import report shows.
+//
+// Defect caught: a stale group refusing the whole configuration at load, or
+// the stale group being dropped without a trace.
+func TestCommandPlacedInAGroupThatDoesNotExistIsCarriedAndListed(t *testing.T) {
 	t.Parallel()
 	for name, write := range map[string]func(t *testing.T, root string){
 		"общая команда": func(t *testing.T, root string) {
@@ -164,12 +168,14 @@ commands:
 			t.Parallel()
 			root := metadataProject(t)
 			write(t, root)
-			_, err := Load(root)
-			if err == nil {
-				t.Fatalf("%s: accepted", name)
+			catalog, err := Load(root)
+			if err != nil {
+				t.Fatalf("%s: refused: %v", name, err)
 			}
-			if !strings.Contains(err.Error(), "unknown command group") {
-				t.Fatalf("%s: refused for another reason: %v", name, err)
+			unresolved := catalog.UnresolvedReferences()
+			if len(unresolved) != 1 || unresolved[0].ID.String() != commandGroupID ||
+				!strings.Contains(unresolved[0].Where, "Открыть") {
+				t.Fatalf("%s: unresolved = %+v, want the group of Открыть", name, unresolved)
 			}
 		})
 	}
