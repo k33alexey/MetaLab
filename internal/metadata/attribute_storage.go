@@ -71,14 +71,21 @@ func (use AttributeUse) forFolders() bool {
 	return use == UseForFolder || use == UseForFolderAndItem
 }
 
-// FieldFilling is what a new value starts as. The value itself is one half;
-// the other is whether a new object takes it at all, because an object may be
-// filled from what created it instead.
+// FieldFilling is what the standard filling of a new object puts into the
+// field, and from where.
 type FieldFilling struct {
+	// Value is the filling value: what the field gets when nothing came for
+	// it from the filling data, or when the field does not take filling data
+	// at all.
 	Value *Value `yaml:"value,omitempty" json:"value,omitempty"`
-	// FromFillingValue fills a new object's field from Value. Without it the
-	// value stands in the description and is used only where something asks
-	// for it by name.
+	// FromFillingValue is the prototype's FillFromFillingValue, «заполнять из
+	// данных заполнения», and despite its English name it is about the filling
+	// data, not the filling value: on, the field takes what the filling data
+	// carries for it - in practice the filter of the list a new object is
+	// created from; off, or with nothing there for it, the field gets Value.
+	// The platform sets it itself on the parent, the owner and the leading
+	// dimensions of an information register. Carried; the standard filling is
+	// not executed yet.
 	FromFillingValue bool `yaml:"from_filling_value,omitempty" json:"fromFillingValue,omitempty"`
 }
 
