@@ -113,6 +113,44 @@ func TestSynonymTranslationMustNotBeBlank(t *testing.T) {
 	}
 }
 
+// A synonym, a tooltip and a caption are written on as many lines as they
+// need and as long as they need: erp captions a decoration of a route map
+// "результат выполнения (оценка исполнителя):" with the results listed line by
+// line under it, and two of its tooltips run past 512 characters. Defect
+// caught: one line of at most 512 characters, which refused that map and
+// about 1150 tooltips of the configurations being moved. A control character
+// nobody types is still refused.
+func TestLocalizedTextMayRunOverSeveralLines(t *testing.T) {
+	t.Parallel()
+	configuration := metadataConfiguration()
+	for name, text := range map[string]string{
+		"строки через LF":   "результат выполнения:\n- выполнено;\n- отменено.",
+		"строки через CRLF": "первая\r\nвторая",
+		"табуляция":         "колонка\tколонка",
+		"длиннее 512":       strings.Repeat("подсказка ", 80),
+	} {
+		if issues := validateTitle("tooltip", LocalizedText{"ru": text}, configuration); len(issues) != 0 {
+			t.Errorf("%s: refused: %v", name, issues)
+		}
+	}
+	if issues := validateTitle("tooltip", LocalizedText{"ru": "звонок\a"}, configuration); len(issues) == 0 {
+		t.Error("a control character other than a line break was accepted")
+	}
+	root := routeOnlyProcess(t, `
+  points:
+    - {id: b0000000-0000-4000-8000-000000000030, name: Старт, kind: start}
+    - {id: b0000000-0000-4000-8000-000000000034, name: Завершение, kind: completion}
+  transitions:
+    - {from: Старт, to: Завершение}
+  decorations:
+    - name: Результат
+      title: {ru: "результат выполнения (оценка исполнителя):\n- выполнено;\n- отменено."}
+      location: {top: 0, left: 0, bottom: 40, right: 200}`)
+	if _, err := Load(root); err != nil {
+		t.Fatalf("a caption over several lines was refused: %v", err)
+	}
+}
+
 // The folder an object lies in is named by the object, so the file system's
 // limit on a path component applies - 255 bytes, not characters.
 //

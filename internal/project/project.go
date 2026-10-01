@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"slices"
 	"strings"
 	"unicode"
@@ -585,7 +586,9 @@ func (p Project) Validate() error {
 	for _, language := range p.Languages {
 		configured[strings.ToLower(language.Code)] = true
 	}
-	checkText := func(path string, text LocalizedText, required bool) {
+	// An address is a line: a link written over two lines is not a link.
+	// Every other text is written on as many lines as it needs.
+	checkText := func(path string, text LocalizedText, required bool, line bool) {
 		if len(text) == 0 {
 			if required {
 				add(path, "must contain at least one translation")
@@ -596,24 +599,27 @@ func (p Project) Validate() error {
 			if !configured[strings.ToLower(code)] {
 				add(path+"."+code, "uses an unconfigured language")
 			}
-			if !isDisplayText(text[code], 512) {
-				add(path+"."+code, "must contain 1 to 512 printable characters")
+			switch {
+			case line && !isDisplayText(text[code], math.MaxInt):
+				add(path+"."+code, "must be one line of printable characters")
+			case !line && !isLocalizedText(text[code]):
+				add(path+"."+code, "must say something in printable characters, line breaks allowed")
 			}
 		}
 	}
-	checkText("title", p.Title, true)
+	checkText("title", p.Title, true, false)
 	// A language's own synonym is checked here, with the texts of the root and
 	// against the same list: until the whole list is read there is nothing to
 	// check it against.
 	for index, language := range p.Languages {
-		checkText(fmt.Sprintf("languages[%d].title", index), language.Title, true)
+		checkText(fmt.Sprintf("languages[%d].title", index), language.Title, true, false)
 	}
-	checkText("brief_information", p.BriefInformation, false)
-	checkText("detailed_information", p.DetailedInformation, false)
-	checkText("copyright", p.Copyright, false)
-	checkText("vendor_address", p.VendorAddress, false)
-	checkText("information_address", p.InformationAddress, false)
-	checkText("update_catalog_address", p.UpdateCatalogAddress, false)
+	checkText("brief_information", p.BriefInformation, false, false)
+	checkText("detailed_information", p.DetailedInformation, false, false)
+	checkText("copyright", p.Copyright, false, false)
+	checkText("vendor_address", p.VendorAddress, false, true)
+	checkText("information_address", p.InformationAddress, false, true)
+	checkText("update_catalog_address", p.UpdateCatalogAddress, false, true)
 	if p.Comment != "" && !isDisplayText(p.Comment, 1024) {
 		add("comment", "must contain 1 to 1024 printable characters")
 	}
@@ -911,6 +917,22 @@ func isLocaleCode(value string) bool {
 			return false
 		}
 
+	}
+	return true
+}
+
+// isLocalizedText is a translation of a text of the configuration: a
+// synonym, the brief and the detailed information, the copyright, the
+// addresses. The prototype writes them on as many lines as they need, with no
+// ceiling of length; other control characters are refused.
+func isLocalizedText(value string) bool {
+	if !utf8.ValidString(value) || strings.TrimSpace(value) == "" {
+		return false
+	}
+	for _, symbol := range value {
+		if unicode.IsControl(symbol) && symbol != '\n' && symbol != '\r' && symbol != '\t' {
+			return false
+		}
 	}
 	return true
 }

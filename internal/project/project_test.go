@@ -183,7 +183,7 @@ func TestValidateReportsAllProblems(t *testing.T) {
 		"id must be a non-zero UUID",
 		"name must start with a letter",
 		"title must contain at least one translation",
-		"languages[0].title.RU must contain 1 to 512 printable characters",
+		"languages[0].title.RU must say something in printable characters",
 		"languages[0].code",
 		"languages[1].name must be unique",
 		"languages[1].code must be unique",
@@ -200,11 +200,11 @@ func TestValidateRejectsUnboundedOrControlText(t *testing.T) {
 
 	value := Project{
 		Format: CurrentFormat, ID: uuid.MustNew(), Name: "A" + strings.Repeat("b", 128),
-		Title: LocalizedText{"ru": "Unsafe\nTitle"}, DefaultLanguage: "ru",
+		Title: LocalizedText{"ru": "Unsafe\aTitle"}, DefaultLanguage: "ru",
 		Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: LocalizedText{"ru": "Русский"}, Code: "ru"}},
 	}
 	err := value.Validate()
-	if err == nil || !strings.Contains(err.Error(), "name must not exceed 128") || !strings.Contains(err.Error(), "title.ru must contain") {
+	if err == nil || !strings.Contains(err.Error(), "name must not exceed 128") || !strings.Contains(err.Error(), "title.ru must say something") {
 		t.Fatalf("Validate() error = %v", err)
 	}
 }
@@ -997,5 +997,30 @@ func TestLanguageSynonymIsCheckedAgainstTheLanguages(t *testing.T) {
 	}
 	if err := both.Validate(); err != nil {
 		t.Fatalf("two languages naming each other were refused: %v", err)
+	}
+}
+
+// The texts of the configuration but its addresses run over as many lines as
+// they need, with no ceiling of length; an address stays one line. Defect
+// caught: one line of at most 512 characters for all of them.
+func TestRootTextsRunOverSeveralLinesButAddressesDoNot(t *testing.T) {
+	t.Parallel()
+	value := Project{
+		Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo",
+		Title: LocalizedText{"ru": strings.Repeat("Синоним ", 80)}, DefaultLanguage: "ru",
+		Languages:           []Language{{ID: uuid.MustNew(), Name: "Русский", Title: LocalizedText{"ru": "Русский"}, Code: "ru"}},
+		DetailedInformation: LocalizedText{"ru": "Первая строка\nВторая строка"},
+		Copyright:           LocalizedText{"ru": "©\r\nООО"},
+	}
+	if err := value.Validate(); err != nil {
+		t.Fatalf("texts over several lines were refused: %v", err)
+	}
+	value.UpdateCatalogAddress = LocalizedText{"ru": strings.Repeat("a", 600)}
+	if err := value.Validate(); err != nil {
+		t.Fatalf("a long address was refused: %v", err)
+	}
+	value.UpdateCatalogAddress = LocalizedText{"ru": "http://a\nb"}
+	if err := value.Validate(); err == nil || !strings.Contains(err.Error(), "update_catalog_address.ru must be one line") {
+		t.Fatalf("an address over two lines: %v", err)
 	}
 }

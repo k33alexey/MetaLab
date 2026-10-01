@@ -1711,8 +1711,8 @@ func validateTitle(path string, title LocalizedText, configuration project.Proje
 		if !configured[language] {
 			issues = append(issues, path+"."+language+" uses an unconfigured language")
 		}
-		if !validText(value, 512) {
-			issues = append(issues, path+"."+language+" must contain 1..512 printable characters")
+		if !validLocalizedText(value) {
+			issues = append(issues, path+"."+language+" must say something in printable characters, line breaks allowed")
 		}
 	}
 	return issues
@@ -1867,12 +1867,20 @@ func validIdentifier(value string) bool {
 	return value != ""
 }
 
-func validText(value string, maximum int) bool {
-	if !utf8.ValidString(value) || strings.TrimSpace(value) == "" || utf8.RuneCountInString(value) > maximum {
+// validLocalizedText is a translation as the prototype keeps it: text that
+// says something, over as many lines as it needs and as long as it needs. A
+// synonym, a tooltip, an explanation and a caption on a route map are all
+// written on several lines in the configurations being moved - about 1150
+// tooltips, 39 synonyms, 70 explanations, 49 titles - and two tooltips of erp
+// run past 512 characters. The 512 this used to stop at had no source. Other
+// control characters are still refused: nothing types them, and they would
+// break whatever the text is shown in.
+func validLocalizedText(value string) bool {
+	if !utf8.ValidString(value) || strings.TrimSpace(value) == "" {
 		return false
 	}
 	for _, symbol := range value {
-		if unicode.IsControl(symbol) {
+		if unicode.IsControl(symbol) && symbol != '\n' && symbol != '\r' && symbol != '\t' {
 			return false
 		}
 	}
