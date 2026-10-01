@@ -19,7 +19,6 @@ import (
 
 const (
 	CurrentFormat      = 1
-	maxObjectsPerKind  = 100_000
 	maxEnumerationVals = 1 << 20
 )
 
@@ -1323,9 +1322,6 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 }
 
 func validatePredefinedItems(shape referenceObjectShape) []string {
-	if len(shape.predefined) > maxObjectsPerKind {
-		return []string{fmt.Sprintf("predefined must not contain more than %d items", maxObjectsPerKind)}
-	}
 	var issues []string
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, item := range shape.predefined {
@@ -1433,9 +1429,6 @@ func validatePredefinedTree(items []PredefinedCatalogItem, hierarchy Hierarchy) 
 }
 
 func validateAttributes(path string, attributes []Attribute, configuration project.Project, reserved func(string) bool) []string {
-	if len(attributes) > 1024 {
-		return []string{path + " must not contain more than 1024 items"}
-	}
 	var issues []string
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, attribute := range attributes {

@@ -15,10 +15,7 @@ import (
 // answers.
 const WebServiceKind Kind = "web-services"
 
-const (
-	maxOperationsPerService   = 512
-	maxParametersPerOperation = 64
-)
+const ()
 
 // SessionReuseMode says whether calls into a service share one session.
 //
@@ -144,9 +141,6 @@ func DecodeWebService(source string, reader io.Reader, configuration project.Pro
 // validateOperations checks what the service offers: each operation, each of
 // its parameters, and that no two of either share a name or an identity.
 func validateOperations(operations []WebServiceOperation, configuration project.Project) []string {
-	if len(operations) > maxOperationsPerService {
-		return []string{fmt.Sprintf("operations must not contain more than %d items", maxOperationsPerService)}
-	}
 	var issues []string
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, operation := range operations {
@@ -186,9 +180,6 @@ func validateOperations(operations []WebServiceOperation, configuration project.
 }
 
 func validateParameters(owner string, parameters []WebServiceParameter, configuration project.Project) []string {
-	if len(parameters) > maxParametersPerOperation {
-		return []string{fmt.Sprintf("%s.parameters must not contain more than %d items", owner, maxParametersPerOperation)}
-	}
 	var issues []string
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, parameter := range parameters {

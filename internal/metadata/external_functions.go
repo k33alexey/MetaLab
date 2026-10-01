@@ -10,8 +10,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-const maxExternalFunctionsPerSource = 1024
-
 // ExternalFunction is one function of an external data source: an expression
 // in the source's own query language, called from code as a method of the
 // source's manager.
@@ -39,9 +37,6 @@ type ExternalFunction struct {
 
 // validateExternalFunctions checks the functions of one source.
 func validateExternalFunctions(functions []ExternalFunction, configuration project.Project) []string {
-	if len(functions) > maxExternalFunctionsPerSource {
-		return []string{fmt.Sprintf("functions must not contain more than %d items", maxExternalFunctionsPerSource)}
-	}
 	var issues []string
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, function := range functions {

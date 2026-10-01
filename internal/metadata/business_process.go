@@ -18,18 +18,15 @@ import (
 type RoutePointKind string
 
 const (
-	StartPoint          RoutePointKind = "start"
-	ActivityPoint       RoutePointKind = "activity"
-	ConditionPoint      RoutePointKind = "condition"
-	VariantChoicePoint  RoutePointKind = "variant-choice"
-	ProcessingPoint     RoutePointKind = "processing"
-	SplitPoint          RoutePointKind = "split"
-	MergePoint          RoutePointKind = "merge"
-	NestedProcessPoint  RoutePointKind = "nested-process"
-	CompletionPoint     RoutePointKind = "completion"
-	maxRoutePointsPerBP                = 512
-	maxRouteDecorations                = 512
-	maxRouteVertices                   = 64
+	StartPoint         RoutePointKind = "start"
+	ActivityPoint      RoutePointKind = "activity"
+	ConditionPoint     RoutePointKind = "condition"
+	VariantChoicePoint RoutePointKind = "variant-choice"
+	ProcessingPoint    RoutePointKind = "processing"
+	SplitPoint         RoutePointKind = "split"
+	MergePoint         RoutePointKind = "merge"
+	NestedProcessPoint RoutePointKind = "nested-process"
+	CompletionPoint    RoutePointKind = "completion"
 )
 
 // createsTasks says whether a point of this kind creates tasks, and so whether
@@ -227,9 +224,6 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 	if len(route.Points) == 0 && len(route.Transitions) == 0 {
 		return nil
 	}
-	if len(route.Points) > maxRoutePointsPerBP {
-		return []string{fmt.Sprintf("route.points must not contain more than %d points", maxRoutePointsPerBP)}
-	}
 	var issues []string
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	variants := map[string]map[string]bool{}
@@ -305,9 +299,6 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 	}
 	for index, transition := range route.Transitions {
 		prefix := fmt.Sprintf("route.transitions[%d]", index)
-		if len(transition.Vertices) > maxRouteVertices {
-			issues = append(issues, fmt.Sprintf("%s.vertices must not contain more than %d corners", prefix, maxRouteVertices))
-		}
 		from, to := strings.ToLower(transition.From), strings.ToLower(transition.To)
 		if !names[from] {
 			issues = append(issues, prefix+".from names "+transition.From+", which is not a point of this route")
@@ -392,9 +383,6 @@ func validateAddressingValues(prefix string, values []AddressingValue) []string 
 }
 
 func validateRouteDecorations(decorations []RouteDecoration, configuration project.Project) []string {
-	if len(decorations) > maxRouteDecorations {
-		return []string{fmt.Sprintf("route.decorations must not contain more than %d items", maxRouteDecorations)}
-	}
 	var issues []string
 	names := map[string]bool{}
 	for index, decoration := range decorations {
@@ -411,9 +399,6 @@ func validateRouteDecorations(decorations []RouteDecoration, configuration proje
 			issues = append(issues, validateTitle(prefix+".title", decoration.Title, configuration)...)
 		}
 		issues = append(issues, validateRouteArea(prefix+".location", decoration.Location)...)
-		if len(decoration.Line) > maxRouteVertices {
-			issues = append(issues, fmt.Sprintf("%s.line must not contain more than %d corners", prefix, maxRouteVertices))
-		}
 		// A decoration that is neither placed nor drawn is nothing on the map.
 		if decoration.Location == nil && len(decoration.Line) < 2 {
 			issues = append(issues, prefix+" is neither placed on the map nor drawn as a line")

@@ -11,11 +11,7 @@ import (
 )
 
 const (
-	MaxManagedFormElements = 10_000
-	MaxManagedFormDepth    = 64
-	MaxGroupChildren       = 1_000
-	MaxManagedFormCommands = 1_024
-	MaxFormDataPathDepth   = 16
+	MaxFormDataPathDepth = 16
 )
 
 type FormElementKind string
@@ -174,9 +170,6 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			issues = append(issues, validateTitle(name, text, configuration)...)
 		}
 	}
-	if len(value.Commands) > MaxManagedFormCommands {
-		issues = append(issues, fmt.Sprintf("commands must not contain more than %d items", MaxManagedFormCommands))
-	}
 	commandNames, commandIDs := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, command := range value.Commands {
 		prefix := fmt.Sprintf("commands[%d]", index)
@@ -227,14 +220,6 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		current := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 		count++
-		if count > MaxManagedFormElements {
-			issues = append(issues, fmt.Sprintf("items must not contain more than %d elements", MaxManagedFormElements))
-			break
-		}
-		if current.depth > MaxManagedFormDepth {
-			issues = append(issues, fmt.Sprintf("%s exceeds maximum nesting depth %d", current.path, MaxManagedFormDepth))
-			continue
-		}
 		item := current.element
 		if item.ID.IsZero() {
 			issues = append(issues, current.path+".id must be a non-zero UUID")
@@ -277,20 +262,12 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			if item.Orientation != FormVertical && item.Orientation != FormHorizontal {
 				issues = append(issues, current.path+".orientation must be vertical or horizontal")
 			}
-			if len(item.Children) > MaxGroupChildren {
-				issues = append(issues, fmt.Sprintf("%s.children must not contain more than %d elements", current.path, MaxGroupChildren))
-				continue
-			}
 			for index := len(item.Children) - 1; index >= 0; index-- {
 				stack = append(stack, pending{element: item.Children[index], path: fmt.Sprintf("%s.children[%d]", current.path, index), depth: current.depth + 1})
 			}
 		case FormElementTable:
 			if item.Orientation != "" {
 				issues = append(issues, current.path+".orientation is allowed only for groups")
-			}
-			if len(item.Children) > MaxGroupChildren {
-				issues = append(issues, fmt.Sprintf("%s.children must not contain more than %d elements", current.path, MaxGroupChildren))
-				continue
 			}
 			for index := len(item.Children) - 1; index >= 0; index-- {
 				if item.Children[index].Kind != FormElementField {

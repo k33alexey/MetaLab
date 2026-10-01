@@ -157,9 +157,6 @@ type ChartOfAccountsDefinition struct {
 	PredefinedDataUpdate        PredefinedDataUpdate   `yaml:"predefined_data_update,omitempty" json:"predefinedDataUpdate,omitempty"`
 }
 
-// maxExtDimensions is the prototype's own ceiling on analytics per account.
-const maxExtDimensions = 8
-
 // DecodeChartOfAccounts reads and validates one chart of accounts.
 func DecodeChartOfAccounts(source string, reader io.Reader, configuration project.Project) (ChartOfAccountsDefinition, error) {
 	var value ChartOfAccountsDefinition
@@ -197,8 +194,8 @@ func DecodeChartOfAccounts(source string, reader io.Reader, configuration projec
 	}, configuration)...)
 	issues = append(issues, validateAccountingFlags("accounting_flags", value.AccountingFlags, configuration)...)
 	issues = append(issues, validateAccountingFlags("ext_dimension_accounting_flags", value.ExtDimensionAccountingFlags, configuration)...)
-	if value.MaxExtDimensionCount < 0 || value.MaxExtDimensionCount > maxExtDimensions {
-		issues = append(issues, fmt.Sprintf("max_ext_dimension_count must be 0..%d", maxExtDimensions))
+	if value.MaxExtDimensionCount < 0 {
+		issues = append(issues, "max_ext_dimension_count must not be negative")
 	}
 	if value.ExtDimensionTypes != nil && value.ExtDimensionTypes.IsZero() {
 		issues = append(issues, "ext_dimension_types must be a non-zero UUID")
@@ -260,9 +257,6 @@ func accountingFlagFields(flags []AccountingFlag) []Attribute {
 }
 
 func validateAccountingFlags(path string, flags []AccountingFlag, configuration project.Project) []string {
-	if len(flags) > 64 {
-		return []string{path + " must not contain more than 64 flags"}
-	}
 	var issues []string
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, flag := range flags {
@@ -323,9 +317,6 @@ func validateAccountingFlagStorage(prefix string, flag AccountingFlag) []string 
 }
 
 func validatePredefinedAccounts(value ChartOfAccountsDefinition) []string {
-	if len(value.Predefined) > maxObjectsPerKind {
-		return []string{fmt.Sprintf("predefined must not contain more than %d items", maxObjectsPerKind)}
-	}
 	flagNames := make(map[string]bool, len(value.AccountingFlags))
 	for _, flag := range value.AccountingFlags {
 		flagNames[strings.ToLower(flag.Name)] = true

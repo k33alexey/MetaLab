@@ -175,11 +175,18 @@ ON CONFLICT (metadata_id) DO UPDATE SET totals_format = EXCLUDED.totals_format`,
 // would turn an ordinary posting into an error. A string of unbounded length,
 // a composite value and binary data can be of any size, so they stay out of
 // the index, and a filter on them is checked on the rows the index found.
+//
+// An index also takes at most 32 columns - PostgreSQL's max_index_keys - and a
+// register may have 32 dimensions, which with the period is one too many: the
+// dimensions past the thirty-first stay out of the index the same way.
 func (catalog *Catalog) balanceTotalsIndexKeys(definition AccumulationRegisterDefinition) ([]string, error) {
-	const budget = 2000
+	const budget, maxKeys = 2000, 32
 	keys := []string{"total_period"}
 	used := 8
 	for _, dimension := range definition.Dimensions {
+		if len(keys) == maxKeys {
+			break
+		}
 		storage, err := catalog.attributeStorage(dimension.Types)
 		if err != nil {
 			return nil, err

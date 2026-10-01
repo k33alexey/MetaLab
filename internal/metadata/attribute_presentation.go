@@ -57,7 +57,6 @@ const (
 // Where a list of choice parameters stops being a list, and where a parameter
 // name stops being a name.
 const (
-	maxChoiceParameters   = 64
 	maxChoiceParameterLen = 256
 )
 
@@ -273,9 +272,6 @@ func validateChoiceFormReference(path string, form ChoiceFormReference) []string
 
 func validateChoiceParameters(prefix string, choice FieldChoice) []string {
 	var issues []string
-	if len(choice.Parameters)+len(choice.ParameterLinks) > maxChoiceParameters {
-		return []string{fmt.Sprintf("%s.choice must not fix or link more than %d parameters", prefix, maxChoiceParameters)}
-	}
 	// One parameter cannot be both fixed and taken from another field: the
 	// two answers would be applied one after the other, and which of them
 	// wins is not a thing a description should leave to be found out.

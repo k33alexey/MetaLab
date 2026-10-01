@@ -14,10 +14,6 @@ import (
 // on and off without a developer.
 const FunctionalOptionKind Kind = "functional-options"
 
-// maxFunctionalOptionContent is where a list of switched things stops being a
-// list. The reference configuration's largest option switches a few dozen.
-const maxFunctionalOptionContent = 4096
-
 // FunctionalOptionLocation is where the value of an option is kept. The value
 // lives in the application's own data, not in the configuration: that is the
 // whole point of a functional option - the user turns a part of the
@@ -81,9 +77,6 @@ func DecodeFunctionalOption(source string, reader io.Reader, configuration proje
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateOptionLocation(value.Location)...)
-	if len(value.Content) > maxFunctionalOptionContent {
-		issues = append(issues, fmt.Sprintf("content must not contain more than %d items", maxFunctionalOptionContent))
-	}
 	seen := map[string]bool{}
 	for index, item := range value.Content {
 		prefix := fmt.Sprintf("content[%d]", index)

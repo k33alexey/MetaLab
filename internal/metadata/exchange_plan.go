@@ -24,9 +24,6 @@ type AutoRecord string
 const (
 	AutoRecordAllow AutoRecord = "allow"
 	AutoRecordDeny  AutoRecord = "deny"
-	// The reference export carries six hundred and thirty entries in one plan,
-	// so the limit is set where it stops being a plan and starts being a bug.
-	maxExchangePlanContent = 4096
 )
 
 // ExchangePlanContentItem is one object whose changes the plan registers.
@@ -150,9 +147,6 @@ func DecodeExchangePlan(source string, reader io.Reader, configuration project.P
 }
 
 func validateExchangePlanContent(value ExchangePlanDefinition) []string {
-	if len(value.Content) > maxExchangePlanContent {
-		return []string{fmt.Sprintf("content must not contain more than %d items", maxExchangePlanContent)}
-	}
 	var issues []string
 	seen := map[uuid.UUID]bool{}
 	for index, item := range value.Content {

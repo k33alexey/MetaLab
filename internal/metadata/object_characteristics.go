@@ -6,11 +6,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// maxCharacteristicsPerObject is where a list of characteristic descriptions
-// stops being a list. The demonstration configuration's richest object has
-// three of them.
-const maxCharacteristicsPerObject = 64
-
 // A characteristic is a property an object gains without the configuration
 // being changed: the user invents the property, the user fills it in, and both
 // live in tables that already exist. The object itself declares none of it -
@@ -146,9 +141,6 @@ type ObjectCharacteristic struct {
 // only make sense together. Whether the tables and fields are there at all is
 // answered by the whole configuration, in validateCharacteristics.
 func validateObjectCharacteristics(characteristics []ObjectCharacteristic) []string {
-	if len(characteristics) > maxCharacteristicsPerObject {
-		return []string{fmt.Sprintf("characteristics must not contain more than %d items", maxCharacteristicsPerObject)}
-	}
 	var issues []string
 	seen := map[string]bool{}
 	for index, characteristic := range characteristics {

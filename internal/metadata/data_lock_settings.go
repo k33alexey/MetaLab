@@ -33,10 +33,6 @@ import (
 // is transferred and not implemented - the same treatment the configuration
 // root's own mode already gets.
 
-// maxDataLockFields bounds the list. It can only ever hold fields of one
-// object, so the bound guards against a file that is not a list of fields.
-const maxDataLockFields = 128
-
 // validateDataLockMode checks the mode wherever it stands.
 //
 // Three values, not two. The enumeration a metadata object uses is
@@ -68,9 +64,6 @@ func validateDataLockMode(path string, mode project.DataLockControlMode) []strin
 // What is refused is a name that is not there, because a lock by a field the
 // object has not got is a lock nobody can take.
 func validateDataLockFields(fields []ObjectField, kind Kind, attributes []Attribute) []string {
-	if len(fields) > maxDataLockFields {
-		return []string{fmt.Sprintf("data_lock_fields must not contain more than %d items", maxDataLockFields)}
-	}
 	standard := standardNames(standardFieldsOfKind(kind))
 	declared := make(map[string]bool, len(attributes))
 	for _, attribute := range attributes {

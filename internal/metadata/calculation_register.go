@@ -23,8 +23,6 @@ const (
 	CalculationPeriodQuarter  CalculationPeriodicity = "quarter"
 	CalculationPeriodHalfYear CalculationPeriodicity = "half-year"
 	CalculationPeriodYear     CalculationPeriodicity = "year"
-
-	maxRecalculationsPerRegister = 32
 )
 
 // RecalculationDimension carries both links a recalculation needs: which
@@ -223,9 +221,6 @@ func validateRegisterField(prefix string, field Attribute,
 }
 
 func validateRecalculations(value CalculationRegisterDefinition, configuration project.Project) []string {
-	if len(value.Recalculations) > maxRecalculationsPerRegister {
-		return []string{fmt.Sprintf("recalculations must not contain more than %d items", maxRecalculationsPerRegister)}
-	}
 	var issues []string
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, recalculation := range value.Recalculations {

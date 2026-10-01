@@ -44,13 +44,6 @@ import (
 // settled by a run on the platform, like the numbering of period fields in
 // data composition and the difference between the two kinds of indexing.
 
-// maxAccumulationAggregates bounds the collection. The prototype states no
-// limit, and this is not one: it guards against a file that is not a list of
-// aggregates at all. Every aggregate is a table of its own, updated on every
-// write, so a register with hundreds of them is a mistake long before it is a
-// design.
-const maxAccumulationAggregates = 256
-
 // AggregatePeriodicity is how coarsely an aggregate folds time.
 //
 // Seven values, and the set is the aggregate's own: it is neither the
@@ -125,9 +118,6 @@ type AccumulationRegisterAggregate struct {
 func validateAccumulationAggregates(aggregates []AccumulationRegisterAggregate, dimensions []Attribute) []string {
 	if len(aggregates) == 0 {
 		return nil
-	}
-	if len(aggregates) > maxAccumulationAggregates {
-		return []string{fmt.Sprintf("aggregates must not contain more than %d items", maxAccumulationAggregates)}
 	}
 	declared := make(map[string]bool, len(dimensions))
 	for _, dimension := range dimensions {

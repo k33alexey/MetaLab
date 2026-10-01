@@ -14,9 +14,6 @@ import (
 // place that value is used.
 const FilterCriterionKind Kind = "filter-criteria"
 
-// maxCriterionFields is where a list of searched fields stops being a list.
-const maxCriterionFields = 1024
-
 // CriterionField is one field the criterion searches: an attribute of an
 // object, or an attribute of a table part of one.
 type CriterionField struct {
@@ -71,9 +68,6 @@ func DecodeFilterCriterion(source string, reader io.Reader, configuration projec
 		if len(text) > 0 {
 			issues = append(issues, validateTitle(name, text, configuration)...)
 		}
-	}
-	if len(value.Fields) > maxCriterionFields {
-		issues = append(issues, fmt.Sprintf("fields must not contain more than %d items", maxCriterionFields))
 	}
 	seen := map[string]bool{}
 	for index, field := range value.Fields {

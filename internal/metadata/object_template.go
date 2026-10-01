@@ -9,9 +9,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// maxTemplatesPerObject is where a list of templates stops being a list.
-const maxTemplatesPerObject = 512
-
 // TemplateKind says what a template holds, and with it how the template is
 // stored, shown and edited. There are ten, and all ten are carried: a kind the
 // model does not know is a template lost without a word at import, which is
@@ -83,9 +80,6 @@ type ObjectTemplate struct {
 
 // validateObjectTemplates checks the templates of one object.
 func validateObjectTemplates(templates []ObjectTemplate, configuration project.Project) []string {
-	if len(templates) > maxTemplatesPerObject {
-		return []string{fmt.Sprintf("templates must not contain more than %d items", maxTemplatesPerObject)}
-	}
 	var issues []string
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, template := range templates {

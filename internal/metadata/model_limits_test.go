@@ -61,17 +61,21 @@ func requireMessage(t *testing.T, label string, err error, message string, prese
 	}
 }
 
-// Thirty-two dimensions are allowed and thirty-three are not; fifteen hundred
-// fields in all are allowed and one more is not. The defect on each side: a
-// register the prototype accepts refused on import, or a register past the
-// limit taken in and built into a table the database would refuse.
-func TestRegisterFieldLimitsHoldOnBothSides(t *testing.T) {
+// The model limits no count of fields: the prototype does not, and real
+// configurations keep accumulation registers of fifty dimensions. A limit of
+// our own - there were thirty-two dimensions and fifteen hundred fields - would
+// have refused on import a configuration the prototype saves without a word.
+// What the database cannot hold is checked apart, when the schema is built -
+// see TestTheSchemaRefusesWhatTheDatabaseCannotHold.
+func TestARegisterTakesAsManyFieldsAsItHas(t *testing.T) {
 	t.Parallel()
 	for _, kind := range []string{"information", "accumulation"} {
-		requireMessage(t, kind+", 32 dimensions", registerWithFields(kind, 32, 1, 0), "more than 32 items", false)
-		requireMessage(t, kind+", 33 dimensions", registerWithFields(kind, 33, 1, 0), "more than 32 items", true)
-		requireMessage(t, kind+", 1500 fields", registerWithFields(kind, 1, 1, 1498), "more than 1500 items in total", false)
-		requireMessage(t, kind+", 1501 fields", registerWithFields(kind, 1, 1, 1499), "more than 1500 items in total", true)
+		if err := registerWithFields(kind, 50, 1, 0); err != nil {
+			t.Fatalf("%s register of fifty dimensions was refused: %v", kind, err)
+		}
+		if err := registerWithFields(kind, 1, 1, 1000); err != nil {
+			t.Fatalf("%s register of 1002 fields was refused by the model: %v", kind, err)
+		}
 	}
 	// An information register needs one field of any sort, and one is enough.
 	requireMessage(t, "information, no fields", registerWithFields("information", 0, 0, 0), "must contain at least one item", true)
@@ -82,9 +86,10 @@ func TestRegisterFieldLimitsHoldOnBothSides(t *testing.T) {
 	requireMessage(t, "information, a resource and an attribute", registerWithFields("information", 0, 1, 1), "must contain at least one item", false)
 }
 
-// Sixty-four additional indexes of an object and thirty-two fields in one
-// index are the platform's ceilings, and the check sits exactly on them.
-func TestAdditionalIndexLimitsHoldOnBothSides(t *testing.T) {
+// An additional index takes at most sixteen fields, key and carried together -
+// the prototype's ceiling of sixteen physical columns (ITS, article 1590). How
+// many additional indexes an object has is not limited, there or here.
+func TestAdditionalIndexTakesSixteenFields(t *testing.T) {
 	t.Parallel()
 	fields := make([]string, 40)
 	for index := range fields {
@@ -107,30 +112,54 @@ func TestAdditionalIndexLimitsHoldOnBothSides(t *testing.T) {
 		}
 		return fmt.Errorf("%s", strings.Join(issues, "; "))
 	}
-	requireMessage(t, "64 indexes", joined(validateAdditionalIndexes(indexes(64, 0), InformationRegisterKind, tables)), "must not contain more than 64 items", false)
-	requireMessage(t, "65 indexes", joined(validateAdditionalIndexes(indexes(65, 0), InformationRegisterKind, tables)), "must not contain more than 64 items", true)
-	requireMessage(t, "32 fields", joined(validateAdditionalIndexes(indexes(1, 32), InformationRegisterKind, tables)), "an index takes at most 32", false)
-	requireMessage(t, "33 fields", joined(validateAdditionalIndexes(indexes(1, 33), InformationRegisterKind, tables)), "an index takes at most 32", true)
-	// The ceiling is on the fields an index names, key and carried alike.
-	carried := indexes(1, 20)
-	carried[0].AdditionalFields = fields[20:33]
-	requireMessage(t, "20 key fields and 13 carried", joined(validateAdditionalIndexes(carried, InformationRegisterKind, tables)), "an index takes at most 32", true)
+	requireMessage(t, "16 fields", joined(validateAdditionalIndexes(indexes(1, 16), InformationRegisterKind, tables)), "an index takes at most 16", false)
+	requireMessage(t, "17 fields", joined(validateAdditionalIndexes(indexes(1, 17), InformationRegisterKind, tables)), "an index takes at most 16", true)
+	carried := indexes(1, 10)
+	carried[0].AdditionalFields = fields[10:17]
+	requireMessage(t, "10 key fields and 7 carried", joined(validateAdditionalIndexes(carried, InformationRegisterKind, tables)), "an index takes at most 16", true)
+	for _, issue := range validateAdditionalIndexes(indexes(100, 0), InformationRegisterKind, tables) {
+		if strings.Contains(issue, "must not contain more than") {
+			t.Fatalf("additional indexes were counted: %s", issue)
+		}
+	}
 }
 
-// Thirty-two recalculations of one calculation register are allowed and one
-// more is not.
-func TestRecalculationLimitHoldsOnBothSides(t *testing.T) {
+// A calculation register takes as many recalculations as it has.
+func TestRecalculationsAreNotCounted(t *testing.T) {
 	t.Parallel()
-	register := func(count int) error {
-		value := CalculationRegisterDefinition{Recalculations: make([]Recalculation, count)}
-		issues := validateRecalculations(value, demoConfiguration())
-		if len(issues) == 0 {
-			return nil
+	value := CalculationRegisterDefinition{Recalculations: make([]Recalculation, 100)}
+	for _, issue := range validateRecalculations(value, demoConfiguration()) {
+		if strings.Contains(issue, "must not contain more than") {
+			t.Fatalf("recalculations were counted: %s", issue)
 		}
-		return fmt.Errorf("%s", strings.Join(issues, "; "))
 	}
-	requireMessage(t, "32 recalculations", register(32), "must not contain more than 32 items", false)
-	requireMessage(t, "33 recalculations", register(33), "must not contain more than 32 items", true)
+}
+
+// What the database cannot hold is refused when the schema is built, with the
+// object named: a table of more than 1600 columns, and a row whose values of
+// fixed width - references, moments, flags - pass what a page holds, which the
+// database would accept as a table and refuse at the first write.
+func TestTheSchemaRefusesWhatTheDatabaseCannotHold(t *testing.T) {
+	t.Parallel()
+	catalogWith := func(count int, types []Type) error {
+		definition := CatalogDefinition{ID: uuid.MustNew(), Name: "Широкий", Code: CatalogCode{Type: StringType, Length: 9}, DescriptionLength: 25}
+		for index := 0; index < count; index++ {
+			definition.Attributes = append(definition.Attributes, Attribute{ID: uuid.MustNew(), Name: fmt.Sprintf("Реквизит%d", index), Types: types})
+		}
+		_, err := (&Catalog{Catalogs: []CatalogDefinition{definition}}).ApplicationSchema()
+		return err
+	}
+	text := []Type{{Kind: StringType, Length: 10}}
+	identifier := []Type{{Kind: ObjectUUIDType}}
+	if err := catalogWith(1500, text); err != nil {
+		t.Fatalf("1500 string attributes were refused: %v", err)
+	}
+	requireMessage(t, "1600 string attributes, the object named", catalogWith(1600, text), "Широкий", true)
+	requireMessage(t, "1600 string attributes", catalogWith(1600, text), "at most 1600 in a table", true)
+	if err := catalogWith(400, identifier); err != nil {
+		t.Fatalf("400 identifier attributes were refused: %v", err)
+	}
+	requireMessage(t, "520 identifier attributes", catalogWith(520, identifier), "refused at the first write", true)
 }
 
 // A dimension linked to a schedule needs a register that has one: the link
@@ -274,5 +303,29 @@ func TestAResourceTypeThatCannotBeResolvedIsAnError(t *testing.T) {
 	resource := Attribute{ID: uuid.MustNew(), Name: "Сумма", Types: []Type{{Kind: CatalogType, Reference: func() *uuid.UUID { id := uuid.MustNew(); return &id }()}}}
 	if _, err := (&Catalog{}).accumulationResourceType(resource); err == nil {
 		t.Fatal("a resource of an unresolvable type was given a type")
+	}
+}
+
+// A register may have 32 dimensions, and PostgreSQL takes at most 32 columns
+// in an index. With the period in front, the index of the balances of such a
+// register had 33, and "Сохранить данные" failed on building it - an ordinary
+// register the model accepted and the database refused.
+func TestBalanceIndexStaysWithinTheColumnsAnIndexTakes(t *testing.T) {
+	t.Parallel()
+	definition := AccumulationRegisterDefinition{ID: uuid.MustNew(), Name: "Регистр", Kind: AccumulationRegisterBalance,
+		Resources: []Attribute{{ID: uuid.MustNew(), Name: "Сумма", Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}}}
+	for index := 0; index < 32; index++ {
+		definition.Dimensions = append(definition.Dimensions, RegisterDimension{Attribute: Attribute{
+			ID: uuid.MustNew(), Name: fmt.Sprintf("Измерение%d", index), Types: []Type{{Kind: BooleanType}}, Indexing: IndexField,
+		}})
+	}
+	_, totals, err := (&Catalog{}).accumulationRegisterTables(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, index := range totals.Indexes {
+		if len(index.Keys) > 32 {
+			t.Fatalf("index %s has %d columns, and PostgreSQL takes at most 32", index.Name, len(index.Keys))
+		}
 	}
 }

@@ -33,10 +33,6 @@ import (
 // which answers it by reading rather than by remembering. The requirements said
 // a document stores both lists, and that is corrected there.
 
-// maxBasedOnObjects is where a list of bases stops being a list. The prototype
-// puts no number on it; six is the most the demonstration configuration uses.
-const maxBasedOnObjects = 256
-
 // BasisObject is one object a new one may be made out of, resolved against the
 // configuration.
 type BasisObject struct {
@@ -161,9 +157,6 @@ func (catalog *Catalog) BasisFor(object uuid.UUID) []BasisObject {
 // it is, and whether it names the same object twice. Naming an object twice
 // would offer the same command twice.
 func validateBasedOn(basedOn []uuid.UUID) []string {
-	if len(basedOn) > maxBasedOnObjects {
-		return []string{fmt.Sprintf("based_on must not contain more than %d objects", maxBasedOnObjects)}
-	}
 	return validateUniqueIDs("based_on", basedOn)
 }
 

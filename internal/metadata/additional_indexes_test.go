@@ -229,14 +229,15 @@ additional_indexes:
 	}
 }
 
-// PostgreSQL takes at most thirty-two columns in one index, key and carried
-// together. The ceiling is ours, not the prototype's, and it is better said
-// here than discovered by a migration that cannot finish.
+// An additional index takes at most sixteen physical columns, key and carried
+// together - the prototype's ceiling (ITS, article 1590), and a field is one
+// column here. Seventeen fields are refused when the project is read, not
+// discovered by a migration.
 func TestAnIndexIsRefusedWhenTheDatabaseWillNotTakeIt(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
 	var attributes, fields strings.Builder
-	for position := 1; position <= 33; position++ {
+	for position := 1; position <= 17; position++ {
 		attributes.WriteString(fmt.Sprintf(
 			"  - {id: d0e00000-0000-4000-8000-%012d, name: Поле%d, title: {ru: Поле%d}, types: [{kind: string, length: 4}]}\n",
 			position, position, position))
@@ -256,7 +257,7 @@ attributes:
   - name: Слишком
     indexed_fields: [`+fields.String()+`]
 `)
-	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "an index takes at most 32") {
-		t.Fatalf("a thirty-three column index was accepted: %v", err)
+	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "an index takes at most 16") {
+		t.Fatalf("a seventeen column index was accepted: %v", err)
 	}
 }

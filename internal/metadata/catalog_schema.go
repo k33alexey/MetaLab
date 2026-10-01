@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
@@ -113,10 +114,116 @@ func (catalog *Catalog) ApplicationSchema() (schemadiff.Schema, error) {
 		}
 		schema.Tables = append(schema.Tables, movements, totals)
 	}
+	if err := catalog.validatePhysicalLimits(schema); err != nil {
+		return schemadiff.Schema{}, err
+	}
 	if err := schema.NormalizeAndValidate(); err != nil {
 		return schemadiff.Schema{}, fmt.Errorf("build application schema: %w", err)
 	}
 	return schema, nil
+}
+
+const (
+	// maxTableColumns is PostgreSQL's ceiling on the columns of one table.
+	maxTableColumns = 1600
+	// maxFixedRowBytes bounds what a row holds in values of fixed width -
+	// references, moments, flags, counters. A value of variable width, a string
+	// or a number, is moved out of the row when the row grows; a fixed one
+	// stays, and a row of them past the page is refused at the first insert,
+	// long after the table was created without a word. The page is 8 KiB and
+	// the row's own header and the page's take some of it.
+	maxFixedRowBytes = 8000
+)
+
+// validatePhysicalLimits refuses a table the database would refuse. The model
+// sets no limit of its own on how many fields an object has - neither does the
+// prototype, and real configurations keep registers of fifty dimensions - so
+// what is left are PostgreSQL's, and they are checked here, when the schema is
+// built, rather than met by "Сохранить данные" as a message of the database.
+func (catalog *Catalog) validatePhysicalLimits(schema schemadiff.Schema) error {
+	for _, table := range schema.Tables {
+		fixed := 23 + (len(table.Columns)+7)/8
+		for _, column := range table.Columns {
+			fixed += fixedColumnBytes(column.Type)
+		}
+		switch {
+		case len(table.Columns) > maxTableColumns:
+			return fmt.Errorf("%s has %d columns, and PostgreSQL takes at most %d in a table", catalog.describeTable(table.Name), len(table.Columns), maxTableColumns)
+		case fixed > maxFixedRowBytes:
+			return fmt.Errorf("%s holds %d bytes of fixed-width values in a row, and a row of them past %d is refused at the first write", catalog.describeTable(table.Name), fixed, maxFixedRowBytes)
+		}
+	}
+	return nil
+}
+
+// fixedColumnBytes is how much a value of the column takes in the row whatever
+// it is; zero for a value the database may move out of the row.
+func fixedColumnBytes(sqlType string) int {
+	switch sqlType {
+	case "uuid":
+		return 16
+	case "bigint", "timestamp with time zone", "timestamp without time zone":
+		return 8
+	case "integer":
+		return 4
+	case "smallint":
+		return 2
+	case "boolean":
+		return 1
+	}
+	return 0
+}
+
+// describeTable names the object a physical table belongs to, found by the
+// identifier the table's name is built from.
+func (catalog *Catalog) describeTable(name string) string {
+	hexID := name
+	if cut := strings.LastIndex(name, "_"); cut >= 0 {
+		hexID = name[cut+1:]
+	}
+	if len(hexID) == 32 {
+		if id, err := uuid.Parse(hexID[:8] + "-" + hexID[8:12] + "-" + hexID[12:16] + "-" + hexID[16:20] + "-" + hexID[20:]); err == nil {
+			if owner, ok := catalog.objectNameByID(id); ok {
+				return owner + " (table " + name + ")"
+			}
+		}
+	}
+	return "table " + name
+}
+
+// objectNameByID finds an object, or a table part of one, by its identifier
+// among every collection of the catalog. It walks the collections by
+// reflection because it runs only on the way to an error, where a list kept
+// by hand would be the one place a new kind was forgotten.
+func (catalog *Catalog) objectNameByID(id uuid.UUID) (string, bool) {
+	value := reflect.ValueOf(catalog).Elem()
+	for index := 0; index < value.NumField(); index++ {
+		field := value.Field(index)
+		if !value.Type().Field(index).IsExported() || field.Kind() != reflect.Slice {
+			continue
+		}
+		for position := 0; position < field.Len(); position++ {
+			item := reflect.Indirect(field.Index(position))
+			if item.Kind() != reflect.Struct {
+				continue
+			}
+			itemID, name := item.FieldByName("ID"), item.FieldByName("Name")
+			if !itemID.IsValid() || !name.IsValid() || itemID.Type() != reflect.TypeOf(uuid.UUID{}) {
+				continue
+			}
+			if itemID.Interface().(uuid.UUID) == id {
+				return name.String(), true
+			}
+			if parts := item.FieldByName("TableParts"); parts.IsValid() && parts.Kind() == reflect.Slice {
+				for part := 0; part < parts.Len(); part++ {
+					if parts.Index(part).FieldByName("ID").Interface().(uuid.UUID) == id {
+						return name.String() + "." + parts.Index(part).FieldByName("Name").String(), true
+					}
+				}
+			}
+		}
+	}
+	return "", false
 }
 
 // PhysicalCatalogTable returns the stable PostgreSQL table name for a catalog UUID.

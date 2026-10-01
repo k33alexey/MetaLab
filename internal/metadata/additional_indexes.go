@@ -43,15 +43,12 @@ import (
 // is a copy of the other.
 
 const (
-	// maxAdditionalIndexes bounds the collection. The prototype states no
-	// limit; this guards against a file that is not a list of indexes. Every
-	// index is paid for on every write to the table.
-	maxAdditionalIndexes = 64
-	// maxAdditionalIndexFields is PostgreSQL's ceiling on the columns of one
-	// index, key and included together. It is ours and not the prototype's,
-	// and it is enforced here rather than discovered during a migration that
-	// cannot finish.
-	maxAdditionalIndexFields = 32
+	// maxAdditionalIndexFields is the prototype's ceiling on one additional
+	// index: sixteen physical columns, key and carried together (ITS, article
+	// 1590). A field is one column here - a composite value is one jsonb
+	// column - so the ceiling is sixteen fields. How many additional indexes an
+	// object has the prototype does not limit, and neither do we.
+	maxAdditionalIndexFields = 16
 )
 
 // AdditionalIndex is one index the configuration asks for.
@@ -187,9 +184,6 @@ func fieldNameSet(standard []standardField, fields []string) map[string]bool {
 func validateAdditionalIndexes(indexes []AdditionalIndex, kind Kind, tables indexableTables) []string {
 	if len(indexes) == 0 {
 		return nil
-	}
-	if len(indexes) > maxAdditionalIndexes {
-		return []string{fmt.Sprintf("additional_indexes must not contain more than %d items", maxAdditionalIndexes)}
 	}
 	virtual := make(map[string]bool)
 	for _, name := range virtualIndexTables(kind) {

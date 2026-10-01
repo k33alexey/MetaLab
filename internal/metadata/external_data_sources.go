@@ -44,9 +44,6 @@ const ExternalTableType TypeKind = "external-data-source-table"
 const ExternalDataSourceTablesDirectory = "tables"
 
 const (
-	maxExternalTablesPerSource = 1024
-	maxExternalFieldsPerTable  = 1024
-	maxExternalKeyFields       = 16
 	// maxNameInDataSource bounds a name of the other database. It is a name,
 	// even when it is qualified by a schema and quoted.
 	maxNameInDataSource = 512
@@ -334,9 +331,6 @@ func validateNameInDataSource(path, value string) []string {
 // validateExternalFields checks every field on its own and returns them by
 // folded name for the checks of the lists that name them.
 func validateExternalFields(table ExternalTable, configuration project.Project) (map[string]ExternalField, []string) {
-	if len(table.Fields) > maxExternalFieldsPerTable {
-		return map[string]ExternalField{}, []string{fmt.Sprintf("fields must not contain more than %d items", maxExternalFieldsPerTable)}
-	}
 	return checkExternalFieldGroups(configuration, externalFieldGroup{"fields", table.Fields})
 }
 
@@ -486,11 +480,7 @@ func validateExternalTableShape(table ExternalTable, fields map[string]ExternalF
 		}
 		return field, ok
 	}
-	list := func(path string, names []string, bound int) {
-		if len(names) > bound {
-			issues = append(issues, fmt.Sprintf("%s must not contain more than %d items", path, bound))
-			return
-		}
+	list := func(path string, names []string) {
 		seen := map[string]bool{}
 		for index, name := range names {
 			if _, ok := named(fmt.Sprintf("%s[%d]", path, index), name); !ok {
@@ -502,9 +492,9 @@ func validateExternalTableShape(table ExternalTable, fields map[string]ExternalF
 			seen[strings.ToLower(name)] = true
 		}
 	}
-	list("key_fields", table.KeyFields, maxExternalKeyFields)
-	list("data_lock_fields", table.DataLockFields, maxExternalFieldsPerTable)
-	list("input_by_string", table.InputByString, maxInputByStringFields)
+	list("key_fields", table.KeyFields)
+	list("data_lock_fields", table.DataLockFields)
+	list("input_by_string", table.InputByString)
 	for index, name := range table.InputByString {
 		// The rule of input by string as for any object - one type, a string
 		// or a number - without the index: the column is indexed or not in
@@ -705,9 +695,6 @@ func loadExternalTables(directory, relative string, configuration project.Projec
 	}
 	if err != nil {
 		return nil, err
-	}
-	if len(tableEntries) > maxExternalTablesPerSource {
-		return nil, fmt.Errorf("%s holds more than %d tables", relative, maxExternalTablesPerSource)
 	}
 	tables := make([]ExternalTable, 0, len(tableEntries))
 	for _, entry := range tableEntries {

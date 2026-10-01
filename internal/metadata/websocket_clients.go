@@ -33,7 +33,6 @@ const (
 	// maxWebSocketTimeout bounds the timeout at a day: a connection that takes
 	// longer than that to open is not being waited for, it is forgotten.
 	maxWebSocketTimeout = 86400
-	maxWebSocketHeaders = 64
 	// maxWebSocketHeaderValue bounds one header value. Servers refuse the whole
 	// request line past a few kilobytes, so a longer value is a mistake.
 	maxWebSocketHeaderValue = 4096
@@ -167,9 +166,6 @@ var credentialHeaders = []string{"authorization", "proxy-authorization", "cookie
 // validateSecretHeaders checks the names of the headers kept as secrets: each
 // a header name, none twice, none also among the headers written out.
 func validateSecretHeaders(names []string, headers map[string]string) []string {
-	if len(names) > maxWebSocketHeaders {
-		return []string{fmt.Sprintf("secret_headers must not contain more than %d items", maxWebSocketHeaders)}
-	}
 	written := make(map[string]bool, len(headers))
 	for name := range headers {
 		written[strings.ToLower(name)] = true
@@ -201,9 +197,6 @@ func validateSecretHeaders(names []string, headers map[string]string) []string {
 // handshake a header nobody declared - and the handshake is where the server
 // decides who is calling.
 func validateWebSocketHeaders(headers map[string]string) []string {
-	if len(headers) > maxWebSocketHeaders {
-		return []string{fmt.Sprintf("headers must not contain more than %d items", maxWebSocketHeaders)}
-	}
 	var issues []string
 	seen := make(map[string]string, len(headers))
 	names := make([]string, 0, len(headers))

@@ -101,12 +101,6 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 	if len(value.Resources) == 0 {
 		issues = append(issues, "resources must contain at least one numeric item")
 	}
-	if len(value.Dimensions) > 32 {
-		issues = append(issues, "dimensions must not contain more than 32 items")
-	}
-	if len(value.Dimensions)+len(value.Resources)+len(value.Attributes) > 1500 {
-		issues = append(issues, "dimensions, resources and attributes must not contain more than 1500 items in total")
-	}
 	fieldNames, fieldIDs := map[string]string{}, map[uuid.UUID]string{}
 	for _, group := range []struct {
 		kind   string

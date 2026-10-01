@@ -1,7 +1,6 @@
 package metadata
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -192,14 +191,10 @@ based_on: [`+basisReceipt+`]
 
 // Each of these describes a command that would never appear, and nobody would
 // be told why: a basis that is not in the configuration, one that is not an
-// object anybody can have open, the same one twice, and a list that is not a
-// list of objects at all.
+// object anybody can have open, the same one twice. How many bases a list has
+// is not limited: the prototype does not limit it.
 func TestBrokenBasisIsRefused(t *testing.T) {
 	t.Parallel()
-	crowd := make([]string, 0, maxBasedOnObjects+1)
-	for index := range maxBasedOnObjects + 1 {
-		crowd = append(crowd, fmt.Sprintf("ba510000-0000-4000-8000-%012d", index+1000))
-	}
 	for name, broken := range map[string]struct{ body, want string }{
 		"основания нет в конфигурации": {`based_on: [` + basisMissing + `]`,
 			"which is not an object of the configuration that can be a basis"},
@@ -209,8 +204,6 @@ func TestBrokenBasisIsRefused(t *testing.T) {
 			"based_on[1] repeats"},
 		"пустой идентификатор": {`based_on: [00000000-0000-0000-0000-000000000000]`,
 			"based_on[0] must be a non-zero UUID"},
-		"оснований больше, чем бывает списком": {`based_on: [` + strings.Join(crowd, ", ") + `]`,
-			"must not contain more than 256 objects"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

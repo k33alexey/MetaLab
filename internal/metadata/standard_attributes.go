@@ -18,11 +18,6 @@ import (
 // all objects of a kind. The properties are the syntax assistant's, which lists
 // twenty-six for ОписаниеСтандартногоРеквизита.
 
-// maxStandardAttributes bounds the descriptions one object may carry. The
-// longest set the prototype gives anything is the accounting register's, and it
-// grows with the number of ext dimensions.
-const maxStandardAttributes = 128
-
 // standardField is one field the platform gives, under both names it answers
 // to. A description may name it either way; the Russian one is what it is
 // stored and compared as.
@@ -426,9 +421,6 @@ func (attribute StandardAttribute) asAttribute() Attribute {
 // validateStandardAttributes checks the descriptions of one object's standard
 // fields against the fields that object actually has.
 func validateStandardAttributes(path string, attributes []StandardAttribute, fields []standardField, configuration project.Project) []string {
-	if len(attributes) > maxStandardAttributes {
-		return []string{fmt.Sprintf("%s must not contain more than %d items", path, maxStandardAttributes)}
-	}
 	known := standardNames(fields)
 	var issues []string
 	seen := map[string]bool{}

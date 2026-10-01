@@ -9,9 +9,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// maxCommandsPerObject is where a list of commands stops being a list.
-const maxCommandsPerObject = 128
-
 // CommandParameterUse says whether a command takes one object or several.
 type CommandParameterUse string
 
@@ -103,9 +100,6 @@ type ObjectCommand struct {
 // the module inside that folder is the command's by where it lies. That the
 // file is there at all is checked against the folder, in validateObjectFiles.
 func validateObjectCommands(commands []ObjectCommand, self uuid.UUID, configuration project.Project) []string {
-	if len(commands) > maxCommandsPerObject {
-		return []string{fmt.Sprintf("commands must not contain more than %d items", maxCommandsPerObject)}
-	}
 	var issues []string
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, command := range commands {

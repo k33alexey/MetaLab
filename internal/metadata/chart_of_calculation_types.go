@@ -19,10 +19,9 @@ import (
 type BaseDependency string
 
 const (
-	NoBaseDependency         BaseDependency = "none"
-	ActionPeriodBase         BaseDependency = "by-action-period"
-	RegistrationPeriodBase   BaseDependency = "by-registration-period"
-	maxBaseChartsPerCalcPlan                = 8
+	NoBaseDependency       BaseDependency = "none"
+	ActionPeriodBase       BaseDependency = "by-action-period"
+	RegistrationPeriodBase BaseDependency = "by-registration-period"
 )
 
 // PredefinedCalculationType is a kind of accrual or deduction the configuration
@@ -134,9 +133,6 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, configuratio
 	default:
 		issues = append(issues, "base_dependency must be none, by-action-period or by-registration-period")
 	}
-	if len(value.BaseCharts) > maxBaseChartsPerCalcPlan {
-		issues = append(issues, fmt.Sprintf("base_charts must not contain more than %d charts", maxBaseChartsPerCalcPlan))
-	}
 	// A base that comes from nowhere and charts nobody takes a base from are
 	// the same mistake seen from two sides.
 	if value.BaseDependency != "" && value.BaseDependency != NoBaseDependency && len(value.BaseCharts) == 0 {
@@ -166,9 +162,6 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, configuratio
 }
 
 func validatePredefinedCalculationTypes(value ChartOfCalculationTypesDefinition) []string {
-	if len(value.Predefined) > maxObjectsPerKind {
-		return []string{fmt.Sprintf("predefined must not contain more than %d items", maxObjectsPerKind)}
-	}
 	var issues []string
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, item := range value.Predefined {

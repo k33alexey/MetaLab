@@ -14,9 +14,6 @@ import (
 // functional option differs.
 const FunctionalOptionParameterKind Kind = "functional-options-parameters"
 
-// maxParameterUse is where a list of places stops being a list.
-const maxParameterUse = 256
-
 // FunctionalOptionParameterUse is one place where the axis appears: the object
 // the parameter stands for, or a dimension of an information register that
 // holds the option's value.
@@ -52,9 +49,6 @@ func DecodeFunctionalOptionParameter(source string, reader io.Reader, configurat
 		return FunctionalOptionParameterDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	if len(value.Use) > maxParameterUse {
-		issues = append(issues, fmt.Sprintf("use must not contain more than %d items", maxParameterUse))
-	}
 	seen := map[string]bool{}
 	for index, item := range value.Use {
 		prefix := fmt.Sprintf("use[%d]", index)

@@ -721,14 +721,9 @@ func loadKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) e
 	if err != nil {
 		return fmt.Errorf("read metadata %s: %w", kind, err)
 	}
-	count := 0
 	for _, entry := range entries {
 		if entry.Name() == ".gitkeep" {
 			continue
-		}
-		count++
-		if count > maxObjectsPerKind {
-			return fmt.Errorf("metadata %s exceeds %d objects", kind, maxObjectsPerKind)
 		}
 		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 || filepath.Ext(entry.Name()) != ".yaml" {
 			return fmt.Errorf("unexpected metadata source %q", filepath.Join("metadata", string(kind), entry.Name()))
@@ -776,14 +771,9 @@ func loadObjectKind(root string, kind Kind, decode func(string, *os.File, string
 	if err != nil {
 		return fmt.Errorf("read metadata %s: %w", kind, err)
 	}
-	count := 0
 	for _, entry := range entries {
 		if entry.Name() == ".gitkeep" {
 			continue
-		}
-		count++
-		if count > maxObjectsPerKind {
-			return fmt.Errorf("metadata %s exceeds %d objects", kind, maxObjectsPerKind)
 		}
 		if !entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
 			return fmt.Errorf("unexpected metadata source %q", filepath.Join("metadata", string(kind), entry.Name()))

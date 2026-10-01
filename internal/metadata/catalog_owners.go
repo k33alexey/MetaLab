@@ -19,10 +19,6 @@ import (
 // category of the conformance report, not the second: the data is there and it
 // means something else.
 
-// maxCatalogOwners is where a list of owners stops being a list. The prototype
-// puts no number on it; two is the most the demonstration configuration uses.
-const maxCatalogOwners = 32
-
 // SubordinationKind says what an owner may be when the owning object has
 // folders: an item of it, a folder of it, or either. With several owners the
 // same answer applies to all of them - the help says so outright.
@@ -134,9 +130,6 @@ func (catalog *Catalog) OwnerTypes(definition CatalogDefinition) []Type {
 // and whether the settings that depend on having them are set without them.
 func validateCatalogSubordination(owners []uuid.UUID, subordination SubordinationKind, code CatalogCode) []string {
 	var issues []string
-	if len(owners) > maxCatalogOwners {
-		return []string{fmt.Sprintf("owners must not contain more than %d objects", maxCatalogOwners)}
-	}
 	issues = append(issues, validateUniqueIDs("owners", owners)...)
 	if !validSubordinationKind(subordination) {
 		issues = append(issues, "subordination must be to-items, to-folders or to-folders-and-items")

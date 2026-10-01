@@ -18,11 +18,6 @@ const (
 	StyleKind Kind = "styles"
 )
 
-// maxStyleItemsPerStyle is where a style stops being a look and becomes a
-// list. The platform's own standard set is of this order, and a configuration
-// adds to it rather than replacing it.
-const maxStyleItemsPerStyle = 1024
-
 // StyleItemType says what one style item is. There are three and only three:
 // a colour, a font, a border. Anything an interface is drawn with is one of
 // them or is built out of them.
@@ -218,25 +213,22 @@ func DecodeStyle(source string, reader io.Reader, configuration project.Project)
 		return StyleDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	if len(value.Items) > maxStyleItemsPerStyle {
-		issues = append(issues, fmt.Sprintf("items must not contain more than %d items", maxStyleItemsPerStyle))
-	} else {
-		seen := map[uuid.UUID]bool{}
-		for index, setting := range value.Items {
-			prefix := fmt.Sprintf("items[%d]", index)
-			if setting.Item.IsZero() {
-				issues = append(issues, prefix+".item must be a non-zero UUID")
-			}
-			if seen[setting.Item] {
-				issues = append(issues, prefix+".item is set twice by one style")
-			}
-			seen[setting.Item] = true
-			// Which of the three the value must be is decided by the item this
-			// setting is for, and that is known only once the whole project is
-			// read; here the value is checked for being one value at all.
-			issues = append(issues, validateStyleItemValue(prefix+".value", "", setting.Value, false)...)
+	seen := map[uuid.UUID]bool{}
+	for index, setting := range value.Items {
+		prefix := fmt.Sprintf("items[%d]", index)
+		if setting.Item.IsZero() {
+			issues = append(issues, prefix+".item must be a non-zero UUID")
 		}
+		if seen[setting.Item] {
+			issues = append(issues, prefix+".item is set twice by one style")
+		}
+		seen[setting.Item] = true
+		// Which of the three the value must be is decided by the item this
+		// setting is for, and that is known only once the whole project is
+		// read; here the value is checked for being one value at all.
+		issues = append(issues, validateStyleItemValue(prefix+".value", "", setting.Value, false)...)
 	}
+
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return StyleDefinition{}, err
 	}

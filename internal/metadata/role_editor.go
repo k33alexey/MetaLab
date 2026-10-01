@@ -1,7 +1,6 @@
 package metadata
 
 import (
-	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -180,9 +179,6 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	forms, err := ReadCommonForms(root, catalog.Project)
 	if err != nil {
 		return PermissionSchema{}, err
-	}
-	if len(forms) > maxObjectsPerKind {
-		return PermissionSchema{}, fmt.Errorf("too many form sources")
 	}
 	for _, form := range forms {
 		if len(form.Commands) == 0 {

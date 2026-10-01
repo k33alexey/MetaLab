@@ -16,10 +16,7 @@ import (
 // configuration at without a description of types: a path, a verb, a handler.
 const HTTPServiceKind Kind = "http-services"
 
-const (
-	maxTemplatesPerService = 256
-	maxMethodsPerTemplate  = 32
-)
+const ()
 
 // httpMethods are the verbs a method may answer. The list is closed and holds
 // the verbs of HTTP together with those WebDAV adds, plus "ANY" for a handler
@@ -124,9 +121,6 @@ func validateRootURL(value string) []string {
 // validateURLTemplates checks the addresses of one service: each template, its
 // methods, and that no two of them answer the same call.
 func validateURLTemplates(templates []URLTemplate, configuration project.Project) []string {
-	if len(templates) > maxTemplatesPerService {
-		return []string{fmt.Sprintf("templates must not contain more than %d items", maxTemplatesPerService)}
-	}
 	var issues []string
 	names, ids, paths := map[string]bool{}, map[uuid.UUID]bool{}, map[string]bool{}
 	for index, template := range templates {
@@ -197,9 +191,6 @@ func validateTemplatePath(path, value string) []string {
 }
 
 func validateHTTPMethods(owner string, methods []HTTPServiceMethod, configuration project.Project) []string {
-	if len(methods) > maxMethodsPerTemplate {
-		return []string{fmt.Sprintf("%s.methods must not contain more than %d items", owner, maxMethodsPerTemplate)}
-	}
 	var issues []string
 	names, ids, verbs := map[string]bool{}, map[uuid.UUID]bool{}, map[string]bool{}
 	for index, method := range methods {

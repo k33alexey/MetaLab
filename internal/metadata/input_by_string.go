@@ -24,12 +24,6 @@ import (
 // properties are deliberately not unfolded yet - see outlined_kinds.go - so
 // nothing here is written for it.
 
-// maxInputByStringFields bounds the list. It can only ever hold an object's own
-// attributes and at most two of the platform's own fields, so the bound is not a
-// limit on the developer but a guard against a file that is not a list of fields
-// at all.
-const maxInputByStringFields = 128
-
 // ObjectField names one field of an object, either one the platform gave it or
 // one the developer declared.
 //
@@ -153,9 +147,6 @@ func searchableStandardFields(kind Kind) map[string]string {
 // search that silently never matches - the object is simply not found by what
 // the user typed, and nobody is told why.
 func validateInputByString(fields []ObjectField, kind Kind, attributes []Attribute) []string {
-	if len(fields) > maxInputByStringFields {
-		return []string{fmt.Sprintf("input_by_string must not contain more than %d items", maxInputByStringFields)}
-	}
 	standard := searchableStandardFields(kind)
 	declared := make(map[string]Attribute, len(attributes))
 	for _, attribute := range attributes {

@@ -11,8 +11,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-const maxSequenceDimensions = 16
-
 // SequenceDimension narrows the boundary. Without dimensions a sequence keeps
 // one boundary for everything, and a document posted late by one product
 // declares every later document out of order. With them the boundary is kept
@@ -85,9 +83,6 @@ func DecodeSequence(source string, reader io.Reader, configuration project.Proje
 	issues = append(issues, validateUniqueIDs("movements", value.Movements)...)
 	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, SequenceKind,
 		recordIndexTables(sequenceStandardFields, sequenceDimensionNames(value.Dimensions)))...)
-	if len(value.Dimensions) > maxSequenceDimensions {
-		issues = append(issues, fmt.Sprintf("dimensions must not contain more than %d items", maxSequenceDimensions))
-	}
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, dimension := range value.Dimensions {
 		prefix := fmt.Sprintf("dimensions[%d]", index)

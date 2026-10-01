@@ -10,8 +10,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-const maxJournalColumns = 128
-
 // JournalColumn is one column of a journal. It has no data of its own: it
 // names, per kind of document, the attribute to show there. The attributes need
 // not share a name - a journal exists precisely to put "storage" of one
@@ -69,9 +67,6 @@ func DecodeDocumentJournal(source string, reader io.Reader, configuration projec
 	issues = append(issues, validateUniqueIDs("documents", value.Documents)...)
 	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, DocumentJournalKind,
 		recordIndexTables(standardFieldsOfKind(DocumentJournalKind), journalColumnNames(value.Columns)))...)
-	if len(value.Columns) > maxJournalColumns {
-		issues = append(issues, fmt.Sprintf("columns must not contain more than %d items", maxJournalColumns))
-	}
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, column := range value.Columns {
 		prefix := fmt.Sprintf("columns[%d]", index)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -134,9 +135,9 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	// load.go narrows it once the chart is read.
 	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
 	issues = append(issues, validatePeriodAdjustmentLength(value.PeriodAdjustmentLength)...)
-	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accountingStandardFields(value.Correspondence, maxExtDimensions), configuration)...)
+	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accountingStandardFields(value.Correspondence, mentionedExtDimensions(value)), configuration)...)
 	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, AccountingRegisterKind,
-		recordIndexTables(accountingStandardFields(value.Correspondence, maxExtDimensions),
+		recordIndexTables(accountingStandardFields(value.Correspondence, mentionedExtDimensions(value)),
 			attributeNames(RegisterDimensionAttributes(value.Dimensions)), attributeNames(accountingResourceAttributes(value.Resources)),
 			attributeNames(value.Attributes)))...)
 	// Dimensions and resources belong in these two checks, and until now only
@@ -240,4 +241,37 @@ func (catalog *Catalog) AccountingRegisterByID(id uuid.UUID) (AccountingRegister
 		return AccountingRegisterDefinition{}, false
 	}
 	return cloneAccountingRegister(catalog.AccountingRegisters[index]), true
+}
+
+// mentionedExtDimensions is how many ext dimensions the register's own
+// description speaks of - the highest N of a field СубконтоN, ВидСубконтоN or
+// their English names among its standard attributes and additional indexes.
+//
+// The chart of accounts decides how many an entry really has, and it is in
+// another file: when the register is read alone, the names of the ext
+// dimension fields are generated up to what the description itself names, so
+// that no number of ours stands between a register and a chart that allows
+// more; load.go narrows it to the chart once the chart is read.
+func mentionedExtDimensions(value AccountingRegisterDefinition) int {
+	highest := 0
+	mention := func(name string) {
+		for _, prefix := range []string{"субконто", "видсубконто", "extdimension", "extdimensiontype"} {
+			lowered := strings.ToLower(strings.TrimSpace(name))
+			if !strings.HasPrefix(lowered, prefix) {
+				continue
+			}
+			if number, err := strconv.Atoi(lowered[len(prefix):]); err == nil && number > highest {
+				highest = number
+			}
+		}
+	}
+	for _, attribute := range value.StandardAttributes {
+		mention(attribute.Name)
+	}
+	for _, index := range value.AdditionalIndexes {
+		for _, field := range append(slices.Clone(index.IndexedFields), index.AdditionalFields...) {
+			mention(field)
+		}
+	}
+	return highest
 }

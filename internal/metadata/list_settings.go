@@ -8,8 +8,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-const maxListSearchFields = 16
-
 type listColumn struct {
 	name string
 	kind TypeKind
@@ -19,9 +17,6 @@ func validateListSettings(settings ListSettings, attributes []Attribute, systemF
 	var issues []string
 	if settings.PageSize != 0 && !validDynamicListPageSize(settings.PageSize) {
 		issues = append(issues, "list.page_size must be 20, 50 or 100")
-	}
-	if len(settings.SearchFields) > maxListSearchFields {
-		issues = append(issues, fmt.Sprintf("list.search_fields must not contain more than %d items", maxListSearchFields))
 	}
 	available := make(map[string]bool, len(attributes)+len(systemFields))
 	for name, kind := range systemFields {

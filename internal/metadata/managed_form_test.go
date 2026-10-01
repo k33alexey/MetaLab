@@ -58,7 +58,10 @@ func TestManagedFormRejectsUnknownAndInvalidTree(t *testing.T) {
 	}
 }
 
-func TestManagedFormRejectsUnsupportedFormatAndDepth(t *testing.T) {
+// A form of an unknown format is refused. How deep its groups nest is not
+// limited: the prototype does not limit it, and the checks walk the form by a
+// stack of their own, so no depth runs them out of anything.
+func TestManagedFormRejectsUnsupportedFormatAndTakesAnyDepth(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
 	form := ManagedForm{Format: 2, ID: uuid.MustNew(), Name: "\u0424\u043e\u0440\u043c\u0430", Title: LocalizedText{"ru": "\u0424\u043e\u0440\u043c\u0430"}, Kind: ObjectForm}
@@ -67,12 +70,12 @@ func TestManagedFormRejectsUnsupportedFormatAndDepth(t *testing.T) {
 	}
 	form.Format = CurrentFormat
 	leaf := ManagedFormElement{ID: uuid.MustNew(), Name: "\u042d\u043b\u0435\u043c\u0435\u043d\u0442", Kind: FormElementGroup, Orientation: FormVertical}
-	for index := 0; index < MaxManagedFormDepth; index++ {
+	for index := 0; index < 200; index++ {
 		leaf = ManagedFormElement{ID: uuid.MustNew(), Name: "\u0413\u0440\u0443\u043f\u043f\u0430" + string(rune('A'+index%26)) + string(rune('A'+index/26)), Kind: FormElementGroup, Orientation: FormVertical, Children: []ManagedFormElement{leaf}}
 	}
 	form.Items = []ManagedFormElement{leaf}
-	if err := ValidateManagedForm("form.yaml", form, configuration); err == nil || !strings.Contains(err.Error(), "maximum nesting depth") {
-		t.Fatalf("depth error = %v", err)
+	if err := ValidateManagedForm("form.yaml", form, configuration); err != nil {
+		t.Fatalf("a form nested two hundred groups deep was refused: %v", err)
 	}
 }
 

@@ -125,12 +125,6 @@ func DecodeInformationRegister(source string, reader io.Reader, configuration pr
 	if len(value.Dimensions)+len(value.Resources)+len(value.Attributes) == 0 {
 		issues = append(issues, "dimensions, resources or attributes must contain at least one item")
 	}
-	if len(value.Dimensions) > 32 {
-		issues = append(issues, "dimensions must not contain more than 32 items")
-	}
-	if len(value.Dimensions)+len(value.Resources)+len(value.Attributes) > 1500 {
-		issues = append(issues, "dimensions, resources and attributes must not contain more than 1500 items in total")
-	}
 	fieldNames := map[string]string{}
 	fieldIDs := map[uuid.UUID]string{}
 	for _, group := range []struct {

@@ -10,9 +10,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// maxDocumentMovements is where a list of registers stops being a list.
-const maxDocumentMovements = 256
-
 type NumberPeriodicity string
 
 const (
@@ -130,9 +127,6 @@ func DecodeDocument(source string, reader io.Reader, configuration project.Proje
 	}
 	issues = append(issues, validateDocumentPosting(value.Posting)...)
 	issues = append(issues, validateNumberedObjectShape(shape, configuration)...)
-	if len(value.Movements) > maxDocumentMovements {
-		issues = append(issues, fmt.Sprintf("movements must not contain more than %d registers", maxDocumentMovements))
-	}
 	issues = append(issues, validateUniqueIDs("movements", value.Movements)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
@@ -293,9 +287,6 @@ const (
 // attribute would be two things answering to one name.
 func validateTableParts(parts []TablePart, attributeNames map[string]bool, configuration project.Project, reserved func(string) bool, rules tablePartRules) []string {
 	var issues []string
-	if len(parts) > 128 {
-		issues = append(issues, "table_parts must not contain more than 128 items")
-	}
 	if reserved == nil {
 		reserved = func(string) bool { return false }
 	}

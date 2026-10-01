@@ -35,9 +35,6 @@ const (
 )
 
 const (
-	maxExternalCubesPerSource     = 256
-	maxExternalCubeFields         = 1024
-	maxExternalDimensionTables    = 256
 	maxExternalDimensionLevel     = 1024
 	maxUnfilledDimensionParentLen = 1024
 )
@@ -222,9 +219,6 @@ func DecodeExternalDimensionTable(source string, reader io.Reader, configuration
 // share one namespace: a query names either as a field of the cube, and two of
 // one name would be one field read twice.
 func validateCubeFields(cube ExternalCube, configuration project.Project) []string {
-	if len(cube.Dimensions)+len(cube.Resources) > maxExternalCubeFields {
-		return []string{fmt.Sprintf("dimensions and resources must not together exceed %d fields", maxExternalCubeFields)}
-	}
 	var issues []string
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	check := func(prefix string, field Attribute) {
@@ -377,7 +371,7 @@ func cloneExternalCube(cube ExternalCube) ExternalCube {
 // validateExternalCubeFiles once the whole configuration is read.
 func loadExternalCubes(sourceDirectory, relative string, configuration project.Project) ([]ExternalCube, error) {
 	directories, err := subordinateFolders(filepath.Join(sourceDirectory, ExternalDataSourceCubesDirectory),
-		relative+"/"+ExternalDataSourceCubesDirectory, maxExternalCubesPerSource, "a cube")
+		relative+"/"+ExternalDataSourceCubesDirectory, "a cube")
 	if err != nil {
 		return nil, err
 	}
@@ -393,7 +387,7 @@ func loadExternalCubes(sourceDirectory, relative string, configuration project.P
 			return nil, err
 		}
 		tableNames, err := subordinateFolders(filepath.Join(directory, ExternalDimensionTablesDirectory),
-			where+"/"+ExternalDimensionTablesDirectory, maxExternalDimensionTables, "a dimension table")
+			where+"/"+ExternalDimensionTablesDirectory, "a dimension table")
 		if err != nil {
 			return nil, err
 		}
@@ -417,16 +411,13 @@ func loadExternalCubes(sourceDirectory, relative string, configuration project.P
 // subordinateFolders lists the folders of one collection of subordinate
 // objects, refusing anything that is not a folder named as an object is. A
 // collection that is not there holds nothing.
-func subordinateFolders(directory, relative string, bound int, what string) ([]string, error) {
+func subordinateFolders(directory, relative string, what string) ([]string, error) {
 	entries, err := os.ReadDir(directory)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
-	}
-	if len(entries) > bound {
-		return nil, fmt.Errorf("%s holds more than %d objects", relative, bound)
 	}
 	names := make([]string, 0, len(entries))
 	for _, entry := range entries {
