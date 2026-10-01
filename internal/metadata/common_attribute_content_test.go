@@ -214,6 +214,107 @@ func TestConditionalSeparationNamesOneBooleanOutsideTheComposition(t *testing.T)
 	}
 }
 
+// The condition stands outside the composition wherever in the list the object
+// is named. It used to be checked against the items read so far, so naming the
+// separated object after the item that conditions on it let the condition
+// through. And outside means not reached, not unlisted: with auto-use on, the
+// configurations being moved list the condition with «do not use».
+func TestConditionalSeparationIsOutsideTheCompositionWhereverTheListNamesIt(t *testing.T) {
+	t.Parallel()
+	field := uuid.MustNew()
+	later := contentAttribute(CommonAttributeAutoUseDontUse,
+		CommonAttributeContentItem{Metadata: contentSecond, Use: CommonAttributeUseUse,
+			ConditionalSeparation: &ConditionalSeparation{Object: &contentFirst, Attribute: &field}},
+		CommonAttributeContentItem{Metadata: contentFirst, Use: CommonAttributeUseUse},
+	)
+	if err := ValidateCommonAttribute("common-attribute.yaml", later, metadataConfiguration()); err == nil {
+		t.Fatal("a condition on an object the composition names further down was accepted")
+	}
+	excluded := contentAttribute(CommonAttributeAutoUseUse,
+		CommonAttributeContentItem{Metadata: contentSecond, Use: CommonAttributeUseUse,
+			ConditionalSeparation: &ConditionalSeparation{Object: &contentFirst, Attribute: &field}},
+		CommonAttributeContentItem{Metadata: contentFirst, Use: CommonAttributeUseDontUse},
+	)
+	if err := ValidateCommonAttribute("common-attribute.yaml", excluded, metadataConfiguration()); err != nil {
+		t.Fatalf("a condition on an object the composition excludes was refused: %v", err)
+	}
+}
+
+// The attribute has a condition of its own, beside the one an item may carry:
+// a boolean constant. Every configuration being moved sets it on both of its
+// separators - auto-use on, the constant listed with «do not use» - and a model
+// without the property lost it on import.
+func TestACommonAttributeHasAConditionOfItsOwn(t *testing.T) {
+	t.Parallel()
+	goods := CatalogDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Товары", Title: LocalizedText{"ru": "Товары"},
+		Code: CatalogCode{Type: StringType, Length: 9}, DescriptionLength: 100}
+	flag := Constant{Format: CurrentFormat, ID: uuid.MustNew(), Name: "ИспользоватьРазделение", Title: LocalizedText{"ru": "Разделение"},
+		Types: []Type{{Kind: BooleanType}}}
+	number := Constant{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Курс", Title: LocalizedText{"ru": "Курс"},
+		Types: []Type{{Kind: NumberType, Precision: 10, Scale: 2}}}
+	attribute := func(condition uuid.UUID, items ...CommonAttributeContentItem) CommonAttributeDefinition {
+		return CommonAttributeDefinition{
+			Format: CurrentFormat, ID: uuid.MustNew(), Name: "ОбластьДанных", Title: LocalizedText{"ru": "Область данных"},
+			Types: []Type{{Kind: NumberType, Precision: 7}}, AutoUse: CommonAttributeAutoUseUse,
+			Content: items, ConditionalSeparation: &condition,
+		}
+	}
+	load := func(common CommonAttributeDefinition) (*Catalog, error) {
+		return NewCatalogSnapshotWithCommonAttributes(metadataConfiguration(), []Constant{flag, number}, nil, nil,
+			[]CatalogDefinition{goods}, nil, nil, nil, nil, nil, nil, []CommonAttributeDefinition{common})
+	}
+	excluded := []CommonAttributeContentItem{
+		{Metadata: flag.ID, Use: CommonAttributeUseDontUse}, {Metadata: number.ID, Use: CommonAttributeUseDontUse},
+	}
+	catalog, err := load(attribute(flag.ID, excluded...))
+	if err != nil {
+		t.Fatalf("the shape the configurations write was refused: %v", err)
+	}
+	loaded, ok := catalog.CommonAttribute("ОбластьДанных")
+	if !ok || loaded.ConditionalSeparation == nil || *loaded.ConditionalSeparation != flag.ID {
+		t.Fatalf("the condition did not survive the load: %+v", loaded.ConditionalSeparation)
+	}
+	*loaded.ConditionalSeparation = uuid.MustNew()
+	if again, _ := catalog.CommonAttribute("ОбластьДанных"); *again.ConditionalSeparation != flag.ID {
+		t.Fatal("a copy handed out shares the condition with the catalog")
+	}
+
+	// What the file alone answers is checked when it is read; what needs the
+	// rest of the configuration, when the catalog is put together.
+	for name, testCase := range map[string]struct {
+		common  CommonAttributeDefinition
+		message string
+	}{
+		"нулевая":               {attribute(uuid.UUID{}, excluded...), "non-zero"},
+		"в составе":             {attribute(flag.ID), "reaches"},
+		"в составе с вердиктом": {attribute(flag.ID, CommonAttributeContentItem{Metadata: flag.ID, Use: CommonAttributeUseUse}), "reaches"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := ValidateCommonAttribute("common-attribute.yaml", testCase.common, metadataConfiguration())
+			if err == nil || !strings.Contains(err.Error(), testCase.message) {
+				t.Fatalf("error = %v, expected it to name %q", err, testCase.message)
+			}
+		})
+	}
+	if err := ValidateCommonAttribute("common-attribute.yaml", attribute(flag.ID, excluded...), metadataConfiguration()); err != nil {
+		t.Fatalf("the file the configurations write was refused: %v", err)
+	}
+	for name, testCase := range map[string]struct {
+		common  CommonAttributeDefinition
+		message string
+	}{
+		"неизвестная": {attribute(uuid.MustNew(), excluded...), "unknown constant"},
+		"не булева":   {attribute(number.ID, excluded...), "not boolean"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := load(testCase.common)
+			if err == nil || !strings.Contains(err.Error(), testCase.message) {
+				t.Fatalf("error = %v, expected it to name %q", err, testCase.message)
+			}
+		})
+	}
+}
+
 // TestCommonAttributeReachesTheSchemaByAutoUse is here because auto-use makes
 // one line of one file change hundreds of tables: an attribute that reaches
 // every object gets a column in every object's table. The prototype does the

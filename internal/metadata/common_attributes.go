@@ -62,11 +62,11 @@ type CommonAttributeDefinition struct {
 	// works as a list of exceptions. Read as a list of the included, it would
 	// give the attribute to precisely the objects that must not have it.
 	Content []CommonAttributeContentItem `yaml:"content,omitempty"`
-	// The seven properties of data separation. In the prototype the same
+	// The eight properties of data separation. In the prototype the same
 	// metadata object carries a second, unrelated mechanism: one database shared
 	// between independent companies, each with its own users and authentication,
 	// told apart by the value of this attribute. We have one company per
-	// database and do not do it - **but we carry all seven**, because a property
+	// database and do not do it - **but we carry all eight**, because a property
 	// missing from the model disappears on import, and that is a loss of
 	// meaning, while a property carried and not executed imports whole and the
 	// report says «carried, not implemented». The reason is in
@@ -83,9 +83,16 @@ type CommonAttributeDefinition struct {
 	UsersSeparation                   SeparationMode   `yaml:"users_separation,omitempty"`
 	AuthenticationSeparation          SeparationMode   `yaml:"authentication_separation,omitempty"`
 	ConfigurationExtensionsSeparation SeparationMode   `yaml:"configuration_extensions_separation,omitempty"`
+	// ConditionalSeparation is the eighth: a boolean constant whose value says
+	// whether the attribute separates anything in this session. It is the
+	// attribute's own, beside the condition an item of the composition may
+	// carry for one object, and the help gives it a constant only. All three
+	// configurations being moved set it on their two separators. Carried, not
+	// executed, for the reason above.
+	ConditionalSeparation *uuid.UUID `yaml:"conditional_separation,omitempty"`
 }
 
-// SeparationMode is the two-valued answer four of the seven give: separate by
+// SeparationMode is the two-valued answer four of the eight give: separate by
 // this attribute, or do not.
 type SeparationMode string
 
@@ -276,6 +283,14 @@ func ValidateCommonAttribute(source string, value CommonAttributeDefinition, con
 			issues = append(issues, "data_separation needs data_separation_value and data_separation_use: without them nothing says which area the session is in")
 		}
 	}
+	if value.ConditionalSeparation != nil {
+		switch {
+		case value.ConditionalSeparation.IsZero():
+			issues = append(issues, "conditional_separation must be a non-zero UUID")
+		case value.reaches(*value.ConditionalSeparation):
+			issues = append(issues, "conditional_separation names a constant the attribute reaches: the condition would have to be read to decide whether to read it")
+		}
+	}
 	seen := make(map[uuid.UUID]bool, len(value.Content))
 	reaches := value.AutoUse == CommonAttributeAutoUseUse
 	for index, item := range value.Content {
@@ -293,7 +308,7 @@ func ValidateCommonAttribute(source string, value CommonAttributeDefinition, con
 		if item.Use == CommonAttributeUseUse {
 			reaches = true
 		}
-		issues = append(issues, validateConditionalSeparation(prefix, item.ConditionalSeparation, seen)...)
+		issues = append(issues, validateConditionalSeparation(prefix, item.ConditionalSeparation, value.reaches)...)
 	}
 	// An attribute that reaches nobody is a field declared and given to no
 	// object: the setting reads as working and does nothing.
@@ -308,10 +323,11 @@ func ValidateCommonAttribute(source string, value CommonAttributeDefinition, con
 //
 // Outside the composition is the prototype's rule and it is not a formality: a
 // condition kept on a separated object would have to be read to decide whether
-// that object is separated, and reading it needs the answer. `inside` holds the
-// objects the composition has named so far, which is why the items are checked
-// in order.
-func validateConditionalSeparation(prefix string, separation *ConditionalSeparation, inside map[uuid.UUID]bool) []string {
+// that object is separated, and reading it needs the answer. Outside means not
+// reached by the attribute, not unlisted: the configurations being moved list
+// the condition with «do not use» when auto-use is on, and an item further
+// down the list counts as much as one above it.
+func validateConditionalSeparation(prefix string, separation *ConditionalSeparation, inside func(uuid.UUID) bool) []string {
 	if separation == nil {
 		return nil
 	}
@@ -330,7 +346,7 @@ func validateConditionalSeparation(prefix string, separation *ConditionalSeparat
 		if separation.Object.IsZero() || separation.Attribute.IsZero() {
 			issues = append(issues, path+".object and .attribute must be non-zero UUIDs")
 		}
-		if inside[*separation.Object] {
+		if !separation.Object.IsZero() && inside(*separation.Object) {
 			issues = append(issues, path+".object is in the composition: the condition would have to be read to decide whether to read it")
 		}
 	case separation.Object != nil || separation.Attribute != nil:
@@ -343,7 +359,7 @@ func validateConditionalSeparation(prefix string, separation *ConditionalSeparat
 	default:
 		issues = append(issues, path+" names both a constant and an attribute, and a condition is one boolean")
 	}
-	if separation.Constant != nil && inside[*separation.Constant] {
+	if separation.Constant != nil && !separation.Constant.IsZero() && inside(*separation.Constant) {
 		issues = append(issues, path+".constant is in the composition")
 	}
 	return issues
@@ -367,7 +383,7 @@ func (catalog *Catalog) CommonAttributeByID(id uuid.UUID) (CommonAttributeDefini
 
 func cloneCommonAttributeDefinition(value CommonAttributeDefinition) CommonAttributeDefinition {
 	value.Title, value.Types = cloneTitle(value.Title), cloneTypes(value.Types)
-	for _, parameter := range []**uuid.UUID{&value.DataSeparationValue, &value.DataSeparationUse} {
+	for _, parameter := range []**uuid.UUID{&value.DataSeparationValue, &value.DataSeparationUse, &value.ConditionalSeparation} {
 		if *parameter != nil {
 			id := **parameter
 			*parameter = &id
@@ -605,6 +621,15 @@ func (catalog *Catalog) validateConditionalSeparationReferences() error {
 			}
 			if !typesReference(common.Types, reference, *separation.Object) {
 				return fmt.Errorf("%s lives on %s, whose reference is not among the types of the common attribute", where, name)
+			}
+		}
+		if common.ConditionalSeparation != nil {
+			constant, ok := catalog.ConstantByID(*common.ConditionalSeparation)
+			if !ok {
+				return fmt.Errorf("common attribute %s conditional_separation names unknown constant %s", common.Name, common.ConditionalSeparation)
+			}
+			if !isBooleanOnly(constant.Types) {
+				return fmt.Errorf("common attribute %s conditional_separation names constant %s, which is not boolean", common.Name, constant.Name)
 			}
 		}
 		// The two session parameters of separation point outside the file as
