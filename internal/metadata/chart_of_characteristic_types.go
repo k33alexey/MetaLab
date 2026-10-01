@@ -72,12 +72,29 @@ type ChartOfCharacteristicTypesDefinition struct {
 }
 
 // DecodeChartOfCharacteristicTypes reads and validates one chart description.
+// validateCharacteristicTypesHierarchy refuses what a chart of characteristic
+// types does not have. Its hierarchy is a flag and folders on top, nothing
+// more: no choice of a hierarchy of items, no limit of levels - the help gives
+// the chart neither property, and the configurations being moved never write
+// them on one. Its hierarchy is always one of folders and items.
+func validateCharacteristicTypesHierarchy(hierarchy Hierarchy) []string {
+	var issues []string
+	if hierarchy.Kind == ItemsHierarchy {
+		issues = append(issues, "hierarchy.kind of a chart of characteristic types is always folders-and-items")
+	}
+	if hierarchy.LimitLevels || hierarchy.LevelCount != 0 {
+		issues = append(issues, "hierarchy of a chart of characteristic types has no limit of levels")
+	}
+	return issues
+}
+
 func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, configuration project.Project) (ChartOfCharacteristicTypesDefinition, error) {
 	var value ChartOfCharacteristicTypesDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return ChartOfCharacteristicTypesDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
+	issues = append(issues, validateCharacteristicTypesHierarchy(value.Hierarchy)...)
 	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
 		code:                 value.Code,
 		descriptionLength:    value.DescriptionLength,
@@ -91,6 +108,8 @@ func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, configura
 		attributeUse:         true,
 		codeSeries:           true,
 		codeAllowedLength:    true,
+		autonumbering:        true,
+		checkUnique:          true,
 		predefinedDataUpdate: value.PredefinedDataUpdate,
 		presentation:         value.Presentations,
 		choice:               value.ObjectChoice,

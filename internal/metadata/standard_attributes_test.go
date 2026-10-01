@@ -91,7 +91,7 @@ standard_attributes:
 id: ` + calcTypesStandardID + `
 name: ОсновныеНачисления
 title: {ru: Основные начисления}
-code: {type: string, length: 9, auto: true}
+code: {type: string, length: 9}
 description_length: 100
 standard_attributes:
   - name: Родитель
@@ -436,7 +436,7 @@ func TestChartOfCalculationTypesKeepsItsStandardTableParts(t *testing.T) {
 id: ` + calcTypesStandardID + `
 name: ОсновныеНачисления
 title: {ru: Основные начисления}
-code: {type: string, length: 9, auto: true}
+code: {type: string, length: 9}
 description_length: 100
 action_period_use: true
 standard_table_parts:

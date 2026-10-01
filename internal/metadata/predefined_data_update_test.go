@@ -54,7 +54,7 @@ predefined_data_update: dont-auto-update
 id: ` + calcTypesStandardID + `
 name: Начисления
 title: {ru: Начисления}
-code: {type: string, length: 9, auto: true}
+code: {type: string, length: 9}
 description_length: 100
 predefined_data_update: dont-auto-update
 `, true},
@@ -70,7 +70,7 @@ predefined_data_update: dont-auto-update
 id: ` + catalogID + `
 name: Номенклатура
 title: {ru: Номенклатура}
-code: {type: string, length: 9, auto: true}
+code: {type: string, length: 9}
 description_length: 150
 predefined_data_update: sometimes
 `, false},

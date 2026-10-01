@@ -292,7 +292,6 @@ func ValidateCommonAttribute(source string, value CommonAttributeDefinition, con
 		}
 	}
 	seen := make(map[uuid.UUID]bool, len(value.Content))
-	reaches := value.AutoUse == CommonAttributeAutoUseUse
 	for index, item := range value.Content {
 		prefix := fmt.Sprintf("content[%d]", index)
 		if item.Metadata.IsZero() {
@@ -305,16 +304,11 @@ func ValidateCommonAttribute(source string, value CommonAttributeDefinition, con
 		if !validCommonAttributeUse(item.Use) {
 			issues = append(issues, prefix+".use must be auto, use or dont-use")
 		}
-		if item.Use == CommonAttributeUseUse {
-			reaches = true
-		}
 		issues = append(issues, validateConditionalSeparation(prefix, item.ConditionalSeparation, value.reaches)...)
 	}
-	// An attribute that reaches nobody is a field declared and given to no
-	// object: the setting reads as working and does nothing.
-	if !reaches {
-		issues = append(issues, "the composition reaches no object: either list an object with use or set auto_use to use")
-	}
+	// An attribute that reaches nobody is carried: the designer saves one, a
+	// field declared and not yet given to any object - checked by the owner
+	// on 01.10.2026.
 	return issuesError(source, value.Format, issues)
 }
 

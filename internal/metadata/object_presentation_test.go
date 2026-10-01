@@ -73,7 +73,7 @@ value_type: [{kind: string, length: 100}]
 		"план счетов": {ChartOfAccountsKind, presentationID, `code: {type: string, length: 5, auto: false}
 description_length: 120
 `},
-		"план видов расчёта": {ChartOfCalculationTypesKind, presentationID, `code: {type: string, length: 9, auto: true}
+		"план видов расчёта": {ChartOfCalculationTypesKind, presentationID, `code: {type: string, length: 9}
 description_length: 100
 `},
 		"план обмена": {ExchangePlanKind, presentationID, `code: {type: string, length: 36, auto: false}
@@ -241,7 +241,7 @@ resources: [{id: ` + registerPropsResource + `, name: Результат, title:
 id: `+calcTypesStandardID+`
 name: Начисления
 title: {ru: Начисления}
-code: {type: string, length: 9, auto: true}
+code: {type: string, length: 9}
 description_length: 100
 `)
 		}},

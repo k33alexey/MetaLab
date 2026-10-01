@@ -105,7 +105,7 @@ func TestChartOfAccountsStorageCarriesFlagsAndAnalytics(t *testing.T) {
 id: `+accountsID+`
 name: Основной
 title: {ru: Основной}
-code: {type: string, length: 5, auto: true}
+code: {type: string, length: 5}
 description_length: 120
 code_mask: "@@.@@"
 order_length: 5
@@ -274,7 +274,7 @@ func TestRightsReachChartsOfAccountsAndCharacteristics(t *testing.T) {
 id: `+accountsID+`
 name: Основной
 title: {ru: Основной}
-code: {type: string, length: 5, auto: true}
+code: {type: string, length: 5}
 description_length: 120
 ext_dimension_types: `+characteristicsID+`
 max_ext_dimension_count: 2

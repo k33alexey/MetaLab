@@ -183,7 +183,7 @@ value_type: [{kind: string, length: 100}]
 		"план счетов": {ChartOfAccountsKind, `code: {type: string, length: 5, auto: false}
 description_length: 120
 `, "Код"},
-		"план видов расчёта": {ChartOfCalculationTypesKind, `code: {type: string, length: 9, auto: true}
+		"план видов расчёта": {ChartOfCalculationTypesKind, `code: {type: string, length: 9}
 description_length: 100
 `, "Наименование"},
 		"план обмена": {ExchangePlanKind, `code: {type: string, length: 36, auto: false}

@@ -465,7 +465,7 @@ description_length: 150
 id: `+commandCalcTypes+`
 name: Начисления
 title: {ru: Начисления}
-code: {type: string, length: 9, auto: true}
+code: {type: string, length: 9}
 description_length: 150
 `)
 	withCommand(TaskKind, commandTask, `format: 1

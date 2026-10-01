@@ -1100,6 +1100,8 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 		ownerSeries:          true,
 		codeAllowedLength:    true,
 		codeType:             true,
+		autonumbering:        true,
+		checkUnique:          true,
 		predefinedDataUpdate: value.PredefinedDataUpdate,
 		presentation:         value.Presentations,
 		choice:               value.ObjectChoice,
@@ -1156,6 +1158,15 @@ type referenceObjectShape struct {
 	// account's code is the code mask's to decide, and the prototype gives the
 	// chart no such property at all.
 	codeAllowedLength bool
+	// autonumbering and checkUnique say this kind has automatic codes and the
+	// check that a code is not repeated. The help gives both to a catalog and
+	// a chart of characteristic types, only the check to a chart of accounts,
+	// and neither to a chart of calculation types or an exchange plan: their
+	// codes are typed in, and the configurations being moved never write the
+	// two properties on them. A property a kind does not have reads as a
+	// setting and does nothing, so it is refused.
+	autonumbering bool
+	checkUnique   bool
 	// codeType says this kind lets the developer choose whether the code is a
 	// string or a number. Three kinds do not, and their code is always a
 	// string: a chart of characteristic types, an exchange plan and a chart of
@@ -1285,6 +1296,19 @@ func validateCodeAllowedLength(shape referenceObjectShape) []string {
 	return nil
 }
 
+// validateCodeProperties refuses automatic codes and the uniqueness check on a
+// kind that has neither - see referenceObjectShape.autonumbering.
+func validateCodeProperties(shape referenceObjectShape) []string {
+	var issues []string
+	if shape.code.Auto && !shape.autonumbering {
+		issues = append(issues, "code.auto belongs to a kind with automatic codes, and this one has its codes typed in")
+	}
+	if shape.code.Unique && !shape.checkUnique {
+		issues = append(issues, "code.unique belongs to a kind that checks its codes for repeats, and this one has no such check")
+	}
+	return issues
+}
+
 // validateCodeType checks the choice of what a code is against the kind that
 // made it. Only a catalog and a chart of calculation types have the choice; for
 // the rest the code is a string, and saying otherwise is describing a property
@@ -1321,6 +1345,7 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	issues = append(issues, validateCodeSeries(shape)...)
 	issues = append(issues, validateCodeAllowedLength(shape)...)
 	issues = append(issues, validateCodeType(shape)...)
+	issues = append(issues, validateCodeProperties(shape)...)
 	issues = append(issues, validatePredefinedDataUpdate(shape.predefinedDataUpdate)...)
 	issues = append(issues, validatePresentations(shape.presentation, configuration)...)
 	issues = append(issues, validateObjectChoice(shape.choice)...)

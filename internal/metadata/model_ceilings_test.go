@@ -134,3 +134,51 @@ restart_interval_on_failure: 172800
 		t.Fatalf("a long expression was refused: %v", issues)
 	}
 }
+
+// Automatic codes and the check for repeats belong to the kinds the help gives
+// them to: both to a catalog and a chart of characteristic types, only the
+// check to a chart of accounts, neither to a chart of calculation types or an
+// exchange plan. A property a kind does not have reads as a setting and does
+// nothing; the configurations being moved never write it.
+func TestCodePropertiesBelongToTheKindsThatHaveThem(t *testing.T) {
+	t.Parallel()
+	body := func(id, code, extra string) string {
+		return "format: 1\nid: " + id + "\nname: Объект\ntitle: {ru: Объект}\ncode: " + code + "\ndescription_length: 100\n" + extra
+	}
+	characteristics := "value_type: [{kind: string, length: 100}]\n"
+	for name, testCase := range map[string]struct {
+		kind    Kind
+		id      string
+		code    string
+		extra   string
+		refused string
+	}{
+		"справочник: оба":          {CatalogKind, catalogID, "{type: string, length: 9, auto: true, unique: true}", "", ""},
+		"ПВХ: оба":                 {ChartOfCharacteristicTypesKind, characteristicsID, "{type: string, length: 9, auto: true, unique: true}", characteristics, ""},
+		"план счетов: контроль":    {ChartOfAccountsKind, accountsID, "{type: string, length: 5, unique: true}", "", ""},
+		"план счетов: автономер":   {ChartOfAccountsKind, accountsID, "{type: string, length: 5, auto: true}", "", "code.auto belongs to a kind"},
+		"ПВР: автономер":           {ChartOfCalculationTypesKind, calcTypesStandardID, "{type: string, length: 9, auto: true}", "", "code.auto belongs to a kind"},
+		"ПВР: контроль":            {ChartOfCalculationTypesKind, calcTypesStandardID, "{type: string, length: 9, unique: true}", "", "code.unique belongs to a kind"},
+		"план обмена: автономер":   {ExchangePlanKind, exchangePlanID, "{type: string, length: 36, auto: true}", "", "code.auto belongs to a kind"},
+		"план обмена: контроль":    {ExchangePlanKind, exchangePlanID, "{type: string, length: 36, unique: true}", "", "code.unique belongs to a kind"},
+		"ПВХ: группы":              {ChartOfCharacteristicTypesKind, characteristicsID, "{type: string, length: 9}", characteristics + "hierarchy: {enabled: true, kind: folders-and-items, folders_on_top: true}\n", ""},
+		"ПВХ: иерархия элементов":  {ChartOfCharacteristicTypesKind, characteristicsID, "{type: string, length: 9}", characteristics + "hierarchy: {enabled: true, kind: items}\n", "always folders-and-items"},
+		"ПВХ: ограничение уровней": {ChartOfCharacteristicTypesKind, characteristicsID, "{type: string, length: 9}", characteristics + "hierarchy: {enabled: true, kind: folders-and-items, limit_levels: true, level_count: 2}\n", "no limit of levels"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := metadataProject(t)
+			writeMetadata(t, root, testCase.kind, testCase.id, body(testCase.id, testCase.code, testCase.extra))
+			_, err := Load(root)
+			if testCase.refused == "" {
+				if err != nil {
+					t.Fatalf("refused: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), testCase.refused) {
+				t.Fatalf("error = %v, expected it to say %q", err, testCase.refused)
+			}
+		})
+	}
+}

@@ -127,7 +127,7 @@ value_type: [{kind: string, length: 100}]
 id: ` + calcTypesStandardID + `
 name: Начисления
 title: {ru: Начисления}
-code: {type: string, length: 9, auto: true, fixed_length: true}
+code: {type: string, length: 9, fixed_length: true}
 description_length: 100
 `},
 		"план обмена": {ExchangePlanKind, exchangePlanID, `format: 1
@@ -239,14 +239,14 @@ description_length: 150
 id: ` + calcTypesStandardID + `
 name: Начисления
 title: {ru: Начисления}
-code: {type: number, length: 9, auto: true}
+code: {type: number, length: 9}
 description_length: 100
 `, true},
 		"план видов характеристик не выбирает": {ChartOfCharacteristicTypesKind, characteristicsID, `format: 1
 id: ` + characteristicsID + `
 name: Свойства
 title: {ru: Свойства}
-code: {type: number, length: 9, auto: true}
+code: {type: number, length: 9}
 description_length: 100
 value_type: [{kind: string, length: 100}]
 `, false},

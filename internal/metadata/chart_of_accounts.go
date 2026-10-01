@@ -173,6 +173,7 @@ func DecodeChartOfAccounts(source string, reader io.Reader, configuration projec
 		list:              value.List,
 		reservedName:      reservedChartOfAccountsName,
 		codeSeries:        true,
+		checkUnique:       true,
 		// codeAllowedLength stays off: the shape of an account code is the code
 		// mask's to decide, and the prototype gives the chart no such property.
 		predefinedDataUpdate: value.PredefinedDataUpdate,

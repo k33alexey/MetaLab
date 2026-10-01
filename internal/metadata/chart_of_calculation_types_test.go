@@ -16,7 +16,7 @@ func TestLoadChartOfCalculationTypesWithCompetitionRules(t *testing.T) {
 id: `+calculationTypesID+`
 name: ОсновныеНачисления
 title: {ru: Основные начисления}
-code: {type: string, length: 5, auto: true}
+code: {type: string, length: 5}
 description_length: 100
 action_period_use: true
 base_dependency: by-action-period
@@ -78,7 +78,7 @@ func TestCompetitionTablesFollowTheSettings(t *testing.T) {
 id: `+calculationTypesID+`
 name: Начисления
 title: {ru: Начисления}
-code: {type: string, length: 5, auto: true}
+code: {type: string, length: 5}
 description_length: 100
 `+header+`
 `)
@@ -160,7 +160,7 @@ base_charts: [` + calculationTypesID + `]
 id: `+calculationTypesID+`
 name: Начисления
 title: {ru: Начисления}
-code: {type: string, length: 5, auto: true}
+code: {type: string, length: 5}
 description_length: 100
 `+body)
 			if _, err := Load(root); err == nil {

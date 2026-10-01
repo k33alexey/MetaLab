@@ -43,8 +43,6 @@ func TestDecodeCommonAttributeStrictAndBounded(t *testing.T) {
 		"zero identity": func(a *CommonAttributeDefinition) { a.ID = uuid.UUID{} },
 		"name":          func(a *CommonAttributeDefinition) { a.Name = "Invalid Name" },
 		"language":      func(a *CommonAttributeDefinition) { a.Title = LocalizedText{"de": "Verantwortlich"} },
-		// A composition that reaches nobody is a field given to no object.
-		"состав никого не достаёт": func(a *CommonAttributeDefinition) { a.Content = nil },
 		"нулевой объект в составе": func(a *CommonAttributeDefinition) {
 			a.Content = append(a.Content, CommonAttributeContentItem{Use: CommonAttributeUseUse})
 		},
@@ -63,6 +61,12 @@ func TestDecodeCommonAttributeStrictAndBounded(t *testing.T) {
 				t.Fatalf("%s: accepted invalid common attribute", name)
 			}
 		})
+	}
+	// A composition that reaches nobody is carried: the designer saves it.
+	nobody := attribute
+	nobody.Content, nobody.AutoUse = nil, CommonAttributeAutoUseDontUse
+	if err := ValidateCommonAttribute("common-attribute.yaml", nobody, metadataConfiguration()); err != nil {
+		t.Fatalf("a common attribute reaching nobody was refused: %v", err)
 	}
 	if _, err := DecodeCommonAttribute("common-attribute.yaml", strings.NewReader(encoded.String()+"unknown: true\n"), metadataConfiguration()); err == nil {
 		t.Fatal("accepted unknown field")
