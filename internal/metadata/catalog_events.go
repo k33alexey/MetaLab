@@ -13,7 +13,6 @@ const (
 	CatalogEventFillCheck    CatalogEvent = "fill-check"
 	CatalogEventBefore       CatalogEvent = "before-write"
 	CatalogEventOnWrite      CatalogEvent = "on-write"
-	CatalogEventAfter        CatalogEvent = "after-write"
 	CatalogEventBeforeDelete CatalogEvent = "before-delete"
 )
 

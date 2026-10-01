@@ -117,7 +117,7 @@ func TestInformationRegisterRepositoryIntegration(t *testing.T) {
 	if err := repository.WriteWithHandler(ctx, set, true, handler); err != nil {
 		t.Fatal(err)
 	}
-	if want := []InformationRegisterEvent{InformationRegisterEventBeforeWrite, InformationRegisterEventOnWrite, InformationRegisterEventAfterWrite}; !slices.Equal(events, want) {
+	if want := []InformationRegisterEvent{InformationRegisterEventBeforeWrite, InformationRegisterEventOnWrite}; !slices.Equal(events, want) {
 		t.Fatalf("events=%v want=%v", events, want)
 	}
 	day := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)

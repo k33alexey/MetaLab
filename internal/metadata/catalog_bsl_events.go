@@ -125,8 +125,6 @@ func catalogEventRoutine(event CatalogEvent, definition CatalogDefinition) (stri
 		return "ПередЗаписью", "BeforeWrite", []bytecode.Value{bytecode.Boolean(false)}
 	case CatalogEventOnWrite:
 		return "ПриЗаписи", "OnWrite", []bytecode.Value{bytecode.Boolean(false)}
-	case CatalogEventAfter:
-		return "ПослеЗаписи", "AfterWrite", nil
 	case CatalogEventBeforeDelete:
 		return "ПередУдалением", "BeforeDelete", []bytecode.Value{bytecode.Boolean(false)}
 	default:

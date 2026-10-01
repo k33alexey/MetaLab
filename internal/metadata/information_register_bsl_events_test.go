@@ -36,10 +36,6 @@ func TestInformationRegisterBSLEventsProvideRecordSetAndCancellation(t *testing.
     Если ЭтотОбъект.Количество() <> 1 Тогда
         Отказ = Истина;
     КонецЕсли;
-КонецПроцедуры
-
-&НаСервере
-Процедура ПослеЗаписи(Замещение)
 КонецПроцедуры`)
 	if len(diagnostics) != 0 {
 		t.Fatal(diagnostics)
@@ -64,7 +60,7 @@ func TestInformationRegisterBSLEventsProvideRecordSetAndCancellation(t *testing.
 	if err != nil || !cancelled {
 		t.Fatalf("append cancellation=%v error=%v", cancelled, err)
 	}
-	for _, event := range []InformationRegisterEvent{InformationRegisterEventOnWrite, InformationRegisterEventAfterWrite} {
+	for _, event := range []InformationRegisterEvent{InformationRegisterEventOnWrite} {
 		if cancelled, err = handler.HandleInformationRegisterEvent(context.Background(), event, set, true); err != nil || cancelled {
 			t.Fatalf("event=%s cancellation=%v error=%v", event, cancelled, err)
 		}

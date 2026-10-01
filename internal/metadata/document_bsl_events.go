@@ -147,8 +147,6 @@ func documentEventRoutine(ctx context.Context, event DocumentEvent, definition D
 		}
 	case DocumentEventOnWrite:
 		return "ПриЗаписи", "OnWrite", []bytecode.Value{bytecode.Boolean(false)}
-	case DocumentEventAfter:
-		return "ПослеЗаписи", "AfterWrite", nil
 	case DocumentEventBeforeDelete:
 		return "ПередУдалением", "BeforeDelete", []bytecode.Value{bytecode.Boolean(false)}
 	case DocumentEventPosting:

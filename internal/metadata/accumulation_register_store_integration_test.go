@@ -147,7 +147,7 @@ func TestAccumulationRegisterRepositoryIntegration(t *testing.T) {
 	if err := repository.WriteWithHandler(ctx, firstSet, true, handler); err != nil {
 		t.Fatal(err)
 	}
-	if want := []AccumulationRegisterEvent{AccumulationRegisterEventBeforeWrite, AccumulationRegisterEventOnWrite, AccumulationRegisterEventAfterWrite}; !slices.Equal(events, want) {
+	if want := []AccumulationRegisterEvent{AccumulationRegisterEventBeforeWrite, AccumulationRegisterEventOnWrite}; !slices.Equal(events, want) {
 		t.Fatalf("events=%v", events)
 	}
 	if firstSet.Records[0].LineNumber != 1 || firstSet.Records[2].LineNumber != 3 {

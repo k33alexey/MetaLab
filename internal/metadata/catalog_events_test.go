@@ -22,9 +22,6 @@ func TestCatalogEventCancellationContract(t *testing.T) {
 	if err := dispatchCatalogEvent(context.Background(), handler, CatalogEventBeforeDelete, &CatalogRecord{}); !errors.Is(err, ErrCatalogDeleteCancelled) {
 		t.Fatalf("before-delete cancellation error = %v", err)
 	}
-	if err := dispatchCatalogEvent(context.Background(), handler, CatalogEventAfter, &CatalogRecord{}); err == nil {
-		t.Fatal("after-write cancellation was accepted")
-	}
 }
 
 func TestCatalogEventsCannotChangeRecordIdentity(t *testing.T) {

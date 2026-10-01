@@ -11,7 +11,6 @@ type AccumulationRegisterEvent string
 const (
 	AccumulationRegisterEventBeforeWrite AccumulationRegisterEvent = "before-write"
 	AccumulationRegisterEventOnWrite     AccumulationRegisterEvent = "on-write"
-	AccumulationRegisterEventAfterWrite  AccumulationRegisterEvent = "after-write"
 )
 
 var ErrAccumulationRegisterWriteCancelled = errors.New("accumulation register write was cancelled by an event handler")
@@ -36,9 +35,6 @@ func dispatchAccumulationRegisterEvent(ctx context.Context, handler Accumulation
 	}
 	if !cancel {
 		return nil
-	}
-	if event == AccumulationRegisterEventAfterWrite {
-		return fmt.Errorf("accumulation register event %s cannot cancel an operation", event)
 	}
 	return ErrAccumulationRegisterWriteCancelled
 }

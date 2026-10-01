@@ -110,8 +110,6 @@ func informationRegisterEventRoutine(event InformationRegisterEvent, replace boo
 		return "ПередЗаписью", "BeforeWrite", []bytecode.Value{bytecode.Boolean(false), bytecode.Boolean(replace)}
 	case InformationRegisterEventOnWrite:
 		return "ПриЗаписи", "OnWrite", []bytecode.Value{bytecode.Boolean(false), bytecode.Boolean(replace)}
-	case InformationRegisterEventAfterWrite:
-		return "ПослеЗаписи", "AfterWrite", []bytecode.Value{bytecode.Boolean(replace)}
 	default:
 		return "", "", nil
 	}

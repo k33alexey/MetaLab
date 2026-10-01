@@ -13,7 +13,6 @@ const (
 	DocumentEventFillCheck    DocumentEvent = "fill-check"
 	DocumentEventBefore       DocumentEvent = "before-write"
 	DocumentEventOnWrite      DocumentEvent = "on-write"
-	DocumentEventAfter        DocumentEvent = "after-write"
 	DocumentEventBeforeDelete DocumentEvent = "before-delete"
 	DocumentEventPosting      DocumentEvent = "posting"
 	DocumentEventUndoPosting  DocumentEvent = "undo-posting"

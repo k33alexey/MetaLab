@@ -84,12 +84,15 @@ func TestASubscriptionListensToWhatThePrototypeLetsItListenTo(t *testing.T) {
 func TestASubscriptionEventIsOneEveryKindOfTheSourceHas(t *testing.T) {
 	t.Parallel()
 	for name, testCase := range map[string]struct{ source, event, message string }{
-		"проведение у справочника":       {"[{kind: catalog-object}]", "posting", "is not an event of catalog-object"},
-		"новый код у документа":          {"[{kind: document-object}]", "on-set-new-code", "is not an event of document-object"},
-		"форма у объекта":                {"[{kind: document-object}]", "form-get-processing", "is not an event of document-object"},
-		"проведение у одного из":         {"[{kind: document-object}, {kind: catalog-object}]", "posting", "is not an event of catalog-object"},
-		"через определяемый тип":         {"[{kind: defined-type, reference: " + sourceDefined + "}]", "on-set-new-code", "is not an event of document-object"},
-		"неизвестное событие":            {"[{kind: document-object}]", "on-open", "is an event of no object"},
+		"проведение у справочника": {"[{kind: catalog-object}]", "posting", "is not an event of catalog-object"},
+		"новый код у документа":    {"[{kind: document-object}]", "on-set-new-code", "is not an event of document-object"},
+		"форма у объекта":          {"[{kind: document-object}]", "form-get-processing", "is not an event of document-object"},
+		"проведение у одного из":   {"[{kind: document-object}, {kind: catalog-object}]", "posting", "is not an event of catalog-object"},
+		"через определяемый тип":   {"[{kind: defined-type, reference: " + sourceDefined + "}]", "on-set-new-code", "is not an event of document-object"},
+		"неизвестное событие":      {"[{kind: document-object}]", "on-open", "is an event of no object"},
+		// «После записи» is a form's event and no object's: the prototype's
+		// object and record set modules have none, so a subscription has none.
+		"после записи":                   {"[{kind: catalog-object}]", "after-write", "is an event of no object"},
 		"ссылка вместо объекта":          {"[{kind: document, reference: " + sourceDocument + "}]", "before-write", "is not an object, a record set or a manager"},
 		"объект неизвестного документа":  {"[{kind: document-object, reference: 52000000-0000-4000-8000-000000000099}]", "before-write", "of unknown object"},
 		"объект справочника на документ": {"[{kind: catalog-object, reference: " + sourceDocument + "}]", "before-write", "of unknown object"},

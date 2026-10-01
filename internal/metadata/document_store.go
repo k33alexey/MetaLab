@@ -185,9 +185,6 @@ func (repository *DocumentRepository) Write(ctx context.Context, record *Documen
 				return err
 			}
 		}
-		if err := dispatchDocumentEvent(operationContext, handler, DocumentEventAfter, cloneDocumentRecord(working)); err != nil {
-			return err
-		}
 		return nil
 	})
 	if err != nil {

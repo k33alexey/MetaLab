@@ -74,15 +74,6 @@ var subscriptionEvents = map[TypeKind][]string{
 	DocumentJournalManagerType:        {"FormGetProcessing"},
 }
 
-// legacyAfterWrite is an event of ours and not of the prototype: no kind has
-// «после записи» among its events in the syntax assistant, and the
-// configurations being moved never name it. It stays for the four kinds it
-// was given to, so that a project written with it reads on.
-var legacyAfterWrite = map[TypeKind]bool{
-	CatalogObjectType: true, DocumentObjectType: true,
-	InformationRegisterRecordSetType: true, AccumulationRegisterRecordSetType: true,
-}
-
 // eventSubscriptionName spells an event of the prototype the way a project
 // file names it: Filling is fill and FillCheckProcessing fill-check, as they
 // always were; the rest is the name in kebab case, OnSetNewCode on-set-new-code.
@@ -109,9 +100,6 @@ func eventSubscriptionName(event string) string {
 // kindHasSubscriptionEvent says the kind has the event, in a project's
 // spelling.
 func kindHasSubscriptionEvent(kind TypeKind, event string) bool {
-	if event == "after-write" {
-		return legacyAfterWrite[kind]
-	}
 	for _, name := range subscriptionEvents[kind] {
 		if eventSubscriptionName(name) == event {
 			return true

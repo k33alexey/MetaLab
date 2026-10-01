@@ -234,12 +234,7 @@ func (repository *AccumulationRegisterRepository) WriteWithHandler(ctx context.C
 		if err := repository.applyTotalsChanges(transactionContext, transaction, definition, old, working.Records, splitting, totalsState); err != nil {
 			return err
 		}
-		for _, event := range []AccumulationRegisterEvent{AccumulationRegisterEventOnWrite, AccumulationRegisterEventAfterWrite} {
-			if err := dispatchAccumulationRegisterEvent(transactionContext, handler, event, cloneAccumulationRegisterRecordSet(working), replace); err != nil {
-				return err
-			}
-		}
-		return nil
+		return dispatchAccumulationRegisterEvent(transactionContext, handler, AccumulationRegisterEventOnWrite, cloneAccumulationRegisterRecordSet(working), replace)
 	})
 	if err != nil {
 		return err

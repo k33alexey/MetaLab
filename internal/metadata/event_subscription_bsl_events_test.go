@@ -144,7 +144,7 @@ func TestDocumentEventSubscriptionHandlerFiresOnlyForItsOwnEventAndCancels(t *te
 		Reference:  DocumentReference{DocumentID: definition.ID, ObjectID: uuid.MustNew()},
 		Attributes: map[uuid.UUID]Value{}, TableParts: map[uuid.UUID][]DocumentRow{},
 	}
-	cancelled, err := handler.HandleDocumentEvent(context.Background(), DocumentEventAfter, record)
+	cancelled, err := handler.HandleDocumentEvent(context.Background(), DocumentEventOnWrite, record)
 	if err != nil || cancelled {
 		t.Fatalf("mismatched event must be a no-op: cancelled=%v error=%v", cancelled, err)
 	}
@@ -209,7 +209,7 @@ func TestInformationRegisterEventSubscriptionHandlerEchoesReplaceAndCancels(t *t
 	if err != nil || !cancelled {
 		t.Fatalf("append must cancel: cancelled=%v error=%v", cancelled, err)
 	}
-	cancelled, err = handler.HandleInformationRegisterEvent(context.Background(), InformationRegisterEventAfterWrite, set, true)
+	cancelled, err = handler.HandleInformationRegisterEvent(context.Background(), InformationRegisterEventOnWrite, set, true)
 	if err != nil || cancelled {
 		t.Fatalf("mismatched event must be a no-op: cancelled=%v error=%v", cancelled, err)
 	}

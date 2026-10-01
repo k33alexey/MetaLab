@@ -175,12 +175,7 @@ func (repository *InformationRegisterRepository) WriteWithHandler(ctx context.Co
 		if err := repository.insertRecords(transactionContext, transaction, definition, working.Records); err != nil {
 			return err
 		}
-		for _, event := range []InformationRegisterEvent{InformationRegisterEventOnWrite, InformationRegisterEventAfterWrite} {
-			if err := dispatchInformationRegisterEvent(transactionContext, handler, event, cloneInformationRegisterRecordSet(working), replace); err != nil {
-				return err
-			}
-		}
-		return nil
+		return dispatchInformationRegisterEvent(transactionContext, handler, InformationRegisterEventOnWrite, cloneInformationRegisterRecordSet(working), replace)
 	})
 	if err != nil {
 		return err

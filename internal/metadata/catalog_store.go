@@ -187,12 +187,10 @@ func (repository *CatalogRepository) Save(ctx context.Context, record *CatalogRe
 		if err := repository.writeTableParts(ctx, transaction, definition, working); err != nil {
 			return err
 		}
-		for _, event := range []CatalogEvent{CatalogEventOnWrite, CatalogEventAfter} {
-			if err := dispatchCatalogEvent(ctx, handler, event, cloneCatalogRecord(working)); err != nil {
-				return err
-			}
-		}
-		return nil
+		// ПриЗаписи is the last event of a write: the object module of the
+		// prototype has no ПослеЗаписи - only a form has it - and an event the
+		// prototype does not have is not raised.
+		return dispatchCatalogEvent(ctx, handler, CatalogEventOnWrite, cloneCatalogRecord(working))
 	})
 	if err != nil {
 		return err

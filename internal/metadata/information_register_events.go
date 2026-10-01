@@ -11,7 +11,6 @@ type InformationRegisterEvent string
 const (
 	InformationRegisterEventBeforeWrite InformationRegisterEvent = "before-write"
 	InformationRegisterEventOnWrite     InformationRegisterEvent = "on-write"
-	InformationRegisterEventAfterWrite  InformationRegisterEvent = "after-write"
 )
 
 var ErrInformationRegisterWriteCancelled = errors.New("information register write was cancelled by an event handler")
@@ -36,9 +35,6 @@ func dispatchInformationRegisterEvent(ctx context.Context, handler InformationRe
 	}
 	if !cancel {
 		return nil
-	}
-	if event == InformationRegisterEventAfterWrite {
-		return fmt.Errorf("information register event %s cannot cancel an operation", event)
 	}
 	return ErrInformationRegisterWriteCancelled
 }

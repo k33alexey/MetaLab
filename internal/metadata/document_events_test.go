@@ -28,7 +28,7 @@ func TestDocumentEventCancellationContract(t *testing.T) {
 			t.Fatalf("posting event %s cancellation error = %v", event, err)
 		}
 	}
-	for _, event := range []DocumentEvent{DocumentEventFill, DocumentEventAfter} {
+	for _, event := range []DocumentEvent{DocumentEventFill} {
 		if err := dispatchDocumentEvent(context.Background(), handler, event, &DocumentRecord{}); err == nil {
 			t.Fatalf("event %s accepted cancellation", event)
 		}

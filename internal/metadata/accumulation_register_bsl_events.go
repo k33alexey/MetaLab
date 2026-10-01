@@ -108,8 +108,6 @@ func accumulationRegisterEventRoutine(event AccumulationRegisterEvent, replace b
 		return "ПередЗаписью", "BeforeWrite", []bytecode.Value{bytecode.Boolean(false), bytecode.Boolean(replace)}
 	case AccumulationRegisterEventOnWrite:
 		return "ПриЗаписи", "OnWrite", []bytecode.Value{bytecode.Boolean(false), bytecode.Boolean(replace)}
-	case AccumulationRegisterEventAfterWrite:
-		return "ПослеЗаписи", "AfterWrite", []bytecode.Value{bytecode.Boolean(replace)}
 	default:
 		return "", "", nil
 	}
