@@ -238,7 +238,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 			target.fields["baseperiodstart"], target.fields["baseperiodend"] = true, true
 		}
 		addAttributes(calculationRegisterFields(item))
-		addAttributes(item.Attributes)
+		addAttributes(item.attributeFields())
 	} else if index, ok := catalog.accumulationRegisterByID[id]; ok {
 		item := catalog.AccumulationRegisters[index]
 		target.operations[PermissionUpdate] = true

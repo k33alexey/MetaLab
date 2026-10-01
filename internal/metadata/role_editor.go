@@ -165,7 +165,7 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	}
 	for _, item := range catalog.CalculationRegisters {
 		appendObject(CalculationRegisterKind, item.ID, item.Name, item.Title,
-			append(calculationRegisterFields(item), item.Attributes...), nil)
+			append(calculationRegisterFields(item), item.attributeFields()...), nil)
 	}
 	sort.Slice(result.Objects, func(i, j int) bool {
 		a, b := result.Objects[i], result.Objects[j]

@@ -1,6 +1,8 @@
 package metadata
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -306,5 +308,61 @@ resources:
 				t.Fatal("a register outrunning its chart was accepted")
 			}
 		})
+	}
+}
+
+// The link to the schedule is filled on attributes of a calculation register,
+// not on its dimensions, in the configurations being moved - twelve of them -
+// and the designer shows it on both (checked by the owner on the platform,
+// 01.10.2026). The link points at a dimension of the schedule, like a
+// dimension's does.
+//
+// Defect caught: the link of an attribute refused or dropped at load (twelve
+// attributes of erp and acc), and a link of an attribute accepted without a
+// schedule or pointing outside it.
+func TestCalculationRegisterAttributeLinksToTheSchedule(t *testing.T) {
+	t.Parallel()
+	attribute := `attributes:
+  - {id: ca100000-0000-4000-8000-000000000020, name: ВидГрафика, title: {ru: Вид графика}, types: [{kind: catalog, reference: ` + calcPeople + `}], schedule_link: %s}
+`
+	root := calculationProject(t, calcRegisterBody+fmt.Sprintf(attribute, calcSchedulePerson))
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("the link of an attribute refused: %v", err)
+	}
+	register, _ := catalog.CalculationRegister("ОсновныеНачисления")
+	if len(register.Attributes) != 1 || register.Attributes[0].ScheduleLink == nil || register.Attributes[0].ScheduleLink.String() != calcSchedulePerson {
+		t.Fatalf("the link of an attribute was lost: %+v", register.Attributes)
+	}
+
+	// Pointing outside the schedule.
+	root = calculationProject(t, calcRegisterBody+fmt.Sprintf(attribute, calcResult))
+	if _, err := Load(root); err == nil {
+		t.Fatal("an attribute linked to something that is not a dimension of the schedule was accepted")
+	}
+	// With no schedule at all.
+	noSchedule := strings.NewReplacer("schedule: "+calcSchedule+"\n", "", "schedule_value: "+calcScheduleValue+"\n", "",
+		"schedule_date: "+calcScheduleDate+"\n", "", "    schedule_link: "+calcSchedulePerson+"\n", "").Replace(calcRegisterBody)
+	if _, err := DecodeCalculationRegister("register.yaml", strings.NewReader(noSchedule+fmt.Sprintf(attribute, calcSchedulePerson)), metadataConfiguration()); err == nil {
+		t.Fatal("an attribute linked to a schedule the register does not have was accepted")
+	}
+}
+
+// The periodicity of a calculation register is one of four: day, month,
+// quarter, year - the syntax assistant's ПериодичностьРегистраРасчета and the
+// designer alike (checked by the owner on the platform, 01.10.2026).
+//
+// Defect caught: ten days and half a year accepted, periodicities the
+// prototype does not give this register and nothing could ever import.
+func TestCalculationRegisterPeriodicityIsThePrototypes(t *testing.T) {
+	t.Parallel()
+	for periodicity, want := range map[string]bool{
+		"day": true, "month": true, "quarter": true, "year": true, "ten-days": false, "half-year": false,
+	} {
+		body := strings.Replace(calcRegisterBody, "periodicity: month", "periodicity: "+periodicity, 1)
+		_, err := DecodeCalculationRegister("register.yaml", strings.NewReader(body), metadataConfiguration())
+		if (err == nil) != want {
+			t.Errorf("periodicity %s: err = %v, want accepted = %v", periodicity, err, want)
+		}
 	}
 }

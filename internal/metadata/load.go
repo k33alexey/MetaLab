@@ -1342,7 +1342,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		if err := add("calculation register", item.ID, item.Name, index, catalog.calculationRegisterByName, catalog.calculationRegisterByID); err != nil {
 			return err
 		}
-		for _, field := range append(calculationRegisterFields(item), item.Attributes...) {
+		for _, field := range append(calculationRegisterFields(item), item.attributeFields()...) {
 			if _, common := catalog.commonAttributeByID[field.ID]; common {
 				continue
 			}
@@ -2076,11 +2076,16 @@ func (catalog *Catalog) validateTaskAddressing(owner string, item TaskDefinition
 // the column would stay empty for as long as anybody cared to look.
 func (catalog *Catalog) validateAccountingRegister(root string, item AccountingRegisterDefinition) error {
 	owner := "accounting register " + item.Name
-	index, ok := catalog.chartOfAccountsByID[item.ChartOfAccounts]
-	if !ok {
-		return fmt.Errorf("%s makes entries against unknown chart of accounts %s", owner, item.ChartOfAccounts)
+	// A register with no chart has no flags to depend on and no ext
+	// dimensions: an empty chart answers both questions.
+	chart := ChartOfAccountsDefinition{Name: "no chart of accounts"}
+	if !item.ChartOfAccounts.IsZero() {
+		index, ok := catalog.chartOfAccountsByID[item.ChartOfAccounts]
+		if !ok {
+			return fmt.Errorf("%s makes entries against unknown chart of accounts %s", owner, item.ChartOfAccounts)
+		}
+		chart = catalog.ChartsOfAccounts[index]
 	}
-	chart := catalog.ChartsOfAccounts[index]
 	flags, extFlags := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
 	for _, flag := range chart.AccountingFlags {
 		flags[flag.ID] = true
@@ -2124,7 +2129,7 @@ func (catalog *Catalog) validateAccountingRegister(root string, item AccountingR
 	// chart was not in hand when the register was decoded: a description of
 	// Субконто4 on a chart that allows three passed there and is caught here.
 	if issues := validateStandardAttributes("standard_attributes", item.StandardAttributes,
-		accountingStandardFields(item.Correspondence, chart.MaxExtDimensionCount), catalog.Project); len(issues) > 0 {
+		accountingDescribedFields(item.Correspondence, chart.MaxExtDimensionCount), catalog.Project); len(issues) > 0 {
 		return fmt.Errorf("%s: %s", owner, strings.Join(issues, "; "))
 	}
 	return catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: AccountingRegisterKind, kind: "accounting register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates})
@@ -2200,7 +2205,12 @@ func (catalog *Catalog) validateCalculationRegister(root string, item Calculatio
 			return fmt.Errorf("%s dimension %s is linked to %s, which is not a dimension of the schedule", owner, dimension.Name, dimension.ScheduleLink)
 		}
 	}
-	for _, field := range append(slices.Clone(item.Resources), item.Attributes...) {
+	for _, attribute := range item.Attributes {
+		if attribute.ScheduleLink != nil && !scheduleDimensions[*attribute.ScheduleLink] {
+			return fmt.Errorf("%s attribute %s is linked to %s, which is not a dimension of the schedule", owner, attribute.Name, attribute.ScheduleLink)
+		}
+	}
+	for _, field := range append(slices.Clone(item.Resources), item.attributeFields()...) {
 		if err := catalog.validateReferences(owner+" field "+field.Name, field.Types); err != nil {
 			return err
 		}

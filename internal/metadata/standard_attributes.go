@@ -135,6 +135,20 @@ func accumulationStandardFields(kind AccumulationRegisterKindValue) []standardFi
 	return fields
 }
 
+// accountingDescribedFields is what the description of an accounting register
+// may describe: its standard fields, and the kind of entry even under double
+// entry. The prototype keeps the kind of entry among the standard attributes
+// of a register with correspondence too (sb Управленческий) - a description
+// the register carries and has no field for, since two sides tell the kind of
+// entry by themselves.
+func accountingDescribedFields(correspondence bool, extDimensions int) []standardField {
+	fields := accountingStandardFields(correspondence, extDimensions)
+	if correspondence {
+		fields = append(fields, standardField{"ВидДвижения", "RecordType"})
+	}
+	return fields
+}
+
 // accountingStandardFields adds the entry's own: the kind of entry, where there
 // are no two sides to tell it by, and a pair of fields per ext dimension the
 // chart allows. The count comes from the chart of accounts, which lives in

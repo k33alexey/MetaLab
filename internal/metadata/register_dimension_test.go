@@ -64,15 +64,17 @@ func TestDimensionPropertiesBelongToTheirOwnRegister(t *testing.T) {
 		return err
 	}
 
-	// «Использование в итогах» is an accumulation register's, and the register of
-	// balances does not use it either: «для регистра накопления остатков это
-	// свойство не используется».
+	// «Использование в итогах» is an accumulation register's. A register of
+	// balances does not use it and carries it all the same: the prototype
+	// writes it on all 873 dimensions of balance registers.
 	if err := accumulation("turnover", "    use_in_totals: true\n"); err != nil {
 		t.Fatalf("a turnover register refused its own property: %v", err)
 	}
+	if err := accumulation("balance", "    use_in_totals: true\n"); err != nil {
+		t.Fatalf("a balance register refused the property it carries: %v", err)
+	}
 	for name, err := range map[string]error{
 		"использование в итогах у регистра сведений": information("    use_in_totals: true\n"),
-		"использование в итогах у регистра остатков": accumulation("balance", "    use_in_totals: true\n"),
 		"ведущее у регистра накопления":              accumulation("turnover", "    master: true\n"),
 		"основной отбор у регистра накопления":       accumulation("turnover", "    main_filter: true\n"),
 		"режим сокращения у регистра накопления":     accumulation("turnover", "    type_reduction: deny\n"),

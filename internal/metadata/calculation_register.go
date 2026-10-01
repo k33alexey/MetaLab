@@ -17,12 +17,14 @@ import (
 type CalculationPeriodicity string
 
 const (
-	CalculationPeriodDay      CalculationPeriodicity = "day"
-	CalculationPeriodTenDays  CalculationPeriodicity = "ten-days"
-	CalculationPeriodMonth    CalculationPeriodicity = "month"
-	CalculationPeriodQuarter  CalculationPeriodicity = "quarter"
-	CalculationPeriodHalfYear CalculationPeriodicity = "half-year"
-	CalculationPeriodYear     CalculationPeriodicity = "year"
+	// The four of ПериодичностьРегистраРасчета in the syntax assistant, and the
+	// four the designer offers (checked by the owner on the platform,
+	// 01.10.2026). Ten days and half a year are periodicities of other things
+	// - an aggregate, a report - and not of this register.
+	CalculationPeriodDay     CalculationPeriodicity = "day"
+	CalculationPeriodMonth   CalculationPeriodicity = "month"
+	CalculationPeriodQuarter CalculationPeriodicity = "quarter"
+	CalculationPeriodYear    CalculationPeriodicity = "year"
 )
 
 // RecalculationDimension carries both links a recalculation needs: which
@@ -96,17 +98,38 @@ type CalculationRegisterDefinition struct {
 	ScheduleValue *uuid.UUID `yaml:"schedule_value,omitempty" json:"scheduleValue,omitempty"`
 	ScheduleDate  *uuid.UUID `yaml:"schedule_date,omitempty" json:"scheduleDate,omitempty"`
 
-	Dimensions         []RegisterDimension `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
-	Resources          []Attribute         `yaml:"resources" json:"resources"`
-	Attributes         []Attribute         `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	StandardAttributes []StandardAttribute `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
-	Recalculations     []Recalculation     `yaml:"recalculations,omitempty" json:"recalculations,omitempty"`
-	Forms              RegisterForms       `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands           []ObjectCommand     `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates          []ObjectTemplate    `yaml:"templates,omitempty" json:"templates,omitempty"`
+	Dimensions         []RegisterDimension            `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
+	Resources          []Attribute                    `yaml:"resources" json:"resources"`
+	Attributes         []CalculationRegisterAttribute `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	StandardAttributes []StandardAttribute            `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
+	Recalculations     []Recalculation                `yaml:"recalculations,omitempty" json:"recalculations,omitempty"`
+	Forms              RegisterForms                  `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands           []ObjectCommand                `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates          []ObjectTemplate               `yaml:"templates,omitempty" json:"templates,omitempty"`
 }
 
 // DecodeCalculationRegister reads and validates one calculation register.
+// CalculationRegisterAttribute is an attribute of a calculation register: an
+// attribute like any other, and the link to the schedule a dimension has too.
+// The link is filled on attributes, not on dimensions, in the configurations
+// being moved - twelve of them, all pointing at a dimension of the working
+// schedule - and the designer shows it on both (checked by the owner on the
+// platform, 01.10.2026; not on a resource).
+type CalculationRegisterAttribute struct {
+	Attribute    `yaml:",inline"`
+	ScheduleLink *uuid.UUID `yaml:"schedule_link,omitempty" json:"scheduleLink,omitempty"`
+}
+
+// attributeFields is the attributes as plain fields, for the checks and the
+// schema that see no difference between them and any other field.
+func (value CalculationRegisterDefinition) attributeFields() []Attribute {
+	fields := make([]Attribute, len(value.Attributes))
+	for index, attribute := range value.Attributes {
+		fields[index] = attribute.Attribute
+	}
+	return fields
+}
+
 func DecodeCalculationRegister(source string, reader io.Reader, configuration project.Project) (CalculationRegisterDefinition, error) {
 	var value CalculationRegisterDefinition
 	if err := decodeStrict(source, reader, &value); err != nil {
@@ -118,15 +141,14 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, CalculationRegisterKind,
 		recordIndexTables(standardFieldsOfKind(CalculationRegisterKind),
 			attributeNames(RegisterDimensionAttributes(value.Dimensions)), attributeNames(value.Resources),
-			attributeNames(value.Attributes)))...)
+			attributeNames(value.attributeFields())))...)
 	if value.ChartOfCalculationTypes.IsZero() {
 		issues = append(issues, "chart_of_calculation_types is required: without kinds of accrual there is nothing to calculate")
 	}
 	switch value.Periodicity {
-	case CalculationPeriodDay, CalculationPeriodTenDays, CalculationPeriodMonth,
-		CalculationPeriodQuarter, CalculationPeriodHalfYear, CalculationPeriodYear:
+	case CalculationPeriodDay, CalculationPeriodMonth, CalculationPeriodQuarter, CalculationPeriodYear:
 	default:
-		issues = append(issues, "periodicity must be day, ten-days, month, quarter, half-year or year")
+		issues = append(issues, "periodicity must be day, month, quarter or year")
 	}
 	if len(value.Resources) == 0 {
 		issues = append(issues, "resources must contain at least one item: a calculation with no result is not a calculation")
@@ -157,11 +179,15 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 		issues = append(issues, validateResourceIndexing(prefix, resource.Indexing)...)
 		issues = append(issues, validateMovementFieldStorage(prefix, resource)...)
 	}
-	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, func(name string) bool {
+	issues = append(issues, validateAttributes("attributes", value.attributeFields(), configuration, func(name string) bool {
 		return names[strings.ToLower(name)] || reservedCalculationRegisterName(name)
 	})...)
 	for index, attribute := range value.Attributes {
-		issues = append(issues, validateMovementFieldStorage(fmt.Sprintf("attributes[%d]", index), attribute)...)
+		prefix := fmt.Sprintf("attributes[%d]", index)
+		issues = append(issues, validateMovementFieldStorage(prefix, attribute.Attribute)...)
+		if attribute.ScheduleLink != nil && (value.Schedule == nil || attribute.ScheduleLink.IsZero()) {
+			issues = append(issues, prefix+".schedule_link needs a schedule: there is no schedule for it to link to")
+		}
 	}
 	// The dimensions belong here too - see the accounting register for what
 	// leaving a group out of these checks costs on both sides.
@@ -170,7 +196,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 		dimensionFields = append(dimensionFields, dimension.Attribute)
 	}
 	calculationFields := []fieldGroup{
-		{"dimensions", dimensionFields}, {"resources", value.Resources}, {"attributes", value.Attributes},
+		{"dimensions", dimensionFields}, {"resources", value.Resources}, {"attributes", value.attributeFields()},
 	}
 	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
 	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(CalculationRegisterKind), configuration)...)
@@ -310,7 +336,14 @@ func cloneCalculationRegister(value CalculationRegisterDefinition) CalculationRe
 	value.Title = cloneTitle(value.Title)
 	value.Dimensions = cloneRegisterDimensions(value.Dimensions)
 	value.Resources = cloneAttributes(value.Resources)
-	value.Attributes = cloneAttributes(value.Attributes)
+	attributes := make([]CalculationRegisterAttribute, len(value.Attributes))
+	for index, attribute := range value.Attributes {
+		attributes[index] = CalculationRegisterAttribute{Attribute: cloneAttributes([]Attribute{attribute.Attribute})[0], ScheduleLink: cloneUUIDPointer(attribute.ScheduleLink)}
+	}
+	if value.Attributes == nil {
+		attributes = nil
+	}
+	value.Attributes = attributes
 	value.Recalculations = cloneRecalculations(value.Recalculations)
 	for _, id := range []**uuid.UUID{&value.Schedule, &value.ScheduleValue, &value.ScheduleDate} {
 		if *id != nil {

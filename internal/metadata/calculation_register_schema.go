@@ -90,7 +90,7 @@ func (catalog *Catalog) calculationRegisterTables(definition CalculationRegister
 			return nil, fmt.Errorf("calculation register %s field %s: %w", definition.Name, field.Name, err)
 		}
 	}
-	for _, attribute := range definition.Attributes {
+	for _, attribute := range definition.attributeFields() {
 		if err := catalog.appendAttributeSchema(&table, attribute); err != nil {
 			return nil, fmt.Errorf("calculation register %s attribute %s: %w", definition.Name, attribute.Name, err)
 		}

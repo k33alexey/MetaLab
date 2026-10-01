@@ -55,7 +55,12 @@ type AccountingRegisterDefinition struct {
 
 	// ChartOfAccounts is where the accounts come from, and with them the
 	// analytics: a register has no ext dimensions of its own.
-	ChartOfAccounts uuid.UUID `yaml:"chart_of_accounts" json:"chartOfAccounts"`
+	//
+	// It may be left empty: the designer saves a register with no chart of
+	// accounts (checked by the owner on the platform, 01.10.2026). Such a
+	// register has no account to point at and no ext dimensions; its account
+	// columns are kept, with no reference behind them.
+	ChartOfAccounts uuid.UUID `yaml:"chart_of_accounts,omitempty" json:"chartOfAccounts,omitempty"`
 	// Correspondence is double entry: an entry names a debit account and a
 	// credit account at once. Without it an entry touches one account, and
 	// there are no two sides to tell apart.
@@ -88,24 +93,18 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
 	issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
-	if value.ChartOfAccounts.IsZero() {
-		issues = append(issues, "chart_of_accounts is required: a register of entries without accounts records nothing")
-	}
 	if len(value.Resources) == 0 {
 		issues = append(issues, "resources must contain at least one item: an entry with no amount is not an entry")
 	}
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
-	// What a dimension and a resource share: the common set, the two sides,
-	// and the flag of the chart of accounts.
-	validateField := func(prefix string, field Attribute, balance bool, accountingFlag *uuid.UUID) {
+	// What a dimension and a resource share: the common set and the flag of
+	// the chart of accounts. «Balance» is not checked against correspondence:
+	// the designer offers it without correspondence too, on a dimension and on
+	// a resource alike (checked by the owner on the platform, 01.10.2026), and
+	// the test configurations of mdclasses keep it so.
+	validateField := func(prefix string, field Attribute, accountingFlag *uuid.UUID) {
 		issues = append(issues, validateRegisterField(prefix, field, value.ID,
 			names, ids, configuration, reservedAccountingRegisterName)...)
-		// Two sides exist only under double entry. Marking a field as the
-		// same on both sides of an entry that has one side says nothing, and
-		// a setting that says nothing hides the one that would.
-		if balance && !value.Correspondence {
-			issues = append(issues, prefix+".balance needs correspondence: without two sides there is nothing for a value to be the same on")
-		}
 		if accountingFlag != nil && accountingFlag.IsZero() {
 			issues = append(issues, prefix+".accounting_flag must be a non-zero UUID")
 		}
@@ -113,12 +112,12 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	}
 	for index, dimension := range value.Dimensions {
 		prefix := fmt.Sprintf("dimensions[%d]", index)
-		validateField(prefix, dimension.Attribute, dimension.Balance, dimension.AccountingFlag)
+		validateField(prefix, dimension.Attribute, dimension.AccountingFlag)
 		issues = append(issues, validateRegisterDimension(prefix, dimension, accountingRegisterDimensions())...)
 	}
 	for index, resource := range value.Resources {
 		prefix := fmt.Sprintf("resources[%d]", index)
-		validateField(prefix, resource.Attribute, resource.Balance, resource.AccountingFlag)
+		validateField(prefix, resource.Attribute, resource.AccountingFlag)
 		if resource.ExtDimensionAccountingFlag != nil && resource.ExtDimensionAccountingFlag.IsZero() {
 			issues = append(issues, prefix+".ext_dimension_accounting_flag must be a non-zero UUID")
 		}
@@ -135,7 +134,7 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	// load.go narrows it once the chart is read.
 	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
 	issues = append(issues, validatePeriodAdjustmentLength(value.PeriodAdjustmentLength)...)
-	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accountingStandardFields(value.Correspondence, mentionedExtDimensions(value)), configuration)...)
+	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accountingDescribedFields(value.Correspondence, mentionedExtDimensions(value)), configuration)...)
 	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, AccountingRegisterKind,
 		recordIndexTables(accountingStandardFields(value.Correspondence, mentionedExtDimensions(value)),
 			attributeNames(RegisterDimensionAttributes(value.Dimensions)), attributeNames(accountingResourceAttributes(value.Resources)),

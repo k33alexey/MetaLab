@@ -366,12 +366,25 @@ standard_attributes:
   - name: ВидДвижения
     title: {ru: Дебет или кредит}
 `)
-			_, err := Load(root)
-			switch {
-			case correspondence && err == nil:
-				t.Fatal("the kind of entry was described on a register that tells the side by the accounts")
-			case !correspondence && err != nil:
-				t.Fatalf("the kind of entry was refused on a register that has one: %v", err)
+			// The prototype keeps the description under double entry too
+			// (sb Управленческий): it is carried, whether or not the
+			// register has the field.
+			catalog, err := Load(root)
+			if err != nil {
+				t.Fatalf("the description of the kind of entry refused: %v", err)
+			}
+			register, _ := catalog.AccountingRegister("Хозрасчетный")
+			if len(register.StandardAttributes) != 1 || register.StandardAttributes[0].Name != "ВидДвижения" {
+				t.Fatalf("description = %+v", register.StandardAttributes)
+			}
+			// A described field is not a field: under double entry the
+			// register still has no kind of entry of its own.
+			has := false
+			for _, field := range catalog.standardAttributeFields(AccountingRegisterKind, register.ID) {
+				has = has || field.ru == "ВидДвижения"
+			}
+			if has == correspondence {
+				t.Fatalf("correspondence %v: the register has a kind of entry = %v", correspondence, has)
 			}
 		})
 	}

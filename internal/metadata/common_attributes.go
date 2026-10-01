@@ -906,7 +906,7 @@ func (catalog *Catalog) objectFields(location commonAttributeTarget) []Attribute
 		fields = append(fields, accountingResourceAttributes(definition.Resources)...)
 	case "calculation register":
 		definition := catalog.CalculationRegisters[location.index]
-		fields = append(fields, definition.Attributes...)
+		fields = append(fields, definition.attributeFields()...)
 		fields = append(fields, definition.Resources...)
 		for _, dimension := range definition.Dimensions {
 			fields = append(fields, dimension.Attribute)
@@ -982,7 +982,7 @@ func (catalog *Catalog) appendPropagatedAttribute(location commonAttributeTarget
 	case "accounting register":
 		catalog.AccountingRegisters[location.index].Attributes = append(catalog.AccountingRegisters[location.index].Attributes, attribute)
 	case "calculation register":
-		catalog.CalculationRegisters[location.index].Attributes = append(catalog.CalculationRegisters[location.index].Attributes, attribute)
+		catalog.CalculationRegisters[location.index].Attributes = append(catalog.CalculationRegisters[location.index].Attributes, CalculationRegisterAttribute{Attribute: attribute})
 	case "sequence":
 		catalog.Sequences[location.index].CommonAttributeFields = append(catalog.Sequences[location.index].CommonAttributeFields, attribute)
 	case "recalculation":

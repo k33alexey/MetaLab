@@ -74,9 +74,14 @@ func (catalog *Catalog) accountingRegisterTable(definition AccountingRegisterDef
 	// entries rather than of totals, and nothing ever wrote or read it - a
 	// schema that promised a mechanism that did not exist. When the totals
 	// come, splitting comes with them and in the right place.
-	accountsTable, err := PhysicalCatalogTable(definition.ChartOfAccounts)
-	if err != nil {
-		return schemadiff.Table{}, err
+	// With no chart of accounts there is nothing for an account to point at:
+	// the columns stay, without a reference behind them.
+	accountsTable := ""
+	if !definition.ChartOfAccounts.IsZero() {
+		var err error
+		if accountsTable, err = PhysicalCatalogTable(definition.ChartOfAccounts); err != nil {
+			return schemadiff.Table{}, err
+		}
 	}
 	// One account per side under double entry, one account in total without
 	// it. Both sides point at the same chart: an entry between two charts of
@@ -86,11 +91,13 @@ func (catalog *Catalog) accountingRegisterTable(definition AccountingRegisterDef
 		accounts = []struct{ column, tag string }{{"account_dr", "d"}, {"account_cr", "c"}}
 	}
 	for _, account := range accounts {
-		table.Columns = append(table.Columns, schemadiff.Column{Name: account.column, Type: "uuid", Nullable: false})
-		table.Constraints = append(table.Constraints, schemadiff.Constraint{
-			Name: physicalObjectName("f"+account.tag, definition.ID), Type: "foreign_key",
-			Definition: "FOREIGN KEY (" + account.column + ") REFERENCES " + schemadiff.ApplicationSchema + "." + accountsTable + "(ref) DEFERRABLE INITIALLY DEFERRED",
-		})
+		table.Columns = append(table.Columns, schemadiff.Column{Name: account.column, Type: "uuid", Nullable: accountsTable == ""})
+		if accountsTable != "" {
+			table.Constraints = append(table.Constraints, schemadiff.Constraint{
+				Name: physicalObjectName("f"+account.tag, definition.ID), Type: "foreign_key",
+				Definition: "FOREIGN KEY (" + account.column + ") REFERENCES " + schemadiff.ApplicationSchema + "." + accountsTable + "(ref) DEFERRABLE INITIALLY DEFERRED",
+			})
+		}
 		table.Indexes = append(table.Indexes, schemadiff.Index{
 			Name: physicalObjectName("ia"+account.tag, definition.ID), Method: "btree", Keys: []string{account.column},
 		})

@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -194,8 +195,6 @@ func TestAccountingRegisterRefusesWhatWouldStayEmpty(t *testing.T) {
 		correspondence bool
 		fields         string
 	}{
-		"балансовый без корреспонденции": {false, `resources:
-  - {id: ` + entriesSum + `, name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}], balance: true}`},
 		"признак учёта чужого плана": {true, `resources:
   - {id: ` + entriesSum + `, name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}], accounting_flag: ` + entriesExtFlag + `}`},
 		"признак учёта субконто чужого плана": {true, `resources:
@@ -212,5 +211,73 @@ func TestAccountingRegisterRefusesWhatWouldStayEmpty(t *testing.T) {
 				t.Fatal("a register that would keep an empty column was accepted")
 			}
 		})
+	}
+}
+
+// The designer saves an accounting register with no chart of accounts, and
+// offers «balance» without correspondence on a dimension and on a resource
+// (checked by the owner on the platform, 01.10.2026). Such a register keeps its
+// account column, with nothing behind it to refer to.
+//
+// Defect caught: a register without a chart refused at load; «balance» refused
+// without correspondence; a reference to a chart that is not there built into
+// the schema; and a flag of a chart accepted on a register that has none.
+func TestAccountingRegisterWithoutAChartAndBalanceWithoutCorrespondence(t *testing.T) {
+	t.Parallel()
+	root := entriesProject(t, false, "")
+	writeMetadata(t, root, AccountingRegisterKind, entriesRegister, `format: 1
+id: `+entriesRegister+`
+name: Хозрасчетный
+title: {ru: Хозрасчётный}
+dimensions:
+  - {id: `+entriesCompany+`, name: Организация, title: {ru: Организация}, types: [{kind: catalog, reference: `+entriesCompanies+`}], balance: true}
+resources:
+  - {id: `+entriesSum+`, name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}], balance: true}
+`)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a register without a chart, or balance without correspondence, refused: %v", err)
+	}
+	register, _ := catalog.AccountingRegister("Хозрасчетный")
+	schema, err := catalog.ApplicationSchema()
+	if err != nil {
+		t.Fatal(err)
+	}
+	name, err := PhysicalAccountingRegisterTable(register.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, table := range schema.Tables {
+		if table.Name != name {
+			continue
+		}
+		for _, column := range table.Columns {
+			if column.Name == "account" {
+				found = true
+				if !column.Nullable {
+					t.Fatal("an account with no chart behind it must be allowed to stay empty")
+				}
+			}
+		}
+		for _, constraint := range table.Constraints {
+			if strings.Contains(constraint.Definition, "account") && constraint.Type == "foreign_key" {
+				t.Fatalf("the account points at a chart that is not there: %s", constraint.Definition)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("the register lost its account column")
+	}
+
+	writeMetadata(t, root, AccountingRegisterKind, entriesRegister, `format: 1
+id: `+entriesRegister+`
+name: Хозрасчетный
+title: {ru: Хозрасчётный}
+resources:
+  - {id: `+entriesSum+`, name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}], accounting_flag: `+entriesFlag+`}
+`)
+	if _, err := Load(root); err == nil {
+		t.Fatal("a flag of a chart accepted on a register that has no chart")
 	}
 }

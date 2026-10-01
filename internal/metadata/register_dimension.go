@@ -129,8 +129,12 @@ func informationRegisterDimensions() dimensionProperties {
 	return dimensionProperties{master: true, mainFilter: true, typeReduction: true}
 }
 
-func accumulationRegisterDimensions(balance bool) dimensionProperties {
-	return dimensionProperties{useInTotals: !balance}
+// A register of balances carries «use in totals» and does not read it: the
+// prototype writes it on all 873 dimensions of balance registers in the
+// configurations being moved, and the syntax assistant says a register of
+// balances does not use it. Refusing it lost every one of them at import.
+func accumulationRegisterDimensions(bool) dimensionProperties {
+	return dimensionProperties{useInTotals: true}
 }
 
 // calculationRegisterDimensions is the answer for a calculation register: the
