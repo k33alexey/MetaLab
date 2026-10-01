@@ -35,7 +35,7 @@ func TestDecodeCommonModuleStrictAndBounded(t *testing.T) {
 		"name":          func(m *CommonModuleDefinition) { m.Name = "Invalid Name" },
 		"language":      func(m *CommonModuleDefinition) { m.Title = LocalizedText{"de": "Allgemein"} },
 		"zero module":   func(m *CommonModuleDefinition) { m.Module = uuid.UUID{} },
-		"neither client nor server": func(m *CommonModuleDefinition) {
+		"no context at all": func(m *CommonModuleDefinition) {
 			m.Server, m.Client = false, false
 		},
 		"server_call without server": func(m *CommonModuleDefinition) {
@@ -142,5 +142,44 @@ func TestLoadValidatesCommonModuleSourceAndUniqueness(t *testing.T) {
 		"\nname: Дубликат\ntitle: {ru: Дубликат}\nserver: true\nmodule: "+moduleSourceID.String()+"\n")
 	if _, err := load(root, true); err == nil || !strings.Contains(err.Error(), "share the same module source") {
 		t.Fatalf("two common modules sharing one module source were accepted: %v", err)
+	}
+}
+
+// A module of any one context is saved by the designer: the external
+// connection alone, or the ordinary application's client alone (checked by the
+// owner, 01.10.2026). Defect caught: "client or server" refused both, and with
+// them every configuration that has one. The ordinary client's flag is carried
+// and runs nothing: beside the server it leaves a server module, and alone it
+// gives a client module nobody calls, as the root's ordinary module is.
+func TestCommonModuleOfAnyOneContextIsSaved(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		set  func(*CommonModuleDefinition)
+		want syntax.ExecutionContext
+	}{
+		"только внешнее соединение": {func(m *CommonModuleDefinition) { m.ExternalConnection = true }, syntax.ContextServer},
+		"только обычное приложение": {func(m *CommonModuleDefinition) { m.ClientOrdinaryApplication = true }, syntax.ContextClient},
+		"сервер и обычное приложение": {func(m *CommonModuleDefinition) {
+			m.Server, m.ClientOrdinaryApplication = true, true
+		}, syntax.ContextServer},
+	} {
+		module := commonModuleFixture()
+		module.Server = false
+		test.set(&module)
+		var encoded bytes.Buffer
+		if err := Encode(&encoded, module); err != nil {
+			t.Fatal(err)
+		}
+		decoded, err := DecodeCommonModule("common-module.yaml", bytes.NewReader(encoded.Bytes()), metadataConfiguration())
+		if err != nil {
+			t.Errorf("%s: refused: %v", name, err)
+			continue
+		}
+		if decoded.ClientOrdinaryApplication != module.ClientOrdinaryApplication {
+			t.Errorf("%s: the ordinary client's flag was lost", name)
+		}
+		if got := decoded.DefaultContext(); got != test.want {
+			t.Errorf("%s: context = %v, want %v", name, got, test.want)
+		}
 	}
 }

@@ -180,3 +180,89 @@ title: {ru: Задание}
 		})
 	}
 }
+
+// A job is shipped with the schedule the developer gave it, and the designer
+// saves that schedule with the job - 74, 36 and 62 jobs of the configurations
+// being moved have one. Defect caught: the model said a schedule is data of
+// the database and carried none, so "every night at two" arrived as "never".
+func TestScheduledJobCarriesItsSchedule(t *testing.T) {
+	t.Parallel()
+	root := jobProject(t)
+	writeMetadata(t, root, ScheduledJobKind, jobID, `format: 1
+id: `+jobID+`
+name: ЗагрузкаКурсовВалют
+title: {ru: Загрузка курсов валют}
+module: `+jobModule+`
+procedure: ЗагрузитьКурсы
+schedule:
+  begin_date: "2021-05-01"
+  begin_time: "02:00:00"
+  end_time: "06:00:00"
+  completion_time: "04:00:00"
+  completion_interval: 3600
+  repeat_period_in_day: 600
+  repeat_pause: 60
+  week_day_in_month: -1
+  day_in_month: -1
+  weeks_period: 1
+  days_repeat_period: 1
+  week_days: [6, 7]
+  months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+  detailed_daily_schedules:
+    - {begin_time: "01:00:00", week_days: [6]}
+    - {begin_time: "14:00:00", week_days: [7]}
+`)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, _ := catalog.ScheduledJob("ЗагрузкаКурсовВалют")
+	schedule := job.Schedule
+	if schedule == nil || schedule.BeginDate != "2021-05-01" || schedule.BeginTime != "02:00:00" || schedule.CompletionInterval != 3600 ||
+		schedule.RepeatPeriodInDay != 600 || schedule.DayInMonth != -1 || len(schedule.WeekDays) != 2 || len(schedule.Months) != 12 {
+		t.Fatalf("the schedule was lost: %+v", schedule)
+	}
+	if len(schedule.DetailedDailySchedules) != 2 || schedule.DetailedDailySchedules[1].BeginTime != "14:00:00" {
+		t.Fatalf("the schedules of single days were lost: %+v", schedule.DetailedDailySchedules)
+	}
+	schedule.WeekDays[0] = 1
+	schedule.DetailedDailySchedules[0].WeekDays[0] = 1
+	again, _ := catalog.ScheduledJob("ЗагрузкаКурсовВалют")
+	if again.Schedule.WeekDays[0] != 6 || again.Schedule.DetailedDailySchedules[0].WeekDays[0] != 6 {
+		t.Fatal("the schedule handed out is shared with the catalog")
+	}
+}
+
+// A schedule the calendar cannot keep is refused: a date or a time that is not
+// one, a negative period, a thirty-second day, a sixth week, an eighth day of
+// the week, a month twice - at any depth.
+func TestScheduledJobScheduleRefusesWhatTheCalendarHasNot(t *testing.T) {
+	t.Parallel()
+	for name, broken := range map[string]struct{ schedule, want string }{
+		"дата":              {`begin_date: "01.05.2021"`, "schedule.begin_date must be a date"},
+		"время":             {`end_time: "25:00:00"`, "schedule.end_time must be a time of day"},
+		"отрицательный":     {`repeat_pause: -1`, "schedule.repeat_pause must not be negative"},
+		"день месяца":       {`day_in_month: 32`, "schedule.day_in_month must count at most 31"},
+		"неделя месяца":     {`week_day_in_month: -6`, "schedule.week_day_in_month must count at most five"},
+		"день недели":       {`week_days: [8]`, "schedule.week_days must be numbers from 1 to 7"},
+		"месяц дважды":      {`months: [1, 1]`, "schedule.months must be numbers from 1 to 12"},
+		"день в расписании": {`detailed_daily_schedules: [{begin_time: "1:00"}]`, "schedule.detailed_daily_schedules[0].begin_time"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := jobProject(t)
+			writeMetadata(t, root, ScheduledJobKind, jobID, `format: 1
+id: `+jobID+`
+name: ЗагрузкаКурсовВалют
+title: {ru: Загрузка курсов валют}
+module: `+jobModule+`
+procedure: ЗагрузитьКурсы
+schedule: {`+broken.schedule+`}
+`)
+			_, err := Load(root)
+			if err == nil || !strings.Contains(err.Error(), broken.want) {
+				t.Fatalf("error = %v, want one saying %q", err, broken.want)
+			}
+		})
+	}
+}

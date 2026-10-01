@@ -41,6 +41,13 @@ type CommonModuleDefinition struct {
 	// ExternalConnection lets the procedures of this module be used over an
 	// external connection.
 	ExternalConnection bool `yaml:"external_connection,omitempty"`
+	// ClientOrdinaryApplication is the prototype's flag of a module compiled
+	// in the client of an ordinary application. ML has no ordinary
+	// application, so the flag is carried and runs nothing: about 1600, 900
+	// and 1000 modules of the configurations being moved have it, nearly all
+	// beside the server flag, and dropping it would lose what the module was
+	// written for.
+	ClientOrdinaryApplication bool `yaml:"client_ordinary_application,omitempty"`
 	// ReturnValuesReuse caches what the exported functions of this module
 	// return. It is not a flag but a choice of three - see below.
 	ReturnValuesReuse ReturnValuesReuse `yaml:"return_values_reuse,omitempty"`
@@ -86,8 +93,11 @@ func ValidateCommonModule(source string, value CommonModuleDefinition, configura
 	if value.Module.IsZero() {
 		issues = append(issues, "module must be a non-zero UUID")
 	}
-	if !value.Client && !value.Server {
-		issues = append(issues, "at least one of client or server must be set")
+	// Any one context is enough: the designer saves a module that is only
+	// for the external connection, or only for the ordinary application
+	// (checked by the owner, 01.10.2026).
+	if !value.Client && !value.Server && !value.ExternalConnection && !value.ClientOrdinaryApplication {
+		issues = append(issues, "at least one of client, server, external_connection or client_ordinary_application must be set")
 	}
 	if value.ServerCall && !value.Server {
 		issues = append(issues, "server_call requires server")
@@ -132,14 +142,25 @@ func cloneCommonModuleDefinition(value CommonModuleDefinition) CommonModuleDefin
 	return value
 }
 
-// DefaultContext maps a common module's Client/Server flags to the
-// compiler's per-module default execution context, so its routines need no
-// per-routine directive to be classified correctly.
+// DefaultContext maps a common module's flags to the compiler's per-module
+// default execution context, so its routines need no per-routine directive to
+// be classified correctly.
+//
+// The ordinary application's client is not a context of ML: beside any other
+// flag it changes nothing, and a module of the server and the ordinary client
+// stays a server module. A module of the ordinary client alone is compiled as
+// a client module and called by nobody, exactly as the ordinary application
+// module of the root is. A module of the external connection alone is a
+// server module: the external connection runs on the server.
 func (definition CommonModuleDefinition) DefaultContext() syntax.ExecutionContext {
 	switch {
 	case definition.Client && definition.Server:
 		return syntax.ContextClientServer
 	case definition.Client:
+		return syntax.ContextClient
+	case definition.Server, definition.ExternalConnection:
+		return syntax.ContextServer
+	case definition.ClientOrdinaryApplication:
 		return syntax.ContextClient
 	default:
 		return syntax.ContextServer

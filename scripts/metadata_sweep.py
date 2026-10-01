@@ -122,7 +122,6 @@ HELP_AS_FILES_BY_KIND = {
 
 # Решено в docs/requirements: свойство есть у прототипа, у нас его нет нарочно.
 HELP_DECIDED = {
-    ("ScheduledJob", "Schedule"): "METADATA-OBJECTS.md: расписание - данные базы, а не метаданные",
     ("FilterCriterion", "StandardAttributes"): "METADATA-OBJECTS.md: у критерия отбора стандартных реквизитов нет",
     ("WebSocketClient", "StandardAttributes"): "METADATA-OBJECTS.md: у WebSocket-клиента стандартных реквизитов нет",
 }
