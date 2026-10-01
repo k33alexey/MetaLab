@@ -1,7 +1,11 @@
 package metadata
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/k33alexey/MetaLab/internal/project"
 )
 
 const (
@@ -213,10 +217,6 @@ documents: [` + aroundFirstDoc + `]
 movements: [` + aroundRegister + `]
 dimensions:
   - {id: ` + aroundDimension + `, name: Номенклатура, title: {ru: Номенклатура}, types: [{kind: catalog, reference: ` + aroundGoods + `}], document_attributes: [` + aroundFirstGoods + `], register_dimensions: [` + aroundRegisterQty + `]}`},
-		"измерение, не взятое ниоткуда": {SequenceKind, `
-documents: [` + aroundFirstDoc + `]
-dimensions:
-  - {id: ` + aroundDimension + `, name: Номенклатура, title: {ru: Номенклатура}, types: [{kind: catalog, reference: ` + aroundGoods + `}]}`},
 		"последовательность без документов": {SequenceKind, `
 documents: []`},
 		"журнал показывает чужой реквизит": {DocumentJournalKind, `
@@ -322,4 +322,44 @@ numerator: d0c00000-0000-4000-8000-0000000000ff
 			t.Fatal("a document numbered by nothing was accepted")
 		}
 	})
+}
+
+// A sequence dimension taken from no attribute of any document is filled by
+// code, and the prototype saves it: the one sequence of acc has two such
+// dimensions, set by an event subscription. The sequence keeps its record set
+// module in its own folder, and only that module.
+//
+// Defect caught: the dimension refused at load (the whole of acc with it); the
+// record set module of a sequence having nowhere to lie (it was a single file);
+// and a module of a role a sequence does not have accepted beside it.
+func TestSequenceDimensionMayBeFilledByCodeAndTheSequenceKeepsItsModule(t *testing.T) {
+	t.Parallel()
+	root := aroundDocumentsProject(t)
+	writeMetadata(t, root, SequenceKind, aroundSequence, `format: 1
+id: `+aroundSequence+`
+name: ДокументыОрганизаций
+title: {ru: Документы организаций}
+documents: [`+aroundFirstDoc+`]
+dimensions:
+  - {id: `+aroundDimension+`, name: Номенклатура, title: {ru: Номенклатура}, types: [{kind: catalog, reference: `+aroundGoods+`}]}
+`)
+	folder := filepath.Join(root, "metadata", string(SequenceKind), "ДокументыОрганизаций")
+	module := "Процедура ПередЗаписью(Отказ, Замещение)\nКонецПроцедуры\n"
+	if err := os.WriteFile(filepath.Join(folder, project.RecordSetModuleFile), []byte(module), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a dimension filled by code, or the record set module, refused: %v", err)
+	}
+	if sequence, ok := catalog.Sequence("ДокументыОрганизаций"); !ok || len(sequence.Dimensions) != 1 || len(sequence.Dimensions[0].DocumentAttributes) != 0 {
+		t.Fatalf("sequence = %+v, %v", sequence, ok)
+	}
+
+	if err := os.WriteFile(filepath.Join(folder, project.ObjectModuleFile), []byte(module), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(root); err == nil {
+		t.Fatal("an object module accepted beside a sequence, which has no object")
+	}
 }

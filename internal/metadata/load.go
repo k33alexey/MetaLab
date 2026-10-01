@@ -473,10 +473,13 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := loadKind(root, SequenceKind, func(source string, file *os.File, id uuid.UUID) error {
+	// A sequence keeps a folder, because it keeps a module: the record set
+	// module, which the prototype gives it (acc ДокументыОрганизаций) and a
+	// single file had nowhere to put.
+	if err := loadObjectKind(root, SequenceKind, func(source string, file *os.File, folder string) error {
 		value, err := DecodeSequence(source, file, configuration)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
+		if err == nil && value.Name != folder {
+			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
 		}
 		if err == nil {
 			catalog.Sequences = append(catalog.Sequences, value)
@@ -1725,6 +1728,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		if err := catalog.validateSequence("sequence "+item.Name, item, owners); err != nil {
 			return err
 		}
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: SequenceKind, kind: "sequence", name: item.Name, modules: sequenceModules}); err != nil {
+			return err
+		}
 	}
 	for _, item := range catalog.DocumentJournals {
 		if err := catalog.validateDocumentJournal("document journal "+item.Name, item, owners); err != nil {
@@ -2500,6 +2506,8 @@ var (
 	objectKindModules    = []string{project.ObjectModuleFile, project.ManagerModuleFile}
 	recordSetKindModules = []string{project.RecordSetModuleFile, project.ManagerModuleFile}
 	managerKindModules   = []string{project.ManagerModuleFile}
+	// A sequence has a record set and no manager of its own.
+	sequenceModules = []string{project.RecordSetModuleFile}
 )
 
 type objectFiles struct {

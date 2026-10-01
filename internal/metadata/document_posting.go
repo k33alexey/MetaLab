@@ -157,9 +157,8 @@ type DocumentPosting struct {
 	UnpostPrivileged bool `yaml:"unpost_privileged,omitempty" json:"unpostPrivileged,omitempty"`
 }
 
-// validateDocumentPosting checks the six settings against each other and against
-// the first of them: five of the six describe how posting happens, and a
-// document that forbids posting has no "how".
+// validateDocumentPosting checks each of the six settings against the values
+// the prototype gives it.
 func validateDocumentPosting(posting DocumentPosting) []string {
 	var issues []string
 	if !validRealTimePosting(posting.RealTime) {
@@ -174,23 +173,12 @@ func validateDocumentPosting(posting DocumentPosting) []string {
 	if !validSequenceFilling(posting.SequenceFilling) {
 		issues = append(issues, "posting.sequence_filling must be auto or off")
 	}
-	if posting.Allowed {
-		return issues
-	}
-	// A document that is never posted still takes part in sequences - the
-	// sequence follows documents by date, posted or not - so sequence filling
-	// stays allowed here. The other four are about an operation that cannot
-	// happen.
-	for name, stated := range map[string]bool{
-		"real_time":         posting.RealTime != "",
-		"records_deletion":  posting.RecordsDeletion != "",
-		"records_writing":   posting.RecordsWriting != "",
-		"privileged":        posting.Privileged,
-		"unpost_privileged": posting.UnpostPrivileged,
-	} {
-		if stated {
-			issues = append(issues, "posting."+name+" describes how this document is posted, and posting.allowed is off")
-		}
-	}
+	// The six settings are carried whatever posting.allowed says. With posting
+	// forbidden the designer greys out real-time posting and records deletion
+	// but keeps their values, and leaves the privileged modes editable
+	// (checked by the owner on the platform, 01.10.2026); the configurations
+	// being moved write all six for every one of their 48 unposted documents,
+	// with values that differ from one to the next - and seven of those
+	// documents do have register records, written by code.
 	return issues
 }

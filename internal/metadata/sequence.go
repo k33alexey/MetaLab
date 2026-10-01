@@ -105,9 +105,10 @@ func DecodeSequence(source string, reader io.Reader, configuration project.Proje
 		issues = append(issues, validateTypes(prefix+".types", dimension.Types, value.ID)...)
 		issues = append(issues, validateUniqueIDs(prefix+".document_attributes", dimension.DocumentAttributes)...)
 		issues = append(issues, validateUniqueIDs(prefix+".register_dimensions", dimension.RegisterDimensions)...)
-		if len(dimension.DocumentAttributes) == 0 {
-			issues = append(issues, prefix+" is taken from no attribute of any document, so it never gets a value")
-		}
+		// A dimension taken from no attribute of any document is filled by
+		// code: the prototype saves it, and the one sequence of acc has two
+		// such dimensions, set by an event subscription that writes several
+		// records for one document.
 	}
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return SequenceDefinition{}, err

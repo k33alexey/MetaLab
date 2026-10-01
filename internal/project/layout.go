@@ -163,7 +163,7 @@ var (
 		"charts-of-characteristic-types", "charts-of-accounts", "charts-of-calculation-types", "business-processes", "tasks",
 		"filter-criteria", "settings-storages",
 		"exchange-plans", "document-journals", "accounting-registers", "calculation-registers",
-		"reports", "data-processors"}
+		"reports", "data-processors", "sequences"}
 	// Порядок — тот, в котором виды показываются в дереве конфигурации, а не
 	// алфавитный: сначала группа «Общие», затем объекты верхнего уровня.
 	// Нумераторы и последовательности стоят рядом с документами, потому что

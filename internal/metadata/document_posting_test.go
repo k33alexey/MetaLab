@@ -77,41 +77,38 @@ func TestPostingSettingsTakeOnlyThePrototypesValues(t *testing.T) {
 	}
 }
 
-// Five of the six describe how posting happens. A document that forbids posting
-// has no "how", and saying otherwise is a setting on an operation that cannot
-// occur - which reads as if it were in force.
+// The six settings are carried whether or not the document may be posted. The
+// designer keeps their values under "posting: deny" - it greys two of them out
+// and leaves the privileged modes editable - and the configurations being
+// moved write all six on every one of their 48 unposted documents, with values
+// that differ; seven of those documents have register records, written by
+// code.
 //
-// Sequence filling is the exception and stays allowed: a sequence follows
-// documents by date whether they are posted or not.
-func TestHowAPostingHappensNeedsAPostingToHappen(t *testing.T) {
+// Defect caught: an unposted document with a setting about posting refused at
+// load (48 documents), and a setting read and dropped because posting is off.
+func TestUnpostedDocumentCarriesItsPostingSettings(t *testing.T) {
 	t.Parallel()
-	for name, body := range map[string]struct {
-		posting string
-		refused bool
-	}{
-		"оперативное проведение":            {"real_time: deny", true},
-		"удаление движений":                 {"records_deletion: off", true},
-		"запись движений":                   {"records_writing: selected", true},
-		"привилегированный режим":           {"privileged: true", true},
-		"отмена в привилегированном режиме": {"unpost_privileged: true", true},
-		// A sequence follows a document by its date, posted or not.
-		"заполнение последовательностей": {"sequence_filling: off", false},
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			root := metadataProject(t)
-			writeMetadata(t, root, DocumentKind, postingDocumentID,
-				postingDocumentYAML("posting:\n  "+body.posting+"\n"))
-			_, err := Load(root)
-			switch {
-			case body.refused && err == nil:
-				t.Fatal("a setting about posting was accepted on a document that forbids posting")
-			case body.refused && !strings.Contains(err.Error(), "posting.allowed is off"):
-				t.Fatalf("err = %v", err)
-			case !body.refused && err != nil:
-				t.Fatalf("sequence filling was refused on an unposted document: %v", err)
-			}
-		})
+	root := metadataProject(t)
+	writeMetadata(t, root, DocumentKind, postingDocumentID, postingDocumentYAML(`posting:
+  real_time: deny
+  records_deletion: off
+  records_writing: selected
+  sequence_filling: off
+  privileged: true
+  unpost_privileged: true
+`))
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("an unposted document with posting settings refused: %v", err)
+	}
+	document, ok := catalog.DocumentDefinition("Накладная")
+	if !ok {
+		t.Fatal("the document did not load")
+	}
+	posting := document.Posting
+	if posting.Allowed || posting.RealTime != "deny" || posting.RecordsDeletion != "off" || posting.RecordsWriting != "selected" ||
+		posting.SequenceFilling != "off" || !posting.Privileged || !posting.UnpostPrivileged {
+		t.Fatalf("posting settings = %+v", posting)
 	}
 }
 
