@@ -10,10 +10,15 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-func eventSubscriptionFixture(objects ...uuid.UUID) EventSubscriptionDefinition {
+// eventSubscriptionFixture listens to the objects of the catalogs named.
+func eventSubscriptionFixture(catalogs ...uuid.UUID) EventSubscriptionDefinition {
+	source := make([]Type, 0, len(catalogs))
+	for _, id := range catalogs {
+		source = append(source, Type{Kind: CatalogObjectType, Reference: &id})
+	}
 	return EventSubscriptionDefinition{
 		Format: CurrentFormat, ID: uuid.MustNew(), Name: "ЗапретПустогоНаименования", Title: LocalizedText{"ru": "Запрет пустого наименования"},
-		Objects: objects, Event: "before-write", Module: uuid.MustNew(), Procedure: "ПередЗаписьюТовара",
+		Source: source, Event: "before-write", Module: uuid.MustNew(), Procedure: "ПередЗаписьюТовара",
 	}
 }
 
@@ -25,7 +30,7 @@ func TestDecodeEventSubscriptionStrictAndBounded(t *testing.T) {
 		t.Fatal(err)
 	}
 	decoded, err := DecodeEventSubscription("event-subscription.yaml", bytes.NewReader(encoded.Bytes()), metadataConfiguration())
-	if err != nil || decoded.ID != subscription.ID || len(decoded.Objects) != 2 || decoded.Procedure != subscription.Procedure {
+	if err != nil || decoded.ID != subscription.ID || len(decoded.Source) != 2 || decoded.Procedure != subscription.Procedure {
 		t.Fatalf("decode event subscription = %+v, %v", decoded, err)
 	}
 	tests := map[string]func(*EventSubscriptionDefinition){
@@ -33,10 +38,15 @@ func TestDecodeEventSubscriptionStrictAndBounded(t *testing.T) {
 		"zero identity": func(s *EventSubscriptionDefinition) { s.ID = uuid.UUID{} },
 		"name":          func(s *EventSubscriptionDefinition) { s.Name = "Invalid Name" },
 		"language":      func(s *EventSubscriptionDefinition) { s.Title = LocalizedText{"de": "Verboten"} },
-		"no objects":    func(s *EventSubscriptionDefinition) { s.Objects = nil },
-		"zero object":   func(s *EventSubscriptionDefinition) { s.Objects = append(s.Objects, uuid.UUID{}) },
-		"duplicate object": func(s *EventSubscriptionDefinition) {
-			s.Objects = append(s.Objects, s.Objects[0])
+		"no source":     func(s *EventSubscriptionDefinition) { s.Source = nil },
+		"zero object": func(s *EventSubscriptionDefinition) {
+			s.Source = append(s.Source, Type{Kind: CatalogObjectType, Reference: &uuid.UUID{}})
+		},
+		"duplicate type": func(s *EventSubscriptionDefinition) {
+			s.Source = append(s.Source, s.Source[0])
+		},
+		"a reference is no source": func(s *EventSubscriptionDefinition) {
+			s.Source = append(s.Source, Type{Kind: CatalogType, Reference: s.Source[0].Reference})
 		},
 		"unknown event":     func(s *EventSubscriptionDefinition) { s.Event = "on-open" },
 		"zero module":       func(s *EventSubscriptionDefinition) { s.Module = uuid.UUID{} },
@@ -45,7 +55,7 @@ func TestDecodeEventSubscriptionStrictAndBounded(t *testing.T) {
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {
 			mutated := subscription
-			mutated.Objects = append([]uuid.UUID{}, subscription.Objects...)
+			mutated.Source = cloneTypes(subscription.Source)
 			mutate(&mutated)
 			if err := ValidateEventSubscription("event-subscription.yaml", mutated, metadataConfiguration()); err == nil {
 				t.Fatalf("%s: accepted invalid event subscription", name)
@@ -77,14 +87,14 @@ func TestCatalogEventSubscriptionLookupReturnsIsolatedCopies(t *testing.T) {
 	if !ok || byID.Procedure != subscription.Procedure {
 		t.Fatalf("event subscription by id = %+v, %v", byID, ok)
 	}
-	byID.Objects[0] = uuid.MustNew()
+	*byID.Source[0].Reference = uuid.MustNew()
 	again, _ := catalog.EventSubscriptionByID(subscription.ID)
-	if again.Objects[0] != target.ID {
+	if *again.Source[0].Reference != target.ID {
 		t.Fatal("event subscription lookup exposed mutable metadata")
 	}
-	found := catalog.eventSubscriptionsForObject(target.ID)
+	found := catalog.eventSubscriptionsFor(CatalogObjectType, target.ID)
 	if len(found) != 1 || found[0].ID != subscription.ID {
-		t.Fatalf("eventSubscriptionsForObject = %+v", found)
+		t.Fatalf("eventSubscriptionsFor = %+v", found)
 	}
 }
 
@@ -121,10 +131,11 @@ func TestEventSubscriptionReferenceValidation(t *testing.T) {
 		}
 		module := commonModuleFixture()
 		module.Server = true
-		subscription := eventSubscriptionFixture(register.ID)
+		subscription := eventSubscriptionFixture()
+		subscription.Source = []Type{{Kind: InformationRegisterRecordSetType, Reference: &register.ID}}
 		subscription.Module = module.ID
 		subscription.Event = "posting"
-		if _, err := NewCatalogSnapshotWithEventSubscriptions(metadataConfiguration(), nil, nil, nil, nil, nil, []InformationRegisterDefinition{register}, nil, nil, nil, nil, nil, []CommonModuleDefinition{module}, []EventSubscriptionDefinition{subscription}); err == nil || !strings.Contains(err.Error(), "not valid for information register objects") {
+		if _, err := NewCatalogSnapshotWithEventSubscriptions(metadataConfiguration(), nil, nil, nil, nil, nil, []InformationRegisterDefinition{register}, nil, nil, nil, nil, nil, []CommonModuleDefinition{module}, []EventSubscriptionDefinition{subscription}); err == nil || !strings.Contains(err.Error(), "is not an event of information-register-record-set") {
 			t.Fatalf("invalid event for kind error = %v", err)
 		}
 	})
@@ -164,20 +175,20 @@ func TestLoadValidatesEventSubscriptionReferences(t *testing.T) {
 
 	subscriptionID := uuid.MustNew()
 	writeMetadata(t, root, EventSubscriptionKind, subscriptionID.String(), "format: 1\nid: "+subscriptionID.String()+
-		"\nname: ЗапретПустогоНаименования\ntitle: {ru: Запрет}\nobjects: ["+catalogID.String()+"]\nevent: before-write\nmodule: "+commonModuleID.String()+"\nprocedure: ПередЗаписьюТовара\n")
+		"\nname: ЗапретПустогоНаименования\ntitle: {ru: Запрет}\nsource: [{kind: catalog-object, reference: "+catalogID.String()+"}]\nevent: before-write\nmodule: "+commonModuleID.String()+"\nprocedure: ПередЗаписьюТовара\n")
 	if _, err := load(root, true); err != nil {
 		t.Fatalf("valid event subscription rejected: %v", err)
 	}
 
 	unknownObjectID := uuid.MustNew()
 	writeMetadata(t, root, EventSubscriptionKind, subscriptionID.String(), "format: 1\nid: "+subscriptionID.String()+
-		"\nname: ЗапретПустогоНаименования\ntitle: {ru: Запрет}\nobjects: ["+unknownObjectID.String()+"]\nevent: before-write\nmodule: "+commonModuleID.String()+"\nprocedure: ПередЗаписьюТовара\n")
+		"\nname: ЗапретПустогоНаименования\ntitle: {ru: Запрет}\nsource: [{kind: catalog-object, reference: "+unknownObjectID.String()+"}]\nevent: before-write\nmodule: "+commonModuleID.String()+"\nprocedure: ПередЗаписьюТовара\n")
 	if _, err := load(root, true); err == nil || !strings.Contains(err.Error(), "unknown object") {
 		t.Fatalf("event subscription with an unknown object was accepted: %v", err)
 	}
 
 	writeMetadata(t, root, EventSubscriptionKind, subscriptionID.String(), "format: 1\nid: "+subscriptionID.String()+
-		"\nname: ЗапретПустогоНаименования\ntitle: {ru: Запрет}\nobjects: ["+catalogID.String()+"]\nevent: before-write\nmodule: "+commonModuleID.String()+"\nprocedure: ПередЗаписьюТовара\n")
+		"\nname: ЗапретПустогоНаименования\ntitle: {ru: Запрет}\nsource: [{kind: catalog-object, reference: "+catalogID.String()+"}]\nevent: before-write\nmodule: "+commonModuleID.String()+"\nprocedure: ПередЗаписьюТовара\n")
 	if _, err := load(root, true); err != nil {
 		t.Fatalf("valid event subscription rejected after repair: %v", err)
 	}

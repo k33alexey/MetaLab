@@ -126,7 +126,7 @@ func TestCommentReachesTheKindsThatHadNone(t *testing.T) {
 	})
 	t.Run("подписка на события", func(t *testing.T) {
 		value := EventSubscriptionDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "ПередЗаписьюТовара",
-			Title: LocalizedText{"ru": "Перед записью товара"}, Objects: []uuid.UUID{uuid.MustNew()},
+			Title: LocalizedText{"ru": "Перед записью товара"}, Source: []Type{{Kind: CatalogObjectType}},
 			Event: "before-write", Module: uuid.MustNew(), Procedure: "ПередЗаписью", Comment: note}
 		var encoded bytes.Buffer
 		if err := Encode(&encoded, value); err != nil {

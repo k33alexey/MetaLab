@@ -17,7 +17,7 @@ func TestCatalogEventSubscriptionHandlerFiresOnlyForItsOwnEventAndCancels(t *tes
 	catalog.catalogByID = map[uuid.UUID]int{definition.ID: 0}
 	runtime := &Runtime{catalog: catalog, events: make(map[uuid.UUID]CatalogEventHandler)}
 	subscription := EventSubscriptionDefinition{
-		ID: uuid.MustNew(), Name: "ЗапретПустогоНаименования", Objects: []uuid.UUID{definition.ID},
+		ID: uuid.MustNew(), Name: "ЗапретПустогоНаименования", Source: []Type{{Kind: CatalogObjectType, Reference: &definition.ID}},
 		Event: "before-write", Module: uuid.MustNew(), Procedure: "ПередЗаписьюТовара",
 	}
 	program, diagnostics := compiler.CompileModules([]compiler.ModuleSource{{
@@ -96,7 +96,7 @@ func TestCatalogEventHandlersCombineObjectModuleAndSubscriptions(t *testing.T) {
 		runtime: runtime, context: subscriptionMachine.NewContextWithMetadata(runtime),
 		definition: definition, module: "ОбщегоНазначения",
 		subscription: EventSubscriptionDefinition{
-			ID: uuid.MustNew(), Name: "ЗапретЗаписи", Objects: []uuid.UUID{definition.ID}, Event: "before-write", Procedure: "ЗапретитьЗапись",
+			ID: uuid.MustNew(), Name: "ЗапретЗаписи", Source: []Type{{Kind: CatalogObjectType, Reference: &definition.ID}}, Event: "before-write", Procedure: "ЗапретитьЗапись",
 		},
 	}
 	handlers := catalogEventHandlers{objectHandler, subscriptionHandler}
@@ -118,7 +118,7 @@ func TestDocumentEventSubscriptionHandlerFiresOnlyForItsOwnEventAndCancels(t *te
 	catalog.documentByID = map[uuid.UUID]int{definition.ID: 0}
 	runtime := &Runtime{catalog: catalog, events: make(map[uuid.UUID]CatalogEventHandler), documentEvents: make(map[uuid.UUID]DocumentEventHandler)}
 	subscription := EventSubscriptionDefinition{
-		ID: uuid.MustNew(), Name: "ЗапретПустогоНомера", Objects: []uuid.UUID{definition.ID},
+		ID: uuid.MustNew(), Name: "ЗапретПустогоНомера", Source: []Type{{Kind: DocumentObjectType, Reference: &definition.ID}},
 		Event: "before-write", Module: uuid.MustNew(), Procedure: "ПередЗаписьюПродажи",
 	}
 	program, diagnostics := compiler.CompileModules([]compiler.ModuleSource{{
@@ -175,7 +175,7 @@ func TestInformationRegisterEventSubscriptionHandlerEchoesReplaceAndCancels(t *t
 		informationRegisterEvents: map[uuid.UUID]InformationRegisterEventHandler{},
 	}
 	subscription := EventSubscriptionDefinition{
-		ID: uuid.MustNew(), Name: "ЗапретДобавления", Objects: []uuid.UUID{definition.ID},
+		ID: uuid.MustNew(), Name: "ЗапретДобавления", Source: []Type{{Kind: InformationRegisterRecordSetType, Reference: &definition.ID}},
 		Event: "before-write", Module: uuid.MustNew(), Procedure: "ПередЗаписьюЦен",
 	}
 	program, diagnostics := compiler.CompileModules([]compiler.ModuleSource{{

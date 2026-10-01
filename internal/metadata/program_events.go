@@ -67,7 +67,7 @@ func (runtime *Runtime) ConfigureProgramEventsWithObserver(program *bytecode.Pro
 			handler.module = name
 			handlers = append(handlers, handler)
 		}
-		for _, subscription := range runtime.catalog.eventSubscriptionsForObject(definition.ID) {
+		for _, subscription := range runtime.catalog.eventSubscriptionsFor(CatalogObjectType, definition.ID) {
 			name, ok := subscriptionModule(subscription)
 			if !ok {
 				continue
@@ -94,7 +94,7 @@ func (runtime *Runtime) ConfigureProgramEventsWithObserver(program *bytecode.Pro
 			handler.module = name
 			handlers = append(handlers, handler)
 		}
-		for _, subscription := range runtime.catalog.eventSubscriptionsForObject(definition.ID) {
+		for _, subscription := range runtime.catalog.eventSubscriptionsFor(DocumentObjectType, definition.ID) {
 			name, ok := subscriptionModule(subscription)
 			if !ok {
 				continue
@@ -121,7 +121,7 @@ func (runtime *Runtime) ConfigureProgramEventsWithObserver(program *bytecode.Pro
 			handler.module = name
 			handlers = append(handlers, handler)
 		}
-		for _, subscription := range runtime.catalog.eventSubscriptionsForObject(definition.ID) {
+		for _, subscription := range runtime.catalog.eventSubscriptionsFor(InformationRegisterRecordSetType, definition.ID) {
 			name, ok := subscriptionModule(subscription)
 			if !ok {
 				continue
@@ -148,7 +148,7 @@ func (runtime *Runtime) ConfigureProgramEventsWithObserver(program *bytecode.Pro
 			handler.module = name
 			handlers = append(handlers, handler)
 		}
-		for _, subscription := range runtime.catalog.eventSubscriptionsForObject(definition.ID) {
+		for _, subscription := range runtime.catalog.eventSubscriptionsFor(AccumulationRegisterRecordSetType, definition.ID) {
 			name, ok := subscriptionModule(subscription)
 			if !ok {
 				continue

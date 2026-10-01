@@ -35,6 +35,8 @@ const (
 	AccumulationRegisterRecordSetType TypeKind = "accumulation-register-record-set"
 	AccountingRegisterRecordSetType   TypeKind = "accounting-register-record-set"
 	CalculationRegisterRecordSetType  TypeKind = "calculation-register-record-set"
+	SequenceRecordSetType             TypeKind = "sequence-record-set"
+	RecalculationRecordSetType        TypeKind = "recalculation-record-set"
 
 	ConstantValueManagerType TypeKind = "constant-value-manager"
 
@@ -91,6 +93,8 @@ var objectTypeOwners = map[TypeKind]func(*Catalog, uuid.UUID) bool{
 	AccumulationRegisterRecordSetType: func(c *Catalog, id uuid.UUID) bool { _, ok := c.accumulationRegisterByID[id]; return ok },
 	AccountingRegisterRecordSetType:   func(c *Catalog, id uuid.UUID) bool { _, ok := c.accountingRegisterByID[id]; return ok },
 	CalculationRegisterRecordSetType:  func(c *Catalog, id uuid.UUID) bool { _, ok := c.calculationRegisterByID[id]; return ok },
+	SequenceRecordSetType:             func(c *Catalog, id uuid.UUID) bool { _, ok := c.sequenceByID[id]; return ok },
+	RecalculationRecordSetType:        (*Catalog).hasRecalculation,
 	ConstantValueManagerType:          func(c *Catalog, id uuid.UUID) bool { _, ok := c.constantByID[id]; return ok },
 	CatalogManagerType:                func(c *Catalog, id uuid.UUID) bool { _, ok := c.catalogByID[id]; return ok },
 	DocumentManagerType:               func(c *Catalog, id uuid.UUID) bool { _, ok := c.documentByID[id]; return ok },
@@ -188,4 +192,17 @@ func placeName(place typePlace) string {
 	default:
 		return "in a field the database stores"
 	}
+}
+
+// hasRecalculation says a recalculation of some calculation register has the
+// identifier: a recalculation is subordinate and has no index of its own.
+func (catalog *Catalog) hasRecalculation(id uuid.UUID) bool {
+	for _, register := range catalog.CalculationRegisters {
+		for _, recalculation := range register.Recalculations {
+			if recalculation.ID == id {
+				return true
+			}
+		}
+	}
+	return false
 }

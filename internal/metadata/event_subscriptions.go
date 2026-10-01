@@ -12,47 +12,122 @@ import (
 
 const EventSubscriptionKind Kind = "event-subscriptions"
 
-// EventSubscriptionDefinition attaches one exported common module procedure
-// to a lifecycle event of one or more catalogs/documents/registers, without
-// requiring those objects' own modules to implement the handler (1C style).
-// Unlike CommonAttributeDefinition.Objects, which propagates the exact same
-// field into every target, Objects here may span different metadata kinds:
-// each target only needs to support the declared Event. The handler
-// procedure receives the source object as its first argument, followed by
-// the same arguments the object's own module would receive for that event
-// (for example Cancel, then any event-specific values) — matching real 1C
-// subscription handler signatures, which take Source explicitly rather than
-// through an implicit predefined variable.
+// EventSubscriptionDefinition attaches one exported procedure of a common
+// module to an event of the objects its source names, without those objects'
+// own modules implementing the handler. The procedure receives the source
+// object first, then the arguments the object's own module would receive for
+// that event - the signature a subscription handler has in the prototype.
+//
+// The source is a type description, as the prototype's is, not a list of
+// objects: the object of a catalog or a document, the record set of a
+// register, the manager of a constant's value or of any kind, a kind as a
+// whole (a type without a reference: every document, every exchange plan),
+// and defined types of such. The configurations being moved give their
+// subscriptions some 16 800 such types and 293 sets; a list of catalogs,
+// documents and two kinds of register, as it was, lost most of them on import.
 type EventSubscriptionDefinition struct {
 	Format    int           `yaml:"format"`
 	ID        uuid.UUID     `yaml:"id"`
 	Name      string        `yaml:"name"`
 	Title     LocalizedText `yaml:"title"`
-	Objects   []uuid.UUID   `yaml:"objects"`
+	Source    []Type        `yaml:"source"`
 	Event     string        `yaml:"event"`
 	Module    uuid.UUID     `yaml:"module"`
 	Procedure string        `yaml:"procedure"`
 	Comment   string        `yaml:"comment,omitempty"`
 }
 
-var validEventSubscriptionEvents = map[string]bool{
-	"fill": true, "fill-check": true, "before-write": true, "on-write": true,
-	"after-write": true, "before-delete": true, "posting": true, "undo-posting": true,
+// subscriptionEvents are the events of every kind a subscription can name, as
+// the syntax assistant 8.3.27 lists them on the object, record set and manager
+// of each kind, in the prototype's own names. A subscription names one of them
+// in the kebab spelling of eventSubscriptionName; the event has to be one the
+// kind has, for every kind of the source.
+var subscriptionEvents = map[TypeKind][]string{
+	CatalogObjectType:                 {"BeforeDelete", "BeforeWrite", "FillCheckProcessing", "Filling", "GenerateFromDataHistoryVersionProcessing", "OnCopy", "OnSetNewCode", "OnWrite"},
+	DocumentObjectType:                {"BeforeDelete", "BeforeWrite", "FillCheckProcessing", "Filling", "GenerateFromDataHistoryVersionProcessing", "OnCopy", "OnSetNewNumber", "OnWrite", "Posting", "UndoPosting"},
+	CharacteristicTypesObjectType:     {"BeforeDelete", "BeforeWrite", "FillCheckProcessing", "Filling", "GenerateFromDataHistoryVersionProcessing", "OnCopy", "OnSetNewCode", "OnWrite"},
+	AccountsObjectType:                {"BeforeDelete", "BeforeWrite", "FillCheckProcessing", "Filling", "GenerateFromDataHistoryVersionProcessing", "OnCopy", "OnWrite"},
+	CalculationTypesObjectType:        {"BeforeDelete", "BeforeWrite", "FillCheckProcessing", "Filling", "GenerateFromDataHistoryVersionProcessing", "OnCopy", "OnWrite"},
+	ExchangePlanObjectType:            {"BeforeBeginSendDataToMaster", "BeforeBeginSendDataToSlave", "BeforeCreateInitialImage", "BeforeDelete", "BeforeWrite", "FillCheckProcessing", "Filling", "GenerateFromDataHistoryVersionProcessing", "OnAutoCreateNewNode", "OnCopy", "OnReceiveDataFromMaster", "OnReceiveDataFromSlave", "OnReceiveNodeDataFromMaster", "OnSendDataToMaster", "OnSendDataToSlave", "OnSendNodeDataToSlave", "OnSetNewCode", "OnWrite"},
+	BusinessProcessObjectType:         {"BeforeDelete", "BeforeWrite", "FillCheckProcessing", "Filling", "GenerateFromDataHistoryVersionProcessing", "InteractiveActivationProcessing", "OnCopy", "OnSetNewNumber", "OnWrite"},
+	TaskObjectType:                    {"BeforeDelete", "BeforeExecute", "BeforeExecuteInteractively", "BeforeWrite", "FillCheckProcessing", "Filling", "GenerateFromDataHistoryVersionProcessing", "InteractiveActivationProcessing", "OnCheckExecutionProcessing", "OnCopy", "OnExecute", "OnSetNewNumber", "OnWrite"},
+	InformationRegisterRecordSetType:  {"BeforeWrite", "FillCheckProcessing", "Filling", "GenerateFromDataHistoryVersionProcessing", "OnWrite"},
+	AccumulationRegisterRecordSetType: {"BeforeWrite", "FillCheckProcessing", "OnWrite"},
+	AccountingRegisterRecordSetType:   {"BeforeWrite", "FillCheckProcessing", "OnWrite"},
+	CalculationRegisterRecordSetType:  {"BeforeWrite", "FillCheckProcessing", "OnWrite"},
+	SequenceRecordSetType:             {"BeforeWrite", "FillCheckProcessing", "OnWrite"},
+	RecalculationRecordSetType:        {"BeforeWrite", "FillCheckProcessing", "OnWrite"},
+	ConstantValueManagerType:          {"BeforeWrite", "FillCheckProcessing", "GenerateFromDataHistoryVersionProcessing", "OnWrite"},
+	CatalogManagerType:                {"AfterWriteDataHistoryVersionsProcessing", "ChoiceDataGetProcessing", "FormGetProcessing", "PresentationFieldsGetProcessing", "PresentationGetProcessing"},
+	DocumentManagerType:               {"AfterWriteDataHistoryVersionsProcessing", "ChoiceDataGetProcessing", "FormGetProcessing", "PresentationFieldsGetProcessing", "PresentationGetProcessing"},
+	EnumerationManagerType:            {"ChoiceDataGetProcessing", "FormGetProcessing"},
+	CharacteristicTypesManagerType:    {"AfterWriteDataHistoryVersionsProcessing", "ChoiceDataGetProcessing", "FormGetProcessing", "PresentationFieldsGetProcessing", "PresentationGetProcessing"},
+	AccountsManagerType:               {"AfterWriteDataHistoryVersionsProcessing", "ChoiceDataGetProcessing", "FormGetProcessing", "PresentationFieldsGetProcessing", "PresentationGetProcessing"},
+	CalculationTypesManagerType:       {"AfterWriteDataHistoryVersionsProcessing", "ChoiceDataGetProcessing", "FormGetProcessing", "PresentationFieldsGetProcessing", "PresentationGetProcessing"},
+	ExchangePlanManagerType:           {"AfterWriteDataHistoryVersionsProcessing", "ChoiceDataGetProcessing", "FormGetProcessing", "PresentationFieldsGetProcessing", "PresentationGetProcessing"},
+	BusinessProcessManagerType:        {"AfterWriteDataHistoryVersionsProcessing", "ChoiceDataGetProcessing", "FormGetProcessing", "PresentationFieldsGetProcessing", "PresentationGetProcessing"},
+	TaskManagerType:                   {"AfterWriteDataHistoryVersionsProcessing", "ChoiceDataGetProcessing", "FormGetProcessing", "PresentationFieldsGetProcessing", "PresentationGetProcessing"},
+	InformationRegisterManagerType:    {"AfterWriteDataHistoryVersionsProcessing", "FormGetProcessing"},
+	AccumulationRegisterManagerType:   {"FormGetProcessing"},
+	AccountingRegisterManagerType:     {"FormGetProcessing"},
+	CalculationRegisterManagerType:    {"FormGetProcessing"},
+	DocumentJournalManagerType:        {"FormGetProcessing"},
 }
 
-// eventsByObjectKind lists which of the events above apply to each kind of
-// subscribable object: registers write as record sets (no fill/delete), and
-// only documents can be posted.
-var eventSubscriptionEventsByKind = map[string]map[string]bool{
-	"catalog": {
-		"fill": true, "fill-check": true, "before-write": true, "on-write": true, "after-write": true, "before-delete": true,
-	},
-	"document": {
-		"fill": true, "fill-check": true, "before-write": true, "on-write": true, "after-write": true, "before-delete": true,
-		"posting": true, "undo-posting": true,
-	},
-	"information register":  {"before-write": true, "on-write": true, "after-write": true},
-	"accumulation register": {"before-write": true, "on-write": true, "after-write": true},
+// legacyAfterWrite is an event of ours and not of the prototype: no kind has
+// «после записи» among its events in the syntax assistant, and the
+// configurations being moved never name it. It stays for the four kinds it
+// was given to, so that a project written with it reads on.
+var legacyAfterWrite = map[TypeKind]bool{
+	CatalogObjectType: true, DocumentObjectType: true,
+	InformationRegisterRecordSetType: true, AccumulationRegisterRecordSetType: true,
+}
+
+// eventSubscriptionName spells an event of the prototype the way a project
+// file names it: Filling is fill and FillCheckProcessing fill-check, as they
+// always were; the rest is the name in kebab case, OnSetNewCode on-set-new-code.
+func eventSubscriptionName(event string) string {
+	switch event {
+	case "Filling":
+		return "fill"
+	case "FillCheckProcessing":
+		return "fill-check"
+	}
+	var builder strings.Builder
+	for index, character := range event {
+		if character >= 'A' && character <= 'Z' {
+			if index > 0 {
+				builder.WriteByte('-')
+			}
+			character += 'a' - 'A'
+		}
+		builder.WriteRune(character)
+	}
+	return builder.String()
+}
+
+// kindHasSubscriptionEvent says the kind has the event, in a project's
+// spelling.
+func kindHasSubscriptionEvent(kind TypeKind, event string) bool {
+	if event == "after-write" {
+		return legacyAfterWrite[kind]
+	}
+	for _, name := range subscriptionEvents[kind] {
+		if eventSubscriptionName(name) == event {
+			return true
+		}
+	}
+	return false
+}
+
+// knownSubscriptionEvent says some kind has the event.
+func knownSubscriptionEvent(event string) bool {
+	for kind := range subscriptionEvents {
+		if kindHasSubscriptionEvent(kind, event) {
+			return true
+		}
+	}
+	return false
 }
 
 func DecodeEventSubscription(source string, reader io.Reader, configuration project.Project) (EventSubscriptionDefinition, error) {
@@ -71,22 +146,40 @@ func DecodeEventSubscription(source string, reader io.Reader, configuration proj
 // validateEventSubscriptionReferences.
 func ValidateEventSubscription(source string, value EventSubscriptionDefinition, configuration project.Project) error {
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	if len(value.Objects) == 0 {
-		issues = append(issues, "objects must list at least one target object")
+	if len(value.Source) == 0 {
+		issues = append(issues, "source must name at least one type")
 	}
-	seen := make(map[uuid.UUID]bool, len(value.Objects))
-	for index, target := range value.Objects {
-		prefix := fmt.Sprintf("objects[%d]", index)
-		if target.IsZero() {
-			issues = append(issues, prefix+" must be a non-zero UUID")
+	seen := make(map[string]bool, len(value.Source))
+	for index, item := range value.Source {
+		prefix := fmt.Sprintf("source[%d]", index)
+		key := string(item.Kind)
+		if item.Reference != nil {
+			key += ":" + item.Reference.String()
 		}
-		if seen[target] {
-			issues = append(issues, prefix+" must be unique")
+		if seen[key] {
+			issues = append(issues, prefix+" repeats a type of the source")
 		}
-		seen[target] = true
+		seen[key] = true
+		switch {
+		case item.Kind == DefinedType:
+			if item.Reference == nil || item.Reference.IsZero() {
+				issues = append(issues, prefix+".reference is required")
+			}
+		case subscriptionEvents[item.Kind] != nil:
+			// No reference is the kind as a whole.
+			if item.Reference != nil && item.Reference.IsZero() {
+				issues = append(issues, prefix+".reference must be a non-zero UUID or left out for the kind as a whole")
+			}
+		default:
+			issues = append(issues, prefix+".kind "+string(item.Kind)+" is not an object, a record set or a manager a subscription can listen to")
+			continue
+		}
+		if item.Length != 0 || item.Precision != 0 || item.Scale != 0 || item.FixedLength || item.NonNegative || item.DateParts != "" {
+			issues = append(issues, prefix+" has unsupported qualifiers")
+		}
 	}
-	if !validEventSubscriptionEvents[value.Event] {
-		issues = append(issues, "event must be one of: fill, fill-check, before-write, on-write, after-write, before-delete, posting, undo-posting")
+	if !knownSubscriptionEvent(value.Event) {
+		issues = append(issues, fmt.Sprintf("event %q is an event of no object, record set or manager", value.Event))
 	}
 	if value.Module.IsZero() {
 		issues = append(issues, "module must be a non-zero UUID")
@@ -113,13 +206,37 @@ func (catalog *Catalog) EventSubscriptionByID(id uuid.UUID) (EventSubscriptionDe
 	return cloneEventSubscriptionDefinition(catalog.EventSubscriptions[index]), true
 }
 
-// eventSubscriptionsForObject returns every subscription that targets id, in
-// their stable catalog order.
-func (catalog *Catalog) eventSubscriptionsForObject(id uuid.UUID) []EventSubscriptionDefinition {
+// eventSubscriptionsFor returns every subscription whose source reaches the
+// object of metadata id as the kind - by name, as the kind as a whole, or
+// through a defined type - in their stable catalog order.
+func (catalog *Catalog) eventSubscriptionsFor(kind TypeKind, id uuid.UUID) []EventSubscriptionDefinition {
 	var result []EventSubscriptionDefinition
 	for _, item := range catalog.EventSubscriptions {
-		if slices.Contains(item.Objects, id) {
+		if slices.ContainsFunc(catalog.subscriptionSourceTypes(item), func(source Type) bool {
+			return source.Kind == kind && (source.Reference == nil || *source.Reference == id)
+		}) {
 			result = append(result, cloneEventSubscriptionDefinition(item))
+		}
+	}
+	return result
+}
+
+// subscriptionSourceTypes is the source with its defined types opened up. A
+// defined type of a source holds objects, record sets and managers; anything
+// else it may hold says nothing about the source and is passed over.
+func (catalog *Catalog) subscriptionSourceTypes(item EventSubscriptionDefinition) []Type {
+	var result []Type
+	for _, source := range item.Source {
+		if source.Kind != DefinedType || source.Reference == nil {
+			result = append(result, source)
+			continue
+		}
+		if defined, ok := catalog.DefinedTypeByID(*source.Reference); ok {
+			for _, inner := range defined.Types {
+				if subscriptionEvents[inner.Kind] != nil {
+					result = append(result, inner)
+				}
+			}
 		}
 	}
 	return result
@@ -127,31 +244,14 @@ func (catalog *Catalog) eventSubscriptionsForObject(id uuid.UUID) []EventSubscri
 
 func cloneEventSubscriptionDefinition(value EventSubscriptionDefinition) EventSubscriptionDefinition {
 	value.Title = cloneTitle(value.Title)
-	value.Objects = slices.Clone(value.Objects)
+	value.Source = cloneTypes(value.Source)
 	return value
 }
 
-// eventSubscriptionObjectKind reports which subscribable kind id belongs to.
-func (catalog *Catalog) eventSubscriptionObjectKind(id uuid.UUID) (string, bool) {
-	if _, ok := catalog.catalogByID[id]; ok {
-		return "catalog", true
-	}
-	if _, ok := catalog.documentByID[id]; ok {
-		return "document", true
-	}
-	if _, ok := catalog.informationRegisterByID[id]; ok {
-		return "information register", true
-	}
-	if _, ok := catalog.accumulationRegisterByID[id]; ok {
-		return "accumulation register", true
-	}
-	return "", false
-}
-
 // validateEventSubscriptionReferences checks that every subscription's
-// handler module exists and can run on the server (object lifecycle events
-// always execute server-side), that every target object exists, and that
-// the declared event applies to that object's kind.
+// handler module exists and can run on the server - object events always run
+// there - that what the source names exists, and that the event is one every
+// kind of the source has.
 func (catalog *Catalog) validateEventSubscriptionReferences() error {
 	for _, item := range catalog.EventSubscriptions {
 		index, ok := catalog.commonModuleByID[item.Module]
@@ -162,13 +262,23 @@ func (catalog *Catalog) validateEventSubscriptionReferences() error {
 		if !module.Server {
 			return fmt.Errorf("event subscription %s handler module %s must be a server module", item.Name, module.Name)
 		}
-		for _, objectID := range item.Objects {
-			kind, ok := catalog.eventSubscriptionObjectKind(objectID)
-			if !ok {
-				return fmt.Errorf("event subscription %s references unknown object %s", item.Name, objectID)
+		for _, source := range item.Source {
+			if source.Reference == nil {
+				continue
 			}
-			if !eventSubscriptionEventsByKind[kind][item.Event] {
-				return fmt.Errorf("event subscription %s event %q is not valid for %s objects", item.Name, item.Event, kind)
+			if source.Kind == DefinedType {
+				if _, ok := catalog.DefinedTypeByID(*source.Reference); !ok {
+					return fmt.Errorf("event subscription %s source references unknown defined type %s", item.Name, source.Reference)
+				}
+				continue
+			}
+			if exists := objectTypeOwners[source.Kind]; exists == nil || !exists(catalog, *source.Reference) {
+				return fmt.Errorf("event subscription %s source is %s of unknown object %s", item.Name, source.Kind, source.Reference)
+			}
+		}
+		for _, source := range catalog.subscriptionSourceTypes(item) {
+			if !kindHasSubscriptionEvent(source.Kind, item.Event) {
+				return fmt.Errorf("event subscription %s event %q is not an event of %s", item.Name, item.Event, source.Kind)
 			}
 		}
 	}

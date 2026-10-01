@@ -825,6 +825,14 @@ func (catalog *Catalog) DefinedType(name string) (DefinedTypeObject, bool) {
 	return cloneDefinedType(catalog.DefinedTypes[index]), true
 }
 
+func (catalog *Catalog) DefinedTypeByID(id uuid.UUID) (DefinedTypeObject, bool) {
+	index, ok := catalog.definedTypeByID[id]
+	if !ok {
+		return DefinedTypeObject{}, false
+	}
+	return cloneDefinedType(catalog.DefinedTypes[index]), true
+}
+
 func (catalog *Catalog) CatalogDefinition(name string) (CatalogDefinition, bool) {
 	index, ok := catalog.catalogByName[strings.ToLower(name)]
 	if !ok {
