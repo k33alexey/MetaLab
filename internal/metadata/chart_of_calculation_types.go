@@ -196,16 +196,13 @@ func validatePredefinedCalculationTypes(value ChartOfCalculationTypesDefinition)
 		if utf8.RuneCountInString(item.Description) > value.DescriptionLength {
 			issues = append(issues, fmt.Sprintf("%s.description must not exceed %d characters", prefix, value.DescriptionLength))
 		}
-		// Each list exists only under the setting that gives it meaning.
-		if len(item.Displacing) > 0 && !value.ActionPeriodUse {
-			issues = append(issues, prefix+".displacing needs action_period_use: without an action period there is nothing to displace")
-		}
-		if len(item.Base) > 0 && (value.BaseDependency == "" || value.BaseDependency == NoBaseDependency) {
-			issues = append(issues, prefix+".base needs base_dependency")
-		}
-		if item.ActionPeriodIsBase && !value.ActionPeriodUse {
-			issues = append(issues, prefix+".action_period_is_base needs action_period_use")
-		}
+		// The lists and the flag are carried whatever the settings say. The
+		// prototype keeps all three lists and the flag on every chart, with
+		// the setting that gives them meaning off as well - erp "Удержания"
+		// has no action period and still writes the flag and the list of
+		// displacing types - so a chart that switched a setting off after
+		// filling them in is saved as it is, and it is the calculation that
+		// does not read them.
 	}
 	// Leading and displacing name types of this chart, so they resolve here.
 	for index, item := range value.Predefined {
@@ -304,11 +301,11 @@ func (catalog *Catalog) chartOfCalculationTypesTables(definition ChartOfCalculat
 		},
 		Indexes: []schemadiff.Index{{Name: physicalObjectName("im", definition.ID), Method: "btree", Keys: []string{"deletion_mark"}}},
 	}
-	if definition.ActionPeriodUse {
-		// The action period is the base period of this type or it is not, and
-		// the competition rules read that flag on every calculation.
-		table.Columns = append(table.Columns, schemadiff.Column{Name: "action_period_is_base", Type: "boolean", Nullable: false, Default: "false"})
-	}
+	// The action period is the base period of this type or it is not, and the
+	// competition rules read that flag on every calculation. The column is
+	// there with the action period off as well: the flag is a standard field
+	// of every calculation type in the prototype, not of those that compete.
+	table.Columns = append(table.Columns, schemadiff.Column{Name: "action_period_is_base", Type: "boolean", Nullable: false, Default: "false"})
 	appendCodeColumn(&table, definition.ID, definition.Code)
 	for _, attribute := range definition.Attributes {
 		if err := catalog.appendAttributeSchema(&table, attribute); err != nil {
@@ -320,21 +317,17 @@ func (catalog *Catalog) chartOfCalculationTypesTables(definition ChartOfCalculat
 	if err != nil {
 		return schemadiff.Table{}, nil, err
 	}
-	// Leading types are always there; displacing and base exist only under the
-	// setting that gives them meaning, and a table for a rule that cannot
-	// apply would be a column nobody may fill.
+	// All three are always there, as they are in the prototype: a chart that
+	// has no action period or no base still has its lists of displacing and
+	// base types, and only the calculation leaves them unread.
 	parts = append(parts, competitionTable("tl", definition.ID, tableName, tableName))
-	if definition.ActionPeriodUse {
-		parts = append(parts, competitionTable("tw", definition.ID, tableName, tableName))
-	}
-	if definition.BaseDependency != "" && definition.BaseDependency != NoBaseDependency {
-		// A base may come from several charts, so the row says which chart the
-		// type belongs to and the key stays off: one column cannot reference
-		// several tables at once.
-		base := competitionTable("tb", definition.ID, tableName, "")
-		base.Columns = append(base.Columns, schemadiff.Column{Name: "base_chart", Type: "uuid", Nullable: false})
-		parts = append(parts, base)
-	}
+	parts = append(parts, competitionTable("tw", definition.ID, tableName, tableName))
+	// A base may come from several charts, so the row says which chart the
+	// type belongs to and the key stays off: one column cannot reference
+	// several tables at once.
+	base := competitionTable("tb", definition.ID, tableName, "")
+	base.Columns = append(base.Columns, schemadiff.Column{Name: "base_chart", Type: "uuid", Nullable: false})
+	parts = append(parts, base)
 	return table, parts, nil
 }
 
@@ -348,6 +341,9 @@ func competitionTable(prefix string, id uuid.UUID, ownerTable, target string) sc
 			{Name: "owner_ref", Type: "uuid", Nullable: false},
 			{Name: "line_no", Type: "integer", Nullable: false},
 			{Name: "calculation_type", Type: "uuid", Nullable: false},
+			// A line the configuration brought apart from one the user added -
+			// the standard field "Предопределенный" of every such line.
+			{Name: "predefined", Type: "boolean", Nullable: false, Default: "false"},
 		},
 		Constraints: []schemadiff.Constraint{
 			{Name: physicalObjectName("p"+prefix, id), Type: "primary_key", Definition: "PRIMARY KEY (owner_ref, line_no)"},

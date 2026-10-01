@@ -188,3 +188,143 @@ attributes:
 		t.Fatal("an attribute named after the standard value type was accepted")
 	}
 }
+
+const otherCatalogID = "70000000-0000-4000-8000-0000000000c2"
+
+func predefinedCharacteristicsProject(t *testing.T, valueType, predefined string) string {
+	t.Helper()
+	root := metadataProject(t)
+	for id, name := range map[string]string{catalogID: "Склады", otherCatalogID: "Договоры"} {
+		writeMetadata(t, root, CatalogKind, id, `format: 1
+id: `+id+`
+name: `+name+`
+title: {ru: `+name+`}
+code: {type: string, length: 9}
+description_length: 150
+`)
+	}
+	writeMetadata(t, root, ChartOfCharacteristicTypesKind, characteristicsID, `format: 1
+id: `+characteristicsID+`
+name: ВидыСубконто
+title: {ru: Виды субконто}
+code: {type: string, length: 9}
+description_length: 150
+hierarchy: {enabled: true, kind: folders-and-items}
+value_type:
+`+valueType+`
+predefined:
+`+predefined)
+	return root
+}
+
+// A predefined characteristic is what it holds: "Склады" holds warehouses, and
+// without its own type it would accept everything the chart does - every kind
+// of analytics at once. The type narrows the chart's by qualifiers as well, as
+// erp does with a string of 500 under a chart of 1000, and a folder carries
+// none.
+func TestPredefinedCharacteristicCarriesItsValueType(t *testing.T) {
+	t.Parallel()
+	root := predefinedCharacteristicsProject(t, `  - {kind: catalog, reference: `+catalogID+`}
+  - {kind: catalog, reference: `+otherCatalogID+`}
+  - {kind: string, length: 1000}
+`, `  - id: 70000000-0000-4000-8000-0000000000d1
+    name: Группа
+    code: "000000001"
+    is_folder: true
+  - id: 70000000-0000-4000-8000-0000000000d2
+    name: Склады
+    code: "000000002"
+    parent: Группа
+    value_type: [{kind: catalog, reference: `+catalogID+`}]
+  - id: 70000000-0000-4000-8000-0000000000d3
+    name: Комментарий
+    code: "000000003"
+    value_type: [{kind: string, length: 500}]
+`)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chart, _ := catalog.ChartOfCharacteristicTypes("ВидыСубконто")
+	if len(chart.Predefined) != 3 {
+		t.Fatalf("predefined characteristics = %d, want 3", len(chart.Predefined))
+	}
+	warehouses := chart.Predefined[1]
+	if len(warehouses.ValueType) != 1 || warehouses.ValueType[0].Kind != CatalogType || warehouses.ValueType[0].Reference.String() != catalogID {
+		t.Fatalf("the characteristic lost its own type: %+v", warehouses.ValueType)
+	}
+	if comment := chart.Predefined[2]; len(comment.ValueType) != 1 || comment.ValueType[0].Length != 500 {
+		t.Fatalf("a narrowed qualifier was lost: %+v", comment.ValueType)
+	}
+	if len(chart.Predefined[0].ValueType) != 0 {
+		t.Fatalf("a folder gained a type: %+v", chart.Predefined[0].ValueType)
+	}
+	// What a set allows is what it expands to: a chart of any catalog allows
+	// a characteristic of one.
+	root = predefinedCharacteristicsProject(t, `  - {kind: catalog-ref}
+`, `  - id: 70000000-0000-4000-8000-0000000000d2
+    name: Склады
+    code: "000000002"
+    value_type: [{kind: catalog, reference: `+catalogID+`}]
+`)
+	if _, err := Load(root); err != nil {
+		t.Fatalf("a catalog under a chart of any catalog was refused: %v", err)
+	}
+}
+
+// A predefined characteristic may narrow its chart's type and never widen it,
+// may not point at what is not there, and a folder holds no value to be typed.
+func TestPredefinedCharacteristicTypeStaysInsideItsChart(t *testing.T) {
+	t.Parallel()
+	chartType := `  - {kind: catalog, reference: ` + catalogID + `}
+  - {kind: string, length: 100}
+`
+	for name, broken := range map[string]struct{ item, want string }{
+		"тип шире плана": {`    value_type: [{kind: catalog, reference: ` + otherCatalogID + `}]
+`, "which the chart's value type does not"},
+		"примитивный тип не из плана": {`    value_type: [{kind: number, precision: 10}]
+`, "which the chart's value type does not"},
+		"ссылка в никуда": {`    value_type: [{kind: catalog, reference: 70000000-0000-4000-8000-0000000000ee}]
+`, "which the chart's value type does not"},
+		"тип у группы": {`    is_folder: true
+    value_type: [{kind: catalog, reference: ` + catalogID + `}]
+`, "a folder of characteristics holds no value"},
+		"повтор типа": {`    value_type: [{kind: catalog, reference: ` + catalogID + `}, {kind: catalog, reference: ` + catalogID + `}]
+`, "duplicates an allowed type"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := predefinedCharacteristicsProject(t, chartType, `  - id: 70000000-0000-4000-8000-0000000000d2
+    name: Склады
+    code: "000000002"
+`+broken.item)
+			_, err := Load(root)
+			if err == nil || !strings.Contains(err.Error(), broken.want) {
+				t.Fatalf("error = %v, want one saying %q", err, broken.want)
+			}
+		})
+	}
+}
+
+// A characteristic typed by a defined type is checked by what the defined type
+// holds: the chart allows warehouses, the defined type is warehouses, so the
+// characteristic fits.
+func TestPredefinedCharacteristicTypedByADefinedTypeIsCheckedByWhatItHolds(t *testing.T) {
+	t.Parallel()
+	const definedID = "70000000-0000-4000-8000-0000000000c3"
+	root := predefinedCharacteristicsProject(t, `  - {kind: catalog, reference: `+catalogID+`}
+`, `  - id: 70000000-0000-4000-8000-0000000000d2
+    name: Склады
+    code: "000000002"
+    value_type: [{kind: defined-type, reference: `+definedID+`}]
+`)
+	writeMetadata(t, root, DefinedTypeKind, definedID, `format: 1
+id: `+definedID+`
+name: Склад
+title: {ru: Склад}
+types: [{kind: catalog, reference: `+catalogID+`}]
+`)
+	if _, err := Load(root); err != nil {
+		t.Fatalf("a defined type holding what the chart allows was refused: %v", err)
+	}
+}

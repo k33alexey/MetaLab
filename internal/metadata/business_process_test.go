@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -420,5 +421,59 @@ addressing_attributes:
 `)
 	if _, err := Load(root); err == nil {
 		t.Fatal("an addressing attribute its dimension cannot hold was accepted")
+	}
+}
+
+// A field of a table part typed by an object that is not there is a column
+// with a foreign key to nothing. The table parts of a catalog and a document
+// were checked; those of a task, a business process and an exchange plan were
+// not, and loaded with a reference that resolves nowhere.
+func TestTablePartReferencesOfTaskProcessAndExchangePlanAreResolved(t *testing.T) {
+	t.Parallel()
+	part := `
+table_parts:
+  - id: b0000000-0000-4000-8000-0000000000a1
+    name: Строки
+    title: {ru: Строки}
+    attributes:
+      - id: b0000000-0000-4000-8000-0000000000a2
+        name: Склад
+        title: {ru: Склад}
+        types: [{kind: catalog, reference: b0000000-0000-4000-8000-0000000000ee}]
+`
+	for name, write := range map[string]func(root string){
+		"задача": func(root string) {
+			writeMetadata(t, root, TaskKind, taskID, `format: 1
+id: `+taskID+`
+name: ЗадачаИсполнителя
+title: {ru: Задача исполнителя}
+number: {type: string, length: 14, auto: true, unique: true, periodicity: none}
+description_length: 150`+part)
+		},
+		"бизнес-процесс": func(root string) {
+			writeMetadata(t, root, BusinessProcessKind, businessProcessID, `format: 1
+id: `+businessProcessID+`
+name: Задание
+title: {ru: Задание}
+number: {type: string, length: 11, auto: true, periodicity: year}`+part)
+		},
+		"план обмена": func(root string) {
+			writeMetadata(t, root, ExchangePlanKind, exchangePlanID, `format: 1
+id: `+exchangePlanID+`
+name: ОбменСФилиалами
+title: {ru: Обмен с филиалами}
+code: {type: string, length: 36, auto: false}
+description_length: 150`+part)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := metadataProject(t)
+			write(root)
+			_, err := Load(root)
+			if err == nil || !strings.Contains(err.Error(), "table part Строки attribute Склад references unknown catalog") {
+				t.Fatalf("a table part typed by a catalog that is not there loaded: %v", err)
+			}
+		})
 	}
 }

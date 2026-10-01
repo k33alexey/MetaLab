@@ -679,6 +679,9 @@ func (catalog *Catalog) extDimensionTable(definition ChartOfAccountsDefinition, 
 			{Name: "line_no", Type: "integer", Nullable: false},
 			{Name: "ext_dimension_type", Type: "uuid", Nullable: false},
 			{Name: "turnover_only", Type: "boolean", Nullable: false, Default: "false"},
+			// A kind of analytics the configuration gave the account apart
+			// from one the user added - the standard field "Предопределенный".
+			{Name: "predefined", Type: "boolean", Nullable: false, Default: "false"},
 		},
 		Constraints: []schemadiff.Constraint{
 			{Name: physicalObjectName("pt", definition.ID), Type: "primary_key", Definition: "PRIMARY KEY (owner_ref, line_no)"},

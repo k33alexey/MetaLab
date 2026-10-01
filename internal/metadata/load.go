@@ -1644,6 +1644,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("predefined characteristic %s.%s: %w", item.Name, predefined.Name, err)
 			}
 		}
+		if err := catalog.validatePredefinedCharacteristicTypes(owner, item); err != nil {
+			return err
+		}
 		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ChartOfCharacteristicTypesKind, kind: "chart of characteristic types", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
@@ -1700,6 +1703,13 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return err
 			}
 		}
+		for _, part := range item.TableParts {
+			for _, attribute := range part.Attributes {
+				if err := catalog.validateReferences(owner+" table part "+part.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
+					return err
+				}
+			}
+		}
 		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: TaskKind, kind: "task", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
@@ -1750,6 +1760,13 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return err
 			}
 		}
+		for _, part := range item.TableParts {
+			for _, attribute := range part.Attributes {
+				if err := catalog.validateReferences(owner+" table part "+part.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
+					return err
+				}
+			}
+		}
 		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ExchangePlanKind, kind: "exchange plan", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
@@ -1762,6 +1779,13 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		for _, attribute := range item.Attributes {
 			if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
 				return err
+			}
+		}
+		for _, part := range item.TableParts {
+			for _, attribute := range part.Attributes {
+				if err := catalog.validateReferences(owner+" table part "+part.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
+					return err
+				}
 			}
 		}
 		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: BusinessProcessKind, kind: "business process", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
@@ -1959,6 +1983,47 @@ func (catalog *Catalog) validateChartOfAccountsAnalytics(owner string, item Char
 		}
 	}
 	return nil
+}
+
+// validatePredefinedCharacteristicTypes resolves the value type of every
+// predefined characteristic and keeps it inside the chart's. The type of an
+// element narrows the chart's and never widens it: a characteristic allowed a
+// type its chart does not have would hold values no field typed by the chart
+// can take. Narrowing is by kind and reference only - an element may well keep
+// a shorter string or fewer digits than the chart, and in the configurations
+// being moved it does.
+func (catalog *Catalog) validatePredefinedCharacteristicTypes(owner string, item ChartOfCharacteristicTypesDefinition) error {
+	allowed, err := catalog.expandTypes(item.ValueType, nil)
+	if err != nil {
+		return fmt.Errorf("%s value type: %w", owner, err)
+	}
+	held := map[string]bool{}
+	for _, one := range allowed {
+		held[typeKindKey(one)] = true
+	}
+	for _, predefined := range item.Predefined {
+		// A reference to nothing is caught here as well: what is not in the
+		// configuration is not in the chart's type either.
+		path := owner + " predefined " + predefined.Name + " value type"
+		own, err := catalog.expandTypes(predefined.ValueType, nil)
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		for _, one := range own {
+			if !held[typeKindKey(one)] {
+				return fmt.Errorf("%s allows %s, which the chart's value type does not", path, typeKindKey(one))
+			}
+		}
+	}
+	return nil
+}
+
+// typeKindKey tells types apart by what they are, not by their qualifiers.
+func typeKindKey(item Type) string {
+	if item.Reference == nil {
+		return string(item.Kind)
+	}
+	return string(item.Kind) + ":" + item.Reference.String()
 }
 
 // validateCalculationBase resolves the charts a base is taken from and the

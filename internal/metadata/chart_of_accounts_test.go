@@ -163,7 +163,10 @@ ext_dimension_accounting_flags:
 			t.Fatalf("the account table has no %s", column)
 		}
 	}
-	for _, column := range []string{"ext_dimension_type", "turnover_only", extFlagColumn} {
+	// "predefined" is the standard field of every line of analytics: the
+	// prototype tells a kind of analytics the configuration gave the account
+	// from one the user added, and without the column the two are one.
+	for _, column := range []string{"ext_dimension_type", "turnover_only", "predefined", extFlagColumn} {
 		if !analyticsColumns[column] {
 			t.Fatalf("the analytics table has no %s", column)
 		}

@@ -18,6 +18,7 @@ var standardColumnTitles = map[string]string{
 	"executed": "Выполнена", "business_process": "Бизнес-процесс", "route_point": "Точка маршрута",
 	"base_chart":  "План видов расчёта базы",
 	"off_balance": "Забалансовый", "ext_dimension_type": "Вид субконто", "turnover_only": "Только обороты",
+	"predefined":    "Предопределённый",
 	"deletion_mark": "Пометка удаления", "predefined_name": "Имя предопределённых данных",
 	"owner_ref": "Владелец строки", "line_no": "Номер строки", "number": "Номер", "date": "Дата",
 	"posted": "Проведён", "period": "Период", "recorder_type": "Тип регистратора", "recorder_ref": "Регистратор",
@@ -112,12 +113,8 @@ func (catalog *Catalog) PhysicalNames() map[string]string {
 		addAttributes(owner, item.Attributes)
 		addParts(owner, item.TableParts)
 		result[competitionTableName("tl", item.ID)] = owner + ".ВедущиеВидыРасчёта"
-		if item.ActionPeriodUse {
-			result[competitionTableName("tw", item.ID)] = owner + ".ВытесняющиеВидыРасчёта"
-		}
-		if item.BaseDependency != "" && item.BaseDependency != NoBaseDependency {
-			result[competitionTableName("tb", item.ID)] = owner + ".БазовыеВидыРасчёта"
-		}
+		result[competitionTableName("tw", item.ID)] = owner + ".ВытесняющиеВидыРасчёта"
+		result[competitionTableName("tb", item.ID)] = owner + ".БазовыеВидыРасчёта"
 	}
 	for _, item := range catalog.BusinessProcesses {
 		owner := "БизнесПроцесс." + item.Name

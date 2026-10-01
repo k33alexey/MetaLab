@@ -328,8 +328,8 @@ func (catalog *Catalog) taskTables(definition TaskDefinition) (schemadiff.Table,
 	// The index is the field's own answer now that the field carries one. It
 	// used to be forced on here, because an addressing attribute had no
 	// indexing of its own to read - and a setting the developer writes and the
-	// schema overrules is worse than no setting at all. Nothing is lost by
-	// reading it: every addressing attribute of the export asks for the index.
+	// schema overrules is worse than no setting at all. Not every addressing
+	// attribute asks for the index: erp has four that do and one that does not.
 	for _, attribute := range definition.AddressingAttributes {
 		if err := catalog.appendAttributeSchema(&table, attribute.Attribute); err != nil {
 			return schemadiff.Table{}, nil, fmt.Errorf("task %s addressing attribute %s: %w", definition.Name, attribute.Name, err)

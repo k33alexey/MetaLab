@@ -62,10 +62,13 @@ predefined:
 	}
 }
 
-// Each standard tabular section exists only under the setting that gives it
-// meaning: displacing without an action period has nothing to displace, and a
-// base without a dependency has nothing to gather.
-func TestCompetitionTablesFollowTheSettings(t *testing.T) {
+// All three standard tabular sections are there whatever the settings say, as
+// they are in the prototype: every chart of the configurations being moved has
+// all three, those without an action period too. So is the flag "action period
+// is base", a standard field of every calculation type. A line of each section
+// says whether the configuration brought it, which is its standard field
+// "Предопределенный".
+func TestCompetitionTablesAreThereWhateverTheSettings(t *testing.T) {
 	t.Parallel()
 	for name, header := range map[string]string{
 		"без периода действия и базы": "",
@@ -91,20 +94,69 @@ description_length: 100
 				t.Fatal(err)
 			}
 			id := catalog.ChartsOfCalculationTypes[0].ID
-			present := map[string]bool{}
+			own, err := PhysicalCatalogTable(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			columns := map[string]map[string]bool{}
 			for _, table := range schema.Tables {
-				present[table.Name] = true
+				columns[table.Name] = map[string]bool{}
+				for _, column := range table.Columns {
+					columns[table.Name][column.Name] = true
+				}
 			}
-			if !present[competitionTableName("tl", id)] {
-				t.Fatal("leading calculation types must always have their table")
+			if !columns[own]["action_period_is_base"] {
+				t.Fatal("the flag of an action period being the base is a standard field of every calculation type")
 			}
-			if present[competitionTableName("tw", id)] != (header != "") {
-				t.Fatal("the displacing table must exist exactly when the action period is used")
-			}
-			if present[competitionTableName("tb", id)] {
-				t.Fatal("a base table without a base dependency is a column nobody may fill")
+			names := catalog.PhysicalNames()
+			for _, prefix := range []string{"tl", "tw", "tb"} {
+				table := competitionTableName(prefix, id)
+				if columns[table] == nil {
+					t.Fatalf("the standard table part %s must exist whatever the settings", prefix)
+				}
+				if !columns[table]["predefined"] {
+					t.Fatalf("a line of %s must say whether the configuration brought it", prefix)
+				}
+				if names[table] == "" {
+					t.Fatalf("the table part %s has no name a developer knows", prefix)
+				}
 			}
 		})
+	}
+}
+
+// A chart that switched a setting off after its lists were filled in keeps
+// them, as the prototype does: erp "Удержания" has no action period and still
+// writes the flag and the list of displacing types. The calculation is what
+// leaves them unread, not the loader that drops the chart.
+func TestCompetitionRulesAreKeptWithTheirSettingOff(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeMetadata(t, root, ChartOfCalculationTypesKind, calculationTypesID, `format: 1
+id: `+calculationTypesID+`
+name: Начисления
+title: {ru: Начисления}
+code: {type: string, length: 5}
+description_length: 100
+predefined:
+  - id: a0000000-0000-4000-8000-000000000010
+    name: Оклад
+    code: "00001"
+    action_period_is_base: true
+    displacing: [Премия]
+    base: [Премия]
+  - id: a0000000-0000-4000-8000-000000000011
+    name: Премия
+    code: "00002"
+`)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chart, _ := catalog.ChartOfCalculationTypes("Начисления")
+	salary := chart.Predefined[0]
+	if !salary.ActionPeriodIsBase || len(salary.Displacing) != 1 || len(salary.Base) != 1 {
+		t.Fatalf("the rules of a chart with its settings off were lost: %+v", salary)
 	}
 }
 
@@ -113,16 +165,6 @@ description_length: 100
 func TestChartOfCalculationTypesRefusesRulesThatPointNowhere(t *testing.T) {
 	t.Parallel()
 	for name, body := range map[string]string{
-		"вытеснение без периода действия": `
-predefined:
-  - id: a0000000-0000-4000-8000-000000000010
-    name: Оклад
-    code: "00001"
-    displacing: [Премия]
-  - id: a0000000-0000-4000-8000-000000000011
-    name: Премия
-    code: "00002"
-`,
 		"вытесняет несуществующий вид": `
 action_period_use: true
 predefined:
@@ -138,13 +180,6 @@ predefined:
     name: Оклад
     code: "00001"
     displacing: [Оклад]
-`,
-		"база без зависимости": `
-predefined:
-  - id: a0000000-0000-4000-8000-000000000010
-    name: Оклад
-    code: "00001"
-    base: [Оклад]
 `,
 		"зависимость без базовых планов": `
 base_dependency: by-action-period

@@ -58,17 +58,59 @@ type ChartOfCharacteristicTypesDefinition struct {
 	// AdditionalValues is the catalog holding values that fit no existing
 	// type - a characteristic whose values are a list the user writes
 	// themselves has nowhere else to put them.
-	AdditionalValues     *uuid.UUID              `yaml:"additional_values,omitempty" json:"additionalValues,omitempty"`
-	Attributes           []Attribute             `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	TableParts           []TablePart             `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	Characteristics      []ObjectCharacteristic  `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
-	StandardAttributes   []StandardAttribute     `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
-	Forms                HierarchicalObjectForms `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands             []ObjectCommand         `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates            []ObjectTemplate        `yaml:"templates,omitempty" json:"templates,omitempty"`
-	List                 ListSettings            `yaml:"list,omitempty" json:"list,omitempty"`
-	Predefined           []PredefinedCatalogItem `yaml:"predefined,omitempty" json:"predefined,omitempty"`
-	PredefinedDataUpdate PredefinedDataUpdate    `yaml:"predefined_data_update,omitempty" json:"predefinedDataUpdate,omitempty"`
+	AdditionalValues     *uuid.UUID                 `yaml:"additional_values,omitempty" json:"additionalValues,omitempty"`
+	Attributes           []Attribute                `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts           []TablePart                `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	Characteristics      []ObjectCharacteristic     `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
+	StandardAttributes   []StandardAttribute        `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
+	Forms                HierarchicalObjectForms    `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands             []ObjectCommand            `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates            []ObjectTemplate           `yaml:"templates,omitempty" json:"templates,omitempty"`
+	List                 ListSettings               `yaml:"list,omitempty" json:"list,omitempty"`
+	Predefined           []PredefinedCharacteristic `yaml:"predefined,omitempty" json:"predefined,omitempty"`
+	PredefinedDataUpdate PredefinedDataUpdate       `yaml:"predefined_data_update,omitempty" json:"predefinedDataUpdate,omitempty"`
+}
+
+// PredefinedCharacteristic is a kind of characteristic the configuration itself
+// brings. It is a predefined catalog item and one thing more: its own value
+// type, narrowed from what the chart allows. That type is what the
+// characteristic is - "Склад" holds warehouses and "Договор" holds contracts -
+// and a predefined characteristic carried over without it accepts anything the
+// chart does, which is every kind of analytics at once.
+//
+// A folder has no value type: it groups characteristics and holds no value.
+type PredefinedCharacteristic struct {
+	PredefinedCatalogItem `yaml:",inline" json:",inline"`
+	ValueType             []Type `yaml:"value_type,omitempty" json:"valueType,omitempty"`
+}
+
+// validatePredefinedCharacteristics checks what a predefined characteristic
+// adds to a predefined catalog item. An element without a type is carried: all
+// 437 of the configurations being moved have one, but nothing says the
+// designer refuses to save one without it.
+func validatePredefinedCharacteristics(items []PredefinedCharacteristic, self uuid.UUID) []string {
+	var issues []string
+	for index, item := range items {
+		path := fmt.Sprintf("predefined[%d].value_type", index)
+		if item.IsFolder {
+			if len(item.ValueType) > 0 {
+				issues = append(issues, path+" is not allowed: a folder of characteristics holds no value")
+			}
+			continue
+		}
+		if len(item.ValueType) > 0 {
+			issues = append(issues, validateTypes(path, item.ValueType, self)...)
+		}
+	}
+	return issues
+}
+
+func predefinedCharacteristicItems(items []PredefinedCharacteristic) []PredefinedCatalogItem {
+	result := make([]PredefinedCatalogItem, len(items))
+	for index, item := range items {
+		result[index] = item.PredefinedCatalogItem
+	}
+	return result
 }
 
 // DecodeChartOfCharacteristicTypes reads and validates one chart description.
@@ -103,7 +145,7 @@ func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, configura
 		forms:                  value.Forms,
 		list:                   value.List,
 		hierarchy:              value.Hierarchy,
-		predefined:             value.Predefined,
+		predefined:             predefinedCharacteristicItems(value.Predefined),
 		reservedName:           reservedChartOfCharacteristicTypesName,
 		attributeUse:           true,
 		codeSeries:             true,
@@ -127,6 +169,7 @@ func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, configura
 	// The value type is the point of the whole object: a chart that allows
 	// nothing describes characteristics nobody can fill in.
 	issues = append(issues, validateTypes("value_type", value.ValueType, value.ID)...)
+	issues = append(issues, validatePredefinedCharacteristics(value.Predefined, value.ID)...)
 	if value.AdditionalValues != nil && value.AdditionalValues.IsZero() {
 		issues = append(issues, "additional_values must be a non-zero UUID")
 	}
@@ -159,7 +202,8 @@ func cloneChartOfCharacteristicTypes(value ChartOfCharacteristicTypesDefinition)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Predefined = slices.Clone(value.Predefined)
 	for index := range value.Predefined {
-		value.Predefined[index] = clonePredefinedCatalogItem(value.Predefined[index])
+		value.Predefined[index].PredefinedCatalogItem = clonePredefinedCatalogItem(value.Predefined[index].PredefinedCatalogItem)
+		value.Predefined[index].ValueType = cloneTypes(value.Predefined[index].ValueType)
 	}
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
