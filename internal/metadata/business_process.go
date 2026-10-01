@@ -3,6 +3,7 @@ package metadata
 import (
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -30,9 +31,49 @@ const (
 )
 
 // createsTasks says whether a point of this kind creates tasks, and so whether
-// the settings of those tasks belong on it.
+// it describes them. Only an activity addresses them, groups them and explains
+// itself: a nested process creates the tasks its processes are led by, and the
+// prototype gives that point neither addressing nor a group nor an
+// explanation - not in the help, not in what the designer saves.
 func (kind RoutePointKind) createsTasks() bool {
 	return kind == ActivityPoint || kind == NestedProcessPoint
+}
+
+// RouteEvent is one event of a route point a procedure of the object module
+// may handle. The names are the prototype's own, written the way this model
+// writes names.
+type RouteEvent string
+
+const (
+	BeforeStartEvent                     RouteEvent = "before-start"
+	InteractiveActivationProcessingEvent RouteEvent = "interactive-activation-processing"
+	BeforeCreateTasksEvent               RouteEvent = "before-create-tasks"
+	OnCreateTaskEvent                    RouteEvent = "on-create-task"
+	OnExecuteEvent                       RouteEvent = "on-execute"
+	CheckExecutionProcessingEvent        RouteEvent = "check-execution-processing"
+	BeforeExecuteEvent                   RouteEvent = "before-execute"
+	BeforeExecuteInteractivelyEvent      RouteEvent = "before-execute-interactively"
+	ConditionCheckEvent                  RouteEvent = "condition-check"
+	SwitchProcessingEvent                RouteEvent = "switch-processing"
+	ProcessingEvent                      RouteEvent = "processing"
+	BeforeCreateSubBusinessProcesses     RouteEvent = "before-create-sub-business-processes"
+	OnCreateSubBusinessProcesses         RouteEvent = "on-create-sub-business-processes"
+	OnCompleteEvent                      RouteEvent = "on-complete"
+)
+
+// routeEventsOfKind is what a point of each kind may be handled on. The help
+// lists fourteen events of a route point and says which kind each is for; the
+// designer saves the same sets. A split and a merge have none.
+var routeEventsOfKind = map[RoutePointKind][]RouteEvent{
+	StartPoint: {BeforeStartEvent},
+	ActivityPoint: {InteractiveActivationProcessingEvent, BeforeCreateTasksEvent, OnCreateTaskEvent,
+		OnExecuteEvent, CheckExecutionProcessingEvent, BeforeExecuteEvent, BeforeExecuteInteractivelyEvent},
+	ConditionPoint:     {ConditionCheckEvent},
+	VariantChoicePoint: {SwitchProcessingEvent},
+	ProcessingPoint:    {ProcessingEvent},
+	NestedProcessPoint: {BeforeCreateTasksEvent, OnCreateTaskEvent, BeforeCreateSubBusinessProcesses,
+		OnCreateSubBusinessProcesses, OnExecuteEvent, BeforeExecuteEvent},
+	CompletionPoint: {OnCompleteEvent},
 }
 
 // Branch says which way out of a point a transition goes. A condition has two
@@ -86,8 +127,10 @@ type RouteDecoration struct {
 // RoutePoint is one step of a route.
 //
 // The name is not a caption: it is the value a reference to a route point
-// carries, it is what the handler of that point is named after, and it is what
-// a task stores to say where it stands.
+// carries, and it is what a task stores to say where it stands. It is not what
+// a handler is found by: the handlers are bound, event by event, to procedures
+// of the object module, and in erp 26 of 96 bound procedures are not named
+// after their point at all, some serving several points.
 type RoutePoint struct {
 	ID   uuid.UUID      `yaml:"id" json:"id"`
 	Name string         `yaml:"name" json:"name"`
@@ -108,6 +151,9 @@ type RoutePoint struct {
 	Addressing []AddressingValue `yaml:"addressing,omitempty" json:"addressing,omitempty"`
 	// Location is where the point is drawn.
 	Location *RouteArea `yaml:"location,omitempty" json:"location,omitempty"`
+	// Handlers binds events of this point to procedures of the object module.
+	// An event left out is not handled.
+	Handlers map[RouteEvent]string `yaml:"handlers,omitempty" json:"handlers,omitempty"`
 }
 
 // RouteTransition is one line of the map, from a point to a point.
@@ -277,10 +323,15 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 			issues = append(issues, prefix+".variants are allowed for a variant choice only")
 		}
 		// Tasks are created where work is done and where a nested process is
-		// waited for, and nowhere else.
-		if (point.TaskDescription != "" || point.Group || len(point.Addressing) > 0) && !point.Kind.createsTasks() {
+		// waited for, and nowhere else; only work is addressed, grouped and
+		// explained.
+		if point.TaskDescription != "" && !point.Kind.createsTasks() {
 			issues = append(issues, prefix+" carries task settings, which belong to a point that creates tasks")
 		}
+		if (point.Group || point.Explanation != "" || len(point.Addressing) > 0) && point.Kind != ActivityPoint {
+			issues = append(issues, prefix+" carries a group, an explanation or addressing, which only an activity has")
+		}
+		issues = append(issues, validateRouteHandlers(prefix, point)...)
 		issues = append(issues, validateAddressingValues(prefix, point.Addressing)...)
 		seen := map[string]bool{}
 		for _, variant := range point.Variants {
@@ -291,8 +342,10 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 		}
 		variants[folded] = seen
 	}
-	if starts != 1 {
-		issues = append(issues, "a route needs exactly one start")
+	// A route may have several starts - the method that starts a process is
+	// given the one to start from - but it needs one.
+	if starts == 0 {
+		issues = append(issues, "a route needs a start")
 	}
 	if completions == 0 {
 		issues = append(issues, "a route needs a completion: a process that cannot finish never lets go of its tasks")
@@ -347,6 +400,21 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 	for index, point := range route.Points {
 		if !reachable[strings.ToLower(point.Name)] {
 			issues = append(issues, fmt.Sprintf("route.points[%d] %s is not reachable from the start", index, point.Name))
+		}
+	}
+	return issues
+}
+
+// validateRouteHandlers keeps each handler on an event its point has and names
+// a procedure by what a procedure may be called.
+func validateRouteHandlers(prefix string, point RoutePoint) []string {
+	var issues []string
+	for event, procedure := range point.Handlers {
+		if !slices.Contains(routeEventsOfKind[point.Kind], event) {
+			issues = append(issues, fmt.Sprintf("%s.handlers.%s is not an event of a %s point", prefix, event, point.Kind))
+		}
+		if !validIdentifier(procedure) {
+			issues = append(issues, fmt.Sprintf("%s.handlers.%s must name a procedure", prefix, event))
 		}
 	}
 	return issues
@@ -438,6 +506,7 @@ func cloneRouteMap(route RouteMap) RouteMap {
 			area := *point.Location
 			point.Location = &area
 		}
+		point.Handlers = maps.Clone(point.Handlers)
 		point.Addressing = slices.Clone(point.Addressing)
 		for value := range point.Addressing {
 			if point.Addressing[value].Value != nil {

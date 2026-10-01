@@ -477,3 +477,141 @@ description_length: 150`+part)
 		})
 	}
 }
+
+func routeOnlyProcess(t *testing.T, route string) string {
+	t.Helper()
+	root := metadataProject(t)
+	writeMetadata(t, root, TaskKind, taskID, `format: 1
+id: `+taskID+`
+name: ЗадачаИсполнителя
+title: {ru: Задача исполнителя}
+number: {type: string, length: 14, auto: true, unique: true, periodicity: none}
+description_length: 150
+`)
+	writeMetadata(t, root, BusinessProcessKind, businessProcessID, `format: 1
+id: `+businessProcessID+`
+name: Задание
+title: {ru: Задание}
+number: {type: string, length: 11, auto: true, unique: true, periodicity: none}
+task: `+taskID+`
+route:`+route+`
+`)
+	return root
+}
+
+// A handler of a route point is bound, not guessed from the point's name: in
+// erp 26 of 96 bound procedures are not named after their point, and one
+// procedure serves several points. Guessing would call nothing for those 26,
+// silently.
+func TestRoutePointHandlersAreBoundNotNamed(t *testing.T) {
+	t.Parallel()
+	root := routeOnlyProcess(t, `
+  points:
+    - {id: b0000000-0000-4000-8000-000000000030, name: Старт, kind: start, handlers: {before-start: ПередСтартом}}
+    - id: b0000000-0000-4000-8000-000000000031
+      name: Выполнить
+      kind: activity
+      handlers: {before-create-tasks: ПередСозданиемЗадачИсполнителю, on-execute: ПриВыполнении}
+    - id: b0000000-0000-4000-8000-000000000033
+      name: Проверить
+      kind: activity
+      handlers: {before-create-tasks: ПередСозданиемЗадачИсполнителю}
+    - {id: b0000000-0000-4000-8000-000000000032, name: НужнаПроверка, kind: condition, handlers: {condition-check: НужнаПроверкаПроверкаУсловия}}
+    - {id: b0000000-0000-4000-8000-000000000034, name: Завершение, kind: completion, handlers: {on-complete: ПриЗавершении}}
+  transitions:
+    - {from: Старт, to: Выполнить}
+    - {from: Выполнить, to: НужнаПроверка}
+    - {from: НужнаПроверка, to: Проверить, branch: "true"}
+    - {from: НужнаПроверка, to: Завершение, branch: "false"}
+    - {from: Проверить, to: Завершение}`)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	process, _ := catalog.BusinessProcess("Задание")
+	points := process.Route.Points
+	if points[1].Handlers[BeforeCreateTasksEvent] != "ПередСозданиемЗадачИсполнителю" ||
+		points[2].Handlers[BeforeCreateTasksEvent] != "ПередСозданиемЗадачИсполнителю" ||
+		points[1].Handlers[OnExecuteEvent] != "ПриВыполнении" {
+		t.Fatalf("the activities lost their bindings: %+v / %+v", points[1].Handlers, points[2].Handlers)
+	}
+	if points[0].Handlers[BeforeStartEvent] != "ПередСтартом" || points[3].Handlers[ConditionCheckEvent] == "" || points[4].Handlers[OnCompleteEvent] == "" {
+		t.Fatal("a start, a condition or a completion lost its binding")
+	}
+	// What the catalog hands out is a copy: changing it changes nothing.
+	points[1].Handlers[OnExecuteEvent] = "Другая"
+	again, _ := catalog.BusinessProcess("Задание")
+	if again.Route.Points[1].Handlers[OnExecuteEvent] != "ПриВыполнении" {
+		t.Fatal("a binding handed out is shared with the catalog")
+	}
+}
+
+// Each kind of point has its own events, and only an activity addresses,
+// groups and explains its tasks: a nested process has none of the three in
+// the help or in what the designer saves.
+func TestRoutePointRefusesWhatItsKindHasNot(t *testing.T) {
+	t.Parallel()
+	for name, broken := range map[string]struct{ point, want string }{
+		"событие чужого вида": {`{id: b0000000-0000-4000-8000-000000000031, name: Выполнить, kind: activity, handlers: {condition-check: Проверка}}`,
+			"is not an event of a activity point"},
+		"событие у разделения": {`{id: b0000000-0000-4000-8000-000000000031, name: Выполнить, kind: split, handlers: {processing: Обработка}}`,
+			"is not an event of a split point"},
+		"процедура без имени": {`{id: b0000000-0000-4000-8000-000000000031, name: Выполнить, kind: activity, handlers: {on-execute: ""}}`,
+			"must name a procedure"},
+		"групповая у вложенного": {`{id: b0000000-0000-4000-8000-000000000031, name: Выполнить, kind: nested-process, nested_process: ` + businessProcessID + `, group: true}`,
+			"which only an activity has"},
+		"пояснение у вложенного": {`{id: b0000000-0000-4000-8000-000000000031, name: Выполнить, kind: nested-process, nested_process: ` + businessProcessID + `, explanation: Исполнитель}`,
+			"which only an activity has"},
+		"адресация у вложенного": {`{id: b0000000-0000-4000-8000-000000000031, name: Выполнить, kind: nested-process, nested_process: ` + businessProcessID + `, addressing: [{attribute: Исполнитель}]}`,
+			"which only an activity has"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := routeOnlyProcess(t, `
+  points:
+    - {id: b0000000-0000-4000-8000-000000000030, name: Старт, kind: start}
+    - `+broken.point+`
+    - {id: b0000000-0000-4000-8000-000000000034, name: Завершение, kind: completion}
+  transitions:
+    - {from: Старт, to: Выполнить}
+    - {from: Выполнить, to: Завершение}`)
+			_, err := Load(root)
+			if err == nil || !strings.Contains(err.Error(), broken.want) {
+				t.Fatalf("error = %v, want one saying %q", err, broken.want)
+			}
+		})
+	}
+}
+
+// A route may start at several points: the method that starts a process takes
+// the point to start from. A point reached only from the second start is
+// reachable. The nested point starts the very process it belongs to, as the
+// demo base saved by the designer does, and is handled on its own events.
+func TestRouteMayHaveSeveralStarts(t *testing.T) {
+	t.Parallel()
+	root := routeOnlyProcess(t, `
+  points:
+    - {id: b0000000-0000-4000-8000-000000000030, name: Старт, kind: start}
+    - {id: b0000000-0000-4000-8000-000000000035, name: СтартПовторный, kind: start}
+    - {id: b0000000-0000-4000-8000-000000000031, name: Выполнить, kind: activity}
+    - id: b0000000-0000-4000-8000-000000000036
+      name: Проверить
+      kind: nested-process
+      nested_process: `+businessProcessID+`
+      task_description: Проверить
+      handlers: {on-create-sub-business-processes: ПроверитьПриСозданииВложенныхБизнесПроцессов}
+    - {id: b0000000-0000-4000-8000-000000000034, name: Завершение, kind: completion}
+  transitions:
+    - {from: Старт, to: Выполнить}
+    - {from: СтартПовторный, to: Проверить}
+    - {from: Проверить, to: Завершение}
+    - {from: Выполнить, to: Завершение}`)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a route with two starts was refused: %v", err)
+	}
+	process, _ := catalog.BusinessProcess("Задание")
+	if process.Route.Points[3].Handlers[OnCreateSubBusinessProcesses] == "" {
+		t.Fatal("a nested process lost its binding")
+	}
+}

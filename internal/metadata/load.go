@@ -2529,9 +2529,9 @@ func (catalog *Catalog) validateBusinessProcessRoute(owner string, item Business
 		if _, ok := catalog.businessProcessByID[*point.NestedProcess]; !ok {
 			return fmt.Errorf("%s point %s starts unknown business process %s", owner, point.Name, point.NestedProcess)
 		}
-		if *point.NestedProcess == item.ID {
-			return fmt.Errorf("%s point %s starts the process it belongs to", owner, point.Name)
-		}
+		// A process may nest itself: the demo base saved by the designer has
+		// an assignment whose nested point starts more assignments of the same
+		// kind. Each nested one is a new process, so nothing loops at load.
 	}
 	return nil
 }
