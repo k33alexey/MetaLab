@@ -95,6 +95,9 @@ func inspect(ctx context.Context, root string, state SourceState) (Manifest, err
 	if err != nil {
 		return Manifest{}, fmt.Errorf("validate application metadata: %w", err)
 	}
+	if err := metadataCatalog.ValidateForDatabase(); err != nil {
+		return Manifest{}, fmt.Errorf("validate application metadata: %w", err)
+	}
 	applicationSchema, err := metadataCatalog.ApplicationSchema()
 	if err != nil {
 		return Manifest{}, fmt.Errorf("build application schema: %w", err)

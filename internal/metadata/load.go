@@ -2191,6 +2191,23 @@ func (catalog *Catalog) validateCalculationRegister(root string, item Calculatio
 		if item.ScheduleDate != nil && !scheduleDimensions[*item.ScheduleDate] {
 			return fmt.Errorf("%s takes the date of the schedule from %s, which is not a dimension of %s", owner, item.ScheduleDate, schedule.Name)
 		}
+		// The syntax assistant's own description of the schedule: a register of
+		// information that is not periodic, its date a dimension of the type
+		// Date and its value a resource of the type Number. Both schedules of
+		// the configurations being moved are so.
+		if schedule.Periodicity != InformationRegisterPeriodNone {
+			return fmt.Errorf("%s reads schedule %s, which is periodic; a schedule is a register that is not", owner, schedule.Name)
+		}
+		for _, dimension := range schedule.Dimensions {
+			if item.ScheduleDate != nil && dimension.ID == *item.ScheduleDate && !singleKind(dimension.Types, DateType) {
+				return fmt.Errorf("%s takes the date of the schedule from %s, which is not of the type Date", owner, dimension.Name)
+			}
+		}
+		for _, resource := range schedule.Resources {
+			if item.ScheduleValue != nil && resource.ID == *item.ScheduleValue && !singleKind(resource.Types, NumberType) {
+				return fmt.Errorf("%s takes the value of the schedule from %s, which is not of the type Number", owner, resource.Name)
+			}
+		}
 	}
 	dimensions := map[uuid.UUID]bool{}
 	for _, dimension := range item.Dimensions {
@@ -2237,7 +2254,11 @@ func (catalog *Catalog) validateCalculationRegister(root string, item Calculatio
 			}
 		}
 	}
-	return catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: CalculationRegisterKind, kind: "calculation register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates})
+	if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: CalculationRegisterKind, kind: "calculation register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates,
+		collections: []string{project.RecalculationsDirectory}}); err != nil {
+		return err
+	}
+	return validateRecalculationFiles(root, item)
 }
 
 // documentAttributeOwners maps every attribute of every document - its own and
@@ -2536,6 +2557,9 @@ type objectFiles struct {
 	formSlots []formSlot
 	commands  []ObjectCommand
 	templates []ObjectTemplate
+	// collections are the folders of this kind's own beside forms, commands
+	// and templates - the recalculations of a calculation register.
+	collections []string
 }
 
 // validateObjectFileSources checks the per-object folder
@@ -2561,7 +2585,7 @@ func (catalog *Catalog) validateObjectFileSources(files objectFiles) error {
 		return fmt.Errorf("%s %s: %w", kind, name, err)
 	}
 	directory := filepath.Join(root, filepath.FromSlash(relative))
-	if err := validateObjectFolderEntries(directory, kind, name, files.modules, project.SubordinateCollections(string(files.directoryKind))...); err != nil {
+	if err := validateObjectFolderEntries(directory, kind, name, files.modules, append(project.SubordinateCollections(string(files.directoryKind)), files.collections...)...); err != nil {
 		return err
 	}
 	if err := catalog.indexObjectForms(directory, files.directoryKind, kind, name, files.formSlots); err != nil {
@@ -2973,4 +2997,55 @@ func validateMetadataDirectories(root string) error {
 		return fmt.Errorf("unexpected metadata paths: %s", strings.Join(issues, "; "))
 	}
 	return nil
+}
+
+// validateRecalculationFiles checks the folder of a calculation register's
+// recalculations: a folder per recalculation the register describes, holding
+// at most its record set module. A folder no recalculation is named by is an
+// orphan - its module would never run - and is refused, as an orphaned
+// command is.
+func validateRecalculationFiles(root string, item CalculationRegisterDefinition) error {
+	if root == "" {
+		return nil
+	}
+	relative, err := project.ObjectDirectory(string(CalculationRegisterKind), item.Name)
+	if err != nil {
+		return err
+	}
+	directory := filepath.Join(root, filepath.FromSlash(relative), project.RecalculationsDirectory)
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("calculation register %s recalculations: %w", item.Name, err)
+	}
+	known := map[string]bool{}
+	for _, recalculation := range item.Recalculations {
+		known[strings.ToLower(recalculation.Name)] = true
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("calculation register %s keeps %q among its recalculations, and a recalculation is a folder", item.Name, entry.Name())
+		}
+		if !known[strings.ToLower(entry.Name())] {
+			return fmt.Errorf("calculation register %s keeps a folder for recalculation %s, which it does not describe", item.Name, entry.Name())
+		}
+		files, err := os.ReadDir(filepath.Join(directory, entry.Name()))
+		if err != nil {
+			return fmt.Errorf("calculation register %s recalculation %s: %w", item.Name, entry.Name(), err)
+		}
+		for _, file := range files {
+			if file.IsDir() || file.Name() != project.RecordSetModuleFile {
+				return fmt.Errorf("calculation register %s recalculation %s keeps %q, and a recalculation keeps only its record set module", item.Name, entry.Name(), file.Name())
+			}
+		}
+	}
+	return nil
+}
+
+// singleKind reports whether a type description is exactly one type of one
+// kind - what "of the type Date" says of a field.
+func singleKind(types []Type, kind TypeKind) bool {
+	return len(types) == 1 && types[0].Kind == kind
 }

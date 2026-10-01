@@ -31,9 +31,10 @@ const (
 // dimension of the register it corresponds to, and which data, when changed,
 // makes the recalculation necessary.
 type RecalculationDimension struct {
-	ID    uuid.UUID     `yaml:"id" json:"id"`
-	Name  string        `yaml:"name" json:"name"`
-	Title LocalizedText `yaml:"title" json:"title"`
+	ID      uuid.UUID     `yaml:"id" json:"id"`
+	Name    string        `yaml:"name" json:"name"`
+	Title   LocalizedText `yaml:"title" json:"title"`
+	Comment string        `yaml:"comment,omitempty" json:"comment,omitempty"`
 	// RegisterDimension is the dimension of this register the recalculation
 	// finds its records by.
 	RegisterDimension uuid.UUID `yaml:"register_dimension" json:"registerDimension"`
@@ -45,10 +46,17 @@ type RecalculationDimension struct {
 // Recalculation says which records of a register have to be computed again once
 // the data they depend on has changed. A calculation type is not named here:
 // it is a field of the recalculation record, beside the recorder.
+//
+// It keeps a record set module of its own, as the prototype's does (mdclasses,
+// both formats): the module lies in recalculations/<name>/ inside the
+// register's folder - see validateRecalculationFiles.
 type Recalculation struct {
 	ID    uuid.UUID     `yaml:"id" json:"id"`
 	Name  string        `yaml:"name" json:"name"`
 	Title LocalizedText `yaml:"title" json:"title"`
+	// Comment is the developer's note. Every object of the prototype has one,
+	// a recalculation and its dimension included.
+	Comment string `yaml:"comment,omitempty" json:"comment,omitempty"`
 	// DataLock is how the recalculation's own records are locked - see
 	// data_lock_settings.go. A recalculation is a subordinate entity and still
 	// carries the setting, because it has records of its own to lock.

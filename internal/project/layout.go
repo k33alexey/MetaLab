@@ -69,6 +69,11 @@ const (
 	ObjectModuleFile    = "МодульОбъекта.bsl"
 	ManagerModuleFile   = "МодульМенеджера.bsl"
 	RecordSetModuleFile = "МодульНабораЗаписей.bsl"
+	// RecalculationsDirectory is where a calculation register keeps the folders
+	// of its recalculations, each holding the recalculation's record set
+	// module. A recalculation is described inside the register; only its
+	// module needs a place on disk.
+	RecalculationsDirectory = "recalculations"
 	// ServiceModuleFile is the module of one service, inside that service's
 	// own folder. A service owns exactly one module - the procedures its
 	// operations name - so there is nothing for an identifier to tell apart.
@@ -976,8 +981,9 @@ func objectFolderSources(root, relative string) ([]string, error) {
 			continue
 		}
 		// A form is a folder holding its description, a command a folder
-		// holding its module.
-		if entry.Name() != "forms" && entry.Name() != "commands" {
+		// holding its module, a recalculation a folder holding its record set
+		// module.
+		if entry.Name() != "forms" && entry.Name() != "commands" && entry.Name() != RecalculationsDirectory {
 			continue
 		}
 		items, err := os.ReadDir(filepath.Join(directory, entry.Name()))

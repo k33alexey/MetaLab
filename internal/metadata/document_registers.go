@@ -118,3 +118,46 @@ func (catalog *Catalog) validateDocumentMovements() error {
 	}
 	return nil
 }
+
+// ValidateForDatabase checks what the prototype checks when the configuration
+// is saved into the database, and not before: a register of accumulation,
+// calculation or accounting that no document writes into has no recorder,
+// and the designer refuses to save it (checked by the owner on the platform,
+// 01.10.2026 - obligatory for all three). An information register is not
+// among them: it may be written independently.
+//
+// It is not part of reading the project, on purpose. A developer creates the
+// register first and the document after, and a project that refused to open
+// in between could not be given the document that mends it. The prototype is
+// the same: the register is created freely, and saving it into the base is
+// what fails.
+func (catalog *Catalog) ValidateForDatabase() error {
+	written := map[uuid.UUID]bool{}
+	for _, document := range catalog.Documents {
+		for _, id := range document.Movements {
+			written[id] = true
+		}
+	}
+	check := func(kind string, id uuid.UUID, name string) error {
+		if !written[id] {
+			return fmt.Errorf("%s %s has no recorder: no document writes into it", kind, name)
+		}
+		return nil
+	}
+	for _, item := range catalog.AccumulationRegisters {
+		if err := check("accumulation register", item.ID, item.Name); err != nil {
+			return err
+		}
+	}
+	for _, item := range catalog.CalculationRegisters {
+		if err := check("calculation register", item.ID, item.Name); err != nil {
+			return err
+		}
+	}
+	for _, item := range catalog.AccountingRegisters {
+		if err := check("accounting register", item.ID, item.Name); err != nil {
+			return err
+		}
+	}
+	return nil
+}

@@ -125,19 +125,72 @@ func TestDocumentNamesTheRegistersItWritesInto(t *testing.T) {
 	}
 }
 
-// A register named by nobody is legal - the prototype has no rule that a
-// register must be written into, and a configuration under construction breaks
-// that rule all the time.
-func TestARegisterNobodyWritesIntoIsAllowed(t *testing.T) {
+// A register of accumulation, calculation or accounting that no document
+// writes into is read like any other - a developer creates the register first
+// and the document after, and a project that refused to open in between could
+// not be given the document that mends it - but it is not saved into the
+// database: the prototype refuses that save (checked by the owner on the
+// platform, 01.10.2026). An information register written independently needs
+// no recorder.
+//
+// Defect caught: a register with no recorder saved into the base; the check
+// done at reading, locking the developer out of the project; and an
+// independent information register refused for having no recorder.
+func TestARegisterNobodyWritesIntoIsReadButNotSaved(t *testing.T) {
 	t.Parallel()
 	root := movementProject(t, "", "")
 	catalog, err := Load(root)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("a register nobody writes into refused at reading: %v", err)
 	}
 	balance, _ := catalog.AccumulationRegisterDefinition("ОстаткиТоваров")
 	if got := catalog.RegisterRecorders(balance.ID); len(got) != 0 {
 		t.Fatalf("a register nobody writes into answered with %+v", got)
+	}
+	if err := catalog.ValidateForDatabase(); err == nil || !strings.Contains(err.Error(), "ОстаткиТоваров") {
+		t.Fatalf("a register with no recorder would be saved into the base: %v", err)
+	}
+
+	// Written into by a document, it saves; the independent register of rates
+	// beside it needs nobody.
+	root = movementProject(t, "movements: ["+movementBalance+"]", "")
+	catalog, err = Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.ValidateForDatabase(); err != nil {
+		t.Fatalf("a register with a recorder refused: %v", err)
+	}
+}
+
+// The same holds for the two other kinds the prototype requires a recorder of.
+func TestCalculationAndAccountingRegistersNeedARecorderToBeSaved(t *testing.T) {
+	t.Parallel()
+	calc := calculationProject(t, calcRegisterBody)
+	catalog, err := Load(calc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.ValidateForDatabase(); err != nil {
+		t.Fatalf("a calculation register with a recorder refused: %v", err)
+	}
+	catalog.Documents[0].Movements = nil
+	if err := catalog.ValidateForDatabase(); err == nil || !strings.Contains(err.Error(), "calculation register") {
+		t.Fatalf("a calculation register with no recorder: %v", err)
+	}
+
+	entries := entriesProject(t, true, `resources:
+  - {id: `+entriesSum+`, name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}]}`)
+	catalog, err = Load(entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.ValidateForDatabase(); err != nil {
+		t.Fatalf("an accounting register with a recorder refused: %v", err)
+	}
+	catalog.Documents[0].Movements = nil
+	if err := catalog.ValidateForDatabase(); err == nil || !strings.Contains(err.Error(), "accounting register") {
+		t.Fatalf("an accounting register with no recorder: %v", err)
 	}
 }
 

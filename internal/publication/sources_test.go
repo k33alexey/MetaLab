@@ -386,3 +386,23 @@ func TestInspectPublishesATableOfAnExternalDataSource(t *testing.T) {
 		t.Fatalf("the published snapshot does not know the table's form: %+v", manifest.Runtime.ObjectForms)
 	}
 }
+
+// A register of accumulation that no document writes into is read, but the
+// project is not published with it: the prototype refuses to save such a
+// configuration into the base. Save data goes through the same inspection, so
+// it refuses too.
+//
+// Defect caught: a register with no recorder published and saved into the
+// base, because the check sits only where nothing calls it.
+func TestInspectRefusesARegisterWithNoRecorder(t *testing.T) {
+	t.Parallel()
+	root := publicationProject(t)
+	registerID, dimensionID, resourceID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	registerPath, _ := project.ObjectMetadataPath("accumulation-registers", "Продажи")
+	writeSourceFile(t, root, registerPath, []byte("format: 1\nid: "+registerID.String()+"\nname: Продажи\ntitle: {ru: Продажи}\nkind: turnover\n"+
+		"dimensions:\n  - id: "+dimensionID.String()+"\n    name: Товар\n    title: {ru: Товар}\n    types: [{kind: string, length: 100}]\n"+
+		"resources:\n  - id: "+resourceID.String()+"\n    name: Сумма\n    title: {ru: Сумма}\n    types: [{kind: number, precision: 15, scale: 2}]\n"))
+	if _, err := inspect(context.Background(), root, SourceState{}); err == nil || !strings.Contains(err.Error(), "no recorder") {
+		t.Fatalf("a register with no recorder: %v", err)
+	}
+}

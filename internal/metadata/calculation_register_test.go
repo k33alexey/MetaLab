@@ -2,8 +2,13 @@ package metadata
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/k33alexey/MetaLab/internal/project"
 )
 
 const (
@@ -364,5 +369,99 @@ func TestCalculationRegisterPeriodicityIsThePrototypes(t *testing.T) {
 		if (err == nil) != want {
 			t.Errorf("periodicity %s: err = %v, want accepted = %v", periodicity, err, want)
 		}
+	}
+}
+
+// A recalculation and its dimension carry a comment, and the recalculation its
+// record set module, in a folder of its own inside the register's folder.
+//
+// Defect caught: the comment of a recalculation or of its dimension refused or
+// dropped; the record set module of a recalculation having nowhere to lie; the
+// module left out of the project's sources, so that publication would lose it;
+// a folder for a recalculation the register does not describe, or a file other
+// than the record set module in it, accepted.
+func TestRecalculationKeepsItsCommentAndItsModule(t *testing.T) {
+	t.Parallel()
+	body := strings.Replace(calcRegisterBody, "    title: {ru: Перерасчёт основных начислений}\n",
+		"    title: {ru: Перерасчёт основных начислений}\n    comment: УДАЛИТЬ\n", 1)
+	body = strings.Replace(body, "        register_dimension: "+calcPerson+"\n",
+		"        register_dimension: "+calcPerson+"\n        comment: по сотруднику\n", 1)
+	root := calculationProject(t, body)
+	folder := filepath.Join(root, "metadata", string(CalculationRegisterKind), "ОсновныеНачисления", project.RecalculationsDirectory, "ПерерасчетОсновныхНачислений")
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	module := "Процедура ПередЗаписью(Отказ, Замещение)\nКонецПроцедуры\n"
+	if err := os.WriteFile(filepath.Join(folder, project.RecordSetModuleFile), []byte(module), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a recalculation with a comment and a module refused: %v", err)
+	}
+	register, _ := catalog.CalculationRegister("ОсновныеНачисления")
+	recalculation := register.Recalculations[0]
+	if recalculation.Comment != "УДАЛИТЬ" || recalculation.Dimensions[0].Comment != "по сотруднику" {
+		t.Fatalf("comments lost: %q, %q", recalculation.Comment, recalculation.Dimensions[0].Comment)
+	}
+	sources, err := project.ObjectFolderSourcePaths(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "metadata/calculation-registers/ОсновныеНачисления/recalculations/ПерерасчетОсновныхНачислений/" + project.RecordSetModuleFile
+	if !slices.Contains(sources, want) {
+		t.Fatalf("the module of the recalculation is not among the project's sources: %v", sources)
+	}
+
+	if err := os.WriteFile(filepath.Join(folder, project.ObjectModuleFile), []byte(module), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(root); err == nil {
+		t.Fatal("a file other than the record set module accepted in a recalculation's folder")
+	}
+	if err := os.Remove(filepath.Join(folder, project.ObjectModuleFile)); err != nil {
+		t.Fatal(err)
+	}
+	orphan := filepath.Join(filepath.Dir(folder), "Чужой")
+	if err := os.MkdirAll(orphan, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(root); err == nil {
+		t.Fatal("a folder for a recalculation the register does not describe accepted")
+	}
+}
+
+// The schedule is what the syntax assistant describes: a register of
+// information that is not periodic, its date a dimension of the type Date, its
+// value a resource of the type Number.
+//
+// Defect caught: a periodic register, a date that is not a date, or a value
+// that is not a number accepted as the schedule - the register would then
+// spread records over a calendar it cannot read.
+func TestScheduleIsWhatTheSyntaxAssistantDescribes(t *testing.T) {
+	t.Parallel()
+	for name, change := range map[string][2]string{
+		"периодический график": {"periodicity: none", "periodicity: day"},
+		"дата не дата":         {"name: Дата, title: {ru: Дата}, types: [{kind: date, date_parts: date}]", "name: Дата, title: {ru: Дата}, types: [{kind: string, length: 10}]"},
+		"значение не число":    {"name: Значение, title: {ru: Значение}, types: [{kind: number, precision: 5, scale: 2}]", "name: Значение, title: {ru: Значение}, types: [{kind: string, length: 10}]"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := calculationProject(t, calcRegisterBody)
+			path := filepath.Join(root, "metadata", string(InformationRegisterKind), "ГрафикиРаботы", project.ObjectMetadataFile)
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(content), change[0]) {
+				t.Fatalf("fixture changed: %q not found", change[0])
+			}
+			if err := os.WriteFile(path, []byte(strings.Replace(string(content), change[0], change[1], 1)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Load(root); err == nil {
+				t.Fatal("accepted as a schedule")
+			}
+		})
 	}
 }
