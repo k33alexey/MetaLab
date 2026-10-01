@@ -329,3 +329,23 @@ func TestBalanceIndexStaysWithinTheColumnsAnIndexTakes(t *testing.T) {
 		}
 	}
 }
+
+// TestATypeDescriptionTakesAsManyTypesAsItHas is the ceiling of 32 types,
+// which had no source: the configurations being moved have 109 type
+// descriptions of more than 32 types and one of 635. Six hundred and forty
+// distinct references must be one description, and an empty one is still
+// refused - there is nothing a value of no type could be.
+func TestATypeDescriptionTakesAsManyTypesAsItHas(t *testing.T) {
+	t.Parallel()
+	types := make([]Type, 0, 640)
+	for range 640 {
+		id := uuid.MustNew()
+		types = append(types, Type{Kind: CatalogType, Reference: &id})
+	}
+	if issues := validateTypes("types", types, uuid.MustNew()); len(issues) != 0 {
+		t.Fatalf("640 types: %v", issues)
+	}
+	if issues := validateTypes("types", nil, uuid.MustNew()); len(issues) == 0 {
+		t.Fatal("a description without types was taken")
+	}
+}

@@ -418,8 +418,8 @@ func validateExternalFieldTypes(path string, types []Type) []string {
 			issues = append(issues, prefix+" has unsupported qualifiers")
 		}
 	}
-	if len(types) > 32 || len(types) == 0 {
-		return append(issues, path+" must contain 1..32 types")
+	if len(types) == 0 {
+		return append(issues, path+" must contain at least one type")
 	}
 	if len(rest) == 0 {
 		return issues

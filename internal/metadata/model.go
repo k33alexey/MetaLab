@@ -1555,8 +1555,12 @@ func validateTitle(path string, title LocalizedText, configuration project.Proje
 }
 
 func validateTypes(path string, types []Type, self uuid.UUID) []string {
-	if len(types) == 0 || len(types) > 32 {
-		return []string{path + " must contain 1..32 types"}
+	// No ceiling on the number of types: the prototype names none, and the
+	// configurations being moved have type descriptions of more than six
+	// hundred. A composite type is stored as one value column whatever its
+	// size.
+	if len(types) == 0 {
+		return []string{path + " must contain at least one type"}
 	}
 	var issues []string
 	seen := map[string]bool{}
