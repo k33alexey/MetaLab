@@ -335,7 +335,7 @@ func TestBalanceReadNeverMixesTwoPeriods(t *testing.T) {
 	probes := []time.Time{utcDate(2025, 11, 20, 0), utcDate(2025, 12, 10, 0), utcDate(2026, 2, 1, 0)}
 	want := make([]map[string]int64, len(probes))
 	for index, at := range probes {
-		want[index] = fixture.expected(at, true)
+		want[index] = fixture.expected(at, false)
 	}
 	stop := make(chan struct{})
 	var wait sync.WaitGroup
@@ -483,5 +483,104 @@ func TestAnIndexedDimensionIsFoundWithoutTheOnesBeforeIt(t *testing.T) {
 	}
 	if strings.Contains(plan, "Seq Scan on "+fixture.totalsTable) {
 		t.Fatalf("the totals are read sequentially:\n%s", plan)
+	}
+}
+
+// The balance at a moment is every movement strictly before it, as in the
+// prototype: Остатки(КонецДня) leaves out a movement at 23:59:59 of that day,
+// and Остатки(КонецДня + 1 секунда) takes it. The moment is the last second of
+// October on purpose: the stored month that follows it starts one second later
+// and holds that movement, so a read that took the month without looking at
+// the moment would count it. Остатки() with no moment is the present balance.
+//
+// The defect is a balance one movement off on the last second of a day or a
+// month - the balance a report "at the end of the period" reads - with no
+// error and a number that looks right. It is checked with the present totals
+// alone, with stored months, and with the months alone.
+func TestBalanceAtAMomentLeavesOutTheMovementsOfTheMoment(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	fixture := newBalanceTotalsFixture(ctx, t, false, 0)
+	endOfDay := time.Date(2025, 10, 31, 23, 59, 59, 0, time.UTC)
+	for _, posting := range []struct {
+		number   string
+		movement balanceMovement
+	}{
+		{"R-1", balanceMovement{utcDate(2025, 10, 5, 9), "W1", "P1", true, 100}},
+		{"R-2", balanceMovement{endOfDay, "W1", "P1", false, 30}},
+		{"R-3", balanceMovement{endOfDay, "W2", "P2", true, 7}},
+		{"R-4", balanceMovement{utcDate(2025, 12, 2, 0), "W1", "P1", true, 5}},
+	} {
+		if err := fixture.post(ctx, posting.number, posting.movement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	balances := func(label string, at time.Time) map[string]int64 {
+		t.Helper()
+		rows, err := fixture.registers.Balances(ctx, "Остатки", at, nil)
+		if err != nil {
+			t.Fatalf("%s: balances: %v", label, err)
+		}
+		got := map[string]int64{}
+		for _, row := range rows {
+			got[fixture.combination(row)] = wholeAmount(t, row.Turnover[fixture.quantityID])
+		}
+		return got
+	}
+	check := func(state string) {
+		t.Helper()
+		requireSameBalances(t, state+": at the end of the day", map[string]int64{"W1/P1": 100}, balances(state, endOfDay))
+		requireSameBalances(t, state+": a second later", map[string]int64{"W1/P1": 70, "W2/P2": 7}, balances(state, endOfDay.Add(time.Second)))
+		requireSameBalances(t, state+": with no moment", map[string]int64{"W1/P1": 75, "W2/P2": 7}, balances(state, time.Time{}))
+	}
+	check("present totals only")
+	if err := fixture.registers.SetTotalsPeriods(ctx, "Остатки", TotalsBound{}, TotalsBound{Set: true, Date: utcDate(2025, 12, 31, 0)}); err != nil {
+		t.Fatal(err)
+	}
+	check("stored months")
+	if err := fixture.registers.SetPresentTotalsUsing(ctx, "Остатки", false); err != nil {
+		t.Fatal(err)
+	}
+	check("stored months without present totals")
+}
+
+// The turnovers take both bounds, and a bound left out is open: from the first
+// movement, to the last. The defect is a bound not given read as the zero date
+// - turnovers from year one, or to year one, which is none at all.
+func TestTurnoversTakeBothBoundsAndAnOpenOne(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	fixture := newBalanceTotalsFixture(ctx, t, false, 0)
+	first, middle, last := utcDate(2025, 10, 5, 9), utcDate(2025, 11, 1, 0), utcDate(2026, 1, 20, 0)
+	for number, movement := range map[string]balanceMovement{
+		"R-1": {first, "W1", "P1", true, 100},
+		"R-2": {middle, "W1", "P1", false, 30},
+		"R-3": {last, "W1", "P1", true, 4},
+	} {
+		if err := fixture.post(ctx, number, movement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, testCase := range []struct {
+		label      string
+		begin, end time.Time
+		want       int64
+	}{
+		{"both bounds on movements", first, middle, 70},
+		{"no begin", time.Time{}, middle, 70},
+		{"no end", middle, time.Time{}, -26},
+		{"no bounds", time.Time{}, time.Time{}, 74},
+		{"one moment", middle, middle, -30},
+	} {
+		rows, err := fixture.registers.Turnovers(ctx, "Остатки", testCase.begin, testCase.end, nil)
+		if err != nil {
+			t.Fatalf("%s: %v", testCase.label, err)
+		}
+		if len(rows) != 1 || wholeAmount(t, rows[0].Turnover[fixture.quantityID]) != testCase.want {
+			t.Errorf("%s: turnovers = %+v, expected %d", testCase.label, rows, testCase.want)
+		}
+	}
+	if _, err := fixture.registers.Turnovers(ctx, "Остатки", last, first, nil); err == nil {
+		t.Fatal("turnovers with the end before the begin were answered")
 	}
 }

@@ -1050,12 +1050,17 @@ func accumulationRegisterCallPath(register, method string, arity int) (string, b
 	switch {
 	case strings.EqualFold(method, "СоздатьНаборЗаписей"), strings.EqualFold(method, "CreateRecordSet"):
 		operation, validArity = "create-record-set", arity == 0
+	// Every parameter of both is optional in the prototype: no moment is the
+	// present balance, no start is from the first movement and no end is to
+	// the last. The dimensions and resources to fold by, the third and
+	// fourth of Остатки and the fourth and fifth of Обороты, are not taken yet
+	// and are refused here rather than ignored. There is no manager method
+	// ОстаткиИОбороты in the prototype - balances and turnovers together are a
+	// virtual table of the query language, not a method.
 	case strings.EqualFold(method, "Остатки"), strings.EqualFold(method, "Balances"):
-		operation, validArity = "balances", arity == 1 || arity == 2
+		operation, validArity = "balances", arity <= 2
 	case strings.EqualFold(method, "Обороты"), strings.EqualFold(method, "Turnovers"):
-		operation, validArity = "turnovers", arity == 2 || arity == 3
-	case strings.EqualFold(method, "ОстаткиИОбороты"), strings.EqualFold(method, "BalancesAndTurnovers"):
-		operation, validArity = "balances-and-turnovers", arity == 2 || arity == 3
+		operation, validArity = "turnovers", arity <= 3
 	}
 	if operation == "" || !validArity {
 		return "", false

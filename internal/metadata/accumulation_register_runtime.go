@@ -202,7 +202,8 @@ func (runtime *Runtime) AccumulationRegisterBalances(ctx context.Context, name s
 	if err != nil {
 		return bytecode.Undefined(), err
 	}
-	date, ok := period.AsDate()
+	// No moment given is the present balance: Остатки() with no argument.
+	date, ok := optionalDate(period)
 	if !ok {
 		return bytecode.Undefined(), fmt.Errorf("accumulation register balance period must be a date")
 	}
@@ -218,8 +219,9 @@ func (runtime *Runtime) AccumulationRegisterTurnovers(ctx context.Context, name 
 	if err != nil {
 		return bytecode.Undefined(), err
 	}
-	from, okFrom := begin.AsDate()
-	to, okTo := end.AsDate()
+	// A bound not given is open: from the first movement, to the last.
+	from, okFrom := optionalDate(begin)
+	to, okTo := optionalDate(end)
 	if !okFrom || !okTo {
 		return bytecode.Undefined(), fmt.Errorf("accumulation register turnover periods must be dates")
 	}
@@ -230,21 +232,13 @@ func (runtime *Runtime) AccumulationRegisterTurnovers(ctx context.Context, name 
 	return runtime.wrapAccumulationVirtualTable(definition, "turnovers", rows)
 }
 
-func (runtime *Runtime) AccumulationRegisterBalancesAndTurnovers(ctx context.Context, name string, begin, end, filter bytecode.Value) (bytecode.Value, error) {
-	definition, dimensions, err := runtime.accumulationManagerArguments(ctx, name, filter)
-	if err != nil {
-		return bytecode.Undefined(), err
+// optionalDate reads a date parameter a call may leave out: Undefined is the
+// zero time, which the repository reads as "not given".
+func optionalDate(value bytecode.Value) (time.Time, bool) {
+	if value.Kind() == bytecode.UndefinedKind {
+		return time.Time{}, true
 	}
-	from, okFrom := begin.AsDate()
-	to, okTo := end.AsDate()
-	if !okFrom || !okTo {
-		return bytecode.Undefined(), fmt.Errorf("accumulation register periods must be dates")
-	}
-	rows, err := runtime.accumulationRegisterRepository.BalancesAndTurnovers(ctx, name, from, to, dimensions)
-	if err != nil {
-		return bytecode.Undefined(), err
-	}
-	return runtime.wrapAccumulationVirtualTable(definition, "balances-and-turnovers", rows)
+	return value.AsDate()
 }
 
 func (runtime *Runtime) accumulationManagerArguments(ctx context.Context, name string, filter bytecode.Value) (AccumulationRegisterDefinition, map[uuid.UUID]Value, error) {
@@ -442,19 +436,6 @@ func (runtime *Runtime) accumulationVirtualRowProperty(ctx context.Context, obje
 				group = object.row.Receipt
 			case object.owner.definition.Kind == AccumulationRegisterBalance && propertyName(name, resource.Name+"Расход", resource.Name+"Expense"):
 				group = object.row.Expense
-			}
-		case "balances-and-turnovers":
-			switch {
-			case propertyName(name, resource.Name+"НачальныйОстаток", resource.Name+"OpeningBalance"):
-				group = object.row.Opening
-			case propertyName(name, resource.Name+"Приход", resource.Name+"Receipt"):
-				group = object.row.Receipt
-			case propertyName(name, resource.Name+"Расход", resource.Name+"Expense"):
-				group = object.row.Expense
-			case propertyName(name, resource.Name+"Оборот", resource.Name+"Turnover"):
-				group = object.row.Turnover
-			case propertyName(name, resource.Name+"КонечныйОстаток", resource.Name+"ClosingBalance"):
-				group = object.row.Closing
 			}
 		}
 		if group != nil {

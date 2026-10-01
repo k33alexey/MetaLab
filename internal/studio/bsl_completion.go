@@ -746,9 +746,9 @@ func (index *BSLSymbolIndex) addQualified(add *completionCollector, qualifier []
 			return
 		}
 		if english {
-			add.values("method", "accumulation register manager", "CreateRecordSet", "Balances", "Turnovers", "BalancesAndTurnovers")
+			add.values("method", "accumulation register manager", "CreateRecordSet", "Balances", "Turnovers")
 		} else {
-			add.values("method", "менеджер регистра накопления", "СоздатьНаборЗаписей", "Остатки", "Обороты", "ОстаткиИОбороты")
+			add.values("method", "менеджер регистра накопления", "СоздатьНаборЗаписей", "Остатки", "Обороты")
 		}
 	case "константы", "constants":
 		if !containsFold(index.metadata.constants, qualifier[1]) {
@@ -937,9 +937,8 @@ var builtinBSLSignatures = map[string][]string{
 	"получитьссылку": {"Идентификатор"}, "getref": {"Identifier"}, "getreference": {"Identifier"},
 	"создатьнаборзаписей": {}, "createrecordset": {}, "срезпоследних": {"Период", "Отбор = Неопределено"}, "slicelast": {"Period", "Filter = Undefined"},
 	"срезпервых": {"Период", "Отбор = Неопределено"}, "slicefirst": {"Period", "Filter = Undefined"},
-	"остатки": {"Период", "Отбор = Неопределено"}, "balances": {"Period", "Filter = Undefined"},
-	"обороты": {"НачалоПериода", "КонецПериода", "Отбор = Неопределено"}, "turnovers": {"PeriodBegin", "PeriodEnd", "Filter = Undefined"},
-	"остаткииобороты": {"НачалоПериода", "КонецПериода", "Отбор = Неопределено"}, "balancesandturnovers": {"PeriodBegin", "PeriodEnd", "Filter = Undefined"},
+	"остатки": {"Момент = Неопределено", "Отбор = Неопределено"}, "balances": {"Moment = Undefined", "Filter = Undefined"},
+	"обороты": {"НачалоПериода = Неопределено", "КонецПериода = Неопределено", "Отбор = Неопределено"}, "turnovers": {"PeriodBegin = Undefined", "PeriodEnd = Undefined", "Filter = Undefined"},
 	"получить": {}, "get": {}, "установить": {"Значение"}, "set": {"Value"},
 	"массив": {"Размер1 = 0", "..."}, "array": {"Dimension1 = 0", "..."},
 	"структура": {"ИменаСвойств = \"\"", "..."}, "structure": {"PropertyNames = \"\"", "..."},
@@ -975,7 +974,7 @@ func metadataMethod(root, method string) bool {
 	case "регистрысведений", "informationregisters":
 		allowed = []string{"создатьнаборзаписей", "createrecordset", "срезпоследних", "slicelast", "срезпервых", "slicefirst"}
 	case "регистрынакопления", "accumulationregisters":
-		allowed = []string{"создатьнаборзаписей", "createrecordset", "остатки", "balances", "обороты", "turnovers", "остаткииобороты", "balancesandturnovers"}
+		allowed = []string{"создатьнаборзаписей", "createrecordset", "остатки", "balances", "обороты", "turnovers"}
 	case "константы", "constants":
 		allowed = []string{"получить", "get", "установить", "set"}
 	}

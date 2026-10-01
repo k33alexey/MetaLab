@@ -274,8 +274,9 @@ func TestAccumulationRegisterManagerDispatch(t *testing.T) {
     Строка = Набор.Добавить();
     Строка.ВидДвижения = ВидДвиженияНакопления.Расход;
     Набор.Записать();
-    Таблица = РегистрыНакопления.Остатки.ОстаткиИОбороты('20260901', '20260930');
-    Возврат Строка.ВидДвижения + ":" + Таблица.Количество;
+    Остатки = РегистрыНакопления.Остатки.Остатки();
+    Обороты = РегистрыНакопления.Остатки.Обороты(, '20260930');
+    Возврат Строка.ВидДвижения + ":" + Остатки.Количество + Обороты.Количество;
 КонецФункции`)
 	if len(diagnostics) != 0 {
 		t.Fatal(diagnostics)
@@ -286,8 +287,27 @@ func TestAccumulationRegisterManagerDispatch(t *testing.T) {
 	}
 	runtime := &catalogRuntimeStub{}
 	result, err := machine.NewContextWithMetadata(runtime).Call("Проверить")
-	if err != nil || result.String() != "expense:1" || !runtime.written {
+	if err != nil || result.String() != "expense:11" || !runtime.written {
 		t.Fatalf("result=%v written=%v error=%v", result, runtime.written, err)
+	}
+}
+
+// The manager of an accumulation register has two reading methods in the
+// prototype, and the parameters they take and we do not - the dimensions and
+// resources to fold by - are refused loudly rather than ignored. There is no
+// method ОстаткиИОбороты: a call to it must not compile into something that
+// runs.
+func TestAccumulationRegisterManagerRefusesWhatThePrototypeHasNot(t *testing.T) {
+	t.Parallel()
+	for _, call := range []string{
+		"РегистрыНакопления.Остатки.ОстаткиИОбороты('20260901', '20260930')",
+		"РегистрыНакопления.Остатки.Остатки('20260901', Неопределено, \"Товар\")",
+		"РегистрыНакопления.Остатки.Обороты('20260901', '20260930', Неопределено, \"Товар\")",
+	} {
+		_, diagnostics := compiler.CompileSource("accumulation.bsl", "&НаСервере\nФункция Проверить()\n    Возврат "+call+";\nКонецФункции")
+		if len(diagnostics) == 0 {
+			t.Errorf("%s compiled", call)
+		}
 	}
 }
 
@@ -376,9 +396,6 @@ func (runtime *catalogRuntimeStub) AccumulationRegisterBalances(ctx context.Cont
 	return runtime.InformationRegisterSliceLast(ctx, name, bytecode.Undefined(), bytecode.Undefined())
 }
 func (runtime *catalogRuntimeStub) AccumulationRegisterTurnovers(ctx context.Context, name string, _, _, _ bytecode.Value) (bytecode.Value, error) {
-	return runtime.AccumulationRegisterBalances(ctx, name, bytecode.Undefined(), bytecode.Undefined())
-}
-func (runtime *catalogRuntimeStub) AccumulationRegisterBalancesAndTurnovers(ctx context.Context, name string, _, _, _ bytecode.Value) (bytecode.Value, error) {
 	return runtime.AccumulationRegisterBalances(ctx, name, bytecode.Undefined(), bytecode.Undefined())
 }
 func (*catalogRuntimeStub) GetObjectProperty(_ context.Context, object bytecode.RuntimeObject, name string) (bytecode.Value, error) {

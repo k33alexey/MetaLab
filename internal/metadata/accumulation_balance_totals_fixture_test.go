@@ -221,7 +221,9 @@ func wholeAmount(t *testing.T, value Value) int64 {
 // the movements.
 func (fixture *balanceTotalsFixture) requireBalances(ctx context.Context, t *testing.T, label string, at time.Time) {
 	t.Helper()
-	want := fixture.expected(at, true)
+	// The balance at a moment is every movement strictly before it: a
+	// movement at the moment itself is not in it yet.
+	want := fixture.expected(at, false)
 	rows, err := fixture.registers.Balances(ctx, "Остатки", at, nil)
 	if err != nil {
 		t.Fatalf("%s: balances at %s: %v", label, at.Format(time.RFC3339), err)

@@ -101,7 +101,6 @@ type AccumulationRegisterRuntime interface {
 	CreateAccumulationRegisterRecordSet(context.Context, string) (bytecode.Value, error)
 	AccumulationRegisterBalances(context.Context, string, bytecode.Value, bytecode.Value) (bytecode.Value, error)
 	AccumulationRegisterTurnovers(context.Context, string, bytecode.Value, bytecode.Value, bytecode.Value) (bytecode.Value, error)
-	AccumulationRegisterBalancesAndTurnovers(context.Context, string, bytecode.Value, bytecode.Value, bytecode.Value) (bytecode.Value, error)
 }
 
 // MetadataObjectRuntime supplies properties and methods of opaque server objects.
@@ -1597,23 +1596,12 @@ func dispatchMetadata(ctx context.Context, env executionEnvironment, path string
 				return runtime.CreateAccumulationRegisterRecordSet(ctx, parts[1])
 			}
 		case "balances":
-			if len(arguments) == 1 || len(arguments) == 2 {
-				filter := bytecode.Undefined()
-				if len(arguments) == 2 {
-					filter = arguments[1]
-				}
-				return runtime.AccumulationRegisterBalances(ctx, parts[1], arguments[0], filter)
+			if len(arguments) <= 2 {
+				return runtime.AccumulationRegisterBalances(ctx, parts[1], optionalArgument(arguments, 0), optionalArgument(arguments, 1))
 			}
-		case "turnovers", "balances-and-turnovers":
-			if len(arguments) == 2 || len(arguments) == 3 {
-				filter := bytecode.Undefined()
-				if len(arguments) == 3 {
-					filter = arguments[2]
-				}
-				if parts[2] == "turnovers" {
-					return runtime.AccumulationRegisterTurnovers(ctx, parts[1], arguments[0], arguments[1], filter)
-				}
-				return runtime.AccumulationRegisterBalancesAndTurnovers(ctx, parts[1], arguments[0], arguments[1], filter)
+		case "turnovers":
+			if len(arguments) <= 3 {
+				return runtime.AccumulationRegisterTurnovers(ctx, parts[1], optionalArgument(arguments, 0), optionalArgument(arguments, 1), optionalArgument(arguments, 2))
 			}
 		}
 		return bytecode.Undefined(), fmt.Errorf("invalid application metadata operation %q", path)
@@ -1883,3 +1871,13 @@ func finalizeRuntimeError(program *bytecode.Program, err error) error {
 }
 
 func maxInt() int { return int(^uint(0) >> 1) }
+
+// optionalArgument is the argument at the index, or Undefined when the call
+// left it out: a trailing parameter not given is the same as one given as
+// Undefined.
+func optionalArgument(arguments []bytecode.Value, index int) bytecode.Value {
+	if index < len(arguments) {
+		return arguments[index]
+	}
+	return bytecode.Undefined()
+}

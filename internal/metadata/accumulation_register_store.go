@@ -975,6 +975,12 @@ func rebuildTurnoverTotals(ctx context.Context, transaction pgx.Tx, definition A
 	return nil
 }
 
+// Balances is the balance of every combination at a moment: every movement
+// strictly before it. The moment itself is the boundary and is not included -
+// the prototype's rule, and the one a developer coming from it relies on:
+// Остатки(КонецДня(Дата)) leaves out a movement made at 23:59:59, and
+// Остатки(КонецДня(Дата) + 1) takes it in. A zero moment is the present
+// balance, after every movement there is - Остатки() with no argument.
 func (repository *AccumulationRegisterRepository) Balances(ctx context.Context, name string, period time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterTotalsRow, error) {
 	definition, ok := repository.catalog.AccumulationRegisterDefinition(name)
 	if !ok {
@@ -982,6 +988,11 @@ func (repository *AccumulationRegisterRepository) Balances(ctx context.Context, 
 	}
 	if definition.Kind != AccumulationRegisterBalance {
 		return nil, fmt.Errorf("accumulation register %s does not store balances", definition.Name)
+	}
+	if period.IsZero() {
+		// Past every movement a period can have, which is also where the
+		// present totals are kept: the balance there is the present one.
+		return repository.balanceAt(ctx, definition, accumulationPresentTotalsPeriod, dimensions)
 	}
 	period, err := normalizeAccumulationPeriod(period)
 	if err != nil {
@@ -995,15 +1006,23 @@ func (repository *AccumulationRegisterRepository) Turnovers(ctx context.Context,
 	if !ok {
 		return nil, fmt.Errorf("unknown accumulation register %q", name)
 	}
-	begin, err := normalizeAccumulationPeriod(begin)
-	if err != nil {
-		return nil, err
+	// Both bounds are included, and a zero bound is not given: the turnovers
+	// run from the first movement or to the last.
+	var from, to *time.Time
+	for _, bound := range []struct {
+		value  time.Time
+		target **time.Time
+	}{{begin, &from}, {end, &to}} {
+		if bound.value.IsZero() {
+			continue
+		}
+		normalized, err := normalizeAccumulationPeriod(bound.value)
+		if err != nil {
+			return nil, err
+		}
+		*bound.target = &normalized
 	}
-	end, err = normalizeAccumulationPeriod(end)
-	if err != nil {
-		return nil, err
-	}
-	if end.Before(begin) {
+	if from != nil && to != nil && to.Before(*from) {
 		return nil, fmt.Errorf("accumulation register turnover end precedes begin")
 	}
 	query, err := queryData(ctx, repository.pool)
@@ -1013,7 +1032,7 @@ func (repository *AccumulationRegisterRepository) Turnovers(ctx context.Context,
 	if err := repository.requireReadableTotals(ctx, query, definition); err != nil {
 		return nil, err
 	}
-	return repository.queryAggregates(ctx, definition, &begin, &end, dimensions)
+	return repository.queryAggregates(ctx, definition, from, to, dimensions)
 }
 
 func (repository *AccumulationRegisterRepository) BalancesAndTurnovers(ctx context.Context, name string, begin, end time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterTotalsRow, error) {
@@ -1309,7 +1328,7 @@ func (repository *AccumulationRegisterRepository) balanceStatement(ctx context.C
 	if err != nil {
 		return "", nil, nil, err
 	}
-	with, parts := balanceParts(definition, period, true, now, &arguments, restriction, func(index int, amount string) []string {
+	with, parts := balanceParts(definition, period, false, now, &arguments, restriction, func(index int, amount string) []string {
 		return []string{amount + " AS " + pgx.Identifier{fmt.Sprintf("r%d_net", index)}.Sanitize()}
 	})
 	conditions, err := repository.balanceFilterConditions(definition, filter, &arguments)
