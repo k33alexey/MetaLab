@@ -195,3 +195,58 @@ attributes:
 		})
 	}
 }
+
+// An exchange plan registers changes of accounting and calculation registers,
+// of sequences and of recalculations too - eleven plans of the configurations
+// being moved hold one of them, and acc registers a recalculation.
+//
+// Defect caught: a plan holding any of the four refused at load, as if the
+// object it names were missing from the project.
+func TestExchangePlanRegistersRegistersSequencesAndRecalculations(t *testing.T) {
+	t.Parallel()
+	plan := func(content string) string {
+		return `format: 1
+id: ` + exchangePlanID + `
+name: ОбменСФилиалами
+title: {ru: Обмен с филиалами}
+code: {type: string, length: 36, auto: false}
+description_length: 150
+content:
+` + content
+	}
+	for name, project := range map[string]func(t *testing.T) (string, string){
+		"регистр расчёта и перерасчёт": func(t *testing.T) (string, string) {
+			return calculationProject(t, calcRegisterBody),
+				"  - {kind: calculation-registers, object: " + calcRegister + "}\n  - {kind: recalculations, object: " + calcRecalc + "}\n"
+		},
+		"регистр бухгалтерии": func(t *testing.T) (string, string) {
+			return entriesProject(t, true, `resources:
+  - {id: `+entriesSum+`, name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}]}`),
+				"  - {kind: accounting-registers, object: " + entriesRegister + "}\n"
+		},
+		"последовательность": func(t *testing.T) (string, string) {
+			root := aroundDocumentsProject(t)
+			writeMetadata(t, root, SequenceKind, aroundSequence, "format: 1\nid: "+aroundSequence+"\nname: Движение\ntitle: {ru: Движение}\ndocuments: ["+aroundFirstDoc+"]\n")
+			return root, "  - {kind: sequences, object: " + aroundSequence + "}\n"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root, content := project(t)
+			writeMetadata(t, root, ExchangePlanKind, exchangePlanID, plan(content))
+			catalog, err := Load(root)
+			if err != nil {
+				t.Fatalf("refused: %v", err)
+			}
+			if found, ok := catalog.ExchangePlan("ОбменСФилиалами"); !ok || len(found.Content) == 0 {
+				t.Fatalf("content = %+v", found.Content)
+			}
+		})
+	}
+	// A recalculation the project does not have is still refused.
+	root := calculationProject(t, calcRegisterBody)
+	writeMetadata(t, root, ExchangePlanKind, exchangePlanID, plan("  - {kind: recalculations, object: "+calcRegister+"}\n"))
+	if _, err := Load(root); err == nil {
+		t.Fatal("a recalculation the project does not have was accepted")
+	}
+}

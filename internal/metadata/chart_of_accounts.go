@@ -5,6 +5,7 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -91,7 +92,13 @@ type PredefinedAccount struct {
 	// Parent names the predefined account this one is a subaccount of. The
 	// hierarchy itself is not implemented yet; the structure is kept so that
 	// it is not lost on the way in.
-	Parent        string                          `yaml:"parent,omitempty" json:"parent,omitempty"`
+	Parent string `yaml:"parent,omitempty" json:"parent,omitempty"`
+	// Order is the account's place among the others, as the configuration
+	// wrote it. It is carried, not derived: 124 of the 966 predefined accounts
+	// of the configurations being moved have an order the code does not give
+	// - a leading space, an off-balance account ordered «Заб01» under the code
+	// 01 - so deriving it would rewrite what a bookkeeper chose.
+	Order         string                          `yaml:"order,omitempty" json:"order,omitempty"`
 	Flags         map[string]bool                 `yaml:"flags,omitempty" json:"flags,omitempty"`
 	ExtDimensions []PredefinedAccountExtDimension `yaml:"ext_dimensions,omitempty" json:"extDimensions,omitempty"`
 }
@@ -130,9 +137,16 @@ type ChartOfAccountsDefinition struct {
 	Code              CatalogCode `yaml:"code" json:"code"`
 	DescriptionLength int         `yaml:"description_length" json:"descriptionLength"`
 	// CodeMask describes how an account code is built - "@@.@@" is two
-	// positions, a dot, two more. The order of accounts is derived from it.
+	// positions, a dot, two more. The syntax assistant says only that it is
+	// a string describing the structure of the code; its grammar is the one
+	// of an input mask (Mask of a text box): the positions ! 9 # N U X ^ h @,
+	// any other symbol a separator, a backslash making the next symbol a
+	// separator, and several masks joined by ";". The charts being moved
+	// write "@@@@@   ", "@@@@@@@@@" and "XXXXXXXX".
 	CodeMask string `yaml:"code_mask,omitempty" json:"codeMask,omitempty"`
-	// OrderLength is the width of the derived order string.
+	// OrderLength is the width of the order string. It does not depend on the
+	// mask: the designer saves a mask of five with an order of three (checked
+	// by the owner on the platform, 01.10.2026).
 	OrderLength int `yaml:"order_length,omitempty" json:"orderLength,omitempty"`
 	// AutoOrderByCode makes ordering by code order by the derived order
 	// instead, so that 41.1 sorts after 9 rather than before it.
@@ -226,23 +240,18 @@ func DecodeChartOfAccounts(source string, reader io.Reader, configuration projec
 
 func validateCodeMask(value ChartOfAccountsDefinition) []string {
 	var issues []string
+	// Any symbol is either a position or a separator, so what can be wrong is
+	// only what no mask is: a control character.
 	for _, symbol := range value.CodeMask {
-		if symbol == '@' || symbol == '.' || symbol == '-' || symbol == '/' || symbol == ' ' {
-			continue
+		if unicode.IsControl(symbol) {
+			issues = append(issues, "code_mask must not contain control characters")
+			break
 		}
-		issues = append(issues, "code_mask may only contain @ and separators . - / and a space")
-		break
-	}
-	if value.CodeMask != "" && !strings.ContainsRune(value.CodeMask, '@') {
-		issues = append(issues, "code_mask without a single @ describes no code at all")
 	}
 	// The help names no ceiling on the order - the charts being moved go up
 	// to 9 - so the only one is the database's.
 	if value.OrderLength < 0 || value.OrderLength > maxVarcharLength {
 		issues = append(issues, fmt.Sprintf("order_length must be 0..%d", maxVarcharLength))
-	}
-	if value.CodeMask != "" && value.OrderLength < utf8.RuneCountInString(value.CodeMask) {
-		issues = append(issues, "order_length must fit the code mask")
 	}
 	if value.AutoOrderByCode && value.OrderLength == 0 {
 		issues = append(issues, "auto_order_by_code needs an order_length to write the order into")
@@ -364,6 +373,12 @@ func validatePredefinedAccounts(value ChartOfAccountsDefinition) []string {
 		} else if _, err := normalizeCatalogCode(value.Code, account.Code); err != nil {
 			issues = append(issues, prefix+".code is invalid: "+err.Error())
 		}
+		// The order lies in a column as wide as the order length - or the code
+		// length where the order length is not given - so a longer one is the
+		// database's limit, not ours.
+		if width := orderColumnWidth(value); utf8.RuneCountInString(account.Order) > width {
+			issues = append(issues, fmt.Sprintf("%s.order must not exceed %d characters", prefix, width))
+		}
 		if utf8.RuneCountInString(account.Description) > value.DescriptionLength {
 			issues = append(issues, fmt.Sprintf("%s.description must not exceed %d characters", prefix, value.DescriptionLength))
 		}
@@ -456,12 +471,37 @@ func AccountCodeOrder(mask, code string, length int) string {
 	return order
 }
 
+// orderColumnWidth is how wide the order of an account may be: the order
+// length, or the code length where the order length is not given.
+func orderColumnWidth(definition ChartOfAccountsDefinition) int {
+	if definition.OrderLength > 0 {
+		return definition.OrderLength
+	}
+	return definition.Code.Length
+}
+
+// codeMaskPositions are the symbols of an input mask that stand for a
+// character of the code; every other symbol is a separator.
+const codeMaskPositions = "!9#NUX^h@"
+
+// splitCodeMask reads the first of the masks - the one a code is ordered by -
+// into the widths of its fragments and the separators between them. A
+// backslash makes the next symbol a separator even where it is a position.
 func splitCodeMask(mask string) ([]int, []rune) {
+	if first, _, found := strings.Cut(mask, ";"); found {
+		mask = first
+	}
 	var widths []int
 	var separators []rune
-	width := 0
+	width, escaped := 0, false
 	for _, symbol := range mask {
-		if symbol == '@' {
+		switch {
+		case escaped:
+			escaped = false
+		case symbol == '\\':
+			escaped = true
+			continue
+		case strings.ContainsRune(codeMaskPositions, symbol):
 			width++
 			continue
 		}
@@ -561,10 +601,7 @@ func (catalog *Catalog) chartOfAccountsTables(definition ChartOfAccountsDefiniti
 	if err != nil {
 		return schemadiff.Table{}, nil, err
 	}
-	orderLength := definition.OrderLength
-	if orderLength == 0 {
-		orderLength = definition.Code.Length
-	}
+	orderLength := orderColumnWidth(definition)
 	table := schemadiff.Table{
 		Name: tableName,
 		Columns: []schemadiff.Column{

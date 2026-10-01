@@ -2404,6 +2404,18 @@ func (catalog *Catalog) validateExchangePlanRegistration(owner string, item Exch
 			_, found = catalog.informationRegisterByID[entry.Object]
 		case AccumulationRegisterKind:
 			_, found = catalog.accumulationRegisterByID[entry.Object]
+		case AccountingRegisterKind:
+			_, found = catalog.accountingRegisterByID[entry.Object]
+		case CalculationRegisterKind:
+			_, found = catalog.calculationRegisterByID[entry.Object]
+		case SequenceKind:
+			_, found = catalog.sequenceByID[entry.Object]
+		case RecalculationKind:
+			for _, register := range catalog.CalculationRegisters {
+				for _, recalculation := range register.Recalculations {
+					found = found || recalculation.ID == entry.Object
+				}
+			}
 		}
 		if !found {
 			return fmt.Errorf("%s registers changes of %s %s, which the project does not have", owner, entry.Kind, entry.Object)

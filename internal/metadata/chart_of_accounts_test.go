@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -334,5 +335,88 @@ objects:
 	}
 	if !flagField {
 		t.Fatal("an accounting flag must be a field a role can restrict, named as the application named it")
+	}
+}
+
+// chartWithMask is a chart of accounts with nothing but a code, a mask and the
+// order, and one predefined account.
+func chartWithMask(mask string, orderLength int, order string) string {
+	return fmt.Sprintf(`format: 1
+id: %s
+name: Основной
+title: {ru: Основной}
+code: {type: string, length: 9, auto: false}
+description_length: 120
+code_mask: %q
+order_length: %d
+predefined:
+  - id: 80000000-0000-4000-8000-000000000010
+    name: Забалансовый
+    code: "01"
+    description: Забалансовый
+    kind: active
+    order: %q
+`, accountsID, mask, orderLength, order)
+}
+
+// The mask of the code follows the grammar of an input mask, which is the only
+// grammar the help gives a mask: positions ! 9 # N U X ^ h @, any other symbol a
+// separator, a backslash escaping, several masks joined by ";". The order
+// length does not depend on the mask (checked by the owner on the platform,
+// 01.10.2026).
+//
+// Defect caught: sb's mask «XXXXXXXX» refused (only @ and four separators were
+// known), an order shorter than the mask refused, and a mask with a control
+// character accepted.
+func TestCodeMaskFollowsTheGrammarOfAnInputMask(t *testing.T) {
+	t.Parallel()
+	for _, mask := range []string{"XXXXXXXX", "@@@@@   ", "@@@@@@@@@", "99.999;@@@", `\@@@`, "NN-UU"} {
+		if _, err := DecodeChartOfAccounts("chart.yaml", strings.NewReader(chartWithMask(mask, 9, "")), metadataConfiguration()); err != nil {
+			t.Errorf("mask %q refused: %v", mask, err)
+		}
+	}
+	if _, err := DecodeChartOfAccounts("chart.yaml", strings.NewReader(chartWithMask("@@@@@", 3, "")), metadataConfiguration()); err != nil {
+		t.Errorf("an order of three under a mask of five refused: %v", err)
+	}
+	if _, err := DecodeChartOfAccounts("chart.yaml", strings.NewReader(chartWithMask("@@\t@@", 9, "")), metadataConfiguration()); err == nil {
+		t.Error("a mask with a control character accepted")
+	}
+
+	// Every position counts, not only @; an escaped one is a separator; the
+	// first of several masks orders the code.
+	for _, item := range []struct{ mask, code, want string }{
+		{"XX.XX", "1.2", " 1. 2"},
+		{"99-99", "4-1", " 4- 1"},
+		{`9\99`, "1", "19 "},
+		{"@@.@@;@@@", "1.1", " 1. 1"},
+	} {
+		if got := AccountCodeOrder(item.mask, item.code, 0); got != item.want {
+			t.Errorf("order of %q under %q = %q, want %q", item.code, item.mask, got, item.want)
+		}
+	}
+}
+
+// The order of a predefined account is carried as the configuration wrote it:
+// 124 of 966 are not what the code would give - «Заб01» under the code 01, a
+// leading space in sb. It is bounded only by the column it lies in.
+//
+// Defect caught: the order dropped at load, so the bookkeeper's ordering of the
+// off-balance accounts is lost; and an order longer than its column accepted,
+// which the database would refuse when the account is written.
+func TestPredefinedAccountCarriesItsOrder(t *testing.T) {
+	t.Parallel()
+	value, err := DecodeChartOfAccounts("chart.yaml", strings.NewReader(chartWithMask("@@@@@", 9, "Заб01")), metadataConfiguration())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value.Predefined[0].Order != "Заб01" {
+		t.Fatalf("order = %q", value.Predefined[0].Order)
+	}
+	if _, err := DecodeChartOfAccounts("chart.yaml", strings.NewReader(chartWithMask("@@@@@", 3, "Заб01")), metadataConfiguration()); err == nil {
+		t.Fatal("an order longer than its column accepted")
+	}
+	// With no order length the column is as wide as the code.
+	if _, err := DecodeChartOfAccounts("chart.yaml", strings.NewReader(chartWithMask("@@@@@", 0, "0123456789")), metadataConfiguration()); err == nil {
+		t.Fatal("an order longer than the code accepted where the order takes the code's width")
 	}
 }
