@@ -222,23 +222,20 @@ func TestRowRestrictionResolvesSessionParameters(t *testing.T) {
 	}
 }
 
-// The platform owns this name, so a project must not be able to declare it too.
-func TestSessionParameterNameIsReserved(t *testing.T) {
+// ТекущийПользователь is the configuration's own parameter: all three
+// configurations being moved declare it, typed by their catalog of users, and
+// their session modules set it (owner, 01.10.2026). Defect caught: the name
+// was reserved for the user of ML, and every one of them was refused.
+func TestCurrentUserIsTheConfigurationsSessionParameter(t *testing.T) {
 	t.Parallel()
-	if !ReservedSessionParameter(CurrentUserParameter) || !ReservedSessionParameter("currentuser") {
-		t.Fatal("reserved names are not recognised")
-	}
-	if ReservedSessionParameter("ТекущийСклад") {
-		t.Fatal("an ordinary name was treated as reserved")
-	}
-	parameter := SessionParameter{Format: CurrentFormat, ID: uuid.MustNew(), Name: CurrentUserParameter,
+	parameter := SessionParameter{Format: CurrentFormat, ID: uuid.MustNew(), Name: "ТекущийПользователь",
 		Title: LocalizedText{"ru": "Текущий пользователь"}, Types: []Type{{Kind: UUIDType}}}
 	var encoded bytes.Buffer
 	if err := Encode(&encoded, parameter); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := DecodeSessionParameter("p.yaml", bytes.NewReader(encoded.Bytes()), metadataConfiguration()); err == nil {
-		t.Fatal("a project was allowed to declare the platform's own session parameter")
+	if _, err := DecodeSessionParameter("p.yaml", bytes.NewReader(encoded.Bytes()), metadataConfiguration()); err != nil {
+		t.Fatalf("the configuration's own ТекущийПользователь was refused: %v", err)
 	}
 }
 

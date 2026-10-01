@@ -231,8 +231,7 @@ func (runtime *Runtime) SetConstant(ctx context.Context, name string, value byte
 }
 
 // GetSessionParameter reads a session parameter from server-process memory.
-// Session parameters are never persisted to PostgreSQL: an unset parameter
-// resolves to its declared default for the lifetime of this Runtime.
+// Session parameters are never persisted to PostgreSQL.
 //
 // Reading one the solution has not set yet is what triggers the session module:
 // the handler is asked for this parameter by name, and the value is re-read
@@ -252,10 +251,11 @@ func (runtime *Runtime) GetSessionParameter(ctx context.Context, name string) (b
 	if stored, set := runtime.storedSessionParameter(name); set {
 		return stored, nil
 	}
-	if parameter.Default == nil {
-		return bytecode.Undefined(), nil
-	}
-	return runtime.applicationValueToBSL(parameter.Types, *parameter.Default)
+	// A parameter the session module left unset is an error to read, as it
+	// is in the prototype - not Undefined, and not a default of ours: the
+	// prototype has none, and a value nobody set would be read as one somebody
+	// chose.
+	return bytecode.Undefined(), fmt.Errorf("session parameter %s is not set: the session module did not set it", parameter.Name)
 }
 
 func (runtime *Runtime) storedSessionParameter(name string) (bytecode.Value, bool) {
@@ -357,10 +357,9 @@ func (runtime *Runtime) SessionParameterValues(ctx context.Context, name string)
 	if values, set := runtime.storedSessionParameterValues(name); set {
 		return values, true, nil
 	}
-	if parameter.Default == nil {
-		return nil, false, nil
-	}
-	return []Value{*parameter.Default}, true, nil
+	// Absent, not empty: a restriction that names a parameter nobody set
+	// refuses the read rather than matching nothing or everything.
+	return nil, false, nil
 }
 
 func (runtime *Runtime) storedSessionParameterValues(name string) ([]Value, bool) {

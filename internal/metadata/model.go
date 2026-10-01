@@ -324,7 +324,6 @@ type SessionParameter struct {
 	Name    string        `yaml:"name"`
 	Title   LocalizedText `yaml:"title"`
 	Types   []Type        `yaml:"types"`
-	Default *Value        `yaml:"default,omitempty"`
 	Comment string        `yaml:"comment,omitempty"`
 }
 
@@ -1011,12 +1010,10 @@ func DecodeSessionParameter(source string, reader io.Reader, configuration proje
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateTypesIn("types", value.Types, uuid.UUID{}, placeSessionParameter)...)
-	if ReservedSessionParameter(value.Name) {
-		// The platform resolves this name itself on every read path, without
-		// running BSL. Letting a project declare it too would make the value
-		// depend on which layer happened to answer first.
-		issues = append(issues, fmt.Sprintf("name %q is reserved by the platform", value.Name))
-	}
+	// No name is the platform's: ТекущийПользователь is the configuration's
+	// own parameter, declared in all three configurations being moved and set
+	// by their session modules (owner, 01.10.2026). The user of ML is another
+	// layer and never appears among these names - see session_values.go.
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return SessionParameter{}, err
 	}
@@ -1922,10 +1919,6 @@ func cloneConstant(value Constant) Constant {
 }
 func cloneSessionParameter(value SessionParameter) SessionParameter {
 	value.Title, value.Types = cloneTitle(value.Title), cloneTypes(value.Types)
-	if value.Default != nil {
-		defaultValue := *value.Default
-		value.Default = &defaultValue
-	}
 	return value
 }
 func cloneEnumeration(value Enumeration) Enumeration {

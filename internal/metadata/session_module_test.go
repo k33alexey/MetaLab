@@ -126,11 +126,14 @@ func TestSessionModuleReadingAParameterInsideItselfDoesNotRecurse(t *testing.T) 
 		Вызовы = 0;
 	КонецЕсли;
 	Вызовы = Вызовы + 1;
-	Если ПараметрыСеанса.Незаданный = Неопределено Тогда
-		ПараметрыСеанса.ДоступныеСклады = "Основной";
-	Иначе
+	// Reading an unset parameter inside the handler raises, as on the
+	// platform, instead of calling the handler again.
+	Попытка
+		Значение = ПараметрыСеанса.Незаданный;
 		ПараметрыСеанса.ДоступныеСклады = "Неожиданно";
-	КонецЕсли;
+	Исключение
+		ПараметрыСеанса.ДоступныеСклады = "Основной";
+	КонецПопытки;
 	ПараметрыСеанса.ЧислоВызовов = Вызовы;
 КонецПроцедуры
 `)
@@ -173,9 +176,10 @@ func TestSessionModuleReceivesTheRequestedNames(t *testing.T) {
 	}
 }
 
-// A project with no session module, or one that declares no handler, keeps
-// working exactly as before: the declared default answers the read.
-func TestSessionParameterWithoutAHandlerKeepsItsDefault(t *testing.T) {
+// A project with no session module, or one that declares no handler, has
+// nobody to set the parameter, and reading it is an error - as on the
+// platform (checked by the owner, 01.10.2026), with no default of ours.
+func TestSessionParameterWithoutAHandlerIsNotSet(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	for name, runtime := range map[string]*Runtime{
@@ -186,9 +190,8 @@ func TestSessionParameterWithoutAHandlerKeepsItsDefault(t *testing.T) {
 КонецФункции
 `),
 	} {
-		value, err := runtime.GetSessionParameter(ctx, "ДоступныеСклады")
-		if err != nil || value.Kind() != bytecode.UndefinedKind {
-			t.Fatalf("%s: value = %v, error = %v", name, value, err)
+		if _, err := runtime.GetSessionParameter(ctx, "ДоступныеСклады"); err == nil || !strings.Contains(err.Error(), "is not set") {
+			t.Fatalf("%s: an unset parameter was read without an error: %v", name, err)
 		}
 	}
 }

@@ -1533,11 +1533,6 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		if err := catalog.validateReferences("session parameter "+item.Name, item.Types); err != nil {
 			return err
 		}
-		if item.Default != nil {
-			if _, err := catalog.NormalizeSessionParameterValue(item, *item.Default); err != nil {
-				return fmt.Errorf("session parameter %s default: %w", item.Name, err)
-			}
-		}
 	}
 	for _, item := range catalog.CommonAttributes {
 		if err := catalog.validateReferences("common attribute "+item.Name, item.Types); err != nil {

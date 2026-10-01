@@ -3,8 +3,6 @@ package metadata
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -79,33 +77,11 @@ func TestCatalogSessionParameterLookupReturnsIsolatedCopies(t *testing.T) {
 	}
 }
 
-func TestLoadValidatesSessionParameterDefaults(t *testing.T) {
-	t.Parallel()
-	root := metadataProject(t)
-	if err := os.MkdirAll(filepath.Join(root, "metadata", string(SessionParameterKind)), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	validID := uuid.MustNew()
-	writeMetadata(t, root, SessionParameterKind, validID.String(), "format: 1\nid: "+validID.String()+
-		"\nname: ТекущийСотрудник\ntitle: {ru: Текущий сотрудник}\ntypes: [{kind: string, length: 50}]\ndefault: {kind: string, data: Гость}\n")
-	if _, err := load(root, true); err != nil {
-		t.Fatalf("valid session parameter default rejected: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "metadata", string(SessionParameterKind), validID.String()+".yaml"),
-		[]byte("format: 1\nid: "+validID.String()+"\nname: ТекущийСотрудник\ntitle: {ru: Текущий сотрудник}\ntypes: [{kind: string, length: 50}]\ndefault: {kind: number, data: \"5\"}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := load(root, true); err == nil || !strings.Contains(err.Error(), "session parameter") {
-		t.Fatalf("session parameter default of a disallowed kind was accepted: %v", err)
-	}
-}
-
 func TestRuntimeSessionParameterGetSetRoundTrip(t *testing.T) {
 	t.Parallel()
-	defaultValue := Value{Kind: StringType, Data: "Гость"}
 	withDefault := SessionParameter{
 		Format: CurrentFormat, ID: uuid.MustNew(), Name: "ТекущийСотрудник", Title: LocalizedText{"ru": "Текущий сотрудник"},
-		Types: []Type{{Kind: StringType, Length: 50}}, Default: &defaultValue,
+		Types: []Type{{Kind: StringType, Length: 50}},
 	}
 	withoutDefault := SessionParameter{
 		Format: CurrentFormat, ID: uuid.MustNew(), Name: "СчётчикЗапросов", Title: LocalizedText{"ru": "Счётчик запросов"},
@@ -119,11 +95,10 @@ func TestRuntimeSessionParameterGetSetRoundTrip(t *testing.T) {
 	runtime := &Runtime{catalog: catalog, sessionParameters: make(map[string]bytecode.Value)}
 	ctx := context.Background()
 
-	if value, err := runtime.GetSessionParameter(ctx, "ТекущийСотрудник"); err != nil || value.String() != "Гость" {
-		t.Fatalf("default value = %v, error = %v", value, err)
-	}
-	if value, err := runtime.GetSessionParameter(ctx, "СчётчикЗапросов"); err != nil || value.Kind() != bytecode.UndefinedKind {
-		t.Fatalf("unset value without default = %v, error = %v", value, err)
+	// Reading a parameter nobody set is an error, as on the platform (checked
+	// by the owner, 01.10.2026) - not Undefined and not a default.
+	if _, err := runtime.GetSessionParameter(ctx, "СчётчикЗапросов"); err == nil || !strings.Contains(err.Error(), "is not set") {
+		t.Fatalf("an unset parameter was read without an error: %v", err)
 	}
 	if err := runtime.SetSessionParameter(ctx, "текущийсотрудник", bytecode.String("Иванов")); err != nil {
 		t.Fatal(err)
