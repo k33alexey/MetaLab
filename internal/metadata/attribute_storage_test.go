@@ -132,6 +132,13 @@ attributes:
 		!strings.Contains(err.Error(), "use reaches folders, and this object has none") {
 		t.Fatalf("a field for folders of an object without folders: %v", err)
 	}
+	// «For folder and item» is what is left on a field when folders are
+	// switched off, and the configurations being moved carry it on 45 fields:
+	// it is taken, and stands for «for item».
+	leftOver := strings.Replace(flat, "use: for-folder}", "use: for-folder-and-item}", 1)
+	if _, err := DecodeCatalog("object.yaml", strings.NewReader(leftOver), metadataConfiguration()); err != nil {
+		t.Fatalf("a field for folder and item on an object without folders was refused: %v", err)
+	}
 
 	inPart := storageGoods(`table_parts:
   - id: ` + storagePart + `

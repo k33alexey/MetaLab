@@ -1082,7 +1082,7 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 		kind:                 CatalogKind,
 		standardAttributes:   value.StandardAttributes,
 	}, configuration)...)
-	issues = append(issues, validateCatalogSubordination(value.Owners, value.Subordination, value.Code)...)
+	issues = append(issues, validateCatalogSubordination(value.Owners, value.Subordination)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
@@ -1176,15 +1176,24 @@ type referenceObjectShape struct {
 	standardTableParts []StandardTablePart
 }
 
-// validateHierarchy checks the settings against each other, because each of
-// them is meaningless without the one it depends on: a kind of hierarchy on a
-// flat object, a level count nobody limits, folders on top where there are no
-// folders. Left unchecked, such a setting reads as working and does nothing.
+// validateHierarchy checks the settings of a hierarchy.
+//
+// It does not check them against each other. A kind of hierarchy on a flat
+// object, a level count nobody limits, folders on top where there are no
+// folders all mean nothing - and the prototype writes every one of them on
+// every object, with the defaults of the dialog: the configurations being
+// moved carry hierarchy settings on 745 flat catalogs, a level count without
+// a limit on 1066, folders on top over a hierarchy of items on 63. Refusing
+// them refused the configurations. They are carried as written and read only
+// where the setting they depend on is on.
 func validateHierarchy(hierarchy Hierarchy) []string {
 	var issues []string
 	if !hierarchy.Enabled {
-		if hierarchy.Kind != "" || hierarchy.FoldersOnTop || hierarchy.LimitLevels || hierarchy.LevelCount != 0 {
-			issues = append(issues, "hierarchy settings need hierarchy.enabled")
+		if hierarchy.Kind != "" && hierarchy.Kind != FoldersAndItemsHierarchy && hierarchy.Kind != ItemsHierarchy {
+			issues = append(issues, "hierarchy.kind must be folders-and-items or items")
+		}
+		if hierarchy.LevelCount < 0 || hierarchy.LevelCount > maxHierarchyLevelCount {
+			issues = append(issues, fmt.Sprintf("hierarchy.level_count must be 0..%d", maxHierarchyLevelCount))
 		}
 		return issues
 	}
@@ -1195,14 +1204,11 @@ func validateHierarchy(hierarchy Hierarchy) []string {
 	default:
 		issues = append(issues, "hierarchy.kind must be folders-and-items or items")
 	}
-	if hierarchy.FoldersOnTop && hierarchy.Kind == ItemsHierarchy {
-		issues = append(issues, "hierarchy.folders_on_top is meaningless without folders")
-	}
 	if hierarchy.LimitLevels && (hierarchy.LevelCount < 1 || hierarchy.LevelCount > maxHierarchyLevelCount) {
 		issues = append(issues, fmt.Sprintf("hierarchy.level_count must be 1..%d when levels are limited", maxHierarchyLevelCount))
 	}
-	if !hierarchy.LimitLevels && hierarchy.LevelCount != 0 {
-		issues = append(issues, "hierarchy.level_count needs hierarchy.limit_levels")
+	if !hierarchy.LimitLevels && (hierarchy.LevelCount < 0 || hierarchy.LevelCount > maxHierarchyLevelCount) {
+		issues = append(issues, fmt.Sprintf("hierarchy.level_count must be 0..%d", maxHierarchyLevelCount))
 	}
 	return issues
 }
@@ -1343,7 +1349,9 @@ func validatePredefinedItems(shape referenceObjectShape) []string {
 			issues = append(issues, prefix+".name must be unique")
 		}
 		names[folded] = true
-		if item.IsFolder && shape.hierarchy.Kind != FoldersAndItemsHierarchy {
+		// The kind alone does not make folders: a flat object carries the kind
+		// of the hierarchy it would have, the way the prototype writes it.
+		if item.IsFolder && !(shape.hierarchy.Enabled && shape.hierarchy.Kind == FoldersAndItemsHierarchy) {
 			issues = append(issues, prefix+".is_folder needs a hierarchy of folders and items")
 		}
 		if item.Parent != "" && !shape.hierarchy.Enabled {

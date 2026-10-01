@@ -168,10 +168,6 @@ func TestBrokenSubordinationIsRefused(t *testing.T) {
 			"which is not an object that can own a catalog"},
 		"подчинение группам у владельца без групп": {`owners: [` + ownerFiles + `]
 subordination: to-folders`, "which has none"},
-		"подчинение без владельца": {`subordination: to-items`,
-			"subordination needs owners"},
-		"нумерация по владельцу без владельца": {`code: {type: string, length: 9, auto: true, series: within-owner-subordination}`,
-			"within-owner-subordination needs owners"},
 		"подчинение неизвестно чему": {`owners: [` + ownerFiles + `]
 subordination: подчинённым`, "must be to-items, to-folders or to-folders-and-items"},
 		"один владелец дважды": {`owners: [` + ownerFiles + `, ` + ownerFiles + `]`,
@@ -186,6 +182,25 @@ subordination: подчинённым`, "must be to-items, to-folders or to-fold
 			}
 			if !strings.Contains(err.Error(), broken.want) {
 				t.Fatalf("%s: refused for another reason: %v", name, err)
+			}
+		})
+	}
+}
+
+// The prototype writes subordination on every catalog, owned or not - 992 of
+// the configurations being moved have it with no owner - and keeps a code
+// series within the owner when the owners are taken away, on two. Refused, they refused the
+// configuration; they are carried and mean nothing until there is an owner.
+func TestSubordinationWithoutOwnersIsCarried(t *testing.T) {
+	t.Parallel()
+	for name, body := range map[string]string{
+		"подчинение без владельца":             `subordination: to-items`,
+		"нумерация по владельцу без владельца": `code: {type: string, length: 9, auto: true, series: within-owner-subordination}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := Load(ownerProject(t, contractsOwnedBy(body+"\n"))); err != nil {
+				t.Fatalf("%s: refused: %v", name, err)
 			}
 		})
 	}

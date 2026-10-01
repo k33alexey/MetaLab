@@ -251,12 +251,14 @@ title: {ru: `+title+`}`+broken.body+`
 	}
 }
 
-// A document either declares its number or shares one. Two sources for one
-// number is one too many, and a numerator does not decide what the document
-// alone decides.
+// A document with a numerator still carries its own number: the prototype
+// writes it beside the numerator on every such document, all eighteen in the
+// configurations being moved. The numerator decides the numbering, and the
+// document's own number is checked like any other - carried is not unchecked -
+// and a numerator does not decide what the document alone decides.
 func TestNumberComesFromExactlyOnePlace(t *testing.T) {
 	t.Parallel()
-	t.Run("документ объявляет и своё, и общее", func(t *testing.T) {
+	t.Run("документ несёт своё рядом с общим", func(t *testing.T) {
 		t.Parallel()
 		root := aroundDocumentsProject(t)
 		writeMetadata(t, root, DocumentKind, aroundFirstDoc, `format: 1
@@ -266,8 +268,27 @@ title: {ru: Поступление товаров}
 numerator: `+aroundNumerator+`
 number: {type: string, length: 9, auto: true, periodicity: none}
 `)
+		catalog, err := Load(root)
+		if err != nil {
+			t.Fatalf("a document declaring a number beside its numerator was refused: %v", err)
+		}
+		document, _ := catalog.DocumentDefinition("ПоступлениеТоваров")
+		if document.Number.Length != 11 || document.Number.Periodicity != NumberPeriodYear {
+			t.Fatalf("the document's own number decided the numbering: %+v", document.Number)
+		}
+	})
+	t.Run("своё рядом с общим проверяется", func(t *testing.T) {
+		t.Parallel()
+		root := aroundDocumentsProject(t)
+		writeMetadata(t, root, DocumentKind, aroundFirstDoc, `format: 1
+id: `+aroundFirstDoc+`
+name: ПоступлениеТоваров
+title: {ru: Поступление товаров}
+numerator: `+aroundNumerator+`
+number: {type: boolean, length: 9, periodicity: none}
+`)
 		if _, err := Load(root); err == nil {
-			t.Fatal("a document declaring a number beside its numerator was accepted")
+			t.Fatal("a broken number beside a numerator was accepted")
 		}
 	})
 	t.Run("нумератор решает за документ", func(t *testing.T) {

@@ -827,24 +827,17 @@ func TestExpansionKeepsTypesThatDifferOnlyByQualifier(t *testing.T) {
 	}
 }
 
-// Hierarchy is a set of settings that only make sense together: a kind of
-// nesting on a flat object, a depth nobody limits, folders on top where there
-// are no folders. Each of them reads as working and does nothing, so each is
-// refused rather than ignored.
-func TestHierarchySettingsAreCheckedAgainstEachOther(t *testing.T) {
+// A hierarchy setting that depends on another one is carried even when that
+// one is off: the prototype writes every setting of the dialog on every object,
+// and the configurations being moved carry a kind of hierarchy on 745 flat
+// catalogs, a level count nobody limits on 1066, folders on top over a
+// hierarchy of items on 63. What is refused is a value that is wrong on its
+// own, or a hierarchy that is on and says nothing it needs.
+func TestHierarchySettingsAreCarriedAsThePrototypeWritesThem(t *testing.T) {
 	t.Parallel()
-	for name, hierarchy := range map[string]string{
-		"вид иерархии без самой иерархии": "hierarchy: {kind: items}",
-		"группы сверху без групп":         "hierarchy: {enabled: true, kind: items, folders_on_top: true}",
-		"иерархия без вида":               "hierarchy: {enabled: true}",
-		"уровни без ограничения":          "hierarchy: {enabled: true, kind: items, level_count: 3}",
-		"ограничение без числа уровней":   "hierarchy: {enabled: true, kind: items, limit_levels: true}",
-		"неизвестный вид":                 "hierarchy: {enabled: true, kind: деревья}",
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			root := metadataProject(t)
-			writeMetadata(t, root, CatalogKind, catalogID, `format: 1
+	load := func(t *testing.T, hierarchy string) error {
+		root := metadataProject(t)
+		writeMetadata(t, root, CatalogKind, catalogID, `format: 1
 id: `+catalogID+`
 name: Товары
 title: {ru: Товары}
@@ -852,8 +845,37 @@ code: {type: string, length: 9}
 description_length: 100
 `+hierarchy+`
 `)
-			if _, err := Load(root); err == nil {
-				t.Fatal("a hierarchy setting that does nothing was accepted")
+		_, err := Load(root)
+		return err
+	}
+	for name, hierarchy := range map[string]string{
+		"вид иерархии без самой иерархии": "hierarchy: {kind: folders-and-items, level_count: 2, folders_on_top: true}",
+		"группы сверху без групп":         "hierarchy: {enabled: true, kind: items, folders_on_top: true}",
+		"уровни без ограничения":          "hierarchy: {enabled: true, kind: items, level_count: 2}",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if err := load(t, hierarchy); err != nil {
+				t.Fatalf("the shape the prototype writes was refused: %v", err)
+			}
+		})
+	}
+	for name, refused := range map[string]struct{ hierarchy, message string }{
+		"иерархия без вида":                   {"hierarchy: {enabled: true}", "hierarchy.kind is required"},
+		"ограничение без числа уровней":       {"hierarchy: {enabled: true, kind: items, limit_levels: true}", "level_count must be 1.."},
+		"неизвестный вид":                     {"hierarchy: {enabled: true, kind: деревья}", "hierarchy.kind must be"},
+		"неизвестный вид без иерархии":        {"hierarchy: {kind: деревья}", "hierarchy.kind must be"},
+		"отрицательное число уровней":         {"hierarchy: {level_count: -1}", "level_count must be 0.."},
+		"отрицательное число без ограничения": {"hierarchy: {enabled: true, kind: items, level_count: -1}", "level_count must be 0.."},
+		// The kind of a hierarchy that is off is carried, and it is not a
+		// hierarchy: a predefined folder on such a flat object is still refused.
+		"группа при виде без иерархии": {"hierarchy: {kind: folders-and-items}\npredefined:\n  - {id: 6f0a0000-0000-4000-8000-000000000001, name: Группа, code: \"001\", is_folder: true}",
+			"is_folder needs a hierarchy of folders and items"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if err := load(t, refused.hierarchy); err == nil || !strings.Contains(err.Error(), refused.message) {
+				t.Fatalf("error = %v, expected it to name %q", err, refused.message)
 			}
 		})
 	}

@@ -174,7 +174,11 @@ func validateAttributeUse(groups []fieldGroup, parts []TablePart, kindHasFolders
 			case attribute.Use == "":
 			case !kindHasFolders:
 				issues = append(issues, path+".use belongs to an attribute of a catalog or a chart of characteristic types, and this is neither")
-			case attribute.Use.forFolders() && !folders:
+			// «For folder and item» on an object without folders is what the
+			// prototype leaves behind when folders are switched off: the
+			// configurations being moved carry it on 45 attributes. It reads as
+			// «for item» there. «For folder» alone has nothing to fall back to.
+			case attribute.Use == UseForFolder && !folders:
 				issues = append(issues, path+".use reaches folders, and this object has none")
 			}
 		}

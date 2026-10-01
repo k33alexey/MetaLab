@@ -117,12 +117,14 @@ func DecodeDocument(source string, reader io.Reader, configuration project.Proje
 		// The number comes from the numerator, and it is filled in once the
 		// whole project is read. Checking the empty block here would report a
 		// missing type for a number this document does not declare.
-		shape.numberFromElsewhere = true
+		//
+		// The document's own number may still be declared: the prototype
+		// writes it beside the numerator on every such document, and the
+		// configurations being moved do so on all eighteen. It is carried and then
+		// checked like any other; the numerator decides the numbering.
+		shape.numberFromElsewhere = value.Number == (DocumentNumber{})
 		if value.Numerator.IsZero() {
 			issues = append(issues, "numerator must be a non-zero UUID")
-		}
-		if value.Number != (DocumentNumber{}) {
-			issues = append(issues, "number is set by the numerator this document shares, so it must not be declared here as well")
 		}
 	}
 	issues = append(issues, validateDocumentPosting(value.Posting)...)

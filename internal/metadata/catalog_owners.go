@@ -126,24 +126,20 @@ func (catalog *Catalog) OwnerTypes(definition CatalogDefinition) []Type {
 }
 
 // validateCatalogSubordination checks the shape of what one catalog says about
-// its owners, without the configuration: whether the owners are named at all,
-// and whether the settings that depend on having them are set without them.
-func validateCatalogSubordination(owners []uuid.UUID, subordination SubordinationKind, code CatalogCode) []string {
+// its owners, without the configuration: that no owner is named twice and that
+// the subordination is one the platform knows.
+func validateCatalogSubordination(owners []uuid.UUID, subordination SubordinationKind) []string {
 	var issues []string
 	issues = append(issues, validateUniqueIDs("owners", owners)...)
 	if !validSubordinationKind(subordination) {
 		issues = append(issues, "subordination must be to-items, to-folders or to-folders-and-items")
 	}
-	// Both of these say something about an owner, and without owners there is
-	// nothing for them to say it about.
-	if len(owners) == 0 {
-		if subordination != "" {
-			issues = append(issues, "subordination needs owners: there is nothing for this catalog to be subordinate to")
-		}
-		if code.Series == WithinOwnerSeries {
-			issues = append(issues, "code.series within-owner-subordination needs owners")
-		}
-	}
+	// Subordination and a code series within the owner say something about an
+	// owner, and without owners there is nothing for them to say it about -
+	// yet the prototype writes subordination on every catalog, owned or not -
+	// 992 catalogs of the configurations being moved have it with no owner -
+	// and keeps the series when the owners are taken away, on two. They are
+	// carried and mean nothing until there is an owner.
 	return issues
 }
 
