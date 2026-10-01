@@ -191,17 +191,20 @@ const (
 	maxStringLength = 1024
 	// maxDescriptionLength is the longest description of a catalog, a chart
 	// of characteristic types, of accounts or of calculation types and a task:
-	// 150 on all of them in the configurations being moved. An exchange plan
-	// takes more - 250 there - and its ceiling is not known yet.
+	// 150 on all of them in the configurations being moved.
 	maxDescriptionLength = 150
+	// maxExchangePlanDescriptionLength is the longest description of an
+	// exchange plan, which takes more: 250, the designer's ceiling, checked by
+	// the owner on 01.10.2026 - and exactly what the configurations being
+	// moved use.
+	maxExchangePlanDescriptionLength = 250
 	// maxNameLength is the longest name of an object, a field or anything
 	// else named by an identifier: the designer takes 255 characters, the
 	// configurations being moved go up to 96.
 	maxNameLength = 255
 	// maxVarcharLength is PostgreSQL's own ceiling on character varying(n),
-	// which a length nobody else limits - of the description of an exchange
-	// plan, of the order of an account - still runs into when the column is
-	// built.
+	// which a length nobody else limits - the order of an account - still
+	// runs into when the column is built.
 	maxVarcharLength = 10_485_760
 )
 
@@ -1094,34 +1097,35 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
-		code:                 value.Code,
-		descriptionLength:    value.DescriptionLength,
-		attributes:           value.Attributes,
-		tableParts:           value.TableParts,
-		forms:                value.Forms,
-		list:                 value.List,
-		hierarchy:            value.Hierarchy,
-		predefined:           value.Predefined,
-		reservedName:         reservedCatalogObjectName,
-		attributeUse:         true,
-		codeSeries:           true,
-		ownerSeries:          true,
-		codeAllowedLength:    true,
-		codeType:             true,
-		codeMayBeAbsent:      true,
-		autonumbering:        true,
-		checkUnique:          true,
-		predefinedDataUpdate: value.PredefinedDataUpdate,
-		presentation:         value.Presentations,
-		choice:               value.ObjectChoice,
-		basedOn:              value.BasedOn,
-		dataLock:             value.DataLock,
-		dataLockFields:       value.DataLockFields,
-		fullTextSearch:       value.FullTextSearch,
-		dataHistory:          value.DataHistorySettings,
-		additionalIndexes:    value.AdditionalIndexes,
-		kind:                 CatalogKind,
-		standardAttributes:   value.StandardAttributes,
+		code:                   value.Code,
+		descriptionLength:      value.DescriptionLength,
+		attributes:             value.Attributes,
+		tableParts:             value.TableParts,
+		forms:                  value.Forms,
+		list:                   value.List,
+		hierarchy:              value.Hierarchy,
+		predefined:             value.Predefined,
+		reservedName:           reservedCatalogObjectName,
+		attributeUse:           true,
+		codeSeries:             true,
+		ownerSeries:            true,
+		codeAllowedLength:      true,
+		codeType:               true,
+		codeMayBeAbsent:        true,
+		descriptionMayBeAbsent: true,
+		autonumbering:          true,
+		checkUnique:            true,
+		predefinedDataUpdate:   value.PredefinedDataUpdate,
+		presentation:           value.Presentations,
+		choice:                 value.ObjectChoice,
+		basedOn:                value.BasedOn,
+		dataLock:               value.DataLock,
+		dataLockFields:         value.DataLockFields,
+		fullTextSearch:         value.FullTextSearch,
+		dataHistory:            value.DataHistorySettings,
+		additionalIndexes:      value.AdditionalIndexes,
+		kind:                   CatalogKind,
+		standardAttributes:     value.StandardAttributes,
 	}, configuration)...)
 	issues = append(issues, validateCatalogSubordination(value.Owners, value.Subordination)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
@@ -1167,14 +1171,17 @@ type referenceObjectShape struct {
 	// account's code is the code mask's to decide, and the prototype gives the
 	// chart no such property at all.
 	codeAllowedLength bool
-	// codeMayBeAbsent says a code or a description of length 0 is allowed: it
-	// is then
+	// codeMayBeAbsent and descriptionMayBeAbsent say a code or a description
+	// of length 0 is allowed: it is then
 	// switched off - no field on the object, no column, no search by it. The
 	// designer allows it on a catalog and a chart of characteristic types,
 	// checked by the owner on 01.10.2026 (ИТС 1590 says otherwise of the
 	// chart; the designer of 8.3.27 has it); 720 catalogs of the
-	// configurations being moved have no code.
-	codeMayBeAbsent bool
+	// configurations being moved have no code. A chart of accounts and a
+	// chart of calculation types may have no code either, the owner checked
+	// the same day; their description was not checked, and stays.
+	codeMayBeAbsent        bool
+	descriptionMayBeAbsent bool
 	// autonumbering and checkUnique say this kind has automatic codes and the
 	// check that a code is not repeated. The help gives both to a catalog and
 	// a chart of characteristic types, only the check to a chart of accounts,
@@ -1353,13 +1360,17 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	}
 	descriptionCeiling := maxDescriptionLength
 	if shape.kind == ExchangePlanKind {
-		descriptionCeiling = maxVarcharLength
+		descriptionCeiling = maxExchangePlanDescriptionLength
 	}
 	// A description of length 0 is switched off the way a code is, on the
 	// same two kinds - see codeMayBeAbsent; 22 catalogs of the configurations
 	// being moved have none.
-	if shape.descriptionLength < shortest || shape.descriptionLength > descriptionCeiling {
-		issues = append(issues, fmt.Sprintf("description_length must be %d..%d", shortest, descriptionCeiling))
+	shortestDescription := 1
+	if shape.descriptionMayBeAbsent {
+		shortestDescription = 0
+	}
+	if shape.descriptionLength < shortestDescription || shape.descriptionLength > descriptionCeiling {
+		issues = append(issues, fmt.Sprintf("description_length must be %d..%d", shortestDescription, descriptionCeiling))
 	}
 	issues = append(issues, validateHierarchy(shape.hierarchy)...)
 	issues = append(issues, validateCodeSeries(shape)...)

@@ -75,6 +75,12 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
 		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "valuetype": true,
 			"deletionmark": true, "version": false, "predefined": false, "predefineddataname": false}
+		if item.Code.Length == 0 {
+			delete(target.fields, "code")
+		}
+		if item.DescriptionLength == 0 {
+			delete(target.fields, "description")
+		}
 		addHierarchy(item.Hierarchy)
 		addAttributes(item.Attributes)
 		addParts(item.TableParts)
@@ -87,6 +93,9 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "accountorder": false,
 			"accountkind": true, "offbalance": true, "deletionmark": true, "version": false,
 			"predefined": false, "predefineddataname": false}
+		if item.Code.Length == 0 {
+			delete(target.fields, "code")
+		}
 		// Each declared flag is a field of its own, on the account and on the
 		// line of analytics alike: an application may well let a role see the
 		// accounts and not the flags its bookkeeping rests on.
@@ -105,6 +114,9 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
 		target.fields = map[string]bool{"ref": false, "code": true, "description": true,
 			"deletionmark": true, "version": false, "predefined": false, "predefineddataname": false}
+		if item.Code.Length == 0 {
+			delete(target.fields, "code")
+		}
 		if item.ActionPeriodUse {
 			target.fields["actionperiodisbase"] = true
 		}
@@ -129,6 +141,9 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		// process is: a role may read them, never write them by hand.
 		target.fields = map[string]bool{"ref": false, "number": true, "date": true, "deletionmark": true,
 			"version": false, "started": false, "completed": false, "headtask": false}
+		if item.Number.Length == 0 {
+			delete(target.fields, "number")
+		}
 		addAttributes(item.Attributes)
 		addParts(item.TableParts)
 	} else if index, ok := catalog.taskByID[id]; ok {
@@ -139,6 +154,9 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		// from it - seeing the performers of every task is not for everyone.
 		target.fields = map[string]bool{"ref": false, "number": true, "date": true, "description": true,
 			"deletionmark": true, "version": false, "executed": true, "businessprocess": false, "routepoint": false}
+		if item.Number.Length == 0 {
+			delete(target.fields, "number")
+		}
 		addAttributes(addressingAsAttributes(item))
 		addAttributes(item.Attributes)
 		addParts(item.TableParts)

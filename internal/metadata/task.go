@@ -301,7 +301,6 @@ func (catalog *Catalog) taskTables(definition TaskDefinition) (schemadiff.Table,
 		Columns: []schemadiff.Column{
 			{Name: "ref", Type: "uuid", Nullable: false},
 			{Name: "version", Type: "bigint", Nullable: false, Default: "1"},
-			{Name: "number", Type: documentNumberSQLType(definition.Number), Nullable: false},
 			{Name: "date", Type: "timestamp with time zone", Nullable: false},
 			{Name: "description", Type: fmt.Sprintf("character varying(%d)", definition.DescriptionLength), Nullable: false, Default: "''::character varying"},
 			{Name: "executed", Type: "boolean", Nullable: false, Default: "false"},
@@ -322,11 +321,7 @@ func (catalog *Catalog) taskTables(definition TaskDefinition) (schemadiff.Table,
 			{Name: physicalObjectName("ie", definition.ID), Method: "btree", Keys: []string{"executed"}},
 		},
 	}
-	if definition.Number.Unique {
-		table.Constraints = append(table.Constraints, schemadiff.Constraint{Name: physicalObjectName("uq", definition.ID), Type: "unique", Definition: "UNIQUE (number)"})
-	} else {
-		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("ic", definition.ID), Method: "btree", Keys: []string{"number"}})
-	}
+	appendNumberColumn(&table, definition.ID, definition.Number)
 	// Addressing attributes are columns of the task: a task carries the role it
 	// is addressed to, and the register turns that into people.
 	//

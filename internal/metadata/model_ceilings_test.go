@@ -92,8 +92,9 @@ func TestTheCeilingsOfTheModelHoldOnBothSides(t *testing.T) {
 	}
 }
 
-// An exchange plan takes a longer description than a catalog - 250 in the
-// configurations being moved - and the ceiling of 150 must not reach it.
+// An exchange plan takes a longer description than a catalog: up to 250, the
+// designer's ceiling (the owner, 01.10.2026), which the configurations being
+// moved use exactly. The ceiling of 150 must not reach it, and 251 is refused.
 func TestAnExchangePlanTakesALongerDescription(t *testing.T) {
 	t.Parallel()
 	_, err := DecodeExchangePlan("object.yaml", strings.NewReader(`format: 1
@@ -105,6 +106,16 @@ description_length: 250
 `), metadataConfiguration())
 	if err != nil {
 		t.Fatalf("a description of 250 on an exchange plan was refused: %v", err)
+	}
+	_, err = DecodeExchangePlan("object.yaml", strings.NewReader(`format: 1
+id: `+exchangePlanID+`
+name: Филиалы
+title: {ru: Филиалы}
+code: {type: string, length: 36}
+description_length: 251
+`), metadataConfiguration())
+	if err == nil || !strings.Contains(err.Error(), "description_length must be 1..250") {
+		t.Fatalf("a description of 251 on an exchange plan: %v", err)
 	}
 }
 

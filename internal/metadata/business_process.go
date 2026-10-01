@@ -515,7 +515,6 @@ func (catalog *Catalog) businessProcessTables(definition BusinessProcessDefiniti
 		Columns: []schemadiff.Column{
 			{Name: "ref", Type: "uuid", Nullable: false},
 			{Name: "version", Type: "bigint", Nullable: false, Default: "1"},
-			{Name: "number", Type: documentNumberSQLType(definition.Number), Nullable: false},
 			{Name: "date", Type: "timestamp with time zone", Nullable: false},
 			// Started and completed are the two facts the platform itself
 			// keeps about a process, and every list of processes filters by
@@ -535,11 +534,7 @@ func (catalog *Catalog) businessProcessTables(definition BusinessProcessDefiniti
 			{Name: physicalObjectName("id", definition.ID), Method: "btree", Keys: []string{"date"}},
 		},
 	}
-	if definition.Number.Unique {
-		table.Constraints = append(table.Constraints, schemadiff.Constraint{Name: physicalObjectName("uq", definition.ID), Type: "unique", Definition: "UNIQUE (number)"})
-	} else {
-		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("ic", definition.ID), Method: "btree", Keys: []string{"number"}})
-	}
+	appendNumberColumn(&table, definition.ID, definition.Number)
 	if definition.Task != nil {
 		target, err := schemadiff.TableName(*definition.Task)
 		if err != nil {

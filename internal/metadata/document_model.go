@@ -197,10 +197,15 @@ func validateNumberShape(number DocumentNumber) []string {
 	return validateNumberShapeOf(number, false)
 }
 
-// validateNumberShapeOf checks a number, which a document may switch off with
-// a length of 0 - checked by the owner on 01.10.2026; 9 documents of the
-// configurations being moved have none. Nothing else was checked, so a
-// business process, a task and a numerator keep a number of at least 1.
+// numberMayBeAbsent says the kind may switch its number off with a length of
+// 0: a document, a business process and a task - checked by the owner on
+// 01.10.2026; 9 documents of the configurations being moved have none. A
+// numerator was not checked and keeps a number of at least 1.
+func numberMayBeAbsent(kind Kind) bool {
+	return kind == DocumentKind || kind == BusinessProcessKind || kind == TaskKind
+}
+
+// validateNumberShapeOf checks a number, which some kinds may switch off.
 func validateNumberShapeOf(number DocumentNumber, mayBeAbsent bool) []string {
 	var issues []string
 	shortest := 1
@@ -231,7 +236,7 @@ func validateNumberShapeOf(number DocumentNumber, mayBeAbsent bool) []string {
 func validateNumberedObjectShape(shape numberedObjectShape, configuration project.Project) []string {
 	var issues []string
 	if !shape.numberFromElsewhere {
-		issues = validateNumberShapeOf(shape.number, shape.kind == DocumentKind)
+		issues = validateNumberShapeOf(shape.number, numberMayBeAbsent(shape.kind))
 	}
 	reserved := shape.reservedName
 	if reserved == nil {
@@ -250,7 +255,7 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 	issues = append(issues, validatePresentations(shape.presentation, configuration)...)
 	issues = append(issues, validateObjectInput(shape.input)...)
 	var switchedOff []string
-	if shape.kind == DocumentKind && !shape.numberFromElsewhere && shape.number.Length == 0 {
+	if numberMayBeAbsent(shape.kind) && !shape.numberFromElsewhere && shape.number.Length == 0 {
 		switchedOff = append(switchedOff, "Номер")
 	}
 	issues = append(issues, validateInputByString(shape.input.InputByString, shape.kind, shape.attributes, switchedOff...)...)

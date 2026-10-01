@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 func (catalog *Catalog) documentTables(definition DocumentDefinition) (schemadiff.Table, []schemadiff.Table, error) {
@@ -74,3 +75,22 @@ func documentNumberSQLType(number DocumentNumber) string {
 // documentHasNumber says the document's number is there at all: a length of 0
 // switches it off.
 func documentHasNumber(definition DocumentDefinition) bool { return definition.Number.Length > 0 }
+
+// appendNumberColumn gives the table of a business process or a task its
+// number where it has one: a length of 0 switches it off - the owner checked
+// both on 01.10.2026 - and the table then has no such column, no index and no
+// uniqueness by it. The column's default is the empty number, so that a number
+// lengthened from 0 can be added to a table that has rows.
+func appendNumberColumn(table *schemadiff.Table, id uuid.UUID, number DocumentNumber) {
+	if number.Length == 0 {
+		return
+	}
+	column := schemadiff.Column{Name: "number", Type: documentNumberSQLType(number), Nullable: false,
+		Default: emptyCodeDefault(CatalogCode{Type: number.Type, FixedLength: number.FixedLength})}
+	table.Columns = append(table.Columns[:2], append([]schemadiff.Column{column}, table.Columns[2:]...)...)
+	if number.Unique {
+		table.Constraints = append(table.Constraints, schemadiff.Constraint{Name: physicalObjectName("uq", id), Type: "unique", Definition: "UNIQUE (number)"})
+	} else {
+		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("ic", id), Method: "btree", Keys: []string{"number"}})
+	}
+}

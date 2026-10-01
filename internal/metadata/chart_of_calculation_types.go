@@ -115,6 +115,7 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, configuratio
 		reservedName:         reservedCalculationTypeName,
 		codeAllowedLength:    true,
 		codeType:             true,
+		codeMayBeAbsent:      true,
 		predefinedDataUpdate: value.PredefinedDataUpdate,
 		presentation:         value.Presentations,
 		choice:               value.ObjectChoice,
@@ -181,7 +182,11 @@ func validatePredefinedCalculationTypes(value ChartOfCalculationTypesDefinition)
 			issues = append(issues, prefix+".name must be unique")
 		}
 		names[folded] = true
-		if item.Code == "" {
+		if value.Code.Length == 0 {
+			if item.Code != "" {
+				issues = append(issues, prefix+".code is given, and the code is switched off by a length of 0")
+			}
+		} else if item.Code == "" {
 			if !value.Code.Auto {
 				issues = append(issues, prefix+".code is required when automatic codes are disabled")
 			}
@@ -289,7 +294,6 @@ func (catalog *Catalog) chartOfCalculationTypesTables(definition ChartOfCalculat
 		Columns: []schemadiff.Column{
 			{Name: "ref", Type: "uuid", Nullable: false},
 			{Name: "version", Type: "bigint", Nullable: false, Default: "1"},
-			{Name: "code", Type: codeSQLType(definition.Code), Nullable: false},
 			{Name: "description", Type: fmt.Sprintf("character varying(%d)", definition.DescriptionLength), Nullable: false, Default: "''::character varying"},
 			{Name: "deletion_mark", Type: "boolean", Nullable: false, Default: "false"},
 			{Name: "predefined_name", Type: "character varying(128)", Nullable: true},
@@ -305,19 +309,13 @@ func (catalog *Catalog) chartOfCalculationTypesTables(definition ChartOfCalculat
 		// the competition rules read that flag on every calculation.
 		table.Columns = append(table.Columns, schemadiff.Column{Name: "action_period_is_base", Type: "boolean", Nullable: false, Default: "false"})
 	}
-	if definition.Code.Unique {
-		table.Constraints = append(table.Constraints, schemadiff.Constraint{Name: physicalObjectName("uq", definition.ID), Type: "unique", Definition: "UNIQUE (code)"})
-	} else {
-		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("ic", definition.ID), Method: "btree", Keys: []string{"code"}})
-	}
+	appendCodeColumn(&table, definition.ID, definition.Code)
 	for _, attribute := range definition.Attributes {
 		if err := catalog.appendAttributeSchema(&table, attribute); err != nil {
 			return schemadiff.Table{}, nil, fmt.Errorf("chart of calculation types %s attribute %s: %w", definition.Name, attribute.Name, err)
 		}
 	}
-	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Description", "Code"}, definition.Attributes, map[string]listColumn{
-		"code": {name: "code", kind: definition.Code.Type}, "description": {name: "description", kind: StringType},
-	})
+	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Description", "Code"}, definition.Attributes, codeAndDescriptionColumns(definition.Code, definition.DescriptionLength))
 	parts, err := catalog.tablePartTables("chart of calculation types", definition.Name, definition.ID, definition.TableParts)
 	if err != nil {
 		return schemadiff.Table{}, nil, err

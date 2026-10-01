@@ -174,6 +174,7 @@ func DecodeChartOfAccounts(source string, reader io.Reader, configuration projec
 		reservedName:      reservedChartOfAccountsName,
 		codeSeries:        true,
 		checkUnique:       true,
+		codeMayBeAbsent:   true,
 		// codeAllowedLength stays off: the shape of an account code is the code
 		// mask's to decide, and the prototype gives the chart no such property.
 		predefinedDataUpdate: value.PredefinedDataUpdate,
@@ -352,7 +353,11 @@ func validatePredefinedAccounts(value ChartOfAccountsDefinition) []string {
 		default:
 			issues = append(issues, prefix+".kind must be active, passive or active-passive")
 		}
-		if account.Code == "" {
+		if value.Code.Length == 0 {
+			if account.Code != "" {
+				issues = append(issues, prefix+".code is given, and the code is switched off by a length of 0")
+			}
+		} else if account.Code == "" {
 			if !value.Code.Auto {
 				issues = append(issues, prefix+".code is required when automatic codes are disabled")
 			}
@@ -565,11 +570,7 @@ func (catalog *Catalog) chartOfAccountsTables(definition ChartOfAccountsDefiniti
 		Columns: []schemadiff.Column{
 			{Name: "ref", Type: "uuid", Nullable: false},
 			{Name: "version", Type: "bigint", Nullable: false, Default: "1"},
-			{Name: "code", Type: codeSQLType(definition.Code), Nullable: false},
 			{Name: "description", Type: fmt.Sprintf("character varying(%d)", definition.DescriptionLength), Nullable: false, Default: "''::character varying"},
-			// The order is derived from the code and the mask, so it is stored
-			// rather than computed on every read: it is what the list sorts by.
-			{Name: "account_order", Type: fmt.Sprintf("character varying(%d)", orderLength), Nullable: false, Default: "''::character varying"},
 			{Name: "account_kind", Type: "character varying(16)", Nullable: false, Default: "'active'::character varying"},
 			{Name: "off_balance", Type: "boolean", Nullable: false, Default: "false"},
 			{Name: "deletion_mark", Type: "boolean", Nullable: false, Default: "false"},
@@ -583,13 +584,15 @@ func (catalog *Catalog) chartOfAccountsTables(definition ChartOfAccountsDefiniti
 		},
 		Indexes: []schemadiff.Index{
 			{Name: physicalObjectName("im", definition.ID), Method: "btree", Keys: []string{"deletion_mark"}},
-			{Name: physicalObjectName("id", definition.ID), Method: "btree", Keys: []string{"account_order"}},
 		},
 	}
-	if definition.Code.Unique {
-		table.Constraints = append(table.Constraints, schemadiff.Constraint{Name: physicalObjectName("uq", definition.ID), Type: "unique", Definition: "UNIQUE (code)"})
-	} else {
-		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("ic", definition.ID), Method: "btree", Keys: []string{"code"}})
+	appendCodeColumn(&table, definition.ID, definition.Code)
+	// The order is derived from the code and the mask, so it is stored rather
+	// than computed on every read: it is what the list sorts by. With neither
+	// an order nor a code there is nothing to order by, and no column.
+	if orderLength > 0 {
+		table.Columns = append(table.Columns, schemadiff.Column{Name: "account_order", Type: fmt.Sprintf("character varying(%d)", orderLength), Nullable: false, Default: "''::character varying"})
+		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("id", definition.ID), Method: "btree", Keys: []string{"account_order"}})
 	}
 	// Every declared flag is a checkbox on every account, so it is a column.
 	for _, flag := range definition.AccountingFlags {
@@ -608,9 +611,7 @@ func (catalog *Catalog) chartOfAccountsTables(definition ChartOfAccountsDefiniti
 			return schemadiff.Table{}, nil, fmt.Errorf("chart of accounts %s attribute %s: %w", definition.Name, attribute.Name, err)
 		}
 	}
-	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Description", "Code"}, definition.Attributes, map[string]listColumn{
-		"code": {name: "code", kind: definition.Code.Type}, "description": {name: "description", kind: StringType},
-	})
+	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Description", "Code"}, definition.Attributes, codeAndDescriptionColumns(definition.Code, definition.DescriptionLength))
 	parts, err := catalog.tablePartTables("chart of accounts", definition.Name, definition.ID, definition.TableParts)
 	if err != nil {
 		return schemadiff.Table{}, nil, err
