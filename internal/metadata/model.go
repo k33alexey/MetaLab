@@ -669,7 +669,11 @@ type Catalog struct {
 	commandGroupByID                map[uuid.UUID]int
 	// unresolved is what the last load found pointing at nothing - see
 	// UnresolvedReference.
-	unresolved               []UnresolvedReference
+	unresolved []UnresolvedReference
+	// objectKindByID holds every object of the top level the last load read,
+	// of every kind, with the kind it is. It is what a reference that may point
+	// at an object of any kind - the content of a subsystem - is resolved by.
+	objectKindByID           map[uuid.UUID]string
 	CommonTemplates          []CommonTemplateDefinition
 	commonTemplateByName     map[string]int
 	commonTemplateByID       map[uuid.UUID]int

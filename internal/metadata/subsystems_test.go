@@ -98,8 +98,14 @@ func TestLoadValidatesSubsystemReferences(t *testing.T) {
 		[]byte("format: 1\nid: "+validID.String()+"\nname: ПродажиРозница\ntitle: {ru: Розница}\nmembers: ["+unknownMemberID.String()+"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := load(root, true); err == nil {
-		t.Fatal("subsystem with an unknown member was accepted")
+	// A member naming nothing is a deleted object the subsystem kept: carried,
+	// and listed for the import report rather than refusing the configuration.
+	catalog, err := load(root, true)
+	if err != nil {
+		t.Fatalf("subsystem with a stale member refused: %v", err)
+	}
+	if unresolved := catalog.UnresolvedReferences(); len(unresolved) != 1 || unresolved[0].ID != unknownMemberID {
+		t.Fatalf("unresolved = %+v, want the stale member", unresolved)
 	}
 
 	// Two subsystems whose parents point at each other must be rejected.
@@ -121,5 +127,86 @@ func TestLoadValidatesSubsystemReferences(t *testing.T) {
 	}
 	if _, err := load(root, true); err != nil {
 		t.Fatalf("valid parent chain rejected after repair: %v", err)
+	}
+}
+
+// A subsystem holds objects of any kind of the top level - the prototype puts
+// some forty kinds in, common modules, roles and pictures the most - and other
+// subsystems too, not only its own children.
+//
+// Defect caught: a member of a kind outside the old six (catalog, document,
+// enumeration, constant, two registers) taken for a member pointing at
+// nothing - before this it refused the configuration, now it would be listed as
+// stale.
+func TestSubsystemHoldsObjectsOfEveryKind(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	for _, directory := range []string{"subsystems", "roles"} {
+		if err := os.MkdirAll(filepath.Join(root, "metadata", directory), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reportID, roleID, otherID, ownerID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	writeMetadata(t, root, ReportKind, reportID.String(), "format: 1\nid: "+reportID.String()+"\nname: Ведомость\ntitle: {ru: Ведомость}\n")
+	if err := os.WriteFile(filepath.Join(root, "metadata", "roles", roleID.String()+".yaml"),
+		[]byte("format: 1\nid: "+roleID.String()+"\nname: Бухгалтер\ntitle: {ru: Бухгалтер}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeCommonForm(t, root, "АдреснаяКнига", "format: 1\nid: "+commonFormID+"\nname: АдреснаяКнига\ntitle: {ru: Адресная книга}\nkind: common\n")
+	writeMetadata(t, root, SubsystemKind, otherID.String(), "format: 1\nid: "+otherID.String()+"\nname: Закупки\ntitle: {ru: Закупки}\n")
+	writeMetadata(t, root, SubsystemKind, ownerID.String(), "format: 1\nid: "+ownerID.String()+"\nname: Продажи\ntitle: {ru: Продажи}\nmembers: ["+
+		reportID.String()+", "+roleID.String()+", "+commonFormID+", "+otherID.String()+"]\n")
+	catalog, err := load(root, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unresolved := catalog.UnresolvedReferences(); len(unresolved) != 0 {
+		t.Fatalf("members of other kinds taken for stale ones: %+v", unresolved)
+	}
+}
+
+// A subsystem's name is unique among its siblings, not across the
+// configuration: БазоваяФункциональность stands under a dozen parents in each
+// of the configurations being moved. Two siblings of one name are still one
+// name too many, and the lookup goes by path.
+//
+// Defect caught: the same name under two parents refused (41/35/29 repeats);
+// two siblings of one name accepted; a nested subsystem found by its bare name,
+// which is ambiguous.
+func TestSubsystemNameIsUniqueAmongItsSiblings(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	if err := os.MkdirAll(filepath.Join(root, "metadata", string(SubsystemKind)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sales, purchases, first, second := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	write := func(id uuid.UUID, name string, parent *uuid.UUID) {
+		body := "format: 1\nid: " + id.String() + "\nname: " + name + "\ntitle: {ru: " + name + "}\n"
+		if parent != nil {
+			body += "parent: " + parent.String() + "\n"
+		}
+		writeMetadata(t, root, SubsystemKind, id.String(), body)
+	}
+	write(sales, "Продажи", nil)
+	write(purchases, "Закупки", nil)
+	write(first, "БазоваяФункциональность", &sales)
+	write(second, "БазоваяФункциональность", &purchases)
+	catalog, err := load(root, true)
+	if err != nil {
+		t.Fatalf("one name under two parents refused: %v", err)
+	}
+	if found, ok := catalog.Subsystem("продажи.базоваяфункциональность"); !ok || found.ID != first {
+		t.Fatalf("lookup by path = %+v, %v", found, ok)
+	}
+	if found, ok := catalog.Subsystem("Закупки.БазоваяФункциональность"); !ok || found.ID != second {
+		t.Fatalf("lookup by path = %+v, %v", found, ok)
+	}
+	if _, ok := catalog.Subsystem("БазоваяФункциональность"); ok {
+		t.Fatal("a nested subsystem was found by its bare name")
+	}
+
+	write(second, "БазоваяФункциональность", &sales)
+	if _, err := load(root, true); err == nil || !strings.Contains(err.Error(), "БазоваяФункциональность") {
+		t.Fatalf("two siblings of one name: %v", err)
 	}
 }

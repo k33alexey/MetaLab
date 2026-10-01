@@ -800,6 +800,7 @@ func loadObjectKind(root string, kind Kind, decode func(string, *os.File, string
 
 func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.unresolved = nil
+	catalog.objectKindByID = map[uuid.UUID]string{}
 	if err := catalog.propagateCommonAttributes(); err != nil {
 		return err
 	}
@@ -968,6 +969,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return fmt.Errorf("%w: %s and %s use %s", ErrDuplicateID, previous, kind+" "+name, id)
 		}
 		names[folded], allIDs[id] = index, kind+" "+name
+		catalog.objectKindByID[id] = kind
 		if ids != nil {
 			ids[id] = index
 		}
@@ -981,8 +983,21 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 	}
+	// A subsystem's name is unique among its siblings, not across the
+	// configuration: the prototype keeps БазоваяФункциональность under a dozen
+	// parents (41/35/29 repeated names in the configurations being moved). The
+	// lookup by name is by path, built once the parents are known - see
+	// validateSubsystemReferences.
+	siblings := map[uuid.UUID]map[string]int{}
 	for index, item := range catalog.Subsystems {
-		if err := add("subsystem", item.ID, item.Name, index, catalog.subsystemByName, catalog.subsystemByID); err != nil {
+		var parent uuid.UUID
+		if item.Parent != nil {
+			parent = *item.Parent
+		}
+		if siblings[parent] == nil {
+			siblings[parent] = map[string]int{}
+		}
+		if err := add("subsystem", item.ID, item.Name, index, siblings[parent], catalog.subsystemByID); err != nil {
 			return err
 		}
 	}
@@ -2612,6 +2627,7 @@ func (catalog *Catalog) indexCommonForms(root string) error {
 	catalog.commonFormNames = make(map[string]bool, len(forms))
 	for _, form := range forms {
 		catalog.commonFormNames[strings.ToLower(form.Name)] = true
+		catalog.objectKindByID[form.ID] = "common form"
 	}
 	return nil
 }

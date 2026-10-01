@@ -77,6 +77,10 @@ func ValidateSubsystem(source string, value SubsystemDefinition, configuration p
 	return issuesError(source, value.Format, issues)
 }
 
+// Subsystem returns one subsystem by its path, folded case: the name of a
+// top-level subsystem, or the names from the top down joined by dots -
+// "Администрирование.БазоваяФункциональность". A name alone does not find a
+// nested one, because the same name may stand under several parents.
 func (catalog *Catalog) Subsystem(name string) (SubsystemDefinition, bool) {
 	index, ok := catalog.subsystemByName[strings.ToLower(name)]
 	if !ok {
@@ -104,8 +108,16 @@ func cloneSubsystemDefinition(value SubsystemDefinition) SubsystemDefinition {
 	return value
 }
 
-// validateSubsystemReferences checks that every parent and member reference
-// resolves to a real object and that no subsystem is its own ancestor.
+// validateSubsystemReferences checks that every parent resolves and that no
+// subsystem is its own ancestor, builds the lookup by path, and notes the
+// members that point at nothing.
+//
+// A member may be an object of any kind of the top level, another subsystem
+// included - the prototype puts some forty kinds into a subsystem, common
+// modules, roles and pictures the most. A member naming nothing is carried,
+// not refused: the object was deleted and the subsystem kept it, which the
+// prototype saves (70/74/189 in the configurations being moved, none of them
+// resolving). It is listed for the import report - see UnresolvedReference.
 func (catalog *Catalog) validateSubsystemReferences() error {
 	for _, item := range catalog.Subsystems {
 		if item.Parent != nil {
@@ -115,7 +127,7 @@ func (catalog *Catalog) validateSubsystemReferences() error {
 		}
 		for _, member := range item.Members {
 			if !catalog.knownMetadataObject(member) {
-				return fmt.Errorf("subsystem %s references unknown object %s", item.Name, member)
+				catalog.noteUnresolved("subsystem "+item.Name+" member", member)
 			}
 		}
 	}
@@ -134,29 +146,28 @@ func (catalog *Catalog) validateSubsystemReferences() error {
 			current = catalog.Subsystems[parent].Parent
 		}
 	}
+	catalog.subsystemByName = make(map[string]int, len(catalog.Subsystems))
+	for index := range catalog.Subsystems {
+		catalog.subsystemByName[strings.ToLower(catalog.subsystemPath(index))] = index
+	}
 	return nil
 }
 
-// knownMetadataObject reports whether id belongs to any currently supported
-// metadata kind that a subsystem may list as a member.
+// subsystemPath is the names from the top down to one subsystem, joined by
+// dots. The parent chain is known to be complete and acyclic when it is asked.
+func (catalog *Catalog) subsystemPath(index int) string {
+	path := catalog.Subsystems[index].Name
+	for parent := catalog.Subsystems[index].Parent; parent != nil; {
+		next := catalog.subsystemByID[*parent]
+		path = catalog.Subsystems[next].Name + "." + path
+		parent = catalog.Subsystems[next].Parent
+	}
+	return path
+}
+
+// knownMetadataObject reports whether id is an object of the top level the
+// configuration carries, of any kind.
 func (catalog *Catalog) knownMetadataObject(id uuid.UUID) bool {
-	if _, ok := catalog.catalogByID[id]; ok {
-		return true
-	}
-	if _, ok := catalog.documentByID[id]; ok {
-		return true
-	}
-	if _, ok := catalog.enumerationByID[id]; ok {
-		return true
-	}
-	if _, ok := catalog.constantByID[id]; ok {
-		return true
-	}
-	if _, ok := catalog.informationRegisterByID[id]; ok {
-		return true
-	}
-	if _, ok := catalog.accumulationRegisterByID[id]; ok {
-		return true
-	}
-	return false
+	_, ok := catalog.objectKindByID[id]
+	return ok
 }
