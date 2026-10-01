@@ -116,12 +116,35 @@ type AddressingValue struct {
 // RouteDecoration is a caption or a line drawn on the map. It changes nothing
 // about where the process goes, and it is kept for exactly that reason: a map
 // transferred without its decorations is not the map that was drawn.
+//
+// A decoration is one of two things: a shape placed on the map, or a
+// decorative line drawn through its corners. A decorative line may be attached
+// to a point or a shape at either end, as erp attaches captions to the steps
+// they explain, and it then follows them when they move.
 type RouteDecoration struct {
 	Name     string        `yaml:"name" json:"name"`
 	Title    LocalizedText `yaml:"title,omitempty" json:"title,omitempty"`
 	Shape    string        `yaml:"shape,omitempty" json:"shape,omitempty"`
 	Location *RouteArea    `yaml:"location,omitempty" json:"location,omitempty"`
 	Line     []RouteVertex `yaml:"line,omitempty" json:"line,omitempty"`
+	Look     *RouteLook    `yaml:"look,omitempty" json:"look,omitempty"`
+	// FlipMode and Angle turn a shape: mirrored by the designer's flip code,
+	// rotated by degrees.
+	FlipMode int     `yaml:"flip_mode,omitempty" json:"flipMode,omitempty"`
+	Angle    float64 `yaml:"angle,omitempty" json:"angle,omitempty"`
+	// From, To and LineLook belong to a decorative line.
+	From     *RouteEnd      `yaml:"from,omitempty" json:"from,omitempty"`
+	To       *RouteEnd      `yaml:"to,omitempty" json:"to,omitempty"`
+	LineLook *RouteLineLook `yaml:"line_look,omitempty" json:"lineLook,omitempty"`
+}
+
+// RouteVariant is one way out of a variant choice. The name is what the
+// handler returns and what a line out of the point is marked with; the caption
+// and the colour are how the variant is drawn.
+type RouteVariant struct {
+	Name      string        `yaml:"name" json:"name"`
+	Title     LocalizedText `yaml:"title,omitempty" json:"title,omitempty"`
+	BackColor *ColorValue   `yaml:"back_color,omitempty" json:"backColor,omitempty"`
 }
 
 // RoutePoint is one step of a route.
@@ -146,7 +169,13 @@ type RoutePoint struct {
 	// NestedProcess is the business process started at a nested-process point.
 	NestedProcess *uuid.UUID `yaml:"nested_process,omitempty" json:"nestedProcess,omitempty"`
 	// Variants are the ways out of a variant-choice point.
-	Variants []string `yaml:"variants,omitempty" json:"variants,omitempty"`
+	Variants []RouteVariant `yaml:"variants,omitempty" json:"variants,omitempty"`
+	// TruePort and FalsePort are the ports of a condition its two branches
+	// leave by - which side of the drawn box is "yes". The help draws the
+	// true branch on the right by default; erp has one condition the other
+	// way round.
+	TruePort  int `yaml:"true_port,omitempty" json:"truePort,omitempty"`
+	FalsePort int `yaml:"false_port,omitempty" json:"falsePort,omitempty"`
 	// Addressing is what the tasks created here are addressed by.
 	Addressing []AddressingValue `yaml:"addressing,omitempty" json:"addressing,omitempty"`
 	// Location is where the point is drawn.
@@ -154,17 +183,27 @@ type RoutePoint struct {
 	// Handlers binds events of this point to procedures of the object module.
 	// An event left out is not handled.
 	Handlers map[RouteEvent]string `yaml:"handlers,omitempty" json:"handlers,omitempty"`
+	Look     *RouteLook            `yaml:"look,omitempty" json:"look,omitempty"`
 }
 
 // RouteTransition is one line of the map, from a point to a point.
+//
+// Its name and caption are the drawn line's: "Линия1" and the "Да" written
+// beside it. The ports say at which side of each point the line is attached.
 type RouteTransition struct {
-	From string `yaml:"from" json:"from"`
-	To   string `yaml:"to" json:"to"`
+	Name     string        `yaml:"name,omitempty" json:"name,omitempty"`
+	Title    LocalizedText `yaml:"title,omitempty" json:"title,omitempty"`
+	From     string        `yaml:"from" json:"from"`
+	To       string        `yaml:"to" json:"to"`
+	FromPort int           `yaml:"from_port,omitempty" json:"fromPort,omitempty"`
+	ToPort   int           `yaml:"to_port,omitempty" json:"toPort,omitempty"`
 	// Branch is empty for a plain line, true or false out of a condition, and
 	// the variant name out of a variant choice.
 	Branch string `yaml:"branch,omitempty" json:"branch,omitempty"`
 	// Vertices are the corners the line is bent around.
-	Vertices []RouteVertex `yaml:"vertices,omitempty" json:"vertices,omitempty"`
+	Vertices []RouteVertex  `yaml:"vertices,omitempty" json:"vertices,omitempty"`
+	Look     *RouteLook     `yaml:"look,omitempty" json:"look,omitempty"`
+	LineLook *RouteLineLook `yaml:"line_look,omitempty" json:"lineLook,omitempty"`
 }
 
 // RouteMap is the points, the lines between them and what is drawn beside
@@ -174,6 +213,8 @@ type RouteMap struct {
 	Points      []RoutePoint      `yaml:"points,omitempty" json:"points,omitempty"`
 	Transitions []RouteTransition `yaml:"transitions,omitempty" json:"transitions,omitempty"`
 	Decorations []RouteDecoration `yaml:"decorations,omitempty" json:"decorations,omitempty"`
+	// Look is the background, the grid and the print settings of the map.
+	Look *RouteMapLook `yaml:"look,omitempty" json:"look,omitempty"`
 }
 
 // BusinessProcessDefinition describes a sequence of steps and the moves between
@@ -274,6 +315,7 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	variants := map[string]map[string]bool{}
 	kinds := map[string]RoutePointKind{}
+	ports := map[string][2]int{}
 	starts, completions := 0, 0
 	for index, point := range route.Points {
 		prefix := fmt.Sprintf("route.points[%d]", index)
@@ -334,13 +376,31 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 		issues = append(issues, validateRouteHandlers(prefix, point)...)
 		issues = append(issues, validateAddressingValues(prefix, point.Addressing)...)
 		seen := map[string]bool{}
-		for _, variant := range point.Variants {
-			if seen[strings.ToLower(variant)] {
-				issues = append(issues, prefix+".variants repeat "+variant)
+		for number, variant := range point.Variants {
+			path := fmt.Sprintf("%s.variants[%d]", prefix, number)
+			if !validIdentifier(variant.Name) {
+				issues = append(issues, path+".name must be a valid identifier: the handler returns the variant by it")
 			}
-			seen[strings.ToLower(variant)] = true
+			if seen[strings.ToLower(variant.Name)] {
+				issues = append(issues, prefix+".variants repeat "+variant.Name)
+			}
+			seen[strings.ToLower(variant.Name)] = true
+			if len(variant.Title) > 0 {
+				issues = append(issues, validateTitle(path+".title", variant.Title, configuration)...)
+			}
+			if variant.BackColor != nil {
+				issues = append(issues, validateColorValue(path+".back_color", *variant.BackColor)...)
+			}
 		}
 		variants[folded] = seen
+		if (point.TruePort != 0 || point.FalsePort != 0) && point.Kind != ConditionPoint {
+			issues = append(issues, prefix+" gives ports to branches, which only a condition has")
+		}
+		if point.TruePort < 0 || point.FalsePort < 0 || (point.TruePort != 0 && point.TruePort == point.FalsePort) {
+			issues = append(issues, prefix+" must leave by two different ports for its two branches")
+		}
+		ports[folded] = [2]int{point.TruePort, point.FalsePort}
+		issues = append(issues, validateRouteLook(prefix+".look", point.Look, true, configuration)...)
 	}
 	// A route may have several starts - the method that starts a process is
 	// given the one to start from - but it needs one.
@@ -361,10 +421,24 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 			issues = append(issues, prefix+".to names "+transition.To+", which is not a point of this route")
 			continue
 		}
+		issues = append(issues, validateRouteTransitionLook(prefix, transition, configuration)...)
 		switch kinds[from] {
 		case ConditionPoint:
 			if transition.Branch != TrueBranch && transition.Branch != FalseBranch {
 				issues = append(issues, prefix+" out of a condition must say which branch it is: true or false")
+			}
+			// The branch is said twice in the prototype - by the line's port
+			// and by the condition's port of that branch - and the two have
+			// to agree, or the map shows one way and the process takes the
+			// other.
+			if pair := ports[from]; transition.FromPort != 0 && pair != [2]int{} {
+				want := pair[0]
+				if transition.Branch == FalseBranch {
+					want = pair[1]
+				}
+				if transition.FromPort != want {
+					issues = append(issues, prefix+" leaves the condition by the port of the other branch")
+				}
 			}
 		case VariantChoicePoint:
 			if !variants[from][strings.ToLower(transition.Branch)] {
@@ -379,6 +453,8 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 		}
 	}
 	issues = append(issues, validateRouteDecorations(route.Decorations, configuration)...)
+	issues = append(issues, validateRouteNames(route)...)
+	issues = append(issues, validateRouteMapLook(route.Look)...)
 	// A point nobody can reach is a step that never runs, and a map drawn with
 	// one is a map that lies about what the process does.
 	reachable := map[string]bool{}
@@ -471,8 +547,104 @@ func validateRouteDecorations(decorations []RouteDecoration, configuration proje
 		if decoration.Location == nil && len(decoration.Line) < 2 {
 			issues = append(issues, prefix+" is neither placed on the map nor drawn as a line")
 		}
-		if decoration.Shape != "" && !validIdentifier(decoration.Shape) {
-			issues = append(issues, prefix+".shape must be a valid identifier")
+		if decoration.Shape != "" && !slices.Contains(routeShapes, decoration.Shape) {
+			issues = append(issues, fmt.Sprintf("%s.shape must be one of %v", prefix, routeShapes))
+		}
+		line := len(decoration.Line) > 0 || decoration.From != nil || decoration.To != nil || decoration.LineLook != nil
+		if line && (decoration.Location != nil || decoration.Shape != "" || decoration.FlipMode != 0 || decoration.Angle != 0) {
+			issues = append(issues, prefix+" is both a shape and a decorative line")
+		}
+		issues = append(issues, validateRouteLook(prefix+".look", decoration.Look, !line, configuration)...)
+		if !line && decoration.Look != nil && decoration.Look.Border != nil {
+			issues = append(issues, prefix+".look.border is not allowed: the outline of a shape is the shape")
+		}
+		if decoration.LineLook != nil {
+			issues = append(issues, validateRouteLineLook(prefix+".line_look", *decoration.LineLook)...)
+		}
+		for end, attached := range map[string]*RouteEnd{"from": decoration.From, "to": decoration.To} {
+			if attached != nil && attached.Port < 0 {
+				issues = append(issues, prefix+"."+end+".port must not be negative")
+			}
+		}
+	}
+	return issues
+}
+
+// validateRouteTransitionLook checks what a transition carries beside where it
+// goes: its name and caption, its ports and how it is drawn.
+func validateRouteTransitionLook(prefix string, transition RouteTransition, configuration project.Project) []string {
+	var issues []string
+	if transition.Name != "" && (!validIdentifier(transition.Name) || utf8.RuneCountInString(transition.Name) > maxNameLength) {
+		issues = append(issues, prefix+".name must be a valid identifier of at most 255 characters")
+	}
+	if len(transition.Title) > 0 {
+		issues = append(issues, validateTitle(prefix+".title", transition.Title, configuration)...)
+	}
+	if transition.FromPort < 0 || transition.ToPort < 0 {
+		issues = append(issues, prefix+" ports must not be negative")
+	}
+	issues = append(issues, validateRouteLook(prefix+".look", transition.Look, false, configuration)...)
+	if transition.LineLook != nil {
+		issues = append(issues, validateRouteLineLook(prefix+".line_look", *transition.LineLook)...)
+	}
+	return issues
+}
+
+// validateRouteNames keeps one name for one item across the whole map, lines
+// included: a line is attached to an item by its name, and the designer names
+// every item of the map apart. A decorative line attached to an item has to
+// find one - a point or a shape, not another line.
+func validateRouteNames(route RouteMap) []string {
+	var issues []string
+	type owner struct {
+		collection string
+		index      int
+	}
+	owners := map[string]owner{}
+	claim := func(name, collection string, index int) {
+		if name == "" {
+			return
+		}
+		folded := strings.ToLower(name)
+		// Two points or two shapes of one name are refused where they are
+		// checked; here only a name shared across kinds of item.
+		if previous, ok := owners[folded]; ok && previous.collection != collection {
+			issues = append(issues, fmt.Sprintf("route.%s[%d] and route.%s[%d] are both named %s: the items of a map are named apart",
+				previous.collection, previous.index, collection, index, name))
+			return
+		}
+		owners[folded] = owner{collection, index}
+	}
+	attachable := map[string]bool{}
+	for index, point := range route.Points {
+		claim(point.Name, "points", index)
+		attachable[strings.ToLower(point.Name)] = true
+	}
+	lines := map[string]bool{}
+	for index, transition := range route.Transitions {
+		claim(transition.Name, "transitions", index)
+		if transition.Name == "" {
+			continue
+		}
+		if lines[strings.ToLower(transition.Name)] {
+			issues = append(issues, fmt.Sprintf("route.transitions[%d].name must be unique", index))
+		}
+		lines[strings.ToLower(transition.Name)] = true
+	}
+	for index, decoration := range route.Decorations {
+		claim(decoration.Name, "decorations", index)
+		if len(decoration.Line) == 0 && decoration.From == nil && decoration.To == nil {
+			attachable[strings.ToLower(decoration.Name)] = true
+		}
+	}
+	for index, decoration := range route.Decorations {
+		for end, attached := range map[string]*RouteEnd{"from": decoration.From, "to": decoration.To} {
+			if attached == nil || attached.Item == "" {
+				continue
+			}
+			if !attachable[strings.ToLower(attached.Item)] {
+				issues = append(issues, fmt.Sprintf("route.decorations[%d].%s is attached to %s, which is not a point or a shape of this map", index, end, attached.Item))
+			}
 		}
 	}
 	return issues
@@ -498,6 +670,11 @@ func cloneRouteMap(route RouteMap) RouteMap {
 		point := &route.Points[index]
 		point.Title = cloneTitle(point.Title)
 		point.Variants = slices.Clone(point.Variants)
+		for number := range point.Variants {
+			point.Variants[number].Title = cloneTitle(point.Variants[number].Title)
+			point.Variants[number].BackColor = clonePointer(point.Variants[number].BackColor)
+		}
+		point.Look = cloneRouteLook(point.Look)
 		if point.NestedProcess != nil {
 			id := *point.NestedProcess
 			point.NestedProcess = &id
@@ -517,13 +694,28 @@ func cloneRouteMap(route RouteMap) RouteMap {
 	}
 	route.Transitions = slices.Clone(route.Transitions)
 	for index := range route.Transitions {
-		route.Transitions[index].Vertices = slices.Clone(route.Transitions[index].Vertices)
+		transition := &route.Transitions[index]
+		transition.Vertices = slices.Clone(transition.Vertices)
+		transition.Title = cloneTitle(transition.Title)
+		transition.Look = cloneRouteLook(transition.Look)
+		if transition.LineLook != nil {
+			look := cloneRouteLineLook(*transition.LineLook)
+			transition.LineLook = &look
+		}
 	}
+	route.Look = cloneRouteMapLook(route.Look)
 	route.Decorations = slices.Clone(route.Decorations)
 	for index := range route.Decorations {
 		decoration := &route.Decorations[index]
 		decoration.Title = cloneTitle(decoration.Title)
 		decoration.Line = slices.Clone(decoration.Line)
+		decoration.Look = cloneRouteLook(decoration.Look)
+		decoration.From = clonePointer(decoration.From)
+		decoration.To = clonePointer(decoration.To)
+		if decoration.LineLook != nil {
+			look := cloneRouteLineLook(*decoration.LineLook)
+			decoration.LineLook = &look
+		}
 		if decoration.Location != nil {
 			area := *decoration.Location
 			decoration.Location = &area
