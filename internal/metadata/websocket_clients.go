@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strings"
 	"unicode"
-	"unicode/utf8"
 
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -30,13 +29,6 @@ const (
 	// defaultWebSocketTimeout is the connection timeout, in seconds, of a
 	// client that does not name one.
 	defaultWebSocketTimeout = 30
-	// maxWebSocketTimeout bounds the timeout at a day: a connection that takes
-	// longer than that to open is not being waited for, it is forgotten.
-	maxWebSocketTimeout = 86400
-	// maxWebSocketHeaderValue bounds one header value. Servers refuse the whole
-	// request line past a few kilobytes, so a longer value is a mistake.
-	maxWebSocketHeaderValue = 4096
-	maxWebSocketUserLength  = 256
 )
 
 // WebSocketClientDefinition is one WebSocket client.
@@ -124,13 +116,11 @@ func DecodeWebSocketClient(source string, reader io.Reader, configuration projec
 	issues = append(issues, validateWebSocketServerURL(value.ServerURL)...)
 	issues = append(issues, validateWebSocketHeaders(value.Headers)...)
 	issues = append(issues, validateSecretHeaders(value.SecretHeaders, value.Headers)...)
-	if utf8.RuneCountInString(value.User) > maxWebSocketUserLength {
-		issues = append(issues, fmt.Sprintf("user must not exceed %d characters", maxWebSocketUserLength))
-	} else if strings.IndexFunc(value.User, unicode.IsControl) >= 0 {
+	if strings.IndexFunc(value.User, unicode.IsControl) >= 0 {
 		issues = append(issues, "user must be one line without control characters")
 	}
-	if value.Timeout != nil && (*value.Timeout < 0 || *value.Timeout > maxWebSocketTimeout) {
-		issues = append(issues, fmt.Sprintf("timeout must be between 0 and %d seconds", maxWebSocketTimeout))
+	if value.Timeout != nil && *value.Timeout < 0 {
+		issues = append(issues, "timeout must not be negative")
 	}
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return WebSocketClientDefinition{}, err
@@ -147,9 +137,6 @@ func DecodeWebSocketClient(source string, reader io.Reader, configuration projec
 // does not say - it may well be completed at run time - and refusing it would
 // refuse a configuration the platform wrote.
 func validateWebSocketServerURL(value string) []string {
-	if len([]rune(value)) > maxLocationURLLength {
-		return []string{fmt.Sprintf("server_url must not exceed %d characters", maxLocationURLLength)}
-	}
 	if strings.IndexFunc(value, func(symbol rune) bool { return unicode.IsControl(symbol) || unicode.IsSpace(symbol) }) >= 0 {
 		return []string{"server_url must be one line without spaces or control characters"}
 	}
@@ -221,9 +208,7 @@ func validateWebSocketHeaders(headers map[string]string) []string {
 			issues = append(issues, fmt.Sprintf("headers.%s carries credentials and is not kept in project files: its value lies in the store of secrets, and the file names it in secret_headers", name))
 			continue
 		}
-		if len(value) > maxWebSocketHeaderValue {
-			issues = append(issues, fmt.Sprintf("headers.%s must not exceed %d bytes", name, maxWebSocketHeaderValue))
-		} else if strings.IndexFunc(value, func(symbol rune) bool { return symbol != '\t' && unicode.IsControl(symbol) }) >= 0 {
+		if strings.IndexFunc(value, func(symbol rune) bool { return symbol != '\t' && unicode.IsControl(symbol) }) >= 0 {
 			issues = append(issues, fmt.Sprintf("headers.%s must be one line without control characters", name))
 		}
 	}

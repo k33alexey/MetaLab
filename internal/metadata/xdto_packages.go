@@ -24,9 +24,6 @@ const XDTOPackageKind Kind = "xdto-packages"
 // schema of exchanged types is everywhere it is read.
 const XDTOPackageContentFile = "content.xml"
 
-// maxNamespaceLength bounds a namespace. It is a name, not a document.
-const maxNamespaceLength = 512
-
 // XDTOPackageDefinition is one package of exchanged types.
 //
 // The package is described by very little - what it is called and which
@@ -72,9 +69,6 @@ func validateNamespace(path, value string, required bool) []string {
 			return []string{path + " must name the namespace the types belong to"}
 		}
 		return nil
-	}
-	if len([]rune(value)) > maxNamespaceLength {
-		return []string{fmt.Sprintf("%s must not exceed %d characters", path, maxNamespaceLength)}
 	}
 	for _, symbol := range value {
 		if unicode.IsSpace(symbol) || !unicode.IsPrint(symbol) {

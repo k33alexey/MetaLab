@@ -234,8 +234,10 @@ func validateCodeMask(value ChartOfAccountsDefinition) []string {
 	if value.CodeMask != "" && !strings.ContainsRune(value.CodeMask, '@') {
 		issues = append(issues, "code_mask without a single @ describes no code at all")
 	}
-	if value.OrderLength < 0 || value.OrderLength > 128 {
-		issues = append(issues, "order_length must be 0..128")
+	// The help names no ceiling on the order - the charts being moved go up
+	// to 9 - so the only one is the database's.
+	if value.OrderLength < 0 || value.OrderLength > maxVarcharLength {
+		issues = append(issues, fmt.Sprintf("order_length must be 0..%d", maxVarcharLength))
 	}
 	if value.CodeMask != "" && value.OrderLength < utf8.RuneCountInString(value.CodeMask) {
 		issues = append(issues, "order_length must fit the code mask")
@@ -336,8 +338,8 @@ func validatePredefinedAccounts(value ChartOfAccountsDefinition) []string {
 			issues = append(issues, prefix+".id must be unique")
 		}
 		ids[account.ID] = true
-		if !validIdentifier(account.Name) || utf8.RuneCountInString(account.Name) > 128 {
-			issues = append(issues, prefix+".name must be a valid identifier of at most 128 characters")
+		if !validIdentifier(account.Name) || utf8.RuneCountInString(account.Name) > maxNameLength {
+			issues = append(issues, prefix+".name must be a valid identifier of at most 255 characters")
 		}
 		folded := strings.ToLower(account.Name)
 		if names[folded] {

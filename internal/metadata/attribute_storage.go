@@ -25,10 +25,9 @@ import (
 type IndexMode string
 
 const (
-	DontIndex                  IndexMode = "dont-index"
-	IndexField                 IndexMode = "index"
-	IndexWithAdditionalOrder   IndexMode = "index-with-additional-order"
-	maxFieldFillValueTextBytes           = 1 << 20
+	DontIndex                IndexMode = "dont-index"
+	IndexField               IndexMode = "index"
+	IndexWithAdditionalOrder IndexMode = "index-with-additional-order"
 )
 
 // indexes says whether the field gets an index of its own.
@@ -154,9 +153,6 @@ func validateFieldStorage(prefix string, attribute Attribute) []string {
 	}
 	if filling := attribute.Filling.Value; filling != nil {
 		issues = append(issues, validateFieldBound(prefix+".filling.value", *filling, attribute.Types)...)
-		if len(filling.Data) > maxFieldFillValueTextBytes {
-			issues = append(issues, fmt.Sprintf("%s.filling.value must not be longer than %d bytes", prefix, maxFieldFillValueTextBytes))
-		}
 	}
 	return issues
 }

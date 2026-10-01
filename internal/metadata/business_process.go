@@ -238,8 +238,8 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 			issues = append(issues, prefix+".id must be unique")
 		}
 		ids[point.ID] = true
-		if !validIdentifier(point.Name) || utf8.RuneCountInString(point.Name) > 128 {
-			issues = append(issues, prefix+".name must be a valid identifier of at most 128 characters")
+		if !validIdentifier(point.Name) || utf8.RuneCountInString(point.Name) > maxNameLength {
+			issues = append(issues, prefix+".name must be a valid identifier of at most 255 characters")
 		}
 		folded := strings.ToLower(point.Name)
 		if names[folded] {
@@ -387,8 +387,8 @@ func validateRouteDecorations(decorations []RouteDecoration, configuration proje
 	names := map[string]bool{}
 	for index, decoration := range decorations {
 		prefix := fmt.Sprintf("route.decorations[%d]", index)
-		if !validIdentifier(decoration.Name) || utf8.RuneCountInString(decoration.Name) > 128 {
-			issues = append(issues, prefix+".name must be a valid identifier of at most 128 characters")
+		if !validIdentifier(decoration.Name) || utf8.RuneCountInString(decoration.Name) > maxNameLength {
+			issues = append(issues, prefix+".name must be a valid identifier of at most 255 characters")
 		}
 		folded := strings.ToLower(decoration.Name)
 		if names[folded] {

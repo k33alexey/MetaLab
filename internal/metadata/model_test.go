@@ -233,7 +233,7 @@ id: `+catalogID+`
 name: Контрагенты
 title: {ru: Контрагенты}
 code: {type: string, length: 9, auto: true, unique: true}
-description_length: 250
+description_length: 150
 list:
   page_size: 50
   search_fields: [Description]
@@ -295,7 +295,7 @@ id: `+catalogID+`
 name: Контрагенты
 title: {ru: Контрагенты}
 code: {type: string, length: 9}
-description_length: 250
+description_length: 150
 attributes:
   - id: `+attributeID+`
     name: Контакты
@@ -320,7 +320,7 @@ id: `+catalogID+`
 name: Контрагенты
 title: {ru: Контрагенты}
 code: {type: string, length: 9, auto: true, unique: true}
-description_length: 250
+description_length: 150
 attributes:
   - id: `+attributeID+`
     name: ИНН
@@ -356,7 +356,7 @@ id: `+catalogID+`
 name: Контрагенты
 title: {ru: Контрагенты}
 code: {type: string, length: 9}
-description_length: 250
+description_length: 150
 `)
 	objectForm, listForm := uuid.MustNew(), uuid.MustNew()
 	if err := os.MkdirAll(filepath.Join(root, "metadata", "documents", "Продажа", "forms"), 0o755); err != nil {
@@ -444,7 +444,7 @@ id: `+catalogID+`
 name: Контрагенты
 title: {ru: Контрагенты}
 code: {type: string, length: 9}
-description_length: 250
+description_length: 150
 `)
 	writeMetadata(t, root, DocumentKind, documentID, `format: 1
 id: `+documentID+`
@@ -591,7 +591,7 @@ id: `+catalogID+`
 name: Контрагенты
 title: {ru: Контрагенты}
 code: {type: string, length: 9}
-description_length: 250
+description_length: 150
 `)
 	writeMetadata(t, root, DocumentKind, recorder.String(), `format: 1
 id: `+recorder.String()+`

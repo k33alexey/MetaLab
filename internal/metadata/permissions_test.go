@@ -140,11 +140,14 @@ func TestPermissionsBoundCombinedRoleSize(t *testing.T) {
 	catalog, role, form := roleCatalogFixture(t)
 	ids := []uuid.UUID{}
 	catalog.Roles = nil
-	for index := 0; index <= MaxEffectivePermissions/MaxRolePermissions; index++ {
+	// A role takes any number of permissions now; the bound under test is the
+	// one on the roles combined, so they are built in pieces of ten thousand.
+	const piece = 10_000
+	for index := 0; index <= MaxEffectivePermissions/piece; index++ {
 		next := cloneRole(role)
 		next.ID, next.Name = uuid.MustNew(), "Роль"+string(rune('А'+index))
 		next.Objects = nil
-		next.Commands = make([]CommandPermission, MaxRolePermissions)
+		next.Commands = make([]CommandPermission, piece)
 		for position := range next.Commands {
 			next.Commands[position] = CommandPermission{Form: form.ID, Command: uuid.MustNew()}
 		}

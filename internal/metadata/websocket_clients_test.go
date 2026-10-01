@@ -146,7 +146,6 @@ func TestWebSocketClientHeadersAreCheckedForTheHandshake(t *testing.T) {
 		"a name with a space":     {"headers:\n  \"X Tenant\": a\n", `"X Tenant" is not a header name`},
 		"a name with a colon":     {"headers:\n  \"X-Tenant:\": a\n", `"X-Tenant:" is not a header name`},
 		"names differing by case": {"headers:\n  X-Tenant: a\n  x-tenant: b\n", "are one header"},
-		"a value past the bound":  {"headers:\n  X-Tenant: " + strings.Repeat("a", maxWebSocketHeaderValue+1) + "\n", "must not exceed"},
 	}
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -174,7 +173,6 @@ func TestWebSocketClientServerAddressIsCheckedInFormOnly(t *testing.T) {
 	for name, body := range map[string]string{
 		"a space in the path": "server_url: wss://quotes.example.org/the stream\n",
 		"a line break inside": "server_url: \"wss://quotes.example.org/\\nstream\"\n",
-		"past the bound":      "server_url: wss://" + strings.Repeat("a", maxLocationURLLength) + "\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -196,10 +194,8 @@ func TestWebSocketClientServerAddressIsCheckedInFormOnly(t *testing.T) {
 // only.
 func TestWebSocketClientTimeoutIsBounded(t *testing.T) {
 	t.Parallel()
-	for _, value := range []string{"-1", "86401"} {
-		if message := refusedWebSocketClient(t, "timeout: "+value+"\n", "timeout "+value); !strings.Contains(message, "timeout must be between") {
-			t.Fatalf("timeout %s: the error does not name the bound: %v", value, message)
-		}
+	if message := refusedWebSocketClient(t, "timeout: -1\n", "timeout -1"); !strings.Contains(message, "timeout must not be negative") {
+		t.Fatalf("a negative timeout: %v", message)
 	}
 }
 

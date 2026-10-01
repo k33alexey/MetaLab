@@ -60,8 +60,6 @@ func TestDecodeRoleStrictAndBounded(t *testing.T) {
 			c := CommandPermission{Form: uuid.MustNew(), Command: uuid.MustNew()}
 			r.Commands = []CommandPermission{c, c}
 		},
-		"too many commands": func(r *RoleDefinition) { r.Commands = make([]CommandPermission, MaxRolePermissions+1) },
-		"too many fields":   func(r *RoleDefinition) { r.Objects[0].Fields = make([]FieldPermission, MaxRolePermissions) },
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -425,15 +423,17 @@ func TestRoleAutoGrantDefaults(t *testing.T) {
 	}
 }
 
-func TestRoleCommentLimit(t *testing.T) {
+// A comment of a role is text, and the prototype puts no ceiling on it: a long
+// one is carried. What is still refused is a comment that is not text at all.
+func TestRoleCommentIsCarriedWhateverItsLength(t *testing.T) {
 	t.Parallel()
 	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "P", Title: project.LocalizedText{"ru": "P"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: project.LocalizedText{"ru": "Русский"}, Code: "ru"}}}
-	role := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "R", Title: LocalizedText{"ru": "R"}, Comment: strings.Repeat("a", MaxRoleComment)}
+	role := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "R", Title: LocalizedText{"ru": "R"}, Comment: strings.Repeat("a", 20_000)}
 	if err := ValidateRole("role", role, configuration); err != nil {
-		t.Fatalf("comment at the limit rejected: %v", err)
+		t.Fatalf("a long comment was refused: %v", err)
 	}
-	role.Comment += "a"
+	role.Comment = "\xff"
 	if err := ValidateRole("role", role, configuration); err == nil {
-		t.Fatal("comment over the limit accepted")
+		t.Fatal("a comment that is not UTF-8 was accepted")
 	}
 }

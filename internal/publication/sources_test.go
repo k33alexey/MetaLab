@@ -89,7 +89,7 @@ func TestInspectCarriesSchemaIdentityOfEveryStoredKind(t *testing.T) {
 	catalogID, attributeID := uuid.MustNew(), uuid.MustNew()
 	catalogPath, _ := project.ObjectMetadataPath("catalogs", "Товары")
 	writeSourceFile(t, root, catalogPath, []byte("format: 1\nid: "+catalogID.String()+"\nname: Товары\ntitle: {ru: Товары}\n"+
-		"code: {type: string, length: 9, auto: true, unique: true}\ndescription_length: 250\n"+
+		"code: {type: string, length: 9, auto: true, unique: true}\ndescription_length: 150\n"+
 		"attributes:\n  - id: "+attributeID.String()+"\n    name: Артикул\n    title: {ru: Артикул}\n    types: [{kind: string, length: 32}]\n    indexing: index\n"))
 
 	documentID, formID := uuid.MustNew(), uuid.MustNew()

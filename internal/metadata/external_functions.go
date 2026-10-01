@@ -47,8 +47,8 @@ func validateExternalFunctions(functions []ExternalFunction, configuration proje
 			issues = append(issues, prefix+".id is used twice")
 		}
 		ids[function.ID] = true
-		if !validIdentifier(function.Name) || utf8.RuneCountInString(function.Name) > 128 {
-			issues = append(issues, prefix+".name must start with a letter, contain only letters or digits and not exceed 128 characters")
+		if !validIdentifier(function.Name) || utf8.RuneCountInString(function.Name) > maxNameLength {
+			issues = append(issues, prefix+".name must start with a letter, contain only letters or digits and not exceed 255 characters")
 		} else if names[strings.ToLower(function.Name)] {
 			issues = append(issues, prefix+".name is used twice")
 		}
@@ -57,11 +57,7 @@ func validateExternalFunctions(functions []ExternalFunction, configuration proje
 		if len(function.Types) > 0 {
 			issues = append(issues, validateExternalFieldTypes(prefix+".types", function.Types)...)
 		}
-		if len(function.ExpressionInDataSource) > maxExpressionInDataSource {
-			issues = append(issues, fmt.Sprintf("%s.expression_in_data_source must not exceed %d bytes", prefix, maxExpressionInDataSource))
-		} else {
-			issues = append(issues, validateExpressionParameters(prefix+".expression_in_data_source", function.ExpressionInDataSource)...)
-		}
+		issues = append(issues, validateExpressionParameters(prefix+".expression_in_data_source", function.ExpressionInDataSource)...)
 	}
 	return issues
 }

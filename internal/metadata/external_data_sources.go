@@ -43,15 +43,6 @@ const ExternalTableType TypeKind = "external-data-source-table"
 // the way a form or a recalculation does.
 const ExternalDataSourceTablesDirectory = "tables"
 
-const (
-	// maxNameInDataSource bounds a name of the other database. It is a name,
-	// even when it is qualified by a schema and quoted.
-	maxNameInDataSource = 512
-	// maxExpressionInDataSource bounds a query in the language of the other
-	// database. A query is text somebody wrote and reads, not a document.
-	maxExpressionInDataSource = 64 << 10
-)
-
 // ExternalTableSource and ExternalTableDataType are the two enumerations that
 // say what a table is: made of a table of the source or of an expression, and
 // holding objects or records.
@@ -308,9 +299,6 @@ func validateExternalTableSource(table ExternalTable) []string {
 		issues = append(issues, "table_type must be table or expression")
 	}
 	issues = append(issues, validateNameInDataSource("name_in_data_source", table.NameInDataSource)...)
-	if len(table.ExpressionInDataSource) > maxExpressionInDataSource {
-		issues = append(issues, fmt.Sprintf("expression_in_data_source must not exceed %d bytes", maxExpressionInDataSource))
-	}
 	return issues
 }
 
@@ -319,9 +307,6 @@ func validateExternalTableSource(table ExternalTable) []string {
 // schema, quotes, brackets, spaces inside them - and refusing a name we do not
 // recognise would refuse a table that exists.
 func validateNameInDataSource(path, value string) []string {
-	if utf8.RuneCountInString(value) > maxNameInDataSource {
-		return []string{fmt.Sprintf("%s must not exceed %d characters", path, maxNameInDataSource)}
-	}
 	if strings.ContainsAny(value, "\r\n\x00") {
 		return []string{path + " must be one line"}
 	}
@@ -369,8 +354,8 @@ func checkExternalFieldGroups(configuration project.Project, groups ...externalF
 				issues = append(issues, prefix+".id is used twice")
 			}
 			ids[field.ID] = true
-			if !validIdentifier(field.Name) || utf8.RuneCountInString(field.Name) > 128 {
-				issues = append(issues, prefix+".name must start with a letter, contain only letters or digits and not exceed 128 characters")
+			if !validIdentifier(field.Name) || utf8.RuneCountInString(field.Name) > maxNameLength {
+				issues = append(issues, prefix+".name must start with a letter, contain only letters or digits and not exceed 255 characters")
 			} else if _, taken := fields[strings.ToLower(field.Name)]; taken {
 				issues = append(issues, prefix+".name is used twice")
 			} else {

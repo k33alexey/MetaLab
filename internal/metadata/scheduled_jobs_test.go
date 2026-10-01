@@ -159,9 +159,9 @@ func TestBrokenScheduledJobsAreRefused(t *testing.T) {
 		"метод не идентификатор": {"module: " + jobModule + "\nprocedure: \"Загрузить курсы\"",
 			"procedure must be a valid identifier"},
 		"повторов отрицательное число": {"module: " + jobModule + "\nprocedure: Загрузить\nrestart_count_on_failure: -1",
-			"restart_count_on_failure must be 0..1000"},
-		"интервал больше суток": {"module: " + jobModule + "\nprocedure: Загрузить\nrestart_interval_on_failure: 90000",
-			"restart_interval_on_failure must be 0..86400 seconds"},
+			"restart_count_on_failure must not be negative"},
+		"интервал отрицательный": {"module: " + jobModule + "\nprocedure: Загрузить\nrestart_interval_on_failure: -5",
+			"restart_interval_on_failure must not be negative"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

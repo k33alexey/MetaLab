@@ -35,7 +35,6 @@ const (
 )
 
 const (
-	maxExternalDimensionLevel     = 1024
 	maxUnfilledDimensionParentLen = 1024
 )
 
@@ -184,8 +183,8 @@ func DecodeExternalDimensionTable(source string, reader io.Reader, configuration
 	issues = append(issues, validatePresentations(value.Presentations, configuration)...)
 	issues = append(issues, validateRequiredNameInDataSource("name_in_data_source", value.NameInDataSource, "the dimension table")...)
 	issues = append(issues, validateNameInDataSource("hierarchy_name_in_data_source", value.HierarchyNameInDataSource)...)
-	if value.LevelNumber < 0 || value.LevelNumber > maxExternalDimensionLevel {
-		issues = append(issues, fmt.Sprintf("level_number must be between 0 and %d", maxExternalDimensionLevel))
+	if value.LevelNumber < 0 {
+		issues = append(issues, "level_number must not be negative")
 	}
 	// The help says it outright: a hierarchical table stands for the whole
 	// hierarchy, and its level is 0. A level on it would say it is one level
@@ -228,8 +227,8 @@ func validateCubeFields(cube ExternalCube, configuration project.Project) []stri
 			issues = append(issues, prefix+".id is used twice")
 		}
 		ids[field.ID] = true
-		if !validIdentifier(field.Name) || utf8.RuneCountInString(field.Name) > 128 {
-			issues = append(issues, prefix+".name must start with a letter, contain only letters or digits and not exceed 128 characters")
+		if !validIdentifier(field.Name) || utf8.RuneCountInString(field.Name) > maxNameLength {
+			issues = append(issues, prefix+".name must start with a letter, contain only letters or digits and not exceed 255 characters")
 		} else if names[strings.ToLower(field.Name)] {
 			issues = append(issues, prefix+".name is used twice")
 		}

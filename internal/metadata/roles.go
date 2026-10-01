@@ -13,10 +13,6 @@ import (
 
 const RoleKind Kind = "roles"
 
-// Limits apply to decoded JSON as well as bounded YAML sources.
-const MaxRolePermissions = 10_000
-const MaxRoleComment = 4_000
-
 type PermissionOperation string
 
 const (
@@ -110,11 +106,8 @@ func DecodeRole(source string, reader io.Reader, configuration project.Project) 
 // and field ownership; publication validates every referenced form command.
 func ValidateRole(source string, value RoleDefinition, configuration project.Project) error {
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	if !utf8.ValidString(value.Comment) || utf8.RuneCountInString(value.Comment) > MaxRoleComment {
-		issues = append(issues, fmt.Sprintf("comment must be valid UTF-8 of at most %d characters", MaxRoleComment))
-	}
-	if len(value.Objects)+len(value.Commands) > MaxRolePermissions {
-		return fmt.Errorf("validate %s: role exceeds %d permissions", source, MaxRolePermissions)
+	if !utf8.ValidString(value.Comment) {
+		issues = append(issues, "comment must be valid UTF-8")
 	}
 	issues = append(issues, validatePolicyTemplates(value.PolicyTemplates)...)
 	// Name to declared parameter count: a restriction must supply one field per
@@ -123,7 +116,6 @@ func ValidateRole(source string, value RoleDefinition, configuration project.Pro
 	for _, template := range value.PolicyTemplates {
 		templates[template.Name] = len(template.Parameters)
 	}
-	count := len(value.Objects) + len(value.Commands)
 	objects := make(map[uuid.UUID]bool, len(value.Objects))
 	for index, object := range value.Objects {
 		prefix := fmt.Sprintf("objects[%d]", index)
@@ -133,10 +125,6 @@ func ValidateRole(source string, value RoleDefinition, configuration project.Pro
 		objects[object.Object] = true
 		issues = append(issues, validatePermissionOperations(prefix+".operations", object.Operations, false)...)
 		issues = append(issues, validatePolicies(prefix+".policies", object.Policies, templates)...)
-		count += len(object.Fields) + len(object.Policies)
-		if count > MaxRolePermissions {
-			return fmt.Errorf("validate %s: role exceeds %d permissions including fields", source, MaxRolePermissions)
-		}
 		fields := make(map[string]bool, len(object.Fields))
 		for fieldIndex, field := range object.Fields {
 			fieldPrefix := fmt.Sprintf("%s.fields[%d]", prefix, fieldIndex)

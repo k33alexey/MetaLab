@@ -101,8 +101,8 @@ func validatePolicyTemplates(templates []PolicyTemplate) []string {
 	names := make(map[string]bool, len(templates))
 	for index, template := range templates {
 		prefix := fmt.Sprintf("policy_templates[%d]", index)
-		if !validIdentifier(template.Name) || utf8.RuneCountInString(template.Name) > 128 {
-			issues = append(issues, prefix+".name must start with a letter, contain only letters or digits and not exceed 128 characters")
+		if !validIdentifier(template.Name) || utf8.RuneCountInString(template.Name) > maxNameLength {
+			issues = append(issues, prefix+".name must start with a letter, contain only letters or digits and not exceed 255 characters")
 		}
 		if names[template.Name] {
 			issues = append(issues, prefix+".name must be unique within the role")
@@ -187,7 +187,7 @@ func validatePolicyRule(path string, rule PolicyRule, placeholders map[string]bo
 	case operands > 1:
 		issues = append(issues, path+" must compare against exactly one of values, a session parameter or a subquery")
 	case rule.Parameter != "":
-		if !validIdentifier(rule.Parameter) || utf8.RuneCountInString(rule.Parameter) > 128 {
+		if !validIdentifier(rule.Parameter) || utf8.RuneCountInString(rule.Parameter) > maxNameLength {
 			issues = append(issues, path+".parameter must be a session parameter name")
 		}
 	case rule.Subquery != nil:

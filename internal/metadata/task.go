@@ -123,8 +123,8 @@ func DecodeTask(source string, reader io.Reader, configuration project.Project) 
 		additionalIndexes:  value.AdditionalIndexes,
 		extraFields:        []fieldGroup{{"addressing_attributes", addressingAttributeFields(value.AddressingAttributes)}},
 	}, configuration)...)
-	if value.DescriptionLength < 1 || value.DescriptionLength > 1_048_576 {
-		issues = append(issues, "description_length must be 1..1048576")
+	if value.DescriptionLength < 1 || value.DescriptionLength > maxDescriptionLength {
+		issues = append(issues, fmt.Sprintf("description_length must be 1..%d", maxDescriptionLength))
 	}
 	// A task lives as long as the process that created it, and renumbering it
 	// at the turn of a year would tear that process in two.

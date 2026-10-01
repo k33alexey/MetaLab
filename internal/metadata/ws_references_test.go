@@ -162,9 +162,10 @@ func TestWSReferenceAddressIsCheckedInFormOnly(t *testing.T) {
 	}
 
 	root = metadataProject(t)
-	writeWSReference(t, root, firstWSReference, "Склад", "location_url: https://"+strings.Repeat("a", maxLocationURLLength)+"\n", wsdl11)
-	if message := loadRefused(t, root, "an address longer than the bound"); !strings.Contains(message, "location_url must not exceed") {
-		t.Fatalf("the error does not name the bound: %v", message)
+	// The help puts no ceiling on the address, and neither do we.
+	writeWSReference(t, root, firstWSReference, "Склад", "location_url: https://"+strings.Repeat("a", 4000)+"\n", wsdl11)
+	if _, err := Load(root); err != nil {
+		t.Fatalf("a long address was refused: %v", err)
 	}
 }
 

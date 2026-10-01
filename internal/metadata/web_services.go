@@ -151,7 +151,7 @@ func validateOperations(operations []WebServiceOperation, configuration project.
 			issues = append(issues, where+".id is used twice")
 		}
 		ids[operation.ID] = true
-		if !validIdentifier(operation.Name) || utf8.RuneCountInString(operation.Name) > 128 {
+		if !validIdentifier(operation.Name) || utf8.RuneCountInString(operation.Name) > maxNameLength {
 			issues = append(issues, where+".name must start with a letter and contain only letters or digits")
 		} else if names[strings.ToLower(operation.Name)] {
 			issues = append(issues, where+".name is used twice")
@@ -160,7 +160,7 @@ func validateOperations(operations []WebServiceOperation, configuration project.
 		issues = append(issues, validateTitle(where+".title", operation.Title, configuration)...)
 		// An operation with no routine behind it answers a caller with
 		// nothing, and does so only once the caller has already called.
-		if !validIdentifier(operation.Procedure) || utf8.RuneCountInString(operation.Procedure) > 128 {
+		if !validIdentifier(operation.Procedure) || utf8.RuneCountInString(operation.Procedure) > maxNameLength {
 			issues = append(issues, where+".procedure must name a procedure of the service module")
 		}
 		issues = append(issues, validateSchemaType(where+".return_type", operation.ReturnType, false)...)
@@ -190,7 +190,7 @@ func validateParameters(owner string, parameters []WebServiceParameter, configur
 			issues = append(issues, where+".id is used twice")
 		}
 		ids[parameter.ID] = true
-		if !validIdentifier(parameter.Name) || utf8.RuneCountInString(parameter.Name) > 128 {
+		if !validIdentifier(parameter.Name) || utf8.RuneCountInString(parameter.Name) > maxNameLength {
 			issues = append(issues, where+".name must start with a letter and contain only letters or digits")
 		} else if names[strings.ToLower(parameter.Name)] {
 			issues = append(issues, where+".name is used twice")

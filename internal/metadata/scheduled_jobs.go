@@ -13,13 +13,6 @@ import (
 // anybody asking.
 const ScheduledJobKind Kind = "scheduled-jobs"
 
-const (
-	// maxRestartCount and maxRestartInterval bound what a developer may ask
-	// for after a job fails. The interval is in seconds.
-	maxRestartCount    = 1000
-	maxRestartInterval = 86_400
-)
-
 // ScheduledJobDefinition describes one scheduled job: a procedure the platform
 // runs on its own.
 //
@@ -66,11 +59,13 @@ func DecodeScheduledJob(source string, reader io.Reader, configuration project.P
 	if !validIdentifier(value.Procedure) {
 		issues = append(issues, "procedure must be a valid identifier")
 	}
-	if value.RestartCountOnFailure < 0 || value.RestartCountOnFailure > maxRestartCount {
-		issues = append(issues, fmt.Sprintf("restart_count_on_failure must be 0..%d", maxRestartCount))
+	// No ceiling on either: the help names none, and the configurations being
+	// moved go up to 10 repeats and an hour.
+	if value.RestartCountOnFailure < 0 {
+		issues = append(issues, "restart_count_on_failure must not be negative")
 	}
-	if value.RestartIntervalOnFailure < 0 || value.RestartIntervalOnFailure > maxRestartInterval {
-		issues = append(issues, fmt.Sprintf("restart_interval_on_failure must be 0..%d seconds", maxRestartInterval))
+	if value.RestartIntervalOnFailure < 0 {
+		issues = append(issues, "restart_interval_on_failure must not be negative")
 	}
 	// An interval with no repeats is not refused, though it reads as a
 	// contradiction: five jobs of the reference configuration are written that

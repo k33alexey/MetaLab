@@ -43,7 +43,7 @@ func TestCatalogEditorCreateReadSaveAndConflicts(t *testing.T) {
 	}
 
 	updated := created.Catalog
-	updated.DescriptionLength = 300
+	updated.DescriptionLength = 120
 	updated.Attributes = []metadata.Attribute{{
 		ID: uuid.MustNew(), Name: "Артикул", Title: metadata.LocalizedText{"ru": "Артикул"},
 		Types: []metadata.Type{{Kind: metadata.StringType, Length: 50}}, Indexing: metadata.IndexField,
@@ -59,7 +59,7 @@ func TestCatalogEditorCreateReadSaveAndConflicts(t *testing.T) {
 	if saved.Revision == created.Revision {
 		t.Fatal("revision did not change")
 	}
-	if len(saved.Catalog.Attributes) != 1 || len(saved.Catalog.TableParts) != 1 || saved.Catalog.DescriptionLength != 300 {
+	if len(saved.Catalog.Attributes) != 1 || len(saved.Catalog.TableParts) != 1 || saved.Catalog.DescriptionLength != 120 {
 		t.Fatalf("save did not persist edits: %+v", saved.Catalog)
 	}
 	if _, err := workspace.SaveCatalogEditor(created.Path, updated, created.Revision); !errors.Is(err, ErrSourceChanged) {

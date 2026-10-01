@@ -173,8 +173,8 @@ func validatePredefinedCalculationTypes(value ChartOfCalculationTypesDefinition)
 			issues = append(issues, prefix+".id must be unique")
 		}
 		ids[item.ID] = true
-		if !validIdentifier(item.Name) || utf8.RuneCountInString(item.Name) > 128 {
-			issues = append(issues, prefix+".name must be a valid identifier of at most 128 characters")
+		if !validIdentifier(item.Name) || utf8.RuneCountInString(item.Name) > maxNameLength {
+			issues = append(issues, prefix+".name must be a valid identifier of at most 255 characters")
 		}
 		folded := strings.ToLower(item.Name)
 		if names[folded] {

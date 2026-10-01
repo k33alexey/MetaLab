@@ -191,10 +191,10 @@ function createCatalogEditor(host, onChange) {
     const row = node('div', undefined, 'catalog-type-row');
     row.append(selectField('Тип', type.kind, model.typeKinds, kind => model.setTypeKind(container, attribute.id, index, kind)));
     if (type.kind === 'string') {
-      row.append(textField('Длина', type.length, value => model.setTypeField(container, attribute.id, index, 'length', value), {type: 'number', min: 1, max: 100000}));
+      row.append(textField('Длина', type.length, value => model.setTypeField(container, attribute.id, index, 'length', value), {type: 'number', min: 0, max: 1024}));
     } else if (type.kind === 'number') {
-      row.append(textField('Точность', type.precision, value => model.setTypeField(container, attribute.id, index, 'precision', value), {type: 'number', min: 1, max: 38}));
-      row.append(textField('Масштаб', type.scale, value => model.setTypeField(container, attribute.id, index, 'scale', value), {type: 'number', min: 0, max: 20}));
+      row.append(textField('Точность', type.precision, value => model.setTypeField(container, attribute.id, index, 'precision', value), {type: 'number', min: 1, max: 32}));
+      row.append(textField('Масштаб', type.scale, value => model.setTypeField(container, attribute.id, index, 'scale', value), {type: 'number', min: 0, max: 32}));
     } else if (['enumeration', 'defined-type', 'catalog', 'document'].includes(type.kind)) {
       const choices = model.referenceChoices(type.kind).map(item => [item.id, item.title?.[source.defaultLanguage] || item.name]);
       row.append(selectField('Ссылка на', type.reference, choices, value => model.setTypeField(container, attribute.id, index, 'reference', value)));
@@ -291,11 +291,11 @@ function createCatalogEditor(host, onChange) {
     const code = node('div', undefined, 'catalog-code');
     code.append(node('div', 'Код', 'catalog-section-title'));
     code.append(selectField('Тип кода', source.catalog.code.type, [['string', 'Строка'], ['number', 'Число']], value => model.setCodeType(value)));
-    code.append(textField('Длина кода', source.catalog.code.length, value => model.setCodeLength(value), {type: 'number', min: 1, max: 128}));
+    code.append(textField('Длина кода', source.catalog.code.length, value => model.setCodeLength(value), {type: 'number', min: 1, max: 50}));
     code.append(checkboxField('Автонумерация', !!source.catalog.code.auto, value => model.setCodeAuto(value)));
     code.append(checkboxField('Проверять уникальность', !!source.catalog.code.unique, value => model.setCodeUnique(value)));
     panel.append(code);
-    panel.append(textField('Длина наименования', source.catalog.descriptionLength, value => model.setDescriptionLength(value), {type: 'number', min: 1, max: 1048576}));
+    panel.append(textField('Длина наименования', source.catalog.descriptionLength, value => model.setDescriptionLength(value), {type: 'number', min: 1, max: 150}));
     return panel;
   }
   function clearTitleFields() { titleFieldCleanups.forEach(destroy => destroy()); titleFieldCleanups = []; }

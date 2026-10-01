@@ -18,8 +18,7 @@ import (
 )
 
 const (
-	CurrentFormat      = 1
-	maxEnumerationVals = 1 << 20
+	CurrentFormat = 1
 )
 
 type Kind string
@@ -172,8 +171,39 @@ const (
 	WithinOwnerSeries CodeSeries = "within-owner-subordination"
 )
 
-// maxHierarchyLevelCount is the most levels a hierarchy may be limited to.
-const maxHierarchyLevelCount = 32
+// The ceilings of the prototype on the shape of a field, each checked in the
+// designer by the owner on 01.10.2026 - the help names none of them, and the
+// three configurations being moved stay inside every one: at most 5 levels of
+// a hierarchy, codes of exactly 50 characters on three catalogs, numbers of
+// at most 20, numbers of at most 31 digits with 20 after the point, limited
+// strings of at most 1024 and descriptions of at most 150 characters. A ceiling of ours
+// without such a source refuses on import what the prototype saves.
+const (
+	// maxHierarchyLevelCount is the most levels a hierarchy may be limited to.
+	maxHierarchyLevelCount = 10
+	// maxCodeLength is the longest code of a reference object and the longest
+	// number of a document, a business process or a task, string or numeric.
+	maxCodeLength = 50
+	// maxNumberDigits is the most digits of a number and of its fraction.
+	maxNumberDigits = 32
+	// maxStringLength is the longest limited string; longer is unlimited, a
+	// length of 0.
+	maxStringLength = 1024
+	// maxDescriptionLength is the longest description of a catalog, a chart
+	// of characteristic types, of accounts or of calculation types and a task:
+	// 150 on all of them in the configurations being moved. An exchange plan
+	// takes more - 250 there - and its ceiling is not known yet.
+	maxDescriptionLength = 150
+	// maxNameLength is the longest name of an object, a field or anything
+	// else named by an identifier: the designer takes 255 characters, the
+	// configurations being moved go up to 96.
+	maxNameLength = 255
+	// maxVarcharLength is PostgreSQL's own ceiling on character varying(n),
+	// which a length nobody else limits - of the description of an exchange
+	// plan, of the order of an account - still runs into when the column is
+	// built.
+	maxVarcharLength = 10_485_760
+)
 
 // DateParts is the prototype's "состав даты" qualifier: which parts of a
 // moment an attribute is about. Storage does not change - a date is always a
@@ -981,8 +1011,8 @@ func DecodeEnumeration(source string, reader io.Reader, configuration project.Pr
 		return Enumeration{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	if len(value.Values) == 0 || len(value.Values) > maxEnumerationVals {
-		issues = append(issues, "values must contain 1..1048576 items")
+	if len(value.Values) == 0 {
+		issues = append(issues, "values must contain at least one value")
 	}
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, item := range value.Values {
@@ -1270,18 +1300,22 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	var issues []string
 	switch shape.code.Type {
 	case StringType:
-		if shape.code.Length < 1 || shape.code.Length > 128 {
-			issues = append(issues, "code.length must be 1..128 for string codes")
+		if shape.code.Length < 1 || shape.code.Length > maxCodeLength {
+			issues = append(issues, fmt.Sprintf("code.length must be 1..%d", maxCodeLength))
 		}
 	case NumberType:
-		if shape.code.Length < 1 || shape.code.Length > 38 {
-			issues = append(issues, "code.length must be 1..38 for number codes")
+		if shape.code.Length < 1 || shape.code.Length > maxCodeLength {
+			issues = append(issues, fmt.Sprintf("code.length must be 1..%d", maxCodeLength))
 		}
 	default:
 		issues = append(issues, "code.type must be string or number")
 	}
-	if shape.descriptionLength < 1 || shape.descriptionLength > 1_048_576 {
-		issues = append(issues, "description_length must be 1..1048576")
+	descriptionCeiling := maxDescriptionLength
+	if shape.kind == ExchangePlanKind {
+		descriptionCeiling = maxVarcharLength
+	}
+	if shape.descriptionLength < 1 || shape.descriptionLength > descriptionCeiling {
+		issues = append(issues, fmt.Sprintf("description_length must be 1..%d", descriptionCeiling))
 	}
 	issues = append(issues, validateHierarchy(shape.hierarchy)...)
 	issues = append(issues, validateCodeSeries(shape)...)
@@ -1341,8 +1375,8 @@ func validatePredefinedItems(shape referenceObjectShape) []string {
 			issues = append(issues, prefix+".id must be unique")
 		}
 		ids[item.ID] = true
-		if !validIdentifier(item.Name) || utf8.RuneCountInString(item.Name) > 128 {
-			issues = append(issues, prefix+".name must be a valid identifier of at most 128 characters")
+		if !validIdentifier(item.Name) || utf8.RuneCountInString(item.Name) > maxNameLength {
+			issues = append(issues, prefix+".name must be a valid identifier of at most 255 characters")
 		}
 		folded := strings.ToLower(item.Name)
 		if names[folded] {
@@ -1569,8 +1603,8 @@ func validateBase(format int, id uuid.UUID, name string, title LocalizedText, co
 	if !validIdentifier(name) {
 		issues = append(issues, "name must start with a letter and contain only letters or digits")
 	}
-	if utf8.RuneCountInString(name) > 128 {
-		issues = append(issues, "name must not exceed 128 characters")
+	if utf8.RuneCountInString(name) > maxNameLength {
+		issues = append(issues, "name must not exceed 255 characters")
 	}
 	return append(issues, validateTitle("title", title, configuration)...)
 }
@@ -1652,8 +1686,8 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 		}
 		switch item.Kind {
 		case StringType:
-			if item.Length < 0 || item.Length > 1_048_576 {
-				issues = append(issues, prefix+".length must be 0..1048576")
+			if item.Length < 0 || item.Length > maxStringLength {
+				issues = append(issues, fmt.Sprintf("%s.length must be 0..%d, 0 being unlimited", prefix, maxStringLength))
 			}
 			if item.Precision != 0 || item.Scale != 0 {
 				issues = append(issues, prefix+" has invalid numeric qualifiers")
@@ -1664,8 +1698,8 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 				issues = append(issues, prefix+".fixed_length requires a length")
 			}
 		case NumberType:
-			if item.Precision < 1 || item.Precision > 38 {
-				issues = append(issues, prefix+".precision must be 1..38")
+			if item.Precision < 1 || item.Precision > maxNumberDigits {
+				issues = append(issues, fmt.Sprintf("%s.precision must be 1..%d", prefix, maxNumberDigits))
 			}
 			if item.Scale < 0 || item.Scale > item.Precision {
 				issues = append(issues, prefix+".scale must be 0..precision")

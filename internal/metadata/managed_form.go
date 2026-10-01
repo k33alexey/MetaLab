@@ -179,8 +179,8 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			issues = append(issues, prefix+".id must be unique")
 		}
 		commandIDs[command.ID] = true
-		if !validIdentifier(command.Name) || utf8.RuneCountInString(command.Name) > 128 {
-			issues = append(issues, prefix+".name must be a valid identifier of at most 128 characters")
+		if !validIdentifier(command.Name) || utf8.RuneCountInString(command.Name) > maxNameLength {
+			issues = append(issues, prefix+".name must be a valid identifier of at most 255 characters")
 		}
 		folded := strings.ToLower(command.Name)
 		if commandNames[folded] {
@@ -190,7 +190,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		issues = append(issues, validateTitle(prefix+".title", command.Title, configuration)...)
 		switch command.Action {
 		case FormCommandCustom:
-			if !validIdentifier(command.Handler) || utf8.RuneCountInString(command.Handler) > 128 {
+			if !validIdentifier(command.Handler) || utf8.RuneCountInString(command.Handler) > maxNameLength {
 				issues = append(issues, prefix+".handler must be a valid BSL routine name for a custom command")
 			}
 		case FormCommandSave, FormCommandSaveClose, FormCommandClose, FormCommandRefresh,
@@ -227,8 +227,8 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			issues = append(issues, current.path+".id must be unique")
 		}
 		ids[item.ID] = true
-		if !validIdentifier(item.Name) || utf8.RuneCountInString(item.Name) > 128 {
-			issues = append(issues, current.path+".name must be a valid identifier of at most 128 characters")
+		if !validIdentifier(item.Name) || utf8.RuneCountInString(item.Name) > maxNameLength {
+			issues = append(issues, current.path+".name must be a valid identifier of at most 255 characters")
 		}
 		folded := strings.ToLower(item.Name)
 		if names[folded] {
@@ -301,7 +301,7 @@ func validateFormDataPath(path, value string) []string {
 		return []string{fmt.Sprintf("%s must contain 1..%d identifier segments", path, MaxFormDataPathDepth)}
 	}
 	for _, part := range parts {
-		if !validIdentifier(part) || utf8.RuneCountInString(part) > 128 {
+		if !validIdentifier(part) || utf8.RuneCountInString(part) > maxNameLength {
 			return []string{path + " must contain only valid identifier segments separated by dots"}
 		}
 	}

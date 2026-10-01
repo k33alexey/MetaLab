@@ -197,12 +197,12 @@ func validateNumberShape(number DocumentNumber) []string {
 	var issues []string
 	switch number.Type {
 	case StringType:
-		if number.Length < 1 || number.Length > 128 {
-			issues = append(issues, "number.length must be 1..128 for string numbers")
+		if number.Length < 1 || number.Length > maxCodeLength {
+			issues = append(issues, fmt.Sprintf("number.length must be 1..%d", maxCodeLength))
 		}
 	case NumberType:
-		if number.Length < 1 || number.Length > 38 {
-			issues = append(issues, "number.length must be 1..38 for numeric numbers")
+		if number.Length < 1 || number.Length > maxCodeLength {
+			issues = append(issues, fmt.Sprintf("number.length must be 1..%d", maxCodeLength))
 		}
 	default:
 		issues = append(issues, "number.type must be string or number")

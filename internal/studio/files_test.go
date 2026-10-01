@@ -263,7 +263,7 @@ func TestSaveValidatesAndCanonicalizesCatalogMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := "format: 1\nid: " + id.String() + "\nname: Товары\ntitle: {ru: Товары}\n" +
-		"code: {type: string, length: 9, auto: true, unique: true}\ndescription_length: 250\n" +
+		"code: {type: string, length: 9, auto: true, unique: true}\ndescription_length: 150\n" +
 		"attributes: [{id: " + attributeID.String() + ", name: Артикул, title: {ru: Артикул}, types: [{kind: string, length: 32}], indexing: index}]\n"
 	if err := os.WriteFile(filePath, []byte(original), 0o644); err != nil {
 		t.Fatal(err)

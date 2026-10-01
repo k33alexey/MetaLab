@@ -28,9 +28,6 @@ const WSReferenceKind Kind = "ws-references"
 const WSReferenceDefinitionFile = "definition.xml"
 
 const (
-	// maxLocationURLLength bounds the address a description was taken from.
-	// It is an address, not a document.
-	maxLocationURLLength = 1024
 	// maxWSDefinitionBytes bounds the imported description. A description
 	// carries the whole data model of the service, and those of large systems
 	// run to megabytes, so the bound is generous; it exists so that a file put
@@ -77,9 +74,6 @@ func DecodeWSReference(source string, reader io.Reader, configuration project.Pr
 // characters in it. What it says is not checked, for the reason it is not
 // required.
 func validateLocationURL(value string) []string {
-	if len([]rune(value)) > maxLocationURLLength {
-		return []string{fmt.Sprintf("location_url must not exceed %d characters", maxLocationURLLength)}
-	}
 	for _, symbol := range value {
 		if unicode.IsControl(symbol) {
 			return []string{"location_url must be one line without control characters"}
