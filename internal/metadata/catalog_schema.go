@@ -398,6 +398,18 @@ func (catalog *Catalog) attributeStorage(types []Type) (attributeStorage, error)
 	if err != nil || len(resolved) == 0 {
 		return attributeStorage{}, fmt.Errorf("resolve attribute types: %w", err)
 	}
+	// A defined type may hold the object of a document or a value table, and
+	// the designer lets such a defined type be given to a stored attribute -
+	// but there is nothing to store: an object is what a reference points at,
+	// not a value of its own, and the configurations being moved never do it.
+	// The decision of the owner of 01.10.2026: refuse it when the database is
+	// built, by name, rather than give it a column - one jsonb column would
+	// take a composite type with an object in it without a word.
+	for _, item := range resolved {
+		if isObjectType(item.Kind) || isValueType(item.Kind) {
+			return attributeStorage{}, fmt.Errorf("type %s lives in memory only and cannot be stored: an object or a manager is what a reference points at, use the reference", item.Kind)
+		}
+	}
 	if len(resolved) != 1 {
 		return attributeStorage{sqlType: "jsonb", composite: true}, nil
 	}

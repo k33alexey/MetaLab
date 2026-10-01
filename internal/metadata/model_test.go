@@ -155,6 +155,9 @@ types: [{kind: enumeration, reference: `+enumerationID+`}]
 			t.Fatalf("Load() error = %v", err)
 		}
 	})
+	// A defined type does not hold another one - the designer does not offer
+	// it - so a cycle of defined types cannot be written at all; it is refused
+	// at the first defined type in another.
 	t.Run("cycle", func(t *testing.T) {
 		root := metadataProject(t)
 		other := "30000000-0000-4000-8000-000000000002"
@@ -170,7 +173,7 @@ name: Второй
 title: {ru: Второй}
 types: [{kind: defined-type, reference: `+definedTypeID+`}]
 `)
-		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "cycle") {
+		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "cannot stand in a defined type") {
 			t.Fatalf("Load() error = %v", err)
 		}
 	})

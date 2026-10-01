@@ -992,7 +992,7 @@ func DecodeSessionParameter(source string, reader io.Reader, configuration proje
 		return SessionParameter{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateTypes("types", value.Types, uuid.UUID{})...)
+	issues = append(issues, validateTypesIn("types", value.Types, uuid.UUID{}, placeSessionParameter)...)
 	if ReservedSessionParameter(value.Name) {
 		// The platform resolves this name itself on every read path, without
 		// running BSL. Letting a project declare it too would make the value
@@ -1072,7 +1072,7 @@ func DecodeDefinedType(source string, reader io.Reader, configuration project.Pr
 		return DefinedTypeObject{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateTypes("types", value.Types, value.ID)...)
+	issues = append(issues, validateTypesIn("types", value.Types, value.ID, placeDefinedType)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return DefinedTypeObject{}, err
 	}
@@ -1531,6 +1531,10 @@ func validatePredefinedLevels(items []PredefinedCatalogItem, byName map[string]P
 }
 
 func validateAttributes(path string, attributes []Attribute, configuration project.Project, reserved func(string) bool) []string {
+	return validateAttributesIn(path, attributes, configuration, reserved, placeStored)
+}
+
+func validateAttributesIn(path string, attributes []Attribute, configuration project.Project, reserved func(string) bool, place typePlace) []string {
 	var issues []string
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, attribute := range attributes {
@@ -1554,7 +1558,7 @@ func validateAttributes(path string, attributes []Attribute, configuration proje
 		}
 		names[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", attribute.Title, configuration)...)
-		issues = append(issues, validateTypes(prefix+".types", attribute.Types, uuid.UUID{})...)
+		issues = append(issues, validateTypesIn(prefix+".types", attribute.Types, uuid.UUID{}, place)...)
 		issues = append(issues, validateFieldSettings(prefix, attribute, configuration)...)
 		issues = append(issues, validateFieldStorage(prefix, attribute)...)
 	}
@@ -1655,6 +1659,11 @@ func validateTitle(path string, title LocalizedText, configuration project.Proje
 }
 
 func validateTypes(path string, types []Type, self uuid.UUID) []string {
+	return validateTypesIn(path, types, self, placeStored)
+}
+
+// validateTypesIn checks a type description where it stands - see typePlace.
+func validateTypesIn(path string, types []Type, self uuid.UUID, place typePlace) []string {
 	// No ceiling on the number of types: the prototype names none, and the
 	// configurations being moved have type descriptions of more than six
 	// hundred. A composite type is stored as one value column whatever its
@@ -1680,7 +1689,8 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 			item.Kind == CalculationTypeType || item.Kind == BusinessProcessType || item.Kind == TaskType ||
 			item.Kind == ExchangePlanType ||
 			item.Kind == RoutePointType ||
-			item.Kind == ExternalTableType || item.Kind == ExternalDimensionTableType
+			item.Kind == ExternalTableType || item.Kind == ExternalDimensionTableType ||
+			isObjectType(item.Kind)
 		if referenced && (item.Reference == nil || item.Reference.IsZero()) {
 			issues = append(issues, prefix+".reference is required")
 		}
@@ -1689,6 +1699,18 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 		}
 		if (item.Kind == DefinedType || item.Kind == CharacteristicSet) && item.Reference != nil && *item.Reference == self {
 			issues = append(issues, prefix+" cannot reference itself")
+		}
+		if place == placeDefinedType && (item.Kind == DefinedType || platformFilledSets[item.Kind]) {
+			issues = append(issues, prefix+".kind "+string(item.Kind)+" cannot stand in a defined type: the designer offers neither another defined type nor a set the platform fills itself")
+			continue
+		}
+		if isObjectType(item.Kind) || isValueType(item.Kind) {
+			if !allowedIn(item.Kind, place) {
+				issues = append(issues, prefix+".kind "+string(item.Kind)+" lives in memory only and cannot stand "+placeName(place))
+			} else if item.Length != 0 || item.Precision != 0 || item.Scale != 0 || item.FixedLength || item.NonNegative || item.DateParts != "" {
+				issues = append(issues, prefix+" has unsupported qualifiers")
+			}
+			continue
 		}
 		// A reference to something of an external data source is a type of
 		// that source's own fields and of a managed form's attributes, and of

@@ -127,7 +127,11 @@ func DecodeDataProcessor(source string, reader io.Reader, configuration project.
 // checked like any others - a name is a name and a type is a type whether or
 // not the value is ever written down.
 func validateRunningObjectShape(attributes []Attribute, parts []TablePart, configuration project.Project, reserved func(string) bool) []string {
-	issues := validateAttributes("attributes", attributes, configuration, reserved)
+	// An attribute of the object itself takes any type, a value table or a
+	// standard period as much as a string; one of its table parts keeps to
+	// what a stored field takes - the configurations being moved never give
+	// one anything else, and the help says nothing to the contrary.
+	issues := validateAttributesIn("attributes", attributes, configuration, reserved, placeRunningObject)
 	names := map[string]bool{}
 	for _, attribute := range attributes {
 		names[strings.ToLower(attribute.Name)] = true

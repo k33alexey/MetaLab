@@ -2445,6 +2445,10 @@ func (catalog *Catalog) validateReferences(owner string, types []Type) error {
 			if _, ok := catalog.chartOfCharacteristicTypesByID[*item.Reference]; !ok {
 				return fmt.Errorf("%s is typed by the characteristics of unknown chart %s", owner, item.Reference)
 			}
+		default:
+			if exists, ok := objectTypeOwners[item.Kind]; ok && !exists(catalog, *item.Reference) {
+				return fmt.Errorf("%s is typed %s of unknown object %s", owner, item.Kind, item.Reference)
+			}
 		}
 	}
 	return nil
