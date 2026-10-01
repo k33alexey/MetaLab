@@ -42,7 +42,7 @@ func protectStudioHandler(next http.Handler, host string, authorize func(context
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		if r.Host != host {
-			http.Error(w, "Invalid Studio host", 403)
+			http.Error(w, "Invalid Studio host", http.StatusForbidden)
 			return
 		}
 		bootstrap := r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, prefix)
@@ -55,18 +55,18 @@ func protectStudioHandler(next http.Handler, host string, authorize func(context
 			}
 			mu.Unlock()
 			if !valid {
-				http.Error(w, "Open Studio from ML Manager", 401)
+				http.Error(w, "Open Studio from ML Manager", http.StatusUnauthorized)
 				return
 			}
 		} else {
 			cookie, err := r.Cookie(cookieName)
 			if err != nil {
-				http.Error(w, "Open Studio from ML Manager", 401)
+				http.Error(w, "Open Studio from ML Manager", http.StatusUnauthorized)
 				return
 			}
 			digest := auth.SessionTokenDigest(cookie.Value)
 			if subtle.ConstantTimeCompare(digest[:], sessionDigest[:]) != 1 {
-				http.Error(w, "Open Studio from ML Manager", 401)
+				http.Error(w, "Open Studio from ML Manager", http.StatusUnauthorized)
 				return
 			}
 		}
@@ -74,7 +74,7 @@ func protectStudioHandler(next http.Handler, host string, authorize func(context
 		err := authorize(ctx)
 		cancel()
 		if err != nil {
-			http.Error(w, "Studio session is no longer authorized", 403)
+			http.Error(w, "Studio session is no longer authorized", http.StatusForbidden)
 			return
 		}
 		if bootstrap {

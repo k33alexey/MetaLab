@@ -57,7 +57,7 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 	loginAttempts := 0
 	routes.HandleFunc("POST /api/manager/login", func(w http.ResponseWriter, r *http.Request) {
 		if !available {
-			http.Error(w, "Manager authentication unavailable", 503)
+			http.Error(w, "Manager authentication unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		var input struct {
@@ -79,12 +79,12 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 		loginMu.Unlock()
 		if !allowed {
 			w.Header().Set("Retry-After", "60")
-			http.Error(w, "Too many login attempts", 429)
+			http.Error(w, "Too many login attempts", http.StatusTooManyRequests)
 			return
 		}
 		login, err := security.LoginManager(r.Context(), input.Login, input.Password, r.RemoteAddr, r.UserAgent())
 		if err != nil {
-			http.Error(w, "Invalid credentials or no Manager access", 401)
+			http.Error(w, "Invalid credentials or no Manager access", http.StatusUnauthorized)
 			return
 		}
 		setCookie(w, r, login.Token)
@@ -92,7 +92,7 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 	})
 	routes.HandleFunc("GET /api/manager/session", func(w http.ResponseWriter, r *http.Request) {
 		if !available {
-			http.Error(w, "Manager authentication unavailable", 503)
+			http.Error(w, "Manager authentication unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		session, err := security.AuthenticateManager(r.Context(), tokenOf(r))
@@ -104,7 +104,7 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 	})
 	routes.HandleFunc("POST /api/manager/logout", func(w http.ResponseWriter, r *http.Request) {
 		if !available {
-			http.Error(w, "Manager authentication unavailable", 503)
+			http.Error(w, "Manager authentication unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		err := security.LogoutManager(r.Context(), tokenOf(r))
@@ -117,7 +117,7 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 	})
 	routes.HandleFunc("POST /api/manager/password", func(w http.ResponseWriter, r *http.Request) {
 		if !available {
-			http.Error(w, "Manager authentication unavailable", 503)
+			http.Error(w, "Manager authentication unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		var input struct {
@@ -164,7 +164,7 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 		}
 		if err := security.UpdateManagerUser(r.Context(), id, input); err != nil {
 			if errors.Is(err, systemdb.ErrLastPlatformAdministrator) {
-				http.Error(w, "Cannot disable or demote the last platform administrator", 409)
+				http.Error(w, "Cannot disable or demote the last platform administrator", http.StatusConflict)
 				return
 			}
 			managerAccessError(w, err)
@@ -235,7 +235,7 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 			}
 		}
 		if !available {
-			http.Error(w, "Manager authentication unavailable", 503)
+			http.Error(w, "Manager authentication unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		ctx := platform.WithManagerToken(r.Context(), tokenOf(r))
@@ -335,12 +335,12 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 func managerAccessError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, systemdb.ErrSessionNotFound), errors.Is(err, systemdb.ErrInvalidCredentials):
-		http.Error(w, "Sign in to ML Manager", 401)
+		http.Error(w, "Sign in to ML Manager", http.StatusUnauthorized)
 	case errors.Is(err, systemdb.ErrPasswordChangeRequired):
-		http.Error(w, "Change your password before continuing", 403)
+		http.Error(w, "Change your password before continuing", http.StatusForbidden)
 	case errors.Is(err, systemdb.ErrDatabaseAccessDenied), errors.Is(err, systemdb.ErrManagerAccessDenied), errors.Is(err, systemdb.ErrDatabaseOwnerOnly):
-		http.Error(w, "Access denied", 403)
+		http.Error(w, "Access denied", http.StatusForbidden)
 	default:
-		http.Error(w, "Manager operation unavailable", 503)
+		http.Error(w, "Manager operation unavailable", http.StatusServiceUnavailable)
 	}
 }
