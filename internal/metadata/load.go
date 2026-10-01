@@ -1695,8 +1695,15 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return fmt.Errorf("document %s is numbered by unknown numerator %s", item.Name, item.Numerator)
 		}
 		// The shared numbering becomes the document's own settings here, once,
-		// so that everything downstream reads one number and not two.
+		// so that everything downstream reads one number and not two. All but
+		// one: a numerator has no automatic numbering - the help gives it type,
+		// length, allowed length, uniqueness and periodicity and nothing else -
+		// so whether a number is given automatically stays the document's own.
+		// Taking the numerator's whole number, as before, numbered no document
+		// of a numerator automatically, ever.
+		auto := item.Number.Auto
 		catalog.Documents[index].Number = catalog.Numerators[numerator].Number
+		catalog.Documents[index].Number.Auto = auto
 	}
 	for _, item := range catalog.Sequences {
 		if err := catalog.validateSequence("sequence "+item.Name, item, owners); err != nil {

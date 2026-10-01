@@ -276,6 +276,11 @@ number: {type: string, length: 9, auto: true, periodicity: none}
 		if document.Number.Length != 11 || document.Number.Periodicity != NumberPeriodYear {
 			t.Fatalf("the document's own number decided the numbering: %+v", document.Number)
 		}
+		// A numerator has no automatic numbering: that one setting stays the
+		// document's, and taking the numerator's whole number lost it.
+		if !document.Number.Auto {
+			t.Fatalf("the document's own automatic numbering was lost to the numerator: %+v", document.Number)
+		}
 	})
 	t.Run("своё рядом с общим проверяется", func(t *testing.T) {
 		t.Parallel()
