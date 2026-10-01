@@ -16,7 +16,6 @@ func (catalog *Catalog) documentTables(definition DocumentDefinition) (schemadif
 		Columns: []schemadiff.Column{
 			{Name: "ref", Type: "uuid", Nullable: false},
 			{Name: "version", Type: "bigint", Nullable: false, Default: "1"},
-			{Name: "number", Type: documentNumberSQLType(definition.Number), Nullable: false},
 			{Name: "number_period", Type: "integer", Nullable: false, Default: "0"},
 			{Name: "date", Type: "timestamp with time zone", Nullable: false},
 			{Name: "posted", Type: "boolean", Nullable: false, Default: "false"},
@@ -27,23 +26,34 @@ func (catalog *Catalog) documentTables(definition DocumentDefinition) (schemadif
 			Name: physicalObjectName("id", definition.ID), Method: "btree", Keys: []string{"date DESC", "ref DESC"},
 		}, {Name: physicalObjectName("im", definition.ID), Method: "btree", Keys: []string{"deletion_mark"}}},
 	}
-	if definition.Number.Unique {
-		table.Constraints = append(table.Constraints, schemadiff.Constraint{
-			Name: physicalObjectName("uq", definition.ID), Type: "unique", Definition: "UNIQUE (number_period, number)",
-		})
-	} else {
-		table.Indexes = append(table.Indexes, schemadiff.Index{
-			Name: physicalObjectName("in", definition.ID), Method: "btree", Keys: []string{"number_period", "number"},
-		})
+	// A number of length 0 is switched off: no column, and nothing indexed or
+	// kept unique by it - ИТС 1590 builds the number index only for a length
+	// other than 0. The column has the empty number for a default, so that a
+	// number lengthened from 0 can be added to a table that has rows.
+	if documentHasNumber(definition) {
+		column := schemadiff.Column{Name: "number", Type: documentNumberSQLType(definition.Number), Nullable: false,
+			Default: emptyCodeDefault(CatalogCode{Type: definition.Number.Type, FixedLength: definition.Number.FixedLength})}
+		table.Columns = append(table.Columns[:2], append([]schemadiff.Column{column}, table.Columns[2:]...)...)
+		if definition.Number.Unique {
+			table.Constraints = append(table.Constraints, schemadiff.Constraint{
+				Name: physicalObjectName("uq", definition.ID), Type: "unique", Definition: "UNIQUE (number_period, number)",
+			})
+		} else {
+			table.Indexes = append(table.Indexes, schemadiff.Index{
+				Name: physicalObjectName("in", definition.ID), Method: "btree", Keys: []string{"number_period", "number"},
+			})
+		}
 	}
 	for _, attribute := range definition.Attributes {
 		if err := catalog.appendAttributeSchema(&table, attribute); err != nil {
 			return schemadiff.Table{}, nil, fmt.Errorf("document %s attribute %s: %w", definition.Name, attribute.Name, err)
 		}
 	}
-	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Number"}, definition.Attributes, map[string]listColumn{
-		"number": {name: "number", kind: definition.Number.Type},
-	})
+	numberColumns := map[string]listColumn{}
+	if documentHasNumber(definition) {
+		numberColumns["number"] = listColumn{name: "number", kind: definition.Number.Type}
+	}
+	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Number"}, definition.Attributes, numberColumns)
 	parts, err := catalog.tablePartTables("document", definition.Name, definition.ID, definition.TableParts)
 	if err != nil {
 		return schemadiff.Table{}, nil, err
@@ -60,3 +70,7 @@ func documentNumberSQLType(number DocumentNumber) string {
 	}
 	return fmt.Sprintf("character varying(%d)", number.Length)
 }
+
+// documentHasNumber says the document's number is there at all: a length of 0
+// switches it off.
+func documentHasNumber(definition DocumentDefinition) bool { return definition.Number.Length > 0 }

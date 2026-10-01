@@ -146,7 +146,12 @@ func searchableStandardFields(kind Kind) map[string]string {
 // A field that is not there, or one the platform would never search, describes a
 // search that silently never matches - the object is simply not found by what
 // the user typed, and nobody is told why.
-func validateInputByString(fields []ObjectField, kind Kind, attributes []Attribute) []string {
+//
+// switchedOff are the standard fields a length of 0 takes away - the code, the
+// description, the number. The designer refuses to save a configuration whose
+// input by string still names one of them, «Указано неверное поле для ввода по
+// строке», checked by the owner on 01.10.2026; so does the load.
+func validateInputByString(fields []ObjectField, kind Kind, attributes []Attribute, switchedOff ...string) []string {
 	standard := searchableStandardFields(kind)
 	declared := make(map[string]Attribute, len(attributes))
 	for _, attribute := range attributes {
@@ -165,6 +170,10 @@ func validateInputByString(fields []ObjectField, kind Kind, attributes []Attribu
 			canonical, ok := standard[foldStandardName(field.Standard)]
 			if !ok {
 				issues = append(issues, prefix+".standard is not a standard field this kind of object is searched by")
+				continue
+			}
+			if slices.Contains(switchedOff, canonical) {
+				issues = append(issues, prefix+".standard "+canonical+" is switched off by a length of 0, and a field that is not there cannot be searched by")
 				continue
 			}
 			key = "standard:" + canonical

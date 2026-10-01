@@ -291,11 +291,11 @@ function createCatalogEditor(host, onChange) {
     const code = node('div', undefined, 'catalog-code');
     code.append(node('div', 'Код', 'catalog-section-title'));
     code.append(selectField('Тип кода', source.catalog.code.type, [['string', 'Строка'], ['number', 'Число']], value => model.setCodeType(value)));
-    code.append(textField('Длина кода', source.catalog.code.length, value => model.setCodeLength(value), {type: 'number', min: 1, max: 50}));
+    code.append(textField('Длина кода', source.catalog.code.length, value => model.setCodeLength(value), {type: 'number', min: 0, max: 50}));
     code.append(checkboxField('Автонумерация', !!source.catalog.code.auto, value => model.setCodeAuto(value)));
     code.append(checkboxField('Проверять уникальность', !!source.catalog.code.unique, value => model.setCodeUnique(value)));
     panel.append(code);
-    panel.append(textField('Длина наименования', source.catalog.descriptionLength, value => model.setDescriptionLength(value), {type: 'number', min: 1, max: 150}));
+    panel.append(textField('Длина наименования', source.catalog.descriptionLength, value => model.setDescriptionLength(value), {type: 'number', min: 0, max: 150}));
     return panel;
   }
   function clearTitleFields() { titleFieldCleanups.forEach(destroy => destroy()); titleFieldCleanups = []; }

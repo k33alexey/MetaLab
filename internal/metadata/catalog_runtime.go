@@ -207,7 +207,9 @@ func (runtime *Runtime) GetObjectProperty(ctx context.Context, value bytecode.Ru
 				return bytecode.Undefined(), err
 			}
 			return runtime.wrapCatalogReference(object.definition, object.record.Reference)
-		case propertyName(name, "Код", "Code"):
+		// A code of length 0 is switched off, and the object has no such
+		// property at all - the prototype's debugger shows none.
+		case propertyName(name, "Код", "Code") && catalogHasCode(object.definition):
 			if err := requireFields(ctx, object.definition.ID, PermissionRead, "code"); err != nil {
 				return bytecode.Undefined(), err
 			}
@@ -215,7 +217,7 @@ func (runtime *Runtime) GetObjectProperty(ctx context.Context, value bytecode.Ru
 				return bytecode.ParseNumber(object.record.Code)
 			}
 			return bytecode.String(object.record.Code), nil
-		case propertyName(name, "Наименование", "Description"):
+		case propertyName(name, "Наименование", "Description") && catalogHasDescription(object.definition):
 			if err := requireFields(ctx, object.definition.ID, PermissionRead, "description"); err != nil {
 				return bytecode.Undefined(), err
 			}
@@ -355,7 +357,7 @@ func (runtime *Runtime) SetObjectProperty(ctx context.Context, value bytecode.Ru
 		fieldOperation = PermissionCreate
 	}
 	switch {
-	case propertyName(name, "Код", "Code"):
+	case propertyName(name, "Код", "Code") && catalogHasCode(object.definition):
 		if err := requireFields(ctx, object.definition.ID, fieldOperation, "code"); err != nil {
 			return err
 		}
@@ -369,7 +371,7 @@ func (runtime *Runtime) SetObjectProperty(ctx context.Context, value bytecode.Ru
 		}
 		object.record.Code = text
 		return nil
-	case propertyName(name, "Наименование", "Description"):
+	case propertyName(name, "Наименование", "Description") && catalogHasDescription(object.definition):
 		if err := requireFields(ctx, object.definition.ID, fieldOperation, "description"); err != nil {
 			return err
 		}

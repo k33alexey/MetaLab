@@ -1386,8 +1386,14 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		result.objectID, result.policyColumn = definition.ID, catalogPolicyColumn(definition)
 		result.addStored("Ссылка", querySourceColumnSQL(sqlAlias, "ref"), []Type{referenceType(CatalogType, definition.ID)}, "Ref")
 		result.addStored("Версия", querySourceColumnSQL(sqlAlias, "version"), []Type{{Kind: NumberType, Precision: 19}}, "Version")
-		result.addStored("Код", querySourceColumnSQL(sqlAlias, "code"), []Type{catalogCodeType(definition.Code)}, "Code")
-		result.addStored("Наименование", querySourceColumnSQL(sqlAlias, "description"), []Type{{Kind: StringType, Length: definition.DescriptionLength}}, "Description")
+		// A code of length 0 is not a field of the table at all: the prototype
+		// answers a query that names it with «Поле не найдено».
+		if catalogHasCode(definition) {
+			result.addStored("Код", querySourceColumnSQL(sqlAlias, "code"), []Type{catalogCodeType(definition.Code)}, "Code")
+		}
+		if catalogHasDescription(definition) {
+			result.addStored("Наименование", querySourceColumnSQL(sqlAlias, "description"), []Type{{Kind: StringType, Length: definition.DescriptionLength}}, "Description")
+		}
 		result.addStored("ПометкаУдаления", querySourceColumnSQL(sqlAlias, "deletion_mark"), []Type{{Kind: BooleanType}}, "DeletionMark")
 		result.addStored("ИмяПредопределенныхДанных", querySourceColumnSQL(sqlAlias, "predefined_name"), []Type{{Kind: StringType, Length: 128}}, "PredefinedDataName")
 		result.addPlacement(runtime.catalog, definition)
@@ -1407,7 +1413,9 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		result.objectID, result.policyColumn = definition.ID, documentPolicyColumn(definition)
 		result.addStored("Ссылка", querySourceColumnSQL(sqlAlias, "ref"), []Type{referenceType(DocumentType, definition.ID)}, "Ref")
 		result.addStored("Версия", querySourceColumnSQL(sqlAlias, "version"), []Type{{Kind: NumberType, Precision: 19}}, "Version")
-		result.addStored("Номер", querySourceColumnSQL(sqlAlias, "number"), []Type{documentNumberType(definition.Number)}, "Number")
+		if documentHasNumber(definition) {
+			result.addStored("Номер", querySourceColumnSQL(sqlAlias, "number"), []Type{documentNumberType(definition.Number)}, "Number")
+		}
 		result.addStored("Дата", querySourceColumnSQL(sqlAlias, "date"), []Type{{Kind: DateType}}, "Date")
 		result.addStored("Проведен", querySourceColumnSQL(sqlAlias, "posted"), []Type{{Kind: BooleanType}}, "Posted")
 		result.addStored("ПометкаУдаления", querySourceColumnSQL(sqlAlias, "deletion_mark"), []Type{{Kind: BooleanType}}, "DeletionMark")

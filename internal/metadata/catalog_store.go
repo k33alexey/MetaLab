@@ -153,7 +153,7 @@ func (repository *CatalogRepository) Save(ctx context.Context, record *CatalogRe
 		if err := prepare(); err != nil {
 			return err
 		}
-		if working.Version == 0 && working.Code == "" && definition.Code.Auto {
+		if working.Version == 0 && working.Code == "" && definition.Code.Auto && catalogHasCode(definition) {
 			table, _ := PhysicalCatalogTable(definition.ID)
 			value, err := nextObjectSequence(ctx, transaction, definition.ID, 0, table, "code", definition.Code.Type == StringType, false)
 			if err != nil {
@@ -238,6 +238,9 @@ func (repository *CatalogRepository) FindByCode(ctx context.Context, name, code 
 	if !ok {
 		return CatalogReference{}, false, fmt.Errorf("unknown catalog %q", name)
 	}
+	if !catalogHasCode(definition) {
+		return CatalogReference{}, false, fmt.Errorf("catalog %s has no code: its length is 0", definition.Name)
+	}
 	code, err := normalizeCatalogCode(definition.Code, code)
 	if err != nil {
 		return CatalogReference{}, false, err
@@ -270,11 +273,19 @@ func (repository *CatalogRepository) normalizeRecord(definition CatalogDefinitio
 	if record.Reference.CatalogID != definition.ID || record.Reference.ObjectID.IsZero() || record.Version < 0 {
 		return fmt.Errorf("invalid catalog %s reference or version", definition.Name)
 	}
-	code, err := normalizeCatalogCode(definition.Code, record.Code)
-	if err != nil {
-		return fmt.Errorf("catalog %s code: %w", definition.Name, err)
+	if !catalogHasCode(definition) {
+		// The code is switched off: there is no field to hold one, and a code
+		// handed in is not quietly dropped.
+		if record.Code != "" {
+			return fmt.Errorf("catalog %s has no code: its length is 0", definition.Name)
+		}
+	} else {
+		code, err := normalizeCatalogCode(definition.Code, record.Code)
+		if err != nil {
+			return fmt.Errorf("catalog %s code: %w", definition.Name, err)
+		}
+		record.Code = code
 	}
-	record.Code = code
 	predefined, isPredefined := definition.PredefinedByID(record.Reference.ObjectID)
 	if isPredefined {
 		if record.PredefinedName != predefined.Name {
@@ -282,6 +293,9 @@ func (repository *CatalogRepository) normalizeRecord(definition CatalogDefinitio
 		}
 	} else if record.PredefinedName != "" {
 		return fmt.Errorf("catalog %s record has an unknown predefined identity", definition.Name)
+	}
+	if !catalogHasDescription(definition) && record.Description != "" {
+		return fmt.Errorf("catalog %s has no description: its length is 0", definition.Name)
 	}
 	if !utf8.ValidString(record.Description) || utf8.RuneCountInString(record.Description) > definition.DescriptionLength {
 		return fmt.Errorf("catalog %s description exceeds %d characters", definition.Name, definition.DescriptionLength)
@@ -347,12 +361,18 @@ func (catalog *Catalog) normalizeAttributes(owner string, definitions []Attribut
 
 func (repository *CatalogRepository) writeRecord(ctx context.Context, transaction pgx.Tx, definition CatalogDefinition, record *CatalogRecord) (int64, error) {
 	table, _ := PhysicalCatalogTable(definition.ID)
-	columns := []string{"ref", "code", "description", "deletion_mark", "predefined_name"}
+	columns := []string{"ref", "deletion_mark", "predefined_name"}
 	var predefinedName any
 	if record.PredefinedName != "" {
 		predefinedName = record.PredefinedName
 	}
-	arguments := []any{record.Reference.ObjectID.String(), record.Code, record.Description, record.DeletionMark, predefinedName}
+	arguments := []any{record.Reference.ObjectID.String(), record.DeletionMark, predefinedName}
+	if catalogHasCode(definition) {
+		columns, arguments = append(columns, "code"), append(arguments, record.Code)
+	}
+	if catalogHasDescription(definition) {
+		columns, arguments = append(columns, "description"), append(arguments, record.Description)
+	}
 	placementColumns, placementArguments, err := repository.placementColumns(definition, record)
 	if err != nil {
 		return 0, err
@@ -462,11 +482,17 @@ func (repository *CatalogRepository) decodeRecord(definition CatalogDefinition, 
 	if err := json.Unmarshal(fields["version"], &record.Version); err != nil || record.Version < 1 {
 		return nil, fmt.Errorf("decode catalog %s version", definition.Name)
 	}
-	if record.Code, err = decodeCatalogCode(definition.Code, fields["code"]); err != nil {
-		return nil, err
+	// A catalog without a code has no column for it, and its code reads as
+	// the empty string - what Ссылка.Код gives in the prototype.
+	if catalogHasCode(definition) {
+		if record.Code, err = decodeCatalogCode(definition.Code, fields["code"]); err != nil {
+			return nil, err
+		}
 	}
-	if err := json.Unmarshal(fields["description"], &record.Description); err != nil {
-		return nil, fmt.Errorf("decode catalog %s description: %w", definition.Name, err)
+	if catalogHasDescription(definition) {
+		if err := json.Unmarshal(fields["description"], &record.Description); err != nil {
+			return nil, fmt.Errorf("decode catalog %s description: %w", definition.Name, err)
+		}
 	}
 	if err := json.Unmarshal(fields["deletion_mark"], &record.DeletionMark); err != nil {
 		return nil, fmt.Errorf("decode catalog %s deletion mark: %w", definition.Name, err)
@@ -554,12 +580,20 @@ func (repository *CatalogRepository) readTableParts(ctx context.Context, definit
 	return nil
 }
 
+// An empty code is a code: the prototype writes an element with an empty code
+// and gives one to every element it already has when a code is lengthened from
+// 0 - checked by the owner on 01.10.2026. Only the check for repeats may refuse
+// it, and two empty codes are a repeat there.
 func normalizeCatalogCode(code CatalogCode, value string) (string, error) {
 	if code.Type == StringType {
-		if !utf8.ValidString(value) || value == "" || utf8.RuneCountInString(value) > code.Length {
-			return "", fmt.Errorf("string code must contain 1..%d characters", code.Length)
+		if !utf8.ValidString(value) || utf8.RuneCountInString(value) > code.Length {
+			return "", fmt.Errorf("string code must contain at most %d characters", code.Length)
 		}
 		return value, nil
+	}
+	// The empty numeric code is zero, what the column holds for it.
+	if value == "" {
+		value = "0"
 	}
 	number, err := bslnumber.Parse(value)
 	if err != nil {

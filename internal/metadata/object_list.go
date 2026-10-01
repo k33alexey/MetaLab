@@ -359,9 +359,9 @@ func catalogListField(definition CatalogDefinition, field string) (listColumn, b
 	case "ref":
 		return listColumn{name: "ref", kind: UUIDType}, true
 	case "code":
-		return listColumn{name: "code", kind: definition.Code.Type}, true
+		return listColumn{name: "code", kind: definition.Code.Type}, catalogHasCode(definition)
 	case "description":
-		return listColumn{name: "description", kind: StringType}, true
+		return listColumn{name: "description", kind: StringType}, catalogHasDescription(definition)
 	case "deletionmark":
 		return listColumn{name: "deletion_mark", kind: BooleanType}, true
 	}
@@ -378,7 +378,7 @@ func documentListField(definition DocumentDefinition, field string) (listColumn,
 	case "ref":
 		return listColumn{name: "ref", kind: UUIDType}, true
 	case "number":
-		return listColumn{name: "number", kind: definition.Number.Type}, true
+		return listColumn{name: "number", kind: definition.Number.Type}, documentHasNumber(definition)
 	case "date":
 		return listColumn{name: "date", kind: DateType}, true
 	case "posted":

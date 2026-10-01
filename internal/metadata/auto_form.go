@@ -61,13 +61,23 @@ func (catalog *Catalog) CatalogForm(name string, kind FormKind, language string)
 	}
 	form, err := catalog.baseForm(CatalogKind, definition.ID, definition.Name, definition.Title, definition.Forms.ObjectForms, kind, language)
 	form.List = definition.List
-	form.List.SearchFields = effectiveListSearchFields(definition.List, []string{"Description", "Code"})
+	var searched []string
+	if catalogHasDescription(definition) {
+		searched = append(searched, "Description")
+	}
+	if catalogHasCode(definition) {
+		searched = append(searched, "Code")
+	}
+	form.List.SearchFields = effectiveListSearchFields(definition.List, searched)
 	if err != nil || !form.Generated {
 		return form, err
 	}
-	form.Fields = []FormField{
-		systemFormField("Code", definition.Code.Type, language, kind != ObjectForm),
-		systemFormField("Description", StringType, language, kind != ObjectForm),
+	// A code of length 0 is switched off and has no field on a form.
+	if catalogHasCode(definition) {
+		form.Fields = append(form.Fields, systemFormField("Code", definition.Code.Type, language, kind != ObjectForm))
+	}
+	if catalogHasDescription(definition) {
+		form.Fields = append(form.Fields, systemFormField("Description", StringType, language, kind != ObjectForm))
 	}
 	if kind == ObjectForm {
 		form.Fields = append(form.Fields, catalog.attributeFormFields(definition.Attributes, language)...)
@@ -87,15 +97,22 @@ func (catalog *Catalog) DocumentForm(name string, kind FormKind, language string
 	}
 	form, err := catalog.baseForm(DocumentKind, definition.ID, definition.Name, definition.Title, definition.Forms, kind, language)
 	form.List = definition.List
-	form.List.SearchFields = effectiveListSearchFields(definition.List, []string{"Number"})
+	var searched []string
+	if documentHasNumber(definition) {
+		searched = []string{"Number"}
+	}
+	form.List.SearchFields = effectiveListSearchFields(definition.List, searched)
 	if err != nil || !form.Generated {
 		return form, err
 	}
-	form.Fields = []FormField{
-		systemFormField("Number", definition.Number.Type, language, kind != ObjectForm),
+	form.Fields = nil
+	if documentHasNumber(definition) {
+		form.Fields = append(form.Fields, systemFormField("Number", definition.Number.Type, language, kind != ObjectForm))
+	}
+	form.Fields = append(form.Fields,
 		systemFormField("Date", DateType, language, kind != ObjectForm),
 		systemFormField("Posted", BooleanType, language, true),
-	}
+	)
 	if kind == ObjectForm {
 		form.Fields = append(form.Fields, catalog.attributeFormFields(definition.Attributes, language)...)
 		form.TableParts = catalog.tablePartForms(definition.TableParts, language)

@@ -147,7 +147,7 @@ func (repository *DocumentRepository) Write(ctx context.Context, record *Documen
 		if err := prepare(); err != nil {
 			return err
 		}
-		if working.Version == 0 && working.Number == "" && definition.Number.Auto {
+		if working.Version == 0 && working.Number == "" && definition.Number.Auto && documentHasNumber(definition) {
 			working.Date = normalizeDocumentDate(working.Date)
 			if err := validateDocumentDate(working.Date); err != nil {
 				return fmt.Errorf("document %s date: %w", definition.Name, err)
@@ -255,6 +255,9 @@ func (repository *DocumentRepository) FindByNumber(ctx context.Context, name, nu
 	if !ok {
 		return DocumentReference{}, false, fmt.Errorf("unknown document %q", name)
 	}
+	if !documentHasNumber(definition) {
+		return DocumentReference{}, false, fmt.Errorf("document %s has no number: its length is 0", definition.Name)
+	}
 	number, err := normalizeDocumentNumber(definition.Number, number)
 	if err != nil {
 		return DocumentReference{}, false, err
@@ -298,11 +301,17 @@ func (repository *DocumentRepository) normalizeRecord(definition DocumentDefinit
 	if record.Reference.DocumentID != definition.ID || record.Reference.ObjectID.IsZero() || record.Version < 0 {
 		return fmt.Errorf("invalid document %s reference or version", definition.Name)
 	}
-	number, err := normalizeDocumentNumber(definition.Number, record.Number)
-	if err != nil {
-		return fmt.Errorf("document %s number: %w", definition.Name, err)
+	if !documentHasNumber(definition) {
+		if record.Number != "" {
+			return fmt.Errorf("document %s has no number: its length is 0", definition.Name)
+		}
+	} else {
+		number, err := normalizeDocumentNumber(definition.Number, record.Number)
+		if err != nil {
+			return fmt.Errorf("document %s number: %w", definition.Name, err)
+		}
+		record.Number = number
 	}
-	record.Number = number
 	record.Date = normalizeDocumentDate(record.Date)
 	if err := validateDocumentDate(record.Date); err != nil {
 		return fmt.Errorf("document %s date: %w", definition.Name, err)
@@ -345,9 +354,12 @@ func (repository *DocumentRepository) normalizeRecord(definition DocumentDefinit
 
 func (repository *DocumentRepository) writeRecord(ctx context.Context, transaction pgx.Tx, definition DocumentDefinition, record *DocumentRecord) (int64, error) {
 	table, _ := PhysicalDocumentTable(definition.ID)
-	columns := []string{"ref", "number", "number_period", "date", "posted", "deletion_mark"}
+	columns := []string{"ref", "number_period", "date", "posted", "deletion_mark"}
 	arguments := []any{
-		record.Reference.ObjectID.String(), record.Number, documentNumberPeriod(definition.Number.Periodicity, record.Date), record.Date, record.Posted, record.DeletionMark,
+		record.Reference.ObjectID.String(), documentNumberPeriod(definition.Number.Periodicity, record.Date), record.Date, record.Posted, record.DeletionMark,
+	}
+	if documentHasNumber(definition) {
+		columns, arguments = append(columns, "number"), append(arguments, record.Number)
 	}
 	for _, attribute := range definition.Attributes {
 		column, _ := PhysicalAttributeColumn(attribute.ID)
@@ -455,8 +467,10 @@ func (repository *DocumentRepository) decodeRecord(definition DocumentDefinition
 	if err := json.Unmarshal(fields["version"], &record.Version); err != nil || record.Version < 1 {
 		return nil, fmt.Errorf("decode document %s version", definition.Name)
 	}
-	if record.Number, err = decodeDocumentNumber(definition.Number, fields["number"]); err != nil {
-		return nil, err
+	if documentHasNumber(definition) {
+		if record.Number, err = decodeDocumentNumber(definition.Number, fields["number"]); err != nil {
+			return nil, err
+		}
 	}
 	var dateText string
 	if err := json.Unmarshal(fields["date"], &dateText); err != nil {
@@ -548,12 +562,18 @@ func (repository *DocumentRepository) readTableParts(ctx context.Context, defini
 	return nil
 }
 
+// An empty number is a number, as an empty code is a code - see
+// normalizeCatalogCode: a number lengthened from 0 leaves every document it
+// already has with one.
 func normalizeDocumentNumber(number DocumentNumber, value string) (string, error) {
 	if number.Type == StringType {
-		if !utf8.ValidString(value) || value == "" || utf8.RuneCountInString(value) > number.Length {
-			return "", fmt.Errorf("string number must contain 1..%d characters", number.Length)
+		if !utf8.ValidString(value) || utf8.RuneCountInString(value) > number.Length {
+			return "", fmt.Errorf("string number must contain at most %d characters", number.Length)
 		}
 		return value, nil
+	}
+	if value == "" {
+		value = "0"
 	}
 	parsed, err := bslnumber.Parse(value)
 	if err != nil {

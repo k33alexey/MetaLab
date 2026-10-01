@@ -147,7 +147,7 @@ func (repository *CatalogRepository) newPredefinedRecord(ctx context.Context, tr
 	for _, part := range definition.TableParts {
 		record.TableParts[part.ID] = []CatalogRow{}
 	}
-	if record.Code == "" && definition.Code.Auto {
+	if record.Code == "" && definition.Code.Auto && catalogHasCode(definition) {
 		table, _ := PhysicalCatalogTable(definition.ID)
 		value, err := nextObjectSequence(ctx, transaction, definition.ID, 0, table, "code", definition.Code.Type == StringType, false)
 		if err != nil {

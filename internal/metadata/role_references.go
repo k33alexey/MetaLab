@@ -57,6 +57,12 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		item := catalog.Catalogs[index]
 		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
 		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "deletionmark": true, "version": false, "predefined": false, "predefineddataname": false}
+		if !catalogHasCode(item) {
+			delete(target.fields, "code")
+		}
+		if !catalogHasDescription(item) {
+			delete(target.fields, "description")
+		}
 		addHierarchy(item.Hierarchy)
 		addAttributes(item.Attributes)
 		addParts(item.TableParts)
@@ -111,6 +117,9 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 			target.operations[PermissionPost], target.operations[PermissionUndoPosting] = true, true
 		}
 		target.fields = map[string]bool{"ref": false, "number": true, "date": true, "posted": false, "deletionmark": true, "version": false}
+		if !documentHasNumber(item) {
+			delete(target.fields, "number")
+		}
 		addAttributes(item.Attributes)
 		addParts(item.TableParts)
 	} else if index, ok := catalog.businessProcessByID[id]; ok {

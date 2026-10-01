@@ -71,7 +71,7 @@ func TestCatalogEditorCreateReadSaveAndConflicts(t *testing.T) {
 		t.Fatal("identity change accepted")
 	}
 	invalid = saved.Catalog
-	invalid.Code.Length = 0
+	invalid.Code.Length = 51
 	if _, err := workspace.SaveCatalogEditor(saved.Path, invalid, saved.Revision); err == nil {
 		t.Fatal("invalid code length accepted")
 	}

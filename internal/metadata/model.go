@@ -1108,6 +1108,7 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 		ownerSeries:          true,
 		codeAllowedLength:    true,
 		codeType:             true,
+		codeMayBeAbsent:      true,
 		autonumbering:        true,
 		checkUnique:          true,
 		predefinedDataUpdate: value.PredefinedDataUpdate,
@@ -1166,6 +1167,14 @@ type referenceObjectShape struct {
 	// account's code is the code mask's to decide, and the prototype gives the
 	// chart no such property at all.
 	codeAllowedLength bool
+	// codeMayBeAbsent says a code or a description of length 0 is allowed: it
+	// is then
+	// switched off - no field on the object, no column, no search by it. The
+	// designer allows it on a catalog and a chart of characteristic types,
+	// checked by the owner on 01.10.2026 (ИТС 1590 says otherwise of the
+	// chart; the designer of 8.3.27 has it); 720 catalogs of the
+	// configurations being moved have no code.
+	codeMayBeAbsent bool
 	// autonumbering and checkUnique say this kind has automatic codes and the
 	// check that a code is not repeated. The help gives both to a catalog and
 	// a chart of characteristic types, only the check to a chart of accounts,
@@ -1330,14 +1339,14 @@ func validateCodeType(shape referenceObjectShape) []string {
 
 func validateReferenceObjectShape(shape referenceObjectShape, configuration project.Project) []string {
 	var issues []string
+	shortest := 1
+	if shape.codeMayBeAbsent {
+		shortest = 0
+	}
 	switch shape.code.Type {
-	case StringType:
-		if shape.code.Length < 1 || shape.code.Length > maxCodeLength {
-			issues = append(issues, fmt.Sprintf("code.length must be 1..%d", maxCodeLength))
-		}
-	case NumberType:
-		if shape.code.Length < 1 || shape.code.Length > maxCodeLength {
-			issues = append(issues, fmt.Sprintf("code.length must be 1..%d", maxCodeLength))
+	case StringType, NumberType:
+		if shape.code.Length < shortest || shape.code.Length > maxCodeLength {
+			issues = append(issues, fmt.Sprintf("code.length must be %d..%d", shortest, maxCodeLength))
 		}
 	default:
 		issues = append(issues, "code.type must be string or number")
@@ -1346,8 +1355,11 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	if shape.kind == ExchangePlanKind {
 		descriptionCeiling = maxVarcharLength
 	}
-	if shape.descriptionLength < 1 || shape.descriptionLength > descriptionCeiling {
-		issues = append(issues, fmt.Sprintf("description_length must be 1..%d", descriptionCeiling))
+	// A description of length 0 is switched off the way a code is, on the
+	// same two kinds - see codeMayBeAbsent; 22 catalogs of the configurations
+	// being moved have none.
+	if shape.descriptionLength < shortest || shape.descriptionLength > descriptionCeiling {
+		issues = append(issues, fmt.Sprintf("description_length must be %d..%d", shortest, descriptionCeiling))
 	}
 	issues = append(issues, validateHierarchy(shape.hierarchy)...)
 	issues = append(issues, validateCodeSeries(shape)...)
@@ -1357,7 +1369,7 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	issues = append(issues, validatePredefinedDataUpdate(shape.predefinedDataUpdate)...)
 	issues = append(issues, validatePresentations(shape.presentation, configuration)...)
 	issues = append(issues, validateObjectChoice(shape.choice)...)
-	issues = append(issues, validateInputByString(shape.choice.InputByString, shape.kind, shape.attributes)...)
+	issues = append(issues, validateInputByString(shape.choice.InputByString, shape.kind, shape.attributes, shape.switchedOff()...)...)
 	issues = append(issues, validateBasedOn(shape.basedOn)...)
 	issues = append(issues, validateDataLockMode("data_lock", shape.dataLock)...)
 	issues = append(issues, validateDataLockFields(shape.dataLockFields, shape.kind, shape.attributes)...)
@@ -1390,10 +1402,27 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 		shape.attributeUse, shape.hierarchy.Enabled && shape.hierarchy.Kind == FoldersAndItemsHierarchy)...)
 	issues = append(issues, validateFormSlots(shape.forms.slots())...)
 	issues = append(issues, validateFolderForms(shape.forms, shape.hierarchy)...)
-	issues = append(issues, validateListSettings(shape.list, shape.attributes, map[string]TypeKind{
-		"code": shape.code.Type, "description": StringType,
-	})...)
+	listFields := map[string]TypeKind{"code": shape.code.Type, "description": StringType}
+	if shape.code.Length == 0 {
+		delete(listFields, "code")
+	}
+	if shape.descriptionLength == 0 {
+		delete(listFields, "description")
+	}
+	issues = append(issues, validateListSettings(shape.list, shape.attributes, listFields)...)
 	return append(issues, validatePredefinedItems(shape)...)
+}
+
+// switchedOff names the standard fields a length of 0 takes away.
+func (shape referenceObjectShape) switchedOff() []string {
+	var fields []string
+	if shape.code.Length == 0 {
+		fields = append(fields, "Код")
+	}
+	if shape.descriptionLength == 0 {
+		fields = append(fields, "Наименование")
+	}
+	return fields
 }
 
 func validatePredefinedItems(shape referenceObjectShape) []string {
@@ -1427,7 +1456,11 @@ func validatePredefinedItems(shape referenceObjectShape) []string {
 		if item.Parent != "" && strings.EqualFold(item.Parent, item.Name) {
 			issues = append(issues, prefix+".parent is the item itself")
 		}
-		if item.Code == "" {
+		if shape.code.Length == 0 {
+			if item.Code != "" {
+				issues = append(issues, prefix+".code is given, and the code is switched off by a length of 0")
+			}
+		} else if item.Code == "" {
 			if !shape.code.Auto {
 				issues = append(issues, prefix+".code is required when automatic codes are disabled")
 			}

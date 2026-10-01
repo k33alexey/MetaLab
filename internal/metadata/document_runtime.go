@@ -187,7 +187,8 @@ func (runtime *Runtime) getDocumentProperty(ctx context.Context, object *documen
 			return bytecode.Undefined(), err
 		}
 		return runtime.wrapDocumentReference(object.definition, object.record.Reference)
-	case propertyName(name, "Номер", "Number"):
+	// A number of length 0 is switched off, and the object has no such property.
+	case propertyName(name, "Номер", "Number") && documentHasNumber(object.definition):
 		if err := requireFields(ctx, object.definition.ID, PermissionRead, "number"); err != nil {
 			return bytecode.Undefined(), err
 		}
@@ -243,7 +244,7 @@ func (runtime *Runtime) setDocumentProperty(ctx context.Context, object *documen
 		fieldOperation = PermissionCreate
 	}
 	switch {
-	case propertyName(name, "Номер", "Number"):
+	case propertyName(name, "Номер", "Number") && documentHasNumber(object.definition):
 		if err := requireFields(ctx, object.definition.ID, fieldOperation, "number"); err != nil {
 			return err
 		}

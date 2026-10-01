@@ -35,11 +35,11 @@ func TestTheCeilingsOfTheModelHoldOnBothSides(t *testing.T) {
 		says    string
 	}{
 		"строковый код 50":    {ceilingCatalog("{type: string, length: 50}", "100"), false, ""},
-		"строковый код 51":    {ceilingCatalog("{type: string, length: 51}", "100"), true, "code.length must be 1..50"},
+		"строковый код 51":    {ceilingCatalog("{type: string, length: 51}", "100"), true, "code.length must be 0..50"},
 		"числовой код 50":     {ceilingCatalog("{type: number, length: 50}", "100"), false, ""},
-		"числовой код 51":     {ceilingCatalog("{type: number, length: 51}", "100"), true, "code.length must be 1..50"},
+		"числовой код 51":     {ceilingCatalog("{type: number, length: 51}", "100"), true, "code.length must be 0..50"},
 		"наименование 150":    {ceilingCatalog("{type: string, length: 9}", "150"), false, ""},
-		"наименование 151":    {ceilingCatalog("{type: string, length: 9}", "151"), true, "description_length must be 1..150"},
+		"наименование 151":    {ceilingCatalog("{type: string, length: 9}", "151"), true, "description_length must be 0..150"},
 		"десять уровней":      {ceilingCatalog("{type: string, length: 9}", "100") + "hierarchy: {enabled: true, kind: items, limit_levels: true, level_count: 10}\n", false, ""},
 		"одиннадцать уровней": {ceilingCatalog("{type: string, length: 9}", "100") + "hierarchy: {enabled: true, kind: items, limit_levels: true, level_count: 11}\n", true, "level_count must be 1..10"},
 		"имя 255":             {strings.Replace(ceilingCatalog("{type: string, length: 9}", "100"), "name: Товары", "name: Т"+strings.Repeat("о", 254), 1), false, ""},

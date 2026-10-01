@@ -245,8 +245,6 @@ func (catalog *Catalog) catalogTables(definition CatalogDefinition) (schemadiff.
 		Columns: []schemadiff.Column{
 			{Name: "ref", Type: "uuid", Nullable: false},
 			{Name: "version", Type: "bigint", Nullable: false, Default: "1"},
-			{Name: "code", Type: codeSQLType(definition.Code), Nullable: false},
-			{Name: "description", Type: fmt.Sprintf("character varying(%d)", definition.DescriptionLength), Nullable: false, Default: "''::character varying"},
 			{Name: "deletion_mark", Type: "boolean", Nullable: false, Default: "false"},
 			{Name: "predefined_name", Type: "character varying(128)", Nullable: true},
 		},
@@ -256,11 +254,8 @@ func (catalog *Catalog) catalogTables(definition CatalogDefinition) (schemadiff.
 		},
 		Indexes: []schemadiff.Index{{Name: physicalObjectName("im", definition.ID), Method: "btree", Keys: []string{"deletion_mark"}}},
 	}
-	if definition.Code.Unique {
-		table.Constraints = append(table.Constraints, schemadiff.Constraint{Name: physicalObjectName("uq", definition.ID), Type: "unique", Definition: "UNIQUE (code)"})
-	} else {
-		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("ic", definition.ID), Method: "btree", Keys: []string{"code"}})
-	}
+	appendCodeColumn(&table, definition.ID, definition.Code)
+	appendDescriptionColumn(&table, definition.DescriptionLength)
 	appendHierarchyColumns(&table, definition.ID, definition.Hierarchy)
 	if err := catalog.ownerColumns(&table, definition); err != nil {
 		return schemadiff.Table{}, nil, fmt.Errorf("catalog %s owner: %w", definition.Name, err)
@@ -270,9 +265,7 @@ func (catalog *Catalog) catalogTables(definition CatalogDefinition) (schemadiff.
 			return schemadiff.Table{}, nil, fmt.Errorf("catalog %s attribute %s: %w", definition.Name, attribute.Name, err)
 		}
 	}
-	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Description", "Code"}, definition.Attributes, map[string]listColumn{
-		"code": {name: "code", kind: definition.Code.Type}, "description": {name: "description", kind: StringType},
-	})
+	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Description", "Code"}, definition.Attributes, codeAndDescriptionColumns(definition.Code, definition.DescriptionLength))
 	parts, err := catalog.tablePartTables("catalog", definition.Name, definition.ID, definition.TableParts)
 	if err != nil {
 		return schemadiff.Table{}, nil, err
@@ -450,6 +443,73 @@ func (catalog *Catalog) attributeStorage(types []Type) (attributeStorage, error)
 		return attributeStorage{}, fmt.Errorf("unsupported resolved type %s", item.Kind)
 	}
 	return storage, nil
+}
+
+// appendCodeColumn gives a table its code, where it has one: a code of length 0
+// is switched off, and the table has no such column - the storage structure
+// of the prototype shows none, checked by the owner on 01.10.2026 - and no
+// index or uniqueness by it either (ИТС 1590).
+//
+// The column has a default, the empty code, for one reason: lengthening a code
+// from 0 adds the column to a table that already has rows, and the prototype
+// gives those rows an empty code - an empty string, checked the same day. A
+// column NOT NULL without a default could not be added there at all.
+func appendCodeColumn(table *schemadiff.Table, id uuid.UUID, code CatalogCode) {
+	if code.Length == 0 {
+		return
+	}
+	column := schemadiff.Column{Name: "code", Type: codeSQLType(code), Nullable: false, Default: emptyCodeDefault(code)}
+	// The code stands where it always stood, after the identity and the
+	// version, so a table built anew lays out as before.
+	table.Columns = append(table.Columns[:2], append([]schemadiff.Column{column}, table.Columns[2:]...)...)
+	if code.Unique {
+		table.Constraints = append(table.Constraints, schemadiff.Constraint{Name: physicalObjectName("uq", id), Type: "unique", Definition: "UNIQUE (code)"})
+	} else {
+		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("ic", id), Method: "btree", Keys: []string{"code"}})
+	}
+}
+
+// appendDescriptionColumn gives a table its description where it has one - a
+// length of 0 switches it off as it does a code. It goes after the code, where
+// it always stood, and its default is the empty description, which lets it be
+// added to a table that has rows.
+func appendDescriptionColumn(table *schemadiff.Table, length int) {
+	if length == 0 {
+		return
+	}
+	at := 2
+	if len(table.Columns) > 2 && table.Columns[2].Name == "code" {
+		at = 3
+	}
+	column := schemadiff.Column{Name: "description", Type: fmt.Sprintf("character varying(%d)", length), Nullable: false, Default: "''::character varying"}
+	table.Columns = append(table.Columns[:at], append([]schemadiff.Column{column}, table.Columns[at:]...)...)
+}
+
+// emptyCodeDefault is the empty code as PostgreSQL spells it back, so that an
+// unchanged schema compares equal: zero for a number, the empty string cast to
+// the column's own family for a string.
+func emptyCodeDefault(code CatalogCode) string {
+	switch {
+	case code.Type == NumberType:
+		return "0"
+	case code.FixedLength:
+		return "''::bpchar"
+	default:
+		return "''::character varying"
+	}
+}
+
+// codeAndDescriptionColumns are the standard columns a list is searched by,
+// without the code where it is switched off.
+func codeAndDescriptionColumns(code CatalogCode, descriptionLength int) map[string]listColumn {
+	columns := map[string]listColumn{}
+	if descriptionLength > 0 {
+		columns["description"] = listColumn{name: "description", kind: StringType}
+	}
+	if code.Length > 0 {
+		columns["code"] = listColumn{name: "code", kind: code.Type}
+	}
+	return columns
 }
 
 func codeSQLType(code CatalogCode) string {

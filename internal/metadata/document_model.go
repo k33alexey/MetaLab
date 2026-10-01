@@ -194,15 +194,23 @@ type numberedObjectShape struct {
 // validateNumberShape checks a number on its own, apart from the object that
 // carries it: a numerator is nothing but one of these.
 func validateNumberShape(number DocumentNumber) []string {
+	return validateNumberShapeOf(number, false)
+}
+
+// validateNumberShapeOf checks a number, which a document may switch off with
+// a length of 0 - checked by the owner on 01.10.2026; 9 documents of the
+// configurations being moved have none. Nothing else was checked, so a
+// business process, a task and a numerator keep a number of at least 1.
+func validateNumberShapeOf(number DocumentNumber, mayBeAbsent bool) []string {
 	var issues []string
+	shortest := 1
+	if mayBeAbsent {
+		shortest = 0
+	}
 	switch number.Type {
-	case StringType:
-		if number.Length < 1 || number.Length > maxCodeLength {
-			issues = append(issues, fmt.Sprintf("number.length must be 1..%d", maxCodeLength))
-		}
-	case NumberType:
-		if number.Length < 1 || number.Length > maxCodeLength {
-			issues = append(issues, fmt.Sprintf("number.length must be 1..%d", maxCodeLength))
+	case StringType, NumberType:
+		if number.Length < shortest || number.Length > maxCodeLength {
+			issues = append(issues, fmt.Sprintf("number.length must be %d..%d", shortest, maxCodeLength))
 		}
 	default:
 		issues = append(issues, "number.type must be string or number")
@@ -223,7 +231,7 @@ func validateNumberShape(number DocumentNumber) []string {
 func validateNumberedObjectShape(shape numberedObjectShape, configuration project.Project) []string {
 	var issues []string
 	if !shape.numberFromElsewhere {
-		issues = validateNumberShape(shape.number)
+		issues = validateNumberShapeOf(shape.number, shape.kind == DocumentKind)
 	}
 	reserved := shape.reservedName
 	if reserved == nil {
@@ -241,7 +249,11 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 	issues = append(issues, validateStandardAttributes("standard_attributes", shape.standardAttributes, standardFieldsOfKind(shape.kind), configuration)...)
 	issues = append(issues, validatePresentations(shape.presentation, configuration)...)
 	issues = append(issues, validateObjectInput(shape.input)...)
-	issues = append(issues, validateInputByString(shape.input.InputByString, shape.kind, shape.attributes)...)
+	var switchedOff []string
+	if shape.kind == DocumentKind && !shape.numberFromElsewhere && shape.number.Length == 0 {
+		switchedOff = append(switchedOff, "Номер")
+	}
+	issues = append(issues, validateInputByString(shape.input.InputByString, shape.kind, shape.attributes, switchedOff...)...)
 	issues = append(issues, validateBasedOn(shape.basedOn)...)
 	issues = append(issues, validateDataLockMode("data_lock", shape.dataLock)...)
 	issues = append(issues, validateDataLockFields(shape.dataLockFields, shape.kind, shape.attributes)...)
@@ -255,9 +267,11 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 	issues = append(issues, validateFieldLinks(fields, shape.tableParts, links...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, false, false)...)
 	issues = append(issues, validateFormSlots(shape.forms.slots())...)
-	return append(issues, validateListSettings(shape.list, shape.attributes, map[string]TypeKind{
-		"number": shape.number.Type,
-	})...)
+	listFields := map[string]TypeKind{"number": shape.number.Type}
+	if len(switchedOff) > 0 {
+		delete(listFields, "number")
+	}
+	return append(issues, validateListSettings(shape.list, shape.attributes, listFields)...)
 }
 
 // tablePartRules are the things about a table part that its owner decides rather

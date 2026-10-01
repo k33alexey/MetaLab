@@ -38,6 +38,15 @@ import (
 // question that can be answered two ways.
 func catalogHasParent(definition CatalogDefinition) bool { return definition.Hierarchy.Enabled }
 
+// catalogHasCode says the catalog's code is there at all: a length of 0
+// switches it off.
+func catalogHasCode(definition CatalogDefinition) bool { return definition.Code.Length > 0 }
+
+// catalogHasDescription says the same of the description.
+func catalogHasDescription(definition CatalogDefinition) bool {
+	return definition.DescriptionLength > 0
+}
+
 func catalogHasFolders(definition CatalogDefinition) bool {
 	return definition.Hierarchy.Enabled && definition.Hierarchy.Kind == FoldersAndItemsHierarchy
 }

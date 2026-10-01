@@ -59,7 +59,7 @@ func TestDynamicListRejectsInvalidRequests(t *testing.T) {
 
 func TestDynamicListSearchesNumericFieldByExactValue(t *testing.T) {
 	t.Parallel()
-	definition := CatalogDefinition{Code: CatalogCode{Type: NumberType}}
+	definition := CatalogDefinition{Code: CatalogCode{Type: NumberType, Length: 9}}
 	statement, arguments, err := buildDynamicListSQL(context.Background(), "t_demo", DynamicListRequest{Limit: 20, Search: "12,5", SearchField: "Code"}, []string{"Description", "Code"}, func(field string) (string, bool) {
 		return catalogListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
