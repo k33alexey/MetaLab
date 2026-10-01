@@ -587,7 +587,7 @@ func databaseAttributeValue(storage attributeStorage, value Value) (any, error) 
 		return value.Data == "true", nil
 	case DateType:
 		return time.Parse(time.RFC3339Nano, value.Data)
-	case ObjectUUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType, BusinessProcessType, TaskType, ExchangePlanType, RoutePointType:
+	case UUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType, BusinessProcessType, TaskType, ExchangePlanType, RoutePointType:
 		return value.Data, nil
 	case ValueStorageType:
 		return base64.StdEncoding.DecodeString(value.Data)
@@ -609,7 +609,7 @@ func decodeDatabaseAttribute(storage attributeStorage, raw json.RawMessage) (Val
 		value.Object = *storage.referenceObject
 	}
 	switch storage.valueType {
-	case StringType, DateType, ObjectUUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType, BusinessProcessType, TaskType, ExchangePlanType, RoutePointType:
+	case StringType, DateType, UUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType, BusinessProcessType, TaskType, ExchangePlanType, RoutePointType:
 		if err := json.Unmarshal(raw, &value.Data); err != nil {
 			return Value{}, err
 		}

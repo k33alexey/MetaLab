@@ -71,13 +71,15 @@ const (
 	NumberType  TypeKind = "number"
 	BooleanType TypeKind = "boolean"
 	DateType    TypeKind = "date"
-	// ObjectUUIDType is how the platform stores its own object identity -
-	// record identifiers, references, the current-user session parameter. It
-	// is not a type a developer can give an attribute: the prototype has no
-	// such attribute type, and a reference declared as a bare identifier
-	// loses referential integrity, presentation, filtering and input by
-	// string - everything that makes a reference worth having.
-	ObjectUUIDType  TypeKind = "obj-uuid"
+	// UUIDType is the unique identifier: a value of its own, not a reference.
+	// A developer gives it to an attribute, a resource, a constant or a
+	// session parameter - the prototype has the type (УникальныйИдентификатор)
+	// and the configurations being moved use it in hundreds of type
+	// descriptions. It carries no referential integrity and no presentation
+	// beyond its text; the empty value is the all-zero identifier. The
+	// platform stores its own identities - record identifiers, references -
+	// as the same kind of value.
+	UUIDType        TypeKind = "uuid"
 	EnumerationType TypeKind = "enumeration"
 	DefinedType     TypeKind = "defined-type"
 	CatalogType     TypeKind = "catalog"
@@ -1584,10 +1586,6 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 		if (item.Kind == DefinedType || item.Kind == CharacteristicSet) && item.Reference != nil && *item.Reference == self {
 			issues = append(issues, prefix+" cannot reference itself")
 		}
-		if item.Kind == ObjectUUIDType {
-			issues = append(issues, prefix+".kind obj-uuid is reserved for platform identity and cannot be declared; use a reference type")
-			continue
-		}
 		// A reference to something of an external data source is a type of
 		// that source's own fields and of a managed form's attributes, and of
 		// nothing the infobase stores: the configurator does not offer it to
@@ -1639,7 +1637,7 @@ func validateTypes(path string, types []Type, self uuid.UUID) []string {
 			if item.Length != 0 || item.Precision != 0 || item.Scale != 0 {
 				issues = append(issues, prefix+" has unsupported qualifiers")
 			}
-		case BooleanType, ValueStorageType, EnumerationType, DefinedType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType,
+		case BooleanType, UUIDType, ValueStorageType, EnumerationType, DefinedType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType,
 			BusinessProcessType, TaskType, ExchangePlanType, RoutePointType,
 			AnyReferenceSet, CatalogSet, DocumentSet, EnumerationSet, CharacteristicTypesSet, AccountSet,
 			CalculationTypeSet, BusinessProcessSet, RoutePointSet, TaskSet, ExchangePlanSet, CharacteristicSet:

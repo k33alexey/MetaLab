@@ -334,12 +334,12 @@ func (catalog *Catalog) normalizeAs(value Value, allowed Type) (Value, bool, str
 			return Value{}, false, "value storage must be base64"
 		}
 		return Value{Kind: ValueStorageType, Data: value.Data}, true, ""
-	case ObjectUUIDType:
+	case UUIDType:
 		id, err := uuid.Parse(value.Data)
 		if err != nil {
 			return Value{}, false, "invalid UUID reference"
 		}
-		return Value{Kind: ObjectUUIDType, Data: id.String()}, true, ""
+		return Value{Kind: UUIDType, Data: id.String()}, true, ""
 	case CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType, BusinessProcessType, TaskType, ExchangePlanType:
 		id, err := uuid.Parse(value.Data)
 		if err != nil {

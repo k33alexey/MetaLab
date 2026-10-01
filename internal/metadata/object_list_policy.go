@@ -229,7 +229,7 @@ func requireUnrestrictedRegisterRead(ctx context.Context, objectID uuid.UUID, re
 // the condition would widen access.
 func registerPolicyColumn(periodic, subordinate bool, movementKind bool, attributes []Attribute) func(string) (listColumn, bool) {
 	standard := map[string]listColumn{
-		"recordid": {name: "record_id", kind: ObjectUUIDType},
+		"recordid": {name: "record_id", kind: UUIDType},
 		"active":   {name: "active", kind: BooleanType},
 	}
 	if periodic {

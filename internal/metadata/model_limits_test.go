@@ -150,7 +150,7 @@ func TestTheSchemaRefusesWhatTheDatabaseCannotHold(t *testing.T) {
 		return err
 	}
 	text := []Type{{Kind: StringType, Length: 10}}
-	identifier := []Type{{Kind: ObjectUUIDType}}
+	identifier := []Type{{Kind: UUIDType}}
 	if err := catalogWith(1500, text); err != nil {
 		t.Fatalf("1500 string attributes were refused: %v", err)
 	}

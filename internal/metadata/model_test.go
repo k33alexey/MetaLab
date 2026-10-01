@@ -516,12 +516,14 @@ attributes:
 	}
 }
 
-// obj-uuid is how the platform stores its own object identity, never a type a
-// developer chooses: a reference declared as a bare identifier loses
-// referential integrity, presentation, filtering and input by string.
-func TestDeclaringPlatformIdentityAsAnAttributeTypeIsRejected(t *testing.T) {
+// The unique identifier is a type the prototype gives an attribute, and the
+// configurations being moved declare it in hundreds of type descriptions; it
+// was refused as "platform identity", and every one of them failed to load.
+// Declared, it is a value column of its own - no foreign key, since it points
+// at nothing - and the all-zero identifier is its empty value, not an error.
+func TestAUniqueIdentifierIsATypeAnAttributeTakes(t *testing.T) {
 	t.Parallel()
-	_, err := DecodeInformationRegister("identity.yaml", strings.NewReader(`format: 1
+	register, err := DecodeInformationRegister("identity.yaml", strings.NewReader(`format: 1
 id: `+informationRegisterID+`
 name: Цены
 title: {ru: Цены}
@@ -531,10 +533,27 @@ dimensions:
   - id: `+registerDimensionID+`
     name: Объект
     title: {ru: Объект}
-    types: [{kind: obj-uuid}]
+    types: [{kind: uuid}]
 `), metadataConfiguration())
-	if err == nil || !strings.Contains(err.Error(), "obj-uuid is reserved") {
+	if err != nil {
 		t.Fatalf("DecodeInformationRegister() error = %v", err)
+	}
+	catalog := &Catalog{}
+	storage, err := catalog.attributeStorage(register.Dimensions[0].Types)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if storage.sqlType != "uuid" || storage.composite || storage.referenceObject != nil {
+		t.Fatalf("storage = %+v, want a plain uuid column", storage)
+	}
+	for _, text := range []string{"00000000-0000-0000-0000-000000000000", "6F9619FF-8B86-D011-B42D-00CF4FC964FF"} {
+		value, valid, reason := catalog.normalizeAs(Value{Kind: UUIDType, Data: text}, Type{Kind: UUIDType})
+		if !valid || value.Data != strings.ToLower(text) {
+			t.Fatalf("normalize %s = %+v, %v, %s", text, value, valid, reason)
+		}
+	}
+	if _, valid, _ := catalog.normalizeAs(Value{Kind: UUIDType, Data: "not-an-identifier"}, Type{Kind: UUIDType}); valid {
+		t.Fatal("a text that is no identifier was taken")
 	}
 }
 

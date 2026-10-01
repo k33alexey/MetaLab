@@ -427,10 +427,10 @@ func (catalog *Catalog) attributeStorage(types []Type) (attributeStorage, error)
 		// A point of a route is not a row of any table: it is part of the map
 		// the configuration draws, and it is carried by name.
 		storage.sqlType = "character varying(128)"
-	case ObjectUUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType,
+	case UUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType,
 		CalculationTypeType, BusinessProcessType, TaskType, ExchangePlanType:
 		storage.sqlType = "uuid"
-		if item.Kind != ObjectUUIDType && item.Kind != EnumerationType {
+		if item.Kind != UUIDType && item.Kind != EnumerationType {
 			id := *item.Reference
 			storage.referenceObject = &id
 		}
