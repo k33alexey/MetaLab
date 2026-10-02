@@ -467,3 +467,34 @@ func TestHelpIsPublishedWithItsOwner(t *testing.T) {
 		})
 	}
 }
+
+// A subsystem's help is published from the folder named by its identifier;
+// nothing else lies there, and a folder not named by an identifier is not one.
+func TestSubsystemHelpIsPublished(t *testing.T) {
+	t.Parallel()
+	const subsystem = "5b000000-0000-4000-8000-000000000001"
+	for name, test := range map[string]struct {
+		relative  string
+		directory bool
+		accepted  bool
+	}{
+		"папка подсистемы":           {"metadata/subsystems/" + subsystem, true, true},
+		"папка справки":              {"metadata/subsystems/" + subsystem + "/help", true, true},
+		"страница":                   {"metadata/subsystems/" + subsystem + "/help/ru.html", false, true},
+		"картинка":                   {"metadata/subsystems/" + subsystem + "/help/_files/1.png", false, true},
+		"не справка":                 {"metadata/subsystems/" + subsystem + "/notes.txt", false, false},
+		"папка не по идентификатору": {"metadata/subsystems/Продажи/help/ru.html", false, false},
+		"не страница":                {"metadata/subsystems/" + subsystem + "/help/readme.txt", false, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			err := validateSourcePath(test.relative, test.directory)
+			if test.accepted && err != nil {
+				t.Fatalf("%s was refused: %v", test.relative, err)
+			}
+			if !test.accepted && err == nil {
+				t.Fatalf("%s was accepted", test.relative)
+			}
+		})
+	}
+}

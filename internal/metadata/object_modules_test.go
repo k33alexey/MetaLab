@@ -272,3 +272,52 @@ func TestHelpLiesBesideItsOwner(t *testing.T) {
 		}
 	}
 }
+
+// A subsystem keeps its help in a folder named by its identifier beside its
+// file, as the prototype keeps one named like the subsystem beside Имя.xml -
+// by identifier here, since subsystems lie flat and their names repeat across
+// branches (41 in erp). The configuration keeps its help at the root, where
+// the prototype keeps it in its own Ext (sb). The defects caught: either help
+// refused - 24, 24 and 41 subsystems carry one - and, on the refusing side, a
+// folder with no subsystem beside it, a folder not named by an identifier,
+// and something other than help in a subsystem's folder.
+func TestSubsystemAndConfigurationKeepTheirHelp(t *testing.T) {
+	t.Parallel()
+	const subsystem = "5b000000-0000-4000-8000-000000000001"
+	write := func(t *testing.T, path string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("<p>справка</p>"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, test := range map[string]struct {
+		files []string
+		want  string
+	}{
+		"справка подсистемы":                 {[]string{"metadata/subsystems/" + subsystem + "/help/ru.html", "metadata/subsystems/" + subsystem + "/help/_files/1.png"}, ""},
+		"справка конфигурации":               {[]string{"help/ru.html", "help/uk.html", "help/_files/1.png"}, ""},
+		"папка без подсистемы":               {[]string{"metadata/subsystems/5b000000-0000-4000-8000-000000000002/help/ru.html"}, "no subsystem"},
+		"папка не по идентификатору":         {[]string{"metadata/subsystems/Продажи/help/ru.html"}, "named by its identifier"},
+		"не справка в папке подсистемы":      {[]string{"metadata/subsystems/" + subsystem + "/notes.txt"}, "keeps only its help"},
+		"не страница в справке конфигурации": {[]string{"help/readme.txt"}, "which is not a page named by its language"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := metadataProject(t)
+			writeMetadata(t, root, SubsystemKind, subsystem, "format: 1\nid: "+subsystem+"\nname: Продажи\ntitle: {ru: Продажи}\n")
+			for _, file := range test.files {
+				write(t, filepath.Join(root, filepath.FromSlash(file)))
+			}
+			_, err := Load(root)
+			switch {
+			case test.want == "" && err != nil:
+				t.Fatalf("help was refused: %v", err)
+			case test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)):
+				t.Fatalf("want a refusal saying %q, got %v", test.want, err)
+			}
+		})
+	}
+}

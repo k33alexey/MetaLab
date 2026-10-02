@@ -724,8 +724,22 @@ func loadKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) e
 	if err != nil {
 		return fmt.Errorf("read metadata %s: %w", kind, err)
 	}
+	described := map[string]bool{}
+	for _, entry := range entries {
+		described[entry.Name()] = !entry.IsDir()
+	}
 	for _, entry := range entries {
 		if entry.Name() == ".gitkeep" {
+			continue
+		}
+		// A subsystem keeps beside its file a folder of the same name when it
+		// has help, as the prototype keeps one beside Имя.xml. The name is the
+		// identifier, not the subsystem's own: subsystems lie flat here, and
+		// names repeat across branches - 41 in erp.
+		if kind == SubsystemKind && entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 {
+			if err := validateSubsystemFolder(directory, entry.Name(), described[entry.Name()+".yaml"]); err != nil {
+				return err
+			}
 			continue
 		}
 		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 || filepath.Ext(entry.Name()) != ".yaml" {
@@ -747,6 +761,32 @@ func loadKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) e
 		}
 		if closeErr != nil {
 			return fmt.Errorf("close %s: %w", relative, closeErr)
+		}
+	}
+	return nil
+}
+
+// validateSubsystemFolder checks the folder a subsystem keeps beside its
+// description: named by the subsystem's identifier, standing beside a
+// description of that name, and holding its help and nothing else.
+func validateSubsystemFolder(directory, name string, described bool) error {
+	relative := filepath.ToSlash(filepath.Join("metadata", string(SubsystemKind), name))
+	if _, err := uuid.Parse(name); err != nil {
+		return fmt.Errorf("unexpected metadata source %q: a subsystem's folder is named by its identifier", relative)
+	}
+	if !described {
+		return fmt.Errorf("unexpected metadata source %q: no subsystem %s.yaml stands beside it", relative, name)
+	}
+	entries, err := os.ReadDir(filepath.Join(directory, name))
+	if err != nil {
+		return fmt.Errorf("read %s: %w", relative, err)
+	}
+	for _, entry := range entries {
+		if entry.Name() != project.HelpDirectory || !entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("%s keeps %q, and a subsystem's folder keeps only its help", relative, entry.Name())
+		}
+		if err := validateHelpFolder("subsystem "+name, filepath.Join(directory, name, entry.Name())); err != nil {
+			return err
 		}
 	}
 	return nil

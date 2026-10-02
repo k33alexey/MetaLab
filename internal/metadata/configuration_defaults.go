@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -87,6 +88,16 @@ func (catalog *Catalog) validateConfigurationDefaults(root string) error {
 	}
 	if err := catalog.validateFullTextSearchDictionaries(); err != nil {
 		return err
+	}
+	// The help of the configuration lies at the root, as the prototype keeps
+	// it in its own Ext (sb): the same pages and pictures as an object's.
+	if info, err := os.Lstat(filepath.Join(root, project.HelpDirectory)); err == nil {
+		if !info.IsDir() || info.Mode()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("the configuration keeps %q, and its help is a folder", project.HelpDirectory)
+		}
+		if err := validateHelpFolder("the configuration", filepath.Join(root, project.HelpDirectory)); err != nil {
+			return err
+		}
 	}
 	if err := validateRootPictures(root); err != nil {
 		return err

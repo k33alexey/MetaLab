@@ -225,6 +225,14 @@ func validateSourcePath(relative string, directory bool) error {
 		if !directory && len(parts) == 3 && parts[2] == ".gitkeep" && contains(project.MetadataKinds(), parts[1]) {
 			return nil
 		}
+		// A subsystem keeps its help in a folder named by its identifier
+		// beside its file; that the file is there is checked where the
+		// metadata is read.
+		if len(parts) >= 3 && parts[1] == "subsystems" {
+			if _, err := uuid.Parse(parts[2]); err == nil && (directory && len(parts) == 3 || project.HelpPath(parts[3:], directory)) {
+				return nil
+			}
+		}
 		// An object inside another - a table of an external data source -
 		// is checked the way any object folder is, from its own address; and
 		// the collection folder holding such objects belongs to the owner.
