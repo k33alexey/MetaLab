@@ -87,7 +87,7 @@ key_fields: [Код]
 presentation_field: Наименование
 hierarchy:
   parent_field: Родитель
-  unfilled_parent_value: {kind: string, data: ""}
+unfilled_parent_value: {kind: string, data: ""}
 data_version_field: Версия
 data_lock: managed
 data_lock_fields: [Код]
@@ -210,7 +210,7 @@ func TestExternalDataSourceCarriesItsTablesAndTheirFields(t *testing.T) {
 	if strings.Join(goods.InputByString, ",") != "Наименование,Код" || strings.Join(goods.KeyFields, ",") != "Код" {
 		t.Fatalf("a list of fields lost its order: %v %v", goods.InputByString, goods.KeyFields)
 	}
-	if goods.Hierarchy == nil || goods.Hierarchy.ParentField != "Родитель" || goods.Hierarchy.UnfilledParentValue == nil {
+	if goods.Hierarchy == nil || goods.Hierarchy.ParentField != "Родитель" || goods.UnfilledParentValue == nil {
 		t.Fatalf("the hierarchy was lost: %+v", goods.Hierarchy)
 	}
 	if goods.ObjectPresentation["ru"] != "Товар" || goods.Explanation["ru"] != "Номенклатура складской системы" || goods.Forms.Choice != "ФормаВыбора" {
@@ -472,7 +472,7 @@ attributes:
 func TestExternalTableValuesAreValuesOfTheirFields(t *testing.T) {
 	t.Parallel()
 	if message := refusedExternalTable(t, strings.Replace(goodsBody, `unfilled_parent_value: {kind: string, data: ""}`, `unfilled_parent_value: {kind: number, data: "0"}`, 1),
-		"an unfilled parent of another type"); !strings.Contains(message, "hierarchy.unfilled_parent_value") {
+		"an unfilled parent of another type"); !strings.Contains(message, "unfilled_parent_value") {
 		t.Fatalf("the error does not name the property: %v", message)
 	}
 	if message := refusedExternalTable(t, strings.Replace(goodsBody, "filling: {value: {kind: string, data: Без названия}}", `filling: {value: {kind: boolean, data: "true"}}`, 1),
@@ -482,12 +482,12 @@ func TestExternalTableValuesAreValuesOfTheirFields(t *testing.T) {
 	// Absent is Null, the prototype's first choice, and is not refused.
 	root := metadataProject(t)
 	writeExternalSource(t, root, warehouseSource, "Склад", "")
-	writeExternalTable(t, root, "Склад", goodsTable, "Товары", strings.Replace(goodsBody, "  unfilled_parent_value: {kind: string, data: \"\"}\n", "", 1))
+	writeExternalTable(t, root, "Склад", goodsTable, "Товары", strings.Replace(goodsBody, "unfilled_parent_value: {kind: string, data: \"\"}\n", "", 1))
 	catalog, err := Load(root)
 	if err != nil {
 		t.Fatalf("a hierarchy whose unfilled parent is Null was refused: %v", err)
 	}
-	if goods, _, _ := catalog.ExternalTableByID(mustUUID(t, goodsTable)); goods.Hierarchy.UnfilledParentValue != nil {
+	if goods, _, _ := catalog.ExternalTableByID(mustUUID(t, goodsTable)); goods.UnfilledParentValue != nil {
 		t.Fatal("an absent unfilled parent value came back as a value")
 	}
 }
@@ -776,4 +776,32 @@ func TestExternalTableCharacteristicsAreResolved(t *testing.T) {
 			t.Fatalf("the error does not say what is wrong: %v", message)
 		}
 	})
+}
+
+// The value of an unfilled parent belongs to the table, not to its hierarchy:
+// the designer writes an empty string on a table of records with no parent
+// field and no key (mdclasses, ИнформацияОбОшибках). The defect caught is that
+// value turning into Null on the way - an empty string and Null tell apart
+// the rows of the top level the day the table is given a parent field.
+func TestExternalTableKeepsAnUnfilledParentWithoutAHierarchy(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeExternalSource(t, root, warehouseSource, "Склад", "")
+	writeExternalTable(t, root, "Склад", stockTable, "ИнформацияОбОшибках", `name_in_data_source: ErrorInformation
+data_type: non-object
+unfilled_parent_value: {kind: string, data: ""}
+fields:
+  - {id: f8000000-0000-4000-8000-000000000091, name: ОписаниеОшибки, title: {ru: Описание ошибки}, types: [{kind: string, length: 1024}], name_in_data_source: Description}
+`)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a table of records with an unfilled parent and no parent field was refused: %v", err)
+	}
+	table, _, _ := catalog.ExternalTableByID(mustUUID(t, stockTable))
+	if table.Hierarchy != nil {
+		t.Fatalf("a hierarchy appeared from nowhere: %+v", table.Hierarchy)
+	}
+	if table.UnfilledParentValue == nil || table.UnfilledParentValue.Kind != StringType || table.UnfilledParentValue.Data != "" {
+		t.Fatalf("the empty string did not come back as an empty string: %+v", table.UnfilledParentValue)
+	}
 }

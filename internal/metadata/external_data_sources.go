@@ -120,10 +120,6 @@ func (forms ExternalTableForms) slots() []formSlot {
 type ExternalTableHierarchy struct {
 	// ParentField holds the reference to the row's parent.
 	ParentField string `yaml:"parent_field" json:"parentField"`
-	// UnfilledParentValue is the value the parent field holds when a row has
-	// no parent. Absent means Null, which is what the prototype offers first;
-	// otherwise it is a value of the key's type - an empty string, a zero.
-	UnfilledParentValue *Value `yaml:"unfilled_parent_value,omitempty" json:"unfilledParentValue,omitempty"`
 }
 
 // ExternalTable is one table of a source.
@@ -151,6 +147,16 @@ type ExternalTable struct {
 	KeyFields         []string                `yaml:"key_fields,omitempty" json:"keyFields,omitempty"`
 	PresentationField string                  `yaml:"presentation_field,omitempty" json:"presentationField,omitempty"`
 	Hierarchy         *ExternalTableHierarchy `yaml:"hierarchy,omitempty" json:"hierarchy,omitempty"`
+	// UnfilledParentValue is the value the parent field holds when a row has
+	// no parent. Absent means Null, which is what the prototype offers first;
+	// otherwise it is a value of the key's type - an empty string, a zero.
+	//
+	// It belongs to the table and not to its hierarchy: the designer writes
+	// it on a table with no parent field too - an empty string on a table of
+	// records in the files it saves (mdclasses). Kept inside the hierarchy it
+	// would turn into Null on such a table, and the difference shows the day
+	// somebody gives the table a parent field (owner, 02.10.2026).
+	UnfilledParentValue *Value `yaml:"unfilled_parent_value,omitempty" json:"unfilledParentValue,omitempty"`
 	// DataVersionField holds the version of a row in the other database: it
 	// grows with every change, and a write compares it to know nobody else
 	// changed the row meanwhile.
@@ -565,9 +571,9 @@ func cloneExternalTable(table ExternalTable) ExternalTable {
 	table.Templates = cloneObjectTemplates(table.Templates)
 	if table.Hierarchy != nil {
 		hierarchy := *table.Hierarchy
-		hierarchy.UnfilledParentValue = cloneValuePointer(hierarchy.UnfilledParentValue)
 		table.Hierarchy = &hierarchy
 	}
+	table.UnfilledParentValue = cloneValuePointer(table.UnfilledParentValue)
 	fields := make([]ExternalField, len(table.Fields))
 	for index, field := range table.Fields {
 		fields[index] = cloneExternalField(field)
@@ -744,9 +750,9 @@ func (catalog *Catalog) validateExternalDataSources() error {
 			if err := catalog.validateExternalFieldReferences(source, owner, table.Fields, nil); err != nil {
 				return err
 			}
-			if table.Hierarchy != nil && table.Hierarchy.UnfilledParentValue != nil && len(table.KeyFields) == 1 {
+			if table.UnfilledParentValue != nil && len(table.KeyFields) == 1 {
 				key, _ := table.Field(table.KeyFields[0])
-				if _, err := catalog.normalizeTypes(owner+" hierarchy.unfilled_parent_value", key.Types, *table.Hierarchy.UnfilledParentValue); err != nil {
+				if _, err := catalog.normalizeTypes(owner+" unfilled_parent_value", key.Types, *table.UnfilledParentValue); err != nil {
 					return fmt.Errorf("%w: the value a row without a parent holds is a value of the key", err)
 				}
 			}
