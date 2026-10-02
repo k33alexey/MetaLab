@@ -222,12 +222,34 @@ title: {ru: Открыть}
 	})
 }
 
+// A group stands in one of four places (help, CommandGroupCategory), and the
+// configurations being moved make groups in all four - erp 3, 19, 10 and 1.
+// Defect caught: the two navigation panels were refused, and with them 25
+// groups of the three.
+func TestCommandGroupStandsInAnyOfTheFourPlaces(t *testing.T) {
+	t.Parallel()
+	for _, category := range []CommandCategory{ActionsPanelCategory, NavigationPanelCategory, FormCommandBarCategory, FormNavigationPanelCategory} {
+		group, err := DecodeCommandGroup("object.yaml", strings.NewReader(`format: 1
+id: `+commandGroupID+`
+name: Группа
+title: {ru: Группа}
+category: `+string(category)+`
+`), metadataConfiguration())
+		if err != nil {
+			t.Fatalf("%s: refused: %v", category, err)
+		}
+		if group.Category != category {
+			t.Fatalf("%s: read back as %s", category, group.Category)
+		}
+	}
+}
+
 // What a command group is checked for is what would make it unplaceable.
 func TestBrokenCommandGroupsAreRefused(t *testing.T) {
 	t.Parallel()
 	for name, broken := range map[string]struct{ body, want string }{
-		"категории не существует": {"category: где-нибудь", "category must be actions-panel or form-command-bar"},
-		"категория не названа":    {"", "category must be actions-panel or form-command-bar"},
+		"категории не существует": {"category: где-нибудь", "category must be actions-panel, navigation-panel, form-command-bar or form-navigation-panel"},
+		"категория не названа":    {"", "category must be actions-panel, navigation-panel, form-command-bar or form-navigation-panel"},
 		"отображение картинкой без картинки": {"category: actions-panel\nrepresentation: picture",
 			"representation picture needs a picture"},
 		"картинка из двух источников": {"category: actions-panel\npicture: {standard: Обмен, common: " + commonCommandID + "}",

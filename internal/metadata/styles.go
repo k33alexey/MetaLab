@@ -172,9 +172,64 @@ type StyleItemDefinition struct {
 // StyleItemSetting is what one style makes of one style item: the same item,
 // a value of this look's own. A style that gave every item the item's own
 // value would be a style that changes nothing.
+//
+// The item is one of the configuration's own, by identifier, or one of the
+// platform's, by name - exactly one of the two. The configurations being moved
+// set both kinds: erp 166 of its own and 34 of the platform's, acc 6 and 5, sb
+// none and 21.
 type StyleItemSetting struct {
-	Item  uuid.UUID      `yaml:"item" json:"item"`
-	Value StyleItemValue `yaml:"value" json:"value"`
+	Item     *uuid.UUID     `yaml:"item,omitempty" json:"item,omitempty"`
+	Standard string         `yaml:"standard,omitempty" json:"standard,omitempty"`
+	Value    StyleItemValue `yaml:"value" json:"value"`
+}
+
+// standardStyleItems is the platform's own style items, by name in either
+// language, folded, with the type of each: 28 colours, 5 fonts and a border
+// (help, StyleColors, StyleFonts, StyleBorders). A style may give any of them a
+// value of its own - the configurations being moved set 34, 5 and 21 of them -
+// and the type decides what that value has to be.
+var standardStyleItems = map[string]StyleItemType{
+	"fieldalternativebackcolor": ColorStyleItem, "альтернативныйцветфонаполя": ColorStyleItem,
+	"activitycolor": ColorStyleItem, "цветактивности": ColorStyleItem,
+	"accentcolor": ColorStyleItem, "цветакцента": ColorStyleItem,
+	"importantcolor": ColorStyleItem, "цветважного": ColorStyleItem,
+	"auxiliarynavigationcolor": ColorStyleItem, "цветдополнительнойнавигации": ColorStyleItem,
+	"reportlinecolor": ColorStyleItem, "цветлинииотчета": ColorStyleItem,
+	"navigationcolor": ColorStyleItem, "цветнавигации": ColorStyleItem,
+	"specialtextcolor": ColorStyleItem, "цветособоготекста": ColorStyleItem,
+	"negativetextcolor": ColorStyleItem, "цветотрицательногочисла": ColorStyleItem,
+	"bordercolor": ColorStyleItem, "цветрамки": ColorStyleItem,
+	"buttonbordercolor": ColorStyleItem, "цветрамкикнопки": ColorStyleItem,
+	"fieldselectedtextcolor": ColorStyleItem, "цветтекставыделенияполя": ColorStyleItem,
+	"buttontextcolor": ColorStyleItem, "цветтекстакнопки": ColorStyleItem,
+	"tablefootertextcolor": ColorStyleItem, "цветтекстаподвалатаблицы": ColorStyleItem,
+	"tooltiptextcolor": ColorStyleItem, "цветтекстаподсказки": ColorStyleItem,
+	"fieldtextcolor": ColorStyleItem, "цветтекстаполя": ColorStyleItem,
+	"formtextcolor": ColorStyleItem, "цветтекстаформы": ColorStyleItem,
+	"tableheadertextcolor": ColorStyleItem, "цветтексташапкитаблицы": ColorStyleItem,
+	"fieldselectionbackcolor": ColorStyleItem, "цветфонавыделенияполя": ColorStyleItem,
+	"reportgroup1backcolor": ColorStyleItem, "цветфонагруппировкиотчета1": ColorStyleItem,
+	"reportgroup2backcolor": ColorStyleItem, "цветфонагруппировкиотчета2": ColorStyleItem,
+	"buttonbackcolor": ColorStyleItem, "цветфонакнопки": ColorStyleItem,
+	"tablefooterbackcolor": ColorStyleItem, "цветфонаподвалатаблицы": ColorStyleItem,
+	"tooltipbackcolor": ColorStyleItem, "цветфонаподсказки": ColorStyleItem,
+	"fieldbackcolor": ColorStyleItem, "цветфонаполя": ColorStyleItem,
+	"formbackcolor": ColorStyleItem, "цветфонаформы": ColorStyleItem,
+	"reportheaderbackcolor": ColorStyleItem, "цветфонашапкиотчета": ColorStyleItem,
+	"tableheaderbackcolor": ColorStyleItem, "цветфонашапкитаблицы": ColorStyleItem,
+	"largetextfont": FontStyleItem, "крупныйшрифттекста": FontStyleItem,
+	"smalltextfont": FontStyleItem, "мелкийшрифттекста": FontStyleItem,
+	"normaltextfont": FontStyleItem, "обычныйшрифттекста": FontStyleItem,
+	"extralargetextfont": FontStyleItem, "оченькрупныйшрифттекста": FontStyleItem,
+	"textfont": FontStyleItem, "шрифттекста": FontStyleItem,
+	"controlborder": BorderStyleItem, "рамкаэлементауправления": BorderStyleItem,
+}
+
+// StandardStyleItemType returns the type of a standard style item named in
+// either language.
+func StandardStyleItemType(name string) (StyleItemType, bool) {
+	itemType, ok := standardStyleItems[strings.ToLower(name)]
+	return itemType, ok
 }
 
 // StyleDefinition is one look: a set of style items and what this look makes
@@ -213,20 +268,43 @@ func DecodeStyle(source string, reader io.Reader, configuration project.Project)
 		return StyleDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	seen := map[uuid.UUID]bool{}
+	seen := map[string]bool{}
 	for index, setting := range value.Items {
 		prefix := fmt.Sprintf("items[%d]", index)
-		if setting.Item.IsZero() {
-			issues = append(issues, prefix+".item must be a non-zero UUID")
+		var key string
+		switch {
+		case setting.Item != nil && setting.Standard != "":
+			issues = append(issues, prefix+" names both a style item of the configuration and a standard one")
+			continue
+		case setting.Item != nil:
+			if setting.Item.IsZero() {
+				issues = append(issues, prefix+".item must be a non-zero UUID")
+			}
+			key = setting.Item.String()
+		case setting.Standard != "":
+			itemType, ok := StandardStyleItemType(setting.Standard)
+			if !ok {
+				issues = append(issues, prefix+".standard is not a standard style item")
+				continue
+			}
+			// The type of a standard item is known here, so its value is
+			// checked here, not once the project is read.
+			issues = append(issues, validateStyleItemValue(prefix+".value", itemType, setting.Value, true)...)
+			key = "standard:" + string(itemType) + ":" + englishStandardStyleItem(setting.Standard)
+		default:
+			issues = append(issues, prefix+" must name a style item of the configuration or a standard one")
+			continue
 		}
-		if seen[setting.Item] {
-			issues = append(issues, prefix+".item is set twice by one style")
+		if seen[key] {
+			issues = append(issues, prefix+" is set twice by one style")
 		}
-		seen[setting.Item] = true
-		// Which of the three the value must be is decided by the item this
-		// setting is for, and that is known only once the whole project is
-		// read; here the value is checked for being one value at all.
-		issues = append(issues, validateStyleItemValue(prefix+".value", "", setting.Value, false)...)
+		seen[key] = true
+		if setting.Item != nil {
+			// Which of the three the value must be is decided by the item this
+			// setting is for, and that is known only once the whole project is
+			// read; here the value is checked for being one value at all.
+			issues = append(issues, validateStyleItemValue(prefix+".value", "", setting.Value, false)...)
+		}
 	}
 
 	if err := issuesError(source, value.Format, issues); err != nil {
@@ -454,6 +532,10 @@ func cloneStyle(value StyleDefinition) StyleDefinition {
 	items := make([]StyleItemSetting, len(value.Items))
 	for index, setting := range value.Items {
 		setting.Value = cloneStyleItemValue(setting.Value)
+		if setting.Item != nil {
+			id := *setting.Item
+			setting.Item = &id
+		}
 		items[index] = setting
 	}
 	value.Items = items
@@ -513,7 +595,15 @@ func (catalog *Catalog) validateStyleReferences() error {
 	}
 	for _, style := range catalog.Styles {
 		for _, setting := range style.Items {
-			index, ok := catalog.styleItemByID[setting.Item]
+			if setting.Item == nil {
+				itemType, _ := StandardStyleItemType(setting.Standard)
+				owner := fmt.Sprintf("style %s, standard style item %s", style.Name, setting.Standard)
+				if err := catalog.resolveStyleItemSource(owner, itemType, setting.Value); err != nil {
+					return err
+				}
+				continue
+			}
+			index, ok := catalog.styleItemByID[*setting.Item]
 			if !ok {
 				return fmt.Errorf("style %s sets unknown style item %s", style.Name, setting.Item)
 			}
@@ -600,4 +690,52 @@ func (catalog *Catalog) validateStyleItemCycles() error {
 		}
 	}
 	return nil
+}
+
+// englishStandardStyleItem folds a standard style item named in either
+// language to one key, so that a style setting the same item twice under its
+// two names is seen as setting it twice.
+func englishStandardStyleItem(name string) string {
+	folded := strings.ToLower(name)
+	if english, ok := standardStyleItemEnglish[folded]; ok {
+		return english
+	}
+	return folded
+}
+
+var standardStyleItemEnglish = map[string]string{
+	"альтернативныйцветфонаполя":  "fieldalternativebackcolor",
+	"цветактивности":              "activitycolor",
+	"цветакцента":                 "accentcolor",
+	"цветважного":                 "importantcolor",
+	"цветдополнительнойнавигации": "auxiliarynavigationcolor",
+	"цветлинииотчета":             "reportlinecolor",
+	"цветнавигации":               "navigationcolor",
+	"цветособоготекста":           "specialtextcolor",
+	"цветотрицательногочисла":     "negativetextcolor",
+	"цветрамки":                   "bordercolor",
+	"цветрамкикнопки":             "buttonbordercolor",
+	"цветтекставыделенияполя":     "fieldselectedtextcolor",
+	"цветтекстакнопки":            "buttontextcolor",
+	"цветтекстаподвалатаблицы":    "tablefootertextcolor",
+	"цветтекстаподсказки":         "tooltiptextcolor",
+	"цветтекстаполя":              "fieldtextcolor",
+	"цветтекстаформы":             "formtextcolor",
+	"цветтексташапкитаблицы":      "tableheadertextcolor",
+	"цветфонавыделенияполя":       "fieldselectionbackcolor",
+	"цветфонагруппировкиотчета1":  "reportgroup1backcolor",
+	"цветфонагруппировкиотчета2":  "reportgroup2backcolor",
+	"цветфонакнопки":              "buttonbackcolor",
+	"цветфонаподвалатаблицы":      "tablefooterbackcolor",
+	"цветфонаподсказки":           "tooltipbackcolor",
+	"цветфонаполя":                "fieldbackcolor",
+	"цветфонаформы":               "formbackcolor",
+	"цветфонашапкиотчета":         "reportheaderbackcolor",
+	"цветфонашапкитаблицы":        "tableheaderbackcolor",
+	"крупныйшрифттекста":          "largetextfont",
+	"мелкийшрифттекста":           "smalltextfont",
+	"обычныйшрифттекста":          "normaltextfont",
+	"оченькрупныйшрифттекста":     "extralargetextfont",
+	"шрифттекста":                 "textfont",
+	"рамкаэлементауправления":     "controlborder",
 }

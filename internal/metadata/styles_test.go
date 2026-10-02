@@ -167,6 +167,113 @@ items:
 	}
 }
 
+// A style gives a value of its own to the platform's style items too, named in
+// either language (help, StyleColors, StyleFonts, StyleBorders). The
+// configurations being moved set 34, 5 and 21 of them. Defect caught: a
+// setting could name only an item of the configuration, so every one of
+// these was lost at import.
+func TestStyleSetsTheItemsOfThePlatformByName(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeStyleItem(t, root, styleItemColor, "ЦветГиперссылки", ColorStyleItem,
+		"  color: {source: absolute, rgb: '#1C55AE'}\n")
+	writeMetadata(t, root, StyleKind, styleID, `format: 1
+id: `+styleID+`
+name: Основной
+title: {ru: Основной}
+items:
+  - standard: FormBackColor
+    value: {color: {source: web, name: Cream}}
+  - standard: ШрифтТекста
+    value: {font: {source: style, from: {standard: TextFont}}}
+  - standard: ControlBorder
+    value: {border: {source: absolute, line: single, width: 1}}
+  - standard: FieldTextColor
+    value: {color: {source: style, from: {item: `+styleItemColor+`}}}
+  - item: `+styleItemColor+`
+    value: {color: {source: absolute, rgb: '#8AB4F8'}}
+`)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a style setting the platform's items was refused: %v", err)
+	}
+	style, _ := catalog.Style("Основной")
+	switch {
+	case len(style.Items) != 5:
+		t.Fatalf("the settings were lost: %+v", style.Items)
+	case style.Items[0].Standard != "FormBackColor" || style.Items[0].Item != nil:
+		t.Fatalf("the standard item was not kept by name: %+v", style.Items[0])
+	case style.Items[4].Item == nil || style.Items[4].Item.String() != styleItemColor:
+		t.Fatalf("the configuration's own item was lost: %+v", style.Items[4])
+	}
+	// The platform's item takes its value from one of the configuration's,
+	// and that one must exist and be of the same type.
+	writeMetadata(t, root, StyleKind, styleID, `format: 1
+id: `+styleID+`
+name: Основной
+title: {ru: Основной}
+items:
+  - standard: FieldTextColor
+    value: {color: {source: style, from: {item: `+styleItemDerive+`}}}
+`)
+	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), styleItemDerive) {
+		t.Fatalf("a standard item taking its value from a missing item: %v", err)
+	}
+	writeStyleItem(t, root, styleItemFont, "ШрифтЗаголовка", FontStyleItem, "  font: {source: auto}\n")
+	writeMetadata(t, root, StyleKind, styleID, `format: 1
+id: `+styleID+`
+name: Основной
+title: {ru: Основной}
+items:
+  - standard: FieldTextColor
+    value: {color: {source: style, from: {item: `+styleItemFont+`}}}
+`)
+	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "which is a font and not a color") {
+		t.Fatalf("a standard colour taking its value from a font: %v", err)
+	}
+}
+
+// What a setting names is checked where the style is written down.
+func TestBrokenStyleSettingsAreRefused(t *testing.T) {
+	t.Parallel()
+	for name, broken := range map[string]struct{ items, want string }{
+		"не элемент платформы": {"  - standard: ЦветНебаВечером\n    value: {color: {source: auto}}",
+			"is not a standard style item"},
+		"цвету платформы дан шрифт": {"  - standard: FormBackColor\n    value: {font: {source: auto}}",
+			"is not a color"},
+		"шрифту платформы дан цвет": {"  - standard: TextFont\n    value: {color: {source: auto}}",
+			"is not a font"},
+		"рамке платформы дан цвет": {"  - standard: РамкаЭлементаУправления\n    value: {color: {source: auto}}",
+			"is not a border"},
+		"названы оба": {"  - standard: FormBackColor\n    item: " + styleItemColor + "\n    value: {color: {source: auto}}",
+			"names both"},
+		"не названо ничего": {"  - value: {color: {source: auto}}",
+			"must name a style item of the configuration or a standard one"},
+		// The same item under its two names is one item set twice.
+		"один элемент на двух языках": {"  - standard: FormBackColor\n    value: {color: {source: auto}}\n  - standard: ЦветФонаФормы\n    value: {color: {source: auto}}",
+			"is set twice by one style"},
+		"свой элемент дважды": {"  - item: " + styleItemColor + "\n    value: {color: {source: auto}}\n  - item: " + styleItemColor + "\n    value: {color: {source: auto}}",
+			"is set twice by one style"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := DecodeStyle("style.yaml", strings.NewReader(`format: 1
+id: `+styleID+`
+name: Основной
+title: {ru: Основной}
+items:
+`+broken.items+`
+`), metadataConfiguration())
+			if err == nil {
+				t.Fatalf("%s: accepted", name)
+			}
+			if !strings.Contains(err.Error(), broken.want) {
+				t.Fatalf("%s: refused for another reason: %v", name, err)
+			}
+		})
+	}
+}
+
 func TestStyleReferencesAreChecked(t *testing.T) {
 	t.Parallel()
 	for name, test := range map[string]struct {

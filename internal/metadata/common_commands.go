@@ -27,9 +27,14 @@ const (
 // them it stands among.
 type CommandCategory string
 
+// There are four (help, CommandGroupCategory): the actions panel and the
+// navigation panel of the main window, and the command bar and the navigation
+// panel of a form. The configurations being moved make groups in all four.
 const (
-	ActionsPanelCategory   CommandCategory = "actions-panel"
-	FormCommandBarCategory CommandCategory = "form-command-bar"
+	ActionsPanelCategory        CommandCategory = "actions-panel"
+	NavigationPanelCategory     CommandCategory = "navigation-panel"
+	FormCommandBarCategory      CommandCategory = "form-command-bar"
+	FormNavigationPanelCategory CommandCategory = "form-navigation-panel"
 )
 
 // CommonCommandDefinition is a command belonging to no object.
@@ -90,9 +95,9 @@ func DecodeCommandGroup(source string, reader io.Reader, configuration project.P
 		issues = append(issues, validateTitle("tooltip", value.Tooltip, configuration)...)
 	}
 	switch value.Category {
-	case ActionsPanelCategory, FormCommandBarCategory:
+	case ActionsPanelCategory, NavigationPanelCategory, FormCommandBarCategory, FormNavigationPanelCategory:
 	default:
-		issues = append(issues, "category must be actions-panel or form-command-bar")
+		issues = append(issues, "category must be actions-panel, navigation-panel, form-command-bar or form-navigation-panel")
 	}
 	issues = append(issues, validatePictureReference("picture", value.Picture)...)
 	switch value.Representation {
