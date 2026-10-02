@@ -2752,7 +2752,7 @@ func (catalog *Catalog) indexCommonForms(root string) error {
 	catalog.commonFormNames = make(map[string]bool, len(forms))
 	for _, form := range forms {
 		catalog.commonFormNames[strings.ToLower(form.Name)] = true
-		catalog.objectKindByID[form.ID] = "common form"
+		catalog.objectKindByID[form.ID] = commonFormObjectKind
 	}
 	return nil
 }

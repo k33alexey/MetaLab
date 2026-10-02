@@ -58,24 +58,22 @@ use:
 	}
 }
 
-// An option whose value depends on something needs a parameter standing for
-// that something. Without one there is nothing to look the value up by, and
-// the option answers with whichever record comes first - which is not an
-// answer. The rule holds in the reference configuration exactly: every
-// dimension of every register holding an option value has a parameter.
-func TestOptionWhoseValueDependsOnSomethingNeedsAParameter(t *testing.T) {
+// An option whose value depends on something it has no parameter for is
+// saved by the prototype - 7, 20 and 2 of them in the three configurations
+// being moved - and reading it is defined: parameters passed in part make a
+// Boolean option the OR of the values they select (help,
+// ПолучитьФункциональнуюОпцию). Defect caught: such an option was refused,
+// and with it the whole configuration.
+func TestOptionWithoutAParameterForWhatItDependsOnIsKept(t *testing.T) {
 	t.Parallel()
-	for name, broken := range map[string]struct{ option, parameter, want string }{
+	for name, shape := range map[string]struct{ option, parameter string }{
 		"измерение регистра без параметра": {
-			"location: {kind: information-registers, object: " + optionRegister + ", element: " + optionResource + "}",
-			"", "no functional option parameter stands for that dimension"},
+			"location: {kind: information-registers, object: " + optionRegister + ", element: " + optionResource + "}", ""},
 		"параметр стоит за другое измерение": {
 			"location: {kind: information-registers, object: " + optionRegister + ", element: " + optionResource + "}",
-			"use: [{kind: catalogs, object: " + optionCatalog + "}]",
-			"no functional option parameter stands for that dimension"},
-		"значение в реквизите объекта без параметра": {
-			"location: {kind: catalogs, object: " + optionCatalog + ", element: " + optionAttribute + "}",
-			"", "no functional option parameter stands for that object"},
+			"use: [{kind: catalogs, object: " + optionCatalog + "}]"},
+		"значение в реквизите справочника без параметра": {
+			"location: {kind: catalogs, object: " + optionCatalog + ", element: " + optionAttribute + "}", ""},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -84,22 +82,18 @@ func TestOptionWhoseValueDependsOnSomethingNeedsAParameter(t *testing.T) {
 id: `+optionID+`
 name: Опция
 title: {ru: Опция}
-`+broken.option+`
+`+shape.option+`
 `)
-			if broken.parameter != "" {
+			if shape.parameter != "" {
 				writeMetadata(t, root, FunctionalOptionParameterKind, parameterID, `format: 1
 id: `+parameterID+`
 name: Параметр
 title: {ru: Параметр}
-`+broken.parameter+`
+`+shape.parameter+`
 `)
 			}
-			_, err := Load(root)
-			if err == nil {
-				t.Fatalf("%s: accepted", name)
-			}
-			if !strings.Contains(err.Error(), broken.want) {
-				t.Fatalf("%s: refused for another reason: %v", name, err)
+			if _, err := Load(root); err != nil {
+				t.Fatalf("%s: refused: %v", name, err)
 			}
 		})
 	}

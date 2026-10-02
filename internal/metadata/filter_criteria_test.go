@@ -161,6 +161,18 @@ title: {ru: Критерий}
 		})
 	}
 
+	// The content of a criterion is fields of seven kinds of object, and no
+	// others (owner, 02.10.2026, by the configurator). Defect caught: any kind
+	// the model could resolve was accepted - registers, reports, data
+	// processors - because the check borrowed the list of kinds a functional
+	// option may switch.
+	for _, kind := range []Kind{CatalogKind, DocumentKind, BusinessProcessKind, TaskKind, ExchangePlanKind,
+		ChartOfCharacteristicTypesKind, ChartOfCalculationTypesKind} {
+		if !criterionFieldKind(kind) {
+			t.Fatalf("a criterion may not search %s", kind)
+		}
+	}
+
 	// The shape is checked before anything is resolved.
 	for name, broken := range map[string]struct{ body, want string }{
 		"искать не по чему": {"types: []", "types must contain at least one type"},
@@ -171,6 +183,26 @@ fields:
 			"is already among the fields"},
 		"поле без реквизита": {`types: [{kind: catalog, reference: ` + criterionContracts + `}]
 fields: [{kind: documents, object: ` + criterionOrder + `}]`, "attribute must be a non-zero UUID"},
+		"в составе регистр сведений": {`types: [{kind: catalog, reference: ` + criterionContracts + `}]
+fields: [{kind: information-registers, object: ` + criterionOrder + `, attribute: ` + criterionContract + `}]`, "kind must be a catalog"},
+		"в составе регистр накопления": {`types: [{kind: catalog, reference: ` + criterionContracts + `}]
+fields: [{kind: accumulation-registers, object: ` + criterionOrder + `, attribute: ` + criterionContract + `}]`, "kind must be a catalog"},
+		"в составе регистр бухгалтерии": {`types: [{kind: catalog, reference: ` + criterionContracts + `}]
+fields: [{kind: accounting-registers, object: ` + criterionOrder + `, attribute: ` + criterionContract + `}]`, "kind must be a catalog"},
+		"в составе регистр расчёта": {`types: [{kind: catalog, reference: ` + criterionContracts + `}]
+fields: [{kind: calculation-registers, object: ` + criterionOrder + `, attribute: ` + criterionContract + `}]`, "kind must be a catalog"},
+		"в составе план счетов": {`types: [{kind: catalog, reference: ` + criterionContracts + `}]
+fields: [{kind: charts-of-accounts, object: ` + criterionOrder + `, attribute: ` + criterionContract + `}]`, "kind must be a catalog"},
+		"в составе отчёт": {`types: [{kind: catalog, reference: ` + criterionContracts + `}]
+fields: [{kind: reports, object: ` + criterionOrder + `, attribute: ` + criterionContract + `}]`, "kind must be a catalog"},
+		"в составе обработка": {`types: [{kind: catalog, reference: ` + criterionContracts + `}]
+fields: [{kind: data-processors, object: ` + criterionOrder + `, attribute: ` + criterionContract + `}]`, "kind must be a catalog"},
+		"в составе константа": {`types: [{kind: catalog, reference: ` + criterionContracts + `}]
+fields: [{kind: constants, object: ` + criterionOrder + `, attribute: ` + criterionContract + `}]`, "kind must be a catalog"},
+		"в составе перечисление": {`types: [{kind: catalog, reference: ` + criterionContracts + `}]
+fields: [{kind: enumerations, object: ` + criterionOrder + `, attribute: ` + criterionContract + `}]`, "kind must be a catalog"},
+		"в составе общая команда": {`types: [{kind: catalog, reference: ` + criterionContracts + `}]
+fields: [{kind: common-commands, object: ` + criterionOrder + `, attribute: ` + criterionContract + `}]`, "kind must be a catalog"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

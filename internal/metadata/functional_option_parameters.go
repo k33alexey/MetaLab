@@ -97,13 +97,17 @@ func (catalog *Catalog) FunctionalOptionParameter(name string) (FunctionalOption
 	return cloneFunctionalOptionParameter(catalog.FunctionalOptionParameters[index]), true
 }
 
-// validateFunctionalOptionParameters resolves what every parameter points at,
-// and then checks the other direction: that every option whose value depends on
-// something has that something covered by a parameter.
+// validateFunctionalOptionParameters resolves what every parameter points at.
+//
+// It does not ask the other direction - that every dimension of the register
+// holding an option has a parameter standing for it. The prototype saves an
+// option without one (7, 20 and 2 such options in the three configurations
+// being moved), and the help says what reading it gives: parameters passed
+// only in part make a Boolean option true if any of the values selected by
+// them is true, and raise for an option of any other type (help,
+// ПолучитьФункциональнуюОпцию). An uncovered dimension is parameters passed in
+// part every time, which is defined behaviour, not a broken option.
 func (catalog *Catalog) validateFunctionalOptionParameters() error {
-	// covered holds "kind:object" and "kind:object:element" of everything the
-	// parameters stand for.
-	covered := map[string]bool{}
 	for _, parameter := range catalog.FunctionalOptionParameters {
 		owner := "functional option parameter " + parameter.Name
 		for index, item := range parameter.Use {
@@ -112,56 +116,10 @@ func (catalog *Catalog) validateFunctionalOptionParameters() error {
 			if !ok {
 				return fmt.Errorf("%s stands for %s %s, which is not in the configuration", where, item.Kind, item.Object)
 			}
-			key := string(item.Kind) + ":" + item.Object.String()
-			if item.Element != nil {
-				if !elements.has(*item.Element) {
-					return fmt.Errorf("%s stands for field %s, which that object does not have", where, item.Element)
-				}
-				key += ":" + item.Element.String()
+			if item.Element != nil && !elements.has(*item.Element) {
+				return fmt.Errorf("%s stands for field %s, which that object does not have", where, item.Element)
 			}
-			covered[key] = true
-		}
-	}
-	for _, option := range catalog.FunctionalOptions {
-		if err := catalog.checkOptionAxesCovered(option, covered); err != nil {
-			return err
 		}
 	}
 	return nil
-}
-
-// checkOptionAxesCovered says whether everything the value of an option
-// depends on has a parameter standing for it. Without one there is no way to
-// say which value to read, and the option answers with whichever record comes
-// first - which is not an answer at all.
-func (catalog *Catalog) checkOptionAxesCovered(option FunctionalOptionDefinition, covered map[string]bool) error {
-	owner := "functional option " + option.Name
-	switch option.Location.Kind {
-	case ConstantKind:
-		// One constant, one value, nothing to look it up by.
-		return nil
-	case InformationRegisterKind:
-		index, ok := catalog.informationRegisterByID[option.Location.Object]
-		if !ok {
-			return nil
-		}
-		register := catalog.InformationRegisters[index]
-		for _, dimension := range register.Dimensions {
-			key := string(InformationRegisterKind) + ":" + option.Location.Object.String() + ":" + dimension.ID.String()
-			if !covered[key] {
-				return fmt.Errorf("%s keeps its value per %s, and no functional option parameter stands for that dimension",
-					owner, dimension.Name)
-			}
-		}
-		return nil
-	default:
-		// The value lives in a field of an object, so it differs per element of
-		// that object, and something has to say which element.
-		key := string(option.Location.Kind) + ":" + option.Location.Object.String()
-		if !covered[key] {
-			return fmt.Errorf("%s keeps its value in a field of %s %s, and no functional option parameter stands for that object",
-				owner, option.Location.Kind, option.Location.Object)
-		}
-		return nil
-	}
 }

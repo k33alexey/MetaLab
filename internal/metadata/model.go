@@ -393,7 +393,7 @@ type Enumeration struct {
 	// is used where there is room for a longer wording.
 	ListPresentation         LocalizedText          `yaml:"list_presentation,omitempty"`
 	ExtendedListPresentation LocalizedText          `yaml:"extended_list_presentation,omitempty"`
-	Values                   []EnumerationValue     `yaml:"values"`
+	Values                   []EnumerationValue     `yaml:"values,omitempty"`
 	Characteristics          []ObjectCharacteristic `yaml:"characteristics,omitempty"`
 	// How a value of this enumeration is picked where it is asked for.
 	ChoiceMode           ChoiceMode    `yaml:"choice_mode,omitempty"`
@@ -1025,10 +1025,10 @@ func DecodeEnumeration(source string, reader io.Reader, configuration project.Pr
 	if err := decodeStrict(source, reader, &value); err != nil {
 		return Enumeration{}, err
 	}
+	// An enumeration with no values is saved by the configurator and occurs in
+	// the configurations being moved - erp СтатьиБезАналитики, acc
+	// РежимыОбменаДанными. Its attribute can hold only the empty reference.
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	if len(value.Values) == 0 {
-		issues = append(issues, "values must contain at least one value")
-	}
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, item := range value.Values {
 		prefix := fmt.Sprintf("values[%d]", index)

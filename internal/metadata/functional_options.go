@@ -19,15 +19,17 @@ const FunctionalOptionKind Kind = "functional-options"
 // whole point of a functional option - the user turns a part of the
 // application off without a developer.
 //
-// Three places hold it: a constant, an attribute of an object, or a resource
-// of an information register. The third is how an option comes out different
-// for different companies or warehouses - the dimensions of the register say
-// what it depends on.
+// Three places hold it, and only these three (help, FunctionalOption.Location;
+// all 1133 options of the three configurations being moved keep to them): a
+// constant, an attribute of a catalog, or a resource of an information
+// register. The third is how an option comes out different for different
+// companies or warehouses - the dimensions of the register say what it
+// depends on.
 type FunctionalOptionLocation struct {
 	Kind   Kind      `yaml:"kind" json:"kind"`
 	Object uuid.UUID `yaml:"object" json:"object"`
-	// Element is the attribute or the resource holding the value. A constant
-	// holds its value itself and names none.
+	// Element is the attribute of the catalog or the resource of the register
+	// holding the value. A constant holds its value itself and names none.
 	Element *uuid.UUID `yaml:"element,omitempty" json:"element,omitempty"`
 }
 
@@ -121,15 +123,14 @@ func validateOptionLocation(location FunctionalOptionLocation) []string {
 		if location.Element != nil {
 			issues = append(issues, "location.element is not allowed: a constant holds the value itself")
 		}
-	case InformationRegisterKind, CatalogKind, DocumentKind, ChartOfCharacteristicTypesKind,
-		ChartOfAccountsKind, ChartOfCalculationTypesKind, ExchangePlanKind, BusinessProcessKind, TaskKind:
+	case InformationRegisterKind, CatalogKind:
 		if location.Element == nil || location.Element.IsZero() {
 			issues = append(issues, "location.element is required: the value lives in one field of the object")
 		}
 	case "":
 		issues = append(issues, "location.kind is required")
 	default:
-		issues = append(issues, "location.kind cannot hold the value of a functional option")
+		issues = append(issues, "location.kind cannot hold the value of a functional option: only a constant, a catalog or an information register can")
 	}
 	return issues
 }
@@ -144,7 +145,8 @@ func knownMetadataKind(kind Kind) bool {
 		ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind,
 		BusinessProcessKind, TaskKind, ExchangePlanKind, ReportKind, DataProcessorKind,
 		SubsystemKind, CommonAttributeKind, CommonModuleKind, SessionParameterKind, DefinedTypeKind,
-		NumeratorKind, SequenceKind, RoleKind, EventSubscriptionKind:
+		NumeratorKind, SequenceKind, RoleKind, EventSubscriptionKind,
+		CommonCommandKind, CommonFormKind, FilterCriterionKind:
 		return true
 	default:
 		return false
@@ -189,6 +191,10 @@ type objectElements struct {
 	attributes map[uuid.UUID][]Type
 	tableParts map[uuid.UUID][]Attribute
 	commands   map[uuid.UUID]bool
+	// flags are the accounting flags of a chart of accounts, its own and those
+	// of its kinds of subconto. A functional option switches them; nothing
+	// else points at them, so they are kept apart from the attributes.
+	flags map[uuid.UUID]bool
 }
 
 // has says whether the object holds this attribute at all.
@@ -248,6 +254,19 @@ func (catalog *Catalog) objectElementsOf(kind Kind, id uuid.UUID) (objectElement
 	case NumeratorKind:
 		_, ok := catalog.numeratorByID[id]
 		return objectElements{}, ok
+	case CommonCommandKind:
+		_, ok := catalog.commonCommandByID[id]
+		return objectElements{}, ok
+	case FilterCriterionKind:
+		index, ok := catalog.filterCriterionByID[id]
+		if !ok {
+			return objectElements{}, false
+		}
+		return elementsOf(nil, nil, catalog.FilterCriteria[index].Commands), true
+	case CommonFormKind:
+		// Common forms are read from their folder and known by identifier only
+		// once the project is read from disk.
+		return objectElements{}, catalog.objectKindByID[id] == commonFormObjectKind
 	case SequenceKind:
 		_, ok := catalog.sequenceByID[id]
 		return objectElements{}, ok
@@ -302,7 +321,12 @@ func (catalog *Catalog) objectElementsOf(kind Kind, id uuid.UUID) (objectElement
 			return objectElements{}, false
 		}
 		item := catalog.ChartsOfAccounts[index]
-		return elementsOf(item.Attributes, item.TableParts, item.Commands), true
+		elements := elementsOf(item.Attributes, item.TableParts, item.Commands)
+		elements.flags = make(map[uuid.UUID]bool, len(item.AccountingFlags)+len(item.ExtDimensionAccountingFlags))
+		for _, flag := range append(slices.Clone(item.AccountingFlags), item.ExtDimensionAccountingFlags...) {
+			elements.flags[flag.ID] = true
+		}
+		return elements, true
 	case ChartOfCalculationTypesKind:
 		index, ok := catalog.chartOfCalculationTypesByID[id]
 		if !ok {
@@ -351,6 +375,28 @@ func (catalog *Catalog) objectElementsOf(kind Kind, id uuid.UUID) (objectElement
 		}
 		item := catalog.AccumulationRegisters[index]
 		return elementsOf(item.Attributes, nil, item.Commands, RegisterDimensionAttributes(item.Dimensions), item.Resources), true
+	case AccountingRegisterKind:
+		index, ok := catalog.accountingRegisterByID[id]
+		if !ok {
+			return objectElements{}, false
+		}
+		item := catalog.AccountingRegisters[index]
+		resources := make([]Attribute, 0, len(item.Resources))
+		for _, resource := range item.Resources {
+			resources = append(resources, resource.Attribute)
+		}
+		return elementsOf(item.Attributes, nil, item.Commands, RegisterDimensionAttributes(item.Dimensions), resources), true
+	case CalculationRegisterKind:
+		index, ok := catalog.calculationRegisterByID[id]
+		if !ok {
+			return objectElements{}, false
+		}
+		item := catalog.CalculationRegisters[index]
+		attributes := make([]Attribute, 0, len(item.Attributes))
+		for _, attribute := range item.Attributes {
+			attributes = append(attributes, attribute.Attribute)
+		}
+		return elementsOf(attributes, nil, item.Commands, RegisterDimensionAttributes(item.Dimensions), item.Resources), true
 	case ReportKind:
 		index, ok := catalog.reportByID[id]
 		if !ok {
@@ -375,14 +421,8 @@ func (catalog *Catalog) objectElementsOf(kind Kind, id uuid.UUID) (objectElement
 func (catalog *Catalog) validateFunctionalOptions() error {
 	for _, option := range catalog.FunctionalOptions {
 		owner := "functional option " + option.Name
-		elements, ok := catalog.objectElementsOf(option.Location.Kind, option.Location.Object)
-		if !ok {
-			return fmt.Errorf("%s keeps its value in %s %s, which is not in the configuration",
-				owner, option.Location.Kind, option.Location.Object)
-		}
-		if element := option.Location.Element; element != nil && !elements.has(*element) {
-			return fmt.Errorf("%s keeps its value in field %s, which that %s does not have",
-				owner, element, option.Location.Kind)
+		if err := catalog.checkOptionLocation(owner, option.Location); err != nil {
+			return err
 		}
 		for index, item := range option.Content {
 			where := fmt.Sprintf("%s content[%d]", owner, index)
@@ -396,6 +436,45 @@ func (catalog *Catalog) validateFunctionalOptions() error {
 		}
 	}
 	return nil
+}
+
+// checkOptionLocation resolves the place holding the value: the constant, the
+// attribute of the catalog, the resource of the information register. A
+// dimension of the register is not a place - it is what the value is looked up
+// by - and neither is an attribute of the register.
+func (catalog *Catalog) checkOptionLocation(owner string, location FunctionalOptionLocation) error {
+	missing := fmt.Errorf("%s keeps its value in %s %s, which is not in the configuration", owner, location.Kind, location.Object)
+	var fields []Attribute
+	switch location.Kind {
+	case ConstantKind:
+		if _, ok := catalog.constantByID[location.Object]; !ok {
+			return missing
+		}
+		return nil
+	case CatalogKind:
+		index, ok := catalog.catalogByID[location.Object]
+		if !ok {
+			return missing
+		}
+		fields = catalog.Catalogs[index].Attributes
+	case InformationRegisterKind:
+		index, ok := catalog.informationRegisterByID[location.Object]
+		if !ok {
+			return missing
+		}
+		fields = catalog.InformationRegisters[index].Resources
+	default:
+		return fmt.Errorf("%s cannot keep its value in %s", owner, location.Kind)
+	}
+	for _, field := range fields {
+		if location.Element != nil && field.ID == *location.Element {
+			return nil
+		}
+	}
+	if location.Kind == InformationRegisterKind {
+		return fmt.Errorf("%s keeps its value in field %s, which is not a resource of that information register", owner, location.Element)
+	}
+	return fmt.Errorf("%s keeps its value in field %s, which is not an attribute of that catalog", owner, location.Element)
 }
 
 // checkOptionElement resolves the part of an object an option switches.
@@ -418,7 +497,7 @@ func checkOptionElement(where string, item FunctionalOptionItem, elements object
 	if item.Element == nil {
 		return nil
 	}
-	if elements.has(*item.Element) || elements.commands[*item.Element] {
+	if elements.has(*item.Element) || elements.commands[*item.Element] || elements.flags[*item.Element] {
 		return nil
 	}
 	if _, ok := elements.tableParts[*item.Element]; ok {

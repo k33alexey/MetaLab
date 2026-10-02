@@ -3,6 +3,8 @@ package metadata
 import (
 	"strings"
 	"testing"
+
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 const (
@@ -115,7 +117,7 @@ content:
 	}
 }
 
-// The value of an option lives in a constant, in an attribute of an object or
+// The value of an option lives in a constant, in an attribute of a catalog or
 // in a resource of an information register. The third is how one application
 // answers differently for different warehouses - the dimensions of the
 // register say what the answer depends on.
@@ -161,7 +163,15 @@ func TestFunctionalOptionsPointingNowhereAreRefused(t *testing.T) {
 		"значение лежит в несуществующем объекте": {`location: {kind: constants, object: ` + optionSecond + `}`,
 			"which is not in the configuration"},
 		"значение лежит в несуществующем поле": {`location: {kind: information-registers, object: ` +
-			optionRegister + `, element: ` + optionSecond + `}`, "which that information-registers does not have"},
+			optionRegister + `, element: ` + optionSecond + `}`, "which is not a resource of that information register"},
+		// A dimension is what the value is looked up by, not where it is kept
+		// (help, FunctionalOption.Location: a resource of the register).
+		"значение лежит в измерении регистра": {`location: {kind: information-registers, object: ` +
+			optionRegister + `, element: ` + optionDimension + `}`, "which is not a resource of that information register"},
+		"значение лежит в реквизите табличной части": {`location: {kind: catalogs, object: ` +
+			optionCatalog + `, element: ` + optionPartField + `}`, "which is not an attribute of that catalog"},
+		"значение лежит в несуществующем справочнике": {`location: {kind: catalogs, object: ` +
+			optionSecond + `, element: ` + optionAttribute + `}`, "which is not in the configuration"},
 		"переключается несуществующий объект": {`location: {kind: constants, object: ` + optionConstant + `}
 content: [{kind: catalogs, object: ` + optionSecond + `}]`, "which is not in the configuration"},
 		"переключается несуществующий реквизит": {`location: {kind: constants, object: ` + optionConstant + `}
@@ -203,6 +213,15 @@ func TestBrokenFunctionalOptionsAreRefused(t *testing.T) {
 			"location.element is required"},
 		"значение негде хранить": {"location: {kind: reports, object: " + optionCatalog + "}",
 			"cannot hold the value of a functional option"},
+		// Only a constant, a catalog and an information register hold a value
+		// (help, FunctionalOption.Location). Defect caught: a document, a chart
+		// and a task were accepted as places the platform never reads from.
+		"значение в реквизите документа": {"location: {kind: documents, object: " + optionCatalog + ", element: " + optionAttribute + "}",
+			"cannot hold the value of a functional option"},
+		"значение в плане видов характеристик": {"location: {kind: charts-of-characteristic-types, object: " + optionCatalog + ", element: " + optionAttribute + "}",
+			"cannot hold the value of a functional option"},
+		"значение в задаче": {"location: {kind: tasks, object: " + optionCatalog + ", element: " + optionAttribute + "}",
+			"cannot hold the value of a functional option"},
 		"вида объекта не существует": {"location: {kind: constants, object: " + optionConstant + "}\n" +
 			"content: [{kind: слайды, object: " + optionCatalog + "}]", "is not a kind of metadata object"},
 		"одно и то же дважды": {"location: {kind: constants, object: " + optionConstant + "}\n" +
@@ -224,5 +243,95 @@ title: {ru: Опция}
 				t.Fatalf("%s: refused for another reason: %v", name, err)
 			}
 		})
+	}
+}
+
+// The content of an option is any object of the metadata tree and its parts
+// (help, the Content tab of a functional option). Every shape below is one the
+// three configurations being moved switch. Defect caught: a common command
+// (234/74/62), a common form (25/9/10), a filter criterion (3/1/1), a part of
+// an accounting or calculation register and an accounting flag were not kinds
+// an option could name, and the option was refused.
+func TestFunctionalOptionSwitchesEveryKindThePrototypeDoes(t *testing.T) {
+	t.Parallel()
+	id := func() uuid.UUID { return uuid.MustNew() }
+	command, form, criterion, criterionCommand := id(), id(), id(), id()
+	accounting, accountingDimension, accountingResource, accountingAttribute, accountingCommand := id(), id(), id(), id(), id()
+	calculation, calculationDimension, calculationResource, calculationAttribute := id(), id(), id(), id()
+	chart, flag, subcontoFlag := id(), id(), id()
+	parent, child := id(), id()
+	constant := id()
+	field := func(id uuid.UUID) Attribute { return Attribute{ID: id} }
+	catalog := &Catalog{
+		constantByID:           map[uuid.UUID]int{constant: 0},
+		commonCommandByID:      map[uuid.UUID]int{command: 0},
+		objectKindByID:         map[uuid.UUID]string{form: commonFormObjectKind},
+		filterCriterionByID:    map[uuid.UUID]int{criterion: 0},
+		FilterCriteria:         []FilterCriterionDefinition{{ID: criterion, Commands: []ObjectCommand{{ID: criterionCommand}}}},
+		accountingRegisterByID: map[uuid.UUID]int{accounting: 0},
+		AccountingRegisters: []AccountingRegisterDefinition{{ID: accounting,
+			Dimensions: []RegisterDimension{{Attribute: field(accountingDimension)}},
+			Resources:  []AccountingRegisterResource{{Attribute: field(accountingResource)}},
+			Attributes: []Attribute{field(accountingAttribute)}, Commands: []ObjectCommand{{ID: accountingCommand}}}},
+		calculationRegisterByID: map[uuid.UUID]int{calculation: 0},
+		CalculationRegisters: []CalculationRegisterDefinition{{ID: calculation,
+			Dimensions: []RegisterDimension{{Attribute: field(calculationDimension)}},
+			Resources:  []Attribute{field(calculationResource)},
+			Attributes: []CalculationRegisterAttribute{{Attribute: field(calculationAttribute)}}}},
+		chartOfAccountsByID: map[uuid.UUID]int{chart: 0},
+		ChartsOfAccounts: []ChartOfAccountsDefinition{{ID: chart,
+			AccountingFlags: []AccountingFlag{{Attribute: field(flag)}}, ExtDimensionAccountingFlags: []AccountingFlag{{Attribute: field(subcontoFlag)}}}},
+		subsystemByID: map[uuid.UUID]int{parent: 0, child: 1},
+		Subsystems:    []SubsystemDefinition{{ID: parent}, {ID: child, Parent: &parent}},
+	}
+	part := func(kind Kind, object, element uuid.UUID) FunctionalOptionItem {
+		return FunctionalOptionItem{Kind: kind, Object: object, Element: &element}
+	}
+	content := []FunctionalOptionItem{
+		{Kind: CommonCommandKind, Object: command},
+		{Kind: CommonFormKind, Object: form},
+		{Kind: FilterCriterionKind, Object: criterion},
+		part(FilterCriterionKind, criterion, criterionCommand),
+		{Kind: AccountingRegisterKind, Object: accounting},
+		part(AccountingRegisterKind, accounting, accountingDimension),
+		part(AccountingRegisterKind, accounting, accountingResource),
+		part(AccountingRegisterKind, accounting, accountingAttribute),
+		part(AccountingRegisterKind, accounting, accountingCommand),
+		{Kind: CalculationRegisterKind, Object: calculation},
+		part(CalculationRegisterKind, calculation, calculationDimension),
+		part(CalculationRegisterKind, calculation, calculationResource),
+		part(CalculationRegisterKind, calculation, calculationAttribute),
+		part(ChartOfAccountsKind, chart, flag),
+		part(ChartOfAccountsKind, chart, subcontoFlag),
+		// A subsystem inside a subsystem is switched by itself.
+		{Kind: SubsystemKind, Object: child},
+	}
+	for _, item := range content {
+		if !knownMetadataKind(item.Kind) {
+			t.Fatalf("%s is not a kind an option may name", item.Kind)
+		}
+	}
+	location := FunctionalOptionLocation{Kind: ConstantKind, Object: constant}
+	catalog.FunctionalOptions = []FunctionalOptionDefinition{{Name: "Опция", Location: location, Content: content}}
+	if err := catalog.validateFunctionalOptions(); err != nil {
+		t.Fatalf("the prototype's content was refused: %v", err)
+	}
+	// Each of them still has to be there: a part the object does not have and
+	// an object the configuration does not have are refused, for every kind.
+	for index, item := range content {
+		for name, broken := range map[string]FunctionalOptionItem{
+			"object": {Kind: item.Kind, Object: id(), Element: item.Element},
+			"part":   part(item.Kind, item.Object, id()),
+		} {
+			catalog.FunctionalOptions[0].Content = []FunctionalOptionItem{broken}
+			if err := catalog.validateFunctionalOptions(); err == nil {
+				t.Fatalf("content[%d] %s with a missing %s was accepted", index, item.Kind, name)
+			}
+		}
+	}
+	// A flag is a part of the chart that only an option points at: it is not
+	// an attribute anything else may read.
+	if elements, _ := catalog.objectElementsOf(ChartOfAccountsKind, chart); elements.has(flag) {
+		t.Fatal("an accounting flag became an attribute of the chart")
 	}
 }

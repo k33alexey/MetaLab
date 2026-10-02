@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -188,5 +189,52 @@ func writeObjectForm(t *testing.T, root string, kind Kind, objectName, form, for
 	body := "format: 1\nid: " + formID + "\nname: " + form + "\ntitle: {ru: " + form + "}\nkind: list\n"
 	if err := os.WriteFile(filepath.Join(directory, project.FormMetadataFile), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// An enumeration with no values is saved by the configurator, and the
+// configurations being moved have them (erp СтатьиБезАналитики, acc
+// РежимыОбменаДанными). Defect caught: it was refused, and the attribute typed
+// by it with it.
+func TestEnumerationWithoutValuesIsKept(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeMetadata(t, root, EnumerationKind, enumObject, `format: 1
+id: `+enumObject+`
+name: СтатьиБезАналитики
+title: {ru: Статьи без аналитики}
+`)
+	writeMetadata(t, root, CatalogKind, enumCommand, `format: 1
+id: `+enumCommand+`
+name: Статьи
+title: {ru: Статьи}
+code: {type: string, length: 9, auto: true}
+description_length: 150
+attributes:
+  - {id: `+enumTemplate+`, name: Аналитика, title: {ru: Аналитика}, types: [{kind: enumeration, reference: `+enumObject+`}]}
+`)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("an enumeration without values was refused: %v", err)
+	}
+	enumeration, ok := catalog.Enumeration("СтатьиБезАналитики")
+	if !ok || len(enumeration.Values) != 0 {
+		t.Fatalf("the enumeration did not load as it is: %+v", enumeration)
+	}
+	// What is published is read back the same way.
+	snapshot, err := NewRuntimeSnapshot(catalog, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded RuntimeSnapshot
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decoded.Catalog(); err != nil {
+		t.Fatalf("the published snapshot of an enumeration without values does not read back: %v", err)
 	}
 }
