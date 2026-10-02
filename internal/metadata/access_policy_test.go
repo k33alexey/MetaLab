@@ -48,6 +48,11 @@ func TestCatalogRejectsUnresolvablePolicies(t *testing.T) {
 		"unknown session parameter": func(r *RoleDefinition, _ CatalogDefinition) {
 			r.PolicyTemplates[0].Rule = PolicyRule{Field: r.PolicyTemplates[0].Rule.Field, Operator: PolicyEqual, Parameter: "НетТакого"}
 		},
+		// No name is the platform's: a ТекущийПользователь the configuration did
+		// not declare is as unknown as any other.
+		"undeclared ТекущийПользователь": func(r *RoleDefinition, _ CatalogDefinition) {
+			r.PolicyTemplates[0].Rule = PolicyRule{Field: r.PolicyTemplates[0].Rule.Field, Operator: PolicyEqual, Parameter: "ТекущийПользователь"}
+		},
 	}
 	for name, mutate := range tests {
 		role, definition := publishablePolicyRole()
@@ -55,6 +60,12 @@ func TestCatalogRejectsUnresolvablePolicies(t *testing.T) {
 		if _, err := NewCatalogSnapshotWithRoles(metadataConfiguration(), nil, nil, nil, []CatalogDefinition{definition}, nil, nil, nil, []RoleDefinition{role}); err == nil {
 			t.Fatalf("catalog accepted a policy with %s", name)
 		}
+	}
+	// The ML user needs no declaration: it is the platform's operand.
+	role, definition := publishablePolicyRole()
+	role.PolicyTemplates[0].Rule = PolicyRule{Field: role.PolicyTemplates[0].Rule.Field, Operator: PolicyEqual, CurrentMLUser: true}
+	if _, err := NewCatalogSnapshotWithRoles(metadataConfiguration(), nil, nil, nil, []CatalogDefinition{definition}, nil, nil, nil, []RoleDefinition{role}); err != nil {
+		t.Fatalf("catalog refused a policy on the ML user: %v", err)
 	}
 }
 
@@ -78,7 +89,7 @@ func TestParameterizedPolicyTemplates(t *testing.T) {
 	owner, warehouse := uuid.MustNew(), uuid.MustNew()
 	role := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Кладовщик", Title: LocalizedText{"ru": "Кладовщик"},
 		PolicyTemplates: []PolicyTemplate{{Name: "Своё", Parameters: []string{"Поле"},
-			Rule: PolicyRule{Field: "$Поле", Operator: PolicyEqual, Parameter: CurrentUserParameter}}},
+			Rule: PolicyRule{Field: "$Поле", Operator: PolicyEqual, CurrentMLUser: true}}},
 		Objects: []ObjectPermission{{Object: uuid.MustNew(), Operations: []PermissionOperation{PermissionRead},
 			Policies: []AccessPolicy{
 				{Operations: []PermissionOperation{PermissionRead}, Template: "Своё", Arguments: []string{owner.String()}},
@@ -103,10 +114,10 @@ func TestParameterizedPolicyTemplates(t *testing.T) {
 		"too many arguments":     func(r *RoleDefinition) { r.Objects[0].Policies[0].Arguments = []string{"code", "description"} },
 		"undeclared placeholder": func(r *RoleDefinition) { r.PolicyTemplates[0].Rule.Field = "$Другое" },
 		"placeholder inline": func(r *RoleDefinition) {
-			r.Objects[0].Policies[0] = AccessPolicy{Operations: []PermissionOperation{PermissionRead}, Rule: &PolicyRule{Field: "$Поле", Operator: PolicyEqual, Parameter: CurrentUserParameter}}
+			r.Objects[0].Policies[0] = AccessPolicy{Operations: []PermissionOperation{PermissionRead}, Rule: &PolicyRule{Field: "$Поле", Operator: PolicyEqual, CurrentMLUser: true}}
 		},
 		"arguments on inline": func(r *RoleDefinition) {
-			r.Objects[0].Policies[0] = AccessPolicy{Operations: []PermissionOperation{PermissionRead}, Rule: &PolicyRule{Field: "code", Operator: PolicyEqual, Parameter: CurrentUserParameter}, Arguments: []string{"code"}}
+			r.Objects[0].Policies[0] = AccessPolicy{Operations: []PermissionOperation{PermissionRead}, Rule: &PolicyRule{Field: "code", Operator: PolicyEqual, CurrentMLUser: true}, Arguments: []string{"code"}}
 		},
 		"duplicate parameter": func(r *RoleDefinition) { r.PolicyTemplates[0].Parameters = []string{"Поле", "Поле"} },
 	}
@@ -125,7 +136,7 @@ func TestPolicySubqueryValidation(t *testing.T) {
 	t.Parallel()
 	field, source := uuid.MustNew().String(), uuid.MustNew()
 	valid := PolicyRule{Field: field, Operator: PolicyIn, Subquery: &PolicySubquery{Object: source, Field: "code",
-		Where: []PolicyRule{{Field: "description", Operator: PolicyEqual, Parameter: CurrentUserParameter}}}}
+		Where: []PolicyRule{{Field: "description", Operator: PolicyEqual, CurrentMLUser: true}}}}
 	role := func(rule PolicyRule) RoleDefinition {
 		return RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Кладовщик", Title: LocalizedText{"ru": "Кладовщик"},
 			Objects: []ObjectPermission{{Object: uuid.MustNew(), Operations: []PermissionOperation{PermissionRead},
@@ -204,6 +215,8 @@ func TestValidateRoleRejectsBrokenPolicies(t *testing.T) {
 		"unknown operator":        {Field: field, Operator: PolicyOperator("like"), Values: []Value{{Kind: StringType, Data: "x"}}},
 		"eq with two values":      {Field: field, Operator: PolicyEqual, Values: []Value{{Kind: StringType, Data: "a"}, {Kind: StringType, Data: "b"}}},
 		"parameter is not a name": {Field: field, Operator: PolicyEqual, Parameter: "не имя"},
+		"ml user and parameter":   {Field: field, Operator: PolicyEqual, Parameter: "П", CurrentMLUser: true},
+		"ml user and values":      {Field: field, Operator: PolicyEqual, CurrentMLUser: true, Values: []Value{{Kind: StringType, Data: "x"}}},
 	}
 	for name, rule := range rules {
 		if err := ValidateRole("role.yaml", inline(rule), metadataConfiguration()); err == nil {
@@ -222,6 +235,8 @@ func TestValidateRoleAcceptsListAndLiteralRules(t *testing.T) {
 		"negated list":       {Field: field, Operator: PolicyNotIn, Values: []Value{{Kind: StringType, Data: "Архив"}}},
 		"session parameter":  {Field: field, Operator: PolicyEqual, Parameter: "ТекущийПользователь"},
 		"standard field key": {Field: "description", Operator: PolicyEqual, Parameter: "ТекущийПользователь"},
+		"current ml user":    {Field: field, Operator: PolicyEqual, CurrentMLUser: true},
+		"not the ml user":    {Field: field, Operator: PolicyNotIn, CurrentMLUser: true},
 	}
 	for name, rule := range rules {
 		role, _ := policyRoleFixture()

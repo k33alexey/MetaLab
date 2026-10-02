@@ -27,7 +27,14 @@ const (
 // so a broken restriction cannot reach a working database.
 //
 // Exactly one operand is set: Values for literals, Parameter for a session
-// parameter reference. PolicyEqual and PolicyNotEqual take a single value;
+// parameter of the configuration, Subquery for a set read from another object,
+// CurrentMLUser for the identifier of the ML platform user of the session.
+//
+// The ML user is an operand of its own rather than a session parameter under a
+// reserved name: session parameters are the configuration's namespace, and an
+// imported configuration declares ТекущийПользователь itself, as a reference to
+// its own Users catalog. A platform value under that name would shadow the
+// configuration's. PolicyEqual and PolicyNotEqual take a single value;
 // PolicyIn and PolicyNotIn take a list, which is what expresses the common
 // "this user may see these three warehouses" case.
 type PolicyRule struct {
@@ -36,6 +43,9 @@ type PolicyRule struct {
 	Values    []Value         `yaml:"values,omitempty" json:"values,omitempty"`
 	Parameter string          `yaml:"parameter,omitempty" json:"parameter,omitempty"`
 	Subquery  *PolicySubquery `yaml:"subquery,omitempty" json:"subquery,omitempty"`
+	// CurrentMLUser compares against the ML platform user of the session, an
+	// identifier the platform knows without running application code.
+	CurrentMLUser bool `yaml:"current_ml_user,omitempty" json:"currentMlUser,omitempty"`
 }
 
 // PolicySubquery restricts rows by membership in a set read from another object:
@@ -178,14 +188,14 @@ func validatePolicyRule(path string, rule PolicyRule, placeholders map[string]bo
 		issues = append(issues, path+".operator must be one of eq, ne, in, not-in")
 	}
 	operands := 0
-	for _, present := range []bool{len(rule.Values) > 0, rule.Parameter != "", rule.Subquery != nil} {
+	for _, present := range []bool{len(rule.Values) > 0, rule.Parameter != "", rule.Subquery != nil, rule.CurrentMLUser} {
 		if present {
 			operands++
 		}
 	}
 	switch {
 	case operands > 1:
-		issues = append(issues, path+" must compare against exactly one of values, a session parameter or a subquery")
+		issues = append(issues, path+" must compare against exactly one of values, a session parameter, a subquery or the current ML user")
 	case rule.Parameter != "":
 		if !validIdentifier(rule.Parameter) || utf8.RuneCountInString(rule.Parameter) > maxNameLength {
 			issues = append(issues, path+".parameter must be a session parameter name")
@@ -195,6 +205,7 @@ func validatePolicyRule(path string, rule PolicyRule, placeholders map[string]bo
 			issues = append(issues, path+".operator must be in or not-in when comparing against a subquery")
 		}
 		issues = append(issues, validatePolicySubquery(path+".subquery", *rule.Subquery, placeholders)...)
+	case rule.CurrentMLUser:
 	case len(rule.Values) > 0:
 		if len(rule.Values) > MaxPolicyValues {
 			issues = append(issues, fmt.Sprintf("%s.values must not exceed %d entries", path, MaxPolicyValues))
@@ -203,7 +214,7 @@ func validatePolicyRule(path string, rule PolicyRule, placeholders map[string]bo
 			issues = append(issues, path+".values must hold exactly one value for operator eq or ne")
 		}
 	default:
-		issues = append(issues, path+" must compare against values, a session parameter or a subquery")
+		issues = append(issues, path+" must compare against values, a session parameter, a subquery or the current ML user")
 	}
 	return issues
 }

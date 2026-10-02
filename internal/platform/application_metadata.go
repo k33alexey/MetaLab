@@ -148,7 +148,7 @@ func (runtime *Runtime) requireApplicationView(ctx context.Context, databaseID, 
 	if err := permissions.RequireObject(objectID, metadata.PermissionView); err != nil {
 		return nil, err
 	}
-	ctx = metadata.WithSessionValues(metadata.WithPermissions(ctx, permissions), applicationSessionValues(userID))
+	ctx = metadata.WithMLUser(metadata.WithPermissions(ctx, permissions), userID)
 	return metadata.WithSessionResolver(ctx, applicationSessionResolver(snapshot, pool, catalog, userID)), nil
 }
 

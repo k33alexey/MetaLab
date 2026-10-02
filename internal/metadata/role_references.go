@@ -389,10 +389,6 @@ func (catalog *Catalog) validatePolicyOperand(role RoleDefinition, rule PolicyRu
 	if rule.Parameter == "" {
 		return nil
 	}
-	if ReservedSessionParameter(rule.Parameter) {
-		// The platform supplies this one, so a project never declares it.
-		return nil
-	}
 	if _, ok := catalog.SessionParameter(rule.Parameter); !ok {
 		return fmt.Errorf("role %s: policy references unknown session parameter %s", role.Name, rule.Parameter)
 	}

@@ -3,23 +3,28 @@ package metadata
 import (
 	"context"
 	"strings"
+
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// CurrentUserParameter is the one session parameter the platform resolves by
-// itself, from the authenticated session rather than from application code.
-//
-// It carries the ML platform user identifier, not a reference to an application
-// "Users" catalog: the platform has no opinion about whether such a catalog
-// exists. An applied solution that wants to restrict rows by their owner must
-// therefore store that identifier in its own data.
-const CurrentUserParameter = "ТекущийПользователь"
-const currentUserParameterEN = "CurrentUser"
+type mlUserContextKey struct{}
 
-// ReservedSessionParameter reports whether a name belongs to the platform and
-// may not be declared by a project. Reserving the name is what lets a read path
-// resolve it without building a BSL runtime.
-func ReservedSessionParameter(name string) bool {
-	return strings.EqualFold(name, CurrentUserParameter) || strings.EqualFold(name, currentUserParameterEN)
+// WithMLUser attaches the ML platform user of the session. It travels apart from
+// session parameters on purpose: session parameters belong to the configuration,
+// which may declare any name, ТекущийПользователь included, and fills them in its
+// own session module. The ML user is the platform's layer and never enters the
+// configuration's namespace, so nothing the configuration declares can shadow it
+// or be shadowed by it.
+func WithMLUser(ctx context.Context, user uuid.UUID) context.Context {
+	return context.WithValue(ctx, mlUserContextKey{}, user)
+}
+
+// MLUserFromContext returns the ML platform user attached by WithMLUser. A
+// context without one reports false, and a restriction comparing against the
+// ML user then refuses the read rather than matching nothing or everything.
+func MLUserFromContext(ctx context.Context) (uuid.UUID, bool) {
+	user, ok := ctx.Value(mlUserContextKey{}).(uuid.UUID)
+	return user, ok && !user.IsZero()
 }
 
 type sessionValuesContextKey struct{}
@@ -29,10 +34,9 @@ type sessionValuesContextKey struct{}
 // value or against a set, and a parameter holding a collection is the ordinary
 // case rather than the exception.
 //
-// The hosting layer resolves these once per request, the same way it resolves
-// permissions. What goes here is what the PLATFORM knows by itself, so an
-// ordinary read never builds a BSL runtime; values the project computes come
-// from WithSessionResolver instead, and only when a restriction asks.
+// Values given here answer before the resolver is asked, so a caller that
+// already knows a value - a test, a request that has computed it - does not
+// make a restriction run the session module for it again.
 func WithSessionValues(ctx context.Context, values map[string][]Value) context.Context {
 	folded := make(map[string][]Value, len(values))
 	for name, value := range values {
@@ -43,16 +47,15 @@ func WithSessionValues(ctx context.Context, values map[string][]Value) context.C
 
 type sessionResolverContextKey struct{}
 
-// SessionValueResolver supplies the values the PROJECT computes, as opposed to
-// the ones the platform knows by itself. Resolving one runs application code -
+// SessionValueResolver supplies the values the PROJECT computes in its session
+// module. Resolving one runs application code -
 // the session module - so it is a function called only if a restriction actually
 // names such a parameter, never work done up front for every read.
 type SessionValueResolver func(ctx context.Context, name string) ([]Value, bool, error)
 
 // WithSessionResolver attaches the project's own supplier of session parameter
-// values. Platform-owned names are answered from WithSessionValues and never
-// reach the resolver: the platform's answer for ТекущийПользователь must not
-// depend on application code.
+// values. Every session parameter is the configuration's, so this is where the
+// value of any of them comes from unless WithSessionValues already gave it.
 func WithSessionResolver(ctx context.Context, resolver SessionValueResolver) context.Context {
 	return context.WithValue(ctx, sessionResolverContextKey{}, resolver)
 }

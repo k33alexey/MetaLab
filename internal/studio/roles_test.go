@@ -367,31 +367,46 @@ func TestRoleOverviewUI(t *testing.T) {
 	}
 }
 
-// The current-user parameter belongs to the platform, so no project declares
-// it — yet "only the rows of the current user" is what most restrictions are
-// written for. Unless the schema names it, the editor cannot offer it at all.
-func TestPermissionSchemaOffersTheCurrentUserParameter(t *testing.T) {
+// "Only the rows of the current user" is what most restrictions are written
+// for, and the ML user is offered for it as an operand of its own. Defects
+// caught: the schema inventing a ТекущийПользователь the project never
+// declared, and a rule on the ML user that the editor cannot save or that
+// loses its operand on the way back.
+func TestRoleEditorStoresARestrictionOnTheMLUser(t *testing.T) {
 	t.Parallel()
 	workspace, object := roleWorkspace(t)
 	created, err := workspace.CreateRole("Продавец")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(created.Schema.SessionParameters, metadata.CurrentUserParameter) {
-		t.Fatalf("editor is not offered the current-user parameter: %v", created.Schema.SessionParameters)
+	if slices.Contains(created.Schema.SessionParameters, "ТекущийПользователь") {
+		t.Fatalf("the schema offers a session parameter the project did not declare: %v", created.Schema.SessionParameters)
 	}
 	created.Role.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
 		Policies: []metadata.AccessPolicy{{Operations: []metadata.PermissionOperation{metadata.PermissionRead},
-			Rule: &metadata.PolicyRule{Field: object.Attributes[0].ID.String(), Operator: metadata.PolicyEqual, Parameter: metadata.CurrentUserParameter}}}}}
+			Rule: &metadata.PolicyRule{Field: object.Attributes[0].ID.String(), Operator: metadata.PolicyEqual, CurrentMLUser: true}}}}}
 	if _, err := workspace.SaveRole(created.Path, created.Role, created.Revision); err != nil {
-		t.Fatalf("a restriction on the offered parameter was refused: %v", err)
+		t.Fatalf("a restriction on the ML user was refused: %v", err)
 	}
 	overview, err := workspace.ReadAllRoles()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(overview.Schema.SessionParameters, metadata.CurrentUserParameter) {
-		t.Fatalf("overview schema is missing it: %v", overview.Schema.SessionParameters)
+	stored := false
+	for _, role := range overview.Roles {
+		for _, permission := range role.Role.Objects {
+			for _, policy := range permission.Policies {
+				stored = stored || (policy.Rule != nil && policy.Rule.CurrentMLUser && policy.Rule.Parameter == "")
+			}
+		}
+	}
+	if !stored {
+		t.Fatalf("the ML user operand did not survive a save: %+v", overview.Roles)
+	}
+	// An undeclared ТекущийПользователь is refused like any unknown name.
+	created.Role.Objects[0].Policies[0].Rule = &metadata.PolicyRule{Field: object.Attributes[0].ID.String(), Operator: metadata.PolicyEqual, Parameter: "ТекущийПользователь"}
+	if _, err := workspace.SaveRole(created.Path, created.Role, created.Revision); err == nil {
+		t.Fatal("an undeclared ТекущийПользователь was accepted")
 	}
 }
 
@@ -407,7 +422,7 @@ func TestParameterizedPolicyTemplateSavesAndLoads(t *testing.T) {
 		t.Fatal(err)
 	}
 	created.Role.PolicyTemplates = []metadata.PolicyTemplate{{Name: "ПоПолю", Parameters: []string{"Поле"},
-		Rule: metadata.PolicyRule{Field: "$Поле", Operator: metadata.PolicyEqual, Parameter: metadata.CurrentUserParameter}}}
+		Rule: metadata.PolicyRule{Field: "$Поле", Operator: metadata.PolicyEqual, CurrentMLUser: true}}}
 	created.Role.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
 		Policies: []metadata.AccessPolicy{{Operations: []metadata.PermissionOperation{metadata.PermissionRead},
 			Template: "ПоПолю", Arguments: []string{object.Attributes[0].ID.String()}}}}}

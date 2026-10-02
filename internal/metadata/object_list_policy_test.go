@@ -187,8 +187,8 @@ func TestRowRestrictionResolvesSessionParameters(t *testing.T) {
 	}
 	user := Value{Kind: UUIDType, Data: uuid.MustNew().String()}
 
-	predicate, arguments, err := render(map[string][]Value{CurrentUserParameter: {user}},
-		PolicyRule{Field: "owner", Operator: PolicyEqual, Parameter: CurrentUserParameter})
+	predicate, arguments, err := render(map[string][]Value{"ТекущийПользователь": {user}},
+		PolicyRule{Field: "owner", Operator: PolicyEqual, Parameter: "ТекущийПользователь"})
 	if err != nil || predicate != "(owner = $1)" || len(arguments) != 1 || arguments[0] != user.Data {
 		t.Fatalf("single value: %q %v error=%v", predicate, arguments, err)
 	}
@@ -304,21 +304,21 @@ func TestRowRestrictionAsksTheProjectResolverForItsOwnParameters(t *testing.T) {
 		}
 		return []Value{{Kind: StringType, Data: "Основной"}, {Kind: StringType, Data: "Розничный"}}, true, nil
 	}
-	ctx := WithSessionResolver(WithSessionValues(context.Background(), map[string][]Value{
-		CurrentUserParameter: {{Kind: UUIDType, Data: uuid.MustNew().String()}},
-	}), resolver)
+	ctx := WithSessionResolver(WithMLUser(context.Background(), uuid.MustNew()), resolver)
 	predicate, arguments, err := render(ctx, rule)
 	if err != nil || predicate != "(warehouse IN ($1,$2))" || len(arguments) != 2 {
 		t.Fatalf("resolved list: %q %v error=%v", predicate, arguments, err)
 	}
 
-	// A platform-owned name is answered by the platform: application code must
-	// not be able to decide who the current user is.
-	if _, _, err := render(ctx, PolicyRule{Field: "warehouse", Operator: PolicyEqual, Parameter: CurrentUserParameter}); err != nil {
-		t.Fatal(err)
+	// ТекущийПользователь is the configuration's like any other parameter: it
+	// is asked of the session module, and the ML user of the session does not
+	// answer for it. Defect caught: the platform put the ML user under that name
+	// and the configuration's own value never reached a restriction.
+	if _, _, err := render(ctx, PolicyRule{Field: "warehouse", Operator: PolicyEqual, Parameter: "ТекущийПользователь"}); err == nil || !strings.Contains(err.Error(), "has no value for") {
+		t.Fatalf("ТекущийПользователь was answered without the session module: %v", err)
 	}
-	if asked != 1 {
-		t.Fatalf("resolver consulted %d times, want once - the platform name must not reach it", asked)
+	if asked != 2 {
+		t.Fatalf("resolver consulted %d times, want twice - ТекущийПользователь must reach it", asked)
 	}
 
 	// A resolver that fails fails the read, and says why: the alternative is
@@ -334,5 +334,47 @@ func TestRowRestrictionAsksTheProjectResolverForItsOwnParameters(t *testing.T) {
 	absent := WithSessionResolver(context.Background(), func(context.Context, string) ([]Value, bool, error) { return nil, false, nil })
 	if _, _, err := render(absent, rule); err == nil || !strings.Contains(err.Error(), "has no value for") {
 		t.Fatalf("resolver without an answer: %v", err)
+	}
+}
+
+// The ML user is an operand of its own, carried apart from the configuration's
+// session parameters. Defects caught: a rule on the ML user that matches when
+// the session has none (it must refuse the read), and a configuration's session
+// parameter answering for the ML user or the other way round.
+func TestRowRestrictionComparesTheMLUser(t *testing.T) {
+	t.Parallel()
+	column := func(string) (listColumn, bool) { return listColumn{name: "author"}, true }
+	render := func(ctx context.Context, rule PolicyRule) (string, []any, error) {
+		restriction := rowRestriction{restricted: true, alternatives: []PolicyRule{rule}, column: column, parameter: sessionValue}
+		arguments := []any{}
+		predicate, err := restriction.predicate(ctx, &arguments)
+		return predicate, arguments, err
+	}
+	user := uuid.MustNew()
+	rule := PolicyRule{Field: "author", Operator: PolicyEqual, CurrentMLUser: true}
+	predicate, arguments, err := render(WithMLUser(context.Background(), user), rule)
+	if err != nil || predicate != "(author = $1)" || len(arguments) != 1 || arguments[0] != user.String() {
+		t.Fatalf("ML user: %q %v error=%v", predicate, arguments, err)
+	}
+	negated := PolicyRule{Field: "author", Operator: PolicyNotIn, CurrentMLUser: true}
+	if predicate, _, err := render(WithMLUser(context.Background(), user), negated); err != nil || predicate != "(author NOT IN ($1))" {
+		t.Fatalf("negated ML user: %q error=%v", predicate, err)
+	}
+	// A configuration's ТекущийПользователь is not the ML user, and no session
+	// value stands in for a missing one.
+	configurations := WithSessionValues(context.Background(), map[string][]Value{"ТекущийПользователь": {{Kind: StringType, Data: "Иванов"}}})
+	for name, ctx := range map[string]context.Context{
+		"no ML user":         context.Background(),
+		"zero ML user":       WithMLUser(context.Background(), uuid.UUID{}),
+		"only the parameter": configurations,
+	} {
+		if _, _, err := render(ctx, rule); err == nil {
+			t.Fatalf("%s: a rule on the ML user did not refuse the read", name)
+		}
+	}
+	// And the ML user does not answer for the configuration's parameter.
+	predicate, arguments, err = render(WithMLUser(configurations, user), PolicyRule{Field: "author", Operator: PolicyEqual, Parameter: "ТекущийПользователь"})
+	if err != nil || predicate != "(author = $1)" || arguments[0] != "Иванов" {
+		t.Fatalf("configuration's parameter: %q %v error=%v", predicate, arguments, err)
 	}
 }

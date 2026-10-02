@@ -180,7 +180,7 @@ func (runtime *Runtime) openApplicationRuntime(ctx context.Context, databaseID, 
 			return nil, nil, nil, nil, err
 		}
 	}
-	ctx = metadata.WithSessionValues(metadata.WithPermissions(ctx, permissions), applicationSessionValues(actor))
+	ctx = metadata.WithMLUser(metadata.WithPermissions(ctx, permissions), actor)
 	// The write path already has the BSL runtime, so a restriction that names a
 	// project-computed parameter asks this one rather than building a second.
 	ctx = metadata.WithSessionResolver(ctx, applicationRuntime.SessionParameterValues)

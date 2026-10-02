@@ -208,13 +208,17 @@ function createRoleEditor(host, onChange) {
     const listOnly=!!rule.subquery;
     const operatorChoices=listOnly?Object.entries(operators).filter(([key])=>key==='in'||key==='not-in'):Object.entries(operators);
     row.append(select(operatorChoices,rule.operator,operator=>apply({...rule,operator,
-      ...(rule.parameter||rule.subquery?{}:{values:parseOperand(operandText(rule),operator)})}),'Оператор'));
+      ...(rule.parameter||rule.subquery||rule.currentMlUser?{}:{values:parseOperand(operandText(rule),operator)})}),'Оператор'));
     const names=source.schema.sessionParameters||[];
-    const kind=rule.subquery?'subquery':(rule.parameter?'parameter':'values');
-    const kinds=[['values','Значение'],...(names.length?[['parameter','Параметр сеанса']]:[]),
+    // The ML user is an operand of its own, not a session parameter: session
+    // parameters are the configuration's, and ТекущийПользователь among them is
+    // whatever the configuration's session module puts there.
+    const kind=rule.subquery?'subquery':(rule.parameter?'parameter':(rule.currentMlUser?'mluser':'values'));
+    const kinds=[['values','Значение'],...(names.length?[['parameter','Параметр сеанса']]:[]),['mluser','Пользователь ML'],
       ...(allowSubquery&&source.schema.objects.length?[['subquery','Подзапрос']]:[])];
     row.append(select(kinds,kind,chosen=>{
       if(chosen==='parameter')apply({field:rule.field,operator:rule.operator,parameter:names[0]});
+      else if(chosen==='mluser')apply({field:rule.field,operator:rule.operator,currentMlUser:true});
       else if(chosen==='subquery'){
         const object=source.schema.objects[0];
         apply({field:rule.field,operator:'in',subquery:{object:object.id,field:object.fields[0]?.key||'ref',where:[]}});
@@ -224,6 +228,7 @@ function createRoleEditor(host, onChange) {
       row.append(select(names.map(name=>[name,name]),rule.parameter,parameter=>apply({...rule,parameter}),'Параметр сеанса'));
       return row;
     }
+    if(kind==='mluser')return row;
     if(kind==='subquery'){
       const block=node('div',undefined,'role-subquery');block.append(row);
       const chosen=source.schema.objects.find(item=>item.id===rule.subquery.object)||source.schema.objects[0];

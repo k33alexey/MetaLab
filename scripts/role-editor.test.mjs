@@ -106,7 +106,7 @@ test('a restriction naming a template that was never declared is repaired away',
 });
 test('a template with parameters is reusable and its arguments are checked on repair',()=>{
   const model=create(fixture());
-  assert.equal(model.addTemplate('Своё',['Поле'],{field:'$Поле',operator:'eq',parameter:'ТекущийПользователь'}),true);
+  assert.equal(model.addTemplate('Своё',['Поле'],{field:'$Поле',operator:'eq',currentMlUser:true}),true);
   model.addPolicy('goods',{operations:['read'],template:'Своё',arguments:['name']});
   assert.equal(model.hasUnavailable(),false,'a template used with a real field must survive');
   model.setPolicy('goods',0,{operations:['read'],template:'Своё',arguments:['gone']});

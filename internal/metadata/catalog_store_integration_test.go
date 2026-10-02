@@ -275,12 +275,12 @@ func TestCatalogRepositoryLifecycleIntegration(t *testing.T) {
 	}
 	// A policy bound to a session parameter is evaluated from values the hosting
 	// layer resolved, with no BSL runtime anywhere on this read path.
-	policy, err = restrictedRead(PolicyRule{Field: "code", Operator: PolicyIn, Parameter: CurrentUserParameter})
+	policy, err = restrictedRead(PolicyRule{Field: "code", Operator: PolicyIn, Parameter: "ДоступныеКонтрагенты"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	byParameter, err := repository.ListDynamic(WithSessionValues(WithPermissions(ctx, policy),
-		map[string][]Value{CurrentUserParameter: {{Kind: StringType, Data: "K001"}, {Kind: StringType, Data: "K003"}}}),
+		map[string][]Value{"ДоступныеКонтрагенты": {{Kind: StringType, Data: "K001"}, {Kind: StringType, Data: "K003"}}}),
 		"Контрагенты", DynamicListRequest{Limit: 20})
 	if err != nil || len(byParameter.Records) != 2 {
 		t.Fatalf("restricted by session parameter: %+v error=%v", byParameter, err)
@@ -288,7 +288,7 @@ func TestCatalogRepositoryLifecycleIntegration(t *testing.T) {
 	// An empty value is a real answer - this caller reaches nothing - and must
 	// not be read as "no restriction".
 	empty, err := repository.ListDynamic(WithSessionValues(WithPermissions(ctx, policy),
-		map[string][]Value{CurrentUserParameter: {}}), "Контрагенты", DynamicListRequest{Limit: 20})
+		map[string][]Value{"ДоступныеКонтрагенты": {}}), "Контрагенты", DynamicListRequest{Limit: 20})
 	if err != nil || len(empty.Records) != 0 {
 		t.Fatalf("an empty session parameter must admit no rows: %+v error=%v", empty, err)
 	}

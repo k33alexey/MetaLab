@@ -81,6 +81,13 @@ func (restriction rowRestriction) renderRule(ctx context.Context, rule PolicyRul
 		return restriction.renderSubquery(ctx, column, rule, arguments)
 	}
 	operands := rule.Values
+	if rule.CurrentMLUser {
+		user, ok := MLUserFromContext(ctx)
+		if !ok {
+			return "", fmt.Errorf("access policy compares %q with the ML user, which this session has none of", rule.Field)
+		}
+		operands = []Value{{Kind: UUIDType, Data: user.String()}}
+	}
 	if rule.Parameter != "" {
 		resolved, ok := []Value(nil), false
 		if restriction.parameter != nil {

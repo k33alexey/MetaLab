@@ -98,6 +98,21 @@ func TestSessionParameterRestrictsListReadsIntegration(t *testing.T) {
 		Format: 1, ID: uuid.MustNew(), Name: "ДоступныеСклады", Title: metadata.LocalizedText{"ru": "Доступные склады"},
 		Types: []metadata.Type{{Kind: metadata.StringType, Length: 50}},
 	}
+	// ТекущийПользователь объявлен самой конфигурацией, как во всех трёх
+	// проверочных; значение ему даёт её модуль сеанса, а не платформа.
+	tasksID, performerID, authorID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	tasks := metadata.CatalogDefinition{
+		Format: 1, ID: tasksID, Name: "Задачи", Title: metadata.LocalizedText{"ru": "Задачи"},
+		Code: metadata.CatalogCode{Type: metadata.StringType, Length: 9, Auto: true, Unique: true}, DescriptionLength: 150,
+		Attributes: []metadata.Attribute{
+			{ID: performerID, Name: "Исполнитель", Title: metadata.LocalizedText{"ru": "Исполнитель"}, Types: []metadata.Type{{Kind: metadata.StringType, Length: 50}}},
+			{ID: authorID, Name: "Автор", Title: metadata.LocalizedText{"ru": "Автор"}, Types: []metadata.Type{{Kind: metadata.StringType, Length: 50}}},
+		},
+	}
+	currentUser := metadata.SessionParameter{
+		Format: 1, ID: uuid.MustNew(), Name: "ТекущийПользователь", Title: metadata.LocalizedText{"ru": "Текущий пользователь"},
+		Types: []metadata.Type{{Kind: metadata.StringType, Length: 50}},
+	}
 	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "SessionDemo", Title: project.LocalizedText{"ru": "Session demo"}, DefaultLanguage: "ru",
 		Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: project.LocalizedText{"ru": "Русский"}, Code: "ru"}}}
 	root := filepath.Join(t.TempDir(), "project")
@@ -120,11 +135,14 @@ func TestSessionParameterRestrictsListReadsIntegration(t *testing.T) {
 	}
 	write("metadata/catalogs/"+definition.Name+"/object.yaml", definition)
 	write("metadata/session-parameters/"+parameter.ID.String()+".yaml", parameter)
+	write("metadata/catalogs/"+tasks.Name+"/object.yaml", tasks)
+	write("metadata/session-parameters/"+currentUser.ID.String()+".yaml", currentUser)
 	if err := os.WriteFile(filepath.Join(root, project.SessionModuleFile), []byte(`Процедура УстановкаПараметровСеанса(ИменаПараметровСеанса)
     Склады = Новый Массив;
     Склады.Добавить("Основной");
     Склады.Добавить("Розничный");
     ПараметрыСеанса.ДоступныеСклады = Склады;
+    ПараметрыСеанса.ТекущийПользователь = "Иванов";
 КонецПроцедуры`), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -142,6 +160,16 @@ func TestSessionParameterRestrictsListReadsIntegration(t *testing.T) {
 		if object.ID == catalogID {
 			permission.Policies = []metadata.AccessPolicy{{Operations: []metadata.PermissionOperation{metadata.PermissionRead},
 				Rule: &metadata.PolicyRule{Field: warehouseAttributeID.String(), Operator: metadata.PolicyIn, Parameter: "ДоступныеСклады"}}}
+		}
+		if object.ID == tasksID {
+			// Две альтернативы: исполнитель — параметр сеанса конфигурации, автор —
+			// пользователь ML. Они не должны подменять друг друга.
+			permission.Policies = []metadata.AccessPolicy{
+				{Operations: []metadata.PermissionOperation{metadata.PermissionRead},
+					Rule: &metadata.PolicyRule{Field: performerID.String(), Operator: metadata.PolicyEqual, Parameter: "ТекущийПользователь"}},
+				{Operations: []metadata.PermissionOperation{metadata.PermissionRead},
+					Rule: &metadata.PolicyRule{Field: authorID.String(), Operator: metadata.PolicyEqual, CurrentMLUser: true}},
+			}
 		}
 		role.Objects = append(role.Objects, permission)
 	}
@@ -226,5 +254,51 @@ func TestSessionParameterRestrictsListReadsIntegration(t *testing.T) {
 	}
 	if len(page.Rows) != 2 || !seen["Основной"] || !seen["Розничный"] || seen["Закрытый"] {
 		t.Fatalf("session module did not shape the restriction: %+v", page.Rows)
+	}
+
+	// Строка Иванова видна по параметру сеанса конфигурации: если бы платформа
+	// клала под этим именем пользователя ML, она бы пропала. Строка автора видна
+	// по пользователю ML; строка с чужим автором и чужим исполнителем — нет.
+	references := []string{}
+	for _, task := range []struct{ performer, author string }{
+		{"Иванов", uuid.MustNew().String()}, {"Петров", admin.ID.String()}, {"Петров", uuid.MustNew().String()},
+	} {
+		record, err := repository.New(ctx, "Задачи", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		record.Description = task.performer + " " + task.author
+		record.Attributes[performerID] = metadata.Value{Kind: metadata.StringType, Data: task.performer}
+		record.Attributes[authorID] = metadata.Value{Kind: metadata.StringType, Data: task.author}
+		if err := repository.Save(ctx, record, nil); err != nil {
+			t.Fatal(err)
+		}
+		references = append(references, record.Reference.ObjectID.String())
+	}
+	page, err = runtime.LoadApplicationList(ctx, login.Token, registered.ID, metadata.CatalogKind, "Задачи", metadata.DynamicListRequest{Limit: 20})
+	if err != nil {
+		t.Fatalf("restricted task list read: %v", err)
+	}
+	visible := map[string]bool{}
+	for _, row := range page.Rows {
+		visible[row.Values["Исполнитель"]+" "+row.Values["Автор"]] = true
+	}
+	if len(page.Rows) != 2 || !visible["Петров "+admin.ID.String()] {
+		t.Fatalf("the ML user did not restrict by author: %+v", page.Rows)
+	}
+	ivanov := false
+	for _, row := range page.Rows {
+		ivanov = ivanov || row.Values["Исполнитель"] == "Иванов"
+	}
+	if !ivanov {
+		t.Fatalf("the configuration's ТекущийПользователь was shadowed: %+v", page.Rows)
+	}
+	// Открытие объекта идёт через свой путь, не через список, и пользователь ML
+	// должен быть и в нём: своя задача открывается, чужая — нет.
+	if _, err := runtime.GetApplicationObject(ctx, login.Token, registered.ID, metadata.CatalogKind, "Задачи", references[1]); err != nil {
+		t.Fatalf("the ML user's own task did not open: %v", err)
+	}
+	if _, err := runtime.GetApplicationObject(ctx, login.Token, registered.ID, metadata.CatalogKind, "Задачи", references[2]); err == nil {
+		t.Fatal("a task of another author and performer opened")
 	}
 }
