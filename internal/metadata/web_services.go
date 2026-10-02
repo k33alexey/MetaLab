@@ -15,8 +15,6 @@ import (
 // answers.
 const WebServiceKind Kind = "web-services"
 
-const ()
-
 // SessionReuseMode says whether calls into a service share one session.
 //
 // Reusing a session keeps what the previous call left - session parameters,
@@ -40,17 +38,41 @@ const (
 	TransferInOut TransferDirection = "in-out"
 )
 
+// XMLTypeName is a type named the way a schema names it: the namespace it
+// belongs to and its local name in it (help: РасширенноеИмяXML, the type of
+// both the answer of an operation and of its parameter). The pair is stored,
+// not a prefixed name: a prefix means something only inside the document that
+// declares it, and the prototype's own files declare it on the very element
+// for 77 of 1346 types in the configurations being moved - a prefixed string
+// would keep the prefix and lose what it stood for.
+//
+// It is not one of our own types: what travels between two systems is
+// described by the schema they agreed on, not by the model of either of them.
+type XMLTypeName struct {
+	// Namespace may be empty: a schema may define types in no namespace.
+	Namespace string `yaml:"namespace,omitempty" json:"namespace,omitempty"`
+	Name      string `yaml:"name" json:"name"`
+}
+
+// WebServicePackage is one package of exchanged types a service is described
+// by. It is either a package of the configuration, named by identifier like
+// every reference between objects, or a namespace the platform itself
+// provides types in, such as http://v8.1c.ru/8.1/data/core - the prototype
+// writes both into one list, and the configurations being moved name the
+// platform's 18 times out of 42.
+type WebServicePackage struct {
+	Package   *uuid.UUID `yaml:"package,omitempty" json:"package,omitempty"`
+	Namespace string     `yaml:"namespace,omitempty" json:"namespace,omitempty"`
+}
+
 // WebServiceParameter is one value an operation takes or gives back.
 type WebServiceParameter struct {
 	ID      uuid.UUID     `yaml:"id" json:"id"`
 	Name    string        `yaml:"name" json:"name"`
 	Title   LocalizedText `yaml:"title" json:"title"`
 	Comment string        `yaml:"comment,omitempty" json:"comment,omitempty"`
-	// Type is the type of the value, named the way the schema names it - with
-	// the prefix of the namespace it comes from, as in xs:string. It is not one
-	// of our own types: what travels between two systems is described by the
-	// schema they agreed on, not by the model of either of them.
-	Type string `yaml:"type" json:"type"`
+	// Type is the type of the value, named by the schema.
+	Type XMLTypeName `yaml:"type" json:"type"`
 	// Nillable allows the value to arrive empty. Empty is not the same as
 	// absent, and the difference is the caller's to state.
 	Nillable  bool              `yaml:"nillable,omitempty" json:"nillable,omitempty"`
@@ -68,8 +90,8 @@ type WebServiceOperation struct {
 	// name of its role, so nothing here names the module - only the routine.
 	Procedure string `yaml:"procedure" json:"procedure"`
 	// ReturnType is what the operation answers with, named by the schema.
-	ReturnType string `yaml:"return_type,omitempty" json:"returnType,omitempty"`
-	Nillable   bool   `yaml:"nillable,omitempty" json:"nillable,omitempty"`
+	ReturnType *XMLTypeName `yaml:"return_type,omitempty" json:"returnType,omitempty"`
+	Nillable   bool         `yaml:"nillable,omitempty" json:"nillable,omitempty"`
 	// Transactioned runs the whole operation in one transaction: either
 	// everything it did stays, or nothing does.
 	Transactioned   bool                        `yaml:"transactioned,omitempty" json:"transactioned,omitempty"`
@@ -87,8 +109,8 @@ type WebServiceDefinition struct {
 	// Namespace is what the outside names this service's types by.
 	Namespace string `yaml:"namespace" json:"namespace"`
 	// Packages are the packages of exchanged types the service is described
-	// by. They are named by identifier, like every reference between objects.
-	Packages []uuid.UUID `yaml:"packages,omitempty" json:"packages,omitempty"`
+	// by - see WebServicePackage.
+	Packages []WebServicePackage `yaml:"packages,omitempty" json:"packages,omitempty"`
 	// DescriptorFile is the name the description of this service is published
 	// under. It is a file name and not a path: where the file is published is
 	// the business of the server, and a path here would be a decision taken in
@@ -118,18 +140,35 @@ func DecodeWebService(source string, reader io.Reader, configuration project.Pro
 	if value.SessionMaxAge < 0 {
 		issues = append(issues, "session_max_age must not be negative")
 	}
-	seenPackages := map[uuid.UUID]bool{}
-	for index, id := range value.Packages {
+	seenPackages := map[string]bool{}
+	for index, item := range value.Packages {
 		where := fmt.Sprintf("packages[%d]", index)
-		if id.IsZero() {
-			issues = append(issues, where+" must be a non-zero UUID")
+		var key string
+		switch {
+		case item.Package != nil && item.Namespace != "":
+			issues = append(issues, where+" names both a package of the configuration and a namespace of the platform")
+			continue
+		case item.Package != nil:
+			if item.Package.IsZero() {
+				issues = append(issues, where+".package must be a non-zero UUID")
+				continue
+			}
+			key = "package:" + item.Package.String()
+		case item.Namespace != "":
+			if problems := validateNamespace(where+".namespace", item.Namespace, true); len(problems) > 0 {
+				issues = append(issues, problems...)
+				continue
+			}
+			key = "namespace:" + item.Namespace
+		default:
+			issues = append(issues, where+" must name a package of the configuration or a namespace of the platform")
 			continue
 		}
 		// A package named twice describes the service no better than once.
-		if seenPackages[id] {
+		if seenPackages[key] {
 			issues = append(issues, where+" is named twice")
 		}
-		seenPackages[id] = true
+		seenPackages[key] = true
 	}
 	issues = append(issues, validateOperations(value.Operations, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
@@ -163,10 +202,12 @@ func validateOperations(operations []WebServiceOperation, configuration project.
 		if !validIdentifier(operation.Procedure) || utf8.RuneCountInString(operation.Procedure) > maxNameLength {
 			issues = append(issues, where+".procedure must name a procedure of the service module")
 		}
-		issues = append(issues, validateSchemaType(where+".return_type", operation.ReturnType, false)...)
+		if operation.ReturnType != nil {
+			issues = append(issues, validateSchemaType(where+".return_type", *operation.ReturnType)...)
+		}
 		// An operation that answers with nothing cannot answer with an empty
 		// something: there is no value for "nillable" to be about.
-		if operation.Nillable && operation.ReturnType == "" {
+		if operation.Nillable && operation.ReturnType == nil {
 			issues = append(issues, where+".nillable says the answer may be empty, and the operation answers with nothing")
 		}
 		switch operation.DataLockControl {
@@ -197,7 +238,7 @@ func validateParameters(owner string, parameters []WebServiceParameter, configur
 		}
 		names[strings.ToLower(parameter.Name)] = true
 		issues = append(issues, validateTitle(where+".title", parameter.Title, configuration)...)
-		issues = append(issues, validateSchemaType(where+".type", parameter.Type, true)...)
+		issues = append(issues, validateSchemaType(where+".type", parameter.Type)...)
 		switch parameter.Direction {
 		case "", TransferIn, TransferOut, TransferInOut:
 		default:
@@ -207,21 +248,25 @@ func validateParameters(owner string, parameters []WebServiceParameter, configur
 	return issues
 }
 
-// validateSchemaType checks a type named by the schema: one word, possibly
-// prefixed by the namespace it comes from, as in xs:string.
+// validateSchemaType checks a type named by the schema: a local name, which is
+// one word with no prefix in it, and the namespace it belongs to.
 //
-// What the word means is the schema's business, not ours. The types travelling
+// What the name means is the schema's business, not ours. The types travelling
 // between two systems are described by the schema they agreed on, and a check
 // against our own type system would refuse every type we have not heard of -
 // which is most of them, by design.
-func validateSchemaType(path, value string, required bool) []string {
-	if value == "" {
-		if required {
-			return []string{path + " must name the type of the value"}
-		}
-		return nil
+func validateSchemaType(path string, value XMLTypeName) []string {
+	if value.Name == "" {
+		return []string{path + ".name must name the type of the value"}
 	}
-	return validateNamespace(path, value, required)
+	// A colon in the local name is a prefix that slipped in: the prefix means
+	// nothing outside the document that declared it, and the namespace has a
+	// field of its own.
+	if strings.Contains(value.Name, ":") {
+		return []string{path + ".name is a local name; the namespace goes into " + path + ".namespace, not into a prefix"}
+	}
+	issues := validateNamespace(path+".name", value.Name, true)
+	return append(issues, validateNamespace(path+".namespace", value.Namespace, false)...)
 }
 
 // validateDescriptorFile checks the name the description is published under: a
@@ -239,10 +284,22 @@ func validateDescriptorFile(path, value string) []string {
 
 func cloneWebService(value WebServiceDefinition) WebServiceDefinition {
 	value.Title = cloneTitle(value.Title)
-	value.Packages = append([]uuid.UUID(nil), value.Packages...)
+	packages := make([]WebServicePackage, len(value.Packages))
+	for index, item := range value.Packages {
+		if item.Package != nil {
+			copied := *item.Package
+			item.Package = &copied
+		}
+		packages[index] = item
+	}
+	value.Packages = packages
 	operations := make([]WebServiceOperation, len(value.Operations))
 	for index, operation := range value.Operations {
 		operation.Title = cloneTitle(operation.Title)
+		if operation.ReturnType != nil {
+			copied := *operation.ReturnType
+			operation.ReturnType = &copied
+		}
 		parameters := make([]WebServiceParameter, len(operation.Parameters))
 		for position, parameter := range operation.Parameters {
 			parameter.Title = cloneTitle(parameter.Title)
@@ -272,10 +329,14 @@ func (catalog *Catalog) WebService(name string) (WebServiceDefinition, bool) {
 // moment when the other side is already waiting.
 func (catalog *Catalog) validateWebServices() error {
 	for _, service := range catalog.WebServices {
-		for _, id := range service.Packages {
-			if _, ok := catalog.xdtoPackageByID[id]; !ok {
+		for _, item := range service.Packages {
+			// A namespace of the platform is the platform's to provide.
+			if item.Package == nil {
+				continue
+			}
+			if _, ok := catalog.xdtoPackageByID[*item.Package]; !ok {
 				return fmt.Errorf("web service %s is described by XDTO package %s, which is not in the configuration",
-					service.Name, id)
+					service.Name, item.Package)
 			}
 		}
 	}
