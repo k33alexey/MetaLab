@@ -206,8 +206,94 @@ func canonicalSourcePaths(root string) ([]string, error) {
 			return nil, fmt.Errorf("scan publication sources: %w", err)
 		}
 	}
+	fromRoot, err := rootSourcePaths(root)
+	if err != nil {
+		return nil, fmt.Errorf("scan publication sources: %w", err)
+	}
+	paths = append(paths, fromRoot...)
 	sort.Strings(paths)
 	return paths, nil
+}
+
+// rootSourcePaths is what the configuration root keeps beside its
+// description: its modules, its pictures and its help. They are sources as
+// much as anything under metadata/, and leaving them out of the package left
+// them out of its hash: a change to the session or the application module
+// alone was saved under the hash of the version before, so ML App, which
+// offers to refresh when the hash changes, never offered it, and two
+// different saves were recorded as one package.
+func rootSourcePaths(root string) ([]string, error) {
+	var paths []string
+	for _, file := range project.RootModuleFiles() {
+		info, err := os.Lstat(filepath.Join(root, file))
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("publication source %q must be a regular file", file)
+		}
+		paths = append(paths, file)
+	}
+	folders := append(project.RootPictureDirectories(), project.HelpDirectory)
+	for _, folder := range folders {
+		start := filepath.Join(root, folder)
+		info, err := os.Lstat(start)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("publication source %q must be a folder", folder)
+		}
+		err = filepath.WalkDir(start, func(current string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			relative, err := filepath.Rel(root, current)
+			if err != nil {
+				return err
+			}
+			relative = filepath.ToSlash(relative)
+			if entry.Type()&os.ModeSymlink != 0 {
+				return fmt.Errorf("publication source %q must not be a symbolic link", relative)
+			}
+			if err := validateRootSourcePath(relative, entry.IsDir()); err != nil {
+				return err
+			}
+			if !entry.IsDir() {
+				if !entry.Type().IsRegular() {
+					return fmt.Errorf("publication source %q must be a regular file", relative)
+				}
+				paths = append(paths, relative)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return paths, nil
+}
+
+// validateRootSourcePath checks the shape of a path inside a folder of the
+// root: a picture holds files and nothing deeper - which files, the ladder of
+// densities or the variants, is checked where the metadata is read - and the
+// help holds what any help holds.
+func validateRootSourcePath(relative string, directory bool) error {
+	parts := strings.Split(relative, "/")
+	switch {
+	case parts[0] == project.HelpDirectory && project.HelpPath(parts, directory):
+		return nil
+	case project.IsRootPictureDirectory(parts[0]) && (directory && len(parts) == 1 ||
+		!directory && len(parts) == 2 && project.TemplateResource(parts[1])):
+		return nil
+	}
+	return fmt.Errorf("unexpected publication source path %q", relative)
 }
 
 func validateSourcePath(relative string, directory bool) error {

@@ -498,3 +498,96 @@ func TestSubsystemHelpIsPublished(t *testing.T) {
 		})
 	}
 }
+
+// What the configuration root keeps beside its description - its modules,
+// its pictures and its help - is a source like any other, and a change to it
+// alone must change the content digest: ML App offers a refresh when the
+// digest changes, and a session module edited and saved under the digest of
+// the version before reached nobody's open session, recorded besides as the
+// same package. Each file is tried on its own, so a kind of root file left
+// out of the package turns its case red.
+func TestRootFilesChangeTheContentDigest(t *testing.T) {
+	t.Parallel()
+	for _, file := range []string{
+		project.SessionModuleFile,
+		project.ApplicationModuleFile,
+		project.ExternalConnectionModuleFile,
+		project.OrdinaryApplicationModuleFile,
+		project.HelpDirectory + "/ru.html",
+		project.HelpDirectory + "/_files/1.png",
+		project.LogoDirectory + "/100.png",
+	} {
+		t.Run(file, func(t *testing.T) {
+			t.Parallel()
+			root := publicationProject(t)
+			write := func(content string) {
+				path := filepath.Join(root, filepath.FromSlash(file))
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			write(rootFileContent(file, "первая"))
+			first, err := inspect(context.Background(), root, SourceState{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slicesContainPath(first.Files, file) {
+				t.Fatalf("%s is not among the package's files: %+v", file, first.Files)
+			}
+			write(rootFileContent(file, "вторая"))
+			second, err := inspect(context.Background(), root, SourceState{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if second.ContentSHA256 == first.ContentSHA256 {
+				t.Fatalf("a change to %s alone left the content digest as it was", file)
+			}
+		})
+	}
+}
+
+// rootFileContent is a valid file of the kind the name says, differing by
+// the word given: a module, a page, or an image.
+func rootFileContent(file, word string) string {
+	switch {
+	case strings.HasSuffix(file, ".bsl"):
+		return "Процедура " + map[string]string{"первая": "Первая", "вторая": "Вторая"}[word] + "()\nКонецПроцедуры\n"
+	case strings.HasSuffix(file, ".html"):
+		return "<p>" + word + "</p>"
+	default:
+		return "\x89PNG\r\n\x1a\n" + word
+	}
+}
+
+// A folder of the root is published in its shape and nothing beyond it: a
+// picture holds files, the help holds pages and their pictures.
+func TestRootFoldersArePublishedInTheirShape(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		relative  string
+		directory bool
+		accepted  bool
+	}{
+		"картинка логотипа":   {project.LogoDirectory + "/100.png", false, true},
+		"описание картинки":   {project.LogoDirectory + "/picture.yaml", false, true},
+		"глубже в картинке":   {project.LogoDirectory + "/a/100.png", false, false},
+		"папка в картинке":    {project.LogoDirectory + "/a", true, false},
+		"страница справки":    {"help/ru.html", false, true},
+		"не страница справки": {"help/readme.txt", false, false},
+		"чужая папка корня":   {"notes/1.txt", false, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			err := validateRootSourcePath(test.relative, test.directory)
+			if test.accepted && err != nil {
+				t.Fatalf("%s was refused: %v", test.relative, err)
+			}
+			if !test.accepted && err == nil {
+				t.Fatalf("%s was accepted", test.relative)
+			}
+		})
+	}
+}
