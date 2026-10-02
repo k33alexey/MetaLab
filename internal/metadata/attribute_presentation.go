@@ -82,9 +82,18 @@ const (
 )
 
 // FieldPath is a field of the same object: an attribute of it, or an attribute
-// of one of its table parts. A link always stays inside the object that draws
-// it - the reference configuration has not one path leading out - and a
-// relative address is the only one that cannot accidentally lead out.
+// of one of its table parts. A link that works stays inside the object that
+// draws it.
+//
+// A link the prototype saves may lead elsewhere all the same, and such a path
+// is carried as it was written, in Unresolved, and does nothing. The
+// configurations being moved have 1468 of them naming a field of another
+// object by its identifier - "0:<table part>/0:<attribute>", a field copied
+// from a document into a data processor with the link still pointing at the
+// document - and 202 written as a number, "0", "-5", "0/0", that name no
+// field at all (erp, acc, sb; owner, 01.10.2026: carry, do not execute). A
+// running form resolves a path by its attribute or standard field, and an
+// unresolved path has neither, so it filters nothing.
 //
 // The field is named one of two ways: an attribute by its identifier, or a
 // standard field - the date of a document, its reference, the owner of a
@@ -96,12 +105,24 @@ type FieldPath struct {
 	TablePart *uuid.UUID `yaml:"table_part,omitempty" json:"tablePart,omitempty"`
 	Attribute uuid.UUID  `yaml:"attribute,omitempty" json:"attribute,omitempty"`
 	Standard  string     `yaml:"standard,omitempty" json:"standard,omitempty"`
+	// Unresolved is a path the prototype wrote that leads to no field of
+	// this object, kept word for word.
+	Unresolved string `yaml:"unresolved,omitempty" json:"unresolved,omitempty"`
 }
 
 // validateFieldPathShape checks that a path names its field one way, not two
 // and not none.
 func validateFieldPathShape(path string, source FieldPath) []string {
 	var issues []string
+	if source.Unresolved != "" {
+		if source.TablePart != nil || !source.Attribute.IsZero() || source.Standard != "" {
+			issues = append(issues, path+".source.unresolved is a path kept as written, and names no field beside it")
+		}
+		if !validUnresolvedPath(source.Unresolved) {
+			issues = append(issues, path+".source.unresolved must be a path the prototype writes: segments of <n>:<uuid> or numbers, joined by /")
+		}
+		return issues
+	}
 	switch {
 	case source.Standard != "" && !source.Attribute.IsZero():
 		issues = append(issues, path+".source names both an attribute and a standard field")
@@ -397,6 +418,20 @@ type choiceHolder struct {
 // standard is the set of standard fields of the object the links stand in: a
 // link to one of them is resolved by name. A row of a table part has its line
 // number and nothing else.
+// unresolvedSegment is one step of a path the prototype writes when the path
+// leads out of the object: a field by its identifier with a number before
+// it, or a bare number.
+var unresolvedSegment = regexp.MustCompile(`^(-?[0-9]+|[0-9]+:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$`)
+
+func validUnresolvedPath(path string) bool {
+	for _, segment := range strings.Split(path, "/") {
+		if !unresolvedSegment.MatchString(segment) {
+			return false
+		}
+	}
+	return true
+}
+
 func validateFieldLinks(standard []standardField, groups []fieldGroup, parts []TablePart, extra ...choiceHolder) []string {
 	objectStandard, partStandard := standardNames(standard), standardNames(tablePartStandardFields)
 	within := map[uuid.UUID]bool{}
@@ -414,6 +449,10 @@ func validateFieldLinks(standard []standardField, groups []fieldGroup, parts []T
 		partFields[part.ID] = fields
 	}
 	resolve := func(source FieldPath) bool {
+		// A path kept as written is not resolved, and is not meant to be.
+		if source.Unresolved != "" {
+			return true
+		}
 		if source.TablePart == nil {
 			if source.Standard != "" {
 				_, ok := objectStandard[foldStandardName(source.Standard)]

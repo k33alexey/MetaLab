@@ -419,3 +419,65 @@ attributes:
 		}
 	}
 }
+
+// A link the prototype saves leading out of the object - a field of another
+// object by its identifier, or a bare number - is carried word for word and
+// filters nothing. The configurations being moved have 1468 and 202 of them,
+// and every one was refused, which refuses the whole configuration. The
+// defects caught: such a path refused, its text changed on the way, and a
+// path that is not one the prototype writes, or that names a field beside
+// the kept text, let through.
+func TestLinkLeadingOutOfTheObjectIsCarriedAsWritten(t *testing.T) {
+	t.Parallel()
+	const foreignPart, foreignField = "7b526229-3286-418a-920a-ff15a9b3ec48", "da473af6-1960-4683-b941-b8e3988be4fb"
+	body := func(source string) string {
+		return presentationOrder(`attributes:
+  - id: ` + presentationContract + `
+    name: Номенклатура
+    title: {ru: Номенклатура}
+    types: [{kind: string, length: 10}]
+    choice:
+      parameter_links: [{name: Отбор.Владелец, source: ` + source + `}]
+      link_by_type: {source: ` + source + `}
+`)
+	}
+	for name, test := range map[string]struct {
+		path, want string
+	}{
+		"поле чужого объекта":                 {`"0:` + foreignField + `"`, ""},
+		"поле табличной части чужого объекта": {`"0:` + foreignPart + `/0:` + foreignField + `"`, ""},
+		"ноль":                    {`"0"`, ""},
+		"отрицательное число":     {`"-5"`, ""},
+		"ноль через косую черту":  {`"0/0"`, ""},
+		"табличная часть и число": {`"0:` + foreignPart + `/0"`, ""},
+		"не путь прототипа":       {`"Документ.Заказ"`, "must be a path the prototype writes"},
+		"не идентификатор":        {`"0:abc"`, "must be a path the prototype writes"},
+		"пустой шаг":              {`"0//0"`, "must be a path the prototype writes"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			value, err := DecodeCatalog("object.yaml", strings.NewReader(body(`{unresolved: `+test.path+`}`)), metadataConfiguration())
+			if test.want != "" {
+				if err == nil || !strings.Contains(err.Error(), test.want) {
+					t.Fatalf("want a refusal saying %q, got %v", test.want, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("a path the prototype writes was refused: %v", err)
+			}
+			written := strings.Trim(test.path, `"`)
+			choice := value.Attributes[0].Choice
+			if choice.ParameterLinks[0].Source.Unresolved != written || choice.LinkByType.Source.Unresolved != written {
+				t.Fatalf("the path did not come back word for word: %+v %+v", choice.ParameterLinks[0].Source, choice.LinkByType.Source)
+			}
+		})
+	}
+	t.Run("путь и поле рядом", func(t *testing.T) {
+		t.Parallel()
+		_, err := DecodeCatalog("object.yaml", strings.NewReader(body(`{unresolved: "0", attribute: `+presentationContract+`}`)), metadataConfiguration())
+		if err == nil || !strings.Contains(err.Error(), "names no field beside it") {
+			t.Fatalf("a kept path with a field beside it: %v", err)
+		}
+	})
+}
