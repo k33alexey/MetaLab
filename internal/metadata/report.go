@@ -95,6 +95,7 @@ func DecodeReport(source string, reader io.Reader, configuration project.Project
 			issues = append(issues, name+" must be a non-zero UUID")
 		}
 	}
+	issues = append(issues, validateMainSchema(value.MainSchema, value.Templates)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
@@ -120,6 +121,27 @@ func DecodeDataProcessor(source string, reader io.Reader, configuration project.
 		return DataProcessorDefinition{}, err
 	}
 	return value, nil
+}
+
+// validateMainSchema checks that the main schema of a report is one of its
+// own templates, and one that holds a composition schema. The designer's help
+// says a report may have several schemas and one of them is chosen as the
+// main one; the configurations being moved name one in 341, 92 and 157
+// reports, every time a template of that same report holding a schema.
+func validateMainSchema(schema *uuid.UUID, templates []ObjectTemplate) []string {
+	if schema == nil || schema.IsZero() {
+		return nil
+	}
+	for _, template := range templates {
+		if template.ID != *schema {
+			continue
+		}
+		if template.Kind != CompositionSchema {
+			return []string{"main_schema names template " + template.Name + ", which holds " + string(template.Kind) + ", not a composition schema"}
+		}
+		return nil
+	}
+	return []string{"main_schema must name one of the report's own templates"}
 }
 
 // validateRunningObjectShape checks what a report and a data processor share:

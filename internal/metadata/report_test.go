@@ -26,6 +26,8 @@ id: `+reportID+`
 name: ОстаткиТоваров
 title: {ru: Остатки товаров}
 main_schema: `+reportSchema+`
+templates:
+  - {id: `+reportSchema+`, name: ОсновнаяСхема, title: {ru: Основная схема}, kind: composition-schema}
 attributes:
   - id: `+reportAttribute+`
     name: Товар
@@ -38,6 +40,7 @@ table_parts:
     attributes:
       - {id: `+reportPartField+`, name: Значение, title: {ru: Значение}, types: [{kind: string, length: 100}]}
 `)
+	writeTemplateContent(t, root, ReportKind, "ОстаткиТоваров", "ОсновнаяСхема", "content.yaml", "format: 1\n")
 	writeMetadata(t, root, DataProcessorKind, dataProcessorID, `format: 1
 id: `+dataProcessorID+`
 name: ЗагрузкаЦен
@@ -191,5 +194,62 @@ title: {ru: Помощник}
 				}
 			})
 		}
+	}
+}
+
+// The main schema of a report is one of its own templates holding a
+// composition schema: the designer offers the report's schemas to choose from,
+// and the configurations being moved never name anything else. Each case is a
+// report that would be built by something it cannot be built by - a schema
+// that is not there, a printed form, another report's schema - and each must
+// be refused; the last case is the report that holds together, so a check
+// that refuses everything turns red too.
+func TestMainSchemaIsTheReportsOwnCompositionSchema(t *testing.T) {
+	t.Parallel()
+	const (
+		printForm    = "4e900000-0000-4000-8000-000000000014"
+		otherReport  = "4e900000-0000-4000-8000-000000000015"
+		otherSchema  = "4e900000-0000-4000-8000-000000000016"
+		ownTemplates = `templates:
+  - {id: ` + reportSchema + `, name: Схема, title: {ru: Схема}, kind: composition-schema}
+  - {id: ` + printForm + `, name: Печать, title: {ru: Печать}, kind: spreadsheet}`
+	)
+	for name, test := range map[string]struct {
+		schema string
+		valid  bool
+	}{
+		"схемы нет среди макетов":      {"4e900000-0000-4000-8000-0000000000ff", false},
+		"макет не схема компоновки":    {printForm, false},
+		"схема другого отчёта":         {otherSchema, false},
+		"собственная схема компоновки": {reportSchema, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := metadataProject(t)
+			writeMetadata(t, root, ReportKind, reportID, `format: 1
+id: `+reportID+`
+name: Продажи
+title: {ru: Продажи}
+main_schema: `+test.schema+`
+`+ownTemplates+`
+`)
+			writeTemplateContent(t, root, ReportKind, "Продажи", "Схема", "content.yaml", "format: 1\n")
+			writeTemplateContent(t, root, ReportKind, "Продажи", "Печать", "content.yaml", "format: 1\n")
+			writeMetadata(t, root, ReportKind, otherReport, `format: 1
+id: `+otherReport+`
+name: Остатки
+title: {ru: Остатки}
+templates:
+  - {id: `+otherSchema+`, name: Схема, title: {ru: Схема}, kind: composition-schema}
+`)
+			writeTemplateContent(t, root, ReportKind, "Остатки", "Схема", "content.yaml", "format: 1\n")
+			_, err := Load(root)
+			if test.valid && err != nil {
+				t.Fatalf("a report built by its own schema was rejected: %v", err)
+			}
+			if !test.valid && err == nil {
+				t.Fatal("a report whose main schema is not its own composition schema was accepted")
+			}
+		})
 	}
 }
