@@ -341,3 +341,81 @@ func TestOnlyANumberIsBoundedAndOnlyWhatTheFieldHoldsFillsIt(t *testing.T) {
 		t.Error("nothing fills a field with something")
 	}
 }
+
+// A link takes its value from a standard field by name: the date of a
+// document, the reference or the owner of a catalog item, the line number of
+// a row. The configurations being moved do it 419 times. The defects caught on
+// the accepting side are such a link refused - a standard field has no
+// identifier to write; on the refusing side, a name the object does not have
+// (a catalog has no date), a row's field other than its line number, and a
+// path that names a field two ways or none.
+func TestLinkTakesItsValueFromAStandardField(t *testing.T) {
+	t.Parallel()
+	catalogLink := func(source string) string {
+		return presentationOrder(`attributes:
+  - id: ` + presentationContract + `
+    name: Договор
+    title: {ru: Договор}
+    types: [{kind: string, length: 10}]
+    choice:
+      parameter_links: [{name: Отбор.Владелец, source: ` + source + `}]
+table_parts:
+  - id: ` + presentationPart + `
+    name: Товары
+    title: {ru: Товары}
+    attributes:
+      - id: ` + presentationLine + `
+        name: Номер
+        title: {ru: Номер}
+        types: [{kind: string, length: 10}]
+        choice: {link_by_type: {source: ` + source + `}}
+`)
+	}
+	documentLink := func(source string) string {
+		return `format: 1
+id: ` + presentationCatalog + `
+name: Заказ
+title: {ru: Заказ}
+number: {type: string, length: 9, auto: true, periodicity: none}
+attributes:
+  - id: ` + presentationContract + `
+    name: Договор
+    title: {ru: Договор}
+    types: [{kind: string, length: 10}]
+    choice: {parameter_links: [{name: Отбор.Дата, source: ` + source + `}]}
+`
+	}
+	decodeCatalog := func(body string) error {
+		_, err := DecodeCatalog("object.yaml", strings.NewReader(body), metadataConfiguration())
+		return err
+	}
+	decodeDocument := func(body string) error {
+		_, err := DecodeDocument("object.yaml", strings.NewReader(body), metadataConfiguration())
+		return err
+	}
+	part := "table_part: " + presentationPart + ", "
+	for name, test := range map[string]struct {
+		err  error
+		want string
+	}{
+		"ссылка справочника":            {decodeCatalog(catalogLink(`{standard: Ссылка}`)), ""},
+		"ссылка по-английски":           {decodeCatalog(catalogLink(`{standard: Ref}`)), ""},
+		"пометка удаления":              {decodeCatalog(catalogLink(`{standard: ПометкаУдаления}`)), ""},
+		"номер строки табличной части":  {decodeCatalog(catalogLink(`{` + part + `standard: НомерСтроки}`)), ""},
+		"дата документа":                {decodeDocument(documentLink(`{standard: Дата}`)), ""},
+		"у справочника нет даты":        {decodeCatalog(catalogLink(`{standard: Дата}`)), "is not a field of this object"},
+		"незнакомое имя":                {decodeDocument(documentLink(`{standard: Ниоткуда}`)), "is not a field of this object"},
+		"у строки нет ссылки":           {decodeCatalog(catalogLink(`{` + part + `standard: Ссылка}`)), "is not a field of this object"},
+		"и реквизит, и стандартный":     {decodeCatalog(catalogLink(`{attribute: ` + presentationLine + `, standard: Ссылка}`)), "names both an attribute and a standard field"},
+		"ни реквизита, ни стандартного": {decodeCatalog(catalogLink(`{}`)), "must be a non-zero UUID, or source.standard"},
+	} {
+		switch {
+		case test.want == "" && test.err != nil:
+			t.Errorf("%s: refused: %v", name, test.err)
+		case test.want != "" && test.err == nil:
+			t.Errorf("%s: accepted", name)
+		case test.want != "" && !strings.Contains(test.err.Error(), test.want):
+			t.Errorf("%s: refused for another reason: %v", name, test.err)
+		}
+	}
+}

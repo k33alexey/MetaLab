@@ -147,12 +147,12 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	// because the list of fields the link could reach was built from
 	// attributes alone. And a link drawn from a dimension was not looked at at
 	// all, so one pointing nowhere went in and failed when the form opened.
-	registerFields := []fieldGroup{
-		{"dimensions", RegisterDimensionAttributes(value.Dimensions)},
-		{"resources", accountingResourceAttributes(value.Resources)},
-		{"attributes", value.Attributes},
-	}
-	issues = append(issues, validateFieldLinks(registerFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
+	registerFields := accountingLinkedFields(value)
+	// A link may take its value from an ext dimension - Субконто2 - and how many
+	// the entry has is the chart's to say, which is not in hand here. So the
+	// links are checked against as many as they mention, and load.go checks
+	// them again against the chart.
+	issues = append(issues, validateAccountingRegisterLinks(value, mentionedExtDimensions(value))...)
 	issues = append(issues, validateAttributeUse(registerFields, nil, false, false)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
@@ -252,6 +252,21 @@ func (catalog *Catalog) AccountingRegisterByID(id uuid.UUID) (AccountingRegister
 // dimension fields are generated up to what the description itself names, so
 // that no number of ours stands between a register and a chart that allows
 // more; load.go narrows it to the chart once the chart is read.
+func accountingLinkedFields(value AccountingRegisterDefinition) []fieldGroup {
+	return []fieldGroup{
+		{"dimensions", RegisterDimensionAttributes(value.Dimensions)},
+		{"resources", accountingResourceAttributes(value.Resources)},
+		{"attributes", value.Attributes},
+	}
+}
+
+// validateAccountingRegisterLinks checks the links of a register's fields with
+// the entry's standard fields counted for so many ext dimensions.
+func validateAccountingRegisterLinks(value AccountingRegisterDefinition, extDimensions int) []string {
+	return validateFieldLinks(accountingStandardFields(value.Correspondence, extDimensions), accountingLinkedFields(value), nil,
+		standardAttributeChoices("standard_attributes", value.StandardAttributes)...)
+}
+
 func mentionedExtDimensions(value AccountingRegisterDefinition) int {
 	highest := 0
 	mention := func(name string) {
@@ -271,6 +286,23 @@ func mentionedExtDimensions(value AccountingRegisterDefinition) int {
 	for _, index := range value.AdditionalIndexes {
 		for _, field := range append(slices.Clone(index.IndexedFields), index.AdditionalFields...) {
 			mention(field)
+		}
+	}
+	choices := make([]FieldChoice, 0, len(value.StandardAttributes))
+	for _, attribute := range value.StandardAttributes {
+		choices = append(choices, attribute.Choice)
+	}
+	for _, group := range accountingLinkedFields(value) {
+		for _, field := range group.fields {
+			choices = append(choices, field.Choice)
+		}
+	}
+	for _, choice := range choices {
+		for _, link := range choice.ParameterLinks {
+			mention(link.Source.Standard)
+		}
+		if choice.LinkByType != nil {
+			mention(choice.LinkByType.Source.Standard)
 		}
 	}
 	return highest

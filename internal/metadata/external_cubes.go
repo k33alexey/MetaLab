@@ -274,7 +274,7 @@ func validateCubeFields(cube ExternalCube, configuration project.Project) []stri
 		}
 		resources = append(resources, resource.Attribute)
 	}
-	return append(issues, validateFieldLinks([]fieldGroup{{"dimensions", dimensions}, {"resources", resources}}, nil)...)
+	return append(issues, validateFieldLinks(nil, []fieldGroup{{"dimensions", dimensions}, {"resources", resources}}, nil)...)
 }
 
 // cubeFields is the dimensions and the resources of a cube as fields of a

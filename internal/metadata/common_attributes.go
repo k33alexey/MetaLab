@@ -248,7 +248,7 @@ func ValidateCommonAttribute(source string, value CommonAttributeDefinition, con
 	// join, so there are no sibling fields for a choice parameter link to take
 	// its value from - and which siblings it would have depends on the object,
 	// which is exactly why the prototype does not let it draw one.
-	issues = append(issues, validateFieldLinks(nil, nil, choiceHolder{"", value.Choice})...)
+	issues = append(issues, validateFieldLinks(nil, nil, nil, choiceHolder{"", value.Choice})...)
 	if !validCommonAttributeAutoUse(value.AutoUse) {
 		issues = append(issues, "auto_use must be use or dont-use")
 	}

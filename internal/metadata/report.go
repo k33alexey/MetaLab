@@ -167,7 +167,7 @@ func validateRunningObjectShape(attributes []Attribute, parts []TablePart, confi
 	// report does. So no width for a line number, and nothing for a part to
 	// belong to either.
 	issues = append(issues, validateTableParts(parts, names, configuration, nil, tablePartRules{})...)
-	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", attributes}}, parts, tablePartStandardChoices(parts)...)...)
+	issues = append(issues, validateFieldLinks(nil, []fieldGroup{{"attributes", attributes}}, parts, tablePartStandardChoices(parts)...)...)
 	return append(issues, validateAttributeUse([]fieldGroup{{"attributes", attributes}}, parts, false, false)...)
 }
 

@@ -85,9 +85,33 @@ const (
 // of one of its table parts. A link always stays inside the object that draws
 // it - the reference configuration has not one path leading out - and a
 // relative address is the only one that cannot accidentally lead out.
+//
+// The field is named one of two ways: an attribute by its identifier, or a
+// standard field - the date of a document, its reference, the owner of a
+// catalog item - by its name, since a standard field has no identifier of its
+// own. The configurations being moved link to a standard field 366, 22 and 31
+// times: the date 221 times, the reference 161, the owner 27, the deletion
+// mark, the activity and the description the rest.
 type FieldPath struct {
 	TablePart *uuid.UUID `yaml:"table_part,omitempty" json:"tablePart,omitempty"`
-	Attribute uuid.UUID  `yaml:"attribute" json:"attribute"`
+	Attribute uuid.UUID  `yaml:"attribute,omitempty" json:"attribute,omitempty"`
+	Standard  string     `yaml:"standard,omitempty" json:"standard,omitempty"`
+}
+
+// validateFieldPathShape checks that a path names its field one way, not two
+// and not none.
+func validateFieldPathShape(path string, source FieldPath) []string {
+	var issues []string
+	switch {
+	case source.Standard != "" && !source.Attribute.IsZero():
+		issues = append(issues, path+".source names both an attribute and a standard field")
+	case source.Standard == "" && source.Attribute.IsZero():
+		issues = append(issues, path+".source.attribute must be a non-zero UUID, or source.standard must name a standard field")
+	}
+	if source.TablePart != nil && source.TablePart.IsZero() {
+		issues = append(issues, path+".source.table_part must be a non-zero UUID")
+	}
+	return issues
 }
 
 // ChoiceParameter fixes one parameter of the list a value is picked from - a
@@ -316,12 +340,7 @@ func validateChoiceParameters(prefix string, choice FieldChoice) []string {
 	for index, link := range choice.ParameterLinks {
 		path := fmt.Sprintf("%s.choice.parameter_links[%d]", prefix, index)
 		issues = append(issues, validateChoiceParameterName(path, link.Name, names)...)
-		if link.Source.Attribute.IsZero() {
-			issues = append(issues, path+".source.attribute must be a non-zero UUID")
-		}
-		if link.Source.TablePart != nil && link.Source.TablePart.IsZero() {
-			issues = append(issues, path+".source.table_part must be a non-zero UUID")
-		}
+		issues = append(issues, validateFieldPathShape(path, link.Source)...)
 		switch link.Change {
 		case "", ValueChangeClear, ValueChangeDontChange:
 		default:
@@ -330,12 +349,7 @@ func validateChoiceParameters(prefix string, choice FieldChoice) []string {
 	}
 	if link := choice.LinkByType; link != nil {
 		path := prefix + ".choice.link_by_type"
-		if link.Source.Attribute.IsZero() {
-			issues = append(issues, path+".source.attribute must be a non-zero UUID")
-		}
-		if link.Source.TablePart != nil && link.Source.TablePart.IsZero() {
-			issues = append(issues, path+".source.table_part must be a non-zero UUID")
-		}
+		issues = append(issues, validateFieldPathShape(path, link.Source)...)
 		if link.Item < 0 {
 			issues = append(issues, path+".item must not be negative")
 		}
@@ -379,7 +393,12 @@ type choiceHolder struct {
 // other. A link to a field that is not there takes its parameter from nowhere:
 // the list is never narrowed, and the user picks out of everything with no
 // sign that anything was meant to narrow it.
-func validateFieldLinks(groups []fieldGroup, parts []TablePart, extra ...choiceHolder) []string {
+//
+// standard is the set of standard fields of the object the links stand in: a
+// link to one of them is resolved by name. A row of a table part has its line
+// number and nothing else.
+func validateFieldLinks(standard []standardField, groups []fieldGroup, parts []TablePart, extra ...choiceHolder) []string {
+	objectStandard, partStandard := standardNames(standard), standardNames(tablePartStandardFields)
 	within := map[uuid.UUID]bool{}
 	partFields := map[uuid.UUID]map[uuid.UUID]bool{}
 	for _, group := range groups {
@@ -396,9 +415,17 @@ func validateFieldLinks(groups []fieldGroup, parts []TablePart, extra ...choiceH
 	}
 	resolve := func(source FieldPath) bool {
 		if source.TablePart == nil {
+			if source.Standard != "" {
+				_, ok := objectStandard[foldStandardName(source.Standard)]
+				return ok
+			}
 			return within[source.Attribute]
 		}
 		fields, ok := partFields[*source.TablePart]
+		if ok && source.Standard != "" {
+			_, ok = partStandard[foldStandardName(source.Standard)]
+			return ok
+		}
 		return ok && fields[source.Attribute]
 	}
 	var issues []string

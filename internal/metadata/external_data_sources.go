@@ -380,7 +380,7 @@ func checkExternalFieldGroups(configuration project.Project, groups ...externalF
 		}
 		linked = append(linked, fieldGroup{group.path, attributes})
 	}
-	issues = append(issues, validateFieldLinks(linked, nil)...)
+	issues = append(issues, validateFieldLinks(nil, linked, nil)...)
 	return fields, issues
 }
 

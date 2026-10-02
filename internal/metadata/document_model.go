@@ -269,7 +269,7 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 		objectIndexTables(shape.kind, shape.attributes, shape.tableParts))...)
 	links := append(standardAttributeChoices("standard_attributes", shape.standardAttributes), tablePartStandardChoices(shape.tableParts)...)
 	fields := append([]fieldGroup{{"attributes", shape.attributes}}, shape.extraFields...)
-	issues = append(issues, validateFieldLinks(fields, shape.tableParts, links...)...)
+	issues = append(issues, validateFieldLinks(standardFieldsOfKind(shape.kind), fields, shape.tableParts, links...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, false, false)...)
 	issues = append(issues, validateFormSlots(shape.forms.slots())...)
 	listFields := map[string]TypeKind{"number": shape.number.Type}

@@ -724,3 +724,60 @@ const (
 	accountingStandardID    = "90000000-0000-4000-8000-000000000107"
 	accountingResourceID    = "90000000-0000-4000-8000-000000000108"
 )
+
+// A link of an accounting register's field may take its value from an ext
+// dimension or the account - a filter by Субконто2 - and how many ext
+// dimensions there are is the chart's to say. The defects caught: such a link
+// refused, which with the soft import refuses the whole configuration; and a
+// link to an ext dimension the chart does not have let through, which the
+// register's own file cannot see and the project read whole must.
+func TestAccountingRegisterLinkReachesTheExtDimensionsOfItsChart(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		source  string
+		accepts bool
+	}{
+		"второе субконто":              {"Субконто2", true},
+		"третье субконто по-английски": {"ExtDimension3", true},
+		"счёт": {"Счет", true},
+		"четвёртого субконто у плана нет":   {"Субконто4", false},
+		"вида четвёртого субконто тоже нет": {"ВидСубконто4", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := metadataProject(t)
+			writeMetadata(t, root, ChartOfCharacteristicTypesKind, characteristicsID, accountsChartYAML)
+			writeMetadata(t, root, ChartOfAccountsKind, accountsID, `format: 1
+id: `+accountsID+`
+name: Основной
+title: {ru: Основной}
+code: {type: string, length: 5, auto: false}
+description_length: 120
+ext_dimension_types: `+characteristicsID+`
+max_ext_dimension_count: 3
+`)
+			writeMetadata(t, root, AccountingRegisterKind, accountingStandardID, `format: 1
+id: `+accountingStandardID+`
+name: Хозрасчетный
+title: {ru: Хозрасчётный}
+chart_of_accounts: `+accountsID+`
+correspondence: true
+resources:
+  - id: `+accountingResourceID+`
+    name: Сумма
+    title: {ru: Сумма}
+    types: [{kind: number, precision: 15, scale: 2}]
+    choice: {parameter_links: [{name: Отбор.Аналитика, source: {standard: `+test.source+`}}]}
+`)
+			_, err := Load(root)
+			switch {
+			case test.accepts && err != nil:
+				t.Fatalf("a link to %s the chart allows was refused: %v", test.source, err)
+			case !test.accepts && err == nil:
+				t.Fatalf("a link to %s the chart does not allow was accepted", test.source)
+			case !test.accepts && !strings.Contains(err.Error(), "is not a field of this object"):
+				t.Fatalf("refused for another reason: %v", err)
+			}
+		})
+	}
+}

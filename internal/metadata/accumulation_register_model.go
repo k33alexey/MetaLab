@@ -96,7 +96,7 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 	}
 	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
 	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accumulationStandardFields(value.Kind), configuration)...)
-	issues = append(issues, validateFieldLinks(registerFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
+	issues = append(issues, validateFieldLinks(accumulationStandardFields(value.Kind), registerFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 	issues = append(issues, validateAttributeUse(registerFields, nil, false, false)...)
 	if len(value.Resources) == 0 {
 		issues = append(issues, "resources must contain at least one numeric item")

@@ -994,7 +994,7 @@ func DecodeConstant(source string, reader io.Reader, configuration project.Proje
 	// A constant stands alone: there are no sibling fields for a choice
 	// parameter link to take its value from, so a link that names one names
 	// something that is not there.
-	issues = append(issues, validateFieldLinks(nil, nil, choiceHolder{"", value.Choice})...)
+	issues = append(issues, validateFieldLinks(nil, nil, nil, choiceHolder{"", value.Choice})...)
 	issues = append(issues, validateDataHistory(value.DataHistorySettings)...)
 	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
@@ -1070,7 +1070,7 @@ func DecodeEnumeration(source string, reader io.Reader, configuration project.Pr
 		issues = append(issues, "quick_choice contradicts choice_mode from-form")
 	}
 	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(EnumerationKind), configuration)...)
-	issues = append(issues, validateFieldLinks(nil, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
+	issues = append(issues, validateFieldLinks(standardFieldsOfKind(EnumerationKind), nil, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
@@ -1412,7 +1412,7 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 		standardTablePartChoices("standard_table_parts", shape.standardTableParts)...)
 	links = append(links, tablePartStandardChoices(shape.tableParts)...)
 	fields := append([]fieldGroup{{"attributes", shape.attributes}}, shape.extraFields...)
-	issues = append(issues, validateFieldLinks(fields, shape.tableParts, links...)...)
+	issues = append(issues, validateFieldLinks(standardFieldsOfKind(shape.kind), fields, shape.tableParts, links...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts,
 		shape.attributeUse, shape.hierarchy.Enabled && shape.hierarchy.Kind == FoldersAndItemsHierarchy)...)
 	issues = append(issues, validateFormSlots(shape.forms.slots())...)

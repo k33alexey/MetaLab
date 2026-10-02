@@ -216,7 +216,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 	}
 	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
 	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(CalculationRegisterKind), configuration)...)
-	issues = append(issues, validateFieldLinks(calculationFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
+	issues = append(issues, validateFieldLinks(standardFieldsOfKind(CalculationRegisterKind), calculationFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 	issues = append(issues, validateAttributeUse(calculationFields, nil, false, false)...)
 	issues = append(issues, validateRecalculations(value, configuration)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
