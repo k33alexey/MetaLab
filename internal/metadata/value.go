@@ -29,6 +29,41 @@ type Value struct {
 	Object uuid.UUID `json:"object,omitempty" yaml:"object,omitempty"`
 }
 
+// Two kinds of value are values only, never the type of a field: the
+// configurations being moved write both where a design-time value stands - a
+// choice parameter, the filling of a field.
+const (
+	// UndefinedValue is Неопределено written as a value: a choice parameter
+	// set to it 143 and 2 times in erp and acc. It has no data.
+	UndefinedValue TypeKind = "undefined"
+	// UnresolvedReferenceValue is a reference the prototype wrote that names
+	// a type nothing in the configuration has - "<type id>.<item id>", 31,
+	// 17 and 164 times as a filling value in erp, acc and sb, and a few times
+	// in choice parameters. Data keeps the text word for word. It refers to
+	// nothing and is held by no field, so it filters and fills nothing.
+	UnresolvedReferenceValue TypeKind = "unresolved-reference"
+)
+
+// validateDesignTimeValue checks the shape of a value written at design time:
+// that it says what kind it is - Неопределено is a kind of its own and not an
+// empty one, or a reader could not tell it from a value nobody wrote - and
+// that the two value-only kinds carry what they should.
+func validateDesignTimeValue(path string, value Value) []string {
+	switch value.Kind {
+	case "":
+		return []string{path + ".kind must be named; Неопределено is kind undefined"}
+	case UndefinedValue:
+		if value.Data != "" || !value.Object.IsZero() {
+			return []string{path + " is undefined and carries nothing"}
+		}
+	case UnresolvedReferenceValue:
+		if value.Data == "" {
+			return []string{path + ".data must keep the reference as the prototype wrote it"}
+		}
+	}
+	return nil
+}
+
 // MarshalJSON keeps a value without an object spelled the way it always was.
 // An array field is never omitted by the encoder, and a stored value is not
 // the place to carry a zero identifier on every string and number.

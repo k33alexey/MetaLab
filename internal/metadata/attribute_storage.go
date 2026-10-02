@@ -160,6 +160,9 @@ func validateFieldStorage(prefix string, attribute Attribute) []string {
 	}
 	// A filling value of a type the field cannot hold is carried and fills
 	// nothing - see EffectiveFillingValue.
+	if filling := attribute.Filling.Value; filling != nil {
+		issues = append(issues, validateDesignTimeValue(prefix+".filling.value", *filling)...)
+	}
 	return issues
 }
 

@@ -354,6 +354,9 @@ func validateChoiceParameters(prefix string, choice FieldChoice) []string {
 		if len(parameter.Values) == 0 {
 			issues = append(issues, path+".values must contain at least one value")
 		}
+		for position, value := range parameter.Values {
+			issues = append(issues, validateDesignTimeValue(fmt.Sprintf("%s.values[%d]", path, position), value)...)
+		}
 		if !parameter.List && len(parameter.Values) > 1 {
 			issues = append(issues, path+" sets several values, so it must say it is a list")
 		}

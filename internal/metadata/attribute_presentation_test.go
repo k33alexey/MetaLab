@@ -481,3 +481,62 @@ func TestLinkLeadingOutOfTheObjectIsCarriedAsWritten(t *testing.T) {
 		}
 	})
 }
+
+// Неопределено and a reference to a type nothing has are values the prototype
+// writes at design time - a choice parameter set to Неопределено 145 times,
+// a filling value naming a vanished type 212 times - and each has one way to
+// be written. The defects caught: either refused; a value with no kind let
+// through, which a reader cannot tell from Неопределено; Неопределено with
+// data; and a kept reference with its text lost. And what neither fills: a
+// field is filled by neither, whatever its types.
+func TestUndefinedAndUnresolvedReferenceAreValuesOfTheirOwn(t *testing.T) {
+	t.Parallel()
+	const unresolved = "466cbe70-c94c-4cdc-a0fb-f9f9084bdef2.00000000-0000-0000-0000-000000000000"
+	body := func(parameter, filling string) string {
+		return presentationOrder(`attributes:
+  - id: ` + presentationContract + `
+    name: Счет
+    title: {ru: Счёт}
+    types: [{kind: string, length: 10}]
+    choice:
+      parameters: [{name: ВыборСчетовГоловнойОрганизации, values: [` + parameter + `]}]
+    filling: {value: ` + filling + `}
+`)
+	}
+	for name, test := range map[string]struct {
+		parameter, filling, want string
+	}{
+		"неопределено и неразрешённая ссылка": {`{kind: undefined, data: ""}`, `{kind: unresolved-reference, data: "` + unresolved + `"}`, ""},
+		"вид не назван":          {`{kind: "", data: ""}`, `{kind: string, data: ""}`, "Неопределено is kind undefined"},
+		"неопределено с данными": {`{kind: undefined, data: "x"}`, `{kind: string, data: ""}`, "is undefined and carries nothing"},
+		"ссылка без текста":      {`{kind: undefined, data: ""}`, `{kind: unresolved-reference, data: ""}`, "must keep the reference as the prototype wrote it"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			value, err := DecodeCatalog("object.yaml", strings.NewReader(body(test.parameter, test.filling)), metadataConfiguration())
+			if test.want != "" {
+				if err == nil || !strings.Contains(err.Error(), test.want) {
+					t.Fatalf("want a refusal saying %q, got %v", test.want, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("a value the prototype writes was refused: %v", err)
+			}
+			field := value.Attributes[0]
+			if got := field.Choice.Parameters[0].Values[0]; got.Kind != UndefinedValue {
+				t.Fatalf("Неопределено came back as %+v", got)
+			}
+			if got := field.Filling.Value; got == nil || got.Kind != UnresolvedReferenceValue || got.Data != unresolved {
+				t.Fatalf("the reference did not come back word for word: %+v", got)
+			}
+		})
+	}
+	for _, kind := range []TypeKind{UndefinedValue, UnresolvedReferenceValue} {
+		for _, types := range [][]Type{{{Kind: StringType}}, {{Kind: CatalogType}, {Kind: StringType}}} {
+			if EffectiveFillingValue(&Value{Kind: kind, Data: "x"}, types) != nil {
+				t.Errorf("%s fills a field of %v", kind, types)
+			}
+		}
+	}
+}

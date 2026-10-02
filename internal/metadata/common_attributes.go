@@ -244,6 +244,9 @@ func ValidateCommonAttribute(source string, value CommonAttributeDefinition, con
 	}, configuration)...)
 	// A filling value of a type the field cannot hold is carried and fills
 	// nothing - see EffectiveFillingValue.
+	if filling := value.Filling.Value; filling != nil {
+		issues = append(issues, validateDesignTimeValue("filling.value", *filling)...)
+	}
 	// A common attribute is declared on its own, away from the objects it will
 	// join, so there are no sibling fields for a choice parameter link to take
 	// its value from - and which siblings it would have depends on the object,
