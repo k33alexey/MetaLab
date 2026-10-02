@@ -213,6 +213,15 @@ func TestBrokenFieldSettingsAreRefused(t *testing.T) {
 			"object must be set beside the kind"},
 		"форма выбора без вида": {field(`    choice: {form: {object: ` + presentationPartners + `, name: ФормаВыбора}}`),
 			"kind must be set beside the object"},
+		// A choice form belongs to an object that has forms. Defect caught:
+		// any kind the model knew was accepted - a constant, a common module,
+		// a role.
+		"форма выбора у константы": {field(`    choice: {form: {kind: constants, object: ` + presentationPartners + `, name: ФормаВыбора}}`),
+			"kind must be a kind of object that has forms"},
+		"форма выбора у общего модуля": {field(`    choice: {form: {kind: common-modules, object: ` + presentationPartners + `, name: ФормаВыбора}}`),
+			"kind must be a kind of object that has forms"},
+		"форма выбора у роли": {field(`    choice: {form: {kind: roles, object: ` + presentationPartners + `, name: ФормаВыбора}}`),
+			"kind must be a kind of object that has forms"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -224,6 +233,20 @@ func TestBrokenFieldSettingsAreRefused(t *testing.T) {
 				t.Fatalf("%s: refused for another reason: %v", name, err)
 			}
 		})
+	}
+
+	// Every kind with forms of its own may hold a choice form; the
+	// configurations being moved use catalogs, documents, charts of accounts
+	// and an exchange plan.
+	for _, kind := range []Kind{CatalogKind, DocumentKind, EnumerationKind, DocumentJournalKind,
+		ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind,
+		ExchangePlanKind, BusinessProcessKind, TaskKind,
+		InformationRegisterKind, AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind,
+		ReportKind, DataProcessorKind, FilterCriterionKind, SettingsStorageKind,
+		ExternalDataSourceTableKind, ExternalCubeKind, ExternalDimensionTableKind} {
+		if _, err := DecodeCatalog("object.yaml", strings.NewReader(presentationOrder(field(`    choice: {form: {kind: `+string(kind)+`, object: `+presentationPartners+`, name: ФормаВыбора}}`)+"\n")), metadataConfiguration()); err != nil {
+			t.Fatalf("a choice form of %s was refused: %v", kind, err)
+		}
 	}
 
 	// A bound is not checked against a description the configuration may widen:

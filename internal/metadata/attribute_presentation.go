@@ -123,10 +123,14 @@ type TypeLink struct {
 // so it names that object; named without one, it is a common form of the
 // configuration.
 //
-// Nothing resolves it yet: no configuration we have read fills it in, and the
-// place that would open it is the form engine, which is not built. It is
-// carried so that a configuration that does fill it in does not lose it in
-// silence.
+// The object is one of the kinds that have forms of their own (formOwnerKind);
+// the help puts no other bound on it. The configurations being moved fill it
+// in on fields 98, 6 and 11 times, with forms of catalogs, documents, charts of
+// accounts and an exchange plan.
+//
+// Nothing resolves the form itself yet: the place that would open it is the
+// form engine, which is not built, and a form that is not there is carried
+// unresolved rather than refused, as every reference by name is.
 type ChoiceFormReference struct {
 	Kind   Kind       `yaml:"kind,omitempty" json:"kind,omitempty"`
 	Object *uuid.UUID `yaml:"object,omitempty" json:"object,omitempty"`
@@ -264,8 +268,8 @@ func validateChoiceFormReference(path string, form ChoiceFormReference) []string
 		issues = append(issues, path+".kind must be set beside the object")
 	case form.Object != nil && form.Object.IsZero():
 		issues = append(issues, path+".object must be a non-zero UUID")
-	case form.Object != nil && !knownMetadataKind(form.Kind):
-		issues = append(issues, path+".kind is not a kind of metadata object")
+	case form.Object != nil && !formOwnerKind(form.Kind):
+		issues = append(issues, path+".kind must be a kind of object that has forms")
 	}
 	return issues
 }
@@ -445,4 +449,20 @@ func cloneValuePointer(value *Value) *Value {
 	}
 	copied := *value
 	return &copied
+}
+
+// formOwnerKind says whether objects of this kind have forms of their own -
+// which is what a choice form of a field has to be one of, unless it is a
+// common form.
+func formOwnerKind(kind Kind) bool {
+	switch kind {
+	case CatalogKind, DocumentKind, EnumerationKind, DocumentJournalKind,
+		ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind,
+		ExchangePlanKind, BusinessProcessKind, TaskKind,
+		InformationRegisterKind, AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind,
+		ReportKind, DataProcessorKind, FilterCriterionKind, SettingsStorageKind,
+		ExternalDataSourceTableKind, ExternalCubeKind, ExternalDimensionTableKind:
+		return true
+	}
+	return false
 }

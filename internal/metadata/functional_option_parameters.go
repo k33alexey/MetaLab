@@ -14,9 +14,11 @@ import (
 // functional option differs.
 const FunctionalOptionParameterKind Kind = "functional-options-parameters"
 
-// FunctionalOptionParameterUse is one place where the axis appears: the object
-// the parameter stands for, or a dimension of an information register that
-// holds the option's value.
+// FunctionalOptionParameterUse is one place where the axis appears: a catalog
+// the parameter stands for as a whole, or a dimension of an information
+// register that holds the option's value. These two and nothing else (help,
+// FunctionalOptionsParameter.Use: a dimension or a catalog; every use in the
+// three configurations being moved is one of them).
 type FunctionalOptionParameterUse struct {
 	Kind   Kind      `yaml:"kind" json:"kind"`
 	Object uuid.UUID `yaml:"object" json:"object"`
@@ -49,11 +51,25 @@ func DecodeFunctionalOptionParameter(source string, reader io.Reader, configurat
 		return FunctionalOptionParameterDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
+	// The help: the property has to be filled. A parameter standing for
+	// nothing gives an option nothing to look its value up by.
+	if len(value.Use) == 0 {
+		issues = append(issues, "use must name at least one catalog or dimension")
+	}
 	seen := map[string]bool{}
 	for index, item := range value.Use {
 		prefix := fmt.Sprintf("use[%d]", index)
-		if !knownMetadataKind(item.Kind) {
-			issues = append(issues, prefix+".kind is not a kind of metadata object")
+		switch item.Kind {
+		case CatalogKind:
+			if item.Element != nil {
+				issues = append(issues, prefix+".element is not allowed: a parameter stands for a catalog as a whole")
+			}
+		case InformationRegisterKind:
+			if item.Element == nil {
+				issues = append(issues, prefix+".element is required: a parameter stands for a dimension of the register")
+			}
+		default:
+			issues = append(issues, prefix+".kind must be catalogs or information-registers")
 		}
 		if item.Object.IsZero() {
 			issues = append(issues, prefix+".object must be a non-zero UUID")
@@ -112,12 +128,24 @@ func (catalog *Catalog) validateFunctionalOptionParameters() error {
 		owner := "functional option parameter " + parameter.Name
 		for index, item := range parameter.Use {
 			where := fmt.Sprintf("%s use[%d]", owner, index)
-			elements, ok := catalog.objectElementsOf(item.Kind, item.Object)
-			if !ok {
-				return fmt.Errorf("%s stands for %s %s, which is not in the configuration", where, item.Kind, item.Object)
-			}
-			if item.Element != nil && !elements.has(*item.Element) {
-				return fmt.Errorf("%s stands for field %s, which that object does not have", where, item.Element)
+			missing := fmt.Errorf("%s stands for %s %s, which is not in the configuration", where, item.Kind, item.Object)
+			switch item.Kind {
+			case CatalogKind:
+				if _, ok := catalog.catalogByID[item.Object]; !ok {
+					return missing
+				}
+			case InformationRegisterKind:
+				index, ok := catalog.informationRegisterByID[item.Object]
+				if !ok {
+					return missing
+				}
+				if !slices.ContainsFunc(catalog.InformationRegisters[index].Dimensions, func(dimension RegisterDimension) bool {
+					return item.Element != nil && dimension.ID == *item.Element
+				}) {
+					return fmt.Errorf("%s stands for field %s, which is not a dimension of that information register", where, item.Element)
+				}
+			default:
+				return fmt.Errorf("%s stands for %s, which a parameter cannot stand for", where, item.Kind)
 			}
 		}
 	}

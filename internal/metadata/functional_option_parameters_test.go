@@ -122,7 +122,14 @@ func TestBrokenFunctionalOptionParametersAreRefused(t *testing.T) {
 		"объекта не существует": {"use: [{kind: catalogs, object: " + parameterSecond + "}]",
 			"which is not in the configuration"},
 		"поля не существует": {"use: [{kind: information-registers, object: " + optionRegister +
-			", element: " + parameterSecond + "}]", "which that object does not have"},
+			", element: " + parameterSecond + "}]", "which is not a dimension of that information register"},
+		// A parameter stands for a dimension (help, FunctionalOptionsParameter.Use).
+		// Defect caught: a resource, which is where the value is kept, was
+		// accepted as the axis it is looked up by.
+		"ресурс вместо измерения": {"use: [{kind: information-registers, object: " + optionRegister +
+			", element: " + optionResource + "}]", "which is not a dimension of that information register"},
+		"регистра не существует": {"use: [{kind: information-registers, object: " + parameterSecond +
+			", element: " + optionDimension + "}]", "which is not in the configuration"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -145,7 +152,21 @@ title: {ru: Параметр}
 	// The shape is checked before anything is resolved.
 	for name, broken := range map[string]struct{ body, want string }{
 		"вида объекта не существует": {"use: [{kind: слайды, object: " + optionCatalog + "}]",
-			"is not a kind of metadata object"},
+			"kind must be catalogs or information-registers"},
+		// Only a catalog or a dimension (help). Defect caught: any kind the
+		// model knew was accepted, a document or a common command among them.
+		"документ": {"use: [{kind: documents, object: " + optionCatalog + "}]",
+			"kind must be catalogs or information-registers"},
+		"общая команда": {"use: [{kind: common-commands, object: " + optionCatalog + "}]",
+			"kind must be catalogs or information-registers"},
+		"регистр накопления": {"use: [{kind: accumulation-registers, object: " + optionRegister + ", element: " + optionDimension + "}]",
+			"kind must be catalogs or information-registers"},
+		"реквизит справочника": {"use: [{kind: catalogs, object: " + optionCatalog + ", element: " + optionAttribute + "}]",
+			"a parameter stands for a catalog as a whole"},
+		"регистр без измерения": {"use: [{kind: information-registers, object: " + optionRegister + "}]",
+			"a parameter stands for a dimension of the register"},
+		// The help: the property has to be filled.
+		"использования нет": {"comment: ни за что", "use must name at least one catalog or dimension"},
 		"одно и то же дважды": {"use:\n  - {kind: catalogs, object: " + optionCatalog + "}\n  - {kind: catalogs, object: " +
 			optionCatalog + "}", "is already in the use"},
 	} {
