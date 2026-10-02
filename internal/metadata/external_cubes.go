@@ -34,10 +34,6 @@ const (
 	ExternalDimensionTablesDirectory = "dimension-tables"
 )
 
-const (
-	maxUnfilledDimensionParentLen = 1024
-)
-
 // ExternalCubeForms are the default forms of a cube. A cube is read as a set of
 // records, so it has a form of a record and a list and nothing else: the help
 // gives it these two and no object or choice form.
@@ -135,8 +131,9 @@ type ExternalDimensionTable struct {
 	// HierarchyNameInDataSource is the hierarchy of the dimension this table
 	// belongs to, as the other database names it.
 	HierarchyNameInDataSource string `yaml:"hierarchy_name_in_data_source,omitempty" json:"hierarchyNameInDataSource,omitempty"`
-	// LevelNumber is the level of that hierarchy the table holds. Zero for a
-	// hierarchical table and for one that stands for a whole dimension.
+	// LevelNumber is the level of that hierarchy the table holds, as it was
+	// saved. A hierarchical table is read at level 0 whatever is written here -
+	// see EffectiveLevelNumber.
 	LevelNumber  int  `yaml:"level_number,omitempty" json:"levelNumber,omitempty"`
 	Hierarchical bool `yaml:"hierarchical,omitempty" json:"hierarchical,omitempty"`
 	// UnfilledParentValue is the text a member's parent holds when it has
@@ -186,19 +183,16 @@ func DecodeExternalDimensionTable(source string, reader io.Reader, configuration
 	if value.LevelNumber < 0 {
 		issues = append(issues, "level_number must not be negative")
 	}
-	// The help says it outright: a hierarchical table stands for the whole
-	// hierarchy, and its level is 0. A level on it would say it is one level
-	// and all of them at once.
-	if value.Hierarchical && value.LevelNumber != 0 {
-		issues = append(issues, "level_number of a hierarchical dimension table is 0: it holds every level of the hierarchy")
-	}
-	if value.UnfilledParentValue != nil {
-		if !value.Hierarchical {
-			issues = append(issues, "unfilled_parent_value belongs to a hierarchical dimension table: without a hierarchy a member has no parent")
-		}
-		if utf8.RuneCountInString(*value.UnfilledParentValue) > maxUnfilledDimensionParentLen {
-			issues = append(issues, fmt.Sprintf("unfilled_parent_value must not exceed %d characters", maxUnfilledDimensionParentLen))
-		}
+	// A hierarchical table keeps the level it was saved with: the designer
+	// saves 1 there (mdclasses, 8.3.25 and 8.3.27), while the help says such a
+	// table answers 0. Both are true at once - the number written and the
+	// number the application sees - so the first is carried and the second is
+	// EffectiveLevelNumber.
+	//
+	// The value of an unfilled parent has no ceiling: the help types it as a
+	// string or Null and names none.
+	if value.UnfilledParentValue != nil && !value.Hierarchical {
+		issues = append(issues, "unfilled_parent_value belongs to a hierarchical dimension table: without a hierarchy a member has no parent")
 	}
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
@@ -315,6 +309,17 @@ func cloneExternalFields(fields []ExternalField) []ExternalField {
 		result[index] = cloneExternalField(field)
 	}
 	return result
+}
+
+// EffectiveLevelNumber is the level the application sees. The help: a
+// hierarchical table stands for the whole hierarchy and its level is 0,
+// whatever number the designer saved with it. Everything that reads the level
+// at run time reads it here, not from LevelNumber.
+func (table ExternalDimensionTable) EffectiveLevelNumber() int {
+	if table.Hierarchical {
+		return 0
+	}
+	return table.LevelNumber
 }
 
 func cloneExternalDimensionTable(table ExternalDimensionTable) ExternalDimensionTable {

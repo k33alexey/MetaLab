@@ -126,7 +126,7 @@ func TestExternalCubeCarriesItsDimensionsResourcesAndTables(t *testing.T) {
 
 // What a cube and a dimension table are checked for on their own. Catches a
 // dimension and a resource of one name - one field of the cube read twice - a
-// cube with no name in the source, a level on a hierarchical table, an unfilled
+// cube with no name in the source, an unfilled
 // parent on a table with no hierarchy, and a presentation field that is not a
 // field.
 func TestExternalCubeAndDimensionTableAreCheckedOnTheirOwn(t *testing.T) {
@@ -134,7 +134,6 @@ func TestExternalCubeAndDimensionTableAreCheckedOnTheirOwn(t *testing.T) {
 	for name, test := range map[string]struct{ cube, dimension, says string }{
 		"a dimension and a resource of one name": {strings.Replace(salesCubeBody, "    name: Количество", "    name: Товар", 1), goodsDimTableBody, "resources[0].name is used twice"},
 		"a cube with no name in the source":      {strings.Replace(salesCubeBody, "name_in_data_source: '[Sales]'\n", "", 1), goodsDimTableBody, "must name the cube in the data source"},
-		"a level on a hierarchical table":        {salesCubeBody, goodsDimTableBody + "level_number: 2\n", "level_number of a hierarchical dimension table is 0"},
 		"an unfilled parent without a hierarchy": {salesCubeBody, strings.Replace(goodsDimTableBody, "hierarchical: true\n", "", 1), "unfilled_parent_value belongs to a hierarchical dimension table"},
 		"a presentation field that is absent":    {salesCubeBody, strings.Replace(goodsDimTableBody, "presentation_field: Наименование", "presentation_field: Артикул", 1), `presentation_field names "Артикул"`},
 		"an attribute's property on a dimension": {strings.Replace(salesCubeBody, "    types: [{kind: date}]\n", "    types: [{kind: date}]\n    indexing: index\n", 1), goodsDimTableBody, "dimensions[1].indexing belongs to an attribute"},
@@ -276,5 +275,44 @@ func TestExternalCubeDimensionRefersOnlyToItsOwnCube(t *testing.T) {
 		"format: 1\nid: "+otherTable+"\nname: Поставщики\ntitle: {ru: Поставщики}\nname_in_data_source: Suppliers\n")
 	if message := loadRefused(t, root, "a dimension of another cube's table"); !strings.Contains(message, "refers to a dimension table of another cube") {
 		t.Fatalf("the error does not say what is wrong: %v", message)
+	}
+}
+
+// A hierarchical dimension table keeps the level the designer saved with it -
+// 1 in the files the designer writes (mdclasses, 8.3.25 and 8.3.27) - and is
+// read at level 0, as the help says such a table is. The defects caught: the
+// saved level refused, which turns away what the designer saves; the level
+// lost on the way, which changes the file; and the application reading the
+// saved number, not 0. A table without a hierarchy is read at its own level,
+// so a rule that answers 0 for everything is caught as well. The value of an
+// unfilled parent has no ceiling in the help, and a long one loads.
+func TestExternalDimensionTableKeepsItsLevelAndIsReadAtTheHierarchys(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		body             string
+		saved, effective int
+	}{
+		"иерархическая с уровнем 1":                {goodsDimTableBody + "level_number: 1\n", 1, 0},
+		"иерархическая без уровня":                 {goodsDimTableBody, 0, 0},
+		"неиерархическая уровня 2":                 {strings.Replace(strings.Replace(goodsDimTableBody, "hierarchical: true\n", "", 1), "unfilled_parent_value: \"\"\n", "", 1) + "level_number: 2\n", 2, 2},
+		"длинное значение незаполненного родителя": {strings.Replace(goodsDimTableBody, `unfilled_parent_value: ""`, "unfilled_parent_value: "+strings.Repeat("x", 2000), 1), 0, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := metadataProject(t)
+			writeSalesCube(t, root, salesCubeBody, test.body)
+			catalog, err := Load(root)
+			if err != nil {
+				t.Fatalf("refused: %v", err)
+			}
+			cube, _ := catalog.ExternalCube("Склад", "Продажи")
+			table := cube.DimensionTables[0]
+			if table.LevelNumber != test.saved {
+				t.Fatalf("the saved level came back as %d, want %d", table.LevelNumber, test.saved)
+			}
+			if got := table.EffectiveLevelNumber(); got != test.effective {
+				t.Fatalf("the application reads level %d, want %d", got, test.effective)
+			}
+		})
 	}
 }
