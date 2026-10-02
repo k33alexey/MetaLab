@@ -147,3 +147,69 @@ templates:
 		})
 	}
 }
+
+// The root of a service holds what the help lets it hold - letters, digits
+// and - ~ $ ( ) _ . - and nothing more. The defect caught on the refusing side
+// is a root the platform would not take, such as one with @ or +, carried
+// over as if it were an address; on the accepting side, a check narrower than
+// the help that turns away a root the prototype saves - every symbol of the
+// set and a letter that is not Latin are tried.
+func TestHTTPServiceRootHoldsWhatTheHelpAllows(t *testing.T) {
+	t.Parallel()
+	for root, valid := range map[string]bool{
+		"billing":      true,
+		"Обмен_v1.0":   true,
+		"a-b~c$(d)":    true,
+		"api.v2":       true,
+		"bill@home":    false,
+		"bill+home":    false,
+		"bill%20home":  false,
+		"bill,home":    false,
+		`"bill home"`:  false,
+		"bill:home":    false,
+		"bill&home=1":  false,
+		"bill'home":    false,
+		"bill\\\\home": false,
+		"bill*":        false,
+		"bill!":        false,
+		"bill;home":    false,
+		"bill[home]":   false,
+		"bill{home}":   false,
+		"bill<home>":   false,
+		"bill|home":    false,
+		"bill^home":    false,
+		"bill`home`":   false,
+		"bill home":    false,
+		"bill—home":    false,
+	} {
+		t.Run(root, func(t *testing.T) {
+			t.Parallel()
+			directory := metadataProject(t)
+			writeHTTPService(t, directory, httpServiceID, "Биллинг", "root_url: '"+strings.ReplaceAll(root, "'", "''")+"'\n")
+			_, err := Load(directory)
+			switch {
+			case valid && err != nil:
+				t.Fatalf("a root the help allows was refused: %v", err)
+			case !valid && err == nil:
+				t.Fatal("a root the help does not allow was accepted")
+			case !valid && !strings.Contains(err.Error(), "root_url"):
+				t.Fatalf("refused for another reason: %v", err)
+			}
+		})
+	}
+}
+
+// A template of an address is a string with no ceiling in the help, and one
+// longer than the 512 characters once refused here must load.
+func TestHTTPServiceTemplateHasNoCeiling(t *testing.T) {
+	t.Parallel()
+	directory := metadataProject(t)
+	long := "/" + strings.Repeat("segment/", 100) + "{Код}"
+	writeHTTPService(t, directory, httpServiceID, "Биллинг", `root_url: billing
+templates:
+  - {id: f4000000-0000-4000-8000-000000000010, name: Длинный, title: {ru: Длинный}, template: "`+long+`"}
+`)
+	if _, err := Load(directory); err != nil {
+		t.Fatalf("a template of %d characters was refused: %v", len(long), err)
+	}
+}

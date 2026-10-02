@@ -99,7 +99,10 @@ func DecodeHTTPService(source string, reader io.Reader, configuration project.Pr
 	return value, nil
 }
 
-// validateRootURL checks the first segment of every address of the service.
+// validateRootURL checks the first segment of every address of the service,
+// the one after "hs". The help names what it may hold: letters, digits and
+// - ~ $ ( ) _ . - and nothing else; every root of the configurations being
+// moved keeps to that, all nineteen.
 func validateRootURL(value string) []string {
 	if value == "" {
 		return []string{"root_url must name the address the service answers at"}
@@ -108,8 +111,8 @@ func validateRootURL(value string) []string {
 		return []string{"root_url must be one segment of the address and not a path"}
 	}
 	for _, symbol := range value {
-		if unicode.IsSpace(symbol) || !unicode.IsPrint(symbol) {
-			return []string{"root_url must not contain spaces or control characters"}
+		if !unicode.IsLetter(symbol) && !unicode.IsDigit(symbol) && !strings.ContainsRune("-~$()_.", symbol) {
+			return []string{"root_url may hold letters, digits and - ~ $ ( ) _ . only"}
 		}
 	}
 	return nil
@@ -153,9 +156,8 @@ func validateTemplatePath(path, value string) []string {
 	if value == "" {
 		return []string{path + " must say which address it answers"}
 	}
-	if utf8.RuneCountInString(value) > 512 {
-		return []string{path + " must not exceed 512 characters"}
-	}
+	// No ceiling on the length: the help gives the template as a string and
+	// names none.
 	if !strings.HasPrefix(value, "/") {
 		return []string{path + " must begin with a slash: it continues the root address"}
 	}
