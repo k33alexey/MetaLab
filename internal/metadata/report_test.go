@@ -89,8 +89,6 @@ func TestReportsAreCheckedLikeAnyOtherObject(t *testing.T) {
   - {id: ` + reportAttribute + `, name: Отборы, title: {ru: Отборы}, types: [{kind: string, length: 10}]}
 table_parts:
   - {id: ` + reportPart + `, name: Отборы, title: {ru: Отборы}, attributes: [{id: ` + reportPartField + `, name: Значение, title: {ru: Значение}, types: [{kind: string, length: 10}]}]}`,
-		"реквизит занял стандартное имя": `attributes:
-  - {id: ` + reportAttribute + `, name: Ссылка, title: {ru: Ссылка}, types: [{kind: string, length: 10}]}`,
 		"тип указывает в никуда": `attributes:
   - {id: ` + reportAttribute + `, name: Товар, title: {ru: Товар}, types: [{kind: catalog, reference: 4e900000-0000-4000-8000-0000000000ff}]}`,
 		"два реквизита с одним идентификатором": `attributes:
@@ -111,5 +109,87 @@ title: {ru: Остатки товаров}
 				t.Fatal("a report that does not hold together was accepted")
 			}
 		})
+	}
+}
+
+// A running object has no standard attributes, so none of its names is taken,
+// and an attribute of the object itself may be left without a type: the
+// prototype takes it as arbitrary. Both are what the configurations being
+// moved do - «Ссылка» and «НомерСтроки» on a data processor seven times, an
+// attribute with no type 51 times. Each case loads as a report and as a data
+// processor: the two are checked by one code, and a defect in either kind's
+// call would stay unseen if only one were tried.
+func TestRunningObjectsTakeAnyNameAndNoType(t *testing.T) {
+	t.Parallel()
+	for name, body := range map[string]string{
+		"реквизит назван Ссылка": `attributes:
+  - {id: ` + reportAttribute + `, name: Ссылка, title: {ru: Ссылка}, types: [{kind: string, length: 10}]}`,
+		"реквизит назван НомерСтроки": `attributes:
+  - {id: ` + reportAttribute + `, name: НомерСтроки, title: {ru: Номер}, types: [{kind: string, length: 5}]}`,
+		"табличная часть названа Ссылка": `table_parts:
+  - {id: ` + reportPart + `, name: Ссылка, title: {ru: Ссылка}, attributes: [{id: ` + reportPartField + `, name: Значение, title: {ru: Значение}, types: [{kind: string, length: 10}]}]}`,
+		"реквизит без типа": `attributes:
+  - {id: ` + reportAttribute + `, name: Контекст, title: {ru: Контекст}}`,
+	} {
+		for _, kind := range []Kind{ReportKind, DataProcessorKind} {
+			t.Run(name+"/"+string(kind), func(t *testing.T) {
+				t.Parallel()
+				root := metadataProject(t)
+				writeMetadata(t, root, kind, reportID, `format: 1
+id: `+reportID+`
+name: Помощник
+title: {ru: Помощник}
+`+body+`
+`)
+				catalog, err := Load(root)
+				if err != nil {
+					t.Fatalf("a running object the prototype saves was rejected: %v", err)
+				}
+				var attributes []Attribute
+				if kind == ReportKind {
+					item, _ := catalog.Report("Помощник")
+					attributes = item.Attributes
+				} else {
+					item, _ := catalog.DataProcessor("Помощник")
+					attributes = item.Attributes
+				}
+				if name == "реквизит без типа" && (len(attributes) != 1 || len(attributes[0].Types) != 0) {
+					t.Fatalf("an attribute with no type did not stay without one: %+v", attributes)
+				}
+			})
+		}
+	}
+}
+
+// What a running object is let off is the object's own attribute, and only
+// that. A table part attribute is a field like any other and must say what it
+// holds; a reference in a type must lead somewhere wherever it stands. Every
+// case is tried on both kinds, so a check that one of them skips turns red.
+func TestRunningObjectsStillHoldTogether(t *testing.T) {
+	t.Parallel()
+	for name, body := range map[string]string{
+		"реквизит табличной части без типа": `table_parts:
+  - {id: ` + reportPart + `, name: Отборы, title: {ru: Отборы}, attributes: [{id: ` + reportPartField + `, name: Значение, title: {ru: Значение}}]}`,
+		"тип реквизита указывает в никуда": `attributes:
+  - {id: ` + reportAttribute + `, name: Товар, title: {ru: Товар}, types: [{kind: catalog, reference: 4e900000-0000-4000-8000-0000000000ff}]}`,
+		"тип реквизита табличной части указывает в никуда": `table_parts:
+  - {id: ` + reportPart + `, name: Отборы, title: {ru: Отборы}, attributes: [{id: ` + reportPartField + `, name: Товар, title: {ru: Товар}, types: [{kind: catalog, reference: 4e900000-0000-4000-8000-0000000000ff}]}]}`,
+	} {
+		for _, kind := range []Kind{ReportKind, DataProcessorKind} {
+			t.Run(name+"/"+string(kind), func(t *testing.T) {
+				t.Parallel()
+				root := metadataProject(t)
+				catalogNamed(t, root, reportGoods, "Номенклатура")
+				writeMetadata(t, root, kind, reportID, `format: 1
+id: `+reportID+`
+name: Помощник
+title: {ru: Помощник}
+`+body+`
+`)
+				if _, err := Load(root); err == nil {
+					t.Fatal("a running object that does not hold together was accepted")
+				}
+			})
+		}
 	}
 }

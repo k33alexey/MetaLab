@@ -85,7 +85,7 @@ func DecodeReport(source string, reader io.Reader, configuration project.Project
 		return ReportDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, configuration, reservedReportName)...)
+	issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, configuration)...)
 	issues = append(issues, validateRunningObjectPresentations(value.RunningObjectPresentations, configuration)...)
 	for name, id := range map[string]*uuid.UUID{
 		"main_schema": value.MainSchema, "variants_storage": value.VariantsStorage,
@@ -111,7 +111,7 @@ func DecodeDataProcessor(source string, reader io.Reader, configuration project.
 		return DataProcessorDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, configuration, reservedReportName)...)
+	issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, configuration)...)
 	issues = append(issues, validateRunningObjectPresentations(value.RunningObjectPresentations, configuration)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
@@ -126,12 +126,17 @@ func DecodeDataProcessor(source string, reader io.Reader, configuration project.
 // attributes and table parts that exist only while the object runs. They are
 // checked like any others - a name is a name and a type is a type whether or
 // not the value is ever written down.
-func validateRunningObjectShape(attributes []Attribute, parts []TablePart, configuration project.Project, reserved func(string) bool) []string {
+func validateRunningObjectShape(attributes []Attribute, parts []TablePart, configuration project.Project) []string {
+	// A running object has no standard attributes, so no name is taken: the
+	// help lists none for the object, and a row of its table part has only
+	// its line number, which is a name inside the part. The configurations
+	// being moved name an attribute of a data processor «Ссылка» six times
+	// and «НомерСтроки» once.
 	// An attribute of the object itself takes any type, a value table or a
 	// standard period as much as a string; one of its table parts keeps to
 	// what a stored field takes - the configurations being moved never give
 	// one anything else, and the help says nothing to the contrary.
-	issues := validateAttributesIn("attributes", attributes, configuration, reserved, placeRunningObject)
+	issues := validateAttributesIn("attributes", attributes, configuration, nil, placeRunningObject)
 	names := map[string]bool{}
 	for _, attribute := range attributes {
 		names[strings.ToLower(attribute.Name)] = true
@@ -139,19 +144,9 @@ func validateRunningObjectShape(attributes []Attribute, parts []TablePart, confi
 	// A running object's table part is not stored: its rows live as long as the
 	// report does. So no width for a line number, and nothing for a part to
 	// belong to either.
-	issues = append(issues, validateTableParts(parts, names, configuration, reserved, tablePartRules{})...)
+	issues = append(issues, validateTableParts(parts, names, configuration, nil, tablePartRules{})...)
 	issues = append(issues, validateFieldLinks([]fieldGroup{{"attributes", attributes}}, parts, tablePartStandardChoices(parts)...)...)
 	return append(issues, validateAttributeUse([]fieldGroup{{"attributes", attributes}}, parts, false, false)...)
-}
-
-// reservedReportName keeps the one standard attribute a running object has.
-func reservedReportName(name string) bool {
-	switch strings.ToLower(name) {
-	case "ссылка", "ref", "номерстроки", "linenumber":
-		return true
-	default:
-		return false
-	}
 }
 
 func cloneReport(value ReportDefinition) ReportDefinition {

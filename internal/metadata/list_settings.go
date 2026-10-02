@@ -23,7 +23,7 @@ func validateListSettings(settings ListSettings, attributes []Attribute, systemF
 		available[strings.ToLower(name)] = searchableListType(kind)
 	}
 	for _, attribute := range attributes {
-		available[strings.ToLower(attribute.Name)] = len(attribute.Types) == 1 && searchableListType(attribute.Types[0].Kind)
+		available[strings.ToLower(attribute.Name)] = searchableListAttribute(attribute.Types)
 	}
 	seen := make(map[string]bool, len(settings.SearchFields))
 	for index, name := range settings.SearchFields {
@@ -71,8 +71,8 @@ func appendListSearchIndexes(table *schemadiff.Table, ownerID uuid.UUID, setting
 			for _, attribute := range attributes {
 				if strings.EqualFold(attribute.Name, field) {
 					column, _ = PhysicalAttributeColumn(attribute.ID)
-					if len(attribute.Types) == 1 {
-						kind = attribute.Types[0].Kind
+					if single, ok := SingleType(attribute.Types); ok {
+						kind = single.Kind
 					}
 					indexName = physicalObjectName("is", attribute.ID)
 					break
@@ -96,4 +96,11 @@ func searchIndexSuffix(value string) string {
 		value = value[:8]
 	}
 	return value
+}
+
+// searchableListAttribute says an attribute has one type and a list searches
+// by it.
+func searchableListAttribute(types []Type) bool {
+	single, ok := SingleType(types)
+	return ok && searchableListType(single.Kind)
 }

@@ -485,7 +485,7 @@ func validateExternalTableShape(table ExternalTable, fields map[string]ExternalF
 		// or a number - without the index: the column is indexed or not in
 		// the other database, and nothing here can say which.
 		if field, ok := fields[strings.ToLower(name)]; ok &&
-			(len(field.Types) != 1 || (field.Types[0].Kind != StringType && field.Types[0].Kind != NumberType)) {
+			!isOneStringOrNumber(field.Types) {
 			issues = append(issues, fmt.Sprintf("input_by_string[%d] names %q, and a field is searched by only if it is of one type, string or number", index, name))
 		}
 	}

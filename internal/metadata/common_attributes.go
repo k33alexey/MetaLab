@@ -644,7 +644,8 @@ func (catalog *Catalog) validateConditionalSeparationReferences() error {
 }
 
 func isBooleanOnly(types []Type) bool {
-	return len(types) == 1 && types[0].Kind == BooleanType
+	single, ok := SingleType(types)
+	return ok && single.Kind == BooleanType
 }
 
 func findAttributeByID(fields []Attribute, id uuid.UUID) (Attribute, bool) {

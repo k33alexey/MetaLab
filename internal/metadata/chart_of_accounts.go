@@ -64,7 +64,8 @@ func accountingFlagTypes(flag AccountingFlag) []Type {
 // isBooleanType says whether a declared type is the boolean an accounting flag
 // is allowed, and nothing else - no qualifiers, no second type in the set.
 func isBooleanType(types []Type) bool {
-	return len(types) == 1 && types[0].Kind == BooleanType && types[0].Reference == nil
+	single, ok := SingleType(types)
+	return ok && single.Kind == BooleanType && single.Reference == nil
 }
 
 // PredefinedAccountExtDimension is one kind of analytics on a predefined

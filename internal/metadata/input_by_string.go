@@ -209,7 +209,7 @@ func validateInputByString(fields []ObjectField, kind Kind, attributes []Attribu
 // today and a date tomorrow has no such something.
 func validateInputByStringAttribute(prefix string, attribute Attribute) []string {
 	var issues []string
-	if len(attribute.Types) != 1 || (attribute.Types[0].Kind != StringType && attribute.Types[0].Kind != NumberType) {
+	if !isOneStringOrNumber(attribute.Types) {
 		issues = append(issues, prefix+".attribute must be of one type, string or number, to be searched by")
 	}
 	if !attribute.Indexing.indexes() {

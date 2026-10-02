@@ -1026,19 +1026,19 @@ func (compiler *queryCompiler) databaseValueForColumn(column queryColumn, value 
 			return nil, "", fmt.Errorf("unknown accumulation movement kind %q", text)
 		}
 	}
-	if len(column.types) == 1 && (column.types[0].Kind == CatalogType || column.types[0].Kind == DocumentType) {
+	if single, ok := SingleType(column.types); ok && (single.Kind == CatalogType || single.Kind == DocumentType) {
 		object, ok := value.AsRuntimeObject()
 		if !ok {
 			return nil, "", fmt.Errorf("query field %s requires an object reference", column.name)
 		}
 		switch reference := object.(type) {
 		case *catalogReferenceObject:
-			if reference.runtime != compiler.runtime || column.types[0].Kind != CatalogType || column.types[0].Reference == nil || reference.reference.CatalogID != *column.types[0].Reference {
+			if reference.runtime != compiler.runtime || single.Kind != CatalogType || single.Reference == nil || reference.reference.CatalogID != *single.Reference {
 				return nil, "", fmt.Errorf("query field %s received a reference of another type", column.name)
 			}
 			return reference.reference.ObjectID.String(), "::uuid", nil
 		case *documentReferenceObject:
-			if reference.runtime != compiler.runtime || column.types[0].Kind != DocumentType || column.types[0].Reference == nil || reference.reference.DocumentID != *column.types[0].Reference {
+			if reference.runtime != compiler.runtime || single.Kind != DocumentType || single.Reference == nil || reference.reference.DocumentID != *single.Reference {
 				return nil, "", fmt.Errorf("query field %s received a reference of another type", column.name)
 			}
 			return reference.reference.ObjectID.String(), "::uuid", nil
@@ -1491,8 +1491,8 @@ func (runtime *Runtime) addQueryAttributes(source *querySource, attributes []Att
 func (source *querySource) addStored(name, sql string, types []Type, aliases ...string) {
 	storage, _ := (&Catalog{}).attributeStorage(types)
 	// Built-in reference types need catalog expansion, which attributeStorage does not use.
-	if len(types) == 1 && (types[0].Kind == CatalogType || types[0].Kind == DocumentType) {
-		storage = attributeStorage{sqlType: "uuid", valueType: types[0].Kind, referenceObject: types[0].Reference}
+	if single, ok := SingleType(types); ok && (single.Kind == CatalogType || single.Kind == DocumentType) {
+		storage = attributeStorage{sqlType: "uuid", valueType: single.Kind, referenceObject: single.Reference}
 	}
 	source.add(queryColumn{name: name, sql: sql, storage: storage, types: types}, aliases...)
 }

@@ -142,8 +142,8 @@ func queryDesignerAttributes(attributes []metadata.Attribute, language string, c
 			title = attribute.Name
 		}
 		typeName := "composite"
-		if len(attribute.Types) == 1 {
-			typeName = string(attribute.Types[0].Kind)
+		if single, ok := metadata.SingleType(attribute.Types); ok {
+			typeName = string(single.Kind)
 		}
 		result[index] = QueryDesignerField{Name: attribute.Name, Title: title, Type: typeName}
 	}

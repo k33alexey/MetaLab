@@ -318,8 +318,8 @@ func policyListColumn(standard func(string) (listColumn, bool), attributes []Att
 			for _, attribute := range attributes {
 				if attribute.ID == id {
 					kind := TypeKind("")
-					if len(attribute.Types) == 1 {
-						kind = attribute.Types[0].Kind
+					if single, ok := SingleType(attribute.Types); ok {
+						kind = single.Kind
 					}
 					return listColumn{name: column, kind: kind}, true
 				}

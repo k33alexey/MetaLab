@@ -269,7 +269,7 @@ func validateBinaryDataStorage(groups []fieldGroup, parts []TablePart) []string 
 			issues = append(issues, path+".binary_data_storage_field names no attribute of this object")
 			return
 		}
-		if len(switcher.Types) != 1 || switcher.Types[0].Kind != BooleanType {
+		if single, ok := SingleType(switcher.Types); !ok || single.Kind != BooleanType {
 			issues = append(issues, path+".binary_data_storage_field must name a boolean field: it decides yes or no for each row")
 		}
 	}

@@ -394,8 +394,8 @@ func attributeListField(attributes []Attribute, field string) (listColumn, bool)
 		if strings.EqualFold(attribute.Name, strings.TrimSpace(field)) {
 			column, _ := PhysicalAttributeColumn(attribute.ID)
 			kind := TypeKind("")
-			if len(attribute.Types) == 1 {
-				kind = attribute.Types[0].Kind
+			if single, ok := SingleType(attribute.Types); ok {
+				kind = single.Kind
 			}
 			return listColumn{name: column, kind: kind}, true
 		}

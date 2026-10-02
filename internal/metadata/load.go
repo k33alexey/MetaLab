@@ -3153,5 +3153,6 @@ func validateRecalculationFiles(root string, item CalculationRegisterDefinition)
 // singleKind reports whether a type description is exactly one type of one
 // kind - what "of the type Date" says of a field.
 func singleKind(types []Type, kind TypeKind) bool {
-	return len(types) == 1 && types[0].Kind == kind
+	single, ok := SingleType(types)
+	return ok && single.Kind == kind
 }

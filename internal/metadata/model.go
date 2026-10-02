@@ -1725,7 +1725,14 @@ func validateTypesIn(path string, types []Type, self uuid.UUID, place typePlace)
 	// configurations being moved have type descriptions of more than six
 	// hundred. A composite type is stored as one value column whatever its
 	// size.
+	// An attribute of a running object may be left with no type at all, and
+	// the prototype takes it as arbitrary: the configurations being moved do
+	// it 20, 16 and 15 times, every time on the object and never in a table
+	// part. A stored field must say what it holds.
 	if len(types) == 0 {
+		if place == placeRunningObject {
+			return nil
+		}
 		return []string{path + " must contain at least one type"}
 	}
 	var issues []string

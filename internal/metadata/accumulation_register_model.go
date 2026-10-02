@@ -177,7 +177,7 @@ func accumulationRegisterFields(value AccumulationRegisterDefinition) []Attribut
 // calculation (01.10.2026), and every resource of the materials and of the
 // configurations being moved is a number or a defined money amount.
 func validateNumericResource(prefix string, resource Attribute) []string {
-	if len(resource.Types) != 1 || resource.Types[0].Kind != NumberType && resource.Types[0].Kind != DefinedType {
+	if single, ok := SingleType(resource.Types); !ok || single.Kind != NumberType && single.Kind != DefinedType {
 		return []string{prefix + ".types must contain exactly one number or numeric defined type"}
 	}
 	return nil

@@ -69,10 +69,11 @@ func formField(field metadata.FormField) Element {
 }
 
 func inputType(types []metadata.Type) string {
-	if len(types) != 1 {
+	single, ok := metadata.SingleType(types)
+	if !ok {
 		return "text"
 	}
-	switch types[0].Kind {
+	switch single.Kind {
 	case metadata.NumberType:
 		return "number"
 	case metadata.DateType:
@@ -88,10 +89,18 @@ func inputType(types []metadata.Type) string {
 // StringType for a union of several types (matching how ML App's plain text
 // input already collapses everything it doesn't special-case in inputType).
 func valueKind(types []metadata.Type) metadata.TypeKind {
-	if len(types) != 1 {
+	single, ok := metadata.SingleType(types)
+	if !ok {
 		return metadata.StringType
 	}
-	return types[0].Kind
+	return single.Kind
+}
+
+// searchableKind says a field is one string or one number, the two kinds a
+// search by text reaches.
+func searchableKind(types []metadata.Type) bool {
+	single, ok := metadata.SingleType(types)
+	return ok && (single.Kind == metadata.StringType || single.Kind == metadata.NumberType)
 }
 
 func customForm(descriptor metadata.FormDescriptor, source metadata.ManagedForm, language metadata.TitleLanguage) Form {
@@ -131,7 +140,7 @@ func applyListOptions(form *Form, descriptor metadata.FormDescriptor) {
 	for _, field := range descriptor.Fields {
 		item := ListField{Name: field.Name, Title: field.Title}
 		fields = append(fields, item)
-		if searchable[strings.ToLower(field.Name)] && len(field.Types) == 1 && (field.Types[0].Kind == metadata.StringType || field.Types[0].Kind == metadata.NumberType) {
+		if searchable[strings.ToLower(field.Name)] && searchableKind(field.Types) {
 			searchFields = append(searchFields, item)
 		}
 	}

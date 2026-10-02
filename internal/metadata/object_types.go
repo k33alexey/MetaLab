@@ -127,6 +127,25 @@ var valueTypeKinds = map[TypeKind]bool{
 func isObjectType(kind TypeKind) bool { _, ok := objectTypeOwners[kind]; return ok }
 func isValueType(kind TypeKind) bool  { return valueTypeKinds[kind] }
 
+// SingleType returns the one type of a type description, and false when there
+// is not exactly one. A description may be empty: an attribute of a report or
+// a data processor left without a type is arbitrary. So a list of types is
+// never indexed directly anywhere - TestNoTypeListIsIndexedDirectly holds every
+// reader of a type description to this function.
+func SingleType(types []Type) (Type, bool) {
+	if len(types) != 1 {
+		return Type{}, false
+	}
+	return types[0], true
+}
+
+// isOneStringOrNumber says a type description is a single string or a single
+// number.
+func isOneStringOrNumber(types []Type) bool {
+	single, ok := SingleType(types)
+	return ok && (single.Kind == StringType || single.Kind == NumberType)
+}
+
 // typePlace is where a type description stands, because what it may hold
 // depends on that and on nothing else.
 type typePlace int
