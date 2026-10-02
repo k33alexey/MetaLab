@@ -58,9 +58,14 @@ var standardCommandGroups = map[string]bool{
 // The common picture is held by identifier rather than by name, like every
 // other reference in the model, so that renaming the picture does not orphan
 // the commands that use it.
+//
+// LoadTransparent draws the picture with its transparent colour taken out, as
+// the prototype offers wherever a picture is named (commands 99 times in erp,
+// common commands and groups 14, 15 and 22, subsystems 0, 4 and 6).
 type PictureReference struct {
-	Standard string     `yaml:"standard,omitempty" json:"standard,omitempty"`
-	Common   *uuid.UUID `yaml:"common,omitempty" json:"common,omitempty"`
+	Standard        string     `yaml:"standard,omitempty" json:"standard,omitempty"`
+	Common          *uuid.UUID `yaml:"common,omitempty" json:"common,omitempty"`
+	LoadTransparent bool       `yaml:"load_transparent,omitempty" json:"loadTransparent,omitempty"`
 }
 
 // ObjectCommand is an action offered beside an object. It belongs to the object

@@ -55,10 +55,20 @@ const (
 	// transferred configuration would then differ from the original.
 	//
 	// Each is a folder named after its role holding one file per screen
-	// density, the same way every picture of the platform is stored.
-	LogoDirectory   = "Логотип"
-	SplashDirectory = "Заставка"
-	keepFile        = ".gitkeep"
+	// density, the same way every picture of the platform is stored, or the
+	// files its variants name, described in RootPictureDescriptionFile.
+	//
+	// MainSectionPictureDirectory is the third, the picture of the main
+	// section (help, MainSectionPicture, since 8.3.3). All three
+	// configurations being moved have one, and the model had no place for it.
+	LogoDirectory               = "Логотип"
+	SplashDirectory             = "Заставка"
+	MainSectionPictureDirectory = "КартинкаОсновногоРаздела"
+	// RootPictureDescriptionFile says how the files of a picture of the root
+	// are drawn - its variants and its transparency. Left out, the files are
+	// named by density and drawn as they are.
+	RootPictureDescriptionFile = "picture.yaml"
+	keepFile                   = ".gitkeep"
 
 	// ObjectMetadataFile is the description of the object owning a folder.
 	ObjectMetadataFile = "object.yaml"
@@ -229,7 +239,7 @@ var rootModuleFiles = []string{SessionModuleFile, ApplicationModuleFile,
 
 // rootPictureDirectories is every picture the configuration root may keep, in
 // the order the tree shows them.
-var rootPictureDirectories = []string{LogoDirectory, SplashDirectory}
+var rootPictureDirectories = []string{LogoDirectory, SplashDirectory, MainSectionPictureDirectory}
 
 // RootPictureDirectories returns the pictures of the configuration root.
 func RootPictureDirectories() []string { return slices.Clone(rootPictureDirectories) }

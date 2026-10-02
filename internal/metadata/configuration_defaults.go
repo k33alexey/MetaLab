@@ -2,9 +2,9 @@ package metadata
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -164,46 +164,59 @@ func (catalog *Catalog) validateConfigurationDefaultForms(root string) error {
 	return nil
 }
 
-// validateRootPictures checks the two pictures the root owns - the logo and
-// the splash. They are the root's own files rather than references, so nothing
-// declares them: the folder being there is the declaration, and a folder that
-// is not there is a configuration that simply has no logo.
+// validateRootPictures checks the three pictures the root owns - the logo,
+// the splash and the picture of the main section. They are the root's own
+// files rather than references, so nothing declares them: the folder being
+// there is the declaration, and a folder that is not there is a configuration
+// that simply has no logo.
 //
 // The rules are those of every picture of the platform, and for the same
-// reasons: one file per density, never two for one density, and never a ladder
-// without the base every other step falls back to.
+// reasons - see validatePictureFolder. How the files are drawn is described,
+// when it needs to be, by a file beside them.
 func validateRootPictures(root string) error {
 	for _, picture := range project.RootPictureDirectories() {
-		entries, err := os.ReadDir(filepath.Join(root, picture))
+		directory := filepath.Join(root, picture)
+		if _, err := os.Stat(directory); os.IsNotExist(err) {
+			continue
+		}
+		owner := "picture " + picture + " of the configuration"
+		images, err := readRootPictureImages(directory)
 		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return fmt.Errorf("picture %s of the configuration: %w", picture, err)
+			return fmt.Errorf("%s: %w", owner, err)
 		}
-		densities := map[ScreenDensity]string{}
-		for _, entry := range entries {
-			if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
-				return fmt.Errorf("picture %s of the configuration keeps %q, which is not one of its images",
-					picture, entry.Name())
-			}
-			density, ok := PictureDensity(entry.Name())
-			if !ok {
-				return fmt.Errorf("picture %s of the configuration keeps %q, and an image is named by the density it is drawn at",
-					picture, entry.Name())
-			}
-			if previous, taken := densities[density]; taken {
-				return fmt.Errorf("picture %s of the configuration keeps both %s and %s for density %d",
-					picture, previous, entry.Name(), density)
-			}
-			densities[density] = entry.Name()
-		}
-		if len(densities) > 0 && densities[BaseScreenDensity] == "" {
-			return fmt.Errorf("picture %s of the configuration has no image at density %d, which every other density falls back to",
-				picture, BaseScreenDensity)
+		if err := validatePictureFolder(owner, directory, project.RootPictureDescriptionFile, images); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// ReadRootPictureImages reads how the files of one picture of the root are
+// drawn. A folder without a description draws its files as they are.
+func ReadRootPictureImages(root, picture string) (PictureImages, error) {
+	if !project.IsRootPictureDirectory(picture) {
+		return PictureImages{}, fmt.Errorf("%q is not a picture of the configuration root", picture)
+	}
+	return readRootPictureImages(filepath.Join(root, picture))
+}
+
+func readRootPictureImages(directory string) (PictureImages, error) {
+	file, err := os.Open(filepath.Join(directory, project.RootPictureDescriptionFile))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return PictureImages{}, nil
+		}
+		return PictureImages{}, err
+	}
+	defer file.Close()
+	var images PictureImages
+	if err := decodeStrict(project.RootPictureDescriptionFile, file, &images); err != nil {
+		return PictureImages{}, err
+	}
+	if issues := validatePictureImages(images); len(issues) > 0 {
+		return PictureImages{}, fmt.Errorf("%s: %s", project.RootPictureDescriptionFile, strings.Join(issues, "; "))
+	}
+	return images, nil
 }
 
 // validateStandaloneConfiguration resolves what the standalone application is

@@ -380,20 +380,15 @@ func TestRemainingConfigurationReferencesAreResolved(t *testing.T) {
 	}
 }
 
-// The logo and the splash are the root's own files, so nothing declares them:
-// the folder is the declaration. The rules are those of every picture - one
-// file per density, and never a ladder without its base.
+// The logo, the splash and the picture of the main section are the root's own
+// files, so nothing declares them: the folder is the declaration. The rules
+// are those of every picture - one file per density, or the files a
+// description beside them names.
 func TestRootPicturesAreCheckedLikeEveryPicture(t *testing.T) {
 	t.Parallel()
 	write := func(t *testing.T, root, picture, file string) {
 		t.Helper()
-		directory := filepath.Join(root, picture)
-		if err := os.MkdirAll(directory, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(directory, file), []byte("image"), 0o644); err != nil {
-			t.Fatal(err)
-		}
+		writeText(t, root, picture, file, "image")
 	}
 
 	// A configuration with no pictures at all is ordinary.
@@ -409,9 +404,55 @@ func TestRootPicturesAreCheckedLikeEveryPicture(t *testing.T) {
 		t.Fatalf("a logo at two densities was refused: %v", err)
 	}
 
+	// A picture of the root without the base density is saved by the
+	// prototype as any picture is. Defect caught: it was refused.
+	noBase := defaultsProject(t)
+	write(t, noBase, project.LogoDirectory, "200.png")
+	if _, err := Load(noBase); err != nil {
+		t.Fatalf("a logo without the base density was refused: %v", err)
+	}
+
+	// The picture of the main section is the third picture of the root, and
+	// in the configurations being moved it is drawn from variants (demo-base
+	// keeps it as a set of them). Defect caught: the model had no place for
+	// it at all, so it was lost at import.
+	variants := defaultsProject(t)
+	for _, file := range []string{"100.png", "picture.png"} {
+		write(t, variants, project.MainSectionPictureDirectory, file)
+	}
+	writeText(t, variants, project.MainSectionPictureDirectory, project.RootPictureDescriptionFile, `load_transparent: true
+transparent_pixel: {x: 1, y: 2}
+variants:
+  - {file: 100.png, density: 100, glyph_width: 16, glyph_height: 16}
+  - {file: Picture.png, density: 100, interface: "8.2"}
+`)
+	if _, err := Load(variants); err != nil {
+		t.Fatalf("the picture of the main section with variants was refused: %v", err)
+	}
+	images, err := ReadRootPictureImages(variants, project.MainSectionPictureDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !images.LoadTransparent || images.TransparentPixel == nil || len(images.Variants) != 2 || images.Variants[1].Interface != Version82PictureInterface {
+		t.Fatalf("the description of the picture was lost: %+v", images)
+	}
+	if _, err := ReadRootPictureImages(variants, "Обои"); err == nil {
+		t.Fatal("a folder that is not a picture of the root was read as one")
+	}
+
 	for name, broken := range map[string]func(t *testing.T, root string){
-		"без базовой плотности": func(t *testing.T, root string) {
-			write(t, root, project.LogoDirectory, "200.png")
+		// The description is checked like a common picture's.
+		"описание не того вида": func(t *testing.T, root string) {
+			write(t, root, project.MainSectionPictureDirectory, "Picture.png")
+			writeText(t, root, project.MainSectionPictureDirectory, project.RootPictureDescriptionFile, "variants: [{file: Picture.png, density: 110}]\n")
+		},
+		"неизвестное свойство описания": func(t *testing.T, root string) {
+			write(t, root, project.MainSectionPictureDirectory, "100.png")
+			writeText(t, root, project.MainSectionPictureDirectory, project.RootPictureDescriptionFile, "variant: []\n")
+		},
+		"вариант без файла": func(t *testing.T, root string) {
+			write(t, root, project.MainSectionPictureDirectory, "100.png")
+			writeText(t, root, project.MainSectionPictureDirectory, project.RootPictureDescriptionFile, "variants: [{file: 200.png, density: 200}]\n")
 		},
 		"имя не плотность": func(t *testing.T, root string) {
 			write(t, root, project.SplashDirectory, "logo.png")
@@ -478,5 +519,17 @@ func TestStandaloneConfigurationIsResolved(t *testing.T) {
 				t.Fatal("a standalone application made of nothing was accepted")
 			}
 		})
+	}
+}
+
+// writeText writes one file into a folder of the project root.
+func writeText(t *testing.T, root, folder, file, content string) {
+	t.Helper()
+	directory := filepath.Join(root, folder)
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, file), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

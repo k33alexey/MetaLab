@@ -269,8 +269,13 @@ func TestCommonTemplateAndPicturePathShapes(t *testing.T) {
 		"описание общей картинки": {"metadata/common-pictures/Печать/object.yaml", false, true},
 		"образ картинки":          {"metadata/common-pictures/Печать/100.png", false, true},
 		"образ картинки плотнее":  {"metadata/common-pictures/Печать/200.svg", false, true},
-		"образ не с лестницы":     {"metadata/common-pictures/Печать/110.png", false, false},
-		"образ без плотности":     {"metadata/common-pictures/Печать/Печать.png", false, false},
+		// A file of a picture with variants is named by the variant, not by
+		// the density, so here a file only has to be an image; whether the
+		// description names it is checked where the metadata is read.
+		"образ под своим именем": {"metadata/common-pictures/Печать/Picture.png", false, true},
+		"образ не с лестницы":    {"metadata/common-pictures/Печать/110.png", false, true},
+		"не образ":               {"metadata/common-pictures/Печать/заметки.txt", false, false},
+		"скрытый файл":           {"metadata/common-pictures/Печать/.png", false, false},
 		// The schema of an XDTO package and the service description of a WS
 		// reference are content under a fixed name, and nothing else is.
 		"схема пакета XDTO":         {"metadata/xdto-packages/Обмен/content.xml", false, true},

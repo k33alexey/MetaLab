@@ -59,6 +59,67 @@ type CommonPictureDefinition struct {
 	// AvailableForChoice offers it where a user picks a picture for a cell,
 	// a drawing or a page header of a spreadsheet.
 	AvailableForChoice bool `yaml:"available_for_choice,omitempty" json:"availableForChoice,omitempty"`
+	// PictureImages is how the image is drawn: its variants and its
+	// transparency, the same for every picture of the platform.
+	PictureImages `yaml:",inline" json:",inline"`
+}
+
+// PictureImages says how the files of a picture are drawn. It is what every
+// picture of the platform has - a common picture and each picture of the
+// configuration root alike - because it is one type in the prototype.
+type PictureImages struct {
+	// LoadTransparent draws one colour of the image as transparent, and
+	// TransparentPixel says which: the colour of the pixel at that point. The
+	// configurator offers it for BMP, JPEG and TIFF, which have no
+	// transparency of their own (help, the dialog of a picture); the
+	// configurations being moved keep 27, 219 and 4 such pictures, each with
+	// its pixel.
+	LoadTransparent  bool          `yaml:"load_transparent,omitempty" json:"loadTransparent,omitempty"`
+	TransparentPixel *PicturePixel `yaml:"transparent_pixel,omitempty" json:"transparentPixel,omitempty"`
+	// Variants say which file of the folder is drawn where. Left out, a file
+	// is named by the density it is drawn at, 100.png being the base, and
+	// stands for the current interface only.
+	Variants []PictureVariant `yaml:"variants,omitempty" json:"variants,omitempty"`
+}
+
+// PicturePixel is one point of an image, counted from its top left corner.
+type PicturePixel struct {
+	X int `yaml:"x" json:"x"`
+	Y int `yaml:"y" json:"y"`
+}
+
+// PictureInterface is the variant of the client's interface a picture variant
+// is drawn for. Empty is the current interface; the others are the older
+// looks a configuration still ships images for - the configurations being
+// moved keep 8.2 variants in 832, 240 and 379 pictures.
+type PictureInterface string
+
+const (
+	CurrentPictureInterface    PictureInterface = ""
+	Version82PictureInterface  PictureInterface = "8.2"
+	Version82OrdinaryInterface PictureInterface = "8.2-ordinary-application"
+	Version80PictureInterface  PictureInterface = "8.0"
+	TaxiMobilePictureInterface PictureInterface = "taxi-mobile"
+	TaxiCompactInterface       PictureInterface = "taxi-compact"
+)
+
+// PictureVariant is one image of a picture: the file, the density and the
+// interface it is drawn at, and how it is drawn.
+//
+// One file may stand for several variants - the configurations being moved
+// draw the 8.2 interface and the 8.2 ordinary application from one file in
+// most of their pictures - so the variant names the file rather than being it.
+type PictureVariant struct {
+	File      string           `yaml:"file" json:"file"`
+	Density   ScreenDensity    `yaml:"density" json:"density"`
+	Interface PictureInterface `yaml:"interface,omitempty" json:"interface,omitempty"`
+	// Template draws the image in the current colour of the text on iOS
+	// (help, the editor of picture variants).
+	Template bool `yaml:"template,omitempty" json:"template,omitempty"`
+	// GlyphWidth and GlyphHeight are the size the image is drawn at, in
+	// pixels of the interface. Left out, it is the size of the image.
+	GlyphWidth  int `yaml:"glyph_width,omitempty" json:"glyphWidth,omitempty"`
+	GlyphHeight int `yaml:"glyph_height,omitempty" json:"glyphHeight,omitempty"`
 }
 
 // DecodeCommonPicture reads and validates one common picture.
@@ -68,15 +129,77 @@ func DecodeCommonPicture(source string, reader io.Reader, configuration project.
 		return CommonPictureDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
+	issues = append(issues, validatePictureImages(value.PictureImages)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return CommonPictureDefinition{}, err
 	}
 	return value, nil
 }
 
+// validatePictureImages checks what a description says about drawing its
+// files, before the folder is looked at.
+func validatePictureImages(images PictureImages) []string {
+	var issues []string
+	if images.TransparentPixel != nil {
+		if !images.LoadTransparent {
+			issues = append(issues, "transparent_pixel belongs to a picture loaded transparent only")
+		}
+		if images.TransparentPixel.X < 0 || images.TransparentPixel.Y < 0 {
+			issues = append(issues, "transparent_pixel must be a point inside the image")
+		}
+	}
+	seen := map[string]bool{}
+	for index, variant := range images.Variants {
+		prefix := fmt.Sprintf("variants[%d]", index)
+		if !PictureFile(variant.File) {
+			issues = append(issues, prefix+".file must be the name of an image file in the folder of the picture")
+		}
+		if !slices.Contains(screenDensities, variant.Density) {
+			issues = append(issues, prefix+".density must be one of 85, 100, 125, 150, 175, 200, 300 or 400")
+		}
+		switch variant.Interface {
+		case CurrentPictureInterface, Version82PictureInterface, Version82OrdinaryInterface,
+			Version80PictureInterface, TaxiMobilePictureInterface, TaxiCompactInterface:
+		default:
+			issues = append(issues, prefix+".interface must be 8.2, 8.2-ordinary-application, 8.0, taxi-mobile or taxi-compact, or left out")
+		}
+		if variant.GlyphWidth < 0 || variant.GlyphHeight < 0 {
+			issues = append(issues, prefix+" must not have a negative glyph size")
+		}
+		// Two images for one density of one interface leave nothing to say
+		// which is drawn.
+		key := fmt.Sprintf("%d:%s", variant.Density, variant.Interface)
+		if seen[key] {
+			issues = append(issues, prefix+" is a second image for the same density and interface")
+		}
+		seen[key] = true
+	}
+	return issues
+}
+
+// PictureFile says whether a name can be an image of a picture: a plain name
+// with the extension of a format an image is stored in.
+func PictureFile(name string) bool {
+	if name == "" || name != filepath.Base(name) || strings.HasPrefix(name, ".") || name == project.ObjectMetadataFile {
+		return false
+	}
+	extension := strings.ToLower(filepath.Ext(name))
+	return len(extension) > 1 && slices.Contains(pictureFormats, extension[1:])
+}
+
 func cloneCommonPicture(value CommonPictureDefinition) CommonPictureDefinition {
 	value.Title = cloneTitle(value.Title)
+	value.PictureImages = clonePictureImages(value.PictureImages)
 	return value
+}
+
+func clonePictureImages(images PictureImages) PictureImages {
+	if images.TransparentPixel != nil {
+		pixel := *images.TransparentPixel
+		images.TransparentPixel = &pixel
+	}
+	images.Variants = slices.Clone(images.Variants)
+	return images
 }
 
 // CommonPicture returns one common picture by name, folded case.
@@ -118,46 +241,72 @@ func PictureDensity(file string) (ScreenDensity, bool) {
 }
 
 // validateCommonPictureFiles checks the folder of every common picture: its
-// own description, and the image at the densities it offers.
+// own description, and the images it draws.
 //
 // A picture with no image at all is allowed, for the same reason a template
-// with no content is: no editor writes one yet. What is not allowed is the
-// same density twice - nothing would say which of the two the platform draws -
-// or a ladder without its base, which leaves a screen asking for a density the
-// picture skips with nothing to fall back to.
+// with no content is: no editor writes one yet. Nor is a base density
+// required: the prototype saves a picture drawn at 150 alone (sb, four of
+// them), and a screen asking for another density is given the nearest one.
+//
+// Without variants a file is named by its density, and the same density twice
+// leaves nothing to say which is drawn. With variants each one names its file,
+// which has to be there; names are compared with case ignored, as the
+// prototype finds them (erp names Picture.png and keeps picture.png), so two
+// files differing in case alone are refused. A file no variant names is kept:
+// the prototype keeps such files too (erp 52 pictures, sb 62).
 func (catalog *Catalog) validateCommonPictureFiles(root string) error {
 	if root == "" {
 		return nil
 	}
 	for _, item := range catalog.CommonPictures {
 		directory := filepath.Join(root, "metadata", string(CommonPictureKind), item.Name)
-		entries, err := os.ReadDir(directory)
-		if err != nil {
-			return fmt.Errorf("common picture %s: %w", item.Name, err)
+		if err := validatePictureFolder("common picture "+item.Name, directory, project.ObjectMetadataFile, item.PictureImages); err != nil {
+			return err
 		}
-		densities := map[ScreenDensity]string{}
-		for _, entry := range entries {
-			if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
-				return fmt.Errorf("common picture %s keeps %q, which is not one of its images",
-					item.Name, entry.Name())
-			}
-			if entry.Name() == project.ObjectMetadataFile {
-				continue
-			}
-			density, ok := PictureDensity(entry.Name())
-			if !ok {
-				return fmt.Errorf("common picture %s keeps %q, and an image is named by the density it is drawn at",
-					item.Name, entry.Name())
-			}
-			if previous, taken := densities[density]; taken {
-				return fmt.Errorf("common picture %s keeps both %s and %s for density %d",
-					item.Name, previous, entry.Name(), density)
-			}
-			densities[density] = entry.Name()
+	}
+	return nil
+}
+
+// validatePictureFolder checks the files of one picture against its
+// description. description is the name of the file describing the picture,
+// which lies in the same folder and is not an image.
+func validatePictureFolder(owner, directory, description string, images PictureImages) error {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return fmt.Errorf("%s: %w", owner, err)
+	}
+	files := map[string]string{}
+	densities := map[ScreenDensity]string{}
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("%s keeps %q, which is not one of its images", owner, entry.Name())
 		}
-		if len(densities) > 0 && densities[BaseScreenDensity] == "" {
-			return fmt.Errorf("common picture %s has no image at density %d, which every other density falls back to",
-				item.Name, BaseScreenDensity)
+		if entry.Name() == description {
+			continue
+		}
+		if len(images.Variants) > 0 {
+			if !PictureFile(entry.Name()) {
+				return fmt.Errorf("%s keeps %q, which is not an image", owner, entry.Name())
+			}
+			folded := strings.ToLower(entry.Name())
+			if previous, taken := files[folded]; taken {
+				return fmt.Errorf("%s keeps both %s and %s, which differ in case alone", owner, previous, entry.Name())
+			}
+			files[folded] = entry.Name()
+			continue
+		}
+		density, ok := PictureDensity(entry.Name())
+		if !ok {
+			return fmt.Errorf("%s keeps %q, and an image is named by the density it is drawn at", owner, entry.Name())
+		}
+		if previous, taken := densities[density]; taken {
+			return fmt.Errorf("%s keeps both %s and %s for density %d", owner, previous, entry.Name(), density)
+		}
+		densities[density] = entry.Name()
+	}
+	for index, variant := range images.Variants {
+		if _, ok := files[strings.ToLower(variant.File)]; !ok {
+			return fmt.Errorf("%s variants[%d] draws %s, which is not in its folder", owner, index, variant.File)
 		}
 	}
 	return nil

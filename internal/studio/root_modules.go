@@ -89,7 +89,7 @@ func (workspace *Workspace) rootModuleNodesLocked() []Node {
 	return nodes
 }
 
-// rootPictureNodesLocked reports the two pictures the configuration root owns.
+// rootPictureNodesLocked reports the pictures the configuration root owns.
 // Unlike a module, a picture is shown only when it is there: a module always
 // exists and only its contents are a decision, while a configuration without a
 // logo is an ordinary configuration, and an empty branch offering to make one
@@ -103,7 +103,7 @@ func (workspace *Workspace) rootPictureNodesLocked() []Node {
 		}
 		images := make([]string, 0, len(entries))
 		for _, entry := range entries {
-			if !entry.IsDir() {
+			if !entry.IsDir() && entry.Name() != project.RootPictureDescriptionFile {
 				images = append(images, entry.Name())
 			}
 		}

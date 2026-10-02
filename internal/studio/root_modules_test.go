@@ -331,4 +331,29 @@ func TestRootPicturesAppearOnlyWhenPresent(t *testing.T) {
 	if len(shown.Properties) == 0 || !strings.Contains(shown.Properties[0].Value, "100.png") {
 		t.Fatalf("the tree does not say which images the logo has: %+v", shown.Properties)
 	}
+
+	// The description beside the images is not one of them, and the picture of
+	// the main section is a picture of the root like the other two.
+	main := filepath.Join(root, project.MainSectionPictureDirectory)
+	if err := os.MkdirAll(main, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for file, content := range map[string]string{"Picture.png": "image", project.RootPictureDescriptionFile: "variants: [{file: Picture.png, density: 100}]\n"} {
+		if err := os.WriteFile(filepath.Join(main, file), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshot, err = workspace.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	shown = nil
+	for index, node := range snapshot.Tree.Children {
+		if node.ID == "root-picture:"+project.MainSectionPictureDirectory {
+			shown = &snapshot.Tree.Children[index]
+		}
+	}
+	if shown == nil || len(shown.Properties) == 0 || shown.Properties[0].Value != "Picture.png" {
+		t.Fatalf("the picture of the main section is not in the tree as its images: %+v", shown)
+	}
 }

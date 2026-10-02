@@ -267,10 +267,12 @@ func validateSourcePath(relative string, directory bool) error {
 					parts[1] == string(metadata.WSReferenceKind) && parts[3] == metadata.WSReferenceDefinitionFile) {
 				return nil
 			}
-			if !directory && len(parts) == 4 && parts[1] == "common-pictures" {
-				if _, ok := metadata.PictureDensity(parts[3]); ok {
-					return nil
-				}
+			// A common picture keeps its images beside its description: named
+			// by density, or by whatever its variants call them. Which of the
+			// two a folder uses is decided by the description, read where the
+			// metadata is; here a file only has to be an image.
+			if !directory && len(parts) == 4 && parts[1] == "common-pictures" && metadata.PictureFile(parts[3]) {
+				return nil
 			}
 			return fmt.Errorf("unexpected publication source path %q", relative)
 		}
