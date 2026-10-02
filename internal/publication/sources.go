@@ -248,6 +248,9 @@ func validateSourcePath(relative string, directory bool) error {
 			if !directory && len(parts) == 4 && contains(named, parts[3]) {
 				return nil
 			}
+			if parts[1] == "common-forms" && project.HelpPath(parts[3:], directory) {
+				return nil
+			}
 			// A common template and a common picture keep their content
 			// beside their description, because the folder is the template or
 			// the picture itself. Which content belongs to which is decided
@@ -351,6 +354,14 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 		return nil
 	}
 	if directory && len(parts) == 4 && contains(project.ObjectSubordinateDirectories(), parts[3]) {
+		return nil
+	}
+	// The help of the object, and of one of its forms; what the pages hold
+	// is checked where the metadata is read.
+	if project.HelpPath(parts[3:], directory) {
+		return nil
+	}
+	if len(parts) >= 6 && parts[3] == "forms" && project.SubordinateName(parts[4]) == nil && project.HelpPath(parts[5:], directory) {
 		return nil
 	}
 	// A command, a form and a template each keep a folder named after itself.

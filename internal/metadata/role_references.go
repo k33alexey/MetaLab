@@ -451,9 +451,15 @@ func readCommonForm(directory, name string, configuration project.Project) (Mana
 		return ManagedForm{}, err
 	}
 	for _, entry := range entries {
+		if entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 && entry.Name() == project.HelpDirectory {
+			if err := validateHelpFolder("common form "+name, filepath.Join(directory, name, entry.Name())); err != nil {
+				return ManagedForm{}, err
+			}
+			continue
+		}
 		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 ||
 			(entry.Name() != project.FormMetadataFile && entry.Name() != project.FormModuleFile) {
-			return ManagedForm{}, fmt.Errorf("keeps %q, and a form keeps only its description and its module", entry.Name())
+			return ManagedForm{}, fmt.Errorf("keeps %q, and a form keeps only its description, its module and its help", entry.Name())
 		}
 	}
 	path := filepath.Join(directory, name, project.FormMetadataFile)

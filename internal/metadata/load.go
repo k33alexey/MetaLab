@@ -2797,11 +2797,17 @@ func validateObjectFormFolder(directory, form string) error {
 		return err
 	}
 	for _, entry := range entries {
+		if entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 && entry.Name() == project.HelpDirectory {
+			if err := validateHelpFolder("form "+form, filepath.Join(directory, "forms", form, entry.Name())); err != nil {
+				return err
+			}
+			continue
+		}
 		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
-			return fmt.Errorf("keeps %q, and a form keeps only its description and its module", entry.Name())
+			return fmt.Errorf("keeps %q, and a form keeps only its description, its module and its help", entry.Name())
 		}
 		if entry.Name() != project.FormMetadataFile && entry.Name() != project.FormModuleFile {
-			return fmt.Errorf("keeps %q, and a form keeps only its description and its module", entry.Name())
+			return fmt.Errorf("keeps %q, and a form keeps only its description, its module and its help", entry.Name())
 		}
 	}
 	return nil
@@ -2866,6 +2872,12 @@ func validateObjectFolderEntries(directory, kind, name string, modules []string,
 			// A collection of the objects that lie inside this one - the
 			// dimension tables of a cube - is read as objects of its own.
 			if slices.Contains(collections, entry.Name()) {
+				continue
+			}
+			if entry.Name() == project.HelpDirectory {
+				if err := validateHelpFolder(kind+" "+name, filepath.Join(directory, entry.Name())); err != nil {
+					return err
+				}
 				continue
 			}
 			if !slices.Contains(project.ObjectSubordinateDirectories(), entry.Name()) {
@@ -3020,21 +3032,40 @@ func templateContentFileName(kind TemplateKind, file string) bool {
 	return file == kind.contentFile()
 }
 
-// validLanguageCode accepts the shape of a language code, not the list of
-// them: which languages a configuration has is decided by the configuration,
-// and languages become an object of their own later in this block.
+// validLanguageCode accepts the shape of a language code - see
+// project.LanguageCodeShape.
 func validLanguageCode(code string) bool {
-	if len(code) < 1 || len(code) > 8 {
-		return false
+	return project.LanguageCodeShape(code)
+}
+
+// validateHelpFolder checks the help of one owner: pages named by their
+// language, and the folder of the pictures they show, holding files and
+// nothing deeper. What the pages refer to is not checked - a page is the
+// prototype's text and not ours to rewrite.
+func validateHelpFolder(owner, directory string) error {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return fmt.Errorf("%s: %w", owner, err)
 	}
-	for _, symbol := range code {
-		switch {
-		case symbol >= 'a' && symbol <= 'z', symbol >= '0' && symbol <= '9', symbol == '-':
-		default:
-			return false
+	for _, entry := range entries {
+		if entry.Type()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("%s keeps %q in its help, which is a symbolic link", owner, entry.Name())
+		}
+		if entry.IsDir() {
+			if entry.Name() != project.TemplateResourcesDirectory {
+				return fmt.Errorf("%s keeps a folder %q in its help, and help keeps only its pages and the folder %s of their pictures",
+					owner, entry.Name(), project.TemplateResourcesDirectory)
+			}
+			if err := validateTemplateResources(owner+" help", filepath.Join(directory, entry.Name())); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, ok := project.HelpPage(entry.Name()); !ok {
+			return fmt.Errorf("%s keeps %q in its help, which is not a page named by its language, such as ru.html", owner, entry.Name())
 		}
 	}
-	return true
+	return nil
 }
 
 func (catalog *Catalog) validateDefinedTypeCycles() error {

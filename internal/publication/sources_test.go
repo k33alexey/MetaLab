@@ -427,3 +427,43 @@ func TestInspectRefusesARegisterWithNoRecorder(t *testing.T) {
 		t.Fatalf("a register with no recorder: %v", err)
 	}
 }
+
+// The help of an object, of a form of it and of a common form is published
+// with them: its pages and the pictures they show, and nothing else. The
+// defects caught: a project carrying help refused to publish, and a file that
+// is not a page, a folder other than the pictures' or a deeper one let
+// through.
+func TestHelpIsPublishedWithItsOwner(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		relative  string
+		directory bool
+		accepted  bool
+	}{
+		"папка справки объекта":    {"metadata/catalogs/Организации/help", true, true},
+		"страница справки объекта": {"metadata/catalogs/Организации/help/ru.html", false, true},
+		"вторая страница":          {"metadata/catalogs/Организации/help/uk.html", false, true},
+		"папка картинок справки":   {"metadata/catalogs/Организации/help/_files", true, true},
+		"картинка справки":         {"metadata/catalogs/Организации/help/_files/Скрин отчеты 11.png", false, true},
+		"справка формы объекта":    {"metadata/documents/ЗаказКлиента/forms/ФормаДокумента/help/ru.html", false, true},
+		"картинка справки формы":   {"metadata/documents/ЗаказКлиента/forms/ФормаДокумента/help/_files/1.png", false, true},
+		"справка общей формы":      {"metadata/common-forms/АдреснаяКнига/help/ru.html", false, true},
+		"не страница":              {"metadata/catalogs/Организации/help/readme.txt", false, false},
+		"язык не кодом":            {"metadata/catalogs/Организации/help/Русский.html", false, false},
+		"чужая папка в справке":    {"metadata/catalogs/Организации/help/images", true, false},
+		"глубже папки картинок":    {"metadata/catalogs/Организации/help/_files/a/1.png", false, false},
+		"скрытая картинка":         {"metadata/catalogs/Организации/help/_files/.png", false, false},
+		"справка у общего модуля":  {"metadata/common-commands/Печать/help/ru.html", false, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			err := validateSourcePath(test.relative, test.directory)
+			if test.accepted && err != nil {
+				t.Fatalf("%s was refused: %v", test.relative, err)
+			}
+			if !test.accepted && err == nil {
+				t.Fatalf("%s was accepted", test.relative)
+			}
+		})
+	}
+}

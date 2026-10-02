@@ -825,6 +825,64 @@ func plainFileName(what, file string) error {
 // configurations being moved, common ones and those of data processors).
 const TemplateResourcesDirectory = "_files"
 
+// HelpDirectory is the folder the help of an object, of a form of it or of a
+// common form lies in, beside the owner's description: one page per language,
+// named by the language - ru.html - and the pictures the pages show in one
+// folder for all the languages, as the prototype keeps it (Ext/Help, 2640,
+// 1248 and 911 helps in the configurations being moved). Which languages the
+// help has is the pages it holds: the list the prototype writes beside them
+// names the same pages in every one of the 5470 helps of five exports.
+const HelpDirectory = "help"
+
+// HelpPage reports whether a name is a page of help, and which language it is
+// in. The language is not checked against the configuration's: the prototype
+// keeps a page in a language the configuration has dropped (brayval: uk).
+func HelpPage(file string) (string, bool) {
+	code, found := strings.CutSuffix(file, ".html")
+	if !found || !LanguageCodeShape(code) {
+		return "", false
+	}
+	return code, true
+}
+
+// HelpPath reports whether the steps below an owner's folder are a place the
+// owner's help may take: the help folder itself, a page in it, the folder of
+// its pictures or a picture there.
+func HelpPath(steps []string, directory bool) bool {
+	if len(steps) == 0 || steps[0] != HelpDirectory {
+		return false
+	}
+	switch len(steps) {
+	case 1:
+		return directory
+	case 2:
+		if directory {
+			return steps[1] == TemplateResourcesDirectory
+		}
+		_, ok := HelpPage(steps[1])
+		return ok
+	case 3:
+		return !directory && steps[1] == TemplateResourcesDirectory && TemplateResource(steps[2])
+	}
+	return false
+}
+
+// LanguageCodeShape accepts the shape of a language code, not the list of
+// them: which languages a configuration has is decided by the configuration.
+func LanguageCodeShape(code string) bool {
+	if len(code) < 1 || len(code) > 8 {
+		return false
+	}
+	for _, symbol := range code {
+		switch {
+		case symbol >= 'a' && symbol <= 'z', symbol >= '0' && symbol <= '9', symbol == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // TemplateResource reports whether a name can be a file among the resources
 // of an HTML template. The prototype keeps them under the names they were
 // saved with - spaces, commas and brackets among them - so only what cannot

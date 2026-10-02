@@ -213,3 +213,62 @@ documents: [`+moduleDocument+`]
 `)
 	return root
 }
+
+// The help of an object, of a form of it and of a common form lies in the
+// owner's folder: pages named by language and the folder of their pictures.
+// The defects caught: an owner carrying help refused - 2640, 1248 and 911
+// helps in the configurations being moved - and a file that is not a page or
+// a folder that is not the pictures' let through.
+func TestHelpLiesBesideItsOwner(t *testing.T) {
+	t.Parallel()
+	write := func(t *testing.T, directory string, files ...string) {
+		t.Helper()
+		for _, file := range files {
+			path := filepath.Join(directory, filepath.FromSlash(file))
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("<p>справка</p>"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	owners := map[string]func(t *testing.T, root string) string{
+		"объект": func(t *testing.T, root string) string {
+			return filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "help")
+		},
+		"форма объекта": func(t *testing.T, root string) string {
+			writeObjectForm(t, root, CatalogKind, "Номенклатура", "ФормаЭлемента", "4e900000-0000-4000-8000-0000000000aa")
+			return filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", "help")
+		},
+		"общая форма": func(t *testing.T, root string) string {
+			writeCommonForm(t, root, "Адреса", "format: 1\nid: 4e900000-0000-4000-8000-0000000000ab\nname: Адреса\ntitle: {ru: Адреса}\nkind: common\n")
+			return filepath.Join(root, "metadata", "common-forms", "Адреса", "help")
+		},
+	}
+	for owner, place := range owners {
+		for name, test := range map[string]struct {
+			files []string
+			want  string
+		}{
+			"страницы и картинки": {[]string{"ru.html", "uk.html", "_files/Скрин отчеты 11.png"}, ""},
+			"не страница":         {[]string{"ru.html", "readme.txt"}, "which is not a page named by its language"},
+			"чужая папка":         {[]string{"images/1.png"}, "help keeps only its pages and the folder _files"},
+			"глубже картинок":     {[]string{"_files/a/1.png"}, "among its resources, which is not a file"},
+		} {
+			t.Run(owner+"/"+name, func(t *testing.T) {
+				t.Parallel()
+				root := metadataProject(t)
+				catalogNamed(t, root, reportGoods, "Номенклатура")
+				write(t, place(t, root), test.files...)
+				_, err := Load(root)
+				switch {
+				case test.want == "" && err != nil:
+					t.Fatalf("help was refused: %v", err)
+				case test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)):
+					t.Fatalf("want a refusal saying %q, got %v", test.want, err)
+				}
+			})
+		}
+	}
+}
