@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/k33alexey/MetaLab/internal/project"
 )
 
 // TestDumpMetadataComposition writes the composition of the metadata model as
@@ -52,6 +54,22 @@ func TestDumpMetadataComposition(t *testing.T) {
 			// substitution is only safe for a name that heads a group. Applied
 			// to a leaf it lies: our `value` inside filling once matched their
 			// DataSeparationValue on the strength of one shared word.
+			"top":      metadataTopFieldNames(element),
+			"children": metadataChildren(element),
+		}
+	}
+	// Three kinds of the export have no slice of their own here: a common form
+	// is a ManagedForm, the type every form shares, and the configuration and
+	// its languages are the project's description. Left out, the sweep listed them as kinds
+	// without a structure and compared nothing - a clean result that had not
+	// looked at either.
+	for name, element := range map[string]reflect.Type{
+		"CommonFormDefinition":    reflect.TypeOf(ManagedForm{}),
+		"ConfigurationDefinition": reflect.TypeOf(project.Project{}),
+		"LanguageDefinition":      reflect.TypeOf(project.Language{}),
+	} {
+		dump[name] = map[string]any{
+			"own":      metadataFieldNames(element),
 			"top":      metadataTopFieldNames(element),
 			"children": metadataChildren(element),
 		}

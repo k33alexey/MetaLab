@@ -91,6 +91,7 @@ HELP_CHILD_COLLECTIONS = {
 # Свойство справки под нашим именем, которое сопоставитель по словам не находит:
 # вложено или названо иначе. Каждая строка проверена по коду.
 HELP_RENAMED = {
+    ("Language", "LanguageCode"): "code",
     ("Document", "ActionsWritingOnPost"): "records_writing",     # posting.records_writing
     ("Document", "PrivilegedPostingMode"): "privileged",         # posting.privileged
     ("Document", "PrivilegedUnpostingMode"): "unpost_privileged",
@@ -133,7 +134,6 @@ HELP_DECIDED_KINDS = {
     "IntegrationServiceChannel": "METADATA-OBJECTS.md: канал сервиса интеграции - вместе с ним",
     "Interface": "METADATA-OBJECTS.md: интерфейс обычного приложения не переносится",
     "Form": "форма - файл описания формы рядом с объектом, её состав сверяется конструктором форм",
-    "Language": "языки лежат в описании проекта (internal/project), состав сверен руками",
 }
 
 # Свойства, которые имеют смысл только у объекта расширения конфигурации:
@@ -204,6 +204,26 @@ FLAT_ALIAS = {
 # Переименования, которые верны только у одного вида: одно и то же слово
 # прототипа значит у разных объектов разное.
 RENAMED_BY_KIND = {
+    # Общая форма - ManagedForm, общий тип всех форм; конфигурация - описание
+    # проекта (internal/project). Оба вида сверяются с 02.10.2026: до того
+    # дамп состава их не содержал, и сверка молча пропускала оба.
+    ("Language", "LanguageCode"): "code",
+    ("CommonForm", "FormType"): "type",
+    ("CommonForm", "UsePurposes"): "purposes",
+    ("Configuration", "AllowedIncomingShareRequestTypes"): "allowed_share_request_types",
+    ("Configuration", "CompatibilityMode"): "compatibility_version",
+    ("Configuration", "ConfigurationExtensionCompatibilityMode"): "extension_compatibility_version",
+    ("Configuration", "ConfigurationInformationAddress"): "information_address",
+    ("Configuration", "DefaultCollaborationSystemUsersChoiceForm"): "collaboration_system_users_choice_form",
+    ("Configuration", "DefaultDataHistoryChangeHistoryForm"): "data_history_changes_form",
+    ("Configuration", "DefaultDataHistoryVersionDataForm"): "data_history_version_form",
+    ("Configuration", "DefaultDataHistoryVersionDifferencesForm"): "data_history_version_difference_form",
+    ("Configuration", "MainClientApplicationWindowMode"): "main_window_mode",
+    ("Configuration", "RequiredMobileApplicationPermissions"): "required_mobile_permissions",
+    ("Configuration", "SynchronousPlatformExtensionAndAddInCallUseMode"): "synchronous_platform_extension_call_use",
+    ("Configuration", "UseManagedFormInOrdinaryApplication"): "use_managed_forms_in_ordinary_application",
+    ("Configuration", "UseOrdinaryFormInManagedApplication"): "use_ordinary_forms_in_managed_application",
+    ("Configuration", "UsedMobileApplicationFunctionalities"): "used_mobile_functionalities",
     ("Document", "RegisterRecords"): "movements",
     ("Sequence", "RegisterRecords"): "movements",
     ("Subsystem", "Content"): "members",
@@ -336,19 +356,19 @@ def stems_match(left: frozenset[str], right: frozenset[str]) -> bool:
     return True
 
 
-def matches(prototype: str, ours: dict[frozenset[str], str], kind: str = "", top: frozenset[str] = frozenset()) -> bool:
+def matches(prototype: str, ours: dict[str, frozenset[str]], kind: str = "", top: frozenset[str] = frozenset()) -> bool:
     named = RENAMED_BY_KIND.get((kind, prototype), FLAT_ALIAS.get(prototype))
     if named is not None:
-        return any(name == named for name in ours.values())
+        return named in ours
     theirs = tokens(prototype)
     # Прототип называет каждый слот формы отдельным свойством - DefaultForm,
     # DefaultListForm, DefaultFolderChoiceForm; у нас слоты лежат в одной
     # структуре forms, и сверять их состав надо отдельно, а не по этим именам.
-    if "form" in theirs and any(name == "forms" for name in ours.values()):
+    if "form" in theirs and "forms" in ours:
         return True
     renamed = frozenset(filter(None, (RENAMED.get(word, word) for word in theirs)))
     flat_theirs = flat(prototype)
-    for our_tokens, our_name in ours.items():  # noqa: PLR1702
+    for our_name, our_tokens in ours.items():  # noqa: PLR1702
         if theirs == our_tokens or renamed == our_tokens:
             return True
         if flat_theirs == flat(our_name):
@@ -389,6 +409,12 @@ def matches(prototype: str, ours: dict[frozenset[str], str], kind: str = "", top
 # через месяц.
 SELF_CHECK = [
     # (вид, имя прототипа, наши имена, наши верхнеуровневые, ожидание)
+    # Врал: наши имена хранились по набору слов, и два имени из одних слов -
+    # управляемые формы в обычном приложении и обычные в управляемом -
+    # затирали друг друга. Пропавшее имя не находилось, хотя у нас было.
+    ("Configuration", "UseManagedFormInOrdinaryApplication",
+     ["use_managed_forms_in_ordinary_application", "use_ordinary_forms_in_managed_application"],
+     ["use_managed_forms_in_ordinary_application", "use_ordinary_forms_in_managed_application"], True),
     ("CommonCommand", "ToolTip", ["tooltip"], ["tooltip"], True),
     ("CommonPicture", "AvailabilityForAppearance", ["available_for_appearance"], ["available_for_appearance"], True),
     # Врал: одно общее слово «тип» не делает связь по типу нашим набором типов.
@@ -454,7 +480,7 @@ def self_check() -> int:
     """Прогнать таблицу выше. Материалы не нужны: проверяется сопоставитель."""
     failures = []
     for kind, prototype, names, top, expected in SELF_CHECK:
-        ours = {tokens(name): name for name in names}
+        ours = {name: tokens(name) for name in names}
         got = matches(prototype, ours, kind, frozenset(top))
         if got != expected:
             wanted = "совпадение" if expected else "расхождение"
@@ -509,7 +535,7 @@ def main() -> int:
         names = [name for name in body["own"] if name not in OURS_ONLY]
         for child in body.get("children", {}).values():
             names.extend(name for name in child["own"] if name not in OURS_ONLY)
-        ours[kind.lower()] = {tokens(name): name for name in names}
+        ours[kind.lower()] = {name: tokens(name) for name in names}
         tops[kind.lower()] = frozenset(name for name in body.get("top", []) if name not in OURS_ONLY)
     export: dict[str, dict[str, int]] = {}
     for prop in json.loads(EXPORT.read_text(encoding="utf-8"))["properties"]:
@@ -579,14 +605,14 @@ def sweep_children(model: dict, only: str | None) -> int:
             if child is None:
                 continue
             key = (kind.lower(), kind, child)
-            ours[key] = {tokens(name): name for name in dumped["own"] if name not in OURS_ONLY}
+            ours[key] = {name: tokens(name) for name in dumped["own"] if name not in OURS_ONLY}
             tops[key] = frozenset(name for name in dumped["top"] if name not in OURS_ONLY)
             for nested, below in dumped.get("children", {}).items():
                 grandchild = GRANDCHILD_COLLECTIONS.get((child, nested))
                 if grandchild is None:
                     continue
                 key = (kind.lower(), child, grandchild)
-                ours[key] = {tokens(name): name for name in below["own"] if name not in OURS_ONLY}
+                ours[key] = {name: tokens(name) for name in below["own"] if name not in OURS_ONLY}
                 tops[key] = frozenset(name for name in below["top"] if name not in OURS_ONLY)
     # Виды, названные у нас иначе, - тот же список, что и в первом проходе.
     for exported, mine in KIND_ALIAS.items():
@@ -654,7 +680,7 @@ def sweep_help(model: dict, only: str | None) -> int:
 
     def add(kind: str, names, top) -> None:
         fields = ours.setdefault(kind.lower(), {})
-        fields.update({tokens(name): name for name in names if name not in OURS_ONLY})
+        fields.update({name: tokens(name) for name in names if name not in OURS_ONLY})
         tops[kind.lower()] = tops.get(kind.lower(), frozenset()) | frozenset(name for name in top if name not in OURS_ONLY)
 
     for typename, body in model.items():
@@ -694,7 +720,7 @@ def sweep_help(model: dict, only: str | None) -> int:
             if matches(name, fields, kind, tops.get(kind.lower(), frozenset())) or (kind, name) in ACCEPTED:
                 continue
             renamed = HELP_RENAMED.get((kind, name), HELP_RENAMED_ANY.get(name))
-            if renamed is not None and renamed in fields.values():
+            if renamed is not None and renamed in fields:
                 continue
             if name in HELP_EXTENSIONS:
                 extensions += 1
