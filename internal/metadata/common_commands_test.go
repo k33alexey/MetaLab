@@ -250,8 +250,6 @@ func TestBrokenCommandGroupsAreRefused(t *testing.T) {
 	for name, broken := range map[string]struct{ body, want string }{
 		"категории не существует": {"category: где-нибудь", "category must be actions-panel, navigation-panel, form-command-bar or form-navigation-panel"},
 		"категория не названа":    {"", "category must be actions-panel, navigation-panel, form-command-bar or form-navigation-panel"},
-		"отображение картинкой без картинки": {"category: actions-panel\nrepresentation: picture",
-			"representation picture needs a picture"},
 		"картинка из двух источников": {"category: actions-panel\npicture: {standard: Обмен, common: " + commonCommandID + "}",
 			"names both a standard picture and a common picture"},
 	} {

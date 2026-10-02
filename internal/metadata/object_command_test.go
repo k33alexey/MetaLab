@@ -289,12 +289,6 @@ func TestBrokenCommandsAreRefused(t *testing.T) {
 		"место указано дважды": {`commands:
   - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, group: actions-panel-tools, group_ref: ` + commandGroup + `}`,
 			"names both a standard group and a group of the configuration"},
-		"режим параметра без параметра": {`commands:
-  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, parameter_use: single}`,
-			"commands[0].parameter_use needs a parameter type"},
-		"отображение картинкой без картинки": {`commands:
-  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, representation: picture}`,
-			"commands[0].representation picture needs a picture"},
 		"картинка из двух источников": {`commands:
   - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, picture: {standard: Открыть, common: ` + commandGroup + `}}`,
 			"names both a standard picture and a common picture"},
@@ -535,4 +529,112 @@ name: ЗагрузкаЦен
 title: {ru: Загрузка цен}
 `)
 	return root
+}
+
+// Two things the prototype saves on a command, and that were refused: a
+// parameter mode with no parameter type - written on every command, «single»
+// 1096 times and «multiple» 35 times in the configurations being moved - and
+// drawing as a picture with no picture, twice. Each is tried on a command of
+// an object and on a common command, which share the check, and the value
+// must come back as written: kept, not just let through.
+func TestCommandKeepsWhatThePrototypeSaves(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		properties string
+		kept       func(ObjectCommand) bool
+	}{
+		"«один» без типа параметра": {"parameter_use: single", func(command ObjectCommand) bool {
+			return command.ParameterUse == CommandParameterSingle && len(command.Parameter) == 0
+		}},
+		"«несколько» без типа параметра": {"parameter_use: multiple", func(command ObjectCommand) bool {
+			return command.ParameterUse == CommandParameterMultiple && len(command.Parameter) == 0
+		}},
+		"картинкой без картинки": {"representation: picture", func(command ObjectCommand) bool {
+			return command.Representation == CommandPicture && command.Picture == nil
+		}},
+	} {
+		t.Run(name+"/команда объекта", func(t *testing.T) {
+			t.Parallel()
+			value, err := DecodeCatalog("object.yaml", strings.NewReader(`format: 1
+id: `+commandCatalog+`
+name: Контрагенты
+title: {ru: Контрагенты}
+code: {type: string, length: 9, auto: true}
+description_length: 150
+commands:
+  - {id: `+commandID+`, name: Открыть, title: {ru: Открыть}, `+test.properties+`}
+`), metadataConfiguration())
+			if err != nil {
+				t.Fatalf("refused: %v", err)
+			}
+			if len(value.Commands) != 1 || !test.kept(value.Commands[0]) {
+				t.Fatalf("not kept as written: %+v", value.Commands)
+			}
+		})
+		t.Run(name+"/общая команда", func(t *testing.T) {
+			t.Parallel()
+			value, err := DecodeCommonCommand("object.yaml", strings.NewReader(`format: 1
+id: `+commonCommandID+`
+name: Открыть
+title: {ru: Открыть}
+group: actions-panel-tools
+`+test.properties+`
+`), metadataConfiguration())
+			if err != nil {
+				t.Fatalf("refused: %v", err)
+			}
+			if !test.kept(value.ObjectCommand) {
+				t.Fatalf("not kept as written: %+v", value.ObjectCommand)
+			}
+		})
+	}
+}
+
+// A command group drawn as a picture with no picture is kept, as a command is.
+// The configurations being moved give a picture to all four groups drawn so,
+// so this follows the command rather than a count: the property and its
+// editor are the same.
+func TestCommandGroupDrawnAsAPictureWithoutOneIsKept(t *testing.T) {
+	t.Parallel()
+	group, err := DecodeCommandGroup("object.yaml", strings.NewReader(`format: 1
+id: `+commandGroupID+`
+name: Синхронизация
+title: {ru: Синхронизация}
+category: actions-panel
+representation: picture
+`), metadataConfiguration())
+	if err != nil {
+		t.Fatalf("refused: %v", err)
+	}
+	if group.Representation != CommandPicture || group.Picture != nil {
+		t.Fatalf("not kept as written: %+v", group)
+	}
+}
+
+// A command or a group that asks for a picture it does not have is drawn as
+// its text, never as an empty button. The defect caught is a drawing that
+// follows the representation as written and leaves a button nobody can read;
+// the cases with a picture, and the ones that ask for text or leave it to the
+// panel, must come back unchanged, so a rule that turns everything into text
+// is caught as well.
+func TestCommandAskingForAMissingPictureIsShownAsText(t *testing.T) {
+	t.Parallel()
+	picture := &PictureReference{Standard: "Открыть"}
+	for _, test := range []struct {
+		asked   CommandRepresentation
+		picture *PictureReference
+		shown   CommandRepresentation
+	}{
+		{CommandPicture, nil, CommandText},
+		{CommandPictureAndText, nil, CommandText},
+		{CommandPicture, picture, CommandPicture},
+		{CommandPictureAndText, picture, CommandPictureAndText},
+		{CommandText, nil, CommandText},
+		{CommandAuto, nil, CommandAuto},
+		{"", nil, ""},
+	} {
+		if shown := test.asked.ShownAs(test.picture); shown != test.shown {
+			t.Errorf("%q with picture %v is shown as %q, want %q", test.asked, test.picture != nil, shown, test.shown)
+		}
+	}
 }

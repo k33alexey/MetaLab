@@ -27,6 +27,20 @@ const (
 	CommandPictureAndText CommandRepresentation = "picture-and-text"
 )
 
+// ShownAs is how a command or a group is drawn on the screen, which is what it
+// asks for unless it asks for a picture it does not have. Then it is drawn as
+// text, its title: a button with neither is a place nobody can tell what it
+// does. The help does not say what the prototype draws there; whatever it
+// draws, a button that says what it does is the one we show (owner,
+// 02.10.2026). Every drawing of a command or a group goes through this and not
+// through the representation itself.
+func (representation CommandRepresentation) ShownAs(picture *PictureReference) CommandRepresentation {
+	if picture == nil && (representation == CommandPicture || representation == CommandPictureAndText) {
+		return CommandText
+	}
+	return representation
+}
+
 // ServerUnavailableBehavior is what a command does when the main server cannot
 // be reached.
 type ServerUnavailableBehavior string
@@ -157,22 +171,19 @@ func validateCommandShape(prefix string, command ObjectCommand, self uuid.UUID, 
 	default:
 		issues = append(issues, prefix+".parameter_use must be single or multiple")
 	}
-	// Saying how many objects a command takes, when it takes none, is an
-	// answer to a question nobody asked.
-	if command.ParameterUse != "" && len(command.Parameter) == 0 {
-		issues = append(issues, prefix+".parameter_use needs a parameter type")
-	}
+	// How many objects a command takes is kept even when it takes none: the
+	// prototype writes the mode on every command, and the configurations being
+	// moved leave «single» without a parameter type 1096 times and «multiple»
+	// 35 times. The mode means nothing until a type is given.
 	issues = append(issues, validatePictureReference(prefix+".picture", command.Picture)...)
 	switch command.Representation {
 	case "", CommandAuto, CommandText, CommandPicture, CommandPictureAndText:
 	default:
 		issues = append(issues, prefix+".representation must be auto, text, picture or picture-and-text")
 	}
-	// A command drawn as a picture needs one, and asking for a picture the
-	// command does not have leaves an empty place in the interface.
-	if command.Representation == CommandPicture && command.Picture == nil {
-		issues = append(issues, prefix+".representation picture needs a picture")
-	}
+	// A command may be drawn as a picture and have none: the prototype saves
+	// it, and the configurations being moved do it twice. It is kept as
+	// written and drawn as text - see ShownAs.
 	switch command.OnServerUnavailable {
 	case "", ServerUnavailableAuto, ServerUnavailableAvailable, ServerUnavailableNotAvailable:
 	default:

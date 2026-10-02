@@ -105,9 +105,8 @@ func DecodeCommandGroup(source string, reader io.Reader, configuration project.P
 	default:
 		issues = append(issues, "representation must be auto, text, picture or picture-and-text")
 	}
-	if value.Representation == CommandPicture && value.Picture == nil {
-		issues = append(issues, "representation picture needs a picture")
-	}
+	// Drawn as a picture with no picture is kept and drawn as text, as for a
+	// command - see CommandRepresentation.ShownAs.
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return CommandGroupDefinition{}, err
 	}
