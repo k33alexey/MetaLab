@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -97,6 +98,53 @@ func TestRoleEditorCreateReadSaveAndConflicts(t *testing.T) {
 
 // Restrictions must survive a real save/read cycle, and a restriction the
 // project cannot resolve must be refused before it reaches the working copy.
+// A role carries three flags of the prototype, and the third - independent
+// rights of child objects - decides whether a right on an attribute, a table
+// part or a command needs the same right on its object (help, the role
+// editor; erp sets it in 2 roles). Defect caught: the flag was not in the
+// model, so it was lost at import and could not be set in the editor.
+func TestRoleKeepsItsThreeFlags(t *testing.T) {
+	t.Parallel()
+	workspace, _ := roleWorkspace(t)
+	created, err := workspace.CreateRole("Ответственный")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Role.IndependentChildRights || created.Role.GrantNewObjectsByDefault || created.Role.GrantNewFieldsByDefault {
+		t.Fatalf("a new role was given a flag nobody set: %+v", created.Role)
+	}
+	// Through the routes the editor uses, under the names the editor writes:
+	// the flag has to cross JSON both ways, not only YAML.
+	handler := NewHandler(workspace)
+	body, err := json.Marshal(map[string]any{"path": created.Path, "expectedRevision": created.Revision,
+		"role": map[string]any{"format": created.Role.Format, "id": created.Role.ID, "name": created.Role.Name, "title": created.Role.Title,
+			"independentChildRights": true, "grantNewFieldsByDefault": true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	put := httptest.NewRequest(http.MethodPut, "http://localhost/api/role", bytes.NewReader(body))
+	put.Header.Set("Content-Type", "application/json")
+	put.Header.Set("X-ML-CSRF", "1")
+	saved := httptest.NewRecorder()
+	handler.ServeHTTP(saved, put)
+	if saved.Code != http.StatusOK {
+		t.Fatalf("PUT role: %d %s", saved.Code, saved.Body.String())
+	}
+	get := httptest.NewRecorder()
+	handler.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "http://localhost/api/role?path="+url.QueryEscape(created.Path), nil))
+	if !strings.Contains(get.Body.String(), `"independentChildRights":true`) {
+		t.Fatalf("the editor is not given the flag back: %s", get.Body.String())
+	}
+	catalog, err := metadata.Load(workspace.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, ok := catalog.Role("Ответственный")
+	if !ok || !role.IndependentChildRights || !role.GrantNewFieldsByDefault || role.GrantNewObjectsByDefault {
+		t.Fatalf("the flags did not survive saving and loading: %+v", role)
+	}
+}
+
 func TestRoleEditorSavesAccessPolicies(t *testing.T) {
 	t.Parallel()
 	workspace, object := roleWorkspace(t)

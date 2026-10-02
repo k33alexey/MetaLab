@@ -125,6 +125,7 @@ function createRoleModel(source) {
     setComment(comment) { value.role.comment = comment; },
     setGrantNewObjectsByDefault(enabled) { value.role.grantNewObjectsByDefault = enabled; },
     setGrantNewFieldsByDefault(enabled) { value.role.grantNewFieldsByDefault = enabled; },
+    setIndependentChildRights(enabled) { value.role.independentChildRights = enabled; },
     setObject, setField,
     hasObject(id, operation) { return objects.get(id)?.operations?.includes(operation) || false; },
     hasField(id, key, operation) { return fieldGrants.get(id)?.get(key)?.operations.includes(operation) || false; },
@@ -403,6 +404,7 @@ function createRoleEditor(host, onChange) {
       comment.addEventListener('change',()=>{model.setComment(comment.value);changed();});commentLabel.append(comment);identity.append(commentLabel);
       identity.append(checkbox('Устанавливать права для новых объектов',!!source.role.grantNewObjectsByDefault,enabled=>model.setGrantNewObjectsByDefault(enabled)));
       identity.append(checkbox('Устанавливать права для реквизитов и табличных частей по умолчанию',!!source.role.grantNewFieldsByDefault,enabled=>model.setGrantNewFieldsByDefault(enabled)));
+      identity.append(checkbox('Независимые права подчиненных объектов',!!source.role.independentChildRights,enabled=>model.setIndependentChildRights(enabled)));
       host.append(identity);
       templates=node('details',undefined,'role-templates');host.append(templates);
       warning=node('div',undefined,'role-warning');warning.append(node('span','В роли есть права на удалённые или изменённые объекты. '));const repair=node('button','Убрать недоступные права');repair.type='button';repair.addEventListener('click',()=>{model.removeUnavailable();changed();renderPanel();});warning.append(repair);warning.hidden=!model.hasUnavailable();host.append(warning);

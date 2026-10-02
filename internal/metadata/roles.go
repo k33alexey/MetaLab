@@ -61,6 +61,14 @@ type RoleDefinition struct {
 	// grants a field on an object the role has no ObjectPermission entry
 	// for at all.
 	GrantNewFieldsByDefault bool `yaml:"grant_new_fields_by_default,omitempty" json:"grantNewFieldsByDefault,omitempty"`
+	// IndependentChildRights is the prototype's "independent rights of child
+	// objects": left off, a right on an attribute, a table part, an attribute
+	// of a table part or a command holds only where the role also has that
+	// right on the object owning it, checked before the roles are added up;
+	// set, the child's own setting alone decides (help, the role editor). Off
+	// is the prototype's default; erp sets it in 2 roles of 1211. Carried and
+	// not yet followed - the check of rights is block 10's.
+	IndependentChildRights bool `yaml:"independent_child_rights,omitempty" json:"independentChildRights,omitempty"`
 	// PolicyTemplates are rules named once and reused by this role's own
 	// restrictions. They grant nothing by themselves.
 	PolicyTemplates []PolicyTemplate `yaml:"policy_templates,omitempty" json:"policyTemplates,omitempty"`
