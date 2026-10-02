@@ -818,6 +818,21 @@ func plainFileName(what, file string) error {
 	return nil
 }
 
+// TemplateResourcesDirectory is the folder an HTML template keeps its
+// resources in - the images its documents show - beside the documents
+// themselves. It is one folder for all the languages, holding files and
+// nothing deeper, as the prototype keeps it (13 templates of the three
+// configurations being moved, common ones and those of data processors).
+const TemplateResourcesDirectory = "_files"
+
+// TemplateResource reports whether a name can be a file among the resources
+// of an HTML template. The prototype keeps them under the names they were
+// saved with - spaces, commas and brackets among them - so only what cannot
+// be a file of that folder is refused.
+func TemplateResource(file string) bool {
+	return plainFileName("template resource", file) == nil && !strings.HasPrefix(file, ".")
+}
+
 // ObjectTemplateDirectory returns the folder holding the content of one of an
 // object's own templates, named after the template.
 //

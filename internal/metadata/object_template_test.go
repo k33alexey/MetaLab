@@ -304,3 +304,49 @@ templates:
 		t.Fatalf("refused for another reason: %v", err)
 	}
 }
+
+// An object's HTML template keeps its resources the same way a common one
+// does - the prototype keeps them in the templates of data processors (12 of
+// the 13). Defect caught: the folder inside the template's folder was refused.
+func TestObjectHTMLTemplateKeepsItsResources(t *testing.T) {
+	t.Parallel()
+	declare := func(t *testing.T, root string, kind TemplateKind) {
+		writeMetadata(t, root, CatalogKind, templateCatalog, `format: 1
+id: `+templateCatalog+`
+name: Контрагенты
+title: {ru: Контрагенты}
+code: {type: string, length: 9, auto: true}
+description_length: 150
+templates:
+  - {id: `+templateIdentifier(0)+`, name: Инструкция, title: {ru: Инструкция}, kind: `+string(kind)+`}
+`)
+	}
+	resource := func(t *testing.T, root, file string) {
+		directory := filepath.Join(root, "metadata", string(CatalogKind), "Контрагенты", "templates", "Инструкция", project.TemplateResourcesDirectory)
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(directory, file)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, file), []byte("образ"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	root := metadataProject(t)
+	declare(t, root, HTMLTemplate)
+	writeTemplateContent(t, root, CatalogKind, "Контрагенты", "Инструкция", "ru.html", `<img src="_files/u2.png">`)
+	resource(t, root, "u2.png")
+	resource(t, root, "Переключатель Опт, Розница, Везде.png")
+	if _, err := Load(root); err != nil {
+		t.Fatalf("an object's HTML template with its resources was refused: %v", err)
+	}
+	resource(t, root, "вложено/u3.png")
+	if _, err := Load(root); err == nil {
+		t.Fatal("a folder inside the resources was accepted")
+	}
+
+	other := metadataProject(t)
+	declare(t, other, TextTemplate)
+	resource(t, other, "u2.png")
+	if _, err := Load(other); err == nil {
+		t.Fatal("resources of a text template were accepted")
+	}
+}

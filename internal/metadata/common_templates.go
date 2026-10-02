@@ -86,6 +86,12 @@ func (catalog *Catalog) validateCommonTemplateFiles(root string) error {
 			return fmt.Errorf("common template %s: %w", item.Name, err)
 		}
 		for _, entry := range entries {
+			if item.Kind == HTMLTemplate && entry.IsDir() && entry.Name() == project.TemplateResourcesDirectory {
+				if err := validateTemplateResources("common template "+item.Name, filepath.Join(directory, entry.Name())); err != nil {
+					return err
+				}
+				continue
+			}
 			if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
 				return fmt.Errorf("common template %s keeps %q, which is not a file of its content",
 					item.Name, entry.Name())

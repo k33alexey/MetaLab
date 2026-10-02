@@ -257,6 +257,13 @@ func validateSourcePath(relative string, directory bool) error {
 			if !directory && len(parts) == 4 && parts[1] == "common-templates" && templateContentName(parts[3]) {
 				return nil
 			}
+			// An HTML template keeps its resources in one folder beside its
+			// documents; which kind of template may have one is checked where
+			// the metadata is read.
+			if len(parts) >= 4 && parts[1] == "common-templates" && parts[3] == project.TemplateResourcesDirectory &&
+				(directory && len(parts) == 4 || !directory && len(parts) == 5 && project.TemplateResource(parts[4])) {
+				return nil
+			}
 			// An XDTO package keeps its schema and a WS reference the service
 			// description it was imported with, each beside its description
 			// and under one name. Without these two a project carrying either
@@ -373,6 +380,11 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 	// only the shape of the path is.
 	if !directory && len(parts) == 6 && parts[3] == "templates" &&
 		project.SubordinateName(parts[4]) == nil && templateContentName(parts[5]) {
+		return nil
+	}
+	if len(parts) >= 6 && parts[3] == "templates" && project.SubordinateName(parts[4]) == nil &&
+		parts[5] == project.TemplateResourcesDirectory &&
+		(directory && len(parts) == 6 || !directory && len(parts) == 7 && project.TemplateResource(parts[6])) {
 		return nil
 	}
 	if !directory && len(parts) == 4 && parts[3] == "object.yaml" {

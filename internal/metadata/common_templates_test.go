@@ -163,3 +163,63 @@ kind: text
 		t.Fatalf("two common templates under one name loaded: %v", err)
 	}
 }
+
+// An HTML template keeps the images its documents show in one folder beside
+// them, _files, shared by all the languages and holding files only; the
+// prototype keeps them under the names they were saved with, spaces and
+// brackets among them (13 templates of the three configurations being moved).
+// Defect caught: the folder was refused, and with it the template.
+func TestHTMLTemplateKeepsItsResources(t *testing.T) {
+	t.Parallel()
+	write := func(t *testing.T, root, template, file string) {
+		t.Helper()
+		directory := filepath.Join(root, "metadata", string(CommonTemplateKind), template, project.TemplateResourcesDirectory)
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(directory, file)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, file), []byte("образ"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	root := metadataProject(t)
+	writeCommonTemplate(t, root, commonTemplateID, "Инструкция", HTMLTemplate)
+	writeCommonTemplateContent(t, root, "Инструкция", "ru.html", `<img src="_files/1.png">`)
+	writeCommonTemplateContent(t, root, "Инструкция", "uk.html", `<img src="_files/1.png">`)
+	write(t, root, "Инструкция", "1.png")
+	write(t, root, "Инструкция", "Классификация 2 (пиктограмма).png")
+	if _, err := Load(root); err != nil {
+		t.Fatalf("an HTML template with its resources was refused: %v", err)
+	}
+
+	for name, broken := range map[string]func(t *testing.T, root string){
+		// Only an HTML template has documents that show images.
+		"ресурсы у табличного макета": func(t *testing.T, root string) {
+			writeCommonTemplate(t, root, commonTemplateID, "Инструкция", SpreadsheetTemplate)
+			write(t, root, "Инструкция", "1.png")
+		},
+		"скрытый файл среди ресурсов": func(t *testing.T, root string) {
+			writeCommonTemplate(t, root, commonTemplateID, "Инструкция", HTMLTemplate)
+			write(t, root, "Инструкция", ".DS_Store")
+		},
+		"папка внутри ресурсов": func(t *testing.T, root string) {
+			writeCommonTemplate(t, root, commonTemplateID, "Инструкция", HTMLTemplate)
+			write(t, root, "Инструкция", "вложено/1.png")
+		},
+		"папка ресурсов под другим именем": func(t *testing.T, root string) {
+			writeCommonTemplate(t, root, commonTemplateID, "Инструкция", HTMLTemplate)
+			directory := filepath.Join(root, "metadata", string(CommonTemplateKind), "Инструкция", "files")
+			if err := os.MkdirAll(directory, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := metadataProject(t)
+			broken(t, root)
+			if _, err := Load(root); err == nil {
+				t.Fatal("the project loaded")
+			}
+		})
+	}
+}

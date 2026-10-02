@@ -265,6 +265,22 @@ func TestCommonTemplateAndPicturePathShapes(t *testing.T) {
 		"документ на язык":         {"metadata/common-templates/Инструкция/ru.html", false, true},
 		"посторонний файл у общего макета": {
 			"metadata/common-templates/ПечатнаяФорма/заметки.txt", false, false},
+		// An HTML template keeps its images in _files beside its documents,
+		// under the names they were saved with, and nothing deeper.
+		"папка ресурсов общего макета": {"metadata/common-templates/Инструкция/_files", true, true},
+		"ресурс общего макета":         {"metadata/common-templates/Инструкция/_files/Классификация 2 (пиктограмма).png", false, true},
+		"папка внутри ресурсов":        {"metadata/common-templates/Инструкция/_files/вложено", true, false},
+		"ресурс глубже папки":          {"metadata/common-templates/Инструкция/_files/вложено/1.png", false, false},
+		"скрытый ресурс":               {"metadata/common-templates/Инструкция/_files/.DS_Store", false, false},
+		"другая папка у общего макета": {"metadata/common-templates/Инструкция/files", true, false},
+		"папка ресурсов макета обработки": {
+			"metadata/data-processors/ОбновлениеПрограммы/templates/СозданиеРезервнойКопии/_files", true, true},
+		"ресурс макета обработки": {
+			"metadata/data-processors/ОбновлениеПрограммы/templates/СозданиеРезервнойКопии/_files/u2.png", false, true},
+		"ресурс макета обработки глубже": {
+			"metadata/data-processors/ОбновлениеПрограммы/templates/СозданиеРезервнойКопии/_files/a/u2.png", false, false},
+		"папка ресурсов у формы": {
+			"metadata/data-processors/ОбновлениеПрограммы/forms/Форма/_files", true, false},
 		"папка общей картинки":    {"metadata/common-pictures/Печать", true, true},
 		"описание общей картинки": {"metadata/common-pictures/Печать/object.yaml", false, true},
 		"образ картинки":          {"metadata/common-pictures/Печать/100.png", false, true},

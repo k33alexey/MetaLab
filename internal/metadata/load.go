@@ -2965,6 +2965,13 @@ func validateObjectTemplateFiles(directory, kind, name string, templates []Objec
 			return fmt.Errorf("%s %s template %s: %w", kind, name, entry.Name(), err)
 		}
 		for _, file := range content {
+			if templateKind == HTMLTemplate && file.IsDir() && file.Name() == project.TemplateResourcesDirectory {
+				if err := validateTemplateResources(fmt.Sprintf("%s %s template %s", kind, name, entry.Name()),
+					filepath.Join(directory, "templates", entry.Name(), file.Name())); err != nil {
+					return err
+				}
+				continue
+			}
 			if file.IsDir() || file.Type()&fs.ModeSymlink != 0 {
 				return fmt.Errorf("%s %s template %s holds %q, which is not a file of its content",
 					kind, name, entry.Name(), file.Name())
@@ -2973,6 +2980,23 @@ func validateObjectTemplateFiles(directory, kind, name string, templates []Objec
 				return fmt.Errorf("%s %s template %s is a %s and cannot hold %q",
 					kind, name, entry.Name(), templateKind, file.Name())
 			}
+		}
+	}
+	return nil
+}
+
+// validateTemplateResources checks the folder of an HTML template's resources:
+// files only, and nothing deeper. What the documents refer to is not checked
+// against it - the prototype keeps documents that name images it does not
+// have, and a document is not ours to rewrite.
+func validateTemplateResources(owner, directory string) error {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return fmt.Errorf("%s: %w", owner, err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 || !project.TemplateResource(entry.Name()) {
+			return fmt.Errorf("%s keeps %q among its resources, which is not a file", owner, entry.Name())
 		}
 	}
 	return nil
