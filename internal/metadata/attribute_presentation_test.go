@@ -191,8 +191,15 @@ func TestBrokenFieldSettingsAreRefused(t *testing.T) {
 	for name, broken := range map[string]struct{ body, want string }{
 		"переключатель не из трёх": {field(`    choice: {quick_choice: maybe}`),
 			"must be auto, use or dont-use"},
-		"выбор не из четырёх": {field(`    choice: {folders_and_items: anything}`),
-			"must be auto, items, folders or folders-and-items"},
+		"выбор не из трёх": {field(`    choice: {folders_and_items: anything}`),
+			"must be items, folders or folders-and-items"},
+		// The prototype has no "auto" here and no "use" in the history of
+		// choice: values a reader of the help would not expect, and an import
+		// would never produce.
+		"авто в выборе групп и элементов": {field(`    choice: {folders_and_items: auto}`),
+			"must be items, folders or folders-and-items"},
+		"использовать в истории выбора": {field(`    choice: {history_on_input: use}`),
+			"history_on_input must be auto or dont-use"},
 		"параметр без значения": {field(`    choice: {parameters: [{name: Отбор.Вид, values: []}]}`),
 			"values must contain at least one value"},
 		"несколько значений молча": {field(`    choice:
@@ -538,5 +545,36 @@ func TestUndefinedAndUnresolvedReferenceAreValuesOfTheirOwn(t *testing.T) {
 				t.Errorf("%s fills a field of %v", kind, types)
 			}
 		}
+	}
+}
+
+// The name of a choice parameter has no ceiling in the help; the 256 once
+// refused here was nobody's. The values the prototype does write - history
+// auto or dont-use, a choice of folders, items or both - all load, on a field
+// and on the object.
+func TestChoiceSettingsTakeWhatThePrototypeWrites(t *testing.T) {
+	t.Parallel()
+	long := "Отбор." + strings.Repeat("Реквизит", 40)
+	for name, choice := range map[string]string{
+		"длинное имя параметра":   `{parameters: [{name: ` + long + `, values: [{kind: boolean, data: "true"}]}]}`,
+		"история авто":            `{history_on_input: auto}`,
+		"история не использовать": `{history_on_input: dont-use}`,
+		"группы":            `{folders_and_items: folders}`,
+		"группы и элементы": `{folders_and_items: folders-and-items}`,
+		"элементы":          `{folders_and_items: items}`,
+	} {
+		_, err := DecodeCatalog("object.yaml", strings.NewReader(presentationOrder(`attributes:
+  - id: `+presentationContract+`
+    name: Договор
+    title: {ru: Договор}
+    types: [{kind: string, length: 10}]
+    choice: `+choice+`
+`)), metadataConfiguration())
+		if err != nil {
+			t.Errorf("%s: refused: %v", name, err)
+		}
+	}
+	if _, err := DecodeCatalog("object.yaml", strings.NewReader(presentationOrder("choice_history_on_input: use\n")), metadataConfiguration()); err == nil {
+		t.Error("an object's history of choice took a value the prototype does not have")
 	}
 }

@@ -45,25 +45,21 @@ func validUsageMode(mode UsageMode) bool {
 
 // ChoiceTarget says what a choice from a hierarchical object may land on: a
 // folder, an item, or either. A field holding a folder where the application
-// expects an item is a wrong value that passes every other check.
+// expects an item is a wrong value that passes every other check. Three
+// answers, as the help gives them (ИспользованиеГруппИЭлементов) and as the
+// configurations being moved write them; none of them is "auto", and an
+// unset one is items.
 type ChoiceTarget string
 
 const (
-	ChoiceTargetAuto            ChoiceTarget = "auto"
 	ChoiceTargetItems           ChoiceTarget = "items"
 	ChoiceTargetFolders         ChoiceTarget = "folders"
 	ChoiceTargetFoldersAndItems ChoiceTarget = "folders-and-items"
 )
 
-// Where a list of choice parameters stops being a list, and where a parameter
-// name stops being a name.
-const (
-	maxChoiceParameterLen = 256
-)
-
 func validChoiceTarget(value ChoiceTarget) bool {
 	switch value {
-	case "", ChoiceTargetAuto, ChoiceTargetItems, ChoiceTargetFolders, ChoiceTargetFoldersAndItems:
+	case "", ChoiceTargetItems, ChoiceTargetFolders, ChoiceTargetFoldersAndItems:
 		return true
 	default:
 		return false
@@ -218,9 +214,9 @@ type FieldChoice struct {
 	// QuickChoice offers the values in a drop-down list instead of opening a
 	// form; CreateOnInput lets the user make a new one out of what they typed;
 	// HistoryOnInput offers what this user picked before.
-	QuickChoice    UsageMode `yaml:"quick_choice,omitempty" json:"quickChoice,omitempty"`
-	CreateOnInput  UsageMode `yaml:"create_on_input,omitempty" json:"createOnInput,omitempty"`
-	HistoryOnInput UsageMode `yaml:"history_on_input,omitempty" json:"historyOnInput,omitempty"`
+	QuickChoice    UsageMode     `yaml:"quick_choice,omitempty" json:"quickChoice,omitempty"`
+	CreateOnInput  UsageMode     `yaml:"create_on_input,omitempty" json:"createOnInput,omitempty"`
+	HistoryOnInput ChoiceHistory `yaml:"history_on_input,omitempty" json:"historyOnInput,omitempty"`
 	// FoldersAndItems is what a choice from a hierarchical object may land on.
 	FoldersAndItems ChoiceTarget          `yaml:"folders_and_items,omitempty" json:"foldersAndItems,omitempty"`
 	Form            *ChoiceFormReference  `yaml:"form,omitempty" json:"form,omitempty"`
@@ -247,14 +243,16 @@ func validateFieldSettings(prefix string, attribute Attribute, configuration pro
 	// MinValue. Whether it bounds anything is NumberBound's to answer.
 	for name, mode := range map[string]UsageMode{
 		"choice.quick_choice": choice.QuickChoice, "choice.create_on_input": choice.CreateOnInput,
-		"choice.history_on_input": choice.HistoryOnInput,
 	} {
 		if !validUsageMode(mode) {
 			issues = append(issues, prefix+"."+name+" must be auto, use or dont-use")
 		}
 	}
+	if !validChoiceHistory(choice.HistoryOnInput) {
+		issues = append(issues, prefix+".choice.history_on_input must be auto or dont-use")
+	}
 	if !validChoiceTarget(choice.FoldersAndItems) {
-		issues = append(issues, prefix+".choice.folders_and_items must be auto, items, folders or folders-and-items")
+		issues = append(issues, prefix+".choice.folders_and_items must be items, folders or folders-and-items")
 	}
 	if form := choice.Form; form != nil {
 		issues = append(issues, validateChoiceFormReference(prefix+".choice.form", *form)...)
@@ -383,11 +381,10 @@ func validateChoiceParameters(prefix string, choice FieldChoice) []string {
 
 func validateChoiceParameterName(path, name string, seen map[string]bool) []string {
 	var issues []string
-	switch {
-	case name == "":
+	// No ceiling on the length: the help names none, and the longest name in
+	// the configurations being moved is 64 characters.
+	if name == "" {
 		issues = append(issues, path+".name must not be empty")
-	case len(name) > maxChoiceParameterLen:
-		issues = append(issues, fmt.Sprintf("%s.name must not be longer than %d characters", path, maxChoiceParameterLen))
 	}
 	folded := strings.ToLower(name)
 	if seen[folded] {

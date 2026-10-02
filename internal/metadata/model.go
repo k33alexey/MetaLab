@@ -346,11 +346,13 @@ const (
 )
 
 // ChoiceHistory says whether what the user picked before is offered first.
+// Two answers, as the help gives them (ИсторияВыбораПриВводе: Авто,
+// НеИспользовать) and as the configurations being moved write them, on
+// objects and on fields alike: there is no third that turns it on.
 type ChoiceHistory string
 
 const (
 	ChoiceHistoryAuto    ChoiceHistory = "auto"
-	ChoiceHistoryUse     ChoiceHistory = "use"
 	ChoiceHistoryDontUse ChoiceHistory = "dont-use"
 )
 

@@ -141,7 +141,7 @@ func validChoiceMode(mode ChoiceMode) bool {
 
 func validChoiceHistory(mode ChoiceHistory) bool {
 	switch mode {
-	case "", ChoiceHistoryAuto, ChoiceHistoryUse, ChoiceHistoryDontUse:
+	case "", ChoiceHistoryAuto, ChoiceHistoryDontUse:
 		return true
 	default:
 		return false
