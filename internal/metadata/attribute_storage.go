@@ -158,9 +158,8 @@ func validateFieldStorage(prefix string, attribute Attribute) []string {
 	if !validAttributeUse(attribute.Use) {
 		issues = append(issues, prefix+".use must be for-item, for-folder or for-folder-and-item")
 	}
-	if filling := attribute.Filling.Value; filling != nil {
-		issues = append(issues, validateFieldBound(prefix+".filling.value", *filling, attribute.Types)...)
-	}
+	// A filling value of a type the field cannot hold is carried and fills
+	// nothing - see EffectiveFillingValue.
 	return issues
 }
 

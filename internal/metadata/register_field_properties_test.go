@@ -43,7 +43,7 @@ resources:
     presentation:
       format: {ru: "ЧДЦ=2"}
       mark_negatives: true
-      min_value: {kind: number, data: "0"}
+      min_value: "0"
   - id: ` + entriesFxSum + `
     name: ВалютнаяСумма
     title: {ru: Валютная сумма}
@@ -61,7 +61,7 @@ resources:
 	if resource.Presentation.Format["ru"] != "ЧДЦ=2" || !resource.Presentation.MarkNegatives {
 		t.Fatalf("resource presentation = %+v", resource.Presentation)
 	}
-	if resource.Presentation.MinValue == nil || resource.Presentation.MinValue.Data != "0" {
+	if resource.Presentation.MinValue == nil || *resource.Presentation.MinValue != "0" {
 		t.Fatalf("resource min value = %+v", resource.Presentation.MinValue)
 	}
 	if flag := register.Resources[1].ExtDimensionAccountingFlag; flag == nil {
@@ -89,14 +89,6 @@ resources:
 func TestAccountingRegisterFieldRefusesWrongSettings(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct{ fields, message string }{
-		"граница другого типа": {`dimensions:
-  - {id: ` + entriesCompany + `, name: Организация, title: {ru: Организация}, types: [{kind: catalog, reference: ` + entriesCompanies + `}]}
-resources:
-  - id: ` + entriesSum + `
-    name: Сумма
-    title: {ru: Сумма}
-    types: [{kind: number, precision: 15, scale: 2}]
-    presentation: {min_value: {kind: string, data: "0"}}`, "min_value"},
 		"параметр выбора без имени": {`dimensions:
   - id: ` + entriesCompany + `
     name: Организация

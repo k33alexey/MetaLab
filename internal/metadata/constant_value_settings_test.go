@@ -37,8 +37,8 @@ presentation:
   edit_format: {ru: "ЧДЦ=4; ЧН=0"}
   tooltip: {ru: Курс валюты}
   mark_negatives: true
-  min_value: {kind: number, data: "0"}
-  max_value: {kind: number, data: "1000"}
+  min_value: "0"
+  max_value: "1000"
 choice:
   quick_choice: use
   folders_and_items: items
@@ -72,7 +72,6 @@ types: [{kind: number, precision: 10, scale: 4}]
 	cases := map[string]struct{ tail, message string }{
 		// A bound of another type than the value is compared with nothing, so
 		// it rejects nothing: the constant accepts what it was set up to refuse.
-		"граница другого типа":                  {`presentation: {min_value: {kind: string, data: "0"}}`, "min_value"},
 		"неизвестный режим проверки заполнения": {`fill_checking: сомневаться`, "fill_checking"},
 		"неизвестный режим выбора":              {`choice: {quick_choice: иногда}`, "choice.quick_choice"},
 		// A constant stands alone. A link takes the value of a choice parameter

@@ -45,8 +45,8 @@ func TestFieldKeepsHowItIsShownAndPicked(t *testing.T) {
       edit_format: {ru: "ЧДЦ=2; ЧН=0"}
       tooltip: {ru: Сумма заказа}
       mark_negatives: true
-      min_value: {kind: number, data: "0"}
-      max_value: {kind: number, data: "1000000"}
+      min_value: "0"
+      max_value: "1000000"
   - id: `+presentationSecret+`
     name: Пароль
     title: {ru: Пароль}
@@ -118,10 +118,10 @@ table_parts:
 		t.Fatalf("a field of a table part lost its link: %+v", orders.TableParts[0].Attributes[0])
 	}
 
-	orders.Attributes[0].Presentation.MinValue.Data = "999"
+	*orders.Attributes[0].Presentation.MinValue = "999"
 	orders.Attributes[3].Choice.ParameterLinks[0].Name = "Другое"
 	again, _ := catalog.CatalogDefinition("Заказы")
-	if again.Attributes[0].Presentation.MinValue.Data != "0" || again.Attributes[3].Choice.ParameterLinks[0].Name != "Отбор.Владелец" {
+	if *again.Attributes[0].Presentation.MinValue != "0" || again.Attributes[3].Choice.ParameterLinks[0].Name != "Отбор.Владелец" {
 		t.Fatal("a field's settings were handed out by reference")
 	}
 }
@@ -189,8 +189,6 @@ func TestBrokenFieldSettingsAreRefused(t *testing.T) {
 ` + settings
 	}
 	for name, broken := range map[string]struct{ body, want string }{
-		"граница другого типа": {field(`    presentation: {min_value: {kind: string, data: "0"}}`),
-			"is of a type the field cannot hold"},
 		"переключатель не из трёх": {field(`    choice: {quick_choice: maybe}`),
 			"must be auto, use or dont-use"},
 		"выбор не из четырёх": {field(`    choice: {folders_and_items: anything}`),
@@ -257,9 +255,89 @@ func TestBrokenFieldSettingsAreRefused(t *testing.T) {
     name: Ссылка2
     title: {ru: Ссылка}
     types: [{kind: catalog-ref}]
-    presentation: {min_value: {kind: string, data: "0"}}
+    presentation: {min_value: "0"}
 `)), metadataConfiguration())
 	if err != nil {
 		t.Fatalf("a bound beside an open type description was refused: %v", err)
+	}
+}
+
+// A bound is carried as written on a field of any type - the configurations
+// being moved keep them on booleans, strings, dates and references, and write
+// them with a point or a comma - and an empty reference stays the filling of
+// a string field it was left on. The defects caught: such a field refused,
+// which turns away what the prototype saves, and the text changed on the way.
+func TestFieldCarriesBoundsAndFillingTheFieldDoesNotHold(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	catalogNamed(t, root, presentationPartners, "Партнеры")
+	writeMetadata(t, root, CatalogKind, presentationCatalog, presentationOrder(`attributes:
+  - id: `+presentationAmount+`
+    name: Признак
+    title: {ru: Признак}
+    types: [{kind: boolean}]
+    presentation: {min_value: "0", max_value: "1"}
+  - id: `+presentationSecret+`
+    name: Комментарий
+    title: {ru: Комментарий}
+    types: [{kind: string, length: 100}]
+    presentation: {min_value: "0,5"}
+    filling: {value: {kind: catalog, data: "00000000-0000-0000-0000-000000000000", object: `+presentationPartners+`}}
+`))
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a field with a bound or a filling of another type was refused: %v", err)
+	}
+	orders, _ := catalog.CatalogDefinition("Заказы")
+	flag, text := orders.Attributes[0], orders.Attributes[1]
+	if flag.Presentation.MinValue == nil || *flag.Presentation.MinValue != "0" || *flag.Presentation.MaxValue != "1" {
+		t.Fatalf("the bounds of a boolean were not kept as written: %+v", flag.Presentation)
+	}
+	if text.Presentation.MinValue == nil || *text.Presentation.MinValue != "0,5" {
+		t.Fatalf("the bound of a string lost its comma: %+v", text.Presentation)
+	}
+	if text.Filling.Value == nil || text.Filling.Value.Kind != CatalogType {
+		t.Fatalf("the filling the field does not hold was not kept: %+v", text.Filling)
+	}
+}
+
+// A bound bounds a field of one number only, read with a point or a comma; a
+// filling value fills only a field that holds it. Each case is the answer the
+// running application gets, so a rule that bounds a string, misreads a comma,
+// bounds a composite field or fills a string with a reference is caught.
+func TestOnlyANumberIsBoundedAndOnlyWhatTheFieldHoldsFillsIt(t *testing.T) {
+	t.Parallel()
+	text := func(value string) *string { return &value }
+	number := []Type{{Kind: NumberType}}
+	for _, test := range []struct {
+		name  string
+		bound *string
+		types []Type
+		want  string
+		ok    bool
+	}{
+		{"целое у числа", text("0"), number, "0", true},
+		{"запятая у числа", text("0,5"), number, "0.5", true},
+		{"точка у числа", text("-12.75"), number, "-12.75", true},
+		{"не число у числа", text("abc"), number, "", false},
+		{"у строки", text("0"), []Type{{Kind: StringType}}, "", false},
+		{"у булева", text("1"), []Type{{Kind: BooleanType}}, "", false},
+		{"у составного", text("0"), []Type{{Kind: NumberType}, {Kind: StringType}}, "", false},
+		{"нет границы", nil, number, "", false},
+	} {
+		got, ok := NumberBound(test.bound, test.types)
+		if got != test.want || ok != test.ok {
+			t.Errorf("%s: NumberBound = %q %v, want %q %v", test.name, got, ok, test.want, test.ok)
+		}
+	}
+	reference := &Value{Kind: CatalogType, Data: "00000000-0000-0000-0000-000000000000"}
+	if EffectiveFillingValue(reference, []Type{{Kind: StringType}}) != nil {
+		t.Error("a reference fills a string field")
+	}
+	if filled := EffectiveFillingValue(reference, []Type{{Kind: CatalogType}}); filled == nil || filled.Kind != CatalogType {
+		t.Error("a reference does not fill a reference field")
+	}
+	if EffectiveFillingValue(nil, []Type{{Kind: StringType}}) != nil {
+		t.Error("nothing fills a field with something")
 	}
 }

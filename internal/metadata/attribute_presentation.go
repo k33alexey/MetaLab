@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -157,10 +158,14 @@ type FieldPresentation struct {
 	ExtendedEdit bool `yaml:"extended_edit,omitempty" json:"extendedEdit,omitempty"`
 	// MarkNegatives shows a number below zero apart from the rest.
 	MarkNegatives bool `yaml:"mark_negatives,omitempty" json:"markNegatives,omitempty"`
-	// MinValue and MaxValue bound what may be entered. They are values, not
-	// numbers: a date has a range as readily as a number does.
-	MinValue *Value `yaml:"min_value,omitempty" json:"minValue,omitempty"`
-	MaxValue *Value `yaml:"max_value,omitempty" json:"maxValue,omitempty"`
+	// MinValue and MaxValue bound what may be entered, kept as the text they
+	// were written with, on a field of any type. The designer offers them on a
+	// number only (owner, 01.10.2026), yet the configurations being moved keep
+	// them on booleans, strings, dates and references - left there when the
+	// type was changed - and write them as a string or a decimal, with a point
+	// or a comma: "0", "0,5". They bound a number only - see NumberBound.
+	MinValue *string `yaml:"min_value,omitempty" json:"minValue,omitempty"`
+	MaxValue *string `yaml:"max_value,omitempty" json:"maxValue,omitempty"`
 }
 
 // FieldChoice is how a value of a field is picked.
@@ -193,14 +198,8 @@ func validateFieldSettings(prefix string, attribute Attribute, configuration pro
 			issues = append(issues, validateTitle(prefix+"."+name, text, configuration)...)
 		}
 	}
-	for name, bound := range map[string]*Value{
-		"presentation.min_value": presentation.MinValue, "presentation.max_value": presentation.MaxValue,
-	} {
-		if bound == nil {
-			continue
-		}
-		issues = append(issues, validateFieldBound(prefix+"."+name, *bound, attribute.Types)...)
-	}
+	// A bound is carried whatever it says and whatever the field holds: see
+	// MinValue. Whether it bounds anything is NumberBound's to answer.
 	for name, mode := range map[string]UsageMode{
 		"choice.quick_choice": choice.QuickChoice, "choice.create_on_input": choice.CreateOnInput,
 		"choice.history_on_input": choice.HistoryOnInput,
@@ -230,30 +229,54 @@ func validateValueSettings(field Attribute, configuration project.Project) []str
 	return issues
 }
 
-// validateFieldBound checks a bound against the field it bounds. A bound of
-// another type than the field is compared with nothing and rejects nothing:
-// the field accepts values that were meant to be out of range.
-//
-// It is skipped where the description is open to the configuration - a set or
-// a defined type stands for types that are not written down here, and what the
-// field may hold is then known only with the whole configuration in hand.
-func validateFieldBound(path string, bound Value, types []Type) []string {
-	// A field whose types the description does not carry - a standard field,
-	// whose type is the platform's - has nothing here to be judged against.
+// NumberBound is the number a bound sets, and false when it sets none. A bound
+// bounds a field that holds one number and nothing else, and its text is read
+// with a point or a comma as the decimal separator - the configurations being
+// moved write both. On any other field, or with text that is not a number,
+// the bound is carried and bounds nothing. Everything that checks an entered
+// value against a bound reads it here, not from MinValue or MaxValue.
+func NumberBound(bound *string, types []Type) (string, bool) {
+	single, ok := SingleType(types)
+	if bound == nil || !ok || single.Kind != NumberType {
+		return "", false
+	}
+	text := strings.Replace(strings.TrimSpace(*bound), ",", ".", 1)
+	if !decimalText.MatchString(text) {
+		return "", false
+	}
+	return text, true
+}
+
+// decimalText is a number as a bound writes it once its comma is a point.
+var decimalText = regexp.MustCompile(`^-?[0-9]+(\.[0-9]+)?$`)
+
+// fieldHolds says whether a value is of a type the field may hold. A field
+// whose description is open to the configuration - a set or a defined type -
+// or carries no types at all is answered yes: what it holds is known only with
+// the whole configuration in hand, or is the platform's.
+func fieldHolds(value Value, types []Type) bool {
 	if len(types) == 0 {
+		return true
+	}
+	for _, item := range types {
+		if IsTypeSet(item.Kind) || item.Kind == value.Kind {
+			return true
+		}
+	}
+	return false
+}
+
+// EffectiveFillingValue is the value a new object's field is filled with, and
+// nil when it is filled with nothing. A filling value of a type the field
+// cannot hold is carried - the configurations being moved keep an empty
+// reference on a string field, left when the type was changed - and fills
+// nothing. Everything that fills a field reads it here.
+func EffectiveFillingValue(filling *Value, types []Type) *Value {
+	if filling == nil || !fieldHolds(*filling, types) {
 		return nil
 	}
-	for _, item := range types {
-		if IsTypeSet(item.Kind) {
-			return nil
-		}
-	}
-	for _, item := range types {
-		if item.Kind == bound.Kind {
-			return nil
-		}
-	}
-	return []string{path + " is of a type the field cannot hold, so it bounds nothing"}
+	copied := *filling
+	return &copied
 }
 
 func validateChoiceFormReference(path string, form ChoiceFormReference) []string {
@@ -409,8 +432,8 @@ func cloneFieldSettings(attribute Attribute) Attribute {
 	attribute.Presentation.Format = cloneTitle(attribute.Presentation.Format)
 	attribute.Presentation.EditFormat = cloneTitle(attribute.Presentation.EditFormat)
 	attribute.Presentation.ToolTip = cloneTitle(attribute.Presentation.ToolTip)
-	attribute.Presentation.MinValue = cloneValuePointer(attribute.Presentation.MinValue)
-	attribute.Presentation.MaxValue = cloneValuePointer(attribute.Presentation.MaxValue)
+	attribute.Presentation.MinValue = cloneStringPointer(attribute.Presentation.MinValue)
+	attribute.Presentation.MaxValue = cloneStringPointer(attribute.Presentation.MaxValue)
 	if form := attribute.Choice.Form; form != nil {
 		copied := *form
 		if form.Object != nil {
@@ -441,6 +464,14 @@ func cloneFieldPath(path FieldPath) FieldPath {
 		path.TablePart = &tablePart
 	}
 	return path
+}
+
+func cloneStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
 }
 
 func cloneValuePointer(value *Value) *Value {

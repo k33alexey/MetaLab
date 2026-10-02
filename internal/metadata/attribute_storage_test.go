@@ -185,8 +185,6 @@ func TestBrokenFieldStorageSettingsAreRefused(t *testing.T) {
 			"data_history must be use or dont-use"},
 		"использование неизвестно какое": {field(`    use: for-nobody`),
 			"use must be for-item, for-folder or for-folder-and-item"},
-		"значение заполнения другого типа": {field(`    filling: {value: {kind: number, data: "1"}}`),
-			"is of a type the field cannot hold"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

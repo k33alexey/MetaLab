@@ -102,14 +102,6 @@ func TestCommonAttributePropagatesTheWholeField(t *testing.T) {
 func TestCommonAttributeRefusesSettingsThatSayNothing(t *testing.T) {
 	t.Parallel()
 	cases := map[string]func(*CommonAttributeDefinition){
-		// A bound of another type than the field is compared with nothing, so it
-		// rejects nothing - in every object the attribute is propagated into.
-		"граница другого типа": func(a *CommonAttributeDefinition) {
-			a.Presentation.MinValue = &Value{Kind: NumberType, Data: "1"}
-		},
-		"значение заполнения другого типа": func(a *CommonAttributeDefinition) {
-			a.Filling.Value = &Value{Kind: NumberType, Data: "1"}
-		},
 		"неизвестный режим выбора": func(a *CommonAttributeDefinition) {
 			a.Choice.QuickChoice = "иногда"
 		},

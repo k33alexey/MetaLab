@@ -36,7 +36,7 @@ dimensions:
     name: Период
     title: {ru: Период}
     types: [{kind: date}]
-    presentation: {min_value: {kind: date, data: "2020-01-01T00:00:00Z"}}
+    presentation: {min_value: "2020-01-01T00:00:00Z"}
 resources:
   - id: ` + quantityResource + `
     name: Количество
@@ -141,7 +141,7 @@ func TestExternalCubeAndDimensionTableAreCheckedOnTheirOwn(t *testing.T) {
 		// of its own: the strict reading names the property.
 		"a column on a dimension":   {strings.Replace(salesCubeBody, "    types: [{kind: date}]\n", "    types: [{kind: date}]\n    name_in_data_source: '[Date]'\n", 1), goodsDimTableBody, "name_in_data_source not found"},
 		"a filling on a resource":   {strings.Replace(salesCubeBody, "    name_in_data_source: '[Measures].[Quantity]'\n", "    name_in_data_source: '[Measures].[Quantity]'\n    filling: {value: {kind: number, data: \"0\"}}\n", 1), goodsDimTableBody, "resources[0].filling belongs to a field somebody enters"},
-		"bounds on a resource":      {strings.Replace(salesCubeBody, "    name_in_data_source: '[Measures].[Quantity]'\n", "    name_in_data_source: '[Measures].[Quantity]'\n    presentation: {max_value: {kind: number, data: \"9\"}}\n", 1), goodsDimTableBody, "resources[0].presentation.max_value belongs to"},
+		"bounds on a resource":      {strings.Replace(salesCubeBody, "    name_in_data_source: '[Measures].[Quantity]'\n", "    name_in_data_source: '[Measures].[Quantity]'\n    presentation: {max_value: \"9\"}\n", 1), goodsDimTableBody, "resources[0].presentation.max_value belongs to"},
 		"a resource with no column": {strings.Replace(salesCubeBody, "    name_in_data_source: '[Measures].[Quantity]'\n", "", 1), goodsDimTableBody, "resources[0].name_in_data_source must name the measure"},
 	} {
 		t.Run(name, func(t *testing.T) {

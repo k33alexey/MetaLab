@@ -365,7 +365,7 @@ func TestExternalFieldRefusesWhatOnlyAnAttributeHas(t *testing.T) {
 		root := metadataProject(t)
 		writeExternalSource(t, root, warehouseSource, "Склад", "")
 		writeExternalTable(t, root, "Склад", goodsTable, "Товары", strings.Replace(goodsBody, anchor,
-			anchor+"    presentation: {min_value: {kind: string, data: a}, max_value: {kind: string, data: z}}\n", 1))
+			anchor+"    presentation: {min_value: a, max_value: z}\n", 1))
 		catalog, err := Load(root)
 		if err != nil {
 			t.Fatalf("a field with bounds was refused: %v", err)
@@ -476,7 +476,7 @@ func TestExternalTableValuesAreValuesOfTheirFields(t *testing.T) {
 		t.Fatalf("the error does not name the property: %v", message)
 	}
 	if message := refusedExternalTable(t, strings.Replace(goodsBody, "filling: {value: {kind: string, data: Без названия}}", `filling: {value: {kind: boolean, data: "true"}}`, 1),
-		"a filling value of another type"); !strings.Contains(message, "fields[1].filling.value is of a type the field cannot hold") {
+		"a filling value of another type"); !strings.Contains(message, "field Наименование filling does not allow value kind boolean") {
 		t.Fatalf("the error does not name the field: %v", message)
 	}
 	// Absent is Null, the prototype's first choice, and is not refused.

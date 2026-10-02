@@ -238,15 +238,12 @@ func ValidateCommonAttribute(source string, value CommonAttributeDefinition, con
 	}
 	// The settings of the field are checked the way any field's are. The paths
 	// carry no prefix: the file is the field, there is no field of an object to
-	// name. A bound of another type than the field is compared with nothing and
-	// rejects nothing, and it would reject nothing in every object the attribute
-	// is propagated into.
+	// name.
 	issues = append(issues, validateValueSettings(Attribute{
 		Types: value.Types, Presentation: value.Presentation, Choice: value.Choice,
 	}, configuration)...)
-	if filling := value.Filling.Value; filling != nil {
-		issues = append(issues, validateFieldBound("filling.value", *filling, value.Types)...)
-	}
+	// A filling value of a type the field cannot hold is carried and fills
+	// nothing - see EffectiveFillingValue.
 	// A common attribute is declared on its own, away from the objects it will
 	// join, so there are no sibling fields for a choice parameter link to take
 	// its value from - and which siblings it would have depends on the object,

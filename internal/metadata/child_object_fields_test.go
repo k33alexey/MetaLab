@@ -333,13 +333,6 @@ func TestAddressingAttributeRefusesWhatItHasNot(t *testing.T) {
 	cases := map[string]struct{ attributes, message string }{
 		"использование": {`addressing_attributes:
   - {id: ` + addressRoleAttribute + `, name: РольИсполнителя, title: {ru: Роль}, types: [{kind: catalog, reference: ` + addressRoleCatalogID + `}], dimension: ` + addressRoleDimension + `, use: for-item}`, "use"},
-		"граница другого типа": {`addressing_attributes:
-  - id: ` + addressRoleAttribute + `
-    name: РольИсполнителя
-    title: {ru: Роль}
-    types: [{kind: catalog, reference: ` + addressRoleCatalogID + `}]
-    dimension: ` + addressRoleDimension + `
-    presentation: {min_value: {kind: string, data: "0"}}`, "min_value"},
 		"связь параметра выбора в никуда": {`addressing_attributes:
   - id: ` + addressRoleAttribute + `
     name: РольИсполнителя
