@@ -36,9 +36,11 @@ var effectiveReaders = []struct {
 }
 
 // mayReadAsWritten says the function deals with the model as it is written:
-// checks it, reads it from a file, copies it - or is a reader itself.
+// checks it, reads it from a file, copies it, or finds the places where what
+// is written means something else for the import report (a rule of a note,
+// notes_rules.go) - or is a reader itself.
 func mayReadAsWritten(function string) bool {
-	for _, prefix := range []string{"validate", "Validate", "Decode", "decode", "clone"} {
+	for _, prefix := range []string{"validate", "Validate", "Decode", "decode", "clone", "note"} {
 		if strings.HasPrefix(function, prefix) {
 			return true
 		}
