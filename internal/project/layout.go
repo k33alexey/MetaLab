@@ -836,7 +836,7 @@ const HelpDirectory = "help"
 
 // HelpPage reports whether a name is a page of help, and which language it is
 // in. The language is not checked against the configuration's: the prototype
-// keeps a page in a language the configuration has dropped (brayval: uk).
+// keeps texts in a language the configuration does not declare (erp, acc, sb: en).
 func HelpPage(file string) (string, bool) {
 	code, found := strings.CutSuffix(file, ".html")
 	if !found || !LanguageCodeShape(code) {
