@@ -34,6 +34,10 @@ type SequenceDimension struct {
 	// attribute of a table part is as good as one of the document itself: the
 	// product a boundary is kept by lives in the lines, not in the header.
 	DocumentAttributes []uuid.UUID `yaml:"document_attributes,omitempty" json:"documentAttributes,omitempty"`
+	// DocumentStandardAttributes are the standard fields - the date, the
+	// number - the value is taken from, named by document and name. See
+	// DocumentStandardField for why they are carried apart.
+	DocumentStandardAttributes []DocumentStandardField `yaml:"document_standard_attributes,omitempty" json:"documentStandardAttributes,omitempty"`
 	// RegisterDimensions are where the same value sits in the movements.
 	RegisterDimensions []uuid.UUID `yaml:"register_dimensions,omitempty" json:"registerDimensions,omitempty"`
 }
@@ -51,7 +55,9 @@ type SequenceDefinition struct {
 	Comment  string                      `yaml:"comment,omitempty" json:"comment,omitempty"`
 	// Documents are the kinds of document the sequence follows.
 	Documents []uuid.UUID `yaml:"documents,omitempty" json:"documents,omitempty"`
-	// Movements are the registers whose records the boundary is watched by.
+	// Movements are the registers whose records the boundary is watched by:
+	// any register a document writes to, as the help puts it. The
+	// demonstration configuration watches an accounting register.
 	Movements []uuid.UUID `yaml:"movements,omitempty" json:"movements,omitempty"`
 	// MoveBoundaryOnPosting moves the boundary forward as documents are posted
 	// in order, instead of leaving it where it was.
@@ -103,6 +109,7 @@ func DecodeSequence(source string, reader io.Reader, configuration project.Proje
 		issues = append(issues, validateTypes(prefix+".types", dimension.Types, value.ID)...)
 		issues = append(issues, validateUniqueIDs(prefix+".document_attributes", dimension.DocumentAttributes)...)
 		issues = append(issues, validateUniqueIDs(prefix+".register_dimensions", dimension.RegisterDimensions)...)
+		issues = append(issues, validateDocumentStandardFields(prefix+".document_standard_attributes", dimension.DocumentStandardAttributes)...)
 		// A dimension taken from no attribute of any document is filled by
 		// code: the prototype saves it, and the one sequence of acc has two
 		// such dimensions, set by an event subscription that writes several
@@ -112,6 +119,47 @@ func DecodeSequence(source string, reader io.Reader, configuration project.Proje
 		return SequenceDefinition{}, err
 	}
 	return value, nil
+}
+
+// DocumentStandardField is a standard field of one kind of document - its
+// date, its number - named by the document and by the field's name, since a
+// standard field has no identifier of its own.
+//
+// A journal's column and a sequence's dimension are held to attributes of
+// documents, and the help describes both as collections of objects of
+// metadata - which a standard field is not. Whether the configurator lets one
+// be picked nobody has checked, and no export
+// has one: all 4178 columns of the five exports name an attribute. It is accepted all the same
+// (owner, 03.10.2026: no ground to refuse it), carried apart from the
+// attributes, and noted - see NoteStandardFieldOfDocument.
+type DocumentStandardField struct {
+	Document uuid.UUID `yaml:"document" json:"document"`
+	Standard string    `yaml:"standard" json:"standard"`
+}
+
+// validateDocumentStandardFields checks each field names a document and one
+// of the fields every document has, and none is named twice.
+func validateDocumentStandardFields(path string, fields []DocumentStandardField) []string {
+	var issues []string
+	known := standardNames(standardFieldsOfKind(DocumentKind))
+	seen := map[DocumentStandardField]bool{}
+	for index, field := range fields {
+		prefix := fmt.Sprintf("%s[%d]", path, index)
+		if field.Document.IsZero() {
+			issues = append(issues, prefix+".document must be a non-zero UUID")
+		}
+		name, ok := known[foldStandardName(field.Standard)]
+		if !ok {
+			issues = append(issues, prefix+".standard must name a standard field of a document")
+			continue
+		}
+		key := DocumentStandardField{Document: field.Document, Standard: name}
+		if seen[key] {
+			issues = append(issues, prefix+" repeats "+name+" of the same document")
+		}
+		seen[key] = true
+	}
+	return issues
 }
 
 func validateUniqueIDs(path string, ids []uuid.UUID) []string {
@@ -138,6 +186,7 @@ func cloneSequence(value SequenceDefinition) SequenceDefinition {
 		dimension := &value.Dimensions[index]
 		dimension.Title = cloneTitle(dimension.Title)
 		dimension.Types = cloneTypes(dimension.Types)
+		dimension.DocumentStandardAttributes = slices.Clone(dimension.DocumentStandardAttributes)
 		dimension.DocumentAttributes = slices.Clone(dimension.DocumentAttributes)
 		dimension.RegisterDimensions = slices.Clone(dimension.RegisterDimensions)
 	}

@@ -1012,7 +1012,7 @@ func DecodeConstant(source string, reader io.Reader, configuration project.Proje
 	}
 	// A constant stands alone: there are no sibling fields for a choice
 	// parameter link to take its value from, so a link that names one names
-	// something that is not there.
+	// something that is not there. It may take one from another constant.
 	issues = append(issues, validateFieldLinks(nil, nil, nil, choiceHolder{"", value.Choice})...)
 	issues = append(issues, validateDataHistory(value.DataHistorySettings)...)
 	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)

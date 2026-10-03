@@ -141,23 +141,28 @@ func accumulationStandardFields(kind AccumulationRegisterKindValue) []standardFi
 // of a register with correspondence too (sb Управленческий) - a description
 // the register carries and has no field for, since two sides tell the kind of
 // entry by themselves.
-func accountingDescribedFields(correspondence bool, extDimensions int) []standardField {
-	fields := accountingStandardFields(correspondence, extDimensions)
-	if correspondence {
+func accountingDescribedFields(register AccountingRegisterDefinition, extDimensions int) []standardField {
+	fields := accountingStandardFields(register, extDimensions)
+	if register.Correspondence {
 		fields = append(fields, standardField{"ВидДвижения", "RecordType"})
 	}
 	return fields
 }
 
 // accountingStandardFields adds the entry's own: the kind of entry, where there
-// are no two sides to tell it by, and a pair of fields per ext dimension the
-// chart allows. The count comes from the chart of accounts, which lives in
+// are no two sides to tell it by, the refinement of the period where the
+// register keeps one - the help gives the entry УточнениеПериода when its
+// length is above 0 - and a pair of fields per ext dimension the chart
+// allows. The count comes from the chart of accounts, which lives in
 // another file, so a decoder that has not seen it passes the platform's
 // ceiling and load.go narrows it to the chart's own.
-func accountingStandardFields(correspondence bool, extDimensions int) []standardField {
+func accountingStandardFields(register AccountingRegisterDefinition, extDimensions int) []standardField {
 	fields := standardFieldsOfKind(AccountingRegisterKind)
-	if !correspondence {
+	if !register.Correspondence {
 		fields = append(fields, standardField{"ВидДвижения", "RecordType"})
+	}
+	if register.PeriodAdjustmentLength > 0 {
+		fields = append(fields, standardField{"УточнениеПериода", "PeriodAdjustment"})
 	}
 	for position := 1; position <= extDimensions; position++ {
 		fields = append(fields,
@@ -184,9 +189,9 @@ func (catalog *Catalog) standardAttributeFields(kind Kind, id uuid.UUID) []stand
 		register := catalog.AccountingRegisters[index]
 		chart, ok := catalog.chartOfAccountsByID[register.ChartOfAccounts]
 		if !ok {
-			return accountingStandardFields(register.Correspondence, 0)
+			return accountingStandardFields(register, 0)
 		}
-		return accountingStandardFields(register.Correspondence, catalog.ChartsOfAccounts[chart].EffectiveMaxExtDimensionCount())
+		return accountingStandardFields(register, catalog.ChartsOfAccounts[chart].EffectiveMaxExtDimensionCount())
 	}
 	return standardFieldsOfKind(kind)
 }
@@ -233,8 +238,10 @@ func reservedStandardName(kind Kind, name string) bool {
 	case AccountingRegisterKind:
 		// Without the ext dimensions: how many of those an entry has is the
 		// chart's to say, and reserving eight names on a chart that allows
-		// three would forbid a field the prototype allows.
-		fields = accountingStandardFields(false, 0)
+		// three would forbid a field the prototype allows. With the
+		// refinement of the period, which is the platform's name whatever
+		// the length.
+		fields = accountingStandardFields(AccountingRegisterDefinition{PeriodAdjustmentLength: 1}, 0)
 	}
 	_, ok := standardNames(fields)[foldStandardName(name)]
 	return ok

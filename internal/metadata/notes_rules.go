@@ -58,6 +58,8 @@ const (
 	NoteHelpInUndeclaredLanguage   NoteKind = "help-in-undeclared-language"
 	NotePlatformTypeByName         NoteKind = "platform-type-by-name"
 	NoteVanishedType               NoteKind = "vanished-type"
+	NoteStandardFieldOfDocument    NoteKind = "standard-field-of-document"
+	NoteLeadingDataNotDimension    NoteKind = "leading-data-not-dimension"
 )
 
 func init() {
@@ -206,6 +208,17 @@ func init() {
 			"Тип объекта, которого в конфигурации больше нет: прототип пишет идентификатор типа вместо имени " +
 				"(у параметра команды erp).",
 			"Тип несётся как записан и ничего не означает; команда с таким единственным типом не предлагается нигде."},
+		NoteKindInfo{NoteStandardFieldOfDocument,
+			"Графа журнала или измерение последовательности берёт стандартный реквизит документа (Дата, Номер). " +
+				"Справка описывает обе ссылки как набор реквизитов документов, а стандартный реквизит объектом метаданных не является; " +
+				"в выгрузках таких ссылок нет, сохраняет ли их конфигуратор — не проверено.",
+			"Ссылка несётся по документу и имени реквизита. Журнал и последовательность ML пока не исполняет; " +
+				"при исполнении значение берётся из стандартного реквизита, как из обычного."},
+		NoteKindInfo{NoteLeadingDataNotDimension,
+			"Данные ведущих регистров у измерения перерасчёта — ресурс или реквизит регистра расчёта, а не измерение. " +
+				"Справка вид поля не уточняет, в выгрузках все такие ссылки — на измерения.",
+			"Ссылка несётся как записана. Перерасчёт ML пока не исполняет; при исполнении изменение этого поля " +
+				"требует перерасчёта наравне с измерением."},
 	)
 	noteRules[NoteUnresolvedPath] = noteUnresolvedPath
 	noteRules[NoteUnusedBound] = noteUnusedBound
@@ -248,6 +261,8 @@ func init() {
 	noteRules[NoteTextOfSpaces] = noteTextOfSpaces
 	noteRules[NoteHelpInUndeclaredLanguage] = noteHelpInUndeclaredLanguage
 	noteRules[NotePlatformTypeByName] = notePlatformTypeByName
+	noteRules[NoteStandardFieldOfDocument] = noteStandardFieldOfDocument
+	noteRules[NoteLeadingDataNotDimension] = noteLeadingDataNotDimension
 	noteRules[NoteVanishedType] = noteVanishedType
 }
 
@@ -562,7 +577,7 @@ func noteJournalShowsNothing(catalog *Catalog, note func(where, written string))
 			note(where+" documents", "none")
 		}
 		for _, column := range journal.Columns {
-			if len(column.References) == 0 {
+			if len(column.References)+len(column.StandardReferences) == 0 {
 				note(where+" columns "+column.Name, "no references")
 			}
 		}
@@ -587,6 +602,43 @@ func noteRecalculationHalfSet(catalog *Catalog, note func(where, written string)
 				}
 				if len(dimension.LeadingData) == 0 {
 					note(where+" leading_data", "none")
+				}
+			}
+		}
+	}
+}
+
+func noteStandardFieldOfDocument(catalog *Catalog, note func(where, written string)) {
+	for _, journal := range catalog.DocumentJournals {
+		for _, column := range journal.Columns {
+			for _, field := range column.StandardReferences {
+				note("document-journals "+journal.Name+" columns "+column.Name+" standard_references", field.Standard)
+			}
+		}
+	}
+	for _, sequence := range catalog.Sequences {
+		for _, dimension := range sequence.Dimensions {
+			for _, field := range dimension.DocumentStandardAttributes {
+				note("sequences "+sequence.Name+" dimensions "+dimension.Name+" document_standard_attributes", field.Standard)
+			}
+		}
+	}
+}
+
+func noteLeadingDataNotDimension(catalog *Catalog, note func(where, written string)) {
+	dimensions := map[uuid.UUID]bool{}
+	for _, register := range catalog.CalculationRegisters {
+		for _, dimension := range register.Dimensions {
+			dimensions[dimension.ID] = true
+		}
+	}
+	for _, register := range catalog.CalculationRegisters {
+		for _, recalculation := range register.Recalculations {
+			for _, dimension := range recalculation.Dimensions {
+				for _, source := range dimension.LeadingData {
+					if !dimensions[source] {
+						note("calculation-registers "+register.Name+" recalculations "+recalculation.Name+" dimensions "+dimension.Name+" leading_data", source.String())
+					}
 				}
 			}
 		}

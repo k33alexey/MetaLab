@@ -2035,7 +2035,16 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	if err := catalog.validateExternalCubeFiles(root); err != nil {
 		return err
 	}
-	return catalog.validateDefinedTypeCycles()
+	if err := catalog.validateDefinedTypeCycles(); err != nil {
+		return err
+	}
+	// Both resolve through defined types or across objects, so they come
+	// after everything is loaded and the defined types are known to end.
+	if err := catalog.validateInputByStringTypes(); err != nil {
+		return err
+	}
+	catalog.resolveConstantLinks()
+	return nil
 }
 
 // validateChartOfAccountsAnalytics ties a chart of accounts to the chart of
@@ -2280,7 +2289,7 @@ func (catalog *Catalog) validateAccountingRegister(root string, item AccountingR
 	// chart was not in hand when the register was decoded: a description of
 	// Субконто4 on a chart that allows three passed there and is caught here.
 	if issues := validateStandardAttributes("standard_attributes", item.StandardAttributes,
-		accountingDescribedFields(item.Correspondence, chart.MaxExtDimensionCount), catalog.Project); len(issues) > 0 {
+		accountingDescribedFields(item, chart.MaxExtDimensionCount), catalog.Project); len(issues) > 0 {
 		return fmt.Errorf("%s: %s", owner, strings.Join(issues, "; "))
 	}
 	// So are the links: one taking its value from Субконто4 passed the
@@ -2394,12 +2403,21 @@ func (catalog *Catalog) validateCalculationRegister(root string, item Calculatio
 			return err
 		}
 	}
-	// Leading data are dimensions of calculation registers - this one or
-	// another. A leading dimension that belongs to nothing sets nothing off.
+	// Leading data are fields of calculation registers - this one or another.
+	// The help does not say which fields, and every reference in the exports
+	// is a dimension; a resource or an attribute is accepted and noted, see
+	// NoteLeadingDataNotDimension. A field that belongs to nothing sets
+	// nothing off.
 	leading := map[uuid.UUID]bool{}
 	for _, register := range catalog.CalculationRegisters {
 		for _, dimension := range register.Dimensions {
 			leading[dimension.ID] = true
+		}
+		for _, resource := range register.Resources {
+			leading[resource.ID] = true
+		}
+		for _, attribute := range register.Attributes {
+			leading[attribute.ID] = true
 		}
 	}
 	for _, recalculation := range item.Recalculations {
@@ -2410,7 +2428,7 @@ func (catalog *Catalog) validateCalculationRegister(root string, item Calculatio
 			}
 			for _, source := range dimension.LeadingData {
 				if !leading[source] {
-					return fmt.Errorf("%s recalculation %s dimension %s is set off by %s, which is not a dimension of any calculation register",
+					return fmt.Errorf("%s recalculation %s dimension %s is set off by %s, which is not a field of any calculation register",
 						owner, recalculation.Name, dimension.Name, source)
 				}
 			}
@@ -2465,6 +2483,14 @@ func (catalog *Catalog) validateSequence(owner string, item SequenceDefinition, 
 			for _, dimension := range catalog.AccumulationRegisters[catalog.accumulationRegisterByID[id]].Dimensions {
 				registerDimensions[dimension.ID] = true
 			}
+		case hasID(catalog.accountingRegisterByID, id):
+			for _, dimension := range catalog.AccountingRegisters[catalog.accountingRegisterByID[id]].Dimensions {
+				registerDimensions[dimension.ID] = true
+			}
+		case hasID(catalog.calculationRegisterByID, id):
+			for _, dimension := range catalog.CalculationRegisters[catalog.calculationRegisterByID[id]].Dimensions {
+				registerDimensions[dimension.ID] = true
+			}
 		default:
 			return fmt.Errorf("%s watches unknown register %s", owner, id)
 		}
@@ -2480,6 +2506,11 @@ func (catalog *Catalog) validateSequence(owner string, item SequenceDefinition, 
 			}
 			if !documents[document] {
 				return fmt.Errorf("%s dimension %s is taken from an attribute of a document the sequence does not follow", owner, dimension.Name)
+			}
+		}
+		for _, field := range dimension.DocumentStandardAttributes {
+			if !documents[field.Document] {
+				return fmt.Errorf("%s dimension %s is taken from %s of a document the sequence does not follow", owner, dimension.Name, field.Standard)
 			}
 		}
 		for _, target := range dimension.RegisterDimensions {
@@ -2517,6 +2548,15 @@ func (catalog *Catalog) validateDocumentJournal(owner string, item DocumentJourn
 				return fmt.Errorf("%s column %s shows two attributes of one document", owner, column.Name)
 			}
 			shown[document] = true
+		}
+		for _, field := range column.StandardReferences {
+			if !documents[field.Document] {
+				return fmt.Errorf("%s column %s shows %s of a document the journal does not list", owner, column.Name, field.Standard)
+			}
+			if shown[field.Document] {
+				return fmt.Errorf("%s column %s shows two attributes of one document", owner, column.Name)
+			}
+			shown[field.Document] = true
 		}
 	}
 	return nil

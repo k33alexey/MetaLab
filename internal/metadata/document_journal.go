@@ -26,6 +26,10 @@ type JournalColumn struct {
 	// References are the attributes this column shows, one per kind of
 	// document at most.
 	References []uuid.UUID `yaml:"references,omitempty" json:"references,omitempty"`
+	// StandardReferences are the standard fields - the date, the number - the
+	// column shows, named by document and name; see DocumentStandardField.
+	// One document is shown once across both lists.
+	StandardReferences []DocumentStandardField `yaml:"standard_references,omitempty" json:"standardReferences,omitempty"`
 }
 
 // DocumentJournalDefinition is a common list of documents of several kinds.
@@ -91,6 +95,7 @@ func DecodeDocumentJournal(source string, reader io.Reader, configuration projec
 			issues = append(issues, prefix+".indexing must be dont-index, index or index-with-additional-order")
 		}
 		issues = append(issues, validateUniqueIDs(prefix+".references", column.References)...)
+		issues = append(issues, validateDocumentStandardFields(prefix+".standard_references", column.StandardReferences)...)
 	}
 	// A journal shows documents, so the fields a list of it can be searched by
 	// are the ones every document has.
@@ -116,6 +121,7 @@ func cloneDocumentJournal(value DocumentJournalDefinition) DocumentJournalDefini
 	for index := range value.Columns {
 		value.Columns[index].Title = cloneTitle(value.Columns[index].Title)
 		value.Columns[index].References = slices.Clone(value.Columns[index].References)
+		value.Columns[index].StandardReferences = slices.Clone(value.Columns[index].StandardReferences)
 	}
 	value.Forms = cloneFormSet(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)

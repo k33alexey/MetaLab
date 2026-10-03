@@ -135,9 +135,9 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	// load.go narrows it once the chart is read.
 	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
 	issues = append(issues, validatePeriodAdjustmentLength(value.PeriodAdjustmentLength)...)
-	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accountingDescribedFields(value.Correspondence, mentionedExtDimensions(value)), configuration)...)
+	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accountingDescribedFields(value, mentionedExtDimensions(value)), configuration)...)
 	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, AccountingRegisterKind,
-		recordIndexTables(accountingStandardFields(value.Correspondence, mentionedExtDimensions(value)),
+		recordIndexTables(accountingStandardFields(value, mentionedExtDimensions(value)),
 			attributeNames(RegisterDimensionAttributes(value.Dimensions)), attributeNames(accountingResourceAttributes(value.Resources)),
 			attributeNames(value.Attributes)))...)
 	// Dimensions and resources belong in these two checks, and until now only
@@ -263,7 +263,7 @@ func accountingLinkedFields(value AccountingRegisterDefinition) []fieldGroup {
 // validateAccountingRegisterLinks checks the links of a register's fields with
 // the entry's standard fields counted for so many ext dimensions.
 func validateAccountingRegisterLinks(value AccountingRegisterDefinition, extDimensions int) []string {
-	return validateFieldLinks(accountingStandardFields(value.Correspondence, extDimensions), accountingLinkedFields(value), nil,
+	return validateFieldLinks(accountingStandardFields(value, extDimensions), accountingLinkedFields(value), nil,
 		standardAttributeChoices("standard_attributes", value.StandardAttributes)...)
 }
 

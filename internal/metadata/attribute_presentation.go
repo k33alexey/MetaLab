@@ -97,10 +97,18 @@ const (
 // own. The configurations being moved link to a standard field 366, 22 and 31
 // times: the date 221 times, the reference 161, the owner 27, the deletion
 // mark, the activity and the description the rest.
+//
+// A path may also lead to a constant: the help says a link's path names a
+// field of the form, an object of metadata or a property of one, and erp
+// filters the currencies of one constant by the value of another
+// (ВидЦеныПлановойСтоимостиМатериаловРабот, «Constant.<имя>» in the export).
+// The constant is named by its identifier, as every other reference is, and
+// load resolves it.
 type FieldPath struct {
 	TablePart *uuid.UUID `yaml:"table_part,omitempty" json:"tablePart,omitempty"`
 	Attribute uuid.UUID  `yaml:"attribute,omitempty" json:"attribute,omitempty"`
 	Standard  string     `yaml:"standard,omitempty" json:"standard,omitempty"`
+	Constant  *uuid.UUID `yaml:"constant,omitempty" json:"constant,omitempty"`
 	// Unresolved is a path the prototype wrote that leads to no field of
 	// this object, kept word for word.
 	Unresolved string `yaml:"unresolved,omitempty" json:"unresolved,omitempty"`
@@ -111,11 +119,20 @@ type FieldPath struct {
 func validateFieldPathShape(path string, source FieldPath) []string {
 	var issues []string
 	if source.Unresolved != "" {
-		if source.TablePart != nil || !source.Attribute.IsZero() || source.Standard != "" {
+		if source.TablePart != nil || !source.Attribute.IsZero() || source.Standard != "" || source.Constant != nil {
 			issues = append(issues, path+".source.unresolved is a path kept as written, and names no field beside it")
 		}
 		if !validUnresolvedPath(source.Unresolved) {
 			issues = append(issues, path+".source.unresolved must be a path the prototype writes: segments of <n>:<uuid> or numbers, joined by /")
+		}
+		return issues
+	}
+	if source.Constant != nil {
+		if source.TablePart != nil || !source.Attribute.IsZero() || source.Standard != "" {
+			issues = append(issues, path+".source.constant names a constant, and no field beside it")
+		}
+		if source.Constant.IsZero() {
+			issues = append(issues, path+".source.constant must be a non-zero UUID")
 		}
 		return issues
 	}
@@ -451,8 +468,9 @@ func validateFieldLinks(standard []standardField, groups []fieldGroup, parts []T
 		partFields[part.ID] = fields
 	}
 	resolve := func(source FieldPath) bool {
-		// A path kept as written is not resolved, and is not meant to be.
-		if source.Unresolved != "" {
+		// A path kept as written is not resolved, and is not meant to be. A
+		// constant is outside every object, and load resolves it.
+		if source.Unresolved != "" || source.Constant != nil {
 			return true
 		}
 		if source.TablePart == nil {
@@ -531,6 +549,10 @@ func cloneFieldPath(path FieldPath) FieldPath {
 		tablePart := *path.TablePart
 		path.TablePart = &tablePart
 	}
+	if path.Constant != nil {
+		constant := *path.Constant
+		path.Constant = &constant
+	}
 	return path
 }
 
@@ -564,4 +586,30 @@ func formOwnerKind(kind Kind) bool {
 		return true
 	}
 	return false
+}
+
+// resolveConstantLinks finds the constant every link to one names. A link to
+// a constant that is no longer there is the reference a deleted object leaves
+// behind: carried, it takes its parameter from nowhere, and it is listed with
+// the other unresolved references.
+func (catalog *Catalog) resolveConstantLinks() {
+	resolve := func(where string, source FieldPath) {
+		if source.Constant == nil {
+			return
+		}
+		if _, ok := catalog.constantByID[*source.Constant]; !ok {
+			catalog.noteUnresolved(where, *source.Constant)
+		}
+	}
+	eachNoteHolder(catalog, func(holder noteHolder) {
+		if holder.choice == nil {
+			return
+		}
+		for _, link := range holder.choice.ParameterLinks {
+			resolve(holder.where+" choice link "+link.Name, link.Source)
+		}
+		if link := holder.choice.LinkByType; link != nil {
+			resolve(holder.where+" link by type", link.Source)
+		}
+	})
 }

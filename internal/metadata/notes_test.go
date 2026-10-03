@@ -121,6 +121,26 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 			"resources:\n  - {id: "+uuid.MustNew().String()+", name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}]}\n"+
 			"recalculations:\n  - {id: "+uuid.MustNew().String()+", name: Перерасчет, title: {ru: Перерасчёт}, dimensions: [{id: "+uuid.MustNew().String()+", name: Лицо, title: {ru: Лицо}}]}\n")
 	},
+	NoteStandardFieldOfDocument: func(t *testing.T, root string) {
+		document, journal, sequence := uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String()
+		writeMetadata(t, root, DocumentKind, document, "format: 1\nid: "+document+"\nname: Заметка\ntitle: {ru: Заметка}\n"+
+			"number: {type: string, length: 11, periodicity: year}\n")
+		writeMetadata(t, root, DocumentJournalKind, journal, "format: 1\nid: "+journal+"\nname: Журнал\ntitle: {ru: Журнал}\ndocuments: ["+document+"]\n"+
+			"columns:\n  - {id: "+uuid.MustNew().String()+", name: Дата, title: {ru: Дата}, standard_references: [{document: "+document+", standard: Дата}]}\n")
+		writeMetadata(t, root, SequenceKind, sequence, "format: 1\nid: "+sequence+"\nname: Последовательность\ntitle: {ru: Последовательность}\ndocuments: ["+document+"]\n"+
+			"dimensions:\n  - {id: "+uuid.MustNew().String()+", name: Номер, title: {ru: Номер}, types: [{kind: string, length: 11}], "+
+			"document_standard_attributes: [{document: "+document+", standard: Number}]}\n")
+	},
+	NoteLeadingDataNotDimension: func(t *testing.T, root string) {
+		chart := noteChart(t, root, ChartOfCalculationTypesKind, "")
+		id, person, sum := uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String()
+		writeMetadata(t, root, CalculationRegisterKind, id, "format: 1\nid: "+id+"\nname: Начисления\ntitle: {ru: Начисления}\n"+
+			"chart_of_calculation_types: "+chart+"\nperiodicity: month\n"+
+			"dimensions:\n  - {id: "+person+", name: Лицо, title: {ru: Лицо}, types: [{kind: string, length: 10}]}\n"+
+			"resources:\n  - {id: "+sum+", name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}]}\n"+
+			"recalculations:\n  - {id: "+uuid.MustNew().String()+", name: Перерасчет, title: {ru: Перерасчёт}, dimensions: [{id: "+uuid.MustNew().String()+
+			", name: Лицо, title: {ru: Лицо}, register_dimension: "+person+", leading_data: ["+sum+"]}]}\n")
+	},
 	NoteRegisterWithoutFields: func(t *testing.T, root string) {
 		id := uuid.MustNew().String()
 		writeMetadata(t, root, InformationRegisterKind, id, "format: 1\nid: "+id+"\nname: Пустой\ntitle: {ru: Пустой}\nwrite_mode: independent\nperiodicity: none\n")
@@ -385,15 +405,18 @@ func TestSoundSettingsCarryNoNotes(t *testing.T) {
 		"number: {type: string, length: 11, auto: true, periodicity: none}\ndescription_length: 150\n"+
 		"addressing: "+register+"\nmain_addressing_attribute: Роль\n"+
 		"addressing_attributes:\n  - {id: "+uuid.MustNew().String()+", name: Роль, title: {ru: Роль}, types: [{kind: string, length: 10}], dimension: "+dimension+"}\n")
-	document := uuid.MustNew().String()
+	document, author := uuid.MustNew().String(), uuid.MustNew().String()
 	writeMetadata(t, root, DocumentKind, document, "format: 1\nid: "+document+"\nname: Заметка\ntitle: {ru: Заметка}\n"+
-		"number: {type: string, length: 11, periodicity: year}\nposting: {allowed: true, real_time: deny, records_deletion: auto}\n")
-	// A journal and a sequence over a document, a recalculation done whole,
-	// two different aggregates, a criterion with a type, a numerator with a
-	// length.
+		"number: {type: string, length: 11, periodicity: year}\nposting: {allowed: true, real_time: deny, records_deletion: auto}\n"+
+		"attributes:\n  - {id: "+author+", name: Автор, title: {ru: Автор}, types: [{kind: string, length: 10}]}\n")
+	// A journal and a sequence over a document, taking an attribute of it, a
+	// recalculation done whole and set off by a dimension, two different
+	// aggregates, a criterion with a type, a numerator with a length.
 	journal, sequence, numerator, criterion := uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String()
-	writeMetadata(t, root, DocumentJournalKind, journal, "format: 1\nid: "+journal+"\nname: Журнал\ntitle: {ru: Журнал}\ndocuments: ["+document+"]\n")
-	writeMetadata(t, root, SequenceKind, sequence, "format: 1\nid: "+sequence+"\nname: Последовательность\ntitle: {ru: Последовательность}\ndocuments: ["+document+"]\n")
+	writeMetadata(t, root, DocumentJournalKind, journal, "format: 1\nid: "+journal+"\nname: Журнал\ntitle: {ru: Журнал}\ndocuments: ["+document+"]\n"+
+		"columns:\n  - {id: "+uuid.MustNew().String()+", name: Автор, title: {ru: Автор}, references: ["+author+"]}\n")
+	writeMetadata(t, root, SequenceKind, sequence, "format: 1\nid: "+sequence+"\nname: Последовательность\ntitle: {ru: Последовательность}\ndocuments: ["+document+"]\n"+
+		"dimensions:\n  - {id: "+uuid.MustNew().String()+", name: Автор, title: {ru: Автор}, types: [{kind: string, length: 10}], document_attributes: ["+author+"]}\n")
 	writeMetadata(t, root, NumeratorKind, numerator, "format: 1\nid: "+numerator+"\nname: Сквозной\ntitle: {ru: Сквозной}\nnumber: {type: string, length: 11, periodicity: year}\n")
 	writeMetadata(t, root, FilterCriterionKind, criterion, "format: 1\nid: "+criterion+"\nname: Связанные\ntitle: {ru: Связанные}\ntypes: [{kind: document, reference: "+document+"}]\n")
 	writeMetadata(t, root, AccumulationRegisterKind, aggregateRegisterID, aggregateRegisterBody("aggregates:\n"+

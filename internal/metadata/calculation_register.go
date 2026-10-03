@@ -38,8 +38,10 @@ type RecalculationDimension struct {
 	// RegisterDimension is the dimension of this register the recalculation
 	// finds its records by.
 	RegisterDimension uuid.UUID `yaml:"register_dimension" json:"registerDimension"`
-	// LeadingData are the dimensions whose change sets the recalculation off.
-	// A leading dimension may belong to this register or to another one.
+	// LeadingData are the fields whose change sets the recalculation off: a
+	// dimension, as every one in the exports is, or a resource or an
+	// attribute, which the help does not rule out. A leading field may belong
+	// to this register or to another one.
 	LeadingData []uuid.UUID `yaml:"leading_data,omitempty" json:"leadingData,omitempty"`
 }
 

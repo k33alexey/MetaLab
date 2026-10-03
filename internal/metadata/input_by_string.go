@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 )
@@ -207,9 +208,14 @@ func validateInputByString(fields []ObjectField, kind Kind, attributes []Attribu
 // A composite type is refused for the same reason the platform refuses it: the
 // text has to be compared as something, and a field that may hold a reference
 // today and a date tomorrow has no such something.
+//
+// A defined type stands for its type here: erp searches the items of
+// ОбъектыЭксплуатации by an inventory number whose type is a defined string
+// of fifteen. What it stands for is known only beside the defined types, and
+// validateInputByStringTypes checks it there.
 func validateInputByStringAttribute(prefix string, attribute Attribute) []string {
 	var issues []string
-	if !isOneStringOrNumber(attribute.Types) {
+	if single, ok := SingleType(attribute.Types); !ok || single.Kind != DefinedType && !isOneStringOrNumber(attribute.Types) {
 		issues = append(issues, prefix+".attribute must be of one type, string or number, to be searched by")
 	}
 	if !attribute.Indexing.indexes() {
@@ -223,4 +229,50 @@ func validateInputByStringAttribute(prefix string, attribute Attribute) []string
 func cloneObjectInput(input ObjectInput) ObjectInput {
 	input.InputByString = slices.Clone(input.InputByString)
 	return input
+}
+
+// validateInputByStringTypes resolves the searched attributes whose type is a
+// defined type, and holds them to the rule validateInputByStringAttribute
+// holds the others to. Every kind that is searched by string embeds its list
+// and its attributes the same way, so the walk finds them by name and a kind
+// added later is covered without being listed.
+func (catalog *Catalog) validateInputByStringTypes() error {
+	top := reflect.ValueOf(catalog).Elem()
+	for index := range top.NumField() {
+		list := top.Field(index)
+		if list.Kind() != reflect.Slice || list.Type().Elem().Kind() != reflect.Struct {
+			continue
+		}
+		for item := range list.Len() {
+			object := list.Index(item)
+			searchedField, attributesField := object.FieldByName("InputByString"), object.FieldByName("Attributes")
+			if !searchedField.IsValid() || !attributesField.IsValid() {
+				break
+			}
+			searched, _ := searchedField.Interface().([]ObjectField)
+			attributes, _ := attributesField.Interface().([]Attribute)
+			for _, field := range searched {
+				if field.Attribute == "" {
+					continue
+				}
+				for _, attribute := range attributes {
+					if !strings.EqualFold(attribute.Name, field.Attribute) {
+						continue
+					}
+					if single, ok := SingleType(attribute.Types); !ok || single.Kind != DefinedType {
+						break
+					}
+					resolved, err := catalog.expandTypes(attribute.Types, nil)
+					if err != nil {
+						return fmt.Errorf("%s %s input by string attribute %s: %w", kebab(top.Type().Field(index).Name), nameOf(object), attribute.Name, err)
+					}
+					if !isOneStringOrNumber(resolved) {
+						return fmt.Errorf("%s %s input by string attribute %s must be of one type, string or number, to be searched by, and its defined type stands for another",
+							kebab(top.Type().Field(index).Name), nameOf(object), attribute.Name)
+					}
+				}
+			}
+		}
+	}
+	return nil
 }
