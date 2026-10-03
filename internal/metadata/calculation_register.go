@@ -320,17 +320,12 @@ func validateRecalculations(value CalculationRegisterDefinition, configuration p
 // reservedCalculationRegisterName keeps the standard fields of a record: when
 // it was registered and by what, the kind of accrual, the periods it acts and
 // gathers its base over, and whether it reverses an earlier record.
+//
+// Our keys for these fields in rights and policies - period, actionperiodstart
+// and the rest - are not names of the configuration: rights and policies hold
+// them apart from fields, which they name by identifier.
 func reservedCalculationRegisterName(name string) bool {
-	switch foldStandardName(name) {
-	case "период", "period",
-		// Not the prototype's names - it says BegOfActionPeriod and the rest -
-		// but the obvious ones to reach for, and each would shadow a field.
-		"actionperiodstart", "actionperiodend", "baseperiodstart", "baseperiodend",
-		"reversing", "recordid":
-		return true
-	default:
-		return reservedStandardName(CalculationRegisterKind, name)
-	}
+	return reservedStandardName(CalculationRegisterKind, name)
 }
 
 func cloneRecalculations(items []Recalculation) []Recalculation {

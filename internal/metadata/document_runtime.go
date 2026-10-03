@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -206,11 +207,11 @@ func (runtime *Runtime) getDocumentProperty(ctx context.Context, object *documen
 			return bytecode.Undefined(), err
 		}
 		return bytecode.Boolean(object.record.Posted), nil
-	case propertyName(name, "Версия", "Version"):
-		if err := requireFields(ctx, object.definition.ID, PermissionRead, "version"); err != nil {
+	case propertyName(name, "ВерсияДанных", "DataVersion"):
+		if err := requireFields(ctx, object.definition.ID, PermissionRead, "dataversion"); err != nil {
 			return bytecode.Undefined(), err
 		}
-		return bytecode.ParseNumber(fmt.Sprint(object.record.Version))
+		return bytecode.String(strconv.FormatInt(object.record.Version, 10)), nil
 	case propertyName(name, "ПометкаУдаления", "DeletionMark"):
 		if err := requireFields(ctx, object.definition.ID, PermissionRead, "deletionmark"); err != nil {
 			return bytecode.Undefined(), err
@@ -272,7 +273,7 @@ func (runtime *Runtime) setDocumentProperty(ctx context.Context, object *documen
 		}
 		return nil
 	case propertyName(name, "Ссылка", "Ref"), propertyName(name, "Проведен", "Posted"),
-		propertyName(name, "Проведён", "Posted"), propertyName(name, "Версия", "Version"),
+		propertyName(name, "Проведён", "Posted"), propertyName(name, "ВерсияДанных", "DataVersion"),
 		propertyName(name, "ПометкаУдаления", "DeletionMark"), propertyName(name, "Движения", "Movements"):
 		return fmt.Errorf("document property %s is read-only", name)
 	}

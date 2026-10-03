@@ -152,13 +152,11 @@ func DecodeInformationRegister(source string, reader io.Reader, configuration pr
 	return value, nil
 }
 
+// reservedInformationRegisterName keeps the standard fields of a record. The
+// key of a stored row is ours and is not a name of the configuration: rights
+// and policies name it apart from fields, which they name by identifier.
 func reservedInformationRegisterName(name string) bool {
-	switch foldStandardName(name) {
-	case "recordid":
-		return true
-	default:
-		return reservedStandardName(InformationRegisterKind, name)
-	}
+	return reservedStandardName(InformationRegisterKind, name)
 }
 
 func cloneInformationRegisterDefinition(value InformationRegisterDefinition) InformationRegisterDefinition {

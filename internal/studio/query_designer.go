@@ -90,17 +90,17 @@ func (workspace *Workspace) queryDesignerSchemaLocked() (*QueryDesignerSchema, e
 		result.Sources = append(result.Sources, QueryDesignerSource{Path: kind + "." + name, Name: name, Title: resolved, Kind: kind, Fields: fields})
 	}
 	for _, object := range catalog.Catalogs {
-		fields := []QueryDesignerField{{Name: "Ссылка", Title: "Ссылка", Type: "catalog"}, {Name: "Версия", Title: "Версия", Type: "number"}, {Name: "Код", Title: "Код", Type: string(object.Code.Type)}, {Name: "Наименование", Title: "Наименование", Type: "string"}, {Name: "ПометкаУдаления", Title: "Пометка удаления", Type: "boolean"}, {Name: "ИмяПредопределенныхДанных", Title: "Имя предопределённых данных", Type: "string"}}
+		fields := []QueryDesignerField{{Name: "Ссылка", Title: "Ссылка", Type: "catalog"}, {Name: "ВерсияДанных", Title: "Версия данных", Type: "string"}, {Name: "Код", Title: "Код", Type: string(object.Code.Type)}, {Name: "Наименование", Title: "Наименование", Type: "string"}, {Name: "ПометкаУдаления", Title: "Пометка удаления", Type: "boolean"}, {Name: "ИмяПредопределенныхДанных", Title: "Имя предопределённых данных", Type: "string"}}
 		fields = append(fields, queryDesignerAttributes(object.Attributes, language, configured)...)
 		appendSource("Справочник", object.Name, object.Title, fields)
 	}
 	for _, object := range catalog.Documents {
-		fields := []QueryDesignerField{{Name: "Ссылка", Title: "Ссылка", Type: "document"}, {Name: "Версия", Title: "Версия", Type: "number"}, {Name: "Номер", Title: "Номер", Type: string(object.Number.Type)}, {Name: "Дата", Title: "Дата", Type: "date"}, {Name: "Проведен", Title: "Проведён", Type: "boolean"}, {Name: "ПометкаУдаления", Title: "Пометка удаления", Type: "boolean"}}
+		fields := []QueryDesignerField{{Name: "Ссылка", Title: "Ссылка", Type: "document"}, {Name: "ВерсияДанных", Title: "Версия данных", Type: "string"}, {Name: "Номер", Title: "Номер", Type: string(object.Number.Type)}, {Name: "Дата", Title: "Дата", Type: "date"}, {Name: "Проведен", Title: "Проведён", Type: "boolean"}, {Name: "ПометкаУдаления", Title: "Пометка удаления", Type: "boolean"}}
 		fields = append(fields, queryDesignerAttributes(object.Attributes, language, configured)...)
 		appendSource("Документ", object.Name, object.Title, fields)
 	}
 	for _, object := range catalog.InformationRegisters {
-		fields := []QueryDesignerField{{Name: "ИдентификаторЗаписи", Title: "Идентификатор записи", Type: "uuid"}}
+		fields := []QueryDesignerField{}
 		if object.Periodicity != metadata.InformationRegisterPeriodNone {
 			fields = append(fields, QueryDesignerField{Name: "Период", Title: "Период", Type: "date"})
 		}
@@ -111,7 +111,7 @@ func (workspace *Workspace) queryDesignerSchemaLocked() (*QueryDesignerSchema, e
 		appendSource("РегистрСведений", object.Name, object.Title, fields)
 	}
 	for _, object := range catalog.AccumulationRegisters {
-		fields := []QueryDesignerField{{Name: "ИдентификаторЗаписи", Title: "Идентификатор записи", Type: "uuid"}, {Name: "Период", Title: "Период", Type: "date"}}
+		fields := []QueryDesignerField{{Name: "Период", Title: "Период", Type: "date"}}
 		fields = append(fields, recorderQueryDesignerFields()...)
 		if object.Kind == metadata.AccumulationRegisterBalance {
 			fields = append(fields, QueryDesignerField{Name: "ВидДвижения", Title: "Вид движения", Type: "movement-kind"})

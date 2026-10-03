@@ -168,9 +168,9 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 // of its two sides.
 func reservedAccountingRegisterName(name string) bool {
 	switch foldStandardName(name) {
-	case "счетдт", "accountdr", "счеткт", "accountcr", "recordid":
+	case "счетдт", "accountdr", "счеткт", "accountcr":
 		// The accounts of the two sides are how the one standard field Счет is
-		// stored under double entry, and recordid is the key of a stored row.
+		// stored under double entry, and the prototype's query names them so.
 		return true
 	default:
 		return reservedStandardName(AccountingRegisterKind, name)

@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -222,11 +223,11 @@ func (runtime *Runtime) GetObjectProperty(ctx context.Context, value bytecode.Ru
 				return bytecode.Undefined(), err
 			}
 			return bytecode.String(object.record.Description), nil
-		case propertyName(name, "Версия", "Version"):
-			if err := requireFields(ctx, object.definition.ID, PermissionRead, "version"); err != nil {
+		case propertyName(name, "ВерсияДанных", "DataVersion"):
+			if err := requireFields(ctx, object.definition.ID, PermissionRead, "dataversion"); err != nil {
 				return bytecode.Undefined(), err
 			}
-			return bytecode.ParseNumber(fmt.Sprint(object.record.Version))
+			return bytecode.String(strconv.FormatInt(object.record.Version, 10)), nil
 		case propertyName(name, "ПометкаУдаления", "DeletionMark"):
 			if err := requireFields(ctx, object.definition.ID, PermissionRead, "deletionmark"); err != nil {
 				return bytecode.Undefined(), err
@@ -409,7 +410,7 @@ func (runtime *Runtime) SetObjectProperty(ctx context.Context, value bytecode.Ru
 		}
 		object.record.Owner = owner
 		return nil
-	case propertyName(name, "Ссылка", "Ref"), propertyName(name, "Версия", "Version"),
+	case propertyName(name, "Ссылка", "Ref"), propertyName(name, "ВерсияДанных", "DataVersion"),
 		propertyName(name, "ПометкаУдаления", "DeletionMark"),
 		// Whether a row is a folder is decided when the row is made, and the
 		// prototype says so outright: ЭтоГруппа is read-only there too, and

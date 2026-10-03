@@ -385,7 +385,7 @@ func cloneTableParts(parts []TablePart) []TablePart {
 }
 
 func reservedDocumentObjectName(name string) bool {
-	return reservedStandardName(DocumentKind, name) || reservedRowVersionName(name)
+	return reservedStandardName(DocumentKind, name) || reservedDataVersionName(name)
 }
 
 func cloneDocumentDefinition(value DocumentDefinition) DocumentDefinition {

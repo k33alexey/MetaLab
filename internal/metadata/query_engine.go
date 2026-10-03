@@ -1385,7 +1385,7 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		result.fromSQL = qualifiedCatalogTable(table)
 		result.objectID, result.policyColumn = definition.ID, catalogPolicyColumn(definition)
 		result.addStored("Ссылка", querySourceColumnSQL(sqlAlias, "ref"), []Type{referenceType(CatalogType, definition.ID)}, "Ref")
-		result.addStored("Версия", querySourceColumnSQL(sqlAlias, "version"), []Type{{Kind: NumberType, Precision: 19}}, "Version")
+		result.addStored("ВерсияДанных", "("+querySourceColumnSQL(sqlAlias, "version")+")::text", []Type{{Kind: StringType}}, "DataVersion")
 		// A code of length 0 is not a field of the table at all: the prototype
 		// answers a query that names it with «Поле не найдено».
 		if catalogHasCode(definition) {
@@ -1412,7 +1412,7 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		result.fromSQL = qualifiedCatalogTable(table)
 		result.objectID, result.policyColumn = definition.ID, documentPolicyColumn(definition)
 		result.addStored("Ссылка", querySourceColumnSQL(sqlAlias, "ref"), []Type{referenceType(DocumentType, definition.ID)}, "Ref")
-		result.addStored("Версия", querySourceColumnSQL(sqlAlias, "version"), []Type{{Kind: NumberType, Precision: 19}}, "Version")
+		result.addStored("ВерсияДанных", "("+querySourceColumnSQL(sqlAlias, "version")+")::text", []Type{{Kind: StringType}}, "DataVersion")
 		if documentHasNumber(definition) {
 			result.addStored("Номер", querySourceColumnSQL(sqlAlias, "number"), []Type{documentNumberType(definition.Number)}, "Number")
 		}
@@ -1433,7 +1433,6 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		table, _ := PhysicalInformationRegisterTable(definition.ID)
 		result.fromSQL = qualifiedCatalogTable(table)
 		result.objectID, result.policyColumn = definition.ID, informationRegisterPolicyColumn(definition)
-		result.addStored("ИдентификаторЗаписи", querySourceColumnSQL(sqlAlias, "record_id"), []Type{{Kind: UUIDType}}, "RecordID")
 		if definition.Periodicity != InformationRegisterPeriodNone {
 			result.addStored("Период", querySourceColumnSQL(sqlAlias, "period"), []Type{{Kind: DateType}}, "Period")
 		}
@@ -1456,13 +1455,12 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		table, _ := PhysicalAccumulationRegisterTable(definition.ID)
 		result.fromSQL = qualifiedCatalogTable(table)
 		result.objectID, result.policyColumn = definition.ID, accumulationRegisterPolicyColumn(definition)
-		result.addStored("ИдентификаторЗаписи", querySourceColumnSQL(sqlAlias, "record_id"), []Type{{Kind: UUIDType}}, "RecordID")
 		result.addStored("Период", querySourceColumnSQL(sqlAlias, "period"), []Type{{Kind: DateType}}, "Period")
 		result.addRecorder()
 		result.addStored("НомерСтроки", querySourceColumnSQL(sqlAlias, "line_no"), []Type{{Kind: NumberType, Precision: 10}}, "LineNumber")
 		result.addStored("Активность", querySourceColumnSQL(sqlAlias, "active"), []Type{{Kind: BooleanType}}, "Active")
 		if definition.Kind == AccumulationRegisterBalance {
-			result.add(queryColumn{name: "ВидДвижения", sql: querySourceColumnSQL(sqlAlias, "movement_kind"), kind: queryMovementKindColumn, storage: attributeStorage{sqlType: "smallint", valueType: NumberType}}, "MovementKind")
+			result.add(queryColumn{name: "ВидДвижения", sql: querySourceColumnSQL(sqlAlias, "movement_kind"), kind: queryMovementKindColumn, storage: attributeStorage{sqlType: "smallint", valueType: NumberType}}, "RecordType")
 		}
 		if err := runtime.addQueryAttributes(&result, appendQueryAttributes(RegisterDimensionAttributes(definition.Dimensions), definition.Resources, definition.Attributes)); err != nil {
 			return querySource{}, err

@@ -186,7 +186,7 @@ func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, configura
 // the value type: every element carries one, so an attribute of that name would
 // collide with what the platform already put there.
 func reservedChartOfCharacteristicTypesName(name string) bool {
-	return reservedStandardName(ChartOfCharacteristicTypesKind, name) || reservedRowVersionName(name)
+	return reservedStandardName(ChartOfCharacteristicTypesKind, name) || reservedDataVersionName(name)
 }
 
 func cloneChartOfCharacteristicTypes(value ChartOfCharacteristicTypesDefinition) ChartOfCharacteristicTypesDefinition {

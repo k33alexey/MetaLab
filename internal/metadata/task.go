@@ -239,7 +239,7 @@ func validateAddressing(value TaskDefinition, configuration project.Project) []s
 // and description, whether it is executed, and where it stands - the business
 // process and the point of its route.
 func reservedTaskName(name string) bool {
-	return reservedStandardName(TaskKind, name) || reservedRowVersionName(name)
+	return reservedStandardName(TaskKind, name) || reservedDataVersionName(name)
 }
 
 func cloneTask(value TaskDefinition) TaskDefinition {

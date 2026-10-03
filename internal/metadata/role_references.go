@@ -56,7 +56,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 	} else if index, ok := catalog.catalogByID[id]; ok {
 		item := catalog.Catalogs[index]
 		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
-		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "deletionmark": true, "version": false, "predefined": false, "predefineddataname": false}
+		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "deletionmark": true, "dataversion": false, "predefined": false, "predefineddataname": false}
 		if !catalogHasCode(item) {
 			delete(target.fields, "code")
 		}
@@ -74,7 +74,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		// rest of the element be edited.
 		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
 		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "valuetype": true,
-			"deletionmark": true, "version": false, "predefined": false, "predefineddataname": false}
+			"deletionmark": true, "dataversion": false, "predefined": false, "predefineddataname": false}
 		if item.Code.Length == 0 {
 			delete(target.fields, "code")
 		}
@@ -91,7 +91,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		// writable: letting a role grant what nobody may change would be a
 		// right over nothing.
 		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "accountorder": false,
-			"accountkind": true, "offbalance": true, "deletionmark": true, "version": false,
+			"accountkind": true, "offbalance": true, "deletionmark": true, "dataversion": false,
 			"predefined": false, "predefineddataname": false}
 		if item.Code.Length == 0 {
 			delete(target.fields, "code")
@@ -113,7 +113,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		item := catalog.ChartsOfCalculationTypes[index]
 		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
 		target.fields = map[string]bool{"ref": false, "code": true, "description": true,
-			"deletionmark": true, "version": false, "predefined": false, "predefineddataname": false}
+			"deletionmark": true, "dataversion": false, "predefined": false, "predefineddataname": false}
 		if item.Code.Length == 0 {
 			delete(target.fields, "code")
 		}
@@ -128,7 +128,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		if item.Posting.Allowed {
 			target.operations[PermissionPost], target.operations[PermissionUndoPosting] = true, true
 		}
-		target.fields = map[string]bool{"ref": false, "number": true, "date": true, "posted": false, "deletionmark": true, "version": false}
+		target.fields = map[string]bool{"ref": false, "number": true, "date": true, "posted": false, "deletionmark": true, "dataversion": false}
 		if !documentHasNumber(item) {
 			delete(target.fields, "number")
 		}
@@ -140,7 +140,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		// Started and completed are the platform's own record of where the
 		// process is: a role may read them, never write them by hand.
 		target.fields = map[string]bool{"ref": false, "number": true, "date": true, "deletionmark": true,
-			"version": false, "started": false, "completed": false, "headtask": false}
+			"dataversion": false, "started": false, "completed": false, "headtask": false}
 		if item.Number.Length == 0 {
 			delete(target.fields, "number")
 		}
@@ -153,7 +153,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		// addressed to is the application's, and a role may well be kept away
 		// from it - seeing the performers of every task is not for everyone.
 		target.fields = map[string]bool{"ref": false, "number": true, "date": true, "description": true,
-			"deletionmark": true, "version": false, "executed": true, "businessprocess": false, "routepoint": false}
+			"deletionmark": true, "dataversion": false, "executed": true, "businessprocess": false, "routepoint": false}
 		if item.Number.Length == 0 {
 			delete(target.fields, "number")
 		}
@@ -168,7 +168,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		// because a node that declares itself this one breaks every exchange
 		// that touches it.
 		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "deletionmark": true,
-			"version": false, "thisnode": false, "sentno": false, "receivedno": false}
+			"dataversion": false, "thisnode": false, "sentno": false, "receivedno": false}
 		addAttributes(item.Attributes)
 		addParts(item.TableParts)
 	} else if index, ok := catalog.sequenceByID[id]; ok {

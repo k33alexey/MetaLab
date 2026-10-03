@@ -426,15 +426,7 @@ func validatePredefinedAccounts(value ChartOfAccountsDefinition) []string {
 // standard attributes: order, whether it is off balance, and what its balance
 // means.
 func reservedChartOfAccountsName(name string) bool {
-	switch foldStandardName(name) {
-	case "accounttype", "видсчета":
-		// Two spellings of the kind of account that are not the prototype's
-		// own - the prototype calls the field Вид - but which a developer
-		// reaches for, and which would then shadow it.
-		return true
-	default:
-		return reservedStandardName(ChartOfAccountsKind, name) || reservedRowVersionName(name)
-	}
+	return reservedStandardName(ChartOfAccountsKind, name) || reservedDataVersionName(name)
 }
 
 // AccountCodeOrder derives the order string of an account from its code and the

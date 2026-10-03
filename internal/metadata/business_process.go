@@ -654,14 +654,7 @@ func validateRouteNames(route RouteMap) []string {
 // process: its number and date, whether it is started and completed, and the
 // task that heads it.
 func reservedBusinessProcessName(name string) bool {
-	switch foldStandardName(name) {
-	case "главнаязадача":
-		// The prototype calls it ВедущаяЗадача; this is the other word for the
-		// same thing, and a field under it would read as the standard one.
-		return true
-	default:
-		return reservedStandardName(BusinessProcessKind, name) || reservedRowVersionName(name)
-	}
+	return reservedStandardName(BusinessProcessKind, name) || reservedDataVersionName(name)
 }
 
 func cloneRouteMap(route RouteMap) RouteMap {

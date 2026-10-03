@@ -237,8 +237,8 @@ func (workspace *Workspace) moduleDescriptors(catalog *metadata.Catalog) map[str
 			if path := addModuleDescriptor(result, metadata.CatalogKind, item.Name, project.ObjectModuleFile, "МодульОбъектаСправочника."+item.Name, false, "ЭтотОбъект", "ThisObject"); path != "" {
 				descriptor := result[path]
 				descriptor.objectKind = "catalog"
-				descriptor.objectRU = append([]string{"Ссылка", "Код", "Наименование", "Версия", "ПометкаУдаления", "ИмяПредопределенныхДанных"}, objectFieldNames(item.Attributes, item.TableParts)...)
-				descriptor.objectEN = append([]string{"Ref", "Code", "Description", "Version", "DeletionMark", "PredefinedDataName"}, objectFieldNames(item.Attributes, item.TableParts)...)
+				descriptor.objectRU = append([]string{"Ссылка", "Код", "Наименование", "ВерсияДанных", "ПометкаУдаления", "ИмяПредопределенныхДанных"}, objectFieldNames(item.Attributes, item.TableParts)...)
+				descriptor.objectEN = append([]string{"Ref", "Code", "Description", "DataVersion", "DeletionMark", "PredefinedDataName"}, objectFieldNames(item.Attributes, item.TableParts)...)
 				result[path] = descriptor
 			}
 			addModuleDescriptor(result, metadata.CatalogKind, item.Name, project.ManagerModuleFile, "МодульМенеджераСправочника."+item.Name, false)
@@ -247,8 +247,8 @@ func (workspace *Workspace) moduleDescriptors(catalog *metadata.Catalog) map[str
 			if path := addModuleDescriptor(result, metadata.DocumentKind, item.Name, project.ObjectModuleFile, "МодульОбъектаДокумента."+item.Name, false, "ЭтотОбъект", "ThisObject", "Движения", "Movements"); path != "" {
 				descriptor := result[path]
 				descriptor.objectKind = "document"
-				descriptor.objectRU = append([]string{"Ссылка", "Номер", "Дата", "Проведен", "Версия", "ПометкаУдаления", "Движения"}, objectFieldNames(item.Attributes, item.TableParts)...)
-				descriptor.objectEN = append([]string{"Ref", "Number", "Date", "Posted", "Version", "DeletionMark", "Movements"}, objectFieldNames(item.Attributes, item.TableParts)...)
+				descriptor.objectRU = append([]string{"Ссылка", "Номер", "Дата", "Проведен", "ВерсияДанных", "ПометкаУдаления", "Движения"}, objectFieldNames(item.Attributes, item.TableParts)...)
+				descriptor.objectEN = append([]string{"Ref", "Number", "Date", "Posted", "DataVersion", "DeletionMark", "Movements"}, objectFieldNames(item.Attributes, item.TableParts)...)
 				descriptor.movementSets = append([]bslMovementSet(nil), movements[item.ID]...)
 				result[path] = descriptor
 			}

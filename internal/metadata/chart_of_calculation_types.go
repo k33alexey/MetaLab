@@ -223,14 +223,7 @@ func validatePredefinedCalculationTypes(value ChartOfCalculationTypesDefinition)
 // reservedCalculationTypeName keeps the catalog's own names and the one standard
 // attribute of a calculation type.
 func reservedCalculationTypeName(name string) bool {
-	switch foldStandardName(name) {
-	case "actionperiodisbase":
-		// Not the prototype's name for it - that is ActionPeriodIsBasic - but
-		// close enough that a developer writes it and shadows the field.
-		return true
-	default:
-		return reservedStandardName(ChartOfCalculationTypesKind, name) || reservedRowVersionName(name)
-	}
+	return reservedStandardName(ChartOfCalculationTypesKind, name) || reservedDataVersionName(name)
 }
 
 func cloneChartOfCalculationTypes(value ChartOfCalculationTypesDefinition) ChartOfCalculationTypesDefinition {

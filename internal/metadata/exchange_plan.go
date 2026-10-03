@@ -193,7 +193,7 @@ func validateExchangePlanContent(value ExchangePlanDefinition) []string {
 // this one, and the two counters the sides keep of what they have sent and
 // received.
 func reservedExchangePlanName(name string) bool {
-	return reservedStandardName(ExchangePlanKind, name) || reservedRowVersionName(name)
+	return reservedStandardName(ExchangePlanKind, name) || reservedDataVersionName(name)
 }
 
 func cloneExchangePlan(value ExchangePlanDefinition) ExchangePlanDefinition {

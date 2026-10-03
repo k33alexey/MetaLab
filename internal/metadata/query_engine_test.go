@@ -62,14 +62,19 @@ func TestBasicQuerySourcesExposeSupportedMetadataFields(t *testing.T) {
 		accumulationRegisterByName: map[string]int{"остатки": 0}, accumulationRegisterByID: map[uuid.UUID]int{accumulationID: 0},
 	}
 	runtime := &Runtime{catalog: catalog}
+	// The names a query reaches are the prototype's: ВерсияДанных and its
+	// DataVersion, RecordType for the kind of movement. Ours stay out - the
+	// key of a stored row, the old Версия - because a field of the
+	// configuration may be called so and would be shadowed.
 	for _, test := range []struct {
 		path   []string
 		fields []string
+		absent []string
 	}{
-		{[]string{"Справочник", "Товары"}, []string{"Ссылка", "Код", "Наименование"}},
-		{[]string{"Документ", "Продажа"}, []string{"Ссылка", "Номер", "Дата", "Проведен"}},
-		{[]string{"РегистрСведений", "Цены"}, []string{"ИдентификаторЗаписи", "Период", "Товар"}},
-		{[]string{"РегистрНакопления", "Остатки"}, []string{"ИдентификаторЗаписи", "Период", "Регистратор", "ВидДвижения", "Количество"}},
+		{[]string{"Справочник", "Товары"}, []string{"Ссылка", "Код", "Наименование", "ВерсияДанных", "DataVersion"}, []string{"Версия", "Version"}},
+		{[]string{"Документ", "Продажа"}, []string{"Ссылка", "Номер", "Дата", "Проведен", "ВерсияДанных", "DataVersion"}, []string{"Версия", "Version"}},
+		{[]string{"РегистрСведений", "Цены"}, []string{"Период", "Товар"}, []string{"ИдентификаторЗаписи", "RecordID"}},
+		{[]string{"РегистрНакопления", "Остатки"}, []string{"Период", "Регистратор", "ВидДвижения", "RecordType", "Количество"}, []string{"ИдентификаторЗаписи", "RecordID", "MovementKind"}},
 	} {
 		source, err := runtime.resolveQuerySource(context.Background(), querylang.Source{Path: test.path, Position: querylang.Position{Line: 1, Column: 1}}, "s0", nil)
 		if err != nil {
@@ -78,6 +83,11 @@ func TestBasicQuerySourcesExposeSupportedMetadataFields(t *testing.T) {
 		for _, field := range test.fields {
 			if _, ok := source.byName[strings.ToLower(field)]; !ok {
 				t.Errorf("source %v is missing %s", test.path, field)
+			}
+		}
+		for _, field := range test.absent {
+			if _, ok := source.byName[strings.ToLower(field)]; ok {
+				t.Errorf("source %v offers %s, a name that is ours and not the prototype's", test.path, field)
 			}
 		}
 	}

@@ -1624,15 +1624,18 @@ func validateAttributesIn(path string, attributes []Attribute, configuration pro
 }
 
 func reservedCatalogObjectName(name string) bool {
-	return reservedStandardName(CatalogKind, name) || reservedRowVersionName(name)
+	return reservedStandardName(CatalogKind, name) || reservedDataVersionName(name)
 }
 
-// reservedRowVersionName is the one name that is ours and not the prototype's:
-// the row version every stored object carries, by which a concurrent write is
-// caught. Every kind that stores objects keeps it.
-func reservedRowVersionName(name string) bool {
+// reservedDataVersionName keeps ВерсияДанных, the version of the data every
+// stored object of the eight reference kinds carries - a property of the
+// reference, the object and the selection in the prototype, and a field of
+// the query table. A concurrent write is caught by it. The column under it is
+// ours and named apart, so an attribute named Версия is free, as it is in the
+// prototype (6/6/6 catalogs of the test configurations have one).
+func reservedDataVersionName(name string) bool {
 	switch foldStandardName(name) {
-	case "версия", "version":
+	case "версияданных", "dataversion":
 		return true
 	default:
 		return false

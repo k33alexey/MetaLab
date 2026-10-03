@@ -134,16 +134,12 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 	return value, nil
 }
 
+// reservedAccumulationRegisterName keeps the standard fields of a movement.
+// The key of a stored row and our key for the kind of movement name nothing
+// of the configuration: rights and policies hold them apart from fields, which
+// they name by identifier.
 func reservedAccumulationRegisterName(name string) bool {
-	switch foldStandardName(name) {
-	case "movementkind", "recordid":
-		// movementkind is not the prototype's name for the kind of movement -
-		// that is RecordType - and recordid is the key of a stored row, which
-		// is ours.
-		return true
-	default:
-		return reservedStandardName(AccumulationRegisterKind, name)
-	}
+	return reservedStandardName(AccumulationRegisterKind, name)
 }
 
 func cloneAccumulationRegisterDefinition(value AccumulationRegisterDefinition) AccumulationRegisterDefinition {
