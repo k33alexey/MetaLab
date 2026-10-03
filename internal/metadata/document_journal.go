@@ -61,9 +61,10 @@ func DecodeDocumentJournal(source string, reader io.Reader, configuration projec
 		return DocumentJournalDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	if len(value.Documents) == 0 {
-		issues = append(issues, "documents must name at least one kind of document: a journal of nothing shows nothing")
-	}
+	// A journal of no documents, and a column that shows no attribute, are
+	// what a journal is right after it is made; nothing shows the
+	// configurator refusing to save them. Both are carried, show nothing,
+	// and are notes.
 	issues = append(issues, validateUniqueIDs("documents", value.Documents)...)
 	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, DocumentJournalKind,
 		recordIndexTables(standardFieldsOfKind(DocumentJournalKind), journalColumnNames(value.Columns)))...)
@@ -90,9 +91,6 @@ func DecodeDocumentJournal(source string, reader io.Reader, configuration projec
 			issues = append(issues, prefix+".indexing must be dont-index, index or index-with-additional-order")
 		}
 		issues = append(issues, validateUniqueIDs(prefix+".references", column.References)...)
-		if len(column.References) == 0 {
-			issues = append(issues, prefix+" shows no attribute of any document, so it is an empty column")
-		}
 	}
 	// A journal shows documents, so the fields a list of it can be searched by
 	// are the ones every document has.

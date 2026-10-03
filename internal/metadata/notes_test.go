@@ -101,6 +101,34 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		writeMetadata(t, root, TaskKind, id, "format: 1\nid: "+id+"\nname: Задача1\ntitle: {ru: Задача}\n"+
 			"number: {type: string, length: 11, auto: true, periodicity: none}\ndescription_length: 0\n")
 	},
+	NoteJournalShowsNothing: func(t *testing.T, root string) {
+		id := uuid.MustNew().String()
+		writeMetadata(t, root, DocumentJournalKind, id, "format: 1\nid: "+id+"\nname: Журнал\ntitle: {ru: Журнал}\n")
+	},
+	NoteSequenceWithoutDocuments: func(t *testing.T, root string) {
+		id := uuid.MustNew().String()
+		writeMetadata(t, root, SequenceKind, id, "format: 1\nid: "+id+"\nname: Последовательность\ntitle: {ru: Последовательность}\n")
+	},
+	NoteRecalculationHalfSet: func(t *testing.T, root string) {
+		chart := noteChart(t, root, ChartOfCalculationTypesKind, "")
+		id := uuid.MustNew().String()
+		writeMetadata(t, root, CalculationRegisterKind, id, "format: 1\nid: "+id+"\nname: Начисления\ntitle: {ru: Начисления}\n"+
+			"chart_of_calculation_types: "+chart+"\nperiodicity: month\n"+
+			"resources:\n  - {id: "+uuid.MustNew().String()+", name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}]}\n"+
+			"recalculations:\n  - {id: "+uuid.MustNew().String()+", name: Перерасчет, title: {ru: Перерасчёт}, dimensions: [{id: "+uuid.MustNew().String()+", name: Лицо, title: {ru: Лицо}}]}\n")
+	},
+	NoteRegisterWithoutFields: func(t *testing.T, root string) {
+		id := uuid.MustNew().String()
+		writeMetadata(t, root, InformationRegisterKind, id, "format: 1\nid: "+id+"\nname: Пустой\ntitle: {ru: Пустой}\nwrite_mode: independent\nperiodicity: none\n")
+	},
+	NoteDuplicateAggregate: func(t *testing.T, root string) {
+		writeMetadata(t, root, AccumulationRegisterKind, aggregateRegisterID, aggregateRegisterBody("aggregates:\n"+
+			"  - {periodicity: month, dimensions: [Номенклатура, Склад]}\n  - {periodicity: month, dimensions: [Склад, Номенклатура]}\n"))
+	},
+	NoteCriterionWithoutType: func(t *testing.T, root string) {
+		id := uuid.MustNew().String()
+		writeMetadata(t, root, FilterCriterionKind, id, "format: 1\nid: "+id+"\nname: СтруктураПодчиненности\ntitle: {ru: Структура}\ntypes: []\n")
+	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
@@ -275,6 +303,24 @@ func TestSoundSettingsCarryNoNotes(t *testing.T) {
 	document := uuid.MustNew().String()
 	writeMetadata(t, root, DocumentKind, document, "format: 1\nid: "+document+"\nname: Заметка\ntitle: {ru: Заметка}\n"+
 		"number: {type: string, length: 11, periodicity: year}\nposting: {allowed: true, real_time: deny, records_deletion: auto}\n")
+	// A journal and a sequence over a document, a recalculation done whole,
+	// two different aggregates, a criterion with a type, a numerator with a
+	// length.
+	journal, sequence, numerator, criterion := uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String()
+	writeMetadata(t, root, DocumentJournalKind, journal, "format: 1\nid: "+journal+"\nname: Журнал\ntitle: {ru: Журнал}\ndocuments: ["+document+"]\n")
+	writeMetadata(t, root, SequenceKind, sequence, "format: 1\nid: "+sequence+"\nname: Последовательность\ntitle: {ru: Последовательность}\ndocuments: ["+document+"]\n")
+	writeMetadata(t, root, NumeratorKind, numerator, "format: 1\nid: "+numerator+"\nname: Сквозной\ntitle: {ru: Сквозной}\nnumber: {type: string, length: 11, periodicity: year}\n")
+	writeMetadata(t, root, FilterCriterionKind, criterion, "format: 1\nid: "+criterion+"\nname: Связанные\ntitle: {ru: Связанные}\ntypes: [{kind: document, reference: "+document+"}]\n")
+	writeMetadata(t, root, AccumulationRegisterKind, aggregateRegisterID, aggregateRegisterBody("aggregates:\n"+
+		"  - {periodicity: month, dimensions: [Номенклатура, Склад]}\n  - {periodicity: year, dimensions: [Склад]}\n"))
+	calculationTypes := noteChart(t, root, ChartOfCalculationTypesKind, "")
+	calculation, person := uuid.MustNew().String(), uuid.MustNew().String()
+	writeMetadata(t, root, CalculationRegisterKind, calculation, "format: 1\nid: "+calculation+"\nname: Начисления\ntitle: {ru: Начисления}\n"+
+		"chart_of_calculation_types: "+calculationTypes+"\nperiodicity: month\n"+
+		"dimensions:\n  - {id: "+person+", name: Лицо, title: {ru: Лицо}, types: [{kind: string, length: 10}]}\n"+
+		"resources:\n  - {id: "+uuid.MustNew().String()+", name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}]}\n"+
+		"recalculations:\n  - {id: "+uuid.MustNew().String()+", name: Перерасчет, title: {ru: Перерасчёт}, dimensions: [{id: "+uuid.MustNew().String()+
+		", name: Лицо, title: {ru: Лицо}, register_dimension: "+person+", leading_data: ["+person+"]}]}\n")
 	catalog, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
@@ -344,5 +390,37 @@ func TestATablePartForFolderAndItemWithoutFoldersIsNoted(t *testing.T) {
 				t.Fatalf("notes on the table part = %d, want %d: %+v", noted, test.notes, catalog.Notes())
 			}
 		})
+	}
+}
+
+// A numerator of length 0 is carried and noted, and a recalculation whose
+// dimension names no dimension of the register builds - the dimension simply
+// has no column.
+//
+// Defect caught: the numerator refused, or accepted without a note; and the
+// schema refusing the whole configuration over a dimension that holds nothing.
+func TestHalfSetRegistersAndNumeratorsBuild(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	numerator := uuid.MustNew().String()
+	writeMetadata(t, root, NumeratorKind, numerator, "format: 1\nid: "+numerator+"\nname: Сквозной\ntitle: {ru: Сквозной}\nnumber: {type: string, length: 0, periodicity: none}\n")
+	noteExamples[NoteRecalculationHalfSet](t, root)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("refused: %v", err)
+	}
+	var numeratorNoted bool
+	for _, note := range catalog.Notes() {
+		numeratorNoted = numeratorNoted || (note.Kind == NoteLengthZeroUnchecked && strings.Contains(note.Where, "Сквозной"))
+	}
+	if !numeratorNoted {
+		t.Fatalf("a numerator of length 0 carries no note: %+v", catalog.Notes())
+	}
+	schema, err := catalog.ApplicationSchema()
+	if err != nil {
+		t.Fatalf("the schema refused a recalculation dimension that holds nothing: %v", err)
+	}
+	if len(schema.Tables) == 0 {
+		t.Fatal("no tables were built")
 	}
 }

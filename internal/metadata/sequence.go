@@ -75,10 +75,8 @@ func DecodeSequence(source string, reader io.Reader, configuration project.Proje
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
-	// A sequence over no documents watches nothing happen.
-	if len(value.Documents) == 0 {
-		issues = append(issues, "documents must name at least one kind of document: a sequence over nothing follows nothing")
-	}
+	// A sequence over no documents watches nothing happen; it is carried and
+	// is a note, as a journal of no documents is.
 	issues = append(issues, validateUniqueIDs("documents", value.Documents)...)
 	issues = append(issues, validateUniqueIDs("movements", value.Movements)...)
 	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, SequenceKind,

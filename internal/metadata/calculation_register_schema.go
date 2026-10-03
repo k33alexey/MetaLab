@@ -134,6 +134,11 @@ func (catalog *Catalog) recalculationTable(definition CalculationRegisterDefinit
 		byID[dimension.ID] = dimension
 	}
 	for _, dimension := range recalculation.Dimensions {
+		// A dimension that names no dimension of the register holds nothing,
+		// so it has no column.
+		if dimension.RegisterDimension.IsZero() {
+			continue
+		}
 		source, ok := byID[dimension.RegisterDimension]
 		if !ok {
 			return schemadiff.Table{}, fmt.Errorf("recalculation %s dimension %s corresponds to nothing in %s",

@@ -217,8 +217,6 @@ documents: [` + aroundFirstDoc + `]
 movements: [` + aroundRegister + `]
 dimensions:
   - {id: ` + aroundDimension + `, name: Номенклатура, title: {ru: Номенклатура}, types: [{kind: catalog, reference: ` + aroundGoods + `}], document_attributes: [` + aroundFirstGoods + `], register_dimensions: [` + aroundRegisterQty + `]}`},
-		"последовательность без документов": {SequenceKind, `
-documents: []`},
 		"журнал показывает чужой реквизит": {DocumentJournalKind, `
 documents: [` + aroundFirstDoc + `]
 columns:
@@ -227,10 +225,6 @@ columns:
 documents: [` + aroundFirstDoc + `]
 columns:
   - {id: ` + aroundColumn + `, name: Контрагент, title: {ru: Контрагент}, references: [` + aroundFirstParty + `, ` + aroundFirstGoods + `]}`},
-		"пустая графа": {DocumentJournalKind, `
-documents: [` + aroundFirstDoc + `]
-columns:
-  - {id: ` + aroundColumn + `, name: Пустая, title: {ru: Пустая}, references: []}`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

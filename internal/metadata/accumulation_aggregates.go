@@ -104,13 +104,12 @@ type AccumulationRegisterAggregate struct {
 // validateAccumulationAggregates resolves every aggregate against the register
 // that carries it.
 //
-// Two things are refused. A dimension that is not there, for the reason any
-// dangling name is refused: it describes a cut nothing can build. And two
-// aggregates holding the same dimensions at the same periodicity, because an
-// aggregate has no name of its own - two identical ones are not two answers to
-// one question but one answer stored twice, and the copy costs an update on
-// every write while adding nothing a query can use. A developer cannot have
-// meant it, because there is nothing to tell the two apart.
+// A dimension that is not there is refused, for the reason any dangling name
+// is refused: it describes a cut nothing can build. Two aggregates holding the
+// same dimensions at the same periodicity are not: an aggregate has no name of
+// its own, so the copy is one answer stored twice, but nothing shows the
+// configurator refusing to save it. The copy is carried and is a note
+// (NoteDuplicateAggregate).
 //
 // An aggregate over no dimensions at all is not refused: folded only by
 // period, it is the coarsest cut there is and the most effective one when a
@@ -152,11 +151,11 @@ func validateAccumulationAggregates(aggregates []AccumulationRegisterAggregate, 
 		// The order of dimensions inside an aggregate says nothing - the same
 		// set folded the same way is the same cut - so the key is sorted.
 		key := strings.Join(sortedStrings(folded), ",") + "|" + string(aggregate.Periodicity)
-		if previous, exists := seen[key]; exists {
-			issues = append(issues, fmt.Sprintf("%s holds the same dimensions at the same periodicity as aggregates[%d]", prefix, previous))
-			continue
+		// The same cut twice is carried and noted: nothing shows the
+		// configurator refusing it, and a second copy computes the same.
+		if _, exists := seen[key]; !exists {
+			seen[key] = index
 		}
-		seen[key] = index
 	}
 	return issues
 }

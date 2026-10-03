@@ -33,7 +33,10 @@ func DecodeNumerator(source string, reader io.Reader, configuration project.Proj
 		return NumeratorDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateNumberShape(value.Number)...)
+	// A number of length 0 is allowed as on a document, whose length the owner
+	// checked; on a numerator it was not checked, so it is a note
+	// (NoteLengthZeroUnchecked).
+	issues = append(issues, validateNumberShapeOf(value.Number, true)...)
 	if value.Number.Auto {
 		issues = append(issues, "number.auto belongs to the document, not to the numerator it shares")
 	}

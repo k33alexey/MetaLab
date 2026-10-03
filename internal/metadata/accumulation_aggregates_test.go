@@ -124,14 +124,6 @@ func TestAnAggregateIsRefusedWhenItCannotBeBuiltOrIsACopy(t *testing.T) {
 		"измерение повторено внутри агрегата": {`aggregates:
   - {periodicity: month, dimensions: [Склад, Склад]}
 `, "repeats Склад"},
-		"два одинаковых агрегата": {`aggregates:
-  - {periodicity: month, dimensions: [Номенклатура, Склад]}
-  - {periodicity: month, dimensions: [Номенклатура, Склад]}
-`, "holds the same dimensions at the same periodicity"},
-		"порядок измерений тот же разрез": {`aggregates:
-  - {periodicity: month, dimensions: [Номенклатура, Склад]}
-  - {periodicity: month, dimensions: [Склад, Номенклатура]}
-`, "holds the same dimensions at the same periodicity"},
 		"тот же состав, но другая периодичность — разные разрезы": {`aggregates:
   - {periodicity: month, dimensions: [Номенклатура, Склад]}
   - {periodicity: year, dimensions: [Номенклатура, Склад]}

@@ -122,9 +122,8 @@ func DecodeInformationRegister(source string, reader io.Reader, configuration pr
 	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(InformationRegisterKind), configuration)...)
 	issues = append(issues, validateFieldLinks(standardFieldsOfKind(InformationRegisterKind), registerFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 	issues = append(issues, validateAttributeUse(registerFields, nil, false, false)...)
-	if len(value.Dimensions)+len(value.Resources)+len(value.Attributes) == 0 {
-		issues = append(issues, "dimensions, resources or attributes must contain at least one item")
-	}
+	// A register with no fields at all keeps one record a period with nothing
+	// in it - what it is right after it is made. Carried and noted.
 	fieldNames := map[string]string{}
 	fieldIDs := map[uuid.UUID]string{}
 	for _, group := range []struct {

@@ -235,11 +235,6 @@ schedule_date: ` + calcResult + `
 		"перерасчёт по чужому измерению": base + `recalculations:
   - {id: ` + calcRecalc + `, name: Перерасчет, title: {ru: Перерасчёт}, dimensions: [{id: ` + calcRecalcDim + `, name: Лицо, title: {ru: Лицо}, register_dimension: ` + calcScheduleValue + `, leading_data: [` + calcPerson + `]}]}
 `,
-		"перерасчёт без ведущих данных": base + `dimensions:
-  - {id: ` + calcPerson + `, name: ФизическоеЛицо, title: {ru: Физическое лицо}, types: [{kind: catalog, reference: ` + calcPeople + `}]}
-recalculations:
-  - {id: ` + calcRecalc + `, name: Перерасчет, title: {ru: Перерасчёт}, dimensions: [{id: ` + calcRecalcDim + `, name: Лицо, title: {ru: Лицо}, register_dimension: ` + calcPerson + `, leading_data: []}]}
-`,
 		"график без периода действия": strings.Replace(calcRegisterBody, "action_period: true\n", "", 1),
 		"неизвестная периодичность": `format: 1
 id: ` + calcRegister + `

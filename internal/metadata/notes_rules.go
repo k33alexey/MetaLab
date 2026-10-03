@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
@@ -34,6 +35,12 @@ const (
 	NoteAutoOrderWithoutLength     NoteKind = "auto-order-without-length"
 	NoteBaseDependencyHalfSet      NoteKind = "base-dependency-half-set"
 	NoteLengthZeroUnchecked        NoteKind = "length-zero-unchecked"
+	NoteJournalShowsNothing        NoteKind = "journal-shows-nothing"
+	NoteSequenceWithoutDocuments   NoteKind = "sequence-without-documents"
+	NoteRecalculationHalfSet       NoteKind = "recalculation-dimension-half-set"
+	NoteRegisterWithoutFields      NoteKind = "register-without-fields"
+	NoteDuplicateAggregate         NoteKind = "duplicate-aggregate"
+	NoteCriterionWithoutType       NoteKind = "filter-criterion-without-type"
 )
 
 func init() {
@@ -116,9 +123,28 @@ func init() {
 			"Зависимость от базы у плана видов расчёта без базовых планов или базовые планы без зависимости.",
 			"Несётся как записано; база собирается из названных базовых планов, без них — пуста."},
 		NoteKindInfo{NoteLengthZeroUnchecked,
-			"Длина 0 кода или наименования у вида, где её в конфигураторе не проверяли: наименование плана счетов, " +
-				"плана видов расчёта и задачи, код и наименование плана обмена.",
+			"Длина 0 кода, наименования или номера у вида, где её в конфигураторе не проверяли: наименование плана счетов, " +
+				"плана видов расчёта и задачи, код и наименование плана обмена, номер нумератора.",
 			"Поле выключено, как у справочника с длиной 0: ни колонки, ни поиска по нему."},
+		NoteKindInfo{NoteJournalShowsNothing,
+			"Журнал документов без регистрируемых документов или графа журнала без ссылок на реквизиты — " +
+				"таким журнал бывает сразу после создания.",
+			"Журнал или графа несётся как записан и ничего не показывает."},
+		NoteKindInfo{NoteSequenceWithoutDocuments,
+			"Последовательность без документов.",
+			"Несётся как записана и ни за чем не следит."},
+		NoteKindInfo{NoteRecalculationHalfSet,
+			"Измерение перерасчёта без измерения регистра или без данных ведущих регистров.",
+			"Несётся как записано и ничего не пересчитывает; без измерения регистра колонки у него нет."},
+		NoteKindInfo{NoteRegisterWithoutFields,
+			"Регистр сведений без измерений, ресурсов и реквизитов — таким он бывает сразу после создания.",
+			"Несётся как записан: одна пустая запись на период."},
+		NoteKindInfo{NoteDuplicateAggregate,
+			"Два агрегата регистра накопления с теми же измерениями и той же периодичностью.",
+			"Оба несутся как записаны; второй повторяет первый."},
+		NoteKindInfo{NoteCriterionWithoutType,
+			"Критерий отбора без типа при заполненном составе (sb: 190 полей).",
+			"Несётся как записан и ничего не находит."},
 	)
 	noteRules[NoteUnresolvedPath] = noteUnresolvedPath
 	noteRules[NoteUnusedBound] = noteUnusedBound
@@ -143,6 +169,12 @@ func init() {
 	noteRules[NoteAutoOrderWithoutLength] = noteAutoOrderWithoutLength
 	noteRules[NoteBaseDependencyHalfSet] = noteBaseDependencyHalfSet
 	noteRules[NoteLengthZeroUnchecked] = noteLengthZeroUnchecked
+	noteRules[NoteJournalShowsNothing] = noteJournalShowsNothing
+	noteRules[NoteSequenceWithoutDocuments] = noteSequenceWithoutDocuments
+	noteRules[NoteRecalculationHalfSet] = noteRecalculationHalfSet
+	noteRules[NoteRegisterWithoutFields] = noteRegisterWithoutFields
+	noteRules[NoteDuplicateAggregate] = noteDuplicateAggregate
+	noteRules[NoteCriterionWithoutType] = noteCriterionWithoutType
 }
 
 func noteUnresolvedPath(catalog *Catalog, note func(where, written string)) {
@@ -434,12 +466,89 @@ func noteLengthZeroUnchecked(catalog *Catalog, note func(where, written string))
 			note("tasks "+task.Name+" description_length", "0")
 		}
 	}
+	for _, numerator := range catalog.Numerators {
+		if numerator.Number.Length == 0 {
+			note("document-numerators "+numerator.Name+" number.length", "0")
+		}
+	}
 	for _, plan := range catalog.ExchangePlans {
 		if plan.Code.Length == 0 {
 			note("exchange-plans "+plan.Name+" code.length", "0")
 		}
 		if plan.DescriptionLength == 0 {
 			note("exchange-plans "+plan.Name+" description_length", "0")
+		}
+	}
+}
+
+func noteJournalShowsNothing(catalog *Catalog, note func(where, written string)) {
+	for _, journal := range catalog.DocumentJournals {
+		where := "document-journals " + journal.Name
+		if len(journal.Documents) == 0 {
+			note(where+" documents", "none")
+		}
+		for _, column := range journal.Columns {
+			if len(column.References) == 0 {
+				note(where+" columns "+column.Name, "no references")
+			}
+		}
+	}
+}
+
+func noteSequenceWithoutDocuments(catalog *Catalog, note func(where, written string)) {
+	for _, sequence := range catalog.Sequences {
+		if len(sequence.Documents) == 0 {
+			note("sequences "+sequence.Name+" documents", "none")
+		}
+	}
+}
+
+func noteRecalculationHalfSet(catalog *Catalog, note func(where, written string)) {
+	for _, register := range catalog.CalculationRegisters {
+		for _, recalculation := range register.Recalculations {
+			for _, dimension := range recalculation.Dimensions {
+				where := "calculation-registers " + register.Name + " recalculations " + recalculation.Name + " dimensions " + dimension.Name
+				if dimension.RegisterDimension.IsZero() {
+					note(where+" register_dimension", "none")
+				}
+				if len(dimension.LeadingData) == 0 {
+					note(where+" leading_data", "none")
+				}
+			}
+		}
+	}
+}
+
+func noteRegisterWithoutFields(catalog *Catalog, note func(where, written string)) {
+	for _, register := range catalog.InformationRegisters {
+		if len(register.Dimensions)+len(register.Resources)+len(register.Attributes) == 0 {
+			note("information-registers "+register.Name, "no fields")
+		}
+	}
+}
+
+func noteDuplicateAggregate(catalog *Catalog, note func(where, written string)) {
+	for _, register := range catalog.AccumulationRegisters {
+		seen := map[string]int{}
+		for index, aggregate := range register.Aggregates {
+			folded := make([]string, 0, len(aggregate.Dimensions))
+			for _, name := range aggregate.Dimensions {
+				folded = append(folded, strings.ToLower(name))
+			}
+			key := strings.Join(sortedStrings(folded), ",") + "|" + string(aggregate.Periodicity)
+			if previous, exists := seen[key]; exists {
+				note(fmt.Sprintf("accumulation-registers %s aggregates[%d]", register.Name, index), fmt.Sprintf("the same as aggregates[%d]", previous))
+				continue
+			}
+			seen[key] = index
+		}
+	}
+}
+
+func noteCriterionWithoutType(catalog *Catalog, note func(where, written string)) {
+	for _, criterion := range catalog.FilterCriteria {
+		if len(criterion.Types) == 0 {
+			note("filter-criteria "+criterion.Name+" types", strconv.Itoa(len(criterion.Fields))+" fields")
 		}
 	}
 }

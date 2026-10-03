@@ -64,7 +64,11 @@ func DecodeFilterCriterion(source string, reader io.Reader, configuration projec
 		return FilterCriterionDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateTypes("types", value.Types, value.ID)...)
+	// A criterion with no type is carried and searches nothing: sb keeps one
+	// with 190 fields of its content. It is a note.
+	if len(value.Types) > 0 {
+		issues = append(issues, validateTypes("types", value.Types, value.ID)...)
+	}
 	for name, text := range map[string]LocalizedText{
 		"explanation": value.Explanation, "list_presentation": value.ListPresentation,
 		"extended_list_presentation": value.ExtendedListPresentation,
@@ -142,6 +146,14 @@ func (catalog *Catalog) validateFilterCriteria() error {
 		}
 		for index, field := range criterion.Fields {
 			where := fmt.Sprintf("%s fields[%d]", owner, index)
+			if len(criterion.Types) == 0 {
+				// Nothing is searched, so no field can miss it; the field
+				// must still be there.
+				if _, err := catalog.criterionFieldTypes(where, field); err != nil {
+					return err
+				}
+				continue
+			}
 			types, err := catalog.criterionFieldTypes(where, field)
 			if err != nil {
 				return err

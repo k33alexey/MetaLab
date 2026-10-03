@@ -305,12 +305,9 @@ func validateRecalculations(value CalculationRegisterDefinition, configuration p
 			}
 			inner[strings.ToLower(dimension.Name)] = true
 			issues = append(issues, validateTitle(path+".title", dimension.Title, configuration)...)
-			if dimension.RegisterDimension.IsZero() {
-				issues = append(issues, path+".register_dimension is required: without it nothing says which records to compute again")
-			}
-			if len(dimension.LeadingData) == 0 {
-				issues = append(issues, path+" has no leading data, so nothing ever sets it off")
-			}
+			// A dimension with no dimension of the register, or with no
+			// leading data, is half set: carried, it computes nothing again,
+			// it has no column - see recalculationTable - and is a note.
 			issues = append(issues, validateUniqueIDs(path+".leading_data", dimension.LeadingData)...)
 		}
 	}

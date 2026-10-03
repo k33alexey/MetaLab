@@ -2358,7 +2358,7 @@ func (catalog *Catalog) validateCalculationRegister(root string, item Calculatio
 	}
 	for _, recalculation := range item.Recalculations {
 		for _, dimension := range recalculation.Dimensions {
-			if !dimensions[dimension.RegisterDimension] {
+			if !dimension.RegisterDimension.IsZero() && !dimensions[dimension.RegisterDimension] {
 				return fmt.Errorf("%s recalculation %s dimension %s corresponds to %s, which is not a dimension of this register",
 					owner, recalculation.Name, dimension.Name, dimension.RegisterDimension)
 			}

@@ -77,8 +77,9 @@ func TestARegisterTakesAsManyFieldsAsItHas(t *testing.T) {
 			t.Fatalf("%s register of 1002 fields was refused by the model: %v", kind, err)
 		}
 	}
-	// An information register needs one field of any sort, and one is enough.
-	requireMessage(t, "information, no fields", registerWithFields("information", 0, 0, 0), "must contain at least one item", true)
+	// An information register with no fields at all is what it is right
+	// after it is made: carried and noted, one record a period.
+	requireMessage(t, "information, no fields", registerWithFields("information", 0, 0, 0), "must contain at least one item", false)
 	requireMessage(t, "information, one attribute", registerWithFields("information", 0, 0, 1), "must contain at least one item", false)
 	// Fields of different groups count together: a count that subtracted one
 	// group from another would call a register of a resource and an attribute

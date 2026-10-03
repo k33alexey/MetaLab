@@ -175,7 +175,6 @@ title: {ru: Критерий}
 
 	// The shape is checked before anything is resolved.
 	for name, broken := range map[string]struct{ body, want string }{
-		"искать не по чему": {"types: []", "types must contain at least one type"},
 		"одно поле дважды": {`types: [{kind: catalog, reference: ` + criterionContracts + `}]
 fields:
   - {kind: documents, object: ` + criterionOrder + `, attribute: ` + criterionContract + `}
