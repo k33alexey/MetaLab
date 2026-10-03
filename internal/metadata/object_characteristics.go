@@ -136,6 +136,15 @@ type ObjectCharacteristic struct {
 	Values CharacteristicValues `yaml:"values" json:"values"`
 }
 
+// Filled says the characteristic names the four fields it is made of: the key
+// of a kind, and the object, the kind and the value of a value. One that
+// leaves any of them unnamed offers no characteristics; everything that offers
+// them asks here first.
+func (characteristic ObjectCharacteristic) Filled() bool {
+	return !characteristic.Types.Key.empty() && !characteristic.Values.Object.empty() &&
+		!characteristic.Values.Type.empty() && !characteristic.Values.Value.empty()
+}
+
 // validateObjectCharacteristics checks the descriptions of one object as far
 // as the object alone allows: the shape of every address, and the fields that
 // only make sense together. Whether the tables and fields are there at all is
@@ -147,16 +156,23 @@ func validateObjectCharacteristics(characteristics []ObjectCharacteristic) []str
 		prefix := fmt.Sprintf("characteristics[%d]", index)
 		types, values := characteristic.Types, characteristic.Values
 		issues = append(issues, validateCharacteristicTable(prefix+".types.table", types.Table)...)
-		issues = append(issues, validateCharacteristicField(prefix+".types.key", types.Key)...)
 		issues = append(issues, validateCharacteristicTable(prefix+".values.table", values.Table)...)
+		// The four fields that make a characteristic may be left unnamed: the
+		// prototype saves a description with both tables chosen and every
+		// field -1 (29/0/1 documents). Such a characteristic offers nothing,
+		// is carried as written and is a note - see Filled.
 		for _, named := range []struct {
 			path  string
 			field CharacteristicField
 		}{
+			{prefix + ".types.key", types.Key},
 			{prefix + ".values.object", values.Object},
 			{prefix + ".values.type", values.Type},
 			{prefix + ".values.value", values.Value},
 		} {
+			if named.field.empty() {
+				continue
+			}
 			issues = append(issues, validateCharacteristicField(named.path, named.field)...)
 		}
 		for _, optional := range []struct {
@@ -484,6 +500,12 @@ func (catalog *Catalog) validateCharacteristics() error {
 func (catalog *Catalog) validateCharacteristic(where string, owner characteristicOwner, characteristic ObjectCharacteristic) error {
 	kinds, err := catalog.resolveCharacteristicTable(where+" types", characteristic.Types.Table)
 	if err != nil {
+		return err
+	}
+	// An unfilled characteristic still names its tables, and they must be
+	// there; its fields hold nothing to check against them.
+	if !characteristic.Filled() {
+		_, err := catalog.resolveCharacteristicTable(where+" values", characteristic.Values.Table)
 		return err
 	}
 	keyTypes, err := characteristicFieldTypes(where+" types.key", kinds, characteristic.Types.Key)

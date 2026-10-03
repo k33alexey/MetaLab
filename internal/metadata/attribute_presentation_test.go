@@ -207,10 +207,12 @@ func TestBrokenFieldSettingsAreRefused(t *testing.T) {
         - name: Отбор.Вид
           values: [{kind: number, data: "1"}, {kind: number, data: "2"}]`),
 			"must say it is a list"},
-		"параметр задан и связан разом": {field(`    choice:
-      parameters: [{name: Отбор.Вид, values: [{kind: number, data: "1"}]}]
-      parameter_links: [{name: отбор.вид, source: {attribute: ` + presentationAmount + `}}]`),
-			"is already set or linked"},
+		"параметр задан дважды": {field(`    choice:
+      parameters: [{name: Отбор.Вид, values: [{kind: number, data: "1"}]}, {name: отбор.вид, values: [{kind: number, data: "2"}]}]`),
+			"is used twice in one list"},
+		"связь задана дважды": {field(`    choice:
+      parameter_links: [{name: Отбор.Вид, source: {attribute: ` + presentationAmount + `}}, {name: отбор.вид, source: {attribute: ` + presentationAmount + `}}]`),
+			"is used twice in one list"},
 		"связь меняется неизвестно как": {field(`    choice:
       parameter_links: [{name: Отбор.Вид, source: {attribute: ` + presentationAmount + `}, change: erase}]`),
 			"must be clear or dont-change"},

@@ -66,11 +66,6 @@ func validAttributeUse(use AttributeUse) bool {
 	}
 }
 
-// forFolders says whether this use reaches folders at all.
-func (use AttributeUse) forFolders() bool {
-	return use == UseForFolder || use == UseForFolderAndItem
-}
-
 // FieldFilling is what the standard filling of a new object puts into the
 // field, and from where.
 type FieldFilling struct {

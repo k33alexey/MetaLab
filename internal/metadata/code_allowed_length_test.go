@@ -149,40 +149,45 @@ description_length: 150
 	}
 }
 
-// "Свойство имеет смысл, если тип номера - Строка." A numeric code or number is
-// a count of digits; padding it with spaces on the right is not a thing that
-// can be asked for, and a file that asks says so at once.
-func TestAllowedLengthIsForStringsOnly(t *testing.T) {
+// "Свойство имеет смысл, если тип номера - Строка." A numeric code or number
+// is a count of digits and has nothing to pad, so the setting means nothing
+// there - and the prototype writes it there all the same (3/5/0 catalogs, 6
+// in energy), left from when the code was a string. It is carried, the column
+// stays a number, and the place is a note.
+//
+// Defect caught: the setting refused, which turns away the catalogs; the
+// setting lost; and the setting obeyed, which makes the column a padded string.
+func TestAllowedLengthOnANumberIsCarriedAndActsOnNothing(t *testing.T) {
 	t.Parallel()
-	t.Run("числовой код", func(t *testing.T) {
-		t.Parallel()
-		root := metadataProject(t)
-		writeMetadata(t, root, CatalogKind, catalogID, `format: 1
+	root := metadataProject(t)
+	writeMetadata(t, root, CatalogKind, catalogID, `format: 1
 id: `+catalogID+`
 name: Номенклатура
 title: {ru: Номенклатура}
 code: {type: number, length: 9, auto: true, fixed_length: true}
 description_length: 150
 `)
-		_, err := Load(root)
-		if err == nil || !strings.Contains(err.Error(), "string codes only") {
-			t.Fatalf("err = %v", err)
-		}
-	})
-	t.Run("числовой номер", func(t *testing.T) {
-		t.Parallel()
-		root := metadataProject(t)
-		writeMetadata(t, root, DocumentKind, documentID, `format: 1
+	writeMetadata(t, root, DocumentKind, documentID, `format: 1
 id: `+documentID+`
 name: Накладная
 title: {ru: Накладная}
 number: {type: number, length: 9, auto: true, periodicity: year, fixed_length: true}
 `)
-		_, err := Load(root)
-		if err == nil || !strings.Contains(err.Error(), "string numbers only") {
-			t.Fatalf("err = %v", err)
-		}
-	})
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a fixed length on a number was refused: %v", err)
+	}
+	goods, _ := catalog.CatalogDefinition("Номенклатура")
+	invoice, _ := catalog.DocumentDefinition("Накладная")
+	if !goods.Code.FixedLength || !invoice.Number.FixedLength {
+		t.Fatal("the setting was lost")
+	}
+	if got := codeSQLType(goods.Code); got != "numeric(9,0)" {
+		t.Fatalf("the code column is %s", got)
+	}
+	if got := documentNumberSQLType(invoice.Number); got != "numeric(9,0)" {
+		t.Fatalf("the number column is %s", got)
+	}
 }
 
 // The numerator was missing from the plan for this point, and it is the one

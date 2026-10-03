@@ -46,11 +46,19 @@ func TestACodeOfLengthZeroIsSwitchedOff(t *testing.T) {
 	}
 	for name, testCase := range map[string]struct{ body, message string }{
 		"ввод по строке по коду": {codelessCatalog("input_by_string:\n  - {standard: Код}\n"), "switched off by a length of 0"},
-		"код предопределённого":  {codelessCatalog("predefined:\n  - {id: 6f0a0000-0000-4000-8000-000000000001, name: Основной, code: \"001\"}\n"), "code is switched off"},
 	} {
 		if err := decode(testCase.body); err == nil || !strings.Contains(err.Error(), testCase.message) {
 			t.Fatalf("%s: error = %v, expected it to say %q", name, err, testCase.message)
 		}
+	}
+	// The code an item kept from when the catalog had one is carried, and
+	// creates nothing: there is no field to put it in.
+	kept, err := DecodeCatalog("object.yaml", strings.NewReader(codelessCatalog("predefined:\n  - {id: 6f0a0000-0000-4000-8000-000000000001, name: Основной, code: \"001\"}\n")), metadataConfiguration())
+	if err != nil {
+		t.Fatalf("the code a predefined item kept was refused: %v", err)
+	}
+	if item := kept.Predefined[0]; item.Code != "001" || item.EffectiveCode(kept.Code) != "" {
+		t.Fatalf("code = %q, effective = %q: want the code kept and nothing created from it", item.Code, item.EffectiveCode(kept.Code))
 	}
 	// A predefined item of a codeless catalog needs no code.
 	if err := decode(codelessCatalog("predefined:\n  - {id: 6f0a0000-0000-4000-8000-000000000001, name: Основной}\n")); err != nil {

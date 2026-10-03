@@ -316,11 +316,6 @@ func TestBrokenCharacteristicDescriptionsAreRefused(t *testing.T) {
       table: {kind: catalogs, object: ` + characteristicSets + `, table_part: ` + characteristicSetsPart + `}
       key: {attribute: ` + characteristicSetsProperty + `, standard: ref}
 ` + values, "not both"},
-		"поле не названо вовсе": {`characteristics:
-  - types:
-      table: {kind: catalogs, object: ` + characteristicSets + `, table_part: ` + characteristicSetsPart + `}
-      key: {}
-` + values, "must name an attribute or a standard field"},
 		"стандартного поля такого нет": {`characteristics:
   - types:
       table: {kind: catalogs, object: ` + characteristicSets + `, table_part: ` + characteristicSetsPart + `}

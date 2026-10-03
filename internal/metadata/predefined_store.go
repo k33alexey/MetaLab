@@ -120,7 +120,7 @@ func (repository *CatalogRepository) predefinedIdentities(ctx context.Context, t
 
 func (repository *CatalogRepository) newPredefinedRecord(ctx context.Context, transaction pgx.Tx, definition CatalogDefinition, item PredefinedCatalogItem) (*CatalogRecord, error) {
 	record := &CatalogRecord{
-		Reference: CatalogReference{CatalogID: definition.ID, ObjectID: item.ID}, Code: item.Code,
+		Reference: CatalogReference{CatalogID: definition.ID, ObjectID: item.ID}, Code: item.EffectiveCode(definition.Code),
 		Description: item.Description, PredefinedName: item.Name, IsFolder: item.IsFolder,
 		Attributes: make(map[uuid.UUID]Value), TableParts: make(map[uuid.UUID][]CatalogRow),
 	}

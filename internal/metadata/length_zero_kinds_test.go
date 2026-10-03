@@ -47,11 +47,16 @@ func TestTheOtherKindsTakeALengthOfZeroAsTheDesignerDoes(t *testing.T) {
 			_, err := DecodeChartOfAccounts("object.yaml", strings.NewReader("format: 1\nid: "+accountsID+"\nname: Основной\ntitle: {ru: Основной}\ncode: {type: string, length: 5}\ndescription_length: 0\n"), configuration)
 			return err
 		}, "description_length must be 1..150"},
+		"код предопределённого вида расчёта": {func() error {
+			_, err := DecodeChartOfCalculationTypes("object.yaml", strings.NewReader("format: 1\nid: "+accountsID+"\nname: Начисления\ntitle: {ru: Начисления}\ncode: {type: string, length: 0}\ndescription_length: 100\n"+
+				"predefined:\n  - {id: 81000000-0000-4000-8000-000000000002, name: Оклад, code: \"1\"}\n"), configuration)
+			return err
+		}, ""},
 		"код предопределённого счёта": {func() error {
 			_, err := DecodeChartOfAccounts("object.yaml", strings.NewReader("format: 1\nid: "+accountsID+"\nname: Основной\ntitle: {ru: Основной}\ncode: {type: string, length: 0}\ndescription_length: 100\n"+
 				"predefined:\n  - {id: 81000000-0000-4000-8000-000000000001, name: Касса, code: \"50\", kind: active}\n"), configuration)
 			return err
-		}, "code is switched off"},
+		}, ""},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

@@ -225,11 +225,9 @@ func validateNumberShapeOf(number DocumentNumber, mayBeAbsent bool) []string {
 	default:
 		issues = append(issues, "number.periodicity must be none, year, quarter, month or day")
 	}
-	// A number padded to a width is a string padded to a width; a numeric
-	// number has digits, and nothing to pad with spaces.
-	if number.FixedLength && number.Type != StringType {
-		issues = append(issues, "number.fixed_length is allowed for string numbers only")
-	}
+	// A numeric number has digits and nothing to pad with spaces, so a fixed
+	// length on it is carried and acts on nothing, as on a numeric code - see
+	// validateCodeAllowedLength and NoteFixedLengthOfNumber.
 	return issues
 }
 
@@ -366,7 +364,11 @@ func validateTablePartProperties(prefix string, part TablePart, rules tablePartR
 		issues = append(issues, prefix+".use must be for-item, for-folder or for-folder-and-item")
 	case !rules.use:
 		issues = append(issues, prefix+".use belongs to a table part of a catalog or a chart of characteristic types, and this is neither")
-	case part.Use.forFolders() && !rules.folders:
+	// «For folder and item» without folders is what switching the folders off
+	// leaves behind, on a table part as on an attribute (2/2/3 table parts):
+	// it reads as «for item» and is a note. «For folder» alone has nothing to
+	// fall back to.
+	case part.Use == UseForFolder && !rules.folders:
 		issues = append(issues, prefix+".use reaches folders, and this object has none")
 	}
 	return issues

@@ -208,26 +208,18 @@ func validateAddressing(value TaskDefinition, configuration project.Project) []s
 		if attribute.Dimension != nil && attribute.Dimension.IsZero() {
 			issues = append(issues, prefix+".dimension must be a non-zero UUID")
 		}
-		// An addressing attribute matched against nothing addresses nothing:
-		// the register is where the people behind a role are found.
-		if attribute.Dimension != nil && value.Addressing == nil {
-			issues = append(issues, prefix+".dimension needs an addressing register")
-		}
 	}
 	if value.Addressing != nil && value.Addressing.IsZero() {
 		issues = append(issues, "addressing must be a non-zero UUID")
 	}
-	if value.Addressing != nil && len(value.AddressingAttributes) == 0 {
-		issues = append(issues, "an addressing register without addressing attributes matches nothing")
-	}
-	if len(value.AddressingAttributes) > 0 && value.Addressing == nil {
-		issues = append(issues, "addressing attributes need the register that resolves them")
-	}
+	// Addressing left half done - a register without attributes, attributes
+	// without a register or without the main one, a dimension without a
+	// register - is saved by the configurator: mdclasses keeps a task with
+	// one addressing attribute and neither a register nor a main attribute,
+	// and a task with a register and no attributes. It is carried, addresses
+	// nobody, and is a note (NoteIncompleteAddressing).
 	if value.MainAddressingAttribute != "" && !names[strings.ToLower(value.MainAddressingAttribute)] {
 		issues = append(issues, "main_addressing_attribute names "+value.MainAddressingAttribute+", which is not an addressing attribute")
-	}
-	if value.MainAddressingAttribute == "" && len(value.AddressingAttributes) > 0 {
-		issues = append(issues, "main_addressing_attribute is required: without it nobody knows which attribute holds the performer")
 	}
 	if value.CurrentPerformer != nil && value.CurrentPerformer.IsZero() {
 		issues = append(issues, "current_performer must be a non-zero UUID")

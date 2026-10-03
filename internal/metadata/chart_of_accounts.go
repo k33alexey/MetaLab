@@ -363,16 +363,18 @@ func validatePredefinedAccounts(value ChartOfAccountsDefinition) []string {
 		default:
 			issues = append(issues, prefix+".kind must be active, passive or active-passive")
 		}
-		if value.Code.Length == 0 {
-			if account.Code != "" {
-				issues = append(issues, prefix+".code is given, and the code is switched off by a length of 0")
-			}
-		} else if account.Code == "" {
+		// A code kept from when the code was on is carried, as on a catalog -
+		// see PredefinedCatalogItem.EffectiveCode.
+		switch {
+		case value.Code.Length == 0:
+		case account.Code == "":
 			if !value.Code.Auto {
 				issues = append(issues, prefix+".code is required when automatic codes are disabled")
 			}
-		} else if _, err := normalizeCatalogCode(value.Code, account.Code); err != nil {
-			issues = append(issues, prefix+".code is invalid: "+err.Error())
+		default:
+			if _, err := normalizeCatalogCode(value.Code, account.Code); err != nil {
+				issues = append(issues, prefix+".code is invalid: "+err.Error())
+			}
 		}
 		// The order lies in a column as wide as the order length - or the code
 		// length where the order length is not given - so a longer one is the

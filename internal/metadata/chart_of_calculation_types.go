@@ -182,16 +182,18 @@ func validatePredefinedCalculationTypes(value ChartOfCalculationTypesDefinition)
 			issues = append(issues, prefix+".name must be unique")
 		}
 		names[folded] = true
-		if value.Code.Length == 0 {
-			if item.Code != "" {
-				issues = append(issues, prefix+".code is given, and the code is switched off by a length of 0")
-			}
-		} else if item.Code == "" {
+		// A code kept from when the code was on is carried, as on a catalog -
+		// see PredefinedCatalogItem.EffectiveCode.
+		switch {
+		case value.Code.Length == 0:
+		case item.Code == "":
 			if !value.Code.Auto {
 				issues = append(issues, prefix+".code is required when automatic codes are disabled")
 			}
-		} else if _, err := normalizeCatalogCode(value.Code, item.Code); err != nil {
-			issues = append(issues, prefix+".code is invalid: "+err.Error())
+		default:
+			if _, err := normalizeCatalogCode(value.Code, item.Code); err != nil {
+				issues = append(issues, prefix+".code is invalid: "+err.Error())
+			}
 		}
 		if utf8.RuneCountInString(item.Description) > value.DescriptionLength {
 			issues = append(issues, fmt.Sprintf("%s.description must not exceed %d characters", prefix, value.DescriptionLength))

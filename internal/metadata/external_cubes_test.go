@@ -253,10 +253,16 @@ func TestExternalCubeCarriesCharacteristicsInShape(t *testing.T) {
 	if again, _ := catalog.ExternalCube("Склад", "Продажи"); again.Characteristics[0].Types.Key.Standard != RefStandardField {
 		t.Fatal("changing a copy's characteristics changed the catalog")
 	}
+	// A characteristic with its key left unnamed is what the prototype saves
+	// with the tables chosen and the fields not: carried, offering nothing.
 	root = metadataProject(t)
-	writeSalesCube(t, root, salesCubeBody+strings.Replace(characteristics, "      key: {standard: ref}\n", "", 1), goodsDimTableBody)
-	if message := loadRefused(t, root, "a characteristic with no key"); !strings.Contains(message, "characteristics[0].types.key") {
-		t.Fatalf("the error does not name the property: %v", message)
+	writeSalesCube(t, root, salesCubeBody+strings.Replace(characteristics, "      key: {standard: ref}\n", "      key: {}\n", 1), goodsDimTableBody)
+	unfilled, err := Load(root)
+	if err != nil {
+		t.Fatalf("an unfilled characteristic was refused: %v", err)
+	}
+	if cube, _ := unfilled.ExternalCube("Склад", "Продажи"); len(cube.Characteristics) != 1 || cube.Characteristics[0].Filled() {
+		t.Fatalf("the unfilled characteristic was lost or reads as filled: %+v", cube.Characteristics)
 	}
 }
 

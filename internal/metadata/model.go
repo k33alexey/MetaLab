@@ -470,6 +470,17 @@ type PredefinedCatalogItem struct {
 	Attributes map[string]Value `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 }
 
+// EffectiveCode is the code a predefined item is created with: the code
+// written, and nothing when the catalog's code is switched off by a length of
+// 0 - the item then keeps the code it had while there was one, and there is no
+// field to put it in. Everything that creates an item reads its code here.
+func (item PredefinedCatalogItem) EffectiveCode(code CatalogCode) string {
+	if code.Length == 0 {
+		return ""
+	}
+	return item.Code
+}
+
 type Attribute struct {
 	ID      uuid.UUID     `yaml:"id" json:"id"`
 	Name    string        `yaml:"name" json:"name"`
@@ -1318,11 +1329,12 @@ func validateCodeAllowedLength(shape referenceObjectShape) []string {
 	if !shape.codeAllowedLength {
 		return []string{"code.fixed_length belongs to a kind that chooses the length of its code, and this one takes it from the code mask"}
 	}
-	// A number is not padded to a width: its length is a count of digits, and
-	// a setting about spaces on the right says nothing about it.
-	if shape.code.Type != StringType {
-		return []string{"code.fixed_length is allowed for string codes only"}
-	}
+	// A number is not padded to a width, so the setting does nothing on a
+	// numeric code - and the prototype writes it there all the same, left
+	// from when the code was a string: 3/5/0 catalogs and 6 in energy. The
+	// help says the setting has a meaning for a string code, not that it is
+	// forbidden on a number. It is carried and acts on nothing - the schema
+	// asks the type first - and is a note (NoteFixedLengthOfNumber).
 	return nil
 }
 
@@ -1473,16 +1485,21 @@ func validatePredefinedItems(shape referenceObjectShape) []string {
 		if item.Parent != "" && strings.EqualFold(item.Parent, item.Name) {
 			issues = append(issues, prefix+".parent is the item itself")
 		}
-		if shape.code.Length == 0 {
-			if item.Code != "" {
-				issues = append(issues, prefix+".code is given, and the code is switched off by a length of 0")
-			}
-		} else if item.Code == "" {
+		// A code on an item of a catalog whose code is switched off is the code
+		// it had while there was one: the prototype keeps it (106/40/75 items
+		// of 4/3/7 catalogs), and the items of catalogs that never had a code
+		// carry an empty one. It is carried, creates nothing - see
+		// PredefinedCatalogItem.EffectiveCode - and is a note.
+		switch {
+		case shape.code.Length == 0:
+		case item.Code == "":
 			if !shape.code.Auto {
 				issues = append(issues, prefix+".code is required when automatic codes are disabled")
 			}
-		} else if _, err := normalizeCatalogCode(shape.code, item.Code); err != nil {
-			issues = append(issues, prefix+".code is invalid: "+err.Error())
+		default:
+			if _, err := normalizeCatalogCode(shape.code, item.Code); err != nil {
+				issues = append(issues, prefix+".code is invalid: "+err.Error())
+			}
 		}
 		if !utf8.ValidString(item.Description) || utf8.RuneCountInString(item.Description) > shape.descriptionLength {
 			issues = append(issues, fmt.Sprintf("%s.description must not exceed %d characters", prefix, shape.descriptionLength))

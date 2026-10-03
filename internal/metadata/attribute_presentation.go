@@ -342,10 +342,12 @@ func validateChoiceFormReference(path string, form ChoiceFormReference) []string
 
 func validateChoiceParameters(prefix string, choice FieldChoice) []string {
 	var issues []string
-	// One parameter cannot be both fixed and taken from another field: the
-	// two answers would be applied one after the other, and which of them
-	// wins is not a thing a description should leave to be found out.
-	names := map[string]bool{}
+	// A parameter is named once among the fixed ones and once among the
+	// linked ones, and the two lists are apart: the help gives them as two
+	// properties, and the prototype saves one name in both (8/4/4 fields,
+	// БСП among them). Such a pair is carried and is a note; which of the two
+	// a form applies is decided with the choice in forms.
+	names, linked := map[string]bool{}, map[string]bool{}
 	for index, parameter := range choice.Parameters {
 		path := fmt.Sprintf("%s.choice.parameters[%d]", prefix, index)
 		issues = append(issues, validateChoiceParameterName(path, parameter.Name, names)...)
@@ -361,7 +363,7 @@ func validateChoiceParameters(prefix string, choice FieldChoice) []string {
 	}
 	for index, link := range choice.ParameterLinks {
 		path := fmt.Sprintf("%s.choice.parameter_links[%d]", prefix, index)
-		issues = append(issues, validateChoiceParameterName(path, link.Name, names)...)
+		issues = append(issues, validateChoiceParameterName(path, link.Name, linked)...)
 		issues = append(issues, validateFieldPathShape(path, link.Source)...)
 		switch link.Change {
 		case "", ValueChangeClear, ValueChangeDontChange:
@@ -388,7 +390,7 @@ func validateChoiceParameterName(path, name string, seen map[string]bool) []stri
 	}
 	folded := strings.ToLower(name)
 	if seen[folded] {
-		issues = append(issues, path+".name is already set or linked")
+		issues = append(issues, path+".name is used twice in one list")
 	}
 	seen[folded] = true
 	return issues

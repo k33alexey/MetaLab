@@ -53,6 +53,34 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 	NoteLevelOfHierarchyTable: func(t *testing.T, root string) {
 		writeSalesCube(t, root, noteCubeBody(), goodsDimTableBody+"level_number: 1\n")
 	},
+	NoteFixedLengthOfNumber: func(t *testing.T, root string) {
+		id := uuid.MustNew().String()
+		writeMetadata(t, root, CatalogKind, id, "format: 1\nid: "+id+"\nname: Комиссии\ntitle: {ru: Комиссии}\n"+
+			"code: {type: number, length: 9, auto: true, fixed_length: true}\ndescription_length: 150\n")
+	},
+	NotePredefinedCodeKept: func(t *testing.T, root string) {
+		id := uuid.MustNew().String()
+		writeMetadata(t, root, CatalogKind, id, "format: 1\nid: "+id+"\nname: ГруппыПользователей\ntitle: {ru: Группы}\n"+
+			"code: {type: string, length: 0}\ndescription_length: 150\npredefined:\n  - {id: "+uuid.MustNew().String()+", name: ВсеПользователи, code: \"000000001\"}\n")
+	},
+	NoteIncompleteAddressing: func(t *testing.T, root string) {
+		id := uuid.MustNew().String()
+		writeMetadata(t, root, TaskKind, id, "format: 1\nid: "+id+"\nname: Задача1\ntitle: {ru: Задача}\n"+
+			"number: {type: string, length: 11, auto: true, periodicity: none}\ndescription_length: 150\n"+
+			"addressing_attributes:\n  - {id: "+uuid.MustNew().String()+", name: Исполнитель, title: {ru: Исполнитель}, types: [{kind: string, length: 10}]}\n")
+	},
+	NoteUnfilledCharacteristic: func(t *testing.T, root string) {
+		id := uuid.MustNew().String()
+		writeMetadata(t, root, CatalogKind, id, "format: 1\nid: "+id+"\nname: Товары\ntitle: {ru: Товары}\n"+
+			"code: {type: string, length: 9, auto: true}\ndescription_length: 150\ncharacteristics:\n"+
+			"  - types: {table: {kind: catalogs, object: "+id+"}, key: {}}\n"+
+			"    values: {table: {kind: catalogs, object: "+id+"}, object: {}, type: {}, value: {}}\n")
+	},
+	NoteChoiceSetAndLinked: func(t *testing.T, root string) {
+		noteCatalog(t, root, "", noteField("string", "    choice:\n"+
+			"      parameters: [{name: Отбор.Код, values: [{kind: string, data: \"1\"}]}]\n"+
+			"      parameter_links: [{name: Отбор.Код, source: {standard: Код}}]\n"))
+	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
@@ -181,6 +209,27 @@ func TestSoundSettingsCarryNoNotes(t *testing.T) {
 		"    filling: {value: {kind: undefined, data: \"\"}}\n")
 	writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
 	writeSalesCube(t, root, noteCubeBody(), goodsDimTableBody)
+	// A fixed length on a string code, a codeless catalog whose item has no
+	// code, addressing done whole, a parameter set and another linked.
+	fixed := uuid.MustNew().String()
+	writeMetadata(t, root, CatalogKind, fixed, "format: 1\nid: "+fixed+"\nname: Склады\ntitle: {ru: Склады}\n"+
+		"code: {type: string, length: 9, fixed_length: true}\ndescription_length: 150\n"+
+		"predefined:\n  - {id: "+uuid.MustNew().String()+", name: Основной, code: \"001\"}\n"+
+		"attributes:\n  - id: "+uuid.MustNew().String()+"\n    name: Поле\n    title: {ru: Поле}\n    types: [{kind: string, length: 10}]\n"+
+		"    choice:\n      parameters: [{name: Отбор.Вид, values: [{kind: string, data: \"1\"}]}]\n"+
+		"      parameter_links: [{name: Отбор.Код, source: {standard: Код}}]\n")
+	codeless := uuid.MustNew().String()
+	writeMetadata(t, root, CatalogKind, codeless, "format: 1\nid: "+codeless+"\nname: Группы\ntitle: {ru: Группы}\n"+
+		"code: {type: string, length: 0}\ndescription_length: 150\npredefined:\n  - {id: "+uuid.MustNew().String()+", name: Все}\n")
+	register, dimension := uuid.MustNew().String(), uuid.MustNew().String()
+	writeMetadata(t, root, InformationRegisterKind, register, "format: 1\nid: "+register+"\nname: Исполнители\ntitle: {ru: Исполнители}\n"+
+		"write_mode: independent\nperiodicity: none\ndimensions:\n  - {id: "+dimension+", name: Роль, title: {ru: Роль}, types: [{kind: string, length: 10}]}\n"+
+		"resources:\n  - {id: "+uuid.MustNew().String()+", name: Исполнитель, title: {ru: Исполнитель}, types: [{kind: string, length: 10}]}\n")
+	task := uuid.MustNew().String()
+	writeMetadata(t, root, TaskKind, task, "format: 1\nid: "+task+"\nname: Задача\ntitle: {ru: Задача}\n"+
+		"number: {type: string, length: 11, auto: true, periodicity: none}\ndescription_length: 150\n"+
+		"addressing: "+register+"\nmain_addressing_attribute: Роль\n"+
+		"addressing_attributes:\n  - {id: "+uuid.MustNew().String()+", name: Роль, title: {ru: Роль}, types: [{kind: string, length: 10}], dimension: "+dimension+"}\n")
 	document := uuid.MustNew().String()
 	writeMetadata(t, root, DocumentKind, document, "format: 1\nid: "+document+"\nname: Заметка\ntitle: {ru: Заметка}\n"+
 		"number: {type: string, length: 11, periodicity: year}\nposting: {allowed: true, real_time: deny, records_deletion: auto}\n")
@@ -190,5 +239,68 @@ func TestSoundSettingsCarryNoNotes(t *testing.T) {
 	}
 	if notes := catalog.Notes(); len(notes) != 0 {
 		t.Fatalf("sound settings carry notes: %+v", notes)
+	}
+}
+
+// A characteristic that names its four fields is filled, and one that leaves
+// any of them unnamed is not.
+//
+// Defect caught: Filled answering for the key alone, so that a characteristic
+// with no value field offers characteristics of nothing.
+func TestACharacteristicIsFilledByItsFourFields(t *testing.T) {
+	t.Parallel()
+	field := CharacteristicField{Standard: RefStandardField}
+	filled := ObjectCharacteristic{Types: CharacteristicTypes{Key: field}, Values: CharacteristicValues{Object: field, Type: field, Value: field}}
+	if !filled.Filled() {
+		t.Fatal("a characteristic naming its four fields reads as unfilled")
+	}
+	for name, unfill := range map[string]func(*ObjectCharacteristic){
+		"key":    func(c *ObjectCharacteristic) { c.Types.Key = CharacteristicField{} },
+		"object": func(c *ObjectCharacteristic) { c.Values.Object = CharacteristicField{} },
+		"type":   func(c *ObjectCharacteristic) { c.Values.Type = CharacteristicField{} },
+		"value":  func(c *ObjectCharacteristic) { c.Values.Value = CharacteristicField{} },
+	} {
+		copied := filled
+		unfill(&copied)
+		if copied.Filled() {
+			t.Errorf("a characteristic without its %s field reads as filled", name)
+		}
+	}
+}
+
+// A table part «for folder and item» on an object without folders is carried
+// and noted, as an attribute is; with folders it is sound.
+//
+// Defect caught: the table part refused (2/2/3 table parts of the test
+// configurations), and the table part accepted without a note.
+func TestATablePartForFolderAndItemWithoutFoldersIsNoted(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		hierarchy string
+		notes     int
+	}{
+		"без групп":  {"hierarchy: {enabled: true, kind: items}\n", 1},
+		"с группами": {"hierarchy: {enabled: true, kind: folders-and-items}\n", 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := metadataProject(t)
+			noteCatalog(t, root, test.hierarchy+"table_parts:\n  - id: "+uuid.MustNew().String()+"\n    name: Состав\n    title: {ru: Состав}\n"+
+				"    use: for-folder-and-item\n    attributes:\n"+
+				"      - {id: "+uuid.MustNew().String()+", name: Пользователь, title: {ru: Пользователь}, types: [{kind: string, length: 10}]}\n", "")
+			catalog, err := Load(root)
+			if err != nil {
+				t.Fatalf("refused: %v", err)
+			}
+			var noted int
+			for _, note := range catalog.Notes() {
+				if note.Kind == NoteFolderUseWithoutFolds && strings.Contains(note.Where, "Состав") {
+					noted++
+				}
+			}
+			if noted != test.notes {
+				t.Fatalf("notes on the table part = %d, want %d: %+v", noted, test.notes, catalog.Notes())
+			}
+		})
 	}
 }

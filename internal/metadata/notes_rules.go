@@ -11,18 +11,23 @@ import (
 // iteration of block 2 stopped refusing; the comment beside the old refusal's
 // place says why, and the description below says it for the report.
 const (
-	NoteUnresolvedPath        NoteKind = "unresolved-path"
-	NoteUnusedBound           NoteKind = "unused-bound"
-	NoteFillingNotHeld        NoteKind = "filling-not-held"
-	NoteValueOfVanishedType   NoteKind = "value-of-vanished-type"
-	NoteInactiveHierarchy     NoteKind = "inactive-hierarchy"
-	NoteFolderUseWithoutFolds NoteKind = "folder-use-without-folders"
-	NoteFieldOutsideIndex     NoteKind = "field-outside-full-text-index"
-	NoteFieldOutsideHistory   NoteKind = "field-outside-data-history"
-	NoteInactivePosting       NoteKind = "inactive-posting-settings"
-	NotePictureWithoutPicture NoteKind = "picture-without-picture"
-	NoteParameterUseNoType    NoteKind = "parameter-use-without-type"
-	NoteLevelOfHierarchyTable NoteKind = "level-of-hierarchical-table"
+	NoteUnresolvedPath         NoteKind = "unresolved-path"
+	NoteUnusedBound            NoteKind = "unused-bound"
+	NoteFillingNotHeld         NoteKind = "filling-not-held"
+	NoteValueOfVanishedType    NoteKind = "value-of-vanished-type"
+	NoteInactiveHierarchy      NoteKind = "inactive-hierarchy"
+	NoteFolderUseWithoutFolds  NoteKind = "folder-use-without-folders"
+	NoteFieldOutsideIndex      NoteKind = "field-outside-full-text-index"
+	NoteFieldOutsideHistory    NoteKind = "field-outside-data-history"
+	NoteInactivePosting        NoteKind = "inactive-posting-settings"
+	NotePictureWithoutPicture  NoteKind = "picture-without-picture"
+	NoteParameterUseNoType     NoteKind = "parameter-use-without-type"
+	NoteLevelOfHierarchyTable  NoteKind = "level-of-hierarchical-table"
+	NoteFixedLengthOfNumber    NoteKind = "fixed-length-of-number"
+	NotePredefinedCodeKept     NoteKind = "predefined-code-without-code"
+	NoteIncompleteAddressing   NoteKind = "incomplete-addressing"
+	NoteUnfilledCharacteristic NoteKind = "unfilled-characteristic"
+	NoteChoiceSetAndLinked     NoteKind = "choice-parameter-set-and-linked"
 )
 
 func init() {
@@ -69,6 +74,25 @@ func init() {
 			"Номер уровня у иерархической таблицы измерения куба внешнего источника, отличный от нуля: справка даёт такой " +
 				"таблице уровень 0, а конфигуратор сохраняет записанный.",
 			"Номер несётся как записан, приложение видит уровень 0."},
+		NoteKindInfo{NoteFixedLengthOfNumber,
+			"«Допустимая длина: фиксированная» у числового кода или номера — след времени, когда код был строкой. " +
+				"Справка: свойство имеет смысл для строки.",
+			"Настройка несётся как записана и ни на что не влияет: колонка остаётся числом."},
+		NoteKindInfo{NotePredefinedCodeKept,
+			"Код предопределённого элемента у объекта, длина кода которого 0: код, оставшийся с тех пор, как код был.",
+			"Код несётся как записан; элемент создаётся без кода — поля для него нет."},
+		NoteKindInfo{NoteIncompleteAddressing,
+			"Адресация задачи заполнена наполовину: регистр без реквизитов адресации, реквизиты без регистра или без " +
+				"основного реквизита, измерение без регистра. Конфигуратор такое сохраняет (mdclasses).",
+			"Адресация несётся как записана и исполнителя не определяет."},
+		NoteKindInfo{NoteUnfilledCharacteristic,
+			"Характеристика с выбранными таблицами, но без полей ключа, объекта, вида или значения " +
+				"(в выгрузке поля записаны как -1).",
+			"Характеристика несётся как записана и характеристик объекту не даёт."},
+		NoteKindInfo{NoteChoiceSetAndLinked,
+			"Один и тот же параметр выбора задан и значением, и связью параметров выбора: два свойства прототипа, " +
+				"имя в обоих.",
+			"Оба несутся как записаны; какое из них применяет форма, решается вместе с исполнением выбора в формах (блок 7)."},
 	)
 	noteRules[NoteUnresolvedPath] = noteUnresolvedPath
 	noteRules[NoteUnusedBound] = noteUnusedBound
@@ -82,6 +106,11 @@ func init() {
 	noteRules[NotePictureWithoutPicture] = notePictureWithoutPicture
 	noteRules[NoteParameterUseNoType] = noteParameterUseNoType
 	noteRules[NoteLevelOfHierarchyTable] = noteLevelOfHierarchyTable
+	noteRules[NoteFixedLengthOfNumber] = noteFixedLengthOfNumber
+	noteRules[NotePredefinedCodeKept] = notePredefinedCodeKept
+	noteRules[NoteIncompleteAddressing] = noteIncompleteAddressing
+	noteRules[NoteUnfilledCharacteristic] = noteUnfilledCharacteristic
+	noteRules[NoteChoiceSetAndLinked] = noteChoiceSetAndLinked
 }
 
 func noteUnresolvedPath(catalog *Catalog, note func(where, written string)) {
@@ -237,12 +266,81 @@ func noteLevelOfHierarchyTable(catalog *Catalog, note func(where, written string
 	})
 }
 
+func noteFixedLengthOfNumber(catalog *Catalog, note func(where, written string)) {
+	eachNoteHolder(catalog, func(holder noteHolder) {
+		if code := holder.code; code != nil && code.FixedLength && code.Type != StringType {
+			note(holder.where+" fixed_length", string(code.Type))
+		}
+		if number := holder.number; number != nil && number.FixedLength && number.Type != StringType {
+			note(holder.where+" fixed_length", string(number.Type))
+		}
+	})
+}
+
+func notePredefinedCodeKept(catalog *Catalog, note func(where, written string)) {
+	eachNoteHolder(catalog, func(holder noteHolder) {
+		if holder.predefinedCode != nil && *holder.predefinedCode != "" && holder.object.code != nil && holder.object.code.Length == 0 {
+			note(holder.where+" code", *holder.predefinedCode)
+		}
+	})
+}
+
+func noteIncompleteAddressing(catalog *Catalog, note func(where, written string)) {
+	eachNoteHolder(catalog, func(holder noteHolder) {
+		task := holder.task
+		if task == nil {
+			return
+		}
+		switch {
+		case task.Addressing != nil && len(task.AddressingAttributes) == 0:
+			note(holder.where+" addressing", "a register without addressing attributes")
+		case task.Addressing == nil && len(task.AddressingAttributes) > 0:
+			note(holder.where+" addressing", "addressing attributes without a register")
+		case len(task.AddressingAttributes) > 0 && task.MainAddressingAttribute == "":
+			note(holder.where+" addressing", "addressing attributes without the main one")
+		}
+		if task.Addressing == nil {
+			for _, attribute := range task.AddressingAttributes {
+				if attribute.Dimension != nil {
+					note(holder.where+" addressing_attributes "+attribute.Name+" dimension", attribute.Dimension.String())
+				}
+			}
+		}
+	})
+}
+
+func noteUnfilledCharacteristic(catalog *Catalog, note func(where, written string)) {
+	eachNoteHolder(catalog, func(holder noteHolder) {
+		if holder.characteristic != nil && !holder.characteristic.Filled() {
+			note(holder.where, "a characteristic with its fields unnamed")
+		}
+	})
+}
+
+func noteChoiceSetAndLinked(catalog *Catalog, note func(where, written string)) {
+	eachNoteHolder(catalog, func(holder noteHolder) {
+		if holder.choice == nil {
+			return
+		}
+		set := map[string]bool{}
+		for _, parameter := range holder.choice.Parameters {
+			set[strings.ToLower(parameter.Name)] = true
+		}
+		for _, link := range holder.choice.ParameterLinks {
+			if set[strings.ToLower(link.Name)] {
+				note(holder.where+" choice "+link.Name, link.Name)
+			}
+		}
+	})
+}
+
 // noteObject is what a rule may need to know about the top-level object a
 // holder stands in: the settings a field's own flag depends on.
 type noteObject struct {
 	hierarchy      *Hierarchy
 	fullTextSearch *FullTextSearchMode
 	dataHistory    *DataHistoryMode
+	code           *CatalogCode
 }
 
 // noteHolder is one struct of the model that carries something a rule looks
@@ -266,6 +364,11 @@ type noteHolder struct {
 	parameterUse   *CommandParameterUse
 	parameter      *[]Type
 	dimensionTable *ExternalDimensionTable
+	code           *CatalogCode
+	number         *DocumentNumber
+	predefinedCode *string
+	task           *TaskDefinition
+	characteristic *ObjectCharacteristic
 }
 
 // eachNoteHolder walks every object of the catalog, top level and nested, and
@@ -300,6 +403,9 @@ func objectContext(object reflect.Value) noteObject {
 	}
 	if field := object.FieldByName("DataHistory"); field.IsValid() && field.Type() == reflect.TypeFor[DataHistoryMode]() {
 		context.dataHistory = field.Addr().Interface().(*DataHistoryMode)
+	}
+	if field := object.FieldByName("Code"); field.IsValid() && field.Type() == reflect.TypeFor[CatalogCode]() {
+		context.code = field.Addr().Interface().(*CatalogCode)
 	}
 	return context
 }
@@ -373,9 +479,28 @@ func holderOf(value reflect.Value, where string, object noteObject) (noteHolder,
 	take("Representation", reflect.TypeFor[CommandRepresentation](), func(v reflect.Value) { holder.representation = v.Interface().(*CommandRepresentation) })
 	take("ParameterUse", reflect.TypeFor[CommandParameterUse](), func(v reflect.Value) { holder.parameterUse = v.Interface().(*CommandParameterUse) })
 	take("Parameter", reflect.TypeFor[[]Type](), func(v reflect.Value) { holder.parameter = v.Interface().(*[]Type) })
-	if value.Type() == reflect.TypeFor[ExternalDimensionTable]() {
+	switch value.Type() {
+	case reflect.TypeFor[ExternalDimensionTable]():
 		holder.dimensionTable = value.Addr().Interface().(*ExternalDimensionTable)
 		found = true
+	case reflect.TypeFor[CatalogCode]():
+		holder.code = value.Addr().Interface().(*CatalogCode)
+		found = true
+	case reflect.TypeFor[DocumentNumber]():
+		holder.number = value.Addr().Interface().(*DocumentNumber)
+		found = true
+	case reflect.TypeFor[TaskDefinition]():
+		holder.task = value.Addr().Interface().(*TaskDefinition)
+		found = true
+	case reflect.TypeFor[ObjectCharacteristic]():
+		holder.characteristic = value.Addr().Interface().(*ObjectCharacteristic)
+		found = true
+	case reflect.TypeFor[PredefinedCatalogItem](), reflect.TypeFor[PredefinedCalculationType](),
+		reflect.TypeFor[PredefinedAccount](), reflect.TypeFor[PredefinedCharacteristic]():
+		if field := value.FieldByName("Code"); field.IsValid() && field.Kind() == reflect.String {
+			holder.predefinedCode = field.Addr().Interface().(*string)
+			found = true
+		}
 	}
 	if !found {
 		return noteHolder{}, false
