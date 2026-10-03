@@ -129,6 +129,36 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		id := uuid.MustNew().String()
 		writeMetadata(t, root, FilterCriterionKind, id, "format: 1\nid: "+id+"\nname: СтруктураПодчиненности\ntitle: {ru: Структура}\ntypes: []\n")
 	},
+	NoteHTTPRootsDifferInCase: func(t *testing.T, root string) {
+		writeHTTPService(t, root, httpServiceID, "Биллинг", "root_url: billing\n")
+		writeHTTPService(t, root, secondHTTPServiceID, "БиллингНовый", "root_url: Billing\n")
+	},
+	NoteUnfilledParentWithoutTree: func(t *testing.T, root string) {
+		writeSalesCube(t, root, noteCubeBody(), strings.Replace(goodsDimTableBody, "hierarchical: true\n", "", 1))
+	},
+	NoteObjectTableWithoutKey: func(t *testing.T, root string) {
+		writeExternalSource(t, root, warehouseSource, "Склад", "")
+		writeExternalTable(t, root, "Склад", goodsTable, "Товары", strings.Replace(goodsBody, "key_fields: [Код]\n", "", 1))
+	},
+	NoteEmptyNameInSource: func(t *testing.T, root string) {
+		writeExternalSource(t, root, warehouseSource, "Склад", "")
+		writeExternalTable(t, root, "Склад", goodsTable, "Товары", strings.Replace(goodsBody, "name_in_data_source: dbo.Goods\n", "", 1))
+	},
+	NoteAmpersandZero: func(t *testing.T, root string) {
+		writeExternalSource(t, root, warehouseSource, "Склад", "functions:\n  - id: "+uuid.MustNew().String()+"\n    name: Флаги\n    title: {ru: Флаги}\n    expression_in_data_source: \"flags&0\"\n")
+	},
+	NoteLongExternalString: func(t *testing.T, root string) {
+		writeExternalSource(t, root, warehouseSource, "Склад", "")
+		writeExternalTable(t, root, "Склад", goodsTable, "Товары", strings.Replace(goodsBody, "types: [{kind: string, length: 150}]", "types: [{kind: string, length: 4294967295}]", 1))
+	},
+	NoteForeignSourceReference: func(t *testing.T, root string) {
+		writeExternalSource(t, root, warehouseSource, "Склад", "")
+		writeExternalTable(t, root, "Склад", goodsTable, "Товары", strings.Replace(goodsBody,
+			"reference: "+goodsTable+"}]\n    name_in_data_source: parent_code", "reference: "+foreignTable+"}]\n    name_in_data_source: parent_code", 1))
+		writeExternalSource(t, root, otherSource, "Бухгалтерия", "")
+		writeExternalTable(t, root, "Бухгалтерия", foreignTable, "Счета", "name_in_data_source: accounts\ndata_type: object\nkey_fields: [Код]\nfields:\n"+
+			"  - {id: "+foreignCodeField+", name: Код, title: {ru: Код}, types: [{kind: string, length: 10}], name_in_data_source: code}\n")
+	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
@@ -266,6 +296,13 @@ func TestSoundSettingsCarryNoNotes(t *testing.T) {
 		"    filling: {value: {kind: undefined, data: \"\"}}\n")
 	writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
 	writeSalesCube(t, root, noteCubeBody(), goodsDimTableBody)
+	// Two services on roots that differ by more than case, a template without
+	// a leading slash - the help asks for none - a table of a source keyed,
+	// named, with Null for an unfilled parent, and a function with a parameter.
+	writeHTTPService(t, root, httpServiceID, "Биллинг", "root_url: billing\ntemplates:\n  - {id: "+uuid.MustNew().String()+", name: Версия, title: {ru: Версия}, template: version}\n")
+	writeHTTPService(t, root, secondHTTPServiceID, "Заказы", "root_url: orders\n")
+	writeExternalTable(t, root, "Склад", goodsTable, "Товары", strings.Replace(goodsBody, `unfilled_parent_value: {kind: string, data: ""}`, `unfilled_parent_value: {kind: undefined, data: ""}`, 1))
+	writeExternalSource(t, root, warehouseSource, "Склад", "functions:\n  - id: "+uuid.MustNew().String()+"\n    name: Остаток\n    title: {ru: Остаток}\n    expression_in_data_source: \"SELECT f(&1, x&10)\"\n")
 	// A fixed length on a string code, a codeless catalog whose item has no
 	// code, addressing done whole, a parameter set and another linked.
 	fixed := uuid.MustNew().String()
@@ -422,5 +459,31 @@ func TestHalfSetRegistersAndNumeratorsBuild(t *testing.T) {
 	}
 	if len(schema.Tables) == 0 {
 		t.Fatal("no tables were built")
+	}
+}
+
+// A cube and a resource with no name in the source are carried and noted, as
+// a table and a field are.
+//
+// Defect caught: the cube refused over the empty name, or accepted without a
+// note for either of the two places.
+func TestACubeWithNoNameInTheSourceIsNoted(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	cube := strings.Replace(noteCubeBody(), "name_in_data_source: '[Sales]'\n", "", 1)
+	cube = strings.Replace(cube, "    name_in_data_source: '[Measures].[Quantity]'\n", "", 1)
+	writeSalesCube(t, root, cube, goodsDimTableBody)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("refused: %v", err)
+	}
+	var places []string
+	for _, note := range catalog.Notes() {
+		if note.Kind == NoteEmptyNameInSource {
+			places = append(places, note.Where)
+		}
+	}
+	if len(places) != 2 {
+		t.Fatalf("notes on empty names = %v, want the cube and its resource", places)
 	}
 }

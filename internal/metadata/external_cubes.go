@@ -191,9 +191,8 @@ func DecodeExternalDimensionTable(source string, reader io.Reader, configuration
 	//
 	// The value of an unfilled parent has no ceiling: the help types it as a
 	// string or Null and names none.
-	if value.UnfilledParentValue != nil && !value.Hierarchical {
-		issues = append(issues, "unfilled_parent_value belongs to a hierarchical dimension table: without a hierarchy a member has no parent")
-	}
+	// Without a hierarchy the value is never read; a table of a source keeps
+	// it there too (mdclasses), so it is carried and is a note.
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	issues = append(issues, validateExternalFieldGroups(configuration, externalFieldGroup{"fields", value.Fields})...)
@@ -293,10 +292,10 @@ func cubeFields(cube ExternalCube) []ExternalField {
 // validateRequiredNameInDataSource checks a name of the other database that has
 // to be there: a cube and a dimension table are nothing but a name of the
 // other database's object.
+// validateRequiredNameInDataSource checks a name in the source the help asks
+// for. Left empty it is carried and is a note, as on a table: the configurator
+// saves without it.
 func validateRequiredNameInDataSource(path, value, what string) []string {
-	if value == "" {
-		return []string{path + " must name " + what + " in the data source"}
-	}
 	return validateNameInDataSource(path, value)
 }
 

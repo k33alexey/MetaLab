@@ -289,8 +289,7 @@ func TestExternalTableDataTypeDecidesWhatTheTableMayHave(t *testing.T) {
 	t.Parallel()
 	for name, test := range map[string]struct{ body, says string }{
 		"an object table with two key fields": {strings.Replace(goodsBody, "key_fields: [Код]", "key_fields: [Код, Наименование]", 1),
-			"key_fields must name exactly one field"},
-		"an object table with no key": {strings.Replace(goodsBody, "key_fields: [Код]\n", "", 1), "key_fields must name exactly one field"},
+			"key_fields must name one field at most"},
 		"an object table with a form of a record": {strings.Replace(goodsBody, "forms: {object: ФормаТовара,", "forms: {record: ФормаЗаписи, object: ФормаТовара,", 1),
 			"forms.record belongs to a table of records"},
 		"records with a presentation field": {strings.Replace(goodsBody, "data_type: object", "data_type: non-object", 1),
@@ -314,7 +313,6 @@ func TestExternalTableDataTypeDecidesWhatTheTableMayHave(t *testing.T) {
 func TestExternalTableIsMadeOfATableOrAnExpression(t *testing.T) {
 	t.Parallel()
 	for name, test := range map[string]struct{ body, says string }{
-		"a table with no name": {strings.Replace(goodsBody, "name_in_data_source: dbo.Goods\n", "", 1), "name_in_data_source must name the table"},
 		"a table with an expression too": {strings.Replace(goodsBody, "name_in_data_source: dbo.Goods\n", "name_in_data_source: dbo.Goods\nexpression_in_data_source: SELECT 1\n", 1),
 			"expression_in_data_source belongs to a table made of an expression"},
 		"an expression with a name too": {strings.Replace(goodsBody, "name_in_data_source: dbo.Goods\n", "table_type: expression\nname_in_data_source: dbo.Goods\nexpression_in_data_source: SELECT 1\n", 1),
@@ -375,12 +373,7 @@ func TestExternalFieldRefusesWhatOnlyAnAttributeHas(t *testing.T) {
 			t.Fatalf("the bounds were lost: %+v", code.Presentation)
 		}
 	})
-	t.Run("no column", func(t *testing.T) {
-		t.Parallel()
-		if message := refusedExternalTable(t, strings.Replace(goodsBody, anchor, "", 1), "a field with no column"); !strings.Contains(message, "fields[0].name_in_data_source must name the column") {
-			t.Fatalf("the error does not say what is missing: %v", message)
-		}
-	})
+	// A field with no column is carried and noted (notes_test.go).
 	t.Run("two fields of one name", func(t *testing.T) {
 		t.Parallel()
 		body := strings.Replace(goodsBody, "    name: Версия\n", "    name: код\n", 1)
@@ -390,18 +383,17 @@ func TestExternalFieldRefusesWhatOnlyAnAttributeHas(t *testing.T) {
 	})
 }
 
-// A field refers only to an object table of its own source. Catches a
-// reference to a table of records, which has no reference; to a table of
-// another source, which is a key of another database; and to nothing.
+// A field refers to an object table. Catches a reference to a table of
+// records, which has no reference, and to nothing. A reference to a table of
+// another source is carried and noted (notes_test.go).
 func TestExternalFieldRefersToAnObjectTableOfItsOwnSource(t *testing.T) {
 	t.Parallel()
 	for name, test := range map[string]struct {
 		target, says string
 		foreign      bool
 	}{
-		"a table of records":        {stockTable, "holds records and has no reference", false},
-		"a table of another source": {foreignTable, "refers to a table of another source", true},
-		"nothing":                   {"f8000000-0000-4000-8000-0000000000ff", "refers to unknown table", false},
+		"a table of records": {stockTable, "holds records and has no reference", false},
+		"nothing":            {"f8000000-0000-4000-8000-0000000000ff", "refers to unknown table", false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

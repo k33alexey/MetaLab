@@ -158,9 +158,9 @@ func validateTemplatePath(path, value string) []string {
 	}
 	// No ceiling on the length: the help gives the template as a string and
 	// names none.
-	if !strings.HasPrefix(value, "/") {
-		return []string{path + " must begin with a slash: it continues the root address"}
-	}
+	// A leading slash is not required: the help lists what a template may
+	// hold - the characters of an identifier, «/», «{…}» and «*» - and asks
+	// for no slash first.
 	for _, symbol := range value {
 		if unicode.IsSpace(symbol) || !unicode.IsPrint(symbol) {
 			return []string{path + " must not contain spaces or control characters"}
@@ -259,7 +259,10 @@ func (catalog *Catalog) HTTPService(name string) (HTTPServiceDefinition, bool) {
 func (catalog *Catalog) validateHTTPServices() error {
 	roots := make(map[string]string, len(catalog.HTTPServices))
 	for _, service := range catalog.HTTPServices {
-		root := strings.ToLower(service.RootURL)
+		// Compared as written: whether the prototype tells «API» from «api» is
+		// not known, and refusing two services over it would refuse the
+		// configuration. Two roots that differ in case alone are a note.
+		root := service.RootURL
 		if previous, taken := roots[root]; taken {
 			return fmt.Errorf("HTTP services %s and %s both answer at %s", previous, service.Name, service.RootURL)
 		}

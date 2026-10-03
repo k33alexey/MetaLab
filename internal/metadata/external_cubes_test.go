@@ -125,24 +125,21 @@ func TestExternalCubeCarriesItsDimensionsResourcesAndTables(t *testing.T) {
 }
 
 // What a cube and a dimension table are checked for on their own. Catches a
-// dimension and a resource of one name - one field of the cube read twice - a
-// cube with no name in the source, an unfilled
-// parent on a table with no hierarchy, and a presentation field that is not a
-// field.
+// dimension and a resource of one name - one field of the cube read twice -
+// and a presentation field that is not a field. A cube or a resource with no
+// name in the source and an unfilled parent without a hierarchy are carried
+// and noted (notes_test.go).
 func TestExternalCubeAndDimensionTableAreCheckedOnTheirOwn(t *testing.T) {
 	t.Parallel()
 	for name, test := range map[string]struct{ cube, dimension, says string }{
 		"a dimension and a resource of one name": {strings.Replace(salesCubeBody, "    name: Количество", "    name: Товар", 1), goodsDimTableBody, "resources[0].name is used twice"},
-		"a cube with no name in the source":      {strings.Replace(salesCubeBody, "name_in_data_source: '[Sales]'\n", "", 1), goodsDimTableBody, "must name the cube in the data source"},
-		"an unfilled parent without a hierarchy": {salesCubeBody, strings.Replace(goodsDimTableBody, "hierarchical: true\n", "", 1), "unfilled_parent_value belongs to a hierarchical dimension table"},
 		"a presentation field that is absent":    {salesCubeBody, strings.Replace(goodsDimTableBody, "presentation_field: Наименование", "presentation_field: Артикул", 1), `presentation_field names "Артикул"`},
 		"an attribute's property on a dimension": {strings.Replace(salesCubeBody, "    types: [{kind: date}]\n", "    types: [{kind: date}]\n    indexing: index\n", 1), goodsDimTableBody, "dimensions[1].indexing belongs to an attribute"},
 		// A dimension is found through its dimension table and has no column
 		// of its own: the strict reading names the property.
-		"a column on a dimension":   {strings.Replace(salesCubeBody, "    types: [{kind: date}]\n", "    types: [{kind: date}]\n    name_in_data_source: '[Date]'\n", 1), goodsDimTableBody, "name_in_data_source not found"},
-		"a filling on a resource":   {strings.Replace(salesCubeBody, "    name_in_data_source: '[Measures].[Quantity]'\n", "    name_in_data_source: '[Measures].[Quantity]'\n    filling: {value: {kind: number, data: \"0\"}}\n", 1), goodsDimTableBody, "resources[0].filling belongs to a field somebody enters"},
-		"bounds on a resource":      {strings.Replace(salesCubeBody, "    name_in_data_source: '[Measures].[Quantity]'\n", "    name_in_data_source: '[Measures].[Quantity]'\n    presentation: {max_value: \"9\"}\n", 1), goodsDimTableBody, "resources[0].presentation.max_value belongs to"},
-		"a resource with no column": {strings.Replace(salesCubeBody, "    name_in_data_source: '[Measures].[Quantity]'\n", "", 1), goodsDimTableBody, "resources[0].name_in_data_source must name the measure"},
+		"a column on a dimension": {strings.Replace(salesCubeBody, "    types: [{kind: date}]\n", "    types: [{kind: date}]\n    name_in_data_source: '[Date]'\n", 1), goodsDimTableBody, "name_in_data_source not found"},
+		"a filling on a resource": {strings.Replace(salesCubeBody, "    name_in_data_source: '[Measures].[Quantity]'\n", "    name_in_data_source: '[Measures].[Quantity]'\n    filling: {value: {kind: number, data: \"0\"}}\n", 1), goodsDimTableBody, "resources[0].filling belongs to a field somebody enters"},
+		"bounds on a resource":    {strings.Replace(salesCubeBody, "    name_in_data_source: '[Measures].[Quantity]'\n", "    name_in_data_source: '[Measures].[Quantity]'\n    presentation: {max_value: \"9\"}\n", 1), goodsDimTableBody, "resources[0].presentation.max_value belongs to"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

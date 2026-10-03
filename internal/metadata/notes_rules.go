@@ -3,9 +3,12 @@ package metadata
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // The kinds of note found in a loaded catalog. Each is a state an earlier
@@ -41,6 +44,13 @@ const (
 	NoteRegisterWithoutFields      NoteKind = "register-without-fields"
 	NoteDuplicateAggregate         NoteKind = "duplicate-aggregate"
 	NoteCriterionWithoutType       NoteKind = "filter-criterion-without-type"
+	NoteHTTPRootsDifferInCase      NoteKind = "http-roots-differ-in-case"
+	NoteUnfilledParentWithoutTree  NoteKind = "unfilled-parent-without-hierarchy"
+	NoteObjectTableWithoutKey      NoteKind = "object-table-without-key"
+	NoteEmptyNameInSource          NoteKind = "empty-name-in-source"
+	NoteAmpersandZero              NoteKind = "expression-ampersand-zero"
+	NoteLongExternalString         NoteKind = "long-external-string"
+	NoteForeignSourceReference     NoteKind = "foreign-source-reference"
 )
 
 func init() {
@@ -145,6 +155,29 @@ func init() {
 		NoteKindInfo{NoteCriterionWithoutType,
 			"Критерий отбора без типа при заполненном составе (sb: 190 полей).",
 			"Несётся как записан и ничего не находит."},
+		NoteKindInfo{NoteHTTPRootsDifferInCase,
+			"Корневые URL двух HTTP-сервисов различаются только регистром букв; различает ли их прототип, не известно.",
+			"Оба несутся как записаны; адреса сравниваются как написаны."},
+		NoteKindInfo{NoteUnfilledParentWithoutTree,
+			"Значение незаполненного родителя у таблицы измерения без иерархии.",
+			"Несётся как записано и не читается: родителя без иерархии нет."},
+		NoteKindInfo{NoteObjectTableWithoutKey,
+			"Таблица объектных данных внешнего источника без поля ключа.",
+			"Несётся как записана; ссылок на её строки нет, пока ключ не задан."},
+		NoteKindInfo{NoteEmptyNameInSource,
+			"Пустое имя в источнике данных у таблицы, поля, куба, таблицы измерения или ресурса: справка его требует, " +
+				"конфигуратор сохраняет без него.",
+			"Несётся как записано; объект ни к чему в источнике не привязан."},
+		NoteKindInfo{NoteAmpersandZero,
+			"«&0» в выражении функции внешнего источника: параметры считаются с 1, так что это текст языка источника " +
+				"(во многих — побитовое «и»).",
+			"Выражение несётся как записано, «&0» не заменяется."},
+		NoteKindInfo{NoteLongExternalString,
+			"Строка длиннее 1024 у поля внешнего источника; конфигуратор пишет 4294967295 для столбца без предела (mdclasses).",
+			"Длина несётся как записана и читается как неограниченная."},
+		NoteKindInfo{NoteForeignSourceReference,
+			"Поле внешнего источника ссылается на таблицу другого источника.",
+			"Ссылка несётся как записана; соединить две базы ML не может, ссылка ничего не находит."},
 	)
 	noteRules[NoteUnresolvedPath] = noteUnresolvedPath
 	noteRules[NoteUnusedBound] = noteUnusedBound
@@ -175,6 +208,13 @@ func init() {
 	noteRules[NoteRegisterWithoutFields] = noteRegisterWithoutFields
 	noteRules[NoteDuplicateAggregate] = noteDuplicateAggregate
 	noteRules[NoteCriterionWithoutType] = noteCriterionWithoutType
+	noteRules[NoteHTTPRootsDifferInCase] = noteHTTPRootsDifferInCase
+	noteRules[NoteUnfilledParentWithoutTree] = noteUnfilledParentWithoutTree
+	noteRules[NoteObjectTableWithoutKey] = noteObjectTableWithoutKey
+	noteRules[NoteEmptyNameInSource] = noteEmptyNameInSource
+	noteRules[NoteAmpersandZero] = noteAmpersandZero
+	noteRules[NoteLongExternalString] = noteLongExternalString
+	noteRules[NoteForeignSourceReference] = noteForeignSourceReference
 }
 
 func noteUnresolvedPath(catalog *Catalog, note func(where, written string)) {
@@ -549,6 +589,133 @@ func noteCriterionWithoutType(catalog *Catalog, note func(where, written string)
 	for _, criterion := range catalog.FilterCriteria {
 		if len(criterion.Types) == 0 {
 			note("filter-criteria "+criterion.Name+" types", strconv.Itoa(len(criterion.Fields))+" fields")
+		}
+	}
+}
+
+func noteHTTPRootsDifferInCase(catalog *Catalog, note func(where, written string)) {
+	seen := map[string]string{}
+	for _, service := range catalog.HTTPServices {
+		folded := strings.ToLower(service.RootURL)
+		if previous, ok := seen[folded]; ok && previous != service.RootURL {
+			note("http-services "+service.Name+" root_url", service.RootURL+" and "+previous)
+			continue
+		}
+		seen[folded] = service.RootURL
+	}
+}
+
+func noteUnfilledParentWithoutTree(catalog *Catalog, note func(where, written string)) {
+	for _, source := range catalog.ExternalDataSources {
+		for _, cube := range source.Cubes {
+			for _, table := range cube.DimensionTables {
+				if table.UnfilledParentValue != nil && !table.Hierarchical {
+					note("external-data-sources "+source.Name+" cubes "+cube.Name+" dimension tables "+table.Name+" unfilled_parent_value", *table.UnfilledParentValue)
+				}
+			}
+		}
+	}
+}
+
+func noteObjectTableWithoutKey(catalog *Catalog, note func(where, written string)) {
+	for _, source := range catalog.ExternalDataSources {
+		for _, table := range source.Tables {
+			if table.ObjectTable() && len(table.KeyFields) == 0 {
+				note("external-data-sources "+source.Name+" tables "+table.Name+" key_fields", "none")
+			}
+		}
+	}
+}
+
+func noteEmptyNameInSource(catalog *Catalog, note func(where, written string)) {
+	for _, source := range catalog.ExternalDataSources {
+		at := "external-data-sources " + source.Name
+		fields := func(where string, fields []ExternalField) {
+			for _, field := range fields {
+				if field.NameInDataSource == "" {
+					note(where+" fields "+field.Name+" name_in_data_source", "empty")
+				}
+			}
+		}
+		for _, table := range source.Tables {
+			where := at + " tables " + table.Name
+			if (table.TableType == "" || table.TableType == ExternalTableFromTable) && table.NameInDataSource == "" {
+				note(where+" name_in_data_source", "empty")
+			}
+			fields(where, table.Fields)
+		}
+		for _, cube := range source.Cubes {
+			where := at + " cubes " + cube.Name
+			if cube.NameInDataSource == "" {
+				note(where+" name_in_data_source", "empty")
+			}
+			for _, resource := range cube.Resources {
+				if resource.NameInDataSource == "" {
+					note(where+" resources "+resource.Name+" name_in_data_source", "empty")
+				}
+			}
+			for _, table := range cube.DimensionTables {
+				if table.NameInDataSource == "" {
+					note(where+" dimension tables "+table.Name+" name_in_data_source", "empty")
+				}
+				fields(where+" dimension tables "+table.Name, table.Fields)
+			}
+		}
+	}
+}
+
+// ampersandZero is &0, &00 and the like - not a parameter, since parameters
+// are counted from 1 - standing where a parameter would.
+var ampersandZero = regexp.MustCompile(`&0+(\D|$)`)
+
+func noteAmpersandZero(catalog *Catalog, note func(where, written string)) {
+	for _, source := range catalog.ExternalDataSources {
+		for _, function := range source.Functions {
+			if ampersandZero.MatchString(function.ExpressionInDataSource) {
+				note("external-data-sources "+source.Name+" functions "+function.Name+" expression_in_data_source", function.ExpressionInDataSource)
+			}
+		}
+	}
+}
+
+func noteLongExternalString(catalog *Catalog, note func(where, written string)) {
+	check := func(where string, fields []ExternalField) {
+		for _, field := range fields {
+			for _, item := range field.Types {
+				if item.Kind == StringType && item.Length > maxStringLength {
+					note(where+" fields "+field.Name+" types", strconv.Itoa(item.Length))
+				}
+			}
+		}
+	}
+	for _, source := range catalog.ExternalDataSources {
+		for _, table := range source.Tables {
+			check("external-data-sources "+source.Name+" tables "+table.Name, table.Fields)
+		}
+		for _, cube := range source.Cubes {
+			for _, table := range cube.DimensionTables {
+				check("external-data-sources "+source.Name+" cubes "+cube.Name+" dimension tables "+table.Name, table.Fields)
+			}
+		}
+	}
+}
+
+func noteForeignSourceReference(catalog *Catalog, note func(where, written string)) {
+	for _, source := range catalog.ExternalDataSources {
+		own := map[uuid.UUID]bool{}
+		for _, table := range source.Tables {
+			own[table.ID] = true
+		}
+		for _, table := range source.Tables {
+			for _, field := range table.Fields {
+				for _, item := range field.Types {
+					if item.Kind == ExternalTableType && item.Reference != nil && !own[*item.Reference] {
+						if _, elsewhere := catalog.externalTableByID[*item.Reference]; elsewhere {
+							note("external-data-sources "+source.Name+" tables "+table.Name+" fields "+field.Name, item.Reference.String())
+						}
+					}
+				}
+			}
 		}
 	}
 }

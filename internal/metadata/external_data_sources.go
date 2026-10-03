@@ -288,9 +288,9 @@ func validateExternalTableSource(table ExternalTable) []string {
 	var issues []string
 	switch table.TableType {
 	case "", ExternalTableFromTable:
-		if table.NameInDataSource == "" {
-			issues = append(issues, "name_in_data_source must name the table of the source this table is")
-		}
+		// An empty name in the source is carried and is a note: the help
+		// asks for it, the configurator saves without it, and such a table
+		// is read from nowhere until it is named.
 		if table.ExpressionInDataSource != "" {
 			issues = append(issues, "expression_in_data_source belongs to a table made of an expression, and this one is made of a table")
 		}
@@ -368,9 +368,6 @@ func checkExternalFieldGroups(configuration project.Project, groups ...externalF
 				fields[strings.ToLower(field.Name)] = field
 			}
 			issues = append(issues, validateTitle(prefix+".title", field.Title, configuration)...)
-			if field.NameInDataSource == "" {
-				issues = append(issues, prefix+".name_in_data_source must name the column this field is")
-			}
 			issues = append(issues, validateNameInDataSource(prefix+".name_in_data_source", field.NameInDataSource)...)
 			issues = append(issues, validateExternalFieldTypes(prefix+".types", field.Types)...)
 			issues = append(issues, validateFieldSettings(prefix, field.Attribute, configuration)...)
@@ -392,6 +389,11 @@ func isExternalReference(kind TypeKind) bool {
 
 // validateExternalFieldTypes checks the types of a field: the reference to a
 // table of the source here, everything else where every type is checked.
+// maxExternalStringLength is the longest string a field of a source may say it
+// holds: 4294967295, the largest number of four bytes, which the configurator
+// writes for a column with no limit of its own.
+const maxExternalStringLength = 1<<32 - 1
+
 func validateExternalFieldTypes(path string, types []Type) []string {
 	var issues []string
 	var rest []Type
@@ -414,6 +416,16 @@ func validateExternalFieldTypes(path string, types []Type) []string {
 	}
 	if len(rest) == 0 {
 		return issues
+	}
+	// A column of the other database may be a string longer than any field
+	// of ours - the configurator saves 4294967295 there (mdclasses, a field
+	// of ТекущаяСУБД), the most a length can say. Such a length is checked as
+	// unlimited, carried as written, and is a note (NoteLongExternalString).
+	for index, item := range rest {
+		if item.Kind == StringType && item.Length > maxStringLength && item.Length <= maxExternalStringLength {
+			item.Length = 0
+			rest[index] = item
+		}
 	}
 	// The rest is checked by the one function every type goes through, and
 	// its messages are put back under the index the type has in the field.
@@ -529,8 +541,11 @@ func validateExternalTableShape(table ExternalTable, fields map[string]ExternalF
 		}
 		return issues
 	}
-	if len(table.KeyFields) != 1 {
-		issues = append(issues, "key_fields must name exactly one field: a table of object data is keyed by one field, and more than one make it a table of records")
+	// The help: one key field makes a table of object data, more than one a
+	// table of records. A table of object data with no key yet is carried and
+	// is a note: it has no references until it is keyed.
+	if len(table.KeyFields) > 1 {
+		issues = append(issues, "key_fields must name one field at most: a table of object data is keyed by one field, and more than one make it a table of records")
 	}
 	if table.Forms.Record != "" {
 		issues = append(issues, "forms.record belongs to a table of records, and this one holds object data")
@@ -750,7 +765,9 @@ func (catalog *Catalog) validateExternalDataSources() error {
 			if err := catalog.validateExternalFieldReferences(source, owner, table.Fields, nil); err != nil {
 				return err
 			}
-			if table.UnfilledParentValue != nil && len(table.KeyFields) == 1 {
+			// Null is the other answer the help gives besides a value of the
+			// key, and the configurator writes it (mdclasses: xsi:nil).
+			if table.UnfilledParentValue != nil && table.UnfilledParentValue.Kind != UndefinedValue && len(table.KeyFields) == 1 {
 				key, _ := table.Field(table.KeyFields[0])
 				if _, err := catalog.normalizeTypes(owner+" unfilled_parent_value", key.Types, *table.UnfilledParentValue); err != nil {
 					return fmt.Errorf("%w: the value a row without a parent holds is a value of the key", err)
@@ -813,8 +830,12 @@ func (catalog *Catalog) validateExternalFieldReferences(source ExternalDataSourc
 			case ExternalTableType:
 				target, ok := tables[*item.Reference]
 				if !ok {
+					// A reference to a table of another source is a key of a
+					// database this one cannot join; nothing shows the
+					// configurator refusing it, so it is carried, joins
+					// nothing, and is a note.
 					if _, elsewhere := catalog.externalTableByID[*item.Reference]; elsewhere {
-						return fmt.Errorf("%s field %s refers to a table of another source: a reference is a key of one database", owner, field.Name)
+						continue
 					}
 					return fmt.Errorf("%s field %s refers to unknown table %s", owner, field.Name, item.Reference)
 				}

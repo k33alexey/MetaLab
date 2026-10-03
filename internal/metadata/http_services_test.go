@@ -70,12 +70,14 @@ templates:
 }
 
 // Two services answering at one root are two answers to every call that reaches
-// it, and the caller gets whichever the server resolved first.
+// it, and the caller gets whichever the server resolved first. Roots that differ
+// in case alone are carried and noted (notes_test.go): whether the prototype
+// tells them apart is not known.
 func TestTwoHTTPServicesCannotShareARootAddress(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
 	writeHTTPService(t, root, httpServiceID, "Биллинг", "root_url: billing\n")
-	writeHTTPService(t, root, secondHTTPServiceID, "БиллингНовый", "root_url: Billing\n")
+	writeHTTPService(t, root, secondHTTPServiceID, "БиллингНовый", "root_url: billing\n")
 	_, err := Load(root)
 	if err == nil {
 		t.Fatal("two services on one root address were accepted")
@@ -91,10 +93,6 @@ func TestHTTPServiceAddressesAreChecked(t *testing.T) {
 	for name, body := range map[string]string{
 		"без корневого адреса": "templates: []\n",
 		"корень путём":         "root_url: billing/v1\n",
-		"адрес без косой черты": `root_url: billing
-templates:
-  - {id: f4000000-0000-4000-8000-000000000010, name: Версия, title: {ru: Версия}, template: version}
-`,
 		"незакрытый параметр": `root_url: billing
 templates:
   - {id: f4000000-0000-4000-8000-000000000010, name: Версия, title: {ru: Версия}, template: "/bill/{Версия"}

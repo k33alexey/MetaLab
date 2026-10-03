@@ -59,14 +59,13 @@ func TestExternalFunctionIsCarriedInItsSource(t *testing.T) {
 }
 
 // The parameters of an expression are checked for what the notation says
-// unambiguously and nothing more. Catches a parameter counted from zero, a
-// variable number of values that is not the last parameter, and - the other
+// unambiguously and nothing more. Catches a variable number of values that is
+// not the last parameter, and - the other
 // direction - braces and ampersands of the other database's own language
 // refused as if they were ours.
 func TestExternalFunctionParametersAreCheckedByTheNotationOnly(t *testing.T) {
 	t.Parallel()
 	for name, test := range map[string]struct{ expression, says string }{
-		"a parameter counted from zero":   {"SELECT &0", "&0 is not a parameter"},
 		"a variable number not last":      {"SELECT f(&1[], &2)", "only the last parameter may - the last here is &2"},
 		"two parameters of variable size": {"SELECT f(&1[], &2[])", "both take a variable number of values"},
 	} {
