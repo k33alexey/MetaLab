@@ -263,6 +263,9 @@ type Type struct {
 	FixedLength bool      `yaml:"fixed_length,omitempty" json:"fixedLength,omitempty"`
 	NonNegative bool      `yaml:"non_negative,omitempty" json:"nonNegative,omitempty"`
 	DateParts   DateParts `yaml:"date_parts,omitempty" json:"dateParts,omitempty"`
+	// Name is the name of a platform type as the prototype writes it - see
+	// PlatformType. No other kind has one.
+	Name string `yaml:"name,omitempty" json:"name,omitempty"`
 }
 
 // Constant is a single value existing in one instance.
@@ -1780,6 +1783,7 @@ func validateTypesIn(path string, types []Type, self uuid.UUID, place typePlace)
 			item.Kind == ExchangePlanType ||
 			item.Kind == RoutePointType ||
 			item.Kind == ExternalTableType || item.Kind == ExternalDimensionTableType ||
+			item.Kind == VanishedType ||
 			isObjectType(item.Kind)
 		if referenced && (item.Reference == nil || item.Reference.IsZero()) {
 			issues = append(issues, prefix+".reference is required")
@@ -1789,6 +1793,20 @@ func validateTypesIn(path string, types []Type, self uuid.UUID, place typePlace)
 		}
 		if (item.Kind == DefinedType || item.Kind == CharacteristicSet) && item.Reference != nil && *item.Reference == self {
 			issues = append(issues, prefix+" cannot reference itself")
+		}
+		switch {
+		case item.Kind == PlatformType && strings.TrimSpace(item.Name) == "":
+			issues = append(issues, prefix+".name is required: a platform type is known by its name")
+		case item.Kind != PlatformType && item.Name != "":
+			issues = append(issues, prefix+".name belongs to a platform type")
+		}
+		if storedNowhere(item.Kind) {
+			if !mayStandUnstored(place) {
+				issues = append(issues, prefix+".kind "+string(item.Kind)+" is not a type of anything the infobase stores and cannot stand "+placeName(place))
+			} else if item.Length != 0 || item.Precision != 0 || item.Scale != 0 || item.FixedLength || item.NonNegative || item.DateParts != "" {
+				issues = append(issues, prefix+" has unsupported qualifiers")
+			}
+			continue
 		}
 		if place == placeDefinedType && (item.Kind == DefinedType || platformFilledSets[item.Kind]) {
 			issues = append(issues, prefix+".kind "+string(item.Kind)+" cannot stand in a defined type: the designer offers neither another defined type nor a set the platform fills itself")
@@ -1800,16 +1818,6 @@ func validateTypesIn(path string, types []Type, self uuid.UUID, place typePlace)
 			} else if item.Length != 0 || item.Precision != 0 || item.Scale != 0 || item.FixedLength || item.NonNegative || item.DateParts != "" {
 				issues = append(issues, prefix+" has unsupported qualifiers")
 			}
-			continue
-		}
-		// A reference to something of an external data source is a type of
-		// that source's own fields and of a managed form's attributes, and of
-		// nothing the infobase stores: the configurator does not offer it to
-		// an attribute of the configuration's own objects. Fields of a source
-		// are checked by validateExternalFieldTypes, which takes these two
-		// kinds off before calling here.
-		if item.Kind == ExternalTableType || item.Kind == ExternalDimensionTableType {
-			issues = append(issues, prefix+".kind "+string(item.Kind)+" is a type of a field of an external data source and not of an attribute the infobase stores")
 			continue
 		}
 		if item.DateParts != "" && item.Kind != DateType {

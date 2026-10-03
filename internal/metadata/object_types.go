@@ -30,6 +30,15 @@ const (
 	ExchangePlanObjectType        TypeKind = "exchange-plan-object"
 	BusinessProcessObjectType     TypeKind = "business-process-object"
 	TaskObjectType                TypeKind = "task-object"
+	// The object of a report or of a data processor, and the manager of one
+	// record of an information register: what an attribute of a running
+	// object, a defined type and an attribute of a form hold (energy keeps a
+	// report object in 13 attributes of its reports; the forms of erp hold
+	// data processor objects 443 times, report objects 68, record managers
+	// 23).
+	ReportObjectType                     TypeKind = "report-object"
+	DataProcessorObjectType              TypeKind = "data-processor-object"
+	InformationRegisterRecordManagerType TypeKind = "information-register-record-manager"
 
 	InformationRegisterRecordSetType  TypeKind = "information-register-record-set"
 	AccumulationRegisterRecordSetType TypeKind = "accumulation-register-record-set"
@@ -76,6 +85,19 @@ const (
 	AccountKindType            TypeKind = "account-kind"
 	AccountingRecordKindType   TypeKind = "accounting-record-kind"
 	AccumulationRecordKindType TypeKind = "accumulation-record-kind"
+	// PlatformType is a type the platform defines and the model does not list
+	// one by one - Отбор, ТипДиаграммы and the rest - written by its name
+	// (Type.Name) as the prototype writes it. The help gives an attribute of
+	// a report or a data processor an arbitrary type, so a closed list here
+	// would refuse what the prototype keeps (energy: Отбор 3, ТипДиаграммы 1).
+	// It is carried, not executed, and is a note (NotePlatformTypeByName).
+	PlatformType TypeKind = "platform"
+	// VanishedType is a type of an object the configuration no longer has:
+	// the prototype then writes the identifier of the type instead of its
+	// name (v8:TypeId; a command of erp and 16 of a sample of 8.3.21). The
+	// identifier is kept in Type.Reference; nothing resolves it. A note
+	// (NoteVanishedType).
+	VanishedType TypeKind = "vanished-type"
 )
 
 // objectTypeOwners says, for every object type, which object of metadata its
@@ -110,6 +132,12 @@ var objectTypeOwners = map[TypeKind]func(*Catalog, uuid.UUID) bool{
 	AccountingRegisterManagerType:     func(c *Catalog, id uuid.UUID) bool { _, ok := c.accountingRegisterByID[id]; return ok },
 	CalculationRegisterManagerType:    func(c *Catalog, id uuid.UUID) bool { _, ok := c.calculationRegisterByID[id]; return ok },
 	DocumentJournalManagerType:        func(c *Catalog, id uuid.UUID) bool { _, ok := c.documentJournalByID[id]; return ok },
+	ReportObjectType:                  func(c *Catalog, id uuid.UUID) bool { _, ok := c.reportByID[id]; return ok },
+	DataProcessorObjectType:           func(c *Catalog, id uuid.UUID) bool { _, ok := c.dataProcessorByID[id]; return ok },
+	InformationRegisterRecordManagerType: func(c *Catalog, id uuid.UUID) bool {
+		_, ok := c.informationRegisterByID[id]
+		return ok
+	},
 }
 
 var valueTypeKinds = map[TypeKind]bool{
@@ -120,6 +148,7 @@ var valueTypeKinds = map[TypeKind]bool{
 	ChartType: true, SpreadsheetDocumentType: true,
 	TypeDescriptionType: true, BinaryDataType: true,
 	AccountKindType: true, AccountingRecordKindType: true, AccumulationRecordKindType: true,
+	PlatformType: true,
 }
 
 // isObjectType and isValueType say a kind lives in memory only; neither is
@@ -168,7 +197,27 @@ const (
 	// itself, which lives as long as the object runs: the help gives it an
 	// arbitrary type.
 	placeRunningObject
+	// placeCommandParameter is the parameter of a command: what the command is
+	// offered beside and handed when it runs. Never stored - so a reference to
+	// a table of an external source and the type of a vanished object may
+	// stand there - and never an object or a value of memory.
+	placeCommandParameter
 )
+
+// storedNowhere says a kind may stand in a type description of something the
+// infobase does not store - a running object, a command parameter, a defined
+// type - and in no stored field: a reference to an external source is a key
+// of another database (the help: «may be used in attributes of a managed
+// form»), and a vanished type has nothing to point at. The schema refuses
+// either when a defined type brings it into a stored field.
+func storedNowhere(kind TypeKind) bool {
+	return kind == ExternalTableType || kind == ExternalDimensionTableType || kind == VanishedType
+}
+
+// mayStandUnstored says where a kind of storedNowhere is allowed.
+func mayStandUnstored(place typePlace) bool {
+	return place == placeRunningObject || place == placeCommandParameter || place == placeDefinedType
+}
 
 // sessionParameterValueTypes are the value types the help lets a session
 // parameter hold.
@@ -208,6 +257,8 @@ func placeName(place typePlace) string {
 		return "in a defined type"
 	case placeRunningObject:
 		return "in an attribute of a data processor or a report"
+	case placeCommandParameter:
+		return "in the parameter of a command"
 	default:
 		return "in a field the database stores"
 	}

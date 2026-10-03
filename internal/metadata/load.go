@@ -1987,6 +1987,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	if err := catalog.validateCommandGroupReferences(); err != nil {
 		return err
 	}
+	if err := catalog.validateCommandParameterReferences(); err != nil {
+		return err
+	}
 	if err := catalog.validateCommonTemplateFiles(root); err != nil {
 		return err
 	}
@@ -2670,6 +2673,16 @@ func (catalog *Catalog) validateReferences(owner string, types []Type) error {
 			if _, ok := catalog.chartOfCharacteristicTypesByID[*item.Reference]; !ok {
 				return fmt.Errorf("%s is typed by the characteristics of unknown chart %s", owner, item.Reference)
 			}
+		case ExternalTableType:
+			if _, ok := catalog.externalTableByID[*item.Reference]; !ok {
+				return fmt.Errorf("%s references unknown table of an external source %s", owner, item.Reference)
+			}
+		case ExternalDimensionTableType:
+			if _, ok := catalog.externalDimensionTableByID[*item.Reference]; !ok {
+				return fmt.Errorf("%s references unknown dimension table of an external source %s", owner, item.Reference)
+			}
+		case VanishedType:
+			// The type of an object that is gone: nothing to resolve.
 		default:
 			if exists, ok := objectTypeOwners[item.Kind]; ok && !exists(catalog, *item.Reference) {
 				return fmt.Errorf("%s is typed %s of unknown object %s", owner, item.Kind, item.Reference)

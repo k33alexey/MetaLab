@@ -164,7 +164,7 @@ func validateCommandShape(prefix string, command ObjectCommand, self uuid.UUID, 
 		issues = append(issues, prefix+".group_ref must be a non-zero UUID")
 	}
 	if len(command.Parameter) > 0 {
-		issues = append(issues, validateTypes(prefix+".parameter", command.Parameter, self)...)
+		issues = append(issues, validateTypesIn(prefix+".parameter", command.Parameter, self, placeCommandParameter)...)
 	}
 	switch command.ParameterUse {
 	case "", CommandParameterSingle, CommandParameterMultiple:

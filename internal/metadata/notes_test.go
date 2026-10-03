@@ -178,6 +178,15 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		noteCatalog(t, root, "", "")
 		noteHelpPage(t, root, "Товары", "Русский.html")
 	},
+	NotePlatformTypeByName: func(t *testing.T, root string) {
+		id := uuid.MustNew().String()
+		writeMetadata(t, root, DataProcessorKind, id, "format: 1\nid: "+id+"\nname: Заполнение\ntitle: {ru: Заполнение}\n"+
+			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Отбор, title: {ru: Отбор}, types: [{kind: platform, name: \"cfg:Filter\"}]}\n")
+	},
+	NoteVanishedType: func(t *testing.T, root string) {
+		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter: [{kind: vanished-type, reference: "+uuid.MustNew().String()+"}]}\n", "")
+		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
+	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
@@ -364,6 +373,13 @@ func TestSoundSettingsCarryNoNotes(t *testing.T) {
 	quick := uuid.MustNew().String()
 	writeMetadata(t, root, CatalogKind, quick, "format: 1\nid: "+quick+"\nname: Валюты\ntitle: {ru: Валюты}\n"+
 		"code: {type: string, length: 3}\ndescription_length: 50\nchoice_mode: both-ways\nquick_choice: true\nfull_text_search: use\nfull_text_search_on_input: use\n")
+	// A data processor holding its own object and the manager of a record of
+	// a register: object types the model names, not types of the platform by
+	// name.
+	processor := uuid.MustNew().String()
+	writeMetadata(t, root, DataProcessorKind, processor, "format: 1\nid: "+processor+"\nname: Заполнение\ntitle: {ru: Заполнение}\n"+
+		"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Себя, title: {ru: Себя}, types: [{kind: data-processor-object, reference: "+processor+"}]}\n"+
+		"  - {id: "+uuid.MustNew().String()+", name: Запись, title: {ru: Запись}, types: [{kind: information-register-record-manager, reference: "+register+"}]}\n")
 	task := uuid.MustNew().String()
 	writeMetadata(t, root, TaskKind, task, "format: 1\nid: "+task+"\nname: Задача\ntitle: {ru: Задача}\n"+
 		"number: {type: string, length: 11, auto: true, periodicity: none}\ndescription_length: 150\n"+

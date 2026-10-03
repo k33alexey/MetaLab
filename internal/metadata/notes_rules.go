@@ -56,6 +56,8 @@ const (
 	NoteTextWithoutLanguage        NoteKind = "text-without-language"
 	NoteTextOfSpaces               NoteKind = "text-of-spaces"
 	NoteHelpInUndeclaredLanguage   NoteKind = "help-in-undeclared-language"
+	NotePlatformTypeByName         NoteKind = "platform-type-by-name"
+	NoteVanishedType               NoteKind = "vanished-type"
 )
 
 func init() {
@@ -196,6 +198,14 @@ func init() {
 			"Страница справки на языке, которого нет среди языков конфигурации, — или файл, названный не кодом языка, " +
 				"а, например, его именем (Русский.html).",
 			"Страница несётся и публикуется как записана; справка не показывается."},
+		NoteKindInfo{NotePlatformTypeByName,
+			"Тип, который определяет платформа и которого модель не перечисляет поимённо (energy: Отбор, ТипДиаграммы), — " +
+				"у реквизита отчёта или обработки, в определяемом типе.",
+			"Тип несётся по имени и не исполняется: значение такого реквизита — Неопределено."},
+		NoteKindInfo{NoteVanishedType,
+			"Тип объекта, которого в конфигурации больше нет: прототип пишет идентификатор типа вместо имени " +
+				"(у параметра команды erp).",
+			"Тип несётся как записан и ничего не означает; команда с таким единственным типом не предлагается нигде."},
 	)
 	noteRules[NoteUnresolvedPath] = noteUnresolvedPath
 	noteRules[NoteUnusedBound] = noteUnusedBound
@@ -237,6 +247,8 @@ func init() {
 	noteRules[NoteTextWithoutLanguage] = noteTextWithoutLanguage
 	noteRules[NoteTextOfSpaces] = noteTextOfSpaces
 	noteRules[NoteHelpInUndeclaredLanguage] = noteHelpInUndeclaredLanguage
+	noteRules[NotePlatformTypeByName] = notePlatformTypeByName
+	noteRules[NoteVanishedType] = noteVanishedType
 }
 
 func noteUnresolvedPath(catalog *Catalog, note func(where, written string)) {
@@ -782,6 +794,80 @@ func noteHelpInUndeclaredLanguage(catalog *Catalog, note func(where, written str
 	for _, page := range catalog.helpPages {
 		if !declared[strings.ToLower(page.code)] {
 			note(page.where, page.code)
+		}
+	}
+}
+
+func notePlatformTypeByName(catalog *Catalog, note func(where, written string)) {
+	eachTypeList(catalog, func(where string, types []Type) {
+		for _, item := range types {
+			if item.Kind == PlatformType {
+				note(where, item.Name)
+			}
+		}
+	})
+}
+
+func noteVanishedType(catalog *Catalog, note func(where, written string)) {
+	eachTypeList(catalog, func(where string, types []Type) {
+		for _, item := range types {
+			if item.Kind == VanishedType && item.Reference != nil {
+				note(where, item.Reference.String())
+			}
+		}
+	})
+}
+
+// eachTypeList walks every type description of the catalog - the types of a
+// field, the parameter of a command, the value type of a chart - and calls
+// visit with the place it stands in.
+func eachTypeList(catalog *Catalog, visit func(where string, types []Type)) {
+	top := reflect.ValueOf(catalog).Elem()
+	for index := range top.NumField() {
+		field := top.Type().Field(index)
+		if !field.IsExported() || field.Type.Kind() != reflect.Slice || field.Type.Elem().Kind() != reflect.Struct {
+			continue
+		}
+		list := top.Field(index)
+		for item := range list.Len() {
+			object := list.Index(item)
+			walkTypeLists(object, kebab(field.Name)+" "+nameOf(object), visit)
+		}
+	}
+}
+
+func walkTypeLists(value reflect.Value, where string, visit func(string, []Type)) {
+	typesType := reflect.TypeFor[[]Type]()
+	switch value.Kind() {
+	case reflect.Pointer:
+		if !value.IsNil() {
+			walkTypeLists(value.Elem(), where, visit)
+		}
+	case reflect.Slice:
+		if value.Type() == typesType {
+			if value.Len() > 0 {
+				visit(where, value.Interface().([]Type))
+			}
+			return
+		}
+		switch value.Type().Elem().Kind() {
+		case reflect.Struct, reflect.Pointer:
+			for index := range value.Len() {
+				element := value.Index(index)
+				walkTypeLists(element, where+" "+nameOf(element), visit)
+			}
+		}
+	case reflect.Struct:
+		for index := range value.NumField() {
+			field := value.Type().Field(index)
+			if !field.IsExported() {
+				continue
+			}
+			next := where
+			if !field.Anonymous {
+				next = where + " " + yamlName(field)
+			}
+			walkTypeLists(value.Field(index), next, visit)
 		}
 	}
 }

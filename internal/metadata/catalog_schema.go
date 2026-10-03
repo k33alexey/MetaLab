@@ -403,6 +403,9 @@ func (catalog *Catalog) attributeStorage(types []Type) (attributeStorage, error)
 		if isObjectType(item.Kind) || isValueType(item.Kind) {
 			return attributeStorage{}, fmt.Errorf("type %s lives in memory only and cannot be stored: an object or a manager is what a reference points at, use the reference", item.Kind)
 		}
+		if storedNowhere(item.Kind) {
+			return attributeStorage{}, fmt.Errorf("type %s is not a type of anything the infobase stores: a defined type may hold it for a form or a command, not for a stored field", item.Kind)
+		}
 	}
 	if len(resolved) != 1 {
 		return attributeStorage{sqlType: "jsonb", composite: true}, nil

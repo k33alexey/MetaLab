@@ -432,7 +432,7 @@ func TestAReferenceToSomethingOfASourceIsNotATypeOfTheInfobase(t *testing.T) {
 	t.Parallel()
 	for _, kind := range []TypeKind{ExternalTableType, ExternalDimensionTableType} {
 		issues := validateTypes("types", []Type{{Kind: kind, Reference: ptr(mustUUID(t, goodsTable))}}, uuid.UUID{})
-		if len(issues) != 1 || !strings.Contains(issues[0], "is a type of a field of an external data source") {
+		if len(issues) != 1 || !strings.Contains(issues[0], "is not a type of anything the infobase stores") {
 			t.Errorf("%s as a type of the infobase gave %v", kind, issues)
 		}
 	}
@@ -453,7 +453,7 @@ attributes:
     title: {ru: Товар}
     types: [{kind: external-data-source-table, reference: `+goodsTable+`}]
 `)
-	if message := loadRefused(t, root, "a catalog attribute typed by a table of a source"); !strings.Contains(message, "is a type of a field of an external data source") {
+	if message := loadRefused(t, root, "a catalog attribute typed by a table of a source"); !strings.Contains(message, "is not a type of anything the infobase stores") {
 		t.Fatalf("the error does not say why: %v", message)
 	}
 }

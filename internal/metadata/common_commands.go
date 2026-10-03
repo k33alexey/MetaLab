@@ -183,6 +183,30 @@ func (catalog *Catalog) validateCommandGroupReferences() error {
 	return nil
 }
 
+// validateCommandParameterReferences resolves the type of every command's
+// parameter against the configuration, as every attribute's types are: a
+// command typed by a catalog that is not there would be offered beside
+// nothing. A vanished type is not resolved - it names nothing by design and
+// is a note.
+func (catalog *Catalog) validateCommandParameterReferences() error {
+	check := func(owner string, command ObjectCommand) error {
+		return catalog.validateReferences(owner+" command "+command.Name+" parameter", command.Parameter)
+	}
+	for _, item := range catalog.CommonCommands {
+		if err := check("common", item.ObjectCommand); err != nil {
+			return err
+		}
+	}
+	for _, owned := range catalog.everyObjectCommands() {
+		for _, command := range owned.commands {
+			if err := check(owned.owner, command); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // ownedCommands is one object and the commands it keeps.
 type ownedCommands struct {
 	owner    string
