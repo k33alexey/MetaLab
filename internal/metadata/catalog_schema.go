@@ -3,6 +3,7 @@ package metadata
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
@@ -467,6 +468,16 @@ func appendCodeColumn(table *schemadiff.Table, id uuid.UUID, code CatalogCode) {
 	} else {
 		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("ic", id), Method: "btree", Keys: []string{"code"}})
 	}
+}
+
+// dropSwitchedOffColumn takes away a column a length of 0 switches off, on a
+// table whose columns are written out whole. With any other length the table
+// stays exactly as it was, so a base that has one migrates nothing.
+func dropSwitchedOffColumn(table *schemadiff.Table, name string, length int) {
+	if length != 0 {
+		return
+	}
+	table.Columns = slices.DeleteFunc(table.Columns, func(column schemadiff.Column) bool { return column.Name == name })
 }
 
 // appendDescriptionColumn gives a table its description where it has one - a

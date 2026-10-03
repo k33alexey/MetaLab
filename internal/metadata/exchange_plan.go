@@ -124,24 +124,29 @@ func DecodeExchangePlan(source string, reader io.Reader, configuration project.P
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
-		code:               value.Code,
-		descriptionLength:  value.DescriptionLength,
-		attributes:         value.Attributes,
-		tableParts:         value.TableParts,
-		forms:              HierarchicalObjectForms{ObjectForms: value.Forms},
-		list:               value.List,
-		reservedName:       reservedExchangePlanName,
-		codeAllowedLength:  true,
-		kind:               ExchangePlanKind,
-		presentation:       value.Presentations,
-		choice:             value.ObjectChoice,
-		basedOn:            value.BasedOn,
-		dataLock:           value.DataLock,
-		dataLockFields:     value.DataLockFields,
-		fullTextSearch:     value.FullTextSearch,
-		dataHistory:        value.DataHistorySettings,
-		additionalIndexes:  value.AdditionalIndexes,
-		standardAttributes: value.StandardAttributes,
+		code:              value.Code,
+		descriptionLength: value.DescriptionLength,
+		attributes:        value.Attributes,
+		tableParts:        value.TableParts,
+		forms:             HierarchicalObjectForms{ObjectForms: value.Forms},
+		list:              value.List,
+		reservedName:      reservedExchangePlanName,
+		codeAllowedLength: true,
+		// A length of 0 the owner did not check on this kind: nothing shows
+		// the configurator refusing it, so it is carried, switches the field
+		// off as on a catalog, and is a note (NoteLengthZeroUnchecked).
+		codeMayBeAbsent:        true,
+		descriptionMayBeAbsent: true,
+		kind:                   ExchangePlanKind,
+		presentation:           value.Presentations,
+		choice:                 value.ObjectChoice,
+		basedOn:                value.BasedOn,
+		dataLock:               value.DataLock,
+		dataLockFields:         value.DataLockFields,
+		fullTextSearch:         value.FullTextSearch,
+		dataHistory:            value.DataHistorySettings,
+		additionalIndexes:      value.AdditionalIndexes,
+		standardAttributes:     value.StandardAttributes,
 	}, configuration)...)
 	issues = append(issues, validateExchangePlanContent(value)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
@@ -263,9 +268,13 @@ func (catalog *Catalog) exchangePlanTables(definition ExchangePlanDefinition) (s
 			{Name: physicalObjectName("un", definition.ID), Unique: true, Method: "btree", Keys: []string{"this_node"}, Predicate: "this_node"},
 		},
 	}
-	if definition.Code.Unique {
+	dropSwitchedOffColumn(&table, "code", definition.Code.Length)
+	dropSwitchedOffColumn(&table, "description", definition.DescriptionLength)
+	switch {
+	case definition.Code.Length == 0:
+	case definition.Code.Unique:
 		table.Constraints = append(table.Constraints, schemadiff.Constraint{Name: physicalObjectName("uq", definition.ID), Type: "unique", Definition: "UNIQUE (code)"})
-	} else {
+	default:
 		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("ic", definition.ID), Method: "btree", Keys: []string{"code"}})
 	}
 	for _, attribute := range definition.Attributes {
@@ -273,9 +282,7 @@ func (catalog *Catalog) exchangePlanTables(definition ExchangePlanDefinition) (s
 			return schemadiff.Table{}, nil, fmt.Errorf("exchange plan %s attribute %s: %w", definition.Name, attribute.Name, err)
 		}
 	}
-	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Description", "Code"}, definition.Attributes, map[string]listColumn{
-		"code": {name: "code", kind: definition.Code.Type}, "description": {name: "description", kind: StringType},
-	})
+	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Description", "Code"}, definition.Attributes, codeAndDescriptionColumns(definition.Code, definition.DescriptionLength))
 	parts, err := catalog.tablePartTables("exchange plan", definition.Name, definition.ID, definition.TableParts)
 	if err != nil {
 		return schemadiff.Table{}, nil, err

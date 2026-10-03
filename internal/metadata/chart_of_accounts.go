@@ -190,6 +190,9 @@ func DecodeChartOfAccounts(source string, reader io.Reader, configuration projec
 		codeSeries:        true,
 		checkUnique:       true,
 		codeMayBeAbsent:   true,
+		// The description of length 0 was not checked by the owner, as the
+		// code was: carried, switched off, a note (NoteLengthZeroUnchecked).
+		descriptionMayBeAbsent: true,
 		// codeAllowedLength stays off: the shape of an account code is the code
 		// mask's to decide, and the prototype gives the chart no such property.
 		predefinedDataUpdate: value.PredefinedDataUpdate,
@@ -217,17 +220,11 @@ func DecodeChartOfAccounts(source string, reader io.Reader, configuration projec
 	if value.ExtDimensionTypes != nil && value.ExtDimensionTypes.IsZero() {
 		issues = append(issues, "ext_dimension_types must be a non-zero UUID")
 	}
-	// Analytics without a chart to take them from, or a chart nobody is
-	// allowed to use, are two halves of the same mistake.
-	if value.ExtDimensionTypes == nil && value.MaxExtDimensionCount > 0 {
-		issues = append(issues, "max_ext_dimension_count needs ext_dimension_types to take the kinds of analytics from")
-	}
-	if value.ExtDimensionTypes != nil && value.MaxExtDimensionCount == 0 {
-		issues = append(issues, "ext_dimension_types is useless while max_ext_dimension_count is zero")
-	}
-	if len(value.ExtDimensionAccountingFlags) > 0 && value.ExtDimensionTypes == nil {
-		issues = append(issues, "ext_dimension_accounting_flags need ext_dimension_types: there is nothing to flag")
-	}
+	// Analytics half set - a count without the chart of kinds to take them
+	// from, the chart with a count of 0, flags of analytics without the chart
+	// - is saved by the configurator: mdclasses keeps a chart with a count of
+	// 3 and no chart of kinds. It is carried and noted; a chart without the
+	// kinds has no analytics - see EffectiveMaxExtDimensionCount.
 	issues = append(issues, validateCodeMask(value)...)
 	issues = append(issues, validatePredefinedAccounts(value)...)
 	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
@@ -254,9 +251,8 @@ func validateCodeMask(value ChartOfAccountsDefinition) []string {
 	if value.OrderLength < 0 || value.OrderLength > maxVarcharLength {
 		issues = append(issues, fmt.Sprintf("order_length must be 0..%d", maxVarcharLength))
 	}
-	if value.AutoOrderByCode && value.OrderLength == 0 {
-		issues = append(issues, "auto_order_by_code needs an order_length to write the order into")
-	}
+	// Ordering by code without an order length is carried and noted: the
+	// order is then as wide as the code - see orderColumnWidth.
 	return issues
 }
 
@@ -468,6 +464,18 @@ func AccountCodeOrder(mask, code string, length int) string {
 
 // orderColumnWidth is how wide the order of an account may be: the order
 // length, or the code length where the order length is not given.
+// EffectiveMaxExtDimensionCount is how many analytics an account of the chart
+// really has: the count written, and none when the chart names no chart of
+// kinds to take them from. Everything that lays out or names the analytics -
+// the columns of an accounting register, its standard fields Субконто1..N -
+// reads the count here.
+func (definition ChartOfAccountsDefinition) EffectiveMaxExtDimensionCount() int {
+	if definition.ExtDimensionTypes == nil {
+		return 0
+	}
+	return definition.MaxExtDimensionCount
+}
+
 func orderColumnWidth(definition ChartOfAccountsDefinition) int {
 	if definition.OrderLength > 0 {
 		return definition.OrderLength
@@ -611,13 +619,23 @@ func (catalog *Catalog) chartOfAccountsTables(definition ChartOfAccountsDefiniti
 		Constraints: []schemadiff.Constraint{
 			{Name: physicalObjectName("pk", definition.ID), Type: "primary_key", Definition: "PRIMARY KEY (ref)"},
 			{Name: physicalObjectName("up", definition.ID), Type: "unique", Definition: "UNIQUE (predefined_name)"},
+			// Written in the form PostgreSQL echoes back from
+			// pg_get_constraintdef when the constraint was made from that same
+			// form - the fixed point; the IN-list echoes as a different text
+			// each time it is re-made. Anything else plans to replace the
+			// constraint, a destructive step, on every save (found by
+			// TestALengthOfZeroMigratesIntegration, 03.10.2026). A base made
+			// with the IN-list gets the replacement once more, and then none;
+			// see the same note on the movement kind of an accumulation
+			// register.
 			{Name: physicalObjectName("ct", definition.ID), Type: "check",
-				Definition: "CHECK (account_kind IN ('active', 'passive', 'active-passive'))"},
+				Definition: "CHECK (account_kind::text = ANY (ARRAY['active'::character varying::text, 'passive'::character varying::text, 'active-passive'::character varying::text]))"},
 		},
 		Indexes: []schemadiff.Index{
 			{Name: physicalObjectName("im", definition.ID), Method: "btree", Keys: []string{"deletion_mark"}},
 		},
 	}
+	dropSwitchedOffColumn(&table, "description", definition.DescriptionLength)
 	appendCodeColumn(&table, definition.ID, definition.Code)
 	// The order is derived from the code and the mask, so it is stored rather
 	// than computed on every read: it is what the list sorts by. With neither

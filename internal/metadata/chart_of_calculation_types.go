@@ -106,42 +106,40 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, configuratio
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
-		code:                 value.Code,
-		descriptionLength:    value.DescriptionLength,
-		attributes:           value.Attributes,
-		tableParts:           value.TableParts,
-		forms:                HierarchicalObjectForms{ObjectForms: value.Forms},
-		list:                 value.List,
-		reservedName:         reservedCalculationTypeName,
-		codeAllowedLength:    true,
-		codeType:             true,
-		codeMayBeAbsent:      true,
-		predefinedDataUpdate: value.PredefinedDataUpdate,
-		presentation:         value.Presentations,
-		choice:               value.ObjectChoice,
-		basedOn:              value.BasedOn,
-		dataLock:             value.DataLock,
-		dataLockFields:       value.DataLockFields,
-		fullTextSearch:       value.FullTextSearch,
-		dataHistory:          value.DataHistorySettings,
-		additionalIndexes:    value.AdditionalIndexes,
-		kind:                 ChartOfCalculationTypesKind,
-		standardAttributes:   value.StandardAttributes,
-		standardTableParts:   value.StandardTableParts,
+		code:              value.Code,
+		descriptionLength: value.DescriptionLength,
+		attributes:        value.Attributes,
+		tableParts:        value.TableParts,
+		forms:             HierarchicalObjectForms{ObjectForms: value.Forms},
+		list:              value.List,
+		reservedName:      reservedCalculationTypeName,
+		codeAllowedLength: true,
+		codeType:          true,
+		codeMayBeAbsent:   true,
+		// As on a chart of accounts - see NoteLengthZeroUnchecked.
+		descriptionMayBeAbsent: true,
+		predefinedDataUpdate:   value.PredefinedDataUpdate,
+		presentation:           value.Presentations,
+		choice:                 value.ObjectChoice,
+		basedOn:                value.BasedOn,
+		dataLock:               value.DataLock,
+		dataLockFields:         value.DataLockFields,
+		fullTextSearch:         value.FullTextSearch,
+		dataHistory:            value.DataHistorySettings,
+		additionalIndexes:      value.AdditionalIndexes,
+		kind:                   ChartOfCalculationTypesKind,
+		standardAttributes:     value.StandardAttributes,
+		standardTableParts:     value.StandardTableParts,
 	}, configuration)...)
 	switch value.BaseDependency {
 	case "", NoBaseDependency, ActionPeriodBase, RegistrationPeriodBase:
 	default:
 		issues = append(issues, "base_dependency must be none, by-action-period or by-registration-period")
 	}
-	// A base that comes from nowhere and charts nobody takes a base from are
-	// the same mistake seen from two sides.
-	if value.BaseDependency != "" && value.BaseDependency != NoBaseDependency && len(value.BaseCharts) == 0 {
-		issues = append(issues, "base_dependency needs base_charts to take the base from")
-	}
-	if len(value.BaseCharts) > 0 && (value.BaseDependency == "" || value.BaseDependency == NoBaseDependency) {
-		issues = append(issues, "base_charts are useless while base_dependency is none")
-	}
+	// A dependency on a base with no charts to take it from, and base charts
+	// under no dependency, are halves the configurator saves, as it saves the
+	// halves of a chart of accounts' analytics. Both are carried and noted:
+	// the base is gathered from the charts named, and none named gives none.
 	seen := map[uuid.UUID]bool{}
 	for index, chart := range value.BaseCharts {
 		if chart.IsZero() {
@@ -301,6 +299,7 @@ func (catalog *Catalog) chartOfCalculationTypesTables(definition ChartOfCalculat
 	// there with the action period off as well: the flag is a standard field
 	// of every calculation type in the prototype, not of those that compete.
 	table.Columns = append(table.Columns, schemadiff.Column{Name: "action_period_is_base", Type: "boolean", Nullable: false, Default: "false"})
+	dropSwitchedOffColumn(&table, "description", definition.DescriptionLength)
 	appendCodeColumn(&table, definition.ID, definition.Code)
 	for _, attribute := range definition.Attributes {
 		if err := catalog.appendAttributeSchema(&table, attribute); err != nil {

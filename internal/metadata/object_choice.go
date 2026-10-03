@@ -183,11 +183,9 @@ func validateObjectChoice(choice ObjectChoice) []string {
 	if !validChoiceMode(choice.ChoiceMode) {
 		issues = append(issues, "choice_mode must be both-ways, from-form or quick-choice")
 	}
-	// Choosing only from a form and offering a quick choice are two answers to
-	// one question, and under the first the second is never asked. The same
-	// contradiction is already refused on an enumeration.
-	if choice.ChoiceMode == ChoiceFromForm && choice.QuickChoice {
-		issues = append(issues, "quick_choice contradicts choice_mode from-form")
-	}
+	// Choosing only from a form leaves the quick-choice flag with nothing to
+	// do, and the configurator writes it there all the same, as it writes the
+	// settings of posting a document that does not post: the flag is carried,
+	// offers nothing under «from form», and is a note.
 	return issues
 }

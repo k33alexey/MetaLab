@@ -2240,7 +2240,7 @@ func (catalog *Catalog) validateAccountingRegister(root string, item AccountingR
 	// So are the links: one taking its value from Субконто4 passed the
 	// decoder, which counted as many ext dimensions as the links mention, and
 	// is caught here on a chart that allows three.
-	if issues := validateAccountingRegisterLinks(item, chart.MaxExtDimensionCount); len(issues) > 0 {
+	if issues := validateAccountingRegisterLinks(item, chart.EffectiveMaxExtDimensionCount()); len(issues) > 0 {
 		return fmt.Errorf("%s: %s", owner, strings.Join(issues, "; "))
 	}
 	return catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: AccountingRegisterKind, kind: "accounting register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates})

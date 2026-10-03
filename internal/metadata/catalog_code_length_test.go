@@ -83,8 +83,8 @@ name: Филиалы
 title: {ru: Филиалы}
 code: {type: string, length: 0}
 description_length: 100
-`), metadataConfiguration()); err == nil || !strings.Contains(err.Error(), "code.length must be 1..50") {
-		t.Fatalf("an exchange plan without a code: %v", err)
+`), metadataConfiguration()); err != nil {
+		t.Fatalf("an exchange plan without a code - carried and noted - was refused: %v", err)
 	}
 }
 

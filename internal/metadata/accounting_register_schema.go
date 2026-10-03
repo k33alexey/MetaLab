@@ -165,14 +165,15 @@ func (catalog *Catalog) appendExtDimensionColumns(table *schemadiff.Table, defin
 		return
 	}
 	chart := catalog.ChartsOfAccounts[index]
-	if chart.ExtDimensionTypes == nil || chart.MaxExtDimensionCount == 0 {
+	count := chart.EffectiveMaxExtDimensionCount()
+	if count == 0 {
 		return
 	}
 	sides := []bool{true}
 	if definition.Correspondence {
 		sides = []bool{true, false}
 	}
-	for slot := 1; slot <= chart.MaxExtDimensionCount; slot++ {
+	for slot := 1; slot <= count; slot++ {
 		for _, debit := range sides {
 			kind := extDimensionColumn(slot, debit, false, definition.Correspondence)
 			value := extDimensionColumn(slot, debit, true, definition.Correspondence)

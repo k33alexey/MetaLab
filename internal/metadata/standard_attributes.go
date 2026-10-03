@@ -186,7 +186,7 @@ func (catalog *Catalog) standardAttributeFields(kind Kind, id uuid.UUID) []stand
 		if !ok {
 			return accountingStandardFields(register.Correspondence, 0)
 		}
-		return accountingStandardFields(register.Correspondence, catalog.ChartsOfAccounts[chart].MaxExtDimensionCount)
+		return accountingStandardFields(register.Correspondence, catalog.ChartsOfAccounts[chart].EffectiveMaxExtDimensionCount())
 	}
 	return standardFieldsOfKind(kind)
 }

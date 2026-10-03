@@ -170,10 +170,15 @@ title: {ru: Объект}
 	}
 }
 
-// Choosing only from a form and offering a quick choice are two answers to one
-// question. The contradiction was already refused on an enumeration; now the
-// same code refuses it on the five reference kinds, so the two cannot drift.
-func TestQuickChoiceContradictsChoosingOnlyFromAForm(t *testing.T) {
+// Quick choice under «choose only from a form» does nothing, and the
+// configurator writes it there as it writes the posting settings of a
+// document that does not post. It is carried and noted on the five reference
+// kinds and on an enumeration alike, by the same code, so the two cannot
+// drift.
+//
+// Defect caught: a configuration refused over a flag that does nothing, on one
+// kind and not the other.
+func TestQuickChoiceUnderChoosingOnlyFromAFormIsCarried(t *testing.T) {
 	t.Parallel()
 	for name, body := range map[string]struct {
 		kind    Kind
@@ -198,9 +203,16 @@ title: {ru: Объект}
 `+body.content+`choice_mode: from-form
 quick_choice: true
 `)
-			_, err := Load(root)
-			if err == nil || !strings.Contains(err.Error(), "quick_choice contradicts") {
-				t.Fatalf("err = %v", err)
+			catalog, err := Load(root)
+			if err != nil {
+				t.Fatalf("refused: %v", err)
+			}
+			var noted bool
+			for _, note := range catalog.Notes() {
+				noted = noted || note.Kind == NoteQuickChoiceUnderFormChoice
+			}
+			if !noted {
+				t.Fatal("quick choice under choosing from a form was accepted without a note")
 			}
 		})
 	}

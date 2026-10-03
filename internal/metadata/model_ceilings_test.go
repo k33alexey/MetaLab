@@ -114,7 +114,7 @@ title: {ru: Филиалы}
 code: {type: string, length: 36}
 description_length: 251
 `), metadataConfiguration())
-	if err == nil || !strings.Contains(err.Error(), "description_length must be 1..250") {
+	if err == nil || !strings.Contains(err.Error(), "description_length must be 0..250") {
 		t.Fatalf("a description of 251 on an exchange plan: %v", err)
 	}
 }

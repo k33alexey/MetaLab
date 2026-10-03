@@ -65,15 +65,14 @@ func TestAnObjectSaysWhetherItIsInTheIndex(t *testing.T) {
 	}
 }
 
-// The pair that could not be checked until now. Input by string may be told to
-// search the full-text index, and an object that is not in the index finds
-// nothing that way - a setting that reads as working and does nothing.
+// Neither pair is refused. Input by string told to search the full-text index
+// of an object outside it, and a field flagged for the index of an object
+// outside it, are settings the configurator writes and does not act on; both
+// are carried and noted (field-outside-full-text-index,
+// full-text-input-outside-index).
 //
-// The other pair is left alone on purpose: a field flagged for the index
-// inside an object that is not in it is written four hundred and eighty-four
-// times in the demonstration configuration, and refusing it would refuse a
-// real configuration.
-func TestSearchingByAnObjectOutsideTheIndexIsRefused(t *testing.T) {
+// Defect caught: a configuration refused over a setting that does nothing.
+func TestSearchingByAnObjectOutsideTheIndexIsCarried(t *testing.T) {
 	t.Parallel()
 	for name, want := range map[string]struct {
 		body    string
@@ -81,7 +80,7 @@ func TestSearchingByAnObjectOutsideTheIndexIsRefused(t *testing.T) {
 	}{
 		"вне индекса, но подбор ищет индексом": {`full_text_search: dont-use
 full_text_search_on_input: use
-`, false},
+`, true},
 		"вне индекса и подбор индексом не ищет": {`full_text_search: dont-use
 full_text_search_on_input: dont-use
 `, true},

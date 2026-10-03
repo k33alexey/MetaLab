@@ -261,7 +261,6 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 	issues = append(issues, validateDataLockMode("data_lock", shape.dataLock)...)
 	issues = append(issues, validateDataLockFields(shape.dataLockFields, shape.kind, shape.attributes)...)
 	issues = append(issues, validateFullTextSearch("full_text_search", shape.fullTextSearch)...)
-	issues = append(issues, validateFullTextSearchOnInputPair(shape.fullTextSearch, shape.input.FullTextSearchOnInput)...)
 	issues = append(issues, validateDataHistory(shape.dataHistory)...)
 	issues = append(issues, validateAdditionalIndexes(shape.additionalIndexes, shape.kind,
 		objectIndexTables(shape.kind, shape.attributes, shape.tableParts))...)

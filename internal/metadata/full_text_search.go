@@ -42,22 +42,3 @@ func validateFullTextSearch(path string, mode FullTextSearchMode) []string {
 	}
 	return []string{path + " must be use or dont-use"}
 }
-
-// validateFullTextSearchOnInputPair is the one thing that could not be checked
-// until the object had a flag of its own: input by string may be told to
-// search the full-text index, and an object that is not in the index finds
-// nothing that way. The setting reads as working and does nothing, which is
-// what we refuse everywhere else too.
-//
-// Only this pair is refused. A field flagged for the index inside an object
-// that is not in it is a different matter and is left alone: the
-// demonstration configuration does it four hundred and eighty-four times, and
-// it reads as what it is - the field is ready for the day the object joins the
-// index. The pair above is not like that, because the object cannot be found
-// by input by string in the meantime and nothing says why.
-func validateFullTextSearchOnInputPair(object FullTextSearchMode, onInput FullTextSearchOnInput) []string {
-	if object == FullTextSearchDontUse && onInput == FullTextOnInputUse {
-		return []string{"full_text_search_on_input needs full_text_search: this object is not in the index, so nothing is found by it"}
-	}
-	return nil
-}

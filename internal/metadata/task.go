@@ -123,8 +123,10 @@ func DecodeTask(source string, reader io.Reader, configuration project.Project) 
 		additionalIndexes:  value.AdditionalIndexes,
 		extraFields:        []fieldGroup{{"addressing_attributes", addressingAttributeFields(value.AddressingAttributes)}},
 	}, configuration)...)
-	if value.DescriptionLength < 1 || value.DescriptionLength > maxDescriptionLength {
-		issues = append(issues, fmt.Sprintf("description_length must be 1..%d", maxDescriptionLength))
+	// A description of length 0 switches it off, as on a catalog; on a task
+	// the owner did not check it, so it is a note (NoteLengthZeroUnchecked).
+	if value.DescriptionLength < 0 || value.DescriptionLength > maxDescriptionLength {
+		issues = append(issues, fmt.Sprintf("description_length must be 0..%d", maxDescriptionLength))
 	}
 	// A task lives as long as the process that created it, and renumbering it
 	// at the turn of a year would tear that process in two.
@@ -313,6 +315,7 @@ func (catalog *Catalog) taskTables(definition TaskDefinition) (schemadiff.Table,
 			{Name: physicalObjectName("ie", definition.ID), Method: "btree", Keys: []string{"executed"}},
 		},
 	}
+	dropSwitchedOffColumn(&table, "description", definition.DescriptionLength)
 	appendNumberColumn(&table, definition.ID, definition.Number)
 	// Addressing attributes are columns of the task: a task carries the role it
 	// is addressed to, and the register turns that into people.
@@ -332,9 +335,11 @@ func (catalog *Catalog) taskTables(definition TaskDefinition) (schemadiff.Table,
 			return schemadiff.Table{}, nil, fmt.Errorf("task %s attribute %s: %w", definition.Name, attribute.Name, err)
 		}
 	}
-	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Number", "Description"}, definition.Attributes, map[string]listColumn{
-		"number": {name: "number", kind: definition.Number.Type}, "description": {name: "description", kind: StringType},
-	})
+	searched := map[string]listColumn{"number": {name: "number", kind: definition.Number.Type}}
+	if definition.DescriptionLength > 0 {
+		searched["description"] = listColumn{name: "description", kind: StringType}
+	}
+	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Number", "Description"}, definition.Attributes, searched)
 	parts, err := catalog.tablePartTables("task", definition.Name, definition.ID, definition.TableParts)
 	if err != nil {
 		return schemadiff.Table{}, nil, err

@@ -81,6 +81,26 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 			"      parameters: [{name: Отбор.Код, values: [{kind: string, data: \"1\"}]}]\n"+
 			"      parameter_links: [{name: Отбор.Код, source: {standard: Код}}]\n"))
 	},
+	NoteQuickChoiceUnderFormChoice: func(t *testing.T, root string) {
+		noteCatalog(t, root, "choice_mode: from-form\nquick_choice: true\n", "")
+	},
+	NoteFullTextInputOutsideIndex: func(t *testing.T, root string) {
+		noteCatalog(t, root, "full_text_search: dont-use\nfull_text_search_on_input: use\n", "")
+	},
+	NoteExtDimensionsHalfSet: func(t *testing.T, root string) {
+		noteChart(t, root, ChartOfAccountsKind, "max_ext_dimension_count: 3\n")
+	},
+	NoteAutoOrderWithoutLength: func(t *testing.T, root string) {
+		noteChart(t, root, ChartOfAccountsKind, "auto_order_by_code: true\n")
+	},
+	NoteBaseDependencyHalfSet: func(t *testing.T, root string) {
+		noteChart(t, root, ChartOfCalculationTypesKind, "base_dependency: by-action-period\n")
+	},
+	NoteLengthZeroUnchecked: func(t *testing.T, root string) {
+		id := uuid.MustNew().String()
+		writeMetadata(t, root, TaskKind, id, "format: 1\nid: "+id+"\nname: Задача1\ntitle: {ru: Задача}\n"+
+			"number: {type: string, length: 11, auto: true, periodicity: none}\ndescription_length: 0\n")
+	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
@@ -91,6 +111,15 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 // a bound on a date is a note of its own.
 func noteCubeBody() string {
 	return strings.Replace(salesCubeBody, "    presentation: {min_value: \"2020-01-01T00:00:00Z\"}\n", "", 1)
+}
+
+// noteChart writes a chart of accounts or of calculation types with the
+// properties given, and returns its identifier.
+func noteChart(t *testing.T, root string, kind Kind, properties string) string {
+	t.Helper()
+	id := uuid.MustNew().String()
+	writeMetadata(t, root, kind, id, "format: 1\nid: "+id+"\nname: План\ntitle: {ru: План}\ncode: {type: string, length: 5}\ndescription_length: 100\n"+properties)
+	return id
 }
 
 // noteCatalog writes a catalog with the properties given and, when there is
@@ -225,6 +254,19 @@ func TestSoundSettingsCarryNoNotes(t *testing.T) {
 	writeMetadata(t, root, InformationRegisterKind, register, "format: 1\nid: "+register+"\nname: Исполнители\ntitle: {ru: Исполнители}\n"+
 		"write_mode: independent\nperiodicity: none\ndimensions:\n  - {id: "+dimension+", name: Роль, title: {ru: Роль}, types: [{kind: string, length: 10}]}\n"+
 		"resources:\n  - {id: "+uuid.MustNew().String()+", name: Исполнитель, title: {ru: Исполнитель}, types: [{kind: string, length: 10}]}\n")
+	// Analytics with their chart of kinds, ordering with its length, a base
+	// with the charts it is taken from, a quick choice where choosing is both
+	// ways, full-text input on an indexed object (the catalog Товары above).
+	kinds := uuid.MustNew().String()
+	writeMetadata(t, root, ChartOfCharacteristicTypesKind, kinds, "format: 1\nid: "+kinds+"\nname: ВидыСубконто\ntitle: {ru: Виды субконто}\n"+
+		"code: {type: string, length: 9, auto: true}\ndescription_length: 100\nvalue_type: [{kind: string, length: 100}]\n")
+	noteChart(t, root, ChartOfAccountsKind, "max_ext_dimension_count: 3\next_dimension_types: "+kinds+"\nauto_order_by_code: true\norder_length: 5\n")
+	base := uuid.MustNew().String()
+	writeMetadata(t, root, ChartOfCalculationTypesKind, base, "format: 1\nid: "+base+"\nname: Начисления\ntitle: {ru: Начисления}\n"+
+		"code: {type: string, length: 5}\ndescription_length: 100\nbase_dependency: by-action-period\nbase_charts: ["+base+"]\n")
+	quick := uuid.MustNew().String()
+	writeMetadata(t, root, CatalogKind, quick, "format: 1\nid: "+quick+"\nname: Валюты\ntitle: {ru: Валюты}\n"+
+		"code: {type: string, length: 3}\ndescription_length: 50\nchoice_mode: both-ways\nquick_choice: true\nfull_text_search: use\nfull_text_search_on_input: use\n")
 	task := uuid.MustNew().String()
 	writeMetadata(t, root, TaskKind, task, "format: 1\nid: "+task+"\nname: Задача\ntitle: {ru: Задача}\n"+
 		"number: {type: string, length: 11, auto: true, periodicity: none}\ndescription_length: 150\n"+

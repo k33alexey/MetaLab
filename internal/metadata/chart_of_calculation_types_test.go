@@ -181,12 +181,6 @@ predefined:
     code: "00001"
     displacing: [Оклад]
 `,
-		"зависимость без базовых планов": `
-base_dependency: by-action-period
-`,
-		"базовые планы без зависимости": `
-base_charts: [` + calculationTypesID + `]
-`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

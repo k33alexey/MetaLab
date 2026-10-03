@@ -1079,9 +1079,8 @@ func DecodeEnumeration(source string, reader io.Reader, configuration project.Pr
 	if !validChoiceHistory(value.ChoiceHistoryOnInput) {
 		issues = append(issues, "choice_history_on_input must be auto, use or dont-use")
 	}
-	if value.ChoiceMode == ChoiceFromForm && value.QuickChoice {
-		issues = append(issues, "quick_choice contradicts choice_mode from-form")
-	}
+	// Quick choice under «from form» is carried and noted, as on the other
+	// kinds - see validateObjectChoice.
 	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(EnumerationKind), configuration)...)
 	issues = append(issues, validateFieldLinks(standardFieldsOfKind(EnumerationKind), nil, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
@@ -1196,7 +1195,9 @@ type referenceObjectShape struct {
 	// chart; the designer of 8.3.27 has it); 720 catalogs of the
 	// configurations being moved have no code. A chart of accounts and a
 	// chart of calculation types may have no code either, the owner checked
-	// the same day; their description was not checked, and stays.
+	// the same day. Their description, and the code and the description of an
+	// exchange plan, were not checked: a length of 0 there is carried the same
+	// way and is a note (NoteLengthZeroUnchecked).
 	codeMayBeAbsent        bool
 	descriptionMayBeAbsent bool
 	// autonumbering and checkUnique say this kind has automatic codes and the
@@ -1403,7 +1404,6 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	issues = append(issues, validateDataLockMode("data_lock", shape.dataLock)...)
 	issues = append(issues, validateDataLockFields(shape.dataLockFields, shape.kind, shape.attributes)...)
 	issues = append(issues, validateFullTextSearch("full_text_search", shape.fullTextSearch)...)
-	issues = append(issues, validateFullTextSearchOnInputPair(shape.fullTextSearch, shape.choice.FullTextSearchOnInput)...)
 	issues = append(issues, validateDataHistory(shape.dataHistory)...)
 	issues = append(issues, validateAdditionalIndexes(shape.additionalIndexes, shape.kind,
 		objectIndexTables(shape.kind, shape.attributes, shape.tableParts))...)

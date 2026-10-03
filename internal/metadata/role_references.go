@@ -96,6 +96,9 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		if item.Code.Length == 0 {
 			delete(target.fields, "code")
 		}
+		if item.DescriptionLength == 0 {
+			delete(target.fields, "description")
+		}
 		// Each declared flag is a field of its own, on the account and on the
 		// line of analytics alike: an application may well let a role see the
 		// accounts and not the flags its bookkeeping rests on.
@@ -116,6 +119,9 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 			"deletionmark": true, "dataversion": false, "predefined": false, "predefineddataname": false}
 		if item.Code.Length == 0 {
 			delete(target.fields, "code")
+		}
+		if item.DescriptionLength == 0 {
+			delete(target.fields, "description")
 		}
 		if item.ActionPeriodUse {
 			target.fields["actionperiodisbase"] = true
@@ -157,6 +163,9 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		if item.Number.Length == 0 {
 			delete(target.fields, "number")
 		}
+		if item.DescriptionLength == 0 {
+			delete(target.fields, "description")
+		}
 		addAttributes(addressingAsAttributes(item))
 		addAttributes(item.Attributes)
 		addParts(item.TableParts)
@@ -169,6 +178,12 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		// that touches it.
 		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "deletionmark": true,
 			"dataversion": false, "thisnode": false, "sentno": false, "receivedno": false}
+		if item.Code.Length == 0 {
+			delete(target.fields, "code")
+		}
+		if item.DescriptionLength == 0 {
+			delete(target.fields, "description")
+		}
 		addAttributes(item.Attributes)
 		addParts(item.TableParts)
 	} else if index, ok := catalog.sequenceByID[id]; ok {

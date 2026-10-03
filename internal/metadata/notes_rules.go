@@ -11,23 +11,29 @@ import (
 // iteration of block 2 stopped refusing; the comment beside the old refusal's
 // place says why, and the description below says it for the report.
 const (
-	NoteUnresolvedPath         NoteKind = "unresolved-path"
-	NoteUnusedBound            NoteKind = "unused-bound"
-	NoteFillingNotHeld         NoteKind = "filling-not-held"
-	NoteValueOfVanishedType    NoteKind = "value-of-vanished-type"
-	NoteInactiveHierarchy      NoteKind = "inactive-hierarchy"
-	NoteFolderUseWithoutFolds  NoteKind = "folder-use-without-folders"
-	NoteFieldOutsideIndex      NoteKind = "field-outside-full-text-index"
-	NoteFieldOutsideHistory    NoteKind = "field-outside-data-history"
-	NoteInactivePosting        NoteKind = "inactive-posting-settings"
-	NotePictureWithoutPicture  NoteKind = "picture-without-picture"
-	NoteParameterUseNoType     NoteKind = "parameter-use-without-type"
-	NoteLevelOfHierarchyTable  NoteKind = "level-of-hierarchical-table"
-	NoteFixedLengthOfNumber    NoteKind = "fixed-length-of-number"
-	NotePredefinedCodeKept     NoteKind = "predefined-code-without-code"
-	NoteIncompleteAddressing   NoteKind = "incomplete-addressing"
-	NoteUnfilledCharacteristic NoteKind = "unfilled-characteristic"
-	NoteChoiceSetAndLinked     NoteKind = "choice-parameter-set-and-linked"
+	NoteUnresolvedPath             NoteKind = "unresolved-path"
+	NoteUnusedBound                NoteKind = "unused-bound"
+	NoteFillingNotHeld             NoteKind = "filling-not-held"
+	NoteValueOfVanishedType        NoteKind = "value-of-vanished-type"
+	NoteInactiveHierarchy          NoteKind = "inactive-hierarchy"
+	NoteFolderUseWithoutFolds      NoteKind = "folder-use-without-folders"
+	NoteFieldOutsideIndex          NoteKind = "field-outside-full-text-index"
+	NoteFieldOutsideHistory        NoteKind = "field-outside-data-history"
+	NoteInactivePosting            NoteKind = "inactive-posting-settings"
+	NotePictureWithoutPicture      NoteKind = "picture-without-picture"
+	NoteParameterUseNoType         NoteKind = "parameter-use-without-type"
+	NoteLevelOfHierarchyTable      NoteKind = "level-of-hierarchical-table"
+	NoteFixedLengthOfNumber        NoteKind = "fixed-length-of-number"
+	NotePredefinedCodeKept         NoteKind = "predefined-code-without-code"
+	NoteIncompleteAddressing       NoteKind = "incomplete-addressing"
+	NoteUnfilledCharacteristic     NoteKind = "unfilled-characteristic"
+	NoteChoiceSetAndLinked         NoteKind = "choice-parameter-set-and-linked"
+	NoteQuickChoiceUnderFormChoice NoteKind = "quick-choice-under-form-choice"
+	NoteFullTextInputOutsideIndex  NoteKind = "full-text-input-outside-index"
+	NoteExtDimensionsHalfSet       NoteKind = "ext-dimensions-half-set"
+	NoteAutoOrderWithoutLength     NoteKind = "auto-order-without-length"
+	NoteBaseDependencyHalfSet      NoteKind = "base-dependency-half-set"
+	NoteLengthZeroUnchecked        NoteKind = "length-zero-unchecked"
 )
 
 func init() {
@@ -93,6 +99,26 @@ func init() {
 			"Один и тот же параметр выбора задан и значением, и связью параметров выбора: два свойства прототипа, " +
 				"имя в обоих.",
 			"Оба несутся как записаны; какое из них применяет форма, решается вместе с исполнением выбора в формах (блок 7)."},
+		NoteKindInfo{NoteQuickChoiceUnderFormChoice,
+			"Быстрый выбор у объекта, выбор которого только из формы: в конфигураторе флаг тогда не действует, а выгрузка его пишет.",
+			"Флаг несётся как записан; быстрого выбора нет."},
+		NoteKindInfo{NoteFullTextInputOutsideIndex,
+			"Полнотекстовый поиск при вводе по строке у объекта, который в полнотекстовый индекс не входит.",
+			"Настройка несётся как записана; ввод по строке ищет обычным способом."},
+		NoteKindInfo{NoteExtDimensionsHalfSet,
+			"Субконто плана счетов заданы наполовину: максимум без плана видов характеристик, план видов характеристик " +
+				"при максимуме 0, признаки учёта субконто без плана видов. Конфигуратор такое сохраняет (mdclasses).",
+			"Несётся как записано; без плана видов характеристик субконто у счетов нет."},
+		NoteKindInfo{NoteAutoOrderWithoutLength,
+			"Автопорядок по коду у плана счетов без длины порядка.",
+			"Несётся как записан; порядок строится по ширине кода."},
+		NoteKindInfo{NoteBaseDependencyHalfSet,
+			"Зависимость от базы у плана видов расчёта без базовых планов или базовые планы без зависимости.",
+			"Несётся как записано; база собирается из названных базовых планов, без них — пуста."},
+		NoteKindInfo{NoteLengthZeroUnchecked,
+			"Длина 0 кода или наименования у вида, где её в конфигураторе не проверяли: наименование плана счетов, " +
+				"плана видов расчёта и задачи, код и наименование плана обмена.",
+			"Поле выключено, как у справочника с длиной 0: ни колонки, ни поиска по нему."},
 	)
 	noteRules[NoteUnresolvedPath] = noteUnresolvedPath
 	noteRules[NoteUnusedBound] = noteUnusedBound
@@ -111,6 +137,12 @@ func init() {
 	noteRules[NoteIncompleteAddressing] = noteIncompleteAddressing
 	noteRules[NoteUnfilledCharacteristic] = noteUnfilledCharacteristic
 	noteRules[NoteChoiceSetAndLinked] = noteChoiceSetAndLinked
+	noteRules[NoteQuickChoiceUnderFormChoice] = noteQuickChoiceUnderFormChoice
+	noteRules[NoteFullTextInputOutsideIndex] = noteFullTextInputOutsideIndex
+	noteRules[NoteExtDimensionsHalfSet] = noteExtDimensionsHalfSet
+	noteRules[NoteAutoOrderWithoutLength] = noteAutoOrderWithoutLength
+	noteRules[NoteBaseDependencyHalfSet] = noteBaseDependencyHalfSet
+	noteRules[NoteLengthZeroUnchecked] = noteLengthZeroUnchecked
 }
 
 func noteUnresolvedPath(catalog *Catalog, note func(where, written string)) {
@@ -334,6 +366,84 @@ func noteChoiceSetAndLinked(catalog *Catalog, note func(where, written string)) 
 	})
 }
 
+func noteQuickChoiceUnderFormChoice(catalog *Catalog, note func(where, written string)) {
+	eachNoteHolder(catalog, func(holder noteHolder) {
+		if holder.choiceMode != nil && *holder.choiceMode == ChoiceFromForm && holder.quickChoice != nil && *holder.quickChoice {
+			note(holder.where+" quick_choice", "true")
+		}
+	})
+}
+
+func noteFullTextInputOutsideIndex(catalog *Catalog, note func(where, written string)) {
+	eachNoteHolder(catalog, func(holder noteHolder) {
+		if holder.fullTextInput != nil && *holder.fullTextInput == FullTextOnInputUse &&
+			holder.object.fullTextSearch != nil && *holder.object.fullTextSearch == FullTextSearchDontUse {
+			note(holder.where+" full_text_search_on_input", string(*holder.fullTextInput))
+		}
+	})
+}
+
+func noteExtDimensionsHalfSet(catalog *Catalog, note func(where, written string)) {
+	for _, chart := range catalog.ChartsOfAccounts {
+		where := "charts-of-accounts " + chart.Name
+		switch {
+		case chart.ExtDimensionTypes == nil && chart.MaxExtDimensionCount > 0:
+			note(where+" max_ext_dimension_count", strconv.Itoa(chart.MaxExtDimensionCount)+" without ext_dimension_types")
+		case chart.ExtDimensionTypes != nil && chart.MaxExtDimensionCount == 0:
+			note(where+" ext_dimension_types", "with max_ext_dimension_count 0")
+		}
+		if chart.ExtDimensionTypes == nil && len(chart.ExtDimensionAccountingFlags) > 0 {
+			note(where+" ext_dimension_accounting_flags", "without ext_dimension_types")
+		}
+	}
+}
+
+func noteAutoOrderWithoutLength(catalog *Catalog, note func(where, written string)) {
+	for _, chart := range catalog.ChartsOfAccounts {
+		if chart.AutoOrderByCode && chart.OrderLength == 0 {
+			note("charts-of-accounts "+chart.Name+" auto_order_by_code", "without order_length")
+		}
+	}
+}
+
+func noteBaseDependencyHalfSet(catalog *Catalog, note func(where, written string)) {
+	for _, chart := range catalog.ChartsOfCalculationTypes {
+		where := "charts-of-calculation-types " + chart.Name
+		switch {
+		case takesABase(chart) && len(chart.BaseCharts) == 0:
+			note(where+" base_dependency", string(chart.BaseDependency)+" without base_charts")
+		case !takesABase(chart) && len(chart.BaseCharts) > 0:
+			note(where+" base_charts", "without base_dependency")
+		}
+	}
+}
+
+func noteLengthZeroUnchecked(catalog *Catalog, note func(where, written string)) {
+	for _, chart := range catalog.ChartsOfAccounts {
+		if chart.DescriptionLength == 0 {
+			note("charts-of-accounts "+chart.Name+" description_length", "0")
+		}
+	}
+	for _, chart := range catalog.ChartsOfCalculationTypes {
+		if chart.DescriptionLength == 0 {
+			note("charts-of-calculation-types "+chart.Name+" description_length", "0")
+		}
+	}
+	for _, task := range catalog.Tasks {
+		if task.DescriptionLength == 0 {
+			note("tasks "+task.Name+" description_length", "0")
+		}
+	}
+	for _, plan := range catalog.ExchangePlans {
+		if plan.Code.Length == 0 {
+			note("exchange-plans "+plan.Name+" code.length", "0")
+		}
+		if plan.DescriptionLength == 0 {
+			note("exchange-plans "+plan.Name+" description_length", "0")
+		}
+	}
+}
+
 // noteObject is what a rule may need to know about the top-level object a
 // holder stands in: the settings a field's own flag depends on.
 type noteObject struct {
@@ -369,6 +479,9 @@ type noteHolder struct {
 	predefinedCode *string
 	task           *TaskDefinition
 	characteristic *ObjectCharacteristic
+	choiceMode     *ChoiceMode
+	quickChoice    *bool
+	fullTextInput  *FullTextSearchOnInput
 }
 
 // eachNoteHolder walks every object of the catalog, top level and nested, and
@@ -479,6 +592,13 @@ func holderOf(value reflect.Value, where string, object noteObject) (noteHolder,
 	take("Representation", reflect.TypeFor[CommandRepresentation](), func(v reflect.Value) { holder.representation = v.Interface().(*CommandRepresentation) })
 	take("ParameterUse", reflect.TypeFor[CommandParameterUse](), func(v reflect.Value) { holder.parameterUse = v.Interface().(*CommandParameterUse) })
 	take("Parameter", reflect.TypeFor[[]Type](), func(v reflect.Value) { holder.parameter = v.Interface().(*[]Type) })
+	take("ChoiceMode", reflect.TypeFor[ChoiceMode](), func(v reflect.Value) { holder.choiceMode = v.Interface().(*ChoiceMode) })
+	take("FullTextSearchOnInput", reflect.TypeFor[FullTextSearchOnInput](), func(v reflect.Value) { holder.fullTextInput = v.Interface().(*FullTextSearchOnInput) })
+	if holder.choiceMode != nil {
+		if field, ok := value.Type().FieldByName("QuickChoice"); ok && field.Type == reflect.TypeFor[bool]() && len(field.Index) == 1 {
+			holder.quickChoice = value.Field(field.Index[0]).Addr().Interface().(*bool)
+		}
+	}
 	switch value.Type() {
 	case reflect.TypeFor[ExternalDimensionTable]():
 		holder.dimensionTable = value.Addr().Interface().(*ExternalDimensionTable)

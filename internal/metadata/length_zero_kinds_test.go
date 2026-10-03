@@ -41,12 +41,13 @@ func TestTheOtherKindsTakeALengthOfZeroAsTheDesignerDoes(t *testing.T) {
 		"код плана обмена": {func() error {
 			_, err := DecodeExchangePlan("object.yaml", strings.NewReader("format: 1\nid: "+exchangePlanID+"\nname: Филиалы\ntitle: {ru: Филиалы}\ncode: {type: string, length: 0}\ndescription_length: 100\n"), configuration)
 			return err
-		}, "code.length must be 1..50"},
-		// The description of a chart of accounts was not checked, and stays.
+		}, ""},
+		// The description of a chart of accounts was not checked: carried and
+		// noted.
 		"наименование плана счетов": {func() error {
 			_, err := DecodeChartOfAccounts("object.yaml", strings.NewReader("format: 1\nid: "+accountsID+"\nname: Основной\ntitle: {ru: Основной}\ncode: {type: string, length: 5}\ndescription_length: 0\n"), configuration)
 			return err
-		}, "description_length must be 1..150"},
+		}, ""},
 		"код предопределённого вида расчёта": {func() error {
 			_, err := DecodeChartOfCalculationTypes("object.yaml", strings.NewReader("format: 1\nid: "+accountsID+"\nname: Начисления\ntitle: {ru: Начисления}\ncode: {type: string, length: 0}\ndescription_length: 100\n"+
 				"predefined:\n  - {id: 81000000-0000-4000-8000-000000000002, name: Оклад, code: \"1\"}\n"), configuration)
