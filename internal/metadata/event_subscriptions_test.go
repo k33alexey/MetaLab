@@ -37,7 +37,7 @@ func TestDecodeEventSubscriptionStrictAndBounded(t *testing.T) {
 		"format":        func(s *EventSubscriptionDefinition) { s.Format++ },
 		"zero identity": func(s *EventSubscriptionDefinition) { s.ID = uuid.UUID{} },
 		"name":          func(s *EventSubscriptionDefinition) { s.Name = "Invalid Name" },
-		"language":      func(s *EventSubscriptionDefinition) { s.Title = LocalizedText{"de": "Verboten"} },
+		"language":      func(s *EventSubscriptionDefinition) { s.Title = LocalizedText{"d=e": "Verboten"} },
 		"no source":     func(s *EventSubscriptionDefinition) { s.Source = nil },
 		"zero object": func(s *EventSubscriptionDefinition) {
 			s.Source = append(s.Source, Type{Kind: CatalogObjectType, Reference: &uuid.UUID{}})

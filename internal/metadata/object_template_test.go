@@ -160,7 +160,7 @@ templates:
 	}{
 		"табличный документ с текстом": {"ПечатнаяФорма", "content.txt", "cannot hold"},
 		"HTML без языка":               {"Письмо", "content.yaml", "cannot hold"},
-		"язык не язык":                 {"Письмо", "ЯЗЫК.html", "cannot hold"},
+		"язык не язык":                 {"Письмо", "ru;uk.html", "cannot hold"},
 		"содержимое без макета":        {"НикемНеОбъявленный", "content.yaml", "which it does not declare"},
 	} {
 		t.Run(name, func(t *testing.T) {

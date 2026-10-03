@@ -100,13 +100,17 @@ attributes:
 	}
 }
 
-// A translation that is there must still say something: an empty synonym is a
-// synonym with no translations, not one with a blank one.
+// A translation that is there must not be empty: an empty synonym is a synonym
+// with no translations, not one with an empty one. A translation of spaces
+// alone is kept - the prototype keeps a tooltip of one space - and noted.
 func TestSynonymTranslationMustNotBeBlank(t *testing.T) {
 	t.Parallel()
-	issues := validateTitle("title", LocalizedText{"ru": "  "}, metadataConfiguration())
+	issues := validateTitle("title", LocalizedText{"ru": ""}, metadataConfiguration())
 	if len(issues) == 0 {
-		t.Fatal("a blank translation was accepted")
+		t.Fatal("an empty translation was accepted")
+	}
+	if issues := validateTitle("title", LocalizedText{"ru": " "}, metadataConfiguration()); len(issues) != 0 {
+		t.Fatalf("a translation of one space was refused: %v", issues)
 	}
 	if issues := validateTitle("title", nil, metadataConfiguration()); len(issues) != 0 {
 		t.Fatalf("no translations at all refused: %v", issues)

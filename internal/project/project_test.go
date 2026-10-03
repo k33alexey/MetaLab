@@ -168,8 +168,8 @@ func TestValidateReportsAllProblems(t *testing.T) {
 		Name:            "1 invalid",
 		DefaultLanguage: "de",
 		Languages: []Language{
-			{Name: "Русский", Title: LocalizedText{"RU": ""}, Code: "RU"},
-			{Name: "русский", Title: LocalizedText{"RU": "Українська"}, Code: "RU"},
+			{Name: "Русский", Title: LocalizedText{"RU": ""}, Code: "R U"},
+			{Name: "русский", Title: LocalizedText{"RU": "Українська"}, Code: "R U"},
 		},
 	}
 
@@ -427,10 +427,10 @@ func TestRootTextsAreCheckedAgainstTheProjectLanguages(t *testing.T) {
 	}
 	for name, broken := range map[string]func(value *Project){
 		"синонима нет вовсе":              func(value *Project) { value.Title = nil },
-		"синоним на языке, которого нет":  func(value *Project) { value.Title = LocalizedText{"de": "Demo"} },
-		"авторские права на чужом языке":  func(value *Project) { value.Copyright = LocalizedText{"de": "©"} },
+		"синоним не на языке":             func(value *Project) { value.Title = LocalizedText{"d=e": "Demo"} },
+		"авторские права не на языке":     func(value *Project) { value.Copyright = LocalizedText{"d=e": "©"} },
 		"адрес с управляющим символом":    func(value *Project) { value.InformationAddress = LocalizedText{"ru": "http://a\nb"} },
-		"краткая информация пуста":        func(value *Project) { value.BriefInformation = LocalizedText{"ru": "  "} },
+		"краткая информация пуста":        func(value *Project) { value.BriefInformation = LocalizedText{"ru": ""} },
 		"версия с управляющим символом":   func(value *Project) { value.Version = "1.0\n0" },
 		"комментарий с управляющим сим-м": func(value *Project) { value.Comment = "первая\nвторая" },
 	} {
@@ -971,9 +971,16 @@ func TestLanguageSynonymIsCheckedAgainstTheLanguages(t *testing.T) {
 		}
 	}
 	unknown := base()
-	unknown.Languages[0].Title = LocalizedText{"de": "Russisch"}
+	unknown.Languages[0].Title = LocalizedText{"d=e": "Russisch"}
 	if err := unknown.Validate(); err == nil {
-		t.Fatal("a synonym written in a language nobody configured was accepted")
+		t.Fatal("a synonym under a key that is no language code was accepted")
+	}
+	// A language the configuration does not declare is kept: erp, acc and sb
+	// carry «en» beside ru and uk.
+	undeclared := base()
+	undeclared.Languages[0].Title = LocalizedText{"en": "Russian"}
+	if err := undeclared.Validate(); err != nil {
+		t.Fatalf("a synonym in an undeclared language was refused: %v", err)
 	}
 
 	empty := base()
@@ -1022,5 +1029,35 @@ func TestRootTextsRunOverSeveralLinesButAddressesDoNot(t *testing.T) {
 	value.UpdateCatalogAddress = LocalizedText{"ru": "http://a\nb"}
 	if err := value.Validate(); err == nil || !strings.Contains(err.Error(), "update_catalog_address.ru must be one line") {
 		t.Fatalf("an address over two lines: %v", err)
+	}
+}
+
+// A language code is what the help says - a string, «en» for example - and
+// what the configurator saves: ru1, ja, sq (mdclasses). It holds nothing that
+// breaks where it is used: no «=», «;» or quote, which НСтр parses, and no dot
+// or separator of a path, which the name of a page of help is made of.
+//
+// Defect caught: a configuration refused over a code the configurator saves
+// (ru1 under the old rule of two or three lowercase letters), and a code let
+// through that breaks НСтр or a file name.
+func TestALanguageCodeIsAnyCodeThatBreaksNothing(t *testing.T) {
+	t.Parallel()
+	for _, code := range []string{"ru", "ru1", "ja", "sq", "EN", "en_US", "uk-UA", "пт"} {
+		if !LanguageCodeShape(code) {
+			t.Errorf("code %q was refused", code)
+		}
+	}
+	for _, code := range []string{"", "e n", "en=", "en;", "en'", `en"`, "en.x", "en/x", `en\x`, "en\t"} {
+		if LanguageCodeShape(code) {
+			t.Errorf("code %q was accepted", code)
+		}
+	}
+	value := Project{
+		Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo",
+		Title: LocalizedText{"ru1": "Демо"}, DefaultLanguage: "ru1",
+		Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: LocalizedText{"ru1": "Русский"}, Code: "ru1"}},
+	}
+	if err := value.Validate(); err != nil {
+		t.Fatalf("a configuration with the language ru1 was refused: %v", err)
 	}
 }

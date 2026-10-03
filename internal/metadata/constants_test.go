@@ -168,8 +168,8 @@ func TestBrokenConstantPropertiesAreRefused(t *testing.T) {
 		"истории данных не существует": {"data_history: иногда", "data_history must be use or dont-use"},
 		"блокировки не существует":     {"data_lock: ручная", "data_lock must be automatic, managed or automatic-and-managed"},
 		"форма нулевая":                {"default_form: 00000000-0000-0000-0000-000000000000", "default_form must be a non-zero UUID"},
-		"пояснение на незаявленном языке": {"explanation: {de: Modus}",
-			"explanation.de uses an unconfigured language"},
+		"пояснение не на языке": {"explanation: {\"d=e\": Modus}",
+			"explanation.d=e is not a language code"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

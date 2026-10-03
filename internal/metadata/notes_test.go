@@ -1,8 +1,12 @@
 package metadata
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/k33alexey/MetaLab/internal/project"
 
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -159,6 +163,21 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		writeExternalTable(t, root, "Бухгалтерия", foreignTable, "Счета", "name_in_data_source: accounts\ndata_type: object\nkey_fields: [Код]\nfields:\n"+
 			"  - {id: "+foreignCodeField+", name: Код, title: {ru: Код}, types: [{kind: string, length: 10}], name_in_data_source: code}\n")
 	},
+	NoteTextInUndeclaredLanguage: func(t *testing.T, root string) {
+		id := uuid.MustNew().String()
+		writeMetadata(t, root, CatalogKind, id, "format: 1\nid: "+id+"\nname: Товары\ntitle: {ru: Товары, en: Goods}\ncode: {type: string, length: 9, auto: true}\ndescription_length: 150\n")
+	},
+	NoteTextWithoutLanguage: func(t *testing.T, root string) {
+		id := uuid.MustNew().String()
+		writeMetadata(t, root, CatalogKind, id, "format: 1\nid: "+id+"\nname: Товары\ntitle: {ru: Товары, \"\": Товары}\ncode: {type: string, length: 9, auto: true}\ndescription_length: 150\n")
+	},
+	NoteTextOfSpaces: func(t *testing.T, root string) {
+		noteCatalog(t, root, "", noteField("string", "    presentation: {tooltip: {ru: \" \", uk: \" \"}}\n"))
+	},
+	NoteHelpInUndeclaredLanguage: func(t *testing.T, root string) {
+		noteCatalog(t, root, "", "")
+		noteHelpPage(t, root, "Товары", "Русский.html")
+	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
@@ -178,6 +197,18 @@ func noteChart(t *testing.T, root string, kind Kind, properties string) string {
 	id := uuid.MustNew().String()
 	writeMetadata(t, root, kind, id, "format: 1\nid: "+id+"\nname: План\ntitle: {ru: План}\ncode: {type: string, length: 5}\ndescription_length: 100\n"+properties)
 	return id
+}
+
+// noteHelpPage writes one page of help of a catalog.
+func noteHelpPage(t *testing.T, root, catalog, page string) {
+	t.Helper()
+	directory := filepath.Join(root, "metadata", string(CatalogKind), catalog, project.HelpDirectory)
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, page), []byte("<html><body>Справка</body></html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // noteCatalog writes a catalog with the properties given and, when there is
@@ -295,6 +326,7 @@ func TestSoundSettingsCarryNoNotes(t *testing.T) {
 		"  - id: "+uuid.MustNew().String()+"\n    name: Комментарий\n    title: {ru: Комментарий}\n    types: [{kind: string, length: 10}]\n"+
 		"    filling: {value: {kind: undefined, data: \"\"}}\n")
 	writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
+	noteHelpPage(t, root, "Товары", "ru.html")
 	writeSalesCube(t, root, noteCubeBody(), goodsDimTableBody)
 	// Two services on roots that differ by more than case, a template without
 	// a leading slash - the help asks for none - a table of a source keyed,
@@ -485,5 +517,31 @@ func TestACubeWithNoNameInTheSourceIsNoted(t *testing.T) {
 	}
 	if len(places) != 2 {
 		t.Fatalf("notes on empty names = %v, want the cube and its resource", places)
+	}
+}
+
+// The configuration's own texts are walked too: a synonym of the root in an
+// undeclared language is a note on the configuration.
+//
+// Defect caught: the walk of the texts missing the root, which carries texts
+// of its own - its synonym, copyright and addresses.
+func TestTheRootsTextsAreNoted(t *testing.T) {
+	t.Parallel()
+	configuration := metadataConfiguration()
+	configuration.Title = LocalizedText{"ru": "Демо", "en": "Demo"}
+	root := filepath.Join(t.TempDir(), "project")
+	if err := project.Initialize(root, configuration); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var noted bool
+	for _, note := range catalog.Notes() {
+		noted = noted || (note.Kind == NoteTextInUndeclaredLanguage && strings.HasPrefix(note.Where, "configuration"))
+	}
+	if !noted {
+		t.Fatalf("the root's synonym in an undeclared language carries no note: %+v", catalog.Notes())
 	}
 }

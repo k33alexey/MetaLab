@@ -682,6 +682,9 @@ type Catalog struct {
 	// unresolved is what the last load found pointing at nothing - see
 	// UnresolvedReference.
 	unresolved []UnresolvedReference
+	// helpPages is every page of help the last load found - see
+	// collectHelpPages.
+	helpPages []helpPage
 	// objectKindByID holds every object of the top level the last load read,
 	// of every kind, with the kind it is. It is what a reference that may point
 	// at an object of any kind - the content of a subsystem - is resolved by.
@@ -1718,17 +1721,18 @@ func validateBase(format int, id uuid.UUID, name string, title LocalizedText, co
 
 func validateTitle(path string, title LocalizedText, configuration project.Project) []string {
 	var issues []string
-	configured := make(map[string]bool, len(configuration.Languages))
-	for _, language := range configuration.Languages {
-		configured[language.Code] = true
-	}
 	// No translation at all is a text left empty, and the prototype saves it:
 	// wherever it is shown, the name stands in (checked by the owner on the
 	// platform, 01.10.2026; the configurations being moved leave it empty 38,
 	// 37 and 24 times - attributes, forms, templates, modules, pictures).
+	// A translation in a language the configuration does not declare (erp,
+	// acc and sb carry «en» beside ru and uk) and one with no code at all (the
+	// synonym of a standard table part of a chart, 7/6/1) are kept: the help
+	// ties a text to no list. Both are notes. Only a code that cannot be a code
+	// is refused.
 	for language, value := range title {
-		if !configured[language] {
-			issues = append(issues, path+"."+language+" uses an unconfigured language")
+		if language != "" && !project.LanguageCodeShape(language) {
+			issues = append(issues, path+"."+language+" is not a language code")
 		}
 		if !validLocalizedText(value) {
 			issues = append(issues, path+"."+language+" must say something in printable characters, line breaks allowed")
@@ -1901,8 +1905,13 @@ func validIdentifier(value string) bool {
 // run past 512 characters. The 512 this used to stop at had no source. Other
 // control characters are still refused: nothing types them, and they would
 // break whatever the text is shown in.
+// validLocalizedText accepts a translation that says something, or says
+// spaces alone: the prototype keeps a tooltip of one space (sb, 24 times).
+// Such a text is kept as written,
+// reads as empty where it is shown, and is a note. An empty translation is no
+// translation and is refused.
 func validLocalizedText(value string) bool {
-	if !utf8.ValidString(value) || strings.TrimSpace(value) == "" {
+	if !utf8.ValidString(value) || value == "" {
 		return false
 	}
 	for _, symbol := range value {

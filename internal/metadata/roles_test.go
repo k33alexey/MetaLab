@@ -40,7 +40,7 @@ func TestDecodeRoleStrictAndBounded(t *testing.T) {
 		"format":            func(r *RoleDefinition) { r.Format++ },
 		"zero identity":     func(r *RoleDefinition) { r.ID = uuid.UUID{} },
 		"name":              func(r *RoleDefinition) { r.Name = "Invalid Name" },
-		"language":          func(r *RoleDefinition) { r.Title = LocalizedText{"de": "Leser"} },
+		"language":          func(r *RoleDefinition) { r.Title = LocalizedText{"d=e": "Leser"} },
 		"zero object":       func(r *RoleDefinition) { r.Objects[0].Object = uuid.UUID{} },
 		"duplicate object":  func(r *RoleDefinition) { r.Objects = append(r.Objects, r.Objects[0]) },
 		"unknown operation": func(r *RoleDefinition) { r.Objects[0].Operations = []PermissionOperation{"admin"} },

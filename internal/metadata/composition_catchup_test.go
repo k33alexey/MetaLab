@@ -180,9 +180,9 @@ func TestReportAndDataProcessorCarryTheExtendedPresentation(t *testing.T) {
 		t.Fatalf("data processor = %+v, error = %v", decodedProcessor.ExtendedPresentation, err)
 	}
 
-	// Localized like every text a person reads, and checked like one: a language
-	// the configuration does not have is a presentation nobody will see.
-	processor.ExtendedPresentation = LocalizedText{"de": "Monatsabschluss"}
+	// Localized like every text a person reads, and checked like one: a key
+	// that cannot be a language code is refused.
+	processor.ExtendedPresentation = LocalizedText{"d=e": "Monatsabschluss"}
 	encoded.Reset()
 	if err := Encode(&encoded, processor); err != nil {
 		t.Fatal(err)

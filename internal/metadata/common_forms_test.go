@@ -162,8 +162,8 @@ func TestBrokenCommonFormPropertiesAreRefused(t *testing.T) {
 		"назначения не существует": {"purposes: [watch]", "purposes[0] is not a kind of application"},
 		"назначение повторено": {"purposes: [platform-application, platform-application]",
 			"purposes[1] is already among the purposes"},
-		"пояснение на незаявленном языке": {"explanation: {de: Adressbuch}",
-			"explanation.de uses an unconfigured language"},
+		"пояснение не на языке": {"explanation: {\"d=e\": Adressbuch}",
+			"explanation.d=e is not a language code"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

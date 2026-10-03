@@ -64,9 +64,9 @@ func TestInspectRejectsMalformedAndUnsupportedSources(t *testing.T) {
 
 	constantID := uuid.MustNew()
 	constantPath, _ := project.ObjectMetadataPath("constants", "Invalid")
-	writeSourceFile(t, root, constantPath, []byte("format: 1\nid: "+constantID.String()+"\nname: Invalid\ntitle: {de: Ungültig}\ntypes: [{kind: boolean}]\n"))
-	if _, err := inspect(context.Background(), root, SourceState{}); err == nil || !strings.Contains(err.Error(), "unconfigured language") {
-		t.Fatalf("unconfigured language error = %v", err)
+	writeSourceFile(t, root, constantPath, []byte("format: 1\nid: "+constantID.String()+"\nname: Invalid\ntitle: {\"d=e\": Ungültig}\ntypes: [{kind: boolean}]\n"))
+	if _, err := inspect(context.Background(), root, SourceState{}); err == nil || !strings.Contains(err.Error(), "is not a language code") {
+		t.Fatalf("a key that is no language code: error = %v", err)
 	}
 	if err := os.Remove(filepath.Join(root, filepath.FromSlash(constantPath))); err != nil {
 		t.Fatal(err)
@@ -449,11 +449,14 @@ func TestHelpIsPublishedWithItsOwner(t *testing.T) {
 		"картинка справки формы":   {"metadata/documents/ЗаказКлиента/forms/ФормаДокумента/help/_files/1.png", false, true},
 		"справка общей формы":      {"metadata/common-forms/АдреснаяКнига/help/ru.html", false, true},
 		"не страница":              {"metadata/catalogs/Организации/help/readme.txt", false, false},
-		"язык не кодом":            {"metadata/catalogs/Организации/help/Русский.html", false, false},
-		"чужая папка в справке":    {"metadata/catalogs/Организации/help/images", true, false},
-		"глубже папки картинок":    {"metadata/catalogs/Организации/help/_files/a/1.png", false, false},
-		"скрытая картинка":         {"metadata/catalogs/Организации/help/_files/.png", false, false},
-		"справка у общего модуля":  {"metadata/common-commands/Печать/help/ru.html", false, false},
+		// Any code that breaks nothing is a code (the help: «a string, for
+		// example "en"»), so a page under a code of letters is a page; one
+		// whose code holds a dot is not.
+		"язык не кодом":           {"metadata/catalogs/Организации/help/ru.uk.html", false, false},
+		"чужая папка в справке":   {"metadata/catalogs/Организации/help/images", true, false},
+		"глубже папки картинок":   {"metadata/catalogs/Организации/help/_files/a/1.png", false, false},
+		"скрытая картинка":        {"metadata/catalogs/Организации/help/_files/.png", false, false},
+		"справка у общего модуля": {"metadata/common-commands/Печать/help/ru.html", false, false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

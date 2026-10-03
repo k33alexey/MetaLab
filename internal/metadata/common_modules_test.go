@@ -33,7 +33,7 @@ func TestDecodeCommonModuleStrictAndBounded(t *testing.T) {
 		"format":        func(m *CommonModuleDefinition) { m.Format++ },
 		"zero identity": func(m *CommonModuleDefinition) { m.ID = uuid.UUID{} },
 		"name":          func(m *CommonModuleDefinition) { m.Name = "Invalid Name" },
-		"language":      func(m *CommonModuleDefinition) { m.Title = LocalizedText{"de": "Allgemein"} },
+		"language":      func(m *CommonModuleDefinition) { m.Title = LocalizedText{"d=e": "Allgemein"} },
 		"zero module":   func(m *CommonModuleDefinition) { m.Module = uuid.UUID{} },
 		"no context at all": func(m *CommonModuleDefinition) {
 			m.Server, m.Client = false, false

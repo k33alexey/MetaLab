@@ -30,7 +30,7 @@ func TestDecodeSubsystemStrictAndBounded(t *testing.T) {
 		"format":           func(s *SubsystemDefinition) { s.Format++ },
 		"zero identity":    func(s *SubsystemDefinition) { s.ID = uuid.UUID{} },
 		"name":             func(s *SubsystemDefinition) { s.Name = "Invalid Name" },
-		"language":         func(s *SubsystemDefinition) { s.Title = LocalizedText{"de": "Verkauf"} },
+		"language":         func(s *SubsystemDefinition) { s.Title = LocalizedText{"d=e": "Verkauf"} },
 		"self parent":      func(s *SubsystemDefinition) { self := s.ID; s.Parent = &self },
 		"zero parent":      func(s *SubsystemDefinition) { zero := uuid.UUID{}; s.Parent = &zero },
 		"zero member":      func(s *SubsystemDefinition) { s.Members = append(s.Members, uuid.UUID{}) },

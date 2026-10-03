@@ -42,7 +42,7 @@ func TestDecodeCommonAttributeStrictAndBounded(t *testing.T) {
 		"format":        func(a *CommonAttributeDefinition) { a.Format++ },
 		"zero identity": func(a *CommonAttributeDefinition) { a.ID = uuid.UUID{} },
 		"name":          func(a *CommonAttributeDefinition) { a.Name = "Invalid Name" },
-		"language":      func(a *CommonAttributeDefinition) { a.Title = LocalizedText{"de": "Verantwortlich"} },
+		"language":      func(a *CommonAttributeDefinition) { a.Title = LocalizedText{"d=e": "Verantwortlich"} },
 		"нулевой объект в составе": func(a *CommonAttributeDefinition) {
 			a.Content = append(a.Content, CommonAttributeContentItem{Use: CommonAttributeUseUse})
 		},

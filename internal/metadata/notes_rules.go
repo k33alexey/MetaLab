@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -51,6 +52,10 @@ const (
 	NoteAmpersandZero              NoteKind = "expression-ampersand-zero"
 	NoteLongExternalString         NoteKind = "long-external-string"
 	NoteForeignSourceReference     NoteKind = "foreign-source-reference"
+	NoteTextInUndeclaredLanguage   NoteKind = "text-in-undeclared-language"
+	NoteTextWithoutLanguage        NoteKind = "text-without-language"
+	NoteTextOfSpaces               NoteKind = "text-of-spaces"
+	NoteHelpInUndeclaredLanguage   NoteKind = "help-in-undeclared-language"
 )
 
 func init() {
@@ -178,6 +183,19 @@ func init() {
 		NoteKindInfo{NoteForeignSourceReference,
 			"Поле внешнего источника ссылается на таблицу другого источника.",
 			"Ссылка несётся как записана; соединить две базы ML не может, ссылка ничего не находит."},
+		NoteKindInfo{NoteTextInUndeclaredLanguage,
+			"Перевод на язык, которого нет среди языков конфигурации (erp, acc и sb: «en» при языках ru и uk).",
+			"Перевод несётся как записан и показывается, только если ни на одном языке конфигурации текста нет."},
+		NoteKindInfo{NoteTextWithoutLanguage,
+			"Перевод без кода языка (синоним стандартной табличной части плана счетов и ПВР: 7/6/1).",
+			"Перевод несётся как записан и показывается, только если ни на одном языке конфигурации текста нет."},
+		NoteKindInfo{NoteTextOfSpaces,
+			"Текст из одних пробелов — подсказка из одного пробела (sb, 24 раза); похоже на нарочное подавление подсказки.",
+			"Текст несётся как записан и при показе считается пустым."},
+		NoteKindInfo{NoteHelpInUndeclaredLanguage,
+			"Страница справки на языке, которого нет среди языков конфигурации, — или файл, названный не кодом языка, " +
+				"а, например, его именем (Русский.html).",
+			"Страница несётся и публикуется как записана; справка не показывается."},
 	)
 	noteRules[NoteUnresolvedPath] = noteUnresolvedPath
 	noteRules[NoteUnusedBound] = noteUnusedBound
@@ -215,6 +233,10 @@ func init() {
 	noteRules[NoteAmpersandZero] = noteAmpersandZero
 	noteRules[NoteLongExternalString] = noteLongExternalString
 	noteRules[NoteForeignSourceReference] = noteForeignSourceReference
+	noteRules[NoteTextInUndeclaredLanguage] = noteTextInUndeclaredLanguage
+	noteRules[NoteTextWithoutLanguage] = noteTextWithoutLanguage
+	noteRules[NoteTextOfSpaces] = noteTextOfSpaces
+	noteRules[NoteHelpInUndeclaredLanguage] = noteHelpInUndeclaredLanguage
 }
 
 func noteUnresolvedPath(catalog *Catalog, note func(where, written string)) {
@@ -716,6 +738,120 @@ func noteForeignSourceReference(catalog *Catalog, note func(where, written strin
 					}
 				}
 			}
+		}
+	}
+}
+
+func noteTextInUndeclaredLanguage(catalog *Catalog, note func(where, written string)) {
+	declared := map[string]bool{}
+	for _, language := range catalog.Project.Languages {
+		declared[strings.ToLower(language.Code)] = true
+	}
+	eachLocalizedText(catalog, func(where string, text LocalizedText) {
+		for _, code := range sortedTextKeys(text) {
+			if code != "" && !declared[strings.ToLower(code)] {
+				note(where+"."+code, text[code])
+			}
+		}
+	})
+}
+
+func noteTextWithoutLanguage(catalog *Catalog, note func(where, written string)) {
+	eachLocalizedText(catalog, func(where string, text LocalizedText) {
+		if value, ok := text[""]; ok {
+			note(where, value)
+		}
+	})
+}
+
+func noteTextOfSpaces(catalog *Catalog, note func(where, written string)) {
+	eachLocalizedText(catalog, func(where string, text LocalizedText) {
+		for _, code := range sortedTextKeys(text) {
+			if value := text[code]; value != "" && strings.TrimSpace(value) == "" {
+				note(where+"."+code, strconv.Quote(value))
+			}
+		}
+	})
+}
+
+func noteHelpInUndeclaredLanguage(catalog *Catalog, note func(where, written string)) {
+	declared := map[string]bool{}
+	for _, language := range catalog.Project.Languages {
+		declared[strings.ToLower(language.Code)] = true
+	}
+	for _, page := range catalog.helpPages {
+		if !declared[strings.ToLower(page.code)] {
+			note(page.where, page.code)
+		}
+	}
+}
+
+func sortedTextKeys(text LocalizedText) []string {
+	keys := make([]string, 0, len(text))
+	for key := range text {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+// eachLocalizedText walks every text of the catalog - the configuration's own
+// and every object's, at any depth - and calls visit with the place it stands
+// in. Texts are maps, which the walk of the holders does not enter.
+func eachLocalizedText(catalog *Catalog, visit func(where string, text LocalizedText)) {
+	walkTexts(reflect.ValueOf(&catalog.Project).Elem(), "configuration", visit)
+	top := reflect.ValueOf(catalog).Elem()
+	for index := range top.NumField() {
+		field := top.Type().Field(index)
+		if !field.IsExported() || field.Type.Kind() != reflect.Slice || field.Type.Elem().Kind() != reflect.Struct {
+			continue
+		}
+		list := top.Field(index)
+		for item := range list.Len() {
+			object := list.Index(item)
+			walkTexts(object, kebab(field.Name)+" "+nameOf(object), visit)
+		}
+	}
+}
+
+func walkTexts(value reflect.Value, where string, visit func(string, LocalizedText)) {
+	textType := reflect.TypeFor[LocalizedText]()
+	switch value.Kind() {
+	case reflect.Pointer:
+		if !value.IsNil() {
+			walkTexts(value.Elem(), where, visit)
+		}
+	case reflect.Map:
+		if value.Type() == textType {
+			if value.Len() > 0 {
+				visit(where, value.Interface().(LocalizedText))
+			}
+			return
+		}
+		if value.Type().Elem() == textType {
+			for _, key := range value.MapKeys() {
+				walkTexts(value.MapIndex(key), where+" "+fmt.Sprint(key.Interface()), visit)
+			}
+		}
+	case reflect.Slice:
+		switch value.Type().Elem().Kind() {
+		case reflect.Struct, reflect.Pointer, reflect.Map:
+			for index := range value.Len() {
+				element := value.Index(index)
+				walkTexts(element, where+" "+nameOf(element), visit)
+			}
+		}
+	case reflect.Struct:
+		for index := range value.NumField() {
+			field := value.Type().Field(index)
+			if !field.IsExported() {
+				continue
+			}
+			next := where
+			if !field.Anonymous {
+				next = where + " " + yamlName(field)
+			}
+			walkTexts(value.Field(index), next, visit)
 		}
 	}
 }

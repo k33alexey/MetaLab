@@ -563,7 +563,50 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	if err := catalog.indexAndValidate(root); err != nil {
 		return nil, err
 	}
+	if err := catalog.collectHelpPages(root); err != nil {
+		return nil, err
+	}
 	return catalog, nil
+}
+
+// collectHelpPages records every page of help the project keeps - of the
+// configuration, of an object, a form, a subsystem - by the language it is in.
+// The folders were checked while the project was read; here only their pages
+// are listed, for the note on a page in a language the configuration does not
+// declare (NoteHelpInUndeclaredLanguage).
+func (catalog *Catalog) collectHelpPages(root string) error {
+	catalog.helpPages = nil
+	for _, start := range []string{project.HelpDirectory, "metadata"} {
+		base := filepath.Join(root, start)
+		if _, err := os.Stat(base); err != nil {
+			continue
+		}
+		err := filepath.WalkDir(base, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() || filepath.Base(filepath.Dir(path)) != project.HelpDirectory {
+				return nil
+			}
+			code, ok := project.HelpPage(entry.Name())
+			if !ok {
+				return nil
+			}
+			relative, _ := filepath.Rel(root, path)
+			catalog.helpPages = append(catalog.helpPages, helpPage{where: filepath.ToSlash(relative), code: code})
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("list help pages: %w", err)
+		}
+	}
+	return nil
+}
+
+// helpPage is one page of help as the project keeps it.
+type helpPage struct {
+	where string
+	code  string
 }
 
 // NewCatalogSnapshot validates already decoded metadata, for example from a publication package.

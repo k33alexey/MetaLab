@@ -869,14 +869,19 @@ func HelpPath(steps []string, directory bool) bool {
 
 // LanguageCodeShape accepts the shape of a language code, not the list of
 // them: which languages a configuration has is decided by the configuration.
+//
+// The help says only «a string, for example "en"», and the configurations
+// saved by the configurator hold ru1, ja and sq (mdclasses). What a code must
+// not hold comes from where it is used: НСтр writes «code = 'text'; ...», so a
+// code holds no «=», «;» or quote, and a page of help is named «code.html», so
+// it holds no separator of a path and no dot. Nothing else is refused, and no
+// ceiling on the length is set: the help names none (03.10.2026).
 func LanguageCodeShape(code string) bool {
-	if len(code) < 1 || len(code) > 8 {
+	if code == "" {
 		return false
 	}
 	for _, symbol := range code {
-		switch {
-		case symbol >= 'a' && symbol <= 'z', symbol >= '0' && symbol <= '9', symbol == '-':
-		default:
+		if unicode.IsSpace(symbol) || unicode.IsControl(symbol) || strings.ContainsRune("=;'\"/\\.", symbol) {
 			return false
 		}
 	}

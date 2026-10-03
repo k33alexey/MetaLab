@@ -133,10 +133,10 @@ name: Номенклатура
 title: {ru: Номенклатура}
 code: {type: string, length: 9, auto: true}
 description_length: 150
-`+field+`: {de: Ware}
+`+field+`: {"d=e": Ware}
 `)
 			_, err := Load(root)
-			if err == nil || !strings.Contains(err.Error(), "unconfigured language") {
+			if err == nil || !strings.Contains(err.Error(), "is not a language code") {
 				t.Fatalf("err = %v", err)
 			}
 		})

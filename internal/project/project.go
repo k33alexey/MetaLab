@@ -555,8 +555,8 @@ func (p Project) Validate() error {
 		if language.Comment != "" && !isDisplayText(language.Comment, 1024) {
 			add(prefix+".comment", "must contain 1 to 1024 printable characters")
 		}
-		if !isLocaleCode(language.Code) {
-			add(prefix+".code", "must be a lowercase language code with optional region")
+		if !LanguageCodeShape(language.Code) {
+			add(prefix+".code", "must be a language code: no spaces, «=», «;», quotes, dots or separators of a path")
 		}
 
 		normalizedName := strings.ToLower(language.Name)
@@ -596,10 +596,18 @@ func (p Project) Validate() error {
 			return
 		}
 		for _, code := range sortedKeys(text) {
-			if !configured[strings.ToLower(code)] {
-				add(path+"."+code, "uses an unconfigured language")
+			// A translation in a language the configuration does not declare
+			// - erp, acc and sb carry «en» beside ru and uk - and one with no
+			// code at all are kept: the help ties a text to no list. Both
+			// are notes (metadata.NoteTextInUndeclaredLanguage). Only a code
+			// that cannot be a code is refused.
+			if code != "" && !LanguageCodeShape(code) {
+				add(path+"."+code, "is not a language code")
 			}
 			switch {
+			// A text of spaces alone is kept as written: the prototype keeps
+			// a tooltip of one space (sb, 24 times). It is a note.
+			case text[code] != "" && strings.TrimSpace(text[code]) == "":
 			case line && !isDisplayText(text[code], math.MaxInt):
 				add(path+"."+code, "must be one line of printable characters")
 			case !line && !isLocalizedText(text[code]):
@@ -894,31 +902,6 @@ func isIdentifier(value string) bool {
 	}
 
 	return value != ""
-}
-
-func isLocaleCode(value string) bool {
-	parts := strings.Split(value, "-")
-	if len(parts) < 1 || len(parts) > 2 || len(parts[0]) < 2 || len(parts[0]) > 3 {
-		return false
-	}
-	for _, current := range parts[0] {
-		if current < 'a' || current > 'z' {
-			return false
-		}
-	}
-	if len(parts) == 1 {
-		return true
-	}
-	if len(parts[1]) != 2 {
-		return false
-	}
-	for _, current := range parts[1] {
-		if current < 'A' || current > 'Z' {
-			return false
-		}
-
-	}
-	return true
 }
 
 // isLocalizedText is a translation of a text of the configuration: a
