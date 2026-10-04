@@ -285,9 +285,18 @@ func (catalog *Catalog) resolveCommandInterfaces(root string) {
 			catalog.noteUnresolved(where, id)
 		}
 	}
+	type placed struct {
+		where string
+		value CommandInterface
+	}
+	interfaces := make([]placed, 0, len(catalog.Subsystems)+1)
 	for _, item := range catalog.Subsystems {
-		where := "subsystem " + item.Name + " command interface"
-		value := item.CommandInterface
+		interfaces = append(interfaces, placed{"subsystem " + item.Name + " command interface", item.CommandInterface})
+	}
+	// The main section keeps the same kind of interface, on the root.
+	interfaces = append(interfaces, placed{"the configuration's main section command interface", catalog.MainSectionCommandInterface})
+	for _, item := range interfaces {
+		where, value := item.where, item.value
 		for _, entry := range value.CommandsVisibility {
 			command(where, entry.InterfaceCommand)
 			role(where, entry.InterfaceVisibility)

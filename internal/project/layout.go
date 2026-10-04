@@ -68,7 +68,17 @@ const (
 	// are drawn - its variants and its transparency. Left out, the files are
 	// named by density and drawn as they are.
 	RootPictureDescriptionFile = "picture.yaml"
-	keepFile                   = ".gitkeep"
+	// HomePageFile, ClientInterfaceFile and MainSectionCommandInterfaceFile
+	// describe what the application shows before anything is opened: the
+	// forms of the home page, the panels of the main window and the commands
+	// of the main section. ParentConfigurationsFile is the vendor's support
+	// settings, carried as the prototype wrote them. The configurations being
+	// moved keep each of them - see the metadata package.
+	HomePageFile                    = "НачальнаяСтраница.yaml"
+	ClientInterfaceFile             = "ИнтерфейсКлиентскогоПриложения.yaml"
+	MainSectionCommandInterfaceFile = "КомандныйИнтерфейсОсновногоРаздела.yaml"
+	ParentConfigurationsFile        = "РодительскиеКонфигурации.bin"
+	keepFile                        = ".gitkeep"
 
 	// ObjectMetadataFile is the description of the object owning a folder.
 	ObjectMetadataFile = "object.yaml"
@@ -240,6 +250,14 @@ var rootModuleFiles = []string{SessionModuleFile, ApplicationModuleFile,
 // rootPictureDirectories is every picture the configuration root may keep, in
 // the order the tree shows them.
 var rootPictureDirectories = []string{LogoDirectory, SplashDirectory, MainSectionPictureDirectory}
+
+// rootDescriptionFiles is every file the configuration root keeps beside its
+// description and its modules, in the order the tree shows them.
+var rootDescriptionFiles = []string{HomePageFile, ClientInterfaceFile, MainSectionCommandInterfaceFile, ParentConfigurationsFile}
+
+// RootDescriptionFiles returns the files of the root that are neither its
+// description nor a module nor a picture.
+func RootDescriptionFiles() []string { return slices.Clone(rootDescriptionFiles) }
 
 // RootPictureDirectories returns the pictures of the configuration root.
 func RootPictureDirectories() []string { return slices.Clone(rootPictureDirectories) }

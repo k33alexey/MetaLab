@@ -216,7 +216,8 @@ func canonicalSourcePaths(root string) ([]string, error) {
 }
 
 // rootSourcePaths is what the configuration root keeps beside its
-// description: its modules, its pictures and its help. They are sources as
+// description: its modules, the descriptions of its interface, its pictures
+// and its help. They are sources as
 // much as anything under metadata/, and leaving them out of the package left
 // them out of its hash: a change to the session or the application module
 // alone was saved under the hash of the version before, so ML App, which
@@ -224,7 +225,10 @@ func canonicalSourcePaths(root string) ([]string, error) {
 // different saves were recorded as one package.
 func rootSourcePaths(root string) ([]string, error) {
 	var paths []string
-	for _, file := range project.RootModuleFiles() {
+	// The descriptions of the root's interface and its support settings are
+	// sources of the root the same way its modules are: a home page changed
+	// alone is a new package.
+	for _, file := range append(project.RootModuleFiles(), project.RootDescriptionFiles()...) {
 		info, err := os.Lstat(filepath.Join(root, file))
 		if os.IsNotExist(err) {
 			continue

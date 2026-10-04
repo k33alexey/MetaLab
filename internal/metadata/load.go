@@ -31,6 +31,9 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 		return nil, err
 	}
 	catalog := &Catalog{Project: configuration, rolesLoaded: includeRoles}
+	if err := catalog.loadRootInterface(root); err != nil {
+		return nil, err
+	}
 	if includeRoles {
 		if err := loadKind(root, RoleKind, func(source string, file *os.File, id uuid.UUID) error {
 			value, err := DecodeRole(source, file, configuration)
@@ -2026,6 +2029,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return err
 	}
 	catalog.resolveCommandInterfaces(root)
+	catalog.resolveRootInterface()
 	if err := catalog.validateEventSubscriptionReferences(); err != nil {
 		return err
 	}

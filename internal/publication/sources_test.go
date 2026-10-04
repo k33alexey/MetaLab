@@ -562,7 +562,7 @@ func TestPictureFilesArePublished(t *testing.T) {
 }
 
 // What the configuration root keeps beside its description - its modules,
-// its pictures and its help - is a source like any other, and a change to it
+// the descriptions of its interface, its pictures and its help - is a source like any other, and a change to it
 // alone must change the content digest: ML App offers a refresh when the
 // digest changes, and a session module edited and saved under the digest of
 // the version before reached nobody's open session, recorded besides as the
@@ -578,6 +578,10 @@ func TestRootFilesChangeTheContentDigest(t *testing.T) {
 		project.HelpDirectory + "/ru.html",
 		project.HelpDirectory + "/_files/1.png",
 		project.LogoDirectory + "/100.png",
+		project.HomePageFile,
+		project.ClientInterfaceFile,
+		project.MainSectionCommandInterfaceFile,
+		project.ParentConfigurationsFile,
 	} {
 		t.Run(file, func(t *testing.T) {
 			t.Parallel()
@@ -612,13 +616,21 @@ func TestRootFilesChangeTheContentDigest(t *testing.T) {
 }
 
 // rootFileContent is a valid file of the kind the name says, differing by
-// the word given: a module, a page, or an image.
+// the word given: a module, a page, a description of the root's interface,
+// or an image - the support settings are opaque, and an image will do.
 func rootFileContent(file, word string) string {
 	switch {
 	case strings.HasSuffix(file, ".bsl"):
 		return "Процедура " + map[string]string{"первая": "Первая", "вторая": "Вторая"}[word] + "()\nКонецПроцедуры\n"
 	case strings.HasSuffix(file, ".html"):
 		return "<p>" + word + "</p>"
+	case file == project.HomePageFile:
+		return "template: one-column\nleft:\n  - {form: 5b000000-0000-4000-8000-000000000001, height: " +
+			map[string]string{"первая": "1", "вторая": "2"}[word] + ", visibility: {common: true}}\n"
+	case file == project.ClientInterfaceFile:
+		return "panels: [5b000000-0000-4000-8000-00000000000" + map[string]string{"первая": "1", "вторая": "2"}[word] + "]\n"
+	case file == project.MainSectionCommandInterfaceFile:
+		return "groups_order: [{standard: " + map[string]string{"первая": "navigation-panel-ordinary", "вторая": "actions-panel-tools"}[word] + "}]\n"
 	default:
 		return "\x89PNG\r\n\x1a\n" + word
 	}

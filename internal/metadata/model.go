@@ -604,7 +604,12 @@ type CatalogDefinition struct {
 // Catalog is an immutable-by-convention snapshot of the supported metadata kinds.
 type Catalog struct {
 	Project project.Project
-	Roles   []RoleDefinition
+	// HomePage, ClientInterface and MainSectionCommandInterface are what the
+	// application shows before anything is opened - see root_interface.go.
+	HomePage                    *HomePage
+	ClientInterface             *ClientInterface
+	MainSectionCommandInterface CommandInterface
+	Roles                       []RoleDefinition
 	// rolesLoaded tells whether Roles is the configuration's roles or a stand-in.
 	// The role editor validates one edited role against a catalog that
 	// deliberately holds no others, and the root's default roles must not be
