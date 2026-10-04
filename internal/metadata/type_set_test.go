@@ -280,21 +280,71 @@ attributes:
 	}
 }
 
-// A chart whose characteristics are typed by its own characteristics describes
-// nothing at all, and the refusal comes at the chart, not at whoever uses it.
-func TestChartCannotBeTypedByItsOwnCharacteristics(t *testing.T) {
+// A chart may allow characteristics of itself, and of a chart that allows its
+// own in return: the configurator offers the chart in its own value type and
+// saves it (8.3.27, checked by the owner 04.10.2026). The value type is then
+// the union over the circle - a chart already walked adds nothing - and a
+// circle with nothing else in it holds nothing.
+func TestChartMayBeTypedByItsOwnCharacteristics(t *testing.T) {
 	t.Parallel()
-	root := metadataProject(t)
-	writeMetadata(t, root, ChartOfCharacteristicTypesKind, setChart, `format: 1
-id: `+setChart+`
-name: ВидыСвойств
-title: {ru: Виды свойств}
-code: {type: string, length: 9, auto: true}
-description_length: 150
-value_type:
-  - {kind: characteristic, reference: `+setChart+`}
-`)
-	if _, err := Load(root); err == nil {
-		t.Fatal("a chart typed by itself was accepted")
+	chart := func(root, id, name, valueType string) {
+		writeMetadata(t, root, ChartOfCharacteristicTypesKind, id, "format: 1\nid: "+id+"\nname: "+name+"\ntitle: {ru: "+name+"}\n"+
+			"code: {type: string, length: 9, auto: true}\ndescription_length: 150\nvalue_type: "+valueType+"\n")
 	}
+	accepts := func(t *testing.T, catalog *Catalog, name string, value Value) error {
+		t.Helper()
+		item, ok := catalog.ChartOfCharacteristicTypes(name)
+		if !ok {
+			t.Fatalf("chart %s was not loaded", name)
+		}
+		_, err := catalog.normalizeTypes("value", []Type{{Kind: CharacteristicSet, Reference: &item.ID}}, value)
+		return err
+	}
+	yes, text := Value{Kind: BooleanType, Data: "true"}, Value{Kind: StringType, Data: "x"}
+
+	t.Run("itself beside other types", func(t *testing.T) {
+		t.Parallel()
+		root := metadataProject(t)
+		chart(root, setChart, "ВидыСвойств", "[{kind: boolean}, {kind: characteristic, reference: "+setChart+"}]")
+		catalog, err := Load(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := accepts(t, catalog, "ВидыСвойств", yes); err != nil {
+			t.Fatalf("a boolean was refused: %v", err)
+		}
+		if accepts(t, catalog, "ВидыСвойств", text) == nil {
+			t.Fatal("a string was accepted by a chart that allows booleans only")
+		}
+	})
+	t.Run("two charts in a circle", func(t *testing.T) {
+		t.Parallel()
+		root := metadataProject(t)
+		other := uuid.MustNew().String()
+		chart(root, setChart, "Первый", "[{kind: boolean}, {kind: characteristic, reference: "+other+"}]")
+		chart(root, other, "Второй", "[{kind: string, length: 10}, {kind: characteristic, reference: "+setChart+"}]")
+		catalog, err := Load(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"Первый", "Второй"} {
+			for _, value := range []Value{yes, text} {
+				if err := accepts(t, catalog, name, value); err != nil {
+					t.Fatalf("%s refused %s: %v", name, value.Kind, err)
+				}
+			}
+		}
+	})
+	t.Run("itself and nothing else", func(t *testing.T) {
+		t.Parallel()
+		root := metadataProject(t)
+		chart(root, setChart, "ВидыСвойств", "[{kind: characteristic, reference: "+setChart+"}]")
+		catalog, err := Load(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if accepts(t, catalog, "ВидыСвойств", yes) == nil {
+			t.Fatal("a chart that holds nothing accepted a value")
+		}
+	})
 }

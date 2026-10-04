@@ -1793,7 +1793,10 @@ func validateTypesIn(path string, types []Type, self uuid.UUID, place typePlace)
 		if !referenced && item.Reference != nil {
 			issues = append(issues, prefix+".reference is not allowed")
 		}
-		if (item.Kind == DefinedType || item.Kind == CharacteristicSet) && item.Reference != nil && *item.Reference == self {
+		// A chart may allow characteristics of itself: the configurator offers
+		// the chart in its own value type and saves it (checked on 8.3.27 by
+		// the owner, 04.10.2026). A defined type holds no defined type at all.
+		if item.Kind == DefinedType && item.Reference != nil && *item.Reference == self {
 			issues = append(issues, prefix+" cannot reference itself")
 		}
 		switch {

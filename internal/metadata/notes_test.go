@@ -54,6 +54,11 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, representation: picture}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
 	},
+	NoteChartHoldsNothing: func(t *testing.T, root string) {
+		id := uuid.MustNew().String()
+		writeMetadata(t, root, ChartOfCharacteristicTypesKind, id, "format: 1\nid: "+id+"\nname: Свойства\ntitle: {ru: Свойства}\n"+
+			"code: {type: string, length: 9, auto: true}\ndescription_length: 100\nvalue_type: [{kind: characteristic, reference: "+id+"}]\n")
+	},
 	NotePictureSettingsLeft: func(t *testing.T, root string) {
 		id := uuid.MustNew().String()
 		writeMetadata(t, root, SubsystemKind, id, "format: 1\nid: "+id+"\nname: Продажи\ntitle: {ru: Продажи}\n"+
@@ -434,6 +439,11 @@ func TestSoundSettingsCarryNoNotes(t *testing.T) {
 		"resources:\n  - {id: "+uuid.MustNew().String()+", name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}]}\n"+
 		"recalculations:\n  - {id: "+uuid.MustNew().String()+", name: Перерасчет, title: {ru: Перерасчёт}, dimensions: [{id: "+uuid.MustNew().String()+
 		", name: Лицо, title: {ru: Лицо}, register_dimension: "+person+", leading_data: ["+person+"]}]}\n")
+	// A chart that allows its own characteristics beside other types holds
+	// those types: nothing to note.
+	ownChart := uuid.MustNew().String()
+	writeMetadata(t, root, ChartOfCharacteristicTypesKind, ownChart, "format: 1\nid: "+ownChart+"\nname: ВидыСвойств\ntitle: {ru: Виды свойств}\n"+
+		"code: {type: string, length: 9, auto: true}\ndescription_length: 100\nvalue_type: [{kind: boolean}, {kind: characteristic, reference: "+ownChart+"}]\n")
 	catalog, err := Load(root)
 	if err != nil {
 		t.Fatal(err)

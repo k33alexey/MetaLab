@@ -274,10 +274,14 @@ func (catalog *Catalog) expandTypes(types []Type, stack map[uuid.UUID]bool) ([]T
 			}
 			if item.Kind == CharacteristicSet {
 				// What a characteristic may hold is decided by its chart, and
-				// a chart is free to allow characteristics of itself. Walking
-				// that without a guard would not end.
-				if item.Reference == nil || stack[*item.Reference] {
+				// a chart is free to allow characteristics of itself or of a
+				// chart that allows its own. The value type is then the union
+				// over the circle: a chart already being walked adds nothing.
+				if item.Reference == nil {
 					return fmt.Errorf("invalid characteristic type expansion")
+				}
+				if stack[*item.Reference] {
+					continue
 				}
 				index, ok := catalog.chartOfCharacteristicTypesByID[*item.Reference]
 				if !ok {

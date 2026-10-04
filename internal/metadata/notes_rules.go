@@ -61,6 +61,7 @@ const (
 	NoteStandardFieldOfDocument    NoteKind = "standard-field-of-document"
 	NoteLeadingDataNotDimension    NoteKind = "leading-data-not-dimension"
 	NotePictureSettingsLeft        NoteKind = "picture-settings-without-picture"
+	NoteChartHoldsNothing          NoteKind = "chart-value-type-holds-nothing"
 )
 
 func init() {
@@ -224,6 +225,11 @@ func init() {
 			"Ссылка на картинку без картинки: картинку убрали, а загрузка прозрачной или точка прозрачности остались " +
 				"(в выгрузке — ссылка на картинку 0). Конфигуратор такое сохраняет: в выгрузках 8 ссылок.",
 			"Настройки несутся как записаны; рисуется как без картинки — команда, отображаемая картинкой, показывается текстом."},
+		NoteKindInfo{NoteChartHoldsNothing,
+			"Тип значения плана видов характеристик — только характеристики самого плана или планов, которые в ответ держат только его. " +
+				"Конфигуратор позволяет выбрать план в его же типе значения и сохраняет это (проверено на 8.3.27); " +
+				"рядом с другими типами характеристики себя ничего не добавляют, а без них тип пуст.",
+			"План несётся как записан; его характеристика не принимает ни одного значения."},
 	)
 	noteRules[NoteUnresolvedPath] = noteUnresolvedPath
 	noteRules[NoteUnusedBound] = noteUnusedBound
@@ -270,6 +276,7 @@ func init() {
 	noteRules[NoteLeadingDataNotDimension] = noteLeadingDataNotDimension
 	noteRules[NotePictureSettingsLeft] = notePictureSettingsLeft
 	noteRules[NoteVanishedType] = noteVanishedType
+	noteRules[NoteChartHoldsNothing] = noteChartHoldsNothing
 }
 
 func noteUnresolvedPath(catalog *Catalog, note func(where, written string)) {
@@ -655,6 +662,17 @@ func noteRegisterWithoutFields(catalog *Catalog, note func(where, written string
 	for _, register := range catalog.InformationRegisters {
 		if len(register.Dimensions)+len(register.Resources)+len(register.Attributes) == 0 {
 			note("information-registers "+register.Name, "no fields")
+		}
+	}
+}
+
+func noteChartHoldsNothing(catalog *Catalog, note func(where, written string)) {
+	for _, chart := range catalog.ChartsOfCharacteristicTypes {
+		if len(chart.ValueType) == 0 {
+			continue
+		}
+		if types, err := catalog.expandTypes(chart.ValueType, nil); err == nil && len(types) == 0 {
+			note("charts-of-characteristic-types "+chart.Name, "value type: characteristics only")
 		}
 	}
 }
