@@ -19,8 +19,6 @@ import (
 const (
 	// CurrentFormat is the latest supported ML Project configuration format.
 	CurrentFormat = 1
-	// MaxYAMLDocumentBytes bounds individual source documents before parsing.
-	MaxYAMLDocumentBytes = 4 << 20
 	// MaxNameLength is the longest name of anything named by an identifier -
 	// the configuration, a language, an object, a field: the designer takes
 	// 255 characters (owner, 01.10.2026), the configurations being moved go up
@@ -31,8 +29,6 @@ const (
 var (
 	// ErrUnsupportedFormat identifies a configuration written in an unsupported format version.
 	ErrUnsupportedFormat = errors.New("unsupported ML Project format")
-	// ErrYAMLDocumentTooLarge prevents unbounded memory use while parsing project sources.
-	ErrYAMLDocumentTooLarge = errors.New("ML Project YAML document is too large")
 )
 
 // ValidationIssue points to one invalid configuration field.
@@ -436,12 +432,14 @@ func Decode(reader io.Reader) (Project, error) {
 
 // DecodeSource reads one named strict YAML document so diagnostics identify its source.
 func DecodeSource(source string, reader io.Reader) (Project, error) {
-	content, err := io.ReadAll(io.LimitReader(reader, MaxYAMLDocumentBytes+1))
+	// No ceiling on the size of a source: the prototype names none, and its
+	// configurations keep files of tens of megabytes (METADATA-OBJECTS.md,
+	// «Пределы на состав»; owner, 03.10.2026). What a file costs to read is
+	// a limit of execution, decided by the format it is kept in - the content
+	// of a spreadsheet, the largest of them, is JSON for that reason.
+	content, err := io.ReadAll(reader)
 	if err != nil {
 		return Project{}, fmt.Errorf("read %s: %w", source, err)
-	}
-	if len(content) > MaxYAMLDocumentBytes {
-		return Project{}, fmt.Errorf("decode %s: %w (maximum %d bytes)", source, ErrYAMLDocumentTooLarge, MaxYAMLDocumentBytes)
 	}
 	decoder := yaml.NewDecoder(bytes.NewReader(content))
 	decoder.KnownFields(true)
@@ -505,9 +503,6 @@ func Encode(writer io.Writer, value Project) error {
 	}
 	if err := encoder.Close(); err != nil {
 		return fmt.Errorf("close ML Project encoder: %w", err)
-	}
-	if content.Len() > MaxYAMLDocumentBytes {
-		return ErrYAMLDocumentTooLarge
 	}
 	if _, err := io.Copy(writer, &content); err != nil {
 		return fmt.Errorf("write ML Project: %w", err)

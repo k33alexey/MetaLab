@@ -27,14 +27,6 @@ const WSReferenceKind Kind = "ws-references"
 // it, and none of them is an object of the configuration.
 const WSReferenceDefinitionFile = "definition.xml"
 
-const (
-	// maxWSDefinitionBytes bounds the imported description. A description
-	// carries the whole data model of the service, and those of large systems
-	// run to megabytes, so the bound is generous; it exists so that a file put
-	// in the wrong place is refused rather than read into memory whole.
-	maxWSDefinitionBytes = 32 << 20
-)
-
 // The two namespaces a service description may be written in: WSDL 1.1, whose
 // root is "definitions", and WSDL 2.0, whose root is "description".
 const (
@@ -158,14 +150,10 @@ func checkWSDefinition(path string) error {
 		return err
 	}
 	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		return err
-	}
-	if info.Size() > maxWSDefinitionBytes {
-		return fmt.Errorf("the description exceeds %d MiB", maxWSDefinitionBytes>>20)
-	}
-	decoder := xml.NewDecoder(io.LimitReader(file, maxWSDefinitionBytes+1))
+	// No ceiling on the size of the description: a description carries the
+	// whole data model of the service, the prototype limits none, and it is
+	// read token by token, never whole (owner, 03.10.2026).
+	decoder := xml.NewDecoder(file)
 	rooted := false
 	for {
 		token, err := decoder.Token()

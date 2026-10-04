@@ -3,7 +3,6 @@ package project
 import (
 	"bytes"
 	"errors"
-	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -128,12 +127,19 @@ func TestDecodeReportsNamedSourceAndLine(t *testing.T) {
 	}
 }
 
-func TestDecodeRejectsOversizedDocument(t *testing.T) {
+// A source has no ceiling on its size: the prototype names none, and a
+// configuration keeps files of tens of megabytes (owner, 03.10.2026). Defect
+// caught: a description past 4 MiB was refused whole.
+func TestDecodeTakesALargeDocument(t *testing.T) {
 	t.Parallel()
 
-	reader := io.LimitReader(strings.NewReader(strings.Repeat("x", MaxYAMLDocumentBytes+1)), MaxYAMLDocumentBytes+1)
-	if _, err := Decode(reader); !errors.Is(err, ErrYAMLDocumentTooLarge) {
-		t.Fatalf("Decode() error = %v, want ErrYAMLDocumentTooLarge", err)
+	large := strings.Replace(validYAML, "format: 1", "format: 1\ncomment: "+strings.Repeat("к", 3<<20), 1)
+	value, err := Decode(strings.NewReader(large))
+	if err != nil {
+		t.Fatalf("a description of %d MiB was refused: %v", len(large)>>20, err)
+	}
+	if len(value.Comment) < 6<<20 {
+		t.Fatalf("the long comment came back cut: %d bytes", len(value.Comment))
 	}
 }
 

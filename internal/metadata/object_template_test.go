@@ -159,9 +159,11 @@ templates:
 		template, file, want string
 	}{
 		"табличный документ с текстом": {"ПечатнаяФорма", "content.txt", "cannot hold"},
-		"HTML без языка":               {"Письмо", "content.yaml", "cannot hold"},
-		"язык не язык":                 {"Письмо", "ru;uk.html", "cannot hold"},
-		"содержимое без макета":        {"НикемНеОбъявленный", "content.yaml", "which it does not declare"},
+		// A spreadsheet is kept in JSON, not in YAML (owner, 04.10.2026).
+		"табличный документ в YAML": {"ПечатнаяФорма", "content.yaml", "cannot hold"},
+		"HTML без языка":            {"Письмо", "content.yaml", "cannot hold"},
+		"язык не язык":              {"Письмо", "ru;uk.html", "cannot hold"},
+		"содержимое без макета":     {"НикемНеОбъявленный", "content.yaml", "which it does not declare"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -267,15 +269,15 @@ description_length: 150
 templates:
   - {id: `+templateID+`, name: ПечатнаяФорма, title: {ru: Печатная форма}, kind: spreadsheet}
 `)
-	writeTemplateContent(t, root, CatalogKind, "Контрагенты", "ПечатнаяФорма", "content.yaml", "format: 1\n")
+	writeTemplateContent(t, root, CatalogKind, "Контрагенты", "ПечатнаяФорма", "content.json", "{}\n")
 	if _, err := Load(root); err != nil {
 		t.Fatal(err)
 	}
-	expected, err := project.ObjectTemplateContentPath("catalogs", "Контрагенты", "ПечатнаяФорма", "content.yaml")
+	expected, err := project.ObjectTemplateContentPath("catalogs", "Контрагенты", "ПечатнаяФорма", "content.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if expected != "metadata/catalogs/Контрагенты/templates/ПечатнаяФорма/content.yaml" {
+	if expected != "metadata/catalogs/Контрагенты/templates/ПечатнаяФорма/content.json" {
 		t.Fatalf("a template's content lies at %q", expected)
 	}
 	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(expected))); err != nil {

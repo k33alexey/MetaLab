@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -29,7 +30,6 @@ import (
 const (
 	CurrentPackageFormat    = 6
 	PackageExtension        = ".mlpkg"
-	maxSourceFileBytes      = 64 << 20
 	maxPackageInputBytes    = 512 << 20
 	maxPackageManifestBytes = 64 << 20
 )
@@ -546,21 +546,13 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 // HTML template, which keeps one document per language.
 func templateContentName(file string) bool {
 	switch file {
-	case "content.yaml", "content.txt", "content.bin":
+	case "content.yaml", "content.json", "content.txt", "content.bin":
 		return true
 	}
-	code, found := strings.CutSuffix(file, ".html")
-	if !found || len(code) < 1 || len(code) > 8 {
-		return false
-	}
-	for _, symbol := range code {
-		switch {
-		case symbol >= 'a' && symbol <= 'z', symbol >= '0' && symbol <= '9', symbol == '-':
-		default:
-			return false
-		}
-	}
-	return true
+	// A document is named by its language, by the same rule the metadata is
+	// read with: any code that breaks nothing (ru1, ja - project.LanguageCodeShape).
+	_, ok := project.HelpPage(file)
+	return ok
 }
 
 // objectFolderFormName reports the form's name if relative is one of an
@@ -622,14 +614,14 @@ func inspectFile(absolute, relative string) (FileEntry, error) {
 	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 		return FileEntry{}, fmt.Errorf("publication source %q must be a regular file", relative)
 	}
-	if info.Size() > maxSourceFileBytes {
-		return FileEntry{}, fmt.Errorf("publication source %q exceeds %d bytes", relative, maxSourceFileBytes)
-	}
+	// No ceiling on one file: the package as a whole is bounded, a file is
+	// not - the prototype keeps templates of tens of megabytes (owner,
+	// 03.10.2026).
 	file, err := os.Open(absolute)
 	if err != nil {
 		return FileEntry{}, fmt.Errorf("open publication source %q: %w", relative, err)
 	}
-	content, readErr := io.ReadAll(io.LimitReader(file, maxSourceFileBytes+1))
+	content, readErr := io.ReadAll(file)
 	closeErr := file.Close()
 	if readErr != nil {
 		return FileEntry{}, fmt.Errorf("read publication source %q: %w", relative, readErr)
@@ -637,11 +629,12 @@ func inspectFile(absolute, relative string) (FileEntry, error) {
 	if closeErr != nil {
 		return FileEntry{}, fmt.Errorf("close publication source %q: %w", relative, closeErr)
 	}
-	if len(content) > maxSourceFileBytes {
-		return FileEntry{}, fmt.Errorf("publication source %q exceeds %d bytes", relative, maxSourceFileBytes)
-	}
 	if strings.HasSuffix(relative, ".yaml") {
 		if err := validateYAML(relative, content); err != nil {
+			return FileEntry{}, err
+		}
+	} else if strings.HasSuffix(relative, ".json") {
+		if err := validateJSON(relative, content); err != nil {
 			return FileEntry{}, err
 		}
 	} else if strings.HasSuffix(relative, ".bsl") && (!utf8.Valid(content) || bytes.IndexByte(content, 0) >= 0) {
@@ -651,10 +644,45 @@ func inspectFile(absolute, relative string) (FileEntry, error) {
 	return FileEntry{Path: relative, Size: int64(len(content)), SHA256: hex.EncodeToString(digest[:])}, nil
 }
 
-func validateYAML(relative string, content []byte) error {
-	if len(content) > project.MaxYAMLDocumentBytes {
-		return fmt.Errorf("YAML source %q exceeds %d bytes", relative, project.MaxYAMLDocumentBytes)
+// validateJSON checks that a JSON source is one well-formed value. It reads
+// the file token by token and builds nothing: the content of a spreadsheet
+// runs to tens of megabytes, and checking it must not cost what reading it
+// into a tree would.
+func validateJSON(relative string, content []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	depth, seen := 0, false
+	for {
+		token, err := decoder.Token()
+		if errors.Is(err, io.EOF) {
+			if !seen {
+				return fmt.Errorf("JSON source %q holds no value", relative)
+			}
+			// The decoder answers the end of the file even inside an
+			// object left open.
+			if depth != 0 {
+				return fmt.Errorf("decode JSON source %q: the file ends inside a value", relative)
+			}
+			break
+		}
+		seen = true
+		if err != nil {
+			return fmt.Errorf("decode JSON source %q: %w", relative, err)
+		}
+		if delimiter, ok := token.(json.Delim); ok {
+			if delimiter == '{' || delimiter == '[' {
+				depth++
+			} else {
+				depth--
+			}
+		}
+		if depth == 0 && decoder.More() {
+			return fmt.Errorf("JSON source %q holds more than one value", relative)
+		}
 	}
+	return nil
+}
+
+func validateYAML(relative string, content []byte) error {
 	decoder := yaml.NewDecoder(bytes.NewReader(content))
 	var document yaml.Node
 	if err := decoder.Decode(&document); err != nil {

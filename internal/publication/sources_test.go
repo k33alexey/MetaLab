@@ -263,6 +263,12 @@ func TestCommonTemplateAndPicturePathShapes(t *testing.T) {
 		"описание общего макета":   {"metadata/common-templates/ПечатнаяФорма/object.yaml", false, true},
 		"содержимое общего макета": {"metadata/common-templates/ПечатнаяФорма/content.yaml", false, true},
 		"документ на язык":         {"metadata/common-templates/Инструкция/ru.html", false, true},
+		// A document is named by its language by the rule the metadata is
+		// read with - ru1, as mdclasses keeps it - not by a narrower one.
+		"документ на язык ru1":      {"metadata/common-templates/Инструкция/ru1.html", false, true},
+		"документ на язык pt-BR":    {"metadata/common-templates/Инструкция/pt-BR.html", false, true},
+		"документ с точкой в коде":  {"metadata/common-templates/Инструкция/r.u.html", false, false},
+		"табличный документ в JSON": {"metadata/common-templates/ПечатнаяФорма/content.json", false, true},
 		"посторонний файл у общего макета": {
 			"metadata/common-templates/ПечатнаяФорма/заметки.txt", false, false},
 		// An HTML template keeps its images in _files beside its documents,
@@ -683,5 +689,66 @@ func TestRootFoldersArePublishedInTheirShape(t *testing.T) {
 				t.Fatalf("%s was accepted", test.relative)
 			}
 		})
+	}
+}
+
+// The content of a spreadsheet is published as one well-formed JSON value,
+// checked token by token. Defects caught: broken JSON published; two values
+// or none taken for one; a large content refused or read into a tree.
+func TestJSONSourceIsOneWellFormedValue(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		content, refusal string
+	}{
+		"объект":            {`{"rows": [{"index": 0, "cells": [{"text": {"ru": "а"}}]}]}`, ""},
+		"массив":            {`[1, 2, 3]`, ""},
+		"сломанный":         {`{"rows": [}`, "decode JSON source"},
+		"два значения":      {`{} {}`, "holds more than one value"},
+		"пусто":             {"  \n", "holds no value"},
+		"незакрытый объект": {`{"rows": [1, 2]`, "decode JSON source"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			err := validateJSON("content.json", []byte(test.content))
+			switch {
+			case test.refusal == "" && err != nil:
+				t.Fatalf("a well-formed value was refused: %v", err)
+			case test.refusal != "" && (err == nil || !strings.Contains(err.Error(), test.refusal)):
+				t.Fatalf("refused for another reason or not at all: %v", err)
+			}
+		})
+	}
+}
+
+// One file has no ceiling of its own: the package as a whole is bounded, a
+// file is not - the prototype keeps templates of tens of megabytes, a binary
+// one of 55.8 MB in sb. Defect caught: a file past 64 MiB was refused.
+func TestPublicationTakesAFileLargerThan64MiB(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "content.bin")
+	if err := os.WriteFile(path, bytes.Repeat([]byte{0x5a}, 65<<20), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	entry, err := inspectFile(path, "metadata/common-templates/Архив/content.bin")
+	if err != nil {
+		t.Fatalf("a file of 65 MiB was refused: %v", err)
+	}
+	if entry.Size != 65<<20 {
+		t.Fatalf("the file was read cut: %d bytes", entry.Size)
+	}
+}
+
+// Publication checks every JSON source it packs, not only when asked. Defect
+// caught: a broken content.json went into the package because only files
+// ending in .yaml were checked.
+func TestPublicationChecksAJSONSource(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "content.json")
+	if err := os.WriteFile(path, []byte(`{"rows": [`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := inspectFile(path, "metadata/common-templates/ПечатнаяФорма/content.json"); err == nil ||
+		!strings.Contains(err.Error(), "decode JSON source") {
+		t.Fatalf("a broken JSON source: refused for another reason or not at all: %v", err)
 	}
 }

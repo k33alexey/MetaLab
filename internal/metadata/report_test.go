@@ -239,7 +239,7 @@ main_schema: `+test.schema+`
 `+ownTemplates+`
 `)
 			writeTemplateContent(t, root, ReportKind, "Продажи", "Схема", "content.yaml", "format: 1\n")
-			writeTemplateContent(t, root, ReportKind, "Продажи", "Печать", "content.yaml", "format: 1\n")
+			writeTemplateContent(t, root, ReportKind, "Продажи", "Печать", "content.json", "{}\n")
 			writeMetadata(t, root, ReportKind, otherReport, `format: 1
 id: `+otherReport+`
 name: Остатки

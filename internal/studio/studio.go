@@ -1467,16 +1467,13 @@ func yamlSourceTitle(filePath, relative, fallback string, size int64, language s
 // addresses it with. The folder is named by the name now, so the identifier
 // has to come from inside the file.
 func yamlSourceTitleAndID(filePath, relative, fallback string, size int64) (string, uuid.UUID, error) {
-	if size > project.MaxYAMLDocumentBytes {
-		return "", uuid.UUID{}, fmt.Errorf("read source %q: %w", relative, project.ErrYAMLDocumentTooLarge)
-	}
 	file, err := os.Open(filePath)
 	if err != nil {
 		return "", uuid.UUID{}, fmt.Errorf("open source %q: %w", relative, err)
 	}
 	defer file.Close()
 	var document yaml.Node
-	if err := yaml.NewDecoder(io.LimitReader(file, project.MaxYAMLDocumentBytes+1)).Decode(&document); err != nil {
+	if err := yaml.NewDecoder(file).Decode(&document); err != nil {
 		return "", uuid.UUID{}, fmt.Errorf("decode source %q: %w", relative, err)
 	}
 	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {

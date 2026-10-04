@@ -1682,20 +1682,15 @@ func Encode(writer io.Writer, value any) error {
 	if err := encoder.Close(); err != nil {
 		return fmt.Errorf("close metadata encoder: %w", err)
 	}
-	if content.Len() > project.MaxYAMLDocumentBytes {
-		return project.ErrYAMLDocumentTooLarge
-	}
 	_, err := io.Copy(writer, &content)
 	return err
 }
 
 func decodeStrict(source string, reader io.Reader, target any) error {
-	content, err := io.ReadAll(io.LimitReader(reader, project.MaxYAMLDocumentBytes+1))
+	// No ceiling on the size - see project.DecodeSource.
+	content, err := io.ReadAll(reader)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", source, err)
-	}
-	if len(content) > project.MaxYAMLDocumentBytes {
-		return fmt.Errorf("decode %s: %w", source, project.ErrYAMLDocumentTooLarge)
 	}
 	decoder := yaml.NewDecoder(bytes.NewReader(content))
 	decoder.KnownFields(true)

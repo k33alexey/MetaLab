@@ -581,7 +581,7 @@ func TestExternalTableCommandsAndTemplatesAreDeclaredAndKept(t *testing.T) {
 	writeExternalSource(t, root, warehouseSource, "Склад", "")
 	writeExternalTable(t, root, "Склад", goodsTable, "Товары", goodsBody+
 		"templates:\n  - id: f8000000-0000-4000-8000-000000000073\n    name: Макет\n    title: {ru: Макет}\n    kind: spreadsheet\n")
-	writeFile(t, filepath.Join(root, "metadata", string(ExternalDataSourceKind), "Склад", "tables", "Товары", "templates", "Макет", "content.yaml"), "rows: []\n")
+	writeFile(t, filepath.Join(root, "metadata", string(ExternalDataSourceKind), "Склад", "tables", "Товары", "templates", "Макет", "content.json"), "{\"rows\": []}\n")
 	if withTemplate, err := Load(root); err != nil {
 		t.Fatalf("a declared template in its folder was refused: %v", err)
 	} else if table, _, _ := withTemplate.ExternalTableByID(mustUUID(t, goodsTable)); len(table.Templates) != 1 {

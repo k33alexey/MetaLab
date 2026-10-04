@@ -378,3 +378,26 @@ func createModuleSource(t *testing.T, content string) (*Workspace, string, strin
 	}
 	return workspace, relative, filePath
 }
+
+// A description is saved whatever its size up to what the editor holds: the
+// ceiling of 4 MiB on a YAML source is gone (owner, 03.10.2026). Defect
+// caught: Studio refused to save a configuration past 4 MiB the loader reads.
+func TestSaveTakesADescriptionPast4MiB(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := workspace.ReadSource(project.ConfigurationFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	large := strings.Replace(opened.Content, "format: 1", "format: 1\ncomment: "+strings.Repeat("к", (5<<20)/2), 1)
+	if len(large) <= 4<<20 {
+		t.Fatalf("the fixture did not grow the configuration: %d bytes", len(large))
+	}
+	if _, err := workspace.SaveSource(project.ConfigurationFile, large, opened.Revision); err != nil {
+		t.Fatalf("a configuration of %d MiB was refused: %v", len(large)>>20, err)
+	}
+}

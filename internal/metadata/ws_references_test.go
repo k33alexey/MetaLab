@@ -197,3 +197,18 @@ func TestWSReferenceLiesInAFolderOfItsName(t *testing.T) {
 		t.Fatalf("the error does not say what is wrong: %v", message)
 	}
 }
+
+// The service description has no ceiling on its size: it carries the whole
+// data model of the service, the prototype limits none, and it is read token
+// by token. Defect caught: a description past 32 MiB refused the reference
+// and the configuration with it.
+func TestWSReferenceTakesADescriptionLargerThan32MiB(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	head, tail, _ := strings.Cut(wsdl11, "</definitions>")
+	padding := "<documentation>" + strings.Repeat("модель данных ", (33<<20)/len("модель данных ")) + "</documentation>\n"
+	writeWSReference(t, root, firstWSReference, "Склад", "", head+padding+"</definitions>"+tail)
+	if _, err := Load(root); err != nil {
+		t.Fatalf("a description of 33 MiB was refused: %v", err)
+	}
+}

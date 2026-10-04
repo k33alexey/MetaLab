@@ -51,9 +51,20 @@ const (
 // a file.
 func (kind TemplateKind) contentFile() string {
 	switch kind {
-	case SpreadsheetTemplate, CompositionSchema, CompositionAppearance, GeographicalSchema, GraphicalSchema:
+	case SpreadsheetTemplate:
+		// Our own model, in JSON: a spreadsheet is the largest content a
+		// configuration keeps - 4034 of them, 899 MiB of the prototype's XML
+		// in four exports, up to 37 MB each - and it is a grid of cells only
+		// its editor writes and reads. Read and written as JSON it costs a
+		// fraction of what YAML does (a document twice the size of КОАТУУ:
+		// 0.25 GB to read and 0.5 GB to write against 1.2 GB and 5.9 GB),
+		// and a person reading its diff loses nothing (owner, 04.10.2026).
+		return "content.json"
+	case CompositionSchema, CompositionAppearance, GeographicalSchema, GraphicalSchema:
 		// Our own model in YAML. The markup shown, printed and exported is
-		// generated from it and is never the source.
+		// generated from it and is never the source. A composition schema
+		// keeps a query a developer reads in a diff, which YAML writes as
+		// it is and JSON would write on one line.
 		return "content.yaml"
 	case TextTemplate:
 		return "content.txt"

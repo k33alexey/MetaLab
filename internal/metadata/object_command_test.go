@@ -397,7 +397,7 @@ func subordinateProject(t *testing.T) string {
 		command, template := ids()
 		writeMetadata(t, root, kind, objectID, body+oneOfEach(command, template))
 		writeCommandModule(t, root, kind, objectName(body), "ОткрытьСписок")
-		writeTemplateContent(t, root, kind, objectName(body), "ПечатнаяФорма", "content.yaml", "format: 1\n")
+		writeTemplateContent(t, root, kind, objectName(body), "ПечатнаяФорма", "content.json", "{}\n")
 	}
 	withCommand(CatalogKind, commandCatalog, `format: 1
 id: `+commandCatalog+`

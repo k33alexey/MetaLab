@@ -393,9 +393,6 @@ func (workspace *Workspace) resolveExistingSource(relative string) (string, erro
 }
 
 func (workspace *Workspace) validateYAMLSource(relative string, content []byte) ([]byte, error) {
-	if len(content) > project.MaxYAMLDocumentBytes {
-		return nil, project.ErrYAMLDocumentTooLarge
-	}
 	if relative == project.ConfigurationFile {
 		configuration, err := project.DecodeSource(relative, bytes.NewReader(content))
 		if err != nil {

@@ -248,3 +248,17 @@ func TestCommandGoesIntoAStandardGroupOfThePrototype(t *testing.T) {
 		}
 	}
 }
+
+// A description of an object is read whatever its size: the ceiling of 4 MiB
+// is gone (owner, 03.10.2026). Defect caught: a description past 4 MiB was
+// refused at load, and the configuration with it.
+func TestDescriptionPast4MiBLoads(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	id := uuid.MustNew().String()
+	writeMetadata(t, root, SubsystemKind, id, "format: 1\nid: "+id+"\nname: Продажи\ntitle: {ru: Продажи}\n"+
+		"comment: "+strings.Repeat("к", (5<<20)/2)+"\n")
+	if _, err := Load(root); err != nil {
+		t.Fatalf("a description of 5 MiB was refused: %v", err)
+	}
+}
