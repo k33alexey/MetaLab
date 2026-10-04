@@ -2117,11 +2117,11 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	if err := catalog.validateExternalCubeFiles(root); err != nil {
 		return err
 	}
-	if err := catalog.validateDefinedTypeCycles(); err != nil {
-		return err
-	}
 	// Both resolve through defined types or across objects, so they come
-	// after everything is loaded and the defined types are known to end.
+	// after everything is loaded. Defined types end: one never holds another
+	// (DecodeDefinedType refuses it), and a catalog made without decoding is
+	// made from one that was decoded - a runtime snapshot - so a cycle could
+	// come only from a snapshot spoilt by hand, which is not guarded against.
 	if err := catalog.validateInputByStringTypes(); err != nil {
 		return err
 	}
@@ -3419,36 +3419,6 @@ func validateHelpFolder(owner, directory string) error {
 		}
 		if _, ok := project.HelpPage(entry.Name()); !ok {
 			return fmt.Errorf("%s keeps %q in its help, which is not a page named by its language, such as ru.html", owner, entry.Name())
-		}
-	}
-	return nil
-}
-
-func (catalog *Catalog) validateDefinedTypeCycles() error {
-	state := make(map[uuid.UUID]uint8, len(catalog.DefinedTypes))
-	var visit func(uuid.UUID) error
-	visit = func(id uuid.UUID) error {
-		if state[id] == 1 {
-			return fmt.Errorf("defined type reference cycle contains %s", id)
-		}
-		if state[id] == 2 {
-			return nil
-		}
-		state[id] = 1
-		item := catalog.DefinedTypes[catalog.definedTypeByID[id]]
-		for _, allowed := range item.Types {
-			if allowed.Kind == DefinedType && allowed.Reference != nil {
-				if err := visit(*allowed.Reference); err != nil {
-					return err
-				}
-			}
-		}
-		state[id] = 2
-		return nil
-	}
-	for _, item := range catalog.DefinedTypes {
-		if err := visit(item.ID); err != nil {
-			return err
 		}
 	}
 	return nil

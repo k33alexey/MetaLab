@@ -220,23 +220,31 @@ periodicity: month
 resources:
   - {id: ` + calcResult + `, name: Результат, title: {ru: Результат}, types: [{kind: number, precision: 15, scale: 2}]}
 `
-	for name, body := range map[string]string{
-		"значение графика без графика": base + `schedule_value: ` + calcScheduleValue + `
-`,
-		"график без значения и даты": base + `schedule: ` + calcSchedule + `
-`,
-		"дата графика не из графика": base + `schedule: ` + calcSchedule + `
+	// Each case names the reason it is refused for: a register wrong in two
+	// ways is refused for either, and a test that only asks for some error
+	// passes whichever check is gone.
+	withAction := strings.Replace(base, "periodicity: month\n", "periodicity: month\naction_period: true\n", 1)
+	for name, test := range map[string]struct{ body, want string }{
+		"значение графика без графика": {base + `schedule_value: ` + calcScheduleValue + `
+`, "schedule_value and schedule_date need the schedule they belong to"},
+		"график без значения и даты": {base + `schedule: ` + calcSchedule + `
+`, "a schedule needs both the resource"},
+		"дата графика не из графика": {withAction + `schedule: ` + calcSchedule + `
 schedule_value: ` + calcScheduleValue + `
 schedule_date: ` + calcResult + `
-`,
-		"связь с графиком без графика": base + `dimensions:
+`, "takes the date of the schedule from " + calcResult + ", which is not a dimension of ГрафикиРаботы"},
+		"значение графика не из ресурсов графика": {withAction + `schedule: ` + calcSchedule + `
+schedule_value: ` + calcScheduleDate + `
+schedule_date: ` + calcScheduleDate + `
+`, "takes the value of the schedule from " + calcScheduleDate + ", which is not a resource of ГрафикиРаботы"},
+		"связь с графиком без графика": {base + `dimensions:
   - {id: ` + calcPerson + `, name: ФизическоеЛицо, title: {ru: Физическое лицо}, types: [{kind: catalog, reference: ` + calcPeople + `}], schedule_link: ` + calcSchedulePerson + `}
-`,
-		"перерасчёт по чужому измерению": base + `recalculations:
+`, "schedule_link needs a schedule"},
+		"перерасчёт по чужому измерению": {base + `recalculations:
   - {id: ` + calcRecalc + `, name: Перерасчет, title: {ru: Перерасчёт}, dimensions: [{id: ` + calcRecalcDim + `, name: Лицо, title: {ru: Лицо}, register_dimension: ` + calcScheduleValue + `, leading_data: [` + calcPerson + `]}]}
-`,
-		"график без периода действия": strings.Replace(calcRegisterBody, "action_period: true\n", "", 1),
-		"неизвестная периодичность": `format: 1
+`, "which is not a dimension of this register"},
+		"график без периода действия": {strings.Replace(calcRegisterBody, "action_period: true\n", "", 1), "a schedule needs the period of action"},
+		"неизвестная периодичность": {`format: 1
 id: ` + calcRegister + `
 name: ОсновныеНачисления
 title: {ru: Основные начисления}
@@ -244,13 +252,13 @@ chart_of_calculation_types: ` + calcChart + `
 periodicity: fortnight
 resources:
   - {id: ` + calcResult + `, name: Результат, title: {ru: Результат}, types: [{kind: number, precision: 15, scale: 2}]}
-`,
+`, "periodicity must be day, month, quarter or year"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			root := calculationProject(t, body)
-			if _, err := Load(root); err == nil {
-				t.Fatal("a link that computes nothing was accepted")
+			root := calculationProject(t, test.body)
+			if _, err := Load(root); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("Load() error = %v, want it to say %q", err, test.want)
 			}
 		})
 	}
