@@ -251,7 +251,7 @@ func TestBrokenCommandGroupsAreRefused(t *testing.T) {
 		"категории не существует": {"category: где-нибудь", "category must be actions-panel, navigation-panel, form-command-bar or form-navigation-panel"},
 		"категория не названа":    {"", "category must be actions-panel, navigation-panel, form-command-bar or form-navigation-panel"},
 		"картинка из двух источников": {"category: actions-panel\npicture: {standard: Обмен, common: " + commonCommandID + "}",
-			"names both a standard picture and a common picture"},
+			"names more than one of a standard picture, a common picture and a file"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

@@ -291,7 +291,7 @@ func TestBrokenCommandsAreRefused(t *testing.T) {
 			"names both a standard group and a group of the configuration"},
 		"картинка из двух источников": {`commands:
   - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, picture: {standard: Открыть, common: ` + commandGroup + `}}`,
-			"names both a standard picture and a common picture"},
+			"names more than one of a standard picture, a common picture and a file"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

@@ -314,8 +314,12 @@ func validateSourcePath(relative string, directory bool) error {
 		// A subsystem keeps its help in a folder named by its identifier
 		// beside its file; that the file is there is checked where the
 		// metadata is read.
-		if len(parts) >= 3 && parts[1] == "subsystems" {
-			if _, err := uuid.Parse(parts[2]); err == nil && (directory && len(parts) == 3 || project.HelpPath(parts[3:], directory)) {
+		// A group of commands keeps one when its picture is a file of its
+		// own, and so does a subsystem.
+		if len(parts) >= 3 && (parts[1] == "subsystems" || parts[1] == "command-groups") {
+			if _, err := uuid.Parse(parts[2]); err == nil && (directory && len(parts) == 3 ||
+				!directory && len(parts) == 4 && metadata.PictureFile(parts[3]) ||
+				parts[1] == "subsystems" && project.HelpPath(parts[3:], directory)) {
 				return nil
 			}
 		}
@@ -343,6 +347,9 @@ func validateSourcePath(relative string, directory bool) error {
 				return nil
 			}
 			if parts[1] == "common-forms" && project.HelpPath(parts[3:], directory) {
+				return nil
+			}
+			if !directory && len(parts) == 4 && parts[1] == "common-commands" && metadata.PictureFile(parts[3]) {
 				return nil
 			}
 			// A common template and a common picture keep their content
@@ -459,6 +466,16 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 		return nil
 	}
 	if len(parts) >= 6 && parts[3] == "forms" && project.SubordinateName(parts[4]) == nil && project.HelpPath(parts[5:], directory) {
+		return nil
+	}
+	// A command drawn from a file of its own keeps it beside its module, and
+	// an item of a route map in a folder of its own; which file the picture
+	// draws is checked where the metadata is read.
+	if !directory && len(parts) == 6 && parts[3] == "commands" && project.SubordinateName(parts[4]) == nil &&
+		metadata.PictureFile(parts[5]) {
+		return nil
+	}
+	if parts[1] == string(metadata.BusinessProcessKind) && project.RoutePicturePath(parts[3:], directory, metadata.PictureFile) {
 		return nil
 	}
 	// A command, a form and a template each keep a folder named after itself.

@@ -779,8 +779,10 @@ func loadKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) e
 		// has help, as the prototype keeps one beside Имя.xml. The name is the
 		// identifier, not the subsystem's own: subsystems lie flat here, and
 		// names repeat across branches - 41 in erp.
-		if kind == SubsystemKind && entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 {
-			if err := validateSubsystemFolder(directory, entry.Name(), described[entry.Name()+".yaml"]); err != nil {
+		// A group of commands keeps one for the same reason when its
+		// picture is a file of its own, and so does a subsystem.
+		if (kind == SubsystemKind || kind == CommandGroupKind) && entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 {
+			if err := validateIdentifiedFolder(directory, kind, entry.Name(), described[entry.Name()+".yaml"]); err != nil {
 				return err
 			}
 			continue
@@ -809,30 +811,102 @@ func loadKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) e
 	return nil
 }
 
-// validateSubsystemFolder checks the folder a subsystem keeps beside its
-// description: named by the subsystem's identifier, standing beside a
-// description of that name, and holding its help and nothing else.
-func validateSubsystemFolder(directory, name string, described bool) error {
-	relative := filepath.ToSlash(filepath.Join("metadata", string(SubsystemKind), name))
+// validateIdentifiedFolder checks the folder a subsystem or a group of
+// commands keeps beside its description: named by the identifier, standing
+// beside a description of that name, and holding the help of a subsystem and
+// image files - which of them the picture draws is checked once the
+// description is read, in validateIdentifiedPictureFiles.
+func validateIdentifiedFolder(directory string, kind Kind, name string, described bool) error {
+	relative := filepath.ToSlash(filepath.Join("metadata", string(kind), name))
+	what := "subsystem"
+	if kind == CommandGroupKind {
+		what = "group of commands"
+	}
 	if _, err := uuid.Parse(name); err != nil {
-		return fmt.Errorf("unexpected metadata source %q: a subsystem's folder is named by its identifier", relative)
+		return fmt.Errorf("unexpected metadata source %q: a %s's folder is named by its identifier", relative, what)
 	}
 	if !described {
-		return fmt.Errorf("unexpected metadata source %q: no subsystem %s.yaml stands beside it", relative, name)
+		return fmt.Errorf("unexpected metadata source %q: no %s %s.yaml stands beside it", relative, what, name)
 	}
 	entries, err := os.ReadDir(filepath.Join(directory, name))
 	if err != nil {
 		return fmt.Errorf("read %s: %w", relative, err)
 	}
 	for _, entry := range entries {
-		if entry.Name() != project.HelpDirectory || !entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
-			return fmt.Errorf("%s keeps %q, and a subsystem's folder keeps only its help", relative, entry.Name())
+		switch {
+		case entry.Type()&fs.ModeSymlink != 0:
+		case kind == SubsystemKind && entry.IsDir() && entry.Name() == project.HelpDirectory:
+			if err := validateHelpFolder("subsystem "+name, filepath.Join(directory, name, entry.Name())); err != nil {
+				return err
+			}
+			continue
+		case !entry.IsDir() && PictureFile(entry.Name()):
+			continue
 		}
-		if err := validateHelpFolder("subsystem "+name, filepath.Join(directory, name, entry.Name())); err != nil {
+		if kind == SubsystemKind {
+			return fmt.Errorf("%s keeps %q, and a subsystem's folder keeps only its help and the file of its picture", relative, entry.Name())
+		}
+		return fmt.Errorf("%s keeps %q, and a group's folder keeps only the file of its picture", relative, entry.Name())
+	}
+	return nil
+}
+
+// validateIdentifiedPictureFiles checks, once the descriptions are read, that
+// the folder of every subsystem and group of commands holds the file its
+// picture draws and no other image.
+func (catalog *Catalog) validateIdentifiedPictureFiles(root string) error {
+	if root == "" {
+		return nil
+	}
+	check := func(kind Kind, what string, id uuid.UUID, name string, picture *PictureReference) error {
+		directory := filepath.Join(root, "metadata", string(kind), id.String())
+		if err := requirePictureFile(what+" "+name, directory, picture); err != nil {
+			return err
+		}
+		entries, err := os.ReadDir(directory)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return fmt.Errorf("%s %s: %w", what, name, err)
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() && !picture.drawsFile(entry.Name()) {
+				return fmt.Errorf("%s %s keeps %q, which its picture does not draw", what, name, entry.Name())
+			}
+		}
+		return nil
+	}
+	for _, item := range catalog.Subsystems {
+		if err := check(SubsystemKind, "subsystem", item.ID, item.Name, item.Picture); err != nil {
+			return err
+		}
+	}
+	for _, item := range catalog.CommandGroups {
+		if err := check(CommandGroupKind, "command group", item.ID, item.Name, item.Picture); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// requirePictureFile checks that the folder of whoever is shown with a
+// picture of its own holds that picture's file: a reference to a file nobody
+// keeps is a blank place in the interface. The prototype keeps the file of
+// every such reference (241 references of five exports, none missing).
+func requirePictureFile(owner, directory string, picture *PictureReference) error {
+	if picture.fileName() == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(directory)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.Type().IsRegular() && picture.drawsFile(entry.Name()) {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("%s is shown with picture file %s, which its folder does not hold", owner, picture.File)
 }
 
 // loadObjectKind scans metadata/<kind>/ for per-object folders (named after
@@ -1866,7 +1940,8 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				}
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: BusinessProcessKind, kind: "business process", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: BusinessProcessKind, kind: "business process", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates,
+			collections: []string{project.RouteDirectory}, route: &item.Route}); err != nil {
 			return err
 		}
 	}
@@ -1982,6 +2057,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return err
 	}
 	if err := catalog.validateCommonCommandFiles(root); err != nil {
+		return err
+	}
+	if err := catalog.validateIdentifiedPictureFiles(root); err != nil {
 		return err
 	}
 	if err := catalog.validateCommandGroupReferences(); err != nil {
@@ -2784,6 +2862,9 @@ type objectFiles struct {
 	// collections are the folders of this kind's own beside forms, commands
 	// and templates - the recalculations of a calculation register.
 	collections []string
+	// route is the route map of a business process, whose items may draw a
+	// picture from a file kept in the process's folder.
+	route *RouteMap
 }
 
 // validateObjectFileSources checks the per-object folder
@@ -2821,7 +2902,77 @@ func (catalog *Catalog) validateObjectFileSources(files objectFiles) error {
 	if err := validateObjectCommandFiles(directory, kind, name, files.commands); err != nil {
 		return err
 	}
+	if files.route != nil {
+		if err := validateRoutePictureFiles(directory, kind, name, files.route); err != nil {
+			return err
+		}
+	}
 	return validateObjectTemplateFiles(directory, kind, name, files.templates)
+}
+
+// validateRoutePictureFiles checks the folder of the pictures of a route map
+// against the map, both ways: every item drawing a file of its own finds it
+// in its folder, and every folder there is an item holding the one file its
+// picture draws.
+func validateRoutePictureFiles(directory, kind, name string, route *RouteMap) error {
+	items := map[string]*PictureReference{}
+	base := filepath.Join(directory, project.RouteDirectory)
+	add := func(item string, look *RouteLook) error {
+		var picture *PictureReference
+		if look != nil {
+			picture = look.Picture
+		}
+		items[strings.ToLower(item)] = picture
+		// The folder is named by the item, whatever its case.
+		return requirePictureFile(fmt.Sprintf("%s %s route item %s", kind, name, item), findFolded(base, item), picture)
+	}
+	for _, point := range route.Points {
+		if err := add(point.Name, point.Look); err != nil {
+			return err
+		}
+	}
+	for _, decoration := range route.Decorations {
+		if err := add(decoration.Name, decoration.Look); err != nil {
+			return err
+		}
+	}
+	folders, err := os.ReadDir(base)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("%s %s route: %w", kind, name, err)
+	}
+	for _, folder := range folders {
+		picture, ok := items[strings.ToLower(folder.Name())]
+		if !ok || !folder.IsDir() || folder.Type()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("%s %s keeps %q among the pictures of its route, and the route has no item of that name",
+				kind, name, folder.Name())
+		}
+		files, err := os.ReadDir(filepath.Join(base, folder.Name()))
+		if err != nil {
+			return fmt.Errorf("%s %s route item %s: %w", kind, name, folder.Name(), err)
+		}
+		for _, file := range files {
+			if !file.Type().IsRegular() || !picture.drawsFile(file.Name()) {
+				return fmt.Errorf("%s %s route item %s keeps %q, which its picture does not draw",
+					kind, name, folder.Name(), file.Name())
+			}
+		}
+	}
+	return nil
+}
+
+// findFolded returns the entry of a folder whose name matches without regard
+// to case, or the name itself when none does.
+func findFolded(directory, name string) string {
+	entries, _ := os.ReadDir(directory)
+	for _, entry := range entries {
+		if strings.EqualFold(entry.Name(), name) {
+			return filepath.Join(directory, entry.Name())
+		}
+	}
+	return filepath.Join(directory, name)
 }
 
 // indexObjectForms reads the forms folder of one object and records what it
@@ -3044,13 +3195,17 @@ func validateObjectFolderEntries(directory, kind, name string, modules []string,
 // all. A folder no command declares is an orphan and is refused: its module
 // would never run, and nothing would say why.
 func validateObjectCommandFiles(directory, kind, name string, commands []ObjectCommand) error {
-	declared := make(map[string]bool, len(commands))
+	declared := make(map[string]*PictureReference, len(commands))
 	for _, command := range commands {
 		info, err := os.Lstat(filepath.Join(directory, "commands", command.Name, project.CommandModuleFile))
 		if err != nil || !info.Mode().IsRegular() {
 			return fmt.Errorf("%s %s command %s has no module", kind, name, command.Name)
 		}
-		declared[strings.ToLower(command.Name)] = true
+		if err := requirePictureFile(fmt.Sprintf("%s %s command %s", kind, name, command.Name),
+			filepath.Join(directory, "commands", command.Name), command.Picture); err != nil {
+			return err
+		}
+		declared[strings.ToLower(command.Name)] = command.Picture
 	}
 	entries, err := os.ReadDir(filepath.Join(directory, "commands"))
 	if err != nil {
@@ -3064,7 +3219,8 @@ func validateObjectCommandFiles(directory, kind, name string, commands []ObjectC
 			return fmt.Errorf("%s %s keeps %q among its commands, and a command is a folder",
 				kind, name, entry.Name())
 		}
-		if !declared[strings.ToLower(entry.Name())] {
+		picture, ok := declared[strings.ToLower(entry.Name())]
+		if !ok {
 			return fmt.Errorf("%s %s keeps a folder for command %s, which it does not declare",
 				kind, name, entry.Name())
 		}
@@ -3073,8 +3229,8 @@ func validateObjectCommandFiles(directory, kind, name string, commands []ObjectC
 			return fmt.Errorf("%s %s command %s: %w", kind, name, entry.Name(), err)
 		}
 		for _, file := range content {
-			if file.IsDir() || file.Type()&fs.ModeSymlink != 0 || file.Name() != project.CommandModuleFile {
-				return fmt.Errorf("%s %s command %s holds %q, and a command keeps only its module",
+			if file.IsDir() || file.Type()&fs.ModeSymlink != 0 || file.Name() != project.CommandModuleFile && !picture.drawsFile(file.Name()) {
+				return fmt.Errorf("%s %s command %s holds %q, and a command keeps only its module and the file of its picture",
 					kind, name, entry.Name(), file.Name())
 			}
 		}

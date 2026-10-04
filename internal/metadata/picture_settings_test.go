@@ -69,9 +69,9 @@ func TestPictureReferenceChecksItsTransparentPixel(t *testing.T) {
 		"точка за краем": {"{standard: Обмен, load_transparent: true, transparent_pixel: {x: 1, y: -1}}",
 			"picture.transparent_pixel must be a point inside the image"},
 		// Nothing left to carry: written as no reference at all.
-		"пустая ссылка": {"{}", "picture must name a standard picture or a common picture, or carry what is left of one"},
+		"пустая ссылка": {"{}", "picture must name a standard picture, a common picture or a file, or carry what is left of one"},
 		"две картинки": {"{standard: Обмен, common: " + commonPictureID + "}",
-			"picture names both a standard picture and a common picture"},
+			"picture names more than one of a standard picture, a common picture and a file"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

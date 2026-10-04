@@ -509,16 +509,55 @@ func TestSubsystemHelpIsPublished(t *testing.T) {
 		"папка не по идентификатору": {"metadata/subsystems/Продажи/help/ru.html", false, false},
 		"не страница":                {"metadata/subsystems/" + subsystem + "/help/readme.txt", false, false},
 	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			err := validateSourcePath(test.relative, test.directory)
-			if test.accepted && err != nil {
-				t.Fatalf("%s was refused: %v", test.relative, err)
-			}
-			if !test.accepted && err == nil {
-				t.Fatalf("%s was accepted", test.relative)
-			}
-		})
+		checkSourcePath(t, name, test.relative, test.directory, test.accepted)
+	}
+}
+
+func checkSourcePath(t *testing.T, name, relative string, directory, accepted bool) {
+	t.Helper()
+	t.Run(name, func(t *testing.T) {
+		t.Parallel()
+		err := validateSourcePath(relative, directory)
+		if accepted && err != nil {
+			t.Fatalf("%s was refused: %v", relative, err)
+		}
+		if !accepted && err == nil {
+			t.Fatalf("%s was accepted", relative)
+		}
+	})
+}
+
+// A picture drawn from a file of its own is published from the folder of
+// whoever is shown with it: a command, a common command, the folder of a
+// subsystem or a group by its identifier, the folder of an item of a route
+// map. Only an image is published so; which one the picture draws is checked
+// where the metadata is read.
+func TestPictureFilesArePublished(t *testing.T) {
+	t.Parallel()
+	const id = "5b000000-0000-4000-8000-000000000001"
+	for name, test := range map[string]struct {
+		relative  string
+		directory bool
+		accepted  bool
+	}{
+		"картинка команды объекта":     {"metadata/catalogs/Товары/commands/Подбор/Picture.png", false, true},
+		"не картинка у команды":        {"metadata/catalogs/Товары/commands/Подбор/notes.txt", false, false},
+		"картинка общей команды":       {"metadata/common-commands/Обменяться/Picture.png", false, true},
+		"не картинка у общей команды":  {"metadata/common-commands/Обменяться/notes.txt", false, false},
+		"картинка подсистемы":          {"metadata/subsystems/" + id + "/Picture.png", false, true},
+		"папка группы команд":          {"metadata/command-groups/" + id, true, true},
+		"картинка группы команд":       {"metadata/command-groups/" + id + "/Picture.png", false, true},
+		"справка группы команд":        {"metadata/command-groups/" + id + "/help/ru.html", false, false},
+		"группа не по идентификатору":  {"metadata/command-groups/Обмены/Picture.png", false, false},
+		"папка маршрута":               {"metadata/business-processes/Задание/route", true, true},
+		"папка элемента маршрута":      {"metadata/business-processes/Задание/route/Старт", true, true},
+		"картинка элемента маршрута":   {"metadata/business-processes/Задание/route/Старт/Picture.png", false, true},
+		"файл прямо в маршруте":        {"metadata/business-processes/Задание/route/Picture.png", false, false},
+		"не картинка у элемента":       {"metadata/business-processes/Задание/route/Старт/notes.txt", false, false},
+		"глубже элемента маршрута":     {"metadata/business-processes/Задание/route/Старт/a/Picture.png", false, false},
+		"маршрут не у бизнес-процесса": {"metadata/catalogs/Товары/route/Старт/Picture.png", false, false},
+	} {
+		checkSourcePath(t, name, test.relative, test.directory, test.accepted)
 	}
 }
 

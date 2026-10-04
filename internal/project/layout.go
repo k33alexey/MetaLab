@@ -825,6 +825,31 @@ func plainFileName(what, file string) error {
 // configurations being moved, common ones and those of data processors).
 const TemplateResourcesDirectory = "_files"
 
+// RouteDirectory is the folder a business process keeps the pictures of the
+// items of its route map in, those drawn from a file of their own: a folder
+// per item, named by it - the items of a map are named apart - holding its
+// picture, as the prototype keeps the pictures of a drawing's items
+// (Items/<item>/Picture.png).
+const RouteDirectory = "route"
+
+// RoutePicturePath reports whether the steps below a business process's
+// folder are a place the pictures of its route map may take. Whether the
+// item exists and draws that file is checked where the metadata is read.
+func RoutePicturePath(steps []string, directory bool, pictureFile func(string) bool) bool {
+	if len(steps) == 0 || steps[0] != RouteDirectory {
+		return false
+	}
+	switch len(steps) {
+	case 1:
+		return directory
+	case 2:
+		return directory && SubordinateName(steps[1]) == nil
+	case 3:
+		return !directory && SubordinateName(steps[1]) == nil && pictureFile(steps[2])
+	}
+	return false
+}
+
 // SchemaItemsDirectory is the folder a graphical schema keeps the pictures of
 // its items in: a folder per item, named by the item, holding the item's
 // picture under the name the schema gives it, and nothing deeper - as the

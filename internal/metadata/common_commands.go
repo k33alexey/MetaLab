@@ -294,12 +294,16 @@ func (catalog *Catalog) validateCommonCommandFiles(root string) error {
 		return nil
 	}
 	for _, item := range catalog.CommonCommands {
-		found, err := namedFolderContents(root, CommonCommandKind, "common command", item.Name)
+		found, err := namedFolderContents(root, CommonCommandKind, "common command", item.Name, item.Picture.fileName())
 		if err != nil {
 			return err
 		}
 		if !found[project.CommandModuleFile] {
 			return fmt.Errorf("common command %s has no module", item.Name)
+		}
+		if err := requirePictureFile("common command "+item.Name,
+			filepath.Join(root, "metadata", string(CommonCommandKind), item.Name), item.Picture); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -312,7 +316,11 @@ func (catalog *Catalog) validateCommonCommandFiles(root string) error {
 // Which of them are required is the kind's own business: a command without its
 // module answers a click with nothing, while a constant without one is simply a
 // constant nobody wrote code for.
-func namedFolderContents(root string, kind Kind, what, name string) (map[string]bool, error) {
+//
+// A file of its own an object is shown with - the picture of a common
+// command - is allowed beside them under whatever name the object gives it,
+// compared without regard to case; extra names it, empty for none.
+func namedFolderContents(root string, kind Kind, what, name string, extra ...string) (map[string]bool, error) {
 	allowed, ok := project.NamedFolderFiles(string(kind))
 	if !ok {
 		return nil, fmt.Errorf("kind %q keeps no folder of its own", kind)
@@ -323,7 +331,8 @@ func namedFolderContents(root string, kind Kind, what, name string) (map[string]
 	}
 	found := map[string]bool{}
 	for _, entry := range entries {
-		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 || !slices.Contains(allowed, entry.Name()) {
+		isExtra := slices.ContainsFunc(extra, func(file string) bool { return file != "" && strings.EqualFold(file, entry.Name()) })
+		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 || !slices.Contains(allowed, entry.Name()) && !isExtra {
 			return nil, fmt.Errorf("%s %s keeps %q, and it keeps only %s",
 				what, name, entry.Name(), strings.Join(allowed, ", "))
 		}

@@ -65,9 +65,19 @@ var standardCommandGroups = map[string]bool{
 	"actions-panel-see-also": true,
 }
 
-// PictureReference names the picture shown beside a command. It is either one
-// the platform ships or one the configuration keeps among its common pictures,
-// never both; a command that names neither is shown by its text alone.
+// PictureReference names the picture shown beside a command. It is one the
+// platform ships, one the configuration keeps among its common pictures, or a
+// file of its own - never two of them; a command that names none is shown by
+// its text alone.
+//
+// A file of its own lies in the folder of whoever is shown with it, under the
+// name the reference gives, the way the prototype keeps such a picture beside
+// its owner and names it in the reference (Abs). The configurations being
+// moved give it to elements of forms only - 84, 66, 77, 0 and 14 references,
+// each with its file in place - and to no command; the help offers it to a
+// command all the same, so it is carried wherever a reference stands: the
+// folder of a command, of a common command, the folder a subsystem or a group
+// of commands keeps by its identifier, the folder of an item of a route map.
 //
 // The common picture is held by identifier rather than by name, like every
 // other reference in the model, so that renaming the picture does not orphan
@@ -88,6 +98,7 @@ var standardCommandGroups = map[string]bool{
 type PictureReference struct {
 	Standard         string        `yaml:"standard,omitempty" json:"standard,omitempty"`
 	Common           *uuid.UUID    `yaml:"common,omitempty" json:"common,omitempty"`
+	File             string        `yaml:"file,omitempty" json:"file,omitempty"`
 	LoadTransparent  bool          `yaml:"load_transparent,omitempty" json:"loadTransparent,omitempty"`
 	TransparentPixel *PicturePixel `yaml:"transparent_pixel,omitempty" json:"transparentPixel,omitempty"`
 }
@@ -96,7 +107,22 @@ type PictureReference struct {
 // left with its settings after the picture was removed names none, and
 // whatever it stands beside is drawn as if it had no picture.
 func (picture *PictureReference) Names() bool {
-	return picture != nil && (picture.Standard != "" || picture.Common != nil)
+	return picture != nil && (picture.Standard != "" || picture.Common != nil || picture.File != "")
+}
+
+// fileName is the file of its own the reference draws, or nothing.
+func (picture *PictureReference) fileName() string {
+	if picture == nil {
+		return ""
+	}
+	return picture.File
+}
+
+// drawsFile reports whether a file lying in the owner's folder is the one the
+// reference draws. The name is compared without regard to case, the way the
+// prototype looks a picture's file up - see PictureVariant.
+func (picture *PictureReference) drawsFile(file string) bool {
+	return picture.fileName() != "" && strings.EqualFold(picture.File, file)
 }
 
 func (picture *PictureReference) clone() *PictureReference {
@@ -227,11 +253,19 @@ func validatePictureReference(path string, picture *PictureReference) []string {
 		return nil
 	}
 	issues := validateTransparentPixel(path+".transparent_pixel", picture.LoadTransparent, picture.TransparentPixel)
+	sources := 0
+	for _, named := range []bool{picture.Standard != "", picture.Common != nil, picture.File != ""} {
+		if named {
+			sources++
+		}
+	}
 	switch {
-	case picture.Standard != "" && picture.Common != nil:
-		issues = append(issues, path+" names both a standard picture and a common picture")
+	case sources > 1:
+		issues = append(issues, path+" names more than one of a standard picture, a common picture and a file")
+	case picture.File != "" && !PictureFile(picture.File):
+		issues = append(issues, path+".file must be the name of an image file")
 	case !picture.Names() && !picture.LoadTransparent && picture.TransparentPixel == nil:
-		issues = append(issues, path+" must name a standard picture or a common picture, or carry what is left of one")
+		issues = append(issues, path+" must name a standard picture, a common picture or a file, or carry what is left of one")
 	case picture.Standard != "" && !validIdentifier(picture.Standard):
 		issues = append(issues, path+".standard must be a valid identifier")
 	case picture.Common != nil && picture.Common.IsZero():
