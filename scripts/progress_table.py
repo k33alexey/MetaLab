@@ -31,6 +31,7 @@ import argparse
 import datetime
 import pathlib
 import re
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -388,8 +389,38 @@ def current_iteration(blocks: list[Block]) -> tuple[Block, int, str] | None:
     return None
 
 
+def next_iteration_number() -> str | None:
+    """Номер итерации, которая делается сейчас: последний закоммиченный плюс один.
+
+    Номер итерации — сквозной счётчик коммитов «<заголовок> (N.NNN)», а не
+    место пункта в карте: в один пункт бывало по нескольку итераций, и пункт
+    дробится. Скрипт прогоняется и после push, когда последний коммит — уже
+    закрытая итерация; до коммита номер отстаёт на один. Без git номера нет.
+    """
+    try:
+        subjects = subprocess.run(
+            ["git", "log", "--format=%s", "-200"], cwd=ROOT, capture_output=True,
+            text=True, check=True,
+        ).stdout.splitlines()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    for subject in subjects:
+        match = re.search(r"\((\d+)\.(\d+)\)\s*$", subject)
+        if match:
+            major, minor = match.group(1), match.group(2)
+            return f"{major}.{int(minor) + 1:0{len(minor)}d}"
+    return None
+
+
 def short_iteration(text: str) -> str:
-    """Оставить от строки итерации её название, без перечня свойств."""
+    """Оставить от строки итерации её название, без перечня свойств.
+
+    Пункт, начинающийся с выделенного названия, называется им целиком:
+    двоеточие внутри названия («повторный аудит: шрифт») — не его конец.
+    """
+    bold = re.match(r"\*\*(.+?)\*\*", text)
+    if bold:
+        return bold.group(1).strip().rstrip(".;")
     for separator in (" — ", ": ", ", "):
         head = text.split(separator, 1)[0]
         if head != text:
@@ -464,10 +495,12 @@ def render_table(blocks: list[Block]) -> str:
         out.append("  Все итерации карты закрыты.")
     else:
         block, index, text = current
+        number = next_iteration_number()
+        iteration = f", итерация {number}" if number else ""
         out.append(
             f"  Текущая итерация — {block.number}. "
             f"{SHORT_NAMES.get(block.number, block.title)}, "
-            f"{index} из {len(block.iterations)}: {short_iteration(text)}."
+            f"пункт {index} из {len(block.iterations)}{iteration}: {short_iteration(text)}."
         )
     return "\n".join(out) + "\n"
 
