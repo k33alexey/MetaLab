@@ -28,7 +28,9 @@ function createLanguagesEditor(host, onChange) {
     input.type = 'text';
     input.value = value ?? '';
     input.disabled = !!options.disabled;
-    input.maxLength = options.maxLength || 128;
+    /* Предел — только тот, что есть в модели: имя языка — 255 знаков, у
+       комментария предела нет. */
+    if (!options.unbounded) input.maxLength = options.maxLength || 255;
     input.addEventListener('input', () => { apply(input.value); touch(); });
     wrapper.append(input);
     return wrapper;
@@ -70,7 +72,6 @@ function createLanguagesEditor(host, onChange) {
       input.type = 'text';
       input.value = stored[item.code] ?? '';
       input.disabled = locked;
-      input.maxLength = 512;
       input.addEventListener('input', () => { model.setLanguageTitle(language.code, item.code, input.value); touch(); });
       row.append(input);
       rows.append(row);
@@ -78,7 +79,7 @@ function createLanguagesEditor(host, onChange) {
     synonym.append(rows);
     panel.append(synonym);
     panel.append(textField('Комментарий', language.comment,
-      value => model.setLanguageField(language.code, 'comment', value), {disabled: locked, maxLength: 1024}));
+      value => model.setLanguageField(language.code, 'comment', value), {disabled: locked, unbounded: true}));
     if (locked) panel.append(node('div', 'Всегда доступен, нельзя изменить или удалить', 'catalog-uuid'));
     return panel;
   }

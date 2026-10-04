@@ -431,7 +431,7 @@ func TestProjectEditorSavesTheModesOfTheRoot(t *testing.T) {
 	}
 	updated := opened.Configuration
 	updated.DefaultRunMode = project.ManagedApplicationRunMode
-	updated.UsePurposes = []project.UsePurpose{project.PersonalComputerPurpose}
+	updated.UsePurposes = []project.UsePurpose{project.PlatformApplicationPurpose}
 	updated.ModalityUse = project.UsedWithWarning
 	updated.SynchronousPlatformExtensionCallUse = project.Used
 	updated.InterfaceCompatibility = project.TaxiAllowVersion82Interface
@@ -451,7 +451,7 @@ func TestProjectEditorSavesTheModesOfTheRoot(t *testing.T) {
 	switch {
 	case saved.DefaultRunMode != project.ManagedApplicationRunMode:
 		t.Fatalf("the run mode was lost: %q", saved.DefaultRunMode)
-	case len(saved.UsePurposes) != 1 || saved.UsePurposes[0] != project.PersonalComputerPurpose:
+	case len(saved.UsePurposes) != 1 || saved.UsePurposes[0] != project.PlatformApplicationPurpose:
 		t.Fatalf("the purposes were lost: %+v", saved.UsePurposes)
 	case saved.ModalityUse != project.UsedWithWarning || saved.SynchronousPlatformExtensionCallUse != project.Used:
 		t.Fatalf("a use mode was lost: %+v", saved)
@@ -474,8 +474,8 @@ func TestProjectEditorSavesTheMobileApplication(t *testing.T) {
 		t.Fatal(err)
 	}
 	updated := opened.Configuration
-	updated.UsedMobileFunctionalities = []string{"Геолокация", "Звонки"}
-	updated.RequiredMobilePermissions = []string{"Камера"}
+	updated.UsedMobileFunctionalities = []project.MobileAnswer{{Name: "Геолокация"}, {Name: "Звонки", Use: true}}
+	updated.RequiredMobilePermissions = []project.MobileAnswer{{Name: "Камера", Use: true}}
 	updated.MobileApplicationURLs = []string{"e1cib/navigationpoint/sales"}
 	updated.AllowedShareRequestTypes = []string{"image/png"}
 	updated.MobileClientSignature = "подпись"
@@ -489,7 +489,7 @@ func TestProjectEditorSavesTheMobileApplication(t *testing.T) {
 	}
 	saved := reopened.Configuration
 	switch {
-	case len(saved.UsedMobileFunctionalities) != 2 || saved.UsedMobileFunctionalities[1] != "Звонки":
+	case len(saved.UsedMobileFunctionalities) != 2 || saved.UsedMobileFunctionalities[1] != (project.MobileAnswer{Name: "Звонки", Use: true}):
 		t.Fatalf("the functionalities were lost: %+v", saved.UsedMobileFunctionalities)
 	case len(saved.RequiredMobilePermissions) != 1 || len(saved.MobileApplicationURLs) != 1 ||
 		len(saved.AllowedShareRequestTypes) != 1:

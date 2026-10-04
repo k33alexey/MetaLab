@@ -199,9 +199,8 @@ const (
 	// moved use.
 	maxExchangePlanDescriptionLength = 250
 	// maxNameLength is the longest name of an object, a field or anything
-	// else named by an identifier: the designer takes 255 characters, the
-	// configurations being moved go up to 96.
-	maxNameLength = 255
+	// else named by an identifier - see project.MaxNameLength.
+	maxNameLength = project.MaxNameLength
 	// maxVarcharLength is PostgreSQL's own ceiling on character varying(n),
 	// which a length nobody else limits - the order of an account - still
 	// runs into when the column is built.

@@ -199,12 +199,12 @@ func TestValidateRejectsUnboundedOrControlText(t *testing.T) {
 	t.Parallel()
 
 	value := Project{
-		Format: CurrentFormat, ID: uuid.MustNew(), Name: "A" + strings.Repeat("b", 128),
+		Format: CurrentFormat, ID: uuid.MustNew(), Name: "A" + strings.Repeat("b", MaxNameLength),
 		Title: LocalizedText{"ru": "Unsafe\aTitle"}, DefaultLanguage: "ru",
 		Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: LocalizedText{"ru": "Русский"}, Code: "ru"}},
 	}
 	err := value.Validate()
-	if err == nil || !strings.Contains(err.Error(), "name must not exceed 128") || !strings.Contains(err.Error(), "title.ru must say something") {
+	if err == nil || !strings.Contains(err.Error(), "name must not exceed 255") || !strings.Contains(err.Error(), "title.ru must say something") {
 		t.Fatalf("Validate() error = %v", err)
 	}
 }
@@ -695,7 +695,7 @@ languages:
       ru: Русский
     code: ru
 default_run_mode: managed-application
-use_purposes: [personal-computer, mobile-device]
+use_purposes: [platform-application, mobile-platform-application]
 use_managed_forms_in_ordinary_application: true
 modality_use: use-with-warnings
 synchronous_platform_extension_call_use: use
@@ -716,7 +716,7 @@ include_help_in_contents: true
 	switch {
 	case value.DefaultRunMode != ManagedApplicationRunMode:
 		t.Fatalf("the run mode came back as %q", value.DefaultRunMode)
-	case len(value.UsePurposes) != 2 || value.UsePurposes[0] != PersonalComputerPurpose:
+	case len(value.UsePurposes) != 2 || value.UsePurposes[0] != PlatformApplicationPurpose:
 		t.Fatalf("the purposes came back as %+v", value.UsePurposes)
 	case !value.UseManagedFormsInOrdinaryApplication || value.UseOrdinaryFormsInManagedApplication:
 		t.Fatalf("the form flags came back as %+v", value)
@@ -765,7 +765,7 @@ func TestRootModesAreCheckedForShape(t *testing.T) {
 		"режим запуска не из набора": func(value *Project) { value.DefaultRunMode = "web" },
 		"назначение не из набора":    func(value *Project) { value.UsePurposes = []UsePurpose{"watch"} },
 		"назначение дважды": func(value *Project) {
-			value.UsePurposes = []UsePurpose{PersonalComputerPurpose, PersonalComputerPurpose}
+			value.UsePurposes = []UsePurpose{PlatformApplicationPurpose, PlatformApplicationPurpose}
 		},
 		"модальность не из набора":              func(value *Project) { value.ModalityUse = "maybe" },
 		"предупреждение там, где его нет":       func(value *Project) { value.DatabaseTablespacesUse = UsedWithWarning },
@@ -811,8 +811,8 @@ languages:
     title:
       ru: Русский
     code: ru
-used_mobile_functionalities: [Звонки, Геолокация]
-required_mobile_permissions: [Камера]
+used_mobile_functionalities: [{name: Звонки, use: true}, {name: Геолокация, use: false}]
+required_mobile_permissions: [{name: Камера, use: false}]
 mobile_application_urls: [e1cib/navigationpoint/sales]
 allowed_share_request_types: [image/png, application/pdf]
 mobile_client_signature: подпись
@@ -827,7 +827,8 @@ standalone_configuration_restriction_roles:
 		t.Fatalf("Decode() error = %v", err)
 	}
 	switch {
-	case len(value.UsedMobileFunctionalities) != 2 || value.UsedMobileFunctionalities[0] != "Звонки":
+	case len(value.UsedMobileFunctionalities) != 2 || value.UsedMobileFunctionalities[0] != (MobileAnswer{Name: "Звонки", Use: true}) ||
+		value.UsedMobileFunctionalities[1] != (MobileAnswer{Name: "Геолокация"}):
 		t.Fatalf("the functionalities came back as %+v", value.UsedMobileFunctionalities)
 	case len(value.RequiredMobilePermissions) != 1 || len(value.MobileApplicationURLs) != 1 ||
 		len(value.AllowedShareRequestTypes) != 2:
@@ -870,9 +871,12 @@ func TestRootMobileApplicationIsCheckedForShape(t *testing.T) {
 	object := ObjectReference{Kind: "catalogs", Object: uuid.MustNew()}
 	role := uuid.MustNew()
 	for name, broken := range map[string]func(value *Project){
-		"пустая возможность":     func(value *Project) { value.UsedMobileFunctionalities = []string{""} },
-		"разрешение с пробелами": func(value *Project) { value.RequiredMobilePermissions = []string{" Камера"} },
-		"одна ссылка дважды":     func(value *Project) { value.MobileApplicationURLs = []string{"a", "a"} },
+		"пустая возможность":     func(value *Project) { value.UsedMobileFunctionalities = []MobileAnswer{{Use: true}} },
+		"разрешение с пробелами": func(value *Project) { value.RequiredMobilePermissions = []MobileAnswer{{Name: " Камера"}} },
+		"возможность дважды": func(value *Project) {
+			value.UsedMobileFunctionalities = []MobileAnswer{{Name: "Звонки", Use: true}, {Name: "Звонки"}}
+		},
+		"одна ссылка дважды": func(value *Project) { value.MobileApplicationURLs = []string{"a", "a"} },
 		"состав без вида": func(value *Project) {
 			value.StandaloneConfigurationContent = []ObjectReference{{Object: uuid.MustNew()}}
 		},
@@ -893,7 +897,7 @@ func TestRootMobileApplicationIsCheckedForShape(t *testing.T) {
 
 	// A possibility nobody enumerated for us is not a mistake.
 	unknown := base()
-	unknown.UsedMobileFunctionalities = []string{"ВозможностьКоторойМыНеЗнаем"}
+	unknown.UsedMobileFunctionalities = []MobileAnswer{{Name: "ВозможностьКоторойМыНеЗнаем", Use: true}}
 	unknown.AllowedShareRequestTypes = []string{"application/x-невиданное"}
 	if err := unknown.Validate(); err != nil {
 		t.Fatalf("an unknown word was refused: %v", err)

@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -294,5 +295,36 @@ func TestCatalogRoleClonesPolicies(t *testing.T) {
 	}
 	if second.Objects[0].Policies[0].Operations[0] != PermissionRead {
 		t.Fatalf("policy operations leaked: %+v", second.Objects[0].Policies[0])
+	}
+}
+
+// A role holds as many restriction templates as it is given, a rule compares
+// with as many values and a subquery narrows by as many conditions: the
+// prototype limits none of them. Defect caught: ceilings of 100 with no
+// source refused a role the configurator saves.
+func TestPoliciesHaveNoCeilingWithoutSource(t *testing.T) {
+	t.Parallel()
+	field, source := uuid.MustNew().String(), uuid.MustNew()
+	templates := make([]PolicyTemplate, 0, 150)
+	for index := range 150 {
+		templates = append(templates, PolicyTemplate{Name: fmt.Sprintf("Шаблон%d", index),
+			Rule: PolicyRule{Field: "code", Operator: PolicyEqual, CurrentMLUser: true}})
+	}
+	values := make([]Value, 0, 150)
+	where := make([]PolicyRule, 0, 150)
+	for index := range 150 {
+		values = append(values, Value{Kind: StringType, Data: fmt.Sprint(index)})
+		where = append(where, PolicyRule{Field: "description", Operator: PolicyEqual, CurrentMLUser: true})
+	}
+	role := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Кладовщик", Title: LocalizedText{"ru": "Кладовщик"},
+		PolicyTemplates: templates,
+		Objects: []ObjectPermission{{Object: uuid.MustNew(), Operations: []PermissionOperation{PermissionRead},
+			Policies: []AccessPolicy{
+				{Operations: []PermissionOperation{PermissionRead}, Rule: &PolicyRule{Field: field, Operator: PolicyIn, Values: values}},
+				{Operations: []PermissionOperation{PermissionRead}, Rule: &PolicyRule{Field: field, Operator: PolicyIn,
+					Subquery: &PolicySubquery{Object: source, Field: "code", Where: where}}},
+			}}}}
+	if err := ValidateRole("role.yaml", role, metadataConfiguration()); err != nil {
+		t.Fatalf("a role with 150 templates, values and conditions was refused: %v", err)
 	}
 }

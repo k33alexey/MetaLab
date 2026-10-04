@@ -67,12 +67,14 @@ const (
 
 // FormPurpose is one kind of application a form is meant for. A form may be
 // meant for several, and the set is a property of the form: the reference
-// configuration keeps forms offered on the desktop but not on a phone.
-type FormPurpose string
+// configuration keeps forms offered on the desktop but not on a phone. It is
+// the purpose of the configuration root - one type in the prototype, one list
+// here.
+type FormPurpose = project.UsePurpose
 
 const (
-	PlatformApplicationPurpose       FormPurpose = "platform-application"
-	MobilePlatformApplicationPurpose FormPurpose = "mobile-platform-application"
+	PlatformApplicationPurpose       = project.PlatformApplicationPurpose
+	MobilePlatformApplicationPurpose = project.MobilePlatformApplicationPurpose
 )
 
 // ManagedForm is the versioned source model edited by the visual form designer.

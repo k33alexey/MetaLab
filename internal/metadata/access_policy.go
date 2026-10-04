@@ -7,10 +7,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// Limits apply to decoded JSON as well as bounded YAML sources.
-const MaxPolicyTemplates = 100
-const MaxPolicyValues = 100
-
 // PolicyOperator compares the restricted field with the rule operand.
 type PolicyOperator string
 
@@ -104,9 +100,11 @@ type AccessPolicy struct {
 }
 
 func validatePolicyTemplates(templates []PolicyTemplate) []string {
-	if len(templates) > MaxPolicyTemplates {
-		return []string{fmt.Sprintf("policy_templates must not exceed %d entries", MaxPolicyTemplates)}
-	}
+	// No ceiling on the number of templates, of the values a rule compares
+	// with or of the conditions of a subquery: the prototype names none, and
+	// a role holds as many restriction templates as it is given (up to 6 in
+	// the configurations being moved). METADATA-OBJECTS.md, «Пределы на
+	// состав».
 	var issues []string
 	names := make(map[string]bool, len(templates))
 	for index, template := range templates {
@@ -207,9 +205,6 @@ func validatePolicyRule(path string, rule PolicyRule, placeholders map[string]bo
 		issues = append(issues, validatePolicySubquery(path+".subquery", *rule.Subquery, placeholders)...)
 	case rule.CurrentMLUser:
 	case len(rule.Values) > 0:
-		if len(rule.Values) > MaxPolicyValues {
-			issues = append(issues, fmt.Sprintf("%s.values must not exceed %d entries", path, MaxPolicyValues))
-		}
 		if single && len(rule.Values) != 1 {
 			issues = append(issues, path+".values must hold exactly one value for operator eq or ne")
 		}
@@ -226,9 +221,6 @@ func validatePolicySubquery(path string, subquery PolicySubquery, placeholders m
 	}
 	if !validPermissionField(subquery.Field) {
 		issues = append(issues, path+".field must be a canonical UUID or lowercase standard field key")
-	}
-	if len(subquery.Where) > MaxPolicyValues {
-		issues = append(issues, fmt.Sprintf("%s.where must not exceed %d conditions", path, MaxPolicyValues))
 	}
 	for index, condition := range subquery.Where {
 		if condition.Subquery != nil {

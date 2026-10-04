@@ -485,7 +485,7 @@ func TestStandaloneConfigurationIsResolved(t *testing.T) {
 	root := defaultsProject(t)
 	saveDefaults(t, root, func(configuration *project.Project) {
 		configuration.StandaloneConfigurationRestrictionRoles = []uuid.UUID{*mustParse(t, defaultsRole)}
-		configuration.UsedMobileFunctionalities = []string{"Геолокация"}
+		configuration.UsedMobileFunctionalities = []project.MobileAnswer{{Name: "Геолокация", Use: true}}
 	})
 	catalog, err := Load(root)
 	if err != nil {

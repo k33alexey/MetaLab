@@ -46,6 +46,13 @@ function createProjectModel(source) {
       const items = text.split('\n').map(line => line.trim()).filter(line => line !== '');
       if (items.length === 0) delete configuration[field]; else configuration[field] = items;
     },
+    /* Возможность и разрешение мобильного приложения — не слово, а ответ:
+       прототип пишет каждое с «да» или «нет», и явное «нет» не то же, что
+       возможность, о которой конфигурация молчит. Поэтому строка остаётся,
+       когда галочку сняли, и уходит только по «Убрать». */
+    setAnswers(field, answers) {
+      if (answers.length === 0) delete configuration[field]; else configuration[field] = answers;
+    },
     setFlag(field, on) { if (on) configuration[field] = true; else delete configuration[field]; },
     /* Назначение, названное дважды, остаётся одним назначением. */
     setPurpose(purpose, used) {
@@ -110,7 +117,11 @@ function createProjectEditor(host, onChange) {
     if (kind !== 'area') input.type = 'text';
     input.value = value ?? '';
     if (kind === 'area') input.rows = options.rows || 3;
-    input.maxLength = options.maxLength || 512;
+    /* Длину ограничивает только то, что ограничено в модели: имя — 255
+       знаков, как у всего, что называется идентификатором. У комментария,
+       поставщика, версии и подписи предела нет ни в справке, ни в
+       конфигураторе (подпись мобильного клиента в sb — 113 КБ). */
+    if (options.maxLength) input.maxLength = options.maxLength;
     input.placeholder = options.placeholder || '';
     input.addEventListener('input', () => { apply(input.value); touch(); });
     return input;
@@ -271,7 +282,7 @@ function createProjectEditor(host, onChange) {
     wrapper.append(node('span', label, 'project-localized-label'));
     const list = node('div', undefined, 'project-roles');
     const chosen = source.configuration.usePurposes || [];
-    for (const [value, text] of [['personal-computer', 'Персональный компьютер'], ['mobile-device', 'Мобильное устройство']]) {
+    for (const [value, text] of [['platform-application', 'Приложение платформы'], ['mobile-platform-application', 'Приложение мобильной платформы']]) {
       const row = node('label', undefined, 'project-role');
       const check = node('input');
       check.type = 'checkbox';
@@ -293,6 +304,40 @@ function createProjectEditor(host, onChange) {
     area.value = (source.configuration[field] || []).join('\n');
     area.addEventListener('input', () => { model.setList(field, area.value); touch(); });
     wrapper.append(area);
+    return wrapper;
+  }
+  function answersField(label, field) {
+    const wrapper = node('div', undefined, 'project-localized');
+    wrapper.append(node('span', label, 'project-localized-label'));
+    const rows = node('div', undefined, 'project-localized-rows');
+    const answers = (source.configuration[field] || []).map(item => ({name: item.name, use: !!item.use}));
+    const save = () => { model.setAnswers(field, answers.filter(item => item.name.trim() !== '')); touch(); };
+    const draw = () => {
+      rows.replaceChildren();
+      answers.forEach((answer, index) => {
+        const row = node('div', undefined, 'project-localized-row');
+        const use = node('input');
+        use.type = 'checkbox';
+        use.checked = answer.use;
+        use.title = 'Используется';
+        use.addEventListener('change', () => { answer.use = use.checked; save(); });
+        const name = node('input');
+        name.type = 'text';
+        name.value = answer.name;
+        name.addEventListener('input', () => { answer.name = name.value.trim(); save(); });
+        const remove = node('button', 'Убрать');
+        remove.type = 'button';
+        remove.addEventListener('click', () => { answers.splice(index, 1); save(); draw(); });
+        row.append(use, name, remove);
+        rows.append(row);
+      });
+      const add = node('button', 'Добавить');
+      add.type = 'button';
+      add.addEventListener('click', () => { answers.push({name: '', use: true}); draw(); });
+      rows.append(add);
+    };
+    draw();
+    wrapper.append(rows);
     return wrapper;
   }
   /* Состав автономного приложения показывается и не правится: собирать его
@@ -326,10 +371,10 @@ function createProjectEditor(host, onChange) {
     panel.append(node('h3', 'Корень конфигурации'));
 
     const identity = section('Как называется');
-    identity.append(textField('Имя', source.configuration.name, value => model.setName(value), {maxLength: 128}));
+    identity.append(textField('Имя', source.configuration.name, value => model.setName(value), {maxLength: 255}));
     identity.append(localizedField('Синоним', 'title'));
     identity.append(textField('Комментарий', source.configuration.comment,
-      value => model.setField('comment', value), {maxLength: 1024}));
+      value => model.setField('comment', value)));
     const defaultLanguageField = node('label', undefined, 'catalog-field');
     defaultLanguageField.append(node('span', 'Язык по умолчанию'));
     const defaultLanguageSelect = node('select');
@@ -353,7 +398,7 @@ function createProjectEditor(host, onChange) {
     vendor.append(textField('Поставщик', source.configuration.vendor,
       value => model.setField('vendor', value)));
     vendor.append(textField('Версия', source.configuration.version,
-      value => model.setField('version', value), {maxLength: 128, placeholder: '1.0.0.1'}));
+      value => model.setField('version', value), {placeholder: '1.0.0.1'}));
     vendor.append(localizedField('Авторские права', 'copyright'));
     panel.append(vendor);
 
@@ -375,7 +420,7 @@ function createProjectEditor(host, onChange) {
       defaults.appearanceTemplates || []));
     appearance.append(rolesField('Основные роли', 'defaultRoles'));
     appearance.append(textField('Основной интерфейс', source.configuration.defaultInterface,
-      value => model.setField('defaultInterface', value), {maxLength: 128}));
+      value => model.setField('defaultInterface', value), {maxLength: 255}));
     appearance.append(note('Основной интерфейс — меню и панели обычного приложения. ML строит только '
       + 'управляемый интерфейс, поэтому значение хранится как написано и ни на что не влияет.'));
     panel.append(appearance);
@@ -431,7 +476,7 @@ function createProjectEditor(host, onChange) {
       ['', 'Как в ML'], ['russian', 'Русский'], ['english', 'Английский'],
     ]));
     settings.append(textField('Префикс имён', source.configuration.namePrefix,
-      value => model.setField('namePrefix', value), {maxLength: 128}));
+      value => model.setField('namePrefix', value), {maxLength: 255}));
     settings.append(dictionariesField('Дополнительные словари поиска'));
     settings.append(note('Освобождённый номер достаётся следующему объекту, и в нумерации нет дыр; '
       + 'неосвобождённый потрачен, даже если объект так и не записали.'));
@@ -502,12 +547,12 @@ function createProjectEditor(host, onChange) {
     mobile.append(note('ML мобильного приложения не собирает. Всё в этом разделе переносится и хранится '
       + 'как написано: перечни возможностей и разрешений принадлежат не нам, а прототипу и мобильным '
       + 'операционным системам, и растут без нас.'));
-    mobile.append(listField('Используемая функциональность', 'usedMobileFunctionalities', 'По строке на возможность'));
-    mobile.append(listField('Требуемые разрешения', 'requiredMobilePermissions', 'По строке на разрешение'));
+    mobile.append(answersField('Используемая функциональность', 'usedMobileFunctionalities'));
+    mobile.append(answersField('Требуемые разрешения', 'requiredMobilePermissions'));
     mobile.append(listField('Перехватываемые ссылки', 'mobileApplicationUrls', 'По строке на ссылку'));
     mobile.append(listField('Типы входящих «Поделиться»', 'allowedShareRequestTypes', 'По строке на тип'));
     mobile.append(textField('Подпись мобильного клиента', source.configuration.mobileClientSignature,
-      value => model.setField('mobileClientSignature', value), {maxLength: 4096}));
+      value => model.setField('mobileClientSignature', value)));
     mobile.append(rolesField('Роли ограничения автономного приложения', 'standaloneConfigurationRestrictionRoles'));
     mobile.append(carriedContent('Состав автономного приложения'));
     mobile.append(note('Состав автономного приложения показывается, но не правится здесь: собирать его руками '

@@ -21,6 +21,11 @@ const (
 	CurrentFormat = 1
 	// MaxYAMLDocumentBytes bounds individual source documents before parsing.
 	MaxYAMLDocumentBytes = 4 << 20
+	// MaxNameLength is the longest name of anything named by an identifier -
+	// the configuration, a language, an object, a field: the designer takes
+	// 255 characters (owner, 01.10.2026), the configurations being moved go up
+	// to 96.
+	MaxNameLength = 255
 )
 
 var (
@@ -249,10 +254,17 @@ type Project struct {
 	// mobile operating systems, both of which grow without us - and a word we
 	// had not enumerated would be refused at transfer, which is the one thing
 	// a property carried for the sake of not losing it must never do.
-	UsedMobileFunctionalities []string `yaml:"used_mobile_functionalities,omitempty" json:"usedMobileFunctionalities,omitempty"`
-	RequiredMobilePermissions []string `yaml:"required_mobile_permissions,omitempty" json:"requiredMobilePermissions,omitempty"`
-	MobileApplicationURLs     []string `yaml:"mobile_application_urls,omitempty" json:"mobileApplicationUrls,omitempty"`
-	AllowedShareRequestTypes  []string `yaml:"allowed_share_request_types,omitempty" json:"allowedShareRequestTypes,omitempty"`
+	//
+	// The first two are not lists but answers: the prototype writes every
+	// ability and permission it knows with a yes or a no beside it (38
+	// abilities in the format of 8.3.27, yes at 8, 2 and 9 of them; the
+	// permissions of the format of 8.3.10, all no). They are carried as
+	// answered, whole, so that an explicit no stays apart from a word the
+	// configuration never mentions (owner, 03.10.2026).
+	UsedMobileFunctionalities []MobileAnswer `yaml:"used_mobile_functionalities,omitempty" json:"usedMobileFunctionalities,omitempty"`
+	RequiredMobilePermissions []MobileAnswer `yaml:"required_mobile_permissions,omitempty" json:"requiredMobilePermissions,omitempty"`
+	MobileApplicationURLs     []string       `yaml:"mobile_application_urls,omitempty" json:"mobileApplicationUrls,omitempty"`
+	AllowedShareRequestTypes  []string       `yaml:"allowed_share_request_types,omitempty" json:"allowedShareRequestTypes,omitempty"`
 	// MobileClientSignature is what the mobile client is signed with.
 	MobileClientSignature string `yaml:"mobile_client_signature,omitempty" json:"mobileClientSignature,omitempty"`
 	// StandaloneConfigurationContent is which objects go into the standalone
@@ -286,12 +298,24 @@ const (
 	OrdinaryApplicationRunMode ClientRunMode = "ordinary-application"
 )
 
-// UsePurpose is what the configuration is meant to run on.
+// MobileAnswer is one ability or permission of a mobile application with the
+// answer the configuration gives for it.
+type MobileAnswer struct {
+	Name string `yaml:"name" json:"name"`
+	Use  bool   `yaml:"use" json:"use"`
+}
+
+// UsePurpose is what the configuration, or a form of it, is meant to run on.
+// It is one type in the prototype for the root and for a form alike, so it is
+// one list here. The format of 8.3.27 writes PlatformApplication and
+// MobilePlatformApplication; the format of 8.3.10 writes the same two as
+// PersonalComputer and MobileDevice (energy, 1587 and 1586 times), and they
+// are read as these two.
 type UsePurpose string
 
 const (
-	PersonalComputerPurpose UsePurpose = "personal-computer"
-	MobileDevicePurpose     UsePurpose = "mobile-device"
+	PlatformApplicationPurpose       UsePurpose = "platform-application"
+	MobilePlatformApplicationPurpose UsePurpose = "mobile-platform-application"
 )
 
 // UseMode is the answer to "is this used": three-valued where the platform
@@ -527,13 +551,14 @@ func (p Project) Validate() error {
 	}
 	if !isIdentifier(p.Name) {
 		add("name", "must start with a letter and contain only letters or digits")
-	} else if utf8.RuneCountInString(p.Name) > 128 {
-		add("name", "must not exceed 128 characters")
+	} else if utf8.RuneCountInString(p.Name) > MaxNameLength {
+		add("name", fmt.Sprintf("must not exceed %d characters", MaxNameLength))
 	}
+	// No ceiling on the number of languages, the length of a comment, a
+	// vendor, a version or a word of the mobile lists: neither the help nor
+	// the configurator names one (METADATA-OBJECTS.md, «Пределы на состав»).
 	if len(p.Languages) == 0 {
 		add("languages", "must contain at least one language")
-	} else if len(p.Languages) > 100 {
-		add("languages", "must not contain more than 100 languages")
 	}
 
 	seenNames := make(map[string]struct{}, len(p.Languages))
@@ -549,11 +574,11 @@ func (p Project) Validate() error {
 		seenIDs[language.ID] = struct{}{}
 		if !isIdentifier(language.Name) {
 			add(prefix+".name", "must start with a letter and contain only letters or digits")
-		} else if utf8.RuneCountInString(language.Name) > 128 {
-			add(prefix+".name", "must not exceed 128 characters")
+		} else if utf8.RuneCountInString(language.Name) > MaxNameLength {
+			add(prefix+".name", fmt.Sprintf("must not exceed %d characters", MaxNameLength))
 		}
-		if language.Comment != "" && !isDisplayText(language.Comment, 1024) {
-			add(prefix+".comment", "must contain 1 to 1024 printable characters")
+		if language.Comment != "" && !isDisplayText(language.Comment, math.MaxInt) {
+			add(prefix+".comment", "must be one line of printable characters")
 		}
 		if !LanguageCodeShape(language.Code) {
 			add(prefix+".code", "must be a language code: no spaces, «=», «;», quotes, dots or separators of a path")
@@ -628,14 +653,10 @@ func (p Project) Validate() error {
 	checkText("vendor_address", p.VendorAddress, false, true)
 	checkText("information_address", p.InformationAddress, false, true)
 	checkText("update_catalog_address", p.UpdateCatalogAddress, false, true)
-	if p.Comment != "" && !isDisplayText(p.Comment, 1024) {
-		add("comment", "must contain 1 to 1024 printable characters")
-	}
-	if p.Vendor != "" && !isDisplayText(p.Vendor, 512) {
-		add("vendor", "must contain 1 to 512 printable characters")
-	}
-	if p.Version != "" && !isDisplayText(p.Version, 128) {
-		add("version", "must contain 1 to 128 printable characters")
+	for path, value := range map[string]string{"comment": p.Comment, "vendor": p.Vendor, "version": p.Version} {
+		if value != "" && !isDisplayText(value, math.MaxInt) {
+			add(path, "must be one line of printable characters")
+		}
 	}
 
 	// The defaults are checked here for shape only - that a reference is a
@@ -667,8 +688,8 @@ func (p Project) Validate() error {
 	}
 	if p.DefaultInterface != "" && !isIdentifier(p.DefaultInterface) {
 		add("default_interface", "must start with a letter or an underscore and contain only letters, digits or underscores")
-	} else if utf8.RuneCountInString(p.DefaultInterface) > 128 {
-		add("default_interface", "must not exceed 128 characters")
+	} else if utf8.RuneCountInString(p.DefaultInterface) > MaxNameLength {
+		add("default_interface", fmt.Sprintf("must not exceed %d characters", MaxNameLength))
 	}
 	for _, issue := range validateSubsystemsInterface(p.SubsystemsOrder, p.SubsystemsVisibility) {
 		field, message, _ := strings.Cut(issue, " ")
@@ -713,8 +734,8 @@ func (p Project) Validate() error {
 	if p.NamePrefix != "" {
 		if !isIdentifier(p.NamePrefix) {
 			add("name_prefix", "must start with a letter and contain only letters or digits")
-		} else if utf8.RuneCountInString(p.NamePrefix) > 128 {
-			add("name_prefix", "must not exceed 128 characters")
+		} else if utf8.RuneCountInString(p.NamePrefix) > MaxNameLength {
+			add("name_prefix", fmt.Sprintf("must not exceed %d characters", MaxNameLength))
 		}
 	}
 	seenDictionaries := make(map[DictionaryReference]struct{}, len(p.AdditionalFullTextSearchDictionaries))
@@ -745,9 +766,9 @@ func (p Project) Validate() error {
 	for index, purpose := range p.UsePurposes {
 		path := fmt.Sprintf("use_purposes[%d]", index)
 		switch purpose {
-		case PersonalComputerPurpose, MobileDevicePurpose:
+		case PlatformApplicationPurpose, MobilePlatformApplicationPurpose:
 		default:
-			add(path, "must be personal-computer or mobile-device")
+			add(path, "must be platform-application or mobile-platform-application")
 			continue
 		}
 		// Named twice, a purpose is still one purpose.
@@ -803,9 +824,16 @@ func (p Project) Validate() error {
 	// A list of words is checked for being a list of words: an empty entry
 	// names nothing, a repeat asks for the same thing twice, and neither could
 	// be acted upon by the tooling that will read this back.
+	answered := func(answers []MobileAnswer) []string {
+		names := make([]string, len(answers))
+		for index, answer := range answers {
+			names[index] = answer.Name
+		}
+		return names
+	}
 	for path, list := range map[string][]string{
-		"used_mobile_functionalities": p.UsedMobileFunctionalities,
-		"required_mobile_permissions": p.RequiredMobilePermissions,
+		"used_mobile_functionalities": answered(p.UsedMobileFunctionalities),
+		"required_mobile_permissions": answered(p.RequiredMobilePermissions),
 		"mobile_application_urls":     p.MobileApplicationURLs,
 		"allowed_share_request_types": p.AllowedShareRequestTypes,
 	} {
@@ -816,17 +844,11 @@ func (p Project) Validate() error {
 				add(where, "must be a word without surrounding spaces")
 				continue
 			}
-			if utf8.RuneCountInString(item) > 256 {
-				add(where, "must not exceed 256 characters")
-			}
 			if _, exists := seen[item]; exists {
 				add(where, "must be unique")
 			}
 			seen[item] = struct{}{}
 		}
-	}
-	if utf8.RuneCountInString(p.MobileClientSignature) > 4096 {
-		add("mobile_client_signature", "must not exceed 4096 characters")
 	}
 	seenContent := make(map[ObjectReference]struct{}, len(p.StandaloneConfigurationContent))
 	for index, item := range p.StandaloneConfigurationContent {
