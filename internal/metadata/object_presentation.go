@@ -126,16 +126,14 @@ func validateRecordPresentations(presentation RecordPresentations, configuration
 	})
 }
 
-// validateLocalizedTexts checks the ones that were written down and leaves the
-// rest alone. An empty presentation is the ordinary case - the prototype writes
-// every property on every object and fills a minority of them - and it must not
-// fail the check that a text carries at least one translation.
+// validateLocalizedTexts checks every presentation of an object. An empty one
+// is the ordinary case - the prototype writes every property on every object
+// and fills a minority of them - and passes as it is: a text needs no
+// translation at all (validateTitle).
 func validateLocalizedTexts(configuration project.Project, texts map[string]LocalizedText) []string {
 	var issues []string
 	for name, text := range texts {
-		if len(text) > 0 {
-			issues = append(issues, validateTitle(name, text, configuration)...)
-		}
+		issues = append(issues, validateTitle(name, text, configuration)...)
 	}
 	return issues
 }

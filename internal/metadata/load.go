@@ -2066,9 +2066,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	if err := catalog.validateIdentifiedPictureFiles(root); err != nil {
 		return err
 	}
-	if err := catalog.validateCommandGroupReferences(); err != nil {
-		return err
-	}
+	catalog.noteCommandGroupReferences()
 	if err := catalog.validateCommandParameterReferences(); err != nil {
 		return err
 	}

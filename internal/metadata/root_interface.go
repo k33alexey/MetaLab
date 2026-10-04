@@ -186,31 +186,39 @@ func (catalog *Catalog) loadRootInterface(root string) error {
 		return err
 	}
 	catalog.MainSectionCommandInterface = commands
-	handle, err := openRootFile(root, project.ParentConfigurationsFile)
-	if handle != nil {
-		handle.Close()
-	}
+	// The file is carried opaque; only that it is a file is checked.
+	_, err := rootFilePath(root, project.ParentConfigurationsFile)
 	return err
 }
 
 // openRootFile opens a file of the root that may be missing, and refuses one
 // that is a folder or a link. A missing file answers nil and no error.
 func openRootFile(root, file string) (*os.File, error) {
+	path, err := rootFilePath(root, file)
+	if path == "" || err != nil {
+		return nil, err
+	}
+	return os.Open(path)
+}
+
+// rootFilePath answers where a file of the root lies, "" when it is not there,
+// and an error when what lies there is not a plain file.
+func rootFilePath(root, file string) (string, error) {
 	if root == "" {
-		return nil, nil
+		return "", nil
 	}
 	path := filepath.Join(root, file)
 	info, err := os.Lstat(path)
 	if os.IsNotExist(err) {
-		return nil, nil
+		return "", nil
 	}
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	if !info.Mode().IsRegular() || info.Mode()&fs.ModeSymlink != 0 {
-		return nil, fmt.Errorf("the configuration keeps %q, which must be a file", file)
+		return "", fmt.Errorf("the configuration keeps %q, which must be a file", file)
 	}
-	return os.Open(path)
+	return path, nil
 }
 
 // resolveRootInterface notes every form and role of the home page that points

@@ -152,9 +152,13 @@ const (
 	RoundedBorderLine     BorderLine = "rounded"
 )
 
-// maxBorderWidth is the thickest border there is. A thicker one is not drawn
-// thicker, so accepting it would be storing a number nothing reads.
+// maxBorderWidth is the thickest border there is: the configurator takes no
+// more than 5 (checked on 8.3.27 by the owner, 04.10.2026).
 const maxBorderWidth = 5
+
+// maxFontScale is the largest scale of a font, in per cent: the configurator
+// takes no more than 999 (checked on 8.3.27 by the owner, 04.10.2026).
+const maxFontScale = 999
 
 // BorderValue is the value of a style item that is a border.
 type BorderValue struct {
@@ -314,12 +318,9 @@ func DecodeStyle(source string, reader io.Reader, configuration project.Project)
 			issues = append(issues, prefix+" is set twice by one style")
 		}
 		seen[key] = true
-		if setting.Item != nil {
-			// Which of the three the value must be is decided by the item this
-			// setting is for, and that is known only once the whole project is
-			// read; here the value is checked for being one value at all.
-			issues = append(issues, validateStyleItemValue(prefix+".value", "", setting.Value, false)...)
-		}
+		// The value of a setting for an item of the configuration is checked
+		// once the project is read, against the item it is for - which of the
+		// three it must be is known only then (validateStyleReferences).
 	}
 
 	if err := issuesError(source, value.Format, issues); err != nil {
@@ -432,8 +433,8 @@ func validateFontValue(path string, value FontValue) []string {
 	if value.Size < 0 {
 		issues = append(issues, path+".size must not be negative")
 	}
-	if value.Scale < 0 || value.Scale > 1000 {
-		issues = append(issues, path+".scale must be a percentage between 0 and 1000")
+	if value.Scale < 0 || value.Scale > maxFontScale {
+		issues = append(issues, fmt.Sprintf("%s.scale must be a percentage between 0 and %d", path, maxFontScale))
 	}
 	return issues
 }

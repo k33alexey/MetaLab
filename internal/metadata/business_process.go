@@ -337,9 +337,7 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 		kinds[folded] = point.Kind
 		// A caption is what the drawing shows; a point without one is drawn by
 		// its name, and the platform's own maps leave the start uncaptioned.
-		if len(point.Title) > 0 {
-			issues = append(issues, validateTitle(prefix+".title", point.Title, configuration)...)
-		}
+		issues = append(issues, validateTitle(prefix+".title", point.Title, configuration)...)
 		issues = append(issues, validateRouteArea(prefix+".location", point.Location)...)
 		switch point.Kind {
 		case StartPoint:
@@ -385,9 +383,7 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 				issues = append(issues, prefix+".variants repeat "+variant.Name)
 			}
 			seen[strings.ToLower(variant.Name)] = true
-			if len(variant.Title) > 0 {
-				issues = append(issues, validateTitle(path+".title", variant.Title, configuration)...)
-			}
+			issues = append(issues, validateTitle(path+".title", variant.Title, configuration)...)
 			if variant.BackColor != nil {
 				issues = append(issues, validateColorValue(path+".back_color", *variant.BackColor)...)
 			}
@@ -539,9 +535,7 @@ func validateRouteDecorations(decorations []RouteDecoration, configuration proje
 			issues = append(issues, prefix+".name must be unique")
 		}
 		names[folded] = true
-		if len(decoration.Title) > 0 {
-			issues = append(issues, validateTitle(prefix+".title", decoration.Title, configuration)...)
-		}
+		issues = append(issues, validateTitle(prefix+".title", decoration.Title, configuration)...)
 		issues = append(issues, validateRouteArea(prefix+".location", decoration.Location)...)
 		// A decoration that is neither placed nor drawn is nothing on the map.
 		if decoration.Location == nil && len(decoration.Line) < 2 {
@@ -577,9 +571,7 @@ func validateRouteTransitionLook(prefix string, transition RouteTransition, conf
 	if transition.Name != "" && (!validIdentifier(transition.Name) || utf8.RuneCountInString(transition.Name) > maxNameLength) {
 		issues = append(issues, prefix+".name must be a valid identifier of at most 255 characters")
 	}
-	if len(transition.Title) > 0 {
-		issues = append(issues, validateTitle(prefix+".title", transition.Title, configuration)...)
-	}
+	issues = append(issues, validateTitle(prefix+".title", transition.Title, configuration)...)
 	if transition.FromPort < 0 || transition.ToPort < 0 {
 		issues = append(issues, prefix+" ports must not be negative")
 	}

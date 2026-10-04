@@ -56,9 +56,7 @@ func DecodeSubsystem(source string, reader io.Reader, configuration project.Proj
 // are checked catalog-wide by validateSubsystemReferences.
 func ValidateSubsystem(source string, value SubsystemDefinition, configuration project.Project) error {
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	if len(value.Explanation) > 0 {
-		issues = append(issues, validateTitle("explanation", value.Explanation, configuration)...)
-	}
+	issues = append(issues, validateTitle("explanation", value.Explanation, configuration)...)
 	issues = append(issues, validatePictureReference("picture", value.Picture)...)
 	if value.Parent != nil && *value.Parent == value.ID {
 		issues = append(issues, "parent must not reference the subsystem itself")

@@ -1004,9 +1004,7 @@ func DecodeConstant(source string, reader io.Reader, configuration project.Proje
 	for name, text := range map[string]LocalizedText{
 		"explanation": value.Explanation, "extended_presentation": value.ExtendedPresentation,
 	} {
-		if len(text) > 0 {
-			issues = append(issues, validateTitle(name, text, configuration)...)
-		}
+		issues = append(issues, validateTitle(name, text, configuration)...)
 	}
 	if value.DefaultForm != nil && value.DefaultForm.IsZero() {
 		issues = append(issues, "default_form must be a non-zero UUID")
@@ -1079,9 +1077,7 @@ func DecodeEnumeration(source string, reader io.Reader, configuration project.Pr
 		"explanation": value.Explanation, "list_presentation": value.ListPresentation,
 		"extended_list_presentation": value.ExtendedListPresentation,
 	} {
-		if len(text) > 0 {
-			issues = append(issues, validateTitle(name, text, configuration)...)
-		}
+		issues = append(issues, validateTitle(name, text, configuration)...)
 	}
 	// An enumeration has three of the six settings of choice, and they mean here
 	// exactly what they mean on the kinds that have all six - so they are checked

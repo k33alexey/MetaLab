@@ -10,10 +10,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-const (
-	MaxFormDataPathDepth = 16
-)
-
 type FormElementKind string
 
 const (
@@ -163,14 +159,12 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		}
 		seenPurposes[purpose] = true
 	}
-	// Both are optional, so only what is there is checked: a form that says
-	// nothing extra about itself is an ordinary form, not a broken one.
+	// Both are optional: a form that says nothing extra about itself is an
+	// ordinary form, and an empty text passes the check as it is.
 	for name, text := range map[string]LocalizedText{
 		"explanation": value.Explanation, "extended_presentation": value.ExtendedPresentation,
 	} {
-		if len(text) > 0 {
-			issues = append(issues, validateTitle(name, text, configuration)...)
-		}
+		issues = append(issues, validateTitle(name, text, configuration)...)
 	}
 	commandNames, commandIDs := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, command := range value.Commands {
@@ -208,20 +202,18 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	type pending struct {
 		element ManagedFormElement
 		path    string
-		depth   int
 	}
 	stack := make([]pending, 0, len(value.Items))
 	for index := len(value.Items) - 1; index >= 0; index-- {
-		stack = append(stack, pending{element: value.Items[index], path: fmt.Sprintf("items[%d]", index), depth: 1})
+		stack = append(stack, pending{element: value.Items[index], path: fmt.Sprintf("items[%d]", index)})
 	}
-	names, ids, count := map[string]bool{}, map[uuid.UUID]bool{}, 0
+	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for id := range commandIDs {
 		ids[id] = true
 	}
 	for len(stack) > 0 {
 		current := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		count++
 		item := current.element
 		if item.ID.IsZero() {
 			issues = append(issues, current.path+".id must be a non-zero UUID")
@@ -237,9 +229,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			issues = append(issues, current.path+".name must be unique within the form")
 		}
 		names[folded] = true
-		if len(item.Title) != 0 {
-			issues = append(issues, validateTitle(current.path+".title", item.Title, configuration)...)
-		}
+		issues = append(issues, validateTitle(current.path+".title", item.Title, configuration)...)
 		if item.DataPath != "" {
 			if item.Kind != FormElementField && item.Kind != FormElementTable {
 				issues = append(issues, current.path+".data_path is allowed only for fields and tables")
@@ -265,7 +255,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 				issues = append(issues, current.path+".orientation must be vertical or horizontal")
 			}
 			for index := len(item.Children) - 1; index >= 0; index-- {
-				stack = append(stack, pending{element: item.Children[index], path: fmt.Sprintf("%s.children[%d]", current.path, index), depth: current.depth + 1})
+				stack = append(stack, pending{element: item.Children[index], path: fmt.Sprintf("%s.children[%d]", current.path, index)})
 			}
 		case FormElementTable:
 			if item.Orientation != "" {
@@ -275,7 +265,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 				if item.Children[index].Kind != FormElementField {
 					issues = append(issues, fmt.Sprintf("%s.children[%d] must be a field", current.path, index))
 				}
-				stack = append(stack, pending{element: item.Children[index], path: fmt.Sprintf("%s.children[%d]", current.path, index), depth: current.depth + 1})
+				stack = append(stack, pending{element: item.Children[index], path: fmt.Sprintf("%s.children[%d]", current.path, index)})
 			}
 		case FormElementField, FormElementLabel, FormElementButton:
 			if len(item.Children) != 0 {
@@ -284,7 +274,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			if item.Orientation != "" {
 				issues = append(issues, current.path+".orientation is allowed only for groups")
 			}
-			if item.ReadOnly && item.Kind != FormElementField && item.Kind != FormElementTable {
+			if item.ReadOnly && item.Kind != FormElementField {
 				issues = append(issues, current.path+".read_only is allowed only for fields and tables")
 			}
 		default:
@@ -294,15 +284,15 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	return issuesError(source, value.Format, issues)
 }
 
+// validateFormDataPath checks a data path segment by segment. Its length and
+// its depth are not limited: the prototype names no ceiling on either, and a
+// path through a table part and the attributes of what it references runs as
+// deep as the configuration does.
 func validateFormDataPath(path, value string) []string {
-	if strings.TrimSpace(value) != value || utf8.RuneCountInString(value) > 512 {
-		return []string{path + " must be a canonical data path of at most 512 characters"}
+	if strings.TrimSpace(value) != value {
+		return []string{path + " must be a canonical data path"}
 	}
-	parts := strings.Split(value, ".")
-	if len(parts) == 0 || len(parts) > MaxFormDataPathDepth {
-		return []string{fmt.Sprintf("%s must contain 1..%d identifier segments", path, MaxFormDataPathDepth)}
-	}
-	for _, part := range parts {
+	for _, part := range strings.Split(value, ".") {
 		if !validIdentifier(part) || utf8.RuneCountInString(part) > maxNameLength {
 			return []string{path + " must contain only valid identifier segments separated by dots"}
 		}

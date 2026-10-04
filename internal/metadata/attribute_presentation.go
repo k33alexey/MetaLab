@@ -252,9 +252,7 @@ func validateFieldSettings(prefix string, attribute Attribute, configuration pro
 		"presentation.format": presentation.Format, "presentation.edit_format": presentation.EditFormat,
 		"presentation.tooltip": presentation.ToolTip,
 	} {
-		if len(text) > 0 {
-			issues = append(issues, validateTitle(prefix+"."+name, text, configuration)...)
-		}
+		issues = append(issues, validateTitle(prefix+"."+name, text, configuration)...)
 	}
 	// A bound is carried whatever it says and whatever the field holds: see
 	// MinValue. Whether it bounds anything is NumberBound's to answer.

@@ -91,9 +91,7 @@ func DecodeCommandGroup(source string, reader io.Reader, configuration project.P
 		return CommandGroupDefinition{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	if len(value.Tooltip) > 0 {
-		issues = append(issues, validateTitle("tooltip", value.Tooltip, configuration)...)
-	}
+	issues = append(issues, validateTitle("tooltip", value.Tooltip, configuration)...)
 	switch value.Category {
 	case ActionsPanelCategory, NavigationPanelCategory, FormCommandBarCategory, FormNavigationPanelCategory:
 	default:
@@ -143,7 +141,7 @@ func (catalog *Catalog) CommandGroup(name string) (CommandGroupDefinition, bool)
 	return cloneCommandGroup(catalog.CommandGroups[index]), true
 }
 
-// validateCommandGroupReferences notes every command placed in a group of the
+// noteCommandGroupReferences notes every command placed in a group of the
 // configuration that does not exist.
 //
 // A command naming a group nothing carries is not refused: the platform has
@@ -151,29 +149,23 @@ func (catalog *Catalog) CommandGroup(name string) (CommandGroupDefinition, bool)
 // a configuration - two catalogs of sb keep one, the group deleted and the
 // placement left behind. It is carried as written and listed among the
 // unresolved references for the import report.
-func (catalog *Catalog) validateCommandGroupReferences() error {
-	placed := func(owner string, command ObjectCommand) error {
+func (catalog *Catalog) noteCommandGroupReferences() {
+	placed := func(owner string, command ObjectCommand) {
 		if command.GroupRef == nil {
-			return nil
+			return
 		}
 		if _, ok := catalog.commandGroupByID[*command.GroupRef]; !ok {
 			catalog.noteUnresolved(owner+" command "+command.Name+" group", *command.GroupRef)
 		}
-		return nil
 	}
 	for _, item := range catalog.CommonCommands {
-		if err := placed("common", item.ObjectCommand); err != nil {
-			return err
-		}
+		placed("common", item.ObjectCommand)
 	}
 	for _, owned := range catalog.everyObjectCommands() {
 		for _, command := range owned.commands {
-			if err := placed(owned.owner, command); err != nil {
-				return err
-			}
+			placed(owned.owner, command)
 		}
 	}
-	return nil
 }
 
 // validateCommandParameterReferences resolves the type of every command's
@@ -206,16 +198,14 @@ type ownedCommands struct {
 	commands []ObjectCommand
 }
 
-// everyObjectCommands lists the commands of every object that keeps any. It is
+// everyObjectCommands lists the commands of every object. It is
 // spelled out kind by kind on purpose: a kind left out here is a kind whose
 // commands nothing checks, and that is exactly the silence this check exists
 // to break.
 func (catalog *Catalog) everyObjectCommands() []ownedCommands {
 	var result []ownedCommands
 	add := func(kind, name string, commands []ObjectCommand) {
-		if len(commands) > 0 {
-			result = append(result, ownedCommands{owner: kind + " " + name, commands: commands})
-		}
+		result = append(result, ownedCommands{owner: kind + " " + name, commands: commands})
 	}
 	for _, item := range catalog.Catalogs {
 		add("catalog", item.Name, item.Commands)

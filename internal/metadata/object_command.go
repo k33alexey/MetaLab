@@ -207,9 +207,7 @@ func validateObjectCommands(commands []ObjectCommand, self uuid.UUID, configurat
 func validateCommandShape(prefix string, command ObjectCommand, self uuid.UUID, configuration project.Project) []string {
 	var issues []string
 	issues = append(issues, validateTitle(prefix+".title", command.Title, configuration)...)
-	if len(command.Tooltip) > 0 {
-		issues = append(issues, validateTitle(prefix+".tooltip", command.Tooltip, configuration)...)
-	}
+	issues = append(issues, validateTitle(prefix+".tooltip", command.Tooltip, configuration)...)
 	// A command is placed in one place, not in two.
 	if command.Group != "" && command.GroupRef != nil {
 		issues = append(issues, prefix+" names both a standard group and a group of the configuration")

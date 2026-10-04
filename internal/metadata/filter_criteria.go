@@ -73,9 +73,7 @@ func DecodeFilterCriterion(source string, reader io.Reader, configuration projec
 		"explanation": value.Explanation, "list_presentation": value.ListPresentation,
 		"extended_list_presentation": value.ExtendedListPresentation,
 	} {
-		if len(text) > 0 {
-			issues = append(issues, validateTitle(name, text, configuration)...)
-		}
+		issues = append(issues, validateTitle(name, text, configuration)...)
 	}
 	seen := map[string]bool{}
 	for index, field := range value.Fields {

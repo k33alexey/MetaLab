@@ -336,12 +336,8 @@ func validateStandardTableParts(path string, parts []StandardTablePart, known []
 		seen[match.ru] = true
 		// Only what was written down is checked: a part carries a description
 		// because one of its properties was set, and the rest stay unset.
-		if len(part.Title) > 0 {
-			issues = append(issues, validateTitle(prefix+".title", part.Title, configuration)...)
-		}
-		if len(part.ToolTip) > 0 {
-			issues = append(issues, validateTitle(prefix+".tooltip", part.ToolTip, configuration)...)
-		}
+		issues = append(issues, validateTitle(prefix+".title", part.Title, configuration)...)
+		issues = append(issues, validateTitle(prefix+".tooltip", part.ToolTip, configuration)...)
 		if !validFillCheck(part.FillChecking) {
 			issues = append(issues, prefix+".fill_checking must be dont-check or show-error")
 		}
@@ -456,9 +452,7 @@ func validateStandardAttributes(path string, attributes []StandardAttribute, fie
 			issues = append(issues, prefix+".name describes "+canonical+" a second time")
 		}
 		seen[canonical] = true
-		if len(attribute.Title) > 0 {
-			issues = append(issues, validateTitle(prefix+".title", attribute.Title, configuration)...)
-		}
+		issues = append(issues, validateTitle(prefix+".title", attribute.Title, configuration)...)
 		if !validFillCheck(attribute.FillChecking) {
 			issues = append(issues, prefix+".fill_checking must be dont-check or show-error")
 		}

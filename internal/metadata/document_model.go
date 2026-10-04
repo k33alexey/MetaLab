@@ -344,9 +344,7 @@ func validateTableParts(parts []TablePart, attributeNames map[string]bool, confi
 // name and its fields.
 func validateTablePartProperties(prefix string, part TablePart, rules tablePartRules, configuration project.Project) []string {
 	var issues []string
-	if len(part.ToolTip) > 0 {
-		issues = append(issues, validateTitle(prefix+".tooltip", part.ToolTip, configuration)...)
-	}
+	issues = append(issues, validateTitle(prefix+".tooltip", part.ToolTip, configuration)...)
 	if !validFillCheck(part.FillChecking) {
 		issues = append(issues, prefix+".fill_checking must be dont-check or show-error")
 	}

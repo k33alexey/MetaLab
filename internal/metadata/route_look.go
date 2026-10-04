@@ -163,9 +163,7 @@ func validateRouteLook(path string, look *RouteLook, box bool, configuration pro
 		return nil
 	}
 	var issues []string
-	if len(look.ToolTip) > 0 {
-		issues = append(issues, validateTitle(path+".tooltip", look.ToolTip, configuration)...)
-	}
+	issues = append(issues, validateTitle(path+".tooltip", look.ToolTip, configuration)...)
 	if look.TabOrder < 0 || look.ZOrder < 0 || look.GroupNumber < 0 {
 		issues = append(issues, path+" orders and groups are counted from zero")
 	}
