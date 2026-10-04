@@ -55,14 +55,18 @@ const (
 // either goes into one of them or into a command group the configuration
 // declares - one property, two kinds of answer, because that is how a command
 // is placed: by naming the place.
+//
+// They are the eleven of the platform's own list (the help, the standard
+// groups of commands), and the configurations being moved use exactly these.
+// Four more stood here once - an ordinary group of the form's navigation
+// panel and of its command bar, «see also» of the command bar and of the
+// actions panel - which the prototype does not have: a command placed in one
+// could never have come from it.
 var standardCommandGroups = map[string]bool{
 	"navigation-panel-important": true, "navigation-panel-ordinary": true, "navigation-panel-see-also": true,
-	"form-navigation-panel-important": true, "form-navigation-panel-ordinary": true,
-	"form-navigation-panel-see-also": true, "form-navigation-panel-go-to": true,
-	"form-command-bar-important": true, "form-command-bar-ordinary": true, "form-command-bar-see-also": true,
-	"form-command-bar-create-based-on": true,
-	"actions-panel-create":             true, "actions-panel-reports": true, "actions-panel-tools": true,
-	"actions-panel-see-also": true,
+	"form-navigation-panel-important": true, "form-navigation-panel-see-also": true, "form-navigation-panel-go-to": true,
+	"form-command-bar-important": true, "form-command-bar-create-based-on": true,
+	"actions-panel-create": true, "actions-panel-reports": true, "actions-panel-tools": true,
 }
 
 // PictureReference names the picture shown beside a command. It is one the

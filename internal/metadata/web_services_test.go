@@ -80,20 +80,22 @@ operations:
 	}
 }
 
-// A service describing itself by a package that is not there describes itself
-// by nothing, and the caller finds out while the other side is already waiting.
-func TestWebServicePackageMustBeInTheConfiguration(t *testing.T) {
+// A service describing itself by a package that is gone keeps the reference,
+// and the report of the import names it.
+func TestWebServicePackageThatIsGoneIsNoted(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
 	writeWebService(t, root, `namespace: http://example.org/exchange/1.0
 packages: [{package: `+firstXDTOPackage+`}]
 `)
-	_, err := Load(root)
-	if err == nil {
-		t.Fatal("a service described by a package nobody wrote was accepted")
+	// A package that is gone is carried and noted, not refused (A3). Defect
+	// caught: the whole configuration stopped loading on it.
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a service described by a package that is gone was refused: %v", err)
 	}
-	if !strings.Contains(err.Error(), "which is not in the configuration") {
-		t.Fatalf("the error does not say what is wrong: %v", err)
+	if !hasUnresolvedNote(catalog, "web service ОбменДанными package", firstXDTOPackage) {
+		t.Fatalf("the package that is gone is not noted: %+v", catalog.Notes())
 	}
 }
 

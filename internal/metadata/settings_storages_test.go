@@ -66,10 +66,10 @@ forms:
 	}
 }
 
-// A report says where its variants and its settings are kept. Until this kind
-// existed the name could not be resolved at all, so a report could point at a
-// storage that was never there and nothing would say so.
-func TestReportNamesAStorageThatExists(t *testing.T) {
+// A report says where its variants and its settings are kept. A storage that
+// is there resolves; one that is gone is carried and noted, so the report of
+// the import names it.
+func TestReportStorageThatIsGoneIsNoted(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
 	writeMetadata(t, root, SettingsStorageKind, storageID, `format: 1
@@ -93,13 +93,26 @@ name: Остатки
 title: {ru: Остатки}
 variants_storage: `+storageMissing+`
 `)
-	_, err := Load(root)
-	if err == nil {
-		t.Fatal("a report keeping its variants nowhere was accepted")
+	// A storage that is gone is carried and noted, not refused (A3).
+	// Defect caught: the whole configuration stopped loading on it.
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a report keeping its variants in a storage that is gone was refused: %v", err)
 	}
-	if !strings.Contains(err.Error(), "which is not in the configuration") {
-		t.Fatalf("refused for another reason: %v", err)
+	if !hasUnresolvedNote(catalog, "report Остатки variants storage", storageMissing) {
+		t.Fatalf("the storage that is gone is not noted: %+v", catalog.Notes())
 	}
+}
+
+// hasUnresolvedNote reports whether the catalog notes a reference by
+// identifier to nothing at the given place.
+func hasUnresolvedNote(catalog *Catalog, where, id string) bool {
+	for _, note := range catalog.Notes() {
+		if note.Kind == NoteUnresolvedReference && note.Where == where && note.Written == id {
+			return true
+		}
+	}
+	return false
 }
 
 // An auxiliary form stands beside a main one, not behind it: the platform

@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -214,14 +215,18 @@ func TestMainSchemaIsTheReportsOwnCompositionSchema(t *testing.T) {
   - {id: ` + reportSchema + `, name: Схема, title: {ru: Схема}, kind: composition-schema}
   - {id: ` + printForm + `, name: Печать, title: {ru: Печать}, kind: spreadsheet}`
 	)
+	// A schema that names no template of the report is a reference to what
+	// is gone: carried and noted (A3). A template of the report holding
+	// something else is refused - that is no reference to nothing.
 	for name, test := range map[string]struct {
 		schema string
 		valid  bool
+		noted  bool
 	}{
-		"схемы нет среди макетов":      {"4e900000-0000-4000-8000-0000000000ff", false},
-		"макет не схема компоновки":    {printForm, false},
-		"схема другого отчёта":         {otherSchema, false},
-		"собственная схема компоновки": {reportSchema, true},
+		"схемы нет среди макетов":      {"4e900000-0000-4000-8000-0000000000ff", true, true},
+		"макет не схема компоновки":    {printForm, false, false},
+		"схема другого отчёта":         {otherSchema, true, true},
+		"собственная схема компоновки": {reportSchema, true, false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -243,12 +248,18 @@ templates:
   - {id: `+otherSchema+`, name: Схема, title: {ru: Схема}, kind: composition-schema}
 `)
 			writeTemplateContent(t, root, ReportKind, "Остатки", "Схема", "content.yaml", "format: 1\n")
-			_, err := Load(root)
+			catalog, err := Load(root)
 			if test.valid && err != nil {
-				t.Fatalf("a report built by its own schema was rejected: %v", err)
+				t.Fatalf("the report was rejected: %v", err)
 			}
-			if !test.valid && err == nil {
-				t.Fatal("a report whose main schema is not its own composition schema was accepted")
+			if !test.valid {
+				if err == nil || !strings.Contains(err.Error(), "not a composition schema") {
+					t.Fatalf("refused for another reason or not at all: %v", err)
+				}
+				return
+			}
+			if noted := hasUnresolvedNote(catalog, "report Продажи main schema", test.schema); noted != test.noted {
+				t.Fatalf("main schema noted = %v, want %v: %+v", noted, test.noted, catalog.Notes())
 			}
 		})
 	}

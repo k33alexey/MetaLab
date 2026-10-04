@@ -1090,7 +1090,7 @@ func DecodeEnumeration(source string, reader io.Reader, configuration project.Pr
 		issues = append(issues, "choice_mode must be both-ways, from-form or quick-choice")
 	}
 	if !validChoiceHistory(value.ChoiceHistoryOnInput) {
-		issues = append(issues, "choice_history_on_input must be auto, use or dont-use")
+		issues = append(issues, "choice_history_on_input must be auto or dont-use")
 	}
 	// Quick choice under «from form» is carried and noted, as on the other
 	// kinds - see validateObjectChoice.

@@ -266,7 +266,7 @@ func cloneRouteLook(look *RouteLook) *RouteLook {
 	value.BackColor = clonePointer(value.BackColor)
 	value.TextColor = clonePointer(value.TextColor)
 	value.LineColor = clonePointer(value.LineColor)
-	value.Font = clonePointer(value.Font)
+	value.Font = value.Font.clone()
 	value.Border = clonePointer(value.Border)
 	value.Picture = value.Picture.clone()
 	return &value

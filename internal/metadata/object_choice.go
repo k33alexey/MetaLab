@@ -158,7 +158,7 @@ func validateObjectInput(input ObjectInput) []string {
 		issues = append(issues, "create_on_input must be auto, use or dont-use")
 	}
 	if !validChoiceHistory(input.ChoiceHistoryOnInput) {
-		issues = append(issues, "choice_history_on_input must be auto, use or dont-use")
+		issues = append(issues, "choice_history_on_input must be auto or dont-use")
 	}
 	if !validSearchStringMode(input.SearchStringMode) {
 		issues = append(issues, "search_string_mode must be begin or any-part")

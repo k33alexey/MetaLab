@@ -230,7 +230,7 @@ func TestChoiceSettingsTakeOnlyThePrototypesValues(t *testing.T) {
 		"основное представление": {"default_presentation: as-name", "default_presentation must be as-code or as-description"},
 		"режим выбора":           {"choice_mode: sometimes", "choice_mode must be"},
 		"создание при вводе":     {"create_on_input: maybe", "create_on_input must be auto, use or dont-use"},
-		"история выбора":         {"choice_history_on_input: never", "choice_history_on_input must be auto, use or dont-use"},
+		"история выбора":         {"choice_history_on_input: never", "choice_history_on_input must be auto or dont-use"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

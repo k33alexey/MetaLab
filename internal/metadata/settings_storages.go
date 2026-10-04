@@ -1,8 +1,8 @@
 package metadata
 
 import (
-	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -91,20 +91,27 @@ func (catalog *Catalog) SettingsStorage(name string) (SettingsStorageDefinition,
 	return cloneSettingsStorage(catalog.SettingsStorages[index]), true
 }
 
-// validateSettingsStorageReferences checks everything that names a storage.
-// Until this kind existed those names could not be resolved at all, so a report
-// could keep its variants in a storage that was never there.
+// validateSettingsStorageReferences resolves everything a report names by
+// identifier beside its templates: the storages of its variants and settings,
+// and its main schema. One that points at nothing is carried and noted, not
+// refused - the prototype writes a reference to what is gone by its bare
+// identifier and keeps it (A3; a form of a report, erp СверкаДанныхОУиБУ).
 func (catalog *Catalog) validateSettingsStorageReferences() error {
 	for _, item := range catalog.Reports {
-		for name, id := range map[string]*uuid.UUID{
-			"variants storage": item.VariantsStorage, "settings storage": item.SettingsStorage,
-		} {
-			if id == nil {
+		for _, storage := range []struct {
+			name string
+			id   *uuid.UUID
+		}{{"variants storage", item.VariantsStorage}, {"settings storage", item.SettingsStorage}} {
+			if storage.id == nil {
 				continue
 			}
-			if _, ok := catalog.settingsStorageByID[*id]; !ok {
-				return fmt.Errorf("report %s keeps its %s in %s, which is not in the configuration", item.Name, name, id)
+			if _, ok := catalog.settingsStorageByID[*storage.id]; !ok {
+				catalog.noteUnresolved("report "+item.Name+" "+storage.name, *storage.id)
 			}
+		}
+		if item.MainSchema != nil && !item.MainSchema.IsZero() && !slices.ContainsFunc(item.Templates,
+			func(template ObjectTemplate) bool { return template.ID == *item.MainSchema }) {
+			catalog.noteUnresolved("report "+item.Name+" main schema", *item.MainSchema)
 		}
 	}
 	return nil

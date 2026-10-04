@@ -84,7 +84,7 @@ func TestStyleItemTakesItsValueFromAnotherItem(t *testing.T) {
 	}
 	heading, ok := catalog.StyleItem("ШрифтЗаголовка")
 	if !ok || heading.Value.Font.From == nil || heading.Value.Font.From.Item == nil ||
-		heading.Value.Font.From.Item.String() != styleItemFont || !heading.Value.Font.Bold {
+		heading.Value.Font.From.Item.String() != styleItemFont || heading.Value.Font.Bold == nil || !*heading.Value.Font.Bold {
 		t.Fatalf("the heading font lost what it is built on: %+v", heading)
 	}
 	standard, ok := catalog.StyleItem("ЦветТекста")
@@ -373,4 +373,37 @@ func TestStyleItemValueIsChecked(t *testing.T) {
 func styleIdentifier(index int) string {
 	const digits = "0123456789abcdef"
 	return "e0000000-0000-4000-8000-0000000001" + string([]byte{digits[index/16], digits[index%16]})
+}
+
+// A switch of a font says yes, no or nothing, and nothing is as the base has
+// it. Defects caught: a switch left out read as a plain no, so a font taken
+// from a bold one came back ordinary; an explicit no read as left out, so a
+// font that dropped its base's bold took it back; a copy shared the switch
+// with the catalog it came from.
+func TestFontSwitchSaysYesNoOrNothing(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeStyleItem(t, root, styleItemFont, "ШрифтОбычный", FontStyleItem,
+		"  font: {source: absolute, face: Arial, size: 14, bold: true}\n")
+	writeStyleItem(t, root, styleItemDerive, "ШрифтЗаголовка", FontStyleItem,
+		"  font: {source: style, from: {item: "+styleItemFont+"}, italic: false}\n")
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	heading, _ := catalog.StyleItem("ШрифтЗаголовка")
+	font := heading.Value.Font
+	switch {
+	case font.Bold != nil:
+		t.Fatalf("bold left out came back said: %v", *font.Bold)
+	case font.Italic == nil || *font.Italic:
+		t.Fatalf("italic said no came back as %v", font.Italic)
+	case font.Underline != nil || font.Strikeout != nil:
+		t.Fatalf("switches left out came back said: %+v", font)
+	}
+	*font.Italic = true
+	again, _ := catalog.StyleItem("ШрифтЗаголовка")
+	if *again.Value.Font.Italic {
+		t.Fatal("a copy of the style item shares its font with the catalog")
+	}
 }

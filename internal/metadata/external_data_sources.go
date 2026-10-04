@@ -269,7 +269,7 @@ func validateExternalTable(table ExternalTable, configuration project.Project) [
 		issues = append(issues, "create_on_input must be auto, use or dont-use")
 	}
 	if !validChoiceHistory(table.ChoiceHistoryOnInput) {
-		issues = append(issues, "choice_history_on_input must be auto, use or dont-use")
+		issues = append(issues, "choice_history_on_input must be auto or dont-use")
 	}
 	issues = append(issues, validateBasedOn(table.BasedOn)...)
 	issues = append(issues, validateObjectCharacteristics(table.Characteristics)...)

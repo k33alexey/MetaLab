@@ -217,3 +217,34 @@ func TestGraphicalSchemaKeepsThePicturesOfItsItems(t *testing.T) {
 		})
 	}
 }
+
+// A command goes into one of the eleven standard groups of the prototype, the
+// ones the configurations being moved use, and into no other. Defect caught:
+// four groups the prototype does not have - an ordinary group of the form's
+// navigation panel and of its command bar, «see also» of the command bar and
+// of the actions panel - were taken, so a command could be placed where none
+// of the prototype's could be.
+func TestCommandGoesIntoAStandardGroupOfThePrototype(t *testing.T) {
+	t.Parallel()
+	command := func(group string) []ObjectCommand {
+		return []ObjectCommand{{ID: uuid.MustNew(), Name: "Подбор", Title: LocalizedText{"ru": "Подбор"}, Group: group}}
+	}
+	for _, group := range []string{
+		"navigation-panel-important", "navigation-panel-ordinary", "navigation-panel-see-also",
+		"form-navigation-panel-important", "form-navigation-panel-see-also", "form-navigation-panel-go-to",
+		"form-command-bar-important", "form-command-bar-create-based-on",
+		"actions-panel-create", "actions-panel-reports", "actions-panel-tools",
+	} {
+		if issues := validateObjectCommands(command(group), uuid.MustNew(), metadataConfiguration()); len(issues) > 0 {
+			t.Errorf("a standard group of the prototype %s was refused: %v", group, issues)
+		}
+	}
+	for _, group := range []string{
+		"form-navigation-panel-ordinary", "form-command-bar-ordinary", "form-command-bar-see-also", "actions-panel-see-also",
+	} {
+		issues := validateObjectCommands(command(group), uuid.MustNew(), metadataConfiguration())
+		if len(issues) == 0 || !strings.Contains(strings.Join(issues, "; "), "commands[0].group") {
+			t.Errorf("a group the prototype does not have, %s, was taken: %v", group, issues)
+		}
+	}
+}

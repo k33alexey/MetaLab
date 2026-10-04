@@ -92,9 +92,13 @@ const (
 
 // FontValue is the value of a style item that is a font.
 //
-// The four switches are absolute whatever the source: a font taken from
-// another style item is that font with these switches as written, which is how
-// one look stays one look while a single base font decides its shape.
+// Each of the four switches says yes, no, or nothing. Said, it is what the
+// font is; left out, the font is as its base has it - the help says so of a
+// font made on the basis of another (the constructor of a font, its bold,
+// italic, underlined and struck-out parameters), and the prototype leaves them
+// out of a font taken from a style item or the system (3, 1, 2, 0 and 1 style
+// items of the exports) while writing them elsewhere. A switch read as a plain
+// no would turn a heading made bold by its base into an ordinary line.
 type FontValue struct {
 	Source FontSource `yaml:"source" json:"source"`
 	// Face is the face name when the font is absolute, and the name in the
@@ -106,10 +110,21 @@ type FontValue struct {
 	// Scale is a percentage; left out it is a hundred, the size as written.
 	Scale     int                 `yaml:"scale,omitempty" json:"scale,omitempty"`
 	From      *StyleItemReference `yaml:"from,omitempty" json:"from,omitempty"`
-	Bold      bool                `yaml:"bold,omitempty" json:"bold,omitempty"`
-	Italic    bool                `yaml:"italic,omitempty" json:"italic,omitempty"`
-	Underline bool                `yaml:"underline,omitempty" json:"underline,omitempty"`
-	Strikeout bool                `yaml:"strikeout,omitempty" json:"strikeout,omitempty"`
+	Bold      *bool               `yaml:"bold,omitempty" json:"bold,omitempty"`
+	Italic    *bool               `yaml:"italic,omitempty" json:"italic,omitempty"`
+	Underline *bool               `yaml:"underline,omitempty" json:"underline,omitempty"`
+	Strikeout *bool               `yaml:"strikeout,omitempty" json:"strikeout,omitempty"`
+}
+
+func (value *FontValue) clone() *FontValue {
+	if value == nil {
+		return nil
+	}
+	font := *value
+	font.From = cloneStyleItemReference(font.From)
+	font.Bold, font.Italic = clonePointer(font.Bold), clonePointer(font.Italic)
+	font.Underline, font.Strikeout = clonePointer(font.Underline), clonePointer(font.Strikeout)
+	return &font
 }
 
 // BorderSource says where a border comes from.
@@ -496,11 +511,7 @@ func cloneStyleItemValue(value StyleItemValue) StyleItemValue {
 		colour.From = cloneStyleItemReference(colour.From)
 		value.Color = &colour
 	}
-	if value.Font != nil {
-		font := *value.Font
-		font.From = cloneStyleItemReference(font.From)
-		value.Font = &font
-	}
+	value.Font = value.Font.clone()
 	if value.Border != nil {
 		border := *value.Border
 		border.From = cloneStyleItemReference(border.From)

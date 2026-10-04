@@ -149,7 +149,7 @@ func TestBrokenEnumerationsAreRefused(t *testing.T) {
 		"способ выбора не существует": {"choice_mode: по-желанию",
 			"choice_mode must be both-ways, from-form or quick-choice"},
 		"история выбора не существует": {"choice_history_on_input: иногда",
-			"choice_history_on_input must be auto, use or dont-use"},
+			"choice_history_on_input must be auto or dont-use"},
 		"имя формы не имя": {"forms: {auxiliary_list: \"Вспомогательный список\"}",
 			"forms.auxiliary_list must be the name of a form"},
 		"вида макета не существует": {"templates:\n  - {id: " + enumTemplate +

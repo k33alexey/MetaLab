@@ -322,11 +322,9 @@ func (catalog *Catalog) WebService(name string) (WebServiceDefinition, bool) {
 }
 
 // validateWebServices resolves what a service cannot resolve about itself: the
-// packages it is described by.
-//
-// A service describing itself by a package that is not there describes itself
-// by nothing, and the caller finds out at the moment of calling - which is the
-// moment when the other side is already waiting.
+// packages it is described by. A package that is not there is carried and
+// noted, not refused (A3): the configuration keeps the reference, and the
+// service, once it runs, describes itself by what it has.
 func (catalog *Catalog) validateWebServices() error {
 	for _, service := range catalog.WebServices {
 		for _, item := range service.Packages {
@@ -335,8 +333,7 @@ func (catalog *Catalog) validateWebServices() error {
 				continue
 			}
 			if _, ok := catalog.xdtoPackageByID[*item.Package]; !ok {
-				return fmt.Errorf("web service %s is described by XDTO package %s, which is not in the configuration",
-					service.Name, item.Package)
+				catalog.noteUnresolved("web service "+service.Name+" package", *item.Package)
 			}
 		}
 	}
