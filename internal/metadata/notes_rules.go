@@ -60,6 +60,7 @@ const (
 	NoteVanishedType               NoteKind = "vanished-type"
 	NoteStandardFieldOfDocument    NoteKind = "standard-field-of-document"
 	NoteLeadingDataNotDimension    NoteKind = "leading-data-not-dimension"
+	NotePictureSettingsLeft        NoteKind = "picture-settings-without-picture"
 )
 
 func init() {
@@ -219,6 +220,10 @@ func init() {
 				"Справка вид поля не уточняет, в выгрузках все такие ссылки — на измерения.",
 			"Ссылка несётся как записана. Перерасчёт ML пока не исполняет; при исполнении изменение этого поля " +
 				"требует перерасчёта наравне с измерением."},
+		NoteKindInfo{NotePictureSettingsLeft,
+			"Ссылка на картинку без картинки: картинку убрали, а загрузка прозрачной или точка прозрачности остались " +
+				"(в выгрузке — ссылка на картинку 0). Конфигуратор такое сохраняет: в выгрузках 8 ссылок.",
+			"Настройки несутся как записаны; рисуется как без картинки — команда, отображаемая картинкой, показывается текстом."},
 	)
 	noteRules[NoteUnresolvedPath] = noteUnresolvedPath
 	noteRules[NoteUnusedBound] = noteUnusedBound
@@ -263,6 +268,7 @@ func init() {
 	noteRules[NotePlatformTypeByName] = notePlatformTypeByName
 	noteRules[NoteStandardFieldOfDocument] = noteStandardFieldOfDocument
 	noteRules[NoteLeadingDataNotDimension] = noteLeadingDataNotDimension
+	noteRules[NotePictureSettingsLeft] = notePictureSettingsLeft
 	noteRules[NoteVanishedType] = noteVanishedType
 }
 
@@ -868,6 +874,70 @@ func noteVanishedType(catalog *Catalog, note func(where, written string)) {
 			}
 		}
 	})
+}
+
+func notePictureSettingsLeft(catalog *Catalog, note func(where, written string)) {
+	eachPictureReference(catalog, func(where string, picture *PictureReference) {
+		if !picture.Names() {
+			written := "load_transparent"
+			if picture.TransparentPixel != nil {
+				written = fmt.Sprintf("transparent_pixel %d,%d", picture.TransparentPixel.X, picture.TransparentPixel.Y)
+			}
+			note(where, written)
+		}
+	})
+}
+
+// eachPictureReference walks every reference to a picture in the catalog -
+// beside a command, a group of commands, a subsystem, an item of a route map -
+// and calls visit with the place it stands in.
+func eachPictureReference(catalog *Catalog, visit func(where string, picture *PictureReference)) {
+	top := reflect.ValueOf(catalog).Elem()
+	for index := range top.NumField() {
+		field := top.Type().Field(index)
+		if !field.IsExported() || field.Type.Kind() != reflect.Slice || field.Type.Elem().Kind() != reflect.Struct {
+			continue
+		}
+		list := top.Field(index)
+		for item := range list.Len() {
+			object := list.Index(item)
+			walkPictureReferences(object, kebab(field.Name)+" "+nameOf(object), visit)
+		}
+	}
+}
+
+func walkPictureReferences(value reflect.Value, where string, visit func(string, *PictureReference)) {
+	switch value.Kind() {
+	case reflect.Pointer:
+		if value.IsNil() {
+			return
+		}
+		if picture, ok := value.Interface().(*PictureReference); ok {
+			visit(where, picture)
+			return
+		}
+		walkPictureReferences(value.Elem(), where, visit)
+	case reflect.Slice:
+		switch value.Type().Elem().Kind() {
+		case reflect.Struct, reflect.Pointer:
+			for index := range value.Len() {
+				element := value.Index(index)
+				walkPictureReferences(element, where+" "+nameOf(element), visit)
+			}
+		}
+	case reflect.Struct:
+		for index := range value.NumField() {
+			field := value.Type().Field(index)
+			if !field.IsExported() {
+				continue
+			}
+			next := where
+			if !field.Anonymous {
+				next = where + " " + yamlName(field)
+			}
+			walkPictureReferences(value.Field(index), next, visit)
+		}
+	}
 }
 
 // eachTypeList walks every type description of the catalog - the types of a

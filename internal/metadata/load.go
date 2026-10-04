@@ -3126,6 +3126,13 @@ func validateObjectTemplateFiles(directory, kind, name string, templates []Objec
 				}
 				continue
 			}
+			if templateKind == GraphicalSchema && file.IsDir() && file.Type()&fs.ModeSymlink == 0 && file.Name() == project.SchemaItemsDirectory {
+				if err := validateSchemaItems(fmt.Sprintf("%s %s template %s", kind, name, entry.Name()),
+					filepath.Join(directory, "templates", entry.Name(), file.Name())); err != nil {
+					return err
+				}
+				continue
+			}
 			if file.IsDir() || file.Type()&fs.ModeSymlink != 0 {
 				return fmt.Errorf("%s %s template %s holds %q, which is not a file of its content",
 					kind, name, entry.Name(), file.Name())
@@ -3151,6 +3158,33 @@ func validateTemplateResources(owner, directory string) error {
 	for _, entry := range entries {
 		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 || !project.TemplateResource(entry.Name()) {
 			return fmt.Errorf("%s keeps %q among its resources, which is not a file", owner, entry.Name())
+		}
+	}
+	return nil
+}
+
+// validateSchemaItems checks the folder of the pictures of a graphical
+// schema's items: a folder per item, each holding files and nothing deeper.
+// Which item a folder is for is not checked against the schema - the schema's
+// content is carried, not read, until it is drawn.
+func validateSchemaItems(owner, directory string) error {
+	items, err := os.ReadDir(directory)
+	if err != nil {
+		return fmt.Errorf("%s: %w", owner, err)
+	}
+	for _, item := range items {
+		if !item.IsDir() || item.Type()&fs.ModeSymlink != 0 || !project.TemplateResource(item.Name()) {
+			return fmt.Errorf("%s keeps %q among the pictures of its items, and each item keeps a folder named by it",
+				owner, item.Name())
+		}
+		files, err := os.ReadDir(filepath.Join(directory, item.Name()))
+		if err != nil {
+			return fmt.Errorf("%s item %s: %w", owner, item.Name(), err)
+		}
+		for _, file := range files {
+			if file.IsDir() || file.Type()&fs.ModeSymlink != 0 || !project.TemplateResource(file.Name()) {
+				return fmt.Errorf("%s item %s keeps %q, which is not a picture file", owner, item.Name(), file.Name())
+			}
 		}
 	}
 	return nil

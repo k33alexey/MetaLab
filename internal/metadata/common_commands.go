@@ -121,14 +121,7 @@ func cloneCommonCommand(value CommonCommandDefinition) CommonCommandDefinition {
 func cloneCommandGroup(value CommandGroupDefinition) CommandGroupDefinition {
 	value.Title = cloneTitle(value.Title)
 	value.Tooltip = cloneTitle(value.Tooltip)
-	if value.Picture != nil {
-		picture := *value.Picture
-		if picture.Common != nil {
-			id := *picture.Common
-			picture.Common = &id
-		}
-		value.Picture = &picture
-	}
+	value.Picture = value.Picture.clone()
 	return value
 }
 

@@ -92,6 +92,12 @@ func (catalog *Catalog) validateCommonTemplateFiles(root string) error {
 				}
 				continue
 			}
+			if item.Kind == GraphicalSchema && entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 && entry.Name() == project.SchemaItemsDirectory {
+				if err := validateSchemaItems("common template "+item.Name, filepath.Join(directory, entry.Name())); err != nil {
+					return err
+				}
+				continue
+			}
 			if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
 				return fmt.Errorf("common template %s keeps %q, which is not a file of its content",
 					item.Name, entry.Name())

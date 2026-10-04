@@ -54,6 +54,11 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, representation: picture}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
 	},
+	NotePictureSettingsLeft: func(t *testing.T, root string) {
+		id := uuid.MustNew().String()
+		writeMetadata(t, root, SubsystemKind, id, "format: 1\nid: "+id+"\nname: Продажи\ntitle: {ru: Продажи}\n"+
+			"picture: {load_transparent: true, transparent_pixel: {x: 7, y: 5}}\n")
+	},
 	NoteLevelOfHierarchyTable: func(t *testing.T, root string) {
 		writeSalesCube(t, root, noteCubeBody(), goodsDimTableBody+"level_number: 1\n")
 	},
@@ -346,7 +351,7 @@ func TestSoundSettingsCarryNoNotes(t *testing.T) {
 	writeMetadata(t, root, CatalogKind, id, "format: 1\nid: "+id+"\nname: Товары\ntitle: {ru: Товары}\ncode: {type: string, length: 9, auto: true}\ndescription_length: 150\n"+
 		"hierarchy: {enabled: true, kind: folders-and-items, folders_on_top: true, limit_levels: true, level_count: 2}\n"+
 		"full_text_search: use\ndata_history: use\n"+
-		"commands:\n  - {id: "+commandID+", name: Подбор, title: {ru: Подбор}, representation: picture, picture: {standard: Начислить}, "+
+		"commands:\n  - {id: "+commandID+", name: Подбор, title: {ru: Подбор}, representation: picture, picture: {standard: Начислить, load_transparent: true, transparent_pixel: {x: 7, y: 5}}, "+
 		"parameter: [{kind: catalog, reference: "+id+"}], parameter_use: single}\n"+
 		"attributes:\n"+
 		"  - id: "+uuid.MustNew().String()+"\n    name: Цена\n    title: {ru: Цена}\n    types: [{kind: number, precision: 15, scale: 2}]\n"+

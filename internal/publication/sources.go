@@ -361,6 +361,9 @@ func validateSourcePath(relative string, directory bool) error {
 				(directory && len(parts) == 4 || !directory && len(parts) == 5 && project.TemplateResource(parts[4])) {
 				return nil
 			}
+			if parts[1] == "common-templates" && project.SchemaItemPath(parts[3:], directory) {
+				return nil
+			}
 			// An XDTO package keeps its schema and a WS reference the service
 			// description it was imported with, each beside its description
 			// and under one name. Without these two a project carrying either
@@ -490,6 +493,10 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 	if len(parts) >= 6 && parts[3] == "templates" && project.SubordinateName(parts[4]) == nil &&
 		parts[5] == project.TemplateResourcesDirectory &&
 		(directory && len(parts) == 6 || !directory && len(parts) == 7 && project.TemplateResource(parts[6])) {
+		return nil
+	}
+	if len(parts) >= 6 && parts[3] == "templates" && project.SubordinateName(parts[4]) == nil &&
+		project.SchemaItemPath(parts[5:], directory) {
 		return nil
 	}
 	if !directory && len(parts) == 4 && parts[3] == "object.yaml" {

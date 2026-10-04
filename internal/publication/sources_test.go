@@ -281,6 +281,26 @@ func TestCommonTemplateAndPicturePathShapes(t *testing.T) {
 			"metadata/data-processors/ОбновлениеПрограммы/templates/СозданиеРезервнойКопии/_files/a/u2.png", false, false},
 		"папка ресурсов у формы": {
 			"metadata/data-processors/ОбновлениеПрограммы/forms/Форма/_files", true, false},
+		// A graphical schema keeps the pictures of its items in a folder per
+		// item, files only; which kind of template may is checked where the
+		// metadata is read.
+		"папка картинок элементов схемы": {
+			"metadata/data-processors/ВыполнениеМаршрутныхЛистов/templates/МетодикаББВ/items", true, true},
+		"папка элемента схемы": {
+			"metadata/data-processors/ВыполнениеМаршрутныхЛистов/templates/МетодикаББВ/items/Декорация11", true, true},
+		"картинка элемента схемы": {
+			"metadata/data-processors/ВыполнениеМаршрутныхЛистов/templates/МетодикаББВ/items/Декорация11/Picture.png", false, true},
+		"файл прямо в папке элементов": {
+			"metadata/data-processors/ВыполнениеМаршрутныхЛистов/templates/МетодикаББВ/items/Picture.png", false, false},
+		"картинка глубже элемента": {
+			"metadata/data-processors/ВыполнениеМаршрутныхЛистов/templates/МетодикаББВ/items/Декорация11/a/Picture.png", false, false},
+		"скрытая картинка элемента": {
+			"metadata/data-processors/ВыполнениеМаршрутныхЛистов/templates/МетодикаББВ/items/Декорация11/.png", false, false},
+		"картинка элемента общей схемы":      {"metadata/common-templates/Методика/items/Декорация11/Picture.png", false, true},
+		"папка элемента общей схемы":         {"metadata/common-templates/Методика/items/Декорация11", true, true},
+		"файл в папке элементов общей схемы": {"metadata/common-templates/Методика/items/Picture.png", false, false},
+		"папка элементов у формы": {
+			"metadata/data-processors/ОбновлениеПрограммы/forms/Форма/items", true, false},
 		"папка общей картинки":    {"metadata/common-pictures/Печать", true, true},
 		"описание общей картинки": {"metadata/common-pictures/Печать/object.yaml", false, true},
 		"образ картинки":          {"metadata/common-pictures/Печать/100.png", false, true},

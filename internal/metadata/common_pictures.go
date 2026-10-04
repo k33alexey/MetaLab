@@ -136,18 +136,28 @@ func DecodeCommonPicture(source string, reader io.Reader, configuration project.
 	return value, nil
 }
 
+// validateTransparentPixel checks the point whose colour is drawn as
+// transparent. It is the same wherever a picture is drawn - a common picture,
+// a picture of the root, a reference to a picture beside a command - because
+// it is one type in the prototype.
+func validateTransparentPixel(path string, loadTransparent bool, pixel *PicturePixel) []string {
+	if pixel == nil {
+		return nil
+	}
+	var issues []string
+	if !loadTransparent {
+		issues = append(issues, path+" belongs to a picture loaded transparent only")
+	}
+	if pixel.X < 0 || pixel.Y < 0 {
+		issues = append(issues, path+" must be a point inside the image")
+	}
+	return issues
+}
+
 // validatePictureImages checks what a description says about drawing its
 // files, before the folder is looked at.
 func validatePictureImages(images PictureImages) []string {
-	var issues []string
-	if images.TransparentPixel != nil {
-		if !images.LoadTransparent {
-			issues = append(issues, "transparent_pixel belongs to a picture loaded transparent only")
-		}
-		if images.TransparentPixel.X < 0 || images.TransparentPixel.Y < 0 {
-			issues = append(issues, "transparent_pixel must be a point inside the image")
-		}
-	}
+	issues := validateTransparentPixel("transparent_pixel", images.LoadTransparent, images.TransparentPixel)
 	seen := map[string]bool{}
 	for index, variant := range images.Variants {
 		prefix := fmt.Sprintf("variants[%d]", index)

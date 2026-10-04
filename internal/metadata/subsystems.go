@@ -110,6 +110,7 @@ func cloneSubsystemDefinition(value SubsystemDefinition) SubsystemDefinition {
 	value.Members = slices.Clone(value.Members)
 	value.Explanation = cloneTitle(value.Explanation)
 	value.CommandInterface = cloneCommandInterface(value.CommandInterface)
+	value.Picture = value.Picture.clone()
 	return value
 }
 

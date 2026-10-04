@@ -35,7 +35,7 @@ const (
 // 02.10.2026). Every drawing of a command or a group goes through this and not
 // through the representation itself.
 func (representation CommandRepresentation) ShownAs(picture *PictureReference) CommandRepresentation {
-	if picture == nil && (representation == CommandPicture || representation == CommandPictureAndText) {
+	if !picture.Names() && (representation == CommandPicture || representation == CommandPictureAndText) {
 		return CommandText
 	}
 	return representation
@@ -75,11 +75,38 @@ var standardCommandGroups = map[string]bool{
 //
 // LoadTransparent draws the picture with its transparent colour taken out, as
 // the prototype offers wherever a picture is named (commands 99 times in erp,
-// common commands and groups 14, 15 and 22, subsystems 0, 4 and 6).
+// common commands and groups 14, 15 and 22, subsystems 0, 4 and 6), and
+// TransparentPixel says which colour, the way a common picture says it: the
+// configurations being moved name the point 0, 3, 9, 0 and 1 times, at common
+// commands, command groups and subsystems.
+//
+// A reference may name no picture and still carry the two: the prototype
+// writes a reference to «picture 0» - the picture gone, the settings left - 3,
+// 2, 6, 0 and 0 times, 8 of them with settings. Such a reference is carried
+// with its settings and drawn as no picture at all (see Names); a reference
+// with neither a picture nor a setting is written as no reference.
 type PictureReference struct {
-	Standard        string     `yaml:"standard,omitempty" json:"standard,omitempty"`
-	Common          *uuid.UUID `yaml:"common,omitempty" json:"common,omitempty"`
-	LoadTransparent bool       `yaml:"load_transparent,omitempty" json:"loadTransparent,omitempty"`
+	Standard         string        `yaml:"standard,omitempty" json:"standard,omitempty"`
+	Common           *uuid.UUID    `yaml:"common,omitempty" json:"common,omitempty"`
+	LoadTransparent  bool          `yaml:"load_transparent,omitempty" json:"loadTransparent,omitempty"`
+	TransparentPixel *PicturePixel `yaml:"transparent_pixel,omitempty" json:"transparentPixel,omitempty"`
+}
+
+// Names reports whether the reference names a picture to draw. A reference
+// left with its settings after the picture was removed names none, and
+// whatever it stands beside is drawn as if it had no picture.
+func (picture *PictureReference) Names() bool {
+	return picture != nil && (picture.Standard != "" || picture.Common != nil)
+}
+
+func (picture *PictureReference) clone() *PictureReference {
+	if picture == nil {
+		return nil
+	}
+	value := *picture
+	value.Common = clonePointer(value.Common)
+	value.TransparentPixel = clonePointer(value.TransparentPixel)
+	return &value
 }
 
 // ObjectCommand is an action offered beside an object. It belongs to the object
@@ -192,23 +219,25 @@ func validateCommandShape(prefix string, command ObjectCommand, self uuid.UUID, 
 	return issues
 }
 
-// validatePictureReference checks that a picture names one source, not two and
-// not none: an empty reference is written as no reference at all.
+// validatePictureReference checks that a picture names one source, not two.
+// It may name none when it still carries a setting - see PictureReference;
+// with neither it is written as no reference at all.
 func validatePictureReference(path string, picture *PictureReference) []string {
 	if picture == nil {
 		return nil
 	}
+	issues := validateTransparentPixel(path+".transparent_pixel", picture.LoadTransparent, picture.TransparentPixel)
 	switch {
 	case picture.Standard != "" && picture.Common != nil:
-		return []string{path + " names both a standard picture and a common picture"}
-	case picture.Standard == "" && picture.Common == nil:
-		return []string{path + " must name a standard picture or a common picture"}
+		issues = append(issues, path+" names both a standard picture and a common picture")
+	case !picture.Names() && !picture.LoadTransparent && picture.TransparentPixel == nil:
+		issues = append(issues, path+" must name a standard picture or a common picture, or carry what is left of one")
 	case picture.Standard != "" && !validIdentifier(picture.Standard):
-		return []string{path + ".standard must be a valid identifier"}
+		issues = append(issues, path+".standard must be a valid identifier")
 	case picture.Common != nil && picture.Common.IsZero():
-		return []string{path + ".common must be a non-zero UUID"}
+		issues = append(issues, path+".common must be a non-zero UUID")
 	}
-	return nil
+	return issues
 }
 
 func cloneObjectCommands(commands []ObjectCommand) []ObjectCommand {
@@ -218,14 +247,7 @@ func cloneObjectCommands(commands []ObjectCommand) []ObjectCommand {
 		command.Title = cloneTitle(command.Title)
 		command.Tooltip = cloneTitle(command.Tooltip)
 		command.Parameter = cloneTypes(command.Parameter)
-		if command.Picture != nil {
-			picture := *command.Picture
-			if picture.Common != nil {
-				copied := *picture.Common
-				picture.Common = &copied
-			}
-			command.Picture = &picture
-		}
+		command.Picture = command.Picture.clone()
 		if command.GroupRef != nil {
 			copied := *command.GroupRef
 			command.GroupRef = &copied

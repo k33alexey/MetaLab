@@ -825,6 +825,32 @@ func plainFileName(what, file string) error {
 // configurations being moved, common ones and those of data processors).
 const TemplateResourcesDirectory = "_files"
 
+// SchemaItemsDirectory is the folder a graphical schema keeps the pictures of
+// its items in: a folder per item, named by the item, holding the item's
+// picture under the name the schema gives it, and nothing deeper - as the
+// prototype keeps them beside the schema (Items/<item>/Picture.png, erp 2).
+// Our model of the schema's content has no place for an image, and an image
+// is not text to be written into one.
+const SchemaItemsDirectory = "items"
+
+// SchemaItemPath reports whether the steps below a template's folder are a
+// place the pictures of a graphical schema's items may take: the folder of
+// the items, the folder of one item, or a file in it.
+func SchemaItemPath(steps []string, directory bool) bool {
+	if len(steps) == 0 || steps[0] != SchemaItemsDirectory {
+		return false
+	}
+	switch len(steps) {
+	case 1:
+		return directory
+	case 2:
+		return directory && TemplateResource(steps[1])
+	case 3:
+		return !directory && TemplateResource(steps[1]) && TemplateResource(steps[2])
+	}
+	return false
+}
+
 // HelpDirectory is the folder the help of an object, of a form of it or of a
 // common form lies in, beside the owner's description: one page per language,
 // named by the language - ru.html - and the pictures the pages show in one
