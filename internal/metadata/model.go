@@ -631,7 +631,10 @@ type Catalog struct {
 	// commonFormNames is every common form of the configuration, folded, read
 	// once when the project is read. A role may open a common form instead of
 	// one of the object's own, and then this is what says the form is there.
-	commonFormNames                 map[string]bool
+	commonFormNames map[string]bool
+	// ordinaryCommonForms is the common forms of the ordinary application, by
+	// name as written: their modules are carried and not compiled.
+	ordinaryCommonForms             map[string]bool
 	Constants                       []Constant
 	SessionParameters               []SessionParameter
 	sessionParameterByName          map[string]int

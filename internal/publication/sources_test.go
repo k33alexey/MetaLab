@@ -561,6 +561,26 @@ func TestPictureFilesArePublished(t *testing.T) {
 	}
 }
 
+// The body of an ordinary form is published beside its description, in the
+// form's folder and nowhere else; which form may have one is checked where
+// the metadata is read.
+func TestOrdinaryFormBodyIsPublished(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		relative  string
+		directory bool
+		accepted  bool
+	}{
+		"тело формы отчёта":      {"metadata/reports/Анализ/forms/Форма/form.bin", false, true},
+		"тело общей формы":       {"metadata/common-forms/Настройки/form.bin", false, true},
+		"тело у команды":         {"metadata/reports/Анализ/commands/Сформировать/form.bin", false, false},
+		"тело глубже формы":      {"metadata/reports/Анализ/forms/Форма/a/form.bin", false, false},
+		"тело под другим именем": {"metadata/reports/Анализ/forms/Форма/Form.bin", false, false},
+	} {
+		checkSourcePath(t, name, test.relative, test.directory, test.accepted)
+	}
+}
+
 // What the configuration root keeps beside its description - its modules,
 // the descriptions of its interface, its pictures and its help - is a source like any other, and a change to it
 // alone must change the content digest: ML App offers a refresh when the

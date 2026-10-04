@@ -106,7 +106,7 @@ kind: common
 			if err := os.WriteFile(stray, []byte("x"), 0o644); err != nil {
 				t.Fatal(err)
 			}
-		}, "a form keeps only its description, its module and its help"},
+		}, "a form keeps only its description, its module, its help and the body of an ordinary form"},
 		"папка без описания": {func(t *testing.T, root string) {
 			if err := os.MkdirAll(filepath.Join(root, "metadata", "common-forms", "АдреснаяКнига"), 0o755); err != nil {
 				t.Fatal(err)

@@ -114,7 +114,7 @@ func TestFormFolderHoldsOnlyTheFormAndItsModule(t *testing.T) {
 			if err == nil {
 				t.Fatalf("%s: accepted", name)
 			}
-			if !strings.Contains(err.Error(), "a form keeps only its description, its module and its help") {
+			if !strings.Contains(err.Error(), "a form keeps only its description, its module, its help and the body of an ordinary form") {
 				t.Fatalf("%s: refused for another reason: %v", name, err)
 			}
 		})

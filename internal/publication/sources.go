@@ -497,6 +497,12 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 			if expected, err := project.ObjectFormModulePath(parts[1], objectName, parts[4]); err == nil && expected == relative {
 				return nil
 			}
+		case project.FormBodyFile:
+			// The body of an ordinary form; which form may have one is
+			// checked where the metadata is read.
+			if folder, err := project.ObjectFormDirectory(parts[1], objectName, parts[4]); err == nil && folder+"/"+project.FormBodyFile == relative {
+				return nil
+			}
 		}
 	}
 	if !directory && len(parts) == 6 && parts[3] == "commands" && parts[5] == project.CommandModuleFile {

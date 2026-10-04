@@ -164,6 +164,9 @@ type objectFormIndex struct {
 type objectFormRef struct {
 	name string
 	id   uuid.UUID
+	// ordinary is a form of the ordinary application: carried with its body
+	// and its module, never built and its module never compiled.
+	ordinary bool
 }
 
 // ObjectFormNames returns the names of the forms one object keeps, as written

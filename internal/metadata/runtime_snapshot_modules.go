@@ -50,8 +50,9 @@ func LoadProjectModules(root string, catalog *Catalog) ([]RuntimeModule, error) 
 	if err != nil {
 		return nil, err
 	}
+	carried := catalog.ordinaryFormModulePaths()
 	for _, relative := range objectPaths {
-		if filepath.Ext(relative) == ".bsl" {
+		if filepath.Ext(relative) == ".bsl" && !carried[relative] {
 			relativePaths = append(relativePaths, relative)
 		}
 	}
@@ -95,6 +96,36 @@ func LoadProjectModules(root string, catalog *Catalog) ([]RuntimeModule, error) 
 		})
 	}
 	return modules, nil
+}
+
+// ordinaryFormModulePaths is the modules of the forms of the ordinary
+// application. They are carried and not compiled: ML builds no ordinary form,
+// so nothing would ever call them, and they are written for a client ML does
+// not have. Of 1864 such modules in erp, acc and energy, 1331 do not even
+// parse as we read the language - the main program after the routines among
+// the causes - and more name what only the thick client had, ЭлементыФормы
+// first. Compiling them would stop the publication of a configuration for
+// code nobody runs.
+func (catalog *Catalog) ordinaryFormModulePaths() map[string]bool {
+	result := map[string]bool{}
+	for objectKind, objects := range catalog.objectForms {
+		for _, index := range objects {
+			for _, form := range index.forms {
+				if !form.ordinary {
+					continue
+				}
+				if path, err := project.ObjectFormModulePath(string(objectKind), index.object, form.name); err == nil {
+					result[path] = true
+				}
+			}
+		}
+	}
+	for name := range catalog.ordinaryCommonForms {
+		if path, err := project.CommonFormModulePath(name); err == nil {
+			result[path] = true
+		}
+	}
+	return result
 }
 
 // moduleNameDescriptors maps the path of every module the configuration knows

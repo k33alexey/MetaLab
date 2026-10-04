@@ -107,9 +107,15 @@ const (
 	// FormMetadataFile is the description of one managed form, inside the
 	// folder named after that form.
 	FormMetadataFile = "form.yaml"
-	// FormModuleFile is the module of one managed form, beside the form's own
+	// FormModuleFile is the module of one form, beside the form's own
 	// description in that same folder.
 	FormModuleFile = "МодульФормы.bsl"
+	// FormBodyFile is the body of an ordinary form, beside its description,
+	// carried as the prototype wrote it (Form.bin, with the module inside: 157,
+	// 160, 0, 0 and 1547 ordinary forms in the exports). ML builds no ordinary
+	// form, so the body is not read; its module is taken out of it into
+	// FormModuleFile, where it is carried and not compiled.
+	FormBodyFile = "form.bin"
 	// ValueModuleFile is the module of a constant's value: the one the
 	// platform calls when the value is checked and written.
 	ValueModuleFile = "МодульЗначения.bsl"
@@ -143,7 +149,7 @@ var (
 	// What they do not own is subordinate entities, so they are kept apart
 	// from objectFolderKinds rather than given machinery they have no use for.
 	namedFolderKinds = map[string][]string{
-		"common-forms":    {FormMetadataFile, FormModuleFile},
+		"common-forms":    {FormMetadataFile, FormModuleFile, FormBodyFile},
 		"common-commands": {ObjectMetadataFile, CommandModuleFile},
 		"constants":       {ObjectMetadataFile, ValueModuleFile, ManagerModuleFile},
 		// A common template and a common picture keep a description and
