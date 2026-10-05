@@ -577,8 +577,8 @@ func normalizeDocumentNumber(number DocumentNumber, value string) (string, error
 		return "", fmt.Errorf("invalid numeric number")
 	}
 	canonical := parsed.String()
-	precision, scale := decimalSize(canonical)
-	if strings.HasPrefix(canonical, "-") || scale != 0 || precision > number.Length {
+	digits, scale := decimalSize(canonical)
+	if strings.HasPrefix(canonical, "-") || scale != 0 || digits > number.Length {
 		return "", fmt.Errorf("numeric number must be a non-negative integer with at most %d digits", number.Length)
 	}
 	return canonical, nil

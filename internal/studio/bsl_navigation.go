@@ -17,12 +17,10 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-const (
-	maxBSLNavigationOccurrences = 2_000_000
-	maxBSLNavigationLocations   = 2_000
-	maxProjectSearchBytes       = 256 << 20
-	maxProjectSearchResults     = 500
-)
+// maxProjectSearchResults bounds the list a person reads, not the project:
+// the search covers every file and says when it shows only the first ones.
+// The index itself has no bound - erp has 10 962 modules and 425 MB of them.
+const maxProjectSearchResults = 500
 
 var (
 	ErrBSLSymbolNotFound = errors.New("BSL symbol not found at cursor")
@@ -71,7 +69,6 @@ type bslNavigationIndex struct {
 	publicModules     map[string]string
 	moduleDefinitions map[string]StudioLocation
 	metadata          map[string]bslResolvedSymbol
-	truncated         bool
 }
 
 type bslSemanticModule struct {
@@ -123,8 +120,7 @@ type bslResolvedSymbol struct {
 }
 
 type projectSearchIndex struct {
-	files     []projectSearchFile
-	truncated bool
+	files []projectSearchFile
 }
 
 type projectSearchFile struct {
@@ -174,8 +170,7 @@ func (workspace *Workspace) NavigateBSL(relative, source string, position BSLPos
 		return result, nil
 	}
 	modules := semanticModulesWithCurrent(index.modules, current)
-	result.Locations, result.Truncated = collectBSLSymbolLocations(index, modules, target, false)
-	result.Truncated = result.Truncated || index.truncated
+	result.Locations = collectBSLSymbolLocations(index, modules, target, false)
 	return result, nil
 }
 
@@ -209,9 +204,6 @@ func (workspace *Workspace) RenameBSL(relative string, position BSLPosition, new
 	if err != nil {
 		return BSLRenameResult{}, err
 	}
-	if index.truncated {
-		return BSLRenameResult{}, fmt.Errorf("safe rename is unavailable because the BSL index is truncated")
-	}
 	module, ok := index.modules[relative]
 	if !ok {
 		return BSLRenameResult{}, ErrBSLSymbolNotFound
@@ -233,10 +225,7 @@ func (workspace *Workspace) RenameBSL(relative string, position BSLPosition, new
 		return BSLRenameResult{}, err
 	}
 
-	locations, truncated := collectBSLSymbolLocations(index, index.modules, target, true)
-	if truncated {
-		return BSLRenameResult{}, fmt.Errorf("safe rename exceeds the limit of %d occurrences", maxBSLNavigationLocations)
-	}
+	locations := collectBSLSymbolLocations(index, index.modules, target, true)
 	if len(locations) == 0 {
 		return BSLRenameResult{}, ErrBSLSymbolNotFound
 	}
@@ -298,7 +287,7 @@ func (workspace *Workspace) SearchProject(query string) (ProjectSearchResult, er
 			return ProjectSearchResult{}, err
 		}
 	}
-	result := ProjectSearchResult{Locations: make([]StudioLocation, 0, 32), Truncated: workspace.projectSearch.truncated}
+	result := ProjectSearchResult{Locations: make([]StudioLocation, 0, 32)}
 	needle := []rune(strings.ToLower(query))
 	for _, file := range workspace.projectSearch.files {
 		for lineIndex, line := range splitSourceLines(file.content) {
@@ -325,7 +314,6 @@ func (workspace *Workspace) buildBSLNavigationIndex() (*bslNavigationIndex, erro
 	}
 	catalog, _ := metadata.Load(workspace.root)
 	descriptors := workspace.moduleDescriptors(catalog)
-	occurrenceCount := 0
 	for _, directory := range []string{"modules"} {
 		entries, err := os.ReadDir(filepath.Join(workspace.root, directory))
 		if err != nil {
@@ -333,10 +321,6 @@ func (workspace *Workspace) buildBSLNavigationIndex() (*bslNavigationIndex, erro
 		}
 		for _, entry := range entries {
 			if entry.Name() == ".gitkeep" || entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
-				continue
-			}
-			if len(result.modules) >= 10_000 {
-				result.truncated = true
 				continue
 			}
 			relative := filepath.ToSlash(filepath.Join(directory, entry.Name()))
@@ -350,12 +334,7 @@ func (workspace *Workspace) buildBSLNavigationIndex() (*bslNavigationIndex, erro
 			}
 			module := buildBSLSemanticModule(relative, file.Content, descriptor.name, descriptor.public, descriptor.predefined)
 			module.revision = file.Revision
-			if occurrenceCount+len(module.occurrences) > maxBSLNavigationOccurrences {
-				result.truncated = true
-				continue
-			}
 			result.modules[relative] = module
-			occurrenceCount += len(module.occurrences)
 			if module.public {
 				result.publicModules[strings.ToLower(module.name)] = relative
 			}
@@ -585,7 +564,7 @@ func publicBSLSymbol(symbol bslResolvedSymbol) BSLSymbolTarget {
 	return BSLSymbolTarget{Name: symbol.name, Kind: symbol.kind, Definition: symbol.definition, CanRename: symbol.canRename}
 }
 
-func collectBSLSymbolLocations(index *bslNavigationIndex, modules map[string]bslSemanticModule, target bslResolvedSymbol, includeDefinition bool) ([]StudioLocation, bool) {
+func collectBSLSymbolLocations(index *bslNavigationIndex, modules map[string]bslSemanticModule, target bslResolvedSymbol, includeDefinition bool) []StudioLocation {
 	paths := make([]string, 0, len(modules))
 	for path := range modules {
 		paths = append(paths, path)
@@ -603,13 +582,10 @@ func collectBSLSymbolLocations(index *bslNavigationIndex, modules map[string]bsl
 			if !includeDefinition && sameStudioLocation(location, target.definition) {
 				continue
 			}
-			if len(locations) == maxBSLNavigationLocations {
-				return locations, true
-			}
 			locations = append(locations, location)
 		}
 	}
-	return locations, false
+	return locations
 }
 
 func semanticModulesWithCurrent(modules map[string]bslSemanticModule, current bslSemanticModule) map[string]bslSemanticModule {
@@ -1003,17 +979,11 @@ func (workspace *Workspace) buildProjectSearchIndex() (*projectSearchIndex, erro
 	}
 	paths = append(paths, objectPaths...)
 	sort.Strings(paths)
-	total := 0
 	for _, path := range paths {
 		file, err := workspace.readSource(path)
 		if err != nil {
 			continue
 		}
-		if total+len(file.Content) > maxProjectSearchBytes {
-			result.truncated = true
-			continue
-		}
-		total += len(file.Content)
 		result.files = append(result.files, projectSearchFile{path: path, kind: file.Language, content: file.Content})
 	}
 	return result, nil

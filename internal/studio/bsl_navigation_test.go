@@ -365,3 +365,40 @@ func BenchmarkSearchProject(b *testing.B) {
 		}
 	}
 }
+
+// Navigation and rename see the whole project. erp has 10 962 modules, and
+// the index used to stop at 10 000 - after which rename refused altogether -
+// and to refuse a rename of more than 2 000 occurrences. Here the caller is
+// the 10 002nd module in reading order and calls the routine 2 001 times.
+func TestNavigationAndRenameReachEveryModule(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	publicID, _ := uuid.Parse("00000000-0000-4000-8000-000000000001")
+	callerID, _ := uuid.Parse("ffffffff-ffff-4fff-bfff-ffffffffffff")
+	publicPath, _ := project.ModulePath(publicID)
+	callerPath, _ := project.ModulePath(callerID)
+	writeBSLTestSource(t, root, publicPath, "Функция ПолучитьДанные(Ключ) Экспорт\n\tВозврат Ключ;\nКонецФункции\n")
+	for range 10_000 {
+		path, _ := project.ModulePath(uuid.MustNew())
+		writeBSLTestSource(t, root, path, "Процедура П()\nКонецПроцедуры\n")
+	}
+	callerSource := "Процедура Запустить()\n" + strings.Repeat("\tОбмен.ПолучитьДанные(1);\n", 2_001) + "КонецПроцедуры\n"
+	writeBSLTestSource(t, root, callerPath, callerSource)
+	commonPath, _ := project.MetadataPath("common-modules", uuid.MustNew())
+	writeBSLTestSource(t, root, commonPath, "format: 1\nname: Обмен\nmodule: "+publicID.String()+"\n")
+	workspace, _ := Open(root)
+	callerFile, _ := workspace.ReadSource(callerPath)
+	position := bslPosition(callerSource, strings.Index(callerSource, "ПолучитьДанные")+len("Получить"))
+	usages, err := workspace.NavigateBSL(callerPath, callerSource, position, "usages")
+	if err != nil || len(usages.Locations) < 2_001 || usages.Truncated {
+		t.Fatalf("usages: %d locations, truncated %v, error %v", len(usages.Locations), usages.Truncated, err)
+	}
+	result, err := workspace.RenameBSL(callerPath, position, "ЗагрузитьДанные", callerFile.Revision)
+	if err != nil || len(result.Changed) != 2 {
+		t.Fatalf("rename across 10 002 modules: %+v %v", result.Changed, err)
+	}
+	updated, _ := workspace.ReadSource(callerPath)
+	if strings.Count(updated.Content, "Обмен.ЗагрузитьДанные(1)") != 2_001 {
+		t.Fatal("not every call was renamed")
+	}
+}

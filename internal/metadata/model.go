@@ -172,15 +172,15 @@ const (
 )
 
 // The ceilings of the prototype on the shape of a field, each checked in the
-// designer by the owner on 01.10.2026 - the help names none of them, and the
-// three configurations being moved stay inside every one: at most 5 levels of
-// a hierarchy, codes of exactly 50 characters on three catalogs, numbers of
-// at most 20, numbers of at most 31 digits with 20 after the point, limited
-// strings of at most 1024 and descriptions of at most 150 characters. A ceiling of ours
+// designer by the owner on 01.10.2026 and 05.10.2026 - the help names none of
+// them, and the three configurations being moved stay inside every one: at
+// most 5 levels of a hierarchy, codes of at most 50 characters, numbers of at
+// most 32 digits with at most as many after the point, limited strings of at
+// most 1024 and descriptions of at most 150 characters. A ceiling of ours
 // without such a source refuses on import what the prototype saves.
 const (
 	// maxHierarchyLevelCount is the most levels a hierarchy may be limited to.
-	maxHierarchyLevelCount = 10
+	maxHierarchyLevelCount = 5
 	// maxCodeLength is the longest code of a reference object and the longest
 	// number of a document, a business process or a task, string or numeric.
 	maxCodeLength = 50

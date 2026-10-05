@@ -61,7 +61,7 @@
     function sourceSlice(range){const resolve=positionResolver();return sourceText.slice(resolve(range.start),resolve(range.end))}
     function completionIcon(kind){if(kind==='function')return'ƒ';if(kind==='procedure'||kind==='method')return'P';if(kind==='variable'||kind==='parameter')return'V';if(kind==='module')return'M';if(kind==='keyword'||kind==='directive')return'K';return'◆'}
 
-    function renderAll(){renderHighlight();renderGutter();renderInspector();const count=analysis?.diagnostics?.length||0;summary.textContent=count?`Ошибок: ${count}`:'Ошибок нет';summary.className=count?'error':'muted';if(analysis?.truncated){summary.textContent+=' · результат ограничен';summary.className='warning'}}
+    function renderAll(){renderHighlight();renderGutter();renderInspector();const count=analysis?.diagnostics?.length||0;summary.textContent=count?`Ошибок: ${count}`:'Ошибок нет';summary.className=count?'error':'muted'}
 
     function renderHighlight(){
       if(!active)return;if(folded){renderFolded();return}const resolve=positionResolver(),ranges=(analysis?.highlights||[]).map(item=>({...item,offsets:rangeOffsets(item.range,resolve)})).sort((a,b)=>a.offsets[0]-b.offsets[0]),diagnosticRanges=(analysis?.diagnostics||[]).map(item=>{const range=rangeOffsets(item.range,resolve);range[1]=Math.max(range[1],range[0]+1);return range}).sort((a,b)=>a[0]-b[0]);let cursor=0,diagnosticIndex=0,html='';

@@ -3,6 +3,7 @@ package studio
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -133,4 +134,28 @@ func queryDesignerHasField(source QueryDesignerSource, expected string) bool {
 		}
 	}
 	return false
+}
+
+// The designer takes as many sources as the query has: a query of twenty
+// tables is ordinary in the configurations being moved, and the sixteen the
+// designer used to stop at had no source.
+func TestBuildDesignedQueryTakesManySources(t *testing.T) {
+	t.Parallel()
+	schema := QueryDesignerSchema{}
+	design := QueryDesign{}
+	for index := range 20 {
+		path := fmt.Sprintf("Справочник.Т%d", index)
+		alias := fmt.Sprintf("Т%d", index)
+		schema.Sources = append(schema.Sources, QueryDesignerSource{Path: path, Fields: []QueryDesignerField{{Name: "Ссылка"}}})
+		source := QueryDesignSource{Path: path, Alias: alias}
+		if index > 0 {
+			source.Join, source.LeftAlias, source.LeftField, source.RightField = "left", "Т0", "Ссылка", "Ссылка"
+		}
+		design.Sources = append(design.Sources, source)
+	}
+	design.Fields = []QueryDesignField{{Source: "Т19", Field: "Ссылка"}}
+	query, err := buildDesignedQuery(schema, design)
+	if err != nil || !strings.Contains(query, "Справочник.Т19 КАК Т19") {
+		t.Fatalf("a design of 20 sources: query=%s error=%v", query, err)
+	}
 }

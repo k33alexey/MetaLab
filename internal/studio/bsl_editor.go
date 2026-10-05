@@ -9,8 +9,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 )
 
-const maxBSLEditorItems = 200_000
-
 // BSLPosition is a one-based source position understood by ML Studio.
 type BSLPosition struct {
 	Line   int `json:"line"`
@@ -66,10 +64,9 @@ type BSLAnalysis struct {
 	Symbols     []BSLSymbol     `json:"symbols"`
 	Pairs       []BSLPair       `json:"pairs"`
 	Folds       []BSLFold       `json:"folds"`
-	Truncated   bool            `json:"truncated,omitempty"`
 }
 
-// AnalyzeBSL performs bounded, side-effect-free analysis of an unsaved module.
+// AnalyzeBSL performs side-effect-free analysis of an unsaved module.
 func AnalyzeBSL(filename, source string) (BSLAnalysis, error) {
 	if filename == "" || !strings.HasSuffix(strings.ToLower(filename), ".bsl") {
 		return BSLAnalysis{}, fmt.Errorf("BSL analysis requires a .bsl source path")
@@ -80,18 +77,14 @@ func AnalyzeBSL(filename, source string) (BSLAnalysis, error) {
 
 	module, tokens, diagnostics := syntax.ParseWithTokens(filename, source)
 	analysis := BSLAnalysis{
-		Highlights:  make([]BSLHighlight, 0, min(len(tokens), maxBSLEditorItems)),
+		Highlights:  make([]BSLHighlight, 0, len(tokens)),
 		Diagnostics: make([]BSLDiagnostic, 0, min(len(diagnostics), 256)),
-		Symbols:     make([]BSLSymbol, 0, min(len(module.Variables)+len(module.Routines), maxBSLEditorItems)),
-		Pairs:       make([]BSLPair, 0, min(len(tokens)/8, maxBSLEditorItems)),
-		Folds:       make([]BSLFold, 0, min(len(module.Routines)*2, maxBSLEditorItems)),
+		Symbols:     make([]BSLSymbol, 0, len(module.Variables)+len(module.Routines)),
+		Pairs:       make([]BSLPair, 0, len(tokens)/8),
+		Folds:       make([]BSLFold, 0, len(module.Routines)*2),
 	}
 	analysis.addHighlights(tokens)
 	for _, diagnostic := range diagnostics {
-		if len(analysis.Diagnostics) == maxBSLEditorItems {
-			analysis.Truncated = true
-			break
-		}
 		analysis.Diagnostics = append(analysis.Diagnostics, BSLDiagnostic{
 			Code: diagnostic.Code, Message: diagnostic.Message, Range: editorRange(diagnostic.Span),
 		})
@@ -167,10 +160,6 @@ func (analysis *BSLAnalysis) addIndentGuides(trivia syntax.Trivia) {
 }
 
 func (analysis *BSLAnalysis) addHighlight(kind string, span syntax.Span) {
-	if len(analysis.Highlights) == maxBSLEditorItems {
-		analysis.Truncated = true
-		return
-	}
 	analysis.Highlights = append(analysis.Highlights, BSLHighlight{Kind: kind, Range: editorRange(span)})
 }
 
@@ -200,19 +189,11 @@ func highlightKind(kind syntax.Kind) string {
 
 func (analysis *BSLAnalysis) addSymbols(module *syntax.Module) {
 	for _, variable := range module.Variables {
-		if len(analysis.Symbols) == maxBSLEditorItems {
-			analysis.Truncated = true
-			return
-		}
 		analysis.Symbols = append(analysis.Symbols, BSLSymbol{
 			Kind: "variable", Name: variable.Name, Detail: exportDetail(variable.Export), Range: editorRange(variable.SourceSpan),
 		})
 	}
 	for _, routine := range module.Routines {
-		if len(analysis.Symbols) == maxBSLEditorItems {
-			analysis.Truncated = true
-			return
-		}
 		parameters := make([]string, 0, len(routine.Parameters))
 		for _, parameter := range routine.Parameters {
 			parameters = append(parameters, parameter.Name)
@@ -317,19 +298,12 @@ func (analysis *BSLAnalysis) addPairsAndFolds(tokens []syntax.Token) {
 }
 
 func (analysis *BSLAnalysis) addPair(kind string, open, close syntax.Token) {
-	if len(analysis.Pairs) == maxBSLEditorItems {
-		analysis.Truncated = true
-		return
-	}
 	analysis.Pairs = append(analysis.Pairs, BSLPair{Kind: kind, Open: editorRange(open.Span), Close: editorRange(close.Span)})
 }
 
 func (analysis *BSLAnalysis) addPairAndFold(kind string, open, close syntax.Token, label string) {
 	analysis.addPair(kind, open, close)
-	if close.Span.Start.Line <= open.Span.Start.Line+1 || len(analysis.Folds) == maxBSLEditorItems {
-		if len(analysis.Folds) == maxBSLEditorItems {
-			analysis.Truncated = true
-		}
+	if close.Span.Start.Line <= open.Span.Start.Line+1 {
 		return
 	}
 	analysis.Folds = append(analysis.Folds, BSLFold{

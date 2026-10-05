@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -296,4 +297,25 @@ func hasHelpItem(items []BSLHelpItem, name, source string) bool {
 		}
 	}
 	return false
+}
+
+// Help indexes every routine of the project: erp has 183 658 of them, and the
+// index used to stop at 50 000 documents. The routine past that is found.
+func TestBSLHelpIndexesEveryRoutine(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	id := uuid.MustNew()
+	path, _ := project.ModulePath(id)
+	var source strings.Builder
+	for index := range 50_001 {
+		fmt.Fprintf(&source, "// Описание процедуры %d.\nПроцедура Процедура%05d() Экспорт\nКонецПроцедуры\n", index, index)
+	}
+	writeBSLTestSource(t, root, path, source.String())
+	commonPath, _ := project.MetadataPath("common-modules", uuid.MustNew())
+	writeBSLTestSource(t, root, commonPath, "format: 1\nname: Большой\nmodule: "+id.String()+"\n")
+	workspace, _ := Open(root)
+	result, err := workspace.SearchBSLHelp("Процедура50000")
+	if err != nil || len(result.Items) == 0 || result.Truncated {
+		t.Fatalf("the last routine of a large module: %+v %v", result.Items, err)
+	}
 }

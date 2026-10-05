@@ -12,11 +12,9 @@ import (
 )
 
 const (
-	maxBSLHelpItems       = 50_000
 	maxBSLHelpResults     = 200
 	maxBSLHelpQueryRunes  = 256
 	maxBSLHelpCommentSize = 16 << 10
-	maxBSLHelpTextBytes   = 64 << 20
 )
 
 var ErrBSLHelpNotFound = errors.New("BSL help topic not found")
@@ -57,8 +55,6 @@ type bslHelpIndex struct {
 	documents []bslHelpDocument
 	byAlias   map[string][]int
 	bySymbol  map[string]int
-	textBytes int
-	full      bool
 	truncated bool
 }
 
@@ -161,7 +157,7 @@ func (workspace *Workspace) ensureBSLHelpIndexLocked() (*bslHelpIndex, error) {
 }
 
 func (workspace *Workspace) buildBSLHelpIndex(navigation *bslNavigationIndex) (*bslHelpIndex, error) {
-	result := &bslHelpIndex{byAlias: make(map[string][]int), bySymbol: make(map[string]int), truncated: navigation.truncated}
+	result := &bslHelpIndex{byAlias: make(map[string][]int), bySymbol: make(map[string]int)}
 	items, err := platformBSLHelp()
 	if err != nil {
 		return nil, err
@@ -175,21 +171,16 @@ func (workspace *Workspace) buildBSLHelpIndex(navigation *bslNavigationIndex) (*
 	}
 	sort.Strings(paths)
 	for _, path := range paths {
-		if result.full || len(result.documents) >= maxBSLHelpItems {
-			result.truncated = true
-			break
-		}
 		module := navigation.modules[path]
 		file, readErr := workspace.readSource(path)
 		if readErr != nil {
 			continue
 		}
 		parsed, tokens, _ := syntax.ParseWithTokens(path, file.Content)
+		// The lines are cut once per module: cut once per routine, a module of
+		// fifty thousand routines took a minute and a half.
+		lines := splitSourceLines(file.Content)
 		for _, routine := range parsed.Routines {
-			if result.full || len(result.documents) >= maxBSLHelpItems {
-				result.truncated = true
-				break
-			}
 			declaration, ok := findModuleDeclaration(module, routine.Name, false, true)
 			if !ok {
 				continue
@@ -198,7 +189,7 @@ func (workspace *Workspace) buildBSLHelpIndex(navigation *bslNavigationIndex) (*
 			if editorRange(routineDeclarationSpan(tokens, routine)) != target.definition.Range {
 				continue
 			}
-			item := projectRoutineHelpItem(module, routine, file.Content, target)
+			item := projectRoutineHelpItem(module, routine, file.Content, lines, target)
 			aliases := []string{routine.Name}
 			if module.public {
 				aliases = append(aliases, module.name+"."+routine.Name)
@@ -214,11 +205,6 @@ func (index *bslHelpIndex) add(document bslHelpDocument, symbol string) {
 		index.truncated = true
 		return
 	}
-	if index.full || len(index.documents) >= maxBSLHelpItems {
-		index.full = true
-		index.truncated = true
-		return
-	}
 	document.aliases = append(document.aliases, document.item.Name)
 	search := append([]string{
 		document.item.Name, document.item.Kind, document.item.Signature, document.item.Summary, document.item.Description,
@@ -228,16 +214,6 @@ func (index *bslHelpIndex) add(document bslHelpDocument, symbol string) {
 		search = append(search, parameter.Label, parameter.Description)
 	}
 	document.searchText = strings.ToLower(strings.Join(search, "\n"))
-	textBytes := len(document.searchText) + len(document.item.ID) + len(document.item.Source)
-	for _, alias := range document.aliases {
-		textBytes += len(alias)
-	}
-	if index.textBytes+textBytes > maxBSLHelpTextBytes {
-		index.full = true
-		index.truncated = true
-		return
-	}
-	index.textBytes += textBytes
 	position := len(index.documents)
 	index.documents = append(index.documents, document)
 	seen := make(map[string]bool)
@@ -386,12 +362,12 @@ func projectRoutineHelp(module bslSemanticModule, parsed *syntax.Module, tokens 
 		if !strings.EqualFold(routine.Name, target.name) || editorRange(declaration) != target.definition.Range {
 			continue
 		}
-		return projectRoutineHelpItem(module, routine, source, target), true
+		return projectRoutineHelpItem(module, routine, source, splitSourceLines(source), target), true
 	}
 	return BSLHelpItem{}, false
 }
 
-func projectRoutineHelpItem(module bslSemanticModule, routine *syntax.Routine, source string, target bslResolvedSymbol) BSLHelpItem {
+func projectRoutineHelpItem(module bslSemanticModule, routine *syntax.Routine, source string, lines []string, target bslResolvedSymbol) BSLHelpItem {
 	parameters := make([]BSLHelpParameter, 0, len(routine.Parameters))
 	for _, parameter := range routine.Parameters {
 		label := parameter.Name
@@ -404,7 +380,7 @@ func projectRoutineHelpItem(module bslSemanticModule, routine *syntax.Routine, s
 	if routine.Function {
 		kind = "Функция"
 	}
-	documentation := parseRoutineDocumentation(source, routine.SourceSpan.Start.Line, parameters)
+	documentation := parseRoutineDocumentation(lines, routine.SourceSpan.Start.Line, parameters)
 	parameters = documentation.parameters
 	summary := documentation.summary
 	if summary == "" {
@@ -424,8 +400,7 @@ type routineDocumentation struct {
 	parameters                    []BSLHelpParameter
 }
 
-func parseRoutineDocumentation(source string, declarationLine int, parameters []BSLHelpParameter) routineDocumentation {
-	lines := splitSourceLines(source)
+func parseRoutineDocumentation(lines []string, declarationLine int, parameters []BSLHelpParameter) routineDocumentation {
 	line := declarationLine - 2
 	for line >= 0 && (strings.HasPrefix(strings.TrimSpace(lines[line]), "&") || strings.HasPrefix(strings.TrimSpace(lines[line]), "@")) {
 		line--

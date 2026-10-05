@@ -11,8 +11,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/querylang"
 )
 
-const maxQueryDesignerSources = 16
-
 type QueryDesignerSchema struct {
 	Sources []QueryDesignerSource `json:"sources"`
 }
@@ -174,8 +172,10 @@ func buildDesignedQuery(schema QueryDesignerSchema, design QueryDesign) (string,
 	if err != nil {
 		return "", err
 	}
-	if len(design.Sources) == 0 || len(design.Sources) > maxQueryDesignerSources {
-		return "", fmt.Errorf("query design must contain 1..%d sources", maxQueryDesignerSources)
+	// The designer takes as many sources as the query does: it has no
+	// ceiling of its own on top of the language's.
+	if len(design.Sources) == 0 {
+		return "", fmt.Errorf("query design must contain at least one source")
 	}
 	if len(design.Fields) == 0 || len(design.Fields) > querylang.MaxResultFields {
 		return "", fmt.Errorf("query design must contain 1..%d result fields", querylang.MaxResultFields)

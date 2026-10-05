@@ -2,18 +2,12 @@ package metadata
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 	"github.com/k33alexey/MetaLab/internal/project"
-)
-
-const (
-	maxProjectModules = 10_000
-	maxProjectSource  = 16 << 20
 )
 
 type moduleNameDescriptor struct {
@@ -56,17 +50,14 @@ func LoadProjectModules(root string, catalog *Catalog) ([]RuntimeModule, error) 
 			relativePaths = append(relativePaths, relative)
 		}
 	}
+	// Neither the number of modules nor their size is bounded: erp has 10 962
+	// modules and 425 MB of them, and a project the loader takes must publish.
 	modules := make([]RuntimeModule, 0, len(relativePaths))
-	sourceBytes := 0
 	for _, relative := range relativePaths {
-		if len(modules) >= maxProjectModules {
-			return nil, fmt.Errorf("project supports at most %d BSL modules", maxProjectModules)
-		}
-		content, err := readBoundedModuleFile(filepath.Join(root, filepath.FromSlash(relative)), maxProjectSource-sourceBytes)
+		content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", relative, err)
 		}
-		sourceBytes += len(content)
 		descriptor := descriptors[relative]
 		switch relative {
 		case project.SessionModuleFile:
@@ -242,20 +233,4 @@ func FormModuleName(objectKind Kind, object, form string) string {
 func moduleNameFromPath(relative string) string {
 	trimmed := strings.TrimSuffix(filepath.ToSlash(relative), ".bsl")
 	return "Модуль." + strings.ReplaceAll(strings.TrimPrefix(trimmed, "metadata/"), "/", ".")
-}
-
-func readBoundedModuleFile(path string, maximum int) ([]byte, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	content, err := io.ReadAll(io.LimitReader(file, int64(maximum)+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(content) > maximum {
-		return nil, fmt.Errorf("file exceeds %d bytes", maximum)
-	}
-	return content, nil
 }

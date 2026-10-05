@@ -809,6 +809,34 @@ func TestDatePartsAndSignAreEnforcedOnWrite(t *testing.T) {
 	}
 }
 
+// The fraction takes its digits out of the length: a number of length 2 with
+// 2 after the point holds 0.99 at most (the owner, on the configurator,
+// 05.10.2026). Counting the zero before the point as a digit refused 0.99,
+// and not checking the integer part on its own let 1 through to the column,
+// where numeric(2,2) refused it on write.
+func TestNumberIntegerPartTakesWhatTheFractionLeaves(t *testing.T) {
+	t.Parallel()
+	catalog := &Catalog{}
+	for _, test := range []struct {
+		value            string
+		precision, scale int
+		fits             bool
+	}{
+		{"0.99", 2, 2, true}, {"-0.99", 2, 2, true}, {"0", 2, 2, true},
+		{"1", 2, 2, false}, {"0.999", 2, 2, false},
+		{"999.99", 5, 2, true}, {"1000", 5, 2, false}, {"1000.5", 5, 2, false},
+		{"99", 2, 0, true}, {"100", 2, 0, false},
+	} {
+		_, ok, reason := catalog.normalizeAs(Value{Kind: NumberType, Data: test.value}, Type{Kind: NumberType, Precision: test.precision, Scale: test.scale})
+		if ok != test.fits {
+			t.Fatalf("%s in (%d,%d): fits = %v, want %v (%s)", test.value, test.precision, test.scale, ok, test.fits, reason)
+		}
+		if !ok && !strings.Contains(reason, "number exceeds precision") {
+			t.Fatalf("%s in (%d,%d) refused for another reason: %s", test.value, test.precision, test.scale, reason)
+		}
+	}
+}
+
 // Expansion drops duplicates, and a qualifier is what tells two otherwise
 // identical types apart. Leaving qualifiers out of that comparison loses a
 // member of a composite type without a word.

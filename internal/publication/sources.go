@@ -28,10 +28,8 @@ import (
 )
 
 const (
-	CurrentPackageFormat    = 6
-	PackageExtension        = ".mlpkg"
-	maxPackageInputBytes    = 512 << 20
-	maxPackageManifestBytes = 64 << 20
+	CurrentPackageFormat = 6
+	PackageExtension     = ".mlpkg"
 )
 
 type SourceState struct {
@@ -116,7 +114,6 @@ func inspect(ctx context.Context, root string, state SourceState) (Manifest, err
 	}
 	entries := make([]FileEntry, 0, len(paths))
 	forms := make([]metadata.ManagedForm, 0)
-	var total int64
 	contentHash := sha256.New()
 	for _, relative := range paths {
 		if err := ctx.Err(); err != nil {
@@ -144,10 +141,6 @@ func inspect(ctx context.Context, root string, state SourceState) (Manifest, err
 			if closeErr != nil {
 				return Manifest{}, closeErr
 			}
-		}
-		total += entry.Size
-		if total > maxPackageInputBytes {
-			return Manifest{}, fmt.Errorf("ML Project sources exceed %d bytes", maxPackageInputBytes)
 		}
 		_, _ = fmt.Fprintf(contentHash, "%s\x00%d\x00%s\n", entry.Path, entry.Size, entry.SHA256)
 		entries = append(entries, entry)

@@ -50,9 +50,6 @@ func TestAnalyzeBSLProvidesEditorModel(t *testing.T) {
 			t.Fatalf("folds do not contain %q: %+v", kind, analysis.Folds)
 		}
 	}
-	if analysis.Truncated {
-		t.Fatal("small analysis was truncated")
-	}
 }
 
 func TestAnalyzeBSLReturnsSyntaxDiagnostics(t *testing.T) {
@@ -120,8 +117,14 @@ func TestAnalyzeBSLTakesASourceOfAnySize(t *testing.T) {
 	t.Parallel()
 	path := filepath.ToSlash(filepath.Join("modules", "test.bsl"))
 	large := strings.Repeat("// Строка комментария модуля.\n", 300_000) + "Процедура Тест()\nКонецПроцедуры\n"
-	if _, err := AnalyzeBSL(path, large); err != nil {
+	analysis, err := AnalyzeBSL(path, large)
+	if err != nil {
 		t.Fatalf("a module of %d bytes was refused: %v", len(large), err)
+	}
+	// Every comment line is highlighted: the 200 000 the analysis used to stop
+	// at left the end of erp's largest modules plain.
+	if len(analysis.Highlights) < 300_000 {
+		t.Fatalf("%d highlights for 300 000 comment lines", len(analysis.Highlights))
 	}
 	if _, err := AnalyzeBSL(path, string(make([]byte, 16))); err == nil || !strings.Contains(err.Error(), "valid UTF-8") {
 		t.Fatalf("a source of NUL bytes: %v", err)

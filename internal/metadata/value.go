@@ -339,8 +339,10 @@ func (catalog *Catalog) normalizeAs(value Value, allowed Type) (Value, bool, str
 			return Value{}, false, "invalid decimal number"
 		}
 		canonical := number.String()
-		precision, scale := decimalSize(canonical)
-		if precision > allowed.Precision || scale > allowed.Scale {
+		// The integer part takes what the fraction leaves: 2 digits with 2
+		// after the point leave none, so 1 does not fit and 0.99 does.
+		integer, scale := decimalSize(canonical)
+		if integer > allowed.Precision-allowed.Scale || scale > allowed.Scale {
 			return Value{}, false, fmt.Sprintf("number exceeds precision %d scale %d", allowed.Precision, allowed.Scale)
 		}
 		if allowed.NonNegative && strings.HasPrefix(canonical, "-") {
@@ -438,17 +440,16 @@ func (catalog *Catalog) normalizeAs(value Value, allowed Type) (Value, bool, str
 	}
 }
 
-func decimalSize(value string) (precision, scale int) {
+// decimalSize reports the digits of the integer part and of the fraction. A
+// zero integer part takes no digits: a number of length 2 with 2 after the
+// point holds 0.99 at most, and 0.99 must fit it (the owner, on the
+// configurator, 05.10.2026).
+func decimalSize(value string) (integer, scale int) {
 	value = strings.TrimPrefix(value, "-")
 	parts := strings.SplitN(value, ".", 2)
-	integer := strings.TrimLeft(parts[0], "0")
-	if integer == "" {
-		integer = "0"
-	}
-	precision = len(integer)
+	integer = len(strings.TrimLeft(parts[0], "0"))
 	if len(parts) == 2 {
 		scale = len(parts[1])
-		precision += scale
 	}
-	return precision, scale
+	return integer, scale
 }

@@ -598,8 +598,8 @@ func normalizeCatalogCode(code CatalogCode, value string) (string, error) {
 		return "", fmt.Errorf("invalid numeric code")
 	}
 	canonical := number.String()
-	precision, scale := decimalSize(canonical)
-	if strings.HasPrefix(canonical, "-") || scale != 0 || precision > code.Length {
+	digits, scale := decimalSize(canonical)
+	if strings.HasPrefix(canonical, "-") || scale != 0 || digits > code.Length {
 		return "", fmt.Errorf("numeric code must be a non-negative integer with at most %d digits", code.Length)
 	}
 	return canonical, nil

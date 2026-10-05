@@ -24,8 +24,6 @@ import (
 
 const (
 	maxStudioDebugArguments = 256
-	maxStudioDebugModules   = 10_000
-	maxStudioDebugSource    = 256 << 20
 	maxStudioDebugWait      = 3 * time.Second
 )
 
@@ -278,11 +276,8 @@ func (workspace *Workspace) compileDebugProgramLocked(currentPath, currentConten
 	catalog, _ := metadata.Load(workspace.root)
 	descriptors := workspace.moduleDescriptors(catalog)
 	sources := make([]compiler.ModuleSource, 0, 32)
-	currentFound, currentModule, sourceBytes := false, "", 0
+	currentFound, currentModule := false, ""
 	appendFile := func(relative string) error {
-		if len(sources) >= maxStudioDebugModules {
-			return fmt.Errorf("debugger supports at most %d BSL modules", maxStudioDebugModules)
-		}
 		content := currentContent
 		if relative != currentPath {
 			file, readErr := workspace.readSource(relative)
@@ -293,10 +288,6 @@ func (workspace *Workspace) compileDebugProgramLocked(currentPath, currentConten
 		} else {
 			currentFound = true
 		}
-		if sourceBytes > maxStudioDebugSource-len(content) {
-			return fmt.Errorf("debugger BSL source exceeds %d bytes", maxStudioDebugSource)
-		}
-		sourceBytes += len(content)
 		descriptor := descriptors[relative]
 		if descriptor.name == "" {
 			descriptor.name = fallbackModuleName(relative)

@@ -2,7 +2,6 @@ package studio
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -88,7 +87,6 @@ type BSLSymbolIndex struct {
 	metadata   bslMetadataIndex
 	keywordsRU []string
 	keywordsEN []string
-	truncated  bool
 }
 
 type moduleDescriptor struct {
@@ -191,10 +189,6 @@ func (workspace *Workspace) buildBSLSymbolIndex() (*BSLSymbolIndex, error) {
 		}
 	}
 	for _, relative := range relativePaths {
-		if len(result.modules) >= 10_000 {
-			result.truncated = true
-			break
-		}
 		file, err := workspace.readSource(relative)
 		if err != nil {
 			return nil, err
@@ -334,8 +328,8 @@ func (workspace *Workspace) scanBSLMetadata() bslMetadataIndex {
 		if err != nil {
 			continue
 		}
-		for index, entry := range entries {
-			if index >= 100_000 || entry.Type()&os.ModeSymlink != 0 {
+		for _, entry := range entries {
+			if entry.Type()&os.ModeSymlink != 0 {
 				continue
 			}
 			// A kind that keeps a folder per object holds the description
@@ -347,7 +341,7 @@ func (workspace *Workspace) scanBSLMetadata() bslMetadataIndex {
 			case filepath.Ext(entry.Name()) != ".yaml":
 				continue
 			}
-			data, err := readBSLIndexFile(source)
+			data, err := os.ReadFile(source)
 			if err != nil {
 				continue
 			}
@@ -385,22 +379,6 @@ func (workspace *Workspace) scanBSLMetadata() bslMetadataIndex {
 		}
 	}
 	return result
-}
-
-func readBSLIndexFile(path string) ([]byte, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(data) > 1<<20 {
-		return nil, fmt.Errorf("BSL index source exceeds 1 MiB")
-	}
-	return data, nil
 }
 
 // addModuleDescriptor registers one of an object's own modules under the path
@@ -518,7 +496,6 @@ func (index *BSLSymbolIndex) complete(path, source string, offset int) BSLComple
 		index.addUnqualified(add, current, parsed, offset, english)
 	}
 	result.Items, result.Truncated = add.items(maxBSLCompletionItems)
-	result.Truncated = result.Truncated || index.truncated
 	result.Signature = index.signature(tokens, current, offset)
 	return result
 }
