@@ -1000,7 +1000,7 @@ func DecodeConstant(source string, reader io.Reader, configuration project.Proje
 		return Constant{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateTypes("types", value.Types, uuid.UUID{})...)
+	issues = append(issues, validateTypes("types", value.Types)...)
 	for name, text := range map[string]LocalizedText{
 		"explanation": value.Explanation, "extended_presentation": value.ExtendedPresentation,
 	} {
@@ -1033,7 +1033,7 @@ func DecodeSessionParameter(source string, reader io.Reader, configuration proje
 		return SessionParameter{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateTypesIn("types", value.Types, uuid.UUID{}, placeSessionParameter)...)
+	issues = append(issues, validateTypesIn("types", value.Types, placeSessionParameter)...)
 	// No name is the platform's: ТекущийПользователь is the configuration's
 	// own parameter, declared in all three configurations being moved and set
 	// by their session modules (owner, 01.10.2026). The user of ML is another
@@ -1093,7 +1093,7 @@ func DecodeEnumeration(source string, reader io.Reader, configuration project.Pr
 	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(EnumerationKind), configuration)...)
 	issues = append(issues, validateFieldLinks(standardFieldsOfKind(EnumerationKind), nil, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
@@ -1108,7 +1108,7 @@ func DecodeDefinedType(source string, reader io.Reader, configuration project.Pr
 		return DefinedTypeObject{}, err
 	}
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateTypesIn("types", value.Types, value.ID, placeDefinedType)...)
+	issues = append(issues, validateTypesIn("types", value.Types, placeDefinedType)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return DefinedTypeObject{}, err
 	}
@@ -1153,7 +1153,7 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 		standardAttributes:     value.StandardAttributes,
 	}, configuration)...)
 	issues = append(issues, validateCatalogSubordination(value.Owners, value.Subordination)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
@@ -1642,7 +1642,7 @@ func validateAttributesIn(path string, attributes []Attribute, configuration pro
 		}
 		names[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", attribute.Title, configuration)...)
-		issues = append(issues, validateTypesIn(prefix+".types", attribute.Types, uuid.UUID{}, place)...)
+		issues = append(issues, validateTypesIn(prefix+".types", attribute.Types, place)...)
 		issues = append(issues, validateFieldSettings(prefix, attribute, configuration)...)
 		issues = append(issues, validateFieldStorage(prefix, attribute)...)
 	}
@@ -1742,12 +1742,12 @@ func validateTitle(path string, title LocalizedText, configuration project.Proje
 	return issues
 }
 
-func validateTypes(path string, types []Type, self uuid.UUID) []string {
-	return validateTypesIn(path, types, self, placeStored)
+func validateTypes(path string, types []Type) []string {
+	return validateTypesIn(path, types, placeStored)
 }
 
 // validateTypesIn checks a type description where it stands - see typePlace.
-func validateTypesIn(path string, types []Type, self uuid.UUID, place typePlace) []string {
+func validateTypesIn(path string, types []Type, place typePlace) []string {
 	// No ceiling on the number of types: the prototype names none, and the
 	// configurations being moved have type descriptions of more than six
 	// hundred. A composite type is stored as one value column whatever its
@@ -1789,12 +1789,12 @@ func validateTypesIn(path string, types []Type, self uuid.UUID, place typePlace)
 		if !referenced && item.Reference != nil {
 			issues = append(issues, prefix+".reference is not allowed")
 		}
-		// A chart may allow characteristics of itself: the configurator offers
-		// the chart in its own value type and saves it (checked on 8.3.27 by
-		// the owner, 04.10.2026). A defined type holds no defined type at all.
-		if item.Kind == DefinedType && item.Reference != nil && *item.Reference == self {
-			issues = append(issues, prefix+" cannot reference itself")
-		}
+		// Nothing is refused for referencing itself. A chart may allow
+		// characteristics of itself: the configurator offers the chart in its
+		// own value type and saves it (checked on 8.3.27 by the owner,
+		// 04.10.2026). A defined type in itself is refused below with every
+		// defined type in a defined type, and one elsewhere naming its owner
+		// names no defined type and is refused at load.
 		switch {
 		case item.Kind == PlatformType && strings.TrimSpace(item.Name) == "":
 			issues = append(issues, prefix+".name is required: a platform type is known by its name")

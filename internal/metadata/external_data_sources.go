@@ -273,7 +273,7 @@ func validateExternalTable(table ExternalTable, configuration project.Project) [
 	}
 	issues = append(issues, validateBasedOn(table.BasedOn)...)
 	issues = append(issues, validateObjectCharacteristics(table.Characteristics)...)
-	issues = append(issues, validateObjectCommands(table.Commands, table.ID, configuration)...)
+	issues = append(issues, validateObjectCommands(table.Commands, configuration)...)
 	issues = append(issues, validateObjectTemplates(table.Templates, configuration)...)
 	fields, fieldIssues := validateExternalFields(table, configuration)
 	issues = append(issues, fieldIssues...)
@@ -429,7 +429,7 @@ func validateExternalFieldTypes(path string, types []Type) []string {
 	}
 	// The rest is checked by the one function every type goes through, and
 	// its messages are put back under the index the type has in the field.
-	for _, issue := range validateTypes(path, rest, uuid.UUID{}) {
+	for _, issue := range validateTypes(path, rest) {
 		for position := len(rest) - 1; position >= 0; position-- {
 			issue = strings.ReplaceAll(issue, fmt.Sprintf("%s[%d]", path, position), fmt.Sprintf("%s[%d]", path, restIndexes[position]))
 		}

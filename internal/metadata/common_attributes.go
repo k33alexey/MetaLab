@@ -229,7 +229,7 @@ func ValidateCommonAttribute(source string, value CommonAttributeDefinition, con
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
 	issues = append(issues, validateDataHistory(DataHistorySettings{DataHistory: value.DataHistory})...)
-	issues = append(issues, validateTypes("types", value.Types, uuid.UUID{})...)
+	issues = append(issues, validateTypes("types", value.Types)...)
 	if !validFillCheck(value.FillChecking) {
 		issues = append(issues, "fill_checking must be dont-check or show-error")
 	}

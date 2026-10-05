@@ -147,7 +147,7 @@ func DecodeTask(source string, reader io.Reader, configuration project.Project) 
 		issues = append(issues, "default_presentation must be as-number or as-description")
 	}
 	issues = append(issues, validateAddressing(value, configuration)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
@@ -197,7 +197,7 @@ func validateAddressing(value TaskDefinition, configuration project.Project) []s
 		}
 		names[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", attribute.Title, configuration)...)
-		issues = append(issues, validateTypes(prefix+".types", attribute.Types, value.ID)...)
+		issues = append(issues, validateTypes(prefix+".types", attribute.Types)...)
 		issues = append(issues, validateFieldSettings(prefix, attribute.Attribute, configuration)...)
 		issues = append(issues, validateFieldStorage(prefix, attribute.Attribute)...)
 		// «Использование» divides the fields of items from the fields of

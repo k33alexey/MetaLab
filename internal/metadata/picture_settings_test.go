@@ -235,14 +235,14 @@ func TestCommandGoesIntoAStandardGroupOfThePrototype(t *testing.T) {
 		"form-command-bar-important", "form-command-bar-create-based-on",
 		"actions-panel-create", "actions-panel-reports", "actions-panel-tools",
 	} {
-		if issues := validateObjectCommands(command(group), uuid.MustNew(), metadataConfiguration()); len(issues) > 0 {
+		if issues := validateObjectCommands(command(group), metadataConfiguration()); len(issues) > 0 {
 			t.Errorf("a standard group of the prototype %s was refused: %v", group, issues)
 		}
 	}
 	for _, group := range []string{
 		"form-navigation-panel-ordinary", "form-command-bar-ordinary", "form-command-bar-see-also", "actions-panel-see-also",
 	} {
-		issues := validateObjectCommands(command(group), uuid.MustNew(), metadataConfiguration())
+		issues := validateObjectCommands(command(group), metadataConfiguration())
 		if len(issues) == 0 || !strings.Contains(strings.Join(issues, "; "), "commands[0].group") {
 			t.Errorf("a group the prototype does not have, %s, was taken: %v", group, issues)
 		}

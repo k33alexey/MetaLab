@@ -103,7 +103,7 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	// a resource alike (checked by the owner on the platform, 01.10.2026), and
 	// the test configurations of mdclasses keep it so.
 	validateField := func(prefix string, field Attribute, accountingFlag *uuid.UUID) {
-		issues = append(issues, validateRegisterField(prefix, field, value.ID,
+		issues = append(issues, validateRegisterField(prefix, field,
 			names, ids, configuration, reservedAccountingRegisterName)...)
 		if accountingFlag != nil && accountingFlag.IsZero() {
 			issues = append(issues, prefix+".accounting_flag must be a non-zero UUID")
@@ -155,7 +155,7 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 	issues = append(issues, validateAccountingRegisterLinks(value, mentionedExtDimensions(value))...)
 	issues = append(issues, validateAttributeUse(registerFields, nil, false, false)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return AccountingRegisterDefinition{}, err

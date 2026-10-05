@@ -37,7 +37,7 @@ func TestEachNewKindOfTypeStandsWhereItMay(t *testing.T) {
 		{Type{Kind: VanishedType, Reference: &id}, map[string]bool{"running": true, "defined": true, "command": true}},
 	} {
 		for _, place := range places {
-			issues := validateTypesIn("types", []Type{test.item}, uuid.UUID{}, place.place)
+			issues := validateTypesIn("types", []Type{test.item}, place.place)
 			if test.allowed[place.name] && len(issues) != 0 {
 				t.Errorf("%s in %s was refused: %v", test.item.Kind, place.name, issues)
 			}
@@ -46,10 +46,10 @@ func TestEachNewKindOfTypeStandsWhereItMay(t *testing.T) {
 			}
 		}
 	}
-	if issues := validateTypesIn("types", []Type{{Kind: PlatformType}}, uuid.UUID{}, placeRunningObject); len(issues) == 0 {
+	if issues := validateTypesIn("types", []Type{{Kind: PlatformType}}, placeRunningObject); len(issues) == 0 {
 		t.Error("a platform type with no name was accepted")
 	}
-	if issues := validateTypesIn("types", []Type{{Kind: StringType, Length: 10, Name: "x"}}, uuid.UUID{}, placeStored); len(issues) == 0 {
+	if issues := validateTypesIn("types", []Type{{Kind: StringType, Length: 10, Name: "x"}}, placeStored); len(issues) == 0 {
 		t.Error("a name on a type that is not of the platform was accepted")
 	}
 }

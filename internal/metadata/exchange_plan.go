@@ -149,7 +149,7 @@ func DecodeExchangePlan(source string, reader io.Reader, configuration project.P
 		standardAttributes:     value.StandardAttributes,
 	}, configuration)...)
 	issues = append(issues, validateExchangePlanContent(value)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
 	if err := issuesError(source, value.Format, issues); err != nil {

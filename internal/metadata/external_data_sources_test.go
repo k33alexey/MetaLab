@@ -431,7 +431,7 @@ fields:
 func TestAReferenceToSomethingOfASourceIsNotATypeOfTheInfobase(t *testing.T) {
 	t.Parallel()
 	for _, kind := range []TypeKind{ExternalTableType, ExternalDimensionTableType} {
-		issues := validateTypes("types", []Type{{Kind: kind, Reference: ptr(mustUUID(t, goodsTable))}}, uuid.UUID{})
+		issues := validateTypes("types", []Type{{Kind: kind, Reference: ptr(mustUUID(t, goodsTable))}})
 		if len(issues) != 1 || !strings.Contains(issues[0], "is not a type of anything the infobase stores") {
 			t.Errorf("%s as a type of the infobase gave %v", kind, issues)
 		}

@@ -160,7 +160,7 @@ func DecodeExternalCube(source string, reader io.Reader, configuration project.P
 	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
 	issues = append(issues, validateRecordPresentations(value.RecordPresentations, configuration)...)
 	issues = append(issues, validateRequiredNameInDataSource("name_in_data_source", value.NameInDataSource, "the cube")...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
 	issues = append(issues, validateCubeFields(value, configuration)...)
@@ -193,7 +193,7 @@ func DecodeExternalDimensionTable(source string, reader io.Reader, configuration
 	// string or Null and names none.
 	// Without a hierarchy the value is never read; a table of a source keeps
 	// it there too (mdclasses), so it is carried and is a note.
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	issues = append(issues, validateExternalFieldGroups(configuration, externalFieldGroup{"fields", value.Fields})...)
 	if value.PresentationField != "" && !slices.ContainsFunc(value.Fields, func(field ExternalField) bool {

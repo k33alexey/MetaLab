@@ -106,7 +106,7 @@ func DecodeSequence(source string, reader io.Reader, configuration project.Proje
 		}
 		names[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", dimension.Title, configuration)...)
-		issues = append(issues, validateTypes(prefix+".types", dimension.Types, value.ID)...)
+		issues = append(issues, validateTypes(prefix+".types", dimension.Types)...)
 		issues = append(issues, validateUniqueIDs(prefix+".document_attributes", dimension.DocumentAttributes)...)
 		issues = append(issues, validateUniqueIDs(prefix+".register_dimensions", dimension.RegisterDimensions)...)
 		issues = append(issues, validateDocumentStandardFields(prefix+".document_standard_attributes", dimension.DocumentStandardAttributes)...)

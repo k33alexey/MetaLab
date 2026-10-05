@@ -85,7 +85,7 @@ func TestTheCeilingsOfTheModelHoldOnBothSides(t *testing.T) {
 		"число 33":               {Type{Kind: NumberType, Precision: 33}, true},
 		"дробь длиннее числа":    {Type{Kind: NumberType, Precision: 2, Scale: 3}, true},
 	} {
-		issues := validateTypes("types", []Type{testCase.item}, uuid.MustNew())
+		issues := validateTypes("types", []Type{testCase.item})
 		if refused := len(issues) != 0; refused != testCase.refused {
 			t.Fatalf("%s: refused = %v, %v", name, refused, issues)
 		}

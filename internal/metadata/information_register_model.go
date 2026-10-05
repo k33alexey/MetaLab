@@ -143,7 +143,7 @@ func DecodeInformationRegister(source string, reader io.Reader, configuration pr
 		}
 	}
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return InformationRegisterDefinition{}, err

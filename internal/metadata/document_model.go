@@ -130,7 +130,7 @@ func DecodeDocument(source string, reader io.Reader, configuration project.Proje
 	issues = append(issues, validateDocumentPosting(value.Posting)...)
 	issues = append(issues, validateNumberedObjectShape(shape, configuration)...)
 	issues = append(issues, validateUniqueIDs("movements", value.Movements)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
 	if err := issuesError(source, value.Format, issues); err != nil {

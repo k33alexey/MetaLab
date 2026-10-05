@@ -343,10 +343,10 @@ func TestATypeDescriptionTakesAsManyTypesAsItHas(t *testing.T) {
 		id := uuid.MustNew()
 		types = append(types, Type{Kind: CatalogType, Reference: &id})
 	}
-	if issues := validateTypes("types", types, uuid.MustNew()); len(issues) != 0 {
+	if issues := validateTypes("types", types); len(issues) != 0 {
 		t.Fatalf("640 types: %v", issues)
 	}
-	if issues := validateTypes("types", nil, uuid.MustNew()); len(issues) == 0 {
+	if issues := validateTypes("types", nil); len(issues) == 0 {
 		t.Fatal("a description without types was taken")
 	}
 }

@@ -298,7 +298,7 @@ func DecodeBusinessProcess(source string, reader io.Reader, configuration projec
 		issues = append(issues, "edit_type must be in-dialog, in-list or both-ways")
 	}
 	issues = append(issues, validateRouteMap(value.Route, configuration)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
 	if err := issuesError(source, value.Format, issues); err != nil {

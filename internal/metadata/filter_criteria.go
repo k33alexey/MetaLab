@@ -67,7 +67,7 @@ func DecodeFilterCriterion(source string, reader io.Reader, configuration projec
 	// A criterion with no type is carried and searches nothing: sb keeps one
 	// with 190 fields of its content. It is a note.
 	if len(value.Types) > 0 {
-		issues = append(issues, validateTypes("types", value.Types, value.ID)...)
+		issues = append(issues, validateTypes("types", value.Types)...)
 	}
 	for name, text := range map[string]LocalizedText{
 		"explanation": value.Explanation, "list_presentation": value.ListPresentation,
@@ -97,7 +97,7 @@ func DecodeFilterCriterion(source string, reader io.Reader, configuration projec
 		seen[key] = true
 	}
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return FilterCriterionDefinition{}, err
 	}

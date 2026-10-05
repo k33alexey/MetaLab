@@ -155,6 +155,32 @@ types: [{kind: enumeration, reference: `+enumerationID+`}]
 			t.Fatalf("Load() error = %v", err)
 		}
 	})
+	// A defined type in itself is the shortest cycle, refused the same way.
+	t.Run("itself", func(t *testing.T) {
+		root := metadataProject(t)
+		writeMetadata(t, root, DefinedTypeKind, definedTypeID, `format: 1
+id: `+definedTypeID+`
+name: Первый
+title: {ru: Первый}
+types: [{kind: defined-type, reference: `+definedTypeID+`}]
+`)
+		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "cannot stand in a defined type") {
+			t.Fatalf("Load() error = %v", err)
+		}
+	})
+	// Any other object naming itself as a defined type names none.
+	t.Run("owner as a defined type", func(t *testing.T) {
+		root := metadataProject(t)
+		writeMetadata(t, root, ConstantKind, constantID, `format: 1
+id: `+constantID+`
+name: Значение
+title: {ru: Значение}
+types: [{kind: defined-type, reference: `+constantID+`}]
+`)
+		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "references unknown defined type") {
+			t.Fatalf("Load() error = %v", err)
+		}
+	})
 	// A defined type does not hold another one - the designer does not offer
 	// it - so a cycle of defined types cannot be written at all; it is refused
 	// at the first defined type in another.

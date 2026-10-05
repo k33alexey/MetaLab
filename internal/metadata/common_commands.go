@@ -77,7 +77,7 @@ func DecodeCommonCommand(source string, reader io.Reader, configuration project.
 	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
 	// The command is checked as any command is, against its own identifier:
 	// nothing owns it, so there is no object identifier to keep apart from.
-	issues = append(issues, validateCommandShape("command", value.ObjectCommand, value.ID, configuration)...)
+	issues = append(issues, validateCommandShape("command", value.ObjectCommand, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return CommonCommandDefinition{}, err
 	}

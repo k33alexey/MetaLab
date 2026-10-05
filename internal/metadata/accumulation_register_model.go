@@ -126,7 +126,7 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 		recordIndexTables(accumulationStandardFields(value.Kind), attributeNames(RegisterDimensionAttributes(value.Dimensions)),
 			attributeNames(value.Resources), attributeNames(value.Attributes)))...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return AccumulationRegisterDefinition{}, err

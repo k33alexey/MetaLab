@@ -183,7 +183,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 		prefix := fmt.Sprintf("dimensions[%d]", index)
 		issues = append(issues, validateRegisterDimension(prefix, dimension, calculationRegisterDimensions())...)
 		issues = append(issues, validateRegisterField(prefix, dimension.Attribute,
-			value.ID, names, ids, configuration, reservedCalculationRegisterName)...)
+			names, ids, configuration, reservedCalculationRegisterName)...)
 		issues = append(issues, validateMovementFieldStorage(prefix, dimension.Attribute)...)
 		if dimension.ScheduleLink != nil && value.Schedule == nil {
 			issues = append(issues, prefix+".schedule_link needs a schedule: there is no schedule for it to link to")
@@ -192,7 +192,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 	for index, resource := range value.Resources {
 		prefix := fmt.Sprintf("resources[%d]", index)
 		issues = append(issues, validateRegisterField(prefix, resource,
-			value.ID, names, ids, configuration, reservedCalculationRegisterName)...)
+			names, ids, configuration, reservedCalculationRegisterName)...)
 		issues = append(issues, validateNumericResource(prefix, resource)...)
 		issues = append(issues, validateResourceIndexing(prefix, resource.Indexing)...)
 		issues = append(issues, validateMovementFieldStorage(prefix, resource)...)
@@ -222,7 +222,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 	issues = append(issues, validateAttributeUse(calculationFields, nil, false, false)...)
 	issues = append(issues, validateRecalculations(value, configuration)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return CalculationRegisterDefinition{}, err
@@ -239,7 +239,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 // dimension or a resource could hold a format bound to no type and a choice
 // form that does not exist, and nothing would say so until the form was opened.
 func validateRegisterField(prefix string, field Attribute,
-	self uuid.UUID, names map[string]bool, ids map[uuid.UUID]bool, configuration project.Project, reserved func(string) bool) []string {
+	names map[string]bool, ids map[uuid.UUID]bool, configuration project.Project, reserved func(string) bool) []string {
 	id, name, title, types := field.ID, field.Name, field.Title, field.Types
 	var issues []string
 	if id.IsZero() {
@@ -258,7 +258,7 @@ func validateRegisterField(prefix string, field Attribute,
 	}
 	names[folded] = true
 	issues = append(issues, validateTitle(prefix+".title", title, configuration)...)
-	issues = append(issues, validateTypes(prefix+".types", types, self)...)
+	issues = append(issues, validateTypes(prefix+".types", types)...)
 	issues = append(issues, validateFieldSettings(prefix, field, configuration)...)
 	issues = append(issues, validateFieldStorage(prefix, field)...)
 	return issues

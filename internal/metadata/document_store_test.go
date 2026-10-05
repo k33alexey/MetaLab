@@ -36,6 +36,26 @@ func TestDocumentNumberAndPeriodNormalization(t *testing.T) {
 	}
 }
 
+// A numeric number or code takes as many digits as its length, and one more is
+// too many.
+//
+// Defect caught: a number or code of exactly its length refused.
+func TestNumericNumberAndCodeFillTheirWholeLength(t *testing.T) {
+	t.Parallel()
+	if value, err := normalizeDocumentNumber(DocumentNumber{Type: NumberType, Length: 4}, "9999"); err != nil || value != "9999" {
+		t.Errorf("number of four digits in four: %q, %v", value, err)
+	}
+	if _, err := normalizeDocumentNumber(DocumentNumber{Type: NumberType, Length: 4}, "10000"); err == nil || !strings.Contains(err.Error(), "at most 4 digits") {
+		t.Errorf("number of five digits in four: %v", err)
+	}
+	if value, err := normalizeCatalogCode(CatalogCode{Type: NumberType, Length: 4}, "9999"); err != nil || value != "9999" {
+		t.Errorf("code of four digits in four: %q, %v", value, err)
+	}
+	if _, err := normalizeCatalogCode(CatalogCode{Type: NumberType, Length: 4}, "10000"); err == nil || !strings.Contains(err.Error(), "at most 4 digits") {
+		t.Errorf("code of five digits in four: %v", err)
+	}
+}
+
 func TestDocumentWriteErrorIsSpecific(t *testing.T) {
 	t.Parallel()
 	err := documentWriteError("Продажа", errors.New("storage"))

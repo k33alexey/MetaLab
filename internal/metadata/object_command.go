@@ -175,7 +175,7 @@ type ObjectCommand struct {
 // identifier to check. A command keeps a folder of its own named after it, and
 // the module inside that folder is the command's by where it lies. That the
 // file is there at all is checked against the folder, in validateObjectFiles.
-func validateObjectCommands(commands []ObjectCommand, self uuid.UUID, configuration project.Project) []string {
+func validateObjectCommands(commands []ObjectCommand, configuration project.Project) []string {
 	var issues []string
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for index, command := range commands {
@@ -195,7 +195,7 @@ func validateObjectCommands(commands []ObjectCommand, self uuid.UUID, configurat
 			issues = append(issues, prefix+".name must be unique")
 		}
 		names[folded] = true
-		issues = append(issues, validateCommandShape(prefix, command, self, configuration)...)
+		issues = append(issues, validateCommandShape(prefix, command, configuration)...)
 	}
 	return issues
 }
@@ -204,7 +204,7 @@ func validateObjectCommands(commands []ObjectCommand, self uuid.UUID, configurat
 // shown, what it takes, and how it is drawn. It is shared by a command that
 // belongs to an object and one that belongs to no object - the two differ in
 // where they live, not in what they are.
-func validateCommandShape(prefix string, command ObjectCommand, self uuid.UUID, configuration project.Project) []string {
+func validateCommandShape(prefix string, command ObjectCommand, configuration project.Project) []string {
 	var issues []string
 	issues = append(issues, validateTitle(prefix+".title", command.Title, configuration)...)
 	issues = append(issues, validateTitle(prefix+".tooltip", command.Tooltip, configuration)...)
@@ -219,7 +219,7 @@ func validateCommandShape(prefix string, command ObjectCommand, self uuid.UUID, 
 		issues = append(issues, prefix+".group_ref must be a non-zero UUID")
 	}
 	if len(command.Parameter) > 0 {
-		issues = append(issues, validateTypesIn(prefix+".parameter", command.Parameter, self, placeCommandParameter)...)
+		issues = append(issues, validateTypesIn(prefix+".parameter", command.Parameter, placeCommandParameter)...)
 	}
 	switch command.ParameterUse {
 	case "", CommandParameterSingle, CommandParameterMultiple:

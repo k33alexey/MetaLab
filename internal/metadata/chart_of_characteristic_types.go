@@ -88,7 +88,7 @@ type PredefinedCharacteristic struct {
 // adds to a predefined catalog item. An element without a type is carried: all
 // 437 of the configurations being moved have one, but nothing says the
 // designer refuses to save one without it.
-func validatePredefinedCharacteristics(items []PredefinedCharacteristic, self uuid.UUID) []string {
+func validatePredefinedCharacteristics(items []PredefinedCharacteristic) []string {
 	var issues []string
 	for index, item := range items {
 		path := fmt.Sprintf("predefined[%d].value_type", index)
@@ -99,7 +99,7 @@ func validatePredefinedCharacteristics(items []PredefinedCharacteristic, self uu
 			continue
 		}
 		if len(item.ValueType) > 0 {
-			issues = append(issues, validateTypes(path, item.ValueType, self)...)
+			issues = append(issues, validateTypes(path, item.ValueType)...)
 		}
 	}
 	return issues
@@ -168,12 +168,12 @@ func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, configura
 	}, configuration)...)
 	// The value type is the point of the whole object: a chart that allows
 	// nothing describes characteristics nobody can fill in.
-	issues = append(issues, validateTypes("value_type", value.ValueType, value.ID)...)
-	issues = append(issues, validatePredefinedCharacteristics(value.Predefined, value.ID)...)
+	issues = append(issues, validateTypes("value_type", value.ValueType)...)
+	issues = append(issues, validatePredefinedCharacteristics(value.Predefined)...)
 	if value.AdditionalValues != nil && value.AdditionalValues.IsZero() {
 		issues = append(issues, "additional_values must be a non-zero UUID")
 	}
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
 	if err := issuesError(source, value.Format, issues); err != nil {

@@ -227,7 +227,7 @@ func DecodeChartOfAccounts(source string, reader io.Reader, configuration projec
 	// kinds has no analytics - see EffectiveMaxExtDimensionCount.
 	issues = append(issues, validateCodeMask(value)...)
 	issues = append(issues, validatePredefinedAccounts(value)...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
 	if err := issuesError(source, value.Format, issues); err != nil {

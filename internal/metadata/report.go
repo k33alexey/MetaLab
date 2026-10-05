@@ -97,7 +97,7 @@ func DecodeReport(source string, reader io.Reader, configuration project.Project
 	}
 	issues = append(issues, validateMainSchema(value.MainSchema, value.Templates)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return ReportDefinition{}, err
@@ -115,7 +115,7 @@ func DecodeDataProcessor(source string, reader io.Reader, configuration project.
 	issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, configuration)...)
 	issues = append(issues, validateRunningObjectPresentations(value.RunningObjectPresentations, configuration)...)
 	issues = append(issues, validateFormSlots(value.Forms.slots())...)
-	issues = append(issues, validateObjectCommands(value.Commands, value.ID, configuration)...)
+	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
 	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
 	if err := issuesError(source, value.Format, issues); err != nil {
 		return DataProcessorDefinition{}, err
