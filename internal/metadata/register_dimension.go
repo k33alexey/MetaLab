@@ -123,8 +123,8 @@ type dimensionProperties struct {
 // informationRegisterDimensions and accumulationRegisterDimensions are the two
 // answers the prototype gives. Ведущее and ОсновнойОтбор belong to the
 // dimensions of information registers; ИспользованиеВИтогах belongs to the
-// dimensions of accumulation registers and means nothing for a register of
-// balances - so a balance register allows none of the four.
+// dimensions of accumulation registers, and a register of balances carries it
+// without reading it (below).
 func informationRegisterDimensions() dimensionProperties {
 	return dimensionProperties{master: true, mainFilter: true, typeReduction: true}
 }
@@ -133,7 +133,7 @@ func informationRegisterDimensions() dimensionProperties {
 // prototype writes it on all 873 dimensions of balance registers in the
 // configurations being moved, and the syntax assistant says a register of
 // balances does not use it. Refusing it lost every one of them at import.
-func accumulationRegisterDimensions(bool) dimensionProperties {
+func accumulationRegisterDimensions() dimensionProperties {
 	return dimensionProperties{useInTotals: true}
 }
 

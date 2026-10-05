@@ -714,11 +714,9 @@ func cloneBusinessProcess(value BusinessProcessDefinition) BusinessProcessDefini
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.TableParts = cloneTableParts(value.TableParts)
 	value.Route = cloneRouteMap(value.Route)
-	for _, module := range []**uuid.UUID{&value.Task} {
-		if *module != nil {
-			id := **module
-			*module = &id
-		}
+	if value.Task != nil {
+		task := *value.Task
+		value.Task = &task
 	}
 	value.Forms = cloneFormSet(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)

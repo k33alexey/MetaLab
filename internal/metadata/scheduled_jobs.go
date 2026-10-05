@@ -117,6 +117,11 @@ func validateJobSchedule(path string, schedule *JobSchedule) []string {
 			issues = append(issues, path+"."+name+" must not be negative")
 		}
 	}
+	// The help gives both only a sign: from the start of the month or from its
+	// end. A day of the month goes to 31 either way - the configurator's dialog
+	// takes no more (checked by the owner, 05.10.2026). A week of the month goes
+	// to 5 by the calendar: 31 days are four weeks and three days, so a day of
+	// the week comes four or five times a month, never six (owner, 05.10.2026).
 	if schedule.WeekDayInMonth < -5 || schedule.WeekDayInMonth > 5 {
 		issues = append(issues, path+".week_day_in_month must count at most five weeks from either end of the month")
 	}

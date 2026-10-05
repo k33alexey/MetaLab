@@ -84,13 +84,12 @@ func validateExpressionParameters(path, expression string) []string {
 		for end < len(expression) && expression[end] >= '0' && expression[end] <= '9' {
 			end++
 		}
-		if end == index+1 {
-			continue
-		}
 		number, err := strconv.Atoi(expression[index+1 : end])
-		// Parameters are counted from 1 (the help of the configurator), so
-		// &0 is not one: it is the text of the other language - x&0 is a
-		// bitwise and in many - and is carried as it is, and is a note.
+		// An ampersand with no digit after it gives Atoi nothing to read and is
+		// passed over like &0. Parameters are counted from 1 (the help of the
+		// configurator), so &0 is not one: it is the text of the other
+		// language - x&0 is a bitwise and in many - and is carried as it is,
+		// and is a note.
 		if err != nil || number < 1 {
 			index = end - 1
 			continue

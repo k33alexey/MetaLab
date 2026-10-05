@@ -76,7 +76,7 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 	issues = append(issues, validateAttributes("dimensions", RegisterDimensionAttributes(value.Dimensions), configuration, reservedAccumulationRegisterName)...)
 	for index, dimension := range value.Dimensions {
 		issues = append(issues, validateRegisterDimension(fmt.Sprintf("dimensions[%d]", index), dimension,
-			accumulationRegisterDimensions(value.Kind == AccumulationRegisterBalance))...)
+			accumulationRegisterDimensions())...)
 	}
 	issues = append(issues, validateAttributes("resources", value.Resources, configuration, reservedAccumulationRegisterName)...)
 	for index, resource := range value.Resources {

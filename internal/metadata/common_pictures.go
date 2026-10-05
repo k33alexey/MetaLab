@@ -194,7 +194,7 @@ func PictureFile(name string) bool {
 		return false
 	}
 	extension := strings.ToLower(filepath.Ext(name))
-	return len(extension) > 1 && slices.Contains(pictureFormats, extension[1:])
+	return slices.Contains(pictureFormats, strings.TrimPrefix(extension, "."))
 }
 
 func cloneCommonPicture(value CommonPictureDefinition) CommonPictureDefinition {
@@ -236,7 +236,7 @@ func (catalog *Catalog) CommonPictureByID(id uuid.UUID) (CommonPictureDefinition
 // the same image for a screen of twice the density.
 func PictureDensity(file string) (ScreenDensity, bool) {
 	extension := filepath.Ext(file)
-	if len(extension) < 2 || !slices.Contains(pictureFormats, extension[1:]) {
+	if !slices.Contains(pictureFormats, strings.TrimPrefix(extension, ".")) {
 		return 0, false
 	}
 	step, err := strconv.Atoi(strings.TrimSuffix(file, extension))
