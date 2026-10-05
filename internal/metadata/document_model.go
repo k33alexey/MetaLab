@@ -237,9 +237,6 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 		issues = validateNumberShapeOf(shape.number, numberMayBeAbsent(shape.kind))
 	}
 	reserved := shape.reservedName
-	if reserved == nil {
-		reserved = reservedDocumentObjectName
-	}
 	issues = append(issues, validateAttributes("attributes", shape.attributes, configuration, reserved)...)
 	attributeNames := make(map[string]bool, len(shape.attributes))
 	for _, attribute := range shape.attributes {

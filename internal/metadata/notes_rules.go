@@ -985,9 +985,7 @@ func walkTypeLists(value reflect.Value, where string, visit func(string, []Type)
 		}
 	case reflect.Slice:
 		if value.Type() == typesType {
-			if value.Len() > 0 {
-				visit(where, value.Interface().([]Type))
-			}
+			visit(where, value.Interface().([]Type))
 			return
 		}
 		switch value.Type().Elem().Kind() {
@@ -1049,9 +1047,7 @@ func walkTexts(value reflect.Value, where string, visit func(string, LocalizedTe
 		}
 	case reflect.Map:
 		if value.Type() == textType {
-			if value.Len() > 0 {
-				visit(where, value.Interface().(LocalizedText))
-			}
+			visit(where, value.Interface().(LocalizedText))
 			return
 		}
 		if value.Type().Elem() == textType {
