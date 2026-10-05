@@ -22,8 +22,6 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-const MaxEditableFileBytes = 8 << 20
-
 var (
 	ErrInvalidSourcePath = errors.New("invalid ML Project source path")
 	ErrSourceChanged     = errors.New("ML Project source changed outside this editor")
@@ -57,8 +55,8 @@ func (workspace *Workspace) saveSourceLocked(relative, content, expectedRevision
 	if err != nil {
 		return SourceFile{}, err
 	}
-	if len(content) > MaxEditableFileBytes || !utf8.ValidString(content) || strings.IndexByte(content, 0) >= 0 {
-		return SourceFile{}, fmt.Errorf("editable source must be valid UTF-8 and at most %d bytes", MaxEditableFileBytes)
+	if !utf8.ValidString(content) || strings.IndexByte(content, 0) >= 0 {
+		return SourceFile{}, fmt.Errorf("editable source must be valid UTF-8")
 	}
 	if len(expectedRevision) != sha256.Size*2 {
 		return SourceFile{}, fmt.Errorf("expected source revision is invalid")
@@ -235,12 +233,12 @@ func (workspace *Workspace) readSource(relative string) (SourceFile, error) {
 		return SourceFile{}, fmt.Errorf("open source: %w", err)
 	}
 	defer file.Close()
-	content, err := io.ReadAll(io.LimitReader(file, MaxEditableFileBytes+1))
+	// A file is read whole, whatever its size: the loader takes a file of any
+	// size since 2.187, and a file the project holds but the editor refuses
+	// would take down every screen that reads all files of its kind.
+	content, err := io.ReadAll(file)
 	if err != nil {
 		return SourceFile{}, fmt.Errorf("read source: %w", err)
-	}
-	if len(content) > MaxEditableFileBytes {
-		return SourceFile{}, fmt.Errorf("source exceeds %d bytes", MaxEditableFileBytes)
 	}
 	if !utf8.Valid(content) || bytes.IndexByte(content, 0) >= 0 {
 		return SourceFile{}, fmt.Errorf("source is not valid UTF-8 text")

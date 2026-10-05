@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -126,7 +127,7 @@ func TestPermissionsObjectFieldAndCommandAreIndependent(t *testing.T) {
 func TestPermissionsRejectInvalidSelection(t *testing.T) {
 	t.Parallel()
 	catalog, role, _ := roleCatalogFixture(t)
-	for _, ids := range [][]uuid.UUID{{uuid.UUID{}}, {uuid.MustNew()}, {role.ID, uuid.MustNew()}, {role.ID, role.ID}, make([]uuid.UUID, MaxAssignedRoles+1)} {
+	for _, ids := range [][]uuid.UUID{{uuid.UUID{}}, {uuid.MustNew()}, {role.ID, uuid.MustNew()}, {role.ID, role.ID}} {
 		if policy, err := CompilePermissions(catalog, ids); !errors.Is(err, ErrInvalidRoleSelection) || policy != nil {
 			t.Fatalf("invalid selection yielded a usable policy: %v", err)
 		}
@@ -136,20 +137,28 @@ func TestPermissionsRejectInvalidSelection(t *testing.T) {
 	}
 }
 
-func TestPermissionsBoundCombinedRoleSize(t *testing.T) {
+// The prototype bounds neither how many roles a user holds nor how many
+// rights they add up to, and erp has 1211 roles: a user given all of them, or
+// a few wide ones, must get every right of every role and not a refusal to
+// enter. 1300 roles, eleven of them with ten thousand commands each - more
+// than both ceilings that used to stand here.
+func TestPermissionsTakeEveryRoleTheCatalogHas(t *testing.T) {
 	catalog, role, form := roleCatalogFixture(t)
 	ids := []uuid.UUID{}
 	catalog.Roles = nil
-	// A role takes any number of permissions now; the bound under test is the
-	// one on the roles combined, so they are built in pieces of ten thousand.
-	const piece = 10_000
-	for index := 0; index <= MaxEffectivePermissions/piece; index++ {
+	const roles, wide, piece = 1300, 11, 10_000
+	var last CommandPermission
+	for index := 0; index < roles; index++ {
 		next := cloneRole(role)
-		next.ID, next.Name = uuid.MustNew(), "Роль"+string(rune('А'+index))
-		next.Objects = nil
-		next.Commands = make([]CommandPermission, piece)
-		for position := range next.Commands {
-			next.Commands[position] = CommandPermission{Form: form.ID, Command: uuid.MustNew()}
+		next.ID, next.Name = uuid.MustNew(), fmt.Sprintf("Роль%d", index)
+		next.Commands = nil
+		if index < wide {
+			next.Objects = nil
+			next.Commands = make([]CommandPermission, piece)
+			for position := range next.Commands {
+				next.Commands[position] = CommandPermission{Form: form.ID, Command: uuid.MustNew()}
+			}
+			last = next.Commands[piece-1]
 		}
 		catalog.Roles = append(catalog.Roles, next)
 		ids = append(ids, next.ID)
@@ -159,8 +168,12 @@ func TestPermissionsBoundCombinedRoleSize(t *testing.T) {
 	if err := catalog.indexAndValidate(""); err != nil {
 		t.Fatal(err)
 	}
-	if policy, err := CompilePermissions(catalog, ids); !errors.Is(err, ErrInvalidRoleSelection) || policy != nil {
-		t.Fatalf("unbounded combined roles: %v", err)
+	policy, err := CompilePermissions(catalog, ids)
+	if err != nil {
+		t.Fatalf("%d roles with %d commands among them were refused: %v", roles, wide*piece, err)
+	}
+	if !policy.AllowsCommand(last.Form, last.Command) || !policy.AllowsFields(role.Objects[0].Object, PermissionRead, "description") {
+		t.Fatal("a right of one of the roles was lost")
 	}
 }
 
@@ -182,5 +195,28 @@ func TestEveryObjectOperationHasItsOwnBit(t *testing.T) {
 	}
 	if operationBit("не существует") != 0 {
 		t.Fatal("an unknown operation must not map to a bit")
+	}
+}
+
+// Fields are granted for reading and editing only. Every other right is about
+// the object as a whole: asked with no fields it is the object's right, asked
+// with fields it is refused, however the fields themselves are granted.
+func TestOnlyReadAndEditReachFields(t *testing.T) {
+	t.Parallel()
+	catalog, role, _ := roleCatalogFixture(t)
+	object := role.Objects[0].Object
+	catalog.Roles[0].Objects[0].Operations = []PermissionOperation{PermissionRead, PermissionDelete}
+	policy, err := CompilePermissions(catalog, []uuid.UUID{role.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !policy.AllowsFields(object, PermissionDelete) {
+		t.Fatal("a granted object right was refused when asked with no fields")
+	}
+	if policy.AllowsFields(object, PermissionDelete, "description") {
+		t.Fatal("deletion was allowed field by field")
+	}
+	if !policy.AllowsFields(object, PermissionRead, "description") {
+		t.Fatal("a granted field was not readable")
 	}
 }

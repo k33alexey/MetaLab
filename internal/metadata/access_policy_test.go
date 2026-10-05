@@ -328,3 +328,38 @@ func TestPoliciesHaveNoCeilingWithoutSource(t *testing.T) {
 		t.Fatalf("a role with 150 templates, values and conditions was refused: %v", err)
 	}
 }
+
+// A template and a session parameter are named like everything else in the
+// configuration, so they take a name up to the name limit and not a letter
+// more: refusing a name of exactly the limit rejects what the configurator
+// saves.
+func TestPolicyNamesTakeTheNameLimit(t *testing.T) {
+	t.Parallel()
+	for _, length := range []int{maxNameLength, maxNameLength + 1} {
+		name := strings.Repeat("Я", length)
+		template, _ := policyRoleFixture()
+		template.PolicyTemplates[0].Name = name
+		template.Objects[0].Policies[0].Template = name
+		parameter, _ := policyRoleFixture()
+		parameter.PolicyTemplates[0].Rule.Parameter = name
+		for what, role := range map[string]RoleDefinition{"policy_templates[0].name": template, "policy_templates[0].rule.parameter": parameter} {
+			err := ValidateRole("role.yaml", role, metadataConfiguration())
+			refused := err != nil && strings.Contains(err.Error(), what)
+			if refused != (length > maxNameLength) {
+				t.Fatalf("%s of %d letters: %v", what, length, err)
+			}
+		}
+	}
+}
+
+// A lone "$" names no parameter: it is a broken field, and it is reported as
+// one rather than as a reference to a parameter with an empty name.
+func TestLoneDollarIsNotAPlaceholder(t *testing.T) {
+	t.Parallel()
+	role, _ := policyRoleFixture()
+	role.PolicyTemplates[0].Rule.Field = "$"
+	err := ValidateRole("role.yaml", role, metadataConfiguration())
+	if err == nil || !strings.Contains(err.Error(), "policy_templates[0].rule.field must be a canonical UUID") {
+		t.Fatalf("a lone $ as the field: %v", err)
+	}
+}

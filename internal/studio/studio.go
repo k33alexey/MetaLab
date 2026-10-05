@@ -324,7 +324,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 			Content          string `json:"content"`
 			ExpectedRevision string `json:"expectedRevision"`
 		}
-		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 2*MaxEditableFileBytes+(64<<10)))
+		decoder := json.NewDecoder(request.Body)
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&input); err != nil {
 			http.Error(response, "Invalid request", http.StatusBadRequest)
@@ -363,7 +363,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 			ExpectedRevision string               `json:"expectedRevision"`
 			Form             metadata.ManagedForm `json:"form"`
 		}
-		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 2*MaxEditableFileBytes+(64<<10)))
+		decoder := json.NewDecoder(request.Body)
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&input); err != nil {
 			http.Error(response, "Invalid request", http.StatusBadRequest)
@@ -464,7 +464,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 			Path    string `json:"path"`
 			Content string `json:"content"`
 		}
-		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 2*MaxEditableFileBytes+(64<<10)))
+		decoder := json.NewDecoder(request.Body)
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&input); err != nil {
 			http.Error(response, "Invalid request", http.StatusBadRequest)
@@ -500,7 +500,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 			Content  string      `json:"content"`
 			Position BSLPosition `json:"position"`
 		}
-		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 2*MaxEditableFileBytes+(64<<10)))
+		decoder := json.NewDecoder(request.Body)
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&input); err != nil {
 			http.Error(response, "Invalid request", http.StatusBadRequest)
@@ -532,7 +532,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 			Position BSLPosition `json:"position"`
 			Mode     string      `json:"mode"`
 		}
-		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 2*MaxEditableFileBytes+(64<<10)))
+		decoder := json.NewDecoder(request.Body)
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&input); err != nil {
 			http.Error(response, "Invalid request", http.StatusBadRequest)
@@ -596,7 +596,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 			Content  string      `json:"content"`
 			Position BSLPosition `json:"position"`
 		}
-		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 2*MaxEditableFileBytes+(64<<10)))
+		decoder := json.NewDecoder(request.Body)
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&input); err != nil {
 			http.Error(response, "Invalid request", http.StatusBadRequest)

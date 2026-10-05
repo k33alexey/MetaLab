@@ -127,8 +127,8 @@ func (workspace *Workspace) CompleteBSL(relative, source string, position BSLPos
 	if err != nil || language != "bsl" {
 		return BSLCompletion{}, fmt.Errorf("BSL completion requires a canonical project module path")
 	}
-	if len(source) > MaxEditableFileBytes || !utf8.ValidString(source) || strings.IndexByte(source, 0) >= 0 {
-		return BSLCompletion{}, fmt.Errorf("editable source must be valid UTF-8 and at most %d bytes", MaxEditableFileBytes)
+	if !utf8.ValidString(source) || strings.IndexByte(source, 0) >= 0 {
+		return BSLCompletion{}, fmt.Errorf("editable source must be valid UTF-8")
 	}
 	offset, err := bslOffset(source, position)
 	if err != nil {

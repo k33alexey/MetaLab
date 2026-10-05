@@ -44,7 +44,10 @@ func registerApplicationRoleRoutes(routes *http.ServeMux, backend platformSetup)
 			return
 		}
 		var input platform.ApplicationRoleUpdate
-		if !decodeJSONLimit(w, r, &input, 64<<10) {
+		// No bound on the body: it is the list of the user's roles, and any
+		// bound on it would be a bound on the roles, which the prototype does
+		// not have (ACCESS-RIGHTS.md).
+		if !decodeJSONBody(w, r, r.Body, &input) {
 			return
 		}
 		assignment, err := roles.SetManagerApplicationRoles(r.Context(), databaseID, userID, input)

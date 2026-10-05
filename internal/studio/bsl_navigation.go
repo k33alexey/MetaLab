@@ -727,8 +727,8 @@ func validBSLIdentifier(value string) bool {
 }
 
 func validateEditorSource(source string) error {
-	if len(source) > MaxEditableFileBytes || !utf8.ValidString(source) || strings.IndexByte(source, 0) >= 0 {
-		return fmt.Errorf("editable source must be valid UTF-8 and at most %d bytes", MaxEditableFileBytes)
+	if !utf8.ValidString(source) || strings.IndexByte(source, 0) >= 0 {
+		return fmt.Errorf("editable source must be valid UTF-8")
 	}
 	return nil
 }

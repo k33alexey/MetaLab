@@ -36,9 +36,6 @@ func TestApplicationPermissionsBindProjectAndDenyUnassigned(t *testing.T) {
 	if _, err := permissionsForAssignment(nil, systemdb.ApplicationRoleAssignment{}); !errors.Is(err, metadata.ErrPermissionDenied) {
 		t.Fatal(err)
 	}
-	if systemdb.MaxApplicationRoles != metadata.MaxAssignedRoles {
-		t.Fatal("role selection bounds disagree")
-	}
 	snapshot, err := metadata.NewRuntimeSnapshot(catalog, nil)
 	if err != nil {
 		t.Fatal(err)

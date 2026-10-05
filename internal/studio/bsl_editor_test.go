@@ -113,12 +113,18 @@ func TestStudioHandlerAnalyzesUnsavedBSL(t *testing.T) {
 	}
 }
 
-func TestAnalyzeBSLRejectsOversizedSource(t *testing.T) {
+// A module is analysed whatever its size - the loader takes a file of any
+// size, and the editor must open what the project holds - while a source that
+// is not text is still refused.
+func TestAnalyzeBSLTakesASourceOfAnySize(t *testing.T) {
 	t.Parallel()
 	path := filepath.ToSlash(filepath.Join("modules", "test.bsl"))
-	source := string(make([]byte, MaxEditableFileBytes+1))
-	if _, err := AnalyzeBSL(path, source); err == nil {
-		t.Fatal("AnalyzeBSL accepted oversized source")
+	large := strings.Repeat("// Строка комментария модуля.\n", 300_000) + "Процедура Тест()\nКонецПроцедуры\n"
+	if _, err := AnalyzeBSL(path, large); err != nil {
+		t.Fatalf("a module of %d bytes was refused: %v", len(large), err)
+	}
+	if _, err := AnalyzeBSL(path, string(make([]byte, 16))); err == nil || !strings.Contains(err.Error(), "valid UTF-8") {
+		t.Fatalf("a source of NUL bytes: %v", err)
 	}
 }
 

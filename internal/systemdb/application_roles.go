@@ -11,10 +11,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// This storage bound matches migration 009. The metadata compiler additionally
-// bounds the total number of effective object, field and command permissions.
-const MaxApplicationRoles = 1024
-
 var ErrApplicationRolesChanged = errors.New("application role assignment changed; reload it before saving")
 var ErrInvalidApplicationRoles = errors.New("invalid application role assignment")
 
@@ -140,8 +136,11 @@ VALUES('info','application.roles_changed',$1,$2,'Application roles updated',json
 	return ApplicationRoleAssignment{ProjectID: &projectID, RoleIDs: roles, Revision: revision}, nil
 }
 
+// canonicalApplicationRoles takes any number of roles: the prototype bounds
+// none (help, ПользовательИнформационнойБазы.Роли), and erp has 1211. Migration
+// 012 lifted the storage bound of 1024 that migration 009 had set.
 func canonicalApplicationRoles(projectID uuid.UUID, ids []uuid.UUID, revision int64) ([]uuid.UUID, error) {
-	if projectID.IsZero() || len(ids) > MaxApplicationRoles || revision < 0 {
+	if projectID.IsZero() || revision < 0 {
 		return nil, ErrInvalidApplicationRoles
 	}
 	result := append([]uuid.UUID{}, ids...)

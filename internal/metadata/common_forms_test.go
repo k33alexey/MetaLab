@@ -183,3 +183,26 @@ kind: common
 		})
 	}
 }
+
+// Common forms come back in the order of their names, whatever order the
+// folder lists them in: what the role editor shows must not depend on the
+// file system.
+func TestCommonFormsAreReadInNameOrder(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	for index, name := range []string{"Бланк", "адреса", "Визитка"} {
+		id := "d7000000-0000-4000-8000-00000000001" + string(rune('0'+index))
+		writeCommonForm(t, root, name, "format: 1\nid: "+id+"\nname: "+name+"\ntitle: {ru: "+name+"}\nkind: common\n")
+	}
+	forms, err := ReadCommonForms(root, metadataConfiguration())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, form := range forms {
+		names = append(names, form.Name)
+	}
+	if strings.Join(names, ",") != "адреса,Бланк,Визитка" {
+		t.Fatalf("common forms read as %v", names)
+	}
+}

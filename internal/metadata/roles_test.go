@@ -437,3 +437,162 @@ func TestRoleCommentIsCarriedWhateverItsLength(t *testing.T) {
 		t.Fatal("a comment that is not UTF-8 was accepted")
 	}
 }
+
+// What a role may name on an object follows what the object has: a code, a
+// number or a description of zero length is not there, so a right on it is a
+// right over nothing; the folder flag exists only where folders do; and the
+// right to manage totals belongs only to a register that keeps balances.
+func TestRoleTargetFollowsWhatTheObjectHas(t *testing.T) {
+	t.Parallel()
+	coded := CatalogCode{Type: StringType, Length: 9}
+	numbered := DocumentNumber{Type: StringType, Length: 9, Periodicity: NumberPeriodNone}
+	ids := make([]uuid.UUID, 12)
+	for index := range ids {
+		ids[index] = uuid.MustNew()
+	}
+	catalog := &Catalog{
+		ChartsOfCharacteristicTypes: []ChartOfCharacteristicTypesDefinition{
+			{ID: ids[0], Code: coded, DescriptionLength: 25, Hierarchy: Hierarchy{Enabled: true, Kind: FoldersAndItemsHierarchy}},
+			{ID: ids[1], Hierarchy: Hierarchy{Enabled: true, Kind: ItemsHierarchy}},
+		},
+		ChartsOfAccounts:         []ChartOfAccountsDefinition{{ID: ids[2], Code: coded}, {ID: ids[3]}},
+		ChartsOfCalculationTypes: []ChartOfCalculationTypesDefinition{{ID: ids[4], Code: coded}, {ID: ids[5]}},
+		Tasks:                    []TaskDefinition{{ID: ids[6], Number: numbered}, {ID: ids[7]}},
+		AccumulationRegisters: []AccumulationRegisterDefinition{
+			{ID: ids[8], Kind: AccumulationRegisterBalance}, {ID: ids[9], Kind: AccumulationRegisterTurnover},
+		},
+		chartOfCharacteristicTypesByID: map[uuid.UUID]int{ids[0]: 0, ids[1]: 1},
+		chartOfAccountsByID:            map[uuid.UUID]int{ids[2]: 0, ids[3]: 1},
+		chartOfCalculationTypesByID:    map[uuid.UUID]int{ids[4]: 0, ids[5]: 1},
+		taskByID:                       map[uuid.UUID]int{ids[6]: 0, ids[7]: 1},
+		accumulationRegisterByID:       map[uuid.UUID]int{ids[8]: 0, ids[9]: 1},
+	}
+	fields := []struct {
+		name  string
+		id    uuid.UUID
+		field string
+		has   bool
+	}{
+		{"characteristics with a code", ids[0], "code", true},
+		{"characteristics without a code", ids[1], "code", false},
+		{"characteristics with a description", ids[0], "description", true},
+		{"characteristics without a description", ids[1], "description", false},
+		{"folders and items", ids[0], "isfolder", true},
+		{"items only", ids[1], "isfolder", false},
+		{"accounts with a code", ids[2], "code", true},
+		{"accounts without a code", ids[3], "code", false},
+		{"calculation types with a code", ids[4], "code", true},
+		{"calculation types without a code", ids[5], "code", false},
+		{"task with a number", ids[6], "number", true},
+		{"task without a number", ids[7], "number", false},
+	}
+	for _, test := range fields {
+		target, ok := catalog.permissionTarget(test.id)
+		if !ok {
+			t.Fatalf("%s: the object is not a target of rights at all", test.name)
+		}
+		if _, has := target.fields[test.field]; has != test.has {
+			t.Fatalf("%s: field %s offered = %v, want %v", test.name, test.field, has, test.has)
+		}
+	}
+	balance, _ := catalog.permissionTarget(ids[8])
+	turnover, _ := catalog.permissionTarget(ids[9])
+	if !balance.operations[PermissionTotalsControl] || turnover.operations[PermissionTotalsControl] {
+		t.Fatalf("totals control: balance %v, turnover %v - only a register of balances keeps totals",
+			balance.operations[PermissionTotalsControl], turnover.operations[PermissionTotalsControl])
+	}
+}
+
+// A standard field key is lowercase Latin from a to z, both ends included:
+// the structural check must not refuse a key the object may well have, and
+// must refuse one that no object can have.
+func TestPermissionFieldKeyIsLowercaseLatin(t *testing.T) {
+	t.Parallel()
+	for _, key := range []string{"a", "z", "zone", "predefineddataname"} {
+		if !validPermissionField(key) {
+			t.Fatalf("key %q refused", key)
+		}
+	}
+	for _, key := range []string{"", "Code", "код", "line_number", "{", "`", uuid.UUID{}.String(), strings.ToUpper(uuid.MustNew().String())} {
+		if validPermissionField(key) {
+			t.Fatalf("key %q accepted", key)
+		}
+	}
+}
+
+// The role editor shows standard fields by their keys and the attributes by
+// their names, and lists objects grouped by kind and ordered by name without
+// regard to case, so the same project always shows the same list.
+func TestPermissionSchemaShowsStandardFieldsInOrder(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	goods, services, setting, order := uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String()
+	price := uuid.MustNew().String()
+	writeMetadata(t, root, CatalogKind, goods, "format: 1\nid: "+goods+"\nname: товары\ntitle: {ru: Товары}\n"+
+		"code: {type: string, length: 9}\ndescription_length: 150\n"+
+		"attributes:\n  - {id: "+price+", name: Цена, title: {ru: Цена}, types: [{kind: number, precision: 10, scale: 2}]}\n")
+	writeMetadata(t, root, CatalogKind, services, "format: 1\nid: "+services+"\nname: Услуги\ntitle: {ru: Услуги}\n"+
+		"code: {type: string, length: 9}\ndescription_length: 150\n")
+	writeMetadata(t, root, ConstantKind, setting, "format: 1\nid: "+setting+"\nname: Режим\ntitle: {ru: Режим}\ntypes: [{kind: boolean}]\n")
+	writeMetadata(t, root, DocumentKind, order, "format: 1\nid: "+order+"\nname: Заказ\ntitle: {ru: Заказ}\n"+
+		"number: {type: string, length: 9, periodicity: none}\n")
+	schema, err := LoadPermissionSchema(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var listed []string
+	for _, object := range schema.Objects {
+		listed = append(listed, string(object.Kind)+"/"+object.Name)
+	}
+	want := []string{"catalogs/товары", "catalogs/Услуги", "constants/Режим", "documents/Заказ"}
+	if !slices.Equal(listed, want) {
+		t.Fatalf("objects listed as %v, want %v", listed, want)
+	}
+	var keys []string
+	for _, field := range schema.Objects[0].Fields {
+		if field.Key == price {
+			if field.Name != "Цена" {
+				t.Fatalf("an attribute is shown as %q, not by its name", field.Name)
+			}
+			continue
+		}
+		if field.Name != field.Key {
+			t.Fatalf("standard field %s is shown as %q", field.Key, field.Name)
+		}
+		keys = append(keys, field.Key)
+	}
+	if !slices.Equal(keys, []string{"code", "dataversion", "deletionmark", "description", "predefined", "predefineddataname", "ref"}) {
+		t.Fatalf("standard fields of a catalog shown as %v", keys)
+	}
+}
+
+// The role editor checks one role against the project as it is. A role that
+// names an object the project does not have must be refused there, before it
+// is saved, and not only when the whole project is published.
+func TestProjectRoleIsCheckedAgainstTheProject(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	role := roleFixture()
+	err := ValidateProjectRole(root, role)
+	if err == nil || !strings.Contains(err.Error(), "references unknown or unsupported object "+role.Objects[0].Object.String()) {
+		t.Fatalf("a role naming an object the project lacks: %v", err)
+	}
+}
+
+// A standard field key has no length ceiling of its own: a key the object
+// does not have is refused by the object, whatever its length, and with words
+// that say so.
+func TestLongFieldKeyIsRefusedByTheObject(t *testing.T) {
+	t.Parallel()
+	catalog, role, _ := roleCatalogFixture(t)
+	value := *catalog
+	r := cloneRole(role)
+	r.Commands = nil
+	key := strings.Repeat("x", 40)
+	r.Objects[0].Fields = []FieldPermission{{Field: key, Operations: []PermissionOperation{PermissionRead}}}
+	value.Roles = []RoleDefinition{r}
+	_, err := NewRuntimeSnapshot(&value, nil)
+	if err == nil || !strings.Contains(err.Error(), "field "+key+" does not belong to object") {
+		t.Fatalf("a long key the object lacks: %v", err)
+	}
+}

@@ -188,6 +188,19 @@ func TestApplicationRolesIsolationRevocationAndConcurrencyIntegration(t *testing
 	if _, err := database.DatabaseAccess.GetApplicationRoles(ctx, admin, member, one); err != nil {
 		t.Fatal(err)
 	}
+	// erp has 1211 roles and the prototype bounds none per user, so the
+	// table must take more than the 1024 migration 009 once allowed - and
+	// give every one of them back.
+	many := make([]uuid.UUID, 1300)
+	for index := range many {
+		many[index] = uuid.MustNew()
+	}
+	if _, err := database.DatabaseAccess.SetApplicationRoles(ctx, admin, member, one, project, many, 3); err != nil {
+		t.Fatalf("%d roles were not stored: %v", len(many), err)
+	}
+	if stored, err := database.DatabaseAccess.ApplicationRoles(ctx, member, one); err != nil || len(stored.RoleIDs) != len(many) {
+		t.Fatalf("%d roles stored, %d read back: %v", len(many), len(stored.RoleIDs), err)
+	}
 	if err := database.DatabaseAccess.RevokeApp(ctx, admin, member, one); err != nil {
 		t.Fatal(err)
 	}

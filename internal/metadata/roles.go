@@ -185,7 +185,10 @@ func validPermissionField(field string) bool {
 	if id, err := uuid.Parse(field); err == nil {
 		return !id.IsZero() && id.String() == field
 	}
-	if len(field) == 0 || len(field) > 32 {
+	// No ceiling on the length: whether the key is one the object has is
+	// decided against the object itself, and a key it does not have is
+	// refused there however long it is.
+	if field == "" {
 		return false
 	}
 	for _, character := range field {

@@ -401,3 +401,34 @@ func TestSaveTakesADescriptionPast4MiB(t *testing.T) {
 		t.Fatalf("a configuration of %d MiB was refused: %v", len(large)>>20, err)
 	}
 }
+
+// The editor opens and saves a file of any size: the loader takes one since
+// 2.187, and the 8 MB the editor used to hold a file to - and the 16 MB it held
+// a request to - had no source. A module of 20 MB goes through the HTTP route
+// both ways.
+func TestEditorTakesAFileOfAnySize(t *testing.T) {
+	t.Parallel()
+	large := strings.Repeat("// Строка комментария модуля.\n", 400_000)
+	workspace, relative, filePath := createModuleSource(t, large)
+	handler := NewHandler(workspace)
+	read := httptest.NewRecorder()
+	handler.ServeHTTP(read, httptest.NewRequest(http.MethodGet, "/api/file?path="+url.QueryEscape(relative), nil))
+	var opened SourceFile
+	if read.Code != http.StatusOK || json.Unmarshal(read.Body.Bytes(), &opened) != nil || opened.Content != large {
+		t.Fatalf("a file of %d bytes was not opened: %d", len(large), read.Code)
+	}
+	changed := large + "Тест();\n"
+	payload, err := json.Marshal(map[string]string{"path": relative, "content": changed, "expectedRevision": opened.Revision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPut, "/api/file", bytes.NewReader(payload))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-ML-CSRF", "1")
+	handler.ServeHTTP(saved, request)
+	content, err := os.ReadFile(filePath)
+	if saved.Code != http.StatusOK || err != nil || string(content) != changed {
+		t.Fatalf("a file of %d bytes was not saved: %d %v", len(changed), saved.Code, err)
+	}
+}

@@ -617,11 +617,19 @@ func decodeJSON(response http.ResponseWriter, request *http.Request, destination
 }
 
 func decodeJSONLimit(response http.ResponseWriter, request *http.Request, destination any, limit int64) bool {
+	return decodeJSONBody(response, request, http.MaxBytesReader(response, request.Body, limit), destination)
+}
+
+// decodeJSONBody reads one JSON value from body and nothing after it. A route
+// whose body carries the configuration's own composition - the roles of a
+// user - reads it whole, because a bound on the request would be a bound on
+// what the configuration may hold.
+func decodeJSONBody(response http.ResponseWriter, request *http.Request, body io.Reader, destination any) bool {
 	if contentType := request.Header.Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {
 		http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
 		return false
 	}
-	decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, limit))
+	decoder := json.NewDecoder(body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(destination); err != nil {
 		http.Error(response, "Invalid setup request", http.StatusBadRequest)

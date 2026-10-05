@@ -390,7 +390,7 @@ func decodeStudioJSONRequest(response http.ResponseWriter, request *http.Request
 		http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
 		return false
 	}
-	decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 2*MaxEditableFileBytes+(64<<10)))
+	decoder := json.NewDecoder(request.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		http.Error(response, "Invalid request", http.StatusBadRequest)

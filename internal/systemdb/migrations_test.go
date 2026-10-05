@@ -12,8 +12,8 @@ func TestEmbeddedMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(migrations) != 11 {
-		t.Fatalf("migration count = %d, want 11", len(migrations))
+	if len(migrations) != 12 {
+		t.Fatalf("migration count = %d, want 12", len(migrations))
 	}
 	migration := migrations[0]
 	if migration.version != 1 || migration.name != "settings" || len(migration.checksum) != 64 {

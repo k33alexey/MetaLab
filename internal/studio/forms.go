@@ -187,9 +187,6 @@ func (workspace *Workspace) createFormModuleLocked(relative, content string) (So
 	if err != nil || language != "bsl" {
 		return SourceFile{}, ErrInvalidSourcePath
 	}
-	if len(content) > MaxEditableFileBytes {
-		return SourceFile{}, fmt.Errorf("form module exceeds %d bytes", MaxEditableFileBytes)
-	}
 	target := filepath.Join(workspace.root, filepath.FromSlash(canonical))
 	file, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {

@@ -8,9 +8,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-const MaxAssignedRoles = 1024
-const MaxEffectivePermissions = 100_000
-
 var ErrPermissionDenied = errors.New("application permission denied")
 var ErrInvalidRoleSelection = errors.New("invalid application role selection")
 
@@ -63,13 +60,18 @@ type Permissions struct {
 // CompilePermissions consumes a validated catalog, never client-supplied role
 // definitions. A missing role rejects the entire selection rather than silently
 // running with a partial set. Result maps do not retain mutable catalog slices.
+//
+// Neither the number of roles nor the permissions they add up to is bounded:
+// the prototype bounds neither (help, ПользовательИнформационнойБазы.Роли),
+// and erp alone has 1211 roles. A selection cannot outgrow the catalog, since
+// a role is taken once and only if the catalog has it, and what is compiled is
+// no larger than the roles the catalog already holds.
 func CompilePermissions(catalog *Catalog, roleIDs []uuid.UUID) (*Permissions, error) {
-	if catalog == nil || catalog.Project.ID.IsZero() || len(roleIDs) > MaxAssignedRoles {
+	if catalog == nil || catalog.Project.ID.IsZero() {
 		return nil, ErrInvalidRoleSelection
 	}
 	result := &Permissions{project: catalog.Project.ID, objects: map[uuid.UUID]objectPermissions{}, commands: map[CommandPermission]bool{}}
 	seen := map[uuid.UUID]bool{}
-	count := 0
 	for _, id := range roleIDs {
 		if id.IsZero() || seen[id] {
 			return nil, ErrInvalidRoleSelection
@@ -78,13 +80,6 @@ func CompilePermissions(catalog *Catalog, roleIDs []uuid.UUID) (*Permissions, er
 		role, ok := catalog.RoleByID(id)
 		if !ok {
 			return nil, ErrInvalidRoleSelection
-		}
-		count += len(role.Objects) + len(role.Commands)
-		for _, item := range role.Objects {
-			count += len(item.Fields)
-		}
-		if count > MaxEffectivePermissions {
-			return nil, fmt.Errorf("%w: combined permissions exceed %d", ErrInvalidRoleSelection, MaxEffectivePermissions)
 		}
 		for _, grant := range role.Objects {
 			item, exists := result.objects[grant.Object]

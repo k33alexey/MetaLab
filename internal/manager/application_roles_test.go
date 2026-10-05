@@ -94,15 +94,15 @@ func TestManagerApplicationRoleRoutesAreScoped(t *testing.T) {
 		t.Fatalf("stale write status: %d", w.Code)
 	}
 	backend.err = nil
-	large := platform.ApplicationRoleUpdate{ProjectID: backend.project, RoleIDs: make([]uuid.UUID, systemdb.MaxApplicationRoles)}
+	// More roles than any body limit this route has had would let through -
+	// 64 KiB, then a megabyte: the body is the list of roles, and a bound on
+	// it is a bound on the roles.
+	large := platform.ApplicationRoleUpdate{ProjectID: backend.project, RoleIDs: make([]uuid.UUID, 30_000)}
 	for index := range large.RoleIDs {
 		large.RoleIDs[index] = uuid.MustNew()
 	}
 	payload, _ = json.Marshal(large)
-	if w := request("PUT", path, string(payload), cookie, ""); w.Code != 200 {
-		t.Fatalf("bounded full role selection rejected: %d", w.Code)
-	}
-	if w := request("PUT", path, strings.Repeat(" ", 64<<10)+"{}", cookie, ""); w.Code != 400 {
-		t.Fatalf("oversized request: %d", w.Code)
+	if w := request("PUT", path, string(payload), cookie, ""); w.Code != 200 || len(backend.last.RoleIDs) != len(large.RoleIDs) {
+		t.Fatalf("%d roles in %d bytes: %d", len(large.RoleIDs), len(payload), w.Code)
 	}
 }

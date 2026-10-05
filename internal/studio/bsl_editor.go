@@ -74,8 +74,8 @@ func AnalyzeBSL(filename, source string) (BSLAnalysis, error) {
 	if filename == "" || !strings.HasSuffix(strings.ToLower(filename), ".bsl") {
 		return BSLAnalysis{}, fmt.Errorf("BSL analysis requires a .bsl source path")
 	}
-	if len(source) > MaxEditableFileBytes || !utf8.ValidString(source) || strings.IndexByte(source, 0) >= 0 {
-		return BSLAnalysis{}, fmt.Errorf("editable source must be valid UTF-8 and at most %d bytes", MaxEditableFileBytes)
+	if !utf8.ValidString(source) || strings.IndexByte(source, 0) >= 0 {
+		return BSLAnalysis{}, fmt.Errorf("editable source must be valid UTF-8")
 	}
 
 	module, tokens, diagnostics := syntax.ParseWithTokens(filename, source)

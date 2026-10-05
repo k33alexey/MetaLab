@@ -14,7 +14,7 @@ func TestApplicationRoleSelectionValidation(t *testing.T) {
 		project  uuid.UUID
 		roles    []uuid.UUID
 		revision int64
-	}{{uuid.UUID{}, nil, 0}, {project, []uuid.UUID{{}}, 0}, {project, []uuid.UUID{role, role}, 0}, {project, nil, -1}, {project, make([]uuid.UUID, MaxApplicationRoles+1), 0}} {
+	}{{uuid.UUID{}, nil, 0}, {project, []uuid.UUID{{}}, 0}, {project, []uuid.UUID{role, role}, 0}, {project, nil, -1}} {
 		if _, err := canonicalApplicationRoles(test.project, test.roles, test.revision); !errors.Is(err, ErrInvalidApplicationRoles) {
 			t.Fatalf("invalid selection accepted: %v", err)
 		}
