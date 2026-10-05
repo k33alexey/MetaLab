@@ -202,6 +202,13 @@ const (
 	// a table of an external source and the type of a vanished object may
 	// stand there - and never an object or a value of memory.
 	placeCommandParameter
+	// placeFormAttribute is an attribute of a form or a column of one: data
+	// the form holds while it is open. Like a running object's attribute it
+	// may be left with no type, which is an arbitrary one, and may hold what
+	// lives in memory only and what the infobase does not store - the help
+	// names a reference to a table of an external source as allowed in an
+	// attribute of a managed form.
+	placeFormAttribute
 )
 
 // storedNowhere says a kind may stand in a type description of something the
@@ -216,7 +223,7 @@ func storedNowhere(kind TypeKind) bool {
 
 // mayStandUnstored says where a kind of storedNowhere is allowed.
 func mayStandUnstored(place typePlace) bool {
-	return place == placeRunningObject || place == placeCommandParameter || place == placeDefinedType
+	return place == placeRunningObject || place == placeCommandParameter || place == placeDefinedType || place == placeFormAttribute
 }
 
 // sessionParameterValueTypes are the value types the help lets a session
@@ -231,7 +238,7 @@ var sessionParameterValueTypes = map[TypeKind]bool{
 // Stored kinds are not asked: they may stand anywhere.
 func allowedIn(kind TypeKind, place typePlace) bool {
 	switch place {
-	case placeDefinedType, placeRunningObject:
+	case placeDefinedType, placeRunningObject, placeFormAttribute:
 		return true
 	case placeSessionParameter:
 		return sessionParameterValueTypes[kind]
@@ -259,6 +266,8 @@ func placeName(place typePlace) string {
 		return "in an attribute of a data processor or a report"
 	case placeCommandParameter:
 		return "in the parameter of a command"
+	case placeFormAttribute:
+		return "in an attribute of a form"
 	default:
 		return "in a field the database stores"
 	}

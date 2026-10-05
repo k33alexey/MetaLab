@@ -103,6 +103,7 @@ type ManagedForm struct {
 	IncludeHelpInContents bool                 `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
 	Commands              []ManagedFormCommand `yaml:"commands,omitempty" json:"commands"`
 	Items                 []ManagedFormElement `yaml:"items,omitempty" json:"items"`
+	Attributes            []FormAttribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 }
 
 // ManagedFormElement is one stable node in a managed form tree. Hidden and
@@ -281,6 +282,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			issues = append(issues, current.path+".kind must be group, field, label, table or button")
 		}
 	}
+	issues = append(issues, validateFormAttributes(value.Attributes, ids, configuration)...)
 	return issuesError(source, value.Format, issues)
 }
 
