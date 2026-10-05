@@ -1814,6 +1814,21 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 			issues = append(issues, prefix+".kind "+string(item.Kind)+" cannot stand in a defined type: the designer offers neither another defined type nor a set the platform fills itself")
 			continue
 		}
+		if formOnlyKinds[item.Kind] {
+			if place != placeFormAttribute {
+				issues = append(issues, prefix+".kind "+string(item.Kind)+" is a type of an attribute of a form and cannot stand "+placeName(place))
+			} else if item.Length != 0 || item.Precision != 0 || item.Scale != 0 || item.FixedLength || item.NonNegative || item.DateParts != "" {
+				issues = append(issues, prefix+" has unsupported qualifiers")
+			}
+			continue
+		}
+		// The designer does not offer binary data as the type of an attribute,
+		// of an object or of a form alike (checked by the owner, 30.09.2026),
+		// and none of the configurations being moved has one in a form.
+		if place == placeFormAttribute && item.Kind == BinaryDataType {
+			issues = append(issues, prefix+".kind binary-data cannot stand in an attribute of a form: the designer does not offer it")
+			continue
+		}
 		if isObjectType(item.Kind) || isValueType(item.Kind) {
 			if !allowedIn(item.Kind, place) {
 				issues = append(issues, prefix+".kind "+string(item.Kind)+" lives in memory only and cannot stand "+placeName(place))
@@ -1845,7 +1860,13 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 				issues = append(issues, prefix+".fixed_length requires a length")
 			}
 		case NumberType:
-			if item.Precision < 1 || item.Precision > maxNumberDigits {
+			// A number of no length is a number of any length. Only a form
+			// holds one - 113, 20 and 37 times with any sign and 7, 5 and 6
+			// non-negative, never in a field of an object, a report or a
+			// data processor - and the form keeps it in memory, where no
+			// column needs a precision.
+			unlimited := place == placeFormAttribute && item.Precision == 0
+			if !unlimited && (item.Precision < 1 || item.Precision > maxNumberDigits) {
 				issues = append(issues, fmt.Sprintf("%s.precision must be 1..%d", prefix, maxNumberDigits))
 			}
 			if item.Scale < 0 || item.Scale > item.Precision {

@@ -100,6 +100,42 @@ const (
 	VanishedType TypeKind = "vanished-type"
 )
 
+// The types only a form holds: what the form designer offers for an attribute
+// of a form beyond what any other place may hold (help, the form designer and
+// the types of form data - ValueTable aside, the eight it names: dynamic list,
+// Gantt chart, chart, dendrogram, spreadsheet document, graphical and
+// geographical schema), and the values of the interface a form shows. The
+// configurations being moved hold them 3451 (dynamic list), 307 (formatted
+// string), 271 (colour), 145 (picture), 47 (formatted document), 28 (font), 24
+// (text document), 23 (Null), 15 (Gantt chart), 3 (planner, graphical
+// schema) and 2 (geographical schema) times, and never anywhere but in a
+// form.
+const (
+	DynamicListType        TypeKind = "dynamic-list"
+	FormattedStringType    TypeKind = "formatted-string"
+	ColorType              TypeKind = "color"
+	FontType               TypeKind = "font"
+	PictureType            TypeKind = "picture"
+	FormattedDocumentType  TypeKind = "formatted-document"
+	TextDocumentType       TypeKind = "text-document"
+	GanttChartType         TypeKind = "gantt-chart"
+	PlannerType            TypeKind = "planner"
+	DendrogramType         TypeKind = "dendrogram"
+	GraphicalSchemaType    TypeKind = "graphical-schema"
+	GeographicalSchemaType TypeKind = "geographical-schema"
+	// NullType is Null as a type of its own: a form holds it beside another
+	// type, a value list or a field of a composition, to say the value may be
+	// absent (23 times, all in forms). Not "null": a description written in
+	// YAML would read that as no kind at all.
+	NullType TypeKind = "null-type"
+)
+
+var formOnlyKinds = map[TypeKind]bool{
+	DynamicListType: true, FormattedStringType: true, ColorType: true, FontType: true, PictureType: true,
+	FormattedDocumentType: true, TextDocumentType: true, GanttChartType: true, PlannerType: true,
+	DendrogramType: true, GraphicalSchemaType: true, GeographicalSchemaType: true, NullType: true,
+}
+
 // objectTypeOwners says, for every object type, which object of metadata its
 // reference must name.
 var objectTypeOwners = map[TypeKind]func(*Catalog, uuid.UUID) bool{

@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 const (
@@ -192,4 +194,90 @@ func TestFormAttributeRefusesWhatTheFormCannotHold(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Every type only a form holds is accepted in an attribute of a form and in a
+// column of one, and refused everywhere else - a field the database stores, a
+// defined type, an attribute of a data processor - by a message that says
+// where it may stand.
+//
+// Defect caught: a form type left out of the model, so that the 3451 dynamic
+// lists and the rest of the forms being moved are refused; and a form type
+// accepted in a stored field, which the schema would then have to build a
+// column for.
+func TestFormOnlyTypesStandInAFormAndNowhereElse(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	// Listed here and not taken from the model, so that a kind dropped from
+	// the model is still tried.
+	kinds := []TypeKind{"dynamic-list", "formatted-string", "color", "font", "picture", "formatted-document",
+		"text-document", "gantt-chart", "planner", "dendrogram", "graphical-schema", "geographical-schema", "null-type"}
+	if len(formOnlyKinds) != len(kinds) {
+		t.Errorf("the model has %d form types, the test tries %d", len(formOnlyKinds), len(kinds))
+	}
+	for _, kind := range kinds {
+		t.Run(string(kind), func(t *testing.T) {
+			t.Parallel()
+			source := formAttrHead + "attributes:\n  - {id: " + formAttrObject + ", name: Значение, types: [{kind: " + string(kind) + "}]," +
+				" columns: [{id: " + formAttrColumn + ", name: Колонка, types: [{kind: " + string(kind) + "}]}]}\n"
+			if _, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration); err != nil {
+				t.Fatalf("a form refused its own type: %v", err)
+			}
+			for place, where := range map[typePlace]string{
+				placeStored: "in a field the database stores", placeDefinedType: "in a defined type",
+				placeRunningObject: "in an attribute of a data processor or a report", placeCommandParameter: "in the parameter of a command",
+			} {
+				issues := validateTypesIn("types", []Type{{Kind: kind}}, place)
+				if len(issues) != 1 || !strings.Contains(issues[0], "is a type of an attribute of a form and cannot stand "+where) {
+					t.Errorf("%s: %v", where, issues)
+				}
+			}
+			if issues := validateTypesIn("types", []Type{{Kind: kind, Length: 10}}, placeFormAttribute); len(issues) != 1 {
+				t.Errorf("a form type took a qualifier: %v", issues)
+			}
+		})
+	}
+}
+
+// A number of no length stands in a form and nowhere else; binary data stands
+// nowhere in a form; what the designer marks «not available in form data» -
+// value storage - and a reference to a table of an external source are kept.
+//
+// Defect caught: the 188 numbers of no length of the forms being moved
+// refused, or a number of no length let into a stored field, where the column
+// needs a precision; binary data accepted in a form against the designer;
+// value storage refused, though the designer saves it and only marks it.
+func TestAFormHoldsWhatTheDesignerSavesInIt(t *testing.T) {
+	t.Parallel()
+	unlimited := []Type{{Kind: NumberType}}
+	if issues := validateTypesIn("types", unlimited, placeFormAttribute); len(issues) != 0 {
+		t.Fatalf("a number of no length refused in a form: %v", issues)
+	}
+	for _, place := range []typePlace{placeStored, placeRunningObject, placeDefinedType} {
+		if issues := validateTypesIn("types", unlimited, place); len(issues) != 1 || !strings.Contains(issues[0], "precision must be 1..") {
+			t.Errorf("a number of no length %s: %v", placeName(place), issues)
+		}
+	}
+	if issues := validateTypesIn("types", []Type{{Kind: NumberType, Scale: 2}}, placeFormAttribute); len(issues) == 0 {
+		t.Error("a number of no length with a fraction accepted")
+	}
+	if issues := validateTypesIn("types", []Type{{Kind: BinaryDataType}}, placeFormAttribute); len(issues) != 1 || !strings.Contains(issues[0], "the designer does not offer it") {
+		t.Errorf("binary data in a form: %v", issues)
+	}
+	if issues := validateTypesIn("types", []Type{{Kind: BinaryDataType}}, placeRunningObject); len(issues) != 0 {
+		t.Errorf("binary data refused where it stood before: %v", issues)
+	}
+	for _, kept := range []Type{{Kind: ValueStorageType}, {Kind: ExternalTableType, Reference: refID(formAttrCatalog)}, {Kind: ValueTableType}, {Kind: PlatformType, Name: "Отбор"}} {
+		if issues := validateTypesIn("types", []Type{kept}, placeFormAttribute); len(issues) != 0 {
+			t.Errorf("%s refused in a form: %v", kept.Kind, issues)
+		}
+	}
+}
+
+func refID(value string) *uuid.UUID {
+	id, err := uuid.Parse(value)
+	if err != nil {
+		panic(err)
+	}
+	return &id
 }
