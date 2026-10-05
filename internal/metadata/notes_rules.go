@@ -980,6 +980,11 @@ func eachLocalizedText(catalog *Catalog, visit func(where string, text Localized
 			walkTexts(object, kebab(field.Name)+" "+nameOf(object), visit)
 		}
 	}
+	// The forms are not part of the catalog; the titles of their attributes
+	// were gathered when the forms were read.
+	for _, text := range catalog.formTitles {
+		visit(text.where, text.text)
+	}
 }
 
 func walkTexts(value reflect.Value, where string, visit func(string, LocalizedText)) {

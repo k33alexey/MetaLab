@@ -157,3 +157,58 @@ func TestABrokenFormOfAnObjectRefusesTheProject(t *testing.T) {
 		}
 	}
 }
+
+// The titles of the attributes of a form, of their columns and of the
+// columns added to a table are noted under the same rules as the texts of
+// objects: a language the configuration does not declare, no language, a
+// text of spaces. The titles of a sound form carry none.
+//
+// Defect caught: the forms left out of the walk of texts - they are not part
+// of the catalog - so that a title in a language nobody declared passes
+// without the note the import report needs; and a title of a column, an
+// added column or a common form missed while the attribute's own is seen.
+func TestTheTitlesOfFormAttributesAreNotedLikeTextsOfObjects(t *testing.T) {
+	t.Parallel()
+	root := formReferencesProject(t)
+	path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	form := string(content)
+	for _, change := range []struct{ old, new string }{
+		{"    name: Объект\n", "    name: Объект\n    title: {ru: Объект, de: Objekt}\n"},
+		{"name: Склад, types:", "name: Склад, title: {\"\": Склад}, types:"},
+		{"name: Цена, types:", "name: Цена, title: {ru: \"  \"}, types:"},
+	} {
+		if !strings.Contains(form, change.old) {
+			t.Fatalf("the form has no %q", change.old)
+		}
+		form = strings.Replace(form, change.old, change.new, 1)
+	}
+	writeFile(t, path, form)
+	writeCommonForm(t, root, "АдреснаяКнига", "format: 1\nid: "+cmpCommonForm+"\nname: АдреснаяКнига\ntitle: {ru: АдреснаяКнига}\nkind: common\nattributes:\n"+
+		"  - {id: "+refCommonAt+", name: Пользователь, title: {de: Benutzer}, types: [{kind: catalog, reference: "+cmpUsers+"}]}\n")
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, note := range catalog.Notes() {
+		got[string(note.Kind)+" "+note.Where] = note.Written
+	}
+	for place, written := range map[string]string{
+		"text-in-undeclared-language catalog Номенклатура form ФормаЭлемента attribute Объект title.de":                          "Objekt",
+		"text-without-language catalog Номенклатура form ФормаЭлемента attribute Объект table Объект.Остатки column Склад title": "Склад",
+		"text-of-spaces catalog Номенклатура form ФормаЭлемента attribute Цены column Цена title.ru":                             `"  "`,
+		"text-in-undeclared-language common form АдреснаяКнига attribute Пользователь title.de":                                  "Benutzer",
+	} {
+		if got[place] != written {
+			t.Errorf("no note %q = %q; notes %v", place, written, got)
+		}
+	}
+	// The platform type of the attribute Отбор, and the four above.
+	if len(got) != 5 {
+		t.Errorf("notes = %v", got)
+	}
+}
