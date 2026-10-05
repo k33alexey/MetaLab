@@ -145,11 +145,7 @@ func TestAConstantTakesAChoiceParameterFromAnotherConstant(t *testing.T) {
 	missing := uuid.MustNew().String()
 	root = metadataProject(t)
 	constantsLinked(t, root, missing)
-	catalog, err = Load(root)
-	if err != nil {
-		t.Fatalf("a link to a deleted constant is refused, not carried: %v", err)
-	}
-	unresolved := catalog.UnresolvedReferences()
+	unresolved := unresolvedOf(t, root)
 	if len(unresolved) != 1 || unresolved[0].ID.String() != missing || !strings.Contains(unresolved[0].Where, "Отбор.ВалютаЦены") {
 		t.Fatalf("a link to a deleted constant is not listed: %+v", unresolved)
 	}

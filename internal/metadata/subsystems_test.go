@@ -98,13 +98,9 @@ func TestLoadValidatesSubsystemReferences(t *testing.T) {
 		[]byte("format: 1\nid: "+validID.String()+"\nname: ПродажиРозница\ntitle: {ru: Розница}\nmembers: ["+unknownMemberID.String()+"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// A member naming nothing is a deleted object the subsystem kept: carried,
-	// and listed for the import report rather than refusing the configuration.
-	catalog, err := load(root, true)
-	if err != nil {
-		t.Fatalf("subsystem with a stale member refused: %v", err)
-	}
-	if unresolved := catalog.UnresolvedReferences(); len(unresolved) != 1 || unresolved[0].ID != unknownMemberID {
+	// A member naming nothing is a deleted object the subsystem kept: an error
+	// of the project, naming the place.
+	if unresolved := unresolvedOf(t, root); len(unresolved) != 1 || unresolved[0].ID != unknownMemberID {
 		t.Fatalf("unresolved = %+v, want the stale member", unresolved)
 	}
 

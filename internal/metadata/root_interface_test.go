@@ -95,11 +95,13 @@ commands_visibility:
 	}
 }
 
-// A form, a role, a command or a group the configuration no longer has is
-// carried and noted, never refused: the home pages of erp and sb name 1 and 6
-// forms that are gone, the one of acc a role that is gone. Defect caught: the
-// root's interface named nothing a note would ever find.
-func TestRootInterfaceNotesWhatPointsAtNothing(t *testing.T) {
+// A form, a role, a command or a group the configuration no longer has is an
+// error of the project: the home pages of erp and sb name 1 and 6 forms that
+// are gone, the one of acc a role that is gone, and the import does not carry
+// them. The strict load refuses the project naming the place; the reading for
+// editing opens it and lists the reference to be fixed (owner, 05.10.2026). Defect caught: the
+// root's interface naming nothing the check would ever find.
+func TestRootInterfaceNamesWhatPointsAtNothing(t *testing.T) {
 	t.Parallel()
 	root := rootInterfaceProject(t)
 	goneForm, goneRole, goneCommand := uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String()
@@ -107,15 +109,9 @@ func TestRootInterfaceNotesWhatPointsAtNothing(t *testing.T) {
 		"  - {form: "+goneForm+", visibility: {common: true, roles: [{role: "+goneRole+", visible: false}]}}\n")
 	writeText(t, root, "", project.MainSectionCommandInterfaceFile, "commands_order:\n"+
 		"  - {command: "+goneCommand+", group: {group: "+rootInterfaceGroup+"}}\n")
-	catalog, err := Load(root)
-	if err != nil {
-		t.Fatalf("a home page naming what is gone was refused: %v", err)
-	}
 	noted := map[string]string{}
-	for _, note := range catalog.Notes() {
-		if note.Kind == NoteUnresolvedReference {
-			noted[note.Written] = note.Where
-		}
+	for _, item := range unresolvedOf(t, root) {
+		noted[item.ID.String()] = item.Where
 	}
 	for id, where := range map[string]string{
 		goneForm:           "the configuration's home page left form",

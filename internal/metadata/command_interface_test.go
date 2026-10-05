@@ -120,13 +120,15 @@ func TestCommandInterfaceRefusesWhatNamesNothingOrTwoThings(t *testing.T) {
 }
 
 // What the command interface names is resolved against the configuration, and
-// what names nothing is carried and listed, not refused. The prototype's own
+// what names nothing is an error of the project. About a thousand references
+// of the configurations being moved point at deleted things; the import does
+// not carry them. The strict load refuses the project naming the place; the reading for
+// editing opens it and lists the reference to be fixed (owner, 05.10.2026). The prototype's own
 // notation is not a reference and is not listed.
 //
-// Defect caught: a stale command, object, group, role or section refusing the
-// configuration - about a thousand references of the configurations being
-// moved point at deleted things - and a stale reference carried without a
-// trace; and the opposite, a live reference taken for a stale one.
+// Defect caught: a stale command, object, group, role or section accepted
+// without a trace, or refused without being named; and the opposite, a live
+// reference taken for a stale one.
 func TestCommandInterfaceListsWhatPointsAtNothing(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
@@ -171,12 +173,8 @@ command_interface:
     - {object: `+staleObject.String()+`, standard: open-list, group: {group: `+staleGroup.String()+`}}
   subsystems_order: [`+staleChild.String()+`]
 `)
-	catalog, err = Load(root)
-	if err != nil {
-		t.Fatalf("stale references refused: %v", err)
-	}
 	var listed []uuid.UUID
-	for _, item := range catalog.UnresolvedReferences() {
+	for _, item := range unresolvedOf(t, root) {
 		listed = append(listed, item.ID)
 	}
 	want := []uuid.UUID{staleCommand, staleRole, staleObject, staleGroup, staleChild}
@@ -215,15 +213,16 @@ func TestRootOrdersAndHidesTheSections(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeMetadata(t, root, SubsystemKind, sales.String(), "format: 1\nid: "+sales.String()+"\nname: Продажи\ntitle: {ru: Продажи}\n")
-	catalog, err := Load(root)
+	unresolved := unresolvedOf(t, root)
+	catalog, err := read(root, true, false)
 	if err != nil {
-		t.Fatalf("stale section or role refused: %v", err)
+		t.Fatal(err)
 	}
 	if !slices.Equal(catalog.Project.SubsystemsOrder, []uuid.UUID{purchases, sales}) {
 		t.Fatalf("order of the sections = %v", catalog.Project.SubsystemsOrder)
 	}
 	var listed []uuid.UUID
-	for _, item := range catalog.UnresolvedReferences() {
+	for _, item := range unresolved {
 		listed = append(listed, item.ID)
 	}
 	if !slices.Equal(listed, []uuid.UUID{purchases, role}) {

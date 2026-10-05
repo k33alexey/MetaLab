@@ -180,13 +180,12 @@ func TestFolderNameIsLimitedByTheFileSystemInBytes(t *testing.T) {
 }
 
 // A role naming a form by an identifier nothing carries - the form deleted and
-// the role left behind, as in one report of erp - is carried, opens the
-// generated form, and is listed for the import report.
+// the role left behind, as in one report of erp - is an error of the project. The strict load refuses the project naming the place; the reading for
+// editing opens it and lists the reference to be fixed (owner, 05.10.2026).
 //
-// Defect caught: the stale role refusing the whole configuration at load; the
-// stale role silently dropped; and a stale role taken for a form the object
-// keeps.
-func TestFormRoleNamingADeletedFormIsCarriedAndListed(t *testing.T) {
+// Defect caught: the stale role accepted silently; and a stale role taken for
+// a form the object keeps.
+func TestFormRoleNamingADeletedFormIsNamed(t *testing.T) {
 	t.Parallel()
 	stale := uuid.MustNew()
 	root := metadataProject(t)
@@ -198,11 +197,11 @@ code: {type: string, length: 9}
 description_length: 150
 forms: {object: `+stale.String()+`}
 `)
-	catalog, err := Load(root)
+	unresolved := unresolvedOf(t, root)
+	catalog, err := read(root, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	unresolved := catalog.UnresolvedReferences()
 	if len(unresolved) != 1 || unresolved[0].ID != stale || !strings.Contains(unresolved[0].Where, "Контрагенты") {
 		t.Fatalf("unresolved = %+v, want the object form of Контрагенты", unresolved)
 	}

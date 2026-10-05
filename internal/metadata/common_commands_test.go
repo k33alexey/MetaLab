@@ -133,14 +133,14 @@ representation: picture-and-text
 	}
 }
 
-// A command placed in a group nothing carries is carried, not refused: the
-// prototype saves it (two catalogs of sb keep one) and draws the command
-// nowhere. What must not happen is silence - the reference is listed among the
-// unresolved ones, which is what the import report shows.
+// A command placed in a group nothing carries is an error of the project: the
+// prototype saves it (two catalogs of sb keep one), and the import does not
+// carry it but lists it. The strict load refuses the project naming the place; the reading for
+// editing opens it and lists the reference to be fixed (owner, 05.10.2026).
 //
-// Defect caught: a stale group refusing the whole configuration at load, or
-// the stale group being dropped without a trace.
-func TestCommandPlacedInAGroupThatDoesNotExistIsCarriedAndListed(t *testing.T) {
+// Defect caught: a stale group accepted silently, or refused without saying
+// which command.
+func TestCommandPlacedInAGroupThatDoesNotExistIsNamed(t *testing.T) {
 	t.Parallel()
 	for name, write := range map[string]func(t *testing.T, root string){
 		"общая команда": func(t *testing.T, root string) {
@@ -168,11 +168,7 @@ commands:
 			t.Parallel()
 			root := metadataProject(t)
 			write(t, root)
-			catalog, err := Load(root)
-			if err != nil {
-				t.Fatalf("%s: refused: %v", name, err)
-			}
-			unresolved := catalog.UnresolvedReferences()
+			unresolved := unresolvedOf(t, root)
 			if len(unresolved) != 1 || unresolved[0].ID.String() != commandGroupID ||
 				!strings.Contains(unresolved[0].Where, "Открыть") {
 				t.Fatalf("%s: unresolved = %+v, want the group of Открыть", name, unresolved)

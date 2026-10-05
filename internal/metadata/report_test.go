@@ -216,7 +216,7 @@ func TestMainSchemaIsTheReportsOwnCompositionSchema(t *testing.T) {
   - {id: ` + printForm + `, name: Печать, title: {ru: Печать}, kind: spreadsheet}`
 	)
 	// A schema that names no template of the report is a reference to what
-	// is gone: carried and noted (A3). A template of the report holding
+	// is gone: an error of the project, named. A template of the report holding
 	// something else is refused - that is no reference to nothing.
 	for name, test := range map[string]struct {
 		schema string
@@ -248,18 +248,21 @@ templates:
   - {id: `+otherSchema+`, name: Схема, title: {ru: Схема}, kind: composition-schema}
 `)
 			writeTemplateContent(t, root, ReportKind, "Остатки", "Схема", "content.yaml", "format: 1\n")
-			catalog, err := Load(root)
-			if test.valid && err != nil {
-				t.Fatalf("the report was rejected: %v", err)
-			}
+			_, err := Load(root)
 			if !test.valid {
 				if err == nil || !strings.Contains(err.Error(), "not a composition schema") {
 					t.Fatalf("refused for another reason or not at all: %v", err)
 				}
 				return
 			}
-			if noted := hasUnresolvedNote(catalog, "report Продажи main schema", test.schema); noted != test.noted {
-				t.Fatalf("main schema noted = %v, want %v: %+v", noted, test.noted, catalog.Notes())
+			if !test.noted {
+				if err != nil {
+					t.Fatalf("the report was rejected: %v", err)
+				}
+				return
+			}
+			if !hasUnresolved(t, root, "report Продажи main schema", test.schema) {
+				t.Fatal("the main schema that is not there is not named")
 			}
 		})
 	}

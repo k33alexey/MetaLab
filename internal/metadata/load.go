@@ -22,7 +22,16 @@ func Load(root string) (*Catalog, error) {
 
 // Role editing must also work when an existing role has a dangling reference.
 // Only the editor-schema path skips roles; runtime Load always validates them.
+// A load with the roles is strict, one without them is a reading for editing.
 func load(root string, includeRoles bool) (*Catalog, error) {
+	return read(root, includeRoles, includeRoles)
+}
+
+// read is the load itself. A strict one refuses a project that refers to an
+// object it does not have; one that is not collects such references
+// (UnresolvedReferences), as the reading for editing must to open a project
+// so that it can be fixed (ML-STUDIO.md).
+func read(root string, includeRoles, strict bool) (*Catalog, error) {
 	configuration, err := project.ValidateLayout(root)
 	if err != nil {
 		return nil, err
@@ -568,6 +577,11 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	}
 	if err := catalog.checkFormAttributes(); err != nil {
 		return nil, err
+	}
+	if strict {
+		if err := catalog.refuseUnresolved(); err != nil {
+			return nil, err
+		}
 	}
 	if err := catalog.collectHelpPages(root); err != nil {
 		return nil, err

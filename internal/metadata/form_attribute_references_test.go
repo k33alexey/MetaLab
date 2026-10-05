@@ -97,41 +97,30 @@ func TestEveryReferenceOfAFormAttributeIsChecked(t *testing.T) {
 				t.Fatal(err)
 			}
 			writeFile(t, path, strings.ReplaceAll(string(content), test.target, refGone))
-			catalog, err := Load(root)
 			if test.refused {
+				_, err := Load(root)
 				if err == nil || !strings.HasPrefix(err.Error(), test.where+" ") || !strings.Contains(err.Error(), refGone) {
 					t.Fatalf("err = %v", err)
 				}
 				return
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			var found []Note
-			for _, note := range catalog.Notes() {
-				if note.Kind == NoteUnresolvedReference {
-					found = append(found, note)
-				}
-			}
-			// Every mention of the target was broken; each place is noted.
-			if len(found) == 0 {
-				t.Fatalf("nothing noted: %+v", catalog.Notes())
-			}
-			for _, note := range found {
-				if note.Written != refGone {
-					t.Fatalf("notes = %+v", found)
+			// Every mention of the target was broken; each place is named.
+			found := unresolvedOf(t, root)
+			for _, item := range found {
+				if item.ID.String() != refGone {
+					t.Fatalf("unresolved = %+v", found)
 				}
 			}
 			if !containsWhere(found, test.where) {
-				t.Fatalf("no note at %q: %+v", test.where, found)
+				t.Fatalf("nothing at %q: %+v", test.where, found)
 			}
 		})
 	}
 }
 
-func containsWhere(notes []Note, where string) bool {
-	for _, note := range notes {
-		if note.Where == where {
+func containsWhere(unresolved []UnresolvedReference, where string) bool {
+	for _, item := range unresolved {
+		if item.Where == where {
 			return true
 		}
 	}

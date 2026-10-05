@@ -67,9 +67,9 @@ forms:
 }
 
 // A report says where its variants and its settings are kept. A storage that
-// is there resolves; one that is gone is carried and noted, so the report of
-// the import names it.
-func TestReportStorageThatIsGoneIsNoted(t *testing.T) {
+// is there resolves; one that is gone is an error of the project. The strict load refuses the project naming the place; the reading for
+// editing opens it and lists the reference to be fixed (owner, 05.10.2026).
+func TestReportStorageThatIsGoneIsNamed(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
 	writeMetadata(t, root, SettingsStorageKind, storageID, `format: 1
@@ -93,22 +93,21 @@ name: Остатки
 title: {ru: Остатки}
 variants_storage: `+storageMissing+`
 `)
-	// A storage that is gone is carried and noted, not refused (A3).
-	// Defect caught: the whole configuration stopped loading on it.
-	catalog, err := Load(root)
-	if err != nil {
-		t.Fatalf("a report keeping its variants in a storage that is gone was refused: %v", err)
-	}
-	if !hasUnresolvedNote(catalog, "report Остатки variants storage", storageMissing) {
-		t.Fatalf("the storage that is gone is not noted: %+v", catalog.Notes())
+	// A storage that is gone is an error of the project naming the place
+	// (owner, 05.10.2026). Defect caught: the reference accepted silently,
+	// or refused without saying where.
+	if !hasUnresolved(t, root, "report Остатки variants storage", storageMissing) {
+		t.Fatal("the storage that is gone is not named")
 	}
 }
 
-// hasUnresolvedNote reports whether the catalog notes a reference by
-// identifier to nothing at the given place.
-func hasUnresolvedNote(catalog *Catalog, where, id string) bool {
-	for _, note := range catalog.Notes() {
-		if note.Kind == NoteUnresolvedReference && note.Where == where && note.Written == id {
+// hasUnresolved reports whether the project refers by identifier to nothing
+// at the given place: the strict load refuses it naming the place, and the
+// reading for editing lists it.
+func hasUnresolved(t *testing.T, root, where, id string) bool {
+	t.Helper()
+	for _, item := range unresolvedOf(t, root) {
+		if item.Where == where && item.ID.String() == id {
 			return true
 		}
 	}

@@ -19,12 +19,6 @@ import (
 // property, and needs no note.
 type NoteKind string
 
-const (
-	// NoteUnresolvedReference is a reference by identifier to an object the
-	// configuration does not hold - see UnresolvedReference.
-	NoteUnresolvedReference NoteKind = "unresolved-reference"
-)
-
 // Note is one place where the model accepted a state of a NoteKind.
 type Note struct {
 	Kind NoteKind
@@ -45,17 +39,11 @@ type NoteKindInfo struct {
 	Behaviour string
 }
 
-// noteKinds is every kind of note, in the order the report lists them. A kind
-// is either collected while the configuration is read (the references, which
-// only the load resolves) or found afterwards by its rule in noteRules.
-var noteKinds = []NoteKindInfo{
-	{
-		Kind: NoteUnresolvedReference,
-		Meaning: "Ссылка по идентификатору на объект, которого в конфигурации нет: " +
-			"объект удалили, а ссылку оставили. Прототип такую конфигурацию сохраняет и открывает.",
-		Behaviour: "Ссылка несётся как записана и действует как незаданная.",
-	},
-}
+// noteKinds is every kind of note, in the order the report lists them; each is
+// found in the loaded catalog by its rule in noteRules. A reference to an
+// object the project does not have is not a note: it is an error
+// (UnresolvedReference).
+var noteKinds []NoteKindInfo
 
 // noteRules finds the places of a kind in a loaded catalog, calling note for
 // each. A kind collected during the load has no rule.
@@ -72,12 +60,6 @@ func NoteKinds() []NoteKindInfo {
 func (catalog *Catalog) Notes() []Note {
 	var notes []Note
 	for _, info := range noteKinds {
-		if info.Kind == NoteUnresolvedReference {
-			for _, item := range catalog.unresolved {
-				notes = append(notes, Note{Kind: NoteUnresolvedReference, Where: item.Where, Written: item.ID.String()})
-			}
-			continue
-		}
 		if rule := noteRules[info.Kind]; rule != nil {
 			rule(catalog, func(where, written string) {
 				notes = append(notes, Note{Kind: info.Kind, Where: where, Written: written})

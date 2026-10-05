@@ -229,8 +229,9 @@ var compositeReferences = []struct {
 	kind     Kind
 	referrer string
 	target   string
-	// noted is a reference the prototype keeps when its target is gone, and
-	// so do we, with a note: the rest are refused.
+	// noted is a reference the prototype keeps when its target is gone: the
+	// strict load refuses it as an unresolved reference, which the reading
+	// for editing lists to be fixed; the rest are refused outright.
 	noted bool
 }{
 	{"параметр сеанса → справочник", SessionParameterKind, "ТекущийПользователь", cmpUsers, false},
@@ -515,23 +516,19 @@ func TestCompositeProjectRefusesOrNotesEveryBrokenReference(t *testing.T) {
 			t.Parallel()
 			root := compositeProject(t)
 			breakReference(t, root, reference.kind, reference.referrer, reference.target)
-			catalog, err := Load(root)
 			if !reference.noted {
+				_, err := Load(root)
 				if err == nil {
-					t.Fatalf("a reference to nothing was accepted; notes: %+v", catalog.Notes())
+					t.Fatal("a reference to nothing was accepted")
 				}
 				if !strings.Contains(err.Error(), reference.referrer) || !strings.Contains(err.Error(), compositeID(999)) {
 					t.Fatalf("the refusal does not say where: %v", err)
 				}
 				return
 			}
-			if err != nil {
-				t.Fatalf("a reference the prototype keeps was refused: %v", err)
-			}
-			notes := catalog.Notes()
-			if len(notes) != 1 || notes[0].Kind != NoteUnresolvedReference ||
-				!strings.Contains(notes[0].Where, reference.referrer) || notes[0].Written != compositeID(999) {
-				t.Fatalf("notes = %+v", notes)
+			unresolved := unresolvedOf(t, root)
+			if len(unresolved) != 1 || !strings.Contains(unresolved[0].Where, reference.referrer) || unresolved[0].ID.String() != compositeID(999) {
+				t.Fatalf("unresolved = %+v", unresolved)
 			}
 		})
 	}

@@ -80,22 +80,20 @@ operations:
 	}
 }
 
-// A service describing itself by a package that is gone keeps the reference,
-// and the report of the import names it.
-func TestWebServicePackageThatIsGoneIsNoted(t *testing.T) {
+// A service describing itself by a package that is gone is an error of the
+// project. The strict load refuses the project naming the place; the reading for
+// editing opens it and lists the reference to be fixed (owner, 05.10.2026).
+func TestWebServicePackageThatIsGoneIsNamed(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
 	writeWebService(t, root, `namespace: http://example.org/exchange/1.0
 packages: [{package: `+firstXDTOPackage+`}]
 `)
-	// A package that is gone is carried and noted, not refused (A3). Defect
-	// caught: the whole configuration stopped loading on it.
-	catalog, err := Load(root)
-	if err != nil {
-		t.Fatalf("a service described by a package that is gone was refused: %v", err)
-	}
-	if !hasUnresolvedNote(catalog, "web service ОбменДанными package", firstXDTOPackage) {
-		t.Fatalf("the package that is gone is not noted: %+v", catalog.Notes())
+	// A package that is gone is an error of the project naming the place
+	// (owner, 05.10.2026). Defect caught: the reference accepted silently, or
+	// refused without saying where.
+	if !hasUnresolved(t, root, "web service ОбменДанными package", firstXDTOPackage) {
+		t.Fatal("the package that is gone is not named")
 	}
 }
 

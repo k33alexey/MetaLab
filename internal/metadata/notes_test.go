@@ -16,10 +16,6 @@ import (
 // example here, so a dropped refusal cannot get a kind of note without a proof
 // that the note appears.
 var noteExamples = map[NoteKind]func(t *testing.T, root string){
-	NoteUnresolvedReference: func(t *testing.T, root string) {
-		id := uuid.MustNew().String()
-		writeMetadata(t, root, SubsystemKind, id, "format: 1\nid: "+id+"\nname: Продажи\ntitle: {ru: Продажи}\nmembers: ["+uuid.MustNew().String()+"]\n")
-	},
 	NoteUnresolvedPath: func(t *testing.T, root string) {
 		noteCatalog(t, root, "", noteField("string", "    choice: {parameter_links: [{name: Отбор.Владелец, source: {unresolved: \"-3\"}}]}\n"))
 	},
@@ -284,7 +280,7 @@ func TestEveryNoteKindIsDescribed(t *testing.T) {
 			t.Errorf("kind %q is listed twice", info.Kind)
 		}
 		seen[info.Kind] = true
-		if noteRules[info.Kind] == nil && info.Kind != NoteUnresolvedReference {
+		if noteRules[info.Kind] == nil {
 			t.Errorf("kind %q has no rule and is not collected by the load: its notes never appear", info.Kind)
 		}
 	}

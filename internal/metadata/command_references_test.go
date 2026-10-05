@@ -7,10 +7,11 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// A command placed in a group that is gone is noted, wherever the command
+// A command placed in a group that is gone is named, wherever the command
 // lives: a common command, and every command of every object - not only those
-// of the first one looked at.
-func TestEveryCommandInAGroupThatIsGoneIsNoted(t *testing.T) {
+// of the first one looked at. The strict load refuses the project naming the place; the reading for
+// editing opens it and lists the reference to be fixed (owner, 05.10.2026).
+func TestEveryCommandInAGroupThatIsGoneIsNamed(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
 	gone := []string{uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String()}
@@ -22,17 +23,14 @@ func TestEveryCommandInAGroupThatIsGoneIsNoted(t *testing.T) {
 			"commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, group_ref: "+gone[index+1]+"}\n")
 		writeCommandModule(t, root, CatalogKind, name, "Подбор")
 	}
-	catalog, err := Load(root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	unresolved := unresolvedOf(t, root)
 	noted := map[string]bool{}
-	for _, item := range catalog.UnresolvedReferences() {
+	for _, item := range unresolved {
 		noted[item.ID.String()] = true
 	}
 	for _, id := range gone {
 		if !noted[id] {
-			t.Fatalf("group %s is not noted; noted %v", id, catalog.UnresolvedReferences())
+			t.Fatalf("group %s is not listed; listed %v", id, unresolved)
 		}
 	}
 }

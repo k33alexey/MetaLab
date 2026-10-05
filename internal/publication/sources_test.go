@@ -621,6 +621,17 @@ func TestRootFilesChangeTheContentDigest(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			if file == project.HomePageFile {
+				// The home page shows a form, and a form it names must be
+				// there: a reference to nothing refuses the project.
+				form := filepath.Join(root, "metadata", "common-forms", "Рабочий", project.FormMetadataFile)
+				if err := os.MkdirAll(filepath.Dir(form), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(form, []byte("format: 1\nid: 5b000000-0000-4000-8000-000000000001\nname: Рабочий\ntitle: {ru: Рабочий}\nkind: common\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
 			write(rootFileContent(file, "первая"))
 			first, err := inspect(context.Background(), root, SourceState{})
 			if err != nil {
