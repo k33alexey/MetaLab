@@ -566,6 +566,9 @@ func load(root string, includeRoles bool) (*Catalog, error) {
 	if err := catalog.indexAndValidate(root); err != nil {
 		return nil, err
 	}
+	if err := catalog.checkFormAttributes(); err != nil {
+		return nil, err
+	}
 	if err := catalog.collectHelpPages(root); err != nil {
 		return nil, err
 	}
@@ -3009,7 +3012,8 @@ func (catalog *Catalog) indexObjectForms(directory string, directoryKind Kind, k
 		if err := validateObjectFormFolder(directory, entry.Name(), formType); err != nil {
 			return fmt.Errorf("%s %s form %s: %w", kind, name, entry.Name(), err)
 		}
-		found[strings.ToLower(entry.Name())] = objectFormRef{name: entry.Name(), id: id, ordinary: formType == OrdinaryFormType}
+		found[strings.ToLower(entry.Name())] = objectFormRef{name: entry.Name(), id: id, ordinary: formType == OrdinaryFormType,
+			path: filepath.Join(directory, "forms", entry.Name(), project.FormMetadataFile)}
 	}
 	for _, slot := range slots {
 		reference, problem := parseFormReference(slot.form)
@@ -3029,7 +3033,7 @@ func (catalog *Catalog) indexObjectForms(directory string, directoryKind Kind, k
 	if catalog.objectForms[directoryKind] == nil {
 		catalog.objectForms[directoryKind] = map[string]objectFormIndex{}
 	}
-	catalog.objectForms[directoryKind][strings.ToLower(name)] = objectFormIndex{object: name, forms: found}
+	catalog.objectForms[directoryKind][strings.ToLower(name)] = objectFormIndex{object: name, kind: kind, forms: found}
 	return nil
 }
 
@@ -3046,6 +3050,7 @@ func (catalog *Catalog) indexCommonForms(root string) error {
 	}
 	catalog.commonFormNames = make(map[string]bool, len(forms))
 	catalog.ordinaryCommonForms = map[string]bool{}
+	catalog.commonFormsRead = forms
 	for _, form := range forms {
 		catalog.commonFormNames[strings.ToLower(form.Name)] = true
 		if form.Type == OrdinaryFormType {
@@ -3113,10 +3118,11 @@ func validateObjectFormFolder(directory, form string, formType FormType) error {
 // description and the kind of form it is, and checks the description agrees
 // about the form's name.
 //
-// Only these fields are read. The rest of a form is a tree of elements that
-// nothing here needs, and a form whose body is half-written must not stop the
-// whole configuration from loading - it is the form designer's business to
-// refuse it, not the loader's.
+// Only these fields are read here, while the objects are still being read.
+// The whole form is read once everything it may refer to is loaded
+// (checkFormAttributes), and a form that does not read refuses the project
+// there: the load is strict. Showing such a form as an error without closing
+// the project is the Studio's reading for editing, not this one.
 func readObjectFormIdentity(directory, form string) (uuid.UUID, FormType, error) {
 	path := filepath.Join(directory, "forms", form, project.FormMetadataFile)
 	info, err := os.Lstat(path)

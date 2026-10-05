@@ -632,6 +632,11 @@ type Catalog struct {
 	// once when the project is read. A role may open a common form instead of
 	// one of the object's own, and then this is what says the form is there.
 	commonFormNames map[string]bool
+	// commonFormsRead are the common forms as the load read them, kept only
+	// until their attributes are checked; formTypeLists are the type
+	// descriptions of the attributes of every form, kept for the notes.
+	commonFormsRead []ManagedForm
+	formTypeLists   []formTypeList
 	// ordinaryCommonForms is the common forms of the ordinary application, by
 	// name as written: their modules are carried and not compiled.
 	ordinaryCommonForms             map[string]bool

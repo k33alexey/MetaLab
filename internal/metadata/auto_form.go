@@ -156,7 +156,9 @@ func (catalog *Catalog) baseForm(objectKind Kind, id uuid.UUID, name string, tit
 // written, and its forms by folded name.
 type objectFormIndex struct {
 	object string
-	forms  map[string]objectFormRef
+	// kind is the word messages name the object's kind by.
+	kind  string
+	forms map[string]objectFormRef
 }
 
 // objectFormRef is one form of an object: the name its folder was called, and
@@ -167,6 +169,9 @@ type objectFormRef struct {
 	// ordinary is a form of the ordinary application: carried with its body
 	// and its module, never built and its module never compiled.
 	ordinary bool
+	// path is the form's description on disk, read whole once everything it
+	// may reference is loaded (checkFormAttributes).
+	path string
 }
 
 // ObjectFormNames returns the names of the forms one object keeps, as written
