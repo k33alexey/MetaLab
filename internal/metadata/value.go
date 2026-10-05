@@ -40,7 +40,9 @@ const (
 	// a type nothing in the configuration has - "<type id>.<item id>", 31,
 	// 17 and 164 times as a filling value in erp, acc and sb, and a few times
 	// in choice parameters. Data keeps the text word for word. It refers to
-	// nothing and is held by no field, so it filters and fills nothing.
+	// nothing and is held by no field, so it filters and fills nothing: a
+	// remnant of what was deleted, and so an error of the project
+	// (collectRemnants).
 	UnresolvedReferenceValue TypeKind = "unresolved-reference"
 )
 

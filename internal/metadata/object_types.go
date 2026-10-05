@@ -95,8 +95,8 @@ const (
 	// VanishedType is a type of an object the configuration no longer has:
 	// the prototype then writes the identifier of the type instead of its
 	// name (v8:TypeId; a command of erp and 16 of a sample of 8.3.21). The
-	// identifier is kept in Type.Reference; nothing resolves it. A note
-	// (NoteVanishedType).
+	// identifier is kept in Type.Reference; nothing resolves it. A remnant of
+	// what was deleted, and so an error of the project (collectRemnants).
 	VanishedType TypeKind = "vanished-type"
 )
 

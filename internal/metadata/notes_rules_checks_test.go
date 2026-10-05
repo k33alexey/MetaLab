@@ -15,13 +15,14 @@ func notedBy(catalog *Catalog, rule func(*Catalog, func(where, written string)))
 	return places
 }
 
-// A link by type that leads nowhere is noted where it stands - in an attribute
-// of the object and in an attribute of its table part - and one that resolves
-// is not. The place is named in the words of the project's files.
+// A link by type that leads nowhere is collected as a remnant where it
+// stands - in an attribute of the object and in an attribute of its table
+// part - and one that resolves is not. The place is named in the words of the
+// project's files.
 //
-// Defect caught: a resolved link noted; the holders inside lists not walked at
-// all; the place named table-parts instead of table_parts.
-func TestUnresolvedLinkByTypeIsNotedWhereItStands(t *testing.T) {
+// Defect caught: a resolved link taken for a remnant; the holders inside
+// lists not walked at all; the place named table-parts instead of table_parts.
+func TestUnresolvedLinkByTypeIsNamedWhereItStands(t *testing.T) {
 	t.Parallel()
 	link := func(path FieldPath) FieldChoice { return FieldChoice{LinkByType: &TypeLink{Source: path}} }
 	catalog := &Catalog{Documents: []DocumentDefinition{{
@@ -32,9 +33,13 @@ func TestUnresolvedLinkByTypeIsNotedWhereItStands(t *testing.T) {
 		},
 		TableParts: []TablePart{{Name: "Товары", Attributes: []Attribute{{Name: "Упаковка", Choice: link(FieldPath{Unresolved: "Нет.Другого"})}}}},
 	}}}
-	places := notedBy(catalog, noteUnresolvedPath)
+	catalog.collectRemnants()
+	var places []string
+	for _, item := range catalog.unresolved {
+		places = append(places, item.Where)
+	}
 	if len(places) != 2 {
-		t.Fatalf("noted %v, want the two links that lead nowhere", places)
+		t.Fatalf("collected %v, want the two links that lead nowhere", places)
 	}
 	if !strings.Contains(places[0], "attributes Вид") || !strings.Contains(places[1], "table_parts Товары attributes Упаковка") {
 		t.Fatalf("places named as %v", places)

@@ -16,18 +16,11 @@ import (
 // example here, so a dropped refusal cannot get a kind of note without a proof
 // that the note appears.
 var noteExamples = map[NoteKind]func(t *testing.T, root string){
-	NoteUnresolvedPath: func(t *testing.T, root string) {
-		noteCatalog(t, root, "", noteField("string", "    choice: {parameter_links: [{name: Отбор.Владелец, source: {unresolved: \"-3\"}}]}\n"))
-	},
 	NoteUnusedBound: func(t *testing.T, root string) {
 		noteCatalog(t, root, "", noteField("string", "    presentation: {min_value: \"0\"}\n"))
 	},
 	NoteFillingNotHeld: func(t *testing.T, root string) {
 		noteCatalog(t, root, "", noteField("string", "    filling: {value: {kind: boolean, data: \"true\"}}\n"))
-	},
-	NoteValueOfVanishedType: func(t *testing.T, root string) {
-		noteCatalog(t, root, "", noteField("string",
-			"    filling: {value: {kind: unresolved-reference, data: \"466cbe70-c94c-4cdc-a0fb-f9f9084bdef2.00000000-0000-0000-0000-000000000000\"}}\n"))
 	},
 	NoteInactiveHierarchy: func(t *testing.T, root string) {
 		noteCatalog(t, root, "hierarchy: {kind: folders-and-items, folders_on_top: true, level_count: 2}\n", "")
@@ -208,10 +201,6 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		id := uuid.MustNew().String()
 		writeMetadata(t, root, DataProcessorKind, id, "format: 1\nid: "+id+"\nname: Заполнение\ntitle: {ru: Заполнение}\n"+
 			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Отбор, title: {ru: Отбор}, types: [{kind: platform, name: \"cfg:Filter\"}]}\n")
-	},
-	NoteVanishedType: func(t *testing.T, root string) {
-		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter: [{kind: vanished-type, reference: "+uuid.MustNew().String()+"}]}\n", "")
-		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
 	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")

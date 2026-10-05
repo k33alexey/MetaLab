@@ -16,10 +16,8 @@ import (
 // iteration of block 2 stopped refusing; the comment beside the old refusal's
 // place says why, and the description below says it for the report.
 const (
-	NoteUnresolvedPath             NoteKind = "unresolved-path"
 	NoteUnusedBound                NoteKind = "unused-bound"
 	NoteFillingNotHeld             NoteKind = "filling-not-held"
-	NoteValueOfVanishedType        NoteKind = "value-of-vanished-type"
 	NoteInactiveHierarchy          NoteKind = "inactive-hierarchy"
 	NoteFolderUseWithoutFolds      NoteKind = "folder-use-without-folders"
 	NoteFieldOutsideIndex          NoteKind = "field-outside-full-text-index"
@@ -57,7 +55,6 @@ const (
 	NoteTextOfSpaces               NoteKind = "text-of-spaces"
 	NoteHelpInUndeclaredLanguage   NoteKind = "help-in-undeclared-language"
 	NotePlatformTypeByName         NoteKind = "platform-type-by-name"
-	NoteVanishedType               NoteKind = "vanished-type"
 	NoteStandardFieldOfDocument    NoteKind = "standard-field-of-document"
 	NoteLeadingDataNotDimension    NoteKind = "leading-data-not-dimension"
 	NotePictureSettingsLeft        NoteKind = "picture-settings-without-picture"
@@ -66,10 +63,6 @@ const (
 
 func init() {
 	noteKinds = append(noteKinds,
-		NoteKindInfo{NoteUnresolvedPath,
-			"Связь параметров выбора или связь по типу записана путём, который не ведёт ни к одному полю объекта: " +
-				"по идентификатору чужого объекта или числом. Так остаётся связь реквизита, скопированного из другого объекта.",
-			"Путь несётся как записан, связь ничего не отбирает."},
 		NoteKindInfo{NoteUnusedBound,
 			"Минимальное или максимальное значение у поля, которое не хранит одно число, или текст, который не читается числом. " +
 				"Конфигуратор задаёт их только числу; у других типов это след смены типа.",
@@ -77,9 +70,6 @@ func init() {
 		NoteKindInfo{NoteFillingNotHeld,
 			"Значение заполнения типа, которого поле не хранит, — след смены типа поля (пустая ссылка у строкового поля).",
 			"Значение несётся как записано, поле при создании ничем не заполняется."},
-		NoteKindInfo{NoteValueOfVanishedType,
-			"Значение — ссылка на тип, которого в конфигурации больше нет: записано идентификатором типа.",
-			"Значение несётся как записано; в заполнении ничего не заполняет, в параметре выбора отбирает по несуществующему значению."},
 		NoteKindInfo{NoteInactiveHierarchy,
 			"Настройки иерархии, которые не действуют: вид иерархии, число уровней и «группы сверху» у плоского справочника, " +
 				"число уровней без ограничения, «группы сверху» у иерархии элементов. Конфигуратор пишет их на каждом объекте " +
@@ -206,10 +196,6 @@ func init() {
 			"Тип, который определяет платформа и которого модель не перечисляет поимённо (energy: Отбор, ТипДиаграммы), — " +
 				"у реквизита отчёта или обработки, в определяемом типе.",
 			"Тип несётся по имени и не исполняется: значение такого реквизита — Неопределено."},
-		NoteKindInfo{NoteVanishedType,
-			"Тип объекта, которого в конфигурации больше нет: прототип пишет идентификатор типа вместо имени " +
-				"(у параметра команды erp).",
-			"Тип несётся как записан и ничего не означает; команда с таким единственным типом не предлагается нигде."},
 		NoteKindInfo{NoteStandardFieldOfDocument,
 			"Графа журнала или измерение последовательности берёт стандартный реквизит документа (Дата, Номер). " +
 				"Справка описывает обе ссылки как набор реквизитов документов, а стандартный реквизит объектом метаданных не является; " +
@@ -231,10 +217,8 @@ func init() {
 				"рядом с другими типами характеристики себя ничего не добавляют, а без них тип пуст.",
 			"План несётся как записан; его характеристика не принимает ни одного значения."},
 	)
-	noteRules[NoteUnresolvedPath] = noteUnresolvedPath
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
-	noteRules[NoteValueOfVanishedType] = noteValueOfVanishedType
 	noteRules[NoteInactiveHierarchy] = noteInactiveHierarchy
 	noteRules[NoteFolderUseWithoutFolds] = noteFolderUseWithoutFolds
 	noteRules[NoteFieldOutsideIndex] = noteFieldOutsideIndex
@@ -275,24 +259,7 @@ func init() {
 	noteRules[NoteStandardFieldOfDocument] = noteStandardFieldOfDocument
 	noteRules[NoteLeadingDataNotDimension] = noteLeadingDataNotDimension
 	noteRules[NotePictureSettingsLeft] = notePictureSettingsLeft
-	noteRules[NoteVanishedType] = noteVanishedType
 	noteRules[NoteChartHoldsNothing] = noteChartHoldsNothing
-}
-
-func noteUnresolvedPath(catalog *Catalog, note func(where, written string)) {
-	eachNoteHolder(catalog, func(holder noteHolder) {
-		if holder.choice == nil {
-			return
-		}
-		for _, link := range holder.choice.ParameterLinks {
-			if link.Source.Unresolved != "" {
-				note(holder.where+" choice link "+link.Name, link.Source.Unresolved)
-			}
-		}
-		if link := holder.choice.LinkByType; link != nil && link.Source.Unresolved != "" {
-			note(holder.where+" link by type", link.Source.Unresolved)
-		}
-	})
 }
 
 func noteUnusedBound(catalog *Catalog, note func(where, written string)) {
@@ -326,24 +293,6 @@ func noteFillingNotHeld(catalog *Catalog, note func(where, written string)) {
 		}
 		if EffectiveFillingValue(&value, holder.types) == nil {
 			note(holder.where+" filling", string(value.Kind)+" "+value.Data)
-		}
-	})
-}
-
-func noteValueOfVanishedType(catalog *Catalog, note func(where, written string)) {
-	eachNoteHolder(catalog, func(holder noteHolder) {
-		if holder.filling != nil && holder.filling.Value != nil && holder.filling.Value.Kind == UnresolvedReferenceValue {
-			note(holder.where+" filling", holder.filling.Value.Data)
-		}
-		if holder.choice == nil {
-			return
-		}
-		for _, parameter := range holder.choice.Parameters {
-			for _, value := range parameter.Values {
-				if value.Kind == UnresolvedReferenceValue {
-					note(holder.where+" choice parameter "+parameter.Name, value.Data)
-				}
-			}
 		}
 	})
 }
@@ -879,16 +828,6 @@ func notePlatformTypeByName(catalog *Catalog, note func(where, written string)) 
 		for _, item := range types {
 			if item.Kind == PlatformType {
 				note(where, item.Name)
-			}
-		}
-	})
-}
-
-func noteVanishedType(catalog *Catalog, note func(where, written string)) {
-	eachTypeList(catalog, func(where string, types []Type) {
-		for _, item := range types {
-			if item.Kind == VanishedType && item.Reference != nil {
-				note(where, item.Reference.String())
 			}
 		}
 	})

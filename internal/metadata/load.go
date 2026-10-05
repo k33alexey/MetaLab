@@ -578,6 +578,7 @@ func read(root string, includeRoles, strict bool) (*Catalog, error) {
 	if err := catalog.checkFormAttributes(); err != nil {
 		return nil, err
 	}
+	catalog.collectRemnants()
 	if strict {
 		if err := catalog.refuseUnresolved(); err != nil {
 			return nil, err
