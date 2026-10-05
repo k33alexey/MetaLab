@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -58,6 +59,57 @@ type FormAttribute struct {
 	// the attribute's data, a table part of the object for one, named by its
 	// path from the attribute.
 	AdditionalColumns []FormAdditionalColumns `yaml:"additional_columns,omitempty" json:"additionalColumns,omitempty"`
+	// DynamicList is what a dynamic list reads and how (3451 of them in the
+	// configurations being moved). Its settings of the list - filter, order,
+	// conditional appearance - are settings of data composition and come with
+	// their model (block 12).
+	DynamicList *DynamicListSettings `yaml:"dynamic_list,omitempty" json:"dynamicList,omitempty"`
+	// ValueType is the type of the items of a value list, which the platform
+	// checks every item added against (1144 value lists set one).
+	ValueType []Type `yaml:"value_type,omitempty" json:"valueType,omitempty"`
+}
+
+// DynamicListKeyType is how a row of a dynamic list is told apart (help,
+// DynamicListKeyType). Empty is Auto, the platform's default.
+type DynamicListKeyType string
+
+const (
+	DynamicListKeyAuto       DynamicListKeyType = "auto"
+	DynamicListKeyFieldValue DynamicListKeyType = "field-value"
+	DynamicListKeyRowKey     DynamicListKeyType = "row-key"
+	DynamicListKeyRowNumber  DynamicListKeyType = "row-number"
+)
+
+// DynamicListSettings are the properties of a dynamic list a form keeps
+// (STUDIO-DYNAMIC-LIST.md, «Запрос»).
+type DynamicListSettings struct {
+	// MainTable is the object a row of the list stands for, and the virtual
+	// table of it when the list reads one (Balance, RecordsWithExtDimensions,
+	// TasksByExecutive - 20 times). Nil when the list has none: a query of
+	// its own reads what it likes (144 of 3451).
+	MainTable *DynamicListTable `yaml:"main_table,omitempty" json:"mainTable,omitempty"`
+	// ManualQuery says the list reads its own query and not the main table
+	// alone (1548 of 3451); QueryText is that query.
+	ManualQuery bool   `yaml:"manual_query,omitempty" json:"manualQuery,omitempty"`
+	QueryText   string `yaml:"query_text,omitempty" json:"queryText,omitempty"`
+	// DynamicDataRead reads the rows in portions as the list is scrolled
+	// (3208 on, 243 off).
+	DynamicDataRead bool               `yaml:"dynamic_data_read,omitempty" json:"dynamicDataRead,omitempty"`
+	KeyType         DynamicListKeyType `yaml:"key_type,omitempty" json:"keyType,omitempty"`
+	// KeyFields are the fields of the query result that make the key, in
+	// their order.
+	KeyFields []string `yaml:"key_fields,omitempty" json:"keyFields,omitempty"`
+	// The two below are on unless turned off, as in the prototype, which
+	// writes only the «off» (3 and 55 times).
+	NoAutoFillAvailableFields bool `yaml:"no_auto_fill_available_fields,omitempty" json:"noAutoFillAvailableFields,omitempty"`
+	NoAutoSaveUserSettings    bool `yaml:"no_auto_save_user_settings,omitempty" json:"noAutoSaveUserSettings,omitempty"`
+}
+
+// DynamicListTable is the main table of a dynamic list: an object, and the
+// name of its virtual table when it is one.
+type DynamicListTable struct {
+	Object  uuid.UUID `yaml:"object" json:"object"`
+	Virtual string    `yaml:"virtual,omitempty" json:"virtual,omitempty"`
 }
 
 // FormAttributeColumn is a column of an attribute that is a table. The help
@@ -137,6 +189,13 @@ func validateFormAttributes(attributes []FormAttribute, ids map[uuid.UUID]bool, 
 		}
 		issues = append(issues, validateFormRight(path+".view", attribute.View)...)
 		issues = append(issues, validateFormRight(path+".edit", attribute.Edit)...)
+		issues = append(issues, validateDynamicList(path, attribute)...)
+		if len(attribute.ValueType) != 0 {
+			if !slices.ContainsFunc(attribute.Types, func(item Type) bool { return item.Kind == ValueListType }) {
+				issues = append(issues, path+".value_type belongs to a value list")
+			}
+			issues = append(issues, validateTypesIn(path+".value_type", attribute.ValueType, placeFormAttribute)...)
+		}
 		issues = append(issues, validateFormColumns(path+".columns", attribute.Columns, ids, configuration)...)
 		tables := map[string]bool{}
 		for position, additional := range attribute.AdditionalColumns {
@@ -222,6 +281,45 @@ func validateFormRight(path string, right *FormAttributeRight) []string {
 			issues = append(issues, fmt.Sprintf("%s.roles[%d].role already has its answer", path, index))
 		}
 		seen[role.Role] = true
+	}
+	return issues
+}
+
+// validateDynamicList checks the settings of a dynamic list against the form
+// alone; the object of its main table is resolved with the catalog.
+func validateDynamicList(path string, attribute FormAttribute) []string {
+	settings := attribute.DynamicList
+	if settings == nil {
+		return nil
+	}
+	path += ".dynamic_list"
+	single, ok := SingleType(attribute.Types)
+	if !ok || single.Kind != DynamicListType {
+		return []string{path + " belongs to an attribute that is a dynamic list"}
+	}
+	var issues []string
+	if table := settings.MainTable; table != nil {
+		if table.Object.IsZero() {
+			issues = append(issues, path+".main_table.object must be a non-zero UUID")
+		}
+		if table.Virtual != "" && !validIdentifier(table.Virtual) {
+			issues = append(issues, path+".main_table.virtual must be the name of a virtual table")
+		}
+	}
+	switch settings.KeyType {
+	case "", DynamicListKeyAuto, DynamicListKeyFieldValue, DynamicListKeyRowKey, DynamicListKeyRowNumber:
+	default:
+		issues = append(issues, path+".key_type must be auto, field-value, row-key or row-number")
+	}
+	seen := map[string]bool{}
+	for index, field := range settings.KeyFields {
+		place := fmt.Sprintf("%s.key_fields[%d]", path, index)
+		if !validIdentifier(field) {
+			issues = append(issues, place+" must be the name of a field")
+		} else if seen[strings.ToLower(field)] {
+			issues = append(issues, place+" is already in the key")
+		}
+		seen[strings.ToLower(field)] = true
 	}
 	return issues
 }

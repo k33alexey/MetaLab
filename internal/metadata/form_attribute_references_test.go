@@ -34,7 +34,9 @@ func formReferencesProject(t *testing.T) string {
 			"          - {id: "+refExtra+", name: Склад, types: [{kind: catalog, reference: "+cmpWarehouses+"}], edit: {common: false, roles: [{role: "+cmpRole+", value: true}]}}\n"+
 			"  - id: "+refColumn+"\n    name: Цены\n    types: [{kind: value-table}]\n    columns:\n"+
 			"      - {id: c0de0000-0000-4000-8000-000000000107, name: Цена, types: [{kind: defined-type, reference: "+cmpDefinedType+"}], functional_options: ["+cmpOption+"]}\n"+
-			"  - {id: "+refFilter+", name: Отбор, types: [{kind: platform, name: Отбор}]}\n")
+			"  - {id: "+refFilter+", name: Отбор, types: [{kind: platform, name: Отбор}]}\n"+
+			"  - {id: c0de0000-0000-4000-8000-000000000108, name: Список, types: [{kind: dynamic-list}], dynamic_list: {main_table: {object: "+cmpBalances+", virtual: Balance}}}\n"+
+			"  - {id: c0de0000-0000-4000-8000-000000000109, name: Склады, types: [{kind: value-list}], value_type: [{kind: catalog, reference: "+cmpUsers+"}]}\n")
 	writeCommonForm(t, root, "АдреснаяКнига", "format: 1\nid: "+cmpCommonForm+"\nname: АдреснаяКнига\ntitle: {ru: АдреснаяКнига}\nkind: common\nattributes:\n"+
 		"  - {id: "+refCommonAt+", name: Пользователь, types: [{kind: catalog, reference: "+cmpUsers+"}], functional_options: ["+cmpOption+"]}\n")
 	return root
@@ -87,6 +89,10 @@ func TestEveryReferenceOfAFormAttributeIsChecked(t *testing.T) {
 			"common form АдреснаяКнига attribute Пользователь functional option"},
 		"роль": {"catalogs/Номенклатура/forms/ФормаЭлемента/form.yaml", cmpRole, false,
 			"catalog Номенклатура form ФормаЭлемента attribute Объект right of role"},
+		"тип элементов списка значений": {"catalogs/Номенклатура/forms/ФормаЭлемента/form.yaml", cmpUsers, true,
+			"catalog Номенклатура form ФормаЭлемента attribute Склады value type"},
+		"основная таблица динамического списка": {"catalogs/Номенклатура/forms/ФормаЭлемента/form.yaml", cmpBalances, false,
+			"catalog Номенклатура form ФормаЭлемента attribute Список main table"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

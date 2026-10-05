@@ -281,3 +281,96 @@ func refID(value string) *uuid.UUID {
 	}
 	return &id
 }
+
+// A dynamic list keeps what it reads and how, and a value list the type of
+// its items, through YAML and through the Studio's JSON.
+//
+// Defect caught: a property of a dynamic list lost or read into the wrong
+// field - the main table, the query, the key, the two «off» switches whose
+// default is on; the type of a value list's items lost.
+func TestADynamicListAndAValueListKeepTheirSettings(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	source := formAttrHead + `attributes:
+  - id: ` + formAttrList + `
+    name: Список
+    types: [{kind: dynamic-list}]
+    dynamic_list:
+      main_table: {object: ` + formAttrCatalog + `, virtual: Balance}
+      manual_query: true
+      query_text: "ВЫБРАТЬ Ссылка ИЗ Справочник.Товары"
+      dynamic_data_read: true
+      key_type: field-value
+      key_fields: [Ссылка, Дата]
+      no_auto_fill_available_fields: true
+      no_auto_save_user_settings: true
+  - id: ` + formAttrObject + `
+    name: Варианты
+    types: [{kind: value-list}]
+    value_type: [{kind: catalog, reference: ` + formAttrCatalog + `}, {kind: string, length: 10}]
+`
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list := form.Attributes[0].DynamicList
+	switch {
+	case list == nil || list.MainTable == nil || list.MainTable.Object.String() != formAttrCatalog || list.MainTable.Virtual != "Balance":
+		t.Fatalf("the main table lost: %+v", list)
+	case !list.ManualQuery || list.QueryText != "ВЫБРАТЬ Ссылка ИЗ Справочник.Товары" || !list.DynamicDataRead:
+		t.Fatalf("the query lost: %+v", list)
+	case list.KeyType != DynamicListKeyFieldValue || len(list.KeyFields) != 2 || list.KeyFields[1] != "Дата":
+		t.Fatalf("the key lost: %+v", list)
+	case !list.NoAutoFillAvailableFields || !list.NoAutoSaveUserSettings:
+		t.Fatalf("a switch turned off was lost: %+v", list)
+	}
+	if types := form.Attributes[1].ValueType; len(types) != 2 || types[0].Kind != CatalogType || types[1].Length != 10 {
+		t.Fatalf("the type of the items lost: %+v", types)
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil || !reflect.DeepEqual(again.Attributes, form.Attributes) {
+		t.Fatalf("written back: %v\n%s", err, written)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil || !reflect.DeepEqual(received.Attributes, form.Attributes) {
+		t.Fatalf("carried through the Studio: %v %+v", err, received.Attributes)
+	}
+}
+
+// Settings of a dynamic list and the type of a value list's items stand only
+// on such attributes, and hold only what the platform knows.
+//
+// Defect caught: settings of a dynamic list on an attribute of another type,
+// which nothing would ever read; a key type the platform does not have; a key
+// field twice; an empty main table.
+func TestDynamicListSettingsStandWhereTheyBelong(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	for name, test := range map[string]struct{ attribute, want string }{
+		"настройки не у списка":              {"types: [{kind: value-table}], dynamic_list: {dynamic_data_read: true}", "dynamic_list belongs to an attribute that is a dynamic list"},
+		"тип элементов не у списка значений": {"types: [{kind: value-table}], value_type: [{kind: boolean}]", "value_type belongs to a value list"},
+		"тип элементов без ссылки":           {"types: [{kind: value-list}], value_type: [{kind: catalog}]", "value_type[0].reference is required"},
+		"вид ключа":                  {"types: [{kind: dynamic-list}], dynamic_list: {key_type: primary}", "dynamic_list.key_type must be auto, field-value, row-key or row-number"},
+		"поле ключа дважды":          {"types: [{kind: dynamic-list}], dynamic_list: {key_fields: [Ссылка, ссылка]}", "dynamic_list.key_fields[1] is already in the key"},
+		"поле ключа не имя":          {"types: [{kind: dynamic-list}], dynamic_list: {key_fields: [\"Ссылка.Код\"]}", "dynamic_list.key_fields[0] must be the name of a field"},
+		"основная таблица пустая":    {"types: [{kind: dynamic-list}], dynamic_list: {main_table: {object: 00000000-0000-0000-0000-000000000000}}", "dynamic_list.main_table.object must be a non-zero UUID"},
+		"виртуальная таблица не имя": {"types: [{kind: dynamic-list}], dynamic_list: {main_table: {object: " + formAttrCatalog + ", virtual: \"Остатки(&Период)\"}}", "dynamic_list.main_table.virtual must be the name of a virtual table"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			source := formAttrHead + "attributes:\n  - {id: " + formAttrList + ", name: Список, " + test.attribute + "}\n"
+			_, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
+			if err == nil || !strings.Contains(err.Error(), "attributes[0]."+test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+}

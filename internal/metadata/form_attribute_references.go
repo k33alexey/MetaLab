@@ -100,6 +100,16 @@ func (catalog *Catalog) resolveFormAttributes(form string, attributes []FormAttr
 		if err := catalog.resolveFormData(where, attribute.Types, attribute.FunctionalOptions, attribute.View, attribute.Edit); err != nil {
 			return err
 		}
+		if len(attribute.ValueType) != 0 {
+			if err := catalog.resolveFormData(where+" value type", attribute.ValueType, nil); err != nil {
+				return err
+			}
+		}
+		if list := attribute.DynamicList; list != nil && list.MainTable != nil {
+			if _, ok := catalog.objectKindByID[list.MainTable.Object]; !ok {
+				catalog.noteUnresolved(where+" main table", list.MainTable.Object)
+			}
+		}
 		for _, column := range attribute.Columns {
 			if err := catalog.resolveFormData(where+" column "+column.Name, column.Types, column.FunctionalOptions, column.View, column.Edit); err != nil {
 				return err
