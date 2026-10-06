@@ -100,10 +100,13 @@ type ManagedForm struct {
 	UseStandardCommands bool `yaml:"use_standard_commands,omitempty" json:"useStandardCommands,omitempty"`
 	// IncludeHelpInContents puts this form's help into the table of contents
 	// of the configuration's help.
-	IncludeHelpInContents bool                 `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
-	Commands              []ManagedFormCommand `yaml:"commands,omitempty" json:"commands"`
-	Items                 []ManagedFormElement `yaml:"items,omitempty" json:"items"`
-	Attributes            []FormAttribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	IncludeHelpInContents bool `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
+	// FormWindow is the window of the form and how it behaves, kept beside
+	// the rest of the form.
+	FormWindow `yaml:",inline"`
+	Commands   []ManagedFormCommand `yaml:"commands,omitempty" json:"commands"`
+	Items      []ManagedFormElement `yaml:"items,omitempty" json:"items"`
+	Attributes []FormAttribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 }
 
 // ManagedFormElement is one stable node in a managed form tree. Hidden and
@@ -147,6 +150,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	default:
 		issues = append(issues, "type must be managed or ordinary")
 	}
+	issues = append(issues, validateFormWindow(value.FormWindow)...)
 	seenPurposes := map[FormPurpose]bool{}
 	for index, purpose := range value.Purposes {
 		switch purpose {
