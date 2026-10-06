@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -92,7 +93,7 @@ func TestAnElementHoldsOnlyWhatThePrototypeNestsInIt(t *testing.T) {
 		"тип кнопки не у кнопки":    {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, button_type: hyperlink}\n", "items[0].button_type is allowed only for buttons"},
 		"тип кнопки":                {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Кнопка, kind: button, button_type: link}\n", "items[0].button_type must be usual-button, hyperlink, command-bar-button or command-bar-hyperlink"},
 		"ориентация у таблицы":      {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Таблица, kind: table, orientation: vertical}\n", "items[0].orientation is allowed only for usual groups, pages and groups of columns"},
-		"путь к данным у декорации": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Надпись, kind: label-decoration, data_path: Объект}\n", "items[0].data_path is allowed only for fields and tables"},
+		"путь к данным у декорации": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Надпись, kind: label-decoration, data_path: Объект}\n", "items[0].data_path is allowed only for fields, tables and buttons"},
 		"только просмотр у группы":  {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Группа, kind: usual-group, read_only: true}\n", "items[0].read_only is allowed only for fields and tables"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -250,5 +251,129 @@ func TestTheRolesAnElementIsShownToAreResolved(t *testing.T) {
 		if found := catalog.UnresolvedReferences(); containsWhere(found, where) {
 			t.Fatalf("%s: read without the roles: %+v", place, found)
 		}
+	}
+}
+
+// A field keeps how it is titled, entered and edited, through YAML and the
+// Studio; skipping on input keeps all three of its states.
+//
+// Defect caught: a property of a field read into the wrong field or into
+// none, or lost through the Studio; skipping on input kept as a plain yes or
+// no, so that the 32 fields the prototype writes "no" on and the ones it
+// leaves to the warning on edit become the same.
+func TestAFieldKeepsHowItIsTitledEnteredAndEdited(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, title_location: top, skip_on_input: false, default_item: true," +
+		" edit_mode: enter-on-input, warning_on_edit: {ru: Осторожно}, warning_on_edit_representation: show, shortcut: Cmd+Shift+F}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Флажок, kind: check-box-field, skip_on_input: true}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Надпись, kind: label-field}\n"
+	no, yes := false, true
+	want := FieldBehavior{TitleLocation: FormTitleTop, SkipOnInput: &no, DefaultItem: true, EditMode: FormEditEnterOnInput,
+		WarningOnEdit: LocalizedText{"ru": "Осторожно"}, WarningOnEditRepresentation: FormWarningOnEditShow, Shortcut: "Cmd+Shift+F"}
+	check := func(source string, items []ManagedFormElement) {
+		t.Helper()
+		if !reflect.DeepEqual(items[0].FieldBehavior, want) {
+			t.Fatalf("%s: %+v, want %+v", source, items[0].FieldBehavior, want)
+		}
+		if !reflect.DeepEqual(items[1].FieldBehavior, FieldBehavior{SkipOnInput: &yes}) || items[2].SkipOnInput != nil {
+			t.Fatalf("%s: skipping on input: %v, %v", source, items[1].SkipOnInput, items[2].SkipOnInput)
+		}
+	}
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("read", form.Items)
+	value := reflect.ValueOf(want)
+	for index := range value.NumField() {
+		if value.Field(index).IsZero() {
+			t.Errorf("%s is not set by the test", value.Type().Field(index).Name)
+		}
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("written back", again.Items)
+	// A field that says nothing of skipping on input writes nothing of it.
+	if strings.Contains(string(written), "null") {
+		t.Fatalf("a property not said is written:\n%s", written)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil {
+		t.Fatal(err)
+	}
+	check("carried through the Studio", received.Items)
+}
+
+// What only a field has is refused elsewhere, and a value the help does not
+// give is refused by name.
+//
+// Defect caught: the title location or the edit mode kept on a group, where
+// nothing runs it; a value the field cannot run accepted.
+func TestAFieldRefusesWhatIsWrongInHowItIsEdited(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	for name, test := range map[string]struct{ element, want string }{
+		"заголовок у группы":         {"kind: usual-group, title_location: top", "items[0] has what only a field has"},
+		"сочетание у декорации":      {"kind: label-decoration, shortcut: F5", "items[0] has what only a field has"},
+		"пропуск у кнопки":           {"kind: button, skip_on_input: true", "items[0] has what only a field has"},
+		"по умолчанию у группы":      {"kind: usual-group, default_item: true", "items[0] has what only a field has"},
+		"положение заголовка":        {"kind: input-field, title_location: center", "items[0].title_location must be auto, none, left, right, top or bottom"},
+		"режим редактирования":       {"kind: input-field, edit_mode: inline", "items[0].edit_mode must be enter, enter-on-input or directly"},
+		"отображение предупреждения": {"kind: input-field, warning_on_edit_representation: always", "items[0].warning_on_edit_representation must be auto, show or dont-show"},
+		"предупреждение не на языке": {"kind: input-field, warning_on_edit: {\"d=e\": О}", "items[0].warning_on_edit"},
+		"пробелы в сочетании":        {"kind: input-field, shortcut: \" F5\"", "items[0].shortcut must be written without surrounding spaces"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			source := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Элемент, " + test.element + "}\n")
+			_, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+// The data path of an element is taken as the prototype writes one - an
+// item of a collection by its index, a leading "~", a number, two paths
+// joined by "~", and the path a button has - and what is no path is refused.
+//
+// Defect caught: the 766 data paths of the exports that the earlier rule
+// refused - 372 with "~", 290 with an index, the number and the joined
+// paths - refusing their forms; a button's path refused; a broken path, an
+// empty index or a name starting with a digit accepted.
+func TestTheDataPathOfAnElementIsTakenAsThePrototypeWritesIt(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{
+		"Объект.Наименование", "~Список.ШагБюджетногоПроцесса", "ОбъектПрототип[0].Владелец", "Объект.ОбработчикиОбновления[0].Идентификатор",
+		"КомпоновщикНастроек.Settings.ConditionalAppearance[0].Appearance.Parameter", "Таблица[0][1].Поле", "25", "~Список.Code~Список.Код",
+	} {
+		if issues := validateElementDataPath("data_path", path); len(issues) != 0 {
+			t.Errorf("%q refused: %v", path, issues)
+		}
+	}
+	for _, path := range []string{"", " Объект", "Объект..Поле", "Объект.", "[0].Поле", "Объект[x].Поле", "Объект[0", "Объект[]", "Объект[0]Поле", "~", "Объект.1Поле", "Список.Code~Список.Код", "~Список~", "Объект." + nameAt(maxNameLength+1)} {
+		if issues := validateElementDataPath("data_path", path); len(issues) == 0 {
+			t.Errorf("%q accepted", path)
+		}
+	}
+	configuration := managedFormConfiguration()
+	source := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Кнопка, kind: button, data_path: \"~Items.Список.CurrentData.Ref\"}\n")
+	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration); err != nil {
+		t.Fatalf("the data path of a button: %v", err)
 	}
 }

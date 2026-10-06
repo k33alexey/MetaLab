@@ -54,9 +54,9 @@ func TestManagedFormChecksEachCaseThatTellsItApart(t *testing.T) {
 		{"an element named by 255 characters", form(nil, element(FormElementLabelDecoration, longest)), ""},
 		{"an element named by 256 characters", form(nil, element(FormElementLabelDecoration, tooLong)), "items[0].name must be a valid identifier"},
 		{"a path segment of 255 characters", form(nil, field("Поле", "Объект."+longest)), ""},
-		{"a path segment of 256 characters", form(nil, field("Поле", "Объект."+tooLong)), "items[0].data_path must contain only valid identifier segments"},
+		{"a path segment of 256 characters", form(nil, field("Поле", "Объект."+tooLong)), "items[0].data_path must be names separated by dots"},
 		{"a path forty segments deep", form(nil, field("Поле", deep)), ""},
-		{"a data path on a label", form(nil, label), "items[0].data_path is allowed only for fields and tables"},
+		{"a data path on a label", form(nil, label), "items[0].data_path is allowed only for fields, tables and buttons"},
 		{"a read-only label", form(nil, readOnlyLabel), "items[0].read_only is allowed only for fields and tables"},
 		{"a group whose first child is wrong", form(nil, group), "items[0].children[0].kind неизвестный is not a kind of element of a form"},
 	}

@@ -1,6 +1,11 @@
 package metadata
 
-import "github.com/k33alexey/MetaLab/internal/project"
+import (
+	"strings"
+	"unicode/utf8"
+
+	"github.com/k33alexey/MetaLab/internal/project"
+)
 
 // FormElementKind is what an element of a form is. Each kind is one tag of
 // the prototype's description of a form, so that a form is moved element by
@@ -170,4 +175,144 @@ func validateElementCommon(path string, item ManagedFormElement, class formEleme
 		FormToolTipBalloon, FormToolTipShowAuto, FormToolTipShowTop, FormToolTipShowLeft, FormToolTipShowBottom, FormToolTipShowRight)...)
 	issues = append(issues, validateFormRight(path+".user_visible", item.UserVisible)...)
 	return issues
+}
+
+// FormTitleLocation is where the title of a field stands (help,
+// FormItemTitleLocation). Empty is Auto, which the prototype never writes;
+// None turns the title off, while an empty title is chosen by the platform.
+type FormTitleLocation string
+
+const (
+	FormTitleAuto   FormTitleLocation = "auto"
+	FormTitleNone   FormTitleLocation = "none"
+	FormTitleLeft   FormTitleLocation = "left"
+	FormTitleRight  FormTitleLocation = "right"
+	FormTitleTop    FormTitleLocation = "top"
+	FormTitleBottom FormTitleLocation = "bottom"
+)
+
+// FormEditMode is how a field that is a column of a table is edited (help,
+// ColumnEditMode). Empty is Enter, which the prototype never writes.
+type FormEditMode string
+
+const (
+	FormEditEnter        FormEditMode = "enter"
+	FormEditEnterOnInput FormEditMode = "enter-on-input"
+	FormEditDirectly     FormEditMode = "directly"
+)
+
+// FormWarningOnEdit is whether a field warns before it is edited (help,
+// WarningOnEditRepresentation). Empty is Auto.
+type FormWarningOnEdit string
+
+const (
+	FormWarningOnEditAuto     FormWarningOnEdit = "auto"
+	FormWarningOnEditShow     FormWarningOnEdit = "show"
+	FormWarningOnEditDontShow FormWarningOnEdit = "dont-show"
+)
+
+// FieldBehavior is what a field has besides what every element has: how it is
+// titled, entered and edited (help, FormField).
+type FieldBehavior struct {
+	TitleLocation FormTitleLocation `yaml:"title_location,omitempty" json:"titleLocation,omitempty"`
+	// SkipOnInput is yes, no or not said: the help gives it Undefined as the
+	// third, which then follows the warning on edit, and the prototype writes
+	// both true (1298) and false (32).
+	SkipOnInput *bool `yaml:"skip_on_input,omitempty" json:"skipOnInput,omitempty"`
+	// DefaultItem makes the field the one the form, page or table activates
+	// first.
+	DefaultItem bool         `yaml:"default_item,omitempty" json:"defaultItem,omitempty"`
+	EditMode    FormEditMode `yaml:"edit_mode,omitempty" json:"editMode,omitempty"`
+	// WarningOnEdit is the warning shown before editing when its
+	// representation says show; the prototype writes it in languages.
+	WarningOnEdit               LocalizedText     `yaml:"warning_on_edit,omitempty" json:"warningOnEdit,omitempty"`
+	WarningOnEditRepresentation FormWarningOnEdit `yaml:"warning_on_edit_representation,omitempty" json:"warningOnEditRepresentation,omitempty"`
+	// Shortcut is the key that puts the focus on the field, carried as the
+	// prototype writes it ("Cmd+Shift+F", "Num +"), as the shortcut of a
+	// command is.
+	Shortcut string `yaml:"shortcut,omitempty" json:"shortcut,omitempty"`
+}
+
+func (field FieldBehavior) empty() bool {
+	return field.TitleLocation == "" && field.SkipOnInput == nil && !field.DefaultItem && field.EditMode == "" &&
+		len(field.WarningOnEdit) == 0 && field.WarningOnEditRepresentation == "" && field.Shortcut == ""
+}
+
+func validateFormField(path string, field FieldBehavior, class formElementClass, configuration project.Project) []string {
+	if field.empty() {
+		return nil
+	}
+	if class != formFieldClass {
+		return []string{path + " has what only a field has: title_location, skip_on_input, default_item, edit_mode, warning_on_edit, warning_on_edit_representation, shortcut"}
+	}
+	var issues []string
+	issues = append(issues, oneOf(path+".title_location", field.TitleLocation, FormTitleAuto, FormTitleNone, FormTitleLeft, FormTitleRight, FormTitleTop, FormTitleBottom)...)
+	issues = append(issues, oneOf(path+".edit_mode", field.EditMode, FormEditEnter, FormEditEnterOnInput, FormEditDirectly)...)
+	issues = append(issues, oneOf(path+".warning_on_edit_representation", field.WarningOnEditRepresentation, FormWarningOnEditAuto, FormWarningOnEditShow, FormWarningOnEditDontShow)...)
+	issues = append(issues, validateTitle(path+".warning_on_edit", field.WarningOnEdit, configuration)...)
+	if strings.TrimSpace(field.Shortcut) != field.Shortcut {
+		issues = append(issues, path+".shortcut must be written without surrounding spaces")
+	}
+	return issues
+}
+
+// validateElementDataPath checks the data path of an element as the
+// prototype writes one: names separated by dots, a name followed by an index
+// where it is an item of a collection ("ОбъектПрототип[0].Владелец", 290
+// times), and a leading "~" (372 times) carried as written, as on the data an
+// attribute passes to the client. Two other writings are carried as they
+// are: a number, which is no attribute of the form (5 times), and two paths
+// joined by "~" (4 times); what they mean is not known.
+func validateElementDataPath(path, value string) []string {
+	if value == "" || strings.TrimSpace(value) != value {
+		return []string{path + " must be a data path without surrounding spaces"}
+	}
+	if allDigits(value) {
+		return nil
+	}
+	trimmed := strings.TrimPrefix(value, "~")
+	parts := []string{trimmed}
+	if strings.HasPrefix(value, "~") && strings.Contains(trimmed, "~") {
+		parts = strings.Split(trimmed, "~")
+	}
+	for _, part := range parts {
+		if !elementDataPath(part) {
+			return []string{path + " must be names separated by dots, each with an index if any"}
+		}
+	}
+	return nil
+}
+
+func elementDataPath(value string) bool {
+	for _, segment := range strings.Split(value, ".") {
+		name, index, indexed := strings.Cut(segment, "[")
+		for indexed {
+			var number string
+			var closed bool
+			number, index, closed = strings.Cut(index, "]")
+			if !closed || !allDigits(number) {
+				return false
+			}
+			if index == "" {
+				break
+			}
+			if !strings.HasPrefix(index, "[") {
+				return false
+			}
+			index = index[1:]
+		}
+		if !validIdentifier(name) || utf8.RuneCountInString(name) > maxNameLength {
+			return false
+		}
+	}
+	return true
+}
+
+func allDigits(value string) bool {
+	for _, symbol := range value {
+		if symbol < '0' || symbol > '9' {
+			return false
+		}
+	}
+	return value != ""
 }

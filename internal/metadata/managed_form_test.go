@@ -100,7 +100,7 @@ func TestManagedFormValidatesBindingsAndCommands(t *testing.T) {
 	form.Commands[0].Action = FormCommandCustom
 	form.Commands[0].Handler = ""
 	err := ValidateManagedForm("form.yaml", form, configuration)
-	for _, expected := range []string{"valid identifier segments", "command is allowed only for buttons", "unknown form command", "handler must be a valid BSL routine name"} {
+	for _, expected := range []string{"names separated by dots, each with an index if any", "command is allowed only for buttons", "unknown form command", "handler must be a valid BSL routine name"} {
 		if err == nil || !strings.Contains(err.Error(), expected) {
 			t.Fatalf("validation error %q missing from %v", expected, err)
 		}

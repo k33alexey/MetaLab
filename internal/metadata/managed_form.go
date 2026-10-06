@@ -125,6 +125,8 @@ type ManagedFormElement struct {
 	// everyone; the prototype writes it on 6611 elements, 6590 of them shown
 	// to no one until the user turns them on. The help does not name it.
 	UserVisible *FormAttributeRight `yaml:"user_visible,omitempty" json:"userVisible,omitempty"`
+	// FieldBehavior is what a field has besides what every element has.
+	FieldBehavior `yaml:",inline"`
 	// ButtonType is what a button is; only a button has one.
 	ButtonType FormButtonType `yaml:"button_type,omitempty" json:"buttonType,omitempty"`
 	// Orientation lays out what a usual group, a page or a group of columns
@@ -255,12 +257,16 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			issues = append(issues, current.path+".kind "+string(item.Kind)+" is not a kind of element of a form")
 			continue
 		}
+		// A button has a data path too (1112 in the exports), which the help
+		// does not name: by what it holds, the source of the parameter of
+		// its command. It is carried as written.
 		if item.DataPath != "" {
-			if class != formFieldClass && class != formTableClass {
-				issues = append(issues, current.path+".data_path is allowed only for fields and tables")
+			if class != formFieldClass && class != formTableClass && class != formButtonClass {
+				issues = append(issues, current.path+".data_path is allowed only for fields, tables and buttons")
 			}
-			issues = append(issues, validateFormDataPath(current.path+".data_path", item.DataPath)...)
+			issues = append(issues, validateElementDataPath(current.path+".data_path", item.DataPath)...)
 		}
+		issues = append(issues, validateFormField(current.path, item.FieldBehavior, class, configuration)...)
 		if item.ReadOnly && class != formFieldClass && class != formTableClass {
 			issues = append(issues, current.path+".read_only is allowed only for fields and tables")
 		}
