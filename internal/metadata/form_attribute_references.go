@@ -78,6 +78,7 @@ func (catalog *Catalog) checkFormAttributes() error {
 		if err := catalog.resolveFormAttributes(item.where, item.form.Attributes); err != nil {
 			return err
 		}
+		catalog.resolveFormExtension(item.where, item.form.FormExtension)
 	}
 	common := catalog.commonFormsRead
 	catalog.commonFormsRead = nil
@@ -86,6 +87,7 @@ func (catalog *Catalog) checkFormAttributes() error {
 		if err := catalog.resolveFormAttributes("common form "+form.Name, form.Attributes); err != nil {
 			return err
 		}
+		catalog.resolveFormExtension("common form "+form.Name, form.FormExtension)
 	}
 	return nil
 }
@@ -97,6 +99,15 @@ func readFormDescription(path string, catalog *Catalog) (ManagedForm, error) {
 	}
 	defer file.Close()
 	return DecodeManagedForm(path, file, catalog.Project)
+}
+
+// resolveFormExtension checks the settings storage a form names.
+func (catalog *Catalog) resolveFormExtension(form string, extension FormExtension) {
+	if storage := extension.SettingsStorage; storage != nil {
+		if _, ok := catalog.settingsStorageByID[*storage]; !ok {
+			catalog.noteUnresolved(form+" settings storage", *storage)
+		}
+	}
 }
 
 // resolveFormAttributes checks the references of the attributes of one form.

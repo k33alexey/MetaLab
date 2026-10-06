@@ -106,9 +106,11 @@ type ManagedForm struct {
 	FormWindow `yaml:",inline"`
 	// FormLayout is how the form lays out what it holds.
 	FormLayout `yaml:",inline"`
-	Commands   []ManagedFormCommand `yaml:"commands,omitempty" json:"commands"`
-	Items      []ManagedFormElement `yaml:"items,omitempty" json:"items"`
-	Attributes []FormAttribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	// FormExtension is what the form has by the kind of its main attribute.
+	FormExtension `yaml:",inline"`
+	Commands      []ManagedFormCommand `yaml:"commands,omitempty" json:"commands"`
+	Items         []ManagedFormElement `yaml:"items,omitempty" json:"items"`
+	Attributes    []FormAttribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 }
 
 // ManagedFormElement is one stable node in a managed form tree. Hidden and
@@ -154,6 +156,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	}
 	issues = append(issues, validateFormWindow(value.FormWindow)...)
 	issues = append(issues, validateFormLayout(value.FormLayout)...)
+	issues = append(issues, validateFormExtension(value.FormExtension, value.Attributes)...)
 	seenPurposes := map[FormPurpose]bool{}
 	for index, purpose := range value.Purposes {
 		switch purpose {

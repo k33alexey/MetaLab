@@ -2,11 +2,16 @@ package metadata
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/k33alexey/MetaLab/internal/project"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // formWindowWhole sets every property of the window of a form away from its
@@ -258,5 +263,183 @@ func TestTheLayoutOfAFormRefusesWhatIsNoneOfItsValues(t *testing.T) {
 				t.Fatalf("err = %v, want %q", err, want)
 			}
 		})
+	}
+}
+
+// formExtensionOf is a form whose main attribute is of the given type, with
+// the given properties of its extension.
+func formExtensionOf(mainType, properties string) string {
+	return formAttrHead + properties + "attributes:\n  - {id: " + formAttrObject + ", name: Объект, main: true, types: [" + mainType + "]}\n" +
+		"  - {id: " + formAttrList + ", name: Результат, types: [{kind: spreadsheet-document}]}\n"
+}
+
+// What a form has by its main attribute is kept for each kind - a catalog, a
+// document, a report, a dynamic list - and comes back the same through YAML
+// and the Studio; a number written for the attribute of the result, as the
+// prototype writes one, is carried as it is.
+//
+// Defect caught: a property of an extension read into the wrong field or into
+// none, or lost on the way through the Studio; the prototype's code of an
+// attribute refused, so that the three reports of erp and sb that write one
+// are not moved.
+func TestAFormKeepsWhatItHasByItsMainAttribute(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	storage, err := uuid.Parse(formAttrRole)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, test := range map[string]struct {
+		source string
+		want   FormExtension
+	}{
+		"справочник": {formExtensionOf("{kind: catalog-object, reference: "+formAttrCatalog+"}", "folders_and_items: folders\n"),
+			FormExtension{FoldersAndItems: FormFolders}},
+		"план видов характеристик": {formExtensionOf("{kind: chart-of-characteristic-types-object, reference: "+formAttrCatalog+"}", "folders_and_items: items\n"),
+			FormExtension{FoldersAndItems: FormItems}},
+		"документ": {formExtensionOf("{kind: document-object, reference: "+formAttrCatalog+"}", "auto_time: current-or-last\nposting_mode: regular\nno_repost_on_write: true\n"),
+			FormExtension{AutoTime: FormAutoTimeCurrentOrLast, PostingMode: FormPostingRegular, NoRepostOnWrite: true}},
+		"отчёт": {formExtensionOf("{kind: report-object, reference: "+formAttrCatalog+"}", "report_form_type: variant\nauto_show_state: show-on-composition\n"+
+			"result_view_mode: compact\nview_mode_on_set_result: dont-apply\nreport_result: результат\ndetails_data: \"4\"\n"+
+			"variant_appearance: ОтчетНаименованиеТекущегоВарианта\ncustom_settings_folder: \"3:02023637-7868-4a5f-8576-835a76e0c9ba\"\n"),
+			FormExtension{ReportFormType: ReportFormVariant, AutoShowState: ReportShowStateOnComposition, ResultViewMode: ReportResultViewCompact,
+				ViewModeOnSetResult: ReportViewModeOnSetDontApply, ReportResult: "результат", DetailsData: "4",
+				VariantAppearance: "ОтчетНаименованиеТекущегоВарианта", CustomSettingsFolder: "3:02023637-7868-4a5f-8576-835a76e0c9ba"}},
+		"динамический список": {formExtensionOf("{kind: dynamic-list}", "group_list: \"2:02023637-7868-4a5f-8576-835a76e0c9ba\"\n"),
+			FormExtension{GroupList: "2:02023637-7868-4a5f-8576-835a76e0c9ba"}},
+		"хранилище настроек у обработки": {formExtensionOf("{kind: data-processor-object, reference: "+formAttrCatalog+"}", "settings_storage: "+formAttrRole+"\n"),
+			FormExtension{SettingsStorage: &storage}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			form, err := DecodeManagedForm("form.yaml", strings.NewReader(test.source), configuration)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(form.FormExtension, test.want) {
+				t.Fatalf("extension = %+v, want %+v", form.FormExtension, test.want)
+			}
+			written, err := yaml.Marshal(form)
+			if err != nil {
+				t.Fatal(err)
+			}
+			again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+			if err != nil || !reflect.DeepEqual(again.FormExtension, test.want) {
+				t.Fatalf("written back: %+v, %v\n%s", again.FormExtension, err, written)
+			}
+			carried, err := json.Marshal(form)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var received ManagedForm
+			if err := json.Unmarshal(carried, &received); err != nil {
+				t.Fatal(err)
+			}
+			if err := ValidateManagedForm("studio", received, configuration); err != nil || !reflect.DeepEqual(received.FormExtension, test.want) {
+				t.Fatalf("carried through the Studio: %+v, %v", received.FormExtension, err)
+			}
+		})
+	}
+	// Every property of the extension is given by one of the cases above.
+	var all FormExtension
+	for _, set := range []FormExtension{{FoldersAndItems: FormFolders}, {AutoTime: FormAutoTimeFirst, PostingMode: FormPostingAuto, NoRepostOnWrite: true},
+		{ReportFormType: ReportFormMain, AutoShowState: ReportShowState, ResultViewMode: ReportResultViewAuto, ViewModeOnSetResult: ReportViewModeOnSetAuto,
+			ReportResult: "a", DetailsData: "a", VariantAppearance: "a", CustomSettingsFolder: "a"}, {GroupList: "a"}, {SettingsStorage: &storage}} {
+		merged := reflect.ValueOf(&all).Elem()
+		value := reflect.ValueOf(set)
+		for index := range value.NumField() {
+			if !value.Field(index).IsZero() {
+				merged.Field(index).Set(value.Field(index))
+			}
+		}
+	}
+	value := reflect.ValueOf(all)
+	for index := range value.NumField() {
+		if value.Field(index).IsZero() {
+			t.Errorf("%s is given by no case", value.Type().Field(index).Name)
+		}
+	}
+}
+
+// A property of an extension stands only with a main attribute of its kind,
+// a value is one of the help's, and the attribute of the result is one the
+// form has.
+//
+// Defect caught: a property of a document accepted on a form of a catalog, or
+// one of a report on a form with no main attribute, so that the form carries
+// what nothing will ever run; a value the form cannot run; a result kept in an
+// attribute the form does not have.
+func TestAFormRefusesWhatItCannotHaveByItsMainAttribute(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	catalog := "{kind: catalog-object, reference: " + formAttrCatalog + "}"
+	report := "{kind: report-object, reference: " + formAttrCatalog + "}"
+	for name, test := range map[string]struct{ main, properties, want string }{
+		"группы не у справочника":       {report, "folders_and_items: items\n", "folders_and_items belongs to a form whose main attribute is catalog-object or chart-of-characteristic-types-object"},
+		"время не у документа":          {catalog, "auto_time: last\n", "auto_time belongs to a form whose main attribute is document-object"},
+		"проведение не у документа":     {catalog, "posting_mode: auto\n", "posting_mode belongs to a form whose main attribute is document-object"},
+		"перепроведение не у документа": {catalog, "no_repost_on_write: true\n", "no_repost_on_write belongs to a form whose main attribute is document-object"},
+		"тип отчёта не у отчёта":        {catalog, "report_form_type: main\n", "report_form_type belongs to a form whose main attribute is report-object"},
+		"состояние не у отчёта":         {catalog, "auto_show_state: auto\n", "auto_show_state belongs"},
+		"режим результата не у отчёта":  {catalog, "result_view_mode: auto\n", "result_view_mode belongs"},
+		"применение не у отчёта":        {catalog, "view_mode_on_set_result: auto\n", "view_mode_on_set_result belongs"},
+		"результат не у отчёта":         {catalog, "report_result: Результат\n", "report_result belongs"},
+		"расшифровка не у отчёта":       {catalog, "details_data: Результат\n", "details_data belongs"},
+		"вариант не у отчёта":           {catalog, "variant_appearance: Поле\n", "variant_appearance belongs"},
+		"настройки не у отчёта":         {catalog, "custom_settings_folder: Группа\n", "custom_settings_folder belongs"},
+		"список групп не у списка":      {catalog, "group_list: Дерево\n", "group_list belongs to a form whose main attribute is dynamic-list"},
+		"группы и элементы":             {catalog, "folders_and_items: all\n", "folders_and_items must be folders-and-items, folders or items"},
+		"время":                         {"{kind: document-object, reference: " + formAttrCatalog + "}", "auto_time: now\n", "auto_time must be dont-use, first, last, current-or-first or current-or-last"},
+		"тип формы отчёта":              {report, "report_form_type: print\n", "report_form_type must be main, settings or variant"},
+		"результат без реквизита":       {report, "report_result: Отчёт\n", "report_result names no attribute of the form"},
+		"расшифровка без реквизита":     {report, "details_data: Расшифровка\n", "details_data names no attribute of the form"},
+		"пробелы в варианте":            {report, "variant_appearance: \" Поле\"\n", "variant_appearance must be written without surrounding spaces"},
+		"хранилище без ссылки":          {catalog, "settings_storage: 00000000-0000-0000-0000-000000000000\n", "settings_storage must be a non-zero UUID"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := DecodeManagedForm("form.yaml", strings.NewReader(formExtensionOf(test.main, test.properties)), configuration)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+	// With no main attribute a form has no extension.
+	_, err := DecodeManagedForm("form.yaml", strings.NewReader(formAttrHead+"auto_time: last\n"), configuration)
+	if err == nil || !strings.Contains(err.Error(), "auto_time belongs") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// The settings storage a form of an object or a common form names is resolved
+// with the project: one that is gone is a reference to nothing, named with
+// the form.
+//
+// Defect caught: a form keeping its settings in a storage the project does not
+// have, loading clean.
+func TestTheSettingsStorageOfAFormIsResolved(t *testing.T) {
+	t.Parallel()
+	root := formReferencesProject(t)
+	path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withStorage := strings.Replace(string(content), "kind: object\n", "kind: object\nsettings_storage: "+cmpSettingsStorage+"\n", 1)
+	writeFile(t, path, withStorage)
+	if _, err := Load(root); err != nil {
+		t.Fatalf("a form naming a storage of the project: %v", err)
+	}
+	writeFile(t, path, strings.Replace(withStorage, cmpSettingsStorage, refGone, 1))
+	found := unresolvedOf(t, root)
+	if !containsWhere(found, "catalog Номенклатура form ФормаЭлемента settings storage") {
+		t.Fatalf("unresolved = %+v", found)
+	}
+	// A common form is resolved the same way.
+	root = formReferencesProject(t)
+	writeCommonForm(t, root, "НастройкиОтчетов", "format: 1\nid: c0de0000-0000-4000-8000-000000000160\nname: НастройкиОтчетов\n"+
+		"title: {ru: Н}\nkind: common\nsettings_storage: "+refGone+"\n")
+	if found := unresolvedOf(t, root); !containsWhere(found, "common form НастройкиОтчетов settings storage") {
+		t.Fatalf("unresolved = %+v", found)
 	}
 }

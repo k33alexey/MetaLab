@@ -3,6 +3,8 @@ package metadata
 import (
 	"slices"
 	"strings"
+
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // FormWindowOpeningMode is how the window of a form is opened (help,
@@ -259,5 +261,178 @@ func validateFormLayout(layout FormLayout) []string {
 	issues = append(issues, oneOf("horizontal_spacing", layout.HorizontalSpacing, spacings...)...)
 	issues = append(issues, oneOf("scale_variant", layout.ScaleVariant, FormScaleAuto, FormScaleNormal, FormScaleCompact)...)
 	issues = append(issues, oneOf("collapse_by_importance", layout.CollapseByImportance, CollapseByImportanceAuto, CollapseByImportanceUse, CollapseByImportanceDontUse)...)
+	return issues
+}
+
+// FormFoldersAndItems is what a form of a catalog or of a chart of
+// characteristic types edits (help, FoldersAndItemsUse).
+type FormFoldersAndItems string
+
+const (
+	FormFoldersAndItemsBoth FormFoldersAndItems = "folders-and-items"
+	FormFolders             FormFoldersAndItems = "folders"
+	FormItems               FormFoldersAndItems = "items"
+)
+
+// FormAutoTime is how a form of a document sets the time of a new document
+// when it is written (help, AutoTimeMode).
+type FormAutoTime string
+
+const (
+	FormAutoTimeDontUse        FormAutoTime = "dont-use"
+	FormAutoTimeFirst          FormAutoTime = "first"
+	FormAutoTimeLast           FormAutoTime = "last"
+	FormAutoTimeCurrentOrFirst FormAutoTime = "current-or-first"
+	FormAutoTimeCurrentOrLast  FormAutoTime = "current-or-last"
+)
+
+// FormPostingMode is the mode a form of a document posts in (help,
+// PostingModeUse).
+type FormPostingMode string
+
+const (
+	FormPostingAuto     FormPostingMode = "auto"
+	FormPostingRegular  FormPostingMode = "regular"
+	FormPostingRealTime FormPostingMode = "real-time"
+)
+
+// ReportFormType is what a form of a report is for (help, ReportFormType).
+type ReportFormType string
+
+const (
+	ReportFormMain     ReportFormType = "main"
+	ReportFormSettings ReportFormType = "settings"
+	ReportFormVariant  ReportFormType = "variant"
+)
+
+// ReportAutoShowState is when a form of a report shows the state of its
+// result (help, AutoShowStateMode).
+type ReportAutoShowState string
+
+const (
+	ReportShowStateAuto          ReportAutoShowState = "auto"
+	ReportShowState              ReportAutoShowState = "show"
+	ReportDontShowState          ReportAutoShowState = "dont-show"
+	ReportShowStateOnComposition ReportAutoShowState = "show-on-composition"
+)
+
+// ReportResultViewMode is how the result of a report is shown (help,
+// ReportResultViewMode).
+type ReportResultViewMode string
+
+const (
+	ReportResultViewAuto    ReportResultViewMode = "auto"
+	ReportResultViewDefault ReportResultViewMode = "default"
+	ReportResultViewCompact ReportResultViewMode = "compact"
+)
+
+// ReportViewModeOnSetResult is whether that mode is applied when the result
+// is set (help, ViewModeApplicationOnSetReportResult).
+type ReportViewModeOnSetResult string
+
+const (
+	ReportViewModeOnSetAuto      ReportViewModeOnSetResult = "auto"
+	ReportViewModeOnSetApply     ReportViewModeOnSetResult = "apply"
+	ReportViewModeOnSetDontApply ReportViewModeOnSetResult = "dont-apply"
+)
+
+// FormExtension is what a form has by the kind of its main attribute (help,
+// the extensions of a client application form for catalogs, documents and
+// reports). The prototype writes each of these on every form whose main
+// attribute is of its kind - 816 of catalogs and charts of characteristic
+// types, 739 of documents, 157 of reports - and on no other: a data processor
+// whose main attribute is a catalog object has the property of a catalog.
+// Empty is not written; a form moved from the prototype always has its value.
+type FormExtension struct {
+	FoldersAndItems FormFoldersAndItems `yaml:"folders_and_items,omitempty" json:"foldersAndItems,omitempty"`
+	AutoTime        FormAutoTime        `yaml:"auto_time,omitempty" json:"autoTime,omitempty"`
+	PostingMode     FormPostingMode     `yaml:"posting_mode,omitempty" json:"postingMode,omitempty"`
+	// NoRepostOnWrite writes a posted document without posting it again. The
+	// prototype writes the property on every form of a document, true 732
+	// times and false 7; the help gives no default, so it is kept as its
+	// "off", as the rest on until turned off.
+	NoRepostOnWrite     bool                      `yaml:"no_repost_on_write,omitempty" json:"noRepostOnWrite,omitempty"`
+	ReportFormType      ReportFormType            `yaml:"report_form_type,omitempty" json:"reportFormType,omitempty"`
+	AutoShowState       ReportAutoShowState       `yaml:"auto_show_state,omitempty" json:"autoShowState,omitempty"`
+	ResultViewMode      ReportResultViewMode      `yaml:"result_view_mode,omitempty" json:"resultViewMode,omitempty"`
+	ViewModeOnSetResult ReportViewModeOnSetResult `yaml:"view_mode_on_set_result,omitempty" json:"viewModeOnSetResult,omitempty"`
+	// ReportResult and DetailsData are the attributes of a form of a report
+	// that hold its result and the data of its details. The prototype names
+	// the attribute (81 and 67 times) or writes a number that is no attribute
+	// of the form ("0" and "4", 3 times); a name must be an attribute of the
+	// form, a number is carried as written.
+	ReportResult string `yaml:"report_result,omitempty" json:"reportResult,omitempty"`
+	DetailsData  string `yaml:"details_data,omitempty" json:"detailsData,omitempty"`
+	// VariantAppearance, CustomSettingsFolder and GroupList name an element of
+	// the form: where the name of the report variant is shown, the group of
+	// the user's settings, the list of groups of a dynamic list. The help does
+	// not name them; the prototype writes the name of an element or a code of
+	// its own ("2", "3:<id>"). They are carried as written, and resolved when
+	// the form has its elements.
+	VariantAppearance    string `yaml:"variant_appearance,omitempty" json:"variantAppearance,omitempty"`
+	CustomSettingsFolder string `yaml:"custom_settings_folder,omitempty" json:"customSettingsFolder,omitempty"`
+	GroupList            string `yaml:"group_list,omitempty" json:"groupList,omitempty"`
+	// SettingsStorage is a settings storage the form keeps its settings in.
+	// The help does not name it for a form; one form of erp writes it, a form
+	// of a data processor.
+	SettingsStorage *uuid.UUID `yaml:"settings_storage,omitempty" json:"settingsStorage,omitempty"`
+}
+
+// validateFormExtension checks what a form has by its main attribute: each
+// property stands only with a main attribute of its kind.
+func validateFormExtension(extension FormExtension, attributes []FormAttribute) []string {
+	var main TypeKind
+	for _, attribute := range attributes {
+		if attribute.Main {
+			if single, ok := SingleType(attribute.Types); ok {
+				main = single.Kind
+			}
+		}
+	}
+	var issues []string
+	belongs := func(name string, set bool, kinds ...TypeKind) {
+		if set && !slices.Contains(kinds, main) {
+			names := make([]string, len(kinds))
+			for index, kind := range kinds {
+				names[index] = string(kind)
+			}
+			issues = append(issues, name+" belongs to a form whose main attribute is "+strings.Join(names, " or "))
+		}
+	}
+	belongs("folders_and_items", extension.FoldersAndItems != "", CatalogObjectType, CharacteristicTypesObjectType)
+	issues = append(issues, oneOf("folders_and_items", extension.FoldersAndItems, FormFoldersAndItemsBoth, FormFolders, FormItems)...)
+	belongs("auto_time", extension.AutoTime != "", DocumentObjectType)
+	issues = append(issues, oneOf("auto_time", extension.AutoTime, FormAutoTimeDontUse, FormAutoTimeFirst, FormAutoTimeLast, FormAutoTimeCurrentOrFirst, FormAutoTimeCurrentOrLast)...)
+	belongs("posting_mode", extension.PostingMode != "", DocumentObjectType)
+	issues = append(issues, oneOf("posting_mode", extension.PostingMode, FormPostingAuto, FormPostingRegular, FormPostingRealTime)...)
+	belongs("no_repost_on_write", extension.NoRepostOnWrite, DocumentObjectType)
+	belongs("report_form_type", extension.ReportFormType != "", ReportObjectType)
+	issues = append(issues, oneOf("report_form_type", extension.ReportFormType, ReportFormMain, ReportFormSettings, ReportFormVariant)...)
+	belongs("auto_show_state", extension.AutoShowState != "", ReportObjectType)
+	issues = append(issues, oneOf("auto_show_state", extension.AutoShowState, ReportShowStateAuto, ReportShowState, ReportDontShowState, ReportShowStateOnComposition)...)
+	belongs("result_view_mode", extension.ResultViewMode != "", ReportObjectType)
+	issues = append(issues, oneOf("result_view_mode", extension.ResultViewMode, ReportResultViewAuto, ReportResultViewDefault, ReportResultViewCompact)...)
+	belongs("view_mode_on_set_result", extension.ViewModeOnSetResult != "", ReportObjectType)
+	issues = append(issues, oneOf("view_mode_on_set_result", extension.ViewModeOnSetResult, ReportViewModeOnSetAuto, ReportViewModeOnSetApply, ReportViewModeOnSetDontApply)...)
+	for _, field := range []struct{ name, value string }{{"report_result", extension.ReportResult}, {"details_data", extension.DetailsData}} {
+		belongs(field.name, field.value != "", ReportObjectType)
+		if validIdentifier(field.value) && !slices.ContainsFunc(attributes, func(attribute FormAttribute) bool { return strings.EqualFold(attribute.Name, field.value) }) {
+			issues = append(issues, field.name+" names no attribute of the form")
+		}
+	}
+	belongs("variant_appearance", extension.VariantAppearance != "", ReportObjectType)
+	belongs("custom_settings_folder", extension.CustomSettingsFolder != "", ReportObjectType)
+	belongs("group_list", extension.GroupList != "", DynamicListType)
+	for _, field := range []struct{ name, value string }{
+		{"report_result", extension.ReportResult}, {"details_data", extension.DetailsData}, {"variant_appearance", extension.VariantAppearance},
+		{"custom_settings_folder", extension.CustomSettingsFolder}, {"group_list", extension.GroupList},
+	} {
+		if strings.TrimSpace(field.value) != field.value {
+			issues = append(issues, field.name+" must be written without surrounding spaces")
+		}
+	}
+	if extension.SettingsStorage != nil && extension.SettingsStorage.IsZero() {
+		issues = append(issues, "settings_storage must be a non-zero UUID")
+	}
 	return issues
 }
