@@ -104,6 +104,8 @@ type ManagedForm struct {
 	// FormWindow is the window of the form and how it behaves, kept beside
 	// the rest of the form.
 	FormWindow `yaml:",inline"`
+	// FormLayout is how the form lays out what it holds.
+	FormLayout `yaml:",inline"`
 	Commands   []ManagedFormCommand `yaml:"commands,omitempty" json:"commands"`
 	Items      []ManagedFormElement `yaml:"items,omitempty" json:"items"`
 	Attributes []FormAttribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
@@ -151,6 +153,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		issues = append(issues, "type must be managed or ordinary")
 	}
 	issues = append(issues, validateFormWindow(value.FormWindow)...)
+	issues = append(issues, validateFormLayout(value.FormLayout)...)
 	seenPurposes := map[FormPurpose]bool{}
 	for index, purpose := range value.Purposes {
 		switch purpose {
