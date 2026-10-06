@@ -71,7 +71,6 @@ func (catalog *Catalog) checkFormAttributes() error {
 	close(work)
 	group.Wait()
 
-	catalog.formTypeLists, catalog.formTitles = nil, nil
 	for _, item := range jobs {
 		if item.err != nil {
 			return fmt.Errorf("%s: %w", item.where, item.err)

@@ -1,10 +1,13 @@
 package metadata
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/k33alexey/MetaLab/internal/project"
 )
@@ -124,6 +127,23 @@ func TestEveryReferenceOfAFormAttributeIsChecked(t *testing.T) {
 	}
 }
 
+// The role editor reads the project without its roles, so a role in the
+// rights of a form attribute cannot be resolved there and is not taken for one
+// that is gone.
+//
+// Defect caught: every role named in the rights of a form listed as a
+// reference to nothing in the role editor, which reads without the roles.
+func TestTheRightsOfAFormAreNotResolvedWithoutTheRoles(t *testing.T) {
+	t.Parallel()
+	catalog, err := read(formReferencesProject(t), false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found := catalog.UnresolvedReferences(); len(found) != 0 {
+		t.Fatalf("unresolved = %+v", found)
+	}
+}
+
 func containsWhere(unresolved []UnresolvedReference, where string) bool {
 	for _, item := range unresolved {
 		if item.Where == where {
@@ -211,4 +231,55 @@ func TestTheTitlesOfFormAttributesAreNotedLikeTextsOfObjects(t *testing.T) {
 	if len(got) != 5 {
 		t.Errorf("notes = %v", got)
 	}
+}
+
+// Reading the forms side by side leaves no reader and no open file behind, on
+// success and when a form in the middle does not read. Not parallel: the count of goroutines
+// is taken while no other test of the package runs.
+//
+// Defect caught: a reader left blocked on the queue when a refusal returns
+// early - every load of a broken project would then keep goroutines and the
+// files they hold for as long as the process lives.
+func TestReadingTheFormsLeavesNoReaderBehind(t *testing.T) {
+	sound := formReferencesProject(t)
+	broken := formReferencesProject(t)
+	for index := range 40 {
+		writeFile(t, filepath.Join(broken, "metadata", string(CatalogKind), "Склады", "forms", fmt.Sprintf("Форма%02d", index), project.FormMetadataFile),
+			fmt.Sprintf("format: 1\nid: c0de0000-0000-4000-8000-0000000002%02d\nname: Форма%02d\ntitle: {ru: Ф}\nkind: object\n", index, index))
+	}
+	writeFile(t, filepath.Join(broken, "metadata", string(CatalogKind), "Склады", "forms", "Форма20", project.FormMetadataFile),
+		"format: 1\nid: c0de0000-0000-4000-8000-000000000220\nname: Форма20\ntitle: {ru: Ф}\nkind: object\nunknown: true\n")
+	before, filesBefore := runtime.NumGoroutine(), openFiles(t)
+	for range 20 {
+		if _, err := Load(sound); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(broken); err == nil || !strings.Contains(err.Error(), "form Форма20") {
+			t.Fatalf("err = %v", err)
+		}
+	}
+	// Goroutines that finished may take a moment to be gone from the count.
+	deadline := time.Now().Add(2 * time.Second)
+	for runtime.NumGoroutine() > before && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if after := runtime.NumGoroutine(); after > before {
+		t.Fatalf("goroutines before %d, after %d", before, after)
+	}
+	// A form left open shows even though the collector closes some of them:
+	// 29 more on 20 loads of 41 forms when the close was taken out.
+	if after := openFiles(t); after > filesBefore {
+		t.Fatalf("open files before %d, after %d", filesBefore, after)
+	}
+}
+
+// openFiles counts the descriptors the process holds; where the system does
+// not list them the test is skipped rather than passed unseen.
+func openFiles(t *testing.T) int {
+	t.Helper()
+	entries, err := os.ReadDir("/dev/fd")
+	if err != nil {
+		t.Skipf("open files are not listed here: %v", err)
+	}
+	return len(entries)
 }

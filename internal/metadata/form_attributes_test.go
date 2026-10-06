@@ -184,6 +184,20 @@ func TestFormAttributeRefusesWhatTheFormCannotHold(t *testing.T) {
 			"attributes[0].types[0].reference is required"},
 		"заголовок колонки не на языке": {attribute(formAttrList, "Список", ", columns: [{id: "+formAttrColumn+", name: А, title: {\"d=e\": A}}]"),
 			"attributes[0].columns[0].title"},
+		"пробелы в настройках": {attribute(formAttrObject, "Объект", ", save_in_settings: [\" Объект\"]"),
+			"attributes[0].save_in_settings[0] must be a non-empty path without surrounding spaces"},
+		"нулевая опция": {attribute(formAttrObject, "Объект", ", functional_options: [00000000-0000-0000-0000-000000000000]"),
+			"attributes[0].functional_options[0] must be a non-zero UUID"},
+		"роль просмотра дважды": {attribute(formAttrObject, "Объект", ", view: {common: false, roles: [{role: "+formAttrRole+", value: true}, {role: "+formAttrRole+", value: false}]}"),
+			"attributes[0].view.roles[1].role already has its answer"},
+		"роль без идентификатора": {attribute(formAttrObject, "Объект", ", edit: {common: true, roles: [{role: 00000000-0000-0000-0000-000000000000, value: false}]}"),
+			"attributes[0].edit.roles[0].role must be a non-zero UUID"},
+		"тип колонки без ссылки": {attribute(formAttrList, "Список", ", columns: [{id: "+formAttrColumn+", name: А, types: [{kind: catalog}]}]"),
+			"attributes[0].columns[0].types[0].reference is required"},
+		"добавленная колонка дважды": {attribute(formAttrObject, "Объект", ", additional_columns: [{table: Объект.Товары, columns: [{id: "+formAttrColumn+", name: А}, {id: "+formAttrExtra+", name: а}]}]"),
+			"attributes[0].additional_columns[0].columns[1].name must be unique within the columns"},
+		"тип добавленной колонки без ссылки": {attribute(formAttrObject, "Объект", ", additional_columns: [{table: Объект.Товары, columns: [{id: "+formAttrColumn+", name: А, types: [{kind: catalog}]}]}]"),
+			"attributes[0].additional_columns[0].columns[0].types[0].reference is required"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -356,6 +370,7 @@ func TestDynamicListSettingsStandWhereTheyBelong(t *testing.T) {
 	configuration := managedFormConfiguration()
 	for name, test := range map[string]struct{ attribute, want string }{
 		"настройки не у списка":              {"types: [{kind: value-table}], dynamic_list: {dynamic_data_read: true}", "dynamic_list belongs to an attribute that is a dynamic list"},
+		"настройки у составного типа":        {"types: [{kind: dynamic-list}, {kind: boolean}], dynamic_list: {dynamic_data_read: true}", "dynamic_list belongs to an attribute that is a dynamic list"},
 		"тип элементов не у списка значений": {"types: [{kind: value-table}], value_type: [{kind: boolean}]", "value_type belongs to a value list"},
 		"тип элементов без ссылки":           {"types: [{kind: value-list}], value_type: [{kind: catalog}]", "value_type[0].reference is required"},
 		"вид ключа":                  {"types: [{kind: dynamic-list}], dynamic_list: {key_type: primary}", "dynamic_list.key_type must be auto, field-value, row-key or row-number"},
