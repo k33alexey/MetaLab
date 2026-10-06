@@ -363,12 +363,14 @@ type FormExtension struct {
 	// form, a number is carried as written.
 	ReportResult string `yaml:"report_result,omitempty" json:"reportResult,omitempty"`
 	DetailsData  string `yaml:"details_data,omitempty" json:"detailsData,omitempty"`
-	// VariantAppearance, CustomSettingsFolder and GroupList name an element of
-	// the form: where the name of the report variant is shown, the group of
-	// the user's settings, the list of groups of a dynamic list. The help does
-	// not name them; the prototype writes the name of an element or a code of
-	// its own ("2", "3:<id>"). They are carried as written, and resolved when
-	// the form has its elements.
+	// VariantAppearance and CustomSettingsFolder name an element of a form of
+	// a report: where the name of the report variant is shown and the group
+	// of the user's settings. GroupList is where a form of a hierarchical
+	// catalog takes its tree of groups from: by name an attribute that is a
+	// dynamic list (6 forms), else a code of the prototype's own. The help
+	// names none of them for a form; the prototype writes a name or a code
+	// ("2", "3:<id>"), carried as written and resolved when the form has its
+	// elements.
 	VariantAppearance    string `yaml:"variant_appearance,omitempty" json:"variantAppearance,omitempty"`
 	CustomSettingsFolder string `yaml:"custom_settings_folder,omitempty" json:"customSettingsFolder,omitempty"`
 	GroupList            string `yaml:"group_list,omitempty" json:"groupList,omitempty"`

@@ -51,7 +51,7 @@ func TestAnOptionalTextWithABrokenLanguageCodeIsRefused(t *testing.T) {
 		}, "explanation.r u is not a language code"},
 		{"title of a form element", func(t *testing.T) error {
 			form := ManagedForm{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Форма", Title: LocalizedText{"ru": "Форма"}, Kind: ObjectForm,
-				Items: []ManagedFormElement{{ID: uuid.MustNew(), Name: "Группа", Kind: FormElementGroup, Orientation: FormVertical, Title: LocalizedText{"r u": "Группа"}}}}
+				Items: []ManagedFormElement{{ID: uuid.MustNew(), Name: "Группа", Kind: FormElementUsualGroup, Orientation: FormVertical, Title: LocalizedText{"r u": "Группа"}}}}
 			return ValidateManagedForm("form.yaml", form, managedFormConfiguration())
 		}, "title.r u is not a language code"},
 		{"tooltip of a route point", func(t *testing.T) error {

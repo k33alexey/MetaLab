@@ -15,8 +15,8 @@ func TestManagedFormDecodeValidateAndRoundTrip(t *testing.T) {
 	configuration := managedFormConfiguration()
 	formID, groupID, fieldID, commandID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	source := "format: 1\nid: " + formID.String() + "\nname: \u0424\u043e\u0440\u043c\u0430\u0422\u043e\u0432\u0430\u0440\u0430\ntitle: {ru: \u0424\u043e\u0440\u043c\u0430 \u0442\u043e\u0432\u0430\u0440\u0430}\nkind: object\nitems:\n" +
-		"  - id: " + groupID.String() + "\n    name: \u041e\u0441\u043d\u043e\u0432\u043d\u0430\u044f\u0413\u0440\u0443\u043f\u043f\u0430\n    kind: group\n    orientation: vertical\n    children:\n" +
-		"      - id: " + fieldID.String() + "\n        name: \u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435\n        kind: field\n        title: {ru: \u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435}\n        read_only: true\n        data_path: \u041e\u0431\u044a\u0435\u043a\u0442.\u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435\n" +
+		"  - id: " + groupID.String() + "\n    name: \u041e\u0441\u043d\u043e\u0432\u043d\u0430\u044f\u0413\u0440\u0443\u043f\u043f\u0430\n    kind: usual-group\n    orientation: vertical\n    children:\n" +
+		"      - id: " + fieldID.String() + "\n        name: \u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435\n        kind: input-field\n        title: {ru: \u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435}\n        read_only: true\n        data_path: \u041e\u0431\u044a\u0435\u043a\u0442.\u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435\n" +
 		"commands:\n  - id: " + commandID.String() + "\n    name: \u0417\u0430\u043f\u0438\u0441\u0430\u0442\u044c\n    title: {ru: \u0417\u0430\u043f\u0438\u0441\u0430\u0442\u044c}\n    action: save\n"
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
 	if err != nil {
@@ -48,10 +48,10 @@ func TestManagedFormRejectsUnknownAndInvalidTree(t *testing.T) {
 		t.Fatalf("unknown-field error = %v", err)
 	}
 	invalid := base + "items:\n" +
-		"  - {id: " + duplicateID.String() + ", name: \u041f\u043e\u043b\u0435, kind: field, orientation: vertical, children: [{id: " + uuid.MustNew().String() + ", name: \u0412\u043b\u043e\u0436\u0435\u043d\u043d\u043e\u0435, kind: label}]}\n" +
-		"  - {id: " + duplicateID.String() + ", name: \u043f\u043e\u043b\u0435, kind: group, orientation: diagonal, read_only: true}\n"
+		"  - {id: " + duplicateID.String() + ", name: \u041f\u043e\u043b\u0435, kind: input-field, orientation: vertical, children: [{id: " + uuid.MustNew().String() + ", name: \u0412\u043b\u043e\u0436\u0435\u043d\u043d\u043e\u0435, kind: label-decoration}]}\n" +
+		"  - {id: " + duplicateID.String() + ", name: \u043f\u043e\u043b\u0435, kind: usual-group, orientation: diagonal, read_only: true}\n"
 	_, err := DecodeManagedForm("form.yaml", strings.NewReader(invalid), configuration)
-	for _, expected := range []string{"id must be unique", "name must be unique", "children are allowed only for groups", "orientation is allowed only for groups", "orientation must be vertical or horizontal", "read_only is not allowed for a group"} {
+	for _, expected := range []string{"id must be unique", "name must be unique", "items[0].children[0]: input-field cannot hold label-decoration", "orientation is allowed only for usual groups, pages and groups of columns", "orientation must be vertical or horizontal", "read_only is allowed only for fields and tables"} {
 		if err == nil || !strings.Contains(err.Error(), expected) {
 			t.Fatalf("validation error %q missing from %v", expected, err)
 		}
@@ -69,9 +69,9 @@ func TestManagedFormRejectsUnsupportedFormatAndTakesAnyDepth(t *testing.T) {
 		t.Fatalf("format error = %v", err)
 	}
 	form.Format = CurrentFormat
-	leaf := ManagedFormElement{ID: uuid.MustNew(), Name: "\u042d\u043b\u0435\u043c\u0435\u043d\u0442", Kind: FormElementGroup, Orientation: FormVertical}
+	leaf := ManagedFormElement{ID: uuid.MustNew(), Name: "\u042d\u043b\u0435\u043c\u0435\u043d\u0442", Kind: FormElementUsualGroup, Orientation: FormVertical}
 	for index := 0; index < 200; index++ {
-		leaf = ManagedFormElement{ID: uuid.MustNew(), Name: "\u0413\u0440\u0443\u043f\u043f\u0430" + string(rune('A'+index%26)) + string(rune('A'+index/26)), Kind: FormElementGroup, Orientation: FormVertical, Children: []ManagedFormElement{leaf}}
+		leaf = ManagedFormElement{ID: uuid.MustNew(), Name: "\u0413\u0440\u0443\u043f\u043f\u0430" + string(rune('A'+index%26)) + string(rune('A'+index/26)), Kind: FormElementUsualGroup, Orientation: FormVertical, Children: []ManagedFormElement{leaf}}
 	}
 	form.Items = []ManagedFormElement{leaf}
 	if err := ValidateManagedForm("form.yaml", form, configuration); err != nil {
@@ -87,7 +87,7 @@ func TestManagedFormValidatesBindingsAndCommands(t *testing.T) {
 		Format: CurrentFormat, ID: uuid.MustNew(), Name: "\u0424\u043e\u0440\u043c\u0430", Title: LocalizedText{"ru": "\u0424\u043e\u0440\u043c\u0430"}, Kind: ObjectForm,
 		Commands: []ManagedFormCommand{{ID: commandID, Name: "\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c", Title: LocalizedText{"ru": "\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c"}, Action: FormCommandRefresh}},
 		Items: []ManagedFormElement{
-			{ID: uuid.MustNew(), Name: "\u041f\u043e\u043b\u0435", Kind: FormElementField, DataPath: "\u041e\u0431\u044a\u0435\u043a\u0442.\u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435"},
+			{ID: uuid.MustNew(), Name: "\u041f\u043e\u043b\u0435", Kind: FormElementInputField, DataPath: "\u041e\u0431\u044a\u0435\u043a\u0442.\u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435"},
 			{ID: uuid.MustNew(), Name: "\u041a\u043d\u043e\u043f\u043a\u0430", Kind: FormElementButton, Command: &commandID},
 		},
 	}
@@ -115,7 +115,7 @@ func BenchmarkDecodeManagedForm(b *testing.B) {
 	configuration := managedFormConfiguration()
 	form := ManagedForm{Format: 1, ID: uuid.MustNew(), Name: "\u0424\u043e\u0440\u043c\u0430", Title: LocalizedText{"ru": "\u0424\u043e\u0440\u043c\u0430"}, Kind: ObjectForm}
 	for index := 0; index < 1_000; index++ {
-		form.Items = append(form.Items, ManagedFormElement{ID: uuid.MustNew(), Name: fmtFormName(index), Kind: FormElementField})
+		form.Items = append(form.Items, ManagedFormElement{ID: uuid.MustNew(), Name: fmtFormName(index), Kind: FormElementInputField})
 	}
 	var source bytes.Buffer
 	if err := Encode(&source, form); err != nil {

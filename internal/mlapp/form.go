@@ -157,8 +157,12 @@ func customElements(source []metadata.ManagedFormElement, language metadata.Titl
 		if title == "" {
 			title = item.Name
 		}
+		kind, shown := appElementKind(item.Kind)
+		if !shown {
+			continue
+		}
 		value := Element{
-			ID: item.ID.String(), Kind: string(item.Kind), Title: title,
+			ID: item.ID.String(), Kind: kind, Title: title,
 			ReadOnly: item.ReadOnly, Disabled: item.Disabled, Orientation: string(item.Orientation),
 			DataPath: item.DataPath, Children: customElements(item.Children, language, commands),
 		}
@@ -168,6 +172,26 @@ func customElements(source []metadata.ManagedFormElement, language metadata.Titl
 		result = append(result, value)
 	}
 	return result
+}
+
+// appElementKind is how ML App draws an element of a form: as one of the five
+// it knows. A field is a field, a decoration a label, a table a table, a
+// button a button; what holds other elements is a group. An addition of a
+// table is not drawn until the table has its additions (block 2ф).
+func appElementKind(kind metadata.FormElementKind) (string, bool) {
+	switch {
+	case kind.IsField():
+		return "field", true
+	case kind == metadata.FormElementLabelDecoration || kind == metadata.FormElementPictureDecoration:
+		return "label", true
+	case kind == metadata.FormElementTable:
+		return "table", true
+	case kind == metadata.FormElementButton:
+		return "button", true
+	case kind == metadata.FormElementSearchStringAddition || kind == metadata.FormElementSearchControlAddition || kind == metadata.FormElementViewStatusAddition:
+		return "", false
+	}
+	return "group", true
 }
 
 func commandKind(action string) string {

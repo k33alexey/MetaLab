@@ -29,7 +29,7 @@ const formAttrHead = "format: 1\nid: " + formAttrForm + "\nname: ФормаЭл�
 // formAttrWhole is a form whose attributes carry every property an attribute
 // and a column have.
 const formAttrWhole = formAttrHead + `items:
-  - {id: ` + formAttrField + `, name: Наименование, kind: field, data_path: Объект.Наименование}
+  - {id: ` + formAttrField + `, name: Наименование, kind: input-field, data_path: Объект.Наименование}
 attributes:
   - id: ` + formAttrObject + `
     name: Объект
@@ -207,7 +207,7 @@ func TestFormAttributeRefusesWhatTheFormCannotHold(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			source := formAttrHead + "items:\n  - {id: " + formAttrField + ", name: Поле, kind: field}\nattributes:\n" + test.attributes
+			source := formAttrHead + "items:\n  - {id: " + formAttrField + ", name: Поле, kind: input-field}\nattributes:\n" + test.attributes
 			_, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("err = %v, want %q", err, test.want)

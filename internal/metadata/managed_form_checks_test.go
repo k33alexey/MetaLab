@@ -24,23 +24,23 @@ func TestManagedFormChecksEachCaseThatTellsItApart(t *testing.T) {
 	}
 	element := func(kind FormElementKind, name string) ManagedFormElement {
 		item := ManagedFormElement{ID: uuid.MustNew(), Name: name, Kind: kind}
-		if kind == FormElementGroup {
+		if kind == FormElementUsualGroup {
 			item.Orientation = FormVertical
 		}
 		return item
 	}
 	field := func(name, path string) ManagedFormElement {
-		item := element(FormElementField, name)
+		item := element(FormElementInputField, name)
 		item.DataPath = path
 		return item
 	}
 	deep := strings.TrimSuffix(strings.Repeat("Реквизит.", 40), ".")
-	label := element(FormElementLabel, "Надпись")
+	label := element(FormElementLabelDecoration, "Надпись")
 	label.DataPath = "Объект.Наименование"
-	readOnlyLabel := element(FormElementLabel, "Надпись")
+	readOnlyLabel := element(FormElementLabelDecoration, "Надпись")
 	readOnlyLabel.ReadOnly = true
-	group := element(FormElementGroup, "Группа")
-	group.Children = []ManagedFormElement{element("неизвестный", "Первый"), element(FormElementField, "Второй")}
+	group := element(FormElementUsualGroup, "Группа")
+	group.Children = []ManagedFormElement{element("неизвестный", "Первый"), element(FormElementInputField, "Второй")}
 
 	tests := []struct {
 		name string
@@ -51,14 +51,14 @@ func TestManagedFormChecksEachCaseThatTellsItApart(t *testing.T) {
 		{"a command named by 256 characters", form([]ManagedFormCommand{command(tooLong, "Выполнить")}), "commands[0].name must be a valid identifier"},
 		{"a handler of 255 characters", form([]ManagedFormCommand{command("Выполнить", longest)}), ""},
 		{"a handler of 256 characters", form([]ManagedFormCommand{command("Выполнить", tooLong)}), "commands[0].handler must be a valid BSL routine name"},
-		{"an element named by 255 characters", form(nil, element(FormElementLabel, longest)), ""},
-		{"an element named by 256 characters", form(nil, element(FormElementLabel, tooLong)), "items[0].name must be a valid identifier"},
+		{"an element named by 255 characters", form(nil, element(FormElementLabelDecoration, longest)), ""},
+		{"an element named by 256 characters", form(nil, element(FormElementLabelDecoration, tooLong)), "items[0].name must be a valid identifier"},
 		{"a path segment of 255 characters", form(nil, field("Поле", "Объект."+longest)), ""},
 		{"a path segment of 256 characters", form(nil, field("Поле", "Объект."+tooLong)), "items[0].data_path must contain only valid identifier segments"},
 		{"a path forty segments deep", form(nil, field("Поле", deep)), ""},
 		{"a data path on a label", form(nil, label), "items[0].data_path is allowed only for fields and tables"},
 		{"a read-only label", form(nil, readOnlyLabel), "items[0].read_only is allowed only for fields and tables"},
-		{"a group whose first child is wrong", form(nil, group), "items[0].children[0].kind must be"},
+		{"a group whose first child is wrong", form(nil, group), "items[0].children[0].kind неизвестный is not a kind of element of a form"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

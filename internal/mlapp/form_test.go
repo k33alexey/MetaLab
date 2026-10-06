@@ -67,7 +67,7 @@ func TestCustomFormKeepsLayoutBindingsAndLocalizedCommands(t *testing.T) {
 	source := metadata.ManagedForm{
 		ID: formID, Kind: metadata.ObjectForm, Title: metadata.LocalizedText{"ru": "Карточка товара"},
 		Commands: []metadata.ManagedFormCommand{{ID: commandID, Name: "Save", Title: metadata.LocalizedText{"ru": "Записать"}, Action: metadata.FormCommandSave}},
-		Items:    []metadata.ManagedFormElement{{ID: fieldID, Name: "Наименование", Kind: metadata.FormElementField, DataPath: "Description", Command: nil}},
+		Items:    []metadata.ManagedFormElement{{ID: fieldID, Name: "Наименование", Kind: metadata.FormElementInputField, DataPath: "Description", Command: nil}},
 	}
 	form, err := FormFromMetadata(descriptor, &source, metadata.TitleLanguage{Code: "ru", Default: "ru"})
 	if err != nil {
@@ -75,5 +75,33 @@ func TestCustomFormKeepsLayoutBindingsAndLocalizedCommands(t *testing.T) {
 	}
 	if form.Title != "Карточка товара" || form.Commands[0].Title != "Записать" || form.Items[0].DataPath != "Description" {
 		t.Fatalf("form=%+v", form)
+	}
+}
+
+// Every kind of element of a form is drawn as one of the five ML App knows: a
+// field as a field, a decoration as a label, what holds others as a group, a
+// table and a button as themselves; an addition of a table is not drawn.
+//
+// Defect caught: a kind the client does not know handed to it, so that the
+// element - a label field, a page, a picture decoration - vanishes from the
+// form or breaks it.
+func TestEveryKindOfElementIsDrawnAsOneTheAppKnows(t *testing.T) {
+	t.Parallel()
+	for kind, want := range map[metadata.FormElementKind]string{
+		metadata.FormElementInputField: "field", metadata.FormElementLabelField: "field", metadata.FormElementCheckBoxField: "field",
+		metadata.FormElementDendrogramField: "field", metadata.FormElementLabelDecoration: "label", metadata.FormElementPictureDecoration: "label",
+		metadata.FormElementUsualGroup: "group", metadata.FormElementPages: "group", metadata.FormElementPage: "group",
+		metadata.FormElementColumnGroup: "group", metadata.FormElementCommandBar: "group", metadata.FormElementPopup: "group",
+		metadata.FormElementButtonGroup: "group", metadata.FormElementTable: "table", metadata.FormElementButton: "button",
+	} {
+		elements := customElements([]metadata.ManagedFormElement{{ID: uuid.MustNew(), Name: "Э", Kind: kind}}, metadata.TitleLanguage{Code: "ru", Default: "ru"}, nil)
+		if len(elements) != 1 || elements[0].Kind != want {
+			t.Errorf("%s drawn as %+v, want %s", kind, elements, want)
+		}
+	}
+	for _, kind := range []metadata.FormElementKind{metadata.FormElementSearchStringAddition, metadata.FormElementSearchControlAddition, metadata.FormElementViewStatusAddition} {
+		if elements := customElements([]metadata.ManagedFormElement{{ID: uuid.MustNew(), Name: "Э", Kind: kind}}, metadata.TitleLanguage{Code: "ru", Default: "ru"}, nil); len(elements) != 0 {
+			t.Errorf("%s drawn as %+v", kind, elements)
+		}
 	}
 }

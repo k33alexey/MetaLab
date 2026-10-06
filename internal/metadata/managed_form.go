@@ -10,16 +10,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-type FormElementKind string
-
-const (
-	FormElementGroup  FormElementKind = "group"
-	FormElementField  FormElementKind = "field"
-	FormElementLabel  FormElementKind = "label"
-	FormElementTable  FormElementKind = "table"
-	FormElementButton FormElementKind = "button"
-)
-
 type FormOrientation string
 
 const (
@@ -116,15 +106,19 @@ type ManagedForm struct {
 // ManagedFormElement is one stable node in a managed form tree. Hidden and
 // disabled use inverse flags so omitted YAML retains the useful true defaults.
 type ManagedFormElement struct {
-	ID          uuid.UUID            `yaml:"id" json:"id"`
-	Name        string               `yaml:"name" json:"name"`
-	Kind        FormElementKind      `yaml:"kind" json:"kind"`
-	Title       LocalizedText        `yaml:"title,omitempty" json:"title"`
-	Hidden      bool                 `yaml:"hidden,omitempty" json:"hidden"`
-	Disabled    bool                 `yaml:"disabled,omitempty" json:"disabled"`
-	ReadOnly    bool                 `yaml:"read_only,omitempty" json:"readOnly"`
-	DataPath    string               `yaml:"data_path,omitempty" json:"dataPath,omitempty"`
-	Command     *uuid.UUID           `yaml:"command,omitempty" json:"command,omitempty"`
+	ID       uuid.UUID       `yaml:"id" json:"id"`
+	Name     string          `yaml:"name" json:"name"`
+	Kind     FormElementKind `yaml:"kind" json:"kind"`
+	Title    LocalizedText   `yaml:"title,omitempty" json:"title"`
+	Hidden   bool            `yaml:"hidden,omitempty" json:"hidden"`
+	Disabled bool            `yaml:"disabled,omitempty" json:"disabled"`
+	ReadOnly bool            `yaml:"read_only,omitempty" json:"readOnly"`
+	DataPath string          `yaml:"data_path,omitempty" json:"dataPath,omitempty"`
+	Command  *uuid.UUID      `yaml:"command,omitempty" json:"command,omitempty"`
+	// ButtonType is what a button is; only a button has one.
+	ButtonType FormButtonType `yaml:"button_type,omitempty" json:"buttonType,omitempty"`
+	// Orientation lays out what a usual group, a page or a group of columns
+	// holds; empty is vertical.
 	Orientation FormOrientation      `yaml:"orientation,omitempty" json:"orientation,omitempty"`
 	Children    []ManagedFormElement `yaml:"children,omitempty" json:"children"`
 }
@@ -216,7 +210,12 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	}
 	stack := make([]pending, 0, len(value.Items))
 	for index := len(value.Items) - 1; index >= 0; index-- {
-		stack = append(stack, pending{element: value.Items[index], path: fmt.Sprintf("items[%d]", index)})
+		item := value.Items[index]
+		// The form lays out what it holds as a usual group does.
+		if _, known := formElementClasses[item.Kind]; known && !formClassHolds(formAreaClass, item.Kind) {
+			issues = append(issues, fmt.Sprintf("items[%d]: a form cannot hold %s", index, item.Kind))
+		}
+		stack = append(stack, pending{element: item, path: fmt.Sprintf("items[%d]", index)})
 	}
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
 	for id := range commandIDs {
@@ -241,14 +240,22 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		}
 		names[folded] = true
 		issues = append(issues, validateTitle(current.path+".title", item.Title, configuration)...)
+		class, known := formElementClasses[item.Kind]
+		if !known {
+			issues = append(issues, current.path+".kind "+string(item.Kind)+" is not a kind of element of a form")
+			continue
+		}
 		if item.DataPath != "" {
-			if item.Kind != FormElementField && item.Kind != FormElementTable {
+			if class != formFieldClass && class != formTableClass {
 				issues = append(issues, current.path+".data_path is allowed only for fields and tables")
 			}
 			issues = append(issues, validateFormDataPath(current.path+".data_path", item.DataPath)...)
 		}
+		if item.ReadOnly && class != formFieldClass && class != formTableClass {
+			issues = append(issues, current.path+".read_only is allowed only for fields and tables")
+		}
 		if item.Command != nil {
-			if item.Kind != FormElementButton {
+			if class != formButtonClass {
 				issues = append(issues, current.path+".command is allowed only for buttons")
 			}
 			if item.Command.IsZero() {
@@ -257,39 +264,23 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 				issues = append(issues, current.path+".command references an unknown form command")
 			}
 		}
-		switch item.Kind {
-		case FormElementGroup:
-			if item.ReadOnly {
-				issues = append(issues, current.path+".read_only is not allowed for a group")
+		if item.ButtonType != "" && class != formButtonClass {
+			issues = append(issues, current.path+".button_type is allowed only for buttons")
+		}
+		issues = append(issues, oneOf(current.path+".button_type", item.ButtonType, FormButtonUsual, FormButtonHyperlink, FormButtonCommandBarButton, FormButtonCommandBarHyperlink)...)
+		if item.Orientation != "" {
+			if class != formAreaClass && class != formColumnsClass {
+				issues = append(issues, current.path+".orientation is allowed only for usual groups, pages and groups of columns")
 			}
-			if item.Orientation != FormVertical && item.Orientation != FormHorizontal {
-				issues = append(issues, current.path+".orientation must be vertical or horizontal")
+			issues = append(issues, oneOf(current.path+".orientation", item.Orientation, FormVertical, FormHorizontal)...)
+		}
+		for index := len(item.Children) - 1; index >= 0; index-- {
+			child := item.Children[index]
+			place := fmt.Sprintf("%s.children[%d]", current.path, index)
+			if _, known := formElementClasses[child.Kind]; known && !item.Kind.Holds(child.Kind) {
+				issues = append(issues, place+": "+string(item.Kind)+" cannot hold "+string(child.Kind))
 			}
-			for index := len(item.Children) - 1; index >= 0; index-- {
-				stack = append(stack, pending{element: item.Children[index], path: fmt.Sprintf("%s.children[%d]", current.path, index)})
-			}
-		case FormElementTable:
-			if item.Orientation != "" {
-				issues = append(issues, current.path+".orientation is allowed only for groups")
-			}
-			for index := len(item.Children) - 1; index >= 0; index-- {
-				if item.Children[index].Kind != FormElementField {
-					issues = append(issues, fmt.Sprintf("%s.children[%d] must be a field", current.path, index))
-				}
-				stack = append(stack, pending{element: item.Children[index], path: fmt.Sprintf("%s.children[%d]", current.path, index)})
-			}
-		case FormElementField, FormElementLabel, FormElementButton:
-			if len(item.Children) != 0 {
-				issues = append(issues, current.path+".children are allowed only for groups and tables")
-			}
-			if item.Orientation != "" {
-				issues = append(issues, current.path+".orientation is allowed only for groups")
-			}
-			if item.ReadOnly && item.Kind != FormElementField {
-				issues = append(issues, current.path+".read_only is allowed only for fields and tables")
-			}
-		default:
-			issues = append(issues, current.path+".kind must be group, field, label, table or button")
+			stack = append(stack, pending{element: child, path: place})
 		}
 	}
 	issues = append(issues, validateFormAttributes(value.Attributes, ids, configuration)...)

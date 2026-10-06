@@ -30,7 +30,7 @@ func TestManagedFormWorkspaceRoundTripAndIdentity(t *testing.T) {
 			t.Fatalf("data path %q missing from %+v", expected, opened.DataPaths)
 		}
 	}
-	opened.Form.Items[0].Children = append(opened.Form.Items[0].Children, metadata.ManagedFormElement{ID: uuid.MustNew(), Name: "Комментарий", Kind: metadata.FormElementField, Title: metadata.LocalizedText{"ru": "Комментарий"}})
+	opened.Form.Items[0].Children = append(opened.Form.Items[0].Children, metadata.ManagedFormElement{ID: uuid.MustNew(), Name: "Комментарий", Kind: metadata.FormElementInputField, Title: metadata.LocalizedText{"ru": "Комментарий"}})
 	saved, err := workspace.SaveManagedForm(relative, opened.Form, opened.Revision)
 	if err != nil || len(saved.Form.Items[0].Children) != 2 || saved.Revision == opened.Revision {
 		t.Fatalf("saved form = %+v, error=%v", saved, err)
@@ -197,7 +197,7 @@ func createManagedFormSource(t *testing.T) (*Workspace, string, metadata.Managed
 	root := createProject(t)
 	form := metadata.ManagedForm{Format: metadata.CurrentFormat, ID: uuid.MustNew(), Name: "ФормаТовара", Title: metadata.LocalizedText{"ru": "Форма товара"}, Kind: metadata.ObjectForm}
 	form.Commands = []metadata.ManagedFormCommand{{ID: uuid.MustNew(), Name: "Заполнить", Title: metadata.LocalizedText{"ru": "Заполнить"}, Action: metadata.FormCommandCustom, Handler: "Заполнить"}}
-	form.Items = []metadata.ManagedFormElement{{ID: uuid.MustNew(), Name: "ОсновнаяГруппа", Kind: metadata.FormElementGroup, Orientation: metadata.FormVertical, Children: []metadata.ManagedFormElement{{ID: uuid.MustNew(), Name: "Наименование", Kind: metadata.FormElementField, Title: metadata.LocalizedText{"ru": "Наименование"}}}}}
+	form.Items = []metadata.ManagedFormElement{{ID: uuid.MustNew(), Name: "ОсновнаяГруппа", Kind: metadata.FormElementUsualGroup, Orientation: metadata.FormVertical, Children: []metadata.ManagedFormElement{{ID: uuid.MustNew(), Name: "Наименование", Kind: metadata.FormElementInputField, Title: metadata.LocalizedText{"ru": "Наименование"}}}}}
 	catalog := metadata.CatalogDefinition{
 		Format: metadata.CurrentFormat, ID: uuid.MustNew(), Name: "Контрагенты", Title: metadata.LocalizedText{"ru": "Контрагенты"},
 		Code: metadata.CatalogCode{Type: metadata.StringType, Length: 20, Auto: true, Unique: true}, DescriptionLength: 150,
