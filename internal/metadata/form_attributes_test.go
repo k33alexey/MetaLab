@@ -184,6 +184,12 @@ func TestFormAttributeRefusesWhatTheFormCannotHold(t *testing.T) {
 			"attributes[0].types[0].reference is required"},
 		"заголовок колонки не на языке": {attribute(formAttrList, "Список", ", columns: [{id: "+formAttrColumn+", name: А, title: {\"d=e\": A}}]"),
 			"attributes[0].columns[0].title"},
+		"имя не идентификатор": {attribute(formAttrObject, "1Объект", ""),
+			"attributes[0].name must be a valid identifier of at most 255 characters"},
+		"имя длиннее 255": {attribute(formAttrObject, nameAt(maxNameLength+1), ""),
+			"attributes[0].name must be a valid identifier of at most 255 characters"},
+		"имя колонки длиннее 255": {attribute(formAttrList, "Список", ", columns: [{id: "+formAttrColumn+", name: "+nameAt(maxNameLength+1)+"}]"),
+			"attributes[0].columns[0].name must be a valid identifier of at most 255 characters"},
 		"пробелы в настройках": {attribute(formAttrObject, "Объект", ", save_in_settings: [\" Объект\"]"),
 			"attributes[0].save_in_settings[0] must be a non-empty path without surrounding spaces"},
 		"нулевая опция": {attribute(formAttrObject, "Объект", ", functional_options: [00000000-0000-0000-0000-000000000000]"),
@@ -207,6 +213,20 @@ func TestFormAttributeRefusesWhatTheFormCannotHold(t *testing.T) {
 				t.Fatalf("err = %v, want %q", err, test.want)
 			}
 		})
+	}
+}
+
+// A name of an attribute and of a column as long as a name may be - 255
+// characters, the limit of every name of the configuration - is accepted.
+//
+// Defect caught: a limit counted one short, so that the longest name the
+// designer saves refuses the form.
+func TestAFormAttributeTakesTheLongestName(t *testing.T) {
+	t.Parallel()
+	source := formAttrHead + "attributes:\n  - {id: " + formAttrList + ", name: " + nameAt(maxNameLength) +
+		", types: [{kind: value-table}], columns: [{id: " + formAttrColumn + ", name: " + nameAt(maxNameLength) + "}]}\n"
+	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(source), managedFormConfiguration()); err != nil {
+		t.Fatal(err)
 	}
 }
 

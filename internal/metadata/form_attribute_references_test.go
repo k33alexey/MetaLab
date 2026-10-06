@@ -178,6 +178,25 @@ func TestABrokenFormOfAnObjectRefusesTheProject(t *testing.T) {
 	}
 }
 
+// Of two common forms whose attributes name an object that is gone, the one
+// first by name is the one the refusal names, whatever order they were read in.
+//
+// Defect caught: the common forms checked in the order the load happened to
+// read them, so that the refusal names one form on one load and another on
+// the next.
+func TestTheFirstBrokenCommonFormIsTheOneNamed(t *testing.T) {
+	t.Parallel()
+	root := formReferencesProject(t)
+	for index, form := range []string{"ФормаЯ", "ФормаА"} {
+		writeCommonForm(t, root, form, fmt.Sprintf("format: 1\nid: c0de0000-0000-4000-8000-00000000014%d\nname: %s\ntitle: {ru: Ф}\nkind: common\nattributes:\n"+
+			"  - {id: c0de0000-0000-4000-8000-00000000015%d, name: Пользователь, types: [{kind: catalog, reference: "+refGone+"}]}\n", index, form, index))
+	}
+	_, err := Load(root)
+	if err == nil || !strings.HasPrefix(err.Error(), "common form ФормаА attribute Пользователь ") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 // The titles of the attributes of a form, of their columns and of the
 // columns added to a table are noted under the same rules as the texts of
 // objects: a language the configuration does not declare, no language, a
