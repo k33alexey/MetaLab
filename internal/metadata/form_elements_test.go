@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -617,5 +618,188 @@ func TestTheStyleItemsAFieldIsDrawnWithAreResolved(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A field keeps what it has as a column of a table - its header and footer,
+// their pictures, the font, colours and alignment of the footer, whether it
+// stays in place, and how its cells are shown - through YAML and the Studio,
+// and on a field that stands outside a table, as the prototype writes it.
+//
+// Defect caught: a column taken out of the header or the footer shown there
+// after the move; a total in the footer, its picture or its colour lost or
+// read into the wrong property; the alignment in the footer of a field outside
+// a table refused, so that 479 such fields are not moved.
+func TestAFieldKeepsWhatItHasAsAColumn(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Таблица, kind: table, children: [" +
+		"{id: c0de0000-0000-4000-8000-000000990002, name: Сумма, kind: input-field, hidden_in_header: true, hidden_in_footer: true," +
+		" header_picture: {standard: Change, load_transparent: true, transparent_pixel: {x: 4, y: 2}}," +
+		" footer_picture: {common: c0de0000-0000-4000-8000-000000000043}, header_horizontal_align: center," +
+		" footer_text: {ru: Итого}, footer_data_path: Объект.Товары.TotalСумма, footer_horizontal_align: right," +
+		" footer_font: {source: system, face: DefaultGUIFont, bold: true}, footer_text_color: {source: system, name: Highlight}," +
+		" footer_back_color: {source: web, name: MediumGray}, fixing_in_table: left, cell_hyperlink: true, auto_cell_height: true}]}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Вне, kind: label-field, footer_horizontal_align: left, auto_cell_height: true}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	column := form.Items[0].Children[0].FieldColumn
+	value := reflect.ValueOf(column)
+	for index := range value.NumField() {
+		if value.Field(index).IsZero() {
+			t.Errorf("%s is not set by the test", value.Type().Field(index).Name)
+		}
+	}
+	switch {
+	case !column.HiddenInHeader || !column.HiddenInFooter || column.FixingInTable != FormFixingLeft || !column.CellHyperlink || !column.AutoCellHeight:
+		t.Fatalf("column: %+v", column)
+	case column.HeaderPicture.Standard != "Change" || column.HeaderPicture.TransparentPixel == nil || column.FooterPicture.Common == nil:
+		t.Fatalf("pictures: %+v %+v", column.HeaderPicture, column.FooterPicture)
+	case column.HeaderHorizontalAlign != ItemHorizontalCenter || column.FooterHorizontalAlign != ItemHorizontalRight:
+		t.Fatalf("alignment: %q %q", column.HeaderHorizontalAlign, column.FooterHorizontalAlign)
+	case column.FooterText["ru"] != "Итого" || column.FooterDataPath != "Объект.Товары.TotalСумма":
+		t.Fatalf("footer: %+v %q", column.FooterText, column.FooterDataPath)
+	case column.FooterFont.Face != "DefaultGUIFont" || column.FooterTextColor.Name != "Highlight" || column.FooterBackColor.Name != "MediumGray":
+		t.Fatalf("footer look: %+v %+v %+v", column.FooterFont, column.FooterTextColor, column.FooterBackColor)
+	case form.Items[1].FooterHorizontalAlign != ItemHorizontalLeft || !form.Items[1].AutoCellHeight:
+		t.Fatalf("outside a table: %+v", form.Items[1].FieldColumn)
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil || !reflect.DeepEqual(again.Items, form.Items) {
+		t.Fatalf("written back: %v", err)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil || !reflect.DeepEqual(received.Items, form.Items) {
+		t.Fatalf("carried through the Studio: %v", err)
+	}
+}
+
+// What a field has as a column stands only on a field and is checked as each
+// value is checked elsewhere.
+//
+// Defect caught: a footer kept on a group or a button; a picture naming two
+// sources, a footer path that is no path, a colour that is no colour, an
+// unknown fixing accepted; a picture of the element's own accepted while a
+// form has no place to keep its file, so that the picture is lost silently.
+func TestAFieldRefusesWhatIsWrongAsAColumn(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	for name, test := range map[string]struct{ element, want string }{
+		"подвал у группы":     {"kind: usual-group, footer_text: {ru: Итого}", "items[0] has what a field has as a column of a table"},
+		"гиперссылка кнопки":  {"kind: button, cell_hyperlink: true", "items[0] has what a field has as a column of a table"},
+		"две картинки":        {"kind: input-field, header_picture: {standard: Change, common: c0de0000-0000-4000-8000-000000000043}", "items[0].header_picture names more than one"},
+		"своя картинка":       {"kind: input-field, footer_picture: {file: HeaderPicture.png}", "items[0].footer_picture.file is a picture of the element's own"},
+		"путь подвала":        {"kind: input-field, footer_data_path: Объект..Сумма", "items[0].footer_data_path must be names separated by dots"},
+		"цвет подвала":        {"kind: input-field, footer_back_color: {source: absolute, rgb: red}", "items[0].footer_back_color.rgb must be a colour written as #RRGGBB"},
+		"шрифт подвала":       {"kind: input-field, footer_font: {source: absolute, size: 10}", "items[0].footer_font.face must name the font"},
+		"закрепление":         {"kind: input-field, fixing_in_table: top", "items[0].fixing_in_table must be none, left or right"},
+		"положение в шапке":   {"kind: input-field, header_horizontal_align: justify", "items[0].header_horizontal_align must be auto, left, center or right"},
+		"положение в подвале": {"kind: input-field, footer_horizontal_align: justify", "items[0].footer_horizontal_align must be auto, left, center or right"},
+		"текст подвала":       {"kind: input-field, footer_text: {ru: \"\\x01\"}", "items[0].footer_text.ru must say something in printable characters"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			source := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Элемент, " + test.element + "}\n")
+			_, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+// The common pictures and the style items the header and footer of a column
+// are drawn with are resolved with the project, as the look of a field is.
+//
+// Defect caught: a column drawn with a common picture or a style item the
+// project does not have, loading clean; a footer font taken from a colour
+// accepted.
+func TestWhatAColumnIsDrawnWithIsResolved(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		column  string
+		refused string
+		gone    string
+	}{
+		"общая картинка":          {"header_picture: {common: " + cmpCommonPicture + "}", "", ""},
+		"удалённая картинка":      {"footer_picture: {common: " + refGone + "}", "", "footer_picture"},
+		"удалённый элемент стиля": {"footer_back_color: {source: style, from: {item: " + refGone + "}}", "", "footer_back_color"},
+		"цвет подвала из стиля":   {"footer_text_color: {source: style, from: {item: " + cmpStyleItem + "}}", "", ""},
+		"шрифт подвала из цвета":  {"footer_font: {source: style, from: {item: " + cmpStyleItem + "}}", "element Поле footer_font takes its value from style item ЦветВажного, which is a color and not a font", ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := formReferencesProject(t)
+			path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			element := "items:\n  - {id: c0de0000-0000-4000-8000-000000990001, name: Таблица, kind: table, children: [" +
+				"{id: c0de0000-0000-4000-8000-000000990002, name: Поле, kind: input-field, " + test.column + "}]}\n"
+			writeFile(t, path, strings.Replace(string(content), "attributes:\n", element+"attributes:\n", 1))
+			switch {
+			case test.gone != "":
+				if found := unresolvedOf(t, root); !containsWhere(found, "catalog Номенклатура form ФормаЭлемента element Поле "+test.gone) {
+					t.Fatalf("unresolved = %+v", found)
+				}
+			case test.refused != "":
+				if _, err := Load(root); err == nil || !strings.Contains(err.Error(), test.refused) {
+					t.Fatalf("err = %v, want %q", err, test.refused)
+				}
+			default:
+				if _, err := Load(root); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+// Each property of a column, set alone on an element that is no field, is
+// refused: none of them is forgotten when the column is checked for being
+// empty.
+//
+// Defect caught: a property left out of the check for an empty column, so
+// that a button or a group keeps it alone without a word.
+func TestEveryPropertyOfAColumnStandsOnlyOnAField(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, hidden_in_header: true, hidden_in_footer: true," +
+		" header_picture: {standard: Change}, footer_picture: {standard: Change}, header_horizontal_align: center," +
+		" footer_text: {ru: Итого}, footer_data_path: Объект.Сумма, footer_horizontal_align: right," +
+		" footer_font: {source: auto}, footer_text_color: {source: auto}, footer_back_color: {source: auto}," +
+		" fixing_in_table: left, cell_hyperlink: true, auto_cell_height: true}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Кнопка, kind: button}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	full := reflect.ValueOf(form.Items[0].FieldColumn)
+	for index := range full.NumField() {
+		name := full.Type().Field(index).Name
+		if full.Field(index).IsZero() {
+			t.Fatalf("%s is not set by the test", name)
+		}
+		alone := form
+		alone.Items = slices.Clone(form.Items)
+		reflect.ValueOf(&alone.Items[1].FieldColumn).Elem().Field(index).Set(full.Field(index))
+		err := ValidateManagedForm("form.yaml", alone, configuration)
+		if err == nil || !strings.Contains(err.Error(), "items[1] has what a field has as a column of a table") {
+			t.Errorf("%s alone on a button: %v", name, err)
+		}
 	}
 }

@@ -467,3 +467,133 @@ type styleItemUse struct {
 	itemType StyleItemType
 	id       uuid.UUID
 }
+
+// FormFixingInTable is whether a column of a table stays in place as the
+// table scrolls across, and at which edge (help, FixingInTable). Empty is
+// None, which the prototype never writes.
+type FormFixingInTable string
+
+const (
+	FormFixingNone  FormFixingInTable = "none"
+	FormFixingLeft  FormFixingInTable = "left"
+	FormFixingRight FormFixingInTable = "right"
+)
+
+// FieldColumn is what a field has as a column of a table: its header and
+// footer, whether it stays in place, and how its cells are shown (help,
+// FormField). The help says each has a meaning only in a table; the
+// prototype writes some of them on fields that stand elsewhere (the
+// alignment in the footer 479 times, whether it shows in the header 18, the
+// height of a cell 18), and they are carried there as written.
+type FieldColumn struct {
+	// HiddenInHeader and HiddenInFooter take the column out of the header and
+	// the footer of the table; shown is the default, and the prototype writes
+	// only the "not shown" (3129 and 1007 times).
+	HiddenInHeader bool `yaml:"hidden_in_header,omitempty" json:"hiddenInHeader,omitempty"`
+	HiddenInFooter bool `yaml:"hidden_in_footer,omitempty" json:"hiddenInFooter,omitempty"`
+	// HeaderPicture and FooterPicture are drawn in the header and the footer
+	// of the column.
+	HeaderPicture *PictureReference `yaml:"header_picture,omitempty" json:"headerPicture,omitempty"`
+	FooterPicture *PictureReference `yaml:"footer_picture,omitempty" json:"footerPicture,omitempty"`
+	// HeaderHorizontalAlign is where the title stands in the header. The help
+	// forbids Auto there, and the prototype writes it once all the same; it is
+	// carried as written.
+	HeaderHorizontalAlign ItemHorizontalAlign `yaml:"header_horizontal_align,omitempty" json:"headerHorizontalAlign,omitempty"`
+	// The footer shows FooterText, or the attribute FooterDataPath names -
+	// most often a total of a column of a tabular section.
+	FooterText            LocalizedText       `yaml:"footer_text,omitempty" json:"footerText,omitempty"`
+	FooterDataPath        string              `yaml:"footer_data_path,omitempty" json:"footerDataPath,omitempty"`
+	FooterHorizontalAlign ItemHorizontalAlign `yaml:"footer_horizontal_align,omitempty" json:"footerHorizontalAlign,omitempty"`
+	// The font and colours of the footer are values of a style item, as the
+	// look of the field is.
+	FooterFont      *FontValue        `yaml:"footer_font,omitempty" json:"footerFont,omitempty"`
+	FooterTextColor *ColorValue       `yaml:"footer_text_color,omitempty" json:"footerTextColor,omitempty"`
+	FooterBackColor *ColorValue       `yaml:"footer_back_color,omitempty" json:"footerBackColor,omitempty"`
+	FixingInTable   FormFixingInTable `yaml:"fixing_in_table,omitempty" json:"fixingInTable,omitempty"`
+	// CellHyperlink shows the text of the cells as a link, and choosing a
+	// cell is pressing Enter; AutoCellHeight fits the height of a cell to
+	// its text.
+	CellHyperlink  bool `yaml:"cell_hyperlink,omitempty" json:"cellHyperlink,omitempty"`
+	AutoCellHeight bool `yaml:"auto_cell_height,omitempty" json:"autoCellHeight,omitempty"`
+}
+
+func (column FieldColumn) empty() bool {
+	return !column.HiddenInHeader && !column.HiddenInFooter && column.HeaderPicture == nil && column.FooterPicture == nil &&
+		column.HeaderHorizontalAlign == "" && len(column.FooterText) == 0 && column.FooterDataPath == "" &&
+		column.FooterHorizontalAlign == "" && column.FooterFont == nil && column.FooterTextColor == nil &&
+		column.FooterBackColor == nil && column.FixingInTable == "" && !column.CellHyperlink && !column.AutoCellHeight
+}
+
+func validateFieldColumn(path string, column FieldColumn, class formElementClass, configuration project.Project) []string {
+	if column.empty() {
+		return nil
+	}
+	if class != formFieldClass {
+		return []string{path + " has what a field has as a column of a table"}
+	}
+	var issues []string
+	for _, picture := range []struct {
+		name  string
+		value *PictureReference
+	}{{"header_picture", column.HeaderPicture}, {"footer_picture", column.FooterPicture}} {
+		issues = append(issues, validatePictureReference(path+"."+picture.name, picture.value)...)
+		// The picture of an element of its own is a file the prototype keeps
+		// beside the form; where it lies in the form's folder is decided with
+		// the pictures of the other elements.
+		if picture.value != nil && picture.value.File != "" {
+			issues = append(issues, path+"."+picture.name+".file is a picture of the element's own, which a form does not keep yet")
+		}
+	}
+	horizontal := []ItemHorizontalAlign{ItemHorizontalAuto, ItemHorizontalLeft, ItemHorizontalCenter, ItemHorizontalRight}
+	issues = append(issues, oneOf(path+".header_horizontal_align", column.HeaderHorizontalAlign, horizontal...)...)
+	issues = append(issues, oneOf(path+".footer_horizontal_align", column.FooterHorizontalAlign, horizontal...)...)
+	issues = append(issues, validateTitle(path+".footer_text", column.FooterText, configuration)...)
+	if column.FooterDataPath != "" {
+		issues = append(issues, validateElementDataPath(path+".footer_data_path", column.FooterDataPath)...)
+	}
+	if column.FooterFont != nil {
+		issues = append(issues, validateFontValue(path+".footer_font", *column.FooterFont)...)
+	}
+	for _, color := range column.colors() {
+		if color.value != nil {
+			issues = append(issues, validateColorValue(path+"."+color.name, *color.value)...)
+		}
+	}
+	issues = append(issues, oneOf(path+".fixing_in_table", column.FixingInTable, FormFixingNone, FormFixingLeft, FormFixingRight)...)
+	return issues
+}
+
+func (column FieldColumn) colors() []namedColor {
+	return []namedColor{{"footer_text_color", column.FooterTextColor}, {"footer_back_color", column.FooterBackColor}}
+}
+
+// styleItems lists the style items of the configuration the footer takes its
+// font and colours from.
+func (column FieldColumn) styleItems() []styleItemUse {
+	var uses []styleItemUse
+	if font := column.FooterFont; font != nil && font.Source == StyleFont && font.From != nil && font.From.Item != nil {
+		uses = append(uses, styleItemUse{name: "footer_font", itemType: FontStyleItem, id: *font.From.Item})
+	}
+	for _, color := range column.colors() {
+		if color.value != nil && color.value.Source == StyleColor && color.value.From != nil && color.value.From.Item != nil {
+			uses = append(uses, styleItemUse{name: color.name, itemType: ColorStyleItem, id: *color.value.From.Item})
+		}
+	}
+	return uses
+}
+
+// commonPictures lists the common pictures drawn in the header and footer.
+func (column FieldColumn) commonPictures() []namedPicture {
+	var pictures []namedPicture
+	for _, picture := range []namedPicture{{"header_picture", column.HeaderPicture}, {"footer_picture", column.FooterPicture}} {
+		if picture.value != nil && picture.value.Common != nil {
+			pictures = append(pictures, picture)
+		}
+	}
+	return pictures
+}
+
+type namedPicture struct {
+	name  string
+	value *PictureReference
+}

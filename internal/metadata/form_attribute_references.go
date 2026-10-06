@@ -118,8 +118,9 @@ func (catalog *Catalog) resolveFormExtension(form string, extension FormExtensio
 
 // resolveFormElements checks what the elements of a form refer to: the roles
 // they are shown to - known only when the roles were loaded, as for the
-// rights of an attribute - and the style items of the configuration their
-// look takes its values from, which must be there and of the type taken.
+// rights of an attribute - the style items of the configuration their look
+// takes its values from, which must be there and of the type taken, and the
+// common pictures drawn in the header and footer of a column.
 func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElement) error {
 	for _, item := range items {
 		where := form + " element " + item.Name
@@ -130,7 +131,7 @@ func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElem
 				}
 			}
 		}
-		for _, use := range item.FieldLook.styleItems() {
+		for _, use := range append(item.FieldLook.styleItems(), item.FieldColumn.styleItems()...) {
 			index, ok := catalog.styleItemByID[use.id]
 			if !ok {
 				catalog.noteUnresolved(where+" "+use.name, use.id)
@@ -138,6 +139,11 @@ func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElem
 			}
 			if found := catalog.StyleItems[index]; found.Type != use.itemType {
 				return fmt.Errorf("%s %s takes its value from style item %s, which is a %s and not a %s", where, use.name, found.Name, found.Type, use.itemType)
+			}
+		}
+		for _, picture := range item.FieldColumn.commonPictures() {
+			if _, ok := catalog.commonPictureByID[*picture.value.Common]; !ok {
+				catalog.noteUnresolved(where+" "+picture.name, *picture.value.Common)
 			}
 		}
 		if err := catalog.resolveFormElements(form, item.Children); err != nil {

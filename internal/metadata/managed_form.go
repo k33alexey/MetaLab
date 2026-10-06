@@ -131,6 +131,8 @@ type ManagedFormElement struct {
 	FieldLayout `yaml:",inline"`
 	// FieldLook is how a field and its title are drawn.
 	FieldLook `yaml:",inline"`
+	// FieldColumn is what a field has as a column of a table.
+	FieldColumn `yaml:",inline"`
 	// ButtonType is what a button is; only a button has one.
 	ButtonType FormButtonType `yaml:"button_type,omitempty" json:"buttonType,omitempty"`
 	// Orientation lays out what a usual group, a page or a group of columns
@@ -273,6 +275,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		issues = append(issues, validateFormField(current.path, item.FieldBehavior, class, configuration)...)
 		issues = append(issues, validateFieldLayout(current.path, item.FieldLayout, class)...)
 		issues = append(issues, validateFieldLook(current.path, item.FieldLook, class)...)
+		issues = append(issues, validateFieldColumn(current.path, item.FieldColumn, class, configuration)...)
 		if item.ReadOnly && class != formFieldClass && class != formTableClass {
 			issues = append(issues, current.path+".read_only is allowed only for fields and tables")
 		}
