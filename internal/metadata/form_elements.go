@@ -5,6 +5,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/k33alexey/MetaLab/internal/project"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // FormElementKind is what an element of a form is. Each kind is one tag of
@@ -372,4 +373,97 @@ func validateFieldLayout(path string, layout FieldLayout, class formElementClass
 	issues = append(issues, oneOf(path+".horizontal_align", layout.HorizontalAlign, horizontal...)...)
 	issues = append(issues, oneOf(path+".vertical_align", layout.VerticalAlign, vertical...)...)
 	return issues
+}
+
+// FieldLook is how a field and its title are drawn: the colours, fonts and
+// border are the values a style item has (styles.go), written as the
+// prototype writes them on a field - a style item, a colour of the web or the
+// system palette, an absolute colour; a font of a style item, of the system
+// or absolute, with what it changes. Nil is the field's own.
+type FieldLook struct {
+	Font        *FontValue   `yaml:"font,omitempty" json:"font,omitempty"`
+	TextColor   *ColorValue  `yaml:"text_color,omitempty" json:"textColor,omitempty"`
+	BackColor   *ColorValue  `yaml:"back_color,omitempty" json:"backColor,omitempty"`
+	BorderColor *ColorValue  `yaml:"border_color,omitempty" json:"borderColor,omitempty"`
+	Border      *BorderValue `yaml:"border,omitempty" json:"border,omitempty"`
+	// The title of the field: its font, its colours, and its height in lines
+	// (1 to 16 in the exports; 0 is chosen by the platform).
+	TitleFont      *FontValue  `yaml:"title_font,omitempty" json:"titleFont,omitempty"`
+	TitleTextColor *ColorValue `yaml:"title_text_color,omitempty" json:"titleTextColor,omitempty"`
+	TitleBackColor *ColorValue `yaml:"title_back_color,omitempty" json:"titleBackColor,omitempty"`
+	TitleHeight    int         `yaml:"title_height,omitempty" json:"titleHeight,omitempty"`
+}
+
+func validateFieldLook(path string, look FieldLook, class formElementClass) []string {
+	if look == (FieldLook{}) {
+		return nil
+	}
+	if class != formFieldClass {
+		return []string{path + " has the look of a field"}
+	}
+	var issues []string
+	for _, font := range []struct {
+		name  string
+		value *FontValue
+	}{{"font", look.Font}, {"title_font", look.TitleFont}} {
+		if font.value != nil {
+			issues = append(issues, validateFontValue(path+"."+font.name, *font.value)...)
+		}
+	}
+	for _, color := range look.colors() {
+		if color.value != nil {
+			issues = append(issues, validateColorValue(path+"."+color.name, *color.value)...)
+		}
+	}
+	if look.Border != nil {
+		issues = append(issues, validateBorderValue(path+".border", *look.Border)...)
+	}
+	if look.TitleHeight < 0 {
+		issues = append(issues, path+".title_height must not be negative")
+	}
+	return issues
+}
+
+type namedColor struct {
+	name  string
+	value *ColorValue
+}
+
+func (look FieldLook) colors() []namedColor {
+	return []namedColor{{"text_color", look.TextColor}, {"back_color", look.BackColor}, {"border_color", look.BorderColor},
+		{"title_text_color", look.TitleTextColor}, {"title_back_color", look.TitleBackColor}}
+}
+
+// styleItems lists the style items of the configuration the look takes its
+// values from, each with the type it must be.
+func (look FieldLook) styleItems() []styleItemUse {
+	var uses []styleItemUse
+	add := func(name string, itemType StyleItemType, reference *StyleItemReference) {
+		if reference != nil && reference.Item != nil {
+			uses = append(uses, styleItemUse{name: name, itemType: itemType, id: *reference.Item})
+		}
+	}
+	for _, font := range []struct {
+		name  string
+		value *FontValue
+	}{{"font", look.Font}, {"title_font", look.TitleFont}} {
+		if font.value != nil && font.value.Source == StyleFont {
+			add(font.name, FontStyleItem, font.value.From)
+		}
+	}
+	for _, color := range look.colors() {
+		if color.value != nil && color.value.Source == StyleColor {
+			add(color.name, ColorStyleItem, color.value.From)
+		}
+	}
+	if look.Border != nil && look.Border.Source == StyleBorder {
+		add("border", BorderStyleItem, look.Border.From)
+	}
+	return uses
+}
+
+type styleItemUse struct {
+	name     string
+	itemType StyleItemType
+	id       uuid.UUID
 }

@@ -79,7 +79,9 @@ func (catalog *Catalog) checkFormAttributes() error {
 			return err
 		}
 		catalog.resolveFormExtension(item.where, item.form.FormExtension)
-		catalog.resolveFormElements(item.where, item.form.Items)
+		if err := catalog.resolveFormElements(item.where, item.form.Items); err != nil {
+			return err
+		}
 	}
 	common := catalog.commonFormsRead
 	catalog.commonFormsRead = nil
@@ -89,7 +91,9 @@ func (catalog *Catalog) checkFormAttributes() error {
 			return err
 		}
 		catalog.resolveFormExtension("common form "+form.Name, form.FormExtension)
-		catalog.resolveFormElements("common form "+form.Name, form.Items)
+		if err := catalog.resolveFormElements("common form "+form.Name, form.Items); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -112,23 +116,35 @@ func (catalog *Catalog) resolveFormExtension(form string, extension FormExtensio
 	}
 }
 
-// resolveFormElements checks the roles the elements of a form are shown to.
-// A role is known only when the roles were loaded, as for the rights of an
-// attribute.
-func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElement) {
-	if !catalog.rolesLoaded {
-		return
-	}
+// resolveFormElements checks what the elements of a form refer to: the roles
+// they are shown to - known only when the roles were loaded, as for the
+// rights of an attribute - and the style items of the configuration their
+// look takes its values from, which must be there and of the type taken.
+func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElement) error {
 	for _, item := range items {
-		if item.UserVisible != nil {
+		where := form + " element " + item.Name
+		if item.UserVisible != nil && catalog.rolesLoaded {
 			for _, role := range item.UserVisible.Roles {
 				if _, ok := catalog.roleByID[role.Role]; !ok {
-					catalog.noteUnresolved(form+" element "+item.Name+" user visibility of role", role.Role)
+					catalog.noteUnresolved(where+" user visibility of role", role.Role)
 				}
 			}
 		}
-		catalog.resolveFormElements(form, item.Children)
+		for _, use := range item.FieldLook.styleItems() {
+			index, ok := catalog.styleItemByID[use.id]
+			if !ok {
+				catalog.noteUnresolved(where+" "+use.name, use.id)
+				continue
+			}
+			if found := catalog.StyleItems[index]; found.Type != use.itemType {
+				return fmt.Errorf("%s %s takes its value from style item %s, which is a %s and not a %s", where, use.name, found.Name, found.Type, use.itemType)
+			}
+		}
+		if err := catalog.resolveFormElements(form, item.Children); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // resolveFormAttributes checks the references of the attributes of one form.

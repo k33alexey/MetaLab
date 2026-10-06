@@ -476,3 +476,146 @@ func TestAFieldRefusesWhatIsWrongInItsSize(t *testing.T) {
 		})
 	}
 }
+
+// A field keeps how it and its title are drawn, each colour, font and border
+// written every way the prototype writes one on a field, through YAML and the
+// Studio.
+//
+// Defect caught: a colour of the system palette (win:Highlight), a font of
+// the system (sys:DefaultGUIFont) or an absolute one refused, so that a form
+// drawn with one is not moved; a value read into the wrong property or lost
+// through the Studio.
+func TestAFieldKeepsHowItIsDrawn(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field," +
+		" font: {source: style, from: {standard: NormalTextFont}, bold: true, size: 10}," +
+		" text_color: {source: web, name: MediumGray}, back_color: {source: absolute, rgb: '#777777'}," +
+		" border_color: {source: style, from: {standard: BorderColor}}, border: {source: absolute, line: single, width: 2}," +
+		" title_font: {source: system, face: DefaultGUIFont, italic: false}, title_text_color: {source: system, name: Highlight}," +
+		" title_back_color: {source: auto}, title_height: 2}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Надпись, kind: label-field, font: {source: absolute, face: MS Shell Dlg, size: 12, scale: 100}," +
+		" border: {source: absolute, line: none, width: 1}}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	look := form.Items[0].FieldLook
+	value := reflect.ValueOf(look)
+	for index := range value.NumField() {
+		if value.Field(index).IsZero() {
+			t.Errorf("%s is not set by the test", value.Type().Field(index).Name)
+		}
+	}
+	switch {
+	case look.Font.Source != StyleFont || look.Font.From.Standard != "NormalTextFont" || look.Font.Bold == nil || !*look.Font.Bold || look.Font.Size != 10:
+		t.Fatalf("font: %+v", look.Font)
+	case look.TextColor.Name != "MediumGray" || look.BackColor.RGB != "#777777" || look.BorderColor.From.Standard != "BorderColor":
+		t.Fatalf("colours: %+v %+v %+v", look.TextColor, look.BackColor, look.BorderColor)
+	case look.Border.Line != SingleBorderLine || look.Border.Width != 2 || look.TitleHeight != 2:
+		t.Fatalf("border or title height: %+v %d", look.Border, look.TitleHeight)
+	case look.TitleFont.Source != SystemFont || look.TitleTextColor.Source != SystemColor || look.TitleBackColor.Source != AutoColor:
+		t.Fatalf("title: %+v %+v %+v", look.TitleFont, look.TitleTextColor, look.TitleBackColor)
+	case form.Items[1].Font.Face != "MS Shell Dlg" || form.Items[1].Border.Line != NoBorderLine:
+		t.Fatalf("label field: %+v", form.Items[1].FieldLook)
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil || !reflect.DeepEqual(again.Items, form.Items) {
+		t.Fatalf("written back: %v", err)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil || !reflect.DeepEqual(received.Items, form.Items) {
+		t.Fatalf("carried through the Studio: %v", err)
+	}
+}
+
+// The look of a field stands only on a field and is checked as a value of a
+// style item is.
+//
+// Defect caught: the look of a field kept on a group; a colour that is no
+// colour, a font with no face, a border thicker than the configurator takes,
+// a negative title height accepted.
+func TestAFieldRefusesWhatIsWrongInHowItIsDrawn(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	for name, test := range map[string]struct{ element, want string }{
+		"шрифт у группы":   {"kind: usual-group, font: {source: auto}", "items[0] has the look of a field"},
+		"цвет у кнопки":    {"kind: button, text_color: {source: auto}", "items[0] has the look of a field"},
+		"цвет не цвет":     {"kind: input-field, back_color: {source: absolute, rgb: red}", "items[0].back_color.rgb must be a colour written as #RRGGBB"},
+		"цвет заголовка":   {"kind: input-field, title_back_color: {source: style}", "items[0].title_back_color.from must name the style item"},
+		"шрифт без имени":  {"kind: input-field, title_font: {source: absolute, size: 10}", "items[0].title_font.face must name the font"},
+		"рамка толще":      {"kind: input-field, border: {source: absolute, line: single, width: 6}", "items[0].border.width must be between 0 and 5"},
+		"цвет рамки":       {"kind: input-field, border_color: {source: paint}", "items[0].border_color.source must be absolute, web, system, auto or style"},
+		"текст":            {"kind: input-field, text_color: {source: web}", "items[0].text_color.name must name a colour of the palette"},
+		"шрифт":            {"kind: input-field, font: {source: style, from: {standard: NormalTextFont}, scale: 1000}", "items[0].font.scale must be a percentage"},
+		"высота заголовка": {"kind: input-field, title_height: -1", "items[0].title_height must not be negative"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			source := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Элемент, " + test.element + "}\n")
+			_, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+// A style item of the configuration a field takes its look from is resolved
+// with the project: one that is there and of the type taken stands, one that
+// is gone is a reference to nothing, one of another type refuses the project.
+//
+// Defect caught: a field drawn with a style item the project does not have,
+// loading clean; a font taken from a style item that is a colour accepted,
+// which has nothing to draw the font with.
+func TestTheStyleItemsAFieldIsDrawnWithAreResolved(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		look    string
+		refused string
+		gone    bool
+	}{
+		"цвет из элемента стиля":    {"text_color: {source: style, from: {item: " + cmpStyleItem + "}}", "", false},
+		"удалённый элемент стиля":   {"back_color: {source: style, from: {item: " + refGone + "}}", "", true},
+		"шрифт из цвета":            {"title_font: {source: style, from: {item: " + cmpStyleItem + "}}", "catalog Номенклатура form ФормаЭлемента element Поле title_font takes its value from style item ЦветВажного, which is a color and not a font", false},
+		"вложенный, рамка из цвета": {"border: {source: style, from: {item: " + cmpStyleItem + "}}", "element Поле border takes its value from style item ЦветВажного, which is a color and not a border", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := formReferencesProject(t)
+			path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			element := "items:\n  - {id: c0de0000-0000-4000-8000-000000990001, name: Группа, kind: usual-group, children: [" +
+				"{id: c0de0000-0000-4000-8000-000000990002, name: Поле, kind: input-field, " + test.look + "}]}\n"
+			writeFile(t, path, strings.Replace(string(content), "attributes:\n", element+"attributes:\n", 1))
+			switch {
+			case test.gone:
+				if found := unresolvedOf(t, root); !containsWhere(found, "catalog Номенклатура form ФормаЭлемента element Поле back_color") {
+					t.Fatalf("unresolved = %+v", found)
+				}
+			case test.refused != "":
+				if _, err := Load(root); err == nil || !strings.Contains(err.Error(), test.refused) {
+					t.Fatalf("err = %v, want %q", err, test.refused)
+				}
+			default:
+				if _, err := Load(root); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+}
