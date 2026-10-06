@@ -127,6 +127,8 @@ type ManagedFormElement struct {
 	UserVisible *FormAttributeRight `yaml:"user_visible,omitempty" json:"userVisible,omitempty"`
 	// FieldBehavior is what a field has besides what every element has.
 	FieldBehavior `yaml:",inline"`
+	// FieldLayout is the size of a field and where it stands.
+	FieldLayout `yaml:",inline"`
 	// ButtonType is what a button is; only a button has one.
 	ButtonType FormButtonType `yaml:"button_type,omitempty" json:"buttonType,omitempty"`
 	// Orientation lays out what a usual group, a page or a group of columns
@@ -267,6 +269,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			issues = append(issues, validateElementDataPath(current.path+".data_path", item.DataPath)...)
 		}
 		issues = append(issues, validateFormField(current.path, item.FieldBehavior, class, configuration)...)
+		issues = append(issues, validateFieldLayout(current.path, item.FieldLayout, class)...)
 		if item.ReadOnly && class != formFieldClass && class != formTableClass {
 			issues = append(issues, current.path+".read_only is allowed only for fields and tables")
 		}

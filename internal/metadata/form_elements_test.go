@@ -377,3 +377,102 @@ func TestTheDataPathOfAnElementIsTakenAsThePrototypeWritesIt(t *testing.T) {
 		t.Fatalf("the data path of a button: %v", err)
 	}
 }
+
+// A field keeps its size and where it stands, through YAML and the Studio:
+// both stretches in all three of their states, sizes past anything the
+// exports hold, as the prototype sets no limit.
+//
+// Defect caught: a property of the size read into the wrong field or into
+// none, or lost through the Studio; a stretch kept as a plain yes or no, so
+// that a field not told to stretch - which stretches or not by its kind -
+// is made not to; a limit on a size the prototype does not have.
+func TestAFieldKeepsItsSizeAndWhereItStands(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, width: 100000, height: 40, no_auto_max_width: true," +
+		" max_width: 1000, no_auto_max_height: true, max_height: 51, horizontal_stretch: false, vertical_stretch: true," +
+		" group_horizontal_align: right, group_vertical_align: center, horizontal_align: left, vertical_align: bottom}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Документ, kind: spreadsheet-document-field, horizontal_stretch: true, vertical_stretch: false}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Надпись, kind: label-field}\n"
+	no, yes := false, true
+	want := FieldLayout{Width: 100000, Height: 40, NoAutoMaxWidth: true, MaxWidth: 1000, NoAutoMaxHeight: true, MaxHeight: 51,
+		HorizontalStretch: &no, VerticalStretch: &yes, GroupHorizontalAlign: ItemHorizontalRight, GroupVerticalAlign: ItemVerticalCenter,
+		HorizontalAlign: ItemHorizontalLeft, VerticalAlign: ItemVerticalBottom}
+	check := func(source string, items []ManagedFormElement) {
+		t.Helper()
+		if !reflect.DeepEqual(items[0].FieldLayout, want) {
+			t.Fatalf("%s: %+v, want %+v", source, items[0].FieldLayout, want)
+		}
+		if !reflect.DeepEqual(items[1].FieldLayout, FieldLayout{HorizontalStretch: &yes, VerticalStretch: &no}) || items[2].FieldLayout != (FieldLayout{}) {
+			t.Fatalf("%s: stretches: %+v, %+v", source, items[1].FieldLayout, items[2].FieldLayout)
+		}
+	}
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("read", form.Items)
+	value := reflect.ValueOf(want)
+	for index := range value.NumField() {
+		if value.Field(index).IsZero() {
+			t.Errorf("%s is not set by the test", value.Type().Field(index).Name)
+		}
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("written back", again.Items)
+	if strings.Contains(string(written), "null") {
+		t.Fatalf("a property not said is written:\n%s", written)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil {
+		t.Fatal(err)
+	}
+	check("carried through the Studio", received.Items)
+}
+
+// The size and alignment of a field stand only on a field, a size is not
+// negative, and an alignment is one the help gives.
+//
+// Defect caught: the size of a field kept on a group, where the size of a
+// group - another property - belongs; a negative size; justify, which the
+// help gives the text of a cell and not an item, accepted.
+func TestAFieldRefusesWhatIsWrongInItsSize(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	for name, test := range map[string]struct{ element, want string }{
+		"ширина у группы":          {"kind: usual-group, width: 10", "items[0] has the size and alignment of a field"},
+		"растягивание у кнопки":    {"kind: button, horizontal_stretch: true", "items[0] has the size and alignment of a field"},
+		"выравнивание у декорации": {"kind: label-decoration, horizontal_align: left", "items[0] has the size and alignment of a field"},
+		"ширина":                  {"kind: input-field, width: -1", "items[0].width must not be negative"},
+		"высота":                  {"kind: input-field, height: -1", "items[0].height must not be negative"},
+		"максимальная ширина":     {"kind: input-field, max_width: -1", "items[0].max_width must not be negative"},
+		"максимальная высота":     {"kind: input-field, max_height: -1", "items[0].max_height must not be negative"},
+		"в группе по горизонтали": {"kind: input-field, group_horizontal_align: justify", "items[0].group_horizontal_align must be auto, left, center or right"},
+		"в группе по вертикали":   {"kind: input-field, group_vertical_align: middle", "items[0].group_vertical_align must be auto, top, center or bottom"},
+		"по горизонтали":          {"kind: input-field, horizontal_align: justify", "items[0].horizontal_align must be auto, left, center or right"},
+		"по вертикали":            {"kind: input-field, vertical_align: middle", "items[0].vertical_align must be auto, top, center or bottom"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			source := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Элемент, " + test.element + "}\n")
+			_, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+}

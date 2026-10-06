@@ -316,3 +316,60 @@ func allDigits(value string) bool {
 	}
 	return value != ""
 }
+
+// FieldLayout is the size of a field and where it stands (help, FormField and
+// the extension of each field). Sizes are in characters and take no limit,
+// as the prototype sets none; 0 is chosen by the platform, and a maximum of 0
+// is no maximum.
+type FieldLayout struct {
+	Width  int `yaml:"width,omitempty" json:"width,omitempty"`
+	Height int `yaml:"height,omitempty" json:"height,omitempty"`
+	// NoAutoMaxWidth and NoAutoMaxHeight turn off the platform's own limit,
+	// so that MaxWidth and MaxHeight apply; the prototype writes only the
+	// "off" (8463 and 305 times).
+	NoAutoMaxWidth  bool `yaml:"no_auto_max_width,omitempty" json:"noAutoMaxWidth,omitempty"`
+	MaxWidth        int  `yaml:"max_width,omitempty" json:"maxWidth,omitempty"`
+	NoAutoMaxHeight bool `yaml:"no_auto_max_height,omitempty" json:"noAutoMaxHeight,omitempty"`
+	MaxHeight       int  `yaml:"max_height,omitempty" json:"maxHeight,omitempty"`
+	// HorizontalStretch and VerticalStretch are yes, no or not said: what a
+	// field does when not told depends on its kind - the help gives an input
+	// and a label field Undefined beside yes and no - and the prototype
+	// writes both values (11612 and 1602 across, 1430 and 138 up and down).
+	HorizontalStretch *bool `yaml:"horizontal_stretch,omitempty" json:"horizontalStretch,omitempty"`
+	VerticalStretch   *bool `yaml:"vertical_stretch,omitempty" json:"verticalStretch,omitempty"`
+	// GroupHorizontalAlign and GroupVerticalAlign are where the field stands in
+	// its group; Auto takes the group's own (help, HorizontalAlignInGroup,
+	// VerticalAlignInGroup - the prototype's description names them
+	// GroupHorizontalAlign and GroupVerticalAlign).
+	GroupHorizontalAlign ItemHorizontalAlign `yaml:"group_horizontal_align,omitempty" json:"groupHorizontalAlign,omitempty"`
+	GroupVerticalAlign   ItemVerticalAlign   `yaml:"group_vertical_align,omitempty" json:"groupVerticalAlign,omitempty"`
+	// HorizontalAlign is where the text stands in a column of a table;
+	// VerticalAlign where the field stands up and down.
+	HorizontalAlign ItemHorizontalAlign `yaml:"horizontal_align,omitempty" json:"horizontalAlign,omitempty"`
+	VerticalAlign   ItemVerticalAlign   `yaml:"vertical_align,omitempty" json:"verticalAlign,omitempty"`
+}
+
+func validateFieldLayout(path string, layout FieldLayout, class formElementClass) []string {
+	if layout == (FieldLayout{}) {
+		return nil
+	}
+	if class != formFieldClass {
+		return []string{path + " has the size and alignment of a field"}
+	}
+	var issues []string
+	for _, size := range []struct {
+		name  string
+		value int
+	}{{"width", layout.Width}, {"height", layout.Height}, {"max_width", layout.MaxWidth}, {"max_height", layout.MaxHeight}} {
+		if size.value < 0 {
+			issues = append(issues, path+"."+size.name+" must not be negative")
+		}
+	}
+	horizontal := []ItemHorizontalAlign{ItemHorizontalAuto, ItemHorizontalLeft, ItemHorizontalCenter, ItemHorizontalRight}
+	vertical := []ItemVerticalAlign{ItemVerticalAuto, ItemVerticalTop, ItemVerticalCenter, ItemVerticalBottom}
+	issues = append(issues, oneOf(path+".group_horizontal_align", layout.GroupHorizontalAlign, horizontal...)...)
+	issues = append(issues, oneOf(path+".group_vertical_align", layout.GroupVerticalAlign, vertical...)...)
+	issues = append(issues, oneOf(path+".horizontal_align", layout.HorizontalAlign, horizontal...)...)
+	issues = append(issues, oneOf(path+".vertical_align", layout.VerticalAlign, vertical...)...)
+	return issues
+}
