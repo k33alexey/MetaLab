@@ -1,10 +1,17 @@
 package metadata
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"go.yaml.in/yaml/v3"
+
+	"github.com/k33alexey/MetaLab/internal/project"
 )
 
 // formElementsForm is a form holding the given YAML items.
@@ -116,5 +123,132 @@ func TestAButtonKeepsItsTypeAndAGroupItsLayout(t *testing.T) {
 	}
 	if form.Items[0].ButtonType != FormButtonHyperlink || form.Items[1].Orientation != "" || form.Items[2].Children[0].Orientation != FormHorizontal {
 		t.Fatalf("items = %+v", form.Items)
+	}
+}
+
+// What every element has - its tooltip, how the tooltip shows, whom it is
+// shown to - is kept on a field, a group, a decoration, a table and a button,
+// and comes back the same through YAML and the Studio.
+//
+// Defect caught: a common property kept on one kind and lost on another; the
+// roles an element is shown to lost, so that a field the prototype shows to
+// no one until the user turns it on - 6590 of them - shows to everyone.
+func TestEveryElementKeepsWhatEveryElementHas(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	common := ", tool_tip: {ru: Подсказка}, tool_tip_representation: show-bottom, user_visible: {common: false, roles: [{role: " + formAttrRole + ", value: true}]}"
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field" + common + "}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Группа, kind: usual-group" + common + "}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Надпись, kind: label-decoration" + common + "}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Таблица, kind: table" + common + "}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990005, name: Кнопка, kind: button, tool_tip_representation: balloon, user_visible: {common: false}}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(source string, items []ManagedFormElement) {
+		t.Helper()
+		for _, item := range items[:4] {
+			if item.ToolTip["ru"] != "Подсказка" || item.ToolTipRepresentation != FormToolTipShowBottom || item.UserVisible == nil ||
+				item.UserVisible.Common || len(item.UserVisible.Roles) != 1 || item.UserVisible.Roles[0].Role.String() != formAttrRole {
+				t.Fatalf("%s: %s lost what every element has: %+v", source, item.Kind, item)
+			}
+		}
+		if button := items[4]; button.ToolTipRepresentation != FormToolTipBalloon || button.UserVisible == nil || button.UserVisible.Common {
+			t.Fatalf("%s: the button: %+v", source, button)
+		}
+	}
+	check("read", form.Items)
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("written back", again.Items)
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil {
+		t.Fatal(err)
+	}
+	check("carried through the Studio", received.Items)
+}
+
+// What every element has is refused when it is wrong, naming the element.
+//
+// Defect caught: a tooltip written on a button, which shows the tooltip of
+// its command, kept where nothing shows it; a representation the help does
+// not give; a role answering twice; a tooltip in a language the
+// configuration does not have.
+func TestEveryElementRefusesWhatIsWrongInWhatEveryElementHas(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	for name, test := range map[string]struct{ element, want string }{
+		"подсказка у кнопки":      {"kind: button, tool_tip: {ru: П}", "items[0].tool_tip is the tooltip of the command for a button"},
+		"отображение подсказки":   {"kind: input-field, tool_tip_representation: hover", "items[0].tool_tip_representation must be auto, none, button, balloon, show-auto, show-top, show-left, show-bottom or show-right"},
+		"роль дважды":             {"kind: input-field, user_visible: {common: false, roles: [{role: " + formAttrRole + ", value: true}, {role: " + formAttrRole + ", value: false}]}", "items[0].user_visible.roles[1].role already has its answer"},
+		"роль без идентификатора": {"kind: usual-group, user_visible: {common: true, roles: [{role: 00000000-0000-0000-0000-000000000000, value: false}]}", "items[0].user_visible.roles[0].role must be a non-zero UUID"},
+		"подсказка не на языке":   {"kind: label-decoration, tool_tip: {\"d=e\": П}", "items[0].tool_tip"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			source := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Элемент, " + test.element + "}\n")
+			_, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+// The roles an element of a form of an object or of a common form is shown to
+// are resolved with the project: a role that is gone is a reference to
+// nothing named with the form and the element - the deleted role of erp
+// written on three fields among them - and the role editor, which reads
+// without the roles, does not take a role for one that is gone.
+//
+// Defect caught: an element shown to a role the project does not have,
+// loading clean; a nested element left unresolved; every role of a form
+// listed as gone in the role editor.
+func TestTheRolesAnElementIsShownToAreResolved(t *testing.T) {
+	t.Parallel()
+	element := "items:\n  - {id: c0de0000-0000-4000-8000-000000990001, name: Группа, kind: usual-group, children: [" +
+		"{id: c0de0000-0000-4000-8000-000000990002, name: Поле, kind: input-field, user_visible: {common: false, roles: [{role: ROLE, value: true}]}}]}\n"
+	for _, place := range []string{"object", "common"} {
+		root := formReferencesProject(t)
+		path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+		where := "catalog Номенклатура form ФормаЭлемента element Поле user visibility of role"
+		if place == "common" {
+			path = filepath.Join(root, "metadata", "common-forms", "АдреснаяКнига", project.FormMetadataFile)
+			where = "common form АдреснаяКнига element Поле user visibility of role"
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		withElement := strings.Replace(string(content), "attributes:\n", strings.ReplaceAll(element, "ROLE", cmpRole)+"attributes:\n", 1)
+		writeFile(t, path, withElement)
+		if _, err := Load(root); err != nil {
+			t.Fatalf("%s: a role of the project: %v", place, err)
+		}
+		writeFile(t, path, strings.Replace(withElement, cmpRole, refGone, 1))
+		if found := unresolvedOf(t, root); !containsWhere(found, where) {
+			t.Fatalf("%s: unresolved = %+v", place, found)
+		}
+		catalog, err := read(root, false, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if found := catalog.UnresolvedReferences(); containsWhere(found, where) {
+			t.Fatalf("%s: read without the roles: %+v", place, found)
+		}
 	}
 }

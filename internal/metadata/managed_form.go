@@ -115,6 +115,16 @@ type ManagedFormElement struct {
 	ReadOnly bool            `yaml:"read_only,omitempty" json:"readOnly"`
 	DataPath string          `yaml:"data_path,omitempty" json:"dataPath,omitempty"`
 	Command  *uuid.UUID      `yaml:"command,omitempty" json:"command,omitempty"`
+	// ToolTip is the tooltip of the element; a button shows that of its
+	// command. ToolTipRepresentation is how the tooltip shows.
+	ToolTip               LocalizedText             `yaml:"tool_tip,omitempty" json:"toolTip,omitempty"`
+	ToolTipRepresentation FormToolTipRepresentation `yaml:"tool_tip_representation,omitempty" json:"toolTipRepresentation,omitempty"`
+	// UserVisible is whom the element is shown to until the user changes the
+	// settings of the form: one answer for every role and the roles that
+	// answer otherwise, as a right of an attribute of a form. Nil is shown to
+	// everyone; the prototype writes it on 6611 elements, 6590 of them shown
+	// to no one until the user turns them on. The help does not name it.
+	UserVisible *FormAttributeRight `yaml:"user_visible,omitempty" json:"userVisible,omitempty"`
 	// ButtonType is what a button is; only a button has one.
 	ButtonType FormButtonType `yaml:"button_type,omitempty" json:"buttonType,omitempty"`
 	// Orientation lays out what a usual group, a page or a group of columns
@@ -264,6 +274,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 				issues = append(issues, current.path+".command references an unknown form command")
 			}
 		}
+		issues = append(issues, validateElementCommon(current.path, item, class, configuration)...)
 		if item.ButtonType != "" && class != formButtonClass {
 			issues = append(issues, current.path+".button_type is allowed only for buttons")
 		}

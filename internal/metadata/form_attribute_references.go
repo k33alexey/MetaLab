@@ -79,6 +79,7 @@ func (catalog *Catalog) checkFormAttributes() error {
 			return err
 		}
 		catalog.resolveFormExtension(item.where, item.form.FormExtension)
+		catalog.resolveFormElements(item.where, item.form.Items)
 	}
 	common := catalog.commonFormsRead
 	catalog.commonFormsRead = nil
@@ -88,6 +89,7 @@ func (catalog *Catalog) checkFormAttributes() error {
 			return err
 		}
 		catalog.resolveFormExtension("common form "+form.Name, form.FormExtension)
+		catalog.resolveFormElements("common form "+form.Name, form.Items)
 	}
 	return nil
 }
@@ -107,6 +109,25 @@ func (catalog *Catalog) resolveFormExtension(form string, extension FormExtensio
 		if _, ok := catalog.settingsStorageByID[*storage]; !ok {
 			catalog.noteUnresolved(form+" settings storage", *storage)
 		}
+	}
+}
+
+// resolveFormElements checks the roles the elements of a form are shown to.
+// A role is known only when the roles were loaded, as for the rights of an
+// attribute.
+func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElement) {
+	if !catalog.rolesLoaded {
+		return
+	}
+	for _, item := range items {
+		if item.UserVisible != nil {
+			for _, role := range item.UserVisible.Roles {
+				if _, ok := catalog.roleByID[role.Role]; !ok {
+					catalog.noteUnresolved(form+" element "+item.Name+" user visibility of role", role.Role)
+				}
+			}
+		}
+		catalog.resolveFormElements(form, item.Children)
 	}
 }
 

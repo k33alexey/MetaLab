@@ -1,5 +1,7 @@
 package metadata
 
+import "github.com/k33alexey/MetaLab/internal/project"
+
 // FormElementKind is what an element of a form is. Each kind is one tag of
 // the prototype's description of a form, so that a form is moved element by
 // element (owner, 06.10.2026); the kinds are the ones the help gives a form
@@ -135,3 +137,37 @@ const (
 	FormButtonCommandBarButton    FormButtonType = "command-bar-button"
 	FormButtonCommandBarHyperlink FormButtonType = "command-bar-hyperlink"
 )
+
+// FormToolTipRepresentation is how an element shows its tooltip (help,
+// ToolTipRepresentation). Empty is Auto, which the prototype never writes.
+type FormToolTipRepresentation string
+
+const (
+	FormToolTipAuto       FormToolTipRepresentation = "auto"
+	FormToolTipNone       FormToolTipRepresentation = "none"
+	FormToolTipButton     FormToolTipRepresentation = "button"
+	FormToolTipBalloon    FormToolTipRepresentation = "balloon"
+	FormToolTipShowAuto   FormToolTipRepresentation = "show-auto"
+	FormToolTipShowTop    FormToolTipRepresentation = "show-top"
+	FormToolTipShowLeft   FormToolTipRepresentation = "show-left"
+	FormToolTipShowBottom FormToolTipRepresentation = "show-bottom"
+	FormToolTipShowRight  FormToolTipRepresentation = "show-right"
+)
+
+// validateElementCommon checks what every element has: its tooltip, how the
+// tooltip shows, and whom it is shown to.
+func validateElementCommon(path string, item ManagedFormElement, class formElementClass, configuration project.Project) []string {
+	var issues []string
+	if len(item.ToolTip) != 0 {
+		// A button shows the tooltip of its command (help: a form button has
+		// no tooltip of its own).
+		if class == formButtonClass {
+			issues = append(issues, path+".tool_tip is the tooltip of the command for a button")
+		}
+		issues = append(issues, validateTitle(path+".tool_tip", item.ToolTip, configuration)...)
+	}
+	issues = append(issues, oneOf(path+".tool_tip_representation", item.ToolTipRepresentation, FormToolTipAuto, FormToolTipNone, FormToolTipButton,
+		FormToolTipBalloon, FormToolTipShowAuto, FormToolTipShowTop, FormToolTipShowLeft, FormToolTipShowBottom, FormToolTipShowRight)...)
+	issues = append(issues, validateFormRight(path+".user_visible", item.UserVisible)...)
+	return issues
+}
