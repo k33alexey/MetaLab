@@ -25,6 +25,7 @@ func (element ManagedFormElement) pictures() []elementPicture {
 	return []elementPicture{
 		{"header_picture", element.HeaderPicture},
 		{"footer_picture", element.FooterPicture},
+		{"choice_button_picture", element.ChoiceButtonPicture},
 	}
 }
 

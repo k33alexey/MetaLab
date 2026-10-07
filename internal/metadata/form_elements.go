@@ -591,3 +591,83 @@ type namedPicture struct {
 	name  string
 	value *PictureReference
 }
+
+// FormChoiceButtonRepresentation is where the choice button of an input field
+// stands (help, ChoiceButtonRepresentation). Empty is Auto: in the drop list
+// for a reference, in the field for any other type. The prototype never
+// writes Auto.
+type FormChoiceButtonRepresentation string
+
+const (
+	FormChoiceButtonAuto                          FormChoiceButtonRepresentation = "auto"
+	FormChoiceButtonShowInInputField              FormChoiceButtonRepresentation = "show-in-input-field"
+	FormChoiceButtonShowInDropList                FormChoiceButtonRepresentation = "show-in-drop-list"
+	FormChoiceButtonShowInDropListAndInInputField FormChoiceButtonRepresentation = "show-in-drop-list-and-in-input-field"
+)
+
+// FormAutoShowButton is when the clear or the open button of an input field
+// shows (help, AutoShowClearButtonMode and AutoShowOpenButtonMode). Empty is
+// Auto, which the help reads as filled only.
+type FormAutoShowButton string
+
+const (
+	FormAutoShowButtonAuto       FormAutoShowButton = "auto"
+	FormAutoShowButtonAlways     FormAutoShowButton = "always"
+	FormAutoShowButtonFilledOnly FormAutoShowButton = "filled-only"
+)
+
+// FieldButtons are the buttons of an input field (help, the extension of a
+// form field for an input field). Each button is yes, no or not said: the
+// help gives each Undefined as the third, chosen by the type edited, and the
+// prototype writes both true and false (the choice button 3680 and 1317
+// times). The prototype writes them on input fields only.
+type FieldButtons struct {
+	ChoiceButton     *bool `yaml:"choice_button,omitempty" json:"choiceButton,omitempty"`
+	OpenButton       *bool `yaml:"open_button,omitempty" json:"openButton,omitempty"`
+	ClearButton      *bool `yaml:"clear_button,omitempty" json:"clearButton,omitempty"`
+	CreateButton     *bool `yaml:"create_button,omitempty" json:"createButton,omitempty"`
+	DropListButton   *bool `yaml:"drop_list_button,omitempty" json:"dropListButton,omitempty"`
+	SpinButton       *bool `yaml:"spin_button,omitempty" json:"spinButton,omitempty"`
+	ChoiceListButton *bool `yaml:"choice_list_button,omitempty" json:"choiceListButton,omitempty"`
+	// ChoiceButtonRepresentation is where the choice button stands, and
+	// ChoiceButtonPicture is drawn on it - most often a standard picture,
+	// a common one or a file of the element's own (once in the exports).
+	ChoiceButtonRepresentation FormChoiceButtonRepresentation `yaml:"choice_button_representation,omitempty" json:"choiceButtonRepresentation,omitempty"`
+	ChoiceButtonPicture        *PictureReference              `yaml:"choice_button_picture,omitempty" json:"choiceButtonPicture,omitempty"`
+	// AutoShowClearButton and AutoShowOpenButton are when the clear and the
+	// open button show; the prototype writes them as AutoShow…Mode.
+	AutoShowClearButton FormAutoShowButton `yaml:"auto_show_clear_button,omitempty" json:"autoShowClearButton,omitempty"`
+	AutoShowOpenButton  FormAutoShowButton `yaml:"auto_show_open_button,omitempty" json:"autoShowOpenButton,omitempty"`
+}
+
+func (buttons FieldButtons) empty() bool {
+	return buttons.ChoiceButton == nil && buttons.OpenButton == nil && buttons.ClearButton == nil && buttons.CreateButton == nil &&
+		buttons.DropListButton == nil && buttons.SpinButton == nil && buttons.ChoiceListButton == nil &&
+		buttons.ChoiceButtonRepresentation == "" && buttons.ChoiceButtonPicture == nil &&
+		buttons.AutoShowClearButton == "" && buttons.AutoShowOpenButton == ""
+}
+
+func validateFieldButtons(path string, buttons FieldButtons, kind FormElementKind) []string {
+	if buttons.empty() {
+		return nil
+	}
+	if kind != FormElementInputField {
+		return []string{path + " has the buttons of an input field"}
+	}
+	var issues []string
+	issues = append(issues, oneOf(path+".choice_button_representation", buttons.ChoiceButtonRepresentation,
+		FormChoiceButtonAuto, FormChoiceButtonShowInInputField, FormChoiceButtonShowInDropList, FormChoiceButtonShowInDropListAndInInputField)...)
+	issues = append(issues, validatePictureReference(path+".choice_button_picture", buttons.ChoiceButtonPicture)...)
+	modes := []FormAutoShowButton{FormAutoShowButtonAuto, FormAutoShowButtonAlways, FormAutoShowButtonFilledOnly}
+	issues = append(issues, oneOf(path+".auto_show_clear_button", buttons.AutoShowClearButton, modes...)...)
+	issues = append(issues, oneOf(path+".auto_show_open_button", buttons.AutoShowOpenButton, modes...)...)
+	return issues
+}
+
+// commonPictures lists the common picture drawn on the choice button.
+func (buttons FieldButtons) commonPictures() []namedPicture {
+	if picture := buttons.ChoiceButtonPicture; picture != nil && picture.Common != nil {
+		return []namedPicture{{"choice_button_picture", picture}}
+	}
+	return nil
+}

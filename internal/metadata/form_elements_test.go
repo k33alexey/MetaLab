@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -802,5 +803,192 @@ func TestEveryPropertyOfAColumnStandsOnlyOnAField(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "items[1] has what a field has as a column of a table") {
 			t.Errorf("%s alone on a button: %v", name, err)
 		}
+	}
+}
+
+// An input field keeps its buttons - each yes, no or not said - where its
+// choice button stands and what is drawn on it, and when its clear and open
+// buttons show, through YAML and the Studio.
+//
+// Defect caught: a button turned off in the prototype (the choice button 1317
+// times, the clear button 517) read as not said and shown again by the type
+// edited; a button read into its neighbour; the picture of the choice button,
+// where it stands or when the clear button shows lost on the way.
+func TestAnInputFieldKeepsItsButtons(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, choice_button: false, open_button: true," +
+		" clear_button: false, create_button: true, drop_list_button: false, spin_button: true, choice_list_button: false," +
+		" choice_button_representation: show-in-drop-list-and-in-input-field," +
+		" choice_button_picture: {standard: InputFieldCalendar, load_transparent: true}," +
+		" auto_show_clear_button: filled-only, auto_show_open_button: always}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Простое, kind: input-field}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buttons := form.Items[0].FieldButtons
+	value := reflect.ValueOf(buttons)
+	for index := range value.NumField() {
+		if value.Field(index).IsZero() {
+			t.Errorf("%s is not set by the test", value.Type().Field(index).Name)
+		}
+	}
+	said := func(button *bool) string {
+		if button == nil {
+			return "-"
+		}
+		return strconv.FormatBool(*button)
+	}
+	got := strings.Join([]string{said(buttons.ChoiceButton), said(buttons.OpenButton), said(buttons.ClearButton), said(buttons.CreateButton),
+		said(buttons.DropListButton), said(buttons.SpinButton), said(buttons.ChoiceListButton)}, " ")
+	switch {
+	case got != "false true false true false true false":
+		t.Fatalf("buttons: %s", got)
+	case buttons.ChoiceButtonRepresentation != FormChoiceButtonShowInDropListAndInInputField:
+		t.Fatalf("representation: %q", buttons.ChoiceButtonRepresentation)
+	case buttons.ChoiceButtonPicture.Standard != "InputFieldCalendar" || !buttons.ChoiceButtonPicture.LoadTransparent:
+		t.Fatalf("picture: %+v", buttons.ChoiceButtonPicture)
+	case buttons.AutoShowClearButton != FormAutoShowButtonFilledOnly || buttons.AutoShowOpenButton != FormAutoShowButtonAlways:
+		t.Fatalf("auto show: %q %q", buttons.AutoShowClearButton, buttons.AutoShowOpenButton)
+	case !form.Items[1].FieldButtons.empty():
+		t.Fatalf("not said: %+v", form.Items[1].FieldButtons)
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil || !reflect.DeepEqual(again.Items, form.Items) {
+		t.Fatalf("written back: %v", err)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil || !reflect.DeepEqual(received.Items, form.Items) {
+		t.Fatalf("carried through the Studio: %v", err)
+	}
+}
+
+// The buttons of an input field stand only on an input field and are checked
+// as each value is checked elsewhere.
+//
+// Defect caught: a choice button kept on a label field, a check box or a
+// button, which have none; an unknown place of the choice button or mode of
+// showing accepted; a picture of the choice button naming two sources, a file
+// that is no image, or the file of another picture of the element.
+func TestAnInputFieldRefusesWrongButtons(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	for name, test := range map[string]struct{ element, want string }{
+		"у поля надписи":      {"kind: label-field, choice_button: true", "items[0] has the buttons of an input field"},
+		"у флажка":            {"kind: check-box-field, clear_button: false", "items[0] has the buttons of an input field"},
+		"у кнопки":            {"kind: button, auto_show_open_button: always", "items[0] has the buttons of an input field"},
+		"отображение":         {"kind: input-field, choice_button_representation: ShowInInputField", "items[0].choice_button_representation must be auto, show-in-input-field, show-in-drop-list or show-in-drop-list-and-in-input-field"},
+		"автопоказ очистки":   {"kind: input-field, auto_show_clear_button: never", "items[0].auto_show_clear_button must be auto, always or filled-only"},
+		"автопоказ открытия":  {"kind: input-field, auto_show_open_button: never", "items[0].auto_show_open_button must be auto, always or filled-only"},
+		"две картинки":        {"kind: input-field, choice_button_picture: {standard: Change, common: c0de0000-0000-4000-8000-000000000043}", "items[0].choice_button_picture names more than one"},
+		"своя не картинка":    {"kind: input-field, choice_button_picture: {file: ChoiceButtonPicture.txt}", "items[0].choice_button_picture.file must be the name of an image file"},
+		"файл картинки шапки": {"kind: input-field, header_picture: {file: Picture.png}, choice_button_picture: {file: picture.png}", "items[0].choice_button_picture.file is the file of header_picture too"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			source := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Элемент, " + test.element + "}\n")
+			_, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+// Each button property, set alone on a field that is no input field, is
+// refused: none of them is forgotten when the buttons are checked for being
+// empty.
+//
+// Defect caught: a property left out of the check for no buttons, so that a
+// label field keeps it alone without a word.
+func TestEveryButtonStandsOnlyOnAnInputField(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, choice_button: false, open_button: false," +
+		" clear_button: false, create_button: false, drop_list_button: false, spin_button: false, choice_list_button: false," +
+		" choice_button_representation: auto, choice_button_picture: {standard: Change}," +
+		" auto_show_clear_button: auto, auto_show_open_button: auto}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Надпись, kind: label-field}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	full := reflect.ValueOf(form.Items[0].FieldButtons)
+	for index := range full.NumField() {
+		name := full.Type().Field(index).Name
+		if full.Field(index).IsZero() {
+			t.Fatalf("%s is not set by the test", name)
+		}
+		alone := form
+		alone.Items = slices.Clone(form.Items)
+		reflect.ValueOf(&alone.Items[1].FieldButtons).Elem().Field(index).Set(full.Field(index))
+		err := ValidateManagedForm("form.yaml", alone, configuration)
+		if err == nil || !strings.Contains(err.Error(), "items[1] has the buttons of an input field") {
+			t.Errorf("%s alone on a label field: %v", name, err)
+		}
+	}
+}
+
+// The picture of the choice button is resolved with the project: a common
+// picture must be there, and a file of the element's own must lie in the
+// element's folder, as the other pictures of an element are.
+//
+// Defect caught: a choice button drawn with a common picture the project
+// does not have loading clean; a picture of the element's own left out of the
+// pictures of the element, so that its file is refused as kept for nothing,
+// or a reference to a file the folder does not hold loading clean.
+func TestThePictureOfAChoiceButtonIsResolved(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		picture string
+		files   []string
+		refused string
+		gone    string
+	}{
+		"общая картинка":     {picture: "{common: " + cmpCommonPicture + "}"},
+		"удалённая картинка": {picture: "{common: " + refGone + "}", gone: "choice_button_picture"},
+		"свой файл":          {picture: "{file: ChoiceButtonPicture.png}", files: []string{"Поле/ChoiceButtonPicture.png"}},
+		"своего файла нет":   {picture: "{file: ChoiceButtonPicture.png}", refused: "element Поле choice_button_picture is shown with picture file ChoiceButtonPicture.png, which its folder does not hold"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := formReferencesProject(t)
+			path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			element := "items:\n  - {id: c0de0000-0000-4000-8000-000000990002, name: Поле, kind: input-field, choice_button_picture: " + test.picture + "}\n"
+			writeFile(t, path, strings.Replace(string(content), "attributes:\n", element+"attributes:\n", 1))
+			for _, file := range test.files {
+				writeFile(t, filepath.Join(filepath.Dir(path), project.FormItemsDirectory, file), "image")
+			}
+			switch {
+			case test.gone != "":
+				if found := unresolvedOf(t, root); !containsWhere(found, "catalog Номенклатура form ФормаЭлемента element Поле "+test.gone) {
+					t.Fatalf("unresolved = %+v", found)
+				}
+			case test.refused != "":
+				if _, err := Load(root); err == nil || !strings.Contains(err.Error(), test.refused) {
+					t.Fatalf("err = %v, want %q", err, test.refused)
+				}
+			default:
+				if _, err := Load(root); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
 	}
 }

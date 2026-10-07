@@ -43,6 +43,7 @@ func cloneRuntimeFormElements(values []ManagedFormElement) []ManagedFormElement 
 		value.VerticalStretch = clonePointer(value.VerticalStretch)
 		value.FieldLook = value.FieldLook.clone()
 		value.FieldColumn = value.FieldColumn.clone()
+		value.FieldButtons = value.FieldButtons.clone()
 		value.Children = cloneRuntimeFormElements(value.Children)
 		result[index] = value
 	}
@@ -63,6 +64,14 @@ func (column FieldColumn) clone() FieldColumn {
 	column.FooterFont = column.FooterFont.clone()
 	column.FooterTextColor, column.FooterBackColor = column.FooterTextColor.clone(), column.FooterBackColor.clone()
 	return column
+}
+
+func (buttons FieldButtons) clone() FieldButtons {
+	buttons.ChoiceButton, buttons.OpenButton, buttons.ClearButton = clonePointer(buttons.ChoiceButton), clonePointer(buttons.OpenButton), clonePointer(buttons.ClearButton)
+	buttons.CreateButton, buttons.DropListButton = clonePointer(buttons.CreateButton), clonePointer(buttons.DropListButton)
+	buttons.SpinButton, buttons.ChoiceListButton = clonePointer(buttons.SpinButton), clonePointer(buttons.ChoiceListButton)
+	buttons.ChoiceButtonPicture = buttons.ChoiceButtonPicture.clone()
+	return buttons
 }
 
 func (value *ColorValue) clone() *ColorValue {

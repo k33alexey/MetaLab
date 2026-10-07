@@ -124,7 +124,8 @@ func (catalog *Catalog) resolveFormExtension(form string, extension FormExtensio
 // they are shown to - known only when the roles were loaded, as for the
 // rights of an attribute - the style items of the configuration their look
 // takes its values from, which must be there and of the type taken, and the
-// common pictures drawn in the header and footer of a column.
+// common pictures drawn in the header and footer of a column and on the
+// choice button.
 func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElement) error {
 	for _, item := range items {
 		where := form + " element " + item.Name
@@ -145,7 +146,7 @@ func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElem
 				return fmt.Errorf("%s %s takes its value from style item %s, which is a %s and not a %s", where, use.name, found.Name, found.Type, use.itemType)
 			}
 		}
-		for _, picture := range item.FieldColumn.commonPictures() {
+		for _, picture := range append(item.FieldColumn.commonPictures(), item.FieldButtons.commonPictures()...) {
 			if _, ok := catalog.commonPictureByID[*picture.value.Common]; !ok {
 				catalog.noteUnresolved(where+" "+picture.name, *picture.value.Common)
 			}
