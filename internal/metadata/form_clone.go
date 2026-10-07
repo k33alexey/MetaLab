@@ -46,6 +46,7 @@ func cloneRuntimeFormElements(values []ManagedFormElement) []ManagedFormElement 
 		value.FieldButtons = value.FieldButtons.clone()
 		value.FieldTextInput = value.FieldTextInput.clone()
 		value.FieldFormat = value.FieldFormat.clone()
+		value.InputFieldChoice = value.InputFieldChoice.clone()
 		value.Children = cloneRuntimeFormElements(value.Children)
 		result[index] = value
 	}
@@ -86,6 +87,17 @@ func (format FieldFormat) clone() FieldFormat {
 	format.Format, format.EditFormat = maps.Clone(format.Format), maps.Clone(format.EditFormat)
 	format.MarkNegatives, format.AutoMarkIncomplete = clonePointer(format.MarkNegatives), clonePointer(format.AutoMarkIncomplete)
 	return format
+}
+
+func (choice InputFieldChoice) clone() InputFieldChoice {
+	choice.QuickChoice, choice.AutoChoiceIncomplete = clonePointer(choice.QuickChoice), clonePointer(choice.AutoChoiceIncomplete)
+	choice.ChoiceFormGone = clonePointer(choice.ChoiceFormGone)
+	if form := choice.ChoiceForm; form != nil {
+		copied := *form
+		copied.Object = clonePointer(form.Object)
+		choice.ChoiceForm = &copied
+	}
+	return choice
 }
 
 func (value *ColorValue) clone() *ColorValue {

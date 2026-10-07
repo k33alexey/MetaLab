@@ -880,3 +880,82 @@ func validateFieldFormat(path string, format FieldFormat, kind FormElementKind, 
 	}
 	return issues
 }
+
+// FormIncompleteChoiceMode is when an input field offers to pick a value while
+// it is empty (help, IncompleteChoiceMode). Empty is not said; the prototype
+// writes only OnActivate (97 times).
+type FormIncompleteChoiceMode string
+
+const (
+	FormIncompleteChoiceOnActivate     FormIncompleteChoiceMode = "on-activate"
+	FormIncompleteChoiceOnEnterPressed FormIncompleteChoiceMode = "on-enter-pressed"
+)
+
+// InputFieldChoice is how a value of an input field is picked (help, the
+// extension of a form field for an input field). The prototype writes these
+// on input fields only. The list the value is picked from and whether a folder
+// or an item may be picked are apart.
+type InputFieldChoice struct {
+	// ListChoiceMode makes the field pick one of its choice list, of any
+	// type; the prototype writes only the "on" (2448 times).
+	ListChoiceMode bool `yaml:"list_choice_mode,omitempty" json:"listChoiceMode,omitempty"`
+	// QuickChoice picks from a drop list instead of a form; yes, no or not
+	// said, as the help gives Undefined and the prototype writes both (180
+	// and 210 times).
+	QuickChoice *bool `yaml:"quick_choice,omitempty" json:"quickChoice,omitempty"`
+	// ChoiceForm is the form opened to pick a value, named as on an attribute.
+	// ChoiceFormGone is the identifier the prototype writes in its place for
+	// a form the configuration no longer has (9 times in erp, naming nothing
+	// in any export): a remnant of what was deleted, carried and resolved to
+	// nothing, as a vanished type is.
+	ChoiceForm     *ChoiceFormReference `yaml:"choice_form,omitempty" json:"choiceForm,omitempty"`
+	ChoiceFormGone *uuid.UUID           `yaml:"choice_form_gone,omitempty" json:"choiceFormGone,omitempty"`
+	// ChoiceListHeight is the height of the drop list in lines, and
+	// DropListWidth its width in characters; zero is chosen by the platform.
+	ChoiceListHeight int `yaml:"choice_list_height,omitempty" json:"choiceListHeight,omitempty"`
+	DropListWidth    int `yaml:"drop_list_width,omitempty" json:"dropListWidth,omitempty"`
+	// ChoiceHistoryOnInput is whether what was picked before is offered, as
+	// on an attribute.
+	ChoiceHistoryOnInput ChoiceHistory `yaml:"choice_history_on_input,omitempty" json:"choiceHistoryOnInput,omitempty"`
+	// AutoChoiceIncomplete offers to pick a value while the field is empty;
+	// yes, no or not said, as the help gives Undefined (276 and 42 times).
+	AutoChoiceIncomplete *bool                    `yaml:"auto_choice_incomplete,omitempty" json:"autoChoiceIncomplete,omitempty"`
+	IncompleteChoiceMode FormIncompleteChoiceMode `yaml:"incomplete_choice_mode,omitempty" json:"incompleteChoiceMode,omitempty"`
+}
+
+func (choice InputFieldChoice) empty() bool {
+	return !choice.ListChoiceMode && choice.QuickChoice == nil && choice.ChoiceForm == nil && choice.ChoiceFormGone == nil &&
+		choice.ChoiceListHeight == 0 && choice.DropListWidth == 0 && choice.ChoiceHistoryOnInput == "" &&
+		choice.AutoChoiceIncomplete == nil && choice.IncompleteChoiceMode == ""
+}
+
+func validateInputFieldChoice(path string, choice InputFieldChoice, kind FormElementKind) []string {
+	if choice.empty() {
+		return nil
+	}
+	if kind != FormElementInputField {
+		return []string{path + " has the choice of an input field"}
+	}
+	var issues []string
+	if choice.ChoiceForm != nil {
+		issues = append(issues, validateChoiceFormReference(path+".choice_form", *choice.ChoiceForm)...)
+		if choice.ChoiceFormGone != nil {
+			issues = append(issues, path+".choice_form_gone stands in place of a choice form, not beside one")
+		}
+	}
+	if choice.ChoiceFormGone != nil && choice.ChoiceFormGone.IsZero() {
+		issues = append(issues, path+".choice_form_gone must be a non-zero UUID")
+	}
+	if choice.ChoiceListHeight < 0 {
+		issues = append(issues, path+".choice_list_height must not be negative")
+	}
+	if choice.DropListWidth < 0 {
+		issues = append(issues, path+".drop_list_width must not be negative")
+	}
+	if !validChoiceHistory(choice.ChoiceHistoryOnInput) {
+		issues = append(issues, path+".choice_history_on_input must be auto or dont-use")
+	}
+	issues = append(issues, oneOf(path+".incomplete_choice_mode", choice.IncompleteChoiceMode,
+		FormIncompleteChoiceOnActivate, FormIncompleteChoiceOnEnterPressed)...)
+	return issues
+}

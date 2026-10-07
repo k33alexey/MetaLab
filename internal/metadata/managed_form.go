@@ -139,6 +139,8 @@ type ManagedFormElement struct {
 	FieldTextInput `yaml:",inline"`
 	// FieldFormat is how a field shows a value and bounds a number.
 	FieldFormat `yaml:",inline"`
+	// InputFieldChoice is how a value of an input field is picked.
+	InputFieldChoice `yaml:",inline"`
 	// ButtonType is what a button is; only a button has one.
 	ButtonType FormButtonType `yaml:"button_type,omitempty" json:"buttonType,omitempty"`
 	// Orientation lays out what a usual group, a page or a group of columns
@@ -285,6 +287,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		issues = append(issues, validateFieldButtons(current.path, item.FieldButtons, item.Kind)...)
 		issues = append(issues, validateFieldTextInput(current.path, item.FieldTextInput, item.Kind, configuration)...)
 		issues = append(issues, validateFieldFormat(current.path, item.FieldFormat, item.Kind, configuration)...)
+		issues = append(issues, validateInputFieldChoice(current.path, item.InputFieldChoice, item.Kind)...)
 		issues = append(issues, validateOwnPictureFiles(current.path, item)...)
 		if item.ReadOnly && class != formFieldClass && class != formTableClass {
 			issues = append(issues, current.path+".read_only is allowed only for fields and tables")

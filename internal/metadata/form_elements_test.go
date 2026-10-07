@@ -15,6 +15,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/k33alexey/MetaLab/internal/project"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // formElementsForm is a form holding the given YAML items.
@@ -1277,5 +1278,166 @@ func TestEachPropertyOfAFormatStandsOnItsFields(t *testing.T) {
 				t.Errorf("%s alone on %s: %v", name, kind, issues)
 			}
 		}
+	}
+}
+
+// An input field keeps how a value of it is picked through YAML and the
+// Studio, the identifier of a choice form that is gone among them.
+//
+// Defect caught: a quick choice turned off in the prototype (210 times) read
+// as not said and decided by the type again; the choice form, the size of the
+// drop list, the history or the choice of an empty value lost or read into a
+// neighbour; the identifier of a deleted choice form refused, so that the 9
+// forms of erp carrying one are not moved.
+func TestAnInputFieldKeepsHowAValueIsPicked(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, list_choice_mode: true, quick_choice: false," +
+		" choice_form: {kind: catalogs, object: c0de0000-0000-4000-8000-000000000006, name: ФормаВыбора}," +
+		" choice_list_height: 5, drop_list_width: 40, choice_history_on_input: dont-use," +
+		" auto_choice_incomplete: false, incomplete_choice_mode: on-activate}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Остаток, kind: input-field," +
+		" choice_form_gone: 34a62767-ac7d-4451-983f-bd0288c5961a}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	choice := form.Items[0].InputFieldChoice
+	choice.ChoiceFormGone = form.Items[1].ChoiceFormGone
+	value := reflect.ValueOf(choice)
+	for index := range value.NumField() {
+		if value.Field(index).IsZero() {
+			t.Errorf("%s is not set by the test", value.Type().Field(index).Name)
+		}
+	}
+	switch {
+	case !choice.ListChoiceMode || *choice.QuickChoice || *choice.AutoChoiceIncomplete:
+		t.Fatalf("switches: %+v", choice)
+	case choice.ChoiceForm.Name != "ФормаВыбора" || choice.ChoiceForm.Kind != CatalogKind || choice.ChoiceForm.Object == nil:
+		t.Fatalf("choice form: %+v", choice.ChoiceForm)
+	case choice.ChoiceListHeight != 5 || choice.DropListWidth != 40:
+		t.Fatalf("drop list: %d %d", choice.ChoiceListHeight, choice.DropListWidth)
+	case choice.ChoiceHistoryOnInput != ChoiceHistoryDontUse || choice.IncompleteChoiceMode != FormIncompleteChoiceOnActivate:
+		t.Fatalf("modes: %q %q", choice.ChoiceHistoryOnInput, choice.IncompleteChoiceMode)
+	case choice.ChoiceFormGone.String() != "34a62767-ac7d-4451-983f-bd0288c5961a" || form.Items[1].ChoiceForm != nil:
+		t.Fatalf("gone: %+v", form.Items[1].InputFieldChoice)
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil || !reflect.DeepEqual(again.Items, form.Items) {
+		t.Fatalf("written back: %v", err)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil || !reflect.DeepEqual(received.Items, form.Items) {
+		t.Fatalf("carried through the Studio: %v", err)
+	}
+}
+
+// How a value is picked stands only on an input field, and each value is
+// checked.
+//
+// Defect caught: a choice form kept on a label field or a radio button; a
+// choice form of no object kind, or one named and gone at once; a negative
+// size of the drop list; an unknown history or mode of choosing an empty
+// value accepted.
+func TestAnInputFieldRefusesWrongChoice(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	for name, test := range map[string]struct{ element, want string }{
+		"у поля надписи":       {"kind: label-field, quick_choice: true", "items[0] has the choice of an input field"},
+		"у переключателя":      {"kind: radio-button-field, list_choice_mode: true", "items[0] has the choice of an input field"},
+		"форма без имени":      {"kind: input-field, choice_form: {name: \"\"}", "items[0].choice_form.name must be a valid identifier"},
+		"форма без вида":       {"kind: input-field, choice_form: {object: c0de0000-0000-4000-8000-000000000006, name: Форма}", "items[0].choice_form.kind must be set beside the object"},
+		"форма и удалённая":    {"kind: input-field, choice_form: {name: Форма}, choice_form_gone: c0de0000-0000-4000-8000-000000000006", "items[0].choice_form_gone stands in place of a choice form, not beside one"},
+		"удалённая нулевая":    {"kind: input-field, choice_form_gone: 00000000-0000-0000-0000-000000000000", "items[0].choice_form_gone must be a non-zero UUID"},
+		"высота списка":        {"kind: input-field, choice_list_height: -1", "items[0].choice_list_height must not be negative"},
+		"ширина списка":        {"kind: input-field, drop_list_width: -1", "items[0].drop_list_width must not be negative"},
+		"история":              {"kind: input-field, choice_history_on_input: use", "items[0].choice_history_on_input must be auto or dont-use"},
+		"режим незаполненного": {"kind: input-field, incomplete_choice_mode: OnActivate", "items[0].incomplete_choice_mode must be on-activate or on-enter-pressed"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			source := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Элемент, " + test.element + "}\n")
+			_, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+// Each property of picking a value, set alone on a label field, is refused:
+// none is forgotten when the choice is checked for being empty.
+//
+// Defect caught: a property left out of the check for no choice, so that
+// another field keeps it alone without a word.
+func TestEveryPropertyOfChoiceStandsOnlyOnAnInputField(t *testing.T) {
+	t.Parallel()
+	no := false
+	gone := uuid.MustNew()
+	full := InputFieldChoice{ListChoiceMode: true, QuickChoice: &no, ChoiceForm: &ChoiceFormReference{Name: "Форма"}, ChoiceFormGone: &gone,
+		ChoiceListHeight: 1, DropListWidth: 1, ChoiceHistoryOnInput: ChoiceHistoryAuto, AutoChoiceIncomplete: &no,
+		IncompleteChoiceMode: FormIncompleteChoiceOnEnterPressed}
+	value := reflect.ValueOf(full)
+	for index := range value.NumField() {
+		name := value.Type().Field(index).Name
+		if value.Field(index).IsZero() {
+			t.Fatalf("%s is not set by the test", name)
+		}
+		var alone InputFieldChoice
+		reflect.ValueOf(&alone).Elem().Field(index).Set(value.Field(index))
+		if issues := validateInputFieldChoice("items[0]", alone, FormElementLabelField); len(issues) != 1 || issues[0] != "items[0] has the choice of an input field" {
+			t.Errorf("%s alone on a label field: %v", name, issues)
+		}
+		if issues := validateInputFieldChoice("items[0]", alone, FormElementInputField); len(issues) != 0 {
+			t.Errorf("%s alone on an input field: %v", name, issues)
+		}
+	}
+}
+
+// The object whose form picks a value is resolved with the project, and the
+// identifier of a choice form that is gone resolves to nothing.
+//
+// Defect caught: a choice form of an object the project does not have loading
+// clean; a deleted choice form carried silently, so that the field opens
+// nothing and no one is told.
+func TestTheChoiceFormOfAnInputFieldIsResolved(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct{ choice, gone string }{
+		"форма справочника": {"choice_form: {kind: catalogs, object: " + cmpGoods + ", name: ФормаВыбора}", ""},
+		"общая форма":       {"choice_form: {name: АдреснаяКнига}", ""},
+		"удалённый объект":  {"choice_form: {kind: catalogs, object: " + refGone + ", name: ФормаВыбора}", "choice_form"},
+		"удалённая форма":   {"choice_form_gone: " + refGone, "choice_form_gone"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := formReferencesProject(t)
+			path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			element := "items:\n  - {id: c0de0000-0000-4000-8000-000000990002, name: Поле, kind: input-field, " + test.choice + "}\n"
+			writeFile(t, path, strings.Replace(string(content), "attributes:\n", element+"attributes:\n", 1))
+			if test.gone == "" {
+				if _, err := Load(root); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if found := unresolvedOf(t, root); !containsWhere(found, "catalog Номенклатура form ФормаЭлемента element Поле "+test.gone) {
+				t.Fatalf("unresolved = %+v", found)
+			}
+		})
 	}
 }

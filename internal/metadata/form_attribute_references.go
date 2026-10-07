@@ -125,7 +125,8 @@ func (catalog *Catalog) resolveFormExtension(form string, extension FormExtensio
 // rights of an attribute - the style items of the configuration their look
 // takes its values from, which must be there and of the type taken, and the
 // common pictures drawn in the header and footer of a column and on the
-// choice button.
+// choice button; the object whose form picks a value of an input field, and
+// the identifier of a choice form that is gone, which resolves to nothing.
 func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElement) error {
 	for _, item := range items {
 		where := form + " element " + item.Name
@@ -145,6 +146,14 @@ func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElem
 			if found := catalog.StyleItems[index]; found.Type != use.itemType {
 				return fmt.Errorf("%s %s takes its value from style item %s, which is a %s and not a %s", where, use.name, found.Name, found.Type, use.itemType)
 			}
+		}
+		if form := item.ChoiceForm; form != nil && form.Object != nil {
+			if _, ok := catalog.objectKindByID[*form.Object]; !ok {
+				catalog.noteUnresolved(where+" choice_form", *form.Object)
+			}
+		}
+		if item.ChoiceFormGone != nil {
+			catalog.noteUnresolved(where+" choice_form_gone", *item.ChoiceFormGone)
 		}
 		for _, picture := range append(item.FieldColumn.commonPictures(), item.FieldButtons.commonPictures()...) {
 			if _, ok := catalog.commonPictureByID[*picture.value.Common]; !ok {
