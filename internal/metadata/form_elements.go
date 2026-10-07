@@ -1081,9 +1081,11 @@ func validateInputFieldChoiceParameters(path string, parameters InputFieldChoice
 // validateFormLinkPath checks the path a link of an input field takes its
 // value or type from, as the prototype writes one: a data path of the form
 // ("Объект.Партнер", "Items.Список.CurrentData.Вид"), a number (22 and 30
-// times), or the code of an element of a form, "48:02023637-…" with segments
-// after a slash (13 and 2 times). What the last two point at is an open
-// question of the map of blocks; they are carried as written.
+// times), or the code of an element of a form: segments joined by a slash,
+// each a number or a number with an identifier - "48:02023637-…/0:3c1e…"
+// (13), "342:02023637-…/15" (2), "1/0:ba7dcb3b-…" (15). What the last two
+// point at is an open question of the map of blocks; they are carried as
+// written.
 func validateFormLinkPath(path, value string) []string {
 	if value == "" || strings.TrimSpace(value) != value {
 		return []string{path + " must be a data path without surrounding spaces"}
@@ -1095,6 +1097,7 @@ func validateFormLinkPath(path, value string) []string {
 }
 
 // formElementCode is the code the prototype writes for an element of a form:
-// a number, a colon, the identifier the platform names an element of a form
-// by, and further segments after a slash, each a number or a code.
-var formElementCode = regexp.MustCompile(`^[0-9]+:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(/[0-9]+(:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)*$`)
+// segments joined by a slash, each a number, or a number, a colon and an
+// identifier - the one the platform names an element of a form by, or
+// another.
+var formElementCode = regexp.MustCompile(`^[0-9]+(:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?(/[0-9]+(:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)*$`)

@@ -1593,7 +1593,8 @@ func TestTheValuesOfAChoiceListAreResolved(t *testing.T) {
 //
 // Defect caught: a parameter set to a list read as one value, so that the
 // filter is by equality instead of membership; a link written by a number or
-// by the code of an element refused, so that 35 links are not moved; the
+// by the code of an element refused - one that starts with a plain number
+// among them, "1/0:…" - so that 67 links are not moved; the
 // change of a linked value, the element of the type taken, a type on offer or
 // the choice of folders lost; asking for the type turned off in the prototype
 // (1342 times) turned on again.
@@ -1606,7 +1607,8 @@ func TestAnInputFieldKeepsItsChoiceParameters(t *testing.T) {
 		" {name: Отбор.Клиент, values: [{kind: boolean, data: \"true\"}]}]," +
 		" choice_parameter_links: [{name: Отбор.Владелец, data_path: Объект.Партнер, value_change: dont-change}," +
 		" {name: Отбор.Вид, data_path: Items.Список.CurrentData.Вид}, {name: Отбор.Номер, data_path: \"2\"}," +
-		" {name: Отбор.Код, data_path: \"48:02023637-7868-4a5f-8576-835a76e0c9ba/0:3c1e525b-09ed-4189-b279-da594cf572f5\"}]," +
+		" {name: Отбор.Код, data_path: \"48:02023637-7868-4a5f-8576-835a76e0c9ba/0:3c1e525b-09ed-4189-b279-da594cf572f5\"}," +
+		" {name: Отбор.Колонка, data_path: \"1/0:ba7dcb3b-b8b9-4d44-ab5f-56f7a228f10d\"}]," +
 		" type_link: {data_path: \"342:02023637-7868-4a5f-8576-835a76e0c9ba/15\", link_item: 2}, no_choose_type: true, no_type_domain: true," +
 		" available_types: [{kind: string}], choice_folders_and_items: folders-and-items}\n"
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
@@ -1624,9 +1626,9 @@ func TestAnInputFieldKeepsItsChoiceParameters(t *testing.T) {
 	switch {
 	case len(parameters.ChoiceParameters) != 2 || !parameters.ChoiceParameters[0].List || len(parameters.ChoiceParameters[0].Values) != 2 || parameters.ChoiceParameters[1].List:
 		t.Fatalf("parameters: %+v", parameters.ChoiceParameters)
-	case len(links) != 4 || links[0].DataPath != "Объект.Партнер" || links[0].ValueChange != ValueChangeDontChange || links[1].ValueChange != "":
+	case len(links) != 5 || links[0].DataPath != "Объект.Партнер" || links[0].ValueChange != ValueChangeDontChange || links[1].ValueChange != "":
 		t.Fatalf("links: %+v", links)
-	case links[2].DataPath != "2" || !strings.HasPrefix(links[3].DataPath, "48:02023637"):
+	case links[2].DataPath != "2" || !strings.HasPrefix(links[3].DataPath, "48:02023637") || !strings.HasPrefix(links[4].DataPath, "1/0:ba7dcb3b"):
 		t.Fatalf("links by number and by code: %+v", links)
 	case parameters.TypeLink.LinkItem != 2 || !strings.HasSuffix(parameters.TypeLink.DataPath, "/15"):
 		t.Fatalf("type link: %+v", parameters.TypeLink)
@@ -1674,6 +1676,7 @@ func TestAnInputFieldRefusesWrongChoiceParameters(t *testing.T) {
 		"связь без пути":    {"kind: input-field, choice_parameter_links: [{name: Отбор.Вид, data_path: \"\"}]", "items[0].choice_parameter_links[0].data_path must be a data path without surrounding spaces"},
 		"кривой путь":       {"kind: input-field, choice_parameter_links: [{name: Отбор.Вид, data_path: \"48:Объект\"}]", "items[0].choice_parameter_links[0].data_path must be a data path, a number or the code of an element of a form"},
 		"кривой код":        {"kind: input-field, type_link: {data_path: \"48:02023637-7868-4a5f-8576-835a76e0c9ba/x\"}", "items[0].type_link.data_path must be a data path, a number or the code"},
+		"код без номера":    {"kind: input-field, type_link: {data_path: \"1/:ba7dcb3b-b8b9-4d44-ab5f-56f7a228f10d\"}", "items[0].type_link.data_path must be a data path, a number or the code"},
 		"изменение":         {"kind: input-field, choice_parameter_links: [{name: Отбор.Вид, data_path: Вид, value_change: Clear}]", "items[0].choice_parameter_links[0].value_change must be clear or dont-change"},
 		"связь дважды":      {"kind: input-field, choice_parameter_links: [{name: Отбор.Вид, data_path: Вид}, {name: Отбор.Вид, data_path: Тип}]", "items[0].choice_parameter_links[1].name is used twice in one list"},
 		"элемент типа":      {"kind: input-field, type_link: {data_path: Вид, link_item: -1}", "items[0].type_link.link_item must not be negative"},
