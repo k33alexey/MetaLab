@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -18,11 +19,26 @@ type formTypeList struct {
 	types []Type
 }
 
-// formNoted is one place of a form a note is about, with what is written
-// there.
-type formNoted struct {
+// formNote is a note about a place of a form, with what is written there.
+// The notes are found by walking the catalog, and the forms are not in it:
+// they are noted when their elements are resolved.
+type formNote struct {
+	kind    NoteKind
 	where   string
 	written string
+}
+
+func (catalog *Catalog) noteForm(kind NoteKind, where, written string) {
+	catalog.formNotes = append(catalog.formNotes, formNote{kind: kind, where: where, written: written})
+}
+
+// formNotesOf reports the notes of one kind found in the forms.
+func (catalog *Catalog) formNotesOf(kind NoteKind, note func(where, written string)) {
+	for _, found := range catalog.formNotes {
+		if found.kind == kind {
+			note(found.where, found.written)
+		}
+	}
 }
 
 // formTitle is the title of an attribute of a form or of a column of one,
@@ -166,7 +182,29 @@ func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElem
 			case UnresolvedReferenceValue:
 				catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where + " choice list", Written: listed.Value.Data})
 			case PlatformType:
-				catalog.formPlatformValues = append(catalog.formPlatformValues, formNoted{where: where + " choice list", written: listed.Value.Data})
+				catalog.noteForm(NotePlatformValueByName, where+" choice list", listed.Value.Data)
+			}
+		}
+		set := map[string]bool{}
+		for _, parameter := range item.ChoiceParameters {
+			set[strings.ToLower(parameter.Name)] = true
+			for _, value := range parameter.Values {
+				switch value.Kind {
+				case UnresolvedReferenceValue:
+					catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where + " choice parameter " + parameter.Name, Written: value.Data})
+				case PlatformType:
+					catalog.noteForm(NotePlatformValueByName, where+" choice parameter "+parameter.Name, value.Data)
+				}
+			}
+		}
+		for _, link := range item.ChoiceParameterLinks {
+			if set[strings.ToLower(link.Name)] {
+				catalog.noteForm(NoteChoiceSetAndLinked, where+" choice "+link.Name, link.Name)
+			}
+		}
+		if len(item.AvailableTypes) != 0 {
+			if err := catalog.resolveFormData(where+" available types", item.AvailableTypes, nil); err != nil {
+				return err
 			}
 		}
 		if item.ChoiceFormGone != nil {

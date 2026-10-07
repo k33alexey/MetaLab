@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -987,3 +988,113 @@ func validateChoiceList(path string, list []FormChoiceListItem, kind FormElement
 	}
 	return issues
 }
+
+// FormChoiceParameterLink takes a choice parameter of an input field from the
+// data of the form (help, ChoiceParameterLink). DataPath is a path in the
+// data of the form, written as the prototype writes it - see
+// validateFormLinkPath.
+type FormChoiceParameterLink struct {
+	Name        string      `yaml:"name" json:"name"`
+	DataPath    string      `yaml:"data_path" json:"dataPath"`
+	ValueChange ValueChange `yaml:"value_change,omitempty" json:"valueChange,omitempty"`
+}
+
+// FormTypeLink takes the type of the value of an input field from the data of
+// the form (help, TypeLink): DataPath is written as in a link of a choice
+// parameter, LinkItem is the element of the type description taken, counted
+// from zero (0 to 3 in the exports).
+type FormTypeLink struct {
+	DataPath string `yaml:"data_path" json:"dataPath"`
+	LinkItem int    `yaml:"link_item,omitempty" json:"linkItem,omitempty"`
+}
+
+// InputFieldChoiceParameters narrow what an input field offers to pick and of
+// which type (help, the extension of a form field for an input field). The
+// prototype writes them on input fields only.
+type InputFieldChoiceParameters struct {
+	// ChoiceParameters are fixed, as on an attribute: a value written at
+	// design time, or a fixed array of them, which is a list.
+	ChoiceParameters     []ChoiceParameter         `yaml:"choice_parameters,omitempty" json:"choiceParameters,omitempty"`
+	ChoiceParameterLinks []FormChoiceParameterLink `yaml:"choice_parameter_links,omitempty" json:"choiceParameterLinks,omitempty"`
+	TypeLink             *FormTypeLink             `yaml:"type_link,omitempty" json:"typeLink,omitempty"`
+	// NoChooseType stops asking for the type before a value of a composite
+	// type is picked, and NoTypeDomain allows a type description of one type
+	// only: both are on by default, and the prototype writes only the "off"
+	// (1342 and 46 times).
+	NoChooseType bool `yaml:"no_choose_type,omitempty" json:"noChooseType,omitempty"`
+	NoTypeDomain bool `yaml:"no_type_domain,omitempty" json:"noTypeDomain,omitempty"`
+	// AvailableTypes are the types offered when the field edits a type
+	// description, with the bounds of their qualifiers.
+	AvailableTypes []Type `yaml:"available_types,omitempty" json:"availableTypes,omitempty"`
+	// ChoiceFoldersAndItems is what a choice from a hierarchical object may
+	// land on, as on an attribute.
+	ChoiceFoldersAndItems ChoiceTarget `yaml:"choice_folders_and_items,omitempty" json:"choiceFoldersAndItems,omitempty"`
+}
+
+func (parameters InputFieldChoiceParameters) empty() bool {
+	return len(parameters.ChoiceParameters) == 0 && len(parameters.ChoiceParameterLinks) == 0 && parameters.TypeLink == nil &&
+		!parameters.NoChooseType && !parameters.NoTypeDomain && len(parameters.AvailableTypes) == 0 && parameters.ChoiceFoldersAndItems == ""
+}
+
+func validateInputFieldChoiceParameters(path string, parameters InputFieldChoiceParameters, kind FormElementKind) []string {
+	if parameters.empty() {
+		return nil
+	}
+	if kind != FormElementInputField {
+		return []string{path + " has the choice parameters of an input field"}
+	}
+	var issues []string
+	names := map[string]bool{}
+	for index, parameter := range parameters.ChoiceParameters {
+		where := fmt.Sprintf("%s.choice_parameters[%d]", path, index)
+		issues = append(issues, validateChoiceParameterName(where, parameter.Name, names)...)
+		if len(parameter.Values) == 0 {
+			issues = append(issues, where+".values must contain at least one value")
+		}
+		for position, value := range parameter.Values {
+			issues = append(issues, validateDesignTimeValue(fmt.Sprintf("%s.values[%d]", where, position), value)...)
+		}
+		if !parameter.List && len(parameter.Values) > 1 {
+			issues = append(issues, where+" sets several values, so it must say it is a list")
+		}
+	}
+	linked := map[string]bool{}
+	for index, link := range parameters.ChoiceParameterLinks {
+		where := fmt.Sprintf("%s.choice_parameter_links[%d]", path, index)
+		issues = append(issues, validateChoiceParameterName(where, link.Name, linked)...)
+		issues = append(issues, validateFormLinkPath(where+".data_path", link.DataPath)...)
+		issues = append(issues, oneOf(where+".value_change", link.ValueChange, ValueChangeClear, ValueChangeDontChange)...)
+	}
+	if link := parameters.TypeLink; link != nil {
+		issues = append(issues, validateFormLinkPath(path+".type_link.data_path", link.DataPath)...)
+		if link.LinkItem < 0 {
+			issues = append(issues, path+".type_link.link_item must not be negative")
+		}
+	}
+	issues = append(issues, validateTypesIn(path+".available_types", parameters.AvailableTypes, placeFormAttribute)...)
+	if !validChoiceTarget(parameters.ChoiceFoldersAndItems) {
+		issues = append(issues, path+".choice_folders_and_items must be items, folders or folders-and-items")
+	}
+	return issues
+}
+
+// validateFormLinkPath checks the path a link of an input field takes its
+// value or type from, as the prototype writes one: a data path of the form
+// ("Объект.Партнер", "Items.Список.CurrentData.Вид"), a number (22 and 30
+// times), or the code of an element of a form, "48:02023637-…" with segments
+// after a slash (13 and 2 times). What the last two point at is an open
+// question of the map of blocks; they are carried as written.
+func validateFormLinkPath(path, value string) []string {
+	if value == "" || strings.TrimSpace(value) != value {
+		return []string{path + " must be a data path without surrounding spaces"}
+	}
+	if allDigits(value) || elementDataPath(value) || formElementCode.MatchString(value) {
+		return nil
+	}
+	return []string{path + " must be a data path, a number or the code of an element of a form"}
+}
+
+// formElementCode is the code the prototype writes for an element of a form:
+// a number, a colon, the identifier the platform names an element of a form
+// by, and further segments after a slash, each a number or a code.
+var formElementCode = regexp.MustCompile(`^[0-9]+:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(/[0-9]+(:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)*$`)

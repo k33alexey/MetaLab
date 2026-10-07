@@ -48,6 +48,7 @@ func cloneRuntimeFormElements(values []ManagedFormElement) []ManagedFormElement 
 		value.FieldFormat = value.FieldFormat.clone()
 		value.InputFieldChoice = value.InputFieldChoice.clone()
 		value.ChoiceList = cloneChoiceList(value.ChoiceList)
+		value.InputFieldChoiceParameters = value.InputFieldChoiceParameters.clone()
 		value.Children = cloneRuntimeFormElements(value.Children)
 		result[index] = value
 	}
@@ -99,6 +100,17 @@ func (choice InputFieldChoice) clone() InputFieldChoice {
 		choice.ChoiceForm = &copied
 	}
 	return choice
+}
+
+func (parameters InputFieldChoiceParameters) clone() InputFieldChoiceParameters {
+	parameters.ChoiceParameters = slices.Clone(parameters.ChoiceParameters)
+	for index := range parameters.ChoiceParameters {
+		parameters.ChoiceParameters[index].Values = slices.Clone(parameters.ChoiceParameters[index].Values)
+	}
+	parameters.ChoiceParameterLinks = slices.Clone(parameters.ChoiceParameterLinks)
+	parameters.TypeLink = clonePointer(parameters.TypeLink)
+	parameters.AvailableTypes = cloneTypes(parameters.AvailableTypes)
+	return parameters
 }
 
 func cloneChoiceList(list []FormChoiceListItem) []FormChoiceListItem {

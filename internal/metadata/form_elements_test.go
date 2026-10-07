@@ -1585,3 +1585,209 @@ func TestTheValuesOfAChoiceListAreResolved(t *testing.T) {
 		})
 	}
 }
+
+// An input field keeps what narrows its choice through YAML and the Studio:
+// fixed choice parameters - one value or a list - links to the data of the
+// form in every writing the prototype uses, a link by type, the types on offer
+// and what a choice may land on.
+//
+// Defect caught: a parameter set to a list read as one value, so that the
+// filter is by equality instead of membership; a link written by a number or
+// by the code of an element refused, so that 35 links are not moved; the
+// change of a linked value, the element of the type taken, a type on offer or
+// the choice of folders lost; asking for the type turned off in the prototype
+// (1342 times) turned on again.
+func TestAnInputFieldKeepsItsChoiceParameters(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Номенклатура, kind: input-field, choice_parameters: [" +
+		"{name: Отбор.Тип, list: true, values: [{kind: enumeration, data: c0de0000-0000-4000-8000-000000000071, object: c0de0000-0000-4000-8000-000000000070}," +
+		" {kind: enumeration, data: c0de0000-0000-4000-8000-000000000072, object: c0de0000-0000-4000-8000-000000000070}]}," +
+		" {name: Отбор.Клиент, values: [{kind: boolean, data: \"true\"}]}]," +
+		" choice_parameter_links: [{name: Отбор.Владелец, data_path: Объект.Партнер, value_change: dont-change}," +
+		" {name: Отбор.Вид, data_path: Items.Список.CurrentData.Вид}, {name: Отбор.Номер, data_path: \"2\"}," +
+		" {name: Отбор.Код, data_path: \"48:02023637-7868-4a5f-8576-835a76e0c9ba/0:3c1e525b-09ed-4189-b279-da594cf572f5\"}]," +
+		" type_link: {data_path: \"342:02023637-7868-4a5f-8576-835a76e0c9ba/15\", link_item: 2}, no_choose_type: true, no_type_domain: true," +
+		" available_types: [{kind: string}], choice_folders_and_items: folders-and-items}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parameters := form.Items[0].InputFieldChoiceParameters
+	value := reflect.ValueOf(parameters)
+	for index := range value.NumField() {
+		if value.Field(index).IsZero() {
+			t.Errorf("%s is not set by the test", value.Type().Field(index).Name)
+		}
+	}
+	links := parameters.ChoiceParameterLinks
+	switch {
+	case len(parameters.ChoiceParameters) != 2 || !parameters.ChoiceParameters[0].List || len(parameters.ChoiceParameters[0].Values) != 2 || parameters.ChoiceParameters[1].List:
+		t.Fatalf("parameters: %+v", parameters.ChoiceParameters)
+	case len(links) != 4 || links[0].DataPath != "Объект.Партнер" || links[0].ValueChange != ValueChangeDontChange || links[1].ValueChange != "":
+		t.Fatalf("links: %+v", links)
+	case links[2].DataPath != "2" || !strings.HasPrefix(links[3].DataPath, "48:02023637"):
+		t.Fatalf("links by number and by code: %+v", links)
+	case parameters.TypeLink.LinkItem != 2 || !strings.HasSuffix(parameters.TypeLink.DataPath, "/15"):
+		t.Fatalf("type link: %+v", parameters.TypeLink)
+	case !parameters.NoChooseType || !parameters.NoTypeDomain || parameters.AvailableTypes[0].Kind != StringType || parameters.ChoiceFoldersAndItems != ChoiceTargetFoldersAndItems:
+		t.Fatalf("types: %+v", parameters)
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil || !reflect.DeepEqual(again.Items, form.Items) {
+		t.Fatalf("written back: %v", err)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil || !reflect.DeepEqual(received.Items, form.Items) {
+		t.Fatalf("carried through the Studio: %v", err)
+	}
+}
+
+// What narrows the choice stands only on an input field, and each part is
+// checked as on an attribute.
+//
+// Defect caught: choice parameters kept on a label field; a parameter with
+// no value, several values not said to be a list, a name used twice in one
+// list; a link with no path or a path that is none of the writings of the
+// prototype, an unknown change; a negative element of a type link; a type
+// that is no type on offer; an unknown target of a choice.
+func TestAnInputFieldRefusesWrongChoiceParameters(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	for name, test := range map[string]struct{ element, want string }{
+		"у поля надписи":    {"kind: label-field, no_choose_type: true", "items[0] has the choice parameters of an input field"},
+		"без значения":      {"kind: input-field, choice_parameters: [{name: Отбор.Вид, values: []}]", "items[0].choice_parameters[0].values must contain at least one value"},
+		"не список":         {"kind: input-field, choice_parameters: [{name: Отбор.Вид, values: [{kind: number, data: \"1\"}, {kind: number, data: \"2\"}]}]", "items[0].choice_parameters[0] sets several values, so it must say it is a list"},
+		"имя дважды":        {"kind: input-field, choice_parameters: [{name: Отбор.Вид, values: [{kind: number, data: \"1\"}]}, {name: отбор.вид, values: [{kind: number, data: \"2\"}]}]", "items[0].choice_parameters[1].name is used twice in one list"},
+		"значение без вида": {"kind: input-field, choice_parameters: [{name: Отбор.Вид, values: [{kind: \"\", data: \"\"}]}]", "items[0].choice_parameters[0].values[0].kind must be named"},
+		"связь без пути":    {"kind: input-field, choice_parameter_links: [{name: Отбор.Вид, data_path: \"\"}]", "items[0].choice_parameter_links[0].data_path must be a data path without surrounding spaces"},
+		"кривой путь":       {"kind: input-field, choice_parameter_links: [{name: Отбор.Вид, data_path: \"48:Объект\"}]", "items[0].choice_parameter_links[0].data_path must be a data path, a number or the code of an element of a form"},
+		"кривой код":        {"kind: input-field, type_link: {data_path: \"48:02023637-7868-4a5f-8576-835a76e0c9ba/x\"}", "items[0].type_link.data_path must be a data path, a number or the code"},
+		"изменение":         {"kind: input-field, choice_parameter_links: [{name: Отбор.Вид, data_path: Вид, value_change: Clear}]", "items[0].choice_parameter_links[0].value_change must be clear or dont-change"},
+		"связь дважды":      {"kind: input-field, choice_parameter_links: [{name: Отбор.Вид, data_path: Вид}, {name: Отбор.Вид, data_path: Тип}]", "items[0].choice_parameter_links[1].name is used twice in one list"},
+		"элемент типа":      {"kind: input-field, type_link: {data_path: Вид, link_item: -1}", "items[0].type_link.link_item must not be negative"},
+		"доступный тип":     {"kind: input-field, available_types: [{kind: nothing}]", "items[0].available_types"},
+		"группы и элементы": {"kind: input-field, choice_folders_and_items: all", "items[0].choice_folders_and_items must be items, folders or folders-and-items"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			source := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Элемент, " + test.element + "}\n")
+			_, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+// Each part of narrowing the choice, set alone on a label field, is refused:
+// none is forgotten when they are checked for being empty.
+//
+// Defect caught: a part left out of the check for no choice parameters, so
+// that another field keeps it alone without a word.
+func TestEveryChoiceParameterStandsOnlyOnAnInputField(t *testing.T) {
+	t.Parallel()
+	full := InputFieldChoiceParameters{
+		ChoiceParameters:      []ChoiceParameter{{Name: "Отбор.Вид", Values: []Value{{Kind: NumberType, Data: "1"}}}},
+		ChoiceParameterLinks:  []FormChoiceParameterLink{{Name: "Отбор.Вид", DataPath: "Вид"}},
+		TypeLink:              &FormTypeLink{DataPath: "Вид"},
+		NoChooseType:          true,
+		NoTypeDomain:          true,
+		AvailableTypes:        []Type{{Kind: StringType}},
+		ChoiceFoldersAndItems: ChoiceTargetItems,
+	}
+	value := reflect.ValueOf(full)
+	for index := range value.NumField() {
+		name := value.Type().Field(index).Name
+		if value.Field(index).IsZero() {
+			t.Fatalf("%s is not set by the test", name)
+		}
+		var alone InputFieldChoiceParameters
+		reflect.ValueOf(&alone).Elem().Field(index).Set(value.Field(index))
+		if issues := validateInputFieldChoiceParameters("items[0]", alone, FormElementLabelField); len(issues) != 1 || issues[0] != "items[0] has the choice parameters of an input field" {
+			t.Errorf("%s alone on a label field: %v", name, issues)
+		}
+		if issues := validateInputFieldChoiceParameters("items[0]", alone, FormElementInputField); len(issues) != 0 {
+			t.Errorf("%s alone on an input field: %v", name, issues)
+		}
+	}
+}
+
+// What narrows the choice is resolved with the project as on an attribute: a
+// value naming a type that is gone is a remnant, a value of a type the
+// platform defines and a name both fixed and linked are notes, and a type on
+// offer must be a type the project has.
+//
+// Defect caught: a remnant in a choice parameter of a form loading clean; a
+// value of the platform or a parameter both fixed and linked carried silently
+// in a form (erp has one), though each is a note on an attribute; a type on
+// offer naming an object that is gone accepted.
+func TestTheChoiceParametersOfAnInputFieldAreResolved(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		parameters string
+		unresolved string
+		note       NoteKind
+		refused    string
+	}{
+		"обычные": {parameters: "choice_parameters: [{name: Отбор.Вид, values: [{kind: number, data: \"1\"}]}], available_types: [{kind: catalog, reference: " + cmpGoods + "}]"},
+		"остаток": {parameters: "choice_parameters: [{name: Отбор.Вид, values: [{kind: unresolved-reference, data: \"5647c4ea-0d6d-4d75-8261-5aa213fca033.bca5af74-66f6-44f5-8fa6-cee0b448788a\"}]}]",
+			unresolved: "choice parameter Отбор.Вид"},
+		"значение платформы": {parameters: "choice_parameters: [{name: Отбор.ВидСчета, values: [{kind: platform, data: \"ent:AccountType.Active\"}]}]", note: NotePlatformValueByName},
+		"задан и связан": {parameters: "choice_parameters: [{name: отбор.владелец, values: [{kind: number, data: \"1\"}]}]," +
+			" choice_parameter_links: [{name: Отбор.Владелец, data_path: Объект.Партнер}]", note: NoteChoiceSetAndLinked},
+		"удалённый тип": {parameters: "available_types: [{kind: catalog, reference: " + refGone + "}]", refused: "available types"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := formReferencesProject(t)
+			path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			element := "items:\n  - {id: c0de0000-0000-4000-8000-000000990002, name: Поле, kind: input-field, " + test.parameters + "}\n"
+			writeFile(t, path, strings.Replace(string(content), "attributes:\n", element+"attributes:\n", 1))
+			where := "catalog Номенклатура form ФормаЭлемента element Поле"
+			switch {
+			case test.unresolved != "":
+				if found := unresolvedOf(t, root); !containsWhere(found, where+" "+test.unresolved) {
+					t.Fatalf("unresolved = %+v", found)
+				}
+				return
+			case test.refused != "":
+				if _, err := Load(root); err == nil || !strings.Contains(err.Error(), test.refused) {
+					t.Fatalf("err = %v, want %q", err, test.refused)
+				}
+				return
+			}
+			catalog, err := Load(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var noted []Note
+			for _, note := range catalog.Notes() {
+				if strings.HasPrefix(note.Where, where) {
+					noted = append(noted, note)
+				}
+			}
+			switch {
+			case test.note == "" && len(noted) != 0:
+				t.Fatalf("an ordinary field is noted: %+v", noted)
+			case test.note != "" && (len(noted) != 1 || noted[0].Kind != test.note):
+				t.Fatalf("notes = %+v", noted)
+			}
+		})
+	}
+}

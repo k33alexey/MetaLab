@@ -453,6 +453,7 @@ func noteChoiceSetAndLinked(catalog *Catalog, note func(where, written string)) 
 			}
 		}
 	})
+	catalog.formNotesOf(NoteChoiceSetAndLinked, note)
 }
 
 func noteQuickChoiceUnderFormChoice(catalog *Catalog, note func(where, written string)) {
@@ -852,9 +853,7 @@ func notePlatformValueByName(catalog *Catalog, note func(where, written string))
 			}
 		}
 	})
-	for _, value := range catalog.formPlatformValues {
-		note(value.where, value.written)
-	}
+	catalog.formNotesOf(NotePlatformValueByName, note)
 }
 
 func notePictureSettingsLeft(catalog *Catalog, note func(where, written string)) {

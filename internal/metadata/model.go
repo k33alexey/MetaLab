@@ -637,10 +637,10 @@ type Catalog struct {
 	// descriptions of the attributes of every form, kept for the notes.
 	commonFormsRead []ManagedForm
 	formTypeLists   []formTypeList
-	// formPlatformValues are the values of a type the platform defines in
-	// the choice lists of the forms, kept for the notes.
-	formPlatformValues []formNoted
-	formTitles         []formTitle
+	// formNotes are the notes about the elements of the forms - see
+	// formNote.
+	formNotes  []formNote
+	formTitles []formTitle
 	// ordinaryCommonForms is the common forms of the ordinary application, by
 	// name as written: their modules are carried and not compiled.
 	ordinaryCommonForms             map[string]bool
