@@ -238,29 +238,3 @@ func (snapshot RuntimeSnapshot) Form(id uuid.UUID) (ManagedForm, bool) {
 	}
 	return cloneRuntimeForm(snapshot.Forms[index]), true
 }
-
-func cloneRuntimeForm(value ManagedForm) ManagedForm {
-	result := value
-	result.Title = cloneTitle(value.Title)
-	result.Commands = make([]ManagedFormCommand, len(value.Commands))
-	for index, command := range value.Commands {
-		result.Commands[index] = command
-		result.Commands[index].Title = cloneTitle(command.Title)
-	}
-	result.Items = cloneRuntimeFormElements(value.Items)
-	return result
-}
-
-func cloneRuntimeFormElements(values []ManagedFormElement) []ManagedFormElement {
-	result := make([]ManagedFormElement, len(values))
-	for index, value := range values {
-		result[index] = value
-		result[index].Title = cloneTitle(value.Title)
-		if value.Command != nil {
-			command := *value.Command
-			result[index].Command = &command
-		}
-		result[index].Children = cloneRuntimeFormElements(value.Children)
-	}
-	return result
-}
