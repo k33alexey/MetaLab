@@ -116,7 +116,7 @@ func customForm(descriptor metadata.FormDescriptor, source metadata.ManagedForm,
 			commandTitle = command.Name
 		}
 		commands[index] = Command{ID: command.Name, Title: commandTitle, Kind: commandKind(string(command.Action))}
-		commandNames[command.ID.String()] = command.Name
+		commandNames[strings.ToLower(command.Name)] = command.Name
 	}
 	result := Form{ID: formID(descriptor), Title: title, Commands: commands, Items: customElements(source.Items, language, commandNames)}
 	applyListOptions(&result, descriptor)
@@ -166,8 +166,13 @@ func customElements(source []metadata.ManagedFormElement, language metadata.Titl
 			ReadOnly: item.ReadOnly, Disabled: item.Disabled, Orientation: string(item.Orientation),
 			DataPath: item.DataPath, Children: customElements(item.Children, language, commands),
 		}
-		if item.Command != nil {
-			value.Command = commands[item.Command.String()]
+		// ML App runs the commands of the form; a button running any other
+		// command is drawn without one until those commands run (block 7).
+		if name, ok := item.FormCommandName(); ok {
+			value.Command = commands[strings.ToLower(name)]
+		}
+		if kind == "button" && value.Command == "" {
+			value.Disabled = true
 		}
 		result = append(result, value)
 	}

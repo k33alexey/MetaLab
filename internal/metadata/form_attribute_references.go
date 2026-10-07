@@ -215,6 +215,15 @@ func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElem
 				catalog.noteUnresolved(where+" "+picture.name, *picture.value.Common)
 			}
 		}
+		catalog.noteFormReferences(where, item)
+		if item.Command != "" {
+			catalog.resolveButtonCommand(where, item)
+		}
+		if parameter := item.CommandParameter; parameter != nil && len(parameter.Types) != 0 {
+			if err := catalog.resolveFormData(where+" command parameter", parameter.Types, nil); err != nil {
+				return err
+			}
+		}
 		if err := catalog.resolveFormElements(form, item.Children); err != nil {
 			return err
 		}

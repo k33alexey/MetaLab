@@ -67,7 +67,7 @@ func TestCustomFormKeepsLayoutBindingsAndLocalizedCommands(t *testing.T) {
 	source := metadata.ManagedForm{
 		ID: formID, Kind: metadata.ObjectForm, Title: metadata.LocalizedText{"ru": "Карточка товара"},
 		Commands: []metadata.ManagedFormCommand{{ID: commandID, Name: "Save", Title: metadata.LocalizedText{"ru": "Записать"}, Action: metadata.FormCommandSave}},
-		Items:    []metadata.ManagedFormElement{{ID: fieldID, Name: "Наименование", Kind: metadata.FormElementInputField, DataPath: "Description", Command: nil}},
+		Items:    []metadata.ManagedFormElement{{ID: fieldID, Name: "Наименование", Kind: metadata.FormElementInputField, DataPath: "Description"}},
 	}
 	form, err := FormFromMetadata(descriptor, &source, metadata.TitleLanguage{Code: "ru", Default: "ru"})
 	if err != nil {
@@ -103,5 +103,37 @@ func TestEveryKindOfElementIsDrawnAsOneTheAppKnows(t *testing.T) {
 		if elements := customElements([]metadata.ManagedFormElement{{ID: uuid.MustNew(), Name: "Э", Kind: kind}}, metadata.TitleLanguage{Code: "ru", Default: "ru"}, nil); len(elements) != 0 {
 			t.Errorf("%s drawn as %+v", kind, elements)
 		}
+	}
+}
+
+// A button running a command of the form is given that command by its name,
+// whatever case the button writes it in; a button running any other command
+// - standard, common, of an object - is drawn disabled without one, as ML
+// App does not run those yet, and the form still opens.
+//
+// Defect caught: the command of a button looked up by an identifier the
+// button no longer carries, so that every button of a form is dead; a
+// command in another case not found; a standard command handed to the
+// client as a command of the form it does not have; a form refused whole for
+// one button it cannot run.
+func TestAButtonIsGivenTheCommandOfTheFormItNames(t *testing.T) {
+	t.Parallel()
+	formID := uuid.MustNew()
+	descriptor := metadata.FormDescriptor{Kind: metadata.ObjectForm, ObjectKind: metadata.CatalogKind, ObjectID: uuid.MustNew(),
+		ObjectName: "Товары", Title: "Товары", SourceID: &formID}
+	source := metadata.ManagedForm{
+		ID: formID, Kind: metadata.ObjectForm, Title: metadata.LocalizedText{"ru": "Карточка"},
+		Commands: []metadata.ManagedFormCommand{{ID: uuid.MustNew(), Name: "Заполнить", Title: metadata.LocalizedText{"ru": "Заполнить"}, Action: metadata.FormCommandRefresh}},
+		Items: []metadata.ManagedFormElement{
+			{ID: uuid.MustNew(), Name: "Кнопка", Kind: metadata.FormElementButton, Command: "Form.Command.ЗАПОЛНИТЬ"},
+			{ID: uuid.MustNew(), Name: "Закрыть", Kind: metadata.FormElementButton, Command: "Form.StandardCommand.Close"},
+		},
+	}
+	form, err := FormFromMetadata(descriptor, &source, metadata.TitleLanguage{Code: "ru", Default: "ru"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if form.Items[0].Command != "Заполнить" || form.Items[0].Disabled || form.Items[1].Command != "" || !form.Items[1].Disabled {
+		t.Fatalf("buttons: %+v, %+v", form.Items[0], form.Items[1])
 	}
 }

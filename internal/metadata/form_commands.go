@@ -1,0 +1,226 @@
+package metadata
+
+import (
+	"reflect"
+	"strings"
+
+	"github.com/k33alexey/MetaLab/internal/uuid"
+)
+
+// A button names the command it runs as the prototype writes it (help,
+// FormButton.CommandName - a string): by name, with what the command belongs
+// to in front of it.
+//
+//	Form.Command.<name>                         a command of the form (35398 in the exports)
+//	Form.StandardCommand.<name>                 a standard command of the form (7618)
+//	Form.Item.<element>.StandardCommand.<name>  a standard command of an element of the form (9028)
+//	CommonCommand.<name>                        a common command (1954)
+//	<kind>.<object>.Command.<name>              a command of an object of the configuration (536)
+//	<kind>.<object>.StandardCommand.<name>      a standard command of one (419)
+//
+// The prototype writes the code of an element of a form in its place as well
+// - a number and an identifier (309), or a lone 0 (262) - which is carried as
+// written and noted, as no one knows what it points at.
+type buttonCommandKind int
+
+const (
+	formCommand buttonCommandKind = iota + 1
+	formStandardCommand
+	elementStandardCommand
+	commonCommand
+	objectCommand
+	objectStandardCommand
+	elementCodeCommand
+)
+
+type buttonCommand struct {
+	kind buttonCommandKind
+	// owner is the word the prototype names the kind of an object by, and
+	// object its name; element is the element of the form.
+	owner, object, element string
+	name                   string
+}
+
+// commandOwnerKinds are the kinds of object a button may name a command of,
+// by the word the prototype writes for each, with the list of the catalog
+// they are read from. A common form has only standard commands.
+var commandOwnerKinds = map[string]string{
+	"Catalog": "Catalogs", "Document": "Documents", "Enum": "Enumerations",
+	"ChartOfCharacteristicTypes": "ChartsOfCharacteristicTypes", "ChartOfAccounts": "ChartsOfAccounts",
+	"ChartOfCalculationTypes": "ChartsOfCalculationTypes", "BusinessProcess": "BusinessProcesses", "Task": "Tasks",
+	"ExchangePlan": "ExchangePlans", "DocumentJournal": "DocumentJournals", "InformationRegister": "InformationRegisters",
+	"AccumulationRegister": "AccumulationRegisters", "AccountingRegister": "AccountingRegisters",
+	"CalculationRegister": "CalculationRegisters", "Report": "Reports", "DataProcessor": "DataProcessors",
+	"FilterCriterion": "FilterCriteria", "CommonForm": "",
+}
+
+// parseButtonCommand reads the command of a button; false is something no
+// command is written as.
+func parseButtonCommand(value string) (buttonCommand, bool) {
+	if formElementCode.MatchString(value) {
+		return buttonCommand{kind: elementCodeCommand}, true
+	}
+	parts := strings.Split(value, ".")
+	for _, part := range parts {
+		if !validIdentifier(part) {
+			return buttonCommand{}, false
+		}
+	}
+	switch {
+	case len(parts) == 3 && parts[0] == "Form" && parts[1] == "Command":
+		return buttonCommand{kind: formCommand, name: parts[2]}, true
+	case len(parts) == 3 && parts[0] == "Form" && parts[1] == "StandardCommand":
+		return buttonCommand{kind: formStandardCommand, name: parts[2]}, true
+	case len(parts) == 5 && parts[0] == "Form" && parts[1] == "Item" && parts[3] == "StandardCommand":
+		return buttonCommand{kind: elementStandardCommand, element: parts[2], name: parts[4]}, true
+	case len(parts) == 2 && parts[0] == "CommonCommand":
+		return buttonCommand{kind: commonCommand, name: parts[1]}, true
+	case len(parts) == 4 && parts[2] == "StandardCommand":
+		if _, known := commandOwnerKinds[parts[0]]; known {
+			return buttonCommand{kind: objectStandardCommand, owner: parts[0], object: parts[1], name: parts[3]}, true
+		}
+	case len(parts) == 4 && parts[2] == "Command" && parts[0] != "CommonForm":
+		if _, known := commandOwnerKinds[parts[0]]; known {
+			return buttonCommand{kind: objectCommand, owner: parts[0], object: parts[1], name: parts[3]}, true
+		}
+	}
+	return buttonCommand{}, false
+}
+
+// FormCommandName is the name of the command of the form a button runs, if
+// it runs one.
+func (element ManagedFormElement) FormCommandName() (string, bool) {
+	command, ok := parseButtonCommand(element.Command)
+	if !ok || command.kind != formCommand {
+		return "", false
+	}
+	return command.name, true
+}
+
+// FormCommandParameter is the parameter a button passes to its command: the
+// types of a value (for creating by a parameter - 6 in the exports) or an
+// object of the configuration (for showing in a list - 60), written as the
+// prototype writes it, by kind and name ("DocumentJournal.Взаимодействия"),
+// or by an identifier that resolves to nothing in the configuration (42).
+type FormCommandParameter struct {
+	Types  []Type `yaml:"types,omitempty" json:"types,omitempty"`
+	Object string `yaml:"object,omitempty" json:"object,omitempty"`
+}
+
+func validateFormCommandParameter(path string, parameter *FormCommandParameter) []string {
+	if parameter == nil {
+		return nil
+	}
+	switch {
+	case len(parameter.Types) != 0 && parameter.Object != "":
+		return []string{path + " is either types or an object, not both"}
+	case len(parameter.Types) != 0:
+		return validateTypesIn(path+".types", parameter.Types, placeFormAttribute)
+	case parameter.Object == "":
+		return []string{path + " must be types or an object"}
+	}
+	if _, ok := parseCommandObject(parameter.Object); !ok && !isUUIDText(parameter.Object) {
+		return []string{path + ".object must be <kind>.<name> of an object of the configuration or its identifier"}
+	}
+	return nil
+}
+
+// parseCommandObject reads an object of the configuration written by kind and
+// name.
+func parseCommandObject(value string) (buttonCommand, bool) {
+	owner, object, found := strings.Cut(value, ".")
+	if _, known := commandOwnerKinds[owner]; !found || !known || !validIdentifier(object) {
+		return buttonCommand{}, false
+	}
+	return buttonCommand{owner: owner, object: object}, true
+}
+
+func isUUIDText(value string) bool {
+	id, err := uuid.Parse(value)
+	return err == nil && !id.IsZero()
+}
+
+// commandOwner finds the object of the configuration a button names by kind
+// and name, with the names of its commands; a common form has none.
+func (catalog *Catalog) commandOwner(owner, object string) (map[string]bool, bool) {
+	field := commandOwnerKinds[owner]
+	if field == "" {
+		return nil, catalog.commonFormNames[strings.ToLower(object)]
+	}
+	list := reflect.ValueOf(catalog).Elem().FieldByName(field)
+	for index := range list.Len() {
+		definition := list.Index(index)
+		if !strings.EqualFold(definition.FieldByName("Name").String(), object) {
+			continue
+		}
+		names := map[string]bool{}
+		if commands := definition.FieldByName("Commands"); commands.IsValid() {
+			for _, command := range commands.Interface().([]ObjectCommand) {
+				names[strings.ToLower(command.Name)] = true
+			}
+		}
+		return names, true
+	}
+	return nil, false
+}
+
+// resolveButtonCommand checks a command of a button against the
+// configuration: a common command and an object with its command must be
+// there. What is not is a reference to nothing, as a common picture that is
+// gone is; the code of an element is noted.
+func (catalog *Catalog) resolveButtonCommand(where string, element ManagedFormElement) {
+	command, _ := parseButtonCommand(element.Command)
+	switch command.kind {
+	case elementCodeCommand:
+		catalog.noteForm(NoteFormReferenceAsWritten, where+" command", element.Command)
+	case commonCommand:
+		if !catalog.hasCommonCommandFolded(command.name) {
+			catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where + " command", Written: element.Command})
+		}
+	case objectCommand, objectStandardCommand:
+		names, ok := catalog.commandOwner(command.owner, command.object)
+		if !ok || command.kind == objectCommand && !names[strings.ToLower(command.name)] {
+			catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where + " command", Written: element.Command})
+		}
+	}
+	if parameter := element.CommandParameter; parameter != nil && parameter.Object != "" {
+		object, byName := parseCommandObject(parameter.Object)
+		if _, ok := catalog.commandOwner(object.owner, object.object); !byName || !ok {
+			catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where + " command parameter", Written: parameter.Object})
+		}
+	}
+}
+
+func (catalog *Catalog) hasCommonCommandFolded(name string) bool {
+	for _, command := range catalog.CommonCommands {
+		if strings.EqualFold(command.Name, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// noteFormReferences notes every reference of an element the prototype wrote
+// as a code or a number instead of a name, and a data path of two joined by
+// "~": they are carried as written, and what they point at is not known.
+func (catalog *Catalog) noteFormReferences(where string, element ManagedFormElement) {
+	asWritten := func(value string) bool {
+		trimmed := strings.TrimPrefix(value, "~")
+		return value != "" && (formElementCode.MatchString(value) || strings.HasPrefix(value, "~") && strings.Contains(trimmed, "~"))
+	}
+	for _, reference := range []struct{ name, value string }{
+		{"data_path", element.DataPath}, {"title_data_path", element.TitleDataPath}, {"command_source", element.CommandSource},
+	} {
+		if asWritten(reference.value) {
+			catalog.noteForm(NoteFormReferenceAsWritten, where+" "+reference.name, reference.value)
+		}
+	}
+	for _, link := range element.ChoiceParameterLinks {
+		if asWritten(link.DataPath) {
+			catalog.noteForm(NoteFormReferenceAsWritten, where+" choice parameter link "+link.Name, link.DataPath)
+		}
+	}
+	if link := element.TypeLink; link != nil && asWritten(link.DataPath) {
+		catalog.noteForm(NoteFormReferenceAsWritten, where+" type link", link.DataPath)
+	}
+}

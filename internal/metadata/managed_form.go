@@ -122,7 +122,10 @@ type ManagedFormElement struct {
 	Disabled bool            `yaml:"disabled,omitempty" json:"disabled"`
 	ReadOnly bool            `yaml:"read_only,omitempty" json:"readOnly"`
 	DataPath string          `yaml:"data_path,omitempty" json:"dataPath,omitempty"`
-	Command  *uuid.UUID      `yaml:"command,omitempty" json:"command,omitempty"`
+	// Command is the command a button runs, written as the prototype writes
+	// it (form_commands.go), and CommandParameter what it passes to it.
+	Command          string                `yaml:"command,omitempty" json:"command,omitempty"`
+	CommandParameter *FormCommandParameter `yaml:"command_parameter,omitempty" json:"commandParameter,omitempty"`
 	// ToolTip is the tooltip of the element; a button shows that of its
 	// command. ToolTipRepresentation is how the tooltip shows.
 	ToolTip               LocalizedText             `yaml:"tool_tip,omitempty" json:"toolTip,omitempty"`
@@ -276,6 +279,9 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	// table it takes commands from; each is found once the whole form is
 	// walked, as it may stand after the group.
 	sources, associated := map[string]FormElementKind{}, []pending(nil)
+	// A button runs a standard command of an element, which may stand after
+	// it too.
+	var commanded []pending
 	for id := range commandIDs {
 		ids[id] = true
 	}
@@ -340,16 +346,25 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		if item.ReadOnly && class != formFieldClass && class != formTableClass && !slices.Contains(formGroupKinds, item.Kind) {
 			issues = append(issues, current.path+".read_only is allowed only for fields, tables and groups")
 		}
-		if item.Command != nil {
+		if item.Command != "" {
 			if class != formButtonClass {
 				issues = append(issues, current.path+".command is allowed only for buttons")
 			}
-			if item.Command.IsZero() {
-				issues = append(issues, current.path+".command must be a non-zero UUID")
-			} else if !commandIDs[*item.Command] {
-				issues = append(issues, current.path+".command references an unknown form command")
+			switch command, ok := parseButtonCommand(item.Command); {
+			case !ok:
+				issues = append(issues, current.path+".command must be Form.Command.<name>, Form.StandardCommand.<name>, "+
+					"Form.Item.<element>.StandardCommand.<name>, CommonCommand.<name>, <kind>.<object>.Command.<name>, "+
+					"<kind>.<object>.StandardCommand.<name> or the code of an element of a form")
+			case command.kind == formCommand && !commandNames[strings.ToLower(command.name)]:
+				issues = append(issues, current.path+".command names no command of the form")
+			case command.kind == elementStandardCommand:
+				commanded = append(commanded, pending{element: item, path: current.path})
 			}
 		}
+		if item.CommandParameter != nil && item.Command == "" {
+			issues = append(issues, current.path+".command_parameter is allowed only beside a command")
+		}
+		issues = append(issues, validateFormCommandParameter(current.path+".command_parameter", item.CommandParameter)...)
 		issues = append(issues, validateElementCommon(current.path, item, class, configuration)...)
 		if item.ButtonType != "" && class != formButtonClass {
 			issues = append(issues, current.path+".button_type is allowed only for buttons")
@@ -380,6 +395,11 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		}
 		if name, named := group.element.commandSourceItem(); named && sources[strings.ToLower(name)] == "" {
 			issues = append(issues, group.path+".command_source names no field or table of the form")
+		}
+	}
+	for _, button := range commanded {
+		if command, _ := parseButtonCommand(button.element.Command); !names[strings.ToLower(command.element)] {
+			issues = append(issues, button.path+".command names no element of the form")
 		}
 	}
 	issues = append(issues, validateFormAttributes(value.Attributes, ids, configuration)...)

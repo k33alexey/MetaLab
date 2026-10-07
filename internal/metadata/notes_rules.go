@@ -60,6 +60,7 @@ const (
 	NoteLeadingDataNotDimension    NoteKind = "leading-data-not-dimension"
 	NotePictureSettingsLeft        NoteKind = "picture-settings-without-picture"
 	NoteChartHoldsNothing          NoteKind = "chart-value-type-holds-nothing"
+	NoteFormReferenceAsWritten     NoteKind = "form-reference-as-written"
 )
 
 func init() {
@@ -221,6 +222,12 @@ func init() {
 				"Конфигуратор позволяет выбрать план в его же типе значения и сохраняет это (проверено на 8.3.27); " +
 				"рядом с другими типами характеристики себя ничего не добавляют, а без них тип пуст.",
 			"План несётся как записан; его характеристика не принимает ни одного значения."},
+		NoteKindInfo{NoteFormReferenceAsWritten,
+			"Ссылка в форме, записанная кодом или числом вместо имени: номер элемента с идентификатором (\"3:409b9a53-…\"), " +
+				"одинокий «0», число вместо пути к данным, два пути через «~». Прототип пишет их в команде кнопки, источнике команд, " +
+				"пути к данным, пути к данным заголовка и путях связей поля; на что такая ссылка указывает, не установлено " +
+				"(открытый вопрос карты блоков о коде элемента формы).",
+			"Ссылка несётся как записана и ни на что не указывает: кнопка без команды, панель без источника, поле и заголовок без данных, связь не действует."},
 	)
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
@@ -266,6 +273,9 @@ func init() {
 	noteRules[NoteLeadingDataNotDimension] = noteLeadingDataNotDimension
 	noteRules[NotePictureSettingsLeft] = notePictureSettingsLeft
 	noteRules[NoteChartHoldsNothing] = noteChartHoldsNothing
+	noteRules[NoteFormReferenceAsWritten] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NoteFormReferenceAsWritten, note)
+	}
 }
 
 func noteUnusedBound(catalog *Catalog, note func(where, written string)) {

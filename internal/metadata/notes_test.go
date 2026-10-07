@@ -206,6 +206,10 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		noteCatalog(t, root, "", noteField("string", "    choice:\n"+
 			"      parameters: [{name: Отбор.ВидСчета, values: [{kind: platform, data: \"ent:AccountType.Active\"}]}]\n"))
 	},
+	NoteFormReferenceAsWritten: func(t *testing.T, root string) {
+		writeCommonForm(t, root, "Помощник", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Помощник\ntitle: {ru: Помощник}\nkind: common\n"+
+			"items:\n  - {id: "+uuid.MustNew().String()+", name: Кнопка, kind: button, command: \"0\"}\n")
+	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")

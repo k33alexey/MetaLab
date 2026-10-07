@@ -88,19 +88,18 @@ func TestManagedFormValidatesBindingsAndCommands(t *testing.T) {
 		Commands: []ManagedFormCommand{{ID: commandID, Name: "\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c", Title: LocalizedText{"ru": "\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c"}, Action: FormCommandRefresh}},
 		Items: []ManagedFormElement{
 			{ID: uuid.MustNew(), Name: "\u041f\u043e\u043b\u0435", Kind: FormElementInputField, DataPath: "\u041e\u0431\u044a\u0435\u043a\u0442.\u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435"},
-			{ID: uuid.MustNew(), Name: "\u041a\u043d\u043e\u043f\u043a\u0430", Kind: FormElementButton, Command: &commandID},
+			{ID: uuid.MustNew(), Name: "\u041a\u043d\u043e\u043f\u043a\u0430", Kind: FormElementButton, Command: "Form.Command.\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c"},
 		},
 	}
 	if err := ValidateManagedForm("form.yaml", form, configuration); err != nil {
 		t.Fatal(err)
 	}
-	unknown := uuid.MustNew()
 	form.Items[0].DataPath = "\u041e\u0431\u044a\u0435\u043a\u0442..\u041f\u043e\u043b\u0435"
-	form.Items[0].Command = &unknown
+	form.Items[0].Command = "Form.Command.Unknown"
 	form.Commands[0].Action = FormCommandCustom
 	form.Commands[0].Handler = ""
 	err := ValidateManagedForm("form.yaml", form, configuration)
-	for _, expected := range []string{"names separated by dots, each with an index if any", "command is allowed only for buttons", "unknown form command", "handler must be a valid BSL routine name"} {
+	for _, expected := range []string{"names separated by dots, each with an index if any", "command is allowed only for buttons", "command names no command of the form", "handler must be a valid BSL routine name"} {
 		if err == nil || !strings.Contains(err.Error(), expected) {
 			t.Fatalf("validation error %q missing from %v", expected, err)
 		}

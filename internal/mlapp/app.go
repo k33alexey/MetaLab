@@ -263,7 +263,9 @@ func validateForm(form Form) error {
 		default:
 			return fmt.Errorf("unsupported ML App component %q", item.Kind)
 		}
-		if item.Kind == "button" && !commands[item.Command] {
+		// A button running a command ML App does not run yet is drawn
+		// disabled, without one.
+		if item.Kind == "button" && (item.Command == "" && !item.Disabled || item.Command != "" && !commands[item.Command]) {
 			return fmt.Errorf("ML App button references an unknown command")
 		}
 		stack = append(stack, item.Children...)

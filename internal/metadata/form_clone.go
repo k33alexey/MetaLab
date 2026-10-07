@@ -34,7 +34,11 @@ func cloneRuntimeFormElements(values []ManagedFormElement) []ManagedFormElement 
 	result := make([]ManagedFormElement, len(values))
 	for index, value := range values {
 		value.Title = cloneTitle(value.Title)
-		value.Command = clonePointer(value.Command)
+		if value.CommandParameter != nil {
+			parameter := *value.CommandParameter
+			parameter.Types = cloneTypes(parameter.Types)
+			value.CommandParameter = &parameter
+		}
 		value.ToolTip = maps.Clone(value.ToolTip)
 		value.UserVisible = value.UserVisible.clone()
 		value.SkipOnInput = clonePointer(value.SkipOnInput)
