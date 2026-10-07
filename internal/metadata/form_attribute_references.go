@@ -210,7 +210,7 @@ func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElem
 		if item.ChoiceFormGone != nil {
 			catalog.noteUnresolved(where+" choice_form_gone", *item.ChoiceFormGone)
 		}
-		for _, picture := range append(item.FieldColumn.commonPictures(), item.FieldButtons.commonPictures()...) {
+		for _, picture := range item.commonPictures() {
 			if _, ok := catalog.commonPictureByID[*picture.value.Common]; !ok {
 				catalog.noteUnresolved(where+" "+picture.name, *picture.value.Common)
 			}

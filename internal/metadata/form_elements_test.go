@@ -1863,7 +1863,8 @@ func TestAFieldKeepsHowItShowsItsValue(t *testing.T) {
 // accepted on the fields the help gives it and refused on any other; the
 // kinds and sizes are checked.
 //
-// Defect caught: a hyperlink kept on an input field, three states on a radio
+// Defect caught: a hyperlink kept on an input field, or refused on a picture
+// field, which the help gives one (54 times in the exports); three states on a radio
 // button field, columns on a check box - or the reverse, the size of an item
 // refused on a check box, which the help gives it; the prototype's spelling
 // of a kind ("Switcher", "RadioButtons") or an unknown one accepted; a
@@ -1875,7 +1876,7 @@ func TestEachPropertyOfShowingAValueStandsOnItsFields(t *testing.T) {
 		RadioButtonType: FormRadioButtonRadioButton, ColumnsCount: 2, EqualColumnsWidth: &yes, ItemWidth: 1, ItemHeight: 1, ItemTitleHeight: 1}
 	items := []FormElementKind{FormElementCheckBoxField, FormElementRadioButtonField}
 	allowed := map[string][]FormElementKind{
-		"Hyperlink": {FormElementLabelField}, "CheckBoxType": {FormElementCheckBoxField}, "ThreeState": {FormElementCheckBoxField},
+		"Hyperlink": {FormElementLabelField, FormElementPictureField}, "CheckBoxType": {FormElementCheckBoxField}, "ThreeState": {FormElementCheckBoxField},
 		"EqualItemsWidth": {FormElementCheckBoxField}, "RadioButtonType": {FormElementRadioButtonField}, "ColumnsCount": {FormElementRadioButtonField},
 		"EqualColumnsWidth": {FormElementRadioButtonField}, "ItemWidth": items, "ItemHeight": items, "ItemTitleHeight": items,
 	}
@@ -1912,7 +1913,158 @@ func TestEachPropertyOfShowingAValueStandsOnItsFields(t *testing.T) {
 		}
 	}
 	form := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, hyperlink: true}\n")
-	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(form), managedFormConfiguration()); err == nil || !strings.Contains(err.Error(), "items[0].hyperlink is allowed only for label fields") {
+	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(form), managedFormConfiguration()); err == nil || !strings.Contains(err.Error(), "items[0].hyperlink is allowed only for label and picture fields") {
 		t.Errorf("a hyperlink on an input field read from a file: %v", err)
+	}
+}
+
+// A picture field keeps what only it has through YAML and the Studio, and is
+// a link as a label field is.
+//
+// Defect caught: the set of pictures a number or a boolean picks from lost,
+// so that the field shows nothing; how the picture fits, the text shown with
+// no picture, zooming or how dragged files are handed over lost or read into
+// a neighbour; a picture field shown as a link (54 times) refused.
+func TestAPictureFieldKeepsWhatItHas(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Картинка, kind: picture-field, hyperlink: true," +
+		" values_picture: {common: c0de0000-0000-4000-8000-000000000043, load_transparent: true}, picture_size: proportionally," +
+		" nonselected_picture_text: {ru: Нет картинки}, zoomable: true, file_drag_mode: as-file-ref}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	picture := form.Items[0].FieldPicture
+	value := reflect.ValueOf(picture)
+	for index := range value.NumField() {
+		if value.Field(index).IsZero() {
+			t.Errorf("%s is not set by the test", value.Type().Field(index).Name)
+		}
+	}
+	switch {
+	case picture.ValuesPicture.Common == nil || !picture.ValuesPicture.LoadTransparent || picture.PictureSize != FormPictureProportionally:
+		t.Fatalf("picture: %+v", picture)
+	case picture.NonselectedPictureText["ru"] != "Нет картинки" || !picture.Zoomable || picture.FileDragMode != FormFileDragAsFileRef:
+		t.Fatalf("text, zoom, drag: %+v", picture)
+	case !form.Items[0].Hyperlink:
+		t.Fatalf("link: %+v", form.Items[0].FieldValueView)
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil || !reflect.DeepEqual(again.Items, form.Items) {
+		t.Fatalf("written back: %v", err)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil || !reflect.DeepEqual(received.Items, form.Items) {
+		t.Fatalf("carried through the Studio: %v", err)
+	}
+}
+
+// What a picture field has stands only on a picture field, each property
+// alone, and each value is checked.
+//
+// Defect caught: a picture of values kept on an input field or a label field;
+// a property left out of the check for nothing, so that another field keeps
+// it alone; an unknown way of fitting the picture or of handing dragged files
+// over accepted; a picture naming two sources, a file that is no image, a
+// text in no printable characters.
+func TestAPictureFieldRefusesWhatIsWrong(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	full := FieldPicture{ValuesPicture: &PictureReference{Standard: "Change"}, PictureSize: FormPictureTile,
+		NonselectedPictureText: LocalizedText{"ru": "Нет"}, Zoomable: true, FileDragMode: FormFileDragAsFile}
+	value := reflect.ValueOf(full)
+	for index := range value.NumField() {
+		name := value.Type().Field(index).Name
+		if value.Field(index).IsZero() {
+			t.Fatalf("%s is not set by the test", name)
+		}
+		var alone FieldPicture
+		reflect.ValueOf(&alone).Elem().Field(index).Set(value.Field(index))
+		if issues := validateFieldPicture("items[0]", alone, FormElementInputField, configuration); len(issues) != 1 || issues[0] != "items[0] has what only a picture field has" {
+			t.Errorf("%s alone on an input field: %v", name, issues)
+		}
+		if issues := validateFieldPicture("items[0]", alone, FormElementPictureField, configuration); len(issues) != 0 {
+			t.Errorf("%s alone on a picture field: %v", name, issues)
+		}
+	}
+	for name, test := range map[string]struct{ element, want string }{
+		"у поля надписи":   {"kind: label-field, values_picture: {standard: Change}", "items[0] has what only a picture field has"},
+		"размер":           {"kind: picture-field, picture_size: Proportionally", "items[0].picture_size must be auto-size, auto-size-ignore-scale, by-font-size, proportionally, real-size, real-size-ignore-scale, stretch or tile"},
+		"перетаскивание":   {"kind: picture-field, file_drag_mode: AsFile", "items[0].file_drag_mode must be as-file or as-file-ref"},
+		"две картинки":     {"kind: picture-field, values_picture: {standard: Change, common: c0de0000-0000-4000-8000-000000000043}", "items[0].values_picture names more than one"},
+		"своя не картинка": {"kind: picture-field, values_picture: {file: ValuesPicture.txt}", "items[0].values_picture.file must be the name of an image file"},
+		"текст":            {"kind: picture-field, nonselected_picture_text: {ru: \"\\x01\"}", "items[0].nonselected_picture_text.ru must say something in printable characters"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			source := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Элемент, " + test.element + "}\n")
+			_, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+// The picture of values is resolved with the project as the other pictures
+// of an element are: a common one must be there, a file of the element's own
+// must lie in its folder.
+//
+// Defect caught: a picture of values left out of the pictures of the element,
+// so that its file (22 in the exports) is refused as kept for nothing; a
+// common picture that is gone loading clean.
+func TestThePictureOfValuesIsResolved(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		picture string
+		files   []string
+		refused string
+		gone    bool
+	}{
+		"общая картинка":     {picture: "{common: " + cmpCommonPicture + "}"},
+		"удалённая картинка": {picture: "{common: " + refGone + "}", gone: true},
+		"свой файл":          {picture: "{file: ValuesPicture.png}", files: []string{"Картинка/ValuesPicture.png"}},
+		"своего файла нет":   {picture: "{file: ValuesPicture.png}", refused: "element Картинка values_picture is shown with picture file ValuesPicture.png, which its folder does not hold"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := formReferencesProject(t)
+			path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			element := "items:\n  - {id: c0de0000-0000-4000-8000-000000990002, name: Картинка, kind: picture-field, values_picture: " + test.picture + "}\n"
+			writeFile(t, path, strings.Replace(string(content), "attributes:\n", element+"attributes:\n", 1))
+			for _, file := range test.files {
+				writeFile(t, filepath.Join(filepath.Dir(path), project.FormItemsDirectory, file), "image")
+			}
+			switch {
+			case test.gone:
+				if found := unresolvedOf(t, root); !containsWhere(found, "catalog Номенклатура form ФормаЭлемента element Картинка values_picture") {
+					t.Fatalf("unresolved = %+v", found)
+				}
+			case test.refused != "":
+				if _, err := Load(root); err == nil || !strings.Contains(err.Error(), test.refused) {
+					t.Fatalf("err = %v, want %q", err, test.refused)
+				}
+			default:
+				if _, err := Load(root); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
 	}
 }

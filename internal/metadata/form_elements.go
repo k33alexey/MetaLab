@@ -581,17 +581,6 @@ func (column FieldColumn) styleItems() []styleItemUse {
 	return uses
 }
 
-// commonPictures lists the common pictures drawn in the header and footer.
-func (column FieldColumn) commonPictures() []namedPicture {
-	var pictures []namedPicture
-	for _, picture := range []namedPicture{{"header_picture", column.HeaderPicture}, {"footer_picture", column.FooterPicture}} {
-		if picture.value != nil && picture.value.Common != nil {
-			pictures = append(pictures, picture)
-		}
-	}
-	return pictures
-}
-
 type namedPicture struct {
 	name  string
 	value *PictureReference
@@ -669,12 +658,15 @@ func validateFieldButtons(path string, buttons FieldButtons, kind FormElementKin
 	return issues
 }
 
-// commonPictures lists the common picture drawn on the choice button.
-func (buttons FieldButtons) commonPictures() []namedPicture {
-	if picture := buttons.ChoiceButtonPicture; picture != nil && picture.Common != nil {
-		return []namedPicture{{"choice_button_picture", picture}}
+// commonPictures lists the common pictures the element is drawn with.
+func (element ManagedFormElement) commonPictures() []namedPicture {
+	var pictures []namedPicture
+	for _, picture := range element.pictures() {
+		if picture.value != nil && picture.value.Common != nil {
+			pictures = append(pictures, namedPicture(picture))
+		}
 	}
-	return nil
+	return pictures
 }
 
 // FormEditTextUpdate is when the text being edited in an input field is
@@ -1124,13 +1116,15 @@ const (
 	FormRadioButtonTumbler     FormRadioButtonType = "tumbler"
 )
 
-// FieldValueView is how a label field, a check box and a radio button field
-// show their value (help, the extensions of a form field for each). Each
+// FieldValueView is how a label field, a picture field, a check box and a
+// radio button field show their value (help, the extensions of a form field for each). Each
 // property stands on the fields the help gives it, which are the fields the
 // prototype writes it on.
 type FieldValueView struct {
-	// Hyperlink shows the text of a label field as a link; the prototype
-	// writes it as "Hiperlink", and only the "on" (1103 times).
+	// Hyperlink shows the text of a label field as a link, and makes a
+	// picture field a link clicked; the prototype writes only the "on", on a
+	// label field as "Hiperlink" (1103 times), on a picture field as
+	// "Hyperlink" (54).
 	Hyperlink bool `yaml:"hyperlink,omitempty" json:"hyperlink,omitempty"`
 	// CheckBoxType and ThreeState are of a check box: a check box of three
 	// states edits a number. The prototype writes only the "on" of the
@@ -1160,7 +1154,7 @@ func validateFieldValueView(path string, view FieldValueView, kind FormElementKi
 			issues = append(issues, path+"."+name+" is allowed only for "+what)
 		}
 	}
-	only("hyperlink", view.Hyperlink, "label fields", FormElementLabelField)
+	only("hyperlink", view.Hyperlink, "label and picture fields", FormElementLabelField, FormElementPictureField)
 	only("check_box_type", view.CheckBoxType != "", "check boxes", FormElementCheckBoxField)
 	only("three_state", view.ThreeState, "check boxes", FormElementCheckBoxField)
 	only("equal_items_width", view.EqualItemsWidth != nil, "check boxes", FormElementCheckBoxField)
@@ -1181,5 +1175,68 @@ func validateFieldValueView(path string, view FieldValueView, kind FormElementKi
 			issues = append(issues, path+"."+size.name+" must not be negative")
 		}
 	}
+	return issues
+}
+
+// FormPictureSize is how a picture field fits a picture to its size (help,
+// PictureSize). Empty is not said.
+type FormPictureSize string
+
+const (
+	FormPictureAutoSize            FormPictureSize = "auto-size"
+	FormPictureAutoSizeIgnoreScale FormPictureSize = "auto-size-ignore-scale"
+	FormPictureByFontSize          FormPictureSize = "by-font-size"
+	FormPictureProportionally      FormPictureSize = "proportionally"
+	FormPictureRealSize            FormPictureSize = "real-size"
+	FormPictureRealSizeIgnoreScale FormPictureSize = "real-size-ignore-scale"
+	FormPictureStretch             FormPictureSize = "stretch"
+	FormPictureTile                FormPictureSize = "tile"
+)
+
+// FormFileDragMode is what a picture field is handed when files are dragged
+// onto it (help, FileDragMode): a file, or a reference to one. Empty is not
+// said; the prototype writes only AsFile (1406 times).
+type FormFileDragMode string
+
+const (
+	FormFileDragAsFile    FormFileDragMode = "as-file"
+	FormFileDragAsFileRef FormFileDragMode = "as-file-ref"
+)
+
+// FieldPicture is what a picture field has besides what every field has
+// (help, the extension of a form field for a picture field). Whether it is a
+// link is in FieldValueView, with the link of a label field.
+type FieldPicture struct {
+	// ValuesPicture is the set of pictures a number or a boolean the field
+	// shows picks from by index - a common picture (1397 times), a standard
+	// one (76) or a file of the element's own (22).
+	ValuesPicture *PictureReference `yaml:"values_picture,omitempty" json:"valuesPicture,omitempty"`
+	PictureSize   FormPictureSize   `yaml:"picture_size,omitempty" json:"pictureSize,omitempty"`
+	// NonselectedPictureText is shown while no picture is chosen.
+	NonselectedPictureText LocalizedText `yaml:"nonselected_picture_text,omitempty" json:"nonselectedPictureText,omitempty"`
+	// Zoomable scrolls a picture larger than the field and lets it be
+	// zoomed; the prototype writes only the "on" (9 times).
+	Zoomable     bool             `yaml:"zoomable,omitempty" json:"zoomable,omitempty"`
+	FileDragMode FormFileDragMode `yaml:"file_drag_mode,omitempty" json:"fileDragMode,omitempty"`
+}
+
+func (picture FieldPicture) empty() bool {
+	return picture.ValuesPicture == nil && picture.PictureSize == "" && len(picture.NonselectedPictureText) == 0 &&
+		!picture.Zoomable && picture.FileDragMode == ""
+}
+
+func validateFieldPicture(path string, picture FieldPicture, kind FormElementKind, configuration project.Project) []string {
+	if picture.empty() {
+		return nil
+	}
+	if kind != FormElementPictureField {
+		return []string{path + " has what only a picture field has"}
+	}
+	var issues []string
+	issues = append(issues, validatePictureReference(path+".values_picture", picture.ValuesPicture)...)
+	issues = append(issues, oneOf(path+".picture_size", picture.PictureSize, FormPictureAutoSize, FormPictureAutoSizeIgnoreScale,
+		FormPictureByFontSize, FormPictureProportionally, FormPictureRealSize, FormPictureRealSizeIgnoreScale, FormPictureStretch, FormPictureTile)...)
+	issues = append(issues, validateTitle(path+".nonselected_picture_text", picture.NonselectedPictureText, configuration)...)
+	issues = append(issues, oneOf(path+".file_drag_mode", picture.FileDragMode, FormFileDragAsFile, FormFileDragAsFileRef)...)
 	return issues
 }

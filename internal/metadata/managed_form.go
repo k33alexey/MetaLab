@@ -149,6 +149,8 @@ type ManagedFormElement struct {
 	// FieldValueView is how a label field, a check box and a radio button
 	// field show their value.
 	FieldValueView `yaml:",inline"`
+	// FieldPicture is what a picture field has.
+	FieldPicture `yaml:",inline"`
 	// ButtonType is what a button is; only a button has one.
 	ButtonType FormButtonType `yaml:"button_type,omitempty" json:"buttonType,omitempty"`
 	// Orientation lays out what a usual group, a page or a group of columns
@@ -299,6 +301,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		issues = append(issues, validateChoiceList(current.path, item.ChoiceList, item.Kind, configuration)...)
 		issues = append(issues, validateInputFieldChoiceParameters(current.path, item.InputFieldChoiceParameters, item.Kind)...)
 		issues = append(issues, validateFieldValueView(current.path, item.FieldValueView, item.Kind)...)
+		issues = append(issues, validateFieldPicture(current.path, item.FieldPicture, item.Kind, configuration)...)
 		issues = append(issues, validateOwnPictureFiles(current.path, item)...)
 		if item.ReadOnly && class != formFieldClass && class != formTableClass {
 			issues = append(issues, current.path+".read_only is allowed only for fields and tables")
