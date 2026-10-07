@@ -2068,3 +2068,134 @@ func TestThePictureOfValuesIsResolved(t *testing.T) {
 		})
 	}
 }
+
+// The fields of documents keep what they have through YAML and the Studio.
+//
+// Defect caught: a scroll bar of a spreadsheet document turned off (28 and 33
+// times) or shown always read as not said, or the one read as the other; a switch of a spreadsheet document written false
+// read as not said, so that the platform's default takes its place; the
+// scaling, the selection, the restriction of output or an excluded command
+// lost; the output of an HTML document refused.
+func TestAFieldOfADocumentKeepsWhatItHas(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Таблица, kind: spreadsheet-document-field, vertical_scroll_bar: dont-use," +
+		" horizontal_scroll_bar: use-always, view_scaling_mode: normal, selection_show_mode: when-multiple-cells-selected, edit: true," +
+		" protection: false, show_headers: false, show_grid: true, show_groups: false, show_cell_names: true, show_row_and_column_names: false," +
+		" enable_drag: false, enable_start_drag: true, output: enable, excluded_commands: [Print, AlignCenter]}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Страница, kind: html-document-field, output: disable}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Текст, kind: formatted-document-field, excluded_commands: [Picture]}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := form.Items[0].FieldDocument
+	value := reflect.ValueOf(document)
+	for index := range value.NumField() {
+		if value.Field(index).IsZero() {
+			t.Errorf("%s is not set by the test", value.Type().Field(index).Name)
+		}
+	}
+	said := func(flag *bool) string {
+		if flag == nil {
+			return "-"
+		}
+		return strconv.FormatBool(*flag)
+	}
+	got := strings.Join([]string{said(document.Edit),
+		said(document.Protection), said(document.ShowHeaders), said(document.ShowGrid), said(document.ShowGroups), said(document.ShowCellNames),
+		said(document.ShowRowAndColumnNames), said(document.EnableDrag), said(document.EnableStartDrag)}, " ")
+	switch {
+	case got != "true false false true false true false false true":
+		t.Fatalf("switches: %s", got)
+	case document.VerticalScrollBar != FormScrollBarDontUse || document.HorizontalScrollBar != FormScrollBarUseAlways:
+		t.Fatalf("scroll bars: %q %q", document.VerticalScrollBar, document.HorizontalScrollBar)
+	case document.ViewScalingMode != FormViewScalingNormal || document.SelectionShowMode != FormSelectionWhenMultipleCellsSelected || document.Output != FormUseOutputEnable:
+		t.Fatalf("modes: %+v", document)
+	case !slices.Equal(document.ExcludedCommands, []string{"Print", "AlignCenter"}):
+		t.Fatalf("commands: %v", document.ExcludedCommands)
+	case form.Items[1].Output != FormUseOutputDisable || !slices.Equal(form.Items[2].ExcludedCommands, []string{"Picture"}):
+		t.Fatalf("html and formatted: %+v %+v", form.Items[1].FieldDocument, form.Items[2].FieldDocument)
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil || !reflect.DeepEqual(again.Items, form.Items) {
+		t.Fatalf("written back: %v", err)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil || !reflect.DeepEqual(received.Items, form.Items) {
+		t.Fatalf("carried through the Studio: %v", err)
+	}
+}
+
+// Each property of the fields of documents, set alone on every kind of
+// element, is accepted on the kinds it is written on and refused on any
+// other; the modes and the excluded commands are checked.
+//
+// Defect caught: a grid kept on a text document, the output on a check box,
+// an excluded command on an HTML document - or the reverse, the output
+// refused on a text or a formatted document, which the help gives one; an
+// unknown mode accepted; an excluded command that is no name, or named
+// twice.
+func TestEachPropertyOfADocumentStandsOnItsFields(t *testing.T) {
+	t.Parallel()
+	yes := true
+	full := FieldDocument{VerticalScrollBar: FormScrollBarAutoUse, HorizontalScrollBar: FormScrollBarDontUse, ViewScalingMode: FormViewScalingLarge,
+		SelectionShowMode: FormSelectionAlways, Edit: &yes, Protection: &yes, ShowHeaders: &yes, ShowGrid: &yes, ShowGroups: &yes,
+		ShowCellNames: &yes, ShowRowAndColumnNames: &yes, EnableDrag: &yes, EnableStartDrag: &yes, Output: FormUseOutputAuto,
+		ExcludedCommands: []string{"Print"}}
+	spreadsheet := []FormElementKind{FormElementSpreadsheetDocumentField}
+	allowed := map[string][]FormElementKind{
+		"Output":           {FormElementSpreadsheetDocumentField, FormElementTextDocumentField, FormElementHTMLDocumentField, FormElementFormattedDocumentField},
+		"ExcludedCommands": {FormElementSpreadsheetDocumentField, FormElementFormattedDocumentField},
+	}
+	value := reflect.ValueOf(full)
+	for index := range value.NumField() {
+		name := value.Type().Field(index).Name
+		if value.Field(index).IsZero() {
+			t.Fatalf("%s is not set by the test", name)
+		}
+		kinds, ok := allowed[name]
+		if !ok {
+			kinds = spreadsheet
+		}
+		for kind := range formElementClasses {
+			var alone FieldDocument
+			reflect.ValueOf(&alone).Elem().Field(index).Set(value.Field(index))
+			issues := validateFieldDocument("items[0]", alone, kind)
+			if want := !slices.Contains(kinds, kind); want != (len(issues) == 1 && strings.Contains(issues[0], "is allowed only for")) || !want && len(issues) != 0 {
+				t.Errorf("%s alone on %s: %v", name, kind, issues)
+			}
+		}
+	}
+	for name, test := range map[string]struct {
+		document FieldDocument
+		want     string
+	}{
+		"масштаб":        {FieldDocument{ViewScalingMode: "Normal"}, "items[0].view_scaling_mode must be auto, normal or large"},
+		"полоса булевом": {FieldDocument{VerticalScrollBar: "true"}, "items[0].vertical_scroll_bar must be auto-use, use-always or dont-use"},
+		"полоса EDT":     {FieldDocument{HorizontalScrollBar: "ScrollAlways"}, "items[0].horizontal_scroll_bar must be auto-use, use-always or dont-use"},
+		"выделение":      {FieldDocument{SelectionShowMode: "when-multiple"}, "items[0].selection_show_mode must be always, dont-show, when-active, when-multiple-cells-selected or when-multiple-cells-selected-when-active"},
+		"вывод":          {FieldDocument{Output: "Enable"}, "items[0].output must be auto, enable or disable"},
+		"не имя команды": {FieldDocument{ExcludedCommands: []string{"Print", "Align Center"}}, "items[0].excluded_commands[1] must be the name of a command"},
+		"команда дважды": {FieldDocument{ExcludedCommands: []string{"Print", "Print"}}, "items[0].excluded_commands[1] names Print twice"},
+	} {
+		if issues := validateFieldDocument("items[0]", test.document, FormElementSpreadsheetDocumentField); !slices.Contains(issues, test.want) {
+			t.Errorf("%s: %v, want %q", name, issues, test.want)
+		}
+	}
+	form := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: text-document-field, show_grid: true}\n")
+	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(form), managedFormConfiguration()); err == nil || !strings.Contains(err.Error(), "items[0].show_grid is allowed only for spreadsheet document fields") {
+		t.Errorf("a grid on a text document read from a file: %v", err)
+	}
+}

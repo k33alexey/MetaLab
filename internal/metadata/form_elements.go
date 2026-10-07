@@ -1240,3 +1240,133 @@ func validateFieldPicture(path string, picture FieldPicture, kind FormElementKin
 	issues = append(issues, oneOf(path+".file_drag_mode", picture.FileDragMode, FormFileDragAsFile, FormFileDragAsFileRef)...)
 	return issues
 }
+
+// FormScrollBarUse is when a scroll bar is shown (help, ScrollBarUse). A
+// table writes it so. A spreadsheet document field writes it as a boolean,
+// and the forms the mdclasses project keeps in both formats of export tell
+// which: one written nowhere is ScrollAuto in the other format (16 pairs),
+// true is ScrollAlways (2). False is not among them and is read as never, the
+// one use left; the import translates both, and that last is to be checked on
+// the platform. Empty is not said: auto.
+type FormScrollBarUse string
+
+const (
+	FormScrollBarAutoUse   FormScrollBarUse = "auto-use"
+	FormScrollBarUseAlways FormScrollBarUse = "use-always"
+	FormScrollBarDontUse   FormScrollBarUse = "dont-use"
+)
+
+// FormViewScalingMode is how a spreadsheet document is scaled for viewing
+// (help, ViewScalingMode).
+type FormViewScalingMode string
+
+const (
+	FormViewScalingAuto   FormViewScalingMode = "auto"
+	FormViewScalingNormal FormViewScalingMode = "normal"
+	FormViewScalingLarge  FormViewScalingMode = "large"
+)
+
+// FormSelectionShowMode is when the selection of a spreadsheet document is
+// drawn (help, SelectionShowMode).
+type FormSelectionShowMode string
+
+const (
+	FormSelectionAlways                              FormSelectionShowMode = "always"
+	FormSelectionDontShow                            FormSelectionShowMode = "dont-show"
+	FormSelectionWhenActive                          FormSelectionShowMode = "when-active"
+	FormSelectionWhenMultipleCellsSelected           FormSelectionShowMode = "when-multiple-cells-selected"
+	FormSelectionWhenMultipleCellsSelectedWhenActive FormSelectionShowMode = "when-multiple-cells-selected-when-active"
+)
+
+// FormUseOutput is whether a document may be printed, saved and copied
+// (help, UseOutput).
+type FormUseOutput string
+
+const (
+	FormUseOutputAuto    FormUseOutput = "auto"
+	FormUseOutputEnable  FormUseOutput = "enable"
+	FormUseOutputDisable FormUseOutput = "disable"
+)
+
+// FieldDocument is what the fields of a spreadsheet, text, HTML and formatted
+// document have (help, the extensions of a form field for each). Each
+// property stands on the kinds of element it is written on; a table, a
+// decoration and the other fields add theirs where they are described.
+//
+// The prototype writes the switches of a spreadsheet document field in sets,
+// some on and some off, so what it leaves out says nothing of the default:
+// each is yes, no or not said.
+type FieldDocument struct {
+	// VerticalScrollBar and HorizontalScrollBar are when the scroll bars are
+	// shown - see FormScrollBarUse for how a spreadsheet document field
+	// writes them (true 658 and 650 times, false 28 and 33).
+	VerticalScrollBar   FormScrollBarUse      `yaml:"vertical_scroll_bar,omitempty" json:"verticalScrollBar,omitempty"`
+	HorizontalScrollBar FormScrollBarUse      `yaml:"horizontal_scroll_bar,omitempty" json:"horizontalScrollBar,omitempty"`
+	ViewScalingMode     FormViewScalingMode   `yaml:"view_scaling_mode,omitempty" json:"viewScalingMode,omitempty"`
+	SelectionShowMode   FormSelectionShowMode `yaml:"selection_show_mode,omitempty" json:"selectionShowMode,omitempty"`
+	// Edit lets the document be changed; Protection protects the cells.
+	Edit       *bool `yaml:"edit,omitempty" json:"edit,omitempty"`
+	Protection *bool `yaml:"protection,omitempty" json:"protection,omitempty"`
+	// What a spreadsheet document shows: the headers of its rows and
+	// columns, the grid, the groupings, and the names of its areas of cells
+	// and of rows and columns.
+	ShowHeaders           *bool `yaml:"show_headers,omitempty" json:"showHeaders,omitempty"`
+	ShowGrid              *bool `yaml:"show_grid,omitempty" json:"showGrid,omitempty"`
+	ShowGroups            *bool `yaml:"show_groups,omitempty" json:"showGroups,omitempty"`
+	ShowCellNames         *bool `yaml:"show_cell_names,omitempty" json:"showCellNames,omitempty"`
+	ShowRowAndColumnNames *bool `yaml:"show_row_and_column_names,omitempty" json:"showRowAndColumnNames,omitempty"`
+	// EnableDrag and EnableStartDrag let the element take what is dragged
+	// onto it and start dragging from it.
+	EnableDrag      *bool         `yaml:"enable_drag,omitempty" json:"enableDrag,omitempty"`
+	EnableStartDrag *bool         `yaml:"enable_start_drag,omitempty" json:"enableStartDrag,omitempty"`
+	Output          FormUseOutput `yaml:"output,omitempty" json:"output,omitempty"`
+	// ExcludedCommands are the standard commands of the element taken out of
+	// its command bar and context menu, by name as the prototype writes them
+	// (CommandSet, which the help does not name).
+	ExcludedCommands []string `yaml:"excluded_commands,omitempty" json:"excludedCommands,omitempty"`
+}
+
+func validateFieldDocument(path string, document FieldDocument, kind FormElementKind) []string {
+	var issues []string
+	only := func(name string, set bool, what string, kinds ...FormElementKind) {
+		if set && !slices.Contains(kinds, kind) {
+			issues = append(issues, path+"."+name+" is allowed only for "+what)
+		}
+	}
+	spreadsheet := []FormElementKind{FormElementSpreadsheetDocumentField}
+	for _, property := range []struct {
+		name string
+		set  bool
+	}{
+		{"vertical_scroll_bar", document.VerticalScrollBar != ""}, {"horizontal_scroll_bar", document.HorizontalScrollBar != ""},
+		{"view_scaling_mode", document.ViewScalingMode != ""}, {"selection_show_mode", document.SelectionShowMode != ""},
+		{"edit", document.Edit != nil}, {"protection", document.Protection != nil}, {"show_headers", document.ShowHeaders != nil},
+		{"show_grid", document.ShowGrid != nil}, {"show_groups", document.ShowGroups != nil}, {"show_cell_names", document.ShowCellNames != nil},
+		{"show_row_and_column_names", document.ShowRowAndColumnNames != nil},
+		{"enable_drag", document.EnableDrag != nil}, {"enable_start_drag", document.EnableStartDrag != nil},
+	} {
+		only(property.name, property.set, "spreadsheet document fields", spreadsheet...)
+	}
+	only("output", document.Output != "", "spreadsheet, text, HTML and formatted document fields", FormElementSpreadsheetDocumentField,
+		FormElementTextDocumentField, FormElementHTMLDocumentField, FormElementFormattedDocumentField)
+	only("excluded_commands", len(document.ExcludedCommands) != 0, "spreadsheet and formatted document fields",
+		FormElementSpreadsheetDocumentField, FormElementFormattedDocumentField)
+	scrollBars := []FormScrollBarUse{FormScrollBarAutoUse, FormScrollBarUseAlways, FormScrollBarDontUse}
+	issues = append(issues, oneOf(path+".vertical_scroll_bar", document.VerticalScrollBar, scrollBars...)...)
+	issues = append(issues, oneOf(path+".horizontal_scroll_bar", document.HorizontalScrollBar, scrollBars...)...)
+	issues = append(issues, oneOf(path+".view_scaling_mode", document.ViewScalingMode, FormViewScalingAuto, FormViewScalingNormal, FormViewScalingLarge)...)
+	issues = append(issues, oneOf(path+".selection_show_mode", document.SelectionShowMode, FormSelectionAlways, FormSelectionDontShow,
+		FormSelectionWhenActive, FormSelectionWhenMultipleCellsSelected, FormSelectionWhenMultipleCellsSelectedWhenActive)...)
+	issues = append(issues, oneOf(path+".output", document.Output, FormUseOutputAuto, FormUseOutputEnable, FormUseOutputDisable)...)
+	seen := map[string]bool{}
+	for index, command := range document.ExcludedCommands {
+		switch {
+		case !validIdentifier(command):
+			issues = append(issues, fmt.Sprintf("%s.excluded_commands[%d] must be the name of a command", path, index))
+		case seen[command]:
+			issues = append(issues, fmt.Sprintf("%s.excluded_commands[%d] names %s twice", path, index, command))
+		}
+		seen[command] = true
+	}
+	return issues
+}

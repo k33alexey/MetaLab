@@ -52,6 +52,7 @@ func cloneRuntimeFormElements(values []ManagedFormElement) []ManagedFormElement 
 		value.EqualItemsWidth, value.EqualColumnsWidth = clonePointer(value.EqualItemsWidth), clonePointer(value.EqualColumnsWidth)
 		value.ValuesPicture = value.ValuesPicture.clone()
 		value.NonselectedPictureText = maps.Clone(value.NonselectedPictureText)
+		value.FieldDocument = value.FieldDocument.clone()
 		value.Children = cloneRuntimeFormElements(value.Children)
 		result[index] = value
 	}
@@ -114,6 +115,16 @@ func (parameters InputFieldChoiceParameters) clone() InputFieldChoiceParameters 
 	parameters.TypeLink = clonePointer(parameters.TypeLink)
 	parameters.AvailableTypes = cloneTypes(parameters.AvailableTypes)
 	return parameters
+}
+
+func (document FieldDocument) clone() FieldDocument {
+	for _, flag := range []**bool{&document.Edit, &document.Protection,
+		&document.ShowHeaders, &document.ShowGrid, &document.ShowGroups, &document.ShowCellNames, &document.ShowRowAndColumnNames,
+		&document.EnableDrag, &document.EnableStartDrag} {
+		*flag = clonePointer(*flag)
+	}
+	document.ExcludedCommands = slices.Clone(document.ExcludedCommands)
+	return document
 }
 
 func cloneChoiceList(list []FormChoiceListItem) []FormChoiceListItem {
