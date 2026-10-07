@@ -671,3 +671,114 @@ func (buttons FieldButtons) commonPictures() []namedPicture {
 	}
 	return nil
 }
+
+// FormEditTextUpdate is when the text being edited in an input field is
+// updated (help, EditTextUpdate). Empty is Auto.
+type FormEditTextUpdate string
+
+const (
+	FormEditTextUpdateAuto          FormEditTextUpdate = "auto"
+	FormEditTextUpdateAlways        FormEditTextUpdate = "always"
+	FormEditTextUpdateOnValueChange FormEditTextUpdate = "on-value-change"
+	FormEditTextUpdateDontUse       FormEditTextUpdate = "dont-use"
+)
+
+// FormSpecialTextInputMode is the keyboard a mobile client offers for an
+// input field (help, SpecialTextInputMode). Empty is Auto.
+type FormSpecialTextInputMode string
+
+const (
+	FormSpecialTextInputAuto                 FormSpecialTextInputMode = "auto"
+	FormSpecialTextInputNone                 FormSpecialTextInputMode = "none"
+	FormSpecialTextInputDigits               FormSpecialTextInputMode = "digits"
+	FormSpecialTextInputDigitsAndPunctuation FormSpecialTextInputMode = "digits-and-punctuation"
+	FormSpecialTextInputEmail                FormSpecialTextInputMode = "email"
+	FormSpecialTextInputPhoneNumber          FormSpecialTextInputMode = "phone-number"
+	FormSpecialTextInputURL                  FormSpecialTextInputMode = "url"
+)
+
+// FormTextInputUse is whether spelling is checked or errors corrected as text
+// is typed into an input field (help, SpellCheckingOnTextInput and
+// AutoCorrectionOnTextInput). Empty is Auto.
+type FormTextInputUse string
+
+const (
+	FormTextInputUseAuto    FormTextInputUse = "auto"
+	FormTextInputUseUse     FormTextInputUse = "use"
+	FormTextInputUseDontUse FormTextInputUse = "dont-use"
+)
+
+// FormHeightControlVariant is how the height of a multiline input field is
+// governed (help, ItemHeightControlVariant). Empty is Auto.
+type FormHeightControlVariant string
+
+const (
+	FormHeightControlAuto                FormHeightControlVariant = "auto"
+	FormHeightControlUseContentHeight    FormHeightControlVariant = "use-content-height"
+	FormHeightControlUseHeightInFormRows FormHeightControlVariant = "use-height-in-form-rows"
+)
+
+// FieldTextInput is how text is typed into an input field (help, the
+// extension of a form field for an input field). The prototype writes these
+// on input fields only, the password mode on a label field too (4 times), as
+// the help gives it there.
+type FieldTextInput struct {
+	// NoWrap turns off wrapping the lines, and NoTextEdit editing the text
+	// (the buttons still work): both are on by default, and the prototype
+	// writes only the "off" (6007 and 1600 times).
+	NoWrap     bool `yaml:"no_wrap,omitempty" json:"noWrap,omitempty"`
+	NoTextEdit bool `yaml:"no_text_edit,omitempty" json:"noTextEdit,omitempty"`
+	// MultiLine and ExtendedEdit - Tab typed into the text, search in it -
+	// are yes, no or not said: the help gives them Boolean, and the
+	// prototype writes both true and false (1461 and 53, 296 and 30), so
+	// what it leaves out is not one of the two.
+	MultiLine    *bool `yaml:"multi_line,omitempty" json:"multiLine,omitempty"`
+	ExtendedEdit *bool `yaml:"extended_edit,omitempty" json:"extendedEdit,omitempty"`
+	// PasswordMode shows every character as a star; not said follows the
+	// configuration, as the help gives Undefined.
+	PasswordMode *bool `yaml:"password_mode,omitempty" json:"passwordMode,omitempty"`
+	// Mask is the mask of the text typed, carried as written: its spaces and
+	// special characters are the mask.
+	Mask string `yaml:"mask,omitempty" json:"mask,omitempty"`
+	// InputHint is shown in an empty field without the focus.
+	InputHint            LocalizedText            `yaml:"input_hint,omitempty" json:"inputHint,omitempty"`
+	EditTextUpdate       FormEditTextUpdate       `yaml:"edit_text_update,omitempty" json:"editTextUpdate,omitempty"`
+	SpecialTextInputMode FormSpecialTextInputMode `yaml:"special_text_input_mode,omitempty" json:"specialTextInputMode,omitempty"`
+	SpellChecking        FormTextInputUse         `yaml:"spell_checking,omitempty" json:"spellChecking,omitempty"`
+	AutoCorrection       FormTextInputUse         `yaml:"auto_correction,omitempty" json:"autoCorrection,omitempty"`
+	HeightControlVariant FormHeightControlVariant `yaml:"height_control_variant,omitempty" json:"heightControlVariant,omitempty"`
+}
+
+func (input FieldTextInput) empty() bool {
+	return !input.NoWrap && !input.NoTextEdit && input.MultiLine == nil && input.ExtendedEdit == nil && input.PasswordMode == nil &&
+		input.Mask == "" && len(input.InputHint) == 0 && input.EditTextUpdate == "" && input.SpecialTextInputMode == "" &&
+		input.SpellChecking == "" && input.AutoCorrection == "" && input.HeightControlVariant == ""
+}
+
+func validateFieldTextInput(path string, input FieldTextInput, kind FormElementKind, configuration project.Project) []string {
+	if input.empty() {
+		return nil
+	}
+	if kind != FormElementInputField {
+		rest := input
+		if kind == FormElementLabelField {
+			rest.PasswordMode = nil
+		}
+		if !rest.empty() {
+			return []string{path + " has the text input of an input field"}
+		}
+	}
+	var issues []string
+	issues = append(issues, validateTitle(path+".input_hint", input.InputHint, configuration)...)
+	issues = append(issues, oneOf(path+".edit_text_update", input.EditTextUpdate,
+		FormEditTextUpdateAuto, FormEditTextUpdateAlways, FormEditTextUpdateOnValueChange, FormEditTextUpdateDontUse)...)
+	issues = append(issues, oneOf(path+".special_text_input_mode", input.SpecialTextInputMode,
+		FormSpecialTextInputAuto, FormSpecialTextInputNone, FormSpecialTextInputDigits, FormSpecialTextInputDigitsAndPunctuation,
+		FormSpecialTextInputEmail, FormSpecialTextInputPhoneNumber, FormSpecialTextInputURL)...)
+	uses := []FormTextInputUse{FormTextInputUseAuto, FormTextInputUseUse, FormTextInputUseDontUse}
+	issues = append(issues, oneOf(path+".spell_checking", input.SpellChecking, uses...)...)
+	issues = append(issues, oneOf(path+".auto_correction", input.AutoCorrection, uses...)...)
+	issues = append(issues, oneOf(path+".height_control_variant", input.HeightControlVariant,
+		FormHeightControlAuto, FormHeightControlUseContentHeight, FormHeightControlUseHeightInFormRows)...)
+	return issues
+}

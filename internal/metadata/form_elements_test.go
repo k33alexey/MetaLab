@@ -992,3 +992,137 @@ func TestThePictureOfAChoiceButtonIsResolved(t *testing.T) {
 		})
 	}
 }
+
+// An input field keeps how text is typed into it through YAML and the
+// Studio; the password mode stands on a label field too.
+//
+// Defect caught: wrapping or editing the text turned off in the prototype
+// (6007 and 1600 times) turned on again after the move; a multiline field
+// written false read as not said; a mask losing its spaces; the hint, the
+// keyboard of a mobile client or the mode of updating the text lost or read
+// into a neighbour; the password mode of a label field refused, so that the
+// form is not moved.
+func TestAnInputFieldKeepsHowTextIsTyped(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, no_wrap: true, no_text_edit: true," +
+		" multi_line: false, extended_edit: true, password_mode: false, mask: \"99 99\", input_hint: {ru: Введите код}," +
+		" edit_text_update: on-value-change, special_text_input_mode: phone-number, spell_checking: dont-use, auto_correction: use," +
+		" height_control_variant: use-content-height}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Пароль, kind: label-field, password_mode: true}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := form.Items[0].FieldTextInput
+	value := reflect.ValueOf(input)
+	for index := range value.NumField() {
+		if value.Field(index).IsZero() {
+			t.Errorf("%s is not set by the test", value.Type().Field(index).Name)
+		}
+	}
+	switch {
+	case !input.NoWrap || !input.NoTextEdit || *input.MultiLine || !*input.ExtendedEdit || *input.PasswordMode:
+		t.Fatalf("switches: %+v", input)
+	case input.Mask != "99 99" || input.InputHint["ru"] != "Введите код":
+		t.Fatalf("mask and hint: %q %+v", input.Mask, input.InputHint)
+	case input.EditTextUpdate != FormEditTextUpdateOnValueChange || input.SpecialTextInputMode != FormSpecialTextInputPhoneNumber:
+		t.Fatalf("modes: %q %q", input.EditTextUpdate, input.SpecialTextInputMode)
+	case input.SpellChecking != FormTextInputUseDontUse || input.AutoCorrection != FormTextInputUseUse:
+		t.Fatalf("checking: %q %q", input.SpellChecking, input.AutoCorrection)
+	case input.HeightControlVariant != FormHeightControlUseContentHeight:
+		t.Fatalf("height: %q", input.HeightControlVariant)
+	case form.Items[1].PasswordMode == nil || !*form.Items[1].PasswordMode:
+		t.Fatalf("label field: %+v", form.Items[1].FieldTextInput)
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil || !reflect.DeepEqual(again.Items, form.Items) {
+		t.Fatalf("written back: %v", err)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil || !reflect.DeepEqual(received.Items, form.Items) {
+		t.Fatalf("carried through the Studio: %v", err)
+	}
+}
+
+// How text is typed stands only on an input field - the password mode on a
+// label field too - and each value is checked.
+//
+// Defect caught: a mask kept on a label field or a hint on a check box; an
+// unknown mode of updating the text, keyboard, checking or height accepted;
+// a hint in no printable characters.
+func TestAnInputFieldRefusesWrongTextInput(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	for name, test := range map[string]struct{ element, want string }{
+		"маска поля надписи": {"kind: label-field, password_mode: true, mask: \"999\"", "items[0] has the text input of an input field"},
+		"пароль флажка":      {"kind: check-box-field, password_mode: true", "items[0] has the text input of an input field"},
+		"подсказка группы":   {"kind: usual-group, input_hint: {ru: Код}", "items[0] has the text input of an input field"},
+		"обновление текста":  {"kind: input-field, edit_text_update: OnValueChange", "items[0].edit_text_update must be auto, always, on-value-change or dont-use"},
+		"клавиатура":         {"kind: input-field, special_text_input_mode: phone", "items[0].special_text_input_mode must be auto, none, digits, digits-and-punctuation, email, phone-number or url"},
+		"орфография":         {"kind: input-field, spell_checking: never", "items[0].spell_checking must be auto, use or dont-use"},
+		"автоисправление":    {"kind: input-field, auto_correction: never", "items[0].auto_correction must be auto, use or dont-use"},
+		"высота":             {"kind: input-field, height_control_variant: rows", "items[0].height_control_variant must be auto, use-content-height or use-height-in-form-rows"},
+		"подсказка без слов": {"kind: input-field, input_hint: {ru: \"\\x01\"}", "items[0].input_hint.ru must say something in printable characters"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			source := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Элемент, " + test.element + "}\n")
+			_, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+// Each property of typing text, set alone on a check box, is refused, and
+// alone on a label field each but the password mode: none is forgotten when
+// the text input is checked for being empty.
+//
+// Defect caught: a property left out of the check for no text input, so that
+// another field keeps it alone without a word; the password mode refused on a
+// label field, or another property let through there with it.
+func TestEveryPropertyOfTextInputStandsOnlyOnAnInputField(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, no_wrap: true, no_text_edit: true," +
+		" multi_line: false, extended_edit: false, password_mode: false, mask: \"9\", input_hint: {ru: Код}," +
+		" edit_text_update: auto, special_text_input_mode: auto, spell_checking: auto, auto_correction: auto," +
+		" height_control_variant: auto}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Флажок, kind: check-box-field}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Надпись, kind: label-field}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	full := reflect.ValueOf(form.Items[0].FieldTextInput)
+	for index := range full.NumField() {
+		name := full.Type().Field(index).Name
+		if full.Field(index).IsZero() {
+			t.Fatalf("%s is not set by the test", name)
+		}
+		for _, on := range []int{1, 2} {
+			alone := form
+			alone.Items = slices.Clone(form.Items)
+			reflect.ValueOf(&alone.Items[on].FieldTextInput).Elem().Field(index).Set(full.Field(index))
+			err := ValidateManagedForm("form.yaml", alone, configuration)
+			allowed := on == 2 && name == "PasswordMode"
+			refused := err != nil && strings.Contains(err.Error(), fmt.Sprintf("items[%d] has the text input of an input field", on))
+			if allowed && err != nil || !allowed && !refused {
+				t.Errorf("%s alone on %s: %v", name, alone.Items[on].Kind, err)
+			}
+		}
+	}
+}
