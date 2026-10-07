@@ -1794,3 +1794,125 @@ func TestTheChoiceParametersOfAnInputFieldAreResolved(t *testing.T) {
 		})
 	}
 }
+
+// A label field, a check box and a radio button field keep how they show
+// their value through YAML and the Studio.
+//
+// Defect caught: a label field shown as a link (1103 times) shown as text
+// after the move; a check box of three states read as one of two, so that the
+// number it edits loses its third value; a tumbler or a switch drawn as a
+// check box; equal widths written false read as not said, which the help
+// reads as yes for a check box; the columns or the size of the items of a
+// radio button field lost.
+func TestAFieldKeepsHowItShowsItsValue(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Ссылка, kind: label-field, hyperlink: true}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Флажок, kind: check-box-field, check_box_type: switch, equal_items_width: false," +
+		" item_width: 12, item_height: 2, item_title_height: 1}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Состояние, kind: check-box-field, three_state: true}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Режим, kind: radio-button-field, radio_button_type: tumbler, columns_count: 3," +
+		" equal_columns_width: false, item_width: 11}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	merged := FieldValueView{Hyperlink: form.Items[0].Hyperlink, CheckBoxType: form.Items[1].CheckBoxType, ThreeState: form.Items[2].ThreeState,
+		EqualItemsWidth: form.Items[1].EqualItemsWidth, RadioButtonType: form.Items[3].RadioButtonType, ColumnsCount: form.Items[3].ColumnsCount,
+		EqualColumnsWidth: form.Items[3].EqualColumnsWidth, ItemWidth: form.Items[1].ItemWidth, ItemHeight: form.Items[1].ItemHeight,
+		ItemTitleHeight: form.Items[1].ItemTitleHeight}
+	value := reflect.ValueOf(merged)
+	for index := range value.NumField() {
+		if value.Field(index).IsZero() {
+			t.Errorf("%s is not set by the test", value.Type().Field(index).Name)
+		}
+	}
+	switch {
+	case !form.Items[0].Hyperlink:
+		t.Fatalf("label field: %+v", form.Items[0].FieldValueView)
+	case form.Items[1].CheckBoxType != FormCheckBoxSwitch || *form.Items[1].EqualItemsWidth || form.Items[1].ItemWidth != 12 ||
+		form.Items[1].ItemHeight != 2 || form.Items[1].ItemTitleHeight != 1 || form.Items[1].ThreeState:
+		t.Fatalf("check box: %+v", form.Items[1].FieldValueView)
+	case !form.Items[2].ThreeState || form.Items[2].CheckBoxType != "":
+		t.Fatalf("three states: %+v", form.Items[2].FieldValueView)
+	case form.Items[3].RadioButtonType != FormRadioButtonTumbler || form.Items[3].ColumnsCount != 3 || *form.Items[3].EqualColumnsWidth || form.Items[3].ItemWidth != 11:
+		t.Fatalf("radio button field: %+v", form.Items[3].FieldValueView)
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil || !reflect.DeepEqual(again.Items, form.Items) {
+		t.Fatalf("written back: %v", err)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil || !reflect.DeepEqual(received.Items, form.Items) {
+		t.Fatalf("carried through the Studio: %v", err)
+	}
+}
+
+// Each property of showing a value, set alone on every kind of element, is
+// accepted on the fields the help gives it and refused on any other; the
+// kinds and sizes are checked.
+//
+// Defect caught: a hyperlink kept on an input field, three states on a radio
+// button field, columns on a check box - or the reverse, the size of an item
+// refused on a check box, which the help gives it; the prototype's spelling
+// of a kind ("Switcher", "RadioButtons") or an unknown one accepted; a
+// negative count of columns or size of an item.
+func TestEachPropertyOfShowingAValueStandsOnItsFields(t *testing.T) {
+	t.Parallel()
+	yes := true
+	full := FieldValueView{Hyperlink: true, CheckBoxType: FormCheckBoxTumbler, ThreeState: true, EqualItemsWidth: &yes,
+		RadioButtonType: FormRadioButtonRadioButton, ColumnsCount: 2, EqualColumnsWidth: &yes, ItemWidth: 1, ItemHeight: 1, ItemTitleHeight: 1}
+	items := []FormElementKind{FormElementCheckBoxField, FormElementRadioButtonField}
+	allowed := map[string][]FormElementKind{
+		"Hyperlink": {FormElementLabelField}, "CheckBoxType": {FormElementCheckBoxField}, "ThreeState": {FormElementCheckBoxField},
+		"EqualItemsWidth": {FormElementCheckBoxField}, "RadioButtonType": {FormElementRadioButtonField}, "ColumnsCount": {FormElementRadioButtonField},
+		"EqualColumnsWidth": {FormElementRadioButtonField}, "ItemWidth": items, "ItemHeight": items, "ItemTitleHeight": items,
+	}
+	value := reflect.ValueOf(full)
+	for index := range value.NumField() {
+		name := value.Type().Field(index).Name
+		kinds, known := allowed[name]
+		if !known || value.Field(index).IsZero() {
+			t.Fatalf("%s is not set by the test", name)
+		}
+		for kind := range formElementClasses {
+			var alone FieldValueView
+			reflect.ValueOf(&alone).Elem().Field(index).Set(value.Field(index))
+			issues := validateFieldValueView("items[0]", alone, kind)
+			if want := !slices.Contains(kinds, kind); want != (len(issues) == 1 && strings.Contains(issues[0], "is allowed only for")) || !want && len(issues) != 0 {
+				t.Errorf("%s alone on %s: %v", name, kind, issues)
+			}
+		}
+	}
+	for name, test := range map[string]struct {
+		view FieldValueView
+		kind FormElementKind
+		want string
+	}{
+		"Switcher":         {FieldValueView{CheckBoxType: "Switcher"}, FormElementCheckBoxField, "items[0].check_box_type must be auto, check-box, tumbler or switch"},
+		"RadioButtons":     {FieldValueView{RadioButtonType: "RadioButtons"}, FormElementRadioButtonField, "items[0].radio_button_type must be auto, radio-button or tumbler"},
+		"колонки":          {FieldValueView{ColumnsCount: -1}, FormElementRadioButtonField, "items[0].columns_count must not be negative"},
+		"ширина элемента":  {FieldValueView{ItemWidth: -1}, FormElementCheckBoxField, "items[0].item_width must not be negative"},
+		"высота элемента":  {FieldValueView{ItemHeight: -1}, FormElementRadioButtonField, "items[0].item_height must not be negative"},
+		"высота заголовка": {FieldValueView{ItemTitleHeight: -1}, FormElementCheckBoxField, "items[0].item_title_height must not be negative"},
+	} {
+		if issues := validateFieldValueView("items[0]", test.view, test.kind); !slices.Contains(issues, test.want) {
+			t.Errorf("%s: %v, want %q", name, issues, test.want)
+		}
+	}
+	form := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, hyperlink: true}\n")
+	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(form), managedFormConfiguration()); err == nil || !strings.Contains(err.Error(), "items[0].hyperlink is allowed only for label fields") {
+		t.Errorf("a hyperlink on an input field read from a file: %v", err)
+	}
+}

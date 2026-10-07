@@ -1101,3 +1101,85 @@ func validateFormLinkPath(path, value string) []string {
 // identifier - the one the platform names an element of a form by, or
 // another.
 var formElementCode = regexp.MustCompile(`^[0-9]+(:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?(/[0-9]+(:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)*$`)
+
+// FormCheckBoxType is how a check box is drawn (help, CheckBoxType). The
+// prototype writes Auto as well (9511 times), Switch as "Switcher" (34), and
+// nothing on a check box of three states (all 137 of them).
+type FormCheckBoxType string
+
+const (
+	FormCheckBoxAuto     FormCheckBoxType = "auto"
+	FormCheckBoxCheckBox FormCheckBoxType = "check-box"
+	FormCheckBoxTumbler  FormCheckBoxType = "tumbler"
+	FormCheckBoxSwitch   FormCheckBoxType = "switch"
+)
+
+// FormRadioButtonType is how a radio button field is drawn (help,
+// RadioButtonType); the prototype writes RadioButton as "RadioButtons".
+type FormRadioButtonType string
+
+const (
+	FormRadioButtonAuto        FormRadioButtonType = "auto"
+	FormRadioButtonRadioButton FormRadioButtonType = "radio-button"
+	FormRadioButtonTumbler     FormRadioButtonType = "tumbler"
+)
+
+// FieldValueView is how a label field, a check box and a radio button field
+// show their value (help, the extensions of a form field for each). Each
+// property stands on the fields the help gives it, which are the fields the
+// prototype writes it on.
+type FieldValueView struct {
+	// Hyperlink shows the text of a label field as a link; the prototype
+	// writes it as "Hiperlink", and only the "on" (1103 times).
+	Hyperlink bool `yaml:"hyperlink,omitempty" json:"hyperlink,omitempty"`
+	// CheckBoxType and ThreeState are of a check box: a check box of three
+	// states edits a number. The prototype writes only the "on" of the
+	// second.
+	CheckBoxType FormCheckBoxType `yaml:"check_box_type,omitempty" json:"checkBoxType,omitempty"`
+	ThreeState   bool             `yaml:"three_state,omitempty" json:"threeState,omitempty"`
+	// EqualItemsWidth gives the items of a check box drawn as a tumbler one
+	// width; yes, no or not said, which the help reads as yes.
+	EqualItemsWidth *bool `yaml:"equal_items_width,omitempty" json:"equalItemsWidth,omitempty"`
+	// RadioButtonType, ColumnsCount and EqualColumnsWidth are of a radio
+	// button field; the last is yes, no or not said, which the help reads as
+	// no. Zero columns is chosen by the platform.
+	RadioButtonType   FormRadioButtonType `yaml:"radio_button_type,omitempty" json:"radioButtonType,omitempty"`
+	ColumnsCount      int                 `yaml:"columns_count,omitempty" json:"columnsCount,omitempty"`
+	EqualColumnsWidth *bool               `yaml:"equal_columns_width,omitempty" json:"equalColumnsWidth,omitempty"`
+	// The width, height and height of the title of an item of a check box or
+	// a radio button field; zero is chosen by the platform.
+	ItemWidth       int `yaml:"item_width,omitempty" json:"itemWidth,omitempty"`
+	ItemHeight      int `yaml:"item_height,omitempty" json:"itemHeight,omitempty"`
+	ItemTitleHeight int `yaml:"item_title_height,omitempty" json:"itemTitleHeight,omitempty"`
+}
+
+func validateFieldValueView(path string, view FieldValueView, kind FormElementKind) []string {
+	var issues []string
+	only := func(name string, set bool, what string, kinds ...FormElementKind) {
+		if set && !slices.Contains(kinds, kind) {
+			issues = append(issues, path+"."+name+" is allowed only for "+what)
+		}
+	}
+	only("hyperlink", view.Hyperlink, "label fields", FormElementLabelField)
+	only("check_box_type", view.CheckBoxType != "", "check boxes", FormElementCheckBoxField)
+	only("three_state", view.ThreeState, "check boxes", FormElementCheckBoxField)
+	only("equal_items_width", view.EqualItemsWidth != nil, "check boxes", FormElementCheckBoxField)
+	only("radio_button_type", view.RadioButtonType != "", "radio button fields", FormElementRadioButtonField)
+	only("columns_count", view.ColumnsCount != 0, "radio button fields", FormElementRadioButtonField)
+	only("equal_columns_width", view.EqualColumnsWidth != nil, "radio button fields", FormElementRadioButtonField)
+	items := []FormElementKind{FormElementCheckBoxField, FormElementRadioButtonField}
+	only("item_width", view.ItemWidth != 0, "check boxes and radio button fields", items...)
+	only("item_height", view.ItemHeight != 0, "check boxes and radio button fields", items...)
+	only("item_title_height", view.ItemTitleHeight != 0, "check boxes and radio button fields", items...)
+	issues = append(issues, oneOf(path+".check_box_type", view.CheckBoxType, FormCheckBoxAuto, FormCheckBoxCheckBox, FormCheckBoxTumbler, FormCheckBoxSwitch)...)
+	issues = append(issues, oneOf(path+".radio_button_type", view.RadioButtonType, FormRadioButtonAuto, FormRadioButtonRadioButton, FormRadioButtonTumbler)...)
+	for _, size := range []struct {
+		name  string
+		value int
+	}{{"columns_count", view.ColumnsCount}, {"item_width", view.ItemWidth}, {"item_height", view.ItemHeight}, {"item_title_height", view.ItemTitleHeight}} {
+		if size.value < 0 {
+			issues = append(issues, path+"."+size.name+" must not be negative")
+		}
+	}
+	return issues
+}
