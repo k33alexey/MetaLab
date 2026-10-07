@@ -692,8 +692,8 @@ func TestAFieldKeepsWhatItHasAsAColumn(t *testing.T) {
 //
 // Defect caught: a footer kept on a group or a button; a picture naming two
 // sources, a footer path that is no path, a colour that is no colour, an
-// unknown fixing accepted; a picture of the element's own accepted while a
-// form has no place to keep its file, so that the picture is lost silently.
+// unknown fixing accepted; two pictures of one element drawing one file, so
+// that editing either changes both, or a file that is no image.
 func TestAFieldRefusesWhatIsWrongAsAColumn(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
@@ -701,7 +701,8 @@ func TestAFieldRefusesWhatIsWrongAsAColumn(t *testing.T) {
 		"подвал у группы":     {"kind: usual-group, footer_text: {ru: Итого}", "items[0] has what a field has as a column of a table"},
 		"гиперссылка кнопки":  {"kind: button, cell_hyperlink: true", "items[0] has what a field has as a column of a table"},
 		"две картинки":        {"kind: input-field, header_picture: {standard: Change, common: c0de0000-0000-4000-8000-000000000043}", "items[0].header_picture names more than one"},
-		"своя картинка":       {"kind: input-field, footer_picture: {file: HeaderPicture.png}", "items[0].footer_picture.file is a picture of the element's own"},
+		"один файл дважды":    {"kind: input-field, header_picture: {file: HeaderPicture.png}, footer_picture: {file: headerpicture.PNG}", "items[0].footer_picture.file is the file of header_picture too"},
+		"своя не картинка":    {"kind: input-field, header_picture: {file: HeaderPicture.txt}", "items[0].header_picture.file must be the name of an image file"},
 		"путь подвала":        {"kind: input-field, footer_data_path: Объект..Сумма", "items[0].footer_data_path must be names separated by dots"},
 		"цвет подвала":        {"kind: input-field, footer_back_color: {source: absolute, rgb: red}", "items[0].footer_back_color.rgb must be a colour written as #RRGGBB"},
 		"шрифт подвала":       {"kind: input-field, footer_font: {source: absolute, size: 10}", "items[0].footer_font.face must name the font"},

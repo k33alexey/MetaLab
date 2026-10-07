@@ -276,6 +276,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		issues = append(issues, validateFieldLayout(current.path, item.FieldLayout, class)...)
 		issues = append(issues, validateFieldLook(current.path, item.FieldLook, class)...)
 		issues = append(issues, validateFieldColumn(current.path, item.FieldColumn, class, configuration)...)
+		issues = append(issues, validateOwnPictureFiles(current.path, item)...)
 		if item.ReadOnly && class != formFieldClass && class != formTableClass {
 			issues = append(issues, current.path+".read_only is allowed only for fields and tables")
 		}

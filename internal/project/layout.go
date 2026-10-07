@@ -860,7 +860,27 @@ const RouteDirectory = "route"
 // folder are a place the pictures of its route map may take. Whether the
 // item exists and draws that file is checked where the metadata is read.
 func RoutePicturePath(steps []string, directory bool, pictureFile func(string) bool) bool {
-	if len(steps) == 0 || steps[0] != RouteDirectory {
+	return itemPicturePath(RouteDirectory, steps, directory, pictureFile)
+}
+
+// FormItemsDirectory is the folder a form keeps the pictures of its elements
+// in, those drawn from a file of their own: a folder per element, named by it
+// - the elements of a form are named apart - holding its pictures, as the
+// prototype keeps them beside the form (Items/<element>/<property>.png: 84,
+// 66 and 77 files in erp, acc and sb).
+const FormItemsDirectory = "items"
+
+// FormItemPicturePath reports whether the steps below a form's folder are a
+// place the pictures of its elements may take. Whether the element exists
+// and draws that file is checked where the metadata is read.
+func FormItemPicturePath(steps []string, directory bool, pictureFile func(string) bool) bool {
+	return itemPicturePath(FormItemsDirectory, steps, directory, pictureFile)
+}
+
+// itemPicturePath reports whether the steps are the folder of the pictures
+// of named items, the folder of one item, or a picture in it.
+func itemPicturePath(folder string, steps []string, directory bool, pictureFile func(string) bool) bool {
+	if len(steps) == 0 || steps[0] != folder {
 		return false
 	}
 	switch len(steps) {

@@ -343,7 +343,8 @@ func validateSourcePath(relative string, directory bool) error {
 			if !directory && len(parts) == 4 && contains(named, parts[3]) {
 				return nil
 			}
-			if parts[1] == "common-forms" && project.HelpPath(parts[3:], directory) {
+			if parts[1] == "common-forms" && (project.HelpPath(parts[3:], directory) ||
+				project.FormItemPicturePath(parts[3:], directory, metadata.PictureFile)) {
 				return nil
 			}
 			if !directory && len(parts) == 4 && parts[1] == "common-commands" && metadata.PictureFile(parts[3]) {
@@ -463,6 +464,12 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 		return nil
 	}
 	if len(parts) >= 6 && parts[3] == "forms" && project.SubordinateName(parts[4]) == nil && project.HelpPath(parts[5:], directory) {
+		return nil
+	}
+	// The pictures of the elements of a form, a folder per element; which
+	// element draws which file is checked where the metadata is read.
+	if len(parts) >= 6 && parts[3] == "forms" && project.SubordinateName(parts[4]) == nil &&
+		project.FormItemPicturePath(parts[5:], directory, metadata.PictureFile) {
 		return nil
 	}
 	// A command drawn from a file of its own keeps it beside its module, and

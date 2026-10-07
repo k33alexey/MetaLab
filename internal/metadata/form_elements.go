@@ -537,12 +537,6 @@ func validateFieldColumn(path string, column FieldColumn, class formElementClass
 		value *PictureReference
 	}{{"header_picture", column.HeaderPicture}, {"footer_picture", column.FooterPicture}} {
 		issues = append(issues, validatePictureReference(path+"."+picture.name, picture.value)...)
-		// The picture of an element of its own is a file the prototype keeps
-		// beside the form; where it lies in the form's folder is decided with
-		// the pictures of the other elements.
-		if picture.value != nil && picture.value.File != "" {
-			issues = append(issues, path+"."+picture.name+".file is a picture of the element's own, which a form does not keep yet")
-		}
 	}
 	horizontal := []ItemHorizontalAlign{ItemHorizontalAuto, ItemHorizontalLeft, ItemHorizontalCenter, ItemHorizontalRight}
 	issues = append(issues, oneOf(path+".header_horizontal_align", column.HeaderHorizontalAlign, horizontal...)...)

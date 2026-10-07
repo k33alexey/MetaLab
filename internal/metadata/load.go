@@ -3100,8 +3100,9 @@ func (catalog *Catalog) validateCommonFormSlots(kind, name string, slots []formS
 	return nil
 }
 
-// validateObjectFormFolder checks that a form's folder holds the form and its
-// module, and nothing else. The module is not declared anywhere - the file
+// validateObjectFormFolder checks that a form's folder holds the form, its
+// module, its help, the pictures of its elements and the body of an ordinary
+// form, and nothing else. The module is not declared anywhere - the file
 // lying there under the name of its role is the whole declaration - so the
 // only thing that can be wrong is a file nobody can name.
 func validateObjectFormFolder(directory, form string, formType FormType) error {
@@ -3121,9 +3122,14 @@ func validateObjectFormFolder(directory, form string, formType FormType) error {
 			}
 			continue
 		}
+		// The pictures of the elements are checked against the elements,
+		// once the form is read whole (checkFormAttributes).
+		if entry.Name() == project.FormItemsDirectory {
+			continue
+		}
 		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 ||
 			entry.Name() != project.FormMetadataFile && entry.Name() != project.FormModuleFile {
-			return fmt.Errorf("keeps %q, and a form keeps only its description, its module, its help and the body of an ordinary form", entry.Name())
+			return fmt.Errorf("keeps %q, and a form keeps only its description, its module, its help, the pictures of its elements and the body of an ordinary form", entry.Name())
 		}
 	}
 	return nil

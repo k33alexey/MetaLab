@@ -473,6 +473,10 @@ func readCommonForm(directory, name string, configuration project.Project) (Mana
 			}
 			continue
 		}
+		// The pictures of the elements are checked once the form is read.
+		if entry.Name() == project.FormItemsDirectory {
+			continue
+		}
 		// Whether a body may lie here is known once the form says what kind
 		// of form it is.
 		if entry.Name() == project.FormBodyFile {
@@ -481,7 +485,7 @@ func readCommonForm(directory, name string, configuration project.Project) (Mana
 		}
 		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 ||
 			(entry.Name() != project.FormMetadataFile && entry.Name() != project.FormModuleFile) {
-			return ManagedForm{}, fmt.Errorf("keeps %q, and a form keeps only its description, its module, its help and the body of an ordinary form", entry.Name())
+			return ManagedForm{}, fmt.Errorf("keeps %q, and a form keeps only its description, its module, its help, the pictures of its elements and the body of an ordinary form", entry.Name())
 		}
 	}
 	path := filepath.Join(directory, name, project.FormMetadataFile)
@@ -501,6 +505,9 @@ func readCommonForm(directory, name string, configuration project.Project) (Mana
 		if err := checkFormBody(body, form.Type); err != nil {
 			return ManagedForm{}, err
 		}
+	}
+	if err := validateFormItemPictureFiles(filepath.Join(directory, name), form); err != nil {
+		return ManagedForm{}, err
 	}
 	return form, nil
 }

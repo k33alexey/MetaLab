@@ -3,6 +3,7 @@ package metadata
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"sync"
@@ -62,6 +63,9 @@ func (catalog *Catalog) checkFormAttributes() error {
 			defer group.Done()
 			for item := range work {
 				item.form, item.err = readFormDescription(item.path, catalog)
+				if item.err == nil {
+					item.err = validateFormItemPictureFiles(filepath.Dir(item.path), item.form)
+				}
 			}
 		}()
 	}
