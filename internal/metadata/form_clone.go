@@ -55,6 +55,9 @@ func cloneRuntimeFormElements(values []ManagedFormElement) []ManagedFormElement 
 		value.FieldDocument = value.FieldDocument.clone()
 		value.ShowCurrentDate = clonePointer(value.ShowCurrentDate)
 		value.WidthInMonths, value.HeightInMonths = clonePointer(value.WidthInMonths), clonePointer(value.HeightInMonths)
+		value.CollapsedTitle = maps.Clone(value.CollapsedTitle)
+		value.Picture = value.Picture.clone()
+		value.ScrollOnCompress = clonePointer(value.ScrollOnCompress)
 		value.Children = cloneRuntimeFormElements(value.Children)
 		result[index] = value
 	}

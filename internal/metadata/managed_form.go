@@ -11,11 +11,18 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
+// FormOrientation is how a group lays out what it holds: a usual group and a
+// page as a form does (help, ChildFormItemsGroup), a group of columns its
+// columns, side by side, one under another or in one cell (help,
+// ColumnsGroup).
 type FormOrientation string
 
 const (
-	FormVertical   FormOrientation = "vertical"
-	FormHorizontal FormOrientation = "horizontal"
+	FormVertical             FormOrientation = "vertical"
+	FormHorizontal           FormOrientation = "horizontal"
+	FormAlwaysHorizontal     FormOrientation = "always-horizontal"
+	FormHorizontalIfPossible FormOrientation = "horizontal-if-possible"
+	FormInCell               FormOrientation = "in-cell"
 )
 
 type FormCommandAction string
@@ -156,10 +163,14 @@ type ManagedFormElement struct {
 	FieldDocument `yaml:",inline"`
 	// FieldOther is what a calendar, a progress bar and a track bar have.
 	FieldOther `yaml:",inline"`
+	// GroupProperties is what the groups have of their own.
+	GroupProperties `yaml:",inline"`
 	// ButtonType is what a button is; only a button has one.
 	ButtonType FormButtonType `yaml:"button_type,omitempty" json:"buttonType,omitempty"`
 	// Orientation lays out what a usual group, a page or a group of columns
-	// holds; empty is vertical.
+	// holds; empty is vertical. The prototype writes always horizontal 3165
+	// times, horizontal if possible 481, and in one cell 2101 on groups of
+	// columns.
 	Orientation FormOrientation      `yaml:"orientation,omitempty" json:"orientation,omitempty"`
 	Children    []ManagedFormElement `yaml:"children,omitempty" json:"children"`
 }
@@ -259,6 +270,9 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		stack = append(stack, pending{element: item, path: fmt.Sprintf("items[%d]", index)})
 	}
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+	// A group names the table whose current row it shows; the table is
+	// found once the whole form is walked, as it may stand after the group.
+	tables, associated := map[string]bool{}, []pending(nil)
 	for id := range commandIDs {
 		ids[id] = true
 	}
@@ -309,6 +323,13 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		issues = append(issues, validateFieldPicture(current.path, item.FieldPicture, item.Kind, configuration)...)
 		issues = append(issues, validateFieldDocument(current.path, item.FieldDocument, item.Kind)...)
 		issues = append(issues, validateFieldOther(current.path, item.FieldOther, item.Kind)...)
+		issues = append(issues, validateGroupProperties(current.path, item.GroupProperties, item.Kind, configuration)...)
+		if item.AssociatedTable != "" {
+			associated = append(associated, pending{element: item, path: current.path})
+		}
+		if item.Kind == FormElementTable {
+			tables[folded] = true
+		}
 		issues = append(issues, validateOwnPictureFiles(current.path, item)...)
 		// The help gives every group whether it is read only (FormGroup), and
 		// the prototype writes it on usual groups, pages and groups of columns.
@@ -334,7 +355,11 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			if class != formAreaClass && class != formColumnsClass {
 				issues = append(issues, current.path+".orientation is allowed only for usual groups, pages and groups of columns")
 			}
-			issues = append(issues, oneOf(current.path+".orientation", item.Orientation, FormVertical, FormHorizontal)...)
+			if class == formColumnsClass {
+				issues = append(issues, oneOf(current.path+".orientation", item.Orientation, FormVertical, FormHorizontal, FormInCell)...)
+			} else {
+				issues = append(issues, oneOf(current.path+".orientation", item.Orientation, FormVertical, FormHorizontal, FormAlwaysHorizontal, FormHorizontalIfPossible)...)
+			}
 		}
 		for index := len(item.Children) - 1; index >= 0; index-- {
 			child := item.Children[index]
@@ -343,6 +368,11 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 				issues = append(issues, place+": "+string(item.Kind)+" cannot hold "+string(child.Kind))
 			}
 			stack = append(stack, pending{element: child, path: place})
+		}
+	}
+	for _, group := range associated {
+		if !tables[strings.ToLower(group.element.AssociatedTable)] {
+			issues = append(issues, group.path+".associated_table names no table of the form")
 		}
 	}
 	issues = append(issues, validateFormAttributes(value.Attributes, ids, configuration)...)

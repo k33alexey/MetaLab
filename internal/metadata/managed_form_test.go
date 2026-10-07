@@ -51,7 +51,7 @@ func TestManagedFormRejectsUnknownAndInvalidTree(t *testing.T) {
 		"  - {id: " + duplicateID.String() + ", name: \u041f\u043e\u043b\u0435, kind: input-field, orientation: vertical, children: [{id: " + uuid.MustNew().String() + ", name: \u0412\u043b\u043e\u0436\u0435\u043d\u043d\u043e\u0435, kind: label-decoration}]}\n" +
 		"  - {id: " + duplicateID.String() + ", name: \u043f\u043e\u043b\u0435, kind: usual-group, orientation: diagonal}\n"
 	_, err := DecodeManagedForm("form.yaml", strings.NewReader(invalid), configuration)
-	for _, expected := range []string{"id must be unique", "name must be unique", "items[0].children[0]: input-field cannot hold label-decoration", "orientation is allowed only for usual groups, pages and groups of columns", "orientation must be vertical or horizontal"} {
+	for _, expected := range []string{"id must be unique", "name must be unique", "items[0].children[0]: input-field cannot hold label-decoration", "orientation is allowed only for usual groups, pages and groups of columns", "orientation must be vertical, horizontal, always-horizontal or horizontal-if-possible"} {
 		if err == nil || !strings.Contains(err.Error(), expected) {
 			t.Fatalf("validation error %q missing from %v", expected, err)
 		}

@@ -1423,8 +1423,9 @@ func validateFieldDocument(path string, document FieldDocument, kind FormElement
 type FormSelectionMode string
 
 // FormElementRepresentation is how an element is drawn: a progress bar
-// (help, ProgressBarSmoothingMode), and groups, buttons and tables where they
-// are described. The values allowed depend on the kind of element.
+// (help, ProgressBarSmoothingMode), how a usual group is set apart (help,
+// UsualGroupRepresentation), and the other groups, buttons and tables where
+// they are described. The values allowed depend on the kind of element.
 type FormElementRepresentation string
 
 var (
@@ -1433,6 +1434,7 @@ var (
 	}
 	formRepresentations = map[FormElementKind][]FormElementRepresentation{
 		FormElementProgressBarField: {"smooth", "broken", "broken-tilt"},
+		FormElementUsualGroup:       {"none", "weak-separation", "normal-separation", "strong-separation"},
 	}
 )
 
@@ -1513,4 +1515,143 @@ func oneOfKind[T ~string](name string, value T, kind FormElementKind, allowed ma
 		return []string{name + " is not a property of a " + string(kind)}
 	}
 	return oneOf(name, value, values...)
+}
+
+// FormGroupBehavior is how a usual group behaves (help, UsualGroupBehavior).
+type FormGroupBehavior string
+
+const (
+	FormGroupBehaviorAuto        FormGroupBehavior = "auto"
+	FormGroupBehaviorUsual       FormGroupBehavior = "usual"
+	FormGroupBehaviorCollapsible FormGroupBehavior = "collapsible"
+	FormGroupBehaviorPopUp       FormGroupBehavior = "popup"
+)
+
+// FormGroupControlRepresentation is how a collapsible group shows the control
+// that collapses it (help, UsualGroupControlRepresentation).
+type FormGroupControlRepresentation string
+
+const (
+	FormGroupControlPicture        FormGroupControlRepresentation = "picture"
+	FormGroupControlTitleHyperlink FormGroupControlRepresentation = "title-hyperlink"
+)
+
+// FormUse is auto, use or do not use: the through alignment of the titles of
+// a usual group (help, ThroughAlign) and the use of the current row of a
+// table (help, CurrentRowUse).
+type FormUse string
+
+const (
+	FormUseAuto    FormUse = "auto"
+	FormUseYes     FormUse = "use"
+	FormUseDontUse FormUse = "dont-use"
+)
+
+// GroupProperties is what the groups have of their own (help, FormGroup and
+// the extension of each group): how a usual group is set apart, collapses
+// and lays out what it holds, what a page shows, and what every group lets
+// the user change. Pages, a group of columns, a popup and a button group add
+// theirs where they are described.
+type GroupProperties struct {
+	// HideTitle hides the title of a usual group, a page and a group of
+	// columns; the prototype writes only the "off" (36478, 1043 and 85
+	// times).
+	HideTitle bool              `yaml:"hide_title,omitempty" json:"hideTitle,omitempty"`
+	Behavior  FormGroupBehavior `yaml:"behavior,omitempty" json:"behavior,omitempty"`
+	// NotUnited lays the items of a usual group out in the group it stands
+	// in, which then ignores all but its background and orientation (help,
+	// United); the prototype writes only that (1848 times).
+	NotUnited bool `yaml:"not_united,omitempty" json:"notUnited,omitempty"`
+	// Collapsed is a collapsible group shown collapsed, CollapsedTitle the
+	// title it shows so, ControlRepresentation the control that collapses it.
+	// The prototype writes only collapsed (753 times).
+	Collapsed             bool                           `yaml:"collapsed,omitempty" json:"collapsed,omitempty"`
+	CollapsedTitle        LocalizedText                  `yaml:"collapsed_title,omitempty" json:"collapsedTitle,omitempty"`
+	ControlRepresentation FormGroupControlRepresentation `yaml:"control_representation,omitempty" json:"controlRepresentation,omitempty"`
+	// NoLeftMargin shows what a collapsible group holds without the margin on
+	// the left; the prototype writes only that (270 times).
+	NoLeftMargin bool `yaml:"no_left_margin,omitempty" json:"noLeftMargin,omitempty"`
+	// ChildrenWidth, ItemsAndTitlesAlign and the spacings lay out what a usual
+	// group and a page hold as the form lays out what it holds (FormLayout).
+	ChildrenWidth       ChildrenWidth       `yaml:"children_width,omitempty" json:"childrenWidth,omitempty"`
+	ItemsAndTitlesAlign ItemsAndTitlesAlign `yaml:"items_and_titles_align,omitempty" json:"itemsAndTitlesAlign,omitempty"`
+	HorizontalSpacing   ItemSpacing         `yaml:"horizontal_spacing,omitempty" json:"horizontalSpacing,omitempty"`
+	VerticalSpacing     ItemSpacing         `yaml:"vertical_spacing,omitempty" json:"verticalSpacing,omitempty"`
+	// ThroughAlign lines up the titles of a usual group with those around it.
+	ThroughAlign FormUse `yaml:"through_align,omitempty" json:"throughAlign,omitempty"`
+	// TitleDataPath is the attribute shown in the title of a usual group or
+	// a page, written as the data path of a field is.
+	TitleDataPath string `yaml:"title_data_path,omitempty" json:"titleDataPath,omitempty"`
+	// Picture is drawn on the tab of a page.
+	Picture *PictureReference `yaml:"picture,omitempty" json:"picture,omitempty"`
+	// ScrollOnCompress scrolls a page whose content is higher than the page;
+	// yes, no or not said, as the help gives Undefined beside the two and the
+	// prototype writes true (45 times).
+	ScrollOnCompress *bool `yaml:"scroll_on_compress,omitempty" json:"scrollOnCompress,omitempty"`
+	// EnableContentChange lets the user change what a group holds; the
+	// prototype writes only the "on" (1049 times, on every group).
+	EnableContentChange bool `yaml:"enable_content_change,omitempty" json:"enableContentChange,omitempty"`
+	// CurrentRowUse hides a usual group or pages in the mobile client and
+	// shows them from the context menu of a row of AssociatedTable, a table of
+	// the same form named by its element.
+	CurrentRowUse   FormUse `yaml:"current_row_use,omitempty" json:"currentRowUse,omitempty"`
+	AssociatedTable string  `yaml:"associated_table,omitempty" json:"associatedTable,omitempty"`
+}
+
+func validateGroupProperties(path string, group GroupProperties, kind FormElementKind, configuration project.Project) []string {
+	var issues []string
+	only := func(name string, set bool, what string, kinds ...FormElementKind) {
+		if set && !slices.Contains(kinds, kind) {
+			issues = append(issues, path+"."+name+" is allowed only for "+what)
+		}
+	}
+	usual := []FormElementKind{FormElementUsualGroup}
+	areas := []FormElementKind{FormElementUsualGroup, FormElementPage}
+	for _, property := range []struct {
+		name string
+		set  bool
+	}{
+		{"behavior", group.Behavior != ""}, {"not_united", group.NotUnited}, {"collapsed", group.Collapsed},
+		{"collapsed_title", len(group.CollapsedTitle) != 0}, {"control_representation", group.ControlRepresentation != ""},
+		{"no_left_margin", group.NoLeftMargin}, {"through_align", group.ThroughAlign != ""},
+	} {
+		only(property.name, property.set, "usual groups", usual...)
+	}
+	for _, property := range []struct {
+		name string
+		set  bool
+	}{
+		{"children_width", group.ChildrenWidth != ""}, {"items_and_titles_align", group.ItemsAndTitlesAlign != ""},
+		{"horizontal_spacing", group.HorizontalSpacing != ""}, {"vertical_spacing", group.VerticalSpacing != ""},
+		{"title_data_path", group.TitleDataPath != ""},
+	} {
+		only(property.name, property.set, "usual groups and pages", areas...)
+	}
+	only("hide_title", group.HideTitle, "usual groups, pages and groups of columns", FormElementUsualGroup, FormElementPage, FormElementColumnGroup)
+	only("picture", group.Picture != nil, "pages", FormElementPage)
+	only("scroll_on_compress", group.ScrollOnCompress != nil, "pages", FormElementPage)
+	only("enable_content_change", group.EnableContentChange, "groups", formGroupKinds...)
+	only("current_row_use", group.CurrentRowUse != "", "usual groups and pages", FormElementUsualGroup, FormElementPages)
+	only("associated_table", group.AssociatedTable != "", "usual groups and pages", FormElementUsualGroup, FormElementPages)
+	issues = append(issues, oneOf(path+".behavior", group.Behavior, FormGroupBehaviorAuto, FormGroupBehaviorUsual,
+		FormGroupBehaviorCollapsible, FormGroupBehaviorPopUp)...)
+	issues = append(issues, validateTitle(path+".collapsed_title", group.CollapsedTitle, configuration)...)
+	issues = append(issues, oneOf(path+".control_representation", group.ControlRepresentation, FormGroupControlPicture, FormGroupControlTitleHyperlink)...)
+	issues = append(issues, oneOf(path+".children_width", group.ChildrenWidth, ChildrenWidthAuto, ChildrenWidthEqual,
+		ChildrenWidthLeftNarrowest, ChildrenWidthLeftNarrow, ChildrenWidthLeftWide, ChildrenWidthLeftWidest)...)
+	issues = append(issues, oneOf(path+".items_and_titles_align", group.ItemsAndTitlesAlign, ItemsAndTitlesAuto, ItemsAndTitlesNone,
+		ItemsLeftTitlesLeft, ItemsLeftTitlesRight, ItemsRightTitlesLeft, ItemsRightTitlesRight, ItemsAndTitlesTitlesLeftDataAuto)...)
+	spacings := []ItemSpacing{ItemSpacingAuto, ItemSpacingNone, ItemSpacingHalf, ItemSpacingSingle, ItemSpacingOneAndHalf, ItemSpacingDouble}
+	issues = append(issues, oneOf(path+".horizontal_spacing", group.HorizontalSpacing, spacings...)...)
+	issues = append(issues, oneOf(path+".vertical_spacing", group.VerticalSpacing, spacings...)...)
+	issues = append(issues, oneOf(path+".through_align", group.ThroughAlign, FormUseAuto, FormUseYes, FormUseDontUse)...)
+	if group.TitleDataPath != "" {
+		issues = append(issues, validateElementDataPath(path+".title_data_path", group.TitleDataPath)...)
+	}
+	issues = append(issues, validatePictureReference(path+".picture", group.Picture)...)
+	issues = append(issues, oneOf(path+".current_row_use", group.CurrentRowUse, FormUseAuto, FormUseYes, FormUseDontUse)...)
+	if group.AssociatedTable != "" && (!validIdentifier(group.AssociatedTable) || utf8.RuneCountInString(group.AssociatedTable) > maxNameLength) {
+		issues = append(issues, path+".associated_table must be the name of a table of the form")
+	}
+	return issues
 }

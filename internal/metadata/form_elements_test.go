@@ -2302,7 +2302,9 @@ func TestEachPropertyOfTheOtherFieldsStandsOnItsField(t *testing.T) {
 			var alone FieldOther
 			reflect.ValueOf(&alone).Elem().Field(index).Set(value.Field(index))
 			issues := validateFieldOther("items[0]", alone, kind)
-			refused := len(issues) == 1 && (strings.Contains(issues[0], "is allowed only for") || strings.Contains(issues[0], "is not a property of a "+string(kind)))
+			refused := len(issues) == 1 && (strings.Contains(issues[0], "is allowed only for") || strings.Contains(issues[0], "is not a property of a "+string(kind)) ||
+				// A usual group is drawn too, with values of its own.
+				name == "Representation" && kind == FormElementUsualGroup && strings.Contains(issues[0], "representation must be none,"))
 			if want := !slices.Contains(kinds, kind); want != refused || !want && len(issues) != 0 {
 				t.Errorf("%s alone on %s: %v", name, kind, issues)
 			}
@@ -2471,5 +2473,298 @@ func TestAGroupHoldsOnlyThePropertiesOfAFieldItIsGiven(t *testing.T) {
 		if want := kind == FormElementUsualGroup || kind == FormElementPage; want != (len(issues) == 0) {
 			t.Errorf("format alone on %s: %v", kind, issues)
 		}
+	}
+}
+
+// A group keeps what it has of its own through YAML and the Studio: how a
+// usual group is set apart, collapses and lays out what it holds, the
+// picture and scrolling of a page, the title hidden on a group of columns,
+// the right to change what a group holds, and the table whose current row a
+// group shows.
+//
+// Defect caught: a usual group drawn with no frame (34472 times), its title
+// hidden (36478), collapsible (905), not united (1848) or collapsed (753)
+// refused or lost; the width of what it holds, the alignment of items and
+// titles, a spacing, the path to the data of its title, the picture of a
+// page or its scrolling lost; a page that does not scroll read as not said;
+// the table a group names lost on the way through the Studio.
+func TestAGroupKeepsWhatItHasOfItsOwn(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Группа, kind: usual-group, orientation: always-horizontal, representation: weak-separation," +
+		" hide_title: true, behavior: collapsible, not_united: true, collapsed: true, collapsed_title: {ru: Свёрнуто}, control_representation: title-hyperlink," +
+		" no_left_margin: true, children_width: left-narrowest, items_and_titles_align: items-right-titles-left, horizontal_spacing: one-and-half," +
+		" vertical_spacing: none, through_align: dont-use, title_data_path: Items.Список.CurrentData.Наименование, enable_content_change: true," +
+		" current_row_use: use, associated_table: таблица}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Страницы, kind: pages, current_row_use: dont-use, associated_table: Таблица, children: [" +
+		"{id: c0de0000-0000-4000-8000-000000990003, name: Страница, kind: page, orientation: horizontal-if-possible, hide_title: true," +
+		" picture: {standard: Change, load_transparent: true}, scroll_on_compress: false, title_data_path: Объект.Товары.RowsCount}]}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Таблица, kind: table, children: [{id: c0de0000-0000-4000-8000-000000990005," +
+		" name: Колонки, kind: column-group, orientation: in-cell, hide_title: true, enable_content_change: true}]}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	group, pages, page, columns := form.Items[0], form.Items[1], form.Items[1].Children[0], form.Items[2].Children[0]
+	merged := group.GroupProperties
+	merged.Picture, merged.ScrollOnCompress = page.Picture, page.ScrollOnCompress
+	value := reflect.ValueOf(merged)
+	for index := range value.NumField() {
+		if value.Field(index).IsZero() {
+			t.Errorf("%s is not set by the test", value.Type().Field(index).Name)
+		}
+	}
+	switch {
+	case group.Orientation != FormAlwaysHorizontal || group.Representation != "weak-separation" || !group.HideTitle || group.Behavior != FormGroupBehaviorCollapsible:
+		t.Fatalf("usual group: %+v", group.GroupProperties)
+	case !group.NotUnited || !group.Collapsed || group.CollapsedTitle["ru"] != "Свёрнуто" || group.ControlRepresentation != FormGroupControlTitleHyperlink || !group.NoLeftMargin:
+		t.Fatalf("collapsing: %+v", group.GroupProperties)
+	case group.ChildrenWidth != ChildrenWidthLeftNarrowest || group.ItemsAndTitlesAlign != ItemsRightTitlesLeft || group.HorizontalSpacing != ItemSpacingOneAndHalf ||
+		group.VerticalSpacing != ItemSpacingNone || group.ThroughAlign != FormUseDontUse:
+		t.Fatalf("layout: %+v", group.GroupProperties)
+	case group.TitleDataPath != "Items.Список.CurrentData.Наименование" || !group.EnableContentChange || group.CurrentRowUse != FormUseYes || group.AssociatedTable != "таблица":
+		t.Fatalf("data: %+v", group.GroupProperties)
+	case pages.CurrentRowUse != FormUseDontUse || pages.AssociatedTable != "Таблица":
+		t.Fatalf("pages: %+v", pages.GroupProperties)
+	case page.Orientation != FormHorizontalIfPossible || !page.HideTitle || page.Picture.Standard != "Change" || !page.Picture.LoadTransparent ||
+		page.ScrollOnCompress == nil || *page.ScrollOnCompress || page.TitleDataPath != "Объект.Товары.RowsCount":
+		t.Fatalf("page: %+v", page.GroupProperties)
+	case columns.Orientation != FormInCell || !columns.HideTitle || !columns.EnableContentChange:
+		t.Fatalf("group of columns: %+v", columns.GroupProperties)
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(written), "scroll_on_compress: false\n") {
+		t.Fatalf("a page that does not scroll is not written:\n%s", written)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil || !reflect.DeepEqual(again.Items, form.Items) {
+		t.Fatalf("written back: %v", err)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil || !reflect.DeepEqual(received.Items, form.Items) {
+		t.Fatalf("carried through the Studio: %v", err)
+	}
+}
+
+// Each property a group has of its own, set alone on every kind of element,
+// is accepted on the groups the help and the prototype give it and refused
+// on any other; a value of the prototype's spelling or of another property
+// is refused.
+//
+// Defect caught: the behavior or the collapsing of a usual group kept on a
+// page, the picture of a page on a usual group, a spacing on a group of
+// columns, the right to change what a group holds on a field, the current
+// row on a page; the prototype's "PopUp" or "NormalSeparation" taken as
+// written; a title data path with spaces, a picture of a page that names two
+// pictures, or a table named by no name.
+func TestEachPropertyOfAGroupStandsOnItsGroup(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	yes := true
+	full := GroupProperties{HideTitle: true, Behavior: FormGroupBehaviorUsual, NotUnited: true, Collapsed: true, CollapsedTitle: LocalizedText{"ru": "Итог"},
+		ControlRepresentation: FormGroupControlPicture, NoLeftMargin: true, ChildrenWidth: ChildrenWidthEqual, ItemsAndTitlesAlign: ItemsAndTitlesNone,
+		HorizontalSpacing: ItemSpacingHalf, VerticalSpacing: ItemSpacingDouble, ThroughAlign: FormUseYes, TitleDataPath: "Объект.Валюта",
+		Picture: &PictureReference{Standard: "Change"}, ScrollOnCompress: &yes, EnableContentChange: true, CurrentRowUse: FormUseAuto, AssociatedTable: "Список"}
+	// Written out from the help (the extension of each group) and the
+	// exports, apart from the checks, so that a property given to a group
+	// too many or too few shows here.
+	usual := []FormElementKind{FormElementUsualGroup}
+	areas := []FormElementKind{FormElementUsualGroup, FormElementPage}
+	allowed := map[string][]FormElementKind{
+		"HideTitle": {FormElementUsualGroup, FormElementPage, FormElementColumnGroup}, "Behavior": usual, "NotUnited": usual, "Collapsed": usual,
+		"CollapsedTitle": usual, "ControlRepresentation": usual, "NoLeftMargin": usual, "ChildrenWidth": areas, "ItemsAndTitlesAlign": areas,
+		"HorizontalSpacing": areas, "VerticalSpacing": areas, "ThroughAlign": usual, "TitleDataPath": areas,
+		"Picture": {FormElementPage}, "ScrollOnCompress": {FormElementPage},
+		"EnableContentChange": {FormElementUsualGroup, FormElementPages, FormElementPage, FormElementColumnGroup, FormElementPopup, FormElementButtonGroup},
+		"CurrentRowUse":       {FormElementUsualGroup, FormElementPages}, "AssociatedTable": {FormElementUsualGroup, FormElementPages},
+	}
+	value := reflect.ValueOf(full)
+	for index := range value.NumField() {
+		name := value.Type().Field(index).Name
+		kinds, known := allowed[name]
+		if !known || value.Field(index).IsZero() {
+			t.Fatalf("%s is not set by the test", name)
+		}
+		for kind := range formElementClasses {
+			var alone GroupProperties
+			reflect.ValueOf(&alone).Elem().Field(index).Set(value.Field(index))
+			issues := validateGroupProperties("items[0]", alone, kind, configuration)
+			refused := len(issues) == 1 && strings.Contains(issues[0], "is allowed only for")
+			if want := !slices.Contains(kinds, kind); want != refused || !want && len(issues) != 0 {
+				t.Errorf("%s alone on %s: %v", name, kind, issues)
+			}
+		}
+	}
+	for name, test := range map[string]struct {
+		group GroupProperties
+		want  string
+	}{
+		"поведение прототипа":    {GroupProperties{Behavior: "PopUp"}, "items[0].behavior must be auto, usual, collapsible or popup"},
+		"управление":             {GroupProperties{ControlRepresentation: "auto"}, "items[0].control_representation must be picture or title-hyperlink"},
+		"ширина подчинённых":     {GroupProperties{ChildrenWidth: "wide"}, "items[0].children_width must be auto, equal, left-narrowest, left-narrow, left-wide or left-widest"},
+		"выравнивание":           {GroupProperties{ItemsAndTitlesAlign: "ItemsLeftTitlesLeft"}, "items[0].items_and_titles_align must be auto, none, items-left-titles-left, items-left-titles-right, items-right-titles-left, items-right-titles-right or titles-left-data-auto"},
+		"интервал":               {GroupProperties{VerticalSpacing: "triple"}, "items[0].vertical_spacing must be auto, none, half, single, one-and-half or double"},
+		"сквозное":               {GroupProperties{ThroughAlign: "Use"}, "items[0].through_align must be auto, use or dont-use"},
+		"текущая строка":         {GroupProperties{CurrentRowUse: "yes"}, "items[0].current_row_use must be auto, use or dont-use"},
+		"путь заголовка":         {GroupProperties{TitleDataPath: " Объект.Валюта"}, "items[0].title_data_path must be a data path without surrounding spaces"},
+		"путь не путь":           {GroupProperties{TitleDataPath: "Объект..Валюта"}, "items[0].title_data_path must be names separated by dots, each with an index if any"},
+		"картинка двумя":         {GroupProperties{Picture: &PictureReference{Standard: "Change", File: "Picture.png"}}, "items[0].picture names more than one of a standard picture, a common picture and a file"},
+		"таблица не именем":      {GroupProperties{AssociatedTable: "Items.Список"}, "items[0].associated_table must be the name of a table of the form"},
+		"заголовок не код языка": {GroupProperties{CollapsedTitle: LocalizedText{"русский язык": "Итог"}}, "items[0].collapsed_title"},
+	} {
+		issues := validateGroupProperties("items[0]", test.group, FormElementUsualGroup, configuration)
+		if !slices.ContainsFunc(issues, func(issue string) bool { return strings.HasPrefix(issue, test.want) }) {
+			t.Errorf("%s: %v, want %q", name, issues, test.want)
+		}
+	}
+	for _, test := range []struct {
+		kind  FormElementKind
+		value string
+		want  string
+	}{
+		{FormElementUsualGroup, "NormalSeparation", "items[0].representation must be none, weak-separation, normal-separation or strong-separation"},
+		{FormElementPage, "none", "items[0].representation is not a property of a page"},
+	} {
+		if issues := validateFieldOther("items[0]", FieldOther{Representation: FormElementRepresentation(test.value)}, test.kind); !slices.Contains(issues, test.want) {
+			t.Errorf("representation %s on %s: %v, want %q", test.value, test.kind, issues, test.want)
+		}
+	}
+	form := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, collapsed: true}\n")
+	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(form), configuration); err == nil || !strings.Contains(err.Error(), "items[0].collapsed is allowed only for usual groups") {
+		t.Errorf("a collapsed field read from a file: %v", err)
+	}
+}
+
+// A usual group and a page lay out what they hold as the form does, a group
+// of columns its columns side by side, one under another or in one cell.
+//
+// Defect caught: a usual group always horizontal (2909 times) or a page
+// horizontal if possible (481) refused, so that the form is not moved; a
+// group of columns in one cell (2101) refused; in one cell taken on a usual
+// group, or always horizontal on a group of columns.
+func TestEachGroupLaysOutWhatItHoldsByItsKind(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		kind        FormElementKind
+		orientation FormOrientation
+		want        string
+	}{
+		{FormElementUsualGroup, FormAlwaysHorizontal, ""},
+		{FormElementUsualGroup, FormHorizontalIfPossible, ""},
+		{FormElementPage, FormAlwaysHorizontal, ""},
+		{FormElementPage, FormHorizontalIfPossible, ""},
+		{FormElementColumnGroup, FormInCell, ""},
+		{FormElementColumnGroup, FormHorizontal, ""},
+		{FormElementUsualGroup, FormInCell, "orientation must be vertical, horizontal, always-horizontal or horizontal-if-possible"},
+		{FormElementPage, FormInCell, "orientation must be vertical, horizontal, always-horizontal or horizontal-if-possible"},
+		{FormElementColumnGroup, FormAlwaysHorizontal, "orientation must be vertical, horizontal or in-cell"},
+		{FormElementColumnGroup, FormHorizontalIfPossible, "orientation must be vertical, horizontal or in-cell"},
+		{FormElementUsualGroup, "AlwaysHorizontal", "orientation must be vertical, horizontal, always-horizontal or horizontal-if-possible"},
+	} {
+		element := fmt.Sprintf("{id: c0de0000-0000-4000-8000-000000990002, name: Группа, kind: %s, orientation: %s}", test.kind, test.orientation)
+		switch test.kind {
+		case FormElementPage:
+			element = "{id: c0de0000-0000-4000-8000-000000990001, name: Страницы, kind: pages, children: [" + element + "]}"
+		case FormElementColumnGroup:
+			element = "{id: c0de0000-0000-4000-8000-000000990001, name: Таблица, kind: table, children: [" + element + "]}"
+		}
+		_, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm("  - "+element+"\n")), managedFormConfiguration())
+		if test.want == "" && err != nil || test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)) {
+			t.Errorf("%s on %s: %v, want %q", test.orientation, test.kind, err, test.want)
+		}
+	}
+}
+
+// A group names the table whose current row it shows by the name of the
+// table's element, in any case, wherever in the form the table stands; a
+// name of no table of the form is refused.
+//
+// Defect caught: a table standing after the group, or inside it as in the
+// exports, not found because the form was not walked to the end; a name in
+// another case refused; a group, a field or an attribute of the same name
+// taken for the table; a table of no form accepted.
+func TestAGroupNamesATableOfItsForm(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		items string
+		want  string
+	}{
+		"таблица внутри": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Группа, kind: usual-group, associated_table: ТаблицаКаталогов, children: [" +
+			"{id: c0de0000-0000-4000-8000-000000990002, name: ТаблицаКаталогов, kind: table}]}\n", ""},
+		"таблица после, другой регистр": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Страницы, kind: pages, associated_table: список}\n" +
+			"  - {id: c0de0000-0000-4000-8000-000000990002, name: Список, kind: table}\n", ""},
+		"не таблица": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Группа, kind: usual-group, associated_table: Список}\n" +
+			"  - {id: c0de0000-0000-4000-8000-000000990002, name: Список, kind: input-field}\n", "items[0].associated_table names no table of the form"},
+		"нет такой": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Группа, kind: usual-group, associated_table: Список}\n",
+			"items[0].associated_table names no table of the form"},
+		"сама группа": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Группа, kind: usual-group, associated_table: Группа}\n",
+			"items[0].associated_table names no table of the form"},
+	} {
+		_, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(test.items)), managedFormConfiguration())
+		if test.want == "" && err != nil || test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)) {
+			t.Errorf("%s: %v, want %q", name, err, test.want)
+		}
+	}
+}
+
+// The picture of a page is resolved as every picture of an element is: a
+// common picture through the project, a file of its own in the folder of the
+// element.
+//
+// Defect caught: the picture of a page (203 times in the exports) left out
+// of the pictures of the element, so that a common picture removed is not
+// reported and a file of its own is not looked for.
+func TestThePictureOfAPageIsResolved(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		picture string
+		files   []string
+		refused string
+		gone    bool
+	}{
+		"общая картинка":     {picture: "{common: " + cmpCommonPicture + "}"},
+		"удалённая картинка": {picture: "{common: " + refGone + "}", gone: true},
+		"свой файл":          {picture: "{file: Picture.png}", files: []string{"Страница/Picture.png"}},
+		"своего файла нет":   {picture: "{file: Picture.png}", refused: "element Страница picture is shown with picture file Picture.png, which its folder does not hold"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := formReferencesProject(t)
+			path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			element := "items:\n  - {id: c0de0000-0000-4000-8000-000000990001, name: Страницы, kind: pages, children: [" +
+				"{id: c0de0000-0000-4000-8000-000000990002, name: Страница, kind: page, picture: " + test.picture + "}]}\n"
+			writeFile(t, path, strings.Replace(string(content), "attributes:\n", element+"attributes:\n", 1))
+			for _, file := range test.files {
+				writeFile(t, filepath.Join(filepath.Dir(path), project.FormItemsDirectory, file), "image")
+			}
+			switch {
+			case test.gone:
+				if found := unresolvedOf(t, root); !containsWhere(found, "catalog Номенклатура form ФормаЭлемента element Страница picture") {
+					t.Fatalf("unresolved = %+v", found)
+				}
+			case test.refused != "":
+				if _, err := Load(root); err == nil || !strings.Contains(err.Error(), test.refused) {
+					t.Fatalf("err = %v, want %q", err, test.refused)
+				}
+			default:
+				if _, err := Load(root); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
 	}
 }
