@@ -94,10 +94,45 @@ func (workspace *Workspace) saveManagedFormLocked(relative string, form metadata
 	if err := metadata.Encode(&content, form); err != nil {
 		return ManagedFormSource{}, err
 	}
+	folders, err := workspace.planFormPictureFolders(relative, form, expectedRevision, configuration)
+	if err != nil {
+		return ManagedFormSource{}, err
+	}
+	if err := folders.setAside(); err != nil {
+		return ManagedFormSource{}, err
+	}
 	if _, err := workspace.saveSourceLocked(relative, content.String(), expectedRevision); err != nil {
+		folders.putBack()
+		return ManagedFormSource{}, err
+	}
+	if err := folders.finish(); err != nil {
 		return ManagedFormSource{}, err
 	}
 	return workspace.readManagedForm(relative)
+}
+
+// planFormPictureFolders plans what the save does to the folders of the
+// pictures of the form's elements, against the form on disk. Nothing is
+// planned when the save is refused anyway for a changed revision - the
+// folders would be put back, and a refused save is better not touching the
+// disk at all - or when
+// the form on disk does not read: then nobody knows which element a folder
+// was.
+func (workspace *Workspace) planFormPictureFolders(relative string, form metadata.ManagedForm, expectedRevision string,
+	configuration project.Project) (pictureFolders, error) {
+	current, err := workspace.readSource(relative)
+	if err != nil || !strings.EqualFold(current.Revision, expectedRevision) {
+		return pictureFolders{}, nil
+	}
+	before, err := metadata.DecodeManagedForm(relative, strings.NewReader(current.Content), configuration)
+	if err != nil {
+		return pictureFolders{}, nil
+	}
+	target, err := workspace.resolveExistingSource(relative)
+	if err != nil {
+		return pictureFolders{}, err
+	}
+	return planPictureFolders(filepath.Dir(target), before, form)
 }
 
 // EnsureManagedFormHandler creates a form module and command procedure when
