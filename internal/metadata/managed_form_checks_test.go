@@ -57,7 +57,7 @@ func TestManagedFormChecksEachCaseThatTellsItApart(t *testing.T) {
 		{"a path segment of 256 characters", form(nil, field("Поле", "Объект."+tooLong)), "items[0].data_path must be names separated by dots"},
 		{"a path forty segments deep", form(nil, field("Поле", deep)), ""},
 		{"a data path on a label", form(nil, label), "items[0].data_path is allowed only for fields, tables and buttons"},
-		{"a read-only label", form(nil, readOnlyLabel), "items[0].read_only is allowed only for fields and tables"},
+		{"a read-only label", form(nil, readOnlyLabel), "items[0].read_only is allowed only for fields, tables and groups"},
 		{"a group whose first child is wrong", form(nil, group), "items[0].children[0].kind неизвестный is not a kind of element of a form"},
 	}
 	for _, test := range tests {

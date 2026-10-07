@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"fmt"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -244,11 +245,11 @@ func (field FieldBehavior) empty() bool {
 		len(field.WarningOnEdit) == 0 && field.WarningOnEditRepresentation == "" && field.Shortcut == ""
 }
 
-func validateFormField(path string, field FieldBehavior, class formElementClass, configuration project.Project) []string {
+func validateFormField(path string, field FieldBehavior, class formElementClass, kind FormElementKind, configuration project.Project) []string {
 	if field.empty() {
 		return nil
 	}
-	if class != formFieldClass {
+	if class != formFieldClass && !outsideFields(field, kind).empty() {
 		return []string{path + " has what only a field has: title_location, skip_on_input, default_item, edit_mode, warning_on_edit, warning_on_edit_representation, shortcut"}
 	}
 	var issues []string
@@ -323,6 +324,45 @@ func allDigits(value string) bool {
 	return value != ""
 }
 
+// formGroupKinds are the groups of a form.
+var formGroupKinds = []FormElementKind{FormElementUsualGroup, FormElementPages, FormElementPage, FormElementColumnGroup,
+	FormElementPopup, FormElementButtonGroup}
+
+// fieldPropertyElsewhere lists, by the name a property of a field is written
+// under, the kinds of element other than fields that hold it too. The help
+// gives every group its size, its stretching, its place in its group, its
+// shortcut and the font and colour of its title (FormGroup); the extension of
+// each group gives the rest. The prototype writes each on these kinds, and
+// writes no other property of a field on a group.
+//
+// Two of them mean something else on a group than on a field, under the same
+// tag: horizontal_align is where a usual group or a page puts what it holds
+// (help, ChildItemsHorizontalAlign) and not where text stands in a column, and
+// vertical_align where it puts it up and down.
+var fieldPropertyElsewhere = map[string][]FormElementKind{
+	"width": formGroupKinds, "height": formGroupKinds, "horizontal_stretch": formGroupKinds, "vertical_stretch": formGroupKinds,
+	"group_horizontal_align": formGroupKinds, "group_vertical_align": formGroupKinds, "shortcut": formGroupKinds,
+	"title_font": formGroupKinds, "title_text_color": formGroupKinds,
+	"horizontal_align": {FormElementUsualGroup, FormElementPage}, "vertical_align": {FormElementUsualGroup, FormElementPage},
+	"back_color": {FormElementUsualGroup, FormElementPage, FormElementPopup}, "border_color": {FormElementPopup},
+	"title_back_color": {FormElementColumnGroup}, "header_picture": {FormElementColumnGroup},
+	"header_horizontal_align": {FormElementColumnGroup}, "fixing_in_table": {FormElementColumnGroup},
+}
+
+// outsideFields is what of a group of properties of a field an element of
+// another kind does not hold: the properties it does hold are taken out, by
+// the name they are written under.
+func outsideFields[T any](value T, kind FormElementKind) T {
+	fields := reflect.ValueOf(&value).Elem()
+	for index := range fields.NumField() {
+		name, _, _ := strings.Cut(fields.Type().Field(index).Tag.Get("yaml"), ",")
+		if slices.Contains(fieldPropertyElsewhere[name], kind) {
+			fields.Field(index).SetZero()
+		}
+	}
+	return value
+}
+
 // FieldLayout is the size of a field and where it stands (help, FormField and
 // the extension of each field). Sizes are in characters and take no limit,
 // as the prototype sets none; 0 is chosen by the platform, and a maximum of 0
@@ -355,11 +395,11 @@ type FieldLayout struct {
 	VerticalAlign   ItemVerticalAlign   `yaml:"vertical_align,omitempty" json:"verticalAlign,omitempty"`
 }
 
-func validateFieldLayout(path string, layout FieldLayout, class formElementClass) []string {
+func validateFieldLayout(path string, layout FieldLayout, class formElementClass, kind FormElementKind) []string {
 	if layout == (FieldLayout{}) {
 		return nil
 	}
-	if class != formFieldClass {
+	if class != formFieldClass && outsideFields(layout, kind) != (FieldLayout{}) {
 		return []string{path + " has the size and alignment of a field"}
 	}
 	var issues []string
@@ -399,11 +439,11 @@ type FieldLook struct {
 	TitleHeight    int         `yaml:"title_height,omitempty" json:"titleHeight,omitempty"`
 }
 
-func validateFieldLook(path string, look FieldLook, class formElementClass) []string {
+func validateFieldLook(path string, look FieldLook, class formElementClass, kind FormElementKind) []string {
 	if look == (FieldLook{}) {
 		return nil
 	}
-	if class != formFieldClass {
+	if class != formFieldClass && outsideFields(look, kind) != (FieldLook{}) {
 		return []string{path + " has the look of a field"}
 	}
 	var issues []string
@@ -529,11 +569,11 @@ func (column FieldColumn) empty() bool {
 		column.FooterBackColor == nil && column.FixingInTable == "" && !column.CellHyperlink && !column.AutoCellHeight
 }
 
-func validateFieldColumn(path string, column FieldColumn, class formElementClass, configuration project.Project) []string {
+func validateFieldColumn(path string, column FieldColumn, class formElementClass, kind FormElementKind, configuration project.Project) []string {
 	if column.empty() {
 		return nil
 	}
-	if class != formFieldClass {
+	if class != formFieldClass && !outsideFields(column, kind).empty() {
 		return []string{path + " has what a field has as a column of a table"}
 	}
 	var issues []string
@@ -854,7 +894,8 @@ func validateFieldFormat(path string, format FieldFormat, kind FormElementKind, 
 			issues = append(issues, path+"."+name+" is allowed only for "+what)
 		}
 	}
-	only("format", len(format.Format) != 0, "input and label fields", FormElementInputField, FormElementLabelField)
+	only("format", len(format.Format) != 0, "input and label fields, usual groups and pages", FormElementInputField, FormElementLabelField,
+		FormElementUsualGroup, FormElementPage)
 	only("edit_format", len(format.EditFormat) != 0, "input fields and check boxes", FormElementInputField, FormElementCheckBoxField)
 	bounded := []FormElementKind{FormElementInputField, FormElementTrackBarField, FormElementProgressBarField}
 	only("min_value", format.MinValue != "", "input fields, track bars and progress bars", bounded...)

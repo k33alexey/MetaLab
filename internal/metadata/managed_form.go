@@ -3,6 +3,7 @@ package metadata
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -294,10 +295,10 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			}
 			issues = append(issues, validateElementDataPath(current.path+".data_path", item.DataPath)...)
 		}
-		issues = append(issues, validateFormField(current.path, item.FieldBehavior, class, configuration)...)
-		issues = append(issues, validateFieldLayout(current.path, item.FieldLayout, class)...)
-		issues = append(issues, validateFieldLook(current.path, item.FieldLook, class)...)
-		issues = append(issues, validateFieldColumn(current.path, item.FieldColumn, class, configuration)...)
+		issues = append(issues, validateFormField(current.path, item.FieldBehavior, class, item.Kind, configuration)...)
+		issues = append(issues, validateFieldLayout(current.path, item.FieldLayout, class, item.Kind)...)
+		issues = append(issues, validateFieldLook(current.path, item.FieldLook, class, item.Kind)...)
+		issues = append(issues, validateFieldColumn(current.path, item.FieldColumn, class, item.Kind, configuration)...)
 		issues = append(issues, validateFieldButtons(current.path, item.FieldButtons, item.Kind)...)
 		issues = append(issues, validateFieldTextInput(current.path, item.FieldTextInput, item.Kind, configuration)...)
 		issues = append(issues, validateFieldFormat(current.path, item.FieldFormat, item.Kind, configuration)...)
@@ -309,8 +310,10 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		issues = append(issues, validateFieldDocument(current.path, item.FieldDocument, item.Kind)...)
 		issues = append(issues, validateFieldOther(current.path, item.FieldOther, item.Kind)...)
 		issues = append(issues, validateOwnPictureFiles(current.path, item)...)
-		if item.ReadOnly && class != formFieldClass && class != formTableClass {
-			issues = append(issues, current.path+".read_only is allowed only for fields and tables")
+		// The help gives every group whether it is read only (FormGroup), and
+		// the prototype writes it on usual groups, pages and groups of columns.
+		if item.ReadOnly && class != formFieldClass && class != formTableClass && !slices.Contains(formGroupKinds, item.Kind) {
+			issues = append(issues, current.path+".read_only is allowed only for fields, tables and groups")
 		}
 		if item.Command != nil {
 			if class != formButtonClass {

@@ -97,7 +97,7 @@ func TestAnElementHoldsOnlyWhatThePrototypeNestsInIt(t *testing.T) {
 		"тип кнопки":                {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Кнопка, kind: button, button_type: link}\n", "items[0].button_type must be usual-button, hyperlink, command-bar-button or command-bar-hyperlink"},
 		"ориентация у таблицы":      {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Таблица, kind: table, orientation: vertical}\n", "items[0].orientation is allowed only for usual groups, pages and groups of columns"},
 		"путь к данным у декорации": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Надпись, kind: label-decoration, data_path: Объект}\n", "items[0].data_path is allowed only for fields, tables and buttons"},
-		"только просмотр у группы":  {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Группа, kind: usual-group, read_only: true}\n", "items[0].read_only is allowed only for fields and tables"},
+		"только просмотр у панели":  {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Панель, kind: command-bar, read_only: true}\n", "items[0].read_only is allowed only for fields, tables and groups"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -457,7 +457,7 @@ func TestAFieldRefusesWhatIsWrongInItsSize(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
 	for name, test := range map[string]struct{ element, want string }{
-		"ширина у группы":          {"kind: usual-group, width: 10", "items[0] has the size and alignment of a field"},
+		"автоширина у группы":      {"kind: usual-group, no_auto_max_width: true", "items[0] has the size and alignment of a field"},
 		"растягивание у кнопки":    {"kind: button, horizontal_stretch: true", "items[0] has the size and alignment of a field"},
 		"выравнивание у декорации": {"kind: label-decoration, horizontal_align: left", "items[0] has the size and alignment of a field"},
 		"ширина":                  {"kind: input-field, width: -1", "items[0].width must not be negative"},
@@ -1256,7 +1256,7 @@ func TestEachPropertyOfAFormatStandsOnItsFields(t *testing.T) {
 	full := FieldFormat{Format: LocalizedText{"ru": "ЧДЦ=2"}, EditFormat: LocalizedText{"ru": "ЧДЦ=2"}, MinValue: "1", MaxValue: "2",
 		MarkNegatives: &yes, AutoMarkIncomplete: &yes}
 	allowed := map[string][]FormElementKind{
-		"Format":             {FormElementInputField, FormElementLabelField},
+		"Format":             {FormElementInputField, FormElementLabelField, FormElementUsualGroup, FormElementPage},
 		"EditFormat":         {FormElementInputField, FormElementCheckBoxField},
 		"MinValue":           {FormElementInputField, FormElementTrackBarField, FormElementProgressBarField},
 		"MaxValue":           {FormElementInputField, FormElementTrackBarField, FormElementProgressBarField},
@@ -2332,5 +2332,144 @@ func TestEachPropertyOfTheOtherFieldsStandsOnItsField(t *testing.T) {
 	form = formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: track-bar-field, show_percent: true}\n")
 	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(form), managedFormConfiguration()); err == nil || !strings.Contains(err.Error(), "items[0].show_percent is allowed only for progress bar fields") {
 		t.Errorf("a percent on a track bar read from a file: %v", err)
+	}
+}
+
+// A group keeps what it shares with a field through YAML and the Studio: its
+// size, stretching and place, the alignment of what it holds, its colours
+// and the look of its title, its format and shortcut, and, for a group of
+// columns, its header and fixing.
+//
+// Defect caught: the width of a usual group (1619 times), the stretching or
+// the place of a group, the alignment of what a usual group holds (707), the
+// background of a group, the format of the title of a page, the picture in
+// the header of a group of columns, or a read-only group refused, so that
+// 9647 groups of the exports are not moved.
+func TestAGroupKeepsWhatItSharesWithAField(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Группа, kind: usual-group, width: 43, height: 2, horizontal_stretch: false," +
+		" vertical_stretch: true, group_horizontal_align: right, group_vertical_align: bottom, horizontal_align: center, vertical_align: top," +
+		" back_color: {source: system, name: ToolTipBackColor}, title_font: {source: auto}, title_text_color: {source: web, name: Gray}," +
+		" format: {ru: ДФ=dd.MM.yyyy}, shortcut: Cmd+S, read_only: true}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Страницы, kind: pages, read_only: true, children: [" +
+		"{id: c0de0000-0000-4000-8000-000000990003, name: Страница, kind: page, back_color: {source: auto}, format: {ru: ЧДЦ=0}}]}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Таблица, kind: table, children: [{id: c0de0000-0000-4000-8000-000000990005," +
+		" name: Колонки, kind: column-group, title_back_color: {source: auto}, header_picture: {standard: Change}, header_horizontal_align: center," +
+		" fixing_in_table: left, read_only: true}]}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990006, name: Меню, kind: popup, border_color: {source: auto}}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	group, page, columns := form.Items[0], form.Items[1].Children[0], form.Items[2].Children[0]
+	switch {
+	case group.Width != 43 || *group.HorizontalStretch || group.GroupHorizontalAlign != ItemHorizontalRight || group.HorizontalAlign != ItemHorizontalCenter:
+		t.Fatalf("usual group: %+v", group.FieldLayout)
+	case group.BackColor.Name != "ToolTipBackColor" || group.TitleTextColor.Name != "Gray" || group.Format["ru"] != "ДФ=dd.MM.yyyy" || group.Shortcut != "Cmd+S" || !group.ReadOnly:
+		t.Fatalf("usual group look: %+v", group)
+	case page.BackColor == nil || page.Format["ru"] != "ЧДЦ=0" || !form.Items[1].ReadOnly:
+		t.Fatalf("page: %+v", page)
+	case columns.HeaderPicture.Standard != "Change" || columns.HeaderHorizontalAlign != ItemHorizontalCenter || columns.FixingInTable != FormFixingLeft || columns.TitleBackColor == nil:
+		t.Fatalf("group of columns: %+v", columns)
+	case form.Items[3].BorderColor == nil:
+		t.Fatalf("popup: %+v", form.Items[3].FieldLook)
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil || !reflect.DeepEqual(again.Items, form.Items) {
+		t.Fatalf("written back: %v", err)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil || !reflect.DeepEqual(received.Items, form.Items) {
+		t.Fatalf("carried through the Studio: %v", err)
+	}
+}
+
+// Every property of a field, set alone on every group, is accepted where the
+// help and the prototype give that group the property and refused elsewhere.
+// The properties are taken from the groups of properties themselves, so that
+// one added to a field is checked here too.
+//
+// Defect caught: a group refused a property it holds - its width, its
+// colours, the header of a group of columns - or let through one it does not:
+// the font of the text of a field, a footer, the edit mode, a hint of input.
+func TestAGroupHoldsOnlyThePropertiesOfAFieldItIsGiven(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	yes, color, font := true, &ColorValue{Source: AutoColor}, &FontValue{Source: AutoFont}
+	behavior := FieldBehavior{TitleLocation: FormTitleTop, SkipOnInput: &yes, DefaultItem: true, EditMode: FormEditDirectly,
+		WarningOnEdit: LocalizedText{"ru": "Осторожно"}, WarningOnEditRepresentation: FormWarningOnEditShow, Shortcut: "F5"}
+	layout := FieldLayout{Width: 1, Height: 1, NoAutoMaxWidth: true, MaxWidth: 1, NoAutoMaxHeight: true, MaxHeight: 1, HorizontalStretch: &yes,
+		VerticalStretch: &yes, GroupHorizontalAlign: ItemHorizontalLeft, GroupVerticalAlign: ItemVerticalTop, HorizontalAlign: ItemHorizontalLeft,
+		VerticalAlign: ItemVerticalTop}
+	look := FieldLook{Font: font, TextColor: color, BackColor: color, BorderColor: color, Border: &BorderValue{Source: AbsoluteBorder, Line: SingleBorderLine, Width: 1}, TitleFont: font,
+		TitleTextColor: color, TitleBackColor: color, TitleHeight: 1}
+	column := FieldColumn{HiddenInHeader: true, HiddenInFooter: true, HeaderPicture: &PictureReference{Standard: "Change"},
+		FooterPicture: &PictureReference{Standard: "Change"}, HeaderHorizontalAlign: ItemHorizontalLeft, FooterText: LocalizedText{"ru": "Итого"},
+		FooterDataPath: "Объект.Сумма", FooterHorizontalAlign: ItemHorizontalLeft, FooterFont: font, FooterTextColor: color, FooterBackColor: color,
+		FixingInTable: FormFixingLeft, CellHyperlink: true, AutoCellHeight: true}
+	// What each group holds, written out from the help (FormGroup and the
+	// extension of each group) and the exports, apart from the map the check
+	// reads, so that a property left out of the map or given to a group too
+	// many shows here.
+	groups := formGroupKinds
+	areas := []FormElementKind{FormElementUsualGroup, FormElementPage}
+	columns := []FormElementKind{FormElementColumnGroup}
+	expected := map[string][]FormElementKind{
+		"width": groups, "height": groups, "horizontal_stretch": groups, "vertical_stretch": groups, "group_horizontal_align": groups,
+		"group_vertical_align": groups, "shortcut": groups, "title_font": groups, "title_text_color": groups,
+		"horizontal_align": areas, "vertical_align": areas, "back_color": {FormElementUsualGroup, FormElementPage, FormElementPopup},
+		"border_color": {FormElementPopup}, "title_back_color": columns, "header_picture": columns, "header_horizontal_align": columns,
+		"fixing_in_table": columns,
+	}
+	check := func(name string, kind FormElementKind, issues []string) {
+		allowed := slices.Contains(expected[name], kind)
+		if allowed && len(issues) != 0 || !allowed && len(issues) == 0 {
+			t.Errorf("%s alone on %s: %v", name, kind, issues)
+		}
+	}
+	each := func(full any, validate func(alone reflect.Value, kind FormElementKind) []string) {
+		value := reflect.ValueOf(full)
+		for index := range value.NumField() {
+			name, _, _ := strings.Cut(value.Type().Field(index).Tag.Get("yaml"), ",")
+			if value.Field(index).IsZero() {
+				t.Fatalf("%s is not set by the test", name)
+			}
+			for _, kind := range formGroupKinds {
+				alone := reflect.New(value.Type()).Elem()
+				alone.Field(index).Set(value.Field(index))
+				check(name, kind, validate(alone, kind))
+			}
+		}
+	}
+	class := func(kind FormElementKind) formElementClass { return formElementClasses[kind] }
+	each(behavior, func(alone reflect.Value, kind FormElementKind) []string {
+		return validateFormField("items[0]", alone.Interface().(FieldBehavior), class(kind), kind, configuration)
+	})
+	each(layout, func(alone reflect.Value, kind FormElementKind) []string {
+		return validateFieldLayout("items[0]", alone.Interface().(FieldLayout), class(kind), kind)
+	})
+	each(look, func(alone reflect.Value, kind FormElementKind) []string {
+		return validateFieldLook("items[0]", alone.Interface().(FieldLook), class(kind), kind)
+	})
+	each(column, func(alone reflect.Value, kind FormElementKind) []string {
+		return validateFieldColumn("items[0]", alone.Interface().(FieldColumn), class(kind), kind, configuration)
+	})
+	for _, kind := range formGroupKinds {
+		issues := validateFieldFormat("items[0]", FieldFormat{Format: LocalizedText{"ru": "ЧДЦ=2"}}, kind, configuration)
+		if want := kind == FormElementUsualGroup || kind == FormElementPage; want != (len(issues) == 0) {
+			t.Errorf("format alone on %s: %v", kind, issues)
+		}
 	}
 }
