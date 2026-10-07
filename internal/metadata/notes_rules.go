@@ -55,6 +55,7 @@ const (
 	NoteTextOfSpaces               NoteKind = "text-of-spaces"
 	NoteHelpInUndeclaredLanguage   NoteKind = "help-in-undeclared-language"
 	NotePlatformTypeByName         NoteKind = "platform-type-by-name"
+	NotePlatformValueByName        NoteKind = "platform-value-by-name"
 	NoteStandardFieldOfDocument    NoteKind = "standard-field-of-document"
 	NoteLeadingDataNotDimension    NoteKind = "leading-data-not-dimension"
 	NotePictureSettingsLeft        NoteKind = "picture-settings-without-picture"
@@ -196,6 +197,10 @@ func init() {
 			"Тип, который определяет платформа и которого модель не перечисляет поимённо (energy: Отбор, ТипДиаграммы), — " +
 				"у реквизита отчёта или обработки, в определяемом типе.",
 			"Тип несётся по имени и не исполняется: значение такого реквизита — Неопределено."},
+		NoteKindInfo{NotePlatformValueByName,
+			"Значение типа, который определяет платформа и которого модель не перечисляет поимённо, — вид счёта, вид сравнения " +
+				"компоновки — в списке выбора поля формы (вид счёта 6, вид сравнения 2) или в параметре выбора.",
+			"Значение несётся по имени типа и значения, как записано, и не исполняется: в список выбора и в отбор не попадает."},
 		NoteKindInfo{NoteStandardFieldOfDocument,
 			"Графа журнала или измерение последовательности берёт стандартный реквизит документа (Дата, Номер). " +
 				"Справка описывает обе ссылки как набор реквизитов документов, а стандартный реквизит объектом метаданных не является; " +
@@ -256,6 +261,7 @@ func init() {
 	noteRules[NoteTextOfSpaces] = noteTextOfSpaces
 	noteRules[NoteHelpInUndeclaredLanguage] = noteHelpInUndeclaredLanguage
 	noteRules[NotePlatformTypeByName] = notePlatformTypeByName
+	noteRules[NotePlatformValueByName] = notePlatformValueByName
 	noteRules[NoteStandardFieldOfDocument] = noteStandardFieldOfDocument
 	noteRules[NoteLeadingDataNotDimension] = noteLeadingDataNotDimension
 	noteRules[NotePictureSettingsLeft] = notePictureSettingsLeft
@@ -831,6 +837,24 @@ func notePlatformTypeByName(catalog *Catalog, note func(where, written string)) 
 			}
 		}
 	})
+}
+
+func notePlatformValueByName(catalog *Catalog, note func(where, written string)) {
+	eachNoteHolder(catalog, func(holder noteHolder) {
+		if holder.choice == nil {
+			return
+		}
+		for _, parameter := range holder.choice.Parameters {
+			for _, value := range parameter.Values {
+				if value.Kind == PlatformType {
+					note(holder.where+" choice parameter "+parameter.Name, value.Data)
+				}
+			}
+		}
+	})
+	for _, value := range catalog.formPlatformValues {
+		note(value.where, value.written)
+	}
 }
 
 func notePictureSettingsLeft(catalog *Catalog, note func(where, written string)) {

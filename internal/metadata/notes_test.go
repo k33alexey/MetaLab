@@ -202,6 +202,10 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		writeMetadata(t, root, DataProcessorKind, id, "format: 1\nid: "+id+"\nname: Заполнение\ntitle: {ru: Заполнение}\n"+
 			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Отбор, title: {ru: Отбор}, types: [{kind: platform, name: \"cfg:Filter\"}]}\n")
 	},
+	NotePlatformValueByName: func(t *testing.T, root string) {
+		noteCatalog(t, root, "", noteField("string", "    choice:\n"+
+			"      parameters: [{name: Отбор.ВидСчета, values: [{kind: platform, data: \"ent:AccountType.Active\"}]}]\n"))
+	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")

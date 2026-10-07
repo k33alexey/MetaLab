@@ -959,3 +959,31 @@ func validateInputFieldChoice(path string, choice InputFieldChoice, kind FormEle
 		FormIncompleteChoiceOnActivate, FormIncompleteChoiceOnEnterPressed)...)
 	return issues
 }
+
+// FormChoiceListItem is one value of the choice list of an input field or a
+// radio button field (help, ChoiceList, a value list): the value as written at
+// design time, its presentation in languages, and whether it is checked. The
+// prototype writes all three for each of 8247 items in the exports, never
+// checked; the presentation of the list item beside that of the value is
+// always empty there and is not carried.
+type FormChoiceListItem struct {
+	Value        Value         `yaml:"value" json:"value"`
+	Presentation LocalizedText `yaml:"presentation,omitempty" json:"presentation,omitempty"`
+	Check        bool          `yaml:"check,omitempty" json:"check,omitempty"`
+}
+
+func validateChoiceList(path string, list []FormChoiceListItem, kind FormElementKind, configuration project.Project) []string {
+	if len(list) == 0 {
+		return nil
+	}
+	if kind != FormElementInputField && kind != FormElementRadioButtonField {
+		return []string{path + ".choice_list is allowed only for input and radio button fields"}
+	}
+	var issues []string
+	for index, item := range list {
+		where := fmt.Sprintf("%s.choice_list[%d]", path, index)
+		issues = append(issues, validateDesignTimeValue(where+".value", item.Value)...)
+		issues = append(issues, validateTitle(where+".presentation", item.Presentation, configuration)...)
+	}
+	return issues
+}

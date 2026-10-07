@@ -18,6 +18,13 @@ type formTypeList struct {
 	types []Type
 }
 
+// formNoted is one place of a form a note is about, with what is written
+// there.
+type formNoted struct {
+	where   string
+	written string
+}
+
 // formTitle is the title of an attribute of a form or of a column of one,
 // with the place it stands, kept for the notes on texts.
 type formTitle struct {
@@ -126,7 +133,9 @@ func (catalog *Catalog) resolveFormExtension(form string, extension FormExtensio
 // takes its values from, which must be there and of the type taken, and the
 // common pictures drawn in the header and footer of a column and on the
 // choice button; the object whose form picks a value of an input field, and
-// the identifier of a choice form that is gone, which resolves to nothing.
+// the identifier of a choice form that is gone, which resolves to nothing; a
+// value of a choice list naming a type the project no longer has, a remnant,
+// and one of a type the platform defines, kept for the notes.
 func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElement) error {
 	for _, item := range items {
 		where := form + " element " + item.Name
@@ -150,6 +159,14 @@ func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElem
 		if form := item.ChoiceForm; form != nil && form.Object != nil {
 			if _, ok := catalog.objectKindByID[*form.Object]; !ok {
 				catalog.noteUnresolved(where+" choice_form", *form.Object)
+			}
+		}
+		for _, listed := range item.ChoiceList {
+			switch listed.Value.Kind {
+			case UnresolvedReferenceValue:
+				catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where + " choice list", Written: listed.Value.Data})
+			case PlatformType:
+				catalog.formPlatformValues = append(catalog.formPlatformValues, formNoted{where: where + " choice list", written: listed.Value.Data})
 			}
 		}
 		if item.ChoiceFormGone != nil {

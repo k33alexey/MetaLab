@@ -141,6 +141,9 @@ type ManagedFormElement struct {
 	FieldFormat `yaml:",inline"`
 	// InputFieldChoice is how a value of an input field is picked.
 	InputFieldChoice `yaml:",inline"`
+	// ChoiceList is the list a value of an input or a radio button field is
+	// picked from.
+	ChoiceList []FormChoiceListItem `yaml:"choice_list,omitempty" json:"choiceList,omitempty"`
 	// ButtonType is what a button is; only a button has one.
 	ButtonType FormButtonType `yaml:"button_type,omitempty" json:"buttonType,omitempty"`
 	// Orientation lays out what a usual group, a page or a group of columns
@@ -288,6 +291,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		issues = append(issues, validateFieldTextInput(current.path, item.FieldTextInput, item.Kind, configuration)...)
 		issues = append(issues, validateFieldFormat(current.path, item.FieldFormat, item.Kind, configuration)...)
 		issues = append(issues, validateInputFieldChoice(current.path, item.InputFieldChoice, item.Kind)...)
+		issues = append(issues, validateChoiceList(current.path, item.ChoiceList, item.Kind, configuration)...)
 		issues = append(issues, validateOwnPictureFiles(current.path, item)...)
 		if item.ReadOnly && class != formFieldClass && class != formTableClass {
 			issues = append(issues, current.path+".read_only is allowed only for fields and tables")

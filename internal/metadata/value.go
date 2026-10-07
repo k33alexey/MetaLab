@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	bslnumber "github.com/k33alexey/MetaLab/internal/bsl/number"
@@ -61,6 +62,16 @@ func validateDesignTimeValue(path string, value Value) []string {
 	case UnresolvedReferenceValue:
 		if value.Data == "" {
 			return []string{path + ".data must keep the reference as the prototype wrote it"}
+		}
+	case PlatformType:
+		// A value of a type the platform defines and the model does not list
+		// - a kind of account, a comparison of the data composition system -
+		// written as the prototype writes it: the type with its namespace and
+		// the value, "ent:AccountType.Active". Carried, not executed, and a
+		// note (NotePlatformValueByName).
+		dot := strings.LastIndex(value.Data, ".")
+		if dot <= 0 || dot == len(value.Data)-1 || strings.ContainsFunc(value.Data, unicode.IsSpace) || !value.Object.IsZero() {
+			return []string{path + ".data must be the type and the value as the prototype writes them, as ent:AccountType.Active"}
 		}
 	}
 	return nil

@@ -47,6 +47,7 @@ func cloneRuntimeFormElements(values []ManagedFormElement) []ManagedFormElement 
 		value.FieldTextInput = value.FieldTextInput.clone()
 		value.FieldFormat = value.FieldFormat.clone()
 		value.InputFieldChoice = value.InputFieldChoice.clone()
+		value.ChoiceList = cloneChoiceList(value.ChoiceList)
 		value.Children = cloneRuntimeFormElements(value.Children)
 		result[index] = value
 	}
@@ -98,6 +99,18 @@ func (choice InputFieldChoice) clone() InputFieldChoice {
 		choice.ChoiceForm = &copied
 	}
 	return choice
+}
+
+func cloneChoiceList(list []FormChoiceListItem) []FormChoiceListItem {
+	if list == nil {
+		return nil
+	}
+	result := make([]FormChoiceListItem, len(list))
+	for index, item := range list {
+		item.Presentation = maps.Clone(item.Presentation)
+		result[index] = item
+	}
+	return result
 }
 
 func (value *ColorValue) clone() *ColorValue {

@@ -1441,3 +1441,147 @@ func TestTheChoiceFormOfAnInputFieldIsResolved(t *testing.T) {
 		})
 	}
 }
+
+// An input field and a radio button field keep their choice lists through
+// YAML and the Studio: every kind of value the prototype writes there, its
+// presentation in languages, and whether it is checked.
+//
+// Defect caught: the choice list of a radio button refused, so that 1990 of
+// them are not moved; a value of an enumeration losing its object, Неопределено
+// read as an empty string, an empty string read as no value; a value of a
+// type the platform defines refused; a presentation or a check lost.
+func TestAFieldKeepsItsChoiceList(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Вид, kind: input-field, choice_list: [" +
+		"{value: {kind: enumeration, data: c0de0000-0000-4000-8000-000000000071, object: c0de0000-0000-4000-8000-000000000070}, presentation: {ru: Ввод, uk: Введення}}," +
+		" {value: {kind: string, data: \"\"}, presentation: {ru: Все}}, {value: {kind: undefined, data: \"\"}, check: true}," +
+		" {value: {kind: platform, data: \"ent:AccountType.Active\"}}," +
+		" {value: {kind: unresolved-reference, data: \"5647c4ea-0d6d-4d75-8261-5aa213fca033.bca5af74-66f6-44f5-8fa6-cee0b448788a\"}}]}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Режим, kind: radio-button-field, choice_list: [" +
+		"{value: {kind: number, data: \"0\"}, presentation: {ru: Исполнителю}}, {value: {kind: boolean, data: \"true\"}}]}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, radio := form.Items[0].ChoiceList, form.Items[1].ChoiceList
+	switch {
+	case len(list) != 5 || len(radio) != 2:
+		t.Fatalf("lists: %+v %+v", list, radio)
+	case list[0].Value.Kind != EnumerationType || list[0].Value.Object.String() != "c0de0000-0000-4000-8000-000000000070" || list[0].Presentation["uk"] != "Введення":
+		t.Fatalf("an enumeration value: %+v", list[0])
+	case list[1].Value != (Value{Kind: StringType}) || list[2].Value != (Value{Kind: UndefinedValue}) || list[1].Check || !list[2].Check:
+		t.Fatalf("an empty string and Неопределено: %+v %+v", list[1], list[2])
+	case list[3].Value != (Value{Kind: PlatformType, Data: "ent:AccountType.Active"}) || list[4].Value.Kind != UnresolvedReferenceValue:
+		t.Fatalf("a platform value and a remnant: %+v %+v", list[3], list[4])
+	case radio[0].Value != (Value{Kind: NumberType, Data: "0"}) || radio[0].Presentation["ru"] != "Исполнителю":
+		t.Fatalf("radio: %+v", radio)
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil || !reflect.DeepEqual(again.Items, form.Items) {
+		t.Fatalf("written back: %v", err)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil || !reflect.DeepEqual(received.Items, form.Items) {
+		t.Fatalf("carried through the Studio: %v", err)
+	}
+}
+
+// A choice list stands on an input and a radio button field only, and each
+// of its values is checked as a value written at design time is.
+//
+// Defect caught: a choice list kept on a label field or a check box; a value
+// that does not say its kind, read as an empty one; a value of a type the
+// platform defines without its type, with spaces or with an object; a
+// presentation in no printable characters.
+func TestAFieldRefusesAWrongChoiceList(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	for name, test := range map[string]struct{ element, want string }{
+		"у поля надписи": {"kind: label-field, choice_list: [{value: {kind: string, data: a}}]", "items[0].choice_list is allowed only for input and radio button fields"},
+		"у флажка":       {"kind: check-box-field, choice_list: [{value: {kind: string, data: a}}]", "items[0].choice_list is allowed only for input and radio button fields"},
+		"вид не назван":  {"kind: input-field, choice_list: [{value: {kind: \"\", data: \"\"}}]", "items[0].choice_list[0].value.kind must be named"},
+		"без типа":       {"kind: input-field, choice_list: [{value: {kind: platform, data: Active}}]", "items[0].choice_list[0].value.data must be the type and the value"},
+		"без значения":   {"kind: input-field, choice_list: [{value: {kind: platform, data: ent:AccountType.}}]", "items[0].choice_list[0].value.data must be the type and the value"},
+		"с пробелом":     {"kind: input-field, choice_list: [{value: {kind: platform, data: ent:Account Type.Active}}]", "items[0].choice_list[0].value.data must be the type and the value"},
+		"с объектом":     {"kind: input-field, choice_list: [{value: {kind: platform, data: ent:AccountType.Active, object: c0de0000-0000-4000-8000-000000000070}}]", "items[0].choice_list[0].value.data must be the type and the value"},
+		"представление":  {"kind: radio-button-field, choice_list: [{value: {kind: number, data: \"1\"}, presentation: {ru: \"\\x01\"}}]", "items[0].choice_list[0].presentation.ru must say something in printable characters"},
+		"второй элемент": {"kind: input-field, choice_list: [{value: {kind: string, data: a}}, {value: {kind: undefined, data: x}}]", "items[0].choice_list[1].value is undefined and carries nothing"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			source := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Элемент, " + test.element + "}\n")
+			_, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+// A value of a choice list naming a type the project no longer has is a
+// remnant, resolved to nothing; one of a type the platform defines is a note;
+// an ordinary one is neither.
+//
+// Defect caught: a remnant in a choice list loading clean, so that the field
+// offers a value of nothing and no one is told; a value of a type the
+// platform defines carried silently, though nothing executes it; a note on an
+// ordinary value, burying the real ones.
+func TestTheValuesOfAChoiceListAreResolved(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		value       string
+		unresolved  bool
+		noteWritten string
+	}{
+		"строка":        {value: "{kind: string, data: Все}"},
+		"остаток":       {value: "{kind: unresolved-reference, data: \"5647c4ea-0d6d-4d75-8261-5aa213fca033.bca5af74-66f6-44f5-8fa6-cee0b448788a\"}", unresolved: true},
+		"вид сравнения": {value: "{kind: platform, data: \"dcsset:DataCompositionComparisonType.Equal\"}", noteWritten: "dcsset:DataCompositionComparisonType.Equal"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := formReferencesProject(t)
+			path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			element := "items:\n  - {id: c0de0000-0000-4000-8000-000000990002, name: Поле, kind: input-field, choice_list: [{value: " + test.value + "}]}\n"
+			writeFile(t, path, strings.Replace(string(content), "attributes:\n", element+"attributes:\n", 1))
+			where := "catalog Номенклатура form ФормаЭлемента element Поле choice list"
+			if test.unresolved {
+				if found := unresolvedOf(t, root); !containsWhere(found, where) {
+					t.Fatalf("unresolved = %+v", found)
+				}
+				return
+			}
+			catalog, err := Load(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var noted []Note
+			for _, note := range catalog.Notes() {
+				if note.Kind == NotePlatformValueByName {
+					noted = append(noted, note)
+				}
+			}
+			switch {
+			case test.noteWritten == "" && len(noted) != 0:
+				t.Fatalf("an ordinary value is noted: %+v", noted)
+			case test.noteWritten != "" && (len(noted) != 1 || noted[0].Where != where || noted[0].Written != test.noteWritten):
+				t.Fatalf("notes = %+v", noted)
+			}
+		})
+	}
+}
