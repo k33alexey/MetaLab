@@ -328,23 +328,34 @@ func allDigits(value string) bool {
 var formGroupKinds = []FormElementKind{FormElementUsualGroup, FormElementPages, FormElementPage, FormElementColumnGroup,
 	FormElementPopup, FormElementButtonGroup}
 
+var (
+	button          = []FormElementKind{FormElementButton}
+	groupsAndButton = append([]FormElementKind{FormElementButton}, formGroupKinds...)
+)
+
 // fieldPropertyElsewhere lists, by the name a property of a field is written
 // under, the kinds of element other than fields that hold it too. The help
 // gives every group its size, its stretching, its place in its group, its
 // shortcut and the font and colour of its title (FormGroup); the extension of
 // each group gives the rest. The prototype writes each on these kinds, and
-// writes no other property of a field on a group.
+// writes no other property of a field on a group. A button has its size and
+// its limits, its place, its colours, font and border colour, the height of
+// its title, its shortcut, whether it is skipped on input and activated
+// first (help, FormButton; the prototype writes all but the shortcut).
 //
 // Two of them mean something else on a group than on a field, under the same
 // tag: horizontal_align is where a usual group or a page puts what it holds
 // (help, ChildItemsHorizontalAlign) and not where text stands in a column, and
 // vertical_align where it puts it up and down.
 var fieldPropertyElsewhere = map[string][]FormElementKind{
-	"width": formGroupKinds, "height": formGroupKinds, "horizontal_stretch": formGroupKinds, "vertical_stretch": formGroupKinds,
-	"group_horizontal_align": formGroupKinds, "group_vertical_align": formGroupKinds, "shortcut": formGroupKinds,
+	"width": groupsAndButton, "height": groupsAndButton, "horizontal_stretch": groupsAndButton, "vertical_stretch": groupsAndButton,
+	"group_horizontal_align": groupsAndButton, "group_vertical_align": groupsAndButton, "shortcut": groupsAndButton,
 	"title_font": formGroupKinds, "title_text_color": formGroupKinds,
 	"horizontal_align": {FormElementUsualGroup, FormElementPage}, "vertical_align": {FormElementUsualGroup, FormElementPage},
-	"back_color": {FormElementUsualGroup, FormElementPage, FormElementPopup}, "border_color": {FormElementPopup},
+	"back_color":        {FormElementUsualGroup, FormElementPage, FormElementPopup, FormElementButton},
+	"border_color":      {FormElementPopup, FormElementButton},
+	"no_auto_max_width": button, "max_width": button, "no_auto_max_height": button, "max_height": button,
+	"text_color": button, "font": button, "title_height": button, "skip_on_input": button, "default_item": button,
 	"title_back_color": {FormElementColumnGroup}, "header_picture": {FormElementColumnGroup},
 	"header_horizontal_align": {FormElementColumnGroup}, "fixing_in_table": {FormElementColumnGroup},
 }
@@ -1426,9 +1437,8 @@ type FormSelectionMode string
 // (help, ProgressBarSmoothingMode), how a usual group is set apart (help,
 // UsualGroupRepresentation), the tabs of pages (help,
 // FormPagesRepresentation - the prototype writes it as PagesRepresentation),
-// a popup as a button is (help, ButtonRepresentation), a button group (help,
-// ButtonGroupRepresentation), and buttons and tables where they are
-// described. The values allowed depend on the kind of element.
+// a button and a popup (help, ButtonRepresentation), a button group (help,
+// ButtonGroupRepresentation), and tables where they are described. The values allowed depend on the kind of element.
 type FormElementRepresentation string
 
 var (
@@ -1441,6 +1451,7 @@ var (
 		FormElementPages: {"auto", "none", "swipe", "tabs-on-top", "tabs-on-bottom", "tabs-on-left-horizontal",
 			"tabs-on-right-horizontal"},
 		FormElementPopup:       {"auto", "picture", "picture-and-text", "text"},
+		FormElementButton:      {"auto", "picture", "picture-and-text", "text"},
 		FormElementButtonGroup: {"auto", "compact", "usual"},
 	}
 )
@@ -1607,7 +1618,7 @@ type GroupProperties struct {
 	// TitleDataPath is the attribute shown in the title of a usual group or
 	// a page, written as the data path of a field is.
 	TitleDataPath string `yaml:"title_data_path,omitempty" json:"titleDataPath,omitempty"`
-	// Picture is drawn on the tab of a page and on a popup.
+	// Picture is drawn on the tab of a page, on a popup and on a button.
 	Picture *PictureReference `yaml:"picture,omitempty" json:"picture,omitempty"`
 	// ScrollOnCompress scrolls a page whose content is higher than the page;
 	// yes, no or not said, as the help gives Undefined beside the two and the
@@ -1626,7 +1637,7 @@ type GroupProperties struct {
 	// by default, and the prototype writes only the "on" (1046 times) - the
 	// other way round from a field, whose header is shown unless hidden.
 	ShowInHeader bool `yaml:"show_in_header,omitempty" json:"showInHeader,omitempty"`
-	// ShapeRepresentation is when the shape of a popup is drawn.
+	// ShapeRepresentation is when the shape of a popup or a button is drawn.
 	ShapeRepresentation FormShapeRepresentation `yaml:"shape_representation,omitempty" json:"shapeRepresentation,omitempty"`
 	// CommandSource is where a command bar, a button group or a popup takes
 	// the commands it fills itself with: the form, the global commands of
@@ -1674,13 +1685,13 @@ func validateGroupProperties(path string, group GroupProperties, kind FormElemen
 		only(property.name, property.set, "usual groups and pages", areas...)
 	}
 	only("hide_title", group.HideTitle, "usual groups, pages and groups of columns", FormElementUsualGroup, FormElementPage, FormElementColumnGroup)
-	only("picture", group.Picture != nil, "pages and popups", FormElementPage, FormElementPopup)
+	only("picture", group.Picture != nil, "pages, popups and buttons", FormElementPage, FormElementPopup, FormElementButton)
 	only("scroll_on_compress", group.ScrollOnCompress != nil, "pages", FormElementPage)
 	only("enable_content_change", group.EnableContentChange, "groups and command bars", append([]FormElementKind{FormElementCommandBar}, formGroupKinds...)...)
 	only("current_row_use", group.CurrentRowUse != "", "usual groups and pages", FormElementUsualGroup, FormElementPages)
 	only("associated_table", group.AssociatedTable != "", "usual groups and pages", FormElementUsualGroup, FormElementPages)
 	only("show_in_header", group.ShowInHeader, "groups of columns", FormElementColumnGroup)
-	only("shape_representation", group.ShapeRepresentation != "", "popups", FormElementPopup)
+	only("shape_representation", group.ShapeRepresentation != "", "popups and buttons", FormElementPopup, FormElementButton)
 	only("command_source", group.CommandSource != "", "command bars, button groups and popups", FormElementCommandBar,
 		FormElementButtonGroup, FormElementPopup)
 	issues = append(issues, oneOf(path+".behavior", group.Behavior, FormGroupBehaviorAuto, FormGroupBehaviorUsual,
@@ -1712,5 +1723,79 @@ func validateGroupProperties(path string, group GroupProperties, kind FormElemen
 		!formElementCode.MatchString(group.CommandSource) {
 		issues = append(issues, path+".command_source must be form, global-commands, Items.<name> or the code of an element of a form")
 	}
+	return issues
+}
+
+// FormLocationInCommandBar is where a button of a command bar stands (help,
+// ButtonLocationInCommandBar).
+type FormLocationInCommandBar string
+
+const (
+	FormLocationInCommandBarAuto                   FormLocationInCommandBar = "auto"
+	FormLocationInCommandBarInCommandBar           FormLocationInCommandBar = "in-command-bar"
+	FormLocationInAdditionalSubmenu                FormLocationInCommandBar = "in-additional-submenu"
+	FormLocationInCommandBarAndInAdditionalSubmenu FormLocationInCommandBar = "in-command-bar-and-in-additional-submenu"
+)
+
+// FormRepresentationInContextMenu is whether a button of a command bar is
+// shown in the context menu too. The help does not name it; the prototype
+// writes these three (405, 55 and 28 times), and leaves it out otherwise.
+type FormRepresentationInContextMenu string
+
+const (
+	FormInContextMenuNone       FormRepresentationInContextMenu = "none"
+	FormInContextMenuOnly       FormRepresentationInContextMenu = "only-in-context-menu"
+	FormInContextMenuAdditional FormRepresentationInContextMenu = "additional-in-context-menu"
+)
+
+// FormButtonShape is the shape of a button (help, ButtonShape).
+type FormButtonShape string
+
+const (
+	FormButtonShapeAuto  FormButtonShape = "auto"
+	FormButtonShapeUsual FormButtonShape = "usual"
+	FormButtonShapeOval  FormButtonShape = "oval"
+)
+
+// FormPictureLocation is where the picture of a button stands against its
+// text (help, FormButtonPictureLocation).
+type FormPictureLocation string
+
+const (
+	FormPictureLocationAuto  FormPictureLocation = "auto"
+	FormPictureLocationLeft  FormPictureLocation = "left"
+	FormPictureLocationRight FormPictureLocation = "right"
+)
+
+// ButtonProperties is what a button has of its own (help, FormButton),
+// besides its type, its picture, how it is drawn and its shape, which it
+// shares with a popup, and what it shares with a field.
+type ButtonProperties struct {
+	// Check shows a button pressed; the prototype writes only the "on" (57
+	// times).
+	Check bool `yaml:"check,omitempty" json:"check,omitempty"`
+	// DefaultButton is pressed by the Enter key of the form; the prototype
+	// writes only the "on" (4038 times).
+	DefaultButton               bool                            `yaml:"default_button,omitempty" json:"defaultButton,omitempty"`
+	LocationInCommandBar        FormLocationInCommandBar        `yaml:"location_in_command_bar,omitempty" json:"locationInCommandBar,omitempty"`
+	RepresentationInContextMenu FormRepresentationInContextMenu `yaml:"representation_in_context_menu,omitempty" json:"representationInContextMenu,omitempty"`
+	Shape                       FormButtonShape                 `yaml:"shape,omitempty" json:"shape,omitempty"`
+	PictureLocation             FormPictureLocation             `yaml:"picture_location,omitempty" json:"pictureLocation,omitempty"`
+}
+
+func validateButtonProperties(path string, properties ButtonProperties, kind FormElementKind) []string {
+	if properties == (ButtonProperties{}) {
+		return nil
+	}
+	if kind != FormElementButton {
+		return []string{path + " has what only a button has: check, default_button, location_in_command_bar, representation_in_context_menu, shape, picture_location"}
+	}
+	var issues []string
+	issues = append(issues, oneOf(path+".location_in_command_bar", properties.LocationInCommandBar, FormLocationInCommandBarAuto,
+		FormLocationInCommandBarInCommandBar, FormLocationInAdditionalSubmenu, FormLocationInCommandBarAndInAdditionalSubmenu)...)
+	issues = append(issues, oneOf(path+".representation_in_context_menu", properties.RepresentationInContextMenu, FormInContextMenuNone,
+		FormInContextMenuOnly, FormInContextMenuAdditional)...)
+	issues = append(issues, oneOf(path+".shape", properties.Shape, FormButtonShapeAuto, FormButtonShapeUsual, FormButtonShapeOval)...)
+	issues = append(issues, oneOf(path+".picture_location", properties.PictureLocation, FormPictureLocationAuto, FormPictureLocationLeft, FormPictureLocationRight)...)
 	return issues
 }

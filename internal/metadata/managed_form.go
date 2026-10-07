@@ -165,6 +165,8 @@ type ManagedFormElement struct {
 	FieldOther `yaml:",inline"`
 	// GroupProperties is what the groups have of their own.
 	GroupProperties `yaml:",inline"`
+	// ButtonProperties is what a button has of its own.
+	ButtonProperties `yaml:",inline"`
 	// ButtonType is what a button is; only a button has one.
 	ButtonType FormButtonType `yaml:"button_type,omitempty" json:"buttonType,omitempty"`
 	// Orientation lays out what a usual group, a page or a group of columns
@@ -325,6 +327,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		issues = append(issues, validateFieldDocument(current.path, item.FieldDocument, item.Kind)...)
 		issues = append(issues, validateFieldOther(current.path, item.FieldOther, item.Kind)...)
 		issues = append(issues, validateGroupProperties(current.path, item.GroupProperties, item.Kind, configuration)...)
+		issues = append(issues, validateButtonProperties(current.path, item.ButtonProperties, item.Kind)...)
 		if _, named := item.commandSourceItem(); item.AssociatedTable != "" || named {
 			associated = append(associated, pending{element: item, path: current.path})
 		}

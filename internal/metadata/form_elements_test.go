@@ -332,7 +332,7 @@ func TestAFieldRefusesWhatIsWrongInHowItIsEdited(t *testing.T) {
 	for name, test := range map[string]struct{ element, want string }{
 		"заголовок у группы":         {"kind: usual-group, title_location: top", "items[0] has what only a field has"},
 		"сочетание у декорации":      {"kind: label-decoration, shortcut: F5", "items[0] has what only a field has"},
-		"пропуск у кнопки":           {"kind: button, skip_on_input: true", "items[0] has what only a field has"},
+		"пропуск у строки поиска":    {"kind: search-string-addition, skip_on_input: true", "items[0] has what only a field has"},
 		"по умолчанию у группы":      {"kind: usual-group, default_item: true", "items[0] has what only a field has"},
 		"положение заголовка":        {"kind: input-field, title_location: center", "items[0].title_location must be auto, none, left, right, top or bottom"},
 		"режим редактирования":       {"kind: input-field, edit_mode: inline", "items[0].edit_mode must be enter, enter-on-input or directly"},
@@ -457,9 +457,9 @@ func TestAFieldRefusesWhatIsWrongInItsSize(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
 	for name, test := range map[string]struct{ element, want string }{
-		"автоширина у группы":      {"kind: usual-group, no_auto_max_width: true", "items[0] has the size and alignment of a field"},
-		"растягивание у кнопки":    {"kind: button, horizontal_stretch: true", "items[0] has the size and alignment of a field"},
-		"выравнивание у декорации": {"kind: label-decoration, horizontal_align: left", "items[0] has the size and alignment of a field"},
+		"автоширина у группы":       {"kind: usual-group, no_auto_max_width: true", "items[0] has the size and alignment of a field"},
+		"растягивание у дополнения": {"kind: view-status-addition, horizontal_stretch: true", "items[0] has the size and alignment of a field"},
+		"выравнивание у декорации":  {"kind: label-decoration, horizontal_align: left", "items[0] has the size and alignment of a field"},
 		"ширина":                  {"kind: input-field, width: -1", "items[0].width must not be negative"},
 		"высота":                  {"kind: input-field, height: -1", "items[0].height must not be negative"},
 		"максимальная ширина":     {"kind: input-field, max_width: -1", "items[0].max_width must not be negative"},
@@ -553,16 +553,16 @@ func TestAFieldRefusesWhatIsWrongInHowItIsDrawn(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
 	for name, test := range map[string]struct{ element, want string }{
-		"шрифт у группы":   {"kind: usual-group, font: {source: auto}", "items[0] has the look of a field"},
-		"цвет у кнопки":    {"kind: button, text_color: {source: auto}", "items[0] has the look of a field"},
-		"цвет не цвет":     {"kind: input-field, back_color: {source: absolute, rgb: red}", "items[0].back_color.rgb must be a colour written as #RRGGBB"},
-		"цвет заголовка":   {"kind: input-field, title_back_color: {source: style}", "items[0].title_back_color.from must name the style item"},
-		"шрифт без имени":  {"kind: input-field, title_font: {source: absolute, size: 10}", "items[0].title_font.face must name the font"},
-		"рамка толще":      {"kind: input-field, border: {source: absolute, line: single, width: 6}", "items[0].border.width must be between 0 and 5"},
-		"цвет рамки":       {"kind: input-field, border_color: {source: paint}", "items[0].border_color.source must be absolute, web, system, auto or style"},
-		"текст":            {"kind: input-field, text_color: {source: web}", "items[0].text_color.name must name a colour of the palette"},
-		"шрифт":            {"kind: input-field, font: {source: style, from: {standard: NormalTextFont}, scale: 1000}", "items[0].font.scale must be a percentage"},
-		"высота заголовка": {"kind: input-field, title_height: -1", "items[0].title_height must not be negative"},
+		"шрифт у группы":    {"kind: usual-group, font: {source: auto}", "items[0] has the look of a field"},
+		"цвет у дополнения": {"kind: search-control-addition, text_color: {source: auto}", "items[0] has the look of a field"},
+		"цвет не цвет":      {"kind: input-field, back_color: {source: absolute, rgb: red}", "items[0].back_color.rgb must be a colour written as #RRGGBB"},
+		"цвет заголовка":    {"kind: input-field, title_back_color: {source: style}", "items[0].title_back_color.from must name the style item"},
+		"шрифт без имени":   {"kind: input-field, title_font: {source: absolute, size: 10}", "items[0].title_font.face must name the font"},
+		"рамка толще":       {"kind: input-field, border: {source: absolute, line: single, width: 6}", "items[0].border.width must be between 0 and 5"},
+		"цвет рамки":        {"kind: input-field, border_color: {source: paint}", "items[0].border_color.source must be absolute, web, system, auto or style"},
+		"текст":             {"kind: input-field, text_color: {source: web}", "items[0].text_color.name must name a colour of the palette"},
+		"шрифт":             {"kind: input-field, font: {source: style, from: {standard: NormalTextFont}, scale: 1000}", "items[0].font.scale must be a percentage"},
+		"высота заголовка":  {"kind: input-field, title_height: -1", "items[0].title_height must not be negative"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -2304,7 +2304,7 @@ func TestEachPropertyOfTheOtherFieldsStandsOnItsField(t *testing.T) {
 			issues := validateFieldOther("items[0]", alone, kind)
 			refused := len(issues) == 1 && (strings.Contains(issues[0], "is allowed only for") || strings.Contains(issues[0], "is not a property of a "+string(kind)) ||
 				// The groups are drawn too, with values of their own.
-				name == "Representation" && slices.Contains([]FormElementKind{FormElementUsualGroup, FormElementPages, FormElementPopup, FormElementButtonGroup}, kind) &&
+				name == "Representation" && slices.Contains([]FormElementKind{FormElementUsualGroup, FormElementPages, FormElementPopup, FormElementButtonGroup, FormElementButton}, kind) &&
 					strings.Contains(issues[0], ".representation must be "))
 			if want := !slices.Contains(kinds, kind); want != refused || !want && len(issues) != 0 {
 				t.Errorf("%s alone on %s: %v", name, kind, issues)
@@ -2399,14 +2399,17 @@ func TestAGroupKeepsWhatItSharesWithAField(t *testing.T) {
 	}
 }
 
-// Every property of a field, set alone on every group, is accepted where the
-// help and the prototype give that group the property and refused elsewhere.
+// Every property of a field, set alone on every group and on a button, is
+// accepted where the help and the prototype give that element the property
+// and refused elsewhere.
 // The properties are taken from the groups of properties themselves, so that
 // one added to a field is checked here too.
 //
 // Defect caught: a group refused a property it holds - its width, its
-// colours, the header of a group of columns - or let through one it does not:
-// the font of the text of a field, a footer, the edit mode, a hint of input.
+// colours, the header of a group of columns, the colours, font and limits of
+// a button - or let through one it does not: the font of the text of a field
+// on a group, a footer, the edit mode, a hint of input, the title font of a
+// button.
 func TestAGroupHoldsOnlyThePropertiesOfAFieldItIsGiven(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
@@ -2426,15 +2429,18 @@ func TestAGroupHoldsOnlyThePropertiesOfAFieldItIsGiven(t *testing.T) {
 	// extension of each group) and the exports, apart from the map the check
 	// reads, so that a property left out of the map or given to a group too
 	// many shows here.
-	groups := formGroupKinds
+	groups := []FormElementKind{FormElementUsualGroup, FormElementPages, FormElementPage, FormElementColumnGroup, FormElementPopup, FormElementButtonGroup}
+	all := append([]FormElementKind{FormElementButton}, groups...)
 	areas := []FormElementKind{FormElementUsualGroup, FormElementPage}
 	columns := []FormElementKind{FormElementColumnGroup}
+	button := []FormElementKind{FormElementButton}
 	expected := map[string][]FormElementKind{
-		"width": groups, "height": groups, "horizontal_stretch": groups, "vertical_stretch": groups, "group_horizontal_align": groups,
-		"group_vertical_align": groups, "shortcut": groups, "title_font": groups, "title_text_color": groups,
-		"horizontal_align": areas, "vertical_align": areas, "back_color": {FormElementUsualGroup, FormElementPage, FormElementPopup},
-		"border_color": {FormElementPopup}, "title_back_color": columns, "header_picture": columns, "header_horizontal_align": columns,
-		"fixing_in_table": columns,
+		"width": all, "height": all, "horizontal_stretch": all, "vertical_stretch": all, "group_horizontal_align": all,
+		"group_vertical_align": all, "shortcut": all, "title_font": groups, "title_text_color": groups,
+		"horizontal_align": areas, "vertical_align": areas, "back_color": {FormElementUsualGroup, FormElementPage, FormElementPopup, FormElementButton},
+		"border_color": {FormElementPopup, FormElementButton}, "title_back_color": columns, "header_picture": columns, "header_horizontal_align": columns,
+		"fixing_in_table": columns, "no_auto_max_width": button, "max_width": button, "no_auto_max_height": button, "max_height": button,
+		"text_color": button, "font": button, "title_height": button, "skip_on_input": button, "default_item": button,
 	}
 	check := func(name string, kind FormElementKind, issues []string) {
 		allowed := slices.Contains(expected[name], kind)
@@ -2449,7 +2455,7 @@ func TestAGroupHoldsOnlyThePropertiesOfAFieldItIsGiven(t *testing.T) {
 			if value.Field(index).IsZero() {
 				t.Fatalf("%s is not set by the test", name)
 			}
-			for _, kind := range formGroupKinds {
+			for _, kind := range all {
 				alone := reflect.New(value.Type()).Elem()
 				alone.Field(index).Set(value.Field(index))
 				check(name, kind, validate(alone, kind))
@@ -2469,7 +2475,7 @@ func TestAGroupHoldsOnlyThePropertiesOfAFieldItIsGiven(t *testing.T) {
 	each(column, func(alone reflect.Value, kind FormElementKind) []string {
 		return validateFieldColumn("items[0]", alone.Interface().(FieldColumn), class(kind), kind, configuration)
 	})
-	for _, kind := range formGroupKinds {
+	for _, kind := range all {
 		issues := validateFieldFormat("items[0]", FieldFormat{Format: LocalizedText{"ru": "ЧДЦ=2"}}, kind, configuration)
 		if want := kind == FormElementUsualGroup || kind == FormElementPage; want != (len(issues) == 0) {
 			t.Errorf("format alone on %s: %v", kind, issues)
@@ -2602,8 +2608,8 @@ func TestEachPropertyOfAGroupStandsOnItsGroup(t *testing.T) {
 		"HideTitle": {FormElementUsualGroup, FormElementPage, FormElementColumnGroup}, "Behavior": usual, "NotUnited": usual, "Collapsed": usual,
 		"CollapsedTitle": usual, "ControlRepresentation": usual, "NoLeftMargin": usual, "ChildrenWidth": areas, "ItemsAndTitlesAlign": areas,
 		"HorizontalSpacing": areas, "VerticalSpacing": areas, "ThroughAlign": usual, "TitleDataPath": areas,
-		"Picture": {FormElementPage, FormElementPopup}, "ScrollOnCompress": {FormElementPage},
-		"ShowInHeader": {FormElementColumnGroup}, "ShapeRepresentation": {FormElementPopup},
+		"Picture": {FormElementPage, FormElementPopup, FormElementButton}, "ScrollOnCompress": {FormElementPage},
+		"ShowInHeader": {FormElementColumnGroup}, "ShapeRepresentation": {FormElementPopup, FormElementButton},
 		"CommandSource": {FormElementCommandBar, FormElementButtonGroup, FormElementPopup},
 		"EnableContentChange": {FormElementUsualGroup, FormElementPages, FormElementPage, FormElementColumnGroup, FormElementPopup, FormElementButtonGroup,
 			FormElementCommandBar},
@@ -2829,5 +2835,120 @@ func TestAGroupTakesItsCommandsFromItsForm(t *testing.T) {
 		if test.want == "" && err != nil || test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)) {
 			t.Errorf("%s: %v, want %q", name, err, test.want)
 		}
+	}
+}
+
+// A button keeps what it has of its own through YAML and the Studio, with
+// its picture, how it is drawn and its shape, and what it shares with a
+// field.
+//
+// Defect caught: a default button (4038 times), a button in the additional
+// submenu (6433), its picture (1751), its representation (5839), its colours
+// (346, 331, 518), its width (1148), its limits or its skipping on input
+// (10180) refused or lost, so that the buttons of the exports are not moved;
+// a button skipped on input written false read as not said.
+func TestAButtonKeepsWhatItHas(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Кнопка, kind: button, button_type: usual-button, check: true, default_button: true," +
+		" location_in_command_bar: in-command-bar-and-in-additional-submenu, representation_in_context_menu: only-in-context-menu, shape: oval," +
+		" picture_location: right, picture: {standard: Print, load_transparent: true}, representation: picture-and-text, shape_representation: when-active," +
+		" width: 12, height: 2, no_auto_max_width: true, max_width: 20, no_auto_max_height: true, max_height: 2, horizontal_stretch: true," +
+		" group_horizontal_align: right, back_color: {source: system, name: ButtonBackColor}, border_color: {source: web, name: Black}," +
+		" text_color: {source: auto}, font: {source: auto}, title_height: 2, skip_on_input: false, default_item: true, shortcut: F5}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	button := form.Items[0]
+	value := reflect.ValueOf(button.ButtonProperties)
+	for index := range value.NumField() {
+		if value.Field(index).IsZero() {
+			t.Errorf("%s is not set by the test", value.Type().Field(index).Name)
+		}
+	}
+	switch {
+	case !button.Check || !button.DefaultButton || button.LocationInCommandBar != FormLocationInCommandBarAndInAdditionalSubmenu ||
+		button.RepresentationInContextMenu != FormInContextMenuOnly || button.Shape != FormButtonShapeOval || button.PictureLocation != FormPictureLocationRight:
+		t.Fatalf("button: %+v", button.ButtonProperties)
+	case button.Picture.Standard != "Print" || button.Representation != "picture-and-text" || button.ShapeRepresentation != FormShapeWhenActive:
+		t.Fatalf("drawing: %+v", button.GroupProperties)
+	case button.Width != 12 || !button.NoAutoMaxWidth || button.MaxHeight != 2 || !*button.HorizontalStretch || button.GroupHorizontalAlign != ItemHorizontalRight:
+		t.Fatalf("size: %+v", button.FieldLayout)
+	case button.BackColor.Name != "ButtonBackColor" || button.BorderColor.Name != "Black" || button.TextColor == nil || button.Font == nil || button.TitleHeight != 2:
+		t.Fatalf("look: %+v", button.FieldLook)
+	case button.SkipOnInput == nil || *button.SkipOnInput || !button.DefaultItem || button.Shortcut != "F5":
+		t.Fatalf("input: %+v", button.FieldBehavior)
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(written), "skip_on_input: false\n") {
+		t.Fatalf("a button not skipped on input is not written:\n%s", written)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil || !reflect.DeepEqual(again.Items, form.Items) {
+		t.Fatalf("written back: %v", err)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil || !reflect.DeepEqual(received.Items, form.Items) {
+		t.Fatalf("carried through the Studio: %v", err)
+	}
+}
+
+// What only a button has is refused on every other kind of element, and a
+// value of the prototype's spelling or of another property is refused.
+//
+// Defect caught: a default button or a shape kept on a field or a group; the
+// prototype's "InAdditionalSubmenu", "OnlyInContextMenu" or "Oval" taken as
+// written; a location of a picture above the text, which a button of a form
+// does not have, accepted.
+func TestWhatOnlyAButtonHasStandsOnAButton(t *testing.T) {
+	t.Parallel()
+	full := ButtonProperties{Check: true, DefaultButton: true, LocationInCommandBar: FormLocationInCommandBarAuto,
+		RepresentationInContextMenu: FormInContextMenuNone, Shape: FormButtonShapeAuto, PictureLocation: FormPictureLocationAuto}
+	value := reflect.ValueOf(full)
+	for index := range value.NumField() {
+		name := value.Type().Field(index).Name
+		if value.Field(index).IsZero() {
+			t.Fatalf("%s is not set by the test", name)
+		}
+		for kind := range formElementClasses {
+			var alone ButtonProperties
+			reflect.ValueOf(&alone).Elem().Field(index).Set(value.Field(index))
+			issues := validateButtonProperties("items[0]", alone, kind)
+			refused := len(issues) == 1 && strings.HasPrefix(issues[0], "items[0] has what only a button has")
+			if want := kind != FormElementButton; want != refused || !want && len(issues) != 0 {
+				t.Errorf("%s alone on %s: %v", name, kind, issues)
+			}
+		}
+	}
+	for name, test := range map[string]struct {
+		properties ButtonProperties
+		want       string
+	}{
+		"место прототипа":  {ButtonProperties{LocationInCommandBar: "InAdditionalSubmenu"}, "items[0].location_in_command_bar must be auto, in-command-bar, in-additional-submenu or in-command-bar-and-in-additional-submenu"},
+		"меню прототипа":   {ButtonProperties{RepresentationInContextMenu: "OnlyInContextMenu"}, "items[0].representation_in_context_menu must be none, only-in-context-menu or additional-in-context-menu"},
+		"фигура прототипа": {ButtonProperties{Shape: "Oval"}, "items[0].shape must be auto, usual or oval"},
+		"картинка сверху":  {ButtonProperties{PictureLocation: "top"}, "items[0].picture_location must be auto, left or right"},
+	} {
+		if issues := validateButtonProperties("items[0]", test.properties, FormElementButton); !slices.Contains(issues, test.want) {
+			t.Errorf("%s: %v, want %q", name, issues, test.want)
+		}
+	}
+	if issues := validateFieldOther("items[0]", FieldOther{Representation: "PictureAndText"}, FormElementButton); !slices.Contains(issues, "items[0].representation must be auto, picture, picture-and-text or text") {
+		t.Errorf("the prototype's representation of a button: %v", issues)
+	}
+	form := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Группа, kind: usual-group, default_button: true}\n")
+	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(form), managedFormConfiguration()); err == nil || !strings.Contains(err.Error(), "items[0] has what only a button has") {
+		t.Errorf("a default group read from a file: %v", err)
 	}
 }
