@@ -2144,7 +2144,9 @@ func TestAFieldOfADocumentKeepsWhatItHas(t *testing.T) {
 //
 // Defect caught: a grid kept on a text document, the output on a check box,
 // an excluded command on an HTML document - or the reverse, the output
-// refused on a text or a formatted document, which the help gives one; an
+// refused on a text or a formatted document or a graphical schema, editing on
+// a graphical schema, dragging on a calendar or a planner, which the help
+// gives them and the exports write (4, 2 and 1 times); an
 // unknown mode accepted; an excluded command that is no name, or named
 // twice.
 func TestEachPropertyOfADocumentStandsOnItsFields(t *testing.T) {
@@ -2156,7 +2158,11 @@ func TestEachPropertyOfADocumentStandsOnItsFields(t *testing.T) {
 		ExcludedCommands: []string{"Print"}}
 	spreadsheet := []FormElementKind{FormElementSpreadsheetDocumentField}
 	allowed := map[string][]FormElementKind{
-		"Output":           {FormElementSpreadsheetDocumentField, FormElementTextDocumentField, FormElementHTMLDocumentField, FormElementFormattedDocumentField},
+		"Output": {FormElementSpreadsheetDocumentField, FormElementTextDocumentField, FormElementHTMLDocumentField, FormElementFormattedDocumentField,
+			FormElementGraphicalSchemaField},
+		"Edit":             {FormElementSpreadsheetDocumentField, FormElementGraphicalSchemaField},
+		"EnableDrag":       {FormElementSpreadsheetDocumentField, FormElementCalendarField, FormElementPlannerField},
+		"EnableStartDrag":  {FormElementSpreadsheetDocumentField, FormElementCalendarField, FormElementPlannerField},
 		"ExcludedCommands": {FormElementSpreadsheetDocumentField, FormElementFormattedDocumentField},
 	}
 	value := reflect.ValueOf(full)
@@ -2197,5 +2203,134 @@ func TestEachPropertyOfADocumentStandsOnItsFields(t *testing.T) {
 	form := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: text-document-field, show_grid: true}\n")
 	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(form), managedFormConfiguration()); err == nil || !strings.Contains(err.Error(), "items[0].show_grid is allowed only for spreadsheet document fields") {
 		t.Errorf("a grid on a text document read from a file: %v", err)
+	}
+}
+
+// A calendar, a progress bar and a track bar field keep what they have
+// through YAML and the Studio.
+//
+// Defect caught: a calendar sized by zero months - the width of the field
+// instead (12 times) - read as not said and drawn one month wide; the current
+// date turned off read as not said; the mode of selecting dates, the percent
+// or the drawing of a progress bar, or a step of a track bar lost or read
+// into a neighbour.
+func TestTheOtherFieldsKeepWhatTheyHave(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Календарь, kind: calendar-field, show_current_date: false," +
+		" width_in_months: 0, height_in_months: 2, show_months_panel: true, selection_mode: interval, enable_drag: true}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Ход, kind: progress-bar-field, show_percent: true, representation: broken-tilt, max_value: 99}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Бегунок, kind: track-bar-field, step: 5, large_step: 10, marking_step: 0.5, min_value: 1}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Схема, kind: graphical-schema-field, edit: false, output: disable}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calendar, bar, track := form.Items[0].FieldOther, form.Items[1].FieldOther, form.Items[2].FieldOther
+	merged := calendar
+	merged.ShowPercent, merged.Representation = bar.ShowPercent, bar.Representation
+	merged.Step, merged.LargeStep, merged.MarkingStep = track.Step, track.LargeStep, track.MarkingStep
+	value := reflect.ValueOf(merged)
+	for index := range value.NumField() {
+		if value.Field(index).IsZero() {
+			t.Errorf("%s is not set by the test", value.Type().Field(index).Name)
+		}
+	}
+	switch {
+	case calendar.ShowCurrentDate == nil || *calendar.ShowCurrentDate || calendar.WidthInMonths == nil || *calendar.WidthInMonths != 0 || *calendar.HeightInMonths != 2:
+		t.Fatalf("calendar: %+v", calendar)
+	case !calendar.ShowMonthsPanel || calendar.SelectionMode != "interval" || form.Items[0].EnableDrag == nil:
+		t.Fatalf("calendar modes: %+v", calendar)
+	case !bar.ShowPercent || bar.Representation != "broken-tilt" || form.Items[1].MaxValue != "99":
+		t.Fatalf("progress bar: %+v", bar)
+	case track.Step != "5" || track.LargeStep != "10" || track.MarkingStep != "0.5" || form.Items[2].MinValue != "1":
+		t.Fatalf("track bar: %+v", track)
+	case form.Items[3].Edit == nil || *form.Items[3].Edit || form.Items[3].Output != FormUseOutputDisable:
+		t.Fatalf("graphical schema: %+v", form.Items[3].FieldDocument)
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(written), "width_in_months: 0\n") {
+		t.Fatalf("zero months is not written:\n%s", written)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil || !reflect.DeepEqual(again.Items, form.Items) {
+		t.Fatalf("written back: %v", err)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil || !reflect.DeepEqual(received.Items, form.Items) {
+		t.Fatalf("carried through the Studio: %v", err)
+	}
+}
+
+// Each property of the other fields, set alone on every kind of element, is
+// accepted on the kind the help gives it and refused on any other; a mode
+// whose values depend on the kind is checked against the values of that
+// kind.
+//
+// Defect caught: months kept on a progress bar, a step on a calendar; a mode
+// of selecting dates accepted on a progress bar, or a drawing of a progress
+// bar on a calendar; a value of the prototype's spelling or of another kind
+// accepted; negative months; a step that is no number.
+func TestEachPropertyOfTheOtherFieldsStandsOnItsField(t *testing.T) {
+	t.Parallel()
+	no, zero := false, 0
+	full := FieldOther{ShowCurrentDate: &no, WidthInMonths: &zero, HeightInMonths: &zero, ShowMonthsPanel: true, SelectionMode: "single",
+		ShowPercent: true, Representation: "smooth", Step: "1", LargeStep: "1", MarkingStep: "1"}
+	calendar, bar, track := []FormElementKind{FormElementCalendarField}, []FormElementKind{FormElementProgressBarField}, []FormElementKind{FormElementTrackBarField}
+	allowed := map[string][]FormElementKind{
+		"ShowCurrentDate": calendar, "WidthInMonths": calendar, "HeightInMonths": calendar, "ShowMonthsPanel": calendar, "SelectionMode": calendar,
+		"ShowPercent": bar, "Representation": bar, "Step": track, "LargeStep": track, "MarkingStep": track,
+	}
+	value := reflect.ValueOf(full)
+	for index := range value.NumField() {
+		name := value.Type().Field(index).Name
+		kinds, known := allowed[name]
+		if !known || (value.Field(index).IsZero() && value.Field(index).Kind() != reflect.Pointer) {
+			t.Fatalf("%s is not set by the test", name)
+		}
+		for kind := range formElementClasses {
+			var alone FieldOther
+			reflect.ValueOf(&alone).Elem().Field(index).Set(value.Field(index))
+			issues := validateFieldOther("items[0]", alone, kind)
+			refused := len(issues) == 1 && (strings.Contains(issues[0], "is allowed only for") || strings.Contains(issues[0], "is not a property of a "+string(kind)))
+			if want := !slices.Contains(kinds, kind); want != refused || !want && len(issues) != 0 {
+				t.Errorf("%s alone on %s: %v", name, kind, issues)
+			}
+		}
+	}
+	negative := -1
+	for name, test := range map[string]struct {
+		other FieldOther
+		kind  FormElementKind
+		want  string
+	}{
+		"выделение прототипа":   {FieldOther{SelectionMode: "Interval"}, FormElementCalendarField, "items[0].selection_mode must be single, interval or multiple"},
+		"выделение индикатора":  {FieldOther{SelectionMode: "single"}, FormElementProgressBarField, "items[0].selection_mode is not a property of a progress-bar-field"},
+		"сглаживание прототипа": {FieldOther{Representation: "BrokenTilt"}, FormElementProgressBarField, "items[0].representation must be smooth, broken or broken-tilt"},
+		"сглаживание календаря": {FieldOther{Representation: "smooth"}, FormElementCalendarField, "items[0].representation is not a property of a calendar-field"},
+		"месяцы": {FieldOther{WidthInMonths: &negative}, FormElementCalendarField, "items[0].width_in_months must not be negative"},
+		"шаг":    {FieldOther{Step: "1e3"}, FormElementTrackBarField, "items[0].step must be a number written as decimal digits"},
+	} {
+		if issues := validateFieldOther("items[0]", test.other, test.kind); !slices.Contains(issues, test.want) {
+			t.Errorf("%s: %v, want %q", name, issues, test.want)
+		}
+	}
+	form := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: track-bar-field, step: \"5\"}\n")
+	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(form), managedFormConfiguration()); err == nil || !strings.Contains(err.Error(), "is not a number written as decimal digits") {
+		t.Errorf("a step in quotes read from a file: %v", err)
+	}
+	form = formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: track-bar-field, show_percent: true}\n")
+	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(form), managedFormConfiguration()); err == nil || !strings.Contains(err.Error(), "items[0].show_percent is allowed only for progress bar fields") {
+		t.Errorf("a percent on a track bar read from a file: %v", err)
 	}
 }

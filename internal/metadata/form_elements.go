@@ -1289,7 +1289,9 @@ const (
 )
 
 // FieldDocument is what the fields of a spreadsheet, text, HTML and formatted
-// document have (help, the extensions of a form field for each). Each
+// document have (help, the extensions of a form field for each), with what
+// the other fields share of it: a graphical schema is edited and printed, a
+// calendar and a planner are dragged. Each
 // property stands on the kinds of element it is written on; a table, a
 // decoration and the other fields add theirs where they are described.
 //
@@ -1340,15 +1342,18 @@ func validateFieldDocument(path string, document FieldDocument, kind FormElement
 	}{
 		{"vertical_scroll_bar", document.VerticalScrollBar != ""}, {"horizontal_scroll_bar", document.HorizontalScrollBar != ""},
 		{"view_scaling_mode", document.ViewScalingMode != ""}, {"selection_show_mode", document.SelectionShowMode != ""},
-		{"edit", document.Edit != nil}, {"protection", document.Protection != nil}, {"show_headers", document.ShowHeaders != nil},
+		{"protection", document.Protection != nil}, {"show_headers", document.ShowHeaders != nil},
 		{"show_grid", document.ShowGrid != nil}, {"show_groups", document.ShowGroups != nil}, {"show_cell_names", document.ShowCellNames != nil},
 		{"show_row_and_column_names", document.ShowRowAndColumnNames != nil},
-		{"enable_drag", document.EnableDrag != nil}, {"enable_start_drag", document.EnableStartDrag != nil},
 	} {
 		only(property.name, property.set, "spreadsheet document fields", spreadsheet...)
 	}
-	only("output", document.Output != "", "spreadsheet, text, HTML and formatted document fields", FormElementSpreadsheetDocumentField,
-		FormElementTextDocumentField, FormElementHTMLDocumentField, FormElementFormattedDocumentField)
+	only("edit", document.Edit != nil, "spreadsheet document and graphical schema fields", FormElementSpreadsheetDocumentField, FormElementGraphicalSchemaField)
+	dragging := []FormElementKind{FormElementSpreadsheetDocumentField, FormElementCalendarField, FormElementPlannerField}
+	only("enable_drag", document.EnableDrag != nil, "spreadsheet document, calendar and planner fields", dragging...)
+	only("enable_start_drag", document.EnableStartDrag != nil, "spreadsheet document, calendar and planner fields", dragging...)
+	only("output", document.Output != "", "spreadsheet, text, HTML and formatted document and graphical schema fields", FormElementSpreadsheetDocumentField,
+		FormElementTextDocumentField, FormElementHTMLDocumentField, FormElementFormattedDocumentField, FormElementGraphicalSchemaField)
 	only("excluded_commands", len(document.ExcludedCommands) != 0, "spreadsheet and formatted document fields",
 		FormElementSpreadsheetDocumentField, FormElementFormattedDocumentField)
 	scrollBars := []FormScrollBarUse{FormScrollBarAutoUse, FormScrollBarUseAlways, FormScrollBarDontUse}
@@ -1369,4 +1374,102 @@ func validateFieldDocument(path string, document FieldDocument, kind FormElement
 		seen[command] = true
 	}
 	return issues
+}
+
+// FormSelectionMode is how an element selects: the dates of a calendar field
+// (help, DateSelectionMode), and the rows of a table where a table is
+// described. The values allowed depend on the kind of element.
+type FormSelectionMode string
+
+// FormElementRepresentation is how an element is drawn: a progress bar
+// (help, ProgressBarSmoothingMode), and groups, buttons and tables where they
+// are described. The values allowed depend on the kind of element.
+type FormElementRepresentation string
+
+var (
+	formSelectionModes = map[FormElementKind][]FormSelectionMode{
+		FormElementCalendarField: {"single", "interval", "multiple"},
+	}
+	formRepresentations = map[FormElementKind][]FormElementRepresentation{
+		FormElementProgressBarField: {"smooth", "broken", "broken-tilt"},
+	}
+)
+
+// FieldOther is what a calendar, a progress bar and a track bar field have
+// (help, the extensions of a form field for each). A chart, a Gantt chart, a
+// planner and a graphical schema write nothing of their own in the exports
+// beyond what they share with the fields of documents (FieldDocument).
+type FieldOther struct {
+	// ShowCurrentDate shows the line of the current date in a calendar; yes,
+	// no or not said, as the help names no default and the prototype writes
+	// only false (12 times).
+	ShowCurrentDate *bool `yaml:"show_current_date,omitempty" json:"showCurrentDate,omitempty"`
+	// WidthInMonths and HeightInMonths size a calendar in months: one by
+	// default, and zero takes the width or height of the field instead - the
+	// prototype writes zero 12 times, so zero is said and nil is not.
+	WidthInMonths  *int `yaml:"width_in_months,omitempty" json:"widthInMonths,omitempty"`
+	HeightInMonths *int `yaml:"height_in_months,omitempty" json:"heightInMonths,omitempty"`
+	// ShowMonthsPanel shows the panel of months of a calendar; off by
+	// default.
+	ShowMonthsPanel bool              `yaml:"show_months_panel,omitempty" json:"showMonthsPanel,omitempty"`
+	SelectionMode   FormSelectionMode `yaml:"selection_mode,omitempty" json:"selectionMode,omitempty"`
+	// ShowPercent shows the percent in a progress bar; the prototype writes
+	// only the "on" (65 times).
+	ShowPercent    bool                      `yaml:"show_percent,omitempty" json:"showPercent,omitempty"`
+	Representation FormElementRepresentation `yaml:"representation,omitempty" json:"representation,omitempty"`
+	// Step, LargeStep and MarkingStep are how far a track bar moves on an
+	// arrow key and on a page key, and how often it is marked: numbers, as
+	// its bounds are.
+	Step        FormNumber `yaml:"step,omitempty" json:"step,omitempty"`
+	LargeStep   FormNumber `yaml:"large_step,omitempty" json:"largeStep,omitempty"`
+	MarkingStep FormNumber `yaml:"marking_step,omitempty" json:"markingStep,omitempty"`
+}
+
+func validateFieldOther(path string, other FieldOther, kind FormElementKind) []string {
+	var issues []string
+	only := func(name string, set bool, what string, kinds ...FormElementKind) {
+		if set && !slices.Contains(kinds, kind) {
+			issues = append(issues, path+"."+name+" is allowed only for "+what)
+		}
+	}
+	only("show_current_date", other.ShowCurrentDate != nil, "calendar fields", FormElementCalendarField)
+	only("width_in_months", other.WidthInMonths != nil, "calendar fields", FormElementCalendarField)
+	only("height_in_months", other.HeightInMonths != nil, "calendar fields", FormElementCalendarField)
+	only("show_months_panel", other.ShowMonthsPanel, "calendar fields", FormElementCalendarField)
+	only("show_percent", other.ShowPercent, "progress bar fields", FormElementProgressBarField)
+	only("step", other.Step != "", "track bar fields", FormElementTrackBarField)
+	only("large_step", other.LargeStep != "", "track bar fields", FormElementTrackBarField)
+	only("marking_step", other.MarkingStep != "", "track bar fields", FormElementTrackBarField)
+	for _, months := range []struct {
+		name  string
+		value *int
+	}{{"width_in_months", other.WidthInMonths}, {"height_in_months", other.HeightInMonths}} {
+		if months.value != nil && *months.value < 0 {
+			issues = append(issues, path+"."+months.name+" must not be negative")
+		}
+	}
+	issues = append(issues, oneOfKind(path+".selection_mode", other.SelectionMode, kind, formSelectionModes)...)
+	issues = append(issues, oneOfKind(path+".representation", other.Representation, kind, formRepresentations)...)
+	for _, step := range []struct {
+		name  string
+		value FormNumber
+	}{{"step", other.Step}, {"large_step", other.LargeStep}, {"marking_step", other.MarkingStep}} {
+		if step.value != "" && !decimalText.MatchString(string(step.value)) {
+			issues = append(issues, path+"."+step.name+" must be a number written as decimal digits")
+		}
+	}
+	return issues
+}
+
+// oneOfKind checks a value whose allowed values depend on the kind of the
+// element it stands on.
+func oneOfKind[T ~string](name string, value T, kind FormElementKind, allowed map[FormElementKind][]T) []string {
+	if value == "" {
+		return nil
+	}
+	values, ok := allowed[kind]
+	if !ok {
+		return []string{name + " is not a property of a " + string(kind)}
+	}
+	return oneOf(name, value, values...)
 }
