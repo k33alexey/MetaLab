@@ -1424,8 +1424,11 @@ type FormSelectionMode string
 
 // FormElementRepresentation is how an element is drawn: a progress bar
 // (help, ProgressBarSmoothingMode), how a usual group is set apart (help,
-// UsualGroupRepresentation), and the other groups, buttons and tables where
-// they are described. The values allowed depend on the kind of element.
+// UsualGroupRepresentation), the tabs of pages (help,
+// FormPagesRepresentation - the prototype writes it as PagesRepresentation),
+// a popup as a button is (help, ButtonRepresentation), a button group (help,
+// ButtonGroupRepresentation), and buttons and tables where they are
+// described. The values allowed depend on the kind of element.
 type FormElementRepresentation string
 
 var (
@@ -1435,6 +1438,10 @@ var (
 	formRepresentations = map[FormElementKind][]FormElementRepresentation{
 		FormElementProgressBarField: {"smooth", "broken", "broken-tilt"},
 		FormElementUsualGroup:       {"none", "weak-separation", "normal-separation", "strong-separation"},
+		FormElementPages: {"auto", "none", "swipe", "tabs-on-top", "tabs-on-bottom", "tabs-on-left-horizontal",
+			"tabs-on-right-horizontal"},
+		FormElementPopup:       {"auto", "picture", "picture-and-text", "text"},
+		FormElementButtonGroup: {"auto", "compact", "usual"},
 	}
 )
 
@@ -1547,11 +1554,29 @@ const (
 	FormUseDontUse FormUse = "dont-use"
 )
 
+// FormShapeRepresentation is when the shape of a button or a popup is drawn
+// (help, ButtonShapeRepresentation).
+type FormShapeRepresentation string
+
+const (
+	FormShapeAuto       FormShapeRepresentation = "auto"
+	FormShapeNone       FormShapeRepresentation = "none"
+	FormShapeAlways     FormShapeRepresentation = "always"
+	FormShapeWhenActive FormShapeRepresentation = "when-active"
+)
+
+// The sources of commands a command bar, a button group and a popup fill
+// themselves from besides an element of the form.
+const (
+	FormCommandSourceForm           = "form"
+	FormCommandSourceGlobalCommands = "global-commands"
+)
+
 // GroupProperties is what the groups have of their own (help, FormGroup and
 // the extension of each group): how a usual group is set apart, collapses
-// and lays out what it holds, what a page shows, and what every group lets
-// the user change. Pages, a group of columns, a popup and a button group add
-// theirs where they are described.
+// and lays out what it holds, what a page shows, what a group of columns
+// shows in the header, how a popup is drawn, where the commands of a group
+// of buttons come from, and what every group lets the user change.
 type GroupProperties struct {
 	// HideTitle hides the title of a usual group, a page and a group of
 	// columns; the prototype writes only the "off" (36478, 1043 and 85
@@ -1582,20 +1607,41 @@ type GroupProperties struct {
 	// TitleDataPath is the attribute shown in the title of a usual group or
 	// a page, written as the data path of a field is.
 	TitleDataPath string `yaml:"title_data_path,omitempty" json:"titleDataPath,omitempty"`
-	// Picture is drawn on the tab of a page.
+	// Picture is drawn on the tab of a page and on a popup.
 	Picture *PictureReference `yaml:"picture,omitempty" json:"picture,omitempty"`
 	// ScrollOnCompress scrolls a page whose content is higher than the page;
 	// yes, no or not said, as the help gives Undefined beside the two and the
 	// prototype writes true (45 times).
 	ScrollOnCompress *bool `yaml:"scroll_on_compress,omitempty" json:"scrollOnCompress,omitempty"`
-	// EnableContentChange lets the user change what a group holds; the
-	// prototype writes only the "on" (1049 times, on every group).
+	// EnableContentChange lets the user change what a group holds (help,
+	// FormGroup - a command bar is a group too); the prototype writes only
+	// the "on" (1240 times, on every group and on command bars).
 	EnableContentChange bool `yaml:"enable_content_change,omitempty" json:"enableContentChange,omitempty"`
 	// CurrentRowUse hides a usual group or pages in the mobile client and
 	// shows them from the context menu of a row of AssociatedTable, a table of
 	// the same form named by its element.
 	CurrentRowUse   FormUse `yaml:"current_row_use,omitempty" json:"currentRowUse,omitempty"`
 	AssociatedTable string  `yaml:"associated_table,omitempty" json:"associatedTable,omitempty"`
+	// ShowInHeader shows a group of columns in the header of its table; off
+	// by default, and the prototype writes only the "on" (1046 times) - the
+	// other way round from a field, whose header is shown unless hidden.
+	ShowInHeader bool `yaml:"show_in_header,omitempty" json:"showInHeader,omitempty"`
+	// ShapeRepresentation is when the shape of a popup is drawn.
+	ShapeRepresentation FormShapeRepresentation `yaml:"shape_representation,omitempty" json:"shapeRepresentation,omitempty"`
+	// CommandSource is where a command bar, a button group or a popup takes
+	// the commands it fills itself with: the form, the global commands of
+	// the form's command bar, or a field or a table of the same form,
+	// written "Items.<name>". The help does not name it; the prototype writes
+	// Form, FormCommandPanelGlobalCommands and Item.<name> (1740, 794 and 847
+	// times), and the code of an element (8, see validateFormLinkPath), which
+	// is carried as written.
+	CommandSource string `yaml:"command_source,omitempty" json:"commandSource,omitempty"`
+}
+
+// commandSourceItem is the name of the element a source of commands names,
+// if it names one.
+func (group GroupProperties) commandSourceItem() (string, bool) {
+	return strings.CutPrefix(group.CommandSource, "Items.")
 }
 
 func validateGroupProperties(path string, group GroupProperties, kind FormElementKind, configuration project.Project) []string {
@@ -1628,11 +1674,15 @@ func validateGroupProperties(path string, group GroupProperties, kind FormElemen
 		only(property.name, property.set, "usual groups and pages", areas...)
 	}
 	only("hide_title", group.HideTitle, "usual groups, pages and groups of columns", FormElementUsualGroup, FormElementPage, FormElementColumnGroup)
-	only("picture", group.Picture != nil, "pages", FormElementPage)
+	only("picture", group.Picture != nil, "pages and popups", FormElementPage, FormElementPopup)
 	only("scroll_on_compress", group.ScrollOnCompress != nil, "pages", FormElementPage)
-	only("enable_content_change", group.EnableContentChange, "groups", formGroupKinds...)
+	only("enable_content_change", group.EnableContentChange, "groups and command bars", append([]FormElementKind{FormElementCommandBar}, formGroupKinds...)...)
 	only("current_row_use", group.CurrentRowUse != "", "usual groups and pages", FormElementUsualGroup, FormElementPages)
 	only("associated_table", group.AssociatedTable != "", "usual groups and pages", FormElementUsualGroup, FormElementPages)
+	only("show_in_header", group.ShowInHeader, "groups of columns", FormElementColumnGroup)
+	only("shape_representation", group.ShapeRepresentation != "", "popups", FormElementPopup)
+	only("command_source", group.CommandSource != "", "command bars, button groups and popups", FormElementCommandBar,
+		FormElementButtonGroup, FormElementPopup)
 	issues = append(issues, oneOf(path+".behavior", group.Behavior, FormGroupBehaviorAuto, FormGroupBehaviorUsual,
 		FormGroupBehaviorCollapsible, FormGroupBehaviorPopUp)...)
 	issues = append(issues, validateTitle(path+".collapsed_title", group.CollapsedTitle, configuration)...)
@@ -1652,6 +1702,15 @@ func validateGroupProperties(path string, group GroupProperties, kind FormElemen
 	issues = append(issues, oneOf(path+".current_row_use", group.CurrentRowUse, FormUseAuto, FormUseYes, FormUseDontUse)...)
 	if group.AssociatedTable != "" && (!validIdentifier(group.AssociatedTable) || utf8.RuneCountInString(group.AssociatedTable) > maxNameLength) {
 		issues = append(issues, path+".associated_table must be the name of a table of the form")
+	}
+	issues = append(issues, oneOf(path+".shape_representation", group.ShapeRepresentation, FormShapeAuto, FormShapeNone, FormShapeAlways, FormShapeWhenActive)...)
+	if name, item := group.commandSourceItem(); item {
+		if !validIdentifier(name) || utf8.RuneCountInString(name) > maxNameLength {
+			issues = append(issues, path+".command_source must name an element of the form after Items.")
+		}
+	} else if group.CommandSource != "" && group.CommandSource != FormCommandSourceForm && group.CommandSource != FormCommandSourceGlobalCommands &&
+		!formElementCode.MatchString(group.CommandSource) {
+		issues = append(issues, path+".command_source must be form, global-commands, Items.<name> or the code of an element of a form")
 	}
 	return issues
 }

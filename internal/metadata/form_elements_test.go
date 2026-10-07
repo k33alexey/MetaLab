@@ -2303,8 +2303,9 @@ func TestEachPropertyOfTheOtherFieldsStandsOnItsField(t *testing.T) {
 			reflect.ValueOf(&alone).Elem().Field(index).Set(value.Field(index))
 			issues := validateFieldOther("items[0]", alone, kind)
 			refused := len(issues) == 1 && (strings.Contains(issues[0], "is allowed only for") || strings.Contains(issues[0], "is not a property of a "+string(kind)) ||
-				// A usual group is drawn too, with values of its own.
-				name == "Representation" && kind == FormElementUsualGroup && strings.Contains(issues[0], "representation must be none,"))
+				// The groups are drawn too, with values of their own.
+				name == "Representation" && slices.Contains([]FormElementKind{FormElementUsualGroup, FormElementPages, FormElementPopup, FormElementButtonGroup}, kind) &&
+					strings.Contains(issues[0], ".representation must be "))
 			if want := !slices.Contains(kinds, kind); want != refused || !want && len(issues) != 0 {
 				t.Errorf("%s alone on %s: %v", name, kind, issues)
 			}
@@ -2478,16 +2479,20 @@ func TestAGroupHoldsOnlyThePropertiesOfAFieldItIsGiven(t *testing.T) {
 
 // A group keeps what it has of its own through YAML and the Studio: how a
 // usual group is set apart, collapses and lays out what it holds, the
-// picture and scrolling of a page, the title hidden on a group of columns,
-// the right to change what a group holds, and the table whose current row a
-// group shows.
+// picture and scrolling of a page, the tabs of pages, the title hidden on a
+// group of columns and the group shown in the header, how a popup and a
+// button group are drawn and where they and a command bar take their
+// commands, the right to change what a group holds, and the table whose
+// current row a group shows.
 //
 // Defect caught: a usual group drawn with no frame (34472 times), its title
 // hidden (36478), collapsible (905), not united (1848) or collapsed (753)
 // refused or lost; the width of what it holds, the alignment of items and
 // titles, a spacing, the path to the data of its title, the picture of a
 // page or its scrolling lost; a page that does not scroll read as not said;
-// the table a group names lost on the way through the Studio.
+// the table a group names lost on the way through the Studio; the tabs of
+// pages (4040), a group of columns in the header (1046), the picture of a
+// popup (4097), or the source of commands of a button group (1920) lost.
 func TestAGroupKeepsWhatItHasOfItsOwn(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
@@ -2496,18 +2501,25 @@ func TestAGroupKeepsWhatItHasOfItsOwn(t *testing.T) {
 		" no_left_margin: true, children_width: left-narrowest, items_and_titles_align: items-right-titles-left, horizontal_spacing: one-and-half," +
 		" vertical_spacing: none, through_align: dont-use, title_data_path: Items.Список.CurrentData.Наименование, enable_content_change: true," +
 		" current_row_use: use, associated_table: таблица}\n" +
-		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Страницы, kind: pages, current_row_use: dont-use, associated_table: Таблица, children: [" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Страницы, kind: pages, representation: tabs-on-left-horizontal, current_row_use: dont-use," +
+		" associated_table: Таблица, children: [" +
 		"{id: c0de0000-0000-4000-8000-000000990003, name: Страница, kind: page, orientation: horizontal-if-possible, hide_title: true," +
 		" picture: {standard: Change, load_transparent: true}, scroll_on_compress: false, title_data_path: Объект.Товары.RowsCount}]}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Таблица, kind: table, children: [{id: c0de0000-0000-4000-8000-000000990005," +
-		" name: Колонки, kind: column-group, orientation: in-cell, hide_title: true, enable_content_change: true}]}\n"
+		" name: Колонки, kind: column-group, orientation: in-cell, hide_title: true, enable_content_change: true, show_in_header: true}]}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990006, name: Меню, kind: popup, picture: {standard: Print}, representation: picture-and-text," +
+		" shape_representation: when-active, command_source: global-commands}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990007, name: Кнопки, kind: button-group, representation: compact, command_source: Items.таблица}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990008, name: Панель, kind: command-bar, command_source: form}\n"
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
 	if err != nil {
 		t.Fatal(err)
 	}
 	group, pages, page, columns := form.Items[0], form.Items[1], form.Items[1].Children[0], form.Items[2].Children[0]
+	popup, buttons, bar := form.Items[3], form.Items[4], form.Items[5]
 	merged := group.GroupProperties
 	merged.Picture, merged.ScrollOnCompress = page.Picture, page.ScrollOnCompress
+	merged.ShowInHeader, merged.ShapeRepresentation, merged.CommandSource = columns.ShowInHeader, popup.ShapeRepresentation, popup.CommandSource
 	value := reflect.ValueOf(merged)
 	for index := range value.NumField() {
 		if value.Field(index).IsZero() {
@@ -2524,13 +2536,18 @@ func TestAGroupKeepsWhatItHasOfItsOwn(t *testing.T) {
 		t.Fatalf("layout: %+v", group.GroupProperties)
 	case group.TitleDataPath != "Items.Список.CurrentData.Наименование" || !group.EnableContentChange || group.CurrentRowUse != FormUseYes || group.AssociatedTable != "таблица":
 		t.Fatalf("data: %+v", group.GroupProperties)
-	case pages.CurrentRowUse != FormUseDontUse || pages.AssociatedTable != "Таблица":
+	case pages.Representation != "tabs-on-left-horizontal" || pages.CurrentRowUse != FormUseDontUse || pages.AssociatedTable != "Таблица":
 		t.Fatalf("pages: %+v", pages.GroupProperties)
 	case page.Orientation != FormHorizontalIfPossible || !page.HideTitle || page.Picture.Standard != "Change" || !page.Picture.LoadTransparent ||
 		page.ScrollOnCompress == nil || *page.ScrollOnCompress || page.TitleDataPath != "Объект.Товары.RowsCount":
 		t.Fatalf("page: %+v", page.GroupProperties)
-	case columns.Orientation != FormInCell || !columns.HideTitle || !columns.EnableContentChange:
+	case columns.Orientation != FormInCell || !columns.HideTitle || !columns.EnableContentChange || !columns.ShowInHeader:
 		t.Fatalf("group of columns: %+v", columns.GroupProperties)
+	case popup.Picture.Standard != "Print" || popup.Representation != "picture-and-text" || popup.ShapeRepresentation != FormShapeWhenActive ||
+		popup.CommandSource != FormCommandSourceGlobalCommands:
+		t.Fatalf("popup: %+v", popup.GroupProperties)
+	case buttons.Representation != "compact" || buttons.CommandSource != "Items.таблица" || bar.CommandSource != FormCommandSourceForm:
+		t.Fatalf("buttons: %+v, %+v", buttons.GroupProperties, bar.GroupProperties)
 	}
 	written, err := yaml.Marshal(form)
 	if err != nil {
@@ -2574,7 +2591,8 @@ func TestEachPropertyOfAGroupStandsOnItsGroup(t *testing.T) {
 	full := GroupProperties{HideTitle: true, Behavior: FormGroupBehaviorUsual, NotUnited: true, Collapsed: true, CollapsedTitle: LocalizedText{"ru": "Итог"},
 		ControlRepresentation: FormGroupControlPicture, NoLeftMargin: true, ChildrenWidth: ChildrenWidthEqual, ItemsAndTitlesAlign: ItemsAndTitlesNone,
 		HorizontalSpacing: ItemSpacingHalf, VerticalSpacing: ItemSpacingDouble, ThroughAlign: FormUseYes, TitleDataPath: "Объект.Валюта",
-		Picture: &PictureReference{Standard: "Change"}, ScrollOnCompress: &yes, EnableContentChange: true, CurrentRowUse: FormUseAuto, AssociatedTable: "Список"}
+		Picture: &PictureReference{Standard: "Change"}, ScrollOnCompress: &yes, EnableContentChange: true, CurrentRowUse: FormUseAuto, AssociatedTable: "Список",
+		ShowInHeader: true, ShapeRepresentation: FormShapeNone, CommandSource: "Items.Список"}
 	// Written out from the help (the extension of each group) and the
 	// exports, apart from the checks, so that a property given to a group
 	// too many or too few shows here.
@@ -2584,9 +2602,12 @@ func TestEachPropertyOfAGroupStandsOnItsGroup(t *testing.T) {
 		"HideTitle": {FormElementUsualGroup, FormElementPage, FormElementColumnGroup}, "Behavior": usual, "NotUnited": usual, "Collapsed": usual,
 		"CollapsedTitle": usual, "ControlRepresentation": usual, "NoLeftMargin": usual, "ChildrenWidth": areas, "ItemsAndTitlesAlign": areas,
 		"HorizontalSpacing": areas, "VerticalSpacing": areas, "ThroughAlign": usual, "TitleDataPath": areas,
-		"Picture": {FormElementPage}, "ScrollOnCompress": {FormElementPage},
-		"EnableContentChange": {FormElementUsualGroup, FormElementPages, FormElementPage, FormElementColumnGroup, FormElementPopup, FormElementButtonGroup},
-		"CurrentRowUse":       {FormElementUsualGroup, FormElementPages}, "AssociatedTable": {FormElementUsualGroup, FormElementPages},
+		"Picture": {FormElementPage, FormElementPopup}, "ScrollOnCompress": {FormElementPage},
+		"ShowInHeader": {FormElementColumnGroup}, "ShapeRepresentation": {FormElementPopup},
+		"CommandSource": {FormElementCommandBar, FormElementButtonGroup, FormElementPopup},
+		"EnableContentChange": {FormElementUsualGroup, FormElementPages, FormElementPage, FormElementColumnGroup, FormElementPopup, FormElementButtonGroup,
+			FormElementCommandBar},
+		"CurrentRowUse": {FormElementUsualGroup, FormElementPages}, "AssociatedTable": {FormElementUsualGroup, FormElementPages},
 	}
 	value := reflect.ValueOf(full)
 	for index := range value.NumField() {
@@ -2609,18 +2630,22 @@ func TestEachPropertyOfAGroupStandsOnItsGroup(t *testing.T) {
 		group GroupProperties
 		want  string
 	}{
-		"поведение прототипа":    {GroupProperties{Behavior: "PopUp"}, "items[0].behavior must be auto, usual, collapsible or popup"},
-		"управление":             {GroupProperties{ControlRepresentation: "auto"}, "items[0].control_representation must be picture or title-hyperlink"},
-		"ширина подчинённых":     {GroupProperties{ChildrenWidth: "wide"}, "items[0].children_width must be auto, equal, left-narrowest, left-narrow, left-wide or left-widest"},
-		"выравнивание":           {GroupProperties{ItemsAndTitlesAlign: "ItemsLeftTitlesLeft"}, "items[0].items_and_titles_align must be auto, none, items-left-titles-left, items-left-titles-right, items-right-titles-left, items-right-titles-right or titles-left-data-auto"},
-		"интервал":               {GroupProperties{VerticalSpacing: "triple"}, "items[0].vertical_spacing must be auto, none, half, single, one-and-half or double"},
-		"сквозное":               {GroupProperties{ThroughAlign: "Use"}, "items[0].through_align must be auto, use or dont-use"},
-		"текущая строка":         {GroupProperties{CurrentRowUse: "yes"}, "items[0].current_row_use must be auto, use or dont-use"},
-		"путь заголовка":         {GroupProperties{TitleDataPath: " Объект.Валюта"}, "items[0].title_data_path must be a data path without surrounding spaces"},
-		"путь не путь":           {GroupProperties{TitleDataPath: "Объект..Валюта"}, "items[0].title_data_path must be names separated by dots, each with an index if any"},
-		"картинка двумя":         {GroupProperties{Picture: &PictureReference{Standard: "Change", File: "Picture.png"}}, "items[0].picture names more than one of a standard picture, a common picture and a file"},
-		"таблица не именем":      {GroupProperties{AssociatedTable: "Items.Список"}, "items[0].associated_table must be the name of a table of the form"},
-		"заголовок не код языка": {GroupProperties{CollapsedTitle: LocalizedText{"русский язык": "Итог"}}, "items[0].collapsed_title"},
+		"поведение прототипа":          {GroupProperties{Behavior: "PopUp"}, "items[0].behavior must be auto, usual, collapsible or popup"},
+		"управление":                   {GroupProperties{ControlRepresentation: "auto"}, "items[0].control_representation must be picture or title-hyperlink"},
+		"ширина подчинённых":           {GroupProperties{ChildrenWidth: "wide"}, "items[0].children_width must be auto, equal, left-narrowest, left-narrow, left-wide or left-widest"},
+		"выравнивание":                 {GroupProperties{ItemsAndTitlesAlign: "ItemsLeftTitlesLeft"}, "items[0].items_and_titles_align must be auto, none, items-left-titles-left, items-left-titles-right, items-right-titles-left, items-right-titles-right or titles-left-data-auto"},
+		"интервал":                     {GroupProperties{VerticalSpacing: "triple"}, "items[0].vertical_spacing must be auto, none, half, single, one-and-half or double"},
+		"сквозное":                     {GroupProperties{ThroughAlign: "Use"}, "items[0].through_align must be auto, use or dont-use"},
+		"текущая строка":               {GroupProperties{CurrentRowUse: "yes"}, "items[0].current_row_use must be auto, use or dont-use"},
+		"путь заголовка":               {GroupProperties{TitleDataPath: " Объект.Валюта"}, "items[0].title_data_path must be a data path without surrounding spaces"},
+		"путь не путь":                 {GroupProperties{TitleDataPath: "Объект..Валюта"}, "items[0].title_data_path must be names separated by dots, each with an index if any"},
+		"картинка двумя":               {GroupProperties{Picture: &PictureReference{Standard: "Change", File: "Picture.png"}}, "items[0].picture names more than one of a standard picture, a common picture and a file"},
+		"фигура прототипа":             {GroupProperties{ShapeRepresentation: "WhenActive"}, "items[0].shape_representation must be auto, none, always or when-active"},
+		"источник прототипа":           {GroupProperties{CommandSource: "FormCommandPanelGlobalCommands"}, "items[0].command_source must be form, global-commands, Items.<name> or the code of an element of a form"},
+		"источник элементом прототипа": {GroupProperties{CommandSource: "Item.Список"}, "items[0].command_source must be form, global-commands, Items.<name> or the code of an element of a form"},
+		"источник не именем":           {GroupProperties{CommandSource: "Items.Список.CurrentData"}, "items[0].command_source must name an element of the form after Items."},
+		"таблица не именем":            {GroupProperties{AssociatedTable: "Items.Список"}, "items[0].associated_table must be the name of a table of the form"},
+		"заголовок не код языка":       {GroupProperties{CollapsedTitle: LocalizedText{"русский язык": "Итог"}}, "items[0].collapsed_title"},
 	} {
 		issues := validateGroupProperties("items[0]", test.group, FormElementUsualGroup, configuration)
 		if !slices.ContainsFunc(issues, func(issue string) bool { return strings.HasPrefix(issue, test.want) }) {
@@ -2634,6 +2659,11 @@ func TestEachPropertyOfAGroupStandsOnItsGroup(t *testing.T) {
 	}{
 		{FormElementUsualGroup, "NormalSeparation", "items[0].representation must be none, weak-separation, normal-separation or strong-separation"},
 		{FormElementPage, "none", "items[0].representation is not a property of a page"},
+		{FormElementColumnGroup, "none", "items[0].representation is not a property of a column-group"},
+		{FormElementPages, "TabsOnTop", "items[0].representation must be auto, none, swipe, tabs-on-top, tabs-on-bottom, tabs-on-left-horizontal or tabs-on-right-horizontal"},
+		{FormElementPages, "compact", "items[0].representation must be auto, none, swipe, tabs-on-top, tabs-on-bottom, tabs-on-left-horizontal or tabs-on-right-horizontal"},
+		{FormElementPopup, "PictureAndText", "items[0].representation must be auto, picture, picture-and-text or text"},
+		{FormElementButtonGroup, "none", "items[0].representation must be auto, compact or usual"},
 	} {
 		if issues := validateFieldOther("items[0]", FieldOther{Representation: FormElementRepresentation(test.value)}, test.kind); !slices.Contains(issues, test.want) {
 			t.Errorf("representation %s on %s: %v, want %q", test.value, test.kind, issues, test.want)
@@ -2766,5 +2796,38 @@ func TestThePictureOfAPageIsResolved(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A command bar, a button group and a popup take their commands from the
+// form, from the global commands, from a field or a table of the same form
+// named in any case wherever it stands, or from the code of an element,
+// which is carried as written.
+//
+// Defect caught: a field or a table standing after the group not found; a
+// name in another case refused; a group, a button or a name of nothing taken
+// for the source; the code of an element (8 times in the exports) refused,
+// so that the form is not moved.
+func TestAGroupTakesItsCommandsFromItsForm(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		items string
+		want  string
+	}{
+		"таблица после, другой регистр": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Кнопки, kind: button-group, command_source: Items.список}\n" +
+			"  - {id: c0de0000-0000-4000-8000-000000990002, name: Список, kind: table}\n", ""},
+		"поле документа": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Панель, kind: command-bar, command_source: Items.Документ}\n" +
+			"  - {id: c0de0000-0000-4000-8000-000000990002, name: Документ, kind: formatted-document-field}\n", ""},
+		"форма":           {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Меню, kind: popup, command_source: form}\n", ""},
+		"глобальные":      {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Меню, kind: popup, command_source: global-commands}\n", ""},
+		"код элемента":    {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Кнопки, kind: button-group, command_source: \"19:02023637-7868-4a5f-8576-835a76e0c9ba\"}\n", ""},
+		"группа":          {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Кнопки, kind: button-group, command_source: Items.Кнопки}\n", "items[0].command_source names no field or table of the form"},
+		"нет такого":      {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Кнопки, kind: button-group, command_source: Items.Список}\n", "items[0].command_source names no field or table of the form"},
+		"источник у поля": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, command_source: form}\n", "items[0].command_source is allowed only for command bars, button groups and popups"},
+	} {
+		_, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(test.items)), managedFormConfiguration())
+		if test.want == "" && err != nil || test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)) {
+			t.Errorf("%s: %v, want %q", name, err, test.want)
+		}
 	}
 }

@@ -270,9 +270,10 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		stack = append(stack, pending{element: item, path: fmt.Sprintf("items[%d]", index)})
 	}
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
-	// A group names the table whose current row it shows; the table is
-	// found once the whole form is walked, as it may stand after the group.
-	tables, associated := map[string]bool{}, []pending(nil)
+	// A group names the table whose current row it shows, and the field or
+	// table it takes commands from; each is found once the whole form is
+	// walked, as it may stand after the group.
+	sources, associated := map[string]FormElementKind{}, []pending(nil)
 	for id := range commandIDs {
 		ids[id] = true
 	}
@@ -324,11 +325,11 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		issues = append(issues, validateFieldDocument(current.path, item.FieldDocument, item.Kind)...)
 		issues = append(issues, validateFieldOther(current.path, item.FieldOther, item.Kind)...)
 		issues = append(issues, validateGroupProperties(current.path, item.GroupProperties, item.Kind, configuration)...)
-		if item.AssociatedTable != "" {
+		if _, named := item.commandSourceItem(); item.AssociatedTable != "" || named {
 			associated = append(associated, pending{element: item, path: current.path})
 		}
-		if item.Kind == FormElementTable {
-			tables[folded] = true
+		if class == formTableClass || class == formFieldClass {
+			sources[folded] = item.Kind
 		}
 		issues = append(issues, validateOwnPictureFiles(current.path, item)...)
 		// The help gives every group whether it is read only (FormGroup), and
@@ -371,8 +372,11 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		}
 	}
 	for _, group := range associated {
-		if !tables[strings.ToLower(group.element.AssociatedTable)] {
+		if table := group.element.AssociatedTable; table != "" && sources[strings.ToLower(table)] != FormElementTable {
 			issues = append(issues, group.path+".associated_table names no table of the form")
+		}
+		if name, named := group.element.commandSourceItem(); named && sources[strings.ToLower(name)] == "" {
+			issues = append(issues, group.path+".command_source names no field or table of the form")
 		}
 	}
 	issues = append(issues, validateFormAttributes(value.Attributes, ids, configuration)...)
