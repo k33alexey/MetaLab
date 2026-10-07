@@ -1,8 +1,12 @@
 package metadata
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
+
+	"go.yaml.in/yaml/v3"
 
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -780,5 +784,99 @@ func validateFieldTextInput(path string, input FieldTextInput, kind FormElementK
 	issues = append(issues, oneOf(path+".auto_correction", input.AutoCorrection, uses...)...)
 	issues = append(issues, oneOf(path+".height_control_variant", input.HeightControlVariant,
 		FormHeightControlAuto, FormHeightControlUseContentHeight, FormHeightControlUseHeightInFormRows)...)
+	return issues
+}
+
+// FormNumber is a number an element of a form is given, as the prototype
+// writes it there - always a decimal (xs:decimal), never a string. It is kept
+// as its digits, so that no decimal is rounded on the way, and YAML and JSON
+// carry it as a number: a number in quotes is refused, as is anything that is
+// not decimal digits with an optional sign and fraction.
+type FormNumber string
+
+// MarshalYAML writes the number as a number.
+func (number FormNumber) MarshalYAML() (any, error) {
+	tag := "!!int"
+	if strings.Contains(string(number), ".") {
+		tag = "!!float"
+	}
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: tag, Value: string(number)}, nil
+}
+
+// UnmarshalYAML reads a number written as one.
+func (number *FormNumber) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.ScalarNode || (node.ShortTag() != "!!int" && node.ShortTag() != "!!float") || !decimalText.MatchString(node.Value) {
+		return fmt.Errorf("line %d: %q is not a number written as decimal digits", node.Line, node.Value)
+	}
+	*number = FormNumber(node.Value)
+	return nil
+}
+
+// MarshalJSON writes the number as a number.
+func (number FormNumber) MarshalJSON() ([]byte, error) {
+	if !decimalText.MatchString(string(number)) {
+		return nil, fmt.Errorf("%q is not a number written as decimal digits", string(number))
+	}
+	return []byte(number), nil
+}
+
+// UnmarshalJSON reads a number written as one.
+func (number *FormNumber) UnmarshalJSON(data []byte) error {
+	if !decimalText.Match(data) {
+		return fmt.Errorf("%s is not a number written as decimal digits", data)
+	}
+	*number = FormNumber(data)
+	return nil
+}
+
+// FieldFormat is how a field shows a value and bounds a number (help, the
+// extensions of a form field). Each property stands on the fields the help
+// gives it, which are the fields the prototype writes it on.
+type FieldFormat struct {
+	// Format is how the value is shown, on an input and a label field;
+	// EditFormat how it is shown while edited, on an input field, and on a
+	// check box the text of true and false shown as a tumbler. Both are
+	// written in languages, as the format of an attribute is.
+	Format     LocalizedText `yaml:"format,omitempty" json:"format,omitempty"`
+	EditFormat LocalizedText `yaml:"edit_format,omitempty" json:"editFormat,omitempty"`
+	// MinValue and MaxValue bound the number entered in an input field, and
+	// the scale of a track bar and a progress bar. Neither is checked against
+	// the other: the exports never set the minimum above the maximum, and
+	// nothing says the designer refuses to keep it.
+	MinValue FormNumber `yaml:"min_value,omitempty" json:"minValue,omitempty"`
+	MaxValue FormNumber `yaml:"max_value,omitempty" json:"maxValue,omitempty"`
+	// MarkNegatives shows a number below zero in red, on an input and a label
+	// field, and AutoMarkIncomplete marks an input field holding the empty
+	// value of its type. Each is yes, no or not said: the help gives each
+	// Undefined, chosen by the attribute, and the prototype writes both true
+	// and false (235 and 17, 1410 and 302 times).
+	MarkNegatives      *bool `yaml:"mark_negatives,omitempty" json:"markNegatives,omitempty"`
+	AutoMarkIncomplete *bool `yaml:"auto_mark_incomplete,omitempty" json:"autoMarkIncomplete,omitempty"`
+}
+
+func validateFieldFormat(path string, format FieldFormat, kind FormElementKind, configuration project.Project) []string {
+	var issues []string
+	only := func(name string, set bool, what string, kinds ...FormElementKind) {
+		if set && !slices.Contains(kinds, kind) {
+			issues = append(issues, path+"."+name+" is allowed only for "+what)
+		}
+	}
+	only("format", len(format.Format) != 0, "input and label fields", FormElementInputField, FormElementLabelField)
+	only("edit_format", len(format.EditFormat) != 0, "input fields and check boxes", FormElementInputField, FormElementCheckBoxField)
+	bounded := []FormElementKind{FormElementInputField, FormElementTrackBarField, FormElementProgressBarField}
+	only("min_value", format.MinValue != "", "input fields, track bars and progress bars", bounded...)
+	only("max_value", format.MaxValue != "", "input fields, track bars and progress bars", bounded...)
+	only("mark_negatives", format.MarkNegatives != nil, "input and label fields", FormElementInputField, FormElementLabelField)
+	only("auto_mark_incomplete", format.AutoMarkIncomplete != nil, "input fields", FormElementInputField)
+	issues = append(issues, validateTitle(path+".format", format.Format, configuration)...)
+	issues = append(issues, validateTitle(path+".edit_format", format.EditFormat, configuration)...)
+	for _, bound := range []struct {
+		name  string
+		value FormNumber
+	}{{"min_value", format.MinValue}, {"max_value", format.MaxValue}} {
+		if bound.value != "" && !decimalText.MatchString(string(bound.value)) {
+			issues = append(issues, path+"."+bound.name+" must be a number written as decimal digits")
+		}
+	}
 	return issues
 }

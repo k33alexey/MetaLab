@@ -1126,3 +1126,156 @@ func TestEveryPropertyOfTextInputStandsOnlyOnAnInputField(t *testing.T) {
 		}
 	}
 }
+
+// A field keeps how it shows a value and bounds a number through YAML and the
+// Studio, each property on the fields the help gives it.
+//
+// Defect caught: a format, a bound or a mark lost or read into a neighbour; a
+// mark of negatives written false read as not said; a bound rounded on the
+// way - a decimal of more digits than a float holds; the format of a label
+// field, the format of a check box shown as a tumbler (93 times) or the scale
+// of a progress bar refused, so that the form is not moved.
+func TestAFieldKeepsItsFormatAndBounds(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Сумма, kind: input-field, format: {ru: ЧДЦ=2, uk: ЧДЦ=2}," +
+		" edit_format: {ru: ЧГ=0}, min_value: -12345678901234567890.123456789, max_value: 65535," +
+		" mark_negatives: false, auto_mark_incomplete: true}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Дата, kind: label-field, format: {ru: ДЛФ=D}, mark_negatives: true}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Флажок, kind: check-box-field, edit_format: {ru: БЛ=Нет; БИ=Да}}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Ход, kind: progress-bar-field, min_value: 0, max_value: 100.50}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	format := form.Items[0].FieldFormat
+	value := reflect.ValueOf(format)
+	for index := range value.NumField() {
+		if value.Field(index).IsZero() {
+			t.Errorf("%s is not set by the test", value.Type().Field(index).Name)
+		}
+	}
+	switch {
+	case format.Format["uk"] != "ЧДЦ=2" || format.EditFormat["ru"] != "ЧГ=0":
+		t.Fatalf("formats: %+v %+v", format.Format, format.EditFormat)
+	case format.MinValue != "-12345678901234567890.123456789" || format.MaxValue != "65535":
+		t.Fatalf("bounds: %q %q", format.MinValue, format.MaxValue)
+	case *format.MarkNegatives || !*format.AutoMarkIncomplete:
+		t.Fatalf("marks: %v %v", *format.MarkNegatives, *format.AutoMarkIncomplete)
+	case form.Items[1].Format["ru"] != "ДЛФ=D" || !*form.Items[1].MarkNegatives:
+		t.Fatalf("label field: %+v", form.Items[1].FieldFormat)
+	case form.Items[2].EditFormat["ru"] != "БЛ=Нет; БИ=Да":
+		t.Fatalf("check box: %+v", form.Items[2].FieldFormat)
+	case form.Items[3].MinValue != "0" || form.Items[3].MaxValue != "100.50":
+		t.Fatalf("progress bar: %+v", form.Items[3].FieldFormat)
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(written), "min_value: -12345678901234567890.123456789\n") || !strings.Contains(string(written), "max_value: 100.50\n") {
+		t.Fatalf("a bound is not written as a number:\n%s", written)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil || !reflect.DeepEqual(again.Items, form.Items) {
+		t.Fatalf("written back: %v", err)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(carried), `"minValue":-12345678901234567890.123456789`) {
+		t.Fatalf("a bound is not carried as a number: %s", carried)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil || !reflect.DeepEqual(received.Items, form.Items) {
+		t.Fatalf("carried through the Studio: %v", err)
+	}
+}
+
+// A bound is a number: one in quotes, in another notation or not a number at
+// all is refused in YAML and in the Studio alike, and a format is checked as
+// a text in languages.
+//
+// Defect caught: a bound kept as a string, as the attribute keeps its own, so
+// that "100" and 100 are two different values; an exponent or a hexadecimal
+// accepted and read otherwise than written; a format in no printable
+// characters.
+func TestAFieldRefusesWrongFormatAndBounds(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	for name, test := range map[string]struct{ element, want string }{
+		"строка":        {"min_value: \"100\"", `"100" is not a number written as decimal digits`},
+		"степень":       {"max_value: 1e3", `"1e3" is not a number written as decimal digits`},
+		"шестнадцатая":  {"max_value: 0x10", `"0x10" is not a number written as decimal digits`},
+		"бесконечность": {"min_value: .inf", `".inf" is not a number written as decimal digits`},
+		"список":        {"min_value: [1]", "is not a number written as decimal digits"},
+		"формат":        {"format: {ru: \"\\x01\"}", "items[0].format.ru must say something in printable characters"},
+		"формат ред.":   {"edit_format: {ru: \"\\x01\"}", "items[0].edit_format.ru must say something in printable characters"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			source := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Элемент, kind: input-field, " + test.element + "}\n")
+			_, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+	for _, body := range []string{`"100"`, `1e3`, `"x"`, `true`} {
+		var number FormNumber
+		if err := json.Unmarshal([]byte(body), &number); err == nil {
+			t.Errorf("the Studio sends %s as a bound and it is accepted as %q", body, number)
+		}
+	}
+	for _, bound := range []FormNumber{"1e3", "true", "1,5"} {
+		if _, err := json.Marshal(FieldFormat{MinValue: bound}); err == nil {
+			t.Errorf("a bound %q that is no number is sent to the Studio", bound)
+		}
+	}
+	if issues := validateFieldFormat("items[0]", FieldFormat{MinValue: "1e3"}, FormElementInputField, configuration); len(issues) != 1 ||
+		issues[0] != "items[0].min_value must be a number written as decimal digits" {
+		t.Errorf("a bound set in code to no number: %v", issues)
+	}
+}
+
+// Each property of the format, set alone on every kind of element, is
+// accepted on the fields the help gives it and refused on any other.
+//
+// Defect caught: a format kept on a check box, a bound on a label field, a
+// mark of negatives on a progress bar - or the reverse, a property refused on
+// a field the prototype writes it on.
+func TestEachPropertyOfAFormatStandsOnItsFields(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	yes := true
+	full := FieldFormat{Format: LocalizedText{"ru": "ЧДЦ=2"}, EditFormat: LocalizedText{"ru": "ЧДЦ=2"}, MinValue: "1", MaxValue: "2",
+		MarkNegatives: &yes, AutoMarkIncomplete: &yes}
+	allowed := map[string][]FormElementKind{
+		"Format":             {FormElementInputField, FormElementLabelField},
+		"EditFormat":         {FormElementInputField, FormElementCheckBoxField},
+		"MinValue":           {FormElementInputField, FormElementTrackBarField, FormElementProgressBarField},
+		"MaxValue":           {FormElementInputField, FormElementTrackBarField, FormElementProgressBarField},
+		"MarkNegatives":      {FormElementInputField, FormElementLabelField},
+		"AutoMarkIncomplete": {FormElementInputField},
+	}
+	value := reflect.ValueOf(full)
+	for index := range value.NumField() {
+		name := value.Type().Field(index).Name
+		kinds, known := allowed[name]
+		if !known || value.Field(index).IsZero() {
+			t.Fatalf("%s is not set by the test", name)
+		}
+		for kind := range formElementClasses {
+			var alone FieldFormat
+			reflect.ValueOf(&alone).Elem().Field(index).Set(value.Field(index))
+			issues := validateFieldFormat("items[0]", alone, kind, configuration)
+			if want := !slices.Contains(kinds, kind); want != (len(issues) == 1 && strings.Contains(issues[0], "is allowed only for")) || !want && len(issues) != 0 {
+				t.Errorf("%s alone on %s: %v", name, kind, issues)
+			}
+		}
+	}
+}
