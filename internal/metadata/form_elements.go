@@ -324,9 +324,10 @@ func allDigits(value string) bool {
 	return value != ""
 }
 
-// formGroupKinds are the groups of a form.
+// formGroupKinds are the groups of a form: a command bar is one too (help,
+// FormGroupType), and has what every group has.
 var formGroupKinds = []FormElementKind{FormElementUsualGroup, FormElementPages, FormElementPage, FormElementColumnGroup,
-	FormElementPopup, FormElementButtonGroup}
+	FormElementPopup, FormElementButtonGroup, FormElementCommandBar}
 
 var (
 	button          = []FormElementKind{FormElementButton}
@@ -345,13 +346,15 @@ var (
 //
 // Two of them mean something else on a group than on a field, under the same
 // tag: horizontal_align is where a usual group or a page puts what it holds
-// (help, ChildItemsHorizontalAlign) and not where text stands in a column, and
-// vertical_align where it puts it up and down.
+// (help, ChildItemsHorizontalAlign) and a command bar its buttons (help,
+// HorizontalAlign of a command bar - the prototype writes HorizontalLocation,
+// Auto included), not where text stands in a column, and vertical_align where
+// a usual group or a page puts what it holds up and down.
 var fieldPropertyElsewhere = map[string][]FormElementKind{
 	"width": groupsAndButton, "height": groupsAndButton, "horizontal_stretch": groupsAndButton, "vertical_stretch": groupsAndButton,
 	"group_horizontal_align": groupsAndButton, "group_vertical_align": groupsAndButton, "shortcut": groupsAndButton,
 	"title_font": formGroupKinds, "title_text_color": formGroupKinds,
-	"horizontal_align": {FormElementUsualGroup, FormElementPage}, "vertical_align": {FormElementUsualGroup, FormElementPage},
+	"horizontal_align": {FormElementUsualGroup, FormElementPage, FormElementCommandBar}, "vertical_align": {FormElementUsualGroup, FormElementPage},
 	"back_color":        {FormElementUsualGroup, FormElementPage, FormElementPopup, FormElementButton},
 	"border_color":      {FormElementPopup, FormElementButton},
 	"no_auto_max_width": button, "max_width": button, "no_auto_max_height": button, "max_height": button,
@@ -1687,7 +1690,7 @@ func validateGroupProperties(path string, group GroupProperties, kind FormElemen
 	only("hide_title", group.HideTitle, "usual groups, pages and groups of columns", FormElementUsualGroup, FormElementPage, FormElementColumnGroup)
 	only("picture", group.Picture != nil, "pages, popups and buttons", FormElementPage, FormElementPopup, FormElementButton)
 	only("scroll_on_compress", group.ScrollOnCompress != nil, "pages", FormElementPage)
-	only("enable_content_change", group.EnableContentChange, "groups and command bars", append([]FormElementKind{FormElementCommandBar}, formGroupKinds...)...)
+	only("enable_content_change", group.EnableContentChange, "groups", formGroupKinds...)
 	only("current_row_use", group.CurrentRowUse != "", "usual groups and pages", FormElementUsualGroup, FormElementPages)
 	only("associated_table", group.AssociatedTable != "", "usual groups and pages", FormElementUsualGroup, FormElementPages)
 	only("show_in_header", group.ShowInHeader, "groups of columns", FormElementColumnGroup)

@@ -26,6 +26,7 @@ func cloneRuntimeForm(value ManagedForm) ManagedForm {
 		result.Commands[index].Title = cloneTitle(command.Title)
 	}
 	result.Items = cloneRuntimeFormElements(value.Items)
+	result.AutoCommandBar = value.AutoCommandBar.clone()
 	result.Attributes = cloneFormAttributes(value.Attributes)
 	return result
 }
@@ -62,6 +63,7 @@ func cloneRuntimeFormElements(values []ManagedFormElement) []ManagedFormElement 
 		value.CollapsedTitle = maps.Clone(value.CollapsedTitle)
 		value.Picture = value.Picture.clone()
 		value.ScrollOnCompress = clonePointer(value.ScrollOnCompress)
+		value.ContextMenu, value.AutoCommandBar = value.ContextMenu.clone(), value.AutoCommandBar.clone()
 		value.Children = cloneRuntimeFormElements(value.Children)
 		result[index] = value
 	}

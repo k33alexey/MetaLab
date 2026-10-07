@@ -67,10 +67,10 @@ func validateOwnPictureFiles(path string, element ManagedFormElement) []string {
 func validateFormItemPictureFiles(folder string, form ManagedForm) error {
 	base := filepath.Join(folder, project.FormItemsDirectory)
 	elements := map[string]ManagedFormElement{}
-	stack := append([]ManagedFormElement(nil), form.Items...)
+	stack := append([]ManagedFormElement(nil), form.FormItems()...)
 	for len(stack) > 0 {
 		element := stack[len(stack)-1]
-		stack = append(stack[:len(stack)-1], element.Children...)
+		stack = append(stack[:len(stack)-1], element.Nested()...)
 		elements[strings.ToLower(element.Name)] = element
 		for _, picture := range element.ownPictures() {
 			if err := requirePictureFile("element "+element.Name+" "+picture.name, findFolded(base, element.Name), picture.value); err != nil {

@@ -61,6 +61,7 @@ const (
 	NotePictureSettingsLeft        NoteKind = "picture-settings-without-picture"
 	NoteChartHoldsNothing          NoteKind = "chart-value-type-holds-nothing"
 	NoteFormReferenceAsWritten     NoteKind = "form-reference-as-written"
+	NoteRepeatedElementName        NoteKind = "repeated-element-name"
 )
 
 func init() {
@@ -228,6 +229,10 @@ func init() {
 				"пути к данным, пути к данным заголовка и путях связей поля; на что такая ссылка указывает, не установлено " +
 				"(открытый вопрос карты блоков о коде элемента формы).",
 			"Ссылка несётся как записана и ни на что не указывает: кнопка без команды, панель без источника, поле и заголовок без данных, связь не действует."},
+		NoteKindInfo{NoteRepeatedElementName,
+			"Имя повторяется у нескольких элементов одной формы. Дополнения таблицы и контекстные меню прототип называет сам " +
+				"(«Addition», «ContextMenu») и сохраняет повтор, если имя не изменили: в выгрузках так три формы. Имя других элементов уникально.",
+			"Элементы несутся как записаны; из кода по такому имени однозначно не обратиться, исполнение выберет один из них."},
 	)
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
@@ -273,6 +278,9 @@ func init() {
 	noteRules[NoteLeadingDataNotDimension] = noteLeadingDataNotDimension
 	noteRules[NotePictureSettingsLeft] = notePictureSettingsLeft
 	noteRules[NoteChartHoldsNothing] = noteChartHoldsNothing
+	noteRules[NoteRepeatedElementName] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NoteRepeatedElementName, note)
+	}
 	noteRules[NoteFormReferenceAsWritten] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteFormReferenceAsWritten, note)
 	}

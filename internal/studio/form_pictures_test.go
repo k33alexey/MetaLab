@@ -269,3 +269,64 @@ func TestAFormSaveFailingInTheMiddlePutsThePicturesBack(t *testing.T) {
 		t.Fatalf("finish: err = %v", err)
 	}
 }
+
+// A button of a context menu or of the command bar of the form is an element
+// with pictures of its own like any other: renamed, its folder goes with it;
+// removed, its folder goes away.
+//
+// Defect caught: the buttons of menus and command bars left out of the
+// elements the save looks at, so that renaming one leaves its pictures
+// under the old name and the project no longer loads.
+func TestTheButtonsOfMenusTakeTheirPicturesAlong(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		change func(form *metadata.ManagedForm)
+		want   []string
+	}{
+		"кнопка меню": {func(form *metadata.ManagedForm) {
+			form.Items[0].Children[0].ContextMenu.Children[0].Name = "Распечатать"
+		}, []string{"Записать/Picture.png=записать", "Распечатать/Picture.png=печать"}},
+		"кнопка панели формы": {func(form *metadata.ManagedForm) {
+			form.AutoCommandBar.Children[0].Name = "Сохранить"
+		}, []string{"Печать/Picture.png=печать", "Сохранить/Picture.png=записать"}},
+		"удалённая кнопка": {func(form *metadata.ManagedForm) {
+			form.AutoCommandBar.Children = nil
+		}, []string{"Печать/Picture.png=печать"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			workspace, relative, _ := createManagedFormSource(t)
+			opened, err := workspace.ReadManagedForm(relative)
+			if err != nil {
+				t.Fatal(err)
+			}
+			button := func(name string) metadata.ManagedFormElement {
+				return metadata.ManagedFormElement{ID: uuid.MustNew(), Name: name, Kind: metadata.FormElementButton,
+					Command: "Form.StandardCommand.Close", GroupProperties: metadata.GroupProperties{Picture: &metadata.PictureReference{File: "Picture.png"}}}
+			}
+			opened.Form.Items[0].Children[0].ContextMenu = &metadata.FormAttachedMenu{ID: uuid.MustNew(), Name: "НаименованиеКонтекстноеМеню",
+				Children: []metadata.ManagedFormElement{button("Печать")}}
+			opened.Form.AutoCommandBar = &metadata.FormAttachedMenu{ID: uuid.MustNew(), Name: "ФормаКоманднаяПанель",
+				Children: []metadata.ManagedFormElement{button("Записать")}}
+			saved, err := workspace.SaveManagedForm(relative, opened.Form, opened.Revision)
+			if err != nil {
+				t.Fatal(err)
+			}
+			writePicture(t, workspace, relative, "Печать/Picture.png", "печать")
+			writePicture(t, workspace, relative, "Записать/Picture.png", "записать")
+			if _, err := metadata.Load(workspace.root); err != nil {
+				t.Fatalf("the project with the pictures of menus does not load: %v", err)
+			}
+			test.change(&saved.Form)
+			if _, err := workspace.SaveManagedForm(relative, saved.Form, saved.Revision); err != nil {
+				t.Fatal(err)
+			}
+			if found := pictures(t, workspace, relative); !slices.Equal(found, test.want) {
+				t.Fatalf("pictures = %v, want %v", found, test.want)
+			}
+			if _, err := metadata.Load(workspace.root); err != nil {
+				t.Fatalf("the project does not load after the save: %v", err)
+			}
+		})
+	}
+}

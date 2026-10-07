@@ -80,24 +80,24 @@ func TestAnElementHoldsOnlyWhatThePrototypeNestsInIt(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
 	for name, test := range map[string]struct{ items, want string }{
-		"страница вне страниц":      {"  - " + formElement(FormElementPage) + "\n", "items[0]: a form cannot hold page"},
-		"страница в обычной группе": {"  - " + formElement(FormElementUsualGroup, formElement(FormElementPage)) + "\n", "items[0].children[0]: usual-group cannot hold page"},
-		"группа в страницах":        {"  - " + formElement(FormElementPages, formElement(FormElementUsualGroup)) + "\n", "items[0].children[0]: pages cannot hold usual-group"},
-		"кнопка в таблице":          {"  - " + formElement(FormElementTable, formElement(FormElementButton)) + "\n", "table cannot hold button"},
-		"группа в группе колонок":   {"  - " + formElement(FormElementTable, formElement(FormElementColumnGroup, formElement(FormElementUsualGroup))) + "\n", "column-group cannot hold usual-group"},
-		"поле в командной панели":   {"  - " + formElement(FormElementCommandBar, formElement(FormElementInputField)) + "\n", "command-bar cannot hold input-field"},
-		"панель в группе кнопок":    {"  - " + formElement(FormElementCommandBar, formElement(FormElementButtonGroup, formElement(FormElementCommandBar))) + "\n", "button-group cannot hold command-bar"},
-		"поле с вложенным":          {"  - " + formElement(FormElementInputField, formElement(FormElementLabelDecoration)) + "\n", "input-field cannot hold label-decoration"},
-		"декорация с вложенным":     {"  - " + formElement(FormElementLabelDecoration, formElement(FormElementButton)) + "\n", "label-decoration cannot hold button"},
-		"состояние в панели":        {"  - " + formElement(FormElementCommandBar, formElement(FormElementViewStatusAddition)) + "\n", "command-bar cannot hold view-status-addition"},
-		"прежнее поле":              {"  - " + formElement("field") + "\n", "items[0].kind field is not a kind of element of a form"},
-		"прежняя надпись":           {"  - " + formElement("label") + "\n", "items[0].kind label is not a kind of element of a form"},
-		"прежняя группа":            {"  - " + formElement("group") + "\n", "items[0].kind group is not a kind of element of a form"},
-		"тип кнопки не у кнопки":    {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, button_type: hyperlink}\n", "items[0].button_type is allowed only for buttons"},
-		"тип кнопки":                {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Кнопка, kind: button, button_type: link}\n", "items[0].button_type must be usual-button, hyperlink, command-bar-button or command-bar-hyperlink"},
-		"ориентация у таблицы":      {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Таблица, kind: table, orientation: vertical}\n", "items[0].orientation is allowed only for usual groups, pages and groups of columns"},
-		"путь к данным у декорации": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Надпись, kind: label-decoration, data_path: Объект}\n", "items[0].data_path is allowed only for fields, tables and buttons"},
-		"только просмотр у панели":  {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Панель, kind: command-bar, read_only: true}\n", "items[0].read_only is allowed only for fields, tables and groups"},
+		"страница вне страниц":        {"  - " + formElement(FormElementPage) + "\n", "items[0]: a form cannot hold page"},
+		"страница в обычной группе":   {"  - " + formElement(FormElementUsualGroup, formElement(FormElementPage)) + "\n", "items[0].children[0]: usual-group cannot hold page"},
+		"группа в страницах":          {"  - " + formElement(FormElementPages, formElement(FormElementUsualGroup)) + "\n", "items[0].children[0]: pages cannot hold usual-group"},
+		"кнопка в таблице":            {"  - " + formElement(FormElementTable, formElement(FormElementButton)) + "\n", "table cannot hold button"},
+		"группа в группе колонок":     {"  - " + formElement(FormElementTable, formElement(FormElementColumnGroup, formElement(FormElementUsualGroup))) + "\n", "column-group cannot hold usual-group"},
+		"поле в командной панели":     {"  - " + formElement(FormElementCommandBar, formElement(FormElementInputField)) + "\n", "command-bar cannot hold input-field"},
+		"панель в группе кнопок":      {"  - " + formElement(FormElementCommandBar, formElement(FormElementButtonGroup, formElement(FormElementCommandBar))) + "\n", "button-group cannot hold command-bar"},
+		"поле с вложенным":            {"  - " + formElement(FormElementInputField, formElement(FormElementLabelDecoration)) + "\n", "input-field cannot hold label-decoration"},
+		"декорация с вложенным":       {"  - " + formElement(FormElementLabelDecoration, formElement(FormElementButton)) + "\n", "label-decoration cannot hold button"},
+		"состояние в панели":          {"  - " + formElement(FormElementCommandBar, formElement(FormElementViewStatusAddition)) + "\n", "command-bar cannot hold view-status-addition"},
+		"прежнее поле":                {"  - " + formElement("field") + "\n", "items[0].kind field is not a kind of element of a form"},
+		"прежняя надпись":             {"  - " + formElement("label") + "\n", "items[0].kind label is not a kind of element of a form"},
+		"прежняя группа":              {"  - " + formElement("group") + "\n", "items[0].kind group is not a kind of element of a form"},
+		"тип кнопки не у кнопки":      {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, button_type: hyperlink}\n", "items[0].button_type is allowed only for buttons"},
+		"тип кнопки":                  {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Кнопка, kind: button, button_type: link}\n", "items[0].button_type must be usual-button, hyperlink, command-bar-button or command-bar-hyperlink"},
+		"ориентация у таблицы":        {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Таблица, kind: table, orientation: vertical}\n", "items[0].orientation is allowed only for usual groups, pages and groups of columns"},
+		"путь к данным у декорации":   {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Надпись, kind: label-decoration, data_path: Объект}\n", "items[0].data_path is allowed only for fields, tables and buttons"},
+		"только просмотр у декорации": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Панель, kind: label-decoration, read_only: true}\n", "items[0].read_only is allowed only for fields, tables and groups"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -2429,7 +2429,8 @@ func TestAGroupHoldsOnlyThePropertiesOfAFieldItIsGiven(t *testing.T) {
 	// extension of each group) and the exports, apart from the map the check
 	// reads, so that a property left out of the map or given to a group too
 	// many shows here.
-	groups := []FormElementKind{FormElementUsualGroup, FormElementPages, FormElementPage, FormElementColumnGroup, FormElementPopup, FormElementButtonGroup}
+	groups := []FormElementKind{FormElementUsualGroup, FormElementPages, FormElementPage, FormElementColumnGroup, FormElementPopup, FormElementButtonGroup,
+		FormElementCommandBar}
 	all := append([]FormElementKind{FormElementButton}, groups...)
 	areas := []FormElementKind{FormElementUsualGroup, FormElementPage}
 	columns := []FormElementKind{FormElementColumnGroup}
@@ -2437,7 +2438,7 @@ func TestAGroupHoldsOnlyThePropertiesOfAFieldItIsGiven(t *testing.T) {
 	expected := map[string][]FormElementKind{
 		"width": all, "height": all, "horizontal_stretch": all, "vertical_stretch": all, "group_horizontal_align": all,
 		"group_vertical_align": all, "shortcut": all, "title_font": groups, "title_text_color": groups,
-		"horizontal_align": areas, "vertical_align": areas, "back_color": {FormElementUsualGroup, FormElementPage, FormElementPopup, FormElementButton},
+		"horizontal_align": {FormElementUsualGroup, FormElementPage, FormElementCommandBar}, "vertical_align": areas, "back_color": {FormElementUsualGroup, FormElementPage, FormElementPopup, FormElementButton},
 		"border_color": {FormElementPopup, FormElementButton}, "title_back_color": columns, "header_picture": columns, "header_horizontal_align": columns,
 		"fixing_in_table": columns, "no_auto_max_width": button, "max_width": button, "no_auto_max_height": button, "max_height": button,
 		"text_color": button, "font": button, "title_height": button, "skip_on_input": button, "default_item": button,

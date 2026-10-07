@@ -64,12 +64,12 @@ func planPictureFolders(formDirectory string, before, after metadata.ManagedForm
 	}
 	previous := map[string]uuid.UUID{}
 	names := map[uuid.UUID]string{}
-	formElementNames(before.Items, names)
+	formElementNames(before.FormItems(), names)
 	for id, name := range names {
 		previous[strings.ToLower(name)] = id
 	}
 	current := map[uuid.UUID]string{}
-	formElementNames(after.Items, current)
+	formElementNames(after.FormItems(), current)
 	staying := map[string]bool{}
 	for _, entry := range entries {
 		id, known := previous[strings.ToLower(entry.Name())]
@@ -101,7 +101,7 @@ func planPictureFolders(formDirectory string, before, after metadata.ManagedForm
 func formElementNames(items []metadata.ManagedFormElement, into map[uuid.UUID]string) {
 	for _, item := range items {
 		into[item.ID] = item.Name
-		formElementNames(item.Children, into)
+		formElementNames(item.Nested(), into)
 	}
 }
 

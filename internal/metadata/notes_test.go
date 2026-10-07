@@ -206,6 +206,11 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		noteCatalog(t, root, "", noteField("string", "    choice:\n"+
 			"      parameters: [{name: Отбор.ВидСчета, values: [{kind: platform, data: \"ent:AccountType.Active\"}]}]\n"))
 	},
+	NoteRepeatedElementName: func(t *testing.T, root string) {
+		writeCommonForm(t, root, "Отбор", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Отбор\ntitle: {ru: Отбор}\nkind: common\n"+
+			"items:\n  - {id: "+uuid.MustNew().String()+", name: Addition, kind: search-string-addition}\n"+
+			"  - {id: "+uuid.MustNew().String()+", name: addition, kind: view-status-addition}\n")
+	},
 	NoteFormReferenceAsWritten: func(t *testing.T, root string) {
 		writeCommonForm(t, root, "Помощник", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Помощник\ntitle: {ru: Помощник}\nkind: common\n"+
 			"items:\n  - {id: "+uuid.MustNew().String()+", name: Кнопка, kind: button, command: \"0\"}\n")

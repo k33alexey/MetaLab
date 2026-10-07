@@ -107,8 +107,10 @@ type ManagedForm struct {
 	// FormExtension is what the form has by the kind of its main attribute.
 	FormExtension `yaml:",inline"`
 	Commands      []ManagedFormCommand `yaml:"commands,omitempty" json:"commands"`
-	Items         []ManagedFormElement `yaml:"items,omitempty" json:"items"`
-	Attributes    []FormAttribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	// AutoCommandBar is the command bar of the form - see FormAttachedMenu.
+	AutoCommandBar *FormAttachedMenu    `yaml:"auto_command_bar,omitempty" json:"autoCommandBar,omitempty"`
+	Items          []ManagedFormElement `yaml:"items,omitempty" json:"items"`
+	Attributes     []FormAttribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 }
 
 // ManagedFormElement is one stable node in a managed form tree. Hidden and
@@ -176,8 +178,12 @@ type ManagedFormElement struct {
 	// holds; empty is vertical. The prototype writes always horizontal 3165
 	// times, horizontal if possible 481, and in one cell 2101 on groups of
 	// columns.
-	Orientation FormOrientation      `yaml:"orientation,omitempty" json:"orientation,omitempty"`
-	Children    []ManagedFormElement `yaml:"children,omitempty" json:"children"`
+	Orientation FormOrientation `yaml:"orientation,omitempty" json:"orientation,omitempty"`
+	// ContextMenu is the context menu of a field, a decoration, a table or an
+	// addition of a table, and AutoCommandBar the command bar of a table.
+	ContextMenu    *FormAttachedMenu    `yaml:"context_menu,omitempty" json:"contextMenu,omitempty"`
+	AutoCommandBar *FormAttachedMenu    `yaml:"auto_command_bar,omitempty" json:"autoCommandBar,omitempty"`
+	Children       []ManagedFormElement `yaml:"children,omitempty" json:"children"`
 }
 
 // DecodeManagedForm reads and validates one strict managed-form YAML document.
@@ -275,6 +281,20 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		stack = append(stack, pending{element: item, path: fmt.Sprintf("items[%d]", index)})
 	}
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+	// shared holds the names every holder of which may share it: the
+	// prototype names an addition of a table and a context menu itself
+	// ("Addition", "ContextMenu") and saves the name repeated (3 forms of the
+	// exports); the load notes it. Any other name is the form's own and is
+	// unique.
+	shared := map[string]bool{}
+	claim := func(path, name string, shareable bool) {
+		folded := foldedName(name)
+		if names[folded] && !(shareable && shared[folded]) {
+			issues = append(issues, path+".name must be unique within the form")
+		}
+		shared[folded] = shareable && (shared[folded] || !names[folded])
+		names[folded] = true
+	}
 	// A group names the table whose current row it shows, and the field or
 	// table it takes commands from; each is found once the whole form is
 	// walked, as it may stand after the group.
@@ -284,6 +304,28 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	var commanded []pending
 	for id := range commandIDs {
 		ids[id] = true
+	}
+	// A context menu and a command bar are named and numbered among the
+	// elements, and hold buttons that are elements of the form too.
+	attach := func(path, name string, menu *FormAttachedMenu, commandBar, ofForm bool) {
+		issues = append(issues, validateAttachedMenu(path+"."+name, *menu, commandBar, ofForm)...)
+		if !menu.ID.IsZero() && ids[menu.ID] {
+			issues = append(issues, path+"."+name+".id must be unique")
+		}
+		ids[menu.ID] = true
+		if menu.Name != "" {
+			claim(path+"."+name, menu.Name, !commandBar)
+		}
+		for index := len(menu.Children) - 1; index >= 0; index-- {
+			child, place := menu.Children[index], attachedMenuPlace(path, name, index)
+			if _, known := formElementClasses[child.Kind]; known && !menuHolds(commandBar, child.Kind) {
+				issues = append(issues, place+": "+strings.ReplaceAll(name, "_", " ")+" cannot hold "+string(child.Kind))
+			}
+			stack = append(stack, pending{element: child, path: place})
+		}
+	}
+	if value.AutoCommandBar != nil {
+		attach("form", "auto_command_bar", value.AutoCommandBar, true, true)
 	}
 	for len(stack) > 0 {
 		current := stack[len(stack)-1]
@@ -299,10 +341,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			issues = append(issues, current.path+".name must be a valid identifier of at most 255 characters")
 		}
 		folded := strings.ToLower(item.Name)
-		if names[folded] {
-			issues = append(issues, current.path+".name must be unique within the form")
-		}
-		names[folded] = true
+		claim(current.path, item.Name, formElementClasses[item.Kind] == formAdditionClass)
 		issues = append(issues, validateTitle(current.path+".title", item.Title, configuration)...)
 		class, known := formElementClasses[item.Kind]
 		if !known {
@@ -387,6 +426,18 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 				issues = append(issues, place+": "+string(item.Kind)+" cannot hold "+string(child.Kind))
 			}
 			stack = append(stack, pending{element: child, path: place})
+		}
+		if item.ContextMenu != nil {
+			if !contextMenuHolder(class) {
+				issues = append(issues, current.path+".context_menu is allowed only for fields, decorations, tables and additions of a table")
+			}
+			attach(current.path, "context_menu", item.ContextMenu, false, false)
+		}
+		if item.AutoCommandBar != nil {
+			if class != formTableClass {
+				issues = append(issues, current.path+".auto_command_bar is allowed only for tables")
+			}
+			attach(current.path, "auto_command_bar", item.AutoCommandBar, true, false)
 		}
 	}
 	for _, group := range associated {

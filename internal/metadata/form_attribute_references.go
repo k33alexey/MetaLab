@@ -106,7 +106,8 @@ func (catalog *Catalog) checkFormAttributes() error {
 			return err
 		}
 		catalog.resolveFormExtension(item.where, item.form.FormExtension)
-		if err := catalog.resolveFormElements(item.where, item.form.Items); err != nil {
+		catalog.noteRepeatedNames(item.where, item.form)
+		if err := catalog.resolveFormElements(item.where, item.form.FormItems()); err != nil {
 			return err
 		}
 	}
@@ -118,7 +119,8 @@ func (catalog *Catalog) checkFormAttributes() error {
 			return err
 		}
 		catalog.resolveFormExtension("common form "+form.Name, form.FormExtension)
-		if err := catalog.resolveFormElements("common form "+form.Name, form.Items); err != nil {
+		catalog.noteRepeatedNames("common form "+form.Name, form)
+		if err := catalog.resolveFormElements("common form "+form.Name, form.FormItems()); err != nil {
 			return err
 		}
 	}
@@ -224,7 +226,7 @@ func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElem
 				return err
 			}
 		}
-		if err := catalog.resolveFormElements(form, item.Children); err != nil {
+		if err := catalog.resolveFormElements(form, item.Nested()); err != nil {
 			return err
 		}
 	}
