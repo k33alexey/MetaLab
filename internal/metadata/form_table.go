@@ -392,7 +392,8 @@ func (table TableProperties) clone() TableProperties {
 // user settings are shown in - the help makes it a group, and the prototype
 // keeps an input field there twice (NoteUserSettingsGroupNotGroup) and a
 // code 70 times (NoteFormReferenceAsWritten); and the autofill the help does
-// not know (NotePropertyOutsideHelp).
+// not know (NotePropertyOutsideHelp); and an addition a table holds that
+// names another element as its source (NoteHeldAdditionOfAnother).
 func (catalog *Catalog) resolveFormTables(where string, form ManagedForm) {
 	kinds := map[string]FormElementKind{}
 	var tables []ManagedFormElement
@@ -414,6 +415,11 @@ func (catalog *Catalog) resolveFormTables(where string, form ManagedForm) {
 		if table.Autofill {
 			catalog.noteForm(NotePropertyOutsideHelp, at+" autofill", "true")
 		}
+		for _, held := range table.tableAdditions() {
+			if held.addition != nil && held.addition.AdditionSource != "" {
+				catalog.noteForm(NoteHeldAdditionOfAnother, at+" "+held.name, held.addition.AdditionSource)
+			}
+		}
 		list := table.DynamicList
 		if list == nil {
 			continue
@@ -434,4 +440,47 @@ func (catalog *Catalog) resolveFormTables(where string, form ManagedForm) {
 			}
 		}
 	}
+}
+
+// TableAdditions are the search string, the view status and the search
+// control of a table (help, FormTable.SearchStringRepresentation,
+// ViewStatusRepresentation, SearchControl). The prototype writes all three
+// inside every table - 9005 of each in the exports - beside its columns, not
+// among them: each is an element of the form, with an identifier, a name
+// code reaches it by, a context menu and what it is drawn with, and the
+// table puts it where its locations say. An addition that stands elsewhere -
+// in a command bar or a group, 351 in the exports - is an element of the
+// tree naming its table (AdditionSource).
+type TableAdditions struct {
+	SearchStringAddition  *ManagedFormElement `yaml:"search_string_addition,omitempty" json:"searchStringAddition,omitempty"`
+	ViewStatusAddition    *ManagedFormElement `yaml:"view_status_addition,omitempty" json:"viewStatusAddition,omitempty"`
+	SearchControlAddition *ManagedFormElement `yaml:"search_control_addition,omitempty" json:"searchControlAddition,omitempty"`
+}
+
+// tableAdditions are the additions of a table with the place each stands in
+// and the kind it is.
+func (element ManagedFormElement) tableAdditions() []struct {
+	name     string
+	kind     FormElementKind
+	addition *ManagedFormElement
+} {
+	return []struct {
+		name     string
+		kind     FormElementKind
+		addition *ManagedFormElement
+	}{
+		{"search_string_addition", FormElementSearchStringAddition, element.SearchStringAddition},
+		{"view_status_addition", FormElementViewStatusAddition, element.ViewStatusAddition},
+		{"search_control_addition", FormElementSearchControlAddition, element.SearchControlAddition},
+	}
+}
+
+func (additions TableAdditions) clone() TableAdditions {
+	for _, addition := range []**ManagedFormElement{&additions.SearchStringAddition, &additions.ViewStatusAddition, &additions.SearchControlAddition} {
+		if *addition != nil {
+			copied := cloneRuntimeFormElements([]ManagedFormElement{**addition})[0]
+			*addition = &copied
+		}
+	}
+	return additions
 }

@@ -358,18 +358,33 @@ var (
 // Auto included), not where text stands in a column, and vertical_align where
 // a usual group or a page puts what it holds up and down.
 var fieldPropertyElsewhere = map[string][]FormElementKind{
-	"width": groupsButtonAndTable, "height": groupsButtonAndTable, "horizontal_stretch": groupsButtonAndTable,
-	"vertical_stretch": groupsButtonAndTable, "group_horizontal_align": groupsButtonAndTable,
+	"width": withAdditions(groupsButtonAndTable), "height": groupsButtonAndTable, "horizontal_stretch": withAdditions(groupsButtonAndTable),
+	"vertical_stretch": groupsButtonAndTable, "group_horizontal_align": withAdditions(groupsButtonAndTable),
 	"group_vertical_align": groupsButtonAndTable, "shortcut": groupsButtonAndTable,
 	"title_font": groupsAndTable, "title_text_color": groupsAndTable,
-	"horizontal_align": {FormElementUsualGroup, FormElementPage, FormElementCommandBar}, "vertical_align": {FormElementUsualGroup, FormElementPage},
+	"horizontal_align":  {FormElementUsualGroup, FormElementPage, FormElementCommandBar, FormElementViewStatusAddition},
+	"vertical_align":    {FormElementUsualGroup, FormElementPage},
 	"back_color":        {FormElementUsualGroup, FormElementPage, FormElementPopup, FormElementButton, FormElementTable},
 	"border_color":      {FormElementPopup, FormElementButton, FormElementTable},
-	"no_auto_max_width": buttonAndTable, "max_width": buttonAndTable, "no_auto_max_height": buttonAndTable, "max_height": buttonAndTable,
+	"no_auto_max_width": withAdditions(buttonAndTable), "max_width": withAdditions(buttonAndTable), "no_auto_max_height": buttonAndTable, "max_height": buttonAndTable,
 	"text_color": buttonAndTable, "font": buttonAndTable, "title_height": buttonAndTable, "skip_on_input": buttonAndTable,
 	"default_item": buttonAndTable, "title_location": tableKind,
 	"title_back_color": {FormElementColumnGroup}, "header_picture": {FormElementColumnGroup},
 	"header_horizontal_align": {FormElementColumnGroup}, "fixing_in_table": {FormElementColumnGroup},
+}
+
+// formAdditionKinds are the additions of a table. Each has its width, its
+// limit and stretching across and its place in its group (help, the
+// extension of each addition; the prototype writes the limit of the width on
+// a search string too, which the help does not give it), and the view
+// status where its text stands - HorizontalAlign, which the prototype writes
+// HorizontalLocation, as on a command bar. The help gives them a font,
+// colours, a border and the place up and down in the group besides, which
+// the prototype writes on no addition of the exports; they are not carried.
+var formAdditionKinds = []FormElementKind{FormElementSearchStringAddition, FormElementViewStatusAddition, FormElementSearchControlAddition}
+
+func withAdditions(kinds []FormElementKind) []FormElementKind {
+	return append(slices.Clone(kinds), formAdditionKinds...)
 }
 
 // outsideFields is what of a group of properties of a field an element of

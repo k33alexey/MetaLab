@@ -64,6 +64,7 @@ const (
 	NoteRepeatedElementName        NoteKind = "repeated-element-name"
 	NotePropertyOutsideHelp        NoteKind = "property-outside-help"
 	NoteUserSettingsGroupNotGroup  NoteKind = "user-settings-group-not-group"
+	NoteHeldAdditionOfAnother      NoteKind = "held-addition-of-another-element"
 )
 
 func init() {
@@ -245,6 +246,11 @@ func init() {
 				"(2 формы выгрузок). Платформа создаёт элементы настроек внутри группы, а в поле их создать некуда — " +
 				"по всей видимости, след переименования или удаления группы.",
 			"Ссылка несётся как записана; элементы пользовательских настроек списка не создаются."},
+		NoteKindInfo{NoteHeldAdditionOfAnother,
+			"Дополнение, которое таблица держит у себя (строка поиска, состояние просмотра, управление поиском), называет источником " +
+				"не эту таблицу, а другой элемент: в одной форме sb — расширенную подсказку соседнего элемента. Прототип такое сохраняет; " +
+				"что оно показывает, не установлено.",
+			"Дополнение несётся как записано, с источником; таблица показывает его как своё."},
 	)
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
@@ -301,6 +307,9 @@ func init() {
 	}
 	noteRules[NoteUserSettingsGroupNotGroup] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteUserSettingsGroupNotGroup, note)
+	}
+	noteRules[NoteHeldAdditionOfAnother] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NoteHeldAdditionOfAnother, note)
 	}
 }
 

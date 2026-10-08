@@ -178,6 +178,14 @@ type ManagedFormElement struct {
 	ButtonProperties `yaml:",inline"`
 	// TableProperties is what a table has of its own.
 	TableProperties `yaml:",inline"`
+	// TableAdditions are the search string, view status and search control
+	// a table holds.
+	TableAdditions `yaml:",inline"`
+	// AdditionSource is the table an addition standing apart from it is of,
+	// named by its element. An addition a table holds names none: it is of
+	// that table. The prototype writes the kind of the addition beside it,
+	// always the kind of the addition itself, which is not kept twice.
+	AdditionSource string `yaml:"addition_source,omitempty" json:"additionSource,omitempty"`
 	// ButtonType is what a button is; only a button has one.
 	ButtonType FormButtonType `yaml:"button_type,omitempty" json:"buttonType,omitempty"`
 	// Orientation lays out what a usual group, a page or a group of columns
@@ -276,6 +284,8 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	type pending struct {
 		element ManagedFormElement
 		path    string
+		// held is an addition a table holds.
+		held bool
 	}
 	stack := make([]pending, 0, len(value.Items))
 	for index := len(value.Items) - 1; index >= 0; index-- {
@@ -306,8 +316,8 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	// walked, as it may stand after the group.
 	sources, associated := map[string]FormElementKind{}, []pending(nil)
 	// A button runs a standard command of an element, which may stand after
-	// it too.
-	var commanded []pending
+	// it too, and an addition standing apart names a table that may.
+	var commanded, sourced []pending
 	// A table of a dynamic list shows an attribute of the form and names the
 	// group its user settings go in, which may stand after it.
 	var listed []pending
@@ -452,6 +462,30 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			}
 			attach(current.path, "auto_command_bar", item.AutoCommandBar, true, false)
 		}
+		for _, held := range item.tableAdditions() {
+			if held.addition == nil {
+				continue
+			}
+			place := current.path + "." + held.name
+			if class != formTableClass {
+				issues = append(issues, place+" is allowed only for tables")
+			}
+			if held.addition.Kind != held.kind {
+				issues = append(issues, place+".kind must be "+string(held.kind))
+			}
+			stack = append(stack, pending{element: *held.addition, path: place, held: true})
+		}
+		switch {
+		case class != formAdditionClass && item.AdditionSource != "":
+			issues = append(issues, current.path+".addition_source is allowed only for additions of a table")
+		case class != formAdditionClass:
+		case item.AdditionSource == "" && !current.held:
+			issues = append(issues, current.path+".addition_source must name the table an addition standing apart from it is of")
+		case item.AdditionSource != "" && (!validIdentifier(item.AdditionSource) || utf8.RuneCountInString(item.AdditionSource) > maxNameLength):
+			issues = append(issues, current.path+".addition_source must be the name of an element of the form")
+		case !current.held:
+			sourced = append(sourced, current)
+		}
 	}
 	for _, group := range associated {
 		if table := group.element.AssociatedTable; table != "" && sources[strings.ToLower(table)] != FormElementTable {
@@ -464,6 +498,11 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	for _, button := range commanded {
 		if command, _ := parseButtonCommand(button.element.Command); !names[strings.ToLower(command.element)] {
 			issues = append(issues, button.path+".command names no element of the form")
+		}
+	}
+	for _, addition := range sourced {
+		if sources[strings.ToLower(addition.element.AdditionSource)] != FormElementTable {
+			issues = append(issues, addition.path+".addition_source names no table of the form")
 		}
 	}
 	for _, table := range listed {

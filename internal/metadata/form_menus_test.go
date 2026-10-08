@@ -35,7 +35,7 @@ func TestAMenuAndACommandBarKeepWhatTheyHold(t *testing.T) {
 			"  - {id: c0de0000-0000-4000-8000-000000990008, name: Список, kind: table,"+
 			" context_menu: {id: c0de0000-0000-4000-8000-000000990009, name: СписокContextMenu},"+
 			" auto_command_bar: {id: c0de0000-0000-4000-8000-000000990010, name: Список_КоманднаяПанель, no_autofill: true, horizontal_align: right,"+
-			" children: [{id: c0de0000-0000-4000-8000-000000990011, name: Поиск, kind: search-string-addition,"+
+			" children: [{id: c0de0000-0000-4000-8000-000000990011, name: Поиск, kind: search-string-addition, addition_source: Список,"+
 			" context_menu: {id: c0de0000-0000-4000-8000-000000990012, name: ПоискКонтекстноеМеню}}]}}\n"+
 			"  - {id: c0de0000-0000-4000-8000-000000990013, name: Панель, kind: command-bar, horizontal_align: auto, width: 19, read_only: true,"+
 			" enable_content_change: true, command_source: form}\n"),
@@ -197,10 +197,10 @@ func TestTheButtonsOfMenusAreResolved(t *testing.T) {
 func TestOnlyAdditionsAndContextMenusShareAName(t *testing.T) {
 	t.Parallel()
 	addition := func(id, kind, menu string) string {
-		return "  - {id: c0de0000-0000-4000-8000-0000009900" + id + ", name: Addition, kind: " + kind +
+		return "  - {id: c0de0000-0000-4000-8000-0000009900" + id + ", name: Addition, kind: " + kind + ", addition_source: Т" +
 			", context_menu: {id: c0de0000-0000-4000-8000-0000009901" + id + ", name: " + menu + "}}\n"
 	}
-	shared := addition("01", "search-string-addition", "ContextMenu") + addition("02", "view-status-addition", "contextmenu") +
+	shared := "  - {id: c0de0000-0000-4000-8000-000000990099, name: Т, kind: table}\n" + addition("01", "search-string-addition", "ContextMenu") + addition("02", "view-status-addition", "contextmenu") +
 		addition("03", "search-control-addition", "ContextMenu")
 	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(shared)), managedFormConfiguration()); err != nil {
 		t.Fatalf("the additions of the exports: %v", err)

@@ -411,7 +411,8 @@ func TestATableOfADynamicListRefusesWhatIsWrong(t *testing.T) {
 // has, loading clean; the group of the user settings written as a code (70
 // in the exports) or naming an input field (2) accepted silently; the
 // autofill of 267 tables carried without a note; a note on a list whose
-// group is a group.
+// group is a group; an addition a table holds naming another element (3 in
+// sb) carried silently, or one naming nothing noted.
 func TestWhatATableNamesIsResolvedAndNoted(t *testing.T) {
 	t.Parallel()
 	for name, test := range map[string]struct {
@@ -426,6 +427,9 @@ func TestWhatATableNamesIsResolvedAndNoted(t *testing.T) {
 		"код группы":       {table: "dynamic_list: {period: {variant: custom}, user_settings_group: \"1:02023637-7868-4a5f-8576-835a76e0c9ba\"}", note: NoteFormReferenceAsWritten, written: "1:02023637-7868-4a5f-8576-835a76e0c9ba"},
 		"группа-поле":      {table: "dynamic_list: {period: {variant: custom}, user_settings_group: Поле}", note: NoteUserSettingsGroupNotGroup, written: "Поле (input-field)"},
 		"автозаполнение":   {table: "autofill: true", note: NotePropertyOutsideHelp, written: "true"},
+		"дополнение чужого": {table: "search_control_addition: {id: c0de0000-0000-4000-8000-000000990005, name: ТаблицаУправлениеПоиском," +
+			" kind: search-control-addition, addition_source: ПолеРасширеннаяПодсказка}", note: NoteHeldAdditionOfAnother, written: "ПолеРасширеннаяПодсказка"},
+		"дополнение своё": {table: "search_control_addition: {id: c0de0000-0000-4000-8000-000000990005, name: ТаблицаУправлениеПоиском, kind: search-control-addition}"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -458,6 +462,128 @@ func TestWhatATableNamesIsResolvedAndNoted(t *testing.T) {
 			}
 			if test.note == "" && len(found) != 0 || test.note != "" && (len(found) != 1 || found[0].Kind != test.note || found[0].Written != test.written) {
 				t.Fatalf("notes = %+v, want %s %q", found, test.note, test.written)
+			}
+		})
+	}
+}
+
+// A table keeps the search string, the view status and the search control it
+// holds, and an addition standing apart keeps the table it is of, through
+// YAML and the Studio; the additions a table holds are elements of the form,
+// reached as every element it holds is.
+//
+// Defect caught: the 27015 additions the tables of the exports hold lost,
+// with their names code reaches them by and their context menus; the width
+// or the place of a search string, the alignment of the view status (42) or
+// a hidden search control lost; an addition standing in a command bar or a
+// group (351) losing its table; the additions of a table left out of what
+// the table holds, so that no check, picture or name of the form reaches
+// them.
+func TestATableKeepsItsAdditions(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Список, kind: table," +
+		" search_string_addition: {id: c0de0000-0000-4000-8000-000000990002, name: СписокСтрокаПоиска, kind: search-string-addition," +
+		" width: 30, no_auto_max_width: true, max_width: 40, horizontal_stretch: false, group_horizontal_align: right, display_importance: very-low," +
+		" context_menu: {id: c0de0000-0000-4000-8000-000000990003, name: СписокСтрокаПоискаКонтекстноеМеню}}," +
+		" view_status_addition: {id: c0de0000-0000-4000-8000-000000990004, name: СписокСостояниеПросмотра, kind: view-status-addition," +
+		" horizontal_align: left, title: {ru: Состояние}, disabled: true}," +
+		" search_control_addition: {id: c0de0000-0000-4000-8000-000000990005, name: СписокУправлениеПоиском, kind: search-control-addition," +
+		" hidden: true, addition_source: СписокРасширеннаяПодсказка}}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990006, name: Панель, kind: command-bar, children: [{id: c0de0000-0000-4000-8000-000000990007," +
+		" name: ПоискВПанели, kind: search-string-addition, addition_source: Список}]}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990008, name: Группа, kind: usual-group, children: [{id: c0de0000-0000-4000-8000-000000990009," +
+		" name: СостояниеВГруппе, kind: view-status-addition, addition_source: список}]}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(source string, items []ManagedFormElement) {
+		t.Helper()
+		table := items[0]
+		search, status, control := table.SearchStringAddition, table.ViewStatusAddition, table.SearchControlAddition
+		switch {
+		case search == nil || status == nil || control == nil:
+			t.Fatalf("%s: additions lost: %+v", source, table.TableAdditions)
+		case search.Name != "СписокСтрокаПоиска" || search.Width != 30 || !search.NoAutoMaxWidth || search.MaxWidth != 40 ||
+			search.HorizontalStretch == nil || *search.HorizontalStretch || search.GroupHorizontalAlign != ItemHorizontalRight ||
+			search.DisplayImportance != FormDisplayImportanceVeryLow || search.ContextMenu == nil || search.AdditionSource != "":
+			t.Fatalf("%s: the search string: %+v", source, search)
+		case status.HorizontalAlign != ItemHorizontalLeft || status.Title["ru"] != "Состояние" || !status.Disabled:
+			t.Fatalf("%s: the view status: %+v", source, status)
+		case !control.Hidden || control.AdditionSource != "СписокРасширеннаяПодсказка":
+			t.Fatalf("%s: the search control: %+v", source, control)
+		case items[1].Children[0].AdditionSource != "Список" || items[2].Children[0].AdditionSource != "список":
+			t.Fatalf("%s: additions standing apart: %+v %+v", source, items[1].Children[0], items[2].Children[0])
+		}
+		nested := map[string]bool{}
+		for _, element := range table.Nested() {
+			nested[element.Name] = true
+		}
+		if !nested["СписокСтрокаПоиска"] || !nested["СписокСостояниеПросмотра"] || !nested["СписокУправлениеПоиском"] {
+			t.Fatalf("%s: what the table holds: %v", source, nested)
+		}
+	}
+	check("read", form.Items)
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("written back", again.Items)
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil {
+		t.Fatal(err)
+	}
+	check("carried through the Studio", received.Items)
+	if !reflect.DeepEqual(received.Items, form.Items) || !reflect.DeepEqual(again.Items, form.Items) {
+		t.Fatal("the additions changed on the way")
+	}
+}
+
+// What is wrong with an addition is refused, naming the place.
+//
+// Defect caught: a search control held where the search string stands, or
+// an addition held by a field; an addition standing apart without its table,
+// naming a field or nothing at all; a source written on a field; the
+// additions a table holds checked as nothing - an identifier or a name
+// repeated, a property of a field let through.
+func TestAnAdditionRefusesWhatIsWrong(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	held := func(slot, element string) string {
+		return "  - {id: c0de0000-0000-4000-8000-000000990001, name: Список, kind: table, " + slot + ": {id: c0de0000-0000-4000-8000-000000990002, " + element + "}}\n"
+	}
+	field := "  - {id: c0de0000-0000-4000-8000-000000990003, name: Поле, kind: input-field}\n"
+	for name, test := range map[string]struct{ items, want string }{
+		"чужой вид":             {held("search_string_addition", "name: Поиск, kind: search-control-addition"), "items[0].search_string_addition.kind must be search-string-addition"},
+		"не дополнение":         {held("view_status_addition", "name: Поиск, kind: input-field"), "items[0].view_status_addition.kind must be view-status-addition"},
+		"у поля":                {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, search_control_addition: {id: c0de0000-0000-4000-8000-000000990002, name: Поиск, kind: search-control-addition}}\n", "items[0].search_control_addition is allowed only for tables"},
+		"без источника":         {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Поиск, kind: search-string-addition}\n", "items[0].addition_source must name the table an addition standing apart from it is of"},
+		"источник поле":         {field + "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поиск, kind: search-string-addition, addition_source: Поле}\n", "items[1].addition_source names no table of the form"},
+		"источника нет":         {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Поиск, kind: view-status-addition, addition_source: Список}\n", "items[0].addition_source names no table of the form"},
+		"источник с пробелом":   {held("search_string_addition", "name: Поиск, kind: search-string-addition, addition_source: Список Товаров"), "items[0].search_string_addition.addition_source must be the name of an element of the form"},
+		"источник у поля":       {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, addition_source: Список}\n", "items[0].addition_source is allowed only for additions of a table"},
+		"повтор идентификатора": {held("search_string_addition", "name: Поиск, kind: search-string-addition") + "  - {id: c0de0000-0000-4000-8000-000000990002, name: Поле, kind: input-field}\n", ".id must be unique"},
+		"повтор имени":          {held("search_string_addition", "name: Поле, kind: search-string-addition") + field, "name must be unique within the form"},
+		"высота дополнения":     {held("search_control_addition", "name: Поиск, kind: search-control-addition, height: 2"), "items[0].search_control_addition has the size and alignment of a field"},
+		"выравнивание строки":   {held("search_string_addition", "name: Поиск, kind: search-string-addition, horizontal_align: left"), "items[0].search_string_addition has the size and alignment of a field"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(test.items)), configuration)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
 			}
 		})
 	}

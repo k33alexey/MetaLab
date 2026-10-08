@@ -64,6 +64,7 @@ func cloneRuntimeFormElements(values []ManagedFormElement) []ManagedFormElement 
 		value.Picture = value.Picture.clone()
 		value.ScrollOnCompress = clonePointer(value.ScrollOnCompress)
 		value.TableProperties = value.TableProperties.clone()
+		value.TableAdditions = value.TableAdditions.clone()
 		value.ContextMenu, value.AutoCommandBar = value.ContextMenu.clone(), value.AutoCommandBar.clone()
 		value.Children = cloneRuntimeFormElements(value.Children)
 		result[index] = value

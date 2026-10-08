@@ -58,11 +58,17 @@ func TestEveryKindOfElementStandsWhereThePrototypePutsIt(t *testing.T) {
 	if len(fields) != 20 {
 		t.Fatalf("fields = %d, the help gives twenty", len(fields))
 	}
-	items := "  - " + formElement(FormElementUsualGroup, fields...) + "\n" +
+	// An addition standing apart from its table names it.
+	apart := func(kind FormElementKind) string {
+		element := formElement(kind)
+		return element[:len(element)-1] + ", addition_source: Таблица}"
+	}
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Таблица, kind: table}\n" +
+		"  - " + formElement(FormElementUsualGroup, fields...) + "\n" +
 		"  - " + formElement(FormElementPages, formElement(FormElementPage, formElement(FormElementInputField), formElement(FormElementLabelDecoration))) + "\n" +
 		"  - " + formElement(FormElementTable, formElement(FormElementLabelField), formElement(FormElementColumnGroup, formElement(FormElementCheckBoxField), formElement(FormElementColumnGroup, formElement(FormElementPictureField)))) + "\n" +
-		"  - " + formElement(FormElementCommandBar, formElement(FormElementButton), formElement(FormElementPopup, formElement(FormElementButton), formElement(FormElementButtonGroup, formElement(FormElementButton))), formElement(FormElementSearchStringAddition), formElement(FormElementSearchControlAddition)) + "\n" +
-		"  - " + formElement(FormElementUsualGroup, formElement(FormElementPictureDecoration), formElement(FormElementButton), formElement(FormElementPopup), formElement(FormElementViewStatusAddition), formElement(FormElementSearchStringAddition)) + "\n" +
+		"  - " + formElement(FormElementCommandBar, formElement(FormElementButton), formElement(FormElementPopup, formElement(FormElementButton), formElement(FormElementButtonGroup, formElement(FormElementButton))), apart(FormElementSearchStringAddition), apart(FormElementSearchControlAddition)) + "\n" +
+		"  - " + formElement(FormElementUsualGroup, formElement(FormElementPictureDecoration), formElement(FormElementButton), formElement(FormElementPopup), apart(FormElementViewStatusAddition), apart(FormElementSearchStringAddition)) + "\n" +
 		"  - " + formElement(FormElementSpreadsheetDocumentField) + "\n"
 	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration); err != nil {
 		t.Fatal(err)
@@ -467,7 +473,7 @@ func TestAFieldRefusesWhatIsWrongInItsSize(t *testing.T) {
 	configuration := managedFormConfiguration()
 	for name, test := range map[string]struct{ element, want string }{
 		"автоширина у группы":       {"kind: usual-group, no_auto_max_width: true", "items[0] has the size and alignment of a field"},
-		"растягивание у дополнения": {"kind: view-status-addition, horizontal_stretch: true", "items[0] has the size and alignment of a field"},
+		"растягивание у дополнения": {"kind: view-status-addition, addition_source: Т, vertical_stretch: true", "items[0] has the size and alignment of a field"},
 		"выравнивание у декорации":  {"kind: label-decoration, horizontal_align: left", "items[0] has the size and alignment of a field"},
 		"ширина":                  {"kind: input-field, width: -1", "items[0].width must not be negative"},
 		"высота":                  {"kind: input-field, height: -1", "items[0].height must not be negative"},
@@ -2413,8 +2419,8 @@ func TestAGroupKeepsWhatItSharesWithAField(t *testing.T) {
 	}
 }
 
-// Every property of a field, set alone on every group, on a button and on a
-// table, is accepted where the help and the prototype give that element the property
+// Every property of a field, set alone on every group, on a button, on a
+// table and on an addition of a table, is accepted where the help and the prototype give that element the property
 // and refused elsewhere.
 // The properties are taken from the groups of properties themselves, so that
 // one added to a field is checked here too.
@@ -2424,7 +2430,8 @@ func TestAGroupKeepsWhatItSharesWithAField(t *testing.T) {
 // a button, the size, title, colours and fonts of a table - or let through
 // one it does not: the font of the text of a field on a group, a footer, the
 // edit mode, a hint of input, the title font of a button, the alignment in a
-// column, a border or the background of the title on a table.
+// column, a border or the background of the title on a table, the height or
+// the colours of an addition, the alignment of text on a search string.
 func TestAGroupHoldsOnlyThePropertiesOfAFieldItIsGiven(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
@@ -2446,18 +2453,23 @@ func TestAGroupHoldsOnlyThePropertiesOfAFieldItIsGiven(t *testing.T) {
 	// many shows here.
 	groups := []FormElementKind{FormElementUsualGroup, FormElementPages, FormElementPage, FormElementColumnGroup, FormElementPopup, FormElementButtonGroup,
 		FormElementCommandBar}
-	all := append([]FormElementKind{FormElementButton, FormElementTable}, groups...)
+	sized := append([]FormElementKind{FormElementButton, FormElementTable}, groups...)
+	additions := []FormElementKind{FormElementSearchStringAddition, FormElementViewStatusAddition, FormElementSearchControlAddition}
+	all := append(slices.Clone(sized), additions...)
 	areas := []FormElementKind{FormElementUsualGroup, FormElementPage}
 	columns := []FormElementKind{FormElementColumnGroup}
 	button := []FormElementKind{FormElementButton, FormElementTable}
 	titled := append([]FormElementKind{FormElementTable}, groups...)
+	// An addition has its width, its limit, its stretching across and its
+	// place across in its group.
+	wide := append(slices.Clone(button), additions...)
 	expected := map[string][]FormElementKind{
-		"width": all, "height": all, "horizontal_stretch": all, "vertical_stretch": all, "group_horizontal_align": all,
-		"group_vertical_align": all, "shortcut": all, "title_font": titled, "title_text_color": titled,
-		"horizontal_align": {FormElementUsualGroup, FormElementPage, FormElementCommandBar}, "vertical_align": areas,
+		"width": all, "height": sized, "horizontal_stretch": all, "vertical_stretch": sized, "group_horizontal_align": all,
+		"group_vertical_align": sized, "shortcut": sized, "title_font": titled, "title_text_color": titled,
+		"horizontal_align": {FormElementUsualGroup, FormElementPage, FormElementCommandBar, FormElementViewStatusAddition}, "vertical_align": areas,
 		"back_color":   {FormElementUsualGroup, FormElementPage, FormElementPopup, FormElementButton, FormElementTable},
 		"border_color": {FormElementPopup, FormElementButton, FormElementTable}, "title_back_color": columns, "header_picture": columns,
-		"header_horizontal_align": columns, "fixing_in_table": columns, "no_auto_max_width": button, "max_width": button,
+		"header_horizontal_align": columns, "fixing_in_table": columns, "no_auto_max_width": wide, "max_width": wide,
 		"no_auto_max_height": button, "max_height": button, "text_color": button, "font": button, "title_height": button,
 		"skip_on_input": button, "default_item": button, "title_location": {FormElementTable},
 	}

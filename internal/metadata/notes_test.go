@@ -208,8 +208,9 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 	},
 	NoteRepeatedElementName: func(t *testing.T, root string) {
 		writeCommonForm(t, root, "Отбор", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Отбор\ntitle: {ru: Отбор}\nkind: common\n"+
-			"items:\n  - {id: "+uuid.MustNew().String()+", name: Addition, kind: search-string-addition}\n"+
-			"  - {id: "+uuid.MustNew().String()+", name: addition, kind: view-status-addition}\n")
+			"items:\n  - {id: "+uuid.MustNew().String()+", name: Т, kind: table}\n"+
+			"  - {id: "+uuid.MustNew().String()+", name: Addition, kind: search-string-addition, addition_source: Т}\n"+
+			"  - {id: "+uuid.MustNew().String()+", name: addition, kind: view-status-addition, addition_source: Т}\n")
 	},
 	NoteFormReferenceAsWritten: func(t *testing.T, root string) {
 		writeCommonForm(t, root, "Помощник", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Помощник\ntitle: {ru: Помощник}\nkind: common\n"+
@@ -225,6 +226,11 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 			"  - {id: "+uuid.MustNew().String()+", name: Таблица, kind: table, data_path: Список,"+
 			" dynamic_list: {period: {variant: custom}, user_settings_group: Период}}\n"+
 			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Список, types: [{kind: dynamic-list}]}\n")
+	},
+	NoteHeldAdditionOfAnother: func(t *testing.T, root string) {
+		writeCommonForm(t, root, "Касса", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Касса\ntitle: {ru: Касса}\nkind: common\n"+
+			"items:\n  - {id: "+uuid.MustNew().String()+", name: Товары, kind: table, search_string_addition: {id: "+uuid.MustNew().String()+
+			", name: ТоварыСтрокаПоиска, kind: search-string-addition, addition_source: ТоварыРасширеннаяПодсказка}}\n")
 	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")

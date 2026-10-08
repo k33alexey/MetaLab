@@ -29,6 +29,14 @@ func fillEverything(value reflect.Value, depth int, counter *int) {
 			fillEverything(value.Index(index), depth, counter)
 		}
 	case reflect.Pointer:
+		// A table holds its additions, which are elements, behind pointers;
+		// they are filled as deep as the lists are.
+		if value.Type().Elem() == reflect.TypeFor[ManagedFormElement]() {
+			if depth > 3 {
+				return
+			}
+			depth++
+		}
 		pointed := reflect.New(value.Type().Elem())
 		fillEverything(pointed.Elem(), depth, counter)
 		value.Set(pointed)
@@ -115,7 +123,8 @@ func TestARuntimeFormSharesNothingWithTheSnapshot(t *testing.T) {
 	var form ManagedForm
 	counter := 0
 	fillEverything(reflect.ValueOf(&form).Elem(), 0, &counter)
-	if len(form.Items) == 0 || len(form.Items[0].Children) == 0 || form.Items[0].FieldLook.Font == nil || form.Attributes[0].DynamicList == nil {
+	if len(form.Items) == 0 || len(form.Items[0].Children) == 0 || form.Items[0].FieldLook.Font == nil || form.Attributes[0].DynamicList == nil ||
+		form.Items[0].SearchStringAddition == nil || form.Items[0].SearchStringAddition.Font == nil {
 		t.Fatalf("the form is not filled: %+v", form)
 	}
 	copied := cloneRuntimeForm(form)

@@ -182,7 +182,8 @@ func customElements(source []metadata.ManagedFormElement, language metadata.Titl
 // appElementKind is how ML App draws an element of a form: as one of the five
 // it knows. A field is a field, a decoration a label, a table a table, a
 // button a button; what holds other elements is a group. An addition of a
-// table is not drawn until the table has its additions (block 2ф).
+// table - a search string, a view status, a search control - is carried by
+// the form (2.238) and not drawn: ML App does not search in a table yet.
 func appElementKind(kind metadata.FormElementKind) (string, bool) {
 	switch {
 	case kind.IsField():
