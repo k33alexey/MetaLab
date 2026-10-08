@@ -62,6 +62,8 @@ const (
 	NoteChartHoldsNothing          NoteKind = "chart-value-type-holds-nothing"
 	NoteFormReferenceAsWritten     NoteKind = "form-reference-as-written"
 	NoteRepeatedElementName        NoteKind = "repeated-element-name"
+	NotePropertyOutsideHelp        NoteKind = "property-outside-help"
+	NoteUserSettingsGroupNotGroup  NoteKind = "user-settings-group-not-group"
 )
 
 func init() {
@@ -226,13 +228,23 @@ func init() {
 		NoteKindInfo{NoteFormReferenceAsWritten,
 			"Ссылка в форме, записанная кодом или числом вместо имени: номер элемента с идентификатором (\"3:409b9a53-…\"), " +
 				"одинокий «0», число вместо пути к данным, два пути через «~». Прототип пишет их в команде кнопки, источнике команд, " +
-				"пути к данным, пути к данным заголовка и путях связей поля; на что такая ссылка указывает, не установлено " +
+				"пути к данным, пути к данным заголовка, путях связей поля и группе пользовательских настроек таблицы; на что такая ссылка указывает, не установлено " +
 				"(открытый вопрос карты блоков о коде элемента формы).",
-			"Ссылка несётся как записана и ни на что не указывает: кнопка без команды, панель без источника, поле и заголовок без данных, связь не действует."},
+			"Ссылка несётся как записана и ни на что не указывает: кнопка без команды, панель без источника, поле и заголовок без данных, связь не действует, " +
+				"настройки списка не показываются."},
 		NoteKindInfo{NoteRepeatedElementName,
 			"Имя повторяется у нескольких элементов одной формы. Дополнения таблицы и контекстные меню прототип называет сам " +
 				"(«Addition», «ContextMenu») и сохраняет повтор, если имя не изменили: в выгрузках так три формы. Имя других элементов уникально.",
 			"Элементы несутся как записаны; из кода по такому имени однозначно не обратиться, исполнение выберет один из них."},
+		NoteKindInfo{NotePropertyOutsideHelp,
+			"Свойство, которое прототип записывает, а справка 8.3.27 у этого элемента не знает: автозаполнение таблицы " +
+				"(267 таблиц — настроек компоновки, таблиц и списков значений, всегда «да»). Что оно делает, не установлено.",
+			"Свойство несётся как записано и не исполняется."},
+		NoteKindInfo{NoteUserSettingsGroupNotGroup,
+			"Группа пользовательских настроек динамического списка называет элемент, который не группа: поле ввода " +
+				"(2 формы выгрузок). Платформа создаёт элементы настроек внутри группы, а в поле их создать некуда — " +
+				"по всей видимости, след переименования или удаления группы.",
+			"Ссылка несётся как записана; элементы пользовательских настроек списка не создаются."},
 	)
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
@@ -283,6 +295,12 @@ func init() {
 	}
 	noteRules[NoteFormReferenceAsWritten] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteFormReferenceAsWritten, note)
+	}
+	noteRules[NotePropertyOutsideHelp] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NotePropertyOutsideHelp, note)
+	}
+	noteRules[NoteUserSettingsGroupNotGroup] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NoteUserSettingsGroupNotGroup, note)
 	}
 }
 

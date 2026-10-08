@@ -1,5 +1,12 @@
 package metadata
 
+import (
+	"regexp"
+	"slices"
+	"time"
+	"unicode/utf8"
+)
+
 // FormRowSelectionMode is what a table selects when a row is current: the
 // cell or the whole row (help, TableRowSelectionMode).
 type FormRowSelectionMode string
@@ -159,6 +166,137 @@ type TableProperties struct {
 	// client.
 	RefreshRequest                  FormRefreshRequest        `yaml:"refresh_request,omitempty" json:"refreshRequest,omitempty"`
 	BehaviorOnHorizontalCompression FormHorizontalCompression `yaml:"behavior_on_horizontal_compression,omitempty" json:"behaviorOnHorizontalCompression,omitempty"`
+	// DynamicList is what a table showing a dynamic list has besides.
+	DynamicList *TableDynamicList `yaml:"dynamic_list,omitempty" json:"dynamicList,omitempty"`
+	// ViewMode is whether a table of a filter or of the user settings of a
+	// composition shows every item or only those of quick access (help, the
+	// extensions of a table for them); NoNamedItemDetailedRepresentation
+	// shows a named item of a filter or a conditional appearance in one row
+	// with its presentation, which the prototype writes 205 times - the
+	// help's default is a column of its own. The prototype writes both on
+	// tables of the settings of a composition only.
+	ViewMode                          FormSettingsViewMode `yaml:"view_mode,omitempty" json:"viewMode,omitempty"`
+	NoNamedItemDetailedRepresentation bool                 `yaml:"no_named_item_detailed_representation,omitempty" json:"noNamedItemDetailedRepresentation,omitempty"`
+	// Autofill is written on 267 tables - of the settings of a composition,
+	// value tables and lists, always true - and the help does not know it on
+	// a table at all. It is carried as written and noted
+	// (NotePropertyOutsideHelp).
+	Autofill bool `yaml:"autofill,omitempty" json:"autofill,omitempty"`
+}
+
+// FormSettingsViewMode is what a table of the settings of a composition
+// shows (help, DataCompositionSettingsViewMode).
+type FormSettingsViewMode string
+
+const (
+	FormSettingsViewAll         FormSettingsViewMode = "all"
+	FormSettingsViewQuickAccess FormSettingsViewMode = "quick-access"
+)
+
+// FormUpdateOnDataChange is whether a list refreshes when its data is added
+// or changed interactively (help, UpdateOnDataChange).
+type FormUpdateOnDataChange string
+
+const (
+	FormUpdateOnDataChangeAuto       FormUpdateOnDataChange = "auto"
+	FormUpdateOnDataChangeDontUpdate FormUpdateOnDataChange = "dont-update"
+)
+
+// TableDynamicList is what a table showing a dynamic list has besides (help,
+// the extension of a table for a dynamic list). The prototype writes all of
+// it on every such table - 3731 of them - and on no other, so it is one
+// record, there or not: each value is the one written.
+type TableDynamicList struct {
+	// AutoRefresh refreshes the list every AutoRefreshPeriod seconds.
+	AutoRefresh       bool `yaml:"auto_refresh,omitempty" json:"autoRefresh,omitempty"`
+	AutoRefreshPeriod int  `yaml:"auto_refresh_period,omitempty" json:"autoRefreshPeriod,omitempty"`
+	// Period is the period the list shows its data for.
+	Period FormStandardPeriod `yaml:"period" json:"period"`
+	// ChoiceFoldersAndItems is what of a hierarchy may be chosen.
+	ChoiceFoldersAndItems FormFoldersAndItems `yaml:"choice_folders_and_items,omitempty" json:"choiceFoldersAndItems,omitempty"`
+	// RestoreCurrentRow keeps the current row for the next opening.
+	RestoreCurrentRow bool `yaml:"restore_current_row,omitempty" json:"restoreCurrentRow,omitempty"`
+	// TopLevelParent is the item of a catalog, a chart of characteristic
+	// types or a chart of accounts the list shows as its root; nil is none.
+	// The prototype writes none on every table of the exports.
+	TopLevelParent *Value `yaml:"top_level_parent,omitempty" json:"topLevelParent,omitempty"`
+	// ShowRoot and AllowRootChoice show the root of a list drawn as a tree,
+	// and let it be chosen.
+	ShowRoot           bool                   `yaml:"show_root,omitempty" json:"showRoot,omitempty"`
+	AllowRootChoice    bool                   `yaml:"allow_root_choice,omitempty" json:"allowRootChoice,omitempty"`
+	UpdateOnDataChange FormUpdateOnDataChange `yaml:"update_on_data_change,omitempty" json:"updateOnDataChange,omitempty"`
+	// AllowGettingCurrentRowURL lets the link to the current row be taken.
+	AllowGettingCurrentRowURL bool `yaml:"allow_getting_current_row_url,omitempty" json:"allowGettingCurrentRowUrl,omitempty"`
+	// UserSettingsGroup is the element of the form the user settings of the
+	// list are shown in, named by its name (2141 times) or by the code of an
+	// element (65, see validateFormLinkPath), carried as written.
+	UserSettingsGroup string `yaml:"user_settings_group,omitempty" json:"userSettingsGroup,omitempty"`
+}
+
+// FormStandardPeriod is a standard period as the form keeps it: its variant,
+// and for a custom one its dates, written as the prototype writes a date and
+// left empty for the empty date (0001-01-01T00:00:00).
+type FormStandardPeriod struct {
+	Variant   FormStandardPeriodVariant `yaml:"variant" json:"variant"`
+	StartDate string                    `yaml:"start_date,omitempty" json:"startDate,omitempty"`
+	EndDate   string                    `yaml:"end_date,omitempty" json:"endDate,omitempty"`
+}
+
+// FormStandardPeriodVariant is one of the periods the platform knows (help,
+// StandardPeriodVariant), spelled as the model spells an enumeration.
+type FormStandardPeriodVariant string
+
+var formStandardPeriodVariants = []FormStandardPeriodVariant{"custom",
+	"today", "yesterday", "tomorrow", "this-week", "this-ten-days", "this-month", "this-quarter", "this-half-year", "this-year",
+	"from-beginning-of-this-week", "from-beginning-of-this-ten-days", "from-beginning-of-this-month", "from-beginning-of-this-quarter",
+	"from-beginning-of-this-half-year", "from-beginning-of-this-year",
+	"till-end-of-this-week", "till-end-of-this-ten-days", "till-end-of-this-month", "till-end-of-this-quarter",
+	"till-end-of-this-half-year", "till-end-of-this-year",
+	"last-7-days", "last-week", "last-ten-days", "last-month", "last-quarter", "last-half-year", "last-year",
+	"last-week-till-same-week-day", "last-ten-days-till-same-day-number", "last-month-till-same-date", "last-quarter-till-same-date",
+	"last-half-year-till-same-date", "last-year-till-same-date",
+	"next-7-days", "next-week", "next-ten-days", "next-month", "next-quarter", "next-half-year", "next-year",
+	"next-week-till-same-week-day", "next-ten-days-till-same-day-number", "next-month-till-same-date", "next-quarter-till-same-date",
+	"next-half-year-till-same-date", "next-year-till-same-date", "month"}
+
+// formDateTime is a date as the prototype writes one in a form.
+var formDateTime = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$`)
+
+func validateTableDynamicList(path string, list TableDynamicList) []string {
+	var issues []string
+	if list.AutoRefreshPeriod < 0 {
+		issues = append(issues, path+".auto_refresh_period must not be negative")
+	}
+	issues = append(issues, oneOf(path+".period.variant", list.Period.Variant, formStandardPeriodVariants...)...)
+	if list.Period.Variant == "" {
+		issues = append(issues, path+".period.variant must be named")
+	}
+	for _, date := range []struct{ name, value string }{{"start_date", list.Period.StartDate}, {"end_date", list.Period.EndDate}} {
+		if date.value != "" {
+			if _, err := time.Parse("2006-01-02T15:04:05", date.value); err != nil || !formDateTime.MatchString(date.value) {
+				issues = append(issues, path+".period."+date.name+" must be a date written as 2006-01-02T15:04:05")
+			}
+		}
+	}
+	issues = append(issues, oneOf(path+".choice_folders_and_items", list.ChoiceFoldersAndItems, FormFolders, FormItems, FormFoldersAndItemsBoth)...)
+	if parent := list.TopLevelParent; parent != nil {
+		switch parent.Kind {
+		case CatalogType, CharacteristicTypesType, AccountType:
+			if parent.Object.IsZero() || parent.Data == "" {
+				issues = append(issues, path+".top_level_parent must name its object and its item")
+			}
+		case UndefinedValue, UnresolvedReferenceValue:
+			issues = append(issues, validateDesignTimeValue(path+".top_level_parent", *parent)...)
+		default:
+			issues = append(issues, path+".top_level_parent must be an item of a catalog, a chart of characteristic types or a chart of accounts")
+		}
+	}
+	issues = append(issues, oneOf(path+".update_on_data_change", list.UpdateOnDataChange, FormUpdateOnDataChangeAuto, FormUpdateOnDataChangeDontUpdate)...)
+	if group := list.UserSettingsGroup; group != "" && !formElementCode.MatchString(group) &&
+		(!validIdentifier(group) || utf8.RuneCountInString(group) > maxNameLength) {
+		issues = append(issues, path+".user_settings_group must be the name or the code of an element of the form")
+	}
+	return issues
 }
 
 // tableLocations are where the help lets a table put each of its parts.
@@ -178,7 +316,8 @@ func (table TableProperties) empty() bool {
 		table.CommandBarLocation == "" && table.SearchStringLocation == "" && table.ViewStatusLocation == "" &&
 		table.SearchControlLocation == "" && table.SearchOnInput == "" && table.HeightInTableRows == 0 && !table.NoAutoMaxRowsCount &&
 		table.MaxRowsCount == 0 && table.RowsPicture == nil && table.RowPictureDataPath == "" && table.RefreshRequest == "" &&
-		table.BehaviorOnHorizontalCompression == ""
+		table.BehaviorOnHorizontalCompression == "" && table.DynamicList == nil && table.ViewMode == "" &&
+		!table.NoNamedItemDetailedRepresentation && !table.Autofill
 }
 
 func validateTableProperties(path string, table TableProperties, kind FormElementKind) []string {
@@ -229,6 +368,10 @@ func validateTableProperties(path string, table TableProperties, kind FormElemen
 		FormRefreshRequestPullFromTop, FormRefreshRequestPullFromTopOrBottom)...)
 	issues = append(issues, oneOf(path+".behavior_on_horizontal_compression", table.BehaviorOnHorizontalCompression,
 		FormHorizontalCompressionAuto, FormHorizontalCompressionHideItemsByImportance, FormHorizontalCompressionMoveItemsByImportance)...)
+	if table.DynamicList != nil {
+		issues = append(issues, validateTableDynamicList(path+".dynamic_list", *table.DynamicList)...)
+	}
+	issues = append(issues, oneOf(path+".view_mode", table.ViewMode, FormSettingsViewAll, FormSettingsViewQuickAccess)...)
 	return issues
 }
 
@@ -236,5 +379,59 @@ func (table TableProperties) clone() TableProperties {
 	table.HeaderHeight, table.FooterHeight = clonePointer(table.HeaderHeight), clonePointer(table.FooterHeight)
 	table.AutoAddIncomplete = clonePointer(table.AutoAddIncomplete)
 	table.RowsPicture = table.RowsPicture.clone()
+	if list := table.DynamicList; list != nil {
+		copied := *list
+		copied.TopLevelParent = clonePointer(list.TopLevelParent)
+		table.DynamicList = &copied
+	}
 	return table
+}
+
+// resolveFormTables resolves and notes what the tables of a form name: the
+// item a dynamic list shows as its root, with the project; the element its
+// user settings are shown in - the help makes it a group, and the prototype
+// keeps an input field there twice (NoteUserSettingsGroupNotGroup) and a
+// code 70 times (NoteFormReferenceAsWritten); and the autofill the help does
+// not know (NotePropertyOutsideHelp).
+func (catalog *Catalog) resolveFormTables(where string, form ManagedForm) {
+	kinds := map[string]FormElementKind{}
+	var tables []ManagedFormElement
+	var walk func(items []ManagedFormElement)
+	walk = func(items []ManagedFormElement) {
+		for _, item := range items {
+			if _, seen := kinds[foldedName(item.Name)]; !seen {
+				kinds[foldedName(item.Name)] = item.Kind
+			}
+			if item.Kind == FormElementTable {
+				tables = append(tables, item)
+			}
+			walk(item.Nested())
+		}
+	}
+	walk(form.FormItems())
+	for _, table := range tables {
+		at := where + " element " + table.Name
+		if table.Autofill {
+			catalog.noteForm(NotePropertyOutsideHelp, at+" autofill", "true")
+		}
+		list := table.DynamicList
+		if list == nil {
+			continue
+		}
+		if group := list.UserSettingsGroup; formElementCode.MatchString(group) {
+			catalog.noteForm(NoteFormReferenceAsWritten, at+" user_settings_group", group)
+		} else if kind, ok := kinds[foldedName(group)]; group != "" && ok && !slices.Contains(formGroupKinds, kind) {
+			catalog.noteForm(NoteUserSettingsGroupNotGroup, at+" user_settings_group", group+" ("+string(kind)+")")
+		}
+		if parent := list.TopLevelParent; parent != nil {
+			switch parent.Kind {
+			case UnresolvedReferenceValue:
+				catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: at + " top_level_parent", Written: parent.Data})
+			case CatalogType, CharacteristicTypesType, AccountType:
+				if _, ok := catalog.objectKindByID[parent.Object]; !ok {
+					catalog.noteUnresolved(at+" top_level_parent", parent.Object)
+				}
+			}
+		}
+	}
 }

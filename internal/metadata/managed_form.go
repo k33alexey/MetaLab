@@ -308,6 +308,9 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	// A button runs a standard command of an element, which may stand after
 	// it too.
 	var commanded []pending
+	// A table of a dynamic list shows an attribute of the form and names the
+	// group its user settings go in, which may stand after it.
+	var listed []pending
 	for id := range commandIDs {
 		ids[id] = true
 	}
@@ -386,6 +389,9 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		if class == formTableClass || class == formFieldClass {
 			sources[folded] = item.Kind
 		}
+		if item.DynamicList != nil && class == formTableClass {
+			listed = append(listed, pending{element: item, path: current.path})
+		}
 		issues = append(issues, validateOwnPictureFiles(current.path, item)...)
 		// The help gives every group whether it is read only (FormGroup), and
 		// the prototype writes it on usual groups, pages and groups of columns.
@@ -458,6 +464,18 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	for _, button := range commanded {
 		if command, _ := parseButtonCommand(button.element.Command); !names[strings.ToLower(command.element)] {
 			issues = append(issues, button.path+".command names no element of the form")
+		}
+	}
+	for _, table := range listed {
+		attribute := slices.IndexFunc(value.Attributes, func(attribute FormAttribute) bool {
+			single, ok := SingleType(attribute.Types)
+			return ok && single.Kind == DynamicListType && foldedName(attribute.Name) == foldedName(table.element.DataPath)
+		})
+		if attribute < 0 {
+			issues = append(issues, table.path+".dynamic_list belongs to a table showing an attribute of the form that is a dynamic list")
+		}
+		if group := table.element.DynamicList.UserSettingsGroup; group != "" && !formElementCode.MatchString(group) && !names[foldedName(group)] {
+			issues = append(issues, table.path+".dynamic_list.user_settings_group names no element of the form")
 		}
 	}
 	issues = append(issues, validateFormAttributes(value.Attributes, ids, configuration)...)

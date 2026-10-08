@@ -215,6 +215,17 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		writeCommonForm(t, root, "Помощник", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Помощник\ntitle: {ru: Помощник}\nkind: common\n"+
 			"items:\n  - {id: "+uuid.MustNew().String()+", name: Кнопка, kind: button, command: \"0\"}\n")
 	},
+	NotePropertyOutsideHelp: func(t *testing.T, root string) {
+		writeCommonForm(t, root, "Отбор", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Отбор\ntitle: {ru: Отбор}\nkind: common\n"+
+			"items:\n  - {id: "+uuid.MustNew().String()+", name: Таблица, kind: table, autofill: true}\n")
+	},
+	NoteUserSettingsGroupNotGroup: func(t *testing.T, root string) {
+		writeCommonForm(t, root, "Список", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Список\ntitle: {ru: Список}\nkind: common\n"+
+			"items:\n  - {id: "+uuid.MustNew().String()+", name: Период, kind: input-field}\n"+
+			"  - {id: "+uuid.MustNew().String()+", name: Таблица, kind: table, data_path: Список,"+
+			" dynamic_list: {period: {variant: custom}, user_settings_group: Период}}\n"+
+			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Список, types: [{kind: dynamic-list}]}\n")
+	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")

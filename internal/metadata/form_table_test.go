@@ -139,7 +139,8 @@ func TestEachPropertyOfATableStandsOnlyOnATable(t *testing.T) {
 		SearchStringLocation: FormTableLocationFormCaption, ViewStatusLocation: FormTableLocationAuto, SearchControlLocation: FormTableLocationNone,
 		SearchOnInput: FormSearchOnInputUse, HeightInTableRows: 1, NoAutoMaxRowsCount: true, MaxRowsCount: 1,
 		RowsPicture: &PictureReference{Standard: "Change"}, RowPictureDataPath: "Список.Картинка", RefreshRequest: FormRefreshRequestNone,
-		BehaviorOnHorizontalCompression: FormHorizontalCompressionAuto}
+		BehaviorOnHorizontalCompression: FormHorizontalCompressionAuto, DynamicList: &TableDynamicList{Period: FormStandardPeriod{Variant: "custom"}},
+		ViewMode: FormSettingsViewQuickAccess, NoNamedItemDetailedRepresentation: true, Autofill: true}
 	value := reflect.ValueOf(full)
 	for index := range value.NumField() {
 		name := value.Type().Field(index).Name
@@ -260,6 +261,203 @@ func TestThePictureOfRowsIsResolved(t *testing.T) {
 				if _, err := Load(root); err != nil {
 					t.Fatal(err)
 				}
+			}
+		})
+	}
+}
+
+// tableOfAList writes a form whose table shows the dynamic list Список with
+// what is given, beside a usual group and an input field to name.
+func tableOfAList(list string) string {
+	return formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Список, kind: table, data_path: Список, dynamic_list: {"+list+"}}\n"+
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: ГруппаНастроек, kind: usual-group}\n"+
+		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Период, kind: input-field}\n"+
+		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Товары, kind: table, data_path: Товары}\n") +
+		"attributes:\n  - {id: c0de0000-0000-4000-8000-000000990011, name: Список, types: [{kind: dynamic-list}]}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990012, name: Товары, types: [{kind: value-table}]}\n"
+}
+
+// A table of a dynamic list keeps what it has besides through YAML and the
+// Studio - its refresh, period, choice of folders and items, root, the row
+// it restores, its refresh on a change of data, the link to its current row
+// and the group of its user settings - and a table of the settings of a
+// composition its view mode, the representation of its named items and its
+// autofill.
+//
+// Defect caught: a list refreshed every minute (71 of them) read as not
+// refreshed; the period of a list, a root shown (3143) or a group of the
+// user settings (2206) lost; a list whose current row cannot be linked (8)
+// read as linkable; a filter of quick access (72) shown whole.
+func TestATableOfADynamicListKeepsWhatItHas(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	source := tableOfAList("auto_refresh: true, auto_refresh_period: 59, period: {variant: custom, start_date: \"2024-01-01T00:00:00\", end_date: \"2024-12-31T23:59:59\"}," +
+		" choice_folders_and_items: folders-and-items, restore_current_row: true, show_root: true, allow_root_choice: true," +
+		" top_level_parent: {kind: catalog, data: c0de0000-0000-4000-8000-000000990021, object: c0de0000-0000-4000-8000-000000990022}," +
+		" update_on_data_change: dont-update, user_settings_group: ГруппаНастроек")
+	source = strings.Replace(source, "name: Товары, kind: table, data_path: Товары}", "name: Товары, kind: table, data_path: Товары, view_mode: quick-access,"+
+		" no_named_item_detailed_representation: true, autofill: true}", 1)
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(source string, items []ManagedFormElement) {
+		t.Helper()
+		list, settings := items[0].DynamicList, items[3]
+		switch {
+		case list == nil:
+			t.Fatalf("%s: the list is gone", source)
+		case !list.AutoRefresh || list.AutoRefreshPeriod != 59 || list.Period.Variant != "custom" || list.Period.StartDate != "2024-01-01T00:00:00" ||
+			list.Period.EndDate != "2024-12-31T23:59:59":
+			t.Fatalf("%s: refresh and period: %+v", source, list)
+		case list.ChoiceFoldersAndItems != FormFoldersAndItemsBoth || !list.RestoreCurrentRow || !list.ShowRoot || !list.AllowRootChoice ||
+			list.UpdateOnDataChange != FormUpdateOnDataChangeDontUpdate || list.AllowGettingCurrentRowURL || list.UserSettingsGroup != "ГруппаНастроек":
+			t.Fatalf("%s: the list: %+v", source, list)
+		case list.TopLevelParent == nil || list.TopLevelParent.Kind != CatalogType || list.TopLevelParent.Data != "c0de0000-0000-4000-8000-000000990021":
+			t.Fatalf("%s: the root: %+v", source, list.TopLevelParent)
+		case settings.DynamicList != nil || settings.ViewMode != FormSettingsViewQuickAccess || !settings.NoNamedItemDetailedRepresentation || !settings.Autofill:
+			t.Fatalf("%s: a table of settings: %+v", source, settings.TableProperties)
+		}
+	}
+	check("read", form.Items)
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("written back", again.Items)
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil {
+		t.Fatal(err)
+	}
+	check("carried through the Studio", received.Items)
+	if !reflect.DeepEqual(received.Items, form.Items) || !reflect.DeepEqual(again.Items, form.Items) {
+		t.Fatal("a table changed on the way")
+	}
+}
+
+// A table of a dynamic list refuses what is wrong in what it has, and the
+// record of a dynamic list stands only on a table showing one.
+//
+// Defect caught: the prototype's spelling ("Custom", "Items", "DontUpdate")
+// taken as written; a period without its variant read as custom; a date the
+// prototype does not write - without its time, with fractions of a second,
+// which Go's own parsing lets through, or a month that is none; the root of a list an item of a document; the
+// group of the user settings naming an element the form does not have, or
+// written with spaces; what a dynamic list has on a table of a value table,
+// or of an attribute the form does not have.
+func TestATableOfADynamicListRefusesWhatIsWrong(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	for name, test := range map[string]struct{ list, want string }{
+		"вариант прототипа":  {"period: {variant: Custom}", "items[0].dynamic_list.period.variant must be custom, today"},
+		"вариант не назван":  {"period: {start_date: \"2024-01-01T00:00:00\"}", "items[0].dynamic_list.period.variant must be named"},
+		"дата без времени":   {"period: {variant: custom, start_date: \"2024-01-01\"}", "items[0].dynamic_list.period.start_date must be a date written as 2006-01-02T15:04:05"},
+		"дробные секунды":    {"period: {variant: custom, start_date: \"2024-01-01T00:00:00.5\"}", "items[0].dynamic_list.period.start_date must be a date written as 2006-01-02T15:04:05"},
+		"дата не дата":       {"period: {variant: custom, end_date: \"2024-13-01T00:00:00\"}", "items[0].dynamic_list.period.end_date must be a date written as 2006-01-02T15:04:05"},
+		"период обновления":  {"period: {variant: custom}, auto_refresh_period: -1", "items[0].dynamic_list.auto_refresh_period must not be negative"},
+		"группы и элементы":  {"period: {variant: custom}, choice_folders_and_items: Items", "items[0].dynamic_list.choice_folders_and_items must be folders, items or folders-and-items"},
+		"обновление":         {"period: {variant: custom}, update_on_data_change: DontUpdate", "items[0].dynamic_list.update_on_data_change must be auto or dont-update"},
+		"корень документ":    {"period: {variant: custom}, top_level_parent: {kind: document, data: x, object: c0de0000-0000-4000-8000-000000990022}", "items[0].dynamic_list.top_level_parent must be an item of a catalog, a chart of characteristic types or a chart of accounts"},
+		"корень без объекта": {"period: {variant: custom}, top_level_parent: {kind: catalog, data: c0de0000-0000-4000-8000-000000990021}", "items[0].dynamic_list.top_level_parent must name its object and its item"},
+		"корень без вида":    {"period: {variant: custom}, top_level_parent: {data: x}", "items[0].dynamic_list.top_level_parent must be an item of a catalog"},
+		"группа с пробелом":  {"period: {variant: custom}, user_settings_group: Группа Настроек", "items[0].dynamic_list.user_settings_group must be the name or the code of an element of the form"},
+		"группы нет в форме": {"period: {variant: custom}, user_settings_group: ГруппаОтборов", "items[0].dynamic_list.user_settings_group names no element of the form"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			source := tableOfAList(test.list)
+			_, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+	for name, test := range map[string]struct{ table, want string }{
+		"таблица значений": {"name: Товары, kind: table, data_path: Товары, dynamic_list: {period: {variant: custom}}", "items[0].dynamic_list belongs to a table showing an attribute of the form that is a dynamic list"},
+		"нет реквизита":    {"name: Остатки, kind: table, data_path: Остатки, dynamic_list: {period: {variant: custom}}", "items[0].dynamic_list belongs to a table showing an attribute of the form that is a dynamic list"},
+		"режим просмотра":  {"name: Товары, kind: table, data_path: Товары, view_mode: QuickAccess", "items[0].view_mode must be all or quick-access"},
+		"не таблица":       {"name: Поле, kind: input-field, data_path: Список, dynamic_list: {period: {variant: custom}}", "items[0] has what only a table has"},
+		"код группы":       {"name: Список, kind: table, data_path: Список, dynamic_list: {period: {variant: custom}, user_settings_group: \"1:02023637-7868-4a5f-8576-835a76e0c9ba\"}", ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			source := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, "+test.table+"}\n") +
+				"attributes:\n  - {id: c0de0000-0000-4000-8000-000000990011, name: Список, types: [{kind: dynamic-list}]}\n" +
+				"  - {id: c0de0000-0000-4000-8000-000000990012, name: Товары, types: [{kind: value-table}]}\n"
+			_, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
+			if test.want == "" && err != nil || test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+// What a table of a form names is resolved and noted at load: the root of a
+// dynamic list with the project, the group of its user settings by what it
+// names, and the autofill the help does not know.
+//
+// Defect caught: the root of a list naming a catalog the project no longer
+// has, loading clean; the group of the user settings written as a code (70
+// in the exports) or naming an input field (2) accepted silently; the
+// autofill of 267 tables carried without a note; a note on a list whose
+// group is a group.
+func TestWhatATableNamesIsResolvedAndNoted(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		table   string
+		note    NoteKind
+		written string
+		gone    bool
+	}{
+		"группа":           {table: "dynamic_list: {period: {variant: custom}, user_settings_group: Группа, top_level_parent: {kind: catalog, data: c0de0000-0000-4000-8000-000000990021, object: " + cmpGoods + "}}"},
+		"удалённый корень": {table: "dynamic_list: {period: {variant: custom}, top_level_parent: {kind: catalog, data: c0de0000-0000-4000-8000-000000990021, object: " + refGone + "}}", gone: true},
+		"корень остатком":  {table: "dynamic_list: {period: {variant: custom}, top_level_parent: {kind: unresolved-reference, data: \"1a2b.3c4d\"}}", gone: true},
+		"код группы":       {table: "dynamic_list: {period: {variant: custom}, user_settings_group: \"1:02023637-7868-4a5f-8576-835a76e0c9ba\"}", note: NoteFormReferenceAsWritten, written: "1:02023637-7868-4a5f-8576-835a76e0c9ba"},
+		"группа-поле":      {table: "dynamic_list: {period: {variant: custom}, user_settings_group: Поле}", note: NoteUserSettingsGroupNotGroup, written: "Поле (input-field)"},
+		"автозаполнение":   {table: "autofill: true", note: NotePropertyOutsideHelp, written: "true"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := formReferencesProject(t)
+			path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			element := "items:\n  - {id: c0de0000-0000-4000-8000-000000990002, name: Таблица, kind: table, data_path: Список, " + test.table + "}\n" +
+				"  - {id: c0de0000-0000-4000-8000-000000990003, name: Группа, kind: usual-group}\n" +
+				"  - {id: c0de0000-0000-4000-8000-000000990004, name: Поле, kind: input-field}\n"
+			writeFile(t, path, strings.Replace(string(content), "attributes:\n", element+"attributes:\n", 1))
+			where := "catalog Номенклатура form ФормаЭлемента element Таблица"
+			if test.gone {
+				if unresolved := unresolvedOf(t, root); !containsWhere(unresolved, where+" top_level_parent") {
+					t.Fatalf("unresolved = %+v", unresolved)
+				}
+				return
+			}
+			catalog, err := Load(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var found []Note
+			for _, note := range catalog.Notes() {
+				if strings.HasPrefix(note.Where, where) {
+					found = append(found, note)
+				}
+			}
+			if test.note == "" && len(found) != 0 || test.note != "" && (len(found) != 1 || found[0].Kind != test.note || found[0].Written != test.written) {
+				t.Fatalf("notes = %+v, want %s %q", found, test.note, test.written)
 			}
 		})
 	}
