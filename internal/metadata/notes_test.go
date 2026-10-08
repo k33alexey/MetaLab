@@ -233,6 +233,10 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 			", name: ТоварыСтрокаПоиска, kind: search-string-addition, addition_source: ТоварыРасширеннаяПодсказка},"+
 			" extended_tooltip: {id: "+uuid.MustNew().String()+", name: ТоварыРасширеннаяПодсказка, kind: label-decoration}}\n")
 	},
+	NoteAdditionOfNoTable: func(t *testing.T, root string) {
+		writeCommonForm(t, root, "Отчет", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Отчет\ntitle: {ru: Отчет}\nkind: common\n"+
+			"auto_command_bar: {id: "+uuid.MustNew().String()+", children: [{id: "+uuid.MustNew().String()+", name: Дополнение1, kind: search-string-addition}]}\n")
+	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")

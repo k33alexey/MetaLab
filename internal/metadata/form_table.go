@@ -5,6 +5,8 @@ import (
 	"slices"
 	"time"
 	"unicode/utf8"
+
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // FormRowSelectionMode is what a table selects when a row is current: the
@@ -393,10 +395,12 @@ func (table TableProperties) clone() TableProperties {
 // keeps an input field there twice (NoteUserSettingsGroupNotGroup) and a
 // code 70 times (NoteFormReferenceAsWritten); and the autofill the help does
 // not know (NotePropertyOutsideHelp); and an addition a table holds that
-// names another element as its source (NoteHeldAdditionOfAnother).
+// names another element as its source (NoteHeldAdditionOfAnother); and an
+// addition standing apart that names no table (NoteAdditionOfNoTable).
 func (catalog *Catalog) resolveFormTables(where string, form ManagedForm) {
 	kinds := map[string]FormElementKind{}
 	var tables []ManagedFormElement
+	held := map[uuid.UUID]bool{}
 	var walk func(items []ManagedFormElement)
 	walk = func(items []ManagedFormElement) {
 		for _, item := range items {
@@ -405,6 +409,14 @@ func (catalog *Catalog) resolveFormTables(where string, form ManagedForm) {
 			}
 			if item.Kind == FormElementTable {
 				tables = append(tables, item)
+				for _, addition := range item.tableAdditions() {
+					if addition.addition != nil {
+						held[addition.addition.ID] = true
+					}
+				}
+			}
+			if formElementClasses[item.Kind] == formAdditionClass && item.AdditionSource == "" && !held[item.ID] {
+				catalog.noteForm(NoteAdditionOfNoTable, where+" element "+item.Name, string(item.Kind))
 			}
 			walk(item.Nested())
 		}

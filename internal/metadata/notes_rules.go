@@ -65,6 +65,7 @@ const (
 	NotePropertyOutsideHelp        NoteKind = "property-outside-help"
 	NoteUserSettingsGroupNotGroup  NoteKind = "user-settings-group-not-group"
 	NoteHeldAdditionOfAnother      NoteKind = "held-addition-of-another-element"
+	NoteAdditionOfNoTable          NoteKind = "addition-of-no-table"
 )
 
 func init() {
@@ -252,6 +253,11 @@ func init() {
 				"не эту таблицу, а другой элемент: в одной форме sb — расширенную подсказку соседнего элемента. Прототип такое сохраняет; " +
 				"что оно показывает, не установлено.",
 			"Дополнение несётся как записано, с источником; таблица показывает его как своё."},
+		NoteKindInfo{NoteAdditionOfNoTable,
+			"Строка поиска, состояние просмотра или управление поиском стоит отдельно от таблицы и не называет никакой таблицы: " +
+				"в lombard1 так одна форма, две штуки в командной панели формы. Конфигуратор такое сохраняет; по всей видимости, " +
+				"след удалённой таблицы или дополнение, перенесённое из другой формы.",
+			"Дополнение несётся как записано и ничего не показывает."},
 	)
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
@@ -311,6 +317,9 @@ func init() {
 	}
 	noteRules[NoteHeldAdditionOfAnother] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteHeldAdditionOfAnother, note)
+	}
+	noteRules[NoteAdditionOfNoTable] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NoteAdditionOfNoTable, note)
 	}
 }
 

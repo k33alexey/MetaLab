@@ -197,7 +197,10 @@ type ManagedFormElement struct {
 	OnMainServerUnavailable FormServerUnavailableBehavior `yaml:"on_main_server_unavailable,omitempty" json:"onMainServerUnavailable,omitempty"`
 	// AdditionSource is the table an addition standing apart from it is of,
 	// named by its element. An addition a table holds names none: it is of
-	// that table. The prototype writes the kind of the addition beside it,
+	// that table. One standing apart may name none too - the prototype saves
+	// a search string and a search control in the command bar of a form with
+	// no source (lombard1, one form) - and is then of no table and noted
+	// (NoteAdditionOfNoTable). The prototype writes the kind of the addition beside it,
 	// always the kind of the addition itself, which is not kept twice.
 	AdditionSource string `yaml:"addition_source,omitempty" json:"additionSource,omitempty"`
 	// ButtonType is what a button is; only a button has one.
@@ -514,11 +517,9 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		case class != formAdditionClass && item.AdditionSource != "":
 			issues = append(issues, current.path+".addition_source is allowed only for additions of a table")
 		case class != formAdditionClass:
-		case item.AdditionSource == "" && !current.held:
-			issues = append(issues, current.path+".addition_source must name the table an addition standing apart from it is of")
 		case item.AdditionSource != "" && (!validIdentifier(item.AdditionSource) || utf8.RuneCountInString(item.AdditionSource) > maxNameLength):
 			issues = append(issues, current.path+".addition_source must be the name of an element of the form")
-		case item.AdditionSource != "" || !current.held:
+		case item.AdditionSource != "":
 			sourced = append(sourced, current)
 		}
 	}

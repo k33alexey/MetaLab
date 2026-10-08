@@ -556,8 +556,8 @@ func TestATableKeepsItsAdditions(t *testing.T) {
 // What is wrong with an addition is refused, naming the place.
 //
 // Defect caught: a search control held where the search string stands, or
-// an addition held by a field; an addition standing apart without its table,
-// naming a field or nothing at all; a source written on a field; the
+// an addition held by a field; an addition standing apart naming a field or
+// an element the form does not have; a source written on a field; the
 // additions a table holds checked as nothing - an identifier or a name
 // repeated, a property of a field let through.
 func TestAnAdditionRefusesWhatIsWrong(t *testing.T) {
@@ -571,7 +571,6 @@ func TestAnAdditionRefusesWhatIsWrong(t *testing.T) {
 		"чужой вид":             {held("search_string_addition", "name: Поиск, kind: search-control-addition"), "items[0].search_string_addition.kind must be search-string-addition"},
 		"не дополнение":         {held("view_status_addition", "name: Поиск, kind: input-field"), "items[0].view_status_addition.kind must be view-status-addition"},
 		"у поля":                {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, search_control_addition: {id: c0de0000-0000-4000-8000-000000990002, name: Поиск, kind: search-control-addition}}\n", "items[0].search_control_addition is allowed only for tables"},
-		"без источника":         {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Поиск, kind: search-string-addition}\n", "items[0].addition_source must name the table an addition standing apart from it is of"},
 		"источник поле":         {field + "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поиск, kind: search-string-addition, addition_source: Поле}\n", "items[1].addition_source names no table of the form"},
 		"источника нет":         {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Поиск, kind: view-status-addition, addition_source: Список}\n", "items[0].addition_source names no table of the form"},
 		"источник с пробелом":   {held("search_string_addition", "name: Поиск, kind: search-string-addition, addition_source: Список Товаров"), "items[0].search_string_addition.addition_source must be the name of an element of the form"},
@@ -588,5 +587,42 @@ func TestAnAdditionRefusesWhatIsWrong(t *testing.T) {
 				t.Fatalf("err = %v, want %q", err, test.want)
 			}
 		})
+	}
+}
+
+// An addition standing apart that names no table is carried and noted, as
+// the prototype saves it; an addition a table holds names none and is not
+// noted, being of its table.
+//
+// Defect caught: the form of lombard1 whose command bar holds a search
+// string and a search control of no table refused, so that the form is not
+// moved; such an addition carried without a note; a note on every addition
+// a table holds, burying the real one under 27 thousand.
+func TestAnAdditionOfNoTableIsCarriedWithANote(t *testing.T) {
+	t.Parallel()
+	root := formReferencesProject(t)
+	path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := "items:\n  - {id: c0de0000-0000-4000-8000-000000990001, name: Список, kind: table, search_string_addition:" +
+		" {id: c0de0000-0000-4000-8000-000000990002, name: СписокСтрокаПоиска, kind: search-string-addition}}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Панель, kind: command-bar, children: [" +
+		"{id: c0de0000-0000-4000-8000-000000990004, name: Дополнение1, kind: search-string-addition}," +
+		" {id: c0de0000-0000-4000-8000-000000990005, name: Дополнение2, kind: search-control-addition, addition_source: Список}]}\n"
+	writeFile(t, path, strings.Replace(string(content), "attributes:\n", items+"attributes:\n", 1))
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found []Note
+	for _, note := range catalog.Notes() {
+		if note.Kind == NoteAdditionOfNoTable {
+			found = append(found, note)
+		}
+	}
+	if len(found) != 1 || found[0].Where != "catalog Номенклатура form ФормаЭлемента element Дополнение1" || found[0].Written != "search-string-addition" {
+		t.Fatalf("notes = %+v", found)
 	}
 }
