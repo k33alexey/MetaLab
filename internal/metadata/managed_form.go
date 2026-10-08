@@ -116,14 +116,18 @@ type ManagedForm struct {
 // ManagedFormElement is one stable node in a managed form tree. Hidden and
 // disabled use inverse flags so omitted YAML retains the useful true defaults.
 type ManagedFormElement struct {
-	ID       uuid.UUID       `yaml:"id" json:"id"`
-	Name     string          `yaml:"name" json:"name"`
-	Kind     FormElementKind `yaml:"kind" json:"kind"`
-	Title    LocalizedText   `yaml:"title,omitempty" json:"title"`
-	Hidden   bool            `yaml:"hidden,omitempty" json:"hidden"`
-	Disabled bool            `yaml:"disabled,omitempty" json:"disabled"`
-	ReadOnly bool            `yaml:"read_only,omitempty" json:"readOnly"`
-	DataPath string          `yaml:"data_path,omitempty" json:"dataPath,omitempty"`
+	ID    uuid.UUID       `yaml:"id" json:"id"`
+	Name  string          `yaml:"name" json:"name"`
+	Kind  FormElementKind `yaml:"kind" json:"kind"`
+	Title LocalizedText   `yaml:"title,omitempty" json:"title"`
+	// TitleFormatted reads the title of a decoration as a formatted string,
+	// with its marks of bold, colour and links; the prototype writes it on
+	// 1166 decorations, 32 of them with no title.
+	TitleFormatted bool   `yaml:"title_formatted,omitempty" json:"titleFormatted,omitempty"`
+	Hidden         bool   `yaml:"hidden,omitempty" json:"hidden"`
+	Disabled       bool   `yaml:"disabled,omitempty" json:"disabled"`
+	ReadOnly       bool   `yaml:"read_only,omitempty" json:"readOnly"`
+	DataPath       string `yaml:"data_path,omitempty" json:"dataPath,omitempty"`
 	// Command is the command a button runs, written as the prototype writes
 	// it (form_commands.go), and CommandParameter what it passes to it.
 	Command          string                `yaml:"command,omitempty" json:"command,omitempty"`
@@ -362,6 +366,9 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		folded := strings.ToLower(item.Name)
 		claim(current.path, item.Name, formElementClasses[item.Kind] == formAdditionClass)
 		issues = append(issues, validateTitle(current.path+".title", item.Title, configuration)...)
+		if item.TitleFormatted && formElementClasses[item.Kind] != formDecorationClass {
+			issues = append(issues, current.path+".title_formatted is allowed only for decorations")
+		}
 		class, known := formElementClasses[item.Kind]
 		if !known {
 			issues = append(issues, current.path+".kind "+string(item.Kind)+" is not a kind of element of a form")

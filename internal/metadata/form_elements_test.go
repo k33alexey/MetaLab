@@ -346,7 +346,7 @@ func TestAFieldRefusesWhatIsWrongInHowItIsEdited(t *testing.T) {
 	configuration := managedFormConfiguration()
 	for name, test := range map[string]struct{ element, want string }{
 		"заголовок у группы":         {"kind: usual-group, title_location: top", "items[0] has what only a field has"},
-		"сочетание у декорации":      {"kind: label-decoration, shortcut: F5", "items[0] has what only a field has"},
+		"редактирование у декорации": {"kind: label-decoration, edit_mode: directly", "items[0] has what only a field has"},
 		"пропуск у строки поиска":    {"kind: search-string-addition, skip_on_input: true", "items[0] has what only a field has"},
 		"по умолчанию у группы":      {"kind: usual-group, default_item: true", "items[0] has what only a field has"},
 		"положение заголовка":        {"kind: input-field, title_location: center", "items[0].title_location must be auto, none, left, right, top or bottom"},
@@ -474,7 +474,7 @@ func TestAFieldRefusesWhatIsWrongInItsSize(t *testing.T) {
 	for name, test := range map[string]struct{ element, want string }{
 		"автоширина у группы":       {"kind: usual-group, no_auto_max_width: true", "items[0] has the size and alignment of a field"},
 		"растягивание у дополнения": {"kind: view-status-addition, addition_source: Т, vertical_stretch: true", "items[0] has the size and alignment of a field"},
-		"выравнивание у декорации":  {"kind: label-decoration, horizontal_align: left", "items[0] has the size and alignment of a field"},
+		"выравнивание у картинки":   {"kind: picture-decoration, horizontal_align: left", "items[0] has the size and alignment of a field"},
 		"ширина":                  {"kind: input-field, width: -1", "items[0].width must not be negative"},
 		"высота":                  {"kind: input-field, height: -1", "items[0].height must not be negative"},
 		"максимальная ширина":     {"kind: input-field, max_width: -1", "items[0].max_width must not be negative"},
@@ -1891,7 +1891,7 @@ func TestEachPropertyOfShowingAValueStandsOnItsFields(t *testing.T) {
 		RadioButtonType: FormRadioButtonRadioButton, ColumnsCount: 2, EqualColumnsWidth: &yes, ItemWidth: 1, ItemHeight: 1, ItemTitleHeight: 1}
 	items := []FormElementKind{FormElementCheckBoxField, FormElementRadioButtonField}
 	allowed := map[string][]FormElementKind{
-		"Hyperlink": {FormElementLabelField, FormElementPictureField}, "CheckBoxType": {FormElementCheckBoxField}, "ThreeState": {FormElementCheckBoxField},
+		"Hyperlink": {FormElementLabelField, FormElementPictureField, FormElementLabelDecoration, FormElementPictureDecoration}, "CheckBoxType": {FormElementCheckBoxField}, "ThreeState": {FormElementCheckBoxField},
 		"EqualItemsWidth": {FormElementCheckBoxField}, "RadioButtonType": {FormElementRadioButtonField}, "ColumnsCount": {FormElementRadioButtonField},
 		"EqualColumnsWidth": {FormElementRadioButtonField}, "ItemWidth": items, "ItemHeight": items, "ItemTitleHeight": items,
 	}
@@ -1953,7 +1953,8 @@ func TestAPictureFieldKeepsWhatItHas(t *testing.T) {
 	picture := form.Items[0].FieldPicture
 	value := reflect.ValueOf(picture)
 	for index := range value.NumField() {
-		if value.Field(index).IsZero() {
+		// The scale is of a picture decoration only, kept in its own test.
+		if value.Field(index).IsZero() && value.Type().Field(index).Name != "ImageScale" {
 			t.Errorf("%s is not set by the test", value.Type().Field(index).Name)
 		}
 	}
@@ -1986,8 +1987,9 @@ func TestAPictureFieldKeepsWhatItHas(t *testing.T) {
 	}
 }
 
-// What a picture field has stands only on a picture field, each property
-// alone, and each value is checked.
+// What a picture field has stands only on a picture field, and what it shares
+// with a picture decoration and a table on those too, each property alone,
+// and each value is checked.
 //
 // Defect caught: a picture of values kept on an input field or a label field;
 // a property left out of the check for nothing, so that another field keeps
@@ -1998,24 +2000,33 @@ func TestAPictureFieldRefusesWhatIsWrong(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
 	full := FieldPicture{ValuesPicture: &PictureReference{Standard: "Change"}, PictureSize: FormPictureTile,
-		NonselectedPictureText: LocalizedText{"ru": "Нет"}, Zoomable: true, FileDragMode: FormFileDragAsFile}
+		NonselectedPictureText: LocalizedText{"ru": "Нет"}, Zoomable: true, FileDragMode: FormFileDragAsFile, ImageScale: 50}
+	// Written out from the help (the extensions of a picture field and of a
+	// picture decoration, FormTable) and the exports.
+	pictures := []FormElementKind{FormElementPictureField, FormElementPictureDecoration}
+	allowed := map[string][]FormElementKind{
+		"ValuesPicture": {FormElementPictureField}, "PictureSize": pictures, "NonselectedPictureText": pictures, "Zoomable": pictures,
+		"FileDragMode": {FormElementPictureField, FormElementPictureDecoration, FormElementTable}, "ImageScale": {FormElementPictureDecoration},
+	}
 	value := reflect.ValueOf(full)
 	for index := range value.NumField() {
 		name := value.Type().Field(index).Name
-		if value.Field(index).IsZero() {
+		kinds, known := allowed[name]
+		if !known || value.Field(index).IsZero() {
 			t.Fatalf("%s is not set by the test", name)
 		}
 		var alone FieldPicture
 		reflect.ValueOf(&alone).Elem().Field(index).Set(value.Field(index))
-		if issues := validateFieldPicture("items[0]", alone, FormElementInputField, configuration); len(issues) != 1 || issues[0] != "items[0] has what only a picture field has" {
-			t.Errorf("%s alone on an input field: %v", name, issues)
-		}
-		if issues := validateFieldPicture("items[0]", alone, FormElementPictureField, configuration); len(issues) != 0 {
-			t.Errorf("%s alone on a picture field: %v", name, issues)
+		for kind := range formElementClasses {
+			issues := validateFieldPicture("items[0]", alone, kind, configuration)
+			if want := !slices.Contains(kinds, kind); want != (len(issues) == 1 && strings.Contains(issues[0], "is allowed only for")) || !want && len(issues) != 0 {
+				t.Errorf("%s alone on %s: %v", name, kind, issues)
+			}
 		}
 	}
 	for name, test := range map[string]struct{ element, want string }{
-		"у поля надписи":   {"kind: label-field, values_picture: {standard: Change}", "items[0] has what only a picture field has"},
+		"у поля надписи":   {"kind: label-field, values_picture: {standard: Change}", "items[0].values_picture is allowed only for picture fields"},
+		"масштаб":          {"kind: picture-decoration, image_scale: -1", "items[0].image_scale must not be negative"},
 		"размер":           {"kind: picture-field, picture_size: Proportionally", "items[0].picture_size must be auto-size, auto-size-ignore-scale, by-font-size, proportionally, real-size, real-size-ignore-scale, stretch or tile"},
 		"перетаскивание":   {"kind: picture-field, file_drag_mode: AsFile", "items[0].file_drag_mode must be as-file or as-file-ref"},
 		"две картинки":     {"kind: picture-field, values_picture: {standard: Change, common: c0de0000-0000-4000-8000-000000000043}", "items[0].values_picture names more than one"},
@@ -2176,8 +2187,8 @@ func TestEachPropertyOfADocumentStandsOnItsFields(t *testing.T) {
 		"Output": {FormElementSpreadsheetDocumentField, FormElementTextDocumentField, FormElementHTMLDocumentField, FormElementFormattedDocumentField,
 			FormElementGraphicalSchemaField, FormElementTable},
 		"Edit":                {FormElementSpreadsheetDocumentField, FormElementGraphicalSchemaField},
-		"EnableDrag":          {FormElementSpreadsheetDocumentField, FormElementCalendarField, FormElementPlannerField, FormElementTable},
-		"EnableStartDrag":     {FormElementSpreadsheetDocumentField, FormElementCalendarField, FormElementPlannerField, FormElementTable},
+		"EnableDrag":          {FormElementSpreadsheetDocumentField, FormElementCalendarField, FormElementPlannerField, FormElementTable, FormElementPictureDecoration},
+		"EnableStartDrag":     {FormElementSpreadsheetDocumentField, FormElementCalendarField, FormElementPlannerField, FormElementTable, FormElementPictureDecoration},
 		"ExcludedCommands":    {FormElementSpreadsheetDocumentField, FormElementFormattedDocumentField, FormElementTable},
 		"VerticalScrollBar":   {FormElementSpreadsheetDocumentField, FormElementTable},
 		"HorizontalScrollBar": {FormElementSpreadsheetDocumentField, FormElementTable},
@@ -2453,25 +2464,33 @@ func TestAGroupHoldsOnlyThePropertiesOfAFieldItIsGiven(t *testing.T) {
 	// many shows here.
 	groups := []FormElementKind{FormElementUsualGroup, FormElementPages, FormElementPage, FormElementColumnGroup, FormElementPopup, FormElementButtonGroup,
 		FormElementCommandBar}
-	sized := append([]FormElementKind{FormElementButton, FormElementTable}, groups...)
+	decorations := []FormElementKind{FormElementLabelDecoration, FormElementPictureDecoration}
+	label := FormElementLabelDecoration
+	sized := append([]FormElementKind{FormElementButton, FormElementTable}, append(slices.Clone(groups), decorations...)...)
 	additions := []FormElementKind{FormElementSearchStringAddition, FormElementViewStatusAddition, FormElementSearchControlAddition}
 	all := append(slices.Clone(sized), additions...)
 	areas := []FormElementKind{FormElementUsualGroup, FormElementPage}
 	columns := []FormElementKind{FormElementColumnGroup}
 	button := []FormElementKind{FormElementButton, FormElementTable}
+	drawn := append(slices.Clone(button), decorations...)
 	titled := append([]FormElementKind{FormElementTable}, groups...)
 	// An addition has its width, its limit, its stretching across and its
-	// place across in its group.
-	wide := append(slices.Clone(button), additions...)
+	// place across in its group; a decoration its size, limits, font,
+	// colour of text, border and its colour, skipping on input; a label
+	// besides its background, where its text stands and the height of its
+	// title.
+	wide := append(slices.Clone(drawn), additions...)
 	expected := map[string][]FormElementKind{
 		"width": all, "height": sized, "horizontal_stretch": all, "vertical_stretch": sized, "group_horizontal_align": all,
 		"group_vertical_align": sized, "shortcut": sized, "title_font": titled, "title_text_color": titled,
-		"horizontal_align": {FormElementUsualGroup, FormElementPage, FormElementCommandBar, FormElementViewStatusAddition}, "vertical_align": areas,
-		"back_color":   {FormElementUsualGroup, FormElementPage, FormElementPopup, FormElementButton, FormElementTable},
-		"border_color": {FormElementPopup, FormElementButton, FormElementTable}, "title_back_color": columns, "header_picture": columns,
+		"horizontal_align": {FormElementUsualGroup, FormElementPage, FormElementCommandBar, FormElementViewStatusAddition, label},
+		"vertical_align":   append(slices.Clone(areas), label),
+		"back_color":       {FormElementUsualGroup, FormElementPage, FormElementPopup, FormElementButton, FormElementTable, label},
+		"border_color":     {FormElementPopup, FormElementButton, FormElementTable, label, FormElementPictureDecoration}, "border": decorations,
+		"title_back_color": columns, "header_picture": columns,
 		"header_horizontal_align": columns, "fixing_in_table": columns, "no_auto_max_width": wide, "max_width": wide,
-		"no_auto_max_height": button, "max_height": button, "text_color": button, "font": button, "title_height": button,
-		"skip_on_input": button, "default_item": button, "title_location": {FormElementTable},
+		"no_auto_max_height": drawn, "max_height": drawn, "text_color": drawn, "font": drawn, "title_height": append(slices.Clone(button), label),
+		"skip_on_input": drawn, "default_item": button, "title_location": {FormElementTable},
 	}
 	check := func(name string, kind FormElementKind, issues []string) {
 		allowed := slices.Contains(expected[name], kind)
@@ -2639,7 +2658,7 @@ func TestEachPropertyOfAGroupStandsOnItsGroup(t *testing.T) {
 		"HideTitle": {FormElementUsualGroup, FormElementPage, FormElementColumnGroup}, "Behavior": usual, "NotUnited": usual, "Collapsed": usual,
 		"CollapsedTitle": usual, "ControlRepresentation": usual, "NoLeftMargin": usual, "ChildrenWidth": areas, "ItemsAndTitlesAlign": areas,
 		"HorizontalSpacing": areas, "VerticalSpacing": areas, "ThroughAlign": usual, "TitleDataPath": areas,
-		"Picture": {FormElementPage, FormElementPopup, FormElementButton}, "ScrollOnCompress": {FormElementPage},
+		"Picture": {FormElementPage, FormElementPopup, FormElementButton, FormElementPictureDecoration}, "ScrollOnCompress": {FormElementPage},
 		"ShowInHeader": {FormElementColumnGroup}, "ShapeRepresentation": {FormElementPopup, FormElementButton},
 		"CommandSource": {FormElementCommandBar, FormElementButtonGroup, FormElementPopup},
 		"EnableContentChange": {FormElementUsualGroup, FormElementPages, FormElementPage, FormElementColumnGroup, FormElementPopup, FormElementButtonGroup,

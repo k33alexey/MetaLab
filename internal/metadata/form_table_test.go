@@ -195,7 +195,7 @@ func TestATableRefusesWhatIsWrong(t *testing.T) {
 		"строки таблицы у поля":   {"kind: input-field, height_control_variant: use-height-in-table-rows", "items[0].height_control_variant must be auto, use-content-height or use-height-in-form-rows"},
 		"строка таблицы у группы": {"kind: usual-group, current_row_use: choice", "items[0].current_row_use must be auto, use or dont-use"},
 		"строка группы у таблицы": {"kind: table, current_row_use: use", "items[0].current_row_use must be auto, choice, selection-presentation or selection-presentation-and-choice"},
-		"картинка поля":           {"kind: table, file_drag_mode: as-file, picture_size: stretch", "items[0] has what only a picture field has"},
+		"картинка поля":           {"kind: table, file_drag_mode: as-file, picture_size: stretch", "items[0].picture_size is allowed only for picture fields and pictures"},
 		"текст поля":              {"kind: table, height_control_variant: auto, mask: '99'", "items[0] has the text input of an input field"},
 		"шапка у поля":            {"kind: input-field, no_header: true", "items[0] has what only a table has"},
 		"выравнивание колонки":    {"kind: table, horizontal_align: left", "items[0] has the size and alignment of a field"},

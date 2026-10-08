@@ -358,17 +358,22 @@ var (
 // Auto included), not where text stands in a column, and vertical_align where
 // a usual group or a page puts what it holds up and down.
 var fieldPropertyElsewhere = map[string][]FormElementKind{
-	"width": withAdditions(groupsButtonAndTable), "height": groupsButtonAndTable, "horizontal_stretch": withAdditions(groupsButtonAndTable),
-	"vertical_stretch": groupsButtonAndTable, "group_horizontal_align": withAdditions(groupsButtonAndTable),
-	"group_vertical_align": groupsButtonAndTable, "shortcut": groupsButtonAndTable,
+	"width": withDecorations(withAdditions(groupsButtonAndTable)), "height": withDecorations(groupsButtonAndTable),
+	"horizontal_stretch": withDecorations(withAdditions(groupsButtonAndTable)), "vertical_stretch": withDecorations(groupsButtonAndTable),
+	"group_horizontal_align": withDecorations(withAdditions(groupsButtonAndTable)), "group_vertical_align": withDecorations(groupsButtonAndTable),
+	"shortcut":   withDecorations(groupsButtonAndTable),
 	"title_font": groupsAndTable, "title_text_color": groupsAndTable,
-	"horizontal_align":  {FormElementUsualGroup, FormElementPage, FormElementCommandBar, FormElementViewStatusAddition},
-	"vertical_align":    {FormElementUsualGroup, FormElementPage},
-	"back_color":        {FormElementUsualGroup, FormElementPage, FormElementPopup, FormElementButton, FormElementTable},
-	"border_color":      {FormElementPopup, FormElementButton, FormElementTable},
-	"no_auto_max_width": withAdditions(buttonAndTable), "max_width": withAdditions(buttonAndTable), "no_auto_max_height": buttonAndTable, "max_height": buttonAndTable,
-	"text_color": buttonAndTable, "font": buttonAndTable, "title_height": buttonAndTable, "skip_on_input": buttonAndTable,
-	"default_item": buttonAndTable, "title_location": tableKind,
+	"horizontal_align":  {FormElementUsualGroup, FormElementPage, FormElementCommandBar, FormElementViewStatusAddition, FormElementLabelDecoration},
+	"vertical_align":    {FormElementUsualGroup, FormElementPage, FormElementLabelDecoration},
+	"back_color":        {FormElementUsualGroup, FormElementPage, FormElementPopup, FormElementButton, FormElementTable, FormElementLabelDecoration},
+	"border_color":      withDecorations([]FormElementKind{FormElementPopup, FormElementButton, FormElementTable}),
+	"border":            formDecorationKinds,
+	"no_auto_max_width": withDecorations(withAdditions(buttonAndTable)), "max_width": withDecorations(withAdditions(buttonAndTable)),
+	"no_auto_max_height": withDecorations(buttonAndTable), "max_height": withDecorations(buttonAndTable),
+	"text_color": withDecorations(buttonAndTable), "font": withDecorations(buttonAndTable),
+	"title_height":  append(slices.Clone(buttonAndTable), FormElementLabelDecoration),
+	"skip_on_input": withDecorations(buttonAndTable),
+	"default_item":  buttonAndTable, "title_location": tableKind,
 	"title_back_color": {FormElementColumnGroup}, "header_picture": {FormElementColumnGroup},
 	"header_horizontal_align": {FormElementColumnGroup}, "fixing_in_table": {FormElementColumnGroup},
 }
@@ -385,6 +390,17 @@ var formAdditionKinds = []FormElementKind{FormElementSearchStringAddition, FormE
 
 func withAdditions(kinds []FormElementKind) []FormElementKind {
 	return append(slices.Clone(kinds), formAdditionKinds...)
+}
+
+// formDecorationKinds are the label and the picture. Each has its size and
+// limits, stretching, place in its group, font and colour of text, border
+// and its colour, shortcut and skipping on input (help, FormDecoration and
+// the extension of each); a label besides its background, where its text
+// stands across and up and down, and the height of its title.
+var formDecorationKinds = []FormElementKind{FormElementLabelDecoration, FormElementPictureDecoration}
+
+func withDecorations(kinds []FormElementKind) []FormElementKind {
+	return append(slices.Clone(kinds), formDecorationKinds...)
 }
 
 // outsideFields is what of a group of properties of a field an element of
@@ -1243,7 +1259,8 @@ func validateFieldValueView(path string, view FieldValueView, kind FormElementKi
 			issues = append(issues, path+"."+name+" is allowed only for "+what)
 		}
 	}
-	only("hyperlink", view.Hyperlink, "label and picture fields", FormElementLabelField, FormElementPictureField)
+	only("hyperlink", view.Hyperlink, "label and picture fields and decorations", FormElementLabelField, FormElementPictureField,
+		FormElementLabelDecoration, FormElementPictureDecoration)
 	only("check_box_type", view.CheckBoxType != "", "check boxes", FormElementCheckBoxField)
 	only("three_state", view.ThreeState, "check boxes", FormElementCheckBoxField)
 	only("equal_items_width", view.EqualItemsWidth != nil, "check boxes", FormElementCheckBoxField)
@@ -1307,28 +1324,41 @@ type FieldPicture struct {
 	// zoomed; the prototype writes only the "on" (9 times).
 	Zoomable     bool             `yaml:"zoomable,omitempty" json:"zoomable,omitempty"`
 	FileDragMode FormFileDragMode `yaml:"file_drag_mode,omitempty" json:"fileDragMode,omitempty"`
+	// ImageScale is the scale of the picture of a picture decoration in
+	// percent, besides the scale of the form (help, Scale - the prototype
+	// writes ImageScale, 6 times); 0 is the default, 100.
+	ImageScale int `yaml:"image_scale,omitempty" json:"imageScale,omitempty"`
 }
 
 func (picture FieldPicture) empty() bool {
 	return picture.ValuesPicture == nil && picture.PictureSize == "" && len(picture.NonselectedPictureText) == 0 &&
-		!picture.Zoomable && picture.FileDragMode == ""
+		!picture.Zoomable && picture.FileDragMode == "" && picture.ImageScale == 0
 }
 
 func validateFieldPicture(path string, picture FieldPicture, kind FormElementKind, configuration project.Project) []string {
 	if picture.empty() {
 		return nil
 	}
-	// A table takes files dragged onto it as a picture field does (help,
-	// FormTable); the prototype writes AsFile on 8502 tables.
-	if rest := picture; kind == FormElementTable {
-		rest.FileDragMode = ""
-		if !rest.empty() {
-			return []string{path + " has what only a picture field has"}
-		}
-	} else if kind != FormElementPictureField {
-		return []string{path + " has what only a picture field has"}
-	}
 	var issues []string
+	only := func(name string, set bool, what string, kinds ...FormElementKind) {
+		if set && !slices.Contains(kinds, kind) {
+			issues = append(issues, path+"."+name+" is allowed only for "+what)
+		}
+	}
+	// A picture decoration shows its picture as a picture field shows a
+	// value (help, the extension of a decoration for a picture), and a table
+	// takes files dragged onto it as a picture field does (help, FormTable;
+	// the prototype writes AsFile on 8502 tables).
+	pictures := []FormElementKind{FormElementPictureField, FormElementPictureDecoration}
+	only("values_picture", picture.ValuesPicture != nil, "picture fields", FormElementPictureField)
+	only("picture_size", picture.PictureSize != "", "picture fields and pictures", pictures...)
+	only("nonselected_picture_text", len(picture.NonselectedPictureText) != 0, "picture fields and pictures", pictures...)
+	only("zoomable", picture.Zoomable, "picture fields and pictures", pictures...)
+	only("file_drag_mode", picture.FileDragMode != "", "picture fields, pictures and tables", FormElementPictureField, FormElementPictureDecoration, FormElementTable)
+	only("image_scale", picture.ImageScale != 0, "pictures", FormElementPictureDecoration)
+	if picture.ImageScale < 0 {
+		issues = append(issues, path+".image_scale must not be negative")
+	}
 	issues = append(issues, validatePictureReference(path+".values_picture", picture.ValuesPicture)...)
 	issues = append(issues, oneOf(path+".picture_size", picture.PictureSize, FormPictureAutoSize, FormPictureAutoSizeIgnoreScale,
 		FormPictureByFontSize, FormPictureProportionally, FormPictureRealSize, FormPictureRealSizeIgnoreScale, FormPictureStretch, FormPictureTile)...)
@@ -1446,9 +1476,10 @@ func validateFieldDocument(path string, document FieldDocument, kind FormElement
 	only("edit", document.Edit != nil, "spreadsheet document and graphical schema fields", FormElementSpreadsheetDocumentField, FormElementGraphicalSchemaField)
 	only("vertical_scroll_bar", document.VerticalScrollBar != "", "spreadsheet document fields and tables", FormElementSpreadsheetDocumentField, FormElementTable)
 	only("horizontal_scroll_bar", document.HorizontalScrollBar != "", "spreadsheet document fields and tables", FormElementSpreadsheetDocumentField, FormElementTable)
-	dragging := []FormElementKind{FormElementSpreadsheetDocumentField, FormElementCalendarField, FormElementPlannerField, FormElementTable}
-	only("enable_drag", document.EnableDrag != nil, "spreadsheet document, calendar and planner fields and tables", dragging...)
-	only("enable_start_drag", document.EnableStartDrag != nil, "spreadsheet document, calendar and planner fields and tables", dragging...)
+	dragging := []FormElementKind{FormElementSpreadsheetDocumentField, FormElementCalendarField, FormElementPlannerField, FormElementTable,
+		FormElementPictureDecoration}
+	only("enable_drag", document.EnableDrag != nil, "spreadsheet document, calendar and planner fields, tables and pictures", dragging...)
+	only("enable_start_drag", document.EnableStartDrag != nil, "spreadsheet document, calendar and planner fields, tables and pictures", dragging...)
 	only("output", document.Output != "", "spreadsheet, text, HTML and formatted document and graphical schema fields and tables",
 		FormElementSpreadsheetDocumentField, FormElementTextDocumentField, FormElementHTMLDocumentField, FormElementFormattedDocumentField,
 		FormElementGraphicalSchemaField, FormElementTable)
@@ -1672,7 +1703,8 @@ type GroupProperties struct {
 	// TitleDataPath is the attribute shown in the title of a usual group or
 	// a page, written as the data path of a field is.
 	TitleDataPath string `yaml:"title_data_path,omitempty" json:"titleDataPath,omitempty"`
-	// Picture is drawn on the tab of a page, on a popup and on a button.
+	// Picture is drawn on the tab of a page, on a popup and on a button, and
+	// is what a picture decoration shows.
 	Picture *PictureReference `yaml:"picture,omitempty" json:"picture,omitempty"`
 	// ScrollOnCompress scrolls a page whose content is higher than the page;
 	// yes, no or not said, as the help gives Undefined beside the two and the
@@ -1741,7 +1773,7 @@ func validateGroupProperties(path string, group GroupProperties, kind FormElemen
 		only(property.name, property.set, "usual groups and pages", areas...)
 	}
 	only("hide_title", group.HideTitle, "usual groups, pages and groups of columns", FormElementUsualGroup, FormElementPage, FormElementColumnGroup)
-	only("picture", group.Picture != nil, "pages, popups and buttons", FormElementPage, FormElementPopup, FormElementButton)
+	only("picture", group.Picture != nil, "pages, popups, buttons and pictures", FormElementPage, FormElementPopup, FormElementButton, FormElementPictureDecoration)
 	only("scroll_on_compress", group.ScrollOnCompress != nil, "pages", FormElementPage)
 	only("enable_content_change", group.EnableContentChange, "groups", formGroupKinds...)
 	only("current_row_use", group.CurrentRowUse != "", "usual groups, pages and tables", FormElementUsualGroup, FormElementPages, FormElementTable)
