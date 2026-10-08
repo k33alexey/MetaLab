@@ -213,7 +213,7 @@ func (catalog *Catalog) resolveFormCommandInterface(form string, value *FormComm
 				return err
 			}
 			if strings.HasPrefix(line.DataPath, "~") && strings.Contains(line.DataPath[1:], "~") || formElementCode.MatchString(line.DataPath) {
-				catalog.noteForm(NoteFormReferenceAsWritten, where+" data_path", line.DataPath)
+				catalog.noteElementCode(where+" data_path", line.DataPath)
 			}
 			key := fmt.Sprintf("%s\x00%t\x00%s\x00%d\x00%s", foldedName(line.Command), line.Added, line.Group, line.Index, line.DataPath)
 			if line.Visibility != nil {

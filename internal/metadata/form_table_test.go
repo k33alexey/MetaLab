@@ -424,7 +424,7 @@ func TestWhatATableNamesIsResolvedAndNoted(t *testing.T) {
 		"группа":           {table: "dynamic_list: {period: {variant: custom}, user_settings_group: Группа, top_level_parent: {kind: catalog, data: c0de0000-0000-4000-8000-000000990021, object: " + cmpGoods + "}}"},
 		"удалённый корень": {table: "dynamic_list: {period: {variant: custom}, top_level_parent: {kind: catalog, data: c0de0000-0000-4000-8000-000000990021, object: " + refGone + "}}", gone: true},
 		"корень остатком":  {table: "dynamic_list: {period: {variant: custom}, top_level_parent: {kind: unresolved-reference, data: \"1a2b.3c4d\"}}", gone: true},
-		"код группы":       {table: "dynamic_list: {period: {variant: custom}, user_settings_group: \"1:02023637-7868-4a5f-8576-835a76e0c9ba\"}", note: NoteFormReferenceAsWritten, written: "1:02023637-7868-4a5f-8576-835a76e0c9ba"},
+		"код группы":       {table: "dynamic_list: {period: {variant: custom}, user_settings_group: \"1:409b9a53-7f7e-4178-86c1-33176c7c7a7a\"}", note: NoteFormReferenceAsWritten, written: "1:409b9a53-7f7e-4178-86c1-33176c7c7a7a"},
 		"группа-поле":      {table: "dynamic_list: {period: {variant: custom}, user_settings_group: Поле}", note: NoteUserSettingsGroupNotGroup, written: "Поле (input-field)"},
 		"автозаполнение":   {table: "autofill: true", note: NotePropertyOutsideHelp, written: "true"},
 		"дополнение чужого": {table: "search_control_addition: {id: c0de0000-0000-4000-8000-000000990005, name: ТаблицаУправлениеПоиском," +

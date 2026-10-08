@@ -139,7 +139,7 @@ func TestWhatAFormCommandNamesIsResolved(t *testing.T) {
 		"роли нет":       {command: "use: {common: true, roles: [{role: " + refGone + ", value: false}]}", gone: "command Удалить right of role"},
 		"картинки нет":   {command: "picture: {common: " + refGone + "}", gone: "command Удалить picture"},
 		"таблица — поле": {command: "associated_table: Код", note: NoteAssociatedTableNotTable, written: "Код (input-field)"},
-		"таблица — код":  {command: "associated_table: \"3:02023637-7868-4a5f-8576-835a76e0c9ba\"", note: NoteFormReferenceAsWritten, written: "3:02023637-7868-4a5f-8576-835a76e0c9ba"},
+		"таблица — код":  {command: "associated_table: \"3:409b9a53-7f7e-4178-86c1-33176c7c7a7a\"", note: NoteFormReferenceAsWritten, written: "3:409b9a53-7f7e-4178-86c1-33176c7c7a7a"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

@@ -172,8 +172,17 @@ func readFormDescription(path string, catalog *Catalog) (ManagedForm, error) {
 	return DecodeManagedForm(path, file, catalog.Project)
 }
 
-// resolveFormExtension checks the settings storage a form names.
+// resolveFormExtension checks the settings storage a form names, and carries
+// the elements of a form of a report or of a hierarchical list written as a
+// code (noteElementCode).
 func (catalog *Catalog) resolveFormExtension(form string, extension FormExtension) {
+	for _, reference := range []struct{ name, value string }{
+		{"variant_appearance", extension.VariantAppearance}, {"custom_settings_folder", extension.CustomSettingsFolder}, {"group_list", extension.GroupList},
+	} {
+		if formElementCode.MatchString(reference.value) {
+			catalog.noteElementCode(form+" "+reference.name, reference.value)
+		}
+	}
 	if storage := extension.SettingsStorage; storage != nil {
 		if _, ok := catalog.settingsStorageByID[*storage]; !ok {
 			catalog.noteUnresolved(form+" settings storage", *storage)

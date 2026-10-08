@@ -437,7 +437,7 @@ func (catalog *Catalog) resolveFormTables(where string, form ManagedForm) {
 			continue
 		}
 		if group := list.UserSettingsGroup; formElementCode.MatchString(group) {
-			catalog.noteForm(NoteFormReferenceAsWritten, at+" user_settings_group", group)
+			catalog.noteElementCode(at+" user_settings_group", group)
 		} else if kind, ok := kinds[foldedName(group)]; group != "" && ok && !slices.Contains(formGroupKinds, kind) {
 			catalog.noteForm(NoteUserSettingsGroupNotGroup, at+" user_settings_group", group+" ("+string(kind)+")")
 		}

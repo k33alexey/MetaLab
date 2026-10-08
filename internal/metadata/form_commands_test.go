@@ -217,10 +217,10 @@ func TestEveryReferenceWrittenAsACodeIsNoted(t *testing.T) {
 		t.Fatal(err)
 	}
 	items := "items:\n" +
-		"  - {id: c0de0000-0000-4000-8000-000000990001, name: Панель, kind: command-bar, command_source: \"8:02023637-7868-4a5f-8576-835a76e0c9ba\"}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990001, name: Панель, kind: command-bar, command_source: \"8:409b9a53-7f7e-4178-86c1-33176c7c7a7a\"}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Группа, kind: usual-group, title_data_path: \"43\"}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Поле, kind: input-field, data_path: \"~Объект.Код~Объект.Наименование\"," +
-		" type_link: {data_path: \"48:02023637-7868-4a5f-8576-835a76e0c9ba/0:3c1e525b-0000-4000-8000-000000000001\"}," +
+		" type_link: {data_path: \"48:409b9a53-7f7e-4178-86c1-33176c7c7a7a/0:3c1e525b-0000-4000-8000-000000000001\"}," +
 		" choice_parameter_links: [{name: Отбор.Владелец, data_path: \"22\"}]}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Здоровое, kind: input-field, data_path: ~Объект.Код," +
 		" choice_parameter_links: [{name: Отбор.Владелец, data_path: Объект.Владелец}]}\n"
@@ -236,11 +236,101 @@ func TestEveryReferenceWrittenAsACodeIsNoted(t *testing.T) {
 		}
 	}
 	want := map[string]string{
-		"Панель command_source": "8:02023637-7868-4a5f-8576-835a76e0c9ba", "Группа title_data_path": "43",
-		"Поле data_path": "~Объект.Код~Объект.Наименование", "Поле type link": "48:02023637-7868-4a5f-8576-835a76e0c9ba/0:3c1e525b-0000-4000-8000-000000000001",
+		"Панель command_source": "8:409b9a53-7f7e-4178-86c1-33176c7c7a7a", "Группа title_data_path": "43",
+		"Поле data_path": "~Объект.Код~Объект.Наименование", "Поле type link": "48:409b9a53-7f7e-4178-86c1-33176c7c7a7a/0:3c1e525b-0000-4000-8000-000000000001",
 		"Поле choice parameter link Отбор.Владелец": "22",
 	}
 	if !reflect.DeepEqual(found, want) {
 		t.Fatalf("notes = %v\nwant %v", found, want)
+	}
+}
+
+// The code the configurator leaves where a property named an element of the
+// form that was deleted since - one segment, the number the element had and
+// the identifier of an element of a form - is a remnant of what was deleted,
+// in every place the prototype writes a reference to an element: a button's
+// command, the source of commands, a link of a field, the table of a
+// command, the group of the user settings of a list, and what a form of a
+// report and of a hierarchical list names. A data path takes no such code. A code of several segments through an element that is there,
+// and a code with another identifier, stay notes.
+//
+// Defect caught: the code of a deleted element carried as a note whose sense
+// is not known, though the exports of the configurator show it is what a
+// deleted element leaves (a live one is written by name); one place of a
+// reference left out; a code of a path of a link, or one with another
+// identifier, taken for a deleted element.
+func TestTheCodeOfADeletedElementIsARemnant(t *testing.T) {
+	t.Parallel()
+	const gone = "5:02023637-7868-4a5f-8576-835a76e0c9ba"
+	const other = "5:409b9a53-7f7e-4178-86c1-33176c7c7a7a"
+	const path = "48:02023637-7868-4a5f-8576-835a76e0c9ba/0:3c1e525b-0000-4000-8000-000000000001"
+	commonForm := func(main, properties string) string {
+		return "format: 1\nid: c0de0000-0000-4000-8000-000000990060\nname: Отчёт\ntitle: {ru: Отчёт}\nkind: common\n" + properties +
+			"attributes:\n  - {id: c0de0000-0000-4000-8000-000000990061, name: Объект, main: true, types: [" + main + "]}\n"
+	}
+	report := "{kind: report-object, reference: " + cmpReport + "}"
+	for name, test := range map[string]struct {
+		items, commands, rest, common string
+		where                         string
+	}{
+		"команда кнопки": {items: "  - {id: c0de0000-0000-4000-8000-000000990001, name: Кнопка, kind: button, command: \"" + gone + "\"}\n",
+			where: "element Кнопка command"},
+		"источник команд": {items: "  - {id: c0de0000-0000-4000-8000-000000990001, name: Панель, kind: command-bar, command_source: \"" + gone + "\"}\n",
+			where: "element Панель command_source"},
+		"связь параметра выбора": {items: "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, data_path: Объект.Код," +
+			" choice_parameter_links: [{name: Отбор.Владелец, data_path: \"" + gone + "\"}]}\n", where: "element Поле choice parameter link Отбор.Владелец"},
+		"связь по типу": {items: "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, data_path: Объект.Код," +
+			" type_link: {data_path: \"" + gone + "\"}}\n", where: "element Поле type link"},
+		"таблица команды": {commands: "commands:\n  - {id: c0de0000-0000-4000-8000-000000990010, name: Удалить, title: {ru: Удалить}, action: custom," +
+			" current_row_use: use, associated_table: \"" + gone + "\"}\n", where: "command Удалить associated_table"},
+		"группа настроек списка": {items: "  - {id: c0de0000-0000-4000-8000-000000990001, name: Таблица, kind: table, data_path: Список," +
+			" dynamic_list: {period: {variant: custom}, user_settings_group: \"" + gone + "\"}}\n", where: "element Таблица user_settings_group"},
+		"список групп":          {common: commonForm("{kind: dynamic-list}", "group_list: \""+gone+"\"\n"), where: "group_list"},
+		"папка настроек отчёта": {common: commonForm(report, "custom_settings_folder: \""+gone+"\"\n"), where: "custom_settings_folder"},
+		"отображение варианта":  {common: commonForm(report, "variant_appearance: \""+gone+"\"\n"), where: "variant_appearance"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := formReferencesProject(t)
+			at := "catalog Номенклатура form ФормаЭлемента "
+			file := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+			if test.common != "" {
+				writeCommonForm(t, root, "Отчёт", test.common)
+				at = "common form Отчёт "
+				file = filepath.Join(root, "metadata", "common-forms", "Отчёт", project.FormMetadataFile)
+			} else {
+				content, err := os.ReadFile(file)
+				if err != nil {
+					t.Fatal(err)
+				}
+				form := string(content)
+				if test.items != "" {
+					form = strings.Replace(form, "attributes:\n", "items:\n"+test.items+"attributes:\n", 1)
+				}
+				writeFile(t, file, form+test.commands+test.rest)
+			}
+			unresolved := unresolvedOf(t, root)
+			if len(unresolved) != 1 || unresolved[0].Where != at+test.where || unresolved[0].Written != gone {
+				t.Fatalf("unresolved = %+v, want %q", unresolved, at+test.where)
+			}
+			// The same place with a code that is no deleted element is a note.
+			for _, written := range []string{other, path} {
+				replaceInFile(t, file, gone, written)
+				catalog, err := Load(root)
+				if err != nil {
+					t.Fatalf("%s: %v", written, err)
+				}
+				noted := false
+				for _, note := range catalog.Notes() {
+					if note.Kind == NoteFormReferenceAsWritten && note.Where == at+test.where && note.Written == written {
+						noted = true
+					}
+				}
+				if !noted {
+					t.Fatalf("%s at %s is not noted: %+v", written, test.where, catalog.Notes())
+				}
+				replaceInFile(t, file, written, gone)
+			}
+		})
 	}
 }

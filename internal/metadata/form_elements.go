@@ -1221,6 +1221,19 @@ func validateFormLinkPath(path, value string) []string {
 // another.
 var formElementCode = regexp.MustCompile(`^[0-9]+(:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?(/[0-9]+(:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)*$`)
 
+// deletedFormElement is the code the configurator leaves where a property
+// named an element of the form that has since been deleted: the number the
+// element had and the identifier the platform names an element of a form by.
+// While the element is there, the reference is written by its name: the
+// exports of the configurator and of EDT side by side (mdclasses) name the
+// group of the user settings of a new list form, which is element 1, by its
+// name, and in the exports no element of the form has the number of such a
+// code - 126 of 126; a list form of erp whose table is element 3 points its
+// user settings at 1. It is a remnant of what was deleted (2.203). A code of
+// several segments - a path of a link through a table that is there - is
+// another thing and is noted as written.
+var deletedFormElement = regexp.MustCompile(`^[0-9]+:02023637-7868-4a5f-8576-835a76e0c9ba$`)
+
 // FormCheckBoxType is how a check box is drawn (help, CheckBoxType). The
 // prototype writes Auto as well (9511 times), Switch as "Switcher" (34), and
 // nothing on a check box of three states (all 137 of them).

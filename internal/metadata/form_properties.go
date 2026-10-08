@@ -369,8 +369,8 @@ type FormExtension struct {
 	// catalog takes its tree of groups from: by name an attribute that is a
 	// dynamic list (6 forms), else a code of the prototype's own. The help
 	// names none of them for a form; the prototype writes a name or a code
-	// ("2", "3:<id>"), carried as written and resolved when the form has its
-	// elements.
+	// ("2", "3:<id>"), carried as written: the code of a deleted element is a
+	// remnant, another is noted (noteElementCode).
 	VariantAppearance    string `yaml:"variant_appearance,omitempty" json:"variantAppearance,omitempty"`
 	CustomSettingsFolder string `yaml:"custom_settings_folder,omitempty" json:"customSettingsFolder,omitempty"`
 	GroupList            string `yaml:"group_list,omitempty" json:"groupList,omitempty"`

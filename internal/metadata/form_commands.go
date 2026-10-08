@@ -193,7 +193,7 @@ func (catalog *Catalog) resolveCommandText(where, text string) {
 	command, _ := parseButtonCommand(text)
 	switch command.kind {
 	case elementCodeCommand:
-		catalog.noteForm(NoteFormReferenceAsWritten, where, text)
+		catalog.noteElementCode(where, text)
 	case commonCommand:
 		if !catalog.hasCommonCommandFolded(command.name) {
 			catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where, Written: text})
@@ -227,17 +227,28 @@ func (catalog *Catalog) noteFormReferences(where string, element ManagedFormElem
 		{"data_path", element.DataPath}, {"title_data_path", element.TitleDataPath}, {"command_source", element.CommandSource},
 	} {
 		if asWritten(reference.value) {
-			catalog.noteForm(NoteFormReferenceAsWritten, where+" "+reference.name, reference.value)
+			catalog.noteElementCode(where+" "+reference.name, reference.value)
 		}
 	}
 	for _, link := range element.ChoiceParameterLinks {
 		if asWritten(link.DataPath) {
-			catalog.noteForm(NoteFormReferenceAsWritten, where+" choice parameter link "+link.Name, link.DataPath)
+			catalog.noteElementCode(where+" choice parameter link "+link.Name, link.DataPath)
 		}
 	}
 	if link := element.TypeLink; link != nil && asWritten(link.DataPath) {
-		catalog.noteForm(NoteFormReferenceAsWritten, where+" type link", link.DataPath)
+		catalog.noteElementCode(where+" type link", link.DataPath)
 	}
+}
+
+// noteElementCode carries a reference of a form the prototype wrote as a
+// code: the code of a deleted element is a remnant of what was deleted
+// (deletedFormElement), any other is noted as written.
+func (catalog *Catalog) noteElementCode(where, written string) {
+	if deletedFormElement.MatchString(written) {
+		catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where, Written: written})
+		return
+	}
+	catalog.noteForm(NoteFormReferenceAsWritten, where, written)
 }
 
 // validateFormCommandProperties checks what a command of a form has besides
@@ -289,7 +300,7 @@ func (catalog *Catalog) resolveFormCommands(form string, value ManagedForm) erro
 		}
 		switch table := command.AssociatedTable; {
 		case formElementCode.MatchString(table):
-			catalog.noteForm(NoteFormReferenceAsWritten, where+" associated_table", table)
+			catalog.noteElementCode(where+" associated_table", table)
 		case table != "" && kinds[foldedName(table)] != FormElementTable:
 			kind := string(kinds[foldedName(table)])
 			if kind == "" {
