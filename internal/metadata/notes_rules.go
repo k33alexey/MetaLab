@@ -74,6 +74,7 @@ const (
 	NoteChartTextAnyLanguage       NoteKind = "chart-text-any-language"
 	NoteGanttChartStateUnexplained NoteKind = "gantt-chart-state-unexplained"
 	NotePlannerStateUnexplained    NoteKind = "planner-state-unexplained"
+	NoteCompositionTypeUnexplained NoteKind = "composition-type-unexplained"
 )
 
 func init() {
@@ -303,6 +304,11 @@ func init() {
 				"уровень шкалы времени, число на месте меток шкалы — собственное состояние объекта у прототипа (у всех 3 планировщиков выгрузок " +
 				"есть идентификатор элемента).",
 			"Значения несутся как записаны, в отдельных частях содержимого; планировщик их не исполняет."},
+		NoteKindInfo{NoteCompositionTypeUnexplained,
+			"Значение-тип в отборе настроек компоновки записано именем, которое не называет ни одного типа: прототип пишет `Undefined` " +
+				"в пространстве имён типов конфигурации (8 значений в настройках динамических списков, сравнения с полем вида «Тип»). " +
+				"Что оно значит — «Неопределено» или тип удалённого объекта, — не установлено.",
+			"Значение несётся как записано; отбор с ним не исполняется (исполнение — блок 8)."},
 	)
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
@@ -389,6 +395,9 @@ func init() {
 	}
 	noteRules[NotePlannerStateUnexplained] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NotePlannerStateUnexplained, note)
+	}
+	noteRules[NoteCompositionTypeUnexplained] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NoteCompositionTypeUnexplained, note)
 	}
 }
 

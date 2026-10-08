@@ -219,6 +219,7 @@ func cloneFormAttributes(values []FormAttribute) []FormAttribute {
 			list := *value.DynamicList
 			list.MainTable = clonePointer(list.MainTable)
 			list.KeyFields = slices.Clone(list.KeyFields)
+			cloneListComposition(&list)
 			value.DynamicList = &list
 		}
 		result[index] = value

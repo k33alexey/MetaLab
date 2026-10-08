@@ -2,13 +2,16 @@ package metadata
 
 import (
 	"fmt"
+	"maps"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	bslnumber "github.com/k33alexey/MetaLab/internal/bsl/number"
 	"github.com/k33alexey/MetaLab/internal/project"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // The settings of data composition a form carries: a filter, an
@@ -19,11 +22,11 @@ import (
 //
 // The model follows the help (DataCompositionFilterItem,
 // DataCompositionFilterItemGroup, DataCompositionComparisonType,
-// DataCompositionAppearance) and carries what the exports write. What the
-// help names and no export writes - the identifier and presentation of a
-// user setting, the view mode, the application of a filter item, a value
-// list with values in it - is not carried yet; a writing the model does not
-// know is refused, not dropped.
+// DataCompositionAppearance, DataCompositionOrder, DataCompositionGroup) and
+// carries what the exports write. What the help names and no export writes -
+// the application of a filter item, a value list with values in it, the
+// selection, filter and order of a group - is not carried yet; a writing the
+// model does not know is refused, not dropped.
 
 // CompositionValueKind says what a value of the settings is.
 type CompositionValueKind string
@@ -46,9 +49,22 @@ const (
 	CompositionLocalizedString CompositionValueKind = "localized-string"
 	// CompositionPredefined is a value written by its name at design time:
 	// a value of an enumeration, a predefined item, an empty reference -
-	// "Перечисление.СтавкиНДС.НДС0", "Справочник.Склады.ПустаяСсылка". It is
-	// resolved against the project by name (a point of block 2ф).
+	// "Перечисление.СтавкиНДС.НДС0", "Справочник.Склады.ПустаяСсылка". Written
+	// with two parts, "Документ.ЧекККМ", it names an object, and the value is
+	// the type of its reference: the settings of dynamic lists compare a type
+	// of a row with it (26 values, each compared with the field Тип or
+	// ТипДокумента). It is resolved against the project by name (a point of
+	// block 2ф).
 	CompositionPredefined CompositionValueKind = "predefined"
+	// CompositionType is a type, Data its name as the prototype writes it in
+	// the namespace of the types of the configuration. The exports write one
+	// name only, Undefined (8 values in the settings of dynamic lists), and
+	// what it stands for there is not known: it is carried as written and
+	// noted (composition-type-unexplained).
+	CompositionType CompositionValueKind = "type"
+	// CompositionAccountType is a type of account (help, AccountType), Data
+	// active, passive or active-passive.
+	CompositionAccountType CompositionValueKind = "account-type"
 	// CompositionBeginningDate is a standard beginning date: a variant, and
 	// the date itself when the variant is custom.
 	CompositionBeginningDate CompositionValueKind = "standard-beginning-date"
@@ -99,6 +115,9 @@ var standardBeginningDateVariants = []string{
 // horizontalAligns are the values of HorizontalAlign of the help.
 var horizontalAligns = []string{"auto", "left", "right", "center", "justify"}
 
+// accountTypes are the values of AccountType of the help.
+var accountTypes = []string{"active", "passive", "active-passive"}
+
 // validateCompositionValue checks a value against its kind, and the kind
 // against those the place takes.
 func validateCompositionValue(path string, value CompositionValue, allowed []CompositionValueKind) []string {
@@ -141,8 +160,16 @@ func validateCompositionValue(path string, value CompositionValue, allowed []Com
 	case CompositionPredefined:
 		data = true
 		if !predefinedValueName(value.Data) {
-			issues = append(issues, path+".data must name the value as kind, object and item, as Перечисление.СтавкиНДС.НДС0")
+			issues = append(issues, path+".data must name the value as kind, object and item, as Перечисление.СтавкиНДС.НДС0, or an object as kind and object, as Документ.ЧекККМ")
 		}
+	case CompositionType:
+		data = true
+		if validateFormDataPath(path+".data", value.Data) != nil {
+			issues = append(issues, path+".data must be the name of a type")
+		}
+	case CompositionAccountType:
+		data = true
+		issues = append(issues, oneOfList(path+".data", value.Data, accountTypes, true)...)
 	case CompositionBeginningDate:
 		data = true
 		issues = append(issues, oneOfList(path+".data", value.Data, standardBeginningDateVariants, true)...)
@@ -192,10 +219,11 @@ func containsKind(list []CompositionValueKind, kind CompositionValueKind) bool {
 }
 
 // predefinedValueName is the shape of a value by name: the kind of the
-// object, the object and the item, each a name.
+// object, the object and the item, each a name; or the kind and the object
+// alone.
 func predefinedValueName(value string) bool {
 	parts := strings.Split(value, ".")
-	if len(parts) != 3 {
+	if len(parts) != 2 && len(parts) != 3 {
 		return false
 	}
 	for _, part := range parts {
@@ -223,24 +251,66 @@ type CompositionFilterGroupType string
 var compositionFilterGroupTypes = []CompositionFilterGroupType{"and", "or", "not"}
 
 // CompositionFilterItem is one item of a filter: a comparison, or a group of
-// items joined by Group. A comparison compares Left with Right; Right is
-// left out where the prototype writes none - always for filled and not
-// filled, 11 times beside another comparison, which then compares with
-// nothing set. Presentation is what the user sees for the item instead of
-// the comparison.
+// items joined by Group. A comparison compares Left with Right. Right is
+// one value, or several for a comparison with a list, which the prototype
+// writes as values one after another (96 comparisons, two to seven values
+// each). It is left out where the prototype writes none - always for filled
+// and not filled, 11 times beside another comparison, which then compares
+// with nothing set. A field with no path on the right is a field not chosen
+// (3 times in the settings of lists), and compares with nothing set as well.
+// Presentation is what the user sees for the item instead of the
+// comparison.
 type CompositionFilterItem struct {
 	Group        CompositionFilterGroupType `yaml:"group,omitempty" json:"group,omitempty"`
 	Items        []CompositionFilterItem    `yaml:"items,omitempty" json:"items,omitempty"`
 	Left         *CompositionValue          `yaml:"left,omitempty" json:"left,omitempty"`
 	Comparison   CompositionComparison      `yaml:"comparison,omitempty" json:"comparison,omitempty"`
-	Right        *CompositionValue          `yaml:"right,omitempty" json:"right,omitempty"`
+	Right        []CompositionValue         `yaml:"right,omitempty" json:"right,omitempty"`
 	Disabled     bool                       `yaml:"disabled,omitempty" json:"disabled,omitempty"`
 	Presentation *CompositionValue          `yaml:"presentation,omitempty" json:"presentation,omitempty"`
+	UserSetting  `yaml:",inline"`
 }
 
 // compositionOperands are the kinds a filter compares.
 var compositionOperands = []CompositionValueKind{CompositionField, CompositionBoolean, CompositionNumber, CompositionString,
-	CompositionDate, CompositionPredefined, CompositionBeginningDate, CompositionValueList, CompositionNull, CompositionUndefined}
+	CompositionDate, CompositionPredefined, CompositionType, CompositionAccountType, CompositionBeginningDate,
+	CompositionValueList, CompositionNull, CompositionUndefined}
+
+// compositionListComparisons are the comparisons with a list, the only ones
+// that take several values.
+var compositionListComparisons = []CompositionComparison{"in-list", "not-in-list", "in-list-by-hierarchy", "not-in-list-by-hierarchy"}
+
+// CompositionViewMode is how a setting is shown to the user (help,
+// DataCompositionSettingsItemViewMode).
+type CompositionViewMode string
+
+var compositionViewModes = []CompositionViewMode{"auto", "quick-access", "inaccessible", "normal"}
+
+// UserSetting is what makes an item of the settings a user setting (help,
+// the properties ViewMode, UserSettingID and UserSettingPresentation of an
+// item of a filter, an order, a conditional appearance and their
+// collections). An empty ViewMode is one the prototype does not write: the
+// exports write normal and inaccessible only, and leave it out on 408 of
+// 491 items of a filter at the top of the settings of a list; what an
+// unwritten one means is a question of executing it (block 8). ID is the
+// identifier the user setting is kept by, and it is not unique: the
+// prototype gives the same one to settings of different forms.
+type UserSetting struct {
+	ViewMode                CompositionViewMode `yaml:"view_mode,omitempty" json:"viewMode,omitempty"`
+	UserSettingID           *uuid.UUID          `yaml:"user_setting_id,omitempty" json:"userSettingId,omitempty"`
+	UserSettingPresentation *CompositionValue   `yaml:"user_setting_presentation,omitempty" json:"userSettingPresentation,omitempty"`
+}
+
+func validateUserSetting(path string, value UserSetting) []string {
+	issues := oneOfList(path+".view_mode", value.ViewMode, compositionViewModes, false)
+	if value.UserSettingID != nil && value.UserSettingID.IsZero() {
+		issues = append(issues, path+".user_setting_id must be a non-zero UUID")
+	}
+	if value.UserSettingPresentation != nil {
+		issues = append(issues, validateCompositionValue(path+".user_setting_presentation", *value.UserSettingPresentation, compositionTexts)...)
+	}
+	return issues
+}
 
 // compositionTexts are the kinds a presentation is written in.
 var compositionTexts = []CompositionValueKind{CompositionString, CompositionLocalizedString}
@@ -265,10 +335,17 @@ func validateCompositionFilter(path string, items []CompositionFilterItem) []str
 			} else {
 				issues = append(issues, validateCompositionValue(at+".left", *item.Left, compositionOperands)...)
 			}
-			if item.Right != nil {
-				issues = append(issues, validateCompositionValue(at+".right", *item.Right, compositionOperands)...)
+			if len(item.Right) > 1 && !slices.Contains(compositionListComparisons, item.Comparison) {
+				issues = append(issues, at+".right holds one value: only a comparison with a list takes several")
+			}
+			for position, right := range item.Right {
+				if right.Kind == CompositionField && reflect.DeepEqual(right, CompositionValue{Kind: CompositionField}) {
+					continue
+				}
+				issues = append(issues, validateCompositionValue(fmt.Sprintf("%s.right[%d]", at, position), right, compositionOperands)...)
 			}
 		}
+		issues = append(issues, validateUserSetting(at, item.UserSetting)...)
 		if item.Presentation != nil {
 			issues = append(issues, validateCompositionValue(at+".presentation", *item.Presentation, compositionTexts)...)
 		}
@@ -306,9 +383,10 @@ var appearanceParameters = map[AppearanceParameter][]CompositionValueKind{
 // value. Disabled keeps the value without setting it: the prototype writes
 // such a parameter as it was before it was turned off (591 times).
 type CompositionAppearanceValue struct {
-	Parameter AppearanceParameter `yaml:"parameter" json:"parameter"`
-	Disabled  bool                `yaml:"disabled,omitempty" json:"disabled,omitempty"`
-	Value     CompositionValue    `yaml:"value" json:"value"`
+	Parameter   AppearanceParameter `yaml:"parameter" json:"parameter"`
+	Disabled    bool                `yaml:"disabled,omitempty" json:"disabled,omitempty"`
+	Value       CompositionValue    `yaml:"value" json:"value"`
+	UserSetting `yaml:",inline"`
 }
 
 func validateCompositionAppearance(path string, values []CompositionAppearanceValue) []string {
@@ -326,6 +404,7 @@ func validateCompositionAppearance(path string, values []CompositionAppearanceVa
 		}
 		set[value.Parameter] = true
 		issues = append(issues, validateCompositionValue(at+".value", value.Value, kinds)...)
+		issues = append(issues, validateUserSetting(at, value.UserSetting)...)
 	}
 	return issues
 }
@@ -342,40 +421,54 @@ type CompositionAppearanceField struct {
 // fields where its filter holds. An item with no fields (17 of the forms of
 // the exports) and one with no filter (7) are written so by the prototype
 // and are carried as they are; what they draw is a question of executing
-// them (block 8). The help names twelve more properties - where in a report
-// the item applies, the user setting and the view mode; no form of the
-// exports writes one.
+// them (block 8). So is an item that sets nothing, empty all through (2 in
+// the settings of lists of lombard1): it draws nothing. The help names nine
+// more properties - where in a report
+// the item applies; no form of the exports writes one.
 type ConditionalAppearanceItem struct {
 	Disabled     bool                         `yaml:"disabled,omitempty" json:"disabled,omitempty"`
 	Fields       []CompositionAppearanceField `yaml:"fields,omitempty" json:"fields,omitempty"`
 	Filter       []CompositionFilterItem      `yaml:"filter,omitempty" json:"filter,omitempty"`
 	Appearance   []CompositionAppearanceValue `yaml:"appearance" json:"appearance"`
 	Presentation *CompositionValue            `yaml:"presentation,omitempty" json:"presentation,omitempty"`
+	UserSetting  `yaml:",inline"`
 }
 
 // validateConditionalAppearance checks a conditional appearance against
-// itself. The fields of an item are names of elements of the form; one
-// naming none is a remnant, found when the project is loaded
-// (resolveConditionalAppearance).
-func validateConditionalAppearance(path string, items []ConditionalAppearanceItem) []string {
+// itself. The fields of an item of the appearance of a form are names of
+// its elements, one naming none a remnant found when the project is loaded
+// (resolveConditionalAppearance); those of a dynamic list are fields of the
+// list, by their path.
+func validateConditionalAppearance(path string, items []ConditionalAppearanceItem, listFields bool) []string {
 	var issues []string
 	for index, item := range items {
 		at := fmt.Sprintf("%s[%d]", path, index)
 		for position, field := range item.Fields {
-			if !validIdentifier(field.Field) || utf8.RuneCountInString(field.Field) > maxNameLength {
-				issues = append(issues, fmt.Sprintf("%s.fields[%d].field must be the name of an element of the form", at, position))
+			place := fmt.Sprintf("%s.fields[%d].field", at, position)
+			if listFields {
+				if validateFormDataPath(place, field.Field) != nil {
+					issues = append(issues, place+" must be the path of a field of the list")
+				}
+			} else if !validIdentifier(field.Field) || utf8.RuneCountInString(field.Field) > maxNameLength {
+				issues = append(issues, place+" must be the name of an element of the form")
 			}
 		}
 		issues = append(issues, validateCompositionFilter(at+".filter", item.Filter)...)
-		if len(item.Appearance) == 0 {
-			issues = append(issues, at+".appearance must set at least one parameter")
-		}
 		issues = append(issues, validateCompositionAppearance(at+".appearance", item.Appearance)...)
 		if item.Presentation != nil {
 			issues = append(issues, validateCompositionValue(at+".presentation", *item.Presentation, compositionTexts)...)
 		}
+		issues = append(issues, validateUserSetting(at, item.UserSetting)...)
 	}
 	return issues
+}
+
+// cloneListComposition copies the settings of a dynamic list whole.
+func cloneListComposition(list *DynamicListSettings) {
+	list.Filter = deepCopy(reflect.ValueOf(list.Filter)).Interface().(*CompositionFilter)
+	list.Order = deepCopy(reflect.ValueOf(list.Order)).Interface().(*CompositionOrder)
+	list.ConditionalAppearance = deepCopy(reflect.ValueOf(list.ConditionalAppearance)).Interface().(*CompositionConditionalAppearance)
+	list.Group = deepCopy(reflect.ValueOf(list.Group)).Interface().(*CompositionGroups)
 }
 
 // cloneConditionalAppearance copies a conditional appearance whole: nothing
@@ -408,6 +501,7 @@ func (catalog *Catalog) resolveConditionalAppearance(where string, form ManagedF
 	if err := catalog.resolveStyleItems(where+" conditional appearance", styleItemsIn(conditionalAppearanceParts(form.ConditionalAppearance))); err != nil {
 		return err
 	}
+	catalog.noteCompositionTypes(where+" conditional appearance", form.ConditionalAppearance)
 	names := map[string]bool{}
 	var walk func(items []ManagedFormElement)
 	walk = func(items []ManagedFormElement) {
@@ -426,4 +520,206 @@ func (catalog *Catalog) resolveConditionalAppearance(where string, form ManagedF
 		}
 	}
 	return nil
+}
+
+// CompositionFilter, CompositionOrder, CompositionConditionalAppearance and
+// CompositionGroups are the collections of the settings of a dynamic list
+// (help, DynamicList.Filter, Order, ConditionalAppearance and Group): their
+// items, and the user setting of the collection itself. The prototype
+// writes all four for nearly every list, most with no items and with the
+// view mode and identifier of the collection alone; nil is a collection it
+// does not write.
+type CompositionFilter struct {
+	Items       []CompositionFilterItem `yaml:"items,omitempty" json:"items,omitempty"`
+	UserSetting `yaml:",inline"`
+}
+
+type CompositionOrder struct {
+	Items       []CompositionOrderItem `yaml:"items,omitempty" json:"items,omitempty"`
+	UserSetting `yaml:",inline"`
+}
+
+type CompositionConditionalAppearance struct {
+	Items       []ConditionalAppearanceItem `yaml:"items,omitempty" json:"items,omitempty"`
+	UserSetting `yaml:",inline"`
+}
+
+type CompositionGroups struct {
+	Items       []CompositionGroup `yaml:"items,omitempty" json:"items,omitempty"`
+	UserSetting `yaml:",inline"`
+}
+
+// CompositionOrderDirection is how an order sorts by a field (help,
+// DataCompositionSortDirection).
+type CompositionOrderDirection string
+
+var compositionOrderDirections = []CompositionOrderDirection{"asc", "desc"}
+
+// CompositionOrderItem is one item of an order: a field and the direction
+// sorted in, or an automatic item (help, DataCompositionAutoOrderItem),
+// which the platform turns into the fields of the grouping and has nothing
+// but its use.
+type CompositionOrderItem struct {
+	Auto        bool                      `yaml:"auto,omitempty" json:"auto,omitempty"`
+	Field       string                    `yaml:"field,omitempty" json:"field,omitempty"`
+	Direction   CompositionOrderDirection `yaml:"direction,omitempty" json:"direction,omitempty"`
+	Disabled    bool                      `yaml:"disabled,omitempty" json:"disabled,omitempty"`
+	UserSetting `yaml:",inline"`
+}
+
+// CompositionGroupType is what a field groups by (help,
+// DataCompositionGroupType).
+type CompositionGroupType string
+
+var compositionGroupTypes = []CompositionGroupType{"items", "hierarchy", "hierarchy-only"}
+
+// compositionPeriodAdditions are the values of
+// DataCompositionPeriodAdditionType of the help: how the periods with no
+// data of a grouping by a date are added.
+var compositionPeriodAdditions = []string{
+	"none", "second", "minute", "hour", "day", "week", "ten-days", "month", "quarter", "half-year", "year",
+	"minute-since-begin-of-period", "hour-since-begin-of-period", "day-since-begin-of-period", "week-since-begin-of-period",
+	"month-since-begin-of-period", "month-since-begin-of-period-445", "quarter-since-begin-of-period",
+	"quarter-since-begin-of-period-445", "half-year-since-begin-of-period", "half-year-since-begin-of-period-445",
+	"year-since-begin-of-period", "year-since-begin-of-period-445",
+}
+
+// CompositionGroup is a grouping of a dynamic list (help,
+// DataCompositionGroup): the fields it groups by, and the groupings nested
+// in it. The help gives a grouping its own selection, filter, order,
+// appearance and output parameters as well; the exports write none of them
+// (32 groupings in 26 lists), and they are not carried yet.
+type CompositionGroup struct {
+	Fields []CompositionGroupField `yaml:"fields,omitempty" json:"fields,omitempty"`
+	Groups []CompositionGroup      `yaml:"groups,omitempty" json:"groups,omitempty"`
+}
+
+// CompositionGroupField is a field a grouping groups by (help,
+// DataCompositionGroupField). PeriodBegin and PeriodEnd bound the periods
+// added; the prototype writes them always, the empty date where they are
+// not set, and the model leaves an empty date out.
+type CompositionGroupField struct {
+	Field          string               `yaml:"field" json:"field"`
+	Disabled       bool                 `yaml:"disabled,omitempty" json:"disabled,omitempty"`
+	Type           CompositionGroupType `yaml:"type" json:"type"`
+	PeriodAddition string               `yaml:"period_addition" json:"periodAddition"`
+	PeriodBegin    string               `yaml:"period_begin,omitempty" json:"periodBegin,omitempty"`
+	PeriodEnd      string               `yaml:"period_end,omitempty" json:"periodEnd,omitempty"`
+}
+
+// validateListComposition checks the settings of a dynamic list against
+// themselves. The fields they name are fields of the list, resolved against
+// its query when it is executed (block 7).
+func validateListComposition(path string, settings DynamicListSettings) []string {
+	var issues []string
+	if filter := settings.Filter; filter != nil {
+		issues = append(issues, validateUserSetting(path+".filter", filter.UserSetting)...)
+		issues = append(issues, validateCompositionFilter(path+".filter.items", filter.Items)...)
+	}
+	if order := settings.Order; order != nil {
+		issues = append(issues, validateUserSetting(path+".order", order.UserSetting)...)
+		for index, item := range order.Items {
+			at := fmt.Sprintf("%s.order.items[%d]", path, index)
+			if item.Auto {
+				if item.Field != "" || item.Direction != "" || item.UserSetting != (UserSetting{}) {
+					issues = append(issues, at+" is automatic and has nothing but its use")
+				}
+				continue
+			}
+			issues = append(issues, validateFormDataPath(at+".field", item.Field)...)
+			issues = append(issues, oneOfList(at+".direction", item.Direction, compositionOrderDirections, true)...)
+			issues = append(issues, validateUserSetting(at, item.UserSetting)...)
+		}
+	}
+	if appearance := settings.ConditionalAppearance; appearance != nil {
+		issues = append(issues, validateUserSetting(path+".conditional_appearance", appearance.UserSetting)...)
+		issues = append(issues, validateConditionalAppearance(path+".conditional_appearance.items", appearance.Items, true)...)
+	}
+	if groups := settings.Group; groups != nil {
+		issues = append(issues, validateUserSetting(path+".group", groups.UserSetting)...)
+		issues = append(issues, validateCompositionGroups(path+".group.items", groups.Items)...)
+	}
+	return issues
+}
+
+func validateCompositionGroups(path string, groups []CompositionGroup) []string {
+	var issues []string
+	for index, group := range groups {
+		at := fmt.Sprintf("%s[%d]", path, index)
+		for position, field := range group.Fields {
+			place := fmt.Sprintf("%s.fields[%d]", at, position)
+			issues = append(issues, validateFormDataPath(place+".field", field.Field)...)
+			issues = append(issues, oneOfList(place+".type", field.Type, compositionGroupTypes, true)...)
+			issues = append(issues, oneOfList(place+".period_addition", field.PeriodAddition, compositionPeriodAdditions, true)...)
+			for _, bound := range []struct{ name, date string }{{"period_begin", field.PeriodBegin}, {"period_end", field.PeriodEnd}} {
+				if _, err := time.Parse(compositionDateLayout, bound.date); bound.date != "" && err != nil {
+					issues = append(issues, place+"."+bound.name+" must be a date written as 2006-01-02T15:04:05")
+				}
+			}
+		}
+		issues = append(issues, validateCompositionGroups(at+".groups", group.Groups)...)
+	}
+	return issues
+}
+
+// compositionTypesIn names the places of the values of kind type in the
+// settings the walk hands out, each with its name.
+func compositionTypesIn(root any) map[string]string {
+	found := map[string]string{}
+	var walk func(path string, current reflect.Value)
+	walk = func(path string, current reflect.Value) {
+		switch current.Kind() {
+		case reflect.Pointer:
+			if !current.IsNil() {
+				walk(path, current.Elem())
+			}
+		case reflect.Slice:
+			for index := range current.Len() {
+				walk(fmt.Sprintf("%s[%d]", path, index), current.Index(index))
+			}
+		case reflect.Struct:
+			if value, ok := current.Interface().(CompositionValue); ok {
+				if value.Kind == CompositionType {
+					found[path] = value.Data
+				}
+				return
+			}
+			for index := range current.NumField() {
+				name, _, _ := strings.Cut(current.Type().Field(index).Tag.Get("yaml"), ",")
+				next := path
+				if name != "" {
+					next = strings.TrimPrefix(path+"."+name, ".")
+				}
+				walk(next, current.Field(index))
+			}
+		}
+	}
+	walk("", reflect.ValueOf(root))
+	return found
+}
+
+// resolveListComposition checks what the settings of a dynamic list refer to
+// in the project: the style items of their appearance; and notes the values
+// of kind type their filters compare with. The fields they name are fields
+// of the list, resolved when it is executed; an order and a grouping hold
+// nothing else.
+func (catalog *Catalog) resolveListComposition(where string, list DynamicListSettings) error {
+	if err := catalog.resolveStyleItems(where+" conditional_appearance", styleItemsIn(func(visit func(path string, part any)) {
+		walkChartParts(reflect.ValueOf(list.ConditionalAppearance), visit)
+	})); err != nil {
+		return err
+	}
+	catalog.noteCompositionTypes(where+" filter", list.Filter)
+	catalog.noteCompositionTypes(where+" conditional_appearance", list.ConditionalAppearance)
+	return nil
+}
+
+// noteCompositionTypes notes each value of kind type in the settings: what
+// the one name the exports write stands for is not known.
+func (catalog *Catalog) noteCompositionTypes(where string, settings any) {
+	found := compositionTypesIn(settings)
+	paths := slices.Sorted(maps.Keys(found))
+	for _, path := range paths {
+		catalog.noteForm(NoteCompositionTypeUnexplained, where+" "+path, found[path])
+	}
 }

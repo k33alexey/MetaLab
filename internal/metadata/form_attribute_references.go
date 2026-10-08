@@ -328,9 +328,14 @@ func (catalog *Catalog) resolveFormAttributes(form string, attributes []FormAttr
 				catalog.noteForm(NoteChartTextAnyLanguage, where+" planner "+path, chartAnyLanguage)
 			}
 		}
-		if list := attribute.DynamicList; list != nil && list.MainTable != nil {
-			if _, ok := catalog.objectKindByID[list.MainTable.Object]; !ok {
-				catalog.noteUnresolved(where+" main table", list.MainTable.Object)
+		if list := attribute.DynamicList; list != nil {
+			if list.MainTable != nil {
+				if _, ok := catalog.objectKindByID[list.MainTable.Object]; !ok {
+					catalog.noteUnresolved(where+" main table", list.MainTable.Object)
+				}
+			}
+			if err := catalog.resolveListComposition(where+" dynamic_list", *list); err != nil {
+				return err
 			}
 		}
 		for _, column := range attribute.Columns {

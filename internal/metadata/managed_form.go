@@ -625,7 +625,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	}
 	issues = append(issues, validateFormCommandInterface(value.CommandInterface, names, commandNames)...)
 	issues = append(issues, validateFormAttributes(value.Attributes, ids, configuration)...)
-	issues = append(issues, validateConditionalAppearance("conditional_appearance", value.ConditionalAppearance)...)
+	issues = append(issues, validateConditionalAppearance("conditional_appearance", value.ConditionalAppearance, false)...)
 	issues = append(issues, validateFormParameters(value.Parameters)...)
 	return issuesError(source, value.Format, issues)
 }

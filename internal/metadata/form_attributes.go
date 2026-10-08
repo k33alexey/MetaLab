@@ -60,9 +60,7 @@ type FormAttribute struct {
 	// path from the attribute.
 	AdditionalColumns []FormAdditionalColumns `yaml:"additional_columns,omitempty" json:"additionalColumns,omitempty"`
 	// DynamicList is what a dynamic list reads and how (3451 of them in the
-	// configurations being moved). Its settings of the list - filter, order,
-	// conditional appearance - are settings of data composition and come with
-	// their model (block 12).
+	// configurations being moved), and its settings of the list.
 	DynamicList *DynamicListSettings `yaml:"dynamic_list,omitempty" json:"dynamicList,omitempty"`
 	// ValueType is the type of the items of a value list, which the platform
 	// checks every item added against (1144 value lists set one).
@@ -112,6 +110,13 @@ type DynamicListSettings struct {
 	// writes only the «off» (3 and 55 times).
 	NoAutoFillAvailableFields bool `yaml:"no_auto_fill_available_fields,omitempty" json:"noAutoFillAvailableFields,omitempty"`
 	NoAutoSaveUserSettings    bool `yaml:"no_auto_save_user_settings,omitempty" json:"noAutoSaveUserSettings,omitempty"`
+	// Filter, Order, ConditionalAppearance and Group are the settings of the
+	// list (help, DynamicList), settings of data composition the prototype
+	// writes in ListSettings; they are executed in blocks 7 and 8.
+	Filter                *CompositionFilter                `yaml:"filter,omitempty" json:"filter,omitempty"`
+	Order                 *CompositionOrder                 `yaml:"order,omitempty" json:"order,omitempty"`
+	ConditionalAppearance *CompositionConditionalAppearance `yaml:"conditional_appearance,omitempty" json:"conditionalAppearance,omitempty"`
+	Group                 *CompositionGroups                `yaml:"group,omitempty" json:"group,omitempty"`
 }
 
 // DynamicListTable is the main table of a dynamic list: an object, and the
@@ -348,5 +353,5 @@ func validateDynamicList(path string, attribute FormAttribute) []string {
 		}
 		seen[strings.ToLower(field)] = true
 	}
-	return issues
+	return append(issues, validateListComposition(path, *settings)...)
 }

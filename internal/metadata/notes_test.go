@@ -272,6 +272,11 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Планировщик, types: [{kind: planner}], planner: {items: [{text: Встреча, "+
 			"state: {id: 821efef7-461d-41c2-abc6-77cb513ba998}}]}}\n")
 	},
+	NoteCompositionTypeUnexplained: func(t *testing.T, root string) {
+		writeCommonForm(t, root, "Журнал", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Журнал\ntitle: {ru: Журнал}\nkind: common\n"+
+			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Список, types: [{kind: dynamic-list}], dynamic_list: {filter: {items: "+
+			"[{left: {kind: field, data: Тип}, comparison: equal, right: [{kind: type, data: Undefined}]}]}}}\n")
+	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
