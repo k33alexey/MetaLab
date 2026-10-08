@@ -165,8 +165,16 @@ func writeBigFormFile(t testing.TB, root, relative string, content []byte) {
 // the developer's machine. A slower machine that runs the checks - the
 // runner of GitHub - says how much slower it is in ML_BUDGET_SCALE, so that
 // the number itself is never loosened.
+//
+// A budget is measured on a machine doing nothing else: run beside the
+// other packages of go test ./..., the opening of the largest form took
+// 270-410 ms against 75 ms alone. So it runs only where it is asked for,
+// make test-budgets, which sets ML_BUDGETS and runs it alone.
 func responsivenessBudget(t *testing.T, budget time.Duration) time.Duration {
 	t.Helper()
+	if os.Getenv("ML_BUDGETS") == "" {
+		t.Skip("a budget is measured alone, by make test-budgets")
+	}
 	if raceEnabled {
 		t.Skip("the race detector slows the code fifteen times; the budgets are checked by make test-budgets")
 	}

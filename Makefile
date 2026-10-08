@@ -109,9 +109,11 @@ ci-database:
 # test-budgets holds the responsiveness of the Studio to the numbers of
 # ML-STUDIO.md, «Отзывчивость». The race detector slows the code fifteen times,
 # so the budgets are measured here, without it, and the tests skip under
-# -race. A machine slower than the developer's sets ML_BUDGET_SCALE.
+# -race. Beside the other packages a budget is missed for the load alone, so
+# the tests skip unless ML_BUDGETS is set, which only this target does. A
+# machine slower than the developer's sets ML_BUDGET_SCALE.
 test-budgets:
-	go test -count=1 -run 'StaysWithinItsBudget' ./internal/...
+	ML_BUDGETS=1 go test -count=1 -run 'StaysWithinItsBudget' ./internal/...
 
 # check is the quick pass: everything that needs no database.
 check: fmt-check web-check vet sweep-check test-race test-budgets build test-wasm

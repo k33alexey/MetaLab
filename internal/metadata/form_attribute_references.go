@@ -105,6 +105,9 @@ func (catalog *Catalog) checkFormAttributes() error {
 		if err := catalog.resolveFormAttributes(item.where, item.form.Attributes); err != nil {
 			return err
 		}
+		if err := catalog.resolveFormParameters(item.where, item.form.Parameters); err != nil {
+			return err
+		}
 		catalog.resolveFormExtension(item.where, item.form.FormExtension)
 		catalog.noteRepeatedNames(item.where, item.form)
 		catalog.resolveFormTables(item.where, item.form)
@@ -118,6 +121,9 @@ func (catalog *Catalog) checkFormAttributes() error {
 	sort.Slice(common, func(i, j int) bool { return common[i].Name < common[j].Name })
 	for _, form := range common {
 		if err := catalog.resolveFormAttributes("common form "+form.Name, form.Attributes); err != nil {
+			return err
+		}
+		if err := catalog.resolveFormParameters("common form "+form.Name, form.Parameters); err != nil {
 			return err
 		}
 		catalog.resolveFormExtension("common form "+form.Name, form.FormExtension)

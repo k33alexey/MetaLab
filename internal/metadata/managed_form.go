@@ -114,6 +114,8 @@ type ManagedForm struct {
 	AutoCommandBar *FormAttachedMenu    `yaml:"auto_command_bar,omitempty" json:"autoCommandBar,omitempty"`
 	Items          []ManagedFormElement `yaml:"items,omitempty" json:"items"`
 	Attributes     []FormAttribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	// Parameters are the values the form is opened with.
+	Parameters []FormParameter `yaml:"parameters,omitempty" json:"parameters,omitempty"`
 }
 
 // ManagedFormElement is one stable node in a managed form tree. Hidden and
@@ -569,6 +571,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		}
 	}
 	issues = append(issues, validateFormAttributes(value.Attributes, ids, configuration)...)
+	issues = append(issues, validateFormParameters(value.Parameters)...)
 	return issuesError(source, value.Format, issues)
 }
 
