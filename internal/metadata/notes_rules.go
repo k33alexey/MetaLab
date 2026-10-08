@@ -74,6 +74,7 @@ const (
 	NoteChartValuesOrder           NoteKind = "chart-values-order"
 	NoteChartTextAnyLanguage       NoteKind = "chart-text-any-language"
 	NoteGanttChartStateUnexplained NoteKind = "gantt-chart-state-unexplained"
+	NotePlannerStateUnexplained    NoteKind = "planner-state-unexplained"
 )
 
 func init() {
@@ -293,14 +294,20 @@ func init() {
 				"во всех девяти диаграммах с значениями они придуманы конструктором. Порядок устанавливается прогоном на платформе.",
 			"Значения несутся в записанном порядке; диаграмма рисуется только после того, как порядок установлен."},
 		NoteKindInfo{NoteChartTextAnyLanguage,
-			"Текст диаграммы записан на «языке» «#», которого нет среди языков конфигурации: имя сводной серии, форматы подписей (23 текста " +
-				"выгрузок). Что прототип под ним понимает, справка не говорит.",
+			"Текст диаграммы, диаграммы Ганта или планировщика записан на «языке» «#», которого нет среди языков конфигурации: имя " +
+				"сводной серии, форматы подписей, шкалы времени и заголовков переносов (43 текста выгрузок: 23 у диаграмм, 15 у диаграмм " +
+				"Ганта, 5 у планировщиков). Что прототип под ним понимает, справка не говорит.",
 			"Текст несётся как записан, под тем же ключом."},
 		NoteKindInfo{NoteGanttChartStateUnexplained,
 			"Содержимое диаграммы Ганта несёт значения, которых справка не называет нигде: начало видимой части, мера шкалы без варианта " +
 				"масштаба, ключи и данные корня точек и серий, текущий уровень шкалы времени, числа на месте интервалов фона и меток шкалы — " +
 				"собственное состояние объекта у прототипа (у всех 15 диаграмм Ганта выгрузок).",
 			"Значения несутся как записаны, в отдельных частях содержимого; диаграмма Ганта их не исполняет."},
+		NoteKindInfo{NotePlannerStateUnexplained,
+			"Содержимое планировщика несёт значения, которых справка не называет нигде: идентификатор элемента планировщика, текущий " +
+				"уровень шкалы времени, число на месте меток шкалы — собственное состояние объекта у прототипа (у всех 3 планировщиков выгрузок " +
+				"есть идентификатор элемента).",
+			"Значения несутся как записаны, в отдельных частях содержимого; планировщик их не исполняет."},
 	)
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
@@ -387,6 +394,9 @@ func init() {
 	}
 	noteRules[NoteGanttChartStateUnexplained] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteGanttChartStateUnexplained, note)
+	}
+	noteRules[NotePlannerStateUnexplained] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NotePlannerStateUnexplained, note)
 	}
 }
 

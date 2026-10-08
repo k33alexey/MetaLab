@@ -73,6 +73,9 @@ type FormAttribute struct {
 	// GanttChart is the content a Gantt chart is made with in the designer -
 	// see GanttChartContent.
 	GanttChart *GanttChartContent `yaml:"gantt_chart,omitempty" json:"ganttChart,omitempty"`
+	// Planner is the content a planner is made with in the designer - see
+	// PlannerContent.
+	Planner *PlannerContent `yaml:"planner,omitempty" json:"planner,omitempty"`
 }
 
 // DynamicListKeyType is how a row of a dynamic list is told apart (help,
@@ -213,6 +216,12 @@ func validateFormAttributes(attributes []FormAttribute, ids map[uuid.UUID]bool, 
 				issues = append(issues, path+".gantt_chart belongs to an attribute that is a Gantt chart")
 			}
 			issues = append(issues, validateGanttChartContent(path+".gantt_chart", attribute.GanttChart)...)
+		}
+		if attribute.Planner != nil {
+			if single, ok := SingleType(attribute.Types); !ok || single.Kind != PlannerType {
+				issues = append(issues, path+".planner belongs to an attribute that is a planner")
+			}
+			issues = append(issues, validatePlannerContent(path+".planner", attribute.Planner)...)
 		}
 		issues = append(issues, validateFormColumns(path+".columns", attribute.Columns, ids, configuration)...)
 		tables := map[string]bool{}

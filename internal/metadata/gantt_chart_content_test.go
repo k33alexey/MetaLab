@@ -187,6 +187,8 @@ func TestAGanttChartRefusesWhatIsWrong(t *testing.T) {
 		"диаграмма внутри":   {ganttForm("    gantt_chart:\n      chart: {type: Column3D, active_series: -1}\n"), "attributes[0].gantt_chart.chart.type must be one of area,"},
 		"без диаграммы":      {ganttForm("    gantt_chart: {show_empty_values: true}\n"), "attributes[0].gantt_chart.chart.type must be one of area,"},
 		"не Ганта":           {formAttrHead + "attributes:\n  - id: c0de0000-0000-4000-8000-000000990020\n    name: Диаграмма\n    types: [{kind: chart}]\n    gantt_chart: {chart: {type: pie, active_series: -1}}\n", "attributes[0].gantt_chart belongs to an attribute that is a Gantt chart"},
+		"пустые даты":        {gantt("      begin_of_whole_interval: \"0001-01-01T00:00:00\"\n      end_of_whole_interval: \"0001-01-01T00:00:00\"\n"), ""},
+		"пустое начало":      {gantt("      begin_of_whole_interval: \"0001-01-01T00:00:00\"\n      end_of_whole_interval: \"2016-05-01T00:00:00\"\n"), ""},
 		"граница интервала":  {gantt("      begin_of_whole_interval: \"1000-01-01T00:00:00\"\n      end_of_whole_interval: \"3000-01-01T00:00:00\"\n"), ""},
 	} {
 		t.Run(name, func(t *testing.T) {

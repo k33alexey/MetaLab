@@ -300,7 +300,10 @@ func validateTimeScale(path string, scale TimeScale) []string {
 	return issues
 }
 
-// ganttDate reads a date of a Gantt chart; one left out is no date.
+// ganttDate reads a date of a Gantt chart or a planner; one left out is no
+// date, and so is the empty date 0001-01-01T00:00:00, which reads as the zero
+// time: it is an unfilled value, not a date of the first year, and no bound
+// or order applies to it (TYPES.md, "Пустая дата").
 func ganttDate(path, value string) (time.Time, []string) {
 	if value == "" {
 		return time.Time{}, nil

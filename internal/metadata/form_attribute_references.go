@@ -310,6 +310,17 @@ func (catalog *Catalog) resolveFormAttributes(form string, attributes []FormAttr
 				catalog.noteForm(NoteChartTextAnyLanguage, where+" gantt_chart "+path, chartAnyLanguage)
 			}
 		}
+		if planner := attribute.Planner; planner != nil {
+			if err := catalog.resolveStyleItems(where+" planner", planner.styleItems()); err != nil {
+				return err
+			}
+			if fields := planner.stateFields(); fields != "" {
+				catalog.noteForm(NotePlannerStateUnexplained, where+" planner", fields)
+			}
+			for _, path := range anyLanguageTextsIn(planner.plannerParts) {
+				catalog.noteForm(NoteChartTextAnyLanguage, where+" planner "+path, chartAnyLanguage)
+			}
+		}
 		if list := attribute.DynamicList; list != nil && list.MainTable != nil {
 			if _, ok := catalog.objectKindByID[list.MainTable.Object]; !ok {
 				catalog.noteUnresolved(where+" main table", list.MainTable.Object)

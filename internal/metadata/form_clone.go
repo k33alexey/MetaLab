@@ -213,6 +213,7 @@ func cloneFormAttributes(values []FormAttribute) []FormAttribute {
 		}
 		value.Chart = value.Chart.clone()
 		value.GanttChart = value.GanttChart.clone()
+		value.Planner = value.Planner.clone()
 		if value.DynamicList != nil {
 			list := *value.DynamicList
 			list.MainTable = clonePointer(list.MainTable)

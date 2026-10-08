@@ -271,6 +271,11 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Диаграмма, types: [{kind: gantt-chart}], gantt_chart: {chart: {type: column, active_series: -1}, "+
 			"state: {visual_begin: \"2016-05-01T00:00:00\"}}}\n")
 	},
+	NotePlannerStateUnexplained: func(t *testing.T, root string) {
+		writeCommonForm(t, root, "Календарь", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Календарь\ntitle: {ru: Календарь}\nkind: common\n"+
+			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Планировщик, types: [{kind: planner}], planner: {items: [{text: Встреча, "+
+			"state: {id: 821efef7-461d-41c2-abc6-77cb513ba998}}]}}\n")
+	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
