@@ -465,13 +465,13 @@ func (catalog *Catalog) validateExternalCubeFiles(root string) error {
 	for _, source := range catalog.ExternalDataSources {
 		for _, cube := range source.Cubes {
 			name := source.Name + "." + cube.Name
-			if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ExternalCubeKind,
+			if err := catalog.validateObjectFileSources(objectFiles{root: root, id: cube.ID, directoryKind: ExternalCubeKind,
 				kind: "external data source cube", name: name, modules: recordSetKindModules,
 				formSlots: cube.Forms.slots(), commands: cube.Commands, templates: cube.Templates}); err != nil {
 				return err
 			}
 			for _, table := range cube.DimensionTables {
-				if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ExternalDimensionTableKind,
+				if err := catalog.validateObjectFileSources(objectFiles{root: root, id: table.ID, directoryKind: ExternalDimensionTableKind,
 					kind: "external data source dimension table", name: name + "." + table.Name, modules: objectKindModules,
 					formSlots: table.Forms.slots(), commands: table.Commands, templates: table.Templates}); err != nil {
 					return err

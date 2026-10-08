@@ -187,9 +187,11 @@ type TypeLink struct {
 // in on fields 98, 6 and 11 times, with forms of catalogs, documents, charts of
 // accounts and an exchange plan.
 //
-// Nothing resolves the form itself yet: the place that would open it is the
-// form engine, which is not built, and a form that is not there is carried
-// unresolved rather than refused, as every reference by name is.
+// The form is found in the project once everything is loaded
+// (resolveChoiceForm): a form that is not there is carried unresolved rather
+// than refused, as every reference by name is. Whether the form can pick a
+// value of the field's type is not checked: the help sets no such bound, and
+// the place that would open it is the form engine, which is not built.
 type ChoiceFormReference struct {
 	Kind   Kind       `yaml:"kind,omitempty" json:"kind,omitempty"`
 	Object *uuid.UUID `yaml:"object,omitempty" json:"object,omitempty"`
@@ -586,11 +588,46 @@ func formOwnerKind(kind Kind) bool {
 	return false
 }
 
-// resolveConstantLinks finds the constant every link to one names. A link to
-// a constant that is no longer there is the reference a deleted object leaves
-// behind: carried, it takes its parameter from nowhere, and it is listed with
-// the other unresolved references.
-func (catalog *Catalog) resolveConstantLinks() {
+// resolveChoiceForm finds the form a field picks its value with. Named with
+// an object, the object must be there, be of the kind written beside it, and
+// keep a form of that name; named without one, a common form of that name
+// must be there. An object or a form that is not there is the reference a
+// deleted one leaves behind, listed with the other unresolved references; an
+// object of another kind than written is a reference that contradicts
+// itself, and is refused.
+func (catalog *Catalog) resolveChoiceForm(where string, form ChoiceFormReference) error {
+	if form.Object == nil {
+		if !catalog.commonFormNames[strings.ToLower(form.Name)] {
+			catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where, Written: commonFormObjectKind + " " + form.Name})
+		}
+		return nil
+	}
+	word, ok := catalog.objectKindByID[*form.Object]
+	if !ok {
+		catalog.noteUnresolved(where, *form.Object)
+		return nil
+	}
+	object := catalog.objectNames[*form.Object]
+	if kind := catalog.formOwnerKinds[*form.Object]; kind != form.Kind {
+		return fmt.Errorf("%s names a form of %s %s as of kind %s", where, word, object, form.Kind)
+	}
+	if _, ok := catalog.ObjectFormID(form.Kind, object, form.Name); !ok {
+		catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where, Written: word + " " + object + " form " + form.Name})
+	}
+	return nil
+}
+
+// resolveFieldChoices finds what the choice of every field names: the
+// constant every link to one names, and the choice form. A link to a constant
+// that is no longer there is the reference a deleted object leaves behind:
+// carried, it takes its parameter from nowhere, and it is listed with the
+// other unresolved references - and so is a choice form that is gone. The
+// choice form is found among the folders of the project, so it is resolved
+// only when the project is read from them: a catalog made from a published
+// snapshot learns its forms after this runs, out of a project the strict
+// load has already resolved.
+func (catalog *Catalog) resolveFieldChoices(fromFolders bool) error {
+	var refused error
 	resolve := func(where string, source FieldPath) {
 		if source.Constant == nil {
 			return
@@ -609,5 +646,9 @@ func (catalog *Catalog) resolveConstantLinks() {
 		if link := holder.choice.LinkByType; link != nil {
 			resolve(holder.where+" link by type", link.Source)
 		}
+		if form := holder.choice.Form; form != nil && fromFolders && refused == nil {
+			refused = catalog.resolveChoiceForm(holder.where+" choice form", *form)
+		}
 	})
+	return refused
 }

@@ -982,6 +982,8 @@ func loadObjectKind(root string, kind Kind, decode func(string, *os.File, string
 func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.unresolved = nil
 	catalog.objectKindByID = map[uuid.UUID]string{}
+	catalog.objectNames = map[uuid.UUID]string{}
+	catalog.formOwnerKinds = map[uuid.UUID]Kind{}
 	if err := catalog.propagateCommonAttributes(); err != nil {
 		return err
 	}
@@ -1150,7 +1152,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return fmt.Errorf("%w: %s and %s use %s", ErrDuplicateID, previous, kind+" "+name, id)
 		}
 		names[folded], allIDs[id] = index, kind+" "+name
-		catalog.objectKindByID[id] = kind
+		catalog.objectKindByID[id], catalog.objectNames[id] = kind, name
 		if ids != nil {
 			ids[id] = index
 		}
@@ -1753,26 +1755,26 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("predefined catalog item %s.%s: %w", item.Name, predefined.Name, err)
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: CatalogKind, kind: "catalog", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: CatalogKind, kind: "catalog", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
 	for _, item := range catalog.SettingsStorages {
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: SettingsStorageKind,
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: SettingsStorageKind,
 			kind: "settings storage", name: item.Name, modules: managerKindModules,
 			formSlots: item.Forms.slots(), templates: item.Templates}); err != nil {
 			return err
 		}
 	}
 	for _, item := range catalog.FilterCriteria {
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: FilterCriterionKind,
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: FilterCriterionKind,
 			kind: "filter criterion", name: item.Name, modules: managerKindModules,
 			formSlots: item.Forms.slots(), commands: item.Commands}); err != nil {
 			return err
 		}
 	}
 	for _, item := range catalog.Enumerations {
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: EnumerationKind,
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: EnumerationKind,
 			kind: "enumeration", name: item.Name, modules: managerKindModules,
 			formSlots: item.Forms.slots(),
 			commands:  item.Commands, templates: item.Templates}); err != nil {
@@ -1820,7 +1822,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		if err := catalog.validatePredefinedCharacteristicTypes(owner, item); err != nil {
 			return err
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ChartOfCharacteristicTypesKind, kind: "chart of characteristic types", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: ChartOfCharacteristicTypesKind, kind: "chart of characteristic types", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1841,7 +1843,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				}
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ChartOfAccountsKind, kind: "chart of accounts", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: ChartOfAccountsKind, kind: "chart of accounts", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1862,7 +1864,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				}
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ChartOfCalculationTypesKind, kind: "chart of calculation types", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: ChartOfCalculationTypesKind, kind: "chart of calculation types", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1883,7 +1885,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				}
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: TaskKind, kind: "task", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: TaskKind, kind: "task", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1911,7 +1913,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		if err := catalog.validateSequence("sequence "+item.Name, item, owners); err != nil {
 			return err
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: SequenceKind, kind: "sequence", name: item.Name, modules: sequenceModules}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: SequenceKind, kind: "sequence", name: item.Name, modules: sequenceModules}); err != nil {
 			return err
 		}
 	}
@@ -1919,7 +1921,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		if err := catalog.validateDocumentJournal("document journal "+item.Name, item, owners); err != nil {
 			return err
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: DocumentJournalKind, kind: "document journal", name: item.Name, modules: managerKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: DocumentJournalKind, kind: "document journal", name: item.Name, modules: managerKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1940,7 +1942,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				}
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ExchangePlanKind, kind: "exchange plan", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: ExchangePlanKind, kind: "exchange plan", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1961,7 +1963,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				}
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: BusinessProcessKind, kind: "business process", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates,
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: BusinessProcessKind, kind: "business process", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates,
 			collections: []string{project.RouteDirectory}, route: &item.Route}); err != nil {
 			return err
 		}
@@ -1979,7 +1981,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				}
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: DocumentKind, kind: "document", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: DocumentKind, kind: "document", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1989,7 +1991,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return err
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: InformationRegisterKind, kind: "information register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: InformationRegisterKind, kind: "information register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -2004,7 +2006,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("accumulation register %s: %w", item.Name, err)
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: AccumulationRegisterKind, kind: "accumulation register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: AccumulationRegisterKind, kind: "accumulation register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -2025,7 +2027,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return err
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ReportKind, kind: "report", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: ReportKind, kind: "report", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -2036,7 +2038,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return err
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: DataProcessorKind, kind: "data processor", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: DataProcessorKind, kind: "data processor", name: item.Name, modules: objectKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -2141,8 +2143,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	if err := catalog.validateInputByStringTypes(); err != nil {
 		return err
 	}
-	catalog.resolveConstantLinks()
-	return nil
+	return catalog.resolveFieldChoices(root != "")
 }
 
 // validateChartOfAccountsAnalytics ties a chart of accounts to the chart of
@@ -2396,7 +2397,7 @@ func (catalog *Catalog) validateAccountingRegister(root string, item AccountingR
 	if issues := validateAccountingRegisterLinks(item, chart.EffectiveMaxExtDimensionCount()); len(issues) > 0 {
 		return fmt.Errorf("%s: %s", owner, strings.Join(issues, "; "))
 	}
-	return catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: AccountingRegisterKind, kind: "accounting register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates})
+	return catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: AccountingRegisterKind, kind: "accounting register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates})
 }
 
 // takesABase says whether a chart gathers a base at all. An unset dependency
@@ -2532,7 +2533,7 @@ func (catalog *Catalog) validateCalculationRegister(root string, item Calculatio
 			}
 		}
 	}
-	if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: CalculationRegisterKind, kind: "calculation register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates,
+	if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: CalculationRegisterKind, kind: "calculation register", name: item.Name, modules: recordSetKindModules, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates,
 		collections: []string{project.RecalculationsDirectory}}); err != nil {
 		return err
 	}
@@ -2867,6 +2868,9 @@ type objectFiles struct {
 	root          string
 	directoryKind Kind
 	kind, name    string
+	// id is the object's identifier, recorded with its kind for what refers
+	// to the object by identifier and names its kind beside it.
+	id uuid.UUID
 	// modules lists the module roles this kind of object may keep directly in
 	// its folder. A module has no identifier and is not declared anywhere: the
 	// file is the declaration, so what is checked is the other direction —
@@ -2899,6 +2903,10 @@ type objectFiles struct {
 // object does not have - the record set of something that keeps no records -
 // and that is what is caught here.
 func (catalog *Catalog) validateObjectFileSources(files objectFiles) error {
+	if catalog.formOwnerKinds == nil {
+		catalog.formOwnerKinds = map[uuid.UUID]Kind{}
+	}
+	catalog.formOwnerKinds[files.id] = files.directoryKind
 	if files.root == "" {
 		return nil
 	}

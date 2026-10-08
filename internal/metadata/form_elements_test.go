@@ -1428,41 +1428,130 @@ func TestEveryPropertyOfChoiceStandsOnlyOnAnInputField(t *testing.T) {
 	}
 }
 
-// The object whose form picks a value is resolved with the project, and the
-// identifier of a choice form that is gone resolves to nothing.
+// The choice form of an input field and of an attribute of an object is
+// found in the project: a form of the object named, or a common form. An
+// object, a form of it or a common form that is not there is the reference a
+// deleted one leaves behind - refused by the strict load, named as written,
+// listed by the reading for editing - and so is the identifier the prototype
+// writes for a choice form that is gone; an object of another kind than the
+// one written beside it is refused outright.
 //
-// Defect caught: a choice form of an object the project does not have loading
-// clean; a deleted choice form carried silently, so that the field opens
-// nothing and no one is told.
-func TestTheChoiceFormOfAnInputFieldIsResolved(t *testing.T) {
+// Defect caught: only the object of the form resolved, on a field alone, so
+// that a form deleted from its object, or a common form deleted, moves as
+// working and opens nothing; the kind written beside the object never
+// compared with the object's own; the choice form of an attribute of an
+// object resolved not at all.
+func TestTheChoiceFormOfAFieldIsResolved(t *testing.T) {
 	t.Parallel()
-	for name, test := range map[string]struct{ choice, gone string }{
-		"форма справочника": {"choice_form: {kind: catalogs, object: " + cmpGoods + ", name: ФормаВыбора}", ""},
-		"общая форма":       {"choice_form: {name: АдреснаяКнига}", ""},
-		"удалённый объект":  {"choice_form: {kind: catalogs, object: " + refGone + ", name: ФормаВыбора}", "choice_form"},
-		"удалённая форма":   {"choice_form_gone: " + refGone, "choice_form_gone"},
+	for name, test := range map[string]struct {
+		form, onField, gone, refused string
+	}{
+		"форма справочника":           {form: "{kind: catalogs, object: " + cmpGoods + ", name: ФормаЭлемента}"},
+		"форма другим регистром":      {form: "{kind: catalogs, object: " + cmpGoods + ", name: формаэлемента}"},
+		"общая форма":                 {form: "{name: АдреснаяКнига}"},
+		"удалённый объект":            {form: "{kind: catalogs, object: " + refGone + ", name: ФормаВыбора}", gone: refGone},
+		"удалённая форма объекта":     {form: "{kind: catalogs, object: " + cmpGoods + ", name: ФормаВыбора}", gone: "catalog Номенклатура form ФормаВыбора"},
+		"форма у объекта без форм":    {form: "{kind: catalogs, object: " + cmpWarehouses + ", name: ФормаЭлемента}", gone: "catalog Склады form ФормаЭлемента"},
+		"удалённая общая форма":       {form: "{name: ФормаВыбора}", gone: "common form ФормаВыбора"},
+		"вид не тот":                  {form: "{kind: documents, object: " + cmpGoods + ", name: ФормаЭлемента}", refused: "names a form of catalog Номенклатура as of kind documents"},
+		"форма документа":             {form: "{kind: documents, object: " + cmpDocument + ", name: ФормаДокумента}"},
+		"чужая форма у документа":     {form: "{kind: documents, object: " + cmpDocument + ", name: ФормаЭлемента}", gone: "document Поступление form ФормаЭлемента"},
+		"удалённая форма на её месте": {onField: "choice_form_gone: " + refGone, gone: refGone},
 	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			root := formReferencesProject(t)
-			path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
-			content, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
+		for _, on := range []string{"поле формы", "реквизит объекта"} {
+			if on == "реквизит объекта" && test.onField != "" {
+				continue
 			}
-			element := "items:\n  - {id: c0de0000-0000-4000-8000-000000990002, name: Поле, kind: input-field, " + test.choice + "}\n"
-			writeFile(t, path, strings.Replace(string(content), "attributes:\n", element+"attributes:\n", 1))
-			if test.gone == "" {
-				if _, err := Load(root); err != nil {
-					t.Fatal(err)
+			t.Run(name+"/"+on, func(t *testing.T) {
+				t.Parallel()
+				root := formReferencesProject(t)
+				writeFile(t, filepath.Join(root, "metadata", string(DocumentKind), "Поступление", "forms", "ФормаДокумента", project.FormMetadataFile),
+					"format: 1\nid: c0de0000-0000-4000-8000-000000990003\nname: ФормаДокумента\ntitle: {ru: Форма документа}\nkind: object\n")
+				where := "catalog Номенклатура form ФормаЭлемента element Поле choice_form"
+				if on == "поле формы" {
+					path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+					choice := test.onField
+					if choice == "" {
+						choice = "choice_form: " + test.form
+					} else {
+						where += "_gone"
+					}
+					element := "items:\n  - {id: c0de0000-0000-4000-8000-000000990002, name: Поле, kind: input-field, " + choice + "}\n"
+					replaceInFile(t, path, "attributes:\n", element+"attributes:\n")
+				} else {
+					path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", project.ObjectMetadataFile)
+					replaceInFile(t, path, "name: Вид, title: {ru: Вид},", "name: Вид, title: {ru: Вид}, choice: {form: "+test.form+"},")
+					where = " Вид choice form"
 				}
-				return
-			}
-			if found := unresolvedOf(t, root); !containsWhere(found, "catalog Номенклатура form ФормаЭлемента element Поле "+test.gone) {
-				t.Fatalf("unresolved = %+v", found)
-			}
-		})
+				switch {
+				case test.refused != "":
+					if _, err := Load(root); err == nil || !strings.Contains(err.Error(), test.refused) {
+						t.Fatalf("Load = %v, want a refusal %q", err, test.refused)
+					}
+				case test.gone == "":
+					if _, err := Load(root); err != nil {
+						t.Fatal(err)
+					}
+				default:
+					found := unresolvedOf(t, root)
+					if len(found) != 1 || !strings.HasSuffix(found[0].Where, where) || found[0].Text() != test.gone {
+						t.Fatalf("unresolved = %+v, want %q at …%q", found, test.gone, where)
+					}
+				}
+			})
+		}
 	}
+}
+
+// A published application runs from a snapshot, which has no folders and
+// learns the forms of its objects only after its catalog is checked. The
+// choice form of an attribute travels in it as written and is not looked
+// for there: the strict load already found it.
+//
+// Defect caught: the running catalog looking for the choice form before it
+// knows any form, so that every choice form of a published application is
+// listed as a reference to nothing.
+func TestAPublishedChoiceFormIsNotLookedForAgain(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeMetadata(t, root, CatalogKind, formCatalog, "format: 1\nid: "+formCatalog+"\nname: Пользователи\ntitle: {ru: Пользователи}\n"+
+		"code: {type: string, length: 9, auto: true}\ndescription_length: 150\nattributes:\n"+
+		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Вид, title: {ru: Вид}, types: [{kind: catalog, reference: "+formCatalog+"}],"+
+		" choice: {form: {kind: catalogs, object: "+formCatalog+", name: ФормаЭлемента}}}\n")
+	writeObjectForm(t, root, CatalogKind, "Пользователи", "ФормаЭлемента", formItem)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := NewRuntimeSnapshot(catalog, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	running, err := snapshot.Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found := running.UnresolvedReferences(); len(found) != 0 {
+		t.Fatalf("the running catalog lists %+v", found)
+	}
+	goods, ok := running.CatalogDefinition("Пользователи")
+	if !ok || goods.Attributes[0].Choice.Form == nil || goods.Attributes[0].Choice.Form.Name != "ФормаЭлемента" {
+		t.Fatalf("the choice form did not travel: %+v", goods.Attributes)
+	}
+}
+
+// replaceInFile replaces the one place a test changes in a file of the
+// project, and fails if the place is not there.
+func replaceInFile(t *testing.T, path, old, new string) {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(content), old) != 1 {
+		t.Fatalf("%s holds %q %d times", path, old, strings.Count(string(content), old))
+	}
+	writeFile(t, path, strings.Replace(string(content), old, new, 1))
 }
 
 // An input field and a radio button field keep their choice lists through

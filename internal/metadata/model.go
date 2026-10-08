@@ -707,7 +707,15 @@ type Catalog struct {
 	// objectKindByID holds every object of the top level the last load read,
 	// of every kind, with the kind it is. It is what a reference that may point
 	// at an object of any kind - the content of a subsystem - is resolved by.
-	objectKindByID           map[uuid.UUID]string
+	objectKindByID map[uuid.UUID]string
+	// objectNames holds the name of each of those objects, as written, by
+	// the same identifier: what a reference by identifier is turned into
+	// once the object is found - the owner of a choice form.
+	objectNames map[uuid.UUID]string
+	// formOwnerKinds holds the kind of each object that may keep forms, by
+	// its identifier, as the loader indexed its folder: what a choice form's
+	// kind is checked against.
+	formOwnerKinds           map[uuid.UUID]Kind
 	CommonTemplates          []CommonTemplateDefinition
 	commonTemplateByName     map[string]int
 	commonTemplateByID       map[uuid.UUID]int

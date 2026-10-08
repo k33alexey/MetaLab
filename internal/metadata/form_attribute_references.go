@@ -178,7 +178,7 @@ func (catalog *Catalog) resolveFormExtension(form string, extension FormExtensio
 // rights of an attribute - the style items of the configuration their look
 // takes its values from, which must be there and of the type taken, and the
 // common pictures drawn in the header and footer of a column and on the
-// choice button; the object whose form picks a value of an input field, and
+// choice button; the form that picks a value of an input field, and
 // the identifier of a choice form that is gone, which resolves to nothing; a
 // value of a choice list naming a type the project no longer has, a remnant,
 // and one of a type the platform defines, kept for the notes.
@@ -195,9 +195,9 @@ func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElem
 		if err := catalog.resolveStyleItems(where, append(item.FieldLook.styleItems(), item.FieldColumn.styleItems()...)); err != nil {
 			return err
 		}
-		if form := item.ChoiceForm; form != nil && form.Object != nil {
-			if _, ok := catalog.objectKindByID[*form.Object]; !ok {
-				catalog.noteUnresolved(where+" choice_form", *form.Object)
+		if form := item.ChoiceForm; form != nil {
+			if err := catalog.resolveChoiceForm(where+" choice_form", *form); err != nil {
+				return err
 			}
 		}
 		for _, listed := range item.ChoiceList {

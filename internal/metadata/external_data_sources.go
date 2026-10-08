@@ -741,7 +741,7 @@ func (catalog *Catalog) validateExternalTableFiles(root string) error {
 			if table.ObjectTable() {
 				modules = objectKindModules
 			}
-			if err := catalog.validateObjectFileSources(objectFiles{root: root, directoryKind: ExternalDataSourceTableKind,
+			if err := catalog.validateObjectFileSources(objectFiles{root: root, id: table.ID, directoryKind: ExternalDataSourceTableKind,
 				kind: "external data source table", name: source.Name + "." + table.Name, modules: modules,
 				formSlots: table.Forms.slots(), commands: table.Commands, templates: table.Templates}); err != nil {
 				return err
