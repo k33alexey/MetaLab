@@ -67,7 +67,7 @@ func (workspace *Workspace) readManagedForm(relative string) (ManagedFormSource,
 		return ManagedFormSource{}, err
 	}
 	return ManagedFormSource{Path: relative, Revision: file.Revision, Form: form,
-		Languages: roleLanguages(configuration), DataPaths: workspace.formDataPaths(form.ID, configuration)}, nil
+		Languages: roleLanguages(configuration), DataPaths: workspace.formDataPaths(relative, configuration)}, nil
 }
 
 func (workspace *Workspace) SaveManagedForm(relative string, form metadata.ManagedForm, expectedRevision string) (ManagedFormSource, error) {
@@ -320,80 +320,105 @@ func validateFormPath(relative string) error {
 	return nil
 }
 
-func (workspace *Workspace) formDataPaths(formID uuid.UUID, configuration project.Project) []FormDataPath {
-	catalog, err := metadata.Load(workspace.root)
+// formDataPaths lists the data a form of a catalog or a document shows,
+// for the designer to offer: the object's own fields, its attributes and,
+// on the form of the object, its table parts with their columns. It reads
+// the description of the object the form lies in and nothing else: opening
+// a form is held to 300 ms however large the project (ML-STUDIO.md,
+// «Отзывчивость»), and reading the whole project took a second for every
+// two thousand objects beside it (2.242). Which of the object's forms is
+// open is told by its name, which the form shares with its folder
+// (formAgreesWithItsPath); a form no slot of the object names, a common
+// form, or an object whose description does not read gets none.
+func (workspace *Workspace) formDataPaths(relative string, configuration project.Project) []FormDataPath {
+	kind, object, rest, ok := project.SplitObjectPath(relative)
+	if !ok || len(rest) != 3 || rest[0] != "forms" {
+		return nil
+	}
+	description, err := project.ObjectMetadataPath(kind, object)
+	if err != nil {
+		return nil
+	}
+	file, err := workspace.readSource(description)
+	if err != nil {
+		return nil
+	}
+	return workspace.formDataPathsFrom(relative, file.Content, configuration)
+}
+
+// formDataPathsFrom lists the data a form offers from the description of
+// the object it lies in, given as text.
+func (workspace *Workspace) formDataPathsFrom(relative, content string, configuration project.Project) []FormDataPath {
+	kind, object, rest, ok := project.SplitObjectPath(relative)
+	if !ok || len(rest) != 3 || rest[0] != "forms" {
+		return nil
+	}
+	form := rest[1]
+	description, err := project.ObjectMetadataPath(kind, object)
 	if err != nil {
 		return nil
 	}
 	var result []FormDataPath
-	appendField := func(prefix, name, title, kind string) {
-		if strings.TrimSpace(title) == "" {
-			title = name
+	appendField := func(prefix, name string, title metadata.LocalizedText, kind string) {
+		text := title.Resolve(configuration.DefaultLanguage, configuration.DefaultLanguage, configuration.Languages)
+		if strings.TrimSpace(text) == "" {
+			text = name
 		}
-		result = append(result, FormDataPath{Path: prefix + "." + name, Title: title, Kind: kind})
+		result = append(result, FormDataPath{Path: prefix + "." + name, Title: text, Kind: kind})
 	}
-	for _, object := range catalog.Catalogs {
-		// The roles a folder brings are not among the three the data paths are
-		// built for: a folder form shows a folder, which holds almost none of
-		// what an item holds. A form standing only in a folder role is
-		// therefore left alone here, the same way any form no role names is.
-		kind, ok := referencedFormKind(catalog, metadata.CatalogKind, object.Name, object.Forms.ObjectForms, formID)
+	appendObject := func(slots metadata.ObjectForms, own []struct{ name, title string }, attributes []metadata.Attribute, parts []metadata.TablePart) {
+		formKind, ok := slotOf(slots, form)
 		if !ok {
-			continue
+			return
 		}
-		prefix := formDataPrefix(kind)
-		appendField(prefix, "Код", "Код", "field")
-		appendField(prefix, "Наименование", "Наименование", "field")
-		for _, attribute := range object.Attributes {
-			appendField(prefix, attribute.Name, attribute.Title.Resolve(configuration.DefaultLanguage, configuration.DefaultLanguage, configuration.Languages), "field")
+		prefix := formDataPrefix(formKind)
+		for _, field := range own {
+			appendField(prefix, field.name, metadata.LocalizedText{configuration.DefaultLanguage: field.title}, "field")
 		}
-		if kind == metadata.ObjectForm {
-			for _, part := range object.TableParts {
-				partPath := prefix + "." + part.Name
-				appendField(prefix, part.Name, part.Title.Resolve(configuration.DefaultLanguage, configuration.DefaultLanguage, configuration.Languages), "table")
-				for _, attribute := range part.Attributes {
-					appendField(partPath, attribute.Name, attribute.Title.Resolve(configuration.DefaultLanguage, configuration.DefaultLanguage, configuration.Languages), "column")
-				}
+		for _, attribute := range attributes {
+			appendField(prefix, attribute.Name, attribute.Title, "field")
+		}
+		if formKind != metadata.ObjectForm {
+			return
+		}
+		for _, part := range parts {
+			appendField(prefix, part.Name, part.Title, "table")
+			for _, attribute := range part.Attributes {
+				appendField(prefix+"."+part.Name, attribute.Name, attribute.Title, "column")
 			}
 		}
 	}
-	for _, object := range catalog.Documents {
-		kind, ok := referencedFormKind(catalog, metadata.DocumentKind, object.Name, object.Forms, formID)
-		if !ok {
-			continue
+	switch metadata.Kind(kind) {
+	case metadata.CatalogKind:
+		// The roles a folder brings are not among the three the data paths
+		// are built for: a folder form shows a folder, which holds almost none
+		// of what an item holds.
+		catalog, err := metadata.DecodeCatalog(description, strings.NewReader(content), configuration)
+		if err != nil {
+			return nil
 		}
-		prefix := formDataPrefix(kind)
-		for _, system := range []struct{ name, title string }{{"Номер", "Номер"}, {"Дата", "Дата"}, {"Проведен", "Проведён"}} {
-			appendField(prefix, system.name, system.title, "field")
+		appendObject(catalog.Forms.ObjectForms, []struct{ name, title string }{{"Код", "Код"}, {"Наименование", "Наименование"}},
+			catalog.Attributes, catalog.TableParts)
+	case metadata.DocumentKind:
+		document, err := metadata.DecodeDocument(description, strings.NewReader(content), configuration)
+		if err != nil {
+			return nil
 		}
-		for _, attribute := range object.Attributes {
-			appendField(prefix, attribute.Name, attribute.Title.Resolve(configuration.DefaultLanguage, configuration.DefaultLanguage, configuration.Languages), "field")
-		}
-		if kind == metadata.ObjectForm {
-			for _, part := range object.TableParts {
-				partPath := prefix + "." + part.Name
-				appendField(prefix, part.Name, part.Title.Resolve(configuration.DefaultLanguage, configuration.DefaultLanguage, configuration.Languages), "table")
-				for _, attribute := range part.Attributes {
-					appendField(partPath, attribute.Name, attribute.Title.Resolve(configuration.DefaultLanguage, configuration.DefaultLanguage, configuration.Languages), "column")
-				}
-			}
-		}
+		appendObject(document.Forms, []struct{ name, title string }{{"Номер", "Номер"}, {"Дата", "Дата"}, {"Проведен", "Проведён"}},
+			document.Attributes, document.TableParts)
 	}
 	return result
 }
 
-// referencedFormKind says which of an object's three slots names the form the
-// designer has open. A slot carries a name, so the name is resolved back to the
-// identifier the form keeps in its own description - which is what the designer
-// knows the open form by, and what a role or ML App refers to it by.
-func referencedFormKind(catalog *metadata.Catalog, objectKind metadata.Kind, object string,
-	forms metadata.ObjectForms, id uuid.UUID) (metadata.FormKind, bool) {
-	for _, item := range []struct {
-		form string
+// slotOf says which of an object's three slots names the open form, by the
+// name the form shares with its folder.
+func slotOf(slots metadata.ObjectForms, form string) (metadata.FormKind, bool) {
+	for _, slot := range []struct {
+		name string
 		kind metadata.FormKind
-	}{{forms.Object, metadata.ObjectForm}, {forms.List, metadata.ListForm}, {forms.Choice, metadata.ChoiceForm}} {
-		if found, ok := catalog.ObjectFormID(objectKind, object, item.form); ok && found == id {
-			return item.kind, true
+	}{{slots.Object, metadata.ObjectForm}, {slots.List, metadata.ListForm}, {slots.Choice, metadata.ChoiceForm}} {
+		if slot.name != "" && strings.EqualFold(slot.name, form) {
+			return slot.kind, true
 		}
 	}
 	return "", false

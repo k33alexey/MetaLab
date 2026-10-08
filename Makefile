@@ -1,5 +1,5 @@
 .PHONY: build build-desktop build-windows-desktop build-wasm check ci ci-database ci-fresh-database
-.PHONY: fmt fmt-check sweep-check test test-integration test-race test-wasm vet web-check
+.PHONY: fmt fmt-check sweep-check test test-budgets test-integration test-race test-wasm vet web-check
 
 build:
 	mkdir -p bin
@@ -106,8 +106,15 @@ ci-database:
 		echo 'It needs a superuser with a password - an empty password on a TCP admin connection is refused on purpose, not by mistake.'; \
 		exit 1; }
 
+# test-budgets holds the responsiveness of the Studio to the numbers of
+# ML-STUDIO.md, «Отзывчивость». The race detector slows the code fifteen times,
+# so the budgets are measured here, without it, and the tests skip under
+# -race. A machine slower than the developer's sets ML_BUDGET_SCALE.
+test-budgets:
+	go test -count=1 -run 'StaysWithinItsBudget' ./internal/...
+
 # check is the quick pass: everything that needs no database.
-check: fmt-check web-check vet sweep-check test-race build test-wasm
+check: fmt-check web-check vet sweep-check test-race test-budgets build test-wasm
 
 # ci-fresh-database drops what earlier runs left behind, because CI gets a brand
 # new PostgreSQL container every time and a development machine does not.
@@ -135,6 +142,6 @@ ci-fresh-database: ci-database
 # ci runs what GitHub runs, in the order GitHub runs it, so that red is found
 # here and not after the push. Run it before pushing; `make check` is the
 # quicker pass that leaves out the database.
-ci: fmt-check vet web-check sweep-check ci-fresh-database test-integration build build-windows-desktop test-wasm
+ci: fmt-check vet web-check sweep-check ci-fresh-database test-integration test-budgets build build-windows-desktop test-wasm
 	@echo 'ci: every check GitHub runs passed.'
 

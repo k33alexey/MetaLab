@@ -76,6 +76,15 @@ jobs:
       - name: Test with race detector
         run: go test -race -p 1 -coverprofile=coverage.out ./...
 
+      # The budgets of ML-STUDIO.md are set for the developer's machine; the
+      # runner is slower and says by how much, so the numbers themselves stay
+      # as written. The race detector would slow them fifteen times, so they
+      # are measured in a run of their own.
+      - name: Responsiveness budgets
+        env:
+          ML_BUDGET_SCALE: "2"
+        run: make test-budgets
+
       - name: Upload coverage report
         uses: actions/upload-artifact@v6
         with:
