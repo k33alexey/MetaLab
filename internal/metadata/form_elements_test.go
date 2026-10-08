@@ -131,21 +131,26 @@ func TestAButtonKeepsItsTypeAndAGroupItsLayout(t *testing.T) {
 }
 
 // What every element has - its tooltip, how the tooltip shows, whom it is
-// shown to - is kept on a field, a group, a decoration, a table and a button,
-// and comes back the same through YAML and the Studio.
+// shown to, how important it is on a narrow screen - is kept on a field, a
+// group, a decoration, a table and a button, and comes back the same through
+// YAML and the Studio.
 //
 // Defect caught: a common property kept on one kind and lost on another; the
 // roles an element is shown to lost, so that a field the prototype shows to
-// no one until the user turns it on - 6590 of them - shows to everyone.
+// no one until the user turns it on - 6590 of them - shows to everyone; the
+// importance of an element refused or lost (1582 elements of every kind),
+// so that a narrow screen hides what the configuration keeps.
 func TestEveryElementKeepsWhatEveryElementHas(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
-	common := ", tool_tip: {ru: Подсказка}, tool_tip_representation: show-bottom, user_visible: {common: false, roles: [{role: " + formAttrRole + ", value: true}]}"
+	common := ", tool_tip: {ru: Подсказка}, tool_tip_representation: show-bottom, user_visible: {common: false, roles: [{role: " + formAttrRole + ", value: true}]}" +
+		", display_importance: very-low"
 	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field" + common + "}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Группа, kind: usual-group" + common + "}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Надпись, kind: label-decoration" + common + "}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Таблица, kind: table" + common + "}\n" +
-		"  - {id: c0de0000-0000-4000-8000-000000990005, name: Кнопка, kind: button, tool_tip_representation: balloon, user_visible: {common: false}}\n"
+		"  - {id: c0de0000-0000-4000-8000-000000990005, name: Кнопка, kind: button, tool_tip_representation: balloon, user_visible: {common: false}," +
+		" display_importance: high}\n"
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
 	if err != nil {
 		t.Fatal(err)
@@ -154,11 +159,13 @@ func TestEveryElementKeepsWhatEveryElementHas(t *testing.T) {
 		t.Helper()
 		for _, item := range items[:4] {
 			if item.ToolTip["ru"] != "Подсказка" || item.ToolTipRepresentation != FormToolTipShowBottom || item.UserVisible == nil ||
-				item.UserVisible.Common || len(item.UserVisible.Roles) != 1 || item.UserVisible.Roles[0].Role.String() != formAttrRole {
+				item.UserVisible.Common || len(item.UserVisible.Roles) != 1 || item.UserVisible.Roles[0].Role.String() != formAttrRole ||
+				item.DisplayImportance != FormDisplayImportanceVeryLow {
 				t.Fatalf("%s: %s lost what every element has: %+v", source, item.Kind, item)
 			}
 		}
-		if button := items[4]; button.ToolTipRepresentation != FormToolTipBalloon || button.UserVisible == nil || button.UserVisible.Common {
+		if button := items[4]; button.ToolTipRepresentation != FormToolTipBalloon || button.UserVisible == nil || button.UserVisible.Common ||
+			button.DisplayImportance != FormDisplayImportanceHigh {
 			t.Fatalf("%s: the button: %+v", source, button)
 		}
 	}
@@ -191,7 +198,8 @@ func TestEveryElementKeepsWhatEveryElementHas(t *testing.T) {
 // Defect caught: a tooltip written on a button, which shows the tooltip of
 // its command, kept where nothing shows it; a representation the help does
 // not give; a role answering twice; a tooltip in a language the
-// configuration does not have.
+// configuration does not have; the importance spelled as the prototype
+// writes it.
 func TestEveryElementRefusesWhatIsWrongInWhatEveryElementHas(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
@@ -201,6 +209,7 @@ func TestEveryElementRefusesWhatIsWrongInWhatEveryElementHas(t *testing.T) {
 		"роль дважды":             {"kind: input-field, user_visible: {common: false, roles: [{role: " + formAttrRole + ", value: true}, {role: " + formAttrRole + ", value: false}]}", "items[0].user_visible.roles[1].role already has its answer"},
 		"роль без идентификатора": {"kind: usual-group, user_visible: {common: true, roles: [{role: 00000000-0000-0000-0000-000000000000, value: false}]}", "items[0].user_visible.roles[0].role must be a non-zero UUID"},
 		"подсказка не на языке":   {"kind: label-decoration, tool_tip: {\"d=e\": П}", "items[0].tool_tip"},
+		"важность прототипа":      {"kind: usual-group, display_importance: VeryHigh", "items[0].display_importance must be auto, very-low, low, usual, high or very-high"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -1261,7 +1270,7 @@ func TestEachPropertyOfAFormatStandsOnItsFields(t *testing.T) {
 		"MinValue":           {FormElementInputField, FormElementTrackBarField, FormElementProgressBarField},
 		"MaxValue":           {FormElementInputField, FormElementTrackBarField, FormElementProgressBarField},
 		"MarkNegatives":      {FormElementInputField, FormElementLabelField},
-		"AutoMarkIncomplete": {FormElementInputField},
+		"AutoMarkIncomplete": {FormElementInputField, FormElementTable},
 	}
 	value := reflect.ValueOf(full)
 	for index := range value.NumField() {
@@ -2159,11 +2168,13 @@ func TestEachPropertyOfADocumentStandsOnItsFields(t *testing.T) {
 	spreadsheet := []FormElementKind{FormElementSpreadsheetDocumentField}
 	allowed := map[string][]FormElementKind{
 		"Output": {FormElementSpreadsheetDocumentField, FormElementTextDocumentField, FormElementHTMLDocumentField, FormElementFormattedDocumentField,
-			FormElementGraphicalSchemaField},
-		"Edit":             {FormElementSpreadsheetDocumentField, FormElementGraphicalSchemaField},
-		"EnableDrag":       {FormElementSpreadsheetDocumentField, FormElementCalendarField, FormElementPlannerField},
-		"EnableStartDrag":  {FormElementSpreadsheetDocumentField, FormElementCalendarField, FormElementPlannerField},
-		"ExcludedCommands": {FormElementSpreadsheetDocumentField, FormElementFormattedDocumentField},
+			FormElementGraphicalSchemaField, FormElementTable},
+		"Edit":                {FormElementSpreadsheetDocumentField, FormElementGraphicalSchemaField},
+		"EnableDrag":          {FormElementSpreadsheetDocumentField, FormElementCalendarField, FormElementPlannerField, FormElementTable},
+		"EnableStartDrag":     {FormElementSpreadsheetDocumentField, FormElementCalendarField, FormElementPlannerField, FormElementTable},
+		"ExcludedCommands":    {FormElementSpreadsheetDocumentField, FormElementFormattedDocumentField, FormElementTable},
+		"VerticalScrollBar":   {FormElementSpreadsheetDocumentField, FormElementTable},
+		"HorizontalScrollBar": {FormElementSpreadsheetDocumentField, FormElementTable},
 	}
 	value := reflect.ValueOf(full)
 	for index := range value.NumField() {
@@ -2289,6 +2300,8 @@ func TestEachPropertyOfTheOtherFieldsStandsOnItsField(t *testing.T) {
 	calendar, bar, track := []FormElementKind{FormElementCalendarField}, []FormElementKind{FormElementProgressBarField}, []FormElementKind{FormElementTrackBarField}
 	allowed := map[string][]FormElementKind{
 		"ShowCurrentDate": calendar, "WidthInMonths": calendar, "HeightInMonths": calendar, "ShowMonthsPanel": calendar, "SelectionMode": calendar,
+		// A table selects and is drawn with values of its own, refused there
+		// by value below.
 		"ShowPercent": bar, "Representation": bar, "Step": track, "LargeStep": track, "MarkingStep": track,
 	}
 	value := reflect.ValueOf(full)
@@ -2304,8 +2317,9 @@ func TestEachPropertyOfTheOtherFieldsStandsOnItsField(t *testing.T) {
 			issues := validateFieldOther("items[0]", alone, kind)
 			refused := len(issues) == 1 && (strings.Contains(issues[0], "is allowed only for") || strings.Contains(issues[0], "is not a property of a "+string(kind)) ||
 				// The groups are drawn too, with values of their own.
-				name == "Representation" && slices.Contains([]FormElementKind{FormElementUsualGroup, FormElementPages, FormElementPopup, FormElementButtonGroup, FormElementButton}, kind) &&
-					strings.Contains(issues[0], ".representation must be "))
+				name == "Representation" && slices.Contains([]FormElementKind{FormElementUsualGroup, FormElementPages, FormElementPopup, FormElementButtonGroup, FormElementButton, FormElementTable}, kind) &&
+					strings.Contains(issues[0], ".representation must be ") ||
+				name == "SelectionMode" && kind == FormElementTable && strings.Contains(issues[0], ".selection_mode must be "))
 			if want := !slices.Contains(kinds, kind); want != refused || !want && len(issues) != 0 {
 				t.Errorf("%s alone on %s: %v", name, kind, issues)
 			}
@@ -2399,17 +2413,18 @@ func TestAGroupKeepsWhatItSharesWithAField(t *testing.T) {
 	}
 }
 
-// Every property of a field, set alone on every group and on a button, is
-// accepted where the help and the prototype give that element the property
+// Every property of a field, set alone on every group, on a button and on a
+// table, is accepted where the help and the prototype give that element the property
 // and refused elsewhere.
 // The properties are taken from the groups of properties themselves, so that
 // one added to a field is checked here too.
 //
 // Defect caught: a group refused a property it holds - its width, its
 // colours, the header of a group of columns, the colours, font and limits of
-// a button - or let through one it does not: the font of the text of a field
-// on a group, a footer, the edit mode, a hint of input, the title font of a
-// button.
+// a button, the size, title, colours and fonts of a table - or let through
+// one it does not: the font of the text of a field on a group, a footer, the
+// edit mode, a hint of input, the title font of a button, the alignment in a
+// column, a border or the background of the title on a table.
 func TestAGroupHoldsOnlyThePropertiesOfAFieldItIsGiven(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
@@ -2431,17 +2446,20 @@ func TestAGroupHoldsOnlyThePropertiesOfAFieldItIsGiven(t *testing.T) {
 	// many shows here.
 	groups := []FormElementKind{FormElementUsualGroup, FormElementPages, FormElementPage, FormElementColumnGroup, FormElementPopup, FormElementButtonGroup,
 		FormElementCommandBar}
-	all := append([]FormElementKind{FormElementButton}, groups...)
+	all := append([]FormElementKind{FormElementButton, FormElementTable}, groups...)
 	areas := []FormElementKind{FormElementUsualGroup, FormElementPage}
 	columns := []FormElementKind{FormElementColumnGroup}
-	button := []FormElementKind{FormElementButton}
+	button := []FormElementKind{FormElementButton, FormElementTable}
+	titled := append([]FormElementKind{FormElementTable}, groups...)
 	expected := map[string][]FormElementKind{
 		"width": all, "height": all, "horizontal_stretch": all, "vertical_stretch": all, "group_horizontal_align": all,
-		"group_vertical_align": all, "shortcut": all, "title_font": groups, "title_text_color": groups,
-		"horizontal_align": {FormElementUsualGroup, FormElementPage, FormElementCommandBar}, "vertical_align": areas, "back_color": {FormElementUsualGroup, FormElementPage, FormElementPopup, FormElementButton},
-		"border_color": {FormElementPopup, FormElementButton}, "title_back_color": columns, "header_picture": columns, "header_horizontal_align": columns,
-		"fixing_in_table": columns, "no_auto_max_width": button, "max_width": button, "no_auto_max_height": button, "max_height": button,
-		"text_color": button, "font": button, "title_height": button, "skip_on_input": button, "default_item": button,
+		"group_vertical_align": all, "shortcut": all, "title_font": titled, "title_text_color": titled,
+		"horizontal_align": {FormElementUsualGroup, FormElementPage, FormElementCommandBar}, "vertical_align": areas,
+		"back_color":   {FormElementUsualGroup, FormElementPage, FormElementPopup, FormElementButton, FormElementTable},
+		"border_color": {FormElementPopup, FormElementButton, FormElementTable}, "title_back_color": columns, "header_picture": columns,
+		"header_horizontal_align": columns, "fixing_in_table": columns, "no_auto_max_width": button, "max_width": button,
+		"no_auto_max_height": button, "max_height": button, "text_color": button, "font": button, "title_height": button,
+		"skip_on_input": button, "default_item": button, "title_location": {FormElementTable},
 	}
 	check := func(name string, kind FormElementKind, issues []string) {
 		allowed := slices.Contains(expected[name], kind)
@@ -2614,7 +2632,7 @@ func TestEachPropertyOfAGroupStandsOnItsGroup(t *testing.T) {
 		"CommandSource": {FormElementCommandBar, FormElementButtonGroup, FormElementPopup},
 		"EnableContentChange": {FormElementUsualGroup, FormElementPages, FormElementPage, FormElementColumnGroup, FormElementPopup, FormElementButtonGroup,
 			FormElementCommandBar},
-		"CurrentRowUse": {FormElementUsualGroup, FormElementPages}, "AssociatedTable": {FormElementUsualGroup, FormElementPages},
+		"CurrentRowUse": {FormElementUsualGroup, FormElementPages, FormElementTable}, "AssociatedTable": {FormElementUsualGroup, FormElementPages},
 	}
 	value := reflect.ValueOf(full)
 	for index := range value.NumField() {

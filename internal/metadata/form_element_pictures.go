@@ -28,6 +28,7 @@ func (element ManagedFormElement) pictures() []elementPicture {
 		{"choice_button_picture", element.ChoiceButtonPicture},
 		{"values_picture", element.ValuesPicture},
 		{"picture", element.Picture},
+		{"rows_picture", element.RowsPicture},
 	}
 }
 

@@ -138,6 +138,10 @@ type ManagedFormElement struct {
 	// everyone; the prototype writes it on 6611 elements, 6590 of them shown
 	// to no one until the user turns them on. The help does not name it.
 	UserVisible *FormAttributeRight `yaml:"user_visible,omitempty" json:"userVisible,omitempty"`
+	// DisplayImportance is how important the element is when the form is
+	// fitted to a narrow screen; the prototype writes it on 1582 elements of
+	// every kind.
+	DisplayImportance FormDisplayImportance `yaml:"display_importance,omitempty" json:"displayImportance,omitempty"`
 	// FieldBehavior is what a field has besides what every element has.
 	FieldBehavior `yaml:",inline"`
 	// FieldLayout is the size of a field and where it stands.
@@ -172,6 +176,8 @@ type ManagedFormElement struct {
 	GroupProperties `yaml:",inline"`
 	// ButtonProperties is what a button has of its own.
 	ButtonProperties `yaml:",inline"`
+	// TableProperties is what a table has of its own.
+	TableProperties `yaml:",inline"`
 	// ButtonType is what a button is; only a button has one.
 	ButtonType FormButtonType `yaml:"button_type,omitempty" json:"buttonType,omitempty"`
 	// Orientation lays out what a usual group, a page or a group of columns
@@ -373,6 +379,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		issues = append(issues, validateFieldOther(current.path, item.FieldOther, item.Kind)...)
 		issues = append(issues, validateGroupProperties(current.path, item.GroupProperties, item.Kind, configuration)...)
 		issues = append(issues, validateButtonProperties(current.path, item.ButtonProperties, item.Kind)...)
+		issues = append(issues, validateTableProperties(current.path, item.TableProperties, item.Kind)...)
 		if _, named := item.commandSourceItem(); item.AssociatedTable != "" || named {
 			associated = append(associated, pending{element: item, path: current.path})
 		}

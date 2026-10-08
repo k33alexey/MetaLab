@@ -167,7 +167,8 @@ const (
 )
 
 // validateElementCommon checks what every element has: its tooltip, how the
-// tooltip shows, and whom it is shown to.
+// tooltip shows, whom it is shown to and how important it is on a narrow
+// screen.
 func validateElementCommon(path string, item ManagedFormElement, class formElementClass, configuration project.Project) []string {
 	var issues []string
 	if len(item.ToolTip) != 0 {
@@ -181,6 +182,8 @@ func validateElementCommon(path string, item ManagedFormElement, class formEleme
 	issues = append(issues, oneOf(path+".tool_tip_representation", item.ToolTipRepresentation, FormToolTipAuto, FormToolTipNone, FormToolTipButton,
 		FormToolTipBalloon, FormToolTipShowAuto, FormToolTipShowTop, FormToolTipShowLeft, FormToolTipShowBottom, FormToolTipShowRight)...)
 	issues = append(issues, validateFormRight(path+".user_visible", item.UserVisible)...)
+	issues = append(issues, oneOf(path+".display_importance", item.DisplayImportance, FormDisplayImportanceAuto, FormDisplayImportanceVeryLow,
+		FormDisplayImportanceLow, FormDisplayImportanceUsual, FormDisplayImportanceHigh, FormDisplayImportanceVeryHigh)...)
 	return issues
 }
 
@@ -330,8 +333,11 @@ var formGroupKinds = []FormElementKind{FormElementUsualGroup, FormElementPages, 
 	FormElementPopup, FormElementButtonGroup, FormElementCommandBar}
 
 var (
-	button          = []FormElementKind{FormElementButton}
-	groupsAndButton = append([]FormElementKind{FormElementButton}, formGroupKinds...)
+	button               = []FormElementKind{FormElementButton}
+	tableKind            = []FormElementKind{FormElementTable}
+	buttonAndTable       = []FormElementKind{FormElementButton, FormElementTable}
+	groupsAndTable       = append([]FormElementKind{FormElementTable}, formGroupKinds...)
+	groupsButtonAndTable = append([]FormElementKind{FormElementButton, FormElementTable}, formGroupKinds...)
 )
 
 // fieldPropertyElsewhere lists, by the name a property of a field is written
@@ -342,7 +348,8 @@ var (
 // writes no other property of a field on a group. A button has its size and
 // its limits, its place, its colours, font and border colour, the height of
 // its title, its shortcut, whether it is skipped on input and activated
-// first (help, FormButton; the prototype writes all but the shortcut).
+// first (help, FormButton; the prototype writes all but the shortcut). A
+// table has all a button has, and where its title stands (help, FormTable).
 //
 // Two of them mean something else on a group than on a field, under the same
 // tag: horizontal_align is where a usual group or a page puts what it holds
@@ -351,14 +358,16 @@ var (
 // Auto included), not where text stands in a column, and vertical_align where
 // a usual group or a page puts what it holds up and down.
 var fieldPropertyElsewhere = map[string][]FormElementKind{
-	"width": groupsAndButton, "height": groupsAndButton, "horizontal_stretch": groupsAndButton, "vertical_stretch": groupsAndButton,
-	"group_horizontal_align": groupsAndButton, "group_vertical_align": groupsAndButton, "shortcut": groupsAndButton,
-	"title_font": formGroupKinds, "title_text_color": formGroupKinds,
+	"width": groupsButtonAndTable, "height": groupsButtonAndTable, "horizontal_stretch": groupsButtonAndTable,
+	"vertical_stretch": groupsButtonAndTable, "group_horizontal_align": groupsButtonAndTable,
+	"group_vertical_align": groupsButtonAndTable, "shortcut": groupsButtonAndTable,
+	"title_font": groupsAndTable, "title_text_color": groupsAndTable,
 	"horizontal_align": {FormElementUsualGroup, FormElementPage, FormElementCommandBar}, "vertical_align": {FormElementUsualGroup, FormElementPage},
-	"back_color":        {FormElementUsualGroup, FormElementPage, FormElementPopup, FormElementButton},
-	"border_color":      {FormElementPopup, FormElementButton},
-	"no_auto_max_width": button, "max_width": button, "no_auto_max_height": button, "max_height": button,
-	"text_color": button, "font": button, "title_height": button, "skip_on_input": button, "default_item": button,
+	"back_color":        {FormElementUsualGroup, FormElementPage, FormElementPopup, FormElementButton, FormElementTable},
+	"border_color":      {FormElementPopup, FormElementButton, FormElementTable},
+	"no_auto_max_width": buttonAndTable, "max_width": buttonAndTable, "no_auto_max_height": buttonAndTable, "max_height": buttonAndTable,
+	"text_color": buttonAndTable, "font": buttonAndTable, "title_height": buttonAndTable, "skip_on_input": buttonAndTable,
+	"default_item": buttonAndTable, "title_location": tableKind,
 	"title_back_color": {FormElementColumnGroup}, "header_picture": {FormElementColumnGroup},
 	"header_horizontal_align": {FormElementColumnGroup}, "fixing_in_table": {FormElementColumnGroup},
 }
@@ -767,6 +776,9 @@ const (
 	FormHeightControlAuto                FormHeightControlVariant = "auto"
 	FormHeightControlUseContentHeight    FormHeightControlVariant = "use-content-height"
 	FormHeightControlUseHeightInFormRows FormHeightControlVariant = "use-height-in-form-rows"
+	// FormHeightControlUseHeightInTableRows is of a table only (help,
+	// TableHeightControlVariant), whose height is governed so too.
+	FormHeightControlUseHeightInTableRows FormHeightControlVariant = "use-height-in-table-rows"
 )
 
 // FieldTextInput is how text is typed into an input field (help, the
@@ -812,8 +824,11 @@ func validateFieldTextInput(path string, input FieldTextInput, kind FormElementK
 	}
 	if kind != FormElementInputField {
 		rest := input
-		if kind == FormElementLabelField {
+		switch kind {
+		case FormElementLabelField:
 			rest.PasswordMode = nil
+		case FormElementTable:
+			rest.HeightControlVariant = ""
 		}
 		if !rest.empty() {
 			return []string{path + " has the text input of an input field"}
@@ -829,8 +844,11 @@ func validateFieldTextInput(path string, input FieldTextInput, kind FormElementK
 	uses := []FormTextInputUse{FormTextInputUseAuto, FormTextInputUseUse, FormTextInputUseDontUse}
 	issues = append(issues, oneOf(path+".spell_checking", input.SpellChecking, uses...)...)
 	issues = append(issues, oneOf(path+".auto_correction", input.AutoCorrection, uses...)...)
-	issues = append(issues, oneOf(path+".height_control_variant", input.HeightControlVariant,
-		FormHeightControlAuto, FormHeightControlUseContentHeight, FormHeightControlUseHeightInFormRows)...)
+	variants := []FormHeightControlVariant{FormHeightControlAuto, FormHeightControlUseContentHeight, FormHeightControlUseHeightInFormRows}
+	if kind == FormElementTable {
+		variants = append(variants, FormHeightControlUseHeightInTableRows)
+	}
+	issues = append(issues, oneOf(path+".height_control_variant", input.HeightControlVariant, variants...)...)
 	return issues
 }
 
@@ -894,7 +912,8 @@ type FieldFormat struct {
 	MaxValue FormNumber `yaml:"max_value,omitempty" json:"maxValue,omitempty"`
 	// MarkNegatives shows a number below zero in red, on an input and a label
 	// field, and AutoMarkIncomplete marks an input field holding the empty
-	// value of its type. Each is yes, no or not said: the help gives each
+	// value of its type, and a table holding no row (29 and 42 times). Each
+	// is yes, no or not said: the help gives each
 	// Undefined, chosen by the attribute, and the prototype writes both true
 	// and false (235 and 17, 1410 and 302 times).
 	MarkNegatives      *bool `yaml:"mark_negatives,omitempty" json:"markNegatives,omitempty"`
@@ -915,7 +934,7 @@ func validateFieldFormat(path string, format FieldFormat, kind FormElementKind, 
 	only("min_value", format.MinValue != "", "input fields, track bars and progress bars", bounded...)
 	only("max_value", format.MaxValue != "", "input fields, track bars and progress bars", bounded...)
 	only("mark_negatives", format.MarkNegatives != nil, "input and label fields", FormElementInputField, FormElementLabelField)
-	only("auto_mark_incomplete", format.AutoMarkIncomplete != nil, "input fields", FormElementInputField)
+	only("auto_mark_incomplete", format.AutoMarkIncomplete != nil, "input fields and tables", FormElementInputField, FormElementTable)
 	issues = append(issues, validateTitle(path+".format", format.Format, configuration)...)
 	issues = append(issues, validateTitle(path+".edit_format", format.EditFormat, configuration)...)
 	for _, bound := range []struct {
@@ -1284,7 +1303,14 @@ func validateFieldPicture(path string, picture FieldPicture, kind FormElementKin
 	if picture.empty() {
 		return nil
 	}
-	if kind != FormElementPictureField {
+	// A table takes files dragged onto it as a picture field does (help,
+	// FormTable); the prototype writes AsFile on 8502 tables.
+	if rest := picture; kind == FormElementTable {
+		rest.FileDragMode = ""
+		if !rest.empty() {
+			return []string{path + " has what only a picture field has"}
+		}
+	} else if kind != FormElementPictureField {
 		return []string{path + " has what only a picture field has"}
 	}
 	var issues []string
@@ -1395,7 +1421,6 @@ func validateFieldDocument(path string, document FieldDocument, kind FormElement
 		name string
 		set  bool
 	}{
-		{"vertical_scroll_bar", document.VerticalScrollBar != ""}, {"horizontal_scroll_bar", document.HorizontalScrollBar != ""},
 		{"view_scaling_mode", document.ViewScalingMode != ""}, {"selection_show_mode", document.SelectionShowMode != ""},
 		{"protection", document.Protection != nil}, {"show_headers", document.ShowHeaders != nil},
 		{"show_grid", document.ShowGrid != nil}, {"show_groups", document.ShowGroups != nil}, {"show_cell_names", document.ShowCellNames != nil},
@@ -1404,13 +1429,16 @@ func validateFieldDocument(path string, document FieldDocument, kind FormElement
 		only(property.name, property.set, "spreadsheet document fields", spreadsheet...)
 	}
 	only("edit", document.Edit != nil, "spreadsheet document and graphical schema fields", FormElementSpreadsheetDocumentField, FormElementGraphicalSchemaField)
-	dragging := []FormElementKind{FormElementSpreadsheetDocumentField, FormElementCalendarField, FormElementPlannerField}
-	only("enable_drag", document.EnableDrag != nil, "spreadsheet document, calendar and planner fields", dragging...)
-	only("enable_start_drag", document.EnableStartDrag != nil, "spreadsheet document, calendar and planner fields", dragging...)
-	only("output", document.Output != "", "spreadsheet, text, HTML and formatted document and graphical schema fields", FormElementSpreadsheetDocumentField,
-		FormElementTextDocumentField, FormElementHTMLDocumentField, FormElementFormattedDocumentField, FormElementGraphicalSchemaField)
-	only("excluded_commands", len(document.ExcludedCommands) != 0, "spreadsheet and formatted document fields",
-		FormElementSpreadsheetDocumentField, FormElementFormattedDocumentField)
+	only("vertical_scroll_bar", document.VerticalScrollBar != "", "spreadsheet document fields and tables", FormElementSpreadsheetDocumentField, FormElementTable)
+	only("horizontal_scroll_bar", document.HorizontalScrollBar != "", "spreadsheet document fields and tables", FormElementSpreadsheetDocumentField, FormElementTable)
+	dragging := []FormElementKind{FormElementSpreadsheetDocumentField, FormElementCalendarField, FormElementPlannerField, FormElementTable}
+	only("enable_drag", document.EnableDrag != nil, "spreadsheet document, calendar and planner fields and tables", dragging...)
+	only("enable_start_drag", document.EnableStartDrag != nil, "spreadsheet document, calendar and planner fields and tables", dragging...)
+	only("output", document.Output != "", "spreadsheet, text, HTML and formatted document and graphical schema fields and tables",
+		FormElementSpreadsheetDocumentField, FormElementTextDocumentField, FormElementHTMLDocumentField, FormElementFormattedDocumentField,
+		FormElementGraphicalSchemaField, FormElementTable)
+	only("excluded_commands", len(document.ExcludedCommands) != 0, "spreadsheet and formatted document fields and tables",
+		FormElementSpreadsheetDocumentField, FormElementFormattedDocumentField, FormElementTable)
 	scrollBars := []FormScrollBarUse{FormScrollBarAutoUse, FormScrollBarUseAlways, FormScrollBarDontUse}
 	issues = append(issues, oneOf(path+".vertical_scroll_bar", document.VerticalScrollBar, scrollBars...)...)
 	issues = append(issues, oneOf(path+".horizontal_scroll_bar", document.HorizontalScrollBar, scrollBars...)...)
@@ -1447,6 +1475,7 @@ type FormElementRepresentation string
 var (
 	formSelectionModes = map[FormElementKind][]FormSelectionMode{
 		FormElementCalendarField: {"single", "interval", "multiple"},
+		FormElementTable:         {"single-row", "multi-row"},
 	}
 	formRepresentations = map[FormElementKind][]FormElementRepresentation{
 		FormElementProgressBarField: {"smooth", "broken", "broken-tilt"},
@@ -1456,6 +1485,7 @@ var (
 		FormElementPopup:       {"auto", "picture", "picture-and-text", "text"},
 		FormElementButton:      {"auto", "picture", "picture-and-text", "text"},
 		FormElementButtonGroup: {"auto", "compact", "usual"},
+		FormElementTable:       {"list", "hierarchical-list", "tree"},
 	}
 )
 
@@ -1566,6 +1596,12 @@ const (
 	FormUseAuto    FormUse = "auto"
 	FormUseYes     FormUse = "use"
 	FormUseDontUse FormUse = "dont-use"
+	// What the current row of a table does in the mobile client beside auto
+	// (help, TableCurrentRowUse): offers a choice, shows the row selected,
+	// or both.
+	FormCurrentRowChoice                         FormUse = "choice"
+	FormCurrentRowSelectionPresentation          FormUse = "selection-presentation"
+	FormCurrentRowSelectionPresentationAndChoice FormUse = "selection-presentation-and-choice"
 )
 
 // FormShapeRepresentation is when the shape of a button or a popup is drawn
@@ -1633,7 +1669,9 @@ type GroupProperties struct {
 	EnableContentChange bool `yaml:"enable_content_change,omitempty" json:"enableContentChange,omitempty"`
 	// CurrentRowUse hides a usual group or pages in the mobile client and
 	// shows them from the context menu of a row of AssociatedTable, a table of
-	// the same form named by its element.
+	// the same form named by its element. On a table it is what the current
+	// row does in the mobile client (help, TableCurrentRowUse), with values
+	// of its own.
 	CurrentRowUse   FormUse `yaml:"current_row_use,omitempty" json:"currentRowUse,omitempty"`
 	AssociatedTable string  `yaml:"associated_table,omitempty" json:"associatedTable,omitempty"`
 	// ShowInHeader shows a group of columns in the header of its table; off
@@ -1691,7 +1729,7 @@ func validateGroupProperties(path string, group GroupProperties, kind FormElemen
 	only("picture", group.Picture != nil, "pages, popups and buttons", FormElementPage, FormElementPopup, FormElementButton)
 	only("scroll_on_compress", group.ScrollOnCompress != nil, "pages", FormElementPage)
 	only("enable_content_change", group.EnableContentChange, "groups", formGroupKinds...)
-	only("current_row_use", group.CurrentRowUse != "", "usual groups and pages", FormElementUsualGroup, FormElementPages)
+	only("current_row_use", group.CurrentRowUse != "", "usual groups, pages and tables", FormElementUsualGroup, FormElementPages, FormElementTable)
 	only("associated_table", group.AssociatedTable != "", "usual groups and pages", FormElementUsualGroup, FormElementPages)
 	only("show_in_header", group.ShowInHeader, "groups of columns", FormElementColumnGroup)
 	only("shape_representation", group.ShapeRepresentation != "", "popups and buttons", FormElementPopup, FormElementButton)
@@ -1713,7 +1751,12 @@ func validateGroupProperties(path string, group GroupProperties, kind FormElemen
 		issues = append(issues, validateElementDataPath(path+".title_data_path", group.TitleDataPath)...)
 	}
 	issues = append(issues, validatePictureReference(path+".picture", group.Picture)...)
-	issues = append(issues, oneOf(path+".current_row_use", group.CurrentRowUse, FormUseAuto, FormUseYes, FormUseDontUse)...)
+	if kind == FormElementTable {
+		issues = append(issues, oneOf(path+".current_row_use", group.CurrentRowUse, FormUseAuto, FormCurrentRowChoice,
+			FormCurrentRowSelectionPresentation, FormCurrentRowSelectionPresentationAndChoice)...)
+	} else {
+		issues = append(issues, oneOf(path+".current_row_use", group.CurrentRowUse, FormUseAuto, FormUseYes, FormUseDontUse)...)
+	}
 	if group.AssociatedTable != "" && (!validIdentifier(group.AssociatedTable) || utf8.RuneCountInString(group.AssociatedTable) > maxNameLength) {
 		issues = append(issues, path+".associated_table must be the name of a table of the form")
 	}
