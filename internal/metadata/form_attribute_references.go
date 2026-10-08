@@ -41,11 +41,13 @@ func (catalog *Catalog) formNotesOf(kind NoteKind, note func(where, written stri
 	}
 }
 
-// formTitle is the title of an attribute of a form or of a column of one,
-// with the place it stands, kept for the notes on texts.
+// formTitle is a text of a form - of the form itself, an element, an
+// attribute, a command, a chart, a setting - with the place it stands, kept
+// for the notes on texts.
 type formTitle struct {
 	where string
 	text  LocalizedText
+	chart bool
 }
 
 // checkFormAttributes reads every form of an object whole and checks what
@@ -64,6 +66,7 @@ func (catalog *Catalog) checkFormAttributes() error {
 		where string
 		path  string
 		form  ManagedForm
+		texts []formTitle
 		err   error
 	}
 	var jobs []*job
@@ -88,6 +91,9 @@ func (catalog *Catalog) checkFormAttributes() error {
 				item.form, item.err = readFormDescription(item.path, catalog)
 				if item.err == nil {
 					item.err = validateFormItemPictureFiles(filepath.Dir(item.path), item.form)
+				}
+				if item.err == nil {
+					item.texts = formTextsToNote(item.where, &item.form, catalog.Project)
 				}
 			}
 		}()
@@ -118,6 +124,7 @@ func (catalog *Catalog) checkFormAttributes() error {
 		catalog.noteRepeatedNames(item.where, item.form)
 		catalog.resolveFormTables(item.where, item.form)
 		catalog.noteFormEvents(item.where, item.form)
+		catalog.formTitles = append(catalog.formTitles, item.texts...)
 		if err := catalog.resolveFormElements(item.where, item.form.FormItems()); err != nil {
 			return err
 		}
@@ -145,6 +152,7 @@ func (catalog *Catalog) checkFormAttributes() error {
 		catalog.noteRepeatedNames("common form "+form.Name, form)
 		catalog.resolveFormTables("common form "+form.Name, form)
 		catalog.noteFormEvents("common form "+form.Name, form)
+		catalog.keepFormTexts("common form "+form.Name, &form)
 		if err := catalog.resolveFormElements("common form "+form.Name, form.FormItems()); err != nil {
 			return err
 		}
@@ -287,7 +295,6 @@ func (catalog *Catalog) resolveStyleItems(where string, uses []styleItemUse) err
 func (catalog *Catalog) resolveFormAttributes(form string, attributes []FormAttribute) error {
 	for _, attribute := range attributes {
 		where := form + " attribute " + attribute.Name
-		catalog.keepFormText(where, attribute.Title)
 		if err := catalog.resolveFormData(where, attribute.Types, attribute.FunctionalOptions, attribute.View, attribute.Edit); err != nil {
 			return err
 		}
@@ -339,14 +346,12 @@ func (catalog *Catalog) resolveFormAttributes(form string, attributes []FormAttr
 			}
 		}
 		for _, column := range attribute.Columns {
-			catalog.keepFormText(where+" column "+column.Name, column.Title)
 			if err := catalog.resolveFormData(where+" column "+column.Name, column.Types, column.FunctionalOptions, column.View, column.Edit); err != nil {
 				return err
 			}
 		}
 		for _, additional := range attribute.AdditionalColumns {
 			for _, column := range additional.Columns {
-				catalog.keepFormText(where+" table "+additional.Table+" column "+column.Name, column.Title)
 				if err := catalog.resolveFormData(where+" table "+additional.Table+" column "+column.Name, column.Types, column.FunctionalOptions, column.View, column.Edit); err != nil {
 					return err
 				}
@@ -384,10 +389,4 @@ func (catalog *Catalog) resolveFormData(where string, types []Type, options []uu
 		}
 	}
 	return nil
-}
-
-func (catalog *Catalog) keepFormText(where string, text LocalizedText) {
-	if len(text) != 0 {
-		catalog.formTitles = append(catalog.formTitles, formTitle{where: where + " title", text: text})
-	}
 }

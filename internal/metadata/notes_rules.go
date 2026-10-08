@@ -924,8 +924,13 @@ func noteTextInUndeclaredLanguage(catalog *Catalog, note func(where, written str
 	for _, language := range catalog.Project.Languages {
 		declared[strings.ToLower(language.Code)] = true
 	}
-	eachLocalizedText(catalog, func(where string, text LocalizedText) {
+	eachLocalizedText(catalog, func(where string, text LocalizedText, chart bool) {
 		for _, code := range sortedTextKeys(text) {
+			// "#" in a chart is a note of its own (NoteChartTextAnyLanguage);
+			// anywhere else it is a language nobody declared.
+			if code == chartAnyLanguage && chart {
+				continue
+			}
 			if code != "" && !declared[strings.ToLower(code)] {
 				note(where+"."+code, text[code])
 			}
@@ -934,7 +939,7 @@ func noteTextInUndeclaredLanguage(catalog *Catalog, note func(where, written str
 }
 
 func noteTextWithoutLanguage(catalog *Catalog, note func(where, written string)) {
-	eachLocalizedText(catalog, func(where string, text LocalizedText) {
+	eachLocalizedText(catalog, func(where string, text LocalizedText, _ bool) {
 		if value, ok := text[""]; ok {
 			note(where, value)
 		}
@@ -942,7 +947,7 @@ func noteTextWithoutLanguage(catalog *Catalog, note func(where, written string))
 }
 
 func noteTextOfSpaces(catalog *Catalog, note func(where, written string)) {
-	eachLocalizedText(catalog, func(where string, text LocalizedText) {
+	eachLocalizedText(catalog, func(where string, text LocalizedText, _ bool) {
 		for _, code := range sortedTextKeys(text) {
 			if value := text[code]; value != "" && strings.TrimSpace(value) == "" {
 				note(where+"."+code, strconv.Quote(value))
@@ -1121,9 +1126,11 @@ func sortedTextKeys(text LocalizedText) []string {
 
 // eachLocalizedText walks every text of the catalog - the configuration's own
 // and every object's, at any depth - and calls visit with the place it stands
-// in. Texts are maps, which the walk of the holders does not enter.
-func eachLocalizedText(catalog *Catalog, visit func(where string, text LocalizedText)) {
-	walkTexts(reflect.ValueOf(&catalog.Project).Elem(), "configuration", visit)
+// in, and whether it stands in the content of a chart. Texts are maps, which
+// the walk of the holders does not enter.
+func eachLocalizedText(catalog *Catalog, visit func(where string, text LocalizedText, chart bool)) {
+	outside := func(where string, text LocalizedText) { visit(where, text, false) }
+	walkTexts(reflect.ValueOf(&catalog.Project).Elem(), "configuration", outside)
 	top := reflect.ValueOf(catalog).Elem()
 	for index := range top.NumField() {
 		field := top.Type().Field(index)
@@ -1133,13 +1140,13 @@ func eachLocalizedText(catalog *Catalog, visit func(where string, text Localized
 		list := top.Field(index)
 		for item := range list.Len() {
 			object := list.Index(item)
-			walkTexts(object, kebab(field.Name)+" "+nameOf(object), visit)
+			walkTexts(object, kebab(field.Name)+" "+nameOf(object), outside)
 		}
 	}
-	// The forms are not part of the catalog; the titles of their attributes
-	// were gathered when the forms were read.
+	// The forms are not part of the catalog; their texts were gathered when
+	// the forms were read (keepFormTexts).
 	for _, text := range catalog.formTitles {
-		visit(text.where, text.text)
+		visit(text.where, text.text, text.chart)
 	}
 }
 
