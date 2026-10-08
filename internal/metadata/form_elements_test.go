@@ -501,7 +501,9 @@ func TestAFieldRefusesWhatIsWrongInItsSize(t *testing.T) {
 //
 // Defect caught: a colour of the system palette (win:Highlight), a font of
 // the system (sys:DefaultGUIFont) or an absolute one refused, so that a form
-// drawn with one is not moved; a value read into the wrong property or lost
+// drawn with one is not moved; the face a font of the system is changed to
+// (DefaultGUIFont in Verdana) lost, there being nowhere to keep it beside
+// the name of the system font; a value read into the wrong property or lost
 // through the Studio.
 func TestAFieldKeepsHowItIsDrawn(t *testing.T) {
 	t.Parallel()
@@ -510,7 +512,7 @@ func TestAFieldKeepsHowItIsDrawn(t *testing.T) {
 		" font: {source: style, from: {standard: NormalTextFont}, bold: true, size: 10}," +
 		" text_color: {source: web, name: MediumGray}, back_color: {source: absolute, rgb: '#777777'}," +
 		" border_color: {source: style, from: {standard: BorderColor}}, border: {source: absolute, line: single, width: 2}," +
-		" title_font: {source: system, face: DefaultGUIFont, italic: false}, title_text_color: {source: system, name: Highlight}," +
+		" title_font: {source: system, system: DefaultGUIFont, face: Verdana, italic: false}, title_text_color: {source: system, name: Highlight}," +
 		" title_back_color: {source: auto}, title_height: 2}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Надпись, kind: label-field, font: {source: absolute, face: MS Shell Dlg, size: 12, scale: 100}," +
 		" border: {source: absolute, line: none, width: 1}}\n"
@@ -532,7 +534,8 @@ func TestAFieldKeepsHowItIsDrawn(t *testing.T) {
 		t.Fatalf("colours: %+v %+v %+v", look.TextColor, look.BackColor, look.BorderColor)
 	case look.Border.Line != SingleBorderLine || look.Border.Width != 2 || look.TitleHeight != 2:
 		t.Fatalf("border or title height: %+v %d", look.Border, look.TitleHeight)
-	case look.TitleFont.Source != SystemFont || look.TitleTextColor.Source != SystemColor || look.TitleBackColor.Source != AutoColor:
+	case look.TitleFont.Source != SystemFont || look.TitleFont.System != "DefaultGUIFont" || look.TitleFont.Face != "Verdana" ||
+		look.TitleTextColor.Source != SystemColor || look.TitleBackColor.Source != AutoColor:
 		t.Fatalf("title: %+v %+v %+v", look.TitleFont, look.TitleTextColor, look.TitleBackColor)
 	case form.Items[1].Font.Face != "MS Shell Dlg" || form.Items[1].Border.Line != NoBorderLine:
 		t.Fatalf("label field: %+v", form.Items[1].FieldLook)
@@ -572,12 +575,17 @@ func TestAFieldRefusesWhatIsWrongInHowItIsDrawn(t *testing.T) {
 		"цвет у дополнения": {"kind: search-control-addition, text_color: {source: auto}", "items[0] has the look of a field"},
 		"цвет не цвет":      {"kind: input-field, back_color: {source: absolute, rgb: red}", "items[0].back_color.rgb must be a colour written as #RRGGBB"},
 		"цвет заголовка":    {"kind: input-field, title_back_color: {source: style}", "items[0].title_back_color.from must name the style item"},
-		"шрифт без имени":   {"kind: input-field, title_font: {source: absolute, size: 10}", "items[0].title_font.face must name the font"},
-		"рамка толще":       {"kind: input-field, border: {source: absolute, line: single, width: 6}", "items[0].border.width must be between 0 and 5"},
-		"цвет рамки":        {"kind: input-field, border_color: {source: paint}", "items[0].border_color.source must be absolute, web, system, auto or style"},
-		"текст":             {"kind: input-field, text_color: {source: web}", "items[0].text_color.name must name a colour of the palette"},
-		"шрифт":             {"kind: input-field, font: {source: style, from: {standard: NormalTextFont}, scale: 1000}", "items[0].font.scale must be a percentage"},
-		"высота заголовка":  {"kind: input-field, title_height: -1", "items[0].title_height must not be negative"},
+		"основа именем и номером": {"kind: input-field, title_font: {source: style, from: {standard: NormalTextFont, written: \"0\"}}",
+			"items[0].title_font.from names more than one of a standard style item, one of the configuration and one written as a number"},
+		"основа пустая":          {"kind: input-field, title_font: {source: style, from: {}}", "items[0].title_font.from must name a standard style item or one of the configuration"},
+		"шрифт номером не число": {"kind: input-field, title_font: {source: style, from: {written: нуль}}", "items[0].title_font.from.written must be the number the prototype wrote"},
+		"системный без имени":    {"kind: input-field, title_font: {source: system, face: Verdana}", "items[0].title_font.system must name the font of the system"},
+		"система у абсолютного":  {"kind: input-field, title_font: {source: absolute, system: DefaultGUIFont, face: Arial, size: 10}", "items[0].title_font.system belongs to a font of the system only"},
+		"рамка толще":            {"kind: input-field, border: {source: absolute, line: single, width: 6}", "items[0].border.width must be between 0 and 5"},
+		"цвет рамки":             {"kind: input-field, border_color: {source: paint}", "items[0].border_color.source must be absolute, web, system, auto or style"},
+		"текст":                  {"kind: input-field, text_color: {source: web}", "items[0].text_color.name must name a colour of the palette"},
+		"шрифт":                  {"kind: input-field, font: {source: style, from: {standard: NormalTextFont}, scale: 1000}", "items[0].font.scale must be a percentage"},
+		"высота заголовка":       {"kind: input-field, title_height: -1", "items[0].title_height must not be negative"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -655,7 +663,7 @@ func TestAFieldKeepsWhatItHasAsAColumn(t *testing.T) {
 		" header_picture: {standard: Change, load_transparent: true, transparent_pixel: {x: 4, y: 2}}," +
 		" footer_picture: {common: c0de0000-0000-4000-8000-000000000043}, header_horizontal_align: center," +
 		" footer_text: {ru: Итого}, footer_data_path: Объект.Товары.TotalСумма, footer_horizontal_align: right," +
-		" footer_font: {source: system, face: DefaultGUIFont, bold: true}, footer_text_color: {source: system, name: Highlight}," +
+		" footer_font: {source: system, system: DefaultGUIFont, bold: true}, footer_text_color: {source: system, name: Highlight}," +
 		" footer_back_color: {source: web, name: MediumGray}, fixing_in_table: left, cell_hyperlink: true, auto_cell_height: true}]}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Вне, kind: label-field, footer_horizontal_align: left, auto_cell_height: true}\n"
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
@@ -678,7 +686,7 @@ func TestAFieldKeepsWhatItHasAsAColumn(t *testing.T) {
 		t.Fatalf("alignment: %q %q", column.HeaderHorizontalAlign, column.FooterHorizontalAlign)
 	case column.FooterText["ru"] != "Итого" || column.FooterDataPath != "Объект.Товары.TotalСумма":
 		t.Fatalf("footer: %+v %q", column.FooterText, column.FooterDataPath)
-	case column.FooterFont.Face != "DefaultGUIFont" || column.FooterTextColor.Name != "Highlight" || column.FooterBackColor.Name != "MediumGray":
+	case column.FooterFont.System != "DefaultGUIFont" || column.FooterTextColor.Name != "Highlight" || column.FooterBackColor.Name != "MediumGray":
 		t.Fatalf("footer look: %+v %+v %+v", column.FooterFont, column.FooterTextColor, column.FooterBackColor)
 	case form.Items[1].FooterHorizontalAlign != ItemHorizontalLeft || !form.Items[1].AutoCellHeight:
 		t.Fatalf("outside a table: %+v", form.Items[1].FieldColumn)
@@ -722,7 +730,7 @@ func TestAFieldRefusesWhatIsWrongAsAColumn(t *testing.T) {
 		"своя не картинка":    {"kind: input-field, header_picture: {file: HeaderPicture.txt}", "items[0].header_picture.file must be the name of an image file"},
 		"путь подвала":        {"kind: input-field, footer_data_path: Объект..Сумма", "items[0].footer_data_path must be names separated by dots"},
 		"цвет подвала":        {"kind: input-field, footer_back_color: {source: absolute, rgb: red}", "items[0].footer_back_color.rgb must be a colour written as #RRGGBB"},
-		"шрифт подвала":       {"kind: input-field, footer_font: {source: absolute, size: 10}", "items[0].footer_font.face must name the font"},
+		"шрифт подвала":       {"kind: input-field, footer_font: {source: absolute, size: -1}", "items[0].footer_font.size must not be negative"},
 		"закрепление":         {"kind: input-field, fixing_in_table: top", "items[0].fixing_in_table must be none, left or right"},
 		"положение в шапке":   {"kind: input-field, header_horizontal_align: justify", "items[0].header_horizontal_align must be auto, left, center or right"},
 		"положение в подвале": {"kind: input-field, footer_horizontal_align: justify", "items[0].footer_horizontal_align must be auto, left, center or right"},

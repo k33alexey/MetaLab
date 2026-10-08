@@ -386,6 +386,7 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 			issues = append(issues, validateTitle(path+".title", variant.Title, configuration)...)
 			if variant.BackColor != nil {
 				issues = append(issues, validateColorValue(path+".back_color", *variant.BackColor)...)
+				issues = append(issues, refuseWrittenStyleReference(path+".back_color.from", variant.BackColor.From)...)
 			}
 		}
 		variants[folded] = seen

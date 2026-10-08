@@ -292,7 +292,7 @@ func TestAChartRefusesWhatIsWrong(t *testing.T) {
 		"граница":         {chart("      title_area: {bounds: {left: \"0.1e3\", top: \"0\", right: \"0\", bottom: \"0\"}}\n"), "attributes[0].chart.title_area.bounds.left must be a decimal number"},
 		"активная серия":  {chartForm("    chart: {type: pie, active_series: 2, active_point: 0, series_count: 2}\n"), "attributes[0].chart.active_series must be the number of a series"},
 		"активная точка":  {chartForm("    chart: {type: pie, active_series: -1, active_point: -2}\n"), "attributes[0].chart.active_point must be the number of a point"},
-		"шрифт авто":      {chart("      legend_area: {font: {source: auto, face: Roboto}}\n"), "attributes[0].chart.legend_area.font.face belongs to a font named by its face or based on a style item"},
+		"шрифт авто":      {chart("      legend_area: {font: {source: auto, face: Roboto}}\n"), "attributes[0].chart.legend_area.font.face belongs to a font named by its face or based on another"},
 		"язык":            {chart("      title_area: {text: {\"d=e\": Продажи}}\n"), "attributes[0].chart.title_area.text.d=e is not a language code"},
 		"маркер":          {chart("      series_count: 1\n      series: [{id: 1, marker: star}]\n"), "attributes[0].chart.series[0].marker must be one of"},
 		"линия":           {chart("      plot_area: {scale_lines: {style: wavy}}\n"), "attributes[0].chart.plot_area.scale_lines.style is not a way a line is drawn"},

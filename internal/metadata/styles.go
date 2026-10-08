@@ -36,9 +36,18 @@ const (
 //
 // The standard set belongs to the platform and is fixed where the client draws
 // it, so a standard name is checked for shape here and for existence there.
+//
+// Written is a reference the prototype wrote in a form as a number in place
+// of a name: a font of an element taken from style item "0" (20 fonts in
+// four forms of erp and acc, one of them in a configuration that has the
+// style item the neighbouring colour names). What it points at is not
+// known; it is carried as written, points at nothing and is noted
+// (NoteFormReferenceAsWritten). Outside a form it is refused
+// (refuseWrittenStyleReference).
 type StyleItemReference struct {
 	Standard string     `yaml:"standard,omitempty" json:"standard,omitempty"`
 	Item     *uuid.UUID `yaml:"item,omitempty" json:"item,omitempty"`
+	Written  string     `yaml:"written,omitempty" json:"written,omitempty"`
 }
 
 // ColorSource says where a colour comes from.
@@ -101,8 +110,16 @@ const (
 // no would turn a heading made bold by its base into an ordinary line.
 type FontValue struct {
 	Source FontSource `yaml:"source" json:"source"`
-	// Face is the face name when the font is absolute, and the name in the
-	// system's own list when it is a system font.
+	// System is the font of the operating system a system font is based on,
+	// by its name in the system's own list, as the prototype writes it after
+	// "sys:" (DefaultGUIFont).
+	System string `yaml:"system,omitempty" json:"system,omitempty"`
+	// Face is the face name. An absolute font is named by it; a font based on
+	// a style item or a font of the system changes its face to it, as it
+	// changes its size (help, the constructor of a font on the basis of
+	// another): DefaultGUIFont in Verdana, Arial or Roboto, 60 fonts of
+	// elements of forms and 12 of their conditional appearance in the
+	// exports.
 	Face string `yaml:"face,omitempty" json:"face,omitempty"`
 	// Size is the height in logical units. Left out, it is taken from what the
 	// font is based on - which only a font with a base can do.
@@ -366,12 +383,24 @@ func validateStyleItemValue(path string, itemType StyleItemType, value StyleItem
 	switch {
 	case value.Color != nil:
 		issues = append(issues, validateColorValue(path+".color", *value.Color)...)
+		issues = append(issues, refuseWrittenStyleReference(path+".color.from", value.Color.From)...)
 	case value.Font != nil:
 		issues = append(issues, validateFontValue(path+".font", *value.Font)...)
+		issues = append(issues, refuseWrittenStyleReference(path+".font.from", value.Font.From)...)
 	case value.Border != nil:
 		issues = append(issues, validateBorderValue(path+".border", *value.Border)...)
+		issues = append(issues, refuseWrittenStyleReference(path+".border.from", value.Border.From)...)
 	}
 	return issues
+}
+
+// refuseWrittenStyleReference refuses a style item written as a number
+// where only a form has one: nothing outside a form would note it.
+func refuseWrittenStyleReference(path string, reference *StyleItemReference) []string {
+	if reference != nil && reference.Written != "" {
+		return []string{path + ".written belongs to a form only"}
+	}
+	return nil
 }
 
 func validateColorValue(path string, value ColorValue) []string {
@@ -407,16 +436,13 @@ func validateFontValue(path string, value FontValue) []string {
 	var issues []string
 	switch value.Source {
 	case AbsoluteFont:
-		if value.Face == "" {
-			issues = append(issues, path+".face must name the font")
-		}
-		// An absolute font has nothing to take a size from.
-		if value.Size <= 0 {
-			issues = append(issues, path+".size must be a positive height")
-		}
+		// The face and the size of a font made of its description may be
+		// left out, and are then as the style has them (help, the
+		// constructor of a font on the basis of its description): the
+		// prototype writes an empty face 10 times on fields of forms.
 	case SystemFont:
-		if value.Face == "" {
-			issues = append(issues, path+".face must name the font of the system")
+		if value.System == "" {
+			issues = append(issues, path+".system must name the font of the system")
 		}
 	case AutoFont:
 	case StyleFont:
@@ -429,7 +455,10 @@ func validateFontValue(path string, value FontValue) []string {
 	// of the exports takes TextFont in Roboto, 4 times). An automatic font
 	// has nothing to change.
 	if value.Source == AutoFont && value.Face != "" {
-		issues = append(issues, path+".face belongs to a font named by its face or based on a style item")
+		issues = append(issues, path+".face belongs to a font named by its face or based on another")
+	}
+	if value.Source != SystemFont && value.System != "" {
+		issues = append(issues, path+".system belongs to a font of the system only")
 	}
 	if value.Source != StyleFont && value.From != nil {
 		issues = append(issues, path+".from belongs to a font taken from a style item only")
@@ -473,11 +502,19 @@ func validateStyleItemReference(path string, reference *StyleItemReference) []st
 	if reference == nil {
 		return []string{path + " must name the style item the value is taken from"}
 	}
+	named := 0
+	for _, set := range []bool{reference.Standard != "", reference.Item != nil, reference.Written != ""} {
+		if set {
+			named++
+		}
+	}
 	switch {
-	case reference.Standard != "" && reference.Item != nil:
-		return []string{path + " names both a standard style item and one of the configuration"}
-	case reference.Standard == "" && reference.Item == nil:
+	case named > 1:
+		return []string{path + " names more than one of a standard style item, one of the configuration and one written as a number"}
+	case named == 0:
 		return []string{path + " must name a standard style item or one of the configuration"}
+	case reference.Written != "" && !allDigits(reference.Written):
+		return []string{path + ".written must be the number the prototype wrote"}
 	case reference.Standard != "" && !validIdentifier(reference.Standard):
 		return []string{path + ".standard must be a valid identifier"}
 	case reference.Item != nil && reference.Item.IsZero():

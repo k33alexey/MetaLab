@@ -121,6 +121,9 @@ func (catalog *Catalog) checkFormAttributes() error {
 		if err := catalog.resolveFormElements(item.where, item.form.FormItems()); err != nil {
 			return err
 		}
+		if err := catalog.resolveConditionalAppearance(item.where, item.form); err != nil {
+			return err
+		}
 	}
 	common := catalog.commonFormsRead
 	catalog.commonFormsRead = nil
@@ -143,6 +146,9 @@ func (catalog *Catalog) checkFormAttributes() error {
 		catalog.resolveFormTables("common form "+form.Name, form)
 		catalog.noteFormEvents("common form "+form.Name, form)
 		if err := catalog.resolveFormElements("common form "+form.Name, form.FormItems()); err != nil {
+			return err
+		}
+		if err := catalog.resolveConditionalAppearance("common form "+form.Name, form); err != nil {
 			return err
 		}
 	}
@@ -261,6 +267,10 @@ func (catalog *Catalog) noteChart(where string, chart *ChartContent) {
 // is a reference to nothing, one of another type is refused.
 func (catalog *Catalog) resolveStyleItems(where string, uses []styleItemUse) error {
 	for _, use := range uses {
+		if use.written != "" {
+			catalog.noteForm(NoteFormReferenceAsWritten, where+" "+use.name, use.written)
+			continue
+		}
 		index, ok := catalog.styleItemByID[use.id]
 		if !ok {
 			catalog.noteUnresolved(where+" "+use.name, use.id)

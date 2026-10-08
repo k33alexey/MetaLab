@@ -170,10 +170,12 @@ func validateRouteLook(path string, look *RouteLook, box bool, configuration pro
 	for name, color := range map[string]*ColorValue{"back_color": look.BackColor, "text_color": look.TextColor, "line_color": look.LineColor} {
 		if color != nil {
 			issues = append(issues, validateColorValue(path+"."+name, *color)...)
+			issues = append(issues, refuseWrittenStyleReference(path+"."+name+".from", color.From)...)
 		}
 	}
 	if look.Font != nil {
 		issues = append(issues, validateFontValue(path+".font", *look.Font)...)
+		issues = append(issues, refuseWrittenStyleReference(path+".font.from", look.Font.From)...)
 	}
 	issues = append(issues, validateRouteChoice(path+".horizontal_align", look.HorizontalAlign, routeHorizontalAligns)...)
 	issues = append(issues, validateRouteChoice(path+".vertical_align", look.VerticalAlign, routeVerticalAligns)...)
@@ -230,6 +232,7 @@ func validateRouteMapLook(look *RouteMapLook) []string {
 	var issues []string
 	if look.BackColor != nil {
 		issues = append(issues, validateColorValue("route.look.back_color", *look.BackColor)...)
+		issues = append(issues, refuseWrittenStyleReference("route.look.back_color.from", look.BackColor.From)...)
 	}
 	if look.GridMode != "" && !slices.Contains(routeGridModes, look.GridMode) {
 		issues = append(issues, "route.look.grid_mode must be none, dots, chess or lines")

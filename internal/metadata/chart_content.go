@@ -745,8 +745,8 @@ func styleItemsIn(parts func(visit func(path string, part any))) []styleItemUse 
 		case *BorderValue:
 			reference, itemType = part.From, BorderStyleItem
 		}
-		if reference != nil && reference.Item != nil {
-			uses = append(uses, styleItemUse{name: path, itemType: itemType, id: *reference.Item})
+		if use, ok := styleItemUseOf(path, itemType, reference); ok {
+			uses = append(uses, use)
 		}
 	})
 	return uses

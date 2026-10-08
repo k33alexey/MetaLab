@@ -146,6 +146,10 @@ type ManagedForm struct {
 	AutoCommandBar *FormAttachedMenu    `yaml:"auto_command_bar,omitempty" json:"autoCommandBar,omitempty"`
 	Items          []ManagedFormElement `yaml:"items,omitempty" json:"items"`
 	Attributes     []FormAttribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	// ConditionalAppearance is how the form draws its elements where the
+	// data says so (help, ClientApplicationForm.ConditionalAppearance; 798
+	// forms of the exports). The prototype writes it among the attributes.
+	ConditionalAppearance []ConditionalAppearanceItem `yaml:"conditional_appearance,omitempty" json:"conditionalAppearance,omitempty"`
 	// Parameters are the values the form is opened with.
 	Parameters []FormParameter `yaml:"parameters,omitempty" json:"parameters,omitempty"`
 	// CommandInterface is where the commands that are no element of the
@@ -621,6 +625,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	}
 	issues = append(issues, validateFormCommandInterface(value.CommandInterface, names, commandNames)...)
 	issues = append(issues, validateFormAttributes(value.Attributes, ids, configuration)...)
+	issues = append(issues, validateConditionalAppearance("conditional_appearance", value.ConditionalAppearance)...)
 	issues = append(issues, validateFormParameters(value.Parameters)...)
 	return issuesError(source, value.Format, issues)
 }

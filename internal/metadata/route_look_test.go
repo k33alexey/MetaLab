@@ -31,7 +31,7 @@ func TestRouteMapCarriesItsDrawing(t *testing.T) {
         back_color: {source: auto}
         text_color: {source: style, from: {standard: FormTextColor}}
         line_color: {source: absolute, rgb: "#000000"}
-        font: {source: system, face: DefaultGUIFont}
+        font: {source: system, system: DefaultGUIFont}
         horizontal_align: left
         vertical_align: center
         picture_location: left
@@ -94,7 +94,7 @@ func TestRouteMapCarriesItsDrawing(t *testing.T) {
 		t.Fatalf("the map lost its grid, background or print settings: %+v", route.Look)
 	}
 	start := route.Points[0].Look
-	if start == nil || start.TabOrder != 1 || start.ZOrder != 2 || start.Font == nil || start.Font.Face != "DefaultGUIFont" ||
+	if start == nil || start.TabOrder != 1 || start.ZOrder != 2 || start.Font == nil || start.Font.System != "DefaultGUIFont" ||
 		start.LineColor.RGB != "#000000" || start.Border == nil || start.Border.Style != SolidStroke || start.Picture == nil ||
 		start.HorizontalAlign != "left" || !start.Transparent || start.ToolTip["ru"] != "Начало" {
 		t.Fatalf("a point lost its look: %+v", start)
@@ -122,7 +122,7 @@ func TestRouteMapCarriesItsDrawing(t *testing.T) {
 	start.Font.Face = "Другой"
 	route.Transitions[0].LineLook.Segments[0].End.Y = 0
 	again, _ := catalog.BusinessProcess("Задание")
-	if again.Route.Points[0].Look.Font.Face != "DefaultGUIFont" || again.Route.Transitions[0].LineLook.Segments[0].End.Y != 860 {
+	if again.Route.Points[0].Look.Font.System != "DefaultGUIFont" || again.Route.Transitions[0].LineLook.Segments[0].End.Y != 860 {
 		t.Fatal("the drawing handed out is shared with the catalog")
 	}
 }
@@ -156,9 +156,11 @@ func TestRouteMapRefusesADrawingTheDesignerDoesNotMake(t *testing.T) {
 		"повтор сегмента": {line: `line_look: {segments: [{index: 1, start: {x: 0, y: 0}, end: {x: 1, y: 1}}, {index: 1, start: {x: 0, y: 0}, end: {x: 1, y: 1}}]}`,
 			want: "must be a segment of the line, once"},
 		"цвет без значения": {line: `look: {text_color: {source: absolute}}`, want: ".rgb must be a colour written as #RRGGBB"},
-		"шрифт без имени":   {line: `look: {font: {source: absolute, size: 10}}`, want: ".face must name the font"},
+		"шрифт номером":     {line: `look: {font: {source: style, from: {written: "0"}}}`, want: ".font.from.written belongs to a form only"},
 		"чужая сетка":       {look: `grid_mode: squares`, want: "grid_mode must be none, dots, chess or lines"},
 		"чужой фон карты":   {look: `back_color: {source: paint}`, want: "route.look.back_color.source must be"},
+		"фон карты номером": {look: `back_color: {source: style, from: {written: "0"}}`, want: "route.look.back_color.from.written belongs to a form only"},
+		"цвет номером":      {line: `look: {text_color: {source: style, from: {written: "0"}}}`, want: ".text_color.from.written belongs to a form only"},
 		"оформление точки":  {condition: `look: {vertical_align: middle}`, want: "route.points[1].look.vertical_align must be one of"},
 		"оформление декоративной линии": {decoration: `{name: Черта, line: [{x: 0, y: 0}, {x: 1, y: 1}], line_look: {stroke: {style: wavy}}}`,
 			want: "route.decorations[0].line_look.stroke.style"},
@@ -210,6 +212,10 @@ func TestRoutePointLookRefusesWhatItsKindHasNot(t *testing.T) {
 			lines: `
     - {from: Старт, to: Шаг}
     - {from: Шаг, to: Завершение, branch: Б}`, want: "variants[0].back_color.name must name a colour"},
+		"цвет варианта номером": {point: `{id: b0000000-0000-4000-8000-000000000031, name: Шаг, kind: variant-choice, variants: [{name: А, back_color: {source: style, from: {written: "0"}}}, {name: Б}]}`,
+			lines: `
+    - {from: Старт, to: Шаг}
+    - {from: Шаг, to: Завершение, branch: Б}`, want: "variants[0].back_color.from.written belongs to a form only"},
 		"две линии одного имени": {point: `{id: b0000000-0000-4000-8000-000000000031, name: Шаг, kind: processing}`,
 			lines: `
     - {name: Линия1, from: Старт, to: Шаг}

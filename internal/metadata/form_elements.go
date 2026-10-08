@@ -538,8 +538,8 @@ func (look FieldLook) colors() []namedColor {
 func (look FieldLook) styleItems() []styleItemUse {
 	var uses []styleItemUse
 	add := func(name string, itemType StyleItemType, reference *StyleItemReference) {
-		if reference != nil && reference.Item != nil {
-			uses = append(uses, styleItemUse{name: name, itemType: itemType, id: *reference.Item})
+		if use, ok := styleItemUseOf(name, itemType, reference); ok {
+			uses = append(uses, use)
 		}
 	}
 	for _, font := range []struct {
@@ -565,6 +565,9 @@ type styleItemUse struct {
 	name     string
 	itemType StyleItemType
 	id       uuid.UUID
+	// written is a reference written as a number, which is noted and not
+	// resolved.
+	written string
 }
 
 // FormFixingInTable is whether a column of a table stays in place as the
@@ -664,15 +667,34 @@ func (column FieldColumn) colors() []namedColor {
 // font and colours from.
 func (column FieldColumn) styleItems() []styleItemUse {
 	var uses []styleItemUse
-	if font := column.FooterFont; font != nil && font.Source == StyleFont && font.From != nil && font.From.Item != nil {
-		uses = append(uses, styleItemUse{name: "footer_font", itemType: FontStyleItem, id: *font.From.Item})
+	if font := column.FooterFont; font != nil && font.Source == StyleFont {
+		if use, ok := styleItemUseOf("footer_font", FontStyleItem, font.From); ok {
+			uses = append(uses, use)
+		}
 	}
 	for _, color := range column.colors() {
-		if color.value != nil && color.value.Source == StyleColor && color.value.From != nil && color.value.From.Item != nil {
-			uses = append(uses, styleItemUse{name: color.name, itemType: ColorStyleItem, id: *color.value.From.Item})
+		if color.value != nil && color.value.Source == StyleColor {
+			if use, ok := styleItemUseOf(color.name, ColorStyleItem, color.value.From); ok {
+				uses = append(uses, use)
+			}
 		}
 	}
 	return uses
+}
+
+// styleItemUseOf is the use of a style item of the configuration, or of one
+// written as a number, that a reference makes; a standard style item is no
+// use of one.
+func styleItemUseOf(name string, itemType StyleItemType, reference *StyleItemReference) (styleItemUse, bool) {
+	switch {
+	case reference == nil:
+		return styleItemUse{}, false
+	case reference.Item != nil:
+		return styleItemUse{name: name, itemType: itemType, id: *reference.Item}, true
+	case reference.Written != "":
+		return styleItemUse{name: name, itemType: itemType, written: reference.Written}, true
+	}
+	return styleItemUse{}, false
 }
 
 type namedPicture struct {
