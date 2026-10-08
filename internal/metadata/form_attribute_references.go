@@ -249,13 +249,10 @@ func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElem
 }
 
 // noteChart notes what the content of a chart carries without knowing
-// what it is: the prototype's own state and values of unknown order.
+// what it is: the prototype's own state.
 func (catalog *Catalog) noteChart(where string, chart *ChartContent) {
 	if !chart.State.IsEmpty() {
 		catalog.noteForm(NoteChartStateUnexplained, where, chart.State.fields())
-	}
-	if len(chart.Values) != 0 {
-		catalog.noteForm(NoteChartValuesOrder, where, fmt.Sprintf("%d series × %d points", chart.SeriesCount, chart.PointCount))
 	}
 }
 

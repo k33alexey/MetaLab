@@ -351,7 +351,7 @@ func TestWhatAChartTakesIsResolved(t *testing.T) {
 		"состояние": {chart: "{type: pie, active_series: -1, state: {rebuild_time: 4086202, chart_initialized: true}}",
 			notes: []string{"chart-state-unexplained rebuild_time, chart_initialized"}},
 		"значения": {chart: "{type: line, active_series: -1, series_count: 2, point_count: 1, values: [{value: \"1\"}, {value: \"2\"}]}",
-			notes: []string{"chart-values-order 2 series × 1 points"}},
+			notes: nil},
 		"язык #": {chart: "{type: pie, active_series: -1, summary_series: {id: 1, text: {\"#\": Сводная}}, labels: {value_format: {ru: \"ЧДЦ=\", \"#\": \"ЧДЦ=\"}}}",
 			notes: []string{"chart-text-any-language #", "chart-text-any-language #"}},
 	} {
@@ -397,5 +397,44 @@ func TestWhatAChartTakesIsResolved(t *testing.T) {
 				t.Fatalf("notes = %q, want %q", found, test.notes)
 			}
 		})
+	}
+}
+
+// The values of a chart are read series by series: the list the prototype
+// writes holds all the points of the first series, then of the second. The
+// chart is the one of the run on the platform (08.10.2026): 2 series × 3
+// points, the value of series S at point T is ST and its tooltip names it.
+//
+// Defect caught: the list read point by point - the value of the second
+// series at the first point taken from the second place of the list, 12 in
+// place of 21; a series or a point out of the chart read from the list.
+func TestTheValuesOfAChartRunSeriesBySeries(t *testing.T) {
+	t.Parallel()
+	source := formAttrHead + "attributes:\n  - id: c0de0000-0000-4000-8000-000000990020\n    name: Диаграмма\n    types: [{kind: chart}]\n" +
+		"    chart: {type: column, active_series: -1, series_count: 2, point_count: 3, values: [" +
+		"{value: \"11\", tool_tip: С1Т1}, {value: \"12\", tool_tip: С1Т2}, {value: \"13\", tool_tip: С1Т3}, " +
+		"{value: \"21\", tool_tip: С2Т1}, {value: \"22\", tool_tip: С2Т2}, {value: \"23\", tool_tip: С2Т3}]}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(source), managedFormConfiguration())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chart := form.Attributes[0].Chart
+	for series := range 2 {
+		for point := range 3 {
+			value, ok := chart.ValueAt(series, point)
+			want := fmt.Sprintf("%d%d", series+1, point+1)
+			if !ok || string(value.Value) != want || value.ToolTip != fmt.Sprintf("С%dТ%d", series+1, point+1) {
+				t.Errorf("series %d point %d = %+v %v, want %s", series, point, value, ok, want)
+			}
+		}
+	}
+	for _, outside := range [][2]int{{-1, 0}, {2, 0}, {0, -1}, {0, 3}} {
+		if value, ok := chart.ValueAt(outside[0], outside[1]); ok {
+			t.Errorf("series %d point %d is outside the chart and reads %+v", outside[0], outside[1], value)
+		}
+	}
+	empty := ChartContent{SeriesCount: 2, PointCount: 3}
+	if _, ok := empty.ValueAt(0, 0); ok {
+		t.Error("a chart that holds no values reads one")
 	}
 }

@@ -258,10 +258,6 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		writeCommonForm(t, root, "Продажи", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Продажи\ntitle: {ru: Продажи}\nkind: common\n"+
 			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Диаграмма, types: [{kind: chart}], chart: {type: pie, active_series: -1, state: {chart_initialized: true}}}\n")
 	},
-	NoteChartValuesOrder: func(t *testing.T, root string) {
-		writeCommonForm(t, root, "Продажи", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Продажи\ntitle: {ru: Продажи}\nkind: common\n"+
-			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Диаграмма, types: [{kind: chart}], chart: {type: line, active_series: -1, series_count: 1, point_count: 1, values: [{value: \"1\"}]}}\n")
-	},
 	NoteChartTextAnyLanguage: func(t *testing.T, root string) {
 		writeCommonForm(t, root, "Продажи", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Продажи\ntitle: {ru: Продажи}\nkind: common\n"+
 			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Диаграмма, types: [{kind: chart}], chart: {type: pie, active_series: -1, title_area: {text: {\"#\": Продажи}}}}\n")

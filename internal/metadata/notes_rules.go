@@ -71,7 +71,6 @@ const (
 	NoteAssociatedTableNotTable    NoteKind = "associated-table-not-table"
 	NoteRepeatedInterfaceCommand   NoteKind = "repeated-interface-command"
 	NoteChartStateUnexplained      NoteKind = "chart-state-unexplained"
-	NoteChartValuesOrder           NoteKind = "chart-values-order"
 	NoteChartTextAnyLanguage       NoteKind = "chart-text-any-language"
 	NoteGanttChartStateUnexplained NoteKind = "gantt-chart-state-unexplained"
 	NotePlannerStateUnexplained    NoteKind = "planner-state-unexplained"
@@ -289,10 +288,6 @@ func init() {
 				"случайные новые значения, транспонирование, связи многоуровневой диаграммы и другие — собственное состояние объекта у прототипа " +
 				"(у всех 31 диаграммы выгрузок).",
 			"Значения несутся как записаны, в отдельной части содержимого; диаграмма их не исполняет."},
-		NoteKindInfo{NoteChartValuesOrder,
-			"Значения диаграммы записаны одним списком на все серии и точки, и по выгрузкам не видно, идёт ли список по сериям или по точкам: " +
-				"во всех девяти диаграммах с значениями они придуманы конструктором. Порядок устанавливается прогоном на платформе.",
-			"Значения несутся в записанном порядке; диаграмма рисуется только после того, как порядок установлен."},
 		NoteKindInfo{NoteChartTextAnyLanguage,
 			"Текст диаграммы, диаграммы Ганта или планировщика записан на «языке» «#», которого нет среди языков конфигурации: имя " +
 				"сводной серии, форматы подписей, шкалы времени и заголовков переносов (43 текста выгрузок: 23 у диаграмм, 15 у диаграмм " +
@@ -385,9 +380,6 @@ func init() {
 	}
 	noteRules[NoteChartStateUnexplained] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteChartStateUnexplained, note)
-	}
-	noteRules[NoteChartValuesOrder] = func(catalog *Catalog, note func(where, written string)) {
-		catalog.formNotesOf(NoteChartValuesOrder, note)
 	}
 	noteRules[NoteChartTextAnyLanguage] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteChartTextAnyLanguage, note)

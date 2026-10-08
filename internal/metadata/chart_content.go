@@ -50,11 +50,11 @@ type ChartContent struct {
 	// SummarySeries is the series that sums the others (help,
 	// Chart.SummarySeries), described as a series is.
 	SummarySeries *ChartSeries `yaml:"summary_series,omitempty" json:"summarySeries,omitempty"`
-	// Values are the values of the chart, one for each series and point, in
-	// the order the prototype writes them. Which of the two the order runs
-	// along first is not known: nine charts of the exports hold values, all
-	// of them made up by the designer, and the order is settled by running
-	// the platform (NoteChartValuesOrder).
+	// Values are the values of the chart, one for each series and point,
+	// one list as the prototype writes it: series by series, each with all
+	// its points in their order - the first series at every point, then the
+	// second (a run of the platform, 08.10.2026: 2 series × 3 points set by
+	// code and serialized). ValueAt reads it.
 	Values []ChartValue `yaml:"values,omitempty" json:"values,omitempty"`
 	// ActiveSeries and ActivePoint are the series and the point the chart
 	// stands on, by their number from 0; -1 is none (help,
@@ -153,6 +153,15 @@ type ChartPoint = ChartSeries
 type ChartValue struct {
 	Value   ChartNumber `yaml:"value" json:"value"`
 	ToolTip string      `yaml:"tool_tip,omitempty" json:"toolTip,omitempty"`
+}
+
+// ValueAt is the value of a series at a point, both by their number from 0;
+// false is a chart that holds no value there.
+func (value *ChartContent) ValueAt(series, point int) (ChartValue, bool) {
+	if series < 0 || series >= value.SeriesCount || point < 0 || point >= value.PointCount || len(value.Values) == 0 {
+		return ChartValue{}, false
+	}
+	return value.Values[series*value.PointCount+point], true
 }
 
 // ChartBounds is where an area stands in the chart, as fractions of it from
