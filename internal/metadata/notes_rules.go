@@ -73,6 +73,7 @@ const (
 	NoteChartStateUnexplained      NoteKind = "chart-state-unexplained"
 	NoteChartValuesOrder           NoteKind = "chart-values-order"
 	NoteChartTextAnyLanguage       NoteKind = "chart-text-any-language"
+	NoteGanttChartStateUnexplained NoteKind = "gantt-chart-state-unexplained"
 )
 
 func init() {
@@ -295,6 +296,11 @@ func init() {
 			"Текст диаграммы записан на «языке» «#», которого нет среди языков конфигурации: имя сводной серии, форматы подписей (23 текста " +
 				"выгрузок). Что прототип под ним понимает, справка не говорит.",
 			"Текст несётся как записан, под тем же ключом."},
+		NoteKindInfo{NoteGanttChartStateUnexplained,
+			"Содержимое диаграммы Ганта несёт значения, которых справка не называет нигде: начало видимой части, мера шкалы без варианта " +
+				"масштаба, ключи и данные корня точек и серий, текущий уровень шкалы времени, числа на месте интервалов фона и меток шкалы — " +
+				"собственное состояние объекта у прототипа (у всех 15 диаграмм Ганта выгрузок).",
+			"Значения несутся как записаны, в отдельных частях содержимого; диаграмма Ганта их не исполняет."},
 	)
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
@@ -378,6 +384,9 @@ func init() {
 	}
 	noteRules[NoteChartTextAnyLanguage] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteChartTextAnyLanguage, note)
+	}
+	noteRules[NoteGanttChartStateUnexplained] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NoteGanttChartStateUnexplained, note)
 	}
 }
 

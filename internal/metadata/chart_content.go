@@ -671,10 +671,16 @@ func oneOfList[T ~string](path string, value T, list []T, required bool) []strin
 }
 
 // chartParts walks the content of a chart and hands every colour, font,
-// border and text in it to visit, named by its path in the model. It walks
-// by reflection so that a part added to the model is not left out of the
-// resolution and the notes.
+// border and text in it to visit, named by its path in the model.
 func (value *ChartContent) chartParts(visit func(path string, part any)) {
+	walkChartParts(reflect.ValueOf(value).Elem(), visit)
+}
+
+// walkChartParts walks content of a chart, of a Gantt chart or of a planner
+// and hands every colour, font, border and text in it to visit. It walks by
+// reflection so that a part added to the model is not left out of the
+// resolution and the notes.
+func walkChartParts(root reflect.Value, visit func(path string, part any)) {
 	var walk func(path string, current reflect.Value)
 	walk = func(path string, current reflect.Value) {
 		switch current.Kind() {
@@ -708,14 +714,18 @@ func (value *ChartContent) chartParts(visit func(path string, part any)) {
 			}
 		}
 	}
-	walk("", reflect.ValueOf(value).Elem())
+	walk("", root)
 }
 
 // styleItems lists the style items of the configuration the chart takes a
 // colour, a font or a border from, each with the type it must be.
-func (value *ChartContent) styleItems() []styleItemUse {
+func (value *ChartContent) styleItems() []styleItemUse { return styleItemsIn(value.chartParts) }
+
+// styleItemsIn lists the style items the parts walk hands out are taken
+// from, each with the type it must be.
+func styleItemsIn(parts func(visit func(path string, part any))) []styleItemUse {
 	var uses []styleItemUse
-	value.chartParts(func(path string, part any) {
+	parts(func(path string, part any) {
 		var reference *StyleItemReference
 		var itemType StyleItemType
 		switch part := part.(type) {
@@ -734,9 +744,13 @@ func (value *ChartContent) styleItems() []styleItemUse {
 }
 
 // anyLanguageTexts names the texts of the chart written in "#".
-func (value *ChartContent) anyLanguageTexts() []string {
+func (value *ChartContent) anyLanguageTexts() []string { return anyLanguageTextsIn(value.chartParts) }
+
+// anyLanguageTextsIn names the texts the parts walk hands out that are
+// written in "#".
+func anyLanguageTextsIn(parts func(visit func(path string, part any))) []string {
 	var paths []string
-	value.chartParts(func(path string, part any) {
+	parts(func(path string, part any) {
 		if text, ok := part.(LocalizedText); ok {
 			if _, found := text[chartAnyLanguage]; found {
 				paths = append(paths, path)

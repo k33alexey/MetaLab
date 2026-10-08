@@ -248,6 +248,17 @@ func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElem
 	return nil
 }
 
+// noteChart notes what the content of a chart carries without knowing
+// what it is: the prototype's own state and values of unknown order.
+func (catalog *Catalog) noteChart(where string, chart *ChartContent) {
+	if !chart.State.IsEmpty() {
+		catalog.noteForm(NoteChartStateUnexplained, where, chart.State.fields())
+	}
+	if len(chart.Values) != 0 {
+		catalog.noteForm(NoteChartValuesOrder, where, fmt.Sprintf("%d series × %d points", chart.SeriesCount, chart.PointCount))
+	}
+}
+
 // resolveStyleItems checks that the style items a part of a form takes its
 // values from are there and are of the type the value is: one that is gone
 // is a reference to nothing, one of another type is refused.
@@ -282,14 +293,21 @@ func (catalog *Catalog) resolveFormAttributes(form string, attributes []FormAttr
 			if err := catalog.resolveStyleItems(where+" chart", chart.styleItems()); err != nil {
 				return err
 			}
-			if !chart.State.IsEmpty() {
-				catalog.noteForm(NoteChartStateUnexplained, where+" chart", chart.State.fields())
-			}
-			if len(chart.Values) != 0 {
-				catalog.noteForm(NoteChartValuesOrder, where+" chart", fmt.Sprintf("%d series × %d points", chart.SeriesCount, chart.PointCount))
-			}
+			catalog.noteChart(where+" chart", chart)
 			for _, path := range chart.anyLanguageTexts() {
 				catalog.noteForm(NoteChartTextAnyLanguage, where+" chart "+path, chartAnyLanguage)
+			}
+		}
+		if gantt := attribute.GanttChart; gantt != nil {
+			if err := catalog.resolveStyleItems(where+" gantt_chart", gantt.styleItems()); err != nil {
+				return err
+			}
+			catalog.noteChart(where+" gantt_chart chart", &gantt.Chart)
+			if fields := gantt.stateFields(); fields != "" {
+				catalog.noteForm(NoteGanttChartStateUnexplained, where+" gantt_chart", fields)
+			}
+			for _, path := range anyLanguageTextsIn(gantt.ganttParts) {
+				catalog.noteForm(NoteChartTextAnyLanguage, where+" gantt_chart "+path, chartAnyLanguage)
 			}
 		}
 		if list := attribute.DynamicList; list != nil && list.MainTable != nil {

@@ -70,6 +70,9 @@ type FormAttribute struct {
 	// Chart is the content a chart is made with in the designer - see
 	// ChartContent.
 	Chart *ChartContent `yaml:"chart,omitempty" json:"chart,omitempty"`
+	// GanttChart is the content a Gantt chart is made with in the designer -
+	// see GanttChartContent.
+	GanttChart *GanttChartContent `yaml:"gantt_chart,omitempty" json:"ganttChart,omitempty"`
 }
 
 // DynamicListKeyType is how a row of a dynamic list is told apart (help,
@@ -204,6 +207,12 @@ func validateFormAttributes(attributes []FormAttribute, ids map[uuid.UUID]bool, 
 				issues = append(issues, path+".chart belongs to an attribute that is a chart")
 			}
 			issues = append(issues, validateChartContent(path+".chart", attribute.Chart)...)
+		}
+		if attribute.GanttChart != nil {
+			if single, ok := SingleType(attribute.Types); !ok || single.Kind != GanttChartType {
+				issues = append(issues, path+".gantt_chart belongs to an attribute that is a Gantt chart")
+			}
+			issues = append(issues, validateGanttChartContent(path+".gantt_chart", attribute.GanttChart)...)
 		}
 		issues = append(issues, validateFormColumns(path+".columns", attribute.Columns, ids, configuration)...)
 		tables := map[string]bool{}
