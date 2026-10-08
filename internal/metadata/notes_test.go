@@ -237,6 +237,14 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		writeCommonForm(t, root, "Отчет", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Отчет\ntitle: {ru: Отчет}\nkind: common\n"+
 			"auto_command_bar: {id: "+uuid.MustNew().String()+", children: [{id: "+uuid.MustNew().String()+", name: Дополнение1, kind: search-string-addition}]}\n")
 	},
+	NoteEventByIdentifier: func(t *testing.T, root string) {
+		writeCommonForm(t, root, "Настройка", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Настройка\ntitle: {ru: Настройка}\nkind: common\n"+
+			"events: {390d5e4b-e732-4c88-8748-9e211a416984: ПриЧтенииНаСервере}\n")
+	},
+	NoteFormEventNotRaised: func(t *testing.T, root string) {
+		writeCommonForm(t, root, "Настройка", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Настройка\ntitle: {ru: Настройка}\nkind: common\n"+
+			"events: {before-write-at-server: ПередЗаписьюНаСервере}\n")
+	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")

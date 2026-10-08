@@ -107,6 +107,9 @@ type ManagedForm struct {
 	// FormExtension is what the form has by the kind of its main attribute.
 	FormExtension `yaml:",inline"`
 	Commands      []ManagedFormCommand `yaml:"commands,omitempty" json:"commands"`
+	// Events are the events of the form handled by procedures of its
+	// module, by event.
+	Events map[FormEvent]string `yaml:"events,omitempty" json:"events,omitempty"`
 	// AutoCommandBar is the command bar of the form - see FormAttachedMenu.
 	AutoCommandBar *FormAttachedMenu    `yaml:"auto_command_bar,omitempty" json:"autoCommandBar,omitempty"`
 	Items          []ManagedFormElement `yaml:"items,omitempty" json:"items"`
@@ -195,6 +198,9 @@ type ManagedFormElement struct {
 	// server is out of reach (help, OnMainServerUnavalableBehavior of a
 	// decoration); the prototype writes it once, on an extended tooltip.
 	OnMainServerUnavailable FormServerUnavailableBehavior `yaml:"on_main_server_unavailable,omitempty" json:"onMainServerUnavailable,omitempty"`
+	// Events are the events of the element handled by procedures of the
+	// module of the form, by event.
+	Events map[FormEvent]string `yaml:"events,omitempty" json:"events,omitempty"`
 	// AdditionSource is the table an addition standing apart from it is of,
 	// named by its element. An addition a table holds names none: it is of
 	// that table. One standing apart may name none too - the prototype saves
@@ -243,6 +249,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		issues = append(issues, "type must be managed or ordinary")
 	}
 	issues = append(issues, validateFormWindow(value.FormWindow)...)
+	issues = append(issues, validateFormEvents("form", value.Events, formEvents, "a form")...)
 	issues = append(issues, validateFormLayout(value.FormLayout)...)
 	issues = append(issues, validateFormExtension(value.FormExtension, value.Attributes)...)
 	seenPurposes := map[FormPurpose]bool{}
@@ -414,6 +421,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		issues = append(issues, validateGroupProperties(current.path, item.GroupProperties, item.Kind, configuration)...)
 		issues = append(issues, validateButtonProperties(current.path, item.ButtonProperties, item.Kind)...)
 		issues = append(issues, validateTableProperties(current.path, item.TableProperties, item.Kind)...)
+		issues = append(issues, validateFormEvents(current.path, item.Events, formElementEvents[item.Kind], "a "+string(item.Kind))...)
 		if _, named := item.commandSourceItem(); item.AssociatedTable != "" || named {
 			associated = append(associated, pending{element: item, path: current.path})
 		}

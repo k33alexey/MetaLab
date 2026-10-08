@@ -66,6 +66,8 @@ const (
 	NoteUserSettingsGroupNotGroup  NoteKind = "user-settings-group-not-group"
 	NoteHeldAdditionOfAnother      NoteKind = "held-addition-of-another-element"
 	NoteAdditionOfNoTable          NoteKind = "addition-of-no-table"
+	NoteEventByIdentifier          NoteKind = "event-by-identifier"
+	NoteFormEventNotRaised         NoteKind = "form-event-not-raised"
 )
 
 func init() {
@@ -258,6 +260,15 @@ func init() {
 				"в lombard1 так одна форма, две штуки в командной панели формы. Конфигуратор такое сохраняет; по всей видимости, " +
 				"след удалённой таблицы или дополнение, перенесённое из другой формы.",
 			"Дополнение несётся как записано и ничего не показывает."},
+		NoteKindInfo{NoteEventByIdentifier,
+			"Событие формы или элемента записано не именем, а внутренним идентификатором (64 раза в выгрузках): у формы, основной " +
+				"реквизит которой такого события не вызывает, — по имени обработчика это запись на сервере, чтение, загрузка настроек. " +
+				"По всей видимости, след смены основного реквизита. Какое событие стоит за идентификатором, справка не называет.",
+			"Событие несётся как записано; обработчик не вызывается."},
+		NoteKindInfo{NoteFormEventNotRaised,
+			"Событие формы записано именем, но основной реквизит формы его не вызывает: обработчик записи или чтения у формы обработки " +
+				"или формы без основного реквизита (14 раз в выгрузках) — тот же след смены основного реквизита, что и событие по идентификатору.",
+			"Событие несётся как записано; обработчик не вызывается."},
 	)
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
@@ -320,6 +331,12 @@ func init() {
 	}
 	noteRules[NoteAdditionOfNoTable] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteAdditionOfNoTable, note)
+	}
+	noteRules[NoteEventByIdentifier] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NoteEventByIdentifier, note)
+	}
+	noteRules[NoteFormEventNotRaised] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NoteFormEventNotRaised, note)
 	}
 }
 

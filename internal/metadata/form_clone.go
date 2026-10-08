@@ -20,6 +20,7 @@ func cloneRuntimeForm(value ManagedForm) ManagedForm {
 	result.ExtendedPresentation = maps.Clone(value.ExtendedPresentation)
 	result.Purposes = slices.Clone(value.Purposes)
 	result.SettingsStorage = clonePointer(value.SettingsStorage)
+	result.Events = maps.Clone(value.Events)
 	result.Commands = make([]ManagedFormCommand, len(value.Commands))
 	for index, command := range value.Commands {
 		result.Commands[index] = command
@@ -65,6 +66,7 @@ func cloneRuntimeFormElements(values []ManagedFormElement) []ManagedFormElement 
 		value.ScrollOnCompress = clonePointer(value.ScrollOnCompress)
 		value.TableProperties = value.TableProperties.clone()
 		value.TableAdditions = value.TableAdditions.clone()
+		value.Events = maps.Clone(value.Events)
 		if tooltip := value.ExtendedTooltip; tooltip != nil {
 			copied := cloneRuntimeFormElements([]ManagedFormElement{*tooltip})[0]
 			value.ExtendedTooltip = &copied
