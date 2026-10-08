@@ -25,6 +25,10 @@ func cloneRuntimeForm(value ManagedForm) ManagedForm {
 	for index, command := range value.Commands {
 		result.Commands[index] = command
 		result.Commands[index].Title = cloneTitle(command.Title)
+		result.Commands[index].ToolTip = maps.Clone(command.ToolTip)
+		result.Commands[index].Picture = command.Picture.clone()
+		result.Commands[index].FunctionalOptions = slices.Clone(command.FunctionalOptions)
+		result.Commands[index].Use = command.Use.clone()
 	}
 	result.Items = cloneRuntimeFormElements(value.Items)
 	result.AutoCommandBar = value.AutoCommandBar.clone()

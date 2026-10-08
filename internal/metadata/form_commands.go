@@ -3,7 +3,9 @@ package metadata
 import (
 	"reflect"
 	"strings"
+	"unicode/utf8"
 
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -223,4 +225,65 @@ func (catalog *Catalog) noteFormReferences(where string, element ManagedFormElem
 	if link := element.TypeLink; link != nil && asWritten(link.DataPath) {
 		catalog.noteForm(NoteFormReferenceAsWritten, where+" type link", link.DataPath)
 	}
+}
+
+// validateFormCommandProperties checks what a command of a form has besides
+// its name, title and action.
+func validateFormCommandProperties(path string, command ManagedFormCommand, configuration project.Project) []string {
+	var issues []string
+	issues = append(issues, validateTitle(path+".tool_tip", command.ToolTip, configuration)...)
+	issues = append(issues, validatePictureReference(path+".picture", command.Picture)...)
+	issues = append(issues, oneOf(path+".representation", command.Representation, CommandAuto, CommandText, CommandPicture, CommandPictureAndText)...)
+	if strings.TrimSpace(command.Shortcut) != command.Shortcut {
+		issues = append(issues, path+".shortcut must be written without surrounding spaces")
+	}
+	issues = append(issues, oneOf(path+".current_row_use", command.CurrentRowUse, FormUseAuto, FormUseYes, FormUseDontUse)...)
+	if table := command.AssociatedTable; table != "" && !formElementCode.MatchString(table) &&
+		(!validIdentifier(table) || utf8.RuneCountInString(table) > maxNameLength) {
+		issues = append(issues, path+".associated_table must be the name or the code of a table of the form")
+	}
+	issues = append(issues, validateFormOptions(path+".functional_options", command.FunctionalOptions)...)
+	issues = append(issues, validateFormRight(path+".use", command.Use)...)
+	return issues
+}
+
+// resolveFormCommands resolves what the commands of one form name in the
+// project: the functional options that switch them off, the roles they are
+// available to, the common picture they are drawn with; and notes the table
+// a command names by the code of an element, or by an element that is no
+// table.
+func (catalog *Catalog) resolveFormCommands(form string, value ManagedForm) error {
+	kinds := map[string]FormElementKind{}
+	var walk func(items []ManagedFormElement)
+	walk = func(items []ManagedFormElement) {
+		for _, item := range items {
+			if _, seen := kinds[foldedName(item.Name)]; !seen {
+				kinds[foldedName(item.Name)] = item.Kind
+			}
+			walk(item.Nested())
+		}
+	}
+	walk(value.FormItems())
+	for _, command := range value.Commands {
+		where := form + " command " + command.Name
+		if err := catalog.resolveFormData(where, nil, command.FunctionalOptions, command.Use); err != nil {
+			return err
+		}
+		if picture := command.Picture; picture != nil && picture.Common != nil {
+			if _, ok := catalog.commonPictureByID[*picture.Common]; !ok {
+				catalog.noteUnresolved(where+" picture", *picture.Common)
+			}
+		}
+		switch table := command.AssociatedTable; {
+		case formElementCode.MatchString(table):
+			catalog.noteForm(NoteFormReferenceAsWritten, where+" associated_table", table)
+		case table != "" && kinds[foldedName(table)] != FormElementTable:
+			kind := string(kinds[foldedName(table)])
+			if kind == "" {
+				kind = "context menu or command bar"
+			}
+			catalog.noteForm(NoteAssociatedTableNotTable, where+" associated_table", table+" ("+kind+")")
+		}
+	}
+	return nil
 }

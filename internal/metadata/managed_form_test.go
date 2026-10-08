@@ -97,7 +97,7 @@ func TestManagedFormValidatesBindingsAndCommands(t *testing.T) {
 	form.Items[0].DataPath = "\u041e\u0431\u044a\u0435\u043a\u0442..\u041f\u043e\u043b\u0435"
 	form.Items[0].Command = "Form.Command.Unknown"
 	form.Commands[0].Action = FormCommandCustom
-	form.Commands[0].Handler = ""
+	form.Commands[0].Handler = "Не процедура"
 	err := ValidateManagedForm("form.yaml", form, configuration)
 	for _, expected := range []string{"names separated by dots, each with an index if any", "command is allowed only for buttons", "command names no command of the form", "handler must be a valid BSL routine name"} {
 		if err == nil || !strings.Contains(err.Error(), expected) {

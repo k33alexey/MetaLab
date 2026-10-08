@@ -40,12 +40,44 @@ const (
 
 // ManagedFormCommand describes one form command. Custom commands call a BSL
 // routine from the form module; standard commands are executed by ML App.
+//
+// A command of the prototype is always a custom one: its action is the name
+// of the procedure it calls (help, FormCommand.Action), and the standard
+// commands of a form are reached by a button (Form.StandardCommand.<name>),
+// not by a command. The prototype writes 285 commands of the exports with no
+// action at all: such a command is custom with no handler and does nothing.
 type ManagedFormCommand struct {
 	ID      uuid.UUID         `yaml:"id" json:"id"`
 	Name    string            `yaml:"name" json:"name"`
 	Title   LocalizedText     `yaml:"title" json:"title"`
 	Action  FormCommandAction `yaml:"action" json:"action"`
 	Handler string            `yaml:"handler,omitempty" json:"handler,omitempty"`
+	// ToolTip is the tooltip of the buttons of the command, and Picture and
+	// Representation how they are drawn: the prototype writes PictureAndText
+	// of a command as TextPicture (8241 times), the other two as the help
+	// does.
+	ToolTip        LocalizedText         `yaml:"tool_tip,omitempty" json:"toolTip,omitempty"`
+	Picture        *PictureReference     `yaml:"picture,omitempty" json:"picture,omitempty"`
+	Representation CommandRepresentation `yaml:"representation,omitempty" json:"representation,omitempty"`
+	// Shortcut runs the command from the keyboard, written as the prototype
+	// writes a shortcut.
+	Shortcut string `yaml:"shortcut,omitempty" json:"shortcut,omitempty"`
+	// ModifiesSavedData marks the form modified when the command runs (help,
+	// ModifiesStoredData; the prototype writes only that, 4970 times).
+	ModifiesSavedData bool `yaml:"modifies_saved_data,omitempty" json:"modifiesSavedData,omitempty"`
+	// CurrentRowUse says the command needs a current row of AssociatedTable,
+	// a table of the same form named by its element (help, CurrentRowUse and
+	// AssociatedTable); the prototype writes dont-use on 30738 commands, use
+	// on 240, the table by the code of an element 4 times
+	// (NoteFormReferenceAsWritten), and an element that is no table 5 times
+	// (NoteAssociatedTableNotTable).
+	CurrentRowUse   FormUse `yaml:"current_row_use,omitempty" json:"currentRowUse,omitempty"`
+	AssociatedTable string  `yaml:"associated_table,omitempty" json:"associatedTable,omitempty"`
+	// FunctionalOptions switch the command off, as they switch off an
+	// attribute; Use is whom the command is available to, by role, as the
+	// view of an attribute of a form is.
+	FunctionalOptions []uuid.UUID         `yaml:"functional_options,omitempty" json:"functionalOptions,omitempty"`
+	Use               *FormAttributeRight `yaml:"use,omitempty" json:"use,omitempty"`
 }
 
 // FormType is how a form is built and shown. The platform builds managed
@@ -275,6 +307,9 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		issues = append(issues, validateTitle(name, text, configuration)...)
 	}
 	commandNames, commandIDs := map[string]bool{}, map[uuid.UUID]bool{}
+	// A command names the table whose current row it needs, which is found
+	// once the whole form is walked.
+	var associatedCommands []struct{ path, table string }
 	for index, command := range value.Commands {
 		prefix := fmt.Sprintf("commands[%d]", index)
 		if command.ID.IsZero() {
@@ -294,7 +329,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		issues = append(issues, validateTitle(prefix+".title", command.Title, configuration)...)
 		switch command.Action {
 		case FormCommandCustom:
-			if !validIdentifier(command.Handler) || utf8.RuneCountInString(command.Handler) > maxNameLength {
+			if command.Handler != "" && (!validIdentifier(command.Handler) || utf8.RuneCountInString(command.Handler) > maxNameLength) {
 				issues = append(issues, prefix+".handler must be a valid BSL routine name for a custom command")
 			}
 		case FormCommandSave, FormCommandSaveClose, FormCommandClose, FormCommandRefresh,
@@ -304,6 +339,10 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			}
 		default:
 			issues = append(issues, prefix+".action is unsupported")
+		}
+		issues = append(issues, validateFormCommandProperties(prefix, command, configuration)...)
+		if table := command.AssociatedTable; table != "" && !formElementCode.MatchString(table) {
+			associatedCommands = append(associatedCommands, struct{ path, table string }{prefix, table})
 		}
 	}
 
@@ -539,6 +578,15 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		}
 		if name, named := group.element.commandSourceItem(); named && sources[strings.ToLower(name)] == "" {
 			issues = append(issues, group.path+".command_source names no field or table of the form")
+		}
+	}
+	// The help makes the table of a command a table of the form; the
+	// prototype keeps an input field, a button or a context menu there too (5
+	// commands, NoteAssociatedTableNotTable), so it is held to naming an
+	// element of the form.
+	for _, command := range associatedCommands {
+		if !names[foldedName(command.table)] {
+			issues = append(issues, command.path+".associated_table names no element of the form")
 		}
 	}
 	for _, button := range commanded {

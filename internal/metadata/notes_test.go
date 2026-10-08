@@ -245,6 +245,11 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		writeCommonForm(t, root, "Настройка", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Настройка\ntitle: {ru: Настройка}\nkind: common\n"+
 			"events: {before-write-at-server: ПередЗаписьюНаСервере}\n")
 	},
+	NoteAssociatedTableNotTable: func(t *testing.T, root string) {
+		writeCommonForm(t, root, "Файл", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Файл\ntitle: {ru: Файл}\nkind: common\n"+
+			"commands:\n  - {id: "+uuid.MustNew().String()+", name: Удалить, title: {ru: Удалить}, action: custom, handler: Удалить, associated_table: Код}\n"+
+			"items:\n  - {id: "+uuid.MustNew().String()+", name: Код, kind: input-field}\n")
+	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
