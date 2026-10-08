@@ -65,6 +65,10 @@ func cloneRuntimeFormElements(values []ManagedFormElement) []ManagedFormElement 
 		value.ScrollOnCompress = clonePointer(value.ScrollOnCompress)
 		value.TableProperties = value.TableProperties.clone()
 		value.TableAdditions = value.TableAdditions.clone()
+		if tooltip := value.ExtendedTooltip; tooltip != nil {
+			copied := cloneRuntimeFormElements([]ManagedFormElement{*tooltip})[0]
+			value.ExtendedTooltip = &copied
+		}
 		value.ContextMenu, value.AutoCommandBar = value.ContextMenu.clone(), value.AutoCommandBar.clone()
 		value.Children = cloneRuntimeFormElements(value.Children)
 		result[index] = value

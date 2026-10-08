@@ -441,7 +441,8 @@ func TestWhatATableNamesIsResolvedAndNoted(t *testing.T) {
 			}
 			element := "items:\n  - {id: c0de0000-0000-4000-8000-000000990002, name: Таблица, kind: table, data_path: Список, " + test.table + "}\n" +
 				"  - {id: c0de0000-0000-4000-8000-000000990003, name: Группа, kind: usual-group}\n" +
-				"  - {id: c0de0000-0000-4000-8000-000000990004, name: Поле, kind: input-field}\n"
+				"  - {id: c0de0000-0000-4000-8000-000000990004, name: Поле, kind: input-field, extended_tooltip:" +
+				" {id: c0de0000-0000-4000-8000-000000990006, name: ПолеРасширеннаяПодсказка, kind: label-decoration}}\n"
 			writeFile(t, path, strings.Replace(string(content), "attributes:\n", element+"attributes:\n", 1))
 			where := "catalog Номенклатура form ФормаЭлемента element Таблица"
 			if test.gone {
@@ -489,7 +490,8 @@ func TestATableKeepsItsAdditions(t *testing.T) {
 		" view_status_addition: {id: c0de0000-0000-4000-8000-000000990004, name: СписокСостояниеПросмотра, kind: view-status-addition," +
 		" horizontal_align: left, title: {ru: Состояние}, disabled: true}," +
 		" search_control_addition: {id: c0de0000-0000-4000-8000-000000990005, name: СписокУправлениеПоиском, kind: search-control-addition," +
-		" hidden: true, addition_source: СписокРасширеннаяПодсказка}}\n" +
+		" hidden: true, addition_source: СписокРасширеннаяПодсказка}," +
+		" extended_tooltip: {id: c0de0000-0000-4000-8000-000000990010, name: СписокРасширеннаяПодсказка, kind: label-decoration}}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990006, name: Панель, kind: command-bar, children: [{id: c0de0000-0000-4000-8000-000000990007," +
 		" name: ПоискВПанели, kind: search-string-addition, addition_source: Список}]}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990008, name: Группа, kind: usual-group, children: [{id: c0de0000-0000-4000-8000-000000990009," +

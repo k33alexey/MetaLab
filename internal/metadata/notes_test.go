@@ -230,7 +230,8 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 	NoteHeldAdditionOfAnother: func(t *testing.T, root string) {
 		writeCommonForm(t, root, "Касса", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Касса\ntitle: {ru: Касса}\nkind: common\n"+
 			"items:\n  - {id: "+uuid.MustNew().String()+", name: Товары, kind: table, search_string_addition: {id: "+uuid.MustNew().String()+
-			", name: ТоварыСтрокаПоиска, kind: search-string-addition, addition_source: ТоварыРасширеннаяПодсказка}}\n")
+			", name: ТоварыСтрокаПоиска, kind: search-string-addition, addition_source: ТоварыРасширеннаяПодсказка},"+
+			" extended_tooltip: {id: "+uuid.MustNew().String()+", name: ТоварыРасширеннаяПодсказка, kind: label-decoration}}\n")
 	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")

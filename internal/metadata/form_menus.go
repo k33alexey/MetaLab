@@ -61,7 +61,8 @@ func (element ManagedFormElement) attachedMenus() []struct {
 }
 
 // Nested is every element an element holds: its children, the buttons of
-// its context menu and command bar, and the additions of a table.
+// its context menu and command bar, the additions of a table, and its
+// extended tooltip.
 func (element ManagedFormElement) Nested() []ManagedFormElement {
 	nested := element.Children
 	for _, attached := range element.attachedMenus() {
@@ -73,6 +74,9 @@ func (element ManagedFormElement) Nested() []ManagedFormElement {
 		if held.addition != nil {
 			nested = append(append([]ManagedFormElement(nil), nested...), *held.addition)
 		}
+	}
+	if element.ExtendedTooltip != nil {
+		nested = append(append([]ManagedFormElement(nil), nested...), *element.ExtendedTooltip)
 	}
 	return nested
 }

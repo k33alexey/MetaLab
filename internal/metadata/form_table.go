@@ -475,6 +475,16 @@ func (element ManagedFormElement) tableAdditions() []struct {
 	}
 }
 
+// FormServerUnavailableBehavior is what an element does while the main
+// server is out of reach (help, OnMainServerUnavalableBehavior).
+type FormServerUnavailableBehavior string
+
+const (
+	FormServerUnavailableAuto        FormServerUnavailableBehavior = "auto"
+	FormServerUnavailableDontChange  FormServerUnavailableBehavior = "dont-change-behavior"
+	FormServerUnavailableMakeDisable FormServerUnavailableBehavior = "make-disable"
+)
+
 func (additions TableAdditions) clone() TableAdditions {
 	for _, addition := range []**ManagedFormElement{&additions.SearchStringAddition, &additions.ViewStatusAddition, &additions.SearchControlAddition} {
 		if *addition != nil {

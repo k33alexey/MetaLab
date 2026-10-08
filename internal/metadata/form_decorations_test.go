@@ -181,3 +181,162 @@ func TestThePictureOfADecorationIsResolved(t *testing.T) {
 		})
 	}
 }
+
+// Every element keeps its extended tooltip through YAML and the Studio - its
+// identifier, its name as written, its formatted text and what it has as a
+// label - and the tooltip is an element the element holds.
+//
+// Defect caught: the 294504 extended tooltips of the exports lost, with the
+// names code reaches them by (84 thousand in English, kept apart from the
+// name of their element); a tooltip of a button, a page, a table or an
+// addition lost while that of a field is kept; its formatted text read as
+// plain, its width (113) or limit (920) lost; what it does while the main
+// server is out of reach lost; the tooltip left out of what its element
+// holds, so that no name or check of the form reaches it.
+func TestAnElementKeepsItsExtendedTooltip(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	tooltip := func(id, name, rest string) string {
+		return "extended_tooltip: {id: c0de0000-0000-4000-8000-0000009901" + id + ", name: " + name + ", kind: label-decoration" + rest + "}"
+	}
+	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, " +
+		tooltip("01", "ПолеРасширеннаяПодсказка", ", title: {ru: \"<b>Сумма</b> с НДС\"}, title_formatted: true, no_auto_max_width: true, max_width: 40,"+
+			" width: 43, text_color: {source: web, name: Gray}, on_main_server_unavailable: make-disable") + "}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Кнопка, kind: button, " + tooltip("02", "КнопкаExtendedTooltip", "") + "}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Страницы, kind: pages, children: [{id: c0de0000-0000-4000-8000-000000990004," +
+		" name: Страница, kind: page, " + tooltip("03", "СтраницаРасширеннаяПодсказка", "") + "}]}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990005, name: Список, kind: table, " + tooltip("04", "СписокРасширеннаяПодсказка", "") +
+		", search_string_addition: {id: c0de0000-0000-4000-8000-000000990006, name: СписокСтрокаПоиска, kind: search-string-addition, " +
+		tooltip("05", "СписокСтрокаПоискаРасширеннаяПодсказка", "") + "}}\n"
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(source string, items []ManagedFormElement) {
+		t.Helper()
+		field := items[0].ExtendedTooltip
+		switch {
+		case field == nil || field.Name != "ПолеРасширеннаяПодсказка" || field.Kind != FormElementLabelDecoration || !field.TitleFormatted ||
+			field.Title["ru"] != "<b>Сумма</b> с НДС" || !field.NoAutoMaxWidth || field.MaxWidth != 40 || field.Width != 43 || field.TextColor == nil ||
+			field.OnMainServerUnavailable != FormServerUnavailableMakeDisable:
+			t.Fatalf("%s: the tooltip of a field: %+v", source, field)
+		case items[1].ExtendedTooltip == nil || items[1].ExtendedTooltip.Name != "КнопкаExtendedTooltip":
+			t.Fatalf("%s: the tooltip of a button: %+v", source, items[1].ExtendedTooltip)
+		case items[2].Children[0].ExtendedTooltip == nil || items[3].ExtendedTooltip == nil ||
+			items[3].SearchStringAddition.ExtendedTooltip == nil:
+			t.Fatalf("%s: the tooltip of a page, a table or an addition lost", source)
+		}
+		if nested := items[0].Nested(); len(nested) != 1 || nested[0].Name != "ПолеРасширеннаяПодсказка" {
+			t.Fatalf("%s: what a field holds: %+v", source, nested)
+		}
+	}
+	check("read", form.Items)
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("written back", again.Items)
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil {
+		t.Fatal(err)
+	}
+	check("carried through the Studio", received.Items)
+	if !reflect.DeepEqual(received.Items, form.Items) || !reflect.DeepEqual(again.Items, form.Items) {
+		t.Fatal("a tooltip changed on the way")
+	}
+}
+
+// What is wrong with an extended tooltip is refused, naming the place, and
+// the tooltip is checked as every element is.
+//
+// Defect caught: a tooltip that is a field or a picture; a tooltip of a
+// tooltip, or a context menu of one; a tooltip named as another element, or
+// with an identifier taken; what only a picture has on a tooltip; what the
+// help gives a decoration for the main server let through on a field, or
+// spelled as the prototype writes it; an addition a table holds naming as
+// its source an element the form does not have.
+func TestAnExtendedTooltipRefusesWhatIsWrong(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	field := func(tooltip string) string {
+		return "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, extended_tooltip: {id: c0de0000-0000-4000-8000-000000990002, " + tooltip + "}}\n"
+	}
+	for name, test := range map[string]struct{ items, want string }{
+		"поле":     {field("name: Подсказка, kind: input-field"), "items[0].extended_tooltip.kind must be label-decoration"},
+		"картинка": {field("name: Подсказка, kind: picture-decoration"), "items[0].extended_tooltip.kind must be label-decoration"},
+		"подсказка подсказки": {field("name: Подсказка, kind: label-decoration, extended_tooltip: {id: c0de0000-0000-4000-8000-000000990003, name: Ещё, kind: label-decoration}"),
+			"items[0].extended_tooltip.extended_tooltip: an extended tooltip has none of its own"},
+		"меню подсказки": {field("name: Подсказка, kind: label-decoration, context_menu: {id: c0de0000-0000-4000-8000-000000990003, name: Меню}"),
+			"items[0].extended_tooltip.context_menu: an extended tooltip has none"},
+		"имя поля":         {field("name: Поле, kind: label-decoration"), "items[0].extended_tooltip.name must be unique within the form"},
+		"идентификатор":    {field("name: Подсказка, kind: label-decoration") + "  - {id: c0de0000-0000-4000-8000-000000990002, name: Другое, kind: input-field}\n", ".id must be unique"},
+		"увеличение":       {field("name: Подсказка, kind: label-decoration, zoomable: true"), "items[0].extended_tooltip.zoomable is allowed only for picture fields and pictures"},
+		"сервер у поля":    {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, on_main_server_unavailable: auto}\n", "items[0].on_main_server_unavailable is allowed only for decorations"},
+		"сервер прототипа": {field("name: Подсказка, kind: label-decoration, on_main_server_unavailable: MakeDisable"), "items[0].extended_tooltip.on_main_server_unavailable must be auto, dont-change-behavior or make-disable"},
+		"источник ничей": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Список, kind: table, search_string_addition: {id: c0de0000-0000-4000-8000-000000990002," +
+			" name: Поиск, kind: search-string-addition, addition_source: СписокРасширеннаяПодсказка}}\n", "items[0].search_string_addition.addition_source names no element of the form"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(test.items)), configuration)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+// Extended tooltips may share a name, as the prototype names them itself
+// and saves the name repeated (3 forms of the exports: «ExtendedTooltip»
+// three times, a pair of «Группа2РасширеннаяПодсказка»); the shared name is
+// noted.
+//
+// Defect caught: the forms of the exports whose tooltips repeat a name
+// refused; a repeated name carried without a note; a tooltip allowed to share
+// the name of an element that is no tooltip.
+func TestExtendedTooltipsShareANameWithANote(t *testing.T) {
+	t.Parallel()
+	shared := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Первое, kind: input-field, extended_tooltip:" +
+		" {id: c0de0000-0000-4000-8000-000000990002, name: ExtendedTooltip, kind: label-decoration}}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Второе, kind: check-box-field, extended_tooltip:" +
+		" {id: c0de0000-0000-4000-8000-000000990004, name: extendedtooltip, kind: label-decoration}}\n"
+	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(shared)), managedFormConfiguration()); err != nil {
+		t.Fatalf("the tooltips of the exports: %v", err)
+	}
+	clash := shared + "  - {id: c0de0000-0000-4000-8000-000000990005, name: ExtendedTooltip, kind: label-decoration}\n"
+	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(clash)), managedFormConfiguration()); err == nil ||
+		!strings.Contains(err.Error(), "name must be unique within the form") {
+		t.Fatalf("a label sharing the name of tooltips: %v", err)
+	}
+	root := formReferencesProject(t)
+	path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, path, strings.Replace(string(content), "attributes:\n", "items:\n"+shared+"attributes:\n", 1))
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found []Note
+	for _, note := range catalog.Notes() {
+		if note.Kind == NoteRepeatedElementName {
+			found = append(found, note)
+		}
+	}
+	if len(found) != 1 || !strings.HasSuffix(found[0].Where, "element ExtendedTooltip") || found[0].Written != "2 times" {
+		t.Fatalf("notes = %+v", found)
+	}
+}

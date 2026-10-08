@@ -185,6 +185,16 @@ type ManagedFormElement struct {
 	// TableAdditions are the search string, view status and search control
 	// a table holds.
 	TableAdditions `yaml:",inline"`
+	// ExtendedTooltip is the extended tooltip of the element: a label of the
+	// form (help, ExtendedTooltip - FormDecoration) the prototype writes
+	// inside nearly every element - 294504 in the exports, most with nothing
+	// but an identifier and a name. Code reaches it by its name, which is
+	// kept as written: the configurator does not rename it with its element.
+	ExtendedTooltip *ManagedFormElement `yaml:"extended_tooltip,omitempty" json:"extendedTooltip,omitempty"`
+	// OnMainServerUnavailable is what a decoration does while the main
+	// server is out of reach (help, OnMainServerUnavalableBehavior of a
+	// decoration); the prototype writes it once, on an extended tooltip.
+	OnMainServerUnavailable FormServerUnavailableBehavior `yaml:"on_main_server_unavailable,omitempty" json:"onMainServerUnavailable,omitempty"`
 	// AdditionSource is the table an addition standing apart from it is of,
 	// named by its element. An addition a table holds names none: it is of
 	// that table. The prototype writes the kind of the addition beside it,
@@ -288,8 +298,9 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	type pending struct {
 		element ManagedFormElement
 		path    string
-		// held is an addition a table holds.
-		held bool
+		// held is an addition a table holds, and tooltip the extended tooltip
+		// of an element.
+		held, tooltip bool
 	}
 	stack := make([]pending, 0, len(value.Items))
 	for index := len(value.Items) - 1; index >= 0; index-- {
@@ -364,7 +375,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			issues = append(issues, current.path+".name must be a valid identifier of at most 255 characters")
 		}
 		folded := strings.ToLower(item.Name)
-		claim(current.path, item.Name, formElementClasses[item.Kind] == formAdditionClass)
+		claim(current.path, item.Name, formElementClasses[item.Kind] == formAdditionClass || current.tooltip)
 		issues = append(issues, validateTitle(current.path+".title", item.Title, configuration)...)
 		if item.TitleFormatted && formElementClasses[item.Kind] != formDecorationClass {
 			issues = append(issues, current.path+".title_formatted is allowed only for decorations")
@@ -482,6 +493,23 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			}
 			stack = append(stack, pending{element: *held.addition, path: place, held: true})
 		}
+		if tooltip := item.ExtendedTooltip; tooltip != nil {
+			if current.tooltip {
+				issues = append(issues, current.path+".extended_tooltip: an extended tooltip has none of its own")
+			}
+			if tooltip.Kind != FormElementLabelDecoration {
+				issues = append(issues, current.path+".extended_tooltip.kind must be label-decoration")
+			}
+			stack = append(stack, pending{element: *tooltip, path: current.path + ".extended_tooltip", tooltip: true})
+		}
+		if current.tooltip && item.ContextMenu != nil {
+			issues = append(issues, current.path+".context_menu: an extended tooltip has none")
+		}
+		if item.OnMainServerUnavailable != "" && class != formDecorationClass {
+			issues = append(issues, current.path+".on_main_server_unavailable is allowed only for decorations")
+		}
+		issues = append(issues, oneOf(current.path+".on_main_server_unavailable", item.OnMainServerUnavailable, FormServerUnavailableAuto,
+			FormServerUnavailableDontChange, FormServerUnavailableMakeDisable)...)
 		switch {
 		case class != formAdditionClass && item.AdditionSource != "":
 			issues = append(issues, current.path+".addition_source is allowed only for additions of a table")
@@ -490,7 +518,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			issues = append(issues, current.path+".addition_source must name the table an addition standing apart from it is of")
 		case item.AdditionSource != "" && (!validIdentifier(item.AdditionSource) || utf8.RuneCountInString(item.AdditionSource) > maxNameLength):
 			issues = append(issues, current.path+".addition_source must be the name of an element of the form")
-		case !current.held:
+		case item.AdditionSource != "" || !current.held:
 			sourced = append(sourced, current)
 		}
 	}
@@ -507,8 +535,15 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			issues = append(issues, button.path+".command names no element of the form")
 		}
 	}
+	// An addition standing apart names a table; one a table holds names, if
+	// anything, an element of the form - in sb the extended tooltip of
+	// another element (NoteHeldAdditionOfAnother).
 	for _, addition := range sourced {
-		if sources[strings.ToLower(addition.element.AdditionSource)] != FormElementTable {
+		source := addition.element.AdditionSource
+		switch {
+		case addition.held && !names[foldedName(source)]:
+			issues = append(issues, addition.path+".addition_source names no element of the form")
+		case !addition.held && sources[strings.ToLower(source)] != FormElementTable:
 			issues = append(issues, addition.path+".addition_source names no table of the form")
 		}
 	}
