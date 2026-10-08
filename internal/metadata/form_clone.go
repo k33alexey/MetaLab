@@ -34,6 +34,7 @@ func cloneRuntimeForm(value ManagedForm) ManagedForm {
 	result.AutoCommandBar = value.AutoCommandBar.clone()
 	result.Attributes = cloneFormAttributes(value.Attributes)
 	result.Parameters = cloneFormParameters(value.Parameters)
+	result.CommandInterface = value.CommandInterface.clone()
 	return result
 }
 
@@ -234,4 +235,18 @@ func cloneFormAttributeColumns(values []FormAttributeColumn) []FormAttributeColu
 		result[index] = value
 	}
 	return result
+}
+
+func (value *FormCommandInterface) clone() *FormCommandInterface {
+	if value == nil {
+		return nil
+	}
+	lines := func(values []FormInterfaceCommand) []FormInterfaceCommand {
+		result := slices.Clone(values)
+		for index := range result {
+			result[index].Visibility = result[index].Visibility.clone()
+		}
+		return result
+	}
+	return &FormCommandInterface{NavigationPanel: lines(value.NavigationPanel), CommandBar: lines(value.CommandBar)}
 }

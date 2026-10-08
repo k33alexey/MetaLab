@@ -56,6 +56,12 @@ var commandOwnerKinds = map[string]string{
 	"FilterCriterion": "FilterCriteria", "CommonForm": "",
 }
 
+// commandWritings is every way a command is written, for the message that
+// refuses another.
+const commandWritings = "Form.Command.<name>, Form.StandardCommand.<name>, " +
+	"Form.Item.<element>.StandardCommand.<name>, CommonCommand.<name>, <kind>.<object>.Command.<name>, " +
+	"<kind>.<object>.StandardCommand.<name> or the code of an element of a form"
+
 // parseButtonCommand reads the command of a button; false is something no
 // command is written as.
 func parseButtonCommand(value string) (buttonCommand, bool) {
@@ -171,24 +177,31 @@ func (catalog *Catalog) commandOwner(owner, object string) (map[string]bool, boo
 // there. What is not is a reference to nothing, as a common picture that is
 // gone is; the code of an element is noted.
 func (catalog *Catalog) resolveButtonCommand(where string, element ManagedFormElement) {
-	command, _ := parseButtonCommand(element.Command)
-	switch command.kind {
-	case elementCodeCommand:
-		catalog.noteForm(NoteFormReferenceAsWritten, where+" command", element.Command)
-	case commonCommand:
-		if !catalog.hasCommonCommandFolded(command.name) {
-			catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where + " command", Written: element.Command})
-		}
-	case objectCommand, objectStandardCommand:
-		names, ok := catalog.commandOwner(command.owner, command.object)
-		if !ok || command.kind == objectCommand && !names[strings.ToLower(command.name)] {
-			catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where + " command", Written: element.Command})
-		}
-	}
+	catalog.resolveCommandText(where+" command", element.Command)
 	if parameter := element.CommandParameter; parameter != nil && parameter.Object != "" {
 		object, byName := parseCommandObject(parameter.Object)
 		if _, ok := catalog.commandOwner(object.owner, object.object); !byName || !ok {
 			catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where + " command parameter", Written: parameter.Object})
+		}
+	}
+}
+
+// resolveCommandText checks a command written as a button writes one -
+// on a button or in the command interface of a form - against the
+// configuration.
+func (catalog *Catalog) resolveCommandText(where, text string) {
+	command, _ := parseButtonCommand(text)
+	switch command.kind {
+	case elementCodeCommand:
+		catalog.noteForm(NoteFormReferenceAsWritten, where, text)
+	case commonCommand:
+		if !catalog.hasCommonCommandFolded(command.name) {
+			catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where, Written: text})
+		}
+	case objectCommand, objectStandardCommand:
+		names, ok := catalog.commandOwner(command.owner, command.object)
+		if !ok || command.kind == objectCommand && !names[strings.ToLower(command.name)] {
+			catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where, Written: text})
 		}
 	}
 }

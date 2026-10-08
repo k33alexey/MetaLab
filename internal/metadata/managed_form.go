@@ -148,6 +148,9 @@ type ManagedForm struct {
 	Attributes     []FormAttribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 	// Parameters are the values the form is opened with.
 	Parameters []FormParameter `yaml:"parameters,omitempty" json:"parameters,omitempty"`
+	// CommandInterface is where the commands that are no element of the
+	// form stand on it - see FormCommandInterface.
+	CommandInterface *FormCommandInterface `yaml:"command_interface,omitempty" json:"commandInterface,omitempty"`
 }
 
 // ManagedFormElement is one stable node in a managed form tree. Hidden and
@@ -484,9 +487,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			}
 			switch command, ok := parseButtonCommand(item.Command); {
 			case !ok:
-				issues = append(issues, current.path+".command must be Form.Command.<name>, Form.StandardCommand.<name>, "+
-					"Form.Item.<element>.StandardCommand.<name>, CommonCommand.<name>, <kind>.<object>.Command.<name>, "+
-					"<kind>.<object>.StandardCommand.<name> or the code of an element of a form")
+				issues = append(issues, current.path+".command must be "+commandWritings)
 			case command.kind == formCommand && !commandNames[strings.ToLower(command.name)]:
 				issues = append(issues, current.path+".command names no command of the form")
 			case command.kind == elementStandardCommand:
@@ -618,6 +619,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			issues = append(issues, table.path+".dynamic_list.user_settings_group names no element of the form")
 		}
 	}
+	issues = append(issues, validateFormCommandInterface(value.CommandInterface, names, commandNames)...)
 	issues = append(issues, validateFormAttributes(value.Attributes, ids, configuration)...)
 	issues = append(issues, validateFormParameters(value.Parameters)...)
 	return issuesError(source, value.Format, issues)

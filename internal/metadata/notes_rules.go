@@ -69,6 +69,7 @@ const (
 	NoteEventByIdentifier          NoteKind = "event-by-identifier"
 	NoteFormEventNotRaised         NoteKind = "form-event-not-raised"
 	NoteAssociatedTableNotTable    NoteKind = "associated-table-not-table"
+	NoteRepeatedInterfaceCommand   NoteKind = "repeated-interface-command"
 )
 
 func init() {
@@ -274,6 +275,10 @@ func init() {
 			"Команда формы называет связанной таблицей элемент, который не таблица: поле ввода, кнопку, контекстное меню (5 команд " +
 				"выгрузок). Справка требует таблицу той же формы; по всей видимости, след удалённой или переименованной таблицы.",
 			"Ссылка несётся как записана; текущей строки у такой «таблицы» нет, и команда её не получает."},
+		NoteKindInfo{NoteRepeatedInterfaceCommand,
+			"Командный интерфейс формы повторяет в одной панели строку целиком: ту же команду с той же группой, местом, видимостью и " +
+				"источником параметра (59 раз в выгрузках, без счёта команд, записанных кодом). Покажет ли прототип команду дважды, не известно.",
+			"Строки несутся все, в записанном порядке; командный интерфейс формы строится в блоке 18, и там решается, сколько раз её показать."},
 	)
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
@@ -345,6 +350,9 @@ func init() {
 	}
 	noteRules[NoteAssociatedTableNotTable] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteAssociatedTableNotTable, note)
+	}
+	noteRules[NoteRepeatedInterfaceCommand] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NoteRepeatedInterfaceCommand, note)
 	}
 }
 
