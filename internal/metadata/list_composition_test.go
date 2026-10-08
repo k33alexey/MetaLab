@@ -204,7 +204,7 @@ func TestWhatTheSettingsOfADynamicListNameIsResolved(t *testing.T) {
 	listAttribute := func(settings string) string {
 		return "  - {id: c0de0000-0000-4000-8000-000000990020, name: Документы, types: [{kind: dynamic-list}], dynamic_list: {" + settings + "}}\n"
 	}
-	typed := "{left: {kind: field, data: Тип}, comparison: in-list, right: [{kind: predefined, data: Документ.Чек}, {kind: type, data: Undefined}]}"
+	typed := "{left: {kind: field, data: Тип}, comparison: in-list, right: [{kind: predefined, data: Документ.Поступление}, {kind: type, data: Undefined}]}"
 	for name, test := range map[string]struct {
 		settings, appearance string
 		gone, refused        string
@@ -256,6 +256,129 @@ func TestWhatTheSettingsOfADynamicListNameIsResolved(t *testing.T) {
 			sort.Strings(found)
 			if !reflect.DeepEqual(found, test.notes) {
 				t.Fatalf("notes = %q, want %q", found, test.notes)
+			}
+		})
+	}
+}
+
+// A value by name is looked for in the project as the platform looks for
+// it: the object by kind and name, then the value of an enumeration or the
+// predefined item of a catalog or a chart, or the empty reference of any of
+// them; two parts name the object alone. Names are compared whatever their
+// case, the kind is written in either language of the code.
+//
+// Defect caught: a value looked for among the items of another kind of
+// object, or of another object of the same kind; a value found only when
+// written in the case of its definition (erp writes Незапущен for
+// НеЗапущен); the empty reference taken for the name of an item; a value
+// of an object the project does not have, or one it keeps with no values
+// at all, taken for found.
+func TestAValueByNameIsFoundInTheProject(t *testing.T) {
+	t.Parallel()
+	catalog := &Catalog{
+		Enumerations: []Enumeration{{Name: "СтатусыБюджетов", Values: []EnumerationValue{{Name: "НеЗапущен"}, {Name: "Завершен"}}},
+			{Name: "СтатусыСделок"}},
+		Catalogs:                    []CatalogDefinition{{Name: "Организации", Predefined: []PredefinedCatalogItem{{Name: "Управленческая"}}}, {Name: "Склады"}},
+		ChartsOfCharacteristicTypes: []ChartOfCharacteristicTypesDefinition{{Name: "Настройки", Predefined: []PredefinedCharacteristic{{PredefinedCatalogItem: PredefinedCatalogItem{Name: "Подбор"}}}}},
+		ChartsOfAccounts:            []ChartOfAccountsDefinition{{Name: "Хозрасчетный", Predefined: []PredefinedAccount{{Name: "Депоненты"}}}},
+		ChartsOfCalculationTypes:    []ChartOfCalculationTypesDefinition{{Name: "Начисления", Predefined: []PredefinedCalculationType{{Name: "Оклад"}}}},
+		Documents:                   []DocumentDefinition{{Name: "ЧекККМ"}},
+		BusinessProcesses:           []BusinessProcessDefinition{{Name: "Задание"}},
+		Tasks:                       []TaskDefinition{{Name: "ЗадачаИсполнителя"}},
+	}
+	for value, want := range map[string]bool{
+		"Перечисление.СтатусыБюджетов.НеЗапущен":           true,
+		"Перечисление.СтатусыБюджетов.Незапущен":           true,
+		"перечисление.статусыбюджетов.завершен":            true,
+		"Enum.СтатусыБюджетов.Завершен":                    true,
+		"Перечисление.СтатусыБюджетов.ПустаяСсылка":        true,
+		"Перечисление.СтатусыБюджетов":                     true,
+		"Справочник.Организации.Управленческая":            true,
+		"Catalog.Организации.EmptyRef":                     true,
+		"Справочник.Склады.ПустаяСсылка":                   true,
+		"ПланВидовХарактеристик.Настройки.Подбор":          true,
+		"ПланСчетов.Хозрасчетный.Депоненты":                true,
+		"ПланВидовРасчета.Начисления.Оклад":                true,
+		"Документ.ЧекККМ":                                  true,
+		"Документ.ЧекККМ.ПустаяСсылка":                     true,
+		"БизнесПроцесс.Задание.ПустаяСсылка":               true,
+		"Задача.ЗадачаИсполнителя.ПустаяСсылка":            true,
+		"Перечисление.СтатусыБюджетов.Отменен":             false,
+		"Перечисление.СтатусыСделок.ВРаботе":               false,
+		"Перечисление.Удалено.Значение":                    false,
+		"Перечисление.Удалено":                             false,
+		"Перечисление.Организации.Управленческая":          false,
+		"Справочник.СтатусыБюджетов.Завершен":              false,
+		"Справочник.Склады.Управленческая":                 false,
+		"ПланСчетов.Хозрасчетный.Оклад":                    false,
+		"ПланВидовРасчета.Начисления.Депоненты":            false,
+		"ПланВидовХарактеристик.Настройки.Управленческая":  false,
+		"Документ.Удалено":                                 false,
+		"Документ.Удалено.ПустаяСсылка":                    false,
+		"Задача.ЗадачаИсполнителя.Первая":                  false,
+		"Константа.ОсновнойСклад.ПустаяСсылка":             false,
+		"ПланОбмена.Филиалы.ПустаяСсылка":                  false,
+		"БизнесПроцесс.Задание.ТочкаМаршрута.Утверждение":  false,
+		"Справочник.Организации.Управленческая.Лишнее.Ещё": false,
+	} {
+		if got := catalog.hasPredefinedValue(value); got != want {
+			t.Errorf("%s: found = %t, want %t", value, got, want)
+		}
+	}
+}
+
+// A value by name the project does not have, in the conditional appearance
+// of a form and in the filter and appearance of a dynamic list, is a
+// remnant of what was deleted (2.203), named where it stands; one the
+// project has loads clean.
+//
+// Defect caught: a value of a deleted enumeration, or a deleted value of
+// one, loading clean though it compares with nothing; the values of a
+// filter or of the appearance of a list left unresolved, or those nested in
+// a group of a filter.
+func TestAValueByNameTheProjectDoesNotHaveIsARemnant(t *testing.T) {
+	t.Parallel()
+	visible := "appearance: [{parameter: visible, value: {kind: boolean, data: \"false\"}}]"
+	compare := func(value string) string {
+		return "{left: {kind: field, data: Вид}, comparison: equal, right: [{kind: predefined, data: " + value + "}]}"
+	}
+	list := func(settings string) string {
+		return "  - {id: c0de0000-0000-4000-8000-000000990020, name: Документы, types: [{kind: dynamic-list}], dynamic_list: {" + settings + "}}\n"
+	}
+	const at = "catalog Номенклатура form ФормаЭлемента "
+	for name, test := range map[string]struct{ attributes, appearance, gone, written string }{
+		"всё на месте": {attributes: list("filter: {items: [" + compare("Перечисление.ВидыТоваров.Товар") + ", " + compare("Документ.Поступление") + "]}, " +
+			"conditional_appearance: {items: [{filter: [" + compare("Справочник.Склады.ПустаяСсылка") + "], " + visible + "}]}"),
+			appearance: "  - {filter: [" + compare("Задача.Задача.ПустаяСсылка") + "], " + visible + "}\n"},
+		"значения нет в оформлении формы": {appearance: "  - {filter: [" + compare("Перечисление.ВидыТоваров.Товар") + "], " + visible + "}\n  - {filter: [" + compare("Перечисление.ВидыТоваров.Услуга") + "], " + visible + "}\n",
+			gone: at + "conditional appearance [1].filter[0].right[0]", written: "Перечисление.ВидыТоваров.Услуга"},
+		"перечисления нет в отборе списка": {attributes: list("filter: {items: [{group: and, items: [" + compare("Перечисление.Удалено.Товар") + "]}]}"),
+			gone: at + "attribute Документы dynamic_list filter items[0].items[0].right[0]", written: "Перечисление.Удалено.Товар"},
+		"документа нет в оформлении списка": {attributes: list("conditional_appearance: {items: [{filter: [" + compare("Документ.Удалено") + "], " + visible + "}]}"),
+			gone: at + "attribute Документы dynamic_list conditional_appearance items[0].filter[0].right[0]", written: "Документ.Удалено"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := formReferencesProject(t)
+			path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := string(content) + test.attributes
+			if test.appearance != "" {
+				body += "conditional_appearance:\n" + test.appearance
+			}
+			writeFile(t, path, body)
+			if test.gone == "" {
+				if _, err := Load(root); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			found := unresolvedOf(t, root)
+			if len(found) != 1 || found[0].Where != test.gone || found[0].Written != test.written {
+				t.Fatalf("unresolved = %+v", found)
 			}
 		})
 	}

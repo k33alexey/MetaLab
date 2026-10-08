@@ -203,7 +203,8 @@ func fieldsNeverSet(root reflect.Value) []string {
 // that compares, a comparison that groups, a comparison with nothing on the
 // left or no kind of comparison; a presentation of an item or a filter item
 // that is no text; a field that is no name; a value by name of one part or
-// four; a wrong value on the right taken, for having no path or no data,
+// four, of a kind of object the help gives no value by name, or naming an
+// item of a document; a wrong value on the right taken, for having no path or no data,
 // for a field not chosen; several values compared by a comparison that is not with a list, or
 // a wrong one past the first; a type that is no name, a type of account or
 // a view mode not in the help; a user setting with a zero identifier or a
@@ -247,6 +248,10 @@ func TestAConditionalAppearanceRefusesWhatIsWrong(t *testing.T) {
 			"filter[0].right[0].data must name the value as kind, object and item"},
 		"предопределённое из четырёх": {compare("{left: {kind: field, data: Вид}, comparison: equal, right: [{kind: predefined, data: Перечисление.Виды.Опт.Лишнее}]}"),
 			"filter[0].right[0].data must name the value as kind, object and item"},
+		"предопределённое чужого вида": {compare("{left: {kind: field, data: Вид}, comparison: equal, right: [{kind: predefined, data: Константа.Склад.ПустаяСсылка}]}"),
+			"filter[0].right[0].data must name the value as kind, object and item"},
+		"элемент документа": {compare("{left: {kind: field, data: Вид}, comparison: equal, right: [{kind: predefined, data: Документ.Чек.Первый}]}"),
+			"a document, a business process and a task have the empty reference alone"},
 		"два значения не списку": {compare("{left: {kind: field, data: Вид}, comparison: equal, right: [{kind: boolean, data: \"true\"}, {kind: boolean, data: \"false\"}]}"),
 			"filter[0].right holds one value: only a comparison with a list takes several"},
 		"второе значение списка": {compare("{left: {kind: field, data: Вид}, comparison: not-in-list-by-hierarchy, right: [{kind: boolean, data: \"true\"}, {kind: number, data: x}]}"),

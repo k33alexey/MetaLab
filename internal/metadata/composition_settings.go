@@ -53,8 +53,8 @@ const (
 	// with two parts, "Документ.ЧекККМ", it names an object, and the value is
 	// the type of its reference: the settings of dynamic lists compare a type
 	// of a row with it (26 values, each compared with the field Тип or
-	// ТипДокумента). It is resolved against the project by name (a point of
-	// block 2ф).
+	// ТипДокумента). It is resolved against the project by name
+	// (hasPredefinedValue).
 	CompositionPredefined CompositionValueKind = "predefined"
 	// CompositionType is a type, Data its name as the prototype writes it in
 	// the namespace of the types of the configuration. The exports write one
@@ -159,8 +159,8 @@ func validateCompositionValue(path string, value CompositionValue, allowed []Com
 		issues = append(issues, validateTitle(path+".text", value.Text, project.Project{})...)
 	case CompositionPredefined:
 		data = true
-		if !predefinedValueName(value.Data) {
-			issues = append(issues, path+".data must name the value as kind, object and item, as Перечисление.СтавкиНДС.НДС0, or an object as kind and object, as Документ.ЧекККМ")
+		if _, _, ok := parsePredefinedValue(value.Data); !ok {
+			issues = append(issues, path+".data must name the value as kind, object and item, as Перечисление.СтавкиНДС.НДС0, or an object as kind and object, as Документ.ЧекККМ; a document, a business process and a task have the empty reference alone")
 		}
 	case CompositionType:
 		data = true
@@ -218,20 +218,91 @@ func containsKind(list []CompositionValueKind, kind CompositionValueKind) bool {
 	return false
 }
 
-// predefinedValueName is the shape of a value by name: the kind of the
-// object, the object and the item, each a name; or the kind and the object
-// alone.
-func predefinedValueName(value string) bool {
+// predefinedValueKind is a kind of object a value by name is written of
+// (help, PredefinedValue): its name in either language of the code, the
+// collection of the catalog it is found in, and whether a value of it is an
+// item - a value of an enumeration, a predefined item - or an empty
+// reference only, which a document, a business process and a task have and
+// nothing else.
+type predefinedValueKind struct {
+	russian, english, collection string
+	items                        bool
+}
+
+var predefinedValueKinds = []predefinedValueKind{
+	{"Перечисление", "Enum", "Enumerations", true},
+	{"Справочник", "Catalog", "Catalogs", true},
+	{"ПланВидовХарактеристик", "ChartOfCharacteristicTypes", "ChartsOfCharacteristicTypes", true},
+	{"ПланСчетов", "ChartOfAccounts", "ChartsOfAccounts", true},
+	{"ПланВидовРасчета", "ChartOfCalculationTypes", "ChartsOfCalculationTypes", true},
+	{"Документ", "Document", "Documents", false},
+	{"БизнесПроцесс", "BusinessProcess", "BusinessProcesses", false},
+	{"Задача", "Task", "Tasks", false},
+}
+
+// isEmptyReferenceName says a value by name is the empty reference of its
+// object.
+func isEmptyReferenceName(name string) bool {
+	return strings.EqualFold(name, "ПустаяСсылка") || strings.EqualFold(name, "EmptyRef")
+}
+
+// parsePredefinedValue reads a value by name: the kind of the object, the
+// object and the item, each a name; or the kind and the object alone, the
+// type of a reference. The kind is one the help names, and an object that
+// has no items has the empty reference alone. A point of a route of a
+// business process, which the help writes with four parts, no export writes,
+// and it is not carried.
+func parsePredefinedValue(value string) (predefinedValueKind, []string, bool) {
 	parts := strings.Split(value, ".")
 	if len(parts) != 2 && len(parts) != 3 {
-		return false
+		return predefinedValueKind{}, nil, false
 	}
 	for _, part := range parts {
 		if !validIdentifier(part) || utf8.RuneCountInString(part) > maxNameLength {
-			return false
+			return predefinedValueKind{}, nil, false
 		}
 	}
-	return true
+	for _, kind := range predefinedValueKinds {
+		if strings.EqualFold(parts[0], kind.russian) || strings.EqualFold(parts[0], kind.english) {
+			if len(parts) == 3 && !kind.items && !isEmptyReferenceName(parts[2]) {
+				return predefinedValueKind{}, nil, false
+			}
+			return kind, parts, true
+		}
+	}
+	return predefinedValueKind{}, nil, false
+}
+
+// hasPredefinedValue answers whether the project has what a value by name
+// names: the object, and its value or predefined item, or its empty
+// reference. Names are compared as the platform compares them, whatever
+// their case: erp writes Незапущен for the value НеЗапущен.
+func (catalog *Catalog) hasPredefinedValue(value string) bool {
+	kind, parts, ok := parsePredefinedValue(value)
+	if !ok {
+		return false
+	}
+	list := reflect.ValueOf(catalog).Elem().FieldByName(kind.collection)
+	for index := range list.Len() {
+		definition := list.Index(index)
+		if !strings.EqualFold(definition.FieldByName("Name").String(), parts[1]) {
+			continue
+		}
+		if len(parts) == 2 || isEmptyReferenceName(parts[2]) {
+			return true
+		}
+		items := definition.FieldByName("Predefined")
+		if kind.collection == "Enumerations" {
+			items = definition.FieldByName("Values")
+		}
+		for position := range items.Len() {
+			if strings.EqualFold(items.Index(position).FieldByName("Name").String(), parts[2]) {
+				return true
+			}
+		}
+		return false
+	}
+	return false
 }
 
 // CompositionComparison is how a filter item compares (help,
@@ -502,6 +573,7 @@ func (catalog *Catalog) resolveConditionalAppearance(where string, form ManagedF
 		return err
 	}
 	catalog.noteCompositionTypes(where+" conditional appearance", form.ConditionalAppearance)
+	catalog.resolvePredefinedValues(where+" conditional appearance", form.ConditionalAppearance)
 	names := map[string]bool{}
 	var walk func(items []ManagedFormElement)
 	walk = func(items []ManagedFormElement) {
@@ -662,9 +734,9 @@ func validateCompositionGroups(path string, groups []CompositionGroup) []string 
 	return issues
 }
 
-// compositionTypesIn names the places of the values of kind type in the
-// settings the walk hands out, each with its name.
-func compositionTypesIn(root any) map[string]string {
+// compositionValuesIn names the places of the values of a kind in the
+// settings, each with its data.
+func compositionValuesIn(root any, kind CompositionValueKind) map[string]string {
 	found := map[string]string{}
 	var walk func(path string, current reflect.Value)
 	walk = func(path string, current reflect.Value) {
@@ -679,7 +751,7 @@ func compositionTypesIn(root any) map[string]string {
 			}
 		case reflect.Struct:
 			if value, ok := current.Interface().(CompositionValue); ok {
-				if value.Kind == CompositionType {
+				if value.Kind == kind {
 					found[path] = value.Data
 				}
 				return
@@ -711,13 +783,31 @@ func (catalog *Catalog) resolveListComposition(where string, list DynamicListSet
 	}
 	catalog.noteCompositionTypes(where+" filter", list.Filter)
 	catalog.noteCompositionTypes(where+" conditional_appearance", list.ConditionalAppearance)
+	catalog.resolvePredefinedValues(where+" filter", list.Filter)
+	catalog.resolvePredefinedValues(where+" conditional_appearance", list.ConditionalAppearance)
 	return nil
+}
+
+// resolvePredefinedValues checks each value by name in the settings against
+// the project. One the project does not have - an enumeration, a value of
+// it, a predefined item deleted with the settings left behind - is a
+// remnant, as a reference to a deleted object is (2.203): 101 of the 1032
+// values of the exports, 39 of them of an enumeration that is gone, 52 of
+// one a configuration keeps with no values at all, 10 a value or item
+// deleted from an object that has others.
+func (catalog *Catalog) resolvePredefinedValues(where string, settings any) {
+	found := compositionValuesIn(settings, CompositionPredefined)
+	for _, path := range slices.Sorted(maps.Keys(found)) {
+		if !catalog.hasPredefinedValue(found[path]) {
+			catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where + " " + path, Written: found[path]})
+		}
+	}
 }
 
 // noteCompositionTypes notes each value of kind type in the settings: what
 // the one name the exports write stands for is not known.
 func (catalog *Catalog) noteCompositionTypes(where string, settings any) {
-	found := compositionTypesIn(settings)
+	found := compositionValuesIn(settings, CompositionType)
 	paths := slices.Sorted(maps.Keys(found))
 	for _, path := range paths {
 		catalog.noteForm(NoteCompositionTypeUnexplained, where+" "+path, found[path])
