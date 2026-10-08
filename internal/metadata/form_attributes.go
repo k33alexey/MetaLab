@@ -67,6 +67,9 @@ type FormAttribute struct {
 	// ValueType is the type of the items of a value list, which the platform
 	// checks every item added against (1144 value lists set one).
 	ValueType []Type `yaml:"value_type,omitempty" json:"valueType,omitempty"`
+	// Chart is the content a chart is made with in the designer - see
+	// ChartContent.
+	Chart *ChartContent `yaml:"chart,omitempty" json:"chart,omitempty"`
 }
 
 // DynamicListKeyType is how a row of a dynamic list is told apart (help,
@@ -195,6 +198,12 @@ func validateFormAttributes(attributes []FormAttribute, ids map[uuid.UUID]bool, 
 				issues = append(issues, path+".value_type belongs to a value list")
 			}
 			issues = append(issues, validateTypesIn(path+".value_type", attribute.ValueType, placeFormAttribute)...)
+		}
+		if attribute.Chart != nil {
+			if single, ok := SingleType(attribute.Types); !ok || single.Kind != ChartType {
+				issues = append(issues, path+".chart belongs to an attribute that is a chart")
+			}
+			issues = append(issues, validateChartContent(path+".chart", attribute.Chart)...)
 		}
 		issues = append(issues, validateFormColumns(path+".columns", attribute.Columns, ids, configuration)...)
 		tables := map[string]bool{}

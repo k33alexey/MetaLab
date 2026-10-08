@@ -186,15 +186,8 @@ func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElem
 				}
 			}
 		}
-		for _, use := range append(item.FieldLook.styleItems(), item.FieldColumn.styleItems()...) {
-			index, ok := catalog.styleItemByID[use.id]
-			if !ok {
-				catalog.noteUnresolved(where+" "+use.name, use.id)
-				continue
-			}
-			if found := catalog.StyleItems[index]; found.Type != use.itemType {
-				return fmt.Errorf("%s %s takes its value from style item %s, which is a %s and not a %s", where, use.name, found.Name, found.Type, use.itemType)
-			}
+		if err := catalog.resolveStyleItems(where, append(item.FieldLook.styleItems(), item.FieldColumn.styleItems()...)); err != nil {
+			return err
 		}
 		if form := item.ChoiceForm; form != nil && form.Object != nil {
 			if _, ok := catalog.objectKindByID[*form.Object]; !ok {
@@ -255,6 +248,23 @@ func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElem
 	return nil
 }
 
+// resolveStyleItems checks that the style items a part of a form takes its
+// values from are there and are of the type the value is: one that is gone
+// is a reference to nothing, one of another type is refused.
+func (catalog *Catalog) resolveStyleItems(where string, uses []styleItemUse) error {
+	for _, use := range uses {
+		index, ok := catalog.styleItemByID[use.id]
+		if !ok {
+			catalog.noteUnresolved(where+" "+use.name, use.id)
+			continue
+		}
+		if found := catalog.StyleItems[index]; found.Type != use.itemType {
+			return fmt.Errorf("%s %s takes its value from style item %s, which is a %s and not a %s", where, use.name, found.Name, found.Type, use.itemType)
+		}
+	}
+	return nil
+}
+
 // resolveFormAttributes checks the references of the attributes of one form.
 func (catalog *Catalog) resolveFormAttributes(form string, attributes []FormAttribute) error {
 	for _, attribute := range attributes {
@@ -266,6 +276,20 @@ func (catalog *Catalog) resolveFormAttributes(form string, attributes []FormAttr
 		if len(attribute.ValueType) != 0 {
 			if err := catalog.resolveFormData(where+" value type", attribute.ValueType, nil); err != nil {
 				return err
+			}
+		}
+		if chart := attribute.Chart; chart != nil {
+			if err := catalog.resolveStyleItems(where+" chart", chart.styleItems()); err != nil {
+				return err
+			}
+			if !chart.State.IsEmpty() {
+				catalog.noteForm(NoteChartStateUnexplained, where+" chart", chart.State.fields())
+			}
+			if len(chart.Values) != 0 {
+				catalog.noteForm(NoteChartValuesOrder, where+" chart", fmt.Sprintf("%d series × %d points", chart.SeriesCount, chart.PointCount))
+			}
+			for _, path := range chart.anyLanguageTexts() {
+				catalog.noteForm(NoteChartTextAnyLanguage, where+" chart "+path, chartAnyLanguage)
 			}
 		}
 		if list := attribute.DynamicList; list != nil && list.MainTable != nil {

@@ -254,6 +254,18 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		writeCommonForm(t, root, "Файл", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Файл\ntitle: {ru: Файл}\nkind: common\n"+
 			"command_interface:\n  command_bar:\n    - {command: Form.StandardCommand.Close}\n    - {command: Form.StandardCommand.Close}\n")
 	},
+	NoteChartStateUnexplained: func(t *testing.T, root string) {
+		writeCommonForm(t, root, "Продажи", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Продажи\ntitle: {ru: Продажи}\nkind: common\n"+
+			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Диаграмма, types: [{kind: chart}], chart: {type: pie, active_series: -1, state: {chart_initialized: true}}}\n")
+	},
+	NoteChartValuesOrder: func(t *testing.T, root string) {
+		writeCommonForm(t, root, "Продажи", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Продажи\ntitle: {ru: Продажи}\nkind: common\n"+
+			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Диаграмма, types: [{kind: chart}], chart: {type: line, active_series: -1, series_count: 1, point_count: 1, values: [{value: \"1\"}]}}\n")
+	},
+	NoteChartTextAnyLanguage: func(t *testing.T, root string) {
+		writeCommonForm(t, root, "Продажи", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Продажи\ntitle: {ru: Продажи}\nkind: common\n"+
+			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Диаграмма, types: [{kind: chart}], chart: {type: pie, active_series: -1, title_area: {text: {\"#\": Продажи}}}}\n")
+	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")

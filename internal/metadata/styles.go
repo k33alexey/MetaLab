@@ -424,8 +424,12 @@ func validateFontValue(path string, value FontValue) []string {
 	default:
 		return []string{path + ".source must be absolute, system, auto or style"}
 	}
-	if value.Source != AbsoluteFont && value.Source != SystemFont && value.Face != "" {
-		issues = append(issues, path+".face belongs to a font named by its face only")
+	// A font taken from a style item may change its face, as it changes its
+	// size (help, the constructor of a font on the basis of another; a chart
+	// of the exports takes TextFont in Roboto, 4 times). An automatic font
+	// has nothing to change.
+	if value.Source == AutoFont && value.Face != "" {
+		issues = append(issues, path+".face belongs to a font named by its face or based on a style item")
 	}
 	if value.Source != StyleFont && value.From != nil {
 		issues = append(issues, path+".from belongs to a font taken from a style item only")

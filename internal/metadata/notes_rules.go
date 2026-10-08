@@ -70,6 +70,9 @@ const (
 	NoteFormEventNotRaised         NoteKind = "form-event-not-raised"
 	NoteAssociatedTableNotTable    NoteKind = "associated-table-not-table"
 	NoteRepeatedInterfaceCommand   NoteKind = "repeated-interface-command"
+	NoteChartStateUnexplained      NoteKind = "chart-state-unexplained"
+	NoteChartValuesOrder           NoteKind = "chart-values-order"
+	NoteChartTextAnyLanguage       NoteKind = "chart-text-any-language"
 )
 
 func init() {
@@ -279,6 +282,19 @@ func init() {
 			"Командный интерфейс формы повторяет в одной панели строку целиком: ту же команду с той же группой, местом, видимостью и " +
 				"источником параметра (59 раз в выгрузках, без счёта команд, записанных кодом). Покажет ли прототип команду дважды, не известно.",
 			"Строки несутся все, в записанном порядке; командный интерфейс формы строится в блоке 18, и там решается, сколько раз её показать."},
+		NoteKindInfo{NoteChartStateUnexplained,
+			"Содержимое диаграммы несёт значения, которых справка не называет нигде: время перестроения, признаки инициализации областей, " +
+				"случайные новые значения, транспонирование, связи многоуровневой диаграммы и другие — собственное состояние объекта у прототипа " +
+				"(у всех 31 диаграммы выгрузок).",
+			"Значения несутся как записаны, в отдельной части содержимого; диаграмма их не исполняет."},
+		NoteKindInfo{NoteChartValuesOrder,
+			"Значения диаграммы записаны одним списком на все серии и точки, и по выгрузкам не видно, идёт ли список по сериям или по точкам: " +
+				"во всех девяти диаграммах с значениями они придуманы конструктором. Порядок устанавливается прогоном на платформе.",
+			"Значения несутся в записанном порядке; диаграмма рисуется только после того, как порядок установлен."},
+		NoteKindInfo{NoteChartTextAnyLanguage,
+			"Текст диаграммы записан на «языке» «#», которого нет среди языков конфигурации: имя сводной серии, форматы подписей (23 текста " +
+				"выгрузок). Что прототип под ним понимает, справка не говорит.",
+			"Текст несётся как записан, под тем же ключом."},
 	)
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
@@ -353,6 +369,15 @@ func init() {
 	}
 	noteRules[NoteRepeatedInterfaceCommand] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteRepeatedInterfaceCommand, note)
+	}
+	noteRules[NoteChartStateUnexplained] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NoteChartStateUnexplained, note)
+	}
+	noteRules[NoteChartValuesOrder] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NoteChartValuesOrder, note)
+	}
+	noteRules[NoteChartTextAnyLanguage] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NoteChartTextAnyLanguage, note)
 	}
 }
 

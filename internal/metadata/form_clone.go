@@ -211,6 +211,7 @@ func cloneFormAttributes(values []FormAttribute) []FormAttribute {
 			}
 			value.AdditionalColumns = additional
 		}
+		value.Chart = value.Chart.clone()
 		if value.DynamicList != nil {
 			list := *value.DynamicList
 			list.MainTable = clonePointer(list.MainTable)
