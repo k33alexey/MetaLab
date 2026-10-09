@@ -865,12 +865,21 @@ type FieldTextInput struct {
 	SpellChecking        FormTextInputUse         `yaml:"spell_checking,omitempty" json:"spellChecking,omitempty"`
 	AutoCorrection       FormTextInputUse         `yaml:"auto_correction,omitempty" json:"autoCorrection,omitempty"`
 	HeightControlVariant FormHeightControlVariant `yaml:"height_control_variant,omitempty" json:"heightControlVariant,omitempty"`
+	// MultipleValuesExtendedEdit types several values straight into the field
+	// rather than in the dialog of a list of values (help, since 8.3.23). The
+	// help gives it true by default, but the prototype writes it - as
+	// ExtendedEditMultipleValues - only as true and only on some fields: 600
+	// input fields of 15 450 in lombard1, side by side with fields without it
+	// in 54 forms, and neither the designer nor EDT ever writes false. What
+	// it leaves out is therefore off, the behaviour of a field made before
+	// 8.3.23.
+	MultipleValuesExtendedEdit bool `yaml:"multiple_values_extended_edit,omitempty" json:"multipleValuesExtendedEdit,omitempty"`
 }
 
 func (input FieldTextInput) empty() bool {
 	return !input.NoWrap && !input.NoTextEdit && input.MultiLine == nil && input.ExtendedEdit == nil && input.PasswordMode == nil &&
 		input.Mask == "" && len(input.InputHint) == 0 && input.EditTextUpdate == "" && input.SpecialTextInputMode == "" &&
-		input.SpellChecking == "" && input.AutoCorrection == "" && input.HeightControlVariant == ""
+		input.SpellChecking == "" && input.AutoCorrection == "" && input.HeightControlVariant == "" && !input.MultipleValuesExtendedEdit
 }
 
 func validateFieldTextInput(path string, input FieldTextInput, kind FormElementKind, configuration project.Project) []string {
@@ -1607,7 +1616,22 @@ type FieldOther struct {
 	Step        FormNumber `yaml:"step,omitempty" json:"step,omitempty"`
 	LargeStep   FormNumber `yaml:"large_step,omitempty" json:"largeStep,omitempty"`
 	MarkingStep FormNumber `yaml:"marking_step,omitempty" json:"markingStep,omitempty"`
+	// MarkingAppearance is on which side of a track bar its marks are drawn
+	// (help, TrackBarMarkingAppearance). The help names no default, and the
+	// prototype leaves it out on 8 track bars of 17, so empty is not said.
+	MarkingAppearance FormMarkingAppearance `yaml:"marking_appearance,omitempty" json:"markingAppearance,omitempty"`
 }
+
+// FormMarkingAppearance is on which side of a track bar its marks are drawn
+// (help, TrackBarMarkingAppearance).
+type FormMarkingAppearance string
+
+const (
+	FormMarkingDontShow    FormMarkingAppearance = "dont-show"
+	FormMarkingTopLeft     FormMarkingAppearance = "top-left"
+	FormMarkingBottomRight FormMarkingAppearance = "bottom-right"
+	FormMarkingBothSides   FormMarkingAppearance = "both-sides"
+)
 
 func validateFieldOther(path string, other FieldOther, kind FormElementKind) []string {
 	var issues []string
@@ -1624,6 +1648,7 @@ func validateFieldOther(path string, other FieldOther, kind FormElementKind) []s
 	only("step", other.Step != "", "track bar fields", FormElementTrackBarField)
 	only("large_step", other.LargeStep != "", "track bar fields", FormElementTrackBarField)
 	only("marking_step", other.MarkingStep != "", "track bar fields", FormElementTrackBarField)
+	only("marking_appearance", other.MarkingAppearance != "", "track bar fields", FormElementTrackBarField)
 	for _, months := range []struct {
 		name  string
 		value *int
@@ -1634,6 +1659,8 @@ func validateFieldOther(path string, other FieldOther, kind FormElementKind) []s
 	}
 	issues = append(issues, oneOfKind(path+".selection_mode", other.SelectionMode, kind, formSelectionModes)...)
 	issues = append(issues, oneOfKind(path+".representation", other.Representation, kind, formRepresentations)...)
+	issues = append(issues, oneOf(path+".marking_appearance", other.MarkingAppearance,
+		FormMarkingDontShow, FormMarkingTopLeft, FormMarkingBottomRight, FormMarkingBothSides)...)
 	for _, step := range []struct {
 		name  string
 		value FormNumber

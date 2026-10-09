@@ -1025,14 +1025,15 @@ func TestThePictureOfAChoiceButtonIsResolved(t *testing.T) {
 // written false read as not said; a mask losing its spaces; the hint, the
 // keyboard of a mobile client or the mode of updating the text lost or read
 // into a neighbour; the password mode of a label field refused, so that the
-// form is not moved.
+// form is not moved; the extended edit of multiple values (lombard1, 600
+// times) lost, so that the field falls back to the dialog of a list.
 func TestAnInputFieldKeepsHowTextIsTyped(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
 	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, no_wrap: true, no_text_edit: true," +
 		" multi_line: false, extended_edit: true, password_mode: false, mask: \"99 99\", input_hint: {ru: Введите код}," +
 		" edit_text_update: on-value-change, special_text_input_mode: phone-number, spell_checking: dont-use, auto_correction: use," +
-		" height_control_variant: use-content-height}\n" +
+		" height_control_variant: use-content-height, multiple_values_extended_edit: true}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Пароль, kind: label-field, password_mode: true}\n"
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
 	if err != nil {
@@ -1056,6 +1057,8 @@ func TestAnInputFieldKeepsHowTextIsTyped(t *testing.T) {
 		t.Fatalf("checking: %q %q", input.SpellChecking, input.AutoCorrection)
 	case input.HeightControlVariant != FormHeightControlUseContentHeight:
 		t.Fatalf("height: %q", input.HeightControlVariant)
+	case !input.MultipleValuesExtendedEdit:
+		t.Fatalf("multiple values: %+v", input)
 	case form.Items[1].PasswordMode == nil || !*form.Items[1].PasswordMode:
 		t.Fatalf("label field: %+v", form.Items[1].FieldTextInput)
 	}
@@ -1090,15 +1093,17 @@ func TestAnInputFieldRefusesWrongTextInput(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
 	for name, test := range map[string]struct{ element, want string }{
-		"маска поля надписи": {"kind: label-field, password_mode: true, mask: \"999\"", "items[0] has the text input of an input field"},
-		"пароль флажка":      {"kind: check-box-field, password_mode: true", "items[0] has the text input of an input field"},
-		"подсказка группы":   {"kind: usual-group, input_hint: {ru: Код}", "items[0] has the text input of an input field"},
-		"обновление текста":  {"kind: input-field, edit_text_update: OnValueChange", "items[0].edit_text_update must be auto, always, on-value-change or dont-use"},
-		"клавиатура":         {"kind: input-field, special_text_input_mode: phone", "items[0].special_text_input_mode must be auto, none, digits, digits-and-punctuation, email, phone-number or url"},
-		"орфография":         {"kind: input-field, spell_checking: never", "items[0].spell_checking must be auto, use or dont-use"},
-		"автоисправление":    {"kind: input-field, auto_correction: never", "items[0].auto_correction must be auto, use or dont-use"},
-		"высота":             {"kind: input-field, height_control_variant: rows", "items[0].height_control_variant must be auto, use-content-height or use-height-in-form-rows"},
-		"подсказка без слов": {"kind: input-field, input_hint: {ru: \"\\x01\"}", "items[0].input_hint.ru must say something in printable characters"},
+		"маска поля надписи":         {"kind: label-field, password_mode: true, mask: \"999\"", "items[0] has the text input of an input field"},
+		"пароль флажка":              {"kind: check-box-field, password_mode: true", "items[0] has the text input of an input field"},
+		"подсказка группы":           {"kind: usual-group, input_hint: {ru: Код}", "items[0] has the text input of an input field"},
+		"несколько значений надписи": {"kind: label-field, multiple_values_extended_edit: true", "items[0] has the text input of an input field"},
+		"несколько значений таблицы": {"kind: table, multiple_values_extended_edit: true", "items[0] has the text input of an input field"},
+		"обновление текста":          {"kind: input-field, edit_text_update: OnValueChange", "items[0].edit_text_update must be auto, always, on-value-change or dont-use"},
+		"клавиатура":                 {"kind: input-field, special_text_input_mode: phone", "items[0].special_text_input_mode must be auto, none, digits, digits-and-punctuation, email, phone-number or url"},
+		"орфография":                 {"kind: input-field, spell_checking: never", "items[0].spell_checking must be auto, use or dont-use"},
+		"автоисправление":            {"kind: input-field, auto_correction: never", "items[0].auto_correction must be auto, use or dont-use"},
+		"высота":                     {"kind: input-field, height_control_variant: rows", "items[0].height_control_variant must be auto, use-content-height or use-height-in-form-rows"},
+		"подсказка без слов":         {"kind: input-field, input_hint: {ru: \"\\x01\"}", "items[0].input_hint.ru must say something in printable characters"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -1124,7 +1129,7 @@ func TestEveryPropertyOfTextInputStandsOnlyOnAnInputField(t *testing.T) {
 	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, no_wrap: true, no_text_edit: true," +
 		" multi_line: false, extended_edit: false, password_mode: false, mask: \"9\", input_hint: {ru: Код}," +
 		" edit_text_update: auto, special_text_input_mode: auto, spell_checking: auto, auto_correction: auto," +
-		" height_control_variant: auto}\n" +
+		" height_control_variant: auto, multiple_values_extended_edit: true}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Флажок, kind: check-box-field}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Надпись, kind: label-field}\n"
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
@@ -2337,15 +2342,16 @@ func TestEachPropertyOfADocumentStandsOnItsFields(t *testing.T) {
 // Defect caught: a calendar sized by zero months - the width of the field
 // instead (12 times) - read as not said and drawn one month wide; the current
 // date turned off read as not said; the mode of selecting dates, the percent
-// or the drawing of a progress bar, or a step of a track bar lost or read
-// into a neighbour.
+// or the drawing of a progress bar, or a step of a track bar or the side its
+// marks are drawn on (lombard1, 9 times) lost or read into a neighbour.
 func TestTheOtherFieldsKeepWhatTheyHave(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
 	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Календарь, kind: calendar-field, show_current_date: false," +
 		" width_in_months: 0, height_in_months: 2, show_months_panel: true, selection_mode: interval, enable_drag: true}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Ход, kind: progress-bar-field, show_percent: true, representation: broken-tilt, max_value: 99}\n" +
-		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Бегунок, kind: track-bar-field, step: 5, large_step: 10, marking_step: 0.5, min_value: 1}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Бегунок, kind: track-bar-field, step: 5, large_step: 10, marking_step: 0.5, min_value: 1," +
+		" marking_appearance: both-sides}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Схема, kind: graphical-schema-field, edit: false, output: disable}\n"
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
 	if err != nil {
@@ -2355,6 +2361,7 @@ func TestTheOtherFieldsKeepWhatTheyHave(t *testing.T) {
 	merged := calendar
 	merged.ShowPercent, merged.Representation = bar.ShowPercent, bar.Representation
 	merged.Step, merged.LargeStep, merged.MarkingStep = track.Step, track.LargeStep, track.MarkingStep
+	merged.MarkingAppearance = track.MarkingAppearance
 	value := reflect.ValueOf(merged)
 	for index := range value.NumField() {
 		if value.Field(index).IsZero() {
@@ -2368,7 +2375,8 @@ func TestTheOtherFieldsKeepWhatTheyHave(t *testing.T) {
 		t.Fatalf("calendar modes: %+v", calendar)
 	case !bar.ShowPercent || bar.Representation != "broken-tilt" || form.Items[1].MaxValue != "99":
 		t.Fatalf("progress bar: %+v", bar)
-	case track.Step != "5" || track.LargeStep != "10" || track.MarkingStep != "0.5" || form.Items[2].MinValue != "1":
+	case track.Step != "5" || track.LargeStep != "10" || track.MarkingStep != "0.5" || form.Items[2].MinValue != "1" ||
+		track.MarkingAppearance != FormMarkingBothSides:
 		t.Fatalf("track bar: %+v", track)
 	case form.Items[3].Edit == nil || *form.Items[3].Edit || form.Items[3].Output != FormUseOutputDisable:
 		t.Fatalf("graphical schema: %+v", form.Items[3].FieldDocument)
@@ -2410,13 +2418,15 @@ func TestEachPropertyOfTheOtherFieldsStandsOnItsField(t *testing.T) {
 	t.Parallel()
 	no, zero := false, 0
 	full := FieldOther{ShowCurrentDate: &no, WidthInMonths: &zero, HeightInMonths: &zero, ShowMonthsPanel: true, SelectionMode: "single",
-		ShowPercent: true, Representation: "smooth", Step: "1", LargeStep: "1", MarkingStep: "1"}
+		ShowPercent: true, Representation: "smooth", Step: "1", LargeStep: "1", MarkingStep: "1",
+		MarkingAppearance: "dont-show"}
 	calendar, bar, track := []FormElementKind{FormElementCalendarField}, []FormElementKind{FormElementProgressBarField}, []FormElementKind{FormElementTrackBarField}
 	allowed := map[string][]FormElementKind{
 		"ShowCurrentDate": calendar, "WidthInMonths": calendar, "HeightInMonths": calendar, "ShowMonthsPanel": calendar, "SelectionMode": calendar,
 		// A table selects and is drawn with values of its own, refused there
 		// by value below.
 		"ShowPercent": bar, "Representation": bar, "Step": track, "LargeStep": track, "MarkingStep": track,
+		"MarkingAppearance": track,
 	}
 	value := reflect.ValueOf(full)
 	for index := range value.NumField() {
@@ -2447,6 +2457,7 @@ func TestEachPropertyOfTheOtherFieldsStandsOnItsField(t *testing.T) {
 	}{
 		"выделение прототипа":   {FieldOther{SelectionMode: "Interval"}, FormElementCalendarField, "items[0].selection_mode must be single, interval or multiple"},
 		"выделение индикатора":  {FieldOther{SelectionMode: "single"}, FormElementProgressBarField, "items[0].selection_mode is not a property of a progress-bar-field"},
+		"разметка прототипа":    {FieldOther{MarkingAppearance: "BothSides"}, FormElementTrackBarField, "items[0].marking_appearance must be dont-show, top-left, bottom-right or both-sides"},
 		"сглаживание прототипа": {FieldOther{Representation: "BrokenTilt"}, FormElementProgressBarField, "items[0].representation must be smooth, broken or broken-tilt"},
 		"сглаживание календаря": {FieldOther{Representation: "smooth"}, FormElementCalendarField, "items[0].representation is not a property of a calendar-field"},
 		"месяцы": {FieldOther{WidthInMonths: &negative}, FormElementCalendarField, "items[0].width_in_months must not be negative"},
