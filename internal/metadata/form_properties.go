@@ -59,7 +59,8 @@ const (
 //
 // What is on until turned off is kept as its "off", as the prototype writes
 // only that: AutoTitle, ShowTitle, ShowCloseButton, Enabled, AutoURL,
-// AutoFillCheck and Customizable are written false and never true.
+// AutoFillCheck, Customizable and SaveWindowSettings are written false and
+// never true.
 type FormWindow struct {
 	WindowOpeningMode FormWindowOpeningMode `yaml:"window_opening_mode,omitempty" json:"windowOpeningMode,omitempty"`
 	// NoAutoTitle shows the title alone, without what the main attribute adds
@@ -88,6 +89,12 @@ type FormWindow struct {
 	// off is not known; it is carried as written and nothing runs it
 	// (STUDIO-FORM-DESIGNER.md).
 	NotCustomizable bool `yaml:"not_customizable,omitempty" json:"notCustomizable,omitempty"`
+	// NoSaveWindowSettings does not keep where and how large the window of
+	// the form was when it closed: the prototype's SaveWindowSettings written
+	// false (2 forms of lombard1). The help does not name it; EDT writes it
+	// true on 56 forms the designer writes nothing for, so on is the default.
+	// Carried as written; nothing runs it yet (blocks 7 and 8).
+	NoSaveWindowSettings bool `yaml:"no_save_window_settings,omitempty" json:"noSaveWindowSettings,omitempty"`
 }
 
 func validateFormWindow(window FormWindow) []string {
@@ -227,6 +234,10 @@ type FormLayout struct {
 	HorizontalSpacing    ItemSpacing          `yaml:"horizontal_spacing,omitempty" json:"horizontalSpacing,omitempty"`
 	ScaleVariant         FormScaleVariant     `yaml:"scale_variant,omitempty" json:"scaleVariant,omitempty"`
 	CollapseByImportance CollapseByImportance `yaml:"collapse_by_importance,omitempty" json:"collapseByImportance,omitempty"`
+	// Scale is the scale of the form in percent (help,
+	// ClientApplicationForm.Scale, a number); 0 is the platform's own. One
+	// form of lombard1 writes 90. The help gives no bounds.
+	Scale int `yaml:"scale,omitempty" json:"scale,omitempty"`
 }
 
 // oneOf refuses a value that is none of the given ones; the empty value is
@@ -250,6 +261,9 @@ func validateFormLayout(layout FormLayout) []string {
 	}
 	if layout.Height < 0 {
 		issues = append(issues, "height must not be negative")
+	}
+	if layout.Scale < 0 {
+		issues = append(issues, "scale must not be negative")
 	}
 	issues = append(issues, oneOf("children_group", layout.ChildrenGroup, ChildrenVertical, ChildrenHorizontal, ChildrenAlwaysHorizontal, ChildrenHorizontalIfPossible)...)
 	issues = append(issues, oneOf("children_width", layout.ChildrenWidth, ChildrenWidthAuto, ChildrenWidthEqual, ChildrenWidthLeftNarrowest, ChildrenWidthLeftNarrow, ChildrenWidthLeftWide, ChildrenWidthLeftWidest)...)

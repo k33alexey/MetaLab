@@ -29,6 +29,7 @@ no_auto_fill_check: true
 auto_save_data_in_settings: true
 save_data_in_settings: true
 not_customizable: true
+no_save_window_settings: true
 `
 
 // The window of a form keeps every property it was given, and comes back the
@@ -51,7 +52,7 @@ func TestTheWindowOfAFormKeepsEveryProperty(t *testing.T) {
 		WindowOpeningMode: FormWindowLockWholeInterface, NoAutoTitle: true, HideTitle: true, HideCloseButton: true,
 		CommandBarLocation: FormCommandBarNone, EnterKeyBehavior: FormEnterDefaultButton, Disabled: true,
 		Conversations: FormConversationsDontShow, NoAutoURL: true, NoAutoFillCheck: true,
-		AutoSaveDataInSettings: true, SaveDataInSettings: true, NotCustomizable: true,
+		AutoSaveDataInSettings: true, SaveDataInSettings: true, NotCustomizable: true, NoSaveWindowSettings: true,
 	}
 	if form.FormWindow != want {
 		t.Fatalf("window = %+v, want %+v", form.FormWindow, want)
@@ -152,6 +153,7 @@ vertical_spacing: one-and-half
 horizontal_spacing: half
 scale_variant: compact
 collapse_by_importance: dont-use
+scale: 90
 `
 
 // The layout of a form keeps every property it was given, and comes back the
@@ -173,7 +175,7 @@ func TestTheLayoutOfAFormKeepsEveryProperty(t *testing.T) {
 		VerticalScroll: FormScrollUseIfNecessary, Width: 400, Height: 150, ChildrenGroup: ChildrenHorizontalIfPossible,
 		ChildrenWidth: ChildrenWidthLeftNarrowest, HorizontalAlign: ItemHorizontalCenter, VerticalAlign: ItemVerticalBottom,
 		ItemsAndTitlesAlign: ItemsAndTitlesTitlesLeftDataAuto, VerticalSpacing: ItemSpacingOneAndHalf,
-		HorizontalSpacing: ItemSpacingHalf, ScaleVariant: FormScaleCompact, CollapseByImportance: CollapseByImportanceDontUse,
+		HorizontalSpacing: ItemSpacingHalf, ScaleVariant: FormScaleCompact, CollapseByImportance: CollapseByImportanceDontUse, Scale: 90,
 	}
 	if form.FormLayout != want {
 		t.Fatalf("layout = %+v, want %+v", form.FormLayout, want)
@@ -255,6 +257,7 @@ func TestTheLayoutOfAFormRefusesWhatIsNoneOfItsValues(t *testing.T) {
 		"horizontal_spacing: triple":        "horizontal_spacing must be auto, none, half, single, one-and-half or double",
 		"scale_variant: large":              "scale_variant must be auto, normal or compact",
 		"collapse_by_importance: always":    "collapse_by_importance must be auto, use or dont-use",
+		"scale: -1":                         "scale must not be negative",
 	} {
 		t.Run(property, func(t *testing.T) {
 			t.Parallel()
@@ -300,6 +303,12 @@ func TestAFormKeepsWhatItHasByItsMainAttribute(t *testing.T) {
 		"документ": {formExtensionOf("{kind: document-object, reference: "+formAttrCatalog+"}", "auto_time: current-or-last\nposting_mode: regular\nno_repost_on_write: true\n"),
 			FormExtension{AutoTime: FormAutoTimeCurrentOrLast, PostingMode: FormPostingRegular, NoRepostOnWrite: true}},
 		"отчёт": {formExtensionOf("{kind: report-object, reference: "+formAttrCatalog+"}", "report_form_type: variant\nauto_show_state: show-on-composition\n"+
+			"result_view_mode: compact\nview_mode_on_set_result: dont-apply\nreport_result: результат\ndetails_data: \"4\"\n"+
+			"variant_appearance: результат\ncustom_settings_folder: \"3:02023637-7868-4a5f-8576-835a76e0c9ba\"\n"),
+			FormExtension{ReportFormType: ReportFormVariant, AutoShowState: ReportShowStateOnComposition, ResultViewMode: ReportResultViewCompact,
+				ViewModeOnSetResult: ReportViewModeOnSetDontApply, ReportResult: "результат", DetailsData: "4",
+				VariantAppearance: "результат", CustomSettingsFolder: "3:02023637-7868-4a5f-8576-835a76e0c9ba"}},
+		"любой отчёт": {formExtensionOf("{kind: report-object}", "report_form_type: variant\nauto_show_state: show-on-composition\n"+
 			"result_view_mode: compact\nview_mode_on_set_result: dont-apply\nreport_result: результат\ndetails_data: \"4\"\n"+
 			"variant_appearance: результат\ncustom_settings_folder: \"3:02023637-7868-4a5f-8576-835a76e0c9ba\"\n"),
 			FormExtension{ReportFormType: ReportFormVariant, AutoShowState: ReportShowStateOnComposition, ResultViewMode: ReportResultViewCompact,
@@ -445,5 +454,53 @@ func TestTheSettingsStorageOfAFormIsResolved(t *testing.T) {
 		"title: {ru: Н}\nkind: common\nsettings_storage: "+refGone+"\n")
 	if found := unresolvedOf(t, root); !containsWhere(found, "common form НастройкиОтчетов settings storage") {
 		t.Fatalf("unresolved = %+v", found)
+	}
+}
+
+// The standard commands a form takes out of itself are kept by name, in
+// order, through YAML and the Studio; a name that is no name, and one named
+// twice, are refused.
+//
+// Defect caught: the prototype's CommandSet of a form (3056 forms of the
+// exports) lost on the way, so that a form shows the commands it hid; a
+// misspelt or repeated name taken without a word.
+func TestAFormKeepsTheStandardCommandsItTakesOut(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formAttrHead+"excluded_commands: [SaveValues, RestoreValues, Retry]\n"), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"SaveValues", "RestoreValues", "Retry"}
+	if !reflect.DeepEqual(form.ExcludedCommands, want) {
+		t.Fatalf("excluded commands = %v", form.ExcludedCommands)
+	}
+	written, err := yaml.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
+	if err != nil || !reflect.DeepEqual(again.ExcludedCommands, want) {
+		t.Fatalf("written back: %v, %v", again.ExcludedCommands, err)
+	}
+	carried, err := json.Marshal(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received ManagedForm
+	if err := json.Unmarshal(carried, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateManagedForm("studio", received, configuration); err != nil || !reflect.DeepEqual(received.ExcludedCommands, want) {
+		t.Fatalf("carried through the Studio: %v, %v", received.ExcludedCommands, err)
+	}
+	for list, refusal := range map[string]string{
+		"[\"Сохранить значения\"]":        "excluded_commands[0] must be the name of a command",
+		"[SaveValues, Retry, SaveValues]": "excluded_commands[2] names SaveValues twice",
+	} {
+		_, err := DecodeManagedForm("form.yaml", strings.NewReader(formAttrHead+"excluded_commands: "+list+"\n"), configuration)
+		if err == nil || !strings.Contains(err.Error(), refusal) {
+			t.Errorf("%s: err = %v, want %q", list, err, refusal)
+		}
 	}
 }

@@ -1801,7 +1801,14 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 			item.Kind == ExternalTableType || item.Kind == ExternalDimensionTableType ||
 			item.Kind == VanishedType ||
 			isObjectType(item.Kind)
-		if referenced && (item.Reference == nil || item.Reference.IsZero()) {
+		// The object of any report: an attribute of a form may be typed so
+		// without naming the report - the main attribute of the common forms
+		// of a report, of its settings and of its variant, which one form
+		// serves for every report. The prototype writes it 31 times in the
+		// configurations being moved; no other object type stands unnamed in
+		// them.
+		anyReport := item.Kind == ReportObjectType && place == placeFormAttribute && item.Reference == nil
+		if referenced && !anyReport && (item.Reference == nil || item.Reference.IsZero()) {
 			issues = append(issues, prefix+".reference is required")
 		}
 		if !referenced && item.Reference != nil {

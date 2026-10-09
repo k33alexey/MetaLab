@@ -139,6 +139,10 @@ type ManagedForm struct {
 	// FormExtension is what the form has by the kind of its main attribute.
 	FormExtension `yaml:",inline"`
 	Commands      []ManagedFormCommand `yaml:"commands,omitempty" json:"commands"`
+	// ExcludedCommands are the standard commands of the form taken out of
+	// it, by name as the prototype writes them (CommandSet, which the help
+	// does not name; 3056 forms of the exports, 23 944 commands).
+	ExcludedCommands []string `yaml:"excluded_commands,omitempty" json:"excludedCommands,omitempty"`
 	// Events are the events of the form handled by procedures of its
 	// module, by event.
 	Events map[FormEvent]string `yaml:"events,omitempty" json:"events,omitempty"`
@@ -303,6 +307,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	issues = append(issues, validateFormWindow(value.FormWindow)...)
 	issues = append(issues, validateFormEvents("form", value.Events, formEvents, "a form")...)
 	issues = append(issues, validateFormLayout(value.FormLayout)...)
+	issues = append(issues, validateExcludedCommands("excluded_commands", value.ExcludedCommands)...)
 	issues = append(issues, validateFormExtension(value.FormExtension, value.Attributes)...)
 	seenPurposes := map[FormPurpose]bool{}
 	for index, purpose := range value.Purposes {

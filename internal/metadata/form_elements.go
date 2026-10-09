@@ -1545,13 +1545,21 @@ func validateFieldDocument(path string, document FieldDocument, kind FormElement
 	issues = append(issues, oneOf(path+".selection_show_mode", document.SelectionShowMode, FormSelectionAlways, FormSelectionDontShow,
 		FormSelectionWhenActive, FormSelectionWhenMultipleCellsSelected, FormSelectionWhenMultipleCellsSelectedWhenActive)...)
 	issues = append(issues, oneOf(path+".output", document.Output, FormUseOutputAuto, FormUseOutputEnable, FormUseOutputDisable)...)
+	issues = append(issues, validateExcludedCommands(path+".excluded_commands", document.ExcludedCommands)...)
+	return issues
+}
+
+// validateExcludedCommands checks the standard commands taken out of a form or
+// an element: each by name, once.
+func validateExcludedCommands(path string, commands []string) []string {
+	var issues []string
 	seen := map[string]bool{}
-	for index, command := range document.ExcludedCommands {
+	for index, command := range commands {
 		switch {
 		case !validIdentifier(command):
-			issues = append(issues, fmt.Sprintf("%s.excluded_commands[%d] must be the name of a command", path, index))
+			issues = append(issues, fmt.Sprintf("%s[%d] must be the name of a command", path, index))
 		case seen[command]:
-			issues = append(issues, fmt.Sprintf("%s.excluded_commands[%d] names %s twice", path, index, command))
+			issues = append(issues, fmt.Sprintf("%s[%d] names %s twice", path, index, command))
 		}
 		seen[command] = true
 	}

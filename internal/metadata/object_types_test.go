@@ -110,6 +110,12 @@ name: Без
 title: {ru: Без}
 types: [{kind: document-object}]
 `, "reference is required"},
+		"любой отчёт в определяемом типе": {DefinedTypeKind, inMemoryDefined, `format: 1
+id: ` + inMemoryDefined + `
+name: ЛюбойОтчет
+title: {ru: ЛюбойОтчет}
+types: [{kind: report-object}]
+`, "reference is required"},
 		"объект неизвестного документа": {DefinedTypeKind, inMemoryDefined, `format: 1
 id: ` + inMemoryDefined + `
 name: Чужой
