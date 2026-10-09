@@ -245,9 +245,10 @@ type ManagedFormElement struct {
 	// but an identifier and a name. Code reaches it by its name, which is
 	// kept as written: the configurator does not rename it with its element.
 	ExtendedTooltip *ManagedFormElement `yaml:"extended_tooltip,omitempty" json:"extendedTooltip,omitempty"`
-	// OnMainServerUnavailable is what a decoration does while the main
-	// server is out of reach (help, OnMainServerUnavalableBehavior of a
-	// decoration); the prototype writes it once, on an extended tooltip.
+	// OnMainServerUnavailable is what an element does while the main server
+	// is out of reach. The help gives it to a field, a table, a decoration
+	// and a button (OnMainServerUnavalableBehavior); the prototype writes it
+	// twice, on an extended tooltip and on a check box field.
 	OnMainServerUnavailable FormServerUnavailableBehavior `yaml:"on_main_server_unavailable,omitempty" json:"onMainServerUnavailable,omitempty"`
 	// Events are the events of the element handled by procedures of the
 	// module of the form, by event.
@@ -572,8 +573,9 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		if current.tooltip && item.ContextMenu != nil {
 			issues = append(issues, current.path+".context_menu: an extended tooltip has none")
 		}
-		if item.OnMainServerUnavailable != "" && class != formDecorationClass {
-			issues = append(issues, current.path+".on_main_server_unavailable is allowed only for decorations")
+		if item.OnMainServerUnavailable != "" && class != formFieldClass && class != formTableClass && class != formDecorationClass &&
+			class != formButtonClass {
+			issues = append(issues, current.path+".on_main_server_unavailable is allowed only for fields, tables, decorations and buttons")
 		}
 		issues = append(issues, oneOf(current.path+".on_main_server_unavailable", item.OnMainServerUnavailable, FormServerUnavailableAuto,
 			FormServerUnavailableDontChange, FormServerUnavailableMakeDisable)...)
