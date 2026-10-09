@@ -43,7 +43,8 @@ type FormAttribute struct {
 	// UseAlways are the paths of the data nested in the attribute that is
 	// passed to the client whether an element shows it or not. Each starts
 	// with the attribute's own name, and the prototype writes some of them
-	// with a leading «~»; the mark is carried as written.
+	// with a leading «~», once with two paths joined by it; the mark is
+	// carried as written.
 	UseAlways []string `yaml:"use_always,omitempty" json:"useAlways,omitempty"`
 	// SaveInSettings are what of the attribute is kept in the form's settings
 	// between sessions: the attribute itself by its name, or a place inside
@@ -128,12 +129,14 @@ type DynamicListTable struct {
 
 // FormAttributeColumn is a column of an attribute that is a table. The help
 // gives it what an attribute has, save being the main one and the use on the
-// client.
+// client. The check of filling is written on 4 columns of the exports, all
+// in lombard1.
 type FormAttributeColumn struct {
 	ID                uuid.UUID           `yaml:"id" json:"id"`
 	Name              string              `yaml:"name" json:"name"`
 	Title             LocalizedText       `yaml:"title,omitempty" json:"title,omitempty"`
 	Types             []Type              `yaml:"types,omitempty" json:"types,omitempty"`
+	FillChecking      FillCheck           `yaml:"fill_checking,omitempty" json:"fillChecking,omitempty"`
 	FunctionalOptions []uuid.UUID         `yaml:"functional_options,omitempty" json:"functionalOptions,omitempty"`
 	View              *FormAttributeRight `yaml:"view,omitempty" json:"view,omitempty"`
 	Edit              *FormAttributeRight `yaml:"edit,omitempty" json:"edit,omitempty"`
@@ -179,22 +182,12 @@ func validateFormAttributes(attributes []FormAttribute, ids map[uuid.UUID]bool, 
 				main = index
 			}
 		}
-		switch attribute.FillChecking {
-		case "", DontCheckFilling, ShowFillingError:
-		default:
+		if !validFillCheck(attribute.FillChecking) {
 			issues = append(issues, path+".fill_checking must be dont-check or show-error")
 		}
 		issues = append(issues, validateFormOptions(path+".functional_options", attribute.FunctionalOptions)...)
 		for position, field := range attribute.UseAlways {
-			place := fmt.Sprintf("%s.use_always[%d]", path, position)
-			trimmed := strings.TrimPrefix(field, "~")
-			if problems := validateFormDataPath(place, trimmed); len(problems) != 0 {
-				issues = append(issues, problems...)
-				continue
-			}
-			if first, _, _ := strings.Cut(trimmed, "."); !strings.EqualFold(first, attribute.Name) {
-				issues = append(issues, place+" must start with the attribute's own name")
-			}
+			issues = append(issues, validateUseAlways(fmt.Sprintf("%s.use_always[%d]", path, position), field, attribute.Name)...)
 		}
 		for position, field := range attribute.SaveInSettings {
 			if field == "" || strings.TrimSpace(field) != field {
@@ -248,6 +241,29 @@ func validateFormAttributes(attributes []FormAttribute, ids map[uuid.UUID]bool, 
 	return issues
 }
 
+// validateUseAlways checks one path of the data an attribute passes to the
+// client. A path marked with a leading «~» may be two paths joined by «~»,
+// as the data path of an element may (validateElementDataPath): once in
+// the exports, «~ТаблицаЧековККМ.Ref~ТаблицаЧековККМ.Ссылка» of a dynamic
+// list in sb, the field by its English and its Russian name. Each path
+// starts with the attribute's own name.
+func validateUseAlways(place, field, attribute string) []string {
+	trimmed := strings.TrimPrefix(field, "~")
+	parts := []string{trimmed}
+	if trimmed != field && strings.Contains(trimmed, "~") {
+		parts = strings.Split(trimmed, "~")
+	}
+	for _, part := range parts {
+		if problems := validateFormDataPath(place, part); len(problems) != 0 {
+			return problems
+		}
+		if first, _, _ := strings.Cut(part, "."); !strings.EqualFold(first, attribute) {
+			return []string{place + " must start with the attribute's own name"}
+		}
+	}
+	return nil
+}
+
 // validateFormColumns checks one set of columns, whose names are unique among
 // themselves.
 func validateFormColumns(path string, columns []FormAttributeColumn, ids map[uuid.UUID]bool, configuration project.Project) []string {
@@ -258,6 +274,9 @@ func validateFormColumns(path string, columns []FormAttributeColumn, ids map[uui
 		issues = append(issues, validateFormDataName(place, column.ID, column.Name, ids, names, "the columns")...)
 		issues = append(issues, validateTitle(place+".title", column.Title, configuration)...)
 		issues = append(issues, validateTypesIn(place+".types", column.Types, placeFormAttribute)...)
+		if !validFillCheck(column.FillChecking) {
+			issues = append(issues, place+".fill_checking must be dont-check or show-error")
+		}
 		issues = append(issues, validateFormOptions(place+".functional_options", column.FunctionalOptions)...)
 		issues = append(issues, validateFormRight(place+".view", column.View)...)
 		issues = append(issues, validateFormRight(place+".edit", column.Edit)...)

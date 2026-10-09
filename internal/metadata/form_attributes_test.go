@@ -39,7 +39,7 @@ attributes:
     saved_data: true
     fill_checking: show-error
     functional_options: [` + formAttrOption + `]
-    use_always: [Объект.Ref, ~Объект.RegisterRecords]
+    use_always: [Объект.Ref, ~Объект.RegisterRecords, ~Объект.Ref~Объект.Ссылка]
     save_in_settings: [Объект, "1/0:` + formAttrRole + `", "3/2"]
     view: {common: false, roles: [{role: ` + formAttrRole + `, value: true}]}
     edit: {common: false, roles: [{role: ` + formAttrRole + `, value: true}]}
@@ -55,6 +55,7 @@ attributes:
         name: Вариант
         title: {ru: Вариант}
         types: [{kind: string, length: 0}]
+        fill_checking: show-error
         functional_options: [` + formAttrOption + `]
         view: {common: true}
         edit: {common: false, roles: [{role: ` + formAttrRole + `, value: true}]}
@@ -69,6 +70,9 @@ attributes:
 // out of the model refuses the form, and one mapped wrong loses its value
 // without a word; and the main attribute, the use on the client or the
 // rights lost on the way through the Studio, which writes the form back.
+// Both happened: the check of filling of a column was missing from the
+// model and refused 2 forms of lombard1, and two paths joined by «~» on the
+// client refused one of sb.
 func TestFormAttributeKeepsEveryPropertyItWasGiven(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
@@ -87,7 +91,7 @@ func TestFormAttributeKeepsEveryPropertyItWasGiven(t *testing.T) {
 		t.Fatalf("main, saved data or the check of filling lost: %+v", object)
 	case len(object.FunctionalOptions) != 1 || object.FunctionalOptions[0].String() != formAttrOption:
 		t.Fatalf("functional options lost: %+v", object.FunctionalOptions)
-	case !reflect.DeepEqual(object.UseAlways, []string{"Объект.Ref", "~Объект.RegisterRecords"}):
+	case !reflect.DeepEqual(object.UseAlways, []string{"Объект.Ref", "~Объект.RegisterRecords", "~Объект.Ref~Объект.Ссылка"}):
 		t.Fatalf("use on the client lost: %+v", object.UseAlways)
 	case !reflect.DeepEqual(object.SaveInSettings, []string{"Объект", "1/0:" + formAttrRole, "3/2"}):
 		t.Fatalf("what is kept in the settings lost: %+v", object.SaveInSettings)
@@ -106,6 +110,8 @@ func TestFormAttributeKeepsEveryPropertyItWasGiven(t *testing.T) {
 		t.Fatalf("the column lost its identity: %+v", list.Columns)
 	case len(column.Types) != 1 || column.Types[0].Kind != StringType || len(column.FunctionalOptions) != 1:
 		t.Fatalf("the column lost its type or options: %+v", column)
+	case column.FillChecking != ShowFillingError:
+		t.Fatalf("the column lost its check of filling: %+v", column)
 	case column.View == nil || !column.View.Common || column.Edit == nil || column.Edit.Common || len(column.Edit.Roles) != 1:
 		t.Fatalf("the column lost its rights: %+v %+v", column.View, column.Edit)
 	}
@@ -143,10 +149,12 @@ func TestFormAttributeKeepsEveryPropertyItWasGiven(t *testing.T) {
 // Each rule an attribute is held to refuses the form, and says where.
 //
 // Defect caught: two main attributes, of which the form can follow one; a
-// path used on the client that belongs to another attribute; additional
+// path used on the client that belongs to another attribute, whole or in
+// one half of two joined by «~», or joined without the mark; additional
 // columns of a table of another attribute, or twice of one; names and
 // identifiers that collide, so that a field bound by name or a role granted
-// by identifier finds two; and a check of filling or a reference left empty.
+// by identifier finds two; and a check of filling of an attribute or a
+// column, or a reference, left empty.
 func TestFormAttributeRefusesWhatTheFormCannotHold(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
@@ -164,6 +172,16 @@ func TestFormAttributeRefusesWhatTheFormCannotHold(t *testing.T) {
 			"attributes[0].use_always[0] must start with the attribute's own name"},
 		"путь на клиенте не путь": {attribute(formAttrObject, "Объект", ", use_always: [\"Объект..Ref\"]"),
 			"attributes[0].use_always[0] must contain only valid identifier segments"},
+		"склеенный путь без знака": {attribute(formAttrObject, "Объект", ", use_always: [\"Объект.Ref~Объект.Ссылка\"]"),
+			"attributes[0].use_always[0] must contain only valid identifier segments"},
+		"склеенный путь с чужой частью": {attribute(formAttrObject, "Объект", ", use_always: [\"~Объект.Ref~Список.Ссылка\"]"),
+			"attributes[0].use_always[0] must start with the attribute's own name"},
+		"склеенный путь с пустой частью": {attribute(formAttrObject, "Объект", ", use_always: [\"~Объект.Ref~\"]"),
+			"attributes[0].use_always[0] must contain only valid identifier segments"},
+		"проверка заполнения колонки": {attribute(formAttrList, "Список", ", columns: [{id: "+formAttrColumn+", name: А, fill_checking: always}]"),
+			"attributes[0].columns[0].fill_checking must be dont-check or show-error"},
+		"проверка заполнения дополнительной колонки": {attribute(formAttrObject, "Объект", ", additional_columns: [{table: Объект.Товары, columns: [{id: "+formAttrColumn+", name: А, fill_checking: always}]}]"),
+			"attributes[0].additional_columns[0].columns[0].fill_checking must be dont-check or show-error"},
 		"пустое в настройках": {attribute(formAttrObject, "Объект", ", save_in_settings: [\"\"]"),
 			"attributes[0].save_in_settings[0] must be a non-empty path"},
 		"проверка заполнения": {attribute(formAttrObject, "Объект", ", fill_checking: always"),
