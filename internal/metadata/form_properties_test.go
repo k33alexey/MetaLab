@@ -301,12 +301,14 @@ func TestAFormKeepsWhatItHasByItsMainAttribute(t *testing.T) {
 			FormExtension{AutoTime: FormAutoTimeCurrentOrLast, PostingMode: FormPostingRegular, NoRepostOnWrite: true}},
 		"отчёт": {formExtensionOf("{kind: report-object, reference: "+formAttrCatalog+"}", "report_form_type: variant\nauto_show_state: show-on-composition\n"+
 			"result_view_mode: compact\nview_mode_on_set_result: dont-apply\nreport_result: результат\ndetails_data: \"4\"\n"+
-			"variant_appearance: ОтчетНаименованиеТекущегоВарианта\ncustom_settings_folder: \"3:02023637-7868-4a5f-8576-835a76e0c9ba\"\n"),
+			"variant_appearance: результат\ncustom_settings_folder: \"3:02023637-7868-4a5f-8576-835a76e0c9ba\"\n"),
 			FormExtension{ReportFormType: ReportFormVariant, AutoShowState: ReportShowStateOnComposition, ResultViewMode: ReportResultViewCompact,
 				ViewModeOnSetResult: ReportViewModeOnSetDontApply, ReportResult: "результат", DetailsData: "4",
-				VariantAppearance: "ОтчетНаименованиеТекущегоВарианта", CustomSettingsFolder: "3:02023637-7868-4a5f-8576-835a76e0c9ba"}},
+				VariantAppearance: "результат", CustomSettingsFolder: "3:02023637-7868-4a5f-8576-835a76e0c9ba"}},
 		"динамический список": {formExtensionOf("{kind: dynamic-list}", "group_list: \"2:02023637-7868-4a5f-8576-835a76e0c9ba\"\n"),
 			FormExtension{GroupList: "2:02023637-7868-4a5f-8576-835a76e0c9ba"}},
+		"компоновщик настроек": {formExtensionOf("{kind: settings-composer}", "custom_settings_folder: \"3:02023637-7868-4a5f-8576-835a76e0c9ba\"\n"),
+			FormExtension{CustomSettingsFolder: "3:02023637-7868-4a5f-8576-835a76e0c9ba"}},
 		"хранилище настроек у обработки": {formExtensionOf("{kind: data-processor-object, reference: "+formAttrCatalog+"}", "settings_storage: "+formAttrRole+"\n"),
 			FormExtension{SettingsStorage: &storage}},
 	} {
@@ -386,13 +388,15 @@ func TestAFormRefusesWhatItCannotHaveByItsMainAttribute(t *testing.T) {
 		"результат не у отчёта":         {catalog, "report_result: Результат\n", "report_result belongs"},
 		"расшифровка не у отчёта":       {catalog, "details_data: Результат\n", "details_data belongs"},
 		"вариант не у отчёта":           {catalog, "variant_appearance: Поле\n", "variant_appearance belongs"},
-		"настройки не у отчёта":         {catalog, "custom_settings_folder: Группа\n", "custom_settings_folder belongs"},
+		"настройки не у отчёта":         {catalog, "custom_settings_folder: Группа\n", "custom_settings_folder belongs to a form whose main attribute is report-object or settings-composer"},
+		"настройки у списка":            {"{kind: dynamic-list}", "custom_settings_folder: Группа\n", "custom_settings_folder belongs to a form whose main attribute is report-object or settings-composer"},
 		"список групп не у списка":      {catalog, "group_list: Дерево\n", "group_list belongs to a form whose main attribute is dynamic-list"},
 		"группы и элементы":             {catalog, "folders_and_items: all\n", "folders_and_items must be folders-and-items, folders or items"},
 		"время":                         {"{kind: document-object, reference: " + formAttrCatalog + "}", "auto_time: now\n", "auto_time must be dont-use, first, last, current-or-first or current-or-last"},
 		"тип формы отчёта":              {report, "report_form_type: print\n", "report_form_type must be main, settings or variant"},
 		"результат без реквизита":       {report, "report_result: Отчёт\n", "report_result names no attribute of the form"},
 		"расшифровка без реквизита":     {report, "details_data: Расшифровка\n", "details_data names no attribute of the form"},
+		"вариант без реквизита":         {report, "variant_appearance: Поле\n", "variant_appearance names no attribute of the form"},
 		"пробелы в варианте":            {report, "variant_appearance: \" Поле\"\n", "variant_appearance must be written without surrounding spaces"},
 		"хранилище без ссылки":          {catalog, "settings_storage: 00000000-0000-0000-0000-000000000000\n", "settings_storage must be a non-zero UUID"},
 	} {

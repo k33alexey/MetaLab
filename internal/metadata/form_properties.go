@@ -360,17 +360,20 @@ type FormExtension struct {
 	// that hold its result and the data of its details. The prototype names
 	// the attribute (81 and 67 times) or writes a number that is no attribute
 	// of the form ("0" and "4", 3 times); a name must be an attribute of the
-	// form, a number is carried as written.
+	// form, a number is carried as written and noted (noteElementCode).
 	ReportResult string `yaml:"report_result,omitempty" json:"reportResult,omitempty"`
 	DetailsData  string `yaml:"details_data,omitempty" json:"detailsData,omitempty"`
-	// VariantAppearance and CustomSettingsFolder name an element of a form of
-	// a report: where the name of the report variant is shown and the group
-	// of the user's settings. GroupList is where a form of a hierarchical
-	// catalog takes its tree of groups from: by name an attribute that is a
-	// dynamic list (6 forms), else a code of the prototype's own. The help
-	// names none of them for a form; the prototype writes a name or a code
-	// ("2", "3:<id>"), carried as written: the code of a deleted element is a
-	// remnant, another is noted (noteElementCode).
+	// VariantAppearance is the attribute of a form of a report the name of
+	// its variant is shown in (23 names of the exports, 23 attributes; once "2").
+	// CustomSettingsFolder is the group of the form the user's settings are
+	// shown in, of a report or of a settings composer (help,
+	// CreateUserSettingsFormItems; a usual group 98 of 98). GroupList is the
+	// table a form of a hierarchical list shows the tree of groups in (15),
+	// written also as the context menu or the search string of one (9). A
+	// name must be an attribute or an element of the form, a code or a
+	// number is carried as written: the code of a deleted element is a
+	// remnant, another is noted (noteElementCode), as is an element of
+	// another kind (resolveFormExtension).
 	VariantAppearance    string `yaml:"variant_appearance,omitempty" json:"variantAppearance,omitempty"`
 	CustomSettingsFolder string `yaml:"custom_settings_folder,omitempty" json:"customSettingsFolder,omitempty"`
 	GroupList            string `yaml:"group_list,omitempty" json:"groupList,omitempty"`
@@ -416,14 +419,15 @@ func validateFormExtension(extension FormExtension, attributes []FormAttribute) 
 	issues = append(issues, oneOf("result_view_mode", extension.ResultViewMode, ReportResultViewAuto, ReportResultViewDefault, ReportResultViewCompact)...)
 	belongs("view_mode_on_set_result", extension.ViewModeOnSetResult != "", ReportObjectType)
 	issues = append(issues, oneOf("view_mode_on_set_result", extension.ViewModeOnSetResult, ReportViewModeOnSetAuto, ReportViewModeOnSetApply, ReportViewModeOnSetDontApply)...)
-	for _, field := range []struct{ name, value string }{{"report_result", extension.ReportResult}, {"details_data", extension.DetailsData}} {
+	for _, field := range []struct{ name, value string }{
+		{"report_result", extension.ReportResult}, {"details_data", extension.DetailsData}, {"variant_appearance", extension.VariantAppearance},
+	} {
 		belongs(field.name, field.value != "", ReportObjectType)
 		if validIdentifier(field.value) && !slices.ContainsFunc(attributes, func(attribute FormAttribute) bool { return strings.EqualFold(attribute.Name, field.value) }) {
 			issues = append(issues, field.name+" names no attribute of the form")
 		}
 	}
-	belongs("variant_appearance", extension.VariantAppearance != "", ReportObjectType)
-	belongs("custom_settings_folder", extension.CustomSettingsFolder != "", ReportObjectType)
+	belongs("custom_settings_folder", extension.CustomSettingsFolder != "", ReportObjectType, SettingsComposerType)
 	belongs("group_list", extension.GroupList != "", DynamicListType)
 	for _, field := range []struct{ name, value string }{
 		{"report_result", extension.ReportResult}, {"details_data", extension.DetailsData}, {"variant_appearance", extension.VariantAppearance},

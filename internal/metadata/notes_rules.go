@@ -66,6 +66,8 @@ const (
 	NoteUserSettingsGroupNotGroup  NoteKind = "user-settings-group-not-group"
 	NoteMobileCommandBarEmpty      NoteKind = "mobile-command-bar-empty"
 	NoteMobileCommandBarNotGroup   NoteKind = "mobile-command-bar-not-group"
+	NoteGroupListNotTable          NoteKind = "group-list-not-table"
+	NoteSettingsFolderNotGroup     NoteKind = "settings-folder-not-group"
 	NoteHeldAdditionOfAnother      NoteKind = "held-addition-of-another-element"
 	NoteAdditionOfNoTable          NoteKind = "addition-of-no-table"
 	NoteEventByIdentifier          NoteKind = "event-by-identifier"
@@ -269,6 +271,16 @@ func init() {
 			"Пункт состава командной панели формы на мобильном устройстве называет элемент, который не группа и не кнопка: " +
 				"справка допускает в составе только их, прототип сохранил расширенную подсказку (1 раз в erp).",
 			"Ссылка несётся как записана; на мобильном устройстве такой пункт не показывается."},
+		NoteKindInfo{NoteGroupListNotTable,
+			"Список групп формы иерархического списка называет не таблицу, а элемент при ней: контекстное меню таблицы " +
+				"(8 форм обработок erp, acc и lombard1) или её строку поиска (1 форма lombard1). Прототип такое сохраняет; показывает ли форма дерево групп, " +
+				"не проверено.",
+			"Ссылка несётся как записана; дерево групп по ней не строится."},
+		NoteKindInfo{NoteSettingsFolderNotGroup,
+			"Группа пользовательских настроек формы отчёта или компоновщика настроек называет элемент, который не группа: " +
+				"справка создаёт элементы настроек внутри группы формы. В выгрузках такого нет (98 из 98 — группы), " +
+				"пометка заведена на случай, если прототип сохранит.",
+			"Ссылка несётся как записана; элементы пользовательских настроек в неё не создаются."},
 		NoteKindInfo{NoteHeldAdditionOfAnother,
 			"Дополнение, которое таблица держит у себя (строка поиска, состояние просмотра, управление поиском), называет источником " +
 				"не эту таблицу, а другой элемент: в одной форме sb — расширенную подсказку соседнего элемента. Прототип такое сохраняет; " +
@@ -383,6 +395,12 @@ func init() {
 	}
 	noteRules[NoteMobileCommandBarNotGroup] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteMobileCommandBarNotGroup, note)
+	}
+	noteRules[NoteGroupListNotTable] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NoteGroupListNotTable, note)
+	}
+	noteRules[NoteSettingsFolderNotGroup] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NoteSettingsFolderNotGroup, note)
 	}
 	noteRules[NoteHeldAdditionOfAnother] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteHeldAdditionOfAnother, note)

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -120,7 +121,7 @@ func (catalog *Catalog) checkFormAttributes() error {
 		if err := catalog.resolveFormCommandInterface(item.where, item.form.CommandInterface); err != nil {
 			return err
 		}
-		catalog.resolveFormExtension(item.where, item.form.FormExtension)
+		catalog.resolveFormExtension(item.where, item.form)
 		catalog.noteRepeatedNames(item.where, item.form)
 		catalog.noteMobileCommandBar(item.where, item.form)
 		catalog.resolveFormTables(item.where, item.form)
@@ -149,7 +150,7 @@ func (catalog *Catalog) checkFormAttributes() error {
 		if err := catalog.resolveFormCommandInterface("common form "+form.Name, form.CommandInterface); err != nil {
 			return err
 		}
-		catalog.resolveFormExtension("common form "+form.Name, form.FormExtension)
+		catalog.resolveFormExtension("common form "+form.Name, form)
 		catalog.noteRepeatedNames("common form "+form.Name, form)
 		catalog.noteMobileCommandBar("common form "+form.Name, form)
 		catalog.resolveFormTables("common form "+form.Name, form)
@@ -175,14 +176,29 @@ func readFormDescription(path string, catalog *Catalog) (ManagedForm, error) {
 }
 
 // resolveFormExtension checks the settings storage a form names, and carries
-// the elements of a form of a report or of a hierarchical list written as a
-// code (noteElementCode).
-func (catalog *Catalog) resolveFormExtension(form string, extension FormExtension) {
+// what names the elements and the attributes of a form of a report or of a
+// hierarchical list beyond a name of the right kind: a code or a number
+// (noteElementCode), a list of groups that is not a table - in the exports
+// the context menu or the search string of one (NoteGroupListNotTable) - and
+// a folder of the user's settings that is not a group
+// (NoteSettingsFolderNotGroup).
+func (catalog *Catalog) resolveFormExtension(form string, value ManagedForm) {
+	extension := value.FormExtension
 	for _, reference := range []struct{ name, value string }{
-		{"variant_appearance", extension.VariantAppearance}, {"custom_settings_folder", extension.CustomSettingsFolder}, {"group_list", extension.GroupList},
+		{"report_result", extension.ReportResult}, {"details_data", extension.DetailsData}, {"variant_appearance", extension.VariantAppearance},
+		{"custom_settings_folder", extension.CustomSettingsFolder}, {"group_list", extension.GroupList},
 	} {
 		if formElementCode.MatchString(reference.value) {
 			catalog.noteElementCode(form+" "+reference.name, reference.value)
+		}
+	}
+	if extension.GroupList != "" || extension.CustomSettingsFolder != "" {
+		kinds := formElementKinds(value)
+		if kind, ok := kinds[foldedName(extension.GroupList)]; ok && kind != FormElementTable {
+			catalog.noteForm(NoteGroupListNotTable, form+" group_list", extension.GroupList+" ("+string(kind)+")")
+		}
+		if kind, ok := kinds[foldedName(extension.CustomSettingsFolder)]; ok && !slices.Contains(formGroupKinds, kind) {
+			catalog.noteForm(NoteSettingsFolderNotGroup, form+" custom_settings_folder", extension.CustomSettingsFolder+" ("+string(kind)+")")
 		}
 	}
 	if storage := extension.SettingsStorage; storage != nil {

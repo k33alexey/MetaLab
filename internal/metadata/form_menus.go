@@ -182,15 +182,9 @@ func (catalog *Catalog) noteRepeatedNames(where string, form ManagedForm) {
 	}
 }
 
-// noteMobileCommandBar carries what the command bar of a form holds on a
-// mobile device beyond a group or a button by name: an empty value
-// (NoteMobileCommandBarEmpty), an element of another kind - an extended
-// tooltip once in erp (NoteMobileCommandBarNotGroup) - and the code of an
-// element (noteElementCode).
-func (catalog *Catalog) noteMobileCommandBar(where string, form ManagedForm) {
-	if len(form.MobileCommandBar) == 0 {
-		return
-	}
+// formElementKinds tells the elements of a form by name, the context menus
+// and the command bars among them: the first of a repeated name stands.
+func formElementKinds(form ManagedForm) map[string]FormElementKind {
 	kinds := map[string]FormElementKind{}
 	name := func(name string, kind FormElementKind) {
 		if _, seen := kinds[foldedName(name)]; name != "" && !seen {
@@ -214,6 +208,19 @@ func (catalog *Catalog) noteMobileCommandBar(where string, form ManagedForm) {
 		name(form.AutoCommandBar.Name, FormElementCommandBar)
 	}
 	walk(form.FormItems())
+	return kinds
+}
+
+// noteMobileCommandBar carries what the command bar of a form holds on a
+// mobile device beyond a group or a button by name: an empty value
+// (NoteMobileCommandBarEmpty), an element of another kind - an extended
+// tooltip once in erp (NoteMobileCommandBarNotGroup) - and the code of an
+// element (noteElementCode).
+func (catalog *Catalog) noteMobileCommandBar(where string, form ManagedForm) {
+	if len(form.MobileCommandBar) == 0 {
+		return
+	}
+	kinds := formElementKinds(form)
 	for index, item := range form.MobileCommandBar {
 		at := fmt.Sprintf("%s mobile_command_bar[%d]", where, index)
 		switch kind := kinds[foldedName(item)]; {

@@ -642,6 +642,15 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			issues = append(issues, path+" names no element of the form")
 		}
 	}
+	// The folder of the user's settings and the list of groups name an
+	// element of the form; what kind it is the load notes.
+	for _, reference := range []struct{ name, value string }{
+		{"custom_settings_folder", value.CustomSettingsFolder}, {"group_list", value.GroupList},
+	} {
+		if reference.value != "" && !formElementCode.MatchString(reference.value) && !names[foldedName(reference.value)] {
+			issues = append(issues, reference.name+" names no element of the form")
+		}
+	}
 	issues = append(issues, validateFormCommandInterface(value.CommandInterface, names, commandNames)...)
 	issues = append(issues, validateFormAttributes(value.Attributes, ids, configuration)...)
 	issues = append(issues, validateConditionalAppearance("conditional_appearance", value.ConditionalAppearance, false)...)
