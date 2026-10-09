@@ -416,3 +416,80 @@ func TestACodedPathOfALinkIsARemnant(t *testing.T) {
 		}
 	}
 }
+
+// TestACodedDataPathIsARemnant catches a data path of an element written as a
+// code of several segments being refused - 139 of lombard1 were, and the
+// configuration did not load - or being carried silently instead of as a
+// remnant of what was deleted; and a code that is no path being let through.
+func TestACodedDataPathIsARemnant(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		written           string
+		remnant, rejected bool
+	}{
+		"реквизит формы и поле":        {written: "1/0:ba7dcb3b-b8b9-4d44-ab5f-56f7a228f10d", remnant: true},
+		"табличная часть и колонка":    {written: "1/0:09365303-009d-4b39-93ec-6a7cf420f7b3/0:ca657fe8-6a10-42d1-b65f-26a7f3dc6cfd", remnant: true},
+		"подвал колонки":               {written: "1/0:844ef438-7e09-4022-8c7b-ad17e9c90794/101000000:232dcdf1-af2a-4000-8000-000000000001", remnant: true},
+		"стандартный реквизит":         {written: "1/-2", remnant: true},
+		"колонка таблицы значений":     {written: "5/10000000", remnant: true},
+		"таблица и колонка":            {written: "1485:02023637-7868-4a5f-8576-835a76e0c9ba/0:8ff6c337-2714-4ff8-89be-58cbbbb70bf0", remnant: true},
+		"число":                        {written: "20"},
+		"путь от другого кода":         {written: "48:409b9a53-7f7e-4178-86c1-33176c7c7a7a/0:3c1e525b-0000-4000-8000-000000000001"},
+		"отрицательное начало":         {written: "-1/0", rejected: true},
+		"пустой сегмент":               {written: "1//0", rejected: true},
+		"минус без числа":              {written: "1/-", rejected: true},
+		"идентификатор не того вида":   {written: "1/0:BA7DCB3B-B8B9-4D44-AB5F-56F7A228F10D", rejected: true},
+		"путь, кончающийся косой":      {written: "1/", rejected: true},
+		"идентификатор без номера":     {written: "1/:ba7dcb3b-b8b9-4d44-ab5f-56f7a228f10d", rejected: true},
+		"код удалённого элемента один": {written: "12:02023637-7868-4a5f-8576-835a76e0c9ba", rejected: true},
+	} {
+		for _, place := range []struct{ yaml, name string }{
+			{"kind: input-field, data_path: \"%s\"", "data_path"},
+			{"kind: input-field, data_path: Объект.Код, footer_data_path: \"%s\"", "footer_data_path"},
+			{"kind: usual-group, title_data_path: \"%s\"", "title_data_path"},
+			{"kind: table, row_picture_data_path: \"%s\"", "row_picture_data_path"},
+		} {
+			t.Run(name+"/"+place.name, func(t *testing.T) {
+				t.Parallel()
+				root := formReferencesProject(t)
+				file := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+				content, err := os.ReadFile(file)
+				if err != nil {
+					t.Fatal(err)
+				}
+				item := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, " + fmt.Sprintf(place.yaml, test.written) + "}\n"
+				writeFile(t, file, strings.Replace(string(content), "attributes:\n", "items:\n"+item+"attributes:\n", 1))
+				_, err = Load(root)
+				if test.rejected {
+					if err == nil || errors.Is(err, ErrUnresolvedReference) || !strings.Contains(err.Error(), place.name) {
+						t.Fatalf("the load: %v", err)
+					}
+					return
+				}
+				if errors.Is(err, ErrUnresolvedReference) != test.remnant || err != nil && !test.remnant {
+					t.Fatalf("the strict load: %v", err)
+				}
+				catalog, err := read(root, true, false)
+				if err != nil {
+					t.Fatal(err)
+				}
+				where := "catalog Номенклатура form ФормаЭлемента element Поле " + place.name
+				remnant := false
+				for _, reference := range catalog.UnresolvedReferences() {
+					if reference.Where == where && reference.Written == test.written {
+						remnant = true
+					}
+				}
+				noted := false
+				for _, note := range catalog.Notes() {
+					if note.Kind == NoteFormReferenceAsWritten && note.Where == where && note.Written == test.written {
+						noted = true
+					}
+				}
+				if remnant != test.remnant || noted == test.remnant {
+					t.Fatalf("remnant %v, noted %v; unresolved %+v, notes %+v", remnant, noted, catalog.UnresolvedReferences(), catalog.Notes())
+				}
+			})
+		}
+	}
+}

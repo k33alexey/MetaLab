@@ -271,13 +271,15 @@ func validateFormField(path string, field FieldBehavior, class formElementClass,
 // where it is an item of a collection ("ОбъектПрототип[0].Владелец", 290
 // times), and a leading "~" (372 times) carried as written, as on the data an
 // attribute passes to the client. Two other writings are carried as they
-// are: a number, which is no attribute of the form (5 times), and two paths
-// joined by "~" (4 times); what they mean is not known.
+// are: a number, which is no attribute of the form (5 times, and 6 of a
+// footer), and two paths joined by "~" (4 times); what they mean is not
+// known. A code of several segments (formPathCode, 139 times) is a path that
+// leads nowhere and is a remnant (notePathCode).
 func validateElementDataPath(path, value string) []string {
 	if value == "" || strings.TrimSpace(value) != value {
 		return []string{path + " must be a data path without surrounding spaces"}
 	}
-	if allDigits(value) {
+	if allDigits(value) || formPathCode.MatchString(value) {
 		return nil
 	}
 	trimmed := strings.TrimPrefix(value, "~")
@@ -1203,7 +1205,7 @@ func validateInputFieldChoiceParameters(path string, parameters InputFieldChoice
 // times), or the code of an element of a form: segments joined by a slash,
 // each a number or a number with an identifier - "48:02023637-…/0:3c1e…"
 // (13), "342:02023637-…/15" (3), "1/0:ba7dcb3b-…" (20). A code of several
-// segments leads to nothing and is a remnant (noteLinkCode).
+// segments leads to nothing and is a remnant (notePathCode).
 func validateFormLinkPath(path, value string) []string {
 	if value == "" || strings.TrimSpace(value) != value {
 		return []string{path + " must be a data path without surrounding spaces"}
@@ -1220,6 +1222,15 @@ func validateFormLinkPath(path, value string) []string {
 // another.
 var formElementCode = regexp.MustCompile(`^[0-9]+(:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?(/[0-9]+(:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)*$`)
 
+// formPathCode is a data path the prototype writes as a code of several
+// segments: an attribute of the form by its number, or an element by its
+// code, then a field of what it holds - by its identifier ("1/0:3c1e…", a
+// column "1/0:<table part>/0:<column>", the footer of a column
+// "…/101000000:<column>"), a standard attribute by a negative number
+// ("1/-2", "1/-5") or a column of a value table by its number ("1/0",
+// "5/10000000").
+var formPathCode = regexp.MustCompile(`^[0-9]+(:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?(/-?[0-9]+(:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)+$`)
+
 // deletedFormElement is the code the configurator leaves where a property
 // named an element of the form that has since been deleted: the number the
 // element had and the identifier the platform names an element of a form by.
@@ -1229,7 +1240,7 @@ var formElementCode = regexp.MustCompile(`^[0-9]+(:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a
 // name, and in the exports no element of the form has the number of such a
 // code - 126 of 126; a list form of erp whose table is element 3 points its
 // user settings at 1. It is a remnant of what was deleted (2.203). A code of
-// several segments is a path of a link (noteLinkCode).
+// several segments is a path (notePathCode).
 var deletedFormElement = regexp.MustCompile(`^[0-9]+:02023637-7868-4a5f-8576-835a76e0c9ba$`)
 
 // FormCheckBoxType is how a check box is drawn (help, CheckBoxType). The

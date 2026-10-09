@@ -212,7 +212,10 @@ func (catalog *Catalog) resolveFormCommandInterface(form string, value *FormComm
 			if err := catalog.resolveFormData(where, nil, nil, line.Visibility); err != nil {
 				return err
 			}
-			if strings.HasPrefix(line.DataPath, "~") && strings.Contains(line.DataPath[1:], "~") || formElementCode.MatchString(line.DataPath) {
+			// A code of several segments is not in the command interface of
+			// any form of the exports and stays a note.
+			if strings.HasPrefix(line.DataPath, "~") && strings.Contains(line.DataPath[1:], "~") ||
+				formElementCode.MatchString(line.DataPath) || formPathCode.MatchString(line.DataPath) {
 				catalog.noteElementCode(where+" data_path", line.DataPath)
 			}
 			key := fmt.Sprintf("%s\x00%t\x00%s\x00%d\x00%s", foldedName(line.Command), line.Added, line.Group, line.Index, line.DataPath)

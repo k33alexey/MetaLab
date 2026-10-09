@@ -224,37 +224,49 @@ func (catalog *Catalog) noteFormReferences(where string, element ManagedFormElem
 		return value != "" && (formElementCode.MatchString(value) || strings.HasPrefix(value, "~") && strings.Contains(trimmed, "~"))
 	}
 	for _, reference := range []struct{ name, value string }{
-		{"data_path", element.DataPath}, {"title_data_path", element.TitleDataPath}, {"command_source", element.CommandSource},
+		{"data_path", element.DataPath}, {"title_data_path", element.TitleDataPath},
+		{"footer_data_path", element.FooterDataPath}, {"row_picture_data_path", element.RowPictureDataPath},
 	} {
-		if asWritten(reference.value) {
-			catalog.noteElementCode(where+" "+reference.name, reference.value)
+		if asWritten(reference.value) || formPathCode.MatchString(reference.value) {
+			catalog.notePathCode(where+" "+reference.name, reference.value)
 		}
+	}
+	if asWritten(element.CommandSource) {
+		catalog.noteElementCode(where+" command_source", element.CommandSource)
 	}
 	for _, link := range element.ChoiceParameterLinks {
 		if asWritten(link.DataPath) {
-			catalog.noteLinkCode(where+" choice parameter link "+link.Name, link.DataPath)
+			catalog.notePathCode(where+" choice parameter link "+link.Name, link.DataPath)
 		}
 	}
 	if link := element.TypeLink; link != nil && asWritten(link.DataPath) {
-		catalog.noteLinkCode(where+" type link", link.DataPath)
+		catalog.notePathCode(where+" type link", link.DataPath)
 	}
 }
 
-// noteLinkCode carries the path of a link of a field the prototype wrote as a
-// code. A code of several segments is what the configurator leaves when the
-// path no longer leads anywhere, as a single segment is for an element: a
-// live path is written by its names ("Items.Товары.CurrentData.Номенклатура",
-// "Объект.Партнер"), and in the exports every one of the 36 paths of several
-// segments leads to nothing - a table that was deleted (5), a column the
-// table part of a table does not have (11: an attribute deleted, or one no
-// object has), a field the object of an attribute of the form does not have
-// (20: the form copied from another object with its links). It is a remnant of what was deleted (2.203), as the same path of a
-// link of an attribute of an object is (FieldPath.Unresolved). The path
-// starts at an attribute of the form, by its number, or at an element, by
-// its code; one that starts with another identifier is not in the exports
-// and stays a note.
-func (catalog *Catalog) noteLinkCode(where, written string) {
-	if first, _, compound := strings.Cut(written, "/"); compound && formElementCode.MatchString(written) &&
+// notePathCode carries a data path of an element, or the path of a link of a
+// field, the prototype wrote as a code. A code of several segments is what
+// the configurator leaves when the path no longer leads anywhere, as a single
+// segment is for an element: a live path is written by its names
+// ("Items.Товары.CurrentData.Номенклатура", "Объект.Партнер"). In the exports
+// every one of the 36 paths of a link of several segments leads to nothing -
+// a table that was deleted (5), a column the table part of a table does not
+// have (11: an attribute deleted, or one no object has), a field the object
+// of an attribute of the form does not have (20: the form copied from
+// another object with its links). So does every one of the 139 data paths,
+// all of lombard1: a field the object does not have (98), a column the table
+// part does not have (36, 15 of them of a footer), a standard attribute the
+// catalog does not have (2: a code of length 0, an owner of none), a column
+// a value table does not have (2), a column of another table part than the
+// table shows (2), a field of a catalog through an attribute of a composite
+// type (2) - the prototype names no path through an attribute of a composite
+// type, 111 of 111 through an attribute of one. It is a remnant of what was
+// deleted (2.203), as the same path of a link of an attribute of an object is
+// (FieldPath.Unresolved). The path starts at an attribute of the form, by its
+// number, or at an element, by its code; one that starts with another
+// identifier is not in the exports and stays a note.
+func (catalog *Catalog) notePathCode(where, written string) {
+	if first, _, compound := strings.Cut(written, "/"); compound && formPathCode.MatchString(written) &&
 		(allDigits(first) || deletedFormElement.MatchString(first)) {
 		catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where, Written: written})
 		return
