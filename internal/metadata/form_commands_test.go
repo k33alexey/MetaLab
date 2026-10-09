@@ -2,6 +2,8 @@ package metadata
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -251,8 +253,9 @@ func TestEveryReferenceWrittenAsACodeIsNoted(t *testing.T) {
 // in every place the prototype writes a reference to an element: a button's
 // command, the source of commands, a link of a field, the table of a
 // command, the group of the user settings of a list, and what a form of a
-// report and of a hierarchical list names. A data path takes no such code. A code of several segments through an element that is there,
-// and a code with another identifier, stay notes.
+// report and of a hierarchical list names. A data path takes no such code. A
+// code with another identifier stays a note, and so does a code of several
+// segments outside a link (TestACodedPathOfALinkIsARemnant).
 //
 // Defect caught: the code of a deleted element carried as a note whose sense
 // is not known, though the exports of the configurator show it is what a
@@ -317,7 +320,11 @@ func TestTheCodeOfADeletedElementIsARemnant(t *testing.T) {
 				t.Fatalf("unresolved = %+v, want %q", unresolved, at+test.where)
 			}
 			// The same place with a code that is no deleted element is a note.
-			for _, written := range []string{other, path} {
+			others := []string{other, path}
+			if strings.Contains(test.where, " link") {
+				others = others[:1]
+			}
+			for _, written := range others {
 				replaceInFile(t, file, gone, written)
 				catalog, err := Load(root)
 				if err != nil {
@@ -335,5 +342,77 @@ func TestTheCodeOfADeletedElementIsARemnant(t *testing.T) {
 				replaceInFile(t, file, written, gone)
 			}
 		})
+	}
+}
+
+// The path of a link of a field written as a code of several segments - the
+// first a table, an attribute of the form or a deleted element, the next a
+// field of it - is what the configurator leaves when the path leads nowhere,
+// and is a remnant of what was deleted, in a link of a choice parameter and
+// in a link by type alike, in every writing of the exports: through a table
+// with an attribute ("48:…/0:<id>"), through an attribute of the form
+// ("1/0:<id>"), with a number ("342:…/15") and another number before the
+// identifier ("35:…/18:<id>"). A link written by a number, a code of one
+// segment with another identifier and a path from another identifier, none
+// of them in the exports as a path, stay notes.
+//
+// Defect caught: 36 such paths of the exports, each leading to a deleted
+// table or to a field the table or the object does not have, carried as
+// notes whose sense is not known instead of remnants; one of the two links
+// left out; a path of one segment that is no deleted element, or a path from
+// an identifier that is not of an element, taken for a remnant.
+func TestACodedPathOfALinkIsARemnant(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		written string
+		remnant bool
+	}{
+		"таблица и колонка":         {"48:02023637-7868-4a5f-8576-835a76e0c9ba/0:3c1e525b-0000-4000-8000-000000000001", true},
+		"реквизит формы и поле":     {"1/0:ba7dcb3b-b8b9-4d44-ab5f-56f7a228f10d", true},
+		"удалённый элемент и номер": {"342:02023637-7868-4a5f-8576-835a76e0c9ba/15", true},
+		"другой номер перед полем":  {"35:02023637-7868-4a5f-8576-835a76e0c9ba/18:5bdad865-0000-4000-8000-000000000002", true},
+		"число": {"20", false},
+		"код с другим идентификатором":   {"5:409b9a53-7f7e-4178-86c1-33176c7c7a7a", false},
+		"путь от другого идентификатора": {"48:409b9a53-7f7e-4178-86c1-33176c7c7a7a/0:3c1e525b-0000-4000-8000-000000000001", false},
+	} {
+		for _, link := range []struct{ yaml, where string }{
+			{"choice_parameter_links: [{name: Отбор.Владелец, data_path: \"%s\"}]", "choice parameter link Отбор.Владелец"},
+			{"type_link: {data_path: \"%s\"}", "type link"},
+		} {
+			t.Run(name+"/"+link.where, func(t *testing.T) {
+				t.Parallel()
+				root := formReferencesProject(t)
+				file := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
+				content, err := os.ReadFile(file)
+				if err != nil {
+					t.Fatal(err)
+				}
+				item := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, data_path: Объект.Код, " + fmt.Sprintf(link.yaml, test.written) + "}\n"
+				writeFile(t, file, strings.Replace(string(content), "attributes:\n", "items:\n"+item+"attributes:\n", 1))
+				if _, err := Load(root); errors.Is(err, ErrUnresolvedReference) != test.remnant {
+					t.Fatalf("the strict load: %v", err)
+				}
+				catalog, err := read(root, true, false)
+				if err != nil {
+					t.Fatal(err)
+				}
+				where := "catalog Номенклатура form ФормаЭлемента element Поле " + link.where
+				remnant := false
+				for _, reference := range catalog.UnresolvedReferences() {
+					if reference.Where == where && reference.Written == test.written {
+						remnant = true
+					}
+				}
+				noted := false
+				for _, note := range catalog.Notes() {
+					if note.Kind == NoteFormReferenceAsWritten && note.Where == where && note.Written == test.written {
+						noted = true
+					}
+				}
+				if remnant != test.remnant || noted == test.remnant {
+					t.Fatalf("remnant %v, noted %v; unresolved %+v, notes %+v", remnant, noted, catalog.UnresolvedReferences(), catalog.Notes())
+				}
+			})
+		}
 	}
 }

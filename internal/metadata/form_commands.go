@@ -232,12 +232,34 @@ func (catalog *Catalog) noteFormReferences(where string, element ManagedFormElem
 	}
 	for _, link := range element.ChoiceParameterLinks {
 		if asWritten(link.DataPath) {
-			catalog.noteElementCode(where+" choice parameter link "+link.Name, link.DataPath)
+			catalog.noteLinkCode(where+" choice parameter link "+link.Name, link.DataPath)
 		}
 	}
 	if link := element.TypeLink; link != nil && asWritten(link.DataPath) {
-		catalog.noteElementCode(where+" type link", link.DataPath)
+		catalog.noteLinkCode(where+" type link", link.DataPath)
 	}
+}
+
+// noteLinkCode carries the path of a link of a field the prototype wrote as a
+// code. A code of several segments is what the configurator leaves when the
+// path no longer leads anywhere, as a single segment is for an element: a
+// live path is written by its names ("Items.Товары.CurrentData.Номенклатура",
+// "Объект.Партнер"), and in the exports every one of the 36 paths of several
+// segments leads to nothing - a table that was deleted (5), a column the
+// table part of a table does not have (11: an attribute deleted, or one no
+// object has), a field the object of an attribute of the form does not have
+// (20: the form copied from another object with its links). It is a remnant of what was deleted (2.203), as the same path of a
+// link of an attribute of an object is (FieldPath.Unresolved). The path
+// starts at an attribute of the form, by its number, or at an element, by
+// its code; one that starts with another identifier is not in the exports
+// and stays a note.
+func (catalog *Catalog) noteLinkCode(where, written string) {
+	if first, _, compound := strings.Cut(written, "/"); compound && formElementCode.MatchString(written) &&
+		(allDigits(first) || deletedFormElement.MatchString(first)) {
+		catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where, Written: written})
+		return
+	}
+	catalog.noteElementCode(where, written)
 }
 
 // noteElementCode carries a reference of a form the prototype wrote as a

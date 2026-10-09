@@ -1202,9 +1202,8 @@ func validateInputFieldChoiceParameters(path string, parameters InputFieldChoice
 // ("Объект.Партнер", "Items.Список.CurrentData.Вид"), a number (22 and 30
 // times), or the code of an element of a form: segments joined by a slash,
 // each a number or a number with an identifier - "48:02023637-…/0:3c1e…"
-// (13), "342:02023637-…/15" (2), "1/0:ba7dcb3b-…" (15). What the last two
-// point at is an open question of the map of blocks; they are carried as
-// written.
+// (13), "342:02023637-…/15" (3), "1/0:ba7dcb3b-…" (20). A code of several
+// segments leads to nothing and is a remnant (noteLinkCode).
 func validateFormLinkPath(path, value string) []string {
 	if value == "" || strings.TrimSpace(value) != value {
 		return []string{path + " must be a data path without surrounding spaces"}
@@ -1230,8 +1229,7 @@ var formElementCode = regexp.MustCompile(`^[0-9]+(:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a
 // name, and in the exports no element of the form has the number of such a
 // code - 126 of 126; a list form of erp whose table is element 3 points its
 // user settings at 1. It is a remnant of what was deleted (2.203). A code of
-// several segments - a path of a link through a table that is there - is
-// another thing and is noted as written.
+// several segments is a path of a link (noteLinkCode).
 var deletedFormElement = regexp.MustCompile(`^[0-9]+:02023637-7868-4a5f-8576-835a76e0c9ba$`)
 
 // FormCheckBoxType is how a check box is drawn (help, CheckBoxType). The
