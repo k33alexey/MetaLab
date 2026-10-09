@@ -735,6 +735,18 @@ func TestAFieldRefusesWhatIsWrongAsAColumn(t *testing.T) {
 		"положение в шапке":   {"kind: input-field, header_horizontal_align: justify", "items[0].header_horizontal_align must be auto, left, center or right"},
 		"положение в подвале": {"kind: input-field, footer_horizontal_align: justify", "items[0].footer_horizontal_align must be auto, left, center or right"},
 		"текст подвала":       {"kind: input-field, footer_text: {ru: \"\\x01\"}", "items[0].footer_text.ru must say something in printable characters"},
+		"набор без своего файла": {"kind: input-field, header_picture: {standard: Change, variants: [{file: 100.png, density: 100}]}",
+			"items[0].header_picture.variants belong to a picture drawn from a file of its own"},
+		"набор с именем файла": {"kind: input-field, header_picture: {file: Picture.png, variants: [{file: 100.png, density: 100}]}",
+			"items[0].header_picture.file must be the name of the folder of its variants, an identifier"},
+		"вариант не картинка": {"kind: input-field, header_picture: {file: Picture, variants: [{file: manifest.xml, density: 100}]}",
+			"items[0].header_picture.variants[0].file must be the name of an image file"},
+		"плотность варианта": {"kind: input-field, header_picture: {file: Picture, variants: [{file: 90.png, density: 90}]}",
+			"items[0].header_picture.variants[0].density must be one of"},
+		"два варианта на место": {"kind: input-field, header_picture: {file: Picture, variants: [{file: 100.png, density: 100}, {file: a.png, density: 100}]}",
+			"items[0].header_picture.variants[1] is a second image for the same density and interface"},
+		"набор и файл под одним именем": {"kind: input-field, header_picture: {file: Picture, variants: [{file: 100.png, density: 100}]}, footer_picture: {file: picture, variants: [{file: 100.png, density: 100}]}",
+			"items[0].footer_picture.file is the file of header_picture too"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

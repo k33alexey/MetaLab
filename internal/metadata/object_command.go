@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"fmt"
+	"io/fs"
 	"slices"
 	"strings"
 
@@ -105,6 +106,15 @@ type PictureReference struct {
 	File             string        `yaml:"file,omitempty" json:"file,omitempty"`
 	LoadTransparent  bool          `yaml:"load_transparent,omitempty" json:"loadTransparent,omitempty"`
 	TransparentPixel *PicturePixel `yaml:"transparent_pixel,omitempty" json:"transparentPixel,omitempty"`
+	// Variants make a picture of its own a set of images under different
+	// densities and interfaces, the way a common picture is one. File then
+	// names a folder rather than a file - an identifier, so never taken for
+	// an image - holding the files the variants name. The prototype keeps
+	// such a set as Picture.zip, eight densities, the 8.2 image and the
+	// description of the set: once in the configurations being moved, a
+	// button of lombard1. Only a picture of an element of a form carries one
+	// (validateElementPictureReference); no other owner keeps a set there.
+	Variants []PictureVariant `yaml:"variants,omitempty" json:"variants,omitempty"`
 }
 
 // Names reports whether the reference names a picture to draw. A reference
@@ -124,9 +134,22 @@ func (picture *PictureReference) fileName() string {
 
 // drawsFile reports whether a file lying in the owner's folder is the one the
 // reference draws. The name is compared without regard to case, the way the
-// prototype looks a picture's file up - see PictureVariant.
+// prototype looks a picture's file up - see PictureVariant. It is asked by the
+// owners that keep no set of variants; the elements of a form ask drawsEntry.
 func (picture *PictureReference) drawsFile(file string) bool {
 	return picture.fileName() != "" && strings.EqualFold(picture.File, file)
+}
+
+// drawsEntry reports whether an entry of the owner's folder is what the
+// reference draws: its file, or the folder of its set of variants.
+func (picture *PictureReference) drawsEntry(entry fs.DirEntry) bool {
+	if picture.fileName() == "" || !strings.EqualFold(picture.File, entry.Name()) {
+		return false
+	}
+	if len(picture.Variants) > 0 {
+		return entry.IsDir() && entry.Type()&fs.ModeSymlink == 0
+	}
+	return entry.Type().IsRegular()
 }
 
 func (picture *PictureReference) clone() *PictureReference {
@@ -136,6 +159,7 @@ func (picture *PictureReference) clone() *PictureReference {
 	value := *picture
 	value.Common = clonePointer(value.Common)
 	value.TransparentPixel = clonePointer(value.TransparentPixel)
+	value.Variants = slices.Clone(value.Variants)
 	return &value
 }
 
@@ -251,6 +275,25 @@ func validateCommandShape(prefix string, command ObjectCommand, configuration pr
 // It may name none when it still carries a setting - see PictureReference;
 // with neither it is written as no reference at all.
 func validatePictureReference(path string, picture *PictureReference) []string {
+	if picture != nil && len(picture.Variants) > 0 {
+		return []string{path + ".variants belong to a picture of an element of a form only"}
+	}
+	return validatePictureSource(path, picture)
+}
+
+// validateElementPictureReference checks a picture an element of a form is
+// drawn with, which alone may be a set of variants of its own.
+func validateElementPictureReference(path string, picture *PictureReference) []string {
+	issues := validatePictureSource(path, picture)
+	if picture != nil {
+		for _, issue := range validatePictureImages(PictureImages{Variants: picture.Variants}) {
+			issues = append(issues, path+"."+issue)
+		}
+	}
+	return issues
+}
+
+func validatePictureSource(path string, picture *PictureReference) []string {
 	if picture == nil {
 		return nil
 	}
@@ -264,7 +307,11 @@ func validatePictureReference(path string, picture *PictureReference) []string {
 	switch {
 	case sources > 1:
 		issues = append(issues, path+" names more than one of a standard picture, a common picture and a file")
-	case picture.File != "" && !PictureFile(picture.File):
+	case len(picture.Variants) > 0 && picture.File == "":
+		issues = append(issues, path+".variants belong to a picture drawn from a file of its own")
+	case len(picture.Variants) > 0 && project.SubordinateName(picture.File) != nil:
+		issues = append(issues, path+".file must be the name of the folder of its variants, an identifier")
+	case len(picture.Variants) == 0 && picture.File != "" && !PictureFile(picture.File):
 		issues = append(issues, path+".file must be the name of an image file")
 	case !picture.Names() && !picture.LoadTransparent && picture.TransparentPixel == nil:
 		issues = append(issues, path+" must name a standard picture, a common picture or a file, or carry what is left of one")

@@ -871,9 +871,18 @@ func RoutePicturePath(steps []string, directory bool, pictureFile func(string) b
 const FormItemsDirectory = "items"
 
 // FormItemPicturePath reports whether the steps below a form's folder are a
-// place the pictures of its elements may take. Whether the element exists
+// place the pictures of its elements may take: a file in the folder of the
+// element, or a folder there - an identifier - holding the files of a set of
+// variants of one picture, and nothing deeper. Whether the element exists
 // and draws that file is checked where the metadata is read.
 func FormItemPicturePath(steps []string, directory bool, pictureFile func(string) bool) bool {
+	if len(steps) == 3 && directory {
+		return steps[0] == FormItemsDirectory && SubordinateName(steps[1]) == nil && SubordinateName(steps[2]) == nil
+	}
+	if len(steps) == 4 && !directory {
+		return steps[0] == FormItemsDirectory && SubordinateName(steps[1]) == nil && SubordinateName(steps[2]) == nil &&
+			pictureFile(steps[3])
+	}
 	return itemPicturePath(FormItemsDirectory, steps, directory, pictureFile)
 }
 

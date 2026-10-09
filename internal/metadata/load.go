@@ -915,6 +915,9 @@ func (catalog *Catalog) validateIdentifiedPictureFiles(root string) error {
 // picture of its own holds that picture's file: a reference to a file nobody
 // keeps is a blank place in the interface. The prototype keeps the file of
 // every such reference (241 references of five exports, none missing).
+//
+// A set of variants is a folder instead, checked as the folder of a common
+// picture is: it holds images only, and every one its variants name.
 func requirePictureFile(owner, directory string, picture *PictureReference) error {
 	if picture.fileName() == "" {
 		return nil
@@ -922,10 +925,17 @@ func requirePictureFile(owner, directory string, picture *PictureReference) erro
 	entries, err := os.ReadDir(directory)
 	if err == nil {
 		for _, entry := range entries {
-			if entry.Type().IsRegular() && picture.drawsFile(entry.Name()) {
+			if !picture.drawsEntry(entry) {
+				continue
+			}
+			if len(picture.Variants) == 0 {
 				return nil
 			}
+			return validatePictureFolder(owner, filepath.Join(directory, entry.Name()), "", PictureImages{Variants: picture.Variants})
 		}
+	}
+	if len(picture.Variants) > 0 {
+		return fmt.Errorf("%s is shown with the variants of picture %s, and its folder holds no folder of them", owner, picture.File)
 	}
 	return fmt.Errorf("%s is shown with picture file %s, which its folder does not hold", owner, picture.File)
 }

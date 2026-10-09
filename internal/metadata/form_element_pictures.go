@@ -20,7 +20,8 @@ type elementPicture struct {
 // pictures lists every picture the element is drawn with, whether it names
 // a file of its own or not. A picture of the element's own lies in the
 // folder of the element in the form's items folder, under the name its
-// reference gives (project.FormItemsDirectory).
+// reference gives (project.FormItemsDirectory); a set of variants is a
+// folder there, holding the files they name.
 func (element ManagedFormElement) pictures() []elementPicture {
 	return []elementPicture{
 		{"header_picture", element.HeaderPicture},
@@ -63,8 +64,9 @@ func validateOwnPictureFiles(path string, element ManagedFormElement) []string {
 // validateFormItemPictureFiles checks the items folder of a form against the
 // form, both ways: every element drawn from a file of its own finds the file
 // in its folder, and every folder there is an element holding only the files
-// its pictures draw. The folder is named by the element, whatever its case,
-// as the folder of an item of a route map is.
+// its pictures draw - a file, or the folder of a set of variants. The folder
+// is named by the element, whatever its case, as the folder of an item of a
+// route map is.
 func validateFormItemPictureFiles(folder string, form ManagedForm) error {
 	base := filepath.Join(folder, project.FormItemsDirectory)
 	elements := map[string]ManagedFormElement{}
@@ -106,9 +108,9 @@ func validateFormItemPictureFiles(folder string, form ManagedForm) error {
 		for _, file := range files {
 			drawn := false
 			for _, picture := range own {
-				drawn = drawn || picture.value.drawsFile(file.Name())
+				drawn = drawn || picture.value.drawsEntry(file)
 			}
-			if !file.Type().IsRegular() || !drawn {
+			if !drawn {
 				return fmt.Errorf("element %s keeps %q, which its pictures do not draw", element.Name, file.Name())
 			}
 		}

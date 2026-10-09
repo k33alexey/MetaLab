@@ -640,7 +640,7 @@ func validateFieldColumn(path string, column FieldColumn, class formElementClass
 		name  string
 		value *PictureReference
 	}{{"header_picture", column.HeaderPicture}, {"footer_picture", column.FooterPicture}} {
-		issues = append(issues, validatePictureReference(path+"."+picture.name, picture.value)...)
+		issues = append(issues, validateElementPictureReference(path+"."+picture.name, picture.value)...)
 	}
 	horizontal := []ItemHorizontalAlign{ItemHorizontalAuto, ItemHorizontalLeft, ItemHorizontalCenter, ItemHorizontalRight}
 	issues = append(issues, oneOf(path+".header_horizontal_align", column.HeaderHorizontalAlign, horizontal...)...)
@@ -769,7 +769,7 @@ func validateFieldButtons(path string, buttons FieldButtons, kind FormElementKin
 	var issues []string
 	issues = append(issues, oneOf(path+".choice_button_representation", buttons.ChoiceButtonRepresentation,
 		FormChoiceButtonAuto, FormChoiceButtonShowInInputField, FormChoiceButtonShowInDropList, FormChoiceButtonShowInDropListAndInInputField)...)
-	issues = append(issues, validatePictureReference(path+".choice_button_picture", buttons.ChoiceButtonPicture)...)
+	issues = append(issues, validateElementPictureReference(path+".choice_button_picture", buttons.ChoiceButtonPicture)...)
 	modes := []FormAutoShowButton{FormAutoShowButtonAuto, FormAutoShowButtonAlways, FormAutoShowButtonFilledOnly}
 	issues = append(issues, oneOf(path+".auto_show_clear_button", buttons.AutoShowClearButton, modes...)...)
 	issues = append(issues, oneOf(path+".auto_show_open_button", buttons.AutoShowOpenButton, modes...)...)
@@ -1412,7 +1412,7 @@ func validateFieldPicture(path string, picture FieldPicture, kind FormElementKin
 	if picture.ImageScale < 0 {
 		issues = append(issues, path+".image_scale must not be negative")
 	}
-	issues = append(issues, validatePictureReference(path+".values_picture", picture.ValuesPicture)...)
+	issues = append(issues, validateElementPictureReference(path+".values_picture", picture.ValuesPicture)...)
 	issues = append(issues, oneOf(path+".picture_size", picture.PictureSize, FormPictureAutoSize, FormPictureAutoSizeIgnoreScale,
 		FormPictureByFontSize, FormPictureProportionally, FormPictureRealSize, FormPictureRealSizeIgnoreScale, FormPictureStretch, FormPictureTile)...)
 	issues = append(issues, validateTitle(path+".nonselected_picture_text", picture.NonselectedPictureText, configuration)...)
@@ -1868,7 +1868,7 @@ func validateGroupProperties(path string, group GroupProperties, kind FormElemen
 	if group.TitleDataPath != "" {
 		issues = append(issues, validateElementDataPath(path+".title_data_path", group.TitleDataPath)...)
 	}
-	issues = append(issues, validatePictureReference(path+".picture", group.Picture)...)
+	issues = append(issues, validateElementPictureReference(path+".picture", group.Picture)...)
 	if kind == FormElementTable {
 		issues = append(issues, oneOf(path+".current_row_use", group.CurrentRowUse, FormUseAuto, FormCurrentRowChoice,
 			FormCurrentRowSelectionPresentation, FormCurrentRowSelectionPresentationAndChoice)...)

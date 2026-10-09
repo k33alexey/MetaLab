@@ -362,7 +362,7 @@ func validateTableProperties(path string, table TableProperties, kind FormElemen
 		issues = append(issues, oneOf(path+"."+location.name, location.value, tableLocations[location.name]...)...)
 	}
 	issues = append(issues, oneOf(path+".search_on_input", table.SearchOnInput, FormSearchOnInputAuto, FormSearchOnInputUse, FormSearchOnInputDontUse)...)
-	issues = append(issues, validatePictureReference(path+".rows_picture", table.RowsPicture)...)
+	issues = append(issues, validateElementPictureReference(path+".rows_picture", table.RowsPicture)...)
 	if table.RowPictureDataPath != "" {
 		issues = append(issues, validateElementDataPath(path+".row_picture_data_path", table.RowPictureDataPath)...)
 	}

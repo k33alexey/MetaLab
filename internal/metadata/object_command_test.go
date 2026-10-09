@@ -292,6 +292,9 @@ func TestBrokenCommandsAreRefused(t *testing.T) {
 		"картинка из двух источников": {`commands:
   - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, picture: {standard: Открыть, common: ` + commandGroup + `}}`,
 			"names more than one of a standard picture, a common picture and a file"},
+		"набор вариантов у команды": {`commands:
+  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, picture: {file: Picture, variants: [{file: 100.png, density: 100}]}}`,
+			"commands[0].picture.variants belong to a picture of an element of a form only"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
