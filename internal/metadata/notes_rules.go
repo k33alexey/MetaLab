@@ -64,6 +64,8 @@ const (
 	NoteRepeatedElementName        NoteKind = "repeated-element-name"
 	NotePropertyOutsideHelp        NoteKind = "property-outside-help"
 	NoteUserSettingsGroupNotGroup  NoteKind = "user-settings-group-not-group"
+	NoteMobileCommandBarEmpty      NoteKind = "mobile-command-bar-empty"
+	NoteMobileCommandBarNotGroup   NoteKind = "mobile-command-bar-not-group"
 	NoteHeldAdditionOfAnother      NoteKind = "held-addition-of-another-element"
 	NoteAdditionOfNoTable          NoteKind = "addition-of-no-table"
 	NoteEventByIdentifier          NoteKind = "event-by-identifier"
@@ -258,6 +260,15 @@ func init() {
 				"(2 формы выгрузок). Платформа создаёт элементы настроек внутри группы, а в поле их создать некуда — " +
 				"по всей видимости, след переименования или удаления группы.",
 			"Ссылка несётся как записана; элементы пользовательских настроек списка не создаются."},
+		NoteKindInfo{NoteMobileCommandBarEmpty,
+			"Пункт состава командной панели формы на мобильном устройстве пуст: прототип не записал, какой элемент в нём стоит " +
+				"(24 пункта в 6 формах sb и demo-base). Элементы есть в самой форме, а та же форма erp называет их по именам — по всей " +
+				"видимости, ссылка утеряна при переносе формы между конфигурациями; что делает с таким пунктом платформа, не проверено.",
+			"Пункт несётся пустым на своём месте; на мобильном устройстве он ничего не показывает."},
+		NoteKindInfo{NoteMobileCommandBarNotGroup,
+			"Пункт состава командной панели формы на мобильном устройстве называет элемент, который не группа и не кнопка: " +
+				"справка допускает в составе только их, прототип сохранил расширенную подсказку (1 раз в erp).",
+			"Ссылка несётся как записана; на мобильном устройстве такой пункт не показывается."},
 		NoteKindInfo{NoteHeldAdditionOfAnother,
 			"Дополнение, которое таблица держит у себя (строка поиска, состояние просмотра, управление поиском), называет источником " +
 				"не эту таблицу, а другой элемент: в одной форме sb — расширенную подсказку соседнего элемента. Прототип такое сохраняет; " +
@@ -366,6 +377,12 @@ func init() {
 	}
 	noteRules[NoteUserSettingsGroupNotGroup] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteUserSettingsGroupNotGroup, note)
+	}
+	noteRules[NoteMobileCommandBarEmpty] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NoteMobileCommandBarEmpty, note)
+	}
+	noteRules[NoteMobileCommandBarNotGroup] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NoteMobileCommandBarNotGroup, note)
 	}
 	noteRules[NoteHeldAdditionOfAnother] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteHeldAdditionOfAnother, note)

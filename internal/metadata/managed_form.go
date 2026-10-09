@@ -155,6 +155,16 @@ type ManagedForm struct {
 	// CommandInterface is where the commands that are no element of the
 	// form stand on it - see FormCommandInterface.
 	CommandInterface *FormCommandInterface `yaml:"command_interface,omitempty" json:"commandInterface,omitempty"`
+	// MobileCommandBar is what the command bar of the form holds on a mobile
+	// device, in order (help, ClientApplicationForm.
+	// MobileDeviceCommandBarContent: groups and buttons of the form; 283
+	// forms of the exports). The prototype writes it as a list of values: an
+	// element by name, a code of a deleted element (5) or nothing (24, where
+	// the same form of another configuration names its elements); the
+	// presentation and the mark of a value of the list are empty and 0 in
+	// all 383, and are not carried. A name is an element of the form; the
+	// rest is carried as written and noted (noteMobileCommandBar).
+	MobileCommandBar []string `yaml:"mobile_command_bar,omitempty" json:"mobileCommandBar,omitempty"`
 }
 
 // ManagedFormElement is one stable node in a managed form tree. Hidden and
@@ -621,6 +631,15 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		}
 		if group := table.element.DynamicList.UserSettingsGroup; group != "" && !formElementCode.MatchString(group) && !names[foldedName(group)] {
 			issues = append(issues, table.path+".dynamic_list.user_settings_group names no element of the form")
+		}
+	}
+	for index, item := range value.MobileCommandBar {
+		path := fmt.Sprintf("mobile_command_bar[%d]", index)
+		switch {
+		case strings.TrimSpace(item) != item:
+			issues = append(issues, path+" must be written without surrounding spaces")
+		case item != "" && !formElementCode.MatchString(item) && !names[foldedName(item)]:
+			issues = append(issues, path+" names no element of the form")
 		}
 	}
 	issues = append(issues, validateFormCommandInterface(value.CommandInterface, names, commandNames)...)

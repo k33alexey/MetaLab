@@ -285,9 +285,10 @@ func TestTheCodeOfADeletedElementIsARemnant(t *testing.T) {
 			" current_row_use: use, associated_table: \"" + gone + "\"}\n", where: "command Удалить associated_table"},
 		"группа настроек списка": {items: "  - {id: c0de0000-0000-4000-8000-000000990001, name: Таблица, kind: table, data_path: Список," +
 			" dynamic_list: {period: {variant: custom}, user_settings_group: \"" + gone + "\"}}\n", where: "element Таблица user_settings_group"},
-		"список групп":          {common: commonForm("{kind: dynamic-list}", "group_list: \""+gone+"\"\n"), where: "group_list"},
-		"папка настроек отчёта": {common: commonForm(report, "custom_settings_folder: \""+gone+"\"\n"), where: "custom_settings_folder"},
-		"отображение варианта":  {common: commonForm(report, "variant_appearance: \""+gone+"\"\n"), where: "variant_appearance"},
+		"список групп":               {common: commonForm("{kind: dynamic-list}", "group_list: \""+gone+"\"\n"), where: "group_list"},
+		"папка настроек отчёта":      {common: commonForm(report, "custom_settings_folder: \""+gone+"\"\n"), where: "custom_settings_folder"},
+		"отображение варианта":       {common: commonForm(report, "variant_appearance: \""+gone+"\"\n"), where: "variant_appearance"},
+		"мобильная командная панель": {rest: "mobile_command_bar: [\"" + gone + "\"]\n", where: "mobile_command_bar[0]"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

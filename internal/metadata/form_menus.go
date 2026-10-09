@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -180,3 +181,52 @@ func (catalog *Catalog) noteRepeatedNames(where string, form ManagedForm) {
 		}
 	}
 }
+
+// noteMobileCommandBar carries what the command bar of a form holds on a
+// mobile device beyond a group or a button by name: an empty value
+// (NoteMobileCommandBarEmpty), an element of another kind - an extended
+// tooltip once in erp (NoteMobileCommandBarNotGroup) - and the code of an
+// element (noteElementCode).
+func (catalog *Catalog) noteMobileCommandBar(where string, form ManagedForm) {
+	if len(form.MobileCommandBar) == 0 {
+		return
+	}
+	kinds := map[string]FormElementKind{}
+	name := func(name string, kind FormElementKind) {
+		if _, seen := kinds[foldedName(name)]; name != "" && !seen {
+			kinds[foldedName(name)] = kind
+		}
+	}
+	var walk func(items []ManagedFormElement)
+	walk = func(items []ManagedFormElement) {
+		for _, item := range items {
+			name(item.Name, item.Kind)
+			if item.ContextMenu != nil {
+				name(item.ContextMenu.Name, formContextMenu)
+			}
+			if item.AutoCommandBar != nil {
+				name(item.AutoCommandBar.Name, FormElementCommandBar)
+			}
+			walk(item.Nested())
+		}
+	}
+	if form.AutoCommandBar != nil {
+		name(form.AutoCommandBar.Name, FormElementCommandBar)
+	}
+	walk(form.FormItems())
+	for index, item := range form.MobileCommandBar {
+		at := fmt.Sprintf("%s mobile_command_bar[%d]", where, index)
+		switch kind := kinds[foldedName(item)]; {
+		case item == "":
+			catalog.noteForm(NoteMobileCommandBarEmpty, at, `""`)
+		case formElementCode.MatchString(item):
+			catalog.noteElementCode(at, item)
+		case kind != FormElementButton && !slices.Contains(formGroupKinds, kind):
+			catalog.noteForm(NoteMobileCommandBarNotGroup, at, item+" ("+string(kind)+")")
+		}
+	}
+}
+
+// formContextMenu is how a context menu is named where an element is told by
+// its kind: it stands in no tree, and has no kind of its own.
+const formContextMenu FormElementKind = "context-menu"
