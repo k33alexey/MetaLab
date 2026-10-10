@@ -30,6 +30,7 @@ func (element ManagedFormElement) pictures() []elementPicture {
 		{"values_picture", element.ValuesPicture},
 		{"picture", element.Picture},
 		{"rows_picture", element.RowsPicture},
+		{"multiple_values_picture", element.MultipleValuesPicture},
 	}
 }
 

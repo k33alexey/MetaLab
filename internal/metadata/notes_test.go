@@ -295,6 +295,10 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Список, types: [{kind: dynamic-list}], dynamic_list: {filter: {items: "+
 			"[{left: {kind: field, data: Тип}, comparison: equal, right: [{kind: type, data: Undefined}]}]}}}\n")
 	},
+	NoteWithoutSample: func(t *testing.T, root string) {
+		writeCommonForm(t, root, "Метки", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Метки\ntitle: {ru: Метки}\nkind: common\n"+
+			"items:\n  - {id: "+uuid.MustNew().String()+", name: Метки, kind: input-field, allow_multiple_values_duplicates: true}\n")
+	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
 		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
@@ -522,6 +526,23 @@ func TestSoundSettingsCarryNoNotes(t *testing.T) {
 	ownChart := uuid.MustNew().String()
 	writeMetadata(t, root, ChartOfCharacteristicTypesKind, ownChart, "format: 1\nid: "+ownChart+"\nname: ВидыСвойств\ntitle: {ru: Виды свойств}\n"+
 		"code: {type: string, length: 9, auto: true}\ndescription_length: 100\nvalue_type: [{kind: boolean}, {kind: characteristic, reference: "+ownChart+"}]\n")
+	// Every property of an element the help names that another export of
+	// the configurator writes, under the name it writes it: none is without
+	// a sample.
+	writeCommonForm(t, root, "Метки", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Метки\ntitle: {ru: Метки}\nkind: common\n"+
+		"items:\n  - {id: "+uuid.MustNew().String()+", name: Метки, kind: input-field, multiple_value_data_path: Метки.Значение,"+
+		" multiple_values_hyperlink: true, show_check_boxes_in_drop_list: false, allow_input_empty_multiple_values: true,"+
+		" multiple_value_picture_size: small, multiple_value_picture_shape: circle, multiple_values_text_color: {source: web, name: White},"+
+		" multiple_values_back_color: {source: absolute, rgb: \"#190E70\"}, multiple_values_font: {source: auto},"+
+		" auto_capitalization: none, return_key_text: send}\n"+
+		"  - {id: "+uuid.MustNew().String()+", name: Кнопка, kind: button, command_uniqueness: false}\n"+
+		"  - {id: "+uuid.MustNew().String()+", name: Календарь, kind: calendar-field, calendar_navigation: false}\n"+
+		"  - {id: "+uuid.MustNew().String()+", name: Планировщик, kind: planner-field, dimension_item_hyperlink: true, time_scale_item_hyperlink: true}\n"+
+		"  - {id: "+uuid.MustNew().String()+", name: Документ, kind: spreadsheet-document-field, pointer_type: regular, drawing_selection_show_mode: show}\n"+
+		"  - {id: "+uuid.MustNew().String()+", name: Ганта, kind: gantt-chart-field, table_location: none, values_selection_mode: single}\n"+
+		"  - {id: "+uuid.MustNew().String()+", name: Таблица, kind: table, children: [{id: "+uuid.MustNew().String()+
+		", name: Год, kind: column-group, show_in_header: true, header_data_path: Год1, header_format: {ru: ЧГ=}}]}\n"+
+		"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Список, types: [{kind: dynamic-list}], dynamic_list: {get_invisible_field_presentations: false}}\n")
 	catalog, err := Load(root)
 	if err != nil {
 		t.Fatal(err)

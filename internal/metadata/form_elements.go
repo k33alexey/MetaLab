@@ -241,11 +241,16 @@ type FieldBehavior struct {
 	// prototype writes it ("Cmd+Shift+F", "Num +"), as the shortcut of a
 	// command is.
 	Shortcut string `yaml:"shortcut,omitempty" json:"shortcut,omitempty"`
+	// TypeRestriction narrows the types a field takes to fewer than its data
+	// holds (help, FormField), with the bounds of their qualifiers. No export
+	// writes it: it is carried under the name of the help and noted
+	// (NoteWithoutSample).
+	TypeRestriction []Type `yaml:"type_restriction,omitempty" json:"typeRestriction,omitempty"`
 }
 
 func (field FieldBehavior) empty() bool {
 	return field.TitleLocation == "" && field.SkipOnInput == nil && !field.DefaultItem && field.EditMode == "" &&
-		len(field.WarningOnEdit) == 0 && field.WarningOnEditRepresentation == "" && field.Shortcut == ""
+		len(field.WarningOnEdit) == 0 && field.WarningOnEditRepresentation == "" && field.Shortcut == "" && len(field.TypeRestriction) == 0
 }
 
 func validateFormField(path string, field FieldBehavior, class formElementClass, kind FormElementKind, configuration project.Project) []string {
@@ -253,7 +258,7 @@ func validateFormField(path string, field FieldBehavior, class formElementClass,
 		return nil
 	}
 	if class != formFieldClass && !outsideFields(field, kind).empty() {
-		return []string{path + " has what only a field has: title_location, skip_on_input, default_item, edit_mode, warning_on_edit, warning_on_edit_representation, shortcut"}
+		return []string{path + " has what only a field has: title_location, skip_on_input, default_item, edit_mode, warning_on_edit, warning_on_edit_representation, shortcut, type_restriction"}
 	}
 	var issues []string
 	issues = append(issues, oneOf(path+".title_location", field.TitleLocation, FormTitleAuto, FormTitleNone, FormTitleLeft, FormTitleRight, FormTitleTop, FormTitleBottom)...)
@@ -263,6 +268,7 @@ func validateFormField(path string, field FieldBehavior, class formElementClass,
 	if strings.TrimSpace(field.Shortcut) != field.Shortcut {
 		issues = append(issues, path+".shortcut must be written without surrounding spaces")
 	}
+	issues = append(issues, validateTypesIn(path+".type_restriction", field.TypeRestriction, placeFormAttribute)...)
 	return issues
 }
 
@@ -874,12 +880,45 @@ type FieldTextInput struct {
 	// it leaves out is therefore off, the behaviour of a field made before
 	// 8.3.23.
 	MultipleValuesExtendedEdit bool `yaml:"multiple_values_extended_edit,omitempty" json:"multipleValuesExtendedEdit,omitempty"`
+	// AutoCapitalization and ReturnKeyText are what the keyboard of a mobile
+	// client does as text is typed: changes the case of letters, and names
+	// the key that ends the input (help, AutoCapitalizationOnTextInput and
+	// OnScreenKeyboardReturnKeyText). The exports write neither; the
+	// configurator writes both under these names (other exports, 2 and 2).
+	AutoCapitalization FormAutoCapitalization `yaml:"auto_capitalization,omitempty" json:"autoCapitalization,omitempty"`
+	ReturnKeyText      FormReturnKeyText      `yaml:"return_key_text,omitempty" json:"returnKeyText,omitempty"`
+	// AutoFillHint tells a mobile and the web client what the field holds,
+	// for the browser to offer what it remembers (help, since 8.3.23). No
+	// export writes it: it is carried under the name of the help and noted
+	// (NoteWithoutSample).
+	AutoFillHint FormAutoFillHint `yaml:"auto_fill_hint,omitempty" json:"autoFillHint,omitempty"`
 }
+
+// FormAutoCapitalization is how the keyboard changes the case of what is
+// typed (help, AutoCapitalizationOnTextInput).
+type FormAutoCapitalization string
+
+var formAutoCapitalizations = []FormAutoCapitalization{"auto", "none", "sentences", "words", "all-characters"}
+
+// FormReturnKeyText is what the key ending the input on the keyboard of a
+// mobile client says (help, OnScreenKeyboardReturnKeyText).
+type FormReturnKeyText string
+
+var formReturnKeyTexts = []FormReturnKeyText{"auto", "continue", "done", "go", "join", "next", "return", "search", "send"}
+
+// FormAutoFillHint is what an input field holds, for the browser to fill it
+// in (help, InputFieldAutofillHint).
+type FormAutoFillHint string
+
+var formAutoFillHints = []FormAutoFillHint{"dont-use", "full-name", "given-name", "family-name", "middle-name", "name-prefix",
+	"name-suffix", "street", "city", "region", "country", "postal-code", "user-name", "password", "new-password", "one-time-code",
+	"email", "phone-number", "credit-card-number"}
 
 func (input FieldTextInput) empty() bool {
 	return !input.NoWrap && !input.NoTextEdit && input.MultiLine == nil && input.ExtendedEdit == nil && input.PasswordMode == nil &&
 		input.Mask == "" && len(input.InputHint) == 0 && input.EditTextUpdate == "" && input.SpecialTextInputMode == "" &&
-		input.SpellChecking == "" && input.AutoCorrection == "" && input.HeightControlVariant == "" && !input.MultipleValuesExtendedEdit
+		input.SpellChecking == "" && input.AutoCorrection == "" && input.HeightControlVariant == "" && !input.MultipleValuesExtendedEdit &&
+		input.AutoCapitalization == "" && input.ReturnKeyText == "" && input.AutoFillHint == ""
 }
 
 func validateFieldTextInput(path string, input FieldTextInput, kind FormElementKind, configuration project.Project) []string {
@@ -913,7 +952,121 @@ func validateFieldTextInput(path string, input FieldTextInput, kind FormElementK
 		variants = append(variants, FormHeightControlUseHeightInTableRows)
 	}
 	issues = append(issues, oneOf(path+".height_control_variant", input.HeightControlVariant, variants...)...)
+	issues = append(issues, oneOf(path+".auto_capitalization", input.AutoCapitalization, formAutoCapitalizations...)...)
+	issues = append(issues, oneOf(path+".return_key_text", input.ReturnKeyText, formReturnKeyTexts...)...)
+	issues = append(issues, oneOf(path+".auto_fill_hint", input.AutoFillHint, formAutoFillHints...)...)
 	return issues
+}
+
+// FormMultipleValuePictureSize is the size of the picture beside each of the
+// several values of an input field (help, InputFieldMultipleValuePictureSize).
+type FormMultipleValuePictureSize string
+
+var formMultipleValuePictureSizes = []FormMultipleValuePictureSize{"auto", "small", "medium", "large"}
+
+// FormMultipleValuePictureShape is the shape that picture is cut to (help,
+// InputFieldMultipleValuePictureShape).
+type FormMultipleValuePictureShape string
+
+var formMultipleValuePictureShapes = []FormMultipleValuePictureShape{"auto", "rect", "circle"}
+
+// FieldMultipleValues is how an input field shows and takes several values,
+// when it edits a value list or a collection of the form (help, the extension
+// of a form field for an input field, since 8.3.23). The exports, made in
+// modes up to 8.3.21, write none of it; other exports of the configurator do,
+// under the names below, and what they never write is carried under the
+// name of the help and noted on every place (NoteWithoutSample).
+type FieldMultipleValues struct {
+	// MultipleValueDataPath is the column of the collection holding the
+	// values. The help 8.3.27 does not name it; the configurator writes it
+	// under this name (45 forms of other exports).
+	MultipleValueDataPath string `yaml:"multiple_value_data_path,omitempty" json:"multipleValueDataPath,omitempty"`
+	// The attributes holding the value, its presentation and its picture; no
+	// export writes them (NoteWithoutSample).
+	MultipleValueValueDataPath        string `yaml:"multiple_value_value_data_path,omitempty" json:"multipleValueValueDataPath,omitempty"`
+	MultipleValuePresentationDataPath string `yaml:"multiple_value_presentation_data_path,omitempty" json:"multipleValuePresentationDataPath,omitempty"`
+	MultipleValuePictureDataPath      string `yaml:"multiple_value_picture_data_path,omitempty" json:"multipleValuePictureDataPath,omitempty"`
+	// MultipleValuesHyperlink shows the values as links, and
+	// ShowCheckBoxesInDropList check boxes in the drop list: each is yes, no
+	// or not said, as the help gives Undefined, chosen by the type and by the
+	// duplicates. The configurator writes the second under this shorter
+	// name than the help's, true and false (9 times in 7 forms of other
+	// exports).
+	MultipleValuesHyperlink  *bool `yaml:"multiple_values_hyperlink,omitempty" json:"multipleValuesHyperlink,omitempty"`
+	ShowCheckBoxesInDropList *bool `yaml:"show_check_boxes_in_drop_list,omitempty" json:"showCheckBoxesInDropList,omitempty"`
+	// AllowInputEmptyMultipleValues lets an empty value be added, and
+	// AllowMultipleValuesDuplicates one already there; both are off by
+	// default (help). Only the first has a sample.
+	AllowInputEmptyMultipleValues bool `yaml:"allow_input_empty_multiple_values,omitempty" json:"allowInputEmptyMultipleValues,omitempty"`
+	AllowMultipleValuesDuplicates bool `yaml:"allow_multiple_values_duplicates,omitempty" json:"allowMultipleValuesDuplicates,omitempty"`
+	// MultipleValuesPicture is the set of pictures a value picks from by the
+	// number or the boolean the picture data path names (NoteWithoutSample);
+	// the size and the shape draw the picture.
+	MultipleValuesPicture     *PictureReference             `yaml:"multiple_values_picture,omitempty" json:"multipleValuesPicture,omitempty"`
+	MultipleValuePictureSize  FormMultipleValuePictureSize  `yaml:"multiple_value_picture_size,omitempty" json:"multipleValuePictureSize,omitempty"`
+	MultipleValuePictureShape FormMultipleValuePictureShape `yaml:"multiple_value_picture_shape,omitempty" json:"multipleValuePictureShape,omitempty"`
+	// The colours and the font of the values, as the look of a field is.
+	MultipleValuesTextColor *ColorValue `yaml:"multiple_values_text_color,omitempty" json:"multipleValuesTextColor,omitempty"`
+	MultipleValuesBackColor *ColorValue `yaml:"multiple_values_back_color,omitempty" json:"multipleValuesBackColor,omitempty"`
+	MultipleValuesFont      *FontValue  `yaml:"multiple_values_font,omitempty" json:"multipleValuesFont,omitempty"`
+}
+
+func (values FieldMultipleValues) empty() bool {
+	return values == FieldMultipleValues{}
+}
+
+func validateFieldMultipleValues(path string, values FieldMultipleValues, kind FormElementKind) []string {
+	if values.empty() {
+		return nil
+	}
+	if kind != FormElementInputField {
+		return []string{path + " has the multiple values of an input field"}
+	}
+	var issues []string
+	for _, data := range []struct{ name, value string }{
+		{"multiple_value_data_path", values.MultipleValueDataPath}, {"multiple_value_value_data_path", values.MultipleValueValueDataPath},
+		{"multiple_value_presentation_data_path", values.MultipleValuePresentationDataPath},
+		{"multiple_value_picture_data_path", values.MultipleValuePictureDataPath},
+	} {
+		if data.value != "" {
+			issues = append(issues, validateElementDataPath(path+"."+data.name, data.value)...)
+		}
+	}
+	issues = append(issues, validateElementPictureReference(path+".multiple_values_picture", values.MultipleValuesPicture)...)
+	issues = append(issues, oneOf(path+".multiple_value_picture_size", values.MultipleValuePictureSize, formMultipleValuePictureSizes...)...)
+	issues = append(issues, oneOf(path+".multiple_value_picture_shape", values.MultipleValuePictureShape, formMultipleValuePictureShapes...)...)
+	for _, color := range values.colors() {
+		if color.value != nil {
+			issues = append(issues, validateColorValue(path+"."+color.name, *color.value)...)
+		}
+	}
+	if values.MultipleValuesFont != nil {
+		issues = append(issues, validateFontValue(path+".multiple_values_font", *values.MultipleValuesFont)...)
+	}
+	return issues
+}
+
+func (values FieldMultipleValues) colors() []namedColor {
+	return []namedColor{{"multiple_values_text_color", values.MultipleValuesTextColor}, {"multiple_values_back_color", values.MultipleValuesBackColor}}
+}
+
+// styleItems lists the style items of the configuration the values take their
+// colours and font from.
+func (values FieldMultipleValues) styleItems() []styleItemUse {
+	var uses []styleItemUse
+	if font := values.MultipleValuesFont; font != nil && font.Source == StyleFont {
+		if use, ok := styleItemUseOf("multiple_values_font", FontStyleItem, font.From); ok {
+			uses = append(uses, use)
+		}
+	}
+	for _, color := range values.colors() {
+		if color.value != nil && color.value.Source == StyleColor {
+			if use, ok := styleItemUseOf(color.name, ColorStyleItem, color.value.From); ok {
+				uses = append(uses, use)
+			}
+		}
+	}
+	return uses
 }
 
 // FormNumber is a number an element of a form is given, as the prototype
@@ -1505,7 +1658,30 @@ type FieldDocument struct {
 	// its command bar and context menu, by name as the prototype writes them
 	// (CommandSet, which the help does not name).
 	ExcludedCommands []string `yaml:"excluded_commands,omitempty" json:"excludedCommands,omitempty"`
+	// PointerType is the pointer of the mouse over a spreadsheet document
+	// (help, SpreadsheetDocumentPointerType), and DrawingSelectionShowMode
+	// whether a selected drawing in it is marked. The exports write neither;
+	// the configurator writes both under these names (other exports, 2 and
+	// 3).
+	PointerType              FormPointerType              `yaml:"pointer_type,omitempty" json:"pointerType,omitempty"`
+	DrawingSelectionShowMode FormDrawingSelectionShowMode `yaml:"drawing_selection_show_mode,omitempty" json:"drawingSelectionShowMode,omitempty"`
+	// BlackAndWhiteView shows a spreadsheet document in black and white; yes,
+	// no or not said, as the help names no default. No export writes it
+	// (NoteWithoutSample).
+	BlackAndWhiteView *bool `yaml:"black_and_white_view,omitempty" json:"blackAndWhiteView,omitempty"`
 }
+
+// FormPointerType is the pointer of the mouse over a spreadsheet document
+// (help, SpreadsheetDocumentPointerType).
+type FormPointerType string
+
+var formPointerTypes = []FormPointerType{"regular", "special"}
+
+// FormDrawingSelectionShowMode is whether a selected drawing of a spreadsheet
+// document is marked (help, DrawingSelectionShowMode).
+type FormDrawingSelectionShowMode string
+
+var formDrawingSelectionShowModes = []FormDrawingSelectionShowMode{"auto", "show", "dont-show"}
 
 func validateFieldDocument(path string, document FieldDocument, kind FormElementKind) []string {
 	var issues []string
@@ -1522,7 +1698,8 @@ func validateFieldDocument(path string, document FieldDocument, kind FormElement
 		{"view_scaling_mode", document.ViewScalingMode != ""}, {"selection_show_mode", document.SelectionShowMode != ""},
 		{"protection", document.Protection != nil}, {"show_headers", document.ShowHeaders != nil},
 		{"show_grid", document.ShowGrid != nil}, {"show_groups", document.ShowGroups != nil}, {"show_cell_names", document.ShowCellNames != nil},
-		{"show_row_and_column_names", document.ShowRowAndColumnNames != nil},
+		{"show_row_and_column_names", document.ShowRowAndColumnNames != nil}, {"pointer_type", document.PointerType != ""},
+		{"drawing_selection_show_mode", document.DrawingSelectionShowMode != ""}, {"black_and_white_view", document.BlackAndWhiteView != nil},
 	} {
 		only(property.name, property.set, "spreadsheet document fields", spreadsheet...)
 	}
@@ -1546,6 +1723,8 @@ func validateFieldDocument(path string, document FieldDocument, kind FormElement
 		FormSelectionWhenActive, FormSelectionWhenMultipleCellsSelected, FormSelectionWhenMultipleCellsSelectedWhenActive)...)
 	issues = append(issues, oneOf(path+".output", document.Output, FormUseOutputAuto, FormUseOutputEnable, FormUseOutputDisable)...)
 	issues = append(issues, validateExcludedCommands(path+".excluded_commands", document.ExcludedCommands)...)
+	issues = append(issues, oneOf(path+".pointer_type", document.PointerType, formPointerTypes...)...)
+	issues = append(issues, oneOf(path+".drawing_selection_show_mode", document.DrawingSelectionShowMode, formDrawingSelectionShowModes...)...)
 	return issues
 }
 
@@ -1596,10 +1775,12 @@ var (
 	}
 )
 
-// FieldOther is what a calendar, a progress bar and a track bar field have
-// (help, the extensions of a form field for each). A chart, a Gantt chart, a
-// planner and a graphical schema write nothing of their own in the exports
-// beyond what they share with the fields of documents (FieldDocument).
+// FieldOther is what a calendar, a progress bar, a track bar, a planner and a
+// Gantt chart field have (help, the extensions of a form field for each). A
+// chart and a graphical schema write nothing of their own beyond what they
+// share with the fields of documents (FieldDocument), and the exports write
+// nothing of a planner and a Gantt chart: what they have here is taken from
+// other exports of the configurator, or from the help (NoteWithoutSample).
 type FieldOther struct {
 	// ShowCurrentDate shows the line of the current date in a calendar; yes,
 	// no or not said, as the help names no default and the prototype writes
@@ -1628,7 +1809,40 @@ type FieldOther struct {
 	// (help, TrackBarMarkingAppearance). The help names no default, and the
 	// prototype leaves it out on 8 track bars of 17, so empty is not said.
 	MarkingAppearance FormMarkingAppearance `yaml:"marking_appearance,omitempty" json:"markingAppearance,omitempty"`
+	// CalendarNavigation lets a calendar move to dates out of sight. It is
+	// yes, no or not said: the help names no default, and the configurator
+	// writes only false (other exports, once).
+	CalendarNavigation *bool `yaml:"calendar_navigation,omitempty" json:"calendarNavigation,omitempty"`
+	// DimensionItemHyperlink, TimeScaleItemHyperlink and
+	// WrappedTimeScaleHeaderHyperlink make an item of a dimension, of the
+	// time scale and a wrapped header of the scale of a planner links that
+	// raise the forming of commands. Each is yes, no or not said, as the help
+	// names no default; the configurator writes the first two, true (other
+	// exports, 30 and 1 forms), and never the third (NoteWithoutSample).
+	DimensionItemHyperlink          *bool `yaml:"dimension_item_hyperlink,omitempty" json:"dimensionItemHyperlink,omitempty"`
+	TimeScaleItemHyperlink          *bool `yaml:"time_scale_item_hyperlink,omitempty" json:"timeScaleItemHyperlink,omitempty"`
+	WrappedTimeScaleHeaderHyperlink *bool `yaml:"wrapped_time_scale_header_hyperlink,omitempty" json:"wrappedTimeScaleHeaderHyperlink,omitempty"`
+	// TableLocation is where a Gantt chart puts its table, and
+	// ValuesSelectionMode and IntervalsSelectionMode how many of its values
+	// and intervals are selected. The configurator writes the first two
+	// (other exports, once), and never the third (NoteWithoutSample).
+	TableLocation          FormGanttTableLocation `yaml:"table_location,omitempty" json:"tableLocation,omitempty"`
+	ValuesSelectionMode    FormGanttSelectionMode `yaml:"values_selection_mode,omitempty" json:"valuesSelectionMode,omitempty"`
+	IntervalsSelectionMode FormGanttSelectionMode `yaml:"intervals_selection_mode,omitempty" json:"intervalsSelectionMode,omitempty"`
 }
+
+// FormGanttTableLocation is where a Gantt chart field puts its table (help,
+// GanttChartTableLocation).
+type FormGanttTableLocation string
+
+var formGanttTableLocations = []FormGanttTableLocation{"auto", "left", "right", "none"}
+
+// FormGanttSelectionMode is how many values or intervals of a Gantt chart are
+// selected (help, GanttChartValuesSelectionMode and
+// GanttChartIntervalsSelectionMode, which have the same values).
+type FormGanttSelectionMode string
+
+var formGanttSelectionModes = []FormGanttSelectionMode{"auto", "single", "multiple", "none"}
 
 // FormMarkingAppearance is on which side of a track bar its marks are drawn
 // (help, TrackBarMarkingAppearance).
@@ -1657,6 +1871,16 @@ func validateFieldOther(path string, other FieldOther, kind FormElementKind) []s
 	only("large_step", other.LargeStep != "", "track bar fields", FormElementTrackBarField)
 	only("marking_step", other.MarkingStep != "", "track bar fields", FormElementTrackBarField)
 	only("marking_appearance", other.MarkingAppearance != "", "track bar fields", FormElementTrackBarField)
+	only("calendar_navigation", other.CalendarNavigation != nil, "calendar fields", FormElementCalendarField)
+	only("dimension_item_hyperlink", other.DimensionItemHyperlink != nil, "planner fields", FormElementPlannerField)
+	only("time_scale_item_hyperlink", other.TimeScaleItemHyperlink != nil, "planner fields", FormElementPlannerField)
+	only("wrapped_time_scale_header_hyperlink", other.WrappedTimeScaleHeaderHyperlink != nil, "planner fields", FormElementPlannerField)
+	only("table_location", other.TableLocation != "", "Gantt chart fields", FormElementGanttChartField)
+	only("values_selection_mode", other.ValuesSelectionMode != "", "Gantt chart fields", FormElementGanttChartField)
+	only("intervals_selection_mode", other.IntervalsSelectionMode != "", "Gantt chart fields", FormElementGanttChartField)
+	issues = append(issues, oneOf(path+".table_location", other.TableLocation, formGanttTableLocations...)...)
+	issues = append(issues, oneOf(path+".values_selection_mode", other.ValuesSelectionMode, formGanttSelectionModes...)...)
+	issues = append(issues, oneOf(path+".intervals_selection_mode", other.IntervalsSelectionMode, formGanttSelectionModes...)...)
 	for _, months := range []struct {
 		name  string
 		value *int
@@ -1804,6 +2028,17 @@ type GroupProperties struct {
 	// by default, and the prototype writes only the "on" (1046 times) - the
 	// other way round from a field, whose header is shown unless hidden.
 	ShowInHeader bool `yaml:"show_in_header,omitempty" json:"showInHeader,omitempty"`
+	// HeaderDataPath is the attribute a group of columns shows in the header
+	// of its table, written as the data path of a field is, and HeaderFormat
+	// how it is shown - in languages, as the format of a field is, though the
+	// help gives it a string. The exports write neither; the configurator
+	// writes both under these names (other exports, 2 forms).
+	HeaderDataPath string        `yaml:"header_data_path,omitempty" json:"headerDataPath,omitempty"`
+	HeaderFormat   LocalizedText `yaml:"header_format,omitempty" json:"headerFormat,omitempty"`
+	// HiddenRepresentationTitleBackColor is the background of the title of a
+	// usual group collapsed, or of a popup one at any time (help, since
+	// 8.3.12). No export writes it (NoteWithoutSample).
+	HiddenRepresentationTitleBackColor *ColorValue `yaml:"hidden_representation_title_back_color,omitempty" json:"hiddenRepresentationTitleBackColor,omitempty"`
 	// ShapeRepresentation is when the shape of a popup or a button is drawn.
 	ShapeRepresentation FormShapeRepresentation `yaml:"shape_representation,omitempty" json:"shapeRepresentation,omitempty"`
 	// CommandSource is where a command bar, a button group or a popup takes
@@ -1814,6 +2049,17 @@ type GroupProperties struct {
 	// times), and the code of an element (8, see validateFormLinkPath), which
 	// is carried as written.
 	CommandSource string `yaml:"command_source,omitempty" json:"commandSource,omitempty"`
+}
+
+// styleItems lists the style items of the configuration the groups take their
+// colours from.
+func (group GroupProperties) styleItems() []styleItemUse {
+	if color := group.HiddenRepresentationTitleBackColor; color != nil && color.Source == StyleColor {
+		if use, ok := styleItemUseOf("hidden_representation_title_back_color", ColorStyleItem, color.From); ok {
+			return []styleItemUse{use}
+		}
+	}
+	return nil
 }
 
 // commandSourceItem is the name of the element a source of commands names,
@@ -1858,6 +2104,16 @@ func validateGroupProperties(path string, group GroupProperties, kind FormElemen
 	only("current_row_use", group.CurrentRowUse != "", "usual groups, pages and tables", FormElementUsualGroup, FormElementPages, FormElementTable)
 	only("associated_table", group.AssociatedTable != "", "usual groups and pages", FormElementUsualGroup, FormElementPages)
 	only("show_in_header", group.ShowInHeader, "groups of columns", FormElementColumnGroup)
+	only("header_data_path", group.HeaderDataPath != "", "groups of columns", FormElementColumnGroup)
+	only("header_format", len(group.HeaderFormat) != 0, "groups of columns", FormElementColumnGroup)
+	only("hidden_representation_title_back_color", group.HiddenRepresentationTitleBackColor != nil, "usual groups", FormElementUsualGroup)
+	if group.HeaderDataPath != "" {
+		issues = append(issues, validateElementDataPath(path+".header_data_path", group.HeaderDataPath)...)
+	}
+	issues = append(issues, validateTitle(path+".header_format", group.HeaderFormat, configuration)...)
+	if color := group.HiddenRepresentationTitleBackColor; color != nil {
+		issues = append(issues, validateColorValue(path+".hidden_representation_title_back_color", *color)...)
+	}
 	only("shape_representation", group.ShapeRepresentation != "", "popups and buttons", FormElementPopup, FormElementButton)
 	only("command_source", group.CommandSource != "", "command bars, button groups and popups", FormElementCommandBar,
 		FormElementButtonGroup, FormElementPopup)
@@ -1953,6 +2209,12 @@ type ButtonProperties struct {
 	RepresentationInContextMenu FormRepresentationInContextMenu `yaml:"representation_in_context_menu,omitempty" json:"representationInContextMenu,omitempty"`
 	Shape                       FormButtonShape                 `yaml:"shape,omitempty" json:"shape,omitempty"`
 	PictureLocation             FormPictureLocation             `yaml:"picture_location,omitempty" json:"pictureLocation,omitempty"`
+	// CommandUniqueness keeps one button for a command in a group filled by
+	// itself, the user's first (help, since 8.3.15). It is yes, no or not
+	// said, as the help names no default; the exports never write it, and
+	// the configurator writes false under this name (other exports, 3
+	// forms).
+	CommandUniqueness *bool `yaml:"command_uniqueness,omitempty" json:"commandUniqueness,omitempty"`
 }
 
 func validateButtonProperties(path string, properties ButtonProperties, kind FormElementKind) []string {
@@ -1960,7 +2222,7 @@ func validateButtonProperties(path string, properties ButtonProperties, kind For
 		return nil
 	}
 	if kind != FormElementButton {
-		return []string{path + " has what only a button has: check, default_button, location_in_command_bar, representation_in_context_menu, shape, picture_location"}
+		return []string{path + " has what only a button has: check, default_button, location_in_command_bar, representation_in_context_menu, shape, picture_location, command_uniqueness"}
 	}
 	var issues []string
 	issues = append(issues, oneOf(path+".location_in_command_bar", properties.LocationInCommandBar, FormLocationInCommandBarAuto,

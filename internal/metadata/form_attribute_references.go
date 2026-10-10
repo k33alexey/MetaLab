@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -227,7 +228,9 @@ func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElem
 				}
 			}
 		}
-		if err := catalog.resolveStyleItems(where, append(item.FieldLook.styleItems(), item.FieldColumn.styleItems()...)); err != nil {
+		uses := append(item.FieldLook.styleItems(), item.FieldColumn.styleItems()...)
+		uses = append(uses, item.FieldMultipleValues.styleItems()...)
+		if err := catalog.resolveStyleItems(where, append(uses, item.GroupProperties.styleItems()...)); err != nil {
 			return err
 		}
 		if form := item.ChoiceForm; form != nil {
@@ -265,6 +268,12 @@ func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElem
 				return err
 			}
 		}
+		if len(item.TypeRestriction) != 0 {
+			if err := catalog.resolveFormData(where+" type restriction", item.TypeRestriction, nil); err != nil {
+				return err
+			}
+		}
+		catalog.noteWithoutSample(where, item)
 		if item.ChoiceFormGone != nil {
 			catalog.noteUnresolved(where+" choice_form_gone", *item.ChoiceFormGone)
 		}
@@ -287,6 +296,40 @@ func (catalog *Catalog) resolveFormElements(form string, items []ManagedFormElem
 		}
 	}
 	return nil
+}
+
+// noteWithoutSample notes each property of an element the help names and no
+// export of the configurator writes, carried under the name of the help
+// (NoteWithoutSample), with its value where one word says it.
+func (catalog *Catalog) noteWithoutSample(where string, item ManagedFormElement) {
+	flag := func(value *bool) string {
+		if value == nil {
+			return ""
+		}
+		return strconv.FormatBool(*value)
+	}
+	for _, property := range []struct {
+		name    string
+		set     bool
+		written string
+	}{
+		{"multiple_value_value_data_path", item.MultipleValueValueDataPath != "", item.MultipleValueValueDataPath},
+		{"multiple_value_presentation_data_path", item.MultipleValuePresentationDataPath != "", item.MultipleValuePresentationDataPath},
+		{"multiple_value_picture_data_path", item.MultipleValuePictureDataPath != "", item.MultipleValuePictureDataPath},
+		{"allow_multiple_values_duplicates", item.AllowMultipleValuesDuplicates, "true"},
+		{"multiple_values_picture", item.MultipleValuesPicture != nil, ""},
+		{"auto_fill_hint", item.AutoFillHint != "", string(item.AutoFillHint)},
+		{"type_restriction", len(item.TypeRestriction) != 0, ""},
+		{"black_and_white_view", item.BlackAndWhiteView != nil, flag(item.BlackAndWhiteView)},
+		{"wrapped_time_scale_header_hyperlink", item.WrappedTimeScaleHeaderHyperlink != nil, flag(item.WrappedTimeScaleHeaderHyperlink)},
+		{"intervals_selection_mode", item.IntervalsSelectionMode != "", string(item.IntervalsSelectionMode)},
+		{"hidden_representation_title_back_color", item.HiddenRepresentationTitleBackColor != nil, ""},
+		{"hierarchy_panel_location", item.HierarchyPanelLocation != "", item.HierarchyPanelLocation},
+	} {
+		if property.set {
+			catalog.noteForm(NoteWithoutSample, where+" "+property.name, property.written)
+		}
+	}
 }
 
 // noteChart notes what the content of a chart carries without knowing

@@ -79,6 +79,7 @@ const (
 	NoteGanttChartStateUnexplained NoteKind = "gantt-chart-state-unexplained"
 	NotePlannerStateUnexplained    NoteKind = "planner-state-unexplained"
 	NoteCompositionTypeUnexplained NoteKind = "composition-type-unexplained"
+	NoteWithoutSample              NoteKind = "accepted-without-sample"
 )
 
 func init() {
@@ -333,6 +334,12 @@ func init() {
 				"в пространстве имён типов конфигурации (8 значений в настройках динамических списков, сравнения с полем вида «Тип»). " +
 				"Что оно значит — «Неопределено» или тип удалённого объекта, — не установлено.",
 			"Значение несётся как записано; отбор с ним не исполняется (исполнение — блок 8)."},
+		NoteKindInfo{NoteWithoutSample,
+			"Свойство элемента формы, которое справка 8.3.27 называет, а ни одна известная выгрузка конфигуратора не пишет: " +
+				"проверочные выгрузки сделаны в режимах до 8.3.21, а в открытых выгрузках образца не нашлось. Оно принято под " +
+				"английским именем справки, в обычной записи элемента (CONFORMANCE.md, «Состав, который называет только справка»); " +
+				"под каким именем и в какой записи его сохраняет конфигуратор, не проверено.",
+			"Свойство несётся как записано и не исполняется; при импорте место сверяется с тем, как конфигуратор его записал."},
 	)
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
@@ -434,6 +441,9 @@ func init() {
 	}
 	noteRules[NoteCompositionTypeUnexplained] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteCompositionTypeUnexplained, note)
+	}
+	noteRules[NoteWithoutSample] = func(catalog *Catalog, note func(where, written string)) {
+		catalog.formNotesOf(NoteWithoutSample, note)
 	}
 }
 

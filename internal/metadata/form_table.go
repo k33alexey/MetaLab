@@ -184,7 +184,17 @@ type TableProperties struct {
 	// a table at all. It is carried as written and noted
 	// (NotePropertyOutsideHelp).
 	Autofill bool `yaml:"autofill,omitempty" json:"autofill,omitempty"`
+	// HierarchyPanelLocation is where a table puts the panel of its
+	// hierarchy (help, since 8.3.27). The help names its default, Auto, and
+	// neither its type nor its other values, and no export writes it: it is
+	// carried as written, spelled as the model spells a value, and noted
+	// (NoteWithoutSample).
+	HierarchyPanelLocation string `yaml:"hierarchy_panel_location,omitempty" json:"hierarchyPanelLocation,omitempty"`
 }
+
+// enumerationSpelling is a value of an enumeration spelled as the model
+// spells one: words in lower case joined by hyphens.
+var enumerationSpelling = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 // FormSettingsViewMode is what a table of the settings of a composition
 // shows (help, DataCompositionSettingsViewMode).
@@ -319,7 +329,7 @@ func (table TableProperties) empty() bool {
 		table.SearchControlLocation == "" && table.SearchOnInput == "" && table.HeightInTableRows == 0 && !table.NoAutoMaxRowsCount &&
 		table.MaxRowsCount == 0 && table.RowsPicture == nil && table.RowPictureDataPath == "" && table.RefreshRequest == "" &&
 		table.BehaviorOnHorizontalCompression == "" && table.DynamicList == nil && table.ViewMode == "" &&
-		!table.NoNamedItemDetailedRepresentation && !table.Autofill
+		!table.NoNamedItemDetailedRepresentation && !table.Autofill && table.HierarchyPanelLocation == ""
 }
 
 func validateTableProperties(path string, table TableProperties, kind FormElementKind) []string {
@@ -331,6 +341,9 @@ func validateTableProperties(path string, table TableProperties, kind FormElemen
 	}
 	var issues []string
 	issues = append(issues, oneOf(path+".row_selection_mode", table.RowSelectionMode, FormRowSelectionCell, FormRowSelectionRow)...)
+	if location := table.HierarchyPanelLocation; location != "" && !enumerationSpelling.MatchString(location) {
+		issues = append(issues, path+".hierarchy_panel_location must be a value spelled in lower case words joined by hyphens")
+	}
 	for _, size := range []struct {
 		name  string
 		value int

@@ -53,6 +53,7 @@ func cloneRuntimeFormElements(values []ManagedFormElement) []ManagedFormElement 
 		value.ToolTip = maps.Clone(value.ToolTip)
 		value.UserVisible = value.UserVisible.clone()
 		value.SkipOnInput = clonePointer(value.SkipOnInput)
+		value.TypeRestriction = cloneTypes(value.TypeRestriction)
 		value.WarningOnEdit = maps.Clone(value.WarningOnEdit)
 		value.HorizontalStretch = clonePointer(value.HorizontalStretch)
 		value.VerticalStretch = clonePointer(value.VerticalStretch)
@@ -60,6 +61,7 @@ func cloneRuntimeFormElements(values []ManagedFormElement) []ManagedFormElement 
 		value.FieldColumn = value.FieldColumn.clone()
 		value.FieldButtons = value.FieldButtons.clone()
 		value.FieldTextInput = value.FieldTextInput.clone()
+		value.FieldMultipleValues = value.FieldMultipleValues.clone()
 		value.FieldFormat = value.FieldFormat.clone()
 		value.InputFieldChoice = value.InputFieldChoice.clone()
 		value.ChoiceList = cloneChoiceList(value.ChoiceList)
@@ -69,6 +71,12 @@ func cloneRuntimeFormElements(values []ManagedFormElement) []ManagedFormElement 
 		value.NonselectedPictureText = maps.Clone(value.NonselectedPictureText)
 		value.FieldDocument = value.FieldDocument.clone()
 		value.ShowCurrentDate = clonePointer(value.ShowCurrentDate)
+		value.CalendarNavigation = clonePointer(value.CalendarNavigation)
+		value.DimensionItemHyperlink, value.TimeScaleItemHyperlink = clonePointer(value.DimensionItemHyperlink), clonePointer(value.TimeScaleItemHyperlink)
+		value.WrappedTimeScaleHeaderHyperlink = clonePointer(value.WrappedTimeScaleHeaderHyperlink)
+		value.HeaderFormat = maps.Clone(value.HeaderFormat)
+		value.HiddenRepresentationTitleBackColor = value.HiddenRepresentationTitleBackColor.clone()
+		value.CommandUniqueness = clonePointer(value.CommandUniqueness)
 		value.WidthInMonths, value.HeightInMonths = clonePointer(value.WidthInMonths), clonePointer(value.HeightInMonths)
 		value.CollapsedTitle = maps.Clone(value.CollapsedTitle)
 		value.Picture = value.Picture.clone()
@@ -117,6 +125,15 @@ func (input FieldTextInput) clone() FieldTextInput {
 	return input
 }
 
+func (values FieldMultipleValues) clone() FieldMultipleValues {
+	values.MultipleValuesHyperlink = clonePointer(values.MultipleValuesHyperlink)
+	values.ShowCheckBoxesInDropList = clonePointer(values.ShowCheckBoxesInDropList)
+	values.MultipleValuesPicture = values.MultipleValuesPicture.clone()
+	values.MultipleValuesTextColor, values.MultipleValuesBackColor = values.MultipleValuesTextColor.clone(), values.MultipleValuesBackColor.clone()
+	values.MultipleValuesFont = values.MultipleValuesFont.clone()
+	return values
+}
+
 func (format FieldFormat) clone() FieldFormat {
 	format.Format, format.EditFormat = maps.Clone(format.Format), maps.Clone(format.EditFormat)
 	format.MarkNegatives, format.AutoMarkIncomplete = clonePointer(format.MarkNegatives), clonePointer(format.AutoMarkIncomplete)
@@ -148,7 +165,7 @@ func (parameters InputFieldChoiceParameters) clone() InputFieldChoiceParameters 
 func (document FieldDocument) clone() FieldDocument {
 	for _, flag := range []**bool{&document.Edit, &document.Protection,
 		&document.ShowHeaders, &document.ShowGrid, &document.ShowGroups, &document.ShowCellNames, &document.ShowRowAndColumnNames,
-		&document.EnableDrag, &document.EnableStartDrag} {
+		&document.EnableDrag, &document.EnableStartDrag, &document.BlackAndWhiteView} {
 		*flag = clonePointer(*flag)
 	}
 	document.ExcludedCommands = slices.Clone(document.ExcludedCommands)
@@ -221,6 +238,7 @@ func cloneFormAttributes(values []FormAttribute) []FormAttribute {
 			list := *value.DynamicList
 			list.MainTable = clonePointer(list.MainTable)
 			list.KeyFields = slices.Clone(list.KeyFields)
+			list.GetInvisibleFieldPresentations = clonePointer(list.GetInvisibleFieldPresentations)
 			cloneListComposition(&list)
 			cloneListSchema(&list)
 			value.DynamicList = &list

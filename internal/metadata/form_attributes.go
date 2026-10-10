@@ -111,6 +111,12 @@ type DynamicListSettings struct {
 	// writes only the «off» (3 and 55 times).
 	NoAutoFillAvailableFields bool `yaml:"no_auto_fill_available_fields,omitempty" json:"noAutoFillAvailableFields,omitempty"`
 	NoAutoSaveUserSettings    bool `yaml:"no_auto_save_user_settings,omitempty" json:"noAutoSaveUserSettings,omitempty"`
+	// GetInvisibleFieldPresentations gets the presentations of the fields no
+	// visible element shows too (help, since 8.3.10). It is yes, no or not
+	// said, as the help names no default; the exports never write it, and
+	// the configurator writes false under this name (other exports, 30
+	// forms).
+	GetInvisibleFieldPresentations *bool `yaml:"get_invisible_field_presentations,omitempty" json:"getInvisibleFieldPresentations,omitempty"`
 	// Filter, Order, ConditionalAppearance and Group are the settings of the
 	// list (help, DynamicList), settings of data composition the prototype
 	// writes in ListSettings; they are executed in blocks 7 and 8.

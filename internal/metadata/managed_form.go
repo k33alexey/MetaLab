@@ -216,6 +216,8 @@ type ManagedFormElement struct {
 	FieldButtons `yaml:",inline"`
 	// FieldTextInput is how text is typed into an input field.
 	FieldTextInput `yaml:",inline"`
+	// FieldMultipleValues is how an input field shows several values.
+	FieldMultipleValues `yaml:",inline"`
 	// FieldFormat is how a field shows a value and bounds a number.
 	FieldFormat `yaml:",inline"`
 	// InputFieldChoice is how a value of an input field is picked.
@@ -474,6 +476,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		issues = append(issues, validateFieldColumn(current.path, item.FieldColumn, class, item.Kind, configuration)...)
 		issues = append(issues, validateFieldButtons(current.path, item.FieldButtons, item.Kind)...)
 		issues = append(issues, validateFieldTextInput(current.path, item.FieldTextInput, item.Kind, configuration)...)
+		issues = append(issues, validateFieldMultipleValues(current.path, item.FieldMultipleValues, item.Kind)...)
 		issues = append(issues, validateFieldFormat(current.path, item.FieldFormat, item.Kind, configuration)...)
 		issues = append(issues, validateInputFieldChoice(current.path, item.InputFieldChoice, item.Kind)...)
 		issues = append(issues, validateChoiceList(current.path, item.ChoiceList, item.Kind, configuration)...)

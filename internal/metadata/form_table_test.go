@@ -40,7 +40,7 @@ func TestATableKeepsWhatItHasOfItsOwn(t *testing.T) {
 		" command_bar_location: none, search_string_location: none, view_status_location: top, search_control_location: command-bar," +
 		" search_on_input: dont-use, height_in_table_rows: 5, no_auto_max_rows_count: true, max_rows_count: 8," +
 		" rows_picture: {standard: Change}, row_picture_data_path: Список.ВидПиктограммы, refresh_request: pull-from-top," +
-		" behavior_on_horizontal_compression: move-items-by-importance," +
+		" behavior_on_horizontal_compression: move-items-by-importance, hierarchy_panel_location: left," +
 		" width: 60, height: 7, no_auto_max_width: true, max_width: 80, vertical_stretch: false, group_horizontal_align: right," +
 		" title_location: top, skip_on_input: true, default_item: true, shortcut: Cmd+1, title_height: 2," +
 		" border_color: {source: style, from: {standard: BorderColor}}, title_font: {source: auto}, text_color: {source: auto}," +
@@ -76,7 +76,8 @@ func TestATableKeepsWhatItHasOfItsOwn(t *testing.T) {
 		case table.HeightInTableRows != 5 || !table.NoAutoMaxRowsCount || table.MaxRowsCount != 8 || table.RowsPicture == nil ||
 			table.RowsPicture.Standard != "Change" || table.RowPictureDataPath != "Список.ВидПиктограммы":
 			t.Fatalf("%s: height and pictures: %+v", source, table.TableProperties)
-		case table.RefreshRequest != FormRefreshRequestPullFromTop || table.BehaviorOnHorizontalCompression != FormHorizontalCompressionMoveItemsByImportance:
+		case table.RefreshRequest != FormRefreshRequestPullFromTop || table.BehaviorOnHorizontalCompression != FormHorizontalCompressionMoveItemsByImportance ||
+			table.HierarchyPanelLocation != "left":
 			t.Fatalf("%s: the mobile client: %+v", source, table.TableProperties)
 		case table.Width != 60 || table.Height != 7 || !table.NoAutoMaxWidth || table.MaxWidth != 80 || table.VerticalStretch == nil ||
 			*table.VerticalStretch || table.GroupHorizontalAlign != ItemHorizontalRight:
@@ -140,7 +141,7 @@ func TestEachPropertyOfATableStandsOnlyOnATable(t *testing.T) {
 		SearchOnInput: FormSearchOnInputUse, HeightInTableRows: 1, NoAutoMaxRowsCount: true, MaxRowsCount: 1,
 		RowsPicture: &PictureReference{Standard: "Change"}, RowPictureDataPath: "Список.Картинка", RefreshRequest: FormRefreshRequestNone,
 		BehaviorOnHorizontalCompression: FormHorizontalCompressionAuto, DynamicList: &TableDynamicList{Period: FormStandardPeriod{Variant: "custom"}},
-		ViewMode: FormSettingsViewQuickAccess, NoNamedItemDetailedRepresentation: true, Autofill: true}
+		ViewMode: FormSettingsViewQuickAccess, NoNamedItemDetailedRepresentation: true, Autofill: true, HierarchyPanelLocation: "auto"}
 	value := reflect.ValueOf(full)
 	for index := range value.NumField() {
 		name := value.Type().Field(index).Name
@@ -201,6 +202,7 @@ func TestATableRefusesWhatIsWrong(t *testing.T) {
 		"выравнивание колонки":    {"kind: table, horizontal_align: left", "items[0] has the size and alignment of a field"},
 		"рамка":                   {"kind: table, border: {source: auto}", "items[0] has the look of a field"},
 		"режим редактирования":    {"kind: table, edit_mode: directly", "items[0] has what only a field has"},
+		"панель иерархии":         {"kind: table, hierarchy_panel_location: Left", "items[0].hierarchy_panel_location must be a value spelled in lower case words joined by hyphens"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

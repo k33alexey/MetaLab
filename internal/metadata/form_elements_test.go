@@ -283,12 +283,14 @@ func TestAFieldKeepsHowItIsTitledEnteredAndEdited(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
 	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, title_location: top, skip_on_input: false, default_item: true," +
-		" edit_mode: enter-on-input, warning_on_edit: {ru: Осторожно}, warning_on_edit_representation: show, shortcut: Cmd+Shift+F}\n" +
+		" edit_mode: enter-on-input, warning_on_edit: {ru: Осторожно}, warning_on_edit_representation: show, shortcut: Cmd+Shift+F," +
+		" type_restriction: [{kind: string, length: 10}]}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Флажок, kind: check-box-field, skip_on_input: true}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Надпись, kind: label-field}\n"
 	no, yes := false, true
 	want := FieldBehavior{TitleLocation: FormTitleTop, SkipOnInput: &no, DefaultItem: true, EditMode: FormEditEnterOnInput,
-		WarningOnEdit: LocalizedText{"ru": "Осторожно"}, WarningOnEditRepresentation: FormWarningOnEditShow, Shortcut: "Cmd+Shift+F"}
+		WarningOnEdit: LocalizedText{"ru": "Осторожно"}, WarningOnEditRepresentation: FormWarningOnEditShow, Shortcut: "Cmd+Shift+F",
+		TypeRestriction: []Type{{Kind: StringType, Length: 10}}}
 	check := func(source string, items []ManagedFormElement) {
 		t.Helper()
 		if !reflect.DeepEqual(items[0].FieldBehavior, want) {
@@ -354,6 +356,8 @@ func TestAFieldRefusesWhatIsWrongInHowItIsEdited(t *testing.T) {
 		"отображение предупреждения": {"kind: input-field, warning_on_edit_representation: always", "items[0].warning_on_edit_representation must be auto, show or dont-show"},
 		"предупреждение не на языке": {"kind: input-field, warning_on_edit: {\"d=e\": О}", "items[0].warning_on_edit"},
 		"пробелы в сочетании":        {"kind: input-field, shortcut: \" F5\"", "items[0].shortcut must be written without surrounding spaces"},
+		"ограничение типа у группы":  {"kind: usual-group, type_restriction: [{kind: string}]", "items[0] has what only a field has"},
+		"ограничение типом ничего":   {"kind: input-field, type_restriction: [{kind: nothing}]", "items[0].type_restriction"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -1045,7 +1049,8 @@ func TestAnInputFieldKeepsHowTextIsTyped(t *testing.T) {
 	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, no_wrap: true, no_text_edit: true," +
 		" multi_line: false, extended_edit: true, password_mode: false, mask: \"99 99\", input_hint: {ru: Введите код}," +
 		" edit_text_update: on-value-change, special_text_input_mode: phone-number, spell_checking: dont-use, auto_correction: use," +
-		" height_control_variant: use-content-height, multiple_values_extended_edit: true}\n" +
+		" height_control_variant: use-content-height, multiple_values_extended_edit: true, auto_capitalization: none," +
+		" return_key_text: send, auto_fill_hint: phone-number}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Пароль, kind: label-field, password_mode: true}\n"
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
 	if err != nil {
@@ -1071,6 +1076,8 @@ func TestAnInputFieldKeepsHowTextIsTyped(t *testing.T) {
 		t.Fatalf("height: %q", input.HeightControlVariant)
 	case !input.MultipleValuesExtendedEdit:
 		t.Fatalf("multiple values: %+v", input)
+	case input.AutoCapitalization != "none" || input.ReturnKeyText != "send" || input.AutoFillHint != "phone-number":
+		t.Fatalf("keyboard of a mobile client: %q %q %q", input.AutoCapitalization, input.ReturnKeyText, input.AutoFillHint)
 	case form.Items[1].PasswordMode == nil || !*form.Items[1].PasswordMode:
 		t.Fatalf("label field: %+v", form.Items[1].FieldTextInput)
 	}
@@ -1116,6 +1123,10 @@ func TestAnInputFieldRefusesWrongTextInput(t *testing.T) {
 		"автоисправление":            {"kind: input-field, auto_correction: never", "items[0].auto_correction must be auto, use or dont-use"},
 		"высота":                     {"kind: input-field, height_control_variant: rows", "items[0].height_control_variant must be auto, use-content-height or use-height-in-form-rows"},
 		"подсказка без слов":         {"kind: input-field, input_hint: {ru: \"\\x01\"}", "items[0].input_hint.ru must say something in printable characters"},
+		"регистр прототипа":          {"kind: input-field, auto_capitalization: AllCharacters", "items[0].auto_capitalization must be auto, none, sentences, words or all-characters"},
+		"кнопка клавиатуры":          {"kind: input-field, return_key_text: enter", "items[0].return_key_text must be auto, continue, done, go, join, next, return, search or send"},
+		"автозаполнение":             {"kind: input-field, auto_fill_hint: phone", "items[0].auto_fill_hint must be dont-use, full-name"},
+		"регистр флажка":             {"kind: check-box-field, auto_capitalization: none", "items[0] has the text input of an input field"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -1141,7 +1152,8 @@ func TestEveryPropertyOfTextInputStandsOnlyOnAnInputField(t *testing.T) {
 	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, no_wrap: true, no_text_edit: true," +
 		" multi_line: false, extended_edit: false, password_mode: false, mask: \"9\", input_hint: {ru: Код}," +
 		" edit_text_update: auto, special_text_input_mode: auto, spell_checking: auto, auto_correction: auto," +
-		" height_control_variant: auto, multiple_values_extended_edit: true}\n" +
+		" height_control_variant: auto, multiple_values_extended_edit: true, auto_capitalization: auto, return_key_text: auto," +
+		" auto_fill_hint: dont-use}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Флажок, kind: check-box-field}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Надпись, kind: label-field}\n"
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
@@ -2222,7 +2234,8 @@ func TestAFieldOfADocumentKeepsWhatItHas(t *testing.T) {
 	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Таблица, kind: spreadsheet-document-field, vertical_scroll_bar: dont-use," +
 		" horizontal_scroll_bar: use-always, view_scaling_mode: normal, selection_show_mode: when-multiple-cells-selected, edit: true," +
 		" protection: false, show_headers: false, show_grid: true, show_groups: false, show_cell_names: true, show_row_and_column_names: false," +
-		" enable_drag: false, enable_start_drag: true, output: enable, excluded_commands: [Print, AlignCenter]}\n" +
+		" enable_drag: false, enable_start_drag: true, output: enable, excluded_commands: [Print, AlignCenter], pointer_type: special," +
+		" drawing_selection_show_mode: dont-show, black_and_white_view: false}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Страница, kind: html-document-field, output: disable}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Текст, kind: formatted-document-field, excluded_commands: [Picture]}\n"
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
@@ -2244,9 +2257,9 @@ func TestAFieldOfADocumentKeepsWhatItHas(t *testing.T) {
 	}
 	got := strings.Join([]string{said(document.Edit),
 		said(document.Protection), said(document.ShowHeaders), said(document.ShowGrid), said(document.ShowGroups), said(document.ShowCellNames),
-		said(document.ShowRowAndColumnNames), said(document.EnableDrag), said(document.EnableStartDrag)}, " ")
+		said(document.ShowRowAndColumnNames), said(document.EnableDrag), said(document.EnableStartDrag), said(document.BlackAndWhiteView)}, " ")
 	switch {
-	case got != "true false false true false true false false true":
+	case got != "true false false true false true false false true false":
 		t.Fatalf("switches: %s", got)
 	case document.VerticalScrollBar != FormScrollBarDontUse || document.HorizontalScrollBar != FormScrollBarUseAlways:
 		t.Fatalf("scroll bars: %q %q", document.VerticalScrollBar, document.HorizontalScrollBar)
@@ -2254,6 +2267,8 @@ func TestAFieldOfADocumentKeepsWhatItHas(t *testing.T) {
 		t.Fatalf("modes: %+v", document)
 	case !slices.Equal(document.ExcludedCommands, []string{"Print", "AlignCenter"}):
 		t.Fatalf("commands: %v", document.ExcludedCommands)
+	case document.PointerType != "special" || document.DrawingSelectionShowMode != "dont-show":
+		t.Fatalf("pointer and drawings: %q %q", document.PointerType, document.DrawingSelectionShowMode)
 	case form.Items[1].Output != FormUseOutputDisable || !slices.Equal(form.Items[2].ExcludedCommands, []string{"Picture"}):
 		t.Fatalf("html and formatted: %+v %+v", form.Items[1].FieldDocument, form.Items[2].FieldDocument)
 	}
@@ -2295,7 +2310,7 @@ func TestEachPropertyOfADocumentStandsOnItsFields(t *testing.T) {
 	full := FieldDocument{VerticalScrollBar: FormScrollBarAutoUse, HorizontalScrollBar: FormScrollBarDontUse, ViewScalingMode: FormViewScalingLarge,
 		SelectionShowMode: FormSelectionAlways, Edit: &yes, Protection: &yes, ShowHeaders: &yes, ShowGrid: &yes, ShowGroups: &yes,
 		ShowCellNames: &yes, ShowRowAndColumnNames: &yes, EnableDrag: &yes, EnableStartDrag: &yes, Output: FormUseOutputAuto,
-		ExcludedCommands: []string{"Print"}}
+		ExcludedCommands: []string{"Print"}, PointerType: "regular", DrawingSelectionShowMode: "show", BlackAndWhiteView: &yes}
 	spreadsheet := []FormElementKind{FormElementSpreadsheetDocumentField}
 	allowed := map[string][]FormElementKind{
 		"Output": {FormElementSpreadsheetDocumentField, FormElementTextDocumentField, FormElementHTMLDocumentField, FormElementFormattedDocumentField,
@@ -2337,6 +2352,8 @@ func TestEachPropertyOfADocumentStandsOnItsFields(t *testing.T) {
 		"вывод":          {FieldDocument{Output: "Enable"}, "items[0].output must be auto, enable or disable"},
 		"не имя команды": {FieldDocument{ExcludedCommands: []string{"Print", "Align Center"}}, "items[0].excluded_commands[1] must be the name of a command"},
 		"команда дважды": {FieldDocument{ExcludedCommands: []string{"Print", "Print"}}, "items[0].excluded_commands[1] names Print twice"},
+		"указатель":      {FieldDocument{PointerType: "Regular"}, "items[0].pointer_type must be regular or special"},
+		"рисунки":        {FieldDocument{DrawingSelectionShowMode: "hide"}, "items[0].drawing_selection_show_mode must be auto, show or dont-show"},
 	} {
 		if issues := validateFieldDocument("items[0]", test.document, FormElementSpreadsheetDocumentField); !slices.Contains(issues, test.want) {
 			t.Errorf("%s: %v, want %q", name, issues, test.want)
@@ -2360,20 +2377,28 @@ func TestTheOtherFieldsKeepWhatTheyHave(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
 	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Календарь, kind: calendar-field, show_current_date: false," +
-		" width_in_months: 0, height_in_months: 2, show_months_panel: true, selection_mode: interval, enable_drag: true}\n" +
+		" width_in_months: 0, height_in_months: 2, show_months_panel: true, selection_mode: interval, enable_drag: true, calendar_navigation: false}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Ход, kind: progress-bar-field, show_percent: true, representation: broken-tilt, max_value: 99}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Бегунок, kind: track-bar-field, step: 5, large_step: 10, marking_step: 0.5, min_value: 1," +
 		" marking_appearance: both-sides}\n" +
-		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Схема, kind: graphical-schema-field, edit: false, output: disable}\n"
+		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Схема, kind: graphical-schema-field, edit: false, output: disable}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990005, name: Планировщик, kind: planner-field, dimension_item_hyperlink: true," +
+		" time_scale_item_hyperlink: false, wrapped_time_scale_header_hyperlink: true}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990006, name: Ганта, kind: gantt-chart-field, table_location: none, values_selection_mode: single," +
+		" intervals_selection_mode: multiple}\n"
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
 	if err != nil {
 		t.Fatal(err)
 	}
 	calendar, bar, track := form.Items[0].FieldOther, form.Items[1].FieldOther, form.Items[2].FieldOther
+	planner, gantt := form.Items[4].FieldOther, form.Items[5].FieldOther
 	merged := calendar
 	merged.ShowPercent, merged.Representation = bar.ShowPercent, bar.Representation
 	merged.Step, merged.LargeStep, merged.MarkingStep = track.Step, track.LargeStep, track.MarkingStep
 	merged.MarkingAppearance = track.MarkingAppearance
+	merged.DimensionItemHyperlink, merged.TimeScaleItemHyperlink = planner.DimensionItemHyperlink, planner.TimeScaleItemHyperlink
+	merged.WrappedTimeScaleHeaderHyperlink = planner.WrappedTimeScaleHeaderHyperlink
+	merged.TableLocation, merged.ValuesSelectionMode, merged.IntervalsSelectionMode = gantt.TableLocation, gantt.ValuesSelectionMode, gantt.IntervalsSelectionMode
 	value := reflect.ValueOf(merged)
 	for index := range value.NumField() {
 		if value.Field(index).IsZero() {
@@ -2392,6 +2417,13 @@ func TestTheOtherFieldsKeepWhatTheyHave(t *testing.T) {
 		t.Fatalf("track bar: %+v", track)
 	case form.Items[3].Edit == nil || *form.Items[3].Edit || form.Items[3].Output != FormUseOutputDisable:
 		t.Fatalf("graphical schema: %+v", form.Items[3].FieldDocument)
+	case calendar.CalendarNavigation == nil || *calendar.CalendarNavigation:
+		t.Fatalf("calendar navigation: %v", calendar.CalendarNavigation)
+	case planner.DimensionItemHyperlink == nil || !*planner.DimensionItemHyperlink || planner.TimeScaleItemHyperlink == nil ||
+		*planner.TimeScaleItemHyperlink || planner.WrappedTimeScaleHeaderHyperlink == nil || !*planner.WrappedTimeScaleHeaderHyperlink:
+		t.Fatalf("planner: %+v", planner)
+	case gantt.TableLocation != "none" || gantt.ValuesSelectionMode != "single" || gantt.IntervalsSelectionMode != "multiple":
+		t.Fatalf("gantt chart: %+v", gantt)
 	}
 	written, err := yaml.Marshal(form)
 	if err != nil {
@@ -2431,14 +2463,17 @@ func TestEachPropertyOfTheOtherFieldsStandsOnItsField(t *testing.T) {
 	no, zero := false, 0
 	full := FieldOther{ShowCurrentDate: &no, WidthInMonths: &zero, HeightInMonths: &zero, ShowMonthsPanel: true, SelectionMode: "single",
 		ShowPercent: true, Representation: "smooth", Step: "1", LargeStep: "1", MarkingStep: "1",
-		MarkingAppearance: "dont-show"}
+		MarkingAppearance: "dont-show", CalendarNavigation: &no, DimensionItemHyperlink: &no, TimeScaleItemHyperlink: &no,
+		WrappedTimeScaleHeaderHyperlink: &no, TableLocation: "left", ValuesSelectionMode: "none", IntervalsSelectionMode: "auto"}
 	calendar, bar, track := []FormElementKind{FormElementCalendarField}, []FormElementKind{FormElementProgressBarField}, []FormElementKind{FormElementTrackBarField}
+	planner, gantt := []FormElementKind{FormElementPlannerField}, []FormElementKind{FormElementGanttChartField}
 	allowed := map[string][]FormElementKind{
 		"ShowCurrentDate": calendar, "WidthInMonths": calendar, "HeightInMonths": calendar, "ShowMonthsPanel": calendar, "SelectionMode": calendar,
 		// A table selects and is drawn with values of its own, refused there
 		// by value below.
 		"ShowPercent": bar, "Representation": bar, "Step": track, "LargeStep": track, "MarkingStep": track,
-		"MarkingAppearance": track,
+		"MarkingAppearance": track, "CalendarNavigation": calendar, "DimensionItemHyperlink": planner, "TimeScaleItemHyperlink": planner,
+		"WrappedTimeScaleHeaderHyperlink": planner, "TableLocation": gantt, "ValuesSelectionMode": gantt, "IntervalsSelectionMode": gantt,
 	}
 	value := reflect.ValueOf(full)
 	for index := range value.NumField() {
@@ -2472,8 +2507,12 @@ func TestEachPropertyOfTheOtherFieldsStandsOnItsField(t *testing.T) {
 		"разметка прототипа":    {FieldOther{MarkingAppearance: "BothSides"}, FormElementTrackBarField, "items[0].marking_appearance must be dont-show, top-left, bottom-right or both-sides"},
 		"сглаживание прототипа": {FieldOther{Representation: "BrokenTilt"}, FormElementProgressBarField, "items[0].representation must be smooth, broken or broken-tilt"},
 		"сглаживание календаря": {FieldOther{Representation: "smooth"}, FormElementCalendarField, "items[0].representation is not a property of a calendar-field"},
-		"месяцы": {FieldOther{WidthInMonths: &negative}, FormElementCalendarField, "items[0].width_in_months must not be negative"},
-		"шаг":    {FieldOther{Step: "1e3"}, FormElementTrackBarField, "items[0].step must be a number written as decimal digits"},
+		"месяцы":             {FieldOther{WidthInMonths: &negative}, FormElementCalendarField, "items[0].width_in_months must not be negative"},
+		"шаг":                {FieldOther{Step: "1e3"}, FormElementTrackBarField, "items[0].step must be a number written as decimal digits"},
+		"таблица Ганта":      {FieldOther{TableLocation: "Left"}, FormElementGanttChartField, "items[0].table_location must be auto, left, right or none"},
+		"выделение значений": {FieldOther{ValuesSelectionMode: "multi"}, FormElementGanttChartField, "items[0].values_selection_mode must be auto, single, multiple or none"},
+		"выделение интервалов": {FieldOther{IntervalsSelectionMode: "Single"}, FormElementGanttChartField,
+			"items[0].intervals_selection_mode must be auto, single, multiple or none"},
 	} {
 		if issues := validateFieldOther("items[0]", test.other, test.kind); !slices.Contains(issues, test.want) {
 			t.Errorf("%s: %v, want %q", name, issues, test.want)
@@ -2568,7 +2607,8 @@ func TestAGroupHoldsOnlyThePropertiesOfAFieldItIsGiven(t *testing.T) {
 	configuration := managedFormConfiguration()
 	yes, color, font := true, &ColorValue{Source: AutoColor}, &FontValue{Source: AutoFont}
 	behavior := FieldBehavior{TitleLocation: FormTitleTop, SkipOnInput: &yes, DefaultItem: true, EditMode: FormEditDirectly,
-		WarningOnEdit: LocalizedText{"ru": "Осторожно"}, WarningOnEditRepresentation: FormWarningOnEditShow, Shortcut: "F5"}
+		WarningOnEdit: LocalizedText{"ru": "Осторожно"}, WarningOnEditRepresentation: FormWarningOnEditShow, Shortcut: "F5",
+		TypeRestriction: []Type{{Kind: StringType, Length: 10}}}
 	layout := FieldLayout{Width: 1, Height: 1, NoAutoMaxWidth: true, MaxWidth: 1, NoAutoMaxHeight: true, MaxHeight: 1, HorizontalStretch: &yes,
 		VerticalStretch: &yes, GroupHorizontalAlign: ItemHorizontalLeft, GroupVerticalAlign: ItemVerticalTop, HorizontalAlign: ItemHorizontalLeft,
 		VerticalAlign: ItemVerticalTop}
@@ -2676,13 +2716,14 @@ func TestAGroupKeepsWhatItHasOfItsOwn(t *testing.T) {
 		" hide_title: true, behavior: collapsible, not_united: true, collapsed: true, collapsed_title: {ru: Свёрнуто}, control_representation: title-hyperlink," +
 		" no_left_margin: true, children_width: left-narrowest, items_and_titles_align: items-right-titles-left, horizontal_spacing: one-and-half," +
 		" vertical_spacing: none, through_align: dont-use, title_data_path: Items.Список.CurrentData.Наименование, enable_content_change: true," +
-		" current_row_use: use, associated_table: таблица}\n" +
+		" current_row_use: use, associated_table: таблица, hidden_representation_title_back_color: {source: absolute, rgb: \"#190E70\"}}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Страницы, kind: pages, representation: tabs-on-left-horizontal, current_row_use: dont-use," +
 		" associated_table: Таблица, children: [" +
 		"{id: c0de0000-0000-4000-8000-000000990003, name: Страница, kind: page, orientation: horizontal-if-possible, hide_title: true," +
 		" picture: {standard: Change, load_transparent: true}, scroll_on_compress: false, title_data_path: Объект.Товары.RowsCount}]}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Таблица, kind: table, children: [{id: c0de0000-0000-4000-8000-000000990005," +
-		" name: Колонки, kind: column-group, orientation: in-cell, hide_title: true, enable_content_change: true, show_in_header: true}]}\n" +
+		" name: Колонки, kind: column-group, orientation: in-cell, hide_title: true, enable_content_change: true, show_in_header: true," +
+		" header_data_path: Год1, header_format: {ru: ЧГ=}}]}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990006, name: Меню, kind: popup, picture: {standard: Print}, representation: picture-and-text," +
 		" shape_representation: when-active, command_source: global-commands}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990007, name: Кнопки, kind: button-group, representation: compact, command_source: Items.таблица}\n" +
@@ -2696,6 +2737,7 @@ func TestAGroupKeepsWhatItHasOfItsOwn(t *testing.T) {
 	merged := group.GroupProperties
 	merged.Picture, merged.ScrollOnCompress = page.Picture, page.ScrollOnCompress
 	merged.ShowInHeader, merged.ShapeRepresentation, merged.CommandSource = columns.ShowInHeader, popup.ShapeRepresentation, popup.CommandSource
+	merged.HeaderDataPath, merged.HeaderFormat = columns.HeaderDataPath, columns.HeaderFormat
 	value := reflect.ValueOf(merged)
 	for index := range value.NumField() {
 		if value.Field(index).IsZero() {
@@ -2719,6 +2761,10 @@ func TestAGroupKeepsWhatItHasOfItsOwn(t *testing.T) {
 		t.Fatalf("page: %+v", page.GroupProperties)
 	case columns.Orientation != FormInCell || !columns.HideTitle || !columns.EnableContentChange || !columns.ShowInHeader:
 		t.Fatalf("group of columns: %+v", columns.GroupProperties)
+	case columns.HeaderDataPath != "Год1" || columns.HeaderFormat["ru"] != "ЧГ=":
+		t.Fatalf("header of a group of columns: %q %v", columns.HeaderDataPath, columns.HeaderFormat)
+	case group.HiddenRepresentationTitleBackColor == nil || group.HiddenRepresentationTitleBackColor.RGB != "#190E70":
+		t.Fatalf("title of a hidden group: %+v", group.HiddenRepresentationTitleBackColor)
 	case popup.Picture.Standard != "Print" || popup.Representation != "picture-and-text" || popup.ShapeRepresentation != FormShapeWhenActive ||
 		popup.CommandSource != FormCommandSourceGlobalCommands:
 		t.Fatalf("popup: %+v", popup.GroupProperties)
@@ -2768,7 +2814,8 @@ func TestEachPropertyOfAGroupStandsOnItsGroup(t *testing.T) {
 		ControlRepresentation: FormGroupControlPicture, NoLeftMargin: true, ChildrenWidth: ChildrenWidthEqual, ItemsAndTitlesAlign: ItemsAndTitlesNone,
 		HorizontalSpacing: ItemSpacingHalf, VerticalSpacing: ItemSpacingDouble, ThroughAlign: FormUseYes, TitleDataPath: "Объект.Валюта",
 		Picture: &PictureReference{Standard: "Change"}, ScrollOnCompress: &yes, EnableContentChange: true, CurrentRowUse: FormUseAuto, AssociatedTable: "Список",
-		ShowInHeader: true, ShapeRepresentation: FormShapeNone, CommandSource: "Items.Список"}
+		ShowInHeader: true, ShapeRepresentation: FormShapeNone, CommandSource: "Items.Список", HeaderDataPath: "Год1",
+		HeaderFormat: LocalizedText{"ru": "ЧГ="}, HiddenRepresentationTitleBackColor: &ColorValue{Source: AutoColor}}
 	// Written out from the help (the extension of each group) and the
 	// exports, apart from the checks, so that a property given to a group
 	// too many or too few shows here.
@@ -2784,6 +2831,7 @@ func TestEachPropertyOfAGroupStandsOnItsGroup(t *testing.T) {
 		"EnableContentChange": {FormElementUsualGroup, FormElementPages, FormElementPage, FormElementColumnGroup, FormElementPopup, FormElementButtonGroup,
 			FormElementCommandBar},
 		"CurrentRowUse": {FormElementUsualGroup, FormElementPages, FormElementTable}, "AssociatedTable": {FormElementUsualGroup, FormElementPages},
+		"HeaderDataPath": {FormElementColumnGroup}, "HeaderFormat": {FormElementColumnGroup}, "HiddenRepresentationTitleBackColor": usual,
 	}
 	value := reflect.ValueOf(full)
 	for index := range value.NumField() {
@@ -2822,6 +2870,9 @@ func TestEachPropertyOfAGroupStandsOnItsGroup(t *testing.T) {
 		"источник не именем":           {GroupProperties{CommandSource: "Items.Список.CurrentData"}, "items[0].command_source must name an element of the form after Items."},
 		"таблица не именем":            {GroupProperties{AssociatedTable: "Items.Список"}, "items[0].associated_table must be the name of a table of the form"},
 		"заголовок не код языка":       {GroupProperties{CollapsedTitle: LocalizedText{"русский язык": "Итог"}}, "items[0].collapsed_title"},
+		"путь шапки":                   {GroupProperties{HeaderDataPath: "Год1..Месяц"}, "items[0].header_data_path must be names separated by dots"},
+		"формат шапки не код языка":    {GroupProperties{HeaderFormat: LocalizedText{"русский язык": "ЧГ="}}, "items[0].header_format"},
+		"цвет без значения":            {GroupProperties{HiddenRepresentationTitleBackColor: &ColorValue{Source: AbsoluteColor}}, "items[0].hidden_representation_title_back_color"},
 	} {
 		issues := validateGroupProperties("items[0]", test.group, FormElementUsualGroup, configuration)
 		if !slices.ContainsFunc(issues, func(issue string) bool { return strings.HasPrefix(issue, test.want) }) {
@@ -3025,7 +3076,8 @@ func TestAButtonKeepsWhatItHas(t *testing.T) {
 		" picture_location: right, picture: {standard: Print, load_transparent: true}, representation: picture-and-text, shape_representation: when-active," +
 		" width: 12, height: 2, no_auto_max_width: true, max_width: 20, no_auto_max_height: true, max_height: 2, horizontal_stretch: true," +
 		" group_horizontal_align: right, back_color: {source: system, name: ButtonBackColor}, border_color: {source: web, name: Black}," +
-		" text_color: {source: auto}, font: {source: auto}, title_height: 2, skip_on_input: false, default_item: true, shortcut: F5}\n"
+		" text_color: {source: auto}, font: {source: auto}, title_height: 2, skip_on_input: false, default_item: true, shortcut: F5," +
+		" command_uniqueness: false}\n"
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
 	if err != nil {
 		t.Fatal(err)
@@ -3039,7 +3091,8 @@ func TestAButtonKeepsWhatItHas(t *testing.T) {
 	}
 	switch {
 	case !button.Check || !button.DefaultButton || button.LocationInCommandBar != FormLocationInCommandBarAndInAdditionalSubmenu ||
-		button.RepresentationInContextMenu != FormInContextMenuOnly || button.Shape != FormButtonShapeOval || button.PictureLocation != FormPictureLocationRight:
+		button.RepresentationInContextMenu != FormInContextMenuOnly || button.Shape != FormButtonShapeOval || button.PictureLocation != FormPictureLocationRight ||
+		button.CommandUniqueness == nil || *button.CommandUniqueness:
 		t.Fatalf("button: %+v", button.ButtonProperties)
 	case button.Picture.Standard != "Print" || button.Representation != "picture-and-text" || button.ShapeRepresentation != FormShapeWhenActive:
 		t.Fatalf("drawing: %+v", button.GroupProperties)
@@ -3083,8 +3136,9 @@ func TestAButtonKeepsWhatItHas(t *testing.T) {
 // does not have, accepted.
 func TestWhatOnlyAButtonHasStandsOnAButton(t *testing.T) {
 	t.Parallel()
+	yes := true
 	full := ButtonProperties{Check: true, DefaultButton: true, LocationInCommandBar: FormLocationInCommandBarAuto,
-		RepresentationInContextMenu: FormInContextMenuNone, Shape: FormButtonShapeAuto, PictureLocation: FormPictureLocationAuto}
+		RepresentationInContextMenu: FormInContextMenuNone, Shape: FormButtonShapeAuto, PictureLocation: FormPictureLocationAuto, CommandUniqueness: &yes}
 	value := reflect.ValueOf(full)
 	for index := range value.NumField() {
 		name := value.Type().Field(index).Name
