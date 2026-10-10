@@ -1424,9 +1424,9 @@ func validateFieldPicture(path string, picture FieldPicture, kind FormElementKin
 // table writes it so. A spreadsheet document field writes it as a boolean,
 // and the forms the mdclasses project keeps in both formats of export tell
 // which: one written nowhere is ScrollAuto in the other format (16 pairs),
-// true is ScrollAlways (2). False is not among them and is read as never, the
-// one use left; the import translates both, and that last is to be checked on
-// the platform. Empty is not said: auto.
+// true is ScrollAlways (2). False is never: where the subsystems library,
+// kept in both formats, writes false on five fields, the other format writes
+// nothing - its default, the one use left. Empty is not said: auto.
 type FormScrollBarUse string
 
 const (
