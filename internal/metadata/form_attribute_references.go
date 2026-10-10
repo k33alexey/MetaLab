@@ -371,6 +371,9 @@ func (catalog *Catalog) resolveFormAttributes(form string, attributes []FormAttr
 			if err := catalog.resolveListComposition(where+" dynamic_list", *list); err != nil {
 				return err
 			}
+			if err := catalog.resolveListSchema(where+" dynamic_list", *list); err != nil {
+				return err
+			}
 		}
 		for _, column := range attribute.Columns {
 			if err := catalog.resolveFormData(where+" column "+column.Name, column.Types, column.FunctionalOptions, column.View, column.Edit); err != nil {

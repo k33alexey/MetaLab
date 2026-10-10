@@ -118,6 +118,12 @@ type DynamicListSettings struct {
 	Order                 *CompositionOrder                 `yaml:"order,omitempty" json:"order,omitempty"`
 	ConditionalAppearance *CompositionConditionalAppearance `yaml:"conditional_appearance,omitempty" json:"conditionalAppearance,omitempty"`
 	Group                 *CompositionGroups                `yaml:"group,omitempty" json:"group,omitempty"`
+	// Fields, CalculatedFields and DataParameters are the schema of the
+	// list (help, DynamicList, since 8.3.19), written by demo-base alone;
+	// see composition_schema.go.
+	Fields           []CompositionDataSetField    `yaml:"fields,omitempty" json:"fields,omitempty"`
+	CalculatedFields []CompositionCalculatedField `yaml:"calculated_fields,omitempty" json:"calculatedFields,omitempty"`
+	DataParameters   []CompositionParameter       `yaml:"data_parameters,omitempty" json:"dataParameters,omitempty"`
 }
 
 // DynamicListTable is the main table of a dynamic list: an object, and the
@@ -372,5 +378,6 @@ func validateDynamicList(path string, attribute FormAttribute) []string {
 		}
 		seen[strings.ToLower(field)] = true
 	}
-	return append(issues, validateListComposition(path, *settings)...)
+	issues = append(issues, validateListComposition(path, *settings)...)
+	return append(issues, validateListSchema(path, *settings)...)
 }
