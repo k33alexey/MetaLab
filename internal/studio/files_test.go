@@ -177,7 +177,7 @@ func TestSaveValidatesAndCanonicalizesSupportedMetadata(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
 	id := uuid.MustNew()
-	relative, err := project.MetadataPath("constants", id)
+	relative, err := project.MetadataPath("session-parameters", id)
 	if err != nil {
 		t.Fatal(err)
 	}

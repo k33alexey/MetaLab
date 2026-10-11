@@ -149,9 +149,13 @@ var (
 	// What they do not own is subordinate entities, so they are kept apart
 	// from objectFolderKinds rather than given machinery they have no use for.
 	namedFolderKinds = map[string][]string{
-		"common-forms":    {FormMetadataFile, FormModuleFile, FormBodyFile},
+		"common-forms": {FormMetadataFile, FormModuleFile, FormBodyFile},
+		// A common command keeps the module that runs it; a group of
+		// commands keeps nothing, so it stays one file.
 		"common-commands": {ObjectMetadataFile, CommandModuleFile},
-		"constants":       {ObjectMetadataFile, ValueModuleFile, ManagerModuleFile},
+		// A constant keeps two modules: the one the platform calls around
+		// its value and the one of its manager.
+		"constants": {ObjectMetadataFile, ValueModuleFile, ManagerModuleFile},
 		// A common template and a common picture keep a description and
 		// nothing else that is source: what else lies in their folder is
 		// content - a spreadsheet, an archive, an image - and content is
@@ -190,6 +194,8 @@ var (
 	// modules/ and forms/ roots.
 	// Виды, у которых есть собственные модули и формы, хранят объект папкой:
 	// описание лежит рядом со своим кодом и формами, а не в общей куче.
+	// A sequence is among them for its record set module, which the
+	// prototype gives it (acc ДокументыОрганизаций).
 	objectFolderKinds = []string{"catalogs", "documents", "enumerations", "information-registers", "accumulation-registers",
 		"charts-of-characteristic-types", "charts-of-accounts", "charts-of-calculation-types", "business-processes", "tasks",
 		"filter-criteria", "settings-storages",
@@ -800,6 +806,25 @@ func CommonFormModulePath(name string) (string, error) {
 		return "", err
 	}
 	return path.Join(directory, FormModuleFile), nil
+}
+
+// FormFolder reads the name of the folder a form's description lies in out of
+// its path - an object's form and a common form alike, since both lie in a
+// folder named after the form. ok is false for a path that is not the
+// description of a form.
+func FormFolder(relative string) (string, bool) {
+	if kind, _, rest, ok := SplitObjectPath(relative); ok && IsObjectFolderKind(kind) {
+		if len(rest) == 3 && rest[0] == "forms" && rest[2] == FormMetadataFile && SubordinateName(rest[1]) == nil {
+			return rest[1], true
+		}
+		return "", false
+	}
+	parts := strings.Split(relative, "/")
+	if len(parts) == 4 && parts[0] == "metadata" && parts[1] == "common-forms" && parts[3] == FormMetadataFile &&
+		ObjectName(parts[2]) == nil {
+		return parts[2], true
+	}
+	return "", false
 }
 
 // CommonTemplateContentPath returns one file of a common template's content.

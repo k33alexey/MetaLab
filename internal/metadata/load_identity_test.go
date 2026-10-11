@@ -50,11 +50,11 @@ func TestAnObjectThatDisagreesWithWhereItLiesIsRefused(t *testing.T) {
 		body string
 		want string
 	}{
-		{SettingsStorageKind, "title: {ru: Хранилище}\n", "object Хранилище lies in folder Другое"},
-		{FilterCriterionKind, "title: {ru: Связанные}\ntypes: []\n", "object Хранилище lies in folder Другое"},
-		{SequenceKind, "title: {ru: Движение}\n", "object Хранилище lies in folder Другое"},
-		{CommonTemplateKind, "title: {ru: Макет}\nkind: text\n", "common template Хранилище lies in a folder called Другое"},
-		{CommonPictureKind, "title: {ru: Картинка}\n", "common picture Хранилище lies in a folder called Другое"},
+		{SettingsStorageKind, "title: {ru: Хранилище}\n", "object Хранилище lies in a folder called Другое"},
+		{FilterCriterionKind, "title: {ru: Связанные}\ntypes: []\n", "object Хранилище lies in a folder called Другое"},
+		{SequenceKind, "title: {ru: Движение}\n", "object Хранилище lies in a folder called Другое"},
+		{CommonTemplateKind, "title: {ru: Макет}\nkind: text\n", "object Хранилище lies in a folder called Другое"},
+		{CommonPictureKind, "title: {ru: Картинка}\n", "object Хранилище lies in a folder called Другое"},
 	}
 	for _, test := range folders {
 		t.Run(string(test.kind), func(t *testing.T) {

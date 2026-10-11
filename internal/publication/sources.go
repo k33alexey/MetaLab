@@ -124,20 +124,17 @@ func inspect(ctx context.Context, root string, state SourceState) (Manifest, err
 		if err != nil {
 			return Manifest{}, err
 		}
-		if isManagedFormSourcePath(relative) {
+		if _, ok := project.FormFolder(relative); ok {
 			file, openErr := os.Open(absolute)
 			if openErr != nil {
 				return Manifest{}, openErr
 			}
-			form, decodeErr := metadata.DecodeManagedForm(relative, file, projectManifest)
+			form, _, decodeErr := metadata.DecodeSource(relative, file, nil, projectManifest)
 			closeErr := file.Close()
 			if decodeErr != nil {
 				return Manifest{}, decodeErr
 			}
-			if err := formAgreesWithItsPath(form, relative); err != nil {
-				return Manifest{}, err
-			}
-			forms = append(forms, form)
+			forms = append(forms, form.(metadata.ManagedForm))
 			if closeErr != nil {
 				return Manifest{}, closeErr
 			}
@@ -561,57 +558,6 @@ func templateContentName(file string) bool {
 	// read with: any code that breaks nothing (ru1, ja - project.LanguageCodeShape).
 	_, ok := project.HelpPage(file)
 	return ok
-}
-
-// objectFolderFormName reports the form's name if relative is one of an
-// object's own managed forms (metadata/<kind>/<object>/forms/<form>/form.yaml).
-func objectFolderFormName(relative string) (string, bool) {
-	kind, _, rest, ok := project.SplitObjectPath(relative)
-	if !ok || !project.IsObjectFolderKind(kind) || len(rest) != 3 || rest[0] != "forms" ||
-		rest[2] != project.FormMetadataFile || project.SubordinateName(rest[1]) != nil {
-		return "", false
-	}
-	return rest[1], true
-}
-
-// isManagedFormSourcePath reports whether relative is any managed form
-// source. Both kinds now lie the same way - in a folder named after the form,
-// beside the module that runs it - and differ only in where that folder is.
-func isManagedFormSourcePath(relative string) bool {
-	if _, ok := commonFormName(relative); ok {
-		return true
-	}
-	_, ok := objectFolderFormName(relative)
-	return ok
-}
-
-// commonFormName reports the form's name if relative is one common form
-// (metadata/common-forms/<form>/form.yaml).
-func commonFormName(relative string) (string, bool) {
-	parts := strings.Split(relative, "/")
-	if len(parts) != 4 || parts[0] != "metadata" || parts[1] != "common-forms" ||
-		parts[3] != project.FormMetadataFile || project.ObjectName(parts[2]) != nil {
-		return "", false
-	}
-	return parts[2], true
-}
-
-// formAgreesWithItsPath checks a form against where it lies: the folder is
-// named after the form, so the name is what has to agree. The identifier
-// inside is free, and is what roles, the portal and ML App refer to the form
-// by - the name finds the file, the identifier travels.
-func formAgreesWithItsPath(form metadata.ManagedForm, relative string) error {
-	name, ok := objectFolderFormName(relative)
-	if !ok {
-		name, ok = commonFormName(relative)
-	}
-	if !ok {
-		return fmt.Errorf("unexpected form source %q", relative)
-	}
-	if !strings.EqualFold(form.Name, name) {
-		return fmt.Errorf("form name does not match %q", relative)
-	}
-	return nil
 }
 
 func inspectFile(absolute, relative string) (FileEntry, error) {

@@ -251,26 +251,6 @@ func sourceFile(relative, language string, content []byte) SourceFile {
 	return SourceFile{Path: relative, Language: language, Content: string(content), Revision: hex.EncodeToString(digest[:])}
 }
 
-// yamlScalarField reads one top-level scalar out of a YAML document without
-// decoding the whole of it into a type. It is used where the type is not known
-// at the point of the check.
-func yamlScalarField(content []byte, key string) string {
-	var document yaml.Node
-	if err := yaml.Unmarshal(content, &document); err != nil {
-		return ""
-	}
-	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
-		return ""
-	}
-	mapping := document.Content[0]
-	for index := 0; index+1 < len(mapping.Content); index += 2 {
-		if mapping.Content[index].Value == key && mapping.Content[index+1].Kind == yaml.ScalarNode {
-			return strings.TrimSpace(mapping.Content[index+1].Value)
-		}
-	}
-	return ""
-}
-
 func validateEditablePath(relative string) (string, string, error) {
 	if relative == "" || strings.Contains(relative, `\`) || path.IsAbs(relative) || path.Clean(relative) != relative {
 		return "", "", ErrInvalidSourcePath
@@ -339,17 +319,6 @@ func validateEditablePath(relative string) (string, string, error) {
 	return "", "", ErrInvalidSourcePath
 }
 
-// objectFormName reports the form's name if relative is the description of a
-// form of an object, wherever the object's folder lies.
-func objectFormName(relative string) (string, bool) {
-	kind, _, rest, ok := project.SplitObjectPath(relative)
-	if !ok || !project.IsObjectFolderKind(kind) || len(rest) != 3 || rest[0] != "forms" ||
-		rest[2] != project.FormMetadataFile || project.SubordinateName(rest[1]) != nil {
-		return "", false
-	}
-	return rest[1], true
-}
-
 func validUUIDFile(name, extension string) bool {
 	id, err := uuid.Parse(strings.TrimSuffix(name, extension))
 	return err == nil && name == id.String()+extension
@@ -409,187 +378,39 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 		}
 		return canonical.Bytes(), nil
 	}
-	parts := strings.Split(relative, "/")
-	if len(parts) == 4 && parts[0] == "metadata" && parts[1] == "common-forms" && parts[3] == project.FormMetadataFile {
-		configuration, err := project.ValidateLayout(workspace.root)
-		if err != nil {
+	configuration, err := project.ValidateLayout(workspace.root)
+	if err != nil {
+		return nil, err
+	}
+	// A role's description is read with the grid it stands beside, as the
+	// loader reads it.
+	var rights io.Reader
+	if strings.HasPrefix(relative, "metadata/"+string(metadata.RoleKind)+"/") {
+		files, err := workspace.readRoleFilesLocked(relative)
+		if err != nil && !errors.Is(err, ErrSourceNotFound) {
 			return nil, err
 		}
-		value, err := metadata.DecodeManagedForm(relative, bytes.NewReader(content), configuration)
-		if err != nil {
-			return nil, err
+		if files.grid != nil {
+			rights = bytes.NewReader(files.grid)
 		}
-		if !strings.EqualFold(value.Name, parts[2]) {
-			return nil, fmt.Errorf("form %s does not match the folder %s it lies in", value.Name, parts[2])
+	}
+	value, described, err := metadata.DecodeSource(relative, bytes.NewReader(content), rights, configuration)
+	if err != nil {
+		return nil, err
+	}
+	if described {
+		// A role's description is half of the role: written back from the
+		// whole, it keeps its restrictions and leaves the grid to the grid's
+		// own file.
+		if role, ok := value.(metadata.RoleDefinition); ok {
+			description, _, err := metadata.EncodeRole(role)
+			return description, err
 		}
 		var canonical bytes.Buffer
 		if err := metadata.Encode(&canonical, value); err != nil {
 			return nil, err
 		}
 		return canonical.Bytes(), nil
-	}
-	// A form of an object lies in a folder named after the form, so it is the
-	// name that has to agree with where the file is. The identifier inside is
-	// the form's own and is not checked against anything here: it is what
-	// roles, the portal and ML App refer to the form by, not what finds it.
-	if formName, ok := objectFormName(relative); ok {
-		configuration, err := project.ValidateLayout(workspace.root)
-		if err != nil {
-			return nil, err
-		}
-		value, err := metadata.DecodeManagedForm(relative, bytes.NewReader(content), configuration)
-		if err != nil {
-			return nil, err
-		}
-		if !strings.EqualFold(value.Name, formName) {
-			return nil, fmt.Errorf("form %s does not match the folder %s it lies in", value.Name, formName)
-		}
-		var canonical bytes.Buffer
-		if err := metadata.Encode(&canonical, value); err != nil {
-			return nil, err
-		}
-		return canonical.Bytes(), nil
-	}
-	// A flat kind is addressed by the identifier in its file name; a kind that
-	// keeps a folder is addressed by the name of that folder. So one is
-	// checked against the identifier inside the file and the other against the
-	// name inside it.
-	kindPart, filenameIDPart, folderPart := "", "", ""
-	if len(parts) == 3 && parts[0] == "metadata" {
-		kindPart, filenameIDPart = parts[1], strings.TrimSuffix(parts[2], ".yaml")
-	} else if kind, name, rest, ok := project.SplitObjectPath(relative); ok && len(rest) == 1 && rest[0] == project.ObjectMetadataFile &&
-		(project.IsObjectFolderKind(kind) || metadata.Kind(kind) == metadata.ExternalDataSourceKind) {
-		// The folder is named after the object's own name, which for an
-		// object inside another is what follows the owner's.
-		kindPart, folderPart = kind, name[strings.LastIndexByte(name, '.')+1:]
-	}
-	if kindPart != "" {
-		configuration, err := project.ValidateLayout(workspace.root)
-		if err != nil {
-			return nil, err
-		}
-		var value any
-		switch metadata.Kind(kindPart) {
-		case metadata.RoleKind:
-			// The description written as text is read with the grid it
-			// stands beside, as the loader will read it.
-			var files roleFiles
-			if files, err = workspace.readRoleFilesLocked(relative); err == nil || errors.Is(err, ErrSourceNotFound) {
-				value, err = decodeRoleFiles(relative, content, files.grid, configuration)
-			}
-		case metadata.SubsystemKind:
-			value, err = metadata.DecodeSubsystem(relative, bytes.NewReader(content), configuration)
-		case metadata.ConstantKind:
-			value, err = metadata.DecodeConstant(relative, bytes.NewReader(content), configuration)
-		case metadata.SessionParameterKind:
-			value, err = metadata.DecodeSessionParameter(relative, bytes.NewReader(content), configuration)
-		case metadata.CommonAttributeKind:
-			value, err = metadata.DecodeCommonAttribute(relative, bytes.NewReader(content), configuration)
-		case metadata.CommonModuleKind:
-			value, err = metadata.DecodeCommonModule(relative, bytes.NewReader(content), configuration)
-		case metadata.EventSubscriptionKind:
-			value, err = metadata.DecodeEventSubscription(relative, bytes.NewReader(content), configuration)
-		case metadata.EnumerationKind:
-			value, err = metadata.DecodeEnumeration(relative, bytes.NewReader(content), configuration)
-		case metadata.DefinedTypeKind:
-			value, err = metadata.DecodeDefinedType(relative, bytes.NewReader(content), configuration)
-		case metadata.CatalogKind:
-			value, err = metadata.DecodeCatalog(relative, bytes.NewReader(content), configuration)
-		case metadata.ChartOfCharacteristicTypesKind:
-			value, err = metadata.DecodeChartOfCharacteristicTypes(relative, bytes.NewReader(content), configuration)
-		case metadata.ChartOfAccountsKind:
-			value, err = metadata.DecodeChartOfAccounts(relative, bytes.NewReader(content), configuration)
-		case metadata.ChartOfCalculationTypesKind:
-			value, err = metadata.DecodeChartOfCalculationTypes(relative, bytes.NewReader(content), configuration)
-		case metadata.BusinessProcessKind:
-			value, err = metadata.DecodeBusinessProcess(relative, bytes.NewReader(content), configuration)
-		case metadata.ExchangePlanKind:
-			value, err = metadata.DecodeExchangePlan(relative, bytes.NewReader(content), configuration)
-		case metadata.AccountingRegisterKind:
-			value, err = metadata.DecodeAccountingRegister(relative, bytes.NewReader(content), configuration)
-		case metadata.ReportKind:
-			value, err = metadata.DecodeReport(relative, bytes.NewReader(content), configuration)
-		case metadata.DataProcessorKind:
-			value, err = metadata.DecodeDataProcessor(relative, bytes.NewReader(content), configuration)
-		case metadata.CalculationRegisterKind:
-			value, err = metadata.DecodeCalculationRegister(relative, bytes.NewReader(content), configuration)
-		case metadata.NumeratorKind:
-			value, err = metadata.DecodeNumerator(relative, bytes.NewReader(content), configuration)
-		case metadata.SequenceKind:
-			value, err = metadata.DecodeSequence(relative, bytes.NewReader(content), configuration)
-		case metadata.DocumentJournalKind:
-			value, err = metadata.DecodeDocumentJournal(relative, bytes.NewReader(content), configuration)
-		case metadata.TaskKind:
-			value, err = metadata.DecodeTask(relative, bytes.NewReader(content), configuration)
-		case metadata.DocumentKind:
-			value, err = metadata.DecodeDocument(relative, bytes.NewReader(content), configuration)
-		case metadata.InformationRegisterKind:
-			value, err = metadata.DecodeInformationRegister(relative, bytes.NewReader(content), configuration)
-		case metadata.AccumulationRegisterKind:
-			value, err = metadata.DecodeAccumulationRegister(relative, bytes.NewReader(content), configuration)
-		case metadata.ExternalDataSourceKind:
-			value, err = metadata.DecodeExternalDataSource(relative, bytes.NewReader(content), configuration)
-		case metadata.ExternalDataSourceTableKind:
-			value, err = metadata.DecodeExternalTable(relative, bytes.NewReader(content), configuration)
-		case metadata.ExternalCubeKind:
-			value, err = metadata.DecodeExternalCube(relative, bytes.NewReader(content), configuration)
-		case metadata.ExternalDimensionTableKind:
-			value, err = metadata.DecodeExternalDimensionTable(relative, bytes.NewReader(content), configuration)
-		}
-		if err != nil {
-			return nil, err
-		}
-		if value != nil {
-			filenameID, _ := uuid.Parse(filenameIDPart)
-			var metadataID uuid.UUID
-			switch item := value.(type) {
-			case metadata.RoleDefinition:
-				metadataID = item.ID
-			case metadata.SubsystemDefinition:
-				metadataID = item.ID
-			case metadata.Constant:
-				metadataID = item.ID
-			case metadata.SessionParameter:
-				metadataID = item.ID
-			case metadata.CommonAttributeDefinition:
-				metadataID = item.ID
-			case metadata.CommonModuleDefinition:
-				metadataID = item.ID
-			case metadata.EventSubscriptionDefinition:
-				metadataID = item.ID
-			case metadata.Enumeration:
-				metadataID = item.ID
-			case metadata.DefinedTypeObject:
-				metadataID = item.ID
-			case metadata.CatalogDefinition:
-				metadataID = item.ID
-			case metadata.DocumentDefinition:
-				metadataID = item.ID
-			case metadata.InformationRegisterDefinition:
-				metadataID = item.ID
-			case metadata.AccumulationRegisterDefinition:
-				metadataID = item.ID
-			}
-			if folderPart != "" {
-				if name := yamlScalarField(content, "name"); name != folderPart {
-					return nil, fmt.Errorf("object %s lies in folder %s", name, folderPart)
-				}
-			} else if metadataID != filenameID {
-				return nil, fmt.Errorf("metadata UUID %s does not match filename UUID %s", metadataID, filenameID)
-			}
-			// A role's description is half of the role: written back from
-			// the whole, it keeps its restrictions and leaves the grid to
-			// the grid's own file.
-			if role, ok := value.(metadata.RoleDefinition); ok {
-				description, _, err := metadata.EncodeRole(role)
-				return description, err
-			}
-			var canonical bytes.Buffer
-			if err := metadata.Encode(&canonical, value); err != nil {
-				return nil, err
-			}
-			return canonical.Bytes(), nil
-		}
 	}
 	decoder := yaml.NewDecoder(bytes.NewReader(content))
 	var document yaml.Node

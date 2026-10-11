@@ -384,7 +384,7 @@ func TestSubordinateObjectPathShapes(t *testing.T) {
 			}
 		})
 	}
-	if name, ok := objectFolderFormName(table + "/forms/ФормаСписка/form.yaml"); !ok || name != "ФормаСписка" {
+	if name, ok := project.FormFolder(table + "/forms/ФормаСписка/form.yaml"); !ok || name != "ФормаСписка" {
 		t.Fatalf("a form of a table is not recognised as a form: %q %v", name, ok)
 	}
 }

@@ -648,36 +648,30 @@ func (catalog *Catalog) ExternalTableByID(id uuid.UUID) (ExternalTable, string, 
 	return cloneExternalTable(source.Tables[location.table]), source.Name, true
 }
 
-// loadExternalDataSources reads every source and its tables. A source is a
-// folder with its description and a folder of tables; a table is a folder with
-// its description.
+// addExternalDataSource puts a source into the catalog with its tables and
+// cubes, read from its folder. A source is a folder with its description and
+// the folders of its tables and cubes; a table is a folder with its
+// description.
 //
 // The folder of a table is an object folder: its modules, forms, commands and
 // templates lie there the way a catalog's lie in its, and are checked the same
 // way, by validateExternalTableFiles once the whole configuration is read.
-func (catalog *Catalog) loadExternalDataSources(root string, configuration project.Project) error {
-	return loadObjectKind(root, ExternalDataSourceKind, func(source string, file *os.File, name string) error {
-		value, err := DecodeExternalDataSource(source, file, configuration)
-		if err != nil {
-			return err
-		}
-		if !strings.EqualFold(value.Name, name) {
-			return fmt.Errorf("external data source %s lies in a folder called %s", value.Name, name)
-		}
-		directory := filepath.Join(root, "metadata", string(ExternalDataSourceKind), name)
-		tables, err := loadExternalTables(directory, filepath.ToSlash(filepath.Dir(source)), configuration)
-		if err != nil {
-			return err
-		}
-		value.Tables = tables
-		cubes, err := loadExternalCubes(directory, filepath.ToSlash(filepath.Dir(source)), configuration)
-		if err != nil {
-			return err
-		}
-		value.Cubes = cubes
-		catalog.ExternalDataSources = append(catalog.ExternalDataSources, value)
-		return nil
-	})
+func addExternalDataSource(catalog *Catalog, root string, value any) error {
+	source := value.(ExternalDataSourceDefinition)
+	relative := "metadata/" + string(ExternalDataSourceKind) + "/" + source.Name
+	directory := filepath.Join(root, filepath.FromSlash(relative))
+	tables, err := loadExternalTables(directory, relative, catalog.Project)
+	if err != nil {
+		return err
+	}
+	source.Tables = tables
+	cubes, err := loadExternalCubes(directory, relative, catalog.Project)
+	if err != nil {
+		return err
+	}
+	source.Cubes = cubes
+	catalog.ExternalDataSources = append(catalog.ExternalDataSources, source)
+	return nil
 }
 
 func loadExternalTables(directory, relative string, configuration project.Project) ([]ExternalTable, error) {
@@ -711,18 +705,9 @@ func loadExternalTables(directory, relative string, configuration project.Projec
 		if err := project.ObjectName(entry.Name()); err != nil {
 			return nil, fmt.Errorf("table folder %q: %w", where, err)
 		}
-		path := filepath.Join(tablesDirectory, entry.Name(), project.ObjectMetadataFile)
-		file, err := os.Open(path)
+		table, err := decodeFolderObject[ExternalTable](filepath.Join(tablesDirectory, entry.Name()), where, configuration)
 		if err != nil {
-			return nil, fmt.Errorf("open %s/%s: %w", where, project.ObjectMetadataFile, err)
-		}
-		table, decodeErr := DecodeExternalTable(where+"/"+project.ObjectMetadataFile, file, configuration)
-		file.Close()
-		if decodeErr != nil {
-			return nil, decodeErr
-		}
-		if !strings.EqualFold(table.Name, entry.Name()) {
-			return nil, fmt.Errorf("table %s lies in a folder called %s", table.Name, entry.Name())
+			return nil, err
 		}
 		tables = append(tables, table)
 	}

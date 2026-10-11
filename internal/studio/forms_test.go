@@ -40,7 +40,7 @@ func TestManagedFormWorkspaceRoundTripAndIdentity(t *testing.T) {
 	// and lie under another, and the slot pointing at it would find neither.
 	saved.Form.Name = "ДругаяФорма"
 	if _, err := workspace.SaveManagedForm(relative, saved.Form, saved.Revision); err == nil ||
-		!strings.Contains(err.Error(), "does not match the folder") {
+		!strings.Contains(err.Error(), "lies in a folder called") {
 		t.Fatalf("identity error = %v", err)
 	}
 }

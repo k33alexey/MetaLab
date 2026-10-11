@@ -382,10 +382,7 @@ func loadExternalCubes(sourceDirectory, relative string, configuration project.P
 	for _, name := range directories {
 		where := relative + "/" + ExternalDataSourceCubesDirectory + "/" + name
 		directory := filepath.Join(sourceDirectory, ExternalDataSourceCubesDirectory, name)
-		cube, err := decodeFolderObject(directory, where, name, "cube", func(source string, reader io.Reader) (ExternalCube, string, error) {
-			value, err := DecodeExternalCube(source, reader, configuration)
-			return value, value.Name, err
-		})
+		cube, err := decodeFolderObject[ExternalCube](directory, where, configuration)
 		if err != nil {
 			return nil, err
 		}
@@ -395,12 +392,8 @@ func loadExternalCubes(sourceDirectory, relative string, configuration project.P
 			return nil, err
 		}
 		for _, tableName := range tableNames {
-			table, err := decodeFolderObject(filepath.Join(directory, ExternalDimensionTablesDirectory, tableName),
-				where+"/"+ExternalDimensionTablesDirectory+"/"+tableName, tableName, "dimension table",
-				func(source string, reader io.Reader) (ExternalDimensionTable, string, error) {
-					value, err := DecodeExternalDimensionTable(source, reader, configuration)
-					return value, value.Name, err
-				})
+			table, err := decodeFolderObject[ExternalDimensionTable](filepath.Join(directory, ExternalDimensionTablesDirectory, tableName),
+				where+"/"+ExternalDimensionTablesDirectory+"/"+tableName, configuration)
 			if err != nil {
 				return nil, err
 			}
@@ -436,24 +429,24 @@ func subordinateFolders(directory, relative string, what string) ([]string, erro
 	return names, nil
 }
 
-// decodeFolderObject reads the description in one object's folder and checks
-// that the object is named as its folder is.
-func decodeFolderObject[T any](directory, relative, folder, what string, decode func(string, io.Reader) (T, string, error)) (T, error) {
+// decodeFolderObject reads the description in the folder of one object that
+// lies inside another, as DecodeSource reads any description.
+func decodeFolderObject[T any](directory, relative string, configuration project.Project) (T, error) {
 	var zero T
 	source := relative + "/" + project.ObjectMetadataFile
 	file, err := os.Open(filepath.Join(directory, project.ObjectMetadataFile))
 	if err != nil {
 		return zero, fmt.Errorf("open %s: %w", source, err)
 	}
-	value, name, decodeErr := decode(source, file)
-	file.Close()
-	if decodeErr != nil {
-		return zero, decodeErr
+	defer file.Close()
+	value, described, err := DecodeSource(source, file, nil, configuration)
+	if err != nil {
+		return zero, err
 	}
-	if !strings.EqualFold(name, folder) {
-		return zero, fmt.Errorf("%s %s lies in a folder called %s", what, name, folder)
+	if !described {
+		return zero, fmt.Errorf("%s is not the description of an object", source)
 	}
-	return value, nil
+	return value.(T), nil
 }
 
 // validateExternalCubeFiles checks the folders of every cube and dimension

@@ -574,8 +574,8 @@ func readCommonForm(directory, name string, configuration project.Project) (Mana
 	if err != nil {
 		return ManagedForm{}, err
 	}
-	if !strings.EqualFold(form.Name, name) {
-		return ManagedForm{}, fmt.Errorf("calls itself %s, and lies in a folder called %s", form.Name, name)
+	if err := agreesWithFolder("form", form.Name, name); err != nil {
+		return ManagedForm{}, err
 	}
 	if body != nil {
 		if err := checkFormBody(body, form.Type); err != nil {

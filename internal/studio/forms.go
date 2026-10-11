@@ -59,13 +59,11 @@ func (workspace *Workspace) readManagedForm(relative string) (ManagedFormSource,
 	if err != nil {
 		return ManagedFormSource{}, err
 	}
-	form, err := metadata.DecodeManagedForm(relative, strings.NewReader(file.Content), configuration)
+	value, _, err := metadata.DecodeSource(relative, strings.NewReader(file.Content), nil, configuration)
 	if err != nil {
 		return ManagedFormSource{}, err
 	}
-	if err := formAgreesWithItsPath(form, relative); err != nil {
-		return ManagedFormSource{}, err
-	}
+	form := value.(metadata.ManagedForm)
 	return ManagedFormSource{Path: relative, Revision: file.Revision, Form: form,
 		Languages: roleLanguages(configuration), DataPaths: workspace.formDataPaths(relative, configuration)}, nil
 }
@@ -87,7 +85,7 @@ func (workspace *Workspace) saveManagedFormLocked(relative string, form metadata
 	if err := metadata.ValidateManagedForm(relative, form, configuration); err != nil {
 		return ManagedFormSource{}, err
 	}
-	if err := formAgreesWithItsPath(form, relative); err != nil {
+	if err := metadata.FormAgreesWithPath(form, relative); err != nil {
 		return ManagedFormSource{}, err
 	}
 	var content bytes.Buffer
@@ -205,16 +203,14 @@ func (workspace *Workspace) EnsureManagedFormHandler(relative, expectedRevision 
 // form's own folder, wherever that folder is. A common form and an object's
 // form differ only in where the folder sits.
 func formModulePath(relative string) (string, error) {
-	if form, ok := objectFormName(relative); ok {
-		kind, name, _, _ := project.SplitObjectPath(relative)
+	form, ok := project.FormFolder(relative)
+	if !ok {
+		return "", ErrInvalidSourcePath
+	}
+	if kind, name, _, ok := project.SplitObjectPath(relative); ok && project.IsObjectFolderKind(kind) {
 		return project.ObjectFormModulePath(kind, name, form)
 	}
-	parts := strings.Split(relative, "/")
-	switch {
-	case len(parts) == 4 && parts[0] == "metadata" && parts[1] == "common-forms" && parts[3] == project.FormMetadataFile:
-		return project.CommonFormModulePath(parts[2])
-	}
-	return "", ErrInvalidSourcePath
+	return project.CommonFormModulePath(form)
 }
 
 func (workspace *Workspace) createFormModuleLocked(relative, content string) (SourceFile, error) {
@@ -280,41 +276,12 @@ func findFormHandler(module SourceFile, name string) (StudioLocation, bool, erro
 	return StudioLocation{}, false, nil
 }
 
-// formAgreesWithItsPath checks a form against where it lies. Both kinds of
-// form lie the same way - in a folder named after the form - so the name is
-// what has to agree. The identifier inside is free: it is what roles, the
-// portal and ML App refer to the form by, not what finds the file.
-func formAgreesWithItsPath(form metadata.ManagedForm, relative string) error {
-	name, ok := formNameFromPath(relative)
-	if !ok {
-		return ErrInvalidSourcePath
-	}
-	if !strings.EqualFold(form.Name, name) {
-		return fmt.Errorf("form %s does not match the folder %s it lies in", form.Name, name)
-	}
-	return nil
-}
-
-// formNameFromPath reads the form's name out of where the file lies, for
-// either kind of form.
-func formNameFromPath(relative string) (string, bool) {
-	if form, ok := objectFormName(relative); ok {
-		return form, true
-	}
-	parts := strings.Split(relative, "/")
-	switch {
-	case len(parts) == 4 && parts[0] == "metadata" && parts[1] == "common-forms" && parts[3] == project.FormMetadataFile:
-		return parts[2], true
-	}
-	return "", false
-}
-
 func validateFormPath(relative string) error {
 	canonical, language, err := validateEditablePath(relative)
 	if err != nil || language != "yaml" {
 		return ErrInvalidSourcePath
 	}
-	if _, ok := formNameFromPath(canonical); !ok {
+	if _, ok := project.FormFolder(canonical); !ok {
 		return ErrInvalidSourcePath
 	}
 	return nil
@@ -328,7 +295,7 @@ func validateFormPath(relative string) error {
 // «Отзывчивость»), and reading the whole project took a second for every
 // two thousand objects beside it (2.242). Which of the object's forms is
 // open is told by its name, which the form shares with its folder
-// (formAgreesWithItsPath); a form no slot of the object names, a common
+// (metadata.FormAgreesWithPath); a form no slot of the object names, a common
 // form, or an object whose description does not read gets none.
 func (workspace *Workspace) formDataPaths(relative string, configuration project.Project) []FormDataPath {
 	kind, object, rest, ok := project.SplitObjectPath(relative)

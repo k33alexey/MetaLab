@@ -133,16 +133,17 @@ func (workspace *Workspace) decodeRoleLocked(relative string, configuration proj
 }
 
 func decodeRoleFiles(relative string, description, grid []byte, configuration project.Project) (metadata.RoleDefinition, error) {
-	var gridReader io.Reader
+	var rights io.Reader
 	if grid != nil {
-		gridReader = bytes.NewReader(grid)
+		rights = bytes.NewReader(grid)
 	}
-	role, err := metadata.DecodeRole(relative, bytes.NewReader(description), gridReader, configuration)
+	value, described, err := metadata.DecodeSource(relative, bytes.NewReader(description), rights, configuration)
 	if err != nil {
 		return metadata.RoleDefinition{}, err
 	}
-	if path.Base(relative) != role.ID.String()+".yaml" {
-		return metadata.RoleDefinition{}, fmt.Errorf("role UUID does not match filename")
+	role, ok := value.(metadata.RoleDefinition)
+	if !described || !ok {
+		return metadata.RoleDefinition{}, ErrInvalidSourcePath
 	}
 	return role, nil
 }

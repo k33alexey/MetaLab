@@ -44,543 +44,13 @@ func read(root string, includeRoles, strict bool) (*Catalog, error) {
 	if err := catalog.loadRootInterface(root); err != nil {
 		return nil, err
 	}
-	if includeRoles {
-		if err := loadKind(root, RoleKind, func(source string, file *os.File, id uuid.UUID) error {
-			grid, err := openRoleRights(root, id)
-			if err != nil {
-				return err
-			}
-			var gridReader io.Reader
-			if grid != nil {
-				defer grid.Close()
-				gridReader = grid
-			}
-			value, err := DecodeRole(source, file, gridReader, configuration)
-			if err == nil && value.ID != id {
-				err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
-			}
-			if err == nil {
-				catalog.Roles = append(catalog.Roles, value)
-			}
-			return err
-		}); err != nil {
+	for _, item := range sourceKinds {
+		if item.add == nil || item.kind == RoleKind && !includeRoles {
+			continue
+		}
+		if err := catalog.loadSources(root, item, configuration); err != nil {
 			return nil, err
 		}
-	}
-	if err := loadKind(root, SubsystemKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeSubsystem(source, file, configuration)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
-		}
-		if err == nil {
-			catalog.Subsystems = append(catalog.Subsystems, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	// A constant keeps a folder, because it keeps two modules: the one the
-	// platform calls around its value and the one of its manager.
-	if err := loadObjectKind(root, ConstantKind, func(source string, file *os.File, name string) error {
-		value, err := DecodeConstant(source, file, configuration)
-		if err == nil && !strings.EqualFold(value.Name, name) {
-			err = fmt.Errorf("constant %s lies in a folder called %s", value.Name, name)
-		}
-		if err == nil {
-			catalog.Constants = append(catalog.Constants, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadKind(root, SessionParameterKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeSessionParameter(source, file, configuration)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
-		}
-		if err == nil {
-			catalog.SessionParameters = append(catalog.SessionParameters, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadKind(root, CommonAttributeKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeCommonAttribute(source, file, configuration)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
-		}
-		if err == nil {
-			catalog.CommonAttributes = append(catalog.CommonAttributes, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadKind(root, CommonModuleKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeCommonModule(source, file, configuration)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
-		}
-		if err == nil {
-			catalog.CommonModules = append(catalog.CommonModules, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadKind(root, EventSubscriptionKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeEventSubscription(source, file, configuration)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
-		}
-		if err == nil {
-			catalog.EventSubscriptions = append(catalog.EventSubscriptions, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, EnumerationKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeEnumeration(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.Enumerations = append(catalog.Enumerations, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadKind(root, ScheduledJobKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeScheduledJob(source, file, configuration)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
-		}
-		if err == nil {
-			catalog.ScheduledJobs = append(catalog.ScheduledJobs, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadKind(root, CommandGroupKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeCommandGroup(source, file, configuration)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
-		}
-		if err == nil {
-			catalog.CommandGroups = append(catalog.CommandGroups, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	// A common command keeps a folder, because it keeps the module that runs
-	// it; a command group keeps nothing, so it stays one file.
-	if err := loadObjectKind(root, CommonCommandKind, func(source string, file *os.File, name string) error {
-		value, err := DecodeCommonCommand(source, file, configuration)
-		if err == nil && !strings.EqualFold(value.Name, name) {
-			err = fmt.Errorf("common command %s lies in a folder called %s", value.Name, name)
-		}
-		if err == nil {
-			catalog.CommonCommands = append(catalog.CommonCommands, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	// A common template and a common picture each keep a folder: the folder is
-	// the template or the picture itself, and the content lies in it beside
-	// the description.
-	if err := loadObjectKind(root, CommonTemplateKind, func(source string, file *os.File, name string) error {
-		value, err := DecodeCommonTemplate(source, file, configuration)
-		if err == nil && !strings.EqualFold(value.Name, name) {
-			err = fmt.Errorf("common template %s lies in a folder called %s", value.Name, name)
-		}
-		if err == nil {
-			catalog.CommonTemplates = append(catalog.CommonTemplates, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	// A package of exchanged types keeps a folder too: the schema is its body
-	// and lies beside the description, not inside it.
-	if err := loadObjectKind(root, XDTOPackageKind, func(source string, file *os.File, name string) error {
-		value, err := DecodeXDTOPackage(source, file, configuration)
-		if err == nil && !strings.EqualFold(value.Name, name) {
-			err = fmt.Errorf("XDTO package %s lies in a folder called %s", value.Name, name)
-		}
-		if err == nil {
-			catalog.XDTOPackages = append(catalog.XDTOPackages, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	// A web service keeps a folder because it keeps a module: the procedures
-	// its operations name lie there, and nowhere else.
-	if err := loadObjectKind(root, WebServiceKind, func(source string, file *os.File, name string) error {
-		value, err := DecodeWebService(source, file, configuration)
-		if err == nil && !strings.EqualFold(value.Name, name) {
-			err = fmt.Errorf("web service %s lies in a folder called %s", value.Name, name)
-		}
-		if err == nil {
-			catalog.WebServices = append(catalog.WebServices, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	// A WS reference keeps a folder for the same reason an XDTO package does:
-	// the service description is its body and lies beside it.
-	if err := loadObjectKind(root, WSReferenceKind, func(source string, file *os.File, name string) error {
-		value, err := DecodeWSReference(source, file, configuration)
-		if err == nil && !strings.EqualFold(value.Name, name) {
-			err = fmt.Errorf("WS reference %s lies in a folder called %s", value.Name, name)
-		}
-		if err == nil {
-			catalog.WSReferences = append(catalog.WSReferences, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	// A WebSocket client keeps a folder because it keeps a module: the
-	// handlers of its connection lie there.
-	if err := loadObjectKind(root, WebSocketClientKind, func(source string, file *os.File, name string) error {
-		value, err := DecodeWebSocketClient(source, file, configuration)
-		if err == nil && !strings.EqualFold(value.Name, name) {
-			err = fmt.Errorf("WebSocket client %s lies in a folder called %s", value.Name, name)
-		}
-		if err == nil {
-			catalog.WebSocketClients = append(catalog.WebSocketClients, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := catalog.loadExternalDataSources(root, configuration); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, HTTPServiceKind, func(source string, file *os.File, name string) error {
-		value, err := DecodeHTTPService(source, file, configuration)
-		if err == nil && !strings.EqualFold(value.Name, name) {
-			err = fmt.Errorf("HTTP service %s lies in a folder called %s", value.Name, name)
-		}
-		if err == nil {
-			catalog.HTTPServices = append(catalog.HTTPServices, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, CommonPictureKind, func(source string, file *os.File, name string) error {
-		value, err := DecodeCommonPicture(source, file, configuration)
-		if err == nil && !strings.EqualFold(value.Name, name) {
-			err = fmt.Errorf("common picture %s lies in a folder called %s", value.Name, name)
-		}
-		if err == nil {
-			catalog.CommonPictures = append(catalog.CommonPictures, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	// A style item and a style keep no files of their own - no module, no
-	// form, no content - so each is one file named by its identifier.
-	if err := loadKind(root, StyleItemKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeStyleItem(source, file, configuration)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
-		}
-		if err == nil {
-			catalog.StyleItems = append(catalog.StyleItems, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadKind(root, StyleKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeStyle(source, file, configuration)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
-		}
-		if err == nil {
-			catalog.Styles = append(catalog.Styles, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadKind(root, FunctionalOptionKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeFunctionalOption(source, file, configuration)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
-		}
-		if err == nil {
-			catalog.FunctionalOptions = append(catalog.FunctionalOptions, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadKind(root, FunctionalOptionParameterKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeFunctionalOptionParameter(source, file, configuration)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
-		}
-		if err == nil {
-			catalog.FunctionalOptionParameters = append(catalog.FunctionalOptionParameters, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, SettingsStorageKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeSettingsStorage(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.SettingsStorages = append(catalog.SettingsStorages, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, FilterCriterionKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeFilterCriterion(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.FilterCriteria = append(catalog.FilterCriteria, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadKind(root, DefinedTypeKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeDefinedType(source, file, configuration)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
-		}
-		if err == nil {
-			catalog.DefinedTypes = append(catalog.DefinedTypes, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, CatalogKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeCatalog(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.Catalogs = append(catalog.Catalogs, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, ChartOfCharacteristicTypesKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeChartOfCharacteristicTypes(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.ChartsOfCharacteristicTypes = append(catalog.ChartsOfCharacteristicTypes, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, ChartOfAccountsKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeChartOfAccounts(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.ChartsOfAccounts = append(catalog.ChartsOfAccounts, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, ChartOfCalculationTypesKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeChartOfCalculationTypes(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.ChartsOfCalculationTypes = append(catalog.ChartsOfCalculationTypes, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, TaskKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeTask(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.Tasks = append(catalog.Tasks, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, AccountingRegisterKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeAccountingRegister(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.AccountingRegisters = append(catalog.AccountingRegisters, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, CalculationRegisterKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeCalculationRegister(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.CalculationRegisters = append(catalog.CalculationRegisters, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, ReportKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeReport(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.Reports = append(catalog.Reports, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, DataProcessorKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeDataProcessor(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.DataProcessors = append(catalog.DataProcessors, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadKind(root, NumeratorKind, func(source string, file *os.File, id uuid.UUID) error {
-		value, err := DecodeNumerator(source, file, configuration)
-		if err == nil && value.ID != id {
-			err = fmt.Errorf("metadata UUID %s does not match directory UUID %s", value.ID, id)
-		}
-		if err == nil {
-			catalog.Numerators = append(catalog.Numerators, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	// A sequence keeps a folder, because it keeps a module: the record set
-	// module, which the prototype gives it (acc ДокументыОрганизаций) and a
-	// single file had nowhere to put.
-	if err := loadObjectKind(root, SequenceKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeSequence(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.Sequences = append(catalog.Sequences, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, DocumentJournalKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeDocumentJournal(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.DocumentJournals = append(catalog.DocumentJournals, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, ExchangePlanKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeExchangePlan(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.ExchangePlans = append(catalog.ExchangePlans, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, BusinessProcessKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeBusinessProcess(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.BusinessProcesses = append(catalog.BusinessProcesses, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, DocumentKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeDocument(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.Documents = append(catalog.Documents, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, InformationRegisterKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeInformationRegister(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.InformationRegisters = append(catalog.InformationRegisters, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if err := loadObjectKind(root, AccumulationRegisterKind, func(source string, file *os.File, folder string) error {
-		value, err := DecodeAccumulationRegister(source, file, configuration)
-		if err == nil && value.Name != folder {
-			err = fmt.Errorf("object %s lies in folder %s", value.Name, folder)
-		}
-		if err == nil {
-			catalog.AccumulationRegisters = append(catalog.AccumulationRegisters, value)
-		}
-		return err
-	}); err != nil {
-		return nil, err
 	}
 	if err := catalog.indexAndValidate(root); err != nil {
 		return nil, err
@@ -782,7 +252,38 @@ func NewCatalogSnapshotWithEventSubscriptions(configuration project.Project, con
 	return result, nil
 }
 
-func loadKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) error) error {
+// loadSources reads every description of one kind and puts it into the
+// catalog. A role is read with the grid of its rights beside it.
+func (catalog *Catalog) loadSources(root string, item sourceKind, configuration project.Project) error {
+	walk := loadKind
+	if keptInFolder(item.kind) {
+		walk = loadObjectKind
+	}
+	return walk(root, item.kind, func(relative string, file *os.File) error {
+		var rights io.Reader
+		if item.kind == RoleKind {
+			id, err := uuid.Parse(strings.TrimSuffix(filepath.Base(relative), ".yaml"))
+			if err != nil {
+				return err
+			}
+			grid, err := openRoleRights(root, id)
+			if err != nil {
+				return err
+			}
+			if grid != nil {
+				defer grid.Close()
+				rights = grid
+			}
+		}
+		value, _, err := DecodeSource(relative, file, rights, configuration)
+		if err != nil {
+			return err
+		}
+		return item.add(catalog, root, value)
+	})
+}
+
+func loadKind(root string, kind Kind, decode func(string, *os.File) error) error {
 	directory := filepath.Join(root, "metadata", string(kind))
 	info, err := os.Lstat(directory)
 	if err != nil {
@@ -822,8 +323,7 @@ func loadKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) e
 		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 || filepath.Ext(entry.Name()) != ".yaml" {
 			return fmt.Errorf("unexpected metadata source %q", filepath.Join("metadata", string(kind), entry.Name()))
 		}
-		id, err := uuid.Parse(strings.TrimSuffix(entry.Name(), ".yaml"))
-		if err != nil {
+		if _, err := uuid.Parse(strings.TrimSuffix(entry.Name(), ".yaml")); err != nil {
 			return fmt.Errorf("metadata source %q must use a UUID filename: %w", entry.Name(), err)
 		}
 		relative := filepath.ToSlash(filepath.Join("metadata", string(kind), entry.Name()))
@@ -831,7 +331,7 @@ func loadKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) e
 		if err != nil {
 			return fmt.Errorf("open %s: %w", relative, err)
 		}
-		decodeErr := decode(relative, file, id)
+		decodeErr := decode(relative, file)
 		closeErr := file.Close()
 		if decodeErr != nil {
 			return fmt.Errorf("load %s: %w", relative, decodeErr)
@@ -984,7 +484,7 @@ func requirePictureFile(owner, directory string, picture *PictureReference) erro
 // catalogs, documents and registers group their own description with their
 // modules, forms, commands and templates, physically located inside that same
 // folder (see validateObjectFileSources).
-func loadObjectKind(root string, kind Kind, decode func(string, *os.File, string) error) error {
+func loadObjectKind(root string, kind Kind, decode func(string, *os.File) error) error {
 	directory := filepath.Join(root, "metadata", string(kind))
 	info, err := os.Lstat(directory)
 	if err != nil {
@@ -1015,7 +515,7 @@ func loadObjectKind(root string, kind Kind, decode func(string, *os.File, string
 		if err != nil {
 			return fmt.Errorf("open %s: %w", relative, err)
 		}
-		decodeErr := decode(relative, file, entry.Name())
+		decodeErr := decode(relative, file)
 		closeErr := file.Close()
 		if decodeErr != nil {
 			return fmt.Errorf("load %s: %w", relative, decodeErr)
@@ -3228,8 +2728,8 @@ func readObjectFormIdentity(directory, form string) (uuid.UUID, FormType, error)
 	if identity.Module != nil {
 		return uuid.UUID{}, "", fmt.Errorf("names a module, and its module is %s beside it", project.FormModuleFile)
 	}
-	if !strings.EqualFold(identity.Name, form) {
-		return uuid.UUID{}, "", fmt.Errorf("calls itself %s, and lies in a folder called %s", identity.Name, form)
+	if err := agreesWithFolder("form", identity.Name, form); err != nil {
+		return uuid.UUID{}, "", err
 	}
 	return identity.ID, identity.Type, nil
 }
