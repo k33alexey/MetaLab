@@ -32,6 +32,9 @@
 #     is incomplete;
 #   - rechecks every TIMED OUT (scripts/mutants_recheck.py) and writes
 #     lived.tsv — the list to work through;
+#   - corrects the count: a string concatenation with `+` turned into `-` does
+#     not compile, and gremlins 0.6.0 writes it as killed (1234 such "kills"
+#     on 04.10.2026). The honest total is the `corrected` line of summary.txt;
 #   - with --diff, runs only the mutants on lines changed since the commit:
 #     gremlins lists them in a dry run, mutants_recheck.py runs them;
 #   - keeps the log, the JSON, the frozen tree and the summary; removes caches;
