@@ -5,13 +5,14 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // SettingsStorageKind holds the places user settings are saved to and read
 // back from.
-const SettingsStorageKind Kind = "settings-storages"
+const SettingsStorageKind = kinds.SettingsStorage
 
 // SettingsStorageForms are the two things a user does with saved settings:
 // save the current ones under a name, and pick a saved one to load. Each has

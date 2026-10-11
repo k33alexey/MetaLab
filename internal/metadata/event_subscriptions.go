@@ -6,11 +6,12 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-const EventSubscriptionKind Kind = "event-subscriptions"
+const EventSubscriptionKind = kinds.EventSubscription
 
 // EventSubscriptionDefinition attaches one exported procedure of a common
 // module to an event of the objects its source names, without those objects'

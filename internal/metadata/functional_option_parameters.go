@@ -6,13 +6,14 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // FunctionalOptionParameterKind holds the axes along which the value of a
 // functional option differs.
-const FunctionalOptionParameterKind Kind = "functional-options-parameters"
+const FunctionalOptionParameterKind = kinds.FunctionalOptionParameter
 
 // FunctionalOptionParameterUse is one place where the axis appears: a catalog
 // the parameter stands for as a whole, or a dimension of an information

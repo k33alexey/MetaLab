@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -19,8 +20,8 @@ import (
 // is a folder directly under metadata/: a cube lies in its source's collection
 // of cubes, a dimension table in its cube's collection of dimension tables.
 const (
-	ExternalCubeKind           Kind = "external-data-source-cubes"
-	ExternalDimensionTableKind Kind = "external-data-source-dimension-tables"
+	ExternalCubeKind           = kinds.ExternalCube
+	ExternalDimensionTableKind = kinds.ExternalDimensionTable
 )
 
 // ExternalDimensionTableType is a reference to one member of a dimension of a

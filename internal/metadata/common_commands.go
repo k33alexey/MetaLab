@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -16,10 +17,10 @@ import (
 const (
 	// CommonCommandKind holds actions that belong to no object: they are
 	// offered by the configuration itself.
-	CommonCommandKind Kind = "common-commands"
+	CommonCommandKind = kinds.CommonCommand
 	// CommandGroupKind holds the places a configuration makes for its own
 	// commands, beside the places the platform offers.
-	CommandGroupKind Kind = "command-groups"
+	CommandGroupKind = kinds.CommandGroup
 )
 
 // CommandCategory is the part of the interface a command group lives in. The

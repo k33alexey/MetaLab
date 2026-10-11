@@ -6,13 +6,14 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // FilterCriterionKind holds the named ways of going from one value to every
 // place that value is used.
-const FilterCriterionKind Kind = "filter-criteria"
+const FilterCriterionKind = kinds.FilterCriterion
 
 // CriterionField is one field the criterion searches: an attribute of an
 // object, or an attribute of a table part of one.

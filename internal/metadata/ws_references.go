@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -18,7 +19,7 @@ import (
 // WSReferenceKind holds the descriptions of other systems' web services this
 // configuration calls. It is the other side of a web service: a web service is
 // what the configuration answers, a WS reference is what it asks somebody else.
-const WSReferenceKind Kind = "ws-references"
+const WSReferenceKind = kinds.WSReference
 
 // WSReferenceDefinitionFile is the imported description of the service, beside
 // the description of the object. It is the body of the reference and not a

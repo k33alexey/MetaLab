@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 )
 
@@ -129,28 +130,28 @@ func (catalog *Catalog) ordinaryFormModulePaths() map[string]bool {
 // than by anything read out of a file.
 func moduleNameDescriptors(catalog *Catalog) map[string]moduleNameDescriptor {
 	result := make(map[string]moduleNameDescriptor)
-	add := func(kind Kind, object, role, name string, predefined ...string) {
+	add := func(kind Kind, object, role string, predefined ...string) {
 		path, err := project.ObjectModulePath(string(kind), object, role)
 		if err != nil {
 			return
 		}
-		result[path] = moduleNameDescriptor{name: name, predefined: predefined}
+		result[path] = moduleNameDescriptor{name: ObjectModuleName(kind, object, role), predefined: predefined}
 	}
 	for _, item := range catalog.Catalogs {
-		add(CatalogKind, item.Name, project.ObjectModuleFile, "МодульОбъектаСправочника."+item.Name, "ЭтотОбъект", "ThisObject")
-		add(CatalogKind, item.Name, project.ManagerModuleFile, "МодульМенеджераСправочника."+item.Name)
+		add(CatalogKind, item.Name, project.ObjectModuleFile, "ЭтотОбъект", "ThisObject")
+		add(CatalogKind, item.Name, project.ManagerModuleFile)
 	}
 	for _, item := range catalog.Documents {
-		add(DocumentKind, item.Name, project.ObjectModuleFile, "МодульОбъектаДокумента."+item.Name, "ЭтотОбъект", "ThisObject", "Движения", "Movements")
-		add(DocumentKind, item.Name, project.ManagerModuleFile, "МодульМенеджераДокумента."+item.Name)
+		add(DocumentKind, item.Name, project.ObjectModuleFile, "ЭтотОбъект", "ThisObject", "Движения", "Movements")
+		add(DocumentKind, item.Name, project.ManagerModuleFile)
 	}
 	for _, item := range catalog.InformationRegisters {
-		add(InformationRegisterKind, item.Name, project.RecordSetModuleFile, "МодульНабораЗаписейРегистраСведений."+item.Name, "ЭтотОбъект", "ThisObject")
-		add(InformationRegisterKind, item.Name, project.ManagerModuleFile, "МодульМенеджераРегистраСведений."+item.Name)
+		add(InformationRegisterKind, item.Name, project.RecordSetModuleFile, "ЭтотОбъект", "ThisObject")
+		add(InformationRegisterKind, item.Name, project.ManagerModuleFile)
 	}
 	for _, item := range catalog.AccumulationRegisters {
-		add(AccumulationRegisterKind, item.Name, project.RecordSetModuleFile, "МодульНабораЗаписейРегистраНакопления."+item.Name, "ЭтотОбъект", "ThisObject")
-		add(AccumulationRegisterKind, item.Name, project.ManagerModuleFile, "МодульМенеджераРегистраНакопления."+item.Name)
+		add(AccumulationRegisterKind, item.Name, project.RecordSetModuleFile, "ЭтотОбъект", "ThisObject")
+		add(AccumulationRegisterKind, item.Name, project.ManagerModuleFile)
 	}
 	// A table of a source is named with its source, because that pair is what
 	// the table is: two sources may well each keep a table called Товары.
@@ -158,26 +159,26 @@ func moduleNameDescriptors(catalog *Catalog) map[string]moduleNameDescriptor {
 		for _, table := range source.Tables {
 			name := source.Name + "." + table.Name
 			if table.ObjectTable() {
-				add(ExternalDataSourceTableKind, name, project.ObjectModuleFile, "МодульОбъектаТаблицыВнешнегоИсточника."+name, "ЭтотОбъект", "ThisObject")
+				add(ExternalDataSourceTableKind, name, project.ObjectModuleFile, "ЭтотОбъект", "ThisObject")
 			} else {
-				add(ExternalDataSourceTableKind, name, project.RecordSetModuleFile, "МодульНабораЗаписейТаблицыВнешнегоИсточника."+name, "ЭтотОбъект", "ThisObject")
+				add(ExternalDataSourceTableKind, name, project.RecordSetModuleFile, "ЭтотОбъект", "ThisObject")
 			}
-			add(ExternalDataSourceTableKind, name, project.ManagerModuleFile, "МодульМенеджераТаблицыВнешнегоИсточника."+name)
+			add(ExternalDataSourceTableKind, name, project.ManagerModuleFile)
 		}
 		for _, cube := range source.Cubes {
 			name := source.Name + "." + cube.Name
-			add(ExternalCubeKind, name, project.RecordSetModuleFile, "МодульНабораЗаписейКубаВнешнегоИсточника."+name, "ЭтотОбъект", "ThisObject")
-			add(ExternalCubeKind, name, project.ManagerModuleFile, "МодульМенеджераКубаВнешнегоИсточника."+name)
+			add(ExternalCubeKind, name, project.RecordSetModuleFile, "ЭтотОбъект", "ThisObject")
+			add(ExternalCubeKind, name, project.ManagerModuleFile)
 			for _, table := range cube.DimensionTables {
 				tableName := name + "." + table.Name
-				add(ExternalDimensionTableKind, tableName, project.ObjectModuleFile, "МодульОбъектаТаблицыИзмеренияВнешнегоИсточника."+tableName, "ЭтотОбъект", "ThisObject")
-				add(ExternalDimensionTableKind, tableName, project.ManagerModuleFile, "МодульМенеджераТаблицыИзмеренияВнешнегоИсточника."+tableName)
+				add(ExternalDimensionTableKind, tableName, project.ObjectModuleFile, "ЭтотОбъект", "ThisObject")
+				add(ExternalDimensionTableKind, tableName, project.ManagerModuleFile)
 			}
 		}
 	}
 	for _, item := range catalog.Constants {
-		add(ConstantKind, item.Name, project.ValueModuleFile, "МодульЗначенияКонстанты."+item.Name, "ЭтотОбъект", "ThisObject")
-		add(ConstantKind, item.Name, project.ManagerModuleFile, "МодульМенеджераКонстанты."+item.Name)
+		add(ConstantKind, item.Name, project.ValueModuleFile, "ЭтотОбъект", "ThisObject")
+		add(ConstantKind, item.Name, project.ManagerModuleFile)
 	}
 	for _, item := range catalog.CommonModules {
 		if path, err := project.ModulePath(item.Module); err == nil {
@@ -200,30 +201,18 @@ func moduleNameDescriptors(catalog *Catalog) map[string]moduleNameDescriptor {
 	return result
 }
 
-// formModuleKindNames is what a form's module is called after, per kind of
-// object. A kind missing here falls back to the kind's own folder name, which
-// is readable enough and cannot be wrong.
-var formModuleKindNames = map[Kind]string{
-	CatalogKind: "Справочника", DocumentKind: "Документа", EnumerationKind: "Перечисления",
-	InformationRegisterKind: "РегистраСведений", AccumulationRegisterKind: "РегистраНакопления",
-	AccountingRegisterKind: "РегистраБухгалтерии", CalculationRegisterKind: "РегистраРасчета",
-	ChartOfCharacteristicTypesKind: "ПланаВидовХарактеристик", ChartOfAccountsKind: "ПланаСчетов",
-	ChartOfCalculationTypesKind: "ПланаВидовРасчета", BusinessProcessKind: "БизнесПроцесса",
-	TaskKind: "Задачи", ExchangePlanKind: "ПланаОбмена", DocumentJournalKind: "ЖурналаДокументов",
-	ReportKind: "Отчета", DataProcessorKind: "Обработки", FilterCriterionKind: "КритерияОтбора",
-	SettingsStorageKind: "ХранилищаНастроек", ExternalDataSourceTableKind: "ТаблицыВнешнегоИсточника",
-	ExternalCubeKind: "КубаВнешнегоИсточника", ExternalDimensionTableKind: "ТаблицыИзмеренияВнешнегоИсточника",
+// ObjectModuleName is the name a module of an object is compiled and reported
+// under: the module's role, the kind of the object and the object -
+// МодульОбъектаСправочника.Банки.
+func ObjectModuleName(kind Kind, object, role string) string {
+	return strings.TrimSuffix(role, ".bsl") + kinds.Must(kind).Genitive + "." + object
 }
 
 // FormModuleName is the name one form's module is compiled and reported
 // under. It names the object and the form, because that pair is what the form
 // is: two objects may well each keep a ФормаСписка.
 func FormModuleName(objectKind Kind, object, form string) string {
-	kind, ok := formModuleKindNames[objectKind]
-	if !ok {
-		kind = string(objectKind)
-	}
-	return "МодульФормы" + kind + "." + object + "." + form
+	return ObjectModuleName(objectKind, object+"."+form, "МодульФормы")
 }
 
 // moduleNameFromPath names a module nothing in the catalog claims. A module

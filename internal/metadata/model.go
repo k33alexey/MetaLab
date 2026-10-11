@@ -12,6 +12,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 	"go.yaml.in/yaml/v3"
@@ -21,46 +22,60 @@ const (
 	CurrentFormat = 1
 )
 
-type Kind string
+// Kind is a kind of metadata object; what it is called is the kinds
+// package's.
+type Kind = kinds.Kind
+
+// fullName is the full name of an object, as the prototype writes it in
+// Russian (help, ПолноеИмя): Справочник.Банки.
+func fullName(kind Kind, name string) string {
+	return kinds.Must(kind).Name.Russian + "." + name
+}
+
+// kindNamed reports whether a word of code names one object of a kind: the
+// first part of a full name, of a source of a query, of a space of a lock.
+func kindNamed(word string, kind Kind) bool {
+	return kinds.Must(kind).Name.Is(word)
+}
 
 const (
-	ConstantKind             Kind = "constants"
-	SessionParameterKind     Kind = "session-parameters"
-	EnumerationKind          Kind = "enumerations"
-	DefinedTypeKind          Kind = "defined-types"
-	CatalogKind              Kind = "catalogs"
-	DocumentKind             Kind = "documents"
-	InformationRegisterKind  Kind = "information-registers"
-	AccumulationRegisterKind Kind = "accumulation-registers"
+	ConstantKind             = kinds.Constant
+	SessionParameterKind     = kinds.SessionParameter
+	EnumerationKind          = kinds.Enumeration
+	DefinedTypeKind          = kinds.DefinedType
+	CatalogKind              = kinds.Catalog
+	DocumentKind             = kinds.Document
+	InformationRegisterKind  = kinds.InformationRegister
+	AccumulationRegisterKind = kinds.AccumulationRegister
 	// ChartOfCharacteristicTypesKind holds the kinds of characteristic a
 	// configuration lets its users invent without changing the configuration.
-	ChartOfCharacteristicTypesKind Kind = "charts-of-characteristic-types"
+	ChartOfCharacteristicTypesKind = kinds.ChartOfCharacteristicTypes
 	// ChartOfAccountsKind holds the accounts an application keeps its books on.
-	ChartOfAccountsKind Kind = "charts-of-accounts"
+	ChartOfAccountsKind = kinds.ChartOfAccounts
 	// ChartOfCalculationTypesKind holds kinds of accrual and deduction.
-	ChartOfCalculationTypesKind Kind = "charts-of-calculation-types"
+	ChartOfCalculationTypesKind = kinds.ChartOfCalculationTypes
 	// BusinessProcessKind holds routes a process walks; TaskKind holds the
 	// assignments created along the way.
-	BusinessProcessKind Kind = "business-processes"
-	TaskKind            Kind = "tasks"
+	BusinessProcessKind = kinds.BusinessProcess
+	TaskKind            = kinds.Task
 	// ExchangePlanKind holds what enters an exchange and who it is exchanged
 	// with.
-	ExchangePlanKind Kind = "exchange-plans"
+	ExchangePlanKind = kinds.ExchangePlan
 	// The three kinds that live around documents: numbering shared by several
 	// of them, the order they must be posted in, and a common list of them.
 	// AccountingRegisterKind holds entries: an account on each side, sums and
 	// the analytics behind them.
-	AccountingRegisterKind Kind = "accounting-registers"
+	AccountingRegisterKind = kinds.AccountingRegister
 	// CalculationRegisterKind holds results of calculation, with the period
 	// they act over and the displacement between them.
-	CalculationRegisterKind Kind = "calculation-registers"
+	CalculationRegisterKind = kinds.CalculationRegister
 	// ReportKind and DataProcessorKind keep no data: their attributes and
 	// table parts live only while the object runs.
-	ReportKind          Kind = "reports"
-	DataProcessorKind   Kind = "data-processors"
-	NumeratorKind       Kind = "document-numerators"
-	SequenceKind        Kind = "sequences"
-	DocumentJournalKind Kind = "document-journals"
+	ReportKind          = kinds.Report
+	DataProcessorKind   = kinds.DataProcessor
+	NumeratorKind       = kinds.Numerator
+	SequenceKind        = kinds.Sequence
+	DocumentJournalKind = kinds.DocumentJournal
 )
 
 type TypeKind string

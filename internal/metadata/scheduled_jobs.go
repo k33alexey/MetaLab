@@ -7,13 +7,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // ScheduledJobKind holds the work an application does by itself, without
 // anybody asking.
-const ScheduledJobKind Kind = "scheduled-jobs"
+const ScheduledJobKind = kinds.ScheduledJob
 
 // ScheduledJobDefinition describes one scheduled job: a procedure the platform
 // runs on its own.

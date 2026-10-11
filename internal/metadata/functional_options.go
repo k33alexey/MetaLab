@@ -6,13 +6,14 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // FunctionalOptionKind holds the switches that turn parts of an application
 // on and off without a developer.
-const FunctionalOptionKind Kind = "functional-options"
+const FunctionalOptionKind = kinds.FunctionalOption
 
 // FunctionalOptionLocation is where the value of an option is kept. The value
 // lives in the application's own data, not in the configuration: that is the

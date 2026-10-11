@@ -12,11 +12,12 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-const RoleKind Kind = "roles"
+const RoleKind = kinds.Role
 
 // PermissionOperation is one access right, named after the prototype's own
 // name for it in kebab case: Insert is insert, InteractivePosting is

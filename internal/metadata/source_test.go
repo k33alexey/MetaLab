@@ -5,6 +5,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -33,7 +34,7 @@ func TestEverySourceKindIsChecked(t *testing.T) {
 			t.Errorf("%s has no reading", kind)
 			continue
 		}
-		if item.add == nil {
+		if item.add == nil || item.objects == nil {
 			t.Errorf("%s is read and goes nowhere", kind)
 		}
 	}
@@ -41,7 +42,7 @@ func TestEverySourceKindIsChecked(t *testing.T) {
 		item, ok := sourceKindOf(Kind(kind))
 		if !ok {
 			t.Errorf("subordinate %s has no reading", kind)
-		} else if item.add != nil {
+		} else if item.add != nil || item.objects != nil {
 			t.Errorf("subordinate %s goes into a list of its own, and its owner collects it", kind)
 		}
 	}
@@ -55,6 +56,36 @@ func TestEverySourceKindIsChecked(t *testing.T) {
 		name, nameOK := item.described.FieldByName("Name")
 		if !idOK || id.Type != reflect.TypeFor[uuid.UUID]() || !nameOK || name.Type.Kind() != reflect.String {
 			t.Errorf("%s decodes %s, which has no ID and Name to check against where it lies", item.kind, item.described)
+		}
+	}
+}
+
+// Every kind the model knows is named by the kinds package, and the kinds
+// package names no kind the model does not know. Defects caught: a kind
+// added to the layout or the reading without its names (its full name, its
+// collection in code, its module names and its caption would be missing,
+// and kinds.Must would panic on the first module of it), and a descriptor
+// left behind for a kind gone from the model.
+func TestEveryKindIsNamed(t *testing.T) {
+	t.Parallel()
+	known := map[Kind]bool{}
+	for _, kind := range append(project.MetadataKinds(), project.SubordinateObjectKinds()...) {
+		known[Kind(kind)] = true
+	}
+	for _, item := range sourceKinds {
+		known[item.kind] = true
+	}
+	// A recalculation lies inside its calculation register and is read with
+	// it: it is a kind of the prototype's tree, not of the layout.
+	known[RecalculationKind] = true
+	for kind := range known {
+		if _, ok := kinds.Of(kind); !ok {
+			t.Errorf("%s has no names", kind)
+		}
+	}
+	for _, item := range kinds.All() {
+		if !known[item.Kind] {
+			t.Errorf("%s is named and the model does not know it", item.Kind)
 		}
 	}
 }

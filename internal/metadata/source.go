@@ -26,6 +26,9 @@ type sourceKind struct {
 	// another object - a table or a cube of an external data source - has
 	// none: its owner collects it.
 	add func(catalog *Catalog, root string, value any) error
+	// objects is the list of the catalog the kind's objects are in, nil for a
+	// kind its owner collects.
+	objects func(catalog *Catalog) reflect.Value
 }
 
 // sourceKinds lists every kind the model reads from the project, in the order
@@ -39,7 +42,8 @@ func init() {
 			decode: func(source string, reader, rights io.Reader, configuration project.Project) (any, error) {
 				return DecodeRole(source, reader, rights, configuration)
 			},
-			add: collect(func(catalog *Catalog) *[]RoleDefinition { return &catalog.Roles })},
+			add:     collect(func(catalog *Catalog) *[]RoleDefinition { return &catalog.Roles }),
+			objects: func(catalog *Catalog) reflect.Value { return reflect.ValueOf(&catalog.Roles).Elem() }},
 		describedAs(SubsystemKind, DecodeSubsystem, func(catalog *Catalog) *[]SubsystemDefinition { return &catalog.Subsystems }),
 		describedAs(ConstantKind, DecodeConstant, func(catalog *Catalog) *[]Constant { return &catalog.Constants }),
 		describedAs(SessionParameterKind, DecodeSessionParameter, func(catalog *Catalog) *[]SessionParameter { return &catalog.SessionParameters }),
@@ -56,7 +60,8 @@ func init() {
 		describedAs(WSReferenceKind, DecodeWSReference, func(catalog *Catalog) *[]WSReferenceDefinition { return &catalog.WSReferences }),
 		describedAs(WebSocketClientKind, DecodeWebSocketClient, func(catalog *Catalog) *[]WebSocketClientDefinition { return &catalog.WebSocketClients }),
 		{kind: ExternalDataSourceKind, described: reflect.TypeFor[ExternalDataSourceDefinition](),
-			decode: decodeWith(DecodeExternalDataSource), add: addExternalDataSource},
+			decode: decodeWith(DecodeExternalDataSource), add: addExternalDataSource,
+			objects: func(catalog *Catalog) reflect.Value { return reflect.ValueOf(&catalog.ExternalDataSources).Elem() }},
 		describedAs(ExternalDataSourceTableKind, DecodeExternalTable, nil),
 		describedAs(ExternalCubeKind, DecodeExternalCube, nil),
 		describedAs(ExternalDimensionTableKind, DecodeExternalDimensionTable, nil),
@@ -101,6 +106,7 @@ func describedAs[T any](kind Kind, decode func(string, io.Reader, project.Projec
 	item := sourceKind{kind: kind, described: reflect.TypeFor[T](), decode: decodeWith(decode)}
 	if list != nil {
 		item.add = collect(list)
+		item.objects = func(catalog *Catalog) reflect.Value { return reflect.ValueOf(list(catalog)).Elem() }
 	}
 	return item
 }
@@ -126,6 +132,16 @@ func sourceKindOf(kind Kind) (sourceKind, bool) {
 		return sourceKind{}, false
 	}
 	return sourceKinds[index], true
+}
+
+// objectsOf is the list of the catalog the objects of a kind are in; false is
+// a kind the catalog keeps no list of.
+func (catalog *Catalog) objectsOf(kind Kind) (reflect.Value, bool) {
+	item, ok := sourceKindOf(kind)
+	if !ok || item.objects == nil {
+		return reflect.Value{}, false
+	}
+	return item.objects(catalog), true
 }
 
 // keptInFolder reports whether an object of a kind keeps a folder named after

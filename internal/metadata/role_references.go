@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -487,7 +488,7 @@ func (catalog *Catalog) validatePolicyOperand(role RoleDefinition, rule PolicyRu
 }
 
 // CommonFormKind holds the forms that belong to no object.
-const CommonFormKind Kind = "common-forms"
+const CommonFormKind = kinds.CommonForm
 
 // commonFormObjectKind is how a common form is recorded among the objects of
 // the configuration once its folder has been read.

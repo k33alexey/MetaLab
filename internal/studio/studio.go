@@ -20,6 +20,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/bsl/vm"
 	"github.com/k33alexey/MetaLab/internal/debugtarget"
 	"github.com/k33alexey/MetaLab/internal/gitclient"
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/publication"
@@ -106,53 +107,15 @@ var (
 	documentNestedKindOrder = []string{"document-numerators", "sequences"}
 )
 
-var metadataTitles = map[string]string{
-	"subsystems":                     "Подсистемы",
-	"common-modules":                 "Общие модули",
-	"exchange-plans":                 "Планы обмена",
-	"filter-criteria":                "Критерии отбора",
-	"functional-options":             "Функциональные опции",
-	"functional-options-parameters":  "Параметры функциональных опций",
-	"command-groups":                 "Группы команд",
-	"xdto-packages":                  "XDTO-пакеты",
-	"web-services":                   "Web-сервисы",
-	"ws-references":                  "WS-ссылки",
-	"websocket-clients":              "WebSocket-клиенты",
-	"style-items":                    "Элементы стиля",
-	"document-numerators":            "Нумераторы",
-	"sequences":                      "Последовательности",
-	"charts-of-calculation-types":    "Планы видов расчёта",
-	"calculation-registers":          "Регистры расчёта",
-	"business-processes":             "Бизнес-процессы",
-	"tasks":                          "Задачи",
-	"external-data-sources":          "Внешние источники данных",
-	"session-parameters":             "Параметры сеанса",
-	"roles":                          "Роли",
-	"common-attributes":              "Общие реквизиты",
-	"event-subscriptions":            "Подписки на события",
-	"scheduled-jobs":                 "Регламентные задания",
-	"defined-types":                  "Определяемые типы",
-	"common-commands":                "Общие команды",
-	"common-forms":                   "Общие формы",
-	"common-templates":               "Общие макеты",
-	"common-pictures":                "Общие картинки",
-	"http-services":                  "HTTP-сервисы",
-	"styles":                         "Стили",
-	"languages":                      "Языки",
-	"constants":                      "Константы",
-	"settings-storages":              "Хранилища настроек",
-	"catalogs":                       "Справочники",
-	"documents":                      "Документы",
-	"document-journals":              "Журналы документов",
-	"enumerations":                   "Перечисления",
-	"reports":                        "Отчёты",
-	"data-processors":                "Обработки",
-	"charts-of-characteristic-types": "Планы видов характеристик",
-	"charts-of-accounts":             "Планы счетов",
-	"information-registers":          "Регистры сведений",
-	"accumulation-registers":         "Регистры накопления",
-	"accounting-registers":           "Регистры бухгалтерии",
-}
+// metadataTitles are the captions of the kinds, for the editors that show
+// objects of many kinds side by side.
+var metadataTitles = func() map[string]string {
+	result := map[string]string{}
+	for _, descriptor := range kinds.All() {
+		result[string(descriptor.Kind)] = descriptor.Titles
+	}
+	return result
+}()
 
 // Open validates and opens an ML Project without mutating its files.
 func Open(root string) (*Workspace, error) {
@@ -1220,14 +1183,6 @@ func objectFormNodes(parentDirectory, parentRelative, forms string) ([]Node, err
 	return nodes, nil
 }
 
-// subordinateCollectionTitles names the collections of subordinate objects
-// the way the configuration tree names them.
-var subordinateCollectionTitles = map[string]string{
-	"tables":           "Таблицы",
-	"cubes":            "Кубы",
-	"dimension-tables": "Таблицы измерений",
-}
-
 // attachSubordinateObjects hangs under each object the collections of objects
 // that lie inside it - the tables of an external data source - each object
 // shown the way an object of the configuration is, with its forms, commands,
@@ -1247,7 +1202,7 @@ func (workspace *Workspace) attachSubordinateObjects(owners []Node, directory, r
 		for _, collection := range collections {
 			subordinateKind, _ := project.SubordinateObjectKind(kind, collection)
 			group := Node{
-				ID: relative + "/" + ownerName + "/" + collection, Kind: "group", Title: subordinateCollectionTitles[collection],
+				ID: relative + "/" + ownerName + "/" + collection, Kind: "group", Title: metadataTitle(subordinateKind),
 			}
 			collectionDirectory := filepath.Join(directory, ownerName, collection)
 			if _, err := os.Stat(collectionDirectory); err == nil {
@@ -1515,17 +1470,13 @@ func countDescendants(node Node) int {
 	return count
 }
 
+// metadataTitle is the caption of a kind's branch of the tree; a kind with
+// no descriptor is shown by its folder, never blank.
 func metadataTitle(kind string) string {
-	if title := metadataTitles[kind]; title != "" {
-		return title
+	if descriptor, ok := kinds.Of(kinds.Kind(kind)); ok {
+		return descriptor.Titles
 	}
-	words := strings.Split(strings.ReplaceAll(kind, "-", " "), " ")
-	for index := range words {
-		if words[index] != "" {
-			words[index] = strings.ToUpper(words[index][:1]) + words[index][1:]
-		}
-	}
-	return strings.Join(words, " ")
+	return kind
 }
 
 // migrationDetail is one line of the confirmation dialog: what will happen, to

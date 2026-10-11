@@ -8,11 +8,12 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-const CommonAttributeKind Kind = "common-attributes"
+const CommonAttributeKind = kinds.CommonAttribute
 
 // CommonAttributeDefinition is physically propagated as an ordinary Attribute
 // into every object it targets (the 1С 7.7 model), not composed as a virtual

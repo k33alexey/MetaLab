@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -154,19 +155,19 @@ func (runtime *Runtime) newDataLockElement(space string) (*dataLockElement, erro
 	}
 	name := strings.TrimSpace(parts[1])
 	switch {
-	case propertyName(strings.TrimSpace(parts[0]), "Справочник", "Catalog"):
+	case kindNamed(strings.TrimSpace(parts[0]), CatalogKind):
 		definition, ok := runtime.catalog.CatalogDefinition(name)
 		if !ok {
 			return nil, fmt.Errorf("unknown catalog %q", name)
 		}
-		return &dataLockElement{runtime: runtime, kind: CatalogType, metadataID: definition.ID, space: "Catalog." + definition.Name, mode: dataLockExclusive}, nil
-	case propertyName(strings.TrimSpace(parts[0]), "Документ", "Document"):
+		return &dataLockElement{runtime: runtime, kind: CatalogType, metadataID: definition.ID, space: kinds.Must(CatalogKind).Name.English + "." + definition.Name, mode: dataLockExclusive}, nil
+	case kindNamed(strings.TrimSpace(parts[0]), DocumentKind):
 		definition, ok := runtime.catalog.DocumentDefinition(name)
 		if !ok {
 			return nil, fmt.Errorf("unknown document %q", name)
 		}
-		return &dataLockElement{runtime: runtime, kind: DocumentType, metadataID: definition.ID, space: "Document." + definition.Name, mode: dataLockExclusive}, nil
-	case propertyName(strings.TrimSpace(parts[0]), "РегистрСведений", "InformationRegister"):
+		return &dataLockElement{runtime: runtime, kind: DocumentType, metadataID: definition.ID, space: kinds.Must(DocumentKind).Name.English + "." + definition.Name, mode: dataLockExclusive}, nil
+	case kindNamed(strings.TrimSpace(parts[0]), InformationRegisterKind):
 		definition, ok := runtime.catalog.InformationRegisterDefinition(name)
 		if !ok {
 			return nil, fmt.Errorf("unknown information register %q", name)
@@ -174,9 +175,9 @@ func (runtime *Runtime) newDataLockElement(space string) (*dataLockElement, erro
 		return &dataLockElement{
 			runtime: runtime, kind: TypeKind("information-register"), metadataID: definition.ID,
 			register: &definition, filter: InformationRegisterFilter{Dimensions: map[uuid.UUID]Value{}},
-			space: "InformationRegister." + definition.Name, mode: dataLockExclusive,
+			space: kinds.Must(InformationRegisterKind).Name.English + "." + definition.Name, mode: dataLockExclusive,
 		}, nil
-	case propertyName(strings.TrimSpace(parts[0]), "РегистрНакопления", "AccumulationRegister"):
+	case kindNamed(strings.TrimSpace(parts[0]), AccumulationRegisterKind):
 		definition, ok := runtime.catalog.AccumulationRegisterDefinition(name)
 		if !ok {
 			return nil, fmt.Errorf("unknown accumulation register %q", name)
@@ -184,7 +185,7 @@ func (runtime *Runtime) newDataLockElement(space string) (*dataLockElement, erro
 		return &dataLockElement{
 			runtime: runtime, kind: TypeKind("accumulation-register"), metadataID: definition.ID,
 			accumulationRegister: &definition, accumulationDimensions: map[uuid.UUID]Value{},
-			space: "AccumulationRegister." + definition.Name, mode: dataLockExclusive,
+			space: kinds.Must(AccumulationRegisterKind).Name.English + "." + definition.Name, mode: dataLockExclusive,
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported data lock space %q", space)

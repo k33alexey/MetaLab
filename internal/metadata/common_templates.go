@@ -8,13 +8,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // CommonTemplateKind holds the prepared documents that belong to no object:
 // the same ten kinds of template, offered by the configuration itself.
-const CommonTemplateKind Kind = "common-templates"
+const CommonTemplateKind = kinds.CommonTemplate
 
 // CommonTemplateDefinition is a template belonging to no object.
 //

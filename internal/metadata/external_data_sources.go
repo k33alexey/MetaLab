@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -18,12 +19,12 @@ import (
 // reads and writes without owning them: the tables of somebody else's system,
 // described so that the application can work with them the way it works with
 // its own catalogs.
-const ExternalDataSourceKind Kind = "external-data-sources"
+const ExternalDataSourceKind = kinds.ExternalDataSource
 
 // ExternalDataSourceTableKind names a table of a source where a kind is asked
 // for - in a message, in the list of objects something is entered on the basis
 // of. It is not a folder of the project: a table lies inside its source.
-const ExternalDataSourceTableKind Kind = "external-data-source-tables"
+const ExternalDataSourceTableKind = kinds.ExternalDataSourceTable
 
 // ExternalTableType is a reference to one record of an object table of an
 // external data source. The reference is the table's identifier.

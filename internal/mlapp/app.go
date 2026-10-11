@@ -9,6 +9,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -53,20 +54,12 @@ type NavigationItem struct {
 	Current    bool     `json:"current,omitempty"`
 }
 
-// kindTitles names the metadata kinds ML App can navigate to. It is here rather
-// than in the browser because the kind is metadata, and the day interface
-// localization arrives (092) this is where the translation belongs.
-var kindTitles = map[string]string{
-	"catalogs": "Справочник", "documents": "Документ",
-	"information-registers": "Регистр сведений", "accumulation-registers": "Регистр накопления",
-	"reports": "Отчёт", "data-processors": "Обработка",
-}
-
-// KindTitle returns the human name of a metadata kind, or the kind itself when
-// it has none - an unknown kind must still be visible, not silently blank.
+// KindTitle returns the human name of one object of a metadata kind, or the
+// kind itself when it has none - an unknown kind must still be visible, not
+// silently blank.
 func KindTitle(kind string) string {
-	if title, ok := kindTitles[kind]; ok {
-		return title
+	if descriptor, ok := kinds.Of(kinds.Kind(kind)); ok {
+		return descriptor.Title
 	}
 	return kind
 }

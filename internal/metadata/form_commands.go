@@ -1,10 +1,10 @@
 package metadata
 
 import (
-	"reflect"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -43,17 +43,25 @@ type buttonCommand struct {
 	name                   string
 }
 
-// commandOwnerKinds are the kinds of object a button may name a command of,
-// by the word the prototype writes for each, with the list of the catalog
-// they are read from. A common form has only standard commands.
-var commandOwnerKinds = map[string]string{
-	"Catalog": "Catalogs", "Document": "Documents", "Enum": "Enumerations",
-	"ChartOfCharacteristicTypes": "ChartsOfCharacteristicTypes", "ChartOfAccounts": "ChartsOfAccounts",
-	"ChartOfCalculationTypes": "ChartsOfCalculationTypes", "BusinessProcess": "BusinessProcesses", "Task": "Tasks",
-	"ExchangePlan": "ExchangePlans", "DocumentJournal": "DocumentJournals", "InformationRegister": "InformationRegisters",
-	"AccumulationRegister": "AccumulationRegisters", "AccountingRegister": "AccountingRegisters",
-	"CalculationRegister": "CalculationRegisters", "Report": "Reports", "DataProcessor": "DataProcessors",
-	"FilterCriterion": "FilterCriteria", "CommonForm": "",
+// commandOwnerKinds are the kinds of object a button may name a command of;
+// the button writes the kind by its English name, as the export writes it. A
+// common form has only standard commands.
+var commandOwnerKinds = []Kind{
+	CatalogKind, DocumentKind, EnumerationKind, ChartOfCharacteristicTypesKind, ChartOfAccountsKind,
+	ChartOfCalculationTypesKind, BusinessProcessKind, TaskKind, ExchangePlanKind, DocumentJournalKind,
+	InformationRegisterKind, AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind,
+	ReportKind, DataProcessorKind, FilterCriterionKind, CommonFormKind,
+}
+
+// commandOwnerKind finds the kind a button writes; false is a word that names
+// no kind a command belongs to.
+func commandOwnerKind(word string) (Kind, bool) {
+	for _, kind := range commandOwnerKinds {
+		if kinds.Must(kind).Name.English == word {
+			return kind, true
+		}
+	}
+	return "", false
 }
 
 // commandWritings is every way a command is written, for the message that
@@ -81,14 +89,14 @@ func parseButtonCommand(value string) (buttonCommand, bool) {
 		return buttonCommand{kind: formStandardCommand, name: parts[2]}, true
 	case len(parts) == 5 && parts[0] == "Form" && parts[1] == "Item" && parts[3] == "StandardCommand":
 		return buttonCommand{kind: elementStandardCommand, element: parts[2], name: parts[4]}, true
-	case len(parts) == 2 && parts[0] == "CommonCommand":
+	case len(parts) == 2 && parts[0] == kinds.Must(CommonCommandKind).Name.English:
 		return buttonCommand{kind: commonCommand, name: parts[1]}, true
 	case len(parts) == 4 && parts[2] == "StandardCommand":
-		if _, known := commandOwnerKinds[parts[0]]; known {
+		if _, known := commandOwnerKind(parts[0]); known {
 			return buttonCommand{kind: objectStandardCommand, owner: parts[0], object: parts[1], name: parts[3]}, true
 		}
-	case len(parts) == 4 && parts[2] == "Command" && parts[0] != "CommonForm":
-		if _, known := commandOwnerKinds[parts[0]]; known {
+	case len(parts) == 4 && parts[2] == "Command" && parts[0] != kinds.Must(CommonFormKind).Name.English:
+		if _, known := commandOwnerKind(parts[0]); known {
 			return buttonCommand{kind: objectCommand, owner: parts[0], object: parts[1], name: parts[3]}, true
 		}
 	}
@@ -137,7 +145,7 @@ func validateFormCommandParameter(path string, parameter *FormCommandParameter) 
 // name.
 func parseCommandObject(value string) (buttonCommand, bool) {
 	owner, object, found := strings.Cut(value, ".")
-	if _, known := commandOwnerKinds[owner]; !found || !known || !validIdentifier(object) {
+	if _, known := commandOwnerKind(owner); !found || !known || !validIdentifier(object) {
 		return buttonCommand{}, false
 	}
 	return buttonCommand{owner: owner, object: object}, true
@@ -151,11 +159,14 @@ func isUUIDText(value string) bool {
 // commandOwner finds the object of the configuration a button names by kind
 // and name, with the names of its commands; a common form has none.
 func (catalog *Catalog) commandOwner(owner, object string) (map[string]bool, bool) {
-	field := commandOwnerKinds[owner]
-	if field == "" {
+	kind, _ := commandOwnerKind(owner)
+	if kind == CommonFormKind {
 		return nil, catalog.commonFormNames[strings.ToLower(object)]
 	}
-	list := reflect.ValueOf(catalog).Elem().FieldByName(field)
+	list, ok := catalog.objectsOf(kind)
+	if !ok {
+		return nil, false
+	}
 	for index := range list.Len() {
 		definition := list.Index(index)
 		if !strings.EqualFold(definition.FieldByName("Name").String(), object) {

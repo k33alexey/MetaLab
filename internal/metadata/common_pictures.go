@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -17,7 +18,7 @@ import (
 // CommonPictureKind holds the images the configuration offers by name: to its
 // own commands and groups, to the cells of a spreadsheet, to the conditional
 // appearance a user sets up while the application runs.
-const CommonPictureKind Kind = "common-pictures"
+const CommonPictureKind = kinds.CommonPicture
 
 // ScreenDensity is how many pixels a screen spends on one unit of interface,
 // written as a percentage of the base. The same picture is drawn from a

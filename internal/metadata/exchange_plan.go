@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -106,7 +107,7 @@ var registrableKinds = []Kind{
 // points at - in the content of an exchange plan, where acc registers one. A
 // recalculation is not an object of its own folder: it is described inside its
 // calculation register, so this kind names a reference, not a place on disk.
-const RecalculationKind Kind = "recalculations"
+const RecalculationKind = kinds.Recalculation
 
 // pendingRegistrableKinds are registrable too, and this version does not model
 // them yet. Naming them apart is what separates "this kind cannot be

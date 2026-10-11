@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -13,7 +14,7 @@ import (
 // WebServiceKind holds the services this configuration offers to the outside
 // by a description of types: what can be called, what it takes and what it
 // answers.
-const WebServiceKind Kind = "web-services"
+const WebServiceKind = kinds.WebService
 
 // SessionReuseMode says whether calls into a service share one session.
 //

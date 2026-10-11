@@ -2,6 +2,8 @@ package studio
 
 import (
 	"fmt"
+	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"os"
 	"path/filepath"
 	"sort"
@@ -228,17 +230,17 @@ func (workspace *Workspace) moduleDescriptors(catalog *metadata.Catalog) map[str
 			}
 		}
 		for _, item := range catalog.Catalogs {
-			if path := addModuleDescriptor(result, metadata.CatalogKind, item.Name, project.ObjectModuleFile, "МодульОбъектаСправочника."+item.Name, false, "ЭтотОбъект", "ThisObject"); path != "" {
+			if path := addModuleDescriptor(result, metadata.CatalogKind, item.Name, project.ObjectModuleFile, false, "ЭтотОбъект", "ThisObject"); path != "" {
 				descriptor := result[path]
 				descriptor.objectKind = "catalog"
 				descriptor.objectRU = append([]string{"Ссылка", "Код", "Наименование", "ВерсияДанных", "ПометкаУдаления", "ИмяПредопределенныхДанных"}, objectFieldNames(item.Attributes, item.TableParts)...)
 				descriptor.objectEN = append([]string{"Ref", "Code", "Description", "DataVersion", "DeletionMark", "PredefinedDataName"}, objectFieldNames(item.Attributes, item.TableParts)...)
 				result[path] = descriptor
 			}
-			addModuleDescriptor(result, metadata.CatalogKind, item.Name, project.ManagerModuleFile, "МодульМенеджераСправочника."+item.Name, false)
+			addModuleDescriptor(result, metadata.CatalogKind, item.Name, project.ManagerModuleFile, false)
 		}
 		for _, item := range catalog.Documents {
-			if path := addModuleDescriptor(result, metadata.DocumentKind, item.Name, project.ObjectModuleFile, "МодульОбъектаДокумента."+item.Name, false, "ЭтотОбъект", "ThisObject", "Движения", "Movements"); path != "" {
+			if path := addModuleDescriptor(result, metadata.DocumentKind, item.Name, project.ObjectModuleFile, false, "ЭтотОбъект", "ThisObject", "Движения", "Movements"); path != "" {
 				descriptor := result[path]
 				descriptor.objectKind = "document"
 				descriptor.objectRU = append([]string{"Ссылка", "Номер", "Дата", "Проведен", "ВерсияДанных", "ПометкаУдаления", "Движения"}, objectFieldNames(item.Attributes, item.TableParts)...)
@@ -246,27 +248,27 @@ func (workspace *Workspace) moduleDescriptors(catalog *metadata.Catalog) map[str
 				descriptor.movementSets = append([]bslMovementSet(nil), movements[item.ID]...)
 				result[path] = descriptor
 			}
-			addModuleDescriptor(result, metadata.DocumentKind, item.Name, project.ManagerModuleFile, "МодульМенеджераДокумента."+item.Name, false)
+			addModuleDescriptor(result, metadata.DocumentKind, item.Name, project.ManagerModuleFile, false)
 		}
 		for _, item := range catalog.InformationRegisters {
-			if path := addModuleDescriptor(result, metadata.InformationRegisterKind, item.Name, project.RecordSetModuleFile, "МодульНабораЗаписейРегистраСведений."+item.Name, false, "ЭтотОбъект", "ThisObject"); path != "" {
+			if path := addModuleDescriptor(result, metadata.InformationRegisterKind, item.Name, project.RecordSetModuleFile, false, "ЭтотОбъект", "ThisObject"); path != "" {
 				descriptor := result[path]
 				descriptor.objectKind = "information-set"
 				descriptor.objectRU = []string{"Отбор", "Количество", "Записывать"}
 				descriptor.objectEN = []string{"Filter", "Count", "Write"}
 				result[path] = descriptor
 			}
-			addModuleDescriptor(result, metadata.InformationRegisterKind, item.Name, project.ManagerModuleFile, "МодульМенеджераРегистраСведений."+item.Name, false)
+			addModuleDescriptor(result, metadata.InformationRegisterKind, item.Name, project.ManagerModuleFile, false)
 		}
 		for _, item := range catalog.AccumulationRegisters {
-			if path := addModuleDescriptor(result, metadata.AccumulationRegisterKind, item.Name, project.RecordSetModuleFile, "МодульНабораЗаписейРегистраНакопления."+item.Name, false, "ЭтотОбъект", "ThisObject"); path != "" {
+			if path := addModuleDescriptor(result, metadata.AccumulationRegisterKind, item.Name, project.RecordSetModuleFile, false, "ЭтотОбъект", "ThisObject"); path != "" {
 				descriptor := result[path]
 				descriptor.objectKind = "accumulation-set"
 				descriptor.objectRU = []string{"Отбор", "Количество", "Записывать", "БлокироватьДляИзменения"}
 				descriptor.objectEN = []string{"Filter", "Count", "Write", "LockForUpdate"}
 				result[path] = descriptor
 			}
-			addModuleDescriptor(result, metadata.AccumulationRegisterKind, item.Name, project.ManagerModuleFile, "МодульМенеджераРегистраНакопления."+item.Name, false)
+			addModuleDescriptor(result, metadata.AccumulationRegisterKind, item.Name, project.ManagerModuleFile, false)
 		}
 	}
 	if catalog != nil {
@@ -323,7 +325,8 @@ func objectFieldNames(attributes []metadata.Attribute, parts []metadata.TablePar
 
 func (workspace *Workspace) scanBSLMetadata() bslMetadataIndex {
 	result := bslMetadataIndex{enumerationValues: make(map[string][]string)}
-	for _, kind := range []string{"constants", "enumerations", "defined-types", "catalogs", "documents", "information-registers", "accumulation-registers"} {
+	for _, collection := range compiler.MetadataCollections {
+		kind := string(collection)
 		entries, err := os.ReadDir(filepath.Join(workspace.root, "metadata", kind))
 		if err != nil {
 			continue
@@ -386,12 +389,12 @@ func (workspace *Workspace) scanBSLMetadata() bslMetadataIndex {
 // is built from the object and the role rather than read from the object's
 // description, which no longer names its modules. It returns the key so the
 // caller can go on filling in the object context of that module.
-func addModuleDescriptor(target map[string]moduleDescriptor, kind metadata.Kind, object, role, name string, public bool, predefined ...string) string {
+func addModuleDescriptor(target map[string]moduleDescriptor, kind metadata.Kind, object, role string, public bool, predefined ...string) string {
 	path, err := project.ObjectModulePath(string(kind), object, role)
 	if err != nil {
 		return ""
 	}
-	target[path] = moduleDescriptor{name: name, public: public, predefined: predefined}
+	target[path] = moduleDescriptor{name: metadata.ObjectModuleName(kind, object, role), public: public, predefined: predefined}
 	return path
 }
 
@@ -575,7 +578,9 @@ func (index *BSLSymbolIndex) addUnqualified(add *completionCollector, current bs
 	if english {
 		add.values("function", "global function", "ErrorDescription", "TransactionActive")
 		add.values("procedure", "global procedure", "BeginTransaction", "CommitTransaction", "RollbackTransaction")
-		add.values("metadata", "application metadata", "Catalogs", "Documents", "InformationRegisters", "AccumulationRegisters", "Constants", "Enums", "DefinedTypes")
+		for _, kind := range compiler.MetadataCollections {
+			add.add(kinds.Must(kind).Collection.English, "metadata", "application metadata")
+		}
 		add.values("system-enum", "system enumeration", "DataLockMode", "AccumulationMovementKind", "DocumentWriteMode", "DocumentPostingMode")
 		for _, keyword := range index.keywordsEN {
 			add.add(keyword, "keyword", "keyword")
@@ -583,7 +588,9 @@ func (index *BSLSymbolIndex) addUnqualified(add *completionCollector, current bs
 	} else {
 		add.values("function", "глобальная функция", "ОписаниеОшибки", "ТранзакцияАктивна")
 		add.values("procedure", "глобальная процедура", "НачатьТранзакцию", "ЗафиксироватьТранзакцию", "ОтменитьТранзакцию")
-		add.values("metadata", "метаданные приложения", "Справочники", "Документы", "РегистрыСведений", "РегистрыНакопления", "Константы", "Перечисления", "ОпределяемыеТипы")
+		for _, kind := range compiler.MetadataCollections {
+			add.add(kinds.Must(kind).Collection.Russian, "metadata", "метаданные приложения")
+		}
 		add.values("system-enum", "системное перечисление", "РежимБлокировкиДанных", "ВидДвиженияНакопления", "РежимЗаписиДокумента", "РежимПроведенияДокумента")
 		for _, keyword := range index.keywordsRU {
 			add.add(keyword, "keyword", "ключевое слово")
@@ -613,8 +620,9 @@ func (index *BSLSymbolIndex) addQualified(add *completionCollector, qualifier []
 	}
 	root := strings.ToLower(qualifier[0])
 	if len(qualifier) == 1 {
-		switch root {
-		case "этотобъект", "thisobject":
+		collection, _ := kinds.ByCollection(root)
+		switch {
+		case root == "этотобъект" || root == "thisobject":
 			if english {
 				add.values("property", "object property", current.objectEN...)
 				add.values("method", "object method", objectMethodNames(current.objectKind, true)...)
@@ -622,43 +630,43 @@ func (index *BSLSymbolIndex) addQualified(add *completionCollector, qualifier []
 				add.values("property", "реквизит объекта", current.objectRU...)
 				add.values("method", "метод объекта", objectMethodNames(current.objectKind, false)...)
 			}
-		case "движения", "movements":
+		case root == "движения" || root == "movements":
 			for _, movement := range current.movementSets {
 				add.add(movement.name, "metadata-object", "набор движений")
 			}
-		case "справочники", "catalogs":
+		case collection == kinds.Catalog:
 			add.values("metadata-object", "справочник", index.metadata.catalogs...)
-		case "документы", "documents":
+		case collection == kinds.Document:
 			add.values("metadata-object", "документ", index.metadata.documents...)
-		case "регистрысведений", "informationregisters":
+		case collection == kinds.InformationRegister:
 			add.values("metadata-object", "регистр сведений", index.metadata.informationRegisters...)
-		case "регистрынакопления", "accumulationregisters":
+		case collection == kinds.AccumulationRegister:
 			add.values("metadata-object", "регистр накопления", index.metadata.accumulationRegisters...)
-		case "константы", "constants":
+		case collection == kinds.Constant:
 			add.values("metadata-object", "константа", index.metadata.constants...)
-		case "перечисления", "enums":
+		case collection == kinds.Enumeration:
 			add.values("metadata-object", "перечисление", index.metadata.enumerations...)
-		case "определяемыетипы", "definedtypes":
+		case collection == kinds.DefinedType:
 			add.values("metadata-object", "определяемый тип", index.metadata.definedTypes...)
-		case "режимблокировкиданных", "datalockmode":
+		case root == "режимблокировкиданных" || root == "datalockmode":
 			if english {
 				add.values("enum-value", "system enum value", "Exclusive", "Shared")
 			} else {
 				add.values("enum-value", "значение системного перечисления", "Исключительный", "Разделяемый")
 			}
-		case "виддвижениянакопления", "accumulationmovementkind":
+		case root == "виддвижениянакопления" || root == "accumulationmovementkind":
 			if english {
 				add.values("enum-value", "system enum value", "Receipt", "Expense")
 			} else {
 				add.values("enum-value", "значение системного перечисления", "Приход", "Расход")
 			}
-		case "режимзаписидокумента", "documentwritemode":
+		case root == "режимзаписидокумента" || root == "documentwritemode":
 			if english {
 				add.values("enum-value", "system enum value", "Write", "Post", "UndoPosting")
 			} else {
 				add.values("enum-value", "значение системного перечисления", "Запись", "Проведение", "ОтменаПроведения")
 			}
-		case "режимпроведениядокумента", "documentpostingmode":
+		case root == "режимпроведениядокумента" || root == "documentpostingmode":
 			if english {
 				add.values("enum-value", "system enum value", "Regular", "RealTime")
 			} else {
@@ -670,8 +678,9 @@ func (index *BSLSymbolIndex) addQualified(add *completionCollector, qualifier []
 	if len(qualifier) != 2 {
 		return
 	}
-	switch root {
-	case "движения", "movements":
+	collection, _ := kinds.ByCollection(root)
+	switch {
+	case root == "движения" || root == "movements":
 		movement, ok := findMovementSet(current.movementSets, qualifier[1])
 		if !ok {
 			return
@@ -689,9 +698,9 @@ func (index *BSLSymbolIndex) addQualified(add *completionCollector, qualifier []
 			}
 			add.values("method", "метод набора записей", "Добавить", "Очистить", "Получить", "Удалить", "Прочитать", "Записать")
 		}
-	case "перечисления", "enums":
+	case collection == kinds.Enumeration:
 		add.values("enum-value", "значение перечисления", index.metadata.enumerationValues[strings.ToLower(qualifier[1])]...)
-	case "справочники", "catalogs":
+	case collection == kinds.Catalog:
 		if !containsFold(index.metadata.catalogs, qualifier[1]) {
 			return
 		}
@@ -700,7 +709,7 @@ func (index *BSLSymbolIndex) addQualified(add *completionCollector, qualifier []
 		} else {
 			add.values("method", "менеджер справочника", "СоздатьЭлемент", "ПолучитьОбъект", "НайтиПоКоду", "ПолучитьСсылку")
 		}
-	case "документы", "documents":
+	case collection == kinds.Document:
 		if !containsFold(index.metadata.documents, qualifier[1]) {
 			return
 		}
@@ -709,7 +718,7 @@ func (index *BSLSymbolIndex) addQualified(add *completionCollector, qualifier []
 		} else {
 			add.values("method", "менеджер документа", "СоздатьДокумент", "ПолучитьОбъект", "НайтиПоНомеру", "ПолучитьСсылку")
 		}
-	case "регистрысведений", "informationregisters":
+	case collection == kinds.InformationRegister:
 		if !containsFold(index.metadata.informationRegisters, qualifier[1]) {
 			return
 		}
@@ -718,7 +727,7 @@ func (index *BSLSymbolIndex) addQualified(add *completionCollector, qualifier []
 		} else {
 			add.values("method", "менеджер регистра сведений", "СоздатьНаборЗаписей", "СрезПоследних", "СрезПервых")
 		}
-	case "регистрынакопления", "accumulationregisters":
+	case collection == kinds.AccumulationRegister:
 		if !containsFold(index.metadata.accumulationRegisters, qualifier[1]) {
 			return
 		}
@@ -727,7 +736,7 @@ func (index *BSLSymbolIndex) addQualified(add *completionCollector, qualifier []
 		} else {
 			add.values("method", "менеджер регистра накопления", "СоздатьНаборЗаписей", "Остатки", "Обороты")
 		}
-	case "константы", "constants":
+	case collection == kinds.Constant:
 		if !containsFold(index.metadata.constants, qualifier[1]) {
 			return
 		}
@@ -943,16 +952,17 @@ func builtinSignature(path []string) (string, []string) {
 
 func metadataMethod(root, method string) bool {
 	var allowed []string
-	switch strings.ToLower(root) {
-	case "справочники", "catalogs":
+	collection, _ := kinds.ByCollection(root)
+	switch collection {
+	case kinds.Catalog:
 		allowed = []string{"создатьэлемент", "createitem", "получитьобъект", "getobject", "найтипокоду", "findbycode", "получитьссылку", "getref", "getreference"}
-	case "документы", "documents":
+	case kinds.Document:
 		allowed = []string{"создатьдокумент", "createdocument", "получитьобъект", "getobject", "найтипономеру", "findbynumber", "получитьссылку", "getref", "getreference"}
-	case "регистрысведений", "informationregisters":
+	case kinds.InformationRegister:
 		allowed = []string{"создатьнаборзаписей", "createrecordset", "срезпоследних", "slicelast", "срезпервых", "slicefirst"}
-	case "регистрынакопления", "accumulationregisters":
+	case kinds.AccumulationRegister:
 		allowed = []string{"создатьнаборзаписей", "createrecordset", "остатки", "balances", "обороты", "turnovers"}
-	case "константы", "constants":
+	case kinds.Constant:
 		allowed = []string{"получить", "get", "установить", "set"}
 	}
 	for _, candidate := range allowed {

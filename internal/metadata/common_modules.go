@@ -5,11 +5,12 @@ import (
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-const CommonModuleKind Kind = "common-modules"
+const CommonModuleKind = kinds.CommonModule
 
 // CommonModuleDefinition is a named, cross-callable BSL module (modules/<Module>.bsl)
 // exposed to every other module compiled alongside it. Unlike object/form

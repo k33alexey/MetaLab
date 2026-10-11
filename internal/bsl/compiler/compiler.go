@@ -9,6 +9,7 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
+	"github.com/k33alexey/MetaLab/internal/kinds"
 )
 
 // ModuleSource is one named BSL module compiled together with related modules.
@@ -881,16 +882,16 @@ func metadataMemberPath(member *syntax.MemberExpression) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	if len(parts) == 3 && (strings.EqualFold(parts[0], "Перечисления") || strings.EqualFold(parts[0], "Enums")) {
+	if len(parts) == 3 && metadataCollection(parts[0], kinds.Enumeration) {
 		return "enumeration/" + parts[1] + "/" + parts[2], true
 	}
-	if len(parts) == 3 && (strings.EqualFold(parts[0], "Справочники") || strings.EqualFold(parts[0], "Catalogs")) {
+	if len(parts) == 3 && metadataCollection(parts[0], kinds.Catalog) {
 		return "catalog-predefined/" + parts[1] + "/" + parts[2], true
 	}
-	if len(parts) == 2 && (strings.EqualFold(parts[0], "ОпределяемыеТипы") || strings.EqualFold(parts[0], "DefinedTypes")) {
+	if len(parts) == 2 && metadataCollection(parts[0], kinds.DefinedType) {
 		return "defined-type/" + parts[1], true
 	}
-	if len(parts) == 2 && (strings.EqualFold(parts[0], "ПараметрыСеанса") || strings.EqualFold(parts[0], "SessionParameters")) {
+	if len(parts) == 2 && metadataCollection(parts[0], kinds.SessionParameter) {
 		return "session-parameter/" + parts[1] + "/get", true
 	}
 	if len(parts) == 2 && (strings.EqualFold(parts[0], "РежимБлокировкиДанных") || strings.EqualFold(parts[0], "DataLockMode")) {
@@ -939,10 +940,23 @@ func sessionParameterAssignPath(member *syntax.MemberExpression) (string, bool) 
 	if !ok || len(parts) != 2 {
 		return "", false
 	}
-	if strings.EqualFold(parts[0], "ПараметрыСеанса") || strings.EqualFold(parts[0], "SessionParameters") {
+	if metadataCollection(parts[0], kinds.SessionParameter) {
 		return "session-parameter/" + parts[1] + "/set", true
 	}
 	return "", false
+}
+
+// MetadataCollections are the kinds whose collection the language reaches by
+// name from the global context: Справочники.Товары, Константы.Валюта.
+var MetadataCollections = []kinds.Kind{
+	kinds.Catalog, kinds.Document, kinds.InformationRegister, kinds.AccumulationRegister,
+	kinds.Constant, kinds.Enumeration, kinds.DefinedType, kinds.SessionParameter,
+}
+
+// metadataCollection reports whether a word of code is the collection of a
+// kind, in either language.
+func metadataCollection(word string, kind kinds.Kind) bool {
+	return kinds.Must(kind).Collection.Is(word)
 }
 
 func metadataAllowed(context syntax.ExecutionContext) bool {
@@ -955,19 +969,19 @@ func metadataCallPath(call *syntax.CallExpression) (string, bool) {
 	if !ok || len(parts) != 2 {
 		return "", false
 	}
-	if strings.EqualFold(parts[0], "Справочники") || strings.EqualFold(parts[0], "Catalogs") {
+	if metadataCollection(parts[0], kinds.Catalog) {
 		return catalogCallPath(parts[1], call.Name, len(call.Arguments))
 	}
-	if strings.EqualFold(parts[0], "Документы") || strings.EqualFold(parts[0], "Documents") {
+	if metadataCollection(parts[0], kinds.Document) {
 		return documentCallPath(parts[1], call.Name, len(call.Arguments))
 	}
-	if strings.EqualFold(parts[0], "РегистрыСведений") || strings.EqualFold(parts[0], "InformationRegisters") {
+	if metadataCollection(parts[0], kinds.InformationRegister) {
 		return informationRegisterCallPath(parts[1], call.Name, len(call.Arguments))
 	}
-	if strings.EqualFold(parts[0], "РегистрыНакопления") || strings.EqualFold(parts[0], "AccumulationRegisters") {
+	if metadataCollection(parts[0], kinds.AccumulationRegister) {
 		return accumulationRegisterCallPath(parts[1], call.Name, len(call.Arguments))
 	}
-	if !(strings.EqualFold(parts[0], "Константы") || strings.EqualFold(parts[0], "Constants")) {
+	if !metadataCollection(parts[0], kinds.Constant) {
 		return "", false
 	}
 	operation := ""

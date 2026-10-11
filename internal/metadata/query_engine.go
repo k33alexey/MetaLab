@@ -1373,7 +1373,7 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 	}
 	kind, name := source.Path[0], source.Path[1]
 	switch {
-	case queryName(kind, "Справочник", "Catalog"):
+	case kindNamed(kind, CatalogKind):
 		definition, ok := runtime.catalog.CatalogDefinition(name)
 		if !ok {
 			return querySource{}, querySemanticError(source.Position, "неизвестный справочник "+name)
@@ -1400,7 +1400,7 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		if err := runtime.addQueryAttributes(&result, definition.Attributes); err != nil {
 			return querySource{}, err
 		}
-	case queryName(kind, "Документ", "Document"):
+	case kindNamed(kind, DocumentKind):
 		definition, ok := runtime.catalog.DocumentDefinition(name)
 		if !ok {
 			return querySource{}, querySemanticError(source.Position, "неизвестный документ "+name)
@@ -1422,7 +1422,7 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		if err := runtime.addQueryAttributes(&result, definition.Attributes); err != nil {
 			return querySource{}, err
 		}
-	case queryName(kind, "РегистрСведений", "InformationRegister"):
+	case kindNamed(kind, InformationRegisterKind):
 		definition, ok := runtime.catalog.InformationRegisterDefinition(name)
 		if !ok {
 			return querySource{}, querySemanticError(source.Position, "неизвестный регистр сведений "+name)
@@ -1444,7 +1444,7 @@ func (runtime *Runtime) resolveQuerySource(ctx context.Context, source querylang
 		if err := runtime.addQueryAttributes(&result, appendQueryAttributes(RegisterDimensionAttributes(definition.Dimensions), definition.Resources, definition.Attributes)); err != nil {
 			return querySource{}, err
 		}
-	case queryName(kind, "РегистрНакопления", "AccumulationRegister"):
+	case kindNamed(kind, AccumulationRegisterKind):
 		definition, ok := runtime.catalog.AccumulationRegisterDefinition(name)
 		if !ok {
 			return querySource{}, querySemanticError(source.Position, "неизвестный регистр накопления "+name)

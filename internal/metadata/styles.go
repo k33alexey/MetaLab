@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -12,10 +13,10 @@ import (
 const (
 	// StyleItemKind holds the named pieces a look is assembled from: one
 	// colour, one font or one border, under a name the interface asks for.
-	StyleItemKind Kind = "style-items"
+	StyleItemKind = kinds.StyleItem
 	// StyleKind holds the looks themselves - a set of style items with the
 	// values this look gives them.
-	StyleKind Kind = "styles"
+	StyleKind = kinds.Style
 )
 
 // StyleItemType says what one style item is. There are three and only three:

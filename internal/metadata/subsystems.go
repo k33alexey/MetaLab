@@ -6,11 +6,12 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-const SubsystemKind Kind = "subsystems"
+const SubsystemKind = kinds.Subsystem
 
 // SubsystemDefinition groups other metadata objects into one functional
 // section of ML App navigation. Membership and nesting are purely

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/querylang"
@@ -90,12 +91,12 @@ func (workspace *Workspace) queryDesignerSchemaLocked() (*QueryDesignerSchema, e
 	for _, object := range catalog.Catalogs {
 		fields := []QueryDesignerField{{Name: "Ссылка", Title: "Ссылка", Type: "catalog"}, {Name: "ВерсияДанных", Title: "Версия данных", Type: "string"}, {Name: "Код", Title: "Код", Type: string(object.Code.Type)}, {Name: "Наименование", Title: "Наименование", Type: "string"}, {Name: "ПометкаУдаления", Title: "Пометка удаления", Type: "boolean"}, {Name: "ИмяПредопределенныхДанных", Title: "Имя предопределённых данных", Type: "string"}}
 		fields = append(fields, queryDesignerAttributes(object.Attributes, language, configured)...)
-		appendSource("Справочник", object.Name, object.Title, fields)
+		appendSource(kinds.Must(kinds.Catalog).Name.Russian, object.Name, object.Title, fields)
 	}
 	for _, object := range catalog.Documents {
 		fields := []QueryDesignerField{{Name: "Ссылка", Title: "Ссылка", Type: "document"}, {Name: "ВерсияДанных", Title: "Версия данных", Type: "string"}, {Name: "Номер", Title: "Номер", Type: string(object.Number.Type)}, {Name: "Дата", Title: "Дата", Type: "date"}, {Name: "Проведен", Title: "Проведён", Type: "boolean"}, {Name: "ПометкаУдаления", Title: "Пометка удаления", Type: "boolean"}}
 		fields = append(fields, queryDesignerAttributes(object.Attributes, language, configured)...)
-		appendSource("Документ", object.Name, object.Title, fields)
+		appendSource(kinds.Must(kinds.Document).Name.Russian, object.Name, object.Title, fields)
 	}
 	for _, object := range catalog.InformationRegisters {
 		fields := []QueryDesignerField{}
@@ -106,7 +107,7 @@ func (workspace *Workspace) queryDesignerSchemaLocked() (*QueryDesignerSchema, e
 			fields = append(fields, recorderQueryDesignerFields()...)
 		}
 		fields = append(fields, queryDesignerAttributes(append(append(append([]metadata.Attribute{}, metadata.RegisterDimensionAttributes(object.Dimensions)...), object.Resources...), object.Attributes...), language, configured)...)
-		appendSource("РегистрСведений", object.Name, object.Title, fields)
+		appendSource(kinds.Must(kinds.InformationRegister).Name.Russian, object.Name, object.Title, fields)
 	}
 	for _, object := range catalog.AccumulationRegisters {
 		fields := []QueryDesignerField{{Name: "Период", Title: "Период", Type: "date"}}
@@ -115,7 +116,7 @@ func (workspace *Workspace) queryDesignerSchemaLocked() (*QueryDesignerSchema, e
 			fields = append(fields, QueryDesignerField{Name: "ВидДвижения", Title: "Вид движения", Type: "movement-kind"})
 		}
 		fields = append(fields, queryDesignerAttributes(append(append(append([]metadata.Attribute{}, metadata.RegisterDimensionAttributes(object.Dimensions)...), object.Resources...), object.Attributes...), language, configured)...)
-		appendSource("РегистрНакопления", object.Name, object.Title, fields)
+		appendSource(kinds.Must(kinds.AccumulationRegister).Name.Russian, object.Name, object.Title, fields)
 	}
 	sort.Slice(result.Sources, func(i, j int) bool {
 		return strings.ToLower(result.Sources[i].Path) < strings.ToLower(result.Sources[j].Path)

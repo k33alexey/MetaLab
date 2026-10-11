@@ -10,7 +10,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -635,11 +637,23 @@ func renameConflicts(index *bslNavigationIndex, target bslResolvedSymbol, newNam
 	return false
 }
 
-var reservedBSLNavigationNames = map[string]bool{
-	"справочники": true, "catalogs": true, "документы": true, "documents": true,
-	"регистрысведений": true, "informationregisters": true, "регистрынакопления": true, "accumulationregisters": true,
-	"константы": true, "constants": true, "перечисления": true, "enums": true,
-	"определяемыетипы": true, "definedtypes": true, "этотобъект": true, "thisobject": true,
+// reservedBSLNavigationNames are the names a rename may not take: the
+// collections the language reaches from the global context, and the words of
+// its own below.
+var reservedBSLNavigationNames = func() map[string]bool {
+	result := map[string]bool{}
+	for _, kind := range compiler.MetadataCollections {
+		collection := kinds.Must(kind).Collection
+		result[strings.ToLower(collection.Russian)], result[strings.ToLower(collection.English)] = true, true
+	}
+	for name := range reservedBSLWords {
+		result[name] = true
+	}
+	return result
+}()
+
+var reservedBSLWords = map[string]bool{
+	"этотобъект": true, "thisobject": true,
 	"движения": true, "movements": true, "режимблокировкиданных": true, "datalockmode": true,
 	"виддвижениянакопления": true, "accumulationmovementkind": true,
 	"режимзаписидокумента": true, "documentwritemode": true,
@@ -819,12 +833,10 @@ func indexRunes(value, search []rune, start int) int {
 }
 
 func (workspace *Workspace) indexMetadataDefinitions(index *bslNavigationIndex) {
-	aliases := map[string][]string{
-		"catalogs": {"справочники", "catalogs"}, "documents": {"документы", "documents"},
-		"information-registers":  {"регистрысведений", "informationregisters"},
-		"accumulation-registers": {"регистрынакопления", "accumulationregisters"},
-		"constants":              {"константы", "constants"}, "enumerations": {"перечисления", "enums"},
-		"defined-types": {"определяемыетипы", "definedtypes"},
+	aliases := map[string][]string{}
+	for _, kind := range compiler.MetadataCollections {
+		collection := kinds.Must(kind).Collection
+		aliases[string(kind)] = []string{collection.Russian, collection.English}
 	}
 	objectFolderKind := make(map[string]bool, len(project.ObjectFolderKinds()))
 	for _, kind := range project.ObjectFolderKinds() {

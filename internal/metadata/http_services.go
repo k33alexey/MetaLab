@@ -8,13 +8,14 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // HTTPServiceKind holds the addresses an outside system reaches this
 // configuration at without a description of types: a path, a verb, a handler.
-const HTTPServiceKind Kind = "http-services"
+const HTTPServiceKind = kinds.HTTPService
 
 const ()
 

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/k33alexey/MetaLab/internal/kinds"
 )
 
 // FormCommandInterface is where the commands that are no element of the form
@@ -148,7 +150,7 @@ func validateFormCommandInterface(value *FormCommandInterface, names, commands m
 // has. A button never writes it.
 func parseInterfaceCommand(value string) (command buttonCommand, dimension string, ok bool) {
 	parts := strings.Split(value, ".")
-	if len(parts) == 5 && parts[0] == "InformationRegister" && parts[2] == "StandardCommand" && parts[3] == "OpenByValue" &&
+	if len(parts) == 5 && parts[0] == kinds.Must(InformationRegisterKind).Name.English && parts[2] == "StandardCommand" && parts[3] == "OpenByValue" &&
 		validIdentifier(parts[1]) && validIdentifier(parts[4]) {
 		return buttonCommand{kind: objectStandardCommand, owner: parts[0], object: parts[1], name: parts[3]}, parts[4], true
 	}

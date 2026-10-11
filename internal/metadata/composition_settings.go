@@ -219,25 +219,19 @@ func containsKind(list []CompositionValueKind, kind CompositionValueKind) bool {
 }
 
 // predefinedValueKind is a kind of object a value by name is written of
-// (help, PredefinedValue): its name in either language of the code, the
-// collection of the catalog it is found in, and whether a value of it is an
-// item - a value of an enumeration, a predefined item - or an empty
-// reference only, which a document, a business process and a task have and
-// nothing else.
+// (help, PredefinedValue): the kind, whose name in either language of the
+// code is the first part of the value, and whether a value of it is an item - a value of an
+// enumeration, a predefined item - or an empty reference only, which a
+// document, a business process and a task have and nothing else.
 type predefinedValueKind struct {
-	russian, english, collection string
-	items                        bool
+	kind  Kind
+	items bool
 }
 
 var predefinedValueKinds = []predefinedValueKind{
-	{"Перечисление", "Enum", "Enumerations", true},
-	{"Справочник", "Catalog", "Catalogs", true},
-	{"ПланВидовХарактеристик", "ChartOfCharacteristicTypes", "ChartsOfCharacteristicTypes", true},
-	{"ПланСчетов", "ChartOfAccounts", "ChartsOfAccounts", true},
-	{"ПланВидовРасчета", "ChartOfCalculationTypes", "ChartsOfCalculationTypes", true},
-	{"Документ", "Document", "Documents", false},
-	{"БизнесПроцесс", "BusinessProcess", "BusinessProcesses", false},
-	{"Задача", "Task", "Tasks", false},
+	{EnumerationKind, true}, {CatalogKind, true}, {ChartOfCharacteristicTypesKind, true},
+	{ChartOfAccountsKind, true}, {ChartOfCalculationTypesKind, true},
+	{DocumentKind, false}, {BusinessProcessKind, false}, {TaskKind, false},
 }
 
 // isEmptyReferenceName says a value by name is the empty reference of its
@@ -263,7 +257,7 @@ func parsePredefinedValue(value string) (predefinedValueKind, []string, bool) {
 		}
 	}
 	for _, kind := range predefinedValueKinds {
-		if strings.EqualFold(parts[0], kind.russian) || strings.EqualFold(parts[0], kind.english) {
+		if kindNamed(parts[0], kind.kind) {
 			if len(parts) == 3 && !kind.items && !isEmptyReferenceName(parts[2]) {
 				return predefinedValueKind{}, nil, false
 			}
@@ -282,7 +276,7 @@ func (catalog *Catalog) hasPredefinedValue(value string) bool {
 	if !ok {
 		return false
 	}
-	list := reflect.ValueOf(catalog).Elem().FieldByName(kind.collection)
+	list, _ := catalog.objectsOf(kind.kind)
 	for index := range list.Len() {
 		definition := list.Index(index)
 		if !strings.EqualFold(definition.FieldByName("Name").String(), parts[1]) {
@@ -292,7 +286,7 @@ func (catalog *Catalog) hasPredefinedValue(value string) bool {
 			return true
 		}
 		items := definition.FieldByName("Predefined")
-		if kind.collection == "Enumerations" {
+		if kind.kind == EnumerationKind {
 			items = definition.FieldByName("Values")
 		}
 		for position := range items.Len() {

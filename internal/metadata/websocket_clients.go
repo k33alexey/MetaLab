@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -23,7 +24,7 @@ import (
 // created by the platform from this object and cannot be deleted; others are
 // created by application code from the same object under a key of their own.
 // What this object says is what such a client starts with.
-const WebSocketClientKind Kind = "websocket-clients"
+const WebSocketClientKind = kinds.WebSocketClient
 
 const (
 	// defaultWebSocketTimeout is the connection timeout, in seconds, of a

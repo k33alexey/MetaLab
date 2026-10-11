@@ -79,19 +79,19 @@ func (catalog *Catalog) PhysicalNames() map[string]string {
 		}
 	}
 	for _, item := range catalog.Catalogs {
-		owner := "Справочник." + item.Name
+		owner := fullName(CatalogKind, item.Name)
 		addTable(item.ID, owner)
 		addAttributes(owner, item.Attributes)
 		addParts(owner, item.TableParts)
 	}
 	for _, item := range catalog.ChartsOfCharacteristicTypes {
-		owner := "ПланВидовХарактеристик." + item.Name
+		owner := fullName(ChartOfCharacteristicTypesKind, item.Name)
 		addTable(item.ID, owner)
 		addAttributes(owner, item.Attributes)
 		addParts(owner, item.TableParts)
 	}
 	for _, item := range catalog.ChartsOfAccounts {
-		owner := "ПланСчетов." + item.Name
+		owner := fullName(ChartOfAccountsKind, item.Name)
 		addTable(item.ID, owner)
 		addAttributes(owner, item.Attributes)
 		addParts(owner, item.TableParts)
@@ -108,7 +108,7 @@ func (catalog *Catalog) PhysicalNames() map[string]string {
 		}
 	}
 	for _, item := range catalog.ChartsOfCalculationTypes {
-		owner := "ПланВидовРасчёта." + item.Name
+		owner := fullName(ChartOfCalculationTypesKind, item.Name)
 		addTable(item.ID, owner)
 		addAttributes(owner, item.Attributes)
 		addParts(owner, item.TableParts)
@@ -117,33 +117,33 @@ func (catalog *Catalog) PhysicalNames() map[string]string {
 		result[competitionTableName("tb", item.ID)] = owner + ".БазовыеВидыРасчёта"
 	}
 	for _, item := range catalog.BusinessProcesses {
-		owner := "БизнесПроцесс." + item.Name
+		owner := fullName(BusinessProcessKind, item.Name)
 		addTable(item.ID, owner)
 		addAttributes(owner, item.Attributes)
 		addParts(owner, item.TableParts)
 	}
 	for _, item := range catalog.Tasks {
-		owner := "Задача." + item.Name
+		owner := fullName(TaskKind, item.Name)
 		addTable(item.ID, owner)
 		addAttributes(owner, item.Attributes)
 		addAttributes(owner+".Адресация", addressingAsAttributes(item))
 		addParts(owner, item.TableParts)
 	}
 	for _, item := range catalog.Documents {
-		owner := "Документ." + item.Name
+		owner := fullName(DocumentKind, item.Name)
 		addTable(item.ID, owner)
 		addAttributes(owner, item.Attributes)
 		addParts(owner, item.TableParts)
 	}
 	for _, item := range catalog.InformationRegisters {
-		owner := "РегистрСведений." + item.Name
+		owner := fullName(InformationRegisterKind, item.Name)
 		addTable(item.ID, owner)
 		addAttributes(owner, RegisterDimensionAttributes(item.Dimensions))
 		addAttributes(owner, item.Resources)
 		addAttributes(owner, item.Attributes)
 	}
 	for _, item := range catalog.AccumulationRegisters {
-		owner := "РегистрНакопления." + item.Name
+		owner := fullName(AccumulationRegisterKind, item.Name)
 		addTable(item.ID, owner)
 		addAttributes(owner, RegisterDimensionAttributes(item.Dimensions))
 		addAttributes(owner, item.Resources)

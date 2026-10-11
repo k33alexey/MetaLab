@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -16,7 +17,7 @@ import (
 // XDTOPackageKind holds the type descriptions a configuration exchanges data
 // by. A package is a schema: what the types are called, what they are made of,
 // and which namespace they belong to.
-const XDTOPackageKind Kind = "xdto-packages"
+const XDTOPackageKind = kinds.XDTOPackage
 
 // XDTOPackageContentFile is the schema itself, beside the description. The
 // schema is not a property of the package but its body, so it lies in a file
