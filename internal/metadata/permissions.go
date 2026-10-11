@@ -26,6 +26,12 @@ func operationBit(operation PermissionOperation) permissionBits {
 	return 1 << index
 }
 
+// fieldOperations is what a right on a part of an object lets the runtime do
+// with it. The prototype gives a part two rights of its own, view and edit,
+// and the runtime asks of a field whether it may be read and whether it may be
+// written. Any other right on a part is carried and does nothing yet.
+var fieldOperations = map[PermissionOperation]PermissionOperation{PermissionView: PermissionRead, PermissionEdit: PermissionUpdate}
+
 type objectPermissions struct {
 	operations permissionBits
 	fields     map[string]permissionBits
@@ -118,7 +124,7 @@ func CompilePermissions(catalog *Catalog, roleIDs []uuid.UUID) (*Permissions, er
 			}
 			for _, field := range grant.Fields {
 				for _, operation := range field.Operations {
-					item.fields[field.Field] |= operationBit(operation)
+					item.fields[field.Field] |= operationBit(fieldOperations[operation])
 				}
 			}
 			result.objects[grant.Object] = item
@@ -200,7 +206,7 @@ func (permissions *Permissions) AllowsFields(object uuid.UUID, operation Permiss
 		return false
 	}
 	fieldOperation := operation
-	if operation == PermissionCreate {
+	if operation == PermissionInsert {
 		fieldOperation = PermissionUpdate
 	}
 	if len(fields) != 0 && fieldOperation != PermissionRead && fieldOperation != PermissionUpdate {

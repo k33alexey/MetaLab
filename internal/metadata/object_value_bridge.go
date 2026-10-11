@@ -72,7 +72,7 @@ func (runtime *Runtime) SetObjectTableRows(ctx context.Context, value bytecode.R
 		}
 		operation := PermissionUpdate
 		if object.record.Version == 0 {
-			operation = PermissionCreate
+			operation = PermissionInsert
 		}
 		if err := requireFields(ctx, object.definition.ID, operation, part.ID.String()); err != nil {
 			return err
@@ -95,7 +95,7 @@ func (runtime *Runtime) SetObjectTableRows(ctx context.Context, value bytecode.R
 		}
 		operation := PermissionUpdate
 		if object.record.Version == 0 {
-			operation = PermissionCreate
+			operation = PermissionInsert
 		}
 		if err := requireFields(ctx, object.definition.ID, operation, part.ID.String()); err != nil {
 			return err

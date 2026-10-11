@@ -18,9 +18,9 @@ const plain=value=>JSON.parse(JSON.stringify(value));
 
 const navigation=[
   {id:'home',title:'Начальная страница'},
-  {id:'catalogs/Товары',kind:'catalogs',kindTitle:'Справочник',name:'Товары',title:'Товары',operations:['read','create','update']},
+  {id:'catalogs/Товары',kind:'catalogs',kindTitle:'Справочник',name:'Товары',title:'Товары',operations:['read','insert','update']},
   {id:'catalogs/Контрагенты',kind:'catalogs',kindTitle:'Справочник',name:'Контрагенты',title:'Контрагенты',operations:['read']},
-  {id:'documents/ПродажаТоваров',kind:'documents',kindTitle:'Документ',name:'ПродажаТоваров',title:'Продажа товаров',operations:['read','create']},
+  {id:'documents/ПродажаТоваров',kind:'documents',kindTitle:'Документ',name:'ПродажаТоваров',title:'Продажа товаров',operations:['read','insert']},
 ];
 
 test('пустой запрос не предлагает ничего',()=>{
@@ -61,7 +61,7 @@ test('регистр и подстрока по имени метаданных 
 });
 
 test('выдача ограничена, чтобы список не превращался в дерево конфигурации',()=>{
-  const many=Array.from({length:50},(_,index)=>({id:`catalogs/О${index}`,kind:'catalogs',kindTitle:'Справочник',name:`Объект${index}`,title:`Объект ${index}`,operations:['read','create']}));
+  const many=Array.from({length:50},(_,index)=>({id:`catalogs/О${index}`,kind:'catalogs',kindTitle:'Справочник',name:`Объект${index}`,title:`Объект ${index}`,operations:['read','insert']}));
   assert.equal(matches(many,'объект').length,12);
   assert.equal(matches(many,'объект',3).length,3);
 });

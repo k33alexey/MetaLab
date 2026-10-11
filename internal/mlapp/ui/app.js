@@ -37,7 +37,7 @@ function applyObjectState(form, state) {
 // different cost, and confusing the two is how a search box becomes slow.
 //
 // Only objects already in the navigation are considered, and those are exactly
-// the ones the caller may read; "создать" appears only where the create right
+// the ones the caller may read; "создать" appears only where the insert right
 // is among the object's operations, so the search never offers what the answer
 // would refuse.
 function globalSearchEntries(navigation) {
@@ -45,7 +45,7 @@ function globalSearchEntries(navigation) {
   for (const item of navigation || []) {
     if (item.id === "home" || !item.kind || !item.name) continue;
     entries.push({item, action: "list", title: item.title, caption: item.kindTitle || item.kind});
-    if ((item.operations || []).includes("create")) {
+    if ((item.operations || []).includes("insert")) {
       entries.push({item, action: "create", title: `${item.title}: создать`, caption: `${item.kindTitle || item.kind} · команда`});
     }
   }

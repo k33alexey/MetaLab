@@ -208,9 +208,8 @@ func (runtime *Runtime) getDocumentProperty(ctx context.Context, object *documen
 		}
 		return bytecode.Boolean(object.record.Posted), nil
 	case propertyName(name, "ВерсияДанных", "DataVersion"):
-		if err := requireFields(ctx, object.definition.ID, PermissionRead, "dataversion"); err != nil {
-			return bytecode.Undefined(), err
-		}
+		// The version of the data has no right of its own in the prototype:
+		// a role reading the object reads it.
 		return bytecode.String(strconv.FormatInt(object.record.Version, 10)), nil
 	case propertyName(name, "ПометкаУдаления", "DeletionMark"):
 		if err := requireFields(ctx, object.definition.ID, PermissionRead, "deletionmark"); err != nil {
@@ -242,7 +241,7 @@ func (runtime *Runtime) setDocumentProperty(ctx context.Context, object *documen
 	defer object.mu.Unlock()
 	fieldOperation := PermissionUpdate
 	if object.record.Version == 0 {
-		fieldOperation = PermissionCreate
+		fieldOperation = PermissionInsert
 	}
 	switch {
 	case propertyName(name, "Номер", "Number") && documentHasNumber(object.definition):
@@ -382,11 +381,11 @@ func (runtime *Runtime) writeDocumentObject(ctx context.Context, object *documen
 	defer object.mu.Unlock()
 	objectOperation, tablePartOperation := PermissionUpdate, PermissionUpdate
 	if object.record.Version == 0 {
-		objectOperation, tablePartOperation = PermissionCreate, PermissionCreate
+		objectOperation, tablePartOperation = PermissionInsert, PermissionInsert
 	}
 	switch writeMode {
 	case DocumentPost:
-		objectOperation = PermissionPost
+		objectOperation = PermissionPosting
 	case DocumentUndoPosting:
 		objectOperation = PermissionUndoPosting
 	}

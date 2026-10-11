@@ -55,7 +55,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		target.fields["ref"], target.fields["order"] = false, false
 	} else if index, ok := catalog.catalogByID[id]; ok {
 		item := catalog.Catalogs[index]
-		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
+		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
 		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "deletionmark": true, "dataversion": false, "predefined": false, "predefineddataname": false}
 		if !catalogHasCode(item) {
 			delete(target.fields, "code")
@@ -72,7 +72,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		// and rights on it are a catalog's rights. Its own standard attribute
 		// is the value type: a role may keep it out of reach while letting the
 		// rest of the element be edited.
-		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
+		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
 		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "valuetype": true,
 			"deletionmark": true, "dataversion": false, "predefined": false, "predefineddataname": false}
 		if item.Code.Length == 0 {
@@ -86,7 +86,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		addParts(item.TableParts)
 	} else if index, ok := catalog.chartOfAccountsByID[id]; ok {
 		item := catalog.ChartsOfAccounts[index]
-		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
+		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
 		// The order is derived from the code, so it is readable but not
 		// writable: letting a role grant what nobody may change would be a
 		// right over nothing.
@@ -114,7 +114,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		addParts(item.TableParts)
 	} else if index, ok := catalog.chartOfCalculationTypesByID[id]; ok {
 		item := catalog.ChartsOfCalculationTypes[index]
-		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
+		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
 		target.fields = map[string]bool{"ref": false, "code": true, "description": true,
 			"deletionmark": true, "dataversion": false, "predefined": false, "predefineddataname": false}
 		if item.Code.Length == 0 {
@@ -130,9 +130,9 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		addParts(item.TableParts)
 	} else if index, ok := catalog.documentByID[id]; ok {
 		item := catalog.Documents[index]
-		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
+		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
 		if item.Posting.Allowed {
-			target.operations[PermissionPost], target.operations[PermissionUndoPosting] = true, true
+			target.operations[PermissionPosting], target.operations[PermissionUndoPosting] = true, true
 		}
 		target.fields = map[string]bool{"ref": false, "number": true, "date": true, "posted": false, "deletionmark": true, "dataversion": false}
 		if !documentHasNumber(item) {
@@ -142,7 +142,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		addParts(item.TableParts)
 	} else if index, ok := catalog.businessProcessByID[id]; ok {
 		item := catalog.BusinessProcesses[index]
-		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
+		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
 		// Started and completed are the platform's own record of where the
 		// process is: a role may read them, never write them by hand.
 		target.fields = map[string]bool{"ref": false, "number": true, "date": true, "deletionmark": true,
@@ -154,7 +154,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		addParts(item.TableParts)
 	} else if index, ok := catalog.taskByID[id]; ok {
 		item := catalog.Tasks[index]
-		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
+		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
 		// Where the task stands is the platform's record too; what it is
 		// addressed to is the application's, and a role may well be kept away
 		// from it - seeing the performers of every task is not for everyone.
@@ -171,7 +171,7 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		addParts(item.TableParts)
 	} else if index, ok := catalog.exchangePlanByID[id]; ok {
 		item := catalog.ExchangePlans[index]
-		target.operations[PermissionCreate], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
+		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
 		// Which node is this base and what the sides have exchanged is the
 		// platform's own record: a role reads it and never sets it by hand,
 		// because a node that declares itself this one breaks every exchange
@@ -276,33 +276,109 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 	return target, true
 }
 
+// rightsKinds are the kinds of object a role gives rights on, beside the
+// configuration itself, web and HTTP services and external sources. A
+// numerator has none: the number it gives lies in the document, and is
+// guarded by the document's rights. Neither has a common module, a defined
+// type, a role or a subscription to an event - the configurator offers no
+// rights on them, and no export writes one.
+var rightsKinds = []Kind{
+	ConstantKind, CatalogKind, DocumentKind, DocumentJournalKind, EnumerationKind,
+	ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind,
+	InformationRegisterKind, AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind,
+	BusinessProcessKind, TaskKind, ExchangePlanKind, ReportKind, DataProcessorKind, SequenceKind,
+	SubsystemKind, SessionParameterKind, CommonAttributeKind, CommonCommandKind, CommonFormKind,
+	FilterCriterionKind, ExternalDataSourceTableKind,
+}
+
+// rightsParts finds what a role may give rights on: the configuration itself,
+// by the project's identifier, or an object of it, together with the keys of
+// its parts - attributes, table parts and their attributes, dimensions,
+// resources, accounting flags, addressing attributes, commands, operations of
+// a web service, methods of an HTTP service, and the standard attributes and
+// standard table parts of the kind, under their prototype names in lower case.
+func (catalog *Catalog) rightsParts(id uuid.UUID) (map[string]bool, bool) {
+	parts := map[string]bool{}
+	if id == catalog.Project.ID {
+		return parts, true
+	}
+	if index, ok := catalog.webServiceByID[id]; ok {
+		for _, operation := range catalog.WebServices[index].Operations {
+			parts[operation.ID.String()] = true
+		}
+		return parts, true
+	}
+	if index, ok := catalog.httpServiceByID[id]; ok {
+		for _, template := range catalog.HTTPServices[index].Templates {
+			for _, method := range template.Methods {
+				parts[method.ID.String()] = true
+			}
+		}
+		return parts, true
+	}
+	if _, ok := catalog.externalDataSourceByID[id]; ok {
+		return parts, true
+	}
+	for _, kind := range rightsKinds {
+		elements, ok := catalog.objectElementsOf(kind, id)
+		if !ok {
+			continue
+		}
+		for attribute := range elements.attributes {
+			parts[attribute.String()] = true
+		}
+		for part, attributes := range elements.tableParts {
+			parts[part.String()] = true
+			for _, attribute := range attributes {
+				parts[attribute.ID.String()] = true
+			}
+		}
+		for command := range elements.commands {
+			parts[command.String()] = true
+		}
+		for flag := range elements.flags {
+			parts[flag.String()] = true
+		}
+		for _, field := range catalog.standardAttributeFields(kind, id) {
+			parts[strings.ToLower(field.en)] = true
+		}
+		for _, part := range standardTablePartsOfKind(kind) {
+			name := strings.ToLower(part.en)
+			parts[name] = true
+			for _, field := range part.fields {
+				parts[name+"."+strings.ToLower(field.en)] = true
+			}
+		}
+		return parts, true
+	}
+	return nil, false
+}
+
 func (catalog *Catalog) validateRoleReferences(root string) error {
-	targets := map[uuid.UUID]roleTarget{}
+	targets := map[uuid.UUID]map[string]bool{}
 	for _, role := range catalog.Roles {
 		for _, permission := range role.Objects {
-			target, ok := targets[permission.Object]
+			parts, ok := targets[permission.Object]
 			if !ok {
-				target, ok = catalog.permissionTarget(permission.Object)
+				parts, ok = catalog.rightsParts(permission.Object)
 				if !ok {
 					return fmt.Errorf("role %s references unknown or unsupported object %s", role.Name, permission.Object)
 				}
-				targets[permission.Object] = target
-			}
-			for _, operation := range permission.Operations {
-				if !target.operations[operation] {
-					return fmt.Errorf("role %s: operation %s is unsupported for object %s", role.Name, operation, permission.Object)
-				}
+				targets[permission.Object] = parts
 			}
 			for _, field := range permission.Fields {
-				writable, ok := target.fields[field.Field]
-				if !ok {
+				if !parts[field.Field] {
 					return fmt.Errorf("role %s: field %s does not belong to object %s", role.Name, field.Field, permission.Object)
 				}
-				for _, operation := range field.Operations {
-					if operation == PermissionUpdate && !writable {
-						return fmt.Errorf("role %s: field %s is read-only", role.Name, field.Field)
-					}
-				}
+			}
+			if len(permission.Policies) == 0 {
+				continue
+			}
+			// A restriction narrows rows, and only an object that keeps rows
+			// has them to narrow.
+			target, ok := catalog.permissionTarget(permission.Object)
+			if !ok {
+				return fmt.Errorf("role %s: object %s keeps no rows for a restriction to narrow", role.Name, permission.Object)
 			}
 			if err := catalog.validateRolePolicies(role, permission, target); err != nil {
 				return err

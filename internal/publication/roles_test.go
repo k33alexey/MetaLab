@@ -23,10 +23,16 @@ func TestInspectCarriesRolesAndSeparatesThemFromTheSchema(t *testing.T) {
 	form := metadata.ManagedForm{Format: metadata.CurrentFormat, ID: uuid.MustNew(), Name: "Форма", Title: metadata.LocalizedText{"ru": "Форма"}, Kind: metadata.CommonForm,
 		Commands: []metadata.ManagedFormCommand{{ID: uuid.MustNew(), Name: "Обновить", Title: metadata.LocalizedText{"ru": "Обновить"}, Action: metadata.FormCommandRefresh}}}
 	role := metadata.RoleDefinition{Format: metadata.CurrentFormat, ID: uuid.MustNew(), Name: "Читатель", Title: metadata.LocalizedText{"ru": "Читатель"},
-		Objects:  []metadata.ObjectPermission{{Object: constant.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead}, Fields: []metadata.FieldPermission{{Field: "value", Operations: []metadata.PermissionOperation{metadata.PermissionRead}}}}},
+		Objects:  []metadata.ObjectPermission{{Object: constant.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead}}},
 		Commands: []metadata.CommandPermission{{Form: form.ID, Command: form.Commands[0].ID}}}
 	write := func(relative string, value any) {
 		t.Helper()
+		if role, ok := value.(metadata.RoleDefinition); ok {
+			if err := metadata.WriteRole(root, role); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
 		var encoded bytes.Buffer
 		if err := metadata.Encode(&encoded, value); err != nil {
 			t.Fatal(err)

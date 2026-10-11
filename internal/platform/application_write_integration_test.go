@@ -116,6 +116,12 @@ func TestApplicationObjectWritePathIntegration(t *testing.T) {
 	}
 	write := func(relative string, value any) {
 		t.Helper()
+		if role, ok := value.(metadata.RoleDefinition); ok {
+			if err := metadata.WriteRole(root, role); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
 		var content bytes.Buffer
 		if err := metadata.Encode(&content, value); err != nil {
 			t.Fatal(err)

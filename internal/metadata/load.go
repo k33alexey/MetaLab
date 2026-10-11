@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -45,7 +46,16 @@ func read(root string, includeRoles, strict bool) (*Catalog, error) {
 	}
 	if includeRoles {
 		if err := loadKind(root, RoleKind, func(source string, file *os.File, id uuid.UUID) error {
-			value, err := DecodeRole(source, file, configuration)
+			grid, err := openRoleRights(root, id)
+			if err != nil {
+				return err
+			}
+			var gridReader io.Reader
+			if grid != nil {
+				defer grid.Close()
+				gridReader = grid
+			}
+			value, err := DecodeRole(source, file, gridReader, configuration)
 			if err == nil && value.ID != id {
 				err = fmt.Errorf("metadata UUID %s does not match filename UUID %s", value.ID, id)
 			}
@@ -801,8 +811,9 @@ func loadKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) e
 		// identifier, not the subsystem's own: subsystems lie flat here, and
 		// names repeat across branches - 41 in erp.
 		// A group of commands keeps one for the same reason when its
-		// picture is a file of its own, and so does a subsystem.
-		if (kind == SubsystemKind || kind == CommandGroupKind) && entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 {
+		// picture is a file of its own, and so does a subsystem. A role keeps
+		// one for the grid of its rights.
+		if (kind == SubsystemKind || kind == CommandGroupKind || kind == RoleKind) && entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 {
 			if err := validateIdentifiedFolder(directory, kind, entry.Name(), described[entry.Name()+".yaml"]); err != nil {
 				return err
 			}
@@ -832,16 +843,42 @@ func loadKind(root string, kind Kind, decode func(string, *os.File, uuid.UUID) e
 	return nil
 }
 
-// validateIdentifiedFolder checks the folder a subsystem or a group of
-// commands keeps beside its description: named by the identifier, standing
-// beside a description of that name, and holding the help of a subsystem and
-// image files - which of them the picture draws is checked once the
-// description is read, in validateIdentifiedPictureFiles.
+// openRoleRights opens the grid of one role, or returns nil for a role that
+// keeps none. A grid that is a link or a folder is refused rather than
+// followed, as every other source of the project is.
+func openRoleRights(root string, id uuid.UUID) (*os.File, error) {
+	path := filepath.Join(root, "metadata", string(RoleKind), id.String(), RoleRightsFile)
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("inspect role %s rights: %w", id, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("role %s keeps its %s as something other than a file", id, RoleRightsFile)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open role %s rights: %w", id, err)
+	}
+	return file, nil
+}
+
+// validateIdentifiedFolder checks the folder a subsystem, a group of commands
+// or a role keeps beside its description: named by the identifier, standing
+// beside a description of that name, and holding what that kind keeps there -
+// the help of a subsystem and image files, whose picture is checked once the
+// description is read in validateIdentifiedPictureFiles, or the grid of a
+// role's rights.
 func validateIdentifiedFolder(directory string, kind Kind, name string, described bool) error {
 	relative := filepath.ToSlash(filepath.Join("metadata", string(kind), name))
-	what := "subsystem"
-	if kind == CommandGroupKind {
-		what = "group of commands"
+	what, short, keeps := "subsystem", "subsystem", "only its help and the file of its picture"
+	switch kind {
+	case CommandGroupKind:
+		what, short, keeps = "group of commands", "group", "only the file of its picture"
+	case RoleKind:
+		what, short, keeps = "role", "role", "only its "+RoleRightsFile
 	}
 	if _, err := uuid.Parse(name); err != nil {
 		return fmt.Errorf("unexpected metadata source %q: a %s's folder is named by its identifier", relative, what)
@@ -856,6 +893,10 @@ func validateIdentifiedFolder(directory string, kind Kind, name string, describe
 	for _, entry := range entries {
 		switch {
 		case entry.Type()&fs.ModeSymlink != 0:
+		case kind == RoleKind:
+			if entry.Type().IsRegular() && entry.Name() == RoleRightsFile {
+				continue
+			}
 		case kind == SubsystemKind && entry.IsDir() && entry.Name() == project.HelpDirectory:
 			if err := validateHelpFolder("subsystem "+name, filepath.Join(directory, name, entry.Name())); err != nil {
 				return err
@@ -864,10 +905,7 @@ func validateIdentifiedFolder(directory string, kind Kind, name string, describe
 		case !entry.IsDir() && PictureFile(entry.Name()):
 			continue
 		}
-		if kind == SubsystemKind {
-			return fmt.Errorf("%s keeps %q, and a subsystem's folder keeps only its help and the file of its picture", relative, entry.Name())
-		}
-		return fmt.Errorf("%s keeps %q, and a group's folder keeps only the file of its picture", relative, entry.Name())
+		return fmt.Errorf("%s keeps %q, and a %s's folder keeps %s", relative, entry.Name(), short, keeps)
 	}
 	return nil
 }

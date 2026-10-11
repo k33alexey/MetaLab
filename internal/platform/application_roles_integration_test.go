@@ -101,9 +101,15 @@ func TestManagerApplicationRolesUseActivePublicationIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	constant := metadata.Constant{Format: 1, ID: uuid.MustNew(), Name: "Режим", Title: metadata.LocalizedText{"ru": "Режим"}, Types: []metadata.Type{{Kind: metadata.BooleanType}}}
-	reader := metadata.RoleDefinition{Format: 1, ID: uuid.MustNew(), Name: "Читатель", Title: metadata.LocalizedText{"ru": "Читатель"}, Objects: []metadata.ObjectPermission{{Object: constant.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead}, Fields: []metadata.FieldPermission{{Field: "value", Operations: []metadata.PermissionOperation{metadata.PermissionRead}}}}}}
+	reader := metadata.RoleDefinition{Format: 1, ID: uuid.MustNew(), Name: "Читатель", Title: metadata.LocalizedText{"ru": "Читатель"}, Objects: []metadata.ObjectPermission{{Object: constant.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead}}}}
 	write := func(relative string, value any) {
 		t.Helper()
+		if role, ok := value.(metadata.RoleDefinition); ok {
+			if err := metadata.WriteRole(root, role); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
 		var content bytes.Buffer
 		if err := metadata.Encode(&content, value); err != nil {
 			t.Fatal(err)
@@ -153,7 +159,7 @@ func TestManagerApplicationRolesUseActivePublicationIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	policy, err := permissionsForAssignment(catalog, stored)
-	if err != nil || !policy.AllowsFields(constant.ID, metadata.PermissionRead, "value") || policy.AllowsFields(constant.ID, metadata.PermissionUpdate, "value") {
+	if err != nil || !policy.AllowsObject(constant.ID, metadata.PermissionRead) || policy.AllowsObject(constant.ID, metadata.PermissionUpdate) {
 		t.Fatalf("resolved stored permissions: %v", err)
 	}
 	if _, err := runtime.SetManagerApplicationRoles(adminContext, registered.ID, member.ID, ApplicationRoleUpdate{ProjectID: configuration.ID, ExpectedRevision: 0}); !errors.Is(err, systemdb.ErrApplicationRolesChanged) {

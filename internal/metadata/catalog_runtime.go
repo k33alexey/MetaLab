@@ -224,9 +224,8 @@ func (runtime *Runtime) GetObjectProperty(ctx context.Context, value bytecode.Ru
 			}
 			return bytecode.String(object.record.Description), nil
 		case propertyName(name, "ВерсияДанных", "DataVersion"):
-			if err := requireFields(ctx, object.definition.ID, PermissionRead, "dataversion"); err != nil {
-				return bytecode.Undefined(), err
-			}
+			// The version of the data has no right of its own in the prototype:
+			// a role reading the object reads it.
 			return bytecode.String(strconv.FormatInt(object.record.Version, 10)), nil
 		case propertyName(name, "ПометкаУдаления", "DeletionMark"):
 			if err := requireFields(ctx, object.definition.ID, PermissionRead, "deletionmark"); err != nil {
@@ -355,7 +354,7 @@ func (runtime *Runtime) SetObjectProperty(ctx context.Context, value bytecode.Ru
 	defer object.mu.Unlock()
 	fieldOperation := PermissionUpdate
 	if object.record.Version == 0 {
-		fieldOperation = PermissionCreate
+		fieldOperation = PermissionInsert
 	}
 	switch {
 	case propertyName(name, "Код", "Code") && catalogHasCode(object.definition):
@@ -471,7 +470,7 @@ func (runtime *Runtime) CallObjectMethod(ctx context.Context, value bytecode.Run
 			defer object.mu.Unlock()
 			operation := PermissionUpdate
 			if object.record.Version == 0 {
-				operation = PermissionCreate
+				operation = PermissionInsert
 			}
 			if err := requireObject(ctx, object.definition.ID, operation); err != nil {
 				return bytecode.Undefined(), err

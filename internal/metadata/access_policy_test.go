@@ -43,8 +43,8 @@ func TestCatalogRejectsUnresolvablePolicies(t *testing.T) {
 			r.PolicyTemplates[0].Rule.Field = uuid.MustNew().String()
 		},
 		"operation the object does not support": func(r *RoleDefinition, _ CatalogDefinition) {
-			r.Objects[0].Operations = append(r.Objects[0].Operations, PermissionPost)
-			r.Objects[0].Policies[0].Operations = []PermissionOperation{PermissionPost}
+			r.Objects[0].Operations = append(r.Objects[0].Operations, PermissionPosting)
+			r.Objects[0].Policies[0].Operations = []PermissionOperation{PermissionPosting}
 		},
 		"unknown session parameter": func(r *RoleDefinition, _ CatalogDefinition) {
 			r.PolicyTemplates[0].Rule = PolicyRule{Field: r.PolicyTemplates[0].Rule.Field, Operator: PolicyEqual, Parameter: "НетТакого"}
@@ -164,11 +164,11 @@ func TestPolicySubqueryValidation(t *testing.T) {
 func TestDecodeRoleWithAccessPolicies(t *testing.T) {
 	t.Parallel()
 	role, _ := policyRoleFixture()
-	var encoded bytes.Buffer
-	if err := Encode(&encoded, role); err != nil {
+	description, grid, err := EncodeRole(role)
+	if err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := DecodeRole("role.yaml", bytes.NewReader(encoded.Bytes()), metadataConfiguration())
+	decoded, err := DecodeRole("role.yaml", bytes.NewReader(description), bytes.NewReader(grid), metadataConfiguration())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,11 +256,11 @@ func TestPolicyLiteralListRoundTrip(t *testing.T) {
 	role, _ := policyRoleFixture()
 	role.PolicyTemplates[0].Rule = PolicyRule{Field: uuid.MustNew().String(), Operator: PolicyIn,
 		Values: []Value{{Kind: StringType, Data: "Основной"}, {Kind: StringType, Data: "Розничный"}}}
-	var encoded bytes.Buffer
-	if err := Encode(&encoded, role); err != nil {
+	description, grid, err := EncodeRole(role)
+	if err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := DecodeRole("role.yaml", bytes.NewReader(encoded.Bytes()), metadataConfiguration())
+	decoded, err := DecodeRole("role.yaml", bytes.NewReader(description), bytes.NewReader(grid), metadataConfiguration())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,8 +268,8 @@ func TestPolicyLiteralListRoundTrip(t *testing.T) {
 	if len(values) != 2 || values[0].Data != "Основной" || values[1].Data != "Розничный" {
 		t.Fatalf("values = %+v", values)
 	}
-	if strings.Contains(encoded.String(), "parameter") {
-		t.Fatalf("empty parameter was encoded:\n%s", encoded.String())
+	if strings.Contains(string(description), "parameter") {
+		t.Fatalf("empty parameter was encoded:\n%s", description)
 	}
 }
 

@@ -138,7 +138,9 @@ func validatePolicies(path string, policies []AccessPolicy, templates map[string
 		if len(policy.Operations) == 0 {
 			issues = append(issues, prefix+".operations must list at least one operation")
 		}
-		issues = append(issues, validatePermissionOperations(prefix+".operations", policy.Operations, false)...)
+		// A restriction narrows a right this platform acts on: narrowing one
+		// it does not would be a rule that never runs.
+		issues = append(issues, validateRightStates(prefix, policy.Operations, nil, executedRights)...)
 		switch {
 		case policy.Rule != nil && policy.Template != "":
 			issues = append(issues, prefix+" must set either rule or template, not both")

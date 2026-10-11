@@ -71,56 +71,56 @@ func TestApplicationRoleBypassAttemptsIntegration(t *testing.T) {
 		Resources:  []Attribute{{ID: priceValueID, Name: "Цена", FillChecking: ShowFillingError, Types: []Type{{Kind: NumberType, Precision: 15, Scale: 2}}}},
 	}
 	documentFields := []FieldPermission{
-		{Field: "number", Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},
-		{Field: "date", Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},
-		{Field: productAttrID.String(), Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},
-		{Field: linesPartID.String(), Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},
-		{Field: quantityAttrID.String(), Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},
+		{Field: "number", Operations: []PermissionOperation{PermissionView, PermissionEdit}},
+		{Field: "date", Operations: []PermissionOperation{PermissionView, PermissionEdit}},
+		{Field: productAttrID.String(), Operations: []PermissionOperation{PermissionView, PermissionEdit}},
+		{Field: linesPartID.String(), Operations: []PermissionOperation{PermissionView, PermissionEdit}},
+		{Field: quantityAttrID.String(), Operations: []PermissionOperation{PermissionView, PermissionEdit}},
 	}
 	documentFieldsWithoutLines := []FieldPermission{
-		{Field: "number", Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},
-		{Field: "date", Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},
-		{Field: productAttrID.String(), Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},
+		{Field: "number", Operations: []PermissionOperation{PermissionView, PermissionEdit}},
+		{Field: "date", Operations: []PermissionOperation{PermissionView, PermissionEdit}},
+		{Field: productAttrID.String(), Operations: []PermissionOperation{PermissionView, PermissionEdit}},
 		// Visible, but not writable: the table part itself carries no Update bit.
-		{Field: linesPartID.String(), Operations: []PermissionOperation{PermissionRead}},
+		{Field: linesPartID.String(), Operations: []PermissionOperation{PermissionView}},
 	}
 	registerFields := []ObjectPermission{
 		{Object: accumulationID, Operations: []PermissionOperation{PermissionRead, PermissionUpdate}, Fields: []FieldPermission{
-			{Field: "period", Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},
-			{Field: "recorder", Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},
-			{Field: "active", Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},
-			{Field: "movementkind", Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},
-			{Field: accumulationProductID.String(), Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},
-			{Field: accumulationQuantityID.String(), Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},
+			{Field: "period", Operations: []PermissionOperation{PermissionView, PermissionEdit}},
+			{Field: "recorder", Operations: []PermissionOperation{PermissionView, PermissionEdit}},
+			{Field: "active", Operations: []PermissionOperation{PermissionView, PermissionEdit}},
+			{Field: "movementkind", Operations: []PermissionOperation{PermissionView, PermissionEdit}},
+			{Field: accumulationProductID.String(), Operations: []PermissionOperation{PermissionView, PermissionEdit}},
+			{Field: accumulationQuantityID.String(), Operations: []PermissionOperation{PermissionView, PermissionEdit}},
 		}},
 		{Object: informationID, Operations: []PermissionOperation{PermissionRead, PermissionUpdate}, Fields: []FieldPermission{
-			{Field: priceProductID.String(), Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},
-			{Field: priceValueID.String(), Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},
+			{Field: priceProductID.String(), Operations: []PermissionOperation{PermissionView, PermissionEdit}},
+			{Field: priceValueID.String(), Operations: []PermissionOperation{PermissionView, PermissionEdit}},
 		}},
 	}
 	fullRole := RoleDefinition{
 		ID: fullRoleID, Name: "Полные", Title: LocalizedText{"ru": "Полные права"},
 		Objects: append([]ObjectPermission{{
-			Object: documentID, Operations: []PermissionOperation{PermissionRead, PermissionCreate, PermissionUpdate, PermissionPost, PermissionUndoPosting},
+			Object: documentID, Operations: []PermissionOperation{PermissionRead, PermissionInsert, PermissionUpdate, PermissionPosting, PermissionUndoPosting},
 			Fields: documentFields,
 		}}, registerFields...),
 	}
 	noPostRole := RoleDefinition{
 		ID: noPostRoleID, Name: "БезПроведения", Title: LocalizedText{"ru": "Без проведения"},
 		Objects: []ObjectPermission{{
-			Object: documentID, Operations: []PermissionOperation{PermissionRead, PermissionCreate, PermissionUpdate}, Fields: documentFields,
+			Object: documentID, Operations: []PermissionOperation{PermissionRead, PermissionInsert, PermissionUpdate}, Fields: documentFields,
 		}},
 	}
 	noLinesRole := RoleDefinition{
 		ID: noLinesRoleID, Name: "БезСтрок", Title: LocalizedText{"ru": "Без строк"},
 		Objects: []ObjectPermission{{
-			Object: documentID, Operations: []PermissionOperation{PermissionRead, PermissionCreate, PermissionUpdate}, Fields: documentFieldsWithoutLines,
+			Object: documentID, Operations: []PermissionOperation{PermissionRead, PermissionInsert, PermissionUpdate}, Fields: documentFieldsWithoutLines,
 		}},
 	}
 	noAccumulationRole := RoleDefinition{
 		ID: noAccumulationRoleID, Name: "БезРегистров", Title: LocalizedText{"ru": "Без регистров"},
 		Objects: []ObjectPermission{{Object: documentID, Operations: []PermissionOperation{PermissionRead}, Fields: []FieldPermission{
-			{Field: "number", Operations: []PermissionOperation{PermissionRead}},
+			{Field: "number", Operations: []PermissionOperation{PermissionView}},
 		}}},
 	}
 	catalog := &Catalog{

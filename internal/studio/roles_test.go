@@ -66,7 +66,7 @@ func TestRoleEditorCreateReadSaveAndConflicts(t *testing.T) {
 	if _, err := workspace.ReadRole("configuration.yaml"); !errors.Is(err, ErrInvalidSourcePath) {
 		t.Fatalf("non-role path: %v", err)
 	}
-	created.Role.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead}, Fields: []metadata.FieldPermission{{Field: "description", Operations: []metadata.PermissionOperation{metadata.PermissionRead}}}}}
+	created.Role.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead}, Fields: []metadata.FieldPermission{{Field: "description", Operations: []metadata.PermissionOperation{metadata.PermissionView}}}}}
 	saved, err := workspace.SaveRole(created.Path, created.Role, created.Revision)
 	if err != nil {
 		t.Fatal(err)
@@ -83,13 +83,26 @@ func TestRoleEditorCreateReadSaveAndConflicts(t *testing.T) {
 		t.Fatal("identity change accepted")
 	}
 	invalid = saved.Role
-	invalid.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionPost}}}
+	invalid.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{"admin"}}}
 	if _, err := workspace.SaveRole(saved.Path, invalid, saved.Revision); err == nil {
-		t.Fatal("unsupported operation accepted")
+		t.Fatal("a right that is not one of the prototype's was accepted")
 	}
 	again, err := workspace.ReadRole(saved.Path)
 	if err != nil || again.Revision != saved.Revision {
 		t.Fatalf("invalid save modified file: %v", err)
+	}
+	// Posting on a catalog is a right the object has no use for, and the
+	// prototype keeps such rights: it is carried, not refused.
+	carried := again.Role
+	carried.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionPosting},
+		Denied: []metadata.PermissionOperation{metadata.PermissionInteractiveDelete}}}
+	stored, err := workspace.SaveRole(saved.Path, carried, again.Revision)
+	if err != nil {
+		t.Fatalf("a right the object does not use was refused: %v", err)
+	}
+	if reread, err := workspace.ReadRole(stored.Path); err != nil || !slices.Equal(reread.Role.Objects[0].Denied, carried.Objects[0].Denied) ||
+		!slices.Equal(reread.Role.Objects[0].Operations, carried.Objects[0].Operations) {
+		t.Fatalf("the right or the denial did not survive: %+v, %v", reread.Role.Objects, err)
 	}
 	if _, err := metadata.Load(workspace.root); err != nil {
 		t.Fatal(err)
@@ -205,14 +218,10 @@ func TestRoleEditorRepairsDanglingReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created.Role.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead}, Fields: []metadata.FieldPermission{{Field: uuid.MustNew().String(), Operations: []metadata.PermissionOperation{metadata.PermissionRead}}}}}
-	var content bytes.Buffer
-	if err := metadata.Encode(&content, created.Role); err != nil {
-		t.Fatal(err)
-	}
+	created.Role.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead}, Fields: []metadata.FieldPermission{{Field: uuid.MustNew().String(), Operations: []metadata.PermissionOperation{metadata.PermissionView}}}}}
 	// Emulate an external edit/deleted attribute: runtime must reject it while
 	// the editor must still open the role for repair.
-	if err := os.WriteFile(filepath.Join(workspace.root, created.Path), content.Bytes(), 0o600); err != nil {
+	if err := metadata.WriteRole(workspace.root, created.Role); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := metadata.Load(workspace.root); err == nil {

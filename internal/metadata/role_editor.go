@@ -1,21 +1,47 @@
 package metadata
 
 import (
+	"maps"
 	"slices"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // PermissionSchema is editor data, not an authenticated runtime catalog.
 type PermissionSchema struct {
+	// Rights names every right a role can carry, in the order of the help,
+	// as the configurator writes them: the one place the editors take their
+	// captions from.
+	Rights  []PermissionRight  `json:"rights"`
 	Objects []PermissionObject `json:"objects"`
-	Forms   []PermissionForm   `json:"forms"`
+	// Parts is everything a role may give rights on - the configuration, by
+	// the project's identifier, and every object of it - with the keys of
+	// its parts. The editor shows fewer objects than this; what it does not
+	// show it must neither lose nor take for something deleted.
+	Parts map[uuid.UUID][]string `json:"parts"`
+	Forms []PermissionForm       `json:"forms"`
 	// SessionParameters lists the names an access policy may compare a field
 	// against, so the editor offers a choice instead of a free-text field that
 	// only fails later, at publication.
 	SessionParameters []string `json:"sessionParameters"`
+}
+
+type PermissionRight struct {
+	Key   PermissionOperation `json:"key"`
+	Title string              `json:"title"`
+}
+
+// nameInWords turns an identifier into words, the way the configurator
+// shows a name it has no synonym for: ПометкаУдаления as Пометка удаления.
+func nameInWords(name string) string {
+	words := []rune(strings.ReplaceAll(kebab(name), "-", " "))
+	if len(words) > 0 {
+		words[0] = unicode.ToUpper(words[0])
+	}
+	return string(words)
 }
 
 type PermissionObject struct {
@@ -25,6 +51,11 @@ type PermissionObject struct {
 	Title      LocalizedText         `json:"title"`
 	Operations []PermissionOperation `json:"operations"`
 	Fields     []PermissionField     `json:"fields"`
+	// PolicyFields are the fields a restriction of rows may compare, under
+	// the keys the restriction is checked and run by. They are not the parts
+	// rights are given on: a restriction reads the record's identifier and
+	// its version too, which have no rights of their own.
+	PolicyFields []PermissionField `json:"policyFields"`
 }
 
 type PermissionField struct {
@@ -56,6 +87,19 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 		return PermissionSchema{}, err
 	}
 	result := PermissionSchema{Objects: []PermissionObject{}, Forms: []PermissionForm{}, SessionParameters: []string{}}
+	for _, right := range roleRights {
+		result.Rights = append(result.Rights, PermissionRight{Key: right.operation, Title: nameInWords(right.russian)})
+	}
+	result.Parts = map[uuid.UUID][]string{}
+	for _, id := range append(slices.Collect(maps.Keys(catalog.objectKindByID)), catalog.Project.ID) {
+		if parts, ok := catalog.rightsParts(id); ok {
+			keys := slices.Sorted(maps.Keys(parts))
+			if keys == nil {
+				keys = []string{}
+			}
+			result.Parts[id] = keys
+		}
+	}
 	for _, item := range catalog.SessionParameters {
 		result.SessionParameters = append(result.SessionParameters, item.Name)
 	}
@@ -68,12 +112,23 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 				object.Operations = append(object.Operations, operation)
 			}
 		}
+		// A part of an object has the prototype's two rights of its own, view
+		// and edit, whatever the part is: the configurator offers both on a
+		// reference as on an attribute, and what the runtime lets be written
+		// is its own business.
 		appendField := func(key, name, parent string, title LocalizedText) {
-			field := PermissionField{Key: key, Name: name, Parent: parent, Title: title, Operations: []PermissionOperation{PermissionRead}}
-			if target.fields[key] {
-				field.Operations = append(field.Operations, PermissionUpdate)
-			}
+			field := PermissionField{Key: key, Name: name, Parent: parent, Title: title,
+				Operations: []PermissionOperation{PermissionView, PermissionEdit}}
 			object.Fields = append(object.Fields, field)
+			// A declared field is one key for both: its identifier.
+			if _, err := uuid.Parse(key); err == nil && target.fields != nil {
+				if _, ok := target.fields[key]; ok {
+					object.PolicyFields = append(object.PolicyFields, PermissionField{Key: key, Name: name, Parent: parent, Title: title})
+				}
+			}
+		}
+		for _, field := range catalog.standardAttributeFields(kind, id) {
+			appendField(strings.ToLower(field.en), field.ru, "", LocalizedText{catalog.Project.DefaultLanguage: nameInWords(field.ru)})
 		}
 		var standard []string
 		for key := range target.fields {
@@ -82,8 +137,17 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 			}
 		}
 		slices.Sort(standard)
+		object.PolicyFields = []PermissionField{}
+		captions := map[string]string{}
+		for _, field := range catalog.standardAttributeFields(kind, id) {
+			captions[strings.ToLower(field.en)] = nameInWords(field.ru)
+		}
 		for _, key := range standard {
-			appendField(key, key, "", nil)
+			field := PermissionField{Key: key, Name: key}
+			if caption, ok := captions[key]; ok {
+				field.Title = LocalizedText{catalog.Project.DefaultLanguage: caption}
+			}
+			object.PolicyFields = append(object.PolicyFields, field)
 		}
 		for _, field := range attributes {
 			appendField(field.ID.String(), field.Name, "", cloneTitle(field.Title))

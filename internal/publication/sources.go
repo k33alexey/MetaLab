@@ -320,6 +320,14 @@ func validateSourcePath(relative string, directory bool) error {
 				return nil
 			}
 		}
+		// A role keeps the grid of its rights in a folder named by its
+		// identifier beside its file.
+		if len(parts) >= 3 && parts[1] == string(metadata.RoleKind) {
+			if _, err := uuid.Parse(parts[2]); err == nil && (directory && len(parts) == 3 ||
+				!directory && len(parts) == 4 && parts[3] == metadata.RoleRightsFile) {
+				return nil
+			}
+		}
 		// An object inside another - a table of an external data source -
 		// is checked the way any object folder is, from its own address; and
 		// the collection folder holding such objects belongs to the owner.

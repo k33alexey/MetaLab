@@ -7,7 +7,7 @@ const script=readFileSync(new URL('../internal/studio/ui/role-editor.js',import.
 const context=vm.createContext({structuredClone});
 vm.runInContext(script,context);
 const create=context.createRoleModel;
-function fixture(){return {role:{id:'role',name:'Продавец',title:{ru:'Продавец'}},schema:{objects:[{id:'goods',operations:['read','create','update','delete'],fields:[{key:'ref',operations:['read']},{key:'name',operations:['read','update']},{key:'part',operations:['read','update']},{key:'column',parent:'part',operations:['read','update']}]},{id:'other',operations:['read'],fields:[]}],forms:[{id:'form',commands:[{id:'command'}]}]}};}
+function fixture(){return {role:{id:'role',name:'Продавец',title:{ru:'Продавец'}},schema:{rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'posting',title:'Проведение'}],objects:[{id:'goods',operations:['read','insert','update','delete'],fields:[{key:'ref',operations:['view']},{key:'name',operations:['view','edit']},{key:'part',operations:['view','edit']},{key:'column',parent:'part',operations:['view','edit']}],policyFields:[{key:'ref'},{key:'name'},{key:'part'},{key:'column',parent:'part'}]},{id:'other',operations:['read'],fields:[],policyFields:[]}],parts:{goods:['column','name','part','ref'],other:[]},forms:[{id:'form',commands:[{id:'command'}]}]}};}
 
 test('Studio inline script remains valid JavaScript',()=>{
   const html=readFileSync(new URL('../internal/studio/ui/index.html',import.meta.url),'utf8');
@@ -21,31 +21,50 @@ test('empty role has no implicit grants and model never mutates input',()=>{
 });
 test('one object checkbox grants existing fields including table part columns',()=>{
   const model=create(fixture());model.setObject('goods','read',true);
-  for(const key of ['ref','name','part','column'])assert.equal(model.hasField('goods',key,'read'),true);
+  for(const key of ['ref','name','part','column'])assert.equal(model.hasField('goods',key,'view'),true);
   assert.equal(model.hasObject('other','read'),false);assert.equal(model.hasCommand('form','command'),false);
-  model.setObject('goods','update',true);assert.equal(model.hasField('goods','name','update'),true);assert.equal(model.hasField('goods','ref','update'),false);
+  model.setObject('goods','update',true);assert.equal(model.hasField('goods','name','edit'),true);assert.equal(model.hasField('goods','ref','edit'),false);
 });
-test('create and update share field editing, removing both clears it',()=>{
-  const model=create(fixture());model.setObject('goods','create',true);model.setObject('goods','update',true);
-  model.setObject('goods','create',false);assert.equal(model.hasField('goods','name','update'),true);
-  model.setObject('goods','update',false);assert.equal(model.hasField('goods','name','update'),false);assert.equal(model.value().objects.length,0);
+test('insert and update share field editing, removing both clears it',()=>{
+  const model=create(fixture());model.setObject('goods','insert',true);model.setObject('goods','update',true);
+  model.setObject('goods','insert',false);assert.equal(model.hasField('goods','name','edit'),true);
+  model.setObject('goods','update',false);assert.equal(model.hasField('goods','name','edit'),false);assert.equal(model.value().objects.length,0);
 });
 test('field refinement stays separate and table part changes include children',()=>{
-  const model=create(fixture());model.setObject('goods','read',true);model.setField('goods','name','read',false);
-  assert.equal(model.hasObject('goods','read'),true);assert.equal(model.hasField('goods','column','read'),true);
-  model.setField('goods','part','read',false);assert.equal(model.hasField('goods','column','read'),false);
-  model.setField('goods','column','read',true);assert.equal(model.hasField('goods','part','read'),true);
+  const model=create(fixture());model.setObject('goods','read',true);model.setField('goods','name','view',false);
+  assert.equal(model.hasObject('goods','read'),true);assert.equal(model.hasField('goods','column','view'),true);
+  model.setField('goods','part','view',false);assert.equal(model.hasField('goods','column','view'),false);
+  model.setField('goods','column','view',true);assert.equal(model.hasField('goods','part','view'),true);
 });
 test('all grants and reset apply only to the selected object',()=>{
   const model=create(fixture());model.setObject('other','read',true);model.setAll('goods',true);
-  for(const op of ['read','create','update','delete'])assert.equal(model.hasObject('goods',op),true);
+  for(const op of ['read','insert','update','delete'])assert.equal(model.hasObject('goods',op),true);
   model.setAll('goods',false);assert.equal(model.hasObject('other','read'),true);assert.equal(model.value().objects.length,1);
 });
 test('unknown grants survive ordinary editing and are repaired only explicitly',()=>{
-  const source=fixture();source.role.objects=[{object:'gone',operations:['read'],fields:[]},{object:'goods',operations:['read','post'],fields:[{field:'gone',operations:['read']},{field:'ref',operations:['read','update']}]}];source.role.commands=[{form:'form',command:'gone'}];
+  const source=fixture();source.role.objects=[{object:'gone',operations:['read'],fields:[]},{object:'goods',operations:['read','posting'],denied:['delete'],fields:[{field:'gone',operations:['view']},{field:'ref',operations:['view','edit']},{field:'name',denied:['view']}]}];source.role.commands=[{form:'form',command:'gone'}];
   const model=create(source);assert.equal(model.hasUnavailable(),true);model.setName('НовоеИмя');assert.equal(model.value().objects.length,2);
-  model.removeUnavailable();assert.equal(model.hasUnavailable(),false);assert.equal(model.value().objects.length,1);assert.equal(model.hasObject('goods','read'),true);assert.equal(model.hasField('goods','ref','read'),true);assert.equal(model.hasField('goods','ref','update'),false);
-  model.setObject('goods','update',true);assert.equal(model.hasField('goods','name','update'),true);
+  model.removeUnavailable();assert.equal(model.hasUnavailable(),false);assert.equal(model.value().objects.length,1);assert.equal(model.hasObject('goods','read'),true);assert.equal(model.hasField('goods','ref','view'),true);
+  // Repair removes what the configuration lost, never a right: posting on an
+  // object that is never posted, editing a field the editor shows read-only,
+  // and every denial stay as the prototype keeps them.
+  const goods=model.value().objects[0];
+  assert.deepEqual([...goods.operations],['read','posting']);assert.deepEqual([...goods.denied],['delete']);
+  assert.equal(model.hasField('goods','ref','edit'),true);assert.deepEqual([...goods.fields.find(field=>field.field==='name').denied],['view']);
+  assert.equal(goods.fields.some(field=>field.field==='gone'),false);
+  model.setObject('goods','update',true);assert.equal(model.hasField('goods','name','edit'),true);
+});
+test('granting a denied right takes the denial back, so a right has one state',()=>{
+  const source=fixture();source.role.objects=[{object:'goods',denied:['read'],fields:[{field:'name',denied:['view']}]}];
+  const model=create(source);assert.equal(model.hasObject('goods','read'),false);
+  model.setField('goods','name','view',true);
+  const name=model.value().objects[0].fields.find(field=>field.field==='name');
+  assert.deepEqual([...name.operations],['view']);assert.equal(name.denied,undefined);
+  model.setObject('goods','read',true);assert.equal(model.value().objects[0].denied,undefined);
+});
+test('a part only denied is kept when the role is cleaned',()=>{
+  const source=fixture();source.role.objects=[{object:'goods',fields:[{field:'name',denied:['view']}]}];
+  assert.equal(create(source).value().objects[0].fields.length,1);
 });
 test('commands are scoped and never grant data access',()=>{
   const model=create(fixture());model.setCommand('form','command',true);model.setCommand('other','command',true);
@@ -53,11 +72,11 @@ test('commands are scoped and never grant data access',()=>{
   model.setCommand('form','command',false);assert.equal(model.value().commands.length,0);
 });
 test('unsupported operations and fields cannot be granted through controls',()=>{
-  const model=create(fixture());model.setObject('goods','admin',true);model.setObject('missing','read',true);model.setField('goods','ref','update',true);model.setField('goods','missing','read',true);
+  const model=create(fixture());model.setObject('goods','admin',true);model.setObject('missing','read',true);model.setField('goods','ref','edit',true);model.setField('goods','missing','view',true);
   assert.equal(model.value().objects.length,0);
 });
 test('bulk edits remain bounded for a large object',()=>{
-  const source=fixture();source.schema.objects[0].fields=Array.from({length:9000},(_,index)=>({key:`field${index}`,operations:['read','update']}));
+  const source=fixture();source.schema.objects[0].fields=Array.from({length:9000},(_,index)=>({key:`field${index}`,operations:['view','edit']}));
   const model=create(source);model.setAll('goods',true);assert.equal(model.value().objects[0].fields.length,9000);
   model.setAll('goods',false);assert.equal(model.value().objects.length,0);
 });

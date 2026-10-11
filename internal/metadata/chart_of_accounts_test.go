@@ -295,22 +295,15 @@ accounting_flags:
 id: `+roleID+`
 name: Бухгалтер
 title: {ru: Бухгалтер}
-objects:
-  - object: `+accountsID+`
-    operations: [read, create, update]
-    fields:
-      - field: `+accountFlagID+`
-        operations: [read]
-      - field: accountkind
-        operations: [read, update]
-  - object: `+characteristicsID+`
-    operations: [read]
-    fields:
-      - field: valuetype
-        operations: [read]
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	writeRoleGrid(t, root, roleID, `{"objects": [
+  {"object": "`+accountsID+`", "operations": ["read", "insert", "update"], "fields": [
+    {"field": "`+accountFlagID+`", "operations": ["view"]},
+    {"field": "type", "operations": ["view", "edit"]}]},
+  {"object": "`+characteristicsID+`", "operations": ["read"], "fields": [
+    {"field": "valuetype", "operations": ["view"]}]}]}`)
 	if _, err := Load(root); err != nil {
 		t.Fatalf("a role granting rights on the new kinds was refused: %v", err)
 	}

@@ -147,10 +147,10 @@ func TestMLAppPageBootstrapAndAssets(t *testing.T) {
 	// названных объекта неразличимы, а без прав он предложил бы «создать» там,
 	// где создание запрещено.
 	goods, document := bootstrap.Navigation[1], bootstrap.Navigation[2]
-	if goods.KindTitle != "Справочник" || !slices.Contains(goods.Operations, "create") {
+	if goods.KindTitle != "Справочник" || !slices.Contains(goods.Operations, "insert") {
 		t.Fatalf("catalog navigation item = %+v", goods)
 	}
-	if document.KindTitle != "Документ" || slices.Contains(document.Operations, "create") {
+	if document.KindTitle != "Документ" || slices.Contains(document.Operations, "insert") {
 		t.Fatalf("document navigation item = %+v", document)
 	}
 
@@ -259,7 +259,7 @@ func (runtime *fakeRuntime) LoadApplicationObjects(_ context.Context, _ string, 
 		language.Code = preferences[0]
 	}
 	return platform.ApplicationObjects{Language: language, Objects: []platform.ApplicationObject{
-		{Kind: metadata.CatalogKind, Name: "Товары", Title: "Товары", Operations: []metadata.PermissionOperation{metadata.PermissionRead, metadata.PermissionCreate}},
+		{Kind: metadata.CatalogKind, Name: "Товары", Title: "Товары", Operations: []metadata.PermissionOperation{metadata.PermissionRead, metadata.PermissionInsert}},
 		{Kind: metadata.DocumentKind, Name: "ПродажаТоваров", Title: "Продажа товаров", Operations: []metadata.PermissionOperation{metadata.PermissionRead}},
 	}}, runtime.failure
 }

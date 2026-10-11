@@ -17,7 +17,7 @@ func TestPermissionsDenyByDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, policy := range []*Permissions{nil, {}, empty} {
-		for _, operation := range []PermissionOperation{PermissionRead, PermissionCreate, PermissionUpdate, PermissionDelete, PermissionPost, PermissionUndoPosting, "admin", ""} {
+		for _, operation := range []PermissionOperation{PermissionRead, PermissionInsert, PermissionUpdate, PermissionDelete, PermissionPosting, PermissionUndoPosting, "admin", ""} {
 			if policy.AllowsObject(role.Objects[0].Object, operation) || policy.AllowsFields(role.Objects[0].Object, operation) {
 				t.Fatalf("implicit object grant: %s", operation)
 			}
@@ -46,7 +46,7 @@ func TestPermissionsUnionAndIsolation(t *testing.T) {
 	catalog, reader, form := roleCatalogFixture(t)
 	object := reader.Objects[0].Object
 	writer := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Создатель", Title: LocalizedText{"ru": "Создатель"},
-		Objects: []ObjectPermission{{Object: object, Operations: []PermissionOperation{PermissionCreate}, Fields: []FieldPermission{{Field: "description", Operations: []PermissionOperation{PermissionUpdate}}}}}}
+		Objects: []ObjectPermission{{Object: object, Operations: []PermissionOperation{PermissionInsert}, Fields: []FieldPermission{{Field: "description", Operations: []PermissionOperation{PermissionEdit}}}}}}
 	catalog.Roles = append(catalog.Roles, writer)
 	if err := catalog.indexAndValidate(""); err != nil {
 		t.Fatal(err)
@@ -56,10 +56,10 @@ func TestPermissionsUnionAndIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !policy.AllowsFields(object, PermissionRead, "description") || !policy.AllowsFields(object, PermissionCreate, "description") {
+	if !policy.AllowsFields(object, PermissionRead, "description") || !policy.AllowsFields(object, PermissionInsert, "description") {
 		t.Fatal("explicit grants did not combine")
 	}
-	if policy.AllowsFields(object, PermissionUpdate, "description") || policy.AllowsFields(object, PermissionCreate, "ref") || policy.AllowsFields(object, PermissionRead, "Description") {
+	if policy.AllowsFields(object, PermissionUpdate, "description") || policy.AllowsFields(object, PermissionInsert, "ref") || policy.AllowsFields(object, PermissionRead, "Description") {
 		t.Fatal("operation or field identity was widened")
 	}
 	if !policy.AllowsCommand(form.ID, form.Commands[0].ID) || policy.AllowsCommand(uuid.MustNew(), form.Commands[0].ID) {
@@ -108,7 +108,7 @@ func TestPermissionsObjectFieldAndCommandAreIndependent(t *testing.T) {
 	if fieldOnly.AllowsFields(object, PermissionRead, column) || !fieldOnly.AllowsCommand(form.ID, form.Commands[0].ID) {
 		t.Fatal("field/command access implicitly granted object read")
 	}
-	catalog.Roles[0].Objects[0] = ObjectPermission{Object: object, Operations: []PermissionOperation{PermissionRead}, Fields: []FieldPermission{{Field: column, Operations: []PermissionOperation{PermissionRead}}}}
+	catalog.Roles[0].Objects[0] = ObjectPermission{Object: object, Operations: []PermissionOperation{PermissionRead}, Fields: []FieldPermission{{Field: column, Operations: []PermissionOperation{PermissionView}}}}
 	if err := catalog.indexAndValidate(""); err != nil {
 		t.Fatal(err)
 	}

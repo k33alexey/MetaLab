@@ -7,10 +7,9 @@
 function createRoleOverviewModel(source) {
   const entries = source.roles || [];
   const objects = new Map((source.schema.objects || []).map(item => [item.id, item]));
-  const standard = {ref:'Ссылка',code:'Код',description:'Наименование',deletionmark:'Пометка удаления',version:'Версия',predefined:'Предопределённый',predefineddataname:'Имя предопределённых данных',number:'Номер',date:'Дата',posted:'Проведён',recordid:'Идентификатор записи',period:'Период',recorder:'Регистратор',linenumber:'Номер строки',active:'Активность',movementkind:'Вид движения',value:'Значение',order:'Порядок'};
   const operators = {eq:'Равно',ne:'Не равно',in:'В списке','not-in':'Не в списке'};
   function localized(item) {
-    return item.title?.[source.defaultLanguage] || Object.values(item.title || {}).find(Boolean) || standard[item.key] || item.name;
+    return item.title?.[source.defaultLanguage] || Object.values(item.title || {}).find(Boolean) || item.name;
   }
   function objectTitle(id) {
     const object = objects.get(id);
@@ -22,14 +21,14 @@ function createRoleOverviewModel(source) {
   function anyFieldTitle(key) {
     if (!shared) {
       shared = new Map();
-      for (const object of objects.values()) for (const field of object.fields) if (!shared.has(field.key)) shared.set(field.key, localized(field));
+      for (const object of objects.values()) for (const field of object.policyFields || []) if (!shared.has(field.key)) shared.set(field.key, localized(field));
     }
-    return shared.get(key) || standard[key] || key;
+    return shared.get(key) || key;
   }
   function fieldTitle(objectID, key) {
     if (!objectID) return anyFieldTitle(key);
-    const field = objects.get(objectID)?.fields.find(item => item.key === key);
-    return field ? localized(field) : (standard[key] || key);
+    const field = objects.get(objectID)?.policyFields?.find(item => item.key === key);
+    return field ? localized(field) : key;
   }
   // Подстановка параметров шаблона повторяет серверную: поле правила и поля
   // условий подзапроса, записанные как «$Имя», берутся из аргументов
@@ -83,11 +82,11 @@ function createRoleOverviewModel(source) {
     return {field: fieldTitle(objectID, rule.field), condition: `${operators[rule.operator] || rule.operator} ${operand(rule, objectID)}`};
   }
   function grantOf(entry, objectID) { return (entry.role.objects || []).find(item => item.object === objectID); }
-  function readableFields(objectID) { return (objects.get(objectID)?.fields || []).filter(field => field.operations.includes('read')).length; }
+  function readableFields(objectID) { return (objects.get(objectID)?.fields || []).filter(field => field.operations.includes('view')).length; }
   function fieldSummary(grant, objectID) {
     const total = readableFields(objectID);
     if (!grant?.operations?.includes('read') || !total) return '—';
-    const granted = Math.min((grant.fields || []).filter(field => (field.operations || []).includes('read')).length, total);
+    const granted = Math.min((grant.fields || []).filter(field => (field.operations || []).includes('view')).length, total);
     return granted >= total ? 'все' : `${granted} из ${total}`;
   }
   return {
@@ -100,11 +99,11 @@ function createRoleOverviewModel(source) {
     grants(objectID) {
       const object = objects.get(objectID);
       if (!object) return [];
-      const readable = object.fields.filter(field => field.operations.includes('read')).length;
+      const readable = object.fields.filter(field => field.operations.includes('view')).length;
       return entries.map(entry => {
         const grant = grantOf(entry, objectID), operations = {};
         for (const operation of object.operations) operations[operation] = !!grant?.operations?.includes(operation);
-        const granted = (grant?.fields || []).filter(field => (field.operations || []).includes('read')).length;
+        const granted = (grant?.fields || []).filter(field => (field.operations || []).includes('view')).length;
         return {
           path: entry.path, name: entry.role.name, title: localized(entry.role),
           operations, granted: Object.values(operations).some(Boolean),
@@ -168,8 +167,9 @@ function createRoleOverviewModel(source) {
 
 function createRoleOverview(host, openRole) {
   let source, model, selected = null, tree, panel, tab = 'roles', body, filter = '';
-  const operations = {read:'Чтение',view:'Просмотр',create:'Добавление',update:'Изменение',delete:'Удаление',post:'Проведение','undo-posting':'Отмена проведения','totals-control':'Управление итогами'};
-  const kinds = {constants:'Константы',enumerations:'Перечисления',catalogs:'Справочники',documents:'Документы','information-registers':'Регистры сведений','accumulation-registers':'Регистры накопления'};
+  /* Подписи прав и видов — с сервера, из тех же перечней, что у редактора роли. */
+  const caption = key => source.schema.rights?.find(item => item.key === key)?.title || key;
+  const kindTitle = kind => source.kindTitles?.[kind] || kind;
   function node(tag, text, className) {
     const element = document.createElement(tag);
     if (text !== undefined) element.textContent = text;
@@ -182,7 +182,7 @@ function createRoleOverview(host, openRole) {
     for (const item of model.objects()) {
       if (!`${item.name} ${model.title(item)}`.toLocaleLowerCase().includes(needle)) continue;
       let group = groups.get(item.kind);
-      if (!group) { group = node('details'); group.open = true; group.append(node('summary', kinds[item.kind] || item.kind)); groups.set(item.kind, group); tree.append(group); }
+      if (!group) { group = node('details'); group.open = true; group.append(node('summary', kindTitle(item.kind))); groups.set(item.kind, group); tree.append(group); }
       const button = node('button', model.title(item), 'role-tree-item');
       button.type = 'button'; button.title = item.name; button.dataset.object = item.id;
       if (selected?.id === item.id) button.classList.add('selected');
@@ -198,7 +198,7 @@ function createRoleOverview(host, openRole) {
     if (!rows.length) { block.append(node('p', 'В проекте нет ролей.', 'muted')); return block; }
     const table = node('table'), head = node('tr');
     head.append(node('th', 'Роль'));
-    for (const operation of object.operations) head.append(node('th', operations[operation] || operation));
+    for (const operation of object.operations) head.append(node('th', caption(operation)));
     head.append(node('th', 'Реквизиты'));
     table.append(head);
     for (const row of rows) {
@@ -210,7 +210,7 @@ function createRoleOverview(host, openRole) {
       name.append(link); line.append(name);
       for (const operation of object.operations) {
         const cell = node('td', row.operations[operation] ? '✓' : '·', row.operations[operation] ? 'overview-yes' : 'overview-no');
-        cell.setAttribute('aria-label', `${row.title} — ${operations[operation] || operation} — ${row.operations[operation] ? 'разрешено' : 'нет'}`);
+        cell.setAttribute('aria-label', `${row.title} — ${caption(operation)} — ${row.operations[operation] ? 'разрешено' : 'нет'}`);
         line.append(cell);
       }
       // Реквизиты показываются числом, а не галкой: право на объект без части
@@ -238,7 +238,7 @@ function createRoleOverview(host, openRole) {
       link.type = 'button';
       link.addEventListener('click', () => openRole(row.path, object.id));
       name.append(link); line.append(name);
-      line.append(node('td', operations[row.operation] || row.operation));
+      line.append(node('td', caption(row.operation)));
       if (row.error) {
         const cell = node('td', row.error, 'overview-broken');
         cell.colSpan = 2; line.append(cell);
@@ -276,7 +276,7 @@ function createRoleOverview(host, openRole) {
       const line = node('tr');
       line.append(node('td', row.object));
       line.append(roleLink(row.role, row.path, row.objectID));
-      line.append(node('td', operations[row.operation] || row.operation), node('td', row.fields));
+      line.append(node('td', caption(row.operation)), node('td', row.fields));
       if (row.error) line.append(node('td', row.error, 'overview-broken'));
       else line.append(node('td', `${row.field} ${row.condition}`, 'overview-condition'));
       line.append(node('td', row.origin));

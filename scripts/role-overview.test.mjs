@@ -15,15 +15,17 @@ const plain=value=>JSON.parse(JSON.stringify(value));
 function fixture(){
   return {
     defaultLanguage:'ru',
-    schema:{objects:[
-      {id:'goods',kind:'catalogs',name:'Товары',title:{ru:'Товары'},operations:['read','create','update','delete'],
-        fields:[{key:'ref',operations:['read']},{key:'owner',title:{ru:'Владелец'},operations:['read','update']},{key:'price',title:{ru:'Цена'},operations:['read','update']}]},
+    schema:{rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'}],objects:[
+      {id:'goods',kind:'catalogs',name:'Товары',title:{ru:'Товары'},operations:['read','insert','update','delete'],
+        fields:[{key:'ref',operations:['view']},{key:'owner',title:{ru:'Владелец'},operations:['view','edit']},{key:'price',title:{ru:'Цена'},operations:['view','edit']}],
+        policyFields:[{key:'ref',title:{ru:'Ссылка'}},{key:'owner',title:{ru:'Владелец'}},{key:'price',title:{ru:'Цена'}}]},
       {id:'users',kind:'catalogs',name:'Пользователи',title:{ru:'Пользователи'},operations:['read'],
-        fields:[{key:'ref',operations:['read']},{key:'person',title:{ru:'Физлицо'},operations:['read']}]},
+        fields:[{key:'ref',operations:['view']},{key:'person',title:{ru:'Физлицо'},operations:['view']}],
+        policyFields:[{key:'ref',title:{ru:'Ссылка'}},{key:'person',title:{ru:'Физлицо'}}]},
     ],forms:[]},
     roles:[
       {path:'metadata/roles/a.yaml',role:{id:'a',name:'Продавец',title:{ru:'Продавец'},objects:[
-        {object:'goods',operations:['read','update'],fields:[{field:'ref',operations:['read']},{field:'owner',operations:['read']}],
+        {object:'goods',operations:['read','update'],fields:[{field:'ref',operations:['view']},{field:'owner',operations:['view']}],
          policies:[{operations:['read'],rule:{field:'owner',operator:'eq',parameter:'ТекущийПользователь'}}]},
       ]}},
       {path:'metadata/roles/b.yaml',role:{id:'b',name:'Кладовщик',title:{ru:'Кладовщик'},objects:[]}},
@@ -34,10 +36,10 @@ function fixture(){
 test('every role appears for the selected object, including one with no grants',()=>{
   const model=create(fixture()),rows=model.grants('goods');
   assert.deepEqual(plain(rows.map(row=>row.title)),['Продавец','Кладовщик']);
-  assert.deepEqual(plain(rows[0].operations),{read:true,create:false,update:true,delete:false});
+  assert.deepEqual(plain(rows[0].operations),{read:true,insert:false,update:true,delete:false});
   assert.equal(rows[0].granted,true);
   assert.equal(rows[1].granted,false);
-  assert.deepEqual(plain(rows[1].operations),{read:false,create:false,update:false,delete:false});
+  assert.deepEqual(plain(rows[1].operations),{read:false,insert:false,update:false,delete:false});
 });
 
 test('withheld fields are counted, not hidden behind the object checkmark',()=>{

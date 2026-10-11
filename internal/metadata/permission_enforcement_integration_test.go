@@ -53,16 +53,16 @@ func TestApplicationRoleEnforcementIntegration(t *testing.T) {
 		ID: readerRoleID, Name: "ЧитательБезЦены", Title: LocalizedText{"ru": "Читатель без цены"},
 		Objects: []ObjectPermission{{
 			Object: catalogID, Operations: []PermissionOperation{PermissionRead},
-			Fields: []FieldPermission{{Field: "description", Operations: []PermissionOperation{PermissionRead}}},
+			Fields: []FieldPermission{{Field: "description", Operations: []PermissionOperation{PermissionView}}},
 		}},
 	}
 	editorRole := RoleDefinition{
 		ID: editorRoleID, Name: "Редактор", Title: LocalizedText{"ru": "Редактор"},
 		Objects: []ObjectPermission{{
-			Object: catalogID, Operations: []PermissionOperation{PermissionRead, PermissionCreate, PermissionUpdate, PermissionDelete},
+			Object: catalogID, Operations: []PermissionOperation{PermissionRead, PermissionInsert, PermissionUpdate, PermissionDelete},
 			Fields: []FieldPermission{
-				{Field: "description", Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},
-				{Field: priceID.String(), Operations: []PermissionOperation{PermissionRead, PermissionUpdate}},
+				{Field: "description", Operations: []PermissionOperation{PermissionView, PermissionEdit}},
+				{Field: priceID.String(), Operations: []PermissionOperation{PermissionView, PermissionEdit}},
 			},
 		}},
 	}

@@ -64,7 +64,7 @@ func TestAllowedOperationsReportOnlyWhatTheRoleGrants(t *testing.T) {
 		Code: metadata.CatalogCode{Type: metadata.StringType, Length: 9}, DescriptionLength: 150}
 	role := metadata.RoleDefinition{Format: 1, ID: uuid.MustNew(), Name: "Продавец", Title: metadata.LocalizedText{"ru": "Продавец"},
 		Objects: []metadata.ObjectPermission{
-			{Object: goods.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead, metadata.PermissionCreate, metadata.PermissionUpdate}},
+			{Object: goods.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead, metadata.PermissionInsert, metadata.PermissionUpdate}},
 			{Object: partners.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead}},
 		}}
 	catalog, err := metadata.NewCatalogSnapshotWithRoles(configuration, nil, nil, nil,
@@ -77,7 +77,7 @@ func TestAllowedOperationsReportOnlyWhatTheRoleGrants(t *testing.T) {
 		t.Fatal(err)
 	}
 	if operations := allowedOperations(permissions, goods.ID); !slices.Equal(operations, []metadata.PermissionOperation{
-		metadata.PermissionRead, metadata.PermissionCreate, metadata.PermissionUpdate}) {
+		metadata.PermissionRead, metadata.PermissionInsert, metadata.PermissionUpdate}) {
 		t.Fatalf("granted operations = %v", operations)
 	}
 	if operations := allowedOperations(permissions, partners.ID); !slices.Equal(operations, []metadata.PermissionOperation{metadata.PermissionRead}) {

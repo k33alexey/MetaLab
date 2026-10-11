@@ -214,8 +214,9 @@ func compositeProject(t *testing.T) string {
 		strings.Replace(goodsBody, `unfilled_parent_value: {kind: string, data: ""}`, `unfilled_parent_value: {kind: undefined, data: ""}`, 1))
 
 	// Who may do what, and where it is shown.
-	writeMetadata(t, root, RoleKind, cmpRole, head(cmpRole, "Кладовщик")+
-		"objects:\n  - {object: "+cmpGoods+", operations: [read]}\n  - {object: "+cmpDocument+", operations: [read, create]}\n")
+	writeMetadata(t, root, RoleKind, cmpRole, head(cmpRole, "Кладовщик"))
+	writeRoleGrid(t, root, cmpRole, `{"objects": [{"object": "`+cmpGoods+`", "operations": ["read"]},
+  {"object": "`+cmpDocument+`", "operations": ["read", "insert"]}]}`)
 	writeMetadata(t, root, SubsystemKind, cmpSubsystem, head(cmpSubsystem, "Склад")+
 		"members: ["+cmpGoods+", "+cmpDocument+", "+cmpReport+"]\n")
 	return root
@@ -288,14 +289,27 @@ func breakReference(t *testing.T, root string, kind Kind, referrer, target strin
 	t.Helper()
 	var found []string
 	err := filepath.WalkDir(filepath.Join(root, "metadata", string(kind)), func(path string, entry os.DirEntry, err error) error {
-		if err != nil || entry.IsDir() || filepath.Ext(path) != ".yaml" {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		// A role keeps its grid beside its description, in the folder named
+		// by its identifier: who the grid belongs to is the description's to
+		// say.
+		described := path
+		if kind == RoleKind && entry.Name() == RoleRightsFile {
+			described = filepath.Dir(path) + ".yaml"
+		} else if filepath.Ext(path) != ".yaml" {
+			return nil
+		}
+		description, err := os.ReadFile(described)
+		if err != nil {
 			return err
 		}
 		content, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
-		if strings.Contains(string(content), "\nname: "+referrer+"\n") && strings.Contains(string(content), target) {
+		if strings.Contains(string(description), "\nname: "+referrer+"\n") && strings.Contains(string(content), target) {
 			found = append(found, path)
 		}
 		return nil

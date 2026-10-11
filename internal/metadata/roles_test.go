@@ -17,22 +17,22 @@ import (
 func roleFixture() RoleDefinition {
 	return RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Читатель", Title: LocalizedText{"ru": "Читатель"},
 		Objects: []ObjectPermission{{Object: uuid.MustNew(), Operations: []PermissionOperation{PermissionRead},
-			Fields: []FieldPermission{{Field: "description", Operations: []PermissionOperation{PermissionRead}}}}}}
+			Fields: []FieldPermission{{Field: "description", Operations: []PermissionOperation{PermissionView}}}}}}
 }
 
 func TestDecodeRoleStrictAndBounded(t *testing.T) {
 	t.Parallel()
 	role := roleFixture()
-	var encoded bytes.Buffer
-	if err := Encode(&encoded, role); err != nil {
+	description, grid, err := EncodeRole(role)
+	if err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := DecodeRole("role.yaml", bytes.NewReader(encoded.Bytes()), metadataConfiguration())
+	decoded, err := DecodeRole("role.yaml", bytes.NewReader(description), bytes.NewReader(grid), metadataConfiguration())
 	if err != nil || decoded.ID != role.ID {
 		t.Fatalf("decode role = %+v, %v", decoded, err)
 	}
 	for _, suffix := range []string{"unknown: true\n", "---\nformat: 1\n"} {
-		if _, err := DecodeRole("role.yaml", strings.NewReader(encoded.String()+suffix), metadataConfiguration()); err == nil {
+		if _, err := DecodeRole("role.yaml", strings.NewReader(string(description)+suffix), bytes.NewReader(grid), metadataConfiguration()); err == nil {
 			t.Fatalf("accepted invalid suffix %q", suffix)
 		}
 	}
@@ -47,7 +47,18 @@ func TestDecodeRoleStrictAndBounded(t *testing.T) {
 		"duplicate operation": func(r *RoleDefinition) {
 			r.Objects[0].Operations = []PermissionOperation{PermissionRead, PermissionRead}
 		},
-		"field operation":         func(r *RoleDefinition) { r.Objects[0].Fields[0].Operations = []PermissionOperation{PermissionPost} },
+		"unknown field right": func(r *RoleDefinition) { r.Objects[0].Fields[0].Operations = []PermissionOperation{"admin"} },
+		"unknown denial":      func(r *RoleDefinition) { r.Objects[0].Denied = []PermissionOperation{"admin"} },
+		"granted and denied": func(r *RoleDefinition) {
+			r.Objects[0].Denied = []PermissionOperation{PermissionRead}
+		},
+		"field granted and denied": func(r *RoleDefinition) {
+			r.Objects[0].Fields[0].Denied = []PermissionOperation{PermissionView}
+		},
+		"duplicate denial": func(r *RoleDefinition) {
+			r.Objects[0].Denied = []PermissionOperation{PermissionDelete, PermissionDelete}
+		},
+		"two dots":                func(r *RoleDefinition) { r.Objects[0].Fields[0].Field = "extdimensiontypes.turnoversonly.x" },
 		"empty field operations":  func(r *RoleDefinition) { r.Objects[0].Fields[0].Operations = nil },
 		"duplicate field":         func(r *RoleDefinition) { r.Objects[0].Fields = append(r.Objects[0].Fields, r.Objects[0].Fields[0]) },
 		"empty field":             func(r *RoleDefinition) { r.Objects[0].Fields[0].Field = "" },
@@ -86,8 +97,12 @@ func roleCatalogFixture(t *testing.T) (*Catalog, RoleDefinition, ManagedForm) {
 		Attributes: []Attribute{{ID: uuid.MustNew(), Name: "Цена", Title: LocalizedText{"ru": "Цена"}, Types: []Type{{Kind: NumberType, Precision: 12, Scale: 2}}}},
 		TableParts: []TablePart{{ID: uuid.MustNew(), Name: "Детали", Title: LocalizedText{"ru": "Детали"}, Attributes: []Attribute{{ID: uuid.MustNew(), Name: "Текст", Title: LocalizedText{"ru": "Текст"}, Types: []Type{{Kind: StringType, Length: 100}}}}}}}
 	for _, id := range []uuid.UUID{definition.Attributes[0].ID, definition.TableParts[0].ID, definition.TableParts[0].Attributes[0].ID} {
-		role.Objects[0].Fields = append(role.Objects[0].Fields, FieldPermission{Field: id.String(), Operations: []PermissionOperation{PermissionRead}})
+		role.Objects[0].Fields = append(role.Objects[0].Fields, FieldPermission{Field: id.String(), Operations: []PermissionOperation{PermissionView}})
 	}
+	// A denial on the object and on a part: the three states travel through
+	// every copy of a role, not only the grants.
+	role.Objects[0].Denied = []PermissionOperation{PermissionDelete}
+	role.Objects[0].Fields[1].Denied = []PermissionOperation{PermissionEdit}
 	form := ManagedForm{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Форма", Title: LocalizedText{"ru": "Форма"}, Kind: ObjectForm,
 		Commands: []ManagedFormCommand{{ID: uuid.MustNew(), Name: "Обновить", Title: LocalizedText{"ru": "Обновить"}, Action: FormCommandRefresh}}}
 	role.Commands = []CommandPermission{{Form: form.ID, Command: form.Commands[0].ID}}
@@ -105,17 +120,20 @@ func TestRoleSnapshotIsolationAndReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	role.Objects[0].Fields[0].Operations[0] = PermissionUpdate
+	role.Objects[0].Fields[0].Operations[0] = PermissionEdit
 	lookedUp, ok := catalog.Role("ЧИТАТЕЛЬ")
-	if !ok || lookedUp.Objects[0].Fields[0].Operations[0] != PermissionRead {
+	if !ok || lookedUp.Objects[0].Fields[0].Operations[0] != PermissionView {
 		t.Fatal("constructor did not isolate role fields")
 	}
 	lookedUp.Title["ru"] = "Изменено"
 	lookedUp.Objects[0].Operations[0] = PermissionDelete
 	lookedUp.Objects[0].Fields[0].Operations[0] = PermissionUpdate
+	lookedUp.Objects[0].Denied[0] = PermissionInsert
+	lookedUp.Objects[0].Fields[1].Denied[0] = PermissionView
 	lookedUp.Commands[0].Command = uuid.MustNew()
 	again, ok := catalog.RoleByID(role.ID)
-	if !ok || again.Title["ru"] != "Читатель" || again.Objects[0].Operations[0] != PermissionRead || again.Objects[0].Fields[0].Operations[0] != PermissionRead || again.Commands[0].Command != form.Commands[0].ID {
+	if !ok || again.Title["ru"] != "Читатель" || again.Objects[0].Operations[0] != PermissionRead || again.Objects[0].Fields[0].Operations[0] != PermissionView ||
+		again.Objects[0].Denied[0] != PermissionDelete || again.Objects[0].Fields[1].Denied[0] != PermissionEdit || again.Commands[0].Command != form.Commands[0].ID {
 		t.Fatal("lookup exposed mutable role storage")
 	}
 	if _, ok := catalog.Role("нет"); ok {
@@ -149,16 +167,10 @@ func TestRoleSnapshotIsolationAndReferences(t *testing.T) {
 func TestRoleReferencesRejectInvalidRuntimeMetadata(t *testing.T) {
 	t.Parallel()
 	tests := map[string]func(*Catalog, *ManagedForm){
-		"unknown object":    func(c *Catalog, _ *ManagedForm) { c.Roles[0].Objects[0].Object = uuid.MustNew() },
-		"wrong field owner": func(c *Catalog, _ *ManagedForm) { c.Roles[0].Objects[0].Fields[0].Field = c.Roles[0].ID.String() },
-		"deleted attribute": func(c *Catalog, _ *ManagedForm) { c.Catalogs[0].Attributes = nil },
-		"unsupported operation": func(c *Catalog, _ *ManagedForm) {
-			c.Roles[0].Objects[0].Operations = []PermissionOperation{PermissionPost}
-		},
+		"unknown object":         func(c *Catalog, _ *ManagedForm) { c.Roles[0].Objects[0].Object = uuid.MustNew() },
+		"wrong field owner":      func(c *Catalog, _ *ManagedForm) { c.Roles[0].Objects[0].Fields[0].Field = c.Roles[0].ID.String() },
+		"deleted attribute":      func(c *Catalog, _ *ManagedForm) { c.Catalogs[0].Attributes = nil },
 		"unknown standard field": func(c *Catalog, _ *ManagedForm) { c.Roles[0].Objects[0].Fields[0].Field = "password" },
-		"read only field": func(c *Catalog, _ *ManagedForm) {
-			c.Roles[0].Objects[0].Fields[0] = FieldPermission{Field: "ref", Operations: []PermissionOperation{PermissionUpdate}}
-		},
 		"duplicate role UUID": func(c *Catalog, _ *ManagedForm) {
 			r := cloneRole(c.Roles[0])
 			r.Name = "Другой"
@@ -185,6 +197,20 @@ func TestRoleReferencesRejectInvalidRuntimeMetadata(t *testing.T) {
 			}
 		})
 	}
+	// What the prototype's roles keep is not refused: posting on a catalog,
+	// editing the reference.
+	for name, mutate := range map[string]func(*Catalog){
+		"a right the object does not use": func(c *Catalog) { c.Roles[0].Objects[0].Operations = []PermissionOperation{PermissionPosting} },
+		"editing a standard field the runtime never writes": func(c *Catalog) {
+			c.Roles[0].Objects[0].Fields[0] = FieldPermission{Field: "ref", Operations: []PermissionOperation{PermissionEdit}}
+		},
+	} {
+		catalog, _, form := roleCatalogFixture(t)
+		mutate(catalog)
+		if _, err := NewRuntimeSnapshot(catalog, []ManagedForm{form}); err != nil {
+			t.Fatalf("%s was refused: %v", name, err)
+		}
+	}
 	catalog, _, form := roleCatalogFixture(t)
 	catalog.Catalogs[0].Name = "НовоеИмя"
 	catalog.Catalogs[0].Attributes[0].Name = "Стоимость"
@@ -205,7 +231,19 @@ func TestLoadRolesAndCommandSources(t *testing.T) {
 					t.Fatal(err)
 				}
 				var buffer bytes.Buffer
-				if err := Encode(&buffer, value); err != nil {
+				if role, ok := value.(RoleDefinition); ok {
+					// Written by hand rather than by WriteRole: the case of
+					// the wrong file name puts the role where its identifier
+					// does not say.
+					description, grid, err := EncodeRole(role)
+					if err != nil {
+						t.Fatal(err)
+					}
+					buffer.Write(description)
+					if grid != nil {
+						writeRoleGrid(t, root, strings.TrimSuffix(filepath.Base(relative), ".yaml"), string(grid))
+					}
+				} else if err := Encode(&buffer, value); err != nil {
 					t.Fatal(err)
 				}
 				if err := os.WriteFile(filepath.Join(root, relative), buffer.Bytes(), 0o600); err != nil {
@@ -261,7 +299,12 @@ func TestLoadRolesAndCommandSources(t *testing.T) {
 	}
 }
 
-func TestRoleTargetsMatchObjectCapabilities(t *testing.T) {
+// A role carries any of the prototype's rights on any object, as the
+// prototype's roles do - posting on a document that is never posted - and
+// refuses only a part the object does not have under the prototype's
+// composition: a field of another object, a standard field the kind has not,
+// a key of this platform's own that names no part at all.
+func TestRoleRightsAreCarriedAndPartsFollowThePrototype(t *testing.T) {
 	t.Parallel()
 	catalog, role, _ := roleCatalogFixture(t)
 	constant, enumeration, document, unpostable, independent, recorder, balance, turnover := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
@@ -291,31 +334,32 @@ func TestRoleTargetsMatchObjectCapabilities(t *testing.T) {
 		fieldOperation PermissionOperation
 		valid          bool
 	}{
-		{"constant write", constant, PermissionUpdate, "value", PermissionUpdate, true},
-		{"constant create", constant, PermissionCreate, "", "", false},
-		{"enumeration read", enumeration, PermissionRead, "ref", PermissionRead, true},
-		{"enumeration update", enumeration, PermissionUpdate, "", "", false},
-		{"catalog update", catalog.Catalogs[0].ID, PermissionUpdate, "description", PermissionUpdate, true},
-		{"document create", document, PermissionCreate, "number", PermissionUpdate, true},
-		{"document delete", document, PermissionDelete, "", "", true},
-		{"document post", document, PermissionPost, "posted", PermissionRead, true},
-		{"document undo posting", document, PermissionUndoPosting, "", "", true},
-		{"direct posted update", document, PermissionUpdate, "posted", PermissionUpdate, false},
-		{"posting disabled", unpostable, PermissionPost, "", "", false},
-		{"foreign attribute", document, PermissionRead, catalog.Catalogs[0].Attributes[0].ID.String(), PermissionRead, false},
-		{"independent register", independent, PermissionUpdate, catalog.InformationRegisters[0].Resources[0].ID.String(), PermissionUpdate, true},
-		{"nonperiodic register", independent, PermissionRead, "period", PermissionRead, false},
-		{"register without recorder", independent, PermissionRead, "recorder", PermissionRead, false},
-		{"register record id", independent, PermissionRead, "recordid", PermissionRead, true},
-		{"register immutable id", independent, PermissionUpdate, "recordid", PermissionUpdate, false},
-		{"recorder register", recorder, PermissionUpdate, "period", PermissionUpdate, true},
-		{"register recorder", recorder, PermissionRead, "recorder", PermissionRead, true},
-		{"register active", recorder, PermissionUpdate, "active", PermissionUpdate, true},
-		{"register separate delete", recorder, PermissionDelete, "", "", false},
-		{"accumulation movement", balance, PermissionUpdate, "movementkind", PermissionUpdate, true},
-		{"accumulation resource", balance, PermissionRead, catalog.AccumulationRegisters[0].Resources[0].ID.String(), PermissionRead, true},
-		{"turnover without movement", turnover, PermissionRead, "movementkind", PermissionRead, false},
-		{"accumulation line", turnover, PermissionRead, "linenumber", PermissionRead, true},
+		{"constant write", constant, PermissionUpdate, "", "", true},
+		{"constant insert is carried", constant, PermissionInsert, "", "", true},
+		{"constant has no parts", constant, PermissionRead, "value", PermissionView, false},
+		{"enumeration read", enumeration, PermissionRead, "ref", PermissionView, true},
+		{"enumeration update is carried", enumeration, PermissionUpdate, "", "", true},
+		{"catalog update", catalog.Catalogs[0].ID, PermissionUpdate, "description", PermissionEdit, true},
+		{"catalog owner", catalog.Catalogs[0].ID, PermissionRead, "owner", PermissionView, true},
+		{"document insert", document, PermissionInsert, "number", PermissionEdit, true},
+		{"document posting", document, PermissionPosting, "posted", PermissionView, true},
+		{"posted edited is carried", document, PermissionUpdate, "posted", PermissionEdit, true},
+		{"posting a document never posted is carried", unpostable, PermissionPosting, "", "", true},
+		{"interactive right", document, PermissionInteractivePostingRegular, "", "", true},
+		{"foreign attribute", document, PermissionRead, catalog.Catalogs[0].Attributes[0].ID.String(), PermissionView, false},
+		{"independent register", independent, PermissionUpdate, catalog.InformationRegisters[0].Resources[0].ID.String(), PermissionEdit, true},
+		{"every information register has a period", independent, PermissionRead, "period", PermissionView, true},
+		{"and a recorder", independent, PermissionRead, "recorder", PermissionView, true},
+		{"record id is no part", independent, PermissionRead, "recordid", PermissionView, false},
+		{"totals of an information register are carried", recorder, PermissionTotalsControl, "", "", true},
+		{"register delete is carried", recorder, PermissionDelete, "", "", true},
+		{"record type", balance, PermissionUpdate, "recordtype", PermissionEdit, true},
+		{"our old key for it is no part", balance, PermissionUpdate, "movementkind", PermissionEdit, false},
+		{"turnovers have no record type", turnover, PermissionRead, "recordtype", PermissionView, false},
+		{"accumulation resource", balance, PermissionRead, catalog.AccumulationRegisters[0].Resources[0].ID.String(), PermissionView, true},
+		{"accumulation line", turnover, PermissionRead, "linenumber", PermissionView, true},
+		{"not a right", document, "admin", "", "", false},
+		{"not a right on a part", document, PermissionRead, "number", "admin", false},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -556,12 +600,14 @@ func TestPermissionSchemaShowsStandardFieldsInOrder(t *testing.T) {
 			}
 			continue
 		}
-		if field.Name != field.Key {
-			t.Fatalf("standard field %s is shown as %q", field.Key, field.Name)
-		}
-		keys = append(keys, field.Key)
+		keys = append(keys, field.Key+"="+field.Name+"/"+field.Title["ru"])
 	}
-	if !slices.Equal(keys, []string{"code", "dataversion", "deletionmark", "description", "predefined", "predefineddataname", "ref"}) {
+	// The prototype's composition in its own order, keyed by the English
+	// name in lower case and shown in words.
+	if !slices.Equal(keys, []string{"ref=Ссылка/Ссылка", "deletionmark=ПометкаУдаления/Пометка удаления", "code=Код/Код",
+		"description=Наименование/Наименование", "predefined=Предопределенный/Предопределенный",
+		"predefineddataname=ИмяПредопределенныхДанных/Имя предопределенных данных", "parent=Родитель/Родитель",
+		"isfolder=ЭтоГруппа/Это группа", "owner=Владелец/Владелец"}) {
 		t.Fatalf("standard fields of a catalog shown as %v", keys)
 	}
 }
@@ -589,10 +635,38 @@ func TestLongFieldKeyIsRefusedByTheObject(t *testing.T) {
 	r := cloneRole(role)
 	r.Commands = nil
 	key := strings.Repeat("x", 40)
-	r.Objects[0].Fields = []FieldPermission{{Field: key, Operations: []PermissionOperation{PermissionRead}}}
+	r.Objects[0].Fields = []FieldPermission{{Field: key, Operations: []PermissionOperation{PermissionView}}}
 	value.Roles = []RoleDefinition{r}
 	_, err := NewRuntimeSnapshot(&value, nil)
 	if err == nil || !strings.Contains(err.Error(), "field "+key+" does not belong to object") {
 		t.Fatalf("a long key the object lacks: %v", err)
+	}
+}
+
+// writeRoleGrid puts the grid of rights beside a role's description, where the
+// loader reads it.
+func writeRoleGrid(t *testing.T, root, roleID, grid string) {
+	t.Helper()
+	directory := filepath.Join(root, "metadata", "roles", roleID)
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, RoleRightsFile), []byte(grid), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The standard fields of an accounting register are numbered - the first
+// subconto, its kind - and acc grants rights on them in its roles.
+//
+// Defect caught: a key of letters only, which refused every role of acc that
+// names a subconto.
+func TestStandardKeysMayNumberTheirFields(t *testing.T) {
+	t.Parallel()
+	for key, valid := range map[string]bool{"extdimension1": true, "extdimensiontype3": true,
+		"extdimensiontypes.turnoversonly": true, "1extdimension": false, "ext-dimension": false, "": false} {
+		if validPermissionField(key) != valid {
+			t.Errorf("key %q: valid %v, want %v", key, !valid, valid)
+		}
 	}
 }

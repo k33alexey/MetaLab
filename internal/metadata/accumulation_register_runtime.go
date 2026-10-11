@@ -388,7 +388,7 @@ func (runtime *Runtime) accumulationRecordProperty(ctx context.Context, object *
 		}
 		return bytecode.Boolean(record.Active), nil
 	case propertyName(name, "ВидДвижения", "RecordType") && definition.Kind == AccumulationRegisterBalance:
-		if err := requireFields(ctx, definition.ID, PermissionRead, "movementkind"); err != nil {
+		if err := requireFields(ctx, definition.ID, PermissionRead, "recordtype"); err != nil {
 			return bytecode.Undefined(), err
 		}
 		if record.MovementKind == AccumulationMovementExpense {
@@ -550,7 +550,7 @@ func (runtime *Runtime) setAccumulationRecordProperty(ctx context.Context, objec
 		record.Active = active
 		return nil
 	case propertyName(name, "ВидДвижения", "RecordType") && definition.Kind == AccumulationRegisterBalance:
-		if err := requireFields(ctx, definition.ID, PermissionUpdate, "movementkind"); err != nil {
+		if err := requireFields(ctx, definition.ID, PermissionUpdate, "recordtype"); err != nil {
 			return err
 		}
 		text, ok := assigned.AsString()

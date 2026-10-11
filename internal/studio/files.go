@@ -471,7 +471,12 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 		var value any
 		switch metadata.Kind(kindPart) {
 		case metadata.RoleKind:
-			value, err = metadata.DecodeRole(relative, bytes.NewReader(content), configuration)
+			// The description written as text is read with the grid it
+			// stands beside, as the loader will read it.
+			var files roleFiles
+			if files, err = workspace.readRoleFilesLocked(relative); err == nil || errors.Is(err, ErrSourceNotFound) {
+				value, err = decodeRoleFiles(relative, content, files.grid, configuration)
+			}
 		case metadata.SubsystemKind:
 			value, err = metadata.DecodeSubsystem(relative, bytes.NewReader(content), configuration)
 		case metadata.ConstantKind:
@@ -571,6 +576,13 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 				}
 			} else if metadataID != filenameID {
 				return nil, fmt.Errorf("metadata UUID %s does not match filename UUID %s", metadataID, filenameID)
+			}
+			// A role's description is half of the role: written back from
+			// the whole, it keeps its restrictions and leaves the grid to
+			// the grid's own file.
+			if role, ok := value.(metadata.RoleDefinition); ok {
+				description, _, err := metadata.EncodeRole(role)
+				return description, err
 			}
 			var canonical bytes.Buffer
 			if err := metadata.Encode(&canonical, value); err != nil {
