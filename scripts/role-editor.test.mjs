@@ -5,6 +5,9 @@ import vm from 'node:vm';
 
 const script=readFileSync(new URL('../internal/studio/ui/role-editor.js',import.meta.url),'utf8');
 const context=vm.createContext({structuredClone});
+// Редактор опирается на общие помощники Studio, как в index.html, где
+// studio-common.js подключается первым.
+vm.runInContext(readFileSync(new URL('../internal/studio/ui/studio-common.js',import.meta.url),'utf8'),context);
 vm.runInContext(script,context);
 const create=context.createRoleModel;
 function fixture(){return {role:{id:'role',name:'Продавец',title:{ru:'Продавец'}},schema:{rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'posting',title:'Проведение'}],objects:[{id:'goods',operations:['read','insert','update','delete'],fields:[{key:'ref',operations:['view']},{key:'name',operations:['view','edit']},{key:'part',operations:['view','edit']},{key:'column',parent:'part',operations:['view','edit']}],policyFields:[{key:'ref'},{key:'name'},{key:'part'},{key:'column',parent:'part'}]},{id:'other',operations:['read'],fields:[],policyFields:[]}],parts:{goods:['column','name','part','ref'],other:[]},forms:[{id:'form',commands:[{id:'command'}]}]}};}

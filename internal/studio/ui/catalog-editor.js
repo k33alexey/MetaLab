@@ -34,12 +34,6 @@ function createCatalogModel(source) {
     }
     return names;
   }
-  function uniqueName(base) {
-    const used = usedNames();
-    let index = 1, name = base;
-    while (used.has(name.toLocaleLowerCase())) name = base + (++index);
-    return name;
-  }
   return {
     value() { return structuredClone(catalog); },
     typeKinds, indexingModes, referenceChoices, attributeList,
@@ -53,7 +47,7 @@ function createCatalogModel(source) {
     addAttribute(container) {
       const list = attributeList(container);
       if (!list) return null;
-      const attribute = {id: crypto.randomUUID(), name: uniqueName('НовыйРеквизит'), title: {[source.defaultLanguage]: 'Новый реквизит'}, types: [{kind: 'string', length: 50}]};
+      const attribute = {id: crypto.randomUUID(), name: uniqueName('НовыйРеквизит', usedNames()), title: {[source.defaultLanguage]: 'Новый реквизит'}, types: [{kind: 'string', length: 50}]};
       list.push(attribute);
       return attribute;
     },
@@ -104,7 +98,7 @@ function createCatalogModel(source) {
       attribute.types[index][field] = fieldValue;
     },
     addTablePart() {
-      const part = {id: crypto.randomUUID(), name: uniqueName('НоваяТабличнаяЧасть'), title: {[source.defaultLanguage]: 'Новая табличная часть'}, attributes: []};
+      const part = {id: crypto.randomUUID(), name: uniqueName('НоваяТабличнаяЧасть', usedNames()), title: {[source.defaultLanguage]: 'Новая табличная часть'}, attributes: []};
       catalog.tableParts.push(part);
       return part;
     },
@@ -124,13 +118,10 @@ function createCatalogModel(source) {
 
 function createCatalogEditor(host, onChange) {
   let source, model, selected = {kind: 'catalog'}, titleFieldCleanups = [];
-  function node(tag, text, className) {
-    const element = document.createElement(tag);
-    if (text !== undefined) element.textContent = text;
-    if (className) element.className = className;
-    return element;
-  }
-  function title(item) { return item.title?.[source.defaultLanguage] || Object.values(item.title || {}).find(Boolean) || item.name; }
+  function title(item) { return localizedTitle(item, source.defaultLanguage, source.languages); }
+  /* Подписи в списках показываются на текущем языке Studio и меняются вместе
+     с ним. */
+  StudioLanguage.onChange(() => { if (source) renderBody(); });
   // Structural edits (add/remove, selection change, checkboxes, selects) can
   // afford a full re-render. Free-text typing cannot — recreating the input
   // on every keystroke would drop focus and the cursor position, so a text
@@ -144,40 +135,13 @@ function createCatalogEditor(host, onChange) {
     body.replaceChild(renderSidebar(), body.firstChild);
   }
   function textField(label, value, apply, options = {}) {
-    const wrapper = node('label', undefined, 'catalog-field'), input = node('input');
-    wrapper.append(node('span', label));
-    input.type = options.type || 'text';
-    input.value = value ?? '';
-    if (options.min !== undefined) input.min = options.min;
-    if (options.max !== undefined) input.max = options.max;
-    if (options.maxLength) input.maxLength = options.maxLength;
-    if (options.type === 'number') {
-      input.addEventListener('change', () => { apply(Number(input.value)); rerender(); });
-    } else {
-      input.addEventListener('input', () => { apply(input.value); touch(); });
-    }
-    wrapper.append(input);
-    return wrapper;
+    return labeledField(label, textInput(value, value => { apply(value); if (options.type === 'number') rerender(); else touch(); }, options));
   }
   function selectField(label, value, choices, apply) {
-    const wrapper = node('label', undefined, 'catalog-field'), select = node('select');
-    wrapper.append(node('span', label));
-    for (const [key, text] of choices) {
-      const option = node('option', text);
-      option.value = key;
-      option.selected = key === value;
-      select.append(option);
-    }
-    select.addEventListener('change', () => { apply(select.value); rerender(); });
-    wrapper.append(select);
-    return wrapper;
+    return labeledField(label, selectInput(choices, value, value => { apply(value); rerender(); }));
   }
-  function checkboxField(label, checked, apply) {
-    const wrapper = node('label', undefined, 'catalog-check'), input = node('input');
-    input.type = 'checkbox'; input.checked = checked;
-    input.addEventListener('change', () => { apply(input.checked); rerender(); });
-    wrapper.append(input, node('span', label));
-    return wrapper;
+  function checkField(label, checked, apply) {
+    return checkboxField(label, checked, value => { apply(value); rerender(); });
   }
   function localizedTitleField(target, setTitle) {
     const wrapper = node('label', undefined, 'catalog-field');
@@ -196,7 +160,7 @@ function createCatalogEditor(host, onChange) {
       row.append(textField('Точность', type.precision, value => model.setTypeField(container, attribute.id, index, 'precision', value), {type: 'number', min: 1, max: 32}));
       row.append(textField('Масштаб', type.scale, value => model.setTypeField(container, attribute.id, index, 'scale', value), {type: 'number', min: 0, max: 32}));
     } else if (['enumeration', 'defined-type', 'catalog', 'document'].includes(type.kind)) {
-      const choices = model.referenceChoices(type.kind).map(item => [item.id, item.title?.[source.defaultLanguage] || item.name]);
+      const choices = model.referenceChoices(type.kind).map(item => [item.id, title(item)]);
       row.append(selectField('Ссылка на', type.reference, choices, value => model.setTypeField(container, attribute.id, index, 'reference', value)));
     }
     if (attribute.types.length > 1) {
@@ -212,9 +176,9 @@ function createCatalogEditor(host, onChange) {
     panel.append(node('h3', 'Реквизит'));
     panel.append(textField('Имя', attribute.name, value => model.setAttributeName(container, attribute.id, value), {maxLength: 128}));
     panel.append(localizedTitleField(attribute, (language, value) => model.setAttributeTitle(container, attribute.id, language, value)));
-    panel.append(checkboxField('Проверять заполнение', attribute.fillChecking === 'show-error',
+    panel.append(checkField('Проверять заполнение', attribute.fillChecking === 'show-error',
       value => model.setAttributeFillChecking(container, attribute.id, value)));
-    panel.append(selectField('Индексирование', attribute.indexing || 'dont-index', indexingModes,
+    panel.append(selectField('Индексирование', attribute.indexing || 'dont-index', model.indexingModes,
       value => model.setAttributeIndexing(container, attribute.id, value)));
     const types = node('div', undefined, 'catalog-types');
     types.append(node('div', 'Типы значения', 'catalog-section-title'));
@@ -292,8 +256,8 @@ function createCatalogEditor(host, onChange) {
     code.append(node('div', 'Код', 'catalog-section-title'));
     code.append(selectField('Тип кода', source.catalog.code.type, [['string', 'Строка'], ['number', 'Число']], value => model.setCodeType(value)));
     code.append(textField('Длина кода', source.catalog.code.length, value => model.setCodeLength(value), {type: 'number', min: 0, max: 50}));
-    code.append(checkboxField('Автонумерация', !!source.catalog.code.auto, value => model.setCodeAuto(value)));
-    code.append(checkboxField('Проверять уникальность', !!source.catalog.code.unique, value => model.setCodeUnique(value)));
+    code.append(checkField('Автонумерация', !!source.catalog.code.auto, value => model.setCodeAuto(value)));
+    code.append(checkField('Проверять уникальность', !!source.catalog.code.unique, value => model.setCodeUnique(value)));
     panel.append(code);
     panel.append(textField('Длина наименования', source.catalog.descriptionLength, value => model.setDescriptionLength(value), {type: 'number', min: 0, max: 150}));
     return panel;

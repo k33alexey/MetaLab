@@ -13,10 +13,7 @@ function createProjectModel(source) {
   const configuration = source.configuration;
   configuration.languages ||= [];
   function uniqueCode() {
-    const used = new Set(configuration.languages.map(item => item.code.toLocaleLowerCase()));
-    let index = 2, code = 'lang';
-    while (used.has(code)) code = 'lang' + (index++);
-    return code;
+    return uniqueName('lang', new Set(configuration.languages.map(item => item.code.toLocaleLowerCase())));
   }
   return {
     value() { return structuredClone(configuration); },
@@ -104,50 +101,22 @@ function createProjectModel(source) {
 
 function createProjectEditor(host, onChange) {
   let source, model;
-  function node(tag, text, className) {
-    const element = document.createElement(tag);
-    if (text !== undefined) element.textContent = text;
-    if (className) element.className = className;
-    return element;
-  }
+  /* Подписи объектов показываются на текущем языке Studio и меняются вместе
+     с ним. */
+  StudioLanguage.onChange(() => { if (source) render(); });
   function rerender() { onChange(); render(); }
   function touch() { onChange(); }
-  function control(kind, value, apply, options = {}) {
-    const input = node(kind === 'area' ? 'textarea' : 'input');
-    if (kind !== 'area') input.type = 'text';
-    input.value = value ?? '';
-    if (kind === 'area') input.rows = options.rows || 3;
-    /* Длину ограничивает только то, что ограничено в модели: имя — 255
-       знаков, как у всего, что называется идентификатором. У комментария,
-       поставщика, версии и подписи предела нет ни в справке, ни в
-       конфигураторе (подпись мобильного клиента в sb — 113 КБ). */
-    if (options.maxLength) input.maxLength = options.maxLength;
-    input.placeholder = options.placeholder || '';
-    input.addEventListener('input', () => { apply(input.value); touch(); });
-    return input;
-  }
+  /* Длину ограничивает только то, что ограничено в модели: имя — 255
+     знаков, как у всего, что называется идентификатором. У комментария,
+     поставщика, версии и подписи предела нет ни в справке, ни в
+     конфигураторе (подпись мобильного клиента в sb — 113 КБ). */
   function textField(label, value, apply, options = {}) {
-    const wrapper = node('label', undefined, 'catalog-field');
-    wrapper.append(node('span', label));
-    wrapper.append(control(options.kind || 'input', value, apply, options));
-    return wrapper;
+    return labeledField(label, textInput(value, value => { apply(value); touch(); }, options));
   }
-  /* One text in every language the project has: the language is shown beside
-     its own field, so which translation is being written is never a guess. */
   function localizedField(label, field, options = {}) {
-    const wrapper = node('div', undefined, 'project-localized');
-    wrapper.append(node('span', label, 'project-localized-label'));
-    const rows = node('div', undefined, 'project-localized-rows');
     const stored = source.configuration[field] || {};
-    for (const language of source.configuration.languages) {
-      const row = node('div', undefined, 'project-localized-row');
-      row.append(node('span', language.code, 'project-language-chip'));
-      row.append(control(options.kind || 'input', stored[language.code],
-        value => model.setText(field, language.code, value), options));
-      rows.append(row);
-    }
-    wrapper.append(rows);
-    return wrapper;
+    return localizedTextField(label, source.configuration.languages, code => stored[code],
+      (code, value) => { model.setText(field, code, value); touch(); }, options);
   }
   /* Умолчание называет другой объект конфигурации, поэтому оно выбирается из
      того, что в конфигурации есть, а не набирается руками: набранный
@@ -158,41 +127,21 @@ function createProjectEditor(host, onChange) {
      форма, которая не откроется; молча выбросить его значило бы потерять
      единственный след того, что имелось в виду, а показать его — единственный
      способ дать его починить. */
-  /* Язык показывается своим синонимом на себе самом: список, где один язык
-     написан на другом, читается как ошибка. Без синонима остаётся имя —
-     пустая строка в списке языков хуже технической. */
-  function languageTitle(language) {
-    const text = language.title;
-    if (typeof text === 'string') return text || language.code;
-    return (text && (text[language.code] || text[source.configuration.defaultLanguage]
-      || Object.values(text).find(value => value))) || language.name || language.code;
-  }
   function presentation(choice) {
-    return choice.title?.[source.configuration.defaultLanguage] || choice.name || choice.id;
+    return localizedTitle(choice, source.configuration.defaultLanguage, source.configuration.languages) || choice.id;
   }
   function referenceField(label, field, choices) {
-    const wrapper = node('label', undefined, 'catalog-field');
-    wrapper.append(node('span', label));
-    const select = node('select');
     const stored = source.configuration[field] || '';
-    const nothing = node('option', 'Не задано');
-    nothing.value = '';
-    select.append(nothing);
-    for (const choice of choices) {
-      const option = node('option', presentation(choice));
-      option.value = choice.id;
-      select.append(option);
-    }
+    const select = selectInput([['', 'Не задано'], ...choices.map(choice => [choice.id, presentation(choice)])], stored,
+      value => { model.setField(field, value); rerender(); });
     if (stored && !choices.some(choice => choice.id === stored)) {
       const missing = node('option', 'Не найдено в конфигурации: ' + stored, 'project-default-missing');
       missing.value = stored;
       select.append(missing);
       select.classList.add('project-default-broken');
+      select.value = stored;
     }
-    select.value = stored;
-    select.addEventListener('change', () => { model.setField(field, select.value); rerender(); });
-    wrapper.append(select);
-    return wrapper;
+    return labeledField(label, select);
   }
   /* Ролей выдаётся сколько угодно, поэтому это не выбор одной строки, а список
      с отметками: видно сразу и что выдано, и что можно выдать. */
@@ -200,18 +149,8 @@ function createProjectEditor(host, onChange) {
      Пустое значение названо своим смыслом: платформа делает по-своему, а не
      вопрос остался без ответа. */
   function choiceField(label, field, options) {
-    const wrapper = node('label', undefined, 'catalog-field');
-    wrapper.append(node('span', label));
-    const select = node('select');
-    for (const [value, text] of options) {
-      const option = node('option', text);
-      option.value = value;
-      select.append(option);
-    }
-    select.value = source.configuration[field] || '';
-    select.addEventListener('change', () => { model.setField(field, select.value); rerender(); });
-    wrapper.append(select);
-    return wrapper;
+    return labeledField(label, selectInput(options, source.configuration[field] || '',
+      value => { model.setField(field, value); rerender(); }));
   }
   /* Словарей может быть сколько угодно, и каждый из них — либо общий макет,
      либо константа: вид написан рядом с именем, чтобы не гадать, что выбрано. */
@@ -230,14 +169,9 @@ function createProjectEditor(host, onChange) {
     }
     if (rows.length === 0) list.append(node('span', 'В конфигурации нет ни макетов, ни констант', 'project-empty'));
     for (const item of rows) {
-      const row = node('label', undefined, item.missing ? 'project-role project-default-missing' : 'project-role');
-      const check = node('input');
-      check.type = 'checkbox';
-      check.checked = used(item);
-      check.addEventListener('change', () => { model.setDictionary(item.kind, item.id, check.checked); rerender(); });
-      row.append(check);
-      row.append(node('span', item.kind === 'constants' ? 'константа' : 'макет', 'project-language-chip'));
-      row.append(node('span', item.title));
+      const row = checkboxField(item.title, used(item), checked => { model.setDictionary(item.kind, item.id, checked); rerender(); },
+        item.missing ? 'project-role project-default-missing' : 'project-role');
+      row.firstChild.after(node('span', item.kind === 'constants' ? 'константа' : 'макет', 'project-language-chip'));
       list.append(row);
     }
     wrapper.append(list);
@@ -255,27 +189,14 @@ function createProjectEditor(host, onChange) {
     }
     if (rows.length === 0) list.append(node('span', 'В конфигурации нет ни одной роли', 'project-empty'));
     for (const role of rows) {
-      const row = node('label', undefined, role.missing ? 'project-role project-default-missing' : 'project-role');
-      const check = node('input');
-      check.type = 'checkbox';
-      check.checked = granted.includes(role.id);
-      check.addEventListener('change', () => { model.setRoleGranted(field, role.id, check.checked); rerender(); });
-      row.append(check);
-      row.append(node('span', role.title));
-      list.append(row);
+      list.append(checkboxField(role.title, granted.includes(role.id), checked => { model.setRoleGranted(field, role.id, checked); rerender(); },
+        role.missing ? 'project-role project-default-missing' : 'project-role'));
     }
     wrapper.append(list);
     return wrapper;
   }
   function checkField(label, field) {
-    const wrapper = node('label', undefined, 'project-role');
-    const check = node('input');
-    check.type = 'checkbox';
-    check.checked = Boolean(source.configuration[field]);
-    check.addEventListener('change', () => { model.setFlag(field, check.checked); touch(); });
-    wrapper.append(check);
-    wrapper.append(node('span', label));
-    return wrapper;
+    return checkboxField(label, Boolean(source.configuration[field]), checked => { model.setFlag(field, checked); touch(); }, 'project-role');
   }
   function purposesField(label) {
     const wrapper = node('div', undefined, 'project-localized');
@@ -283,28 +204,14 @@ function createProjectEditor(host, onChange) {
     const list = node('div', undefined, 'project-roles');
     const chosen = source.configuration.usePurposes || [];
     for (const [value, text] of [['platform-application', 'Приложение платформы'], ['mobile-platform-application', 'Приложение мобильной платформы']]) {
-      const row = node('label', undefined, 'project-role');
-      const check = node('input');
-      check.type = 'checkbox';
-      check.checked = chosen.includes(value);
-      check.addEventListener('change', () => { model.setPurpose(value, check.checked); touch(); });
-      row.append(check);
-      row.append(node('span', text));
-      list.append(row);
+      list.append(checkboxField(text, chosen.includes(value), checked => { model.setPurpose(value, checked); touch(); }, 'project-role'));
     }
     wrapper.append(list);
     return wrapper;
   }
   function listField(label, field, placeholder) {
-    const wrapper = node('label', undefined, 'catalog-field');
-    wrapper.append(node('span', label));
-    const area = node('textarea');
-    area.rows = 3;
-    area.placeholder = placeholder || '';
-    area.value = (source.configuration[field] || []).join('\n');
-    area.addEventListener('input', () => { model.setList(field, area.value); touch(); });
-    wrapper.append(area);
-    return wrapper;
+    return labeledField(label, textInput((source.configuration[field] || []).join('\n'),
+      value => { model.setList(field, value); touch(); }, {kind: 'area', placeholder}));
   }
   function answersField(label, field) {
     const wrapper = node('div', undefined, 'project-localized');
@@ -321,10 +228,7 @@ function createProjectEditor(host, onChange) {
         use.checked = answer.use;
         use.title = 'Используется';
         use.addEventListener('change', () => { answer.use = use.checked; save(); });
-        const name = node('input');
-        name.type = 'text';
-        name.value = answer.name;
-        name.addEventListener('input', () => { answer.name = name.value.trim(); save(); });
+        const name = textInput(answer.name, value => { answer.name = value.trim(); save(); });
         const remove = node('button', 'Убрать');
         remove.type = 'button';
         remove.addEventListener('click', () => { answers.splice(index, 1); save(); draw(); });
@@ -375,18 +279,10 @@ function createProjectEditor(host, onChange) {
     identity.append(localizedField('Синоним', 'title'));
     identity.append(textField('Комментарий', source.configuration.comment,
       value => model.setField('comment', value)));
-    const defaultLanguageField = node('label', undefined, 'catalog-field');
-    defaultLanguageField.append(node('span', 'Язык по умолчанию'));
-    const defaultLanguageSelect = node('select');
-    for (const language of source.configuration.languages) {
-      const option = node('option', languageTitle(language));
-      option.value = language.code;
-      option.selected = language.code === source.configuration.defaultLanguage;
-      defaultLanguageSelect.append(option);
-    }
-    defaultLanguageSelect.addEventListener('change', () => { model.setDefaultLanguage(defaultLanguageSelect.value); rerender(); });
-    defaultLanguageField.append(defaultLanguageSelect);
-    identity.append(defaultLanguageField);
+    const languages = source.configuration.languages;
+    identity.append(labeledField('Язык по умолчанию', selectInput(
+      languages.map(language => [language.code, languageTitle(language, source.configuration.defaultLanguage, languages)]),
+      source.configuration.defaultLanguage, value => { model.setDefaultLanguage(value); rerender(); })));
     panel.append(identity);
 
     const about = section('Что это за конфигурация');

@@ -5,6 +5,9 @@ import vm from 'node:vm';
 
 const script=readFileSync(new URL('../internal/studio/ui/project-editor.js',import.meta.url),'utf8');
 const context=vm.createContext({structuredClone});
+// Редактор опирается на общие помощники Studio, как в index.html, где
+// studio-common.js подключается первым.
+vm.runInContext(readFileSync(new URL('../internal/studio/ui/studio-common.js',import.meta.url),'utf8'),context);
 vm.runInContext(script,context);
 const create=context.createProjectModel;
 function fixture(){return {configuration:{format:1,id:'p1',name:'SalesDemo',title:{ru:'Продажи и склад'},defaultLanguage:'ru',languages:[

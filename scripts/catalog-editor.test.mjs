@@ -5,6 +5,9 @@ import vm from 'node:vm';
 
 const script=readFileSync(new URL('../internal/studio/ui/catalog-editor.js',import.meta.url),'utf8');
 const context=vm.createContext({structuredClone,crypto});
+// Редактор опирается на общие помощники Studio, как в index.html, где
+// studio-common.js подключается первым.
+vm.runInContext(readFileSync(new URL('../internal/studio/ui/studio-common.js',import.meta.url),'utf8'),context);
 vm.runInContext(script,context);
 const create=context.createCatalogModel;
 function fixture(){return {

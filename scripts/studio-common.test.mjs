@@ -10,7 +10,7 @@ vm.runInContext(script,context);
 // classic <script> tags in a real browser, but not exposed as a property of
 // the vm context on its own. Expose it explicitly for this test file.
 vm.runInContext('globalThis.StudioLanguage = StudioLanguage;',context);
-const {StudioLanguage,createLocalizedTitleField}=context;
+const {StudioLanguage,createLocalizedTitleField,localizedTitle,languageTitle,uniqueName,textInput}=context;
 
 // A minimal DOM stub: just enough createElement/append/dataset surface for
 // studio-common.js to build its field and dialog, without a real DOM.
@@ -25,7 +25,8 @@ function makeDocumentStub(){
       set title(value){this._title=value;},get title(){return this._title;},
       set className(value){this._class=value;},get className(){return this._class;},
       set method(value){this._method=value;},
-      set maxLength(value){this._maxLength=value;},
+      set maxLength(value){this._maxLength=value;},get maxLength(){return this._maxLength;},
+      setAttribute(name,value){this.attributes={...this.attributes,[name]:value};},
       append(...nodes){this.children.push(...nodes);},
       addEventListener(name,handler){(listeners[name]||=[]).push(handler);},
       dispatch(name){for(const handler of listeners[name]||[])handler();},
@@ -80,4 +81,51 @@ test('switching StudioLanguage refreshes every mounted field',()=>{
   assert.equal(input.value,'Products');
   StudioLanguage.set('ru');
   field.destroy();
+});
+
+// Подпись показывается на текущем языке Studio, а без перевода на нём — по
+// цепочке проекта (язык по умолчанию, затем порядок языков), и только потом —
+// именем. Дефект: редактор берёт язык по умолчанию и первый попавшийся
+// перевод, а переключатель языка Studio на подписи не действует.
+test('a title follows the Studio language, then the project chain, then the name',()=>{
+  const languages=[{code:'ru'},{code:'de'},{code:'en'}];
+  StudioLanguage.set('en');
+  assert.equal(localizedTitle({name:'Goods',title:{ru:'Товары',en:'Products'}},'ru',languages),'Products');
+  assert.equal(localizedTitle({name:'Goods',title:{en:'  ',ru:'Товары'}},'ru',languages),'Товары');
+  assert.equal(localizedTitle({name:'Goods',title:{en:'',de:'Waren',ar:'بضائع'}},'ru',languages),'Waren');
+  assert.equal(localizedTitle({name:'Goods',title:{}},'ru',languages),'Goods');
+  StudioLanguage.set('ru');
+  assert.equal(localizedTitle({name:'Goods',title:{ru:'Товары',en:'Products'}},'ru',languages),'Товары');
+});
+
+// Язык называется на самом себе, а не на текущем языке Studio и не на языке
+// по умолчанию: список, где один язык написан на другом, читается как ошибка.
+test('a language is named on itself, then by its name, then by its code',()=>{
+  const languages=[{code:'ru'},{code:'en'}];
+  StudioLanguage.set('ru');
+  assert.equal(languageTitle({code:'en',name:'English',title:{ru:'Английский',en:'English (US)'}},'ru',languages),'English (US)');
+  assert.equal(languageTitle({code:'en',name:'English',title:{}},'ru',languages),'English');
+  assert.equal(languageTitle({code:'en',name:'',title:null},'ru',languages),'en');
+});
+
+// Имя сверяется без учёта регистра, как имена конфигурации.
+test('a unique name skips taken names whatever their case',()=>{
+  assert.equal(uniqueName('Поле',new Set()),'Поле');
+  assert.equal(uniqueName('Поле',new Set(['поле','поле2'])),'Поле3');
+});
+
+// Предел длины ставится, только если он назван: у комментария его нет.
+// Число применяется по завершении ввода и числом, текст — на каждой букве.
+test('a text control limits only when told to and applies numbers as numbers',()=>{
+  let applied;
+  const free=textInput('x',value=>applied=value);
+  assert.equal(free.maxLength,undefined);
+  free.value='abc';free.dispatch('input');
+  assert.equal(applied,'abc');
+  assert.equal(textInput('x',()=>{},{maxLength:255}).maxLength,255);
+  const number=textInput(5,value=>applied=value,{type:'number'});
+  number.value='7';number.dispatch('input');
+  assert.equal(applied,'abc');
+  number.dispatch('change');
+  assert.equal(applied,7);
 });

@@ -8,9 +8,7 @@ function createRoleOverviewModel(source) {
   const entries = source.roles || [];
   const objects = new Map((source.schema.objects || []).map(item => [item.id, item]));
   const operators = {eq:'Равно',ne:'Не равно',in:'В списке','not-in':'Не в списке'};
-  function localized(item) {
-    return item.title?.[source.defaultLanguage] || Object.values(item.title || {}).find(Boolean) || item.name;
-  }
+  function localized(item) { return localizedTitle(item, source.defaultLanguage, source.languages); }
   function objectTitle(id) {
     const object = objects.get(id);
     return object ? localized(object) : 'удалённый объект';
@@ -170,12 +168,9 @@ function createRoleOverview(host, openRole) {
   /* Подписи прав и видов — с сервера, из тех же перечней, что у редактора роли. */
   const caption = key => source.schema.rights?.find(item => item.key === key)?.title || key;
   const kindTitle = kind => source.kindTitles?.[kind] || kind;
-  function node(tag, text, className) {
-    const element = document.createElement(tag);
-    if (text !== undefined) element.textContent = text;
-    if (className) element.className = className;
-    return element;
-  }
+  /* Подписи показываются на текущем языке Studio и меняются вместе с ним;
+     модель запоминает подписи полей, поэтому строится заново. */
+  StudioLanguage.onChange(() => { if (!source) return; model = createRoleOverviewModel(source); renderBody(); });
   function renderTree(query = '') {
     tree.replaceChildren();
     const groups = new Map(), needle = query.toLocaleLowerCase().trim();

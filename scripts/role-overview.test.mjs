@@ -5,7 +5,11 @@ import vm from 'node:vm';
 
 const script=readFileSync(new URL('../internal/studio/ui/role-overview.js',import.meta.url),'utf8');
 const context=vm.createContext({structuredClone});
+// Редактор опирается на общие помощники Studio, как в index.html, где
+// studio-common.js подключается первым.
+vm.runInContext(readFileSync(new URL('../internal/studio/ui/studio-common.js',import.meta.url),'utf8'),context);
 vm.runInContext(script,context);
+vm.runInContext('globalThis.StudioLanguage = StudioLanguage;',context);
 const create=context.createRoleOverviewModel;
 // Модель выполняется в отдельном realm виртуальной машины: её массивы и
 // объекты не проходят по ссылочному сравнению deepStrictEqual, поэтому
@@ -146,4 +150,20 @@ test('the Studio page loads the overview and opens it from the roles group node'
 test('the overview offers all three tables of the roles group node',()=>{
   const view=script.slice(script.indexOf('function createRoleOverview('));
   for(const label of ['Все роли','Ограничения доступа','Шаблоны политик'])assert.ok(view.includes(label),label);
+});
+
+// Подписи обзора показываются на текущем языке Studio, как в каждом
+// редакторе. Дефект: свой выбор перевода — язык по умолчанию и первый
+// попавшийся, мимо переключателя языка Studio.
+test('object and field titles follow the Studio language',()=>{
+  const source=fixture();
+  source.languages=[{code:'ru'},{code:'en'}];
+  source.schema.objects[0].title={ru:'Товары',en:'Goods'};
+  source.schema.objects[0].policyFields[1].title={ru:'Владелец',en:'Owner'};
+  context.StudioLanguage.set('en');
+  try {
+    const model=create(source);
+    assert.equal(model.title(model.objects().find(item=>item.id==='goods')),'Goods');
+    assert.match(model.restrictions('goods')[0].field,/Owner/);
+  } finally { context.StudioLanguage.set('ru'); }
 });

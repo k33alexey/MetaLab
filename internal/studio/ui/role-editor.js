@@ -179,27 +179,18 @@ function createRoleEditor(host, onChange) {
      правке одного из двух. */
   const caption = key => source.schema.rights.find(item => item.key === key)?.title || key;
   const kindTitle = kind => source.kindTitles?.[kind] || kind;
-  function node(tag, text, className) {
-    const element = document.createElement(tag);
-    if(text !== undefined)element.textContent=text;
-    if(className)element.className=className;
-    return element;
-  }
-  function title(item) { return item.title?.[source.defaultLanguage] || Object.values(item.title || {}).find(Boolean) || item.name; }
+  function title(item) { return localizedTitle(item, source.defaultLanguage, source.languages); }
+  /* Подписи объектов и полей показываются на текущем языке Studio и
+     меняются вместе с ним. */
+  StudioLanguage.onChange(() => { if (!source) return; renderTree(host.querySelector('.role-sidebar input')?.value || ''); renderTemplates(); renderPanel(); });
   function changed() { warning.hidden=!model.hasUnavailable(); onChange(); }
   function checkbox(text, checked, action, disabled=false) {
-    const label=node('label',undefined,'role-check'), input=node('input');
-    input.type='checkbox'; input.checked=checked; input.disabled=disabled;
-    input.addEventListener('change',()=>{const focus=input.getAttribute('aria-label')||text;action(input.checked);changed();renderPanel();for(const candidate of panel.querySelectorAll('input'))if((candidate.getAttribute('aria-label')||candidate.parentElement.textContent)===focus){candidate.focus();break;}});
-    label.append(input,node('span',text)); return label;
+    const label=checkboxField(text,checked,enabled=>{const focus=label.firstChild.getAttribute('aria-label')||text;action(enabled);changed();renderPanel();for(const candidate of panel.querySelectorAll('input'))if((candidate.getAttribute('aria-label')||candidate.parentElement.textContent)===focus){candidate.focus();break;}},'role-check',disabled);
+    return label;
   }
   const operators = {eq:'Равно',ne:'Не равно',in:'В списке','not-in':'Не в списке'};
   function select(options, current, action, label) {
-    const element=node('select');
-    for(const [key,text] of options){const option=node('option',text);option.value=key;element.append(option);}
-    element.value=current; if(label)element.setAttribute('aria-label',label);
-    element.addEventListener('change',()=>{action(element.value);changed();renderPanel();});
-    return element;
+    return selectInput(options,current,value=>{action(value);changed();renderPanel();},label);
   }
   // Literal operands are entered as one line: a single value for Равно/Не равно,
   // a comma-separated list for В списке. Session parameters are picked from the

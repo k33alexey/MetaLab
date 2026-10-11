@@ -19,7 +19,10 @@ type ManagedFormSource struct {
 	Revision  string               `json:"revision"`
 	Form      metadata.ManagedForm `json:"form"`
 	Languages []FormLanguage       `json:"languages"`
-	DataPaths []FormDataPath       `json:"dataPaths"`
+	// DefaultLanguage is the project's: the designer shows a title by the
+	// same chain as the server and writes a new command's title in it.
+	DefaultLanguage string         `json:"defaultLanguage"`
+	DataPaths       []FormDataPath `json:"dataPaths"`
 }
 
 type FormLanguage struct {
@@ -65,7 +68,8 @@ func (workspace *Workspace) readManagedForm(relative string) (ManagedFormSource,
 	}
 	form := value.(metadata.ManagedForm)
 	return ManagedFormSource{Path: relative, Revision: file.Revision, Form: form,
-		Languages: roleLanguages(configuration), DataPaths: workspace.formDataPaths(relative, configuration)}, nil
+		Languages: roleLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
+		DataPaths: workspace.formDataPaths(relative, configuration)}, nil
 }
 
 func (workspace *Workspace) SaveManagedForm(relative string, form metadata.ManagedForm, expectedRevision string) (ManagedFormSource, error) {

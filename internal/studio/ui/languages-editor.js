@@ -14,26 +14,12 @@
    ad-hoc buttons duplicated inside each panel. */
 function createLanguagesEditor(host, onChange) {
   let source, model, selected = null;
-  function node(tag, text, className) {
-    const element = document.createElement(tag);
-    if (text !== undefined) element.textContent = text;
-    if (className) element.className = className;
-    return element;
-  }
-  function rerender() { onChange(); render(); }
   function touch() { onChange(); }
+  /* Предел — только тот, что есть в модели: имя языка — 255 знаков, у
+     комментария предела нет. */
   function textField(label, value, apply, options = {}) {
-    const wrapper = node('label', undefined, 'catalog-field'), input = node('input');
-    wrapper.append(node('span', label));
-    input.type = 'text';
-    input.value = value ?? '';
-    input.disabled = !!options.disabled;
-    /* Предел — только тот, что есть в модели: имя языка — 255 знаков, у
-       комментария предела нет. */
-    if (!options.unbounded) input.maxLength = options.maxLength || 255;
-    input.addEventListener('input', () => { apply(input.value); touch(); });
-    wrapper.append(input);
-    return wrapper;
+    return labeledField(label, textInput(value, value => { apply(value); touch(); },
+      {maxLength: options.unbounded ? undefined : options.maxLength || 255, disabled: options.disabled}));
   }
   // Passive fallback only: reachable if the editor is reopened (e.g. after
   // an external file change) without a specific language re-selected yet.
@@ -45,12 +31,9 @@ function createLanguagesEditor(host, onChange) {
     return panel;
   }
   /* Синоним языка локализован, как у всякого объекта, и показывается на себе
-     самом: список, где один язык написан на другом, читается как ошибка. */
+     самом — как в списке языков у сервера. */
   function title(language) {
-    const text = language.title;
-    if (typeof text === 'string') return text || language.code;
-    return (text && (text[language.code] || Object.values(text).find(value => value)))
-      || language.name || language.code;
+    return languageTitle(language, source.configuration.defaultLanguage, source.configuration.languages);
   }
   function renderLanguage(language) {
     const locked = language.code === 'en';
@@ -61,23 +44,9 @@ function createLanguagesEditor(host, onChange) {
     /* Синоним — по полю на каждый настроенный язык, как всякий читаемый
        человеком текст конфигурации: язык проекта называется на всех языках
        проекта, и первым стоит он сам. */
-    const synonym = node('div', undefined, 'project-localized');
-    synonym.append(node('span', 'Синоним', 'project-localized-label'));
-    const rows = node('div', undefined, 'project-localized-rows');
     const stored = (language.title && typeof language.title === 'object') ? language.title : {};
-    for (const item of source.configuration.languages) {
-      const row = node('div', undefined, 'project-localized-row');
-      row.append(node('span', item.code, 'project-language-chip'));
-      const input = node('input');
-      input.type = 'text';
-      input.value = stored[item.code] ?? '';
-      input.disabled = locked;
-      input.addEventListener('input', () => { model.setLanguageTitle(language.code, item.code, input.value); touch(); });
-      row.append(input);
-      rows.append(row);
-    }
-    synonym.append(rows);
-    panel.append(synonym);
+    panel.append(localizedTextField('Синоним', source.configuration.languages, code => stored[code],
+      (code, value) => { model.setLanguageTitle(language.code, code, value); touch(); }, {disabled: locked}));
     panel.append(textField('Комментарий', language.comment,
       value => model.setLanguageField(language.code, 'comment', value), {disabled: locked, unbounded: true}));
     if (locked) panel.append(node('div', 'Всегда доступен, нельзя изменить или удалить', 'catalog-uuid'));
