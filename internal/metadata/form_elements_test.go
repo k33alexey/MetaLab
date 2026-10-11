@@ -377,12 +377,13 @@ func TestAFieldRefusesWhatIsWrongInHowItIsEdited(t *testing.T) {
 // Defect caught: the 766 data paths of the exports that the earlier rule
 // refused - 372 with "~", 290 with an index, the number and the joined
 // paths - refusing their forms; a button's path refused; a broken path, an
-// empty index or a name starting with a digit accepted.
+// empty index or a name starting with a digit accepted; an index or a
+// number with a 0 or a 9 in it refused.
 func TestTheDataPathOfAnElementIsTakenAsThePrototypeWritesIt(t *testing.T) {
 	t.Parallel()
 	for _, path := range []string{
 		"Объект.Наименование", "~Список.ШагБюджетногоПроцесса", "ОбъектПрототип[0].Владелец", "Объект.ОбработчикиОбновления[0].Идентификатор",
-		"КомпоновщикНастроек.Settings.ConditionalAppearance[0].Appearance.Parameter", "Таблица[0][1].Поле", "25", "~Список.Code~Список.Код",
+		"КомпоновщикНастроек.Settings.ConditionalAppearance[0].Appearance.Parameter", "Таблица[0][1].Поле", "Таблица[109].Поле", "25", "109", "~Список.Code~Список.Код",
 	} {
 		if issues := validateElementDataPath("data_path", path); len(issues) != 0 {
 			t.Errorf("%q refused: %v", path, issues)
@@ -1644,8 +1645,8 @@ func TestAFieldKeepsItsChoiceList(t *testing.T) {
 //
 // Defect caught: a choice list kept on a label field or a check box; a value
 // that does not say its kind, read as an empty one; a value of a type the
-// platform defines without its type, with spaces or with an object; a
-// presentation in no printable characters.
+// platform defines without its type or with an empty one, with spaces or
+// with an object; a presentation in no printable characters.
 func TestAFieldRefusesAWrongChoiceList(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
@@ -1655,6 +1656,7 @@ func TestAFieldRefusesAWrongChoiceList(t *testing.T) {
 		"вид не назван":  {"kind: input-field, choice_list: [{value: {kind: \"\", data: \"\"}}]", "items[0].choice_list[0].value.kind must be named"},
 		"без типа":       {"kind: input-field, choice_list: [{value: {kind: platform, data: Active}}]", "items[0].choice_list[0].value.data must be the type and the value"},
 		"без значения":   {"kind: input-field, choice_list: [{value: {kind: platform, data: ent:AccountType.}}]", "items[0].choice_list[0].value.data must be the type and the value"},
+		"тип пустой":     {"kind: input-field, choice_list: [{value: {kind: platform, data: .Active}}]", "items[0].choice_list[0].value.data must be the type and the value"},
 		"с пробелом":     {"kind: input-field, choice_list: [{value: {kind: platform, data: ent:Account Type.Active}}]", "items[0].choice_list[0].value.data must be the type and the value"},
 		"с объектом":     {"kind: input-field, choice_list: [{value: {kind: platform, data: ent:AccountType.Active, object: c0de0000-0000-4000-8000-000000000070}}]", "items[0].choice_list[0].value.data must be the type and the value"},
 		"представление":  {"kind: radio-button-field, choice_list: [{value: {kind: number, data: \"1\"}, presentation: {ru: \"\\x01\"}}]", "items[0].choice_list[0].presentation.ru must say something in printable characters"},
@@ -3174,5 +3176,96 @@ func TestWhatOnlyAButtonHasStandsOnAButton(t *testing.T) {
 	form := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Группа, kind: usual-group, default_button: true}\n")
 	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(form), managedFormConfiguration()); err == nil || !strings.Contains(err.Error(), "items[0] has what only a button has") {
 		t.Errorf("a default group read from a file: %v", err)
+	}
+}
+
+// Every name a form writes by an identifier is taken up to the 255 letters
+// the designer allows, and refused one letter past it: the table of a group
+// and of a command, the source of commands of a bar, the group of user
+// settings of a list, a parameter of the form and of the data of a list, a
+// context menu, the handler of an event, the table of an addition and each
+// part of a value by name.
+//
+// Defect caught: a limit one letter short, refusing at load a form the
+// designer saved with a name of exactly 255 letters.
+func TestNamesOfAFormAreTakenUpTo255Letters(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	menu := mustUUID(t, "c0de0000-0000-4000-8000-000000990170")
+	for _, place := range []struct {
+		what   string
+		issues func(name string) []string
+	}{
+		{"associated_table", func(name string) []string {
+			return validateGroupProperties("items[0]", GroupProperties{AssociatedTable: name}, FormElementUsualGroup, configuration)
+		}},
+		{"command_source", func(name string) []string {
+			return validateGroupProperties("items[0]", GroupProperties{CommandSource: "Items." + name}, FormElementCommandBar, configuration)
+		}},
+		{"commands[0].associated_table", func(name string) []string {
+			return validateFormCommandProperties("commands[0]", ManagedFormCommand{AssociatedTable: name}, configuration)
+		}},
+		{"user_settings_group", func(name string) []string {
+			return validateTableDynamicList("items[0]", TableDynamicList{UserSettingsGroup: name})
+		}},
+		{"parameters[0].name", func(name string) []string {
+			return validateFormParameters([]FormParameter{{Name: name}})
+		}},
+		{"data_parameters[0].name", func(name string) []string {
+			return validateListSchema("dynamic_list", DynamicListSettings{DataParameters: []CompositionParameter{{Name: name}}})
+		}},
+		{"context_menu.name", func(name string) []string {
+			return validateAttachedMenu("items[0].context_menu", FormAttachedMenu{ID: menu, Name: name}, false, false)
+		}},
+		{"events.on-open", func(name string) []string {
+			return validateFormEvents("form", map[FormEvent]string{"on-open": name}, formEvents, "a form")
+		}},
+		{"addition_source", func(name string) []string {
+			items := "  - {id: c0de0000-0000-4000-8000-000000990171, name: " + name + ", kind: table}\n" +
+				"  - {id: c0de0000-0000-4000-8000-000000990172, name: Поиск, kind: search-string-addition, addition_source: " + name + "}\n"
+			if _, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration); err != nil {
+				return []string{err.Error()}
+			}
+			return nil
+		}},
+		{"predefined value", func(name string) []string {
+			for _, value := range []string{"Справочник." + name + ".Основной", "Справочник.Склады." + name} {
+				if _, _, ok := parsePredefinedValue(value); !ok {
+					return []string{"predefined value " + value + " not parsed"}
+				}
+			}
+			return nil
+		}},
+	} {
+		refused := func(name string) bool {
+			for _, issue := range place.issues(name) {
+				if strings.Contains(issue, place.what) {
+					return true
+				}
+			}
+			return false
+		}
+		if refused(nameAt(maxNameLength)) {
+			t.Errorf("%s of %d letters refused: %v", place.what, maxNameLength, place.issues(nameAt(maxNameLength)))
+		}
+		if !refused(nameAt(maxNameLength + 1)) {
+			t.Errorf("%s of %d letters taken", place.what, maxNameLength+1)
+		}
+	}
+}
+
+// A field is a field and nothing else is; a kind the model does not know
+// holds nothing and stands in nothing.
+//
+// Defect caught: the application drawing a group as a field or a field as
+// none; the classes numbered from zero, so that a kind of no class reads as
+// the first class and a usual group takes an element no one knows.
+func TestAKindOfElementSaysWhatItIs(t *testing.T) {
+	t.Parallel()
+	if !FormElementInputField.IsField() || FormElementUsualGroup.IsField() || FormElementKind("unknown").IsField() {
+		t.Fatal("IsField")
+	}
+	if FormElementKind("unknown").Holds(FormElementInputField) || FormElementUsualGroup.Holds(FormElementKind("unknown")) {
+		t.Fatal("a kind of no class holds or is held")
 	}
 }

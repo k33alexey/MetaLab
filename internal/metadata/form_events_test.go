@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -149,6 +150,25 @@ func TestAnEventRefusesWhatIsWrong(t *testing.T) {
 	}
 }
 
+// Of several events refused on one holder, the refusals come in the order
+// of the names of the events, whatever order the map gives them in.
+//
+// Defect caught: the refusals of one form in a different order from one load
+// to the next, or not in the order of the names.
+func TestTheRefusedEventsComeInTheOrderOfTheirNames(t *testing.T) {
+	t.Parallel()
+	events := map[FormEvent]string{"OnOpen": "ПриОткрытии", "BeforeClose": "ПередЗакрытием", "OnClose": "ПриЗакрытии", "AfterWrite": "ПослеЗаписи"}
+	want := []string{
+		"form.events.AfterWrite is not an event of a form", "form.events.BeforeClose is not an event of a form",
+		"form.events.OnClose is not an event of a form", "form.events.OnOpen is not an event of a form",
+	}
+	for range 20 {
+		if issues := validateFormEvents("form", events, formEvents, "a form"); !slices.Equal(issues, want) {
+			t.Fatalf("issues = %q, want %q", issues, want)
+		}
+	}
+}
+
 // An event of a form its main attribute does not raise, and an event written
 // by its identifier, are noted at load: their handlers are never called. An
 // event the form raises by its main attribute is not.
@@ -160,7 +180,9 @@ func TestAnEventRefusesWhatIsWrong(t *testing.T) {
 // common forms;
 // an attribute of a catalog that is not the main one taken as making the
 // form raise the writing; a note on every form of a catalog that
-// handles its own writing, burying the real ones.
+// handles its own writing, burying the real ones; the notes of one form in
+// a different order from one load to the next, or not in the order of the
+// names of the events.
 func TestEventsAFormDoesNotRaiseAreNoted(t *testing.T) {
 	t.Parallel()
 	for name, test := range map[string]struct {
@@ -175,6 +197,12 @@ func TestEventsAFormDoesNotRaiseAreNoted(t *testing.T) {
 				Written: "ПриЧтенииНаСервере"}}},
 		"не вызывается": {events: "events: {before-write-at-server: ПередЗаписьюНаСервере}\n", want: []Note{{Kind: NoteFormEventNotRaised,
 			Where: "common form Обработка event before-write-at-server", Written: "ПередЗаписьюНаСервере"}}},
+		"два, по имени события": {events: "events: {on-write-at-server: ПриЗаписиНаСервере, after-write: ПослеЗаписи, before-write-at-server: ПередЗаписьюНаСервере}\n",
+			want: []Note{
+				{Kind: NoteFormEventNotRaised, Where: "common form Обработка event after-write", Written: "ПослеЗаписи"},
+				{Kind: NoteFormEventNotRaised, Where: "common form Обработка event before-write-at-server", Written: "ПередЗаписьюНаСервере"},
+				{Kind: NoteFormEventNotRaised, Where: "common form Обработка event on-write-at-server", Written: "ПриЗаписиНаСервере"},
+			}},
 		"реквизит не основной": {events: "events: {before-write-at-server: ПередЗаписьюНаСервере}\n" +
 			"attributes:\n  - {id: c0de0000-0000-4000-8000-000000990098, name: Товар, types: [{kind: catalog-object, reference: " + cmpGoods + "}]}\n",
 			want: []Note{{Kind: NoteFormEventNotRaised, Where: "common form Обработка event before-write-at-server", Written: "ПередЗаписьюНаСервере"}}},

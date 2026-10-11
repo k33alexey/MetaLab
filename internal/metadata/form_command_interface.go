@@ -60,11 +60,6 @@ type FormInterfaceCommand struct {
 	DataPath string `yaml:"data_path,omitempty" json:"dataPath,omitempty"`
 }
 
-// IsEmpty reports whether the form keeps a command interface at all.
-func (value FormCommandInterface) IsEmpty() bool {
-	return len(value.NavigationPanel) == 0 && len(value.CommandBar) == 0
-}
-
 // The groups the platform gives the panels of a form (help,
 // StandardCommandsGroup): three of the navigation panel, two of the command
 // bar.

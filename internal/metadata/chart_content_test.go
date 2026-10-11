@@ -274,7 +274,9 @@ func TestAChartKeepsItsContent(t *testing.T) {
 // the points; a series described beyond the count; a number that is none; a
 // series or a point the chart stands on that it does not have; a font of no
 // face but a face; a text keyed by no language; content on an attribute that
-// is no chart.
+// is no chart; an angle of a gauge out of the 0 to 360 the help gives. And
+// the bounds refused: none of the points, the series numbered 0, the angles
+// at the ends of their ranges.
 func TestAChartRefusesWhatIsWrong(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
@@ -282,29 +284,34 @@ func TestAChartRefusesWhatIsWrong(t *testing.T) {
 		return chartForm("    chart:\n      type: pie\n      active_series: -1\n      active_point: 0\n" + rest)
 	}
 	for name, test := range map[string]struct{ source, want string }{
-		"тип прототипа":   {chart("      labels: {type: SeriesValue}\n"), "attributes[0].chart.labels.type must be one of none,"},
-		"тип диаграммы":   {chartForm("    chart: {type: Column3D, active_series: -1}\n"), "attributes[0].chart.type must be one of area,"},
-		"без типа":        {chartForm("    chart: {active_series: -1}\n"), "attributes[0].chart.type must be one of"},
-		"значения":        {chart("      series_count: 2\n      point_count: 2\n      values: [{value: \"1\"}, {value: \"2\"}]\n"), "attributes[0].chart.values must hold one value for each series and point, 4"},
-		"серия сверх":     {chart("      series: [{id: 1}]\n"), "attributes[0].chart.series_count must count every series described"},
-		"точка сверх":     {chart("      points: [{id: 1}]\n"), "attributes[0].chart.point_count must count every point described"},
-		"не число":        {chart("      series_count: 1\n      point_count: 1\n      values: [{value: \"1,5\"}]\n"), "attributes[0].chart.values[0].value must be a decimal number"},
-		"граница":         {chart("      title_area: {bounds: {left: \"0.1e3\", top: \"0\", right: \"0\", bottom: \"0\"}}\n"), "attributes[0].chart.title_area.bounds.left must be a decimal number"},
-		"активная серия":  {chartForm("    chart: {type: pie, active_series: 2, active_point: 0, series_count: 2}\n"), "attributes[0].chart.active_series must be the number of a series"},
-		"активная точка":  {chartForm("    chart: {type: pie, active_series: -1, active_point: -2}\n"), "attributes[0].chart.active_point must be the number of a point"},
-		"шрифт авто":      {chart("      legend_area: {font: {source: auto, face: Roboto}}\n"), "attributes[0].chart.legend_area.font.face belongs to a font named by its face or based on another"},
-		"язык":            {chart("      title_area: {text: {\"d=e\": Продажи}}\n"), "attributes[0].chart.title_area.text.d=e is not a language code"},
-		"маркер":          {chart("      series_count: 1\n      series: [{id: 1, marker: star}]\n"), "attributes[0].chart.series[0].marker must be one of"},
-		"линия":           {chart("      plot_area: {scale_lines: {style: wavy}}\n"), "attributes[0].chart.plot_area.scale_lines.style is not a way a line is drawn"},
-		"шкала":           {chart("      plot_area: {values_scale: {label_angle: 400}}\n"), "attributes[0].chart.plot_area.values_scale.label_angle must be an angle in degrees"},
-		"процент":         {chart("      max_series_percent: 101\n"), "attributes[0].chart.max_series_percent must be a percentage"},
-		"отрицательное":   {chart("      funnel_space: -1\n"), "attributes[0].chart.funnel_space must not be negative"},
-		"угол":            {chart("      gauge: {end_angle: 361}\n"), "attributes[0].chart.gauge.end_angle must be an angle in degrees"},
-		"состояние":       {chart("      state: {x_labels_orientation: Vertical}\n"), "attributes[0].chart.state.x_labels_orientation must be one of"},
-		"цвет":            {chart("      back_color: {source: absolute, rgb: white}\n"), "attributes[0].chart.back_color.rgb must be a colour written as #RRGGBB"},
-		"рамка":           {chart("      labels: {border: {source: absolute, line: single, width: 6}}\n"), "attributes[0].chart.labels.border.width must be between 0 and 5"},
-		"не диаграмма":    {formAttrHead + "attributes:\n  - id: c0de0000-0000-4000-8000-000000990020\n    name: Таблица\n    types: [{kind: value-table}]\n    chart: {type: pie, active_series: -1}\n", "attributes[0].chart belongs to an attribute that is a chart"},
-		"шрифт со стилем": {chart("      legend_area: {font: {source: style, from: {standard: TextFont}, face: Roboto}}\n"), ""},
+		"тип прототипа":      {chart("      labels: {type: SeriesValue}\n"), "attributes[0].chart.labels.type must be one of none,"},
+		"тип диаграммы":      {chartForm("    chart: {type: Column3D, active_series: -1}\n"), "attributes[0].chart.type must be one of area,"},
+		"без типа":           {chartForm("    chart: {active_series: -1}\n"), "attributes[0].chart.type must be one of"},
+		"значения":           {chart("      series_count: 2\n      point_count: 2\n      values: [{value: \"1\"}, {value: \"2\"}]\n"), "attributes[0].chart.values must hold one value for each series and point, 4"},
+		"серия сверх":        {chart("      series: [{id: 1}]\n"), "attributes[0].chart.series_count must count every series described"},
+		"точка сверх":        {chart("      points: [{id: 1}]\n"), "attributes[0].chart.point_count must count every point described"},
+		"не число":           {chart("      series_count: 1\n      point_count: 1\n      values: [{value: \"1,5\"}]\n"), "attributes[0].chart.values[0].value must be a decimal number"},
+		"граница":            {chart("      title_area: {bounds: {left: \"0.1e3\", top: \"0\", right: \"0\", bottom: \"0\"}}\n"), "attributes[0].chart.title_area.bounds.left must be a decimal number"},
+		"активная серия":     {chartForm("    chart: {type: pie, active_series: 2, active_point: 0, series_count: 2}\n"), "attributes[0].chart.active_series must be the number of a series"},
+		"активная точка":     {chartForm("    chart: {type: pie, active_series: -1, active_point: -2}\n"), "attributes[0].chart.active_point must be the number of a point"},
+		"шрифт авто":         {chart("      legend_area: {font: {source: auto, face: Roboto}}\n"), "attributes[0].chart.legend_area.font.face belongs to a font named by its face or based on another"},
+		"язык":               {chart("      title_area: {text: {\"d=e\": Продажи}}\n"), "attributes[0].chart.title_area.text.d=e is not a language code"},
+		"маркер":             {chart("      series_count: 1\n      series: [{id: 1, marker: star}]\n"), "attributes[0].chart.series[0].marker must be one of"},
+		"линия":              {chart("      plot_area: {scale_lines: {style: wavy}}\n"), "attributes[0].chart.plot_area.scale_lines.style is not a way a line is drawn"},
+		"шкала":              {chart("      plot_area: {values_scale: {label_angle: 400}}\n"), "attributes[0].chart.plot_area.values_scale.label_angle must be an angle in degrees"},
+		"процент":            {chart("      max_series_percent: 101\n"), "attributes[0].chart.max_series_percent must be a percentage"},
+		"отрицательное":      {chart("      funnel_space: -1\n"), "attributes[0].chart.funnel_space must not be negative"},
+		"угол":               {chart("      gauge: {end_angle: 361}\n"), "attributes[0].chart.gauge.end_angle must be an angle in degrees"},
+		"угол отрицательный": {chart("      gauge: {begin_angle: -1}\n"), "attributes[0].chart.gauge.begin_angle must be an angle in degrees from 0 to 360"},
+		"углы на границах":   {chart("      gauge: {begin_angle: 0, end_angle: 360}\n      plot_area: {values_scale: {label_angle: -360}, points_scale: {label_angle: 360}}\n"), ""},
+		"точка за последней": {chartForm("    chart: {type: pie, active_series: -1, active_point: 2, point_count: 2}\n"), "attributes[0].chart.active_point must be the number of a point"},
+		"ни на одной точке":  {chartForm("    chart: {type: pie, active_series: -1, active_point: -1}\n"), ""},
+		"серия с номером 0":  {chart("      series_count: 1\n      series: [{id: 0}]\n"), ""},
+		"состояние":          {chart("      state: {x_labels_orientation: Vertical}\n"), "attributes[0].chart.state.x_labels_orientation must be one of"},
+		"цвет":               {chart("      back_color: {source: absolute, rgb: white}\n"), "attributes[0].chart.back_color.rgb must be a colour written as #RRGGBB"},
+		"рамка":              {chart("      labels: {border: {source: absolute, line: single, width: 6}}\n"), "attributes[0].chart.labels.border.width must be between 0 and 5"},
+		"не диаграмма":       {formAttrHead + "attributes:\n  - id: c0de0000-0000-4000-8000-000000990020\n    name: Таблица\n    types: [{kind: value-table}]\n    chart: {type: pie, active_series: -1}\n", "attributes[0].chart belongs to an attribute that is a chart"},
+		"шрифт со стилем":    {chart("      legend_area: {font: {source: style, from: {standard: TextFont}, face: Roboto}}\n"), ""},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

@@ -565,6 +565,7 @@ func validateChartPlotArea(path string, area ChartPlotArea) []string {
 func validateChartScale(path string, scale ChartScale) []string {
 	var issues []string
 	issues = append(issues, oneOfList(path+".grid_lines_show_mode", scale.GridLinesShowMode, chartShowModes, false)...)
+	// From -360 to 360 (help, ChartScale.LabelAngle).
 	if scale.LabelAngle < -360 || scale.LabelAngle > 360 {
 		issues = append(issues, path+".label_angle must be an angle in degrees")
 	}
@@ -599,8 +600,10 @@ func validateChartGauge(path string, gauge ChartGauge) []string {
 		name  string
 		value int
 	}{{"begin_angle", gauge.BeginAngle}, {"end_angle", gauge.EndAngle}} {
-		if angle.value < -360 || angle.value > 360 {
-			issues = append(issues, path+"."+angle.name+" must be an angle in degrees")
+		// From the positive X axis, 0 to 360 (help, Chart.BeginGaugeAngle,
+		// Chart.EndGaugeAngle); the exports write 0 and 180.
+		if angle.value < 0 || angle.value > 360 {
+			issues = append(issues, path+"."+angle.name+" must be an angle in degrees from 0 to 360")
 		}
 	}
 	issues = append(issues, validateChartColor(path+".bush_color", gauge.BushColor)...)

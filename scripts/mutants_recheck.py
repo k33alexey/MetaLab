@@ -20,6 +20,14 @@ tests are run with a generous limit, the file is restored from the frozen
 original and checked by hash. Outcomes: KILLED, LIVED, HANG (still over the
 limit), NOT-VIABLE (does not build). Writes recheck.tsv, lived.tsv (gremlins
 LIVED plus rechecked LIVED, with the source line) and appends to summary.txt.
+
+Every mutant is built anew and its cache entry is never needed again, so the
+cache is warmed on the unmutated tree first, and every --trim-every seconds
+the entries newer than that warm-up and older than --trim-age minutes are
+removed — the same trimming scripts/mutants.sh does during a gremlins pass.
+With --diff every mutant runs here, about 1500 on internal/metadata, and the
+cache would otherwise reach 40-60 GB. If free space drops below --min-free-gb
+the run stops and the result is marked incomplete.
 """
 
 import argparse
@@ -31,6 +39,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 
 # The operator text gremlins replaces, per mutation kind.
@@ -87,6 +96,9 @@ def main():
     ap.add_argument("--workers", type=int, default=3)
     ap.add_argument("--timeout", type=int, default=90)
     ap.add_argument("--diff", help="run the RUNNABLE mutants of lines changed since this commit")
+    ap.add_argument("--trim-every", type=int, default=120, help="seconds between cache trims")
+    ap.add_argument("--trim-age", type=int, default=15, help="minutes a cache entry is kept")
+    ap.add_argument("--min-free-gb", type=int, default=20)
     a = ap.parse_args()
 
     tree = os.path.join(a.run, "tree")
@@ -120,8 +132,41 @@ def main():
         copies.append(dst)
     free = list(copies)
 
+    # Dependencies are built once, before the mark, and are never trimmed.
+    warm = subprocess.run(["go", "test", "-count=1", "-run", "^$", "./" + a.package],
+                          cwd=tree, env=env, capture_output=True, text=True)
+    if warm.returncode != 0:
+        raise SystemExit("warm-up failed:\n" + warm.stdout + warm.stderr)
+    mark = time.time()
+    stopped = threading.Event()
+    finished = threading.Event()
+
+    def trimmer():
+        while not finished.wait(a.trim_every):
+            old = time.time() - a.trim_age * 60
+            for top in (env["GOCACHE"], env["TMPDIR"]):
+                for d, _, files in os.walk(top):
+                    for fn in files:
+                        path = os.path.join(d, fn)
+                        try:
+                            t = os.stat(path).st_mtime
+                            if mark < t < old:
+                                os.remove(path)
+                        except OSError:
+                            pass
+            gb = shutil.disk_usage(a.run).free // 2**30
+            print(f"# {time.strftime('%T')} trimmed, free {gb}G", flush=True)
+            if gb < a.min_free_gb:
+                print(f"# STOPPED: free {gb}G below {a.min_free_gb}G", flush=True)
+                stopped.set()
+                return
+
+    threading.Thread(target=trimmer, daemon=True).start()
+
     def one(item):
         name, line, col, kind = item
+        if stopped.is_set():
+            return item, "STOPPED", 0, ""
         work = free.pop()
         try:
             orig = os.path.join(tree, a.package, name)
@@ -160,7 +205,7 @@ def main():
         for item, res, took, note in ex.map(one, todo):
             results.append((item, res))
             print(f"{item[0]}:{item[1]}:{item[2]}\t{item[3]}\t{res}\t{took}s\t{note}", flush=True)
-
+    finished.set()
 
     with open(os.path.join(a.run, "recheck.tsv"), "w") as o:
         o.write("file\tline\tcol\ttype\toutcome\n")
@@ -216,13 +261,15 @@ def main():
         o.write("corrected: " + ", ".join(f"{k} {v}" for k, v in sorted(final.items())) +
                 (f"; efficacy {100 * caught / (caught + alive):.1f}%" if caught + alive else "") +
                 " (HANG counted as KILLED, string + mutants as NOT-VIABLE)\n")
+        if counts.get("STOPPED"):
+            o.write(f"INCOMPLETE: stopped on low disk, {counts['STOPPED']} mutants not run\n")
         if counts.get("ERROR"):
             o.write(f"ERROR: {counts['ERROR']} mutants did not reach the tests, see recheck.log; result not valid\n")
     for c in copies:
         shutil.rmtree(c, ignore_errors=True)
     shutil.rmtree(env["GOCACHE"], ignore_errors=True)
     shutil.rmtree(env["TMPDIR"], ignore_errors=True)
-    return 1 if counts.get("ERROR") else 0
+    return 1 if counts.get("ERROR") or counts.get("STOPPED") else 0
 
 
 if __name__ == "__main__":

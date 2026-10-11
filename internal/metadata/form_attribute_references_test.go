@@ -197,6 +197,39 @@ func TestTheFirstBrokenCommonFormIsTheOneNamed(t *testing.T) {
 	}
 }
 
+// The types of the parameter of the command of a button are resolved at load
+// like the types of an attribute, on every button of the form: one that
+// resolves does not end the walk.
+//
+// Defect caught: the parameter of a command typed by an object that is gone
+// loading clean; the walk of the elements stopping after the first parameter
+// that resolves, so that the buttons and the groups after it are never
+// checked.
+func TestTheParameterOfTheCommandOfAButtonIsResolved(t *testing.T) {
+	t.Parallel()
+	button := func(index int, reference string) string {
+		return fmt.Sprintf("  - {id: c0de0000-0000-4000-8000-00000000016%d, name: Кнопка%d, kind: button, command: Form.StandardCommand.ShowInList,"+
+			" command_parameter: {types: [{kind: catalog, reference: %s}]}}\n", index, index, reference)
+	}
+	for name, test := range map[string]struct {
+		items string
+		where string
+	}{
+		"первая кнопка":                 {button(1, refGone) + button(2, cmpUsers), "common form Обработка element Кнопка1 command parameter "},
+		"после кнопки, что разрешилась": {button(1, cmpUsers) + button(2, refGone), "common form Обработка element Кнопка2 command parameter "},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := formReferencesProject(t)
+			writeCommonForm(t, root, "Обработка", "format: 1\nid: c0de0000-0000-4000-8000-000000000160\nname: Обработка\ntitle: {ru: Обработка}\nkind: common\nitems:\n"+test.items)
+			_, err := Load(root)
+			if err == nil || !strings.HasPrefix(err.Error(), test.where) || !strings.Contains(err.Error(), refGone) {
+				t.Fatalf("err = %v, want %q", err, test.where)
+			}
+		})
+	}
+}
+
 // The titles of the attributes of a form, of their columns and of the
 // columns added to a table are noted under the same rules as the texts of
 // objects: a language the configuration does not declare, no language, a
