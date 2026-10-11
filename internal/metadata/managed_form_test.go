@@ -106,6 +106,46 @@ func TestManagedFormValidatesBindingsAndCommands(t *testing.T) {
 	}
 }
 
+// A form of no kind the platform has, two commands under one name, and a
+// handler on a standard command are refused; the form they are changed from
+// is taken.
+//
+// Defect caught: a form of any kind loaded as if it were one; a second
+// command under the name of the first, whatever its case, shadowing it for
+// the buttons that name it; a handler on a standard command carried as if
+// it ran, while the platform runs its own action.
+func TestAFormRefusesWhatIsWrongInItselfAndItsCommands(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	valid := func() ManagedForm {
+		return ManagedForm{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Форма", Title: LocalizedText{"ru": "Форма"}, Kind: ObjectForm,
+			Commands: []ManagedFormCommand{
+				{ID: uuid.MustNew(), Name: "Обновить", Title: LocalizedText{"ru": "Обновить"}, Action: FormCommandRefresh},
+				{ID: uuid.MustNew(), Name: "Заполнить", Title: LocalizedText{"ru": "Заполнить"}, Action: FormCommandCustom, Handler: "Заполнить"},
+			}}
+	}
+	if err := ValidateManagedForm("form.yaml", valid(), configuration); err != nil {
+		t.Fatal(err)
+	}
+	for name, test := range map[string]struct {
+		change func(form *ManagedForm)
+		want   string
+	}{
+		"вид формы":                {func(form *ManagedForm) { form.Kind = "report" }, "kind must be object, list, choice or common"},
+		"повтор имени команды":     {func(form *ManagedForm) { form.Commands[1].Name = "обновить" }, "commands[1].name must be unique within commands"},
+		"обработчик у стандартной": {func(form *ManagedForm) { form.Commands[0].Handler = "Обновить" }, "commands[0].handler is allowed only for a custom command"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			form := valid()
+			test.change(&form)
+			if err := ValidateManagedForm("form.yaml", form, configuration); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
 func managedFormConfiguration() project.Project {
 	return project.Project{Format: 1, ID: uuid.MustNew(), Name: "Demo", Title: project.LocalizedText{"ru": "Demo"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "\u0420\u0443\u0441\u0441\u043a\u0438\u0439", Title: project.LocalizedText{"ru": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439"}, Code: "ru"}, {ID: uuid.MustNew(), Name: "English", Title: project.LocalizedText{"en": "English"}, Code: "en"}}}
 }

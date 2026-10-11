@@ -155,7 +155,9 @@ func TestAnEventRefusesWhatIsWrong(t *testing.T) {
 //
 // Defect caught: a handler of writing on the server on a form with no main
 // attribute (14 in the exports) or an event by identifier (64) carried
-// silently, as if it were called - one on an element nested in a group too;
+// silently, as if it were called - one on an element nested in a group too,
+// and one on a form of an object, which the load reads apart from the
+// common forms;
 // an attribute of a catalog that is not the main one taken as making the
 // form raise the writing; a note on every form of a catalog that
 // handles its own writing, burying the real ones.
@@ -164,9 +166,13 @@ func TestEventsAFormDoesNotRaiseAreNoted(t *testing.T) {
 	for name, test := range map[string]struct {
 		events  string
 		element string
+		object  bool
 		want    []Note
 	}{
-		"событие справочника": {events: "events: {before-write-at-server: ПередЗаписьюНаСервере, on-open: ПриОткрытии}\n"},
+		"событие справочника": {events: "events: {before-write-at-server: ПередЗаписьюНаСервере, on-open: ПриОткрытии}\n", object: true},
+		"по идентификатору в форме справочника": {events: "events: {390d5e4b-e732-4c88-8748-9e211a416984: ПриЧтенииНаСервере}\n", object: true,
+			want: []Note{{Kind: NoteEventByIdentifier, Where: "catalog Номенклатура form ФормаЭлемента event 390d5e4b-e732-4c88-8748-9e211a416984",
+				Written: "ПриЧтенииНаСервере"}}},
 		"не вызывается": {events: "events: {before-write-at-server: ПередЗаписьюНаСервере}\n", want: []Note{{Kind: NoteFormEventNotRaised,
 			Where: "common form Обработка event before-write-at-server", Written: "ПередЗаписьюНаСервере"}}},
 		"реквизит не основной": {events: "events: {before-write-at-server: ПередЗаписьюНаСервере}\n" +
@@ -184,7 +190,7 @@ func TestEventsAFormDoesNotRaiseAreNoted(t *testing.T) {
 			root := formReferencesProject(t)
 			// A catalog object form raises the writing on the server; the same
 			// event on a common form with no main attribute is never raised.
-			if name == "событие справочника" {
+			if test.object {
 				path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
 				content, err := os.ReadFile(path)
 				if err != nil {
