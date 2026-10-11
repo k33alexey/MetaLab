@@ -52,6 +52,12 @@ jobs:
           unformatted="$(gofmt -l $files)"
           test -z "$unformatted" || (printf '%s\n' "$unformatted" && exit 1)
 
+      # One piece of knowledge lives in one place: a new copy of Go code fails
+      # the build the way an unformatted file does. The copies that were there
+      # when the check came in are in scripts/dupl-baseline.txt, which shrinks.
+      - name: Check for copied code
+        run: python3 scripts/dupl_check.py
+
       - name: Vet
         run: go vet ./...
 
