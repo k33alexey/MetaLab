@@ -78,6 +78,10 @@ func (descriptor Descriptor) PoolConfig(password string) (*pgxpool.Config, error
 	if err != nil {
 		return nil, fmt.Errorf("build PostgreSQL connection configuration: %w", err)
 	}
+	// The password comes from the secret store alone. Without one, pgx would
+	// take PGPASSWORD or a password file of the process environment and send
+	// it on a connection that was meant to need none.
+	configuration.ConnConfig.Password = password
 	return configuration, nil
 }
 

@@ -1,6 +1,10 @@
 package postgresconn
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestDescriptorBuildsEscapedPoolConfiguration(t *testing.T) {
 	t.Parallel()
@@ -52,5 +56,31 @@ func TestDescriptorAllowsPasswordlessUnixSocketOnly(t *testing.T) {
 	socket.Host = "localhost"
 	if _, err := socket.PoolConfig(""); err == nil {
 		t.Fatal("passwordless TCP connection was accepted")
+	}
+}
+
+// Defect: a connection meant to need no password, or given one by the secret
+// store, sends a password of the process environment instead (PGPASSWORD is
+// set on GitHub's Windows runners, PGPASSFILE wherever PostgreSQL is used).
+func TestPoolConfigTakesNoPasswordFromTheEnvironment(t *testing.T) {
+	passfile := filepath.Join(t.TempDir(), "pgpass")
+	if err := os.WriteFile(passfile, []byte("*:*:*:*:from-file\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PGPASSFILE", passfile)
+	t.Setenv("PGPASSWORD", "from-environment")
+	socket := Descriptor{Host: "/tmp", Port: 5432, Database: "postgres", User: "postgres", SSLMode: "disable", SecretKey: DefaultSystemSecretKey}
+	for _, password := range []string{"", "from-store"} {
+		configuration, err := socket.PoolConfig(password)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if configuration.ConnConfig.Password != password {
+			t.Fatalf("password %q given, %q configured", password, configuration.ConnConfig.Password)
+		}
+	}
+	t.Setenv("PGPASSWORD", "")
+	if configuration, err := socket.PoolConfig(""); err != nil || configuration.ConnConfig.Password != "" {
+		t.Fatalf("password file reaches the configuration: %v", err)
 	}
 }
