@@ -591,16 +591,16 @@ func formOwnerKind(kind Kind) bool {
 func (catalog *Catalog) resolveChoiceForm(where string, form ChoiceFormReference) error {
 	if form.Object == nil {
 		if !catalog.commonFormNames[strings.ToLower(form.Name)] {
-			catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where, Written: commonFormObjectKind + " " + form.Name})
+			catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: where, Written: kindWord(CommonFormKind) + " " + form.Name})
 		}
 		return nil
 	}
-	word, ok := catalog.objectKindByID[*form.Object]
+	found, ok := catalog.objects[*form.Object]
 	if !ok {
 		catalog.noteUnresolved(where, *form.Object)
 		return nil
 	}
-	object := catalog.objectNames[*form.Object]
+	word, object := kindWord(found.kind), found.name
 	if kind := catalog.formOwnerKinds[*form.Object]; kind != form.Kind {
 		return fmt.Errorf("%s names a form of %s %s as of kind %s", where, word, object, form.Kind)
 	}

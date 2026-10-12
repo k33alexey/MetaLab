@@ -460,9 +460,9 @@ func init() {
 // functional option names whose kind no export shows in that place.
 func noteUseWithoutSample(catalog *Catalog, note func(where, written string)) {
 	named := func(kind Kind, id uuid.UUID) string {
-		name, ok := catalog.objectNameByID(id)
-		if !ok {
-			name = id.String()
+		name := id.String()
+		if object, ok := catalog.objects[id]; ok {
+			name = object.name
 		}
 		return string(kind) + " " + name
 	}

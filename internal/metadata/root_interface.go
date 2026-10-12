@@ -236,8 +236,8 @@ func (catalog *Catalog) resolveRootInterface() {
 			}
 		}
 	}
-	for id, kind := range catalog.objectKindByID {
-		if kind == commonFormObjectKind {
+	for id, object := range catalog.objects {
+		if object.kind == CommonFormKind {
 			forms[id] = true
 		}
 	}

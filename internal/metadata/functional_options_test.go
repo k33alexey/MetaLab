@@ -265,7 +265,7 @@ func TestFunctionalOptionSwitchesEveryKindThePrototypeDoes(t *testing.T) {
 	catalog := &Catalog{
 		constantByID:           map[uuid.UUID]int{constant: 0},
 		commonCommandByID:      map[uuid.UUID]int{command: 0},
-		objectKindByID:         map[uuid.UUID]string{form: commonFormObjectKind},
+		objects:                map[uuid.UUID]indexedObject{form: {kind: CommonFormKind}},
 		filterCriterionByID:    map[uuid.UUID]int{criterion: 0},
 		FilterCriteria:         []FilterCriterionDefinition{{ID: criterion, Commands: []ObjectCommand{{ID: criterionCommand}}}},
 		accountingRegisterByID: map[uuid.UUID]int{accounting: 0},

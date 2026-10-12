@@ -86,8 +86,8 @@ func (catalog *Catalog) ownerHierarchy(kind Kind, id uuid.UUID) Hierarchy {
 
 // ownerName is what a message about an owner calls it.
 func (catalog *Catalog) ownerName(id uuid.UUID) string {
-	if name, ok := catalog.objectNames[id]; ok {
-		return name
+	if object, ok := catalog.objects[id]; ok {
+		return object.name
 	}
 	return id.String()
 }

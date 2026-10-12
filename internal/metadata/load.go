@@ -530,8 +530,10 @@ func loadObjectKind(root string, kind Kind, decode func(string, *os.File) error)
 
 func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.unresolved = nil
-	catalog.objectKindByID = map[uuid.UUID]string{}
-	catalog.objectNames = map[uuid.UUID]string{}
+	catalog.objects = map[uuid.UUID]indexedObject{}
+	for _, language := range catalog.Project.Languages {
+		catalog.objects[language.ID] = indexedObject{kind: LanguageKind, name: language.Name}
+	}
 	catalog.formOwnerKinds = map[uuid.UUID]Kind{}
 	if err := catalog.propagateCommonAttributes(); err != nil {
 		return err
@@ -692,16 +694,26 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.informationRegisterByName, catalog.informationRegisterByID = make(map[string]int, len(catalog.InformationRegisters)), make(map[uuid.UUID]int, len(catalog.InformationRegisters))
 	catalog.accumulationRegisterByName, catalog.accumulationRegisterByID = make(map[string]int, len(catalog.AccumulationRegisters)), make(map[uuid.UUID]int, len(catalog.AccumulationRegisters))
 	allIDs := map[uuid.UUID]string{}
-	add := func(kind string, id uuid.UUID, name string, index int, names map[string]int, ids map[uuid.UUID]int) error {
+	catalog.identifiers = allIDs
+	// unique checks an identifier is used once across the configuration, and
+	// keeps what uses it.
+	unique := func(id uuid.UUID, what string) error {
+		if previous, exists := allIDs[id]; exists {
+			return fmt.Errorf("%w: %s and %s use %s", ErrDuplicateID, previous, what, id)
+		}
+		allIDs[id] = what
+		return nil
+	}
+	add := func(kind Kind, id uuid.UUID, name string, index int, names map[string]int, ids map[uuid.UUID]int) error {
 		folded := strings.ToLower(name)
 		if _, exists := names[folded]; exists {
-			return fmt.Errorf("%w: %s %q", ErrDuplicateName, kind, name)
+			return fmt.Errorf("%w: %s %q", ErrDuplicateName, kindWord(kind), name)
 		}
-		if previous, exists := allIDs[id]; exists {
-			return fmt.Errorf("%w: %s and %s use %s", ErrDuplicateID, previous, kind+" "+name, id)
+		if err := unique(id, kindWord(kind)+" "+name); err != nil {
+			return err
 		}
-		names[folded], allIDs[id] = index, kind+" "+name
-		catalog.objectKindByID[id], catalog.objectNames[id] = kind, name
+		names[folded] = index
+		catalog.objects[id] = indexedObject{kind: kind, name: name}
 		if ids != nil {
 			ids[id] = index
 		}
@@ -711,7 +723,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		if err := ValidateRole("role "+item.Name, item, catalog.Project); err != nil {
 			return err
 		}
-		if err := add("role", item.ID, item.Name, index, catalog.roleByName, catalog.roleByID); err != nil {
+		if err := add(RoleKind, item.ID, item.Name, index, catalog.roleByName, catalog.roleByID); err != nil {
 			return err
 		}
 	}
@@ -729,67 +741,67 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		if siblings[parent] == nil {
 			siblings[parent] = map[string]int{}
 		}
-		if err := add("subsystem", item.ID, item.Name, index, siblings[parent], catalog.subsystemByID); err != nil {
+		if err := add(SubsystemKind, item.ID, item.Name, index, siblings[parent], catalog.subsystemByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.Constants {
-		if err := add("constant", item.ID, item.Name, index, catalog.constantByName, catalog.constantByID); err != nil {
+		if err := add(ConstantKind, item.ID, item.Name, index, catalog.constantByName, catalog.constantByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.FunctionalOptions {
-		if err := add("functional option", item.ID, item.Name, index, catalog.functionalOptionByName, catalog.functionalOptionByID); err != nil {
+		if err := add(FunctionalOptionKind, item.ID, item.Name, index, catalog.functionalOptionByName, catalog.functionalOptionByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.ScheduledJobs {
-		if err := add("scheduled job", item.ID, item.Name, index, catalog.scheduledJobByName, catalog.scheduledJobByID); err != nil {
+		if err := add(ScheduledJobKind, item.ID, item.Name, index, catalog.scheduledJobByName, catalog.scheduledJobByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.CommonCommands {
-		if err := add("common command", item.ID, item.Name, index, catalog.commonCommandByName, catalog.commonCommandByID); err != nil {
+		if err := add(CommonCommandKind, item.ID, item.Name, index, catalog.commonCommandByName, catalog.commonCommandByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.CommandGroups {
-		if err := add("command group", item.ID, item.Name, index, catalog.commandGroupByName, catalog.commandGroupByID); err != nil {
+		if err := add(CommandGroupKind, item.ID, item.Name, index, catalog.commandGroupByName, catalog.commandGroupByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.CommonTemplates {
-		if err := add("common template", item.ID, item.Name, index, catalog.commonTemplateByName, catalog.commonTemplateByID); err != nil {
+		if err := add(CommonTemplateKind, item.ID, item.Name, index, catalog.commonTemplateByName, catalog.commonTemplateByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.CommonPictures {
-		if err := add("common picture", item.ID, item.Name, index, catalog.commonPictureByName, catalog.commonPictureByID); err != nil {
+		if err := add(CommonPictureKind, item.ID, item.Name, index, catalog.commonPictureByName, catalog.commonPictureByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.XDTOPackages {
-		if err := add("XDTO package", item.ID, item.Name, index, catalog.xdtoPackageByName, catalog.xdtoPackageByID); err != nil {
+		if err := add(XDTOPackageKind, item.ID, item.Name, index, catalog.xdtoPackageByName, catalog.xdtoPackageByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.WebServices {
-		if err := add("web service", item.ID, item.Name, index, catalog.webServiceByName, catalog.webServiceByID); err != nil {
+		if err := add(WebServiceKind, item.ID, item.Name, index, catalog.webServiceByName, catalog.webServiceByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.HTTPServices {
-		if err := add("HTTP service", item.ID, item.Name, index, catalog.httpServiceByName, catalog.httpServiceByID); err != nil {
+		if err := add(HTTPServiceKind, item.ID, item.Name, index, catalog.httpServiceByName, catalog.httpServiceByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.WSReferences {
-		if err := add("WS reference", item.ID, item.Name, index, catalog.wsReferenceByName, catalog.wsReferenceByID); err != nil {
+		if err := add(WSReferenceKind, item.ID, item.Name, index, catalog.wsReferenceByName, catalog.wsReferenceByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.WebSocketClients {
-		if err := add("WebSocket client", item.ID, item.Name, index, catalog.webSocketClientByName, catalog.webSocketClientByID); err != nil {
+		if err := add(WebSocketClientKind, item.ID, item.Name, index, catalog.webSocketClientByName, catalog.webSocketClientByID); err != nil {
 			return err
 		}
 	}
@@ -797,28 +809,36 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	// the whole configuration like every other.
 	externalTableNames := map[string]int{}
 	for index, item := range catalog.ExternalDataSources {
-		if err := add("external data source", item.ID, item.Name, index, catalog.externalDataSourceByName, catalog.externalDataSourceByID); err != nil {
+		if err := add(ExternalDataSourceKind, item.ID, item.Name, index, catalog.externalDataSourceByName, catalog.externalDataSourceByID); err != nil {
 			return err
 		}
 		for tableIndex, table := range item.Tables {
-			if err := add("external data source table", table.ID, item.Name+"."+table.Name, tableIndex, externalTableNames, nil); err != nil {
+			if err := add(ExternalDataSourceTableKind, table.ID, item.Name+"."+table.Name, tableIndex, externalTableNames, nil); err != nil {
 				return err
 			}
 			catalog.externalTableByID[table.ID] = externalTableLocation{source: index, table: tableIndex}
 		}
+		// A function is an object of metadata of its own (help: ОбъектМетаданных:
+		// Функция) the kinds do not describe yet: its identifier and its name
+		// are checked as an object's, and nothing finds it by kind.
 		for _, function := range item.Functions {
-			if err := add("external data source function", function.ID, item.Name+".function."+function.Name, 0, externalTableNames, nil); err != nil {
+			name := item.Name + ".function." + function.Name
+			if _, exists := externalTableNames[strings.ToLower(name)]; exists {
+				return fmt.Errorf("%w: external data source function %q", ErrDuplicateName, name)
+			}
+			if err := unique(function.ID, "external data source function "+name); err != nil {
 				return err
 			}
+			externalTableNames[strings.ToLower(name)] = 0
 		}
 		// A cube is named within its source and a dimension table within its
 		// cube; every identifier is unique across the configuration.
 		for cubeIndex, cube := range item.Cubes {
-			if err := add("external data source cube", cube.ID, item.Name+"."+cube.Name, cubeIndex, externalTableNames, nil); err != nil {
+			if err := add(ExternalCubeKind, cube.ID, item.Name+"."+cube.Name, cubeIndex, externalTableNames, nil); err != nil {
 				return err
 			}
 			for tableIndex, table := range cube.DimensionTables {
-				if err := add("external data source dimension table", table.ID, item.Name+"."+cube.Name+"."+table.Name, tableIndex, externalTableNames, nil); err != nil {
+				if err := add(ExternalDimensionTableKind, table.ID, item.Name+"."+cube.Name+"."+table.Name, tableIndex, externalTableNames, nil); err != nil {
 					return err
 				}
 				catalog.externalDimensionTableByID[table.ID] = externalDimensionTableLocation{source: index, cube: cubeIndex, table: tableIndex}
@@ -826,43 +846,43 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	for index, item := range catalog.StyleItems {
-		if err := add("style item", item.ID, item.Name, index, catalog.styleItemByName, catalog.styleItemByID); err != nil {
+		if err := add(StyleItemKind, item.ID, item.Name, index, catalog.styleItemByName, catalog.styleItemByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.Styles {
-		if err := add("style", item.ID, item.Name, index, catalog.styleByName, catalog.styleByID); err != nil {
+		if err := add(StyleKind, item.ID, item.Name, index, catalog.styleByName, catalog.styleByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.SettingsStorages {
-		if err := add("settings storage", item.ID, item.Name, index, catalog.settingsStorageByName, catalog.settingsStorageByID); err != nil {
+		if err := add(SettingsStorageKind, item.ID, item.Name, index, catalog.settingsStorageByName, catalog.settingsStorageByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.FilterCriteria {
-		if err := add("filter criterion", item.ID, item.Name, index, catalog.filterCriterionByName, catalog.filterCriterionByID); err != nil {
+		if err := add(FilterCriterionKind, item.ID, item.Name, index, catalog.filterCriterionByName, catalog.filterCriterionByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.FunctionalOptionParameters {
-		if err := add("functional option parameter", item.ID, item.Name, index,
+		if err := add(FunctionalOptionParameterKind, item.ID, item.Name, index,
 			catalog.functionalOptionParameterByName, catalog.functionalOptionParameterByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.SessionParameters {
-		if err := add("session parameter", item.ID, item.Name, index, catalog.sessionParameterByName, catalog.sessionParameterByID); err != nil {
+		if err := add(SessionParameterKind, item.ID, item.Name, index, catalog.sessionParameterByName, catalog.sessionParameterByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.CommonAttributes {
-		if err := add("common attribute", item.ID, item.Name, index, catalog.commonAttributeByName, catalog.commonAttributeByID); err != nil {
+		if err := add(CommonAttributeKind, item.ID, item.Name, index, catalog.commonAttributeByName, catalog.commonAttributeByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.CommonModules {
-		if err := add("common module", item.ID, item.Name, index, catalog.commonModuleByName, catalog.commonModuleByID); err != nil {
+		if err := add(CommonModuleKind, item.ID, item.Name, index, catalog.commonModuleByName, catalog.commonModuleByID); err != nil {
 			return err
 		}
 		if previous, exists := catalog.commonModuleByModuleID[item.Module]; exists {
@@ -871,12 +891,12 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		catalog.commonModuleByModuleID[item.Module] = index
 	}
 	for index, item := range catalog.EventSubscriptions {
-		if err := add("event subscription", item.ID, item.Name, index, catalog.eventSubscriptionByName, catalog.eventSubscriptionByID); err != nil {
+		if err := add(EventSubscriptionKind, item.ID, item.Name, index, catalog.eventSubscriptionByName, catalog.eventSubscriptionByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.Enumerations {
-		if err := add("enumeration", item.ID, item.Name, index, catalog.enumerationByName, catalog.enumerationByID); err != nil {
+		if err := add(EnumerationKind, item.ID, item.Name, index, catalog.enumerationByName, catalog.enumerationByID); err != nil {
 			return err
 		}
 		for _, value := range item.Values {
@@ -887,12 +907,12 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	for index, item := range catalog.DefinedTypes {
-		if err := add("defined type", item.ID, item.Name, index, catalog.definedTypeByName, catalog.definedTypeByID); err != nil {
+		if err := add(DefinedTypeKind, item.ID, item.Name, index, catalog.definedTypeByName, catalog.definedTypeByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.Catalogs {
-		if err := add("catalog", item.ID, item.Name, index, catalog.catalogByName, catalog.catalogByID); err != nil {
+		if err := add(CatalogKind, item.ID, item.Name, index, catalog.catalogByName, catalog.catalogByID); err != nil {
 			return err
 		}
 		for _, predefined := range item.Predefined {
@@ -924,7 +944,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	for index, item := range catalog.ChartsOfCharacteristicTypes {
-		if err := add("chart of characteristic types", item.ID, item.Name, index, catalog.chartOfCharacteristicTypesByName, catalog.chartOfCharacteristicTypesByID); err != nil {
+		if err := add(ChartOfCharacteristicTypesKind, item.ID, item.Name, index, catalog.chartOfCharacteristicTypesByName, catalog.chartOfCharacteristicTypesByID); err != nil {
 			return err
 		}
 		for _, predefined := range item.Predefined {
@@ -956,7 +976,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	for index, item := range catalog.ChartsOfAccounts {
-		if err := add("chart of accounts", item.ID, item.Name, index, catalog.chartOfAccountsByName, catalog.chartOfAccountsByID); err != nil {
+		if err := add(ChartOfAccountsKind, item.ID, item.Name, index, catalog.chartOfAccountsByName, catalog.chartOfAccountsByID); err != nil {
 			return err
 		}
 		for _, account := range item.Predefined {
@@ -996,7 +1016,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	for index, item := range catalog.ChartsOfCalculationTypes {
-		if err := add("chart of calculation types", item.ID, item.Name, index, catalog.chartOfCalculationTypesByName, catalog.chartOfCalculationTypesByID); err != nil {
+		if err := add(ChartOfCalculationTypesKind, item.ID, item.Name, index, catalog.chartOfCalculationTypesByName, catalog.chartOfCalculationTypesByID); err != nil {
 			return err
 		}
 		for _, predefined := range item.Predefined {
@@ -1028,7 +1048,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	for index, item := range catalog.Tasks {
-		if err := add("task", item.ID, item.Name, index, catalog.taskByName, catalog.taskByID); err != nil {
+		if err := add(TaskKind, item.ID, item.Name, index, catalog.taskByName, catalog.taskByID); err != nil {
 			return err
 		}
 		for _, attribute := range append(slices.Clone(item.Attributes), addressingAsAttributes(item)...) {
@@ -1048,7 +1068,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	for index, item := range catalog.AccountingRegisters {
-		if err := add("accounting register", item.ID, item.Name, index, catalog.accountingRegisterByName, catalog.accountingRegisterByID); err != nil {
+		if err := add(AccountingRegisterKind, item.ID, item.Name, index, catalog.accountingRegisterByName, catalog.accountingRegisterByID); err != nil {
 			return err
 		}
 		for _, field := range accountingRegisterFields(item) {
@@ -1068,7 +1088,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	for index, item := range catalog.CalculationRegisters {
-		if err := add("calculation register", item.ID, item.Name, index, catalog.calculationRegisterByName, catalog.calculationRegisterByID); err != nil {
+		if err := add(CalculationRegisterKind, item.ID, item.Name, index, catalog.calculationRegisterByName, catalog.calculationRegisterByID); err != nil {
 			return err
 		}
 		for _, field := range append(calculationRegisterFields(item), item.attributeFields()...) {
@@ -1085,6 +1105,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("%w: %s and recalculation %s.%s use %s", ErrDuplicateID, previous, item.Name, recalculation.Name, recalculation.ID)
 			}
 			allIDs[recalculation.ID] = "recalculation " + item.Name + "." + recalculation.Name
+			catalog.objects[recalculation.ID] = indexedObject{kind: RecalculationKind, name: item.Name + "." + recalculation.Name}
 			for _, dimension := range recalculation.Dimensions {
 				if previous, ok := allIDs[dimension.ID]; ok {
 					return fmt.Errorf("%w: %s and recalculation dimension %s.%s.%s use %s",
@@ -1095,13 +1116,13 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	for _, running := range []struct {
-		kind    string
+		kind    Kind
 		names   map[string]int
 		ids     map[uuid.UUID]int
 		objects []runningObject
 	}{
-		{"report", catalog.reportByName, catalog.reportByID, reportsAsRunning(catalog.Reports)},
-		{"data processor", catalog.dataProcessorByName, catalog.dataProcessorByID, dataProcessorsAsRunning(catalog.DataProcessors)},
+		{ReportKind, catalog.reportByName, catalog.reportByID, reportsAsRunning(catalog.Reports)},
+		{DataProcessorKind, catalog.dataProcessorByName, catalog.dataProcessorByID, dataProcessorsAsRunning(catalog.DataProcessors)},
 	} {
 		for index, item := range running.objects {
 			if err := add(running.kind, item.id, item.name, index, running.names, running.ids); err != nil {
@@ -1109,25 +1130,25 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			}
 			for _, attribute := range item.attributes {
 				if previous, ok := allIDs[attribute.ID]; ok {
-					return fmt.Errorf("%w: %s and %s attribute %s.%s use %s", ErrDuplicateID, previous, running.kind, item.name, attribute.Name, attribute.ID)
+					return fmt.Errorf("%w: %s and %s attribute %s.%s use %s", ErrDuplicateID, previous, kindWord(running.kind), item.name, attribute.Name, attribute.ID)
 				}
-				allIDs[attribute.ID] = running.kind + " attribute " + item.name + "." + attribute.Name
+				allIDs[attribute.ID] = kindWord(running.kind) + " attribute " + item.name + "." + attribute.Name
 			}
 			for _, part := range item.parts {
 				if previous, ok := allIDs[part.ID]; ok {
-					return fmt.Errorf("%w: %s and %s table part %s.%s use %s", ErrDuplicateID, previous, running.kind, item.name, part.Name, part.ID)
+					return fmt.Errorf("%w: %s and %s table part %s.%s use %s", ErrDuplicateID, previous, kindWord(running.kind), item.name, part.Name, part.ID)
 				}
-				allIDs[part.ID] = running.kind + " table part " + item.name + "." + part.Name
+				allIDs[part.ID] = kindWord(running.kind) + " table part " + item.name + "." + part.Name
 			}
 		}
 	}
 	for index, item := range catalog.Numerators {
-		if err := add("numerator", item.ID, item.Name, index, catalog.numeratorByName, catalog.numeratorByID); err != nil {
+		if err := add(NumeratorKind, item.ID, item.Name, index, catalog.numeratorByName, catalog.numeratorByID); err != nil {
 			return err
 		}
 	}
 	for index, item := range catalog.Sequences {
-		if err := add("sequence", item.ID, item.Name, index, catalog.sequenceByName, catalog.sequenceByID); err != nil {
+		if err := add(SequenceKind, item.ID, item.Name, index, catalog.sequenceByName, catalog.sequenceByID); err != nil {
 			return err
 		}
 		for _, dimension := range item.Dimensions {
@@ -1138,7 +1159,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	for index, item := range catalog.DocumentJournals {
-		if err := add("document journal", item.ID, item.Name, index, catalog.documentJournalByName, catalog.documentJournalByID); err != nil {
+		if err := add(DocumentJournalKind, item.ID, item.Name, index, catalog.documentJournalByName, catalog.documentJournalByID); err != nil {
 			return err
 		}
 		for _, column := range item.Columns {
@@ -1149,7 +1170,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	for index, item := range catalog.ExchangePlans {
-		if err := add("exchange plan", item.ID, item.Name, index, catalog.exchangePlanByName, catalog.exchangePlanByID); err != nil {
+		if err := add(ExchangePlanKind, item.ID, item.Name, index, catalog.exchangePlanByName, catalog.exchangePlanByID); err != nil {
 			return err
 		}
 		for _, attribute := range item.Attributes {
@@ -1169,7 +1190,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	for index, item := range catalog.BusinessProcesses {
-		if err := add("business process", item.ID, item.Name, index, catalog.businessProcessByName, catalog.businessProcessByID); err != nil {
+		if err := add(BusinessProcessKind, item.ID, item.Name, index, catalog.businessProcessByName, catalog.businessProcessByID); err != nil {
 			return err
 		}
 		for _, point := range item.Route.Points {
@@ -1195,7 +1216,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	for index, item := range catalog.Documents {
-		if err := add("document", item.ID, item.Name, index, catalog.documentByName, catalog.documentByID); err != nil {
+		if err := add(DocumentKind, item.ID, item.Name, index, catalog.documentByName, catalog.documentByID); err != nil {
 			return err
 		}
 		for _, attribute := range item.Attributes {
@@ -1221,7 +1242,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	for index, item := range catalog.InformationRegisters {
-		if err := add("information register", item.ID, item.Name, index, catalog.informationRegisterByName, catalog.informationRegisterByID); err != nil {
+		if err := add(InformationRegisterKind, item.ID, item.Name, index, catalog.informationRegisterByName, catalog.informationRegisterByID); err != nil {
 			return err
 		}
 		for _, field := range informationRegisterFields(item) {
@@ -1235,7 +1256,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 	}
 	for index, item := range catalog.AccumulationRegisters {
-		if err := add("accumulation register", item.ID, item.Name, index, catalog.accumulationRegisterByName, catalog.accumulationRegisterByID); err != nil {
+		if err := add(AccumulationRegisterKind, item.ID, item.Name, index, catalog.accumulationRegisterByName, catalog.accumulationRegisterByID); err != nil {
 			return err
 		}
 		for _, field := range accumulationRegisterFields(item) {
@@ -2537,7 +2558,7 @@ func (catalog *Catalog) indexCommonForms(root string) error {
 		if form.Type == OrdinaryFormType {
 			catalog.ordinaryCommonForms[form.Name] = true
 		}
-		catalog.objectKindByID[form.ID] = commonFormObjectKind
+		catalog.objects[form.ID] = indexedObject{kind: CommonFormKind, name: form.Name}
 	}
 	return nil
 }

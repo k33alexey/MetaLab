@@ -2,7 +2,6 @@ package metadata
 
 import (
 	"fmt"
-	"reflect"
 	"slices"
 	"strings"
 
@@ -184,47 +183,12 @@ func (catalog *Catalog) describeTable(name string) string {
 	}
 	if len(hexID) == 32 {
 		if id, err := uuid.Parse(hexID[:8] + "-" + hexID[8:12] + "-" + hexID[12:16] + "-" + hexID[16:20] + "-" + hexID[20:]); err == nil {
-			if owner, ok := catalog.objectNameByID(id); ok {
+			if owner, ok := catalog.identifiers[id]; ok {
 				return owner + " (table " + name + ")"
 			}
 		}
 	}
 	return "table " + name
-}
-
-// objectNameByID finds an object, or a table part of one, by its identifier
-// among every collection of the catalog. It walks the collections by
-// reflection because it runs only on the way to an error, where a list kept
-// by hand would be the one place a new kind was forgotten.
-func (catalog *Catalog) objectNameByID(id uuid.UUID) (string, bool) {
-	value := reflect.ValueOf(catalog).Elem()
-	for index := 0; index < value.NumField(); index++ {
-		field := value.Field(index)
-		if !value.Type().Field(index).IsExported() || field.Kind() != reflect.Slice {
-			continue
-		}
-		for position := 0; position < field.Len(); position++ {
-			item := reflect.Indirect(field.Index(position))
-			if item.Kind() != reflect.Struct {
-				continue
-			}
-			itemID, name := item.FieldByName("ID"), item.FieldByName("Name")
-			if !itemID.IsValid() || !name.IsValid() || itemID.Type() != reflect.TypeOf(uuid.UUID{}) {
-				continue
-			}
-			if itemID.Interface().(uuid.UUID) == id {
-				return name.String(), true
-			}
-			if parts := item.FieldByName("TableParts"); parts.IsValid() && parts.Kind() == reflect.Slice {
-				for part := 0; part < parts.Len(); part++ {
-					if parts.Index(part).FieldByName("ID").Interface().(uuid.UUID) == id {
-						return name.String() + "." + parts.Index(part).FieldByName("Name").String(), true
-					}
-				}
-			}
-		}
-	}
-	return "", false
 }
 
 // PhysicalCatalogTable returns the stable PostgreSQL table name for a catalog UUID.

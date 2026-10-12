@@ -472,10 +472,6 @@ func (catalog *Catalog) validatePolicyOperand(role RoleDefinition, rule PolicyRu
 // CommonFormKind holds the forms that belong to no object.
 const CommonFormKind = kinds.CommonForm
 
-// commonFormObjectKind is how a common form is recorded among the objects of
-// the configuration once its folder has been read.
-const commonFormObjectKind = "common form"
-
 // ReadCommonForms reads every common form of a project, sorted by name. The
 // folder is the list of them: a common form belongs to no object, so nothing
 // declares it anywhere else.

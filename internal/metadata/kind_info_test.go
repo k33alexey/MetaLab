@@ -156,8 +156,8 @@ func TestEveryKindFindsItsObjects(t *testing.T) {
 			objects[RecalculationKind] = append(objects[RecalculationKind], recalculation.ID)
 		}
 	}
-	for id, kind := range catalog.objectKindByID {
-		if kind == commonFormObjectKind {
+	for id, object := range catalog.objects {
+		if object.kind == CommonFormKind {
 			objects[CommonFormKind] = append(objects[CommonFormKind], id)
 		}
 	}

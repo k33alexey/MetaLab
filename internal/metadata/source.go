@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -186,9 +187,24 @@ var (
 )
 
 // kindWord is what a message calls an object of a kind: its English name in
-// words, chart of accounts.
+// words, chart of accounts. Capitals written together are one word, as the
+// name writes them: XDTO package, HTTP service.
 func kindWord(kind Kind) string {
-	return strings.ReplaceAll(kebab(kinds.Must(kind).Name.English), "-", " ")
+	name := []rune(kinds.Must(kind).Name.English)
+	var out strings.Builder
+	for index, symbol := range name {
+		if index > 0 && unicode.IsUpper(symbol) && (unicode.IsLower(name[index-1]) || index+1 < len(name) && unicode.IsLower(name[index+1])) {
+			out.WriteByte(' ')
+		}
+		out.WriteRune(symbol)
+	}
+	word := strings.Fields(out.String())
+	for index, part := range word {
+		if strings.ToUpper(part) != part {
+			word[index] = strings.ToLower(part)
+		}
+	}
+	return strings.Join(word, " ")
 }
 
 // hasObject says an object of the kind with the identifier is in the
@@ -201,12 +217,8 @@ func (catalog *Catalog) hasObject(kind Kind, id uuid.UUID) bool {
 // kindOfObject finds the kind of an object of the catalog by its identifier,
 // whatever the kind: identifiers are unique across a configuration.
 func (catalog *Catalog) kindOfObject(id uuid.UUID) (Kind, bool) {
-	for _, item := range kindInfos {
-		if item.has != nil && item.has(catalog, id) {
-			return item.kind, true
-		}
-	}
-	return "", false
+	object, ok := catalog.objects[id]
+	return object.kind, ok
 }
 
 // typeNamesObject says the object a type names through Type.Reference is in
@@ -329,7 +341,7 @@ func init() {
 		// A common form is read from its folder as a form is, and a language
 		// inside the description of the configuration: neither has a reading
 		// here, only what may name it.
-		{kind: CommonFormKind, has: func(c *Catalog, id uuid.UUID) bool { return c.objectKindByID[id] == commonFormObjectKind }},
+		{kind: CommonFormKind, has: func(c *Catalog, id uuid.UUID) bool { return c.objects[id].kind == CommonFormKind }},
 		{kind: LanguageKind, has: func(c *Catalog, id uuid.UUID) bool {
 			return slices.ContainsFunc(c.Project.Languages, func(language project.Language) bool { return language.ID == id })
 		}},

@@ -259,7 +259,7 @@ func (catalog *Catalog) objectElementsOf(kind Kind, id uuid.UUID) (objectElement
 	case CommonFormKind:
 		// Common forms are read from their folder and known by identifier only
 		// once the project is read from disk.
-		return objectElements{}, catalog.objectKindByID[id] == commonFormObjectKind
+		return objectElements{}, catalog.objects[id].kind == CommonFormKind
 	case SequenceKind:
 		_, ok := catalog.sequenceByID[id]
 		return objectElements{}, ok

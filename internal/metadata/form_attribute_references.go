@@ -407,7 +407,7 @@ func (catalog *Catalog) resolveFormAttributes(form string, attributes []FormAttr
 		}
 		if list := attribute.DynamicList; list != nil {
 			if list.MainTable != nil {
-				if _, ok := catalog.objectKindByID[list.MainTable.Object]; !ok {
+				if _, ok := catalog.objects[list.MainTable.Object]; !ok {
 					catalog.noteUnresolved(where+" main table", list.MainTable.Object)
 				}
 			}

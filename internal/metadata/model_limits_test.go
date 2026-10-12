@@ -147,7 +147,11 @@ func TestTheSchemaRefusesWhatTheDatabaseCannotHold(t *testing.T) {
 		for index := 0; index < count; index++ {
 			definition.Attributes = append(definition.Attributes, Attribute{ID: uuid.MustNew(), Name: fmt.Sprintf("Реквизит%d", index), Types: types})
 		}
-		_, err := (&Catalog{Catalogs: []CatalogDefinition{definition}}).ApplicationSchema()
+		catalog := &Catalog{Catalogs: []CatalogDefinition{definition}}
+		if err := catalog.indexAndValidate(""); err != nil {
+			return err
+		}
+		_, err := catalog.ApplicationSchema()
 		return err
 	}
 	text := []Type{{Kind: StringType, Length: 10}}

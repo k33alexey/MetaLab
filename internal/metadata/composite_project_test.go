@@ -381,9 +381,9 @@ func TestCompositeProjectFindsEveryKindByNameAndIdentifier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	looked := map[string]bool{}
+	looked := map[Kind]bool{}
 	for _, object := range []struct {
-		kind   string
+		kind   Kind
 		name   string
 		id     string
 		byName func(*Catalog, string) (uuid.UUID, bool)
@@ -391,50 +391,50 @@ func TestCompositeProjectFindsEveryKindByNameAndIdentifier(t *testing.T) {
 		// object is also looked up among all objects regardless.
 		byID func(*Catalog, uuid.UUID) (string, bool)
 	}{
-		{"subsystem", "Склад", cmpSubsystem, named((*Catalog).Subsystem), identified((*Catalog).SubsystemByID)},
-		{"common module", "Общий", cmpCommonModule, named((*Catalog).CommonModule), identified((*Catalog).CommonModuleByID)},
-		{"session parameter", "ТекущийПользователь", cmpSessionUser, named((*Catalog).SessionParameter), identified((*Catalog).SessionParameterByID)},
-		{"role", "Кладовщик", cmpRole, named((*Catalog).Role), identified((*Catalog).RoleByID)},
-		{"common attribute", "Ответственный", cmpCommonAttribute, named((*Catalog).CommonAttribute), identified((*Catalog).CommonAttributeByID)},
-		{"exchange plan", "Филиалы", cmpExchangePlan, named((*Catalog).ExchangePlan), identified((*Catalog).ExchangePlanByID)},
-		{"filter criterion", "Связанные", cmpCriterion, named((*Catalog).FilterCriterion), nil},
-		{"event subscription", "ПроверкаТовара", cmpSubscription, named((*Catalog).EventSubscription), identified((*Catalog).EventSubscriptionByID)},
-		{"scheduled job", "Обновление", cmpScheduledJob, named((*Catalog).ScheduledJob), nil},
-		{"functional option", "УчётПоСкладу", cmpOption, named((*Catalog).FunctionalOption), nil},
-		{"functional option parameter", "Склад", cmpOptionParameter, named((*Catalog).FunctionalOptionParameter), nil},
-		{"defined type", "ДенежнаяСумма", cmpDefinedType, named((*Catalog).DefinedType), identified((*Catalog).DefinedTypeByID)},
-		{"settings storage", "Варианты", cmpSettingsStorage, named((*Catalog).SettingsStorage), nil},
-		{"common command", "ОткрытьОстатки", cmpCommonCommand, named((*Catalog).CommonCommand), nil},
-		{"command group", "Сервис", cmpCommandGroup, named((*Catalog).CommandGroup), nil},
-		{"common template", "Бланк", cmpCommonTemplate, named((*Catalog).CommonTemplate), identified((*Catalog).CommonTemplateByID)},
-		{"common picture", "Логотип", cmpCommonPicture, named((*Catalog).CommonPicture), identified((*Catalog).CommonPictureByID)},
-		{"XDTO package", "Товары", cmpXDTOPackage, named((*Catalog).XDTOPackage), identified((*Catalog).XDTOPackageByID)},
-		{"web service", "Обмен", cmpWebService, named((*Catalog).WebService), nil},
-		{"HTTP service", "Биллинг", cmpHTTPService, named((*Catalog).HTTPService), nil},
-		{"WS reference", "Поставщик", cmpWSReference, named((*Catalog).WSReference), identified((*Catalog).WSReferenceByID)},
-		{"WebSocket client", "Биржа", cmpWebSocketClient, named((*Catalog).WebSocketClient), identified((*Catalog).WebSocketClientByID)},
-		{"style item", "ЦветВажного", cmpStyleItem, named((*Catalog).StyleItem), identified((*Catalog).StyleItemByID)},
-		{"style", "Основной", cmpStyle, named((*Catalog).Style), identified((*Catalog).StyleByID)},
-		{"constant", "ОсновнойСклад", cmpConstant, named((*Catalog).Constant), identified((*Catalog).ConstantByID)},
-		{"catalog", "Номенклатура", cmpGoods, named((*Catalog).CatalogDefinition), identified((*Catalog).CatalogByID)},
-		{"document", "Поступление", cmpDocument, named((*Catalog).DocumentDefinition), identified((*Catalog).DocumentByID)},
-		{"numerator", "Сквозной", cmpNumerator, named((*Catalog).Numerator), identified((*Catalog).NumeratorByID)},
-		{"sequence", "Последовательность", cmpSequence, named((*Catalog).Sequence), identified((*Catalog).SequenceByID)},
-		{"document journal", "Журнал", cmpJournal, named((*Catalog).DocumentJournal), identified((*Catalog).DocumentJournalByID)},
-		{"enumeration", "ВидыТоваров", cmpEnumeration, named((*Catalog).Enumeration), nil},
-		{"report", "Ведомость", cmpReport, named((*Catalog).Report), nil},
-		{"data processor", "Заполнение", cmpProcessor, named((*Catalog).DataProcessor), nil},
-		{"chart of characteristic types", "ВидыСубконто", cmpCharacteristics, named((*Catalog).ChartOfCharacteristicTypes), identified((*Catalog).ChartOfCharacteristicTypesByID)},
-		{"chart of accounts", "Хозрасчетный", cmpAccounts, named((*Catalog).ChartOfAccounts), identified((*Catalog).ChartOfAccountsByID)},
-		{"chart of calculation types", "Начисления", cmpCalculationTypes, named((*Catalog).ChartOfCalculationTypes), identified((*Catalog).ChartOfCalculationTypesByID)},
-		{"information register", "Цены", cmpPrices, named((*Catalog).InformationRegisterDefinition), identified((*Catalog).InformationRegisterByID)},
-		{"accumulation register", "Остатки", cmpBalances, named((*Catalog).AccumulationRegisterDefinition), identified((*Catalog).AccumulationRegisterByID)},
-		{"accounting register", "Хозрасчетный", cmpEntries, named((*Catalog).AccountingRegister), identified((*Catalog).AccountingRegisterByID)},
-		{"calculation register", "Начисления", cmpPayroll, named((*Catalog).CalculationRegister), identified((*Catalog).CalculationRegisterByID)},
-		{"business process", "Задание", cmpProcess, named((*Catalog).BusinessProcess), identified((*Catalog).BusinessProcessByID)},
-		{"task", "Задача", cmpTask, named((*Catalog).Task), identified((*Catalog).TaskByID)},
-		{"external data source", "Склад", warehouseSource, named((*Catalog).ExternalDataSource), identified((*Catalog).ExternalDataSourceByID)},
-		{"external data source table", "Товары", goodsTable, func(catalog *Catalog, name string) (uuid.UUID, bool) {
+		{SubsystemKind, "Склад", cmpSubsystem, named((*Catalog).Subsystem), identified((*Catalog).SubsystemByID)},
+		{CommonModuleKind, "Общий", cmpCommonModule, named((*Catalog).CommonModule), identified((*Catalog).CommonModuleByID)},
+		{SessionParameterKind, "ТекущийПользователь", cmpSessionUser, named((*Catalog).SessionParameter), identified((*Catalog).SessionParameterByID)},
+		{RoleKind, "Кладовщик", cmpRole, named((*Catalog).Role), identified((*Catalog).RoleByID)},
+		{CommonAttributeKind, "Ответственный", cmpCommonAttribute, named((*Catalog).CommonAttribute), identified((*Catalog).CommonAttributeByID)},
+		{ExchangePlanKind, "Филиалы", cmpExchangePlan, named((*Catalog).ExchangePlan), identified((*Catalog).ExchangePlanByID)},
+		{FilterCriterionKind, "Связанные", cmpCriterion, named((*Catalog).FilterCriterion), nil},
+		{EventSubscriptionKind, "ПроверкаТовара", cmpSubscription, named((*Catalog).EventSubscription), identified((*Catalog).EventSubscriptionByID)},
+		{ScheduledJobKind, "Обновление", cmpScheduledJob, named((*Catalog).ScheduledJob), nil},
+		{FunctionalOptionKind, "УчётПоСкладу", cmpOption, named((*Catalog).FunctionalOption), nil},
+		{FunctionalOptionParameterKind, "Склад", cmpOptionParameter, named((*Catalog).FunctionalOptionParameter), nil},
+		{DefinedTypeKind, "ДенежнаяСумма", cmpDefinedType, named((*Catalog).DefinedType), identified((*Catalog).DefinedTypeByID)},
+		{SettingsStorageKind, "Варианты", cmpSettingsStorage, named((*Catalog).SettingsStorage), nil},
+		{CommonCommandKind, "ОткрытьОстатки", cmpCommonCommand, named((*Catalog).CommonCommand), nil},
+		{CommandGroupKind, "Сервис", cmpCommandGroup, named((*Catalog).CommandGroup), nil},
+		{CommonTemplateKind, "Бланк", cmpCommonTemplate, named((*Catalog).CommonTemplate), identified((*Catalog).CommonTemplateByID)},
+		{CommonPictureKind, "Логотип", cmpCommonPicture, named((*Catalog).CommonPicture), identified((*Catalog).CommonPictureByID)},
+		{XDTOPackageKind, "Товары", cmpXDTOPackage, named((*Catalog).XDTOPackage), identified((*Catalog).XDTOPackageByID)},
+		{WebServiceKind, "Обмен", cmpWebService, named((*Catalog).WebService), nil},
+		{HTTPServiceKind, "Биллинг", cmpHTTPService, named((*Catalog).HTTPService), nil},
+		{WSReferenceKind, "Поставщик", cmpWSReference, named((*Catalog).WSReference), identified((*Catalog).WSReferenceByID)},
+		{WebSocketClientKind, "Биржа", cmpWebSocketClient, named((*Catalog).WebSocketClient), identified((*Catalog).WebSocketClientByID)},
+		{StyleItemKind, "ЦветВажного", cmpStyleItem, named((*Catalog).StyleItem), identified((*Catalog).StyleItemByID)},
+		{StyleKind, "Основной", cmpStyle, named((*Catalog).Style), identified((*Catalog).StyleByID)},
+		{ConstantKind, "ОсновнойСклад", cmpConstant, named((*Catalog).Constant), identified((*Catalog).ConstantByID)},
+		{CatalogKind, "Номенклатура", cmpGoods, named((*Catalog).CatalogDefinition), identified((*Catalog).CatalogByID)},
+		{DocumentKind, "Поступление", cmpDocument, named((*Catalog).DocumentDefinition), identified((*Catalog).DocumentByID)},
+		{NumeratorKind, "Сквозной", cmpNumerator, named((*Catalog).Numerator), identified((*Catalog).NumeratorByID)},
+		{SequenceKind, "Последовательность", cmpSequence, named((*Catalog).Sequence), identified((*Catalog).SequenceByID)},
+		{DocumentJournalKind, "Журнал", cmpJournal, named((*Catalog).DocumentJournal), identified((*Catalog).DocumentJournalByID)},
+		{EnumerationKind, "ВидыТоваров", cmpEnumeration, named((*Catalog).Enumeration), nil},
+		{ReportKind, "Ведомость", cmpReport, named((*Catalog).Report), nil},
+		{DataProcessorKind, "Заполнение", cmpProcessor, named((*Catalog).DataProcessor), nil},
+		{ChartOfCharacteristicTypesKind, "ВидыСубконто", cmpCharacteristics, named((*Catalog).ChartOfCharacteristicTypes), identified((*Catalog).ChartOfCharacteristicTypesByID)},
+		{ChartOfAccountsKind, "Хозрасчетный", cmpAccounts, named((*Catalog).ChartOfAccounts), identified((*Catalog).ChartOfAccountsByID)},
+		{ChartOfCalculationTypesKind, "Начисления", cmpCalculationTypes, named((*Catalog).ChartOfCalculationTypes), identified((*Catalog).ChartOfCalculationTypesByID)},
+		{InformationRegisterKind, "Цены", cmpPrices, named((*Catalog).InformationRegisterDefinition), identified((*Catalog).InformationRegisterByID)},
+		{AccumulationRegisterKind, "Остатки", cmpBalances, named((*Catalog).AccumulationRegisterDefinition), identified((*Catalog).AccumulationRegisterByID)},
+		{AccountingRegisterKind, "Хозрасчетный", cmpEntries, named((*Catalog).AccountingRegister), identified((*Catalog).AccountingRegisterByID)},
+		{CalculationRegisterKind, "Начисления", cmpPayroll, named((*Catalog).CalculationRegister), identified((*Catalog).CalculationRegisterByID)},
+		{BusinessProcessKind, "Задание", cmpProcess, named((*Catalog).BusinessProcess), identified((*Catalog).BusinessProcessByID)},
+		{TaskKind, "Задача", cmpTask, named((*Catalog).Task), identified((*Catalog).TaskByID)},
+		{ExternalDataSourceKind, "Склад", warehouseSource, named((*Catalog).ExternalDataSource), identified((*Catalog).ExternalDataSourceByID)},
+		{ExternalDataSourceTableKind, "Товары", goodsTable, func(catalog *Catalog, name string) (uuid.UUID, bool) {
 			source, _ := catalog.ExternalDataSource("Склад")
 			for _, table := range source.Tables {
 				if table.Name == name {
@@ -446,11 +446,11 @@ func TestCompositeProjectFindsEveryKindByNameAndIdentifier(t *testing.T) {
 			table, _, ok := catalog.ExternalTableByID(id)
 			return table.Name, ok
 		}},
-		{"external data source cube", "Продажи", salesCube, func(catalog *Catalog, name string) (uuid.UUID, bool) {
+		{ExternalCubeKind, "Продажи", salesCube, func(catalog *Catalog, name string) (uuid.UUID, bool) {
 			cube, ok := compositeCube(catalog)
 			return cube.ID, ok && cube.Name == name
 		}, nil},
-		{"external data source dimension table", "Товары", goodsDimTable, func(catalog *Catalog, name string) (uuid.UUID, bool) {
+		{ExternalDimensionTableKind, "Товары", goodsDimTable, func(catalog *Catalog, name string) (uuid.UUID, bool) {
 			cube, _ := compositeCube(catalog)
 			for _, table := range cube.DimensionTables {
 				if table.Name == name {
@@ -459,11 +459,20 @@ func TestCompositeProjectFindsEveryKindByNameAndIdentifier(t *testing.T) {
 			}
 			return uuid.UUID{}, false
 		}, nil},
-		{"common form", "АдреснаяКнига", cmpCommonForm, func(catalog *Catalog, name string) (uuid.UUID, bool) {
+		{CommonFormKind, "АдреснаяКнига", cmpCommonForm, func(catalog *Catalog, name string) (uuid.UUID, bool) {
 			forms, err := ReadCommonForms(root, catalog.Project)
 			for _, form := range forms {
 				if err == nil && form.Name == name && catalog.commonFormNames[strings.ToLower(name)] {
 					return form.ID, true
+				}
+			}
+			return uuid.UUID{}, false
+		}, nil},
+		{RecalculationKind, "Перерасчет", cmpRecalculation, func(catalog *Catalog, name string) (uuid.UUID, bool) {
+			register, _ := catalog.CalculationRegister("Начисления")
+			for _, recalculation := range register.Recalculations {
+				if recalculation.Name == name {
+					return recalculation.ID, true
 				}
 			}
 			return uuid.UUID{}, false
@@ -476,8 +485,8 @@ func TestCompositeProjectFindsEveryKindByNameAndIdentifier(t *testing.T) {
 		if found, ok := object.byName(catalog, object.name); !ok || found != id {
 			t.Errorf("%s %s by name: %s, %v", object.kind, object.name, found, ok)
 		}
-		if kind := catalog.objectKindByID[id]; kind != object.kind {
-			t.Errorf("%s %s by identifier among all objects: %q", object.kind, object.name, kind)
+		if kind, ok := catalog.kindOfObject(id); !ok || kind != object.kind {
+			t.Errorf("%s %s by identifier among all objects: %q, %v", object.kind, object.name, kind, ok)
 		}
 		if object.byID != nil {
 			if name, ok := object.byID(catalog, id); !ok || name != object.name {
@@ -488,9 +497,17 @@ func TestCompositeProjectFindsEveryKindByNameAndIdentifier(t *testing.T) {
 	}
 	// A kind the composite project holds and the table above does not look
 	// for would go untried.
-	for id, kind := range catalog.objectKindByID {
-		if !looked[kind] {
-			t.Errorf("%s %s is in the project and its kind is not looked up", kind, id)
+	// The languages are the configuration's own, found among all objects
+	// like any other.
+	for _, language := range catalog.Project.Languages {
+		if kind, ok := catalog.kindOfObject(language.ID); !ok || kind != LanguageKind {
+			t.Errorf("language %s by identifier among all objects: %q, %v", language.Name, kind, ok)
+		}
+		looked[LanguageKind] = true
+	}
+	for id, object := range catalog.objects {
+		if !looked[object.kind] {
+			t.Errorf("%s %s is in the project and its kind is not looked up", object.kind, id)
 		}
 	}
 	// A recalculation lies inside its register and is reached through it.

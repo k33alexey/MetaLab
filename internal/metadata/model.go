@@ -613,6 +613,14 @@ type CatalogDefinition struct {
 	PredefinedDataUpdate PredefinedDataUpdate `yaml:"predefined_data_update,omitempty" json:"predefinedDataUpdate,omitempty"`
 }
 
+// indexedObject is what the catalog knows of an object by its identifier
+// alone: its kind and its name as written; an object inside another is named
+// with its owner, Источник.Таблица.
+type indexedObject struct {
+	kind Kind
+	name string
+}
+
 // Catalog is an immutable-by-convention snapshot of the supported metadata kinds.
 type Catalog struct {
 	Project project.Project
@@ -716,14 +724,19 @@ type Catalog struct {
 	// helpPages is every page of help the last load found - see
 	// collectHelpPages.
 	helpPages []helpPage
-	// objectKindByID holds every object of the top level the last load read,
-	// of every kind, with the kind it is. It is what a reference that may point
-	// at an object of any kind - the content of a subsystem - is resolved by.
-	objectKindByID map[uuid.UUID]string
-	// objectNames holds the name of each of those objects, as written, by
-	// the same identifier: what a reference by identifier is turned into
-	// once the object is found - the owner of a choice form.
-	objectNames map[uuid.UUID]string
+	// objects holds every object the last load read, of every kind, by its
+	// identifier: the top level, a common form, a language, and what lies
+	// inside an object as an object of a kind of its own - a recalculation, a
+	// table or a cube of an external data source. It is the one place a
+	// reference that may point at an object of any kind is resolved by - the
+	// content of a subsystem - and turned into the object's kind and name once
+	// found - the owner of a choice form.
+	objects map[uuid.UUID]indexedObject
+	// identifiers says what every identifier the last load checked for
+	// uniqueness belongs to, in the words a message names it with: an object,
+	// its attribute, its table part. It is what an error about a physical
+	// table names the table's owner by.
+	identifiers map[uuid.UUID]string
 	// formOwnerKinds holds the kind of each object that may keep forms, by
 	// its identifier, as the loader indexed its folder: what a choice form's
 	// kind is checked against.

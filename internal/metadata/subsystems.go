@@ -170,9 +170,9 @@ func (catalog *Catalog) subsystemPath(index int) string {
 	return path
 }
 
-// knownMetadataObject reports whether id is an object of the top level the
-// configuration carries, of any kind.
+// knownMetadataObject reports whether id is an object the configuration
+// carries, of any kind.
 func (catalog *Catalog) knownMetadataObject(id uuid.UUID) bool {
-	_, ok := catalog.objectKindByID[id]
+	_, ok := catalog.objects[id]
 	return ok
 }

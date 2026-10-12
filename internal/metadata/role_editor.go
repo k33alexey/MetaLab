@@ -91,7 +91,7 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 		result.Rights = append(result.Rights, PermissionRight{Key: right.operation, Title: nameInWords(right.russian)})
 	}
 	result.Parts = map[uuid.UUID][]string{}
-	for _, id := range append(slices.Collect(maps.Keys(catalog.objectKindByID)), catalog.Project.ID) {
+	for _, id := range append(slices.Collect(maps.Keys(catalog.objects)), catalog.Project.ID) {
 		if parts, ok := catalog.rightsParts(id); ok {
 			keys := slices.Sorted(maps.Keys(parts))
 			if keys == nil {

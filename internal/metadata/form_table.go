@@ -459,7 +459,7 @@ func (catalog *Catalog) resolveFormTables(where string, form ManagedForm) {
 			case UnresolvedReferenceValue:
 				catalog.unresolved = append(catalog.unresolved, UnresolvedReference{Where: at + " top_level_parent", Written: parent.Data})
 			case CatalogType, CharacteristicTypesType, AccountType:
-				if _, ok := catalog.objectKindByID[parent.Object]; !ok {
+				if _, ok := catalog.objects[parent.Object]; !ok {
 					catalog.noteUnresolved(at+" top_level_parent", parent.Object)
 				}
 			}
