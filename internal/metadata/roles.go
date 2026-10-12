@@ -293,11 +293,12 @@ type RoleDefinition struct {
 // nothing about takes the right of its object, and one denied keeps it denied
 // (the four exports write 466 thousand denials against 150 thousand grants).
 //
-// Which rights an object can use is not checked against the object: the help
-// gives no list by kind, and a role of the prototype keeps rights its object
-// has no use for - posting on a document that is never posted, managing the
-// totals of an information register. They are carried; whether they act is
-// for the check of rights to say.
+// Which rights an object can use does not refuse a role: the help gives no
+// list by kind, and a role of the prototype keeps rights its object has no use
+// for - posting on a document that is never posted, managing the totals of an
+// information register. They are carried; whether they act is for the check
+// of rights to say. A right no export writes on such an object is carried
+// with the note right-without-sample.
 type ObjectPermission struct {
 	Object     uuid.UUID             `yaml:"object" json:"object"`
 	Operations []PermissionOperation `yaml:"operations,omitempty" json:"operations,omitempty"`

@@ -236,41 +236,54 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 	return target, true
 }
 
-// rightsParts finds what a role may give rights on: the configuration itself,
-// by the project's identifier, or an object of it, together with the keys of
-// its parts the configurator offers rights on (partsOf, partRightsOf).
-func (catalog *Catalog) rightsParts(id uuid.UUID) (map[string]bool, bool) {
-	parts := map[string]bool{}
+// rightsTarget is what a role may give rights on in one object: the rights
+// the configurator offers on the object itself, and its parts it offers
+// rights on, by the key a role keeps them under.
+type rightsTarget struct {
+	// rights is nil for a kind no export gives rights on: such an object is
+	// carried with the note use-without-sample.
+	rights []PermissionOperation
+	parts  map[string]objectPart
+}
+
+// rightsTargetOf finds what a role may give rights on: the configuration
+// itself, by the project's identifier, or an object of it, with the rights
+// the configurator offers on it and on each of its parts (configurationRights,
+// kindRightsOf, partsOf, partRightsOf).
+func (catalog *Catalog) rightsTargetOf(id uuid.UUID) (rightsTarget, bool) {
+	target := rightsTarget{parts: map[string]objectPart{}}
 	if id == catalog.Project.ID {
-		return parts, true
+		target.rights = configurationRights
+		return target, true
 	}
 	kind, ok := catalog.kindOfObject(id)
 	if !ok || !usesOf(kind).rights.accepted() {
-		return nil, false
+		return rightsTarget{}, false
 	}
+	target.rights = usesOf(kind).offered
 	found, _ := catalog.partsOf(kind, id)
 	for _, part := range found {
 		if len(partRightsOf(part.group)) > 0 {
-			parts[part.key] = true
+			target.parts[part.key] = part
 		}
 	}
-	return parts, true
+	return target, true
 }
 
 func (catalog *Catalog) validateRoleReferences(root string) error {
-	targets := map[uuid.UUID]map[string]bool{}
+	targets := map[uuid.UUID]rightsTarget{}
 	for _, role := range catalog.Roles {
 		for _, permission := range role.Objects {
-			parts, ok := targets[permission.Object]
+			target, ok := targets[permission.Object]
 			if !ok {
-				parts, ok = catalog.rightsParts(permission.Object)
+				target, ok = catalog.rightsTargetOf(permission.Object)
 				if !ok {
 					return fmt.Errorf("role %s references unknown or unsupported object %s", role.Name, permission.Object)
 				}
-				targets[permission.Object] = parts
+				targets[permission.Object] = target
 			}
 			for _, field := range permission.Fields {
-				if !parts[field.Field] {
+				if _, ok := target.parts[field.Field]; !ok {
 					return fmt.Errorf("role %s: field %s does not belong to object %s", role.Name, field.Field, permission.Object)
 				}
 			}
@@ -279,11 +292,11 @@ func (catalog *Catalog) validateRoleReferences(root string) error {
 			}
 			// A restriction narrows rows, and only an object that keeps rows
 			// has them to narrow.
-			target, ok := catalog.permissionTarget(permission.Object)
+			rows, ok := catalog.permissionTarget(permission.Object)
 			if !ok {
 				return fmt.Errorf("role %s: object %s keeps no rows for a restriction to narrow", role.Name, permission.Object)
 			}
-			if err := catalog.validateRolePolicies(role, permission, target); err != nil {
+			if err := catalog.validateRolePolicies(role, permission, rows); err != nil {
 				return err
 			}
 		}

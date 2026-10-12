@@ -81,6 +81,7 @@ const (
 	NoteCompositionTypeUnexplained NoteKind = "composition-type-unexplained"
 	NoteWithoutSample              NoteKind = "accepted-without-sample"
 	NoteUseWithoutSample           NoteKind = "use-without-sample"
+	NoteRightWithoutSample         NoteKind = "right-without-sample"
 )
 
 func init() {
@@ -348,6 +349,12 @@ func init() {
 				"сохраняет ли такое конфигуратор.",
 			"Несётся как записано и ничего не меняет: права на объекты этих видов не проверяются, состав плана обмена и " +
 				"функциональной опции ML пока не исполняет."},
+		NoteKindInfo{NoteRightWithoutSample,
+			"Право роли — данное или запрещённое — на конфигурацию, объект или его часть, которого ни одна известная " +
+				"выгрузка конфигуратора на таком месте не пишет: изменение у отчёта, проведение у справочника, редактирование " +
+				"у команды. Справка перечисляет права, а не то, к чему каждое относится, так что не известно, сохраняет ли " +
+				"такое конфигуратор; редактор роли такого права не предлагает.",
+			"Право несётся как записано и не исполняется; редактор роли сохраняет его нетронутым."},
 	)
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
@@ -454,36 +461,80 @@ func init() {
 		catalog.formNotesOf(NoteWithoutSample, note)
 	}
 	noteRules[NoteUseWithoutSample] = noteUseWithoutSample
+	noteRules[NoteRightWithoutSample] = noteRightWithoutSample
 }
 
 // noteUseWithoutSample notes every object a role, an exchange plan or a
 // functional option names whose kind no export shows in that place.
 func noteUseWithoutSample(catalog *Catalog, note func(where, written string)) {
-	named := func(kind Kind, id uuid.UUID) string {
-		name := id.String()
-		if object, ok := catalog.objects[id]; ok {
-			name = object.name
-		}
-		return string(kind) + " " + name
-	}
 	for _, role := range catalog.Roles {
 		for _, permission := range role.Objects {
 			if kind, ok := catalog.kindOfObject(permission.Object); ok && usesOf(kind).rights == unproven {
-				note("roles "+role.Name+" objects", named(kind, permission.Object))
+				note("roles "+role.Name+" objects", catalog.noteObjectName(kind, permission.Object))
 			}
 		}
 	}
 	for _, plan := range catalog.ExchangePlans {
 		for _, item := range plan.Content {
 			if usesOf(item.Kind).registration == unproven {
-				note("exchange-plans "+plan.Name+" content", named(item.Kind, item.Object))
+				note("exchange-plans "+plan.Name+" content", catalog.noteObjectName(item.Kind, item.Object))
 			}
 		}
 	}
 	for _, option := range catalog.FunctionalOptions {
 		for _, item := range option.Content {
 			if usesOf(item.Kind).option == unproven {
-				note("functional-options "+option.Name+" content", named(item.Kind, item.Object))
+				note("functional-options "+option.Name+" content", catalog.noteObjectName(item.Kind, item.Object))
+			}
+		}
+	}
+}
+
+// noteObjectName names an object in a note by its kind and name, or by its
+// identifier where the catalog does not hold it.
+func (catalog *Catalog) noteObjectName(kind Kind, id uuid.UUID) string {
+	name := id.String()
+	if object, ok := catalog.objects[id]; ok {
+		name = object.name
+	}
+	return string(kind) + " " + name
+}
+
+// noteRightWithoutSample notes every right a role writes, granted or denied,
+// where the configurator offers no such right: on the configuration, on an
+// object of a kind or on a part of a sort (rightsTargetOf). An object of a
+// kind no export gives rights on is noted whole by use-without-sample, and
+// not right by right.
+func noteRightWithoutSample(catalog *Catalog, note func(where, written string)) {
+	for _, role := range catalog.Roles {
+		where := "roles " + role.Name + " rights"
+		for _, permission := range role.Objects {
+			target, ok := catalog.rightsTargetOf(permission.Object)
+			if !ok {
+				continue
+			}
+			object := "configuration " + catalog.Project.Name
+			if kind, ok := catalog.kindOfObject(permission.Object); ok {
+				object = catalog.noteObjectName(kind, permission.Object)
+			}
+			if target.rights != nil {
+				for _, right := range slices.Concat(permission.Operations, permission.Denied) {
+					if !slices.Contains(target.rights, right) {
+						note(where, object+" "+string(right))
+					}
+				}
+			}
+			for _, field := range permission.Fields {
+				part := target.parts[field.Field]
+				name := part.name
+				if part.parent != "" {
+					name = target.parts[part.parent].name + "." + name
+				}
+				for _, right := range slices.Concat(field.Operations, field.Denied) {
+					if !slices.Contains(partRightsOf(part.group), right) {
+						note(where, object+"."+name+" "+string(right))
+					}
+				}
 			}
 		}
 	}

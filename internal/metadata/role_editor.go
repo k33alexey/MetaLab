@@ -119,8 +119,8 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	}
 	result.Parts = map[uuid.UUID][]string{}
 	for _, id := range append(slices.Collect(maps.Keys(catalog.objects)), catalog.Project.ID) {
-		if parts, ok := catalog.rightsParts(id); ok {
-			keys := slices.Sorted(maps.Keys(parts))
+		if target, ok := catalog.rightsTargetOf(id); ok {
+			keys := slices.Sorted(maps.Keys(target.parts))
 			if keys == nil {
 				keys = []string{}
 			}
@@ -139,8 +139,9 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	}
 	appendObject := func(kind Kind, id uuid.UUID, name string, title LocalizedText) {
 		target, _ := catalog.permissionTarget(id)
+		offered, _ := catalog.rightsTargetOf(id)
 		object := PermissionObject{ID: id, Kind: kind, Owner: catalog.objects[id].owner, Name: name, Title: cloneTitle(title),
-			Rights: usesOf(kind).offered, Operations: []PermissionOperation{}, Fields: []PermissionField{},
+			Rights: offered.rights, Operations: []PermissionOperation{}, Fields: []PermissionField{},
 			PolicyFields: []PermissionField{}}
 		for _, operation := range objectOperations {
 			if target.operations[operation] {
@@ -187,8 +188,9 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 		result.Objects = append(result.Objects, object)
 	}
 	// The configuration itself comes first, as the root of the tree.
+	configuration, _ := catalog.rightsTargetOf(catalog.Project.ID)
 	result.Objects = append(result.Objects, PermissionObject{ID: catalog.Project.ID, Root: true,
-		Name: catalog.Project.Name, Title: cloneTitle(catalog.Project.Title), Rights: configurationRights,
+		Name: catalog.Project.Name, Title: cloneTitle(catalog.Project.Title), Rights: configuration.rights,
 		Operations: []PermissionOperation{}, Fields: []PermissionField{}, PolicyFields: []PermissionField{}})
 	// Then every object a role is offered rights on, kind by kind in the
 	// order of the tree. A common form is read apart from the catalog.

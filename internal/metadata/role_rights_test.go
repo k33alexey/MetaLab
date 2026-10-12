@@ -193,9 +193,15 @@ func TestLoaderReadsTheGridBesideTheRole(t *testing.T) {
 // Rights.xml of every role of the four checked, demo-base and energy), written
 // out here, not read from kindUsesOf.
 //
+// A right no export writes where it stands - on the configuration, on an
+// object of its kind, on a part of its sort - granted or denied, is carried
+// with the note right-without-sample, which names the role, the place and the
+// right.
+//
 // Defect caught: a role of the prototype refused for naming a subsystem, the
 // configuration or a recalculation (demo-base, energy); one naming a common
-// module refused without a reason, or accepted silently.
+// module refused without a reason, or accepted silently; a right outside the
+// exports' lists accepted silently, or one inside them noted.
 func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 	t.Parallel()
 	root := compositeProject(t)
@@ -240,6 +246,38 @@ func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 		"a defined type":  grant(cmpDefinedType, PermissionView),
 		"an enumeration":  grant(cmpEnumeration, PermissionView),
 	}
+	deny := func(permission ObjectPermission, rights ...PermissionOperation) ObjectPermission {
+		permission.Denied = append(permission.Denied, rights...)
+		return permission
+	}
+	unoffered := map[string]struct {
+		permission ObjectPermission
+		written    string
+	}{
+		"update on a report": {grant(cmpReport, PermissionView, PermissionUpdate), "reports Ведомость update"},
+		"posting denied":     {deny(grant(cmpReport, PermissionUse), PermissionPosting), "reports Ведомость posting"},
+		"view on the configuration": {grant(project.Project.ID.String(), PermissionThinClient, PermissionView),
+			"configuration " + project.Project.Name + " view"},
+		"use on a field of a standard table part": {part(grant(cmpAccounts, PermissionRead),
+			"extdimensiontypes.turnoversonly", PermissionView, PermissionUse),
+			"charts-of-accounts Хозрасчетный.ВидыСубконто.ТолькоОбороты use"},
+	}
+	for name, item := range unoffered {
+		role, _ := project.Role("Кладовщик")
+		role.Objects = append(role.Objects, item.permission)
+		if err := WriteRole(root, role); err != nil {
+			t.Fatal(err)
+		}
+		catalog, err := Load(root)
+		if err != nil {
+			t.Errorf("%s was refused: %v", name, err)
+			continue
+		}
+		want := []Note{{Kind: NoteRightWithoutSample, Where: "roles Кладовщик rights", Written: item.written}}
+		if got := catalog.Notes(); !slices.Equal(got, want) {
+			t.Errorf("%s: notes %+v, want %+v", name, got, want)
+		}
+	}
 	refused := map[string]ObjectPermission{
 		"a foreign part":       part(grant(cmpAccounts, PermissionRead), "leadingcalculationtypes", PermissionView),
 		"a part of nothing":    part(grant(cmpSubsystem, PermissionView), "ref", PermissionView),
@@ -256,10 +294,8 @@ func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 			t.Errorf("rights on %s were refused: %v", name, err)
 			continue
 		}
-		for _, note := range catalog.Notes() {
-			if note.Kind == NoteUseWithoutSample {
-				t.Errorf("rights on %s, which the exports give, are noted: %+v", name, note)
-			}
+		if notes := catalog.Notes(); len(notes) != 0 {
+			t.Errorf("rights on %s, which the exports give, are noted: %+v", name, notes)
 		}
 	}
 	for name, permission := range noted {
@@ -273,10 +309,10 @@ func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 			t.Errorf("rights on %s were refused: %v", name, err)
 			continue
 		}
-		if !slices.ContainsFunc(catalog.Notes(), func(note Note) bool {
-			return note.Kind == NoteUseWithoutSample && note.Where == "roles Кладовщик objects"
-		}) {
-			t.Errorf("rights on %s were accepted silently", name)
+		// The object is noted whole, not right by right as well.
+		if notes := catalog.Notes(); len(notes) != 1 || notes[0].Kind != NoteUseWithoutSample ||
+			notes[0].Where != "roles Кладовщик objects" {
+			t.Errorf("rights on %s: notes %+v, want one use-without-sample", name, notes)
 		}
 	}
 	for name, permission := range refused {
