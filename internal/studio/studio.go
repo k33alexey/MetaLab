@@ -940,8 +940,18 @@ func (workspace *Workspace) sourceFiles(directory, relative, extension, kind, la
 		return nil, fmt.Errorf("read project directory %q: %w", relative, err)
 	}
 	nodes := make([]Node, 0, len(entries))
+	// The folder a role, a subsystem or a group of commands keeps beside its
+	// description is the loader's to check, and is no node of its own.
+	folderKind := metadata.Kind(strings.TrimPrefix(relative, "metadata/"))
 	for _, entry := range entries {
 		if entry.Name() == ".gitkeep" {
+			continue
+		}
+		if kind == "metadata" && metadata.KeepsIdentifiedFolder(folderKind) && entry.IsDir() && entry.Type()&os.ModeSymlink == 0 {
+			_, err := os.Stat(filepath.Join(directory, entry.Name()+extension))
+			if err := metadata.ValidateIdentifiedFolder(directory, folderKind, entry.Name(), err == nil); err != nil {
+				return nil, err
+			}
 			continue
 		}
 		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {

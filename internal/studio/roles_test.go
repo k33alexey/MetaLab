@@ -109,6 +109,84 @@ func TestRoleEditorCreateReadSaveAndConflicts(t *testing.T) {
 	}
 }
 
+// TestStudioOpensAProjectWhoseRoleKeepsItsRights catches Studio refusing the
+// folder a role keeps its grid of rights in: since rights.json, a project
+// with one saved role could no longer be opened, the tree failing with
+// «unexpected source path». The folder is the loader's to check, so a file
+// it does not allow there is still refused.
+func TestStudioOpensAProjectWhoseRoleKeepsItsRights(t *testing.T) {
+	t.Parallel()
+	workspace, object := roleWorkspace(t)
+	created, err := workspace.CreateRole("Продавец")
+	if err != nil {
+		t.Fatal(err)
+	}
+	created.Role.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead}}}
+	if _, err := workspace.SaveRole(created.Path, created.Role, created.Revision); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(workspace.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := reopened.Snapshot()
+	if err != nil {
+		t.Fatalf("the project with a saved role does not open: %v", err)
+	}
+	if !treeContainsTitle(snapshot.Tree, "Продавец") {
+		t.Fatal("the role is not in the tree")
+	}
+	stray := filepath.Join(workspace.root, "metadata", "roles", created.Role.ID.String(), "notes.txt")
+	if err := os.WriteFile(stray, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reopened.Snapshot(); err == nil || !strings.Contains(err.Error(), "notes.txt") {
+		t.Fatalf("a file a role's folder does not keep was taken: %v", err)
+	}
+}
+
+// TestARoleIsComparedByItsOwnRevision catches Studio taking a role with a
+// grid of rights for one changed outside it on every check: it compared the
+// revision of the description file with the role's, which counts the grid
+// too, so the editor reloaded every few seconds and blocked saving an edit
+// as a conflict. The role's route answers «not modified» to the role's own
+// revision, and answers again once the grid changes on disk.
+func TestARoleIsComparedByItsOwnRevision(t *testing.T) {
+	t.Parallel()
+	workspace, object := roleWorkspace(t)
+	created, err := workspace.CreateRole("Продавец")
+	if err != nil {
+		t.Fatal(err)
+	}
+	created.Role.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead}}}
+	saved, err := workspace.SaveRole(created.Path, created.Role, created.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(workspace)
+	ask := func(revision string) int {
+		r := httptest.NewRequest(http.MethodGet, "http://localhost/api/role?path="+saved.Path, nil)
+		r.Header.Set("If-None-Match", `"`+revision+`"`)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w.Code
+	}
+	if code := ask(saved.Revision); code != http.StatusNotModified {
+		t.Fatalf("an unchanged role with rights is answered %d", code)
+	}
+	grid := filepath.Join(workspace.root, "metadata", "roles", saved.Role.ID.String(), metadata.RoleRightsFile)
+	content, err := os.ReadFile(grid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(grid, append(content, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code := ask(saved.Revision); code != http.StatusOK {
+		t.Fatalf("a role whose rights changed on disk is answered %d", code)
+	}
+}
+
 // Restrictions must survive a real save/read cycle, and a restriction the
 // project cannot resolve must be refused before it reaches the working copy.
 // A role carries three flags of the prototype, and the third - independent

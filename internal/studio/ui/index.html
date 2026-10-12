@@ -232,7 +232,9 @@
       if(!currentFile||loadingFile)return;
       const opened=currentFile,knownRevision=opened.externalRevision||opened.revision;
       try{
-        const response=await fetch(`/api/file?path=${encodeURIComponent(opened.path)}`,{headers:{'If-None-Match':`"${knownRevision}"`}});
+        // A role is its description and its grid of rights together, so it is
+        // compared by the role's own revision, not by the file's.
+        const response=await fetch(`/api/${opened.isRole?'role':'file'}?path=${encodeURIComponent(opened.path)}`,{headers:{'If-None-Match':`"${knownRevision}"`}});
         if(response.status===304||!response.ok)return;
         const latest=await response.json();if(currentFile!==opened||loadingFile)return;
         if(latest.revision===opened.revision){delete opened.externalRevision;return;}

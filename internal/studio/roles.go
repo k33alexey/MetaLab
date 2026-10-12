@@ -47,6 +47,22 @@ func (workspace *Workspace) ReadRole(relative string) (RoleSource, error) {
 	return workspace.readRoleLocked(relative)
 }
 
+// RoleRevision is the revision of a role as ReadRole gives it - of its
+// description and its grid of rights together - without reading the schema:
+// what Studio compares to notice the role changed on disk.
+func (workspace *Workspace) RoleRevision(relative string) (string, error) {
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
+	if err := validateRolePath(relative); err != nil {
+		return "", err
+	}
+	files, err := workspace.readRoleFilesLocked(relative)
+	if err != nil {
+		return "", err
+	}
+	return files.revision(), nil
+}
+
 func (workspace *Workspace) readRoleLocked(relative string) (RoleSource, error) {
 	if err := validateRolePath(relative); err != nil {
 		return RoleSource{}, err
@@ -466,11 +482,27 @@ func registerRoleRoutes(routes *http.ServeMux, workspace *Workspace) {
 		writeStudioJSON(response, overview)
 	})
 	routes.HandleFunc("GET /api/role", func(response http.ResponseWriter, request *http.Request) {
-		role, err := workspace.ReadRole(request.URL.Query().Get("path"))
+		path := request.URL.Query().Get("path")
+		// A role unchanged since the caller read it is answered without the
+		// schema, which is the whole project read again.
+		if known := request.Header.Get("If-None-Match"); known != "" {
+			revision, err := workspace.RoleRevision(path)
+			if err != nil {
+				writeSourceError(response, err)
+				return
+			}
+			response.Header().Set("ETag", `"`+revision+`"`)
+			if known == `"`+revision+`"` {
+				response.WriteHeader(http.StatusNotModified)
+				return
+			}
+		}
+		role, err := workspace.ReadRole(path)
 		if err != nil {
 			writeSourceError(response, err)
 			return
 		}
+		response.Header().Set("ETag", `"`+role.Revision+`"`)
 		writeStudioJSON(response, role)
 	})
 	routes.HandleFunc("PUT /api/role", func(response http.ResponseWriter, request *http.Request) {

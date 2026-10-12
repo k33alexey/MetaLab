@@ -315,8 +315,8 @@ func loadKind(root string, kind Kind, decode func(string, *os.File) error) error
 		// A group of commands keeps one for the same reason when its
 		// picture is a file of its own, and so does a subsystem. A role keeps
 		// one for the grid of its rights.
-		if (kind == SubsystemKind || kind == CommandGroupKind || kind == RoleKind) && entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 {
-			if err := validateIdentifiedFolder(directory, kind, entry.Name(), described[entry.Name()+".yaml"]); err != nil {
+		if KeepsIdentifiedFolder(kind) && entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 {
+			if err := ValidateIdentifiedFolder(directory, kind, entry.Name(), described[entry.Name()+".yaml"]); err != nil {
 				return err
 			}
 			continue
@@ -366,13 +366,21 @@ func openRoleRights(root string, id uuid.UUID) (*os.File, error) {
 	return file, nil
 }
 
-// validateIdentifiedFolder checks the folder a subsystem, a group of commands
+// KeepsIdentifiedFolder says an object of the kind may keep a folder named by
+// its identifier beside its description: a subsystem and a group of commands
+// for their help and picture, a role for the grid of its rights. The loader
+// and Studio's tree both ask here.
+func KeepsIdentifiedFolder(kind Kind) bool {
+	return kind == SubsystemKind || kind == CommandGroupKind || kind == RoleKind
+}
+
+// ValidateIdentifiedFolder checks the folder a subsystem, a group of commands
 // or a role keeps beside its description: named by the identifier, standing
 // beside a description of that name, and holding what that kind keeps there -
 // the help of a subsystem and image files, whose picture is checked once the
 // description is read in validateIdentifiedPictureFiles, or the grid of a
 // role's rights.
-func validateIdentifiedFolder(directory string, kind Kind, name string, described bool) error {
+func ValidateIdentifiedFolder(directory string, kind Kind, name string, described bool) error {
 	relative := filepath.ToSlash(filepath.Join("metadata", string(kind), name))
 	what, short, keeps := "subsystem", "subsystem", "only its help and the file of its picture"
 	switch kind {

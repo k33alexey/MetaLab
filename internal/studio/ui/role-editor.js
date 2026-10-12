@@ -9,11 +9,6 @@ function createRoleModel(source) {
   // A restriction compares fields under its own keys, not the parts rights
   // are given on - see PolicyFields on the server.
   const policyFields = new Map(value.schema.objects.map(item => [item.id, new Map((item.policyFields||[]).map(field => [field.key, field]))]));
-  const children = new Map(value.schema.objects.map(item => {
-    const result = new Map();
-    for(const field of item.fields)if(field.parent){if(!result.has(field.parent))result.set(field.parent,[]);result.get(field.parent).push(field.key);}
-    return [item.id,result];
-  }));
   let objects, fieldGrants;
   function reindex(){objects=new Map(value.role.objects.map(item=>[item.object,item]));fieldGrants=new Map(value.role.objects.map(item=>[item.object,new Map((item.fields||[]).map(field=>[field.field,field]))]));}
   reindex();
@@ -26,48 +21,59 @@ function createRoleModel(source) {
   function toggle(items, operation, enabled) {
     return enabled ? [...new Set([...items, operation])] : items.filter(item => item !== operation);
   }
-  // A right is granted, denied, or not mentioned. Granting it here takes back
-  // a denial; taking a grant back leaves the right unmentioned, as the
-  // checkbox shows it.
-  function grantRight(holder, operation, enabled) {
-    holder.operations = toggle(holder.operations || [], operation, enabled);
-    if (enabled && holder.denied) { holder.denied = holder.denied.filter(item => item !== operation); if (!holder.denied.length) delete holder.denied; }
-  }
-  // A right of an object has the prototype's two states: the box set grants
-  // it and the box cleared denies it, both written - what is not written
-  // stands for the role's flag for new objects (roleObjectRight).
+  // A right has the prototype's two states: the box set grants it and the
+  // box cleared denies it, both written - what is not written stands for the
+  // role's flags (roleObjectRight, rolePartRight).
   function writeRight(holder, operation, enabled) {
     holder.operations = toggle(holder.operations || [], operation, enabled);
     const denied = toggle(holder.denied || [], operation, !enabled);
     if (denied.length) holder.denied = denied; else delete holder.denied;
   }
   const objectRight = (id, operation) => roleObjectRight(value.role, objects.get(id), operation);
-  function assignField(id, key, operation, enabled) {
+  const partRight = (id, key, operation) => {
+    const part = fields.get(id)?.get(key);
+    return part ? rolePartRight(value.role, objects.get(id), fieldGrants.get(id)?.get(key), part, operation) : false;
+  };
+  // A right of a part is the part's alone: setting it touches neither the
+  // object nor the other parts, as the prototype's editor does - whether a
+  // part's right holds without the owner's is the role's flag of independent
+  // rights, read when the rights act.
+  function setField(id, key, operation, enabled) {
     if (!fields.get(id)?.get(key)?.operations.includes(operation)) return;
     const grant = object(id), index = fieldGrants.get(id);
     let target = index.get(key);
     if(!target){target={field:key,operations:[]};grant.fields.push(target);index.set(key,target);}
-    grantRight(target,operation,enabled);
+    writeRight(target,operation,enabled);
   }
-  function setField(id, key, operation, enabled) {
-    const field = fields.get(id)?.get(key);
-    if (!field?.operations.includes(operation)) return;
-    const keys = [key, ...(children.get(id).get(key)||[])];
-    if (enabled && field.parent) keys.push(field.parent);
-    for (const fieldKey of keys) {
-      assignField(id,fieldKey,operation,enabled);
-    }
-  }
+  // A right of an object is the object's alone too: marking it gives none
+  // to its attributes (owner's decision of 12.10.2026, by the help - the
+  // attributes are set together only on the question the flag asks).
   function setObject(id, operation, enabled) {
-    const definition = definitions.get(id);
-    if (!definition?.rights.includes(operation)) return;
-    const grant = object(id);
-    writeRight(grant, operation, enabled);
-    const fieldOperation = operation === 'read' ? 'view' : ['insert','update'].includes(operation) ? 'edit' : null;
-    if (!fieldOperation) return;
-    // Removing Insert must not remove field editing still needed by Update.
-    if (!enabled && fieldOperation === 'edit' && ['insert','update'].some(item => objectRight(id, item))) return;
-    for (const field of definition.fields) assignField(id, field.key, fieldOperation, enabled);
+    if (!definitions.get(id)?.rights.includes(operation)) return;
+    writeRight(object(id), operation, enabled);
+  }
+  // Every right in force of every object and every part, by where it is.
+  function rightsInForce() {
+    const result = new Map();
+    for (const definition of value.schema.objects) {
+      for (const operation of definition.rights) result.set(`${definition.id} ${operation}`, objectRight(definition.id, operation));
+      for (const part of definition.fields) for (const operation of part.operations)
+        result.set(`${definition.id} ${operation} ${part.key}`, partRight(definition.id, part.key, operation));
+    }
+    return result;
+  }
+  // A flag changes what is not written. Whatever right it would turn over is
+  // written first as it stood, so no right of an existing object or part
+  // changes with the flag.
+  function keepRightsAcross(change) {
+    const before = rightsInForce();
+    change();
+    for (const [where, enabled] of rightsInForce()) {
+      if (before.get(where) === enabled) continue;
+      const [id, operation, key] = where.split(' ');
+      if (key === undefined) writeRight(object(id), operation, before.get(where));
+      else setField(id, key, operation, before.get(where));
+    }
   }
   function clean() {
     const result = structuredClone(value.role);
@@ -146,18 +152,24 @@ function createRoleModel(source) {
     // changes, so no right of an existing object turns over with it.
     setGrantNewObjectsByDefault(enabled) {
       if (!!value.role.grantNewObjectsByDefault === enabled) return;
-      for (const definition of value.schema.objects) for (const operation of definition.rights) {
-        const grant = objects.get(definition.id);
-        if (!grant?.operations?.includes(operation) && !grant?.denied?.includes(operation)) writeRight(object(definition.id), operation, !enabled);
-      }
-      value.role.grantNewObjectsByDefault = enabled;
+      keepRightsAcross(() => { value.role.grantNewObjectsByDefault = enabled; });
     },
-    setGrantNewFieldsByDefault(enabled) { value.role.grantNewFieldsByDefault = enabled; },
+    // The prototype asks, when the flag for attributes changes, whether to
+    // set or clear the rights on every attribute and table part: «Да» does,
+    // «Нет» changes no right (help, «Редактирование роли»).
+    setGrantNewFieldsByDefault(enabled, everyField = false) {
+      if (!!value.role.grantNewFieldsByDefault === enabled) return;
+      keepRightsAcross(() => { value.role.grantNewFieldsByDefault = enabled; });
+      if (!everyField) return;
+      for (const definition of value.schema.objects) for (const part of definition.fields)
+        if (part.operations.includes('edit')) for (const operation of part.operations) setField(definition.id, part.key, operation, enabled);
+    },
     setIndependentChildRights(enabled) { value.role.independentChildRights = enabled; },
     setObject, setField,
     hasObject: objectRight,
-    hasField(id, key, operation) { return fieldGrants.get(id)?.get(key)?.operations.includes(operation) || false; },
+    hasField: partRight,
     setAll(id, enabled) { for(const operation of definitions.get(id)?.rights || [])setObject(id, operation, enabled); },
+    setAllOfPart(id, key, enabled) { for(const operation of fields.get(id)?.get(key)?.operations || [])setField(id, key, operation, enabled); },
     hasCommand(form, command) { return value.role.commands.some(item => item.form === form && item.command === command); },
     setCommand(form, command, enabled) {
       if (!value.schema.forms.some(item => item.id === form && item.commands.some(item => item.id === command))) return;
@@ -191,7 +203,9 @@ function createRoleModel(source) {
 }
 
 function createRoleEditor(host, onChange) {
-  let source, model, selected, panel, tree, warning, templates, fieldsExpanded = false, policiesExpanded = false, titleFieldCleanup = null;
+  let source, model, selected, panel, tree, warning, templates, policiesExpanded = false, titleFieldCleanup = null;
+  // The nodes of the tree left open, by key, so a redraw keeps them open.
+  const expanded = new Set();
   function clearTitleField() { titleFieldCleanup?.(); titleFieldCleanup = null; }
   /* Подписи прав, видов и стандартных полей приходят с сервера, из
      единственных перечней: свой словарь здесь разошёлся бы с ними при первой
@@ -201,7 +215,7 @@ function createRoleEditor(host, onChange) {
   function title(item) { return localizedTitle(item, source.defaultLanguage, source.languages); }
   /* Подписи объектов и полей показываются на текущем языке Studio и
      меняются вместе с ним. */
-  StudioLanguage.onChange(() => { if (!source) return; renderTree(host.querySelector('.role-sidebar input')?.value || ''); renderTemplates(); renderPanel(); });
+  StudioLanguage.onChange(() => { if (!source) return; renderTree(currentFilter()); renderTemplates(); renderPanel(); });
   function changed() { warning.hidden=!model.hasUnavailable(); onChange(); }
   function checkbox(text, checked, action, disabled=false) {
     const label=checkboxField(text,checked,enabled=>{const focus=label.firstChild.getAttribute('aria-label')||text;action(enabled);changed();renderPanel();for(const candidate of panel.querySelectorAll('input'))if((candidate.getAttribute('aria-label')||candidate.parentElement.textContent)===focus){candidate.focus();break;}},'role-check',disabled);
@@ -387,53 +401,137 @@ function createRoleEditor(host, onChange) {
     return block;
   }
   // The tree is the configurator's: the configuration itself at the top, then
-  // the objects kind by kind in the order the server lists them.
-  function renderTree(filter='') {
-    tree.replaceChildren(); const groups=new Map();
-    for(const item of source.schema.objects) {
-      if(!`${item.name} ${title(item)}`.toLocaleLowerCase().includes(filter.toLocaleLowerCase().trim()))continue;
-      if(item.root){const button=node('button',title(item)||item.name,'role-tree-item role-tree-root');button.type='button';button.title=item.name;button.dataset.object=item.id;
-        button.addEventListener('click',()=>{selected={object:item};fieldsExpanded=false;renderPanel();});tree.append(button);continue;}
-      let group=groups.get(item.kind);
-      if(!group){group=node('details');group.open=true;group.append(node('summary',kindTitle(item.kind)));groups.set(item.kind,group);tree.append(group);}
-      const button=node('button',title(item),'role-tree-item');button.type='button';button.title=item.name;button.dataset.object=item.id;
-      button.addEventListener('click',()=>{selected={object:item};fieldsExpanded=false;renderPanel();});group.append(button);
+  // the objects kind by kind in the order the server lists them, each with
+  // its parts in folders and the objects inside it under their kind - a
+  // recalculation under its register, a table under its source.
+  const partGroupTitle = group => source.schema.partGroups?.find(item => item.key === group)?.title || group;
+  function treeButton(text, hint, className, isSelected, choose) {
+    const button = node('button', text, className + (isSelected ? ' selected' : ''));
+    button.type = 'button'; if (hint) button.title = hint;
+    button.addEventListener('click', event => { event.preventDefault(); choose(); renderTree(currentFilter()); renderPanel(); });
+    return button;
+  }
+  // A node with something beneath it opens and closes; its caption chooses it.
+  function branch(key, caption, children, open) {
+    const block = node('details', undefined, 'role-tree-branch');
+    block.open = open || expanded.has(key);
+    block.addEventListener('toggle', () => { if (block.open) expanded.add(key); else expanded.delete(key); });
+    const summary = node('summary'); summary.append(caption); block.append(summary, ...children);
+    return block;
+  }
+  function folder(key, caption, children, open) {
+    const block = node('details', undefined, 'role-tree-folder');
+    block.open = open || expanded.has(key);
+    block.addEventListener('toggle', () => { if (block.open) expanded.add(key); else expanded.delete(key); });
+    block.append(node('summary', caption), ...children);
+    return block;
+  }
+  const currentFilter = () => host.querySelector('.role-sidebar input')?.value || '';
+  const matches = (item, filter) => !filter || `${item.name} ${title(item)}`.toLocaleLowerCase().includes(filter);
+  // The nodes of one object: its parts in folders, then the objects inside it.
+  // Null when neither the object nor anything in it matches the filter.
+  function objectNode(item, inside, filter) {
+    const isSelected = selected?.object?.id === item.id;
+    const choose = part => () => { selected = part ? {object: item, part} : {object: item}; };
+    const own = matches(item, filter), parts = new Map();
+    for (const part of item.fields) {
+      if (!parts.has(part.parent || '')) parts.set(part.parent || '', []);
+      parts.get(part.parent || '').push(part);
     }
-    const forms=source.schema.forms.filter(item=>`${item.name} ${title(item)}`.toLocaleLowerCase().includes(filter.toLocaleLowerCase().trim()));
-    if(forms.length){const group=node('details');group.open=true;group.append(node('summary','Команды форм'));for(const form of forms){const button=node('button',title(form),'role-tree-item');button.type='button';button.addEventListener('click',()=>{selected={form};renderPanel();});group.append(button);}tree.append(group);}
-    if(!tree.childElementCount)tree.append(node('p','Нет подходящих объектов','muted'));
+    const partNode = (part, groupKey) => {
+      const nested = (parts.get(part.key) || []).filter(child => own || matches(part, filter) || matches(child, filter));
+      const chosen = selected?.object?.id === item.id && selected?.part?.key === part.key;
+      const caption = treeButton(title(part) || part.name, part.name, 'role-tree-item', chosen, choose(part));
+      if (!(parts.get(part.key) || []).length) return caption;
+      const children = nested.map(child => treeButton(title(child) || child.name, child.name, 'role-tree-item', selected?.object?.id === item.id && selected?.part?.key === child.key, choose(child)));
+      return branch(`${item.id} ${groupKey} ${part.key}`, caption, children, !!filter);
+    };
+    const folders = [];
+    for (const group of source.schema.partGroups || []) {
+      const list = (parts.get('') || []).filter(part => part.group === group.key)
+        .filter(part => own || matches(part, filter) || (parts.get(part.key) || []).some(child => matches(child, filter)));
+      if (list.length) folders.push(folder(`${item.id} ${group.key}`, partGroupTitle(group.key), list.map(part => partNode(part, group.key)), !!filter));
+    }
+    for (const [kind, list] of inside.get(item.id) || []) {
+      // What lies inside an object that matches is shown whole, as its parts are.
+      const nodes = list.map(child => objectNode(child, inside, own ? '' : filter)).filter(Boolean);
+      if (nodes.length) folders.push(folder(`${item.id} ${kind}`, kindTitle(kind), nodes, !!filter));
+    }
+    if (!own && !folders.length) return null;
+    const caption = treeButton(title(item) || item.name, item.name, 'role-tree-item', isSelected && !selected.part, choose(null));
+    caption.dataset.object = item.id;
+    if (!folders.length) return caption;
+    return branch(item.id, caption, folders, !!filter && !own);
+  }
+  function renderTree(filter = '') {
+    filter = filter.toLocaleLowerCase().trim();
+    tree.replaceChildren(); const groups = new Map(), inside = new Map();
+    for (const item of source.schema.objects) {
+      if (!item.owner) continue;
+      if (!inside.has(item.owner)) inside.set(item.owner, new Map());
+      const byKind = inside.get(item.owner);
+      if (!byKind.has(item.kind)) byKind.set(item.kind, []);
+      byKind.get(item.kind).push(item);
+    }
+    for (const item of source.schema.objects) {
+      if (item.root) {
+        if (matches(item, filter)) { const button = treeButton(title(item) || item.name, item.name, 'role-tree-item role-tree-root', selected?.object?.id === item.id, () => { selected = {object: item}; }); button.dataset.object = item.id; tree.append(button); }
+        continue;
+      }
+      if (item.owner) continue;
+      const entry = objectNode(item, inside, filter);
+      if (!entry) continue;
+      let group = groups.get(item.kind);
+      if (!group) { group = node('details'); group.open = true; group.append(node('summary', kindTitle(item.kind))); groups.set(item.kind, group); tree.append(group); }
+      group.append(entry);
+    }
+    const forms = source.schema.forms.filter(item => matches(item, filter));
+    if (forms.length) { const group = node('details'); group.open = true; group.append(node('summary', 'Команды форм')); for (const form of forms) group.append(treeButton(title(form), form.name, 'role-tree-item', selected?.form?.id === form.id, () => { selected = {form}; })); tree.append(group); }
+    if (!tree.childElementCount) tree.append(node('p', 'Нет подходящих объектов', 'muted'));
   }
   function renderPanel() {
     panel.replaceChildren();
     if(!selected){panel.append(node('p','Выберите объект слева и отметьте разрешённые действия.','muted'));return;}
     if(selected.form){const form=selected.form;panel.append(node('h3',title(form)),node('p','Доступ к команде не заменяет права на используемые данные.','muted'));for(const command of form.commands)panel.append(checkbox(title(command),model.hasCommand(form.id,command.id),enabled=>model.setCommand(form.id,command.id,enabled)));return;}
-    const object=selected.object;panel.append(node('h3',title(object)||object.name));
-    const actions=node('div',undefined,'role-operation-list');
-    for(const operation of object.rights)actions.append(checkbox(caption(operation),model.hasObject(object.id,operation),enabled=>model.setObject(object.id,operation,enabled)));
-    panel.append(actions);
-    const all=node('div',undefined,'role-bulk');
-    for(const [text,enabled] of [['Разрешить всё',true],['Снять все права',false]]){const button=node('button',text);button.type='button';button.addEventListener('click',()=>{model.setAll(object.id,enabled);changed();renderPanel();});all.append(button);}
-    panel.append(all);
-    if(!object.fields.length&&!object.operations.length)return;
-    panel.append(node('p','Чтение и изменение проставляются сразу на существующие реквизиты. При необходимости уточните их ниже.','muted'));
-    const fields=node('details',undefined,'role-fields');fields.open=fieldsExpanded;fields.addEventListener('toggle',()=>fieldsExpanded=fields.open);fields.append(node('summary','Реквизиты и табличные части'));
-    const table=node('table'),head=node('tr');head.append(node('th','Реквизит'),node('th','Чтение'),node('th','Изменение'));table.append(head);
-    for(const field of object.fields){const row=node('tr');row.append(node('td',(field.parent?'↳ ':'')+title(field)));for(const operation of ['view','edit']){const cell=node('td');cell.append(checkbox('',model.hasField(object.id,field.key,operation),enabled=>model.setField(object.id,field.key,operation,enabled),!field.operations.includes(operation)));cell.querySelector('input').setAttribute('aria-label',`${title(field)} — ${caption(operation)}`);row.append(cell);}table.append(row);}
-    fields.append(table);if(object.fields.length)panel.append(fields);
+    const object=selected.object;
+    const bulk=(set)=>{const all=node('div',undefined,'role-bulk');for(const [text,enabled] of [['Разрешить всё',true],['Снять все права',false]]){const button=node('button',text);button.type='button';button.addEventListener('click',()=>{set(enabled);changed();renderPanel();});all.append(button);}return all;};
+    if(selected.part){
+      const part=selected.part;
+      panel.append(node('h3',title(part)||part.name),node('p',`${title(object)||object.name} · ${partGroupTitle(part.group)}`,'muted'));
+      if(!part.operations.length){panel.append(node('p','Своих прав у этого узла нет: права даются на то, что в нём.','muted'));return;}
+      const actions=node('div',undefined,'role-operation-list');
+      for(const operation of part.operations)actions.append(checkbox(caption(operation),model.hasField(object.id,part.key,operation),enabled=>model.setField(object.id,part.key,operation,enabled)));
+      panel.append(actions,bulk(enabled=>model.setAllOfPart(object.id,part.key,enabled)));
+      return;
+    }
+    panel.append(node('h3',title(object)||object.name));
+    if(object.rights.length){
+      const actions=node('div',undefined,'role-operation-list');
+      for(const operation of object.rights)actions.append(checkbox(caption(operation),model.hasObject(object.id,operation),enabled=>model.setObject(object.id,operation,enabled)));
+      panel.append(actions,bulk(enabled=>model.setAll(object.id,enabled)));
+    } else panel.append(node('p','Своих прав у объекта нет: права даются на его части.','muted'));
     // A restriction narrows a right this platform acts on.
     if(object.operations.length)panel.append(renderPolicies(object));
   }
   return {
     open(value, preserveSelection=false) {
       clearTitleField();
-      const previous=preserveSelection?selected:null,expanded=preserveSelection&&fieldsExpanded;source=structuredClone(value);model=createRoleModel(source);selected=null;if(previous?.object){const object=source.schema.objects.find(item=>item.id===previous.object.id);if(object)selected={object};}if(previous?.form){const form=source.schema.forms.find(item=>item.id===previous.form.id);if(form)selected={form};}fieldsExpanded=expanded;host.hidden=false;host.replaceChildren();
+      const previous=preserveSelection?selected:null;if(!preserveSelection)expanded.clear();source=structuredClone(value);model=createRoleModel(source);selected=null;if(previous?.object){const object=source.schema.objects.find(item=>item.id===previous.object.id);const part=previous.part&&object?.fields.find(item=>item.key===previous.part.key);if(object)selected=part?{object,part}:{object};}if(previous?.form){const form=source.schema.forms.find(item=>item.id===previous.form.id);if(form)selected={form};}host.hidden=false;host.replaceChildren();
       const identity=node('div',undefined,'role-identity'),label=node('label','Имя роли'),name=node('input');name.value=source.role.name;name.maxLength=128;name.addEventListener('input',()=>{model.setName(name.value);changed();});label.append(name);identity.append(label);
       const titleLabel=node('label','Заголовок'),titleField=createLocalizedTitleField(source.languages,code=>source.role.title[code],(code,value)=>model.setTitle(code,value),changed);
       titleFieldCleanup=titleField.destroy;titleLabel.append(titleField);identity.append(titleLabel);
       const commentLabel=node('label','Комментарий'),comment=node('textarea');comment.value=source.role.comment||'';comment.maxLength=4000;comment.rows=2;
       comment.addEventListener('change',()=>{model.setComment(comment.value);changed();});commentLabel.append(comment);identity.append(commentLabel);
       identity.append(checkbox('Устанавливать права для новых объектов',!!source.role.grantNewObjectsByDefault,enabled=>model.setGrantNewObjectsByDefault(enabled)));
-      identity.append(checkbox('Устанавливать права для реквизитов и табличных частей по умолчанию',!!source.role.grantNewFieldsByDefault,enabled=>model.setGrantNewFieldsByDefault(enabled)));
+      // The prototype asks before the flag for attributes changes whether to
+      // set or clear the rights on every attribute and table part.
+      const fieldsFlag=checkboxField('Устанавливать права для реквизитов и табличных частей по умолчанию',!!source.role.grantNewFieldsByDefault,async enabled=>{
+        const answer=await askChoice(enabled?'Установить права на все реквизиты и табличные части?':'Снять права со всех реквизитов и табличных частей?',
+          '«Нет» меняет только флаг: права, которые уже действуют, останутся как были.',[['yes','Да'],['no','Нет'],[null,'Отмена']]);
+        if(answer===null){fieldsFlag.querySelector('input').checked=!enabled;return;}
+        model.setGrantNewFieldsByDefault(enabled,answer==='yes');changed();renderPanel();
+      },'role-check');
+      identity.append(fieldsFlag);
       identity.append(checkbox('Независимые права подчиненных объектов',!!source.role.independentChildRights,enabled=>model.setIndependentChildRights(enabled)));
       host.append(identity);
       templates=node('details',undefined,'role-templates');host.append(templates);
@@ -443,7 +541,7 @@ function createRoleEditor(host, onChange) {
     // Переход из окна «Все роли» происходит по конкретному объекту, а не по
     // роли вообще: открывать роль на пустом месте значило бы заставить искать
     // в дереве то, что только что было на экране.
-    selectObject(id){const object=source?.schema.objects.find(item=>item.id===id);if(!object)return;selected={object};fieldsExpanded=false;renderTree();renderPanel();},
+    selectObject(id){const object=source?.schema.objects.find(item=>item.id===id);if(!object)return;selected={object};for(let owner=object.owner;owner;owner=source.schema.objects.find(item=>item.id===owner)?.owner)expanded.add(owner);renderTree();renderPanel();},
     value(){return model?.value();},
     close(){clearTitleField();source=null;model=null;host.hidden=true;host.replaceChildren();},
     setDisabled(disabled){host.inert=disabled;},

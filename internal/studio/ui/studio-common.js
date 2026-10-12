@@ -230,3 +230,46 @@ function roleObjectRight(role, grant, right) {
   if (grant?.denied?.includes(right)) return false;
   return !!role.grantNewObjectsByDefault;
 }
+
+/* rolePartRight is a right of a role on a part of an object - an attribute,
+   a table part, a command, an operation - as the prototype reads it, by the
+   exports of the configurator: written in the role, it is what is written.
+   Not written, a field (a part offered Edit beside View) has the object's
+   right of the same name while the role's flag «Устанавливать права для
+   реквизитов и табличных частей по умолчанию» is set, and no right while it
+   is not; a command, an operation of a web service and a method of an HTTP
+   service have the flag for new objects, as an object has. written is what
+   the role writes on the part, found by the caller in its own index. */
+function rolePartRight(role, grant, written, part, right) {
+  if (written?.operations?.includes(right)) return true;
+  if (written?.denied?.includes(right)) return false;
+  if (part.operations.includes('edit')) return !!role.grantNewFieldsByDefault && roleObjectRight(role, grant, right);
+  return !!role.grantNewObjectsByDefault;
+}
+
+/* askChoice asks a question in a dialog of the page, never with confirm(),
+   and answers with the key of the button pressed, or null when the dialog
+   is closed without one. */
+function askChoice(question, explanation, answers) {
+  return new Promise(resolve => {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'localized-title-dialog';
+    const form = document.createElement('form');
+    form.method = 'dialog';
+    form.append(node('h3', question));
+    if (explanation) form.append(node('p', explanation, 'muted'));
+    const actions = node('div', undefined, 'localized-title-actions');
+    let answer = null;
+    answers.forEach(([key, text], index) => {
+      const button = node('button', text, index === 0 ? 'primary' : undefined);
+      button.type = 'submit';
+      button.addEventListener('click', () => { answer = key; });
+      actions.append(button);
+    });
+    form.append(actions);
+    dialog.append(form);
+    document.body.append(dialog);
+    dialog.addEventListener('close', () => { dialog.remove(); resolve(answer); });
+    dialog.showModal();
+  });
+}

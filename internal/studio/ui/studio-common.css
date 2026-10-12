@@ -5,10 +5,11 @@
 .localized-title-dialog{width:min(480px,calc(100% - 40px));height:fit-content;max-height:calc(100% - 40px);padding:20px;border:1px solid #4a4d54;border-radius:10px;background:#25262a;color:#dfe1e5;box-shadow:0 24px 90px #000b}
 .localized-title-dialog::backdrop{background:#0009}
 .localized-title-dialog h3{margin:0 0 14px}
+.localized-title-dialog p{margin:0;white-space:normal;overflow-wrap:anywhere;font-size:12px}
 .localized-title-dialog form{display:grid;gap:10px}
 .localized-title-dialog label{display:grid;gap:6px;font-size:12px;color:#aeb1b8}
 .localized-title-dialog input{padding:7px 9px;border:1px solid #4a4d54;border-radius:5px;background:#1e1f22;color:#dfe1e5}
-.localized-title-actions{display:flex;justify-content:flex-end;margin-top:8px}
+.localized-title-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
 
 /* Диалог подтверждения «Сохранить данные»: перечень того, что коснётся уже
    сохранённых данных, с числом реально затронутых строк. */
