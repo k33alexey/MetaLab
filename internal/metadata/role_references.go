@@ -25,11 +25,6 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 	// which objects accept the other rights is decided per kind below, from
 	// what the object actually has.
 	target := roleTarget{operations: map[PermissionOperation]bool{PermissionRead: true, PermissionView: true}, fields: map[string]bool{}}
-	addAttributes := func(attributes []Attribute) {
-		for _, attribute := range attributes {
-			target.fields[attribute.ID.String()] = true
-		}
-	}
 	// The parent and the folder flag are standard fields where nesting exists:
 	// moving a row to another parent is an edit like any other, and a role may
 	// well be allowed to read a tree without rearranging it.
@@ -40,12 +35,6 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		target.fields["parent"] = true
 		if hierarchy.Kind == FoldersAndItemsHierarchy {
 			target.fields["isfolder"] = false
-		}
-	}
-	addParts := func(parts []TablePart) {
-		for _, part := range parts {
-			target.fields[part.ID.String()] = true
-			addAttributes(part.Attributes)
 		}
 	}
 	if _, ok := catalog.constantByID[id]; ok {
@@ -65,8 +54,6 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 			delete(target.fields, "description")
 		}
 		addHierarchy(item.Hierarchy)
-		addAttributes(item.Attributes)
-		addParts(item.TableParts)
 	} else if index, ok := catalog.chartOfCharacteristicTypesByID[id]; ok {
 		item := catalog.ChartsOfCharacteristicTypes[index]
 		// A chart of characteristic types is a catalog of kinds of property,
@@ -83,8 +70,6 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 			delete(target.fields, "description")
 		}
 		addHierarchy(item.Hierarchy)
-		addAttributes(item.Attributes)
-		addParts(item.TableParts)
 	} else if index, ok := catalog.chartOfAccountsByID[id]; ok {
 		item := catalog.ChartsOfAccounts[index]
 		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
@@ -100,19 +85,8 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		if item.DescriptionLength == 0 {
 			delete(target.fields, "description")
 		}
-		// Each declared flag is a field of its own, on the account and on the
-		// line of analytics alike: an application may well let a role see the
-		// accounts and not the flags its bookkeeping rests on.
-		for _, flag := range item.AccountingFlags {
-			target.fields[flag.ID.String()] = true
-		}
-		for _, flag := range item.ExtDimensionAccountingFlags {
-			target.fields[flag.ID.String()] = true
-		}
 		// Accounts nest always, so the parent is a field of every chart.
 		addHierarchy(Hierarchy{Enabled: true, Kind: ItemsHierarchy})
-		addAttributes(item.Attributes)
-		addParts(item.TableParts)
 	} else if index, ok := catalog.chartOfCalculationTypesByID[id]; ok {
 		item := catalog.ChartsOfCalculationTypes[index]
 		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
@@ -127,8 +101,6 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		if item.ActionPeriodUse {
 			target.fields["actionperiodisbase"] = true
 		}
-		addAttributes(item.Attributes)
-		addParts(item.TableParts)
 	} else if index, ok := catalog.documentByID[id]; ok {
 		item := catalog.Documents[index]
 		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
@@ -139,8 +111,6 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		if !documentHasNumber(item) {
 			delete(target.fields, "number")
 		}
-		addAttributes(item.Attributes)
-		addParts(item.TableParts)
 	} else if index, ok := catalog.businessProcessByID[id]; ok {
 		item := catalog.BusinessProcesses[index]
 		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
@@ -151,8 +121,6 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		if item.Number.Length == 0 {
 			delete(target.fields, "number")
 		}
-		addAttributes(item.Attributes)
-		addParts(item.TableParts)
 	} else if index, ok := catalog.taskByID[id]; ok {
 		item := catalog.Tasks[index]
 		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
@@ -167,9 +135,6 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		if item.DescriptionLength == 0 {
 			delete(target.fields, "description")
 		}
-		addAttributes(addressingAsAttributes(item))
-		addAttributes(item.Attributes)
-		addParts(item.TableParts)
 	} else if index, ok := catalog.exchangePlanByID[id]; ok {
 		item := catalog.ExchangePlans[index]
 		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
@@ -185,8 +150,6 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		if item.DescriptionLength == 0 {
 			delete(target.fields, "description")
 		}
-		addAttributes(item.Attributes)
-		addParts(item.TableParts)
 	} else if index, ok := catalog.sequenceByID[id]; ok {
 		item := catalog.Sequences[index]
 		// A sequence is read and it is rebuilt; there is nothing in it to
@@ -215,30 +178,18 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		if item.WriteMode == InformationRegisterRecorder {
 			target.fields["recorder"], target.fields["linenumber"], target.fields["active"] = true, false, true
 		}
-		addAttributes(informationRegisterFields(item))
-	} else if index, ok := catalog.accountingRegisterByID[id]; ok {
-		item := catalog.AccountingRegisters[index]
+	} else if _, ok := catalog.accountingRegisterByID[id]; ok {
 		target.operations[PermissionUpdate] = true
 		// Totals of an accounting register are the balances by account, and
 		// they are exactly what a role may be kept away from managing.
 		target.operations[PermissionTotalsControl] = true
 		target.fields = map[string]bool{"recordid": false, "period": true, "recorder": true, "linenumber": false, "active": true}
-		for _, field := range accountingRegisterFields(item) {
-			target.fields[field.ID.String()] = true
-		}
-		addAttributes(item.Attributes)
-	} else if index, ok := catalog.reportByID[id]; ok {
-		item := catalog.Reports[index]
+	} else if _, ok := catalog.reportByID[id]; ok {
 		// A report keeps no data, so there is nothing in it to create or
 		// delete. What a role is given or denied is the report itself.
 		target.fields = map[string]bool{}
-		addAttributes(item.Attributes)
-		addParts(item.TableParts)
-	} else if index, ok := catalog.dataProcessorByID[id]; ok {
-		item := catalog.DataProcessors[index]
+	} else if _, ok := catalog.dataProcessorByID[id]; ok {
 		target.fields = map[string]bool{}
-		addAttributes(item.Attributes)
-		addParts(item.TableParts)
 	} else if index, ok := catalog.calculationRegisterByID[id]; ok {
 		item := catalog.CalculationRegisters[index]
 		target.operations[PermissionUpdate] = true
@@ -253,8 +204,6 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		if item.BasePeriod {
 			target.fields["baseperiodstart"], target.fields["baseperiodend"] = true, true
 		}
-		addAttributes(calculationRegisterFields(item))
-		addAttributes(item.attributeFields())
 	} else if index, ok := catalog.accumulationRegisterByID[id]; ok {
 		item := catalog.AccumulationRegisters[index]
 		target.operations[PermissionUpdate] = true
@@ -270,71 +219,42 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 		if item.Kind == AccumulationRegisterBalance {
 			target.fields["movementkind"] = true
 		}
-		addAttributes(accumulationRegisterFields(item))
 	} else {
 		return roleTarget{}, false
+	}
+	// What the object declares is a field each, and every one can be written:
+	// its attributes, dimensions, resources, accounting flags, addressing
+	// attributes, table parts and their attributes. An application may well
+	// let a role see a document and not one of its fields.
+	kind, _ := catalog.kindOfObject(id)
+	parts, _ := catalog.partsOf(kind, id)
+	for _, part := range parts {
+		if part.declaredField() {
+			target.fields[part.key] = true
+		}
 	}
 	return target, true
 }
 
 // rightsParts finds what a role may give rights on: the configuration itself,
 // by the project's identifier, or an object of it, together with the keys of
-// its parts - attributes, table parts and their attributes, dimensions,
-// resources, accounting flags, addressing attributes, commands, operations of
-// a web service, methods of an HTTP service, and the standard attributes and
-// standard table parts of the kind, under their prototype names in lower case.
+// its parts the configurator offers rights on (partsOf, partRightsOf).
 func (catalog *Catalog) rightsParts(id uuid.UUID) (map[string]bool, bool) {
 	parts := map[string]bool{}
 	if id == catalog.Project.ID {
 		return parts, true
 	}
-	if index, ok := catalog.webServiceByID[id]; ok {
-		for _, operation := range catalog.WebServices[index].Operations {
-			parts[operation.ID.String()] = true
-		}
-		return parts, true
+	kind, ok := catalog.kindOfObject(id)
+	if !ok || !usesOf(kind).rights.accepted() {
+		return nil, false
 	}
-	if index, ok := catalog.httpServiceByID[id]; ok {
-		for _, template := range catalog.HTTPServices[index].Templates {
-			for _, method := range template.Methods {
-				parts[method.ID.String()] = true
-			}
+	found, _ := catalog.partsOf(kind, id)
+	for _, part := range found {
+		if len(partRightsOf(part.group)) > 0 {
+			parts[part.key] = true
 		}
-		return parts, true
 	}
-	if _, ok := catalog.externalDataSourceByID[id]; ok {
-		return parts, true
-	}
-	if kind, ok := catalog.kindOfObject(id); ok && usesOf(kind).rights.accepted() {
-		elements, _ := catalog.namedObject(kind, id)
-		for attribute := range elements.attributes {
-			parts[attribute.String()] = true
-		}
-		for part, attributes := range elements.tableParts {
-			parts[part.String()] = true
-			for _, attribute := range attributes {
-				parts[attribute.ID.String()] = true
-			}
-		}
-		for command := range elements.commands {
-			parts[command.String()] = true
-		}
-		for flag := range elements.flags {
-			parts[flag.String()] = true
-		}
-		for _, field := range catalog.standardAttributeFields(kind, id) {
-			parts[strings.ToLower(field.en)] = true
-		}
-		for _, part := range standardTablePartsOfKind(kind) {
-			name := strings.ToLower(part.en)
-			parts[name] = true
-			for _, field := range part.fields {
-				parts[name+"."+strings.ToLower(field.en)] = true
-			}
-		}
-		return parts, true
-	}
-	return nil, false
+	return parts, true
 }
 
 func (catalog *Catalog) validateRoleReferences(root string) error {

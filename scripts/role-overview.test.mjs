@@ -21,15 +21,16 @@ function fixture(){
     defaultLanguage:'ru',
     schema:{rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'}],objects:[
       {id:'goods',kind:'catalogs',name:'Товары',title:{ru:'Товары'},operations:['read','insert','update','delete'],
-        fields:[{key:'ref',operations:['view']},{key:'owner',title:{ru:'Владелец'},operations:['view','edit']},{key:'price',title:{ru:'Цена'},operations:['view','edit']}],
+        fields:[{key:'ref',operations:['view','edit']},{key:'owner',title:{ru:'Владелец'},operations:['view','edit']},{key:'price',title:{ru:'Цена'},operations:['view','edit']},
+          {key:'print',title:{ru:'Печать'},group:'commands',operations:['view']}],
         policyFields:[{key:'ref',title:{ru:'Ссылка'}},{key:'owner',title:{ru:'Владелец'}},{key:'price',title:{ru:'Цена'}}]},
       {id:'users',kind:'catalogs',name:'Пользователи',title:{ru:'Пользователи'},operations:['read'],
-        fields:[{key:'ref',operations:['view']},{key:'person',title:{ru:'Физлицо'},operations:['view']}],
+        fields:[{key:'ref',operations:['view','edit']},{key:'person',title:{ru:'Физлицо'},operations:['view','edit']}],
         policyFields:[{key:'ref',title:{ru:'Ссылка'}},{key:'person',title:{ru:'Физлицо'}}]},
     ],forms:[]},
     roles:[
       {path:'metadata/roles/a.yaml',role:{id:'a',name:'Продавец',title:{ru:'Продавец'},objects:[
-        {object:'goods',operations:['read','update'],fields:[{field:'ref',operations:['view']},{field:'owner',operations:['view']}],
+        {object:'goods',operations:['read','update'],fields:[{field:'ref',operations:['view']},{field:'owner',operations:['view']},{field:'print',operations:['view']}],
          policies:[{operations:['read'],rule:{field:'owner',operator:'eq',parameter:'ТекущийПользователь'}}]},
       ]}},
       {path:'metadata/roles/b.yaml',role:{id:'b',name:'Кладовщик',title:{ru:'Кладовщик'},objects:[]}},
@@ -46,6 +47,8 @@ test('every role appears for the selected object, including one with no grants',
   assert.deepEqual(plain(rows[1].operations),{read:false,insert:false,update:false,delete:false});
 });
 
+// A command the role may see is no field: counting it would show a role
+// seeing more fields than the object has.
 test('withheld fields are counted, not hidden behind the object checkmark',()=>{
   const model=create(fixture());
   assert.deepEqual(plain(model.grants('goods')[0].fields),{granted:2,total:3});

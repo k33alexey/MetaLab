@@ -146,6 +146,7 @@ func TestEveryKindFindsItsObjects(t *testing.T) {
 			objects[ExternalDataSourceTableKind] = append(objects[ExternalDataSourceTableKind], table.ID)
 		}
 		for _, cube := range source.Cubes {
+			objects[ExternalCubeKind] = append(objects[ExternalCubeKind], cube.ID)
 			for _, table := range cube.DimensionTables {
 				objects[ExternalDimensionTableKind] = append(objects[ExternalDimensionTableKind], table.ID)
 			}
@@ -165,7 +166,7 @@ func TestEveryKindFindsItsObjects(t *testing.T) {
 		objects[LanguageKind] = append(objects[LanguageKind], language.ID)
 	}
 	for _, item := range kindInfos {
-		if item.has == nil && item.kind != ExternalCubeKind {
+		if item.has == nil {
 			t.Errorf("%s finds no object", item.kind)
 		}
 		if item.has != nil && len(objects[item.kind]) == 0 {
@@ -211,7 +212,7 @@ func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
 			ReportKind, DataProcessorKind, ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind,
 			InformationRegisterKind, AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind,
 			RecalculationKind, BusinessProcessKind, TaskKind, ExternalDataSourceKind, ExternalDataSourceTableKind,
-			WebServiceKind, HTTPServiceKind},
+			ExternalCubeKind, ExternalDimensionTableKind, WebServiceKind, HTTPServiceKind},
 		"registration": {ConstantKind, CatalogKind, DocumentKind, SequenceKind, ChartOfCharacteristicTypesKind,
 			ChartOfAccountsKind, ChartOfCalculationTypesKind, BusinessProcessKind, TaskKind, InformationRegisterKind,
 			AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind, RecalculationKind},

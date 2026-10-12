@@ -619,6 +619,14 @@ type CatalogDefinition struct {
 type indexedObject struct {
 	kind Kind
 	name string
+	// owner is the object this one lies inside, as the configuration tree
+	// shows it: the subsystem a subsystem is nested in, the calculation
+	// register of a recalculation, the source of a table or a cube, the cube
+	// of a dimension table. Nil for an object of the configuration itself.
+	owner *uuid.UUID
+	// title is the synonym of an object inside another, which has no list of
+	// its own to read it from.
+	title LocalizedText
 }
 
 // Catalog is an immutable-by-convention snapshot of the supported metadata kinds.

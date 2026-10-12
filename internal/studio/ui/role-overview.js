@@ -80,11 +80,14 @@ function createRoleOverviewModel(source) {
     return {field: fieldTitle(objectID, rule.field), condition: `${operators[rule.operator] || rule.operator} ${operand(rule, objectID)}`};
   }
   function grantOf(entry, objectID) { return (entry.role.objects || []).find(item => item.object === objectID); }
-  function readableFields(objectID) { return (objects.get(objectID)?.fields || []).filter(field => field.operations.includes('view')).length; }
+  /* Поля объекта — части, на которые даются Просмотр и Редактирование;
+     команды, операции и методы полями не считаются. */
+  function fieldKeys(objectID) { return new Set((objects.get(objectID)?.fields || []).filter(field => field.operations.includes('edit')).map(field => field.key)); }
+  function viewedFields(grant, keys) { return (grant?.fields || []).filter(field => keys.has(field.field) && (field.operations || []).includes('view')).length; }
   function fieldSummary(grant, objectID) {
-    const total = readableFields(objectID);
+    const keys = fieldKeys(objectID), total = keys.size;
     if (!grant?.operations?.includes('read') || !total) return '—';
-    const granted = Math.min((grant.fields || []).filter(field => (field.operations || []).includes('view')).length, total);
+    const granted = Math.min(viewedFields(grant, keys), total);
     return granted >= total ? 'все' : `${granted} из ${total}`;
   }
   return {
@@ -97,11 +100,11 @@ function createRoleOverviewModel(source) {
     grants(objectID) {
       const object = objects.get(objectID);
       if (!object) return [];
-      const readable = object.fields.filter(field => field.operations.includes('view')).length;
+      const keys = fieldKeys(objectID), readable = keys.size;
       return entries.map(entry => {
         const grant = grantOf(entry, objectID), operations = {};
         for (const operation of object.operations) operations[operation] = roleObjectRight(entry.role, grant, operation);
-        const granted = (grant?.fields || []).filter(field => (field.operations || []).includes('view')).length;
+        const granted = viewedFields(grant, keys);
         return {
           path: entry.path, name: entry.role.name, title: localized(entry.role),
           operations, granted: Object.values(operations).some(Boolean),

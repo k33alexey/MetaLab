@@ -186,26 +186,6 @@ func (elements objectElements) has(id uuid.UUID) bool {
 	return ok
 }
 
-func elementsOf(attributes []Attribute, parts []TablePart, commands []ObjectCommand, extra ...[]Attribute) objectElements {
-	elements := objectElements{
-		attributes: make(map[uuid.UUID][]Type, len(attributes)),
-		tableParts: make(map[uuid.UUID][]Attribute, len(parts)),
-		commands:   make(map[uuid.UUID]bool, len(commands)),
-	}
-	for _, group := range append([][]Attribute{attributes}, extra...) {
-		for _, attribute := range group {
-			elements.attributes[attribute.ID] = attribute.Types
-		}
-	}
-	for _, part := range parts {
-		elements.tableParts[part.ID] = part.Attributes
-	}
-	for _, command := range commands {
-		elements.commands[command.ID] = true
-	}
-	return elements
-}
-
 // namedObject finds an object of any kind by its identifier, with what it
 // holds where its kind holds anything objectElementsOf knows of: a role or a
 // functional option may name an object of every kind.
@@ -217,195 +197,46 @@ func (catalog *Catalog) namedObject(kind Kind, id uuid.UUID) (objectElements, bo
 }
 
 // objectElementsOf finds one object by kind and identifier and says what it
-// holds. The second result is false when the configuration has no such object.
+// holds, from the one walk of its composition (partsOf). The second result is
+// false when the configuration has no such object, or its kind is not one
+// such a name may point at (kindComposition.named).
 func (catalog *Catalog) objectElementsOf(kind Kind, id uuid.UUID) (objectElements, bool) {
-	switch kind {
-	case ConstantKind:
-		_, ok := catalog.constantByID[id]
-		return objectElements{}, ok
-	case SubsystemKind:
-		_, ok := catalog.subsystemByID[id]
-		return objectElements{}, ok
-	case CommonAttributeKind:
-		_, ok := catalog.commonAttributeByID[id]
-		return objectElements{}, ok
-	case CommonModuleKind:
-		_, ok := catalog.commonModuleByID[id]
-		return objectElements{}, ok
-	case SessionParameterKind:
-		_, ok := catalog.sessionParameterByID[id]
-		return objectElements{}, ok
-	case DefinedTypeKind:
-		_, ok := catalog.definedTypeByID[id]
-		return objectElements{}, ok
-	case RoleKind:
-		_, ok := catalog.roleByID[id]
-		return objectElements{}, ok
-	case EventSubscriptionKind:
-		_, ok := catalog.eventSubscriptionByID[id]
-		return objectElements{}, ok
-	case NumeratorKind:
-		_, ok := catalog.numeratorByID[id]
-		return objectElements{}, ok
-	case CommonCommandKind:
-		_, ok := catalog.commonCommandByID[id]
-		return objectElements{}, ok
-	case FilterCriterionKind:
-		index, ok := catalog.filterCriterionByID[id]
-		if !ok {
-			return objectElements{}, false
-		}
-		return elementsOf(nil, nil, catalog.FilterCriteria[index].Commands), true
-	case CommonFormKind:
-		// Common forms are read from their folder and known by identifier only
-		// once the project is read from disk.
-		return objectElements{}, catalog.objects[id].kind == CommonFormKind
-	case SequenceKind:
-		_, ok := catalog.sequenceByID[id]
-		return objectElements{}, ok
-	case EnumerationKind:
-		index, ok := catalog.enumerationByID[id]
-		if !ok {
-			return objectElements{}, false
-		}
-		item := catalog.Enumerations[index]
-		return elementsOf(nil, nil, item.Commands), true
-	case CatalogKind:
-		index, ok := catalog.catalogByID[id]
-		if !ok {
-			return objectElements{}, false
-		}
-		item := catalog.Catalogs[index]
-		return elementsOf(item.Attributes, item.TableParts, item.Commands), true
-	case ExternalDataSourceTableKind:
-		location, ok := catalog.externalTableByID[id]
-		if !ok {
-			return objectElements{}, false
-		}
-		table := catalog.ExternalDataSources[location.source].Tables[location.table]
-		fields := make([]Attribute, 0, len(table.Fields))
-		for _, field := range table.Fields {
-			fields = append(fields, field.Attribute)
-		}
-		return elementsOf(fields, nil, table.Commands), true
-	case DocumentKind:
-		index, ok := catalog.documentByID[id]
-		if !ok {
-			return objectElements{}, false
-		}
-		item := catalog.Documents[index]
-		return elementsOf(item.Attributes, item.TableParts, item.Commands), true
-	case DocumentJournalKind:
-		index, ok := catalog.documentJournalByID[id]
-		if !ok {
-			return objectElements{}, false
-		}
-		return elementsOf(nil, nil, catalog.DocumentJournals[index].Commands), true
-	case ChartOfCharacteristicTypesKind:
-		index, ok := catalog.chartOfCharacteristicTypesByID[id]
-		if !ok {
-			return objectElements{}, false
-		}
-		item := catalog.ChartsOfCharacteristicTypes[index]
-		return elementsOf(item.Attributes, item.TableParts, item.Commands), true
-	case ChartOfAccountsKind:
-		index, ok := catalog.chartOfAccountsByID[id]
-		if !ok {
-			return objectElements{}, false
-		}
-		item := catalog.ChartsOfAccounts[index]
-		elements := elementsOf(item.Attributes, item.TableParts, item.Commands)
-		elements.flags = make(map[uuid.UUID]bool, len(item.AccountingFlags)+len(item.ExtDimensionAccountingFlags))
-		for _, flag := range append(slices.Clone(item.AccountingFlags), item.ExtDimensionAccountingFlags...) {
-			elements.flags[flag.ID] = true
-		}
-		return elements, true
-	case ChartOfCalculationTypesKind:
-		index, ok := catalog.chartOfCalculationTypesByID[id]
-		if !ok {
-			return objectElements{}, false
-		}
-		item := catalog.ChartsOfCalculationTypes[index]
-		return elementsOf(item.Attributes, item.TableParts, item.Commands), true
-	case BusinessProcessKind:
-		index, ok := catalog.businessProcessByID[id]
-		if !ok {
-			return objectElements{}, false
-		}
-		item := catalog.BusinessProcesses[index]
-		return elementsOf(item.Attributes, item.TableParts, item.Commands), true
-	case TaskKind:
-		index, ok := catalog.taskByID[id]
-		if !ok {
-			return objectElements{}, false
-		}
-		item := catalog.Tasks[index]
-		elements := elementsOf(item.Attributes, item.TableParts, item.Commands)
-		// The attributes a task is addressed by are attributes like any other
-		// as far as switching them off goes.
-		for _, attribute := range item.AddressingAttributes {
-			elements.attributes[attribute.ID] = attribute.Types
-		}
-		return elements, true
-	case ExchangePlanKind:
-		index, ok := catalog.exchangePlanByID[id]
-		if !ok {
-			return objectElements{}, false
-		}
-		item := catalog.ExchangePlans[index]
-		return elementsOf(item.Attributes, item.TableParts, item.Commands), true
-	case InformationRegisterKind:
-		index, ok := catalog.informationRegisterByID[id]
-		if !ok {
-			return objectElements{}, false
-		}
-		item := catalog.InformationRegisters[index]
-		return elementsOf(item.Attributes, nil, item.Commands, RegisterDimensionAttributes(item.Dimensions), item.Resources), true
-	case AccumulationRegisterKind:
-		index, ok := catalog.accumulationRegisterByID[id]
-		if !ok {
-			return objectElements{}, false
-		}
-		item := catalog.AccumulationRegisters[index]
-		return elementsOf(item.Attributes, nil, item.Commands, RegisterDimensionAttributes(item.Dimensions), item.Resources), true
-	case AccountingRegisterKind:
-		index, ok := catalog.accountingRegisterByID[id]
-		if !ok {
-			return objectElements{}, false
-		}
-		item := catalog.AccountingRegisters[index]
-		resources := make([]Attribute, 0, len(item.Resources))
-		for _, resource := range item.Resources {
-			resources = append(resources, resource.Attribute)
-		}
-		return elementsOf(item.Attributes, nil, item.Commands, RegisterDimensionAttributes(item.Dimensions), resources), true
-	case CalculationRegisterKind:
-		index, ok := catalog.calculationRegisterByID[id]
-		if !ok {
-			return objectElements{}, false
-		}
-		item := catalog.CalculationRegisters[index]
-		attributes := make([]Attribute, 0, len(item.Attributes))
-		for _, attribute := range item.Attributes {
-			attributes = append(attributes, attribute.Attribute)
-		}
-		return elementsOf(attributes, nil, item.Commands, RegisterDimensionAttributes(item.Dimensions), item.Resources), true
-	case ReportKind:
-		index, ok := catalog.reportByID[id]
-		if !ok {
-			return objectElements{}, false
-		}
-		item := catalog.Reports[index]
-		return elementsOf(item.Attributes, item.TableParts, item.Commands), true
-	case DataProcessorKind:
-		index, ok := catalog.dataProcessorByID[id]
-		if !ok {
-			return objectElements{}, false
-		}
-		item := catalog.DataProcessors[index]
-		return elementsOf(item.Attributes, item.TableParts, item.Commands), true
+	if !kindCompositionOf[kind].named {
+		return objectElements{}, false
 	}
-	return objectElements{}, false
+	parts, ok := catalog.partsOf(kind, id)
+	if !ok {
+		return objectElements{}, false
+	}
+	elements := objectElements{attributes: map[uuid.UUID][]Type{}, tableParts: map[uuid.UUID][]Attribute{},
+		commands: map[uuid.UUID]bool{}}
+	for _, part := range parts {
+		id, err := uuid.Parse(part.key)
+		if err != nil {
+			continue
+		}
+		switch {
+		case part.group == TablePartsPart:
+			if _, ok := elements.tableParts[id]; !ok {
+				elements.tableParts[id] = []Attribute{}
+			}
+		case part.group == AttributesPart && part.parent != "":
+			owner, _ := uuid.Parse(part.parent)
+			elements.tableParts[owner] = append(elements.tableParts[owner], *part.attribute)
+		case part.group == CommandsPart:
+			elements.commands[id] = true
+		case part.group == AccountingFlagsPart || part.group == ExtDimensionAccountingFlagsPart:
+			// The accounting flags a functional option switches; nothing else
+			// points at them.
+			if elements.flags == nil {
+				elements.flags = map[uuid.UUID]bool{}
+			}
+			elements.flags[id] = true
+		case part.attribute != nil:
+			elements.attributes[id] = part.attribute.Types
+		}
+	}
+	return elements, true
 }
 
 // validateFunctionalOptions resolves what every option points at. An option

@@ -23,7 +23,10 @@ type PermissionSchema struct {
 	// its parts. The editor shows fewer objects than this; what it does not
 	// show it must neither lose nor take for something deleted.
 	Parts map[uuid.UUID][]string `json:"parts"`
-	Forms []PermissionForm       `json:"forms"`
+	// PartGroups are the folders of parts in the order of the tree, with
+	// their captions.
+	PartGroups []PermissionPartGroup `json:"partGroups"`
+	Forms      []PermissionForm      `json:"forms"`
 	// SessionParameters lists the names an access policy may compare a field
 	// against, so the editor offers a choice instead of a free-text field that
 	// only fails later, at publication.
@@ -50,6 +53,10 @@ func nameInWords(name string) string {
 type PermissionObject struct {
 	ID   uuid.UUID `json:"id"`
 	Kind Kind      `json:"kind"`
+	// Owner is the object this one lies inside and is shown under: the
+	// subsystem of a nested one, the register of a recalculation, the source
+	// of a table or a cube, the cube of a dimension table.
+	Owner *uuid.UUID `json:"owner,omitempty"`
 	// Root is the configuration itself, known by the project's identifier.
 	Root  bool          `json:"root,omitempty"`
 	Name  string        `json:"name"`
@@ -68,12 +75,22 @@ type PermissionObject struct {
 	PolicyFields []PermissionField `json:"policyFields"`
 }
 
+// PermissionField is one part of an object: under Fields, with the folder it
+// is shown in and the rights the configurator offers on it; under
+// PolicyFields, a field a restriction compares.
 type PermissionField struct {
 	Key        string                `json:"key"`
 	Name       string                `json:"name"`
 	Title      LocalizedText         `json:"title,omitempty"`
 	Parent     string                `json:"parent,omitempty"`
+	Group      PartGroup             `json:"group,omitempty"`
 	Operations []PermissionOperation `json:"operations"`
+}
+
+// PermissionPartGroup is a folder of parts, by its caption.
+type PermissionPartGroup struct {
+	Key   PartGroup `json:"key"`
+	Title string    `json:"title"`
 }
 
 type PermissionForm struct {
@@ -120,40 +137,18 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	if err != nil {
 		return PermissionSchema{}, err
 	}
-	// The parts of an object the editor shows, by the object: its
-	// attributes, its table parts and what is shown as attributes beside them.
-	type objectParts struct {
-		attributes []Attribute
-		parts      []TablePart
-	}
-	partsOf := map[uuid.UUID]objectParts{}
-	appendObject := func(kind Kind, id uuid.UUID, name string, title LocalizedText, parts objectParts) {
+	appendObject := func(kind Kind, id uuid.UUID, name string, title LocalizedText) {
 		target, _ := catalog.permissionTarget(id)
-		object := PermissionObject{ID: id, Kind: kind, Name: name, Title: cloneTitle(title),
-			Rights: usesOf(kind).offered, Operations: []PermissionOperation{}, Fields: []PermissionField{}}
+		object := PermissionObject{ID: id, Kind: kind, Owner: catalog.objects[id].owner, Name: name, Title: cloneTitle(title),
+			Rights: usesOf(kind).offered, Operations: []PermissionOperation{}, Fields: []PermissionField{},
+			PolicyFields: []PermissionField{}}
 		for _, operation := range objectOperations {
 			if target.operations[operation] {
 				object.Operations = append(object.Operations, operation)
 			}
 		}
-		// A part of an object has the prototype's two rights of its own, view
-		// and edit, whatever the part is: the configurator offers both on a
-		// reference as on an attribute, and what the runtime lets be written
-		// is its own business.
-		appendField := func(key, name, parent string, title LocalizedText) {
-			field := PermissionField{Key: key, Name: name, Parent: parent, Title: title,
-				Operations: []PermissionOperation{PermissionView, PermissionEdit}}
-			object.Fields = append(object.Fields, field)
-			// A declared field is one key for both: its identifier.
-			if _, err := uuid.Parse(key); err == nil && target.fields != nil {
-				if _, ok := target.fields[key]; ok {
-					object.PolicyFields = append(object.PolicyFields, PermissionField{Key: key, Name: name, Parent: parent, Title: title})
-				}
-			}
-		}
-		for _, field := range catalog.standardAttributeFields(kind, id) {
-			appendField(strings.ToLower(field.en), field.ru, "", LocalizedText{catalog.Project.DefaultLanguage: nameInWords(field.ru)})
-		}
+		// A restriction compares the standard fields under their own keys
+		// first, then what the object declares.
 		var standard []string
 		for key := range target.fields {
 			if _, err := uuid.Parse(key); err != nil {
@@ -161,79 +156,35 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 			}
 		}
 		slices.Sort(standard)
-		object.PolicyFields = []PermissionField{}
 		captions := map[string]string{}
 		for _, field := range catalog.standardAttributeFields(kind, id) {
 			captions[strings.ToLower(field.en)] = nameInWords(field.ru)
 		}
 		for _, key := range standard {
-			field := PermissionField{Key: key, Name: key}
+			field := PermissionField{Key: key, Name: key, Operations: []PermissionOperation{}}
 			if caption, ok := captions[key]; ok {
 				field.Title = LocalizedText{catalog.Project.DefaultLanguage: caption}
 			}
 			object.PolicyFields = append(object.PolicyFields, field)
 		}
-		for _, field := range parts.attributes {
-			appendField(field.ID.String(), field.Name, "", cloneTitle(field.Title))
-		}
-		for _, part := range parts.parts {
-			appendField(part.ID.String(), part.Name, "", cloneTitle(part.Title))
-			for _, field := range part.Attributes {
-				appendField(field.ID.String(), field.Name, part.ID.String(), cloneTitle(field.Title))
+		// Every part of the object, from the one walk of its composition, with
+		// the rights the configurator offers on a part of its sort.
+		parts, _ := catalog.partsOf(kind, id)
+		for _, part := range parts {
+			rights := slices.Clone(partRightsOf(part.group))
+			if rights == nil {
+				rights = []PermissionOperation{}
+			}
+			field := PermissionField{Key: part.key, Name: part.name, Title: cloneTitle(part.title), Parent: part.parent,
+				Group: part.group, Operations: rights}
+			object.Fields = append(object.Fields, field)
+			// A declared field is one key for both: its identifier.
+			if _, ok := target.fields[part.key]; ok && part.declaredField() {
+				object.PolicyFields = append(object.PolicyFields, PermissionField{Key: part.key, Name: part.name,
+					Parent: part.parent, Title: cloneTitle(part.title), Operations: []PermissionOperation{}})
 			}
 		}
 		result.Objects = append(result.Objects, object)
-	}
-	for _, item := range catalog.Catalogs {
-		partsOf[item.ID] = objectParts{item.Attributes, item.TableParts}
-	}
-	for _, item := range catalog.ChartsOfCharacteristicTypes {
-		partsOf[item.ID] = objectParts{item.Attributes, item.TableParts}
-	}
-	for _, item := range catalog.ChartsOfAccounts {
-		// Accounting flags are fields of the account, so the editor has to show
-		// them by name next to the attributes - a right on "Количественный" is
-		// meaningless if the editor calls it by its UUID.
-		fields := slices.Clone(item.Attributes)
-		for _, flag := range append(slices.Clone(item.AccountingFlags), item.ExtDimensionAccountingFlags...) {
-			fields = append(fields, Attribute{ID: flag.ID, Name: flag.Name, Title: flag.Title, Types: []Type{{Kind: BooleanType}}})
-		}
-		partsOf[item.ID] = objectParts{fields, item.TableParts}
-	}
-	for _, item := range catalog.ChartsOfCalculationTypes {
-		partsOf[item.ID] = objectParts{item.Attributes, item.TableParts}
-	}
-	for _, item := range catalog.BusinessProcesses {
-		partsOf[item.ID] = objectParts{item.Attributes, item.TableParts}
-	}
-	for _, item := range catalog.ExchangePlans {
-		partsOf[item.ID] = objectParts{item.Attributes, item.TableParts}
-	}
-	for _, item := range catalog.Tasks {
-		// Addressing attributes are shown beside the rest: a right on
-		// "Исполнитель" is exactly the kind of right an application restricts.
-		partsOf[item.ID] = objectParts{append(addressingAsAttributes(item), item.Attributes...), item.TableParts}
-	}
-	for _, item := range catalog.Documents {
-		partsOf[item.ID] = objectParts{item.Attributes, item.TableParts}
-	}
-	for _, item := range catalog.InformationRegisters {
-		partsOf[item.ID] = objectParts{attributes: informationRegisterFields(item)}
-	}
-	for _, item := range catalog.AccumulationRegisters {
-		partsOf[item.ID] = objectParts{attributes: accumulationRegisterFields(item)}
-	}
-	for _, item := range catalog.AccountingRegisters {
-		partsOf[item.ID] = objectParts{attributes: append(accountingRegisterFields(item), item.Attributes...)}
-	}
-	for _, item := range catalog.Reports {
-		partsOf[item.ID] = objectParts{item.Attributes, item.TableParts}
-	}
-	for _, item := range catalog.DataProcessors {
-		partsOf[item.ID] = objectParts{item.Attributes, item.TableParts}
-	}
-	for _, item := range catalog.CalculationRegisters {
-		partsOf[item.ID] = objectParts{attributes: append(calculationRegisterFields(item), item.attributeFields()...)}
 	}
 	// The configuration itself comes first, as the root of the tree.
 	result.Objects = append(result.Objects, PermissionObject{ID: catalog.Project.ID, Root: true,
@@ -245,13 +196,24 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	for _, form := range forms {
 		formTitles[form.ID] = form.Title
 	}
-	for _, descriptor := range kinds.Branches() {
-		if len(usesOf(descriptor.Kind).offered) == 0 {
+	// The objects that lie inside others - a recalculation, a table, a cube
+	// and a table of its dimension - come after them, each naming its owner.
+	shown := kinds.Branches()
+	for _, descriptor := range kinds.All() {
+		if descriptor.Layout().Owner != "" {
+			shown = append(shown, descriptor)
+		}
+	}
+	for _, descriptor := range shown {
+		if usesOf(descriptor.Kind).offered == nil {
 			continue
 		}
 		for _, item := range catalog.objectsToShow(descriptor.Kind, formTitles) {
-			appendObject(descriptor.Kind, item.ID, item.Name, item.Title, partsOf[item.ID])
+			appendObject(descriptor.Kind, item.ID, item.Name, item.Title)
 		}
+	}
+	for _, item := range partGroups {
+		result.PartGroups = append(result.PartGroups, PermissionPartGroup{Key: item.group, Title: item.title})
 	}
 	for _, form := range forms {
 		if len(form.Commands) == 0 {
@@ -275,9 +237,16 @@ func (catalog *Catalog) objectsToShow(kind Kind, titles map[uuid.UUID]LocalizedT
 		result = catalog.referenceTypeObjects(kind)
 	} else {
 		for id, object := range catalog.objects {
-			if object.kind == kind {
-				result = append(result, ReferenceTypeObject{ID: id, Name: object.name, Title: titles[id]})
+			if object.kind != kind {
+				continue
 			}
+			// An object inside another is indexed under its owner's name too,
+			// and shown under its own beneath the owner.
+			item := ReferenceTypeObject{ID: id, Name: object.name, Title: titles[id]}
+			if object.owner != nil {
+				item.Name, item.Title = object.name[strings.LastIndex(object.name, ".")+1:], object.title
+			}
+			result = append(result, item)
 		}
 	}
 	slices.SortFunc(result, func(a, b ReferenceTypeObject) int {

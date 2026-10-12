@@ -134,8 +134,8 @@ var kindUsesOf = map[Kind]kindUses{
 	WebSocketClientKind:            {rights: unproven, registration: absent, option: unproven},
 	ExternalDataSourceKind:         {rights: present, registration: absent, option: unproven},
 	ExternalDataSourceTableKind:    {rights: present, registration: absent, option: unproven},
-	ExternalCubeKind:               {rights: unproven, registration: absent, option: unproven},
-	ExternalDimensionTableKind:     {rights: unproven, registration: absent, option: unproven},
+	ExternalCubeKind:               {rights: present, registration: absent, option: unproven},
+	ExternalDimensionTableKind:     {rights: present, registration: absent, option: unproven},
 	HTTPServiceKind:                {rights: present, registration: absent, option: unproven},
 	CommonPictureKind:              {rights: unproven, registration: absent, option: unproven},
 	StyleItemKind:                  {rights: unproven, registration: absent, option: unproven},
@@ -235,6 +235,10 @@ var kindRightsOf = map[Kind][]PermissionOperation{
 		PermissionSessionStandardAuthenticationChange, PermissionSessionOSAuthenticationChange},
 	ExternalDataSourceTableKind: {PermissionRead, PermissionInsert, PermissionUpdate, PermissionDelete, PermissionView,
 		PermissionInteractiveInsert, PermissionEdit, PermissionInteractiveDelete, PermissionInputByString},
+	// A cube and a table of its dimension are read and shown, nothing more:
+	// the configurator's samples in mdclasses write these two on both.
+	ExternalCubeKind:           {PermissionRead, PermissionView},
+	ExternalDimensionTableKind: {PermissionRead, PermissionView},
 }
 
 // configurationRights are the rights the configurator offers on the
@@ -416,12 +420,12 @@ func init() {
 			objects: func(catalog *Catalog) reflect.Value { return reflect.ValueOf(&catalog.ExternalDataSources).Elem() },
 			has:     indexed(func(c *Catalog) map[uuid.UUID]int { return c.externalDataSourceByID })},
 		// A table, a cube and a dimension table are found among the objects of
-		// every source; a cube is not, since nothing refers to one by
-		// identifier.
+		// every source.
 		describedAs(ExternalDataSourceTableKind, DecodeExternalTable, nil, nil).
 			found(func(c *Catalog, id uuid.UUID) bool { _, ok := c.externalTableByID[id]; return ok }).
 			refers(kindReference{ExternalTableType, "", notStored}),
-		describedAs(ExternalCubeKind, DecodeExternalCube, nil, nil),
+		describedAs(ExternalCubeKind, DecodeExternalCube, nil, nil).
+			found(func(c *Catalog, id uuid.UUID) bool { return c.objects[id].kind == ExternalCubeKind }),
 		describedAs(ExternalDimensionTableKind, DecodeExternalDimensionTable, nil, nil).
 			found(func(c *Catalog, id uuid.UUID) bool { _, ok := c.externalDimensionTableByID[id]; return ok }).
 			refers(kindReference{ExternalDimensionTableType, "", notStored}),

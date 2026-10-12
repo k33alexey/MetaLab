@@ -719,6 +719,12 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 		return nil
 	}
+	// within places an object inside its owner, where the tree shows it.
+	within := func(id, owner uuid.UUID, title LocalizedText) {
+		object := catalog.objects[id]
+		object.owner, object.title = &owner, title
+		catalog.objects[id] = object
+	}
 	for index, item := range catalog.Roles {
 		if err := ValidateRole("role "+item.Name, item, catalog.Project); err != nil {
 			return err
@@ -743,6 +749,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 		if err := add(SubsystemKind, item.ID, item.Name, index, siblings[parent], catalog.subsystemByID); err != nil {
 			return err
+		}
+		if item.Parent != nil {
+			within(item.ID, parent, item.Title)
 		}
 	}
 	for index, item := range catalog.Constants {
@@ -817,6 +826,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return err
 			}
 			catalog.externalTableByID[table.ID] = externalTableLocation{source: index, table: tableIndex}
+			within(table.ID, item.ID, table.Title)
 		}
 		// A function is an object of metadata of its own (help: ОбъектМетаданных:
 		// Функция) the kinds do not describe yet: its identifier and its name
@@ -837,11 +847,13 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			if err := add(ExternalCubeKind, cube.ID, item.Name+"."+cube.Name, cubeIndex, externalTableNames, nil); err != nil {
 				return err
 			}
+			within(cube.ID, item.ID, cube.Title)
 			for tableIndex, table := range cube.DimensionTables {
 				if err := add(ExternalDimensionTableKind, table.ID, item.Name+"."+cube.Name+"."+table.Name, tableIndex, externalTableNames, nil); err != nil {
 					return err
 				}
 				catalog.externalDimensionTableByID[table.ID] = externalDimensionTableLocation{source: index, cube: cubeIndex, table: tableIndex}
+				within(table.ID, cube.ID, table.Title)
 			}
 		}
 	}
@@ -1106,6 +1118,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			}
 			allIDs[recalculation.ID] = "recalculation " + item.Name + "." + recalculation.Name
 			catalog.objects[recalculation.ID] = indexedObject{kind: RecalculationKind, name: item.Name + "." + recalculation.Name}
+			within(recalculation.ID, item.ID, recalculation.Title)
 			for _, dimension := range recalculation.Dimensions {
 				if previous, ok := allIDs[dimension.ID]; ok {
 					return fmt.Errorf("%w: %s and recalculation dimension %s.%s.%s use %s",

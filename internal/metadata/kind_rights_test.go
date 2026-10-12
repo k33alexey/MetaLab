@@ -51,8 +51,64 @@ var expectedKindRights = func() map[Kind][]string {
 			"SessionStandardAuthenticationChange", "SessionOSAuthenticationChange"},
 		ExternalDataSourceTableKind: {"Read", "Insert", "Update", "Delete", "View", "InteractiveInsert", "Edit",
 			"InteractiveDelete", "InputByString"},
+		ExternalCubeKind: {"Read", "View"}, ExternalDimensionTableKind: {"Read", "View"},
 	}
 }()
+
+// expectedPartRights is what the same exports write on a part of an object,
+// by the class the prototype names the part with (survey of 12.10.2026).
+// Written out here, not read from partGroups.
+var expectedPartRights = map[string][]string{
+	"StandardAttribute": {"View", "Edit"}, "Attribute": {"View", "Edit"}, "Dimension": {"View", "Edit"},
+	"Resource": {"View", "Edit"}, "AccountingFlag": {"View", "Edit"}, "ExtDimensionAccountingFlag": {"View", "Edit"},
+	"AddressingAttribute": {"View", "Edit"}, "TabularSection": {"View", "Edit"},
+	"StandardTabularSection": {"View", "Edit"}, "Field": {"View", "Edit"}, "Command": {"View"},
+	"Operation": {"Use"}, "Method": {"Use"},
+}
+
+// TestEveryPartOffersThePrototypesRights catches a sort of part offering a
+// right the configurator does not write on such a part, or missing one it
+// does: a command with Edit, an attribute without it, an operation of a web
+// service with View. A sort of part the exports never give rights on - the
+// template of an HTTP service - offers none.
+func TestEveryPartOffersThePrototypesRights(t *testing.T) {
+	t.Parallel()
+	for _, item := range partGroups {
+		want := []PermissionOperation{}
+		if names, ok := expectedPartRights[item.prototype]; ok {
+			want = rightsByNames(t, names)
+		}
+		got := partRightsOf(item.group)
+		if got == nil {
+			got = []PermissionOperation{}
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("%s offers %v, the prototype %v", item.prototype, got, want)
+		}
+	}
+	for class := range expectedPartRights {
+		if !slices.ContainsFunc(partGroups, func(item partGroupInfo) bool { return item.prototype == class }) {
+			t.Errorf("no sort of part is %s", class)
+		}
+	}
+}
+
+// TestEveryKindSaysWhatItHolds catches a kind of the model left out of
+// kindCompositionOf: an object of it would hold nothing a role, a functional
+// option or a criterion could name, and nothing would say so.
+func TestEveryKindSaysWhatItHolds(t *testing.T) {
+	t.Parallel()
+	for _, item := range kindInfos {
+		if _, ok := kindCompositionOf[item.kind]; !ok {
+			t.Errorf("%s says nothing of what its objects hold", item.kind)
+		}
+	}
+	for kind := range kindCompositionOf {
+		if _, ok := kindInfoOf(kind); !ok {
+			t.Errorf("%s is no kind of the model", kind)
+		}
+	}
+}
 
 // expectedConfigurationRights is what the same exports write on the
 // configuration itself.
@@ -183,9 +239,21 @@ func TestKindRightsAgreeWithTheExports(t *testing.T) {
 					continue
 				}
 				allowed = usesOf(kind).offered
-			default:
-				// A part of an object, given rights in the next iteration.
+			case parts[0] == "Interface" || parts[0] == "IntegrationService":
 				continue
+			default:
+				// A nested object or a part: the last class of the name decides.
+				class := parts[len(parts)-2]
+				if names, ok := expectedPartRights[class]; ok {
+					allowed = rightsByNames(t, names)
+					break
+				}
+				kind, ok := byClass[class]
+				if !ok {
+					t.Errorf("%s: %s is no kind and no part", path, object.Name)
+					continue
+				}
+				allowed = usesOf(kind).offered
 			}
 			for _, right := range object.Rights {
 				operation, ok := RightByPrototypeName(right.Name)
