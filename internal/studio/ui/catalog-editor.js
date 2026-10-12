@@ -14,12 +14,18 @@ function createCatalogModel(source) {
     ['dont-index', 'Не индексировать'], ['index', 'Индексировать'],
     ['index-with-additional-order', 'Индексировать с доп. упорядочиванием'],
   ];
+  // The primitive types, then every type that names an object of metadata as
+  // the server lists them (ReferenceTypeChoices): what the save accepts.
+  const referenceTypes = source.typeChoices || [];
   const typeKinds = [
     ['string', 'Строка'], ['number', 'Число'], ['boolean', 'Булево'], ['date', 'Дата'], ['uuid', 'УникальныйИдентификатор'],
-    ['enumeration', 'Перечисление'], ['defined-type', 'Определяемый тип'], ['catalog', 'СправочникСсылка'], ['document', 'ДокументСсылка'],
+    ...referenceTypes.map(choice => [choice.kind, choice.name.russian]),
   ];
   function referenceChoices(kind) {
-    return {enumeration: source.typeChoices.enumerations, 'defined-type': source.typeChoices.definedTypes, catalog: source.typeChoices.catalogs, document: source.typeChoices.documents}[kind] || [];
+    return referenceTypes.find(choice => choice.kind === kind)?.objects || [];
+  }
+  function namesObject(kind) {
+    return referenceTypes.some(choice => choice.kind === kind);
   }
   function attributeList(container) {
     if (container === 'catalog') return catalog.attributes;
@@ -36,7 +42,7 @@ function createCatalogModel(source) {
   }
   return {
     value() { return structuredClone(catalog); },
-    typeKinds, indexingModes, referenceChoices, attributeList,
+    typeKinds, indexingModes, referenceChoices, namesObject, attributeList,
     setName(name) { catalog.name = name; },
     setTitle(language, text) { catalog.title ||= {}; if (text.trim()) catalog.title[language] = text; else delete catalog.title[language]; },
     setCodeType(type) { catalog.code.type = type; },
@@ -89,7 +95,7 @@ function createCatalogModel(source) {
       const type = {kind};
       if (kind === 'string') type.length = 50;
       else if (kind === 'number') { type.precision = 15; type.scale = 2; }
-      else if (['enumeration', 'defined-type', 'catalog', 'document'].includes(kind)) type.reference = referenceChoices(kind)[0]?.id;
+      else if (namesObject(kind)) type.reference = referenceChoices(kind)[0]?.id;
       attribute.types[index] = type;
     },
     setTypeField(container, id, index, field, fieldValue) {
@@ -159,7 +165,7 @@ function createCatalogEditor(host, onChange) {
     } else if (type.kind === 'number') {
       row.append(textField('Точность', type.precision, value => model.setTypeField(container, attribute.id, index, 'precision', value), {type: 'number', min: 1, max: 32}));
       row.append(textField('Масштаб', type.scale, value => model.setTypeField(container, attribute.id, index, 'scale', value), {type: 'number', min: 0, max: 32}));
-    } else if (['enumeration', 'defined-type', 'catalog', 'document'].includes(type.kind)) {
+    } else if (model.namesObject(type.kind)) {
       const choices = model.referenceChoices(type.kind).map(item => [item.id, title(item)]);
       row.append(selectField('Ссылка на', type.reference, choices, value => model.setTypeField(container, attribute.id, index, 'reference', value)));
     }

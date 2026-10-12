@@ -136,46 +136,6 @@ var formOnlyKinds = map[TypeKind]bool{
 	DendrogramType: true, GraphicalSchemaType: true, GeographicalSchemaType: true, NullType: true,
 }
 
-// objectTypeOwners says, for every object type, which object of metadata its
-// reference must name.
-var objectTypeOwners = map[TypeKind]func(*Catalog, uuid.UUID) bool{
-	CatalogObjectType:                 func(c *Catalog, id uuid.UUID) bool { _, ok := c.catalogByID[id]; return ok },
-	DocumentObjectType:                func(c *Catalog, id uuid.UUID) bool { _, ok := c.documentByID[id]; return ok },
-	CharacteristicTypesObjectType:     func(c *Catalog, id uuid.UUID) bool { _, ok := c.chartOfCharacteristicTypesByID[id]; return ok },
-	AccountsObjectType:                func(c *Catalog, id uuid.UUID) bool { _, ok := c.chartOfAccountsByID[id]; return ok },
-	CalculationTypesObjectType:        func(c *Catalog, id uuid.UUID) bool { _, ok := c.chartOfCalculationTypesByID[id]; return ok },
-	ExchangePlanObjectType:            func(c *Catalog, id uuid.UUID) bool { _, ok := c.exchangePlanByID[id]; return ok },
-	BusinessProcessObjectType:         func(c *Catalog, id uuid.UUID) bool { _, ok := c.businessProcessByID[id]; return ok },
-	TaskObjectType:                    func(c *Catalog, id uuid.UUID) bool { _, ok := c.taskByID[id]; return ok },
-	InformationRegisterRecordSetType:  func(c *Catalog, id uuid.UUID) bool { _, ok := c.informationRegisterByID[id]; return ok },
-	AccumulationRegisterRecordSetType: func(c *Catalog, id uuid.UUID) bool { _, ok := c.accumulationRegisterByID[id]; return ok },
-	AccountingRegisterRecordSetType:   func(c *Catalog, id uuid.UUID) bool { _, ok := c.accountingRegisterByID[id]; return ok },
-	CalculationRegisterRecordSetType:  func(c *Catalog, id uuid.UUID) bool { _, ok := c.calculationRegisterByID[id]; return ok },
-	SequenceRecordSetType:             func(c *Catalog, id uuid.UUID) bool { _, ok := c.sequenceByID[id]; return ok },
-	RecalculationRecordSetType:        (*Catalog).hasRecalculation,
-	ConstantValueManagerType:          func(c *Catalog, id uuid.UUID) bool { _, ok := c.constantByID[id]; return ok },
-	CatalogManagerType:                func(c *Catalog, id uuid.UUID) bool { _, ok := c.catalogByID[id]; return ok },
-	DocumentManagerType:               func(c *Catalog, id uuid.UUID) bool { _, ok := c.documentByID[id]; return ok },
-	EnumerationManagerType:            func(c *Catalog, id uuid.UUID) bool { _, ok := c.enumerationByID[id]; return ok },
-	CharacteristicTypesManagerType:    func(c *Catalog, id uuid.UUID) bool { _, ok := c.chartOfCharacteristicTypesByID[id]; return ok },
-	AccountsManagerType:               func(c *Catalog, id uuid.UUID) bool { _, ok := c.chartOfAccountsByID[id]; return ok },
-	CalculationTypesManagerType:       func(c *Catalog, id uuid.UUID) bool { _, ok := c.chartOfCalculationTypesByID[id]; return ok },
-	ExchangePlanManagerType:           func(c *Catalog, id uuid.UUID) bool { _, ok := c.exchangePlanByID[id]; return ok },
-	BusinessProcessManagerType:        func(c *Catalog, id uuid.UUID) bool { _, ok := c.businessProcessByID[id]; return ok },
-	TaskManagerType:                   func(c *Catalog, id uuid.UUID) bool { _, ok := c.taskByID[id]; return ok },
-	InformationRegisterManagerType:    func(c *Catalog, id uuid.UUID) bool { _, ok := c.informationRegisterByID[id]; return ok },
-	AccumulationRegisterManagerType:   func(c *Catalog, id uuid.UUID) bool { _, ok := c.accumulationRegisterByID[id]; return ok },
-	AccountingRegisterManagerType:     func(c *Catalog, id uuid.UUID) bool { _, ok := c.accountingRegisterByID[id]; return ok },
-	CalculationRegisterManagerType:    func(c *Catalog, id uuid.UUID) bool { _, ok := c.calculationRegisterByID[id]; return ok },
-	DocumentJournalManagerType:        func(c *Catalog, id uuid.UUID) bool { _, ok := c.documentJournalByID[id]; return ok },
-	ReportObjectType:                  func(c *Catalog, id uuid.UUID) bool { _, ok := c.reportByID[id]; return ok },
-	DataProcessorObjectType:           func(c *Catalog, id uuid.UUID) bool { _, ok := c.dataProcessorByID[id]; return ok },
-	InformationRegisterRecordManagerType: func(c *Catalog, id uuid.UUID) bool {
-		_, ok := c.informationRegisterByID[id]
-		return ok
-	},
-}
-
 var valueTypeKinds = map[TypeKind]bool{
 	FixedStructureType: true, FixedArrayType: true, FixedMapType: true,
 	ValueTableType: true, ValueTreeType: true, ValueListType: true,
@@ -189,7 +149,7 @@ var valueTypeKinds = map[TypeKind]bool{
 
 // isObjectType and isValueType say a kind lives in memory only; neither is
 // ever a column.
-func isObjectType(kind TypeKind) bool { _, ok := objectTypeOwners[kind]; return ok }
+func isObjectType(kind TypeKind) bool { return objectTypes[kind] }
 func isValueType(kind TypeKind) bool  { return valueTypeKinds[kind] }
 
 // SingleType returns the one type of a type description, and false when there

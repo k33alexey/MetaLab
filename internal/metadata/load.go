@@ -44,7 +44,7 @@ func read(root string, includeRoles, strict bool) (*Catalog, error) {
 	if err := catalog.loadRootInterface(root); err != nil {
 		return nil, err
 	}
-	for _, item := range sourceKinds {
+	for _, item := range kindInfos {
 		if item.add == nil || item.kind == RoleKind && !includeRoles {
 			continue
 		}
@@ -254,7 +254,7 @@ func NewCatalogSnapshotWithEventSubscriptions(configuration project.Project, con
 
 // loadSources reads every description of one kind and puts it into the
 // catalog. A role is read with the grid of its rights beside it.
-func (catalog *Catalog) loadSources(root string, item sourceKind, configuration project.Project) error {
+func (catalog *Catalog) loadSources(root string, item kindInfo, configuration project.Project) error {
 	walk := loadKind
 	if keptInFolder(item.kind) {
 		walk = loadObjectKind
@@ -2315,65 +2315,13 @@ func (catalog *Catalog) validateReferences(owner string, types []Type) error {
 		if item.Reference == nil {
 			continue
 		}
-		switch item.Kind {
-		case EnumerationType:
-			if _, ok := catalog.enumerationByID[*item.Reference]; !ok {
-				return fmt.Errorf("%s references unknown enumeration %s", owner, item.Reference)
-			}
-		case DefinedType:
-			if _, ok := catalog.definedTypeByID[*item.Reference]; !ok {
-				return fmt.Errorf("%s references unknown defined type %s", owner, item.Reference)
-			}
-		case CatalogType:
-			if _, ok := catalog.catalogByID[*item.Reference]; !ok {
-				return fmt.Errorf("%s references unknown catalog %s", owner, item.Reference)
-			}
-		case DocumentType:
-			if _, ok := catalog.documentByID[*item.Reference]; !ok {
-				return fmt.Errorf("%s references unknown document %s", owner, item.Reference)
-			}
-		case CharacteristicTypesType:
-			if _, ok := catalog.chartOfCharacteristicTypesByID[*item.Reference]; !ok {
-				return fmt.Errorf("%s references unknown chart of characteristic types %s", owner, item.Reference)
-			}
-		case AccountType:
-			if _, ok := catalog.chartOfAccountsByID[*item.Reference]; !ok {
-				return fmt.Errorf("%s references unknown chart of accounts %s", owner, item.Reference)
-			}
-		case CalculationTypeType:
-			if _, ok := catalog.chartOfCalculationTypesByID[*item.Reference]; !ok {
-				return fmt.Errorf("%s references unknown chart of calculation types %s", owner, item.Reference)
-			}
-		case BusinessProcessType, RoutePointType:
-			if _, ok := catalog.businessProcessByID[*item.Reference]; !ok {
-				return fmt.Errorf("%s references unknown business process %s", owner, item.Reference)
-			}
-		case TaskType:
-			if _, ok := catalog.taskByID[*item.Reference]; !ok {
-				return fmt.Errorf("%s references unknown task %s", owner, item.Reference)
-			}
-		case ExchangePlanType:
-			if _, ok := catalog.exchangePlanByID[*item.Reference]; !ok {
-				return fmt.Errorf("%s references unknown exchange plan %s", owner, item.Reference)
-			}
-		case CharacteristicSet:
-			if _, ok := catalog.chartOfCharacteristicTypesByID[*item.Reference]; !ok {
-				return fmt.Errorf("%s is typed by the characteristics of unknown chart %s", owner, item.Reference)
-			}
-		case ExternalTableType:
-			if _, ok := catalog.externalTableByID[*item.Reference]; !ok {
-				return fmt.Errorf("%s references unknown table of an external source %s", owner, item.Reference)
-			}
-		case ExternalDimensionTableType:
-			if _, ok := catalog.externalDimensionTableByID[*item.Reference]; !ok {
-				return fmt.Errorf("%s references unknown dimension table of an external source %s", owner, item.Reference)
-			}
-		case VanishedType:
-			// The type of an object that is gone: nothing to resolve.
+		found, known := catalog.typeNamesObject(item.Kind, *item.Reference)
+		switch {
+		case !known || found:
+		case objectTypes[item.Kind]:
+			return fmt.Errorf("%s is typed %s of unknown %s %s", owner, item.Kind, kindWord(typeOwners[item.Kind]), item.Reference)
 		default:
-			if exists, ok := objectTypeOwners[item.Kind]; ok && !exists(catalog, *item.Reference) {
-				return fmt.Errorf("%s is typed %s of unknown object %s", owner, item.Kind, item.Reference)
-			}
+			return fmt.Errorf("%s references unknown %s %s", owner, kindWord(typeOwners[item.Kind]), item.Reference)
 		}
 	}
 	return nil

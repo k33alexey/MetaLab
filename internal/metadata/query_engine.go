@@ -1521,7 +1521,7 @@ func (source *querySource) addPlacement(catalog *Catalog, definition CatalogDefi
 			return
 		}
 		source.addStored("Владелец", querySourceColumnSQL(source.sqlAlias, "owner"),
-			[]Type{referenceType(ownerKindTypes[kind], definition.Owners[0])}, "Owner")
+			[]Type{referenceType(referenceTo(kind), definition.Owners[0])}, "Owner")
 		return
 	}
 	table := pgx.Identifier{source.sqlAlias}.Sanitize()

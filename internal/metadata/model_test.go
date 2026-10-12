@@ -151,7 +151,7 @@ name: Значение
 title: {ru: Значение}
 types: [{kind: enumeration, reference: `+enumerationID+`}]
 `)
-		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "unknown enumeration") {
+		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "references unknown enum "+enumerationID) {
 			t.Fatalf("Load() error = %v", err)
 		}
 	})

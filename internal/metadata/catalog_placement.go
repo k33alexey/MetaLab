@@ -126,7 +126,7 @@ func (repository *CatalogRepository) decodePlacement(definition CatalogDefinitio
 		if !ok {
 			return fmt.Errorf("catalog %s belongs to %s, which is not in the configuration", definition.Name, definition.Owners[0])
 		}
-		record.Owner = Value{Kind: ownerKindTypes[kind], Object: definition.Owners[0], Data: id.String()}
+		record.Owner = Value{Kind: referenceTo(kind), Object: definition.Owners[0], Data: id.String()}
 		return nil
 	}
 	rawType, rawRef := fields["owner_type"], fields["owner_ref"]
@@ -145,7 +145,7 @@ func (repository *CatalogRepository) decodePlacement(definition CatalogDefinitio
 	if !ok {
 		return fmt.Errorf("catalog %s row belongs to %s, which is not an object of the configuration", definition.Name, objectID)
 	}
-	record.Owner = Value{Kind: ownerKindTypes[kind], Object: objectID, Data: rowID.String()}
+	record.Owner = Value{Kind: referenceTo(kind), Object: objectID, Data: rowID.String()}
 	return nil
 }
 
@@ -264,7 +264,7 @@ func (repository *CatalogRepository) checkOwnerRow(ctx context.Context, transact
 	}
 	if !found {
 		return fmt.Errorf("catalog %s belongs to %s %s, which has no row %s",
-			definition.Name, kind, repository.catalog.ownerName(kind, record.Owner.Object), rowID)
+			definition.Name, kind, repository.catalog.ownerName(record.Owner.Object), rowID)
 	}
 	switch {
 	case folder && definition.Subordination == SubordinateToItems:
@@ -321,8 +321,8 @@ func (runtime *Runtime) wrapObjectReference(kind Kind, metadataID, objectID uuid
 		}
 		return runtime.wrapDocumentReference(definition, DocumentReference{DocumentID: metadataID, ObjectID: objectID})
 	}
-	valueType, ok := characteristicKindTypes[kind]
-	if !ok {
+	valueType := referenceTo(kind)
+	if !characteristicOwnerKinds[kind] {
 		return bytecode.Undefined(), fmt.Errorf("%s has no reference to hand over", kind)
 	}
 	return valueToBSL(Value{Kind: valueType, Object: metadataID, Data: objectID.String()})
@@ -333,11 +333,7 @@ func (runtime *Runtime) wrapObjectReference(kind Kind, metadataID, objectID uuid
 // identifier alone does not say which table the row is in.
 func (catalog *Catalog) objectOfKinds(kinds []Kind, id uuid.UUID) (Kind, bool) {
 	for _, kind := range kinds {
-		valueType, ok := characteristicKindTypes[kind]
-		if !ok {
-			continue
-		}
-		if catalog.hasObject(valueType, id) {
+		if characteristicOwnerKinds[kind] && catalog.hasObject(kind, id) {
 			return kind, true
 		}
 	}

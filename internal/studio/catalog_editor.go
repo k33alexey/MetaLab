@@ -14,53 +14,28 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// TypeChoice is one referenceable metadata object shown in the catalog
-// editor's type picker.
-type TypeChoice struct {
-	ID    uuid.UUID              `json:"id"`
-	Name  string                 `json:"name"`
-	Title metadata.LocalizedText `json:"title"`
-}
-
-// TypeChoices lists every object an attribute's composite type can
-// reference, grouped by kind.
-type TypeChoices struct {
-	Enumerations []TypeChoice `json:"enumerations"`
-	DefinedTypes []TypeChoice `json:"definedTypes"`
-	Catalogs     []TypeChoice `json:"catalogs"`
-	Documents    []TypeChoice `json:"documents"`
-}
-
-func loadTypeChoices(root string) (TypeChoices, error) {
+// loadTypeChoices is what the type picker of an attribute offers beside the
+// primitive types: every reference a stored attribute may hold, and every
+// defined type, each with the objects it may name. The model says which
+// types those are (ReferenceTypeChoices), so the editor offers what the save
+// accepts.
+func loadTypeChoices(root string) ([]metadata.ReferenceTypeChoice, error) {
 	catalog, err := metadata.Load(root)
 	if err != nil {
-		return TypeChoices{}, err
+		return nil, err
 	}
-	choices := TypeChoices{}
-	for _, item := range catalog.Enumerations {
-		choices.Enumerations = append(choices.Enumerations, TypeChoice{ID: item.ID, Name: item.Name, Title: item.Title})
-	}
-	for _, item := range catalog.DefinedTypes {
-		choices.DefinedTypes = append(choices.DefinedTypes, TypeChoice{ID: item.ID, Name: item.Name, Title: item.Title})
-	}
-	for _, item := range catalog.Catalogs {
-		choices.Catalogs = append(choices.Catalogs, TypeChoice{ID: item.ID, Name: item.Name, Title: item.Title})
-	}
-	for _, item := range catalog.Documents {
-		choices.Documents = append(choices.Documents, TypeChoice{ID: item.ID, Name: item.Name, Title: item.Title})
-	}
-	return choices, nil
+	return catalog.ReferenceTypeChoices(), nil
 }
 
 // CatalogEditorSource is the typed, revision-safe representation the
 // visual catalog editor reads and writes, in place of raw YAML.
 type CatalogEditorSource struct {
-	Path            string                     `json:"path"`
-	Revision        string                     `json:"revision"`
-	Catalog         metadata.CatalogDefinition `json:"catalog"`
-	TypeChoices     TypeChoices                `json:"typeChoices"`
-	Languages       []FormLanguage             `json:"languages"`
-	DefaultLanguage string                     `json:"defaultLanguage"`
+	Path            string                         `json:"path"`
+	Revision        string                         `json:"revision"`
+	Catalog         metadata.CatalogDefinition     `json:"catalog"`
+	TypeChoices     []metadata.ReferenceTypeChoice `json:"typeChoices"`
+	Languages       []FormLanguage                 `json:"languages"`
+	DefaultLanguage string                         `json:"defaultLanguage"`
 }
 
 func validateCatalogEditorPath(relative string) error {

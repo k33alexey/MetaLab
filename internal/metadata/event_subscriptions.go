@@ -261,7 +261,7 @@ func (catalog *Catalog) validateEventSubscriptionReferences() error {
 				}
 				continue
 			}
-			if exists := objectTypeOwners[source.Kind]; exists == nil || !exists(catalog, *source.Reference) {
+			if found, _ := catalog.typeNamesObject(source.Kind, *source.Reference); !objectTypes[source.Kind] || !found {
 				return fmt.Errorf("event subscription %s source is %s of unknown object %s", item.Name, source.Kind, source.Reference)
 			}
 		}

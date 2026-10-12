@@ -74,7 +74,8 @@ const (
 
 // Words is a name in the two languages code is written in.
 type Words struct {
-	Russian, English string
+	Russian string `json:"russian"`
+	English string `json:"english"`
 }
 
 // Is reports whether a word of code is this name in either language. Case
@@ -166,6 +167,31 @@ var descriptors = []Descriptor{
 	{ExternalCube, Words{"Куб", "Cube"}, Words{"Кубы", "Cubes"}, "КубаВнешнегоИсточника", "Куб", "Кубы"},
 	{ExternalDimensionTable, Words{"ТаблицаИзмерения", "DimensionTable"}, Words{"ТаблицыИзмерений", "DimensionTables"},
 		"ТаблицыИзмеренияВнешнегоИсточника", "Таблица измерения", "Таблицы измерений"},
+}
+
+// references are the names of the reference types, kept beside descriptors
+// rather than in each line of it: eleven kinds of fifty have them, twelve
+// types in all. The help (8.3.27) has a page of each and of no other.
+var references = map[Kind][]Words{
+	Catalog:                    {{"СправочникСсылка", "CatalogRef"}},
+	Document:                   {{"ДокументСсылка", "DocumentRef"}},
+	Enumeration:                {{"ПеречислениеСсылка", "EnumRef"}},
+	ChartOfCharacteristicTypes: {{"ПланВидовХарактеристикСсылка", "ChartOfCharacteristicTypesRef"}},
+	ChartOfAccounts:            {{"ПланСчетовСсылка", "ChartOfAccountsRef"}},
+	ChartOfCalculationTypes:    {{"ПланВидовРасчетаСсылка", "ChartOfCalculationTypesRef"}},
+	BusinessProcess:            {{"БизнесПроцессСсылка", "BusinessProcessRef"}, {"ТочкаМаршрутаБизнесПроцессаСсылка", "BusinessProcessRoutePointRef"}},
+	Task:                       {{"ЗадачаСсылка", "TaskRef"}},
+	ExchangePlan:               {{"ПланОбменаСсылка", "ExchangePlanRef"}},
+	ExternalDataSourceTable:    {{"ВнешнийИсточникДанныхТаблицаСсылка", "ExternalDataSourceTableRef"}},
+	ExternalDimensionTable:     {{"ВнешнийИсточникДанныхКубТаблицаИзмеренияСсылка", "ExternalDataSourceCubeDimensionTableRef"}},
+}
+
+// References name the types of a reference to an object of the kind (help:
+// СправочникСсылка.<Имя справочника>), the reference to the object itself
+// first; a business process has a second, to a point of its route. A kind
+// whose objects have no reference has none.
+func (descriptor Descriptor) References() []Words {
+	return slices.Clone(references[descriptor.Kind])
 }
 
 // Of finds what a kind is called.

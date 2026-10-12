@@ -44,8 +44,9 @@ func (kind SubordinationKind) reachesFolders() bool {
 	return kind == SubordinateToFolders || kind == SubordinateToFoldersAndItem
 }
 
-// ownerKindTypes are the kinds whose elements may own a catalog's rows, each
-// with the type of a reference to one. The demonstration configuration uses
+// catalogOwnerKinds are the kinds whose elements may own a catalog's rows, in
+// the order a message walks them, so that two loads of one configuration word
+// a refusal the same way. The demonstration configuration uses
 // two of them - a catalog and a chart of characteristic types - and the syntax
 // assistant names all five: the type of СправочникОбъект.Владелец is a
 // reference to a catalog, a chart of characteristic types, a chart of
@@ -56,23 +57,13 @@ func (kind SubordinationKind) reachesFolders() bool {
 // Four kinds had been allowed on the reasoning that refusing a kind we have no
 // evidence against is worse than carrying one; the evidence turned out to
 // exist, one property along, and it named a fifth.
-var ownerKindTypes = map[Kind]TypeKind{
-	CatalogKind:                    CatalogType,
-	ChartOfCharacteristicTypesKind: CharacteristicTypesType,
-	ChartOfAccountsKind:            AccountType,
-	ChartOfCalculationTypesKind:    CalculationTypeType,
-	ExchangePlanKind:               ExchangePlanType,
-}
-
-// catalogOwnerKinds is the same list in the order a message walks it, so that two
-// loads of one configuration word a refusal the same way.
 var catalogOwnerKinds = []Kind{CatalogKind, ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind, ExchangePlanKind}
 
 // ownerObject finds one owner by identifier among the kinds allowed to own.
 // The second result is false when no such object is there to own anything.
 func (catalog *Catalog) ownerObject(id uuid.UUID) (Kind, bool) {
 	for _, kind := range catalogOwnerKinds {
-		if catalog.hasObject(ownerKindTypes[kind], id) {
+		if catalog.hasObject(kind, id) {
 			return kind, true
 		}
 	}
@@ -94,18 +85,9 @@ func (catalog *Catalog) ownerHierarchy(kind Kind, id uuid.UUID) Hierarchy {
 }
 
 // ownerName is what a message about an owner calls it.
-func (catalog *Catalog) ownerName(kind Kind, id uuid.UUID) string {
-	switch kind {
-	case CatalogKind:
-		return catalog.Catalogs[catalog.catalogByID[id]].Name
-	case ChartOfCharacteristicTypesKind:
-		return catalog.ChartsOfCharacteristicTypes[catalog.chartOfCharacteristicTypesByID[id]].Name
-	case ChartOfAccountsKind:
-		return catalog.ChartsOfAccounts[catalog.chartOfAccountsByID[id]].Name
-	case ChartOfCalculationTypesKind:
-		return catalog.ChartsOfCalculationTypes[catalog.chartOfCalculationTypesByID[id]].Name
-	case ExchangePlanKind:
-		return catalog.ExchangePlans[catalog.exchangePlanByID[id]].Name
+func (catalog *Catalog) ownerName(id uuid.UUID) string {
+	if name, ok := catalog.objectNames[id]; ok {
+		return name
 	}
 	return id.String()
 }
@@ -120,7 +102,7 @@ func (catalog *Catalog) OwnerTypes(definition CatalogDefinition) []Type {
 		if !ok {
 			continue
 		}
-		result = append(result, referenceType(ownerKindTypes[kind], id))
+		result = append(result, referenceType(referenceTo(kind), id))
 	}
 	return result
 }
@@ -161,7 +143,7 @@ func (catalog *Catalog) validateCatalogOwners() error {
 			hierarchy := catalog.ownerHierarchy(kind, id)
 			if !hierarchy.Enabled || hierarchy.Kind != FoldersAndItemsHierarchy {
 				return fmt.Errorf("catalog %s is subordinate to folders of %s %s, which has none",
-					definition.Name, kind, catalog.ownerName(kind, id))
+					definition.Name, kind, catalog.ownerName(id))
 			}
 		}
 	}

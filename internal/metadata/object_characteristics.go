@@ -39,26 +39,20 @@ const (
 	DescriptionStandardField StandardField = "description"
 )
 
-// characteristicKindTypes are the kinds of object a characteristic
-// description can be written on, each with the type of a reference to it.
-// They are the nine reference kinds and nothing else: a characteristic hangs
-// off a reference, and a register row has none to hang off.
-var characteristicKindTypes = map[Kind]TypeKind{
-	CatalogKind:                    CatalogType,
-	DocumentKind:                   DocumentType,
-	EnumerationKind:                EnumerationType,
-	ChartOfCharacteristicTypesKind: CharacteristicTypesType,
-	ChartOfAccountsKind:            AccountType,
-	ChartOfCalculationTypesKind:    CalculationTypeType,
-	BusinessProcessKind:            BusinessProcessType,
-	TaskKind:                       TaskType,
-	ExchangePlanKind:               ExchangePlanType,
+// characteristicOwnerKinds are the kinds of object a characteristic description
+// can be written on. They are the nine reference kinds and nothing else: a
+// characteristic hangs off a reference (referenceTo), and a register row has
+// none to hang off.
+var characteristicOwnerKinds = map[Kind]bool{
+	CatalogKind: true, DocumentKind: true, EnumerationKind: true,
+	ChartOfCharacteristicTypesKind: true, ChartOfAccountsKind: true, ChartOfCalculationTypesKind: true,
+	BusinessProcessKind: true, TaskKind: true, ExchangePlanKind: true,
 	// A table of an external data source carries descriptions too, and its
 	// tables of kinds and values are, in practice, tables of the same source:
 	// a field of a source holds no reference to the configuration's own
 	// objects. Only a table of object data has a reference to hang a
 	// characteristic off - see standardFieldsOf and characteristicOwners.
-	ExternalDataSourceTableKind: ExternalTableType,
+	ExternalDataSourceTableKind: true,
 }
 
 // CharacteristicTable addresses a table a characteristic reads: an object, or
@@ -210,7 +204,7 @@ func validateObjectCharacteristics(characteristics []ObjectCharacteristic) []str
 
 func validateCharacteristicTable(path string, table CharacteristicTable) []string {
 	var issues []string
-	if _, ok := characteristicKindTypes[table.Kind]; !ok && table.Kind != InformationRegisterKind {
+	if !characteristicOwnerKinds[table.Kind] && table.Kind != InformationRegisterKind {
 		issues = append(issues, path+".kind is not a kind of object a characteristic is read from")
 	}
 	if table.Object.IsZero() {
@@ -358,10 +352,10 @@ func (catalog *Catalog) resolveCharacteristicTable(where string, table Character
 // the period, the recorder, the line number - are not what a characteristic is
 // read by, and a description naming one of them is a mistake worth reporting.
 func (catalog *Catalog) standardFieldsOf(kind Kind, id uuid.UUID) map[StandardField][]Type {
-	referenceKind, ok := characteristicKindTypes[kind]
-	if !ok {
+	if !characteristicOwnerKinds[kind] {
 		return map[StandardField][]Type{}
 	}
+	referenceKind := referenceTo(kind)
 	if kind == ExternalDataSourceTableKind {
 		return catalog.externalTableStandardFields(id)
 	}
@@ -576,7 +570,7 @@ func (catalog *Catalog) validateCharacteristic(where string, owner characteristi
 	if err != nil {
 		return fmt.Errorf("%s values.object: %w", where, err)
 	}
-	reference := []Type{referenceType(characteristicKindTypes[owner.kind], owner.id)}
+	reference := []Type{referenceType(referenceTo(owner.kind), owner.id)}
 	if !typesIntersect(reference, held) {
 		return fmt.Errorf("%s values.object cannot hold a reference to %s, so it keeps no values of it", where, owner.what)
 	}

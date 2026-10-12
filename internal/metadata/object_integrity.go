@@ -276,7 +276,7 @@ func (catalog *Catalog) placementReferenceSources(target objectIdentity, definit
 			continue
 		}
 		kind, ok := catalog.ownerObject(owner)
-		if ok && ownerKindTypes[kind] == target.kind {
+		if ok && referenceTo(kind) == target.kind {
 			owns = true
 		}
 	}

@@ -12,7 +12,12 @@ vm.runInContext(script,context);
 const create=context.createCatalogModel;
 function fixture(){return {
   catalog:{format:1,id:'cat',name:'Товары',title:{ru:'Товары'},code:{type:'string',length:9,auto:true,unique:true},descriptionLength:250,attributes:[],tableParts:[]},
-  typeChoices:{enumerations:[{id:'enum1',name:'ВидыНоменклатуры',title:{ru:'Виды номенклатуры'}}],definedTypes:[],catalogs:[{id:'cat2',name:'Контрагенты',title:{ru:'Контрагенты'}}],documents:[]},
+  typeChoices:[
+    {kind:'enumeration',name:{russian:'ПеречислениеСсылка',english:'EnumRef'},objects:[{id:'enum1',name:'ВидыНоменклатуры',title:{ru:'Виды номенклатуры'}}]},
+    {kind:'catalog',name:{russian:'СправочникСсылка',english:'CatalogRef'},objects:[{id:'cat2',name:'Контрагенты',title:{ru:'Контрагенты'}}]},
+    {kind:'document',name:{russian:'ДокументСсылка',english:'DocumentRef'},objects:[]},
+    {kind:'defined-type',name:{russian:'ОпределяемыйТип',english:'DefinedType'},objects:[]},
+  ],
   languages:[{code:'ru',title:'Русский'},{code:'en',title:'English'}],defaultLanguage:'ru',
 };}
 

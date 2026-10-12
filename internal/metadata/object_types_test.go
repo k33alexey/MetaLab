@@ -121,13 +121,13 @@ id: ` + inMemoryDefined + `
 name: Чужой
 title: {ru: Чужой}
 types: [{kind: document-object, reference: 51000000-0000-4000-8000-000000000099}]
-`, "of unknown object"},
+`, "is typed document-object of unknown document"},
 		"объект справочника на документ": {DefinedTypeKind, inMemoryDefined, `format: 1
 id: ` + inMemoryDefined + `
 name: Перепутан
 title: {ru: Перепутан}
 types: [{kind: catalog-object, reference: ` + inMemoryDocument + `}]
-`, "of unknown object"},
+`, "is typed catalog-object of unknown catalog"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

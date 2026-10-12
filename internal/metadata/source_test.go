@@ -10,7 +10,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// Every kind the layout of a project has is read through sourceKinds, so the
+// Every kind the layout of a project has is read through kindInfos, so the
 // load and Studio's save know it alike, and is checked against where it lies.
 // The kinds come from the layout, not from the table: a kind the layout gained
 // and the table did not is what Studio used to save unchecked. Defects caught:
@@ -24,12 +24,12 @@ func TestEverySourceKindIsChecked(t *testing.T) {
 	readOtherwise := []string{"common-forms", "languages"}
 	for _, kind := range project.MetadataKinds() {
 		if slices.Contains(readOtherwise, kind) {
-			if _, ok := sourceKindOf(Kind(kind)); ok {
-				t.Errorf("%s is read otherwise and has a reading in sourceKinds as well", kind)
+			if _, ok := kindInfoOf(Kind(kind)); ok {
+				t.Errorf("%s is read otherwise and has a reading in kindInfos as well", kind)
 			}
 			continue
 		}
-		item, ok := sourceKindOf(Kind(kind))
+		item, ok := kindInfoOf(Kind(kind))
 		if !ok {
 			t.Errorf("%s has no reading", kind)
 			continue
@@ -39,7 +39,7 @@ func TestEverySourceKindIsChecked(t *testing.T) {
 		}
 	}
 	for _, kind := range project.SubordinateObjectKinds() {
-		item, ok := sourceKindOf(Kind(kind))
+		item, ok := kindInfoOf(Kind(kind))
 		if !ok {
 			t.Errorf("subordinate %s has no reading", kind)
 		} else if item.add != nil || item.objects != nil {
@@ -47,11 +47,14 @@ func TestEverySourceKindIsChecked(t *testing.T) {
 		}
 	}
 	seen := map[Kind]bool{}
-	for _, item := range sourceKinds {
+	for _, item := range kindInfos {
 		if seen[item.kind] {
 			t.Errorf("%s is read twice", item.kind)
 		}
 		seen[item.kind] = true
+		if item.decode == nil {
+			continue
+		}
 		id, idOK := item.described.FieldByName("ID")
 		name, nameOK := item.described.FieldByName("Name")
 		if !idOK || id.Type != reflect.TypeFor[uuid.UUID]() || !nameOK || name.Type.Kind() != reflect.String {
@@ -72,7 +75,7 @@ func TestEveryKindIsNamed(t *testing.T) {
 	for _, kind := range append(project.MetadataKinds(), project.SubordinateObjectKinds()...) {
 		known[Kind(kind)] = true
 	}
-	for _, item := range sourceKinds {
+	for _, item := range kindInfos {
 		known[item.kind] = true
 	}
 	// A recalculation lies inside its calculation register and is read with

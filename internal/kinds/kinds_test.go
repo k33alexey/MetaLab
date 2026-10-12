@@ -121,6 +121,80 @@ func TestNamesAreInTheHelp(t *testing.T) {
 	}
 }
 
+// TestReferencesAreThePrototypes catches a reference type missing, misnamed
+// or given to a kind whose objects have no reference. The expectation is
+// written out here from the help (8.3.27: every page <Name>Ссылка.<Имя ...>),
+// not read from the table under test; TestReferencesAreInTheHelp checks the
+// same against the help itself when it is here.
+func TestReferencesAreThePrototypes(t *testing.T) {
+	expected := map[Kind]string{
+		Catalog:                    "СправочникСсылка CatalogRef",
+		Document:                   "ДокументСсылка DocumentRef",
+		Enumeration:                "ПеречислениеСсылка EnumRef",
+		ChartOfCharacteristicTypes: "ПланВидовХарактеристикСсылка ChartOfCharacteristicTypesRef",
+		ChartOfAccounts:            "ПланСчетовСсылка ChartOfAccountsRef",
+		ChartOfCalculationTypes:    "ПланВидовРасчетаСсылка ChartOfCalculationTypesRef",
+		BusinessProcess:            "БизнесПроцессСсылка BusinessProcessRef ТочкаМаршрутаБизнесПроцессаСсылка BusinessProcessRoutePointRef",
+		Task:                       "ЗадачаСсылка TaskRef",
+		ExchangePlan:               "ПланОбменаСсылка ExchangePlanRef",
+		ExternalDataSourceTable:    "ВнешнийИсточникДанныхТаблицаСсылка ExternalDataSourceTableRef",
+		ExternalDimensionTable:     "ВнешнийИсточникДанныхКубТаблицаИзмеренияСсылка ExternalDataSourceCubeDimensionTableRef",
+	}
+	for _, item := range All() {
+		var words []string
+		for _, reference := range item.References() {
+			words = append(words, reference.Russian, reference.English)
+		}
+		if got := strings.Join(words, " "); got != expected[item.Kind] {
+			t.Errorf("%s has references %q, the prototype %q", item.Kind, got, expected[item.Kind])
+		}
+	}
+}
+
+// TestReferencesAreInTheHelp catches the help having a reference type no
+// kind names, or a kind naming one the help has not: every page titled
+// <Type>Ссылка.<...> of the help is a reference type. Without the help the
+// test is skipped with the reason.
+func TestReferencesAreInTheHelp(t *testing.T) {
+	path := filepath.Join("..", "..", "docs", "materials", "its", "8.3.27.2342", "json", "shcntx_ru.json")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Skipf("the help is not here (%v): the materials are kept out of the repository", err)
+	}
+	var help struct {
+		Pages []struct {
+			TitleRU string `json:"title_ru"`
+			TitleEN string `json:"title_en"`
+		} `json:"pages"`
+	}
+	if err := json.Unmarshal(content, &help); err != nil {
+		t.Fatal(err)
+	}
+	page := regexp.MustCompile(`^([\p{L}\p{N}_]+Ссылка)\.<[^>]+>(?:\.<[^>]+>)*$`)
+	inHelp := map[string]string{}
+	for _, item := range help.Pages {
+		if match := page.FindStringSubmatch(item.TitleRU); match != nil && item.TitleEN != "" {
+			inHelp[match[1]] = item.TitleEN[:strings.IndexByte(item.TitleEN, '.')]
+		}
+	}
+	named := map[string]string{}
+	for _, item := range All() {
+		for _, reference := range item.References() {
+			named[reference.Russian] = reference.English
+		}
+	}
+	for russian, english := range inHelp {
+		if named[russian] != english {
+			t.Errorf("the help has the reference type %s (%s), the kinds name it %q", russian, english, named[russian])
+		}
+	}
+	for russian := range named {
+		if _, ok := inHelp[russian]; !ok {
+			t.Errorf("%s is named a reference type, the help has no such", russian)
+		}
+	}
+}
+
 // TestIsComparesAsTheLanguage catches a comparison of a name that minds the
 // case, or that takes a word of one kind for another.
 func TestIsComparesAsTheLanguage(t *testing.T) {

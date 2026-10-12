@@ -144,36 +144,10 @@ func (catalog *Catalog) checkReferenceObject(value Value, allowed Type) string {
 	if value.Object != *allowed.Reference {
 		return "reference to " + value.Object.String() + " is not allowed here"
 	}
-	if !catalog.hasObject(allowed.Kind, value.Object) {
+	if found, _ := catalog.typeNamesObject(allowed.Kind, value.Object); !found {
 		return "object " + value.Object.String() + " is not in the configuration"
 	}
 	return ""
-}
-
-// hasObject answers the registry.
-func (catalog *Catalog) hasObject(kind TypeKind, id uuid.UUID) bool {
-	var found bool
-	switch kind {
-	case EnumerationType:
-		_, found = catalog.enumerationByID[id]
-	case CatalogType:
-		_, found = catalog.catalogByID[id]
-	case DocumentType:
-		_, found = catalog.documentByID[id]
-	case CharacteristicTypesType:
-		_, found = catalog.chartOfCharacteristicTypesByID[id]
-	case AccountType:
-		_, found = catalog.chartOfAccountsByID[id]
-	case CalculationTypeType:
-		_, found = catalog.chartOfCalculationTypesByID[id]
-	case BusinessProcessType, RoutePointType:
-		_, found = catalog.businessProcessByID[id]
-	case TaskType:
-		_, found = catalog.taskByID[id]
-	case ExchangePlanType:
-		_, found = catalog.exchangePlanByID[id]
-	}
-	return found
 }
 
 func (catalog *Catalog) allowsObjectReference(types []Type, kind TypeKind, objectID uuid.UUID) (bool, error) {
@@ -194,34 +168,21 @@ func (catalog *Catalog) allowsObjectReference(types []Type, kind TypeKind, objec
 // is the point: an object added today is in the set today.
 func (catalog *Catalog) setMembers(kind TypeKind) []Type {
 	var result []Type
-	add := func(want TypeKind, kindOf TypeKind, ids []uuid.UUID) {
-		if kind != AnyReferenceSet && kind != want {
-			return
-		}
-		for index := range ids {
-			id := ids[index]
-			result = append(result, Type{Kind: kindOf, Reference: &id})
+	for _, item := range kindInfos {
+		for _, reference := range item.references {
+			if reference.set == "" || kind != AnyReferenceSet && kind != reference.set {
+				continue
+			}
+			// A route point belongs to the process that drew it, so the set
+			// of route points is one member per business process, not one
+			// member in total.
+			list, _ := catalog.objectsOf(item.kind)
+			for index := range list.Len() {
+				id := list.Index(index).FieldByName("ID").Interface().(uuid.UUID)
+				result = append(result, Type{Kind: reference.kind, Reference: &id})
+			}
 		}
 	}
-	ids := func(count int, at func(int) uuid.UUID) []uuid.UUID {
-		list := make([]uuid.UUID, count)
-		for index := range list {
-			list[index] = at(index)
-		}
-		return list
-	}
-	add(CatalogSet, CatalogType, ids(len(catalog.Catalogs), func(i int) uuid.UUID { return catalog.Catalogs[i].ID }))
-	add(DocumentSet, DocumentType, ids(len(catalog.Documents), func(i int) uuid.UUID { return catalog.Documents[i].ID }))
-	add(EnumerationSet, EnumerationType, ids(len(catalog.Enumerations), func(i int) uuid.UUID { return catalog.Enumerations[i].ID }))
-	add(CharacteristicTypesSet, CharacteristicTypesType, ids(len(catalog.ChartsOfCharacteristicTypes), func(i int) uuid.UUID { return catalog.ChartsOfCharacteristicTypes[i].ID }))
-	add(AccountSet, AccountType, ids(len(catalog.ChartsOfAccounts), func(i int) uuid.UUID { return catalog.ChartsOfAccounts[i].ID }))
-	add(CalculationTypeSet, CalculationTypeType, ids(len(catalog.ChartsOfCalculationTypes), func(i int) uuid.UUID { return catalog.ChartsOfCalculationTypes[i].ID }))
-	add(BusinessProcessSet, BusinessProcessType, ids(len(catalog.BusinessProcesses), func(i int) uuid.UUID { return catalog.BusinessProcesses[i].ID }))
-	// A route point belongs to the process that drew it, so the set of route
-	// points is one member per business process, not one member in total.
-	add(RoutePointSet, RoutePointType, ids(len(catalog.BusinessProcesses), func(i int) uuid.UUID { return catalog.BusinessProcesses[i].ID }))
-	add(TaskSet, TaskType, ids(len(catalog.Tasks), func(i int) uuid.UUID { return catalog.Tasks[i].ID }))
-	add(ExchangePlanSet, ExchangePlanType, ids(len(catalog.ExchangePlans), func(i int) uuid.UUID { return catalog.ExchangePlans[i].ID }))
 	return result
 }
 

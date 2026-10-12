@@ -141,14 +141,11 @@ const (
 	ValueStorageType TypeKind = "value-storage"
 )
 
-// referenceSets are the sets read off the kind of object alone. The two that
-// are read off the configuration instead - a defined type and a characteristic
-// - carry a reference and are handled beside them.
-var referenceSets = map[TypeKind]bool{
-	AnyReferenceSet: true, CatalogSet: true, DocumentSet: true, EnumerationSet: true,
-	CharacteristicTypesSet: true, AccountSet: true, CalculationTypeSet: true,
-	BusinessProcessSet: true, RoutePointSet: true, TaskSet: true, ExchangePlanSet: true,
-}
+// referenceSets are the sets read off the kind of object alone: any reference,
+// and the set of each reference type of a kind (kindInfo.references, filled in
+// with them). The two that are read off the configuration instead - a defined
+// type and a characteristic - carry a reference and are handled beside them.
+var referenceSets = map[TypeKind]bool{AnyReferenceSet: true}
 
 // IsTypeSet says whether an element of a type description is a set rather than
 // a concrete type. Storage turns on this: a set stores the way a composite

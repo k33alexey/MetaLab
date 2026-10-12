@@ -84,7 +84,9 @@ func TestCatalogEditorCreateReadSaveAndConflicts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(choices.Catalogs) != 1 || choices.Catalogs[0].ID != created.Catalog.ID {
+	catalogs := slices.IndexFunc(choices, func(choice metadata.ReferenceTypeChoice) bool { return choice.Kind == metadata.CatalogType })
+	if catalogs < 0 || choices[catalogs].Name.Russian != "СправочникСсылка" ||
+		len(choices[catalogs].Objects) != 1 || choices[catalogs].Objects[0].ID != created.Catalog.ID {
 		t.Fatalf("type choices did not include the new catalog: %+v", choices)
 	}
 	if _, err := metadata.Load(workspace.root); err != nil {
