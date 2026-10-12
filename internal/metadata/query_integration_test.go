@@ -180,13 +180,14 @@ func TestBasicQueryLanguageIntegration(t *testing.T) {
 	if err != nil || len(joined.rows) != 2 {
 		t.Fatalf("joined query rows=%d error=%v", len(joined.rows), err)
 	}
-	// Row-level access policies must reach the BSL query engine too, or
+	// Restrictions of access must reach the BSL query engine too, or
 	// Запрос.Выполнить() becomes the way around every restriction the lists and
-	// reads enforce (REQUIREMENTS.md §17).
+	// reads enforce. Conditions are not run yet, so a restricted source admits
+	// no row; the register is read whole by the same role.
 	restrictedRole := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Ограниченный", Title: LocalizedText{"ru": "Ограниченный"},
 		Objects: []ObjectPermission{{Object: catalogID, Operations: []PermissionOperation{PermissionRead},
-			Policies: []AccessPolicy{{Operations: []PermissionOperation{PermissionRead},
-				Rule: &PolicyRule{Field: "code", Operator: PolicyEqual, Values: []Value{{Kind: StringType, Data: "K1"}}}}}}}}
+			Restrictions: []RightRestriction{{Right: PermissionRead, Condition: "ГДЕ Код = \"K1\""}}},
+			{Object: accumulationID, Operations: []PermissionOperation{PermissionRead}}}}
 	catalog.Project.ID = projectID
 	catalog.Roles, catalog.roleByID = []RoleDefinition{restrictedRole}, map[uuid.UUID]int{restrictedRole.ID: 0}
 	restrictedPolicy, err := CompilePermissions(catalog, []uuid.UUID{restrictedRole.ID})
@@ -195,55 +196,20 @@ func TestBasicQueryLanguageIntegration(t *testing.T) {
 	}
 	restrictedCtx := WithPermissions(ctx, restrictedPolicy)
 	restrictedQuery, err := runtime.executeQuery(restrictedCtx, `ВЫБРАТЬ Код ИЗ Справочник.Товары УПОРЯДОЧИТЬ ПО Код`, nil)
-	if err != nil || len(restrictedQuery.rows) != 1 {
+	if err != nil || len(restrictedQuery.rows) != 0 {
 		t.Fatalf("restricted query rows=%d error=%v", len(restrictedQuery.rows), err)
 	}
-	if code, _ := restrictedQuery.rows[0][0].AsString(); code != "K1" {
-		t.Fatalf("restricted query returned %q", code)
+	restrictedMovements, err := runtime.executeQuery(restrictedCtx, `ВЫБРАТЬ Количество ИЗ РегистрНакопления.ТоварыНаСкладах`, nil)
+	if err != nil || len(restrictedMovements.rows) == 0 {
+		t.Fatalf("an unrestricted register must stay readable: rows=%d error=%v", len(restrictedMovements.rows), err)
 	}
 	// A joined source's restriction must live in its ON clause: in WHERE it would
-	// turn this left join into an inner one and drop the main table's row.
-	joinedRestricted, err := runtime.executeQuery(restrictedCtx, `ВЫБРАТЬ Л.Код, П.Код КАК ПравыйКод
-ИЗ Справочник.Товары КАК Л
-ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Товары КАК П ПО Л.Код = П.Код И П.Код = &Нет`, map[string]bytecode.Value{"нет": bytecode.String("НЕСУЩЕСТВУЕТ")})
-	if err != nil || len(joinedRestricted.rows) != 1 {
-		t.Fatalf("left join dropped the main row: rows=%d error=%v", len(joinedRestricted.rows), err)
-	}
-	// Registers are restricted like anything else. The движение rows here all
-	// belong to one recorder, so restricting by activity either keeps them all or
-	// hides them all - enough to prove the predicate reaches the register table.
-	registerRole := func(rule PolicyRule) RoleDefinition {
-		return RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Регистровый", Title: LocalizedText{"ru": "Регистровый"},
-			Objects: []ObjectPermission{{Object: accumulationID, Operations: []PermissionOperation{PermissionRead},
-				Policies: []AccessPolicy{{Operations: []PermissionOperation{PermissionRead}, Rule: &rule}}}}}
-	}
-	compile := func(role RoleDefinition) *Permissions {
-		t.Helper()
-		catalog.Roles, catalog.roleByID = []RoleDefinition{role}, map[uuid.UUID]int{role.ID: 0}
-		compiled, err := CompilePermissions(catalog, []uuid.UUID{role.ID})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return compiled
-	}
-	visibleRole := registerRole(PolicyRule{Field: "active", Operator: PolicyEqual, Values: []Value{{Kind: BooleanType, Data: "true"}}})
-	visibleMovements, err := runtime.executeQuery(WithPermissions(ctx, compile(visibleRole)),
-		`ВЫБРАТЬ Количество ИЗ РегистрНакопления.ТоварыНаСкладах`, nil)
-	if err != nil || len(visibleMovements.rows) == 0 {
-		t.Fatalf("active movements must stay visible: rows=%d error=%v", len(visibleMovements.rows), err)
-	}
-	hiddenRole := registerRole(PolicyRule{Field: "active", Operator: PolicyEqual, Values: []Value{{Kind: BooleanType, Data: "false"}}})
-	hiddenMovements, err := runtime.executeQuery(WithPermissions(ctx, compile(hiddenRole)),
-		`ВЫБРАТЬ Количество ИЗ РегистрНакопления.ТоварыНаСкладах`, nil)
-	if err != nil || len(hiddenMovements.rows) != 0 {
-		t.Fatalf("inactive-only restriction must hide every movement: rows=%d error=%v", len(hiddenMovements.rows), err)
-	}
-	// Регистратор is stored as a type/reference pair, so a rule naming it cannot
-	// be rendered - and refusing beats silently dropping the condition.
-	recorderRole := registerRole(PolicyRule{Field: "recorder", Operator: PolicyEqual, Values: []Value{{Kind: StringType, Data: "x"}}})
-	if _, err := runtime.executeQuery(WithPermissions(ctx, compile(recorderRole)),
-		`ВЫБРАТЬ Количество ИЗ РегистрНакопления.ТоварыНаСкладах`, nil); err == nil {
-		t.Fatal("a restriction on the composite Регистратор field was silently ignored")
+	// turn this left join into an inner one and drop the main table's rows.
+	joinedRestricted, err := runtime.executeQuery(restrictedCtx, `ВЫБРАТЬ Р.Количество, Т.Код
+ИЗ РегистрНакопления.ТоварыНаСкладах КАК Р
+ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Товары КАК Т ПО Т.Код = Т.Код`, nil)
+	if err != nil || len(joinedRestricted.rows) != len(restrictedMovements.rows) {
+		t.Fatalf("left join dropped the main rows: rows=%d of %d error=%v", len(joinedRestricted.rows), len(restrictedMovements.rows), err)
 	}
 
 	aggregated, err := runtime.executeQuery(ctx, `ВЫБРАТЬ ПометкаУдаления, КОЛИЧЕСТВО(*) КАК Количество, СУММА(Цена) КАК Сумма

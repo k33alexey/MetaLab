@@ -221,6 +221,20 @@ func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
 			CommonAttributeKind, CommonCommandKind, CommonFormKind, ConstantKind, DataProcessorKind, DocumentKind,
 			DocumentJournalKind, EnumerationKind, ExchangePlanKind, FilterCriterionKind, InformationRegisterKind,
 			ReportKind, SubsystemKind, TaskKind},
+		// The kinds the exports restrict access to (8318 restrictions of 2526
+		// roles, survey of 12.10.2026).
+		"restriction": {CatalogKind, DocumentKind, DocumentJournalKind, ChartOfCharacteristicTypesKind, InformationRegisterKind,
+			AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind, BusinessProcessKind, TaskKind},
+	}
+	// The help restricts reading, adding, changing and deleting only: a kind
+	// offered none of the four keeps no data to restrict.
+	keepsData := func(kind Kind) bool {
+		for _, right := range kindRightsOf[kind] {
+			if right == PermissionRead || right == PermissionInsert || right == PermissionUpdate || right == PermissionDelete {
+				return true
+			}
+		}
+		return false
 	}
 	// The help gives ОбменДанными to the data of these and of no other kind;
 	// of them, only an exchange plan is in no export's content.
@@ -231,12 +245,15 @@ func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
 			t.Errorf("%s has no descriptor in the model", item.Kind)
 			continue
 		}
-		for use, got := range map[string]presence{"rights": info.uses.rights, "registration": info.uses.registration, "option": info.uses.option} {
+		for use, got := range map[string]presence{"rights": info.uses.rights, "registration": info.uses.registration,
+			"option": info.uses.option, "restriction": info.uses.restriction} {
 			expected := unproven
 			switch {
 			case slices.Contains(shown[use], item.Kind):
 				expected = present
 			case use == "registration" && !slices.Contains(exchanged, item.Kind):
+				expected = absent
+			case use == "restriction" && !keepsData(item.Kind):
 				expected = absent
 			}
 			if got != expected {

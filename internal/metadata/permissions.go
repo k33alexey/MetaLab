@@ -2,7 +2,6 @@ package metadata
 
 import (
 	"errors"
-	"fmt"
 	"slices"
 
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -36,21 +35,11 @@ type objectPermissions struct {
 	operations permissionBits
 	fields     map[string]permissionBits
 	parents    map[string]string
-	rows       map[PermissionOperation]*rowFilter
-}
-
-// rowFilter describes which rows the assigned roles admit for one operation on
-// one object. Alternatives are OR-ed, matching how the grants themselves
-// combine: each restriction names an allowed set of rows, and holding more
-// roles can only widen the union, never narrow it.
-//
-// unrestricted records that at least one granting role attached no restriction
-// at all, which admits every row and makes the alternatives irrelevant. The zero
-// value therefore means "restricted with no alternatives" - no rows - so an
-// operation that was never granted cannot fall through as unrestricted.
-type rowFilter struct {
-	unrestricted bool
-	alternatives []PolicyRule
+	// readsEveryRow records that at least one role grants reading the object
+	// with no restriction of its own, which admits every row. Without it the
+	// reading granted is restricted, and since conditions are not run yet a
+	// restricted read admits no row: the zero value fails closed.
+	readsEveryRow bool
 }
 
 // Permissions is an immutable union of explicitly assigned application roles.
@@ -90,7 +79,7 @@ func CompilePermissions(catalog *Catalog, roleIDs []uuid.UUID) (*Permissions, er
 		for _, grant := range role.Objects {
 			item, exists := result.objects[grant.Object]
 			if !exists {
-				item = objectPermissions{fields: map[string]permissionBits{}, parents: map[string]string{}, rows: map[PermissionOperation]*rowFilter{}}
+				item = objectPermissions{fields: map[string]permissionBits{}, parents: map[string]string{}}
 				var parts []TablePart
 				if index, ok := catalog.catalogByID[grant.Object]; ok {
 					parts = catalog.Catalogs[index].TableParts
@@ -104,23 +93,18 @@ func CompilePermissions(catalog *Catalog, roleIDs []uuid.UUID) (*Permissions, er
 				}
 			}
 			for _, operation := range grant.Operations {
-				item.operations |= operationBit(operation)
-				filter := item.rows[operation]
-				if filter == nil {
-					filter = &rowFilter{}
-					item.rows[operation] = filter
+				restricted := grant.restrictsData(operation)
+				switch {
+				case operation == PermissionRead:
+					// Reading restricted is still reading: the rows the
+					// condition admits, which until it is run are none.
+					item.operations |= operationBit(operation)
+					item.readsEveryRow = item.readsEveryRow || !restricted
+				case !restricted:
+					item.operations |= operationBit(operation)
 				}
-				rules, err := resolveRolePolicies(role, grant, operation)
-				if err != nil {
-					return nil, fmt.Errorf("%w: %w", ErrInvalidRoleSelection, err)
-				}
-				if len(rules) == 0 {
-					// This role grants the operation outright, so no restriction
-					// from any other role can take those rows away.
-					filter.unrestricted = true
-					continue
-				}
-				filter.alternatives = append(filter.alternatives, rules...)
+				// Adding, changing or deleting restricted gives nothing: there
+				// is no row to admit a write by until the condition is run.
 			}
 			for _, field := range grant.Fields {
 				for _, operation := range field.Operations {
@@ -136,50 +120,13 @@ func CompilePermissions(catalog *Catalog, roleIDs []uuid.UUID) (*Permissions, er
 	return result, nil
 }
 
-// resolveRolePolicies returns the rules one role applies to one operation on one
-// object, with templates already resolved: a template is role-scoped, so after
-// compilation nothing needs the role definition again.
-func resolveRolePolicies(role RoleDefinition, grant ObjectPermission, operation PermissionOperation) ([]PolicyRule, error) {
-	var rules []PolicyRule
-	for _, policy := range grant.Policies {
-		if !slices.Contains(policy.Operations, operation) {
-			continue
-		}
-		if policy.Rule != nil {
-			rules = append(rules, clonePolicyRule(*policy.Rule))
-			continue
-		}
-		index := slices.IndexFunc(role.PolicyTemplates, func(item PolicyTemplate) bool { return item.Name == policy.Template })
-		if index < 0 {
-			return nil, fmt.Errorf("role %s references undeclared policy template %q", role.Name, policy.Template)
-		}
-		template := role.PolicyTemplates[index]
-		resolved, err := substitutePolicyPlaceholders(template.Rule, template.Parameters, policy.Arguments)
-		if err != nil {
-			return nil, fmt.Errorf("role %s, template %s: %w", role.Name, template.Name, err)
-		}
-		rules = append(rules, resolved)
-	}
-	return rules, nil
-}
-
-// RowFilter reports how rows must be restricted for one operation on one object.
-// restricted=false means every row the grant covers is visible. restricted=true
-// with no alternatives means no row is - which is also what an ungranted
-// operation returns, so a caller that forgets to check the grant fails closed.
-// Callers must still check the grant itself: this answers only "which rows".
-func (permissions *Permissions) RowFilter(object uuid.UUID, operation PermissionOperation) (alternatives []PolicyRule, restricted bool) {
-	if permissions == nil {
-		return nil, true
-	}
-	filter := permissions.objects[object].rows[operation]
-	if filter == nil {
-		return nil, true
-	}
-	if filter.unrestricted {
-		return nil, false
-	}
-	return filter.alternatives, true
+// ReadsEveryRow says whether the roles let every row of the object be read.
+// False with reading granted is reading restricted, which admits no row until
+// conditions are run (block 10); false without it is no reading at all, so a
+// caller that forgets to check the grant fails closed. Callers must still
+// check the grant itself: this answers only "which rows".
+func (permissions *Permissions) ReadsEveryRow(object uuid.UUID) bool {
+	return permissions != nil && permissions.objects[object].readsEveryRow
 }
 
 func (permissions *Permissions) ProjectID() uuid.UUID {

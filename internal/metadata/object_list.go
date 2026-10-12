@@ -53,10 +53,7 @@ func (repository *CatalogRepository) List(ctx context.Context, name string, curs
 	}
 	table, _ := PhysicalCatalogTable(definition.ID)
 	arguments := []any{basicListCursor(cursor), limit + 1}
-	restriction, err := readRowPredicate(ctx, repository.catalog, definition.ID, catalogPolicyColumn(definition), &arguments)
-	if err != nil {
-		return CatalogListPage{}, err
-	}
+	restriction := readRowPredicate(ctx, definition.ID)
 	statement := "SELECT to_jsonb(item) FROM " + qualifiedCatalogTable(table) + " AS item WHERE ref > $1" + restriction + " ORDER BY ref LIMIT $2"
 	return repository.listPageArguments(ctx, definition, statement, arguments, limit)
 }
@@ -76,7 +73,7 @@ func (repository *CatalogRepository) ListDynamic(ctx context.Context, name strin
 		return catalogListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
 		return catalogListField(definition, field)
-	}, listRowRestriction(ctx, repository.catalog, definition.ID, catalogPolicyColumn(definition)))
+	}, readRestricted(ctx, definition.ID))
 	if err != nil {
 		return CatalogListPage{}, err
 	}
@@ -127,10 +124,7 @@ func (repository *DocumentRepository) List(ctx context.Context, name string, cur
 	}
 	table, _ := PhysicalDocumentTable(definition.ID)
 	arguments := []any{basicListCursor(cursor), limit + 1}
-	restriction, err := readRowPredicate(ctx, repository.catalog, definition.ID, documentPolicyColumn(definition), &arguments)
-	if err != nil {
-		return DocumentListPage{}, err
-	}
+	restriction := readRowPredicate(ctx, definition.ID)
 	query, err := queryData(ctx, repository.pool)
 	if err != nil {
 		return DocumentListPage{}, err
@@ -178,7 +172,7 @@ func (repository *DocumentRepository) ListDynamic(ctx context.Context, name stri
 		return documentListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
 		return documentListField(definition, field)
-	}, listRowRestriction(ctx, repository.catalog, definition.ID, documentPolicyColumn(definition)))
+	}, readRestricted(ctx, definition.ID))
 	if err != nil {
 		return DocumentListPage{}, err
 	}
@@ -251,7 +245,7 @@ func normalizeDynamicListRequest(request DynamicListRequest, settings ListSettin
 	return request, nil
 }
 
-func buildDynamicListSQL(ctx context.Context, table string, request DynamicListRequest, searchFields []string, resolve func(string) (string, bool), resolveSearch func(string) (listColumn, bool), restriction rowRestriction) (string, []any, error) {
+func buildDynamicListSQL(ctx context.Context, table string, request DynamicListRequest, searchFields []string, resolve func(string) (string, bool), resolveSearch func(string) (listColumn, bool), restricted bool) (string, []any, error) {
 	arguments := []any{basicListCursor(request.Cursor)}
 	sortColumn := "ref"
 	if request.SortField != "" {
@@ -287,12 +281,9 @@ func buildDynamicListSQL(ctx context.Context, table string, request DynamicListR
 	}
 	// Row-level access restrictions narrow the same WHERE clause as ordinary
 	// filters, so a restricted row is never fetched, counted or paged over.
-	policy, err := restriction.predicate(ctx, &arguments)
-	if err != nil {
-		return "", nil, err
-	}
-	if policy != "" {
-		conditions = append(conditions, policy)
+	// Their conditions are not run yet, so a restricted list admits none.
+	if restricted {
+		conditions = append(conditions, "FALSE")
 	}
 	if request.Search != "" && len(searchFields) == 0 {
 		return "", nil, fmt.Errorf("dynamic list search fields are not configured")

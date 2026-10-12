@@ -21,12 +21,12 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// The point of the whole chain: a restriction compares a field with a session
-// parameter, and the value of that parameter is computed by the solution's own
-// session module. Nothing in the platform knows which warehouses a user may
-// see; without the module running on the read path the restriction would have
-// no value to compare against and the read would refuse.
-func TestSessionParameterRestrictsListReadsIntegration(t *testing.T) {
+// A restriction of access is a condition in the query language, and running
+// it is block 10's. Until then a right a role restricts admits no record:
+// the list of a restricted catalog comes back empty and none of its objects
+// opens, while a catalog the role does not restrict reads whole - the
+// restriction never shows more than it would, and never more than its object.
+func TestRestrictedReadAdmitsNoRecordIntegration(t *testing.T) {
 	url := os.Getenv("ML_TEST_ADMIN_DATABASE_URL")
 	if url == "" {
 		t.Skip("ML_TEST_ADMIN_DATABASE_URL is not set")
@@ -100,13 +100,12 @@ func TestSessionParameterRestrictsListReadsIntegration(t *testing.T) {
 	}
 	// ТекущийПользователь объявлен самой конфигурацией, как во всех трёх
 	// проверочных; значение ему даёт её модуль сеанса, а не платформа.
-	tasksID, performerID, authorID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	tasksID, performerID := uuid.MustNew(), uuid.MustNew()
 	tasks := metadata.CatalogDefinition{
 		Format: 1, ID: tasksID, Name: "Задачи", Title: metadata.LocalizedText{"ru": "Задачи"},
 		Code: metadata.CatalogCode{Type: metadata.StringType, Length: 9, Auto: true, Unique: true}, DescriptionLength: 150,
 		Attributes: []metadata.Attribute{
 			{ID: performerID, Name: "Исполнитель", Title: metadata.LocalizedText{"ru": "Исполнитель"}, Types: []metadata.Type{{Kind: metadata.StringType, Length: 50}}},
-			{ID: authorID, Name: "Автор", Title: metadata.LocalizedText{"ru": "Автор"}, Types: []metadata.Type{{Kind: metadata.StringType, Length: 50}}},
 		},
 	}
 	currentUser := metadata.SessionParameter{
@@ -164,18 +163,8 @@ func TestSessionParameterRestrictsListReadsIntegration(t *testing.T) {
 			permission.Fields = append(permission.Fields, metadata.FieldPermission{Field: field.Key, Operations: field.Operations})
 		}
 		if object.ID == catalogID {
-			permission.Policies = []metadata.AccessPolicy{{Operations: []metadata.PermissionOperation{metadata.PermissionRead},
-				Rule: &metadata.PolicyRule{Field: warehouseAttributeID.String(), Operator: metadata.PolicyIn, Parameter: "ДоступныеСклады"}}}
-		}
-		if object.ID == tasksID {
-			// Две альтернативы: исполнитель — параметр сеанса конфигурации, автор —
-			// пользователь ML. Они не должны подменять друг друга.
-			permission.Policies = []metadata.AccessPolicy{
-				{Operations: []metadata.PermissionOperation{metadata.PermissionRead},
-					Rule: &metadata.PolicyRule{Field: performerID.String(), Operator: metadata.PolicyEqual, Parameter: "ТекущийПользователь"}},
-				{Operations: []metadata.PermissionOperation{metadata.PermissionRead},
-					Rule: &metadata.PolicyRule{Field: authorID.String(), Operator: metadata.PolicyEqual, CurrentMLUser: true}},
-			}
+			permission.Restrictions = []metadata.RightRestriction{{Right: metadata.PermissionRead,
+				Condition: "ГДЕ Склад В (&ДоступныеСклады)"}}
 		}
 		role.Objects = append(role.Objects, permission)
 	}
@@ -206,6 +195,7 @@ func TestSessionParameterRestrictsListReadsIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	orders := []string{}
 	for _, warehouse := range []string{"Основной", "Розничный", "Закрытый"} {
 		record, err := repository.New(ctx, "Заказы", nil)
 		if err != nil {
@@ -216,6 +206,7 @@ func TestSessionParameterRestrictsListReadsIntegration(t *testing.T) {
 		if err := repository.Save(ctx, record, nil); err != nil {
 			t.Fatal(err)
 		}
+		orders = append(orders, record.Reference.ObjectID.String())
 	}
 
 	// Просмотр — отдельное право: та же роль без него видит объект из кода, но
@@ -254,28 +245,17 @@ func TestSessionParameterRestrictsListReadsIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("restricted list read: %v", err)
 	}
-	seen := map[string]bool{}
-	for _, row := range page.Rows {
-		seen[row.Values["Склад"]] = true
+	if len(page.Rows) != 0 {
+		t.Fatalf("a restriction not run yet admitted records: %+v", page.Rows)
 	}
-	if len(page.Rows) != 2 || !seen["Основной"] || !seen["Розничный"] || seen["Закрытый"] {
-		t.Fatalf("session module did not shape the restriction: %+v", page.Rows)
-	}
-
-	// Строка Иванова видна по параметру сеанса конфигурации: если бы платформа
-	// клала под этим именем пользователя ML, она бы пропала. Строка автора видна
-	// по пользователю ML; строка с чужим автором и чужим исполнителем — нет.
 	references := []string{}
-	for _, task := range []struct{ performer, author string }{
-		{"Иванов", uuid.MustNew().String()}, {"Петров", admin.ID.String()}, {"Петров", uuid.MustNew().String()},
-	} {
+	for _, performer := range []string{"Иванов", "Петров"} {
 		record, err := repository.New(ctx, "Задачи", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		record.Description = task.performer + " " + task.author
-		record.Attributes[performerID] = metadata.Value{Kind: metadata.StringType, Data: task.performer}
-		record.Attributes[authorID] = metadata.Value{Kind: metadata.StringType, Data: task.author}
+		record.Description = performer
+		record.Attributes[performerID] = metadata.Value{Kind: metadata.StringType, Data: performer}
 		if err := repository.Save(ctx, record, nil); err != nil {
 			t.Fatal(err)
 		}
@@ -283,28 +263,17 @@ func TestSessionParameterRestrictsListReadsIntegration(t *testing.T) {
 	}
 	page, err = runtime.LoadApplicationList(ctx, login.Token, registered.ID, metadata.CatalogKind, "Задачи", metadata.DynamicListRequest{Limit: 20})
 	if err != nil {
-		t.Fatalf("restricted task list read: %v", err)
+		t.Fatalf("unrestricted task list read: %v", err)
 	}
-	visible := map[string]bool{}
-	for _, row := range page.Rows {
-		visible[row.Values["Исполнитель"]+" "+row.Values["Автор"]] = true
+	if len(page.Rows) != 2 {
+		t.Fatalf("the restriction of another catalog narrowed this one: %+v", page.Rows)
 	}
-	if len(page.Rows) != 2 || !visible["Петров "+admin.ID.String()] {
-		t.Fatalf("the ML user did not restrict by author: %+v", page.Rows)
+	if _, err := runtime.GetApplicationObject(ctx, login.Token, registered.ID, metadata.CatalogKind, "Задачи", references[0]); err != nil {
+		t.Fatalf("an unrestricted object did not open: %v", err)
 	}
-	ivanov := false
-	for _, row := range page.Rows {
-		ivanov = ivanov || row.Values["Исполнитель"] == "Иванов"
-	}
-	if !ivanov {
-		t.Fatalf("the configuration's ТекущийПользователь was shadowed: %+v", page.Rows)
-	}
-	// Открытие объекта идёт через свой путь, не через список, и пользователь ML
-	// должен быть и в нём: своя задача открывается, чужая — нет.
-	if _, err := runtime.GetApplicationObject(ctx, login.Token, registered.ID, metadata.CatalogKind, "Задачи", references[1]); err != nil {
-		t.Fatalf("the ML user's own task did not open: %v", err)
-	}
-	if _, err := runtime.GetApplicationObject(ctx, login.Token, registered.ID, metadata.CatalogKind, "Задачи", references[2]); err == nil {
-		t.Fatal("a task of another author and performer opened")
+	// Открытие объекта идёт своим путём, не через список, и ограничение
+	// действует и в нём.
+	if _, err := runtime.GetApplicationObject(ctx, login.Token, registered.ID, metadata.CatalogKind, "Заказы", orders[0]); err == nil {
+		t.Fatal("an object of a restricted catalog opened")
 	}
 }

@@ -82,6 +82,7 @@ const (
 	NoteWithoutSample              NoteKind = "accepted-without-sample"
 	NoteUseWithoutSample           NoteKind = "use-without-sample"
 	NoteRightWithoutSample         NoteKind = "right-without-sample"
+	NoteRestrictionWithoutSample   NoteKind = "restriction-without-sample"
 )
 
 func init() {
@@ -355,6 +356,14 @@ func init() {
 				"у команды. Справка перечисляет права, а не то, к чему каждое относится, так что не известно, сохраняет ли " +
 				"такое конфигуратор; редактор роли такого права не предлагает.",
 			"Право несётся как записано и не исполняется; редактор роли сохраняет его нетронутым."},
+		NoteKindInfo{NoteRestrictionWithoutSample,
+			"Ограничение доступа к данным там, где ни одна известная выгрузка конфигуратора его не пишет: на объекте вида, " +
+				"который выгрузки не ограничивают (константа, план счетов, план обмена, последовательность, таблица внешнего " +
+				"источника), ограничение на прочие поля без условия, шаблон ограничений без текста. Справка говорит, что " +
+				"ограничиваются объекты, хранящие данные, но видов не перечисляет, так что не известно, сохраняет ли такое " +
+				"конфигуратор.",
+			"Несётся как записано. Условия ограничений пока не исполняются ни у одного вида: право с условием не даёт роли " +
+				"ни одной записи (блок 10)."},
 	)
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
@@ -462,6 +471,7 @@ func init() {
 	}
 	noteRules[NoteUseWithoutSample] = noteUseWithoutSample
 	noteRules[NoteRightWithoutSample] = noteRightWithoutSample
+	noteRules[NoteRestrictionWithoutSample] = noteRestrictionWithoutSample
 }
 
 // noteUseWithoutSample notes every object a role, an exchange plan or a
@@ -485,6 +495,36 @@ func noteUseWithoutSample(catalog *Catalog, note func(where, written string)) {
 		for _, item := range option.Content {
 			if usesOf(item.Kind).option == unproven {
 				note("functional-options "+option.Name+" content", catalog.noteObjectName(item.Kind, item.Object))
+			}
+		}
+	}
+}
+
+// noteRestrictionWithoutSample notes every restriction of a role, and every
+// template of one, the exports show nothing like: a restriction on an object
+// of a kind no export restricts, one on the other fields with no condition, a
+// template with no text.
+func noteRestrictionWithoutSample(catalog *Catalog, note func(where, written string)) {
+	for _, role := range catalog.Roles {
+		where := "roles " + role.Name + " restrictions"
+		for _, permission := range role.Objects {
+			if len(permission.Restrictions) == 0 {
+				continue
+			}
+			kind, _ := catalog.kindOfObject(permission.Object)
+			object := catalog.noteObjectName(kind, permission.Object)
+			for _, restriction := range permission.Restrictions {
+				switch {
+				case usesOf(kind).restriction == unproven:
+					note(where, object+" "+string(restriction.Right))
+				case len(restriction.Fields) == 0 && strings.TrimSpace(restriction.Condition) == "":
+					note(where, object+" "+string(restriction.Right)+" without a condition")
+				}
+			}
+		}
+		for _, template := range role.RestrictionTemplates {
+			if strings.TrimSpace(template.Condition) == "" {
+				note("roles "+role.Name+" restriction-templates", template.Name)
 			}
 		}
 	}

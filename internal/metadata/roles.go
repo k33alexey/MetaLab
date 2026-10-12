@@ -187,18 +187,13 @@ var roleRights = []roleRight{
 // version writes it under the old name and never under the new one.
 var renamedRights = map[string]PermissionOperation{"AllFunctionsMode": PermissionTechnicalSpecialistMode}
 
-// knownRights and executedRights answer by name what roleRights and
-// objectOperations list in order.
-var knownRights, executedRights = func() (map[PermissionOperation]bool, map[PermissionOperation]bool) {
+// knownRights answers by name what roleRights lists in order.
+var knownRights = func() map[PermissionOperation]bool {
 	known := make(map[PermissionOperation]bool, len(roleRights))
 	for _, right := range roleRights {
 		known[right.operation] = true
 	}
-	executed := make(map[PermissionOperation]bool, len(objectOperations))
-	for _, operation := range objectOperations {
-		executed[operation] = true
-	}
-	return known, executed
+	return known
 }()
 
 // rightIndex is the place of every right in the order of the help.
@@ -279,9 +274,9 @@ type RoleDefinition struct {
 	// is the prototype's default; erp sets it in 2 roles of 1211. Carried and
 	// not yet followed - the check of rights is block 10's.
 	IndependentChildRights bool `yaml:"independent_child_rights,omitempty" json:"independentChildRights,omitempty"`
-	// PolicyTemplates are rules named once and reused by this role's own
-	// restrictions. They grant nothing by themselves.
-	PolicyTemplates []PolicyTemplate `yaml:"policy_templates,omitempty" json:"policyTemplates,omitempty"`
+	// RestrictionTemplates are the templates the conditions of this role's
+	// restrictions take text from. They grant nothing by themselves.
+	RestrictionTemplates []RestrictionTemplate `yaml:"restriction_templates,omitempty" json:"restrictionTemplates,omitempty"`
 }
 
 // ObjectPermission is what a role says about one object: the configuration
@@ -304,9 +299,9 @@ type ObjectPermission struct {
 	Operations []PermissionOperation `yaml:"operations,omitempty" json:"operations,omitempty"`
 	Denied     []PermissionOperation `yaml:"denied,omitempty" json:"denied,omitempty"`
 	Fields     []FieldPermission     `yaml:"fields,omitempty" json:"fields,omitempty"`
-	// Policies narrow which rows the granted operations reach. They never widen
-	// access: an object with no operation grant stays unreachable regardless.
-	Policies []AccessPolicy `yaml:"policies,omitempty" json:"policies,omitempty"`
+	// Restrictions are the restrictions of access to data on the rights the
+	// role writes here. They never widen access.
+	Restrictions []RightRestriction `yaml:"restrictions,omitempty" json:"restrictions,omitempty"`
 }
 
 // FieldPermission is what a role says about one part of an object - its
@@ -338,21 +333,21 @@ const RoleRightsFile = "rights.json"
 // roleDescription is the YAML half of a role: everything but the grid, with
 // the restrictions keyed by the object they narrow.
 type roleDescription struct {
-	Format                   int               `yaml:"format"`
-	ID                       uuid.UUID         `yaml:"id"`
-	Name                     string            `yaml:"name"`
-	Title                    LocalizedText     `yaml:"title"`
-	Comment                  string            `yaml:"comment,omitempty"`
-	GrantNewObjectsByDefault bool              `yaml:"grant_new_objects_by_default,omitempty"`
-	GrantNewFieldsByDefault  bool              `yaml:"grant_new_fields_by_default,omitempty"`
-	IndependentChildRights   bool              `yaml:"independent_child_rights,omitempty"`
-	PolicyTemplates          []PolicyTemplate  `yaml:"policy_templates,omitempty"`
-	Restrictions             []roleRestriction `yaml:"restrictions,omitempty"`
+	Format                   int                   `yaml:"format"`
+	ID                       uuid.UUID             `yaml:"id"`
+	Name                     string                `yaml:"name"`
+	Title                    LocalizedText         `yaml:"title"`
+	Comment                  string                `yaml:"comment,omitempty"`
+	GrantNewObjectsByDefault bool                  `yaml:"grant_new_objects_by_default,omitempty"`
+	GrantNewFieldsByDefault  bool                  `yaml:"grant_new_fields_by_default,omitempty"`
+	IndependentChildRights   bool                  `yaml:"independent_child_rights,omitempty"`
+	RestrictionTemplates     []RestrictionTemplate `yaml:"restriction_templates,omitempty"`
+	Restrictions             []roleRestriction     `yaml:"restrictions,omitempty"`
 }
 
 type roleRestriction struct {
-	Object   uuid.UUID      `yaml:"object"`
-	Policies []AccessPolicy `yaml:"policies"`
+	Object uuid.UUID          `yaml:"object"`
+	Rights []RightRestriction `yaml:"rights"`
 }
 
 // roleGrid is the JSON half: every object the role says anything about, in
@@ -375,13 +370,13 @@ func EncodeRole(role RoleDefinition) (description []byte, grid []byte, err error
 	value := roleDescription{
 		Format: role.Format, ID: role.ID, Name: role.Name, Title: role.Title, Comment: role.Comment,
 		GrantNewObjectsByDefault: role.GrantNewObjectsByDefault, GrantNewFieldsByDefault: role.GrantNewFieldsByDefault,
-		IndependentChildRights: role.IndependentChildRights, PolicyTemplates: role.PolicyTemplates,
+		IndependentChildRights: role.IndependentChildRights, RestrictionTemplates: role.RestrictionTemplates,
 	}
 	var rights roleGrid
 	for _, object := range role.Objects {
 		rights.Objects = append(rights.Objects, roleGridObject{Object: object.Object, Operations: object.Operations, Denied: object.Denied, Fields: object.Fields})
-		if len(object.Policies) > 0 {
-			value.Restrictions = append(value.Restrictions, roleRestriction{Object: object.Object, Policies: object.Policies})
+		if len(object.Restrictions) > 0 {
+			value.Restrictions = append(value.Restrictions, roleRestriction{Object: object.Object, Rights: object.Restrictions})
 		}
 	}
 	rights.Commands = role.Commands
@@ -442,7 +437,7 @@ func DecodeRole(source string, description io.Reader, grid io.Reader, configurat
 	role := RoleDefinition{
 		Format: value.Format, ID: value.ID, Name: value.Name, Title: value.Title, Comment: value.Comment,
 		GrantNewObjectsByDefault: value.GrantNewObjectsByDefault, GrantNewFieldsByDefault: value.GrantNewFieldsByDefault,
-		IndependentChildRights: value.IndependentChildRights, PolicyTemplates: value.PolicyTemplates,
+		IndependentChildRights: value.IndependentChildRights, RestrictionTemplates: value.RestrictionTemplates,
 	}
 	if grid != nil {
 		var rights roleGrid
@@ -460,11 +455,11 @@ func DecodeRole(source string, description io.Reader, grid io.Reader, configurat
 	restricted := make(map[uuid.UUID]bool, len(value.Restrictions))
 	for index, restriction := range value.Restrictions {
 		position := slices.IndexFunc(role.Objects, func(object ObjectPermission) bool { return object.Object == restriction.Object })
-		if position < 0 || restricted[restriction.Object] || len(restriction.Policies) == 0 {
-			return RoleDefinition{}, fmt.Errorf("%s: restrictions[%d] must name, once and with policies, an object the role's %s names", source, index, RoleRightsFile)
+		if position < 0 || restricted[restriction.Object] || len(restriction.Rights) == 0 {
+			return RoleDefinition{}, fmt.Errorf("%s: restrictions[%d] must name, once and with rights, an object the role's %s names", source, index, RoleRightsFile)
 		}
 		restricted[restriction.Object] = true
-		role.Objects[position].Policies = restriction.Policies
+		role.Objects[position].Restrictions = restriction.Rights
 	}
 	if err := ValidateRole(source, role, configuration); err != nil {
 		return RoleDefinition{}, err
@@ -479,13 +474,7 @@ func ValidateRole(source string, value RoleDefinition, configuration project.Pro
 	if !utf8.ValidString(value.Comment) {
 		issues = append(issues, "comment must be valid UTF-8")
 	}
-	issues = append(issues, validatePolicyTemplates(value.PolicyTemplates)...)
-	// Name to declared parameter count: a restriction must supply one field per
-	// template parameter, so the arity travels with the name.
-	templates := make(map[string]int, len(value.PolicyTemplates))
-	for _, template := range value.PolicyTemplates {
-		templates[template.Name] = len(template.Parameters)
-	}
+	issues = append(issues, validateRestrictionTemplates(value.RestrictionTemplates)...)
 	objects := make(map[uuid.UUID]bool, len(value.Objects))
 	for index, object := range value.Objects {
 		prefix := fmt.Sprintf("objects[%d]", index)
@@ -493,8 +482,8 @@ func ValidateRole(source string, value RoleDefinition, configuration project.Pro
 			issues = append(issues, prefix+".object must be a unique non-zero UUID")
 		}
 		objects[object.Object] = true
-		issues = append(issues, validateRightStates(prefix, object.Operations, object.Denied, knownRights)...)
-		issues = append(issues, validatePolicies(prefix+".policies", object.Policies, templates)...)
+		issues = append(issues, validateRightStates(prefix, object.Operations, object.Denied)...)
+		issues = append(issues, validateRestrictions(prefix+".restrictions", object)...)
 		fields := make(map[string]bool, len(object.Fields))
 		for fieldIndex, field := range object.Fields {
 			fieldPrefix := fmt.Sprintf("%s.fields[%d]", prefix, fieldIndex)
@@ -509,7 +498,7 @@ func ValidateRole(source string, value RoleDefinition, configuration project.Pro
 			if len(field.Operations) == 0 && len(field.Denied) == 0 {
 				issues = append(issues, fieldPrefix+" must grant or deny at least one right")
 			}
-			issues = append(issues, validateRightStates(fieldPrefix, field.Operations, field.Denied, knownRights)...)
+			issues = append(issues, validateRightStates(fieldPrefix, field.Operations, field.Denied)...)
 		}
 	}
 	commands := make(map[CommandPermission]bool, len(value.Commands))
@@ -522,11 +511,9 @@ func ValidateRole(source string, value RoleDefinition, configuration project.Pro
 	return issuesError(source, value.Format, issues)
 }
 
-// validateRightStates checks that every right named is one the list may
-// hold, named once, and either granted or denied - not both. A role's grid
-// holds any of the prototype's rights; a restriction, only one this platform
-// acts on.
-func validateRightStates(path string, granted, denied []PermissionOperation, allowed map[PermissionOperation]bool) []string {
+// validateRightStates checks that every right named is one of the
+// prototype's, named once, and either granted or denied - not both.
+func validateRightStates(path string, granted, denied []PermissionOperation) []string {
 	var issues []string
 	seen := make(map[PermissionOperation]bool, len(granted)+len(denied))
 	for _, list := range []struct {
@@ -534,7 +521,7 @@ func validateRightStates(path string, granted, denied []PermissionOperation, all
 		rights []PermissionOperation
 	}{{"operations", granted}, {"denied", denied}} {
 		for _, operation := range list.rights {
-			if !allowed[operation] {
+			if !knownRights[operation] {
 				issues = append(issues, fmt.Sprintf("%s.%s names %q, which is not a right it may hold", path, list.name, operation))
 			} else if seen[operation] {
 				issues = append(issues, fmt.Sprintf("%s.%s names %q a second time", path, list.name, operation))
@@ -615,10 +602,10 @@ func cloneRole(value RoleDefinition) RoleDefinition {
 			object.Fields[field].Operations = slices.Clone(object.Fields[field].Operations)
 			object.Fields[field].Denied = slices.Clone(object.Fields[field].Denied)
 		}
-		object.Policies = clonePolicies(object.Policies)
+		object.Restrictions = cloneRestrictions(object.Restrictions)
 	}
 	value.Commands = slices.Clone(value.Commands)
-	value.PolicyTemplates = clonePolicyTemplates(value.PolicyTemplates)
+	value.RestrictionTemplates = slices.Clone(value.RestrictionTemplates)
 	return value
 }
 

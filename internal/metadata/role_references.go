@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -15,227 +16,6 @@ import (
 
 // roleTarget describes the actual object shape. The bool says whether a field
 // can be written; object operation checks remain separate from field checks.
-type roleTarget struct {
-	operations map[PermissionOperation]bool
-	fields     map[string]bool
-}
-
-func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
-	// Everything that can be read can also be shown, so View travels with Read;
-	// which objects accept the other rights is decided per kind below, from
-	// what the object actually has.
-	target := roleTarget{operations: map[PermissionOperation]bool{PermissionRead: true, PermissionView: true}, fields: map[string]bool{}}
-	// The parent and the folder flag are standard fields where nesting exists:
-	// moving a row to another parent is an edit like any other, and a role may
-	// well be allowed to read a tree without rearranging it.
-	addHierarchy := func(hierarchy Hierarchy) {
-		if !hierarchy.Enabled {
-			return
-		}
-		target.fields["parent"] = true
-		if hierarchy.Kind == FoldersAndItemsHierarchy {
-			target.fields["isfolder"] = false
-		}
-	}
-	if _, ok := catalog.constantByID[id]; ok {
-		target.operations[PermissionUpdate] = true
-		target.fields["value"] = true
-	} else if _, ok := catalog.enumerationByID[id]; ok {
-		// Enumeration values are metadata, never mutable application records.
-		target.fields["ref"], target.fields["order"] = false, false
-	} else if index, ok := catalog.catalogByID[id]; ok {
-		item := catalog.Catalogs[index]
-		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
-		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "deletionmark": true, "dataversion": false, "predefined": false, "predefineddataname": false}
-		if !catalogHasCode(item) {
-			delete(target.fields, "code")
-		}
-		if !catalogHasDescription(item) {
-			delete(target.fields, "description")
-		}
-		addHierarchy(item.Hierarchy)
-	} else if index, ok := catalog.chartOfCharacteristicTypesByID[id]; ok {
-		item := catalog.ChartsOfCharacteristicTypes[index]
-		// A chart of characteristic types is a catalog of kinds of property,
-		// and rights on it are a catalog's rights. Its own standard attribute
-		// is the value type: a role may keep it out of reach while letting the
-		// rest of the element be edited.
-		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
-		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "valuetype": true,
-			"deletionmark": true, "dataversion": false, "predefined": false, "predefineddataname": false}
-		if item.Code.Length == 0 {
-			delete(target.fields, "code")
-		}
-		if item.DescriptionLength == 0 {
-			delete(target.fields, "description")
-		}
-		addHierarchy(item.Hierarchy)
-	} else if index, ok := catalog.chartOfAccountsByID[id]; ok {
-		item := catalog.ChartsOfAccounts[index]
-		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
-		// The order is derived from the code, so it is readable but not
-		// writable: letting a role grant what nobody may change would be a
-		// right over nothing.
-		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "accountorder": false,
-			"accountkind": true, "offbalance": true, "deletionmark": true, "dataversion": false,
-			"predefined": false, "predefineddataname": false}
-		if item.Code.Length == 0 {
-			delete(target.fields, "code")
-		}
-		if item.DescriptionLength == 0 {
-			delete(target.fields, "description")
-		}
-		// Accounts nest always, so the parent is a field of every chart.
-		addHierarchy(Hierarchy{Enabled: true, Kind: ItemsHierarchy})
-	} else if index, ok := catalog.chartOfCalculationTypesByID[id]; ok {
-		item := catalog.ChartsOfCalculationTypes[index]
-		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
-		target.fields = map[string]bool{"ref": false, "code": true, "description": true,
-			"deletionmark": true, "dataversion": false, "predefined": false, "predefineddataname": false}
-		if item.Code.Length == 0 {
-			delete(target.fields, "code")
-		}
-		if item.DescriptionLength == 0 {
-			delete(target.fields, "description")
-		}
-		if item.ActionPeriodUse {
-			target.fields["actionperiodisbase"] = true
-		}
-	} else if index, ok := catalog.documentByID[id]; ok {
-		item := catalog.Documents[index]
-		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
-		if item.Posting.Allowed {
-			target.operations[PermissionPosting], target.operations[PermissionUndoPosting] = true, true
-		}
-		target.fields = map[string]bool{"ref": false, "number": true, "date": true, "posted": false, "deletionmark": true, "dataversion": false}
-		if !documentHasNumber(item) {
-			delete(target.fields, "number")
-		}
-	} else if index, ok := catalog.businessProcessByID[id]; ok {
-		item := catalog.BusinessProcesses[index]
-		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
-		// Started and completed are the platform's own record of where the
-		// process is: a role may read them, never write them by hand.
-		target.fields = map[string]bool{"ref": false, "number": true, "date": true, "deletionmark": true,
-			"dataversion": false, "started": false, "completed": false, "headtask": false}
-		if item.Number.Length == 0 {
-			delete(target.fields, "number")
-		}
-	} else if index, ok := catalog.taskByID[id]; ok {
-		item := catalog.Tasks[index]
-		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
-		// Where the task stands is the platform's record too; what it is
-		// addressed to is the application's, and a role may well be kept away
-		// from it - seeing the performers of every task is not for everyone.
-		target.fields = map[string]bool{"ref": false, "number": true, "date": true, "description": true,
-			"deletionmark": true, "dataversion": false, "executed": true, "businessprocess": false, "routepoint": false}
-		if item.Number.Length == 0 {
-			delete(target.fields, "number")
-		}
-		if item.DescriptionLength == 0 {
-			delete(target.fields, "description")
-		}
-	} else if index, ok := catalog.exchangePlanByID[id]; ok {
-		item := catalog.ExchangePlans[index]
-		target.operations[PermissionInsert], target.operations[PermissionUpdate], target.operations[PermissionDelete] = true, true, true
-		// Which node is this base and what the sides have exchanged is the
-		// platform's own record: a role reads it and never sets it by hand,
-		// because a node that declares itself this one breaks every exchange
-		// that touches it.
-		target.fields = map[string]bool{"ref": false, "code": true, "description": true, "deletionmark": true,
-			"dataversion": false, "thisnode": false, "sentno": false, "receivedno": false}
-		if item.Code.Length == 0 {
-			delete(target.fields, "code")
-		}
-		if item.DescriptionLength == 0 {
-			delete(target.fields, "description")
-		}
-	} else if index, ok := catalog.sequenceByID[id]; ok {
-		item := catalog.Sequences[index]
-		// A sequence is read and it is rebuilt; there is nothing in it to
-		// create or delete by hand, because every record of it belongs to the
-		// document that made it.
-		target.operations[PermissionUpdate] = true
-		target.fields = map[string]bool{"period": false, "recorder": false}
-		for _, dimension := range item.Dimensions {
-			target.fields[dimension.ID.String()] = false
-		}
-	} else if _, ok := catalog.documentJournalByID[id]; ok {
-		// A journal has no data of its own: it shows documents, and what a
-		// role may see in it is decided by the rights on those documents. So
-		// it carries the one right that is its own - whether it is visible at
-		// all - and no fields.
-		target.fields = map[string]bool{}
-	} else if index, ok := catalog.informationRegisterByID[id]; ok {
-		item := catalog.InformationRegisters[index]
-		target.fields["recordid"] = false
-		// Register changes are atomic record-set writes, including replacement
-		// with an empty set; create/delete are not separate record operations.
-		target.operations[PermissionUpdate] = true
-		if item.Periodicity != InformationRegisterPeriodNone {
-			target.fields["period"] = true
-		}
-		if item.WriteMode == InformationRegisterRecorder {
-			target.fields["recorder"], target.fields["linenumber"], target.fields["active"] = true, false, true
-		}
-	} else if _, ok := catalog.accountingRegisterByID[id]; ok {
-		target.operations[PermissionUpdate] = true
-		// Totals of an accounting register are the balances by account, and
-		// they are exactly what a role may be kept away from managing.
-		target.operations[PermissionTotalsControl] = true
-		target.fields = map[string]bool{"recordid": false, "period": true, "recorder": true, "linenumber": false, "active": true}
-	} else if _, ok := catalog.reportByID[id]; ok {
-		// A report keeps no data, so there is nothing in it to create or
-		// delete. What a role is given or denied is the report itself.
-		target.fields = map[string]bool{}
-	} else if _, ok := catalog.dataProcessorByID[id]; ok {
-		target.fields = map[string]bool{}
-	} else if index, ok := catalog.calculationRegisterByID[id]; ok {
-		item := catalog.CalculationRegisters[index]
-		target.operations[PermissionUpdate] = true
-		// Which kind of accrual a record is, and whether it reverses an
-		// earlier one, are the platform's own account of the calculation: a
-		// role reads them and does not set them by hand.
-		target.fields = map[string]bool{"recordid": false, "period": true, "recorder": true,
-			"linenumber": false, "active": true, "calculationtype": true, "reversing": false}
-		if item.ActionPeriod {
-			target.fields["actionperiodstart"], target.fields["actionperiodend"] = true, true
-		}
-		if item.BasePeriod {
-			target.fields["baseperiodstart"], target.fields["baseperiodend"] = true, true
-		}
-	} else if index, ok := catalog.accumulationRegisterByID[id]; ok {
-		item := catalog.AccumulationRegisters[index]
-		target.operations[PermissionUpdate] = true
-		// Totals are the pre-aggregated balances an accumulation register keeps
-		// beside its movements. In the reference configuration this right sits
-		// on information registers, because there the materialized slices are
-		// the totals; ours are on accumulation registers, and slices are not
-		// materialized at all - so the right guards what we actually have.
-		if item.Kind == AccumulationRegisterBalance {
-			target.operations[PermissionTotalsControl] = true
-		}
-		target.fields = map[string]bool{"recordid": false, "period": true, "recorder": true, "linenumber": false, "active": true}
-		if item.Kind == AccumulationRegisterBalance {
-			target.fields["movementkind"] = true
-		}
-	} else {
-		return roleTarget{}, false
-	}
-	// What the object declares is a field each, and every one can be written:
-	// its attributes, dimensions, resources, accounting flags, addressing
-	// attributes, table parts and their attributes. An application may well
-	// let a role see a document and not one of its fields.
-	kind, _ := catalog.kindOfObject(id)
-	parts, _ := catalog.partsOf(kind, id)
-	for _, part := range parts {
-		if part.declaredField() {
-			target.fields[part.key] = true
-		}
-	}
-	return target, true
-}
-
 // rightsTarget is what a role may give rights on in one object: the rights
 // the configurator offers on the object itself, and its parts it offers
 // rights on, by the key a role keeps them under.
@@ -287,16 +67,7 @@ func (catalog *Catalog) validateRoleReferences(root string) error {
 					return fmt.Errorf("role %s: field %s does not belong to object %s", role.Name, field.Field, permission.Object)
 				}
 			}
-			if len(permission.Policies) == 0 {
-				continue
-			}
-			// A restriction narrows rows, and only an object that keeps rows
-			// has them to narrow.
-			rows, ok := catalog.permissionTarget(permission.Object)
-			if !ok {
-				return fmt.Errorf("role %s: object %s keeps no rows for a restriction to narrow", role.Name, permission.Object)
-			}
-			if err := catalog.validateRolePolicies(role, permission, rows); err != nil {
+			if err := catalog.validateRoleRestrictions(role, permission, target); err != nil {
 				return err
 			}
 		}
@@ -328,76 +99,30 @@ func (catalog *Catalog) validateRoleReferences(root string) error {
 	})
 }
 
-// validateRolePolicies resolves every restriction of one object down to the rule
-// it actually applies - inline or through a role template - and checks it against
-// the real object and the declared session parameters. A template is role-scoped
-// and may be reused across objects, so its field is checked per use, not once.
-func (catalog *Catalog) validateRolePolicies(role RoleDefinition, permission ObjectPermission, target roleTarget) error {
-	for _, policy := range permission.Policies {
-		rule := policy.Rule
-		if rule == nil {
-			for index := range role.PolicyTemplates {
-				if role.PolicyTemplates[index].Name != policy.Template {
-					continue
-				}
-				// The template's own field may be a parameter; what is checked
-				// against this object is the rule after the restriction supplied
-				// its fields, exactly as the compiled permission will apply it.
-				resolved, err := substitutePolicyPlaceholders(role.PolicyTemplates[index].Rule, role.PolicyTemplates[index].Parameters, policy.Arguments)
-				if err != nil {
-					return fmt.Errorf("role %s: policy template %s: %w", role.Name, policy.Template, err)
-				}
-				rule = &resolved
-				break
-			}
-		}
-		if rule == nil {
-			return fmt.Errorf("role %s: policy template %s is not declared", role.Name, policy.Template)
-		}
-		for _, operation := range policy.Operations {
-			if !target.operations[operation] {
-				return fmt.Errorf("role %s: policy operation %s is unsupported for object %s", role.Name, operation, permission.Object)
-			}
-		}
-		if _, ok := target.fields[rule.Field]; !ok {
-			return fmt.Errorf("role %s: policy field %s does not belong to object %s", role.Name, rule.Field, permission.Object)
-		}
-		if err := catalog.validatePolicyOperand(role, *rule); err != nil {
-			return err
-		}
-		if rule.Subquery == nil {
-			continue
-		}
-		// The subquery reads another object, so its own field and conditions are
-		// checked against THAT object - a policy must not be able to name a field
-		// of the restricted table and have it silently resolve elsewhere.
-		source, ok := catalog.permissionTarget(rule.Subquery.Object)
-		if !ok {
-			return fmt.Errorf("role %s: policy subquery reads unknown or unsupported object %s", role.Name, rule.Subquery.Object)
-		}
-		if _, ok := source.fields[rule.Subquery.Field]; !ok {
-			return fmt.Errorf("role %s: policy subquery field %s does not belong to object %s", role.Name, rule.Subquery.Field, rule.Subquery.Object)
-		}
-		for _, condition := range rule.Subquery.Where {
-			if _, ok := source.fields[condition.Field]; !ok {
-				return fmt.Errorf("role %s: policy subquery condition field %s does not belong to object %s", role.Name, condition.Field, rule.Subquery.Object)
-			}
-			if err := catalog.validatePolicyOperand(role, condition); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-// validatePolicyOperand checks what a rule compares against, independently of
-// which object the field itself belongs to.
-func (catalog *Catalog) validatePolicyOperand(role RoleDefinition, rule PolicyRule) error {
-	if rule.Parameter == "" {
+// validateRoleRestrictions checks the restrictions of one object against the
+// object: the configurator offers the right restricted on it, and the fields
+// named are its own. A kind no export restricts is accepted and
+// noted (restriction-without-sample).
+func (catalog *Catalog) validateRoleRestrictions(role RoleDefinition, permission ObjectPermission, target rightsTarget) error {
+	if len(permission.Restrictions) == 0 {
 		return nil
 	}
-	if _, ok := catalog.SessionParameter(rule.Parameter); !ok {
-		return fmt.Errorf("role %s: policy references unknown session parameter %s", role.Name, rule.Parameter)
+	// A kind keeping no data is offered none of the rights restricted, so the
+	// check of the right below refuses a restriction of it.
+	kind, _ := catalog.kindOfObject(permission.Object)
+	fields := map[string]bool{}
+	for _, field := range catalog.restrictionFieldsOf(kind, permission.Object) {
+		fields[field.key] = true
+	}
+	for _, restriction := range permission.Restrictions {
+		if !slices.Contains(target.rights, restriction.Right) {
+			return fmt.Errorf("role %s: object %s has no right %s to restrict", role.Name, permission.Object, restriction.Right)
+		}
+		for _, field := range restriction.Fields {
+			if !fields[field] {
+				return fmt.Errorf("role %s: restriction of %s names field %s, which object %s does not have", role.Name, restriction.Right, field, permission.Object)
+			}
+		}
 	}
 	return nil
 }

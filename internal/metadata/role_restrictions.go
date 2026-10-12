@@ -1,0 +1,164 @@
+package metadata
+
+import (
+	"fmt"
+	"slices"
+	"strings"
+	"unicode/utf8"
+)
+
+// RightRestriction is a restriction of access to data on one right of an
+// object, as the prototype keeps it (help, «Ограничение доступа к данным»): a
+// condition in the query language, with the preprocessor and the role's
+// templates, and the fields it checks. A restriction with no fields is the
+// one on «Прочие поля» - every field the others do not name.
+//
+// Only reading, adding, changing and deleting are restricted, on an object
+// that keeps data; reading may have a restriction per set of fields, the other
+// three one each, with no fields. The right restricted is the role's, granted
+// or denied: the prototype writes the restriction inside the right and keeps
+// it when the right is taken away (629 in the exports).
+//
+// The condition is carried as written and is not run: running it is block
+// 10's. Until then a right a role restricts gives that role nothing - no rows
+// to read, no data to add, change or delete - so a restriction never opens
+// more than it would (ACCESS-RIGHTS.md, «Ограничения на уровне записей»).
+type RightRestriction struct {
+	Right PermissionOperation `yaml:"right" json:"right"`
+	// Fields are keys of the object's fields (restrictionFieldsOf): a declared
+	// field by its identifier, a standard one by its prototype name in lower
+	// case, the line number of a table part after the part's identifier.
+	Fields    []string `yaml:"fields,omitempty" json:"fields,omitempty"`
+	Condition string   `yaml:"condition,omitempty" json:"condition,omitempty"`
+}
+
+// RestrictionTemplate is a template of the role's restrictions (help,
+// «Редактирование роли», «Шаблоны ограничений»): a name, with the names of its
+// parameters in brackets where it takes any, and a text the condition of a
+// restriction takes in place of #Имя("значение", ...). The name is kept as
+// the prototype writes it, brackets and all.
+type RestrictionTemplate struct {
+	Name      string `yaml:"name" json:"name"`
+	Condition string `yaml:"condition,omitempty" json:"condition,omitempty"`
+}
+
+// restrictedRights are the rights a restriction may be on, by the help: the
+// rights to the data an object keeps in the infobase.
+var restrictedRights = []PermissionOperation{PermissionRead, PermissionInsert, PermissionUpdate, PermissionDelete}
+
+// templateName splits a template's name into the name proper and its
+// parameters: Шаблон(Поле, Пользователь) is the template Шаблон of two.
+func templateName(written string) (name string, parameters []string, ok bool) {
+	name, rest, bracketed := strings.Cut(written, "(")
+	name = strings.TrimSpace(name)
+	if !validIdentifier(name) || utf8.RuneCountInString(name) > maxNameLength {
+		return "", nil, false
+	}
+	if !bracketed {
+		return name, nil, true
+	}
+	inner, closed := strings.CutSuffix(strings.TrimSpace(rest), ")")
+	if !closed {
+		return "", nil, false
+	}
+	for _, parameter := range strings.Split(inner, ",") {
+		parameter = strings.TrimSpace(parameter)
+		if !validIdentifier(parameter) {
+			return "", nil, false
+		}
+		parameters = append(parameters, parameter)
+	}
+	return name, parameters, true
+}
+
+// validateRestrictionTemplates checks the templates of a role. There is no
+// ceiling on their number or on the length of a text: the prototype names
+// none, and erp keeps a template of 431 thousand characters.
+func validateRestrictionTemplates(templates []RestrictionTemplate) []string {
+	var issues []string
+	names := make(map[string]bool, len(templates))
+	for index, template := range templates {
+		prefix := fmt.Sprintf("restriction_templates[%d]", index)
+		name, _, ok := templateName(template.Name)
+		if !ok {
+			issues = append(issues, prefix+".name must be a name, with the names of its parameters in brackets where it takes any")
+			continue
+		}
+		// Names of the prototype are told apart without regard to case.
+		key := strings.ToLower(name)
+		if names[key] {
+			issues = append(issues, prefix+".name must be unique within the role")
+		}
+		names[key] = true
+		if !utf8.ValidString(template.Condition) {
+			issues = append(issues, prefix+".condition must be valid UTF-8")
+		}
+	}
+	return issues
+}
+
+// validateRestrictions checks the restrictions of one object against the
+// rights the role writes on it. Whether the object keeps data and has the
+// fields named is the catalog's to say (validateRoleRestrictions).
+func validateRestrictions(path string, object ObjectPermission) []string {
+	var issues []string
+	written := slices.Concat(object.Operations, object.Denied)
+	others := map[PermissionOperation]bool{}
+	fields := map[PermissionOperation]map[string]bool{}
+	for index, restriction := range object.Restrictions {
+		prefix := fmt.Sprintf("%s[%d]", path, index)
+		if !slices.Contains(restrictedRights, restriction.Right) {
+			issues = append(issues, fmt.Sprintf("%s.right names %q; only read, insert, update and delete are restricted", prefix, restriction.Right))
+			continue
+		}
+		// The prototype writes a restriction inside the right it restricts,
+		// and a right is written granted or denied.
+		if !slices.Contains(written, restriction.Right) {
+			issues = append(issues, fmt.Sprintf("%s restricts %q, which the role neither grants nor denies on the object", prefix, restriction.Right))
+		}
+		// Fields are reading's alone, so a second restriction of another
+		// right is a second one on the other fields.
+		if restriction.Right != PermissionRead && len(restriction.Fields) != 0 {
+			issues = append(issues, prefix+".fields are for a restriction of reading only")
+		}
+		if len(restriction.Fields) == 0 {
+			if others[restriction.Right] {
+				issues = append(issues, fmt.Sprintf("%s: %q has a restriction on the other fields already; only reading takes one per set of fields", prefix, restriction.Right))
+			}
+			others[restriction.Right] = true
+		}
+		if fields[restriction.Right] == nil {
+			fields[restriction.Right] = map[string]bool{}
+		}
+		for fieldIndex, field := range restriction.Fields {
+			if fields[restriction.Right][field] {
+				issues = append(issues, fmt.Sprintf("%s.fields[%d] is restricted already", prefix, fieldIndex))
+			}
+			fields[restriction.Right][field] = true
+		}
+		if !utf8.ValidString(restriction.Condition) {
+			issues = append(issues, prefix+".condition must be valid UTF-8")
+		}
+	}
+	return issues
+}
+
+// restrictsData says the role's own restrictions keep it from a right on the
+// object: a condition is there, and conditions are not run yet. A restriction
+// without one restricts nothing.
+func (object ObjectPermission) restrictsData(right PermissionOperation) bool {
+	return slices.ContainsFunc(object.Restrictions, func(restriction RightRestriction) bool {
+		return restriction.Right == right && strings.TrimSpace(restriction.Condition) != ""
+	})
+}
+
+func cloneRestrictions(restrictions []RightRestriction) []RightRestriction {
+	if restrictions == nil {
+		return nil
+	}
+	cloned := slices.Clone(restrictions)
+	for index := range cloned {
+		cloned[index].Fields = slices.Clone(cloned[index].Fields)
+	}
+	return cloned
+}

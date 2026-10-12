@@ -222,10 +222,7 @@ func (repository *DocumentRepository) Get(ctx context.Context, reference Documen
 	}
 	table, _ := PhysicalDocumentTable(definition.ID)
 	arguments := []any{reference.ObjectID.String()}
-	restriction, err := readRowPredicate(ctx, repository.catalog, definition.ID, documentPolicyColumn(definition), &arguments)
-	if err != nil {
-		return nil, err
-	}
+	restriction := readRowPredicate(ctx, definition.ID)
 	statement := "SELECT to_jsonb(item) FROM " + qualifiedCatalogTable(table) + " AS item WHERE ref = $1" + restriction
 	var encoded []byte
 	query, err := queryData(ctx, repository.pool)
@@ -272,10 +269,7 @@ func (repository *DocumentRepository) FindByNumber(ctx context.Context, name, nu
 	}
 	table, _ := PhysicalDocumentTable(definition.ID)
 	arguments := []any{period, number}
-	restriction, err := readRowPredicate(ctx, repository.catalog, definition.ID, documentPolicyColumn(definition), &arguments)
-	if err != nil {
-		return DocumentReference{}, false, err
-	}
+	restriction := readRowPredicate(ctx, definition.ID)
 	statement := "SELECT ref::text FROM " + qualifiedCatalogTable(table) + " WHERE number_period = $1 AND number = $2" + restriction + " ORDER BY date DESC, ref LIMIT 1"
 	var idText string
 	query, err := queryData(ctx, repository.pool)

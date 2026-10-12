@@ -99,6 +99,11 @@ type kindComposition struct {
 	// description; the standard ones every object of the kind has are added
 	// by partsOf. Nil is a kind whose objects declare no parts.
 	parts func(catalog *Catalog, id uuid.UUID) []objectPart
+	// dataVersion is a kind whose objects keep the version of their data
+	// (help, the tables of the query language; the table of a chart of
+	// calculation types does not list it, its object - ПланВидовРасчетаОбъект
+	// - has it).
+	dataVersion bool
 	// named is a filter criterion, a characteristic table and the content of
 	// the standalone configuration naming the object by what it holds - the
 	// kinds objectElementsOf took before the one walk of composition. Which
@@ -169,15 +174,15 @@ var kindCompositionOf = map[Kind]kindComposition{
 	}},
 	DefinedTypeKind: {named: true},
 	LanguageKind:    {},
-	CatalogKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	CatalogKind: {named: true, dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.Catalogs[c.catalogByID[id]]
 		return declaredParts(item.Attributes, item.TableParts, item.Commands)
 	}},
-	ChartOfCharacteristicTypesKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	ChartOfCharacteristicTypesKind: {named: true, dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.ChartsOfCharacteristicTypes[c.chartOfCharacteristicTypesByID[id]]
 		return declaredParts(item.Attributes, item.TableParts, item.Commands)
 	}},
-	ChartOfAccountsKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	ChartOfAccountsKind: {named: true, dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.ChartsOfAccounts[c.chartOfAccountsByID[id]]
 		parts := declaredParts(item.Attributes, nil, nil)
 		for index := range item.AccountingFlags {
@@ -188,11 +193,11 @@ var kindCompositionOf = map[Kind]kindComposition{
 		}
 		return append(parts, declaredParts(nil, item.TableParts, item.Commands)...)
 	}},
-	ChartOfCalculationTypesKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	ChartOfCalculationTypesKind: {named: true, dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.ChartsOfCalculationTypes[c.chartOfCalculationTypesByID[id]]
 		return declaredParts(item.Attributes, item.TableParts, item.Commands)
 	}},
-	TaskKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	TaskKind: {named: true, dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.Tasks[c.taskByID[id]]
 		parts := declaredParts(item.Attributes, nil, nil)
 		for _, attribute := range addressingAsAttributes(item) {
@@ -204,7 +209,7 @@ var kindCompositionOf = map[Kind]kindComposition{
 		item := c.AccountingRegisters[c.accountingRegisterByID[id]]
 		return registerParts(RegisterDimensionAttributes(item.Dimensions), accountingResourceAttributes(item.Resources), item.Attributes, item.Commands)
 	}},
-	CalculationRegisterKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	CalculationRegisterKind: {named: true, dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.CalculationRegisters[c.calculationRegisterByID[id]]
 		return registerParts(RegisterDimensionAttributes(item.Dimensions), item.Resources, item.attributeFields(), item.Commands)
 	}},
@@ -222,15 +227,15 @@ var kindCompositionOf = map[Kind]kindComposition{
 	DocumentJournalKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		return declaredParts(nil, nil, c.DocumentJournals[c.documentJournalByID[id]].Commands)
 	}},
-	ExchangePlanKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	ExchangePlanKind: {named: true, dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.ExchangePlans[c.exchangePlanByID[id]]
 		return declaredParts(item.Attributes, item.TableParts, item.Commands)
 	}},
-	BusinessProcessKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	BusinessProcessKind: {named: true, dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.BusinessProcesses[c.businessProcessByID[id]]
 		return declaredParts(item.Attributes, item.TableParts, item.Commands)
 	}},
-	DocumentKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	DocumentKind: {named: true, dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.Documents[c.documentByID[id]]
 		return declaredParts(item.Attributes, item.TableParts, item.Commands)
 	}},
@@ -311,13 +316,40 @@ func (catalog *Catalog) partsOf(kind Kind, id uuid.UUID) ([]objectPart, bool) {
 	return parts, true
 }
 
-// declaredField says the part is a field the object keeps a value in, or a
-// table part of them: what a restriction of rows may compare.
-func (part objectPart) declaredField() bool {
-	switch part.group {
-	case DimensionsPart, ResourcesPart, AttributesPart, AddressingAttributesPart, AccountingFlagsPart,
-		ExtDimensionAccountingFlagsPart, TablePartsPart:
-		return true
+// dataVersionField is the version of an object's data: a field of the table
+// a query reads where the kind keeps one (kindComposition.dataVersion), and
+// not a standard attribute - no description of the prototype describes it.
+var dataVersionField = standardField{"ВерсияДанных", "DataVersion"}
+
+// restrictionFieldsOf is what a restriction of reading the object may name:
+// the fields of the table a query reads (help, «Ограничение доступа к данным»;
+// the tables of the query language). That is every part keeping a value - the
+// standard attributes, what the object declares, the standard table parts and
+// their fields - the version of the data where the kind has one, and the line
+// number of every table part, which the prototype writes as ОС.LineNumber.
+// Commands, operations and methods keep no value.
+func (catalog *Catalog) restrictionFieldsOf(kind Kind, id uuid.UUID) []objectPart {
+	parts, _ := catalog.partsOf(kind, id)
+	language := catalog.Project.DefaultLanguage
+	standard := func(field standardField, key, parent string) objectPart {
+		return objectPart{key: key, name: field.ru, title: LocalizedText{language: nameInWords(field.ru)},
+			group: StandardAttributesPart, parent: parent}
 	}
-	return false
+	var fields []objectPart
+	if kindCompositionOf[kind].dataVersion {
+		fields = append(fields, standard(dataVersionField, strings.ToLower(dataVersionField.en), ""))
+	}
+	for _, part := range parts {
+		switch part.group {
+		case CommandsPart, OperationsPart, URLTemplatesPart, MethodsPart:
+			continue
+		}
+		fields = append(fields, part)
+		if part.group == TablePartsPart {
+			for _, field := range tablePartStandardFields {
+				fields = append(fields, standard(field, part.key+"."+strings.ToLower(field.en), part.key))
+			}
+		}
+	}
+	return fields
 }

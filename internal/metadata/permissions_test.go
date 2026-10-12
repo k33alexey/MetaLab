@@ -220,3 +220,60 @@ func TestOnlyReadAndEditReachFields(t *testing.T) {
 		t.Fatal("a granted field was not readable")
 	}
 }
+
+// A restriction's condition is not run yet, so a role restricting a right gets
+// nothing from it: reading admits no row, adding, changing and deleting are
+// not granted. A restriction with no condition restricts nothing, a right
+// restricted in another role does not narrow this one, and roles add up: one
+// reading without a restriction opens every row.
+//
+// Defect caught: a restriction that is not run read as no restriction at all,
+// so a role of the prototype restricted to its own rows would read every row;
+// and the other way, a restriction of one role closing the object to a role
+// that does not restrict it.
+func TestRestrictedRightsGiveNothingUntilConditionsRun(t *testing.T) {
+	t.Parallel()
+	catalog, reader, _ := roleCatalogFixture(t)
+	object := reader.Objects[0].Object
+	restricted := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Ограниченный", Title: LocalizedText{"ru": "Ограниченный"},
+		Objects: []ObjectPermission{{Object: object,
+			Operations: []PermissionOperation{PermissionRead, PermissionInsert, PermissionUpdate, PermissionDelete},
+			Restrictions: []RightRestriction{
+				{Right: PermissionRead, Fields: []string{"ref"}},
+				{Right: PermissionRead, Condition: "ГДЕ Ссылка = &Текущий"},
+				{Right: PermissionInsert, Condition: "ГДЕ ЛОЖЬ"},
+				{Right: PermissionUpdate, Condition: " \n"},
+				{Right: PermissionDelete, Condition: "#Шаблон()"}}}}}
+	catalog.Roles = append(catalog.Roles, restricted)
+	if err := catalog.indexAndValidate(""); err != nil {
+		t.Fatal(err)
+	}
+	alone, err := CompilePermissions(catalog, []uuid.UUID{restricted.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !alone.AllowsObject(object, PermissionRead) || alone.ReadsEveryRow(object) {
+		t.Fatal("restricted reading was not granted as reading of no row")
+	}
+	if alone.AllowsObject(object, PermissionInsert) || alone.AllowsObject(object, PermissionDelete) {
+		t.Fatal("a restricted write was granted")
+	}
+	if !alone.AllowsObject(object, PermissionUpdate) {
+		t.Fatal("a restriction without a condition took the right away")
+	}
+	both, err := CompilePermissions(catalog, []uuid.UUID{restricted.ID, reader.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !both.ReadsEveryRow(object) {
+		t.Fatal("a role reading without a restriction did not open every row")
+	}
+	open, err := CompilePermissions(catalog, []uuid.UUID{reader.ID})
+	if err != nil || !open.ReadsEveryRow(object) {
+		t.Fatalf("another role's restriction narrowed this one: %v", err)
+	}
+	var none *Permissions
+	if none.ReadsEveryRow(object) {
+		t.Fatal("no permissions read every row")
+	}
+}

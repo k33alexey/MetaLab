@@ -206,10 +206,7 @@ func (repository *CatalogRepository) Get(ctx context.Context, reference CatalogR
 	}
 	table, _ := PhysicalCatalogTable(definition.ID)
 	arguments := []any{reference.ObjectID.String()}
-	restriction, err := readRowPredicate(ctx, repository.catalog, definition.ID, catalogPolicyColumn(definition), &arguments)
-	if err != nil {
-		return nil, err
-	}
+	restriction := readRowPredicate(ctx, definition.ID)
 	statement := "SELECT to_jsonb(item) FROM " + qualifiedCatalogTable(table) + " AS item WHERE ref = $1" + restriction
 	var encoded []byte
 	query, err := queryData(ctx, repository.pool)
@@ -245,10 +242,7 @@ func (repository *CatalogRepository) FindByCode(ctx context.Context, name, code 
 	}
 	table, _ := PhysicalCatalogTable(definition.ID)
 	arguments := []any{code}
-	restriction, err := readRowPredicate(ctx, repository.catalog, definition.ID, catalogPolicyColumn(definition), &arguments)
-	if err != nil {
-		return CatalogReference{}, false, err
-	}
+	restriction := readRowPredicate(ctx, definition.ID)
 	statement := "SELECT ref::text FROM " + qualifiedCatalogTable(table) + " WHERE code = $1" + restriction + " ORDER BY ref LIMIT 1"
 	var idText string
 	query, err := queryData(ctx, repository.pool)

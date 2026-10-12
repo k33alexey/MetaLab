@@ -64,20 +64,19 @@ type PermissionObject struct {
 	// Rights are the rights the configurator offers on the object, in the
 	// order of the help: what the editor shows.
 	Rights []PermissionOperation `json:"rights"`
-	// Operations are those of them this platform acts on, and the ones a
-	// restriction of rows may narrow.
+	// Operations are those of them this platform acts on.
 	Operations []PermissionOperation `json:"operations"`
 	Fields     []PermissionField     `json:"fields"`
-	// PolicyFields are the fields a restriction of rows may compare, under
-	// the keys the restriction is checked and run by. They are not the parts
-	// rights are given on: a restriction reads the record's identifier and
-	// its version too, which have no rights of their own.
-	PolicyFields []PermissionField `json:"policyFields"`
+	// RestrictionFields are the fields a restriction of reading may name
+	// (restrictionFieldsOf). They are not the parts rights are given on: a
+	// restriction names the version of the data and the line number of a
+	// table part too, which have no rights of their own.
+	RestrictionFields []PermissionField `json:"restrictionFields"`
 }
 
 // PermissionField is one part of an object: under Fields, with the folder it
 // is shown in and the rights the configurator offers on it; under
-// PolicyFields, a field a restriction compares.
+// RestrictionFields, a field a restriction names.
 type PermissionField struct {
 	Key        string                `json:"key"`
 	Name       string                `json:"name"`
@@ -138,35 +137,20 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 		return PermissionSchema{}, err
 	}
 	appendObject := func(kind Kind, id uuid.UUID, name string, title LocalizedText) {
-		target, _ := catalog.permissionTarget(id)
 		offered, _ := catalog.rightsTargetOf(id)
 		object := PermissionObject{ID: id, Kind: kind, Owner: catalog.objects[id].owner, Name: name, Title: cloneTitle(title),
 			Rights: offered.rights, Operations: []PermissionOperation{}, Fields: []PermissionField{},
-			PolicyFields: []PermissionField{}}
+			RestrictionFields: []PermissionField{}}
 		for _, operation := range objectOperations {
-			if target.operations[operation] {
+			if slices.Contains(offered.rights, operation) {
 				object.Operations = append(object.Operations, operation)
 			}
 		}
-		// A restriction compares the standard fields under their own keys
-		// first, then what the object declares.
-		var standard []string
-		for key := range target.fields {
-			if _, err := uuid.Parse(key); err != nil {
-				standard = append(standard, key)
+		if usesOf(kind).restriction.accepted() {
+			for _, field := range catalog.restrictionFieldsOf(kind, id) {
+				object.RestrictionFields = append(object.RestrictionFields, PermissionField{Key: field.key, Name: field.name,
+					Title: cloneTitle(field.title), Parent: field.parent, Operations: []PermissionOperation{}})
 			}
-		}
-		slices.Sort(standard)
-		captions := map[string]string{}
-		for _, field := range catalog.standardAttributeFields(kind, id) {
-			captions[strings.ToLower(field.en)] = nameInWords(field.ru)
-		}
-		for _, key := range standard {
-			field := PermissionField{Key: key, Name: key, Operations: []PermissionOperation{}}
-			if caption, ok := captions[key]; ok {
-				field.Title = LocalizedText{catalog.Project.DefaultLanguage: caption}
-			}
-			object.PolicyFields = append(object.PolicyFields, field)
 		}
 		// Every part of the object, from the one walk of its composition, with
 		// the rights the configurator offers on a part of its sort.
@@ -179,11 +163,6 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 			field := PermissionField{Key: part.key, Name: part.name, Title: cloneTitle(part.title), Parent: part.parent,
 				Group: part.group, Operations: rights}
 			object.Fields = append(object.Fields, field)
-			// A declared field is one key for both: its identifier.
-			if _, ok := target.fields[part.key]; ok && part.declaredField() {
-				object.PolicyFields = append(object.PolicyFields, PermissionField{Key: part.key, Name: part.name,
-					Parent: part.parent, Title: cloneTitle(part.title), Operations: []PermissionOperation{}})
-			}
 		}
 		result.Objects = append(result.Objects, object)
 	}
@@ -191,7 +170,7 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	configuration, _ := catalog.rightsTargetOf(catalog.Project.ID)
 	result.Objects = append(result.Objects, PermissionObject{ID: catalog.Project.ID, Root: true,
 		Name: catalog.Project.Name, Title: cloneTitle(catalog.Project.Title), Rights: configuration.rights,
-		Operations: []PermissionOperation{}, Fields: []PermissionField{}, PolicyFields: []PermissionField{}})
+		Operations: []PermissionOperation{}, Fields: []PermissionField{}, RestrictionFields: []PermissionField{}})
 	// Then every object a role is offered rights on, kind by kind in the
 	// order of the tree. A common form is read apart from the catalog.
 	formTitles := map[uuid.UUID]LocalizedText{}

@@ -202,129 +202,59 @@ func TestCatalogRepositoryLifecycleIntegration(t *testing.T) {
 		t.Fatalf("filtered=%+v error=%v", filtered, err)
 	}
 
-	// Row-level access policies: the same list, read by a user whose role admits
-	// only some rows. PostgreSQL must do the filtering, so a restricted row is
-	// never fetched, never paged over and cannot be reached through a filter.
-	restrictedRead := func(rule PolicyRule) (*Permissions, error) {
-		role := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Ограниченный", Title: LocalizedText{"ru": "Ограниченный"},
-			Objects: []ObjectPermission{{Object: catalogID, Operations: []PermissionOperation{PermissionRead},
-				Policies: []AccessPolicy{{Operations: []PermissionOperation{PermissionRead}, Rule: &rule}}}}}
-		catalog.Project.ID = projectID
-		catalog.Roles, catalog.roleByID = []RoleDefinition{role}, map[uuid.UUID]int{role.ID: 0}
-		return CompilePermissions(catalog, []uuid.UUID{role.ID})
-	}
-	policy, err := restrictedRead(PolicyRule{Field: "code", Operator: PolicyEqual, Values: []Value{{Kind: StringType, Data: "K001"}}})
+	// A restriction of access: the same list, read by a user whose only role
+	// restricts reading. Conditions are not run yet (block 10), so the role
+	// admits no row - PostgreSQL does the refusing, so a restricted row is never
+	// fetched, never paged over and cannot be reached through a filter.
+	restrictedRole := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Ограниченный", Title: LocalizedText{"ru": "Ограниченный"},
+		Objects: []ObjectPermission{{Object: catalogID, Operations: []PermissionOperation{PermissionRead},
+			Restrictions: []RightRestriction{{Right: PermissionRead, Condition: "ГДЕ Код = \"K001\""}}}}}
+	openRole := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Открытый", Title: LocalizedText{"ru": "Открытый"},
+		Objects: []ObjectPermission{{Object: catalogID, Operations: []PermissionOperation{PermissionRead}}}}
+	catalog.Project.ID = projectID
+	catalog.Roles, catalog.roleByID = []RoleDefinition{restrictedRole, openRole}, map[uuid.UUID]int{restrictedRole.ID: 0, openRole.ID: 1}
+	policy, err := CompilePermissions(catalog, []uuid.UUID{restrictedRole.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
 	restrictedCtx := WithPermissions(ctx, policy)
 	restrictedPage, err := repository.ListDynamic(restrictedCtx, "Контрагенты", DynamicListRequest{Limit: 20})
-	if err != nil || len(restrictedPage.Records) != 1 || restrictedPage.Records[0].Code != "K001" || restrictedPage.NextCursor != nil {
+	if err != nil || len(restrictedPage.Records) != 0 || restrictedPage.NextCursor != nil {
 		t.Fatalf("restricted page=%+v error=%v", restrictedPage, err)
 	}
-	// A filter must not widen the restriction: asking for a row the policy hides
-	// returns nothing rather than that row.
-	hidden, err := repository.ListDynamic(restrictedCtx, "Контрагенты", DynamicListRequest{Limit: 20, Filters: []ListFilter{{Field: "Code", Value: "K002"}}})
+	// A filter must not widen the restriction: asking for a row returns nothing
+	// rather than that row.
+	hidden, err := repository.ListDynamic(restrictedCtx, "Контрагенты", DynamicListRequest{Limit: 20, Filters: []ListFilter{{Field: "Code", Value: "K001"}}})
 	if err != nil || len(hidden.Records) != 0 {
-		t.Fatalf("filter reached a row the policy hides: %+v error=%v", hidden, err)
+		t.Fatalf("filter reached a row the restriction hides: %+v error=%v", hidden, err)
 	}
 	// Neither must search.
 	searchedRestricted, err := repository.ListDynamic(restrictedCtx, "Контрагенты", DynamicListRequest{Limit: 20, Search: "bsl@"})
 	if err != nil || len(searchedRestricted.Records) != 0 {
-		t.Fatalf("search reached a row the policy hides: %+v error=%v", searchedRestricted, err)
+		t.Fatalf("search reached a row the restriction hides: %+v error=%v", searchedRestricted, err)
 	}
 	// Reading by reference must report a hidden row as "not found" and never as a
 	// distinct access error - a different answer would confirm it exists.
-	visible := restrictedPage.Records[0].Reference
-	var hiddenReference CatalogReference
-	for _, record := range firstDynamic.Records {
-		if record.Code != "K001" {
-			hiddenReference = record.Reference
-			break
-		}
-	}
-	if hiddenReference.ObjectID.IsZero() {
-		t.Fatal("test data has no row outside the restriction")
-	}
-	if _, err := repository.Get(restrictedCtx, visible); err != nil {
-		t.Fatalf("visible row must stay readable by reference: %v", err)
-	}
+	hiddenReference := firstDynamic.Records[0].Reference
 	if _, err := repository.Get(restrictedCtx, hiddenReference); !errors.Is(err, ErrCatalogRecordNotFound) {
 		t.Fatalf("hidden row must read as not found, got %v", err)
 	}
 	if _, err := repository.Get(ctx, hiddenReference); err != nil {
-		t.Fatalf("the same row must still be readable without a policy: %v", err)
+		t.Fatalf("the same row must still be readable without permissions: %v", err)
 	}
 	// The same must hold for a lookup by code, which is otherwise an existence
-	// oracle for rows the policy hides.
-	if _, found, err := repository.FindByCode(restrictedCtx, "Контрагенты", "K001"); err != nil || !found {
-		t.Fatalf("visible row must stay findable by code: found=%v error=%v", found, err)
-	}
-	if _, found, err := repository.FindByCode(restrictedCtx, "Контрагенты", "K003"); err != nil || found {
+	// oracle for rows the restriction hides.
+	if _, found, err := repository.FindByCode(restrictedCtx, "Контрагенты", "K001"); err != nil || found {
 		t.Fatalf("hidden row was revealed by code lookup: found=%v error=%v", found, err)
 	}
-	// Restricting by an attribute exercises the UUID-named physical column.
-	policy, err = restrictedRead(PolicyRule{Field: emailID.String(), Operator: PolicyIn,
-		Values: []Value{{Kind: StringType, Data: "bsl@example.test"}, {Kind: StringType, Data: "partner001@example.test"}}})
+	// Roles add up: a second role reading without a restriction opens every row.
+	policy, err = CompilePermissions(catalog, []uuid.UUID{restrictedRole.ID, openRole.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	byAttribute, err := repository.ListDynamic(WithPermissions(ctx, policy), "Контрагенты", DynamicListRequest{Limit: 20})
-	if err != nil || len(byAttribute.Records) != 2 {
-		t.Fatalf("restricted by attribute: %+v error=%v", byAttribute, err)
-	}
-	// A policy bound to a session parameter is evaluated from values the hosting
-	// layer resolved, with no BSL runtime anywhere on this read path.
-	policy, err = restrictedRead(PolicyRule{Field: "code", Operator: PolicyIn, Parameter: "ДоступныеКонтрагенты"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	byParameter, err := repository.ListDynamic(WithSessionValues(WithPermissions(ctx, policy),
-		map[string][]Value{"ДоступныеКонтрагенты": {{Kind: StringType, Data: "K001"}, {Kind: StringType, Data: "K003"}}}),
-		"Контрагенты", DynamicListRequest{Limit: 20})
-	if err != nil || len(byParameter.Records) != 2 {
-		t.Fatalf("restricted by session parameter: %+v error=%v", byParameter, err)
-	}
-	// An empty value is a real answer - this caller reaches nothing - and must
-	// not be read as "no restriction".
-	empty, err := repository.ListDynamic(WithSessionValues(WithPermissions(ctx, policy),
-		map[string][]Value{"ДоступныеКонтрагенты": {}}), "Контрагенты", DynamicListRequest{Limit: 20})
-	if err != nil || len(empty.Records) != 0 {
-		t.Fatalf("an empty session parameter must admit no rows: %+v error=%v", empty, err)
-	}
-	// A parameter this session has no value for refuses the read rather than
-	// quietly returning every row.
-	if _, err := repository.ListDynamic(WithPermissions(ctx, policy), "Контрагенты", DynamicListRequest{Limit: 20}); err == nil {
-		t.Fatal("a policy on an unresolved session parameter was silently ignored")
-	}
-
-	// Membership in a set read from another table - the shape real restrictions
-	// use, and the one a literal or a parameter cannot express. The subquery runs
-	// with platform authority: it reads rows this caller may not read directly.
-	policy, err = restrictedRead(PolicyRule{Field: "code", Operator: PolicyIn,
-		Subquery: &PolicySubquery{Object: catalogID, Field: "code",
-			Where: []PolicyRule{{Field: "description", Operator: PolicyEqual, Values: []Value{{Kind: StringType, Data: "Второй"}}}}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	bySubquery, err := repository.ListDynamic(WithPermissions(ctx, policy), "Контрагенты", DynamicListRequest{Limit: 20})
-	if err != nil || len(bySubquery.Records) != 1 || bySubquery.Records[0].Description != "Второй" {
-		t.Fatalf("restricted by subquery: %+v error=%v", bySubquery, err)
-	}
-	// Negated membership is the complement, over the same 22 rows.
-	policy, err = restrictedRead(PolicyRule{Field: "code", Operator: PolicyNotIn,
-		Subquery: &PolicySubquery{Object: catalogID, Field: "code",
-			Where: []PolicyRule{{Field: "description", Operator: PolicyEqual, Values: []Value{{Kind: StringType, Data: "Второй"}}}}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	excluded, err := repository.ListDynamic(WithPermissions(ctx, policy), "Контрагенты", DynamicListRequest{Limit: 50})
-	if err != nil || len(excluded.Records) != 21 {
-		t.Fatalf("negated subquery: %d records error=%v", len(excluded.Records), err)
-	}
-	// Reading by reference honours it too, and a hidden row reads as not found.
-	if _, err := repository.Get(WithPermissions(ctx, policy), visible); !errors.Is(err, ErrCatalogRecordNotFound) {
-		t.Fatalf("subquery restriction ignored by read-by-key: %v", err)
+	together, err := repository.ListDynamic(WithPermissions(ctx, policy), "Контрагенты", DynamicListRequest{Limit: 50})
+	if err != nil || len(together.Records) != 22 {
+		t.Fatalf("a role without a restriction did not open the rows: %d records error=%v", len(together.Records), err)
 	}
 	sortedFirst, err := repository.ListDynamic(ctx, "Контрагенты", DynamicListRequest{Limit: 20, SortField: "Description", Descending: true})
 	if err != nil || len(sortedFirst.Records) != 20 || sortedFirst.NextCursor == nil {

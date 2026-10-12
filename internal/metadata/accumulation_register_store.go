@@ -1083,10 +1083,9 @@ func (repository *AccumulationRegisterRepository) queryBalancesAndTurnovers(ctx 
 	// The opening balance is the balance before the first moment of the
 	// period, read the same way as a balance at a date; the turnovers of the
 	// period come from its movements.
-	restriction, err := repository.restrictedMovements(ctx, definition, &arguments)
-	if err != nil {
-		return nil, err
-	}
+	// Balances of a restricted register are summed from the movements the
+	// restriction admits, never read from totals no row condition narrows.
+	restriction := readRowPredicate(ctx, definition.ID)
 	with, parts := balanceParts(definition, begin, false, time.Now(), &arguments, restriction, func(index int, amount string) []string {
 		openingAlias, receiptAlias, expenseAlias, netAlias := aliases(index)
 		return []string{amount + " AS " + openingAlias, "0::numeric AS " + receiptAlias, "0::numeric AS " + expenseAlias, "0::numeric AS " + netAlias}
@@ -1217,43 +1216,6 @@ func accumulationAggregateZero(resources []Attribute, aggregate AccumulationRegi
 	return true
 }
 
-// maxRestrictedBalanceMovements bounds the work a restricted aggregate may do.
-// Reading pre-summed totals is cheap and predictable; summing movements live is
-// neither, so a restricted caller gets a clear refusal instead of a query that
-// may never return - the same bargain the paged lists and the query row limit
-// already make. The number is provisional: it was chosen without measuring real
-// registers and should be revisited against actual volumes.
-const maxRestrictedBalanceMovements = 200_000
-
-// restrictedMovements returns the predicate that narrows movement rows for this
-// caller, or "" when nothing is restricted. It also refuses up front when the
-// live summation the restriction forces would be unbounded.
-func (repository *AccumulationRegisterRepository) restrictedMovements(ctx context.Context, definition AccumulationRegisterDefinition, arguments *[]any) (string, error) {
-	// The measuring query is rendered into its own argument list: it does not
-	// reference the caller's period bounds, and binding parameters a statement
-	// never mentions leaves their type undetermined.
-	countArguments := []any{}
-	countRestriction, err := readRowPredicate(ctx, repository.catalog, definition.ID, accumulationRegisterPolicyColumn(definition), &countArguments)
-	if err != nil || countRestriction == "" {
-		return "", err
-	}
-	table, _ := PhysicalAccumulationRegisterTable(definition.ID)
-	query, err := queryData(ctx, repository.pool)
-	if err != nil {
-		return "", err
-	}
-	var movements int64
-	statement := "SELECT count(*) FROM (SELECT 1 FROM " + qualifiedCatalogTable(table) + " WHERE active = true" + countRestriction +
-		fmt.Sprintf(" LIMIT %d) AS bounded", maxRestrictedBalanceMovements+1)
-	if err := query.QueryRow(ctx, statement, countArguments...).Scan(&movements); err != nil {
-		return "", recordDataError(ctx, repository.pool, fmt.Errorf("measure accumulation register %s movements: %w", definition.Name, err))
-	}
-	if movements > maxRestrictedBalanceMovements {
-		return "", fmt.Errorf("accumulation register %s has a row-level restriction, and computing it from more than %d movements is refused", definition.Name, maxRestrictedBalanceMovements)
-	}
-	return readRowPredicate(ctx, repository.catalog, definition.ID, accumulationRegisterPolicyColumn(definition), arguments)
-}
-
 func (repository *AccumulationRegisterRepository) balanceAt(ctx context.Context, definition AccumulationRegisterDefinition, period time.Time, dimensions map[uuid.UUID]Value) ([]AccumulationRegisterTotalsRow, error) {
 	statement, arguments, dimensionColumns, err := repository.balanceStatement(ctx, definition, period, time.Now(), dimensions)
 	if err != nil {
@@ -1319,10 +1281,9 @@ func (repository *AccumulationRegisterRepository) balanceStatement(ctx context.C
 		outerSelects = append(outerSelects, "SUM("+alias+") AS "+alias)
 	}
 	arguments := []any{}
-	restriction, err := repository.restrictedMovements(ctx, definition, &arguments)
-	if err != nil {
-		return "", nil, nil, err
-	}
+	// Balances of a restricted register are summed from the movements the
+	// restriction admits, never read from totals no row condition narrows.
+	restriction := readRowPredicate(ctx, definition.ID)
 	with, parts := balanceParts(definition, period, false, now, &arguments, restriction, func(index int, amount string) []string {
 		return []string{amount + " AS " + pgx.Identifier{fmt.Sprintf("r%d_net", index)}.Sanitize()}
 	})
@@ -1421,6 +1382,11 @@ func (repository *AccumulationRegisterRepository) queryAggregates(ctx context.Co
 		}
 	}
 	conditions := []string{"active = true"}
+	// Movements are read here, not totals, so a restriction narrows them as
+	// any read: a restricted caller sums only what it may read.
+	if readRestricted(ctx, definition.ID) {
+		conditions = append(conditions, "FALSE")
+	}
 	arguments := []any{}
 	add := func(condition string, value any) {
 		arguments = append(arguments, value)

@@ -23,15 +23,15 @@ function fixture(){
       {id:'goods',kind:'catalogs',name:'Товары',title:{ru:'Товары'},operations:['read','insert','update','delete'],
         fields:[{key:'ref',operations:['view','edit']},{key:'owner',title:{ru:'Владелец'},operations:['view','edit']},{key:'price',title:{ru:'Цена'},operations:['view','edit']},
           {key:'print',title:{ru:'Печать'},group:'commands',operations:['view']}],
-        policyFields:[{key:'ref',title:{ru:'Ссылка'}},{key:'owner',title:{ru:'Владелец'}},{key:'price',title:{ru:'Цена'}}]},
+        restrictionFields:[{key:'ref',title:{ru:'Ссылка'}},{key:'owner',title:{ru:'Владелец'}},{key:'price',title:{ru:'Цена'}}]},
       {id:'users',kind:'catalogs',name:'Пользователи',title:{ru:'Пользователи'},operations:['read'],
         fields:[{key:'ref',operations:['view','edit']},{key:'person',title:{ru:'Физлицо'},operations:['view','edit']}],
-        policyFields:[{key:'ref',title:{ru:'Ссылка'}},{key:'person',title:{ru:'Физлицо'}}]},
+        restrictionFields:[{key:'ref',title:{ru:'Ссылка'}},{key:'person',title:{ru:'Физлицо'}}]},
     ],forms:[]},
     roles:[
       {path:'metadata/roles/a.yaml',role:{id:'a',name:'Продавец',title:{ru:'Продавец'},objects:[
         {object:'goods',operations:['read','update'],fields:[{field:'ref',operations:['view']},{field:'owner',operations:['view']},{field:'print',operations:['view']}],
-         policies:[{operations:['read'],rule:{field:'owner',operator:'eq',parameter:'ТекущийПользователь'}}]},
+         restrictions:[{right:'read',fields:['owner'],condition:'ГДЕ Владелец = &ТекущийПользователь'}]},
       ]}},
       {path:'metadata/roles/b.yaml',role:{id:'b',name:'Кладовщик',title:{ru:'Кладовщик'},objects:[]}},
     ],
@@ -60,53 +60,27 @@ test('an unknown object yields no rows instead of inventing them',()=>{
   assert.deepEqual(plain(create(fixture()).grants('missing')),[]);
 });
 
-test('a restriction is described by field, condition and where it came from',()=>{
+test('a restriction is described by its fields and its condition as written',()=>{
   const rows=create(fixture()).restrictions('goods');
   assert.equal(rows.length,1);
   assert.deepEqual(plain(rows[0]),{path:'metadata/roles/a.yaml',role:'Продавец',operation:'read',
-    origin:'своё правило',field:'Владелец',condition:'Равно параметр сеанса ТекущийПользователь'});
+    field:'Владелец',condition:'ГДЕ Владелец = &ТекущийПользователь'});
   assert.deepEqual(plain(create(fixture()).restrictions('users')),[]);
 });
 
-test('one restriction on several operations becomes one row per operation',()=>{
+// A restriction without fields is the one on «Прочие поля», as the prototype's
+// editor names it; a field the object no longer has is shown by its key.
+test('a restriction without fields is on the other fields',()=>{
   const source=fixture();
-  source.roles[0].role.objects[0].policies=[{operations:['read','update'],rule:{field:'price',operator:'in',values:[{kind:'number',data:'10'},{kind:'number',data:'20'}]}}];
+  source.roles[0].role.objects[0].restrictions=[{right:'read',fields:['price','gone']},{right:'update',condition:'ГДЕ ЛОЖЬ'}];
   const rows=create(source).restrictions('goods');
-  assert.deepEqual(plain(rows.map(row=>row.operation)),['read','update']);
-  assert.equal(rows[0].condition,'В списке «10», «20»');
-});
-
-test('a template restriction is shown resolved, with its arguments substituted',()=>{
-  const source=fixture();
-  source.roles[0].role.policyTemplates=[{name:'ПоВладельцу',parameters:['Поле'],
-    rule:{field:'$Поле',operator:'eq',parameter:'ТекущийПользователь'}}];
-  source.roles[0].role.objects[0].policies=[{operations:['read'],template:'ПоВладельцу',arguments:['price']}];
-  const [row]=create(source).restrictions('goods');
-  assert.equal(row.field,'Цена');
-  assert.equal(row.condition,'Равно параметр сеанса ТекущийПользователь');
-  assert.equal(row.origin,'шаблон ПоВладельцу');
-});
-
-test('a subquery reads its field titles from the object it selects from',()=>{
-  const source=fixture();
-  source.roles[0].role.objects[0].policies=[{operations:['read'],rule:{field:'owner',operator:'in',
-    subquery:{object:'users',field:'person',where:[{field:'ref',operator:'eq',parameter:'ТекущийПользователь'}]}}}];
-  const [row]=create(source).restrictions('goods');
-  assert.equal(row.condition,'В списке «Физлицо» из «Пользователи», где Ссылка Равно параметр сеанса ТекущийПользователь');
-});
-
-test('a broken template is named as broken rather than read as no restriction',()=>{
-  const source=fixture();
-  source.roles[0].role.objects[0].policies=[{operations:['read'],template:'Нет',arguments:[]}];
-  assert.match(create(source).restrictions('goods')[0].error,/не объявлен ролью/);
-  source.roles[0].role.policyTemplates=[{name:'Нет',parameters:['Поле'],rule:{field:'$Поле',operator:'eq',values:[{kind:'string',data:'x'}]}}];
-  assert.match(create(source).restrictions('goods')[0].error,/ожидает полей: 1/);
+  assert.deepEqual(plain(rows.map(row=>[row.operation,row.field,row.condition])),[['read','Цена, gone',''],['update','Прочие поля','ГДЕ ЛОЖЬ']]);
 });
 
 test('the project-wide list carries every restriction of every role, ordered',()=>{
   const source=fixture();
   source.roles[1].role.objects=[{object:'users',operations:['read'],
-    policies:[{operations:['read'],rule:{field:'person',operator:'ne',values:[{kind:'string',data:'—'}]}}]}];
+    restrictions:[{right:'read',condition:'ГДЕ Физлицо <> НЕОПРЕДЕЛЕНО'}]}];
   const rows=create(source).allRestrictions();
   assert.deepEqual(plain(rows.map(row=>`${row.object}/${row.role}/${row.operation}`)),
     ['Пользователи/Кладовщик/read','Товары/Продавец/read']);
@@ -117,20 +91,18 @@ test('the project-wide list carries every restriction of every role, ordered',()
 
 test('a restriction on an object that no longer exists is left out of the list',()=>{
   const source=fixture();
-  source.roles[0].role.objects.push({object:'gone',operations:['read'],
-    policies:[{operations:['read'],rule:{field:'owner',operator:'eq',values:[{kind:'string',data:'x'}]}}]});
+  source.roles[0].role.objects.push({object:'gone',operations:['read'],restrictions:[{right:'read',condition:'ГДЕ ЛОЖЬ'}]});
   assert.equal(create(source).allRestrictions().length,1);
 });
 
-test('templates are listed per role with their parameters left unsubstituted',()=>{
+test('templates are listed per role with their names and texts as written',()=>{
   const source=fixture();
-  source.roles[0].role.policyTemplates=[{name:'ПоВладельцу',parameters:['Поле'],
-    rule:{field:'$Поле',operator:'eq',parameter:'ТекущийПользователь'}}];
-  source.roles[1].role.policyTemplates=[{name:'ПоЦене',rule:{field:'price',operator:'in',values:[{kind:'number',data:'10'}]}}];
+  source.roles[0].role.restrictionTemplates=[{name:'ПоВладельцу(Поле)',condition:'ГДЕ #Параметр(1) = &ТекущийПользователь'}];
+  source.roles[1].role.restrictionTemplates=[{name:'ПоЦене',condition:'ГДЕ Цена В (10)'}];
   const rows=create(source).allTemplates();
-  assert.deepEqual(plain(rows.map(row=>[row.role,row.name,row.parameters,row.field,row.condition])),[
-    ['Кладовщик','ПоЦене','','Цена','В списке «10»'],
-    ['Продавец','ПоВладельцу','$Поле','$Поле','Равно параметр сеанса ТекущийПользователь'],
+  assert.deepEqual(plain(rows.map(row=>[row.role,row.name,row.condition])),[
+    ['Кладовщик','ПоЦене','ГДЕ Цена В (10)'],
+    ['Продавец','ПоВладельцу(Поле)','ГДЕ #Параметр(1) = &ТекущийПользователь'],
   ]);
   assert.deepEqual(plain(create(fixture()).allTemplates()),[]);
 });
@@ -152,7 +124,7 @@ test('the Studio page loads the overview and opens it from the roles group node'
 
 test('the overview offers all three tables of the roles group node',()=>{
   const view=script.slice(script.indexOf('function createRoleOverview('));
-  for(const label of ['Все роли','Ограничения доступа','Шаблоны политик'])assert.ok(view.includes(label),label);
+  for(const label of ['Все роли','Ограничения доступа','Шаблоны ограничений'])assert.ok(view.includes(label),label);
 });
 
 // Подписи обзора показываются на текущем языке Studio, как в каждом
@@ -162,7 +134,7 @@ test('object and field titles follow the Studio language',()=>{
   const source=fixture();
   source.languages=[{code:'ru'},{code:'en'}];
   source.schema.objects[0].title={ru:'Товары',en:'Goods'};
-  source.schema.objects[0].policyFields[1].title={ru:'Владелец',en:'Owner'};
+  source.schema.objects[0].restrictionFields[1].title={ru:'Владелец',en:'Owner'};
   context.StudioLanguage.set('en');
   try {
     const model=create(source);

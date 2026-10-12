@@ -166,16 +166,4 @@ func TestHalfSetAnalyticsAndSwitchedOffFieldsOfferNothing(t *testing.T) {
 	if len(table.Columns) != 0 {
 		t.Fatalf("the register lays out analytics: %+v", table.Columns)
 	}
-	for name, id := range map[string]uuid.UUID{"chart of accounts": chart.ID, "exchange plan": plan.ID, "task": task.ID, "chart of calculation types": types.ID} {
-		target, ok := catalog.permissionTarget(id)
-		if !ok {
-			t.Fatalf("%s: no permission target", name)
-		}
-		if _, has := target.fields["description"]; has {
-			t.Errorf("%s: a role may be granted the description of length 0", name)
-		}
-	}
-	if target, _ := catalog.permissionTarget(plan.ID); func() bool { _, has := target.fields["code"]; return has }() {
-		t.Error("exchange plan: a role may be granted the code of length 0")
-	}
 }

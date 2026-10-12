@@ -22,8 +22,8 @@ func savedRoleWithGrid(t *testing.T) (*Workspace, RoleSource, string) {
 	}
 	created.Role.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
 		Denied: []metadata.PermissionOperation{metadata.PermissionInteractiveDelete},
-		Policies: []metadata.AccessPolicy{{Operations: []metadata.PermissionOperation{metadata.PermissionRead},
-			Rule: &metadata.PolicyRule{Field: object.Attributes[0].ID.String(), Operator: metadata.PolicyEqual, Values: []metadata.Value{{Kind: metadata.NumberType, Data: "1"}}}}}}}
+		Restrictions: []metadata.RightRestriction{{Right: metadata.PermissionRead, Fields: []string{object.Attributes[0].ID.String()},
+			Condition: "ГДЕ Количество = 1"}}}}
 	saved, err := workspace.SaveRole(created.Path, created.Role, created.Revision)
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +48,7 @@ func TestStudioSavesARoleAsTwoFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	role, _ := catalog.Role("Кладовщик")
-	if len(role.Objects) != 1 || !slices.Equal(role.Objects[0].Denied, saved.Role.Objects[0].Denied) || len(role.Objects[0].Policies) != 1 {
+	if len(role.Objects) != 1 || !slices.Equal(role.Objects[0].Denied, saved.Role.Objects[0].Denied) || len(role.Objects[0].Restrictions) != 1 {
 		t.Fatalf("the loader read another role: %+v", role.Objects)
 	}
 }
@@ -144,7 +144,7 @@ func TestEditingARoleDescriptionAsTextKeepsItsRestrictions(t *testing.T) {
 		t.Fatalf("the text came back without its restriction or the edit:\n%s", written.Content)
 	}
 	again, err := workspace.ReadRole(saved.Path)
-	if err != nil || len(again.Role.Objects) != 1 || len(again.Role.Objects[0].Policies) != 1 {
+	if err != nil || len(again.Role.Objects) != 1 || len(again.Role.Objects[0].Restrictions) != 1 {
 		t.Fatalf("the role after a text edit: %+v, %v", again.Role.Objects, err)
 	}
 }

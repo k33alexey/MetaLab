@@ -10,7 +10,8 @@ const context=vm.createContext({structuredClone});
 vm.runInContext(readFileSync(new URL('../internal/studio/ui/studio-common.js',import.meta.url),'utf8'),context);
 vm.runInContext(script,context);
 const create=context.createRoleModel;
-function fixture(){return {role:{id:'role',name:'Продавец',title:{ru:'Продавец'}},schema:{rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'posting',title:'Проведение'}],objects:[{id:'base',root:true,rights:['administration','thin-client'],operations:[],fields:[],policyFields:[]},{id:'goods',rights:['read','insert','update','delete','view','edit','input-by-string'],operations:['read','insert','update','delete'],fields:[{key:'ref',group:'standard-attributes',operations:['view','edit']},{key:'name',group:'attributes',operations:['view','edit']},{key:'part',group:'table-parts',operations:['view','edit']},{key:'column',group:'attributes',parent:'part',operations:['view','edit']},{key:'print',group:'commands',operations:['view']}],policyFields:[{key:'ref'},{key:'name'},{key:'part'},{key:'column',parent:'part'}]},{id:'other',rights:['read','view'],operations:['read'],fields:[],policyFields:[]}],parts:{base:[],goods:['column','name','part','print','ref'],other:[]},forms:[{id:'form',commands:[{id:'command'}]}]}};}
+const plain=value=>JSON.parse(JSON.stringify(value));
+function fixture(){return {role:{id:'role',name:'Продавец',title:{ru:'Продавец'}},schema:{rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'posting',title:'Проведение'}],objects:[{id:'base',root:true,rights:['administration','thin-client'],operations:[],fields:[],restrictionFields:[]},{id:'goods',rights:['read','insert','update','delete','view','edit','input-by-string'],operations:['read','insert','update','delete'],fields:[{key:'ref',group:'standard-attributes',operations:['view','edit']},{key:'name',group:'attributes',operations:['view','edit']},{key:'part',group:'table-parts',operations:['view','edit']},{key:'column',group:'attributes',parent:'part',operations:['view','edit']},{key:'print',group:'commands',operations:['view']}],restrictionFields:[{key:'ref'},{key:'dataversion'},{key:'name'},{key:'part'},{key:'column',parent:'part'},{key:'part.linenumber',parent:'part'}]},{id:'other',rights:['read','view'],operations:['read'],fields:[],restrictionFields:[]}],parts:{base:[],goods:['column','name','part','print','ref'],other:[]},forms:[{id:'form',commands:[{id:'command'}]}]}};}
 
 test('Studio inline script remains valid JavaScript',()=>{
   const html=readFileSync(new URL('../internal/studio/ui/index.html',import.meta.url),'utf8');
@@ -100,77 +101,35 @@ test('bulk edits remain bounded for a large object',()=>{
   model.setGrantNewFieldsByDefault(false,true);assert.equal(model.value().objects[0].fields.length,9000);assert.equal(model.hasField('goods','field0','view'),false);
   assert.ok(Date.now()-started<2000,`took ${Date.now()-started} ms`);
 });
-test('access policies round-trip and survive cleaning even without operation grants',()=>{
-  const model=create(fixture());
-  model.addPolicy('goods',{operations:['read'],rule:{field:'name',operator:'in',values:[{kind:'string',data:'Основной'},{kind:'string',data:'Розничный'}]}});
-  const value=model.value();
-  assert.equal(value.objects.length,1);
-  assert.equal(value.objects[0].policies.length,1);
-  assert.equal(value.objects[0].policies[0].rule.operator,'in');
-  assert.equal(value.objects[0].policies[0].rule.values.length,2);
+// The editor does not show restrictions yet (2.293б); what it does not show
+// it keeps. Defect caught: a save from the editor dropping a role's
+// restrictions or templates, and a right cleared with its restriction lost.
+test('restrictions and templates survive editing as written',()=>{
+  const source=fixture();
+  source.role.restrictionTemplates=[{name:'ПоЗначениям(Таблица)',condition:'ГДЕ #Параметр(1)'}];
+  source.role.objects=[{object:'goods',operations:['read','update'],fields:[],restrictions:[
+    {right:'read',fields:['ref','dataversion']},{right:'read',condition:'#ПоЗначениям("Склад")'},{right:'update',condition:'ГДЕ ЛОЖЬ'}]}];
+  const model=create(source);
+  model.setObject('goods','read',false);
+  model.setObject('goods','insert',true);
+  const value=plain(model.value());
+  assert.deepEqual(value.restrictionTemplates,source.role.restrictionTemplates);
+  assert.deepEqual(value.objects[0].restrictions,source.role.objects[0].restrictions);
+  assert.deepEqual(value.objects[0].denied,['read'],'a cleared right is denied and keeps its restriction');
   assert.equal(model.hasUnavailable(),false);
 });
-test('named templates are reusable and removing one removes the restrictions using it',()=>{
-  const model=create(fixture());
-  assert.equal(model.addTemplate('ПоСкладу',{field:'name',operator:'eq',parameter:'ТекущийСклад'}),true);
-  assert.equal(model.addTemplate('ПоСкладу',{field:'name',operator:'eq',values:[]}),false,'duplicate name');
-  model.addPolicy('goods',{operations:['read'],template:'ПоСкладу'});
-  model.addPolicy('goods',{operations:['update'],template:'ПоСкладу'});
-  assert.equal(model.policies('goods').length,2);
-  model.removeTemplate('ПоСкладу');
-  assert.equal(model.templates().length,0);
-  assert.equal(model.policies('goods').length,0,'restrictions referencing a removed template must not survive');
-});
-test('policies on fields that no longer exist are reported and repaired',()=>{
+// Defect caught: a restriction naming a field the object lost kept on, so the
+// role could not be saved; or, emptied of fields, turned into a restriction
+// of every other field.
+test('a restriction loses a field the object no longer has, and goes when none is left',()=>{
   const source=fixture();
-  source.role.objects=[{object:'goods',operations:['read'],fields:[],policies:[
-    {operations:['read'],rule:{field:'name',operator:'eq',values:[{kind:'string',data:'x'}]}},
-    {operations:['read'],rule:{field:'gone',operator:'eq',values:[{kind:'string',data:'x'}]}}]}];
+  source.role.objects=[{object:'goods',operations:['read'],fields:[],restrictions:[
+    {right:'read',fields:['ref','gone']},{right:'read',fields:['lost'],condition:'ГДЕ ЛОЖЬ'},{right:'read',condition:'ГДЕ ИСТИНА'}]}];
   const model=create(source);
   assert.equal(model.hasUnavailable(),true);
   model.removeUnavailable();
   assert.equal(model.hasUnavailable(),false);
-  const policies=model.policies('goods');
-  assert.equal(policies.length,1);
-  assert.equal(policies[0].rule.field,'name');
-});
-test('a restriction naming a template that was never declared is repaired away',()=>{
-  const source=fixture();
-  source.role.objects=[{object:'goods',operations:['read'],fields:[],policies:[{operations:['read'],template:'Отсутствует'}]}];
-  const model=create(source);
-  assert.equal(model.hasUnavailable(),true);
-  model.removeUnavailable();
-  assert.equal(model.policies('goods').length,0);
-  assert.equal(model.value().objects.length,1,'the read grant itself stays');
-});
-test('a template with parameters is reusable and its arguments are checked on repair',()=>{
-  const model=create(fixture());
-  assert.equal(model.addTemplate('Своё',['Поле'],{field:'$Поле',operator:'eq',currentMlUser:true}),true);
-  model.addPolicy('goods',{operations:['read'],template:'Своё',arguments:['name']});
-  assert.equal(model.hasUnavailable(),false,'a template used with a real field must survive');
-  model.setPolicy('goods',0,{operations:['read'],template:'Своё',arguments:['gone']});
-  assert.equal(model.hasUnavailable(),true,'an argument naming a missing field must be reported');
-  model.removeUnavailable();
-  assert.equal(model.policies('goods').length,0);
-});
-test('a template invoked with the wrong number of fields is repaired away',()=>{
-  const model=create(fixture());
-  model.addTemplate('Своё',['Поле'],{field:'$Поле',operator:'eq',parameter:'П'});
-  model.addPolicy('goods',{operations:['read'],template:'Своё'});
-  assert.equal(model.hasUnavailable(),true,'a missing argument must be reported');
-  model.removeUnavailable();
-  assert.equal(model.policies('goods').length,0);
-});
-test('a subquery survives while the table it reads exists and is repaired away when it does not',()=>{
-  const model=create(fixture());
-  model.addPolicy('goods',{operations:['read'],rule:{field:'name',operator:'in',
-    subquery:{object:'goods',field:'ref',where:[{field:'name',operator:'eq',parameter:'ТекущийПользователь'}]}}});
-  assert.equal(model.hasUnavailable(),false);
-  model.setPolicy('goods',0,{operations:['read'],rule:{field:'name',operator:'in',
-    subquery:{object:'отсутствует',field:'ref',where:[]}}});
-  assert.equal(model.hasUnavailable(),true,'a subquery over a removed object must be reported');
-  model.removeUnavailable();
-  assert.equal(model.policies('goods').length,0);
+  assert.deepEqual(plain(model.value().objects[0].restrictions),[{right:'read',fields:['ref']},{right:'read',condition:'ГДЕ ИСТИНА'}]);
 });
 test('comment and default-grant flags round-trip through the model; a flag writes what it stood for',()=>{
   const model=create(fixture());

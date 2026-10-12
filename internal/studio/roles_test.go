@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -236,7 +237,13 @@ func TestRoleKeepsItsThreeFlags(t *testing.T) {
 	}
 }
 
-func TestRoleEditorSavesAccessPolicies(t *testing.T) {
+// A role's restrictions and templates are text, as the prototype keeps them,
+// and they are saved and loaded as written. Defects caught: a restriction or
+// a template lost on the way, and one the prototype cannot have accepted -
+// a field of another object, a right the role does not write, a second
+// restriction where only reading takes several, fields on a right other than
+// reading, a template under a name that is not one or under one taken.
+func TestRoleEditorSavesRestrictions(t *testing.T) {
 	t.Parallel()
 	workspace, object := roleWorkspace(t)
 	created, err := workspace.CreateRole("Кладовщик")
@@ -244,10 +251,16 @@ func TestRoleEditorSavesAccessPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 	attribute := object.Attributes[0].ID.String()
-	created.Role.PolicyTemplates = []metadata.PolicyTemplate{{Name: "ПоЦене", Rule: metadata.PolicyRule{Field: attribute,
-		Operator: metadata.PolicyIn, Values: []metadata.Value{{Kind: metadata.NumberType, Data: "10"}, {Kind: metadata.NumberType, Data: "20"}}}}}
-	created.Role.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
-		Policies: []metadata.AccessPolicy{{Operations: []metadata.PermissionOperation{metadata.PermissionRead}, Template: "ПоЦене"}}}}
+	templates := []metadata.RestrictionTemplate{{Name: "ПоЦене(Поле)", Condition: "ГДЕ #Параметр(1) В (10, 20)"}}
+	restricted := func() []metadata.ObjectPermission {
+		return []metadata.ObjectPermission{{Object: object.ID,
+			Operations: []metadata.PermissionOperation{metadata.PermissionRead, metadata.PermissionUpdate},
+			Restrictions: []metadata.RightRestriction{
+				{Right: metadata.PermissionRead, Fields: []string{"ref", "dataversion"}},
+				{Right: metadata.PermissionRead, Condition: `#ПоЦене("Цена")`},
+				{Right: metadata.PermissionUpdate, Condition: "ГДЕ Цена > 0"}}}}
+	}
+	created.Role.RestrictionTemplates, created.Role.Objects = templates, restricted()
 	saved, err := workspace.SaveRole(created.Path, created.Role, created.Revision)
 	if err != nil {
 		t.Fatal(err)
@@ -256,28 +269,37 @@ func TestRoleEditorSavesAccessPolicies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(again.Role.PolicyTemplates) != 1 || again.Role.PolicyTemplates[0].Rule.Operator != metadata.PolicyIn {
-		t.Fatalf("templates did not round-trip: %+v", again.Role.PolicyTemplates)
-	}
-	if policies := again.Role.Objects[0].Policies; len(policies) != 1 || policies[0].Template != "ПоЦене" {
-		t.Fatalf("policies did not round-trip: %+v", policies)
+	if !reflect.DeepEqual(again.Role.RestrictionTemplates, templates) || !reflect.DeepEqual(again.Role.Objects[0].Restrictions, restricted()[0].Restrictions) {
+		t.Fatalf("restrictions did not round-trip: %+v %+v", again.Role.RestrictionTemplates, again.Role.Objects)
 	}
 	if _, err := metadata.Load(workspace.root); err != nil {
 		t.Fatalf("saved role does not load as a project: %v", err)
 	}
 
 	broken := map[string]func(*metadata.RoleDefinition){
-		"field of another object": func(r *metadata.RoleDefinition) { r.PolicyTemplates[0].Rule.Field = uuid.MustNew().String() },
-		"template never declared": func(r *metadata.RoleDefinition) { r.Objects[0].Policies[0].Template = "Отсутствует" },
-		"unknown session parameter": func(r *metadata.RoleDefinition) {
-			r.PolicyTemplates[0].Rule = metadata.PolicyRule{Field: attribute, Operator: metadata.PolicyEqual, Parameter: "НетТакого"}
+		"field of another object": func(r *metadata.RoleDefinition) { r.Objects[0].Restrictions[0].Fields[0] = uuid.MustNew().String() },
+		"right not written":       func(r *metadata.RoleDefinition) { r.Objects[0].Restrictions[2].Right = metadata.PermissionDelete },
+		"right not restricted": func(r *metadata.RoleDefinition) {
+			r.Objects[0].Operations = append(r.Objects[0].Operations, metadata.PermissionView)
+			r.Objects[0].Restrictions[2].Right = metadata.PermissionView
+		},
+		"second restriction of a right other than reading": func(r *metadata.RoleDefinition) {
+			r.Objects[0].Restrictions = append(r.Objects[0].Restrictions, metadata.RightRestriction{Right: metadata.PermissionUpdate, Condition: "ГДЕ ЛОЖЬ"})
+		},
+		"fields on a right other than reading": func(r *metadata.RoleDefinition) { r.Objects[0].Restrictions[2].Fields = []string{attribute} },
+		"two restrictions on the other fields": func(r *metadata.RoleDefinition) { r.Objects[0].Restrictions[0].Fields = nil },
+		"a field restricted twice": func(r *metadata.RoleDefinition) {
+			r.Objects[0].Restrictions[1].Fields = []string{"ref"}
+		},
+		"template name that is not one": func(r *metadata.RoleDefinition) { r.RestrictionTemplates[0].Name = "По Цене(Поле)" },
+		"template name taken": func(r *metadata.RoleDefinition) {
+			r.RestrictionTemplates = append(r.RestrictionTemplates, metadata.RestrictionTemplate{Name: "поцене", Condition: "ГДЕ ИСТИНА"})
 		},
 	}
 	for name, mutate := range broken {
 		invalid := again.Role
-		invalid.PolicyTemplates = append([]metadata.PolicyTemplate(nil), again.Role.PolicyTemplates...)
-		invalid.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
-			Policies: []metadata.AccessPolicy{{Operations: []metadata.PermissionOperation{metadata.PermissionRead}, Template: "ПоЦене"}}}}
+		invalid.RestrictionTemplates = slices.Clone(templates)
+		invalid.Objects = restricted()
 		mutate(&invalid)
 		if _, err := workspace.SaveRole(again.Path, invalid, again.Revision); err == nil {
 			t.Fatalf("accepted a role with %s", name)
@@ -400,9 +422,7 @@ func TestReadAllRolesReturnsEveryRoleOrderedAndWithSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	seller.Role.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
-		Policies: []metadata.AccessPolicy{{Operations: []metadata.PermissionOperation{metadata.PermissionRead},
-			Rule: &metadata.PolicyRule{Field: object.Attributes[0].ID.String(), Operator: metadata.PolicyEqual,
-				Values: []metadata.Value{{Kind: metadata.NumberType, Data: "10"}}}}}}}
+		Restrictions: []metadata.RightRestriction{{Right: metadata.PermissionRead, Condition: "ГДЕ Цена = 10"}}}}
 	if _, err := workspace.SaveRole(seller.Path, seller.Role, seller.Revision); err != nil {
 		t.Fatal(err)
 	}
@@ -424,7 +444,7 @@ func TestReadAllRolesReturnsEveryRoleOrderedAndWithSchema(t *testing.T) {
 		if entry.Role.Name != "Продавец" {
 			continue
 		}
-		if policies := entry.Role.Objects[0].Policies; len(policies) != 1 || policies[0].Rule == nil {
+		if restrictions := entry.Role.Objects[0].Restrictions; len(restrictions) != 1 || restrictions[0].Condition != "ГДЕ Цена = 10" {
 			t.Fatalf("restriction lost on the way to the screen: %+v", entry.Role.Objects)
 		}
 	}
@@ -499,80 +519,5 @@ func TestRoleOverviewUI(t *testing.T) {
 	output, err := exec.CommandContext(ctx, node, "--test", "../../scripts/role-overview.test.mjs").CombinedOutput()
 	if err != nil {
 		t.Fatalf("role overview tests: %v\n%s", err, output)
-	}
-}
-
-// "Only the rows of the current user" is what most restrictions are written
-// for, and the ML user is offered for it as an operand of its own. Defects
-// caught: the schema inventing a ТекущийПользователь the project never
-// declared, and a rule on the ML user that the editor cannot save or that
-// loses its operand on the way back.
-func TestRoleEditorStoresARestrictionOnTheMLUser(t *testing.T) {
-	t.Parallel()
-	workspace, object := roleWorkspace(t)
-	created, err := workspace.CreateRole("Продавец")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if slices.Contains(created.Schema.SessionParameters, "ТекущийПользователь") {
-		t.Fatalf("the schema offers a session parameter the project did not declare: %v", created.Schema.SessionParameters)
-	}
-	created.Role.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
-		Policies: []metadata.AccessPolicy{{Operations: []metadata.PermissionOperation{metadata.PermissionRead},
-			Rule: &metadata.PolicyRule{Field: object.Attributes[0].ID.String(), Operator: metadata.PolicyEqual, CurrentMLUser: true}}}}}
-	if _, err := workspace.SaveRole(created.Path, created.Role, created.Revision); err != nil {
-		t.Fatalf("a restriction on the ML user was refused: %v", err)
-	}
-	overview, err := workspace.ReadAllRoles()
-	if err != nil {
-		t.Fatal(err)
-	}
-	stored := false
-	for _, role := range overview.Roles {
-		for _, permission := range role.Role.Objects {
-			for _, policy := range permission.Policies {
-				stored = stored || (policy.Rule != nil && policy.Rule.CurrentMLUser && policy.Rule.Parameter == "")
-			}
-		}
-	}
-	if !stored {
-		t.Fatalf("the ML user operand did not survive a save: %+v", overview.Roles)
-	}
-	// An undeclared ТекущийПользователь is refused like any unknown name.
-	created.Role.Objects[0].Policies[0].Rule = &metadata.PolicyRule{Field: object.Attributes[0].ID.String(), Operator: metadata.PolicyEqual, Parameter: "ТекущийПользователь"}
-	if _, err := workspace.SaveRole(created.Path, created.Role, created.Revision); err == nil {
-		t.Fatal("an undeclared ТекущийПользователь was accepted")
-	}
-}
-
-// A template with parameters is the reusable form of a restriction: one rule,
-// each object naming its own column. Validation must therefore check the rule
-// AFTER the restriction supplied its fields — checking "$Поле" against the
-// object rejects every parameterized template there can be.
-func TestParameterizedPolicyTemplateSavesAndLoads(t *testing.T) {
-	t.Parallel()
-	workspace, object := roleWorkspace(t)
-	created, err := workspace.CreateRole("Продавец")
-	if err != nil {
-		t.Fatal(err)
-	}
-	created.Role.PolicyTemplates = []metadata.PolicyTemplate{{Name: "ПоПолю", Parameters: []string{"Поле"},
-		Rule: metadata.PolicyRule{Field: "$Поле", Operator: metadata.PolicyEqual, CurrentMLUser: true}}}
-	created.Role.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
-		Policies: []metadata.AccessPolicy{{Operations: []metadata.PermissionOperation{metadata.PermissionRead},
-			Template: "ПоПолю", Arguments: []string{object.Attributes[0].ID.String()}}}}}
-	saved, err := workspace.SaveRole(created.Path, created.Role, created.Revision)
-	if err != nil {
-		t.Fatalf("a parameterized template was refused: %v", err)
-	}
-	if _, err := metadata.Load(workspace.root); err != nil {
-		t.Fatalf("saved role does not load as a project: %v", err)
-	}
-	invalid := saved.Role
-	invalid.Objects = []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
-		Policies: []metadata.AccessPolicy{{Operations: []metadata.PermissionOperation{metadata.PermissionRead},
-			Template: "ПоПолю", Arguments: []string{uuid.MustNew().String()}}}}}
-	if _, err := workspace.SaveRole(saved.Path, invalid, saved.Revision); err == nil {
-		t.Fatal("a template argument naming a field of no object was accepted")
 	}
 }

@@ -7,77 +7,20 @@
 function createRoleOverviewModel(source) {
   const entries = source.roles || [];
   const objects = new Map((source.schema.objects || []).map(item => [item.id, item]));
-  const operators = {eq:'Равно',ne:'Не равно',in:'В списке','not-in':'Не в списке'};
   function localized(item) { return localizedTitle(item, source.defaultLanguage, source.languages); }
   function objectTitle(id) {
     const object = objects.get(id);
     return object ? localized(object) : 'удалённый объект';
   }
-  // Поле шаблона не привязано к объекту: шаблон живёт в роли и применяется к
-  // разным объектам, поэтому его имя ищется по всей конфигурации.
-  let shared = null;
-  function anyFieldTitle(key) {
-    if (!shared) {
-      shared = new Map();
-      for (const object of objects.values()) for (const field of object.policyFields || []) if (!shared.has(field.key)) shared.set(field.key, localized(field));
-    }
-    return shared.get(key) || key;
+  // Ограничение без полей — ограничение на «Прочие поля», как его называет
+  // редактор роли прототипа.
+  function restrictedFields(objectID, restriction) {
+    if (!restriction.fields?.length) return 'Прочие поля';
+    const own = objects.get(objectID)?.restrictionFields || [];
+    return restriction.fields.map(key => { const field = own.find(item => item.key === key); return field ? localized(field) : key; }).join(', ');
   }
-  function fieldTitle(objectID, key) {
-    if (!objectID) return anyFieldTitle(key);
-    const field = objects.get(objectID)?.policyFields?.find(item => item.key === key);
-    return field ? localized(field) : key;
-  }
-  // Подстановка параметров шаблона повторяет серверную: поле правила и поля
-  // условий подзапроса, записанные как «$Имя», берутся из аргументов
-  // ограничения по позиции параметра.
-  function substitute(rule, bound) {
-    const resolve = field => {
-      if (!field.startsWith('$')) return field;
-      const argument = bound.get(field.slice(1));
-      return argument || null;
-    };
-    const field = resolve(rule.field);
-    if (!field) return null;
-    const result = {...rule, field};
-    if (rule.subquery) {
-      const where = [];
-      for (const condition of rule.subquery.where || []) {
-        const inner = resolve(condition.field);
-        if (!inner) return null;
-        where.push({...condition, field: inner});
-      }
-      result.subquery = {...rule.subquery, where};
-    }
-    return result;
-  }
-  function operand(rule, objectID) {
-    if (rule.parameter) return `параметр сеанса ${rule.parameter}`;
-    if (rule.subquery) {
-      const inner = rule.subquery.object;
-      const where = (rule.subquery.where || []).map(condition =>
-        `${fieldTitle(inner, condition.field)} ${operators[condition.operator] || condition.operator} ${operand(condition, inner)}`);
-      const head = `«${fieldTitle(inner, rule.subquery.field)}» из «${objectTitle(inner)}»`;
-      return where.length ? `${head}, где ${where.join(' и ')}` : head;
-    }
-    const values = (rule.values || []).map(item => `«${item.data}»`);
-    return values.length ? values.join(', ') : 'значение не задано';
-  }
-  // Ограничение показывается только если его правило действительно
-  // разрешается: нераскрытый шаблон — это не «нет ограничения», а
-  // неработающая роль, и окно должно назвать это прямо.
-  function describe(role, objectID, policy) {
-    let rule = policy.rule;
-    if (policy.template) {
-      const template = (role.policyTemplates || []).find(item => item.name === policy.template);
-      if (!template) return {error: `шаблон «${policy.template}» не объявлен ролью`};
-      const parameters = template.parameters || [], supplied = policy.arguments || [];
-      if (parameters.length !== supplied.length) return {error: `шаблон «${policy.template}» ожидает полей: ${parameters.length}`};
-      rule = substitute(template.rule, new Map(parameters.map((name, index) => [name, supplied[index]])));
-      if (!rule) return {error: `шаблон «${policy.template}» ссылается на неизвестный параметр`};
-    }
-    if (!rule) return {error: 'правило не задано'};
-    return {field: fieldTitle(objectID, rule.field), condition: `${operators[rule.operator] || rule.operator} ${operand(rule, objectID)}`};
+  function describe(objectID, restriction) {
+    return {operation: restriction.right, field: restrictedFields(objectID, restriction), condition: restriction.condition || ''};
   }
   function grantOf(entry, objectID) { return (entry.role.objects || []).find(item => item.object === objectID); }
   /* Поля объекта — части, на которые даются Просмотр и Редактирование;
@@ -120,31 +63,22 @@ function createRoleOverviewModel(source) {
       for (const entry of entries) {
         for (const grant of entry.role.objects || []) {
           if (!objects.has(grant.object)) continue;
-          for (const policy of grant.policies || []) {
-            const described = describe(entry.role, grant.object, policy);
-            for (const operation of policy.operations || []) {
-              rows.push({path: entry.path, objectID: grant.object, object: objectTitle(grant.object),
-                role: localized(entry.role), operation, fields: fieldSummary(grant, grant.object),
-                origin: policy.template ? `шаблон ${policy.template}` : 'своё правило', ...described});
-            }
+          for (const restriction of grant.restrictions || []) {
+            rows.push({path: entry.path, objectID: grant.object, object: objectTitle(grant.object),
+              role: localized(entry.role), fields: fieldSummary(grant, grant.object), ...describe(grant.object, restriction)});
           }
         }
       }
       rows.sort((left, right) => left.object.localeCompare(right.object) || left.role.localeCompare(right.role));
       return rows;
     },
-    // Шаблон показывается как он написан — с «$Имя» на месте параметра:
-    // именно незаполненность и делает его переиспользуемым, а конкретное
-    // поле подставляет уже ограничение, и оно видно в таблице выше.
+    // Шаблон показывается как он написан: имя с параметрами в скобках и
+    // текст, в который ограничение подставляет значения параметров.
     allTemplates() {
       const rows = [];
       for (const entry of entries) {
-        for (const template of entry.role.policyTemplates || []) {
-          const rule = template.rule;
-          rows.push({path: entry.path, role: localized(entry.role), name: template.name,
-            parameters: (template.parameters || []).map(name => '$' + name).join(', '),
-            field: fieldTitle(null, rule.field),
-            condition: `${operators[rule.operator] || rule.operator} ${operand(rule, null)}`});
+        for (const template of entry.role.restrictionTemplates || []) {
+          rows.push({path: entry.path, role: localized(entry.role), name: template.name, condition: template.condition || ''});
         }
       }
       rows.sort((left, right) => left.role.localeCompare(right.role) || left.name.localeCompare(right.name));
@@ -153,12 +87,8 @@ function createRoleOverviewModel(source) {
     restrictions(objectID) {
       const rows = [];
       for (const entry of entries) {
-        for (const policy of grantOf(entry, objectID)?.policies || []) {
-          const described = describe(entry.role, objectID, policy);
-          for (const operation of policy.operations || []) {
-            rows.push({path: entry.path, role: localized(entry.role), operation,
-              origin: policy.template ? `шаблон ${policy.template}` : 'своё правило', ...described});
-          }
+        for (const restriction of grantOf(entry, objectID)?.restrictions || []) {
+          rows.push({path: entry.path, role: localized(entry.role), ...describe(objectID, restriction)});
         }
       }
       return rows;
@@ -171,8 +101,7 @@ function createRoleOverview(host, openRole) {
   /* Подписи прав и видов — с сервера, из тех же перечней, что у редактора роли. */
   const caption = key => source.schema.rights?.find(item => item.key === key)?.title || key;
   const kindTitle = kind => source.kindTitles?.[kind] || kind;
-  /* Подписи показываются на текущем языке Studio и меняются вместе с ним;
-     модель запоминает подписи полей, поэтому строится заново. */
+  /* Подписи показываются на текущем языке Studio и меняются вместе с ним. */
   StudioLanguage.onChange(() => { if (!source) return; model = createRoleOverviewModel(source); renderBody(); });
   function renderTree(query = '') {
     tree.replaceChildren();
@@ -226,9 +155,9 @@ function createRoleOverview(host, openRole) {
     block.append(node('h4', 'РЛС'));
     const rows = model.restrictions(object.id);
     if (!rows.length) { block.append(node('p', 'Ограничений на строки этого объекта нет ни в одной роли.', 'muted')); return block; }
-    block.append(node('p', 'Строки, не прошедшие правило, не видны и не изменяются. Ограничения разных ролей объединяются по ИЛИ: роль без ограничения открывает объект целиком.', 'muted'));
+    block.append(node('p', 'Условие на языке запросов. Ограничения разных ролей объединяются по ИЛИ: роль без ограничения открывает объект целиком. Пока условия не исполняются, право с ограничением не даёт роли ни одной записи.', 'muted'));
     const table = node('table'), head = node('tr');
-    head.append(node('th', 'Роль'), node('th', 'Право'), node('th', 'Поле'), node('th', 'Условие'), node('th', 'Источник'));
+    head.append(node('th', 'Роль'), node('th', 'Право'), node('th', 'Поля'), node('th', 'Условие'));
     table.append(head);
     for (const row of rows) {
       const line = node('tr');
@@ -237,11 +166,7 @@ function createRoleOverview(host, openRole) {
       link.addEventListener('click', () => openRole(row.path, object.id));
       name.append(link); line.append(name);
       line.append(node('td', caption(row.operation)));
-      if (row.error) {
-        const cell = node('td', row.error, 'overview-broken');
-        cell.colSpan = 2; line.append(cell);
-      } else line.append(node('td', row.field), node('td', row.condition, 'overview-condition'));
-      line.append(node('td', row.origin));
+      line.append(node('td', row.field), node('td', row.condition, 'overview-condition'));
       table.append(line);
     }
     block.append(table);
@@ -264,20 +189,18 @@ function createRoleOverview(host, openRole) {
   // отдельных окон здесь нет и вкладка дешевле лишнего представления.
   function renderAllRestrictions() {
     const block = node('section', undefined, 'overview-block');
-    const rows = model.allRestrictions().filter(row => matches(row, [row.object, row.role, row.field, row.condition, row.origin]));
+    const rows = model.allRestrictions().filter(row => matches(row, [row.object, row.role, row.field, row.condition]));
     if (!rows.length) { block.append(node('p', model.allRestrictions().length ? 'Ничего не найдено.' : 'В проекте нет ни одного ограничения доступа.', 'muted')); return block; }
-    block.append(node('p', 'Каждая строка — одно ограничение одной роли на одно право. Поля показывают, сколько реквизитов объекта эта роль вообще читает: ограничение сужает строки, права на реквизиты — столбцы.', 'muted'));
+    block.append(node('p', 'Каждая строка — одно ограничение одной роли на одно право. «Реквизиты» — сколько реквизитов объекта эта роль вообще читает: ограничение сужает записи, права на реквизиты — столбцы.', 'muted'));
     const table = node('table'), head = node('tr');
-    head.append(node('th', 'Объект'), node('th', 'Роль'), node('th', 'Право'), node('th', 'Поля'), node('th', 'Правило доступа'), node('th', 'Источник'));
+    head.append(node('th', 'Объект'), node('th', 'Роль'), node('th', 'Право'), node('th', 'Реквизиты'), node('th', 'Поля'), node('th', 'Условие'));
     table.append(head);
     for (const row of rows) {
       const line = node('tr');
       line.append(node('td', row.object));
       line.append(roleLink(row.role, row.path, row.objectID));
       line.append(node('td', caption(row.operation)), node('td', row.fields));
-      if (row.error) line.append(node('td', row.error, 'overview-broken'));
-      else line.append(node('td', `${row.field} ${row.condition}`, 'overview-condition'));
-      line.append(node('td', row.origin));
+      line.append(node('td', row.field), node('td', row.condition, 'overview-condition'));
       table.append(line);
     }
     block.append(table);
@@ -286,17 +209,16 @@ function createRoleOverview(host, openRole) {
   function renderAllTemplates() {
     const block = node('section', undefined, 'overview-block');
     const all = model.allTemplates();
-    const rows = all.filter(row => matches(row, [row.role, row.name, row.parameters, row.field, row.condition]));
-    if (!rows.length) { block.append(node('p', all.length ? 'Ничего не найдено.' : 'Ни одна роль не объявила шаблонов политик.', 'muted')); return block; }
-    block.append(node('p', 'Шаблон принадлежит роли и переиспользуется её ограничениями. Параметр «$Имя» стоит там, где ограничение подставит поле своего объекта.', 'muted'));
+    const rows = all.filter(row => matches(row, [row.role, row.name, row.condition]));
+    if (!rows.length) { block.append(node('p', all.length ? 'Ничего не найдено.' : 'Ни одна роль не объявила шаблонов ограничений.', 'muted')); return block; }
+    block.append(node('p', 'Шаблон принадлежит роли: условие её ограничения вызывает его как #Имя("значение", ...).', 'muted'));
     const table = node('table'), head = node('tr');
-    head.append(node('th', 'Роль'), node('th', 'Наименование'), node('th', 'Параметры'), node('th', 'Правило'));
+    head.append(node('th', 'Роль'), node('th', 'Имя'), node('th', 'Текст'));
     table.append(head);
     for (const row of rows) {
       const line = node('tr');
       line.append(roleLink(row.role, row.path));
-      line.append(node('td', row.name), node('td', row.parameters || '—'));
-      line.append(node('td', `${row.field} ${row.condition}`, 'overview-condition'));
+      line.append(node('td', row.name), node('td', row.condition, 'overview-condition'));
       table.append(line);
     }
     block.append(table);
@@ -341,7 +263,7 @@ function createRoleOverview(host, openRole) {
       host.hidden = false; host.replaceChildren();
       const header = node('div', undefined, 'overview-header');
       const strip = node('div', undefined, 'overview-tabs');
-      for (const [key, text] of [['roles', 'Все роли'], ['restrictions', 'Ограничения доступа'], ['templates', 'Шаблоны политик']]) {
+      for (const [key, text] of [['roles', 'Все роли'], ['restrictions', 'Ограничения доступа'], ['templates', 'Шаблоны ограничений']]) {
         const button = node('button', text, 'overview-tab');
         button.type = 'button';
         if (tab === key) button.classList.add('selected');

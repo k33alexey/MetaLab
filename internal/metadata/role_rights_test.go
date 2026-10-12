@@ -22,9 +22,12 @@ func fullRole() RoleDefinition {
 				{Field: "extdimensiontypes.turnoversonly", Operations: []PermissionOperation{PermissionView}, Denied: []PermissionOperation{PermissionEdit}},
 				{Field: uuid.MustNew().String(), Denied: []PermissionOperation{PermissionView}}}},
 			{Object: uuid.MustNew(), Denied: []PermissionOperation{PermissionRead, PermissionInteractiveDeleteMarkedPredefinedData},
-				Policies: []AccessPolicy{{Operations: []PermissionOperation{PermissionRead}, Rule: &PolicyRule{Field: "ref", Operator: PolicyEqual, Parameter: "Текущий"}}}},
+				Restrictions: []RightRestriction{
+					{Right: PermissionRead, Fields: []string{"ref", "dataversion"}},
+					{Right: PermissionRead, Condition: "#ПоЗначениям(\"Документ\", \"Чтение\")\nИЛИ ЛОЖЬ"}}},
 		},
-		Commands: []CommandPermission{{Form: uuid.MustNew(), Command: uuid.MustNew()}},
+		RestrictionTemplates: []RestrictionTemplate{{Name: "ПоЗначениям(Таблица, Право)", Condition: "ГДЕ #Параметр(1) = #Параметр(2)"}},
+		Commands:             []CommandPermission{{Form: uuid.MustNew(), Command: uuid.MustNew()}},
 	}
 }
 
@@ -46,7 +49,7 @@ func TestRoleSurvivesItsTwoFiles(t *testing.T) {
 	if bytes.Contains(description, []byte("operations: [read")) || !bytes.Contains(description, []byte("restrictions:")) {
 		t.Fatalf("the description holds the grid or misses the restriction:\n%s", description)
 	}
-	if bytes.Contains(grid, []byte("policies")) || !bytes.Contains(grid, []byte(`"denied"`)) {
+	if bytes.Contains(grid, []byte("restrictions")) || bytes.Contains(grid, []byte("condition")) || !bytes.Contains(grid, []byte(`"denied"`)) {
 		t.Fatalf("the grid holds a restriction or misses a denial:\n%s", grid)
 	}
 	decoded, err := DecodeRole("role.yaml", bytes.NewReader(description), bytes.NewReader(grid), metadataConfiguration())
@@ -65,7 +68,7 @@ func TestRoleSurvivesItsTwoFiles(t *testing.T) {
 	if !slices.Equal(decoded.Objects[0].Operations, RoleRights()) || len(RoleRights()) != 69 {
 		t.Fatalf("rights carried: %d of %d", len(decoded.Objects[0].Operations), len(RoleRights()))
 	}
-	if !decoded.IndependentChildRights || len(decoded.Objects[1].Policies) != 1 || len(decoded.Commands) != 1 {
+	if !decoded.IndependentChildRights || len(decoded.Objects[1].Restrictions) != 2 || len(decoded.RestrictionTemplates) != 1 || len(decoded.Commands) != 1 {
 		t.Fatalf("flags, restriction or command lost: %+v", decoded)
 	}
 	// One value a line: a right changed is a line of difference.
@@ -94,7 +97,7 @@ func TestRoleFilesThatDisagreeAreRefused(t *testing.T) {
 	restricted := role.Objects[1].Object.String()
 	for name, broken := range map[string][2]string{
 		"restriction of an object the grid does not name": {strings.Replace(string(description), restricted, uuid.MustNew().String(), 1), string(grid)},
-		"two restrictions for one object":                 {string(description) + "  - object: " + restricted + "\n    policies:\n      - operations: [read]\n        rule: {field: ref, operator: eq, parameter: Текущий}\n", string(grid)},
+		"two restrictions for one object":                 {strings.Replace(string(description), "restrictions:\n", "restrictions:\n  - object: "+restricted+"\n    rights:\n      - right: read\n        condition: ГДЕ ЛОЖЬ\n", 1), string(grid)},
 		"restriction without a grid":                      {string(description), ""},
 		"unknown field in the grid":                       {string(description), strings.Replace(string(grid), `"objects"`, `"full_access": true, "objects"`, 1)},
 		"two values in the grid":                          {string(description), string(grid) + "{}"},
