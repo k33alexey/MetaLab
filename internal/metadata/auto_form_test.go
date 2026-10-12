@@ -31,7 +31,7 @@ func TestAutomaticDocumentFormsAndCommands(t *testing.T) {
 	if !form.Generated || form.Title != "Продаж" || len(form.Fields) != 4 || len(form.TableParts) != 1 {
 		t.Fatalf("form=%+v", form)
 	}
-	for _, command := range []string{"Save", "SaveAndClose", "Post", "UndoPosting", "Movements", "SetDeletionMark", "Close"} {
+	for _, command := range []string{"Save", "SaveAndClose", "Post", "UndoPosting", "RegisterRecords", "SetDeletionMark", "Close"} {
 		if !hasFormCommand(form.Commands, command) {
 			t.Fatalf("automatic form has no %s command: %+v", command, form.Commands)
 		}

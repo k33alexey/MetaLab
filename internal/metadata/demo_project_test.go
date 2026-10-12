@@ -20,7 +20,7 @@ func TestSalesAndWarehouseDemoProject(t *testing.T) {
 	}
 	for _, document := range catalog.Documents {
 		form, err := catalog.DocumentForm(document.Name, ObjectForm, "uk")
-		if err != nil || !form.Generated || !hasFormCommand(form.Commands, "Post") || !hasFormCommand(form.Commands, "Movements") {
+		if err != nil || !form.Generated || !hasFormCommand(form.Commands, "Post") || !hasFormCommand(form.Commands, "RegisterRecords") {
 			t.Fatalf("document %s form=%+v error=%v", document.Name, form, err)
 		}
 		source, err := os.ReadFile(filepath.Join(root, "metadata", "documents", document.Name, project.ObjectModuleFile))

@@ -21,8 +21,8 @@ import (
 // synthetic single-module CompileDocumentObjectModule helper that
 // TestDocumentPostingIsAtomicAndReplacesMovementsIntegration uses. This is
 // the seam where the RuntimeSnapshot module-naming scheme
-// (moduleNameDescriptors, "МодульОбъектаДокумента."+name) and the event
-// bridge module-naming scheme (DocumentObjectModuleName) must agree - a
+// (ModuleNamer, "МодульОбъектаДокумента."+name) and the event
+// bridge module-naming scheme (ObjectModuleName) must agree - a
 // mismatch here previously made Провести silently create zero movements.
 func TestWireBSLEventsMatchesRuntimeSnapshotModuleNamingIntegration(t *testing.T) {
 	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
@@ -97,18 +97,18 @@ func TestWireBSLEventsMatchesRuntimeSnapshotModuleNamingIntegration(t *testing.T
 		t.Fatal(err)
 	}
 
-	// Name comes from moduleNameDescriptors - the actual production naming
-	// scheme LoadProjectModules uses - not from DocumentObjectModuleName
+	// Name comes from ModuleNamer - the actual production naming
+	// scheme LoadProjectModules uses - not from ObjectModuleName
 	// itself, so this test genuinely proves the two schemes agree instead of
 	// trivially matching a function against itself.
 	objectModulePath, err := project.ObjectModulePath(string(DocumentKind), document.Name, project.ObjectModuleFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptor := moduleNameDescriptors(catalog)[objectModulePath]
+	descriptor := catalog.ModuleNamer().Identify(objectModulePath)
 	snapshot, err := RuntimeSnapshot{Format: CurrentFormat}.WithModules([]RuntimeModule{{
-		Name: descriptor.name, Filename: "receipt-object.bsl",
-		PredefinedVariables: descriptor.predefined,
+		Name: descriptor.Name, Filename: "receipt-object.bsl",
+		PredefinedVariables: descriptor.Predefined,
 		Source: `&НаСервере
 Процедура ОбработкаПроведения(Отказ, РежимПроведения)
     Набор = РегистрыНакопления.ОстаткиТоваров.СоздатьНаборЗаписей();

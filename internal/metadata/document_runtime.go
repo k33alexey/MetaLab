@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -166,8 +167,9 @@ func (runtime *Runtime) GetDocumentReference(_ context.Context, name string, val
 }
 
 func (runtime *Runtime) getDocumentProperty(ctx context.Context, object *documentObject, name string) (bytecode.Value, error) {
-	if propertyName(name, "Движения", "Movements") {
-		// Movements is a handle to register record sets, not a document field;
+	if kinds.RegisterRecords.Is(name) {
+		// Register records are a handle to register record sets, not a
+		// document field (help: ДокументОбъект.Движения, КоллекцияДвижений);
 		// the referenced registers enforce their own permissions when used.
 		object.mu.Lock()
 		defer object.mu.Unlock()
@@ -273,7 +275,7 @@ func (runtime *Runtime) setDocumentProperty(ctx context.Context, object *documen
 		return nil
 	case propertyName(name, "Ссылка", "Ref"), propertyName(name, "Проведен", "Posted"),
 		propertyName(name, "Проведён", "Posted"), propertyName(name, "ВерсияДанных", "DataVersion"),
-		propertyName(name, "ПометкаУдаления", "DeletionMark"), propertyName(name, "Движения", "Movements"):
+		propertyName(name, "ПометкаУдаления", "DeletionMark"), kinds.RegisterRecords.Is(name):
 		return fmt.Errorf("document property %s is read-only", name)
 	}
 	attribute, ok := findCatalogAttribute(object.definition.Attributes, name)

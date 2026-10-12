@@ -6,25 +6,13 @@ import (
 	"sync"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
-	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 	"github.com/k33alexey/MetaLab/internal/bsl/vm"
+	"github.com/k33alexey/MetaLab/internal/kinds"
 )
 
-// DocumentObjectModuleName returns the canonical module name used both when
-// compiling a standalone document object module and when locating that same
-// module inside a whole-project program compiled via
-// RuntimeSnapshot.CompileModules - see moduleNameDescriptors, which must stay
-// in sync with this scheme.
-func DocumentObjectModuleName(definition DocumentDefinition) string {
-	return "МодульОбъектаДокумента." + definition.Name
-}
-
 func CompileDocumentObjectModule(definition DocumentDefinition, filename, source string) (*bytecode.Program, []syntax.Diagnostic) {
-	return compiler.CompileModules([]compiler.ModuleSource{{
-		Name: DocumentObjectModuleName(definition), Filename: filename, Source: source,
-		PredefinedVariables: []string{catalogThisObjectRU, catalogThisObjectEN, "Движения", "Movements"},
-	}})
+	return compileObjectModule(DocumentKind, definition.Name, kinds.ObjectModule, filename, source)
 }
 
 type DocumentBSLEvents struct {
@@ -40,7 +28,7 @@ func NewDocumentBSLEvents(runtime *Runtime, context *vm.Context, definition Docu
 		return nil, fmt.Errorf("document BSL events require runtime, context and document definition")
 	}
 	return &DocumentBSLEvents{
-		runtime: runtime, context: context, definition: cloneDocumentDefinition(definition), module: DocumentObjectModuleName(definition),
+		runtime: runtime, context: context, definition: cloneDocumentDefinition(definition), module: ObjectModuleName(DocumentKind, definition.Name, string(kinds.ObjectModule)),
 	}, nil
 }
 
@@ -68,34 +56,15 @@ func (handler *DocumentBSLEvents) HandleDocumentEvent(ctx context.Context, event
 		return false, err
 	}
 	object := valueRuntimeDocumentObject(value)
-	movements, err := handler.runtime.getDocumentProperty(ctx, object, "Движения")
+	movements, err := handler.runtime.getDocumentProperty(ctx, object, kinds.RegisterRecords.Russian)
 	if err != nil {
 		return false, err
 	}
-	if err := handler.context.SetModuleVariable(handler.module, catalogThisObjectRU, value); err != nil {
+	unbind, err := bindModuleWords(handler.context, handler.module, boundWord{kinds.ThisObject, value}, boundWord{kinds.RegisterRecords, movements})
+	if err != nil {
 		return false, err
 	}
-	if err := handler.context.SetModuleVariable(handler.module, catalogThisObjectEN, value); err != nil {
-		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectRU, bytecode.Undefined())
-		return false, err
-	}
-	if err := handler.context.SetModuleVariable(handler.module, "Движения", movements); err != nil {
-		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectRU, bytecode.Undefined())
-		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectEN, bytecode.Undefined())
-		return false, err
-	}
-	if err := handler.context.SetModuleVariable(handler.module, "Movements", movements); err != nil {
-		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectRU, bytecode.Undefined())
-		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectEN, bytecode.Undefined())
-		_ = handler.context.SetModuleVariable(handler.module, "Движения", bytecode.Undefined())
-		return false, err
-	}
-	defer func() {
-		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectRU, bytecode.Undefined())
-		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectEN, bytecode.Undefined())
-		_ = handler.context.SetModuleVariable(handler.module, "Движения", bytecode.Undefined())
-		_ = handler.context.SetModuleVariable(handler.module, "Movements", bytecode.Undefined())
-	}()
+	defer unbind()
 	_, final, err := handler.context.CallContextMutable(guarded, handler.module+"."+routine, arguments...)
 	if err != nil {
 		return false, err

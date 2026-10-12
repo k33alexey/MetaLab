@@ -300,7 +300,7 @@ func standardObjectCommands(language string, posting, movements bool) []FormComm
 		)
 	}
 	if movements {
-		result = append(result, FormCommand{Name: "Movements", Title: formText(language, "movements")})
+		result = append(result, FormCommand{Name: "RegisterRecords", Title: formText(language, "movements")})
 	}
 	return append(result,
 		FormCommand{Name: "SetDeletionMark", Title: formText(language, "deletion-mark")},

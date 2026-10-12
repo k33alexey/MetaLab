@@ -84,6 +84,55 @@ func ModuleOfFile(name string) (Module, bool) {
 	return "", false
 }
 
+// The words a module's code finds defined without declaring them, as the help
+// names the properties behind them (8.3.27).
+var (
+	// ThisObject is the object, record set or value manager a module runs
+	// around (СправочникОбъект.ЭтотОбъект, РегистрСведенийНаборЗаписей.
+	// ЭтотОбъект, КонстантаМенеджерЗначения.ЭтотОбъект, ...), the form of a
+	// form's module (ФормаКлиентскогоПриложения.ЭтотОбъект), the command of a
+	// command's module (КомандаКомандногоИнтерфейса.ЭтотОбъект) and the common
+	// module itself (ОбщийМодуль.ЭтотОбъект).
+	ThisObject = Words{"ЭтотОбъект", "ThisObject"}
+	// ThisForm is the form of a form's module. ФормаКлиентскогоПриложения
+	// has no page of it in the help; the forms of the exports use it all the
+	// same - in 908 modules of acc, 2466 of erp, 390 of sb - and the
+	// prototype compiles them.
+	ThisForm = Words{"ЭтаФорма", "ThisForm"}
+	// Items are the elements of a form (ФормаКлиентскогоПриложения.
+	// Элементы).
+	Items = Words{"Элементы", "Items"}
+	// RegisterRecords is the record sets a document writes into
+	// (ДокументОбъект.Движения).
+	RegisterRecords = Words{"Движения", "RegisterRecords"}
+)
+
+// moduleWords are the words of a module by its role. A manager, a service and
+// a WebSocket client have none: the help gives ЭтотОбъект to no manager
+// (СправочникМенеджер and the rest), to no service and to no client.
+var moduleWords = map[Module][]Words{
+	ObjectModule: {ThisObject}, RecordSetModule: {ThisObject}, ValueModule: {ThisObject},
+	CommandModule: {ThisObject}, FormModule: {ThisForm, ThisObject, Items},
+}
+
+// objectModuleWords are the words an object module of a kind has beyond
+// those of its role: only a document's object has its register records.
+var objectModuleWords = map[Kind][]Words{Document: {RegisterRecords}}
+
+// ModuleWords are the words the code of a module of an object of the kind
+// finds defined: ЭтотОбъект, ЭтаФорма, Движения. A common module keeps its one
+// module apart from any role and has ЭтотОбъект all the same.
+func (descriptor Descriptor) ModuleWords(module Module) []Words {
+	if descriptor.Kind == CommonModule {
+		return []Words{ThisObject}
+	}
+	result := slices.Clone(moduleWords[module])
+	if module == ObjectModule {
+		result = append(result, objectModuleWords[descriptor.Kind]...)
+	}
+	return result
+}
+
 // Layout is where the objects of a kind lie and what each keeps there.
 type Layout struct {
 	Storage Storage

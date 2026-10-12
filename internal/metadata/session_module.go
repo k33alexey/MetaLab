@@ -12,7 +12,7 @@ import (
 // SessionModuleName is the canonical name of the project's session module
 // inside a compiled program. The configuration root owns exactly one session
 // module, so unlike object and common modules it is named by its role rather
-// than by a UUID - see moduleNameDescriptors, which must stay in sync.
+// than by a UUID; ModuleNamer.Identify gives it to the file.
 const SessionModuleName = "МодульСеанса"
 
 // ApplicationModuleName is the canonical name of the project's application

@@ -191,3 +191,66 @@ func TestBranchesAreTheConfigurators(t *testing.T) {
 		t.Errorf("the tree is\n%s\nthe configurator's is\n%s", got, expected)
 	}
 }
+
+// TestModuleWordsAreTheHelps catches a module whose code is denied a word the
+// prototype gives it - the module does not compile, as 333 common modules
+// of acc, erp and sb did not with ЭтотОбъект - or given one it does not have.
+// The expectation is written out here from the help (8.3.27), not read from
+// moduleWords: ЭтотОбъект is a property of every object, record set and value
+// manager of a kind (СправочникОбъект, ПерерасчетНаборЗаписей,
+// КонстантаМенеджерЗначения, ...), of ФормаКлиентскогоПриложения, of
+// КомандаКомандногоИнтерфейса and of ОбщийМодуль, and of no manager, service
+// or client; Движения - of ДокументОбъект only; Элементы - of
+// ФормаКлиентскогоПриложения; ЭтаФорма is the exports'.
+func TestModuleWordsAreTheHelps(t *testing.T) {
+	object, set := "МодульОбъекта=ЭтотОбъект МодульМенеджера=", "МодульНабораЗаписей=ЭтотОбъект МодульМенеджера="
+	expected := map[Kind]string{
+		Catalog: object, Report: object, DataProcessor: object, ChartOfCharacteristicTypes: object,
+		ChartOfAccounts: object, ChartOfCalculationTypes: object, ExchangePlan: object, BusinessProcess: object,
+		Task: object, ExternalDimensionTable: object,
+		Document:            "МодульОбъекта=ЭтотОбъект,Движения МодульМенеджера=",
+		InformationRegister: set, AccumulationRegister: set, AccountingRegister: set, CalculationRegister: set,
+		ExternalCube: set, Sequence: "МодульНабораЗаписей=ЭтотОбъект", Recalculation: "МодульНабораЗаписей=ЭтотОбъект",
+		ExternalDataSourceTable: "МодульОбъекта=ЭтотОбъект МодульНабораЗаписей=ЭтотОбъект МодульМенеджера=",
+		Constant:                "МодульЗначения=ЭтотОбъект МодульМенеджера=",
+		Enumeration:             "МодульМенеджера=", DocumentJournal: "МодульМенеджера=", FilterCriterion: "МодульМенеджера=",
+		SettingsStorage: "МодульМенеджера=", WebService: "МодульСервиса=", HTTPService: "МодульСервиса=",
+		WebSocketClient: "МодульКлиента=", CommonCommand: "МодульКоманды=ЭтотОбъект",
+		CommonForm: "МодульФормы=ЭтаФорма,ЭтотОбъект,Элементы",
+	}
+	russian := func(words []Words) string {
+		var result []string
+		for _, word := range words {
+			result = append(result, word.Russian)
+		}
+		return strings.Join(result, ",")
+	}
+	for _, item := range All() {
+		var modules []string
+		for _, module := range item.Layout().Modules {
+			modules = append(modules, string(module)+"="+russian(item.ModuleWords(module)))
+		}
+		if got := strings.Join(modules, " "); got != expected[item.Kind] {
+			t.Errorf("the modules of %s find %q, the help gives %q", item.Kind, got, expected[item.Kind])
+		}
+	}
+	// A form and a command of an object, and a common module, which plays no
+	// role in a folder.
+	for name, test := range map[string]struct {
+		kind   Kind
+		module Module
+		want   string
+	}{
+		"a form of a catalog":    {Catalog, FormModule, "ЭтаФорма,ЭтотОбъект,Элементы"},
+		"a form of a document":   {Document, FormModule, "ЭтаФорма,ЭтотОбъект,Элементы"},
+		"a command of a catalog": {Catalog, CommandModule, "ЭтотОбъект"},
+		"a common module":        {CommonModule, "", "ЭтотОбъект"},
+	} {
+		if got := russian(Must(test.kind).ModuleWords(test.module)); got != test.want {
+			t.Errorf("%s finds %q, the help gives %q", name, got, test.want)
+		}
+	}
+	if got := Must(Document).ModuleWords(ObjectModule); got[1].English != "RegisterRecords" || got[0].English != "ThisObject" {
+		t.Errorf("a document's object module finds %+v: the help's English names are ThisObject and RegisterRecords", got)
+	}
+}

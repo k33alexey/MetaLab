@@ -10,7 +10,8 @@ import (
 )
 
 // documentMovementsObject exposes recorder-owned register sets as
-// ThisObject.Movements.<Register> / ЭтотОбъект.Движения.<Регистр>.
+// ThisObject.RegisterRecords.<Register> / ЭтотОбъект.Движения.<Регистр>: the
+// help's КоллекцияДвижений (RegisterRecordsCollection).
 type documentMovementsObject struct {
 	runtime      *Runtime
 	recorder     DocumentReference
@@ -19,7 +20,7 @@ type documentMovementsObject struct {
 	accumulation map[string]*accumulationRegisterRecordSetObject
 }
 
-func (*documentMovementsObject) RuntimeTypeName() string { return "DocumentMovements" }
+func (*documentMovementsObject) RuntimeTypeName() string { return "RegisterRecordsCollection" }
 func (object *documentMovementsObject) RuntimeEqual(other bytecode.RuntimeObject) bool {
 	candidate, ok := other.(*documentMovementsObject)
 	return ok && candidate == object
@@ -116,7 +117,7 @@ func (runtime *Runtime) getDocumentMovementsProperty(value bytecode.RuntimeObjec
 		return bytecode.Undefined(), false, nil
 	}
 	if object.runtime != runtime {
-		return bytecode.Undefined(), true, fmt.Errorf("document movements belong to another metadata runtime")
+		return bytecode.Undefined(), true, fmt.Errorf("register records belong to another metadata runtime")
 	}
 	folded := strings.ToLower(name)
 	if set, ok := object.information[folded]; ok {
@@ -127,7 +128,7 @@ func (runtime *Runtime) getDocumentMovementsProperty(value bytecode.RuntimeObjec
 		result, err := bytecode.Object(set)
 		return result, true, err
 	}
-	return bytecode.Undefined(), true, fmt.Errorf("document movements have no register %s", name)
+	return bytecode.Undefined(), true, fmt.Errorf("register records have no register %s", name)
 }
 
 func (runtime *Runtime) setDocumentMovementsProperty(value bytecode.RuntimeObject, name string, _ bytecode.Value) (bool, error) {
@@ -136,9 +137,9 @@ func (runtime *Runtime) setDocumentMovementsProperty(value bytecode.RuntimeObjec
 		return false, nil
 	}
 	if object.runtime != runtime {
-		return true, fmt.Errorf("document movements belong to another metadata runtime")
+		return true, fmt.Errorf("register records belong to another metadata runtime")
 	}
-	return true, fmt.Errorf("document movement register %s is read-only", name)
+	return true, fmt.Errorf("register records %s are read-only", name)
 }
 
 func (runtime *Runtime) callDocumentMovementsMethod(value bytecode.RuntimeObject, name string, _ []bytecode.Value) (bytecode.Value, bool, error) {
@@ -147,9 +148,9 @@ func (runtime *Runtime) callDocumentMovementsMethod(value bytecode.RuntimeObject
 		return bytecode.Undefined(), false, nil
 	}
 	if object.runtime != runtime {
-		return bytecode.Undefined(), true, fmt.Errorf("document movements belong to another metadata runtime")
+		return bytecode.Undefined(), true, fmt.Errorf("register records belong to another metadata runtime")
 	}
-	return bytecode.Undefined(), true, fmt.Errorf("DocumentMovements has no method %s", name)
+	return bytecode.Undefined(), true, fmt.Errorf("RegisterRecordsCollection has no method %s", name)
 }
 
 func (runtime *Runtime) writeDocumentMovements(ctx context.Context, object *documentMovementsObject) error {
@@ -157,7 +158,7 @@ func (runtime *Runtime) writeDocumentMovements(ctx context.Context, object *docu
 		return nil
 	}
 	if object.runtime != runtime {
-		return fmt.Errorf("document movements belong to another metadata runtime")
+		return fmt.Errorf("register records belong to another metadata runtime")
 	}
 	for _, definition := range runtime.catalog.InformationRegisters {
 		set := object.information[strings.ToLower(definition.Name)]

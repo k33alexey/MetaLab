@@ -330,10 +330,7 @@ func (workspace *Workspace) buildBSLNavigationIndex() (*bslNavigationIndex, erro
 			if err != nil {
 				return nil, err
 			}
-			descriptor := descriptors[relative]
-			if descriptor.name == "" {
-				descriptor.name = fallbackModuleName(relative)
-			}
+			descriptor := descriptors.of(relative)
 			module := buildBSLSemanticModule(relative, file.Content, descriptor.name, descriptor.public, descriptor.predefined)
 			module.revision = file.Revision
 			result.modules[relative] = module
@@ -649,12 +646,16 @@ var reservedBSLNavigationNames = func() map[string]bool {
 	for name := range reservedBSLWords {
 		result[name] = true
 	}
+	// The words a module finds defined: a routine or a variable renamed to
+	// one would hide it.
+	for _, words := range []kinds.Words{kinds.ThisObject, kinds.ThisForm, kinds.RegisterRecords} {
+		result[strings.ToLower(words.Russian)], result[strings.ToLower(words.English)] = true, true
+	}
 	return result
 }()
 
 var reservedBSLWords = map[string]bool{
-	"этотобъект": true, "thisobject": true,
-	"движения": true, "movements": true, "режимблокировкиданных": true, "datalockmode": true,
+	"режимблокировкиданных": true, "datalockmode": true,
 	"виддвижениянакопления": true, "accumulationmovementkind": true,
 	"режимзаписидокумента": true, "documentwritemode": true,
 	"режимпроведениядокумента": true, "documentpostingmode": true,

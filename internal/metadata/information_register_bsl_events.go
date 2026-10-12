@@ -6,25 +6,13 @@ import (
 	"sync"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
-	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 	"github.com/k33alexey/MetaLab/internal/bsl/vm"
+	"github.com/k33alexey/MetaLab/internal/kinds"
 )
 
-// InformationRegisterRecordSetModuleName returns the canonical module name
-// used both when compiling a standalone record set module and when locating
-// that same module inside a whole-project program compiled via
-// RuntimeSnapshot.CompileModules - see moduleNameDescriptors, which must stay
-// in sync with this scheme.
-func InformationRegisterRecordSetModuleName(definition InformationRegisterDefinition) string {
-	return "МодульНабораЗаписейРегистраСведений." + definition.Name
-}
-
 func CompileInformationRegisterRecordSetModule(definition InformationRegisterDefinition, filename, source string) (*bytecode.Program, []syntax.Diagnostic) {
-	return compiler.CompileModules([]compiler.ModuleSource{{
-		Name: InformationRegisterRecordSetModuleName(definition), Filename: filename, Source: source,
-		PredefinedVariables: []string{catalogThisObjectRU, catalogThisObjectEN},
-	}})
+	return compileObjectModule(InformationRegisterKind, definition.Name, kinds.RecordSetModule, filename, source)
 }
 
 type InformationRegisterBSLEvents struct {
@@ -41,7 +29,7 @@ func NewInformationRegisterBSLEvents(runtime *Runtime, context *vm.Context, defi
 	}
 	return &InformationRegisterBSLEvents{
 		runtime: runtime, context: context, definition: cloneInformationRegisterDefinition(definition),
-		module: InformationRegisterRecordSetModuleName(definition),
+		module: ObjectModuleName(InformationRegisterKind, definition.Name, string(kinds.RecordSetModule)),
 	}, nil
 }
 
@@ -68,17 +56,11 @@ func (handler *InformationRegisterBSLEvents) HandleInformationRegisterEvent(ctx 
 	if err != nil {
 		return false, err
 	}
-	if err := handler.context.SetModuleVariable(handler.module, catalogThisObjectRU, value); err != nil {
+	unbind, err := bindModuleWords(handler.context, handler.module, boundWord{kinds.ThisObject, value})
+	if err != nil {
 		return false, err
 	}
-	if err := handler.context.SetModuleVariable(handler.module, catalogThisObjectEN, value); err != nil {
-		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectRU, bytecode.Undefined())
-		return false, err
-	}
-	defer func() {
-		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectRU, bytecode.Undefined())
-		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectEN, bytecode.Undefined())
-	}()
+	defer unbind()
 	_, final, err := handler.context.CallContextMutable(guarded, handler.module+"."+routine, arguments...)
 	if err != nil {
 		return false, err

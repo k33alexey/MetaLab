@@ -729,6 +729,57 @@ func ObjectModulePath(kind, name, roleFile string) (string, error) {
 	return path.Join(directory, roleFile), nil
 }
 
+// ModuleAddress is what a module of an object is, read off where it lies.
+type ModuleAddress struct {
+	// Kind and Object are whose module it is: for an object inside another,
+	// its kind and its name after its owner's - Склад.Товары, Начисления.
+	// Перерасчет.
+	Kind, Object string
+	// Form or Command is the form or the command of the object whose module
+	// it is; both empty for a module of the object itself.
+	Form, Command string
+	Module        kinds.Module
+}
+
+// ReadModulePath reads a path of the project as the module of an object it
+// is - the inverse of ObjectModulePath, InnerModulePath, ObjectFormModulePath,
+// ObjectCommandModulePath and CommonFormModulePath. ok is false for a path
+// that is no module of an object: a common module, which lies apart by its
+// identifier, a module of the root, a role the kind has no module in.
+func ReadModulePath(relative string) (ModuleAddress, bool) {
+	kind, name, rest, ok := SplitObjectPath(relative)
+	if !ok {
+		return ModuleAddress{}, false
+	}
+	module, known := kinds.ModuleOfFile(rest[len(rest)-1])
+	if !known {
+		return ModuleAddress{}, false
+	}
+	address := ModuleAddress{Kind: kind, Object: name, Module: module}
+	switch {
+	case len(rest) == 1:
+	case len(rest) == 3 && SubordinateName(rest[1]) == nil:
+		inner, isInner := InnerKind(kind, rest[0])
+		subordinate := slices.Contains(ObjectSubordinateDirectories(kind), rest[0])
+		switch {
+		case isInner:
+			address.Kind, address.Object = inner, name+"."+rest[1]
+		case subordinate && rest[0] == objectSubordinateDirectories[0] && module == kinds.FormModule:
+			return ModuleAddress{Kind: kind, Object: name, Form: rest[1], Module: module}, true
+		case subordinate && rest[0] == objectSubordinateDirectories[1] && module == kinds.CommandModule:
+			return ModuleAddress{Kind: kind, Object: name, Command: rest[1], Module: module}, true
+		default:
+			return ModuleAddress{}, false
+		}
+	default:
+		return ModuleAddress{}, false
+	}
+	if !KeepsModule(address.Kind, module.File()) {
+		return ModuleAddress{}, false
+	}
+	return address, true
+}
+
 // ObjectCommandDirectory returns the folder of one command of an object.
 // A command keeps a folder rather than a bare file for the same reason a
 // template does: its module is one of the files it may own, not the whole of

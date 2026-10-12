@@ -144,7 +144,7 @@ func (handler *catalogEventSubscriptionHandler) HandleCatalogEvent(ctx context.C
 }
 
 // documentEventSubscriptionHandler is the document analogue of
-// catalogEventSubscriptionHandler. Movements are not threaded through as a
+// catalogEventSubscriptionHandler. Register records are not threaded through as a
 // separate argument: the wrapped Source object already exposes "Движения"
 // as an ordinary property, exactly as a real subscription handler would
 // read it via Источник.Движения.

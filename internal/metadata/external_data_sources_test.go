@@ -599,7 +599,8 @@ func TestExternalTableCommandsAndTemplatesAreDeclaredAndKept(t *testing.T) {
 // The modules of a table are compiled under names that carry the source, and
 // its forms' modules too. Catches two tables of one name in two sources being
 // compiled under one name, and a table's module falling back to a name built
-// from its path.
+// from its path. An object module on a table of records is not named here:
+// the load refuses it (TestExternalTableFolderIsAnObjectFolder).
 func TestExternalTableModulesAreNamedWithTheirSource(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
@@ -608,19 +609,16 @@ func TestExternalTableModulesAreNamedWithTheirSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	names := moduleNameDescriptors(catalog)
+	namer := catalog.ModuleNamer()
 	for path, want := range map[string]string{
 		"metadata/external-data-sources/Склад/tables/Товары/МодульОбъекта.bsl":                 "МодульОбъектаТаблицыВнешнегоИсточника.Склад.Товары",
 		"metadata/external-data-sources/Склад/tables/Товары/МодульМенеджера.bsl":               "МодульМенеджераТаблицыВнешнегоИсточника.Склад.Товары",
 		"metadata/external-data-sources/Склад/tables/Остатки/МодульНабораЗаписей.bsl":          "МодульНабораЗаписейТаблицыВнешнегоИсточника.Склад.Остатки",
 		"metadata/external-data-sources/Склад/tables/Товары/forms/ФормаТовара/МодульФормы.bsl": "МодульФормыТаблицыВнешнегоИсточника.Склад.Товары.ФормаТовара",
 	} {
-		if got := names[path].name; got != want {
+		if got := namer.Identify(path).Name; got != want {
 			t.Errorf("%s is compiled as %q, want %q", path, got, want)
 		}
-	}
-	if _, ok := names["metadata/external-data-sources/Склад/tables/Остатки/МодульОбъекта.bsl"]; ok {
-		t.Error("a table of records was given an object module name")
 	}
 }
 

@@ -6,31 +6,14 @@ import (
 	"sync"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
-	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 	"github.com/k33alexey/MetaLab/internal/bsl/vm"
+	"github.com/k33alexey/MetaLab/internal/kinds"
 )
-
-const (
-	catalogThisObjectRU = "ЭтотОбъект"
-	catalogThisObjectEN = "ThisObject"
-)
-
-// CatalogObjectModuleName returns the canonical module name used both when
-// compiling a standalone catalog object module and when locating that same
-// module inside a whole-project program compiled via
-// RuntimeSnapshot.CompileModules - see moduleNameDescriptors, which must stay
-// in sync with this scheme.
-func CatalogObjectModuleName(definition CatalogDefinition) string {
-	return "МодульОбъектаСправочника." + definition.Name
-}
 
 // CompileCatalogObjectModule compiles a catalog object module with its predefined object context.
 func CompileCatalogObjectModule(definition CatalogDefinition, filename, source string) (*bytecode.Program, []syntax.Diagnostic) {
-	return compiler.CompileModules([]compiler.ModuleSource{{
-		Name: CatalogObjectModuleName(definition), Filename: filename, Source: source,
-		PredefinedVariables: []string{catalogThisObjectRU, catalogThisObjectEN},
-	}})
+	return compileObjectModule(CatalogKind, definition.Name, kinds.ObjectModule, filename, source)
 }
 
 // CatalogBSLEvents invokes optional predefined procedures in one catalog object module.
@@ -46,7 +29,7 @@ func NewCatalogBSLEvents(runtime *Runtime, context *vm.Context, definition Catal
 	if runtime == nil || context == nil || definition.ID.IsZero() {
 		return nil, fmt.Errorf("catalog BSL events require runtime, context and catalog definition")
 	}
-	return &CatalogBSLEvents{runtime: runtime, context: context, definition: cloneCatalogDefinition(definition), module: CatalogObjectModuleName(definition)}, nil
+	return &CatalogBSLEvents{runtime: runtime, context: context, definition: cloneCatalogDefinition(definition), module: ObjectModuleName(CatalogKind, definition.Name, string(kinds.ObjectModule))}, nil
 }
 
 func (handler *CatalogBSLEvents) HandleCatalogEvent(ctx context.Context, event CatalogEvent, record *CatalogRecord) (bool, error) {
@@ -72,17 +55,11 @@ func (handler *CatalogBSLEvents) HandleCatalogEvent(ctx context.Context, event C
 	if err != nil {
 		return false, err
 	}
-	if err := handler.context.SetModuleVariable(handler.module, catalogThisObjectRU, value); err != nil {
+	unbind, err := bindModuleWords(handler.context, handler.module, boundWord{kinds.ThisObject, value})
+	if err != nil {
 		return false, err
 	}
-	if err := handler.context.SetModuleVariable(handler.module, catalogThisObjectEN, value); err != nil {
-		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectRU, bytecode.Undefined())
-		return false, err
-	}
-	defer func() {
-		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectRU, bytecode.Undefined())
-		_ = handler.context.SetModuleVariable(handler.module, catalogThisObjectEN, bytecode.Undefined())
-	}()
+	defer unbind()
 	_, final, err := handler.context.CallContextMutable(guarded, handler.module+"."+routine, arguments...)
 	if err != nil {
 		return false, err

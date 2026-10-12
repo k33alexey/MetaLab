@@ -110,7 +110,7 @@ func TestTheMovementsCommandIsOfferedOnlyByADocumentThatKeepsRecords(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		return slices.ContainsFunc(form.Commands, func(command FormCommand) bool { return command.Name == "Movements" })
+		return slices.ContainsFunc(form.Commands, func(command FormCommand) bool { return command.Name == "RegisterRecords" })
 	}
 	if !offers("Операция") {
 		t.Fatal("a document that keeps records does not offer its movements")

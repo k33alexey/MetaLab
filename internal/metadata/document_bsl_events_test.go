@@ -9,6 +9,9 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
+// TestDocumentBSLEventsProvideThisObjectAndWriteModes catches an event that
+// does not give the module its object (ЭтотОбъект, ThisObject) or its register
+// records (Движения, RegisterRecords), and modes of writing lost on the way.
 func TestDocumentBSLEventsProvideThisObjectAndWriteModes(t *testing.T) {
 	t.Parallel()
 	definition := DocumentDefinition{
@@ -34,7 +37,9 @@ func TestDocumentBSLEventsProvideThisObjectAndWriteModes(t *testing.T) {
 
 &НаСервере
 Процедура ПередУдалением(Отказ)
-    Отказ = Истина;
+    // Движения and RegisterRecords are the module's own words, the same
+    // collection as the object's (help: ДокументОбъект.Движения).
+    Отказ = Движения = ЭтотОбъект.Движения И RegisterRecords = ThisObject.RegisterRecords;
 КонецПроцедуры`)
 	if len(diagnostics) != 0 {
 		t.Fatal(diagnostics)

@@ -177,6 +177,10 @@ func TestCompleteBSLUsesDocumentContextFromDemoProject(t *testing.T) {
 		{"Процедура Тест()\nДвижения.ОстаткиТоваров.Доб\nКонецПроцедуры", "Добавить", "method"},
 		{"Процедура Тест()\nЭтотОбъект.Тов\nКонецПроцедуры", "Товары", "property"},
 		{"Процедура Тест()\nЭтотОбъект.Пол\nКонецПроцедуры", "ПолучитьСсылку", "method"},
+		// The English word is the help's: ДокументОбъект.Движения is
+		// RegisterRecords.
+		{"Процедура Тест()\nRegisterRecords.Ост\nКонецПроцедуры", "ОстаткиТоваров", "metadata-object"},
+		{"Процедура Тест()\nThisObject.Regi\nКонецПроцедуры", "RegisterRecords", "property"},
 	} {
 		offset := len(test.source) - len("\nКонецПроцедуры")
 		completion := completeAt(t, workspace, path, test.source, offset)

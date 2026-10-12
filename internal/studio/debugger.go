@@ -288,10 +288,7 @@ func (workspace *Workspace) compileDebugProgramLocked(currentPath, currentConten
 		} else {
 			currentFound = true
 		}
-		descriptor := descriptors[relative]
-		if descriptor.name == "" {
-			descriptor.name = fallbackModuleName(relative)
-		}
+		descriptor := descriptors.of(relative)
 		if relative == currentPath {
 			currentModule = descriptor.name
 		}

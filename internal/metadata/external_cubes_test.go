@@ -183,13 +183,13 @@ func TestExternalCubeFoldersAreObjectFolders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the folders with the modules of their roles were refused: %v", err)
 	}
-	names := moduleNameDescriptors(catalog)
+	namer := catalog.ModuleNamer()
 	for path, want := range map[string]string{
 		"metadata/external-data-sources/Склад/cubes/Продажи/МодульНабораЗаписей.bsl":                                   "МодульНабораЗаписейКубаВнешнегоИсточника.Склад.Продажи",
 		"metadata/external-data-sources/Склад/cubes/Продажи/dimension-tables/Товары/МодульОбъекта.bsl":                 "МодульОбъектаТаблицыИзмеренияВнешнегоИсточника.Склад.Продажи.Товары",
 		"metadata/external-data-sources/Склад/cubes/Продажи/dimension-tables/Товары/forms/ФормаВыбора/МодульФормы.bsl": "МодульФормыТаблицыИзмеренияВнешнегоИсточника.Склад.Продажи.Товары.ФормаВыбора",
 	} {
-		if got := names[path].name; got != want {
+		if got := namer.Identify(path).Name; got != want {
 			t.Errorf("%s is compiled as %q, want %q", path, got, want)
 		}
 	}

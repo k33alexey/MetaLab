@@ -195,10 +195,7 @@ func (workspace *Workspace) buildBSLSymbolIndex() (*BSLSymbolIndex, error) {
 		if err != nil {
 			return nil, err
 		}
-		descriptor := descriptors[relative]
-		if descriptor.name == "" {
-			descriptor.name = fallbackModuleName(relative)
-		}
+		descriptor := descriptors.of(relative)
 		module := indexBSLModule(relative, descriptor, file.Content)
 		result.modules[relative] = module
 		if module.public {
@@ -213,103 +210,78 @@ func (workspace *Workspace) buildBSLSymbolIndex() (*BSLSymbolIndex, error) {
 	return result, nil
 }
 
-func (workspace *Workspace) moduleDescriptors(catalog *metadata.Catalog) map[string]moduleDescriptor {
-	result := make(map[string]moduleDescriptor)
-	if catalog != nil {
-		// A document names its own registers, so the map is read off the
-		// documents rather than gathered from every register in turn.
-		movements := make(map[uuid.UUID][]bslMovementSet)
-		for _, item := range catalog.Documents {
-			for _, target := range catalog.DocumentMovements(item.ID) {
-				switch target.Kind {
-				case metadata.InformationRegisterKind:
-					movements[item.ID] = append(movements[item.ID], bslMovementSet{name: target.Name, kind: "information"})
-				case metadata.AccumulationRegisterKind:
-					movements[item.ID] = append(movements[item.ID], bslMovementSet{name: target.Name, kind: "accumulation"})
-				}
-			}
-		}
-		for _, item := range catalog.Catalogs {
-			if path := addModuleDescriptor(result, metadata.CatalogKind, item.Name, project.ObjectModuleFile, false, "ЭтотОбъект", "ThisObject"); path != "" {
-				descriptor := result[path]
-				descriptor.objectKind = "catalog"
-				descriptor.objectRU = append([]string{"Ссылка", "Код", "Наименование", "ВерсияДанных", "ПометкаУдаления", "ИмяПредопределенныхДанных"}, objectFieldNames(item.Attributes, item.TableParts)...)
-				descriptor.objectEN = append([]string{"Ref", "Code", "Description", "DataVersion", "DeletionMark", "PredefinedDataName"}, objectFieldNames(item.Attributes, item.TableParts)...)
-				result[path] = descriptor
-			}
-			addModuleDescriptor(result, metadata.CatalogKind, item.Name, project.ManagerModuleFile, false)
-		}
-		for _, item := range catalog.Documents {
-			if path := addModuleDescriptor(result, metadata.DocumentKind, item.Name, project.ObjectModuleFile, false, "ЭтотОбъект", "ThisObject", "Движения", "Movements"); path != "" {
-				descriptor := result[path]
-				descriptor.objectKind = "document"
-				descriptor.objectRU = append([]string{"Ссылка", "Номер", "Дата", "Проведен", "ВерсияДанных", "ПометкаУдаления", "Движения"}, objectFieldNames(item.Attributes, item.TableParts)...)
-				descriptor.objectEN = append([]string{"Ref", "Number", "Date", "Posted", "DataVersion", "DeletionMark", "Movements"}, objectFieldNames(item.Attributes, item.TableParts)...)
-				descriptor.movementSets = append([]bslMovementSet(nil), movements[item.ID]...)
-				result[path] = descriptor
-			}
-			addModuleDescriptor(result, metadata.DocumentKind, item.Name, project.ManagerModuleFile, false)
-		}
-		for _, item := range catalog.InformationRegisters {
-			if path := addModuleDescriptor(result, metadata.InformationRegisterKind, item.Name, project.RecordSetModuleFile, false, "ЭтотОбъект", "ThisObject"); path != "" {
-				descriptor := result[path]
-				descriptor.objectKind = "information-set"
-				descriptor.objectRU = []string{"Отбор", "Количество", "Записывать"}
-				descriptor.objectEN = []string{"Filter", "Count", "Write"}
-				result[path] = descriptor
-			}
-			addModuleDescriptor(result, metadata.InformationRegisterKind, item.Name, project.ManagerModuleFile, false)
-		}
-		for _, item := range catalog.AccumulationRegisters {
-			if path := addModuleDescriptor(result, metadata.AccumulationRegisterKind, item.Name, project.RecordSetModuleFile, false, "ЭтотОбъект", "ThisObject"); path != "" {
-				descriptor := result[path]
-				descriptor.objectKind = "accumulation-set"
-				descriptor.objectRU = []string{"Отбор", "Количество", "Записывать", "БлокироватьДляИзменения"}
-				descriptor.objectEN = []string{"Filter", "Count", "Write", "LockForUpdate"}
-				result[path] = descriptor
-			}
-			addModuleDescriptor(result, metadata.AccumulationRegisterKind, item.Name, project.ManagerModuleFile, false)
-		}
-	}
-	if catalog != nil {
-		for _, item := range catalog.CommonModules {
-			path, err := project.ModulePath(item.Module)
-			if err != nil {
-				continue
-			}
-			result[path] = moduleDescriptor{name: item.Name, public: true, defaultContext: item.DefaultContext()}
-		}
-		// A form's module lies beside the form, and which forms an object
-		// keeps is known only from the folders - so the whole list comes from
-		// the catalog's own index of them, kind by kind, rather than from the
-		// four kinds spelled out above.
-		for _, form := range catalog.ObjectForms() {
-			path, err := project.ObjectFormModulePath(string(form.ObjectKind), form.Object, form.Name)
-			if err != nil {
-				continue
-			}
-			result[path] = moduleDescriptor{
-				name:       metadata.FormModuleName(form.ObjectKind, form.Object, form.Name),
-				predefined: []string{"ЭтаФорма", "ThisForm"},
-			}
-		}
-	}
+// bslModuleDescriptors are the modules of the project as the BSL tools see
+// them: named, with their words and context, as the published program names
+// them (metadata.ModuleNamer), and the members of the object the module runs
+// around where the tools know them.
+type bslModuleDescriptors struct {
+	namer   metadata.ModuleNamer
+	objects map[string]moduleDescriptor
+}
+
+// of is the module lying at the path.
+func (descriptors bslModuleDescriptors) of(relative string) moduleDescriptor {
+	identity := descriptors.namer.Identify(relative)
+	result := descriptors.objects[relative]
+	result.name, result.public, result.defaultContext = identity.Name, identity.Public, identity.DefaultContext
+	result.predefined = identity.Predefined
 	return result
 }
 
-// fallbackModuleName names a BSL file the catalog does not claim - a module of
-// a kind of object that has no canonical name yet, or a test. A module carries
-// no identifier of its own, so the name is built from where the file lies: that
-// is unique by construction, and it reads in a stack trace, where the previous
-// fallback - a UUID with its dashes removed - did not.
-func fallbackModuleName(relative string) string {
-	trimmed := strings.TrimSuffix(filepath.ToSlash(relative), ".bsl")
-	prefix := "Модуль."
-	if strings.HasPrefix(trimmed, "tests/") {
-		prefix = "Тест."
+func (workspace *Workspace) moduleDescriptors(catalog *metadata.Catalog) bslModuleDescriptors {
+	result := bslModuleDescriptors{namer: catalog.ModuleNamer(), objects: make(map[string]moduleDescriptor)}
+	if catalog == nil {
+		return result
 	}
-	trimmed = strings.TrimPrefix(strings.TrimPrefix(trimmed, "metadata/"), "tests/")
-	return prefix + strings.ReplaceAll(trimmed, "/", ".")
+	// The members of the object a module runs around: which ones it has the
+	// completion knows for four kinds, the path names the module.
+	add := func(kind metadata.Kind, object string, module kinds.Module, descriptor moduleDescriptor) {
+		if path, err := project.ObjectModulePath(string(kind), object, module.File()); err == nil {
+			result.objects[path] = descriptor
+		}
+	}
+	// A document names its own registers, so the map is read off the
+	// documents rather than gathered from every register in turn.
+	movements := make(map[uuid.UUID][]bslMovementSet)
+	for _, item := range catalog.Documents {
+		for _, target := range catalog.DocumentMovements(item.ID) {
+			switch target.Kind {
+			case metadata.InformationRegisterKind:
+				movements[item.ID] = append(movements[item.ID], bslMovementSet{name: target.Name, kind: "information"})
+			case metadata.AccumulationRegisterKind:
+				movements[item.ID] = append(movements[item.ID], bslMovementSet{name: target.Name, kind: "accumulation"})
+			}
+		}
+	}
+	for _, item := range catalog.Catalogs {
+		add(metadata.CatalogKind, item.Name, kinds.ObjectModule, moduleDescriptor{
+			objectKind: "catalog",
+			objectRU:   append([]string{"Ссылка", "Код", "Наименование", "ВерсияДанных", "ПометкаУдаления", "ИмяПредопределенныхДанных"}, objectFieldNames(item.Attributes, item.TableParts)...),
+			objectEN:   append([]string{"Ref", "Code", "Description", "DataVersion", "DeletionMark", "PredefinedDataName"}, objectFieldNames(item.Attributes, item.TableParts)...),
+		})
+	}
+	for _, item := range catalog.Documents {
+		add(metadata.DocumentKind, item.Name, kinds.ObjectModule, moduleDescriptor{
+			objectKind:   "document",
+			objectRU:     append([]string{"Ссылка", "Номер", "Дата", "Проведен", "ВерсияДанных", "ПометкаУдаления", kinds.RegisterRecords.Russian}, objectFieldNames(item.Attributes, item.TableParts)...),
+			objectEN:     append([]string{"Ref", "Number", "Date", "Posted", "DataVersion", "DeletionMark", kinds.RegisterRecords.English}, objectFieldNames(item.Attributes, item.TableParts)...),
+			movementSets: append([]bslMovementSet(nil), movements[item.ID]...),
+		})
+	}
+	for _, item := range catalog.InformationRegisters {
+		add(metadata.InformationRegisterKind, item.Name, kinds.RecordSetModule, moduleDescriptor{
+			objectKind: "information-set",
+			objectRU:   []string{"Отбор", "Количество", "Записывать"}, objectEN: []string{"Filter", "Count", "Write"},
+		})
+	}
+	for _, item := range catalog.AccumulationRegisters {
+		add(metadata.AccumulationRegisterKind, item.Name, kinds.RecordSetModule, moduleDescriptor{
+			objectKind: "accumulation-set",
+			objectRU:   []string{"Отбор", "Количество", "Записывать", "БлокироватьДляИзменения"},
+			objectEN:   []string{"Filter", "Count", "Write", "LockForUpdate"},
+		})
+	}
+	return result
 }
 
 func objectFieldNames(attributes []metadata.Attribute, parts []metadata.TablePart) []string {
@@ -382,20 +354,6 @@ func (workspace *Workspace) scanBSLMetadata() bslMetadataIndex {
 		}
 	}
 	return result
-}
-
-// addModuleDescriptor registers one of an object's own modules under the path
-// it lies at. A module is identified by that path and nothing else, so the key
-// is built from the object and the role rather than read from the object's
-// description, which no longer names its modules. It returns the key so the
-// caller can go on filling in the object context of that module.
-func addModuleDescriptor(target map[string]moduleDescriptor, kind metadata.Kind, object, role string, public bool, predefined ...string) string {
-	path, err := project.ObjectModulePath(string(kind), object, role)
-	if err != nil {
-		return ""
-	}
-	target[path] = moduleDescriptor{name: metadata.ObjectModuleName(kind, object, role), public: public, predefined: predefined}
-	return path
 }
 
 func indexBSLModule(path string, descriptor moduleDescriptor, source string) bslModuleIndex {
@@ -622,7 +580,7 @@ func (index *BSLSymbolIndex) addQualified(add *completionCollector, qualifier []
 	if len(qualifier) == 1 {
 		collection, _ := kinds.ByCollection(root)
 		switch {
-		case root == "этотобъект" || root == "thisobject":
+		case kinds.ThisObject.Is(root):
 			if english {
 				add.values("property", "object property", current.objectEN...)
 				add.values("method", "object method", objectMethodNames(current.objectKind, true)...)
@@ -630,7 +588,7 @@ func (index *BSLSymbolIndex) addQualified(add *completionCollector, qualifier []
 				add.values("property", "реквизит объекта", current.objectRU...)
 				add.values("method", "метод объекта", objectMethodNames(current.objectKind, false)...)
 			}
-		case root == "движения" || root == "movements":
+		case kinds.RegisterRecords.Is(root):
 			for _, movement := range current.movementSets {
 				add.add(movement.name, "metadata-object", "набор движений")
 			}
@@ -680,7 +638,7 @@ func (index *BSLSymbolIndex) addQualified(add *completionCollector, qualifier []
 	}
 	collection, _ := kinds.ByCollection(root)
 	switch {
-	case root == "движения" || root == "movements":
+	case kinds.RegisterRecords.Is(root):
 		movement, ok := findMovementSet(current.movementSets, qualifier[1])
 		if !ok {
 			return
@@ -818,7 +776,7 @@ func objectMethodNames(kind string, english bool) []string {
 }
 
 func objectSignature(path []string, current bslModuleIndex) (string, []string) {
-	if len(path) != 2 || !strings.EqualFold(path[0], "ЭтотОбъект") && !strings.EqualFold(path[0], "ThisObject") {
+	if len(path) != 2 || !kinds.ThisObject.Is(path[0]) {
 		return "", nil
 	}
 	method := strings.ToLower(path[1])
@@ -865,7 +823,7 @@ func objectSignature(path []string, current bslModuleIndex) (string, []string) {
 }
 
 func movementSetSignature(path []string, current bslModuleIndex) (string, []string) {
-	if len(path) != 3 || !strings.EqualFold(path[0], "Движения") && !strings.EqualFold(path[0], "Movements") {
+	if len(path) != 3 || !kinds.RegisterRecords.Is(path[0]) {
 		return "", nil
 	}
 	if _, ok := findMovementSet(current.movementSets, path[1]); !ok {
