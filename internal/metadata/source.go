@@ -297,8 +297,7 @@ func (catalog *Catalog) objectsOf(kind Kind) (reflect.Value, bool) {
 // keptInFolder reports whether an object of a kind keeps a folder named after
 // it rather than one file named by its identifier.
 func keptInFolder(kind Kind) bool {
-	_, named := project.NamedFolderFiles(string(kind))
-	return named || project.IsObjectFolderKind(string(kind))
+	return kinds.Must(kind).Layout().KeepsFolder()
 }
 
 // DecodeSource reads one description of the project - of an object, of an

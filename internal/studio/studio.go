@@ -75,38 +75,6 @@ type Property struct {
 	Value string `json:"value"`
 }
 
-// commonKindOrder and topLevelKindOrder fix the configuration tree's shape:
-// "Общие" collects the configuration-wide objects, every other kind stands
-// at the top level beside it. Order is the one the specification fixes, not
-// the physical directory order, and kinds not implemented yet simply leave
-// a gap rather than shifting their neighbours.
-var (
-	commonKindOrder = []string{
-		"subsystems", "common-modules", "session-parameters", "roles",
-		"common-attributes", "exchange-plans", "filter-criteria",
-		"event-subscriptions", "scheduled-jobs",
-		"functional-options", "functional-options-parameters",
-		"defined-types", "settings-storages", "common-commands",
-		"command-groups", "common-forms", "common-templates",
-		"common-pictures", "xdto-packages", "web-services", "http-services",
-		"ws-references", "websocket-clients",
-		"style-items", "styles", "languages",
-	}
-	topLevelKindOrder = []string{
-		"constants", "catalogs", "documents", "document-journals",
-		"enumerations", "reports", "data-processors",
-		"charts-of-characteristic-types", "charts-of-accounts",
-		"charts-of-calculation-types", "information-registers",
-		"accumulation-registers", "accounting-registers",
-		"calculation-registers", "business-processes", "tasks",
-		"external-data-sources",
-	}
-	// Нумераторы и последовательности в верхнем уровне не стоят: обе ветви
-	// живут в корне «Документов», рядом с самими документами - там же, где
-	// создаются их виды.
-	documentNestedKindOrder = []string{"document-numerators", "sequences"}
-)
-
 // metadataTitles are the captions of the kinds, for the editors that show
 // objects of many kinds side by side.
 var metadataTitles = func() map[string]string {
@@ -881,7 +849,7 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 			if _, err := os.Stat(path); err == nil {
 				var buildErr error
 				if slices.Contains(project.ObjectFolderKinds(), kind) {
-					node.Children, buildErr = workspace.objectFolderNodes(path, filepath.ToSlash(relative), "metadata", language, languages, objectDataGroups(loaded, kind, language, languages))
+					node.Children, buildErr = workspace.objectFolderNodes(path, filepath.ToSlash(relative), "metadata", kind, language, languages, objectDataGroups(loaded, kind, language, languages))
 				} else if named, ok := project.NamedFolderFiles(kind); ok {
 					// A kind that keeps only files still keeps them in a folder
 					// named after the object: its description, and the modules
@@ -909,29 +877,30 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 		node.Properties = countProperties(node.Path, len(node.Children))
 		built[kind] = node
 	}
-	if documents, ok := built["documents"]; ok {
-		var nested []Node
-		for _, kind := range documentNestedKindOrder {
-			if node, exists := built[kind]; exists {
-				nested = append(nested, node)
-			}
-		}
-		// Счётчик у «Документов» уже посчитан и остаётся числом документов:
-		// вложенные ветви - не документы.
-		documents.Children = append(nested, documents.Children...)
-		built["documents"] = documents
-	}
+	// The branches stand in the order and the places the kinds give them.
+	// Нумераторы и последовательности в верхнем уровне не стоят: обе ветви
+	// живут в корне «Документов», рядом с самими документами - там же, где
+	// создаются их виды. Счётчик у «Документов» уже посчитан и остаётся
+	// числом документов: вложенные ветви - не документы.
 	common := Node{ID: "metadata/common", Kind: "group", Title: "Общие", Path: "metadata"}
-	for _, kind := range commonKindOrder {
-		if node, ok := built[kind]; ok {
+	branches := []Node{{}}
+	var nested []Node
+	for _, item := range kinds.Branches() {
+		node := built[string(item.Kind)]
+		switch item.Layout().Branch {
+		case kinds.CommonBranch:
 			common.Children = append(common.Children, node)
+		case kinds.DocumentsBranch:
+			nested = append(nested, node)
+		default:
+			branches = append(branches, node)
 		}
 	}
 	common.Properties = countProperties(common.Path, countDescendants(common))
-	branches := []Node{common}
-	for _, kind := range topLevelKindOrder {
-		if node, ok := built[kind]; ok {
-			branches = append(branches, node)
+	branches[0] = common
+	for index := range branches {
+		if branches[index].ID == "metadata/"+string(kinds.Document) {
+			branches[index].Children = append(nested, branches[index].Children...)
 		}
 	}
 	return branches, nil
@@ -1013,7 +982,11 @@ func (workspace *Workspace) sourceFiles(directory, relative, extension, kind, la
 // object, titled from its own object.yaml, with its data groups (Реквизиты,
 // Табличные части, ...), Формы/Команды/Макеты, and module(s) as children —
 // everything physically grouped under that one folder.
-func (workspace *Workspace) objectFolderNodes(directory, relative, kind, language string, languages []project.Language, dataGroups func(id uuid.UUID, descriptionPath string) []Node) ([]Node, error) {
+//
+// kind is the kind of the objects; nodeKind is what their nodes are called in
+// the tree - "metadata" for an object of the configuration, which is what
+// opens its editor, the kind itself for an object inside another.
+func (workspace *Workspace) objectFolderNodes(directory, relative, nodeKind, kind, language string, languages []project.Language, dataGroups func(id uuid.UUID, descriptionPath string) []Node) ([]Node, error) {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return nil, fmt.Errorf("read project directory %q: %w", relative, err)
@@ -1040,7 +1013,7 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, kind, languag
 		if err != nil {
 			return nil, err
 		}
-		owned, err := objectOwnedFileNodes(objectDirectory, objectRelative, project.SubordinateCollections(kind)...)
+		owned, err := objectOwnedFileNodes(objectDirectory, objectRelative, kind, project.SubordinateCollections(kind)...)
 		if err != nil {
 			return nil, err
 		}
@@ -1048,17 +1021,27 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, kind, languag
 		if dataGroups != nil {
 			children = append(children, dataGroups(id, descriptionPath)...)
 		}
-		children = append(children,
-			Node{ID: id.String() + ":forms", Kind: "group", Title: "Формы", Children: owned.forms},
-			// A command shows the module that runs it, because that is the
-			// whole of what a command keeps on disk. "Макеты" still stands in
-			// empty: a template's content has no editor yet.
-			Node{ID: id.String() + ":commands", Kind: "group", Title: "Команды", Children: owned.commands},
-			Node{ID: id.String() + ":templates", Kind: "group", Title: "Макеты"},
-		)
+		children = append(children, owned.inner...)
+		// A group stands where the kind has what it holds, as in the
+		// prototype's tree: a sequence has none of them, a criterion of
+		// filter no templates, a storage of settings no commands.
+		layout := kinds.Must(kinds.Kind(kind)).Layout()
+		if layout.Forms {
+			children = append(children, Node{ID: id.String() + ":forms", Kind: "group", Title: "Формы", Children: owned.forms})
+		}
+		// A command shows the module that runs it, because that is the whole
+		// of what a command keeps on disk.
+		if layout.Commands {
+			children = append(children, Node{ID: id.String() + ":commands", Kind: "group", Title: "Команды", Children: owned.commands})
+		}
+		// "Макеты" still stands in empty: a template's content has no editor
+		// yet.
+		if layout.Templates {
+			children = append(children, Node{ID: id.String() + ":templates", Kind: "group", Title: "Макеты"})
+		}
 		children = append(children, owned.modules...)
 		nodes = append(nodes, Node{
-			ID: id.String(), Kind: kind, Title: title, Path: descriptionPath, Children: children,
+			ID: id.String(), Kind: nodeKind, Title: title, Path: descriptionPath, Children: children,
 			Properties: []Property{{Name: "UUID", Value: id.String()}, {Name: "Путь", Value: descriptionPath}, {Name: "Размер", Value: fmt.Sprintf("%d байт", info.Size())}},
 		})
 	}
@@ -1071,20 +1054,15 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, kind, languag
 	return nodes, nil
 }
 
-// objectModuleTitles reads a module file name as what the module is, so the
-// tree says "Модуль объекта" where the file says МодульОбъекта.bsl.
-var objectModuleTitles = map[string]string{
-	project.ObjectModuleFile:    "Модуль объекта",
-	project.ManagerModuleFile:   "Модуль менеджера",
-	project.RecordSetModuleFile: "Модуль набора записей",
-}
-
 // objectOwnedNodes are the tree nodes for what one object keeps in its folder,
 // kept apart because each goes to a different place in the tree: forms and
 // commands under groups of their own, modules as flat leaves beside them -
 // which is how the prototype shows an object's own modules too.
 type objectOwnedNodes struct {
 	modules, forms, commands []Node
+	// inner are the groups of what the object describes inside itself and
+	// keeps the modules of: the recalculations of a calculation register.
+	inner []Node
 }
 
 // objectOwnedFileNodes lists one object's own modules, managed forms and
@@ -1093,7 +1071,7 @@ type objectOwnedNodes struct {
 // A module is recognised by its name, because the name is the whole of its
 // identity: МодульОбъекта.bsl is the object module of whatever object's folder
 // it lies in, and nothing declares it anywhere else.
-func objectOwnedFileNodes(objectDirectory, objectRelative string, collections ...string) (objectOwnedNodes, error) {
+func objectOwnedFileNodes(objectDirectory, objectRelative, kind string, collections ...string) (objectOwnedNodes, error) {
 	var owned objectOwnedNodes
 	entries, err := os.ReadDir(objectDirectory)
 	if err != nil {
@@ -1110,30 +1088,38 @@ func objectOwnedFileNodes(objectDirectory, objectRelative string, collections ..
 			return objectOwnedNodes{}, unexpected(entry.Name())
 		}
 		if entry.IsDir() {
-			switch entry.Name() {
+			name := entry.Name()
+			if inner, ok := project.InnerKind(kind, name); ok {
+				group, err := innerObjectNodes(objectDirectory, objectRelative, inner, name)
+				if err != nil {
+					return objectOwnedNodes{}, err
+				}
+				owned.inner = append(owned.inner, group)
+				continue
+			}
+			if !slices.Contains(project.ObjectSubordinateDirectories(kind), name) && !slices.Contains(collections, name) {
+				return objectOwnedNodes{}, unexpected(name)
+			}
+			switch name {
 			case "forms":
 				owned.forms, err = objectFormNodes(objectDirectory, objectRelative, "forms")
 			case "commands":
 				owned.commands, err = objectCommandNodes(objectDirectory, objectRelative)
-			case "templates":
-				continue
 			default:
-				// A collection of objects inside this one is shown as
-				// objects, by attachSubordinateObjects.
-				if slices.Contains(collections, entry.Name()) {
-					continue
-				}
-				return objectOwnedNodes{}, unexpected(entry.Name())
+				// Templates have no editor yet, and a collection of objects
+				// inside this one is shown as objects, by
+				// attachSubordinateObjects.
+				continue
 			}
 			if err != nil {
 				return objectOwnedNodes{}, err
 			}
 			continue
 		}
-		title, ok := objectModuleTitles[entry.Name()]
-		if !ok {
+		if !project.KeepsModule(kind, entry.Name()) {
 			return objectOwnedNodes{}, unexpected(entry.Name())
 		}
+		title := moduleTitle(entry.Name())
 		path := filepath.ToSlash(filepath.Join(objectRelative, entry.Name()))
 		owned.modules = append(owned.modules, Node{
 			ID: path, Kind: "modules", Title: title, Path: path,
@@ -1144,6 +1130,40 @@ func objectOwnedFileNodes(objectDirectory, objectRelative string, collections ..
 	sort.Slice(owned.forms, func(left, right int) bool { return owned.forms[left].Path < owned.forms[right].Path })
 	sort.Slice(owned.commands, func(left, right int) bool { return owned.commands[left].Title < owned.commands[right].Title })
 	return owned, nil
+}
+
+// innerObjectNodes is the group of what an object describes inside itself
+// and keeps only the modules of, a folder each: the recalculations of a
+// calculation register, each showing its record set module.
+func innerObjectNodes(objectDirectory, objectRelative, kind, folder string) (Node, error) {
+	relative := filepath.ToSlash(filepath.Join(objectRelative, folder))
+	group := Node{ID: relative, Kind: "group", Title: metadataTitle(kind)}
+	entries, err := os.ReadDir(filepath.Join(objectDirectory, folder))
+	if err != nil {
+		return Node{}, fmt.Errorf("read %s: %w", relative, err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || project.SubordinateName(entry.Name()) != nil {
+			return Node{}, fmt.Errorf("unexpected source path %q", relative+"/"+entry.Name())
+		}
+		node := Node{ID: relative + "/" + entry.Name(), Kind: kind, Title: entry.Name()}
+		files, err := os.ReadDir(filepath.Join(objectDirectory, folder, entry.Name()))
+		if err != nil {
+			return Node{}, fmt.Errorf("read %s: %w", node.ID, err)
+		}
+		for _, file := range files {
+			if file.IsDir() || file.Type()&os.ModeSymlink != 0 || !project.KeepsModule(kind, file.Name()) {
+				return Node{}, fmt.Errorf("unexpected source path %q", node.ID+"/"+file.Name())
+			}
+			path := node.ID + "/" + file.Name()
+			node.Children = append(node.Children, Node{
+				ID: path, Kind: "modules", Title: moduleTitle(file.Name()), Path: path,
+				Properties: []Property{{Name: "Путь", Value: path}},
+			})
+		}
+		group.Children = append(group.Children, node)
+	}
+	return group, nil
 }
 
 // objectFormNodes lists the managed forms of one object. A form is a folder
@@ -1174,7 +1194,7 @@ func objectFormNodes(parentDirectory, parentRelative, forms string) ([]Node, err
 		modulePath := filepath.ToSlash(filepath.Join(parentRelative, forms, entry.Name(), project.FormModuleFile))
 		if info, err := os.Lstat(filepath.Join(parentDirectory, forms, entry.Name(), project.FormModuleFile)); err == nil && info.Mode().IsRegular() {
 			node.Children = append(node.Children, Node{
-				ID: modulePath, Kind: "modules", Title: "Модуль формы", Path: modulePath,
+				ID: modulePath, Kind: "modules", Title: moduleTitle(project.FormModuleFile), Path: modulePath,
 				Properties: []Property{{Name: "Путь", Value: modulePath}},
 			})
 		}
@@ -1206,7 +1226,7 @@ func (workspace *Workspace) attachSubordinateObjects(owners []Node, directory, r
 			}
 			collectionDirectory := filepath.Join(directory, ownerName, collection)
 			if _, err := os.Stat(collectionDirectory); err == nil {
-				children, err := workspace.objectFolderNodes(collectionDirectory, group.ID, subordinateKind, language, languages, nil)
+				children, err := workspace.objectFolderNodes(collectionDirectory, group.ID, subordinateKind, subordinateKind, language, languages, nil)
 				if err != nil {
 					return err
 				}
@@ -1220,25 +1240,18 @@ func (workspace *Workspace) attachSubordinateObjects(owners []Node, directory, r
 	return nil
 }
 
-// namedFolderFileTitles reads a file name as what the file is, so the tree
-// says "Модуль значения" where the folder says МодульЗначения.bsl.
-var namedFolderFileTitles = map[string]string{
-	project.CommandModuleFile: "Модуль команды",
-	project.FormModuleFile:    "Модуль формы",
-	project.ValueModuleFile:   "Модуль значения",
-	project.ManagerModuleFile: "Модуль менеджера",
-	project.ServiceModuleFile: "Модуль сервиса",
-	project.ClientModuleFile:  "Модуль клиента",
+// moduleTitle reads a module file name as what the module is, so the tree
+// says "Модуль объекта" where the file says МодульОбъекта.bsl.
+func moduleTitle(file string) string {
+	module, _ := kinds.ModuleOfFile(file)
+	return module.Title()
 }
 
 // namedFolderNodes lists the objects of a kind that keeps only files: each in a
 // folder named after it, holding its description and the modules that run it.
 // The node opens the description; the modules hang beneath.
 func namedFolderNodes(directory, relative, kind string, named []string) ([]Node, error) {
-	description := project.ObjectMetadataFile
-	if slices.Contains(named, project.FormMetadataFile) {
-		description = project.FormMetadataFile
-	}
+	description := project.DescriptionFile(kind)
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return nil, fmt.Errorf("read metadata %s %q: %w", kind, relative, err)
@@ -1266,7 +1279,7 @@ func namedFolderNodes(directory, relative, kind string, named []string) ([]Node,
 			}
 			modulePath := filepath.ToSlash(filepath.Join(relative, entry.Name(), file))
 			node.Children = append(node.Children, Node{
-				ID: modulePath, Kind: "modules", Title: namedFolderFileTitles[file], Path: modulePath,
+				ID: modulePath, Kind: "modules", Title: moduleTitle(file), Path: modulePath,
 				Properties: []Property{{Name: "Путь", Value: modulePath}},
 			})
 		}

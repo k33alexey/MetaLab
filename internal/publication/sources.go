@@ -460,8 +460,20 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 	if directory && len(parts) == 3 {
 		return nil
 	}
-	if directory && len(parts) == 4 && contains(project.ObjectSubordinateDirectories(), parts[3]) {
+	if directory && len(parts) == 4 && contains(project.ObjectSubordinateDirectories(parts[1]), parts[3]) {
 		return nil
+	}
+	// What the object describes inside itself keeps only its modules, a
+	// folder each: the recalculations of a calculation register.
+	if inner, ok := project.InnerKind(parts[1], parts[3]); ok {
+		if directory && (len(parts) == 4 || len(parts) == 5 && project.SubordinateName(parts[4]) == nil) {
+			return nil
+		}
+		if !directory && len(parts) == 6 {
+			if expected, err := project.InnerModulePath(inner, objectName, parts[4], parts[5]); err == nil && expected == relative {
+				return nil
+			}
+		}
 	}
 	// The help of the object, and of one of its forms; what the pages hold
 	// is checked where the metadata is read.
@@ -489,7 +501,7 @@ func validateObjectFolderSourcePath(parts []string, relative string, directory b
 	}
 	// A command, a form and a template each keep a folder named after itself.
 	if directory && len(parts) == 5 && project.SubordinateName(parts[4]) == nil &&
-		contains(project.ObjectSubordinateDirectories(), parts[3]) {
+		contains(project.ObjectSubordinateDirectories(parts[1]), parts[3]) {
 		return nil
 	}
 	if !directory && len(parts) == 6 && parts[3] == "forms" {

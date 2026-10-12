@@ -7,8 +7,10 @@
 // a configurator export (Catalog, Catalogs). Nothing beside the class keeps a
 // word list of its own. This package is that class for the words: it depends
 // on nothing, so the compiler and the project layout read it as well as the
-// model. What a kind does - how it is read, its rights, its registration - the
-// metadata package adds to the same kind.
+// model. Where the objects of a kind lie in the project, and which modules and
+// forms each keeps, is said here too (Layout): the project layout and Studio
+// read it. What a kind does - how it is read, its rights, its registration -
+// the metadata package adds to the same kind.
 package kinds
 
 import (
@@ -106,8 +108,8 @@ type Descriptor struct {
 	Title, Titles string
 }
 
-// descriptors is every kind. The order means nothing: the configuration tree
-// keeps its own, in the project layout.
+// descriptors is every kind, in the order of the configuration tree (see
+// Branches); a kind whose objects lie inside another's stands after its owner.
 // The names are the help's (8.3.27: the classes of metadata objects and the
 // collections of ОбъектМетаданныхКонфигурация, ВнешнийИсточникДанных, Куб,
 // РегистрРасчета) and the export's tags and folders; Russian names are

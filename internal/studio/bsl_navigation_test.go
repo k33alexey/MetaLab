@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -66,6 +67,44 @@ func TestNavigateBSLFindsMetadataDefinition(t *testing.T) {
 	result := navigateAt(t, workspace, modulePath, source, offset, "definition")
 	if result.Symbol.Kind != "metadata" || result.Symbol.CanRename || result.Symbol.Definition.Path != catalogPath || result.Symbol.Definition.Range.Start.Line != 3 {
 		t.Fatalf("metadata definition = %+v", result)
+	}
+}
+
+// TestNavigateBSLFindsMetadataDefinitionWhereverItLies catches a kind whose
+// objects the navigation looks for where they do not lie: a constant keeps a
+// folder named after it, and the index read it as a file named by an
+// identifier, so Константы.Валюта led nowhere. A session parameter is the
+// flat file beside it.
+func TestNavigateBSLFindsMetadataDefinitionWhereverItLies(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct{ word, path, body string }{
+		"константа": {"Константы.Валюта", "metadata/constants/Валюта/object.yaml",
+			"format: 1\nid: %s\nname: Валюта\ntitle: {ru: Валюта}\ntypes: [{kind: boolean}]\n"},
+		"параметр сеанса": {"ПараметрыСеанса.Валюта", "metadata/session-parameters/%s.yaml",
+			"format: 1\nid: %s\nname: Валюта\ntitle: {ru: Валюта}\ntypes: [{kind: boolean}]\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := createProject(t)
+			id := uuid.MustNew()
+			path := test.path
+			if strings.Contains(path, "%s") {
+				path = fmt.Sprintf(path, id)
+			}
+			modulePath, _ := project.ModulePath(uuid.MustNew())
+			source := "Процедура Запустить()\n\tЗначение = " + test.word + ";\nКонецПроцедуры\n"
+			writeBSLTestSource(t, root, modulePath, source)
+			writeBSLTestSource(t, root, path, fmt.Sprintf(test.body, id))
+			workspace, err := Open(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			offset := strings.Index(source, "Валюта") + len("Вал")
+			result := navigateAt(t, workspace, modulePath, source, offset, "definition")
+			if result.Symbol.Kind != "metadata" || result.Symbol.Definition.Path != path {
+				t.Fatalf("%s leads to %+v, not to %s", test.word, result.Symbol, path)
+			}
+		})
 	}
 }
 

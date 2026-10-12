@@ -389,6 +389,48 @@ func TestSubordinateObjectPathShapes(t *testing.T) {
 	}
 }
 
+// TestKindShapedPathShapes catches a path accepted or refused against what
+// its kind keeps: the recalculations of a calculation register were refused
+// whole - their folder and their module - so a configuration with a
+// recalculation module did not publish, though the loader took it; and a
+// folder of forms, commands or templates was accepted for every kind, a
+// sequence's too.
+func TestKindShapedPathShapes(t *testing.T) {
+	t.Parallel()
+	const register = "metadata/calculation-registers/Начисления"
+	for name, test := range map[string]struct {
+		relative  string
+		directory bool
+		accepted  bool
+	}{
+		"папка перерасчётов":                {register + "/recalculations", true, true},
+		"папка перерасчёта":                 {register + "/recalculations/Перерасчет", true, true},
+		"модуль перерасчёта":                {register + "/recalculations/Перерасчет/МодульНабораЗаписей.bsl", false, true},
+		"модуль объекта перерасчёта":        {register + "/recalculations/Перерасчет/МодульОбъекта.bsl", false, false},
+		"перерасчёт с точкой в имени":       {register + "/recalculations/Пере.расчет", true, false},
+		"перерасчёты у справочника":         {"metadata/catalogs/Товары/recalculations", true, false},
+		"модуль перерасчёта справочника":    {"metadata/catalogs/Товары/recalculations/П/МодульНабораЗаписей.bsl", false, false},
+		"формы последовательности":          {"metadata/sequences/Партии/forms", true, false},
+		"модуль последовательности":         {"metadata/sequences/Партии/МодульНабораЗаписей.bsl", false, true},
+		"менеджер последовательности":       {"metadata/sequences/Партии/МодульМенеджера.bsl", false, false},
+		"макеты критерия отбора":            {"metadata/filter-criteria/ПоКонтрагенту/templates", true, false},
+		"команды критерия отбора":           {"metadata/filter-criteria/ПоКонтрагенту/commands", true, true},
+		"команды хранилища настроек":        {"metadata/settings-storages/Отчеты/commands", true, false},
+		"модуль набора записей справочника": {"metadata/catalogs/Товары/МодульНабораЗаписей.bsl", false, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			err := validateSourcePath(test.relative, test.directory)
+			if test.accepted && err != nil {
+				t.Fatalf("%s was refused: %v", test.relative, err)
+			}
+			if !test.accepted && err == nil {
+				t.Fatalf("%s was accepted", test.relative)
+			}
+		})
+	}
+}
+
 // A project with a table of an external data source publishes whole: the
 // table's description, its module and its form go into the package, and the
 // form into the published snapshot under the table's address. Catches the

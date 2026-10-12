@@ -44,7 +44,7 @@ func validateCatalogEditorPath(relative string) error {
 		return ErrInvalidSourcePath
 	}
 	parts := strings.Split(canonical, "/")
-	if len(parts) != 4 || parts[0] != "metadata" || parts[1] != "catalogs" || parts[3] != "object.yaml" {
+	if len(parts) != 4 || parts[0] != "metadata" || parts[1] != string(metadata.CatalogKind) || parts[3] != project.ObjectMetadataFile {
 		return ErrInvalidSourcePath
 	}
 	return nil
@@ -158,7 +158,7 @@ func newCatalogFieldIDs(before, after metadata.CatalogDefinition) []uuid.UUID {
 }
 
 func (workspace *Workspace) checkCatalogNameLocked(value metadata.CatalogDefinition) error {
-	entries, err := os.ReadDir(filepath.Join(workspace.root, "metadata", "catalogs"))
+	entries, err := os.ReadDir(filepath.Join(workspace.root, "metadata", string(metadata.CatalogKind)))
 	if os.IsNotExist(err) {
 		return nil
 	}
@@ -216,11 +216,11 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 	if err := workspace.checkCatalogNameLocked(value); err != nil {
 		return CatalogEditorSource{}, err
 	}
-	relative, err := project.ObjectMetadataPath("catalogs", name)
+	relative, err := project.ObjectMetadataPath(string(metadata.CatalogKind), name)
 	if err != nil {
 		return CatalogEditorSource{}, err
 	}
-	directory := filepath.Join(workspace.root, "metadata", "catalogs")
+	directory := filepath.Join(workspace.root, "metadata", string(metadata.CatalogKind))
 	if err := os.Mkdir(directory, 0o755); err != nil && !os.IsExist(err) {
 		return CatalogEditorSource{}, err
 	}

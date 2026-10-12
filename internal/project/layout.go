@@ -12,6 +12,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -86,30 +87,27 @@ const (
 	// modules an object keeps in its own folder, named after the role each
 	// one plays. Which of them a kind may have is decided by the kind: a
 	// register keeps a record set where a catalog keeps an object.
-	ObjectModuleFile    = "МодульОбъекта.bsl"
-	ManagerModuleFile   = "МодульМенеджера.bsl"
-	RecordSetModuleFile = "МодульНабораЗаписей.bsl"
-	// RecalculationsDirectory is where a calculation register keeps the folders
-	// of its recalculations, each holding the recalculation's record set
-	// module. A recalculation is described inside the register; only its
-	// module needs a place on disk.
-	RecalculationsDirectory = "recalculations"
+	// The roles are the kinds package's (kinds.Module), and so is which kind
+	// keeps which.
+	ObjectModuleFile    = string(kinds.ObjectModule) + ".bsl"
+	ManagerModuleFile   = string(kinds.ManagerModule) + ".bsl"
+	RecordSetModuleFile = string(kinds.RecordSetModule) + ".bsl"
 	// ServiceModuleFile is the module of one service, inside that service's
 	// own folder. A service owns exactly one module - the procedures its
 	// operations name - so there is nothing for an identifier to tell apart.
-	ServiceModuleFile = "МодульСервиса.bsl"
+	ServiceModuleFile = string(kinds.ServiceModule) + ".bsl"
 	// ClientModuleFile is the module of one WebSocket client, inside that
 	// client's own folder: the handlers of its connection.
-	ClientModuleFile = "МодульКлиента.bsl"
+	ClientModuleFile = string(kinds.ClientModule) + ".bsl"
 	// CommandModuleFile is the module of one command, inside that command's
 	// own folder.
-	CommandModuleFile = "МодульКоманды.bsl"
+	CommandModuleFile = string(kinds.CommandModule) + ".bsl"
 	// FormMetadataFile is the description of one managed form, inside the
 	// folder named after that form.
 	FormMetadataFile = "form.yaml"
 	// FormModuleFile is the module of one form, beside the form's own
 	// description in that same folder.
-	FormModuleFile = "МодульФормы.bsl"
+	FormModuleFile = string(kinds.FormModule) + ".bsl"
 	// FormBodyFile is the body of an ordinary form, beside its description,
 	// carried as the prototype wrote it (Form.bin, with the module inside: 157,
 	// 160, 0, 0 and 1547 ordinary forms in the exports). ML builds no ordinary
@@ -118,7 +116,7 @@ const (
 	FormBodyFile = "form.bin"
 	// ValueModuleFile is the module of a constant's value: the one the
 	// platform calls when the value is checked and written.
-	ValueModuleFile = "МодульЗначения.bsl"
+	ValueModuleFile = string(kinds.ValueModule) + ".bsl"
 )
 
 var (
@@ -130,129 +128,91 @@ var (
 	ErrProjectIdentityChanged = errors.New("ML Project identity cannot be changed")
 
 	rootDirectories = []string{"metadata", "modules"}
-	// objectModuleFiles lists every module role an object may keep directly
-	// in its own folder. Commands are not here - a command module lives in
-	// the folder of its command.
-	objectModuleFiles = []string{ObjectModuleFile, ManagerModuleFile, RecordSetModuleFile}
-	// moduleRoleFiles is every role a module may play inside the folder of
-	// whatever owns it, across all kinds - the three an object keeps plus the
-	// one a constant keeps around its value.
-	moduleRoleFiles = []string{ObjectModuleFile, ManagerModuleFile, RecordSetModuleFile, ValueModuleFile}
 	// objectSubordinateDirectories lists the folders an object may keep
-	// beside its own description and modules.
+	// beside its own description and modules: of its forms, its commands and
+	// its templates, in the order of kinds.Layout's Forms, Commands and
+	// Templates.
 	objectSubordinateDirectories = []string{"forms", "commands", "templates"}
+	// RecalculationsDirectory is where a calculation register keeps the
+	// folders of its recalculations, each holding the recalculation's record
+	// set module. A recalculation is described inside the register; only its
+	// module needs a place on disk.
+	RecalculationsDirectory = kinds.Must(kinds.Recalculation).Layout().Folder
+)
+
+// The lists below are read off the kinds package's layouts, so a kind is laid
+// out by what it says of itself and by nothing else.
+var (
+	// metadataKinds is every folder of metadata/, in the order the
+	// configuration tree shows the kinds.
+	metadataKinds []string
+	// objectFolderKinds lists the kinds of the configuration whose objects
+	// group their own description, modules, forms, commands and templates
+	// under one folder named after the object (kinds.InFolder) - the
+	// description lies beside its code and forms, not in a common heap.
+	objectFolderKinds []string
 	// namedFolderKinds lists the kinds whose object keeps a folder named after
 	// it holding a fixed set of files and nothing else - no forms, commands or
-	// templates of its own. Each entry says which files that folder may hold.
+	// templates of its own (kinds.InFilesFolder, kinds.InFormFolder). Each
+	// entry says which files that folder may hold: the description and the
+	// modules. What else lies there - the content of a template or a picture,
+	// the schema of an XDTO package, the description of a WS reference - is
+	// content and not source: it is checked where the metadata is read, and
+	// left out here so that it stays out of code search and the module index.
+	// An external data source keeps its tables one level down; they are
+	// objects with folders of their own (subordinateObjectKinds).
+	namedFolderKinds = map[string][]string{}
+	// objectModuleFiles lists every module role an object of an object
+	// folder may keep directly in its folder. Commands are not here - a
+	// command module lives in the folder of its command.
+	objectModuleFiles []string
+	// subordinateObjectKinds are the kinds whose objects lie inside an object
+	// of another kind rather than directly under metadata/. The prototype's
+	// export lays out a subordinate object that is an object of development
+	// in its own right the same way - a folder in its owner's collection,
+	// beside the owner's description - and a table of an external data source
+	// is one: it has its own modules, forms, commands and templates, exactly
+	// as a catalog does.
 	//
-	// They keep a folder for the same reason an object does: they own files.
-	// What they do not own is subordinate entities, so they are kept apart
-	// from objectFolderKinds rather than given machinery they have no use for.
-	namedFolderKinds = map[string][]string{
-		"common-forms": {FormMetadataFile, FormModuleFile, FormBodyFile},
-		// A common command keeps the module that runs it; a group of
-		// commands keeps nothing, so it stays one file.
-		"common-commands": {ObjectMetadataFile, CommandModuleFile},
-		// A constant keeps two modules: the one the platform calls around
-		// its value and the one of its manager.
-		"constants": {ObjectMetadataFile, ValueModuleFile, ManagerModuleFile},
-		// A common template and a common picture keep a description and
-		// nothing else that is source: what else lies in their folder is
-		// content - a spreadsheet, an archive, an image - and content is
-		// named by the kind of template or by the density of the image, not
-		// by a role. It is checked where the metadata is read, and left out
-		// here so that binary content stays out of code search and out of the
-		// module index.
-		"common-templates": {ObjectMetadataFile},
-		"common-pictures":  {ObjectMetadataFile},
-		// A package of exchanged types keeps its description and its schema.
-		// The schema is XML - that is what a schema of exchanged types is
-		// everywhere it is read - and it is not source in our sense, so it is
-		// left out of the list the same way a picture's images are.
-		"xdto-packages": {ObjectMetadataFile},
-		// A service keeps its description and one module: the procedures its
-		// operations name lie there, and nowhere else.
-		"web-services":  {ObjectMetadataFile, ServiceModuleFile},
-		"http-services": {ObjectMetadataFile, ServiceModuleFile},
-		// A WS reference keeps its description and the service description
-		// it was imported with. The latter is WSDL and not source in our
-		// sense, so it is left out the way an XDTO package's schema is.
-		"ws-references": {ObjectMetadataFile},
-		// A WebSocket client keeps its description and one module: the
-		// handlers of the connection it opens.
-		"websocket-clients": {ObjectMetadataFile, ClientModuleFile},
-		// An external data source keeps its description here and its tables
-		// one level down, in a folder of tables - see the metadata package.
-		// Only the description is listed: the tables are subordinate objects
-		// with folders of their own, and the walkers of object folders do not
-		// know the second level yet.
-		"external-data-sources": {ObjectMetadataFile},
-	}
-	// objectFolderKinds lists metadata kinds whose objects group their own
-	// description, modules, forms, commands and templates under one folder
-	// named after the object, instead of scattering them across the flat
-	// modules/ and forms/ roots.
-	// Виды, у которых есть собственные модули и формы, хранят объект папкой:
-	// описание лежит рядом со своим кодом и формами, а не в общей куче.
-	// A sequence is among them for its record set module, which the
-	// prototype gives it (acc ДокументыОрганизаций).
-	objectFolderKinds = []string{"catalogs", "documents", "enumerations", "information-registers", "accumulation-registers",
-		"charts-of-characteristic-types", "charts-of-accounts", "charts-of-calculation-types", "business-processes", "tasks",
-		"filter-criteria", "settings-storages",
-		"exchange-plans", "document-journals", "accounting-registers", "calculation-registers",
-		"reports", "data-processors", "sequences"}
-	// Порядок — тот, в котором виды показываются в дереве конфигурации, а не
-	// алфавитный: сначала группа «Общие», затем объекты верхнего уровня.
-	// Нумераторы и последовательности стоят рядом с документами, потому что
-	// в дереве они ветви внутри «Документов».
-	metadataKinds = []string{
-		"subsystems",
-		"common-modules",
-		"session-parameters",
-		"roles",
-		"common-attributes",
-		"exchange-plans",
-		"filter-criteria",
-		"event-subscriptions",
-		"scheduled-jobs",
-		"functional-options",
-		"functional-options-parameters",
-		"defined-types",
-		"settings-storages",
-		"common-commands",
-		"command-groups",
-		"common-forms",
-		"common-templates",
-		"common-pictures",
-		"xdto-packages",
-		"web-services",
-		"http-services",
-		"ws-references",
-		"websocket-clients",
-		"style-items",
-		"styles",
-		"languages",
-		"constants",
-		"catalogs",
-		"documents",
-		"document-numerators",
-		"sequences",
-		"document-journals",
-		"enumerations",
-		"reports",
-		"data-processors",
-		"charts-of-characteristic-types",
-		"charts-of-accounts",
-		"charts-of-calculation-types",
-		"information-registers",
-		"accumulation-registers",
-		"accounting-registers",
-		"calculation-registers",
-		"business-processes",
-		"tasks",
-		"external-data-sources",
-	}
+	// Such an object is addressed like any other, by a kind and a name, and
+	// the name carries the owner: Склад.Товары is the table Товары of the
+	// source Склад. The address is what forms, modules and the published
+	// snapshot know an object by, so none of them needed a new field; only
+	// the translation of an address into a folder, here, knows the folder is
+	// deeper.
+	subordinateObjectKinds = map[string]subordinateKind{}
 )
+
+func init() {
+	for _, item := range kinds.All() {
+		layout := item.Layout()
+		kind := string(item.Kind)
+		if layout.Branch != kinds.NoBranch {
+			metadataKinds = append(metadataKinds, kind)
+		}
+		switch layout.Storage {
+		case kinds.InFolder:
+			if layout.Owner != "" {
+				subordinateObjectKinds[kind] = subordinateKind{owner: string(layout.Owner), collection: layout.Folder}
+			} else {
+				objectFolderKinds = append(objectFolderKinds, kind)
+			}
+			for _, module := range layout.Modules {
+				if !slices.Contains(objectModuleFiles, module.File()) {
+					objectModuleFiles = append(objectModuleFiles, module.File())
+				}
+			}
+		case kinds.InFilesFolder:
+			files := []string{ObjectMetadataFile}
+			for _, module := range layout.Modules {
+				files = append(files, module.File())
+			}
+			namedFolderKinds[kind] = files
+		case kinds.InFormFolder:
+			namedFolderKinds[kind] = []string{FormMetadataFile, FormModuleFile, FormBodyFile}
+		}
+	}
+}
 
 // rootModuleFiles is every module the configuration root may keep, in the
 // order the tree shows them.
@@ -317,9 +277,20 @@ func NamedFolderKinds() []string {
 // directly in its own folder.
 func ObjectModuleFiles() []string { return slices.Clone(objectModuleFiles) }
 
-// ObjectSubordinateDirectories returns the folders an object may keep beside
-// its own description and modules.
-func ObjectSubordinateDirectories() []string { return slices.Clone(objectSubordinateDirectories) }
+// ObjectSubordinateDirectories returns the folders an object of a kind may
+// keep beside its own description and modules: those of its forms, commands
+// and templates, each where the kind has them.
+func ObjectSubordinateDirectories(kind string) []string {
+	item, _ := kinds.Of(kinds.Kind(kind))
+	layout := item.Layout()
+	var result []string
+	for index, has := range []bool{layout.Forms, layout.Commands, layout.Templates} {
+		if has {
+			result = append(result, objectSubordinateDirectories[index])
+		}
+	}
+	return result
+}
 
 // Initialize atomically creates a new canonical ML Project at a previously unused path.
 func Initialize(root string, configuration Project) error {
@@ -556,7 +527,7 @@ func ObjectDirectory(kind, name string) (string, error) {
 		}
 		return path.Join(ownerDirectory, subordinate.collection, own), nil
 	}
-	if _, keepsFolder := namedFolderKinds[kind]; !keepsFolder && !slices.Contains(objectFolderKinds, kind) {
+	if !keepsFolderOfItsOwn(kind) {
 		return "", fmt.Errorf("kind %q does not use a per-object folder", kind)
 	}
 	if err := ObjectName(name); err != nil {
@@ -570,27 +541,6 @@ func ObjectDirectory(kind, name string) (string, error) {
 type subordinateKind struct {
 	owner      string
 	collection string
-}
-
-// subordinateObjectKinds are the kinds whose objects lie inside an object of
-// another kind rather than directly under metadata/. The prototype's export
-// lays out a subordinate object that is an object of development in its own
-// right the same way - a folder in its owner's collection, beside the owner's
-// description - and a table of an external data source is one: it has its own
-// modules, forms, commands and templates, exactly as a catalog does.
-//
-// Such an object is addressed like any other, by a kind and a name, and the
-// name carries the owner: Склад.Товары is the table Товары of the source
-// Склад. The address is what forms, modules and the published snapshot know
-// an object by, so none of them needed a new field; only the translation of
-// an address into a folder, here, knows the folder is deeper.
-var subordinateObjectKinds = map[string]subordinateKind{
-	"external-data-source-tables": {owner: "external-data-sources", collection: "tables"},
-	"external-data-source-cubes":  {owner: "external-data-sources", collection: "cubes"},
-	// A table of a cube's dimension lies inside the cube, two levels below
-	// the source: Склад.Продажи.Товары is the dimension table Товары of the
-	// cube Продажи of the source Склад.
-	"external-data-source-dimension-tables": {owner: "external-data-source-cubes", collection: "dimension-tables"},
 }
 
 // SubordinateObjectKinds returns the kinds whose objects lie inside another
@@ -624,6 +574,53 @@ func SubordinateCollections(kind string) []string {
 	return result
 }
 
+// InnerKind returns the kind whose objects an object of the owner kind
+// describes inside itself and keeps only the modules of, in one of its
+// folders: recalculations for the recalculations of a calculation register.
+func InnerKind(owner, folder string) (string, bool) {
+	for _, item := range kinds.All() {
+		layout := item.Layout()
+		if layout.Storage == kinds.InOwner && string(layout.Owner) == owner && layout.Folder == folder {
+			return string(item.Kind), true
+		}
+	}
+	return "", false
+}
+
+// InnerFolders returns the folders an object of a kind keeps for what it
+// describes inside itself (InnerKind), sorted.
+func InnerFolders(kind string) []string {
+	var result []string
+	for _, item := range kinds.All() {
+		if layout := item.Layout(); layout.Storage == kinds.InOwner && string(layout.Owner) == kind {
+			result = append(result, layout.Folder)
+		}
+	}
+	slices.Sort(result)
+	return result
+}
+
+// InnerModulePath returns one module of an object an object of the owner kind
+// describes inside itself: metadata/calculation-registers/Начисления/
+// recalculations/Перерасчет/МодульНабораЗаписей.bsl.
+func InnerModulePath(kind, owner, name, roleFile string) (string, error) {
+	item, ok := kinds.Of(kinds.Kind(kind))
+	if !ok || item.Layout().Storage != kinds.InOwner {
+		return "", fmt.Errorf("kind %q is not described inside its owner", kind)
+	}
+	directory, err := ObjectDirectory(string(item.Layout().Owner), owner)
+	if err != nil {
+		return "", err
+	}
+	if err := SubordinateName(name); err != nil {
+		return "", err
+	}
+	if !KeepsModule(kind, roleFile) {
+		return "", fmt.Errorf("%q is not a module role of an object of %s", roleFile, kind)
+	}
+	return path.Join(directory, item.Layout().Folder, name, roleFile), nil
+}
+
 // SubordinateObjectKind returns the kind of the objects an object of the owner
 // kind keeps in one of its collections: external-data-source-tables for the
 // tables of an external data source.
@@ -634,6 +631,23 @@ func SubordinateObjectKind(owner, collection string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// DescriptionFile is the file an object of a kind that keeps a folder is
+// described by inside that folder: a form's description for a common form,
+// the object's for every other.
+func DescriptionFile(kind string) string {
+	if item, ok := kinds.Of(kinds.Kind(kind)); ok && item.Layout().Storage == kinds.InFormFolder {
+		return FormMetadataFile
+	}
+	return ObjectMetadataFile
+}
+
+// keepsFolderOfItsOwn reports whether an object of a kind keeps a folder
+// named after it directly under the folder of its kind.
+func keepsFolderOfItsOwn(kind string) bool {
+	item, ok := kinds.Of(kinds.Kind(kind))
+	return ok && item.Layout().KeepsFolder() && item.Layout().Owner == ""
 }
 
 // IsObjectFolderKind reports whether an object of a kind keeps an object
@@ -661,7 +675,7 @@ func SplitObjectPath(relative string) (kind, name string, rest []string, ok bool
 		return "", "", nil, false
 	}
 	kind, name, rest = parts[1], parts[2], parts[3:]
-	if _, keepsFolder := namedFolderKinds[kind]; !keepsFolder && !slices.Contains(objectFolderKinds, kind) {
+	if !keepsFolderOfItsOwn(kind) {
 		return "", "", nil, false
 	}
 	for len(rest) >= 2 {
@@ -690,6 +704,13 @@ func ObjectMetadataPath(kind, name string) (string, error) {
 	return path.Join(directory, ObjectMetadataFile), nil
 }
 
+// KeepsModule reports whether an object of a kind may keep a module in the
+// role a file in its folder is named after.
+func KeepsModule(kind, file string) bool {
+	item, _ := kinds.Of(kinds.Kind(kind))
+	return slices.ContainsFunc(item.Layout().Modules, func(module kinds.Module) bool { return module.File() == file })
+}
+
 // ObjectModulePath returns one of an object's own BSL modules, named by the
 // role it plays rather than by an identifier of its own.
 //
@@ -702,8 +723,8 @@ func ObjectModulePath(kind, name, roleFile string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !slices.Contains(moduleRoleFiles, roleFile) {
-		return "", fmt.Errorf("%q is not a module role of an object", roleFile)
+	if !KeepsModule(kind, roleFile) {
+		return "", fmt.Errorf("%q is not a module role of an object of %s", roleFile, kind)
 	}
 	return path.Join(directory, roleFile), nil
 }

@@ -723,10 +723,12 @@ func loadExternalTables(directory, relative string, configuration project.Projec
 func (catalog *Catalog) validateExternalTableFiles(root string) error {
 	for _, source := range catalog.ExternalDataSources {
 		for _, table := range source.Tables {
-			modules := recordSetKindModules
+			// The kind has both; a table keeps the one of its type.
+			other := kinds.ObjectModule
 			if table.ObjectTable() {
-				modules = objectKindModules
+				other = kinds.RecordSetModule
 			}
+			modules := slices.DeleteFunc(kinds.Must(ExternalDataSourceTableKind).Layout().Modules, func(module kinds.Module) bool { return module == other })
 			if err := catalog.validateObjectFileSources(objectFiles{root: root, id: table.ID, directoryKind: ExternalDataSourceTableKind,
 				kind: "external data source table", name: source.Name + "." + table.Name, modules: modules,
 				formSlots: table.Forms.slots(), commands: table.Commands, templates: table.Templates}); err != nil {

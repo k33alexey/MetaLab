@@ -292,13 +292,13 @@ func validateEditablePath(relative string) (string, string, error) {
 	// An object folder is read from its address, wherever it lies: a table
 	// of an external data source keeps the same files a catalog does, one
 	// folder deeper, and the project is what knows how much deeper.
-	if kind, _, rest, ok := project.SplitObjectPath(relative); ok && project.IsObjectFolderKind(kind) {
+	if kind, name, rest, ok := project.SplitObjectPath(relative); ok && project.IsObjectFolderKind(kind) {
 		if len(rest) == 1 && rest[0] == project.ObjectMetadataFile {
 			return relative, "yaml", nil
 		}
 		// A module is named after the role it plays, not after an
 		// identifier: the file is what says which module it is.
-		if len(rest) == 1 && slices.Contains(project.ObjectModuleFiles(), rest[0]) {
+		if len(rest) == 1 && project.KeepsModule(kind, rest[0]) {
 			return relative, "bsl", nil
 		}
 		// A form is a folder named after itself, holding its description
@@ -314,6 +314,15 @@ func validateEditablePath(relative string) (string, string, error) {
 		if len(rest) == 3 && rest[0] == "commands" && project.SubordinateName(rest[1]) == nil &&
 			rest[2] == project.CommandModuleFile {
 			return relative, "bsl", nil
+		}
+		// What the object describes inside itself keeps its modules a folder
+		// each: the recalculations of a calculation register.
+		if len(rest) == 3 {
+			if inner, ok := project.InnerKind(kind, rest[0]); ok {
+				if expected, err := project.InnerModulePath(inner, name, rest[1], rest[2]); err == nil && expected == relative {
+					return relative, "bsl", nil
+				}
+			}
 		}
 	}
 	return "", "", ErrInvalidSourcePath

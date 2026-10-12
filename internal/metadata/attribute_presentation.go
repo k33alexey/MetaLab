@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -576,16 +577,8 @@ func cloneValuePointer(value *Value) *Value {
 // which is what a choice form of a field has to be one of, unless it is a
 // common form.
 func formOwnerKind(kind Kind) bool {
-	switch kind {
-	case CatalogKind, DocumentKind, EnumerationKind, DocumentJournalKind,
-		ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind,
-		ExchangePlanKind, BusinessProcessKind, TaskKind,
-		InformationRegisterKind, AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind,
-		ReportKind, DataProcessorKind, FilterCriterionKind, SettingsStorageKind,
-		ExternalDataSourceTableKind, ExternalCubeKind, ExternalDimensionTableKind:
-		return true
-	}
-	return false
+	item, ok := kinds.Of(kind)
+	return ok && item.Layout().Forms
 }
 
 // resolveChoiceForm finds the form a field picks its value with. Named with

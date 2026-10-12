@@ -82,7 +82,7 @@ func TestEveryNamedFolderModuleHasATitle(t *testing.T) {
 	for _, kind := range project.NamedFolderKinds() {
 		files, _ := project.NamedFolderFiles(kind)
 		for _, file := range files {
-			if filepath.Ext(file) == ".bsl" && namedFolderFileTitles[file] == "" {
+			if filepath.Ext(file) == ".bsl" && moduleTitle(file) == "" {
 				t.Errorf("%s keeps %s, and the tree has no name for it", kind, file)
 			}
 		}

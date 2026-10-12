@@ -838,10 +838,6 @@ func (workspace *Workspace) indexMetadataDefinitions(index *bslNavigationIndex) 
 		collection := kinds.Must(kind).Collection
 		aliases[string(kind)] = []string{collection.Russian, collection.English}
 	}
-	objectFolderKind := make(map[string]bool, len(project.ObjectFolderKinds()))
-	for _, kind := range project.ObjectFolderKinds() {
-		objectFolderKind[kind] = true
-	}
 	for kind, roots := range aliases {
 		entries, err := os.ReadDir(filepath.Join(workspace.root, "metadata", kind))
 		if err != nil {
@@ -849,14 +845,16 @@ func (workspace *Workspace) indexMetadataDefinitions(index *bslNavigationIndex) 
 		}
 		for _, entry := range entries {
 			var path string
-			if objectFolderKind[kind] {
+			// An object that keeps a folder is described inside it - a
+			// constant as much as a catalog.
+			if kinds.Must(kinds.Kind(kind)).Layout().KeepsFolder() {
 				if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
 					continue
 				}
 				if project.ObjectName(entry.Name()) != nil {
 					continue
 				}
-				path = filepath.ToSlash(filepath.Join("metadata", kind, entry.Name(), "object.yaml"))
+				path = filepath.ToSlash(filepath.Join("metadata", kind, entry.Name(), project.DescriptionFile(kind)))
 			} else {
 				if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || filepath.Ext(entry.Name()) != ".yaml" {
 					continue
