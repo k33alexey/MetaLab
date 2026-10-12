@@ -186,11 +186,16 @@ func TestLoaderReadsTheGridBesideTheRole(t *testing.T) {
 
 // A role gives rights on whatever the prototype's roles give them on - the
 // configuration itself, subsystems, common forms and commands, session
-// parameters, services - and on the parts the prototype names, standard
-// table parts among them. It gives none on what has no rights there.
+// parameters, services, a recalculation - and on the parts the prototype
+// names, standard table parts among them. Rights on a kind no export gives
+// them on are carried with a note; a part the object lacks and an object the
+// configuration lacks are refused. The expectation is the exports' (the
+// Rights.xml of every role of the four checked, demo-base and energy), written
+// out here, not read from kindUsesOf.
 //
-// Defect caught: a role of the prototype refused for naming a subsystem or
-// the configuration, and one accepted for naming a common module.
+// Defect caught: a role of the prototype refused for naming a subsystem, the
+// configuration or a recalculation (demo-base, energy); one naming a common
+// module refused without a reason, or accepted silently.
 func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 	t.Parallel()
 	root := compositeProject(t)
@@ -226,14 +231,19 @@ func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 		"a standard table part": part(grant(cmpAccounts, PermissionRead), "extdimensiontypes", PermissionView),
 		"its field":             part(grant(cmpAccounts, PermissionRead), "extdimensiontypes.turnoversonly", PermissionEdit),
 		"a competing kind":      part(grant(cmpCalculationTypes, PermissionRead), "leadingcalculationtypes.calculationtype", PermissionView),
+		"a recalculation":       grant(cmpRecalculation, PermissionRead, PermissionUpdate),
+	}
+	noted := map[string]ObjectPermission{
+		"a common module": grant(cmpCommonModule, PermissionView),
+		"a numerator":     grant(cmpNumerator, PermissionRead),
+		"a role":          grant(cmpRole, PermissionView),
+		"a defined type":  grant(cmpDefinedType, PermissionView),
+		"an enumeration":  grant(cmpEnumeration, PermissionView),
 	}
 	refused := map[string]ObjectPermission{
-		"a common module":   grant(cmpCommonModule, PermissionView),
-		"a numerator":       grant(cmpNumerator, PermissionRead),
-		"a role":            grant(cmpRole, PermissionView),
-		"a defined type":    grant(cmpDefinedType, PermissionView),
-		"a foreign part":    part(grant(cmpAccounts, PermissionRead), "leadingcalculationtypes", PermissionView),
-		"a part of nothing": part(grant(cmpSubsystem, PermissionView), "ref", PermissionView),
+		"a foreign part":       part(grant(cmpAccounts, PermissionRead), "leadingcalculationtypes", PermissionView),
+		"a part of nothing":    part(grant(cmpSubsystem, PermissionView), "ref", PermissionView),
+		"an object of nothing": grant(uuid.MustNew().String(), PermissionRead),
 	}
 	for name, permission := range accepted {
 		role, _ := project.Role("Кладовщик")
@@ -241,8 +251,32 @@ func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 		if err := WriteRole(root, role); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := Load(root); err != nil {
+		catalog, err := Load(root)
+		if err != nil {
 			t.Errorf("rights on %s were refused: %v", name, err)
+			continue
+		}
+		for _, note := range catalog.Notes() {
+			if note.Kind == NoteUseWithoutSample {
+				t.Errorf("rights on %s, which the exports give, are noted: %+v", name, note)
+			}
+		}
+	}
+	for name, permission := range noted {
+		role, _ := project.Role("Кладовщик")
+		role.Objects = append(role.Objects, permission)
+		if err := WriteRole(root, role); err != nil {
+			t.Fatal(err)
+		}
+		catalog, err := Load(root)
+		if err != nil {
+			t.Errorf("rights on %s were refused: %v", name, err)
+			continue
+		}
+		if !slices.ContainsFunc(catalog.Notes(), func(note Note) bool {
+			return note.Kind == NoteUseWithoutSample && note.Where == "roles Кладовщик objects"
+		}) {
+			t.Errorf("rights on %s were accepted silently", name)
 		}
 	}
 	for name, permission := range refused {

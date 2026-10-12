@@ -156,6 +156,14 @@ func TestEveryKindFindsItsObjects(t *testing.T) {
 			objects[RecalculationKind] = append(objects[RecalculationKind], recalculation.ID)
 		}
 	}
+	for id, kind := range catalog.objectKindByID {
+		if kind == commonFormObjectKind {
+			objects[CommonFormKind] = append(objects[CommonFormKind], id)
+		}
+	}
+	for _, language := range catalog.Project.Languages {
+		objects[LanguageKind] = append(objects[LanguageKind], language.ID)
+	}
 	for _, item := range kindInfos {
 		if item.has == nil && item.kind != ExternalCubeKind {
 			t.Errorf("%s finds no object", item.kind)
@@ -183,4 +191,56 @@ func TestEveryKindFindsItsObjects(t *testing.T) {
 func kindInfoMust(kind Kind) kindInfo {
 	item, _ := kindInfoOf(kind)
 	return item
+}
+
+// TestEveryKindSaysWhatMayNameIt catches a kind that says nothing of a use
+// (a new kind left out of rights, registration or functional options by
+// omission), and a use given to the wrong kinds: a right on a recalculation
+// refused (demo-base and energy give them), a registration of an enumeration
+// accepted, a kind the exports never show taken silently instead of with a
+// note. The expectation is written out here, not read from kindUsesOf: what
+// the exports of the configurator write (the Rights.xml of every role, the
+// Content.xml of every exchange plan, the Content of every functional option
+// of the four checked, demo-base and energy), and for registration the help
+// besides - the kinds whose data has ОбменДанными (8.3.27).
+func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
+	t.Parallel()
+	shown := map[string][]Kind{
+		"rights": {SubsystemKind, SessionParameterKind, CommonAttributeKind, ExchangePlanKind, FilterCriterionKind,
+			CommonFormKind, CommonCommandKind, ConstantKind, CatalogKind, DocumentKind, DocumentJournalKind, SequenceKind,
+			ReportKind, DataProcessorKind, ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind,
+			InformationRegisterKind, AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind,
+			RecalculationKind, BusinessProcessKind, TaskKind, ExternalDataSourceKind, ExternalDataSourceTableKind,
+			WebServiceKind, HTTPServiceKind},
+		"registration": {ConstantKind, CatalogKind, DocumentKind, SequenceKind, ChartOfCharacteristicTypesKind,
+			ChartOfAccountsKind, ChartOfCalculationTypesKind, BusinessProcessKind, TaskKind, InformationRegisterKind,
+			AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind, RecalculationKind},
+		"option": {AccountingRegisterKind, AccumulationRegisterKind, BusinessProcessKind, CalculationRegisterKind,
+			CatalogKind, ChartOfAccountsKind, ChartOfCalculationTypesKind, ChartOfCharacteristicTypesKind,
+			CommonAttributeKind, CommonCommandKind, CommonFormKind, ConstantKind, DataProcessorKind, DocumentKind,
+			DocumentJournalKind, EnumerationKind, ExchangePlanKind, FilterCriterionKind, InformationRegisterKind,
+			ReportKind, SubsystemKind, TaskKind},
+	}
+	// The help gives ОбменДанными to the data of these and of no other kind;
+	// of them, only an exchange plan is in no export's content.
+	exchanged := append(slices.Clone(shown["registration"]), ExchangePlanKind)
+	for _, item := range kinds.All() {
+		info, ok := kindInfoOf(item.Kind)
+		if !ok {
+			t.Errorf("%s has no descriptor in the model", item.Kind)
+			continue
+		}
+		for use, got := range map[string]presence{"rights": info.uses.rights, "registration": info.uses.registration, "option": info.uses.option} {
+			expected := unproven
+			switch {
+			case slices.Contains(shown[use], item.Kind):
+				expected = present
+			case use == "registration" && !slices.Contains(exchanged, item.Kind):
+				expected = absent
+			}
+			if got != expected {
+				t.Errorf("%s of %s is %d, the prototype's %d", use, item.Kind, got, expected)
+			}
+		}
+	}
 }

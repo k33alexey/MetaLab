@@ -16,6 +16,15 @@ import (
 // example here, so a dropped refusal cannot get a kind of note without a proof
 // that the note appears.
 var noteExamples = map[NoteKind]func(t *testing.T, root string){
+	NoteUseWithoutSample: func(t *testing.T, root string) {
+		constant, defined, option := uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String()
+		writeMetadata(t, root, ConstantKind, constant, "format: 1\nid: "+constant+"\nname: Склады\ntitle: {ru: Склады}\n"+
+			"types: [{kind: boolean}]\n")
+		writeMetadata(t, root, DefinedTypeKind, defined, "format: 1\nid: "+defined+"\nname: Сумма\ntitle: {ru: Сумма}\n"+
+			"types: [{kind: number, precision: 15, scale: 2}]\n")
+		writeMetadata(t, root, FunctionalOptionKind, option, "format: 1\nid: "+option+"\nname: Опция\ntitle: {ru: Опция}\n"+
+			"location: {kind: constants, object: "+constant+"}\ncontent:\n  - {kind: defined-types, object: "+defined+"}\n")
+	},
 	NoteUnusedBound: func(t *testing.T, root string) {
 		noteCatalog(t, root, "", noteField("string", "    presentation: {min_value: \"0\"}\n"))
 	},

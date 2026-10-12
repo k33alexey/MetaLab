@@ -24,7 +24,7 @@ func TestEverySourceKindIsChecked(t *testing.T) {
 	readOtherwise := []string{"common-forms", "languages"}
 	for _, kind := range project.MetadataKinds() {
 		if slices.Contains(readOtherwise, kind) {
-			if _, ok := kindInfoOf(Kind(kind)); ok {
+			if item, ok := kindInfoOf(Kind(kind)); ok && (item.decode != nil || item.add != nil) {
 				t.Errorf("%s is read otherwise and has a reading in kindInfos as well", kind)
 			}
 			continue

@@ -307,7 +307,7 @@ func TestFunctionalOptionSwitchesEveryKindThePrototypeDoes(t *testing.T) {
 		{Kind: SubsystemKind, Object: child},
 	}
 	for _, item := range content {
-		if !knownMetadataKind(item.Kind) {
+		if !usesOf(item.Kind).option.accepted() {
 			t.Fatalf("%s is not a kind an option may name", item.Kind)
 		}
 	}

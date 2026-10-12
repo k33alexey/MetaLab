@@ -83,7 +83,7 @@ func DecodeFunctionalOption(source string, reader io.Reader, configuration proje
 	seen := map[string]bool{}
 	for index, item := range value.Content {
 		prefix := fmt.Sprintf("content[%d]", index)
-		if !knownMetadataKind(item.Kind) {
+		if !usesOf(item.Kind).option.accepted() {
 			issues = append(issues, prefix+".kind is not a kind of metadata object")
 		}
 		if item.Object.IsZero() {
@@ -134,24 +134,6 @@ func validateOptionLocation(location FunctionalOptionLocation) []string {
 		issues = append(issues, "location.kind cannot hold the value of a functional option: only a constant, a catalog or an information register can")
 	}
 	return issues
-}
-
-// knownMetadataKind says whether the model has this kind at all. A kind it
-// does not have cannot be written down here, and the conformance report is
-// where that shows up until the kind is modelled.
-func knownMetadataKind(kind Kind) bool {
-	switch kind {
-	case ConstantKind, EnumerationKind, CatalogKind, DocumentKind, DocumentJournalKind,
-		InformationRegisterKind, AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind,
-		ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind,
-		BusinessProcessKind, TaskKind, ExchangePlanKind, ReportKind, DataProcessorKind,
-		SubsystemKind, CommonAttributeKind, CommonModuleKind, SessionParameterKind, DefinedTypeKind,
-		NumeratorKind, SequenceKind, RoleKind, EventSubscriptionKind,
-		CommonCommandKind, CommonFormKind, FilterCriterionKind:
-		return true
-	default:
-		return false
-	}
 }
 
 func cloneFunctionalOption(value FunctionalOptionDefinition) FunctionalOptionDefinition {
@@ -222,6 +204,16 @@ func elementsOf(attributes []Attribute, parts []TablePart, commands []ObjectComm
 		elements.commands[command.ID] = true
 	}
 	return elements
+}
+
+// namedObject finds an object of any kind by its identifier, with what it
+// holds where its kind holds anything objectElementsOf knows of: a role or a
+// functional option may name an object of every kind.
+func (catalog *Catalog) namedObject(kind Kind, id uuid.UUID) (objectElements, bool) {
+	if elements, ok := catalog.objectElementsOf(kind, id); ok {
+		return elements, true
+	}
+	return objectElements{}, catalog.hasObject(kind, id)
 }
 
 // objectElementsOf finds one object by kind and identifier and says what it
@@ -427,7 +419,7 @@ func (catalog *Catalog) validateFunctionalOptions() error {
 		}
 		for index, item := range option.Content {
 			where := fmt.Sprintf("%s content[%d]", owner, index)
-			elements, ok := catalog.objectElementsOf(item.Kind, item.Object)
+			elements, ok := catalog.namedObject(item.Kind, item.Object)
 			if !ok {
 				return fmt.Errorf("%s switches %s %s, which is not in the configuration", where, item.Kind, item.Object)
 			}

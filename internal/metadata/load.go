@@ -2221,42 +2221,7 @@ func hasID(index map[uuid.UUID]int, id uuid.UUID) bool {
 // on the other side, far from here.
 func (catalog *Catalog) validateExchangePlanRegistration(owner string, item ExchangePlanDefinition) error {
 	for _, entry := range item.Content {
-		found := false
-		switch entry.Kind {
-		case ConstantKind:
-			_, found = catalog.constantByID[entry.Object]
-		case CatalogKind:
-			_, found = catalog.catalogByID[entry.Object]
-		case DocumentKind:
-			_, found = catalog.documentByID[entry.Object]
-		case ChartOfCharacteristicTypesKind:
-			_, found = catalog.chartOfCharacteristicTypesByID[entry.Object]
-		case ChartOfAccountsKind:
-			_, found = catalog.chartOfAccountsByID[entry.Object]
-		case ChartOfCalculationTypesKind:
-			_, found = catalog.chartOfCalculationTypesByID[entry.Object]
-		case BusinessProcessKind:
-			_, found = catalog.businessProcessByID[entry.Object]
-		case TaskKind:
-			_, found = catalog.taskByID[entry.Object]
-		case InformationRegisterKind:
-			_, found = catalog.informationRegisterByID[entry.Object]
-		case AccumulationRegisterKind:
-			_, found = catalog.accumulationRegisterByID[entry.Object]
-		case AccountingRegisterKind:
-			_, found = catalog.accountingRegisterByID[entry.Object]
-		case CalculationRegisterKind:
-			_, found = catalog.calculationRegisterByID[entry.Object]
-		case SequenceKind:
-			_, found = catalog.sequenceByID[entry.Object]
-		case RecalculationKind:
-			for _, register := range catalog.CalculationRegisters {
-				for _, recalculation := range register.Recalculations {
-					found = found || recalculation.ID == entry.Object
-				}
-			}
-		}
-		if !found {
+		if !catalog.hasObject(entry.Kind, entry.Object) {
 			return fmt.Errorf("%s registers changes of %s %s, which the project does not have", owner, entry.Kind, entry.Object)
 		}
 	}

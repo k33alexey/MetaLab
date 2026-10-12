@@ -47,6 +47,118 @@ type kindInfo struct {
 	// object of the kind through Type.Reference: a defined type, the
 	// characteristics of a chart.
 	namedBy []TypeKind
+	// uses says what else may name an object of the kind (kindUsesOf).
+	uses kindUses
+}
+
+// LanguageKind names a language of the configuration where something may name
+// one: it is described inside the configuration, not in a folder of its own.
+const LanguageKind = kinds.Language
+
+// presence says whether one use of an object of a kind is the prototype's.
+type presence int
+
+const (
+	// unsaid is a kind that says nothing of the use; a test refuses it, so a
+	// new kind is not left out of a use by omission.
+	unsaid presence = iota
+	// absent is a use the prototype has no place for, by the help.
+	absent
+	// present is a use an export of the configurator writes.
+	present
+	// unproven is a use nothing shows the configurator either writing or
+	// refusing. It is accepted, as everything without a reason to refuse it
+	// is (CONFORMANCE.md, «Принято, но не исполняется»), and every place of
+	// it is a note (NoteUseWithoutSample).
+	unproven
+)
+
+// accepted says the model takes the use.
+func (use presence) accepted() bool { return use == present || use == unproven }
+
+// kindUses is what may name an object of a kind beside its references.
+type kindUses struct {
+	// rights is a role giving rights on the object.
+	rights presence
+	// registration is an exchange plan registering the object's changes.
+	registration presence
+	// option is a functional option switching the object.
+	option presence
+}
+
+// usesOf is what may name an object of the kind; an unknown kind has no use.
+func usesOf(kind Kind) kindUses {
+	item, _ := kindInfoOf(kind)
+	return item.uses
+}
+
+// kindUsesOf is the uses of every kind, kept beside kindInfos rather than in
+// each line of it, as three columns read better than fifty chained calls.
+//
+// present is what the exports of the configurator write: the four checked,
+// demo-base and energy (the Rights.xml of every role, the Content.xml of
+// every exchange plan, the Content of every functional option).
+//
+// registration is by the help besides: a kind's data has ОбменДанными where
+// its changes can be registered (СправочникОбъект, ДокументОбъект,
+// ПоследовательностьНаборЗаписей, ПерерасчетНаборЗаписей,
+// КонстантаМенеджерЗначения, ПланОбменаОбъект... .ОбменДанными), and a kind
+// with none has no data for ЗарегистрироватьИзменения to register; no export
+// puts an exchange plan into the content of a plan.
+//
+// Neither the help nor an export says which kinds a role or a functional
+// option may name beyond those the exports show, so the rest are unproven,
+// not absent.
+var kindUsesOf = map[Kind]kindUses{
+	RoleKind:                       {rights: unproven, registration: absent, option: unproven},
+	SubsystemKind:                  {rights: present, registration: absent, option: present},
+	ConstantKind:                   {rights: present, registration: present, option: present},
+	SessionParameterKind:           {rights: present, registration: absent, option: unproven},
+	CommonAttributeKind:            {rights: present, registration: absent, option: present},
+	CommonModuleKind:               {rights: unproven, registration: absent, option: unproven},
+	EventSubscriptionKind:          {rights: unproven, registration: absent, option: unproven},
+	EnumerationKind:                {rights: unproven, registration: absent, option: present},
+	ScheduledJobKind:               {rights: unproven, registration: absent, option: unproven},
+	CommandGroupKind:               {rights: unproven, registration: absent, option: unproven},
+	CommonCommandKind:              {rights: present, registration: absent, option: present},
+	CommonFormKind:                 {rights: present, registration: absent, option: present},
+	CommonTemplateKind:             {rights: unproven, registration: absent, option: unproven},
+	XDTOPackageKind:                {rights: unproven, registration: absent, option: unproven},
+	WebServiceKind:                 {rights: present, registration: absent, option: unproven},
+	WSReferenceKind:                {rights: unproven, registration: absent, option: unproven},
+	WebSocketClientKind:            {rights: unproven, registration: absent, option: unproven},
+	ExternalDataSourceKind:         {rights: present, registration: absent, option: unproven},
+	ExternalDataSourceTableKind:    {rights: present, registration: absent, option: unproven},
+	ExternalCubeKind:               {rights: unproven, registration: absent, option: unproven},
+	ExternalDimensionTableKind:     {rights: unproven, registration: absent, option: unproven},
+	HTTPServiceKind:                {rights: present, registration: absent, option: unproven},
+	CommonPictureKind:              {rights: unproven, registration: absent, option: unproven},
+	StyleItemKind:                  {rights: unproven, registration: absent, option: unproven},
+	StyleKind:                      {rights: unproven, registration: absent, option: unproven},
+	FunctionalOptionKind:           {rights: unproven, registration: absent, option: unproven},
+	FunctionalOptionParameterKind:  {rights: unproven, registration: absent, option: unproven},
+	SettingsStorageKind:            {rights: unproven, registration: absent, option: unproven},
+	FilterCriterionKind:            {rights: present, registration: absent, option: present},
+	DefinedTypeKind:                {rights: unproven, registration: absent, option: unproven},
+	LanguageKind:                   {rights: unproven, registration: absent, option: unproven},
+	CatalogKind:                    {rights: present, registration: present, option: present},
+	ChartOfCharacteristicTypesKind: {rights: present, registration: present, option: present},
+	ChartOfAccountsKind:            {rights: present, registration: present, option: present},
+	ChartOfCalculationTypesKind:    {rights: present, registration: present, option: present},
+	TaskKind:                       {rights: present, registration: present, option: present},
+	AccountingRegisterKind:         {rights: present, registration: present, option: present},
+	CalculationRegisterKind:        {rights: present, registration: present, option: present},
+	ReportKind:                     {rights: present, registration: absent, option: present},
+	DataProcessorKind:              {rights: present, registration: absent, option: present},
+	NumeratorKind:                  {rights: unproven, registration: absent, option: unproven},
+	SequenceKind:                   {rights: present, registration: present, option: unproven},
+	DocumentJournalKind:            {rights: present, registration: absent, option: present},
+	ExchangePlanKind:               {rights: present, registration: unproven, option: present},
+	BusinessProcessKind:            {rights: present, registration: present, option: present},
+	DocumentKind:                   {rights: present, registration: present, option: present},
+	InformationRegisterKind:        {rights: present, registration: present, option: present},
+	AccumulationRegisterKind:       {rights: present, registration: present, option: present},
+	RecalculationKind:              {rights: present, registration: present, option: unproven},
 }
 
 // kindReference is one type of a reference to an object of a kind, and the
@@ -84,6 +196,17 @@ func kindWord(kind Kind) string {
 func (catalog *Catalog) hasObject(kind Kind, id uuid.UUID) bool {
 	item, ok := kindInfoOf(kind)
 	return ok && item.has != nil && item.has(catalog, id)
+}
+
+// kindOfObject finds the kind of an object of the catalog by its identifier,
+// whatever the kind: identifiers are unique across a configuration.
+func (catalog *Catalog) kindOfObject(id uuid.UUID) (Kind, bool) {
+	for _, item := range kindInfos {
+		if item.has != nil && item.has(catalog, id) {
+			return item.kind, true
+		}
+	}
+	return "", false
 }
 
 // typeNamesObject says the object a type names through Type.Reference is in
@@ -203,6 +326,16 @@ func init() {
 		// Read inside its calculation register: no reading, no list, and no
 		// index of its own.
 		{kind: RecalculationKind, has: (*Catalog).hasRecalculation, objectTypes: []TypeKind{RecalculationRecordSetType}},
+		// A common form is read from its folder as a form is, and a language
+		// inside the description of the configuration: neither has a reading
+		// here, only what may name it.
+		{kind: CommonFormKind, has: func(c *Catalog, id uuid.UUID) bool { return c.objectKindByID[id] == commonFormObjectKind }},
+		{kind: LanguageKind, has: func(c *Catalog, id uuid.UUID) bool {
+			return slices.ContainsFunc(c.Project.Languages, func(language project.Language) bool { return language.ID == id })
+		}},
+	}
+	for index := range kindInfos {
+		kindInfos[index].uses = kindUsesOf[kindInfos[index].kind]
 	}
 	for _, item := range kindInfos {
 		owned := slices.Concat(item.objectTypes, item.namedBy)

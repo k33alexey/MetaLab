@@ -91,18 +91,6 @@ type ExchangePlanDefinition struct {
 	List                ListSettings           `yaml:"list,omitempty" json:"list,omitempty"`
 }
 
-// registrableKinds are the kinds of object whose changes an exchange plan can
-// register. Enumerations, reports and data processors are not among them, and
-// not by omission: an enumeration has no data to change, and a report has no
-// data at all.
-var registrableKinds = []Kind{
-	ConstantKind, CatalogKind, DocumentKind, SequenceKind,
-	ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind,
-	BusinessProcessKind, TaskKind,
-	InformationRegisterKind, AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind,
-	RecalculationKind,
-}
-
 // RecalculationKind names a recalculation where a reference has to say what it
 // points at - in the content of an exchange plan, where acc registers one. A
 // recalculation is not an object of its own folder: it is described inside its
@@ -165,7 +153,7 @@ func validateExchangePlanContent(value ExchangePlanDefinition) []string {
 	for index, item := range value.Content {
 		prefix := fmt.Sprintf("content[%d]", index)
 		switch {
-		case slices.Contains(registrableKinds, item.Kind):
+		case usesOf(item.Kind).registration.accepted():
 		case slices.Contains(pendingRegistrableKinds, item.Kind):
 			issues = append(issues, prefix+".kind can be registered, but this version does not describe that kind of object yet")
 		default:

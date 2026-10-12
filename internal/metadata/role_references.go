@@ -277,21 +277,6 @@ func (catalog *Catalog) permissionTarget(id uuid.UUID) (roleTarget, bool) {
 	return target, true
 }
 
-// rightsKinds are the kinds of object a role gives rights on, beside the
-// configuration itself, web and HTTP services and external sources. A
-// numerator has none: the number it gives lies in the document, and is
-// guarded by the document's rights. Neither has a common module, a defined
-// type, a role or a subscription to an event - the configurator offers no
-// rights on them, and no export writes one.
-var rightsKinds = []Kind{
-	ConstantKind, CatalogKind, DocumentKind, DocumentJournalKind, EnumerationKind,
-	ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind,
-	InformationRegisterKind, AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind,
-	BusinessProcessKind, TaskKind, ExchangePlanKind, ReportKind, DataProcessorKind, SequenceKind,
-	SubsystemKind, SessionParameterKind, CommonAttributeKind, CommonCommandKind, CommonFormKind,
-	FilterCriterionKind, ExternalDataSourceTableKind,
-}
-
 // rightsParts finds what a role may give rights on: the configuration itself,
 // by the project's identifier, or an object of it, together with the keys of
 // its parts - attributes, table parts and their attributes, dimensions,
@@ -320,11 +305,8 @@ func (catalog *Catalog) rightsParts(id uuid.UUID) (map[string]bool, bool) {
 	if _, ok := catalog.externalDataSourceByID[id]; ok {
 		return parts, true
 	}
-	for _, kind := range rightsKinds {
-		elements, ok := catalog.objectElementsOf(kind, id)
-		if !ok {
-			continue
-		}
+	if kind, ok := catalog.kindOfObject(id); ok && usesOf(kind).rights.accepted() {
+		elements, _ := catalog.namedObject(kind, id)
 		for attribute := range elements.attributes {
 			parts[attribute.String()] = true
 		}

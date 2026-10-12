@@ -9,6 +9,8 @@ const (
 	exchangedCatalog  = "e0000000-0000-4000-8000-000000000002"
 	exchangedConstant = "e0000000-0000-4000-8000-000000000003"
 	nodeHolderCatalog = "e0000000-0000-4000-8000-000000000004"
+	exchangedEnum     = "e0000000-0000-4000-8000-000000000006"
+	exchangedEnumItem = "e0000000-0000-4000-8000-000000000007"
 )
 
 func exchangedObjects(t *testing.T, root string) {
@@ -25,6 +27,13 @@ id: `+exchangedConstant+`
 name: ВалютаУчета
 title: {ru: Валюта учёта}
 types: [{kind: string, length: 3}]
+`)
+	writeMetadata(t, root, EnumerationKind, exchangedEnum, `format: 1
+id: `+exchangedEnum+`
+name: ВидыДоговоров
+title: {ru: Виды договоров}
+values:
+  - {id: `+exchangedEnumItem+`, name: Поставка, title: {ru: Поставка}}
 `)
 }
 
@@ -142,7 +151,7 @@ content:
   - {kind: catalogs, object: ` + exchangePlanID + `}`,
 		"вид, изменения которого не регистрируются": `
 content:
-  - {kind: enumerations, object: ` + exchangedCatalog + `}`,
+  - {kind: enumerations, object: ` + exchangedEnum + `}`,
 		"вид, который ещё не описан": `
 content:
   - {kind: sequences, object: ` + exchangedCatalog + `}`,
@@ -248,5 +257,33 @@ content:
 	writeMetadata(t, root, ExchangePlanKind, exchangePlanID, plan("  - {kind: recalculations, object: "+calcRegister+"}\n"))
 	if _, err := Load(root); err == nil {
 		t.Fatal("a recalculation the project does not have was accepted")
+	}
+}
+
+// An exchange plan in the content of a plan is carried with a note: the help
+// gives ПланОбменаОбъект ОбменДанными as it gives the registered kinds, and no
+// export puts a plan into a content, so whether the configurator saves one is
+// not known.
+//
+// Defect caught: such a plan refused without a reason, or accepted silently.
+func TestExchangePlanCarriesAPlanInItsContentWithANote(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	other := "e0000000-0000-4000-8000-000000000005"
+	plan := func(id, name, content string) string {
+		return "format: 1\nid: " + id + "\nname: " + name + "\ntitle: {ru: " + name + "}\n" +
+			"code: {type: string, length: 36, auto: false}\ndescription_length: 150\n" + content
+	}
+	writeMetadata(t, root, ExchangePlanKind, other, plan(other, "Филиалы", ""))
+	writeMetadata(t, root, ExchangePlanKind, exchangePlanID, plan(exchangePlanID, "ОбменСФилиалами",
+		"content:\n  - {kind: exchange-plans, object: "+other+"}\n"))
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("refused: %v", err)
+	}
+	notes := catalog.Notes()
+	if len(notes) != 1 || notes[0].Kind != NoteUseWithoutSample || notes[0].Where != "exchange-plans ОбменСФилиалами content" ||
+		notes[0].Written != "exchange-plans Филиалы" {
+		t.Fatalf("notes = %+v", notes)
 	}
 }
