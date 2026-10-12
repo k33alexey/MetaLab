@@ -105,3 +105,25 @@ jobs:
 
       - name: WebAssembly smoke test
         run: make test-wasm
+
+  # Secret files are closed to other users by Windows ACLs, which the Linux
+  # job only compiles. Here the ACLs Windows actually keeps are read back, and
+  # the native secret store writes, reads and deletes a real secret.
+  windows-secrets:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test secret files and the secret store
+        env:
+          ML_TEST_NATIVE_SECRET_STORE: "1"
+        run: go test ./internal/ownerfile/ ./internal/secretstore/ ./internal/postgresconn/ ./internal/pgcopy/ ./internal/pgbackup/

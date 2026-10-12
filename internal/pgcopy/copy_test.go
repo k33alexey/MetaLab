@@ -10,20 +10,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/postgresconn"
 )
 
-func TestPGPassEscapesEveryField(t *testing.T) {
-	t.Parallel()
-
-	descriptor := postgresconn.Descriptor{Host: "db:1", Port: 5432, Database: `app\db`, User: "ml:user"}
-	line := pgpassLine(descriptor, `p:a\ss`)
-	if line != "db\\:1:5432:app\\\\db:ml\\:user:p\\:a\\\\ss\n" {
-		t.Fatalf("pgpass line = %q", line)
-	}
-	descriptor.Host = "/tmp"
-	if line := pgpassLine(descriptor, "secret"); !strings.HasPrefix(line, "localhost:") {
-		t.Fatalf("Unix socket pgpass line = %q", line)
-	}
-}
-
 func TestCopyNeverPlacesPasswordsInArgumentsAndChecksVersions(t *testing.T) {
 	t.Parallel()
 

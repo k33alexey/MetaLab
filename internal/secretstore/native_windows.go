@@ -11,6 +11,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/k33alexey/MetaLab/internal/ownerfile"
 )
 
 type nativeBackend struct{}
@@ -23,14 +25,14 @@ func (nativeBackend) Set(service, account, secret string) error {
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return fmt.Errorf("create Windows secret directory: %w", err)
 	}
-	if err := restrictWindowsPath(directory); err != nil {
-		return err
+	if err := ownerfile.Restrict(directory); err != nil {
+		return fmt.Errorf("restrict Windows secret directory: %w", err)
 	}
 	protected, err := protectWindowsData([]byte(secret))
 	if err != nil {
 		return err
 	}
-	temporary, err := os.CreateTemp(directory, ".secret-*")
+	temporary, err := ownerfile.CreateTemp(directory, ".secret-*")
 	if err != nil {
 		return fmt.Errorf("create temporary Windows secret: %w", err)
 	}
@@ -45,9 +47,6 @@ func (nativeBackend) Set(service, account, secret string) error {
 	}
 	if closeErr != nil {
 		return fmt.Errorf("close Windows secret: %w", closeErr)
-	}
-	if err := restrictWindowsPath(temporaryPath); err != nil {
-		return err
 	}
 	from, err := windows.UTF16PtrFromString(temporaryPath)
 	if err != nil {
@@ -126,26 +125,4 @@ func unprotectWindowsData(protected []byte) ([]byte, error) {
 	}
 	defer windows.LocalFree(windows.Handle(unsafe.Pointer(output.Data)))
 	return append([]byte(nil), unsafe.Slice(output.Data, output.Size)...), nil
-}
-
-func restrictWindowsPath(path string) error {
-	user, err := windows.GetCurrentProcessToken().GetTokenUser()
-	if err != nil {
-		return fmt.Errorf("read Windows process identity: %w", err)
-	}
-	sddl := "D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;" + user.User.Sid.String() + ")"
-	descriptor, err := windows.SecurityDescriptorFromString(sddl)
-	if err != nil {
-		return fmt.Errorf("build Windows secret ACL: %w", err)
-	}
-	dacl, _, err := descriptor.DACL()
-	if err != nil {
-		return fmt.Errorf("read Windows secret ACL: %w", err)
-	}
-	if err := windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT,
-		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
-		nil, nil, dacl, nil); err != nil {
-		return fmt.Errorf("restrict Windows secret path: %w", err)
-	}
-	return nil
 }

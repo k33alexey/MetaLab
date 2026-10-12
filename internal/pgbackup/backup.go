@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/ownerfile"
 	"github.com/k33alexey/MetaLab/internal/postgresconn"
 )
 
@@ -56,19 +57,17 @@ func (tool *Tool) Create(ctx context.Context, connection postgresconn.Descriptor
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return Archive{}, fmt.Errorf("create backup directory: %w", err)
 	}
-	temporary, err := os.CreateTemp(directory, ".backup-*.partial")
+	temporary, err := ownerfile.CreateTemp(directory, ".backup-*.partial")
 	if err != nil {
 		return Archive{}, fmt.Errorf("create temporary backup: %w", err)
 	}
 	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
 	if err := temporary.Close(); err != nil {
 		return Archive{}, fmt.Errorf("close temporary backup: %w", err)
 	}
-	defer os.Remove(temporaryPath)
-	if err := protectFile(temporaryPath); err != nil {
-		return Archive{}, fmt.Errorf("protect temporary backup: %w", err)
-	}
-	err = withPasswordFile(directory, connection, password, func(environment []string) error {
+	credentials := []postgresconn.Credential{{Connection: connection, Password: password}}
+	err = postgresconn.WithPasswordFile(credentials, func(environment []string) error {
 		return tool.execute(ctx, tool.dumpPath, []string{
 			"--format=custom", "--no-owner", "--no-acl", "--file", temporaryPath,
 			"--host", connection.Host, "--port", strconv.Itoa(int(connection.Port)),
@@ -109,8 +108,8 @@ func (tool *Tool) Restore(ctx context.Context, connection postgresconn.Descripto
 	if !strings.EqualFold(actual, expectedSHA256) {
 		return fmt.Errorf("backup checksum mismatch")
 	}
-	directory := filepath.Dir(path)
-	return withPasswordFile(directory, connection, password, func(environment []string) error {
+	credentials := []postgresconn.Credential{{Connection: connection, Password: password}}
+	return postgresconn.WithPasswordFile(credentials, func(environment []string) error {
 		if err := tool.execute(ctx, tool.restorePath, []string{
 			"--clean", "--if-exists", "--exit-on-error", "--single-transaction", "--no-owner", "--no-acl",
 			"--host", connection.Host, "--port", strconv.Itoa(int(connection.Port)),
@@ -136,34 +135,6 @@ func validateInputs(tool *Tool, connection postgresconn.Descriptor, password, di
 		return fmt.Errorf("invalid backup file name")
 	}
 	return nil
-}
-
-func withPasswordFile(directory string, connection postgresconn.Descriptor, password string, action func([]string) error) error {
-	file, err := os.CreateTemp(directory, ".pgpass-*")
-	if err != nil {
-		return fmt.Errorf("create temporary PostgreSQL password file: %w", err)
-	}
-	path := file.Name()
-	defer os.Remove(path)
-	host := connection.Host
-	if strings.HasPrefix(host, "/") {
-		host = "localhost"
-	}
-	escape := func(value string) string { return strings.NewReplacer(`\`, `\\`, `:`, `\:`).Replace(value) }
-	line := strings.Join([]string{
-		escape(host), strconv.Itoa(int(connection.Port)), escape(connection.Database), escape(connection.User), escape(password),
-	}, ":") + "\n"
-	if _, err := file.WriteString(line); err != nil {
-		_ = file.Close()
-		return fmt.Errorf("write temporary PostgreSQL password file: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		return fmt.Errorf("close temporary PostgreSQL password file: %w", err)
-	}
-	if err := protectFile(path); err != nil {
-		return err
-	}
-	return action(commandEnvironment(path))
 }
 
 func fileDigest(path string) (string, int64, error) {
@@ -196,17 +167,6 @@ func runCommand(ctx context.Context, path string, arguments, environment []strin
 	command := exec.CommandContext(ctx, path, arguments...)
 	command.Env, command.Stdout, command.Stderr = environment, output, output
 	return command.Run()
-}
-
-func commandEnvironment(passfile string) []string {
-	environment := make([]string, 0, len(os.Environ())+2)
-	for _, variable := range os.Environ() {
-		if strings.HasPrefix(variable, "PGPASSWORD=") || strings.HasPrefix(variable, "PGPASSFILE=") || strings.HasPrefix(variable, "PGCONNECT_TIMEOUT=") {
-			continue
-		}
-		environment = append(environment, variable)
-	}
-	return append(environment, "PGPASSFILE="+passfile, "PGCONNECT_TIMEOUT=10")
 }
 
 type limitedBuffer struct {

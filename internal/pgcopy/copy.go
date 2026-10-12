@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/ownerfile"
 	"github.com/k33alexey/MetaLab/internal/postgresconn"
 )
 
@@ -74,36 +75,33 @@ func (copier *Copier) Copy(
 	if toolMajor < sourceMajor || toolMajor > targetMajor {
 		return fmt.Errorf("PostgreSQL client tools %d are incompatible with source %d and target %d", toolMajor, sourceMajor, targetMajor)
 	}
-	temporaryDirectory, err := os.MkdirTemp("", "metalab-pgcopy-*")
+	temporaryDirectory, err := ownerfile.MkdirTemp("", "metalab-pgcopy-*")
 	if err != nil {
 		return fmt.Errorf("create PostgreSQL copy directory: %w", err)
 	}
 	defer os.RemoveAll(temporaryDirectory)
-	passfile := filepath.Join(temporaryDirectory, "pgpass")
-	passfileContent := pgpassLine(source, sourcePassword) + pgpassLine(target, targetPassword)
-	if err := os.WriteFile(passfile, []byte(passfileContent), 0o600); err != nil {
-		return fmt.Errorf("create temporary PostgreSQL password file: %w", err)
-	}
-	if err := protectCredentialFile(passfile); err != nil {
-		return err
-	}
 	archive := filepath.Join(temporaryDirectory, "database.dump")
-	environment := commandEnvironment(passfile)
-	if err := copier.execute(ctx, copier.dumpPath, []string{
-		"--format=custom", "--no-owner", "--no-acl", "--file", archive,
-		"--host", source.Host, "--port", strconv.Itoa(int(source.Port)),
-		"--username", source.User, "--dbname", source.Database,
-	}, environment); err != nil {
-		return fmt.Errorf("copy source PostgreSQL database: %w", err)
+	credentials := []postgresconn.Credential{
+		{Connection: source, Password: sourcePassword},
+		{Connection: target, Password: targetPassword},
 	}
-	if err := copier.execute(ctx, copier.restorePath, []string{
-		"--exit-on-error", "--single-transaction", "--no-owner", "--no-acl",
-		"--host", target.Host, "--port", strconv.Itoa(int(target.Port)),
-		"--username", target.User, "--dbname", target.Database, archive,
-	}, environment); err != nil {
-		return fmt.Errorf("restore target PostgreSQL database: %w", err)
-	}
-	return nil
+	return postgresconn.WithPasswordFile(credentials, func(environment []string) error {
+		if err := copier.execute(ctx, copier.dumpPath, []string{
+			"--format=custom", "--no-owner", "--no-acl", "--file", archive,
+			"--host", source.Host, "--port", strconv.Itoa(int(source.Port)),
+			"--username", source.User, "--dbname", source.Database,
+		}, environment); err != nil {
+			return fmt.Errorf("copy source PostgreSQL database: %w", err)
+		}
+		if err := copier.execute(ctx, copier.restorePath, []string{
+			"--exit-on-error", "--single-transaction", "--no-owner", "--no-acl",
+			"--host", target.Host, "--port", strconv.Itoa(int(target.Port)),
+			"--username", target.User, "--dbname", target.Database, archive,
+		}, environment); err != nil {
+			return fmt.Errorf("restore target PostgreSQL database: %w", err)
+		}
+		return nil
+	})
 }
 
 func (copier *Copier) checkTools(ctx context.Context) (int, error) {
@@ -123,7 +121,7 @@ func (copier *Copier) checkTools(ctx context.Context) (int, error) {
 
 func (copier *Copier) toolMajor(ctx context.Context, path string) (int, error) {
 	var output bytes.Buffer
-	if err := copier.run(ctx, path, []string{"--version"}, commandEnvironment(""), &output); err != nil {
+	if err := copier.run(ctx, path, []string{"--version"}, postgresconn.ToolEnvironment(""), &output); err != nil {
 		return 0, fmt.Errorf("check %s version: %w", filepath.Base(path), err)
 	}
 	match := majorVersionPattern.FindStringSubmatch(output.String())
@@ -155,32 +153,6 @@ func runCommand(ctx context.Context, path string, arguments, environment []strin
 	command.Stdout = output
 	command.Stderr = output
 	return command.Run()
-}
-
-func commandEnvironment(passfile string) []string {
-	environment := make([]string, 0, len(os.Environ())+2)
-	for _, variable := range os.Environ() {
-		if strings.HasPrefix(variable, "PGPASSWORD=") || strings.HasPrefix(variable, "PGPASSFILE=") || strings.HasPrefix(variable, "PGCONNECT_TIMEOUT=") {
-			continue
-		}
-		environment = append(environment, variable)
-	}
-	if passfile != "" {
-		environment = append(environment, "PGPASSFILE="+passfile)
-	}
-	return append(environment, "PGCONNECT_TIMEOUT=10")
-}
-
-func pgpassLine(descriptor postgresconn.Descriptor, password string) string {
-	host := descriptor.Host
-	if strings.HasPrefix(host, "/") {
-		host = "localhost"
-	}
-	fields := []string{host, strconv.Itoa(int(descriptor.Port)), descriptor.Database, descriptor.User, password}
-	for index := range fields {
-		fields[index] = strings.NewReplacer(`\`, `\\`, `:`, `\:`).Replace(fields[index])
-	}
-	return strings.Join(fields, ":") + "\n"
 }
 
 type limitedBuffer struct {
