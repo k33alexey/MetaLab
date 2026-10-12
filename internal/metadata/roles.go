@@ -201,6 +201,15 @@ var knownRights, executedRights = func() (map[PermissionOperation]bool, map[Perm
 	return known, executed
 }()
 
+// rightIndex is the place of every right in the order of the help.
+var rightIndex = func() map[PermissionOperation]int {
+	result := make(map[PermissionOperation]int, len(roleRights))
+	for index, right := range roleRights {
+		result[right.operation] = index
+	}
+	return result
+}()
+
 // RoleRights lists every right a role can carry, in the order of the help.
 func RoleRights() []PermissionOperation {
 	result := make([]PermissionOperation, len(roleRights))

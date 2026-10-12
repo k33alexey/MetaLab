@@ -167,3 +167,14 @@ test('object and field titles follow the Studio language',()=>{
     assert.match(model.restrictions('goods')[0].field,/Owner/);
   } finally { context.StudioLanguage.set('ru'); }
 });
+
+// Дефект: окно показывало право по записи в роли, и роль с флагом «для
+// новых объектов», которая пишет одни запреты (ПолныеПрава прототипа),
+// выглядела ничего не выдающей.
+test('a role with the flag for new objects is shown with what it does not deny',()=>{
+  const source=fixture();
+  source.roles.push({path:'metadata/roles/c.yaml',role:{id:'c',name:'Полные',title:{ru:'Полные'},grantNewObjectsByDefault:true,objects:[{object:'goods',denied:['delete']}]}});
+  const row=create(source).grants('goods').find(item=>item.name==='Полные');
+  assert.deepEqual(plain(row.operations),{read:true,insert:true,update:true,delete:false});
+  assert.equal(row.granted,true);
+});

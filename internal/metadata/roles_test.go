@@ -565,8 +565,9 @@ func TestPermissionFieldKeyIsLowercaseLatin(t *testing.T) {
 }
 
 // The role editor shows standard fields by their keys and the attributes by
-// their names, and lists objects grouped by kind and ordered by name without
-// regard to case, so the same project always shows the same list.
+// their names, and lists the configuration first and then the objects kind by
+// kind in the order of the configuration tree, by name without regard to
+// case, so the same project always shows the same list.
 func TestPermissionSchemaShowsStandardFieldsInOrder(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
@@ -580,6 +581,9 @@ func TestPermissionSchemaShowsStandardFieldsInOrder(t *testing.T) {
 	writeMetadata(t, root, ConstantKind, setting, "format: 1\nid: "+setting+"\nname: Режим\ntitle: {ru: Режим}\ntypes: [{kind: boolean}]\n")
 	writeMetadata(t, root, DocumentKind, order, "format: 1\nid: "+order+"\nname: Заказ\ntitle: {ru: Заказ}\n"+
 		"number: {type: string, length: 9, periodicity: none}\n")
+	user := uuid.MustNew().String()
+	writeMetadata(t, root, SessionParameterKind, user, "format: 1\nid: "+user+"\nname: Пользователь\ntitle: {ru: Пользователь}\n"+
+		"types: [{kind: string, length: 10}]\n")
 	schema, err := LoadPermissionSchema(root)
 	if err != nil {
 		t.Fatal(err)
@@ -588,12 +592,36 @@ func TestPermissionSchemaShowsStandardFieldsInOrder(t *testing.T) {
 	for _, object := range schema.Objects {
 		listed = append(listed, string(object.Kind)+"/"+object.Name)
 	}
-	want := []string{"catalogs/товары", "catalogs/Услуги", "constants/Режим", "documents/Заказ"}
+	want := []string{"/MetadataTest", "session-parameters/Пользователь", "constants/Режим", "catalogs/товары",
+		"catalogs/Услуги", "documents/Заказ"}
 	if !slices.Equal(listed, want) {
 		t.Fatalf("objects listed as %v, want %v", listed, want)
 	}
+	// Each object carries the rights the configurator offers on its kind, the
+	// configuration its own; written out here from the exports, as the
+	// editor must show them.
+	for index, rights := range map[int][]PermissionOperation{
+		0: {PermissionAdministration, PermissionDataAdministration, PermissionExclusiveMode},
+		1: {PermissionGet, PermissionSet},
+		2: {PermissionRead, PermissionUpdate, PermissionView, PermissionEdit, PermissionReadDataHistory},
+		3: {PermissionInputByString, PermissionInteractiveDeletePredefinedData, PermissionReadDataHistoryOfMissingData},
+		5: {PermissionPosting, PermissionInteractiveChangeOfPosted},
+	} {
+		object := schema.Objects[index]
+		for _, right := range rights {
+			if !slices.Contains(object.Rights, right) {
+				t.Errorf("%s %s is not offered %s: %v", object.Kind, object.Name, right, object.Rights)
+			}
+		}
+		if (index == 0) != object.Root {
+			t.Errorf("%s %s is root: %v", object.Kind, object.Name, object.Root)
+		}
+	}
+	if slices.Contains(schema.Objects[2].Rights, PermissionInputByString) || slices.Contains(schema.Objects[0].Rights, PermissionRead) {
+		t.Errorf("a right is offered where the configurator offers none: %v, %v", schema.Objects[2].Rights, schema.Objects[0].Rights)
+	}
 	var keys []string
-	for _, field := range schema.Objects[0].Fields {
+	for _, field := range schema.Objects[3].Fields {
 		if field.Key == price {
 			if field.Name != "Цена" {
 				t.Fatalf("an attribute is shown as %q, not by its name", field.Name)

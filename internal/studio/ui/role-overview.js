@@ -100,7 +100,7 @@ function createRoleOverviewModel(source) {
       const readable = object.fields.filter(field => field.operations.includes('view')).length;
       return entries.map(entry => {
         const grant = grantOf(entry, objectID), operations = {};
-        for (const operation of object.operations) operations[operation] = !!grant?.operations?.includes(operation);
+        for (const operation of object.operations) operations[operation] = roleObjectRight(entry.role, grant, operation);
         const granted = (grant?.fields || []).filter(field => (field.operations || []).includes('view')).length;
         return {
           path: entry.path, name: entry.role.name, title: localized(entry.role),

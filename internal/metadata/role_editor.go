@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -37,18 +38,27 @@ type PermissionRight struct {
 // nameInWords turns an identifier into words, the way the configurator
 // shows a name it has no synonym for: ПометкаУдаления as Пометка удаления.
 func nameInWords(name string) string {
-	words := []rune(strings.ReplaceAll(kebab(name), "-", " "))
+	words := []rune(identifierWords(name))
 	if len(words) > 0 {
 		words[0] = unicode.ToUpper(words[0])
 	}
 	return string(words)
 }
 
+// PermissionObject is one object the editor gives rights on: the
+// configuration itself or an object of it.
 type PermissionObject struct {
-	ID         uuid.UUID             `json:"id"`
-	Kind       Kind                  `json:"kind"`
-	Name       string                `json:"name"`
-	Title      LocalizedText         `json:"title"`
+	ID   uuid.UUID `json:"id"`
+	Kind Kind      `json:"kind"`
+	// Root is the configuration itself, known by the project's identifier.
+	Root  bool          `json:"root,omitempty"`
+	Name  string        `json:"name"`
+	Title LocalizedText `json:"title"`
+	// Rights are the rights the configurator offers on the object, in the
+	// order of the help: what the editor shows.
+	Rights []PermissionOperation `json:"rights"`
+	// Operations are those of them this platform acts on, and the ones a
+	// restriction of rows may narrow.
 	Operations []PermissionOperation `json:"operations"`
 	Fields     []PermissionField     `json:"fields"`
 	// PolicyFields are the fields a restriction of rows may compare, under
@@ -104,9 +114,23 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 		result.SessionParameters = append(result.SessionParameters, item.Name)
 	}
 	sort.Strings(result.SessionParameters)
-	appendObject := func(kind Kind, id uuid.UUID, name string, title LocalizedText, attributes []Attribute, parts []TablePart) {
+	// A configuration without common forms has no directory for them, the
+	// same as any other metadata kind nobody has used yet.
+	forms, err := ReadCommonForms(root, catalog.Project)
+	if err != nil {
+		return PermissionSchema{}, err
+	}
+	// The parts of an object the editor shows, by the object: its
+	// attributes, its table parts and what is shown as attributes beside them.
+	type objectParts struct {
+		attributes []Attribute
+		parts      []TablePart
+	}
+	partsOf := map[uuid.UUID]objectParts{}
+	appendObject := func(kind Kind, id uuid.UUID, name string, title LocalizedText, parts objectParts) {
 		target, _ := catalog.permissionTarget(id)
-		object := PermissionObject{ID: id, Kind: kind, Name: name, Title: cloneTitle(title), Fields: []PermissionField{}}
+		object := PermissionObject{ID: id, Kind: kind, Name: name, Title: cloneTitle(title),
+			Rights: usesOf(kind).offered, Operations: []PermissionOperation{}, Fields: []PermissionField{}}
 		for _, operation := range objectOperations {
 			if target.operations[operation] {
 				object.Operations = append(object.Operations, operation)
@@ -149,10 +173,10 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 			}
 			object.PolicyFields = append(object.PolicyFields, field)
 		}
-		for _, field := range attributes {
+		for _, field := range parts.attributes {
 			appendField(field.ID.String(), field.Name, "", cloneTitle(field.Title))
 		}
-		for _, part := range parts {
+		for _, part := range parts.parts {
 			appendField(part.ID.String(), part.Name, "", cloneTitle(part.Title))
 			for _, field := range part.Attributes {
 				appendField(field.ID.String(), field.Name, part.ID.String(), cloneTitle(field.Title))
@@ -160,17 +184,11 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 		}
 		result.Objects = append(result.Objects, object)
 	}
-	for _, item := range catalog.Constants {
-		appendObject(ConstantKind, item.ID, item.Name, item.Title, nil, nil)
-	}
-	for _, item := range catalog.Enumerations {
-		appendObject(EnumerationKind, item.ID, item.Name, item.Title, nil, nil)
-	}
 	for _, item := range catalog.Catalogs {
-		appendObject(CatalogKind, item.ID, item.Name, item.Title, item.Attributes, item.TableParts)
+		partsOf[item.ID] = objectParts{item.Attributes, item.TableParts}
 	}
 	for _, item := range catalog.ChartsOfCharacteristicTypes {
-		appendObject(ChartOfCharacteristicTypesKind, item.ID, item.Name, item.Title, item.Attributes, item.TableParts)
+		partsOf[item.ID] = objectParts{item.Attributes, item.TableParts}
 	}
 	for _, item := range catalog.ChartsOfAccounts {
 		// Accounting flags are fields of the account, so the editor has to show
@@ -180,64 +198,60 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 		for _, flag := range append(slices.Clone(item.AccountingFlags), item.ExtDimensionAccountingFlags...) {
 			fields = append(fields, Attribute{ID: flag.ID, Name: flag.Name, Title: flag.Title, Types: []Type{{Kind: BooleanType}}})
 		}
-		appendObject(ChartOfAccountsKind, item.ID, item.Name, item.Title, fields, item.TableParts)
+		partsOf[item.ID] = objectParts{fields, item.TableParts}
 	}
 	for _, item := range catalog.ChartsOfCalculationTypes {
-		appendObject(ChartOfCalculationTypesKind, item.ID, item.Name, item.Title, item.Attributes, item.TableParts)
+		partsOf[item.ID] = objectParts{item.Attributes, item.TableParts}
 	}
 	for _, item := range catalog.BusinessProcesses {
-		appendObject(BusinessProcessKind, item.ID, item.Name, item.Title, item.Attributes, item.TableParts)
+		partsOf[item.ID] = objectParts{item.Attributes, item.TableParts}
 	}
 	for _, item := range catalog.ExchangePlans {
-		appendObject(ExchangePlanKind, item.ID, item.Name, item.Title, item.Attributes, item.TableParts)
-	}
-	for _, item := range catalog.Sequences {
-		appendObject(SequenceKind, item.ID, item.Name, item.Title, nil, nil)
-	}
-	for _, item := range catalog.DocumentJournals {
-		appendObject(DocumentJournalKind, item.ID, item.Name, item.Title, nil, nil)
+		partsOf[item.ID] = objectParts{item.Attributes, item.TableParts}
 	}
 	for _, item := range catalog.Tasks {
 		// Addressing attributes are shown beside the rest: a right on
 		// "Исполнитель" is exactly the kind of right an application restricts.
-		appendObject(TaskKind, item.ID, item.Name, item.Title,
-			append(addressingAsAttributes(item), item.Attributes...), item.TableParts)
+		partsOf[item.ID] = objectParts{append(addressingAsAttributes(item), item.Attributes...), item.TableParts}
 	}
 	for _, item := range catalog.Documents {
-		appendObject(DocumentKind, item.ID, item.Name, item.Title, item.Attributes, item.TableParts)
+		partsOf[item.ID] = objectParts{item.Attributes, item.TableParts}
 	}
 	for _, item := range catalog.InformationRegisters {
-		appendObject(InformationRegisterKind, item.ID, item.Name, item.Title, informationRegisterFields(item), nil)
+		partsOf[item.ID] = objectParts{attributes: informationRegisterFields(item)}
 	}
 	for _, item := range catalog.AccumulationRegisters {
-		appendObject(AccumulationRegisterKind, item.ID, item.Name, item.Title, accumulationRegisterFields(item), nil)
+		partsOf[item.ID] = objectParts{attributes: accumulationRegisterFields(item)}
 	}
 	for _, item := range catalog.AccountingRegisters {
-		appendObject(AccountingRegisterKind, item.ID, item.Name, item.Title,
-			append(accountingRegisterFields(item), item.Attributes...), nil)
+		partsOf[item.ID] = objectParts{attributes: append(accountingRegisterFields(item), item.Attributes...)}
 	}
 	for _, item := range catalog.Reports {
-		appendObject(ReportKind, item.ID, item.Name, item.Title, item.Attributes, item.TableParts)
+		partsOf[item.ID] = objectParts{item.Attributes, item.TableParts}
 	}
 	for _, item := range catalog.DataProcessors {
-		appendObject(DataProcessorKind, item.ID, item.Name, item.Title, item.Attributes, item.TableParts)
+		partsOf[item.ID] = objectParts{item.Attributes, item.TableParts}
 	}
 	for _, item := range catalog.CalculationRegisters {
-		appendObject(CalculationRegisterKind, item.ID, item.Name, item.Title,
-			append(calculationRegisterFields(item), item.attributeFields()...), nil)
+		partsOf[item.ID] = objectParts{attributes: append(calculationRegisterFields(item), item.attributeFields()...)}
 	}
-	sort.Slice(result.Objects, func(i, j int) bool {
-		a, b := result.Objects[i], result.Objects[j]
-		if a.Kind != b.Kind {
-			return a.Kind < b.Kind
+	// The configuration itself comes first, as the root of the tree.
+	result.Objects = append(result.Objects, PermissionObject{ID: catalog.Project.ID, Root: true,
+		Name: catalog.Project.Name, Title: cloneTitle(catalog.Project.Title), Rights: configurationRights,
+		Operations: []PermissionOperation{}, Fields: []PermissionField{}, PolicyFields: []PermissionField{}})
+	// Then every object a role is offered rights on, kind by kind in the
+	// order of the tree. A common form is read apart from the catalog.
+	formTitles := map[uuid.UUID]LocalizedText{}
+	for _, form := range forms {
+		formTitles[form.ID] = form.Title
+	}
+	for _, descriptor := range kinds.Branches() {
+		if len(usesOf(descriptor.Kind).offered) == 0 {
+			continue
 		}
-		return strings.ToLower(a.Name) < strings.ToLower(b.Name)
-	})
-	// A configuration without common forms has no directory for them, the
-	// same as any other metadata kind nobody has used yet.
-	forms, err := ReadCommonForms(root, catalog.Project)
-	if err != nil {
-		return PermissionSchema{}, err
+		for _, item := range catalog.objectsToShow(descriptor.Kind, formTitles) {
+			appendObject(descriptor.Kind, item.ID, item.Name, item.Title, partsOf[item.ID])
+		}
 	}
 	for _, form := range forms {
 		if len(form.Commands) == 0 {
@@ -250,6 +264,26 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 		result.Forms = append(result.Forms, item)
 	}
 	return result, nil
+}
+
+// objectsToShow lists the objects of a kind by name: from the kind's list in
+// the catalog, or, for a kind read apart from it - a common form - from the
+// index of identifiers, titled by what was read.
+func (catalog *Catalog) objectsToShow(kind Kind, titles map[uuid.UUID]LocalizedText) []ReferenceTypeObject {
+	var result []ReferenceTypeObject
+	if _, ok := catalog.objectsOf(kind); ok {
+		result = catalog.referenceTypeObjects(kind)
+	} else {
+		for id, object := range catalog.objects {
+			if object.kind == kind {
+				result = append(result, ReferenceTypeObject{ID: id, Name: object.name, Title: titles[id]})
+			}
+		}
+	}
+	slices.SortFunc(result, func(a, b ReferenceTypeObject) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
+	return result
 }
 
 // ValidateProjectRole checks the edited role against current objects and forms,

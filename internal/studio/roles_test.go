@@ -50,7 +50,7 @@ func TestRoleEditorCreateReadSaveAndConflicts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(created.Role.Objects) != 0 || len(created.Role.Commands) != 0 || len(created.Schema.Objects) != 1 {
+	if len(created.Role.Objects) != 0 || len(created.Role.Commands) != 0 || len(created.Schema.Objects) != 2 {
 		t.Fatalf("unsafe new role: %+v", created)
 	}
 	encoded, _ := json.Marshal(created)
@@ -339,7 +339,7 @@ func TestReadAllRolesReturnsEveryRoleOrderedAndWithSchema(t *testing.T) {
 	if want := []string{"Администратор", "Кладовщик", "Продавец"}; !slices.Equal(names, want) {
 		t.Fatalf("roles are not listed in name order: %v", names)
 	}
-	if len(overview.Schema.Objects) != 1 || len(overview.Languages) == 0 || overview.DefaultLanguage == "" {
+	if len(overview.Schema.Objects) != 2 || len(overview.Languages) == 0 || overview.DefaultLanguage == "" {
 		t.Fatalf("overview is missing what the screen renders: %+v", overview.Schema)
 	}
 	for _, entry := range overview.Roles {

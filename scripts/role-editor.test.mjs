@@ -10,7 +10,7 @@ const context=vm.createContext({structuredClone});
 vm.runInContext(readFileSync(new URL('../internal/studio/ui/studio-common.js',import.meta.url),'utf8'),context);
 vm.runInContext(script,context);
 const create=context.createRoleModel;
-function fixture(){return {role:{id:'role',name:'Продавец',title:{ru:'Продавец'}},schema:{rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'posting',title:'Проведение'}],objects:[{id:'goods',operations:['read','insert','update','delete'],fields:[{key:'ref',operations:['view']},{key:'name',operations:['view','edit']},{key:'part',operations:['view','edit']},{key:'column',parent:'part',operations:['view','edit']}],policyFields:[{key:'ref'},{key:'name'},{key:'part'},{key:'column',parent:'part'}]},{id:'other',operations:['read'],fields:[],policyFields:[]}],parts:{goods:['column','name','part','ref'],other:[]},forms:[{id:'form',commands:[{id:'command'}]}]}};}
+function fixture(){return {role:{id:'role',name:'Продавец',title:{ru:'Продавец'}},schema:{rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'posting',title:'Проведение'}],objects:[{id:'base',root:true,rights:['administration','thin-client'],operations:[],fields:[],policyFields:[]},{id:'goods',rights:['read','insert','update','delete','view','edit','input-by-string'],operations:['read','insert','update','delete'],fields:[{key:'ref',operations:['view']},{key:'name',operations:['view','edit']},{key:'part',operations:['view','edit']},{key:'column',parent:'part',operations:['view','edit']}],policyFields:[{key:'ref'},{key:'name'},{key:'part'},{key:'column',parent:'part'}]},{id:'other',rights:['read','view'],operations:['read'],fields:[],policyFields:[]}],parts:{base:[],goods:['column','name','part','ref'],other:[]},forms:[{id:'form',commands:[{id:'command'}]}]}};}
 
 test('Studio inline script remains valid JavaScript',()=>{
   const html=readFileSync(new URL('../internal/studio/ui/index.html',import.meta.url),'utf8');
@@ -31,7 +31,8 @@ test('one object checkbox grants existing fields including table part columns',(
 test('insert and update share field editing, removing both clears it',()=>{
   const model=create(fixture());model.setObject('goods','insert',true);model.setObject('goods','update',true);
   model.setObject('goods','insert',false);assert.equal(model.hasField('goods','name','edit'),true);
-  model.setObject('goods','update',false);assert.equal(model.hasField('goods','name','edit'),false);assert.equal(model.value().objects.length,0);
+  model.setObject('goods','update',false);assert.equal(model.hasField('goods','name','edit'),false);
+  const goods=model.value().objects[0];assert.deepEqual([...goods.operations],[]);assert.deepEqual([...goods.denied],['insert','update']);assert.equal(goods.fields.length,0);
 });
 test('field refinement stays separate and table part changes include children',()=>{
   const model=create(fixture());model.setObject('goods','read',true);model.setField('goods','name','view',false);
@@ -42,7 +43,9 @@ test('field refinement stays separate and table part changes include children',(
 test('all grants and reset apply only to the selected object',()=>{
   const model=create(fixture());model.setObject('other','read',true);model.setAll('goods',true);
   for(const op of ['read','insert','update','delete'])assert.equal(model.hasObject('goods',op),true);
-  model.setAll('goods',false);assert.equal(model.hasObject('other','read'),true);assert.equal(model.value().objects.length,1);
+  model.setAll('goods',false);assert.equal(model.hasObject('other','read'),true);
+  const goods=model.value().objects.find(item=>item.object==='goods');
+  assert.deepEqual([...goods.denied],['read','insert','update','delete','view','edit','input-by-string']);assert.deepEqual([...goods.operations],[]);
 });
 test('unknown grants survive ordinary editing and are repaired only explicitly',()=>{
   const source=fixture();source.role.objects=[{object:'gone',operations:['read'],fields:[]},{object:'goods',operations:['read','posting'],denied:['delete'],fields:[{field:'gone',operations:['view']},{field:'ref',operations:['view','edit']},{field:'name',denied:['view']}]}];source.role.commands=[{form:'form',command:'gone'}];
@@ -79,9 +82,9 @@ test('unsupported operations and fields cannot be granted through controls',()=>
   assert.equal(model.value().objects.length,0);
 });
 test('bulk edits remain bounded for a large object',()=>{
-  const source=fixture();source.schema.objects[0].fields=Array.from({length:9000},(_,index)=>({key:`field${index}`,operations:['view','edit']}));
+  const source=fixture();source.schema.objects[1].fields=Array.from({length:9000},(_,index)=>({key:`field${index}`,operations:['view','edit']}));
   const model=create(source);model.setAll('goods',true);assert.equal(model.value().objects[0].fields.length,9000);
-  model.setAll('goods',false);assert.equal(model.value().objects.length,0);
+  model.setAll('goods',false);assert.equal(model.value().objects[0].fields.length,0);
 });
 test('access policies round-trip and survive cleaning even without operation grants',()=>{
   const model=create(fixture());
@@ -155,12 +158,55 @@ test('a subquery survives while the table it reads exists and is repaired away w
   model.removeUnavailable();
   assert.equal(model.policies('goods').length,0);
 });
-test('comment and default-grant flags round-trip through the model without touching objects/fields',()=>{
+test('comment and default-grant flags round-trip through the model; only the flag for new objects writes what it stood for',()=>{
   const model=create(fixture());
   assert.equal(model.value().comment,undefined);assert.equal(model.value().grantNewObjectsByDefault,undefined);assert.equal(model.value().grantNewFieldsByDefault,undefined);assert.equal(model.value().independentChildRights,undefined);
   model.setComment('Только чтение справочников склада');model.setGrantNewObjectsByDefault(true);model.setGrantNewFieldsByDefault(true);model.setIndependentChildRights(true);
   const value=model.value();
   assert.equal(value.comment,'Только чтение справочников склада');assert.equal(value.grantNewObjectsByDefault,true);assert.equal(value.grantNewFieldsByDefault,true);assert.equal(value.independentChildRights,true);
-  assert.equal(value.objects.length,0);
+  assert.deepEqual(value.objects.map(item=>`${item.object}:${item.denied.join(',')}:${item.fields.length}`),
+    ['base:administration,thin-client:0','goods:read,insert,update,delete,view,edit,input-by-string:0','other:read,view:0']);
   model.setGrantNewObjectsByDefault(false);assert.equal(model.value().grantNewObjectsByDefault,false);
+});
+
+// Дефект: редактор показывал неуказанное право невыданным и у роли с флагом
+// «для новых объектов», где прототип читает его выданным (ПолныеПрава erp не
+// пишет «Чтение» ни у одного из 565 справочников, а читает их все).
+test('a right the role does not write is the flag for new objects, as the prototype reads it',()=>{
+  const source=fixture();source.role.grantNewObjectsByDefault=true;source.role.objects=[{object:'goods',denied:['delete']}];
+  const model=create(source);
+  assert.equal(model.hasObject('goods','read'),true);assert.equal(model.hasObject('other','view'),true);assert.equal(model.hasObject('base','administration'),true);
+  assert.equal(model.hasObject('goods','delete'),false,'a denial stays a denial');
+});
+// Дефект: снятая галочка только убирала разрешение, и при флаге «для новых
+// объектов» право оставалось выданным - у прототипа два состояния, и
+// снятое пишется запретом.
+test('clearing a box denies the right in so many words',()=>{
+  const source=fixture();source.role.grantNewObjectsByDefault=true;
+  const model=create(source);model.setObject('goods','read',false);
+  assert.equal(model.hasObject('goods','read'),false);
+  assert.deepEqual([...model.value().objects[0].denied],['read']);
+  model.setObject('goods','read',true);assert.equal(model.value().objects[0].denied,undefined);assert.deepEqual([...model.value().objects[0].operations],['read']);
+});
+// Дефект: смена флага «для новых объектов» молча переворачивала все
+// незаписанные права существующих объектов; по справке флаг решает только,
+// что получит новый объект.
+test('changing the flag for new objects turns over no right of an existing object',()=>{
+  const source=fixture();source.role.objects=[{object:'goods',operations:['read'],denied:['delete']}];
+  const model=create(source);const before=()=>source.schema.objects.flatMap(item=>item.rights.map(right=>`${item.id}.${right}=${model.hasObject(item.id,right)}`));
+  const was=before();
+  model.setGrantNewObjectsByDefault(true);assert.deepEqual(before(),was);assert.equal(model.value().grantNewObjectsByDefault,true);
+  model.setGrantNewObjectsByDefault(false);assert.deepEqual(before(),was);
+  model.setGrantNewObjectsByDefault(false);assert.deepEqual(before(),was,'setting the flag it already has changes nothing');
+});
+// Дефект: у корня конфигурации и у объектов без прав, которые исполняет
+// платформа, редактор не давал ничего отметить; право не из перечня вида
+// не принимается.
+test('the configuration and every right of the kind are offered, a right outside the kind is not',()=>{
+  const model=create(fixture());
+  model.setObject('base','administration',true);model.setObject('goods','input-by-string',true);
+  assert.equal(model.hasObject('base','administration'),true);assert.equal(model.hasObject('goods','input-by-string'),true);
+  model.setObject('base','read',true);model.setObject('other','input-by-string',true);
+  assert.equal(model.value().objects.find(item=>item.object==='base').operations.includes('read'),false);
+  assert.equal(model.value().objects.some(item=>item.object==='other'),false);
 });

@@ -219,3 +219,14 @@ function openLocalizedTitleDialog(languages, getValue, setValue, onChange) {
   dialog.addEventListener('close', () => dialog.remove());
   dialog.showModal();
 }
+
+/* roleObjectRight is a right of a role on an object as the prototype reads
+   it: written in the role, it is what is written; not written, it is the
+   role's flag «Устанавливать права для новых объектов» - the prototype's role
+   of full rights writes nothing but its denials. The role editor and the
+   window of all roles read rights through it alone. */
+function roleObjectRight(role, grant, right) {
+  if (grant?.operations?.includes(right)) return true;
+  if (grant?.denied?.includes(right)) return false;
+  return !!role.grantNewObjectsByDefault;
+}

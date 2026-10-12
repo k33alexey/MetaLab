@@ -33,6 +33,15 @@ function createRoleModel(source) {
     holder.operations = toggle(holder.operations || [], operation, enabled);
     if (enabled && holder.denied) { holder.denied = holder.denied.filter(item => item !== operation); if (!holder.denied.length) delete holder.denied; }
   }
+  // A right of an object has the prototype's two states: the box set grants
+  // it and the box cleared denies it, both written - what is not written
+  // stands for the role's flag for new objects (roleObjectRight).
+  function writeRight(holder, operation, enabled) {
+    holder.operations = toggle(holder.operations || [], operation, enabled);
+    const denied = toggle(holder.denied || [], operation, !enabled);
+    if (denied.length) holder.denied = denied; else delete holder.denied;
+  }
+  const objectRight = (id, operation) => roleObjectRight(value.role, objects.get(id), operation);
   function assignField(id, key, operation, enabled) {
     if (!fields.get(id)?.get(key)?.operations.includes(operation)) return;
     const grant = object(id), index = fieldGrants.get(id);
@@ -51,13 +60,13 @@ function createRoleModel(source) {
   }
   function setObject(id, operation, enabled) {
     const definition = definitions.get(id);
-    if (!definition?.operations.includes(operation)) return;
+    if (!definition?.rights.includes(operation)) return;
     const grant = object(id);
-    grantRight(grant, operation, enabled);
+    writeRight(grant, operation, enabled);
     const fieldOperation = operation === 'read' ? 'view' : ['insert','update'].includes(operation) ? 'edit' : null;
     if (!fieldOperation) return;
     // Removing Insert must not remove field editing still needed by Update.
-    if (!enabled && fieldOperation === 'edit' && grant.operations.some(item => ['insert','update'].includes(item))) return;
+    if (!enabled && fieldOperation === 'edit' && ['insert','update'].some(item => objectRight(id, item))) return;
     for (const field of definition.fields) assignField(id, field.key, fieldOperation, enabled);
   }
   function clean() {
@@ -132,13 +141,23 @@ function createRoleModel(source) {
     setName(name) { value.role.name = name; },
     setTitle(language, title) { if(title.trim())value.role.title[language]=title;else delete value.role.title[language]; },
     setComment(comment) { value.role.comment = comment; },
-    setGrantNewObjectsByDefault(enabled) { value.role.grantNewObjectsByDefault = enabled; },
+    // The flag decides only what a new object is given, as in the prototype:
+    // every right it stood for until now is written as it was before it
+    // changes, so no right of an existing object turns over with it.
+    setGrantNewObjectsByDefault(enabled) {
+      if (!!value.role.grantNewObjectsByDefault === enabled) return;
+      for (const definition of value.schema.objects) for (const operation of definition.rights) {
+        const grant = objects.get(definition.id);
+        if (!grant?.operations?.includes(operation) && !grant?.denied?.includes(operation)) writeRight(object(definition.id), operation, !enabled);
+      }
+      value.role.grantNewObjectsByDefault = enabled;
+    },
     setGrantNewFieldsByDefault(enabled) { value.role.grantNewFieldsByDefault = enabled; },
     setIndependentChildRights(enabled) { value.role.independentChildRights = enabled; },
     setObject, setField,
-    hasObject(id, operation) { return objects.get(id)?.operations?.includes(operation) || false; },
+    hasObject: objectRight,
     hasField(id, key, operation) { return fieldGrants.get(id)?.get(key)?.operations.includes(operation) || false; },
-    setAll(id, enabled) { for(const operation of definitions.get(id)?.operations || [])setObject(id, operation, enabled); },
+    setAll(id, enabled) { for(const operation of definitions.get(id)?.rights || [])setObject(id, operation, enabled); },
     hasCommand(form, command) { return value.role.commands.some(item => item.form === form && item.command === command); },
     setCommand(form, command, enabled) {
       if (!value.schema.forms.some(item => item.id === form && item.commands.some(item => item.id === command))) return;
@@ -218,12 +237,12 @@ function createRoleEditor(host, onChange) {
     // whatever the configuration's session module puts there.
     const kind=rule.subquery?'subquery':(rule.parameter?'parameter':(rule.currentMlUser?'mluser':'values'));
     const kinds=[['values','Значение'],...(names.length?[['parameter','Параметр сеанса']]:[]),['mluser','Пользователь ML'],
-      ...(allowSubquery&&source.schema.objects.length?[['subquery','Подзапрос']]:[])];
+      ...(allowSubquery&&queryable().length?[['subquery','Подзапрос']]:[])];
     row.append(select(kinds,kind,chosen=>{
       if(chosen==='parameter')apply({field:rule.field,operator:rule.operator,parameter:names[0]});
       else if(chosen==='mluser')apply({field:rule.field,operator:rule.operator,currentMlUser:true});
       else if(chosen==='subquery'){
-        const object=source.schema.objects[0];
+        const object=queryable()[0];
         apply({field:rule.field,operator:'in',subquery:{object:object.id,field:object.fields[0]?.key||'ref',where:[]}});
       } else apply({...blankRule(rule.field),operator:rule.operator});
     },'Вид операнда'));
@@ -234,11 +253,11 @@ function createRoleEditor(host, onChange) {
     if(kind==='mluser')return row;
     if(kind==='subquery'){
       const block=node('div',undefined,'role-subquery');block.append(row);
-      const chosen=source.schema.objects.find(item=>item.id===rule.subquery.object)||source.schema.objects[0];
+      const chosen=queryable().find(item=>item.id===rule.subquery.object)||queryable()[0];
       const line=node('div',undefined,'role-rule');
       line.append(node('span','из','muted'));
-      line.append(select(source.schema.objects.map(item=>[item.id,title(item)]),rule.subquery.object,id=>{
-        const next=source.schema.objects.find(item=>item.id===id);
+      line.append(select(queryable().map(item=>[item.id,title(item)]),rule.subquery.object,id=>{
+        const next=queryable().find(item=>item.id===id);
         apply({...rule,subquery:{object:id,field:next.fields[0]?.key||'ref',where:[]}});
       },'Объект подзапроса'));
       line.append(node('span','по полю','muted'));
@@ -275,6 +294,8 @@ function createRoleEditor(host, onChange) {
   // operand at all is refused on save, and the editor must not be able to build
   // something the project cannot store.
   function blankRule(field) { return {field, operator:'eq', values:[{kind:'string',data:''}]}; }
+  // A subquery reads a table: an object with fields a restriction compares.
+  function queryable() { return source.schema.objects.filter(item=>item.policyFields?.length); }
   function objectFieldOptions(object) { return (object.policyFields||[]).map(field=>[field.key,(field.parent?'↳ ':'')+title(field)]); }
   function allFieldOptions() {
     const result=new Map();
@@ -365,10 +386,14 @@ function createRoleEditor(host, onChange) {
     block.append(add);
     return block;
   }
+  // The tree is the configurator's: the configuration itself at the top, then
+  // the objects kind by kind in the order the server lists them.
   function renderTree(filter='') {
     tree.replaceChildren(); const groups=new Map();
     for(const item of source.schema.objects) {
       if(!`${item.name} ${title(item)}`.toLocaleLowerCase().includes(filter.toLocaleLowerCase().trim()))continue;
+      if(item.root){const button=node('button',title(item)||item.name,'role-tree-item role-tree-root');button.type='button';button.title=item.name;button.dataset.object=item.id;
+        button.addEventListener('click',()=>{selected={object:item};fieldsExpanded=false;renderPanel();});tree.append(button);continue;}
       let group=groups.get(item.kind);
       if(!group){group=node('details');group.open=true;group.append(node('summary',kindTitle(item.kind)));groups.set(item.kind,group);tree.append(group);}
       const button=node('button',title(item),'role-tree-item');button.type='button';button.title=item.name;button.dataset.object=item.id;
@@ -382,18 +407,21 @@ function createRoleEditor(host, onChange) {
     panel.replaceChildren();
     if(!selected){panel.append(node('p','Выберите объект слева и отметьте разрешённые действия.','muted'));return;}
     if(selected.form){const form=selected.form;panel.append(node('h3',title(form)),node('p','Доступ к команде не заменяет права на используемые данные.','muted'));for(const command of form.commands)panel.append(checkbox(title(command),model.hasCommand(form.id,command.id),enabled=>model.setCommand(form.id,command.id,enabled)));return;}
-    const object=selected.object;panel.append(node('h3',title(object)));
+    const object=selected.object;panel.append(node('h3',title(object)||object.name));
     const actions=node('div',undefined,'role-operation-list');
-    for(const operation of object.operations)actions.append(checkbox(caption(operation),model.hasObject(object.id,operation),enabled=>model.setObject(object.id,operation,enabled)));
+    for(const operation of object.rights)actions.append(checkbox(caption(operation),model.hasObject(object.id,operation),enabled=>model.setObject(object.id,operation,enabled)));
     panel.append(actions);
     const all=node('div',undefined,'role-bulk');
     for(const [text,enabled] of [['Разрешить всё',true],['Снять все права',false]]){const button=node('button',text);button.type='button';button.addEventListener('click',()=>{model.setAll(object.id,enabled);changed();renderPanel();});all.append(button);}
-    panel.append(all,node('p','Чтение и изменение проставляются сразу на существующие реквизиты. При необходимости уточните их ниже.','muted'));
+    panel.append(all);
+    if(!object.fields.length&&!object.operations.length)return;
+    panel.append(node('p','Чтение и изменение проставляются сразу на существующие реквизиты. При необходимости уточните их ниже.','muted'));
     const fields=node('details',undefined,'role-fields');fields.open=fieldsExpanded;fields.addEventListener('toggle',()=>fieldsExpanded=fields.open);fields.append(node('summary','Реквизиты и табличные части'));
     const table=node('table'),head=node('tr');head.append(node('th','Реквизит'),node('th','Чтение'),node('th','Изменение'));table.append(head);
     for(const field of object.fields){const row=node('tr');row.append(node('td',(field.parent?'↳ ':'')+title(field)));for(const operation of ['view','edit']){const cell=node('td');cell.append(checkbox('',model.hasField(object.id,field.key,operation),enabled=>model.setField(object.id,field.key,operation,enabled),!field.operations.includes(operation)));cell.querySelector('input').setAttribute('aria-label',`${title(field)} — ${caption(operation)}`);row.append(cell);}table.append(row);}
-    fields.append(table);panel.append(fields);
-    panel.append(renderPolicies(object));
+    fields.append(table);if(object.fields.length)panel.append(fields);
+    // A restriction narrows a right this platform acts on.
+    if(object.operations.length)panel.append(renderPolicies(object));
   }
   return {
     open(value, preserveSelection=false) {

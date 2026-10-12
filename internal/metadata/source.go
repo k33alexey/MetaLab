@@ -81,6 +81,10 @@ func (use presence) accepted() bool { return use == present || use == unproven }
 type kindUses struct {
 	// rights is a role giving rights on the object.
 	rights presence
+	// offered are the rights the configurator offers on an object of the
+	// kind, in the order of the help (kindRightsOf); nil for a kind no
+	// export gives rights on.
+	offered []PermissionOperation
 	// registration is an exchange plan registering the object's changes.
 	registration presence
 	// option is a functional option switching the object.
@@ -162,6 +166,103 @@ var kindUsesOf = map[Kind]kindUses{
 	RecalculationKind:              {rights: present, registration: present, option: unproven},
 }
 
+// The rights of the history of data: nine on a kind whose data keeps
+// versions that may be missing, seven on a constant, which always has its
+// value.
+var (
+	historyRights = []PermissionOperation{PermissionReadDataHistory, PermissionViewDataHistory,
+		PermissionUpdateDataHistory, PermissionUpdateDataHistorySettings, PermissionUpdateDataHistoryVersionComment,
+		PermissionEditDataHistoryVersionComment, PermissionSwitchToDataHistoryVersion}
+	missingHistoryRights = []PermissionOperation{PermissionReadDataHistoryOfMissingData, PermissionUpdateDataHistoryOfMissingData}
+	// referenceRights are the rights on the data of an object with a
+	// reference: a catalog, a node of an exchange plan, a process, a task.
+	referenceRights = []PermissionOperation{PermissionRead, PermissionInsert, PermissionUpdate, PermissionDelete,
+		PermissionView, PermissionInteractiveInsert, PermissionEdit, PermissionInteractiveDelete,
+		PermissionInteractiveSetDeletionMark, PermissionInteractiveClearDeletionMark, PermissionInteractiveDeleteMarked,
+		PermissionInputByString}
+	predefinedRights = []PermissionOperation{PermissionInteractiveDeletePredefinedData,
+		PermissionInteractiveSetDeletionMarkPredefinedData, PermissionInteractiveClearDeletionMarkPredefinedData,
+		PermissionInteractiveDeleteMarkedPredefinedData}
+	// registerRights are the rights on a register's records.
+	registerRights = []PermissionOperation{PermissionRead, PermissionUpdate, PermissionView, PermissionEdit}
+)
+
+// kindRightsOf is, for every kind whose objects a role gives rights on (the
+// kinds kindUsesOf marks present), the rights the configurator offers on such
+// an object. The help lists the rights and not the kinds they go with
+// (ПравоДоступа), so the lists are the exports': every right the Rights.xml of
+// the roles of the four exports checked, demo-base, energy, ssl and the
+// configurator's samples in mdclasses write on an object of the kind. They
+// agree to the right: whether an object keeps history or predefined data, or
+// is posted at all, does not change its list.
+//
+// A web and an HTTP service take their rights on their operations and
+// methods, not on themselves: their lists are empty. The configuration
+// itself has configurationRights.
+var kindRightsOf = map[Kind][]PermissionOperation{
+	SubsystemKind:        {PermissionView},
+	SessionParameterKind: {PermissionGet, PermissionSet},
+	CommonAttributeKind:  {PermissionView, PermissionEdit},
+	ExchangePlanKind:     slices.Concat(referenceRights, historyRights, missingHistoryRights),
+	FilterCriterionKind:  {PermissionView},
+	CommonCommandKind:    {PermissionView},
+	CommonFormKind:       {PermissionView},
+	WebServiceKind:       {},
+	HTTPServiceKind:      {},
+	ConstantKind:         slices.Concat(registerRights, historyRights),
+	CatalogKind:          slices.Concat(referenceRights, predefinedRights, historyRights, missingHistoryRights),
+	DocumentKind: slices.Concat(referenceRights, []PermissionOperation{PermissionPosting, PermissionUndoPosting,
+		PermissionInteractivePosting, PermissionInteractivePostingRegular, PermissionInteractiveUndoPosting,
+		PermissionInteractiveChangeOfPosted}, historyRights, missingHistoryRights),
+	SequenceKind:                   {PermissionRead, PermissionUpdate},
+	DocumentJournalKind:            {PermissionRead, PermissionView},
+	ReportKind:                     {PermissionUse, PermissionView},
+	DataProcessorKind:              {PermissionUse, PermissionView},
+	ChartOfCharacteristicTypesKind: slices.Concat(referenceRights, predefinedRights, historyRights, missingHistoryRights),
+	ChartOfAccountsKind:            slices.Concat(referenceRights, predefinedRights, historyRights, missingHistoryRights),
+	ChartOfCalculationTypesKind:    slices.Concat(referenceRights, predefinedRights, historyRights, missingHistoryRights),
+	InformationRegisterKind: slices.Concat(registerRights, []PermissionOperation{PermissionTotalsControl},
+		historyRights, missingHistoryRights),
+	AccumulationRegisterKind: slices.Concat(registerRights, []PermissionOperation{PermissionTotalsControl}),
+	AccountingRegisterKind:   slices.Concat(registerRights, []PermissionOperation{PermissionTotalsControl}),
+	CalculationRegisterKind:  registerRights,
+	RecalculationKind:        {PermissionRead, PermissionUpdate},
+	BusinessProcessKind: slices.Concat(referenceRights, []PermissionOperation{PermissionInteractiveActivate,
+		PermissionStart, PermissionInteractiveStart}, historyRights, missingHistoryRights),
+	TaskKind: slices.Concat(referenceRights, []PermissionOperation{PermissionInteractiveActivate,
+		PermissionExecute, PermissionInteractiveExecute}, historyRights, missingHistoryRights),
+	ExternalDataSourceKind: {PermissionUse, PermissionAdministration, PermissionStandardAuthenticationChange,
+		PermissionSessionStandardAuthenticationChange, PermissionSessionOSAuthenticationChange},
+	ExternalDataSourceTableKind: {PermissionRead, PermissionInsert, PermissionUpdate, PermissionDelete, PermissionView,
+		PermissionInteractiveInsert, PermissionEdit, PermissionInteractiveDelete, PermissionInputByString},
+}
+
+// configurationRights are the rights the configurator offers on the
+// configuration itself, from the same exports: everything a user may do with
+// the infobase as a whole, the clients and the modes of the main window. The
+// mode of the technical specialist is written under its old name too
+// (renamedRights); ending exclusive mode at the start of a session only the
+// configurator's samples write.
+var configurationRights = inHelpOrder([]PermissionOperation{
+	PermissionAdministration, PermissionDataAdministration, PermissionUpdateDataBaseConfiguration,
+	PermissionExclusiveMode, PermissionActiveUsers, PermissionEventLog, PermissionThinClient, PermissionWebClient,
+	PermissionMobileClient, PermissionThickClient, PermissionExternalConnection, PermissionAutomation,
+	PermissionTechnicalSpecialistMode, PermissionSaveUserData, PermissionInteractiveOpenExtDataProcessors,
+	PermissionInteractiveOpenExtReports, PermissionOutput, PermissionConfigurationExtensionsAdministration,
+	PermissionCollaborationSystemInfoBaseRegistration, PermissionMainWindowModeNormal,
+	PermissionMainWindowModeWorkplace, PermissionMainWindowModeEmbeddedWorkplace,
+	PermissionMainWindowModeFullscreenWorkplace, PermissionMainWindowModeKiosk,
+	PermissionExclusiveModeTerminationAtSessionStart, PermissionAnalyticsSystemClient,
+})
+
+// inHelpOrder puts rights in the order of the help, the order the editor
+// shows them in.
+func inHelpOrder(rights []PermissionOperation) []PermissionOperation {
+	result := slices.Clone(rights)
+	slices.SortFunc(result, func(a, b PermissionOperation) int { return rightIndex[a] - rightIndex[b] })
+	return result
+}
+
 // kindReference is one type of a reference to an object of a kind, the set
 // that holds every such type ("" for a reference no set holds), and how a
 // column keeps it.
@@ -230,10 +331,14 @@ var (
 )
 
 // kindWord is what a message calls an object of a kind: its English name in
-// words, chart of accounts. Capitals written together are one word, as the
-// name writes them: XDTO package, HTTP service.
-func kindWord(kind Kind) string {
-	name := []rune(kinds.Must(kind).Name.English)
+// words, chart of accounts.
+func kindWord(kind Kind) string { return identifierWords(kinds.Must(kind).Name.English) }
+
+// identifierWords writes an identifier as words in lower case. Capitals
+// written together are one word, as the name writes them: XDTO package, HTTP
+// service, изменение аутентификации ОС сеанса.
+func identifierWords(identifier string) string {
+	name := []rune(identifier)
 	var out strings.Builder
 	for index, symbol := range name {
 		if index > 0 && unicode.IsUpper(symbol) && (unicode.IsLower(name[index-1]) || index+1 < len(name) && unicode.IsLower(name[index+1])) {
@@ -391,6 +496,9 @@ func init() {
 	}
 	for index := range kindInfos {
 		kindInfos[index].uses = kindUsesOf[kindInfos[index].kind]
+		if offered, ok := kindRightsOf[kindInfos[index].kind]; ok {
+			kindInfos[index].uses.offered = inHelpOrder(offered)
+		}
 	}
 	for _, item := range kindInfos {
 		owned := slices.Concat(item.objectTypes, item.namedBy)
