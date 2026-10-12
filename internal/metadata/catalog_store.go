@@ -610,17 +610,16 @@ func databaseAttributeValue(storage attributeStorage, value Value) (any, error) 
 		encoded, err := json.Marshal(value)
 		return string(encoded), err
 	}
-	switch storage.valueType {
-	case StringType:
+	if keptAsText(storage.valueType) {
 		return value.Data, nil
+	}
+	switch storage.valueType {
 	case NumberType:
 		return value.Data, nil
 	case BooleanType:
 		return value.Data == "true", nil
 	case DateType:
 		return time.Parse(time.RFC3339Nano, value.Data)
-	case UUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType, BusinessProcessType, TaskType, ExchangePlanType, RoutePointType:
-		return value.Data, nil
 	case ValueStorageType:
 		return base64.StdEncoding.DecodeString(value.Data)
 	default:
@@ -640,12 +639,12 @@ func decodeDatabaseAttribute(storage attributeStorage, raw json.RawMessage) (Val
 	if storage.referenceObject != nil {
 		value.Object = *storage.referenceObject
 	}
-	switch storage.valueType {
-	case StringType, DateType, UUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType, BusinessProcessType, TaskType, ExchangePlanType, RoutePointType:
+	switch {
+	case keptAsText(storage.valueType) || storage.valueType == DateType:
 		if err := json.Unmarshal(raw, &value.Data); err != nil {
 			return Value{}, err
 		}
-	case ValueStorageType:
+	case storage.valueType == ValueStorageType:
 		// The row arrives as to_jsonb, which renders bytea the way the server
 		// spells it - hex by default - while the canonical value carries
 		// base64. Reading the server's spelling back as if it were base64
@@ -659,9 +658,7 @@ func decodeDatabaseAttribute(storage attributeStorage, raw json.RawMessage) (Val
 			return Value{}, err
 		}
 		value.Data = base64.StdEncoding.EncodeToString(decoded)
-	case NumberType:
-		value.Data = string(raw)
-	case BooleanType:
+	case storage.valueType == NumberType, storage.valueType == BooleanType:
 		value.Data = string(raw)
 	default:
 		return Value{}, fmt.Errorf("unsupported database value type %s", storage.valueType)

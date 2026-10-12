@@ -245,11 +245,11 @@ func temporarySQLType(column queryColumn) string {
 		return "boolean"
 	case DateType:
 		return "timestamptz"
-	case UUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType, BusinessProcessType, TaskType, ExchangePlanType:
-		return "uuid"
-	default:
-		return "text"
 	}
+	if keptAsUUID(column.storage.valueType) {
+		return "uuid"
+	}
+	return "text"
 }
 
 func buildTemporaryTable(name string, indexExpressions []querylang.Expression, result *queryResultObject, raw [][]json.RawMessage) (queryTemporaryTable, error) {

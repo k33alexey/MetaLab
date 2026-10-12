@@ -214,7 +214,7 @@ const (
 // form»), and a vanished type has nothing to point at. The schema refuses
 // either when a defined type brings it into a stored field.
 func storedNowhere(kind TypeKind) bool {
-	return kind == ExternalTableType || kind == ExternalDimensionTableType || kind == VanishedType
+	return storedAs(kind) == notStored || kind == VanishedType
 }
 
 // mayStandUnstored says where a kind of storedNowhere is allowed.
@@ -241,15 +241,6 @@ func allowedIn(kind TypeKind, place typePlace) bool {
 	default:
 		return false
 	}
-}
-
-// platformFilledSets are the parts of a type description whose composition
-// the platform gathers itself, which a defined type may not hold.
-var platformFilledSets = map[TypeKind]bool{
-	AnyReferenceSet: true, CatalogSet: true, DocumentSet: true, EnumerationSet: true,
-	CharacteristicTypesSet: true, AccountSet: true, CalculationTypeSet: true,
-	BusinessProcessSet: true, RoutePointSet: true, TaskSet: true, ExchangePlanSet: true,
-	CharacteristicSet: true,
 }
 
 func placeName(place typePlace) string {

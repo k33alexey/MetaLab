@@ -355,18 +355,6 @@ func (catalog *Catalog) normalizeAs(value Value, allowed Type) (Value, bool, str
 			return Value{}, false, "invalid UUID reference"
 		}
 		return Value{Kind: UUIDType, Data: id.String()}, true, ""
-	case CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType, BusinessProcessType, TaskType, ExchangePlanType:
-		id, err := uuid.Parse(value.Data)
-		if err != nil {
-			return Value{}, false, "invalid UUID reference"
-		}
-		if id.IsZero() {
-			return Value{}, false, "object reference cannot be empty"
-		}
-		if reason := catalog.checkReferenceObject(value, allowed); reason != "" {
-			return Value{}, false, reason
-		}
-		return Value{Kind: allowed.Kind, Data: id.String(), Object: *allowed.Reference}, true, ""
 	case RoutePointType:
 		// A point is carried by name, and the name means something only inside
 		// the process that drew the map: a value naming a point no map has
@@ -410,7 +398,20 @@ func (catalog *Catalog) normalizeAs(value Value, allowed Type) (Value, bool, str
 		}
 		return Value{}, false, "value does not belong to the enumeration"
 	default:
-		return Value{}, false, "unsupported value kind"
+		if storedAs(allowed.Kind) != tableRow {
+			return Value{}, false, "unsupported value kind"
+		}
+		id, err := uuid.Parse(value.Data)
+		if err != nil {
+			return Value{}, false, "invalid UUID reference"
+		}
+		if id.IsZero() {
+			return Value{}, false, "object reference cannot be empty"
+		}
+		if reason := catalog.checkReferenceObject(value, allowed); reason != "" {
+			return Value{}, false, reason
+		}
+		return Value{Kind: allowed.Kind, Data: id.String(), Object: *allowed.Reference}, true, ""
 	}
 }
 

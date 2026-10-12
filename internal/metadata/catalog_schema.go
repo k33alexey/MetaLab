@@ -396,19 +396,21 @@ func (catalog *Catalog) attributeStorage(types []Type) (attributeStorage, error)
 		storage.sqlType = "timestamp with time zone"
 	case ValueStorageType:
 		storage.sqlType = "bytea"
-	case RoutePointType:
-		// A point of a route is not a row of any table: it is part of the map
-		// the configuration draws, and it is carried by name.
-		storage.sqlType = "character varying(128)"
-	case UUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType,
-		CalculationTypeType, BusinessProcessType, TaskType, ExchangePlanType:
+	case UUIDType:
 		storage.sqlType = "uuid"
-		if item.Kind != UUIDType && item.Kind != EnumerationType {
+	default:
+		switch storedAs(item.Kind) {
+		case byName:
+			storage.sqlType = "character varying(128)"
+		case listedValue:
+			storage.sqlType = "uuid"
+		case tableRow:
+			storage.sqlType = "uuid"
 			id := *item.Reference
 			storage.referenceObject = &id
+		default:
+			return attributeStorage{}, fmt.Errorf("unsupported resolved type %s", item.Kind)
 		}
-	default:
-		return attributeStorage{}, fmt.Errorf("unsupported resolved type %s", item.Kind)
 	}
 	return storage, nil
 }

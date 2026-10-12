@@ -361,14 +361,13 @@ func (compiler *queryCompiler) outputDescriptor(output queryOutput) (queryColumn
 		object, _ := output.fixed.AsRuntimeObject()
 		switch reference := object.(type) {
 		case *catalogReferenceObject:
-			column.storage = attributeStorage{sqlType: "uuid", valueType: CatalogType, referenceObject: &reference.reference.CatalogID}
 			column.types = []Type{referenceType(CatalogType, reference.reference.CatalogID)}
 		case *documentReferenceObject:
-			column.storage = attributeStorage{sqlType: "uuid", valueType: DocumentType, referenceObject: &reference.reference.DocumentID}
 			column.types = []Type{referenceType(DocumentType, reference.reference.DocumentID)}
 		default:
 			return queryColumn{}, fmt.Errorf("query field %s cannot be stored in a temporary table", output.name)
 		}
+		column.storage, _ = (&Catalog{}).attributeStorage(column.types)
 	default:
 		return queryColumn{}, fmt.Errorf("query field %s has no storable type", output.name)
 	}
@@ -1488,10 +1487,6 @@ func (runtime *Runtime) addQueryAttributes(source *querySource, attributes []Att
 
 func (source *querySource) addStored(name, sql string, types []Type, aliases ...string) {
 	storage, _ := (&Catalog{}).attributeStorage(types)
-	// Built-in reference types need catalog expansion, which attributeStorage does not use.
-	if single, ok := SingleType(types); ok && (single.Kind == CatalogType || single.Kind == DocumentType) {
-		storage = attributeStorage{sqlType: "uuid", valueType: single.Kind, referenceObject: single.Reference}
-	}
 	source.add(queryColumn{name: name, sql: sql, storage: storage, types: types}, aliases...)
 }
 
@@ -1580,11 +1575,11 @@ func queryStorageCast(storage attributeStorage) string {
 		return "::boolean"
 	case DateType:
 		return "::timestamptz"
-	case UUIDType, EnumerationType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType, BusinessProcessType, TaskType, ExchangePlanType:
-		return "::uuid"
-	default:
-		return "::text"
 	}
+	if keptAsUUID(storage.valueType) {
+		return "::uuid"
+	}
+	return "::text"
 }
 
 func queryName(value string, names ...string) bool {

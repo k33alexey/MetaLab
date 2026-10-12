@@ -162,10 +162,53 @@ var kindUsesOf = map[Kind]kindUses{
 	RecalculationKind:              {rights: present, registration: present, option: unproven},
 }
 
-// kindReference is one type of a reference to an object of a kind, and the
-// set that holds every such type ("" for a reference no set holds).
+// kindReference is one type of a reference to an object of a kind, the set
+// that holds every such type ("" for a reference no set holds), and how a
+// column keeps it.
 type kindReference struct {
 	kind, set TypeKind
+	stored    referenceStorage
+}
+
+// referenceStorage is how a column of the infobase keeps a reference.
+type referenceStorage int
+
+const (
+	// storageUnsaid is a reference that says nothing of its storage; a test
+	// refuses it, so a new reference is not stored by omission.
+	storageUnsaid referenceStorage = iota
+	// tableRow is the identifier of a row of the object's own table, which
+	// the column refers to by a foreign key.
+	tableRow
+	// listedValue is the identifier of a value the configuration lists: the
+	// values of an enumeration have no table to refer to.
+	listedValue
+	// byName is a name: a point of a route is part of the map the
+	// configuration draws, not a row of any table.
+	byName
+	// notStored is a reference the infobase never keeps: a record of an
+	// external source lives in another database.
+	notStored
+)
+
+// referenceStorages says, for every type of a reference, how a column keeps
+// it; read off kindInfos in init.
+var referenceStorages = map[TypeKind]referenceStorage{}
+
+// storedAs is how a column keeps a reference of the type, storageUnsaid for
+// a type that is no reference to an object of metadata.
+func storedAs(kind TypeKind) referenceStorage { return referenceStorages[kind] }
+
+// keptAsUUID says a column keeps a value of the type as uuid: an identifier
+// itself, or a reference to a row or to a listed value.
+func keptAsUUID(kind TypeKind) bool {
+	return kind == UUIDType || storedAs(kind) == tableRow || storedAs(kind) == listedValue
+}
+
+// keptAsText says a value of the type is carried by its Data as written: a
+// string, an identifier, and every reference the infobase keeps.
+func keptAsText(kind TypeKind) bool {
+	return kind == StringType || keptAsUUID(kind) || storedAs(kind) == byName
 }
 
 // referenceTo is the reference to an object of a kind itself, "" for a kind
@@ -253,7 +296,7 @@ func init() {
 		describedAs(CommonModuleKind, DecodeCommonModule, func(catalog *Catalog) *[]CommonModuleDefinition { return &catalog.CommonModules }, func(c *Catalog) map[uuid.UUID]int { return c.commonModuleByID }),
 		describedAs(EventSubscriptionKind, DecodeEventSubscription, func(catalog *Catalog) *[]EventSubscriptionDefinition { return &catalog.EventSubscriptions }, func(c *Catalog) map[uuid.UUID]int { return c.eventSubscriptionByID }),
 		describedAs(EnumerationKind, DecodeEnumeration, func(catalog *Catalog) *[]Enumeration { return &catalog.Enumerations }, func(c *Catalog) map[uuid.UUID]int { return c.enumerationByID }).
-			refers(kindReference{EnumerationType, EnumerationSet}).
+			refers(kindReference{EnumerationType, EnumerationSet, listedValue}).
 			holds(EnumerationManagerType),
 		describedAs(ScheduledJobKind, DecodeScheduledJob, func(catalog *Catalog) *[]ScheduledJobDefinition { return &catalog.ScheduledJobs }, func(c *Catalog) map[uuid.UUID]int { return c.scheduledJobByID }),
 		describedAs(CommandGroupKind, DecodeCommandGroup, func(catalog *Catalog) *[]CommandGroupDefinition { return &catalog.CommandGroups }, func(c *Catalog) map[uuid.UUID]int { return c.commandGroupByID }),
@@ -272,11 +315,11 @@ func init() {
 		// identifier.
 		describedAs(ExternalDataSourceTableKind, DecodeExternalTable, nil, nil).
 			found(func(c *Catalog, id uuid.UUID) bool { _, ok := c.externalTableByID[id]; return ok }).
-			refers(kindReference{ExternalTableType, ""}),
+			refers(kindReference{ExternalTableType, "", notStored}),
 		describedAs(ExternalCubeKind, DecodeExternalCube, nil, nil),
 		describedAs(ExternalDimensionTableKind, DecodeExternalDimensionTable, nil, nil).
 			found(func(c *Catalog, id uuid.UUID) bool { _, ok := c.externalDimensionTableByID[id]; return ok }).
-			refers(kindReference{ExternalDimensionTableType, ""}),
+			refers(kindReference{ExternalDimensionTableType, "", notStored}),
 		describedAs(HTTPServiceKind, DecodeHTTPService, func(catalog *Catalog) *[]HTTPServiceDefinition { return &catalog.HTTPServices }, func(c *Catalog) map[uuid.UUID]int { return c.httpServiceByID }),
 		describedAs(CommonPictureKind, DecodeCommonPicture, func(catalog *Catalog) *[]CommonPictureDefinition { return &catalog.CommonPictures }, func(c *Catalog) map[uuid.UUID]int { return c.commonPictureByID }),
 		describedAs(StyleItemKind, DecodeStyleItem, func(catalog *Catalog) *[]StyleItemDefinition { return &catalog.StyleItems }, func(c *Catalog) map[uuid.UUID]int { return c.styleItemByID }),
@@ -290,24 +333,24 @@ func init() {
 		describedAs(DefinedTypeKind, DecodeDefinedType, func(catalog *Catalog) *[]DefinedTypeObject { return &catalog.DefinedTypes }, func(c *Catalog) map[uuid.UUID]int { return c.definedTypeByID }).
 			names(DefinedType),
 		describedAs(CatalogKind, DecodeCatalog, func(catalog *Catalog) *[]CatalogDefinition { return &catalog.Catalogs }, func(c *Catalog) map[uuid.UUID]int { return c.catalogByID }).
-			refers(kindReference{CatalogType, CatalogSet}).
+			refers(kindReference{CatalogType, CatalogSet, tableRow}).
 			holds(CatalogObjectType, CatalogManagerType),
 		describedAs(ChartOfCharacteristicTypesKind, DecodeChartOfCharacteristicTypes, func(catalog *Catalog) *[]ChartOfCharacteristicTypesDefinition {
 			return &catalog.ChartsOfCharacteristicTypes
 		}, func(c *Catalog) map[uuid.UUID]int { return c.chartOfCharacteristicTypesByID }).
-			refers(kindReference{CharacteristicTypesType, CharacteristicTypesSet}).
+			refers(kindReference{CharacteristicTypesType, CharacteristicTypesSet, tableRow}).
 			holds(CharacteristicTypesObjectType, CharacteristicTypesManagerType).
 			names(CharacteristicSet),
 		describedAs(ChartOfAccountsKind, DecodeChartOfAccounts, func(catalog *Catalog) *[]ChartOfAccountsDefinition { return &catalog.ChartsOfAccounts }, func(c *Catalog) map[uuid.UUID]int { return c.chartOfAccountsByID }).
-			refers(kindReference{AccountType, AccountSet}).
+			refers(kindReference{AccountType, AccountSet, tableRow}).
 			holds(AccountsObjectType, AccountsManagerType),
 		describedAs(ChartOfCalculationTypesKind, DecodeChartOfCalculationTypes, func(catalog *Catalog) *[]ChartOfCalculationTypesDefinition {
 			return &catalog.ChartsOfCalculationTypes
 		}, func(c *Catalog) map[uuid.UUID]int { return c.chartOfCalculationTypesByID }).
-			refers(kindReference{CalculationTypeType, CalculationTypeSet}).
+			refers(kindReference{CalculationTypeType, CalculationTypeSet, tableRow}).
 			holds(CalculationTypesObjectType, CalculationTypesManagerType),
 		describedAs(TaskKind, DecodeTask, func(catalog *Catalog) *[]TaskDefinition { return &catalog.Tasks }, func(c *Catalog) map[uuid.UUID]int { return c.taskByID }).
-			refers(kindReference{TaskType, TaskSet}).
+			refers(kindReference{TaskType, TaskSet, tableRow}).
 			holds(TaskObjectType, TaskManagerType),
 		describedAs(AccountingRegisterKind, DecodeAccountingRegister, func(catalog *Catalog) *[]AccountingRegisterDefinition { return &catalog.AccountingRegisters }, func(c *Catalog) map[uuid.UUID]int { return c.accountingRegisterByID }).
 			holds(AccountingRegisterRecordSetType, AccountingRegisterManagerType),
@@ -323,13 +366,13 @@ func init() {
 		describedAs(DocumentJournalKind, DecodeDocumentJournal, func(catalog *Catalog) *[]DocumentJournalDefinition { return &catalog.DocumentJournals }, func(c *Catalog) map[uuid.UUID]int { return c.documentJournalByID }).
 			holds(DocumentJournalManagerType),
 		describedAs(ExchangePlanKind, DecodeExchangePlan, func(catalog *Catalog) *[]ExchangePlanDefinition { return &catalog.ExchangePlans }, func(c *Catalog) map[uuid.UUID]int { return c.exchangePlanByID }).
-			refers(kindReference{ExchangePlanType, ExchangePlanSet}).
+			refers(kindReference{ExchangePlanType, ExchangePlanSet, tableRow}).
 			holds(ExchangePlanObjectType, ExchangePlanManagerType),
 		describedAs(BusinessProcessKind, DecodeBusinessProcess, func(catalog *Catalog) *[]BusinessProcessDefinition { return &catalog.BusinessProcesses }, func(c *Catalog) map[uuid.UUID]int { return c.businessProcessByID }).
-			refers(kindReference{BusinessProcessType, BusinessProcessSet}, kindReference{RoutePointType, RoutePointSet}).
+			refers(kindReference{BusinessProcessType, BusinessProcessSet, tableRow}, kindReference{RoutePointType, RoutePointSet, byName}).
 			holds(BusinessProcessObjectType, BusinessProcessManagerType),
 		describedAs(DocumentKind, DecodeDocument, func(catalog *Catalog) *[]DocumentDefinition { return &catalog.Documents }, func(c *Catalog) map[uuid.UUID]int { return c.documentByID }).
-			refers(kindReference{DocumentType, DocumentSet}).
+			refers(kindReference{DocumentType, DocumentSet, tableRow}).
 			holds(DocumentObjectType, DocumentManagerType),
 		describedAs(InformationRegisterKind, DecodeInformationRegister, func(catalog *Catalog) *[]InformationRegisterDefinition { return &catalog.InformationRegisters }, func(c *Catalog) map[uuid.UUID]int { return c.informationRegisterByID }).
 			holds(InformationRegisterRecordSetType, InformationRegisterRecordManagerType, InformationRegisterManagerType),
@@ -353,6 +396,7 @@ func init() {
 		owned := slices.Concat(item.objectTypes, item.namedBy)
 		for _, reference := range item.references {
 			owned = append(owned, reference.kind)
+			referenceStorages[reference.kind] = reference.stored
 			if reference.set != "" {
 				referenceSets[reference.set] = true
 			}

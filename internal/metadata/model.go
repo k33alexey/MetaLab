@@ -1817,15 +1817,8 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 			issues = append(issues, prefix+" duplicates an allowed type")
 		}
 		seen[key] = true
-		referenced := item.Kind == CharacteristicSet ||
-			item.Kind == EnumerationType || item.Kind == DefinedType || item.Kind == CatalogType ||
-			item.Kind == DocumentType || item.Kind == CharacteristicTypesType || item.Kind == AccountType ||
-			item.Kind == CalculationTypeType || item.Kind == BusinessProcessType || item.Kind == TaskType ||
-			item.Kind == ExchangePlanType ||
-			item.Kind == RoutePointType ||
-			item.Kind == ExternalTableType || item.Kind == ExternalDimensionTableType ||
-			item.Kind == VanishedType ||
-			isObjectType(item.Kind)
+		_, referenced := typeOwners[item.Kind]
+		referenced = referenced || item.Kind == VanishedType
 		// The object of any report: an attribute of a form may be typed so
 		// without naming the report - the main attribute of the common forms
 		// of a report, of its settings and of its variant, which one form
@@ -1859,7 +1852,7 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 			}
 			continue
 		}
-		if place == placeDefinedType && (item.Kind == DefinedType || platformFilledSets[item.Kind]) {
+		if place == placeDefinedType && IsTypeSet(item.Kind) {
 			issues = append(issues, prefix+".kind "+string(item.Kind)+" cannot stand in a defined type: the designer offers neither another defined type nor a set the platform fills itself")
 			continue
 		}
@@ -1933,15 +1926,15 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 			if item.Length != 0 || item.Precision != 0 || item.Scale != 0 {
 				issues = append(issues, prefix+" has unsupported qualifiers")
 			}
-		case BooleanType, UUIDType, ValueStorageType, EnumerationType, DefinedType, CatalogType, DocumentType, CharacteristicTypesType, AccountType, CalculationTypeType,
-			BusinessProcessType, TaskType, ExchangePlanType, RoutePointType,
-			AnyReferenceSet, CatalogSet, DocumentSet, EnumerationSet, CharacteristicTypesSet, AccountSet,
-			CalculationTypeSet, BusinessProcessSet, RoutePointSet, TaskSet, ExchangePlanSet, CharacteristicSet:
-			if item.Length != 0 || item.Precision != 0 || item.Scale != 0 {
+		default:
+			// A boolean, an identifier, a value storage, a reference and a set
+			// take no qualifier.
+			if item.Kind != BooleanType && item.Kind != UUIDType && item.Kind != ValueStorageType &&
+				storedAs(item.Kind) == storageUnsaid && !IsTypeSet(item.Kind) {
+				issues = append(issues, prefix+".kind is unsupported")
+			} else if item.Length != 0 || item.Precision != 0 || item.Scale != 0 {
 				issues = append(issues, prefix+" has unsupported qualifiers")
 			}
-		default:
-			issues = append(issues, prefix+".kind is unsupported")
 		}
 	}
 	return issues
