@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/k33alexey/MetaLab/internal/pgtool"
 	"github.com/k33alexey/MetaLab/internal/postgresconn"
 )
 
@@ -32,7 +33,7 @@ func TestCreateAndRestoreVerifiedArchiveWithoutPasswordExposure(t *testing.T) {
 		}
 		return nil
 	}
-	tool := &Tool{dumpPath: "pg_dump", restorePath: "pg_restore", run: runner}
+	tool := &Tool{tools: pgtool.New("pg_dump", "pg_restore", runner)}
 	connection := postgresconn.Descriptor{
 		Host: "localhost", Port: 5432, Database: "sales", User: "ml", SSLMode: "disable", SecretKey: "sales.password",
 	}
@@ -58,14 +59,14 @@ func TestCreateAndRestoreVerifiedArchiveWithoutPasswordExposure(t *testing.T) {
 func TestCreateRemovesPartialArchiveOnFailure(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
-	tool := &Tool{dumpPath: "pg_dump", restorePath: "pg_restore", run: func(_ context.Context, _ string, arguments, _ []string, _ io.Writer) error {
+	tool := &Tool{tools: pgtool.New("pg_dump", "pg_restore", func(_ context.Context, _ string, arguments, _ []string, _ io.Writer) error {
 		for index, argument := range arguments {
 			if argument == "--file" {
 				_ = os.WriteFile(arguments[index+1], []byte("partial"), 0o600)
 			}
 		}
 		return errors.New("forced failure")
-	}}
+	})}
 	connection := postgresconn.Descriptor{
 		Host: "localhost", Port: 5432, Database: "sales", User: "ml", SSLMode: "disable", SecretKey: "sales.password",
 	}

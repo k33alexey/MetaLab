@@ -2,23 +2,19 @@
 package pgbackup
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/ownerfile"
+	"github.com/k33alexey/MetaLab/internal/pgtool"
 	"github.com/k33alexey/MetaLab/internal/postgresconn"
 )
-
-const diagnosticLimit = 64 << 10
 
 // Archive is the completed local backup metadata.
 type Archive struct {
@@ -29,24 +25,16 @@ type Archive struct {
 
 // Tool runs official PostgreSQL client utilities.
 type Tool struct {
-	dumpPath    string
-	restorePath string
-	run         commandRunner
+	tools pgtool.Tools
 }
-
-type commandRunner func(context.Context, string, []string, []string, io.Writer) error
 
 // New locates pg_dump and pg_restore.
 func New() (*Tool, error) {
-	dumpPath, err := exec.LookPath("pg_dump")
+	tools, err := pgtool.Locate()
 	if err != nil {
-		return nil, fmt.Errorf("pg_dump was not found in PATH")
+		return nil, err
 	}
-	restorePath, err := exec.LookPath("pg_restore")
-	if err != nil {
-		return nil, fmt.Errorf("pg_restore was not found in PATH")
-	}
-	return &Tool{dumpPath: dumpPath, restorePath: restorePath, run: runCommand}, nil
+	return &Tool{tools: tools}, nil
 }
 
 // Create writes a custom-format archive through a protected temporary file and atomic rename.
@@ -68,11 +56,7 @@ func (tool *Tool) Create(ctx context.Context, connection postgresconn.Descriptor
 	}
 	credentials := []postgresconn.Credential{{Connection: connection, Password: password}}
 	err = postgresconn.WithPasswordFile(credentials, func(environment []string) error {
-		return tool.execute(ctx, tool.dumpPath, []string{
-			"--format=custom", "--no-owner", "--no-acl", "--file", temporaryPath,
-			"--host", connection.Host, "--port", strconv.Itoa(int(connection.Port)),
-			"--username", connection.User, "--dbname", connection.Database,
-		}, environment)
+		return tool.tools.Dump(ctx, connection, temporaryPath, environment)
 	})
 	if err != nil {
 		return Archive{}, fmt.Errorf("create PostgreSQL backup: %w", err)
@@ -95,7 +79,7 @@ func (tool *Tool) Create(ctx context.Context, connection postgresconn.Descriptor
 
 // Restore verifies the archive and restores it transactionally into its registered database.
 func (tool *Tool) Restore(ctx context.Context, connection postgresconn.Descriptor, password, path, expectedSHA256 string) error {
-	if tool == nil || tool.run == nil || tool.restorePath == "" || password == "" {
+	if tool == nil || !tool.tools.Ready() || password == "" {
 		return fmt.Errorf("PostgreSQL restore tool is not configured")
 	}
 	if err := connection.Validate(); err != nil {
@@ -110,11 +94,7 @@ func (tool *Tool) Restore(ctx context.Context, connection postgresconn.Descripto
 	}
 	credentials := []postgresconn.Credential{{Connection: connection, Password: password}}
 	return postgresconn.WithPasswordFile(credentials, func(environment []string) error {
-		if err := tool.execute(ctx, tool.restorePath, []string{
-			"--clean", "--if-exists", "--exit-on-error", "--single-transaction", "--no-owner", "--no-acl",
-			"--host", connection.Host, "--port", strconv.Itoa(int(connection.Port)),
-			"--username", connection.User, "--dbname", connection.Database, path,
-		}, environment); err != nil {
+		if err := tool.tools.Restore(ctx, connection, path, pgtool.ReplaceExisting, environment); err != nil {
 			return fmt.Errorf("restore PostgreSQL backup: %w", err)
 		}
 		return nil
@@ -122,7 +102,7 @@ func (tool *Tool) Restore(ctx context.Context, connection postgresconn.Descripto
 }
 
 func validateInputs(tool *Tool, connection postgresconn.Descriptor, password, directory, fileName string) error {
-	if tool == nil || tool.run == nil || tool.dumpPath == "" || password == "" {
+	if tool == nil || !tool.tools.Ready() || password == "" {
 		return fmt.Errorf("PostgreSQL backup tool is not configured")
 	}
 	if err := connection.Validate(); err != nil {
@@ -150,38 +130,3 @@ func fileDigest(path string) (string, int64, error) {
 	}
 	return hex.EncodeToString(hash.Sum(nil)), size, nil
 }
-
-func (tool *Tool) execute(ctx context.Context, path string, arguments, environment []string) error {
-	diagnostics := &limitedBuffer{remaining: diagnosticLimit}
-	if err := tool.run(ctx, path, arguments, environment, diagnostics); err != nil {
-		message := strings.TrimSpace(diagnostics.String())
-		if message != "" {
-			return fmt.Errorf("%w: %s", err, message)
-		}
-		return err
-	}
-	return nil
-}
-
-func runCommand(ctx context.Context, path string, arguments, environment []string, output io.Writer) error {
-	command := exec.CommandContext(ctx, path, arguments...)
-	command.Env, command.Stdout, command.Stderr = environment, output, output
-	return command.Run()
-}
-
-type limitedBuffer struct {
-	buffer    bytes.Buffer
-	remaining int
-}
-
-func (buffer *limitedBuffer) Write(content []byte) (int, error) {
-	length := len(content)
-	if len(content) > buffer.remaining {
-		content = content[:buffer.remaining]
-	}
-	_, _ = buffer.buffer.Write(content)
-	buffer.remaining -= len(content)
-	return length, nil
-}
-
-func (buffer *limitedBuffer) String() string { return buffer.buffer.String() }

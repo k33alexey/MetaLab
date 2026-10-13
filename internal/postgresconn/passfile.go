@@ -48,12 +48,13 @@ func WithPasswordFile(credentials []Credential, action func(environment []string
 }
 
 // ToolEnvironment is the environment of a PostgreSQL client tool: the
-// process environment without inherited password settings, the password file
-// when there is one, and a bounded connection timeout.
+// process environment without inherited password, ssl mode and timeout
+// settings, the password file when there is one, and a bounded connection
+// timeout. The ssl mode is the connection's own, added per utility run.
 func ToolEnvironment(passwordFile string) []string {
 	environment := make([]string, 0, len(os.Environ())+2)
 	for _, variable := range os.Environ() {
-		if strings.HasPrefix(variable, "PGPASSWORD=") || strings.HasPrefix(variable, "PGPASSFILE=") || strings.HasPrefix(variable, "PGCONNECT_TIMEOUT=") {
+		if strings.HasPrefix(variable, "PGPASSWORD=") || strings.HasPrefix(variable, "PGPASSFILE=") || strings.HasPrefix(variable, "PGCONNECT_TIMEOUT=") || strings.HasPrefix(variable, "PGSSLMODE=") {
 			continue
 		}
 		environment = append(environment, variable)
