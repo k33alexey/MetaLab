@@ -79,21 +79,83 @@ function createRoleModel(source) {
   // The restrictions of access to data on one right of an object, in the
   // order the role writes them.
   const restrictionsOf = (id, right) => (objects.get(id)?.restrictions || []).filter(item => item.right === right);
-  // A restriction is written inside the right it restricts, granted or
-  // denied, as the prototype writes it: a right that stood for the role's
-  // flags is written first as it stood, so adding a restriction turns no
-  // right over. Only reading is restricted by fields; a field the object
-  // does not have is not taken.
-  function putRestriction(id, right, index, restriction) {
-    if (!definitions.get(id)?.restrictedRights?.includes(right)) return;
-    const grant = object(id);
-    if (!grant.operations.includes(right) && !grant.denied?.includes(right)) writeRight(grant, right, objectRight(id, right));
+  // Only reading is restricted by fields; a field the object does not have
+  // is not taken.
+  function restrictionEntry(id, right, restriction) {
     const entry = {right}, own = restrictionFields.get(id) || new Set();
     const chosen = right === 'read' ? (restriction.fields || []).filter(field => own.has(field)) : [];
     if (chosen.length) entry.fields = [...new Set(chosen)];
     if (restriction.condition) entry.condition = restriction.condition;
+    return entry;
+  }
+  // A restriction is written inside the right it restricts, granted or
+  // denied, as the prototype writes it: a right that stood for the role's
+  // flags is written first as it stood, so adding a restriction turns no
+  // right over.
+  function putRestriction(id, right, index, restriction) {
+    if (!definitions.get(id)?.restrictedRights?.includes(right)) return null;
+    const grant = object(id);
+    if (!grant.operations.includes(right) && !grant.denied?.includes(right)) writeRight(grant, right, objectRight(id, right));
+    const entry = restrictionEntry(id, right, restriction);
     const list = grant.restrictions ||= [], same = restrictionsOf(id, right);
     if (index < same.length) list[list.indexOf(same[index])] = entry; else list.push(entry);
+    return entry;
+  }
+  // Two restrictions of one right collide where the role cannot keep both
+  // (validateRestrictions on the server): any two on a right other than
+  // reading, two of reading on «Прочие поля», two of reading naming one
+  // field. What the restriction would take from another: the fields they
+  // share, or the other whole.
+  function collision(right, entry, other) {
+    if (right !== 'read') return {whole: true, shared: []};
+    const theirs = other.fields || [], ours = entry.fields || [];
+    if (!ours.length) return theirs.length ? null : {whole: true, shared: []};
+    const shared = theirs.filter(field => ours.includes(field));
+    return !shared.length ? null : {whole: shared.length === theirs.length, shared};
+  }
+  // What a restriction put at index would collide with among the others of
+  // the right.
+  function restrictionClashes(id, right, index, restriction) {
+    const entry = restrictionEntry(id, right, restriction);
+    return restrictionsOf(id, right).flatMap((other, at) => {
+      const clash = at === index ? null : collision(right, entry, other);
+      return clash ? [{index: at, ...clash}] : [];
+    });
+  }
+  // Writes restrictions on one right of an object at once, each at its
+  // index or, past the end, as a new one, and each replaces what it collides
+  // with: a field goes from the restriction that named it, a restriction
+  // goes whole when nothing of it is left (an emptied one would stand for
+  // «Прочие поля», which is not what was restricted). Changes are taken in
+  // order, so of two that collide the later stays; one taken away whole
+  // before its turn is not written, and a new one the right has already, as
+  // it is, is not written twice. Answers what was taken from restrictions the
+  // changes did not name, as they stood, for the question «Заменить?».
+  function writeRestrictions(id, right, changes) {
+    if (!definitions.get(id)?.restrictedRights?.includes(right)) return [];
+    const before = restrictionsOf(id, right), named = new Set(changes.map(change => before[change.index]).filter(Boolean));
+    const taken = [], same = (left, other) => left.condition === other.condition && JSON.stringify([...left.fields || []].sort()) === JSON.stringify([...other.fields || []].sort());
+    for (const change of changes) {
+      const target = before[change.index];
+      const current = restrictionsOf(id, right);
+      if (target && !current.includes(target)) continue;
+      if (!target && current.some(other => same(other, restrictionEntry(id, right, change.restriction)))) continue;
+      const entry = putRestriction(id, right, target ? current.indexOf(target) : current.length, change.restriction);
+      named.add(entry);
+      if (target) before[change.index] = entry;
+      const grant = objects.get(id);
+      for (const other of restrictionsOf(id, right)) {
+        const clash = other === entry ? null : collision(right, entry, other);
+        if (!clash) continue;
+        if (!named.has(other)) taken.push({...structuredClone(other), ...clash});
+        // A restriction loses fields in place, so it stays the one the
+        // changes name.
+        if (clash.whole) grant.restrictions = grant.restrictions.filter(item => item !== other);
+        else other.fields = other.fields.filter(field => !clash.shared.includes(field));
+      }
+    }
+    if (objects.get(id) && !objects.get(id).restrictions?.length) delete objects.get(id).restrictions;
+    return taken;
   }
   function removeRestriction(id, right, index) {
     const grant = objects.get(id), target = restrictionsOf(id, right)[index];
@@ -103,10 +165,41 @@ function createRoleModel(source) {
   }
   // A template of the role's restrictions: its name, with the names of its
   // parameters in brackets where it takes any, and its text.
-  function putTemplate(index, template) {
-    const list = value.role.restrictionTemplates ||= [], entry = {name: template.name.trim()};
+  function templateEntry(template) {
+    const entry = {name: template.name.trim()};
     if (template.condition) entry.condition = template.condition;
+    return entry;
+  }
+  function putTemplate(index, template) {
+    const list = value.role.restrictionTemplates ||= [], entry = templateEntry(template);
     if (index < list.length) list[index] = entry; else list.push(entry);
+  }
+  // A template is known by its name proper, without regard to case and to
+  // its parameters, as the server tells them apart
+  // (validateRestrictionTemplates): a role keeps one of a name.
+  const templateKey = name => name.split('(')[0].trim().toLocaleLowerCase();
+  // Writes templates at once, as writeRestrictions writes restrictions: each
+  // at its index or, past the end, as a new one, each replacing the others of
+  // its name, the later of two staying; a new one the role has already, as
+  // it is, is not written twice. Answers the templates taken that the
+  // changes did not name.
+  function writeTemplates(changes) {
+    const before = [...value.role.restrictionTemplates || []], named = new Set(changes.map(change => before[change.index]).filter(Boolean));
+    const taken = [];
+    for (const change of changes) {
+      const list = value.role.restrictionTemplates ||= [], target = before[change.index], entry = templateEntry(change.template);
+      if (target && !list.includes(target)) continue;
+      if (!target && list.some(other => other.name === entry.name && (other.condition || '') === (entry.condition || ''))) continue;
+      if (target) { list[list.indexOf(target)] = entry; before[change.index] = entry; } else list.push(entry);
+      named.add(entry);
+      for (const other of [...list]) {
+        if (other === entry || templateKey(other.name) !== templateKey(entry.name)) continue;
+        if (!named.has(other)) taken.push(structuredClone(other));
+        list.splice(list.indexOf(other), 1);
+      }
+    }
+    if (!value.role.restrictionTemplates?.length) delete value.role.restrictionTemplates;
+    return taken;
   }
   function removeTemplate(index) {
     const list = value.role.restrictionTemplates || [];
@@ -183,9 +276,10 @@ function createRoleModel(source) {
       if(enabled)value.role.commands.push({form,command});
     },
     restrictions: (id, right) => structuredClone(restrictionsOf(id, right)),
-    putRestriction, removeRestriction,
+    putRestriction(id, right, index, restriction) { putRestriction(id, right, index, restriction); },
+    restrictionClashes, writeRestrictions, removeRestriction,
     templates: () => structuredClone(value.role.restrictionTemplates || []),
-    putTemplate, removeTemplate,
+    putTemplate, writeTemplates, removeTemplate,
     hasUnavailable() { return JSON.stringify(clean()) !== JSON.stringify(repaired()); },
     removeUnavailable() { value.role = repaired(); reindex(); },
   };
@@ -297,19 +391,35 @@ function createRoleTree({schema, kindTitles, title, expanded, selection, choose}
   };
 }
 
-/* A list of rows with two columns and the commands of the prototype's
-   context menu: Добавить, Изменить, Удалить. A row is chosen by a click and
-   opened by a double click. */
+/* A list of rows and the commands of the prototype's context menu:
+   Добавить, Изменить, Удалить. A row is chosen by a click and opened by a
+   double click. chosen is the index of the row chosen, or a Set of them
+   where several are chosen at once, as in the prototype's «Все ограничения
+   доступа»: Ctrl adds a row or takes it away, Shift chooses the rows from the
+   last one clicked. A cell is [text, className], or a cell made already. */
 function roleListTable(headings, rows, chosen, choose, commands, empty) {
   const table=node('table',undefined,'role-list'),head=node('tr');
   for(const text of headings)head.append(node('th',text));
   const thead=node('thead');thead.append(head);const body=node('tbody');
+  const many=chosen instanceof Set,isChosen=index=>many?chosen.has(index):index===chosen;
+  let anchor=many?[...chosen].at(-1)??-1:chosen;
+  function click(index,event){
+    if(!many){chosen=index;choose(index);}
+    else{
+      if(event?.ctrlKey||event?.metaKey){if(!chosen.delete(index))chosen.add(index);anchor=index;}
+      else if(event?.shiftKey&&anchor>=0){chosen.clear();for(let at=Math.min(anchor,index);at<=Math.max(anchor,index);at++)chosen.add(at);}
+      else{chosen.clear();chosen.add(index);anchor=index;}
+      choose(chosen);
+    }
+    [...body.children].forEach((other,at)=>other.classList.toggle('selected',isChosen(at)));
+    syncCommands();
+  }
   rows.forEach((cells,index)=>{
-    const row=node('tr',undefined,index===chosen?'selected':undefined);row.tabIndex=0;
-    for(const [text,className] of cells){const cell=node('td',text,className);cell.title=text;row.append(cell);}
-    row.addEventListener('click',()=>{choose(index);for(const other of body.children)other.classList.toggle('selected',other===row);syncCommands();});
-    row.addEventListener('dblclick',()=>{choose(index);commands.find(([key])=>key==='edit')?.[2]();});
-    row.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();row.dispatchEvent(new MouseEvent('dblclick'));}if(event.key==='Delete'){event.preventDefault();choose(index);commands.find(([key])=>key==='remove')?.[2]();}});
+    const row=node('tr',undefined,isChosen(index)?'selected':undefined);row.tabIndex=0;
+    for(const cell of cells){if(cell instanceof Node){row.append(cell);continue;}const [text,className]=cell,item=node('td',text,className);item.title=text;row.append(item);}
+    row.addEventListener('click',event=>click(index,event));
+    row.addEventListener('dblclick',()=>{if(!isChosen(index))click(index);commands.find(([key])=>key==='edit')?.[2]();});
+    row.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();row.dispatchEvent(new MouseEvent('dblclick'));}if(event.key==='Delete'){event.preventDefault();if(!isChosen(index))click(index);commands.find(([key])=>key==='remove')?.[2]();}});
     body.append(row);
   });
   if(!rows.length){const row=node('tr'),cell=node('td',empty,'muted');cell.colSpan=headings.length;row.append(cell);body.append(row);}
@@ -370,9 +480,10 @@ async function editRoleRestriction({model,object,right,index,caption,title}){
   }
   let condition=current.condition||'';
   content.append(node('div','Ограничение доступа','role-restriction-caption'),queryTextField(condition,text=>{condition=text;},'Ограничение доступа'));
-  const othersTaken=list.some((item,other)=>other!==index&&!item.fields?.length);
+  // A field another restriction names cannot be marked, so the only
+  // collision left is a second one on «Прочие поля».
   const answer=await showDialog({title:`Ограничение доступа · ${caption(right)}`,content,className:'role-restriction-dialog',answers:[['ok','ОК'],[null,'Отмена']],
-    check:()=>right==='read'&&!chosen.size&&othersTaken?'Ограничение на прочие поля у этого права уже есть: отметьте поля.':''});
+    check:()=>model.restrictionClashes(object.id,right,index,{fields:[...chosen]}).length?'Ограничение на прочие поля у этого права уже есть: отметьте поля.':''});
   if(answer!=='ok')return false;
   model.putRestriction(object.id,right,index,{fields:[...chosen],condition});
   return true;

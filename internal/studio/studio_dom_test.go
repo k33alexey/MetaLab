@@ -85,7 +85,7 @@ const studioPageWalk = `(async () => {
       {select: '.role-tree-item', then: [{select: '.role-restriction-rights button', then: [{open: '.role-restrictions .role-list tbody tr[tabindex]'}]}]},
       {select: '.role-tabs button', then: [{open: '.role-list tbody tr[tabindex]'}]},
     ]],
-    ['roles', '#role-overview', null, [{select: '.overview-tab', then: [{select: '.role-tree-item'}]}]],
+    ['roles', '#role-overview', null, [{select: '.overview-tab', then: [{select: '.role-tree-item'}, {open: '.overview-block .role-list tbody tr[tabindex]'}]}]],
     ['catalog', '#catalog-editor', null, [{select: '.catalog-list-item'}]],
     ['project', '#project-editor', null, []],
     ['languages', '#languages-editor', null, []],

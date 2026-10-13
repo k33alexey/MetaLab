@@ -237,3 +237,98 @@ test('a field of a table part is named after the part',()=>{
   source.roles[0].role.objects[0].restrictions=[{right:'read',fields:['items.linenumber','owner'],condition:'ГДЕ ИСТИНА'}];
   assert.equal(create(source).allRestrictions()[0].field,'Товары.Номер строки, Владелец');
 });
+
+// Команды «Все ограничения доступа» правят много ролей сразу. Роль не
+// держит два ограничения на одно поле чтения, два на «Прочие поля» и два на
+// одно право, кроме чтения, — такую роль сервер не сохранит
+// (validateRestrictions). Совпадение заменяется по «Да» на вопрос
+// «Заменить?» (владелец 13.10.2026). Дефекты: копия ложится второй рядом с
+// тем, что уже стоит, и роль не сохраняется; прогон для вопроса меняет роли
+// до ответа; урезанное ограничение остаётся пустым и становится «Прочими
+// полями»; вопрос не называет то, что будет заменено.
+test('a copy replaces what collides with it, and a trial run changes nothing',()=>{
+  const source=fixture();
+  source.roles[1].role.objects=[{object:'goods',operations:['read','update'],restrictions:[
+    {right:'read',fields:['owner','price'],condition:'Б1'},{right:'read',fields:['ref'],condition:'Б2'},{right:'update',condition:'Б3'}]}];
+  source.roles[0].role.objects[0].restrictions.push({right:'update',condition:'А3'});
+  const model=create(source),before=roleValue(model,1);
+  const rows=model.allRestrictions().filter(row=>row.path==='metadata/roles/a.yaml');
+  const expected=[
+    {role:'Кладовщик',object:'Товары',operation:'read',field:'Владелец',whole:false},
+    {role:'Кладовщик',object:'Товары',operation:'update',field:'Прочие поля',whole:true},
+  ];
+  assert.deepEqual(plain(model.copyRestrictions(rows,[1],true)),expected);
+  assert.deepEqual(roleValue(model,1),before);
+  assert.deepEqual(plain(model.copyRestrictions(rows,[1],false)),expected);
+  assert.deepEqual(roleValue(model,1).objects[0].restrictions,[
+    {right:'read',fields:['price'],condition:'Б1'},{right:'read',fields:['ref'],condition:'Б2'},
+    {right:'read',fields:['owner'],condition:'ГДЕ Владелец = &ТекущийПользователь'},{right:'update',condition:'А3'}]);
+});
+
+// Дефект: ограничение, которое в роли уже стоит точь-в-точь, копируется
+// второй раз — и вопрос «Заменить?» задаётся о нём самом.
+test('a restriction the role has as it is is not copied again',()=>{
+  const source=fixture(),model=create(source),before=roleValue(model,0);
+  assert.deepEqual(plain(model.copyRestrictions(model.allRestrictions(),[0],false)),[]);
+  assert.deepEqual(roleValue(model,0),before);
+});
+
+// Групповое «Изменить» двух ограничений одной роли на одно и то же поле:
+// остаётся одно, иначе роль не сохранится. Ни одно не названо «забранным»:
+// оба выбраны самим пользователем. Дефект: два ограничения на одно поле.
+test('a group change of two restrictions to one field leaves one',()=>{
+  const source=fixture();
+  source.roles[0].role.objects[0].restrictions.push({right:'read',fields:['price'],condition:'Цена'});
+  const model=create(source),rows=model.allRestrictions();
+  assert.equal(rows.length,2);
+  assert.deepEqual(plain(model.editRestrictions(rows,{fields:()=>['ref'],condition:'ГДЕ ИСТИНА'},false)),[]);
+  assert.deepEqual(roleValue(model,0).objects[0].restrictions,[{right:'read',fields:['ref'],condition:'ГДЕ ИСТИНА'}]);
+});
+
+// Без флага «Изменять ограничение» текст каждого остаётся своим, без флага
+// «Изменять состав полей» — поля (справка, form_EditRowLevelRightDlg).
+// Дефект: групповое изменение затирает то, что флаг не разрешал менять.
+test('a group change keeps what its flags leave alone',()=>{
+  const source=fixture();
+  source.roles[0].role.objects[0].restrictions.push({right:'read',fields:['price'],condition:'Цена'});
+  const model=create(source);
+  model.editRestrictions(model.allRestrictions(),{condition:'ГДЕ ЛОЖЬ'},false);
+  assert.deepEqual(roleValue(model,0).objects[0].restrictions,[{right:'read',fields:['owner'],condition:'ГДЕ ЛОЖЬ'},{right:'read',fields:['price'],condition:'ГДЕ ЛОЖЬ'}]);
+  model.editRestrictions(model.allRestrictions().slice(0,1),{fields:()=>['ref']},false);
+  assert.deepEqual(roleValue(model,0).objects[0].restrictions,[{right:'read',fields:['ref'],condition:'ГДЕ ЛОЖЬ'},{right:'read',fields:['price'],condition:'ГДЕ ЛОЖЬ'}]);
+});
+
+// Шаблон роли узнаётся по имени без параметров и без учёта регистра
+// (validateRestrictionTemplates). Дефекты: переименование даёт роли два
+// шаблона одного имени, и она не сохраняется; вопрос не называет шаблон,
+// который будет заменён.
+test('templates of one name replace each other',()=>{
+  const source=fixture();
+  source.roles[0].role.restrictionTemplates=[{name:'Свой(Поле)',condition:'А'},{name:'Чужой',condition:'Б'},{name:'ОБЩИЙ',condition:'В'}];
+  const model=create(source),rows=model.allTemplates().filter(row=>row.name!=='ОБЩИЙ');
+  assert.deepEqual(plain(model.editTemplates(rows,{name:'Общий(Х)'},true)),[{role:'Продавец',template:'ОБЩИЙ'}]);
+  assert.equal(roleValue(model,0).restrictionTemplates.length,3);
+  model.editTemplates(rows,{name:'Общий(Х)'},false);
+  assert.deepEqual(roleValue(model,0).restrictionTemplates,[{name:'Общий(Х)',condition:'Б'}]);
+  assert.deepEqual(plain(model.addTemplate([0,1],{name:'общий',condition:'Г'},false)),[{role:'Продавец',template:'Общий(Х)'}]);
+  assert.deepEqual(roleValue(model,0).restrictionTemplates,[{name:'общий',condition:'Г'}]);
+  assert.deepEqual(roleValue(model,1).restrictionTemplates,[{name:'общий',condition:'Г'}]);
+  model.removeTemplates(model.allTemplates());
+  assert.equal(roleValue(model,0).restrictionTemplates,undefined);
+});
+
+// Объекты с разным составом (проверено владельцем в конфигураторе
+// 13.10.2026): окно предлагает все поля всех выбранных объектов, а
+// отмеченное поле достаётся только объекту, у которого оно есть. Дефекты:
+// поле одного объекта не предлагается вовсе; объект без отмеченного поля
+// получает ограничение без полей — то есть на «Прочие поля».
+test('fields of objects of different composition: all are offered, each object takes its own',()=>{
+  const source=fixture(),names={ref:'Ссылка',owner:'Владелец',price:'Цена',person:'Физлицо'};
+  for(const object of source.schema.objects)for(const field of object.restrictionFields)field.name=names[field.key];
+  const model=create(source),choices=model.restrictionFieldChoices(['goods','users']);
+  assert.deepEqual(plain(choices.map(choice=>[choice.path,Object.fromEntries(choice.keys)])),[
+    ['Ссылка',{goods:'ref',users:'ref'}],['Владелец',{goods:'owner'}],['Цена',{goods:'price'}],['Физлицо',{users:'person'}]]);
+  assert.deepEqual(plain(model.chosenFieldKeys(choices,new Set(['Владелец','Ссылка']),'users')),['ref']);
+  assert.equal(model.chosenFieldKeys(choices,new Set(['Владелец']),'users'),null);
+  assert.deepEqual(plain(model.chosenFieldKeys(choices,new Set(),'users')),[]);
+});

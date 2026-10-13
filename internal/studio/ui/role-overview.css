@@ -37,3 +37,7 @@
 .overview-role{background:transparent!important;border:none!important;padding:0!important;color:#589df6;cursor:pointer;text-align:left;font:inherit}
 .overview-role:hover{text-decoration:underline}
 @media(max-width:900px){.overview-body{grid-template-columns:150px minmax(0,1fr)}}
+.overview-block .role-list{table-layout:auto}
+.overview-block .role-list th:first-child{width:auto}
+.overview-block .role-list td.overview-condition{overflow:visible;text-overflow:clip}
+.overview-taken{margin:0 0 8px;padding-left:18px;font-size:12px;line-height:1.6;max-height:240px;overflow:auto}

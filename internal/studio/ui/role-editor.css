@@ -29,5 +29,5 @@
 .localized-title-dialog.role-restriction-dialog{width:min(820px,calc(100% - 40px))}
 .role-restriction-form{display:grid;gap:8px}.role-restriction-caption{font-size:12px;color:#aeb1b8}
 .role-restriction-fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px 14px;max-height:180px;overflow:auto;padding:8px;border:1px solid #4a4d54;border-radius:5px}
-.role-restriction-fields .role-check{display:flex;font-size:12px;color:#dfe1e5}.role-restriction-child{padding-left:18px}
+.role-restriction-fields .role-check,.role-restriction-form>.role-check{display:flex;font-size:12px;color:#dfe1e5}.role-restriction-form .role-check input{padding:0}.role-restriction-child{padding-left:18px}
 .role-restriction-form>input{padding:7px 9px;border:1px solid #4a4d54;border-radius:5px;background:#1e1f22;color:#dfe1e5}
