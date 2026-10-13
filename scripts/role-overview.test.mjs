@@ -20,7 +20,7 @@ const plain=value=>JSON.parse(JSON.stringify(value));
 function fixture(){
   return {
     defaultLanguage:'ru',
-    schema:{rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'input-by-string',title:'Ввод по строке'}],
+    schema:{restrictionRules:[{right:'read',byFields:true},{right:'insert',byFields:false},{right:'update',byFields:false},{right:'delete',byFields:false}],rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'input-by-string',title:'Ввод по строке'}],
       partGroups:[{key:'attributes',title:'Реквизиты'},{key:'commands',title:'Команды'}],
       objects:[
       {id:'goods',kind:'catalogs',name:'Товары',title:{ru:'Товары'},rights:['read','insert','update','delete','view','edit','input-by-string'],operations:['read','insert','update','delete'],

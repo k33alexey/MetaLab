@@ -128,15 +128,15 @@ function createRoleOverviewModel(source) {
     // «Новое ограничение доступа» (справка, form_NewRowLevelRightDlg): одно
     // условие — каждому выбранному объекту в каждой выбранной роли на каждое
     // отмеченное право, которое у объекта ограничивается (право без
-    // ограничений writeRestrictions не пишет). Поля — только у
-    // чтения: объект получает те из отмеченных, что у него есть, а без
+    // ограничений writeRestrictions не пишет). Поля — только у права,
+    // ограничиваемого по полям (restrictsByFields): объект получает те из отмеченных, что у него есть, а без
     // единого из них ограничения чтения не получает. Ответ — забранное, как у
     // команд списка.
     addRestrictions({objectIDs, roles, rights, paths, condition}, trial) {
       const choices = restrictionFieldChoices(objectIDs);
       return perform(trial, modelOf => roles.flatMap(role => objectIDs.flatMap(objectID =>
         rights.flatMap(right => {
-          const fields = right === 'read' ? chosenFieldKeys(choices, paths, objectID) : [];
+          const fields = restrictsByFields(source.schema, right) ? chosenFieldKeys(choices, paths, objectID) : [];
           return fields ? taken(role, objectID, right, modelOf(role).writeRestrictions(objectID, right, [{restriction: {fields, condition}}])) : [];
         }))));
     },
@@ -384,7 +384,7 @@ function createRoleOverview(host, openRole, onChange) {
   }
   const restrictionLine = item => `${item.role} · ${item.object} · ${caption(item.operation)}: ${item.field}${item.whole ? '' : ' (поле переходит к новому ограничению)'}`;
   async function editRestrictions(rows) {
-    const content = node('div', undefined, 'role-restriction-form'), reading = rows.filter(row => row.operation === 'read');
+    const content = node('div', undefined, 'role-restriction-form'), reading = rows.filter(row => restrictsByFields(source.schema, row.operation));
     let changeFields = false, changeCondition = false, chosen = new Set();
     const choices = model.restrictionFieldChoices(reading.map(row => row.objectID));
     if (reading.length) {
@@ -482,20 +482,21 @@ function createRoleOverview(host, openRole, onChange) {
     first.append(objectsCaption, objectList, node('div', 'Роли', 'role-restriction-caption'), roleChoice(roles));
     // Второй шаг строится по выбранному на первом: права — те, что
     // ограничиваются хотя бы у одного из объектов, поля — всех объектов с
-    // ограничением чтения; отмеченное, которого больше нет, снимается.
+    // ограничением по полям; отмеченное, которого больше нет, снимается.
     const rightList = node('div', undefined, 'role-restriction-fields'), fieldList = node('div', undefined, 'role-restriction-fields');
     const editor = queryTextField(condition, value => { condition = value; }, 'Ограничение доступа');
     second.append(node('div', 'Права', 'role-restriction-caption'), rightList,
-      node('div', 'Поля — только у права «Чтение»; ни одно не отмечено: «Прочие поля»', 'role-restriction-caption'), fieldList,
+      node('div', `Поля — только у ${fieldRightsCaption(source.schema, caption)}; ни одно не отмечено: «Прочие поля»`, 'role-restriction-caption'), fieldList,
       node('div', 'Ограничение доступа', 'role-restriction-caption'), editor);
     function fillSecond() {
       const items = model.restrictable().filter(item => chosenObjects.has(item.id));
       const offered = (source.schema.rights || []).map(right => right.key).filter(key => items.some(item => item.rights.includes(key)));
       for (const right of [...rights]) if (!offered.includes(right)) rights.delete(right);
-      const choices = model.restrictionFieldChoices(items.filter(item => item.rights.includes('read')).map(item => item.id));
+      const byFields = right => restrictsByFields(source.schema, right), fieldsChosen = () => [...rights].some(byFields);
+      const choices = model.restrictionFieldChoices(items.filter(item => item.rights.some(byFields)).map(item => item.id));
       for (const path of [...paths]) if (!choices.some(choice => choice.path === path)) paths.delete(path);
       const fieldBoxes = [];
-      const syncFields = () => { for (const box of fieldBoxes) box.disabled = !rights.has('read'); };
+      const syncFields = () => { for (const box of fieldBoxes) box.disabled = !fieldsChosen(); };
       rightList.replaceChildren(...offered.map(key => checkboxField(caption(key), rights.has(key), enabled => { if (enabled) rights.add(key); else rights.delete(key); syncFields(); }, 'role-check')));
       fieldList.replaceChildren(...choices.map(choice => {
         const box = checkboxField(title(choice.field) || choice.field.name, paths.has(choice.path), enabled => { if (enabled) paths.add(choice.path); else paths.delete(choice.path); }, 'role-check');
@@ -516,9 +517,9 @@ function createRoleOverview(host, openRole, onChange) {
       [null, 'Отмена']],
     check: key => key === 'next' ? (!chosenObjects.size ? 'Отметьте объекты.' : !roles.size ? 'Отметьте роли.' : '') : key === 'ok' && !rights.size ? 'Отметьте права.' : ''});
     if (answer !== 'ok') return;
-    // Только отмеченные поля, если право «Чтение» отмечено: без него поля
-    // ничего не значат.
-    const fields = rights.has('read') ? paths : new Set();
+    // Только отмеченные поля, если отмечено право, ограничиваемое по полям:
+    // без него поля ничего не значат.
+    const fields = [...rights].some(right => restrictsByFields(source.schema, right)) ? paths : new Set();
     await applyReplacing(trial => model.addRestrictions({objectIDs: [...chosenObjects], roles: [...roles], rights: [...rights], paths: fields, condition}, trial), restrictionLine);
   }
   const templateLine = item => `${item.role} · ${item.template}`;

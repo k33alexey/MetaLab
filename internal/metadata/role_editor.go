@@ -32,6 +32,9 @@ type PermissionSchema struct {
 	// nothing is here too, with an empty list, as its subsystems beneath may
 	// hold something; a member naming a deleted object is carried.
 	Subsystems map[uuid.UUID][]uuid.UUID `json:"subsystems"`
+	// RestrictionRules are how each right a restriction may be on is
+	// restricted: the editor offers by them what saving keeps.
+	RestrictionRules []RestrictionRule `json:"restrictionRules"`
 }
 
 type PermissionRight struct {
@@ -116,7 +119,7 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	if err != nil {
 		return PermissionSchema{}, err
 	}
-	result := PermissionSchema{Objects: []PermissionObject{}, Forms: []PermissionForm{}}
+	result := PermissionSchema{Objects: []PermissionObject{}, Forms: []PermissionForm{}, RestrictionRules: slices.Clone(restrictionRules)}
 	for _, right := range roleRights {
 		result.Rights = append(result.Rights, PermissionRight{Key: right.operation, Title: nameInWords(right.russian)})
 	}
@@ -147,9 +150,9 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 			}
 		}
 		if usesOf(kind).restriction.accepted() {
-			for _, right := range restrictedRights {
-				if slices.Contains(offered.rights, right) {
-					object.RestrictedRights = append(object.RestrictedRights, right)
+			for _, rule := range restrictionRules {
+				if slices.Contains(offered.rights, rule.Right) {
+					object.RestrictedRights = append(object.RestrictedRights, rule.Right)
 				}
 			}
 			for _, field := range catalog.restrictionFieldsOf(kind, id) {

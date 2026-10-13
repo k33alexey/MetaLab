@@ -11,7 +11,7 @@ vm.runInContext(readFileSync(new URL('../internal/studio/ui/studio-common.js',im
 vm.runInContext(script,context);
 const create=context.createRoleModel;
 const plain=value=>JSON.parse(JSON.stringify(value));
-function fixture(){return {role:{id:'role',name:'Продавец',title:{ru:'Продавец'}},schema:{rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'posting',title:'Проведение'}],objects:[{id:'base',root:true,rights:['administration','thin-client'],operations:[],fields:[],restrictionFields:[]},{id:'goods',rights:['read','insert','update','delete','view','edit','input-by-string'],restrictedRights:['read','insert','update','delete'],operations:['read','insert','update','delete'],fields:[{key:'ref',group:'standard-attributes',operations:['view','edit']},{key:'name',group:'attributes',operations:['view','edit']},{key:'part',group:'table-parts',operations:['view','edit']},{key:'column',group:'attributes',parent:'part',operations:['view','edit']},{key:'print',group:'commands',operations:['view']}],restrictionFields:[{key:'ref'},{key:'dataversion'},{key:'name'},{key:'part'},{key:'column',parent:'part'},{key:'part.linenumber',parent:'part'}]},{id:'other',rights:['read','view'],operations:['read'],fields:[],restrictionFields:[]}],parts:{base:[],goods:['column','name','part','print','ref'],other:[]},forms:[{id:'form',commands:[{id:'command'}]}]}};}
+function fixture(){return {role:{id:'role',name:'Продавец',title:{ru:'Продавец'}},schema:{restrictionRules:[{right:'read',byFields:true},{right:'insert',byFields:false},{right:'update',byFields:false},{right:'delete',byFields:false}],rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'posting',title:'Проведение'}],objects:[{id:'base',root:true,rights:['administration','thin-client'],operations:[],fields:[],restrictionFields:[]},{id:'goods',rights:['read','insert','update','delete','view','edit','input-by-string'],restrictedRights:['read','insert','update','delete'],operations:['read','insert','update','delete'],fields:[{key:'ref',group:'standard-attributes',operations:['view','edit']},{key:'name',group:'attributes',operations:['view','edit']},{key:'part',group:'table-parts',operations:['view','edit']},{key:'column',group:'attributes',parent:'part',operations:['view','edit']},{key:'print',group:'commands',operations:['view']}],restrictionFields:[{key:'ref'},{key:'dataversion'},{key:'name'},{key:'part'},{key:'column',parent:'part'},{key:'part.linenumber',parent:'part'}]},{id:'other',rights:['read','view'],operations:['read'],fields:[],restrictionFields:[]}],parts:{base:[],goods:['column','name','part','print','ref'],other:[]},forms:[{id:'form',commands:[{id:'command'}]}]}};}
 
 test('Studio inline script remains valid JavaScript',()=>{
   const html=readFileSync(new URL('../internal/studio/ui/index.html',import.meta.url),'utf8');
@@ -251,6 +251,27 @@ test('only reading is restricted by fields, and only by the object\'s own',()=>{
   const value=plain(model.value());
   assert.deepEqual(value.objects.find(item=>item.object==='goods').restrictions,[{right:'read',fields:['ref','part.linenumber'],condition:'ГДЕ 1'},{right:'update',condition:'ГДЕ 2'}]);
   assert.equal(value.objects.some(item=>item.object==='other'||item.object==='base'),false);
+});
+// Which right is restricted by fields is the server's rule, sent with the
+// schema, not the editor's own: under a schema whose rules give fields to
+// changing and none to reading, changing keeps its fields and two
+// restrictions of it on two fields stand side by side, while reading takes
+// one, without fields. Defect caught: the editor knowing «only reading» by
+// itself, so a change of the rule on the server leaves it offering what
+// saving refuses.
+test('the rules of the schema say which right is restricted by fields',()=>{
+  const source=fixture();
+  source.schema.restrictionRules=[{right:'read',byFields:false},{right:'insert',byFields:false},{right:'update',byFields:true},{right:'delete',byFields:false}];
+  const model=create(source);
+  assert.equal(model.restrictedByFields('update'),true);
+  assert.equal(model.restrictedByFields('read'),false);
+  model.putRestriction('goods','update',0,{fields:['ref'],condition:'ГДЕ 1'});
+  model.putRestriction('goods','update',1,{fields:['name'],condition:'ГДЕ 2'});
+  model.putRestriction('goods','read',0,{fields:['ref'],condition:'ГДЕ 3'});
+  assert.deepEqual(plain(model.restrictionClashes('goods','update',2,{fields:['dataversion']})),[]);
+  assert.deepEqual(plain(model.restrictionClashes('goods','read',1,{fields:['name']}).map(clash=>clash.whole)),[true]);
+  assert.deepEqual(plain(model.value()).objects.find(item=>item.object==='goods').restrictions,[
+    {right:'update',fields:['ref'],condition:'ГДЕ 1'},{right:'update',fields:['name'],condition:'ГДЕ 2'},{right:'read',condition:'ГДЕ 3'}]);
 });
 // The list of a right is numbered within the right. Defect caught: the
 // change or the removal of the second restriction of reading touched a

@@ -42,9 +42,36 @@ type RestrictionTemplate struct {
 	Condition string `yaml:"condition,omitempty" json:"condition,omitempty"`
 }
 
-// restrictedRights are the rights a restriction may be on, by the help: the
-// rights to the data an object keeps in the infobase.
-var restrictedRights = []PermissionOperation{PermissionRead, PermissionInsert, PermissionUpdate, PermissionDelete}
+// RestrictionRule is how one right is restricted, by the help («Ограничение
+// доступа к данным»). The editor of roles gets the rules with its schema, so
+// it offers what saving keeps (validateRestrictions) and knows them nowhere
+// else.
+type RestrictionRule struct {
+	Right PermissionOperation `json:"right"`
+	// ByFields: a restriction of the right names the fields it checks, one
+	// per set of fields - a field in one of them at most - and one more, with
+	// no fields, on «Прочие поля». A right not restricted by fields takes one
+	// restriction, with no fields, on every field.
+	ByFields bool `json:"byFields"`
+}
+
+// restrictionRules are the rights a restriction may be on, by the help: the
+// rights to the data an object keeps in the infobase. Only reading is
+// restricted by fields.
+var restrictionRules = []RestrictionRule{
+	{Right: PermissionRead, ByFields: true},
+	{Right: PermissionInsert},
+	{Right: PermissionUpdate},
+	{Right: PermissionDelete},
+}
+
+func restrictionRuleOf(right PermissionOperation) (RestrictionRule, bool) {
+	index := slices.IndexFunc(restrictionRules, func(rule RestrictionRule) bool { return rule.Right == right })
+	if index < 0 {
+		return RestrictionRule{}, false
+	}
+	return restrictionRules[index], true
+}
 
 // templateName splits a template's name into the name proper and its
 // parameters: Шаблон(Поле, Пользователь) is the template Шаблон of two.
@@ -107,7 +134,8 @@ func validateRestrictions(path string, object ObjectPermission) []string {
 	fields := map[PermissionOperation]map[string]bool{}
 	for index, restriction := range object.Restrictions {
 		prefix := fmt.Sprintf("%s[%d]", path, index)
-		if !slices.Contains(restrictedRights, restriction.Right) {
+		rule, restricted := restrictionRuleOf(restriction.Right)
+		if !restricted {
 			issues = append(issues, fmt.Sprintf("%s.right names %q; only read, insert, update and delete are restricted", prefix, restriction.Right))
 			continue
 		}
@@ -116,14 +144,14 @@ func validateRestrictions(path string, object ObjectPermission) []string {
 		if !slices.Contains(written, restriction.Right) {
 			issues = append(issues, fmt.Sprintf("%s restricts %q, which the role neither grants nor denies on the object", prefix, restriction.Right))
 		}
-		// Fields are reading's alone, so a second restriction of another
-		// right is a second one on the other fields.
-		if restriction.Right != PermissionRead && len(restriction.Fields) != 0 {
-			issues = append(issues, prefix+".fields are for a restriction of reading only")
+		// A right not restricted by fields has its one restriction on the
+		// other fields, so a second one is a second there.
+		if !rule.ByFields && len(restriction.Fields) != 0 {
+			issues = append(issues, fmt.Sprintf("%s.fields: %q is not restricted by fields; only reading is", prefix, restriction.Right))
 		}
 		if len(restriction.Fields) == 0 {
 			if others[restriction.Right] {
-				issues = append(issues, fmt.Sprintf("%s: %q has a restriction on the other fields already; only reading takes one per set of fields", prefix, restriction.Right))
+				issues = append(issues, fmt.Sprintf("%s: %q has a restriction on the other fields already", prefix, restriction.Right))
 			}
 			others[restriction.Right] = true
 		}

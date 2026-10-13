@@ -1,4 +1,17 @@
 /* Role editor: explicit grants underneath, ordinary tree/checkboxes in Studio. */
+/* Whether a restriction of the right names the fields it checks - one per
+   set of fields, a field in one at most, and one more on «Прочие поля» - or
+   the right takes one restriction, on every field. The rules are the
+   server's (RestrictionRules), sent with the schema. */
+function restrictsByFields(schema, right) {
+  return !!(schema.restrictionRules || []).find(rule => rule.right === right)?.byFields;
+}
+/* The rights of the schema restricted by fields, as the windows name them:
+   права «Чтение». */
+function fieldRightsCaption(schema, caption) {
+  const names = (schema.restrictionRules || []).filter(rule => rule.byFields).map(rule => `«${caption(rule.right)}»`);
+  return `${names.length === 1 ? 'права' : 'прав'} ${names.join(', ')}`;
+}
 function createRoleModel(source) {
   // Only the role is copied: the schema is read and never changed, and the
   // window «Все роли» builds a model for every role over one schema.
@@ -79,11 +92,12 @@ function createRoleModel(source) {
   // The restrictions of access to data on one right of an object, in the
   // order the role writes them.
   const restrictionsOf = (id, right) => (objects.get(id)?.restrictions || []).filter(item => item.right === right);
-  // Only reading is restricted by fields; a field the object does not have
-  // is not taken.
+  // Only a right restricted by fields takes them; a field the object does
+  // not have is not taken.
+  const byFields = right => restrictsByFields(value.schema, right);
   function restrictionEntry(id, right, restriction) {
     const entry = {right}, own = restrictionFields.get(id) || new Set();
-    const chosen = right === 'read' ? (restriction.fields || []).filter(field => own.has(field)) : [];
+    const chosen = byFields(right) ? (restriction.fields || []).filter(field => own.has(field)) : [];
     if (chosen.length) entry.fields = [...new Set(chosen)];
     if (restriction.condition) entry.condition = restriction.condition;
     return entry;
@@ -102,12 +116,11 @@ function createRoleModel(source) {
     return entry;
   }
   // Two restrictions of one right collide where the role cannot keep both
-  // (validateRestrictions on the server): any two on a right other than
-  // reading, two of reading on «Прочие поля», two of reading naming one
-  // field. What the restriction would take from another: the fields they
+  // (validateRestrictions on the server): any two on a right not restricted
+  // by fields, two on «Прочие поля», two naming one field. What the restriction would take from another: the fields they
   // share, or the other whole.
   function collision(right, entry, other) {
-    if (right !== 'read') return {whole: true, shared: []};
+    if (!byFields(right)) return {whole: true, shared: []};
     const theirs = other.fields || [], ours = entry.fields || [];
     if (!ours.length) return theirs.length ? null : {whole: true, shared: []};
     const shared = theirs.filter(field => ours.includes(field));
@@ -276,6 +289,7 @@ function createRoleModel(source) {
       if(enabled)value.role.commands.push({form,command});
     },
     restrictions: (id, right) => structuredClone(restrictionsOf(id, right)),
+    restrictedByFields: byFields,
     putRestriction(id, right, index, restriction) { putRestriction(id, right, index, restriction); },
     restrictionClashes, writeRestrictions, removeRestriction,
     templates: () => structuredClone(value.role.restrictionTemplates || []),
@@ -493,8 +507,8 @@ function roleListTable(headings, rows, chosen, choose, commands, empty) {
 
 /* The restrictions of access to data a role puts on the rights of an object,
    as the prototype lists them under the rights (help, «Ограничение доступа к
-   данным»): the field or «Прочие поля», and the condition. Reading takes one
-   per set of fields, the other rights one each. model is the role's
+   данным»): the field or «Прочие поля», and the condition. A right restricted
+   by fields takes one per set of fields, the others one each. model is the role's
    (createRoleModel); state keeps the right shown and the row chosen across
    redraws; changed() is called after the role changed, to redraw. */
 function roleRestrictionSection({model, object, caption, title, state, changed}) {
@@ -512,7 +526,7 @@ function roleRestrictionSection({model, object, caption, title, state, changed})
   const right=state.right,list=model.restrictions(object.id,right);
   if(state.row>=list.length)state.row=-1;
   const others=list.some(item=>!item.fields?.length);
-  const canAdd=()=>right==='read'?!others||object.restrictionFields.some(field=>!list.some(item=>item.fields?.includes(field.key))):!list.length;
+  const canAdd=()=>model.restrictedByFields(right)?!others||object.restrictionFields.some(field=>!list.some(item=>item.fields?.includes(field.key))):!list.length;
   const open=async index=>{if(await editRoleRestriction({model,object,right,index,caption,title})){state.row=index;changed();}};
   section.append(roleListTable(['Поле','Ограничение доступа'],list.map(item=>[[restrictionFieldsCaption(object,item,title)],[item.condition||'','role-condition']]),state.row,index=>{state.row=index;},[
     ['add','Добавить',()=>open(list.length),canAdd],
@@ -522,13 +536,14 @@ function roleRestrictionSection({model, object, caption, title, state, changed})
   return section;
 }
 
-/* The window of one restriction: the fields it checks, for reading, and its
+/* The window of one restriction: the fields it checks, where the right is
+   restricted by fields, and its
    condition in the query language (help, «Ограничение доступа»). Answers
    whether the restriction was put in the role. */
 async function editRoleRestriction({model,object,right,index,caption,title}){
   const list=model.restrictions(object.id,right),current=list[index]||{right},content=node('div',undefined,'role-restriction-form');
   const chosen=new Set(current.fields||[]);
-  if(right==='read'){
+  if(model.restrictedByFields(right)){
     const taken=new Set(list.flatMap((item,other)=>other===index?[]:item.fields||[]));
     const fieldsLabel=node('div','Поля — ни одно не отмечено: «Прочие поля»','role-restriction-caption'),fields=node('div',undefined,'role-restriction-fields');
     for(const field of object.restrictionFields){

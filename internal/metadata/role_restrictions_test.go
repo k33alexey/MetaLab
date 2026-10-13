@@ -95,3 +95,47 @@ func TestRestrictionsFollowTheObject(t *testing.T) {
 		}
 	}
 }
+
+// The editor gets the rules of restricting with its schema and offers by
+// them, so they must be what saving keeps: by the help only reading is
+// restricted by fields - one restriction per set of fields and one on
+// «Прочие поля» - and adding, changing and deleting take one each, with no
+// fields. The expectation is written out here, not read from
+// restrictionRules, and each rule the schema sends is put to the check of a
+// saved role. Defect caught: the editor offering fields on a right, or two
+// restrictions of it, that saving refuses, or refusing what saving keeps.
+func TestRestrictionRulesOfTheSchemaAreWhatSavingKeeps(t *testing.T) {
+	t.Parallel()
+	schema, err := LoadPermissionSchema(compositeProject(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []RestrictionRule{{Right: PermissionRead, ByFields: true}, {Right: PermissionInsert}, {Right: PermissionUpdate}, {Right: PermissionDelete}}
+	if !slices.Equal(schema.RestrictionRules, want) {
+		t.Fatalf("rules %v, want %v", schema.RestrictionRules, want)
+	}
+	all := []PermissionOperation{PermissionRead, PermissionInsert, PermissionUpdate, PermissionDelete, PermissionView}
+	for _, rule := range schema.RestrictionRules {
+		_, err := restrictedProject(t, func(document, part, column, constant uuid.UUID) RoleDefinition {
+			return RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Кладовщик", Title: LocalizedText{"ru": "Кладовщик"},
+				Objects: []ObjectPermission{{Object: document, Operations: all, Restrictions: []RightRestriction{
+					{Right: rule.Right, Fields: []string{"ref"}, Condition: "ГДЕ 1"},
+					{Right: rule.Right, Fields: []string{column.String()}, Condition: "ГДЕ 2"},
+					{Right: rule.Right, Condition: "ГДЕ 3"}}}}}
+		})
+		if rule.ByFields && err != nil {
+			t.Errorf("%s by fields was refused: %v", rule.Right, err)
+		}
+		if !rule.ByFields && err == nil {
+			t.Errorf("%s took fields and three restrictions", rule.Right)
+		}
+		_, err = restrictedProject(t, func(document, part, column, constant uuid.UUID) RoleDefinition {
+			return RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Кладовщик", Title: LocalizedText{"ru": "Кладовщик"},
+				Objects: []ObjectPermission{{Object: document, Operations: all, Restrictions: []RightRestriction{
+					{Right: rule.Right, Condition: "ГДЕ 1"}, {Right: rule.Right, Condition: "ГДЕ 2"}}}}}
+		})
+		if err == nil {
+			t.Errorf("%s took two restrictions on «Прочие поля»", rule.Right)
+		}
+	}
+}
