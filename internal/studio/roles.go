@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -547,24 +546,8 @@ func registerRoleRoutes(routes *http.ServeMux, workspace *Workspace) {
 	})
 }
 
+// decodeStudioJSONRequest reads a request of Studio with no ceiling of its
+// own on the body: a role or a text of a restriction may be large.
 func decodeStudioJSONRequest(response http.ResponseWriter, request *http.Request, target any) bool {
-	if !validateStudioMutation(response, request) {
-		return false
-	}
-	if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
-		http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
-		return false
-	}
-	decoder := json.NewDecoder(request.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		http.Error(response, "Invalid request", http.StatusBadRequest)
-		return false
-	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		http.Error(response, "Invalid request", http.StatusBadRequest)
-		return false
-	}
-	return true
+	return decodeStudioJSON(response, request, target, 0)
 }

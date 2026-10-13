@@ -405,7 +405,7 @@ func registerDebugRoutes(routes *http.ServeMux, workspace *Workspace) {
 	})
 	routes.HandleFunc("POST /api/debug/start", func(response http.ResponseWriter, request *http.Request) {
 		var input studioDebugStart
-		if !decodeDebugRequest(response, request, &input) {
+		if !decodeStudioJSONRequest(response, request, &input) {
 			return
 		}
 		snapshot, err := workspace.StartDebug(input)
@@ -467,28 +467,6 @@ func registerDebugRoutes(routes *http.ServeMux, workspace *Workspace) {
 		snapshot, err := workspace.StopDebug()
 		writeDebugResponse(response, snapshot, err)
 	})
-}
-
-func decodeDebugRequest(response http.ResponseWriter, request *http.Request, value any) bool {
-	if !validateStudioMutation(response, request) {
-		return false
-	}
-	if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
-		http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
-		return false
-	}
-	decoder := json.NewDecoder(request.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(value); err != nil {
-		http.Error(response, "Invalid request", http.StatusBadRequest)
-		return false
-	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		http.Error(response, "Invalid request", http.StatusBadRequest)
-		return false
-	}
-	return true
 }
 
 func writeDebugResponse(response http.ResponseWriter, value any, err error) {

@@ -153,3 +153,13 @@ test('a role with the flag for new objects is shown with what it does not deny',
   assert.deepEqual(plain(row.operations),{read:true,insert:true,update:true,delete:false});
   assert.equal(row.granted,true);
 });
+
+// Every table part has its own Номер строки. Defect caught: a field of a
+// table part named without its part, so the restrictions on the line numbers
+// of two parts read the same.
+test('a field of a table part is named after the part',()=>{
+  const source=fixture();
+  source.schema.objects[0].restrictionFields.push({key:'items',name:'Товары',title:{ru:'Товары'}},{key:'items.linenumber',name:'НомерСтроки',title:{ru:'Номер строки'},parent:'items'});
+  source.roles[0].role.objects[0].restrictions=[{right:'read',fields:['items.linenumber','owner'],condition:'ГДЕ ИСТИНА'}];
+  assert.equal(create(source).restrictions('goods')[0].field,'Товары.Номер строки, Владелец');
+});

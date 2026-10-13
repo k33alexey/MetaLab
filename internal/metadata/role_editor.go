@@ -3,7 +3,6 @@ package metadata
 import (
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 	"unicode"
 
@@ -27,10 +26,6 @@ type PermissionSchema struct {
 	// their captions.
 	PartGroups []PermissionPartGroup `json:"partGroups"`
 	Forms      []PermissionForm      `json:"forms"`
-	// SessionParameters lists the names an access policy may compare a field
-	// against, so the editor offers a choice instead of a free-text field that
-	// only fails later, at publication.
-	SessionParameters []string `json:"sessionParameters"`
 }
 
 type PermissionRight struct {
@@ -72,6 +67,9 @@ type PermissionObject struct {
 	// restriction names the version of the data and the line number of a
 	// table part too, which have no rights of their own.
 	RestrictionFields []PermissionField `json:"restrictionFields"`
+	// RestrictedRights are those of the rights a restriction of access to
+	// data may be put on: none on an object that keeps no data.
+	RestrictedRights []PermissionOperation `json:"restrictedRights"`
 }
 
 // PermissionField is one part of an object: under Fields, with the folder it
@@ -112,7 +110,7 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	if err != nil {
 		return PermissionSchema{}, err
 	}
-	result := PermissionSchema{Objects: []PermissionObject{}, Forms: []PermissionForm{}, SessionParameters: []string{}}
+	result := PermissionSchema{Objects: []PermissionObject{}, Forms: []PermissionForm{}}
 	for _, right := range roleRights {
 		result.Rights = append(result.Rights, PermissionRight{Key: right.operation, Title: nameInWords(right.russian)})
 	}
@@ -126,10 +124,6 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 			result.Parts[id] = keys
 		}
 	}
-	for _, item := range catalog.SessionParameters {
-		result.SessionParameters = append(result.SessionParameters, item.Name)
-	}
-	sort.Strings(result.SessionParameters)
 	// A configuration without common forms has no directory for them, the
 	// same as any other metadata kind nobody has used yet.
 	forms, err := ReadCommonForms(root, catalog.Project)
@@ -140,13 +134,18 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 		offered, _ := catalog.rightsTargetOf(id)
 		object := PermissionObject{ID: id, Kind: kind, Owner: catalog.objects[id].owner, Name: name, Title: cloneTitle(title),
 			Rights: offered.rights, Operations: []PermissionOperation{}, Fields: []PermissionField{},
-			RestrictionFields: []PermissionField{}}
+			RestrictionFields: []PermissionField{}, RestrictedRights: []PermissionOperation{}}
 		for _, operation := range objectOperations {
 			if slices.Contains(offered.rights, operation) {
 				object.Operations = append(object.Operations, operation)
 			}
 		}
 		if usesOf(kind).restriction.accepted() {
+			for _, right := range restrictedRights {
+				if slices.Contains(offered.rights, right) {
+					object.RestrictedRights = append(object.RestrictedRights, right)
+				}
+			}
 			for _, field := range catalog.restrictionFieldsOf(kind, id) {
 				object.RestrictionFields = append(object.RestrictionFields, PermissionField{Key: field.key, Name: field.name,
 					Title: cloneTitle(field.title), Parent: field.parent, Operations: []PermissionOperation{}})
@@ -170,7 +169,8 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	configuration, _ := catalog.rightsTargetOf(catalog.Project.ID)
 	result.Objects = append(result.Objects, PermissionObject{ID: catalog.Project.ID, Root: true,
 		Name: catalog.Project.Name, Title: cloneTitle(catalog.Project.Title), Rights: configuration.rights,
-		Operations: []PermissionOperation{}, Fields: []PermissionField{}, RestrictionFields: []PermissionField{}})
+		Operations: []PermissionOperation{}, Fields: []PermissionField{}, RestrictionFields: []PermissionField{},
+		RestrictedRights: []PermissionOperation{}})
 	// Then every object a role is offered rights on, kind by kind in the
 	// order of the tree. A common form is read apart from the catalog.
 	formTitles := map[uuid.UUID]LocalizedText{}

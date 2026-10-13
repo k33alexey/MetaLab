@@ -159,3 +159,36 @@ func TestBuildDesignedQueryTakesManySources(t *testing.T) {
 		t.Fatalf("a design of 20 sources: query=%s error=%v", query, err)
 	}
 }
+
+// The role editor highlights the text of a restriction through Studio.
+// Defect caught: the route open to a page of another origin (no CSRF
+// header), or answering null for a text with nothing to highlight, which the
+// page would fail to read.
+func TestQueryHighlightHTTPAPI(t *testing.T) {
+	t.Parallel()
+	workspace, _, _ := createManagedFormSource(t)
+	handler := NewHandler(workspace)
+	post := func(text string, csrf bool) *httptest.ResponseRecorder {
+		payload, err := json.Marshal(map[string]string{"text": text})
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := httptest.NewRequest(http.MethodPost, "/api/query/highlight", bytes.NewReader(payload))
+		request.Header.Set("Content-Type", "application/json")
+		if csrf {
+			request.Header.Set("X-ML-CSRF", "1")
+		}
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		return response
+	}
+	if denied := post("ГДЕ ИСТИНА", false); denied.Code != http.StatusForbidden {
+		t.Fatalf("missing CSRF status = %d", denied.Code)
+	}
+	if got := post("ГДЕ Т.Дата", true); got.Code != http.StatusOK || strings.TrimSpace(got.Body.String()) != `{"highlights":[{"kind":"keyword","start":0,"end":3},{"kind":"operator","start":5,"end":6}]}` {
+		t.Fatalf("highlight status=%d body=%s", got.Code, got.Body.String())
+	}
+	if got := post("   ", true); got.Code != http.StatusOK || strings.TrimSpace(got.Body.String()) != `{"highlights":[]}` {
+		t.Fatalf("empty highlight status=%d body=%s", got.Code, got.Body.String())
+	}
+}

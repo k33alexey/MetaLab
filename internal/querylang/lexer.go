@@ -261,48 +261,6 @@ func (value *lexer) readString() (string, error) {
 func identifierStart(r rune) bool { return r == '_' || unicode.IsLetter(r) }
 func identifierPart(r rune) bool  { return identifierStart(r) || unicode.IsDigit(r) }
 
-func keywordKind(value string) tokenKind {
-	if kind, ok := keywordKinds[strings.ToUpper(value)]; ok {
-		return kind
-	}
-	return tokenIdentifier
-}
-
-var keywordKinds = map[string]tokenKind{
-	"ВЫБРАТЬ": tokenSelect, "SELECT": tokenSelect,
-	"РАЗЛИЧНЫЕ": tokenDistinct, "DISTINCT": tokenDistinct,
-	"ПЕРВЫЕ": tokenTop, "TOP": tokenTop,
-	"ИЗ": tokenFrom, "FROM": tokenFrom,
-	"КАК": tokenAs, "AS": tokenAs,
-	"ПОМЕСТИТЬ": tokenInto, "INTO": tokenInto,
-	"ГДЕ": tokenWhere, "WHERE": tokenWhere,
-	"СГРУППИРОВАТЬ": tokenGroup, "GROUP": tokenGroup,
-	"ИМЕЮЩИЕ": tokenHaving, "HAVING": tokenHaving,
-	"УПОРЯДОЧИТЬ": tokenOrder, "ORDER": tokenOrder,
-	"ПО": tokenBy, "BY": tokenBy,
-	"ИНДЕКСИРОВАТЬ": tokenIndex, "INDEX": tokenIndex,
-	"УНИЧТОЖИТЬ": tokenDrop, "DROP": tokenDrop,
-	"ВНУТРЕННЕЕ": tokenInner, "INNER": tokenInner,
-	"ЛЕВОЕ": tokenLeft, "LEFT": tokenLeft,
-	"ПРАВОЕ": tokenRight, "RIGHT": tokenRight,
-	"ПОЛНОЕ": tokenFull, "FULL": tokenFull,
-	"ВНЕШНЕЕ": tokenOuter, "OUTER": tokenOuter,
-	"СОЕДИНЕНИЕ": tokenJoin, "JOIN": tokenJoin,
-	"ON":   tokenOn,
-	"ВОЗР": tokenAscending, "ASC": tokenAscending,
-	"УБЫВ": tokenDescending, "DESC": tokenDescending,
-	"И": tokenAnd, "AND": tokenAnd,
-	"ИЛИ": tokenOr, "OR": tokenOr,
-	"НЕ": tokenNot, "NOT": tokenNot,
-	"В": tokenIn, "IN": tokenIn,
-	"ПОДОБНО": tokenLike, "LIKE": tokenLike,
-	"ЕСТЬ": tokenIs, "IS": tokenIs,
-	"NULL":   tokenNull,
-	"ИСТИНА": tokenTrue, "TRUE": tokenTrue,
-	"ЛОЖЬ": tokenFalse, "FALSE": tokenFalse,
-	"НЕОПРЕДЕЛЕНО": tokenUndefined, "UNDEFINED": tokenUndefined,
-}
-
 func queryError(position Position, message string) error {
 	return fmt.Errorf("query line %d, column %d: %s", position.Line, position.Column, message)
 }

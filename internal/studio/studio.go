@@ -383,6 +383,23 @@ func NewHandler(workspace *Workspace) http.Handler {
 		}
 		writeStudioJSON(response, result)
 	})
+	// The text of a restriction or a template of one is highlighted by the
+	// query language's own list of keywords, not by a second one in the page.
+	routes.HandleFunc("POST /api/query/highlight", func(response http.ResponseWriter, request *http.Request) {
+		var input struct {
+			Text string `json:"text"`
+		}
+		if !decodeStudioJSONRequest(response, request, &input) {
+			return
+		}
+		highlights := querylang.HighlightText(input.Text)
+		if highlights == nil {
+			highlights = []querylang.Highlight{}
+		}
+		writeStudioJSON(response, struct {
+			Highlights []querylang.Highlight `json:"highlights"`
+		}{highlights})
+	})
 	routes.HandleFunc("POST /api/bsl/analyze", func(response http.ResponseWriter, request *http.Request) {
 		if !validateStudioMutation(response, request) {
 			return
@@ -687,6 +704,13 @@ func validateStudioMutation(response http.ResponseWriter, request *http.Request)
 }
 
 func decodeStudioMutation(response http.ResponseWriter, request *http.Request, value any) bool {
+	return decodeStudioJSON(response, request, value, 16<<10)
+}
+
+// decodeStudioJSON reads the one JSON value of a request of Studio, with
+// no fields beyond the target's and, when limit is not zero, no more bytes
+// than it.
+func decodeStudioJSON(response http.ResponseWriter, request *http.Request, value any, limit int64) bool {
 	if !validateStudioMutation(response, request) {
 		return false
 	}
@@ -694,7 +718,11 @@ func decodeStudioMutation(response http.ResponseWriter, request *http.Request, v
 		http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
 		return false
 	}
-	decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 16<<10))
+	body := request.Body
+	if limit > 0 {
+		body = http.MaxBytesReader(response, body, limit)
+	}
+	decoder := json.NewDecoder(body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(value); err != nil {
 		http.Error(response, "Invalid request", http.StatusBadRequest)

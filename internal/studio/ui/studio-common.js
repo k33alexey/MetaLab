@@ -247,23 +247,50 @@ function rolePartRight(role, grant, written, part, right) {
   return !!role.grantNewObjectsByDefault;
 }
 
-/* askChoice asks a question in a dialog of the page, never with confirm(),
-   and answers with the key of the button pressed, or null when the dialog
-   is closed without one. */
-function askChoice(question, explanation, answers) {
+/* restrictionFieldsCaption names the fields a restriction of access to data
+   checks, as the prototype's role editor names them: a restriction with no
+   fields is the one on «Прочие поля», a field of a table part is named after
+   the part. object is the schema's object, title gives a field its caption
+   on the language shown. */
+function restrictionFieldsCaption(object, restriction, title) {
+  if (!restriction.fields?.length) return 'Прочие поля';
+  const own = new Map((object?.restrictionFields || []).map(field => [field.key, field]));
+  const caption = field => title(field) || field.name || field.key;
+  return restriction.fields.map(key => {
+    const field = own.get(key);
+    if (!field) return key;
+    const parent = field.parent && own.get(field.parent);
+    return parent ? `${caption(parent)}.${caption(field)}` : caption(field);
+  }).join(', ');
+}
+
+/* showDialog shows a dialog of the page, never confirm(): a heading, an
+   explanation, any content, and buttons, each [key, caption]. It answers
+   with the key of the button pressed, or null when the dialog is closed
+   without one. check(key), when given, is asked before the dialog closes on
+   a button with a key: a text it returns is shown and keeps the dialog open. */
+function showDialog({title, explanation, content, answers, check, className}) {
   return new Promise(resolve => {
     const dialog = document.createElement('dialog');
-    dialog.className = 'localized-title-dialog';
+    dialog.className = 'localized-title-dialog' + (className ? ' ' + className : '');
     const form = document.createElement('form');
     form.method = 'dialog';
-    form.append(node('h3', question));
+    form.append(node('h3', title));
     if (explanation) form.append(node('p', explanation, 'muted'));
+    if (content) form.append(content);
+    const problem = node('p', undefined, 'dialog-problem');
+    problem.hidden = true;
+    form.append(problem);
     const actions = node('div', undefined, 'localized-title-actions');
     let answer = null;
     answers.forEach(([key, text], index) => {
       const button = node('button', text, index === 0 ? 'primary' : undefined);
       button.type = 'submit';
-      button.addEventListener('click', () => { answer = key; });
+      button.addEventListener('click', event => {
+        const refusal = key !== null && check ? check(key) : '';
+        if (refusal) { event.preventDefault(); problem.textContent = refusal; problem.hidden = false; return; }
+        answer = key;
+      });
       actions.append(button);
     });
     form.append(actions);
@@ -272,4 +299,60 @@ function askChoice(question, explanation, answers) {
     dialog.addEventListener('close', () => { dialog.remove(); resolve(answer); });
     dialog.showModal();
   });
+}
+
+/* askChoice asks a question in a dialog of the page and answers with the key
+   of the button pressed, or null when the dialog is closed without one. */
+function askChoice(question, explanation, answers) {
+  return showDialog({title: question, explanation, answers});
+}
+
+/* queryTextField edits a text in the query language - the condition of a
+   restriction of access, a template of one - with its keywords, strings,
+   parameters and instructions highlighted. The highlighting is the server's,
+   by the language's own list of keywords (/api/query/highlight); until it
+   answers, and when it does not, the text shows plain. apply(text) is called
+   on every edit. */
+function queryTextField(value, apply, label) {
+  const wrapper = node('div', undefined, 'query-text');
+  const layer = node('pre', undefined, 'query-text-layer');
+  layer.setAttribute('aria-hidden', 'true');
+  const code = node('code');
+  layer.append(code);
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.spellcheck = false;
+  if (label) textarea.setAttribute('aria-label', label);
+  wrapper.append(layer, textarea);
+  let timer = 0, controller = null, last = [];
+  // Until the server answers, an edited text keeps the highlighting it had:
+  // a text going plain on every key would blink.
+  function paint(text, highlights) {
+    last = highlights;
+    code.replaceChildren();
+    let cursor = 0;
+    for (const item of highlights) {
+      if (item.start < cursor || item.end <= item.start) continue;
+      code.append(document.createTextNode(text.slice(cursor, item.start)), node('span', text.slice(item.start, item.end), `tok-${item.kind}`));
+      cursor = item.end;
+    }
+    // The last line break of a pre takes no line, so one more is put after it.
+    code.append(document.createTextNode(text.slice(cursor) + '\n'));
+    layer.scrollTop = textarea.scrollTop; layer.scrollLeft = textarea.scrollLeft;
+  }
+  async function highlight() {
+    const text = textarea.value;
+    controller?.abort(); controller = new AbortController();
+    try {
+      const response = await fetch('/api/query/highlight', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-ML-CSRF': '1'}, body: JSON.stringify({text}), signal: controller.signal});
+      if (!response.ok || textarea.value !== text) return;
+      paint(text, (await response.json()).highlights || []);
+    } catch (error) { if (error.name !== 'AbortError') paint(textarea.value, []); }
+  }
+  textarea.addEventListener('input', () => { apply(textarea.value); paint(textarea.value, last); clearTimeout(timer); timer = setTimeout(highlight, 150); });
+  textarea.addEventListener('scroll', () => { layer.scrollTop = textarea.scrollTop; layer.scrollLeft = textarea.scrollLeft; });
+  paint(value, []);
+  highlight();
+  wrapper.textarea = textarea;
+  return wrapper;
 }

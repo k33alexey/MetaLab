@@ -11,7 +11,7 @@ vm.runInContext(readFileSync(new URL('../internal/studio/ui/studio-common.js',im
 vm.runInContext(script,context);
 const create=context.createRoleModel;
 const plain=value=>JSON.parse(JSON.stringify(value));
-function fixture(){return {role:{id:'role',name:'Продавец',title:{ru:'Продавец'}},schema:{rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'posting',title:'Проведение'}],objects:[{id:'base',root:true,rights:['administration','thin-client'],operations:[],fields:[],restrictionFields:[]},{id:'goods',rights:['read','insert','update','delete','view','edit','input-by-string'],operations:['read','insert','update','delete'],fields:[{key:'ref',group:'standard-attributes',operations:['view','edit']},{key:'name',group:'attributes',operations:['view','edit']},{key:'part',group:'table-parts',operations:['view','edit']},{key:'column',group:'attributes',parent:'part',operations:['view','edit']},{key:'print',group:'commands',operations:['view']}],restrictionFields:[{key:'ref'},{key:'dataversion'},{key:'name'},{key:'part'},{key:'column',parent:'part'},{key:'part.linenumber',parent:'part'}]},{id:'other',rights:['read','view'],operations:['read'],fields:[],restrictionFields:[]}],parts:{base:[],goods:['column','name','part','print','ref'],other:[]},forms:[{id:'form',commands:[{id:'command'}]}]}};}
+function fixture(){return {role:{id:'role',name:'Продавец',title:{ru:'Продавец'}},schema:{rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'posting',title:'Проведение'}],objects:[{id:'base',root:true,rights:['administration','thin-client'],operations:[],fields:[],restrictionFields:[]},{id:'goods',rights:['read','insert','update','delete','view','edit','input-by-string'],restrictedRights:['read','insert','update','delete'],operations:['read','insert','update','delete'],fields:[{key:'ref',group:'standard-attributes',operations:['view','edit']},{key:'name',group:'attributes',operations:['view','edit']},{key:'part',group:'table-parts',operations:['view','edit']},{key:'column',group:'attributes',parent:'part',operations:['view','edit']},{key:'print',group:'commands',operations:['view']}],restrictionFields:[{key:'ref'},{key:'dataversion'},{key:'name'},{key:'part'},{key:'column',parent:'part'},{key:'part.linenumber',parent:'part'}]},{id:'other',rights:['read','view'],operations:['read'],fields:[],restrictionFields:[]}],parts:{base:[],goods:['column','name','part','print','ref'],other:[]},forms:[{id:'form',commands:[{id:'command'}]}]}};}
 
 test('Studio inline script remains valid JavaScript',()=>{
   const html=readFileSync(new URL('../internal/studio/ui/index.html',import.meta.url),'utf8');
@@ -101,8 +101,7 @@ test('bulk edits remain bounded for a large object',()=>{
   model.setGrantNewFieldsByDefault(false,true);assert.equal(model.value().objects[0].fields.length,9000);assert.equal(model.hasField('goods','field0','view'),false);
   assert.ok(Date.now()-started<2000,`took ${Date.now()-started} ms`);
 });
-// The editor does not show restrictions yet (2.293б); what it does not show
-// it keeps. Defect caught: a save from the editor dropping a role's
+// What the editor is not asked to change it keeps. Defect caught: a save from the editor dropping a role's
 // restrictions or templates, and a right cleared with its restriction lost.
 test('restrictions and templates survive editing as written',()=>{
   const source=fixture();
@@ -222,4 +221,65 @@ test('the flag for attributes answered «Да» sets or clears every field and t
   assert.equal(model.hasField('goods','print','view'),false,'a command is no attribute');assert.equal(model.hasObject('goods','read'),false);
   model.setGrantNewFieldsByDefault(false,true);
   for(const key of ['ref','name','part','column'])assert.equal(model.hasField('goods',key,'view'),false,key);
+});
+
+// A restriction is written inside its right, granted or denied, as the
+// prototype writes it. Defect caught: a restriction added on a right the role
+// does not write - one that stands for the role's flag - left a role the
+// server refuses to save («restricts a right the role neither grants nor
+// denies»), or wrote the right granted where the flag had it denied.
+test('a restriction added on an unwritten right writes the right as it stood',()=>{
+  for(const flag of [false,true]){
+    const source=fixture();source.role.grantNewObjectsByDefault=flag;
+    const model=create(source);
+    model.putRestriction('goods','insert',0,{condition:'ГДЕ ИСТИНА'});
+    const goods=plain(model.value()).objects.find(item=>item.object==='goods');
+    assert.deepEqual(flag?goods.operations:goods.denied,['insert'],`flag ${flag}`);
+    assert.equal(model.hasObject('goods','insert'),flag,'the right in force does not turn over');
+    assert.deepEqual(goods.restrictions,[{right:'insert',condition:'ГДЕ ИСТИНА'}]);
+  }
+});
+// Defect caught: fields kept on a right other than reading, a field the
+// object does not have, the same field twice; a restriction on an object
+// that keeps no data.
+test('only reading is restricted by fields, and only by the object\'s own',()=>{
+  const model=create(fixture());
+  model.putRestriction('goods','read',0,{fields:['ref','gone','ref','part.linenumber'],condition:'ГДЕ 1'});
+  model.putRestriction('goods','update',0,{fields:['ref'],condition:'ГДЕ 2'});
+  model.putRestriction('other','read',0,{condition:'ГДЕ 3'});
+  model.putRestriction('base','read',0,{condition:'ГДЕ 4'});
+  const value=plain(model.value());
+  assert.deepEqual(value.objects.find(item=>item.object==='goods').restrictions,[{right:'read',fields:['ref','part.linenumber'],condition:'ГДЕ 1'},{right:'update',condition:'ГДЕ 2'}]);
+  assert.equal(value.objects.some(item=>item.object==='other'||item.object==='base'),false);
+});
+// The list of a right is numbered within the right. Defect caught: the
+// change or the removal of the second restriction of reading touched a
+// restriction of another right that stood between them in the role.
+test('a restriction is changed and removed by its place among those of its right',()=>{
+  const source=fixture();
+  source.role.objects=[{object:'goods',operations:['read','update'],fields:[],restrictions:[
+    {right:'read',fields:['ref'],condition:'А'},{right:'update',condition:'Б'},{right:'read',condition:'В'}]}];
+  const model=create(source);
+  assert.deepEqual(plain(model.restrictions('goods','read')).map(item=>item.condition),['А','В']);
+  model.putRestriction('goods','read',1,{condition:'Г'});
+  assert.deepEqual(plain(model.value().objects[0].restrictions).map(item=>item.condition),['А','Б','Г']);
+  model.removeRestriction('goods','read',1);model.removeRestriction('goods','read',5);
+  assert.deepEqual(plain(model.value().objects[0].restrictions).map(item=>item.condition),['А','Б']);
+  model.removeRestriction('goods','read',0);model.removeRestriction('goods','update',0);
+  assert.equal(model.value().objects[0].restrictions,undefined,'no empty list is written');
+  assert.deepEqual(plain(model.value().objects[0].operations),['read','update'],'removing a restriction keeps the right');
+});
+// Defect caught: a template saved with the blanks around its name, an empty
+// list written after the last template goes, a change landing on another.
+test('templates are added, changed and removed in place',()=>{
+  const model=create(fixture());
+  model.putTemplate(0,{name:' Первый ',condition:'ГДЕ 1'});
+  assert.deepEqual(plain(model.templates()),[{name:'Первый',condition:'ГДЕ 1'}]);
+  model.putTemplate(1,{name:'Второй(Поле)',condition:''});
+  model.putTemplate(0,{name:'Первый',condition:'ГДЕ 2'});
+  assert.deepEqual(plain(model.value().restrictionTemplates),[{name:'Первый',condition:'ГДЕ 2'},{name:'Второй(Поле)'}]);
+  model.removeTemplate(0);
+  assert.deepEqual(plain(model.templates()),[{name:'Второй(Поле)'}]);
+  model.removeTemplate(0);
+  assert.equal(model.value().restrictionTemplates,undefined);
 });

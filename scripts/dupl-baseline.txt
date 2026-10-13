@@ -32,7 +32,6 @@
 1	internal/platform/runtime.go internal/platform/runtime.go
 2	internal/portal/portal.go internal/portal/portal.go
 1	internal/studio/catalog_editor.go internal/studio/roles.go
-1	internal/studio/debugger.go internal/studio/roles.go
 1	internal/studio/query_designer.go internal/studio/query_designer.go
 1	internal/studio/studio.go internal/studio/studio.go
 1	internal/systemdb/databases.go internal/systemdb/studio_sessions.go

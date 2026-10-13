@@ -12,15 +12,8 @@ function createRoleOverviewModel(source) {
     const object = objects.get(id);
     return object ? localized(object) : 'удалённый объект';
   }
-  // Ограничение без полей — ограничение на «Прочие поля», как его называет
-  // редактор роли прототипа.
-  function restrictedFields(objectID, restriction) {
-    if (!restriction.fields?.length) return 'Прочие поля';
-    const own = objects.get(objectID)?.restrictionFields || [];
-    return restriction.fields.map(key => { const field = own.find(item => item.key === key); return field ? localized(field) : key; }).join(', ');
-  }
   function describe(objectID, restriction) {
-    return {operation: restriction.right, field: restrictedFields(objectID, restriction), condition: restriction.condition || ''};
+    return {operation: restriction.right, field: restrictionFieldsCaption(objects.get(objectID), restriction, localized), condition: restriction.condition || ''};
   }
   function grantOf(entry, objectID) { return (entry.role.objects || []).find(item => item.object === objectID); }
   /* Поля объекта — части, на которые даются Просмотр и Редактирование;

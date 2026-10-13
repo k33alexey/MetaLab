@@ -25,3 +25,14 @@
 .save-data-rows.muted{color:#aeb1b8}
 #save-data-form label{display:flex;align-items:flex-start;gap:8px;margin:8px 0;font-size:12px;line-height:1.5}
 #save-data-form label[hidden]{display:none}
+
+/* Текст на языке запросов: условие ограничения доступа, шаблон ограничения.
+   Подсветка — слой под прозрачным текстом поля ввода, с теми же отступами и
+   шрифтом; цвета — общие классы tok-* редактора модулей. */
+.query-text{position:relative;min-height:140px;height:240px;resize:vertical;overflow:hidden;border:1px solid #4a4d54;border-radius:5px;background:#1e1f22}
+.query-text>.query-text-layer,.query-text>textarea{position:absolute;inset:0;margin:0;padding:8px 10px;border:0;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;tab-size:4;box-sizing:border-box}
+.query-text>.query-text-layer{overflow:hidden;color:#dfe1e5;pointer-events:none}
+.query-text>textarea{width:100%;height:100%;resize:none;overflow:auto;background:transparent;color:transparent;caret-color:#dfe1e5;outline:none}
+.query-text:focus-within{border-color:#589df6}
+.dialog-problem{color:#f0a3a8}
+.dialog-problem[hidden]{display:none}

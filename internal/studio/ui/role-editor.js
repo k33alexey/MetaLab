@@ -74,6 +74,43 @@ function createRoleModel(source) {
       else setField(id, key, operation, before.get(where));
     }
   }
+  // The restrictions of access to data on one right of an object, in the
+  // order the role writes them.
+  const restrictionsOf = (id, right) => (objects.get(id)?.restrictions || []).filter(item => item.right === right);
+  // A restriction is written inside the right it restricts, granted or
+  // denied, as the prototype writes it: a right that stood for the role's
+  // flags is written first as it stood, so adding a restriction turns no
+  // right over. Only reading is restricted by fields; a field the object
+  // does not have is not taken.
+  function putRestriction(id, right, index, restriction) {
+    if (!definitions.get(id)?.restrictedRights?.includes(right)) return;
+    const grant = object(id);
+    if (!grant.operations.includes(right) && !grant.denied?.includes(right)) writeRight(grant, right, objectRight(id, right));
+    const entry = {right}, own = restrictionFields.get(id) || new Set();
+    const chosen = right === 'read' ? (restriction.fields || []).filter(field => own.has(field)) : [];
+    if (chosen.length) entry.fields = [...new Set(chosen)];
+    if (restriction.condition) entry.condition = restriction.condition;
+    const list = grant.restrictions ||= [], same = restrictionsOf(id, right);
+    if (index < same.length) list[list.indexOf(same[index])] = entry; else list.push(entry);
+  }
+  function removeRestriction(id, right, index) {
+    const grant = objects.get(id), target = restrictionsOf(id, right)[index];
+    if (!target) return;
+    grant.restrictions = grant.restrictions.filter(item => item !== target);
+    if (!grant.restrictions.length) delete grant.restrictions;
+  }
+  // A template of the role's restrictions: its name, with the names of its
+  // parameters in brackets where it takes any, and its text.
+  function putTemplate(index, template) {
+    const list = value.role.restrictionTemplates ||= [], entry = {name: template.name.trim()};
+    if (template.condition) entry.condition = template.condition;
+    if (index < list.length) list[index] = entry; else list.push(entry);
+  }
+  function removeTemplate(index) {
+    const list = value.role.restrictionTemplates || [];
+    list.splice(index, 1);
+    if (!list.length) delete value.role.restrictionTemplates;
+  }
   function clean() {
     const result = structuredClone(value.role);
     for (const item of result.objects) {
@@ -143,6 +180,10 @@ function createRoleModel(source) {
       value.role.commands = value.role.commands.filter(item => item.form !== form || item.command !== command);
       if(enabled)value.role.commands.push({form,command});
     },
+    restrictions: (id, right) => structuredClone(restrictionsOf(id, right)),
+    putRestriction, removeRestriction,
+    templates: () => structuredClone(value.role.restrictionTemplates || []),
+    putTemplate, removeTemplate,
     hasUnavailable() { return JSON.stringify(clean()) !== JSON.stringify(repaired()); },
     removeUnavailable() { value.role = repaired(); reindex(); },
   };
@@ -150,6 +191,9 @@ function createRoleModel(source) {
 
 function createRoleEditor(host, onChange) {
   let source, model, selected, panel, tree, warning, titleFieldCleanup = null;
+  // The tab shown - the rights or the templates of restrictions - and the
+  // right whose restrictions are listed, with the row chosen in each list.
+  let view = 'rights', restrictionRight = null, restrictionRow = -1, templateRow = -1, rightsBody, templatesBody;
   // The nodes of the tree left open, by key, so a redraw keeps them open.
   const expanded = new Set();
   function clearTitleField() { titleFieldCleanup?.(); titleFieldCleanup = null; }
@@ -161,7 +205,7 @@ function createRoleEditor(host, onChange) {
   function title(item) { return localizedTitle(item, source.defaultLanguage, source.languages); }
   /* Подписи объектов и полей показываются на текущем языке Studio и
      меняются вместе с ним. */
-  StudioLanguage.onChange(() => { if (!source) return; renderTree(currentFilter()); renderPanel(); });
+  StudioLanguage.onChange(() => { if (!source) return; renderTree(currentFilter()); renderPanel(); if (view === 'templates') renderTemplates(); });
   function changed() { warning.hidden=!model.hasUnavailable(); onChange(); }
   function checkbox(text, checked, action, disabled=false) {
     const label=checkboxField(text,checked,enabled=>{const focus=label.firstChild.getAttribute('aria-label')||text;action(enabled);changed();renderPanel();for(const candidate of panel.querySelectorAll('input'))if((candidate.getAttribute('aria-label')||candidate.parentElement.textContent)===focus){candidate.focus();break;}},'role-check',disabled);
@@ -277,7 +321,107 @@ function createRoleEditor(host, onChange) {
       for(const operation of object.rights)actions.append(checkbox(caption(operation),model.hasObject(object.id,operation),enabled=>model.setObject(object.id,operation,enabled)));
       panel.append(actions,bulk(enabled=>model.setAll(object.id,enabled)));
     } else panel.append(node('p','Своих прав у объекта нет: права даются на его части.','muted'));
+    if(object.restrictedRights?.length)panel.append(restrictionSection(object));
   }
+  // A list of rows with two columns and the commands of the prototype's
+  // context menu: Добавить, Изменить, Удалить. A row is chosen by a click and
+  // opened by a double click.
+  function listTable(headings, rows, chosen, choose, commands, empty) {
+    const table=node('table',undefined,'role-list'),head=node('tr');
+    for(const text of headings)head.append(node('th',text));
+    const thead=node('thead');thead.append(head);const body=node('tbody');
+    rows.forEach((cells,index)=>{
+      const row=node('tr',undefined,index===chosen?'selected':undefined);row.tabIndex=0;
+      for(const [text,className] of cells){const cell=node('td',text,className);cell.title=text;row.append(cell);}
+      row.addEventListener('click',()=>{choose(index);for(const other of body.children)other.classList.toggle('selected',other===row);syncCommands();});
+      row.addEventListener('dblclick',()=>{choose(index);commands.find(([key])=>key==='edit')?.[2]();});
+      row.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();row.dispatchEvent(new MouseEvent('dblclick'));}if(event.key==='Delete'){event.preventDefault();choose(index);commands.find(([key])=>key==='remove')?.[2]();}});
+      body.append(row);
+    });
+    if(!rows.length){const row=node('tr'),cell=node('td',empty,'muted');cell.colSpan=headings.length;row.append(cell);body.append(row);}
+    table.append(thead,body);
+    const bar=node('div',undefined,'role-bulk'),buttons=[];
+    for(const [key,text,action,enabled] of commands){const button=node('button',text);button.type='button';button.addEventListener('click',action);buttons.push([button,enabled]);bar.append(button);}
+    function syncCommands(){for(const [button,enabled] of buttons)button.disabled=!enabled();}
+    syncCommands();
+    const block=node('div');block.append(table,bar);return block;
+  }
+  // The restrictions of access to data on a right of the object, as the
+  // prototype lists them under the rights (help, «Ограничение доступа к
+  // данным»): the field or «Прочие поля», and the condition. Reading takes
+  // one per set of fields, the other rights one each.
+  function restrictionSection(object) {
+    const section=node('section',undefined,'role-restrictions');
+    section.append(node('h4','Ограничение доступа к данным'));
+    if(!object.restrictedRights.includes(restrictionRight)){restrictionRight=object.restrictedRights[0];restrictionRow=-1;}
+    const tabs=node('div',undefined,'role-restriction-rights');
+    for(const right of object.restrictedRights){
+      const count=model.restrictions(object.id,right).length,button=node('button',count?`${caption(right)} (${count})`:caption(right),right===restrictionRight?'selected':undefined);
+      button.type='button';button.setAttribute('aria-pressed',String(right===restrictionRight));
+      button.addEventListener('click',()=>{restrictionRight=right;restrictionRow=-1;renderPanel();});
+      tabs.append(button);
+    }
+    section.append(tabs);
+    const right=restrictionRight,list=model.restrictions(object.id,right);
+    if(restrictionRow>=list.length)restrictionRow=-1;
+    const others=list.some(item=>!item.fields?.length);
+    const canAdd=()=>right==='read'?!others||object.restrictionFields.some(field=>!list.some(item=>item.fields?.includes(field.key))):!list.length;
+    const open=index=>editRestriction(object,right,index);
+    section.append(listTable(['Поле','Ограничение доступа'],list.map(item=>[[restrictionFieldsCaption(object,item,title)],[item.condition||'','role-condition']]),restrictionRow,index=>{restrictionRow=index;},[
+      ['add','Добавить',()=>open(list.length),canAdd],
+      ['edit','Изменить',()=>{if(restrictionRow>=0)open(restrictionRow);},()=>restrictionRow>=0],
+      ['remove','Удалить',()=>{if(restrictionRow<0)return;model.removeRestriction(object.id,right,restrictionRow);restrictionRow=-1;changed();renderPanel();},()=>restrictionRow>=0],
+    ],'Ограничений нет'));
+    return section;
+  }
+  // The window of one restriction: the fields it checks, for reading, and
+  // its condition in the query language (help, «Ограничение доступа»).
+  async function editRestriction(object,right,index){
+    const list=model.restrictions(object.id,right),current=list[index]||{right},content=node('div',undefined,'role-restriction-form');
+    const chosen=new Set(current.fields||[]);
+    if(right==='read'){
+      const taken=new Set(list.flatMap((item,other)=>other===index?[]:item.fields||[]));
+      const fieldsLabel=node('div','Поля — ни одно не отмечено: «Прочие поля»','role-restriction-caption'),fields=node('div',undefined,'role-restriction-fields');
+      for(const field of object.restrictionFields){
+        const box=checkboxField(field.parent?(title(field)||field.name):(title(field)||field.name),chosen.has(field.key),enabled=>{if(enabled)chosen.add(field.key);else chosen.delete(field.key);},'role-check',taken.has(field.key));
+        if(field.parent)box.classList.add('role-restriction-child');
+        box.title=field.name;fields.append(box);
+      }
+      content.append(fieldsLabel,fields);
+    }
+    let condition=current.condition||'';
+    content.append(node('div','Ограничение доступа','role-restriction-caption'),queryTextField(condition,text=>{condition=text;},'Ограничение доступа'));
+    const othersTaken=list.some((item,other)=>other!==index&&!item.fields?.length);
+    const answer=await showDialog({title:`Ограничение доступа · ${caption(right)}`,content,className:'role-restriction-dialog',answers:[['ok','ОК'],[null,'Отмена']],
+      check:()=>right==='read'&&!chosen.size&&othersTaken?'Ограничение на прочие поля у этого права уже есть: отметьте поля.':''});
+    if(answer!=='ok')return;
+    model.putRestriction(object.id,right,index,{fields:[...chosen],condition});
+    restrictionRow=index;changed();renderPanel();
+  }
+  // The templates of the role's restrictions (help, «Редактирование роли»,
+  // «Шаблоны ограничений»): a name, with its parameters in brackets, and a
+  // text the condition of a restriction takes in place of #Имя(...).
+  function renderTemplates(){
+    templatesBody.replaceChildren();
+    const list=model.templates();
+    if(templateRow>=list.length)templateRow=-1;
+    templatesBody.append(node('p','Имя шаблона — имя по правилам языка, в скобках можно перечислить параметры: Шаблон(Поле, Пользователь). В тексте ограничения шаблон вызывается как #Шаблон("значение", ...).','muted'));
+    templatesBody.append(listTable(['Имя','Текст шаблона'],list.map(item=>[[item.name],[item.condition||'','role-condition']]),templateRow,index=>{templateRow=index;},[
+      ['add','Добавить',()=>editTemplate(list.length),()=>true],
+      ['edit','Изменить',()=>{if(templateRow>=0)editTemplate(templateRow);},()=>templateRow>=0],
+      ['remove','Удалить',()=>{if(templateRow<0)return;model.removeTemplate(templateRow);templateRow=-1;changed();renderTemplates();},()=>templateRow>=0],
+    ],'Шаблонов нет'));
+  }
+  async function editTemplate(index){
+    const current=model.templates()[index]||{name:'',condition:''},content=node('div',undefined,'role-restriction-form');
+    let name=current.name,condition=current.condition||'';
+    const nameInput=node('input');nameInput.value=name;nameInput.setAttribute('aria-label','Наименование');nameInput.addEventListener('input',()=>{name=nameInput.value;});
+    content.append(node('div','Наименование','role-restriction-caption'),nameInput,node('div','Текст шаблона','role-restriction-caption'),queryTextField(condition,text=>{condition=text;},'Текст шаблона'));
+    const answer=await showDialog({title:'Шаблон ограничения',content,className:'role-restriction-dialog',answers:[['ok','ОК'],[null,'Отмена']],check:()=>name.trim()?'':'Укажите наименование шаблона.'});
+    if(answer!=='ok')return;
+    model.putTemplate(index,{name,condition});templateRow=index;changed();renderTemplates();
+  }
+  function showView(next){view=next;rightsBody.hidden=view!=='rights';templatesBody.hidden=view!=='templates';for(const button of host.querySelectorAll('.role-tabs button'))button.setAttribute('aria-selected',String(button.dataset.view===view));if(view==='templates')renderTemplates();}
   return {
     open(value, preserveSelection=false) {
       clearTitleField();
@@ -300,12 +444,19 @@ function createRoleEditor(host, onChange) {
       identity.append(checkbox('Независимые права подчиненных объектов',!!source.role.independentChildRights,enabled=>model.setIndependentChildRights(enabled)));
       host.append(identity);
       warning=node('div',undefined,'role-warning');warning.append(node('span','В роли есть права на удалённые или изменённые объекты. '));const repair=node('button','Убрать недоступные права');repair.type='button';repair.addEventListener('click',()=>{model.removeUnavailable();changed();renderPanel();});warning.append(repair);warning.hidden=!model.hasUnavailable();host.append(warning);
-      const body=node('div',undefined,'role-body'),sidebar=node('div',undefined,'role-sidebar'),search=node('input');search.type='search';search.placeholder='Поиск объекта';search.setAttribute('aria-label','Поиск объекта');search.addEventListener('input',()=>renderTree(search.value));tree=node('div',undefined,'role-tree');sidebar.append(search,tree);panel=node('section',undefined,'role-permissions');body.append(sidebar,panel);host.append(body);renderTree();renderPanel();
+      // The prototype's role window has two tabs: the rights and the
+      // templates of restrictions.
+      const tabs=node('div',undefined,'role-tabs');tabs.setAttribute('role','tablist');
+      for(const [key,text] of [['rights','Права'],['templates','Шаблоны ограничений']]){const button=node('button',text);button.type='button';button.dataset.view=key;button.setAttribute('role','tab');button.addEventListener('click',()=>showView(key));tabs.append(button);}
+      host.append(tabs);
+      const body=node('div',undefined,'role-body'),sidebar=node('div',undefined,'role-sidebar'),search=node('input');search.type='search';search.placeholder='Поиск объекта';search.setAttribute('aria-label','Поиск объекта');search.addEventListener('input',()=>renderTree(search.value));tree=node('div',undefined,'role-tree');sidebar.append(search,tree);panel=node('section',undefined,'role-permissions');body.append(sidebar,panel);rightsBody=body;templatesBody=node('section',undefined,'role-templates');host.append(body,templatesBody);
+      if(!preserveSelection){view='rights';restrictionRight=null;restrictionRow=-1;templateRow=-1;}
+      renderTree();renderPanel();showView(view);
     },
     // Переход из окна «Все роли» происходит по конкретному объекту, а не по
     // роли вообще: открывать роль на пустом месте значило бы заставить искать
     // в дереве то, что только что было на экране.
-    selectObject(id){const object=source?.schema.objects.find(item=>item.id===id);if(!object)return;selected={object};for(let owner=object.owner;owner;owner=source.schema.objects.find(item=>item.id===owner)?.owner)expanded.add(owner);renderTree();renderPanel();},
+    selectObject(id){const object=source?.schema.objects.find(item=>item.id===id);if(!object)return;selected={object};showView('rights');for(let owner=object.owner;owner;owner=source.schema.objects.find(item=>item.id===owner)?.owner)expanded.add(owner);renderTree();renderPanel();},
     value(){return model?.value();},
     close(){clearTitleField();source=null;model=null;host.hidden=true;host.replaceChildren();},
     setDisabled(disabled){host.inert=disabled;},

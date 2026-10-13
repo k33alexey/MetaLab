@@ -124,3 +124,47 @@ func writeModuleFile(t *testing.T, path, text string) {
 		t.Fatal(err)
 	}
 }
+
+// The editor offers a restriction of access to data only on the rights the
+// help names (read, insert, update, delete), and only on what keeps data.
+// The expectations are written out here from the help («Ограничение доступа
+// к данным»), not read from restrictedRights. Defect caught: the editor
+// offering a restriction the server refuses at saving - on Просмотр, on a
+// web service, on the configuration - or none on a document.
+func TestPermissionSchemaOffersRestrictionsWhereDataIsKept(t *testing.T) {
+	t.Parallel()
+	schema, err := LoadPermissionSchema(compositeProject(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := []PermissionOperation{PermissionRead, PermissionInsert, PermissionUpdate, PermissionDelete}
+	seen := map[string]bool{}
+	for _, object := range schema.Objects {
+		if object.RestrictedRights == nil {
+			t.Errorf("%s offers null restricted rights, which the editor cannot read", object.Name)
+		}
+		for _, right := range object.RestrictedRights {
+			if !slices.Contains(all, right) || !slices.Contains(object.Rights, right) {
+				t.Errorf("%s offers a restriction on %q", object.Name, right)
+			}
+		}
+		switch object.ID.String() {
+		case cmpDocument:
+			seen["document"] = true
+			if !slices.Equal(object.RestrictedRights, all) {
+				t.Errorf("document restricts %v, want %v", object.RestrictedRights, all)
+			}
+		case cmpWebService:
+			seen["web service"] = true
+			if len(object.RestrictedRights) != 0 {
+				t.Errorf("web service restricts %v", object.RestrictedRights)
+			}
+		}
+		if object.Root && len(object.RestrictedRights) != 0 {
+			t.Errorf("the configuration restricts %v", object.RestrictedRights)
+		}
+	}
+	if len(seen) != 2 {
+		t.Fatalf("objects checked: %v", seen)
+	}
+}
