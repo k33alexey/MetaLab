@@ -66,7 +66,7 @@ const studioPageProbe = `(() => {
 // problem too: an editor that cannot open a file says so there, not in the
 // console.
 const studioPageWalk = `(async () => {
-  const studio = window.__studio, problems = studio.problems, seen = new Set(), walked = new Set();
+  const studio = window.__studio, problems = studio.problems, seen = new Set(), walked = new Set(), titles = {};
   let steps = 0;
   const describe = item => (item.textContent || item.title || item.tagName).trim().replace(/\s+/g, ' ').slice(0, 60);
   const settle = () => { steps++; return studio.settle(); };
@@ -136,6 +136,7 @@ const studioPageWalk = `(async () => {
       languageSelect.value = code;
       languageSelect.dispatchEvent(new Event('change'));
       await settle();
+      titles[code] ??= {header: document.querySelector('#project-name').textContent, tab: document.title};
       await walk(host, plan, studio.step);
     }
   }
@@ -163,7 +164,7 @@ const studioPageWalk = `(async () => {
   if (!document.querySelector('#debug-panel').hidden) seen.add('debugger');
   document.querySelector('#debug-close').click();
   await settle();
-  return {editors: [...seen].sort(), languages, steps};
+  return {editors: [...seen].sort(), languages, titles, steps};
 })()`
 
 // studioReadOnlyModule reads the tree again and opens the ordinary
@@ -191,7 +192,9 @@ const studioReadOnlyModule = `(async () => {
 // throws, rejects or writes an error while opening, choosing an element or
 // changing the language; one that answers in red on the status bar; a request
 // that fails; a window that does not open or does not close; and an editor no
-// node of the tree reaches any more. A carried ordinary application module is
+// node of the tree reaches any more; a header or tab that names the
+// configuration otherwise than by its synonym in the display language (2.303:
+// "[object Object]"). A carried ordinary application module is
 // then opened, and has to come up read-only. Without Chrome the test is skipped, as
 // the tests run on Node are without Node.
 func TestStudioEditorsWorkInBrowser(t *testing.T) {
@@ -236,7 +239,11 @@ func TestStudioEditorsWorkInBrowser(t *testing.T) {
 	var report struct {
 		Editors   []string `json:"editors"`
 		Languages []string `json:"languages"`
-		Steps     int      `json:"steps"`
+		Titles    map[string]struct {
+			Header string `json:"header"`
+			Tab    string `json:"tab"`
+		} `json:"titles"`
+		Steps int `json:"steps"`
 	}
 	if err := json.Unmarshal(result, &report); err != nil {
 		t.Fatalf("the walk answered %s: %v", result, err)
@@ -275,6 +282,12 @@ func TestStudioEditorsWorkInBrowser(t *testing.T) {
 	}
 	if len(report.Languages) < 3 {
 		t.Errorf("the example has three languages, the page offers %v", report.Languages)
+	}
+	// The synonyms are those written in examples/sales-and-warehouse.
+	for code, synonym := range map[string]string{"ru": "Продажи и склад", "uk": "Продажі і склад", "en": "Sales and warehouse"} {
+		if title := report.Titles[code]; title.Header != synonym || title.Tab != "ML Studio — "+synonym {
+			t.Errorf("in language %s the header reads %q and the tab %q, want the synonym %q", code, title.Header, title.Tab, synonym)
+		}
 	}
 }
 
