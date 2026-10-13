@@ -353,7 +353,7 @@ func init() {
 		NoteKindInfo{NoteRightWithoutSample,
 			"Право роли — данное или запрещённое — на конфигурацию, объект или его часть, которого ни одна известная " +
 				"выгрузка конфигуратора на таком месте не пишет: изменение у отчёта, проведение у справочника, редактирование " +
-				"у команды. Справка перечисляет права, а не то, к чему каждое относится, так что не известно, сохраняет ли " +
+				"у команды, любое право на измерение куба или поле таблицы измерения. Справка перечисляет права, а не то, к чему каждое относится, так что не известно, сохраняет ли " +
 				"такое конфигуратор; редактор роли такого права не предлагает.",
 			"Право несётся как записано и не исполняется; редактор роли сохраняет его нетронутым."},
 		NoteKindInfo{NoteRestrictionWithoutSample,
@@ -554,7 +554,8 @@ func noteRightWithoutSample(catalog *Catalog, note func(where, written string)) 
 				continue
 			}
 			object := "configuration " + catalog.Project.Name
-			if kind, ok := catalog.kindOfObject(permission.Object); ok {
+			kind, ok := catalog.kindOfObject(permission.Object)
+			if ok {
 				object = catalog.noteObjectName(kind, permission.Object)
 			}
 			if target.rights != nil {
@@ -571,7 +572,7 @@ func noteRightWithoutSample(catalog *Catalog, note func(where, written string)) 
 					name = target.parts[part.parent].name + "." + name
 				}
 				for _, right := range slices.Concat(field.Operations, field.Denied) {
-					if !slices.Contains(partRightsOf(part.group), right) {
+					if !slices.Contains(offeredPartRights(kind, part.group), right) {
 						note(where, object+"."+name+" "+string(right))
 					}
 				}

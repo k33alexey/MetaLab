@@ -94,6 +94,11 @@ type kindUses struct {
 	// none of the rights restricted, which are the rights to data an object
 	// keeps in the infobase; present where the exports write one.
 	restriction presence
+	// parts is a role giving rights on the parts of the object: present
+	// where the exports write rights on a part of an object of the kind,
+	// unproven where the kind has parts and no export writes rights on any
+	// (offeredPartRights), absent where it has no part rights are given on.
+	parts presence
 }
 
 // usesOf is what may name an object of the kind; an unknown kind has no use.
@@ -119,60 +124,66 @@ func usesOf(kind Kind) kindUses {
 // Neither the help nor an export says which kinds a role or a functional
 // option may name beyond those the exports show, so the rest are unproven,
 // not absent.
+//
+// parts is by the Rights.xml of every role under docs/ (survey of
+// 13.10.2026): they give rights on the parts of eighteen kinds and never on a
+// part of an enumeration, a filter criterion, a cube or a dimension table,
+// whose commands, dimensions, resources and fields the model holds all the
+// same.
 var kindUsesOf = map[Kind]kindUses{
-	RoleKind:                    {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	SubsystemKind:               {rights: present, registration: absent, option: present, restriction: absent},
-	ConstantKind:                {rights: present, registration: present, option: present, restriction: unproven},
-	SessionParameterKind:        {rights: present, registration: absent, option: unproven, restriction: absent},
-	CommonAttributeKind:         {rights: present, registration: absent, option: present, restriction: absent},
-	CommonModuleKind:            {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	EventSubscriptionKind:       {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	EnumerationKind:             {rights: unproven, registration: absent, option: present, restriction: absent},
-	ScheduledJobKind:            {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	CommandGroupKind:            {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	CommonCommandKind:           {rights: present, registration: absent, option: present, restriction: absent},
-	CommonFormKind:              {rights: present, registration: absent, option: present, restriction: absent},
-	CommonTemplateKind:          {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	XDTOPackageKind:             {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	WebServiceKind:              {rights: present, registration: absent, option: unproven, restriction: absent},
-	WSReferenceKind:             {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	WebSocketClientKind:         {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	ExternalDataSourceKind:      {rights: present, registration: absent, option: unproven, restriction: absent},
-	ExternalDataSourceTableKind: {rights: present, registration: absent, option: unproven, restriction: unproven},
-	ExternalCubeKind:            {rights: present, registration: absent, option: unproven, restriction: unproven},
-	ExternalDimensionTableKind:  {rights: present, registration: absent, option: unproven, restriction: unproven},
+	RoleKind:                    {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	SubsystemKind:               {rights: present, registration: absent, option: present, restriction: absent, parts: absent},
+	ConstantKind:                {rights: present, registration: present, option: present, restriction: unproven, parts: absent},
+	SessionParameterKind:        {rights: present, registration: absent, option: unproven, restriction: absent, parts: absent},
+	CommonAttributeKind:         {rights: present, registration: absent, option: present, restriction: absent, parts: absent},
+	CommonModuleKind:            {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	EventSubscriptionKind:       {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	EnumerationKind:             {rights: unproven, registration: absent, option: present, restriction: absent, parts: unproven},
+	ScheduledJobKind:            {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	CommandGroupKind:            {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	CommonCommandKind:           {rights: present, registration: absent, option: present, restriction: absent, parts: absent},
+	CommonFormKind:              {rights: present, registration: absent, option: present, restriction: absent, parts: absent},
+	CommonTemplateKind:          {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	XDTOPackageKind:             {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	WebServiceKind:              {rights: present, registration: absent, option: unproven, restriction: absent, parts: present},
+	WSReferenceKind:             {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	WebSocketClientKind:         {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	ExternalDataSourceKind:      {rights: present, registration: absent, option: unproven, restriction: absent, parts: absent},
+	ExternalDataSourceTableKind: {rights: present, registration: absent, option: unproven, restriction: unproven, parts: present},
+	ExternalCubeKind:            {rights: present, registration: absent, option: unproven, restriction: unproven, parts: unproven},
+	ExternalDimensionTableKind:  {rights: present, registration: absent, option: unproven, restriction: unproven, parts: unproven},
 	// A function keeps no data to register or restrict (help: ОбъектМетаданных:
 	// Функция has no ОбменДанными, and its value is computed by the source);
 	// ПравоДоступа takes it, and no export gives rights on one.
-	ExternalFunctionKind:           {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	HTTPServiceKind:                {rights: present, registration: absent, option: unproven, restriction: absent},
-	CommonPictureKind:              {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	StyleItemKind:                  {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	StyleKind:                      {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	FunctionalOptionKind:           {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	FunctionalOptionParameterKind:  {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	SettingsStorageKind:            {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	FilterCriterionKind:            {rights: present, registration: absent, option: present, restriction: absent},
-	DefinedTypeKind:                {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	LanguageKind:                   {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	CatalogKind:                    {rights: present, registration: present, option: present, restriction: present},
-	ChartOfCharacteristicTypesKind: {rights: present, registration: present, option: present, restriction: present},
-	ChartOfAccountsKind:            {rights: present, registration: present, option: present, restriction: unproven},
-	ChartOfCalculationTypesKind:    {rights: present, registration: present, option: present, restriction: unproven},
-	TaskKind:                       {rights: present, registration: present, option: present, restriction: present},
-	AccountingRegisterKind:         {rights: present, registration: present, option: present, restriction: present},
-	CalculationRegisterKind:        {rights: present, registration: present, option: present, restriction: present},
-	ReportKind:                     {rights: present, registration: absent, option: present, restriction: absent},
-	DataProcessorKind:              {rights: present, registration: absent, option: present, restriction: absent},
-	NumeratorKind:                  {rights: unproven, registration: absent, option: unproven, restriction: absent},
-	SequenceKind:                   {rights: present, registration: present, option: unproven, restriction: unproven},
-	DocumentJournalKind:            {rights: present, registration: absent, option: present, restriction: present},
-	ExchangePlanKind:               {rights: present, registration: unproven, option: present, restriction: unproven},
-	BusinessProcessKind:            {rights: present, registration: present, option: present, restriction: present},
-	DocumentKind:                   {rights: present, registration: present, option: present, restriction: present},
-	InformationRegisterKind:        {rights: present, registration: present, option: present, restriction: present},
-	AccumulationRegisterKind:       {rights: present, registration: present, option: present, restriction: present},
-	RecalculationKind:              {rights: present, registration: present, option: unproven, restriction: unproven},
+	ExternalFunctionKind:           {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	HTTPServiceKind:                {rights: present, registration: absent, option: unproven, restriction: absent, parts: present},
+	CommonPictureKind:              {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	StyleItemKind:                  {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	StyleKind:                      {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	FunctionalOptionKind:           {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	FunctionalOptionParameterKind:  {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	SettingsStorageKind:            {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	FilterCriterionKind:            {rights: present, registration: absent, option: present, restriction: absent, parts: unproven},
+	DefinedTypeKind:                {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	LanguageKind:                   {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	CatalogKind:                    {rights: present, registration: present, option: present, restriction: present, parts: present},
+	ChartOfCharacteristicTypesKind: {rights: present, registration: present, option: present, restriction: present, parts: present},
+	ChartOfAccountsKind:            {rights: present, registration: present, option: present, restriction: unproven, parts: present},
+	ChartOfCalculationTypesKind:    {rights: present, registration: present, option: present, restriction: unproven, parts: present},
+	TaskKind:                       {rights: present, registration: present, option: present, restriction: present, parts: present},
+	AccountingRegisterKind:         {rights: present, registration: present, option: present, restriction: present, parts: present},
+	CalculationRegisterKind:        {rights: present, registration: present, option: present, restriction: present, parts: present},
+	ReportKind:                     {rights: present, registration: absent, option: present, restriction: absent, parts: present},
+	DataProcessorKind:              {rights: present, registration: absent, option: present, restriction: absent, parts: present},
+	NumeratorKind:                  {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
+	SequenceKind:                   {rights: present, registration: present, option: unproven, restriction: unproven, parts: absent},
+	DocumentJournalKind:            {rights: present, registration: absent, option: present, restriction: present, parts: present},
+	ExchangePlanKind:               {rights: present, registration: unproven, option: present, restriction: unproven, parts: present},
+	BusinessProcessKind:            {rights: present, registration: present, option: present, restriction: present, parts: present},
+	DocumentKind:                   {rights: present, registration: present, option: present, restriction: present, parts: present},
+	InformationRegisterKind:        {rights: present, registration: present, option: present, restriction: present, parts: present},
+	AccumulationRegisterKind:       {rights: present, registration: present, option: present, restriction: present, parts: present},
+	RecalculationKind:              {rights: present, registration: present, option: unproven, restriction: unproven, parts: absent},
 }
 
 // The rights of the history of data: nine on a kind whose data keeps
@@ -434,7 +445,7 @@ func init() {
 			found(func(c *Catalog, id uuid.UUID) bool { _, ok := c.externalTableByID[id]; return ok }).
 			refers(kindReference{ExternalTableType, "", notStored}),
 		describedAs(ExternalCubeKind, DecodeExternalCube, nil, nil).
-			found(func(c *Catalog, id uuid.UUID) bool { return c.objects[id].kind == ExternalCubeKind }),
+			found(func(c *Catalog, id uuid.UUID) bool { _, ok := c.externalCubeByID[id]; return ok }),
 		describedAs(ExternalDimensionTableKind, DecodeExternalDimensionTable, nil, nil).
 			found(func(c *Catalog, id uuid.UUID) bool { _, ok := c.externalDimensionTableByID[id]; return ok }).
 			refers(kindReference{ExternalDimensionTableType, "", notStored}),

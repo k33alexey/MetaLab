@@ -617,6 +617,9 @@ func cloneExternalDataSource(source ExternalDataSourceDefinition) ExternalDataSo
 // externalTableLocation is where a table lies: which source, which table of it.
 type externalTableLocation struct{ source, table int }
 
+// externalCubeLocation is where a cube lies.
+type externalCubeLocation struct{ source, cube int }
+
 // externalDimensionTableLocation is where a dimension table lies.
 type externalDimensionTableLocation struct{ source, cube, table int }
 

@@ -161,10 +161,11 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 			}
 		}
 		// Every part of the object, from the one walk of its composition, with
-		// the rights the configurator offers on a part of its sort.
+		// the rights the configurator offers on a part of its sort in an
+		// object of the kind.
 		parts, _ := catalog.partsOf(kind, id)
 		for _, part := range parts {
-			rights := slices.Clone(partRightsOf(part.group))
+			rights := slices.Clone(offeredPartRights(kind, part.group))
 			if rights == nil {
 				rights = []PermissionOperation{}
 			}

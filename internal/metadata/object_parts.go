@@ -75,6 +75,17 @@ func partRightsOf(group PartGroup) []PermissionOperation {
 	return nil
 }
 
+// offeredPartRights is the rights the configurator offers on a part of the
+// group in an object of the kind: those of the group where the exports give
+// rights on the parts of the kind, and none where they never do - a right
+// given there all the same is carried and noted (NoteRightWithoutSample).
+func offeredPartRights(kind Kind, group PartGroup) []PermissionOperation {
+	if usesOf(kind).parts != present {
+		return nil
+	}
+	return partRightsOf(group)
+}
+
 // objectPart is one part of an object a role may name: a field, a table part,
 // a command, an operation, or a template that holds methods.
 type objectPart struct {
@@ -167,15 +178,24 @@ var kindCompositionOf = map[Kind]kindComposition{
 	ExternalDataSourceTableKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		location := c.externalTableByID[id]
 		table := c.ExternalDataSources[location.source].Tables[location.table]
-		parts := make([]objectPart, 0, len(table.Fields)+len(table.Commands))
-		for index := range table.Fields {
-			parts = append(parts, fieldPart(&table.Fields[index].Attribute, FieldsPart, ""))
-		}
-		return append(parts, declaredParts(nil, nil, table.Commands)...)
+		return externalFieldParts(table.Fields, table.Commands)
 	}},
-	ExternalCubeKind:           {},
-	ExternalDimensionTableKind: {},
-	ExternalFunctionKind:       {},
+	// A cube is read as a register is: its dimensions and resources are the
+	// fields of its records (help: ВнешнийИсточникДанныхКубЗапись.<Имя
+	// измерения>, <Имя ресурса>).
+	ExternalCubeKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
+		location := c.externalCubeByID[id]
+		cube := c.ExternalDataSources[location.source].Cubes[location.cube]
+		return registerParts(cube.dimensionAttributes(), cube.resourceAttributes(), nil, cube.Commands)
+	}},
+	// A dimension table holds fields as a table of a source does (help:
+	// ВнешнийИсточникДанныхКубТаблицаИзмеренияОбъект.<Имя поля>).
+	ExternalDimensionTableKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
+		location := c.externalDimensionTableByID[id]
+		table := c.ExternalDataSources[location.source].Cubes[location.cube].DimensionTables[location.table]
+		return externalFieldParts(table.Fields, table.Commands)
+	}},
+	ExternalFunctionKind: {},
 	HTTPServiceKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		var parts []objectPart
 		for _, template := range c.HTTPServices[c.httpServiceByID[id]].Templates {
@@ -320,6 +340,16 @@ func declaredParts(attributes []Attribute, tableParts []TablePart, commands []Ob
 		parts = append(parts, objectPart{key: command.ID.String(), name: command.Name, title: command.Title, group: CommandsPart})
 	}
 	return parts
+}
+
+// externalFieldParts is the fields and the commands of a table of a source or
+// of a cube's dimension.
+func externalFieldParts(fields []ExternalField, commands []ObjectCommand) []objectPart {
+	parts := make([]objectPart, 0, len(fields)+len(commands))
+	for index := range fields {
+		parts = append(parts, fieldPart(&fields[index].Attribute, FieldsPart, ""))
+	}
+	return append(parts, declaredParts(nil, nil, commands)...)
 }
 
 // registerParts is the dimensions, the resources, the attributes and the

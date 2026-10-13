@@ -126,7 +126,8 @@ func TestExternalCubeCarriesItsDimensionsResourcesAndTables(t *testing.T) {
 
 // What a cube and a dimension table are checked for on their own. Catches a
 // dimension and a resource of one name - one field of the cube read twice -
-// and a presentation field that is not a field. A cube or a resource with no
+// and a presentation field that is not a field, and a part of either sharing
+// its identifier with a part of the other. A cube or a resource with no
 // name in the source and an unfilled parent without a hierarchy are carried
 // and noted (notes_test.go).
 func TestExternalCubeAndDimensionTableAreCheckedOnTheirOwn(t *testing.T) {
@@ -139,7 +140,12 @@ func TestExternalCubeAndDimensionTableAreCheckedOnTheirOwn(t *testing.T) {
 		// of its own: the strict reading names the property.
 		"a column on a dimension": {strings.Replace(salesCubeBody, "    types: [{kind: date}]\n", "    types: [{kind: date}]\n    name_in_data_source: '[Date]'\n", 1), goodsDimTableBody, "name_in_data_source not found"},
 		"a filling on a resource": {strings.Replace(salesCubeBody, "    name_in_data_source: '[Measures].[Quantity]'\n", "    name_in_data_source: '[Measures].[Quantity]'\n    filling: {value: {kind: number, data: \"0\"}}\n", 1), goodsDimTableBody, "resources[0].filling belongs to a field somebody enters"},
-		"bounds on a resource":    {strings.Replace(salesCubeBody, "    name_in_data_source: '[Measures].[Quantity]'\n", "    name_in_data_source: '[Measures].[Quantity]'\n    presentation: {max_value: \"9\"}\n", 1), goodsDimTableBody, "resources[0].presentation.max_value belongs to"},
+		// The parts of a cube and of a dimension table are in the one walk
+		// of what an object holds, so their identifiers are unique across
+		// the configuration, not only within the object.
+		"a field of a dimension table with a dimension's identifier": {salesCubeBody, strings.Replace(goodsDimTableBody, "id: "+goodsDimTableCode, "id: "+goodsDimension, 1),
+			"cube Склад.Продажи dimension Товар and dimension table Склад.Продажи.Товары field Код use"},
+		"bounds on a resource": {strings.Replace(salesCubeBody, "    name_in_data_source: '[Measures].[Quantity]'\n", "    name_in_data_source: '[Measures].[Quantity]'\n    presentation: {max_value: \"9\"}\n", 1), goodsDimTableBody, "resources[0].presentation.max_value belongs to"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

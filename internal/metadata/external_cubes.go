@@ -245,12 +245,9 @@ func validateCubeFields(cube ExternalCube, configuration project.Project) []stri
 			}
 		}
 	}
-	dimensions := make([]Attribute, 0, len(cube.Dimensions))
 	for index, dimension := range cube.Dimensions {
 		check(fmt.Sprintf("dimensions[%d]", index), dimension.Attribute)
-		dimensions = append(dimensions, dimension.Attribute)
 	}
-	resources := make([]Attribute, 0, len(cube.Resources))
 	for index, resource := range cube.Resources {
 		prefix := fmt.Sprintf("resources[%d]", index)
 		check(prefix, resource.Attribute)
@@ -272,9 +269,26 @@ func validateCubeFields(cube ExternalCube, configuration project.Project) []stri
 				issues = append(issues, prefix+"."+property.name+" belongs to a field somebody enters, and a resource of a cube is a measured value nobody does")
 			}
 		}
-		resources = append(resources, resource.Attribute)
 	}
-	return append(issues, validateFieldLinks(nil, []fieldGroup{{"dimensions", dimensions}, {"resources", resources}}, nil)...)
+	return append(issues, validateFieldLinks(nil, []fieldGroup{{"dimensions", cube.dimensionAttributes()}, {"resources", cube.resourceAttributes()}}, nil)...)
+}
+
+// dimensionAttributes and resourceAttributes are the dimensions and the
+// resources of a cube as fields of its records.
+func (cube ExternalCube) dimensionAttributes() []Attribute {
+	result := make([]Attribute, 0, len(cube.Dimensions))
+	for _, dimension := range cube.Dimensions {
+		result = append(result, dimension.Attribute)
+	}
+	return result
+}
+
+func (cube ExternalCube) resourceAttributes() []Attribute {
+	result := make([]Attribute, 0, len(cube.Resources))
+	for _, resource := range cube.Resources {
+		result = append(result, resource.Attribute)
+	}
+	return result
 }
 
 // cubeFields is the dimensions and the resources of a cube as fields of a

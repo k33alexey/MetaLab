@@ -202,7 +202,7 @@ func kindInfoMust(kind Kind) kindInfo {
 // omission), and a use given to the wrong kinds: a right on a recalculation
 // refused (demo-base and energy give them), a registration of an enumeration
 // accepted, a kind the exports never show taken silently instead of with a
-// note. The expectation is written out here, not read from kindUsesOf: what
+// note, a right on a dimension of a cube offered as on one of a register. The expectation is written out here, not read from kindUsesOf: what
 // the exports of the configurator write (the Rights.xml of every role, the
 // Content.xml of every exchange plan, the Content of every functional option
 // of the four checked, demo-base and energy), and for registration the help
@@ -228,7 +228,20 @@ func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
 		// roles, survey of 12.10.2026).
 		"restriction": {CatalogKind, DocumentKind, DocumentJournalKind, ChartOfCharacteristicTypesKind, InformationRegisterKind,
 			AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind, BusinessProcessKind, TaskKind},
+		// The kinds the exports give rights on a part of (survey of the
+		// Rights.xml of 13.10.2026).
+		"parts": {CatalogKind, DocumentKind, DocumentJournalKind, ChartOfCharacteristicTypesKind, ChartOfAccountsKind,
+			ChartOfCalculationTypesKind, ExchangePlanKind, BusinessProcessKind, TaskKind, ReportKind, DataProcessorKind,
+			InformationRegisterKind, AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind,
+			ExternalDataSourceTableKind, WebServiceKind, HTTPServiceKind},
 	}
+	// The kinds whose parts no export gives rights on although the model
+	// holds them: the commands of an enumeration and a filter criterion, the
+	// dimensions, resources and commands of a cube, the fields and commands of
+	// a dimension table (help: ВнешнийИсточникДанныхКубЗапись,
+	// ВнешнийИсточникДанныхКубТаблицаИзмеренияОбъект). The rest hold no part a
+	// right is given on.
+	partsUnshown := []Kind{EnumerationKind, FilterCriterionKind, ExternalCubeKind, ExternalDimensionTableKind}
 	// The help restricts reading, adding, changing and deleting only: a kind
 	// offered none of the four keeps no data to restrict.
 	keepsData := func(kind Kind) bool {
@@ -249,7 +262,7 @@ func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
 			continue
 		}
 		for use, got := range map[string]presence{"rights": info.uses.rights, "registration": info.uses.registration,
-			"option": info.uses.option, "restriction": info.uses.restriction} {
+			"option": info.uses.option, "restriction": info.uses.restriction, "parts": info.uses.parts} {
 			expected := unproven
 			switch {
 			case slices.Contains(shown[use], item.Kind):
@@ -257,6 +270,8 @@ func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
 			case use == "registration" && !slices.Contains(exchanged, item.Kind):
 				expected = absent
 			case use == "restriction" && !keepsData(item.Kind):
+				expected = absent
+			case use == "parts" && !slices.Contains(partsUnshown, item.Kind):
 				expected = absent
 			}
 			if got != expected {

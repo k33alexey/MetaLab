@@ -779,8 +779,9 @@ type Catalog struct {
 	// externalTableByID finds a table of any source by its identifier, which
 	// is how a field that refers to it names it.
 	externalTableByID map[uuid.UUID]externalTableLocation
-	// externalDimensionTableByID finds a dimension table of any cube the same
-	// way.
+	// externalCubeByID and externalDimensionTableByID find a cube of any
+	// source and a dimension table of any cube the same way.
+	externalCubeByID                 map[uuid.UUID]externalCubeLocation
 	externalDimensionTableByID       map[uuid.UUID]externalDimensionTableLocation
 	CommonPictures                   []CommonPictureDefinition
 	commonPictureByName              map[string]int

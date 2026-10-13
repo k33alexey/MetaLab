@@ -204,7 +204,9 @@ func TestLoaderReadsTheGridBesideTheRole(t *testing.T) {
 // Defect caught: a role of the prototype refused for naming a subsystem, the
 // configuration or a recalculation (demo-base, energy); one naming a common
 // module refused without a reason, or accepted silently; a right outside the
-// exports' lists accepted silently, or one inside them noted.
+// exports' lists accepted silently, or one inside them noted; a right on a
+// part of a cube or a dimension table, which no export gives, refused as a
+// part of nothing or accepted silently.
 func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 	t.Parallel()
 	root := compositeProject(t)
@@ -264,6 +266,10 @@ func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 		"use on a field of a standard table part": {part(grant(cmpAccounts, PermissionRead),
 			"extdimensiontypes.turnoversonly", PermissionView, PermissionUse),
 			"charts-of-accounts Хозрасчетный.ВидыСубконто.ТолькоОбороты use"},
+		"view on a dimension of a cube": {part(grant(salesCube, PermissionRead), goodsDimension, PermissionView),
+			"external-data-source-cubes Склад.Продажи.Товар view"},
+		"view on a field of a dimension table": {part(grant(goodsDimTable, PermissionRead), goodsDimTableCode, PermissionView),
+			"external-data-source-dimension-tables Склад.Продажи.Товары.Код view"},
 	}
 	for name, item := range unoffered {
 		role, _ := project.Role("Кладовщик")

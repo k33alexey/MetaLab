@@ -593,6 +593,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.webSocketClientByName, catalog.webSocketClientByID = make(map[string]int, len(catalog.WebSocketClients)), make(map[uuid.UUID]int, len(catalog.WebSocketClients))
 	catalog.externalDataSourceByName, catalog.externalDataSourceByID = make(map[string]int, len(catalog.ExternalDataSources)), make(map[uuid.UUID]int, len(catalog.ExternalDataSources))
 	catalog.externalTableByID = map[uuid.UUID]externalTableLocation{}
+	catalog.externalCubeByID = map[uuid.UUID]externalCubeLocation{}
 	catalog.externalDimensionTableByID = map[uuid.UUID]externalDimensionTableLocation{}
 	sort.Slice(catalog.CommonPictures, func(i, j int) bool {
 		return catalog.CommonPictures[i].ID.String() < catalog.CommonPictures[j].ID.String()
@@ -854,6 +855,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			if err := add(ExternalCubeKind, cube.ID, item.Name+"."+cube.Name, cubeIndex, externalTableNames, nil); err != nil {
 				return err
 			}
+			catalog.externalCubeByID[cube.ID] = externalCubeLocation{source: index, cube: cubeIndex}
 			within(cube.ID, item.ID, cube.Title)
 			for tableIndex, table := range cube.DimensionTables {
 				if err := add(ExternalDimensionTableKind, table.ID, item.Name+"."+cube.Name+"."+table.Name, tableIndex, externalTableNames, nil); err != nil {
