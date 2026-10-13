@@ -261,14 +261,21 @@ func placeName(place typePlace) string {
 }
 
 // hasRecalculation says a recalculation of some calculation register has the
-// identifier: a recalculation is subordinate and has no index of its own.
+// identifier.
 func (catalog *Catalog) hasRecalculation(id uuid.UUID) bool {
+	_, ok := catalog.recalculationOf(id)
+	return ok
+}
+
+// recalculationOf finds a recalculation of some calculation register by its
+// identifier: a recalculation is subordinate and has no index of its own.
+func (catalog *Catalog) recalculationOf(id uuid.UUID) (Recalculation, bool) {
 	for _, register := range catalog.CalculationRegisters {
 		for _, recalculation := range register.Recalculations {
 			if recalculation.ID == id {
-				return true
+				return recalculation, true
 			}
 		}
 	}
-	return false
+	return Recalculation{}, false
 }

@@ -238,11 +238,13 @@ func readRootPictureImages(directory string) (PictureImages, error) {
 // checked here is not the mechanism but the reference: an object named in the
 // content and absent from the configuration is a mistake in the configuration
 // regardless of who reads the list afterwards, and the moment to notice it is
-// the one where the object was deleted.
+// the one where the object was deleted. An object of any kind may be in it:
+// the configurator marks the content on the whole tree of the configuration
+// (help, «Редактирование состава автономной конфигурации»).
 func (catalog *Catalog) validateStandaloneConfiguration() error {
 	configuration := catalog.Project
 	for _, item := range configuration.StandaloneConfigurationContent {
-		if _, ok := catalog.objectElementsOf(Kind(item.Kind), item.Object); !ok {
+		if !catalog.hasObject(Kind(item.Kind), item.Object) {
 			return fmt.Errorf("the standalone application is made of %s %s, which is not in the configuration",
 				item.Kind, item.Object)
 		}

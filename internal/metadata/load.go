@@ -712,6 +712,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		allIDs[id] = what
 		return nil
 	}
+	// order is the objects in the order they are added, for the walk of what
+	// each holds once all are in.
+	var order []uuid.UUID
 	add := func(kind Kind, id uuid.UUID, name string, index int, names map[string]int, ids map[uuid.UUID]int) error {
 		folded := strings.ToLower(name)
 		if _, exists := names[folded]; exists {
@@ -722,6 +725,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		}
 		names[folded] = index
 		catalog.objects[id] = indexedObject{kind: kind, name: name}
+		order = append(order, id)
 		if ids != nil {
 			ids[id] = index
 		}
@@ -919,12 +923,6 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		if err := add(EnumerationKind, item.ID, item.Name, index, catalog.enumerationByName, catalog.enumerationByID); err != nil {
 			return err
 		}
-		for _, value := range item.Values {
-			if previous, ok := allIDs[value.ID]; ok {
-				return fmt.Errorf("%w: %s and enumeration value %s.%s use %s", ErrDuplicateID, previous, item.Name, value.Name, value.ID)
-			}
-			allIDs[value.ID] = "enumeration value " + item.Name + "." + value.Name
-		}
 	}
 	for index, item := range catalog.DefinedTypes {
 		if err := add(DefinedTypeKind, item.ID, item.Name, index, catalog.definedTypeByName, catalog.definedTypeByID); err != nil {
@@ -935,205 +933,44 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		if err := add(CatalogKind, item.ID, item.Name, index, catalog.catalogByName, catalog.catalogByID); err != nil {
 			return err
 		}
-		for _, predefined := range item.Predefined {
-			if previous, ok := allIDs[predefined.ID]; ok {
-				return fmt.Errorf("%w: %s and predefined catalog item %s.%s use %s", ErrDuplicateID, previous, item.Name, predefined.Name, predefined.ID)
-			}
-			allIDs[predefined.ID] = "predefined catalog item " + item.Name + "." + predefined.Name
-		}
-		for _, attribute := range item.Attributes {
-			if _, common := catalog.commonAttributeByID[attribute.ID]; common {
-				continue
-			}
-			if previous, ok := allIDs[attribute.ID]; ok {
-				return fmt.Errorf("%w: %s and catalog attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
-			}
-			allIDs[attribute.ID] = "catalog attribute " + item.Name + "." + attribute.Name
-		}
-		for _, part := range item.TableParts {
-			if previous, ok := allIDs[part.ID]; ok {
-				return fmt.Errorf("%w: %s and catalog table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
-			}
-			allIDs[part.ID] = "catalog table part " + item.Name + "." + part.Name
-			for _, attribute := range part.Attributes {
-				if previous, ok := allIDs[attribute.ID]; ok {
-					return fmt.Errorf("%w: %s and catalog table part attribute %s.%s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, attribute.Name, attribute.ID)
-				}
-				allIDs[attribute.ID] = "catalog table part attribute " + item.Name + "." + part.Name + "." + attribute.Name
-			}
-		}
 	}
 	for index, item := range catalog.ChartsOfCharacteristicTypes {
 		if err := add(ChartOfCharacteristicTypesKind, item.ID, item.Name, index, catalog.chartOfCharacteristicTypesByName, catalog.chartOfCharacteristicTypesByID); err != nil {
 			return err
-		}
-		for _, predefined := range item.Predefined {
-			if previous, ok := allIDs[predefined.ID]; ok {
-				return fmt.Errorf("%w: %s and predefined characteristic %s.%s use %s", ErrDuplicateID, previous, item.Name, predefined.Name, predefined.ID)
-			}
-			allIDs[predefined.ID] = "predefined characteristic " + item.Name + "." + predefined.Name
-		}
-		for _, attribute := range item.Attributes {
-			if _, common := catalog.commonAttributeByID[attribute.ID]; common {
-				continue
-			}
-			if previous, ok := allIDs[attribute.ID]; ok {
-				return fmt.Errorf("%w: %s and chart of characteristic types attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
-			}
-			allIDs[attribute.ID] = "chart of characteristic types attribute " + item.Name + "." + attribute.Name
-		}
-		for _, part := range item.TableParts {
-			if previous, ok := allIDs[part.ID]; ok {
-				return fmt.Errorf("%w: %s and chart of characteristic types table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
-			}
-			allIDs[part.ID] = "chart of characteristic types table part " + item.Name + "." + part.Name
-			for _, attribute := range part.Attributes {
-				if previous, ok := allIDs[attribute.ID]; ok {
-					return fmt.Errorf("%w: %s and chart of characteristic types table part attribute %s.%s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, attribute.Name, attribute.ID)
-				}
-				allIDs[attribute.ID] = "chart of characteristic types table part attribute " + item.Name + "." + part.Name + "." + attribute.Name
-			}
 		}
 	}
 	for index, item := range catalog.ChartsOfAccounts {
 		if err := add(ChartOfAccountsKind, item.ID, item.Name, index, catalog.chartOfAccountsByName, catalog.chartOfAccountsByID); err != nil {
 			return err
 		}
-		for _, account := range item.Predefined {
-			if previous, ok := allIDs[account.ID]; ok {
-				return fmt.Errorf("%w: %s and predefined account %s.%s use %s", ErrDuplicateID, previous, item.Name, account.Name, account.ID)
-			}
-			allIDs[account.ID] = "predefined account " + item.Name + "." + account.Name
-		}
-		// A flag is a column of its own on every account, so its identity has
-		// to be as unique as an attribute's.
-		for _, flag := range append(slices.Clone(item.AccountingFlags), item.ExtDimensionAccountingFlags...) {
-			if previous, ok := allIDs[flag.ID]; ok {
-				return fmt.Errorf("%w: %s and accounting flag %s.%s use %s", ErrDuplicateID, previous, item.Name, flag.Name, flag.ID)
-			}
-			allIDs[flag.ID] = "accounting flag " + item.Name + "." + flag.Name
-		}
-		for _, attribute := range item.Attributes {
-			if _, common := catalog.commonAttributeByID[attribute.ID]; common {
-				continue
-			}
-			if previous, ok := allIDs[attribute.ID]; ok {
-				return fmt.Errorf("%w: %s and chart of accounts attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
-			}
-			allIDs[attribute.ID] = "chart of accounts attribute " + item.Name + "." + attribute.Name
-		}
-		for _, part := range item.TableParts {
-			if previous, ok := allIDs[part.ID]; ok {
-				return fmt.Errorf("%w: %s and chart of accounts table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
-			}
-			allIDs[part.ID] = "chart of accounts table part " + item.Name + "." + part.Name
-			for _, attribute := range part.Attributes {
-				if previous, ok := allIDs[attribute.ID]; ok {
-					return fmt.Errorf("%w: %s and chart of accounts table part attribute %s.%s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, attribute.Name, attribute.ID)
-				}
-				allIDs[attribute.ID] = "chart of accounts table part attribute " + item.Name + "." + part.Name + "." + attribute.Name
-			}
-		}
 	}
 	for index, item := range catalog.ChartsOfCalculationTypes {
 		if err := add(ChartOfCalculationTypesKind, item.ID, item.Name, index, catalog.chartOfCalculationTypesByName, catalog.chartOfCalculationTypesByID); err != nil {
 			return err
-		}
-		for _, predefined := range item.Predefined {
-			if previous, ok := allIDs[predefined.ID]; ok {
-				return fmt.Errorf("%w: %s and predefined calculation type %s.%s use %s", ErrDuplicateID, previous, item.Name, predefined.Name, predefined.ID)
-			}
-			allIDs[predefined.ID] = "predefined calculation type " + item.Name + "." + predefined.Name
-		}
-		for _, attribute := range item.Attributes {
-			if _, common := catalog.commonAttributeByID[attribute.ID]; common {
-				continue
-			}
-			if previous, ok := allIDs[attribute.ID]; ok {
-				return fmt.Errorf("%w: %s and chart of calculation types attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
-			}
-			allIDs[attribute.ID] = "chart of calculation types attribute " + item.Name + "." + attribute.Name
-		}
-		for _, part := range item.TableParts {
-			if previous, ok := allIDs[part.ID]; ok {
-				return fmt.Errorf("%w: %s and chart of calculation types table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
-			}
-			allIDs[part.ID] = "chart of calculation types table part " + item.Name + "." + part.Name
-			for _, attribute := range part.Attributes {
-				if previous, ok := allIDs[attribute.ID]; ok {
-					return fmt.Errorf("%w: %s and chart of calculation types table part attribute %s.%s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, attribute.Name, attribute.ID)
-				}
-				allIDs[attribute.ID] = "chart of calculation types table part attribute " + item.Name + "." + part.Name + "." + attribute.Name
-			}
 		}
 	}
 	for index, item := range catalog.Tasks {
 		if err := add(TaskKind, item.ID, item.Name, index, catalog.taskByName, catalog.taskByID); err != nil {
 			return err
 		}
-		for _, attribute := range append(slices.Clone(item.Attributes), addressingAsAttributes(item)...) {
-			if _, common := catalog.commonAttributeByID[attribute.ID]; common {
-				continue
-			}
-			if previous, ok := allIDs[attribute.ID]; ok {
-				return fmt.Errorf("%w: %s and task attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
-			}
-			allIDs[attribute.ID] = "task attribute " + item.Name + "." + attribute.Name
-		}
-		for _, part := range item.TableParts {
-			if previous, ok := allIDs[part.ID]; ok {
-				return fmt.Errorf("%w: %s and task table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
-			}
-			allIDs[part.ID] = "task table part " + item.Name + "." + part.Name
-		}
 	}
 	for index, item := range catalog.AccountingRegisters {
 		if err := add(AccountingRegisterKind, item.ID, item.Name, index, catalog.accountingRegisterByName, catalog.accountingRegisterByID); err != nil {
 			return err
-		}
-		for _, field := range accountingRegisterFields(item) {
-			if previous, ok := allIDs[field.ID]; ok {
-				return fmt.Errorf("%w: %s and accounting register field %s.%s use %s", ErrDuplicateID, previous, item.Name, field.Name, field.ID)
-			}
-			allIDs[field.ID] = "accounting register field " + item.Name + "." + field.Name
-		}
-		for _, attribute := range item.Attributes {
-			if _, common := catalog.commonAttributeByID[attribute.ID]; common {
-				continue
-			}
-			if previous, ok := allIDs[attribute.ID]; ok {
-				return fmt.Errorf("%w: %s and accounting register attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
-			}
-			allIDs[attribute.ID] = "accounting register attribute " + item.Name + "." + attribute.Name
 		}
 	}
 	for index, item := range catalog.CalculationRegisters {
 		if err := add(CalculationRegisterKind, item.ID, item.Name, index, catalog.calculationRegisterByName, catalog.calculationRegisterByID); err != nil {
 			return err
 		}
-		for _, field := range append(calculationRegisterFields(item), item.attributeFields()...) {
-			if _, common := catalog.commonAttributeByID[field.ID]; common {
-				continue
-			}
-			if previous, ok := allIDs[field.ID]; ok {
-				return fmt.Errorf("%w: %s and calculation register field %s.%s use %s", ErrDuplicateID, previous, item.Name, field.Name, field.ID)
-			}
-			allIDs[field.ID] = "calculation register field " + item.Name + "." + field.Name
-		}
 		for _, recalculation := range item.Recalculations {
-			if previous, ok := allIDs[recalculation.ID]; ok {
-				return fmt.Errorf("%w: %s and recalculation %s.%s use %s", ErrDuplicateID, previous, item.Name, recalculation.Name, recalculation.ID)
+			name := item.Name + "." + recalculation.Name
+			if err := unique(recalculation.ID, "recalculation "+name); err != nil {
+				return err
 			}
-			allIDs[recalculation.ID] = "recalculation " + item.Name + "." + recalculation.Name
-			catalog.objects[recalculation.ID] = indexedObject{kind: RecalculationKind, name: item.Name + "." + recalculation.Name}
+			catalog.objects[recalculation.ID] = indexedObject{kind: RecalculationKind, name: name}
+			order = append(order, recalculation.ID)
 			within(recalculation.ID, item.ID, recalculation.Title)
-			for _, dimension := range recalculation.Dimensions {
-				if previous, ok := allIDs[dimension.ID]; ok {
-					return fmt.Errorf("%w: %s and recalculation dimension %s.%s.%s use %s",
-						ErrDuplicateID, previous, item.Name, recalculation.Name, dimension.Name, dimension.ID)
-				}
-				allIDs[dimension.ID] = "recalculation dimension " + item.Name + "." + recalculation.Name + "." + dimension.Name
-			}
 		}
 	}
 	for _, running := range []struct {
@@ -1149,18 +986,6 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			if err := add(running.kind, item.id, item.name, index, running.names, running.ids); err != nil {
 				return err
 			}
-			for _, attribute := range item.attributes {
-				if previous, ok := allIDs[attribute.ID]; ok {
-					return fmt.Errorf("%w: %s and %s attribute %s.%s use %s", ErrDuplicateID, previous, kindWord(running.kind), item.name, attribute.Name, attribute.ID)
-				}
-				allIDs[attribute.ID] = kindWord(running.kind) + " attribute " + item.name + "." + attribute.Name
-			}
-			for _, part := range item.parts {
-				if previous, ok := allIDs[part.ID]; ok {
-					return fmt.Errorf("%w: %s and %s table part %s.%s use %s", ErrDuplicateID, previous, kindWord(running.kind), item.name, part.Name, part.ID)
-				}
-				allIDs[part.ID] = kindWord(running.kind) + " table part " + item.name + "." + part.Name
-			}
 		}
 	}
 	for index, item := range catalog.Numerators {
@@ -1172,122 +997,45 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		if err := add(SequenceKind, item.ID, item.Name, index, catalog.sequenceByName, catalog.sequenceByID); err != nil {
 			return err
 		}
-		for _, dimension := range item.Dimensions {
-			if previous, ok := allIDs[dimension.ID]; ok {
-				return fmt.Errorf("%w: %s and sequence dimension %s.%s use %s", ErrDuplicateID, previous, item.Name, dimension.Name, dimension.ID)
-			}
-			allIDs[dimension.ID] = "sequence dimension " + item.Name + "." + dimension.Name
-		}
 	}
 	for index, item := range catalog.DocumentJournals {
 		if err := add(DocumentJournalKind, item.ID, item.Name, index, catalog.documentJournalByName, catalog.documentJournalByID); err != nil {
 			return err
-		}
-		for _, column := range item.Columns {
-			if previous, ok := allIDs[column.ID]; ok {
-				return fmt.Errorf("%w: %s and journal column %s.%s use %s", ErrDuplicateID, previous, item.Name, column.Name, column.ID)
-			}
-			allIDs[column.ID] = "journal column " + item.Name + "." + column.Name
 		}
 	}
 	for index, item := range catalog.ExchangePlans {
 		if err := add(ExchangePlanKind, item.ID, item.Name, index, catalog.exchangePlanByName, catalog.exchangePlanByID); err != nil {
 			return err
 		}
-		for _, attribute := range item.Attributes {
-			if _, common := catalog.commonAttributeByID[attribute.ID]; common {
-				continue
-			}
-			if previous, ok := allIDs[attribute.ID]; ok {
-				return fmt.Errorf("%w: %s and exchange plan attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
-			}
-			allIDs[attribute.ID] = "exchange plan attribute " + item.Name + "." + attribute.Name
-		}
-		for _, part := range item.TableParts {
-			if previous, ok := allIDs[part.ID]; ok {
-				return fmt.Errorf("%w: %s and exchange plan table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
-			}
-			allIDs[part.ID] = "exchange plan table part " + item.Name + "." + part.Name
-		}
 	}
 	for index, item := range catalog.BusinessProcesses {
 		if err := add(BusinessProcessKind, item.ID, item.Name, index, catalog.businessProcessByName, catalog.businessProcessByID); err != nil {
 			return err
-		}
-		for _, point := range item.Route.Points {
-			if previous, ok := allIDs[point.ID]; ok {
-				return fmt.Errorf("%w: %s and route point %s.%s use %s", ErrDuplicateID, previous, item.Name, point.Name, point.ID)
-			}
-			allIDs[point.ID] = "route point " + item.Name + "." + point.Name
-		}
-		for _, attribute := range item.Attributes {
-			if _, common := catalog.commonAttributeByID[attribute.ID]; common {
-				continue
-			}
-			if previous, ok := allIDs[attribute.ID]; ok {
-				return fmt.Errorf("%w: %s and business process attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
-			}
-			allIDs[attribute.ID] = "business process attribute " + item.Name + "." + attribute.Name
-		}
-		for _, part := range item.TableParts {
-			if previous, ok := allIDs[part.ID]; ok {
-				return fmt.Errorf("%w: %s and business process table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
-			}
-			allIDs[part.ID] = "business process table part " + item.Name + "." + part.Name
 		}
 	}
 	for index, item := range catalog.Documents {
 		if err := add(DocumentKind, item.ID, item.Name, index, catalog.documentByName, catalog.documentByID); err != nil {
 			return err
 		}
-		for _, attribute := range item.Attributes {
-			if _, common := catalog.commonAttributeByID[attribute.ID]; common {
-				continue
-			}
-			if previous, ok := allIDs[attribute.ID]; ok {
-				return fmt.Errorf("%w: %s and document attribute %s.%s use %s", ErrDuplicateID, previous, item.Name, attribute.Name, attribute.ID)
-			}
-			allIDs[attribute.ID] = "document attribute " + item.Name + "." + attribute.Name
-		}
-		for _, part := range item.TableParts {
-			if previous, ok := allIDs[part.ID]; ok {
-				return fmt.Errorf("%w: %s and document table part %s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, part.ID)
-			}
-			allIDs[part.ID] = "document table part " + item.Name + "." + part.Name
-			for _, attribute := range part.Attributes {
-				if previous, ok := allIDs[attribute.ID]; ok {
-					return fmt.Errorf("%w: %s and document table part attribute %s.%s.%s use %s", ErrDuplicateID, previous, item.Name, part.Name, attribute.Name, attribute.ID)
-				}
-				allIDs[attribute.ID] = "document table part attribute " + item.Name + "." + part.Name + "." + attribute.Name
-			}
-		}
 	}
 	for index, item := range catalog.InformationRegisters {
 		if err := add(InformationRegisterKind, item.ID, item.Name, index, catalog.informationRegisterByName, catalog.informationRegisterByID); err != nil {
 			return err
-		}
-		for _, field := range informationRegisterFields(item) {
-			if _, common := catalog.commonAttributeByID[field.ID]; common {
-				continue
-			}
-			if previous, ok := allIDs[field.ID]; ok {
-				return fmt.Errorf("%w: %s and information register field %s.%s use %s", ErrDuplicateID, previous, item.Name, field.Name, field.ID)
-			}
-			allIDs[field.ID] = "information register field " + item.Name + "." + field.Name
 		}
 	}
 	for index, item := range catalog.AccumulationRegisters {
 		if err := add(AccumulationRegisterKind, item.ID, item.Name, index, catalog.accumulationRegisterByName, catalog.accumulationRegisterByID); err != nil {
 			return err
 		}
-		for _, field := range accumulationRegisterFields(item) {
-			if _, common := catalog.commonAttributeByID[field.ID]; common {
-				continue
+	}
+	// What each object holds is walked once all objects are in: the walk reads
+	// the object through its kind's index.
+	for _, id := range order {
+		object := catalog.objects[id]
+		for _, held := range catalog.heldIdentities(object.kind, id) {
+			if err := unique(held.id, kindWord(object.kind)+" "+object.name+" "+held.word+" "+held.name); err != nil {
+				return err
 			}
-			if previous, ok := allIDs[field.ID]; ok {
-				return fmt.Errorf("%w: %s and accumulation register field %s.%s use %s", ErrDuplicateID, previous, item.Name, field.Name, field.ID)
-			}
-			allIDs[field.ID] = "accumulation register field " + item.Name + "." + field.Name
 		}
 	}
 	for _, item := range catalog.Constants {

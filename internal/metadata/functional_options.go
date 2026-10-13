@@ -186,24 +186,11 @@ func (elements objectElements) has(id uuid.UUID) bool {
 	return ok
 }
 
-// namedObject finds an object of any kind by its identifier, with what it
-// holds where its kind holds anything objectElementsOf knows of: a role or a
-// functional option may name an object of every kind.
-func (catalog *Catalog) namedObject(kind Kind, id uuid.UUID) (objectElements, bool) {
-	if elements, ok := catalog.objectElementsOf(kind, id); ok {
-		return elements, true
-	}
-	return objectElements{}, catalog.hasObject(kind, id)
-}
-
 // objectElementsOf finds one object by kind and identifier and says what it
-// holds, from the one walk of its composition (partsOf). The second result is
-// false when the configuration has no such object, or its kind is not one
-// such a name may point at (kindComposition.named).
+// holds, from the one walk of its composition (partsOf): an object of any
+// kind, since a role or a functional option may name an object of every kind.
+// The second result is false when the configuration has no such object.
 func (catalog *Catalog) objectElementsOf(kind Kind, id uuid.UUID) (objectElements, bool) {
-	if !kindCompositionOf[kind].named {
-		return objectElements{}, false
-	}
 	parts, ok := catalog.partsOf(kind, id)
 	if !ok {
 		return objectElements{}, false
@@ -250,7 +237,7 @@ func (catalog *Catalog) validateFunctionalOptions() error {
 		}
 		for index, item := range option.Content {
 			where := fmt.Sprintf("%s content[%d]", owner, index)
-			elements, ok := catalog.namedObject(item.Kind, item.Object)
+			elements, ok := catalog.objectElementsOf(item.Kind, item.Object)
 			if !ok {
 				return fmt.Errorf("%s switches %s %s, which is not in the configuration", where, item.Kind, item.Object)
 			}

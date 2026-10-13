@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"reflect"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -104,31 +105,50 @@ type kindComposition struct {
 	// calculation types does not list it, its object - ПланВидовРасчетаОбъект
 	// - has it).
 	dataVersion bool
-	// named is a filter criterion, a characteristic table and the content of
-	// the standalone configuration naming the object by what it holds - the
-	// kinds objectElementsOf took before the one walk of composition. Which
-	// kinds the content of the standalone configuration may name is open
-	// (BLOCKS, «один обход состава объекта»).
-	named bool
+	// identities is what else of the object has an identifier of its own and
+	// is no part a role may name; nil where there is nothing.
+	identities func(catalog *Catalog, id uuid.UUID) []heldIdentity
+}
+
+// heldIdentity is something an object holds with an identifier of its own,
+// named for a message: what it is and its name within the object.
+type heldIdentity struct {
+	id   uuid.UUID
+	word string
+	name string
+}
+
+// identitiesOf names the items of a list the way heldIdentity does, by their
+// ID and Name: every list it is given is of descriptions that have both.
+func identitiesOf[T any](word string, items []T) []heldIdentity {
+	result := make([]heldIdentity, 0, len(items))
+	for index := range items {
+		item := reflect.ValueOf(&items[index]).Elem()
+		result = append(result, heldIdentity{id: item.FieldByName("ID").Interface().(uuid.UUID), word: word,
+			name: item.FieldByName("Name").String()})
+	}
+	return result
 }
 
 // kindCompositionOf is every kind's composition. A test requires every kind
 // of the model to be here, so a new kind cannot be left without one.
 var kindCompositionOf = map[Kind]kindComposition{
-	RoleKind:              {named: true},
-	SubsystemKind:         {named: true},
-	ConstantKind:          {named: true},
-	SessionParameterKind:  {named: true},
-	CommonAttributeKind:   {named: true},
-	CommonModuleKind:      {named: true},
-	EventSubscriptionKind: {named: true},
-	EnumerationKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	RoleKind:              {},
+	SubsystemKind:         {},
+	ConstantKind:          {},
+	SessionParameterKind:  {},
+	CommonAttributeKind:   {},
+	CommonModuleKind:      {},
+	EventSubscriptionKind: {},
+	EnumerationKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		return declaredParts(nil, nil, c.Enumerations[c.enumerationByID[id]].Commands)
+	}, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
+		return identitiesOf("value", c.Enumerations[c.enumerationByID[id]].Values)
 	}},
 	ScheduledJobKind:   {},
 	CommandGroupKind:   {},
-	CommonCommandKind:  {named: true},
-	CommonFormKind:     {named: true},
+	CommonCommandKind:  {},
+	CommonFormKind:     {},
 	CommonTemplateKind: {},
 	XDTOPackageKind:    {},
 	WebServiceKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
@@ -141,7 +161,7 @@ var kindCompositionOf = map[Kind]kindComposition{
 	WSReferenceKind:        {},
 	WebSocketClientKind:    {},
 	ExternalDataSourceKind: {},
-	ExternalDataSourceTableKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	ExternalDataSourceTableKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		location := c.externalTableByID[id]
 		table := c.ExternalDataSources[location.source].Tables[location.table]
 		parts := make([]objectPart, 0, len(table.Fields)+len(table.Commands))
@@ -169,20 +189,20 @@ var kindCompositionOf = map[Kind]kindComposition{
 	FunctionalOptionKind:          {},
 	FunctionalOptionParameterKind: {},
 	SettingsStorageKind:           {},
-	FilterCriterionKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	FilterCriterionKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		return declaredParts(nil, nil, c.FilterCriteria[c.filterCriterionByID[id]].Commands)
 	}},
-	DefinedTypeKind: {named: true},
+	DefinedTypeKind: {},
 	LanguageKind:    {},
-	CatalogKind: {named: true, dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	CatalogKind: referenceKind(func(c *Catalog, id uuid.UUID) ([]Attribute, []TablePart, []ObjectCommand, []PredefinedCatalogItem) {
 		item := c.Catalogs[c.catalogByID[id]]
-		return declaredParts(item.Attributes, item.TableParts, item.Commands)
-	}},
-	ChartOfCharacteristicTypesKind: {named: true, dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+		return item.Attributes, item.TableParts, item.Commands, item.Predefined
+	}),
+	ChartOfCharacteristicTypesKind: referenceKind(func(c *Catalog, id uuid.UUID) ([]Attribute, []TablePart, []ObjectCommand, []PredefinedCharacteristic) {
 		item := c.ChartsOfCharacteristicTypes[c.chartOfCharacteristicTypesByID[id]]
-		return declaredParts(item.Attributes, item.TableParts, item.Commands)
-	}},
-	ChartOfAccountsKind: {named: true, dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+		return item.Attributes, item.TableParts, item.Commands, item.Predefined
+	}),
+	ChartOfAccountsKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.ChartsOfAccounts[c.chartOfAccountsByID[id]]
 		parts := declaredParts(item.Attributes, nil, nil)
 		for index := range item.AccountingFlags {
@@ -192,12 +212,14 @@ var kindCompositionOf = map[Kind]kindComposition{
 			parts = append(parts, fieldPart(&item.ExtDimensionAccountingFlags[index].Attribute, ExtDimensionAccountingFlagsPart, ""))
 		}
 		return append(parts, declaredParts(nil, item.TableParts, item.Commands)...)
+	}, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
+		return identitiesOf("predefined item", c.ChartsOfAccounts[c.chartOfAccountsByID[id]].Predefined)
 	}},
-	ChartOfCalculationTypesKind: {named: true, dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	ChartOfCalculationTypesKind: referenceKind(func(c *Catalog, id uuid.UUID) ([]Attribute, []TablePart, []ObjectCommand, []PredefinedCalculationType) {
 		item := c.ChartsOfCalculationTypes[c.chartOfCalculationTypesByID[id]]
-		return declaredParts(item.Attributes, item.TableParts, item.Commands)
-	}},
-	TaskKind: {named: true, dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+		return item.Attributes, item.TableParts, item.Commands, item.Predefined
+	}),
+	TaskKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.Tasks[c.taskByID[id]]
 		parts := declaredParts(item.Attributes, nil, nil)
 		for _, attribute := range addressingAsAttributes(item) {
@@ -205,48 +227,70 @@ var kindCompositionOf = map[Kind]kindComposition{
 		}
 		return append(parts, declaredParts(nil, item.TableParts, item.Commands)...)
 	}},
-	AccountingRegisterKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	AccountingRegisterKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.AccountingRegisters[c.accountingRegisterByID[id]]
 		return registerParts(RegisterDimensionAttributes(item.Dimensions), accountingResourceAttributes(item.Resources), item.Attributes, item.Commands)
 	}},
-	CalculationRegisterKind: {named: true, dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	CalculationRegisterKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.CalculationRegisters[c.calculationRegisterByID[id]]
 		return registerParts(RegisterDimensionAttributes(item.Dimensions), item.Resources, item.attributeFields(), item.Commands)
 	}},
-	RecalculationKind: {},
-	ReportKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	RecalculationKind: {identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
+		recalculation, _ := c.recalculationOf(id)
+		return identitiesOf("dimension", recalculation.Dimensions)
+	}},
+	ReportKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.Reports[c.reportByID[id]]
 		return declaredParts(item.Attributes, item.TableParts, item.Commands)
 	}},
-	DataProcessorKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	DataProcessorKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.DataProcessors[c.dataProcessorByID[id]]
 		return declaredParts(item.Attributes, item.TableParts, item.Commands)
 	}},
-	NumeratorKind: {named: true},
-	SequenceKind:  {named: true},
-	DocumentJournalKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
-		return declaredParts(nil, nil, c.DocumentJournals[c.documentJournalByID[id]].Commands)
+	NumeratorKind: {},
+	SequenceKind: {identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
+		return identitiesOf("dimension", c.Sequences[c.sequenceByID[id]].Dimensions)
 	}},
-	ExchangePlanKind: {named: true, dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	DocumentJournalKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
+		return declaredParts(nil, nil, c.DocumentJournals[c.documentJournalByID[id]].Commands)
+	}, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
+		return identitiesOf("column", c.DocumentJournals[c.documentJournalByID[id]].Columns)
+	}},
+	ExchangePlanKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.ExchangePlans[c.exchangePlanByID[id]]
 		return declaredParts(item.Attributes, item.TableParts, item.Commands)
 	}},
-	BusinessProcessKind: {named: true, dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	BusinessProcessKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.BusinessProcesses[c.businessProcessByID[id]]
 		return declaredParts(item.Attributes, item.TableParts, item.Commands)
+	}, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
+		return identitiesOf("route point", c.BusinessProcesses[c.businessProcessByID[id]].Route.Points)
 	}},
-	DocumentKind: {named: true, dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	DocumentKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.Documents[c.documentByID[id]]
 		return declaredParts(item.Attributes, item.TableParts, item.Commands)
 	}},
-	InformationRegisterKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	InformationRegisterKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.InformationRegisters[c.informationRegisterByID[id]]
 		return registerParts(RegisterDimensionAttributes(item.Dimensions), item.Resources, item.Attributes, item.Commands)
 	}},
-	AccumulationRegisterKind: {named: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	AccumulationRegisterKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.AccumulationRegisters[c.accumulationRegisterByID[id]]
 		return registerParts(RegisterDimensionAttributes(item.Dimensions), item.Resources, item.Attributes, item.Commands)
 	}},
+}
+
+// referenceKind is the composition of a kind whose objects declare
+// attributes, table parts and commands and have predefined items, read by
+// object.
+func referenceKind[P any](object func(c *Catalog, id uuid.UUID) ([]Attribute, []TablePart, []ObjectCommand, []P)) kindComposition {
+	return kindComposition{dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+		attributes, tableParts, commands, _ := object(c, id)
+		return declaredParts(attributes, tableParts, commands)
+	}, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
+		_, _, _, predefined := object(c, id)
+		return identitiesOf("predefined item", predefined)
+	}}
 }
 
 // fieldPart is a field of an object or of its table part.
@@ -314,6 +358,35 @@ func (catalog *Catalog) partsOf(kind Kind, id uuid.UUID) ([]objectPart, bool) {
 		}
 	}
 	return parts, true
+}
+
+// heldIdentities is everything of an object with an identifier of its own:
+// the parts the one walk of its composition finds, and the rest
+// (kindComposition.identities). A common attribute taken into the object is
+// the common attribute's, not the object's.
+func (catalog *Catalog) heldIdentities(kind Kind, id uuid.UUID) []heldIdentity {
+	parts, _ := catalog.partsOf(kind, id)
+	names := make(map[string]string, len(parts))
+	var result []heldIdentity
+	for _, part := range parts {
+		names[part.key] = part.name
+		partID, err := uuid.Parse(part.key)
+		if err != nil {
+			continue
+		}
+		name := part.name
+		if part.parent != "" {
+			name = names[part.parent] + "." + name
+		} else if _, common := catalog.commonAttributeByID[partID]; common {
+			continue
+		}
+		word := strings.ReplaceAll(strings.TrimSuffix(string(part.group), "s"), "-", " ")
+		result = append(result, heldIdentity{id: partID, word: word, name: name})
+	}
+	if more := kindCompositionOf[kind].identities; more != nil {
+		result = append(result, more(catalog, id)...)
+	}
+	return result
 }
 
 // dataVersionField is the version of an object's data: a field of the table
