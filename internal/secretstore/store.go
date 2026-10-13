@@ -24,7 +24,7 @@ type Store struct {
 }
 
 // New creates the native operating-system secret store.
-func New() *Store { return &Store{backend: nativeBackend{}} }
+func New() *Store { return &Store{backend: nativeBackend()} }
 
 // Set creates or replaces a secret. Secret values are never included in errors.
 func (store *Store) Set(key, secret string) error {

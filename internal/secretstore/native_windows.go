@@ -3,8 +3,6 @@
 package secretstore
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,39 +13,34 @@ import (
 	"github.com/k33alexey/MetaLab/internal/ownerfile"
 )
 
-type nativeBackend struct{}
+// A secret is sealed with the DPAPI machine key, which any process of the
+// machine can open; the rights on the file and the directory keep it from
+// other users (PLATFORM-MODEL.md, «Секреты в Windows»).
+const secretExtension = ".dpapi"
 
-func (nativeBackend) Set(service, account, secret string) error {
-	directory, path, err := windowsSecretPath(service, account)
-	if err != nil {
-		return err
+func secretDirectory() (string, error) {
+	programData := os.Getenv("ProgramData")
+	if programData == "" {
+		return "", fmt.Errorf("ProgramData is not configured")
 	}
+	return filepath.Join(programData, "MetaLab", "secrets"), nil
+}
+
+func prepareSecretDirectory(directory string) error {
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return fmt.Errorf("create Windows secret directory: %w", err)
 	}
 	if err := ownerfile.Restrict(directory); err != nil {
 		return fmt.Errorf("restrict Windows secret directory: %w", err)
 	}
-	protected, err := protectWindowsData([]byte(secret))
-	if err != nil {
-		return err
-	}
-	temporary, err := ownerfile.CreateTemp(directory, ".secret-*")
-	if err != nil {
-		return fmt.Errorf("create temporary Windows secret: %w", err)
-	}
-	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
-	if _, err = temporary.Write(protected); err == nil {
-		err = temporary.Sync()
-	}
-	closeErr := temporary.Close()
-	if err != nil {
-		return fmt.Errorf("write Windows secret: %w", err)
-	}
-	if closeErr != nil {
-		return fmt.Errorf("close Windows secret: %w", closeErr)
-	}
+	return nil
+}
+
+// handOverSecret has nothing to do: the system, the administrators and the
+// writing account already have access to a file ownerfile creates.
+func handOverSecret(string) error { return nil }
+
+func replaceSecret(temporaryPath, path string) error {
 	from, err := windows.UTF16PtrFromString(temporaryPath)
 	if err != nil {
 		return fmt.Errorf("encode temporary Windows secret path: %w", err)
@@ -62,48 +55,7 @@ func (nativeBackend) Set(service, account, secret string) error {
 	return nil
 }
 
-func (nativeBackend) Get(service, account string) (string, error) {
-	_, path, err := windowsSecretPath(service, account)
-	if err != nil {
-		return "", err
-	}
-	protected, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return "", ErrNotFound
-	}
-	if err != nil {
-		return "", fmt.Errorf("read Windows secret: %w", err)
-	}
-	plain, err := unprotectWindowsData(protected)
-	if err != nil {
-		return "", err
-	}
-	return string(plain), nil
-}
-
-func (nativeBackend) Delete(service, account string) error {
-	_, path, err := windowsSecretPath(service, account)
-	if err != nil {
-		return err
-	}
-	err = os.Remove(path)
-	if os.IsNotExist(err) {
-		return ErrNotFound
-	}
-	return err
-}
-
-func windowsSecretPath(service, account string) (string, string, error) {
-	programData := os.Getenv("ProgramData")
-	if programData == "" {
-		return "", "", fmt.Errorf("ProgramData is not configured")
-	}
-	directory := filepath.Join(programData, "MetaLab", "secrets")
-	digest := sha256.Sum256([]byte(service + ":" + account))
-	return directory, filepath.Join(directory, hex.EncodeToString(digest[:])+".dpapi"), nil
-}
-
-func protectWindowsData(plain []byte) ([]byte, error) {
+func sealSecret(plain []byte) ([]byte, error) {
 	input := windows.DataBlob{Size: uint32(len(plain)), Data: &plain[0]}
 	var output windows.DataBlob
 	flags := uint32(windows.CRYPTPROTECT_LOCAL_MACHINE | windows.CRYPTPROTECT_UI_FORBIDDEN)
@@ -114,10 +66,7 @@ func protectWindowsData(plain []byte) ([]byte, error) {
 	return append([]byte(nil), unsafe.Slice(output.Data, output.Size)...), nil
 }
 
-func unprotectWindowsData(protected []byte) ([]byte, error) {
-	if len(protected) == 0 {
-		return nil, fmt.Errorf("Windows secret is empty")
-	}
+func openSecret(protected []byte) ([]byte, error) {
 	input := windows.DataBlob{Size: uint32(len(protected)), Data: &protected[0]}
 	var output windows.DataBlob
 	if err := windows.CryptUnprotectData(&input, nil, nil, 0, nil, windows.CRYPTPROTECT_UI_FORBIDDEN, &output); err != nil {
