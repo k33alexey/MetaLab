@@ -122,6 +122,11 @@ type kindComposition struct {
 	// identities is what else of the object has an identifier of its own and
 	// is no part a role may name; nil where there is nothing.
 	identities func(catalog *Catalog, id uuid.UUID) []heldIdentity
+	// valueFields are the fields the manager of the value holds beside the
+	// value, for a kind whose object is one value and no parts: a constant's
+	// common attributes (help: КонстантаМенеджерЗначения.<Имя>.<Имя общего
+	// реквизита>). Nil where there are none.
+	valueFields func(catalog *Catalog, id uuid.UUID) []Attribute
 }
 
 // heldIdentity is something an object holds with an identifier of its own,
@@ -144,12 +149,27 @@ func identitiesOf[T any](word string, items []T) []heldIdentity {
 	return result
 }
 
+// itemIDs is the identifiers of the items of a list, in its order; nil for
+// an empty one.
+func itemIDs[T any](items []T) []uuid.UUID {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make([]uuid.UUID, 0, len(items))
+	for _, item := range identitiesOf("", items) {
+		result = append(result, item.id)
+	}
+	return result
+}
+
 // kindCompositionOf is every kind's composition. A test requires every kind
 // of the model to be here, so a new kind cannot be left without one.
 var kindCompositionOf = map[Kind]kindComposition{
-	RoleKind:              {},
-	SubsystemKind:         {},
-	ConstantKind:          {},
+	RoleKind:      {},
+	SubsystemKind: {},
+	ConstantKind: {valueFields: func(c *Catalog, id uuid.UUID) []Attribute {
+		return c.Constants[c.constantByID[id]].CommonAttributeFields
+	}},
 	SessionParameterKind:  {},
 	CommonAttributeKind:   {},
 	CommonModuleKind:      {},

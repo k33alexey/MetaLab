@@ -328,6 +328,13 @@ type Constant struct {
 	// data_lock_settings.go. A constant has the mode and no fields: it is one
 	// value, and there is nothing in it to lock by.
 	DataLock project.DataLockControlMode `yaml:"data_lock,omitempty"`
+	// CommonAttributeFields are the fields the value gains from the common
+	// attributes that separate it «независимо и совместно»: the value is
+	// then kept per data area, and the field says which - see
+	// propagateCommonAttributes. They are not written in the constant's
+	// file, because a common attribute is described where it is and not in
+	// the objects it reaches.
+	CommonAttributeFields []Attribute `yaml:"-"`
 }
 
 // SessionParameter is a server-memory-only value scoped to one session's lifetime.
@@ -843,14 +850,7 @@ func (catalog *Catalog) ConstantByID(id uuid.UUID) (Constant, bool) {
 }
 
 func (catalog *Catalog) ConstantIDs() []uuid.UUID {
-	if len(catalog.Constants) == 0 {
-		return nil
-	}
-	result := make([]uuid.UUID, len(catalog.Constants))
-	for index := range catalog.Constants {
-		result[index] = catalog.Constants[index].ID
-	}
-	return result
+	return itemIDs(catalog.Constants)
 }
 
 func (catalog *Catalog) Constant(name string) (Constant, bool) {
@@ -942,14 +942,7 @@ func (catalog *Catalog) CatalogByID(id uuid.UUID) (CatalogDefinition, bool) {
 }
 
 func (catalog *Catalog) CatalogIDs() []uuid.UUID {
-	if len(catalog.Catalogs) == 0 {
-		return nil
-	}
-	result := make([]uuid.UUID, len(catalog.Catalogs))
-	for index := range catalog.Catalogs {
-		result[index] = catalog.Catalogs[index].ID
-	}
-	return result
+	return itemIDs(catalog.Catalogs)
 }
 
 func (definition CatalogDefinition) PredefinedItem(name string) (PredefinedCatalogItem, bool) {
@@ -987,14 +980,7 @@ func (catalog *Catalog) DocumentByID(id uuid.UUID) (DocumentDefinition, bool) {
 }
 
 func (catalog *Catalog) DocumentIDs() []uuid.UUID {
-	if len(catalog.Documents) == 0 {
-		return nil
-	}
-	result := make([]uuid.UUID, len(catalog.Documents))
-	for index := range catalog.Documents {
-		result[index] = catalog.Documents[index].ID
-	}
-	return result
+	return itemIDs(catalog.Documents)
 }
 
 func (catalog *Catalog) InformationRegisterDefinition(name string) (InformationRegisterDefinition, bool) {
@@ -1014,14 +1000,7 @@ func (catalog *Catalog) InformationRegisterByID(id uuid.UUID) (InformationRegist
 }
 
 func (catalog *Catalog) InformationRegisterIDs() []uuid.UUID {
-	if len(catalog.InformationRegisters) == 0 {
-		return nil
-	}
-	result := make([]uuid.UUID, len(catalog.InformationRegisters))
-	for index := range catalog.InformationRegisters {
-		result[index] = catalog.InformationRegisters[index].ID
-	}
-	return result
+	return itemIDs(catalog.InformationRegisters)
 }
 
 func (catalog *Catalog) AccumulationRegisterDefinition(name string) (AccumulationRegisterDefinition, bool) {
@@ -1041,14 +1020,7 @@ func (catalog *Catalog) AccumulationRegisterByID(id uuid.UUID) (AccumulationRegi
 }
 
 func (catalog *Catalog) AccumulationRegisterIDs() []uuid.UUID {
-	if len(catalog.AccumulationRegisters) == 0 {
-		return nil
-	}
-	result := make([]uuid.UUID, len(catalog.AccumulationRegisters))
-	for index := range catalog.AccumulationRegisters {
-		result[index] = catalog.AccumulationRegisters[index].ID
-	}
-	return result
+	return itemIDs(catalog.AccumulationRegisters)
 }
 
 func DecodeConstant(source string, reader io.Reader, configuration project.Project) (Constant, error) {
@@ -2041,6 +2013,7 @@ func cloneConstant(value Constant) Constant {
 	}
 	settings := cloneFieldSettings(Attribute{Presentation: value.Presentation, Choice: value.Choice})
 	value.Presentation, value.Choice = settings.Presentation, settings.Choice
+	value.CommonAttributeFields = cloneAttributes(value.CommonAttributeFields)
 	return value
 }
 func cloneSessionParameter(value SessionParameter) SessionParameter {

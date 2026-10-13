@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 )
 
@@ -187,5 +188,82 @@ types: [{kind: boolean}]
 				t.Fatalf("%s: refused for another reason: %v", name, err)
 			}
 		})
+	}
+}
+
+// A constant in the composition of a separator whose separated data is used
+// «независимо и совместно» is kept per data area, and the help gives its
+// value manager the field that says which (КонстантаМенеджерЗначения.<Имя>.
+// <Имя общего реквизита>; the same condition in КонстантаКлючЗначения and the
+// tables Константа.<Имя> and Константа.<Имя>.Изменения). A separator used
+// independently alone gives none. The expectation is the help's, written
+// here. Defects caught: the field not given at all, as it was until 2.309;
+// given by a separator used independently; not offered by ЭтотОбъект in the
+// value module; written into the constant's file.
+func TestAConstantTakesTheFieldOfASeparatorUsedIndependentlyAndSimultaneously(t *testing.T) {
+	t.Parallel()
+	const (
+		value, use        = "da000000-0000-4000-8000-000000000001", "da000000-0000-4000-8000-000000000002"
+		joint, separately = "da000000-0000-4000-8000-000000000003", "da000000-0000-4000-8000-000000000004"
+	)
+	root := metadataProject(t)
+	writeMetadata(t, root, ConstantKind, constantObject, `format: 1
+id: `+constantObject+`
+name: ДатаСтарта
+title: {ru: Дата старта}
+types: [{kind: date}]
+`)
+	writeConstantModule(t, root, "ДатаСтарта", project.ValueModuleFile)
+	writeMetadata(t, root, SessionParameterKind, value, `format: 1
+id: `+value+`
+name: ОбластьДанныхЗначение
+title: {ru: Область данных значение}
+types: [{kind: number, precision: 7}]
+`)
+	writeMetadata(t, root, SessionParameterKind, use, `format: 1
+id: `+use+`
+name: ОбластьДанныхИспользование
+title: {ru: Область данных использование}
+types: [{kind: boolean}]
+`)
+	separator := func(id, name, level string) string {
+		return `format: 1
+id: ` + id + `
+name: ` + name + `
+title: {ru: ` + name + `}
+types: [{kind: number, precision: 7}]
+auto_use: dont-use
+content:
+  - {metadata: ` + constantObject + `, use: use}
+data_separation: separate
+separated_data_use: ` + level + `
+data_separation_value: ` + value + `
+data_separation_use: ` + use + `
+`
+	}
+	writeMetadata(t, root, CommonAttributeKind, joint, separator(joint, "ОбластьВспомогательная", "independently-and-simultaneously"))
+	writeMetadata(t, root, CommonAttributeKind, separately, separator(separately, "ОбластьОсновная", "independently"))
+
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	constant, _ := catalog.Constant("ДатаСтарта")
+	if len(constant.CommonAttributeFields) != 1 || constant.CommonAttributeFields[0].Name != "ОбластьВспомогательная" {
+		t.Fatalf("the constant's fields are %+v, want the joint separator alone", constant.CommonAttributeFields)
+	}
+	members := map[string]bool{}
+	for _, member := range catalog.ThisObjectMembers()[project.ModuleAddress{Kind: string(ConstantKind), Object: "ДатаСтарта", Module: kinds.ValueModule}] {
+		members[member.Name.Russian] = true
+	}
+	if !members["ОбластьВспомогательная"] || members["ОбластьОсновная"] || !members["Значение"] {
+		t.Fatalf("ЭтотОбъект of the value module offers %v", members)
+	}
+	written, err := os.ReadFile(filepath.Join(root, "metadata", string(ConstantKind), "ДатаСтарта", project.ObjectMetadataFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(written), "Область") {
+		t.Fatalf("the field reached the constant's file:\n%s", written)
 	}
 }

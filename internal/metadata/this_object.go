@@ -13,7 +13,9 @@ import (
 // takes among them, and the standard table parts of its kind (help:
 // СправочникОбъект.<Имя реквизита>, <Имя табличной части>, <Имя общего
 // реквизита>; ЗадачаОбъект.<Имя реквизита адресации>; ПланСчетовОбъект.<Имя
-// признака учета>; ВнешнийИсточникДанныхТаблицаОбъект.<Имя поля>).
+// признака учета>; ВнешнийИсточникДанныхТаблицаОбъект.<Имя поля>), and for
+// the value manager of a constant the common attributes it holds beside its
+// value (КонстантаМенеджерЗначения.<Имя>.<Имя общего реквизита>).
 //
 // The fields are read off the fields a restriction of reading the object
 // names (restrictionFieldsOf): the fields of the object itself, not those of
@@ -45,6 +47,11 @@ func (catalog *Catalog) ThisObjectMembers() map[project.ModuleAddress][]kinds.Me
 						english = field.name
 					}
 					members = append(members, kinds.Member{Name: kinds.Words{Russian: field.name, English: english}})
+				}
+			}
+			if valueFields := kindCompositionOf[object.kind].valueFields; valueFields != nil {
+				for _, field := range valueFields(catalog, id) {
+					members = append(members, kinds.Member{Name: kinds.Words{Russian: field.Name, English: field.Name}})
 				}
 			}
 			result[project.ModuleAddress{Kind: string(object.kind), Object: object.name, Module: module}] = members

@@ -404,20 +404,154 @@ func cloneCommonAttributeDefinition(value CommonAttributeDefinition) CommonAttri
 	return value
 }
 
-// commonAttributeTarget locates one object a common attribute can be
-// propagated into: only kinds that already carry an Attributes list.
+// commonAttributeTarget is one object a common attribute can be propagated
+// into, with all propagation has to know of it. What differs by kind - where
+// the object's fields are, where a propagated one goes, whether the attribute
+// gives one at all - is said once, where the target is made
+// (commonAttributeTargets), and not in a switch of its own per question.
 type commonAttributeTarget struct {
-	kind  string
-	index int
-	// sub is the recalculation within its calculation register, for the one
-	// kind that lies inside another.
-	sub int
+	id   uuid.UUID
+	kind string
+	name string
+	// fields are the fields a common attribute may not share a name with,
+	// the ones propagated before among them.
+	fields func() []Attribute
+	// add puts a propagated field where the kind keeps it.
+	add func(Attribute)
+	// takes says whether the attribute becomes a field of the object it
+	// reaches; nil is every attribute that does.
+	takes func(CommonAttributeDefinition) bool
+}
+
+// commonAttributeTargets is every object a common attribute can be
+// propagated into, in a fixed order. The order matters: with auto-use the
+// attribute reaches objects the composition never mentions, so propagation
+// walks the objects rather than the list, and walking a map would put the
+// field in a different place on every run.
+//
+// Which kinds these are is the prototype's own list, from the configurator
+// page «Состав общего реквизита»: catalogs, documents, sequences, charts of
+// characteristic types, charts of accounts, charts of calculation types,
+// business processes, tasks, information, accumulation, accounting and
+// calculation registers, recalculations, exchange plans - and constants.
+//
+// A sequence and a recalculation keep no list of attributes, and the help
+// says where the field goes on them: it is a field of their record -
+// ПоследовательностьЗапись.<Имя>.<Имя общего реквизита>,
+// ПерерасчетЗапись.<Имя>.<Имя общего реквизита>, read only on the second -
+// kept in a list of its own beside their dimensions, and only for the
+// attributes recordField lets through.
+//
+// A constant joins a composition only when the attribute separates data,
+// and the help gives it the field in four places at once - its value manager
+// and its value key (КонстантаМенеджерЗначения.<Имя>.<Имя общего реквизита>,
+// КонстантаКлючЗначения), its table and the table of its changes in the query
+// language - each with one condition: a separator whose separated data is
+// used «независимо и совместно». The value is then kept per data area. The
+// three other kinds that join only a separator - scheduled jobs, users of
+// the database, document journals (implicitly) - get no field: a job has no
+// table, a journal stores no data of its own, and the help gives neither one.
+func (catalog *Catalog) commonAttributeTargets() []commonAttributeTarget {
+	var targets []commonAttributeTarget
+	// object is a kind whose object keeps the field among its attributes;
+	// the rest of what holds a name is the other lists the kind passes. Only
+	// the attributes change while propagating, so the rest is read once.
+	object := func(kind string, id uuid.UUID, name string, attributes *[]Attribute, others ...[]Attribute) {
+		targets = append(targets, commonAttributeTarget{id: id, kind: kind, name: name,
+			fields: func() []Attribute { return slices.Concat(append([][]Attribute{*attributes}, others...)...) },
+			add:    func(field Attribute) { *attributes = append(*attributes, field) }})
+	}
+	// record is a kind whose record gets the field in a list of its own.
+	record := func(kind string, id uuid.UUID, name string, fields *[]Attribute, others []Attribute,
+		takes func(CommonAttributeDefinition) bool) {
+		targets = append(targets, commonAttributeTarget{id: id, kind: kind, name: name, takes: takes,
+			fields: func() []Attribute { return slices.Concat(others, *fields) },
+			add:    func(field Attribute) { *fields = append(*fields, field) }})
+	}
+	eachItem(catalog.Catalogs, func(item *CatalogDefinition) {
+		object("catalog", item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts))
+	})
+	eachItem(catalog.Documents, func(item *DocumentDefinition) {
+		object("document", item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts))
+	})
+	eachItem(catalog.InformationRegisters, func(item *InformationRegisterDefinition) {
+		object("information register", item.ID, item.Name, &item.Attributes, RegisterDimensionAttributes(item.Dimensions), item.Resources)
+	})
+	eachItem(catalog.AccumulationRegisters, func(item *AccumulationRegisterDefinition) {
+		object("accumulation register", item.ID, item.Name, &item.Attributes, RegisterDimensionAttributes(item.Dimensions), item.Resources)
+	})
+	eachItem(catalog.BusinessProcesses, func(item *BusinessProcessDefinition) {
+		object("business process", item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts))
+	})
+	// The addressing attributes of a task and the flags of a chart of
+	// accounts are fields of their own table as well, and a name taken by
+	// one of them is taken.
+	eachItem(catalog.Tasks, func(item *TaskDefinition) {
+		object("task", item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts), identityFields(item.AddressingAttributes))
+	})
+	eachItem(catalog.ChartsOfCharacteristicTypes, func(item *ChartOfCharacteristicTypesDefinition) {
+		object("chart of characteristic types", item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts))
+	})
+	eachItem(catalog.ChartsOfAccounts, func(item *ChartOfAccountsDefinition) {
+		object("chart of accounts", item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts), identityFields(item.AccountingFlags))
+	})
+	eachItem(catalog.ChartsOfCalculationTypes, func(item *ChartOfCalculationTypesDefinition) {
+		object("chart of calculation types", item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts))
+	})
+	eachItem(catalog.ExchangePlans, func(item *ExchangePlanDefinition) {
+		object("exchange plan", item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts))
+	})
+	eachItem(catalog.AccountingRegisters, func(item *AccountingRegisterDefinition) {
+		object("accounting register", item.ID, item.Name, &item.Attributes, RegisterDimensionAttributes(item.Dimensions), accountingResourceAttributes(item.Resources))
+	})
+	// A calculation register keeps its attributes in a list of its own type.
+	eachItem(catalog.CalculationRegisters, func(item *CalculationRegisterDefinition) {
+		others := slices.Concat(item.Resources, RegisterDimensionAttributes(item.Dimensions))
+		targets = append(targets, commonAttributeTarget{id: item.ID, kind: "calculation register", name: item.Name,
+			fields: func() []Attribute { return slices.Concat(item.attributeFields(), others) },
+			add: func(field Attribute) {
+				item.Attributes = append(item.Attributes, CalculationRegisterAttribute{Attribute: field})
+			}})
+	})
+	eachItem(catalog.Sequences, func(item *SequenceDefinition) {
+		record("sequence", item.ID, item.Name, &item.CommonAttributeFields, identityFields(item.Dimensions), CommonAttributeDefinition.recordField)
+	})
+	eachItem(catalog.CalculationRegisters, func(register *CalculationRegisterDefinition) {
+		eachItem(register.Recalculations, func(item *Recalculation) {
+			record("recalculation", item.ID, register.Name+"."+item.Name, &item.CommonAttributeFields, identityFields(item.Dimensions),
+				CommonAttributeDefinition.recordField)
+		})
+	})
+	eachItem(catalog.Constants, func(item *Constant) {
+		record("constant", item.ID, item.Name, &item.CommonAttributeFields, nil, CommonAttributeDefinition.jointSeparator)
+	})
+	return targets
+}
+
+// eachItem calls visit with every item of the list in place, so what it
+// keeps of the item sees the item change.
+func eachItem[T any](items []T, visit func(*T)) {
+	for index := range items {
+		visit(&items[index])
+	}
+}
+
+// identityFields names the items of a list as fields by their ID and Name -
+// a name a common attribute may not take - as identitiesOf names them for a
+// message.
+func identityFields[T any](items []T) []Attribute {
+	fields := make([]Attribute, 0, len(items))
+	for _, item := range identitiesOf("", items) {
+		fields = append(fields, Attribute{ID: item.id, Name: item.name})
+	}
+	return fields
 }
 
 // propagateCommonAttributes physically appends every common attribute to the
-// Attributes list of each object it targets. It must run before any other
-// indexing in Catalog.indexAndValidate so downstream validation, schema
-// generation and BSL property dispatch all see the final, propagated shape.
+// fields of each object it targets (commonAttributeTargets). It must run
+// before any other indexing in Catalog.indexAndValidate so downstream
+// validation, schema generation and BSL property dispatch all see the final,
+// propagated shape.
 func (catalog *Catalog) propagateCommonAttributes() error {
 	if len(catalog.CommonAttributes) == 0 {
 		return nil
@@ -425,85 +559,7 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 	sort.Slice(catalog.CommonAttributes, func(i, j int) bool {
 		return catalog.CommonAttributes[i].ID.String() < catalog.CommonAttributes[j].ID.String()
 	})
-	// The kinds that can take a common attribute, in a fixed order. The order
-	// matters now in a way it did not before: with auto-use the attribute
-	// reaches objects the composition never mentions, so propagation walks the
-	// objects rather than the list, and walking a map would put the field in a
-	// different place on every run.
-	//
-	// Which kinds these are is the prototype's own list, from the configurator
-	// page «Состав общего реквизита»: catalogs, documents, sequences, charts of
-	// characteristic types, charts of accounts, charts of calculation types,
-	// business processes, tasks, information, accumulation, accounting and
-	// calculation registers, recalculations, exchange plans.
-	//
-	// All fourteen are here. A sequence and a recalculation keep no list of
-	// attributes, and the help says where the field goes on them: it is a field
-	// of their record - ПоследовательностьЗапись.<Имя>.<Имя общего реквизита>,
-	// ПерерасчетЗапись.<Имя>.<Имя общего реквизита>, read only on the second -
-	// kept in a list of its own beside their dimensions. And the help puts a
-	// condition on it that no other kind has: only an attribute that does not
-	// separate data, or one that separates it «независимо и совместно»,
-	// becomes such a field. See recordField.
-	//
-	// Four more kinds join a composition only when the attribute separates data:
-	// constants, scheduled jobs, users of the database and document journals,
-	// the last implicitly. They get no field - a journal stores no data of
-	// its own, a constant is one value, a job has no table - so
-	// membership means separation for them and nothing else.
-	var ordered []commonAttributeTarget
-	targets := map[uuid.UUID]commonAttributeTarget{}
-	add := func(id uuid.UUID, kind string, index int) {
-		location := commonAttributeTarget{kind: kind, index: index}
-		targets[id] = location
-		ordered = append(ordered, location)
-	}
-	for index, item := range catalog.Catalogs {
-		add(item.ID, "catalog", index)
-	}
-	for index, item := range catalog.Documents {
-		add(item.ID, "document", index)
-	}
-	for index, item := range catalog.InformationRegisters {
-		add(item.ID, "information register", index)
-	}
-	for index, item := range catalog.AccumulationRegisters {
-		add(item.ID, "accumulation register", index)
-	}
-	for index, item := range catalog.BusinessProcesses {
-		add(item.ID, "business process", index)
-	}
-	for index, item := range catalog.Tasks {
-		add(item.ID, "task", index)
-	}
-	for index, item := range catalog.ChartsOfCharacteristicTypes {
-		add(item.ID, "chart of characteristic types", index)
-	}
-	for index, item := range catalog.ChartsOfAccounts {
-		add(item.ID, "chart of accounts", index)
-	}
-	for index, item := range catalog.ChartsOfCalculationTypes {
-		add(item.ID, "chart of calculation types", index)
-	}
-	for index, item := range catalog.ExchangePlans {
-		add(item.ID, "exchange plan", index)
-	}
-	for index, item := range catalog.AccountingRegisters {
-		add(item.ID, "accounting register", index)
-	}
-	for index, item := range catalog.CalculationRegisters {
-		add(item.ID, "calculation register", index)
-	}
-	for index, item := range catalog.Sequences {
-		add(item.ID, "sequence", index)
-	}
-	for index, register := range catalog.CalculationRegisters {
-		for sub, recalculation := range register.Recalculations {
-			location := commonAttributeTarget{kind: "recalculation", index: index, sub: sub}
-			targets[recalculation.ID] = location
-			ordered = append(ordered, location)
-		}
-	}
+	targets := catalog.commonAttributeTargets()
 	known := catalog.knownObjectIDs()
 	for _, common := range catalog.CommonAttributes {
 		attribute := Attribute{
@@ -524,13 +580,12 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 		}
 		// An item naming nothing at all is caught before anything is
 		// propagated. Naming something that cannot hold a field is not an
-		// error: in the real configuration compositions name constants,
-		// scheduled jobs, charts of characteristic types and exchange plans -
-		// 138 constants and 70 scheduled jobs among six common attributes -
-		// and for those, being in the composition does not mean getting a
-		// field. There is no field to get: a constant is one value and a
-		// scheduled job has no table. It means being separated by the area,
-		// which is the half of the mechanism we carry and do not execute.
+		// error: in the real configuration compositions name constants and
+		// scheduled jobs - 138 constants and 70 scheduled jobs among six
+		// common attributes - and for a job, and for a constant the attribute
+		// separates only independently, being in the composition does not
+		// mean getting a field. It means being separated by the area, which
+		// is the half of the mechanism we carry and do not execute.
 		//
 		// Refusing them would reject a real configuration outright, which is
 		// the worst thing an importer can do.
@@ -539,22 +594,19 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 				return fmt.Errorf("common attribute %s references unknown object %s", common.Name, item.Metadata)
 			}
 		}
-		for _, location := range ordered {
-			if !common.reaches(catalog.objectID(location)) {
+		for _, target := range targets {
+			if !common.reaches(target.id) || target.takes != nil && !target.takes(common) {
 				continue
 			}
-			if (location.kind == "sequence" || location.kind == "recalculation") && !common.recordField() {
-				continue
-			}
-			name, names, ids := catalog.objectFieldName(location), catalog.objectFieldNames(location), catalog.objectFieldIDs(location)
-			if ids[common.ID] {
+			fields := target.fields()
+			if slices.ContainsFunc(fields, func(field Attribute) bool { return field.ID == common.ID }) {
 				// Already propagated: indexAndValidate may run again on already
 				// validated data (for example RuntimeSnapshot round-trips), and
 				// propagation must be idempotent rather than duplicate the field.
 				continue
 			}
-			if names[strings.ToLower(common.Name)] {
-				return fmt.Errorf("common attribute %s collides with an existing field of %s %s", common.Name, location.kind, name)
+			if slices.ContainsFunc(fields, func(field Attribute) bool { return strings.EqualFold(field.Name, common.Name) }) {
+				return fmt.Errorf("common attribute %s collides with an existing field of %s %s", common.Name, target.kind, target.name)
 			}
 			// A copy per object, not the one attribute in all of them. The
 			// attribute is built once outside the loop, so every object it
@@ -563,7 +615,7 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 			// attribute in place today, so nothing has gone wrong yet; the copy
 			// is here so that the first thing that does change one changes it
 			// in one object rather than in all of them at once.
-			catalog.appendPropagatedAttribute(location, cloneAttribute(attribute))
+			target.add(cloneAttribute(attribute))
 		}
 	}
 	return nil
@@ -736,7 +788,16 @@ func (catalog *Catalog) OwnAttributes(attributes []Attribute) []Attribute {
 // совместно». A separator used independently alone keeps its area apart and
 // adds no field there.
 func (value CommonAttributeDefinition) recordField() bool {
-	return value.DataSeparation != SeparationSeparate || value.SeparatedDataUse == SeparatedDataIndependentlyAndSimultaneously
+	return value.DataSeparation != SeparationSeparate || value.jointSeparator()
+}
+
+// jointSeparator says whether the attribute separates data and the separated
+// data is used «независимо и совместно»: the one attribute that gives a
+// constant a field (help: КонстантаМенеджерЗначения.<Имя>.<Имя общего
+// реквизита> - РазделениеДанных = Разделять и ИспользованиеРазделяемыхДанных
+// = НезависимоИСовместно).
+func (value CommonAttributeDefinition) jointSeparator() bool {
+	return value.DataSeparation == SeparationSeparate && value.SeparatedDataUse == SeparatedDataIndependentlyAndSimultaneously
 }
 
 func (catalog *Catalog) knownObjectIDs() map[uuid.UUID]bool {
@@ -769,226 +830,10 @@ func (catalog *Catalog) knownObjectIDs() map[uuid.UUID]bool {
 	return known
 }
 
-func (catalog *Catalog) objectFieldName(location commonAttributeTarget) string {
-	switch location.kind {
-	case "catalog":
-		return catalog.Catalogs[location.index].Name
-	case "document":
-		return catalog.Documents[location.index].Name
-	case "information register":
-		return catalog.InformationRegisters[location.index].Name
-	case "accumulation register":
-		return catalog.AccumulationRegisters[location.index].Name
-	case "business process":
-		return catalog.BusinessProcesses[location.index].Name
-	case "task":
-		return catalog.Tasks[location.index].Name
-	case "chart of characteristic types":
-		return catalog.ChartsOfCharacteristicTypes[location.index].Name
-	case "chart of accounts":
-		return catalog.ChartsOfAccounts[location.index].Name
-	case "chart of calculation types":
-		return catalog.ChartsOfCalculationTypes[location.index].Name
-	case "exchange plan":
-		return catalog.ExchangePlans[location.index].Name
-	case "accounting register":
-		return catalog.AccountingRegisters[location.index].Name
-	case "calculation register":
-		return catalog.CalculationRegisters[location.index].Name
-	case "sequence":
-		return catalog.Sequences[location.index].Name
-	case "recalculation":
-		register := catalog.CalculationRegisters[location.index]
-		return register.Name + "." + register.Recalculations[location.sub].Name
-	}
-	return ""
-}
-
-func (catalog *Catalog) objectID(location commonAttributeTarget) uuid.UUID {
-	switch location.kind {
-	case "catalog":
-		return catalog.Catalogs[location.index].ID
-	case "document":
-		return catalog.Documents[location.index].ID
-	case "information register":
-		return catalog.InformationRegisters[location.index].ID
-	case "accumulation register":
-		return catalog.AccumulationRegisters[location.index].ID
-	case "business process":
-		return catalog.BusinessProcesses[location.index].ID
-	case "task":
-		return catalog.Tasks[location.index].ID
-	case "chart of characteristic types":
-		return catalog.ChartsOfCharacteristicTypes[location.index].ID
-	case "chart of accounts":
-		return catalog.ChartsOfAccounts[location.index].ID
-	case "chart of calculation types":
-		return catalog.ChartsOfCalculationTypes[location.index].ID
-	case "exchange plan":
-		return catalog.ExchangePlans[location.index].ID
-	case "accounting register":
-		return catalog.AccountingRegisters[location.index].ID
-	case "calculation register":
-		return catalog.CalculationRegisters[location.index].ID
-	case "sequence":
-		return catalog.Sequences[location.index].ID
-	case "recalculation":
-		return catalog.CalculationRegisters[location.index].Recalculations[location.sub].ID
-	}
-	return uuid.UUID{}
-}
-
-func (catalog *Catalog) objectFields(location commonAttributeTarget) []Attribute {
-	var fields []Attribute
-	switch location.kind {
-	case "catalog":
-		definition := catalog.Catalogs[location.index]
-		fields = append(fields, definition.Attributes...)
-		for _, part := range definition.TableParts {
-			fields = append(fields, Attribute{Name: part.Name})
-		}
-	case "document":
-		definition := catalog.Documents[location.index]
-		fields = append(fields, definition.Attributes...)
-		for _, part := range definition.TableParts {
-			fields = append(fields, Attribute{Name: part.Name})
-		}
-	case "information register":
-		definition := catalog.InformationRegisters[location.index]
-		fields = append(fields, definition.Attributes...)
-		fields = append(fields, RegisterDimensionAttributes(definition.Dimensions)...)
-		fields = append(fields, definition.Resources...)
-	case "accumulation register":
-		definition := catalog.AccumulationRegisters[location.index]
-		fields = append(fields, definition.Attributes...)
-		fields = append(fields, RegisterDimensionAttributes(definition.Dimensions)...)
-		fields = append(fields, definition.Resources...)
-	case "business process":
-		definition := catalog.BusinessProcesses[location.index]
-		fields = append(fields, definition.Attributes...)
-		for _, part := range definition.TableParts {
-			fields = append(fields, Attribute{Name: part.Name})
-		}
-	case "task":
-		definition := catalog.Tasks[location.index]
-		fields = append(fields, definition.Attributes...)
-		for _, part := range definition.TableParts {
-			fields = append(fields, Attribute{Name: part.Name})
-		}
-		// The addressing attributes are fields of the task as well, and a name
-		// taken by one of them is taken.
-		for _, addressing := range definition.AddressingAttributes {
-			fields = append(fields, Attribute{ID: addressing.ID, Name: addressing.Name})
-		}
-	case "chart of characteristic types":
-		definition := catalog.ChartsOfCharacteristicTypes[location.index]
-		fields = append(fields, definition.Attributes...)
-		fields = append(fields, tablePartNames(definition.TableParts)...)
-	case "chart of accounts":
-		definition := catalog.ChartsOfAccounts[location.index]
-		fields = append(fields, definition.Attributes...)
-		fields = append(fields, tablePartNames(definition.TableParts)...)
-		// The flags of a chart of accounts are fields of its own table, and a
-		// name taken by one of them is taken.
-		for _, flag := range definition.AccountingFlags {
-			fields = append(fields, Attribute{ID: flag.ID, Name: flag.Name})
-		}
-	case "chart of calculation types":
-		definition := catalog.ChartsOfCalculationTypes[location.index]
-		fields = append(fields, definition.Attributes...)
-		fields = append(fields, tablePartNames(definition.TableParts)...)
-	case "exchange plan":
-		definition := catalog.ExchangePlans[location.index]
-		fields = append(fields, definition.Attributes...)
-		fields = append(fields, tablePartNames(definition.TableParts)...)
-	case "accounting register":
-		definition := catalog.AccountingRegisters[location.index]
-		fields = append(fields, definition.Attributes...)
-		fields = append(fields, RegisterDimensionAttributes(definition.Dimensions)...)
-		fields = append(fields, accountingResourceAttributes(definition.Resources)...)
-	case "calculation register":
-		definition := catalog.CalculationRegisters[location.index]
-		fields = append(fields, definition.attributeFields()...)
-		fields = append(fields, definition.Resources...)
-		for _, dimension := range definition.Dimensions {
-			fields = append(fields, dimension.Attribute)
-		}
-	case "sequence":
-		definition := catalog.Sequences[location.index]
-		for _, dimension := range definition.Dimensions {
-			fields = append(fields, Attribute{ID: dimension.ID, Name: dimension.Name})
-		}
-		fields = append(fields, definition.CommonAttributeFields...)
-	case "recalculation":
-		definition := catalog.CalculationRegisters[location.index].Recalculations[location.sub]
-		for _, dimension := range definition.Dimensions {
-			fields = append(fields, Attribute{ID: dimension.ID, Name: dimension.Name})
-		}
-		fields = append(fields, definition.CommonAttributeFields...)
-	}
-	return fields
-}
-
 func tablePartNames(parts []TablePart) []Attribute {
 	fields := make([]Attribute, 0, len(parts))
 	for _, part := range parts {
 		fields = append(fields, Attribute{Name: part.Name})
 	}
 	return fields
-}
-
-func (catalog *Catalog) objectFieldNames(location commonAttributeTarget) map[string]bool {
-	used := make(map[string]bool)
-	for _, field := range catalog.objectFields(location) {
-		used[strings.ToLower(field.Name)] = true
-	}
-	return used
-}
-
-// objectFieldIDs reports the IDs already present among an object's fields,
-// used to make propagation idempotent when indexAndValidate runs again on
-// already-propagated data (table part pseudo-entries carry a zero ID and are
-// intentionally absent here).
-func (catalog *Catalog) objectFieldIDs(location commonAttributeTarget) map[uuid.UUID]bool {
-	used := make(map[uuid.UUID]bool)
-	for _, field := range catalog.objectFields(location) {
-		if !field.ID.IsZero() {
-			used[field.ID] = true
-		}
-	}
-	return used
-}
-
-func (catalog *Catalog) appendPropagatedAttribute(location commonAttributeTarget, attribute Attribute) {
-	switch location.kind {
-	case "catalog":
-		catalog.Catalogs[location.index].Attributes = append(catalog.Catalogs[location.index].Attributes, attribute)
-	case "document":
-		catalog.Documents[location.index].Attributes = append(catalog.Documents[location.index].Attributes, attribute)
-	case "information register":
-		catalog.InformationRegisters[location.index].Attributes = append(catalog.InformationRegisters[location.index].Attributes, attribute)
-	case "accumulation register":
-		catalog.AccumulationRegisters[location.index].Attributes = append(catalog.AccumulationRegisters[location.index].Attributes, attribute)
-	case "business process":
-		catalog.BusinessProcesses[location.index].Attributes = append(catalog.BusinessProcesses[location.index].Attributes, attribute)
-	case "task":
-		catalog.Tasks[location.index].Attributes = append(catalog.Tasks[location.index].Attributes, attribute)
-	case "chart of characteristic types":
-		catalog.ChartsOfCharacteristicTypes[location.index].Attributes = append(catalog.ChartsOfCharacteristicTypes[location.index].Attributes, attribute)
-	case "chart of accounts":
-		catalog.ChartsOfAccounts[location.index].Attributes = append(catalog.ChartsOfAccounts[location.index].Attributes, attribute)
-	case "chart of calculation types":
-		catalog.ChartsOfCalculationTypes[location.index].Attributes = append(catalog.ChartsOfCalculationTypes[location.index].Attributes, attribute)
-	case "exchange plan":
-		catalog.ExchangePlans[location.index].Attributes = append(catalog.ExchangePlans[location.index].Attributes, attribute)
-	case "accounting register":
-		catalog.AccountingRegisters[location.index].Attributes = append(catalog.AccountingRegisters[location.index].Attributes, attribute)
-	case "calculation register":
-		catalog.CalculationRegisters[location.index].Attributes = append(catalog.CalculationRegisters[location.index].Attributes, CalculationRegisterAttribute{Attribute: attribute})
-	case "sequence":
-		catalog.Sequences[location.index].CommonAttributeFields = append(catalog.Sequences[location.index].CommonAttributeFields, attribute)
-	case "recalculation":
-		recalculation := &catalog.CalculationRegisters[location.index].Recalculations[location.sub]
-		recalculation.CommonAttributeFields = append(recalculation.CommonAttributeFields, attribute)
-	}
 }
