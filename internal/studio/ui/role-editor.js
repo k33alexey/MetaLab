@@ -1,6 +1,8 @@
 /* Role editor: explicit grants underneath, ordinary tree/checkboxes in Studio. */
 function createRoleModel(source) {
-  const value = structuredClone(source);
+  // Only the role is copied: the schema is read and never changed, and the
+  // window «Все роли» builds a model for every role over one schema.
+  const value = {...source, role: structuredClone(source.role)};
   value.role.objects ||= [];
   value.role.commands ||= [];
   const definitions = new Map(value.schema.objects.map(item => [item.id, item]));
@@ -189,37 +191,26 @@ function createRoleModel(source) {
   };
 }
 
-function createRoleEditor(host, onChange) {
-  let source, model, selected, panel, tree, warning, titleFieldCleanup = null;
-  // The tab shown - the rights or the templates of restrictions - and the
-  // right whose restrictions are listed, with the row chosen in each list.
-  let view = 'rights', restrictionRight = null, restrictionRow = -1, templateRow = -1, rightsBody, templatesBody;
-  // The nodes of the tree left open, by key, so a redraw keeps them open.
-  const expanded = new Set();
-  function clearTitleField() { titleFieldCleanup?.(); titleFieldCleanup = null; }
-  /* Подписи прав, видов и стандартных полей приходят с сервера, из
-     единственных перечней: свой словарь здесь разошёлся бы с ними при первой
-     правке одного из двух. */
-  const caption = key => source.schema.rights.find(item => item.key === key)?.title || key;
-  const kindTitle = kind => source.kindTitles?.[kind] || kind;
-  function title(item) { return localizedTitle(item, source.defaultLanguage, source.languages); }
-  /* Подписи объектов и полей показываются на текущем языке Studio и
-     меняются вместе с ним. */
-  StudioLanguage.onChange(() => { if (!source) return; renderTree(currentFilter()); renderPanel(); if (view === 'templates') renderTemplates(); });
-  function changed() { warning.hidden=!model.hasUnavailable(); onChange(); }
-  function checkbox(text, checked, action, disabled=false) {
-    const label=checkboxField(text,checked,enabled=>{const focus=label.firstChild.getAttribute('aria-label')||text;action(enabled);changed();renderPanel();for(const candidate of panel.querySelectorAll('input'))if((candidate.getAttribute('aria-label')||candidate.parentElement.textContent)===focus){candidate.focus();break;}},'role-check',disabled);
-    return label;
-  }
-  // The tree is the configurator's: the configuration itself at the top, then
-  // the objects kind by kind in the order the server lists them, each with
-  // its parts in folders and the objects inside it under their kind - a
-  // recalculation under its register, a table under its source.
-  const partGroupTitle = group => source.schema.partGroups?.find(item => item.key === group)?.title || group;
-  function treeButton(text, hint, className, isSelected, choose) {
+/* The caption of a folder of parts - Реквизиты, Табличные части, Команды. */
+function rolePartGroupTitle(schema, group) { return schema.partGroups?.find(item => item.key === group)?.title || group; }
+
+/* The tree of the configuration as both windows of rights show it - the
+   role's editor and «Все роли»: the configuration itself at the top, then
+   the objects kind by kind in the order the server lists them, each with its
+   parts in folders and the objects inside it under their kind - a
+   recalculation under its register, a table under its source - and the
+   commands of forms last. A choice is {object}, {object, part} or {form};
+   selection() answers the one made, choose(next) makes one. expanded keeps
+   the keys of the nodes left open, so a redraw keeps them open. */
+function createRoleTree({schema, kindTitles, title, expanded, selection, choose}) {
+  const element = node('div', undefined, 'role-tree');
+  const kindTitle = kind => kindTitles?.[kind] || kind;
+  const partGroupTitle = group => rolePartGroupTitle(schema, group);
+  let filter = '';
+  function treeButton(text, hint, className, isSelected, next) {
     const button = node('button', text, className + (isSelected ? ' selected' : ''));
     button.type = 'button'; if (hint) button.title = hint;
-    button.addEventListener('click', event => { event.preventDefault(); choose(); renderTree(currentFilter()); renderPanel(); });
+    button.addEventListener('click', event => { event.preventDefault(); choose(next); render(); });
     return button;
   }
   // A node with something beneath it opens and closes; its caption chooses it.
@@ -237,68 +228,177 @@ function createRoleEditor(host, onChange) {
     block.append(node('summary', caption), ...children);
     return block;
   }
-  const currentFilter = () => host.querySelector('.role-sidebar input')?.value || '';
-  const matches = (item, filter) => !filter || `${item.name} ${title(item)}`.toLocaleLowerCase().includes(filter);
+  const matches = (item, needle) => !needle || `${item.name} ${title(item)}`.toLocaleLowerCase().includes(needle);
   // The nodes of one object: its parts in folders, then the objects inside it.
   // Null when neither the object nor anything in it matches the filter.
-  function objectNode(item, inside, filter) {
-    const isSelected = selected?.object?.id === item.id;
-    const choose = part => () => { selected = part ? {object: item, part} : {object: item}; };
-    const own = matches(item, filter), parts = new Map();
+  function objectNode(item, inside, needle) {
+    const selected = selection();
+    const own = matches(item, needle), parts = new Map();
     for (const part of item.fields) {
       if (!parts.has(part.parent || '')) parts.set(part.parent || '', []);
       parts.get(part.parent || '').push(part);
     }
+    const isPart = part => selected?.object?.id === item.id && selected?.part?.key === part.key;
     const partNode = (part, groupKey) => {
-      const nested = (parts.get(part.key) || []).filter(child => own || matches(part, filter) || matches(child, filter));
-      const chosen = selected?.object?.id === item.id && selected?.part?.key === part.key;
-      const caption = treeButton(title(part) || part.name, part.name, 'role-tree-item', chosen, choose(part));
+      const nested = (parts.get(part.key) || []).filter(child => own || matches(part, needle) || matches(child, needle));
+      const caption = treeButton(title(part) || part.name, part.name, 'role-tree-item', isPart(part), {object: item, part});
       if (!(parts.get(part.key) || []).length) return caption;
-      const children = nested.map(child => treeButton(title(child) || child.name, child.name, 'role-tree-item', selected?.object?.id === item.id && selected?.part?.key === child.key, choose(child)));
-      return branch(`${item.id} ${groupKey} ${part.key}`, caption, children, !!filter);
+      const children = nested.map(child => treeButton(title(child) || child.name, child.name, 'role-tree-item', isPart(child), {object: item, part: child}));
+      return branch(`${item.id} ${groupKey} ${part.key}`, caption, children, !!needle);
     };
     const folders = [];
-    for (const group of source.schema.partGroups || []) {
+    for (const group of schema.partGroups || []) {
       const list = (parts.get('') || []).filter(part => part.group === group.key)
-        .filter(part => own || matches(part, filter) || (parts.get(part.key) || []).some(child => matches(child, filter)));
-      if (list.length) folders.push(folder(`${item.id} ${group.key}`, partGroupTitle(group.key), list.map(part => partNode(part, group.key)), !!filter));
+        .filter(part => own || matches(part, needle) || (parts.get(part.key) || []).some(child => matches(child, needle)));
+      if (list.length) folders.push(folder(`${item.id} ${group.key}`, partGroupTitle(group.key), list.map(part => partNode(part, group.key)), !!needle));
     }
     for (const [kind, list] of inside.get(item.id) || []) {
       // What lies inside an object that matches is shown whole, as its parts are.
-      const nodes = list.map(child => objectNode(child, inside, own ? '' : filter)).filter(Boolean);
-      if (nodes.length) folders.push(folder(`${item.id} ${kind}`, kindTitle(kind), nodes, !!filter));
+      const nodes = list.map(child => objectNode(child, inside, own ? '' : needle)).filter(Boolean);
+      if (nodes.length) folders.push(folder(`${item.id} ${kind}`, kindTitle(kind), nodes, !!needle));
     }
     if (!own && !folders.length) return null;
-    const caption = treeButton(title(item) || item.name, item.name, 'role-tree-item', isSelected && !selected.part, choose(null));
+    const caption = treeButton(title(item) || item.name, item.name, 'role-tree-item', selected?.object?.id === item.id && !selected.part, {object: item});
     caption.dataset.object = item.id;
     if (!folders.length) return caption;
-    return branch(item.id, caption, folders, !!filter && !own);
+    return branch(item.id, caption, folders, !!needle && !own);
   }
-  function renderTree(filter = '') {
-    filter = filter.toLocaleLowerCase().trim();
-    tree.replaceChildren(); const groups = new Map(), inside = new Map();
-    for (const item of source.schema.objects) {
+  function render(next = filter) {
+    filter = next;
+    const needle = filter.toLocaleLowerCase().trim();
+    element.replaceChildren(); const groups = new Map(), inside = new Map();
+    for (const item of schema.objects) {
       if (!item.owner) continue;
       if (!inside.has(item.owner)) inside.set(item.owner, new Map());
       const byKind = inside.get(item.owner);
       if (!byKind.has(item.kind)) byKind.set(item.kind, []);
       byKind.get(item.kind).push(item);
     }
-    for (const item of source.schema.objects) {
+    for (const item of schema.objects) {
       if (item.root) {
-        if (matches(item, filter)) { const button = treeButton(title(item) || item.name, item.name, 'role-tree-item role-tree-root', selected?.object?.id === item.id, () => { selected = {object: item}; }); button.dataset.object = item.id; tree.append(button); }
+        if (matches(item, needle)) { const button = treeButton(title(item) || item.name, item.name, 'role-tree-item role-tree-root', selection()?.object?.id === item.id, {object: item}); button.dataset.object = item.id; element.append(button); }
         continue;
       }
       if (item.owner) continue;
-      const entry = objectNode(item, inside, filter);
+      const entry = objectNode(item, inside, needle);
       if (!entry) continue;
       let group = groups.get(item.kind);
-      if (!group) { group = node('details'); group.open = true; group.append(node('summary', kindTitle(item.kind))); groups.set(item.kind, group); tree.append(group); }
+      if (!group) { group = node('details'); group.open = true; group.append(node('summary', kindTitle(item.kind))); groups.set(item.kind, group); element.append(group); }
       group.append(entry);
     }
-    const forms = source.schema.forms.filter(item => matches(item, filter));
-    if (forms.length) { const group = node('details'); group.open = true; group.append(node('summary', 'Команды форм')); for (const form of forms) group.append(treeButton(title(form), form.name, 'role-tree-item', selected?.form?.id === form.id, () => { selected = {form}; })); tree.append(group); }
-    if (!tree.childElementCount) tree.append(node('p', 'Нет подходящих объектов', 'muted'));
+    const forms = schema.forms.filter(item => matches(item, needle));
+    if (forms.length) { const group = node('details'); group.open = true; group.append(node('summary', 'Команды форм')); for (const form of forms) group.append(treeButton(title(form), form.name, 'role-tree-item', selection()?.form?.id === form.id, {form})); element.append(group); }
+    if (!element.childElementCount) element.append(node('p', 'Нет подходящих объектов', 'muted'));
+  }
+  return {
+    element, render,
+    // Opens the objects an object lies inside, so choosing it shows it.
+    reveal(object) { for (let owner = object.owner; owner; owner = schema.objects.find(item => item.id === owner)?.owner) expanded.add(owner); },
+  };
+}
+
+/* A list of rows with two columns and the commands of the prototype's
+   context menu: Добавить, Изменить, Удалить. A row is chosen by a click and
+   opened by a double click. */
+function roleListTable(headings, rows, chosen, choose, commands, empty) {
+  const table=node('table',undefined,'role-list'),head=node('tr');
+  for(const text of headings)head.append(node('th',text));
+  const thead=node('thead');thead.append(head);const body=node('tbody');
+  rows.forEach((cells,index)=>{
+    const row=node('tr',undefined,index===chosen?'selected':undefined);row.tabIndex=0;
+    for(const [text,className] of cells){const cell=node('td',text,className);cell.title=text;row.append(cell);}
+    row.addEventListener('click',()=>{choose(index);for(const other of body.children)other.classList.toggle('selected',other===row);syncCommands();});
+    row.addEventListener('dblclick',()=>{choose(index);commands.find(([key])=>key==='edit')?.[2]();});
+    row.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();row.dispatchEvent(new MouseEvent('dblclick'));}if(event.key==='Delete'){event.preventDefault();choose(index);commands.find(([key])=>key==='remove')?.[2]();}});
+    body.append(row);
+  });
+  if(!rows.length){const row=node('tr'),cell=node('td',empty,'muted');cell.colSpan=headings.length;row.append(cell);body.append(row);}
+  table.append(thead,body);
+  const bar=node('div',undefined,'role-bulk'),buttons=[];
+  for(const [key,text,action,enabled] of commands){const button=node('button',text);button.type='button';button.addEventListener('click',action);buttons.push([button,enabled]);bar.append(button);}
+  function syncCommands(){for(const [button,enabled] of buttons)button.disabled=!enabled();}
+  syncCommands();
+  const block=node('div');block.append(table,bar);return block;
+}
+
+/* The restrictions of access to data a role puts on the rights of an object,
+   as the prototype lists them under the rights (help, «Ограничение доступа к
+   данным»): the field or «Прочие поля», and the condition. Reading takes one
+   per set of fields, the other rights one each. model is the role's
+   (createRoleModel); state keeps the right shown and the row chosen across
+   redraws; changed() is called after the role changed, to redraw. */
+function roleRestrictionSection({model, object, caption, title, state, changed}) {
+  const section=node('section',undefined,'role-restrictions');
+  section.append(node('h4','Ограничение доступа к данным'));
+  if(!object.restrictedRights.includes(state.right)){state.right=object.restrictedRights[0];state.row=-1;}
+  const tabs=node('div',undefined,'role-restriction-rights');
+  for(const right of object.restrictedRights){
+    const count=model.restrictions(object.id,right).length,button=node('button',count?`${caption(right)} (${count})`:caption(right),right===state.right?'selected':undefined);
+    button.type='button';button.setAttribute('aria-pressed',String(right===state.right));
+    button.addEventListener('click',()=>{state.right=right;state.row=-1;changed();});
+    tabs.append(button);
+  }
+  section.append(tabs);
+  const right=state.right,list=model.restrictions(object.id,right);
+  if(state.row>=list.length)state.row=-1;
+  const others=list.some(item=>!item.fields?.length);
+  const canAdd=()=>right==='read'?!others||object.restrictionFields.some(field=>!list.some(item=>item.fields?.includes(field.key))):!list.length;
+  const open=async index=>{if(await editRoleRestriction({model,object,right,index,caption,title})){state.row=index;changed();}};
+  section.append(roleListTable(['Поле','Ограничение доступа'],list.map(item=>[[restrictionFieldsCaption(object,item,title)],[item.condition||'','role-condition']]),state.row,index=>{state.row=index;},[
+    ['add','Добавить',()=>open(list.length),canAdd],
+    ['edit','Изменить',()=>{if(state.row>=0)open(state.row);},()=>state.row>=0],
+    ['remove','Удалить',()=>{if(state.row<0)return;model.removeRestriction(object.id,right,state.row);state.row=-1;changed();},()=>state.row>=0],
+  ],'Ограничений нет'));
+  return section;
+}
+
+/* The window of one restriction: the fields it checks, for reading, and its
+   condition in the query language (help, «Ограничение доступа»). Answers
+   whether the restriction was put in the role. */
+async function editRoleRestriction({model,object,right,index,caption,title}){
+  const list=model.restrictions(object.id,right),current=list[index]||{right},content=node('div',undefined,'role-restriction-form');
+  const chosen=new Set(current.fields||[]);
+  if(right==='read'){
+    const taken=new Set(list.flatMap((item,other)=>other===index?[]:item.fields||[]));
+    const fieldsLabel=node('div','Поля — ни одно не отмечено: «Прочие поля»','role-restriction-caption'),fields=node('div',undefined,'role-restriction-fields');
+    for(const field of object.restrictionFields){
+      const box=checkboxField(field.parent?(title(field)||field.name):(title(field)||field.name),chosen.has(field.key),enabled=>{if(enabled)chosen.add(field.key);else chosen.delete(field.key);},'role-check',taken.has(field.key));
+      if(field.parent)box.classList.add('role-restriction-child');
+      box.title=field.name;fields.append(box);
+    }
+    content.append(fieldsLabel,fields);
+  }
+  let condition=current.condition||'';
+  content.append(node('div','Ограничение доступа','role-restriction-caption'),queryTextField(condition,text=>{condition=text;},'Ограничение доступа'));
+  const othersTaken=list.some((item,other)=>other!==index&&!item.fields?.length);
+  const answer=await showDialog({title:`Ограничение доступа · ${caption(right)}`,content,className:'role-restriction-dialog',answers:[['ok','ОК'],[null,'Отмена']],
+    check:()=>right==='read'&&!chosen.size&&othersTaken?'Ограничение на прочие поля у этого права уже есть: отметьте поля.':''});
+  if(answer!=='ok')return false;
+  model.putRestriction(object.id,right,index,{fields:[...chosen],condition});
+  return true;
+}
+
+function createRoleEditor(host, onChange) {
+  let source, model, selected, panel, tree, warning, titleFieldCleanup = null;
+  // The tab shown - the rights or the templates of restrictions - and the
+  // right whose restrictions are listed, with the row chosen in each list.
+  let view = 'rights', templateRow = -1, rightsBody, templatesBody;
+  const restriction = {right: null, row: -1};
+  // The nodes of the tree left open, by key, so a redraw keeps them open.
+  const expanded = new Set();
+  function clearTitleField() { titleFieldCleanup?.(); titleFieldCleanup = null; }
+  /* Подписи прав, видов и стандартных полей приходят с сервера, из
+     единственных перечней: свой словарь здесь разошёлся бы с ними при первой
+     правке одного из двух. */
+  const caption = key => source.schema.rights.find(item => item.key === key)?.title || key;
+  function title(item) { return localizedTitle(item, source.defaultLanguage, source.languages); }
+  /* Подписи объектов и полей показываются на текущем языке Studio и
+     меняются вместе с ним. */
+  StudioLanguage.onChange(() => { if (!source) return; tree.render(); renderPanel(); if (view === 'templates') renderTemplates(); });
+  function changed() { warning.hidden=!model.hasUnavailable(); onChange(); }
+  function checkbox(text, checked, action, disabled=false) {
+    const label=checkboxField(text,checked,enabled=>{const focus=label.firstChild.getAttribute('aria-label')||text;action(enabled);changed();renderPanel();for(const candidate of panel.querySelectorAll('input'))if((candidate.getAttribute('aria-label')||candidate.parentElement.textContent)===focus){candidate.focus();break;}},'role-check',disabled);
+    return label;
   }
   function renderPanel() {
     panel.replaceChildren();
@@ -308,7 +408,7 @@ function createRoleEditor(host, onChange) {
     const bulk=(set)=>{const all=node('div',undefined,'role-bulk');for(const [text,enabled] of [['Разрешить всё',true],['Снять все права',false]]){const button=node('button',text);button.type='button';button.addEventListener('click',()=>{set(enabled);changed();renderPanel();});all.append(button);}return all;};
     if(selected.part){
       const part=selected.part;
-      panel.append(node('h3',title(part)||part.name),node('p',`${title(object)||object.name} · ${partGroupTitle(part.group)}`,'muted'));
+      panel.append(node('h3',title(part)||part.name),node('p',`${title(object)||object.name} · ${rolePartGroupTitle(source.schema,part.group)}`,'muted'));
       if(!part.operations.length){panel.append(node('p','Своих прав у этого узла нет: права даются на то, что в нём.','muted'));return;}
       const actions=node('div',undefined,'role-operation-list');
       for(const operation of part.operations)actions.append(checkbox(caption(operation),model.hasField(object.id,part.key,operation),enabled=>model.setField(object.id,part.key,operation,enabled)));
@@ -321,82 +421,7 @@ function createRoleEditor(host, onChange) {
       for(const operation of object.rights)actions.append(checkbox(caption(operation),model.hasObject(object.id,operation),enabled=>model.setObject(object.id,operation,enabled)));
       panel.append(actions,bulk(enabled=>model.setAll(object.id,enabled)));
     } else panel.append(node('p','Своих прав у объекта нет: права даются на его части.','muted'));
-    if(object.restrictedRights?.length)panel.append(restrictionSection(object));
-  }
-  // A list of rows with two columns and the commands of the prototype's
-  // context menu: Добавить, Изменить, Удалить. A row is chosen by a click and
-  // opened by a double click.
-  function listTable(headings, rows, chosen, choose, commands, empty) {
-    const table=node('table',undefined,'role-list'),head=node('tr');
-    for(const text of headings)head.append(node('th',text));
-    const thead=node('thead');thead.append(head);const body=node('tbody');
-    rows.forEach((cells,index)=>{
-      const row=node('tr',undefined,index===chosen?'selected':undefined);row.tabIndex=0;
-      for(const [text,className] of cells){const cell=node('td',text,className);cell.title=text;row.append(cell);}
-      row.addEventListener('click',()=>{choose(index);for(const other of body.children)other.classList.toggle('selected',other===row);syncCommands();});
-      row.addEventListener('dblclick',()=>{choose(index);commands.find(([key])=>key==='edit')?.[2]();});
-      row.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();row.dispatchEvent(new MouseEvent('dblclick'));}if(event.key==='Delete'){event.preventDefault();choose(index);commands.find(([key])=>key==='remove')?.[2]();}});
-      body.append(row);
-    });
-    if(!rows.length){const row=node('tr'),cell=node('td',empty,'muted');cell.colSpan=headings.length;row.append(cell);body.append(row);}
-    table.append(thead,body);
-    const bar=node('div',undefined,'role-bulk'),buttons=[];
-    for(const [key,text,action,enabled] of commands){const button=node('button',text);button.type='button';button.addEventListener('click',action);buttons.push([button,enabled]);bar.append(button);}
-    function syncCommands(){for(const [button,enabled] of buttons)button.disabled=!enabled();}
-    syncCommands();
-    const block=node('div');block.append(table,bar);return block;
-  }
-  // The restrictions of access to data on a right of the object, as the
-  // prototype lists them under the rights (help, «Ограничение доступа к
-  // данным»): the field or «Прочие поля», and the condition. Reading takes
-  // one per set of fields, the other rights one each.
-  function restrictionSection(object) {
-    const section=node('section',undefined,'role-restrictions');
-    section.append(node('h4','Ограничение доступа к данным'));
-    if(!object.restrictedRights.includes(restrictionRight)){restrictionRight=object.restrictedRights[0];restrictionRow=-1;}
-    const tabs=node('div',undefined,'role-restriction-rights');
-    for(const right of object.restrictedRights){
-      const count=model.restrictions(object.id,right).length,button=node('button',count?`${caption(right)} (${count})`:caption(right),right===restrictionRight?'selected':undefined);
-      button.type='button';button.setAttribute('aria-pressed',String(right===restrictionRight));
-      button.addEventListener('click',()=>{restrictionRight=right;restrictionRow=-1;renderPanel();});
-      tabs.append(button);
-    }
-    section.append(tabs);
-    const right=restrictionRight,list=model.restrictions(object.id,right);
-    if(restrictionRow>=list.length)restrictionRow=-1;
-    const others=list.some(item=>!item.fields?.length);
-    const canAdd=()=>right==='read'?!others||object.restrictionFields.some(field=>!list.some(item=>item.fields?.includes(field.key))):!list.length;
-    const open=index=>editRestriction(object,right,index);
-    section.append(listTable(['Поле','Ограничение доступа'],list.map(item=>[[restrictionFieldsCaption(object,item,title)],[item.condition||'','role-condition']]),restrictionRow,index=>{restrictionRow=index;},[
-      ['add','Добавить',()=>open(list.length),canAdd],
-      ['edit','Изменить',()=>{if(restrictionRow>=0)open(restrictionRow);},()=>restrictionRow>=0],
-      ['remove','Удалить',()=>{if(restrictionRow<0)return;model.removeRestriction(object.id,right,restrictionRow);restrictionRow=-1;changed();renderPanel();},()=>restrictionRow>=0],
-    ],'Ограничений нет'));
-    return section;
-  }
-  // The window of one restriction: the fields it checks, for reading, and
-  // its condition in the query language (help, «Ограничение доступа»).
-  async function editRestriction(object,right,index){
-    const list=model.restrictions(object.id,right),current=list[index]||{right},content=node('div',undefined,'role-restriction-form');
-    const chosen=new Set(current.fields||[]);
-    if(right==='read'){
-      const taken=new Set(list.flatMap((item,other)=>other===index?[]:item.fields||[]));
-      const fieldsLabel=node('div','Поля — ни одно не отмечено: «Прочие поля»','role-restriction-caption'),fields=node('div',undefined,'role-restriction-fields');
-      for(const field of object.restrictionFields){
-        const box=checkboxField(field.parent?(title(field)||field.name):(title(field)||field.name),chosen.has(field.key),enabled=>{if(enabled)chosen.add(field.key);else chosen.delete(field.key);},'role-check',taken.has(field.key));
-        if(field.parent)box.classList.add('role-restriction-child');
-        box.title=field.name;fields.append(box);
-      }
-      content.append(fieldsLabel,fields);
-    }
-    let condition=current.condition||'';
-    content.append(node('div','Ограничение доступа','role-restriction-caption'),queryTextField(condition,text=>{condition=text;},'Ограничение доступа'));
-    const othersTaken=list.some((item,other)=>other!==index&&!item.fields?.length);
-    const answer=await showDialog({title:`Ограничение доступа · ${caption(right)}`,content,className:'role-restriction-dialog',answers:[['ok','ОК'],[null,'Отмена']],
-      check:()=>right==='read'&&!chosen.size&&othersTaken?'Ограничение на прочие поля у этого права уже есть: отметьте поля.':''});
-    if(answer!=='ok')return;
-    model.putRestriction(object.id,right,index,{fields:[...chosen],condition});
-    restrictionRow=index;changed();renderPanel();
+    if(object.restrictedRights?.length)panel.append(roleRestrictionSection({model,object,caption,title,state:restriction,changed:()=>{changed();renderPanel();}}));
   }
   // The templates of the role's restrictions (help, «Редактирование роли»,
   // «Шаблоны ограничений»): a name, with its parameters in brackets, and a
@@ -406,7 +431,7 @@ function createRoleEditor(host, onChange) {
     const list=model.templates();
     if(templateRow>=list.length)templateRow=-1;
     templatesBody.append(node('p','Имя шаблона — имя по правилам языка, в скобках можно перечислить параметры: Шаблон(Поле, Пользователь). В тексте ограничения шаблон вызывается как #Шаблон("значение", ...).','muted'));
-    templatesBody.append(listTable(['Имя','Текст шаблона'],list.map(item=>[[item.name],[item.condition||'','role-condition']]),templateRow,index=>{templateRow=index;},[
+    templatesBody.append(roleListTable(['Имя','Текст шаблона'],list.map(item=>[[item.name],[item.condition||'','role-condition']]),templateRow,index=>{templateRow=index;},[
       ['add','Добавить',()=>editTemplate(list.length),()=>true],
       ['edit','Изменить',()=>{if(templateRow>=0)editTemplate(templateRow);},()=>templateRow>=0],
       ['remove','Удалить',()=>{if(templateRow<0)return;model.removeTemplate(templateRow);templateRow=-1;changed();renderTemplates();},()=>templateRow>=0],
@@ -449,14 +474,14 @@ function createRoleEditor(host, onChange) {
       const tabs=node('div',undefined,'role-tabs');tabs.setAttribute('role','tablist');
       for(const [key,text] of [['rights','Права'],['templates','Шаблоны ограничений']]){const button=node('button',text);button.type='button';button.dataset.view=key;button.setAttribute('role','tab');button.addEventListener('click',()=>showView(key));tabs.append(button);}
       host.append(tabs);
-      const body=node('div',undefined,'role-body'),sidebar=node('div',undefined,'role-sidebar'),search=node('input');search.type='search';search.placeholder='Поиск объекта';search.setAttribute('aria-label','Поиск объекта');search.addEventListener('input',()=>renderTree(search.value));tree=node('div',undefined,'role-tree');sidebar.append(search,tree);panel=node('section',undefined,'role-permissions');body.append(sidebar,panel);rightsBody=body;templatesBody=node('section',undefined,'role-templates');host.append(body,templatesBody);
-      if(!preserveSelection){view='rights';restrictionRight=null;restrictionRow=-1;templateRow=-1;}
-      renderTree();renderPanel();showView(view);
+      const body=node('div',undefined,'role-body'),sidebar=node('div',undefined,'role-sidebar'),search=node('input');search.type='search';search.placeholder='Поиск объекта';search.setAttribute('aria-label','Поиск объекта');tree=createRoleTree({schema:source.schema,kindTitles:source.kindTitles,title,expanded,selection:()=>selected,choose:next=>{selected=next;renderPanel();}});search.addEventListener('input',()=>tree.render(search.value));sidebar.append(search,tree.element);panel=node('section',undefined,'role-permissions');body.append(sidebar,panel);rightsBody=body;templatesBody=node('section',undefined,'role-templates');host.append(body,templatesBody);
+      if(!preserveSelection){view='rights';restriction.right=null;restriction.row=-1;templateRow=-1;}
+      tree.render();renderPanel();showView(view);
     },
     // Переход из окна «Все роли» происходит по конкретному объекту, а не по
     // роли вообще: открывать роль на пустом месте значило бы заставить искать
     // в дереве то, что только что было на экране.
-    selectObject(id){const object=source?.schema.objects.find(item=>item.id===id);if(!object)return;selected={object};showView('rights');for(let owner=object.owner;owner;owner=source.schema.objects.find(item=>item.id===owner)?.owner)expanded.add(owner);renderTree();renderPanel();},
+    selectObject(id){const object=source?.schema.objects.find(item=>item.id===id);if(!object)return;selected={object};showView('rights');tree.reveal(object);tree.render();renderPanel();},
     value(){return model?.value();},
     close(){clearTitleField();source=null;model=null;host.hidden=true;host.replaceChildren();},
     setDisabled(disabled){host.inert=disabled;},

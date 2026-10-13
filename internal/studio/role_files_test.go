@@ -1,7 +1,11 @@
 package studio
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -146,5 +150,166 @@ func TestEditingARoleDescriptionAsTextKeepsItsRestrictions(t *testing.T) {
 	again, err := workspace.ReadRole(saved.Path)
 	if err != nil || len(again.Role.Objects) != 1 || len(again.Role.Objects[0].Restrictions) != 1 {
 		t.Fatalf("the role after a text edit: %+v, %v", again.Role.Objects, err)
+	}
+}
+
+// twoRolesWithGrids is a workspace with two roles saved with grids, as the
+// window «Все роли» reads them.
+func twoRolesWithGrids(t *testing.T) (*Workspace, []RoleOverviewEntry) {
+	t.Helper()
+	workspace, first, _ := savedRoleWithGrid(t)
+	second, err := workspace.CreateRole("Продавец")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second.Role.Objects = []metadata.ObjectPermission{{Object: first.Role.Objects[0].Object, Operations: []metadata.PermissionOperation{metadata.PermissionView}}}
+	if _, err := workspace.SaveRole(second.Path, second.Role, second.Revision); err != nil {
+		t.Fatal(err)
+	}
+	overview, err := workspace.ReadAllRoles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(overview.Roles) != 2 {
+		t.Fatalf("roles: %+v", overview.Roles)
+	}
+	return workspace, overview.Roles
+}
+
+// roleFilesOf is what lies on disk for a role: its description and its grid.
+func roleFilesOf(t *testing.T, workspace *Workspace, entry RoleOverviewEntry) string {
+	t.Helper()
+	description, err := os.ReadFile(filepath.Join(workspace.root, filepath.FromSlash(entry.Path)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	grid, _ := os.ReadFile(filepath.Join(workspace.root, "metadata", "roles", entry.Role.ID.String(), metadata.RoleRightsFile))
+	return string(description) + "\n--\n" + string(grid)
+}
+
+// untouched tells whether the description of a role is still the very file
+// it was: a role written and then put back is the same text in another file.
+func untouched(t *testing.T, workspace *Workspace, entry RoleOverviewEntry, before os.FileInfo) bool {
+	t.Helper()
+	after, err := os.Stat(filepath.Join(workspace.root, filepath.FromSlash(entry.Path)))
+	return err == nil && os.SameFile(before, after)
+}
+
+// withRight is the role of entry with one more right on its first object.
+func withRight(entry RoleOverviewEntry, right metadata.PermissionOperation) RoleSave {
+	role := entry.Role
+	role.Objects = slices.Clone(role.Objects)
+	role.Objects[0].Operations = append(slices.Clone(role.Objects[0].Operations), right)
+	return RoleSave{Path: entry.Path, ExpectedRevision: entry.Revision, Role: role}
+}
+
+// The window «Все роли» saves the roles it changed in one go, and answers
+// with every role as it now lies, each with its new revision.
+//
+// Defect caught: one role written and the next lost, or a revision not
+// renewed, so the next save from the window is refused as a conflict.
+func TestAllRolesAreSavedTogether(t *testing.T) {
+	t.Parallel()
+	workspace, roles := twoRolesWithGrids(t)
+	saved, err := workspace.SaveRoles([]RoleSave{withRight(roles[0], metadata.PermissionInputByString), withRight(roles[1], metadata.PermissionInputByString)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, entry := range saved.Roles {
+		if !slices.Contains(entry.Role.Objects[0].Operations, metadata.PermissionInputByString) {
+			t.Fatalf("role %q came back without the right: %+v", entry.Role.Name, entry.Role.Objects)
+		}
+		if entry.Revision == roles[index].Revision {
+			t.Fatalf("role %q kept its old revision", entry.Role.Name)
+		}
+	}
+	if _, err := workspace.SaveRoles([]RoleSave{withRight(saved.Roles[0], metadata.PermissionView)}); err != nil {
+		t.Fatalf("a second save from the window: %v", err)
+	}
+}
+
+// One role changed on disk since the window read it refuses the whole save:
+// no role is written, the one checked first included.
+//
+// Defect caught: the roles before the stale one written, the rest refused -
+// half of one edit saved.
+func TestAllRolesSaveOverAChangedRoleWritesNothing(t *testing.T) {
+	t.Parallel()
+	workspace, roles := twoRolesWithGrids(t)
+	before := roleFilesOf(t, workspace, roles[0])
+	file, err := os.Stat(filepath.Join(workspace.root, filepath.FromSlash(roles[0].Path)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := withRight(roles[1], metadata.PermissionInputByString)
+	stale.ExpectedRevision = roles[0].Revision
+	_, err = workspace.SaveRoles([]RoleSave{withRight(roles[0], metadata.PermissionInputByString), stale})
+	if !errors.Is(err, ErrSourceChanged) {
+		t.Fatalf("a save over a changed role: %v", err)
+	}
+	if roleFilesOf(t, workspace, roles[0]) != before || !untouched(t, workspace, roles[0], file) {
+		t.Fatal("the first role was written although the save was refused")
+	}
+	// A role the project would not take - here named as another - is refused
+	// before anything is written, though nothing on disk changed.
+	clash := withRight(roles[1], metadata.PermissionView)
+	clash.Role.Name = roles[0].Role.Name
+	beforeSecond := roleFilesOf(t, workspace, roles[1])
+	if _, err := workspace.SaveRoles([]RoleSave{withRight(roles[0], metadata.PermissionInputByString), clash}); err == nil {
+		t.Fatal("a role named as another was saved")
+	}
+	if roleFilesOf(t, workspace, roles[0]) != before || !untouched(t, workspace, roles[0], file) || roleFilesOf(t, workspace, roles[1]) != beforeSecond {
+		t.Fatal("a refused save wrote a role")
+	}
+}
+
+// A write that fails on a later role puts the roles written before it back
+// as they lay, byte for byte.
+//
+// Defect caught: the first role saved and the second not - the window shows
+// a refused save, and the project keeps half of it.
+func TestAllRolesSaveThatFailsHalfwayPutsTheRolesBack(t *testing.T) {
+	t.Parallel()
+	workspace, roles := twoRolesWithGrids(t)
+	first, second := roles[0], roles[1]
+	before := roleFilesOf(t, workspace, first)
+	// The second role's folder takes no new files, so its grid cannot be
+	// replaced; the first role is written whole before it.
+	folder := filepath.Join(workspace.root, "metadata", "roles", second.Role.ID.String())
+	if err := os.Chmod(folder, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(folder, 0o755)
+	if _, err := workspace.SaveRoles([]RoleSave{withRight(first, metadata.PermissionInputByString), withRight(second, metadata.PermissionInputByString)}); err == nil {
+		t.Fatal("the save went through a folder that takes no files")
+	}
+	if after := roleFilesOf(t, workspace, first); after != before {
+		t.Fatalf("the first role was left changed:\n%s", after)
+	}
+	// A role named twice in one save is refused by its own revision the
+	// second time, and the first write of it is put back.
+	if err := os.Chmod(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.SaveRoles([]RoleSave{withRight(first, metadata.PermissionView), withRight(first, metadata.PermissionView)}); !errors.Is(err, ErrSourceChanged) || roleFilesOf(t, workspace, first) != before {
+		t.Fatalf("a role saved twice in one save: %v", err)
+	}
+}
+
+// The route of the window answers a conflict as a conflict, so Studio says
+// a role changed outside it rather than showing a bare error.
+func TestAllRolesRouteAnswersAConflict(t *testing.T) {
+	t.Parallel()
+	workspace, roles := twoRolesWithGrids(t)
+	stale := withRight(roles[0], metadata.PermissionView)
+	stale.ExpectedRevision = roles[1].Revision
+	body, _ := json.Marshal(map[string]any{"roles": []RoleSave{stale}})
+	request := httptest.NewRequest(http.MethodPut, "http://localhost/api/roles", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-ML-CSRF", "1")
+	response := httptest.NewRecorder()
+	NewHandler(workspace).ServeHTTP(response, request)
+	if response.Code != http.StatusConflict {
+		t.Fatalf("PUT roles over a changed role: %d %s", response.Code, response.Body.String())
 	}
 }

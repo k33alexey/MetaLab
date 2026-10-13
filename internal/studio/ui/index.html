@@ -134,7 +134,7 @@
     const formDesigner=createFormDesigner(formHost,properties,()=>{if(!currentFile?.isForm)return;dirty=JSON.stringify(formDesigner.value().form)!==currentFile.initialForm;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Форма изменена':'Готово'},createFormHandler);
     const queryDesigner=createQueryDesigner(document.querySelector('#query-dialog'),insertDesignedQuery);
     const roleEditor=createRoleEditor(document.querySelector('#role-editor'),()=>{if(!currentFile?.isRole)return;dirty=JSON.stringify(roleEditor.value())!==currentFile.initialRole;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Роль изменена':'Готово'});
-    const roleOverview=createRoleOverview(document.querySelector('#role-overview'),async(path,objectID)=>{if(await openFile(path))roleEditor.selectObject(objectID);});
+    const roleOverview=createRoleOverview(document.querySelector('#role-overview'),async(path,objectID)=>{if(await openFile(path))roleEditor.selectObject(objectID);},()=>{if(!currentFile?.isRoleOverview)return;dirty=roleOverview.value().length>0;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Роли изменены':'Все роли · Готово'});
     const catalogHost=document.querySelector('#catalog-editor');
     const catalogEditor=createCatalogEditor(catalogHost,()=>{if(!currentFile?.isCatalog)return;dirty=JSON.stringify(catalogEditor.value())!==currentFile.initialCatalog;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Справочник изменён':'Готово'});
     const projectHost=document.querySelector('#project-editor');
@@ -189,6 +189,9 @@
         const response=await fetch('/api/roles');if(!response.ok)throw new Error(await response.text());
         const value=await response.json();
         closeFile();editorHost.hidden=true;formHost.hidden=true;bslEditor.close();roleOverview.open(value);
+        // Окно правит роли, поэтому стоит на месте открытого файла: «Сохранить»
+        // пишет изменённые роли одним запросом.
+        currentFile={isRoleOverview:true,path:null};
         filePath.textContent='Все роли';status.className='';status.textContent='Все роли · Готово';
         return true;
       }catch(error){status.textContent=String(error.message||error).trim();status.className='error';return false;}
@@ -208,12 +211,13 @@
         let endpoint='/api/file',payload={path:currentFile.path,content:bslEditor.source(),expectedRevision:currentFile.revision};
         if(currentFile.isForm){endpoint='/api/form';payload={path:currentFile.path,form:formDesigner.value().form,expectedRevision:currentFile.revision};}
         if(currentFile.isRole){endpoint='/api/role';payload={path:currentFile.path,role:roleEditor.value(),expectedRevision:currentFile.revision};}
+        if(currentFile.isRoleOverview){endpoint='/api/roles';payload={roles:roleOverview.value()};}
         if(currentFile.isCatalog){endpoint='/api/catalog';payload={path:currentFile.path,catalog:catalogEditor.value(),expectedRevision:currentFile.revision};}
         if(currentFile.isProject){endpoint='/api/project-configuration';payload={configuration:currentFile.isLanguages?languagesEditor.value():projectEditor.value(),expectedRevision:currentFile.revision};}
         const response=await fetch(endpoint,{method:'PUT',headers:{'Content-Type':'application/json','X-ML-CSRF':'1'},body:JSON.stringify(payload)});
-        if(!response.ok){status.textContent=response.status===409?'Файл изменён вне Studio. Перезагрузите его и объедините изменения.':await response.text();status.className=response.status===409?'warning':'error';return false;}
-        const value=await response.json();
-        if(currentFile.isRole){showRoleEditor(value,true);}else if(currentFile.isCatalog){showCatalogEditor(value);}else if(currentFile.isProject){if(currentFile.isLanguages)showLanguagesEditor(value);else showProjectEditor(value);}else if(currentFile.isForm){value.isForm=true;value.initialForm=JSON.stringify(value.form);showFormEditor(value);}else{showSourceEditor(value);}
+        if(!response.ok){status.textContent=response.status===409?(currentFile.isRoleOverview?'Роль изменена вне Studio. Откройте «Все роли» заново и повторите правку.':'Файл изменён вне Studio. Перезагрузите его и объедините изменения.'):await response.text();status.className=response.status===409?'warning':'error';return false;}
+        let value=await response.json();
+        if(currentFile.isRoleOverview){roleOverview.open(value,true);value=currentFile;}else if(currentFile.isRole){showRoleEditor(value,true);}else if(currentFile.isCatalog){showCatalogEditor(value);}else if(currentFile.isProject){if(currentFile.isLanguages)showLanguagesEditor(value);else showProjectEditor(value);}else if(currentFile.isForm){value.isForm=true;value.initialForm=JSON.stringify(value.form);showFormEditor(value);}else{showSourceEditor(value);}
         currentFile=value;dirty=false;status.className='';status.textContent='Сохранено';await loadTree(false);return true;
       }catch(error){showToolError(error);return false;}
       finally{loadingFile=false;roleEditor.setDisabled(false);roleOverview.setDisabled(false);catalogEditor.setDisabled(false);projectEditor.setDisabled(false);languagesEditor.setDisabled(false);formHost.inert=false;editorHost.inert=false;saveButton.disabled=!dirty;}
@@ -230,6 +234,9 @@
     async function loadTree(selectRoot=true){status.textContent='Обновление…';status.className='';const response=await fetch('/api/project');if(!response.ok){status.textContent=await response.text();status.className='error';return}const data=await response.json(),configuration=data.configuration;projectName=configuration.name||configuration.Name;const title=configuration.title||configuration.Title;document.title=`ML Studio — ${title}`;document.querySelector('#project-name').textContent=title;document.querySelector('#project-path').textContent=data.projectPath;refreshLanguageSelector(configuration.languages||configuration.Languages,configuration.defaultLanguage||configuration.DefaultLanguage);tree.replaceChildren(renderNode(data.tree));if(selectRoot)await select(data.tree,tree.querySelector('summary'));if(!dirty){status.className='';status.textContent='Готово'}return data}
     async function pollExternalChange(){
       if(!currentFile||loadingFile)return;
+      // «Все роли» сверяет ревизии ролей при сохранении: опрашивать все роли
+      // разом значило бы перечитывать весь проект каждые несколько секунд.
+      if(currentFile.isRoleOverview)return;
       const opened=currentFile,knownRevision=opened.externalRevision||opened.revision;
       try{
         // A role is its description and its grid of rights together, so it is

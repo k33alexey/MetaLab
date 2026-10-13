@@ -164,32 +164,38 @@ func decodeRoleFiles(relative string, description, grid []byte, configuration pr
 }
 
 // writeRoleLocked writes a role as its two files, if both are still what the
-// caller read. The grid goes first and is put back if the description cannot
-// be written, so a refused save leaves the role as it was.
-func (workspace *Workspace) writeRoleLocked(relative string, role metadata.RoleDefinition, expectedRevision string) (string, error) {
+// caller read, and answers with the files as they now lie.
+func (workspace *Workspace) writeRoleLocked(relative string, role metadata.RoleDefinition, expectedRevision string) (roleFiles, error) {
 	current, err := workspace.readRoleFilesLocked(relative)
 	if err != nil {
-		return "", err
+		return roleFiles{}, err
 	}
 	if current.revision() != expectedRevision {
-		return "", ErrSourceChanged
+		return roleFiles{}, ErrSourceChanged
 	}
 	description, grid, err := metadata.EncodeRole(role)
 	if err != nil {
-		return "", err
+		return roleFiles{}, err
 	}
+	return workspace.replaceRoleFilesLocked(relative, current, description, grid)
+}
+
+// replaceRoleFilesLocked puts a description and a grid in place of the files
+// current names. The grid goes first and is put back if the description
+// cannot be written, so a refused write leaves the role as it was.
+func (workspace *Workspace) replaceRoleFilesLocked(relative string, current roleFiles, description, grid []byte) (roleFiles, error) {
 	gridPath := workspace.roleGridPath(relative)
 	if err := writeRoleGrid(gridPath, grid); err != nil {
-		return "", err
+		return roleFiles{}, err
 	}
 	saved, err := workspace.saveSourceLocked(relative, string(description), current.description.Revision)
 	if err != nil {
 		if restoreErr := writeRoleGrid(gridPath, current.grid); restoreErr != nil {
-			return "", fmt.Errorf("%w; restoring the rights failed: %v", err, restoreErr)
+			return roleFiles{}, fmt.Errorf("%w; restoring the rights failed: %v", err, restoreErr)
 		}
-		return "", err
+		return roleFiles{}, err
 	}
-	return roleFiles{description: saved, grid: grid}.revision(), nil
+	return roleFiles{description: saved, grid: grid}, nil
 }
 
 // writeRoleGrid puts the grid in place through a temporary file, or removes
@@ -255,8 +261,11 @@ type RoleOverview struct {
 }
 
 type RoleOverviewEntry struct {
-	Path string                  `json:"path"`
-	Role metadata.RoleDefinition `json:"role"`
+	Path string `json:"path"`
+	// Revision is the role's as ReadRole gives it: what a save from the
+	// window «Все роли» is checked against.
+	Revision string                  `json:"revision"`
+	Role     metadata.RoleDefinition `json:"role"`
 }
 
 // ReadAllRoles reads every role of the project. A role that does not decode is
@@ -265,6 +274,10 @@ type RoleOverviewEntry struct {
 func (workspace *Workspace) ReadAllRoles() (RoleOverview, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
+	return workspace.readAllRolesLocked()
+}
+
+func (workspace *Workspace) readAllRolesLocked() (RoleOverview, error) {
 	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return RoleOverview{}, err
@@ -275,11 +288,11 @@ func (workspace *Workspace) ReadAllRoles() (RoleOverview, error) {
 	}
 	result := RoleOverview{Roles: []RoleOverviewEntry{}, Languages: roleLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, KindTitles: metadataTitles}
 	for _, relative := range descriptions {
-		role, _, err := workspace.decodeRoleLocked(relative, configuration)
+		role, revision, err := workspace.decodeRoleLocked(relative, configuration)
 		if err != nil {
 			return RoleOverview{}, err
 		}
-		result.Roles = append(result.Roles, RoleOverviewEntry{Path: relative, Role: role})
+		result.Roles = append(result.Roles, RoleOverviewEntry{Path: relative, Revision: revision, Role: role})
 	}
 	sort.Slice(result.Roles, func(i, j int) bool {
 		return strings.ToLower(result.Roles[i].Role.Name) < strings.ToLower(result.Roles[j].Role.Name)
@@ -293,28 +306,83 @@ func (workspace *Workspace) ReadAllRoles() (RoleOverview, error) {
 func (workspace *Workspace) SaveRole(relative string, role metadata.RoleDefinition, revision string) (RoleSource, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
-	opened, err := workspace.readRoleLocked(relative)
+	opened, err := workspace.checkRoleSaveLocked(RoleSave{Path: relative, ExpectedRevision: revision, Role: role})
 	if err != nil {
-		return RoleSource{}, err
-	}
-	if opened.Revision != revision {
-		return RoleSource{}, ErrSourceChanged
-	}
-	if role.ID != opened.Role.ID {
-		return RoleSource{}, fmt.Errorf("role UUID cannot be changed")
-	}
-	if err := metadata.ValidateProjectRole(workspace.root, role); err != nil {
-		return RoleSource{}, err
-	}
-	if err := workspace.checkRoleNameLocked(role); err != nil {
 		return RoleSource{}, err
 	}
 	saved, err := workspace.writeRoleLocked(relative, role, revision)
 	if err != nil {
 		return RoleSource{}, err
 	}
-	opened.Role, opened.Revision = role, saved
+	opened.Role, opened.Revision = role, saved.revision()
 	return opened, nil
+}
+
+// RoleSave is one role to write: where it lies, the revision it was read at
+// and what it is to become.
+type RoleSave struct {
+	Path             string                  `json:"path"`
+	ExpectedRevision string                  `json:"expectedRevision"`
+	Role             metadata.RoleDefinition `json:"role"`
+}
+
+// checkRoleSaveLocked refuses a save the role cannot take: a role changed
+// since it was read, another identifier, a role the project would not load,
+// a name another role has.
+func (workspace *Workspace) checkRoleSaveLocked(save RoleSave) (RoleSource, error) {
+	opened, err := workspace.readRoleLocked(save.Path)
+	if err != nil {
+		return RoleSource{}, err
+	}
+	if opened.Revision != save.ExpectedRevision {
+		return RoleSource{}, ErrSourceChanged
+	}
+	if save.Role.ID != opened.Role.ID {
+		return RoleSource{}, fmt.Errorf("role UUID cannot be changed")
+	}
+	if err := metadata.ValidateProjectRole(workspace.root, save.Role); err != nil {
+		return RoleSource{}, err
+	}
+	if err := workspace.checkRoleNameLocked(save.Role); err != nil {
+		return RoleSource{}, err
+	}
+	return opened, nil
+}
+
+// SaveRoles writes the roles the window «Все роли» changed - all of them or
+// none: every one is checked before the first is written, and the roles
+// written before one that fails are put back as they lay.
+func (workspace *Workspace) SaveRoles(saves []RoleSave) (RoleOverview, error) {
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
+	for _, save := range saves {
+		if _, err := workspace.checkRoleSaveLocked(save); err != nil {
+			return RoleOverview{}, fmt.Errorf("role %q: %w", save.Role.Name, err)
+		}
+	}
+	type written struct {
+		path            string
+		before, current roleFiles
+	}
+	var done []written
+	for _, save := range saves {
+		before, err := workspace.readRoleFilesLocked(save.Path)
+		if err == nil {
+			var current roleFiles
+			if current, err = workspace.writeRoleLocked(save.Path, save.Role, save.ExpectedRevision); err == nil {
+				done = append(done, written{save.Path, before, current})
+				continue
+			}
+		}
+		for index := len(done) - 1; index >= 0; index-- {
+			item := done[index]
+			if _, restoreErr := workspace.replaceRoleFilesLocked(item.path, item.current, []byte(item.before.description.Content), item.before.grid); restoreErr != nil {
+				return RoleOverview{}, fmt.Errorf("role %q: %w; restoring role %q failed: %v", save.Role.Name, err, item.path, restoreErr)
+			}
+		}
+		return RoleOverview{}, fmt.Errorf("role %q: %w", save.Role.Name, err)
+	}
+	return workspace.readAllRolesLocked()
 }
 
 // DeleteRole permanently removes one role - its description and its grid - after confirming the
@@ -474,6 +542,20 @@ func roleLanguages(configuration project.Project) []FormLanguage {
 func registerRoleRoutes(routes *http.ServeMux, workspace *Workspace) {
 	routes.HandleFunc("GET /api/roles", func(response http.ResponseWriter, request *http.Request) {
 		overview, err := workspace.ReadAllRoles()
+		if err != nil {
+			writeSourceError(response, err)
+			return
+		}
+		writeStudioJSON(response, overview)
+	})
+	routes.HandleFunc("PUT /api/roles", func(response http.ResponseWriter, request *http.Request) {
+		var input struct {
+			Roles []RoleSave `json:"roles"`
+		}
+		if !decodeStudioJSONRequest(response, request, &input) {
+			return
+		}
+		overview, err := workspace.SaveRoles(input.Roles)
 		if err != nil {
 			writeSourceError(response, err)
 			return
