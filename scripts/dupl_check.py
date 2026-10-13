@@ -9,8 +9,15 @@ does not have, and also when a group from the baseline is gone: the baseline
 only shrinks, and it is written down shrunk by --update in the same commit
 that removed the copy. docs/duplicates-audit.md says what each group is.
 
+--near is for the end of an iteration and never fails: it lists the smaller
+copies, down to NEAR tokens, that touch a file changed since HEAD, so that
+two functions differing only in what they return are seen while they are
+being written. Each one is either merged or said in the report why it is not
+one piece of knowledge.
+
     python3 scripts/dupl_check.py            # check
     python3 scripts/dupl_check.py --update   # write the baseline anew
+    python3 scripts/dupl_check.py --near     # near copies in changed files
 """
 
 import collections
@@ -24,6 +31,8 @@ DUPL = ["go", "run", "github.com/mibk/dupl@v1.1.0"]
 # 80 tokens is about a dozen lines of Go: below it dupl reports the shape of
 # an if err != nil block, above it what it reports is copied logic.
 THRESHOLD = "80"
+# Below 50 dupl reports error handling and field-by-field copying of structs.
+NEAR = "50"
 
 
 def sources():
@@ -36,19 +45,45 @@ def sources():
     return sorted(found)
 
 
-def groups():
-    run = subprocess.run(DUPL + ["-t", THRESHOLD, "-files"], cwd=ROOT, input="\n".join(sources()),
+def clones(threshold):
+    """Each group of copies as a list of "file:from,to"."""
+    run = subprocess.run(DUPL + ["-t", threshold, "-files"], cwd=ROOT, input="\n".join(sources()),
                          capture_output=True, text=True)
     if run.returncode != 0:
         sys.exit("dupl failed:\n" + run.stderr)
-    counted, current = collections.Counter(), []
+    found, current = [], []
     for line in run.stdout.splitlines() + [""]:
         if line.startswith("  "):
-            current.append(line.strip().rsplit(":", 1)[0])
+            current.append(line.strip())
         elif current:
-            counted[" ".join(sorted(current))] += 1
+            found.append(current)
             current = []
+    return found
+
+
+def groups():
+    counted = collections.Counter()
+    for group in clones(THRESHOLD):
+        counted[" ".join(sorted(place.rsplit(":", 1)[0] for place in group))] += 1
     return counted
+
+
+def changed():
+    names = set()
+    for command in (["git", "diff", "--name-only", "HEAD"], ["git", "ls-files", "--others", "--exclude-standard"]):
+        run = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, check=True)
+        names.update(run.stdout.split())
+    return names
+
+
+def near():
+    touched = changed()
+    found = [group for group in clones(NEAR) if any(place.rsplit(":", 1)[0] in touched for place in group)]
+    for group in found:
+        print("near copies:")
+        for place in group:
+            print("  " + place)
+    print(f"dupl -t {NEAR}: {len(found)} groups touch the changed files; merge each, or say in the report why it is not one piece of knowledge")
 
 
 def read_baseline():
@@ -63,6 +98,9 @@ def read_baseline():
 
 
 def main():
+    if "--near" in sys.argv[1:]:
+        near()
+        return
     current = groups()
     if "--update" in sys.argv[1:]:
         with open(BASELINE, "w", encoding="utf-8") as file:
