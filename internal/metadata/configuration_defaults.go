@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -240,13 +241,40 @@ func readRootPictureImages(directory string) (PictureImages, error) {
 // regardless of who reads the list afterwards, and the moment to notice it is
 // the one where the object was deleted. An object of any kind may be in it:
 // the configurator marks the content on the whole tree of the configuration
-// (help, «Редактирование состава автономной конфигурации»).
+// (help, «Редактирование состава автономной конфигурации»). A priority is
+// given only to the kinds the help lists, and what is left out of an object
+// is the object's own.
 func (catalog *Catalog) validateStandaloneConfiguration() error {
 	configuration := catalog.Project
 	for _, item := range configuration.StandaloneConfigurationContent {
-		if !catalog.hasObject(Kind(item.Kind), item.Object) {
+		kind := Kind(item.Kind)
+		if !catalog.hasObject(kind, item.Object) {
 			return fmt.Errorf("the standalone application is made of %s %s, which is not in the configuration",
 				item.Kind, item.Object)
+		}
+		name := kindWord(kind) + " " + catalog.objects[item.Object].name
+		if item.Priority != "" && !kinds.Must(kind).StandalonePriority() {
+			return fmt.Errorf("the standalone application gives %s a priority, and a %s takes its priority by itself",
+				name, kindWord(kind))
+		}
+		held := map[uuid.UUID]bool{}
+		for _, identity := range catalog.heldIdentities(kind, item.Object) {
+			held[identity.id] = true
+		}
+		for _, part := range item.Unused {
+			if held[part] || catalog.heldFiles[part] == item.Object {
+				continue
+			}
+			if inner, ok := catalog.objects[part]; ok && inner.owner != nil && *inner.owner == item.Object {
+				continue
+			}
+			return fmt.Errorf("the standalone application leaves %s out of %s, which %s does not hold", part, name, name)
+		}
+	}
+	if exchange := configuration.StandaloneDataExchange; exchange != nil && exchange.ExchangePlan != nil {
+		if !catalog.hasObject(ExchangePlanKind, *exchange.ExchangePlan) {
+			return fmt.Errorf("the standalone application exchanges data by exchange plan %s, which is not in the configuration",
+				*exchange.ExchangePlan)
 		}
 	}
 	if !catalog.rolesLoaded {

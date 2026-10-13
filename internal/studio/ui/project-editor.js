@@ -258,9 +258,24 @@ function createProjectEditor(host, onChange) {
       const row = node('div', undefined, 'project-role');
       row.append(node('span', item.kind, 'project-language-chip'));
       row.append(node('span', item.object));
+      if (item.priority === 'local-server') row.append(node('span', 'Приоритет: локальный сервер', 'project-language-chip'));
+      const unused = item.unused || [];
+      if (unused.length > 0) row.append(node('span', 'Не используется частей: ' + unused.length, 'project-language-chip'));
       list.append(row);
     }
     wrapper.append(list);
+    const exchange = source.configuration.standaloneDataExchange;
+    if (exchange) {
+      const settings = node('div', undefined, 'project-roles');
+      for (const text of [
+        'План обмена: ' + (exchange.exchangePlan || 'не выбран'),
+        'Выполнять обмен после записи: ' + (exchange.exchangeAfterWrite ? 'да' : 'нет'),
+        'Период обмена, секунд: ' + exchange.period,
+        'Элементов в транзакции: ' + exchange.transactionItems,
+        'Удалять неиспользуемые узлы через, дней: ' + exchange.removeUnusedNodesAfterDays,
+      ]) settings.append(node('span', text, 'project-role'));
+      wrapper.append(node('span', 'Настройки обмена', 'project-localized-label'), settings);
+    }
     return wrapper;
   }
   function note(text) { return node('p', text, 'project-note'); }

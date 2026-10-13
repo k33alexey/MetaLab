@@ -501,14 +501,25 @@ func TestStandaloneConfigurationIsResolved(t *testing.T) {
 			configuration.StandaloneConfigurationRestrictionRoles = []uuid.UUID{*mustParse(t, defaultsStranger)}
 		},
 		"объект состава": func(configuration *project.Project) {
-			configuration.StandaloneConfigurationContent = []project.ObjectReference{
-				{Kind: "catalogs", Object: *mustParse(t, defaultsStranger)},
+			configuration.StandaloneConfigurationContent = []project.StandaloneItem{
+				{ObjectReference: project.ObjectReference{Kind: "catalogs", Object: *mustParse(t, defaultsStranger)}},
 			}
 		},
 		"вид, которого нет": func(configuration *project.Project) {
-			configuration.StandaloneConfigurationContent = []project.ObjectReference{
-				{Kind: "телефоны", Object: *mustParse(t, defaultsRole)},
+			configuration.StandaloneConfigurationContent = []project.StandaloneItem{
+				{ObjectReference: project.ObjectReference{Kind: "телефоны", Object: *mustParse(t, defaultsRole)}},
 			}
+		},
+		"приоритет роли": func(configuration *project.Project) {
+			configuration.StandaloneConfigurationContent = []project.StandaloneItem{{ObjectReference: project.ObjectReference{
+				Kind: "roles", Object: *mustParse(t, defaultsRole)}, Priority: project.LocalServerPriority}}
+		},
+		"чужая часть": func(configuration *project.Project) {
+			configuration.StandaloneConfigurationContent = []project.StandaloneItem{{ObjectReference: project.ObjectReference{
+				Kind: "roles", Object: *mustParse(t, defaultsRole)}, Unused: []uuid.UUID{*mustParse(t, defaultsSecondRole)}}}
+		},
+		"план обмена, которого нет": func(configuration *project.Project) {
+			configuration.StandaloneDataExchange = &project.StandaloneDataExchange{ExchangePlan: mustParse(t, defaultsStranger)}
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

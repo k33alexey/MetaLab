@@ -748,7 +748,13 @@ type Catalog struct {
 	// formOwnerKinds holds the kind of each object that may keep forms, by
 	// its identifier, as the loader indexed its folder: what a choice form's
 	// kind is checked against.
-	formOwnerKinds           map[uuid.UUID]Kind
+	formOwnerKinds map[uuid.UUID]Kind
+	// heldFiles holds the object each form and template of an object lies
+	// in, by the form's or template's identifier, as the loader read the
+	// object's folder on disk: what names a part of an object by identifier
+	// alone - a part left out of the standalone application - is checked
+	// against it.
+	heldFiles                map[uuid.UUID]uuid.UUID
 	CommonTemplates          []CommonTemplateDefinition
 	commonTemplateByName     map[string]int
 	commonTemplateByID       map[uuid.UUID]int

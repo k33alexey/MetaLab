@@ -265,10 +265,16 @@ type Project struct {
 	MobileClientSignature string `yaml:"mobile_client_signature,omitempty" json:"mobileClientSignature,omitempty"`
 	// StandaloneConfigurationContent is which objects go into the standalone
 	// application - the one that works without a connection and synchronises
-	// later. Each entry names an object of the configuration, so each says
-	// which kind it is: there is no single list to search, and an identifier
-	// alone would have to be looked for in all of them.
-	StandaloneConfigurationContent []ObjectReference `yaml:"standalone_configuration_content,omitempty" json:"standaloneConfigurationContent,omitempty"`
+	// later - with what of each is left out of it and where its code runs
+	// (help, «Редактирование состава автономной конфигурации»).
+	StandaloneConfigurationContent []StandaloneItem `yaml:"standalone_configuration_content,omitempty" json:"standaloneConfigurationContent,omitempty"`
+	// StandaloneDataExchange is how the standalone application exchanges
+	// data with the base (help, «Настройки обмена автономной конфигурации»).
+	// Nil is a configuration whose export wrote no settings: the format of
+	// 8.3.10 has none, and a configuration without a standalone application
+	// writes no file at all, whereas one where only the settings were opened
+	// writes them alone (GitHub exports, 13.10.2026).
+	StandaloneDataExchange *StandaloneDataExchange `yaml:"standalone_data_exchange,omitempty" json:"standaloneDataExchange,omitempty"`
 	// StandaloneConfigurationRestrictionRoles narrow the rights a person has
 	// while working without a connection: what is safe to do against a copy
 	// nobody else sees is not the same as what is safe against the base.
@@ -281,6 +287,55 @@ type Project struct {
 type ObjectReference struct {
 	Kind   string    `yaml:"kind" json:"kind"`
 	Object uuid.UUID `yaml:"object" json:"object"`
+}
+
+// StandaloneItem is one object taken into the standalone application.
+//
+// The prototype keeps three lists by full name: the objects taken, the parts
+// of them left out (Catalog.Пользователи.Attribute.Фотография), and the
+// priorities. In every export seen - the demonstration base and 18 different
+// ones on GitHub, 2480 entries - a part left out is a part of a taken object
+// and a priority is a taken object's, so both are kept on the object they
+// belong to and cannot point anywhere else.
+type StandaloneItem struct {
+	ObjectReference `yaml:",inline"`
+	// Priority is where the object's code runs in the standalone
+	// application; empty is «Авто», which the export does not write.
+	Priority StandalonePriority `yaml:"priority,omitempty" json:"priority,omitempty"`
+	// Unused is the parts of the object left out of the standalone
+	// application by their identifiers: attributes, table parts and their
+	// attributes, forms, commands, templates, nested subsystems (exports:
+	// all of these; help: «реквизит, форма и т.д.»).
+	Unused []uuid.UUID `yaml:"unused,omitempty" json:"unused,omitempty"`
+}
+
+// StandalonePriority is where the code of an object taken into the standalone
+// application runs. The help names «Авто» and «Основной»; every export seen
+// writes one value, LocalServer (26 objects of 19 exports), and nothing else,
+// so only it is known by name. «Авто» is not written, «Основной» has no
+// sample to read its name from.
+type StandalonePriority string
+
+const LocalServerPriority StandalonePriority = "local-server"
+
+// StandaloneDataExchange is the settings of the exchange between the
+// standalone application and the base, as the dialog names them.
+type StandaloneDataExchange struct {
+	// ExchangePlan is the plan the data are synchronised by; nil where none
+	// is chosen (7 of 17 exports write none). It need not be among the
+	// objects taken (one export of 10).
+	ExchangePlan *uuid.UUID `yaml:"exchange_plan,omitempty" json:"exchangePlan,omitempty"`
+	// ExchangeAfterWrite exchanges after a write of an object of the plan,
+	// once the transaction is over.
+	ExchangeAfterWrite bool `yaml:"exchange_after_write" json:"exchangeAfterWrite"`
+	// Period is the seconds between automatic synchronisations.
+	Period int `yaml:"period" json:"period"`
+	// TransactionItems is the most items of data put into a message within
+	// one transaction of the database.
+	TransactionItems int `yaml:"transaction_items" json:"transactionItems"`
+	// RemoveUnusedNodesAfterDays removes a node not updated for that many
+	// days; 0 removes none.
+	RemoveUnusedNodesAfterDays int `yaml:"remove_unused_nodes_after_days" json:"removeUnusedNodesAfterDays"`
 }
 
 // ClientRunMode is which application the platform starts by default. ML builds
@@ -851,16 +906,34 @@ func (p Project) Validate() error {
 		if item.Kind == "" {
 			add(where+".kind", "must name a kind of metadata")
 		}
+		if item.Priority != "" && item.Priority != LocalServerPriority {
+			add(where+".priority", "must be local-server or empty")
+		}
+		seenUnused := make(map[uuid.UUID]struct{}, len(item.Unused))
+		for partIndex, part := range item.Unused {
+			partWhere := fmt.Sprintf("%s.unused[%d]", where, partIndex)
+			if part.IsZero() {
+				add(partWhere, "must be a non-zero UUID")
+				continue
+			}
+			if _, exists := seenUnused[part]; exists {
+				add(partWhere, "must be unique")
+			}
+			seenUnused[part] = struct{}{}
+		}
 		if item.Object.IsZero() {
 			add(where+".object", "must be a non-zero UUID")
 			continue
 		}
 		// The same object taken into the standalone application twice is taken
 		// once: the second entry adds nothing and hides a mistake in the list.
-		if _, exists := seenContent[item]; exists {
+		if _, exists := seenContent[item.ObjectReference]; exists {
 			add(where, "must be unique")
 		}
-		seenContent[item] = struct{}{}
+		seenContent[item.ObjectReference] = struct{}{}
+	}
+	if exchange := p.StandaloneDataExchange; exchange != nil && exchange.ExchangePlan != nil && exchange.ExchangePlan.IsZero() {
+		add("standalone_data_exchange.exchange_plan", "must be a non-zero UUID")
 	}
 	seenRestrictions := make(map[uuid.UUID]struct{}, len(p.StandaloneConfigurationRestrictionRoles))
 	for index, role := range p.StandaloneConfigurationRestrictionRoles {

@@ -823,8 +823,15 @@ mobile_application_urls: [e1cib/navigationpoint/sales]
 allowed_share_request_types: [image/png, application/pdf]
 mobile_client_signature: подпись
 standalone_configuration_content:
-  - {kind: catalogs, object: 018f1f72-3b4c-7d6e-8f90-000000000080}
+  - {kind: catalogs, object: 018f1f72-3b4c-7d6e-8f90-000000000080, priority: local-server,
+     unused: [018f1f72-3b4c-7d6e-8f90-000000000083]}
   - {kind: documents, object: 018f1f72-3b4c-7d6e-8f90-000000000081}
+standalone_data_exchange:
+  exchange_plan: 018f1f72-3b4c-7d6e-8f90-000000000084
+  exchange_after_write: true
+  period: 300
+  transaction_items: 1000
+  remove_unused_nodes_after_days: 0
 standalone_configuration_restriction_roles:
   - 018f1f72-3b4c-7d6e-8f90-000000000082
 `
@@ -842,10 +849,16 @@ standalone_configuration_restriction_roles:
 	case value.MobileClientSignature != "подпись":
 		t.Fatalf("the signature came back as %q", value.MobileClientSignature)
 	case len(value.StandaloneConfigurationContent) != 2 ||
-		value.StandaloneConfigurationContent[0].Kind != "catalogs":
+		value.StandaloneConfigurationContent[0].Kind != "catalogs" ||
+		value.StandaloneConfigurationContent[0].Priority != LocalServerPriority ||
+		len(value.StandaloneConfigurationContent[0].Unused) != 1 || value.StandaloneConfigurationContent[1].Priority != "":
 		t.Fatalf("the standalone content came back as %+v", value.StandaloneConfigurationContent)
 	case len(value.StandaloneConfigurationRestrictionRoles) != 1:
 		t.Fatalf("the restriction roles came back as %+v", value.StandaloneConfigurationRestrictionRoles)
+	case value.StandaloneDataExchange == nil || value.StandaloneDataExchange.ExchangePlan == nil ||
+		!value.StandaloneDataExchange.ExchangeAfterWrite || value.StandaloneDataExchange.Period != 300 ||
+		value.StandaloneDataExchange.TransactionItems != 1000:
+		t.Fatalf("the exchange settings came back as %+v", value.StandaloneDataExchange)
 	}
 
 	var written bytes.Buffer
@@ -874,7 +887,7 @@ func TestRootMobileApplicationIsCheckedForShape(t *testing.T) {
 			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: LocalizedText{"ru": "Русский"}, Code: "ru"}},
 		}
 	}
-	object := ObjectReference{Kind: "catalogs", Object: uuid.MustNew()}
+	object := StandaloneItem{ObjectReference: ObjectReference{Kind: "catalogs", Object: uuid.MustNew()}}
 	role := uuid.MustNew()
 	for name, broken := range map[string]func(value *Project){
 		"пустая возможность":     func(value *Project) { value.UsedMobileFunctionalities = []MobileAnswer{{Use: true}} },
@@ -884,10 +897,25 @@ func TestRootMobileApplicationIsCheckedForShape(t *testing.T) {
 		},
 		"одна ссылка дважды": func(value *Project) { value.MobileApplicationURLs = []string{"a", "a"} },
 		"состав без вида": func(value *Project) {
-			value.StandaloneConfigurationContent = []ObjectReference{{Object: uuid.MustNew()}}
+			value.StandaloneConfigurationContent = []StandaloneItem{{ObjectReference: ObjectReference{Object: uuid.MustNew()}}}
 		},
-		"состав без объекта":      func(value *Project) { value.StandaloneConfigurationContent = []ObjectReference{{Kind: "catalogs"}} },
-		"один объект дважды":      func(value *Project) { value.StandaloneConfigurationContent = []ObjectReference{object, object} },
+		"состав без объекта": func(value *Project) {
+			value.StandaloneConfigurationContent = []StandaloneItem{{ObjectReference: ObjectReference{Kind: "catalogs"}}}
+		},
+		"один объект дважды": func(value *Project) { value.StandaloneConfigurationContent = []StandaloneItem{object, object} },
+		"незнакомый приоритет": func(value *Project) {
+			value.StandaloneConfigurationContent = []StandaloneItem{{ObjectReference: object.ObjectReference, Priority: "main"}}
+		},
+		"пустая неиспользуемая часть": func(value *Project) {
+			value.StandaloneConfigurationContent = []StandaloneItem{{ObjectReference: object.ObjectReference, Unused: []uuid.UUID{{}}}}
+		},
+		"часть дважды": func(value *Project) {
+			part := uuid.MustNew()
+			value.StandaloneConfigurationContent = []StandaloneItem{{ObjectReference: object.ObjectReference, Unused: []uuid.UUID{part, part}}}
+		},
+		"пустой план обмена": func(value *Project) {
+			value.StandaloneDataExchange = &StandaloneDataExchange{ExchangePlan: &uuid.UUID{}}
+		},
 		"роль ограничения дважды": func(value *Project) { value.StandaloneConfigurationRestrictionRoles = []uuid.UUID{role, role} },
 		"пустая роль ограничения": func(value *Project) { value.StandaloneConfigurationRestrictionRoles = []uuid.UUID{{}} },
 	} {

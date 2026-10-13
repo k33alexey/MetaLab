@@ -198,6 +198,25 @@ func (descriptor Descriptor) References() []Words {
 	return slices.Clone(references[descriptor.Kind])
 }
 
+// standalonePriority is the kinds whose objects taken into the standalone
+// application may be given where their code runs (help,
+// form_LocalAppContentView: общий модуль, план обмена, подписка на событие,
+// общая форма, общая команда, константа, справочник, документ, журнал
+// документов, перечисление, отчет, обработка, план видов характеристик,
+// регистр сведений, регистр накопления). The rest take their priority by
+// themselves - a part of an object takes its object's.
+var standalonePriority = map[Kind]bool{
+	CommonModule: true, ExchangePlan: true, EventSubscription: true, CommonForm: true, CommonCommand: true,
+	Constant: true, Catalog: true, Document: true, DocumentJournal: true, Enumeration: true, Report: true,
+	DataProcessor: true, ChartOfCharacteristicTypes: true, InformationRegister: true, AccumulationRegister: true,
+}
+
+// StandalonePriority says an object of the kind taken into the standalone
+// application may be given a priority of its own.
+func (descriptor Descriptor) StandalonePriority() bool {
+	return standalonePriority[descriptor.Kind]
+}
+
 // Of finds what a kind is called.
 func Of(kind Kind) (Descriptor, bool) {
 	index := slices.IndexFunc(descriptors, func(item Descriptor) bool { return item.Kind == kind })
