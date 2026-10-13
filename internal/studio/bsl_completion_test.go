@@ -176,7 +176,7 @@ func TestCompleteBSLUsesDocumentContextFromDemoProject(t *testing.T) {
 		{"Процедура Тест()\nДвижения.Ост\nКонецПроцедуры", "ОстаткиТоваров", "metadata-object"},
 		{"Процедура Тест()\nДвижения.ОстаткиТоваров.Доб\nКонецПроцедуры", "Добавить", "method"},
 		{"Процедура Тест()\nЭтотОбъект.Тов\nКонецПроцедуры", "Товары", "property"},
-		{"Процедура Тест()\nЭтотОбъект.Пол\nКонецПроцедуры", "ПолучитьСсылку", "method"},
+		{"Процедура Тест()\nЭтотОбъект.Пол\nКонецПроцедуры", "ПолучитьСсылкуНового", "method"},
 		// The English word is the help's: ДокументОбъект.Движения is
 		// RegisterRecords.
 		{"Процедура Тест()\nRegisterRecords.Ост\nКонецПроцедуры", "ОстаткиТоваров", "metadata-object"},
@@ -197,6 +197,63 @@ func TestCompleteBSLUsesDocumentContextFromDemoProject(t *testing.T) {
 	completion = completeAt(t, workspace, path, source, strings.Index(source, "Записать(")+len("Записать("))
 	if completion.Signature == nil || !strings.Contains(completion.Signature.Label, "РежимЗаписиДокумента.Запись") {
 		t.Fatalf("document object signature = %+v", completion.Signature)
+	}
+}
+
+// ЭтотОбъект has what the help gives its type and what the model gives the
+// object, for every kind and not only the four the completion once listed by
+// hand. The expectations are the help's (8.3.27), written here rather than
+// read from kinds/objects.yaml. Defects caught: a catalog's standard
+// attribute or own field missing; a method the prototype's object does not
+// have offered (ПолучитьСсылку, which ДокументОбъект and СправочникОбъект
+// lack - only ПолучитьСсылкуНового); Количество of a record set offered as a
+// property, as the hand-written list had it, while the help makes it a
+// method; Записать of a record set signed with a parameter the help does not
+// name (Замещение instead of Замещать).
+func TestCompleteBSLKnowsThisObjectByTheHelp(t *testing.T) {
+	t.Parallel()
+	root := copyDemoProjectForStudioTest(t)
+	catalogModule := "metadata/catalogs/Товары/" + project.ObjectModuleFile
+	registerModule := "metadata/accumulation-registers/ОстаткиТоваров/МодульНабораЗаписей.bsl"
+	writeBSLTestSource(t, root, catalogModule, "")
+	writeBSLTestSource(t, root, registerModule, "")
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	members := func(path, source string) []BSLCompletionItem {
+		return completeAt(t, workspace, path, source, len(source)).Items
+	}
+	for _, test := range []struct {
+		path, source, label, kind string
+		present                   bool
+	}{
+		{catalogModule, "ЭтотОбъект.Код", "Код", "property", true},
+		{catalogModule, "ЭтотОбъект.Арт", "Артикул", "property", true},
+		{catalogModule, "ЭтотОбъект.ВерсияД", "ВерсияДанных", "property", true},
+		{catalogModule, "ЭтотОбъект.Доп", "ДополнительныеСвойства", "property", true},
+		{catalogModule, "ЭтотОбъект.Уров", "Уровень", "method", true},
+		{catalogModule, "ЭтотОбъект.ПолучитьСс", "ПолучитьСсылкуНового", "method", true},
+		{catalogModule, "ЭтотОбъект.ПолучитьСс", "ПолучитьСсылку", "method", false},
+		{catalogModule, "ThisObject.Cod", "Code", "property", true},
+		{catalogModule, "ThisObject.Lev", "Level", "method", true},
+		{registerModule, "ЭтотОбъект.Кол", "Количество", "method", true},
+		{registerModule, "ЭтотОбъект.Кол", "Количество", "property", false},
+		{registerModule, "ЭтотОбъект.Отб", "Отбор", "property", true},
+		{registerModule, "ЭтотОбъект.Доб", "ДобавитьПриход", "method", true},
+		{registerModule, "ЭтотОбъект.Бло", "БлокироватьДляИзменения", "property", true},
+		// A record set has the fields of its records, not of its own.
+		{registerModule, "ЭтотОбъект.Пери", "Период", "property", false},
+	} {
+		if got := hasCompletion(members(test.path, test.source), test.label, test.kind); got != test.present {
+			t.Errorf("%s: %q offers %s %s = %v, want %v", test.path, test.source, test.kind, test.label, got, test.present)
+		}
+	}
+	document := "metadata/documents/ПоступлениеТоваров/" + project.ObjectModuleFile
+	source := "Процедура Тест()\nДвижения.ОстаткиТоваров.Записать(\nКонецПроцедуры"
+	completion := completeAt(t, workspace, document, source, strings.Index(source, "Записать(")+len("Записать("))
+	if completion.Signature == nil || completion.Signature.Label != "Движения.ОстаткиТоваров.Записать(Замещать = Истина)" {
+		t.Fatalf("record set signature = %+v", completion.Signature)
 	}
 }
 

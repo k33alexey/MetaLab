@@ -15,7 +15,9 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The tests under the race detector take most of it: Studio alone 246 s
+    # with the walk of every editor in a browser (2.296).
+    timeout-minutes: 15
 
     services:
       postgres:

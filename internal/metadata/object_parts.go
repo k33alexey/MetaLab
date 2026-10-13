@@ -81,10 +81,13 @@ type objectPart struct {
 	// key is the part's identifier, or for a standard one its prototype name
 	// in lower case, and for a field of a standard table part the part's name
 	// before it - the key a role keeps the part's rights under.
-	key   string
-	name  string
-	title LocalizedText
-	group PartGroup
+	key  string
+	name string
+	// english is the English name of a part the platform gives; a part the
+	// object declares has one name in both languages, and this is empty.
+	english string
+	title   LocalizedText
+	group   PartGroup
 	// parent is the key of the part this one lies in: a table part, a
 	// standard table part, a template of an HTTP service.
 	parent string
@@ -341,7 +344,7 @@ func (catalog *Catalog) partsOf(kind Kind, id uuid.UUID) ([]objectPart, bool) {
 	}
 	language := catalog.Project.DefaultLanguage
 	standard := func(field standardField, key, parent string, group PartGroup) objectPart {
-		return objectPart{key: key, name: field.ru, title: LocalizedText{language: nameInWords(field.ru)}, group: group, parent: parent}
+		return objectPart{key: key, name: field.ru, english: field.en, title: LocalizedText{language: nameInWords(field.ru)}, group: group, parent: parent}
 	}
 	var parts []objectPart
 	for _, field := range catalog.standardAttributeFields(kind, id) {
@@ -405,7 +408,7 @@ func (catalog *Catalog) restrictionFieldsOf(kind Kind, id uuid.UUID) []objectPar
 	parts, _ := catalog.partsOf(kind, id)
 	language := catalog.Project.DefaultLanguage
 	standard := func(field standardField, key, parent string) objectPart {
-		return objectPart{key: key, name: field.ru, title: LocalizedText{language: nameInWords(field.ru)},
+		return objectPart{key: key, name: field.ru, english: field.en, title: LocalizedText{language: nameInWords(field.ru)},
 			group: StandardAttributesPart, parent: parent}
 	}
 	var fields []objectPart

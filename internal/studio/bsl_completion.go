@@ -15,7 +15,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
-	"github.com/k33alexey/MetaLab/internal/uuid"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -65,9 +64,7 @@ type bslModuleIndex struct {
 	variables    []syntax.Variable
 	routines     []bslRoutineIndex
 	predefined   []string
-	objectRU     []string
-	objectEN     []string
-	objectKind   string
+	object       []kinds.Member
 	movementSets []bslMovementSet
 }
 
@@ -96,15 +93,17 @@ type moduleDescriptor struct {
 	public         bool
 	predefined     []string
 	defaultContext syntax.ExecutionContext
-	objectRU       []string
-	objectEN       []string
-	objectKind     string
-	movementSets   []bslMovementSet
+	// object is what ЭтотОбъект has where the module runs around an object
+	// of data (metadata.Catalog.ThisObjectMembers).
+	object       []kinds.Member
+	movementSets []bslMovementSet
 }
 
+// bslMovementSet is a record set a document writes into: Движения.<Имя
+// регистра>, with the members of the register's record set.
 type bslMovementSet struct {
-	name string
-	kind string
+	name    string
+	members []kinds.Member
 }
 
 func (workspace *Workspace) invalidateBSLIndex() {
@@ -212,85 +211,42 @@ func (workspace *Workspace) buildBSLSymbolIndex() (*BSLSymbolIndex, error) {
 
 // bslModuleDescriptors are the modules of the project as the BSL tools see
 // them: named, with their words and context, as the published program names
-// them (metadata.ModuleNamer), and the members of the object the module runs
-// around where the tools know them.
+// them (metadata.ModuleNamer), and with the members of the object the module
+// runs around (metadata.Catalog.ThisObjectMembers).
 type bslModuleDescriptors struct {
-	namer   metadata.ModuleNamer
-	objects map[string]moduleDescriptor
+	namer     metadata.ModuleNamer
+	objects   map[project.ModuleAddress][]kinds.Member
+	movements map[string][]bslMovementSet
 }
 
 // of is the module lying at the path.
 func (descriptors bslModuleDescriptors) of(relative string) moduleDescriptor {
 	identity := descriptors.namer.Identify(relative)
-	result := descriptors.objects[relative]
-	result.name, result.public, result.defaultContext = identity.Name, identity.Public, identity.DefaultContext
-	result.predefined = identity.Predefined
+	result := moduleDescriptor{name: identity.Name, public: identity.Public, defaultContext: identity.DefaultContext,
+		predefined: identity.Predefined}
+	if address, ok := project.ReadModulePath(relative); ok {
+		result.object = descriptors.objects[address]
+		if address.Kind == string(kinds.Document) && address.Module == kinds.ObjectModule {
+			result.movementSets = descriptors.movements[address.Object]
+		}
+	}
 	return result
 }
 
 func (workspace *Workspace) moduleDescriptors(catalog *metadata.Catalog) bslModuleDescriptors {
-	result := bslModuleDescriptors{namer: catalog.ModuleNamer(), objects: make(map[string]moduleDescriptor)}
+	result := bslModuleDescriptors{namer: catalog.ModuleNamer(), objects: catalog.ThisObjectMembers(),
+		movements: make(map[string][]bslMovementSet)}
 	if catalog == nil {
 		return result
 	}
-	// The members of the object a module runs around: which ones it has the
-	// completion knows for four kinds, the path names the module.
-	add := func(kind metadata.Kind, object string, module kinds.Module, descriptor moduleDescriptor) {
-		if path, err := project.ObjectModulePath(string(kind), object, module.File()); err == nil {
-			result.objects[path] = descriptor
-		}
-	}
-	// A document names its own registers, so the map is read off the
-	// documents rather than gathered from every register in turn.
-	movements := make(map[uuid.UUID][]bslMovementSet)
+	// A document names its own registers, and a register's record set has
+	// the members of the type its record set module runs around.
 	for _, item := range catalog.Documents {
 		for _, target := range catalog.DocumentMovements(item.ID) {
-			switch target.Kind {
-			case metadata.InformationRegisterKind:
-				movements[item.ID] = append(movements[item.ID], bslMovementSet{name: target.Name, kind: "information"})
-			case metadata.AccumulationRegisterKind:
-				movements[item.ID] = append(movements[item.ID], bslMovementSet{name: target.Name, kind: "accumulation"})
+			if set, ok := kinds.Must(target.Kind).ThisObject(kinds.RecordSetModule); ok {
+				result.movements[item.Name] = append(result.movements[item.Name], bslMovementSet{name: target.Name, members: set.Members})
 			}
 		}
-	}
-	for _, item := range catalog.Catalogs {
-		add(metadata.CatalogKind, item.Name, kinds.ObjectModule, moduleDescriptor{
-			objectKind: "catalog",
-			objectRU:   append([]string{"Ссылка", "Код", "Наименование", "ВерсияДанных", "ПометкаУдаления", "ИмяПредопределенныхДанных"}, objectFieldNames(item.Attributes, item.TableParts)...),
-			objectEN:   append([]string{"Ref", "Code", "Description", "DataVersion", "DeletionMark", "PredefinedDataName"}, objectFieldNames(item.Attributes, item.TableParts)...),
-		})
-	}
-	for _, item := range catalog.Documents {
-		add(metadata.DocumentKind, item.Name, kinds.ObjectModule, moduleDescriptor{
-			objectKind:   "document",
-			objectRU:     append([]string{"Ссылка", "Номер", "Дата", "Проведен", "ВерсияДанных", "ПометкаУдаления", kinds.RegisterRecords.Russian}, objectFieldNames(item.Attributes, item.TableParts)...),
-			objectEN:     append([]string{"Ref", "Number", "Date", "Posted", "DataVersion", "DeletionMark", kinds.RegisterRecords.English}, objectFieldNames(item.Attributes, item.TableParts)...),
-			movementSets: append([]bslMovementSet(nil), movements[item.ID]...),
-		})
-	}
-	for _, item := range catalog.InformationRegisters {
-		add(metadata.InformationRegisterKind, item.Name, kinds.RecordSetModule, moduleDescriptor{
-			objectKind: "information-set",
-			objectRU:   []string{"Отбор", "Количество", "Записывать"}, objectEN: []string{"Filter", "Count", "Write"},
-		})
-	}
-	for _, item := range catalog.AccumulationRegisters {
-		add(metadata.AccumulationRegisterKind, item.Name, kinds.RecordSetModule, moduleDescriptor{
-			objectKind: "accumulation-set",
-			objectRU:   []string{"Отбор", "Количество", "Записывать", "БлокироватьДляИзменения"},
-			objectEN:   []string{"Filter", "Count", "Write", "LockForUpdate"},
-		})
-	}
-	return result
-}
-
-func objectFieldNames(attributes []metadata.Attribute, parts []metadata.TablePart) []string {
-	result := make([]string, 0, len(attributes)+len(parts))
-	for _, item := range attributes {
-		result = append(result, item.Name)
-	}
-	for _, item := range parts {
-		result = append(result, item.Name)
 	}
 	return result
 }
@@ -365,8 +321,7 @@ func indexParsedBSLModule(path string, descriptor moduleDescriptor, source strin
 	result := bslModuleIndex{
 		name: descriptor.name, public: descriptor.public,
 		variables: parsed.Variables, predefined: append([]string(nil), descriptor.predefined...),
-		objectRU: append([]string(nil), descriptor.objectRU...), objectEN: append([]string(nil), descriptor.objectEN...),
-		objectKind: descriptor.objectKind, movementSets: append([]bslMovementSet(nil), descriptor.movementSets...),
+		object: descriptor.object, movementSets: descriptor.movementSets,
 	}
 	for _, routine := range parsed.Routines {
 		parameters := make([]string, 0, len(routine.Parameters))
@@ -434,7 +389,7 @@ func (index *BSLSymbolIndex) complete(path, source string, offset int) BSLComple
 	current := index.modules[path]
 	current = indexParsedBSLModule(path, moduleDescriptor{
 		name: current.name, public: current.public, predefined: current.predefined,
-		objectRU: current.objectRU, objectEN: current.objectEN, objectKind: current.objectKind, movementSets: current.movementSets,
+		object: current.object, movementSets: current.movementSets,
 	}, source, parsed)
 
 	add := newCompletionCollector(prefix)
@@ -488,6 +443,22 @@ func (collector *completionCollector) add(label, kind, detail string) {
 func (collector *completionCollector) values(kind, detail string, values ...string) {
 	for _, value := range values {
 		collector.add(value, kind, detail)
+	}
+}
+
+// members adds the properties and methods of an object in the language of
+// the code, each described as the object's: "свойство объекта", "record set
+// method".
+func (collector *completionCollector) members(members []kinds.Member, english bool, whoseEnglish, whoseRussian string) {
+	for _, member := range members {
+		kind, label, detail := "property", member.Name.Russian, "свойство "+whoseRussian
+		if member.Method {
+			kind, detail = "method", "метод "+whoseRussian
+		}
+		if english {
+			label, detail = member.Name.English, whoseEnglish+" "+kind
+		}
+		collector.add(label, kind, detail)
 	}
 }
 
@@ -581,13 +552,7 @@ func (index *BSLSymbolIndex) addQualified(add *completionCollector, qualifier []
 		collection, _ := kinds.ByCollection(root)
 		switch {
 		case kinds.ThisObject.Is(root):
-			if english {
-				add.values("property", "object property", current.objectEN...)
-				add.values("method", "object method", objectMethodNames(current.objectKind, true)...)
-			} else {
-				add.values("property", "реквизит объекта", current.objectRU...)
-				add.values("method", "метод объекта", objectMethodNames(current.objectKind, false)...)
-			}
+			add.members(current.object, english, "object", "объекта")
 		case kinds.RegisterRecords.Is(root):
 			for _, movement := range current.movementSets {
 				add.add(movement.name, "metadata-object", "набор движений")
@@ -639,22 +604,8 @@ func (index *BSLSymbolIndex) addQualified(add *completionCollector, qualifier []
 	collection, _ := kinds.ByCollection(root)
 	switch {
 	case kinds.RegisterRecords.Is(root):
-		movement, ok := findMovementSet(current.movementSets, qualifier[1])
-		if !ok {
-			return
-		}
-		if english {
-			add.values("property", "record set property", "Filter", "Count", "Write")
-			if movement.kind == "accumulation" {
-				add.add("LockForUpdate", "property", "record set property")
-			}
-			add.values("method", "record set method", "Add", "Clear", "Get", "Delete", "Read", "Write")
-		} else {
-			add.values("property", "свойство набора записей", "Отбор", "Количество", "Записывать")
-			if movement.kind == "accumulation" {
-				add.add("БлокироватьДляИзменения", "property", "свойство набора записей")
-			}
-			add.values("method", "метод набора записей", "Добавить", "Очистить", "Получить", "Удалить", "Прочитать", "Записать")
+		if movement, ok := findMovementSet(current.movementSets, qualifier[1]); ok {
+			add.members(movement.members, english, "record set", "набора записей")
 		}
 	case collection == kinds.Enumeration:
 		add.values("enum-value", "значение перечисления", index.metadata.enumerationValues[strings.ToLower(qualifier[1])]...)
@@ -735,9 +686,6 @@ func (index *BSLSymbolIndex) signature(tokens []syntax.Token, current bslModuleI
 	if label, parameters := objectSignature(path, current); label != "" {
 		return signatureHelp(label, parameters, active)
 	}
-	if label, parameters := movementSetSignature(path, current); label != "" {
-		return signatureHelp(label, parameters, active)
-	}
 	if label, parameters := builtinSignature(path); label != "" {
 		return signatureHelp(label, parameters, active)
 	}
@@ -753,102 +701,32 @@ func findMovementSet(sets []bslMovementSet, name string) (bslMovementSet, bool) 
 	return bslMovementSet{}, false
 }
 
-func objectMethodNames(kind string, english bool) []string {
-	if kind == "information-set" || kind == "accumulation-set" {
-		if english {
-			return []string{"Add", "Clear", "Get", "Delete", "Read", "Write"}
-		}
-		return []string{"Добавить", "Очистить", "Получить", "Удалить", "Прочитать", "Записать"}
-	}
-	if kind == "catalog" {
-		if english {
-			return []string{"Write", "GetRef", "GetReference", "SetDeletionMark", "Delete"}
-		}
-		return []string{"Записать", "ПолучитьСсылку", "УстановитьПометкуУдаления", "Удалить"}
-	}
-	if kind == "document" {
-		if english {
-			return []string{"Write", "Post", "UndoPosting", "GetRef", "GetReference", "SetDeletionMark", "Delete"}
-		}
-		return []string{"Записать", "Провести", "ОтменитьПроведение", "ПолучитьСсылку", "УстановитьПометкуУдаления", "Удалить"}
-	}
-	return nil
-}
-
+// objectSignature is the call of a method of ЭтотОбъект or of a record set
+// of Движения, as the help gives its parameters.
 func objectSignature(path []string, current bslModuleIndex) (string, []string) {
-	if len(path) != 2 || !kinds.ThisObject.Is(path[0]) {
-		return "", nil
-	}
-	method := strings.ToLower(path[1])
-	var parameters []string
+	var members []kinds.Member
 	switch {
-	case current.objectKind == "catalog" && (method == "записать" || method == "write" || method == "получитьссылку" || method == "getref" || method == "getreference" || method == "удалить" || method == "delete"):
-		parameters = []string{}
-	case current.objectKind == "catalog" && method == "установитьпометкуудаления":
-		parameters = []string{"Пометка"}
-	case current.objectKind == "catalog" && method == "setdeletionmark":
-		parameters = []string{"Mark"}
-	case current.objectKind == "document" && (method == "получитьссылку" || method == "getref" || method == "getreference" || method == "отменитьпроведение" || method == "undoposting" || method == "удалить" || method == "delete"):
-		parameters = []string{}
-	case current.objectKind == "document" && method == "записать":
-		parameters = []string{"РежимЗаписи = РежимЗаписиДокумента.Запись", "РежимПроведения = РежимПроведенияДокумента.Неоперативный"}
-	case current.objectKind == "document" && method == "write":
-		parameters = []string{"WriteMode = DocumentWriteMode.Write", "PostingMode = DocumentPostingMode.Regular"}
-	case current.objectKind == "document" && method == "провести":
-		parameters = []string{"РежимПроведения = РежимПроведенияДокумента.Неоперативный"}
-	case current.objectKind == "document" && method == "post":
-		parameters = []string{"PostingMode = DocumentPostingMode.Regular"}
-	case current.objectKind == "document" && method == "установитьпометкуудаления":
-		parameters = []string{"Пометка"}
-	case current.objectKind == "document" && method == "setdeletionmark":
-		parameters = []string{"Mark"}
-	case (current.objectKind == "information-set" || current.objectKind == "accumulation-set") && (method == "добавить" || method == "add" || method == "очистить" || method == "clear" || method == "прочитать" || method == "read"):
-		parameters = []string{}
-	case (current.objectKind == "information-set" || current.objectKind == "accumulation-set") && method == "получить":
-		parameters = []string{"Индекс"}
-	case (current.objectKind == "information-set" || current.objectKind == "accumulation-set") && method == "get":
-		parameters = []string{"Index"}
-	case (current.objectKind == "information-set" || current.objectKind == "accumulation-set") && method == "удалить":
-		parameters = []string{"Запись"}
-	case (current.objectKind == "information-set" || current.objectKind == "accumulation-set") && method == "delete":
-		parameters = []string{"Record"}
-	case (current.objectKind == "information-set" || current.objectKind == "accumulation-set") && method == "записать":
-		parameters = []string{"Замещение = Истина"}
-	case (current.objectKind == "information-set" || current.objectKind == "accumulation-set") && method == "write":
-		parameters = []string{"Replace = True"}
+	case len(path) == 2 && kinds.ThisObject.Is(path[0]):
+		members = current.object
+	case len(path) == 3 && kinds.RegisterRecords.Is(path[0]):
+		movement, ok := findMovementSet(current.movementSets, path[1])
+		if !ok {
+			return "", nil
+		}
+		members = movement.members
 	default:
 		return "", nil
 	}
-	return strings.Join(path, ".") + "(" + strings.Join(parameters, ", ") + ")", parameters
-}
-
-func movementSetSignature(path []string, current bslModuleIndex) (string, []string) {
-	if len(path) != 3 || !kinds.RegisterRecords.Is(path[0]) {
-		return "", nil
+	for _, member := range members {
+		if member.Method && member.Name.Is(path[len(path)-1]) {
+			parameters := make([]string, len(member.Parameters))
+			for index, parameter := range member.Parameters {
+				parameters[index] = parameter.Label()
+			}
+			return strings.Join(path, ".") + "(" + strings.Join(parameters, ", ") + ")", parameters
+		}
 	}
-	if _, ok := findMovementSet(current.movementSets, path[1]); !ok {
-		return "", nil
-	}
-	var parameters []string
-	switch strings.ToLower(path[2]) {
-	case "добавить", "add", "очистить", "clear", "прочитать", "read":
-		parameters = []string{}
-	case "получить":
-		parameters = []string{"Индекс"}
-	case "get":
-		parameters = []string{"Index"}
-	case "удалить":
-		parameters = []string{"Запись"}
-	case "delete":
-		parameters = []string{"Record"}
-	case "записать":
-		parameters = []string{"Замещение = Истина"}
-	case "write":
-		parameters = []string{"Replace = True"}
-	default:
-		return "", nil
-	}
-	return strings.Join(path, ".") + "(" + strings.Join(parameters, ", ") + ")", parameters
+	return "", nil
 }
 
 func signatureHelp(label string, parameters []string, active int) *BSLSignatureHelp {
