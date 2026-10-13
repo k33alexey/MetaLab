@@ -42,8 +42,52 @@ func TestControllerBuildsAbsoluteInstallDefinition(t *testing.T) {
 	if captured.Name != "metalab" || captured.Option["StartType"] != "automatic" {
 		t.Fatalf("definition = %+v", captured)
 	}
-	if runtime.GOOS != "windows" && captured.Option["UserService"] != true {
-		t.Fatalf("service must retain the installing user's protected-store identity: %+v", captured.Option)
+	switch runtime.GOOS {
+	case "darwin":
+		if captured.Option["UserService"] != true || captured.UserName != "" {
+			t.Fatalf("service must retain the installing user's keychain: %+v", captured)
+		}
+	case "linux":
+		if captured.Option["UserService"] != nil || captured.UserName != "metalab" {
+			t.Fatalf("service must be a system service under the service account: %+v", captured)
+		}
+	}
+}
+
+// Defect: install writes the service before the machine is ready for it, or
+// prepares it with a relative settings path the service cannot resolve.
+func TestControllerPreparesTheMachineBeforeInstalling(t *testing.T) {
+	t.Parallel()
+
+	native := &fakeBackend{}
+	refusal := errors.New("not ready")
+	var platform, prepared string
+	controller := &Controller{
+		factory: func(kservice.Interface, *kservice.Config) (backend, error) { return native, nil },
+		prepare: func(name, settingsPath string) error {
+			platform, prepared = name, settingsPath
+			return refusal
+		},
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("version: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.Control("install", path); !errors.Is(err, refusal) {
+		t.Fatalf("install error = %v, want the preparation's", err)
+	}
+	if native.installs != 0 {
+		t.Fatal("the service was installed although preparing the machine failed")
+	}
+	if platform != "fake" || prepared != path || !filepath.IsAbs(prepared) {
+		t.Fatalf("prepared platform %q settings %q, want fake and %q", platform, prepared, path)
+	}
+	for _, action := range []string{"start", "stop", "uninstall", "status"} {
+		prepared = ""
+		_, _ = controller.Control(action, "")
+		if prepared != "" {
+			t.Fatalf("%s prepared the machine for an install", action)
+		}
 	}
 }
 

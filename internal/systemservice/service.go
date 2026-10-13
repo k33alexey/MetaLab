@@ -31,12 +31,15 @@ type Controller struct {
 	runner      Runner
 	factory     factory
 	interactive func() bool
+	// prepare readies the machine before the service is installed; nil
+	// skips it (tests).
+	prepare func(platform, settingsPath string) error
 }
 
 // New creates a native service controller.
 func New(runner Runner) *Controller {
 	return &Controller{
-		runner: runner, interactive: kservice.Interactive,
+		runner: runner, interactive: kservice.Interactive, prepare: prepareInstall,
 		factory: func(program kservice.Interface, config *kservice.Config) (backend, error) {
 			return kservice.New(program, config)
 		},
@@ -93,6 +96,11 @@ func (controller *Controller) Control(action, settingsPath string) (string, erro
 	service, err := controller.factory(passiveProgram{}, definition)
 	if err != nil {
 		return "", fmt.Errorf("create native service: %w", err)
+	}
+	if action == "install" && controller.prepare != nil {
+		if err := controller.prepare(service.Platform(), settingsPath); err != nil {
+			return "", err
+		}
 	}
 	if action == "status" {
 		status, statusErr := service.Status()
