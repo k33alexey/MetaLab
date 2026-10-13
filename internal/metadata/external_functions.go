@@ -6,9 +6,14 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
+
+// ExternalFunctionKind names a function of a source where a kind is asked for:
+// what a role, a subsystem or a functional option names it by.
+const ExternalFunctionKind = kinds.ExternalFunction
 
 // ExternalFunction is one function of an external data source: an expression
 // in the source's own query language, called from code as a method of the

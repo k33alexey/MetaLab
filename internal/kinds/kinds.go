@@ -44,6 +44,7 @@ const (
 	ExternalDataSourceTable    Kind = "external-data-source-tables"
 	ExternalCube               Kind = "external-data-source-cubes"
 	ExternalDimensionTable     Kind = "external-data-source-dimension-tables"
+	ExternalFunction           Kind = "external-data-source-functions"
 	HTTPService                Kind = "http-services"
 	CommonPicture              Kind = "common-pictures"
 	StyleItem                  Kind = "style-items"
@@ -169,6 +170,7 @@ var descriptors = []Descriptor{
 	{ExternalCube, Words{"Куб", "Cube"}, Words{"Кубы", "Cubes"}, "КубаВнешнегоИсточника", "Куб", "Кубы"},
 	{ExternalDimensionTable, Words{"ТаблицаИзмерения", "DimensionTable"}, Words{"ТаблицыИзмерений", "DimensionTables"},
 		"ТаблицыИзмеренияВнешнегоИсточника", "Таблица измерения", "Таблицы измерений"},
+	{ExternalFunction, Words{"Функция", "Function"}, Words{"Функции", "Functions"}, "ФункцииВнешнегоИсточника", "Функция", "Функции"},
 }
 
 // references are the names of the reference types, kept beside descriptors

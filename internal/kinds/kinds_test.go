@@ -64,6 +64,7 @@ func TestNamesAreThePrototypes(t *testing.T) {
 		CommonForm:                 "ОбщаяФорма CommonForm ОбщиеФормы CommonForms",
 		ExternalDimensionTable:     "ТаблицаИзмерения DimensionTable ТаблицыИзмерений DimensionTables",
 		Recalculation:              "Перерасчет Recalculation Перерасчеты Recalculations",
+		ExternalFunction:           "Функция Function Функции Functions",
 	}
 	for kind, words := range expected {
 		item, ok := Of(kind)

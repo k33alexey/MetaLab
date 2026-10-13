@@ -25,6 +25,11 @@ const (
 	// InOwner is described inside its owner, which keeps only the object's
 	// modules on disk, in a folder of its own: a recalculation.
 	InOwner
+	// InOwnerDescription is a list inside the description of its owner, with
+	// nothing of its own on disk: a function of an external data source,
+	// which the export writes among the child objects of the source and which
+	// has no modules, forms or templates.
+	InOwnerDescription
 )
 
 // Branch is where the configuration tree shows the objects of a kind.
@@ -221,6 +226,7 @@ var layouts = map[Kind]Layout{
 	ExternalCube: {Storage: InFolder, Owner: ExternalDataSource, Folder: "cubes", Modules: recordSetModules, Forms: true, Commands: true, Templates: true},
 	ExternalDimensionTable: {Storage: InFolder, Owner: ExternalCube, Folder: "dimension-tables",
 		Modules: objectModules, Forms: true, Commands: true, Templates: true},
+	ExternalFunction: {Storage: InOwnerDescription, Owner: ExternalDataSource},
 }
 
 // Layout is where the objects of the kind lie and what each keeps there.

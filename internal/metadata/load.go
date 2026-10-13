@@ -828,7 +828,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	}
 	// A table is named within its source, and its identifier is unique across
 	// the whole configuration like every other.
-	externalTableNames := map[string]int{}
+	externalTableNames, externalFunctionNames := map[string]int{}, map[string]int{}
 	for index, item := range catalog.ExternalDataSources {
 		if err := add(ExternalDataSourceKind, item.ID, item.Name, index, catalog.externalDataSourceByName, catalog.externalDataSourceByID); err != nil {
 			return err
@@ -840,18 +840,13 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			catalog.externalTableByID[table.ID] = externalTableLocation{source: index, table: tableIndex}
 			within(table.ID, item.ID, table.Title)
 		}
-		// A function is an object of metadata of its own (help: ОбъектМетаданных:
-		// Функция) the kinds do not describe yet: its identifier and its name
-		// are checked as an object's, and nothing finds it by kind.
-		for _, function := range item.Functions {
-			name := item.Name + ".function." + function.Name
-			if _, exists := externalTableNames[strings.ToLower(name)]; exists {
-				return fmt.Errorf("%w: external data source function %q", ErrDuplicateName, name)
-			}
-			if err := unique(function.ID, "external data source function "+name); err != nil {
+		// A function is named within its source's collection of functions,
+		// apart from its tables and cubes (help: ВнешнийИсточникДанных.Функции).
+		for functionIndex, function := range item.Functions {
+			if err := add(ExternalFunctionKind, function.ID, item.Name+"."+function.Name, functionIndex, externalFunctionNames, nil); err != nil {
 				return err
 			}
-			externalTableNames[strings.ToLower(name)] = 0
+			within(function.ID, item.ID, function.Title)
 		}
 		// A cube is named within its source and a dimension table within its
 		// cube; every identifier is unique across the configuration.

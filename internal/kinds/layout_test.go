@@ -25,8 +25,14 @@ func TestEveryKindIsLaidOut(t *testing.T) {
 			t.Errorf("%s says nothing of where its objects lie", item.Kind)
 		}
 		inside := layout.Owner != "" || layout.Folder != ""
-		if inside && (layout.Owner == "" || layout.Folder == "" || layout.Branch != NoBranch) {
+		// An object described in its owner's description keeps nothing on
+		// disk and needs no folder; every other object inside another does.
+		described := layout.Storage == InOwnerDescription
+		if inside && (layout.Owner == "" || (layout.Folder == "") != described || layout.Branch != NoBranch) {
 			t.Errorf("%s lies inside another object and is laid out as %+v", item.Kind, layout)
+		}
+		if described && (!inside || len(layout.Modules) > 0 || layout.Forms) {
+			t.Errorf("%s is described in its owner and keeps something on disk, or has no owner: %+v", item.Kind, layout)
 		}
 		if !inside && layout.Branch == NoBranch {
 			t.Errorf("%s is an object of the configuration with no branch of the tree", item.Kind)

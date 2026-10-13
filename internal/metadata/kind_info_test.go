@@ -145,6 +145,9 @@ func TestEveryKindFindsItsObjects(t *testing.T) {
 		for _, table := range source.Tables {
 			objects[ExternalDataSourceTableKind] = append(objects[ExternalDataSourceTableKind], table.ID)
 		}
+		for _, function := range source.Functions {
+			objects[ExternalFunctionKind] = append(objects[ExternalFunctionKind], function.ID)
+		}
 		for _, cube := range source.Cubes {
 			objects[ExternalCubeKind] = append(objects[ExternalCubeKind], cube.ID)
 			for _, table := range cube.DimensionTables {

@@ -175,6 +175,7 @@ var kindCompositionOf = map[Kind]kindComposition{
 	}},
 	ExternalCubeKind:           {},
 	ExternalDimensionTableKind: {},
+	ExternalFunctionKind:       {},
 	HTTPServiceKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		var parts []objectPart
 		for _, template := range c.HTTPServices[c.httpServiceByID[id]].Templates {

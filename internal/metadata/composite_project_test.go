@@ -88,6 +88,7 @@ var (
 	cmpSequenceDimension = compositeID(61)
 	cmpEnumValue         = compositeID(62)
 	cmpUsersName         = compositeID(63)
+	cmpExternalFunction  = compositeID(65)
 )
 
 // compositeProject writes the composite project and returns its root.
@@ -210,6 +211,8 @@ func compositeProject(t *testing.T) string {
 	writeHTTPService(t, root, cmpHTTPService, "Биллинг", "root_url: billing\n")
 	writeWebSocketClient(t, root, cmpWebSocketClient, "Биржа", "")
 	writeSalesCube(t, root, noteCubeBody(), goodsDimTableBody)
+	writeExternalSource(t, root, warehouseSource, "Склад",
+		"functions:\n  - {id: "+cmpExternalFunction+", name: Остаток, title: {ru: Остаток}, expression_in_data_source: 'remains(&1)'}\n")
 	writeExternalTable(t, root, "Склад", goodsTable, "Товары",
 		strings.Replace(goodsBody, `unfilled_parent_value: {kind: string, data: ""}`, `unfilled_parent_value: {kind: undefined, data: ""}`, 1))
 
@@ -455,6 +458,15 @@ func TestCompositeProjectFindsEveryKindByNameAndIdentifier(t *testing.T) {
 			for _, table := range cube.DimensionTables {
 				if table.Name == name {
 					return table.ID, true
+				}
+			}
+			return uuid.UUID{}, false
+		}, nil},
+		{ExternalFunctionKind, "Остаток", cmpExternalFunction, func(catalog *Catalog, name string) (uuid.UUID, bool) {
+			source, _ := catalog.ExternalDataSource("Склад")
+			for _, function := range source.Functions {
+				if function.Name == name {
+					return function.ID, true
 				}
 			}
 			return uuid.UUID{}, false
