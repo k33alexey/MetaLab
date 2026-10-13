@@ -7,13 +7,17 @@
     let file=null,sourceText='',analysis=null,active=false,timer=0,generation=0,controller=null,selectedPair=null,selectedPairKey='',folded=null,completionTimer=0,completionGeneration=0,completionController=null,completionResult=null,completionSelection=0,breakpoints=new Set(),executionLine=0;
 
     function open(nextFile){
-      generation++;cancelCompletion();if(controller)controller.abort();clearTimeout(timer);file=nextFile;sourceText=nextFile.content;analysis=null;selectedPair=null;selectedPairKey='';folded=null;executionLine=0;active=nextFile.language==='bsl';textarea.readOnly=false;host.classList.toggle('bsl-active',active);host.classList.remove('editor-folded');panel.hidden=!active;properties.hidden=active;actions.forEach(action=>action.hidden=!active);inspectorTitle.textContent=active?'BSL':'Свойства';summary.textContent='';summary.className='muted';code.textContent=active?sourceText+'\n':'';renderGutter();renderInspector();if(active)schedule(0)
+      generation++;cancelCompletion();if(controller)controller.abort();clearTimeout(timer);file=nextFile;sourceText=nextFile.content;analysis=null;selectedPair=null;selectedPairKey='';folded=null;executionLine=0;active=nextFile.language==='bsl';textarea.readOnly=writeLocked();host.classList.toggle('bsl-active',active);host.classList.remove('editor-folded');panel.hidden=!active;properties.hidden=active;actions.forEach(action=>action.hidden=!active||(nextFile.readOnly&&action.dataset.bslAction==='rename'));inspectorTitle.textContent=active?'BSL':'Свойства';summary.textContent='';summary.className='muted';code.textContent=active?sourceText+'\n':'';renderGutter();renderInspector();if(active)schedule(0)
     }
+
+    // A file the server marks read-only - the ordinary application module,
+    // carried and never run - is shown and never typed into.
+    function writeLocked(){return Boolean(file?.readOnly)}
 
     function close(){generation++;cancelCompletion();if(controller)controller.abort();clearTimeout(timer);file=null;sourceText='';analysis=null;active=false;folded=null;executionLine=0;selectedPair=null;selectedPairKey='';textarea.readOnly=false;host.classList.remove('bsl-active','editor-folded');panel.hidden=true;properties.hidden=false;actions.forEach(action=>action.hidden=true);inspectorTitle.textContent='Свойства';summary.textContent='';summary.className='muted';code.textContent='';gutter.replaceChildren()}
 
     function change(value){
-      if(!active)return;sourceText=value;folded=null;host.classList.remove('editor-folded');textarea.readOnly=false;renderGutter();schedule(220)
+      if(!active)return;sourceText=value;folded=null;host.classList.remove('editor-folded');textarea.readOnly=writeLocked();renderGutter();schedule(220)
     }
 
     function schedule(delay){
@@ -87,7 +91,7 @@
     }
 
     function toggleFold(item){if(folded){unfold();return}folded=item;textarea.readOnly=true;host.classList.add('editor-folded');renderFolded();renderGutter();layer.scrollTop=Math.max(0,(item.startLine-3)*21.7);gutter.scrollTop=layer.scrollTop}
-    function unfold(){const line=folded?.startLine||1;folded=null;textarea.readOnly=false;host.classList.remove('editor-folded');renderHighlight();renderGutter();const offset=positionResolver()({line,column:1});textarea.focus();textarea.setSelectionRange(offset,offset);textarea.scrollTop=Math.max(0,(line-3)*21.7);syncScroll()}
+    function unfold(){const line=folded?.startLine||1;folded=null;textarea.readOnly=writeLocked();host.classList.remove('editor-folded');renderHighlight();renderGutter();const offset=positionResolver()({line,column:1});textarea.focus();textarea.setSelectionRange(offset,offset);textarea.scrollTop=Math.max(0,(line-3)*21.7);syncScroll()}
     function renderFolded(){if(!folded)return;const lines=sourceText.split('\n'),hidden=Math.max(0,folded.endLine-folded.startLine-1),before=lines.slice(0,folded.startLine).join('\n'),after=lines.slice(folded.endLine-1).join('\n');code.innerHTML=escapeHTML(before)+'\n'+`<span class="fold-placeholder" title="Нажмите, чтобы развернуть">⋯ ${hidden} строк ⋯</span>`+'\n'+escapeHTML(after);layer.querySelector('.fold-placeholder')?.addEventListener('click',unfold)}
 
     function updatePair(){if(!active||folded||!analysis)return;const cursor=textarea.selectionStart,resolve=positionResolver();let next=null;for(const pair of analysis.pairs||[]){const open=rangeOffsets(pair.open,resolve),close=rangeOffsets(pair.close,resolve);if(inRange(cursor,open)||inRange(cursor,close)){next=pair;break}}const key=next?`${next.kind}:${next.open.start.line}:${next.open.start.column}:${next.close.start.line}:${next.close.start.column}`:'';if(key===selectedPairKey)return;selectedPair=next;selectedPairKey=key;renderHighlight()}

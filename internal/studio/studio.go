@@ -207,6 +207,11 @@ func NewHandler(workspace *Workspace) http.Handler {
 	registerCatalogEditorRoutes(routes, workspace)
 	registerProjectEditorRoutes(routes, workspace)
 	routes.Handle("GET /ui/", http.FileServer(http.FS(assets)))
+	// Studio has no icon of its own; the browser asks for one on every
+	// opening, and a 404 there is an error in the console of every session.
+	routes.HandleFunc("GET /favicon.ico", func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusNoContent)
+	})
 	routes.HandleFunc("GET /{$}", func(response http.ResponseWriter, _ *http.Request) {
 		page, err := assets.ReadFile("ui/index.html")
 		if err != nil {
@@ -794,6 +799,8 @@ func writeSourceError(response http.ResponseWriter, err error) {
 		status = http.StatusConflict
 	case errors.Is(err, ErrSourceNotFound):
 		status = http.StatusNotFound
+	case errors.Is(err, ErrSourceReadOnly):
+		status = http.StatusForbidden
 	}
 	http.Error(response, err.Error(), status)
 }
@@ -805,6 +812,8 @@ func writeBSLNavigationError(response http.ResponseWriter, err error) {
 		status = http.StatusConflict
 	case errors.Is(err, ErrSourceNotFound), errors.Is(err, ErrBSLSymbolNotFound), errors.Is(err, ErrBSLHelpNotFound):
 		status = http.StatusNotFound
+	case errors.Is(err, ErrSourceReadOnly):
+		status = http.StatusForbidden
 	}
 	http.Error(response, err.Error(), status)
 }
