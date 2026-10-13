@@ -370,11 +370,7 @@ func projectRoutineHelp(module bslSemanticModule, parsed *syntax.Module, tokens 
 func projectRoutineHelpItem(module bslSemanticModule, routine *syntax.Routine, source string, lines []string, target bslResolvedSymbol) BSLHelpItem {
 	parameters := make([]BSLHelpParameter, 0, len(routine.Parameters))
 	for _, parameter := range routine.Parameters {
-		label := parameter.Name
-		if parameter.SourceSpan.Start.Offset >= 0 && parameter.SourceSpan.End.Offset <= len(source) && parameter.SourceSpan.End.Offset > parameter.SourceSpan.Start.Offset {
-			label = strings.TrimSpace(source[parameter.SourceSpan.Start.Offset:parameter.SourceSpan.End.Offset])
-		}
-		parameters = append(parameters, BSLHelpParameter{Label: label})
+		parameters = append(parameters, BSLHelpParameter{Label: parameterLabel(parameter, source)})
 	}
 	kind := "Процедура"
 	if routine.Function {

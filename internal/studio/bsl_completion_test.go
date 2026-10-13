@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -138,9 +139,9 @@ func TestCompleteBSLProvidesDirectivesConstructorsEnumsAndBuiltinSignatures(t *t
 		}
 	}
 
-	source := "Процедура Тест()\nРезультат = РегистрыНакопления.Остатки.Обороты(Начало, Конец, );\nКонецПроцедуры"
-	completion := completeAt(t, workspace, path, source, strings.Index(source, ", );")+len(", "))
-	if completion.Signature == nil || completion.Signature.ActiveParameter != 2 || !strings.Contains(completion.Signature.Label, "Отбор") {
+	source := "Процедура Тест()\nРезультат = Запрос(\nКонецПроцедуры"
+	completion := completeAt(t, workspace, path, source, strings.Index(source, "(\n")+1)
+	if completion.Signature == nil || completion.Signature.Label != "Запрос(Текст = \"\")" {
 		t.Fatalf("builtin signature = %+v", completion.Signature)
 	}
 }
@@ -338,5 +339,119 @@ func writeBSLTestSource(t testing.TB, root, relative, content string) {
 	}
 	if err := os.WriteFile(absolute, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// writeManagedProject writes a project with an object of each sort a path
+// through the managers passes: a catalog with a predefined item, a source of
+// data with a function, a table and a cube holding a dimension table, a
+// second source with a table of its own, a session parameter.
+func writeManagedProject(t *testing.T) string {
+	t.Helper()
+	root := createProject(t)
+	writeProjectFile(t, root, "metadata/catalogs/Товары/object.yaml", "format: 1\nid: f9100000-0000-4000-8000-000000000001\n"+
+		"name: Товары\ntitle: {ru: Товары}\ncode: {type: string, length: 9, auto: true, unique: true}\ndescription_length: 100\n"+
+		"predefined:\n  - {id: f9100000-0000-4000-8000-000000000002, name: Услуга, code: \"001\"}\n")
+	writeProjectFile(t, root, "metadata/catalogs/Склады/object.yaml", "format: 1\nid: f9100000-0000-4000-8000-000000000003\n"+
+		"name: Склады\ntitle: {ru: Склады}\ncode: {type: string, length: 9, auto: true, unique: true}\ndescription_length: 100\n")
+	const source = "metadata/external-data-sources/Склад"
+	writeProjectFile(t, root, source+"/object.yaml", "format: 1\nid: f9100000-0000-4000-8000-000000000011\nname: Склад\ntitle: {ru: Склад}\n"+
+		"functions:\n  - {id: f9100000-0000-4000-8000-000000000012, name: Остаток, title: {ru: Остаток}}\n")
+	writeProjectFile(t, root, source+"/tables/Остатки/object.yaml", "format: 1\nid: f9100000-0000-4000-8000-000000000013\n"+
+		"name: Остатки\ntitle: {ru: Остатки}\nname_in_data_source: dbo.Remains\ndata_type: non-object\n")
+	writeProjectFile(t, root, source+"/cubes/Продажи/object.yaml", "format: 1\nid: f9100000-0000-4000-8000-000000000014\n"+
+		"name: Продажи\ntitle: {ru: Продажи}\nname_in_data_source: Sales\n")
+	writeProjectFile(t, root, source+"/cubes/Продажи/dimension-tables/Номенклатура/object.yaml", "format: 1\n"+
+		"id: f9100000-0000-4000-8000-000000000015\nname: Номенклатура\ntitle: {ru: Номенклатура}\nname_in_data_source: Goods\n")
+	writeProjectFile(t, root, "metadata/external-data-sources/Архив/object.yaml", "format: 1\nid: f9100000-0000-4000-8000-000000000016\n"+
+		"name: Архив\ntitle: {ru: Архив}\n")
+	writeProjectFile(t, root, "metadata/external-data-sources/Архив/tables/Старые/object.yaml", "format: 1\n"+
+		"id: f9100000-0000-4000-8000-000000000017\nname: Старые\ntitle: {ru: Старые}\nname_in_data_source: dbo.Old\ndata_type: non-object\n")
+	writeProjectFile(t, root, "metadata/session-parameters/f9100000-0000-4000-8000-000000000021.yaml", "format: 1\n"+
+		"id: f9100000-0000-4000-8000-000000000021\nname: Валюта\ntitle: {ru: Валюта}\ntypes: [{kind: boolean}]\n")
+	return root
+}
+
+// A path through the managers of the global context completes at every
+// point by what the help gives there and the project has: the collections,
+// the objects of one, the members of an object's manager with its predefined
+// items and the functions of a source, the objects held by a collection of a
+// manager, and the signature of a method of a manager. Catches a kind whose
+// manager completes with nothing (all but five did), methods of a manager the
+// help does not give (ПолучитьОбъект of a catalog), an object of another
+// owner or kind offered in a collection (the dimension table among the
+// tables), a path through an object the project lacks completed anyway, a
+// collection the global context lacks offered (ОпределяемыеТипы), and the
+// signature of a method of a register the project lacks.
+func TestCompleteBSLWalksTheManagersOfEveryKind(t *testing.T) {
+	t.Parallel()
+	root := writeManagedProject(t)
+	path, _ := project.ModulePath(uuid.MustNew())
+	writeBSLTestSource(t, root, path, "")
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	labels := func(code string) []string {
+		source := "Процедура Тест()\n" + code + "\nКонецПроцедуры"
+		completion := completeAt(t, workspace, path, source, strings.Index(source, "\nКонецПроцедуры"))
+		result := make([]string, 0, len(completion.Items))
+		for _, item := range completion.Items {
+			result = append(result, item.Label)
+		}
+		return result
+	}
+	for _, test := range []struct {
+		code         string
+		want, absent []string
+	}{
+		{"ВнешниеИс", []string{"ВнешниеИсточникиДанных"}, nil},
+		{"ПараметрыС", []string{"ПараметрыСеанса"}, nil},
+		{"Определяемые", nil, []string{"ОпределяемыеТипы"}},
+		{"Справочники.", []string{"Склады", "Товары"}, nil},
+		{"Справочники.Товары.", []string{"Услуга", "НайтиПоКоду", "СоздатьГруппу", "ПустаяСсылка"}, []string{"ПолучитьОбъект"}},
+		{"Справочники.Склады.", []string{"НайтиПоКоду"}, []string{"Услуга"}},
+		{"Справочники.Нет.", nil, []string{"НайтиПоКоду"}},
+		{"Справочники.Товары.Таблицы.", nil, []string{"Остатки"}},
+		{"ВнешниеИсточникиДанных.", []string{"Склад"}, nil},
+		{"ВнешниеИсточникиДанных.Склад.", []string{"Таблицы", "Кубы", "Остаток", "НачатьТранзакцию"}, nil},
+		{"ВнешниеИсточникиДанных.Склад.Таблицы.", []string{"Остатки"}, []string{"Продажи", "Номенклатура", "Старые"}},
+		{"ВнешниеИсточникиДанных.Склад.Таблицы.Остатки.", []string{"СоздатьНаборЗаписей", "НайтиПоПолю"}, []string{"Остаток"}},
+		{"ВнешниеИсточникиДанных.Склад.Кубы.Продажи.ТаблицыИзмерений.", []string{"Номенклатура"}, []string{"Остатки"}},
+		{"ВнешниеИсточникиДанных.Склад.Кубы.Продажи.ТаблицыИзмерений.Номенклатура.", []string{"ПолучитьСсылку"}, nil},
+		{"ВнешниеИсточникиДанных.Склад.Кубы.Нет.ТаблицыИзмерений.", nil, []string{"Номенклатура"}},
+		{"ПараметрыСеанса.", []string{"Валюта"}, nil},
+		// Таблицы is a collection of a source's manager, not of the global
+		// context.
+		{"Таблицы.", nil, []string{"Остатки", "Склад.Остатки", "Архив.Старые"}},
+		{"Catalogs.Товары.Find", []string{"FindByCode", "FindByDescription"}, []string{"НайтиПоКоду"}},
+		{"ExternalDataSources.Склад.Tables.", []string{"Остатки"}, nil},
+	} {
+		got := labels(test.code)
+		for _, label := range test.want {
+			if !slices.Contains(got, label) {
+				t.Errorf("%s does not offer %s: %v", test.code, label, got)
+			}
+		}
+		for _, label := range test.absent {
+			if slices.Contains(got, label) {
+				t.Errorf("%s offers %s: %v", test.code, label, got)
+			}
+		}
+	}
+	for _, test := range []struct{ code, label string }{
+		{"Справочники.Товары.НайтиПоКоду(", "Справочники.Товары.НайтиПоКоду(Код, ПоискПоПолномуКоду = Ложь, Родитель, Владелец)"},
+		{"ВнешниеИсточникиДанных.Склад.Таблицы.Остатки.НайтиПоПолю(", "ВнешниеИсточникиДанных.Склад.Таблицы.Остатки.НайтиПоПолю(ИмяПоля, ЗначениеПоля)"},
+		{"РегистрыНакопления.Остатки.Обороты(", ""},
+	} {
+		source := "Процедура Тест()\n" + test.code + "\nКонецПроцедуры"
+		completion := completeAt(t, workspace, path, source, strings.Index(source, "\nКонецПроцедуры"))
+		got := ""
+		if completion.Signature != nil {
+			got = completion.Signature.Label
+		}
+		if got != test.label {
+			t.Errorf("%s is signed %q, want %q", test.code, got, test.label)
+		}
 	}
 }

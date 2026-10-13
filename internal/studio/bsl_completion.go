@@ -2,10 +2,9 @@ package studio
 
 import (
 	"fmt"
-	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
-	"github.com/k33alexey/MetaLab/internal/kinds"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -13,9 +12,9 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/bsl/spec"
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
-	"go.yaml.in/yaml/v3"
 )
 
 const maxBSLCompletionItems = 200
@@ -68,22 +67,88 @@ type bslModuleIndex struct {
 	movementSets []bslMovementSet
 }
 
-type bslMetadataIndex struct {
-	constants             []string
-	enumerations          []string
-	enumerationValues     map[string][]string
-	definedTypes          []string
-	catalogs              []string
-	documents             []string
-	informationRegisters  []string
-	accumulationRegisters []string
+// bslManagers is the objects the code reaches through the global context
+// (metadata.Catalog.ManagedObjects), by kind and by the name in lower case.
+type bslManagers map[kinds.Kind]map[string]metadata.ManagedObject
+
+func indexBSLManagers(catalog *metadata.Catalog) bslManagers {
+	result := bslManagers{}
+	for _, object := range catalog.ManagedObjects() {
+		if result[object.Kind] == nil {
+			result[object.Kind] = map[string]metadata.ManagedObject{}
+		}
+		result[object.Kind][strings.ToLower(object.Name)] = object
+	}
+	return result
+}
+
+// walk reads the words of the code before a point as a path through the
+// managers of the global context: a collection there, then an object's name,
+// then the collection of its manager that holds objects of another kind,
+// then a name again (ВнешниеИсточникиДанных.Склад.Таблицы.Товары). It is the
+// kind the path ends in and the name after its owner's of the object it
+// names, or of the owner of the collection it ends with - empty for a
+// collection of the global context. False is no such path; one through an
+// object the configuration does not have names nothing in it.
+func (managers bslManagers) walk(path []string) (descriptor kinds.Descriptor, name string, collection bool, ok bool) {
+	for position, word := range path {
+		switch {
+		case position == 0:
+			index := slices.IndexFunc(kinds.All(), func(item kinds.Descriptor) bool {
+				return item.InGlobalContext() && item.Collection.Is(word)
+			})
+			if index < 0 {
+				return kinds.Descriptor{}, "", false, false
+			}
+			descriptor = kinds.All()[index]
+		case position%2 == 1:
+			if name != "" {
+				name += "."
+			}
+			name += word
+		default:
+			if descriptor, ok = descriptor.Inner(word); !ok {
+				return kinds.Descriptor{}, "", false, false
+			}
+		}
+	}
+	return descriptor, name, len(path)%2 == 1, len(path) != 0
+}
+
+// object is the object the path names, with the members of its manager.
+func (managers bslManagers) object(path []string) (metadata.ManagedObject, bool) {
+	descriptor, name, collection, ok := managers.walk(path)
+	if !ok || collection {
+		return metadata.ManagedObject{}, false
+	}
+	object, exists := managers[descriptor.Kind][strings.ToLower(name)]
+	return object, exists
+}
+
+// names adds the objects of the collection the path ends with: those of the
+// global context, or those inside the object before it. The objects of a
+// kind all lie as deep, so the owner's name before them is enough.
+func (managers bslManagers) names(add *completionCollector, path []string) {
+	descriptor, owner, collection, ok := managers.walk(path)
+	if !ok || !collection {
+		return
+	}
+	prefix := ""
+	if owner != "" {
+		prefix = owner + "."
+	}
+	for _, object := range managers[descriptor.Kind] {
+		if len(object.Name) > len(prefix) && strings.EqualFold(object.Name[:len(prefix)], prefix) {
+			add.add(object.Name[len(prefix):], "metadata-object", strings.ToLower(descriptor.Title))
+		}
+	}
 }
 
 // BSLSymbolIndex is an immutable project-wide symbol snapshot cached by Workspace.
 type BSLSymbolIndex struct {
 	modules    map[string]bslModuleIndex
 	public     map[string]bslModuleIndex
-	metadata   bslMetadataIndex
+	managers   bslManagers
 	keywordsRU []string
 	keywordsEN []string
 }
@@ -149,9 +214,8 @@ func (workspace *Workspace) CompleteBSL(relative, source string, position BSLPos
 
 func (workspace *Workspace) buildBSLSymbolIndex() (*BSLSymbolIndex, error) {
 	result := &BSLSymbolIndex{
-		modules:  make(map[string]bslModuleIndex),
-		public:   make(map[string]bslModuleIndex),
-		metadata: bslMetadataIndex{enumerationValues: make(map[string][]string)},
+		modules: make(map[string]bslModuleIndex),
+		public:  make(map[string]bslModuleIndex),
 	}
 	catalog, err := spec.Load()
 	if err != nil {
@@ -201,11 +265,7 @@ func (workspace *Workspace) buildBSLSymbolIndex() (*BSLSymbolIndex, error) {
 			result.public[strings.ToLower(module.name)] = module
 		}
 	}
-	if metadataCatalog != nil {
-		result.metadata = indexBSLMetadata(metadataCatalog)
-	} else {
-		result.metadata = workspace.scanBSLMetadata()
-	}
+	result.managers = indexBSLManagers(metadataCatalog)
 	return result, nil
 }
 
@@ -251,65 +311,15 @@ func (workspace *Workspace) moduleDescriptors(catalog *metadata.Catalog) bslModu
 	return result
 }
 
-func (workspace *Workspace) scanBSLMetadata() bslMetadataIndex {
-	result := bslMetadataIndex{enumerationValues: make(map[string][]string)}
-	for _, collection := range compiler.MetadataCollections {
-		kind := string(collection)
-		entries, err := os.ReadDir(filepath.Join(workspace.root, "metadata", kind))
-		if err != nil {
-			continue
-		}
-		for _, entry := range entries {
-			if entry.Type()&os.ModeSymlink != 0 {
-				continue
-			}
-			// A kind that keeps a folder per object holds the description
-			// inside it; the rest keep one file per object.
-			source := filepath.Join(workspace.root, "metadata", kind, entry.Name())
-			switch {
-			case entry.IsDir():
-				source = filepath.Join(source, "object.yaml")
-			case filepath.Ext(entry.Name()) != ".yaml":
-				continue
-			}
-			data, err := os.ReadFile(source)
-			if err != nil {
-				continue
-			}
-			var value struct {
-				Name   string `yaml:"name"`
-				Values []struct {
-					Name string `yaml:"name"`
-				} `yaml:"values"`
-			}
-			if yaml.Unmarshal(data, &value) != nil || value.Name == "" {
-				continue
-			}
-			switch kind {
-			case "constants":
-				result.constants = append(result.constants, value.Name)
-			case "enumerations":
-				result.enumerations = append(result.enumerations, value.Name)
-				for _, item := range value.Values {
-					if item.Name != "" {
-						key := strings.ToLower(value.Name)
-						result.enumerationValues[key] = append(result.enumerationValues[key], item.Name)
-					}
-				}
-			case "defined-types":
-				result.definedTypes = append(result.definedTypes, value.Name)
-			case "catalogs":
-				result.catalogs = append(result.catalogs, value.Name)
-			case "documents":
-				result.documents = append(result.documents, value.Name)
-			case "information-registers":
-				result.informationRegisters = append(result.informationRegisters, value.Name)
-			case "accumulation-registers":
-				result.accumulationRegisters = append(result.accumulationRegisters, value.Name)
-			}
-		}
+// parameterLabel is a parameter of a routine as its source writes it, with
+// Знач and the value it takes when left out (syntax.Parameter.SourceSpan);
+// its name where the source does not hold it. Completion and help sign a routine of the project alike.
+func parameterLabel(parameter syntax.Parameter, source string) string {
+	span := parameter.SourceSpan
+	if span.Start.Offset >= 0 && span.End.Offset <= len(source) && span.End.Offset > span.Start.Offset {
+		return strings.TrimSpace(source[span.Start.Offset:span.End.Offset])
 	}
-	return result
+	return parameter.Name
 }
 
 func indexBSLModule(path string, descriptor moduleDescriptor, source string) bslModuleIndex {
@@ -326,11 +336,7 @@ func indexParsedBSLModule(path string, descriptor moduleDescriptor, source strin
 	for _, routine := range parsed.Routines {
 		parameters := make([]string, 0, len(routine.Parameters))
 		for _, parameter := range routine.Parameters {
-			label := parameter.Name
-			if parameter.SourceSpan.Start.Offset >= 0 && parameter.SourceSpan.End.Offset <= len(source) && parameter.SourceSpan.End.Offset > parameter.SourceSpan.Start.Offset {
-				label = strings.TrimSpace(source[parameter.SourceSpan.Start.Offset:parameter.SourceSpan.End.Offset])
-			}
-			parameters = append(parameters, label)
+			parameters = append(parameters, parameterLabel(parameter, source))
 		}
 		kind := "Процедура"
 		if routine.Function {
@@ -340,35 +346,6 @@ func indexParsedBSLModule(path string, descriptor moduleDescriptor, source strin
 			name: routine.Name, function: routine.Function, exported: routine.Export, parameters: parameters,
 			signature: kind + " " + routine.Name + "(" + strings.Join(parameters, ", ") + ")", span: routine.SourceSpan,
 		})
-	}
-	return result
-}
-
-func indexBSLMetadata(catalog *metadata.Catalog) bslMetadataIndex {
-	result := bslMetadataIndex{enumerationValues: make(map[string][]string)}
-	for _, item := range catalog.Constants {
-		result.constants = append(result.constants, item.Name)
-	}
-	for _, item := range catalog.Enumerations {
-		result.enumerations = append(result.enumerations, item.Name)
-		for _, value := range item.Values {
-			result.enumerationValues[strings.ToLower(item.Name)] = append(result.enumerationValues[strings.ToLower(item.Name)], value.Name)
-		}
-	}
-	for _, item := range catalog.DefinedTypes {
-		result.definedTypes = append(result.definedTypes, item.Name)
-	}
-	for _, item := range catalog.Catalogs {
-		result.catalogs = append(result.catalogs, item.Name)
-	}
-	for _, item := range catalog.Documents {
-		result.documents = append(result.documents, item.Name)
-	}
-	for _, item := range catalog.InformationRegisters {
-		result.informationRegisters = append(result.informationRegisters, item.Name)
-	}
-	for _, item := range catalog.AccumulationRegisters {
-		result.accumulationRegisters = append(result.accumulationRegisters, item.Name)
 	}
 	return result
 }
@@ -504,12 +481,19 @@ func (index *BSLSymbolIndex) addUnqualified(add *completionCollector, current bs
 	for _, module := range index.public {
 		add.add(module.name, "module", "общий модуль")
 	}
+	for _, kind := range kinds.All() {
+		if !kind.InGlobalContext() {
+			continue
+		}
+		if english {
+			add.add(kind.Collection.English, "metadata", "application metadata")
+		} else {
+			add.add(kind.Collection.Russian, "metadata", "метаданные приложения")
+		}
+	}
 	if english {
 		add.values("function", "global function", "ErrorDescription", "TransactionActive")
 		add.values("procedure", "global procedure", "BeginTransaction", "CommitTransaction", "RollbackTransaction")
-		for _, kind := range compiler.MetadataCollections {
-			add.add(kinds.Must(kind).Collection.English, "metadata", "application metadata")
-		}
 		add.values("system-enum", "system enumeration", "DataLockMode", "AccumulationMovementKind", "DocumentWriteMode", "DocumentPostingMode")
 		for _, keyword := range index.keywordsEN {
 			add.add(keyword, "keyword", "keyword")
@@ -517,9 +501,6 @@ func (index *BSLSymbolIndex) addUnqualified(add *completionCollector, current bs
 	} else {
 		add.values("function", "глобальная функция", "ОписаниеОшибки", "ТранзакцияАктивна")
 		add.values("procedure", "глобальная процедура", "НачатьТранзакцию", "ЗафиксироватьТранзакцию", "ОтменитьТранзакцию")
-		for _, kind := range compiler.MetadataCollections {
-			add.add(kinds.Must(kind).Collection.Russian, "metadata", "метаданные приложения")
-		}
 		add.values("system-enum", "системное перечисление", "РежимБлокировкиДанных", "ВидДвиженияНакопления", "РежимЗаписиДокумента", "РежимПроведенияДокумента")
 		for _, keyword := range index.keywordsRU {
 			add.add(keyword, "keyword", "ключевое слово")
@@ -549,7 +530,6 @@ func (index *BSLSymbolIndex) addQualified(add *completionCollector, qualifier []
 	}
 	root := strings.ToLower(qualifier[0])
 	if len(qualifier) == 1 {
-		collection, _ := kinds.ByCollection(root)
 		switch {
 		case kinds.ThisObject.Is(root):
 			add.members(current.object, english, "object", "объекта")
@@ -557,20 +537,6 @@ func (index *BSLSymbolIndex) addQualified(add *completionCollector, qualifier []
 			for _, movement := range current.movementSets {
 				add.add(movement.name, "metadata-object", "набор движений")
 			}
-		case collection == kinds.Catalog:
-			add.values("metadata-object", "справочник", index.metadata.catalogs...)
-		case collection == kinds.Document:
-			add.values("metadata-object", "документ", index.metadata.documents...)
-		case collection == kinds.InformationRegister:
-			add.values("metadata-object", "регистр сведений", index.metadata.informationRegisters...)
-		case collection == kinds.AccumulationRegister:
-			add.values("metadata-object", "регистр накопления", index.metadata.accumulationRegisters...)
-		case collection == kinds.Constant:
-			add.values("metadata-object", "константа", index.metadata.constants...)
-		case collection == kinds.Enumeration:
-			add.values("metadata-object", "перечисление", index.metadata.enumerations...)
-		case collection == kinds.DefinedType:
-			add.values("metadata-object", "определяемый тип", index.metadata.definedTypes...)
 		case root == "режимблокировкиданных" || root == "datalockmode":
 			if english {
 				add.values("enum-value", "system enum value", "Exclusive", "Shared")
@@ -595,66 +561,22 @@ func (index *BSLSymbolIndex) addQualified(add *completionCollector, qualifier []
 			} else {
 				add.values("enum-value", "значение системного перечисления", "Неоперативный", "Оперативный")
 			}
+		default:
+			index.managers.names(add, qualifier)
 		}
 		return
 	}
-	if len(qualifier) != 2 {
-		return
-	}
-	collection, _ := kinds.ByCollection(root)
-	switch {
-	case kinds.RegisterRecords.Is(root):
+	if len(qualifier) == 2 && kinds.RegisterRecords.Is(root) {
 		if movement, ok := findMovementSet(current.movementSets, qualifier[1]); ok {
 			add.members(movement.members, english, "record set", "набора записей")
 		}
-	case collection == kinds.Enumeration:
-		add.values("enum-value", "значение перечисления", index.metadata.enumerationValues[strings.ToLower(qualifier[1])]...)
-	case collection == kinds.Catalog:
-		if !containsFold(index.metadata.catalogs, qualifier[1]) {
-			return
-		}
-		if english {
-			add.values("method", "catalog manager", "CreateItem", "GetObject", "FindByCode", "GetRef", "GetReference")
-		} else {
-			add.values("method", "менеджер справочника", "СоздатьЭлемент", "ПолучитьОбъект", "НайтиПоКоду", "ПолучитьСсылку")
-		}
-	case collection == kinds.Document:
-		if !containsFold(index.metadata.documents, qualifier[1]) {
-			return
-		}
-		if english {
-			add.values("method", "document manager", "CreateDocument", "GetObject", "FindByNumber", "GetRef", "GetReference")
-		} else {
-			add.values("method", "менеджер документа", "СоздатьДокумент", "ПолучитьОбъект", "НайтиПоНомеру", "ПолучитьСсылку")
-		}
-	case collection == kinds.InformationRegister:
-		if !containsFold(index.metadata.informationRegisters, qualifier[1]) {
-			return
-		}
-		if english {
-			add.values("method", "information register manager", "CreateRecordSet", "SliceLast", "SliceFirst")
-		} else {
-			add.values("method", "менеджер регистра сведений", "СоздатьНаборЗаписей", "СрезПоследних", "СрезПервых")
-		}
-	case collection == kinds.AccumulationRegister:
-		if !containsFold(index.metadata.accumulationRegisters, qualifier[1]) {
-			return
-		}
-		if english {
-			add.values("method", "accumulation register manager", "CreateRecordSet", "Balances", "Turnovers")
-		} else {
-			add.values("method", "менеджер регистра накопления", "СоздатьНаборЗаписей", "Остатки", "Обороты")
-		}
-	case collection == kinds.Constant:
-		if !containsFold(index.metadata.constants, qualifier[1]) {
-			return
-		}
-		if english {
-			add.values("method", "constant manager", "Get", "Set")
-		} else {
-			add.values("method", "менеджер константы", "Получить", "Установить")
-		}
+		return
 	}
+	if object, ok := index.managers.object(qualifier); ok {
+		add.members(object.Members, english, "manager", "менеджера")
+		return
+	}
+	index.managers.names(add, qualifier)
 }
 
 func (index *BSLSymbolIndex) signature(tokens []syntax.Token, current bslModuleIndex, offset int) *BSLSignatureHelp {
@@ -683,7 +605,7 @@ func (index *BSLSymbolIndex) signature(tokens []syntax.Token, current bslModuleI
 	if routine != nil {
 		return signatureHelp(routine.signature, routine.parameters, active)
 	}
-	if label, parameters := objectSignature(path, current); label != "" {
+	if label, parameters := index.objectSignature(path, current); label != "" {
 		return signatureHelp(label, parameters, active)
 	}
 	if label, parameters := builtinSignature(path); label != "" {
@@ -701,9 +623,9 @@ func findMovementSet(sets []bslMovementSet, name string) (bslMovementSet, bool) 
 	return bslMovementSet{}, false
 }
 
-// objectSignature is the call of a method of ЭтотОбъект or of a record set
-// of Движения, as the help gives its parameters.
-func objectSignature(path []string, current bslModuleIndex) (string, []string) {
+// objectSignature is the call of a method of ЭтотОбъект, of a record set of
+// Движения or of the manager of an object, as the help gives its parameters.
+func (index *BSLSymbolIndex) objectSignature(path []string, current bslModuleIndex) (string, []string) {
 	var members []kinds.Member
 	switch {
 	case len(path) == 2 && kinds.ThisObject.Is(path[0]):
@@ -715,7 +637,11 @@ func objectSignature(path []string, current bslModuleIndex) (string, []string) {
 		}
 		members = movement.members
 	default:
-		return "", nil
+		object, ok := index.managers.object(path[:len(path)-1])
+		if !ok {
+			return "", nil
+		}
+		members = object.Members
 	}
 	for _, member := range members {
 		if member.Method && member.Name.Is(path[len(path)-1]) {
@@ -742,26 +668,12 @@ func signatureHelp(label string, parameters []string, active int) *BSLSignatureH
 	return result
 }
 
-var standaloneBSLSignatures = map[string]bool{
-	"описаниеошибки": true, "errordescription": true, "начатьтранзакцию": true, "begintransaction": true,
-	"зафиксироватьтранзакцию": true, "committransaction": true, "отменитьтранзакцию": true, "rollbacktransaction": true,
-	"транзакцияактивна": true, "transactionactive": true, "массив": true, "array": true, "структура": true, "structure": true,
-	"соответствие": true, "map": true, "списокзначений": true, "valuelist": true, "таблицазначений": true, "valuetable": true,
-	"запрос": true, "query": true, "менеджервременныхтаблиц": true, "temptablesmanager": true, "блокировкаданных": true, "datalock": true,
-}
-
+// builtinBSLSignatures are the functions and procedures of the global
+// context and the constructors the editor signs, by name in lower case.
 var builtinBSLSignatures = map[string][]string{
 	"описаниеошибки": {}, "errordescription": {}, "начатьтранзакцию": {}, "begintransaction": {},
 	"зафиксироватьтранзакцию": {}, "committransaction": {}, "отменитьтранзакцию": {}, "rollbacktransaction": {},
-	"транзакцияактивна": {}, "transactionactive": {}, "создатьэлемент": {}, "createitem": {},
-	"создатьдокумент": {}, "createdocument": {}, "получитьобъект": {"Ссылка"}, "getobject": {"Reference"},
-	"найтипокоду": {"Код"}, "findbycode": {"Code"}, "найтипономеру": {"Номер", "Период = Неопределено"}, "findbynumber": {"Number", "Period = Undefined"},
-	"получитьссылку": {"Идентификатор"}, "getref": {"Identifier"}, "getreference": {"Identifier"},
-	"создатьнаборзаписей": {}, "createrecordset": {}, "срезпоследних": {"Период", "Отбор = Неопределено"}, "slicelast": {"Period", "Filter = Undefined"},
-	"срезпервых": {"Период", "Отбор = Неопределено"}, "slicefirst": {"Period", "Filter = Undefined"},
-	"остатки": {"Момент = Неопределено", "Отбор = Неопределено"}, "balances": {"Moment = Undefined", "Filter = Undefined"},
-	"обороты": {"НачалоПериода = Неопределено", "КонецПериода = Неопределено", "Отбор = Неопределено"}, "turnovers": {"PeriodBegin = Undefined", "PeriodEnd = Undefined", "Filter = Undefined"},
-	"получить": {}, "get": {}, "установить": {"Значение"}, "set": {"Value"},
+	"транзакцияактивна": {}, "transactionactive": {},
 	"массив": {"Размер1 = 0", "..."}, "array": {"Dimension1 = 0", "..."},
 	"структура": {"ИменаСвойств = \"\"", "..."}, "structure": {"PropertyNames = \"\"", "..."},
 	"соответствие": {}, "map": {}, "списокзначений": {}, "valuelist": {}, "таблицазначений": {}, "valuetable": {},
@@ -770,52 +682,14 @@ var builtinBSLSignatures = map[string][]string{
 }
 
 func builtinSignature(path []string) (string, []string) {
-	name := strings.ToLower(path[len(path)-1])
-	if len(path) == 1 {
-		if !standaloneBSLSignatures[name] {
-			return "", nil
-		}
-	} else if len(path) != 3 || !metadataMethod(path[0], name) {
+	if len(path) != 1 {
 		return "", nil
 	}
-	parameters, ok := builtinBSLSignatures[name]
+	parameters, ok := builtinBSLSignatures[strings.ToLower(path[0])]
 	if !ok {
 		return "", nil
 	}
-	label := strings.Join(path, ".") + "(" + strings.Join(parameters, ", ") + ")"
-	return label, parameters
-}
-
-func metadataMethod(root, method string) bool {
-	var allowed []string
-	collection, _ := kinds.ByCollection(root)
-	switch collection {
-	case kinds.Catalog:
-		allowed = []string{"создатьэлемент", "createitem", "получитьобъект", "getobject", "найтипокоду", "findbycode", "получитьссылку", "getref", "getreference"}
-	case kinds.Document:
-		allowed = []string{"создатьдокумент", "createdocument", "получитьобъект", "getobject", "найтипономеру", "findbynumber", "получитьссылку", "getref", "getreference"}
-	case kinds.InformationRegister:
-		allowed = []string{"создатьнаборзаписей", "createrecordset", "срезпоследних", "slicelast", "срезпервых", "slicefirst"}
-	case kinds.AccumulationRegister:
-		allowed = []string{"создатьнаборзаписей", "createrecordset", "остатки", "balances", "обороты", "turnovers"}
-	case kinds.Constant:
-		allowed = []string{"получить", "get", "установить", "set"}
-	}
-	for _, candidate := range allowed {
-		if method == candidate {
-			return true
-		}
-	}
-	return false
-}
-
-func containsFold(items []string, value string) bool {
-	for _, item := range items {
-		if strings.EqualFold(item, value) {
-			return true
-		}
-	}
-	return false
+	return path[0] + "(" + strings.Join(parameters, ", ") + ")", parameters
 }
 
 func openCall(tokens []syntax.Token, offset int) ([]string, int) {

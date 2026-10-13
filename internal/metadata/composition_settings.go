@@ -234,6 +234,17 @@ var predefinedValueKinds = []predefinedValueKind{
 	{DocumentKind, false}, {BusinessProcessKind, false}, {TaskKind, false},
 }
 
+// predefinedItemsOf is the items of an object of a kind with items that a
+// value by name names after the object (predefinedValueKind.items): the
+// values of an enumeration, the predefined items of the rest, each with its
+// Name.
+func predefinedItemsOf(kind Kind, definition reflect.Value) reflect.Value {
+	if kind == EnumerationKind {
+		return definition.FieldByName("Values")
+	}
+	return definition.FieldByName("Predefined")
+}
+
 // isEmptyReferenceName says a value by name is the empty reference of its
 // object.
 func isEmptyReferenceName(name string) bool {
@@ -285,10 +296,7 @@ func (catalog *Catalog) hasPredefinedValue(value string) bool {
 		if len(parts) == 2 || isEmptyReferenceName(parts[2]) {
 			return true
 		}
-		items := definition.FieldByName("Predefined")
-		if kind.kind == EnumerationKind {
-			items = definition.FieldByName("Values")
-		}
+		items := predefinedItemsOf(kind.kind, definition)
 		for position := range items.Len() {
 			if strings.EqualFold(items.Index(position).FieldByName("Name").String(), parts[2]) {
 				return true

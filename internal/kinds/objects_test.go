@@ -76,7 +76,7 @@ func TestThisObjectIsTheHelpsType(t *testing.T) {
 // the wrong optionality or default: a required one, one marked optional by
 // "?", one with the value it takes when left out.
 func TestParametersReadAsWritten(t *testing.T) {
-	member := readMember(Words{"Тип", "Type"}, []string{"Записать", "Write", "Запись", "Замещать = Истина", "Форма?"}, true)
+	member := readMember("objects.yaml", Words{"Тип", "Type"}, []string{"Записать", "Write", "Запись", "Замещать = Истина", "Форма?"}, true)
 	want := []Parameter{{Name: "Запись"}, {Name: "Замещать", Optional: true, Default: "Истина"}, {Name: "Форма", Optional: true}}
 	if !slices.Equal(member.Parameters, want) || member.Name != (Words{"Записать", "Write"}) || !member.Method {
 		t.Fatalf("read %+v, want %+v", member, want)

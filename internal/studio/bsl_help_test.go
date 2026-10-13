@@ -48,11 +48,6 @@ func TestPlatformHelpCoversCompletionCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for alias := range standaloneBSLSignatures {
-		if _, ok := index.firstAlias(alias); !ok {
-			t.Errorf("standalone completion %q has no local help", alias)
-		}
-	}
 	for alias := range builtinBSLSignatures {
 		if _, ok := index.firstAlias(alias); !ok {
 			t.Errorf("built-in completion %q has no local help", alias)

@@ -612,7 +612,7 @@ func findModuleDeclaration(module bslSemanticModule, name string, exportedOnly, 
 func renameConflicts(index *bslNavigationIndex, target bslResolvedSymbol, newName string) bool {
 	module := index.modules[target.path]
 	key := strings.ToLower(newName)
-	if standaloneBSLSignatures[key] || reservedBSLNavigationNames[key] {
+	if _, builtin := builtinBSLSignatures[key]; builtin || reservedBSLNavigationNames[key] {
 		return true
 	}
 	if _, exists := index.publicModules[key]; exists {

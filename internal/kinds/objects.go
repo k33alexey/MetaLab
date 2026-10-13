@@ -83,40 +83,42 @@ var thisObjects = map[Kind]map[Module]string{
 var objectsSource []byte
 
 // objectTypes are the types of objects.yaml by their Russian name.
-var objectTypes = readObjectTypes(objectsSource)
+var objectTypes = readObjectTypes("objects.yaml", objectsSource)
 
-func readObjectTypes(source []byte) map[string]ObjectType {
+// readObjectTypes reads a file of types written as objects.yaml is, named
+// for its panics.
+func readObjectTypes(file string, source []byte) map[string]ObjectType {
 	var described []struct {
 		Type       []string   `yaml:"type"`
 		Methods    [][]string `yaml:"methods"`
 		Properties [][]string `yaml:"properties"`
 	}
 	if err := yaml.Unmarshal(source, &described); err != nil {
-		panic(fmt.Sprintf("kinds: objects.yaml: %v", err))
+		panic(fmt.Sprintf("kinds: %s: %v", file, err))
 	}
 	result := make(map[string]ObjectType, len(described))
 	for _, item := range described {
 		if len(item.Type) != 2 {
-			panic(fmt.Sprintf("kinds: objects.yaml: type %v must be named in two languages", item.Type))
+			panic(fmt.Sprintf("kinds: %s: type %v must be named in two languages", file, item.Type))
 		}
 		objectType := ObjectType{Name: Words{item.Type[0], item.Type[1]}}
 		for _, method := range item.Methods {
-			objectType.Members = append(objectType.Members, readMember(objectType.Name, method, true))
+			objectType.Members = append(objectType.Members, readMember(file, objectType.Name, method, true))
 		}
 		for _, property := range item.Properties {
 			if len(property) != 2 {
-				panic(fmt.Sprintf("kinds: objects.yaml: property %v of %s takes no parameters", property, objectType.Name.Russian))
+				panic(fmt.Sprintf("kinds: %s: property %v of %s takes no parameters", file, property, objectType.Name.Russian))
 			}
-			objectType.Members = append(objectType.Members, readMember(objectType.Name, property, false))
+			objectType.Members = append(objectType.Members, readMember(file, objectType.Name, property, false))
 		}
 		result[objectType.Name.Russian] = objectType
 	}
 	return result
 }
 
-func readMember(owner Words, written []string, method bool) Member {
+func readMember(file string, owner Words, written []string, method bool) Member {
 	if len(written) < 2 {
-		panic(fmt.Sprintf("kinds: objects.yaml: member %v of %s must be named in two languages", written, owner.Russian))
+		panic(fmt.Sprintf("kinds: %s: member %v of %s must be named in two languages", file, written, owner.Russian))
 	}
 	member := Member{Name: Words{written[0], written[1]}, Method: method}
 	for _, parameter := range written[2:] {
