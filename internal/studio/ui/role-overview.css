@@ -41,3 +41,5 @@
 .overview-block .role-list th:first-child{width:auto}
 .overview-block .role-list td.overview-condition{overflow:visible;text-overflow:clip}
 .overview-taken{margin:0 0 8px;padding-left:18px;font-size:12px;line-height:1.6;max-height:240px;overflow:auto}
+.overview-wizard-caption{display:flex;align-items:center;justify-content:space-between;gap:8px}.overview-subsystems{font-size:12px}.overview-subsystems.selected{background:#2f4a6d!important;border-color:#589df6}
+.role-wizard-objects{grid-template-columns:repeat(auto-fill,minmax(240px,1fr));max-height:260px}.role-wizard-kind{grid-column:1/-1;font-weight:600;margin-top:4px}

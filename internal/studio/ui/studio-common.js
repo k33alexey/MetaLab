@@ -268,7 +268,10 @@ function restrictionFieldsCaption(object, restriction, title) {
    explanation, any content, and buttons, each [key, caption]. It answers
    with the key of the button pressed, or null when the dialog is closed
    without one. check(key), when given, is asked before the dialog closes on
-   a button with a key: a text it returns is shown and keeps the dialog open. */
+   a button with a key: a text it returns is shown and keeps the dialog open.
+   A button may take a third element, {act, shown}, for the steps of a
+   wizard: act() is done in place of closing, and after it every button is
+   shown or hidden by its shown(); the first shown is the primary one. */
 function showDialog({title, explanation, content, answers, check, className}) {
   return new Promise(resolve => {
     const dialog = document.createElement('dialog');
@@ -283,16 +286,30 @@ function showDialog({title, explanation, content, answers, check, className}) {
     form.append(problem);
     const actions = node('div', undefined, 'localized-title-actions');
     let answer = null;
-    answers.forEach(([key, text], index) => {
-      const button = node('button', text, index === 0 ? 'primary' : undefined);
+    const buttons = answers.map(([key, text, step]) => {
+      const button = node('button', text);
       button.type = 'submit';
       button.addEventListener('click', event => {
         const refusal = key !== null && check ? check(key) : '';
         if (refusal) { event.preventDefault(); problem.textContent = refusal; problem.hidden = false; return; }
+        problem.hidden = true;
+        if (step?.act) { event.preventDefault(); step.act(); arrange(); return; }
         answer = key;
       });
       actions.append(button);
+      return [button, step];
     });
+    // A hidden button is disabled too, so Enter does not press it.
+    function arrange() {
+      let primary = true;
+      for (const [button, step] of buttons) {
+        const shown = !step?.shown || step.shown();
+        button.hidden = !shown; button.disabled = !shown;
+        button.classList.toggle('primary', shown && primary);
+        if (shown) primary = false;
+      }
+    }
+    arrange();
     form.append(actions);
     dialog.append(form);
     document.body.append(dialog);

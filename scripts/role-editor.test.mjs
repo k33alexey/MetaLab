@@ -283,3 +283,25 @@ test('templates are added, changed and removed in place',()=>{
   model.removeTemplate(0);
   assert.equal(model.value().restrictionTemplates,undefined);
 });
+
+// Отбор по подсистемам (справка, «Отбор по подсистемам»). Подсистема А
+// держит товары, её подчинённая Б — документы, В — прочее; перерасчёт лежит
+// в документах, «свободный» не входит никуда. Ожидания выписаны по справке,
+// а не прочитаны из отбора. Дефекты: подчинённые или родительские
+// подсистемы берутся без флага или не берутся с ним; вложенный объект
+// отбрасывается, хотя проходит то, в чём он лежит; «<Не входящие в
+// подсистемы>» пропускает вошедшие; без отбора что-то скрыто.
+test('the filter by subsystems takes what the marked hold, beneath and above only by its flags',()=>{
+  const schema={objects:[{id:'А'},{id:'Б',owner:'А'},{id:'В'},{id:'товары'},{id:'документы'},{id:'перерасчет',owner:'документы'},{id:'прочее'},{id:'свободный'}],
+    subsystems:{'А':['товары'],'Б':['документы'],'В':['прочее']}};
+  const passing=filter=>{const passes=context.subsystemFilterPasses(schema,filter);return ['товары','документы','перерасчет','прочее','свободный'].filter(id=>passes(id));};
+  const filter=(chosen,flags={})=>({chosen:new Set(chosen),...flags});
+  assert.deepEqual(passing(null),['товары','документы','перерасчет','прочее','свободный']);
+  assert.deepEqual(passing(filter(['Б'])),['документы','перерасчет']);
+  assert.deepEqual(passing(filter(['Б'],{parents:true})),['товары','документы','перерасчет']);
+  assert.deepEqual(passing(filter(['А'])),['товары']);
+  assert.deepEqual(passing(filter(['А'],{children:true})),['товары','документы','перерасчет']);
+  assert.deepEqual(passing(filter(['А'],{parents:true})),['товары']);
+  assert.deepEqual(passing(filter([''])),['свободный']);
+  assert.deepEqual(passing(filter(['','В'])),['прочее','свободный']);
+});

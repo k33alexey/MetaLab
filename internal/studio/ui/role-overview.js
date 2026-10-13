@@ -114,30 +114,31 @@ function createRoleOverviewModel(source) {
       rows.sort((left, right) => left.role.localeCompare(right.role) || left.name.localeCompare(right.name));
       return rows;
     },
-    // Поля, которые отмечаются у ограничений нескольких объектов сразу: все
-    // поля всех объектов, одно и то же поле узнаётся по имени, у поля
-    // табличной части — вместе с именем части. keys — ключ поля у тех
-    // объектов, где оно есть. Отмеченное поле достаётся только объекту, у
-    // которого оно есть (владелец 13.10.2026, проверено в конфигураторе).
-    restrictionFieldChoices(objectIDs) {
-      const choices = new Map();
-      for (const id of new Set(objectIDs)) {
-        const own = objects.get(id)?.restrictionFields || [], byKey = new Map(own.map(field => [field.key, field]));
-        for (const field of own) {
-          const path = field.parent ? `${byKey.get(field.parent)?.name}.${field.name}` : field.name;
-          if (!choices.has(path)) choices.set(path, {path, field, keys: new Map()});
-          choices.get(path).keys.set(id, field.key);
-        }
-      }
-      return [...choices.values()];
+    restrictionFieldChoices, chosenFieldKeys,
+    // Объекты, на права которых ставятся ограничения, — первый шаг мастера
+    // «Новое ограничение доступа», по видам в порядке дерева; вложенный
+    // назван вместе с тем, в чём лежит.
+    restrictable() {
+      return (source.schema.objects || []).filter(item => item.restrictedRights?.length).map(item => {
+        let caption = localized(item) || item.name;
+        for (let owner = objects.get(item.owner); owner; owner = objects.get(owner.owner)) caption = `${localized(owner) || owner.name}.${caption}`;
+        return {id: item.id, kind: item.kind, title: caption, rights: item.restrictedRights};
+      });
     },
-    // Ключи отмеченных полей у объекта; null — у объекта нет ни одного из
-    // отмеченных: пустой состав стал бы «Прочими полями», а прототип такому
-    // объекту ограничения по этим полям не даёт. Ничего не отмечено —
-    // «Прочие поля» у каждого.
-    chosenFieldKeys(choices, paths, objectID) {
-      const keys = choices.filter(choice => paths.has(choice.path)).map(choice => choice.keys.get(objectID)).filter(Boolean);
-      return paths.size && !keys.length ? null : keys;
+    // «Новое ограничение доступа» (справка, form_NewRowLevelRightDlg): одно
+    // условие — каждому выбранному объекту в каждой выбранной роли на каждое
+    // отмеченное право, которое у объекта ограничивается (право без
+    // ограничений writeRestrictions не пишет). Поля — только у
+    // чтения: объект получает те из отмеченных, что у него есть, а без
+    // единого из них ограничения чтения не получает. Ответ — забранное, как у
+    // команд списка.
+    addRestrictions({objectIDs, roles, rights, paths, condition}, trial) {
+      const choices = restrictionFieldChoices(objectIDs);
+      return perform(trial, modelOf => roles.flatMap(role => objectIDs.flatMap(objectID =>
+        rights.flatMap(right => {
+          const fields = right === 'read' ? chosenFieldKeys(choices, paths, objectID) : [];
+          return fields ? taken(role, objectID, right, modelOf(role).writeRestrictions(objectID, right, [{restriction: {fields, condition}}])) : [];
+        }))));
     },
     // Команды окна над выбранными строками (справка, «Все ограничения
     // доступа»). Каждая с trial прогоняется на копиях ролей и ничего не
@@ -169,6 +170,31 @@ function createRoleOverviewModel(source) {
       for (const row of [...rows].sort((left, right) => right.index - left.index)) at(row.roleIndex)?.removeTemplate(row.index);
     },
   };
+  // Поля, которые отмечаются у ограничений нескольких объектов сразу: все
+  // поля всех объектов, одно и то же поле узнаётся по имени, у поля
+  // табличной части — вместе с именем части. keys — ключ поля у тех
+  // объектов, где оно есть. Отмеченное поле достаётся только объекту, у
+  // которого оно есть (владелец 13.10.2026, проверено в конфигураторе).
+  function restrictionFieldChoices(objectIDs) {
+    const choices = new Map();
+    for (const id of new Set(objectIDs)) {
+      const own = objects.get(id)?.restrictionFields || [], byKey = new Map(own.map(field => [field.key, field]));
+      for (const field of own) {
+        const path = field.parent ? `${byKey.get(field.parent)?.name}.${field.name}` : field.name;
+        if (!choices.has(path)) choices.set(path, {path, field, keys: new Map()});
+        choices.get(path).keys.set(id, field.key);
+      }
+    }
+    return [...choices.values()];
+  }
+  // Ключи отмеченных полей у объекта; null — у объекта нет ни одного из
+  // отмеченных: пустой состав стал бы «Прочими полями», а прототип такому
+  // объекту ограничения по этим полям не даёт. Ничего не отмечено —
+  // «Прочие поля» у каждого.
+  function chosenFieldKeys(choices, paths, objectID) {
+    const keys = choices.filter(choice => paths.has(choice.path)).map(choice => choice.keys.get(objectID)).filter(Boolean);
+    return paths.size && !keys.length ? null : keys;
+  }
   function perform(trial, operation) {
     const models = entries.map(entry => trial ? createRoleModel({role: entry.model.value(), schema: source.schema}) : entry.model);
     return operation(index => models[index]);
@@ -306,16 +332,16 @@ function createRoleOverview(host, openRole, onChange) {
   function renderAllRestrictions() {
     const block = node('section', undefined, 'overview-block');
     const rows = restrictionRows();
-    if (!rows.length) { block.append(node('p', model.allRestrictions().length ? 'Ничего не найдено.' : 'В проекте нет ни одного ограничения доступа.', 'muted')); return block; }
     block.append(node('p', 'Каждая строка — одно ограничение одной роли на одно право. «Реквизиты» — сколько реквизитов объекта эта роль вообще читает: ограничение сужает записи, права на реквизиты — столбцы. Несколько строк выбираются с Ctrl или Shift.', 'muted'));
     const some = () => listChosen.size > 0;
     block.append(roleListTable(['Объект', 'Роль', 'Право', 'Реквизиты', 'Поля', 'Условие'],
       rows.map(row => [[row.object], roleLink(row.role, row.path, row.objectID), [caption(row.operation)], [row.fields], [row.field], [row.condition, 'overview-condition']]),
       listChosen, chosen => { listChosen = chosen; }, [
+        ['add', 'Добавить', () => newRestriction(), () => model.roleCount() > 0 && model.restrictable().length > 0],
         ['edit', 'Изменить', () => { if (some()) editRestrictions(chosenOf(rows)); }, some],
         ['copy', 'Копировать', () => { if (some()) copyRestrictions(chosenOf(rows)); }, some],
         ['remove', 'Удалить', () => { if (!some()) return; model.removeRestrictions(chosenOf(rows)); listChanged(); }, some],
-      ], ''));
+      ], model.allRestrictions().length ? 'Ничего не найдено.' : 'В проекте нет ни одного ограничения доступа.'));
     return block;
   }
   function renderAllTemplates() {
@@ -403,6 +429,97 @@ function createRoleOverview(host, openRole, onChange) {
       answers: [['ok', 'ОК'], [null, 'Отмена']], check: () => roles.size ? '' : 'Отметьте роли.'});
     if (answer !== 'ok') return;
     await applyReplacing(trial => model.copyRestrictions(rows, [...roles], trial), restrictionLine);
+  }
+  // Отбор мастера по подсистемам живёт, пока открыто окно.
+  let subsystemFilter = null;
+  // Мастер «Новое ограничение доступа» (справка, form_NewRowLevelRightDlg):
+  // на первом шаге — объекты, с отбором «По подсистемам», и роли; на втором —
+  // права, поля чтения и текст ограничения. «Назад» возвращает к первому
+  // шагу с тем, что на нём отмечено.
+  async function newRestriction() {
+    const chosenObjects = new Set(), roles = new Set(), rights = new Set(), paths = new Set();
+    let step = 1, condition = '';
+    const content = node('div', undefined, 'role-restriction-form');
+    const first = node('div', undefined, 'role-restriction-form'), second = node('div', undefined, 'role-restriction-form');
+    const objectList = node('div', undefined, 'role-restriction-fields role-wizard-objects');
+    const bySubsystems = node('button', 'По подсистемам', 'overview-subsystems');
+    bySubsystems.type = 'button';
+    // Объект, скрытый отбором, из выбора уходит: ограничения получает то,
+    // что видно в списке.
+    function fillObjects() {
+      const passes = subsystemFilterPasses(source.schema, subsystemFilter), groups = new Map();
+      for (const item of model.restrictable()) {
+        if (!passes(item.id)) { chosenObjects.delete(item.id); continue; }
+        if (!groups.has(item.kind)) groups.set(item.kind, []);
+        groups.get(item.kind).push(item);
+      }
+      bySubsystems.classList.toggle('selected', !!subsystemFilter);
+      bySubsystems.setAttribute('aria-pressed', String(!!subsystemFilter));
+      objectList.replaceChildren();
+      if (!groups.size) objectList.append(node('p', 'Ни один объект не входит в отмеченные подсистемы.', 'muted'));
+      for (const [kind, items] of groups) {
+        const boxes = [], group = node('label', undefined, 'role-check role-wizard-kind'), all = node('input');
+        all.type = 'checkbox'; all.setAttribute('aria-label', `${source.kindTitles?.[kind] || kind} — все`);
+        const sync = () => { const marked = items.filter(item => chosenObjects.has(item.id)).length; all.checked = marked === items.length; all.indeterminate = marked > 0 && marked < items.length; };
+        all.addEventListener('change', () => { for (const item of items) if (all.checked) chosenObjects.add(item.id); else chosenObjects.delete(item.id); for (const box of boxes) box.checked = all.checked; sync(); });
+        group.append(all, node('span', source.kindTitles?.[kind] || kind));
+        objectList.append(group);
+        for (const item of items) {
+          const box = checkboxField(item.title, chosenObjects.has(item.id), enabled => { if (enabled) chosenObjects.add(item.id); else chosenObjects.delete(item.id); sync(); }, 'role-check');
+          box.classList.add('role-restriction-child');
+          boxes.push(box.querySelector('input')); objectList.append(box);
+        }
+        sync();
+      }
+    }
+    bySubsystems.addEventListener('click', async () => {
+      const next = await chooseSubsystemFilter({schema: source.schema, title, current: subsystemFilter});
+      if (next === undefined) return;
+      subsystemFilter = next; fillObjects();
+    });
+    const objectsCaption = node('div', undefined, 'overview-wizard-caption');
+    objectsCaption.append(node('span', 'Объекты', 'role-restriction-caption'), bySubsystems);
+    first.append(objectsCaption, objectList, node('div', 'Роли', 'role-restriction-caption'), roleChoice(roles));
+    // Второй шаг строится по выбранному на первом: права — те, что
+    // ограничиваются хотя бы у одного из объектов, поля — всех объектов с
+    // ограничением чтения; отмеченное, которого больше нет, снимается.
+    const rightList = node('div', undefined, 'role-restriction-fields'), fieldList = node('div', undefined, 'role-restriction-fields');
+    const editor = queryTextField(condition, value => { condition = value; }, 'Ограничение доступа');
+    second.append(node('div', 'Права', 'role-restriction-caption'), rightList,
+      node('div', 'Поля — только у права «Чтение»; ни одно не отмечено: «Прочие поля»', 'role-restriction-caption'), fieldList,
+      node('div', 'Ограничение доступа', 'role-restriction-caption'), editor);
+    function fillSecond() {
+      const items = model.restrictable().filter(item => chosenObjects.has(item.id));
+      const offered = (source.schema.rights || []).map(right => right.key).filter(key => items.some(item => item.rights.includes(key)));
+      for (const right of [...rights]) if (!offered.includes(right)) rights.delete(right);
+      const choices = model.restrictionFieldChoices(items.filter(item => item.rights.includes('read')).map(item => item.id));
+      for (const path of [...paths]) if (!choices.some(choice => choice.path === path)) paths.delete(path);
+      const fieldBoxes = [];
+      const syncFields = () => { for (const box of fieldBoxes) box.disabled = !rights.has('read'); };
+      rightList.replaceChildren(...offered.map(key => checkboxField(caption(key), rights.has(key), enabled => { if (enabled) rights.add(key); else rights.delete(key); syncFields(); }, 'role-check')));
+      fieldList.replaceChildren(...choices.map(choice => {
+        const box = checkboxField(title(choice.field) || choice.field.name, paths.has(choice.path), enabled => { if (enabled) paths.add(choice.path); else paths.delete(choice.path); }, 'role-check');
+        if (choice.field.parent) box.classList.add('role-restriction-child');
+        box.title = choice.path; fieldBoxes.push(box.querySelector('input'));
+        return box;
+      }));
+      if (!choices.length) fieldList.append(node('p', 'У выбранных объектов нет полей для ограничения чтения.', 'muted'));
+      syncFields();
+    }
+    const show = () => { first.hidden = step !== 1; second.hidden = step !== 2; };
+    content.append(first, second);
+    fillObjects(); show();
+    const answer = await showDialog({title: 'Новое ограничение доступа', content, className: 'role-restriction-dialog', answers: [
+      ['next', 'Далее', {act: () => { step = 2; fillSecond(); show(); }, shown: () => step === 1}],
+      ['ok', 'ОК', {shown: () => step === 2}],
+      ['back', 'Назад', {act: () => { step = 1; show(); }, shown: () => step === 2}],
+      [null, 'Отмена']],
+    check: key => key === 'next' ? (!chosenObjects.size ? 'Отметьте объекты.' : !roles.size ? 'Отметьте роли.' : '') : key === 'ok' && !rights.size ? 'Отметьте права.' : ''});
+    if (answer !== 'ok') return;
+    // Только отмеченные поля, если право «Чтение» отмечено: без него поля
+    // ничего не значат.
+    const fields = rights.has('read') ? paths : new Set();
+    await applyReplacing(trial => model.addRestrictions({objectIDs: [...chosenObjects], roles: [...roles], rights: [...rights], paths: fields, condition}, trial), restrictionLine);
   }
   const templateLine = item => `${item.role} · ${item.template}`;
   // Окно шаблонов (справка, form_EditRowTemplatesDlg): у одинаковых во

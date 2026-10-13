@@ -391,6 +391,66 @@ function createRoleTree({schema, kindTitles, title, expanded, selection, choose}
   };
 }
 
+/* The filter by subsystems (help, «Отбор по подсистемам»): chosen holds the
+   subsystems marked and, as '', «<Не входящие в подсистемы>»; children takes
+   in what the subsystems beneath a marked one hold, parents what those above
+   it hold. Answers whether an object passes: an object inside another passes
+   with the one it lies in. Without a filter every object passes. */
+function subsystemFilterPasses(schema, filter) {
+  if (!filter) return () => true;
+  const subsystems = schema.subsystems || {}, owners = new Map(schema.objects.map(item => [item.id, item.owner]));
+  const above = id => { const result = []; for (let up = owners.get(id); up in subsystems; up = owners.get(up)) result.push(up); return result; };
+  const marked = new Set();
+  for (const id of Object.keys(subsystems)) {
+    if (!filter.chosen.has(id)) { if (filter.children && above(id).some(up => filter.chosen.has(up))) marked.add(id); continue; }
+    marked.add(id);
+    if (filter.parents) for (const up of above(id)) marked.add(up);
+  }
+  const held = new Set([...marked].flatMap(id => subsystems[id])), anywhere = new Set(Object.values(subsystems).flat());
+  return id => {
+    let top = id;
+    while (!(top in subsystems) && owners.get(top)) top = owners.get(top);
+    return held.has(top) || (filter.chosen.has('') && !anywhere.has(top));
+  };
+}
+
+/* The window of the filter by subsystems (help, «Отбор по подсистемам»): the
+   tree of subsystems with a box at each, «<Не входящие в подсистемы>» and the
+   two flags. One window for every place that filters by subsystems. Answers
+   the filter chosen, null for «Отключить», undefined when closed without
+   either. */
+async function chooseSubsystemFilter({schema, title, current}) {
+  const subsystems = schema.subsystems || {}, chosen = new Set(current?.chosen || []);
+  const flags = {children: !!current?.children, parents: !!current?.parents};
+  const mark = id => enabled => { if (enabled) chosen.add(id); else chosen.delete(id); };
+  const beneath = new Map();
+  for (const item of schema.objects) {
+    if (!(item.id in subsystems)) continue;
+    const parent = item.owner in subsystems ? item.owner : '';
+    if (!beneath.has(parent)) beneath.set(parent, []);
+    beneath.get(parent).push(item);
+  }
+  const tree = node('div', undefined, 'role-restriction-fields role-subsystem-tree');
+  (function add(parent, depth) {
+    for (const item of beneath.get(parent) || []) {
+      const box = checkboxField(title(item) || item.name, chosen.has(item.id), mark(item.id), 'role-check');
+      box.title = item.name; box.style.setProperty('--depth', depth);
+      tree.append(box);
+      add(item.id, depth + 1);
+    }
+  })('', 0);
+  tree.append(checkboxField('<Не входящие в подсистемы>', chosen.has(''), mark(''), 'role-check'));
+  const content = node('div', undefined, 'role-restriction-form');
+  content.append(tree,
+    checkboxField('Включать объекты подчиненных подсистем', flags.children, enabled => { flags.children = enabled; }, 'role-check'),
+    checkboxField('Включать объекты родительских подсистем', flags.parents, enabled => { flags.parents = enabled; }, 'role-check'));
+  const answer = await showDialog({title: 'Отбор по подсистемам', content, className: 'role-restriction-dialog',
+    answers: [['ok', 'ОК'], ['off', 'Отключить'], [null, 'Отмена']],
+    check: key => key === 'ok' && !chosen.size ? 'Отметьте подсистемы или нажмите «Отключить».' : ''});
+  if (answer === 'off') return null;
+  return answer === 'ok' ? {chosen, ...flags} : undefined;
+}
+
 /* A list of rows and the commands of the prototype's context menu:
    Добавить, Изменить, Удалить. A row is chosen by a click and opened by a
    double click. chosen is the index of the row chosen, or a Set of them

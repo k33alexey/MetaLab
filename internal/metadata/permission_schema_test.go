@@ -9,11 +9,11 @@ import (
 
 // TestPermissionSchemaShowsEveryPartWhereTheTreeShowsIt catches the role
 // editor's schema losing a part, putting it in the wrong folder or under the
-// wrong parent, offering it the wrong rights, or showing an object that lies
-// inside another without its owner: a column of a table part shown as an
-// attribute of the document, a dimension of a register as a resource, a
-// method of an HTTP service outside its template, a recalculation beside the
-// registers instead of under its own. The expectations are written out here
+// wrong parent, offering it the wrong rights, losing what a subsystem holds,
+// or showing an object that lies inside another without its owner: a column
+// of a table part shown as an attribute of the document, a dimension of a
+// register as a resource, a method of an HTTP service outside its template, a
+// recalculation beside the registers instead of under its own. The expectations are written out here
 // from the exports (Rights.xml of every role), not read from partGroups.
 func TestPermissionSchemaShowsEveryPartWhereTheTreeShowsIt(t *testing.T) {
 	t.Parallel()
@@ -112,6 +112,18 @@ func TestPermissionSchemaShowsEveryPartWhereTheTreeShowsIt(t *testing.T) {
 		if object := objects[id]; object.Owner != nil {
 			t.Errorf("%s lies in %s, and it lies in the configuration", object.Name, object.Owner)
 		}
+	}
+	// A subsystem tells what it holds, for the filter by subsystems; nothing
+	// else does.
+	if len(schema.Subsystems) != 1 {
+		t.Errorf("the schema lists %d subsystems, want the one", len(schema.Subsystems))
+	}
+	var members []string
+	for _, id := range schema.Subsystems[objects[cmpSubsystem].ID] {
+		members = append(members, id.String())
+	}
+	if want := []string{cmpGoods, cmpDocument, cmpReport}; !slices.Equal(members, want) {
+		t.Errorf("the subsystem holds %v, want %v", members, want)
 	}
 	if len(schema.PartGroups) != len(partGroups) {
 		t.Errorf("the schema names %d folders of parts, the model %d", len(schema.PartGroups), len(partGroups))

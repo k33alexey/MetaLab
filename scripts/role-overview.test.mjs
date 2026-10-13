@@ -332,3 +332,37 @@ test('fields of objects of different composition: all are offered, each object t
   assert.equal(model.chosenFieldKeys(choices,new Set(['Владелец']),'users'),null);
   assert.deepEqual(plain(model.chosenFieldKeys(choices,new Set(),'users')),[]);
 });
+
+// Мастер «Новое ограничение доступа» (справка, form_NewRowLevelRightDlg):
+// одно условие — каждому выбранному объекту в каждой выбранной роли на
+// каждое отмеченное право, которое у объекта ограничивается. Дефекты:
+// ограничение ставится на право, которого у объекта не ограничивают;
+// объект без отмеченного поля получает ограничение чтения на «Прочие поля»;
+// поля попадают в ограничение не чтения или лишают объекта ограничения
+// другого права; столкновение с тем, что уже стоит в
+// роли, не названо для «Заменить?», или прогон меняет роль до ответа.
+test('a new restriction goes to every object, role and right chosen, each object taking its own fields',()=>{
+  const source=fixture(),names={ref:'Ссылка',owner:'Владелец',price:'Цена',person:'Физлицо'};
+  for(const object of source.schema.objects)for(const field of object.restrictionFields)field.name=names[field.key];
+  const model=create(source);
+  assert.deepEqual(plain(model.restrictable().map(item=>[item.id,item.title])),[['goods','Товары'],['users','Пользователи']]);
+  const chosen={objectIDs:['goods','users'],roles:[1],rights:['read','update'],paths:new Set(['Владелец']),condition:'У'};
+  assert.deepEqual(plain(model.addRestrictions(chosen,false)),[]);
+  const role=roleValue(model,1);
+  assert.deepEqual(plain(role.objects.map(item=>[item.object,item.restrictions])),[['goods',[{right:'read',fields:['owner'],condition:'У'},{right:'update',condition:'У'}]]]);
+  // Поля не касаются прав, кроме чтения: объект без отмеченного поля
+  // изменение получает.
+  model.addRestrictions({...chosen,rights:['update'],paths:new Set(['Физлицо']),condition:'И'},false);
+  assert.deepEqual(roleValue(model,1).objects[0].restrictions.at(-1),{right:'update',condition:'И'});
+  // Ничего не отмечено — «Прочие поля» у каждого.
+  model.addRestrictions({...chosen,rights:['read'],paths:new Set(),condition:'П'},false);
+  assert.deepEqual(roleValue(model,1).objects.find(item=>item.object==='users').restrictions,[{right:'read',condition:'П'}]);
+  // У первой роли чтение по владельцу уже стоит: прогон называет его и
+  // ничего не меняет, запись заменяет.
+  const before=roleValue(model,0),again={...chosen,roles:[0],rights:['read']};
+  const expected=[{role:'Продавец',object:'Товары',operation:'read',field:'Владелец',whole:true}];
+  assert.deepEqual(plain(model.addRestrictions(again,true)),expected);
+  assert.deepEqual(roleValue(model,0),before);
+  assert.deepEqual(plain(model.addRestrictions(again,false)),expected);
+  assert.deepEqual(roleValue(model,0).objects[0].restrictions,[{right:'read',fields:['owner'],condition:'У'}]);
+});
