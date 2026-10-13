@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -124,8 +125,15 @@ type Runtime struct {
 	backupToolErr         error
 }
 
-// New opens an already configured ML System. A connection problem remains visible in State.
+// New opens an already configured ML System. A connection problem remains
+// visible in State. It first removes the PostgreSQL password files that killed
+// processes left behind.
 func New(ctx context.Context, settings appconfig.Config, secrets Secrets) *Runtime {
+	if removed, err := postgresconn.RemoveAbandonedPasswordFiles(); err != nil {
+		slog.Warn("abandoned PostgreSQL password files are not all removed", "removed", removed, "error", err)
+	} else if removed > 0 {
+		slog.Info("removed abandoned PostgreSQL password files", "removed", removed)
+	}
 	runtime := &Runtime{settings: settings, secrets: secrets, environmentConfigured: os.Getenv("ML_SYSTEM_DATABASE_URL") != ""}
 	runtime.copier, runtime.copierErr = pgcopy.New()
 	runtime.backupTool, runtime.backupToolErr = pgbackup.New()

@@ -5,6 +5,7 @@ package ownerfile
 import (
 	"fmt"
 	"os"
+	"syscall"
 )
 
 const (
@@ -44,4 +45,16 @@ func Restrict(path string) error {
 		return fmt.Errorf("restrict %s to its owner: %w", path, err)
 	}
 	return nil
+}
+
+// IsOwnDirectory reports whether path is a directory itself, not a link to
+// one, and belongs to the process user. In a temporary directory shared by
+// all users (/tmp) anyone may create an entry with a name we look for.
+func IsOwnDirectory(path string) (bool, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return false, err
+	}
+	status, ok := info.Sys().(*syscall.Stat_t)
+	return info.Mode().Type() == os.ModeDir && ok && int(status.Uid) == os.Getuid(), nil
 }

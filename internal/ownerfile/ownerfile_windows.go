@@ -3,6 +3,7 @@
 package ownerfile
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"unsafe"
@@ -102,4 +103,48 @@ func Restrict(path string) error {
 		return fmt.Errorf("restrict %s to its owner: %w", path, err)
 	}
 	return nil
+}
+
+// IsOwnDirectory reports whether path is a directory itself, not a link or a
+// junction to one, and its owner is the one this process gives to what it
+// creates. A service's temporary directory (Windows\Temp) is open for other
+// users to create entries in, so a name alone proves nothing.
+func IsOwnDirectory(path string) (bool, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return false, err
+	}
+	if info.Mode().Type() != os.ModeDir {
+		return false, nil
+	}
+	descriptor, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
+	if err != nil {
+		return false, &os.PathError{Op: "read owner", Path: path, Err: err}
+	}
+	owner, _, err := descriptor.Owner()
+	if err != nil {
+		return false, &os.PathError{Op: "read owner", Path: path, Err: err}
+	}
+	processOwner, err := defaultOwner()
+	if err != nil {
+		return false, err
+	}
+	return owner != nil && owner.Equals(processOwner), nil
+}
+
+// defaultOwner is the owner the process token gives to new objects: the user,
+// or the administrators group for an elevated administrator.
+func defaultOwner() (*windows.SID, error) {
+	token := windows.GetCurrentProcessToken()
+	size := uint32(64)
+	for {
+		buffer := make([]byte, size)
+		err := windows.GetTokenInformation(token, windows.TokenOwner, &buffer[0], size, &size)
+		if err == nil {
+			return (*struct{ Owner *windows.SID })(unsafe.Pointer(&buffer[0])).Owner.Copy()
+		}
+		if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
+			return nil, fmt.Errorf("read Windows process default owner: %w", err)
+		}
+	}
 }
