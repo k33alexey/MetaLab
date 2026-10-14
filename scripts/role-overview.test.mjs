@@ -194,7 +194,7 @@ test('the view file keeps the model free of the DOM',()=>{
   assert.equal(/document\.|window\./.test(model),false);
 });
 
-test('the Studio page loads the overview and opens it from the roles group node',()=>{
+test('the Studio page loads the overview and opens it from the menu of the roles group and the root',()=>{
   const html=readFileSync(new URL('../internal/studio/ui/index.html',import.meta.url),'utf8');
   for(const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g))new vm.Script(match[1]);
   assert.match(html,/\/ui\/role-overview\.js/);
@@ -204,12 +204,12 @@ test('the Studio page loads the overview and opens it from the roles group node'
   // Окно правит роли: «Сохранить» пишет изменённые роли одним запросом.
   assert.match(html,/endpoint='\/api\/roles';payload=\{roles:roleOverview\.value\(\)\}/);
   assert.ok(html.indexOf('/ui/role-editor.js')<html.indexOf('/ui/role-overview.js'));
-  assert.match(html,/node\.id==='metadata\/roles'/);
+  assert.match(html,/node\.id!=='project'&&node\.id!=='metadata\/roles'/);
 });
 
-test('the overview offers all three tables of the roles group node',()=>{
-  const view=script.slice(script.indexOf('function createRoleOverview('));
-  for(const label of ['Все роли','Ограничения доступа','Шаблоны ограничений'])assert.ok(view.includes(label),label);
+test('the overview is the two windows of the prototype, the second with two tabs',()=>{
+  const view=script.slice(script.indexOf('const overviewWindows'));
+  for(const label of ["roles: 'Все роли'","restrictions: 'Все ограничения доступа'",'Ограничения доступа','Шаблоны ограничений'])assert.ok(view.includes(label),label);
 });
 
 // Подписи обзора показываются на текущем языке Studio, как в каждом

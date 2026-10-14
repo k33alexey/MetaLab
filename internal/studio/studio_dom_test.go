@@ -85,7 +85,8 @@ const studioPageWalk = `(async () => {
       {select: '.role-tree-item', then: [{select: '.role-restriction-rights button', then: [{open: '.role-restrictions .role-list tbody tr[tabindex]'}]}]},
       {select: '.role-tabs button', then: [{open: '.role-list tbody tr[tabindex]'}]},
     ]],
-    ['roles', '#role-overview', null, [{select: '.overview-tab', then: [{select: '.role-tree-item'}, {open: '.overview-block .role-list tbody tr[tabindex]'}]}]],
+    ['roles', '#role-overview[data-view=roles]', null, [{select: '.role-tree-item'}]],
+    ['restrictions', '#role-overview[data-view=restrictions]', null, [{select: '.overview-tab', then: [{open: '.overview-block .role-list tbody tr[tabindex]'}]}]],
     ['catalog', '#catalog-editor', null, [{select: '.catalog-list-item'}]],
     ['project', '#project-editor', null, []],
     ['languages', '#languages-editor', null, []],
@@ -94,7 +95,7 @@ const studioPageWalk = `(async () => {
     for (const [name, where, host, plan] of editors) {
       if (typeof where === 'function') { if (where()) return [name, host, plan]; continue; }
       const element = document.querySelector(where);
-      if (!element.hidden) return [name, element, plan];
+      if (element && !element.hidden) return [name, element, plan];
     }
     return null;
   }
@@ -116,17 +117,38 @@ const studioPageWalk = `(async () => {
   const languages = [...languageSelect.options].map(option => option.value);
   const tree = () => [...document.querySelectorAll('#tree summary, #tree .leaf')];
   if (!tree().length) problems.push('the configuration tree is empty');
+  // A node's context menu is opened anew before each of its commands: a
+  // command closes the menu it was chosen from.
+  const menu = item => {
+    item.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10}));
+    return [...document.querySelectorAll('.context-menu .context-menu-item')];
+  };
   for (let index = 0; index < tree().length; index++) {
     const item = tree()[index], context = 'tree · ' + describe(item);
     studio.step = context;
     item.click();
     await settle();
+    await visit(context);
+    const commands = menu(tree()[index]).length;
+    closeContextMenu();
+    for (let command = 0; command < commands; command++) {
+      const button = menu(tree()[index])[command];
+      if (!button) { problems.push(context + ': the menu lost its command ' + (command + 1)); break; }
+      const step = context + ' · menu ' + describe(button);
+      studio.step = step;
+      button.click();
+      await settle();
+      if (document.querySelector('.context-menu')) problems.push(step + ': the menu stayed open');
+      await visit(step);
+    }
+  }
+  async function visit(context) {
     const editor = shown();
-    if (!editor) continue;
+    if (!editor) return;
     const [name, host, plan] = editor;
     seen.add(name);
     const key = name + ' ' + document.querySelector('#file-path').textContent;
-    if (walked.has(key)) continue;
+    if (walked.has(key)) return;
     walked.add(key);
     // The language shown last is the one Studio started with, so the next
     // node opens as it would for the user.
@@ -275,7 +297,7 @@ func TestStudioEditorsWorkInBrowser(t *testing.T) {
 	for _, problem := range browser.problems() {
 		t.Errorf("browser: %s", problem)
 	}
-	for _, editor := range []string{"catalog", "debugger", "form", "languages", "module", "project", "query", "role", "roles"} {
+	for _, editor := range []string{"catalog", "debugger", "form", "languages", "module", "project", "query", "restrictions", "role", "roles"} {
 		if !slices.Contains(report.Editors, editor) {
 			t.Errorf("no step opened the %s editor; opened %v", editor, report.Editors)
 		}

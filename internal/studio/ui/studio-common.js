@@ -318,6 +318,58 @@ function showDialog({title, explanation, content, answers, check, className}) {
   });
 }
 
+/* showContextMenu shows the commands of what was right-clicked at the
+   point of the click: items are [text, act]. One menu is open at a time; it
+   closes when a command is chosen, on Escape, on a click elsewhere, when the
+   page scrolls or loses focus. A menu opened from the keyboard (Shift+F10,
+   the menu key) stands under the element instead. The arrows move between
+   commands, Enter chooses one. */
+function showContextMenu(event, items) {
+  event.preventDefault();
+  closeContextMenu();
+  const menu = node('div', undefined, 'context-menu');
+  menu.setAttribute('role', 'menu');
+  for (const [text, act] of items) {
+    const button = node('button', text, 'context-menu-item');
+    button.type = 'button';
+    button.setAttribute('role', 'menuitem');
+    button.addEventListener('click', () => { closeContextMenu(); act(); });
+    menu.append(button);
+  }
+  const commands = [...menu.children];
+  menu.addEventListener('keydown', key => {
+    const at = commands.indexOf(document.activeElement);
+    if (key.key === 'Escape') { key.preventDefault(); closeContextMenu(); }
+    else if (key.key === 'ArrowDown' || key.key === 'ArrowUp') {
+      key.preventDefault();
+      commands[(at + (key.key === 'ArrowDown' ? 1 : commands.length - 1)) % commands.length].focus();
+    }
+  });
+  document.body.append(menu);
+  let x = event.clientX, y = event.clientY;
+  if (!x && !y && event.currentTarget instanceof Element) {
+    const box = event.currentTarget.getBoundingClientRect();
+    x = box.left; y = box.bottom;
+  }
+  menu.style.left = Math.max(0, Math.min(x, innerWidth - menu.offsetWidth)) + 'px';
+  menu.style.top = Math.max(0, Math.min(y, innerHeight - menu.offsetHeight)) + 'px';
+  const away = other => { if (!menu.contains(other.target)) closeContextMenu(); };
+  const close = () => closeContextMenu();
+  closeContextMenu.release = () => {
+    removeEventListener('mousedown', away, true); removeEventListener('scroll', close, true);
+    removeEventListener('blur', close); removeEventListener('resize', close);
+  };
+  addEventListener('mousedown', away, true); addEventListener('scroll', close, true);
+  addEventListener('blur', close); addEventListener('resize', close);
+  commands[0]?.focus();
+}
+
+function closeContextMenu() {
+  closeContextMenu.release?.();
+  closeContextMenu.release = null;
+  document.querySelector('.context-menu')?.remove();
+}
+
 /* askChoice asks a question in a dialog of the page and answers with the key
    of the button pressed, or null when the dialog is closed without one. */
 function askChoice(question, explanation, answers) {

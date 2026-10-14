@@ -36,3 +36,8 @@
 .query-text:focus-within{border-color:#589df6}
 .dialog-problem{color:#f0a3a8}
 .dialog-problem[hidden]{display:none}
+
+/* Контекстное меню: команды того, по чему щёлкнули правой кнопкой. */
+.context-menu{position:fixed;z-index:1000;display:flex;flex-direction:column;min-width:200px;padding:4px;border:1px solid #4a4d54;border-radius:6px;background:#25262a;box-shadow:0 10px 40px #000a}
+.context-menu-item{background:transparent!important;border:none!important;border-radius:4px;padding:6px 12px!important;color:#dfe1e5;text-align:left;font-size:13px;cursor:pointer}
+.context-menu-item:hover,.context-menu-item:focus{background:#2f4a6d!important;outline:none}

@@ -134,7 +134,7 @@
     const formDesigner=createFormDesigner(formHost,properties,()=>{if(!currentFile?.isForm)return;dirty=JSON.stringify(formDesigner.value().form)!==currentFile.initialForm;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Форма изменена':'Готово'},createFormHandler);
     const queryDesigner=createQueryDesigner(document.querySelector('#query-dialog'),insertDesignedQuery);
     const roleEditor=createRoleEditor(document.querySelector('#role-editor'),()=>{if(!currentFile?.isRole)return;dirty=JSON.stringify(roleEditor.value())!==currentFile.initialRole;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Роль изменена':'Готово'});
-    const roleOverview=createRoleOverview(document.querySelector('#role-overview'),async(path,objectID)=>{if(await openFile(path))roleEditor.selectObject(objectID);},()=>{if(!currentFile?.isRoleOverview)return;dirty=roleOverview.value().length>0;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Роли изменены':'Все роли · Готово'});
+    const roleOverview=createRoleOverview(document.querySelector('#role-overview'),async(path,objectID)=>{if(await openFile(path))roleEditor.selectObject(objectID);},()=>{if(!currentFile?.isRoleOverview)return;dirty=roleOverview.value().length>0;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Роли изменены':`${roleOverview.title()} · Готово`});
     const catalogHost=document.querySelector('#catalog-editor');
     const catalogEditor=createCatalogEditor(catalogHost,()=>{if(!currentFile?.isCatalog)return;dirty=JSON.stringify(catalogEditor.value())!==currentFile.initialCatalog;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Справочник изменён':'Готово'});
     const projectHost=document.querySelector('#project-editor');
@@ -143,8 +143,13 @@
     const languagesEditor=createLanguagesEditor(languagesHost,()=>{if(!currentFile?.isLanguages)return;dirty=JSON.stringify(languagesEditor.value())!==currentFile.initialProject;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Языки изменены':'Готово'});
     let selectedElement,selectedNode=null,currentFile=null,dirty=false,loadingFile=false,configuration=null;
     function editablePath(value){return value==='configuration.yaml'||value?.endsWith('.yaml')||value?.endsWith('.bsl')}
-    async function select(node,element){if(node.kind==='root-module'){if(!await openRootModule(node))return;}else if(node.id==='metadata/roles'){if(!await openRoleOverview())return;}else if(editablePath(node.path)&&currentFile?.path!==node.path&&!await openFile(node.path))return;if(node.fragment&&currentFile?.isCatalog)catalogEditor.selectFragment(node.fragment);if(currentFile?.path==='configuration.yaml'){if((node.fragment||'').startsWith('language:'))showLanguagesEditor(currentFile);else if(node.id==='project')showProjectEditor(currentFile);if(node.fragment)languagesEditor.selectFragment(node.fragment)}if(selectedElement)selectedElement.classList.remove('selected');selectedElement=element;element.classList.add('selected');selectedNode=node;updateTreeToolbar();document.querySelector('#selection').textContent=node.title;if(currentFile?.isForm&&currentFile.path===node.path)return;properties.replaceChildren();for(const item of node.properties||[]){const row=document.createElement('div');row.className='property';const name=document.createElement('span'),value=document.createElement('span');name.textContent=item.name;value.textContent=item.value;row.append(name,value);properties.append(row)}}
-    function renderNode(node){if(node.children&&node.children.length){const details=document.createElement('details');details.open=node.id==='project'||node.id==='metadata';const summary=document.createElement('summary');const icon=document.createElement('span');icon.className='icon';icon.textContent='◆';const title=document.createElement('span');title.textContent=node.title;summary.append(icon,title);summary.addEventListener('click',event=>{event.stopPropagation();select(node,summary)});const children=document.createElement('div');children.className='children';for(const child of node.children)children.append(renderNode(child));details.append(summary,children);return details}const leaf=document.createElement('div');leaf.className='leaf';const icon=document.createElement('span');icon.className='icon';icon.textContent=node.kind==='group'||node.kind==='metadata-group'?'◆':'●';const title=document.createElement('span');title.textContent=node.title;leaf.append(icon,title);leaf.addEventListener('click',async()=>{await select(node,leaf);if(node.line)bslEditor.goTo({line:node.line,column:1})});return leaf}
+    async function select(node,element){if(node.kind==='root-module'){if(!await openRootModule(node))return;}else if(editablePath(node.path)&&currentFile?.path!==node.path&&!await openFile(node.path))return;if(node.fragment&&currentFile?.isCatalog)catalogEditor.selectFragment(node.fragment);if(currentFile?.path==='configuration.yaml'){if((node.fragment||'').startsWith('language:'))showLanguagesEditor(currentFile);else if(node.id==='project')showProjectEditor(currentFile);if(node.fragment)languagesEditor.selectFragment(node.fragment)}if(selectedElement)selectedElement.classList.remove('selected');selectedElement=element;element.classList.add('selected');selectedNode=node;updateTreeToolbar();document.querySelector('#selection').textContent=node.title;if(currentFile?.isForm&&currentFile.path===node.path)return;properties.replaceChildren();for(const item of node.properties||[]){const row=document.createElement('div');row.className='property';const name=document.createElement('span'),value=document.createElement('span');name.textContent=item.name;value.textContent=item.value;row.append(name,value);properties.append(row)}}
+    function renderNode(node){if(node.children&&node.children.length){const details=document.createElement('details');details.open=node.id==='project'||node.id==='metadata';const summary=document.createElement('summary');const icon=document.createElement('span');icon.className='icon';icon.textContent='◆';const title=document.createElement('span');title.textContent=node.title;summary.append(icon,title);summary.addEventListener('click',event=>{event.stopPropagation();select(node,summary)});offerTreeCommands(node,summary);const children=document.createElement('div');children.className='children';for(const child of node.children)children.append(renderNode(child));details.append(summary,children);return details}const leaf=document.createElement('div');leaf.className='leaf';const icon=document.createElement('span');icon.className='icon';icon.textContent=node.kind==='group'||node.kind==='metadata-group'?'◆':'●';const title=document.createElement('span');title.textContent=node.title;leaf.append(icon,title);leaf.addEventListener('click',async()=>{await select(node,leaf);if(node.line)bslEditor.goTo({line:node.line,column:1})});offerTreeCommands(node,leaf);return leaf}
+    // Контекстное меню узла дерева. «Все роли» и «Все ограничения доступа» —
+    // команды ветви «Роли» и корня конфигурации (справка, «Все роли», «Все
+    // ограничения доступа»).
+    function treeCommands(node){if(node.id!=='project'&&node.id!=='metadata/roles')return[];return Object.entries(overviewWindows).map(([view,text])=>[text,()=>openRoleOverview(view)])}
+    function offerTreeCommands(node,element){const commands=treeCommands(node);if(commands.length)element.addEventListener('contextmenu',event=>{event.stopPropagation();showContextMenu(event,commands)})}
     function showSourceEditor(file){roleOverview.close();roleEditor.close();catalogEditor.close();projectEditor.close();languagesEditor.close();formDesigner.close(true);formHost.hidden=true;editorHost.hidden=false;editor.value=file.content;editor.disabled=false;bslEditor.open(file);bslEditor.setBreakpoints(Array.from(debugBreakpoints.get(file.path)||[]))}
     function insertDesignedQuery(query){if(currentFile?.readOnly){status.textContent='Модуль открыт только для чтения.';status.className='warning';return false}if(!currentFile||currentFile.isForm||currentFile.language!=='bsl'){status.textContent='Откройте BSL-модуль для вставки запроса.';status.className='warning';return false}const lines=query.replaceAll('"','""').split('\n'),literal='"'+lines[0]+lines.slice(1).map(line=>'\n|'+line).join('')+'"',expression='Новый Запрос('+literal+')';editor.setRangeText(expression,editor.selectionStart,editor.selectionEnd,'end');editor.dispatchEvent(new Event('input'));editor.focus();return true}
     function showFormEditor(value){roleOverview.close();roleEditor.close();catalogEditor.close();projectEditor.close();languagesEditor.close();editorHost.hidden=true;bslEditor.close();formDesigner.open(value)}
@@ -178,21 +183,22 @@
       }catch(error){status.textContent=String(error.message||error).trim();status.className='error';return false;}
       finally{loadingFile=false;}
     }
-    // Узел группы «Роли» открывает не файл, а сводное окно: одна и та же роль
-    // редактируется по-прежнему в своём редакторе, а здесь виден весь набор
-    // ролей сразу по одному выбранному объекту.
-    async function openRoleOverview(){
+    // «Все роли» и «Все ограничения доступа» — не файлы, а окна над всеми
+    // ролями сразу: одна роль по-прежнему правится в своём редакторе. Из
+    // одного окна в другое правки переходят несохранёнными, как у прототипа.
+    async function openRoleOverview(view){
       if(loadingFile)return false;
+      if(currentFile?.isRoleOverview){roleOverview.show(view);filePath.textContent=roleOverview.title();if(!dirty){status.className='';status.textContent=`${roleOverview.title()} · Готово`}return true;}
       if(dirty&&!confirm('Текущий файл изменён. Отменить несохранённые изменения?'))return false;
       loadingFile=true;status.className='';status.textContent='Открытие…';
       try{
         const response=await fetch('/api/roles');if(!response.ok)throw new Error(await response.text());
         const value=await response.json();
-        closeFile();editorHost.hidden=true;formHost.hidden=true;bslEditor.close();roleOverview.open(value);
+        closeFile();editorHost.hidden=true;formHost.hidden=true;bslEditor.close();roleOverview.open(value,false,view);
         // Окно правит роли, поэтому стоит на месте открытого файла: «Сохранить»
         // пишет изменённые роли одним запросом.
         currentFile={isRoleOverview:true,path:null};
-        filePath.textContent='Все роли';status.className='';status.textContent='Все роли · Готово';
+        filePath.textContent=roleOverview.title();status.className='';status.textContent=`${roleOverview.title()} · Готово`;
         return true;
       }catch(error){status.textContent=String(error.message||error).trim();status.className='error';return false;}
       finally{loadingFile=false;}
@@ -215,7 +221,7 @@
         if(currentFile.isCatalog){endpoint='/api/catalog';payload={path:currentFile.path,catalog:catalogEditor.value(),expectedRevision:currentFile.revision};}
         if(currentFile.isProject){endpoint='/api/project-configuration';payload={configuration:currentFile.isLanguages?languagesEditor.value():projectEditor.value(),expectedRevision:currentFile.revision};}
         const response=await fetch(endpoint,{method:'PUT',headers:{'Content-Type':'application/json','X-ML-CSRF':'1'},body:JSON.stringify(payload)});
-        if(!response.ok){status.textContent=response.status===409?(currentFile.isRoleOverview?'Роль изменена вне Studio. Откройте «Все роли» заново и повторите правку.':'Файл изменён вне Studio. Перезагрузите его и объедините изменения.'):await response.text();status.className=response.status===409?'warning':'error';return false;}
+        if(!response.ok){status.textContent=response.status===409?(currentFile.isRoleOverview?`Роль изменена вне Studio. Откройте «${roleOverview.title()}» заново и повторите правку.`:'Файл изменён вне Studio. Перезагрузите его и объедините изменения.'):await response.text();status.className=response.status===409?'warning':'error';return false;}
         let value=await response.json();
         if(currentFile.isRoleOverview){roleOverview.open(value,true);value=currentFile;}else if(currentFile.isRole){showRoleEditor(value,true);}else if(currentFile.isCatalog){showCatalogEditor(value);}else if(currentFile.isProject){if(currentFile.isLanguages)showLanguagesEditor(value);else showProjectEditor(value);}else if(currentFile.isForm){value.isForm=true;value.initialForm=JSON.stringify(value.form);showFormEditor(value);}else{showSourceEditor(value);}
         currentFile=value;dirty=false;status.className='';status.textContent='Сохранено';await loadTree(false);return true;
@@ -238,7 +244,7 @@
     async function loadTree(selectRoot=true){status.textContent='Обновление…';status.className='';const response=await fetch('/api/project');if(!response.ok){status.textContent=await response.text();status.className='error';return}const data=await response.json();configuration=data.configuration;document.querySelector('#project-path').textContent=data.projectPath;refreshLanguageSelector(configuration.languages,configuration.defaultLanguage);paintProjectTitle();tree.replaceChildren(renderNode(data.tree));if(selectRoot)await select(data.tree,tree.querySelector('summary'));if(!dirty){status.className='';status.textContent='Готово'}return data}
     async function pollExternalChange(){
       if(!currentFile||loadingFile)return;
-      // «Все роли» сверяет ревизии ролей при сохранении: опрашивать все роли
+      // Окна над всеми ролями сверяют ревизии при сохранении: опрашивать все роли
       // разом значило бы перечитывать весь проект каждые несколько секунд.
       if(currentFile.isRoleOverview)return;
       const opened=currentFile,knownRevision=opened.externalRevision||opened.revision;

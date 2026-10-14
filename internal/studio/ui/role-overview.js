@@ -1,10 +1,11 @@
 /* «Все роли» (справка, «Все роли»): права выбранного объекта во всех ролях
    сразу и с правкой — права строками, роли столбцами; первая строка ставит
    или снимает все права роли, первая колонка — право во всех ролях; ниже —
-   ограничения доступа выбранной роли. Две вкладки рядом — все ограничения
-   и все шаблоны проекта — с командами прототипа над несколькими строками
-   сразу: изменить группой, копировать в роли, удалить (справка, «Все
-   ограничения доступа»). */
+   ограничения доступа выбранной роли. Второе окно того же вида — «Все
+   ограничения доступа» — с закладками «Ограничения доступа» и «Шаблоны
+   ограничений» и командами прототипа над несколькими строками сразу:
+   изменить группой, копировать в роли, удалить (справка, «Все ограничения
+   доступа»). Оба окна правят одни и те же модели ролей. */
 
 /* Модель отделена от разметки и ничего не знает про DOM, поэтому
    проверяется тестами напрямую. Каждая роль правится своей моделью
@@ -221,8 +222,14 @@ function createRoleOverviewModel(source) {
   }
 }
 
+// Окна прототипа над всеми ролями, по ключу — подпись окна.
+const overviewWindows = {roles: 'Все роли', restrictions: 'Все ограничения доступа'};
+
 function createRoleOverview(host, openRole, onChange) {
   let source, model, selected = null, tree, panel, tab = 'roles', body, filter = '';
+  // Окно и его закладки (справка: «Все роли» и «Все ограничения доступа» —
+  // два окна, обе команды контекстного меню ветви «Роли» и корня дерева).
+  let view = 'roles';
   // Роль, выбранная щелчком по её столбцу: её ограничения — под таблицей
   // (справка: «Для редактирования ограничения необходимо сначала выбрать
   // роль»), с правом и строкой, выбранными в списке.
@@ -318,10 +325,7 @@ function createRoleOverview(host, openRole, onChange) {
     const needle = filter.toLocaleLowerCase().trim();
     return columns.some(value => (value || '').toLocaleLowerCase().includes(needle));
   }
-  // «Все ограничения» первого окна 1С — это две таблицы; Studio показывает их
-  // как две вкладки одной полосы вместе с «Всеми ролями», потому что
-  // отдельных окон здесь нет и вкладка дешевле лишнего представления.
-  // Строки выбираются по одной или несколько сразу — с Ctrl и Shift, — и
+  // «Все ограничения доступа» — две закладки: ограничения и шаблоны. Строки выбираются по одной или несколько сразу — с Ctrl и Shift, — и
   // команды списка действуют на все выбранные (справка, «Все ограничения
   // доступа»).
   let listChosen = new Set(), refill = () => {};
@@ -604,15 +608,28 @@ function createRoleOverview(host, openRole, onChange) {
     const part = selected.part && object.fields.find(item => item.key === selected.part.key);
     return part ? {object, part} : selected.part ? null : {object};
   }
-  function open(value, keep = false) {
+  function open(value, keep = false, next = view) {
       source = structuredClone(value); model = createRoleOverviewModel(source);
+      if (next !== view) { view = next; filter = ''; }
       selected = reselect();
       if (!keep) { expanded.clear(); restriction.right = null; restriction.row = -1; }
       if (!model.roles().some(role => role.path === chosenRole)) chosenRole = null;
-      host.hidden = false; host.replaceChildren();
+      host.hidden = false;
+      drawWindow();
+  }
+  // Переход в другое окно правок не трогает: модели ролей остаются.
+  function show(next) {
+      if (view === next) return;
+      view = next; filter = '';
+      drawWindow();
+  }
+  function drawWindow() {
+      tab = view === 'roles' ? 'roles' : tab === 'templates' ? 'templates' : 'restrictions';
+      host.dataset.view = view;
+      host.replaceChildren();
       const header = node('div', undefined, 'overview-header');
       const strip = node('div', undefined, 'overview-tabs');
-      for (const [key, text] of [['roles', 'Все роли'], ['restrictions', 'Ограничения доступа'], ['templates', 'Шаблоны ограничений']]) {
+      for (const [key, text] of view === 'roles' ? [] : [['restrictions', 'Ограничения доступа'], ['templates', 'Шаблоны ограничений']]) {
         const button = node('button', text, 'overview-tab');
         button.type = 'button';
         if (tab === key) button.classList.add('selected');
@@ -626,7 +643,7 @@ function createRoleOverview(host, openRole, onChange) {
       body = node('div'); host.append(body);
       renderBody();
   }
-  // Смена вкладки перерисовывает окно, не трогая правок: модели ролей остаются.
+  // Смена закладки перерисовывает окно, не трогая правок: модели ролей остаются.
   function drawFrame() {
     for (const button of host.querySelectorAll('.overview-tab')) {
       const on = button.dataset.tab === tab;
@@ -636,6 +653,8 @@ function createRoleOverview(host, openRole, onChange) {
   }
   return {
     open,
+    show,
+    title() { return overviewWindows[view]; },
     // Роли, изменённые в окне, — для сохранения одним запросом.
     value() { return model?.changes() || []; },
     close() { source = null; model = null; host.hidden = true; host.replaceChildren(); },
