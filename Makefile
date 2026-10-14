@@ -87,7 +87,7 @@ vet:
 sweep-check:
 	python3 scripts/metadata_sweep.py --self-check
 
-# dupl-check refuses a new copy of Go code; scripts/dupl_check.py says how.
+# dupl-check refuses a new copy of Go or JavaScript code; scripts/dupl_check.py says how.
 dupl-check:
 	python3 scripts/dupl_check.py
 

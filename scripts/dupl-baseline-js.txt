@@ -1,0 +1,9 @@
+# Written by scripts/dupl_check.py --update. Shrinks only.
+2	internal/mlapp/ui/app.js internal/mlapp/ui/app.js
+1	internal/studio/ui/bsl-editor.js internal/studio/ui/bsl-editor.js
+1	internal/studio/ui/bsl-editor.js internal/studio/ui/bsl-editor.js internal/studio/ui/bsl-editor.js
+1	internal/studio/ui/bsl-editor.js internal/studio/ui/debugger.js internal/studio/ui/query-designer.js
+1	internal/studio/ui/catalog-editor.js internal/studio/ui/languages-editor.js internal/studio/ui/role-editor.js
+2	internal/studio/ui/project-editor.js internal/studio/ui/project-editor.js
+1	internal/studio/ui/role-editor.js internal/studio/ui/role-editor.js
+2	internal/studio/ui/role-overview.js internal/studio/ui/role-overview.js

@@ -17,7 +17,7 @@ if [ -n "$unformatted" ]; then
     exit 1
 fi
 
-# A new copy of Go code is refused here as it is in CI (CLAUDE.md, "Одно
+# A new copy of Go or JavaScript code is refused here as it is in CI (CLAUDE.md, "Одно
 # знание — одно место"). The whole tree is checked, not only the staged
 # files: a copy is a pair, and its other half need not be staged.
 if ! python3 "$(git rev-parse --show-toplevel)/scripts/dupl_check.py"; then
