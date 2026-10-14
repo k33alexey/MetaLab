@@ -251,50 +251,36 @@ func (runtime *Runtime) ProvisionPostgreSQL(ctx context.Context, request Provisi
 
 // InitialSetupRequired implements the Manager administrator wizard boundary.
 func (runtime *Runtime) InitialSetupRequired(ctx context.Context) (bool, error) {
-	runtime.mu.RLock()
-	database, connectionErr := runtime.database, runtime.connectionErr
-	runtime.mu.RUnlock()
-	if database == nil {
-		if connectionErr != nil {
-			return false, connectionErr
-		}
-		return false, fmt.Errorf("ML System PostgreSQL is not configured")
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return false, err
 	}
 	return database.Administrators.InitialSetupRequired(ctx)
 }
 
 // CreateInitial creates the first platform administrator after PostgreSQL setup.
 func (runtime *Runtime) CreateInitial(ctx context.Context, login, password string) (systemdb.Administrator, []string, error) {
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
-	if database == nil {
-		return systemdb.Administrator{}, nil, fmt.Errorf("ML System PostgreSQL is not configured")
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return systemdb.Administrator{}, nil, err
 	}
 	return database.Administrators.CreateInitial(ctx, login, password)
 }
 
 // ListDatabases returns the safe application-database registry.
 func (runtime *Runtime) ListDatabases(ctx context.Context) ([]systemdb.RegisteredDatabase, error) {
-	runtime.mu.RLock()
-	database, connectionErr := runtime.database, runtime.connectionErr
-	runtime.mu.RUnlock()
-	if database == nil {
-		if connectionErr != nil {
-			return nil, connectionErr
-		}
-		return nil, fmt.Errorf("ML System PostgreSQL is not configured")
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return nil, err
 	}
 	return database.Databases.List(ctx)
 }
 
 // OpenDebugDatabase opens a caller-owned pool for Studio test execution.
 func (runtime *Runtime) OpenDebugDatabase(ctx context.Context, id uuid.UUID) (*pgxpool.Pool, systemdb.RegisteredDatabase, error) {
-	runtime.mu.RLock()
-	database, secrets := runtime.database, runtime.secrets
-	runtime.mu.RUnlock()
-	if database == nil || secrets == nil {
-		return nil, systemdb.RegisteredDatabase{}, fmt.Errorf("ML System PostgreSQL is not configured")
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return nil, systemdb.RegisteredDatabase{}, err
 	}
 	registered, err := database.Databases.Get(ctx, id)
 	if err != nil {
@@ -306,31 +292,9 @@ func (runtime *Runtime) OpenDebugDatabase(ctx context.Context, id uuid.UUID) (*p
 	if registered.State != systemdb.DatabaseRunning {
 		return nil, systemdb.RegisteredDatabase{}, fmt.Errorf("Debug database must be running to execute tests")
 	}
-	password, err := secrets.Get(registered.Connection.SecretKey)
+	pool, err := runtime.openRegisteredPool(ctx, registered)
 	if err != nil {
 		return nil, systemdb.RegisteredDatabase{}, err
-	}
-	physicalID, err := appdb.EnsureIdentity(ctx, registered.Connection, password)
-	if err != nil {
-		return nil, systemdb.RegisteredDatabase{}, errors.New(safeOperationalError(err, password))
-	}
-	if physicalID != registered.PhysicalID {
-		return nil, systemdb.RegisteredDatabase{}, fmt.Errorf("physical PostgreSQL database identity changed")
-	}
-	settings, err := registered.Connection.PoolConfig(password)
-	if err != nil {
-		return nil, systemdb.RegisteredDatabase{}, errors.New(safeOperationalError(err, password))
-	}
-	settings.MaxConns = 8
-	pool, err := pgxpool.NewWithConfig(ctx, settings)
-	if err == nil {
-		err = pool.Ping(ctx)
-	}
-	if err != nil {
-		if pool != nil {
-			pool.Close()
-		}
-		return nil, systemdb.RegisteredDatabase{}, errors.New(safeOperationalError(err, password))
 	}
 	return pool, registered, nil
 }
@@ -344,11 +308,8 @@ func (runtime *Runtime) RegisterDatabase(ctx context.Context, request RegisterDa
 	}
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
-	if runtime.database == nil {
-		if runtime.connectionErr != nil {
-			return systemdb.RegisteredDatabase{}, runtime.connectionErr
-		}
-		return systemdb.RegisteredDatabase{}, fmt.Errorf("ML System PostgreSQL is not configured")
+	if _, err := runtime.connectedDatabase(); err != nil {
+		return systemdb.RegisteredDatabase{}, err
 	}
 	if err := systemdb.ValidateDatabaseName(request.Name); err != nil {
 		return systemdb.RegisteredDatabase{}, err
@@ -385,8 +346,8 @@ func (runtime *Runtime) CreateDebugDatabase(ctx context.Context, sourceID uuid.U
 	}
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
-	if runtime.database == nil {
-		return systemdb.RegisteredDatabase{}, fmt.Errorf("ML System PostgreSQL is not configured")
+	if _, err := runtime.connectedDatabase(); err != nil {
+		return systemdb.RegisteredDatabase{}, err
 	}
 	if err := systemdb.ValidateDatabaseName(request.Name); err != nil {
 		return systemdb.RegisteredDatabase{}, err
@@ -467,8 +428,8 @@ func (runtime *Runtime) CreateDebugDatabase(ctx context.Context, sourceID uuid.U
 func (runtime *Runtime) UnregisterDatabase(ctx context.Context, id uuid.UUID) error {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
-	if runtime.database == nil {
-		return fmt.Errorf("ML System PostgreSQL is not configured")
+	if _, err := runtime.connectedDatabase(); err != nil {
+		return err
 	}
 	registered, err := runtime.database.Databases.Get(ctx, id)
 	if err != nil {
@@ -495,11 +456,9 @@ func (runtime *Runtime) UnregisterDatabase(ctx context.Context, id uuid.UUID) er
 
 // LoginPortal authenticates an internal account and creates a revocable session.
 func (runtime *Runtime) LoginPortal(ctx context.Context, login, password, remoteAddress, userAgent string) (PortalLogin, error) {
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
-	if database == nil {
-		return PortalLogin{}, fmt.Errorf("ML System PostgreSQL is not configured")
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return PortalLogin{}, err
 	}
 	user, err := database.Users.Authenticate(ctx, login, password)
 	if err != nil {
@@ -525,10 +484,8 @@ func (runtime *Runtime) LoginPortal(ctx context.Context, login, password, remote
 
 // AuthenticatePortal resolves and refreshes an opaque portal token.
 func (runtime *Runtime) AuthenticatePortal(ctx context.Context, token string) (systemdb.PortalSession, error) {
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
-	if database == nil || token == "" {
+	database, err := runtime.systemDatabase()
+	if err != nil || token == "" {
 		return systemdb.PortalSession{}, systemdb.ErrSessionNotFound
 	}
 	digest := auth.SessionTokenDigest(token)
@@ -537,10 +494,8 @@ func (runtime *Runtime) AuthenticatePortal(ctx context.Context, token string) (s
 
 // LogoutPortal revokes a portal token and all derived database sessions.
 func (runtime *Runtime) LogoutPortal(ctx context.Context, token string) error {
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
-	if database == nil || token == "" {
+	database, err := runtime.systemDatabase()
+	if err != nil || token == "" {
 		return systemdb.ErrSessionNotFound
 	}
 	digest := auth.SessionTokenDigest(token)
@@ -553,9 +508,10 @@ func (runtime *Runtime) ChangePortalPassword(ctx context.Context, token, current
 	if err != nil {
 		return err
 	}
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return err
+	}
 	if err := database.Users.ChangePasswordKeepingSession(ctx, session.Login, currentPassword, newPassword, session.ID); err != nil {
 		return err
 	}
@@ -572,9 +528,10 @@ func (runtime *Runtime) LoadPortal(ctx context.Context, token string) (systemdb.
 	if err != nil {
 		return systemdb.PortalSession{}, nil, err
 	}
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return systemdb.PortalSession{}, nil, err
+	}
 	accessItems, err := database.DatabaseAccess.ListApp(ctx, session.UserID)
 	if err != nil {
 		return systemdb.PortalSession{}, nil, err
@@ -612,9 +569,10 @@ func (runtime *Runtime) OpenPortalDatabase(ctx context.Context, token string, da
 	if session.MustChangePassword {
 		return systemdb.DatabaseSession{}, systemdb.ErrPasswordChangeRequired
 	}
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return systemdb.DatabaseSession{}, err
+	}
 	if _, err := database.DatabaseAccess.GetApp(ctx, session.UserID, databaseID); err != nil {
 		return systemdb.DatabaseSession{}, err
 	}
@@ -653,9 +611,10 @@ func (runtime *Runtime) ResumePortalDatabase(ctx context.Context, token string, 
 	if session.MustChangePassword {
 		return systemdb.DatabaseSession{}, systemdb.ErrPasswordChangeRequired
 	}
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return systemdb.DatabaseSession{}, err
+	}
 	if _, err := database.DatabaseAccess.GetApp(ctx, session.UserID, databaseID); err != nil {
 		return systemdb.DatabaseSession{}, err
 	}
@@ -675,9 +634,10 @@ func (runtime *Runtime) AcknowledgeSessionMessage(ctx context.Context, token str
 	if err != nil {
 		return err
 	}
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return err
+	}
 	return database.Sessions.AcknowledgeMessage(ctx, session.ID, sessionID)
 }
 
@@ -685,8 +645,8 @@ func (runtime *Runtime) AcknowledgeSessionMessage(ctx context.Context, token str
 func (runtime *Runtime) StartDatabase(ctx context.Context, id uuid.UUID) (systemdb.RegisteredDatabase, error) {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
-	if runtime.database == nil {
-		return systemdb.RegisteredDatabase{}, fmt.Errorf("ML System PostgreSQL is not configured")
+	if _, err := runtime.connectedDatabase(); err != nil {
+		return systemdb.RegisteredDatabase{}, err
 	}
 	item, err := runtime.database.Databases.Get(ctx, id)
 	if err != nil {
@@ -733,8 +693,8 @@ func (runtime *Runtime) StartDatabase(ctx context.Context, id uuid.UUID) (system
 func (runtime *Runtime) StopDatabase(ctx context.Context, id uuid.UUID) (systemdb.RegisteredDatabase, error) {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
-	if runtime.database == nil {
-		return systemdb.RegisteredDatabase{}, fmt.Errorf("ML System PostgreSQL is not configured")
+	if _, err := runtime.connectedDatabase(); err != nil {
+		return systemdb.RegisteredDatabase{}, err
 	}
 	item, err := runtime.database.Databases.Get(ctx, id)
 	if err != nil {
@@ -763,11 +723,9 @@ func (runtime *Runtime) StopDatabase(ctx context.Context, id uuid.UUID) (systemd
 
 // SetDatabaseSessionAccess enables or forbids only new logins.
 func (runtime *Runtime) SetDatabaseSessionAccess(ctx context.Context, id uuid.UUID, allowed bool) (systemdb.RegisteredDatabase, error) {
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
-	if database == nil {
-		return systemdb.RegisteredDatabase{}, fmt.Errorf("ML System PostgreSQL is not configured")
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return systemdb.RegisteredDatabase{}, err
 	}
 	item, err := database.Databases.SetSessionAccess(ctx, id, allowed)
 	if err == nil {
@@ -782,11 +740,9 @@ func (runtime *Runtime) SetDatabaseSessionAccess(ctx context.Context, id uuid.UU
 
 // CheckDatabaseHealth verifies connectivity and the stable physical identity.
 func (runtime *Runtime) CheckDatabaseHealth(ctx context.Context, id uuid.UUID) (systemdb.RegisteredDatabase, error) {
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
-	if database == nil {
-		return systemdb.RegisteredDatabase{}, fmt.Errorf("ML System PostgreSQL is not configured")
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return systemdb.RegisteredDatabase{}, err
 	}
 	item, err := database.Databases.Get(ctx, id)
 	if err != nil {
@@ -819,22 +775,18 @@ func safeOperationalError(err error, secrets ...string) string {
 
 // ListDatabaseSessions returns active application sessions for administration.
 func (runtime *Runtime) ListDatabaseSessions(ctx context.Context, databaseID *uuid.UUID) ([]systemdb.DatabaseSession, error) {
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
-	if database == nil {
-		return nil, fmt.Errorf("ML System PostgreSQL is not configured")
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return nil, err
 	}
 	return database.Sessions.ListDatabaseSessions(ctx, databaseID)
 }
 
 // SendSessionMessage queues an administrative message for one session.
 func (runtime *Runtime) SendSessionMessage(ctx context.Context, id uuid.UUID, message string) error {
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
-	if database == nil {
-		return fmt.Errorf("ML System PostgreSQL is not configured")
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return err
 	}
 	if err := database.Sessions.SendMessage(ctx, id, message); err != nil {
 		return err
@@ -848,11 +800,9 @@ func (runtime *Runtime) SendSessionMessage(ctx context.Context, id uuid.UUID, me
 
 // TerminateDatabaseSession forcibly ends one application session.
 func (runtime *Runtime) TerminateDatabaseSession(ctx context.Context, id uuid.UUID) error {
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
-	if database == nil {
-		return fmt.Errorf("ML System PostgreSQL is not configured")
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return err
 	}
 	if err := database.Sessions.TerminateDatabaseSession(ctx, id); err != nil {
 		return err
@@ -866,11 +816,9 @@ func (runtime *Runtime) TerminateDatabaseSession(ctx context.Context, id uuid.UU
 
 // ListAuditEvents exposes a bounded technical journal to ML Manager.
 func (runtime *Runtime) ListAuditEvents(ctx context.Context, databaseID *uuid.UUID, limit int) ([]systemdb.AuditEvent, error) {
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
-	if database == nil {
-		return nil, fmt.Errorf("ML System PostgreSQL is not configured")
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return nil, err
 	}
 	return database.Audit.List(ctx, databaseID, limit)
 }
@@ -878,11 +826,12 @@ func (runtime *Runtime) ListAuditEvents(ctx context.Context, databaseID *uuid.UU
 // CreateDatabaseBackup creates a consistent local archive without stopping the database.
 func (runtime *Runtime) CreateDatabaseBackup(ctx context.Context, databaseID uuid.UUID) (systemdb.Backup, error) {
 	runtime.mu.RLock()
-	database, tool, toolErr := runtime.database, runtime.backupTool, runtime.backupToolErr
+	database, err := runtime.connectedDatabase()
+	tool, toolErr := runtime.backupTool, runtime.backupToolErr
 	settings := runtime.settings
 	runtime.mu.RUnlock()
-	if database == nil {
-		return systemdb.Backup{}, fmt.Errorf("ML System PostgreSQL is not configured")
+	if err != nil {
+		return systemdb.Backup{}, err
 	}
 	if tool == nil {
 		if toolErr != nil {
@@ -930,11 +879,9 @@ func (runtime *Runtime) CreateDatabaseBackup(ctx context.Context, databaseID uui
 
 // ListDatabaseBackups returns the verified archive catalog for one database.
 func (runtime *Runtime) ListDatabaseBackups(ctx context.Context, databaseID uuid.UUID) ([]systemdb.Backup, error) {
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
-	if database == nil {
-		return nil, fmt.Errorf("ML System PostgreSQL is not configured")
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return nil, err
 	}
 	if _, err := database.Databases.Get(ctx, databaseID); err != nil {
 		return nil, err
@@ -946,8 +893,8 @@ func (runtime *Runtime) ListDatabaseBackups(ctx context.Context, databaseID uuid
 func (runtime *Runtime) DeleteDatabaseBackup(ctx context.Context, databaseID, backupID uuid.UUID) error {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
-	if runtime.database == nil {
-		return fmt.Errorf("ML System PostgreSQL is not configured")
+	if _, err := runtime.connectedDatabase(); err != nil {
+		return err
 	}
 	backup, err := runtime.database.Backups.Get(ctx, backupID)
 	if err != nil {
@@ -992,8 +939,8 @@ func (runtime *Runtime) DeleteDatabaseBackup(ctx context.Context, databaseID, ba
 func (runtime *Runtime) RestoreDatabaseBackup(ctx context.Context, databaseID, backupID uuid.UUID) error {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
-	if runtime.database == nil {
-		return fmt.Errorf("ML System PostgreSQL is not configured")
+	if _, err := runtime.connectedDatabase(); err != nil {
+		return err
 	}
 	if runtime.backupTool == nil {
 		return fmt.Errorf("PostgreSQL backup tools are unavailable")
@@ -1047,11 +994,9 @@ func (runtime *Runtime) AcquireStudioSession(
 	if err != nil {
 		return StudioLease{}, err
 	}
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
-	if database == nil {
-		return StudioLease{}, fmt.Errorf("ML System PostgreSQL is not configured")
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return StudioLease{}, err
 	}
 	if _, err := database.Databases.Get(ctx, databaseID); err != nil {
 		return StudioLease{}, err
@@ -1077,10 +1022,8 @@ func (runtime *Runtime) AcquireStudioSession(
 
 // HeartbeatStudioSession renews a lease and detects administrative termination.
 func (runtime *Runtime) HeartbeatStudioSession(ctx context.Context, id uuid.UUID, token string, processID int64) (systemdb.StudioSession, error) {
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
-	if database == nil || token == "" {
+	database, err := runtime.systemDatabase()
+	if err != nil || token == "" {
 		return systemdb.StudioSession{}, systemdb.ErrStudioSessionNotFound
 	}
 	digest := auth.SessionTokenDigest(token)
@@ -1089,10 +1032,8 @@ func (runtime *Runtime) HeartbeatStudioSession(ctx context.Context, id uuid.UUID
 
 // ReleaseStudioSession ends a lease owned by its opaque token.
 func (runtime *Runtime) ReleaseStudioSession(ctx context.Context, id uuid.UUID, token string) error {
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
-	if database == nil || token == "" {
+	database, err := runtime.systemDatabase()
+	if err != nil || token == "" {
 		return systemdb.ErrStudioSessionNotFound
 	}
 	digest := auth.SessionTokenDigest(token)
@@ -1101,22 +1042,18 @@ func (runtime *Runtime) ReleaseStudioSession(ctx context.Context, id uuid.UUID, 
 
 // ListStudioSessions returns current exclusive editor leases to Manager.
 func (runtime *Runtime) ListStudioSessions(ctx context.Context) ([]systemdb.StudioSession, error) {
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
-	if database == nil {
-		return nil, fmt.Errorf("ML System PostgreSQL is not configured")
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return nil, err
 	}
 	return database.StudioSessions.ListActive(ctx)
 }
 
 // TerminateStudioSession forcibly revokes the current editor lease of a database.
 func (runtime *Runtime) TerminateStudioSession(ctx context.Context, databaseID uuid.UUID) error {
-	runtime.mu.RLock()
-	database := runtime.database
-	runtime.mu.RUnlock()
-	if database == nil {
-		return fmt.Errorf("ML System PostgreSQL is not configured")
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return err
 	}
 	if err := database.StudioSessions.Terminate(ctx, databaseID); err != nil {
 		return err

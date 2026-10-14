@@ -309,11 +309,9 @@ func (runtime *Runtime) loadPublishedMetadata(ctx context.Context, databaseID uu
 }
 
 func (runtime *Runtime) openApplicationPool(ctx context.Context, id uuid.UUID) (*pgxpool.Pool, systemdb.RegisteredDatabase, error) {
-	runtime.mu.RLock()
-	database, secrets := runtime.database, runtime.secrets
-	runtime.mu.RUnlock()
-	if database == nil || secrets == nil {
-		return nil, systemdb.RegisteredDatabase{}, fmt.Errorf("ML System PostgreSQL is not configured")
+	database, err := runtime.systemDatabase()
+	if err != nil {
+		return nil, systemdb.RegisteredDatabase{}, err
 	}
 	registered, err := database.Databases.Get(ctx, id)
 	if err != nil {
@@ -322,20 +320,30 @@ func (runtime *Runtime) openApplicationPool(ctx context.Context, id uuid.UUID) (
 	if registered.State != systemdb.DatabaseRunning {
 		return nil, systemdb.RegisteredDatabase{}, systemdb.ErrDatabaseNotRunning
 	}
-	password, err := secrets.Get(registered.Connection.SecretKey)
+	pool, err := runtime.openRegisteredPool(ctx, registered)
 	if err != nil {
 		return nil, systemdb.RegisteredDatabase{}, err
 	}
+	return pool, registered, nil
+}
+
+// openRegisteredPool opens a caller-owned pool of a registered application
+// database once it is still the same physical database it was registered as.
+func (runtime *Runtime) openRegisteredPool(ctx context.Context, registered systemdb.RegisteredDatabase) (*pgxpool.Pool, error) {
+	password, err := runtime.secrets.Get(registered.Connection.SecretKey)
+	if err != nil {
+		return nil, err
+	}
 	physicalID, err := appdb.EnsureIdentity(ctx, registered.Connection, password)
 	if err != nil {
-		return nil, systemdb.RegisteredDatabase{}, errors.New(safeOperationalError(err, password))
+		return nil, errors.New(safeOperationalError(err, password))
 	}
 	if physicalID != registered.PhysicalID {
-		return nil, systemdb.RegisteredDatabase{}, fmt.Errorf("physical PostgreSQL database identity changed")
+		return nil, fmt.Errorf("physical PostgreSQL database identity changed")
 	}
 	configuration, err := registered.Connection.PoolConfig(password)
 	if err != nil {
-		return nil, systemdb.RegisteredDatabase{}, errors.New(safeOperationalError(err, password))
+		return nil, errors.New(safeOperationalError(err, password))
 	}
 	configuration.MaxConns = 8
 	pool, err := pgxpool.NewWithConfig(ctx, configuration)
@@ -346,9 +354,9 @@ func (runtime *Runtime) openApplicationPool(ctx context.Context, id uuid.UUID) (
 		if pool != nil {
 			pool.Close()
 		}
-		return nil, systemdb.RegisteredDatabase{}, errors.New(safeOperationalError(err, password))
+		return nil, errors.New(safeOperationalError(err, password))
 	}
-	return pool, registered, nil
+	return pool, nil
 }
 
 func resolvedApplicationTitle(title metadata.LocalizedText, fallback string, language metadata.TitleLanguage) string {

@@ -49,13 +49,23 @@ func WithManagerToken(ctx context.Context, token string) context.Context {
 	return context.WithValue(ctx, managerTokenKey{}, token)
 }
 
+// systemDatabase returns the live ML System connection, or why there is none:
+// the failure met when it was opened, and "not configured" only without one.
 func (runtime *Runtime) systemDatabase() (*systemdb.Database, error) {
 	runtime.mu.RLock()
 	defer runtime.mu.RUnlock()
-	if runtime.database == nil {
-		return nil, fmt.Errorf("ML System PostgreSQL is not configured")
+	return runtime.connectedDatabase()
+}
+
+// connectedDatabase is systemDatabase for a caller that already holds mu.
+func (runtime *Runtime) connectedDatabase() (*systemdb.Database, error) {
+	if runtime.database != nil {
+		return runtime.database, nil
 	}
-	return runtime.database, nil
+	if runtime.connectionErr != nil {
+		return nil, runtime.connectionErr
+	}
+	return nil, fmt.Errorf("ML System PostgreSQL is not configured")
 }
 
 func (runtime *Runtime) LoginManager(ctx context.Context, login, password, remoteAddress, userAgent string) (PortalLogin, error) {
