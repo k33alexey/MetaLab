@@ -73,8 +73,9 @@ const studioPageWalk = `(async () => {
   async function cancelDialog() {
     const dialog = document.querySelector('dialog[open]');
     if (!dialog) { problems.push(studio.step + ': no window opened'); return; }
-    const buttons = dialog.querySelectorAll('.localized-title-actions button');
-    buttons[buttons.length - 1].click();
+    // «Отмена» by its caption: «Справка» stands after it.
+    const buttons = [...dialog.querySelectorAll('.localized-title-actions button')];
+    (buttons.find(button => button.textContent === 'Отмена') || buttons[buttons.length - 1]).click();
     await settle();
     if (dialog.open) problems.push(studio.step + ': the window stayed open after Cancel');
   }

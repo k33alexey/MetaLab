@@ -269,10 +269,14 @@ function restrictionFieldsCaption(object, restriction, title) {
    with the key of the button pressed, or null when the dialog is closed
    without one. check(key), when given, is asked before the dialog closes on
    a button with a key: a text it returns is shown and keeps the dialog open.
-   A button may take a third element, {act, shown}, for the steps of a
-   wizard: act() is done in place of closing, and after it every button is
-   shown or hidden by its shown(); the first shown is the primary one. */
-function showDialog({title, explanation, content, answers, check, className}) {
+   A button may take a third element, {act, enabled, primary}: act() is done
+   in place of closing, as the steps of a wizard do; enabled() makes it
+   unavailable without hiding it, as the prototype's buttons are; the
+   primary one - the first whose primary() holds, or else the first
+   available - is pressed by Enter, and not at all while it is unavailable.
+   Both are asked again after every change in the dialog. help names the window's page of studioHelp: «Справка» and
+   F1 open it over the dialog. */
+function showDialog({title, explanation, content, answers, check, className, help}) {
   return new Promise(resolve => {
     const dialog = document.createElement('dialog');
     dialog.className = 'localized-title-dialog' + (className ? ' ' + className : '');
@@ -299,23 +303,44 @@ function showDialog({title, explanation, content, answers, check, className}) {
       actions.append(button);
       return [button, step];
     });
-    // A hidden button is disabled too, so Enter does not press it.
+    if (help) {
+      const button = node('button', 'Справка');
+      button.type = 'button';
+      button.addEventListener('click', () => showHelp(help));
+      actions.append(button);
+    }
+    let primary = null;
     function arrange() {
-      let primary = true;
-      for (const [button, step] of buttons) {
-        const shown = !step?.shown || step.shown();
-        button.hidden = !shown; button.disabled = !shown;
-        button.classList.toggle('primary', shown && primary);
-        if (shown) primary = false;
-      }
+      for (const [button, step] of buttons) button.disabled = !!step?.enabled && !step.enabled();
+      primary = (buttons.find(([, step]) => step?.primary?.()) || buttons.find(([button]) => !button.disabled))?.[0] || null;
+      for (const [button] of buttons) button.classList.toggle('primary', button === primary);
     }
     arrange();
+    // What the content changed is read again by every button: the handlers of
+    // the content run first, the form hears the change after them.
+    for (const name of ['change', 'input', 'click']) form.addEventListener(name, arrange);
+    // Enter presses the primary button, not the first one of the form: on the
+    // second step of a wizard that is «< Назад».
+    form.addEventListener('keydown', event => {
+      if (event.key === 'F1' && help) { event.preventDefault(); showHelp(help); return; }
+      if (event.key !== 'Enter' || event.target.tagName === 'TEXTAREA' || event.target.tagName === 'BUTTON') return;
+      event.preventDefault();
+      if (primary && !primary.disabled) primary.click();
+    });
     form.append(actions);
     dialog.append(form);
     document.body.append(dialog);
     dialog.addEventListener('close', () => { dialog.remove(); resolve(answer); });
     dialog.showModal();
   });
+}
+
+/* showHelp opens a page of studioHelp (studio-help.js) over what is open: its
+   heading and paragraphs. */
+function showHelp(key) {
+  const page = studioHelp[key], content = node('div', undefined, 'studio-help');
+  for (const paragraph of page.text) content.append(node('p', paragraph));
+  return showDialog({title: page.title, content, className: 'studio-help-dialog', answers: [[null, 'Закрыть']]});
 }
 
 /* showContextMenu shows the commands of what was right-clicked at the

@@ -35,3 +35,11 @@
 .role-restriction-form[hidden]{display:none}
 .role-subsystems{font-size:12px}.role-subsystems.selected{background:#2f4a6d!important;border-color:#589df6}
 .role-tree-bar{display:flex;gap:6px;margin-bottom:8px}.role-tree-bar button{font-size:12px}
+.role-restriction-window{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:stretch;gap:8px 16px}.role-restriction-window>div{align-content:start}.role-restriction-window>div:has(>.role-fields-tree:last-child){grid-template-rows:auto 1fr;align-content:stretch}.role-restriction-window>div>.role-fields-tree:last-child{height:auto;min-height:260px}.role-restriction-window.role-restriction-single{grid-template-columns:1fr}
+.role-restriction-window .role-fields-tree{max-height:none;height:260px}
+.role-fields-tree{display:block;grid-template-columns:none}.role-fields-row{display:flex;align-items:center;gap:2px;padding:2px 0 2px calc(var(--depth,0)*20px)}
+.role-fields-toggle{flex:none;width:18px;padding:0!important;border:0!important;background:transparent!important;color:#aeb1b8;font-size:11px;line-height:1;text-align:center}
+.role-fields-tree>.role-check{padding:2px 0}
+.role-list-marks{display:flex;gap:4px}.role-list-marks button{font-size:11px;padding:2px 8px}
+.role-restriction-form .role-check input:disabled+span{color:#6f737a}
+.role-fields-row[hidden]{display:none}

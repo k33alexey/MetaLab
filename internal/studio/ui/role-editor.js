@@ -6,12 +6,6 @@
 function restrictsByFields(schema, right) {
   return !!(schema.restrictionRules || []).find(rule => rule.right === right)?.byFields;
 }
-/* The rights of the schema restricted by fields, as the windows name them:
-   права «Чтение». */
-function fieldRightsCaption(schema, caption) {
-  const names = (schema.restrictionRules || []).filter(rule => rule.byFields).map(rule => `«${caption(rule.right)}»`);
-  return `${names.length === 1 ? 'права' : 'прав'} ${names.join(', ')}`;
-}
 function createRoleModel(source) {
   // Only the role is copied: the schema is read and never changed, and the
   // window «Все роли» builds a model for every role over one schema.
@@ -480,7 +474,7 @@ async function chooseSubsystemFilter({schema, title, current, apply}) {
   content.append(tree,
     checkboxField('Включать объекты подчиненных подсистем', flags.children, enabled => { flags.children = enabled; }, 'role-check'),
     checkboxField('Включать объекты родительских подсистем', flags.parents, enabled => { flags.parents = enabled; }, 'role-check'));
-  const answer = await showDialog({title: 'Отбор по подсистемам', content, className: 'role-restriction-dialog',
+  const answer = await showDialog({title: 'Отбор по подсистемам', content, className: 'role-restriction-dialog', help: 'subsystem-filter',
     answers: apply ? [['ok', apply], [null, 'Отмена']] : [['ok', 'Установить'], ['off', 'Отключить'], [null, 'Отмена']],
     check: key => key === 'ok' && !chosen.size ? (apply ? 'Отметьте подсистемы.' : 'Отметьте подсистемы или нажмите «Отключить».') : ''});
   if (answer === 'off') return null;
@@ -543,6 +537,131 @@ function roleListTable(headings, rows, chosen, choose, commands, empty) {
   const block=node('div');block.append(table,bar);return block;
 }
 
+/* The caption of a list in the windows of restrictions, with «Отметить все»
+   and «Снять все» over it, as the prototype has them: mark(true) marks every
+   item, mark(false) takes every mark away. */
+function markedListCaption(caption, mark, extra = []) {
+  const heading = node('div', undefined, 'overview-wizard-caption'), commands = node('span', undefined, 'role-list-marks');
+  for (const [text, enabled] of [['Отметить все', true], ['Снять все', false]]) {
+    const button = node('button', text, 'role-mark-all');
+    button.type = 'button';
+    button.addEventListener('click', () => mark(enabled));
+    commands.append(button);
+  }
+  commands.append(...extra);
+  heading.append(node('span', caption, 'role-restriction-caption'), commands);
+  return heading;
+}
+
+/* The fields of a restriction of reading, as the prototype's windows show
+   them (help, form_RLFieldsListDlg; checked in the configurator 14.10.2026):
+   one column by names, a table part folding under its own box with its fields
+   beneath, «Отметить все» and «Снять все» over the list and «Прочие поля»
+   under it. Marking a field takes «Прочие поля» away, marking «Прочие поля»
+   takes every field away, taking the last field away marks «Прочие поля».
+   chosen holds the keys marked; taken(key) - a field another restriction
+   names, which cannot be marked. One choice serves the window of one
+   restriction, the group «Изменить» and the wizard. Answers the block with
+   fill(fields) - the fields, {key, name, parent, hint}, parent the key of
+   the table part; filled() - whether a field or «Прочие поля» is marked;
+   disable(flag). */
+function restrictionFieldsChoice({chosen, taken = () => false}) {
+  let others = !chosen.size, disabled = false, fields = [];
+  const boxes = new Map(), list = node('div', undefined, 'role-restriction-fields role-fields-tree');
+  const othersBox = checkboxField('Прочие поля', others, enabled => {
+    others = enabled;
+    if (enabled) chosen.clear();
+    sync();
+  }, 'role-check role-fields-others');
+  function mark(key, enabled) {
+    if (enabled) chosen.add(key); else chosen.delete(key);
+    others = !chosen.size;
+    sync();
+  }
+  // The marks are put on the boxes in place: a list drawn anew would take
+  // the focus away from the box just pressed.
+  function sync() {
+    for (const [key, input] of boxes) { input.checked = chosen.has(key); input.disabled = disabled || taken(key); }
+    const input = othersBox.querySelector('input');
+    input.checked = others; input.disabled = disabled;
+    for (const button of block.querySelectorAll('.role-mark-all')) button.disabled = disabled;
+  }
+  // A table part folds: its fields are under it, hidden until it is opened.
+  function row(field, depth, under) {
+    const line = node('div', undefined, 'role-fields-row'), children = fields.filter(item => item.parent === field.key), inside = [];
+    let fold = null;
+    line.style.setProperty('--depth', depth);
+    line.hidden = !!under;
+    if (children.length) {
+      const toggle = node('button', '▸', 'role-fields-toggle');
+      toggle.type = 'button';
+      fold = open => {
+        toggle.textContent = open ? '▾' : '▸';
+        toggle.setAttribute('aria-expanded', String(open));
+        toggle.setAttribute('aria-label', `${open ? 'Свернуть' : 'Развернуть'} ${field.name}`);
+        for (const child of inside) child.hidden = !open;
+      };
+      toggle.addEventListener('click', () => fold(toggle.getAttribute('aria-expanded') !== 'true'));
+      line.append(toggle);
+    } else line.append(node('span', undefined, 'role-fields-toggle'));
+    const box = checkboxField(field.name, false, enabled => mark(field.key, enabled), 'role-check');
+    if (field.hint && field.hint !== field.name) box.title = field.hint;
+    boxes.set(field.key, box.querySelector('input'));
+    line.append(box);
+    list.append(line);
+    for (const child of children) inside.push(row(child, depth + 1, line));
+    fold?.(false);
+    return line;
+  }
+  const block = node('div', undefined, 'role-restriction-form role-fields-choice');
+  block.append(markedListCaption('Поля:', enabled => {
+    if (enabled) for (const field of fields) { if (!taken(field.key)) chosen.add(field.key); } else chosen.clear();
+    others = !chosen.size;
+    sync();
+  }), list, othersBox);
+  return Object.assign(block, {
+    fill(next) {
+      // A field that is gone takes its mark with it; the last one gone marks
+      // «Прочие поля», as taking it away would.
+      fields = next;
+      const keys = new Set(fields.map(field => field.key)), before = chosen.size;
+      for (const key of [...chosen]) if (!keys.has(key)) chosen.delete(key);
+      if (before && !chosen.size) others = true;
+      list.replaceChildren(); boxes.clear();
+      for (const field of fields) if (!field.parent || !keys.has(field.parent)) row(field, 0);
+      if (!fields.length) list.append(node('p', 'Полей для ограничения нет.', 'muted'));
+      sync();
+    },
+    filled: () => chosen.size > 0 || others,
+    disable(flag) { disabled = flag; sync(); },
+  });
+}
+
+/* The window of a restriction's fields and condition, one for the window of
+   one restriction and for the group «Изменить» (help, form_EditRowLevelRightDlg):
+   «Изменять состав полей» and «Изменять ограничение» over the fields on the
+   left and the condition on the right. In the window of one restriction both
+   are marked and cannot be taken away; in the group they change only what is
+   marked. fields is a restrictionFieldsChoice, or null where the right is not
+   restricted by fields. change.fields and change.condition hold whether each
+   is changed; group - whether they can be taken away. */
+function restrictionWindowContent({fields, editor, change, group}) {
+  const content = node('div', undefined, 'role-restriction-form role-restriction-window');
+  const flag = (label, key, controls) => {
+    const box = checkboxField(label, change[key], enabled => { change[key] = enabled; controls(enabled); }, 'role-check', !group);
+    controls(change[key]);
+    return box;
+  };
+  const left = node('div', undefined, 'role-restriction-form'), right = node('div', undefined, 'role-restriction-form');
+  if (fields) left.append(flag('Изменять состав полей', 'fields', enabled => fields.disable(!enabled)), fields);
+  right.append(flag('Изменять ограничение', 'condition', enabled => { editor.textarea.disabled = !enabled; }),
+    node('div', 'Ограничение доступа:', 'role-restriction-caption'), editor);
+  if (fields) content.append(left);
+  else content.classList.add('role-restriction-single');
+  content.append(right);
+  return content;
+}
+
 /* The restrictions of access to data a role puts on the rights of an object,
    as the prototype lists them under the rights (help, «Ограничение доступа к
    данным»): the field or «Прочие поля», and the condition. A right restricted
@@ -575,27 +694,25 @@ function roleRestrictionSection({model, object, caption, title, state, changed})
 }
 
 /* The window of one restriction: the fields it checks, where the right is
-   restricted by fields, and its
-   condition in the query language (help, «Ограничение доступа»). Answers
-   whether the restriction was put in the role. */
+   restricted by fields, and its condition in the query language (help,
+   «Ограничение доступа»), laid out as the group «Изменить» with both flags
+   marked. Answers whether the restriction was put in the role. */
 async function editRoleRestriction({model,object,right,index,caption,title}){
-  const list=model.restrictions(object.id,right),current=list[index]||{right},content=node('div',undefined,'role-restriction-form');
+  const list=model.restrictions(object.id,right),current=list[index]||{right};
   const chosen=new Set(current.fields||[]);
+  let fields=null;
   if(model.restrictedByFields(right)){
     const taken=new Set(list.flatMap((item,other)=>other===index?[]:item.fields||[]));
-    const fieldsLabel=node('div','Поля — ни одно не отмечено: «Прочие поля»','role-restriction-caption'),fields=node('div',undefined,'role-restriction-fields');
-    for(const field of object.restrictionFields){
-      const box=checkboxField(field.parent?(title(field)||field.name):(title(field)||field.name),chosen.has(field.key),enabled=>{if(enabled)chosen.add(field.key);else chosen.delete(field.key);},'role-check',taken.has(field.key));
-      if(field.parent)box.classList.add('role-restriction-child');
-      box.title=field.name;fields.append(box);
-    }
-    content.append(fieldsLabel,fields);
+    fields=restrictionFieldsChoice({chosen,taken:key=>taken.has(key)});
+    fields.fill(object.restrictionFields.map(field=>({key:field.key,name:field.name,parent:field.parent,hint:title(field)})));
   }
   let condition=current.condition||'';
-  content.append(node('div','Ограничение доступа','role-restriction-caption'),queryTextField(condition,text=>{condition=text;},'Ограничение доступа'));
+  const editor=queryTextField(condition,text=>{condition=text;},'Ограничение доступа');
+  const content=restrictionWindowContent({fields,editor,change:{fields:true,condition:true},group:false});
   // A field another restriction names cannot be marked, so the only
   // collision left is a second one on «Прочие поля».
-  const answer=await showDialog({title:`Ограничение доступа · ${caption(right)}`,content,className:'role-restriction-dialog',answers:[['ok','ОК'],[null,'Отмена']],
+  const answer=await showDialog({title:`Ограничение доступа · ${caption(right)}`,content,className:'role-restriction-dialog',help:'role-restriction',
+    answers:[['ok','ОК',{enabled:()=>!fields||fields.filled()}],[null,'Отмена']],
     check:()=>model.restrictionClashes(object.id,right,index,{fields:[...chosen]}).length?'Ограничение на прочие поля у этого права уже есть: отметьте поля.':''});
   if(answer!=='ok')return false;
   model.putRestriction(object.id,right,index,{fields:[...chosen],condition});

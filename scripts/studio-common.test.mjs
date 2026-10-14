@@ -129,3 +129,21 @@ test('a text control limits only when told to and applies numbers as numbers',()
   number.dispatch('change');
   assert.equal(applied,7);
 });
+
+// Every window that offers «Справка» names a page of studioHelp, and the page
+// has a heading and text: a key without a page would throw on the button,
+// a misspelt one would never be noticed until pressed.
+test('every help key a window passes has a page in studioHelp',async()=>{
+  const {readdirSync}=await import('node:fs');
+  const help=vm.createContext({});
+  vm.runInContext(readFileSync(new URL('../internal/studio/ui/studio-help.js',import.meta.url),'utf8')+';globalThis.studioHelp=studioHelp;',help);
+  const folder=new URL('../internal/studio/ui/',import.meta.url),keys=new Set();
+  for(const name of readdirSync(folder).filter(name=>name.endsWith('.js')))
+    for(const match of readFileSync(new URL(name,folder),'utf8').matchAll(/\bhelp:\s*'([^']+)'/g))keys.add(match[1]);
+  assert.ok(keys.size>=4,`help keys found: ${[...keys]}`);
+  for(const key of keys){
+    const page=help.studioHelp[key];
+    assert.ok(page,`no page for ${key}`);
+    assert.ok(page.title&&page.text.length&&page.text.every(Boolean),`empty page ${key}`);
+  }
+});
