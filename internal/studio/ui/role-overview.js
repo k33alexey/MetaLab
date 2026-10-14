@@ -482,8 +482,6 @@ function createRoleOverview(host, openRole, onChange) {
   // идёт то, что видно в списке. after — после каждой перемены выбора.
   function objectChoice(chosenObjects, holder, after = () => {}) {
     const objectList = node('div', undefined, 'role-restriction-fields role-wizard-objects');
-    const bySubsystems = node('button', 'По подсистемам', 'overview-subsystems');
-    bySubsystems.type = 'button';
     function fillObjects() {
       const passes = subsystemFilterPasses(source.schema, holder.subsystems), groups = new Map();
       for (const item of model.restrictable()) {
@@ -491,8 +489,6 @@ function createRoleOverview(host, openRole, onChange) {
         if (!groups.has(item.kind)) groups.set(item.kind, []);
         groups.get(item.kind).push(item);
       }
-      bySubsystems.classList.toggle('selected', !!holder.subsystems);
-      bySubsystems.setAttribute('aria-pressed', String(!!holder.subsystems));
       objectList.replaceChildren();
       if (!groups.size) objectList.append(node('p', 'Ни один объект не входит в отмеченные подсистемы.', 'muted'));
       for (const [kind, items] of groups) {
@@ -510,13 +506,8 @@ function createRoleOverview(host, openRole, onChange) {
         sync();
       }
     }
-    bySubsystems.addEventListener('click', async () => {
-      const next = await chooseSubsystemFilter({schema: source.schema, title, current: holder.subsystems});
-      if (next === undefined) return;
-      holder.subsystems = next; fillObjects(); after();
-    });
     const heading = node('div', undefined, 'overview-wizard-caption'), block = node('div', undefined, 'role-restriction-form');
-    heading.append(node('span', 'Объекты', 'role-restriction-caption'), bySubsystems);
+    heading.append(node('span', 'Объекты', 'role-restriction-caption'), subsystemFilterButton({schema: source.schema, title, holder, applied: () => { fillObjects(); after(); }}));
     block.append(heading, objectList);
     fillObjects();
     return block;

@@ -322,8 +322,8 @@ function showDialog({title, explanation, content, answers, check, className}) {
    point of the click: items are [text, act]. One menu is open at a time; it
    closes when a command is chosen, on Escape, on a click elsewhere, when the
    page scrolls or loses focus. A menu opened from the keyboard (Shift+F10,
-   the menu key) stands under the element instead. The arrows move between
-   commands, Enter chooses one. */
+   the menu key) or by a button, as «Действия», stands under the element
+   instead. The arrows move between commands, Enter chooses one. */
 function showContextMenu(event, items) {
   event.preventDefault();
   closeContextMenu();
@@ -347,7 +347,7 @@ function showContextMenu(event, items) {
   });
   document.body.append(menu);
   let x = event.clientX, y = event.clientY;
-  if (!x && !y && event.currentTarget instanceof Element) {
+  if ((event.type === 'click' || (!x && !y)) && event.currentTarget instanceof Element) {
     const box = event.currentTarget.getBoundingClientRect();
     x = box.left; y = box.bottom;
   }

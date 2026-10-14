@@ -33,3 +33,5 @@
 .role-restriction-form>input{padding:7px 9px;border:1px solid #4a4d54;border-radius:5px;background:#1e1f22;color:#dfe1e5}
 .role-subsystem-tree{grid-template-columns:1fr;max-height:320px}.role-subsystem-tree .role-check{padding-left:calc(var(--depth,0)*18px)}
 .role-restriction-form[hidden]{display:none}
+.role-subsystems{font-size:12px}.role-subsystems.selected{background:#2f4a6d!important;border-color:#589df6}
+.role-tree-bar{display:flex;gap:6px;margin-bottom:8px}.role-tree-bar button{font-size:12px}

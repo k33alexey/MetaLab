@@ -312,6 +312,20 @@ test('templates are added, changed and removed in place',()=>{
 // подсистемы берутся без флага или не берутся с ним; вложенный объект
 // отбрасывается, хотя проходит то, в чём он лежит; «<Не входящие в
 // подсистемы>» пропускает вошедшие; без отбора что-то скрыто.
+// Дефект: «Установить все права» пропускала корень, части объектов или
+// команды форм - у прототипа она отмечает все флажки роли (владелец
+// 14.10.2026), «Снять все права» все их снимает.
+test('all rights set and clear every box of the role',()=>{
+  const model=create(fixture());model.setEverything(true);
+  const boxes=[['base','administration'],['base','thin-client'],['goods','read'],['goods','input-by-string'],['other','view']];
+  for(const [id,right] of boxes)assert.equal(model.hasObject(id,right),true,`${id} ${right}`);
+  for(const [key,right] of [['ref','edit'],['name','view'],['part','edit'],['column','view'],['print','view']])assert.equal(model.hasField('goods',key,right),true,`${key} ${right}`);
+  assert.equal(model.hasCommand('form','command'),true);
+  model.setEverything(false);
+  for(const [id,right] of boxes)assert.equal(model.hasObject(id,right),false,`${id} ${right}`);
+  for(const [key,right] of [['ref','edit'],['name','view'],['column','view'],['print','view']])assert.equal(model.hasField('goods',key,right),false,`${key} ${right}`);
+  assert.equal(model.hasCommand('form','command'),false);
+});
 test('the filter by subsystems takes what the marked hold, beneath and above only by its flags',()=>{
   const schema={objects:[{id:'А'},{id:'Б',owner:'А'},{id:'В'},{id:'товары'},{id:'документы'},{id:'перерасчет',owner:'документы'},{id:'прочее'},{id:'свободный'}],
     subsystems:{'А':['товары'],'Б':['документы'],'В':['прочее']}};
@@ -325,4 +339,12 @@ test('the filter by subsystems takes what the marked hold, beneath and above onl
   assert.deepEqual(passing(filter(['А'],{parents:true})),['товары']);
   assert.deepEqual(passing(filter([''])),['свободный']);
   assert.deepEqual(passing(filter(['','В'])),['прочее','свободный']);
+  // Дефект: подсистема проходила отбор как объект «не входящий в подсистемы»
+  // или не проходила вовсе - у прототипа под отбором видны сами отмеченные
+  // подсистемы, и «Установить по подсистемам» даёт им «Просмотр».
+  const subsystems=chosen=>{const passes=context.subsystemFilterPasses(schema,chosen);return ['А','Б','В'].filter(id=>passes(id));};
+  assert.deepEqual(subsystems(filter([''])),[]);
+  assert.deepEqual(subsystems(filter(['А'])),['А']);
+  assert.deepEqual(subsystems(filter(['А'],{children:true})),['А','Б']);
+  assert.deepEqual(subsystems(filter(['Б'],{parents:true})),['А','Б']);
 });

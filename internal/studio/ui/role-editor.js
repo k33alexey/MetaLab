@@ -282,6 +282,16 @@ function createRoleModel(source) {
     hasField: partRight,
     setAll(id, enabled) { for(const operation of definitions.get(id)?.rights || [])setObject(id, operation, enabled); },
     setAllOfPart(id, key, enabled) { for(const operation of fields.get(id)?.get(key)?.operations || [])setField(id, key, operation, enabled); },
+    // «Установить все права», «Снять все права» (help, «Редактирование
+    // роли»): every box of the role - the rights of the configuration and of
+    // every object, of their parts and of the commands of forms.
+    setEverything(enabled) {
+      for (const definition of value.schema.objects) {
+        this.setAll(definition.id, enabled);
+        for (const part of definition.fields) this.setAllOfPart(definition.id, part.key, enabled);
+      }
+      for (const form of value.schema.forms) for (const command of form.commands) this.setCommand(form.id, command.id, enabled);
+    },
     hasCommand(form, command) { return value.role.commands.some(item => item.form === form && item.command === command); },
     setCommand(form, command, enabled) {
       if (!value.schema.forms.some(item => item.id === form && item.commands.some(item => item.id === command))) return;
@@ -309,8 +319,11 @@ function rolePartGroupTitle(schema, group) { return schema.partGroups?.find(item
    recalculation under its register, a table under its source - and the
    commands of forms last. A choice is {object}, {object, part} or {form};
    selection() answers the one made, choose(next) makes one. expanded keeps
-   the keys of the nodes left open, so a redraw keeps them open. */
-function createRoleTree({schema, kindTitles, title, expanded, selection, choose}) {
+   the keys of the nodes left open, so a redraw keeps them open. subsystems()
+   answers the filter by subsystems the tree is under, or null: the
+   configuration itself stays, a subsystem not passing stays only on the way
+   to one that does. */
+function createRoleTree({schema, kindTitles, title, expanded, selection, choose, subsystems = () => null}) {
   const element = node('div', undefined, 'role-tree');
   const kindTitle = kind => kindTitles?.[kind] || kind;
   const partGroupTitle = group => rolePartGroupTitle(schema, group);
@@ -339,10 +352,12 @@ function createRoleTree({schema, kindTitles, title, expanded, selection, choose}
   const matches = (item, needle) => !needle || `${item.name} ${title(item)}`.toLocaleLowerCase().includes(needle);
   // The nodes of one object: its parts in folders, then the objects inside it.
   // Null when neither the object nor anything in it matches the filter.
-  function objectNode(item, inside, needle) {
+  function objectNode(item, inside, needle, shown) {
     const selected = selection();
-    const own = matches(item, needle), parts = new Map();
-    for (const part of item.fields) {
+    // An object the filter by subsystems leaves out keeps only the way to
+    // what passes inside it, as a subsystem above a marked one.
+    const passes = shown(item.id), own = passes && matches(item, needle), parts = new Map();
+    for (const part of passes ? item.fields : []) {
       if (!parts.has(part.parent || '')) parts.set(part.parent || '', []);
       parts.get(part.parent || '').push(part);
     }
@@ -362,18 +377,18 @@ function createRoleTree({schema, kindTitles, title, expanded, selection, choose}
     }
     for (const [kind, list] of inside.get(item.id) || []) {
       // What lies inside an object that matches is shown whole, as its parts are.
-      const nodes = list.map(child => objectNode(child, inside, own ? '' : needle)).filter(Boolean);
-      if (nodes.length) folders.push(folder(`${item.id} ${kind}`, kindTitle(kind), nodes, !!needle));
+      const nodes = list.map(child => objectNode(child, inside, own ? '' : needle, shown)).filter(Boolean);
+      if (nodes.length) folders.push(folder(`${item.id} ${kind}`, kindTitle(kind), nodes, !!needle || !passes));
     }
     if (!own && !folders.length) return null;
     const caption = treeButton(title(item) || item.name, item.name, 'role-tree-item', selected?.object?.id === item.id && !selected.part, {object: item});
     caption.dataset.object = item.id;
     if (!folders.length) return caption;
-    return branch(item.id, caption, folders, !!needle && !own);
+    return branch(item.id, caption, folders, (!!needle && !own) || !passes);
   }
   function render(next = filter) {
     filter = next;
-    const needle = filter.toLocaleLowerCase().trim();
+    const needle = filter.toLocaleLowerCase().trim(), shown = subsystemFilterPasses(schema, subsystems());
     element.replaceChildren(); const groups = new Map(), inside = new Map();
     for (const item of schema.objects) {
       if (!item.owner) continue;
@@ -388,13 +403,13 @@ function createRoleTree({schema, kindTitles, title, expanded, selection, choose}
         continue;
       }
       if (item.owner) continue;
-      const entry = objectNode(item, inside, needle);
+      const entry = objectNode(item, inside, needle, shown);
       if (!entry) continue;
       let group = groups.get(item.kind);
       if (!group) { group = node('details'); group.open = true; group.append(node('summary', kindTitle(item.kind))); groups.set(item.kind, group); element.append(group); }
       group.append(entry);
     }
-    const forms = schema.forms.filter(item => matches(item, needle));
+    const forms = schema.forms.filter(item => shown(item.id) && matches(item, needle));
     if (forms.length) { const group = node('details'); group.open = true; group.append(node('summary', 'Команды форм')); for (const form of forms) group.append(treeButton(title(form), form.name, 'role-tree-item', selection()?.form?.id === form.id, {form})); element.append(group); }
     if (!element.childElementCount) element.append(node('p', 'Нет подходящих объектов', 'muted'));
   }
@@ -409,7 +424,9 @@ function createRoleTree({schema, kindTitles, title, expanded, selection, choose}
    subsystems marked and, as '', «<Не входящие в подсистемы>»; children takes
    in what the subsystems beneath a marked one hold, parents what those above
    it hold. Answers whether an object passes: an object inside another passes
-   with the one it lies in. Without a filter every object passes. */
+   with the one it lies in, a subsystem when it is marked itself, as the
+   prototype's trees show the subsystems of the filter. Without a filter
+   every object passes. */
 function subsystemFilterPasses(schema, filter) {
   if (!filter) return () => true;
   const subsystems = schema.subsystems || {}, owners = new Map(schema.objects.map(item => [item.id, item.owner]));
@@ -422,6 +439,7 @@ function subsystemFilterPasses(schema, filter) {
   }
   const held = new Set([...marked].flatMap(id => subsystems[id])), anywhere = new Set(Object.values(subsystems).flat());
   return id => {
+    if (id in subsystems) return marked.has(id);
     let top = id;
     while (!(top in subsystems) && owners.get(top)) top = owners.get(top);
     return held.has(top) || (filter.chosen.has('') && !anywhere.has(top));
@@ -430,12 +448,16 @@ function subsystemFilterPasses(schema, filter) {
 
 /* The window of the filter by subsystems (help, «Отбор по подсистемам»): the
    tree of subsystems with a box at each, «<Не входящие в подсистемы>» and the
-   two flags. One window for every place that filters by subsystems. Answers
-   the filter chosen, null for «Отключить», undefined when closed without
-   either. */
-async function chooseSubsystemFilter({schema, title, current}) {
-  const subsystems = schema.subsystems || {}, chosen = new Set(current?.chosen || []);
-  const flags = {children: !!current?.children, parents: !!current?.parents};
+   two flags. One window for every place that filters by subsystems. Without
+   a filter in force it opens with everything marked and the subsystems
+   beneath taken in, as the prototype's does. As a filter it is set with
+   «Установить» or turned off; given apply - «Установить» or «Снять» of the
+   role's rights by subsystems - it only chooses, without «Отключить».
+   Answers the filter chosen, null for «Отключить», undefined when closed
+   without either. */
+async function chooseSubsystemFilter({schema, title, current, apply}) {
+  const subsystems = schema.subsystems || {}, chosen = new Set(current ? current.chosen : [...Object.keys(subsystems), '']);
+  const flags = current ? {children: !!current.children, parents: !!current.parents} : {children: true, parents: false};
   const mark = id => enabled => { if (enabled) chosen.add(id); else chosen.delete(id); };
   const beneath = new Map();
   for (const item of schema.objects) {
@@ -459,10 +481,26 @@ async function chooseSubsystemFilter({schema, title, current}) {
     checkboxField('Включать объекты подчиненных подсистем', flags.children, enabled => { flags.children = enabled; }, 'role-check'),
     checkboxField('Включать объекты родительских подсистем', flags.parents, enabled => { flags.parents = enabled; }, 'role-check'));
   const answer = await showDialog({title: 'Отбор по подсистемам', content, className: 'role-restriction-dialog',
-    answers: [['ok', 'ОК'], ['off', 'Отключить'], [null, 'Отмена']],
-    check: key => key === 'ok' && !chosen.size ? 'Отметьте подсистемы или нажмите «Отключить».' : ''});
+    answers: apply ? [['ok', apply], [null, 'Отмена']] : [['ok', 'Установить'], ['off', 'Отключить'], [null, 'Отмена']],
+    check: key => key === 'ok' && !chosen.size ? (apply ? 'Отметьте подсистемы.' : 'Отметьте подсистемы или нажмите «Отключить».') : ''});
   if (answer === 'off') return null;
   return answer === 'ok' ? {chosen, ...flags} : undefined;
+}
+
+/* The button of the filter by subsystems: it opens the window and stays
+   pressed while holder.subsystems, the filter, is in force; applied() is
+   called after the filter changed. */
+function subsystemFilterButton({schema, title, holder, applied}) {
+  const button = node('button', 'По подсистемам', 'role-subsystems');
+  button.type = 'button';
+  const sync = () => { button.classList.toggle('selected', !!holder.subsystems); button.setAttribute('aria-pressed', String(!!holder.subsystems)); };
+  button.addEventListener('click', async () => {
+    const next = await chooseSubsystemFilter({schema, title, current: holder.subsystems});
+    if (next === undefined) return;
+    holder.subsystems = next; sync(); applied();
+  });
+  sync();
+  return button;
 }
 
 /* A list of rows and the commands of the prototype's context menu:
@@ -570,6 +608,8 @@ function createRoleEditor(host, onChange) {
   // right whose restrictions are listed, with the row chosen in each list.
   let view = 'rights', templateRow = -1, rightsBody, templatesBody;
   const restriction = {right: null, row: -1};
+  // The filter by subsystems of the tree of objects, while the role is open.
+  const treeFilter = {subsystems: null};
   // The nodes of the tree left open, by key, so a redraw keeps them open.
   const expanded = new Set();
   function clearTitleField() { titleFieldCleanup?.(); titleFieldCleanup = null; }
@@ -632,6 +672,17 @@ function createRoleEditor(host, onChange) {
     if(answer!=='ok')return;
     model.putTemplate(index,{name,condition});templateRow=index;changed();renderTemplates();
   }
+  // «Установить по подсистемам...», «Снять по подсистемам...» (help,
+  // «Редактирование роли»): every right of each object of the subsystems
+  // chosen, and «Просмотр» of those subsystems; the configuration itself
+  // keeps its rights.
+  async function rightsBySubsystems(enabled){
+    const filter=await chooseSubsystemFilter({schema:source.schema,title,current:null,apply:enabled?'Установить':'Снять'});
+    if(!filter)return;
+    const passes=subsystemFilterPasses(source.schema,filter);
+    for(const item of source.schema.objects)if(!item.root&&passes(item.id))model.setAll(item.id,enabled);
+    changed();renderPanel();
+  }
   function showView(next){view=next;rightsBody.hidden=view!=='rights';templatesBody.hidden=view!=='templates';for(const button of host.querySelectorAll('.role-tabs button'))button.setAttribute('aria-selected',String(button.dataset.view===view));if(view==='templates')renderTemplates();}
   return {
     open(value, preserveSelection=false) {
@@ -660,7 +711,12 @@ function createRoleEditor(host, onChange) {
       const tabs=node('div',undefined,'role-tabs');tabs.setAttribute('role','tablist');
       for(const [key,text] of [['rights','Права'],['templates','Шаблоны ограничений']]){const button=node('button',text);button.type='button';button.dataset.view=key;button.setAttribute('role','tab');button.addEventListener('click',()=>showView(key));tabs.append(button);}
       host.append(tabs);
-      const body=node('div',undefined,'role-body'),sidebar=node('div',undefined,'role-sidebar'),search=node('input');search.type='search';search.placeholder='Поиск объекта';search.setAttribute('aria-label','Поиск объекта');tree=createRoleTree({schema:source.schema,kindTitles:source.kindTitles,title,expanded,selection:()=>selected,choose:next=>{selected=next;renderPanel();}});search.addEventListener('input',()=>tree.render(search.value));sidebar.append(search,tree.element);panel=node('section',undefined,'role-permissions');body.append(sidebar,panel);rightsBody=body;templatesBody=node('section',undefined,'role-templates');host.append(body,templatesBody);
+      const body=node('div',undefined,'role-body'),sidebar=node('div',undefined,'role-sidebar'),search=node('input');search.type='search';search.placeholder='Поиск объекта';search.setAttribute('aria-label','Поиск объекта');tree=createRoleTree({schema:source.schema,kindTitles:source.kindTitles,title,expanded,selection:()=>selected,choose:next=>{selected=next;renderPanel();},subsystems:()=>treeFilter.subsystems});search.addEventListener('input',()=>tree.render(search.value));
+      if(!preserveSelection)treeFilter.subsystems=null;
+      const bar=node('div',undefined,'role-tree-bar'),actions=node('button','Действия');actions.type='button';actions.setAttribute('aria-haspopup','menu');
+      actions.addEventListener('click',event=>showContextMenu(event,[['Установить все права',()=>{model.setEverything(true);changed();renderPanel();}],['Снять все права',()=>{model.setEverything(false);changed();renderPanel();}],['Установить по подсистемам...',()=>rightsBySubsystems(true)],['Снять по подсистемам...',()=>rightsBySubsystems(false)]]));
+      bar.append(actions,subsystemFilterButton({schema:source.schema,title,holder:treeFilter,applied:()=>tree.render(search.value)}));
+      sidebar.append(bar,search,tree.element);panel=node('section',undefined,'role-permissions');body.append(sidebar,panel);rightsBody=body;templatesBody=node('section',undefined,'role-templates');host.append(body,templatesBody);
       if(!preserveSelection){view='rights';restriction.right=null;restriction.row=-1;templateRow=-1;}
       tree.render();renderPanel();showView(view);
     },
