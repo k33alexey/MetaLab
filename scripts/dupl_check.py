@@ -28,9 +28,9 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASELINE = os.path.join(ROOT, "scripts", "dupl-baseline.txt")
 DUPL = ["go", "run", "github.com/mibk/dupl@v1.1.0"]
-# 80 tokens is about a dozen lines of Go: below it dupl reports the shape of
-# an if err != nil block, above it what it reports is copied logic.
-THRESHOLD = "80"
+# 60 tokens is about eight lines of Go: it still sees two functions that differ
+# only in what they return, which 80 let through (owner, 13.10.2026).
+THRESHOLD = "60"
 # Below 50 dupl reports error handling and field-by-field copying of structs.
 NEAR = "50"
 
@@ -119,7 +119,7 @@ def main():
     if grown:
         print("\nOne piece of knowledge lives in one place (CLAUDE.md): call the existing code instead of")
         print("copying it. See the copies with:")
-        print("  find internal cmd -name '*.go' ! -name '*_test.go' | go run github.com/mibk/dupl@v1.1.0 -t 80 -files")
+        print(f"  find internal cmd -name '*.go' ! -name '*_test.go' | {' '.join(DUPL)} -t {THRESHOLD} -files")
     if shrunk:
         print("\nRun python3 scripts/dupl_check.py --update and commit scripts/dupl-baseline.txt.")
     if grown or shrunk:

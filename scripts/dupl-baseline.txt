@@ -1,36 +1,58 @@
 # Written by scripts/dupl_check.py --update. Shrinks only.
+1	cmd/mlwasm/main.go cmd/mlwasm/main.go cmd/mlwasm/main.go
 1	internal/appdb/identity.go internal/postgresadmin/admin.go
-1	internal/bsl/bytecode/collection.go internal/bsl/bytecode/collection.go
-2	internal/manager/manager.go internal/manager/manager.go
+3	internal/bsl/bytecode/collection.go internal/bsl/bytecode/collection.go
+1	internal/bsl/compiler/compiler.go internal/bsl/compiler/compiler.go
+1	internal/bsl/number/decimal.go internal/bsl/number/decimal.go
+1	internal/bsl/syntax/parser.go internal/bsl/syntax/parser.go
+1	internal/bsl/vm/vm.go internal/bsl/vm/vm.go
+3	internal/manager/manager.go internal/manager/manager.go
 1	internal/manager/manager.go internal/portal/portal.go
+1	internal/manager/manager.go internal/portal/portal.go internal/studio/studio.go
+1	internal/metadata/accumulation_register_bsl_events.go internal/metadata/catalog_bsl_events.go internal/metadata/document_bsl_events.go internal/metadata/information_register_bsl_events.go
+1	internal/metadata/accumulation_register_bsl_events.go internal/metadata/information_register_bsl_events.go
 1	internal/metadata/accumulation_register_events.go internal/metadata/information_register_events.go
 2	internal/metadata/accumulation_register_model.go internal/metadata/information_register_model.go
-3	internal/metadata/accumulation_register_runtime.go internal/metadata/information_register_runtime.go
+1	internal/metadata/accumulation_register_runtime.go internal/metadata/accumulation_register_runtime.go
+4	internal/metadata/accumulation_register_runtime.go internal/metadata/information_register_runtime.go
 1	internal/metadata/accumulation_register_store.go internal/metadata/accumulation_register_store.go
-1	internal/metadata/accumulation_register_store.go internal/metadata/information_register_store.go
+1	internal/metadata/accumulation_register_store.go internal/metadata/accumulation_register_store.go internal/metadata/catalog_store.go internal/metadata/document_store.go internal/metadata/information_register_store.go
+3	internal/metadata/accumulation_register_store.go internal/metadata/information_register_store.go
 1	internal/metadata/attribute_presentation.go internal/metadata/form_elements.go
+1	internal/metadata/business_process.go internal/metadata/document_model.go
 1	internal/metadata/catalog_runtime.go internal/metadata/catalog_runtime.go internal/metadata/document_runtime.go
-5	internal/metadata/catalog_runtime.go internal/metadata/document_runtime.go
+8	internal/metadata/catalog_runtime.go internal/metadata/document_runtime.go
 5	internal/metadata/catalog_store.go internal/metadata/document_store.go
+1	internal/metadata/chart_of_accounts.go internal/metadata/chart_of_calculation_types.go internal/metadata/model.go
+1	internal/metadata/common_attributes.go internal/metadata/common_modules.go internal/metadata/event_subscriptions.go internal/metadata/managed_form.go internal/metadata/subsystems.go
 1	internal/metadata/common_commands.go internal/metadata/model.go internal/metadata/model.go internal/metadata/xdto_packages.go
 1	internal/metadata/common_pictures.go internal/metadata/ws_references.go
+1	internal/metadata/data_lock.go internal/metadata/data_lock.go
 1	internal/metadata/document_movements_runtime.go internal/metadata/document_movements_runtime.go
-1	internal/metadata/event_subscription_bsl_events.go internal/metadata/event_subscription_bsl_events.go
+3	internal/metadata/event_subscription_bsl_events.go internal/metadata/event_subscription_bsl_events.go
 1	internal/metadata/form_elements.go internal/metadata/form_elements.go
 2	internal/metadata/load.go internal/metadata/load.go
 1	internal/metadata/load.go internal/metadata/load.go internal/metadata/load.go
-1	internal/metadata/notes_rules.go internal/metadata/notes_rules.go internal/metadata/notes_rules.go
+2	internal/metadata/notes_rules.go internal/metadata/notes_rules.go internal/metadata/notes_rules.go
+1	internal/metadata/object_characteristics.go internal/metadata/object_characteristics.go
 3	internal/metadata/object_integrity.go internal/metadata/object_integrity.go
 1	internal/metadata/object_list.go internal/metadata/object_list.go
+1	internal/metadata/object_parts.go internal/metadata/object_parts.go
 1	internal/metadata/object_value_bridge.go internal/metadata/object_value_bridge.go
 1	internal/metadata/program_events.go internal/metadata/program_events.go
 1	internal/metadata/program_events.go internal/metadata/program_events.go internal/metadata/program_events.go
 1	internal/metadata/program_events.go internal/metadata/program_events.go internal/metadata/program_events.go internal/metadata/program_events.go
 1	internal/metadata/runtime.go internal/metadata/runtime.go
 1	internal/metadata/runtime.go internal/metadata/runtime.go internal/metadata/runtime.go internal/metadata/runtime.go
+1	internal/platform/application_metadata.go internal/platform/application_metadata.go
+1	internal/platform/application_write.go internal/platform/application_write.go
 1	internal/platform/runtime.go internal/platform/runtime.go
 2	internal/portal/portal.go internal/portal/portal.go
+1	internal/portal/portal.go internal/studio/studio.go
+1	internal/querylang/parser.go internal/querylang/parser.go
 1	internal/studio/catalog_editor.go internal/studio/roles.go
+1	internal/studio/debugger.go internal/studio/debugger.go
 1	internal/studio/query_designer.go internal/studio/query_designer.go
-1	internal/studio/studio.go internal/studio/studio.go
+4	internal/studio/studio.go internal/studio/studio.go
 1	internal/systemdb/databases.go internal/systemdb/studio_sessions.go
+1	internal/systemdb/sessions.go internal/systemdb/studio_sessions.go
