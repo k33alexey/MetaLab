@@ -149,25 +149,6 @@ test('use purposes are named once and vanish together',()=>{
   model.setPurpose('mobile-device',false);model.setPurpose('personal-computer',false);
   assert.equal('usePurposes' in model.value(),false);
 });
-// Один и тот же список ролей с двумя разными полями: основные роли корня и
-// роли ограничения автономного приложения не смешиваются.
-test('roles are granted per field and never leak into another',()=>{
-  const model=create(fixture());
-  model.setRoleGranted('defaultRoles','r1',true);
-  model.setRoleGranted('standaloneConfigurationRestrictionRoles','r2',true);
-  const saved=model.value();
-  assert.deepEqual(saved.defaultRoles,['r1']);
-  assert.deepEqual(saved.standaloneConfigurationRestrictionRoles,['r2']);
-});
-// Список слов пишется по строке на слово, пустые строки не слова, и опустевший
-// список исчезает из корня.
-test('a list of words is written a line at a time',()=>{
-  const model=create(fixture());
-  model.setList('requiredMobilePermissions','Камера\n\n  Геолокация  \n');
-  assert.deepEqual(model.value().requiredMobilePermissions,['Камера','Геолокация']);
-  model.setList('requiredMobilePermissions','\n  \n');
-  assert.equal('requiredMobilePermissions' in model.value(),false);
-});
 // Синоним языка локализован: язык называется на каждом языке проекта, и
 // стёртый перевод исчезает, а не остаётся пустой строкой. Английский не
 // правится вовсе.

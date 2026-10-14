@@ -35,21 +35,6 @@ function createProjectModel(source) {
     /* Словарь полнотекстового поиска лежит либо в общем макете, либо в
        константе, поэтому хранится парой «вид и объект»: по одному
        идентификатору читатель файла гадал бы, куда смотреть. */
-    /* Список слов пишется по строке на слово: перечень принадлежит не нам, и
-       строка, которую мы не знаем, — не ошибка, а слово, которого мы не
-       слышали. Пустые строки отбрасываются, потому что пустая строка не
-       называет ничего. */
-    setList(field, text) {
-      const items = text.split('\n').map(line => line.trim()).filter(line => line !== '');
-      if (items.length === 0) delete configuration[field]; else configuration[field] = items;
-    },
-    /* Возможность и разрешение мобильного приложения — не слово, а ответ:
-       прототип пишет каждое с «да» или «нет», и явное «нет» не то же, что
-       возможность, о которой конфигурация молчит. Поэтому строка остаётся,
-       когда галочку сняли, и уходит только по «Убрать». */
-    setAnswers(field, answers) {
-      if (answers.length === 0) delete configuration[field]; else configuration[field] = answers;
-    },
     setFlag(field, on) { if (on) configuration[field] = true; else delete configuration[field]; },
     /* Назначение, названное дважды, остаётся одним назначением. */
     setPurpose(purpose, used) {
@@ -152,48 +137,48 @@ function createProjectEditor(host, onChange) {
     return labeledField(label, selectInput(options, source.configuration[field] || '',
       value => { model.setField(field, value); rerender(); }));
   }
-  /* Словарей может быть сколько угодно, и каждый из них — либо общий макет,
-     либо константа: вид написан рядом с именем, чтобы не гадать, что выбрано. */
-  function dictionariesField(label) {
+  /* Выбор из объектов конфигурации галочками: известные объекты, а за ними —
+     выбранные, которых в конфигурации уже нет, чтобы ссылку в пустоту было
+     видно и можно было снять. Строка — {key, title, chip?}; keyOf называет
+     ключ выбранного, как его хранит корень. */
+  function choiceList(label, known, chosen, keyOf, missingTitle, emptyText, apply) {
     const wrapper = node('div', undefined, 'project-localized');
     wrapper.append(node('span', label, 'project-localized-label'));
     const list = node('div', undefined, 'project-roles');
-    const chosen = source.configuration.additionalFullTextSearchDictionaries || [];
-    const known = source.defaults?.dictionaries || [];
-    const used = (item) => chosen.some(entry => entry.kind === item.kind && entry.object === item.id);
-    const rows = known.map(item => ({kind: item.kind, id: item.id, title: presentation(item), missing: false}));
+    const rows = known.map(item => ({...item, missing: false}));
     for (const entry of chosen) {
-      if (!known.some(item => item.kind === entry.kind && item.id === entry.object)) {
-        rows.push({kind: entry.kind, id: entry.object, title: 'Не найден в конфигурации: ' + entry.object, missing: true});
-      }
+      const key = keyOf(entry);
+      if (!rows.some(row => row.key === key)) rows.push({...missingTitle(entry), key, missing: true});
     }
-    if (rows.length === 0) list.append(node('span', 'В конфигурации нет ни макетов, ни констант', 'project-empty'));
-    for (const item of rows) {
-      const row = checkboxField(item.title, used(item), checked => { model.setDictionary(item.kind, item.id, checked); rerender(); },
-        item.missing ? 'project-role project-default-missing' : 'project-role');
-      row.firstChild.after(node('span', item.kind === 'constants' ? 'константа' : 'макет', 'project-language-chip'));
-      list.append(row);
+    if (rows.length === 0) list.append(node('span', emptyText, 'project-empty'));
+    for (const row of rows) {
+      const box = checkboxField(row.title, chosen.some(entry => keyOf(entry) === row.key),
+        checked => { apply(row, checked); rerender(); },
+        row.missing ? 'project-role project-default-missing' : 'project-role');
+      if (row.chip) box.firstChild.after(node('span', row.chip, 'project-language-chip'));
+      list.append(box);
     }
     wrapper.append(list);
     return wrapper;
   }
+  /* Словарей может быть сколько угодно, и каждый из них — либо общий макет,
+     либо константа: вид написан рядом с именем, чтобы не гадать, что выбрано. */
+  function dictionariesField(label) {
+    const chip = kind => kind === 'constants' ? 'константа' : 'макет';
+    const known = (source.defaults?.dictionaries || []).map(item =>
+      ({key: item.kind + ':' + item.id, kind: item.kind, id: item.id, title: presentation(item), chip: chip(item.kind)}));
+    return choiceList(label, known, source.configuration.additionalFullTextSearchDictionaries || [],
+      entry => entry.kind + ':' + entry.object,
+      entry => ({kind: entry.kind, id: entry.object, title: 'Не найден в конфигурации: ' + entry.object, chip: chip(entry.kind)}),
+      'В конфигурации нет ни макетов, ни констант',
+      (row, checked) => model.setDictionary(row.kind, row.id, checked));
+  }
   function rolesField(label, field) {
-    const wrapper = node('div', undefined, 'project-localized');
-    wrapper.append(node('span', label, 'project-localized-label'));
-    const list = node('div', undefined, 'project-roles');
-    const granted = source.configuration[field] || [];
-    const known = source.defaults?.roles || [];
-    const rows = [...known.map(role => ({id: role.id, title: presentation(role), missing: false}))];
-    for (const id of granted) {
-      if (!known.some(role => role.id === id)) rows.push({id, title: 'Не найдена в конфигурации: ' + id, missing: true});
-    }
-    if (rows.length === 0) list.append(node('span', 'В конфигурации нет ни одной роли', 'project-empty'));
-    for (const role of rows) {
-      list.append(checkboxField(role.title, granted.includes(role.id), checked => { model.setRoleGranted(field, role.id, checked); rerender(); },
-        role.missing ? 'project-role project-default-missing' : 'project-role'));
-    }
-    wrapper.append(list);
-    return wrapper;
+    const known = (source.defaults?.roles || []).map(role => ({key: role.id, title: presentation(role)}));
+    return choiceList(label, known, source.configuration[field] || [], id => id,
+      id => ({title: 'Не найдена в конфигурации: ' + id}),
+      'В конфигурации нет ни одной роли',
+      (row, checked) => model.setRoleGranted(field, row.key, checked));
   }
   function checkField(label, field) {
     return checkboxField(label, Boolean(source.configuration[field]), checked => { model.setFlag(field, checked); touch(); }, 'project-role');
@@ -207,75 +192,6 @@ function createProjectEditor(host, onChange) {
       list.append(checkboxField(text, chosen.includes(value), checked => { model.setPurpose(value, checked); touch(); }, 'project-role'));
     }
     wrapper.append(list);
-    return wrapper;
-  }
-  function listField(label, field, placeholder) {
-    return labeledField(label, textInput((source.configuration[field] || []).join('\n'),
-      value => { model.setList(field, value); touch(); }, {kind: 'area', placeholder}));
-  }
-  function answersField(label, field) {
-    const wrapper = node('div', undefined, 'project-localized');
-    wrapper.append(node('span', label, 'project-localized-label'));
-    const rows = node('div', undefined, 'project-localized-rows');
-    const answers = (source.configuration[field] || []).map(item => ({name: item.name, use: !!item.use}));
-    const save = () => { model.setAnswers(field, answers.filter(item => item.name.trim() !== '')); touch(); };
-    const draw = () => {
-      rows.replaceChildren();
-      answers.forEach((answer, index) => {
-        const row = node('div', undefined, 'project-localized-row');
-        const use = node('input');
-        use.type = 'checkbox';
-        use.checked = answer.use;
-        use.title = 'Используется';
-        use.addEventListener('change', () => { answer.use = use.checked; save(); });
-        const name = textInput(answer.name, value => { answer.name = value.trim(); save(); });
-        const remove = node('button', 'Убрать');
-        remove.type = 'button';
-        remove.addEventListener('click', () => { answers.splice(index, 1); save(); draw(); });
-        row.append(use, name, remove);
-        rows.append(row);
-      });
-      const add = node('button', 'Добавить');
-      add.type = 'button';
-      add.addEventListener('click', () => { answers.push({name: '', use: true}); draw(); });
-      rows.append(add);
-    };
-    draw();
-    wrapper.append(rows);
-    return wrapper;
-  }
-  /* Состав автономного приложения показывается и не правится: собирать его
-     руками в платформе, которая мобильного приложения не строит, значило бы
-     звать заполнять то, что никто не прочтёт. Показывается он потому, что
-     перенесённая конфигурация его объявляла, и разработчик вправе это видеть. */
-  function carriedContent(label) {
-    const wrapper = node('div', undefined, 'project-localized');
-    wrapper.append(node('span', label, 'project-localized-label'));
-    const list = node('div', undefined, 'project-roles');
-    const content = source.configuration.standaloneConfigurationContent || [];
-    if (content.length === 0) list.append(node('span', 'Пусто', 'project-empty'));
-    for (const item of content) {
-      const row = node('div', undefined, 'project-role');
-      row.append(node('span', item.kind, 'project-language-chip'));
-      row.append(node('span', item.object));
-      if (item.priority === 'local-server') row.append(node('span', 'Приоритет: локальный сервер', 'project-language-chip'));
-      const unused = item.unused || [];
-      if (unused.length > 0) row.append(node('span', 'Не используется частей: ' + unused.length, 'project-language-chip'));
-      list.append(row);
-    }
-    wrapper.append(list);
-    const exchange = source.configuration.standaloneDataExchange;
-    if (exchange) {
-      const settings = node('div', undefined, 'project-roles');
-      for (const text of [
-        'План обмена: ' + (exchange.exchangePlan || 'не выбран'),
-        'Выполнять обмен после записи: ' + (exchange.exchangeAfterWrite ? 'да' : 'нет'),
-        'Период обмена, секунд: ' + exchange.period,
-        'Элементов в транзакции: ' + exchange.transactionItems,
-        'Удалять неиспользуемые узлы через, дней: ' + exchange.removeUnusedNodesAfterDays,
-      ]) settings.append(node('span', text, 'project-role'));
-      wrapper.append(node('span', 'Настройки обмена', 'project-localized-label'), settings);
-    }
     return wrapper;
   }
   function note(text) { return node('p', text, 'project-note'); }
@@ -399,6 +315,10 @@ function createProjectEditor(host, onChange) {
        выпусками. Они хранятся и показываются, но ни на что не влияют, — и
        раздел говорит об этом прямо, чтобы никто не искал, почему выбранное
        ничего не меняет. */
+    /* Ответ на «используется ли»: тремя словами, где прототип предупреждает,
+       прежде чем отказать, и двумя везде, где нет (project.UseMode). */
+    const plainUse = [['', 'Не задано'], ['do-not-use', 'Не использовать'], ['use', 'Использовать']];
+    const warnedUse = [...plainUse, ['use-with-warnings', 'Использовать с предупреждениями']];
     const modes = section('Режимы прототипа');
     modes.append(note('ML исполняет только то, что умеет сам: управляемое приложение без модальных окон '
       + 'и без синхронных вызовов. Всё в этом разделе переносится, показывается и ни на что не влияет — '
@@ -408,18 +328,9 @@ function createProjectEditor(host, onChange) {
       ['ordinary-application', 'Обычное приложение'], ['auto', 'Автоматически'],
     ]));
     modes.append(purposesField('Назначение использования'));
-    modes.append(choiceField('Модальность', 'modalityUse', [
-      ['', 'Не задана'], ['do-not-use', 'Не использовать'], ['use', 'Использовать'],
-      ['use-with-warnings', 'Использовать с предупреждениями'],
-    ]));
-    modes.append(choiceField('Синхронные вызовы расширений платформы', 'synchronousPlatformExtensionCallUse', [
-      ['', 'Не задано'], ['do-not-use', 'Не использовать'], ['use', 'Использовать'],
-      ['use-with-warnings', 'Использовать с предупреждениями'],
-    ]));
-    modes.append(choiceField('Синхронные вызовы расширений (до 8.3.8)', 'synchronousExtensionCallUse', [
-      ['', 'Не задано'], ['do-not-use', 'Не использовать'], ['use', 'Использовать'],
-      ['use-with-warnings', 'Использовать с предупреждениями'],
-    ]));
+    modes.append(choiceField('Модальность', 'modalityUse', [['', 'Не задана'], ...warnedUse.slice(1)]));
+    modes.append(choiceField('Синхронные вызовы расширений платформы', 'synchronousPlatformExtensionCallUse', warnedUse));
+    modes.append(choiceField('Синхронные вызовы расширений (до 8.3.8)', 'synchronousExtensionCallUse', warnedUse));
     modes.append(choiceField('Совместимость интерфейса', 'interfaceCompatibility', [
       ['', 'Не задана'], ['taxi', 'Такси'], ['taxi-allow-version-8-2', 'Такси, разрешить 8.2'],
       ['version-8-2-allow-taxi', '8.2, разрешить Такси'], ['version-8-2', 'Версия 8.2'],
@@ -429,15 +340,9 @@ function createProjectEditor(host, onChange) {
       ['fullscreen-workplace', 'Полноэкранное рабочее место'],
       ['embedded-workplace', 'Встроенное рабочее место'], ['kiosk', 'Киоск'],
     ]));
-    modes.append(choiceField('Табличные пространства базы', 'databaseTablespacesUse', [
-      ['', 'Не задано'], ['do-not-use', 'Не использовать'], ['use', 'Использовать'],
-    ]));
-    modes.append(choiceField('Хранилище двоичных данных', 'binaryDataStorage', [
-      ['', 'Не задано'], ['do-not-use', 'Не использовать'], ['use', 'Использовать'],
-    ]));
-    modes.append(choiceField('Блочное хранение двоичных данных', 'binaryDataBlockStorageUse', [
-      ['', 'Не задано'], ['do-not-use', 'Не использовать'], ['use', 'Использовать'],
-    ]));
+    modes.append(choiceField('Табличные пространства базы', 'databaseTablespacesUse', plainUse));
+    modes.append(choiceField('Хранилище двоичных данных', 'binaryDataStorage', plainUse));
+    modes.append(choiceField('Блочное хранение двоичных данных', 'binaryDataBlockStorageUse', plainUse));
     modes.append(textField('Режим совместимости', source.configuration.compatibilityVersion,
       value => model.setField('compatibilityVersion', value), {maxLength: 16, placeholder: '8.3.21'}));
     modes.append(textField('Совместимость расширений', source.configuration.extensionCompatibilityVersion,
@@ -449,27 +354,6 @@ function createProjectEditor(host, onChange) {
       + 'пустое поле означает, что ни на какой прежний выпуск она не оглядывается. Список выпусков '
       + 'растёт без нас, поэтому он и не список, а версия.'));
     panel.append(modes);
-
-    /* Мобильное приложение. ML его не собирает, поэтому здесь ничего не
-       исполняется — но конфигурация, которая это объявляла, объявляла это, и
-       свойство, исчезнувшее при переносе, — свойство, о котором потом некого
-       спросить. */
-    const mobile = section('Мобильное приложение');
-    mobile.append(note('ML мобильного приложения не собирает. Всё в этом разделе переносится и хранится '
-      + 'как написано: перечни возможностей и разрешений принадлежат не нам, а прототипу и мобильным '
-      + 'операционным системам, и растут без нас.'));
-    mobile.append(answersField('Используемая функциональность', 'usedMobileFunctionalities'));
-    mobile.append(answersField('Требуемые разрешения', 'requiredMobilePermissions'));
-    mobile.append(listField('Перехватываемые ссылки', 'mobileApplicationUrls', 'По строке на ссылку'));
-    mobile.append(listField('Типы входящих «Поделиться»', 'allowedShareRequestTypes', 'По строке на тип'));
-    mobile.append(textField('Подпись мобильного клиента', source.configuration.mobileClientSignature,
-      value => model.setField('mobileClientSignature', value)));
-    mobile.append(rolesField('Роли ограничения автономного приложения', 'standaloneConfigurationRestrictionRoles'));
-    mobile.append(carriedContent('Состав автономного приложения'));
-    mobile.append(note('Состав автономного приложения показывается, но не правится здесь: собирать его руками '
-      + 'в платформе, которая приложения не строит, значило бы звать заполнять то, что никто не прочтёт.'));
-    panel.append(mobile);
-
 
     host.append(panel);
   }

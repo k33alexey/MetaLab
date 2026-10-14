@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -101,9 +100,6 @@ func (catalog *Catalog) validateConfigurationDefaults(root string) error {
 		}
 	}
 	if err := validateRootPictures(root); err != nil {
-		return err
-	}
-	if err := catalog.validateStandaloneConfiguration(); err != nil {
 		return err
 	}
 	return catalog.validateConfigurationDefaultForms(root)
@@ -229,61 +225,4 @@ func readRootPictureImages(directory string) (PictureImages, error) {
 		return PictureImages{}, fmt.Errorf("%s: %s", project.RootPictureDescriptionFile, strings.Join(issues, "; "))
 	}
 	return images, nil
-}
-
-// validateStandaloneConfiguration resolves what the standalone application is
-// made of: the objects taken into it, and the roles narrowing the rights of
-// whoever works without a connection.
-//
-// ML builds no mobile application, and the check is made anyway. What is
-// checked here is not the mechanism but the reference: an object named in the
-// content and absent from the configuration is a mistake in the configuration
-// regardless of who reads the list afterwards, and the moment to notice it is
-// the one where the object was deleted. An object of any kind may be in it:
-// the configurator marks the content on the whole tree of the configuration
-// (help, «Редактирование состава автономной конфигурации»). A priority is
-// given only to the kinds the help lists, and what is left out of an object
-// is the object's own.
-func (catalog *Catalog) validateStandaloneConfiguration() error {
-	configuration := catalog.Project
-	for _, item := range configuration.StandaloneConfigurationContent {
-		kind := Kind(item.Kind)
-		if !catalog.hasObject(kind, item.Object) {
-			return fmt.Errorf("the standalone application is made of %s %s, which is not in the configuration",
-				item.Kind, item.Object)
-		}
-		name := kindWord(kind) + " " + catalog.objects[item.Object].name
-		if item.Priority != "" && !kinds.Must(kind).StandalonePriority() {
-			return fmt.Errorf("the standalone application gives %s a priority, and a %s takes its priority by itself",
-				name, kindWord(kind))
-		}
-		held := map[uuid.UUID]bool{}
-		for _, identity := range catalog.heldIdentities(kind, item.Object) {
-			held[identity.id] = true
-		}
-		for _, part := range item.Unused {
-			if held[part] || catalog.heldFiles[part] == item.Object {
-				continue
-			}
-			if inner, ok := catalog.objects[part]; ok && inner.owner != nil && *inner.owner == item.Object {
-				continue
-			}
-			return fmt.Errorf("the standalone application leaves %s out of %s, which %s does not hold", part, name, name)
-		}
-	}
-	if exchange := configuration.StandaloneDataExchange; exchange != nil && exchange.ExchangePlan != nil {
-		if !catalog.hasObject(ExchangePlanKind, *exchange.ExchangePlan) {
-			return fmt.Errorf("the standalone application exchanges data by exchange plan %s, which is not in the configuration",
-				*exchange.ExchangePlan)
-		}
-	}
-	if !catalog.rolesLoaded {
-		return nil
-	}
-	for _, role := range configuration.StandaloneConfigurationRestrictionRoles {
-		if _, ok := catalog.roleByID[role]; !ok {
-			return fmt.Errorf("the standalone application narrows rights by role %s, which is not in the configuration", role)
-		}
-	}
-	return nil
 }

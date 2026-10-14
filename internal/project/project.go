@@ -237,105 +237,6 @@ type Project struct {
 	CompatibilityVersion          string `yaml:"compatibility_version,omitempty" json:"compatibilityVersion,omitempty"`
 	ExtensionCompatibilityVersion string `yaml:"extension_compatibility_version,omitempty" json:"extensionCompatibilityVersion,omitempty"`
 	IncludeHelpInContents         bool   `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
-	// What follows describes a mobile application. ML does not build one, so
-	// none of it is acted upon - it is carried for the same reason the modes
-	// above are: a configuration that declared it, declared it, and a property
-	// that disappears at transfer is a property nobody can ask about later.
-	//
-	// Four of the seven are lists of words the prototype's own tooling knows:
-	// which of its abilities the application uses, which permissions of the
-	// operating system it asks for, which navigation links it intercepts and
-	// which kinds of data it accepts through "share". They are stored as
-	// written, because those lists belong to another platform and to the
-	// mobile operating systems, both of which grow without us - and a word we
-	// had not enumerated would be refused at transfer, which is the one thing
-	// a property carried for the sake of not losing it must never do.
-	//
-	// The first two are not lists but answers: the prototype writes every
-	// ability and permission it knows with a yes or a no beside it (38
-	// abilities in the format of 8.3.27, yes at 8, 2 and 9 of them; the
-	// permissions of the format of 8.3.10, all no). They are carried as
-	// answered, whole, so that an explicit no stays apart from a word the
-	// configuration never mentions (owner, 03.10.2026).
-	UsedMobileFunctionalities []MobileAnswer `yaml:"used_mobile_functionalities,omitempty" json:"usedMobileFunctionalities,omitempty"`
-	RequiredMobilePermissions []MobileAnswer `yaml:"required_mobile_permissions,omitempty" json:"requiredMobilePermissions,omitempty"`
-	MobileApplicationURLs     []string       `yaml:"mobile_application_urls,omitempty" json:"mobileApplicationUrls,omitempty"`
-	AllowedShareRequestTypes  []string       `yaml:"allowed_share_request_types,omitempty" json:"allowedShareRequestTypes,omitempty"`
-	// MobileClientSignature is what the mobile client is signed with.
-	MobileClientSignature string `yaml:"mobile_client_signature,omitempty" json:"mobileClientSignature,omitempty"`
-	// StandaloneConfigurationContent is which objects go into the standalone
-	// application - the one that works without a connection and synchronises
-	// later - with what of each is left out of it and where its code runs
-	// (help, «Редактирование состава автономной конфигурации»).
-	StandaloneConfigurationContent []StandaloneItem `yaml:"standalone_configuration_content,omitempty" json:"standaloneConfigurationContent,omitempty"`
-	// StandaloneDataExchange is how the standalone application exchanges
-	// data with the base (help, «Настройки обмена автономной конфигурации»).
-	// Nil is a configuration whose export wrote no settings: the format of
-	// 8.3.10 has none, and a configuration without a standalone application
-	// writes no file at all, whereas one where only the settings were opened
-	// writes them alone (GitHub exports, 13.10.2026).
-	StandaloneDataExchange *StandaloneDataExchange `yaml:"standalone_data_exchange,omitempty" json:"standaloneDataExchange,omitempty"`
-	// StandaloneConfigurationRestrictionRoles narrow the rights a person has
-	// while working without a connection: what is safe to do against a copy
-	// nobody else sees is not the same as what is safe against the base.
-	StandaloneConfigurationRestrictionRoles []uuid.UUID `yaml:"standalone_configuration_restriction_roles,omitempty" json:"standaloneConfigurationRestrictionRoles,omitempty"`
-}
-
-// ObjectReference names one object of the configuration by the kind it belongs
-// to and its identifier. The kind is part of the reference and not a hint: an
-// identifier alone would have to be searched for in every kind there is.
-type ObjectReference struct {
-	Kind   string    `yaml:"kind" json:"kind"`
-	Object uuid.UUID `yaml:"object" json:"object"`
-}
-
-// StandaloneItem is one object taken into the standalone application.
-//
-// The prototype keeps three lists by full name: the objects taken, the parts
-// of them left out (Catalog.Пользователи.Attribute.Фотография), and the
-// priorities. In every export seen - the demonstration base and 18 different
-// ones on GitHub, 2480 entries - a part left out is a part of a taken object
-// and a priority is a taken object's, so both are kept on the object they
-// belong to and cannot point anywhere else.
-type StandaloneItem struct {
-	ObjectReference `yaml:",inline"`
-	// Priority is where the object's code runs in the standalone
-	// application; empty is «Авто», which the export does not write.
-	Priority StandalonePriority `yaml:"priority,omitempty" json:"priority,omitempty"`
-	// Unused is the parts of the object left out of the standalone
-	// application by their identifiers: attributes, table parts and their
-	// attributes, forms, commands, templates, nested subsystems (exports:
-	// all of these; help: «реквизит, форма и т.д.»).
-	Unused []uuid.UUID `yaml:"unused,omitempty" json:"unused,omitempty"`
-}
-
-// StandalonePriority is where the code of an object taken into the standalone
-// application runs. The help names «Авто» and «Основной»; every export seen
-// writes one value, LocalServer (26 objects of 19 exports), and nothing else,
-// so only it is known by name. «Авто» is not written, «Основной» has no
-// sample to read its name from.
-type StandalonePriority string
-
-const LocalServerPriority StandalonePriority = "local-server"
-
-// StandaloneDataExchange is the settings of the exchange between the
-// standalone application and the base, as the dialog names them.
-type StandaloneDataExchange struct {
-	// ExchangePlan is the plan the data are synchronised by; nil where none
-	// is chosen (7 of 17 exports write none). It need not be among the
-	// objects taken (one export of 10).
-	ExchangePlan *uuid.UUID `yaml:"exchange_plan,omitempty" json:"exchangePlan,omitempty"`
-	// ExchangeAfterWrite exchanges after a write of an object of the plan,
-	// once the transaction is over.
-	ExchangeAfterWrite bool `yaml:"exchange_after_write" json:"exchangeAfterWrite"`
-	// Period is the seconds between automatic synchronisations.
-	Period int `yaml:"period" json:"period"`
-	// TransactionItems is the most items of data put into a message within
-	// one transaction of the database.
-	TransactionItems int `yaml:"transaction_items" json:"transactionItems"`
-	// RemoveUnusedNodesAfterDays removes a node not updated for that many
-	// days; 0 removes none.
-	RemoveUnusedNodesAfterDays int `yaml:"remove_unused_nodes_after_days" json:"removeUnusedNodesAfterDays"`
 }
 
 // ClientRunMode is which application the platform starts by default. ML builds
@@ -348,13 +249,6 @@ const (
 	ManagedApplicationRunMode  ClientRunMode = "managed-application"
 	OrdinaryApplicationRunMode ClientRunMode = "ordinary-application"
 )
-
-// MobileAnswer is one ability or permission of a mobile application with the
-// answer the configuration gives for it.
-type MobileAnswer struct {
-	Name string `yaml:"name" json:"name"`
-	Use  bool   `yaml:"use" json:"use"`
-}
 
 // UsePurpose is what the configuration, or a form of it, is meant to run on.
 // It is one type in the prototype for the root and for a form alike, so it is
@@ -605,8 +499,8 @@ func (p Project) Validate() error {
 		add("name", fmt.Sprintf("must not exceed %d characters", MaxNameLength))
 	}
 	// No ceiling on the number of languages, the length of a comment, a
-	// vendor, a version or a word of the mobile lists: neither the help nor
-	// the configurator names one (METADATA-OBJECTS.md, «Пределы на состав»).
+	// vendor or a version: neither the help nor the configurator names one
+	// (METADATA-OBJECTS.md, «Пределы на состав»).
 	if len(p.Languages) == 0 {
 		add("languages", "must contain at least one language")
 	}
@@ -869,83 +763,6 @@ func (p Project) Validate() error {
 		if version != "" && !isVersion(version) {
 			add(path, "must be a version such as 8.3.21")
 		}
-	}
-
-	// A list of words is checked for being a list of words: an empty entry
-	// names nothing, a repeat asks for the same thing twice, and neither could
-	// be acted upon by the tooling that will read this back.
-	answered := func(answers []MobileAnswer) []string {
-		names := make([]string, len(answers))
-		for index, answer := range answers {
-			names[index] = answer.Name
-		}
-		return names
-	}
-	for path, list := range map[string][]string{
-		"used_mobile_functionalities": answered(p.UsedMobileFunctionalities),
-		"required_mobile_permissions": answered(p.RequiredMobilePermissions),
-		"mobile_application_urls":     p.MobileApplicationURLs,
-		"allowed_share_request_types": p.AllowedShareRequestTypes,
-	} {
-		seen := make(map[string]struct{}, len(list))
-		for index, item := range list {
-			where := fmt.Sprintf("%s[%d]", path, index)
-			if strings.TrimSpace(item) != item || item == "" {
-				add(where, "must be a word without surrounding spaces")
-				continue
-			}
-			if _, exists := seen[item]; exists {
-				add(where, "must be unique")
-			}
-			seen[item] = struct{}{}
-		}
-	}
-	seenContent := make(map[ObjectReference]struct{}, len(p.StandaloneConfigurationContent))
-	for index, item := range p.StandaloneConfigurationContent {
-		where := fmt.Sprintf("standalone_configuration_content[%d]", index)
-		if item.Kind == "" {
-			add(where+".kind", "must name a kind of metadata")
-		}
-		if item.Priority != "" && item.Priority != LocalServerPriority {
-			add(where+".priority", "must be local-server or empty")
-		}
-		seenUnused := make(map[uuid.UUID]struct{}, len(item.Unused))
-		for partIndex, part := range item.Unused {
-			partWhere := fmt.Sprintf("%s.unused[%d]", where, partIndex)
-			if part.IsZero() {
-				add(partWhere, "must be a non-zero UUID")
-				continue
-			}
-			if _, exists := seenUnused[part]; exists {
-				add(partWhere, "must be unique")
-			}
-			seenUnused[part] = struct{}{}
-		}
-		if item.Object.IsZero() {
-			add(where+".object", "must be a non-zero UUID")
-			continue
-		}
-		// The same object taken into the standalone application twice is taken
-		// once: the second entry adds nothing and hides a mistake in the list.
-		if _, exists := seenContent[item.ObjectReference]; exists {
-			add(where, "must be unique")
-		}
-		seenContent[item.ObjectReference] = struct{}{}
-	}
-	if exchange := p.StandaloneDataExchange; exchange != nil && exchange.ExchangePlan != nil && exchange.ExchangePlan.IsZero() {
-		add("standalone_data_exchange.exchange_plan", "must be a non-zero UUID")
-	}
-	seenRestrictions := make(map[uuid.UUID]struct{}, len(p.StandaloneConfigurationRestrictionRoles))
-	for index, role := range p.StandaloneConfigurationRestrictionRoles {
-		where := fmt.Sprintf("standalone_configuration_restriction_roles[%d]", index)
-		if role.IsZero() {
-			add(where, "must be a non-zero UUID")
-			continue
-		}
-		if _, exists := seenRestrictions[role]; exists {
-			add(where, "must be unique")
-		}
-		seenRestrictions[role] = struct{}{}
 	}
 
 	if len(issues) > 0 {

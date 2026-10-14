@@ -210,7 +210,6 @@ RENAMED_BY_KIND = {
     ("Language", "LanguageCode"): "code",
     ("CommonForm", "FormType"): "type",
     ("CommonForm", "UsePurposes"): "purposes",
-    ("Configuration", "AllowedIncomingShareRequestTypes"): "allowed_share_request_types",
     ("Configuration", "CompatibilityMode"): "compatibility_version",
     ("Configuration", "ConfigurationExtensionCompatibilityMode"): "extension_compatibility_version",
     ("Configuration", "ConfigurationInformationAddress"): "information_address",
@@ -219,11 +218,9 @@ RENAMED_BY_KIND = {
     ("Configuration", "DefaultDataHistoryVersionDataForm"): "data_history_version_form",
     ("Configuration", "DefaultDataHistoryVersionDifferencesForm"): "data_history_version_difference_form",
     ("Configuration", "MainClientApplicationWindowMode"): "main_window_mode",
-    ("Configuration", "RequiredMobileApplicationPermissions"): "required_mobile_permissions",
     ("Configuration", "SynchronousPlatformExtensionAndAddInCallUseMode"): "synchronous_platform_extension_call_use",
     ("Configuration", "UseManagedFormInOrdinaryApplication"): "use_managed_forms_in_ordinary_application",
     ("Configuration", "UseOrdinaryFormInManagedApplication"): "use_ordinary_forms_in_managed_application",
-    ("Configuration", "UsedMobileApplicationFunctionalities"): "used_mobile_functionalities",
     ("Document", "RegisterRecords"): "movements",
     ("Sequence", "RegisterRecords"): "movements",
     ("Subsystem", "Content"): "members",
@@ -301,11 +298,27 @@ OURS_ONLY = {"format", "id"}
 # реквизита нет» с причиной «одна организация — одна база». Сверка нашла, а
 # читатель завёл.
 ACCEPTED = {
-    # Пока пусто, и это решение, а не недосмотр. По составу метаданных
-    # расхождений с прототипом мы не держим: свойство, которого нет в модели,
-    # исчезает при импорте, а это потеря смысла. Осознанное решение выражается
-    # иначе - свойство несём, поведение не делаем, причину пишем в
-    # docs/requirements. Такое свойство в модели есть, и сверка его не видит.
+    # Здесь только два рода строк. Иначе расхождений по составу метаданных мы не
+    # держим: свойство, которого нет в модели, исчезает при импорте, а это
+    # потеря смысла. Осознанное решение выражается иначе - свойство несём,
+    # поведение не делаем, причину пишем в docs/requirements. Такое свойство в
+    # модели есть, и сверка его не видит.
+    #
+    # Первый род - отказ владельца от механизма целиком, вместе с составом
+    # (METADATA-OBJECTS.md, отказ от механизмов прототипа): импорт пропускает
+    # такое справочной строкой отчёта.
+    ("Configuration", "UsedMobileApplicationFunctionalities"): "METADATA-OBJECTS.md: мобильное приложение не переносится - отказ владельца 14.10.2026",
+    ("Configuration", "RequiredMobileApplicationPermissions"): "METADATA-OBJECTS.md: мобильное приложение не переносится - отказ владельца 14.10.2026",
+    ("Configuration", "MobileApplicationURLs"): "METADATA-OBJECTS.md: мобильное приложение не переносится - отказ владельца 14.10.2026",
+    ("Configuration", "AllowedIncomingShareRequestTypes"): "METADATA-OBJECTS.md: мобильное приложение не переносится - отказ владельца 14.10.2026",
+    ("Configuration", "MobileClientSignature"): "METADATA-OBJECTS.md: мобильное приложение не переносится - отказ владельца 14.10.2026",
+    ("Configuration", "StandaloneConfigurationRestrictionRoles"): "METADATA-OBJECTS.md: мобильное приложение не переносится - отказ владельца 14.10.2026",
+    #
+    # Второй род - список, который у нас не список, а сама раскладка проекта.
+    # Состав конфигурации - дерево на диске (METADATA-OBJECTS.md, «Состав
+    # конфигурации отдельным списком не хранится»). До 2.319 сверка молчала о
+    # нём случайно: слово совпадало с составом автономной конфигурации.
+    ("Configuration", "Content"): "METADATA-OBJECTS.md: состав конфигурации отдельным списком не хранится - он и есть дерево на диске",
     #
     # Что здесь стояло и почему снято: девять свойств разделения данных общего
     # реквизита. Их отсутствие было записано как принципиальное, а оказалось

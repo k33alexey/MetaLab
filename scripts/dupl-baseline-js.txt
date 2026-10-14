@@ -4,6 +4,6 @@
 1	internal/studio/ui/bsl-editor.js internal/studio/ui/bsl-editor.js internal/studio/ui/bsl-editor.js
 1	internal/studio/ui/bsl-editor.js internal/studio/ui/debugger.js internal/studio/ui/query-designer.js
 1	internal/studio/ui/catalog-editor.js internal/studio/ui/languages-editor.js internal/studio/ui/role-editor.js
-2	internal/studio/ui/project-editor.js internal/studio/ui/project-editor.js
+1	internal/studio/ui/project-editor.js internal/studio/ui/project-editor.js
 1	internal/studio/ui/role-editor.js internal/studio/ui/role-editor.js
 2	internal/studio/ui/role-overview.js internal/studio/ui/role-overview.js

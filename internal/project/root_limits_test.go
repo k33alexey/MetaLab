@@ -17,10 +17,9 @@ func rootForLimits() Project {
 }
 
 // The root takes what the configurator takes: a name of 255 characters, any
-// number of languages, a comment, a vendor and a version of any length, a
-// mobile client signature of 113 KB as sb keeps it. Defect caught: ceilings
-// with no source - 128 for a name, 100 languages, 1024, 512 and 128 for the
-// texts, 4096 for the signature - refused at transfer what the prototype
+// number of languages, a comment, a vendor and a version of any length.
+// Defect caught: ceilings with no source - 128 for a name, 100 languages,
+// 1024, 512 and 128 for the texts - refused at transfer what the prototype
 // saves.
 func TestRootTakesWhatTheConfiguratorTakes(t *testing.T) {
 	t.Parallel()
@@ -36,8 +35,6 @@ func TestRootTakesWhatTheConfiguratorTakes(t *testing.T) {
 	value.Languages[0].Comment = strings.Repeat("к", 5000)
 	value.Vendor = strings.Repeat("п", 2000)
 	value.Version = strings.Repeat("1.", 300) + "1"
-	value.MobileClientSignature = strings.Repeat("п", 113143)
-	value.UsedMobileFunctionalities = []MobileAnswer{{Name: strings.Repeat("в", 1000), Use: true}}
 	if err := value.Validate(); err != nil {
 		t.Fatalf("the root the configurator saves was refused: %v", err)
 	}

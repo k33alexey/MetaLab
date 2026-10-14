@@ -464,44 +464,6 @@ func TestProjectEditorSavesTheModesOfTheRoot(t *testing.T) {
 	}
 }
 
-// What the root says about a mobile application is saved through the editor.
-// Nothing here is executed, so the editor is the one place it can be lost.
-func TestProjectEditorSavesTheMobileApplication(t *testing.T) {
-	t.Parallel()
-	workspace, written := defaultsWorkspace(t)
-	opened, err := workspace.ReadProjectEditor()
-	if err != nil {
-		t.Fatal(err)
-	}
-	updated := opened.Configuration
-	updated.UsedMobileFunctionalities = []project.MobileAnswer{{Name: "Геолокация"}, {Name: "Звонки", Use: true}}
-	updated.RequiredMobilePermissions = []project.MobileAnswer{{Name: "Камера", Use: true}}
-	updated.MobileApplicationURLs = []string{"e1cib/navigationpoint/sales"}
-	updated.AllowedShareRequestTypes = []string{"image/png"}
-	updated.MobileClientSignature = "подпись"
-	updated.StandaloneConfigurationRestrictionRoles = []uuid.UUID{written["role"]}
-	if _, err := workspace.SaveProjectEditor(updated, opened.Revision); err != nil {
-		t.Fatal(err)
-	}
-	reopened, err := workspace.ReadProjectEditor()
-	if err != nil {
-		t.Fatal(err)
-	}
-	saved := reopened.Configuration
-	switch {
-	case len(saved.UsedMobileFunctionalities) != 2 || saved.UsedMobileFunctionalities[1] != (project.MobileAnswer{Name: "Звонки", Use: true}):
-		t.Fatalf("the functionalities were lost: %+v", saved.UsedMobileFunctionalities)
-	case len(saved.RequiredMobilePermissions) != 1 || len(saved.MobileApplicationURLs) != 1 ||
-		len(saved.AllowedShareRequestTypes) != 1:
-		t.Fatalf("a list was lost: %+v", saved)
-	case saved.MobileClientSignature != "подпись":
-		t.Fatalf("the signature was lost: %q", saved.MobileClientSignature)
-	case len(saved.StandaloneConfigurationRestrictionRoles) != 1 ||
-		saved.StandaloneConfigurationRestrictionRoles[0] != written["role"]:
-		t.Fatalf("the restriction roles were lost: %+v", saved.StandaloneConfigurationRestrictionRoles)
-	}
-}
-
 // Removing a language removes what was written in it, including the synonyms of
 // the languages that stay. What cannot vanish is a language's synonym as a
 // whole: its name stands in, the same answer the root gives for itself.

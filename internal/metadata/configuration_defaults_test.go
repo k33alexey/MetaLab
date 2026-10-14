@@ -476,63 +476,6 @@ variants:
 	}
 }
 
-// The standalone application is made of objects of this configuration, and the
-// roles narrowing it are its roles. ML builds no mobile application, and the
-// references are resolved anyway: an object named here and deleted there is a
-// mistake in the configuration whoever reads the list afterwards.
-func TestStandaloneConfigurationIsResolved(t *testing.T) {
-	t.Parallel()
-	root := defaultsProject(t)
-	saveDefaults(t, root, func(configuration *project.Project) {
-		configuration.StandaloneConfigurationRestrictionRoles = []uuid.UUID{*mustParse(t, defaultsRole)}
-		configuration.UsedMobileFunctionalities = []project.MobileAnswer{{Name: "Геолокация", Use: true}}
-	})
-	catalog, err := Load(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(catalog.Project.StandaloneConfigurationRestrictionRoles) != 1 ||
-		len(catalog.Project.UsedMobileFunctionalities) != 1 {
-		t.Fatalf("what the root says about the mobile application was lost: %+v", catalog.Project)
-	}
-
-	for name, fill := range map[string]func(configuration *project.Project){
-		"роль ограничения": func(configuration *project.Project) {
-			configuration.StandaloneConfigurationRestrictionRoles = []uuid.UUID{*mustParse(t, defaultsStranger)}
-		},
-		"объект состава": func(configuration *project.Project) {
-			configuration.StandaloneConfigurationContent = []project.StandaloneItem{
-				{ObjectReference: project.ObjectReference{Kind: "catalogs", Object: *mustParse(t, defaultsStranger)}},
-			}
-		},
-		"вид, которого нет": func(configuration *project.Project) {
-			configuration.StandaloneConfigurationContent = []project.StandaloneItem{
-				{ObjectReference: project.ObjectReference{Kind: "телефоны", Object: *mustParse(t, defaultsRole)}},
-			}
-		},
-		"приоритет роли": func(configuration *project.Project) {
-			configuration.StandaloneConfigurationContent = []project.StandaloneItem{{ObjectReference: project.ObjectReference{
-				Kind: "roles", Object: *mustParse(t, defaultsRole)}, Priority: project.LocalServerPriority}}
-		},
-		"чужая часть": func(configuration *project.Project) {
-			configuration.StandaloneConfigurationContent = []project.StandaloneItem{{ObjectReference: project.ObjectReference{
-				Kind: "roles", Object: *mustParse(t, defaultsRole)}, Unused: []uuid.UUID{*mustParse(t, defaultsSecondRole)}}}
-		},
-		"план обмена, которого нет": func(configuration *project.Project) {
-			configuration.StandaloneDataExchange = &project.StandaloneDataExchange{ExchangePlan: mustParse(t, defaultsStranger)}
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			broken := defaultsProject(t)
-			saveDefaults(t, broken, fill)
-			if _, err := Load(broken); err == nil {
-				t.Fatal("a standalone application made of nothing was accepted")
-			}
-		})
-	}
-}
-
 // writeText writes one file into a folder of the project root.
 func writeText(t *testing.T, root, folder, file, content string) {
 	t.Helper()

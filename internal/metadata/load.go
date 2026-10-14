@@ -2169,15 +2169,6 @@ func (catalog *Catalog) validateObjectFileSources(files objectFiles) error {
 	if err := catalog.indexObjectForms(directory, files.directoryKind, kind, name, files.formSlots); err != nil {
 		return err
 	}
-	if catalog.heldFiles == nil {
-		catalog.heldFiles = map[uuid.UUID]uuid.UUID{}
-	}
-	for _, form := range catalog.objectForms[files.directoryKind][strings.ToLower(name)].forms {
-		catalog.heldFiles[form.id] = files.id
-	}
-	for _, template := range files.templates {
-		catalog.heldFiles[template.ID] = files.id
-	}
 	if err := catalog.validateCommonFormSlots(kind, name, files.formSlots); err != nil {
 		return err
 	}

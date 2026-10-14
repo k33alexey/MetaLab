@@ -800,12 +800,15 @@ func TestRootModesAreCheckedForShape(t *testing.T) {
 	}
 }
 
-// What the root says about a mobile application survives the file. ML builds
-// no mobile application, so losing it is the only thing that can go wrong.
-func TestRootMobileApplicationSurvivesTheFile(t *testing.T) {
+// The root no longer describes a mobile application: ML has no mobile client,
+// and what exists only for one is not carried (METADATA-OBJECTS.md, «Мобильное
+// приложение»). A file that still names one of its keys is refused by name,
+// and not read with the key dropped - a key lost silently is the one thing a
+// reading must never do.
+func TestRootRefusesTheMobileApplication(t *testing.T) {
 	t.Parallel()
 
-	const source = `format: 1
+	const root = `format: 1
 id: 018f1f72-3b4c-7d6e-8f90-123456789abc
 name: SalesDemo
 title:
@@ -817,124 +820,27 @@ languages:
     title:
       ru: Русский
     code: ru
-used_mobile_functionalities: [{name: Звонки, use: true}, {name: Геолокация, use: false}]
-required_mobile_permissions: [{name: Камера, use: false}]
-mobile_application_urls: [e1cib/navigationpoint/sales]
-allowed_share_request_types: [image/png, application/pdf]
-mobile_client_signature: подпись
-standalone_configuration_content:
-  - {kind: catalogs, object: 018f1f72-3b4c-7d6e-8f90-000000000080, priority: local-server,
-     unused: [018f1f72-3b4c-7d6e-8f90-000000000083]}
-  - {kind: documents, object: 018f1f72-3b4c-7d6e-8f90-000000000081}
-standalone_data_exchange:
-  exchange_plan: 018f1f72-3b4c-7d6e-8f90-000000000084
-  exchange_after_write: true
-  period: 300
-  transaction_items: 1000
-  remove_unused_nodes_after_days: 0
-standalone_configuration_restriction_roles:
-  - 018f1f72-3b4c-7d6e-8f90-000000000082
 `
-	value, err := Decode(strings.NewReader(source))
-	if err != nil {
-		t.Fatalf("Decode() error = %v", err)
+	if _, err := Decode(strings.NewReader(root)); err != nil {
+		t.Fatalf("the root without the mobile application was refused: %v", err)
 	}
-	switch {
-	case len(value.UsedMobileFunctionalities) != 2 || value.UsedMobileFunctionalities[0] != (MobileAnswer{Name: "Звонки", Use: true}) ||
-		value.UsedMobileFunctionalities[1] != (MobileAnswer{Name: "Геолокация"}):
-		t.Fatalf("the functionalities came back as %+v", value.UsedMobileFunctionalities)
-	case len(value.RequiredMobilePermissions) != 1 || len(value.MobileApplicationURLs) != 1 ||
-		len(value.AllowedShareRequestTypes) != 2:
-		t.Fatalf("a list was lost: %+v", value)
-	case value.MobileClientSignature != "подпись":
-		t.Fatalf("the signature came back as %q", value.MobileClientSignature)
-	case len(value.StandaloneConfigurationContent) != 2 ||
-		value.StandaloneConfigurationContent[0].Kind != "catalogs" ||
-		value.StandaloneConfigurationContent[0].Priority != LocalServerPriority ||
-		len(value.StandaloneConfigurationContent[0].Unused) != 1 || value.StandaloneConfigurationContent[1].Priority != "":
-		t.Fatalf("the standalone content came back as %+v", value.StandaloneConfigurationContent)
-	case len(value.StandaloneConfigurationRestrictionRoles) != 1:
-		t.Fatalf("the restriction roles came back as %+v", value.StandaloneConfigurationRestrictionRoles)
-	case value.StandaloneDataExchange == nil || value.StandaloneDataExchange.ExchangePlan == nil ||
-		!value.StandaloneDataExchange.ExchangeAfterWrite || value.StandaloneDataExchange.Period != 300 ||
-		value.StandaloneDataExchange.TransactionItems != 1000:
-		t.Fatalf("the exchange settings came back as %+v", value.StandaloneDataExchange)
-	}
-
-	var written bytes.Buffer
-	if err := Encode(&written, value); err != nil {
-		t.Fatal(err)
-	}
-	again, err := Decode(bytes.NewReader(written.Bytes()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(value, again) {
-		t.Fatalf("the mobile application did not survive a round trip:\n%+v\n%+v", value, again)
-	}
-}
-
-// A word we have never heard of is kept: the lists belong to another platform
-// and to the mobile operating systems, and both grow without us. What is
-// refused is a list entry that names nothing at all.
-func TestRootMobileApplicationIsCheckedForShape(t *testing.T) {
-	t.Parallel()
-
-	base := func() Project {
-		return Project{
-			Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo",
-			Title: LocalizedText{"ru": "Демо"}, DefaultLanguage: "ru",
-			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: LocalizedText{"ru": "Русский"}, Code: "ru"}},
-		}
-	}
-	object := StandaloneItem{ObjectReference: ObjectReference{Kind: "catalogs", Object: uuid.MustNew()}}
-	role := uuid.MustNew()
-	for name, broken := range map[string]func(value *Project){
-		"пустая возможность":     func(value *Project) { value.UsedMobileFunctionalities = []MobileAnswer{{Use: true}} },
-		"разрешение с пробелами": func(value *Project) { value.RequiredMobilePermissions = []MobileAnswer{{Name: " Камера"}} },
-		"возможность дважды": func(value *Project) {
-			value.UsedMobileFunctionalities = []MobileAnswer{{Name: "Звонки", Use: true}, {Name: "Звонки"}}
-		},
-		"одна ссылка дважды": func(value *Project) { value.MobileApplicationURLs = []string{"a", "a"} },
-		"состав без вида": func(value *Project) {
-			value.StandaloneConfigurationContent = []StandaloneItem{{ObjectReference: ObjectReference{Object: uuid.MustNew()}}}
-		},
-		"состав без объекта": func(value *Project) {
-			value.StandaloneConfigurationContent = []StandaloneItem{{ObjectReference: ObjectReference{Kind: "catalogs"}}}
-		},
-		"один объект дважды": func(value *Project) { value.StandaloneConfigurationContent = []StandaloneItem{object, object} },
-		"незнакомый приоритет": func(value *Project) {
-			value.StandaloneConfigurationContent = []StandaloneItem{{ObjectReference: object.ObjectReference, Priority: "main"}}
-		},
-		"пустая неиспользуемая часть": func(value *Project) {
-			value.StandaloneConfigurationContent = []StandaloneItem{{ObjectReference: object.ObjectReference, Unused: []uuid.UUID{{}}}}
-		},
-		"часть дважды": func(value *Project) {
-			part := uuid.MustNew()
-			value.StandaloneConfigurationContent = []StandaloneItem{{ObjectReference: object.ObjectReference, Unused: []uuid.UUID{part, part}}}
-		},
-		"пустой план обмена": func(value *Project) {
-			value.StandaloneDataExchange = &StandaloneDataExchange{ExchangePlan: &uuid.UUID{}}
-		},
-		"роль ограничения дважды": func(value *Project) { value.StandaloneConfigurationRestrictionRoles = []uuid.UUID{role, role} },
-		"пустая роль ограничения": func(value *Project) { value.StandaloneConfigurationRestrictionRoles = []uuid.UUID{{}} },
+	for key, value := range map[string]string{
+		"used_mobile_functionalities":                "[{name: Звонки, use: true}]",
+		"required_mobile_permissions":                "[{name: Камера, use: false}]",
+		"mobile_application_urls":                    "[e1cib/navigationpoint/sales]",
+		"allowed_share_request_types":                "[image/png]",
+		"mobile_client_signature":                    "подпись",
+		"standalone_configuration_content":           "[{kind: catalogs, object: 018f1f72-3b4c-7d6e-8f90-000000000080}]",
+		"standalone_data_exchange":                   "{period: 300}",
+		"standalone_configuration_restriction_roles": "[018f1f72-3b4c-7d6e-8f90-000000000082]",
 	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(key, func(t *testing.T) {
 			t.Parallel()
-			value := base()
-			broken(&value)
-			if err := value.Validate(); err == nil {
-				t.Fatal("the root was accepted")
+			_, err := Decode(strings.NewReader(root + key + ": " + value + "\n"))
+			if err == nil || !strings.Contains(err.Error(), key) {
+				t.Fatalf("the root naming %s was read: %v", key, err)
 			}
 		})
-	}
-
-	// A possibility nobody enumerated for us is not a mistake.
-	unknown := base()
-	unknown.UsedMobileFunctionalities = []MobileAnswer{{Name: "ВозможностьКоторойМыНеЗнаем", Use: true}}
-	unknown.AllowedShareRequestTypes = []string{"application/x-невиданное"}
-	if err := unknown.Validate(); err != nil {
-		t.Fatalf("an unknown word was refused: %v", err)
 	}
 }
 
