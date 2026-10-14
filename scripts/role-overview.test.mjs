@@ -26,11 +26,11 @@ function fixture(){
       {id:'goods',kind:'catalogs',name:'Товары',title:{ru:'Товары'},rights:['read','insert','update','delete','view','edit','input-by-string'],operations:['read','insert','update','delete'],
         fields:[{key:'ref',operations:['view','edit']},{key:'owner',title:{ru:'Владелец'},group:'attributes',operations:['view','edit']},{key:'price',title:{ru:'Цена'},group:'attributes',operations:['view','edit']},
           {key:'print',title:{ru:'Печать'},group:'commands',operations:['view']}],
-        restrictionFields:[{key:'ref',title:{ru:'Ссылка'}},{key:'owner',title:{ru:'Владелец'}},{key:'price',title:{ru:'Цена'}}],
+        restrictionFields:[{key:'ref',name:'Ссылка',title:{ru:'Ссылка'}},{key:'owner',name:'Владелец',title:{ru:'Владелец'}},{key:'price',name:'Цена',title:{ru:'Цена'}}],
         restrictedRights:['read','insert','update','delete']},
       {id:'users',kind:'catalogs',name:'Пользователи',title:{ru:'Пользователи'},rights:['read','view'],operations:['read'],
         fields:[{key:'ref',operations:['view','edit']},{key:'person',title:{ru:'Физлицо'},group:'attributes',operations:['view','edit']}],
-        restrictionFields:[{key:'ref',title:{ru:'Ссылка'}},{key:'person',title:{ru:'Физлицо'}}],
+        restrictionFields:[{key:'ref',name:'Ссылка',title:{ru:'Ссылка'}},{key:'person',name:'Физлицо',title:{ru:'Физлицо'}}],
         restrictedRights:['read']},
     ],
     parts:{goods:['ref','owner','price','print'],users:['ref','person']},
@@ -365,4 +365,69 @@ test('a new restriction goes to every object, role and right chosen, each object
   assert.deepEqual(roleValue(model,0),before);
   assert.deepEqual(plain(model.addRestrictions(again,false)),expected);
   assert.deepEqual(roleValue(model,0).objects[0].restrictions,[{right:'read',fields:['owner'],condition:'У'}]);
+});
+
+// Отбор «Все ограничения доступа» (справка, form_RolesGroupEditFilterDlg):
+// объекты, роли, права, поля и текст ограничения. В одном списке строка
+// проходит по любому отмеченному, между списками — по каждому; пустой
+// список условия не ставит. Дефекты: отбор по одному условию пропускает
+// строку, не прошедшую по другому; поле табличной части узнаётся без
+// части, и отбор по «Номер строки» одной части берёт строки другой;
+// ограничение «Прочие поля» проходит отбор по полям; текст сравнивается
+// целиком или с учётом регистра.
+function filterFixture(){
+  const source=fixture();
+  source.schema.objects[0].restrictionFields.push({key:'items',name:'Товары',title:{ru:'Товары'}},{key:'items.linenumber',name:'НомерСтроки',title:{ru:'Номер строки'},parent:'items'},
+    {key:'sets',name:'Наборы',title:{ru:'Наборы'}},{key:'sets.linenumber',name:'НомерСтроки',title:{ru:'Номер строки'},parent:'sets'});
+  source.roles[0].role.objects[0].restrictions.push({right:'read',fields:['items.linenumber'],condition:'ГДЕ НомерСтроки > 1'},{right:'update',condition:'ГДЕ Цена > 0'});
+  source.roles[1].role.objects=[{object:'goods',operations:['read'],restrictions:[{right:'read',fields:['sets.linenumber'],condition:'ГДЕ ЛОЖЬ'}]},
+    {object:'users',operations:['read'],restrictions:[{right:'read',condition:'ГДЕ Физлицо = &ТекущийПользователь'}]}];
+  return source;
+}
+const restrictionLines=rows=>plain(rows.map(row=>`${row.role}/${row.object}/${row.operation}/${row.field}`));
+test('the filter of restrictions takes any marked in a list and every list at once',()=>{
+  const model=create(filterFixture()),all=model.allRestrictions();
+  assert.equal(all.length,5);
+  assert.deepEqual(restrictionLines(model.allRestrictions(null)),restrictionLines(all));
+  const set=(...values)=>new Set(values);
+  assert.deepEqual(restrictionLines(model.allRestrictions({objects:set('users')})),['Кладовщик/Пользователи/read/Прочие поля']);
+  assert.deepEqual(restrictionLines(model.allRestrictions({roles:set('metadata/roles/b.yaml'),objects:set('goods')})),['Кладовщик/Товары/read/Наборы.Номер строки']);
+  assert.deepEqual(restrictionLines(model.allRestrictions({rights:set('update')})),['Продавец/Товары/update/Прочие поля']);
+  assert.deepEqual(restrictionLines(model.allRestrictions({rights:set('update'),roles:set('metadata/roles/b.yaml')})),[]);
+  assert.deepEqual(restrictionLines(model.allRestrictions({objects:set('goods','users'),rights:set('read'),roles:set('metadata/roles/b.yaml')})),
+    ['Кладовщик/Пользователи/read/Прочие поля','Кладовщик/Товары/read/Наборы.Номер строки']);
+  assert.deepEqual(restrictionLines(model.allRestrictions({paths:set('Товары.НомерСтроки')})),['Продавец/Товары/read/Товары.Номер строки']);
+  assert.deepEqual(restrictionLines(model.allRestrictions({paths:set('Владелец','Наборы.НомерСтроки')})),['Кладовщик/Товары/read/Наборы.Номер строки','Продавец/Товары/read/Владелец']);
+  assert.deepEqual(restrictionLines(model.allRestrictions({condition:'текущийпользователь'})),['Кладовщик/Пользователи/read/Прочие поля','Продавец/Товары/read/Владелец']);
+  assert.deepEqual(restrictionLines(model.allRestrictions({condition:'ЦЕНА'})),['Продавец/Товары/update/Прочие поля']);
+  assert.deepEqual(restrictionLines(model.allRestrictions({condition:'ЦЕНА',rights:set('read')})),[]);
+  assert.deepEqual(restrictionLines(model.allRestrictions({objects:new Set(),roles:new Set(),rights:new Set(),paths:new Set(),condition:''})),restrictionLines(all));
+});
+
+// Отбор шаблонов (справка, form_TemplateEditFilterDlg): по ролям, по
+// наименованию — на равенство выбранному из списка всех наименований, по
+// фрагменту текста. Дефекты: наименование отбирается фрагментом и берёт
+// «ПоВладельцуИЦене» вместе с «ПоВладельцу»; список наименований повторяет
+// имя, объявленное в двух ролях.
+test('the filter of templates takes roles, a name equal to the one chosen and a fragment of the text',()=>{
+  const source=fixture();
+  source.roles[0].role.restrictionTemplates=[{name:'ПоВладельцу',condition:'ГДЕ Владелец = &ТекущийПользователь'},{name:'ПоВладельцуИЦене',condition:'ГДЕ Цена > 0'}];
+  source.roles[1].role.restrictionTemplates=[{name:'ПоВладельцу',condition:'ГДЕ ИСТИНА'}];
+  const model=create(source),lines=filter=>plain(model.allTemplates(filter).map(row=>`${row.role}/${row.name}`));
+  assert.deepEqual(plain(model.templateNames()),['ПоВладельцу','ПоВладельцуИЦене']);
+  assert.deepEqual(lines({name:'ПоВладельцу'}),['Кладовщик/ПоВладельцу','Продавец/ПоВладельцу']);
+  assert.deepEqual(lines({name:'ПоВладельцу',roles:new Set(['metadata/roles/a.yaml'])}),['Продавец/ПоВладельцу']);
+  assert.deepEqual(lines({condition:'цена'}),['Продавец/ПоВладельцуИЦене']);
+  assert.deepEqual(lines({roles:new Set(['metadata/roles/b.yaml']),condition:'Цена'}),[]);
+  assert.deepEqual(lines(null),['Кладовщик/ПоВладельцу','Продавец/ПоВладельцу','Продавец/ПоВладельцуИЦене']);
+});
+
+// Права окна отбора и шага мастера — те, что ограничиваются хотя бы у
+// одного объекта, в порядке прав вида, а не в порядке объектов.
+test('the rights offered are those restricted on any of the objects, in the order of the kind',()=>{
+  const model=create(fixture()),restrictable=model.restrictable();
+  assert.deepEqual(plain(model.restrictedRights(restrictable.filter(item=>item.id==='users'))),['read']);
+  assert.deepEqual(plain(model.restrictedRights([...restrictable].reverse())),['read','insert','update','delete']);
+  assert.deepEqual(plain(model.restrictedRights([{rights:['delete','read']},{rights:['update']}])),['read','update','delete']);
+  assert.deepEqual(plain(model.restrictedRights([])),[]);
 });

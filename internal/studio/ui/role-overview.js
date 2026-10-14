@@ -86,7 +86,11 @@ function createRoleOverviewModel(source) {
     // единственный способ увидеть их все, не открывая роли по одной.
     // Строка знает, где лежит её ограничение: роль, объект, право и номер
     // среди ограничений этого права, — по ним его правят команды окна.
-    allRestrictions() {
+    // filter — отбор окна (справка, form_RolesGroupEditFilterDlg), null —
+    // без отбора: объекты, роли (пути), права, поля (пути полей) и фрагмент
+    // текста ограничения. Строка проходит, когда проходит по каждому
+    // условию.
+    allRestrictions(filter = null) {
       const rows = [];
       entries.forEach((entry, roleIndex) => {
         for (const grant of roleOf(entry).objects || []) {
@@ -101,11 +105,21 @@ function createRoleOverviewModel(source) {
         }
       });
       rows.sort((left, right) => left.object.localeCompare(right.object) || left.role.localeCompare(right.role));
-      return rows;
+      if (!filter) return rows;
+      const pathsOf = new Map();
+      const fieldPassed = row => {
+        if (!filter.paths?.size) return true;
+        if (!pathsOf.has(row.objectID)) pathsOf.set(row.objectID, fieldPaths(row.objectID));
+        return row.keys.some(key => filter.paths.has(pathsOf.get(row.objectID).get(key)));
+      };
+      return rows.filter(row => among(filter.objects, row.objectID) && among(filter.roles, row.path) && among(filter.rights, row.operation)
+        && fieldPassed(row) && holds(row.condition, filter.condition));
     },
     // Шаблон показывается как он написан: имя с параметрами в скобках и
     // текст, в который ограничение подставляет значения параметров.
-    allTemplates() {
+    // filter (справка, form_TemplateEditFilterDlg): роли (пути),
+    // наименование — на равенство, фрагмент текста шаблона.
+    allTemplates(filter = null) {
       const rows = [];
       entries.forEach((entry, roleIndex) => {
         (roleOf(entry).restrictionTemplates || []).forEach((template, index) => {
@@ -113,7 +127,17 @@ function createRoleOverviewModel(source) {
         });
       });
       rows.sort((left, right) => left.role.localeCompare(right.role) || left.name.localeCompare(right.name));
-      return rows;
+      if (!filter) return rows;
+      return rows.filter(row => among(filter.roles, row.path) && (!filter.name || row.name === filter.name) && holds(row.condition, filter.condition));
+    },
+    // Наименования всех шаблонов конфигурации — выпадающий список отбора.
+    templateNames() {
+      return [...new Set(entries.flatMap(entry => (roleOf(entry).restrictionTemplates || []).map(template => template.name)))].sort((left, right) => left.localeCompare(right));
+    },
+    // Права, которые ограничиваются хотя бы у одного из объектов, в порядке
+    // прав вида.
+    restrictedRights(items) {
+      return (source.schema.rights || []).map(right => right.key).filter(key => items.some(item => item.rights.includes(key)));
     },
     restrictionFieldChoices, chosenFieldKeys,
     // Объекты, на права которых ставятся ограничения, — первый шаг мастера
@@ -179,15 +203,26 @@ function createRoleOverviewModel(source) {
   function restrictionFieldChoices(objectIDs) {
     const choices = new Map();
     for (const id of new Set(objectIDs)) {
-      const own = objects.get(id)?.restrictionFields || [], byKey = new Map(own.map(field => [field.key, field]));
-      for (const field of own) {
-        const path = field.parent ? `${byKey.get(field.parent)?.name}.${field.name}` : field.name;
+      const paths = fieldPaths(id);
+      for (const field of objects.get(id)?.restrictionFields || []) {
+        const path = paths.get(field.key);
         if (!choices.has(path)) choices.set(path, {path, field, keys: new Map()});
         choices.get(path).keys.set(id, field.key);
       }
     }
     return [...choices.values()];
   }
+  // Путь поля ограничения объекта по его ключу: имя, у поля табличной
+  // части — через точку после имени части.
+  function fieldPaths(objectID) {
+    const own = objects.get(objectID)?.restrictionFields || [], byKey = new Map(own.map(field => [field.key, field]));
+    return new Map(own.map(field => [field.key, field.parent ? `${byKey.get(field.parent)?.name}.${field.name}` : field.name]));
+  }
+  // Условия отбора: в списке — «одно из отмеченных», ничего не отмечено —
+  // условия нет; текст — фрагмент без учёта регистра, пустой условия не
+  // ставит.
+  function among(chosen, value) { return !chosen?.size || chosen.has(value); }
+  function holds(text, fragment) { return !fragment || (text || '').toLocaleLowerCase().includes(fragment.toLocaleLowerCase()); }
   // Ключи отмеченных полей у объекта; null — у объекта нет ни одного из
   // отмеченных: пустой состав стал бы «Прочими полями», а прототип такому
   // объекту ограничения по этим полям не даёт. Ничего не отмечено —
@@ -320,22 +355,24 @@ function createRoleOverview(host, openRole, onChange) {
     cell.append(link);
     return cell;
   }
-  function matches(row, columns) {
-    if (!filter.trim()) return true;
-    const needle = filter.toLocaleLowerCase().trim();
-    return columns.some(value => (value || '').toLocaleLowerCase().includes(needle));
-  }
   // «Все ограничения доступа» — две закладки: ограничения и шаблоны. Строки выбираются по одной или несколько сразу — с Ctrl и Shift, — и
   // команды списка действуют на все выбранные (справка, «Все ограничения
   // доступа»).
   let listChosen = new Set(), refill = () => {};
   function listChanged() { listChosen = new Set(); onChange?.(); refill(); }
-  function restrictionRows() { return model.allRestrictions().filter(row => matches(row, [row.object, row.role, row.field, row.condition])); }
-  function templateRows() { return model.allTemplates().filter(row => matches(row, [row.role, row.name, row.condition])); }
+  // Отбор списка — свой у каждой закладки, живёт, пока открыто окно; null —
+  // отбора нет. Отбор правок не делает: перерисовывается только список.
+  const noFilters = () => ({restrictions: null, templates: null});
+  let listFilter = noFilters();
+  function setListFilter(key, value) { listFilter[key] = value; listChosen = new Set(); refill(); }
+  const filterCommands = (key, choose) => [
+    ['filter', 'Установить отбор', choose, () => true],
+    ['unfilter', 'Отключить отбор', () => setListFilter(key, null), () => !!listFilter[key]],
+  ];
   const chosenOf = rows => [...listChosen].sort((left, right) => left - right).map(index => rows[index]).filter(Boolean);
   function renderAllRestrictions() {
     const block = node('section', undefined, 'overview-block');
-    const rows = restrictionRows();
+    const rows = model.allRestrictions(listFilter.restrictions);
     block.append(node('p', 'Каждая строка — одно ограничение одной роли на одно право. «Реквизиты» — сколько реквизитов объекта эта роль вообще читает: ограничение сужает записи, права на реквизиты — столбцы. Несколько строк выбираются с Ctrl или Shift.', 'muted'));
     const some = () => listChosen.size > 0;
     block.append(roleListTable(['Объект', 'Роль', 'Право', 'Реквизиты', 'Поля', 'Условие'],
@@ -345,12 +382,13 @@ function createRoleOverview(host, openRole, onChange) {
         ['edit', 'Изменить', () => { if (some()) editRestrictions(chosenOf(rows)); }, some],
         ['copy', 'Копировать', () => { if (some()) copyRestrictions(chosenOf(rows)); }, some],
         ['remove', 'Удалить', () => { if (!some()) return; model.removeRestrictions(chosenOf(rows)); listChanged(); }, some],
+        ...filterCommands('restrictions', () => filterRestrictions()),
       ], model.allRestrictions().length ? 'Ничего не найдено.' : 'В проекте нет ни одного ограничения доступа.'));
     return block;
   }
   function renderAllTemplates() {
     const block = node('section', undefined, 'overview-block');
-    const all = model.allTemplates(), rows = templateRows();
+    const all = model.allTemplates(), rows = model.allTemplates(listFilter.templates);
     block.append(node('p', all.length ? 'Шаблон принадлежит роли: условие её ограничения вызывает его как #Имя("значение", ...). Несколько строк выбираются с Ctrl или Shift.' : 'Ни одна роль не объявила шаблонов ограничений.', 'muted'));
     const some = () => listChosen.size > 0;
     block.append(roleListTable(['Роль', 'Наименование', 'Текст шаблона'],
@@ -359,6 +397,7 @@ function createRoleOverview(host, openRole, onChange) {
         ['add', 'Добавить', () => addTemplate(), () => model.roleCount() > 0],
         ['edit', 'Изменить', () => { if (some()) editTemplates(chosenOf(rows)); }, some],
         ['remove', 'Удалить', () => { if (!some()) return; model.removeTemplates(chosenOf(rows)); listChanged(); }, some],
+        ...filterCommands('templates', () => filterTemplates()),
       ], all.length ? 'Ничего не найдено.' : 'Шаблонов нет'));
     return block;
   }
@@ -397,11 +436,8 @@ function createRoleOverview(host, openRole, onChange) {
       changeFields = same !== null && reading.every(row => row.keys.length === (same ? same.split('\n').length : 0));
       if (changeFields) chosen = new Set(same ? same.split('\n') : []);
       const fields = node('div', undefined, 'role-restriction-fields');
-      for (const choice of choices) {
-        const box = checkboxField(title(choice.field) || choice.field.name, chosen.has(choice.path), enabled => { if (enabled) chosen.add(choice.path); else chosen.delete(choice.path); }, 'role-check');
-        if (choice.field.parent) box.classList.add('role-restriction-child');
-        box.title = choice.path; boxes.push(box.querySelector('input')); fields.append(box);
-      }
+      fields.append(...fieldBoxes(choices, chosen));
+      boxes.push(...fields.querySelectorAll('input'));
       content.append(changeFlag('Изменять состав полей', changeFields, () => boxes, enabled => { changeFields = enabled; }),
         node('div', 'Поля — ни одно не отмечено: «Прочие поля»', 'role-restriction-caption'), fields);
     }
@@ -419,12 +455,71 @@ function createRoleOverview(host, openRole, onChange) {
     };
     await applyReplacing(trial => model.editRestrictions(rows, change, trial), restrictionLine);
   }
+  // Флажок, отмечающий key в наборе chosen; after — после каждой отметки.
+  const mark = (chosen, key, after = () => {}) => enabled => { if (enabled) chosen.add(key); else chosen.delete(key); after(); };
   // Роли, отмечаемые флажками: куда копировать ограничения, кому добавить
-  // шаблон.
+  // шаблон, по каким отбирать.
   function roleChoice(chosen) {
     const list = node('div', undefined, 'role-restriction-fields');
-    for (const role of model.roles()) list.append(checkboxField(role.title, chosen.has(role.index), enabled => { if (enabled) chosen.add(role.index); else chosen.delete(role.index); }, 'role-check'));
+    for (const role of model.roles()) list.append(checkboxField(role.title, chosen.has(role.index), mark(chosen, role.index), 'role-check'));
     return list;
+  }
+  // Поля ограничения флажками (restrictionFieldChoices): поле табличной
+  // части — под ней с отступом, путь — во всплывающей подсказке; отмеченные
+  // пути — в chosen.
+  function fieldBoxes(choices, chosen) {
+    return choices.map(choice => {
+      const box = checkboxField(title(choice.field) || choice.field.name, chosen.has(choice.path), mark(chosen, choice.path), 'role-check');
+      if (choice.field.parent) box.classList.add('role-restriction-child');
+      box.title = choice.path;
+      return box;
+    });
+  }
+  const rightBoxes = (keys, chosen, after) => keys.map(key => checkboxField(caption(key), chosen.has(key), mark(chosen, key, after), 'role-check'));
+  // Объекты с ограничиваемыми правами по видам, с флажком «все» у вида и
+  // кнопкой «По подсистемам» — у мастера и у окна отбора. holder.subsystems —
+  // отбор по подсистемам; объект, скрытый им, из выбора уходит: в работу
+  // идёт то, что видно в списке. after — после каждой перемены выбора.
+  function objectChoice(chosenObjects, holder, after = () => {}) {
+    const objectList = node('div', undefined, 'role-restriction-fields role-wizard-objects');
+    const bySubsystems = node('button', 'По подсистемам', 'overview-subsystems');
+    bySubsystems.type = 'button';
+    function fillObjects() {
+      const passes = subsystemFilterPasses(source.schema, holder.subsystems), groups = new Map();
+      for (const item of model.restrictable()) {
+        if (!passes(item.id)) { chosenObjects.delete(item.id); continue; }
+        if (!groups.has(item.kind)) groups.set(item.kind, []);
+        groups.get(item.kind).push(item);
+      }
+      bySubsystems.classList.toggle('selected', !!holder.subsystems);
+      bySubsystems.setAttribute('aria-pressed', String(!!holder.subsystems));
+      objectList.replaceChildren();
+      if (!groups.size) objectList.append(node('p', 'Ни один объект не входит в отмеченные подсистемы.', 'muted'));
+      for (const [kind, items] of groups) {
+        const boxes = [], group = node('label', undefined, 'role-check role-wizard-kind'), all = node('input');
+        all.type = 'checkbox'; all.setAttribute('aria-label', `${source.kindTitles?.[kind] || kind} — все`);
+        const sync = () => { const marked = items.filter(item => chosenObjects.has(item.id)).length; all.checked = marked === items.length; all.indeterminate = marked > 0 && marked < items.length; };
+        all.addEventListener('change', () => { for (const item of items) if (all.checked) chosenObjects.add(item.id); else chosenObjects.delete(item.id); for (const box of boxes) box.checked = all.checked; sync(); after(); });
+        group.append(all, node('span', source.kindTitles?.[kind] || kind));
+        objectList.append(group);
+        for (const item of items) {
+          const box = checkboxField(item.title, chosenObjects.has(item.id), mark(chosenObjects, item.id, () => { sync(); after(); }), 'role-check');
+          box.classList.add('role-restriction-child');
+          boxes.push(box.querySelector('input')); objectList.append(box);
+        }
+        sync();
+      }
+    }
+    bySubsystems.addEventListener('click', async () => {
+      const next = await chooseSubsystemFilter({schema: source.schema, title, current: holder.subsystems});
+      if (next === undefined) return;
+      holder.subsystems = next; fillObjects(); after();
+    });
+    const heading = node('div', undefined, 'overview-wizard-caption'), block = node('div', undefined, 'role-restriction-form');
+    heading.append(node('span', 'Объекты', 'role-restriction-caption'), bySubsystems);
+    block.append(heading, objectList);
+    fillObjects();
+    return block;
   }
   async function copyRestrictions(rows) {
     const roles = new Set(), content = node('div', undefined, 'role-restriction-form');
@@ -435,7 +530,7 @@ function createRoleOverview(host, openRole, onChange) {
     await applyReplacing(trial => model.copyRestrictions(rows, [...roles], trial), restrictionLine);
   }
   // Отбор мастера по подсистемам живёт, пока открыто окно.
-  let subsystemFilter = null;
+  const wizardFilter = {subsystems: null};
   // Мастер «Новое ограничение доступа» (справка, form_NewRowLevelRightDlg):
   // на первом шаге — объекты, с отбором «По подсистемам», и роли; на втором —
   // права, поля чтения и текст ограничения. «Назад» возвращает к первому
@@ -445,45 +540,7 @@ function createRoleOverview(host, openRole, onChange) {
     let step = 1, condition = '';
     const content = node('div', undefined, 'role-restriction-form');
     const first = node('div', undefined, 'role-restriction-form'), second = node('div', undefined, 'role-restriction-form');
-    const objectList = node('div', undefined, 'role-restriction-fields role-wizard-objects');
-    const bySubsystems = node('button', 'По подсистемам', 'overview-subsystems');
-    bySubsystems.type = 'button';
-    // Объект, скрытый отбором, из выбора уходит: ограничения получает то,
-    // что видно в списке.
-    function fillObjects() {
-      const passes = subsystemFilterPasses(source.schema, subsystemFilter), groups = new Map();
-      for (const item of model.restrictable()) {
-        if (!passes(item.id)) { chosenObjects.delete(item.id); continue; }
-        if (!groups.has(item.kind)) groups.set(item.kind, []);
-        groups.get(item.kind).push(item);
-      }
-      bySubsystems.classList.toggle('selected', !!subsystemFilter);
-      bySubsystems.setAttribute('aria-pressed', String(!!subsystemFilter));
-      objectList.replaceChildren();
-      if (!groups.size) objectList.append(node('p', 'Ни один объект не входит в отмеченные подсистемы.', 'muted'));
-      for (const [kind, items] of groups) {
-        const boxes = [], group = node('label', undefined, 'role-check role-wizard-kind'), all = node('input');
-        all.type = 'checkbox'; all.setAttribute('aria-label', `${source.kindTitles?.[kind] || kind} — все`);
-        const sync = () => { const marked = items.filter(item => chosenObjects.has(item.id)).length; all.checked = marked === items.length; all.indeterminate = marked > 0 && marked < items.length; };
-        all.addEventListener('change', () => { for (const item of items) if (all.checked) chosenObjects.add(item.id); else chosenObjects.delete(item.id); for (const box of boxes) box.checked = all.checked; sync(); });
-        group.append(all, node('span', source.kindTitles?.[kind] || kind));
-        objectList.append(group);
-        for (const item of items) {
-          const box = checkboxField(item.title, chosenObjects.has(item.id), enabled => { if (enabled) chosenObjects.add(item.id); else chosenObjects.delete(item.id); sync(); }, 'role-check');
-          box.classList.add('role-restriction-child');
-          boxes.push(box.querySelector('input')); objectList.append(box);
-        }
-        sync();
-      }
-    }
-    bySubsystems.addEventListener('click', async () => {
-      const next = await chooseSubsystemFilter({schema: source.schema, title, current: subsystemFilter});
-      if (next === undefined) return;
-      subsystemFilter = next; fillObjects();
-    });
-    const objectsCaption = node('div', undefined, 'overview-wizard-caption');
-    objectsCaption.append(node('span', 'Объекты', 'role-restriction-caption'), bySubsystems);
-    first.append(objectsCaption, objectList, node('div', 'Роли', 'role-restriction-caption'), roleChoice(roles));
+    first.append(objectChoice(chosenObjects, wizardFilter), node('div', 'Роли', 'role-restriction-caption'), roleChoice(roles));
     // Второй шаг строится по выбранному на первом: права — те, что
     // ограничиваются хотя бы у одного из объектов, поля — всех объектов с
     // ограничением по полям; отмеченное, которого больше нет, снимается.
@@ -494,26 +551,20 @@ function createRoleOverview(host, openRole, onChange) {
       node('div', 'Ограничение доступа', 'role-restriction-caption'), editor);
     function fillSecond() {
       const items = model.restrictable().filter(item => chosenObjects.has(item.id));
-      const offered = (source.schema.rights || []).map(right => right.key).filter(key => items.some(item => item.rights.includes(key)));
+      const offered = model.restrictedRights(items);
       for (const right of [...rights]) if (!offered.includes(right)) rights.delete(right);
       const byFields = right => restrictsByFields(source.schema, right), fieldsChosen = () => [...rights].some(byFields);
       const choices = model.restrictionFieldChoices(items.filter(item => item.rights.some(byFields)).map(item => item.id));
       for (const path of [...paths]) if (!choices.some(choice => choice.path === path)) paths.delete(path);
-      const fieldBoxes = [];
-      const syncFields = () => { for (const box of fieldBoxes) box.disabled = !fieldsChosen(); };
-      rightList.replaceChildren(...offered.map(key => checkboxField(caption(key), rights.has(key), enabled => { if (enabled) rights.add(key); else rights.delete(key); syncFields(); }, 'role-check')));
-      fieldList.replaceChildren(...choices.map(choice => {
-        const box = checkboxField(title(choice.field) || choice.field.name, paths.has(choice.path), enabled => { if (enabled) paths.add(choice.path); else paths.delete(choice.path); }, 'role-check');
-        if (choice.field.parent) box.classList.add('role-restriction-child');
-        box.title = choice.path; fieldBoxes.push(box.querySelector('input'));
-        return box;
-      }));
+      const syncFields = () => { for (const box of fieldList.querySelectorAll('input')) box.disabled = !fieldsChosen(); };
+      rightList.replaceChildren(...rightBoxes(offered, rights, syncFields));
+      fieldList.replaceChildren(...fieldBoxes(choices, paths));
       if (!choices.length) fieldList.append(node('p', 'У выбранных объектов нет полей для ограничения чтения.', 'muted'));
       syncFields();
     }
     const show = () => { first.hidden = step !== 1; second.hidden = step !== 2; };
     content.append(first, second);
-    fillObjects(); show();
+    show();
     const answer = await showDialog({title: 'Новое ограничение доступа', content, className: 'role-restriction-dialog', answers: [
       ['next', 'Далее', {act: () => { step = 2; fillSecond(); show(); }, shown: () => step === 1}],
       ['ok', 'ОК', {shown: () => step === 2}],
@@ -525,6 +576,57 @@ function createRoleOverview(host, openRole, onChange) {
     // без него поля ничего не значат.
     const fields = [...rights].some(right => restrictsByFields(source.schema, right)) ? paths : new Set();
     await applyReplacing(trial => model.addRestrictions({objectIDs: [...chosenObjects], roles: [...roles], rights: [...rights], paths: fields, condition}, trial), restrictionLine);
+  }
+  // Роли отбора хранятся путями: номер роли после сохранения может смениться.
+  const rolePaths = indexes => new Set([...indexes].map(index => model.roles()[index]?.path).filter(Boolean));
+  const roleIndexes = paths => new Set(model.roles().filter(role => paths?.has(role.path)).map(role => role.index));
+  // Окно отбора ограничений (справка, form_RolesGroupEditFilterDlg): объекты
+  // (с «По подсистемам»), роли, права, поля и текст ограничения. Поля — те,
+  // что есть у отмеченных объектов с правом, ограничиваемым по полям, а пока
+  // объекты не отмечены, — у всех таких.
+  async function filterRestrictions() {
+    const current = listFilter.restrictions;
+    const draft = {objects: new Set(current?.objects), roles: roleIndexes(current?.roles), rights: new Set(current?.rights), paths: new Set(current?.paths),
+      condition: current?.condition || '', subsystems: current?.subsystems ?? null};
+    const fieldList = node('div', undefined, 'role-restriction-fields');
+    function fillFields() {
+      const items = model.restrictable().filter(item => item.rights.some(right => restrictsByFields(source.schema, right)));
+      const marked = items.filter(item => draft.objects.has(item.id));
+      const choices = model.restrictionFieldChoices((marked.length ? marked : items).map(item => item.id));
+      for (const path of [...draft.paths]) if (!choices.some(choice => choice.path === path)) draft.paths.delete(path);
+      fieldList.replaceChildren(...fieldBoxes(choices, draft.paths));
+      if (!choices.length) fieldList.append(node('p', 'У объектов нет полей для ограничения чтения.', 'muted'));
+    }
+    const rightList = node('div', undefined, 'role-restriction-fields');
+    rightList.append(...rightBoxes(model.restrictedRights(model.restrictable()), draft.rights));
+    const text = textInput(draft.condition, value => { draft.condition = value; });
+    text.setAttribute('aria-label', 'Ограничение доступа');
+    const content = node('div', undefined, 'role-restriction-form');
+    content.append(objectChoice(draft.objects, draft, fillFields), node('div', 'Роли', 'role-restriction-caption'), roleChoice(draft.roles),
+      node('div', 'Права', 'role-restriction-caption'), rightList, node('div', 'Поля', 'role-restriction-caption'), fieldList,
+      node('div', 'Ограничение доступа', 'role-restriction-caption'), text);
+    fillFields();
+    const answer = await showDialog({title: 'Отбор', content, className: 'role-restriction-dialog', answers: [['ok', 'ОК'], [null, 'Отмена']]});
+    if (answer !== 'ok') return;
+    const value = {...draft, roles: rolePaths(draft.roles)};
+    setListFilter('restrictions', value.objects.size || value.roles.size || value.rights.size || value.paths.size || value.condition ? value : null);
+  }
+  // Окно отбора шаблонов (справка, form_TemplateEditFilterDlg): роли,
+  // наименование из всех шаблонов конфигурации — на равенство, фрагмент
+  // текста шаблона.
+  async function filterTemplates() {
+    const current = listFilter.templates, names = model.templateNames();
+    const draft = {roles: roleIndexes(current?.roles), name: names.includes(current?.name) ? current.name : '', condition: current?.condition || ''};
+    const name = selectInput([['', ''], ...names.map(item => [item, item])], draft.name, value => { draft.name = value; }, 'Наименование');
+    const text = textInput(draft.condition, value => { draft.condition = value; });
+    text.setAttribute('aria-label', 'Текст шаблона');
+    const content = node('div', undefined, 'role-restriction-form');
+    content.append(node('div', 'Роли', 'role-restriction-caption'), roleChoice(draft.roles), node('div', 'Наименование', 'role-restriction-caption'), name,
+      node('div', 'Текст шаблона', 'role-restriction-caption'), text);
+    const answer = await showDialog({title: 'Установка отбора шаблонов ограничений', content, className: 'role-restriction-dialog', answers: [['ok', 'ОК'], [null, 'Отмена']]});
+    if (answer !== 'ok') return;
+    const value = {...draft, roles: rolePaths(draft.roles)};
+    setListFilter('templates', value.roles.size || value.name || value.condition ? value : null);
   }
   const templateLine = item => `${item.role} · ${item.template}`;
   // Окно шаблонов (справка, form_EditRowTemplatesDlg): у одинаковых во
@@ -577,18 +679,12 @@ function createRoleOverview(host, openRole, onChange) {
       return;
     }
     body.className = 'overview-list';
-    const search = node('input');
-    search.type = 'search'; search.placeholder = 'Поиск по таблице'; search.setAttribute('aria-label', 'Поиск по таблице');
-    search.value = filter;
-    // Перерисовывается только сама таблица: поле поиска остаётся тем же
-    // элементом, иначе каждая набранная буква уводила бы из него фокус.
     const list = node('div');
     const fill = () => list.replaceChildren(tab === 'restrictions' ? renderAllRestrictions() : renderAllTemplates());
     refill = fill;
-    search.addEventListener('input', () => { filter = search.value; listChosen = new Set(); fill(); });
     listChosen = new Set();
     fill();
-    body.append(search, list);
+    body.append(list);
   }
   function renderPanel() {
     panel.replaceChildren();
@@ -610,6 +706,7 @@ function createRoleOverview(host, openRole, onChange) {
   }
   function open(value, keep = false, next = view) {
       source = structuredClone(value); model = createRoleOverviewModel(source);
+      if (!keep || next !== view) listFilter = noFilters();
       if (next !== view) { view = next; filter = ''; }
       selected = reselect();
       if (!keep) { expanded.clear(); restriction.right = null; restriction.row = -1; }
@@ -620,7 +717,7 @@ function createRoleOverview(host, openRole, onChange) {
   // Переход в другое окно правок не трогает: модели ролей остаются.
   function show(next) {
       if (view === next) return;
-      view = next; filter = '';
+      view = next; filter = ''; listFilter = noFilters();
       drawWindow();
   }
   function drawWindow() {
@@ -635,7 +732,7 @@ function createRoleOverview(host, openRole, onChange) {
         if (tab === key) button.classList.add('selected');
         button.setAttribute('aria-pressed', String(tab === key));
         button.dataset.tab = key;
-        button.addEventListener('click', () => { if (tab === key) return; tab = key; filter = ''; drawFrame(); });
+        button.addEventListener('click', () => { if (tab === key) return; tab = key; drawFrame(); });
         strip.append(button);
       }
       header.append(strip, node('span', `Ролей в проекте: ${model.roleCount()}`, 'muted'));

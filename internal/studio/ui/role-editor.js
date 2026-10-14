@@ -499,7 +499,7 @@ function roleListTable(headings, rows, chosen, choose, commands, empty) {
   if(!rows.length){const row=node('tr'),cell=node('td',empty,'muted');cell.colSpan=headings.length;row.append(cell);body.append(row);}
   table.append(thead,body);
   const bar=node('div',undefined,'role-bulk'),buttons=[];
-  for(const [key,text,action,enabled] of commands){const button=node('button',text);button.type='button';button.addEventListener('click',action);buttons.push([button,enabled]);bar.append(button);}
+  for(const [key,text,action,enabled] of commands){const button=node('button',text);button.type='button';button.dataset.command=key;button.addEventListener('click',action);buttons.push([button,enabled]);bar.append(button);}
   function syncCommands(){for(const [button,enabled] of buttons)button.disabled=!enabled();}
   syncCommands();
   const block=node('div');block.append(table,bar);return block;

@@ -60,8 +60,8 @@ const studioPageProbe = `(() => {
 
 // studioPageWalk clicks every node of the configuration tree. The first time
 // an editor shows a file, it is walked in every language of the project: each
-// element the editor lists is chosen, and each restriction and template opens
-// its window, which is then cancelled. Then the query designer and the
+// element the editor lists is chosen, each restriction and template opens
+// its window, and so does each window of a filter, each then cancelled. Then the query designer and the
 // debugger are opened. A step that ends with the status bar in red is a
 // problem too: an editor that cannot open a file says so there, not in the
 // console.
@@ -86,7 +86,7 @@ const studioPageWalk = `(async () => {
       {select: '.role-tabs button', then: [{open: '.role-list tbody tr[tabindex]'}]},
     ]],
     ['roles', '#role-overview[data-view=roles]', null, [{select: '.role-tree-item'}]],
-    ['restrictions', '#role-overview[data-view=restrictions]', null, [{select: '.overview-tab', then: [{open: '.overview-block .role-list tbody tr[tabindex]'}]}]],
+    ['restrictions', '#role-overview[data-view=restrictions]', null, [{select: '.overview-tab', then: [{open: '.overview-block .role-list tbody tr[tabindex]'}, {press: '.overview-block .role-bulk button[data-command=filter]'}]}]],
     ['catalog', '#catalog-editor', null, [{select: '.catalog-list-item'}]],
     ['project', '#project-editor', null, []],
     ['languages', '#languages-editor', null, []],
@@ -100,15 +100,15 @@ const studioPageWalk = `(async () => {
     return null;
   }
   async function walk(host, plan, context) {
-    for (const {select, open, then} of plan) {
+    for (const {select, open, press, then} of plan) {
       for (let index = 0; index < 500; index++) {
-        const items = [...host.querySelectorAll(select || open)].filter(item => select || item.offsetParent !== null);
+        const items = [...host.querySelectorAll(select || open || press)].filter(item => select || item.offsetParent !== null);
         if (index >= items.length) break;
         const item = items[index];
         studio.step = context + ' · ' + describe(item);
-        if (select) item.click(); else item.dispatchEvent(new MouseEvent('dblclick', {bubbles: true}));
+        if (select || press) item.click(); else item.dispatchEvent(new MouseEvent('dblclick', {bubbles: true}));
         await settle();
-        if (open) await cancelDialog();
+        if (open || press) await cancelDialog();
         if (then) await walk(host, then, studio.step);
       }
     }
