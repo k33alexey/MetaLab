@@ -62,15 +62,15 @@ func (icon Icon) Symbol() string {
 	var out strings.Builder
 	out.WriteString(`<symbol id="icon-` + icon.ID + `" viewBox="0 0 16 16"><g style="stroke-width:1;stroke-linecap:round;stroke-linejoin:round">`)
 	for _, part := range icon.Parts {
-		accent := icon.Accent
+		kind, accent := icon.Color, icon.Accent
 		if accent == "" {
 			accent = icon.Color
 		}
 		if part.Color != "" {
-			accent = part.Color
+			kind, accent = part.Color, part.Color
 		}
 		out.WriteString(part.element())
-		out.WriteString(` style="` + paint(part.Role, icon.Color, accent) + `"/>`)
+		out.WriteString(` style="` + paint(part.Role, kind, accent) + `"/>`)
 	}
 	out.WriteString(`</g></symbol>`)
 	return out.String()

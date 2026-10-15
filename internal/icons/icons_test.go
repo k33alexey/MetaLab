@@ -112,7 +112,7 @@ func TestSpriteHoldsEverySymbol(t *testing.T) {
 func TestRolesArePaintedAsTheStyle(t *testing.T) {
 	icon := Icon{ID: "probe", Color: "#112233", Accent: "#445566", Parts: []Part{
 		rect(Body, 1.5, 1.5, 13, 13), path(Detail, "M2 2H4"), circle(Accent, 8, 8, 2), path(Line, "M2 4H4"),
-		colored(rect(Accent, 2, 2, 2, 2), "#778899"),
+		colored(rect(Accent, 2, 2, 2, 2), "#778899"), colored(rect(Body, 3, 3, 2, 2), "#aabbcc"),
 	}}
 	symbol := icon.Symbol()
 	for _, want := range []string{
@@ -121,6 +121,7 @@ func TestRolesArePaintedAsTheStyle(t *testing.T) {
 		`<circle cx="8" cy="8" r="2" style="fill:#445566;stroke:none"/>`,
 		`<path d="M2 4H4" style="fill:none;stroke:#445566"/>`,
 		`<rect x="2" y="2" width="2" height="2" style="fill:#778899;stroke:none"/>`,
+		`<rect x="3" y="3" width="2" height="2" rx="2" style="fill:color-mix(in srgb,#aabbcc 22%,transparent);stroke:color-mix(in srgb,#aabbcc,#fff var(--icon-lighten,0%))"/>`,
 		`stroke-width:1;stroke-linecap:round;stroke-linejoin:round`,
 	} {
 		if !strings.Contains(symbol, want) {

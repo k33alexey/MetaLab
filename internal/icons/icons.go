@@ -40,8 +40,9 @@ type Part struct {
 	Rect   *[4]float64 // x, y, width, height
 	Circle *[3]float64 // cx, cy, r
 	Path   string
-	// Color overrides the accent colour of the icon for this part: the bars
-	// of a report are red, green and orange.
+	// Color overrides the colour of the icon for this part, in its role: the
+	// bars of a report are red, green and orange; the folder of a group beside
+	// a report keeps the colour of a group.
 	Color string
 }
 
@@ -73,20 +74,21 @@ func colored(part Part, color string) Part {
 
 // The colours of the families of kinds, as the prototype paints them.
 const (
-	slate  = "#7b90aa" // pages and windows: documents, reports, modules, forms
-	steel  = "#5f86b3" // frames of registers and catalogs
-	blue   = "#3d7bc4" // values: constants, attributes, parameters
-	green  = "#4f9a3a" // journals, information registers, calculation
-	yellow = "#e8bf3f" // the header of a catalog
-	gold   = "#e3a826" // roles, commands, the configuration itself
-	amber  = "#d99a2b" // groups of commands, subsystems
-	coin   = "#f0b429" // accumulation
-	red    = "#d64b3f"
-	orange = "#e39b2d"
-	brown  = "#a0704a"
-	gray   = "#8b939c"
-	sea    = "#2f8fb0" // the globe of services and languages
-	code   = "#c8463d" // the brackets of code
+	slate      = "#7b90aa" // pages and windows: documents, reports, modules, forms
+	steel      = "#5f86b3" // frames of registers and catalogs
+	blue       = "#3d7bc4" // values: constants, attributes, parameters
+	green      = "#4f9a3a" // journals, information registers, calculation
+	yellow     = "#e8bf3f" // the header of a catalog
+	groupColor = "#c99a1e" // the folder of a group
+	gold       = "#e3a826" // roles, commands, the configuration itself
+	amber      = "#d99a2b" // groups of commands, subsystems
+	coin       = "#f0b429" // accumulation
+	red        = "#d64b3f"
+	orange     = "#e39b2d"
+	brown      = "#a0704a"
+	gray       = "#8b939c"
+	sea        = "#2f8fb0" // the globe of services and languages
+	code       = "#c8463d" // the brackets of code
 )
 
 // The shapes several icons share.
@@ -96,6 +98,7 @@ const (
 	window   = "M1.5 5.5H14.5"
 	cylinder = "M3.5 4V12Q3.5 14 8 14Q12.5 14 12.5 12V4"
 	globe    = "M2 8H14M8 2Q4.5 8 8 14M8 2Q11.5 8 8 14"
+	folder   = "M1.5 2.5H5.5L7 4H13.5V11.5H1.5Z"
 )
 
 var table = []Icon{
@@ -147,13 +150,163 @@ var table = []Icon{
 		rect(Body, 6.5, 5.5, 5, 4),
 	}},
 	{ID: "resource", Color: green, Accent: green, Parts: []Part{
-		path(Body, "M5.5 14Q2.5 9 6 5Q8.5 2.5 12.5 2Q13 7 10.5 10Q8.5 12.5 5.5 14Z"),
-		path(Detail, "M5.5 14L10 6.5"),
+		path(Accent, "M5.5 3Q5.5 1.5 7 1.5H9Q10.5 1.5 10.5 3V13Q10.5 14.5 9 14.5H7Q5.5 14.5 5.5 13Z"),
 	}},
 	{ID: "tabular-section", Color: steel, Accent: steel, Parts: []Part{
 		rect(Body, 1.5, 2.5, 13, 11),
 		rect(Accent, 2, 3, 12, 2.5),
 		path(Detail, "M1.5 5.5H14.5M1.5 8.5H14.5M1.5 11H14.5M5.5 5.5V13.5"),
+	}},
+	// What the platform gives every object of a kind is green and solid, as
+	// the prototype paints standard attributes and tabular sections; one the
+	// object does not use is a grey dot.
+	{ID: "standard-attribute", Color: green, Accent: green, Parts: []Part{
+		rect(Accent, 2, 6, 12, 4),
+	}},
+	{ID: "standard-attribute-unused", Color: gray, Accent: gray, Parts: []Part{
+		circle(Accent, 8, 8, 1.5),
+	}},
+	{ID: "standard-tabular-section", Color: green, Accent: green, Parts: []Part{
+		rect(Accent, 3, 2, 10, 3.5),
+		rect(Accent, 3, 6.25, 10, 3.5),
+		rect(Accent, 3, 10.5, 10, 3.5),
+	}},
+	{ID: "enumeration-value", Color: "#6f8399", Accent: blue, Parts: []Part{
+		rect(Body, 5.5, 6.5, 9, 3),
+		circle(Accent, 2.75, 8, 1.25),
+	}},
+	{ID: "journal-column", Color: steel, Accent: green, Parts: []Part{
+		rect(Body, 4.5, 1.5, 7, 13),
+		rect(Accent, 5, 2, 6, 2.5),
+		path(Detail, "M4.5 4.5H11.5M6.5 7.5H9.5M6.5 10H9.5M6.5 12.5H9.5"),
+	}},
+	{ID: "addressing-attribute", Color: slate, Accent: blue, Parts: []Part{
+		rect(Body, 1.5, 9.5, 8, 3),
+		circle(Accent, 12, 4, 2),
+		path(Accent, "M9 11Q9 7 12 7Q15 7 15 11Z"),
+	}},
+	{ID: "accounting-flag", Color: slate, Accent: green, Parts: []Part{
+		rect(Body, 1.5, 2.5, 9, 3),
+		path(Line, "M6.5 10L9.5 13L14.5 7.5"),
+	}},
+	{ID: "ext-dimension-accounting-flag", Color: green, Accent: green, Parts: []Part{
+		path(Detail, "M1.5 2.5H8.5M1.5 5.5H8.5M1.5 8.5H5.5"),
+		path(Line, "M6.5 10L9.5 13L14.5 7.5"),
+	}},
+	{ID: "url-template", Color: "#5d6b7a", Accent: green, Parts: []Part{
+		path(Detail, "M1.5 4V12M1.5 8.5Q1.5 7 3 7Q4.5 7 4.5 8.5V12"),
+		path(Detail, "M6 5V11Q6 12 7 12M5 7.5H7M8.5 5V11Q8.5 12 9.5 12M7.5 7.5H9.5"),
+		path(Detail, "M11 7.5V14.5M11 8.5Q11 7.5 12.5 7.5Q14.5 7.5 14.5 9.75Q14.5 12 12.5 12Q11 12 11 11"),
+		circle(Accent, 13, 3.5, 2),
+	}},
+	{ID: "http-method", Color: green, Accent: green, Parts: []Part{
+		circle(Accent, 8, 8, 3),
+	}},
+	{ID: "web-service-operation", Color: brown, Accent: brown, Parts: []Part{
+		circle(Accent, 7, 9, 5),
+		colored(circle(Accent, 11.75, 4.25, 2.25), green),
+	}},
+	// One parameter, one sign: of a web service operation, of a data
+	// composition schema.
+	{ID: "parameter", Color: blue, Accent: green, Parts: []Part{
+		path(Detail, "M5.5 2.5Q2.5 8 5.5 13.5M10.5 2.5Q13.5 8 10.5 13.5"),
+		circle(Accent, 8, 8, 2),
+	}},
+	{ID: "document-movement", Color: slate, Accent: "#8fb8e0", Parts: []Part{
+		path(Body, "M1.5 5.5H6L8.5 8V14.5H1.5Z"),
+		rect(Accent, 8.5, 8.5, 6, 6),
+		path(Detail, "M10 10.5H13M10 12.5H13"),
+		colored(path(Line, "M3.5 3.5Q4 1.5 8 1.5Q11.5 1.5 11.5 5.5M10 4L11.5 5.5L13 4"), green),
+	}},
+	// A predefined element or group is drawn as an ordinary one with a small
+	// yellow dot below its right end, as the prototype marks them.
+	{ID: "predefined-item", Color: slate, Accent: yellow, Parts: []Part{
+		rect(Body, 2.5, 6.5, 11, 3),
+		circle(Accent, 13.5, 12.5, 2),
+	}},
+	{ID: "catalog-group", Color: groupColor, Accent: yellow, Parts: []Part{
+		path(Body, folder),
+		rect(Accent, 2, 6, 11, 1.5),
+	}},
+	{ID: "predefined-group", Color: groupColor, Accent: yellow, Parts: []Part{
+		path(Body, folder),
+		rect(Accent, 2, 6, 11, 1.5),
+		circle(Accent, 13.5, 13.5, 2),
+	}},
+	// The points of a route map, painted as the prototype's map paints them.
+	{ID: "route-start", Color: green, Parts: []Part{
+		path(Body, "M3.5 2.5H12.5V9.5L8 13.5L3.5 9.5Z"),
+	}},
+	{ID: "route-end", Color: blue, Parts: []Part{
+		path(Body, "M8 2.5L12.5 6.5V13.5H3.5V6.5Z"),
+		path(Detail, "M6 10.5H10"),
+	}},
+	{ID: "route-action", Color: "#c9a227", Accent: blue, Parts: []Part{
+		rect(Body, 1.5, 2.5, 13, 11),
+		path(Detail, "M1.5 6.5H14.5M5.5 9.5H11.5"),
+		circle(Accent, 4, 4.5, 1),
+	}},
+	{ID: "route-condition", Color: red, Parts: []Part{
+		path(Body, "M1.5 8L4.5 3.5H11.5L14.5 8L11.5 12.5H4.5Z"),
+	}},
+	{ID: "route-switch", Color: red, Parts: []Part{
+		path(Body, "M2.5 4.5L4.5 1.5H11.5L13.5 4.5L11.5 7.5H4.5Z"),
+		path(Detail, "M8 7.5V14M8 10.5H3.5V14M8 10.5H12.5V14"),
+	}},
+	{ID: "route-split", Color: orange, Parts: []Part{
+		path(Body, "M1.5 4.5H14.5L8 12.5Z"),
+	}},
+	{ID: "route-merge", Color: green, Parts: []Part{
+		path(Body, "M1.5 12.5H14.5L8 4.5Z"),
+	}},
+	{ID: "route-processing", Color: red, Accent: code, Parts: []Part{
+		rect(Body, 1.5, 3.5, 13, 9),
+		path(Line, "M6.5 6L4.5 8L6.5 10M9.5 6L11.5 8L9.5 10"),
+	}},
+	{ID: "route-subprocess", Color: red, Parts: []Part{
+		rect(Body, 1.5, 2.5, 13, 11),
+		rect(Body, 5.5, 8.5, 5, 4),
+		path(Detail, "M8 9.5V11.5M7 10.5H9"),
+	}},
+	// The data composition schema and what it holds.
+	{ID: "dcs-schema", Color: slate, Parts: []Part{
+		path(Body, page),
+		path(Detail, pageFold+"M5.5 9V12.5H8.5M5.5 10.5H8.5"),
+		colored(rect(Accent, 4, 6.5, 3, 2.5), blue),
+		colored(rect(Accent, 9, 9.5, 2.5, 2), green),
+		colored(rect(Accent, 9, 12, 2.5, 1.5), orange),
+	}},
+	{ID: "dcs-dataset-query", Color: blue, Accent: blue, Parts: []Part{
+		rect(Body, 1.5, 2.5, 13, 11),
+		rect(Accent, 2, 3, 12, 2.5),
+		path(Detail, "M1.5 5.5H14.5M5.5 5.5V13.5M10.5 5.5V13.5"),
+	}},
+	{ID: "dcs-dataset-object", Color: blue, Accent: orange, Parts: []Part{
+		rect(Body, 1.5, 2.5, 10, 11),
+		path(Detail, "M1.5 5.5H11.5M5 5.5V13.5M8 5.5V13.5"),
+		circle(Accent, 12.5, 11.5, 2.5),
+	}},
+	{ID: "dcs-dataset-union", Color: blue, Accent: blue, Parts: []Part{
+		rect(Body, 1.5, 1.5, 9, 8),
+		rect(Body, 5.5, 6.5, 9, 8),
+		path(Detail, "M5.5 9.5H14.5M10 9.5V14.5"),
+	}},
+	{ID: "dcs-link", Color: blue, Accent: red, Parts: []Part{
+		rect(Body, 1.5, 1.5, 6, 5),
+		rect(Body, 8.5, 9.5, 6, 5),
+		path(Line, "M4.5 6.5V12H8.5"),
+	}},
+	{ID: "dcs-calculated-field", Color: slate, Accent: blue, Parts: []Part{
+		rect(Body, 1.5, 9.5, 9, 3),
+		path(Line, "M10.5 3.5H14.5M10.5 6H14.5"),
+	}},
+	{ID: "dcs-settings-variant", Color: slate, Parts: []Part{
+		colored(path(Body, folder), groupColor),
+		colored(rect(Accent, 2, 6, 6, 1.5), yellow),
+		path(Body, "M8.5 7.5H12L14.5 10V14.5H8.5Z"),
+		colored(rect(Accent, 9.5, 12, 1, 1.5), red),
+		colored(rect(Accent, 11, 10.5, 1, 3), green),
+		colored(rect(Accent, 12.5, 11.5, 1, 2), orange),
 	}},
 	{ID: "exchange-plan", Color: blue, Accent: green, Parts: []Part{
 		rect(Body, 1.5, 1.5, 6, 6),
@@ -284,9 +437,9 @@ var table = []Icon{
 		path(Line, "M10 10.5H13.5"),
 	}},
 	{ID: "sequence", Color: gray, Parts: []Part{
-		colored(rect(Accent, 1.5, 2.5, 10, 2.5), red),
-		colored(rect(Accent, 4.5, 6.75, 10, 2.5), green),
-		colored(rect(Accent, 1.5, 11, 13, 2.5), blue),
+		colored(path(Accent, "M6 2.5H11V1L14.5 3.5L11 6V4.5H6Z"), blue),
+		colored(path(Accent, "M3.5 7H8.5V5.5L12 8L8.5 10.5V9H3.5Z"), green),
+		colored(path(Accent, "M1 11.5H6V10L9.5 12.5L6 15V13.5H1Z"), red),
 	}},
 	{ID: "document-journal", Color: green, Accent: green, Parts: []Part{
 		rect(Body, 2.5, 1.5, 11, 13),
