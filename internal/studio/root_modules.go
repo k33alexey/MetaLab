@@ -93,7 +93,7 @@ func rootModuleByID(id string) (rootModule, bool) {
 func (workspace *Workspace) rootModuleNodesLocked() []Node {
 	nodes := make([]Node, 0, len(rootModules))
 	for _, module := range rootModules {
-		node := Node{ID: module.id, Kind: "root-module", Title: module.title, Path: module.file}
+		node := Node{ID: module.id, Kind: "root-module", Icon: moduleIcon, Title: module.title, Path: module.file}
 		value := "создан"
 		if _, err := os.Stat(filepath.Join(workspace.root, module.file)); os.IsNotExist(err) {
 			value = "не создан"
@@ -127,7 +127,7 @@ func (workspace *Workspace) rootPictureNodesLocked() []Node {
 		}
 		sort.Strings(images)
 		nodes = append(nodes, Node{
-			ID: "root-picture:" + picture, Kind: "metadata", Title: picture, Path: picture,
+			ID: "root-picture:" + picture, Kind: "metadata", Icon: pictureIcon, Title: picture, Path: picture,
 			Properties: []Property{{Name: "Изображения", Value: strings.Join(images, ", ")}},
 		})
 	}

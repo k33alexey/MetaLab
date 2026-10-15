@@ -3,6 +3,7 @@ package studio
 import (
 	"testing"
 
+	"github.com/k33alexey/MetaLab/internal/icons"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -67,4 +68,68 @@ func lastSegment(path string) string {
 		}
 	}
 	return path
+}
+
+// TestTreeDrawsEveryNodeWithItsIcon catches a node of the tree left without
+// its icon, or named one the set does not draw: the tree shows an empty square
+// there. The icons a node is expected to have are written out here from the
+// prototype's tree (block 00: a branch and its objects share the kind's
+// icon, the folder «Формы» the icon of a form, «Измерения» of a dimension),
+// not read from the descriptors the code draws them by.
+func TestTreeDrawsEveryNodeWithItsIcon(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	ids := map[string]uuid.UUID{}
+	for _, object := range []string{"catalogs/Банки", "information-registers/Курсы", "calculation-registers/Начисления", "sequences/Партии"} {
+		id := uuid.MustNew()
+		ids[object] = id
+		writeProjectFile(t, root, "metadata/"+object+"/object.yaml", "format: 1\nid: "+id.String()+"\nname: "+lastSegment(object)+"\ntitle: {ru: "+lastSegment(object)+"}\n")
+	}
+	writeProjectFile(t, root, "metadata/calculation-registers/Начисления/recalculations/Перерасчет/МодульНабораЗаписей.bsl", "")
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := workspace.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var walk func(Node)
+	walk = func(node Node) {
+		if !icons.Has(node.Icon) {
+			t.Errorf("node %q (%s) is drawn with icon %q, which the set does not draw", node.Title, node.ID, node.Icon)
+		}
+		for _, child := range node.Children {
+			walk(child)
+		}
+	}
+	walk(snapshot.Tree)
+	for id, want := range map[string]string{
+		"project":                      "configuration",
+		"metadata/common":              "common",
+		"metadata/catalogs":            "catalog",
+		ids["catalogs/Банки"].String(): "catalog",
+		ids["catalogs/Банки"].String() + ":forms":                                                     "form",
+		ids["catalogs/Банки"].String() + ":commands":                                                  "command",
+		ids["catalogs/Банки"].String() + ":templates":                                                 "template",
+		ids["catalogs/Банки"].String() + ":attributes":                                                "attribute",
+		ids["catalogs/Банки"].String() + ":table-parts":                                               "tabular-section",
+		ids["information-registers/Курсы"].String():                                                   "information-register",
+		ids["information-registers/Курсы"].String() + ":dimensions":                                   "dimension",
+		ids["information-registers/Курсы"].String() + ":resources":                                    "resource",
+		"metadata/calculation-registers/Начисления/recalculations":                                    "recalculation",
+		"metadata/calculation-registers/Начисления/recalculations/Перерасчет":                         "recalculation",
+		"metadata/calculation-registers/Начисления/recalculations/Перерасчет/МодульНабораЗаписей.bsl": "module",
+		ids["sequences/Партии"].String():                                                              "sequence",
+		"metadata/document-numerators":                                                                "numerator",
+	} {
+		node, ok := findNodeByID(snapshot.Tree, id)
+		if !ok {
+			t.Errorf("node %s is not in the tree", id)
+			continue
+		}
+		if node.Icon != want {
+			t.Errorf("node %q (%s) is drawn with %q, the prototype draws it with %q", node.Title, id, node.Icon, want)
+		}
+	}
 }

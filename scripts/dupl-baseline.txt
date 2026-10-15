@@ -53,6 +53,6 @@
 1	internal/studio/catalog_editor.go internal/studio/roles.go
 1	internal/studio/debugger.go internal/studio/debugger.go
 1	internal/studio/query_designer.go internal/studio/query_designer.go
-4	internal/studio/studio.go internal/studio/studio.go
+2	internal/studio/studio.go internal/studio/studio.go
 1	internal/systemdb/databases.go internal/systemdb/studio_sessions.go
 1	internal/systemdb/sessions.go internal/systemdb/studio_sessions.go

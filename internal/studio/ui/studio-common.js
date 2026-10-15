@@ -450,3 +450,37 @@ function queryTextField(value, apply, label) {
   wrapper.textarea = textarea;
   return wrapper;
 }
+
+/* Icons are drawn from one sprite, the icons of internal/icons (ICONS.md,
+   «Визуальный язык»): the page puts it in once and an icon is a <use> of its
+   symbol by name. The sprite is our own server's, so it goes in as markup. A
+   <use> drawn before the sprite has come resolves once it is there. */
+const StudioIcons = (() => {
+  let loading = null;
+  return {
+    load() {
+      if (!loading) {
+        loading = fetch('/ui/icons.svg')
+          .then(response => (response.ok ? response.text() : ''))
+          .then(text => { if (text) document.body.insertAdjacentHTML('afterbegin', text); })
+          .catch(() => {});
+      }
+      return loading;
+    },
+  };
+})();
+
+function iconElement(name) {
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('class', 'tree-icon');
+  svg.setAttribute('width', '16');
+  svg.setAttribute('height', '16');
+  svg.setAttribute('aria-hidden', 'true');
+  if (name) {
+    const use = document.createElementNS(svgNS, 'use');
+    use.setAttribute('href', '#icon-' + name);
+    svg.append(use);
+  }
+  return svg;
+}

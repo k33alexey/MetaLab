@@ -119,6 +119,13 @@ const studioPageWalk = `(async () => {
   const languages = [...languageSelect.options].map(option => option.value);
   const tree = () => [...document.querySelectorAll('#tree summary, #tree .leaf')];
   if (!tree().length) problems.push('the configuration tree is empty');
+  // Every node is drawn with its icon, and the icon is in the sprite: a
+  // node named an icon the set does not draw, or a sprite that never came,
+  // leaves an empty square in the tree.
+  for (const item of tree()) {
+    const href = item.querySelector(':scope > .tree-icon use')?.getAttribute('href');
+    if (!href || !document.querySelector('symbol' + href)) problems.push('tree · ' + describe(item) + ': no icon drawn (' + href + ')');
+  }
   // A node's context menu is opened anew before each of its commands: a
   // command closes the menu it was chosen from.
   const menu = item => {

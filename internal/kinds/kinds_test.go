@@ -11,7 +11,8 @@ import (
 
 // TestEveryKindHasEveryWord catches a kind added without one of its names: an
 // empty word would make the kind unreachable from code in one language, or a
-// blank caption in the interface.
+// blank caption in the interface; and without its icon, an empty square in
+// the tree (whether the set draws it - internal/icons).
 func TestEveryKindHasEveryWord(t *testing.T) {
 	seen := map[Kind]bool{}
 	for _, item := range All() {
@@ -22,7 +23,7 @@ func TestEveryKindHasEveryWord(t *testing.T) {
 		for field, value := range map[string]string{
 			"name in Russian": item.Name.Russian, "name in English": item.Name.English,
 			"collection in Russian": item.Collection.Russian, "collection in English": item.Collection.English,
-			"genitive": item.Genitive, "title": item.Title, "titles": item.Titles,
+			"genitive": item.Genitive, "title": item.Title, "titles": item.Titles, "icon": item.Icon,
 		} {
 			if strings.TrimSpace(value) == "" {
 				t.Errorf("%s has no %s", item.Kind, field)

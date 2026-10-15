@@ -20,6 +20,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/bsl/vm"
 	"github.com/k33alexey/MetaLab/internal/debugtarget"
 	"github.com/k33alexey/MetaLab/internal/gitclient"
+	"github.com/k33alexey/MetaLab/internal/icons"
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -61,6 +62,7 @@ type Snapshot struct {
 type Node struct {
 	ID         string     `json:"id"`
 	Kind       string     `json:"kind"`
+	Icon       string     `json:"icon,omitempty"`
 	Title      string     `json:"title"`
 	Path       string     `json:"path,omitempty"`
 	Fragment   string     `json:"fragment,omitempty"`
@@ -147,7 +149,7 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 		properties = append(properties, Property{Name: "Версия", Value: configuration.Version})
 	}
 	root := Node{
-		ID: "project", Kind: "project", Title: configuration.Name, Path: project.ConfigurationFile,
+		ID: "project", Kind: "project", Icon: configurationIcon, Title: configuration.Name, Path: project.ConfigurationFile,
 		Properties: properties,
 	}
 	root.Children = append(root.Children, workspace.rootModuleNodesLocked()...)
@@ -207,6 +209,10 @@ func NewHandler(workspace *Workspace) http.Handler {
 	registerCatalogEditorRoutes(routes, workspace)
 	registerProjectEditorRoutes(routes, workspace)
 	routes.Handle("GET /ui/", http.FileServer(http.FS(assets)))
+	routes.HandleFunc("GET /ui/icons.svg", func(response http.ResponseWriter, _ *http.Request) {
+		response.Header().Set("Content-Type", "image/svg+xml")
+		_, _ = response.Write(icons.Sprite())
+	})
 	// Studio has no icon of its own; the browser asks for one on every
 	// opening, and a 404 there is an error in the console of every session.
 	routes.HandleFunc("GET /favicon.ico", func(response http.ResponseWriter, _ *http.Request) {
@@ -861,7 +867,7 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 	built := make(map[string]Node, len(project.MetadataKinds()))
 	for _, kind := range project.MetadataKinds() {
 		relative := filepath.Join("metadata", kind)
-		node := Node{ID: "metadata/" + kind, Kind: "metadata-group", Title: metadataTitle(kind), Path: filepath.ToSlash(relative)}
+		node := Node{ID: "metadata/" + kind, Kind: "metadata-group", Icon: kindIcon(kind), Title: metadataTitle(kind), Path: filepath.ToSlash(relative)}
 		path := filepath.Join(workspace.root, relative)
 		switch {
 		case kind == "languages":
@@ -876,7 +882,7 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 			// switching straight to that one language's own properties.
 			for _, item := range languages {
 				node.Children = append(node.Children, Node{
-					ID: "language:" + item.Code, Kind: "language", Title: item.Name,
+					ID: "language:" + item.Code, Kind: "language", Icon: kindIcon(kind), Title: item.Name,
 					Path: project.ConfigurationFile, Fragment: "language:" + item.Code,
 					Properties: []Property{{Name: "Код", Value: item.Code}, {Name: "Имя", Value: item.Name}},
 				})
@@ -919,7 +925,7 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 	// живут в корне «Документов», рядом с самими документами - там же, где
 	// создаются их виды. Счётчик у «Документов» уже посчитан и остаётся
 	// числом документов: вложенные ветви - не документы.
-	common := Node{ID: "metadata/common", Kind: "group", Title: "Общие", Path: "metadata"}
+	common := Node{ID: "metadata/common", Kind: "group", Icon: commonIcon, Title: "Общие", Path: "metadata"}
 	branches := []Node{{}}
 	var nested []Node
 	for _, item := range kinds.Branches() {
@@ -965,7 +971,7 @@ func (workspace *Workspace) attachCommonModuleSources(node *Node) {
 			continue
 		}
 		node.Children[index].Children = append(node.Children[index].Children, Node{
-			ID: descriptor.Module.String(), Kind: "modules", Title: "Модуль", Path: path,
+			ID: descriptor.Module.String(), Kind: "modules", Icon: moduleIcon, Title: "Модуль", Path: path,
 			Properties: []Property{{Name: "UUID", Value: descriptor.Module.String()}, {Name: "Путь", Value: path}},
 		})
 	}
@@ -1014,8 +1020,12 @@ func (workspace *Workspace) sourceFiles(directory, relative, extension, kind, la
 				return nil, err
 			}
 		}
+		icon := moduleIcon
+		if kind == "metadata" {
+			icon = kindIcon(string(folderKind))
+		}
 		node := Node{
-			ID: id.String(), Kind: kind, Title: title, Path: path,
+			ID: id.String(), Kind: kind, Icon: icon, Title: title, Path: path,
 			Properties: []Property{{Name: "UUID", Value: id.String()}, {Name: "Путь", Value: path}, {Name: "Размер", Value: fmt.Sprintf("%d байт", info.Size())}},
 		}
 		nodes = append(nodes, node)
@@ -1074,21 +1084,21 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, nodeKind, kin
 		// filter no templates, a storage of settings no commands.
 		layout := kinds.Must(kinds.Kind(kind)).Layout()
 		if layout.Forms {
-			children = append(children, Node{ID: id.String() + ":forms", Kind: "group", Title: "Формы", Children: owned.forms})
+			children = append(children, Node{ID: id.String() + ":forms", Kind: "group", Icon: formIcon, Title: "Формы", Children: owned.forms})
 		}
 		// A command shows the module that runs it, because that is the whole
 		// of what a command keeps on disk.
 		if layout.Commands {
-			children = append(children, Node{ID: id.String() + ":commands", Kind: "group", Title: "Команды", Children: owned.commands})
+			children = append(children, Node{ID: id.String() + ":commands", Kind: "group", Icon: commandIcon, Title: "Команды", Children: owned.commands})
 		}
 		// "Макеты" still stands in empty: a template's content has no editor
 		// yet.
 		if layout.Templates {
-			children = append(children, Node{ID: id.String() + ":templates", Kind: "group", Title: "Макеты"})
+			children = append(children, Node{ID: id.String() + ":templates", Kind: "group", Icon: templateIcon, Title: "Макеты"})
 		}
 		children = append(children, owned.modules...)
 		nodes = append(nodes, Node{
-			ID: id.String(), Kind: nodeKind, Title: title, Path: descriptionPath, Children: children,
+			ID: id.String(), Kind: nodeKind, Icon: kindIcon(kind), Title: title, Path: descriptionPath, Children: children,
 			Properties: []Property{{Name: "UUID", Value: id.String()}, {Name: "Путь", Value: descriptionPath}, {Name: "Размер", Value: fmt.Sprintf("%d байт", info.Size())}},
 		})
 	}
@@ -1168,10 +1178,7 @@ func objectOwnedFileNodes(objectDirectory, objectRelative, kind string, collecti
 		}
 		title := moduleTitle(entry.Name())
 		path := filepath.ToSlash(filepath.Join(objectRelative, entry.Name()))
-		owned.modules = append(owned.modules, Node{
-			ID: path, Kind: "modules", Title: title, Path: path,
-			Properties: []Property{{Name: "Путь", Value: path}},
-		})
+		owned.modules = append(owned.modules, moduleNode(path, title))
 	}
 	sort.Slice(owned.modules, func(left, right int) bool { return owned.modules[left].Path < owned.modules[right].Path })
 	sort.Slice(owned.forms, func(left, right int) bool { return owned.forms[left].Path < owned.forms[right].Path })
@@ -1184,7 +1191,7 @@ func objectOwnedFileNodes(objectDirectory, objectRelative, kind string, collecti
 // calculation register, each showing its record set module.
 func innerObjectNodes(objectDirectory, objectRelative, kind, folder string) (Node, error) {
 	relative := filepath.ToSlash(filepath.Join(objectRelative, folder))
-	group := Node{ID: relative, Kind: "group", Title: metadataTitle(kind)}
+	group := Node{ID: relative, Kind: "group", Icon: kindIcon(kind), Title: metadataTitle(kind)}
 	entries, err := os.ReadDir(filepath.Join(objectDirectory, folder))
 	if err != nil {
 		return Node{}, fmt.Errorf("read %s: %w", relative, err)
@@ -1193,7 +1200,7 @@ func innerObjectNodes(objectDirectory, objectRelative, kind, folder string) (Nod
 		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || project.SubordinateName(entry.Name()) != nil {
 			return Node{}, fmt.Errorf("unexpected source path %q", relative+"/"+entry.Name())
 		}
-		node := Node{ID: relative + "/" + entry.Name(), Kind: kind, Title: entry.Name()}
+		node := Node{ID: relative + "/" + entry.Name(), Kind: kind, Icon: kindIcon(kind), Title: entry.Name()}
 		files, err := os.ReadDir(filepath.Join(objectDirectory, folder, entry.Name()))
 		if err != nil {
 			return Node{}, fmt.Errorf("read %s: %w", node.ID, err)
@@ -1203,10 +1210,7 @@ func innerObjectNodes(objectDirectory, objectRelative, kind, folder string) (Nod
 				return Node{}, fmt.Errorf("unexpected source path %q", node.ID+"/"+file.Name())
 			}
 			path := node.ID + "/" + file.Name()
-			node.Children = append(node.Children, Node{
-				ID: path, Kind: "modules", Title: moduleTitle(file.Name()), Path: path,
-				Properties: []Property{{Name: "Путь", Value: path}},
-			})
+			node.Children = append(node.Children, moduleNode(path, moduleTitle(file.Name())))
 		}
 		group.Children = append(group.Children, node)
 	}
@@ -1233,17 +1237,14 @@ func objectFormNodes(parentDirectory, parentRelative, forms string) ([]Node, err
 		}
 		path := filepath.ToSlash(filepath.Join(parentRelative, forms, entry.Name(), project.FormMetadataFile))
 		node := Node{
-			ID: path, Kind: "forms", Title: entry.Name(), Path: path,
+			ID: path, Kind: "forms", Icon: formIcon, Title: entry.Name(), Path: path,
 			Properties: []Property{{Name: "Путь", Value: path}},
 		}
 		// The module hangs under its form, because that is where it lies and
 		// the only thing that says it exists is that it lies there.
 		modulePath := filepath.ToSlash(filepath.Join(parentRelative, forms, entry.Name(), project.FormModuleFile))
 		if info, err := os.Lstat(filepath.Join(parentDirectory, forms, entry.Name(), project.FormModuleFile)); err == nil && info.Mode().IsRegular() {
-			node.Children = append(node.Children, Node{
-				ID: modulePath, Kind: "modules", Title: moduleTitle(project.FormModuleFile), Path: modulePath,
-				Properties: []Property{{Name: "Путь", Value: modulePath}},
-			})
+			node.Children = append(node.Children, moduleNode(modulePath, moduleTitle(project.FormModuleFile)))
 		}
 		nodes = append(nodes, node)
 	}
@@ -1269,7 +1270,7 @@ func (workspace *Workspace) attachSubordinateObjects(owners []Node, directory, r
 		for _, collection := range collections {
 			subordinateKind, _ := project.SubordinateObjectKind(kind, collection)
 			group := Node{
-				ID: relative + "/" + ownerName + "/" + collection, Kind: "group", Title: metadataTitle(subordinateKind),
+				ID: relative + "/" + ownerName + "/" + collection, Kind: "group", Icon: kindIcon(subordinateKind), Title: metadataTitle(subordinateKind),
 			}
 			collectionDirectory := filepath.Join(directory, ownerName, collection)
 			if _, err := os.Stat(collectionDirectory); err == nil {
@@ -1294,6 +1295,33 @@ func moduleTitle(file string) string {
 	return module.Title()
 }
 
+// The icons of what the tree shows beside the objects of the kinds: the
+// objects themselves are drawn with the icon of their kind (kindIcon).
+const (
+	configurationIcon = "configuration"
+	commonIcon        = "common"
+	moduleIcon        = "module"
+	formIcon          = "form"
+	commandIcon       = "command"
+	templateIcon      = "template"
+	pictureIcon       = "picture"
+	attributeIcon     = "attribute"
+	dimensionIcon     = "dimension"
+	resourceIcon      = "resource"
+	tablePartIcon     = "tabular-section"
+)
+
+// kindIcon is the icon of a kind, which its descriptor names.
+func kindIcon(kind string) string {
+	descriptor, _ := kinds.Of(kinds.Kind(kind))
+	return descriptor.Icon
+}
+
+// moduleNode is the leaf of a module file, which opens it.
+func moduleNode(path, title string) Node {
+	return Node{ID: path, Kind: "modules", Icon: moduleIcon, Title: title, Path: path, Properties: []Property{{Name: "Путь", Value: path}}}
+}
+
 // namedFolderNodes lists the objects of a kind that keeps only files: each in a
 // folder named after it, holding its description and the modules that run it.
 // The node opens the description; the modules hang beneath.
@@ -1313,7 +1341,7 @@ func namedFolderNodes(directory, relative, kind string, named []string) ([]Node,
 		}
 		path := filepath.ToSlash(filepath.Join(relative, entry.Name(), description))
 		node := Node{
-			ID: path, Kind: kind, Title: entry.Name(), Path: path,
+			ID: path, Kind: kind, Icon: kindIcon(kind), Title: entry.Name(), Path: path,
 			Properties: []Property{{Name: "Путь", Value: path}},
 		}
 		for _, file := range named {
@@ -1325,10 +1353,7 @@ func namedFolderNodes(directory, relative, kind string, named []string) ([]Node,
 				continue
 			}
 			modulePath := filepath.ToSlash(filepath.Join(relative, entry.Name(), file))
-			node.Children = append(node.Children, Node{
-				ID: modulePath, Kind: "modules", Title: moduleTitle(file), Path: modulePath,
-				Properties: []Property{{Name: "Путь", Value: modulePath}},
-			})
+			node.Children = append(node.Children, moduleNode(modulePath, moduleTitle(file)))
 		}
 		nodes = append(nodes, node)
 	}
@@ -1351,7 +1376,7 @@ func objectCommandNodes(objectDirectory, objectRelative string) ([]Node, error) 
 		}
 		path := filepath.ToSlash(filepath.Join(objectRelative, "commands", entry.Name(), project.CommandModuleFile))
 		nodes = append(nodes, Node{
-			ID: path, Kind: "commands", Title: entry.Name(), Path: path,
+			ID: path, Kind: "commands", Icon: commandIcon, Title: entry.Name(), Path: path,
 			Properties: []Property{{Name: "Путь", Value: path}},
 		})
 	}
@@ -1372,10 +1397,7 @@ func objectDataGroups(loaded *metadata.Catalog, kind, language string, languages
 			if loaded != nil {
 				definition, _ = loaded.CatalogByID(id)
 			}
-			return []Node{
-				attributeGroupNode(id.String()+":attributes", "Реквизиты", loaded.OwnAttributes(definition.Attributes), descriptionPath, language, languages),
-				tablePartGroupNode(id.String()+":table-parts", "Табличные части", definition.TableParts, descriptionPath, language, languages),
-			}
+			return objectAttributeGroups(id, loaded.OwnAttributes(definition.Attributes), definition.TableParts, descriptionPath, language, languages)
 		}
 	case "documents":
 		return func(id uuid.UUID, descriptionPath string) []Node {
@@ -1383,10 +1405,7 @@ func objectDataGroups(loaded *metadata.Catalog, kind, language string, languages
 			if loaded != nil {
 				definition, _ = loaded.DocumentByID(id)
 			}
-			return []Node{
-				attributeGroupNode(id.String()+":attributes", "Реквизиты", loaded.OwnAttributes(definition.Attributes), descriptionPath, language, languages),
-				tablePartGroupNode(id.String()+":table-parts", "Табличные части", definition.TableParts, descriptionPath, language, languages),
-			}
+			return objectAttributeGroups(id, loaded.OwnAttributes(definition.Attributes), definition.TableParts, descriptionPath, language, languages)
 		}
 	case "information-registers":
 		return func(id uuid.UUID, descriptionPath string) []Node {
@@ -1394,11 +1413,7 @@ func objectDataGroups(loaded *metadata.Catalog, kind, language string, languages
 			if loaded != nil {
 				definition, _ = loaded.InformationRegisterByID(id)
 			}
-			return []Node{
-				attributeGroupNode(id.String()+":dimensions", "Измерения", metadata.RegisterDimensionAttributes(definition.Dimensions), descriptionPath, language, languages),
-				attributeGroupNode(id.String()+":resources", "Ресурсы", definition.Resources, descriptionPath, language, languages),
-				attributeGroupNode(id.String()+":attributes", "Реквизиты", loaded.OwnAttributes(definition.Attributes), descriptionPath, language, languages),
-			}
+			return registerGroups(id, definition.Dimensions, definition.Resources, loaded.OwnAttributes(definition.Attributes), descriptionPath, language, languages)
 		}
 	case "accumulation-registers":
 		return func(id uuid.UUID, descriptionPath string) []Node {
@@ -1406,14 +1421,29 @@ func objectDataGroups(loaded *metadata.Catalog, kind, language string, languages
 			if loaded != nil {
 				definition, _ = loaded.AccumulationRegisterByID(id)
 			}
-			return []Node{
-				attributeGroupNode(id.String()+":dimensions", "Измерения", metadata.RegisterDimensionAttributes(definition.Dimensions), descriptionPath, language, languages),
-				attributeGroupNode(id.String()+":resources", "Ресурсы", definition.Resources, descriptionPath, language, languages),
-				attributeGroupNode(id.String()+":attributes", "Реквизиты", loaded.OwnAttributes(definition.Attributes), descriptionPath, language, languages),
-			}
+			return registerGroups(id, definition.Dimensions, definition.Resources, loaded.OwnAttributes(definition.Attributes), descriptionPath, language, languages)
 		}
 	default:
 		return nil
+	}
+}
+
+// objectAttributeGroups are the groups of an object that keeps attributes
+// and tabular sections: a catalog and a document show the same two.
+func objectAttributeGroups(id uuid.UUID, attributes []metadata.Attribute, tableParts []metadata.TablePart, descriptionPath, language string, languages []project.Language) []Node {
+	return []Node{
+		attributeGroupNode(id.String()+":attributes", "Реквизиты", attributeIcon, attributes, descriptionPath, language, languages),
+		tablePartGroupNode(id.String()+":table-parts", "Табличные части", tableParts, descriptionPath, language, languages),
+	}
+}
+
+// registerGroups are the groups of a register: its dimensions, resources and
+// attributes, in the order the configurator's tree shows them.
+func registerGroups(id uuid.UUID, dimensions []metadata.RegisterDimension, resources, attributes []metadata.Attribute, descriptionPath, language string, languages []project.Language) []Node {
+	return []Node{
+		attributeGroupNode(id.String()+":dimensions", "Измерения", dimensionIcon, metadata.RegisterDimensionAttributes(dimensions), descriptionPath, language, languages),
+		attributeGroupNode(id.String()+":resources", "Ресурсы", resourceIcon, resources, descriptionPath, language, languages),
+		attributeGroupNode(id.String()+":attributes", "Реквизиты", attributeIcon, attributes, descriptionPath, language, languages),
 	}
 }
 
@@ -1422,18 +1452,18 @@ func objectDataGroups(loaded *metadata.Catalog, kind, language string, languages
 // carries the object's own object.yaml as Path (so selecting it opens the
 // matching visual editor once one exists for this kind) and a Fragment
 // identifying which attribute to select there.
-func attributeGroupNode(groupID, title string, attributes []metadata.Attribute, descriptionPath, language string, languages []project.Language) Node {
+func attributeGroupNode(groupID, title, icon string, attributes []metadata.Attribute, descriptionPath, language string, languages []project.Language) Node {
 	children := make([]Node, 0, len(attributes))
 	for _, attribute := range attributes {
 		children = append(children, Node{
-			ID: attribute.ID.String(), Kind: "attribute",
+			ID: attribute.ID.String(), Kind: "attribute", Icon: icon,
 			Title: attribute.Name,
 			Path:  descriptionPath, Fragment: "attribute:" + attribute.ID.String(),
 			Properties: []Property{{Name: "UUID", Value: attribute.ID.String()}},
 		})
 	}
 	sortNodesByTitle(children)
-	return Node{ID: groupID, Kind: "group", Title: title, Path: descriptionPath, Children: children}
+	return Node{ID: groupID, Kind: "group", Icon: icon, Title: title, Path: descriptionPath, Children: children}
 }
 
 // tablePartGroupNode builds the always-visible "Табличные части" group,
@@ -1445,7 +1475,7 @@ func tablePartGroupNode(groupID, title string, tableParts []metadata.TablePart, 
 		partAttributes := make([]Node, 0, len(part.Attributes))
 		for _, attribute := range part.Attributes {
 			partAttributes = append(partAttributes, Node{
-				ID: part.ID.String() + ":" + attribute.ID.String(), Kind: "attribute",
+				ID: part.ID.String() + ":" + attribute.ID.String(), Kind: "attribute", Icon: attributeIcon,
 				Title: attribute.Name,
 				Path:  descriptionPath, Fragment: fragment,
 				Properties: []Property{{Name: "UUID", Value: attribute.ID.String()}},
@@ -1453,14 +1483,14 @@ func tablePartGroupNode(groupID, title string, tableParts []metadata.TablePart, 
 		}
 		sortNodesByTitle(partAttributes)
 		children = append(children, Node{
-			ID: part.ID.String(), Kind: "tablepart",
+			ID: part.ID.String(), Kind: "tablepart", Icon: tablePartIcon,
 			Title: part.Name,
 			Path:  descriptionPath, Fragment: fragment, Children: partAttributes,
 			Properties: []Property{{Name: "UUID", Value: part.ID.String()}},
 		})
 	}
 	sortNodesByTitle(children)
-	return Node{ID: groupID, Kind: "group", Title: title, Path: descriptionPath, Children: children}
+	return Node{ID: groupID, Kind: "group", Icon: tablePartIcon, Title: title, Path: descriptionPath, Children: children}
 }
 
 // sortNodesByTitle orders tree nodes by their display title so that
