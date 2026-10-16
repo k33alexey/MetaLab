@@ -86,6 +86,22 @@ func floppy() []Part {
 	}
 }
 
+// blockArrow is the solid arrow of moving an item, turned by angle degrees
+// clockwise from pointing up: a wide head on a narrower shaft, through the
+// middle of the grid. Moving up, down, left and right and the arrows of
+// appearance, straight and inclined, are this one arrow (the prototype draws
+// them alike).
+func blockArrow(angle float64) string {
+	turn := angle * math.Pi / 180
+	corners := [][2]float64{{0, -6.5}, {6, -0.5}, {2.5, -0.5}, {2.5, 6.5}, {-2.5, 6.5}, {-2.5, -0.5}, {-6, -0.5}}
+	points := make([][2]float64, len(corners))
+	for index, corner := range corners {
+		x, y := corner[0], corner[1]
+		points[index] = [2]float64{round(8 + x*math.Cos(turn) - y*math.Sin(turn)), round(8 + x*math.Sin(turn) + y*math.Cos(turn))}
+	}
+	return polygon(points...)
+}
+
 func join(groups ...[]Part) []Part {
 	var parts []Part
 	for _, group := range groups {
@@ -331,10 +347,10 @@ var commandIcons = []Icon{
 		path(Mark, cross),
 	}},
 	{ID: "move-up", Color: blue, Parts: []Part{
-		path(Body, "M8 1.5L14 7.5H10.5V14.5H5.5V7.5H2Z"),
+		path(Body, blockArrow(0)),
 	}},
 	{ID: "move-down", Color: blue, Parts: []Part{
-		path(Body, "M8 14.5L14 8.5H10.5V1.5H5.5V8.5H2Z"),
+		path(Body, blockArrow(180)),
 	}},
 	{ID: "sort", Color: slate, Accent: blue, Parts: []Part{
 		rect(Body, 1.5, 1.5, 9, 13), path(Detail, "M3.5 4.5H8.5M3.5 7.5H8.5M3.5 10.5H8.5"),

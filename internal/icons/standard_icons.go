@@ -179,10 +179,10 @@ var standardIcons = []Icon{
 		colored(path(Accent, "M9.5 0.5L7 3L9.5 5.5Z"), red),
 	})},
 	{ID: "move-left", Color: blue, Parts: []Part{
-		path(Body, "M1.5 8L7.5 2V5.5H14.5V10.5H7.5V14Z"),
+		path(Body, blockArrow(270)),
 	}},
 	{ID: "move-right", Color: blue, Parts: []Part{
-		path(Body, "M14.5 8L8.5 2V5.5H1.5V10.5H8.5V14Z"),
+		path(Body, blockArrow(90)),
 	}},
 	{ID: "report-settings", Color: gray, Parts: join([]Part{
 		colored(rect(Body, 1.5, 1.5, 11, 10), slate),

@@ -102,16 +102,38 @@ func clockFace(cx, cy, r float64) []Part {
 // star is a star of five points round cx, cy: the favourites, outlined, and
 // adding to them, solid gold.
 func star(cx, cy, outer, inner float64) string {
-	d := ""
-	for index := range 10 {
+	return polygon(starPoints(cx, cy, outer, inner)...)
+}
+
+// starPoints are the ten corners of a star from its top point clockwise, the
+// outer and the inner in turn: the top point is the first, the inner corner
+// under the middle the sixth, so the half of a star is its first and last
+// five.
+func starPoints(cx, cy, outer, inner float64) [][2]float64 {
+	points := make([][2]float64, 10)
+	for index := range points {
 		radius := outer
 		if index%2 == 1 {
 			radius = inner
 		}
 		angle := (float64(index)*36 - 90) * math.Pi / 180
-		d += map[bool]string{true: "M", false: "L"}[index == 0] + number(round(cx+radius*math.Cos(angle))) + " " + number(round(cy+radius*math.Sin(angle)))
+		points[index] = [2]float64{round(cx + radius*math.Cos(angle)), round(cy + radius*math.Sin(angle))}
 	}
-	return d + "Z"
+	return points
+}
+
+// polygon is the closed path through the points.
+func polygon(points ...[2]float64) string {
+	return polyline(points...) + "Z"
+}
+
+// polyline is the open path through the points.
+func polyline(points ...[2]float64) string {
+	d := ""
+	for index, point := range points {
+		d += map[bool]string{true: "M", false: "L"}[index == 0] + number(point[0]) + " " + number(point[1])
+	}
+	return d
 }
 
 // goArrow is the black arrow of going by a reference, in the lower right
@@ -262,9 +284,7 @@ var serviceIcons = []Icon{
 	{ID: "goto-url", Color: ink, Parts: join(link(6.5, 6.5, 5.5, 2.5, 1), goArrow())},
 	{ID: "goto-external-url", Color: ink, Parts: join(globe(6.5, 6.5, 5.5), over(goArrow()...))},
 	{ID: "favorites", Color: ink, Parts: []Part{path(Detail, star(8, 8.75, 6.5, 2.75))}},
-	{ID: "add-to-favorites", Color: "#f2c230", Accent: "#f2c230", Parts: []Part{
-		path(Accent, star(8, 8.75, 7, 3)), path(Rim, star(8, 8.75, 7, 3)),
-	}},
+	{ID: "add-to-favorites", Color: signalYellow, Parts: appearanceStar(1)},
 	{ID: "function-menu", Color: gray, Accent: gray, Parts: []Part{
 		path(Accent, "M2.5 3.5H13.5V5.5H2.5ZM2.5 7H13.5V9H2.5ZM2.5 10.5H13.5V12.5H2.5Z"),
 	}},

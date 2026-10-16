@@ -687,8 +687,8 @@ var treeIcons = []Icon{
 
 // table is every icon: the tree's, the commands' (commands.go), the
 // editors' (editors.go), the library's (standard_icons.go, service_icons.go,
-// composition_icons.go, spreadsheet_icons.go).
-var table = slices.Concat(treeIcons, commandIcons, editorIcons, debuggerIcons, formEditorIcons, standardIcons, serviceIcons, compositionIcons, spreadsheetIcons)
+// composition_icons.go, spreadsheet_icons.go, appearance_icons.go).
+var table = slices.Concat(treeIcons, commandIcons, editorIcons, debuggerIcons, formEditorIcons, standardIcons, serviceIcons, compositionIcons, spreadsheetIcons, appearanceIcons)
 
 // All is every icon, in the order of the table.
 func All() []Icon {
