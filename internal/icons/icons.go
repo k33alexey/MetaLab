@@ -14,7 +14,10 @@
 // picture of is drawn by its meaning, by the owner's decision of 15.10.2026.
 package icons
 
-import "slices"
+import (
+	"fmt"
+	"slices"
+)
 
 // Role is how a shape is painted.
 type Role int
@@ -31,6 +34,17 @@ const (
 	Line
 	// OnAccent is a dark mark drawn over an accent.
 	OnAccent
+	// Mark is a sign standing on its own - a check, a cross, a plus: a thick
+	// line in the accent colour, of one weight in every icon. Arrows stay
+	// lines.
+	Mark
+	// Plate is a body that hides what lies under it: filled with the
+	// background of the page, outlined in the colour of the kind - the badge
+	// of a reference laid over the icon of a kind.
+	Plate
+	// Rim is the edge of a solid accent - the rim of a coin: a line in a
+	// slightly darker shade of the accent, lighter than OnAccent.
+	Rim
 )
 
 // Part is one shape of an icon in its role. Exactly one of the geometries is
@@ -67,6 +81,68 @@ func path(role Role, d string) Part {
 	return Part{Role: role, Path: d}
 }
 
+// bar is the dash of an attribute and of everything drawn like one - a
+// resource, a characteristic, a standard attribute, an enumeration value: one
+// solid shape with the same rounding, told apart by its colour alone (the
+// owner's decision of 15.10.2026), standing or lying.
+func bar(x, y, width, height float64) Part {
+	const r = 1
+	return path(Accent, fmt.Sprintf("M%s %sH%sQ%s %s %s %sV%sQ%s %s %s %sH%sQ%s %s %s %sV%sQ%s %s %s %sZ",
+		number(x+r), number(y), number(x+width-r), number(x+width), number(y), number(x+width), number(y+r),
+		number(y+height-r), number(x+width), number(y+height), number(x+width-r), number(y+height),
+		number(x+r), number(x), number(y+height), number(x), number(y+height-r),
+		number(y+r), number(x), number(y), number(x+r), number(y)))
+}
+
+// barStack is three dashes one over another: a standard tabular section,
+// and the tab of a list of elements, attributes, commands or parameters of a
+// form, in their colour.
+func barStack() []Part {
+	return []Part{bar(2, 1.5, 12, 3.5), bar(2, 6.25, 12, 3.5), bar(2, 11, 12, 3.5)}
+}
+
+// coinStack is coins lying one on another, seen a little from above: the top
+// of the upper one at top, each coin a solid gold disc with a rim. The rims
+// lie on half pixels, so that at 16 px each is one sharp row of pixels
+// instead of two faint ones (the owner's choice of 15.10.2026).
+func coinStack(cx, top float64, count int) []Part {
+	const rx, ry, thickness = 4.5, 1.75, 2
+	var parts []Part
+	for i := count - 1; i >= 0; i-- {
+		y := top + float64(i)*thickness
+		left, right := number(cx-rx), number(cx+rx)
+		arc := fmt.Sprintf("A%s %s 0 0 0 ", number(rx), number(ry))
+		edge := fmt.Sprintf("M%s %sV%s%s%s %sV%s", left, number(y), number(y+thickness), arc, right, number(y+thickness), number(y))
+		parts = append(parts,
+			path(Accent, edge+arc+left+" "+number(y)+"Z"),
+			path(Rim, edge+arc+left+" "+number(y)+"Z"))
+		if i == 0 {
+			parts = append(parts, path(Rim, fmt.Sprintf("M%s %s%s%s %s", left, number(y), arc, right, number(y))))
+		}
+	}
+	return parts
+}
+
+// formWindow is a form: a window with its title and fields, standing for
+// the form in the tree, in the form editor and on its tabs.
+func formWindow() []Part {
+	return []Part{
+		rect(Body, 1.5, 2.5, 13, 11),
+		rect(Accent, 2, 3, 12, 2.5),
+		path(Detail, "M3.5 8H6.5M3.5 10.5H6.5M8.5 8H12.5M8.5 10.5H12.5"),
+	}
+}
+
+// landscape is a picture: a frame with hills and the sun - a common picture
+// and, struck through, a decoration of a form.
+func landscape() []Part {
+	return []Part{
+		rect(Body, 1.5, 2.5, 13, 11),
+		path(Accent, "M2 13L6 8L9 11L11 9L14 12V13Z"),
+		colored(circle(Accent, 11, 6, 1.5), "#efc23a"),
+	}
+}
+
 func colored(part Part, color string) Part {
 	part.Color = color
 	return part
@@ -101,7 +177,9 @@ const (
 	folder   = "M1.5 2.5H5.5L7 4H13.5V11.5H1.5Z"
 )
 
-var table = []Icon{
+// treeIcons draw the configuration tree: the kinds, what an object holds
+// and the schemas inside it.
+var treeIcons = []Icon{
 	{ID: "configuration", Color: gold, Accent: "#fff3c4", Parts: []Part{
 		circle(Body, 8, 8, 6.5),
 		circle(Accent, 6, 6, 2),
@@ -138,11 +216,10 @@ var table = []Icon{
 		circle(OnAccent, 8, 4.2, 1),
 	}},
 	{ID: "common-attribute", Color: blue, Accent: blue, Parts: []Part{
-		rect(Body, 1.5, 5.5, 13, 5),
-		rect(Accent, 3, 7, 3, 2),
+		bar(2, 6, 12, 4),
 	}},
-	{ID: "attribute", Color: slate, Parts: []Part{
-		rect(Body, 2.5, 6.5, 11, 3),
+	{ID: "attribute", Color: slate, Accent: slate, Parts: []Part{
+		bar(2, 6, 12, 4),
 	}},
 	{ID: "dimension", Color: blue, Accent: red, Parts: []Part{
 		path(Line, "M3.5 2.5V12.5H13.5"),
@@ -150,7 +227,7 @@ var table = []Icon{
 		rect(Body, 6.5, 5.5, 5, 4),
 	}},
 	{ID: "resource", Color: green, Accent: green, Parts: []Part{
-		path(Accent, "M5.5 3Q5.5 1.5 7 1.5H9Q10.5 1.5 10.5 3V13Q10.5 14.5 9 14.5H7Q5.5 14.5 5.5 13Z"),
+		bar(6, 1.5, 4, 13),
 	}},
 	{ID: "tabular-section", Color: steel, Accent: steel, Parts: []Part{
 		rect(Body, 1.5, 2.5, 13, 11),
@@ -161,18 +238,14 @@ var table = []Icon{
 	// the prototype paints standard attributes and tabular sections; one the
 	// object does not use is a grey dot.
 	{ID: "standard-attribute", Color: green, Accent: green, Parts: []Part{
-		rect(Accent, 2, 6, 12, 4),
+		bar(2, 6, 12, 4),
 	}},
 	{ID: "standard-attribute-unused", Color: gray, Accent: gray, Parts: []Part{
 		circle(Accent, 8, 8, 1.5),
 	}},
-	{ID: "standard-tabular-section", Color: green, Accent: green, Parts: []Part{
-		rect(Accent, 3, 2, 10, 3.5),
-		rect(Accent, 3, 6.25, 10, 3.5),
-		rect(Accent, 3, 10.5, 10, 3.5),
-	}},
+	{ID: "standard-tabular-section", Color: green, Accent: green, Parts: barStack()},
 	{ID: "enumeration-value", Color: "#6f8399", Accent: blue, Parts: []Part{
-		rect(Body, 5.5, 6.5, 9, 3),
+		colored(bar(5, 6, 10, 4), "#6f8399"),
 		circle(Accent, 2.75, 8, 1.25),
 	}},
 	{ID: "journal-column", Color: steel, Accent: green, Parts: []Part{
@@ -181,17 +254,17 @@ var table = []Icon{
 		path(Detail, "M4.5 4.5H11.5M6.5 7.5H9.5M6.5 10H9.5M6.5 12.5H9.5"),
 	}},
 	{ID: "addressing-attribute", Color: slate, Accent: blue, Parts: []Part{
-		rect(Body, 1.5, 9.5, 8, 3),
+		colored(bar(1, 9, 9, 4), slate),
 		circle(Accent, 12, 4, 2),
 		path(Accent, "M9 11Q9 7 12 7Q15 7 15 11Z"),
 	}},
 	{ID: "accounting-flag", Color: slate, Accent: green, Parts: []Part{
-		rect(Body, 1.5, 2.5, 9, 3),
-		path(Line, "M6.5 10L9.5 13L14.5 7.5"),
+		colored(bar(1, 2, 10, 4), slate),
+		path(Mark, "M6.5 10L9.5 13L14.5 7.5"),
 	}},
 	{ID: "ext-dimension-accounting-flag", Color: green, Accent: green, Parts: []Part{
 		path(Detail, "M1.5 2.5H8.5M1.5 5.5H8.5M1.5 8.5H5.5"),
-		path(Line, "M6.5 10L9.5 13L14.5 7.5"),
+		path(Mark, "M6.5 10L9.5 13L14.5 7.5"),
 	}},
 	{ID: "url-template", Color: "#5d6b7a", Accent: green, Parts: []Part{
 		path(Detail, "M1.5 4V12M1.5 8.5Q1.5 7 3 7Q4.5 7 4.5 8.5V12"),
@@ -221,7 +294,7 @@ var table = []Icon{
 	// A predefined element or group is drawn as an ordinary one with a small
 	// yellow dot below its right end, as the prototype marks them.
 	{ID: "predefined-item", Color: slate, Accent: yellow, Parts: []Part{
-		rect(Body, 2.5, 6.5, 11, 3),
+		colored(bar(2, 6, 12, 4), slate),
 		circle(Accent, 13.5, 12.5, 2),
 	}},
 	{ID: "catalog-group", Color: groupColor, Accent: yellow, Parts: []Part{
@@ -297,7 +370,7 @@ var table = []Icon{
 		path(Line, "M4.5 6.5V12H8.5"),
 	}},
 	{ID: "dcs-calculated-field", Color: slate, Accent: blue, Parts: []Part{
-		rect(Body, 1.5, 9.5, 9, 3),
+		colored(bar(1, 9, 10, 4), slate),
 		path(Line, "M10.5 3.5H14.5M10.5 6H14.5"),
 	}},
 	{ID: "dcs-settings-variant", Color: slate, Parts: []Part{
@@ -360,21 +433,13 @@ var table = []Icon{
 		path(Body, "M1.5 3.5H6L7.5 5H14.5V13.5H1.5Z"),
 		path(Accent, "M6.5 7L10.5 9.25L6.5 11.5Z"),
 	}},
-	{ID: "form", Color: slate, Accent: steel, Parts: []Part{
-		rect(Body, 1.5, 2.5, 13, 11),
-		rect(Accent, 2, 3, 12, 2.5),
-		path(Detail, "M3.5 8H6.5M3.5 10.5H6.5M8.5 8H12.5M8.5 10.5H12.5"),
-	}},
+	{ID: "form", Color: slate, Accent: steel, Parts: formWindow()},
 	{ID: "template", Color: slate, Accent: orange, Parts: []Part{
 		rect(Body, 1.5, 2.5, 13, 11),
 		rect(Accent, 2, 3, 12, 2.5),
 		path(Detail, "M1.5 5.5H14.5M1.5 9.5H14.5M5.5 5.5V13.5M10 5.5V13.5"),
 	}},
-	{ID: "picture", Color: steel, Accent: green, Parts: []Part{
-		rect(Body, 1.5, 2.5, 13, 11),
-		path(Accent, "M2 13L6 8L9 11L11 9L14 12V13Z"),
-		colored(circle(Accent, 11, 6, 1.5), "#efc23a"),
-	}},
+	{ID: "picture", Color: steel, Accent: green, Parts: landscape()},
 	{ID: "xdto-package", Color: brown, Parts: []Part{
 		path(Body, "M2.5 5L8 2.5L13.5 5V11.5L8 14L2.5 11.5Z"),
 		path(Detail, "M2.5 5L8 7.5L13.5 5M8 7.5V14M5.25 3.75L10.75 6.25"),
@@ -482,11 +547,13 @@ var table = []Icon{
 		rect(Accent, 2, 3, 12, 2.5),
 		path(Detail, "M1.5 5.5H14.5M1.5 9.5H14.5M5.5 5.5V13.5M10.5 5.5V13.5"),
 	}},
-	{ID: "accumulation-register", Color: steel, Accent: coin, Parts: []Part{
-		rect(Body, 1.5, 1.5, 13, 13),
-		circle(Accent, 8, 8, 4),
-		path(OnAccent, "M6.3 8.2L7.5 9.4L9.8 6.8"),
-	}},
+	// A plain sheet with a stack of gold coins on it, as the prototype draws
+	// the accumulation register: two coins, so that with the face of the
+	// upper one the stack shows three bands, as the prototype's does.
+	{ID: "accumulation-register", Color: steel, Accent: coin, Parts: join(
+		[]Part{rect(Body, 1.5, 1.5, 13, 13)},
+		coinStack(8, 6.5, 2),
+	)},
 	{ID: "accounting-register", Color: steel, Accent: blue, Parts: []Part{
 		rect(Body, 1.5, 1.5, 13, 13),
 		path(Line, "M3.5 4.5H8.5M6 4.5V11.5M8 7.5H12.5M10.25 7.5V12"),
@@ -536,6 +603,10 @@ var table = []Icon{
 		path(Detail, "M2.5 3.5H12.5M4.5 6.5H13.5M4.5 9.5H11.5M4.5 12.5H9.5"),
 	}},
 }
+
+// table is every icon: the tree's, the commands' (commands.go), the
+// editors' (editors.go).
+var table = slices.Concat(treeIcons, commandIcons, editorIcons, debuggerIcons, formEditorIcons)
 
 // All is every icon, in the order of the table.
 func All() []Icon {

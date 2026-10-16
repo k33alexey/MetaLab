@@ -17,7 +17,7 @@
 .form-node-row.drop-after::after { bottom:-3px }
 .form-node-row.drop-inside { outline:1px solid #6ea8df; background:#2a3c50 }
 .form-node.selected-node { border-color:#5686b7; background:#2a3542 }
-.form-node-icon { width:18px; color:#e8a765; text-align:center }
+.form-node-icon { flex:none; margin:0 1px }
 .form-node-kind { margin-left:auto; color:#858991; font-size:10px }
 .form-node-children { margin-left:22px; padding:2px 0 3px 10px; border-left:1px solid #42454b }
 .form-node.is-hidden>.form-node-row { opacity:.58 }

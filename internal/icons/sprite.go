@@ -13,10 +13,17 @@ import (
 // rounded by 2, a body is filled with its colour at about a fifth of its
 // strength, and on a dark theme the outlines and details lighten - the page
 // says how much by --icon-lighten (Studio: 28%), the fill and the accents stay.
+// A plate is filled with the page's background, --icon-plate. A mark - a
+// check, a cross, a plus standing on its own - is twice as thick as a line,
+// the same in every icon (the owner's decision of 15.10.2026); arrows stay
+// lines.
 const (
 	cornerRadius = 2
 	bodyFill     = 22 // per cent of the colour of the kind
+	markWeight   = 2  // the line of a check, a cross, a plus
 	onAccentInk  = "#6b4e00"
+	rimWeight    = 1             // the edge of a coin
+	rimShade     = "#5a3d00 30%" // how much darker the edge is than its accent
 )
 
 func outline(color string) string {
@@ -33,6 +40,12 @@ func paint(role Role, kind, accent string) string {
 		return "fill:" + accent + ";stroke:none"
 	case Line:
 		return "fill:none;stroke:" + accent
+	case Mark:
+		return "fill:none;stroke-width:" + strconv.Itoa(markWeight) + ";stroke:" + accent
+	case Rim:
+		return "fill:none;stroke-width:" + number(rimWeight) + ";stroke:color-mix(in srgb," + accent + "," + rimShade + ")"
+	case Plate:
+		return "fill:var(--icon-plate,#fff);stroke:" + outline(kind)
 	default:
 		return "fill:none;stroke:" + onAccentInk
 	}
@@ -46,7 +59,7 @@ func (part Part) element() string {
 	switch {
 	case part.Rect != nil:
 		radius := ""
-		if part.Role == Body {
+		if part.Role == Body || part.Role == Plate {
 			radius = ` rx="` + number(cornerRadius) + `"`
 		}
 		return fmt.Sprintf(`<rect x="%s" y="%s" width="%s" height="%s"%s`, number(part.Rect[0]), number(part.Rect[1]), number(part.Rect[2]), number(part.Rect[3]), radius)

@@ -106,6 +106,43 @@ var formElementClasses = map[FormElementKind]formElementClass{
 	FormElementViewStatusAddition: formAdditionClass,
 }
 
+// formClassIcons name the picture of an element in the tree of the form
+// editor (internal/icons) by its class: the prototype draws every field one
+// red dash and every group - usual, pages, page, columns, command bar, button
+// group, popup - one folder, both decorations one picture
+// (docs/block-00/redaktor-formy.md). The additions of a table are told apart,
+// so they are named by kind in formAdditionIcons.
+var formClassIcons = map[formElementClass]string{
+	formFieldClass: "form-field", formAreaClass: "catalog-group", formPagesClass: "catalog-group",
+	formColumnsClass: "catalog-group", formButtonsClass: "catalog-group", formDecorationClass: "form-decoration",
+	formButtonClass: "form-button", formTableClass: "form-table",
+}
+
+var formAdditionIcons = map[FormElementKind]string{
+	FormElementSearchStringAddition:  "form-search-string",
+	FormElementSearchControlAddition: "form-search-control",
+	FormElementViewStatusAddition:    "form-view-status",
+}
+
+// Icon names the picture of an element of this kind in the form editor's
+// tree; empty for a kind that is not one.
+func (kind FormElementKind) Icon() string {
+	if icon, ok := formAdditionIcons[kind]; ok {
+		return icon
+	}
+	return formClassIcons[formElementClasses[kind]]
+}
+
+// FormElementIcons is the picture of every kind of element, for the form
+// editor to draw its tree by.
+func FormElementIcons() map[FormElementKind]string {
+	icons := make(map[FormElementKind]string, len(formElementClasses))
+	for kind := range formElementClasses {
+		icons[kind] = kind.Icon()
+	}
+	return icons
+}
+
 // IsField says the element shows data: one of the twenty fields.
 func (kind FormElementKind) IsField() bool { return formElementClasses[kind] == formFieldClass }
 

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
+	"github.com/k33alexey/MetaLab/internal/metadata"
 )
 
 // TestEveryKindIsDrawn catches a kind added to the descriptors without an
@@ -22,6 +23,34 @@ func TestEveryKindIsDrawn(t *testing.T) {
 }
 
 var coordinates = regexp.MustCompile(`-?\d+(\.\d+)?`)
+
+// TestEveryFormElementIsDrawn catches a kind of form element with no icon,
+// or one the set does not draw - an empty square in the form editor's tree -
+// and an element drawn unlike the prototype, which draws every field one red
+// dash, every group one folder and both decorations one picture
+// (docs/block-00/redaktor-formy.md; the expectations are written here, not
+// read from the table the code draws by).
+func TestEveryFormElementIsDrawn(t *testing.T) {
+	icons := metadata.FormElementIcons()
+	for kind, icon := range icons {
+		if !Has(icon) {
+			t.Errorf("form element %s names icon %q, which the set does not draw", kind, icon)
+		}
+	}
+	for kind, want := range map[metadata.FormElementKind]string{
+		"input-field": "form-field", "check-box-field": "form-field", "planner-field": "form-field",
+		"usual-group": "catalog-group", "pages": "catalog-group", "page": "catalog-group", "column-group": "catalog-group",
+		"command-bar": "catalog-group", "button-group": "catalog-group", "popup": "catalog-group",
+		"label-decoration": "form-decoration", "picture-decoration": "form-decoration",
+		"table": "form-table", "button": "form-button",
+		"search-string-addition": "form-search-string", "search-control-addition": "form-search-control",
+		"view-status-addition": "form-view-status",
+	} {
+		if icons[kind] != want {
+			t.Errorf("form element %s is drawn %q, the prototype draws it %q", kind, icons[kind], want)
+		}
+	}
+}
 
 // TestIconsAreDrawnInTheGrid catches an icon that the sprite cannot hold: a
 // name used twice (one symbol hides the other), a part with no geometry or
@@ -107,12 +136,16 @@ func TestSpriteHoldsEverySymbol(t *testing.T) {
 // TestRolesArePaintedAsTheStyle catches the rule of the style lost or turned
 // round (ICONS.md, «Визуальный язык»): the body outlined in the colour of the
 // kind, lightening on a dark theme, and filled with it at a fifth; details in
-// the colour of the kind; an accent solid in its own. The expectation is the
+// the colour of the kind; an accent solid in its own; a plate filled with
+// the page's background so that it hides what lies under it; a mark twice
+// as thick as a line, in the accent colour; the rim of a coin a line in a
+// darker shade of its accent. The expectation is the
 // approved sample's (requirements/assets/icons-style.html), written out here.
 func TestRolesArePaintedAsTheStyle(t *testing.T) {
 	icon := Icon{ID: "probe", Color: "#112233", Accent: "#445566", Parts: []Part{
 		rect(Body, 1.5, 1.5, 13, 13), path(Detail, "M2 2H4"), circle(Accent, 8, 8, 2), path(Line, "M2 4H4"),
 		colored(rect(Accent, 2, 2, 2, 2), "#778899"), colored(rect(Body, 3, 3, 2, 2), "#aabbcc"),
+		rect(Plate, 4, 4, 2, 2), path(Mark, "M2 6H4"), path(Rim, "M2 8H4"),
 	}}
 	symbol := icon.Symbol()
 	for _, want := range []string{
@@ -122,6 +155,9 @@ func TestRolesArePaintedAsTheStyle(t *testing.T) {
 		`<path d="M2 4H4" style="fill:none;stroke:#445566"/>`,
 		`<rect x="2" y="2" width="2" height="2" style="fill:#778899;stroke:none"/>`,
 		`<rect x="3" y="3" width="2" height="2" rx="2" style="fill:color-mix(in srgb,#aabbcc 22%,transparent);stroke:color-mix(in srgb,#aabbcc,#fff var(--icon-lighten,0%))"/>`,
+		`<rect x="4" y="4" width="2" height="2" rx="2" style="fill:var(--icon-plate,#fff);stroke:color-mix(in srgb,#112233,#fff var(--icon-lighten,0%))"/>`,
+		`<path d="M2 6H4" style="fill:none;stroke-width:2;stroke:#445566"/>`,
+		`<path d="M2 8H4" style="fill:none;stroke-width:1;stroke:color-mix(in srgb,#445566,#5a3d00 30%)"/>`,
 		`stroke-width:1;stroke-linecap:round;stroke-linejoin:round`,
 	} {
 		if !strings.Contains(symbol, want) {

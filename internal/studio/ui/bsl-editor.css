@@ -3,11 +3,15 @@
   min-width:0;
   min-height:0;
   display:grid;
-  grid-template-columns:54px minmax(0,1fr);
+  grid-template-columns:auto minmax(0,1fr);
   overflow:hidden;
   background:#1e1f22;
 }
+/* The gutter is as wide as the number of the last line needs (--gutter-digits,
+   set by bsl-editor.js), beside the fold button and the column of the marker,
+   so that a number never runs under the marker or out of sight. */
 #line-gutter {
+  width:calc(8px + 1px + 18px + 16px + 4px + 3px + max(2, var(--gutter-digits, 2)) * 1ch);
   min-height:0;
   overflow:hidden;
   padding:16px 4px;
@@ -21,8 +25,11 @@
 .gutter-line { height:21.7px; display:grid; grid-template-columns:18px 1fr; align-items:center }
 .gutter-line button { width:16px; height:16px; padding:0; background:transparent; color:#8c9098; font:10px/16px sans-serif }
 .gutter-line button:hover { background:#3c3f45; color:#dfe1e5 }
-.gutter-line .gutter-number { position:relative; width:100%; height:21px; padding:0 3px; color:inherit; text-align:right; font:12px/21px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace }
-.gutter-line.has-breakpoint .gutter-number::before { content:''; position:absolute; left:2px; top:6px; width:9px; height:9px; border-radius:50%; background:#e05252; box-shadow:0 0 0 1px #ff8a8a55 }
+.gutter-line .gutter-number { display:flex; align-items:center; justify-content:space-between; gap:4px; width:100%; height:21px; padding:0 3px 0 0; color:inherit; font:12px/21px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace }
+/* The breakpoint and the line being executed are marked by their icons
+   (breakpoint-mark, execution-point, both at once breakpoint-mark-current) in
+   a column of their own, left of the number. */
+.gutter-line .gutter-number>svg { flex:none; pointer-events:none }
 .gutter-line.execution-line { background:#5d522655; color:#e8d37a }
 #editor-stack { position:relative; min-width:0; min-height:0; overflow:hidden }
 #editor-host #editor,#syntax-layer {

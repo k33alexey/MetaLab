@@ -46,3 +46,6 @@
 .localized-title-dialog.studio-help-dialog{width:min(560px,calc(100% - 40px))}
 .studio-help{display:grid;gap:8px}.studio-help p{line-height:1.55}
 .localized-title-actions button:disabled{opacity:.5;cursor:default}
+
+/* A button drawn by its icon alone (iconButton in studio-common.js). */
+button.icon-only { display:inline-flex; align-items:center; justify-content:center; padding:4px 6px; line-height:0 }

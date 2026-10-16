@@ -484,3 +484,15 @@ function iconElement(name) {
   }
   return svg;
 }
+
+// iconButton is a button drawn by its icon alone, the command named in its
+// tooltip and for a screen reader.
+function iconButton(name, title) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'icon-only';
+  button.title = title;
+  button.setAttribute('aria-label', title);
+  button.append(iconElement(name));
+  return button;
+}

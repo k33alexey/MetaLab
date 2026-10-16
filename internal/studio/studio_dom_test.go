@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -213,6 +214,29 @@ const studioReadOnlyModule = `(async () => {
     renameHidden: document.querySelector('[data-bsl-action=rename]').hidden, problems: studio.problems};
 })()`
 
+// studioGutterFits opens the session module, of as many lines as the Go side
+// wrote, puts a breakpoint and the line being executed on its last line and
+// answers where the marker, the number and the inside of the gutter stand,
+// left and right edges. Defect caught: a number running under the marker of a
+// breakpoint, or cut off by the edge of the gutter, once the numbers grow
+// longer than the gutter was made for (a module of five-digit lines).
+const studioGutterFits = `(async () => {
+  const studio = window.__studio, last = %d;
+  studio.step = 'gutter of ' + last + ' lines';
+  document.querySelector('#refresh').click();
+  await studio.settle();
+  [...document.querySelectorAll('#tree .leaf')].find(item => item.textContent.includes('Модуль сеанса')).click();
+  await studio.settle();
+  bslEditor.setBreakpoints([last]);
+  bslEditor.setExecutionLine(last);
+  await studio.settle();
+  const gutter = document.querySelector('#line-gutter'), style = getComputedStyle(gutter), box = gutter.getBoundingClientRect();
+  const digits = [...gutter.querySelectorAll('.gutter-digits')].at(-1), marker = digits.previousElementSibling;
+  const edges = element => { const rect = element.getBoundingClientRect(); return [rect.left, rect.right]; };
+  return {Marker: edges(marker), Digits: edges(digits), Text: digits.textContent,
+    Gutter: [box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft), box.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight)]};
+})()`
+
 // Every editor of Studio builds its page in code no Go test reaches: an
 // attribute of a catalog did not open from 2.50 to 2.279, and nobody saw it.
 // Here Studio runs in a real browser on a copy of the example with a role
@@ -302,6 +326,23 @@ func TestStudioEditorsWorkInBrowser(t *testing.T) {
 	}
 	for _, problem := range carried.Problems {
 		t.Errorf("page: %s", problem)
+	}
+	for _, lines := range []int{9, 12000} {
+		writeBSLTestSource(t, root, project.SessionModuleFile, "Процедура П()\n"+strings.Repeat("\n", lines-2)+"КонецПроцедуры")
+		result, err = browser.evaluate(ctx, page, fmt.Sprintf(studioGutterFits, lines))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var gutter struct {
+			Marker, Digits, Gutter [2]float64
+			Text                   string
+		}
+		if err := json.Unmarshal(result, &gutter); err != nil {
+			t.Fatalf("the page answered %s: %v", result, err)
+		}
+		if gutter.Text != strconv.Itoa(lines) || gutter.Marker[1] > gutter.Digits[0] || gutter.Digits[1] > gutter.Gutter[1] || gutter.Marker[0] < gutter.Gutter[0] {
+			t.Errorf("a module of %d lines: the marker %v and the number %q %v do not stand side by side inside the gutter %v", lines, gutter.Marker, gutter.Text, gutter.Digits, gutter.Gutter)
+		}
 	}
 	for _, problem := range browser.problems() {
 		t.Errorf("browser: %s", problem)
