@@ -146,6 +146,7 @@ func TestRolesArePaintedAsTheStyle(t *testing.T) {
 		rect(Body, 1.5, 1.5, 13, 13), path(Detail, "M2 2H4"), circle(Accent, 8, 8, 2), path(Line, "M2 4H4"),
 		colored(rect(Accent, 2, 2, 2, 2), "#778899"), colored(rect(Body, 3, 3, 2, 2), "#aabbcc"),
 		rect(Plate, 4, 4, 2, 2), path(Mark, "M2 6H4"), path(Rim, "M2 8H4"),
+		path(InkMark, "M2 10H4"), path(InkSpot, "M2 12H4V14Z"),
 	}}
 	symbol := icon.Symbol()
 	for _, want := range []string{
@@ -158,6 +159,8 @@ func TestRolesArePaintedAsTheStyle(t *testing.T) {
 		`<rect x="4" y="4" width="2" height="2" rx="2" style="fill:var(--icon-plate,#fff);stroke:color-mix(in srgb,#112233,#fff var(--icon-lighten,0%))"/>`,
 		`<path d="M2 6H4" style="fill:none;stroke-width:2;stroke:#445566"/>`,
 		`<path d="M2 8H4" style="fill:none;stroke-width:1;stroke:color-mix(in srgb,#445566,#5a3d00 30%)"/>`,
+		`<path d="M2 10H4" style="fill:none;stroke-width:2;stroke:color-mix(in srgb,#112233,#fff calc(var(--icon-lighten,0%)*3))"/>`,
+		`<path d="M2 12H4V14Z" style="fill:color-mix(in srgb,#112233,#fff calc(var(--icon-lighten,0%)*3));stroke:none"/>`,
 		`stroke-width:1;stroke-linecap:round;stroke-linejoin:round`,
 	} {
 		if !strings.Contains(symbol, want) {

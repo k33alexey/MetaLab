@@ -69,7 +69,15 @@ func letterYa(top float64) Part {
 }
 
 func sortList(first, last func(float64) Part) []Part {
-	return []Part{first(1.5), last(9), path(InkMark, "M11.5 1.5V13.5"), path(Detail, "M9.5 11.5L11.5 13.5L13.5 11.5")}
+	return []Part{first(1.5), last(9), sortArrow(11.75, 1.5, 14.5)}
+}
+
+// sortArrow is the solid arrow of sorting, from top down to its point at
+// tip: dark on a light page, light on a dark one, in the colour of ink.
+func sortArrow(x, top, tip float64) Part {
+	return colored(path(InkSpot, fmt.Sprintf("M%s %sH%sV%sH%sL%s %sL%s %sH%sZ",
+		number(x-0.75), number(top), number(x+0.75), number(tip-4), number(x+2.5),
+		number(x), number(tip), number(x-2.5), number(tip-4), number(x-0.75))), "#3a3f45")
 }
 
 // crossedDisc is a disc with a cross in it: «delete» and «stop» of the
@@ -83,6 +91,53 @@ func crossedDisc() []Part {
 func taskBoard(sign ...Part) []Part {
 	return join(board(), []Part{path(Detail, "M3.5 6.5H9.5M3.5 8.5H9.5M3.5 10.5H7.5")}, sign)
 }
+
+// listFrame is a list in its frame, as the modes of viewing a list show it:
+// what stands in it says which mode.
+func listFrame(inside ...Part) []Part {
+	return append([]Part{rect(Body, 1.5, 1.5, 13, 13)}, inside...)
+}
+
+// zoomLens is the glass of the scale with the sign of the way it goes in it.
+func zoomLens(sign string) []Part {
+	return append(lens(6.5, 6.5, 4.5), colored(path(Mark, sign), ink))
+}
+
+// mound is the heap of the values a form keeps, a yellow triangle whose top
+// the arrow never covers, and valuesSheet the form they are taken from:
+// restoring brings them back to it, saving takes them away.
+func mound(left float64) Part {
+	return colored(path(Accent, fmt.Sprintf("M%s 15L%s 11L%s 15Z", number(left), number(left+3.5), number(left+7))), coin)
+}
+
+func valuesSheet(left float64) []Part {
+	return []Part{
+		rect(Body, left, 1.5, 8, 10),
+		path(Detail, fmt.Sprintf("M%s 4.5H%sM%s 6.5H%sM%s 8.5H%s", number(left+2), number(left+6), number(left+2), number(left+6), number(left+2), number(left+6))),
+	}
+}
+
+// filterOver is the funnel of a selection laid over what it selects from,
+// hiding it by its own shape: the history of selections, selecting and
+// sorting, selecting by the current value, switching selection off.
+func filterOver(left, top, width float64) []Part {
+	return []Part{colored(path(Plate, funnel(left, top, width)), gray), colored(path(Body, funnel(left, top, width)), gray)}
+}
+
+// colouredRows are the rows of a tree told apart by colour, each hanging on
+// its stalk: the tree a list is searched or sorted in.
+func colouredRows(left float64) []Part {
+	return []Part{
+		path(Detail, fmt.Sprintf("M%s 4.25V12.75M%s 7.25H%sM%s 10.25H%sM%s 12.75H%s",
+			number(left), number(left), number(left+1.5), number(left), number(left+1.5), number(left), number(left+1.5))),
+		colored(rect(Accent, left, 3.5, 3, 1.5), red), colored(rect(Accent, left+1.5, 6.5, 3, 1.5), yellow),
+		colored(rect(Accent, left+1.5, 9.5, 3, 1.5), blue), colored(rect(Accent, left+1.5, 12, 3, 1.5), green),
+	}
+}
+
+// pointer is the arrow of the mouse that picks a row: the top level of a
+// tree, a row found in it.
+const pointer = "M8 4.5V15L10.5 12.75L12 15.75L13.75 14.9L12.25 12H15.5Z"
 
 var standardIcons = []Icon{
 	// Действия формы и списка.
@@ -122,7 +177,7 @@ var standardIcons = []Icon{
 	}, gear(11, 11, 4.75))},
 	{ID: "choose-value", Color: blue, Accent: slate, Parts: []Part{
 		rect(Body, 1.5, 1.5, 10, 3.5), rect(Body, 1.5, 6, 10, 3.5), rect(Body, 1.5, 10.5, 10, 3.5),
-		colored(path(Plate, "M9.5 7.5V15L11.25 13.25L12.5 15.5L13.75 14.75L12.5 12.5H14.75Z"), slate),
+		colored(path(Plate, pointer), slate),
 	}},
 	{ID: "set-date-interval", Color: navy, Accent: navy, Parts: []Part{
 		path(Detail, "M4 2Q0.5 8 4 14M12 2Q15.5 8 12 14"),
@@ -195,5 +250,175 @@ var standardIcons = []Icon{
 	{ID: "business-process-start", Color: blue, Accent: blue, Parts: []Part{
 		colored(rect(Accent, 1.5, 4, 1.5, 8), "#8fb8e0"), colored(rect(Accent, 4, 4, 1.5, 8), "#8fb8e0"),
 		path(Accent, "M7 2.5L14.5 8L7 13.5Z"),
+	}},
+	// Действия списков: поиск, режимы просмотра, уровни, масштаб, значения и
+	// настройки. The prototype draws «Управление поиском» with the glass of
+	// «Найти» and «Параметры» with the wrench of «Сервис → Параметры»: those
+	// share icons. «Печать сразу» is the printer with a large check over it,
+	// where the configurator's «Печать текущего» shows a sheet.
+	{ID: "cancel-search", Color: slate, Accent: red, Parts: join(lens(9.5, 6, 4.5), []Part{
+		path(Mark, "M2 10L6.5 14.5M6.5 10L2 14.5"),
+	})},
+	{ID: "data-search", Color: ink, Parts: lens(7, 7, 4)},
+	{ID: "zoom", Color: ink, Parts: zoomLens("M6.5 4.5V8.5M4.5 6.5H8.5")},
+	{ID: "zoom-in", Color: gray, Parts: zoomLens("M6.5 4.5V8.5M4.5 6.5H8.5")},
+	{ID: "zoom-out", Color: gray, Parts: zoomLens("M4.5 6.5H8.5")},
+	{ID: "show-in-list", Color: slate, Accent: green, Parts: []Part{
+		rect(Body, 4.5, 1.5, 10, 13),
+		path(Detail, "M4.5 4.5H14.5M9.5 1.5V14.5M11 7H13M11 9.5H13M11 12H13"),
+		path(Accent, "M1 6.5H4V4L8.5 8L4 12V9.5H1Z"),
+	}},
+	{ID: "list-view-mode", Color: slate, Accent: yellow, Parts: []Part{
+		colored(path(Body, "M1.5 1.5H4.5L5.5 2.5H9.5V7.5H1.5Z"), groupColor),
+		rect(Accent, 2, 4, 7, 1),
+		path(Detail, "M3.5 10H14.5"),
+		colored(bar(5, 12, 10, 3), blue),
+	}},
+	{ID: "list-view-mode-tree", Color: gray, Accent: green, Parts: listFrame(
+		bar(3.5, 3, 4, 2), bar(3.5, 11, 4, 2),
+		path(Detail, "M4.5 5V11M4.5 7.25H7M4.5 9.25H7M8.5 7.25H12.5M8.5 9.25H12.5"),
+	)},
+	{ID: "list-view-mode-hierarchical-list", Color: gray, Accent: green, Parts: listFrame(
+		bar(3.5, 3, 4, 2),
+		path(Detail, "M4.5 5V12M4.5 7H7M4.5 9.5H7M4.5 12H7M8.5 7H12.5M8.5 9.5H12.5M8.5 12H12.5"),
+	)},
+	{ID: "list-view-mode-list", Color: gray, Accent: orange, Parts: listFrame(
+		path(Accent, "M3.5 4H5V5.5H3.5ZM3.5 6.5H5V8H3.5ZM3.5 9H5V10.5H3.5ZM3.5 11.5H5V13H3.5Z"),
+		path(Detail, "M6.5 4.75H12.5M6.5 7.25H12.5M6.5 9.75H12.5M6.5 12.25H12.5"),
+	)},
+	{ID: "level-up", Color: groupColor, Accent: yellow, Parts: []Part{
+		path(Body, "M1.5 4.5H5.5L7 6H11.5V13.5H1.5Z"), rect(Accent, 2, 8, 9, 1.5),
+		colored(path(Line, "M13.5 10V3"), blue), colored(path(Accent, "M11.25 4.25L13.5 1.25L15.75 4.25Z"), blue),
+	}},
+	{ID: "level-down", Color: groupColor, Accent: yellow, Parts: []Part{
+		path(Body, "M1.5 4.5H5.5L7 6H11.5V13.5H1.5Z"), rect(Accent, 2, 8, 9, 1.5),
+		colored(path(Line, "M13.5 1.5V8.5"), blue), colored(path(Accent, "M11.25 7.75L13.5 10.75L15.75 7.75Z"), blue),
+	}},
+	{ID: "rename", Color: blue, Parts: []Part{
+		rect(Body, 1.5, 5.5, 13, 5),
+		colored(path(InkMark, "M8 2.5V13.5M6.5 2.5H9.5M6.5 13.5H9.5"), "#3a3f45"),
+	}},
+	{ID: "restore-values", Color: slate, Accent: green, Parts: join(valuesSheet(7), []Part{
+		mound(0),
+		path(Accent, "M2.5 10V5.5Q2.5 3.5 4.5 3.5H6V1.5L9.5 4.5L6 7.5V5.5H4.5V10Z"),
+	})},
+	{ID: "save-values", Color: slate, Accent: green, Parts: join(valuesSheet(1.5), []Part{
+		mound(9),
+		path(Accent, "M9.5 3.5H11.5Q13.5 3.5 13.5 5.5V7H15.5L12.5 10.25L9.5 7H11.5V5.5H9.5Z"),
+	})},
+	{ID: "customize-list", Color: blue, Parts: join([]Part{
+		rect(Body, 1.5, 3.5, 9, 11),
+		path(Detail, "M3.5 6.5H8.5M3.5 9H8.5M3.5 11.5H8.5"),
+	}, filterOver(6, 1.5, 9))},
+	{ID: "customize-form", Color: slate, Accent: blue, Parts: []Part{
+		rect(Body, 1.5, 1.5, 13, 13), rect(Accent, 2, 2, 12, 2.5),
+		colored(circle(Body, 8, 9.25, 3.25), gray), colored(circle(Accent, 8, 9.25, 1.25), gray),
+	}},
+	{ID: "setting", Color: gray, Parts: gear(8, 8, 6.5)},
+	{ID: "load-report-settings", Color: gray, Parts: join([]Part{
+		colored(path(Body, "M1.5 2.5H5L6.5 4H12.5V11.5H1.5Z"), groupColor),
+		colored(rect(Accent, 2, 6, 10, 1.5), yellow),
+	}, gear(11, 11, 4.75))},
+	{ID: "save-report-settings", Color: gray, Parts: join(tint(floppy(), blue), gear(11, 11, 4.75))},
+	{ID: "end-edit", Color: blue, Accent: slate, Parts: join(floppy(), []Part{
+		colored(rect(Plate, 6.5, 9.5, 9, 6), "#3a3f45"),
+		colored(path(Detail, "M8.75 11Q7.5 11 7.5 12.5Q7.5 14 8.75 14Q10 14 10 12.5Q10 11 8.75 11ZM11.5 11V14M14.5 11L11.5 12.5L14.5 14"), "#3a3f45"),
+	})},
+	{ID: "grayed-all", Color: slate, Accent: gray, Parts: append(stackedWindows(), rect(Accent, 3.5, 6.5, 6, 6))},
+	{ID: "fix-table", Color: gray, Parts: []Part{
+		rect(Body, 1.5, 2.5, 13, 11),
+		path(Detail, "M1.5 8.5H14.5M1.5 11H14.5M10.5 2.5V13.5"),
+		colored(path(Detail, "M1.5 5.5H14.5M6 2.5V13.5"), ink),
+	}},
+	{ID: "move-item", Color: groupColor, Accent: yellow, Parts: []Part{
+		path(Body, "M1.5 5.5H4.5L5.5 6.5H9.5V11.5H1.5Z"), rect(Accent, 2, 8, 7, 1),
+		colored(path(Line, "M12.5 12.5V2.5Q12.5 1.5 11.5 1.5H6.5Q5.5 1.5 5.5 2.5V3"), navy),
+		colored(headDown(5.5, 5.5), navy),
+		colored(bar(8, 12.5, 7, 2.5), blue),
+	}},
+	{ID: "switch-activity", Color: blue, Accent: blue, Parts: []Part{
+		path(Accent, "M1.5 5.5H9.5L7 10.5H1.5Z"),
+		colored(path(Accent, "M10.5 5.5H14.5V10.5H8Z"), gray),
+	}},
+	{ID: "print-immediately", Color: gray, Accent: green, Parts: append(printer(),
+		path(Mark, "M2.5 3.5L5 6L10 1"),
+	)},
+	{ID: "output-list", Color: blue, Parts: []Part{
+		rect(Body, 1.5, 1.5, 8, 13),
+		path(Detail, "M3.5 4.5H7.5M3.5 7H7.5"),
+		colored(path(Detail, "M8.5 7.5V3.5H13.5V7.5"), gray),
+		colored(rect(Plate, 6.5, 7.5, 9, 5), gray), colored(rect(Body, 6.5, 7.5, 9, 5), gray),
+		colored(path(Detail, "M8.5 10.5H13.5V14.5H8.5Z"), gray),
+	}},
+	// Скрытые из окна выбора: команды списков обычного приложения. Fourteen
+	// of the 29 hidden pictures are drawn by the prototype as a visible one
+	// and share its icon (docs/block-00/standartnye-kartinki.md); the rest
+	// are drawn here from the form that shows them.
+	{ID: "input-on-basis", Color: slate, Accent: blue, Parts: []Part{
+		rect(Body, 1.5, 1.5, 8, 10),
+		rect(Plate, 6.5, 4.5, 8, 10), rect(Body, 6.5, 4.5, 8, 10),
+		path(Line, "M3.5 5.5V9.5Q3.5 11.5 5.5 11.5H8.5"),
+		path(Accent, "M8 9.25L11 11.5L8 13.75Z"),
+	}},
+	{ID: "find-in-tree-sheet", Color: slate, Parts: join([]Part{rect(Body, 1.5, 1.5, 10, 13)}, tint(colouredRows(3.5), gray), []Part{
+		path(Plate, pointer), path(Body, pointer),
+	})},
+	{ID: "find-in-list", Color: slate, Accent: red, Parts: []Part{
+		rect(Body, 1.5, 1.5, 10, 13),
+		path(Accent, "M3.5 4H5V5.5H3.5ZM3.5 6.5H5V8H3.5ZM3.5 9H5V10.5H3.5Z"),
+		path(Detail, "M6.5 4.75H9.5M6.5 7.25H9.5M6.5 9.75H9.5"),
+		colored(path(Detail, "M15 12H8.5M8.5 9.75L5.5 12L8.5 14.25Z"), ink),
+	}},
+	{ID: "find-by-number", Color: navy, Parts: join(lens(6, 9, 4), []Part{
+		colored(path(Detail, "M10.5 5.5V1.5L14 5.5V1.5"), "#3a3f45"),
+	})},
+	{ID: "list-settings", Color: blue, Parts: join([]Part{
+		rect(Body, 1.5, 3.5, 9, 3.5), rect(Body, 1.5, 7.5, 9, 3.5), rect(Body, 1.5, 11.5, 9, 3),
+	}, tint(gear(11.25, 4.75, 4.25), gray))},
+	{ID: "filter-history", Color: slate, Parts: join([]Part{
+		rect(Body, 4.5, 4.5, 10, 10),
+		path(Detail, "M10.5 7.5H13M10.5 10H13M6 12.5H13"),
+	}, filterOver(1.5, 1.5, 9))},
+	{ID: "filter-and-sort", Color: slate, Parts: join([]Part{
+		rect(Body, 1.5, 2.5, 11, 12), colored(rect(Accent, 2, 3, 10, 1.5), blue),
+		path(Detail, "M3 8H4.5M3 10H4.5M3 12H4.5M9.5 8H10.5M9.5 10H10.5"),
+	}, filterOver(1.5, 2.5, 11), []Part{sortArrow(12.75, 6, 15)})},
+	{ID: "filter-by-current-value", Color: slate, Accent: blue, Parts: join(filterOver(1.5, 1.5, 10), []Part{
+		path(Plate, "M9.5 3.5H14.5V14.5H9.5Z"), path(Body, "M9.5 3.5H14.5V14.5H9.5Z"), path(Detail, "M9.5 9H14.5"),
+		path(Line, "M10.75 11.75L11.75 12.75L13.25 11"),
+	})},
+	{ID: "clear-filter", Color: gray, Accent: red, Parts: join(filterOver(1.5, 1.5, 11), []Part{
+		path(Mark, "M10 10L14.5 14.5M14.5 10L10 14.5"),
+	})},
+	{ID: "filter-by-type", Color: navy, Parts: []Part{
+		colored(bar(1.5, 1.5, 9, 2), red), colored(bar(3, 4.5, 8, 2), red),
+		colored(bar(1.5, 7.5, 9, 2), blue), colored(bar(3, 10.5, 8, 2), blue),
+		colored(bar(1.5, 13.5, 9, 2), red),
+		path(Detail, "M12 1.5Q13.5 1.5 13.5 3V6.5Q13.5 8 15 8Q13.5 8 13.5 9.5V13Q13.5 14.5 12 14.5"),
+	}},
+	{ID: "view-by-owner", Color: navy, Parts: []Part{
+		colored(bar(1.5, 2, 8, 3), blue),
+		path(Detail, "M1.5 7.5H11.5"),
+		colored(bar(5.5, 10, 9.5, 4), blue),
+	}},
+	{ID: "edit-in-dialog", Color: slate, Accent: red, Parts: []Part{
+		rect(Body, 2.5, 2.5, 12, 11),
+		path(Detail, "M2.5 5.5H14.5M8.5 5.5V13.5M4 8H7M4 10.5H7M10 8H13M10 10.5H13"),
+		path(Mark, "M1.5 14.5L14.5 1.5"),
+	}},
+	{ID: "pivot-chart", Color: gray, Parts: []Part{
+		rect(Body, 1.5, 10.5, 13, 4),
+		path(Detail, "M1.5 12.5H14.5M5 10.5V12.5M9.5 10.5V12.5M3.5 12.5V14.5M7.5 12.5V14.5M12 12.5V14.5"),
+		colored(rect(Accent, 3, 3, 2, 7.5), green), colored(rect(Accent, 6, 5, 2, 5.5), yellow),
+		colored(rect(Accent, 8.5, 6.5, 2, 4), brown), colored(rect(Accent, 11, 2, 2, 8.5), red),
+	}},
+	{ID: "sorting", Color: slate, Accent: navy, Parts: join([]Part{rect(Body, 1.5, 1.5, 9, 13)}, colouredRows(3.5), []Part{
+		path(Line, "M12 3.5Q15 3.5 15 8Q15 12.5 12 12.5"),
+		path(Accent, "M12.75 1.5L10.25 3.5L12.75 5.5Z"), path(Accent, "M12.75 10.5L10.25 12.5L12.75 14.5Z"),
+	})},
+	{ID: "set-time", Color: steel, Accent: red, Parts: []Part{
+		circle(Body, 8, 8, 6.5),
+		colored(path(Detail, "M8 3.5V8L5.5 11"), navy),
+		circle(Accent, 12, 8, 0.75), circle(Accent, 8, 12, 0.75), circle(Accent, 4, 8, 0.75),
 	}},
 }

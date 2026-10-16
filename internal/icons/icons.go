@@ -50,6 +50,10 @@ const (
 	// lightens on a dark theme, more than an outline does: the black cross of
 	// «close», the letter of «choose type», which would vanish on a dark page.
 	InkMark
+	// InkSpot is a solid spot in the colour of the icon that lightens on a
+	// dark theme as an ink mark does: the arrow of sorting, dark on a light
+	// page and nearly white on a dark one.
+	InkSpot
 )
 
 // Part is one shape of an icon in its role. Exactly one of the geometries is

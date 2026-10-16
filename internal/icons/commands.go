@@ -70,6 +70,16 @@ func lockedPerson(lock string) []Part {
 	})
 }
 
+// floppy is the diskette of writing: «save», and under the sign of what is
+// written - the gear of a report's settings, the «OK» of ending an edit.
+func floppy() []Part {
+	return []Part{
+		rect(Body, 1.5, 1.5, 13, 13),
+		path(Detail, "M4.5 1.5V5.5H11.5V1.5M4.5 14.5V9.5H11.5V14.5"),
+		rect(Accent, 9, 2.5, 1.5, 2),
+	}
+}
+
 func join(groups ...[]Part) []Part {
 	var parts []Part
 	for _, group := range groups {
@@ -103,11 +113,7 @@ var commandIcons = []Icon{
 		path(Body, "M1.5 6.5H5.5L7 8H14.5V14.5H1.5Z"),
 		path(Line, "M10.5 1.5V6.5M8.5 4.5L10.5 6.5L12.5 4.5"),
 	}},
-	{ID: "save", Color: blue, Accent: slate, Parts: []Part{
-		rect(Body, 1.5, 1.5, 13, 13),
-		path(Detail, "M4.5 1.5V5.5H11.5V1.5M4.5 14.5V9.5H11.5V14.5"),
-		rect(Accent, 9, 2.5, 1.5, 2),
-	}},
+	{ID: "save", Color: blue, Accent: slate, Parts: floppy()},
 	{ID: "compare-files", Color: slate, Parts: join([]Part{
 		rect(Body, 1.5, 1.5, 7, 9), path(Detail, "M3.5 4.5H6.5M3.5 6.5H6.5"),
 	}, lens(10, 10, 3)),

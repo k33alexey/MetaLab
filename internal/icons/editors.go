@@ -14,12 +14,14 @@ const (
 )
 
 // funnel is the sign of a selection: a cone as deep as half its width
-// narrowing to a neck of 3 points, the neck's right side longer - the filter
-// of the palette's important properties, a filter criterion before its table.
+// narrowing to a neck of 3 points with a flat end, as the prototype's library
+// draws it (a slanted end read as bitten at 16 px, the owner's remark of
+// 16.10.2026) - the filter of the palette's important properties, a filter
+// criterion before its table, the selections of a list.
 func funnel(left, top, width float64) string {
 	neck, cone := left+width/2, top+(width-1)/2
-	return fmt.Sprintf("M%s %sH%sL%s %sV%sL%s %sV%sZ", number(left), number(top), number(left+width),
-		number(neck+1.5), number(cone), number(cone+5.5), number(neck-1.5), number(cone+4), number(cone))
+	return fmt.Sprintf("M%s %sH%sL%s %sV%sH%sV%sZ", number(left), number(top), number(left+width),
+		number(neck+1.5), number(cone), number(cone+5), number(neck-1.5), number(cone))
 }
 
 var editorIcons = []Icon{

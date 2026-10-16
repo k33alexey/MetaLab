@@ -24,11 +24,19 @@ const (
 	onAccentInk  = "#6b4e00"
 	rimWeight    = 1             // the edge of a coin
 	rimShade     = "#5a3d00 30%" // how much darker the edge is than its accent
-	// inkLighten is how many times more an ink mark lightens on a dark theme
-	// than an outline: it is nearly black, and lightened as an outline it
-	// would read as a disabled button (Studio: 28% × 2.5 = 70% white).
-	inkLighten = 2.5
+	// inkLighten is how many times more an ink mark or spot lightens on a
+	// dark theme than an outline: it is nearly black, and lightened as an
+	// outline it would read as a disabled button (Studio: 28% × 3 = 84%
+	// white; at 70% the arrow of sorting merged with the outlines it lies on,
+	// the owner's choice of 16.10.2026).
+	inkLighten = 3
 )
+
+// inked is the colour of an ink mark or spot: it lightens on a dark theme
+// inkLighten times more than an outline.
+func inked(color string) string {
+	return "color-mix(in srgb," + color + ",#fff calc(var(--icon-lighten,0%)*" + number(inkLighten) + "))"
+}
 
 func outline(color string) string {
 	return "color-mix(in srgb," + color + ",#fff var(--icon-lighten,0%))"
@@ -47,7 +55,9 @@ func paint(role Role, kind, accent string) string {
 	case Mark:
 		return "fill:none;stroke-width:" + strconv.Itoa(markWeight) + ";stroke:" + accent
 	case InkMark:
-		return "fill:none;stroke-width:" + strconv.Itoa(markWeight) + ";stroke:color-mix(in srgb," + kind + ",#fff calc(var(--icon-lighten,0%)*" + number(inkLighten) + "))"
+		return "fill:none;stroke-width:" + strconv.Itoa(markWeight) + ";stroke:" + inked(kind)
+	case InkSpot:
+		return "fill:" + inked(kind) + ";stroke:none"
 	case Rim:
 		return "fill:none;stroke-width:" + number(rimWeight) + ";stroke:color-mix(in srgb," + accent + "," + rimShade + ")"
 	case Plate:
