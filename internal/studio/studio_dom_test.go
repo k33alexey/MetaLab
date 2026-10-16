@@ -215,11 +215,16 @@ const studioReadOnlyModule = `(async () => {
 })()`
 
 // studioGutterFits opens the session module, of as many lines as the Go side
-// wrote, puts a breakpoint and the line being executed on its last line and
-// answers where the marker, the number and the inside of the gutter stand,
-// left and right edges. Defect caught: a number running under the marker of a
-// breakpoint, or cut off by the edge of the gutter, once the numbers grow
-// longer than the gutter was made for (a module of five-digit lines).
+// wrote, goes to its last line, puts a breakpoint and the line being executed
+// there and answers where the marker, the number and the inside of the gutter
+// stand, left and right edges, which marker the last line shows and how many
+// rows the gutter has drawn. Defects caught: a number running under the
+// marker or cut off by the edge of the gutter once the numbers grow longer (a
+// module of five- and six-digit lines); a gutter that stops numbering at some
+// line (it did at 50 000); a gutter taller or shorter than the text, its
+// numbers drifting from their lines; a gutter that draws every line, which
+// cost 0.8 s a click on a module of 44 000 lines; a breakpoint that lays out
+// the whole module again.
 const studioGutterFits = `(async () => {
   const studio = window.__studio, last = %d;
   studio.step = 'gutter of ' + last + ' lines';
@@ -227,13 +232,26 @@ const studioGutterFits = `(async () => {
   await studio.settle();
   [...document.querySelectorAll('#tree .leaf')].find(item => item.textContent.includes('Модуль сеанса')).click();
   await studio.settle();
+  bslEditor.goTo({line: last, column: 1});
   bslEditor.setBreakpoints([last]);
   bslEditor.setExecutionLine(last);
   await studio.settle();
-  const gutter = document.querySelector('#line-gutter'), style = getComputedStyle(gutter), box = gutter.getBoundingClientRect();
-  const digits = [...gutter.querySelectorAll('.gutter-digits')].at(-1), marker = digits.previousElementSibling;
+  // A breakpoint set on a line already drawn: what it costs to lay the page
+  // out again is what the change disturbed beyond the gutter.
+  document.body.offsetHeight;
+  bslEditor.setBreakpoints([last, last - 1]);
+  const before = performance.now();
+  document.body.offsetHeight;
+  const layout = performance.now() - before;
+  bslEditor.setBreakpoints([last]);
+  await studio.settle();
+  const gutter = document.querySelector('#line-gutter .gutter-scroller'), style = getComputedStyle(gutter), box = gutter.getBoundingClientRect();
+  const digits = [...gutter.querySelectorAll('.gutter-digits')].find(item => item.textContent === String(last));
+  if (!digits) return {Text: 'no row of line ' + last + ' drawn'};
+  const marker = digits.previousElementSibling;
   const edges = element => { const rect = element.getBoundingClientRect(); return [rect.left, rect.right]; };
-  return {Marker: edges(marker), Digits: edges(digits), Text: digits.textContent,
+  return {Marker: edges(marker), Digits: edges(digits), Text: digits.textContent, Icon: marker.querySelector('use')?.getAttribute('href') || '',
+    Rows: gutter.querySelectorAll('.gutter-line').length, Drift: gutter.scrollHeight - document.querySelector('#editor').scrollHeight, Layout: layout,
     Gutter: [box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft), box.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight)]};
 })()`
 
@@ -327,7 +345,7 @@ func TestStudioEditorsWorkInBrowser(t *testing.T) {
 	for _, problem := range carried.Problems {
 		t.Errorf("page: %s", problem)
 	}
-	for _, lines := range []int{9, 12000} {
+	for _, lines := range []int{9, 12000, 100000} {
 		writeBSLTestSource(t, root, project.SessionModuleFile, "Процедура П()\n"+strings.Repeat("\n", lines-2)+"КонецПроцедуры")
 		result, err = browser.evaluate(ctx, page, fmt.Sprintf(studioGutterFits, lines))
 		if err != nil {
@@ -335,13 +353,33 @@ func TestStudioEditorsWorkInBrowser(t *testing.T) {
 		}
 		var gutter struct {
 			Marker, Digits, Gutter [2]float64
-			Text                   string
+			Text, Icon             string
+			Rows, Drift            int
+			Layout                 float64
 		}
 		if err := json.Unmarshal(result, &gutter); err != nil {
 			t.Fatalf("the page answered %s: %v", result, err)
 		}
 		if gutter.Text != strconv.Itoa(lines) || gutter.Marker[1] > gutter.Digits[0] || gutter.Digits[1] > gutter.Gutter[1] || gutter.Marker[0] < gutter.Gutter[0] {
 			t.Errorf("a module of %d lines: the marker %v and the number %q %v do not stand side by side inside the gutter %v", lines, gutter.Marker, gutter.Text, gutter.Digits, gutter.Gutter)
+		}
+		if gutter.Icon != "#icon-breakpoint-mark-current" {
+			t.Errorf("a module of %d lines: the last line, stopped on with a breakpoint, is marked %q", lines, gutter.Icon)
+		}
+		// The gutter and the text are one height, or the numbers drift away
+		// from their lines down a long module (1250 px at 100 000 lines).
+		if gutter.Drift < -1 || gutter.Drift > 1 {
+			t.Errorf("a module of %d lines: the gutter and the text differ in height by %d px", lines, gutter.Drift)
+		}
+		// A breakpoint lays out the gutter, not the highlighted text of the
+		// module beside it: 270 ms at 44 000 lines and 630 ms at 100 000 while
+		// the rows were a cell of the editor's grid; 1 ms since.
+		if gutter.Layout > 150 {
+			t.Errorf("a module of %d lines: a breakpoint laid the page out again in %.0f ms", lines, gutter.Layout)
+		}
+		// The rows in sight and a margin around them - not every line.
+		if gutter.Rows > 300 {
+			t.Errorf("a module of %d lines: the gutter drew %d rows", lines, gutter.Rows)
 		}
 	}
 	for _, problem := range browser.problems() {

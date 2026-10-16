@@ -1,5 +1,11 @@
 #editor-host[hidden] { display:none }
+/* --bsl-line is the pitch of a line of a module - of the text, of its
+   highlight and of the gutter - and the one place it is written; bsl-editor.js
+   reads it. It is 21.75 px, a number every browser lays out exactly (in 1/64
+   and 1/60 of a pixel): at 21.7 Chrome laid each line at 21.6875 and the
+   gutter, counted at 21.7, fell 57 lines behind on a module of 100 000. */
 #editor-host {
+  --bsl-line:21.75px;
   min-width:0;
   min-height:0;
   display:grid;
@@ -12,17 +18,27 @@
    so that a number never runs under the marker or out of sight. */
 #line-gutter {
   width:calc(8px + 1px + 18px + 16px + 4px + 3px + max(2, var(--gutter-digits, 2)) * 1ch);
+  position:relative;
   min-height:0;
   overflow:hidden;
-  padding:16px 4px;
   border-right:1px solid #303238;
   background:#202125;
   color:#6f737c;
-  font:12px/21.7px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font:12px/var(--bsl-line) ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   text-align:right;
   user-select:none;
 }
-.gutter-line { height:21.7px; display:grid; grid-template-columns:18px 1fr; align-items:center }
+/* The rows scroll in a box laid over the gutter rather than in the gutter
+   itself: the gutter is a cell of the editor's grid, and a change inside a
+   cell laid the whole grid out again - with the highlighted text of the
+   module, 270 ms a breakpoint at 44 000 lines; a change inside this box lays
+   out the box alone. */
+.gutter-scroller { position:absolute; inset:0; overflow:hidden; padding:16px 4px; contain:strict }
+/* Only the rows in sight are drawn (bsl-editor.js, drawGutterWindow): a
+   track as tall as all the lines, the rows laid on it where they belong. */
+.gutter-track { position:relative }
+.gutter-window { position:absolute; left:0; right:0 }
+.gutter-line { height:var(--bsl-line); display:grid; grid-template-columns:18px 1fr; align-items:center }
 .gutter-line button { width:16px; height:16px; padding:0; background:transparent; color:#8c9098; font:10px/16px sans-serif }
 .gutter-line button:hover { background:#3c3f45; color:#dfe1e5 }
 .gutter-line .gutter-number { display:flex; align-items:center; justify-content:space-between; gap:4px; width:100%; height:21px; padding:0 3px 0 0; color:inherit; font:12px/21px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace }
@@ -42,7 +58,7 @@
   border:0;
   tab-size:4;
   white-space:pre;
-  font:14px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font:14px/var(--bsl-line) ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 }
 #syntax-layer { display:none; overflow:hidden; background:#1e1f22; color:#dfe1e5; pointer-events:none }
 #editor-host.bsl-active #syntax-layer { display:block }
