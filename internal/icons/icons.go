@@ -54,6 +54,16 @@ const (
 	// dark theme as an ink mark does: the arrow of sorting, dark on a light
 	// page and nearly white on a dark one.
 	InkSpot
+	// Halo is the clearing under a sign laid over a picture that fills the
+	// grid: the sign's own shape, filled and widely outlined in the page's
+	// background, so that the lines of a table under an f(x), a plus or an
+	// arrow do not run into it.
+	Halo
+	// ThinHalo is the halo of an outline - the disc of a badge, the body of
+	// a folder laid over a picture: half a point clear of the line, where a
+	// halo as wide as a spot's reads as a thick white ring (the owner's
+	// remark on the plus of «clone», 16.10.2026).
+	ThinHalo
 )
 
 // Part is one shape of an icon in its role. Exactly one of the geometries is
@@ -80,6 +90,12 @@ type Icon struct {
 
 func rect(role Role, x, y, width, height float64) Part {
 	return Part{Role: role, Rect: &[4]float64{x, y, width, height}}
+}
+
+// box is a rectangle with sharp corners: a table, whose corners rounded by
+// 2 would turn a narrow one into a capsule and a small one into a jar.
+func box(role Role, x, y, width, height float64) Part {
+	return path(role, fmt.Sprintf("M%s %sH%sV%sH%sZ", number(x), number(y), number(x+width), number(y+height), number(x)))
 }
 
 func circle(role Role, cx, cy, r float64) Part {
@@ -143,6 +159,30 @@ func drum(left, top, width, height, ry float64) []Part {
 			lower, right, upper, cx, upper, l, upper, l, lower)),
 		path(Detail, fmt.Sprintf("M%s %sQ%s %s %s %sQ%s %s %s %s", l, lower, l, rim, cx, rim, right, rim, right, lower)),
 	}
+}
+
+// exchangePlan is two drums, the nodes of an exchange, with the green
+// arrows between them: the plan itself and, with a pencil, the tables of
+// its changes in a query.
+func exchangePlan() []Part {
+	return join(drum(1.5, 1, 6, 7, 1.25), drum(8.5, 8, 6, 7, 1.25),
+		[]Part{path(Line, "M9.5 3.5H12.5V6.5M11 5L12.5 6.5L14 5M6.5 12.5H3.5V9.5M2 11L3.5 9.5L5 11")})
+}
+
+// over lays a sign over a picture that fills the grid, clearing a halo
+// under it: the picture keeps its size, the sign stands on it (the owner's
+// rule of 16.10.2026 - a table, a list is always the whole icon).
+func over(sign ...Part) []Part {
+	parts := make([]Part, 0, 2*len(sign))
+	for _, part := range sign {
+		halo := Halo
+		if part.Role == Body || part.Role == Plate || part.Role == Detail {
+			halo = ThinHalo
+		}
+		part.Role, part.Color = halo, ""
+		parts = append(parts, part)
+	}
+	return append(parts, sign...)
 }
 
 // axes are the two arrows of coordinates from a red origin at ox, oy - up to
@@ -261,16 +301,14 @@ var treeIcons = []Icon{
 		rect(Body, 1.5, 10.5, 4, 4),
 		rect(Body, 10.5, 10.5, 4, 4),
 	}},
-	{ID: "common-module", Color: slate, Accent: code, Parts: []Part{
+	{ID: "common-module", Color: slate, Accent: code, Parts: join([]Part{
 		rect(Body, 1.5, 2.5, 13, 11),
 		path(Detail, window),
-		path(Line, "M6.5 7.5L4.5 9.5L6.5 11.5M9.5 7.5L11.5 9.5L9.5 11.5"),
-	}},
-	{ID: "module", Color: slate, Accent: code, Parts: []Part{
+	}, over(path(Line, "M6.5 7.5L4.5 9.5L6.5 11.5M9.5 7.5L11.5 9.5L9.5 11.5")))},
+	{ID: "module", Color: slate, Accent: code, Parts: join([]Part{
 		path(Body, page),
 		path(Detail, pageFold),
-		path(Line, "M6.5 8L4.5 10L6.5 12M9.5 8L11.5 10L9.5 12"),
-	}},
+	}, over(path(Line, "M6.5 8L4.5 10L6.5 12M9.5 8L11.5 10L9.5 12")))},
 	{ID: "session-parameter", Color: blue, Parts: []Part{
 		path(Body, "M8 1.5L14.5 8L8 14.5L1.5 8Z"),
 		path(Detail, "M5.5 8H10.5"),
@@ -324,10 +362,9 @@ var treeIcons = []Icon{
 		colored(bar(1, 2, 10, 4), slate),
 		path(Mark, "M6.5 10L9.5 13L14.5 7.5"),
 	}},
-	{ID: "ext-dimension-accounting-flag", Color: green, Accent: green, Parts: []Part{
+	{ID: "ext-dimension-accounting-flag", Color: green, Accent: green, Parts: join([]Part{
 		path(Detail, "M1.5 2.5H8.5M1.5 5.5H8.5M1.5 8.5H5.5"),
-		path(Mark, "M6.5 10L9.5 13L14.5 7.5"),
-	}},
+	}, over(path(Mark, "M6.5 10L9.5 13L14.5 7.5")))},
 	{ID: "url-template", Color: "#5d6b7a", Accent: green, Parts: []Part{
 		path(Detail, "M1.5 4V12M1.5 8.5Q1.5 7 3 7Q4.5 7 4.5 8.5V12"),
 		path(Detail, "M6 5V11Q6 12 7 12M5 7.5H7M8.5 5V11Q8.5 12 9.5 12M7.5 7.5H9.5"),
@@ -443,10 +480,7 @@ var treeIcons = []Icon{
 		colored(rect(Accent, 11, 10.5, 1, 3), green),
 		colored(rect(Accent, 12.5, 11.5, 1, 2), orange),
 	}},
-	{ID: "exchange-plan", Color: blue, Accent: green, Parts: join(
-		drum(1.5, 1, 6, 7, 1.25), drum(8.5, 8, 6, 7, 1.25),
-		[]Part{path(Line, "M9.5 3.5H12.5V6.5M11 5L12.5 6.5L14 5M6.5 12.5H3.5V9.5M2 11L3.5 9.5L5 11")},
-	)},
+	{ID: "exchange-plan", Color: blue, Accent: green, Parts: exchangePlan()},
 	// The funnel of a selection stands in front of the table it selects
 	// from, the red of the selected rows showing at its sides.
 	{ID: "filter-criterion", Color: gray, Accent: red, Parts: []Part{
@@ -514,7 +548,7 @@ var treeIcons = []Icon{
 		path(Detail, "M2.5 7H13.5M8 1.5Q5 7 8 12.5M8 1.5Q11 7 8 12.5"),
 		rect(Accent, 1.5, 11.5, 13, 3),
 	}},
-	{ID: "ws-reference", Color: sea, Parts: join(globe(6.5, 6.5, 5), link(11.5, 11.5, 4, 2, 1))},
+	{ID: "ws-reference", Color: sea, Parts: join(globe(6.5, 6.5, 5), over(link(11.5, 11.5, 4, 2, 1)...))},
 	{ID: "websocket-client", Color: sea, Accent: green, Parts: append(globe(6.5, 6.5, 5),
 		path(Line, "M8.5 13.5H14.5M12.5 11.5L14.5 13.5L12.5 15.5"),
 	)},
@@ -653,7 +687,7 @@ var treeIcons = []Icon{
 
 // table is every icon: the tree's, the commands' (commands.go), the
 // editors' (editors.go), the library's (standard_icons.go, service_icons.go).
-var table = slices.Concat(treeIcons, commandIcons, editorIcons, debuggerIcons, formEditorIcons, standardIcons, serviceIcons)
+var table = slices.Concat(treeIcons, commandIcons, editorIcons, debuggerIcons, formEditorIcons, standardIcons, serviceIcons, compositionIcons)
 
 // All is every icon, in the order of the table.
 func All() []Icon {

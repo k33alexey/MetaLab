@@ -8,9 +8,7 @@ import "fmt"
 // redaktor-modulya/).
 
 const (
-	parens  = "M10 5Q8.5 8.5 10 12M12.5 5Q14 8.5 12.5 12"
-	wand    = "M5 4.5L13.5 13"
-	sparkle = "M10.5 1.5V4.5M9 3H12M13.5 5V7M12.5 6H14.5"
+	parens = "M10 5Q8.5 8.5 10 12M12.5 5Q14 8.5 12.5 12"
 )
 
 // funnel is the sign of a selection: a cone as deep as half its width
@@ -92,14 +90,12 @@ var editorIcons = []Icon{
 	{ID: "method-procedure", Color: green, Parts: []Part{
 		path(Detail, "M3.5 6.5V14.5M3.5 8Q3.5 6.5 5.25 6.5Q7 6.5 7 8.75Q7 11 5.25 11Q3.5 11 3.5 9.5"+parens),
 	}},
-	{ID: "procedure", Color: red, Accent: red, Parts: []Part{
-		rect(Body, 1.5, 2.5, 13, 11),
+	{ID: "procedure", Color: red, Accent: red, Parts: join([]Part{rect(Body, 1.5, 2.5, 13, 11)}, over(
 		path(Line, "M3.75 11V5H5.5Q7.25 5 7.25 6.75Q7.25 8.5 5.5 8.5H3.75M9.75 5Q8.75 8 9.75 11M12 5Q13 8 12 11"),
-	}},
-	{ID: "function", Color: red, Accent: red, Parts: []Part{
-		rect(Body, 1.5, 2.5, 13, 11),
+	))},
+	{ID: "function", Color: red, Accent: red, Parts: join([]Part{rect(Body, 1.5, 2.5, 13, 11)}, over(
 		path(Line, "M3.75 11V5H7M3.75 8H6.25M9.75 5Q8.75 8 9.75 11M12 5Q13 8 12 11"),
-	}},
+	))},
 	{ID: "keyword", Color: code, Accent: code, Parts: []Part{
 		path(Line, "M2.5 4.5H9.5M2.5 8H13.5M2.5 11.5H7.5"),
 	}},
@@ -119,14 +115,19 @@ var editorIcons = []Icon{
 		path(Line, "M2.5 12.5L6 1.5M6.5 12.5L10 1.5"),
 		colored(path(Mark, "M11 11L14 14M14 11L11 14"), red),
 	}},
-	{ID: "check-module", Color: slate, Accent: green, Parts: []Part{
+	{ID: "check-module", Color: slate, Accent: green, Parts: join([]Part{
 		rect(Body, 1.5, 1.5, 10, 11),
 		path(Detail, "M3.5 4.5H5M3.5 7H5"),
+	}, over(
 		colored(path(Line, "M6.5 4.5H9.5M6.5 7H9.5"), red),
 		path(Mark, "M7.5 12L10 14.5L14.5 9.5"),
-	}},
+	))},
+	// P() stands in the middle of the glass, as far from its rim on the left
+	// as on the right, its brackets straight in the middle so that each is
+	// one column of pixels and does not merge with the letter (the owner's
+	// choice of 16.10.2026).
 	{ID: "procedures-list", Color: slate, Accent: red, Parts: join(lens(7, 7, 5.5), []Part{
-		path(Line, "M4.5 9V5H5.75Q7 5 7 6.25Q7 7.5 5.75 7.5H4.5M9 5Q8.25 7 9 9M10.5 5Q11.25 7 10.5 9"),
+		path(Line, "M3.5 9V5H4.5Q5.75 5 5.75 6.25Q5.75 7.5 4.5 7.5H3.5M8 5Q7.5 5.5 7.5 6.25V7.75Q7.5 8.5 8 9M10 5Q10.5 5.5 10.5 6.25V7.75Q10.5 8.5 10 9"),
 	})},
 	{ID: "bookmark-next", Color: gray, Accent: "#5b636d", Parts: join(flag(), []Part{
 		colored(path(Line, "M12.5 9.5V14.5M10.5 12.5L12.5 14.5L14.5 12.5"), green),
@@ -137,17 +138,11 @@ var editorIcons = []Icon{
 	{ID: "bookmarks-delete", Color: gray, Accent: "#5b636d", Parts: join(flag(), []Part{
 		colored(path(Mark, "M11 11L14 14M14 11L11 14"), red),
 	})},
-	{ID: "query-designer", Color: slate, Accent: red, Parts: []Part{
-		rect(Body, 1.5, 1.5, 10, 9),
-		path(Detail, "M1.5 4H11.5M3.5 6.5H6"),
-		colored(path(Line, wand), brown),
-		path(Line, sparkle),
-	}},
-	{ID: "query-designer-processing", Color: slate, Accent: red, Parts: []Part{
-		rect(Body, 1.5, 1.5, 10, 9),
-		path(Detail, "M1.5 4H11.5"),
-		colored(path(Line, wand), brown),
-		path(Line, sparkle),
+	// The query wizard, the configurator's command and the library's
+	// picture alike: a list over the whole grid and three red pluses, the
+	// most used command plain at 16 px (the owner's choice of 16.10.2026).
+	{ID: "query-designer", Color: slate, Parts: join(list(true), wizardPluses())},
+	{ID: "query-designer-processing", Color: slate, Parts: join(list(true), wizardPluses(), over(
 		colored(path(Line, "M1.5 13.5H6.5M5 12L6.5 13.5L5 15"), green),
-	}},
+	))},
 }

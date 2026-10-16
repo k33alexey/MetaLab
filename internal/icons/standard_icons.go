@@ -16,10 +16,13 @@ import (
 const black = "#3a3f45"
 
 // badge is a disc at the lower corner of what it marks, hiding what lies
-// under it, with its mark inside: the plus of a copy, the cross of a
-// deletion mark.
-func badge(cx, cy float64, color, mark string) []Part {
-	return []Part{colored(circle(Plate, cx, cy, 3.5), color), colored(circle(Body, cx, cy, 3.5), color), colored(path(Mark, mark), color)}
+// under it, with its sign inside in a thin line: the plus of a copy, the
+// cross of a deletion mark. A thick mark filled the small disc into a spot;
+// a thin one in a larger disc reads at once (the owner's choice of
+// 16.10.2026).
+func badge(cx, cy float64, color, sign string) []Part {
+	const r = 4
+	return over(colored(circle(Plate, cx, cy, r), color), colored(circle(Body, cx, cy, r), color), colored(path(Line, sign), color))
 }
 
 // gear is a wheel with six teeth and a hole, outlined, hiding what lies
@@ -79,9 +82,15 @@ func sortList(first, last func(float64) Part) []Part {
 // sortArrow is the solid arrow of sorting, from top down to its point at
 // tip: dark on a light page, light on a dark one, in the colour of ink.
 func sortArrow(x, top, tip float64) Part {
-	return colored(path(InkSpot, fmt.Sprintf("M%s %sH%sV%sH%sL%s %sL%s %sH%sZ",
+	return colored(path(InkSpot, downArrow(x, top, tip)), black)
+}
+
+// downArrow is the shape of a solid arrow from top down to its point at tip:
+// the arrow of sorting a list and, blue, of the order of data composition.
+func downArrow(x, top, tip float64) string {
+	return fmt.Sprintf("M%s %sH%sV%sH%sL%s %sL%s %sH%sZ",
 		number(x-0.75), number(top), number(x+0.75), number(tip-4), number(x+2.5),
-		number(x), number(tip), number(x-2.5), number(tip-4), number(x-0.75))), black)
+		number(x), number(tip), number(x-2.5), number(tip-4), number(x-0.75))
 }
 
 // crossedDisc is a disc with a cross in it: «delete» and «stop» of the
@@ -93,7 +102,7 @@ func crossedDisc() []Part {
 // taskBoard is the board of a task with the lines of what it asks, the
 // sign of what is done to it in the lower right corner.
 func taskBoard(sign ...Part) []Part {
-	return join(board(), []Part{path(Detail, "M3.5 6.5H9.5M3.5 8.5H9.5M3.5 10.5H7.5")}, sign)
+	return join(board(), []Part{path(Detail, "M3.5 6.5H9.5M3.5 8.5H9.5M3.5 10.5H7.5")}, over(sign...))
 }
 
 // listFrame is a list in its frame, as the modes of viewing a list show it:
@@ -154,7 +163,7 @@ var standardIcons = []Icon{
 	}},
 	{ID: "mark-to-delete", Color: slate, Parts: join([]Part{
 		path(Body, "M5.5 1.5H11L14.5 5V14.5H5.5Z"), path(Detail, "M11 1.5V5H14.5"),
-	}, badge(5, 11, red, "M3.5 9.5L6.5 12.5M6.5 9.5L3.5 12.5"))},
+	}, badge(5, 11, red, "M3.25 9.25L6.75 12.75M6.75 9.25L3.25 12.75"))},
 	{ID: "delete-directly", Color: gray, Accent: red, Parts: crossedDisc()},
 	{ID: "delete-circle", Color: red, Accent: red, Parts: crossedDisc()},
 	{ID: "write-and-close", Color: slate, Accent: green, Parts: []Part{
@@ -187,11 +196,10 @@ var standardIcons = []Icon{
 		path(Detail, "M4 2Q0.5 8 4 14M12 2Q15.5 8 12 14"),
 		path(Accent, "M7.25 5L4.5 8L7.25 11Z"), path(Accent, "M8.75 5L11.5 8L8.75 11Z"),
 	}},
-	{ID: "create-folder", Color: groupColor, Accent: yellow, Parts: []Part{
+	{ID: "create-folder", Color: groupColor, Accent: yellow, Parts: join([]Part{
 		path(Body, "M1.5 3.5H5.5L7 5H13.5V12.5H1.5Z"),
 		rect(Accent, 2, 7, 11, 1.5),
-		colored(path(Mark, "M12.5 9.5V15M9.75 12.25H15.25"), green),
-	}},
+	}, over(colored(path(Mark, "M12.5 9.5V15M9.75 12.25H15.25"), green)))},
 	{ID: "expand-all", Color: gray, Parts: listOrder("M2.5 1.5V14M0.75 12.25L2.5 14L4.25 12.25")},
 	{ID: "collapse-all", Color: gray, Parts: listOrder("M2.5 14.5V2M0.75 3.75L2.5 2L4.25 3.75")},
 	{ID: "close", Color: black, Parts: []Part{
@@ -298,10 +306,9 @@ var standardIcons = []Icon{
 		path(Body, "M1.5 4.5H5.5L7 6H11.5V13.5H1.5Z"), rect(Accent, 2, 8, 9, 1.5),
 		colored(path(Line, "M13.5 1.5V8.5"), blue), colored(path(Accent, "M11.25 7.75L13.5 10.75L15.75 7.75Z"), blue),
 	}},
-	{ID: "rename", Color: blue, Parts: []Part{
+	{ID: "rename", Color: blue, Parts: join([]Part{
 		rect(Body, 1.5, 5.5, 13, 5),
-		colored(path(InkMark, "M8 2.5V13.5M6.5 2.5H9.5M6.5 13.5H9.5"), black),
-	}},
+	}, over(colored(path(InkMark, "M8 2.5V13.5M6.5 2.5H9.5M6.5 13.5H9.5"), black)))},
 	{ID: "restore-values", Color: slate, Accent: green, Parts: join(valuesSheet(7), []Part{
 		mound(0),
 		path(Accent, "M2.5 10V5.5Q2.5 3.5 4.5 3.5H6V1.5L9.5 4.5L6 7.5V5.5H4.5V10Z"),
@@ -313,7 +320,7 @@ var standardIcons = []Icon{
 	{ID: "customize-list", Color: blue, Parts: join([]Part{
 		rect(Body, 1.5, 3.5, 9, 11),
 		path(Detail, "M3.5 6.5H8.5M3.5 9H8.5M3.5 11.5H8.5"),
-	}, filterOver(6, 1.5, 9))},
+	}, over(filterOver(6, 1.5, 9)...))},
 	{ID: "customize-form", Color: slate, Accent: blue, Parts: []Part{
 		rect(Body, 1.5, 1.5, 13, 13), rect(Accent, 2, 2, 12, 2.5),
 		colored(circle(Body, 8, 9.25, 3.25), gray), colored(circle(Accent, 8, 9.25, 1.25), gray),
@@ -367,18 +374,17 @@ var standardIcons = []Icon{
 	{ID: "find-in-tree-sheet", Color: slate, Parts: join([]Part{rect(Body, 1.5, 1.5, 10, 13)}, tint(colouredRows(3.5), gray), []Part{
 		path(Plate, pointer), path(Body, pointer),
 	})},
-	{ID: "find-in-list", Color: slate, Accent: red, Parts: []Part{
+	{ID: "find-in-list", Color: slate, Accent: red, Parts: join([]Part{
 		rect(Body, 1.5, 1.5, 10, 13),
 		path(Accent, "M3.5 4H5V5.5H3.5ZM3.5 6.5H5V8H3.5ZM3.5 9H5V10.5H3.5Z"),
 		path(Detail, "M6.5 4.75H9.5M6.5 7.25H9.5M6.5 9.75H9.5"),
-		colored(path(Detail, "M15 12H8.5M8.5 9.75L5.5 12L8.5 14.25Z"), ink),
-	}},
+	}, over(colored(path(Detail, "M15 12H8.5M8.5 9.75L5.5 12L8.5 14.25Z"), ink)))},
 	{ID: "find-by-number", Color: navy, Parts: join(lens(6, 9, 4), []Part{
 		colored(path(Detail, "M10.5 5.5V1.5L14 5.5V1.5"), black),
 	})},
 	{ID: "list-settings", Color: blue, Parts: join([]Part{
 		rect(Body, 1.5, 3.5, 9, 3.5), rect(Body, 1.5, 7.5, 9, 3.5), rect(Body, 1.5, 11.5, 9, 3),
-	}, tint(gear(11.25, 4.75, 4.25), gray))},
+	}, over(tint(gear(11.25, 4.75, 4.25), gray)...))},
 	{ID: "filter-history", Color: slate, Parts: join([]Part{
 		rect(Body, 4.5, 4.5, 10, 10),
 		path(Detail, "M10.5 7.5H13M10.5 10H13M6 12.5H13"),

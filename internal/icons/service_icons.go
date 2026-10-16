@@ -125,10 +125,9 @@ func goArrow() []Part {
 // over the corner, wide and dark so that it is not lost on the window's
 // title, hiding what lies under it (the owner's choice of 16.10.2026).
 func windowArrow(arrow string) []Part {
-	return []Part{
+	return append([]Part{
 		rect(Body, 1.5, 2.5, 11, 12), rect(Accent, 2, 3, 10, 2.5),
-		colored(path(Plate, arrow), "#1f66c2"), colored(path(Accent, arrow), "#1f66c2"),
-	}
+	}, over(colored(path(Plate, arrow), "#1f66c2"), colored(path(Accent, arrow), "#1f66c2"))...)
 }
 
 // exchangeBase is the base of a distributed base, the drum in the upper
@@ -136,6 +135,23 @@ func windowArrow(arrow string) []Part {
 // it and what stands in the lower right.
 func exchangeBase(arrow ...Part) []Part {
 	return join(drum(1.5, 1, 6.5, 7.5, 1.25), arrow)
+}
+
+// fx is the f(x) of an expression, the letter, the brackets and the x in
+// them, moved by dx, dy and drawn scale times its size: a custom expression
+// over the whole grid, the user fields of data composition smaller over a
+// table.
+func fx(dx, dy, scale float64) string {
+	points := [][2]float64{
+		{3.5, 13}, {3.5, 5}, {3.5, 3}, {5.5, 3}, {2, 7}, {5, 7},
+		{8, 4}, {6.25, 8.5}, {8, 13}, {14, 4}, {15.75, 8.5}, {14, 13},
+		{9.5, 6.5}, {12.5, 10.5}, {12.5, 6.5}, {9.5, 10.5},
+	}
+	at := make([]any, len(points))
+	for index, point := range points {
+		at[index] = number(round(dx+point[0]*scale)) + " " + number(round(dy+point[1]*scale))
+	}
+	return fmt.Sprintf("M%sL%sQ%s %sM%sL%sM%sQ%s %sM%sQ%s %sM%sL%sM%sL%s", at...)
 }
 
 // envelope is the message of an exchange in the lower right corner.
@@ -170,20 +186,18 @@ var serviceIcons = []Icon{
 	{ID: "collaboration-external-user", Color: "#a3aab2", Parts: join([]Part{
 		circle(Detail, 8, 8, 6.5),
 	}, solidPerson(8, 6.25, 1.75, 11.5, 3.25))},
-	{ID: "collaboration-integration-user", Color: "#a3aab2", Parts: join(globe(6.5, 6.5, 5.5), solidPerson(12, 9.5, 1.75, 15, 3.25))},
+	{ID: "collaboration-integration-user", Color: "#a3aab2", Parts: join(globe(6.5, 6.5, 5.5), over(solidPerson(12, 9.5, 1.75, 15, 3.25)...))},
 	// Обсуждения и сообщения.
-	{ID: "conversations", Color: ink, Parts: []Part{
+	{ID: "conversations", Color: ink, Parts: join([]Part{
 		path(Detail, bubble(5.5, 1.5, 14.5, 8.5, 0)),
-		path(Plate, bubble(1.5, 5.5, 10.5, 12, 5.5)),
-	}},
+	}, over(path(Plate, bubble(1.5, 5.5, 10.5, 12, 5.5))))},
 	{ID: "group-conversation", Color: ink, Parts: join(
 		personContour(Detail, 10.5, 4, 2, 11, 4),
-		personContour(Plate, 6, 7, 2.5, 14.5, 4.5),
+		over(personContour(Plate, 6, 7, 2.5, 14.5, 4.5)...),
 	)},
-	{ID: "new-conversation", Color: ink, Accent: green, Parts: []Part{
+	{ID: "new-conversation", Color: ink, Accent: green, Parts: join([]Part{
 		path(Detail, bubble(4.5, 1.5, 14.5, 10, 12)),
-		path(Mark, "M4 9.5V14.5M1.5 12H6.5"),
-	}},
+	}, over(path(Mark, "M4 9.5V14.5M1.5 12H6.5")))},
 	{ID: "message", Color: ink, Parts: []Part{path(Detail, bubble(1.5, 2.5, 14.5, 11.5, 7))}},
 	{ID: "send-message", Color: ink, Parts: []Part{
 		path(Detail, "M1.5 3.5H14.5L7 13.5L5.5 8.5ZM5.5 8.5L14.5 3.5"),
@@ -200,7 +214,7 @@ var serviceIcons = []Icon{
 		path(Detail, "M3 4.5H9Q10.5 4.5 10.5 6V10Q10.5 11.5 9 11.5H3Q1.5 11.5 1.5 10V6Q1.5 4.5 3 4.5ZM10.5 7L14.5 4.5V11.5L10.5 9"),
 	}},
 	{ID: "notify", Color: ink, Parts: []Part{bell(8)}},
-	{ID: "dont-notify", Color: ink, Accent: red, Parts: []Part{bell(8), path(Mark, "M2.5 14.5L13.5 2.5")}},
+	{ID: "dont-notify", Color: ink, Accent: red, Parts: join([]Part{bell(8)}, over(path(Mark, "M2.5 14.5L13.5 2.5")))},
 	{ID: "dont-disturb", Color: ink, Accent: red, Parts: []Part{bell(6.5), path(Mark, "M11.5 5L15 8.5M15 5L11.5 8.5")}},
 	// Диалоги: thin pale signs in a ring or a triangle, as the prototype's
 	// windows of a question show them; «Информация» is the black one of a
@@ -241,12 +255,12 @@ var serviceIcons = []Icon{
 	{ID: "history", Color: ink, Parts: append(turnArrow(8.5, 8, 5.5, 135, -180, false),
 		path(Detail, "M8.5 5V8.5H11"),
 	)},
-	{ID: "data-history", Color: "#6f9a2a", Parts: join(editingPencil(), clockFace(11.75, 11.75, 3.5))},
+	{ID: "data-history", Color: "#6f9a2a", Parts: join(editingPencil(), over(clockFace(11.75, 11.75, 3.5)...))},
 	// Ссылки и избранное. «Получить навигационную ссылку» is the sign of a
 	// reference; going by one adds the black arrow, to the outside of the
 	// base the globe stands for the reference.
 	{ID: "goto-url", Color: ink, Parts: join(link(6.5, 6.5, 5.5, 2.5, 1), goArrow())},
-	{ID: "goto-external-url", Color: ink, Parts: join(globe(6.5, 6.5, 5.5), goArrow())},
+	{ID: "goto-external-url", Color: ink, Parts: join(globe(6.5, 6.5, 5.5), over(goArrow()...))},
 	{ID: "favorites", Color: ink, Parts: []Part{path(Detail, star(8, 8.75, 6.5, 2.75))}},
 	{ID: "add-to-favorites", Color: "#f2c230", Accent: "#f2c230", Parts: []Part{
 		path(Accent, star(8, 8.75, 7, 3)), path(Rim, star(8, 8.75, 7, 3)),
@@ -264,8 +278,7 @@ var serviceIcons = []Icon{
 		rect(Body, 1.5, 1.5, 10, 13),
 		path(Detail, "M4.25 5V11.25M4.25 8H5.5M4.25 11.25H5.5"),
 		rect(Accent, 3, 3.5, 3.5, 1.5), rect(Accent, 5.5, 7.25, 3.5, 1.5), rect(Accent, 5.5, 10.5, 3, 1.5),
-		colored(circle(Plate, 10.5, 10.5, 3), slate),
-	}, lens(10.5, 10.5, 3))},
+	}, over(append([]Part{colored(circle(Plate, 10.5, 10.5, 3), slate)}, lens(10.5, 10.5, 3)...)...))},
 	// Пароль.
 	{ID: "show-password", Color: ink, Parts: []Part{path(Detail, eye), colored(circle(InkSpot, 8, 8, 2), black)}},
 	{ID: "hide-password", Color: ink, Parts: []Part{
@@ -283,9 +296,9 @@ var serviceIcons = []Icon{
 		path(Line, writtenArrow), headDown(11.5, 8),
 	})...)},
 	{ID: "open-from-main-server", Color: ink, Parts: []Part{path(Detail, cloud)}},
-	{ID: "open-from-standalone-server", Color: ink, Accent: red, Parts: []Part{
-		path(Detail, cloud), path(Mark, "M2.5 14.5L13.5 2.5"),
-	}},
+	{ID: "open-from-standalone-server", Color: ink, Accent: red, Parts: join([]Part{
+		path(Detail, cloud),
+	}, over(path(Mark, "M2.5 14.5L13.5 2.5")))},
 	// Прочее.
 	{ID: "today", Color: slate, Accent: "#d9b84a", Parts: []Part{
 		rect(Body, 2.5, 1.5, 11, 13), rect(Accent, 3, 2, 10, 2.5),
@@ -302,7 +315,5 @@ var serviceIcons = []Icon{
 		colored(path(Line, "M7 3.5V11M7 8Q7 6.5 8.5 6.5Q10 6.5 10 8.75Q10 11 8.5 11Q7 11 7 9.5"), steel),
 		colored(path(Line, "M14.5 10Q13.75 9 12.75 9Q11 9 11 11.75Q11 14.5 12.75 14.5Q13.75 14.5 14.5 13.5"), red),
 	}},
-	{ID: "custom-expression", Color: steel, Parts: []Part{
-		path(Detail, "M3.5 13V5Q3.5 3 5.5 3M2 7H5M8 4Q6.25 8.5 8 13M14 4Q15.75 8.5 14 13M9.5 6.5L12.5 10.5M12.5 6.5L9.5 10.5"),
-	}},
+	{ID: "custom-expression", Color: steel, Parts: []Part{path(Detail, fx(0, 0, 1))}},
 }

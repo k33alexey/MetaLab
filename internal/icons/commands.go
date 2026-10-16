@@ -63,11 +63,11 @@ func printer() []Part {
 // authentication gold. The person keeps the size of «users», as the
 // prototype keeps it under every sign.
 func lockedPerson(lock string) []Part {
-	return join(person(6.5, 14.5, 6), []Part{
+	return join(person(6.5, 14.5, 6), over(
 		colored(path(Detail, padlock), lock),
 		colored(path(Plate, "M9.5 11.5H14.5V15H9.5Z"), lock),
 		colored(rect(Accent, 9.5, 11.5, 5, 3.5), lock),
-	})
+	))
 }
 
 // editingPencil is the pencil of «change», alone and under the clock of the
@@ -161,7 +161,7 @@ var commandIcons = []Icon{
 	})},
 	{ID: "global-search", Color: groupColor, Parts: join([]Part{
 		path(Body, "M1.5 2.5H5.5L7 4H13.5V12.5H1.5Z"),
-	}, tint(lens(10, 10, 3), slate))},
+	}, over(tint(lens(10, 10, 3), slate)...))},
 	{ID: "bookmarks", Color: gray, Accent: "#5b636d", Parts: flag()},
 	{ID: "interface-texts", Color: green, Accent: red, Parts: []Part{
 		path(Line, "M1.5 2.5H9.5M5.5 2.5V11.5"),
@@ -186,7 +186,7 @@ var commandIcons = []Icon{
 		rect(Body, 1.5, 1.5, 13, 13),
 		path(Detail, "M1.5 4.5H14.5M7.5 4.5V14.5M3.5 7H6M3.5 9.5H6M3.5 12H6"),
 		rect(Accent, 8.5, 6.25, 4.5, 1.5), rect(Accent, 8.5, 8.75, 3, 1.5),
-	}, objectBadge())},
+	}, over(objectBadge()...))},
 	// Конфигурация.
 	{ID: "configuration-open", Color: slate, Parts: []Part{
 		rect(Body, 1.5, 2.5, 13, 11),
@@ -267,9 +267,9 @@ var commandIcons = []Icon{
 	{ID: "users", Color: blue, Parts: person(8, 14.5, 6)},
 	// A user online: the green dot of a messenger at the person's side, where
 	// the prototype has a monitor (the owner's choice of 16.10.2026).
-	{ID: "active-users", Color: blue, Accent: green, Parts: join(person(6.5, 14.5, 6), []Part{
+	{ID: "active-users", Color: blue, Accent: green, Parts: join(person(6.5, 14.5, 6), over(
 		colored(circle(Plate, 12, 12, 2.5), green), circle(Accent, 12, 12, 2),
-	})},
+	))},
 	{ID: "event-log", Color: blue, Parts: []Part{
 		rect(Body, 1.5, 3.5, 13, 9),
 		circle(Detail, 5, 8, 1.75), circle(Detail, 11, 8, 1.75),
@@ -277,9 +277,9 @@ var commandIcons = []Icon{
 	}},
 	{ID: "authentication-locks", Color: blue, Accent: gold, Parts: lockedPerson(gold)},
 	// Окна.
-	{ID: "window-new", Color: slate, Accent: green, Parts: []Part{
-		rect(Body, 1.5, 2.5, 13, 11), path(Detail, window), path(Mark, "M8 7.5V12M5.75 9.75H10.25"),
-	}},
+	{ID: "window-new", Color: slate, Accent: green, Parts: join([]Part{
+		rect(Body, 1.5, 2.5, 13, 11), path(Detail, window),
+	}, over(path(Mark, "M8 7.5V12M5.75 9.75H10.25")))},
 	{ID: "split-horizontal", Color: slate, Parts: []Part{
 		rect(Body, 1.5, 2.5, 13, 11), path(Detail, "M1.5 8H14.5"),
 	}},
@@ -322,13 +322,11 @@ var commandIcons = []Icon{
 		path(OnAccent, "M8 7V11.5M8 4.5V4.75"),
 	}},
 	// Действия дерева и его контекстного меню.
-	{ID: "add", Color: green, Accent: green, Parts: []Part{
-		circle(Body, 8, 8, 6.5), path(Mark, plus),
-	}},
+	{ID: "add", Color: green, Accent: green, Parts: join([]Part{circle(Body, 8, 8, 6.5)}, over(path(Mark, plus)))},
 	{ID: "change", Color: "#6f9a2a", Accent: "#efc23a", Parts: editingPencil()},
 	{ID: "clone", Color: slate, Accent: green, Parts: join([]Part{
 		path(Body, "M2.5 1.5H8L10.5 4V12.5H2.5Z"),
-	}, addBadge())},
+	}, plusBadge(11, 11))},
 	{ID: "delete", Color: red, Accent: red, Parts: []Part{
 		path(Mark, cross),
 	}},
@@ -359,10 +357,9 @@ var commandIcons = []Icon{
 		path(Detail, "M1.5 4.5L6.5 7L11.5 4.5M6.5 7V13"),
 		path(Mark, "M9 12L11 14L14.5 9.5"),
 	}},
-	{ID: "open-module", Color: slate, Parts: []Part{
+	{ID: "open-module", Color: slate, Parts: join([]Part{
 		rect(Body, 1.5, 1.5, 11, 10), path(Detail, "M1.5 4.5H12.5M3.5 7H8M3.5 9H6.5"),
-		colored(path(Body, editPencil), "#6f9a2a"),
-	}},
+	}, over(colored(path(Body, editPencil), "#6f9a2a")))},
 	{ID: "open-predefined-data", Color: blue, Parts: []Part{
 		colored(bar(1.5, 1.5, 6, 2.5), "#5b9be0"), colored(bar(4.5, 5.25, 6, 2.5), "#5b9be0"), colored(bar(4.5, 9, 4, 2.5), "#5b9be0"),
 		path(Detail, "M3 4V10.25H4.5M3 6.5H4.5"),
@@ -426,10 +423,12 @@ func board() []Part {
 	}
 }
 
-// addBadge is the green plus in a circle at the lower right of what is
-// being added: a copy, an attribute, a column. It hides what lies under it.
-func addBadge() []Part {
-	return []Part{colored(circle(Plate, 11, 11, 3.5), green), colored(circle(Body, 11, 11, 3.5), green), colored(path(Mark, "M11 9V13M9 11H13"), green)}
+// plusBadge is the green plus in a circle on what is being added, hiding
+// what lies under it: at the lower right of a copy, an attribute, a column,
+// at the upper left of a nested query or a description of a temporary table
+// the query wizard creates.
+func plusBadge(cx, cy float64) []Part {
+	return badge(cx, cy, green, fmt.Sprintf("M%s %sV%sM%s %sH%s", number(cx), number(cy-2.25), number(cy+2.25), number(cx-2.25), number(cy), number(cx+2.25)))
 }
 
 // objectBadge is the gold cube of an object in the lower right corner of

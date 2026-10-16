@@ -112,10 +112,9 @@ var debuggerIcons = []Icon{
 	{ID: "run-to-cursor", Color: navy, Accent: navy, Parts: join(braces(7.5, 14.5, 3, 13), []Part{
 		path(Line, "M1 5.5H4"), path(Accent, "M3.5 3.5L6.5 5.5L3.5 7.5Z"),
 	})},
-	{ID: "current-line", Color: slate, Parts: []Part{
+	{ID: "current-line", Color: slate, Parts: join([]Part{
 		path(Body, markPage), path(Detail, markPageFold), path(Detail, markPageLines),
-		executionPoint(1, 4.5, 8),
-	}},
+	}, over(executionPoint(1, 4.5, 8)))},
 	// Поле модуля и стек вызовов: текущая строка, точка останова.
 	{ID: "execution-point", Color: orange, Parts: []Part{executionPoint(2, 2.5, 11)}},
 	{ID: "breakpoint-mark", Color: red, Parts: []Part{breakpointDot(8, 8, 5, red)}},
@@ -126,23 +125,23 @@ var debuggerIcons = []Icon{
 	{ID: "breakpoint-mark-disabled-current", Color: red, Parts: join([]Part{circle(Body, 8, 8, 4.5)}, executionOverBreakpoint(4.5, 4.5, 7))},
 	{ID: "breakpoint-mark-condition-current", Color: blue, Parts: join([]Part{breakpointDot(8, 8, 5, blue)}, executionOverBreakpoint(4.5, 4.5, 7))},
 	// Меню «Отладка»: точки останова.
-	{ID: "breakpoint", Color: slate, Accent: blue, Parts: join(moduleText(markPage, markPageFold, markPageLines), []Part{
+	{ID: "breakpoint", Color: slate, Accent: blue, Parts: join(moduleText(markPage, markPageFold, markPageLines), over(
 		breakpointDot(4.5, 4.5, 3.5, red),
 		path(Line, "M2.5 8.5V11H7.5M6 9.5L7.5 11L6 12.5"),
-	})},
-	{ID: "breakpoint-condition", Color: slate, Accent: blue, Parts: join(moduleText(markPage, markPageFold, markPageLines), []Part{
+	))},
+	{ID: "breakpoint-condition", Color: slate, Accent: blue, Parts: join(moduleText(markPage, markPageFold, markPageLines), over(
 		breakpointDot(4.5, 4.5, 3.5, blue),
 		colored(path(Line, "M3.5 3.5Q3.5 2.5 4.5 2.5Q5.5 2.5 5.5 3.5Q5.5 4.25 4.5 4.5V5"), "#ffffff"),
 		colored(circle(Accent, 4.5, 6.4, 0.5), "#ffffff"),
 		path(Line, "M2.5 8.5V11H7.5M6 9.5L7.5 11L6 12.5"),
-	})},
+	))},
 	{ID: "breakpoint-toggle", Color: slate, Accent: gray, Parts: join(moduleText(markPage, markPageFold, markPageLines), []Part{
 		path(Accent, "M6.97 8.53A3.5 3.5 0 0 0 2.03 13.47Z"),
 		colored(path(Accent, "M6.97 8.53A3.5 3.5 0 0 1 2.03 13.47Z"), red),
 	})},
-	{ID: "breakpoints-delete", Color: slate, Accent: red, Parts: join(moduleText(markPage, markPageFold, markPageLines), []Part{
+	{ID: "breakpoints-delete", Color: slate, Accent: red, Parts: join(moduleText(markPage, markPageFold, markPageLines), over(
 		path(Mark, "M1.5 1.5L6 6M6 1.5L1.5 6"),
-	})},
+	))},
 	{ID: "breakpoint-up", Color: brown, Parts: []Part{
 		breakpointDot(9.5, 9.5, 5, red),
 		path(Plate, "M5 1.5L8.5 5H6.5V8.5H3.5V5H1.5Z"),

@@ -13,17 +13,20 @@ import (
 // rounded by 2, a body is filled with its colour at about a fifth of its
 // strength, and on a dark theme the outlines and details lighten - the page
 // says how much by --icon-lighten (Studio: 28%), the fill and the accents stay.
-// A plate is filled with the page's background, --icon-plate. A mark - a
+// A plate is filled with the page's background, --icon-plate, and so is
+// the halo cleared under a sign laid over a full picture. A mark - a
 // check, a cross, a plus standing on its own - is twice as thick as a line,
 // the same in every icon (the owner's decision of 15.10.2026); arrows stay
 // lines.
 const (
-	cornerRadius = 2
-	bodyFill     = 22 // per cent of the colour of the kind
-	markWeight   = 2  // the line of a check, a cross, a plus
-	onAccentInk  = "#6b4e00"
-	rimWeight    = 1             // the edge of a coin
-	rimShade     = "#5a3d00 30%" // how much darker the edge is than its accent
+	cornerRadius   = 2
+	bodyFill       = 22 // per cent of the colour of the kind
+	markWeight     = 2  // the line of a check, a cross, a plus
+	haloWeight     = 3  // the clearing round a sign: half a point beside a mark, one and a half beside a spot
+	thinHaloWeight = 2  // and round an outline: half a point beside its line
+	onAccentInk    = "#6b4e00"
+	rimWeight      = 1             // the edge of a coin
+	rimShade       = "#5a3d00 30%" // how much darker the edge is than its accent
 	// inkLighten is how many times more an ink mark or spot lightens on a
 	// dark theme than an outline: it is nearly black, and lightened as an
 	// outline it would read as a disabled button (Studio: 28% × 3 = 84%
@@ -62,6 +65,10 @@ func paint(role Role, kind, accent string) string {
 		return "fill:none;stroke-width:" + number(rimWeight) + ";stroke:color-mix(in srgb," + accent + "," + rimShade + ")"
 	case Plate:
 		return "fill:var(--icon-plate,#fff);stroke:" + outline(kind)
+	case Halo:
+		return "fill:var(--icon-plate,#fff);stroke-width:" + strconv.Itoa(haloWeight) + ";stroke:var(--icon-plate,#fff)"
+	case ThinHalo:
+		return "fill:var(--icon-plate,#fff);stroke-width:" + strconv.Itoa(thinHaloWeight) + ";stroke:var(--icon-plate,#fff)"
 	default:
 		return "fill:none;stroke:" + onAccentInk
 	}
