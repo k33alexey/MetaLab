@@ -45,6 +45,10 @@ const (
 	// Rim is the edge of a solid accent - the rim of a coin: a line in a
 	// slightly darker shade of the accent, lighter than OnAccent.
 	Rim
+	// InkMark is a mark in the colour of the icon, as thick as Mark, that
+	// lightens on a dark theme, more than an outline does: the black cross of
+	// «close», the letter of «choose type», which would vanish on a dark page.
+	InkMark
 )
 
 // Part is one shape of an icon in its role. Exactly one of the geometries is
@@ -605,8 +609,8 @@ var treeIcons = []Icon{
 }
 
 // table is every icon: the tree's, the commands' (commands.go), the
-// editors' (editors.go).
-var table = slices.Concat(treeIcons, commandIcons, editorIcons, debuggerIcons, formEditorIcons)
+// editors' (editors.go), the library's (standard_icons.go).
+var table = slices.Concat(treeIcons, commandIcons, editorIcons, debuggerIcons, formEditorIcons, standardIcons)
 
 // All is every icon, in the order of the table.
 func All() []Icon {

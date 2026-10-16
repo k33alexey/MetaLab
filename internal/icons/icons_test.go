@@ -165,3 +165,57 @@ func TestRolesArePaintedAsTheStyle(t *testing.T) {
 		}
 	}
 }
+
+// TestTheLibraryHoldsEveryStandardPicture catches a picture of the library
+// lost or written twice, a name in one language not resolving to the picture,
+// a hidden picture offered or an offered one hidden, and a picture naming an
+// icon the set does not draw. The expectations come from the syntax
+// assistant of 8.3.27 and the window «Выбор картинки» (299 pictures, 39 of
+// them not in the window; docs/block-00/standartnye-kartinki.md), not from
+// the table.
+func TestTheLibraryHoldsEveryStandardPicture(t *testing.T) {
+	pictures := StandardPictures()
+	if len(pictures) != 299 {
+		t.Errorf("the library holds %d pictures, the help lists 299", len(pictures))
+	}
+	names := map[string]bool{}
+	hidden := 0
+	for _, picture := range pictures {
+		for _, name := range []string{picture.Name, picture.Russian, picture.Spelling} {
+			if name == "" {
+				continue
+			}
+			if names[name] {
+				t.Errorf("%s names two pictures", name)
+			}
+			names[name] = true
+		}
+		if picture.Hidden {
+			hidden++
+		}
+		if picture.Icon != "" && !Has(picture.Icon) {
+			t.Errorf("%s names icon %q, which the set does not draw", picture.Name, picture.Icon)
+		}
+	}
+	if hidden != 39 {
+		t.Errorf("%d pictures are hidden from the window, the prototype hides 39", hidden)
+	}
+	for name, want := range map[string]string{
+		"Печать": "Print", "Print": "Print", "СоздатьЭлементСписка": "CreateListItem",
+		"ОформлениеЗнакВоcклицательныйЗнак": "AppearanceExclamationMarkIcon",
+		"ОформлениеЗнакВосклицательныйЗнак": "AppearanceExclamationMarkIcon",
+		"ОформлениеВоcклицательныйЗнак":     "AppearanceExclamationMark",
+	} {
+		if picture, ok := LookupStandard(name); !ok || picture.Name != want {
+			t.Errorf("%s resolves to %+v, it is %s", name, picture, want)
+		}
+	}
+	for name, want := range map[string]bool{"УстановитьВремя": true, "Выбрать": true, "СправочникОбъект": true, "Печать": false, "ПолеВводаКалендарь": false} {
+		if picture, _ := LookupStandard(name); picture.Hidden != want {
+			t.Errorf("%s hidden = %v, the window %s", name, picture.Hidden, map[bool]string{true: "has no row for it", false: "offers it"}[want])
+		}
+	}
+	if _, ok := LookupStandard("Начислить"); ok {
+		t.Error("a name the library has not resolved to a picture")
+	}
+}

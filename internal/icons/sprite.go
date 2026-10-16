@@ -24,6 +24,10 @@ const (
 	onAccentInk  = "#6b4e00"
 	rimWeight    = 1             // the edge of a coin
 	rimShade     = "#5a3d00 30%" // how much darker the edge is than its accent
+	// inkLighten is how many times more an ink mark lightens on a dark theme
+	// than an outline: it is nearly black, and lightened as an outline it
+	// would read as a disabled button (Studio: 28% × 2.5 = 70% white).
+	inkLighten = 2.5
 )
 
 func outline(color string) string {
@@ -42,6 +46,8 @@ func paint(role Role, kind, accent string) string {
 		return "fill:none;stroke:" + accent
 	case Mark:
 		return "fill:none;stroke-width:" + strconv.Itoa(markWeight) + ";stroke:" + accent
+	case InkMark:
+		return "fill:none;stroke-width:" + strconv.Itoa(markWeight) + ";stroke:color-mix(in srgb," + kind + ",#fff calc(var(--icon-lighten,0%)*" + number(inkLighten) + "))"
 	case Rim:
 		return "fill:none;stroke-width:" + number(rimWeight) + ";stroke:color-mix(in srgb," + accent + "," + rimShade + ")"
 	case Plate:

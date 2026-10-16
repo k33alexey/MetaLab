@@ -17,10 +17,17 @@ func round(value float64) float64 {
 // lens is a magnifying glass: the glass a body, the handle brown and solid,
 // leaving it to the lower right.
 func lens(cx, cy, r float64) []Part {
+	return heldLens(cx, cy, r, 1)
+}
+
+// heldLens is the glass with its handle to the lower right (side 1) or to
+// the lower left (side -1), so that the handle keeps clear of what the glass
+// is laid over.
+func heldLens(cx, cy, r, side float64) []Part {
 	const k, w = math.Sqrt2 / 2, 0.9
 	near, far := r+0.25, r+3.75
 	point := func(along, across float64) string {
-		return fmt.Sprintf("%s %s", number(round(cx+along*k-across*k)), number(round(cy+along*k+across*k)))
+		return fmt.Sprintf("%s %s", number(round(cx+side*(along*k-across*k))), number(round(cy+along*k+across*k)))
 	}
 	return []Part{
 		circle(Body, cx, cy, r),
@@ -117,8 +124,11 @@ var commandIcons = []Icon{
 	{ID: "find-previous", Color: slate, Accent: steel, Parts: join(lens(7, 9, 3.5), []Part{
 		path(Line, "M13 4Q8 0.5 2.5 4M2.5 1.5V4H5"),
 	})},
-	{ID: "replace", Color: slate, Accent: blue, Parts: join(lens(6, 10, 3.5), []Part{
-		path(Line, "M8.5 2.5H14.5M12.5 0.75L14.5 2.5L12.5 4.25M14.5 6H8.5M10.5 4.25L8.5 6L10.5 7.75"),
+	// The same picture stands on the menu «Правка» and in the library: the
+	// letter A found and replaced by B.
+	{ID: "replace", Color: slate, Accent: blue, Parts: join(lens(7.5, 9, 3.5), []Part{
+		colored(path(Line, "M1 6.5L2.75 1.5L4.5 6.5M1.6 4.75H3.9"), red),
+		path(Line, "M11.5 6.5V1.5H13.25Q14.75 1.5 14.75 2.75Q14.75 4 13.25 4H11.5M13.25 4Q15 4 15 5.25Q15 6.5 13.25 6.5H11.5"),
 	})},
 	{ID: "global-search", Color: groupColor, Parts: join([]Part{
 		path(Body, "M1.5 2.5H5.5L7 4H13.5V12.5H1.5Z"),
@@ -137,11 +147,17 @@ var commandIcons = []Icon{
 		rect(Body, 5.5, 7.5, 9, 7), path(Detail, "M5.5 9.5H14.5"),
 		path(Mark, "M3.75 1V6.5M1 3.75H6.5"),
 	}},
-	{ID: "properties", Color: slate, Accent: skin, Parts: []Part{
-		rect(Body, 1.5, 7.5, 13, 7), path(Detail, "M4 10.5H12M4 12.5H10"),
-		path(Accent, "M2.5 9L5.5 4.5Q6.5 3 8 3.75L9 4.25L10.75 2.25Q11.75 1.5 12.5 2.5L14.75 6.5L13.25 9Z"),
-		colored(path(Line, "M9 4.25L7.5 6.5M10.75 2.25L12 5"), brown),
-	}},
+	// The sheet of properties, as the palette shows them - the names at the
+	// left, the fields of the values at the right - with the cube of the
+	// object they describe in its lower right corner. The prototype draws a
+	// hand holding a letter; the owner chose the sheet and the cube
+	// (16.10.2026). The cube is a badge only: alone it is the cube of an
+	// external source, and boxed with tape the package of XDTO.
+	{ID: "properties", Color: slate, Accent: "#8fb8e0", Parts: join([]Part{
+		rect(Body, 1.5, 1.5, 13, 13),
+		path(Detail, "M1.5 4.5H14.5M7.5 4.5V14.5M3.5 7H6M3.5 9.5H6M3.5 12H6"),
+		rect(Accent, 8.5, 6.25, 4.5, 1.5), rect(Accent, 8.5, 8.75, 3, 1.5),
+	}, objectBadge())},
 	// Конфигурация.
 	{ID: "configuration-open", Color: slate, Parts: []Part{
 		rect(Body, 1.5, 2.5, 13, 11),
@@ -385,6 +401,25 @@ func clipboard() []Part {
 // being added: a copy, an attribute, a column. It hides what lies under it.
 func addBadge() []Part {
 	return []Part{colored(circle(Plate, 11, 11, 3.5), green), colored(circle(Body, 11, 11, 3.5), green), colored(path(Mark, "M11 9V13M9 11H13"), green)}
+}
+
+// objectBadge is the gold cube of an object in the lower right corner of
+// what describes it, hiding what lies under it. It is drawn by its faces
+// alone - a light top, a gold left side, a dark right one - with no edges:
+// at 16 px lines merge the small cube into a spot, faces of three tones
+// still read as a cube (the owner's choice of 16.10.2026).
+func objectBadge() []Part {
+	const (
+		cube  = "M12 8.5L15.5 10.25V13.75L12 15.5L8.5 13.75V10.25Z"
+		top   = "M12 8.5L15.5 10.25L12 12L8.5 10.25Z"
+		right = "M12 12L15.5 10.25V13.75L12 15.5Z"
+	)
+	return []Part{
+		colored(path(Plate, cube), gold),
+		colored(path(Accent, cube), "#f0c050"),
+		colored(path(Accent, top), "#fae29a"),
+		colored(path(Accent, right), "#d39515"),
+	}
 }
 
 // tint paints every part of a group in one colour: the glass of a lens
