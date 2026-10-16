@@ -18,9 +18,12 @@ func badge(cx, cy float64, color, mark string) []Part {
 	return []Part{colored(circle(Plate, cx, cy, 3.5), color), colored(circle(Body, cx, cy, 3.5), color), colored(path(Mark, mark), color)}
 }
 
-// gear is a wheel with eight teeth and a hole: the settings of a report.
+// gear is a wheel with six teeth and a hole, outlined, hiding what lies
+// under it by its own shape and no disc around it: the settings of a report,
+// a storage of settings (the owner's choice of 16.10.2026 - eight teeth on a
+// grey disc read as a spot at 16 px).
 func gear(cx, cy, r float64) []Part {
-	const teeth = 8
+	const teeth = 6
 	inner := r - 1.5
 	d := ""
 	for index := range teeth * 4 {
@@ -31,7 +34,7 @@ func gear(cx, cy, r float64) []Part {
 		}
 		d += map[bool]string{true: "M", false: "L"}[index == 0] + number(round(cx+radius*math.Cos(angle))) + " " + number(round(cy+radius*math.Sin(angle)))
 	}
-	return []Part{path(Body, d+"Z"), circle(Detail, cx, cy, 1.25)}
+	return []Part{path(Plate, d+"Z"), path(Body, d+"Z"), circle(Detail, cx, cy, 1.25)}
 }
 
 // postedDocument is a document with its lines and coins beneath it, which
@@ -75,6 +78,12 @@ func crossedDisc() []Part {
 	return []Part{circle(Body, 8, 8, 6.5), path(Mark, "M5.5 5.5L10.5 10.5M10.5 5.5L5.5 10.5")}
 }
 
+// taskBoard is the board of a task with the lines of what it asks, the
+// sign of what is done to it in the lower right corner.
+func taskBoard(sign ...Part) []Part {
+	return join(board(), []Part{path(Detail, "M3.5 6.5H9.5M3.5 8.5H9.5M3.5 10.5H7.5")}, sign)
+}
+
 var standardIcons = []Icon{
 	// Действия формы и списка.
 	{ID: "refresh", Color: green, Accent: green, Parts: []Part{
@@ -110,7 +119,7 @@ var standardIcons = []Icon{
 	{ID: "report-settings", Color: gray, Parts: join([]Part{
 		colored(rect(Body, 1.5, 1.5, 11, 10), slate),
 		colored(path(Detail, "M1.5 4.5H12.5M5 4.5V11.5"), slate),
-	}, []Part{colored(circle(Plate, 11, 11, 4.5), gray)}, gear(11, 11, 4.5))},
+	}, gear(11, 11, 4.75))},
 	{ID: "choose-value", Color: blue, Accent: slate, Parts: []Part{
 		rect(Body, 1.5, 1.5, 10, 3.5), rect(Body, 1.5, 6, 10, 3.5), rect(Body, 1.5, 10.5, 10, 3.5),
 		colored(path(Plate, "M9.5 7.5V15L11.25 13.25L12.5 15.5L13.75 14.75L12.5 12.5H14.75Z"), slate),
@@ -160,5 +169,31 @@ var standardIcons = []Icon{
 	}},
 	{ID: "input-field-choose-type", Color: "#3a3f45", Parts: []Part{
 		path(InkMark, "M3 3.5V2.5H13V3.5M8 2.5V13.5M5.5 13.5H10.5"),
+	}},
+	// Виды объектов и данных. A kind is drawn by its icon of the tree: the
+	// library shows the same picture, and its «objects» of the compatibility
+	// mode of 8.1 too - a reference, an object and a manager of one kind share
+	// one icon (the owner's decision of 16.10.2026). Drawn here is only what
+	// the tree has not: the debit and credit of an entry and the actions of a
+	// task and a business process.
+	{ID: "debit", Color: blue, Accent: blue, Parts: []Part{
+		path(Line, "M1.5 14.5V12.5H9.5V14.5M3.5 12.5L4.5 10.5V3.5H8.5V12.5M10.5 7.5H14.5M12.5 7.5V12.5"),
+	}},
+	{ID: "credit", Color: red, Accent: red, Parts: []Part{
+		path(Line, "M2.5 3.5V12.5M2.5 8H4L8 3.5M4 8L8.5 12.5M10.5 7.5H14.5M12.5 7.5V12.5"),
+	}},
+	{ID: "debit-credit", Color: blue, Accent: blue, Parts: []Part{
+		path(Line, "M1.5 7.5V5.5H6.5V7.5M2.5 5.5L3.5 4.5V1.5H5.5V5.5M7 3.5H10M8.5 3.5V5.5"),
+		colored(path(Line, "M7.5 9V14.5M7.5 11.5H8.5L10.5 9M8.5 11.5L10.5 14.5M11.5 10.5H15.5M13.5 10.5V14.5"), red),
+	}},
+	{ID: "activate-task", Color: brown, Accent: gray, Parts: taskBoard(
+		colored(rect(Plate, 8.5, 8.5, 7, 6), slate), colored(rect(Body, 8.5, 8.5, 7, 6), slate), colored(rect(Accent, 9, 9, 6, 1.5), blue),
+	)},
+	{ID: "execute-task", Color: brown, Accent: gray, Parts: taskBoard(
+		colored(path(Mark, "M8.5 11.5L11 14L15 9.5"), green),
+	)},
+	{ID: "business-process-start", Color: blue, Accent: blue, Parts: []Part{
+		colored(rect(Accent, 1.5, 4, 1.5, 8), "#8fb8e0"), colored(rect(Accent, 4, 4, 1.5, 8), "#8fb8e0"),
+		path(Accent, "M7 2.5L14.5 8L7 13.5Z"),
 	}},
 }

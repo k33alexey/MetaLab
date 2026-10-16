@@ -1,5 +1,7 @@
 package icons
 
+import "fmt"
+
 // The pictures inside the editors' windows: the property palette, the window
 // of a type, the module editor with its completion list and its panel, as the
 // inventory of block 00 photographed them (obolochka/, konstanta/,
@@ -7,10 +9,18 @@ package icons
 
 const (
 	parens  = "M10 5Q8.5 8.5 10 12M12.5 5Q14 8.5 12.5 12"
-	funnel  = "M1.5 2.5H12.5L8.5 7.5V13L5.5 11.5V7.5Z"
 	wand    = "M5 4.5L13.5 13"
 	sparkle = "M10.5 1.5V4.5M9 3H12M13.5 5V7M12.5 6H14.5"
 )
+
+// funnel is the sign of a selection: a cone as deep as half its width
+// narrowing to a neck of 3 points, the neck's right side longer - the filter
+// of the palette's important properties, a filter criterion before its table.
+func funnel(left, top, width float64) string {
+	neck, cone := left+width/2, top+(width-1)/2
+	return fmt.Sprintf("M%s %sH%sL%s %sV%sL%s %sV%sZ", number(left), number(top), number(left+width),
+		number(neck+1.5), number(cone), number(cone+5.5), number(neck-1.5), number(cone+4), number(cone))
+}
 
 var editorIcons = []Icon{
 	// Палитра свойств.
@@ -24,7 +34,7 @@ var editorIcons = []Icon{
 		path(Detail, "M5 6.5H12.5M5 12.5H12.5"),
 	}},
 	{ID: "only-important", Color: steel, Accent: red, Parts: []Part{
-		path(Body, funnel),
+		path(Body, funnel(1.5, 2.5, 11)),
 		path(Line, "M10.5 9.5H14.5M10.5 12H14.5M10.5 14.5H14.5"),
 	}},
 	{ID: "cancel-edit", Color: steel, Accent: steel, Parts: []Part{
@@ -58,12 +68,8 @@ var editorIcons = []Icon{
 		path(Detail, "M3 3.5V12.5M1.5 3.5H4.5M1.5 12.5H4.5"),
 		path(Detail, "M7 3.5V12.5H9.5Q14 12.5 14 8Q14 3.5 9.5 3.5Z"),
 	}},
-	// reference is laid over the icon of a kind at its lower left: a reference
-	// to an object of that kind (СправочникСсылка, ДокументСсылка...).
-	{ID: "reference", Color: steel, Accent: blue, Parts: []Part{
-		rect(Plate, 0.5, 8.5, 7, 7),
-		path(Line, "M2.5 14V12.5Q2.5 10.5 4.5 10.5H5.5M4.25 9.25L5.5 10.5L4.25 11.75"),
-	}},
+	// reference is the sign of a reference, as the prototype draws it.
+	{ID: "reference", Color: ink, Parts: link(8, 8, 7, 3, 1.25)},
 	// ЛюбаяСсылка: three axes from one corner, x, y and z turned upside down.
 	{ID: "type-any-reference", Color: blue, Accent: blue, Parts: []Part{
 		path(Line, "M3.5 12V3.5H12M3.5 3.5L11 11"),

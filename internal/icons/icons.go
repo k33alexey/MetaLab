@@ -16,6 +16,7 @@ package icons
 
 import (
 	"fmt"
+	"math"
 	"slices"
 )
 
@@ -127,6 +128,65 @@ func coinStack(cx, top float64, count int) []Part {
 	return parts
 }
 
+// drum is a cylinder standing upright, its top an ellipse of half-height
+// ry: a source of data, a storage of settings, the nodes of an exchange.
+func drum(left, top, width, height, ry float64) []Part {
+	right, bottom, cx := number(left+width), number(top+height), number(left+width/2)
+	l, upper, lower, rim := number(left), number(top), number(top+ry), number(top+2*ry)
+	return []Part{
+		path(Body, fmt.Sprintf("M%s %sV%sQ%s %s %s %sQ%s %s %s %sV%sQ%s %s %s %sQ%s %s %s %sZ",
+			l, lower, number(top+height-ry), l, bottom, cx, bottom, right, bottom, right, number(top+height-ry),
+			lower, right, upper, cx, upper, l, upper, l, lower)),
+		path(Detail, fmt.Sprintf("M%s %sQ%s %s %s %sQ%s %s %s %s", l, lower, l, rim, cx, rim, right, rim, right, lower)),
+	}
+}
+
+// axes are the two arrows of coordinates from a red origin at ox, oy - up to
+// top, right to right: a dimension, alone or under the table of a cube's
+// dimension. They are dark lines that lighten on a dark theme, heads too.
+func axes(ox, oy, top, right float64) []Part {
+	return []Part{
+		colored(path(Detail, fmt.Sprintf("M%s %sV%sM%s %sH%s", number(ox), number(oy), number(top+2), number(ox), number(oy), number(right-2))), ink),
+		colored(path(Detail, fmt.Sprintf("M%s %sL%s %sL%s %sZ", number(ox-1.5), number(top+3), number(ox), number(top), number(ox+1.5), number(top+3))), ink),
+		colored(path(Detail, fmt.Sprintf("M%s %sL%s %sL%s %sZ", number(right-3), number(oy-1.5), number(right), number(oy), number(right-3), number(oy+1.5))), ink),
+		colored(circle(Accent, ox, oy, 1.5), red),
+	}
+}
+
+// globe is a ball with its equator and two meridians: the services, the
+// references and clients of the web, a language. A sign of what the globe
+// does stands in its lower right, the globe drawn up and left of it.
+func globe(cx, cy, r float64) []Part {
+	bend := r * 7 / 12
+	return []Part{
+		circle(Body, cx, cy, r),
+		path(Detail, fmt.Sprintf("M%s %sH%sM%s %sQ%s %s %s %sM%s %sQ%s %s %s %s",
+			number(cx-r), number(cy), number(cx+r),
+			number(cx), number(cy-r), number(cx-bend), number(cy), number(cx), number(cy+r),
+			number(cx), number(cy-r), number(cx+bend), number(cy), number(cx), number(cy+r))),
+	}
+}
+
+// link is a reference, as the prototype draws it: an oval lying from the
+// lower left to the upper right, broken at the middle of its two long sides,
+// a dash through its middle - a reference alone and the sign of a WS
+// reference. Dark lines that lighten on a dark theme.
+func link(cx, cy, rx, ry, gap float64) []Part {
+	const turn = -math.Pi / 4
+	at := func(x, y float64) string {
+		return number(round(cx+x*math.Cos(turn)-y*math.Sin(turn))) + " " + number(round(cy+x*math.Sin(turn)+y*math.Cos(turn)))
+	}
+	half := func(side float64) string {
+		edge, corner := side*rx, side*(rx-ry)
+		return "M" + at(side*gap, -ry) + "L" + at(corner, -ry) + "Q" + at(edge, -ry) + " " + at(edge, 0) +
+			"Q" + at(edge, ry) + " " + at(corner, ry) + "L" + at(side*gap, ry)
+	}
+	return []Part{
+		colored(path(Detail, half(-1)+half(1)), ink),
+		colored(path(Detail, "M"+at(-rx/2, 0)+"L"+at(rx/2, 0)), ink),
+	}
+}
+
 // formWindow is a form: a window with its title and fields, standing for
 // the form in the tree, in the form editor and on its tabs.
 func formWindow() []Part {
@@ -176,8 +236,6 @@ const (
 	page     = "M2.5 1.5H9.5L13.5 5.5V14.5H2.5Z"
 	pageFold = "M9.5 1.5V5.5H13.5"
 	window   = "M1.5 5.5H14.5"
-	cylinder = "M3.5 4V12Q3.5 14 8 14Q12.5 14 12.5 12V4"
-	globe    = "M2 8H14M8 2Q4.5 8 8 14M8 2Q11.5 8 8 14"
 	folder   = "M1.5 2.5H5.5L7 4H13.5V11.5H1.5Z"
 )
 
@@ -225,11 +283,7 @@ var treeIcons = []Icon{
 	{ID: "attribute", Color: slate, Accent: slate, Parts: []Part{
 		bar(2, 6, 12, 4),
 	}},
-	{ID: "dimension", Color: blue, Accent: red, Parts: []Part{
-		path(Line, "M3.5 2.5V12.5H13.5"),
-		path(Detail, "M3.5 2.5L2 4M3.5 2.5L5 4M13.5 12.5L12 11M13.5 12.5L12 14"),
-		rect(Body, 6.5, 5.5, 5, 4),
-	}},
+	{ID: "dimension", Color: ink, Accent: red, Parts: axes(3.5, 12.5, 1.5, 14.5)},
 	{ID: "resource", Color: green, Accent: green, Parts: []Part{
 		bar(6, 1.5, 4, 13),
 	}},
@@ -385,14 +439,16 @@ var treeIcons = []Icon{
 		colored(rect(Accent, 11, 10.5, 1, 3), green),
 		colored(rect(Accent, 12.5, 11.5, 1, 2), orange),
 	}},
-	{ID: "exchange-plan", Color: blue, Accent: green, Parts: []Part{
-		rect(Body, 1.5, 1.5, 6, 6),
-		rect(Body, 8.5, 8.5, 6, 6),
-		path(Line, "M9.5 3.5H12.5V6.5M11 5L12.5 6.5L14 5M6.5 12.5H3.5V9.5M2 11L3.5 9.5L5 11"),
-	}},
-	{ID: "filter-criterion", Color: slate, Accent: red, Parts: []Part{
-		path(Body, "M1.5 2.5H14.5L9.5 8.5V14L6.5 12.5V8.5Z"),
-		path(Line, "M4.5 5H11.5"),
+	{ID: "exchange-plan", Color: blue, Accent: green, Parts: join(
+		drum(1.5, 1, 6, 7, 1.25), drum(8.5, 8, 6, 7, 1.25),
+		[]Part{path(Line, "M9.5 3.5H12.5V6.5M11 5L12.5 6.5L14 5M6.5 12.5H3.5V9.5M2 11L3.5 9.5L5 11")},
+	)},
+	// The funnel of a selection stands in front of the table it selects
+	// from, the red of the selected rows showing at its sides.
+	{ID: "filter-criterion", Color: gray, Accent: red, Parts: []Part{
+		rect(Body, 1.5, 1.5, 13, 13), path(Detail, "M1.5 4.5H14.5"),
+		path(Line, "M3 7.5H4.5M3 10H4.5M11.5 7.5H13M11.5 10H13"),
+		colored(path(Plate, funnel(3.5, 4.5, 9)), slate), colored(path(Body, funnel(3.5, 4.5, 9)), slate),
 	}},
 	{ID: "event-subscription", Color: slate, Accent: "#efc23a", Parts: []Part{
 		rect(Body, 2.5, 1.5, 11, 13),
@@ -423,12 +479,10 @@ var treeIcons = []Icon{
 		rect(Accent, 6.75, 6, 2.5, 4),
 		rect(Accent, 10.5, 6, 2.5, 4),
 	}},
-	{ID: "settings-storage", Color: blue, Accent: gray, Parts: []Part{
-		path(Body, cylinder+"Q12.5 2 8 2Q3.5 2 3.5 4Z"),
-		path(Detail, "M3.5 4Q3.5 6 8 6Q12.5 6 12.5 4"),
-		circle(Accent, 11.5, 11.5, 3),
-		circle(OnAccent, 11.5, 11.5, 1),
-	}},
+	{ID: "settings-storage", Color: blue, Accent: gray, Parts: join(
+		drum(1.5, 1.5, 9, 12, 2),
+		tint(gear(11, 11, 4.75), gray),
+	)},
 	{ID: "command", Color: gold, Accent: gold, Parts: []Part{
 		circle(Body, 8, 8, 6.5),
 		path(Accent, "M6.5 5L11 8L6.5 11Z"),
@@ -448,27 +502,18 @@ var treeIcons = []Icon{
 		path(Body, "M2.5 5L8 2.5L13.5 5V11.5L8 14L2.5 11.5Z"),
 		path(Detail, "M2.5 5L8 7.5L13.5 5M8 7.5V14M5.25 3.75L10.75 6.25"),
 	}},
-	{ID: "web-service", Color: sea, Accent: brown, Parts: []Part{
-		circle(Body, 8, 8, 6),
-		path(Detail, globe),
-		circle(Accent, 5, 11.5, 3),
-	}},
+	{ID: "web-service", Color: sea, Accent: brown, Parts: append(globe(6.5, 6.5, 5),
+		circle(Accent, 11.5, 11.5, 3),
+	)},
 	{ID: "http-service", Color: sea, Accent: blue, Parts: []Part{
 		circle(Body, 8, 7, 5.5),
 		path(Detail, "M2.5 7H13.5M8 1.5Q5 7 8 12.5M8 1.5Q11 7 8 12.5"),
 		rect(Accent, 1.5, 11.5, 13, 3),
 	}},
-	{ID: "ws-reference", Color: sea, Accent: gray, Parts: []Part{
-		circle(Body, 8, 8, 6),
-		path(Detail, globe),
-		circle(Accent, 5, 11.5, 3),
-		path(OnAccent, "M4 11.5H6"),
-	}},
-	{ID: "websocket-client", Color: sea, Accent: green, Parts: []Part{
-		circle(Body, 8, 8, 6),
-		path(Detail, globe),
-		path(Line, "M1.5 13.5H7.5M5.5 11.5L7.5 13.5L5.5 15"),
-	}},
+	{ID: "ws-reference", Color: sea, Parts: join(globe(6.5, 6.5, 5), link(11.5, 11.5, 4, 2, 1))},
+	{ID: "websocket-client", Color: sea, Accent: green, Parts: append(globe(6.5, 6.5, 5),
+		path(Line, "M8.5 13.5H14.5M12.5 11.5L14.5 13.5L12.5 15.5"),
+	)},
 	{ID: "style-item", Color: gray, Parts: []Part{
 		colored(path(Accent, "M8 8V3A5 5 0 0 1 12.33 10.5Z"), red),
 		colored(path(Accent, "M8 8L12.33 10.5A5 5 0 0 1 3.67 10.5Z"), "#efc23a"),
@@ -481,15 +526,13 @@ var treeIcons = []Icon{
 		colored(path(Accent, "M6 10.5L9.03 12.25A3.5 3.5 0 0 1 2.97 12.25Z"), "#efc23a"),
 		colored(path(Accent, "M6 10.5L2.97 12.25A3.5 3.5 0 0 1 6 7Z"), blue),
 	}},
-	{ID: "language", Color: sea, Accent: blue, Parts: []Part{
-		circle(Body, 6, 6, 4.5),
-		path(Detail, "M1.5 6H10.5M6 1.5Q3.5 6 6 10.5M6 1.5Q8.5 6 6 10.5"),
+	{ID: "language", Color: sea, Accent: blue, Parts: append(globe(6, 6, 4.5),
 		path(Line, "M9.5 15L11.75 9.5L14 15M10.4 13H13.1"),
-	}},
+	)},
+	// Four small squares, the upper right one set off up and right. Drawn
+	// as a path: a body's rounded corners would make squares of 5 px discs.
 	{ID: "constant", Color: blue, Accent: blue, Parts: []Part{
-		rect(Body, 1.5, 7.5, 6, 6),
-		rect(Body, 8.5, 7.5, 6, 6),
-		rect(Accent, 9, 1.5, 5, 5),
+		path(Body, "M1.5 9.5H6.5V14.5H1.5ZM7.5 9.5H12.5V14.5H7.5ZM1.5 3.5H6.5V8.5H1.5ZM9.5 1.5H14.5V6.5H9.5Z"),
 	}},
 	{ID: "catalog", Color: steel, Accent: yellow, Parts: []Part{
 		rect(Body, 1.5, 2.5, 13, 11),
@@ -582,13 +625,11 @@ var treeIcons = []Icon{
 		rect(Accent, 4, 7.5, 2, 2),
 		colored(rect(Accent, 4, 10.5, 2, 2), blue),
 	}},
-	{ID: "external-data-source", Color: blue, Accent: orange, Parts: []Part{
-		path(Body, cylinder+"Q12.5 2 8 2Q3.5 2 3.5 4Z"),
-		path(Detail, "M3.5 4Q3.5 6 8 6Q12.5 6 12.5 4"),
+	{ID: "external-data-source", Color: blue, Accent: orange, Parts: join(drum(3.5, 2, 9, 12, 2), []Part{
 		circle(Accent, 11, 10.5, 1.5),
 		circle(Accent, 13.5, 13, 1.5),
 		circle(Accent, 10, 13.75, 1.5),
-	}},
+	})},
 	{ID: "external-table", Color: slate, Parts: []Part{
 		rect(Body, 1.5, 2.5, 13, 11),
 		path(Detail, "M1.5 5.5H14.5M5.5 2.5V13.5M10.5 2.5V13.5"),
@@ -597,11 +638,9 @@ var treeIcons = []Icon{
 		path(Body, "M8 1.5L14 4.5V11.5L8 14.5L2 11.5V4.5Z"),
 		path(Detail, "M2 4.5L8 7.5L14 4.5M8 7.5V14.5"),
 	}},
-	{ID: "external-dimension-table", Color: slate, Accent: red, Parts: []Part{
-		rect(Body, 5.5, 2.5, 9, 11),
-		path(Detail, "M5.5 5.5H14.5M10 2.5V13.5"),
-		path(Line, "M2.5 1.5V13.5H4.5"),
-	}},
+	{ID: "external-dimension-table", Color: slate, Accent: red, Parts: join([]Part{
+		rect(Body, 5.5, 1.5, 9, 9), path(Detail, "M5.5 4H14.5M10 1.5V10.5"),
+	}, axes(2.5, 13.5, 1.5, 15))},
 	{ID: "external-function", Color: blue, Accent: blue, Parts: []Part{
 		path(Line, "M2.5 2.5V13.5"),
 		path(Detail, "M2.5 3.5H12.5M4.5 6.5H13.5M4.5 9.5H11.5M4.5 12.5H9.5"),

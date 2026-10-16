@@ -47,6 +47,29 @@ func person(cx, bottom, size float64) []Part {
 	}
 }
 
+// printer is a printer with the paper going in at the top and the printed
+// sheet coming out at the bottom: «print», and with a check on its paper
+// «print the current one».
+func printer() []Part {
+	return []Part{
+		path(Detail, "M4.5 6.5V1.5H11.5V6.5"),
+		rect(Body, 1.5, 6.5, 13, 6),
+		path(Detail, "M4.5 10.5H11.5V14.5H4.5Z"),
+	}
+}
+
+// lockedPerson is a user with a padlock laid over the lower right of him, in
+// the colour of the lock: a temporary lock grey, the locks of
+// authentication gold. The person keeps the size of «users», as the
+// prototype keeps it under every sign.
+func lockedPerson(lock string) []Part {
+	return join(person(6.5, 14.5, 6), []Part{
+		colored(path(Detail, padlock), lock),
+		colored(path(Plate, "M9.5 11.5H14.5V15H9.5Z"), lock),
+		colored(rect(Accent, 9.5, 11.5, 5, 3.5), lock),
+	})
+}
+
 func join(groups ...[]Part) []Part {
 	var parts []Part
 	for _, group := range groups {
@@ -89,16 +112,10 @@ var commandIcons = []Icon{
 		rect(Body, 1.5, 1.5, 7, 9), path(Detail, "M3.5 4.5H6.5M3.5 6.5H6.5"),
 	}, lens(10, 10, 3)),
 	},
-	{ID: "print", Color: gray, Parts: []Part{
-		path(Detail, "M4.5 6.5V1.5H11.5V6.5"),
-		rect(Body, 1.5, 6.5, 13, 6),
-		path(Detail, "M4.5 10.5H11.5V14.5H4.5Z"),
-	}},
-	{ID: "print-current", Color: gray, Accent: green, Parts: []Part{
-		path(Detail, "M4.5 6.5V1.5H11.5V6.5"),
-		rect(Body, 1.5, 6.5, 13, 6),
+	{ID: "print", Color: gray, Parts: printer()},
+	{ID: "print-current", Color: gray, Accent: green, Parts: append(printer(),
 		path(Mark, "M5.75 4L7.25 5.5L10.25 2.5"),
-	}},
+	)},
 	{ID: "print-preview", Color: slate, Parts: join([]Part{
 		path(Body, "M1.5 1.5H7.5L10.5 4.5V13.5H1.5Z"), path(Detail, "M7.5 1.5V4.5H10.5"),
 	}, lens(10, 10.5, 3)),
@@ -230,25 +247,23 @@ var commandIcons = []Icon{
 		path(Detail, "M4.5 1.5V14.5"),
 		path(Line, "M7 5H11.5M7 7.5H11.5M7 10H10"),
 	}},
-	{ID: "temporary-lock", Color: blue, Accent: gray, Parts: join(person(6, 14.5, 5), []Part{
-		colored(path(Detail, padlock), gray), rect(Accent, 9.5, 11.5, 5, 3.5),
-	})},
+	{ID: "temporary-lock", Color: blue, Accent: gray, Parts: lockedPerson(gray)},
 	{ID: "settings", Color: gray, Parts: []Part{
 		path(Body, "M10.5 1.5A4 4 0 0 0 7 7L1.75 12.25A1.5 1.5 0 0 0 3.75 14.25L9 9A4 4 0 0 0 14.5 5.5L12.25 7.25L10 6L9.25 3.75Z"),
 	}},
 	// Администрирование.
 	{ID: "users", Color: blue, Parts: person(8, 14.5, 6)},
-	{ID: "active-users", Color: blue, Accent: steel, Parts: join(person(5.5, 12.5, 4.5), []Part{
-		colored(rect(Body, 8.5, 8.5, 6, 4.5), steel), path(Detail, "M10 14.5H13M11.5 13V14.5"),
+	// A user online: the green dot of a messenger at the person's side, where
+	// the prototype has a monitor (the owner's choice of 16.10.2026).
+	{ID: "active-users", Color: blue, Accent: green, Parts: join(person(6.5, 14.5, 6), []Part{
+		colored(circle(Plate, 12, 12, 2.5), green), circle(Accent, 12, 12, 2),
 	})},
 	{ID: "event-log", Color: blue, Parts: []Part{
 		rect(Body, 1.5, 3.5, 13, 9),
 		circle(Detail, 5, 8, 1.75), circle(Detail, 11, 8, 1.75),
 		path(Detail, "M5 9.75H11M3.5 3.5V5.5M12.5 3.5V5.5"),
 	}},
-	{ID: "authentication-locks", Color: blue, Accent: gold, Parts: join(person(6, 14.5, 5), []Part{
-		path(Detail, padlock), rect(Accent, 9.5, 11.5, 5, 3.5),
-	})},
+	{ID: "authentication-locks", Color: blue, Accent: gold, Parts: lockedPerson(gold)},
 	// Окна.
 	{ID: "window-new", Color: slate, Accent: green, Parts: []Part{
 		rect(Body, 1.5, 2.5, 13, 11), path(Detail, window), path(Mark, "M8 7.5V12M5.75 9.75H10.25"),
@@ -373,12 +388,13 @@ func flag() []Part {
 }
 
 // scissors, twoPages and clipboard are cut, copy and paste: the same
-// pictures stand under a breakpoint's dot in the debugger.
+// pictures stand under a breakpoint's dot in the debugger. The board of the
+// clipboard is also the board of a task the library activates or executes.
 func scissors() []Part {
 	return []Part{
-		path(Detail, "M5.5 10L11 1.5M10.5 10L5 1.5"),
-		circle(Body, 4.5, 12, 2.5),
-		circle(Body, 11.5, 12, 2.5),
+		path(Detail, "M5.5 10.5L11 1.5M10.5 10.5L5 1.5"),
+		circle(Body, 4.5, 12.5, 2),
+		circle(Body, 11.5, 12.5, 2),
 	}
 }
 
@@ -390,10 +406,13 @@ func twoPages() []Part {
 }
 
 func clipboard() []Part {
+	return append(board(), colored(rect(Body, 7.5, 6.5, 7, 8), slate))
+}
+
+func board() []Part {
 	return []Part{
 		rect(Body, 1.5, 2.5, 10, 12),
 		rect(Accent, 4, 1, 5, 3),
-		colored(rect(Body, 7.5, 6.5, 7, 8), slate),
 	}
 }
 
