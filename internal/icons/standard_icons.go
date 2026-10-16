@@ -11,6 +11,10 @@ import (
 // disc or an arrow solid; in the two-tone style it is a body with its mark,
 // as «add» is.
 
+// black is the ink of the prototype's black marks and signs: the cross of
+// «close», the letters of sorting, the question of help.
+const black = "#3a3f45"
+
 // badge is a disc at the lower corner of what it marks, hiding what lies
 // under it, with its mark inside: the plus of a copy, the cross of a
 // deletion mark.
@@ -77,7 +81,7 @@ func sortList(first, last func(float64) Part) []Part {
 func sortArrow(x, top, tip float64) Part {
 	return colored(path(InkSpot, fmt.Sprintf("M%s %sH%sV%sH%sL%s %sL%s %sH%sZ",
 		number(x-0.75), number(top), number(x+0.75), number(tip-4), number(x+2.5),
-		number(x), number(tip), number(x-2.5), number(tip-4), number(x-0.75))), "#3a3f45")
+		number(x), number(tip), number(x-2.5), number(tip-4), number(x-0.75))), black)
 }
 
 // crossedDisc is a disc with a cross in it: «delete» and «stop» of the
@@ -190,11 +194,11 @@ var standardIcons = []Icon{
 	}},
 	{ID: "expand-all", Color: gray, Parts: listOrder("M2.5 1.5V14M0.75 12.25L2.5 14L4.25 12.25")},
 	{ID: "collapse-all", Color: gray, Parts: listOrder("M2.5 14.5V2M0.75 3.75L2.5 2L4.25 3.75")},
-	{ID: "close", Color: "#3a3f45", Parts: []Part{
+	{ID: "close", Color: black, Parts: []Part{
 		path(InkMark, "M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5"),
 	}},
-	{ID: "sort-list-asc", Color: "#3a3f45", Parts: sortList(letterA, letterYa)},
-	{ID: "sort-list-desc", Color: "#3a3f45", Parts: sortList(letterYa, letterA)},
+	{ID: "sort-list-asc", Color: black, Parts: sortList(letterA, letterYa)},
+	{ID: "sort-list-desc", Color: black, Parts: sortList(letterYa, letterA)},
 	{ID: "show-data", Color: slate, Parts: join([]Part{
 		rect(Body, 7.5, 7.5, 7, 7), path(Detail, "M9.5 11H12.5M9.5 13H12.5"),
 	}, tint(heldLens(9, 6.5, 5, -1), gray))},
@@ -222,7 +226,7 @@ var standardIcons = []Icon{
 		rect(Accent, 4, 3, 8, 2.5),
 		path(Detail, "M4.5 8H5.5M7.5 8H8.5M10.5 8H11.5M4.5 10.5H5.5M7.5 10.5H8.5M10.5 10.5H11.5M4.5 13H5.5M7.5 13H8.5M10.5 13H11.5"),
 	}},
-	{ID: "input-field-choose-type", Color: "#3a3f45", Parts: []Part{
+	{ID: "input-field-choose-type", Color: black, Parts: []Part{
 		path(InkMark, "M3 3.5V2.5H13V3.5M8 2.5V13.5M5.5 13.5H10.5"),
 	}},
 	// Виды объектов и данных. A kind is drawn by its icon of the tree: the
@@ -296,7 +300,7 @@ var standardIcons = []Icon{
 	}},
 	{ID: "rename", Color: blue, Parts: []Part{
 		rect(Body, 1.5, 5.5, 13, 5),
-		colored(path(InkMark, "M8 2.5V13.5M6.5 2.5H9.5M6.5 13.5H9.5"), "#3a3f45"),
+		colored(path(InkMark, "M8 2.5V13.5M6.5 2.5H9.5M6.5 13.5H9.5"), black),
 	}},
 	{ID: "restore-values", Color: slate, Accent: green, Parts: join(valuesSheet(7), []Part{
 		mound(0),
@@ -321,8 +325,8 @@ var standardIcons = []Icon{
 	}, gear(11, 11, 4.75))},
 	{ID: "save-report-settings", Color: gray, Parts: join(tint(floppy(), blue), gear(11, 11, 4.75))},
 	{ID: "end-edit", Color: blue, Accent: slate, Parts: join(floppy(), []Part{
-		colored(rect(Plate, 6.5, 9.5, 9, 6), "#3a3f45"),
-		colored(path(Detail, "M8.75 11Q7.5 11 7.5 12.5Q7.5 14 8.75 14Q10 14 10 12.5Q10 11 8.75 11ZM11.5 11V14M14.5 11L11.5 12.5L14.5 14"), "#3a3f45"),
+		colored(rect(Plate, 6.5, 9.5, 9, 6), black),
+		colored(path(Detail, "M8.75 11Q7.5 11 7.5 12.5Q7.5 14 8.75 14Q10 14 10 12.5Q10 11 8.75 11ZM11.5 11V14M14.5 11L11.5 12.5L14.5 14"), black),
 	})},
 	{ID: "grayed-all", Color: slate, Accent: gray, Parts: append(stackedWindows(), rect(Accent, 3.5, 6.5, 6, 6))},
 	{ID: "fix-table", Color: gray, Parts: []Part{
@@ -370,7 +374,7 @@ var standardIcons = []Icon{
 		colored(path(Detail, "M15 12H8.5M8.5 9.75L5.5 12L8.5 14.25Z"), ink),
 	}},
 	{ID: "find-by-number", Color: navy, Parts: join(lens(6, 9, 4), []Part{
-		colored(path(Detail, "M10.5 5.5V1.5L14 5.5V1.5"), "#3a3f45"),
+		colored(path(Detail, "M10.5 5.5V1.5L14 5.5V1.5"), black),
 	})},
 	{ID: "list-settings", Color: blue, Parts: join([]Part{
 		rect(Body, 1.5, 3.5, 9, 3.5), rect(Body, 1.5, 7.5, 9, 3.5), rect(Body, 1.5, 11.5, 9, 3),

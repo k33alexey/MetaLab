@@ -70,6 +70,12 @@ func lockedPerson(lock string) []Part {
 	})
 }
 
+// editingPencil is the pencil of «change», alone and under the clock of the
+// history of data.
+func editingPencil() []Part {
+	return []Part{path(Body, pencil), path(Detail, "M3 11.5L4.5 13M9.25 4.5L11.5 6.75")}
+}
+
 // floppy is the diskette of writing: «save», and under the sign of what is
 // written - the gear of a report's settings, the «OK» of ending an edit.
 func floppy() []Part {
@@ -319,9 +325,7 @@ var commandIcons = []Icon{
 	{ID: "add", Color: green, Accent: green, Parts: []Part{
 		circle(Body, 8, 8, 6.5), path(Mark, plus),
 	}},
-	{ID: "change", Color: "#6f9a2a", Accent: "#efc23a", Parts: []Part{
-		path(Body, pencil), path(Detail, "M3 11.5L4.5 13M9.25 4.5L11.5 6.75"),
-	}},
+	{ID: "change", Color: "#6f9a2a", Accent: "#efc23a", Parts: editingPencil()},
 	{ID: "clone", Color: slate, Accent: green, Parts: join([]Part{
 		path(Body, "M2.5 1.5H8L10.5 4V12.5H2.5Z"),
 	}, addBadge())},
