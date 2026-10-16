@@ -182,11 +182,7 @@ var compositionIcons = withDisabled([]Icon{
 	// схема.
 	{ID: "dcs-new-group", Color: slate, Parts: join(groupingRow(1.5, 9.5, 13), newPlus())},
 	{ID: "dcs-new-table", Color: slate, Accent: steel, Parts: join(fullTable(), newPlus())},
-	{ID: "dcs-new-chart", Color: gray, Parts: join([]Part{
-		path(Detail, "M1.5 1.5V14.5H14.5"),
-		colored(rect(Accent, 3.5, 9.5, 2, 4.5), blue), colored(rect(Accent, 6.5, 6.5, 2, 7.5), yellow),
-		colored(rect(Accent, 9.5, 10, 2, 4), brown), colored(rect(Accent, 12.5, 2.5, 2, 11.5), red),
-	}, newPlus())},
+	{ID: "dcs-new-chart", Color: gray, Parts: join(chart(), newPlus())},
 	{ID: "dcs-new-nested-schema", Color: slate, Parts: join([]Part{
 		path(Body, "M5.5 4.5H11.5L14.5 7.5V14.5H5.5Z"),
 		path(Plate, "M1.5 1.5H8.5L11.5 4.5V12.5H1.5Z"), path(Body, "M1.5 1.5H8.5L11.5 4.5V12.5H1.5Z"), path(Detail, "M8.5 1.5V4.5H11.5"),

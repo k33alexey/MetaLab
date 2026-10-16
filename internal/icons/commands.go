@@ -70,8 +70,8 @@ func lockedPerson(lock string) []Part {
 	))
 }
 
-// editingPencil is the pencil of «change», alone and under the clock of the
-// history of data.
+// editingPencil is the pencil of «change», alone, under the clock of the
+// history of data and across the sheet of a spreadsheet being edited.
 func editingPencil() []Part {
 	return []Part{path(Body, pencil), path(Detail, "M3 11.5L4.5 13M9.25 4.5L11.5 6.75")}
 }

@@ -416,12 +416,10 @@ var standardIcons = []Icon{
 		path(Detail, "M2.5 5.5H14.5M8.5 5.5V13.5M4 8H7M4 10.5H7M10 8H13M10 10.5H13"),
 		path(Mark, "M1.5 14.5L14.5 1.5"),
 	}},
-	{ID: "pivot-chart", Color: gray, Parts: []Part{
+	{ID: "pivot-chart", Color: gray, Parts: append([]Part{
 		rect(Body, 1.5, 10.5, 13, 4),
 		path(Detail, "M1.5 12.5H14.5M5 10.5V12.5M9.5 10.5V12.5M3.5 12.5V14.5M7.5 12.5V14.5M12 12.5V14.5"),
-		colored(rect(Accent, 3, 3, 2, 7.5), green), colored(rect(Accent, 6, 5, 2, 5.5), yellow),
-		colored(rect(Accent, 8.5, 6.5, 2, 4), brown), colored(rect(Accent, 11, 2, 2, 8.5), red),
-	}},
+	}, chartBars(10.5, 8.5)...)},
 	{ID: "sorting", Color: slate, Accent: navy, Parts: join([]Part{rect(Body, 1.5, 1.5, 9, 13)}, colouredRows(3.5), []Part{
 		path(Line, "M12 3.5Q15 3.5 15 8Q15 12.5 12 12.5"),
 		path(Accent, "M12.75 1.5L10.25 3.5L12.75 5.5Z"), path(Accent, "M12.75 10.5L10.25 12.5L12.75 14.5Z"),
