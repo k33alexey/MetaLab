@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,32 +25,10 @@ import (
 // classifier filled from outside would keep its rows and lose the identity the
 // code refers to them by.
 func TestPredefinedDataIsLeftAloneWhenTheObjectSaysSoIntegration(t *testing.T) {
-	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("ML_TEST_DATABASE_URL is not set")
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	pool, err := pgxpool.New(ctx, databaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	projectID := uuid.MustNew()
 	managedID, manualID := uuid.MustNew(), uuid.MustNew()
 	managedItemID, manualItemID := uuid.MustNew(), uuid.MustNew()
-	t.Cleanup(func() {
-		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
-		defer stop()
-		_, _ = pool.Exec(cleanup, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE")
-		_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.object_sequences WHERE metadata_id = ANY($1::uuid[])",
-			[]string{managedID.String(), manualID.String()})
-		_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.migration_journal WHERE project_id = $1", projectID.String())
-		pool.Close()
-	})
-	if _, err := pool.Exec(ctx, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE"); err != nil {
-		t.Fatal(err)
-	}
-
 	catalog := &Catalog{
 		Catalogs: []CatalogDefinition{
 			{
@@ -69,27 +48,7 @@ func TestPredefinedDataIsLeftAloneWhenTheObjectSaysSoIntegration(t *testing.T) {
 		catalogByName: map[string]int{"статусы": 0, "классификатор": 1},
 		catalogByID:   map[uuid.UUID]int{managedID: 0, manualID: 1},
 	}
-	desired, err := catalog.ApplicationSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := schemadiff.Prepare(ctx, pool, desired)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := schemadiff.Execute(ctx, pool, schemadiff.MigrationRequest{
-		ProjectID: projectID, PackageSHA256: repeatCatalogHex('1', 64), GitCommit: repeatCatalogHex('2', 40), Desired: desired,
-		ExpectedPlanSHA256: prepared.SHA256, ExpectedSchemaSHA256: prepared.ActualSHA256, Confirmed: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := EnsureObjectIntegrityStorage(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
-	repository, err := NewCatalogRepository(pool, catalog)
-	if err != nil {
-		t.Fatal(err)
-	}
+	repository, pool := predefinedSyncFixture(t, ctx, catalog)
 
 	result, err := repository.SynchronizePredefined(ctx)
 	if err != nil {
@@ -130,5 +89,128 @@ func TestPredefinedDataIsLeftAloneWhenTheObjectSaysSoIntegration(t *testing.T) {
 	}
 	if name != "Основной" {
 		t.Fatalf("predefined name = %q: the synchronizer touched a catalog it was told to leave alone", name)
+	}
+}
+
+// predefinedSyncFixture builds the schema of a catalog of catalogs in the test
+// database and returns the repository a synchronization of predefined data
+// runs on, with the pool to look at the rows directly. Everything it creates is
+// dropped when the test ends.
+func predefinedSyncFixture(t *testing.T, ctx context.Context, catalog *Catalog) (*CatalogRepository, *pgxpool.Pool) {
+	t.Helper()
+	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("ML_TEST_DATABASE_URL is not set")
+	}
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectID := uuid.MustNew()
+	ids := make([]string, len(catalog.Catalogs))
+	for index, definition := range catalog.Catalogs {
+		ids[index] = definition.ID.String()
+	}
+	t.Cleanup(func() {
+		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
+		defer stop()
+		_, _ = pool.Exec(cleanup, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE")
+		_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.object_sequences WHERE metadata_id = ANY($1::uuid[])", ids)
+		_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.migration_journal WHERE project_id = $1", projectID.String())
+		pool.Close()
+	})
+	if _, err := pool.Exec(ctx, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE"); err != nil {
+		t.Fatal(err)
+	}
+	desired, err := catalog.ApplicationSchema()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := schemadiff.Prepare(ctx, pool, desired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := schemadiff.Execute(ctx, pool, schemadiff.MigrationRequest{
+		ProjectID: projectID, PackageSHA256: repeatCatalogHex('1', 64), GitCommit: repeatCatalogHex('2', 40), Desired: desired,
+		ExpectedPlanSHA256: prepared.SHA256, ExpectedSchemaSHA256: prepared.ActualSHA256, Confirmed: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureObjectIntegrityStorage(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	repository, err := NewCatalogRepository(pool, catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return repository, pool
+}
+
+// A predefined item whose code is spaces alone is created with the empty code,
+// as METADATA-OBJECTS.md, «Код предопределённого элемента», asks: with
+// automatic codes each gets the next code of its own, without them the string
+// code is empty and the numeric one zero. lombard1 has three such items in one
+// catalog with a fixed code, automatic codes and the check for repeats.
+//
+// Defect caught: the spaces written as they are - the fixed code pads them to
+// the empty code and the second item breaks the uniqueness of the code, a
+// variable code keeps a value other than the empty one, a numeric code refuses
+// the item and with it the whole synchronization.
+func TestPredefinedCodeOfSpacesIsTheEmptyCodeIntegration(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	fixedID, variableID, numericID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	parties := []PredefinedCatalogItem{
+		{ID: uuid.MustNew(), Name: "Банк", Code: "         "},
+		{ID: uuid.MustNew(), Name: "Касса", Code: "  "},
+		{ID: uuid.MustNew(), Name: "Ломбард", Code: " "},
+	}
+	variableItem, numericItem := uuid.MustNew(), uuid.MustNew()
+	catalog := &Catalog{
+		Catalogs: []CatalogDefinition{
+			{ID: fixedID, Name: "Контрагенты", DescriptionLength: 100, Predefined: parties,
+				Code: CatalogCode{Type: StringType, Length: 9, Auto: true, Unique: true, FixedLength: true}},
+			{ID: variableID, Name: "Валюты", DescriptionLength: 100,
+				Code:       CatalogCode{Type: StringType, Length: 3, Unique: true},
+				Predefined: []PredefinedCatalogItem{{ID: variableItem, Name: "Рубль", Code: "   "}}},
+			{ID: numericID, Name: "Ставки", DescriptionLength: 100,
+				Code:       CatalogCode{Type: NumberType, Length: 3},
+				Predefined: []PredefinedCatalogItem{{ID: numericItem, Name: "Основная", Code: "  "}}},
+		},
+		catalogByName: map[string]int{"контрагенты": 0, "валюты": 1, "ставки": 2},
+		catalogByID:   map[uuid.UUID]int{fixedID: 0, variableID: 1, numericID: 2},
+	}
+	repository, pool := predefinedSyncFixture(t, ctx, catalog)
+	result, err := repository.SynchronizePredefined(ctx)
+	if err != nil {
+		t.Fatalf("synchronization refused the codes of spaces: %v", err)
+	}
+	if result.Created != 5 {
+		t.Fatalf("sync = %+v, want five created", result)
+	}
+	codes := map[string]bool{}
+	for _, item := range parties {
+		record, err := repository.Get(ctx, CatalogReference{CatalogID: fixedID, ObjectID: item.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.TrimSpace(record.Code) == "" || codes[record.Code] {
+			t.Fatalf("%s got code %q: want a next code of its own", item.Name, record.Code)
+		}
+		codes[record.Code] = true
+	}
+	for _, row := range []struct {
+		catalog uuid.UUID
+		item    uuid.UUID
+		want    string
+	}{{variableID, variableItem, ""}, {numericID, numericItem, "0"}} {
+		table, _ := PhysicalCatalogTable(row.catalog)
+		var code string
+		if err := pool.QueryRow(ctx, "SELECT code::text FROM "+qualifiedCatalogTable(table)+" WHERE ref = $1", row.item.String()).Scan(&code); err != nil {
+			t.Fatal(err)
+		}
+		if code != row.want {
+			t.Fatalf("code stored %q, want %q", code, row.want)
+		}
 	}
 }

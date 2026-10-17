@@ -494,9 +494,12 @@ type PredefinedCatalogItem struct {
 // EffectiveCode is the code a predefined item is created with: the code
 // written, and nothing when the catalog's code is switched off by a length of
 // 0 - the item then keeps the code it had while there was one, and there is no
-// field to put it in. Everything that creates an item reads its code here.
+// field to put it in. A code of spaces alone is the empty code too, one value
+// and one record (METADATA-OBJECTS.md, «Код предопределённого элемента»): with
+// automatic codes the item gets the next code, without them the empty one, and
+// a numeric one is zero. Everything that creates an item reads its code here.
 func (item PredefinedCatalogItem) EffectiveCode(code CatalogCode) string {
-	if code.Length == 0 {
+	if code.Length == 0 || emptyPredefinedCode(item.Code) {
 		return ""
 	}
 	return item.Code
