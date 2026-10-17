@@ -23,7 +23,6 @@
 1	internal/metadata/catalog_runtime.go internal/metadata/catalog_runtime.go internal/metadata/document_runtime.go
 8	internal/metadata/catalog_runtime.go internal/metadata/document_runtime.go
 5	internal/metadata/catalog_store.go internal/metadata/document_store.go
-1	internal/metadata/chart_of_accounts.go internal/metadata/chart_of_calculation_types.go internal/metadata/model.go
 1	internal/metadata/common_attributes.go internal/metadata/common_modules.go internal/metadata/event_subscriptions.go internal/metadata/managed_form.go internal/metadata/subsystems.go
 1	internal/metadata/common_commands.go internal/metadata/model.go internal/metadata/model.go internal/metadata/xdto_packages.go
 1	internal/metadata/common_pictures.go internal/metadata/ws_references.go

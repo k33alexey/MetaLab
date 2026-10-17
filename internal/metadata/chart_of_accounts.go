@@ -326,6 +326,10 @@ func validateAccountingFlagStorage(prefix string, flag AccountingFlag) []string 
 	return issues
 }
 
+func (account PredefinedAccount) head() predefinedHead {
+	return predefinedHead{id: account.ID, name: account.Name, code: account.Code, description: account.Description}
+}
+
 func validatePredefinedAccounts(value ChartOfAccountsDefinition) []string {
 	flagNames := make(map[string]bool, len(value.AccountingFlags))
 	for _, flag := range value.AccountingFlags {
@@ -335,51 +339,19 @@ func validatePredefinedAccounts(value ChartOfAccountsDefinition) []string {
 	for _, flag := range value.ExtDimensionAccountingFlags {
 		extFlagNames[strings.ToLower(flag.Name)] = true
 	}
-	var issues []string
-	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+	issues, names := validatePredefinedHeads(predefinedHeads(value.Predefined), value.Code, value.DescriptionLength)
 	for index, account := range value.Predefined {
 		prefix := fmt.Sprintf("predefined[%d]", index)
-		if account.ID.IsZero() {
-			issues = append(issues, prefix+".id must be a non-zero UUID")
-		}
-		if ids[account.ID] {
-			issues = append(issues, prefix+".id must be unique")
-		}
-		ids[account.ID] = true
-		if !validIdentifier(account.Name) || utf8.RuneCountInString(account.Name) > maxNameLength {
-			issues = append(issues, prefix+".name must be a valid identifier of at most 255 characters")
-		}
-		folded := strings.ToLower(account.Name)
-		if names[folded] {
-			issues = append(issues, prefix+".name must be unique")
-		}
-		names[folded] = true
 		switch account.Kind {
 		case ActiveAccount, PassiveAccount, ActivePassiveAccount:
 		default:
 			issues = append(issues, prefix+".kind must be active, passive or active-passive")
-		}
-		// A code kept from when the code was on is carried, as on a catalog -
-		// see PredefinedCatalogItem.EffectiveCode.
-		switch {
-		case value.Code.Length == 0:
-		case account.Code == "":
-			if !value.Code.Auto {
-				issues = append(issues, prefix+".code is required when automatic codes are disabled")
-			}
-		default:
-			if _, err := normalizeCatalogCode(value.Code, account.Code); err != nil {
-				issues = append(issues, prefix+".code is invalid: "+err.Error())
-			}
 		}
 		// The order lies in a column as wide as the order length - or the code
 		// length where the order length is not given - so a longer one is the
 		// database's limit, not ours.
 		if width := orderColumnWidth(value); utf8.RuneCountInString(account.Order) > width {
 			issues = append(issues, fmt.Sprintf("%s.order must not exceed %d characters", prefix, width))
-		}
-		if utf8.RuneCountInString(account.Description) > value.DescriptionLength {
-			issues = append(issues, fmt.Sprintf("%s.description must not exceed %d characters", prefix, value.DescriptionLength))
 		}
 		for name := range account.Flags {
 			if !flagNames[strings.ToLower(name)] {

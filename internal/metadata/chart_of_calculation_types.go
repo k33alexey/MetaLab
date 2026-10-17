@@ -5,7 +5,6 @@ import (
 	"io"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
@@ -161,49 +160,13 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, configuratio
 }
 
 func validatePredefinedCalculationTypes(value ChartOfCalculationTypesDefinition) []string {
-	var issues []string
-	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
-	for index, item := range value.Predefined {
-		prefix := fmt.Sprintf("predefined[%d]", index)
-		if item.ID.IsZero() {
-			issues = append(issues, prefix+".id must be a non-zero UUID")
-		}
-		if ids[item.ID] {
-			issues = append(issues, prefix+".id must be unique")
-		}
-		ids[item.ID] = true
-		if !validIdentifier(item.Name) || utf8.RuneCountInString(item.Name) > maxNameLength {
-			issues = append(issues, prefix+".name must be a valid identifier of at most 255 characters")
-		}
-		folded := strings.ToLower(item.Name)
-		if names[folded] {
-			issues = append(issues, prefix+".name must be unique")
-		}
-		names[folded] = true
-		// A code kept from when the code was on is carried, as on a catalog -
-		// see PredefinedCatalogItem.EffectiveCode.
-		switch {
-		case value.Code.Length == 0:
-		case item.Code == "":
-			if !value.Code.Auto {
-				issues = append(issues, prefix+".code is required when automatic codes are disabled")
-			}
-		default:
-			if _, err := normalizeCatalogCode(value.Code, item.Code); err != nil {
-				issues = append(issues, prefix+".code is invalid: "+err.Error())
-			}
-		}
-		if utf8.RuneCountInString(item.Description) > value.DescriptionLength {
-			issues = append(issues, fmt.Sprintf("%s.description must not exceed %d characters", prefix, value.DescriptionLength))
-		}
-		// The lists and the flag are carried whatever the settings say. The
-		// prototype keeps all three lists and the flag on every chart, with
-		// the setting that gives them meaning off as well - erp "Удержания"
-		// has no action period and still writes the flag and the list of
-		// displacing types - so a chart that switched a setting off after
-		// filling them in is saved as it is, and it is the calculation that
-		// does not read them.
-	}
+	issues, names := validatePredefinedHeads(predefinedHeads(value.Predefined), value.Code, value.DescriptionLength)
+	// The lists and the flag are carried whatever the settings say. The
+	// prototype keeps all three lists and the flag on every chart, with the
+	// setting that gives them meaning off as well - erp "Удержания" has no
+	// action period and still writes the flag and the list of displacing
+	// types - so a chart that switched a setting off after filling them in is
+	// saved as it is, and it is the calculation that does not read them.
 	// Leading and displacing name types of this chart, so they resolve here.
 	for index, item := range value.Predefined {
 		for role, list := range map[string][]string{"leading": item.Leading, "displacing": item.Displacing} {
@@ -218,6 +181,10 @@ func validatePredefinedCalculationTypes(value ChartOfCalculationTypesDefinition)
 		}
 	}
 	return issues
+}
+
+func (item PredefinedCalculationType) head() predefinedHead {
+	return predefinedHead{id: item.ID, name: item.Name, code: item.Code, description: item.Description}
 }
 
 // reservedCalculationTypeName keeps the catalog's own names and the one standard

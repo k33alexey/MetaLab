@@ -317,6 +317,71 @@ predefined:
 	}
 }
 
+// The head of a predefined element - identity, name, code, description - is
+// checked one way on the four kinds that have predefined elements, by the
+// rule of METADATA-OBJECTS.md, «Код предопределённого элемента — одно правило
+// на четыре вида»: the empty code passes with automatic codes and without
+// them, a code of spaces alone is the empty code whatever the length, the
+// empty numeric code is zero, a code longer than the length is refused, and a
+// description that is not text is refused.
+//
+// Defect caught: a kind keeping a check of its own that has parted from the
+// rule - the chart of calculation types refused the empty code without
+// automatic codes, a code of spaces longer than the code was refused as too
+// long, and the charts of accounts and of calculation types let a description
+// that is not UTF-8 through.
+func TestPredefinedHeadOneRuleOnFourKinds(t *testing.T) {
+	t.Parallel()
+	id := mustUUID(t, "a0000000-0000-4000-8000-000000000010")
+	checks := map[string]func(code CatalogCode, value, description string) []string{
+		"справочник": func(code CatalogCode, value, description string) []string {
+			return validatePredefinedItems(referenceObjectShape{code: code, descriptionLength: 25,
+				predefined: []PredefinedCatalogItem{{ID: id, Name: "Основной", Code: value, Description: description}}})
+		},
+		"план видов характеристик": func(code CatalogCode, value, description string) []string {
+			return validatePredefinedItems(referenceObjectShape{code: code, descriptionLength: 25, hierarchy: Hierarchy{Enabled: true, Kind: FoldersAndItemsHierarchy},
+				predefined: predefinedCharacteristicItems([]PredefinedCharacteristic{{PredefinedCatalogItem: PredefinedCatalogItem{ID: id, Name: "Основной", Code: value, Description: description}}})})
+		},
+		"план счетов": func(code CatalogCode, value, description string) []string {
+			return validatePredefinedAccounts(ChartOfAccountsDefinition{Code: code, DescriptionLength: 25,
+				Predefined: []PredefinedAccount{{ID: id, Name: "Основной", Code: value, Description: description, Kind: ActiveAccount}}})
+		},
+		"план видов расчёта": func(code CatalogCode, value, description string) []string {
+			return validatePredefinedCalculationTypes(ChartOfCalculationTypesDefinition{Code: code, DescriptionLength: 25,
+				Predefined: []PredefinedCalculationType{{ID: id, Name: "Основной", Code: value, Description: description}}})
+		},
+	}
+	text := CatalogCode{Type: StringType, Length: 2}
+	number := CatalogCode{Type: NumberType, Length: 2}
+	for kind, check := range checks {
+		for name, test := range map[string]struct {
+			code        CatalogCode
+			value       string
+			description string
+			want        string
+		}{
+			"пустой код без автонумерации": {text, "", "Основной", ""},
+			"пустой код при автонумерации": {CatalogCode{Type: StringType, Length: 2, Auto: true}, "", "Основной", ""},
+			"код из пробелов длиннее кода": {text, "     ", "Основной", ""},
+			"числовой код из пробелов":     {number, "   ", "Основной", ""},
+			"числовой пустой код":          {number, "", "Основной", ""},
+			"код во всю длину":             {text, "01", "Основной", ""},
+			"код длиннее":                  {text, "012", "Основной", "predefined[0].code is invalid"},
+			"числовой код с буквой":        {number, "1А", "Основной", "predefined[0].code is invalid"},
+			"описание не текст":            {text, "01", "Осн\xffовной", "predefined[0].description must be UTF-8 text"},
+			"код при длине 0 несётся":      {CatalogCode{Type: StringType}, "0001", "Основной", ""},
+		} {
+			issues := strings.Join(check(test.code, test.value, test.description), "; ")
+			if test.want == "" && issues != "" {
+				t.Errorf("%s, %s refused: %s", kind, name, issues)
+			}
+			if test.want != "" && !strings.Contains(issues, test.want) {
+				t.Errorf("%s, %s: %q, want one saying %q", kind, name, issues, test.want)
+			}
+		}
+	}
+}
+
 // The rows of what displaces a calculation type and what leads it are keyed
 // to the chart's own table; the rows of its base are not, since a base may
 // come from several charts and one column cannot reference several tables.

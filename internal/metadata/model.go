@@ -1486,26 +1486,89 @@ func (shape referenceObjectShape) switchedOff() []string {
 	return fields
 }
 
-func validatePredefinedItems(shape referenceObjectShape) []string {
+// predefinedHead is what a predefined element carries alike on a catalog, a
+// chart of characteristic types, a chart of accounts and a chart of
+// calculation types: its identity, name, code and description.
+type predefinedHead struct {
+	id          uuid.UUID
+	name        string
+	code        string
+	description string
+}
+
+func (item PredefinedCatalogItem) head() predefinedHead {
+	return predefinedHead{id: item.ID, name: item.Name, code: item.Code, description: item.Description}
+}
+
+func predefinedHeads[T interface{ head() predefinedHead }](items []T) []predefinedHead {
+	heads := make([]predefinedHead, len(items))
+	for index, item := range items {
+		heads[index] = item.head()
+	}
+	return heads
+}
+
+// emptyPredefinedCode says a code is the empty code: one of spaces alone is
+// the same value as none, as the prototype's window of a predefined element
+// reads it.
+func emptyPredefinedCode(value string) bool {
+	return strings.Trim(value, " ") == ""
+}
+
+// validatePredefinedHeads checks the heads of the predefined elements of one
+// object, one way for the four kinds that have them, and returns the folded
+// names it has seen, for the checks of parents and lists that follow.
+func validatePredefinedHeads(heads []predefinedHead, code CatalogCode, descriptionLength int) ([]string, map[string]bool) {
 	var issues []string
 	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
-	for index, item := range shape.predefined {
+	for index, head := range heads {
 		prefix := fmt.Sprintf("predefined[%d]", index)
-		if item.ID.IsZero() {
+		if head.id.IsZero() {
 			issues = append(issues, prefix+".id must be a non-zero UUID")
 		}
-		if ids[item.ID] {
+		if ids[head.id] {
 			issues = append(issues, prefix+".id must be unique")
 		}
-		ids[item.ID] = true
-		if !validIdentifier(item.Name) || utf8.RuneCountInString(item.Name) > maxNameLength {
+		ids[head.id] = true
+		if !validIdentifier(head.name) || utf8.RuneCountInString(head.name) > maxNameLength {
 			issues = append(issues, prefix+".name must be a valid identifier of at most 255 characters")
 		}
-		folded := strings.ToLower(item.Name)
+		folded := strings.ToLower(head.name)
 		if names[folded] {
 			issues = append(issues, prefix+".name must be unique")
 		}
 		names[folded] = true
+		// One rule for the four kinds - METADATA-OBJECTS.md, «Код
+		// предопределённого элемента — одно правило на четыре вида». The
+		// empty code is allowed with automatic codes and without them: with
+		// them the element gets the next code when it is created, without
+		// them it keeps the empty one; the empty numeric code is zero. A code
+		// on an element of an object whose code is switched off is the code it
+		// had while there was one: the prototype keeps it (106/40/75 items of
+		// 4/3/7 catalogs), and the items of objects that never had a code
+		// carry an empty one. It is carried, creates nothing - see
+		// PredefinedCatalogItem.EffectiveCode - and is a note.
+		switch {
+		case code.Length == 0:
+		case emptyPredefinedCode(head.code):
+		default:
+			if _, err := normalizeCatalogCode(code, head.code); err != nil {
+				issues = append(issues, prefix+".code is invalid: "+err.Error())
+			}
+		}
+		if !utf8.ValidString(head.description) {
+			issues = append(issues, prefix+".description must be UTF-8 text")
+		} else if utf8.RuneCountInString(head.description) > descriptionLength {
+			issues = append(issues, fmt.Sprintf("%s.description must not exceed %d characters", prefix, descriptionLength))
+		}
+	}
+	return issues, names
+}
+
+func validatePredefinedItems(shape referenceObjectShape) []string {
+	issues, _ := validatePredefinedHeads(predefinedHeads(shape.predefined), shape.code, shape.descriptionLength)
+	for index, item := range shape.predefined {
+		prefix := fmt.Sprintf("predefined[%d]", index)
 		// The kind alone does not make folders: a flat object carries the kind
 		// of the hierarchy it would have, the way the prototype writes it.
 		if item.IsFolder && !(shape.hierarchy.Enabled && shape.hierarchy.Kind == FoldersAndItemsHierarchy) {
@@ -1516,25 +1579,6 @@ func validatePredefinedItems(shape referenceObjectShape) []string {
 		}
 		if item.Parent != "" && strings.EqualFold(item.Parent, item.Name) {
 			issues = append(issues, prefix+".parent is the item itself")
-		}
-		// A code on an item of a catalog whose code is switched off is the code
-		// it had while there was one: the prototype keeps it (106/40/75 items
-		// of 4/3/7 catalogs), and the items of catalogs that never had a code
-		// carry an empty one. It is carried, creates nothing - see
-		// PredefinedCatalogItem.EffectiveCode - and is a note.
-		switch {
-		case shape.code.Length == 0:
-		case item.Code == "":
-			if !shape.code.Auto {
-				issues = append(issues, prefix+".code is required when automatic codes are disabled")
-			}
-		default:
-			if _, err := normalizeCatalogCode(shape.code, item.Code); err != nil {
-				issues = append(issues, prefix+".code is invalid: "+err.Error())
-			}
-		}
-		if !utf8.ValidString(item.Description) || utf8.RuneCountInString(item.Description) > shape.descriptionLength {
-			issues = append(issues, fmt.Sprintf("%s.description must not exceed %d characters", prefix, shape.descriptionLength))
 		}
 		attributeNames := map[string]bool{}
 		for name := range item.Attributes {

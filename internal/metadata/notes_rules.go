@@ -713,7 +713,7 @@ func noteFixedLengthOfNumber(catalog *Catalog, note func(where, written string))
 
 func notePredefinedCodeKept(catalog *Catalog, note func(where, written string)) {
 	eachNoteHolder(catalog, func(holder noteHolder) {
-		if holder.predefinedCode != nil && *holder.predefinedCode != "" && holder.object.code != nil && holder.object.code.Length == 0 {
+		if holder.predefinedCode != nil && !emptyPredefinedCode(*holder.predefinedCode) && holder.object.code != nil && holder.object.code.Length == 0 {
 			note(holder.where+" code", *holder.predefinedCode)
 		}
 	})

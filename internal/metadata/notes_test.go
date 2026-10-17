@@ -458,7 +458,8 @@ func TestEveryNoteKindAppearsOnItsExample(t *testing.T) {
 // own type, a hierarchy that is on, «for folder and item» with folders, a
 // field in the index of an indexed object, posting settings of a document that
 // posts, a command drawn by a picture it has, a parameter mode with a type, a
-// hierarchical dimension table at level 0.
+// hierarchical dimension table at level 0, a code of spaces alone on an item
+// of a codeless catalog.
 // Such a rule buries the real notes under thousands of false ones.
 func TestSoundSettingsCarryNoNotes(t *testing.T) {
 	t.Parallel()
@@ -486,8 +487,8 @@ func TestSoundSettingsCarryNoNotes(t *testing.T) {
 	writeHTTPService(t, root, secondHTTPServiceID, "Заказы", "root_url: orders\n")
 	writeExternalTable(t, root, "Склад", goodsTable, "Товары", strings.Replace(goodsBody, `unfilled_parent_value: {kind: string, data: ""}`, `unfilled_parent_value: {kind: undefined, data: ""}`, 1))
 	writeExternalSource(t, root, warehouseSource, "Склад", "functions:\n  - id: "+uuid.MustNew().String()+"\n    name: Остаток\n    title: {ru: Остаток}\n    expression_in_data_source: \"SELECT f(&1, x&10)\"\n")
-	// A fixed length on a string code, a codeless catalog whose item has no
-	// code, addressing done whole, a parameter set and another linked.
+	// A fixed length on a string code, a codeless catalog whose items have no
+	// code or one of spaces - the empty code - addressing done whole, a parameter set and another linked.
 	fixed := uuid.MustNew().String()
 	writeMetadata(t, root, CatalogKind, fixed, "format: 1\nid: "+fixed+"\nname: Склады\ntitle: {ru: Склады}\n"+
 		"code: {type: string, length: 9, fixed_length: true}\ndescription_length: 150\n"+
@@ -497,7 +498,8 @@ func TestSoundSettingsCarryNoNotes(t *testing.T) {
 		"      parameter_links: [{name: Отбор.Код, source: {standard: Код}}]\n")
 	codeless := uuid.MustNew().String()
 	writeMetadata(t, root, CatalogKind, codeless, "format: 1\nid: "+codeless+"\nname: Группы\ntitle: {ru: Группы}\n"+
-		"code: {type: string, length: 0}\ndescription_length: 150\npredefined:\n  - {id: "+uuid.MustNew().String()+", name: Все}\n")
+		"code: {type: string, length: 0}\ndescription_length: 150\npredefined:\n  - {id: "+uuid.MustNew().String()+", name: Все}\n"+
+		"  - {id: "+uuid.MustNew().String()+", name: Прочие, code: \"   \"}\n")
 	register, dimension := uuid.MustNew().String(), uuid.MustNew().String()
 	writeMetadata(t, root, InformationRegisterKind, register, "format: 1\nid: "+register+"\nname: Исполнители\ntitle: {ru: Исполнители}\n"+
 		"write_mode: independent\nperiodicity: none\ndimensions:\n  - {id: "+dimension+", name: Роль, title: {ru: Роль}, types: [{kind: string, length: 10}]}\n"+
