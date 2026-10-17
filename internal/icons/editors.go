@@ -7,9 +7,19 @@ import "fmt"
 // inventory of block 00 photographed them (obolochka/, konstanta/,
 // redaktor-modulya/).
 
-const (
-	parens = "M10 5Q8.5 8.5 10 12M12.5 5Q14 8.5 12.5 12"
-)
+// brackets are the round brackets of a call, left and right on the
+// half-pixel grid from top to bottom: bent at their ends and straight in the
+// middle, so that each is one column of pixels and does not merge with the
+// letter before it (the owner's choice of 16.10.2026 for P() of the list of
+// procedures, and so every call the set draws).
+func brackets(left, right, top, bottom float64) string {
+	bracket := func(x, side float64) string {
+		return fmt.Sprintf("M%s %sQ%s %s %s %sV%sQ%s %s %s %s",
+			number(x+side*0.5), number(top), number(x), number(top+0.5), number(x), number(top+1.25),
+			number(bottom-1.25), number(x), number(bottom-0.5), number(x+side*0.5), number(bottom))
+	}
+	return bracket(left, 1) + bracket(right, -1)
+}
 
 // funnel is the sign of a selection: a cone as deep as half its width
 // narrowing to a neck of 3 points with a flat end, as the prototype's library
@@ -22,11 +32,17 @@ func funnel(left, top, width float64) string {
 		number(neck+1.5), number(cone), number(cone+5), number(neck-1.5), number(cone))
 }
 
+// slashes are the «//» of a comment in a module, from the bottom of the grid
+// to its top.
+func slashes() Part {
+	return path(Mark, "M2.5 14.5L7 1.5M8.5 14.5L13 1.5")
+}
+
 var editorIcons = []Icon{
 	// Палитра свойств.
 	{ID: "sort-alphabetical", Color: slate, Accent: blue, Parts: []Part{
-		path(Detail, "M1.5 7L3.75 1.5L6 7M2.4 5H5.1M1.5 9.5H6L1.5 14.5H6"),
-		path(Line, "M11 1.5V14.5M9 12.5L11 14.5L13 12.5"),
+		path(Detail, "M1.5 7L3.75 1.5L6 7M2.5 4.5H5M1.5 9.5H6L1.5 14.5H6"),
+		path(Line, "M11.5 1.5V11"), path(Accent, head(11.5, 14.5, 0, 1, 2)),
 	}},
 	{ID: "sort-by-category", Color: slate, Accent: blue, Parts: []Part{
 		rect(Body, 1.5, 1.5, 13, 13),
@@ -35,7 +51,7 @@ var editorIcons = []Icon{
 	}},
 	{ID: "only-important", Color: steel, Accent: red, Parts: []Part{
 		path(Body, funnel(1.5, 2.5, 11)),
-		path(Line, "M10.5 9.5H14.5M10.5 12H14.5M10.5 14.5H14.5"),
+		path(Line, "M10.5 10.5H14.5M10.5 12.5H14.5M10.5 14.5H14.5"),
 	}},
 	{ID: "cancel-edit", Color: steel, Accent: steel, Parts: []Part{
 		path(Mark, cross),
@@ -46,9 +62,9 @@ var editorIcons = []Icon{
 	// Окно типа: примитивные типы, ссылка, любая ссылка. Дата — значок
 	// календаря, характеристика и определяемый тип — папка группы.
 	{ID: "type-number", Color: blue, Parts: []Part{
-		path(Detail, "M1.5 4.5L3.25 3V13"),
-		path(Detail, "M5.25 5Q5.25 3 7 3Q8.75 3 8.75 5Q8.75 7 5.25 13H9"),
-		path(Detail, "M10.75 3.5Q11.5 3 12.5 3Q14.25 3 14.25 5Q14.25 7.75 12.25 7.75Q14.5 7.75 14.5 10.25Q14.5 13 12.5 13Q11.25 13 10.75 12.5"),
+		path(Detail, "M1.5 5L3.5 3.5V12.5"),
+		path(Detail, "M5.5 5.5Q5.5 3.5 7.25 3.5Q9 3.5 9 5.5Q9 7.5 5.5 12.5H9.5"),
+		path(Detail, "M10.75 4Q11.5 3.5 12.5 3.5Q14.25 3.5 14.25 5.5Q14.25 7.75 12.25 7.75Q14.5 7.75 14.5 10.25Q14.5 12.5 12.5 12.5Q11.25 12.5 10.75 12"),
 	}},
 	{ID: "type-string", Color: slate, Accent: blue, Parts: []Part{
 		path(Detail, "M4.5 2.5V6.5M4.5 4.5Q4.5 2.5 3.25 2.5Q2 2.5 2 4.5Q2 6.5 3.25 6.5Q4.5 6.5 4.5 5"),
@@ -61,21 +77,21 @@ var editorIcons = []Icon{
 	}},
 	{ID: "type-value-storage", Color: gold, Accent: "#efc23a", Parts: []Part{
 		path(Body, "M2.5 6.5H13.5V13Q13.5 14.5 12 14.5H4Q2.5 14.5 2.5 13Z"),
-		rect(Accent, 1.5, 4, 13, 2.5),
-		path(Detail, "M5.5 4V2.5Q5.5 1.5 6.5 1.5H9.5Q10.5 1.5 10.5 2.5V4M6.5 10H9.5"),
+		rect(Accent, 1, 4, 14, 3),
+		path(Detail, "M5.5 4V2.5Q5.5 1.5 6.5 1.5H9.5Q10.5 1.5 10.5 2.5V4M6.5 10.5H9.5"),
 	}},
 	{ID: "type-uuid", Color: gray, Parts: []Part{
-		path(Detail, "M3 3.5V12.5M1.5 3.5H4.5M1.5 12.5H4.5"),
-		path(Detail, "M7 3.5V12.5H9.5Q14 12.5 14 8Q14 3.5 9.5 3.5Z"),
+		path(Detail, "M3.5 3.5V12.5M1.5 3.5H5.5M1.5 12.5H5.5"),
+		path(Detail, "M7.5 3.5V12.5H9.5Q14.5 12.5 14.5 8Q14.5 3.5 9.5 3.5Z"),
 	}},
 	// reference is the sign of a reference, as the prototype draws it.
 	{ID: "reference", Color: ink, Parts: link(8, 8, 7, 3, 1.25)},
 	// ЛюбаяСсылка: three axes from one corner, x, y and z turned upside down.
 	{ID: "type-any-reference", Color: blue, Accent: blue, Parts: []Part{
 		path(Line, "M3.5 12V3.5H12M3.5 3.5L11 11"),
-		path(Accent, "M11.5 1L15 3.5L11.5 6Z"),
-		path(Accent, "M1 11.5L3.5 15L6 11.5Z"),
-		path(Accent, "M13.5 9L13.5 13.5L9 13.5Z"),
+		path(Accent, "M11 1L15 3.5L11 6Z"),
+		path(Accent, "M1 11L3.5 15L6 11Z"),
+		path(Accent, "M14 9V14H9Z"),
 	}},
 	// Подсказка и список процедур редактора модуля.
 	{ID: "property", Color: green, Accent: green, Parts: []Part{
@@ -85,64 +101,64 @@ var editorIcons = []Icon{
 		bar(2, 6, 12, 4),
 	}},
 	{ID: "method-function", Color: green, Parts: []Part{
-		path(Detail, "M5 13V5Q5 3 7 3M3.5 7.5H6.5"+parens),
+		path(Detail, "M5.5 13V5Q5.5 3.5 7 3.5M4 7.5H7"+brackets(9.5, 13.5, 5, 12)),
 	}},
 	{ID: "method-procedure", Color: green, Parts: []Part{
-		path(Detail, "M3.5 6.5V14.5M3.5 8Q3.5 6.5 5.25 6.5Q7 6.5 7 8.75Q7 11 5.25 11Q3.5 11 3.5 9.5"+parens),
+		path(Detail, "M3.5 6.5V14.5M3.5 8Q3.5 6.5 5 6.5Q6.5 6.5 6.5 8.5Q6.5 10.5 5 10.5Q3.5 10.5 3.5 9"+brackets(9.5, 13.5, 5, 12)),
 	}},
-	{ID: "procedure", Color: red, Accent: red, Parts: join([]Part{rect(Body, 1.5, 2.5, 13, 11)}, over(
-		path(Line, "M3.75 11V5H5.5Q7.25 5 7.25 6.75Q7.25 8.5 5.5 8.5H3.75M9.75 5Q8.75 8 9.75 11M12 5Q13 8 12 11"),
-	))},
-	{ID: "function", Color: red, Accent: red, Parts: join([]Part{rect(Body, 1.5, 2.5, 13, 11)}, over(
-		path(Line, "M3.75 11V5H7M3.75 8H6.25M9.75 5Q8.75 8 9.75 11M12 5Q13 8 12 11"),
-	))},
+	{ID: "procedure", Color: red, Accent: red, Parts: join([]Part{rect(Body, 1.5, 2.5, 13, 11)}, []Part{
+		path(Line, "M3.5 11V5.5H5Q6.5 5.5 6.5 7Q6.5 8.5 5 8.5H3.5"+brackets(8.5, 12.5, 5, 11)),
+	})},
+	{ID: "function", Color: red, Accent: red, Parts: join([]Part{rect(Body, 1.5, 2.5, 13, 11)}, []Part{
+		path(Line, "M3.5 11V5.5H6.5M3.5 8.5H5.5"+brackets(8.5, 12.5, 5, 11)),
+	})},
 	{ID: "keyword", Color: code, Accent: code, Parts: []Part{
-		path(Line, "M2.5 4.5H9.5M2.5 8H13.5M2.5 11.5H7.5"),
+		path(Line, "M2.5 3.5H9.5M2.5 7.5H13.5M2.5 11.5H7.5"),
 	}},
 	// Панель и меню «Текст» редактора модуля.
 	{ID: "indent-increase", Color: slate, Accent: blue, Parts: []Part{
 		path(Detail, "M7.5 3.5H14.5M7.5 6.5H14.5M7.5 9.5H14.5M1.5 12.5H14.5"),
-		path(Line, "M1.5 4L4.5 6.5L1.5 9"),
+		path(Accent, head(4.5, 6.5, 1, 0, 2)),
 	}},
 	{ID: "indent-decrease", Color: slate, Accent: blue, Parts: []Part{
 		path(Detail, "M7.5 3.5H14.5M7.5 6.5H14.5M7.5 9.5H14.5M1.5 12.5H14.5"),
-		path(Line, "M4.5 4L1.5 6.5L4.5 9"),
+		path(Accent, head(1.5, 6.5, -1, 0, 2)),
 	}},
-	{ID: "comment", Color: green, Accent: green, Parts: []Part{
-		path(Line, "M4.5 13.5L8 2.5M8.5 13.5L12 2.5"),
-	}},
-	{ID: "uncomment", Color: green, Accent: green, Parts: []Part{
-		path(Line, "M2.5 12.5L6 1.5M6.5 12.5L10 1.5"),
-		colored(path(Mark, "M11 11L14 14M14 11L11 14"), red),
-	}},
-	{ID: "check-module", Color: slate, Accent: green, Parts: join([]Part{
-		rect(Body, 1.5, 1.5, 10, 11),
-		path(Detail, "M3.5 4.5H5M3.5 7H5"),
-	}, over(
-		colored(path(Line, "M6.5 4.5H9.5M6.5 7H9.5"), red),
-		path(Mark, "M7.5 12L10 14.5L14.5 9.5"),
-	))},
+	// «//» over the whole grid, two pixels thick; removing the comment the
+	// same and at the lower right a red cross over the second stroke, a thin
+	// white halo round it (the owner's remarks of 17.10.2026).
+	{ID: "comment", Color: green, Accent: green, Parts: []Part{slashes()}},
+	{ID: "uncomment", Color: green, Accent: green, Parts: append([]Part{slashes()},
+		cleared(colored(path(Mark, "M7.5 9.5L12 14M12 9.5L7.5 14"), red))...)},
+	// The module and over its lower right the green check, cleared by a
+	// pixel (the owner's remark of 17.10.2026: a sheet of lines was not the
+	// module).
+	{ID: "check-module", Color: slate, Accent: code, Parts: join(modulePage(),
+		thinlyCleared(colored(path(Mark, "M8.5 12L11 14.5L15 10"), green)))},
 	// P() stands in the middle of the glass, as far from its rim on the left
 	// as on the right, its brackets straight in the middle so that each is
 	// one column of pixels and does not merge with the letter (the owner's
 	// choice of 16.10.2026).
 	{ID: "procedures-list", Color: slate, Accent: red, Parts: join(lens(7, 7, 5.5), []Part{
-		path(Line, "M3.5 9V5H4.5Q5.75 5 5.75 6.25Q5.75 7.5 4.5 7.5H3.5M8 5Q7.5 5.5 7.5 6.25V7.75Q7.5 8.5 8 9M10 5Q10.5 5.5 10.5 6.25V7.75Q10.5 8.5 10 9"),
+		path(Line, "M3.5 9V4.5H4.5Q6 4.5 6 6Q6 7.5 4.5 7.5H3.5"+brackets(7.5, 10.5, 5, 9)),
 	})},
 	{ID: "bookmark-next", Color: gray, Accent: "#5b636d", Parts: join(flag(), []Part{
-		colored(path(Line, "M12.5 9.5V14.5M10.5 12.5L12.5 14.5L14.5 12.5"), green),
+		colored(path(Line, "M12.5 9.5V12"), green), colored(path(Accent, head(12.5, 15.5, 0, 1, 2)), green),
 	})},
 	{ID: "bookmark-previous", Color: gray, Accent: "#5b636d", Parts: join(flag(), []Part{
-		colored(path(Line, "M12.5 14.5V9.5M10.5 11.5L12.5 9.5L14.5 11.5"), green),
+		colored(path(Line, "M12.5 15.5V13"), green), colored(path(Accent, head(12.5, 9.5, 0, -1, 2)), green),
 	})},
 	{ID: "bookmarks-delete", Color: gray, Accent: "#5b636d", Parts: join(flag(), []Part{
 		colored(path(Mark, "M11 11L14 14M14 11L11 14"), red),
 	})},
 	// The query wizard, the configurator's command and the library's
-	// picture alike: a list over the whole grid and three red pluses, the
-	// most used command plain at 16 px (the owner's choice of 16.10.2026).
-	{ID: "query-designer", Color: slate, Parts: join(list(true), wizardPluses())},
-	{ID: "query-designer-processing", Color: slate, Parts: join(list(true), wizardPluses(), over(
-		colored(path(Line, "M1.5 13.5H6.5M5 12L6.5 13.5L5 15"), green),
-	))},
+	// picture alike: a list over the whole grid and the golden sparks of a
+	// wizard, the most used command plain at 16 px (the owner's choices of
+	// 16 and 17.10.2026).
+	{ID: "query-designer", Color: slate, Parts: join(list(true), wizardSparks())},
+	// With its result processed: the same and the wide arrow of «Forward»
+	// in a brighter green, cleared from the lines of the list - a thin one
+	// was lost in them (the owner's choice of 17.10.2026).
+	{ID: "query-designer-processing", Color: slate, Parts: join(list(true), wizardSparks(),
+		cleared(colored(path(Accent, wideArrow(8, 12, 1, 0, 7)), brightGreen)))},
 }

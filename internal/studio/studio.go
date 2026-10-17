@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/k33alexey/MetaLab/internal/brand"
 	"github.com/k33alexey/MetaLab/internal/bsl/vm"
 	"github.com/k33alexey/MetaLab/internal/debugtarget"
 	"github.com/k33alexey/MetaLab/internal/gitclient"
@@ -213,10 +214,13 @@ func NewHandler(workspace *Workspace) http.Handler {
 		response.Header().Set("Content-Type", "image/svg+xml")
 		_, _ = response.Write(icons.Sprite())
 	})
-	// Studio has no icon of its own; the browser asks for one on every
-	// opening, and a 404 there is an error in the console of every session.
+	// The tab of Studio shows the icon of MetaLab, as the application's tab
+	// does (the owner's choice of 17.10.2026).
 	routes.HandleFunc("GET /favicon.ico", func(response http.ResponseWriter, _ *http.Request) {
-		response.WriteHeader(http.StatusNoContent)
+		icon, _ := brand.Icon("icon-192.png")
+		response.Header().Set("Content-Type", "image/png")
+		response.Header().Set("Cache-Control", "public, max-age=86400")
+		_, _ = response.Write(icon)
 	})
 	routes.HandleFunc("GET /{$}", func(response http.ResponseWriter, _ *http.Request) {
 		page, err := assets.ReadFile("ui/index.html")

@@ -9,6 +9,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/brand"
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -154,7 +155,8 @@ func ServeAsset(response http.ResponseWriter, request *http.Request, name string
 	case "manifest.webmanifest":
 		serveAsset(response, request, name, "application/manifest+json", "no-cache")
 	case "icon.png", "icon-192.png", "icon-512.png":
-		serveAsset(response, request, name, "image/png", "public, max-age=86400")
+		content, _ := brand.Icon(name)
+		serveContent(response, request, content, "image/png", "public, max-age=86400")
 	default:
 		http.Error(response, "Not found", http.StatusNotFound)
 	}
@@ -166,6 +168,10 @@ func serveAsset(response http.ResponseWriter, request *http.Request, name, conte
 		http.Error(response, "ML App asset unavailable", http.StatusInternalServerError)
 		return
 	}
+	serveContent(response, request, content, contentType, cacheControl)
+}
+
+func serveContent(response http.ResponseWriter, request *http.Request, content []byte, contentType, cacheControl string) {
 	digest := sha256.Sum256(content)
 	etag := fmt.Sprintf(`"ml-app-%x"`, digest[:12])
 	response.Header().Set("ETag", etag)

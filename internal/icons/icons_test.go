@@ -2,7 +2,9 @@ package icons
 
 import (
 	"encoding/xml"
+	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -148,6 +150,7 @@ func TestRolesArePaintedAsTheStyle(t *testing.T) {
 		colored(rect(Accent, 2, 2, 2, 2), "#778899"), colored(rect(Body, 3, 3, 2, 2), "#aabbcc"),
 		rect(Plate, 4, 4, 2, 2), path(Mark, "M2 6H4"), path(Rim, "M2 8H4"),
 		path(InkMark, "M2 10H4"), path(InkSpot, "M2 12H4V14Z"), path(Halo, "M2 15H4"), path(ThinHalo, "M2 16H4"),
+		path(Tip, "M5 12H7V14Z"), path(InkLine, "M5 15H7"),
 	}}
 	symbol := icon.Symbol()
 	for _, want := range []string{
@@ -164,6 +167,8 @@ func TestRolesArePaintedAsTheStyle(t *testing.T) {
 		`<path d="M2 12H4V14Z" style="fill:color-mix(in srgb,#112233,#fff calc(var(--icon-lighten,0%)*3));stroke:none"/>`,
 		`<path d="M2 15H4" style="fill:var(--icon-plate,#fff);stroke-width:3;stroke:var(--icon-plate,#fff)"/>`,
 		`<path d="M2 16H4" style="fill:var(--icon-plate,#fff);stroke-width:2;stroke:var(--icon-plate,#fff)"/>`,
+		`<path d="M5 12H7V14Z" style="fill:color-mix(in srgb,#112233,#fff var(--icon-lighten,0%));stroke:none"/>`,
+		`<path d="M5 15H7" style="fill:none;stroke:color-mix(in srgb,#112233,#fff calc(var(--icon-lighten,0%)*3))"/>`,
 		`stroke-width:1;stroke-linecap:round;stroke-linejoin:round`,
 	} {
 		if !strings.Contains(symbol, want) {
@@ -225,3 +230,139 @@ func TestTheLibraryHoldsEveryStandardPicture(t *testing.T) {
 		t.Error("a name the library has not resolved to a picture")
 	}
 }
+
+// TestIconsLieOnThePixelGrid catches a straight edge that falls between two
+// rows of pixels at 16 physical pixels and is drawn as two faint ones
+// (ICONS.md, «Визуальный язык», the pass of 16 physical pixels): a line of
+// 1 px must stand in the middle of a pixel, a mark of 2 px and the edge of a
+// solid spot on the border between two. An edge of a spot lying under a
+// line of the same icon is hidden by it and may stand anywhere the line
+// covers it. Curves and slanting lines are not held: their pixels are soft
+// by nature. The expectation is the rule of the style, written out here,
+// not the table of shapes.
+func TestIconsLieOnThePixelGrid(t *testing.T) {
+	for _, icon := range All() {
+		var lines, spots []gridEdge
+		for _, part := range icon.Parts {
+			width, held := map[Role]float64{
+				Body: 1, Detail: 1, Line: 1, OnAccent: 1, Plate: 1, Rim: 1, Mark: 2, InkMark: 2, Accent: 0, InkSpot: 0, Tip: 0, InkLine: 1,
+			}[part.Role]
+			if !held {
+				continue
+			}
+			for _, edge := range part.straightEdges() {
+				edge.width = width
+				if width > 0 {
+					lines = append(lines, edge)
+				} else {
+					spots = append(spots, edge)
+				}
+			}
+		}
+		for _, edge := range lines {
+			if want := math.Mod(edge.width, 2) / 2; math.Abs(edge.at-math.Floor(edge.at)-want) > 1e-9 {
+				t.Errorf("%s: a line %v px wide at %v, between pixels", icon.ID, edge.width, edge.at)
+			}
+		}
+		for _, edge := range spots {
+			if edge.at == math.Floor(edge.at) || slices.ContainsFunc(lines, edge.coveredBy) {
+				continue
+			}
+			t.Errorf("%s: the edge of a spot at %v, between pixels", icon.ID, edge.at)
+		}
+	}
+}
+
+// gridEdge is a straight edge of a part along one axis: at the coordinate
+// across it, from low to high along it.
+type gridEdge struct {
+	vertical      bool
+	at, low, high float64
+	width         float64
+}
+
+func (edge gridEdge) coveredBy(line gridEdge) bool {
+	return line.vertical == edge.vertical && math.Abs(line.at-edge.at) < line.width/2 &&
+		line.low <= edge.low+1e-9 && line.high >= edge.high-1e-9
+}
+
+func (part Part) straightEdges() []gridEdge {
+	add := func(edges []gridEdge, x1, y1, x2, y2 float64) []gridEdge {
+		switch {
+		case x1 == x2 && y1 != y2:
+			return append(edges, gridEdge{vertical: true, at: x1, low: min(y1, y2), high: max(y1, y2)})
+		case y1 == y2 && x1 != x2:
+			return append(edges, gridEdge{at: y1, low: min(x1, x2), high: max(x1, x2)})
+		}
+		return edges
+	}
+	var edges []gridEdge
+	if part.Rect != nil {
+		x, y, w, h := part.Rect[0], part.Rect[1], part.Rect[2], part.Rect[3]
+		for _, side := range [][4]float64{{x, y, x + w, y}, {x + w, y, x + w, y + h}, {x + w, y + h, x, y + h}, {x, y + h, x, y}} {
+			edges = add(edges, side[0], side[1], side[2], side[3])
+		}
+	}
+	if part.Path == "" {
+		return edges
+	}
+	tokens := pathTokens.FindAllString(part.Path, -1)
+	var x, y, startX, startY float64
+	command := ""
+	for index := 0; index < len(tokens); {
+		if letter := tokens[index]; strings.ContainsAny(letter, "MLHVQCAZmlhvz") {
+			command, index = letter, index+1
+		}
+		next := func(count int) []float64 {
+			values := make([]float64, count)
+			for k := range values {
+				values[k], _ = strconv.ParseFloat(tokens[index+k], 64)
+			}
+			index += count
+			return values
+		}
+		toX, toY := x, y
+		switch command {
+		case "M", "m":
+			v := next(2)
+			if command == "m" {
+				v[0], v[1] = x+v[0], y+v[1]
+			}
+			x, y, startX, startY = v[0], v[1], v[0], v[1]
+			command = map[string]string{"M": "L", "m": "l"}[command]
+			continue
+		case "L":
+			v := next(2)
+			toX, toY = v[0], v[1]
+			edges = add(edges, x, y, toX, toY)
+		case "l":
+			v := next(2)
+			toX, toY = x+v[0], y+v[1]
+			edges = add(edges, x, y, toX, toY)
+		case "H", "h":
+			toX = next(1)[0]
+			if command == "h" {
+				toX += x
+			}
+			edges = add(edges, x, y, toX, toY)
+		case "V", "v":
+			toY = next(1)[0]
+			if command == "v" {
+				toY += y
+			}
+			edges = add(edges, x, y, toX, toY)
+		case "Q", "C", "A":
+			v := next(map[string]int{"Q": 4, "C": 6, "A": 7}[command])
+			toX, toY = v[len(v)-2], v[len(v)-1]
+		case "Z", "z":
+			edges = add(edges, x, y, startX, startY)
+			toX, toY = startX, startY
+		default:
+			panic("a path command the test does not read: " + command + " in " + part.Path)
+		}
+		x, y = toX, toY
+	}
+	return edges
+}
+
+var pathTokens = regexp.MustCompile(`[A-Za-z]|-?\d*\.?\d+`)

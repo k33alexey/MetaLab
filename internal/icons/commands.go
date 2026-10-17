@@ -35,26 +35,37 @@ func heldLens(cx, cy, r, side float64) []Part {
 	}
 }
 
-// person is a head over shoulders, the head solid in skin, the shoulders a
-// body in the colour of the icon, standing on y bottom.
-func person(cx, bottom, size float64) []Part {
-	head := size * 0.42
+// person is the user: a round head in skin, six pixels across, a pixel
+// above solid light blue shoulders as wide as the grid allows with rounded
+// corners, standing on the bottom of the grid; cx is a whole point, so that
+// every edge is a border of pixels. Light, so that the user is plain and a
+// sign laid over him reads on him without a halo (the owner's choice of
+// 17.10.2026 - a head of five pixels read as a cross and outlined shoulders
+// sank on a dark theme, and on dark blue shoulders the signs were lost).
+func person(cx float64) []Part {
 	return []Part{
-		colored(circle(Accent, cx, bottom-size-head+0.5, head), skin),
-		path(Body, fmt.Sprintf("M%s %sQ%s %s %s %sQ%s %s %s %sZ",
-			number(cx-size*0.8), number(bottom), number(cx-size*0.8), number(bottom-size+0.5), number(cx), number(bottom-size+0.5),
-			number(cx+size*0.8), number(bottom-size+0.5), number(cx+size*0.8), number(bottom))),
+		colored(circle(Accent, cx, 5, 3), skin),
+		colored(path(Accent, fmt.Sprintf("M%s 15V12Q%s 9 %s 9H%sQ%s 9 %s 12V15Z",
+			number(cx-6), number(cx-6), number(cx-3), number(cx+3), number(cx+6), number(cx+6))), personBlue),
 	}
 }
 
 // printer is a printer with the paper going in at the top and the printed
 // sheet coming out at the bottom: «print», and with a check on its paper
-// «print the current one».
+// «print the current one». printerAt is the same printer of body points
+// wide and body high from left, top, the paper inset from its sides, paper
+// high over it, the sheet coming two points below it: smaller, over the
+// list it outputs.
 func printer() []Part {
+	return printerAt(1.5, 1.5, 13, 6, 3, 5)
+}
+
+func printerAt(left, top, width, body, inset, paper float64) []Part {
+	right, bodyTop := left+width, top+paper
 	return []Part{
-		path(Detail, "M4.5 6.5V1.5H11.5V6.5"),
-		rect(Body, 1.5, 6.5, 13, 6),
-		path(Detail, "M4.5 10.5H11.5V14.5H4.5Z"),
+		path(Detail, fmt.Sprintf("M%s %sV%sH%sV%s", number(left+inset), number(bodyTop), number(top), number(right-inset), number(bodyTop))),
+		rect(Body, left, bodyTop, width, body),
+		path(Detail, fmt.Sprintf("M%s %sH%sV%sH%sZ", number(left+inset), number(bodyTop+body-2), number(right-inset), number(bodyTop+body+2), number(left+inset))),
 	}
 }
 
@@ -63,17 +74,43 @@ func printer() []Part {
 // authentication gold. The person keeps the size of «users», as the
 // prototype keeps it under every sign.
 func lockedPerson(lock string) []Part {
-	return join(person(6.5, 14.5, 6), over(
+	return join(person(7), []Part{
 		colored(path(Detail, padlock), lock),
-		colored(path(Plate, "M9.5 11.5H14.5V15H9.5Z"), lock),
-		colored(rect(Accent, 9.5, 11.5, 5, 3.5), lock),
-	))
+		colored(path(Plate, "M9.5 11.5H14.5V14.5H9.5Z"), lock),
+		colored(rect(Accent, 9, 11, 6, 4), lock),
+	})
 }
 
-// editingPencil is the pencil of «change», alone, under the clock of the
-// history of data and across the sheet of a spreadsheet being edited.
+// editingPencil is the pencil of «change», alone, filling the grid from
+// corner to corner, and across the sheet of a spreadsheet being edited
+// (the owner's choice of 17.10.2026: smaller it left three pixels empty).
 func editingPencil() []Part {
-	return []Part{path(Body, pencil), path(Detail, "M3 11.5L4.5 13M9.25 4.5L11.5 6.75")}
+	return pencilAt(1, 15, 17.5, 2.1, 1.3)
+}
+
+// pencilAt is a pencil as the prototype draws it, its point at x, y, lying
+// up and to the right length points long and twice half wide: a dark lead,
+// a cone of bare wood, a green body and a dark cap, all of one width and no
+// outline, solid, so that nothing shows through it (the owner's choice of
+// 16.10.2026, for every pencil of the set). The lead and the cap lighten on
+// a dark theme as ink does, else they vanish on a dark page. ends scales
+// the lead, the cone and the cap, so that a larger pencil keeps their
+// proportions.
+func pencilAt(x, y, length, half, ends float64) []Part {
+	cone, lead, cap := 3.2*ends, 1.3*ends, 2.2*ends
+	at := func(along, across float64) [2]float64 {
+		return [2]float64{round(x + (along+across)*math.Sqrt2/2), round(y + (across-along)*math.Sqrt2/2)}
+	}
+	band := func(from, to float64) string {
+		return polygon(at(from, -half), at(to, -half), at(to, half), at(from, half))
+	}
+	tip := half * lead / cone
+	return []Part{
+		colored(path(Accent, polygon(at(0, 0), at(cone, -half), at(cone, half))), "#e9b97a"),
+		colored(path(InkSpot, polygon(at(0, 0), at(lead, -tip), at(lead, tip))), black),
+		colored(path(Accent, band(cone, length-cap)), "#43b04f"),
+		colored(path(InkSpot, band(length-cap, length)), "#4f5963"),
+	}
 }
 
 // floppy is the diskette of writing: «save», and under the sign of what is
@@ -82,24 +119,112 @@ func floppy() []Part {
 	return []Part{
 		rect(Body, 1.5, 1.5, 13, 13),
 		path(Detail, "M4.5 1.5V5.5H11.5V1.5M4.5 14.5V9.5H11.5V14.5"),
-		rect(Accent, 9, 2.5, 1.5, 2),
+		rect(Accent, 8, 2, 2, 3),
+	}
+}
+
+// calculator is a calculator with its display and nine keys: the
+// configurator's own, painted, and the grey one of an input field.
+func calculator() []Part {
+	return []Part{
+		rect(Body, 2.5, 1.5, 11, 13),
+		rect(Accent, 4, 3, 8, 3),
+		path(Detail, "M4.5 8.5H5.5M7.5 8.5H8.5M10.5 8.5H11.5M4.5 10.5H5.5M7.5 10.5H8.5M10.5 10.5H11.5M4.5 12.5H5.5M7.5 12.5H8.5M10.5 12.5H11.5"),
 	}
 }
 
 // blockArrow is the solid arrow of moving an item, turned by angle degrees
-// clockwise from pointing up: a wide head on a narrower shaft, through the
-// middle of the grid. Moving up, down, left and right and the arrows of
-// appearance, straight and inclined, are this one arrow (the prototype draws
-// them alike).
+// clockwise from pointing up, in steps of 45: a wide head on a narrower
+// shaft, through the middle of the grid. Moving up, down, left and right and
+// the arrows of appearance, straight and inclined, are this one arrow (the
+// prototype draws them alike). The inclined one is drawn as its own shape
+// and not turned from the straight one: turned by 45 degrees the straight
+// arrow's corners fall between pixels, here the back of its head is a row
+// and a column of pixels and its sides go through the middles of pixels.
+// Either is then turned by quarters round the middle of the grid, which
+// keeps a corner on the half-pixel grid.
 func blockArrow(angle float64) string {
-	turn := angle * math.Pi / 180
-	corners := [][2]float64{{0, -6.5}, {6, -0.5}, {2.5, -0.5}, {2.5, 6.5}, {-2.5, 6.5}, {-2.5, -0.5}, {-6, -0.5}}
-	points := make([][2]float64, len(corners))
-	for index, corner := range corners {
-		x, y := corner[0], corner[1]
-		points[index] = [2]float64{round(8 + x*math.Cos(turn) - y*math.Sin(turn)), round(8 + x*math.Sin(turn) + y*math.Cos(turn))}
+	corners := [][2]float64{{8, 1.5}, {14, 7.5}, {10.5, 7.5}, {10.5, 14.5}, {5.5, 14.5}, {5.5, 7.5}, {2, 7.5}}
+	if math.Mod(angle, 90) != 0 {
+		corners = [][2]float64{{12.5, 3.5}, {12.5, 11.5}, {10.5, 9.5}, {5.5, 14.5}, {1.5, 10.5}, {6.5, 5.5}, {4.5, 3.5}}
+		angle -= 45
+	}
+	for range int(math.Mod(angle+360, 360) / 90) {
+		for index, corner := range corners {
+			corners[index] = [2]float64{16 - corner[1], corner[0]}
+		}
+	}
+	return polygon(corners...)
+}
+
+// wideArrow is the wide arrow of «Back» and «Forward», also of sorting a
+// list (the owner's choice of 17.10.2026: a thin arrow beside the list was
+// lost): its point at x, y, pointing along dx or dy, each -1, 0 or 1, a
+// shaft two pixels thick and a head of 45° six wide and three deep, length
+// points from the point to the end of the shaft. wideArrows is the same
+// arrow with a head at both ends, length points from point to point.
+func wideArrow(x, y, dx, dy, length float64) string {
+	return alongArrow(x, y, dx, dy, [][2]float64{{0, 0}, {3, -3}, {3, -1}, {length, -1}, {length, 1}, {3, 1}, {3, 3}})
+}
+
+func wideArrows(x, y, dx, dy, length float64) string {
+	back := length - 3
+	return alongArrow(x, y, dx, dy, [][2]float64{{0, 0}, {3, -3}, {3, -1}, {back, -1}, {back, -3}, {length, 0}, {back, 3}, {back, 1}, {3, 1}, {3, 3}})
+}
+
+// alongArrow lays the points of an arrow, given back from its point and
+// across its shaft, from its point at x, y pointing along dx or dy.
+func alongArrow(x, y, dx, dy float64, points [][2]float64) string {
+	for index, point := range points {
+		points[index] = [2]float64{x - dx*point[0] + dy*point[1], y - dy*point[0] + dx*point[1]}
 	}
 	return polygon(points...)
+}
+
+// head is the solid head of an arrow, its point at x, y, pointing along dx,
+// dy, each -1, 0 or 1 (the prototype ends every arrow so, and a head of two
+// thin strokes was lost at 16 px - the owner's remark of 16.10.2026, the
+// arrow of «Run to cursor» the sample). Along an axis it is size points to
+// either side of the shaft and 2×size-0.5 long, so that with its point in
+// the middle of a pixel its back is on the border of two; slanting, it is a
+// right triangle with its sides of 2×size-1 along the axes from the point.
+func head(x, y, dx, dy, size float64) string {
+	switch {
+	case dx != 0 && dy != 0:
+		legs := 2*size - 1
+		return polygon([2]float64{x, y}, [2]float64{x - dx*legs, y}, [2]float64{x, y - dy*legs})
+	case dx != 0:
+		back := x - dx*(2*size-0.5)
+		return polygon([2]float64{x, y}, [2]float64{back, y - size}, [2]float64{back, y + size})
+	default:
+		back := y - dy*(2*size-0.5)
+		return polygon([2]float64{x, y}, [2]float64{x - size, back}, [2]float64{x + size, back})
+	}
+}
+
+// plus is the plus of the set - of «Add», of a new window, of what is
+// made anew, of the wizards: a solid cross two pixels thick with square
+// ends, its arms arm points from its middle at cx, cy, whole points both,
+// so that every edge is a border of pixels. The round ends of a mark ate
+// half a pixel of each arm (the owner's remark of 16.10.2026); minus is its
+// minus.
+func plus(cx, cy, arm float64) string {
+	return fmt.Sprintf("M%s %sH%sV%sH%sV%sH%sV%sH%sV%sH%sV%sH%sZ",
+		number(cx-1), number(cy-arm), number(cx+1), number(cy-1), number(cx+arm), number(cy+1), number(cx+1),
+		number(cy+arm), number(cx-1), number(cy+1), number(cx-arm), number(cy-1), number(cx-1))
+}
+
+func minus(cx, cy, arm float64) string {
+	return fmt.Sprintf("M%s %sH%sV%sH%sZ", number(cx-arm), number(cy-1), number(cx+arm), number(cy+1), number(cx-arm))
+}
+
+// markedRows are the two rows of a sheet, each a coloured square and its
+// line: the points of a task, the objects of the report of a configuration.
+func markedRows(first, second string) []Part {
+	return []Part{
+		path(Detail, "M8.5 6.5H11.5M8.5 10.5H11.5"),
+		colored(rect(Accent, 4, 5, 3, 3), first), colored(rect(Accent, 4, 9, 3, 3), second),
+	}
 }
 
 func join(groups ...[]Part) []Part {
@@ -111,15 +236,31 @@ func join(groups ...[]Part) []Part {
 }
 
 const (
-	skin    = "#e8a46a"
-	purple  = "#8a6bbf"
-	cross   = "M4 4L12 12M12 4L4 12"
-	plus    = "M8 4.5V11.5M4.5 8H11.5"
-	tree    = "M2.5 2.5V10.5M2.5 4.5H5.5M2.5 7.5H5.5M2.5 10.5H5.5"
-	pencil  = "M2 14L2.75 11L10.5 3.25L12.75 5.5L5 13.25Z"
-	padlock = "M10.5 11.5V10Q10.5 8.5 12 8.5Q13.5 8.5 13.5 10V11.5"
-	// editPencil is the pencil laid over what it edits, to the lower right.
-	editPencil = "M7.5 15L8.1 12.6L12.75 7.95L14.55 9.75L9.9 14.4Z"
+	skin = "#e8a46a"
+	// brightGreen is the green of an arrow over the lines of a list, where
+	// the green of the set is too dark.
+	brightGreen = "#2e9e2e"
+	// sparkGold is the gold of the sparks of a wizard.
+	sparkGold = "#e6a600"
+	// personBlue is the shirt of a user, light, so that a sign over it reads.
+	personBlue = "#9cc3ec"
+	// litGreen is the green of the set made lighter for an arrow held in a
+	// black edge on a blue cylinder: there the same green looks darker than
+	// on a light page, and this one looks as the plus of a new window does
+	// (the owner's choice of 16.10.2026).
+	litGreen = "#68b552"
+	// steelInk is the grey of the blades of the scissors.
+	steelInk = "#6f7a86"
+	purple   = "#8a6bbf"
+	cross    = "M4 4L12 12M12 4L4 12"
+	tree     = "M2.5 2.5V10.5M2.5 4.5H5.5M2.5 7.5H5.5M2.5 10.5H5.5"
+	padlock  = "M10.5 11.5V10Q10.5 8.5 12 8.5Q13.5 8.5 13.5 10V11.5"
+	// base, lid and inArrow are the cylinder of the database and the arrow
+	// going down into it under its lid of «Update the configuration of the
+	// database».
+	base    = "M2.5 3.5V13A5.5 2 0 0 0 13.5 13V3.5A5.5 2 0 0 1 2.5 3.5Z"
+	lid     = "M2.5 3.5A5.5 2 0 0 1 13.5 3.5A5.5 2 0 0 1 2.5 3.5Z"
+	inArrow = "M6.5 3.5H9.5V8.5H11.5L8 12L4.5 8.5H6.5Z"
 )
 
 var commandIcons = []Icon{
@@ -128,17 +269,17 @@ var commandIcons = []Icon{
 		path(Body, page), path(Detail, pageFold),
 	}},
 	{ID: "file-open", Color: groupColor, Accent: blue, Parts: []Part{
-		path(Body, "M1.5 6.5H5.5L7 8H14.5V14.5H1.5Z"),
-		path(Line, "M10.5 6.5V1.5M8.5 3.5L10.5 1.5L12.5 3.5"),
+		path(Body, "M1.5 6.5H5.5L7.5 8.5H14.5V14.5H1.5Z"),
+		path(Line, "M10.5 6.5V4"), path(Accent, head(10.5, 0.5, 0, -1, 2)),
 	}},
 	{ID: "file-close", Color: gray, Accent: gray, Parts: []Part{
-		path(Body, "M1.5 6.5H5.5L7 8H14.5V14.5H1.5Z"),
-		path(Line, "M10.5 1.5V6.5M8.5 4.5L10.5 6.5L12.5 4.5"),
+		path(Body, "M1.5 6.5H5.5L7.5 8.5H14.5V14.5H1.5Z"),
+		path(Line, "M10.5 1.5V3"), path(Accent, head(10.5, 6.5, 0, 1, 2)),
 	}},
 	{ID: "save", Color: blue, Accent: slate, Parts: floppy()},
 	{ID: "compare-files", Color: slate, Parts: join([]Part{
 		rect(Body, 1.5, 1.5, 7, 9), path(Detail, "M3.5 4.5H6.5M3.5 6.5H6.5"),
-	}, lens(10, 10, 3)),
+	}, lens(10.5, 10.5, 3)),
 	},
 	{ID: "print", Color: gray, Parts: printer()},
 	{ID: "print-current", Color: gray, Accent: green, Parts: append(printer(),
@@ -146,43 +287,42 @@ var commandIcons = []Icon{
 	)},
 	{ID: "print-preview", Color: slate, Parts: join([]Part{
 		path(Body, "M1.5 1.5H7.5L10.5 4.5V13.5H1.5Z"), path(Detail, "M7.5 1.5V4.5H10.5"),
-	}, lens(10, 10.5, 3)),
+	}, lens(10.5, 10.5, 3)),
 	},
 	{ID: "page-setup", Color: slate, Accent: blue, Parts: []Part{
 		rect(Body, 2.5, 1.5, 11, 13),
-		path(Line, "M5 1.5V14.5M11 1.5V14.5M2.5 4H13.5M2.5 12H13.5"),
+		path(Line, "M4.5 1.5V14.5M11.5 1.5V14.5M2.5 4.5H13.5M2.5 11.5H13.5"),
 	}},
 	// Правка.
 	{ID: "undo", Color: steel, Accent: steel, Parts: []Part{
-		path(Line, "M13.5 12.5Q13.5 6 7 6H3M5.5 3.5L3 6L5.5 8.5"),
+		path(Line, "M13.5 12.5Q13.5 5.5 7 5.5H5"), path(Accent, head(1.5, 5.5, -1, 0, 2)),
 	}},
 	{ID: "redo", Color: steel, Accent: steel, Parts: []Part{
-		path(Line, "M2.5 12.5Q2.5 6 9 6H13M10.5 3.5L13 6L10.5 8.5"),
+		path(Line, "M2.5 12.5Q2.5 5.5 9 5.5H11"), path(Accent, head(14.5, 5.5, 1, 0, 2)),
 	}},
 	{ID: "cut", Color: slate, Parts: scissors()},
 	{ID: "copy", Color: slate, Parts: twoPages()},
 	{ID: "paste", Color: gray, Accent: slate, Parts: clipboard()},
-	{ID: "find", Color: slate, Parts: lens(6.5, 6.5, 4.5)},
+	{ID: "find", Color: slate, Parts: lens(6, 6, 4.5)},
 	{ID: "find-next", Color: slate, Accent: steel, Parts: join(lens(7, 9, 3.5), []Part{
-		path(Line, "M2.5 4Q7.5 0.5 13 4M13 1.5V4H10.5"),
+		path(Line, "M2.5 4.5Q7.5 0.5 12.5 4.5"), path(Accent, head(13, 5, 1, 1, 2)),
 	})},
 	{ID: "find-previous", Color: slate, Accent: steel, Parts: join(lens(7, 9, 3.5), []Part{
-		path(Line, "M13 4Q8 0.5 2.5 4M2.5 1.5V4H5"),
+		path(Line, "M12.5 4.5Q7.5 0.5 2.5 4.5"), path(Accent, head(2, 5, -1, 1, 2)),
 	})},
 	// The same picture stands on the menu «Правка» and in the library: the
 	// letter A found and replaced by B.
-	{ID: "replace", Color: slate, Accent: blue, Parts: join(lens(7.5, 9, 3.5), []Part{
-		colored(path(Line, "M1 6.5L2.75 1.5L4.5 6.5M1.6 4.75H3.9"), red),
-		path(Line, "M11.5 6.5V1.5H13.25Q14.75 1.5 14.75 2.75Q14.75 4 13.25 4H11.5M13.25 4Q15 4 15 5.25Q15 6.5 13.25 6.5H11.5"),
+	{ID: "replace", Color: slate, Accent: blue, Parts: join(lens(7, 9, 3.5), []Part{
+		colored(path(Line, "M1 6.5L2.75 1.5L4.5 6.5M1.7 4.5H3.8"), red),
+		path(Line, "M11.5 6.5V1.5H13.25Q14.5 1.5 14.5 2.5Q14.5 3.5 13.25 3.5H11.5M13.25 3.5Q15 3.5 15 5Q15 6.5 13.25 6.5H11.5"),
 	})},
 	{ID: "global-search", Color: groupColor, Parts: join([]Part{
-		path(Body, "M1.5 2.5H5.5L7 4H13.5V12.5H1.5Z"),
-	}, over(tint(lens(10, 10, 3), slate)...))},
+		path(Body, "M1.5 2.5H5.5L7.5 4.5H13.5V12.5H1.5Z"),
+	}, tint(lens(10.5, 10.5, 3), slate))},
 	{ID: "bookmarks", Color: gray, Accent: "#5b636d", Parts: flag()},
-	{ID: "interface-texts", Color: green, Accent: red, Parts: []Part{
+	{ID: "interface-texts", Color: green, Accent: red, Parts: append([]Part{
 		path(Line, "M1.5 2.5H9.5M5.5 2.5V11.5"),
-		path(Body, "M7.5 14.5L8.25 12L13 7.25L14.75 9L10 13.75Z"),
-	}},
+	}, pencilAt(7.5, 14.5, 9.5, 1.3, 1)...)},
 	{ID: "find-in-tree", Color: slate, Parts: []Part{
 		path(Detail, tree),
 		path(Body, "M7.5 5.5V14L9.5 12L11 15L12.5 14.25L11 11.5H13.5Z"),
@@ -190,7 +330,7 @@ var commandIcons = []Icon{
 	{ID: "additional", Color: slate, Accent: green, Parts: []Part{
 		rect(Body, 3.5, 3.5, 9, 7), path(Detail, "M3.5 5.5H12.5"),
 		rect(Body, 5.5, 7.5, 9, 7), path(Detail, "M5.5 9.5H14.5"),
-		path(Mark, "M3.75 1V6.5M1 3.75H6.5"),
+		path(Accent, plus(4, 4, 3)),
 	}},
 	// The sheet of properties, as the palette shows them - the names at the
 	// left, the fields of the values at the right - with the cube of the
@@ -200,149 +340,149 @@ var commandIcons = []Icon{
 	// external source, and boxed with tape the package of XDTO.
 	{ID: "properties", Color: slate, Accent: "#8fb8e0", Parts: join([]Part{
 		rect(Body, 1.5, 1.5, 13, 13),
-		path(Detail, "M1.5 4.5H14.5M7.5 4.5V14.5M3.5 7H6M3.5 9.5H6M3.5 12H6"),
-		rect(Accent, 8.5, 6.25, 4.5, 1.5), rect(Accent, 8.5, 8.75, 3, 1.5),
-	}, over(objectBadge()...))},
+		path(Detail, "M1.5 4.5H14.5M7.5 4.5V14.5M3.5 6.5H5.5M3.5 9.5H5.5M3.5 12.5H5.5"),
+		rect(Accent, 9, 6, 4, 2), rect(Accent, 9, 9, 3, 2),
+	}, objectBadge())},
 	// Конфигурация.
 	{ID: "configuration-open", Color: slate, Parts: []Part{
 		rect(Body, 1.5, 2.5, 13, 11),
 		path(Detail, window+"M4.5 7.5V11.5M4.5 9.5H7.5M4.5 11.5H7.5"),
 	}},
-	{ID: "configuration-close", Color: slate, Accent: blue, Parts: []Part{
+	{ID: "configuration-close", Color: slate, Parts: join([]Part{
 		rect(Body, 1.5, 4.5, 11, 10),
-		path(Detail, "M1.5 7.5H12.5M4.5 9.5V13M4.5 11H7M4.5 13H7"),
-		rect(Accent, 9.5, 1, 5.5, 5.5),
-		path(OnAccent, "M11 2.5L13.5 5M13.5 2.5L11 5"),
-	}},
+		path(Detail, "M1.5 7.5H12.5M4.5 9.5V12.5M4.5 10.5H7.5M4.5 12.5H7.5"),
+	}, []Part{colored(path(InkMark, "M11 1.5L14.5 5M14.5 1.5L11 5"), black)})},
 	{ID: "configuration-save", Color: slate, Accent: blue, Parts: []Part{
 		rect(Body, 1.5, 2.5, 13, 11),
 		path(Detail, window),
 		colored(rect(Body, 6.5, 7.5, 8, 7), blue),
-		path(Line, "M8.5 7.5V10H12.5V7.5"),
+		path(Line, "M8.5 7.5V10.5H12.5V7.5"),
 	}},
+	// Updating the configuration of the database - the button pressed most
+	// often - is drawn louder than the set and our own way, not the
+	// prototype's: a light cylinder with a white lid and a darker band at
+	// its right, a clean blue edge, and a green arrow going down into it under
+	// the lid, outlined in black on either theme so that it reads at 16 px
+	// (the owner's choice of 16.10.2026).
 	{ID: "database-update", Color: blue, Accent: green, Parts: []Part{
-		path(Body, "M5.5 4V12.5Q5.5 14.5 10 14.5Q14.5 14.5 14.5 12.5V4Q14.5 2 10 2Q5.5 2 5.5 4Z"),
-		path(Detail, "M5.5 4Q5.5 6 10 6Q14.5 6 14.5 4"),
-		path(Line, "M2 14.5V9.5Q2 7.5 4 7.5H6M4.5 6L6 7.5L4.5 9"),
+		colored(path(Accent, base), "#b5d6f6"), colored(path(Accent, "M11 5.18V14.68A5.5 2 0 0 0 13.5 13V3.5A5.5 2 0 0 1 11 5.18Z"), "#7fb3ea"),
+		colored(path(Accent, lid), "#ffffff"), colored(path(Line, base), "#2f6db5"), colored(path(Line, lid), "#2f6db5"),
+		colored(path(Accent, inArrow), litGreen), colored(path(Line, inArrow), black),
 	}},
 	{ID: "compare-merge", Color: slate, Accent: groupColor, Parts: join([]Part{
 		path(Detail, tree),
-		path(Accent, "M9.5 1.5H11.5L12.5 2.5H15V5.5H9.5Z"),
+		path(Accent, "M9 1H11L12 2H15V6H9Z"),
 	}, lens(9.5, 9.5, 3))},
 	{ID: "compare-configurations", Color: slate, Parts: join([]Part{
 		path(Detail, tree),
-	}, lens(9.5, 8, 3.5))},
-	{ID: "configuration-report", Color: slate, Accent: red, Parts: []Part{
-		path(Body, page), path(Detail, pageFold+"M6.5 8H11.5M6.5 10.5H11.5"),
-		rect(Accent, 4, 7.25, 1.5, 1.5),
-		colored(rect(Accent, 4, 9.75, 1.5, 1.5), blue),
-	}},
+	}, lens(9, 8, 3.5))},
+	{ID: "configuration-report", Color: slate, Parts: join([]Part{path(Body, page), path(Detail, pageFold)}, markedRows(red, blue))},
+	// The lines of the configuration and two checks, green above and red
+	// below: what passed and what did not (the owner's choice of 17.10.2026).
 	{ID: "check-configuration", Color: slate, Accent: red, Parts: []Part{
-		path(Detail, "M1.5 3.5H8.5M3.5 6.5H8.5M3.5 9.5H6.5M3.5 12.5H6.5"),
-		path(Mark, "M8.5 9.5L10.75 12.5L14.5 5"),
+		path(Detail, "M1.5 3.5H6.5M3.5 6.5H6.5M1.5 9.5H6.5M3.5 12.5H6.5"),
+		colored(path(Mark, "M8 4.5L10 6.5L14 2.5"), green), path(Mark, "M8 11.5L10 13.5L14 9.5"),
 	}},
 	{ID: "configuration-window", Color: slate, Accent: blue, Parts: []Part{
 		rect(Body, 1.5, 2.5, 13, 11),
-		path(Detail, window+"M6.5 5.5V13.5M9 8.5H12.5M9 11H12.5"),
-		path(Line, "M3.5 8V12M3.5 10H5"),
+		path(Detail, window+"M6.5 5.5V13.5M9 8.5H12.5M9 11.5H12.5"),
+		path(Line, "M3.5 8.5V12.5M3.5 10.5H5"),
 	}},
 	// Отладка и Сервис.
 	{ID: "run", Color: gold, Accent: blue, Parts: []Part{
 		circle(Body, 8, 8, 6.5),
-		path(Accent, "M6.5 5L11 8L6.5 11Z"),
+		path(Accent, "M6 5L11 8L6 11Z"),
 	}},
 	{ID: "performance-measurement", Color: steel, Accent: steel, Parts: []Part{
-		circle(Body, 8, 9, 5.5),
-		path(Detail, "M8 9V6M8 9L10 10.5M6.5 1.5H9.5M8 1.5V3.5M12.5 3.5L13.5 4.5"),
+		circle(Body, 7.5, 9.5, 5),
+		path(Detail, "M7.5 9.5V6.5M7.5 9.5L9.5 11M6 1.5H9M7.5 1.5V4.5M12 4L13 5"),
 	}},
 	{ID: "record-actions", Color: gold, Accent: red, Parts: []Part{
 		circle(Body, 8, 8, 6.5),
-		circle(Accent, 8, 8, 3.5),
+		circle(Accent, 8, 8, 3),
 	}},
-	{ID: "calculator", Color: brown, Accent: green, Parts: []Part{
-		rect(Body, 2.5, 1.5, 11, 13),
-		rect(Accent, 4, 3, 8, 2.5),
-		path(Detail, "M4.5 8H5.5M7.5 8H8.5M10.5 8H11.5M4.5 10.5H5.5M7.5 10.5H8.5M10.5 10.5H11.5M4.5 13H5.5M7.5 13H8.5M10.5 13H11.5"),
-	}},
+	{ID: "calculator", Color: brown, Accent: green, Parts: calculator()},
 	{ID: "calendar", Color: slate, Accent: red, Parts: []Part{
 		rect(Body, 1.5, 2.5, 13, 12),
-		rect(Accent, 2, 3, 12, 2.5),
-		path(Detail, "M5 1V3.5M11 1V3.5M4 8.5H5M7.5 8.5H8.5M11 8.5H12M4 11.5H5M7.5 11.5H8.5"),
-		rect(Accent, 10.5, 10.5, 2, 2),
+		rect(Accent, 2, 3, 12, 3),
+		path(Detail, "M4.5 1V3.5M11.5 1V3.5M4.5 8.5H5.5M7.5 8.5H8.5M10.5 8.5H11.5M4.5 11.5H5.5M7.5 11.5H8.5"),
+		rect(Accent, 10, 10, 3, 3),
 	}},
 	{ID: "text-templates", Color: brown, Accent: blue, Parts: []Part{
 		path(Body, "M3.5 1.5H13.5V14.5H3.5Q2.5 14.5 2.5 13.5V2.5Q2.5 1.5 3.5 1.5Z"),
 		path(Detail, "M4.5 1.5V14.5"),
-		path(Line, "M7 5H11.5M7 7.5H11.5M7 10H10"),
+		path(Line, "M6.5 4.5H11.5M6.5 7.5H11.5M6.5 10.5H9.5"),
 	}},
 	{ID: "temporary-lock", Color: blue, Accent: gray, Parts: lockedPerson(gray)},
 	{ID: "settings", Color: gray, Parts: []Part{
 		path(Body, "M10.5 1.5A4 4 0 0 0 7 7L1.75 12.25A1.5 1.5 0 0 0 3.75 14.25L9 9A4 4 0 0 0 14.5 5.5L12.25 7.25L10 6L9.25 3.75Z"),
 	}},
 	// Администрирование.
-	{ID: "users", Color: blue, Parts: person(8, 14.5, 6)},
+	{ID: "users", Color: blue, Parts: person(8)},
 	// A user online: the green dot of a messenger at the person's side, where
 	// the prototype has a monitor (the owner's choice of 16.10.2026).
-	{ID: "active-users", Color: blue, Accent: green, Parts: join(person(6.5, 14.5, 6), over(
+	{ID: "active-users", Color: blue, Accent: green, Parts: join(person(7), []Part{
 		colored(circle(Plate, 12, 12, 2.5), green), circle(Accent, 12, 12, 2),
-	))},
+	})},
 	{ID: "event-log", Color: blue, Parts: []Part{
 		rect(Body, 1.5, 3.5, 13, 9),
-		circle(Detail, 5, 8, 1.75), circle(Detail, 11, 8, 1.75),
-		path(Detail, "M5 9.75H11M3.5 3.5V5.5M12.5 3.5V5.5"),
+		circle(Detail, 5, 8, 1.5), circle(Detail, 11, 8, 1.5),
+		path(Detail, "M5 9.5H11M3.5 3.5V5.5M12.5 3.5V5.5"),
 	}},
 	{ID: "authentication-locks", Color: blue, Accent: gold, Parts: lockedPerson(gold)},
 	// Окна.
-	{ID: "window-new", Color: slate, Accent: green, Parts: join([]Part{
-		rect(Body, 1.5, 2.5, 13, 11), path(Detail, window),
-	}, over(path(Mark, "M8 7.5V12M5.75 9.75H10.25")))},
+	// The title of a new window is a row narrower than a window's, so that
+	// the plus stands a pixel clear of it and of the bottom alike.
+	{ID: "window-new", Color: slate, Accent: green, Parts: []Part{
+		rect(Body, 1.5, 2.5, 13, 11), path(Detail, "M1.5 4.5H14.5"), path(Accent, plus(8, 9, 3)),
+	}},
 	{ID: "split-horizontal", Color: slate, Parts: []Part{
-		rect(Body, 1.5, 2.5, 13, 11), path(Detail, "M1.5 8H14.5"),
+		rect(Body, 1.5, 2.5, 13, 12), path(Detail, "M1.5 8.5H14.5"),
 	}},
 	{ID: "split-vertical", Color: slate, Parts: []Part{
-		rect(Body, 1.5, 2.5, 13, 11), path(Detail, "M8 2.5V13.5"),
+		rect(Body, 2.5, 2.5, 12, 11), path(Detail, "M8.5 2.5V13.5"),
 	}},
 	{ID: "service-messages", Color: slate, Accent: blue, Parts: []Part{
 		rect(Body, 1.5, 1.5, 8, 13), path(Detail, "M3.5 4.5H7.5M3.5 7.5H7.5M3.5 10.5H6"),
-		path(Accent, "M11 6.5H13.25L12 12.25Q11.85 13 12.4 13H13.25L13 14.25H11.4Q9.85 14.25 10.15 12.75L11.15 7.75H10.75Z"),
-		circle(Accent, 12.9, 4.25, 1.25),
+		path(Accent, "M11 6H13.25L12 12.25Q11.85 13 12.4 13H13.25L13 14H11.4Q9.85 14 10.15 12.75L11.15 7H10.75Z"),
+		circle(Accent, 13, 4, 1),
 	}},
 	{ID: "navigate-back", Color: slate, Accent: "#2f6fb5", Parts: []Part{
-		rect(Body, 3.5, 1.5, 11, 8), path(Detail, "M3.5 4H14.5"),
-		path(Accent, "M1 12L5.5 8V10.5H12V13.5H5.5V16Z"),
+		rect(Body, 3.5, 1.5, 11, 7), path(Detail, "M3.5 4.5H14.5"),
+		path(Accent, wideArrow(1, 12, -1, 0, 11)),
 	}},
 	{ID: "navigate-forward", Color: slate, Accent: "#2f6fb5", Parts: []Part{
-		rect(Body, 1.5, 1.5, 11, 8), path(Detail, "M1.5 4H12.5"),
-		path(Accent, "M15 12L10.5 8V10.5H4V13.5H10.5V16Z"),
+		rect(Body, 1.5, 1.5, 11, 7), path(Detail, "M1.5 4.5H12.5"),
+		path(Accent, wideArrow(15, 12, 1, 0, 11)),
 	}},
 	{ID: "windows", Color: slate, Parts: []Part{
-		rect(Body, 1.5, 1.5, 9, 8), path(Detail, "M1.5 4H10.5"),
-		rect(Body, 5.5, 6.5, 9, 8), path(Detail, "M5.5 9H14.5"),
+		rect(Body, 1.5, 1.5, 9, 8), path(Detail, "M1.5 4.5H10.5"),
+		rect(Body, 5.5, 6.5, 9, 8), path(Detail, "M5.5 9.5H14.5"),
 	}},
 	// Справка.
 	{ID: "help", Color: gold, Accent: "#efc23a", Parts: []Part{
-		circle(Accent, 8, 8, 6.5),
-		path(OnAccent, "M5.75 6Q5.75 3.75 8 3.75Q10.25 3.75 10.25 5.75Q10.25 7.25 8 8.25V9.5M8 12V12.25"),
+		circle(Accent, 7.5, 7.5, 6.5),
+		path(OnAccent, question),
 	}},
-	{ID: "syntax-assistant", Color: gold, Accent: "#2f4f7f", Parts: []Part{
-		colored(circle(Accent, 8, 7.5, 2.5), skin),
-		path(Body, "M3 15Q3 10.5 8 10.5Q13 10.5 13 15Z"),
-		path(Accent, "M1.5 4L8 1.5L14.5 4L8 6.5Z"),
-		path(Line, "M12.5 4.5V8"),
-	}},
+	// The user of «users» in a cap of a graduate (the owner's remark of
+	// 17.10.2026: the old figure was left behind).
+	{ID: "syntax-assistant", Color: gold, Accent: "#2f4f7f", Parts: join(person(8), []Part{
+		path(Accent, "M2.5 2L8 0L13.5 2L8 4Z"),
+		path(Line, "M12.5 2.5V5.5"),
+	})},
 	{ID: "syntax-search", Color: slate, Accent: blue, Parts: join([]Part{
 		path(Line, "M1.5 3.5Q1.5 1.5 3.5 1.5Q5.5 1.5 5.5 3.25Q5.5 4.5 3.5 5.5V7M3.5 9.25V9.5"),
-	}, lens(9.5, 8, 4))},
+	}, lens(9.5, 8.5, 4))},
 	{ID: "about", Color: gold, Accent: "#efc23a", Parts: []Part{
-		circle(Accent, 8, 8, 6.5),
-		path(OnAccent, "M8 7V11.5M8 4.5V4.75"),
+		circle(Accent, 7.5, 7.5, 6.5),
+		path(OnAccent, "M7.5 6.5V11M7.5 4V4.5"),
 	}},
 	// Действия дерева и его контекстного меню.
-	{ID: "add", Color: green, Accent: green, Parts: join([]Part{circle(Body, 8, 8, 6.5)}, over(path(Mark, plus)))},
+	{ID: "add", Color: green, Accent: green, Parts: []Part{circle(Body, 8, 8, 6.5), path(Accent, plus(8, 8, 4))}},
 	{ID: "change", Color: "#6f9a2a", Accent: "#efc23a", Parts: editingPencil()},
 	{ID: "clone", Color: slate, Accent: green, Parts: join([]Part{
 		path(Body, "M2.5 1.5H8L10.5 4V12.5H2.5Z"),
-	}, plusBadge(11, 11))},
+	}, plusBadge(11.5, 11.5))},
 	{ID: "delete", Color: red, Accent: red, Parts: []Part{
 		path(Mark, cross),
 	}},
@@ -354,71 +494,96 @@ var commandIcons = []Icon{
 	}},
 	{ID: "sort", Color: slate, Accent: blue, Parts: []Part{
 		rect(Body, 1.5, 1.5, 9, 13), path(Detail, "M3.5 4.5H8.5M3.5 7.5H8.5M3.5 10.5H8.5"),
-		path(Line, "M13 2.5V13.5M11.25 11.75L13 13.5L14.75 11.75"),
+		path(Accent, wideArrow(13, 15, 0, 1, 13)),
 	}},
 	{ID: "references-to", Color: slate, Accent: red, Parts: join([]Part{
-		colored(rect(Accent, 10, 1.5, 4.5, 3.5), blue),
-		path(Line, "M1.5 3.25H8.5M6.75 1.5L8.5 3.25L6.75 5"),
+		colored(rect(Accent, 10, 2, 5, 3), blue),
+		path(Line, "M1.5 3.5H6"), path(Accent, head(9.5, 3.5, 1, 0, 2)),
 	}, lens(6, 10, 3.5))},
 	{ID: "references-in", Color: slate, Accent: green, Parts: join([]Part{
-		colored(rect(Accent, 1.5, 1.5, 4.5, 3.5), blue),
-		path(Line, "M7.5 3.25H14.5M12.75 1.5L14.5 3.25L12.75 5"),
+		colored(rect(Accent, 1, 2, 5, 3), blue),
+		path(Line, "M7.5 3.5H12"), path(Accent, head(15.5, 3.5, 1, 0, 2)),
 	}, lens(6, 10, 3.5))},
-	{ID: "filter-by-subsystems", Color: gray, Accent: amber, Parts: []Part{
-		path(Body, "M1.5 2.5H11.5L7.75 7V12.5L5.25 11V7Z"),
-		path(Line, "M10.5 9.5H14.5M12 12H14.5M12 14.5H14.5M12 9.5V14.5"),
-	}},
+	// The funnel of every selection and, beside its neck, three short dashes
+	// of the attribute, the form field and the characteristic: the list of
+	// what it selects by, as the prototype draws it (the owner's choice of
+	// 16.10.2026).
+	{ID: "filter-by-subsystems", Color: gray, Accent: amber, Parts: append(filterOver(1.5, 1.5, 9),
+		colored(bar(9, 7, 6, 2), slate), colored(bar(9, 10, 6, 2), red), colored(bar(9, 13, 6, 2), purple),
+	)},
 	{ID: "check-package", Color: brown, Accent: green, Parts: []Part{
 		path(Body, "M1.5 4.5L6.5 2L11.5 4.5V10.5L6.5 13L1.5 10.5Z"),
 		path(Detail, "M1.5 4.5L6.5 7L11.5 4.5M6.5 7V13"),
 		path(Mark, "M9 12L11 14L14.5 9.5"),
 	}},
-	{ID: "open-module", Color: slate, Parts: join([]Part{
-		rect(Body, 1.5, 1.5, 11, 10), path(Detail, "M1.5 4.5H12.5M3.5 7H8M3.5 9H6.5"),
-	}, over(colored(path(Body, editPencil), "#6f9a2a")))},
-	{ID: "open-predefined-data", Color: blue, Parts: []Part{
-		colored(bar(1.5, 1.5, 6, 2.5), "#5b9be0"), colored(bar(4.5, 5.25, 6, 2.5), "#5b9be0"), colored(bar(4.5, 9, 4, 2.5), "#5b9be0"),
-		path(Detail, "M3 4V10.25H4.5M3 6.5H4.5"),
-		colored(path(Body, editPencil), "#6f9a2a"),
-	}},
+	// The page of a module at its full size and the pencil over it, cleared
+	// by a pixel: the prototype lays its pencil over its picture of a module
+	// (the owner's choice of 17.10.2026).
+	{ID: "open-module", Color: slate, Accent: code, Parts: join(modulePage(), thinlyCleared(pencilAt(7.5, 15, 9.5, 1.3, 1)...))},
+	{ID: "open-predefined-data", Color: blue, Parts: append([]Part{
+		colored(bar(2, 1, 6, 3), "#5b9be0"), colored(bar(5, 5, 6, 3), "#5b9be0"), colored(bar(5, 9, 4, 3), "#5b9be0"),
+		path(Detail, "M3.5 4V10.5H5M3.5 6.5H5"),
+	}, pencilAt(7.5, 15, 9.5, 1.3, 1)...)},
 	{ID: "characteristics", Color: purple, Accent: purple, Parts: []Part{
 		bar(2, 6, 12, 4),
 	}},
 	{ID: "additional-indexes", Color: blue, Accent: green, Parts: []Part{
-		colored(rect(Accent, 5.5, 1.5, 5, 4), blue),
-		path(Detail, "M8 5.5V11M2.75 11V8.5H13.25V11"),
-		rect(Accent, 1, 11, 3.5, 3.5),
-		rect(Accent, 6.25, 11, 3.5, 3.5),
-		rect(Accent, 11.5, 11, 3.5, 3.5),
+		colored(rect(Accent, 6, 1, 5, 4), blue),
+		path(Detail, "M8.5 5V11M3.5 11V8.5H13.5V11"),
+		rect(Accent, 2, 11, 3, 4),
+		rect(Accent, 7, 11, 3, 4),
+		rect(Accent, 12, 11, 3, 4),
 	}},
 	{ID: "help-information", Color: slate, Accent: "#efc23a", Parts: []Part{
-		rect(Body, 1.5, 1.5, 11, 10), path(Detail, "M1.5 4.5H12.5M3.5 7H9M3.5 9H7"),
+		rect(Body, 1.5, 1.5, 11, 10), path(Detail, "M1.5 4.5H12.5M3.5 6.5H9M3.5 8.5H7"),
 		circle(Accent, 11.5, 11.5, 3.5),
 		path(OnAccent, "M10.25 10.5Q10.25 9.25 11.5 9.25Q12.75 9.25 12.75 10.25Q12.75 11 11.5 11.5V12M11.5 13.5V13.6"),
 	}},
 }
 
 // flag is the chequered flag of bookmarks; what is done to them stands at its
-// lower right.
+// lower right. Inside its frame it is five squares of two pixels wide and
+// three high, so that no square lies over the frame, and white between the
+// squares on a dark theme too, a chequered flag being black and white (the
+// owner's remarks of 17.10.2026).
 func flag() []Part {
 	return []Part{
 		path(Detail, "M3.5 1.5V14.5"),
-		rect(Body, 3.5, 2.5, 10, 7),
-		rect(Accent, 3.5, 2.5, 2.5, 2.33), rect(Accent, 8.5, 2.5, 2.5, 2.33),
-		rect(Accent, 6, 4.83, 2.5, 2.33), rect(Accent, 11, 4.83, 2.5, 2.33),
-		rect(Accent, 3.5, 7.17, 2.5, 2.33), rect(Accent, 8.5, 7.17, 2.5, 2.33),
+		box(Body, 3.5, 1.5, 11, 7), colored(rect(Accent, 4, 2, 10, 6), "#ffffff"),
+		rect(Accent, 4, 2, 2, 2), rect(Accent, 8, 2, 2, 2), rect(Accent, 12, 2, 2, 2),
+		rect(Accent, 6, 4, 2, 2), rect(Accent, 10, 4, 2, 2),
+		rect(Accent, 4, 6, 2, 2), rect(Accent, 8, 6, 2, 2), rect(Accent, 12, 6, 2, 2),
 	}
 }
 
 // scissors, twoPages and clipboard are cut, copy and paste: the same
 // pictures stand under a breakpoint's dot in the debugger. The board of the
 // clipboard is also the board of a task the library activates or executes.
+//
+// The scissors are drawn as they are: two solid steel blades, wide at the
+// handles and sharp at their points, crossing at a dark pivot, and the blue
+// rings of the handles with a gap between them, a little over a pixel thick
+// (the owner's choice of 17.10.2026 - blades of two crossed lines looked
+// strange, rings of two pixels heavy). The blades lighten on a dark theme
+// as ink does, the rings keep their blue, which reads on both.
 func scissors() []Part {
-	return []Part{
-		path(Detail, "M5.5 10.5L11 1.5M10.5 10.5L5 1.5"),
-		circle(Body, 4.5, 12.5, 2),
-		circle(Body, 11.5, 12.5, 2),
+	parts := []Part{
+		colored(path(InkSpot, blade(5.5, 10.5, 12, 1, 1.3)), steelInk),
+		colored(path(InkSpot, blade(10.5, 10.5, 4, 1, 1.3)), steelInk),
 	}
+	for _, cx := range []float64{4.5, 11.5} {
+		parts = append(parts, colored(circle(Accent, cx, 12.5, 3), blue), colored(circle(Plate, cx, 12.5, 1.9), blue))
+	}
+	return append(parts, colored(circle(Accent, 8, 6.5, 1), "#3d4650"))
+}
+
+// blade is a solid wedge from its base, half points to either side of bx,
+// by, to its point at tx, ty: a blade of the scissors.
+func blade(bx, by, tx, ty, half float64) string {
+	dx, dy := tx-bx, ty-by
+	length := math.Hypot(dx, dy)
+	nx, ny := -dy/length*half, dx/length*half
+	return polygon([2]float64{round(bx + nx), round(by + ny)}, [2]float64{tx, ty}, [2]float64{round(bx - nx), round(by - ny)})
 }
 
 func twoPages() []Part {
@@ -444,7 +609,7 @@ func board() []Part {
 // at the upper left of a nested query or a description of a temporary table
 // the query wizard creates.
 func plusBadge(cx, cy float64) []Part {
-	return badge(cx, cy, green, fmt.Sprintf("M%s %sV%sM%s %sH%s", number(cx), number(cy-2.25), number(cy+2.25), number(cx-2.25), number(cy), number(cx+2.25)))
+	return badge(cx, cy, green, fmt.Sprintf("M%s %sV%sM%s %sH%s", number(cx), number(cy-2), number(cy+2), number(cx-2), number(cy), number(cx+2)))
 }
 
 // objectBadge is the gold cube of an object in the lower right corner of

@@ -23,28 +23,42 @@ func fullTable() []Part {
 // list is a list over the whole grid, its header and rows: what the query
 // wizard and the settings wizard build.
 func list(header bool) []Part {
-	parts := []Part{rect(Body, 1.5, 1.5, 13, 13), path(Detail, "M3.5 7H8M3.5 9.5H10M3.5 12H8")}
+	parts := []Part{rect(Body, 1.5, 1.5, 13, 13), path(Detail, "M3.5 6.5H8.5M3.5 9.5H10.5M3.5 12.5H8.5")}
 	if header {
 		return append(parts, colored(box(Accent, 1.5, 1.5, 13, 2.5), steel))
 	}
-	return append(parts, path(Detail, "M3.5 4.5H9"))
+	return append(parts, path(Detail, "M3.5 3.5H9.5"))
 }
 
-// wizardPluses are the three red pluses in the upper right corner of what a
-// wizard builds: the sparks of the prototype's wand, which on their own make
-// the most used command plain at 16 px (the owner's choice of 16.10.2026).
-func wizardPluses() []Part {
-	return over(colored(path(Mark, "M10.75 2V5M9.25 3.5H12.25M13.25 6V9M11.75 7.5H14.75M9.75 9V12M8.25 10.5H11.25"), red))
+// wizardSparks are the sparks of what a wizard builds: a large golden star
+// of four rays over the upper right of its picture and a small one below
+// it, cleared from the lines they lie on - the query wizard, with its result
+// processed, and the wizard of a report's settings. The three small red
+// pluses of the prototype's wand merged into one spot at 16 px (the owner's
+// choice of 17.10.2026).
+func wizardSparks() []Part {
+	return cleared(colored(path(Accent, sparkle(10.5, 5.5, 5.5)+sparkle(13.5, 12.5, 2)), sparkGold))
+}
+
+// sparkle is a star of four rays reaching r from cx, cy, narrow at the
+// middle.
+func sparkle(cx, cy, r float64) string {
+	k := r * 0.3
+	return polygon([2]float64{cx, cy - r}, [2]float64{cx + k, cy - k}, [2]float64{cx + r, cy}, [2]float64{cx + k, cy + k},
+		[2]float64{cx, cy + r}, [2]float64{cx - k, cy + k}, [2]float64{cx - r, cy}, [2]float64{cx - k, cy - k})
 }
 
 // groupingRow is the sign of a grouping: three cells side by side, the
-// row of a report's structure that groups it, standing at x, y.
+// row of a report's structure that groups it, standing at x, y - its lines
+// those of the columns of a table, the inside of each cell pale.
 func groupingRow(x, y, width float64) []Part {
-	cell, outline, inside := width/3, "", ""
+	const height = 4
+	first, second := thirds(x, width)
+	edges, outline, inside := []float64{x, first, second, x + width}, "", ""
 	for index := range 3 {
-		left := x + float64(index)*cell
-		outline += fmt.Sprintf("M%s %sH%sV%sH%sZ", number(round(left)), number(y), number(round(left+cell)), number(y+3.5), number(round(left)))
-		inside += fmt.Sprintf("M%s %sH%sV%sH%sZ", number(round(left+1)), number(y+1), number(round(left+cell-1)), number(y+2.5), number(round(left+1)))
+		left, right := edges[index], edges[index+1]
+		outline += fmt.Sprintf("M%s %sH%sV%sH%sZ", number(left), number(y), number(right), number(y+height), number(left))
+		inside += fmt.Sprintf("M%s %sH%sV%sH%sZ", number(left+0.5), number(y+0.5), number(right-0.5), number(y+height-0.5), number(left+0.5))
 	}
 	return []Part{colored(path(Plate, outline), steel), colored(path(Accent, inside), pale), colored(path(Detail, outline), steel)}
 }
@@ -52,13 +66,17 @@ func groupingRow(x, y, width float64) []Part {
 // newPlus is the green plus at the upper left of what is made anew, laid
 // over it: a grouping, a table, a chart, a nested schema of a report, a
 // nested query and a description of a temporary table. Bare, not in a
-// circle - a circle crowds the picture (the owner's remark of 16.10.2026).
+// circle - a circle crowds the picture (the owner's remark of 16.10.2026) -
+// and cleared from the picture under it by a pixel, where a bare plus
+// merged with its lines and bars, a halo of a pixel and a half was too
+// heavy (the owner's remarks of 17.10.2026).
 func newPlus() []Part {
-	return over(colored(path(Mark, "M4.5 1.5V7.5M1.5 4.5H7.5"), green))
+	return thinlyCleared(colored(path(Accent, plus(4, 4, 3)), green))
 }
 
 // dotted is a line of dots along the sides of a temporary table, from
-// point to point across the grid: a dot every two points.
+// point to point across the grid: a dot every two points, each in the
+// middle of a pixel.
 func dotted(points ...[2]float64) string {
 	d := ""
 	for index := 1; index < len(points); index++ {
@@ -68,7 +86,7 @@ func dotted(points ...[2]float64) string {
 		for step := 0; step <= steps; step++ {
 			share := float64(step) / float64(steps)
 			x, y := from[0]+(to[0]-from[0])*share, from[1]+(to[1]-from[1])*share
-			d += fmt.Sprintf("M%s %sh0", number(round(x)), number(round(y)))
+			d += fmt.Sprintf("M%s %sh0", number(onLine(x)), number(onLine(y)))
 		}
 	}
 	return d
@@ -78,37 +96,38 @@ func dotted(points ...[2]float64) string {
 // columns of dots, as the prototype draws what lives only in the query.
 func tempTable(x, y, width, height float64) []Part {
 	right, bottom := x+width, y+height
+	first, second := thirds(x, width)
 	return []Part{
-		colored(rect(Accent, x, y, width, 2.5), steel),
+		colored(rect(Accent, x-0.5, y-0.5, width+1, 3), steel),
 		path(Detail, dotted([2]float64{x, y + 3.5}, [2]float64{x, bottom}, [2]float64{right, bottom}, [2]float64{right, y + 3.5})+
-			dotted([2]float64{round(x + width/3), y + 3.5}, [2]float64{round(x + width/3), bottom - 1})+
-			dotted([2]float64{round(x + width*2/3), y + 3.5}, [2]float64{round(x + width*2/3), bottom - 1})),
+			dotted([2]float64{first, y + 3.5}, [2]float64{first, bottom - 1})+
+			dotted([2]float64{second, y + 3.5}, [2]float64{second, bottom - 1})),
 	}
 }
 
 // tableDescription is what describes a temporary table, its fields of
 // three kinds as a blue diamond, a green and a gold disc.
 func tableDescription() []Part {
-	return over(
+	return []Part{
 		colored(path(Accent, "M5.5 8L8.25 10.75L5.5 13.5L2.75 10.75Z"), blue),
-		colored(circle(Accent, 12, 7.5, 2.5), green),
-		colored(circle(Accent, 12, 12.5, 2), coin),
-	)
+		colored(circle(Accent, 12.5, 7.5, 2.5), green),
+		colored(circle(Accent, 12, 13, 2), coin),
+	}
 }
 
 // nestedQuery is a query in a query: a table standing in front of another.
 func nestedQuery() []Part {
-	return join([]Part{box(Body, 1.5, 1.5, 9, 8), path(Detail, "M1.5 4H10.5")},
+	return join([]Part{box(Body, 1.5, 1.5, 9, 8), path(Detail, "M1.5 4.5H10.5")},
 		[]Part{box(Plate, 5.5, 5.5, 9, 9)}, gridTable(5.5, 5.5, 9, 9))
 }
 
 // brush is the brush of conditional appearance laid over the table it
 // paints, a thick brown handle and red bristles.
 func brush() []Part {
-	return over(
+	return []Part{
 		colored(path(Accent, "M7.25 7.25L13.25 1L15 2.75L8.75 8.75Z"), brown),
 		colored(path(Accent, "M6.75 6.5L9.5 9.25Q9.5 12.75 6.5 14.25Q4 15.25 1 15Q3 13.25 3.5 11Q4 7.25 6.75 6.5Z"), red),
-	)
+	}
 }
 
 // greyed is a colour as the grey of its own lightness, the way the
@@ -157,27 +176,27 @@ func withDisabled(icons []Icon, ids ...string) []Icon {
 
 var compositionIcons = withDisabled([]Icon{
 	// Компоновка данных: настройки отчёта поверх таблицы.
-	{ID: "dcs-selection", Color: slate, Accent: steel, Parts: join(fullTable(), over(
-		colored(bar(6.5, 5, 8, 2.5), blue), colored(bar(6.5, 8.5, 8, 2.5), blue), colored(bar(6.5, 12, 8, 2.5), blue),
-	))},
-	{ID: "dcs-filter", Color: slate, Accent: steel, Parts: join(fullTable(), over(filterOver(4.5, 1.5, 10)...))},
-	{ID: "dcs-output-parameters", Color: slate, Accent: steel, Parts: join(fullTable(), over(tint(gear(10.5, 5.5, 4.75), gray)...))},
-	{ID: "dcs-data-parameters", Color: slate, Accent: steel, Parts: join(fullTable(), over(
-		colored(path(InkSpot, "M1 6L4.5 2.5V4.75H11.5V2.5L15 6L11.5 9.5V7.25H4.5V9.5Z"), black),
-	))},
-	{ID: "dcs-user-fields", Color: slate, Accent: steel, Parts: join(fullTable(), over(colored(path(Detail, fx(4, 0.25, 0.75)), navy)))},
+	{ID: "dcs-selection", Color: slate, Accent: steel, Parts: join(fullTable(), []Part{
+		colored(bar(7, 5, 7, 2), blue), colored(bar(7, 8, 7, 2), blue), colored(bar(7, 11, 7, 2), blue),
+	})},
+	{ID: "dcs-filter", Color: slate, Accent: steel, Parts: join(fullTable(), filterOver(5.5, 1.5, 9))},
+	{ID: "dcs-output-parameters", Color: slate, Accent: steel, Parts: join(fullTable(), gear(10, 5, 5))},
+	{ID: "dcs-data-parameters", Color: slate, Accent: steel, Parts: join(fullTable(), []Part{
+		colored(path(InkSpot, "M1 6L5 2V5H11V2L15 6L11 10V7H5V10Z"), black),
+	})},
+	{ID: "dcs-user-fields", Color: slate, Accent: steel, Parts: join(fullTable(), cleared(colored(path(Detail, fx(4, 0.25, 0.75)), navy)))},
 	{ID: "dcs-group-fields", Color: slate, Parts: append(groupingRow(1.5, 1.5, 13),
-		box(Body, 1.5, 5, 13, 9.5), path(Detail, "M5.83 5V14.5M10.17 5V14.5"),
+		box(Body, 1.5, 5.5, 13, 9), path(Detail, "M5.5 5.5V14.5M10.5 5.5V14.5"),
 	)},
-	{ID: "dcs-order", Color: slate, Accent: steel, Parts: join(fullTable(), over(colored(path(Accent, downArrow(8, 1.5, 14.5)), blue)))},
+	{ID: "dcs-order", Color: slate, Accent: steel, Parts: join(fullTable(), []Part{colored(path(Accent, downArrow(8, 2, 14)), blue)})},
 	{ID: "dcs-conditional-appearance", Color: slate, Accent: steel, Parts: join(fullTable(), brush())},
 	{ID: "dcs-standard-settings", Color: slate, Parts: join([]Part{
-		rect(Body, 1.5, 1.5, 13, 13), path(Detail, "M3.5 4.5H8.5M3.5 7H8.5M3.5 9.5H7M3.5 12H6"),
-	}, over(
+		rect(Body, 1.5, 1.5, 13, 13), path(Detail, "M3.5 3.5H8.5M3.5 6.5H8.5M3.5 9.5H7.5M3.5 12.5H6.5"),
+	}, []Part{
 		mound(8.5),
-		colored(path(Detail, "M12 10.5V7Q12 4.5 9.5 4.5H7.5M7.5 2.25L4.75 4.5L7.5 6.75Z"), navy),
-	))},
-	{ID: "dcs-settings-wizard", Color: slate, Parts: join(list(false), wizardPluses())},
+		colored(path(Detail, "M12.5 10.5V7Q12.5 4.5 10 4.5H8"), navy), colored(path(Tip, head(4.5, 4.5, -1, 0, 2)), navy),
+	})},
+	{ID: "dcs-settings-wizard", Color: slate, Parts: join(list(false), wizardSparks())},
 	// Структура настроек: новая группировка, таблица, диаграмма, вложенная
 	// схема.
 	{ID: "dcs-new-group", Color: slate, Parts: join(groupingRow(1.5, 9.5, 13), newPlus())},
@@ -194,11 +213,11 @@ var compositionIcons = withDisabled([]Icon{
 	{ID: "query-temp-tables-group", Color: slate, Parts: join(tempTable(1.5, 1.5, 13, 13), []Part{
 		colored(path(Plate, "M6.5 8.5H9.5L10.5 9.5H14.5V14.5H6.5Z"), groupColor),
 		colored(path(Body, "M6.5 8.5H9.5L10.5 9.5H14.5V14.5H6.5Z"), groupColor),
-		colored(rect(Accent, 7, 11, 7, 1.25), yellow),
+		colored(rect(Accent, 7, 11, 7, 2), yellow),
 	})},
-	{ID: "query-create-temp-table-drop-query", Color: slate, Parts: join(tempTable(1.5, 1.5, 13, 13), over(
+	{ID: "query-create-temp-table-drop-query", Color: slate, Parts: join(tempTable(1.5, 1.5, 13, 13), []Part{
 		colored(path(Mark, "M10.5 10.5L14.5 14.5M14.5 10.5L10.5 14.5"), red),
-	))},
+	})},
 	{ID: "query-temp-table-description", Color: slate, Parts: join(tempTable(1.5, 1.5, 13, 13), tableDescription())},
 	{ID: "query-create-temp-table-description", Color: slate, Parts: join(tempTable(1.5, 1.5, 13, 13), tableDescription(), newPlus())},
 	{ID: "query-replace-table", Color: gray, Accent: gray, Parts: join(gridTable(1.5, 1.5, 7, 8), []Part{
@@ -208,10 +227,10 @@ var compositionIcons = withDisabled([]Icon{
 		colored(path(Mark, "M9 3L10.75 4.75L14.5 1"), green),
 	})},
 	// The pencil stands in the middle of the plan, between its nodes.
-	{ID: "query-show-changes-tables", Color: blue, Accent: green, Parts: join(exchangePlan(), over(
-		colored(path(Body, "M4.5 12.5L5.1 10.1L9.75 5.45L11.55 7.25L6.9 11.9Z"), "#6f9a2a"),
-	))},
+	{ID: "query-show-changes-tables", Color: blue, Accent: green, Parts: join(exchangePlan(),
+		pencilAt(4.5, 12.5, 9, 1.3, 1),
+	)},
 	{ID: "query-table-parameters", Color: "#6b7178", Parts: join([]Part{
-		box(Body, 1.5, 1.5, 13, 13), path(Detail, "M1.5 5H14.5M1.5 8.5H14.5M1.5 12H14.5M6 1.5V14.5"),
-	}, tint(gear(10.5, 10.5, 4.75), gray))},
+		box(Body, 1.5, 1.5, 13, 13), path(Detail, "M1.5 5.5H14.5M1.5 8.5H14.5M1.5 11.5H14.5M5.5 1.5V14.5"),
+	}, gear(11, 11, 5))},
 }, "dcs-selection", "dcs-filter", "dcs-output-parameters", "dcs-group-fields", "dcs-order", "dcs-conditional-appearance")

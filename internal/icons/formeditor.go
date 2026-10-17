@@ -26,22 +26,50 @@ func columns(top float64) []Part {
 // colour, at x, y of width by height: the table of a form, the tables of a
 // query and the table the settings of data composition are laid over.
 func gridTable(x, y, width, height float64) []Part {
+	first, second := thirds(x, width)
 	return []Part{
 		box(Body, x, y, width, height),
-		box(Accent, x, y, width, 2),
-		path(Detail, fmt.Sprintf("M%s %sV%sM%s %sV%s", number(round(x+width/3)), number(y), number(y+height),
-			number(round(x+width*2/3)), number(y), number(y+height))),
+		box(Accent, x, y, width, 2.5),
+		path(Detail, fmt.Sprintf("M%s %sV%sM%s %sV%s", number(first), number(y), number(y+height),
+			number(second), number(y), number(y+height))),
 	}
 }
 
-// middleColumn is the column of a table picked out in a colour.
+// middleColumn is the column of a table of the whole grid picked out in a
+// colour, filling it between its lines.
 func middleColumn(top float64, color string) Part {
-	return colored(rect(Accent, 6.33, top+2.5, 3.33, 11.5-top), color)
+	first, second := thirds(1.5, 13)
+	return colored(rect(Accent, first+0.5, top+2.5, second-first-1, 11.5-top), color)
 }
 
-// monitor is the screen the form is previewed on.
+// monitor is the screen the form is previewed on, on a neck two pixels
+// wide: one line on the middle of the grid would fall between two pixels.
 func monitor() []Part {
-	return []Part{rect(Body, 1.5, 1.5, 13, 10), path(Detail, "M8 11.5V13.5M4.5 14.5H11.5")}
+	return []Part{rect(Body, 1.5, 1.5, 13, 10), path(Detail, "M7.5 12V13.5M8.5 12V13.5M4.5 14.5H11.5")}
+}
+
+// okButton is the button of a form with «OK» on it, from left, top width
+// points wide and height high, its frame in role frame; its letters, the
+// «O» w points wide between its sides and both letters h points high, stand
+// in the middle of it in role letters: the button of the form, and small at
+// the lower right of the floppy the «OK» ending an edit (the owner's
+// choices of 17.10.2026).
+func okButton(left, top, width, height, w, h float64, frame, letters Role) []Part {
+	x := left + 1 + (width-1-(2*w+3))/2
+	y := top + 1 + (height-1-(h+1))/2
+	return []Part{rect(frame, left, top, width, height), path(letters, okLetters(x, y, w, h))}
+}
+
+// okLetters are the letters «OK», curved as letters are, the stems on the
+// pixel grid: the «O» from x to x+w between the middles of its sides, the
+// stem of the «K» two points after it and its arms w-0.25 long, both from y
+// to y+h.
+func okLetters(x, y, w, h float64) string {
+	at := func(dx, dy float64) string { return number(x+dx) + " " + number(y+dy) }
+	mid, stem := h/2, w+2
+	return "M" + at(w/2, 0) + "Q" + at(0, 0) + " " + at(0, mid) + "Q" + at(0, h) + " " + at(w/2, h) +
+		"Q" + at(w, h) + " " + at(w, mid) + "Q" + at(w, 0) + " " + at(w/2, 0) + "Z" +
+		"M" + at(stem, 0) + "V" + number(y+h) + "M" + at(stem+w, 0) + "L" + at(stem+0.25, mid) + "L" + at(stem+w, h)
 }
 
 var formEditorIcons = []Icon{
@@ -49,42 +77,47 @@ var formEditorIcons = []Icon{
 	// командная панель, кнопка, декорация, контекстное меню, дополнения.
 	{ID: "form-field", Color: red, Accent: red, Parts: []Part{bar(2, 6, 12, 4)}},
 	{ID: "form-table", Color: slate, Accent: steel, Parts: columns(1.5)},
+	// The command bar is three round sockets side by side, each with its
+	// colour inside, as the jacks of a television (the owner's choice of
+	// 16.10.2026: buttons of four pixels with gaps read as dots).
 	{ID: "form-command-bar", Color: gray, Parts: []Part{
-		rect(Body, 0.5, 5.5, 4.5, 5), rect(Body, 5.75, 5.5, 4.5, 5), rect(Body, 11, 5.5, 4.5, 5),
-		colored(rect(Accent, 2, 7.25, 1.5, 1.5), blue), colored(rect(Accent, 7.25, 7.25, 1.5, 1.5), red),
-		colored(rect(Accent, 12.5, 7.25, 1.5, 1.5), "#efc23a"),
+		colored(circle(Accent, 3, 8, 2), blue), colored(circle(Accent, 8, 8, 2), red), colored(circle(Accent, 13, 8, 2), "#efc23a"),
+		circle(Detail, 3, 8, 2.5), circle(Detail, 8, 8, 2.5), circle(Detail, 13, 8, 2.5),
 	}},
-	{ID: "form-button", Color: rose, Parts: join([]Part{rect(Body, 1.5, 3.5, 13, 9)}, over(
-		colored(path(Detail, "M5.25 6Q3.75 6 3.75 8Q3.75 10 5.25 10Q6.75 10 6.75 8Q6.75 6 5.25 6ZM9 6V10M12 6L9.25 8L12 10"), brown),
-	))},
-	{ID: "form-decoration", Color: steel, Accent: green, Parts: join(landscape()[:2], over(
+	// The button with «OK»: the letters close together, two pixels free on
+	// either side inside it (the owner's choice of 17.10.2026).
+	{ID: "form-button", Color: rose, Parts: func() []Part {
+		button := okButton(1.5, 3.5, 14, 9, 3, 5, Body, Detail)
+		return []Part{button[0], colored(button[1], brown)}
+	}()},
+	{ID: "form-decoration", Color: steel, Accent: green, Parts: join(landscape()[:2], []Part{
 		landscape()[2], colored(path(Line, "M1 15L15 1"), red),
-	))},
+	})},
 	{ID: "form-context-menu", Color: slate, Parts: join([]Part{
 		rect(Body, 4.5, 4.5, 10, 10),
-		colored(bar(1, 1.5, 8, 3), red),
-	}, over(
-		colored(rect(Accent, 6.5, 7.5, 2, 2), red), colored(rect(Accent, 6.5, 11, 2, 2), navy),
-		path(Detail, "M10 8.5H12.5M10 12H12.5"),
-	))},
+		colored(bar(1, 1, 8, 3), red),
+	}, []Part{
+		colored(rect(Accent, 6, 6, 3, 3), red), colored(rect(Accent, 6, 10, 3, 3), navy),
+		path(Detail, "M10.5 7.5H12.5M10.5 11.5H12.5"),
+	})},
 	{ID: "form-addition", Color: groupColor, Accent: yellow, Parts: join([]Part{
 		rect(Body, 9.5, 9.5, 5, 5),
-		colored(circle(Accent, 4.5, 4.5, 3), blue),
-	}, over(colored(path(Line, "M12.5 12.5L7 7M7 10V7H10"), green)))},
+		colored(circle(Accent, 4, 4, 3), blue),
+	}, []Part{colored(path(Line, "M12.5 12.5L8.5 8.5"), green), colored(path(Accent, head(7, 7, -1, -1, 2)), green)})},
 	{ID: "form-search-string", Color: gray, Parts: []Part{
 		rect(Body, 2.5, 1.5, 11, 13), colored(path(Detail, "M5.5 4V12"), ink),
 	}},
 	{ID: "form-view-status", Color: groupColor, Accent: gray, Parts: []Part{
-		rect(Body, 1.5, 4.5, 13, 7), path(Line, "M3.5 8H9M11 6.75L13 9.25M13 6.75L11 9.25"),
+		rect(Body, 1.5, 4.5, 13, 8), path(Line, "M3.5 8.5H9M11 7.5L13 9.5M13 7.5L11 9.5"),
 	}},
 	{ID: "form-search-control", Color: slate, Parts: join([]Part{rect(Body, 1.5, 1.5, 13, 13)}, tint(lens(7, 7, 3.5), blue))},
 	// Реквизиты формы: реквизит — черта реквизита (attribute), коллекция —
 	// таблица колонками, таблица значений — колонками с реквизитом над ней,
 	// колонка коллекции — красная колонка.
-	{ID: "form-value-table", Color: slate, Accent: steel, Parts: join(columns(5.5), over(
+	{ID: "form-value-table", Color: slate, Accent: steel, Parts: join(columns(5.5), []Part{
 		middleColumn(5.5, blue), colored(bar(4, 1, 8, 3), slate),
-	))},
-	{ID: "form-collection-column", Color: slate, Accent: steel, Parts: join(columns(1.5), over(middleColumn(1.5, red)))},
+	})},
+	{ID: "form-collection-column", Color: slate, Accent: steel, Parts: join(columns(1.5), []Part{middleColumn(1.5, red)})},
 	{ID: "form-command", Color: gold, Accent: gold, Parts: []Part{bar(2, 6, 12, 4)}},
 	{ID: "form-parameter", Color: rose, Accent: rose, Parts: []Part{bar(2, 6, 12, 4)}},
 	// Отметка «выведено на форму» в списках реквизитов и команд.
@@ -98,32 +131,32 @@ var formEditorIcons = []Icon{
 	{ID: "form-parameters-tab", Color: rose, Accent: rose, Parts: barStack()},
 	{ID: "form-own-commands", Color: slate, Accent: steel, Parts: join([]Part{
 		rect(Body, 1.5, 2.5, 13, 11), rect(Accent, 2, 3, 12, 2),
-	}, over(path(Plate, "M6.5 6.75L11 9.25L6.5 11.75Z")))},
-	{ID: "form-standard-commands", Color: slate, Accent: steel, Parts: join(formWindow(), over(
-		colored(circle(Plate, 11.5, 11.5, 3.5), gold), colored(circle(Body, 11.5, 11.5, 3.5), gold),
-		colored(path(Accent, "M10.5 9.75L13.25 11.5L10.5 13.25Z"), gold),
-	))},
+	}, []Part{path(Plate, "M6.5 6.75L11 9.25L6.5 11.75Z")})},
+	{ID: "form-standard-commands", Color: slate, Accent: steel, Parts: join(formWindow(), []Part{
+		colored(circle(Plate, 11.5, 11.5, 3), gold), colored(circle(Body, 11.5, 11.5, 3), gold),
+		colored(path(Accent, "M10 9.5L13 11.5L10 13.5Z"), gold),
+	})},
 	// Панель дерева элементов: проверить, вид предпросмотра, повернуть,
 	// разрешение, масштаб, ошибки размещения (добавить, изменить, удалить,
 	// вверх, вниз — из пачки 1).
-	{ID: "form-check", Color: slate, Accent: steel, Parts: join(formWindow(), over(
+	{ID: "form-check", Color: slate, Accent: steel, Parts: join(formWindow(), []Part{
 		colored(path(Accent, "M11 6.5L15.5 10L11 13.5Z"), brown),
-	))},
-	{ID: "preview-platform", Color: slate, Accent: "#efc23a", Parts: join(monitor(), []Part{rect(Accent, 2, 2, 12, 2.5)})},
+	})},
+	{ID: "preview-platform", Color: slate, Accent: "#efc23a", Parts: join(monitor(), []Part{rect(Accent, 2, 2, 12, 2)})},
 	{ID: "preview-display", Color: slate, Accent: gray, Parts: []Part{
-		rect(Body, 1.5, 1.5, 13, 13), rect(Accent, 3.5, 3.5, 9, 3.5), rect(Accent, 3.5, 9, 9, 3.5),
+		rect(Body, 1.5, 1.5, 13, 13), rect(Accent, 3, 3, 10, 4), rect(Accent, 3, 9, 10, 4),
 	}},
 	{ID: "rotate-screen", Color: ink, Parts: []Part{
-		path(Detail, "M3.5 3.5Q11 3.5 12 12.5M5.5 1.5L3.5 3.5L5.5 5.5M10 10.5L12 12.5L14 10.5"),
+		path(Detail, "M4 3.5Q11 3.5 12 12"), path(Tip, head(0.5, 3.5, -1, 0, 2)), path(Tip, head(12, 15.5, 0, 1, 2)),
 	}},
-	{ID: "screen-resolution", Color: slate, Parts: join(monitor(), over(
-		colored(path(Detail, "M5 9L11 4M5 6.5V9H7.5M8.5 4H11V6.5"), ink),
-	))},
+	{ID: "screen-resolution", Color: slate, Parts: join(monitor(), []Part{
+		colored(path(Detail, "M5.5 8.5L9.5 4.5"), ink), colored(path(Tip, head(4, 10, -1, 1, 2)), ink), colored(path(Tip, head(11, 3, 1, -1, 2)), ink),
+	})},
 	{ID: "zoom-scale", Color: ink, Parts: []Part{
-		path(Detail, "M2.5 13.5L13.5 2.5M2.5 9V13.5H7M9 2.5H13.5V7"),
+		path(Detail, "M4 12L12 4"), path(Tip, head(2, 14, -1, 1, 2.5)), path(Tip, head(14, 2, 1, -1, 2.5)),
 	}},
 	{ID: "placement-errors", Color: purple, Accent: purple, Parts: []Part{path(Mark, "M3 8.5L6.5 12L13 4")}},
 	// Панель реквизитов: добавить реквизит, добавить колонку.
-	{ID: "attribute-add", Color: slate, Accent: slate, Parts: join([]Part{bar(1, 3, 10, 3.5)}, plusBadge(11, 11))},
-	{ID: "attribute-column-add", Color: slate, Accent: steel, Parts: join(columns(1.5), over(middleColumn(1.5, red)), plusBadge(11, 11))},
+	{ID: "attribute-add", Color: slate, Accent: slate, Parts: join([]Part{bar(1, 3, 10, 4)}, plusBadge(11.5, 11.5))},
+	{ID: "attribute-column-add", Color: slate, Accent: steel, Parts: join(columns(1.5), []Part{middleColumn(1.5, red)}, plusBadge(11.5, 11.5))},
 }

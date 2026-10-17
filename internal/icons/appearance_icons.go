@@ -51,10 +51,10 @@ func filledCircle(quarters int) []Part {
 // boxes are four boxes, two over two, the first filled ones blue, filled
 // from the lower left: then the lower right, the upper left, the upper right.
 func boxes(filled int) []Part {
-	corners := [][2]float64{{1.5, 9}, {9, 9}, {1.5, 1.5}, {9, 1.5}}
+	corners := [][2]float64{{1.5, 9.5}, {9.5, 9.5}, {1.5, 1.5}, {9.5, 1.5}}
 	var parts []Part
 	for index, corner := range corners {
-		box := bar(corner[0], corner[1], 5.5, 5.5)
+		box := bar(corner[0], corner[1], 5, 5)
 		if index < filled {
 			parts = append(parts, signal(box, signalBlue)...)
 		} else {
@@ -94,16 +94,16 @@ func signDisc(color, ink string, sign ...Part) []Part {
 // pennant is a flag on its dark pole, the cloth waving to the right.
 func pennant(color string) []Part {
 	return append(signal(path(Accent, "M4.5 2Q7.5 1 9.75 2.75Q11.75 4.25 14.5 5Q12.25 7.25 9.25 7.25Q6.5 7.25 4.5 8.75Z"), color),
-		colored(path(Detail, "M4 1.5V14.5"), "#5b636d"))
+		colored(path(Detail, "M3.5 1.5V14.5"), "#5b636d"))
 }
 
 var appearanceIcons = []Icon{
 	// Знаки.
 	{ID: "appearance-exclamation", Color: signalYellow, Parts: join(
-		signal(bar(6.5, 1.5, 3, 8.5), signalYellow), signal(circle(Accent, 8, 13, 1.5), signalYellow))},
+		signal(bar(6.5, 1.5, 3, 8), signalYellow), signal(circle(Accent, 8, 13, 1.5), signalYellow))},
 	{ID: "appearance-dash", Color: signalYellow, Parts: signal(bar(2.5, 6.5, 11, 3), signalYellow)},
 	{ID: "appearance-exclamation-disc", Color: signalYellow, Parts: signDisc(signalYellow, onAccentInk,
-		path(Mark, "M8 4.25V8.5"), circle(Accent, 8, 11.25, 1.1))},
+		path(Mark, "M8 4.5V8.5"), circle(Accent, 8, 11, 1))},
 	{ID: "appearance-cross-disc", Color: signalRed, Parts: signDisc(signalRed, "#ffffff", path(Mark, "M5.5 5.5L10.5 10.5M10.5 5.5L5.5 10.5"))},
 	{ID: "appearance-check-disc", Color: signalGreen, Parts: signDisc(signalGreen, "#ffffff", path(Mark, "M4.75 8.25L7 10.5L11.25 6"))},
 	// Звёзды: заполненная — «Добавить в избранное». Крест и флажок оформления
@@ -145,8 +145,9 @@ var appearanceIcons = []Icon{
 	{ID: "appearance-down-incline-yellow", Color: signalYellow, Parts: signal(path(Accent, blockArrow(135)), signalYellow)},
 	{ID: "appearance-down-incline-red", Color: signalRed, Parts: signal(path(Accent, blockArrow(135)), signalRed)},
 	{ID: "appearance-down-incline-gray", Color: signalGray, Parts: signal(path(Accent, blockArrow(135)), signalGray)},
-	{ID: "appearance-up-triangle", Color: signalGreen, Parts: signal(path(Accent, "M8 4.5L14.5 11H1.5Z"), signalGreen)},
-	{ID: "appearance-down-triangle", Color: signalRed, Parts: signal(path(Accent, "M8 11.5L14.5 5H1.5Z"), signalRed)},
+	{ID: "appearance-up-triangle", Color: signalGreen, Parts: signal(path(Accent, "M8 5L14.5 11.5H1.5Z"), signalGreen)},
+	{ID: "appearance-down-triangle", Color: signalRed, Parts: signal(path(Accent, "M8 11L14.5 4.5H1.5Z"), signalRed)},
+
 	// Флаги.
 	{ID: "appearance-flag-yellow", Color: signalYellow, Parts: pennant(signalYellow)},
 	{ID: "appearance-flag-green", Color: signalGreen, Parts: pennant(signalGreen)},

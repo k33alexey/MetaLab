@@ -61,6 +61,10 @@ func paint(role Role, kind, accent string) string {
 		return "fill:none;stroke-width:" + strconv.Itoa(markWeight) + ";stroke:" + inked(kind)
 	case InkSpot:
 		return "fill:" + inked(kind) + ";stroke:none"
+	case Tip:
+		return "fill:" + outline(kind) + ";stroke:none"
+	case InkLine:
+		return "fill:none;stroke:" + inked(kind)
 	case Rim:
 		return "fill:none;stroke-width:" + number(rimWeight) + ";stroke:color-mix(in srgb," + accent + "," + rimShade + ")"
 	case Plate:
@@ -82,7 +86,7 @@ func (part Part) element() string {
 	switch {
 	case part.Rect != nil:
 		radius := ""
-		if part.Role == Body || part.Role == Plate {
+		if part.Role == Body || part.Role == Plate || part.Role == InkLine {
 			radius = ` rx="` + number(cornerRadius) + `"`
 		}
 		return fmt.Sprintf(`<rect x="%s" y="%s" width="%s" height="%s"%s`, number(part.Rect[0]), number(part.Rect[1]), number(part.Rect[2]), number(part.Rect[3]), radius)
