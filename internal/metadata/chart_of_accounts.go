@@ -327,7 +327,7 @@ func validateAccountingFlagStorage(prefix string, flag AccountingFlag) []string 
 }
 
 func (account PredefinedAccount) head() predefinedHead {
-	return predefinedHead{id: account.ID, name: account.Name, code: account.Code, description: account.Description}
+	return predefinedHead{id: account.ID, name: account.Name, code: account.Code, description: account.Description, parent: account.Parent}
 }
 
 func validatePredefinedAccounts(value ChartOfAccountsDefinition) []string {

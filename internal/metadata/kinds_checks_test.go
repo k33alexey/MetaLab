@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/project"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // nameAt is a name of the given number of letters.
@@ -378,6 +379,76 @@ func TestPredefinedHeadOneRuleOnFourKinds(t *testing.T) {
 			if test.want != "" && !strings.Contains(issues, test.want) {
 				t.Errorf("%s, %s: %q, want one saying %q", kind, name, issues, test.want)
 			}
+		}
+	}
+}
+
+// A code repeated among the predefined elements of an object that checks its
+// codes for repeats is refused, naming both elements and the code - rule 6 of
+// METADATA-OBJECTS.md, «Код предопределённого элемента», and the configurator
+// walk of 14.10.2026: within subordination it repeats among the rows of one
+// parent only, folders and items together; empty codes with automatic codes
+// are no repeat; the empty code and one of spaces, two numbers of one value, a
+// fixed code and the same code padded are one code.
+//
+// Defect caught: a repeat let through to break the uniqueness of the column at
+// the first synchronization, with a message of the database naming no
+// element; or a repeat refused where the prototype keeps it - without the
+// check, under another parent, among empty codes the numbering fills in.
+func TestPredefinedCodeRepeatsAmongPredefined(t *testing.T) {
+	t.Parallel()
+	element := func(name, code, parent string) predefinedHead {
+		return predefinedHead{id: uuid.MustNew(), name: name, code: code, parent: parent}
+	}
+	unique := CatalogCode{Type: StringType, Length: 3, Unique: true}
+	within := CatalogCode{Type: StringType, Length: 3, Unique: true, Series: SubordinationSeries}
+	for name, test := range map[string]struct {
+		code     CatalogCode
+		elements []predefinedHead
+		want     string
+	}{
+		"повтор при контроле": {unique, []predefinedHead{element("Банк", "01", ""), element("Касса", "01", "")},
+			`predefined[1] Касса: code "01" repeats the code of predefined Банк`},
+		"повтор без контроля":      {CatalogCode{Type: StringType, Length: 3}, []predefinedHead{element("Банк", "01", ""), element("Касса", "01", "")}, ""},
+		"при длине 0 кода нет":     {CatalogCode{Type: StringType, Unique: true}, []predefinedHead{element("Банк", "01", ""), element("Касса", "01", "")}, ""},
+		"пустые при автонумерации": {CatalogCode{Type: StringType, Length: 3, Unique: true, Auto: true}, []predefinedHead{element("Банк", "", ""), element("Касса", "  ", "")}, ""},
+		"пустой и из пробелов без автонумерации": {unique, []predefinedHead{element("Банк", "", ""), element("Касса", "  ", "")},
+			`predefined[1] Касса: code "  " repeats the code of predefined Банк`},
+		"одно число разной записью": {CatalogCode{Type: NumberType, Length: 3, Unique: true}, []predefinedHead{element("Банк", "1", ""), element("Касса", "001", "")},
+			`predefined[1] Касса: code "001" repeats`},
+		"числовые пустые без автонумерации — оба ноль": {CatalogCode{Type: NumberType, Length: 3, Unique: true}, []predefinedHead{element("Банк", "", ""), element("Касса", "0", "")},
+			`predefined[1] Касса: code "0" repeats`},
+		"фиксированный код и он же с пробелом": {CatalogCode{Type: StringType, Length: 3, Unique: true, FixedLength: true}, []predefinedHead{element("Банк", "01", ""), element("Касса", "01 ", "")},
+			`predefined[1] Касса: code "01 " repeats`},
+		"во всём объекте под разными родителями": {unique, []predefinedHead{element("Группа", "01", ""), element("Банк", "02", "Группа"), element("Касса", "02", "")},
+			`predefined[2] Касса: code "02" repeats the code of predefined Банк`},
+		"в пределах подчинения под разными родителями": {within, []predefinedHead{element("Группа", "01", ""), element("Банк", "02", "Группа"), element("Касса", "02", "")}, ""},
+		"в пределах подчинения группа и элемент одного родителя": {within, []predefinedHead{element("Группа", "01", ""), element("Банк", "01", "")},
+			`predefined[1] Банк: code "01" repeats the code of predefined Группа`},
+		"в пределах подчинения под одним родителем": {within, []predefinedHead{element("Группа", "01", ""), element("Банк", "02", "группа"), element("Касса", "02", "Группа")},
+			`predefined[2] Касса: code "02" repeats the code of predefined Банк`},
+	} {
+		issues, _ := validatePredefinedHeads(test.elements, test.code, 25)
+		joined := strings.Join(issues, "; ")
+		if test.want == "" && joined != "" {
+			t.Errorf("%s refused: %s", name, joined)
+		}
+		if test.want != "" && !strings.Contains(joined, test.want) {
+			t.Errorf("%s: %q, want one saying %q", name, joined, test.want)
+		}
+	}
+	// Every kind with predefined elements and the check for repeats hands its
+	// parents to the one check.
+	id := func() uuid.UUID { return uuid.MustNew() }
+	byKind := map[string][]string{
+		"справочник": validatePredefinedItems(referenceObjectShape{code: within, descriptionLength: 25, hierarchy: Hierarchy{Enabled: true, Kind: FoldersAndItemsHierarchy},
+			predefined: []PredefinedCatalogItem{{ID: id(), Name: "Группа", Code: "01", IsFolder: true}, {ID: id(), Name: "Банк", Code: "02", Parent: "Группа"}, {ID: id(), Name: "Касса", Code: "02"}}}),
+		"план счетов": validatePredefinedAccounts(ChartOfAccountsDefinition{Code: within, DescriptionLength: 25, Predefined: []PredefinedAccount{
+			{ID: id(), Name: "Касса", Code: "01", Kind: ActiveAccount}, {ID: id(), Name: "Рубли", Code: "02", Kind: ActiveAccount, Parent: "Касса"}, {ID: id(), Name: "Банк", Code: "02", Kind: ActiveAccount}}}),
+	}
+	for kind, issues := range byKind {
+		if len(issues) != 0 {
+			t.Errorf("%s: the same code under another parent refused within subordination: %v", kind, issues)
 		}
 	}
 }

@@ -1491,16 +1491,19 @@ func (shape referenceObjectShape) switchedOff() []string {
 
 // predefinedHead is what a predefined element carries alike on a catalog, a
 // chart of characteristic types, a chart of accounts and a chart of
-// calculation types: its identity, name, code and description.
+// calculation types: its identity, name, code and description, and the name
+// of the element it sits under, which bounds the range of a code numbered
+// within subordination.
 type predefinedHead struct {
 	id          uuid.UUID
 	name        string
 	code        string
 	description string
+	parent      string
 }
 
 func (item PredefinedCatalogItem) head() predefinedHead {
-	return predefinedHead{id: item.ID, name: item.Name, code: item.Code, description: item.Description}
+	return predefinedHead{id: item.ID, name: item.Name, code: item.Code, description: item.Description, parent: item.Parent}
 }
 
 func predefinedHeads[T interface{ head() predefinedHead }](items []T) []predefinedHead {
@@ -1565,7 +1568,53 @@ func validatePredefinedHeads(heads []predefinedHead, code CatalogCode, descripti
 			issues = append(issues, fmt.Sprintf("%s.description must not exceed %d characters", prefix, descriptionLength))
 		}
 	}
-	return issues, names
+	return append(issues, predefinedCodeRepeats(heads, code)...), names
+}
+
+// predefinedCodeRepeats refuses a code repeated among the predefined elements
+// of an object that checks its codes for repeats - rule 6 of METADATA-OBJECTS.md,
+// «Код предопределённого элемента», as the configurator's window refuses it,
+// but naming both elements and the code. Empty codes with automatic codes are
+// no repeat: each element gets a next code of its own. A code numbered within
+// subordination repeats among the rows of one parent, folders and items
+// together, as the configurator walk of 14.10.2026 found; a predefined element
+// has no owner, so within an owner is the whole object. Two codes are one when
+// the column holds them as one: the empty code and one of spaces, two numbers of
+// one value, a fixed code and the same code padded.
+func predefinedCodeRepeats(heads []predefinedHead, code CatalogCode) []string {
+	if code.Length == 0 || !code.Unique {
+		return nil
+	}
+	type place struct{ parent, code string }
+	var issues []string
+	first := map[place]string{}
+	for index, head := range heads {
+		value := head.code
+		if emptyPredefinedCode(value) {
+			if code.Auto {
+				continue
+			}
+			value = ""
+		}
+		value, err := normalizeCatalogCode(code, value)
+		if err != nil {
+			continue // refused above as an invalid code
+		}
+		if code.FixedLength {
+			value = strings.TrimRight(value, " ")
+		}
+		key := place{code: value}
+		if code.Series == SubordinationSeries {
+			key.parent = strings.ToLower(head.parent)
+		}
+		if name, ok := first[key]; ok {
+			issues = append(issues, fmt.Sprintf("predefined[%d] %s: code %q repeats the code of predefined %s, and this object checks its codes for repeats",
+				index, head.name, head.code, name))
+			continue
+		}
+		first[key] = head.name
+	}
+	return issues
 }
 
 func validatePredefinedItems(shape referenceObjectShape) []string {
