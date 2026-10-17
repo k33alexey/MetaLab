@@ -1,6 +1,8 @@
 package metadata
 
 import (
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -134,5 +136,79 @@ func TestKindNamesAreKebabCase(t *testing.T) {
 		if got := kebab(name); got != want {
 			t.Fatalf("kebab(%q) = %q, want %q", name, got, want)
 		}
+	}
+}
+
+// WalkSampleEmbedded and walkSample are a small model with every kind of
+// nesting the one walk of the model goes through.
+type WalkSampleEmbedded struct {
+	Picture *PictureReference `yaml:"picture"`
+}
+
+type walkSampleInner struct {
+	Name string        `yaml:"name"`
+	Text LocalizedText `yaml:"text"`
+}
+
+type walkSample struct {
+	WalkSampleEmbedded
+	Title   LocalizedText            `yaml:"title"`
+	Pointer *walkSampleInner         `yaml:"pointer"`
+	Empty   *walkSampleInner         `yaml:"empty"`
+	List    []walkSampleInner        `yaml:"list"`
+	Texts   map[string]LocalizedText `yaml:"texts"`
+	Rows    []LocalizedText          `yaml:"rows"`
+	Stopped walkSampleInner          `yaml:"stopped"`
+	hidden  walkSampleInner
+}
+
+// The one walk of the model reaches every place a rule may look, and names it
+// as the project's files do: a field by its key, an element of a list by its
+// name, a value of a map by its key, an embedded struct by nothing of its own;
+// it follows pointers, leaves nil ones and unexported fields alone, and does
+// not go below a value the visitor stops at.
+//
+// Defect caught: a kind of nesting dropped from the walk - and with it from
+// every rule at once, the notes of fields, pictures, types and texts - or a
+// place named otherwise than the notes have always named it.
+func TestWalkModelReachesEveryNesting(t *testing.T) {
+	t.Parallel()
+	sample := walkSample{
+		WalkSampleEmbedded: WalkSampleEmbedded{Picture: &PictureReference{Standard: "Добавить"}},
+		Title:              LocalizedText{"ru": "Заголовок"},
+		Pointer:            &walkSampleInner{Name: "Указатель", Text: LocalizedText{"ru": "у"}},
+		List:               []walkSampleInner{{Name: "Первый", Text: LocalizedText{"ru": "п"}}, {Name: "Второй", Text: LocalizedText{"ru": "в"}}},
+		Texts:              map[string]LocalizedText{"Ключ": {"ru": "к"}},
+		Rows:               []LocalizedText{{"ru": "с"}},
+		Stopped:            walkSampleInner{Name: "Стоп", Text: LocalizedText{"ru": "за остановкой"}},
+		hidden:             walkSampleInner{Text: LocalizedText{"ru": "скрыт"}},
+	}
+	var reached []string
+	walkModel(reflect.ValueOf(&sample).Elem(), "объект", func(value reflect.Value, where string) bool {
+		switch value.Type() {
+		case reflect.TypeFor[LocalizedText]():
+			reached = append(reached, where+" = "+value.Interface().(LocalizedText)["ru"])
+			return false
+		case reflect.TypeFor[*PictureReference]():
+			if !value.IsNil() {
+				reached = append(reached, where+" = "+value.Interface().(*PictureReference).Standard)
+			}
+			return false
+		case reflect.TypeFor[walkSampleInner]():
+			return value.Interface().(walkSampleInner).Name != "Стоп"
+		}
+		return true
+	})
+	want := []string{
+		"объект picture = Добавить",
+		"объект title = Заголовок",
+		"объект pointer text = у",
+		"объект list Первый text = п",
+		"объект list Второй text = в",
+		"объект texts Ключ = к",
+		"объект rows  = с",
+	}
+	if !slices.Equal(reached, want) {
+		t.Fatalf("reached\n%s\nwant\n%s", strings.Join(reached, "\n"), strings.Join(want, "\n"))
 	}
 }

@@ -1190,108 +1190,38 @@ func notePictureSettingsLeft(catalog *Catalog, note func(where, written string))
 // beside a command, a group of commands, a subsystem, an item of a route map -
 // and calls visit with the place it stands in.
 func eachPictureReference(catalog *Catalog, visit func(where string, picture *PictureReference)) {
-	top := reflect.ValueOf(catalog).Elem()
-	for index := range top.NumField() {
-		field := top.Type().Field(index)
-		if !field.IsExported() || field.Type.Kind() != reflect.Slice || field.Type.Elem().Kind() != reflect.Struct {
-			continue
-		}
-		list := top.Field(index)
-		for item := range list.Len() {
-			object := list.Index(item)
-			walkPictureReferences(object, kebab(field.Name)+" "+nameOf(object), visit)
-		}
-	}
-}
-
-func walkPictureReferences(value reflect.Value, where string, visit func(string, *PictureReference)) {
-	switch value.Kind() {
-	case reflect.Pointer:
-		if value.IsNil() {
-			return
-		}
-		if picture, ok := value.Interface().(*PictureReference); ok {
-			visit(where, picture)
-			return
-		}
-		walkPictureReferences(value.Elem(), where, visit)
-	case reflect.Slice:
-		switch value.Type().Elem().Kind() {
-		case reflect.Struct, reflect.Pointer:
-			for index := range value.Len() {
-				element := value.Index(index)
-				walkPictureReferences(element, where+" "+nameOf(element), visit)
+	pictureType := reflect.TypeFor[*PictureReference]()
+	eachCatalogObject(catalog, func(object reflect.Value, where string) {
+		walkModel(object, where, func(value reflect.Value, where string) bool {
+			if value.Type() != pictureType {
+				return true
 			}
-		}
-	case reflect.Struct:
-		for index := range value.NumField() {
-			field := value.Type().Field(index)
-			if !field.IsExported() {
-				continue
+			if !value.IsNil() {
+				visit(where, value.Interface().(*PictureReference))
 			}
-			next := where
-			if !field.Anonymous {
-				next = where + " " + yamlName(field)
-			}
-			walkPictureReferences(value.Field(index), next, visit)
-		}
-	}
+			return false
+		})
+	})
 }
 
 // eachTypeList walks every type description of the catalog - the types of a
 // field, the parameter of a command, the value type of a chart - and calls
 // visit with the place it stands in.
 func eachTypeList(catalog *Catalog, visit func(where string, types []Type)) {
-	top := reflect.ValueOf(catalog).Elem()
-	for index := range top.NumField() {
-		field := top.Type().Field(index)
-		if !field.IsExported() || field.Type.Kind() != reflect.Slice || field.Type.Elem().Kind() != reflect.Struct {
-			continue
-		}
-		list := top.Field(index)
-		for item := range list.Len() {
-			object := list.Index(item)
-			walkTypeLists(object, kebab(field.Name)+" "+nameOf(object), visit)
-		}
-	}
+	typesType := reflect.TypeFor[[]Type]()
+	eachCatalogObject(catalog, func(object reflect.Value, where string) {
+		walkModel(object, where, func(value reflect.Value, where string) bool {
+			if value.Type() != typesType {
+				return true
+			}
+			visit(where, value.Interface().([]Type))
+			return false
+		})
+	})
 	// The forms are not part of the catalog; their attributes' types were
 	// gathered when the forms were read.
 	for _, list := range catalog.formTypeLists {
 		visit(list.where, list.types)
-	}
-}
-
-func walkTypeLists(value reflect.Value, where string, visit func(string, []Type)) {
-	typesType := reflect.TypeFor[[]Type]()
-	switch value.Kind() {
-	case reflect.Pointer:
-		if !value.IsNil() {
-			walkTypeLists(value.Elem(), where, visit)
-		}
-	case reflect.Slice:
-		if value.Type() == typesType {
-			visit(where, value.Interface().([]Type))
-			return
-		}
-		switch value.Type().Elem().Kind() {
-		case reflect.Struct, reflect.Pointer:
-			for index := range value.Len() {
-				element := value.Index(index)
-				walkTypeLists(element, where+" "+nameOf(element), visit)
-			}
-		}
-	case reflect.Struct:
-		for index := range value.NumField() {
-			field := value.Type().Field(index)
-			if !field.IsExported() {
-				continue
-			}
-			next := where
-			if !field.Anonymous {
-				next = where + " " + yamlName(field)
-			}
-			walkTypeLists(value.Field(index), next, visit)
-		}
 	}
 }
 
@@ -1306,67 +1236,24 @@ func sortedTextKeys(text LocalizedText) []string {
 
 // eachLocalizedText walks every text of the catalog - the configuration's own
 // and every object's, at any depth - and calls visit with the place it stands
-// in, and whether it stands in the content of a chart. Texts are maps, which
-// the walk of the holders does not enter.
+// in, and whether it stands in the content of a chart.
 func eachLocalizedText(catalog *Catalog, visit func(where string, text LocalizedText, chart bool)) {
-	outside := func(where string, text LocalizedText) { visit(where, text, false) }
-	walkTexts(reflect.ValueOf(&catalog.Project).Elem(), "configuration", outside)
-	top := reflect.ValueOf(catalog).Elem()
-	for index := range top.NumField() {
-		field := top.Type().Field(index)
-		if !field.IsExported() || field.Type.Kind() != reflect.Slice || field.Type.Elem().Kind() != reflect.Struct {
-			continue
+	textType := reflect.TypeFor[LocalizedText]()
+	enter := func(value reflect.Value, where string) bool {
+		if value.Type() != textType {
+			return true
 		}
-		list := top.Field(index)
-		for item := range list.Len() {
-			object := list.Index(item)
-			walkTexts(object, kebab(field.Name)+" "+nameOf(object), outside)
-		}
+		visit(where, value.Interface().(LocalizedText), false)
+		return false
 	}
+	walkModel(reflect.ValueOf(&catalog.Project).Elem(), "configuration", enter)
+	eachCatalogObject(catalog, func(object reflect.Value, where string) {
+		walkModel(object, where, enter)
+	})
 	// The forms are not part of the catalog; their texts were gathered when
 	// the forms were read (keepFormTexts).
 	for _, text := range catalog.formTitles {
 		visit(text.where, text.text, text.chart)
-	}
-}
-
-func walkTexts(value reflect.Value, where string, visit func(string, LocalizedText)) {
-	textType := reflect.TypeFor[LocalizedText]()
-	switch value.Kind() {
-	case reflect.Pointer:
-		if !value.IsNil() {
-			walkTexts(value.Elem(), where, visit)
-		}
-	case reflect.Map:
-		if value.Type() == textType {
-			visit(where, value.Interface().(LocalizedText))
-			return
-		}
-		if value.Type().Elem() == textType {
-			for _, key := range value.MapKeys() {
-				walkTexts(value.MapIndex(key), where+" "+fmt.Sprint(key.Interface()), visit)
-			}
-		}
-	case reflect.Slice:
-		switch value.Type().Elem().Kind() {
-		case reflect.Struct, reflect.Pointer, reflect.Map:
-			for index := range value.Len() {
-				element := value.Index(index)
-				walkTexts(element, where+" "+nameOf(element), visit)
-			}
-		}
-	case reflect.Struct:
-		for index := range value.NumField() {
-			field := value.Type().Field(index)
-			if !field.IsExported() {
-				continue
-			}
-			next := where
-			if !field.Anonymous {
-				next = where + " " + yamlName(field)
-			}
-			walkTexts(value.Field(index), next, visit)
-		}
 	}
 }
 
@@ -1411,12 +1298,26 @@ type noteHolder struct {
 }
 
 // eachNoteHolder walks every object of the catalog, top level and nested, and
-// calls visit for every struct carrying a part some rule looks at.
-//
-// It walks by reflection on purpose: a new kind of object, or a new place a
-// field may stand, is covered the day it is added to the model, and a rule
-// cannot miss it because nobody remembered to list it here.
+// calls visit for every struct carrying a part some rule looks at - see
+// walkModel for why the walk is by reflection.
 func eachNoteHolder(catalog *Catalog, visit func(noteHolder)) {
+	eachCatalogObject(catalog, func(object reflect.Value, where string) {
+		context := objectContext(object)
+		walkModel(object, where, func(value reflect.Value, where string) bool {
+			if value.Kind() == reflect.Struct {
+				if holder, ok := holderOf(value, where, context); ok {
+					visit(holder)
+				}
+			}
+			return true
+		})
+	})
+}
+
+// eachCatalogObject calls visit with every object of the catalog - an element
+// of each of its lists of objects - and the place it stands in, as the
+// project's files name it.
+func eachCatalogObject(catalog *Catalog, visit func(object reflect.Value, where string)) {
 	top := reflect.ValueOf(catalog).Elem()
 	for index := range top.NumField() {
 		field := top.Type().Field(index)
@@ -1426,8 +1327,60 @@ func eachNoteHolder(catalog *Catalog, visit func(noteHolder)) {
 		list := top.Field(index)
 		for item := range list.Len() {
 			object := list.Index(item)
-			where := kebab(field.Name) + " " + nameOf(object)
-			walkNoteHolders(object, where, objectContext(object), visit)
+			visit(object, kebab(field.Name)+" "+nameOf(object))
+		}
+	}
+}
+
+// walkModel walks a value of the model by reflection - through pointers, lists
+// of structs, pointers and maps, maps of maps and the exported fields of
+// structs - and calls enter with every value it reaches and the place it
+// stands in, named as the project's files name it; enter answering false keeps
+// the walk out of what lies below. A struct reached as a copy is walked as an
+// addressable one, so what a visitor takes from it can be pointed to.
+//
+// It walks by reflection on purpose, and there is one walk for every rule: a
+// new kind of object, or a new place a field may stand, is covered the day it
+// is added to the model, and a new kind of nesting is added here once.
+func walkModel(value reflect.Value, where string, enter func(value reflect.Value, where string) bool) {
+	if value.Kind() == reflect.Struct && !value.CanAddr() {
+		copied := reflect.New(value.Type()).Elem()
+		copied.Set(value)
+		value = copied
+	}
+	if !enter(value, where) {
+		return
+	}
+	switch value.Kind() {
+	case reflect.Pointer:
+		if !value.IsNil() {
+			walkModel(value.Elem(), where, enter)
+		}
+	case reflect.Map:
+		if value.Type().Elem().Kind() == reflect.Map {
+			for _, key := range value.MapKeys() {
+				walkModel(value.MapIndex(key), where+" "+fmt.Sprint(key.Interface()), enter)
+			}
+		}
+	case reflect.Slice:
+		switch value.Type().Elem().Kind() {
+		case reflect.Struct, reflect.Pointer, reflect.Map:
+			for index := range value.Len() {
+				element := value.Index(index)
+				walkModel(element, where+" "+nameOf(element), enter)
+			}
+		}
+	case reflect.Struct:
+		for index := range value.NumField() {
+			field := value.Type().Field(index)
+			if !field.IsExported() {
+				continue
+			}
+			next := where
+			if !field.Anonymous {
+				next = where + " " + yamlName(field)
+			}
+			walkModel(value.Field(index), next, enter)
 		}
 	}
 }
@@ -1447,51 +1400,6 @@ func objectContext(object reflect.Value) noteObject {
 		context.code = field.Addr().Interface().(*CatalogCode)
 	}
 	return context
-}
-
-func walkNoteHolders(value reflect.Value, where string, object noteObject, visit func(noteHolder)) {
-	switch value.Kind() {
-	case reflect.Pointer:
-		if !value.IsNil() {
-			walkNoteHolders(value.Elem(), where, object, visit)
-		}
-		return
-	case reflect.Slice:
-		if value.Type().Elem().Kind() != reflect.Struct && value.Type().Elem().Kind() != reflect.Pointer {
-			return
-		}
-		for index := range value.Len() {
-			element := value.Index(index)
-			walkNoteHolders(element, where+" "+nameOf(element), object, visit)
-		}
-		return
-	case reflect.Struct:
-	default:
-		return
-	}
-	if !value.CanAddr() {
-		copied := reflect.New(value.Type()).Elem()
-		copied.Set(value)
-		value = copied
-	}
-	if holder, ok := holderOf(value, where, object); ok {
-		visit(holder)
-	}
-	for index := range value.NumField() {
-		field := value.Type().Field(index)
-		if !field.IsExported() {
-			continue
-		}
-		child := value.Field(index)
-		next := where
-		if !field.Anonymous {
-			next = where + " " + yamlName(field)
-		}
-		switch field.Type.Kind() {
-		case reflect.Struct, reflect.Pointer, reflect.Slice:
-			walkNoteHolders(child, next, object, visit)
-		}
-	}
 }
 
 // holderOf reads the parts a rule looks at out of one struct, and says
