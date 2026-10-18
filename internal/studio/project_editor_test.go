@@ -305,7 +305,6 @@ func TestProjectEditorSavesTheDefaultsOfTheRoot(t *testing.T) {
 	style, form, appearance, storage := written["style"], written["form"], written["appearance"], written["storage"]
 	updated := opened.Configuration
 	updated.DefaultStyle = &style
-	updated.DefaultInterface = "ОсновнойИнтерфейс"
 	updated.DefaultRoles = []uuid.UUID{written["role"]}
 	updated.DefaultReportForm = &form
 	updated.DefaultSearchForm = &form
@@ -322,8 +321,6 @@ func TestProjectEditorSavesTheDefaultsOfTheRoot(t *testing.T) {
 	switch {
 	case saved.DefaultStyle == nil || *saved.DefaultStyle != style:
 		t.Fatalf("the default style was lost: %+v", saved.DefaultStyle)
-	case saved.DefaultInterface != "ОсновнойИнтерфейс":
-		t.Fatalf("the default interface was lost: %q", saved.DefaultInterface)
 	case len(saved.DefaultRoles) != 1 || saved.DefaultRoles[0] != written["role"]:
 		t.Fatalf("the default roles were lost: %+v", saved.DefaultRoles)
 	case saved.DefaultReportForm == nil || *saved.DefaultReportForm != form:
@@ -430,15 +427,9 @@ func TestProjectEditorSavesTheModesOfTheRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	updated := opened.Configuration
-	updated.DefaultRunMode = project.ManagedApplicationRunMode
 	updated.UsePurposes = []project.UsePurpose{project.PlatformApplicationPurpose}
-	updated.ModalityUse = project.UsedWithWarning
-	updated.SynchronousPlatformExtensionCallUse = project.Used
-	updated.InterfaceCompatibility = project.TaxiAllowVersion82Interface
 	updated.MainWindowMode = project.NormalWindow
-	updated.DatabaseTablespacesUse = project.NotUsed
-	updated.CompatibilityVersion = "8.3.21"
-	updated.UseManagedFormsInOrdinaryApplication = true
+	updated.BinaryDataStorage = project.NotUsed
 	updated.IncludeHelpInContents = true
 	if _, err := workspace.SaveProjectEditor(updated, opened.Revision); err != nil {
 		t.Fatal(err)
@@ -449,17 +440,11 @@ func TestProjectEditorSavesTheModesOfTheRoot(t *testing.T) {
 	}
 	saved := reopened.Configuration
 	switch {
-	case saved.DefaultRunMode != project.ManagedApplicationRunMode:
-		t.Fatalf("the run mode was lost: %q", saved.DefaultRunMode)
 	case len(saved.UsePurposes) != 1 || saved.UsePurposes[0] != project.PlatformApplicationPurpose:
 		t.Fatalf("the purposes were lost: %+v", saved.UsePurposes)
-	case saved.ModalityUse != project.UsedWithWarning || saved.SynchronousPlatformExtensionCallUse != project.Used:
-		t.Fatalf("a use mode was lost: %+v", saved)
-	case saved.InterfaceCompatibility != project.TaxiAllowVersion82Interface || saved.MainWindowMode != project.NormalWindow:
-		t.Fatalf("an interface mode was lost: %+v", saved)
-	case saved.DatabaseTablespacesUse != project.NotUsed || saved.CompatibilityVersion != "8.3.21":
-		t.Fatalf("a compatibility mode was lost: %+v", saved)
-	case !saved.UseManagedFormsInOrdinaryApplication || !saved.IncludeHelpInContents:
+	case saved.MainWindowMode != project.NormalWindow || saved.BinaryDataStorage != project.NotUsed:
+		t.Fatalf("a mode was lost: %+v", saved)
+	case !saved.IncludeHelpInContents:
 		t.Fatalf("a flag was lost: %+v", saved)
 	}
 }

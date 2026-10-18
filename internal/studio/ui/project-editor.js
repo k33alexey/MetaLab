@@ -245,31 +245,25 @@ function createProjectEditor(host, onChange) {
     appearance.append(referenceField('Макет оформления отчётов', 'defaultReportAppearanceTemplate',
       defaults.appearanceTemplates || []));
     appearance.append(rolesField('Основные роли', 'defaultRoles'));
-    appearance.append(textField('Основной интерфейс', source.configuration.defaultInterface,
-      value => model.setField('defaultInterface', value), {maxLength: 255}));
-    appearance.append(note('Основной интерфейс — меню и панели обычного приложения. ML строит только '
-      + 'управляемый интерфейс, поэтому значение хранится как написано и ни на что не влияет.'));
     panel.append(appearance);
 
     const forms = section('Формы по умолчанию');
-    forms.append(referenceField('Форма отчёта', 'defaultReportForm', defaults.commonForms || []));
-    forms.append(referenceField('Форма настроек отчёта', 'defaultReportSettingsForm', defaults.commonForms || []));
-    forms.append(referenceField('Форма варианта отчёта', 'defaultReportVariantForm', defaults.commonForms || []));
-    forms.append(referenceField('Форма констант', 'defaultConstantsForm', defaults.commonForms || []));
-    forms.append(referenceField('Форма поиска', 'defaultSearchForm', defaults.commonForms || []));
-    forms.append(referenceField('Форма настроек динамического списка', 'defaultDynamicListSettingsForm',
-      defaults.commonForms || []));
-    forms.append(referenceField('Вспомогательная форма констант', 'auxiliaryConstantsForm',
-      defaults.commonForms || []));
+    /* Форма по умолчанию корня — всегда общая форма: своей формы у корня нет. */
+    const formField = (label, key) => referenceField(label, key, defaults.commonForms || []);
+    forms.append(formField('Форма отчёта', 'defaultReportForm'));
+    forms.append(formField('Форма настроек отчёта', 'defaultReportSettingsForm'));
+    forms.append(formField('Форма варианта отчёта', 'defaultReportVariantForm'));
+    forms.append(formField('Форма констант', 'defaultConstantsForm'));
+    forms.append(formField('Форма поиска', 'defaultSearchForm'));
+    forms.append(formField('Форма настроек динамического списка', 'defaultDynamicListSettingsForm'));
+    forms.append(formField('Вспомогательная форма констант', 'auxiliaryConstantsForm'));
     forms.append(note('Все они — общие формы: они не принадлежат ни одному объекту, поэтому корень и '
       + 'может выдать их всем объектам сразу. Вспомогательная форма констант открывается тогда, когда '
       + 'основная не задана или не подходит.'));
-    forms.append(referenceField('История данных: изменения', 'dataHistoryChangesForm', defaults.commonForms || []));
-    forms.append(referenceField('История данных: версия', 'dataHistoryVersionForm', defaults.commonForms || []));
-    forms.append(referenceField('История данных: различия версий', 'dataHistoryVersionDifferenceForm',
-      defaults.commonForms || []));
-    forms.append(referenceField('Выбор пользователей системы взаимодействия', 'collaborationSystemUsersChoiceForm',
-      defaults.commonForms || []));
+    forms.append(formField('История данных: изменения', 'dataHistoryChangesForm'));
+    forms.append(formField('История данных: версия', 'dataHistoryVersionForm'));
+    forms.append(formField('История данных: различия версий', 'dataHistoryVersionDifferenceForm'));
+    forms.append(formField('Выбор пользователей системы взаимодействия', 'collaborationSystemUsersChoiceForm'));
     forms.append(note('Последние четыре не откроются: история данных переносится и не исполняется, а системы '
       + 'взаимодействия в ML нет вовсе. Ссылка всё равно проверяется — указывающая в пустоту, она сообщает '
       + 'не о механизме, а о том, что форму удалили.'));
@@ -308,50 +302,27 @@ function createProjectEditor(host, onChange) {
       + 'неосвобождённый потрачен, даже если объект так и не записали.'));
     panel.append(settings);
 
-    /* Режимы прототипа. Почти все описывают поведение, которого в ML нет
-       вовсе: обычное приложение, модальные окна, синхронные вызовы расширений
-       и внешних компонент, табличные пространства и совместимость с прежними
-       выпусками. Они хранятся и показываются, но ни на что не влияют, — и
-       раздел говорит об этом прямо, чтобы никто не искал, почему выбранное
-       ничего не меняет. */
-    /* Ответ на «используется ли»: тремя словами, где прототип предупреждает,
-       прежде чем отказать, и двумя везде, где нет (project.UseMode). */
+    /* Режимы прототипа, которых ML не исполняет: они хранятся и
+       показываются, но ни на что не влияют, — и раздел говорит об этом прямо,
+       чтобы никто не искал, почему выбранное ничего не меняет. Режимы только
+       обычного приложения, прежних выпусков и чужих механизмов (запуск,
+       модальность, синхронные вызовы, табличные пространства, совместимость)
+       не переносятся вовсе — METADATA-OBJECTS, «Только управляемое
+       приложение». */
     const plainUse = [['', 'Не задано'], ['do-not-use', 'Не использовать'], ['use', 'Использовать']];
-    const warnedUse = [...plainUse, ['use-with-warnings', 'Использовать с предупреждениями']];
     const modes = section('Режимы прототипа');
-    modes.append(note('ML исполняет только то, что умеет сам: управляемое приложение без модальных окон '
-      + 'и без синхронных вызовов. Всё в этом разделе переносится, показывается и ни на что не влияет — '
-      + 'но и не теряется: перенесённая конфигурация не должна молча лишаться части своих свойств.'));
-    modes.append(choiceField('Основной режим запуска', 'defaultRunMode', [
-      ['', 'Не задан'], ['managed-application', 'Управляемое приложение'],
-      ['ordinary-application', 'Обычное приложение'], ['auto', 'Автоматически'],
-    ]));
+    modes.append(note('ML исполняет только то, что умеет сам. Всё в этом разделе переносится, '
+      + 'показывается и ни на что не влияет — но и не теряется: перенесённая конфигурация не должна '
+      + 'молча лишаться части своих свойств.'));
     modes.append(purposesField('Назначение использования'));
-    modes.append(choiceField('Модальность', 'modalityUse', [['', 'Не задана'], ...warnedUse.slice(1)]));
-    modes.append(choiceField('Синхронные вызовы расширений платформы', 'synchronousPlatformExtensionCallUse', warnedUse));
-    modes.append(choiceField('Синхронные вызовы расширений (до 8.3.8)', 'synchronousExtensionCallUse', warnedUse));
-    modes.append(choiceField('Совместимость интерфейса', 'interfaceCompatibility', [
-      ['', 'Не задана'], ['taxi', 'Такси'], ['taxi-allow-version-8-2', 'Такси, разрешить 8.2'],
-      ['version-8-2-allow-taxi', '8.2, разрешить Такси'], ['version-8-2', 'Версия 8.2'],
-    ]));
     modes.append(choiceField('Основное окно приложения', 'mainWindowMode', [
       ['', 'Не задано'], ['normal', 'Обычное'], ['workplace', 'Рабочее место'],
       ['fullscreen-workplace', 'Полноэкранное рабочее место'],
       ['embedded-workplace', 'Встроенное рабочее место'], ['kiosk', 'Киоск'],
     ]));
-    modes.append(choiceField('Табличные пространства базы', 'databaseTablespacesUse', plainUse));
     modes.append(choiceField('Хранилище двоичных данных', 'binaryDataStorage', plainUse));
     modes.append(choiceField('Блочное хранение двоичных данных', 'binaryDataBlockStorageUse', plainUse));
-    modes.append(textField('Режим совместимости', source.configuration.compatibilityVersion,
-      value => model.setField('compatibilityVersion', value), {maxLength: 16, placeholder: '8.3.21'}));
-    modes.append(textField('Совместимость расширений', source.configuration.extensionCompatibilityVersion,
-      value => model.setField('extensionCompatibilityVersion', value), {maxLength: 16, placeholder: '8.3.27'}));
-    modes.append(checkField('Использовать управляемые формы в обычном приложении', 'useManagedFormsInOrdinaryApplication'));
-    modes.append(checkField('Использовать обычные формы в управляемом приложении', 'useOrdinaryFormsInManagedApplication'));
     modes.append(checkField('Включать в содержание справки', 'includeHelpInContents'));
-    modes.append(note('Режим совместимости — выпуск прототипа, на который писалась конфигурация: '
-      + 'пустое поле означает, что ни на какой прежний выпуск она не оглядывается. Список выпусков '
-      + 'растёт без нас, поэтому он и не список, а версия.'));
     panel.append(modes);
 
     host.append(panel);

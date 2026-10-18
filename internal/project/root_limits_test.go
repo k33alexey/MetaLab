@@ -25,7 +25,7 @@ func TestRootTakesWhatTheConfiguratorTakes(t *testing.T) {
 	t.Parallel()
 	value := rootForLimits()
 	long := "A" + strings.Repeat("я", MaxNameLength-1)
-	value.Name, value.NamePrefix, value.DefaultInterface = long, long, long
+	value.Name, value.NamePrefix = long, long
 	value.Languages[0].Name = long
 	for index := range 120 {
 		code := fmt.Sprintf("l%d", index)
@@ -47,10 +47,9 @@ func TestRootNameStopsAt255(t *testing.T) {
 	t.Parallel()
 	over := "A" + strings.Repeat("я", MaxNameLength)
 	for name, broken := range map[string]func(*Project){
-		"имя":                func(value *Project) { value.Name = over },
-		"имя языка":          func(value *Project) { value.Languages[0].Name = over },
-		"префикс имён":       func(value *Project) { value.NamePrefix = over },
-		"основной интерфейс": func(value *Project) { value.DefaultInterface = over },
+		"имя":          func(value *Project) { value.Name = over },
+		"имя языка":    func(value *Project) { value.Languages[0].Name = over },
+		"префикс имён": func(value *Project) { value.NamePrefix = over },
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

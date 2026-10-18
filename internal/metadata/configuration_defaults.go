@@ -35,9 +35,7 @@ type configurationDefault struct {
 //
 // The default language is resolved with the languages themselves, because the
 // root declares them and every synonym is checked against them long before a
-// catalog exists. The default interface is resolved by nobody: it names an
-// object of the ordinary application, which ML does not build, so it is
-// carried as written and never acted upon.
+// catalog exists.
 func (catalog *Catalog) validateConfigurationDefaults(root string) error {
 	// A catalog assembled from a snapshot holds only the kinds that snapshot
 	// carried, so a default would look missing when it is merely not read.

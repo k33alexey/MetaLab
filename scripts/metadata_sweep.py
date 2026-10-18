@@ -209,15 +209,14 @@ RENAMED_BY_KIND = {
     # дамп состава их не содержал, и сверка молча пропускала оба.
     ("Language", "LanguageCode"): "code",
     ("CommonForm", "UsePurposes"): "purposes",
-    ("Configuration", "CompatibilityMode"): "compatibility_version",
-    ("Configuration", "ConfigurationExtensionCompatibilityMode"): "extension_compatibility_version",
     ("Configuration", "ConfigurationInformationAddress"): "information_address",
     ("Configuration", "DefaultCollaborationSystemUsersChoiceForm"): "collaboration_system_users_choice_form",
     ("Configuration", "DefaultDataHistoryChangeHistoryForm"): "data_history_changes_form",
     ("Configuration", "DefaultDataHistoryVersionDataForm"): "data_history_version_form",
     ("Configuration", "DefaultDataHistoryVersionDifferencesForm"): "data_history_version_difference_form",
     ("Configuration", "MainClientApplicationWindowMode"): "main_window_mode",
-    ("Configuration", "SynchronousPlatformExtensionAndAddInCallUseMode"): "synchronous_platform_extension_call_use",
+    # Этих двух полей у нас с 2.349 нет (ACCEPTED), но переименование стоит:
+    # на нём держится самопроверка SELF_CHECK - два имени из одних слов.
     ("Configuration", "UseManagedFormInOrdinaryApplication"): "use_managed_forms_in_ordinary_application",
     ("Configuration", "UseOrdinaryFormInManagedApplication"): "use_ordinary_forms_in_managed_application",
     ("Document", "RegisterRecords"): "movements",
@@ -312,6 +311,17 @@ ACCEPTED = {
     ("Configuration", "AllowedIncomingShareRequestTypes"): "METADATA-OBJECTS.md: мобильное приложение не переносится - отказ владельца 14.10.2026",
     ("Configuration", "MobileClientSignature"): "METADATA-OBJECTS.md: мобильное приложение не переносится - отказ владельца 14.10.2026",
     ("Configuration", "StandaloneConfigurationRestrictionRoles"): "METADATA-OBJECTS.md: мобильное приложение не переносится - отказ владельца 14.10.2026",
+    ("Configuration", "DefaultRunMode"): "METADATA-OBJECTS.md: только управляемое приложение - режим обычного приложения, прежних выпусков или чужого механизма не переносится, отказ владельца 14.10.2026",
+    ("Configuration", "UseManagedFormInOrdinaryApplication"): "METADATA-OBJECTS.md: только управляемое приложение - режим обычного приложения, прежних выпусков или чужого механизма не переносится, отказ владельца 14.10.2026",
+    ("Configuration", "UseOrdinaryFormInManagedApplication"): "METADATA-OBJECTS.md: только управляемое приложение - режим обычного приложения, прежних выпусков или чужого механизма не переносится, отказ владельца 14.10.2026",
+    ("Configuration", "ModalityUseMode"): "METADATA-OBJECTS.md: только управляемое приложение - режим обычного приложения, прежних выпусков или чужого механизма не переносится, отказ владельца 14.10.2026",
+    ("Configuration", "SynchronousPlatformExtensionAndAddInCallUseMode"): "METADATA-OBJECTS.md: только управляемое приложение - режим обычного приложения, прежних выпусков или чужого механизма не переносится, отказ владельца 14.10.2026",
+    ("Configuration", "SynchronousExtensionAndAddInCallUseMode"): "METADATA-OBJECTS.md: только управляемое приложение - режим обычного приложения, прежних выпусков или чужого механизма не переносится, отказ владельца 14.10.2026",
+    ("Configuration", "InterfaceCompatibilityMode"): "METADATA-OBJECTS.md: только управляемое приложение - режим обычного приложения, прежних выпусков или чужого механизма не переносится, отказ владельца 14.10.2026",
+    ("Configuration", "DatabaseTablespacesUseMode"): "METADATA-OBJECTS.md: только управляемое приложение - режим обычного приложения, прежних выпусков или чужого механизма не переносится, отказ владельца 14.10.2026",
+    ("Configuration", "CompatibilityMode"): "METADATA-OBJECTS.md: только управляемое приложение - режим обычного приложения, прежних выпусков или чужого механизма не переносится, отказ владельца 14.10.2026",
+    ("Configuration", "ConfigurationExtensionCompatibilityMode"): "METADATA-OBJECTS.md: только управляемое приложение - режим обычного приложения, прежних выпусков или чужого механизма не переносится, отказ владельца 14.10.2026",
+    ("Configuration", "DefaultInterface"): "METADATA-OBJECTS.md: основной интерфейс - ссылка на интерфейс обычного приложения, вид снят, отказ владельца 15.10.2026",
     ("CommonForm", "FormType"): "METADATA-OBJECTS.md: принимаются только управляемые формы - вид формы снят с обычной формой, отказ владельца 14.10.2026",
     #
     # Второй род - список, который у нас не список, а сама раскладка проекта.

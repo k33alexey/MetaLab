@@ -478,7 +478,6 @@ languages:
       ru: Русский
     code: ru
 default_style: 018f1f72-3b4c-7d6e-8f90-000000000010
-default_interface: ОсновнойИнтерфейс
 default_roles:
   - 018f1f72-3b4c-7d6e-8f90-000000000020
   - 018f1f72-3b4c-7d6e-8f90-000000000021
@@ -501,8 +500,6 @@ form_data_settings_storage: 018f1f72-3b4c-7d6e-8f90-000000000054
 	switch {
 	case value.DefaultStyle == nil || value.DefaultStyle.String() != "018f1f72-3b4c-7d6e-8f90-000000000010":
 		t.Fatalf("the default style came back as %v", value.DefaultStyle)
-	case value.DefaultInterface != "ОсновнойИнтерфейс":
-		t.Fatalf("the default interface came back as %q", value.DefaultInterface)
 	case len(value.DefaultRoles) != 2 ||
 		value.DefaultRoles[0].String() != "018f1f72-3b4c-7d6e-8f90-000000000020":
 		t.Fatalf("the default roles came back as %v", value.DefaultRoles)
@@ -546,14 +543,12 @@ func TestRootDefaultsAreCheckedForShape(t *testing.T) {
 	role := uuid.MustNew()
 	empty := uuid.UUID{}
 	for name, broken := range map[string]func(value *Project){
-		"пустая ссылка на стиль":       func(value *Project) { value.DefaultStyle = &empty },
-		"пустая ссылка на форму":       func(value *Project) { value.DefaultReportForm = &empty },
-		"пустая ссылка на хранилище":   func(value *Project) { value.FormDataSettingsStorage = &empty },
-		"пустая ссылка на макет":       func(value *Project) { value.DefaultReportAppearanceTemplate = &empty },
-		"пустая роль":                  func(value *Project) { value.DefaultRoles = []uuid.UUID{empty} },
-		"одна роль дважды":             func(value *Project) { value.DefaultRoles = []uuid.UUID{role, role} },
-		"интерфейс не идентификатор":   func(value *Project) { value.DefaultInterface = "Основной интерфейс" },
-		"интерфейс с переводом строки": func(value *Project) { value.DefaultInterface = "Основной\nИнтерфейс" },
+		"пустая ссылка на стиль":     func(value *Project) { value.DefaultStyle = &empty },
+		"пустая ссылка на форму":     func(value *Project) { value.DefaultReportForm = &empty },
+		"пустая ссылка на хранилище": func(value *Project) { value.FormDataSettingsStorage = &empty },
+		"пустая ссылка на макет":     func(value *Project) { value.DefaultReportAppearanceTemplate = &empty },
+		"пустая роль":                func(value *Project) { value.DefaultRoles = []uuid.UUID{empty} },
+		"одна роль дважды":           func(value *Project) { value.DefaultRoles = []uuid.UUID{role, role} },
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -700,19 +695,10 @@ languages:
     title:
       ru: Русский
     code: ru
-default_run_mode: managed-application
 use_purposes: [platform-application, mobile-platform-application]
-use_managed_forms_in_ordinary_application: true
-modality_use: use-with-warnings
-synchronous_platform_extension_call_use: use
-synchronous_extension_call_use: do-not-use
-interface_compatibility: taxi-allow-version-8-2
 main_window_mode: normal
-database_tablespaces_use: do-not-use
 binary_data_storage: use
 binary_data_block_storage_use: do-not-use
-compatibility_version: 8.3.21
-extension_compatibility_version: 8.3.27
 include_help_in_contents: true
 `
 	value, err := Decode(strings.NewReader(source))
@@ -720,22 +706,12 @@ include_help_in_contents: true
 		t.Fatalf("Decode() error = %v", err)
 	}
 	switch {
-	case value.DefaultRunMode != ManagedApplicationRunMode:
-		t.Fatalf("the run mode came back as %q", value.DefaultRunMode)
 	case len(value.UsePurposes) != 2 || value.UsePurposes[0] != PlatformApplicationPurpose:
 		t.Fatalf("the purposes came back as %+v", value.UsePurposes)
-	case !value.UseManagedFormsInOrdinaryApplication || value.UseOrdinaryFormsInManagedApplication:
-		t.Fatalf("the form flags came back as %+v", value)
-	case value.ModalityUse != UsedWithWarning || value.SynchronousPlatformExtensionCallUse != Used ||
-		value.SynchronousExtensionCallUse != NotUsed:
-		t.Fatalf("a use mode was lost: %+v", value)
-	case value.InterfaceCompatibility != TaxiAllowVersion82Interface || value.MainWindowMode != NormalWindow:
-		t.Fatalf("an interface mode was lost: %+v", value)
-	case value.DatabaseTablespacesUse != NotUsed || value.BinaryDataStorage != Used ||
-		value.BinaryDataBlockStorageUse != NotUsed:
+	case value.MainWindowMode != NormalWindow:
+		t.Fatalf("the window mode was lost: %+v", value)
+	case value.BinaryDataStorage != Used || value.BinaryDataBlockStorageUse != NotUsed:
 		t.Fatalf("a storage mode was lost: %+v", value)
-	case value.CompatibilityVersion != "8.3.21" || value.ExtensionCompatibilityVersion != "8.3.27":
-		t.Fatalf("a compatibility version was lost: %+v", value)
 	case !value.IncludeHelpInContents:
 		t.Fatal("the help flag was lost")
 	}
@@ -753,10 +729,7 @@ include_help_in_contents: true
 	}
 }
 
-// A mode is checked for being a mode at all. The compatibility version is the
-// one that is not checked against a list: the list is another platform's
-// release history, and refusing a release we had not heard of would lose
-// exactly what carrying the mode was for.
+// A mode is checked for being a mode at all.
 func TestRootModesAreCheckedForShape(t *testing.T) {
 	t.Parallel()
 
@@ -768,18 +741,12 @@ func TestRootModesAreCheckedForShape(t *testing.T) {
 		}
 	}
 	for name, broken := range map[string]func(value *Project){
-		"режим запуска не из набора": func(value *Project) { value.DefaultRunMode = "web" },
-		"назначение не из набора":    func(value *Project) { value.UsePurposes = []UsePurpose{"watch"} },
+		"назначение не из набора": func(value *Project) { value.UsePurposes = []UsePurpose{"watch"} },
 		"назначение дважды": func(value *Project) {
 			value.UsePurposes = []UsePurpose{PlatformApplicationPurpose, PlatformApplicationPurpose}
 		},
-		"модальность не из набора":              func(value *Project) { value.ModalityUse = "maybe" },
-		"предупреждение там, где его нет":       func(value *Project) { value.DatabaseTablespacesUse = UsedWithWarning },
-		"двоичные данные с предупреждением":     func(value *Project) { value.BinaryDataStorage = UsedWithWarning },
-		"совместимость интерфейса не из набора": func(value *Project) { value.InterfaceCompatibility = "версия 7.7" },
-		"окно не из набора":                     func(value *Project) { value.MainWindowMode = "widget" },
-		"версия не версия":                      func(value *Project) { value.CompatibilityVersion = "восьмая" },
-		"версия из одного числа":                func(value *Project) { value.ExtensionCompatibilityVersion = "8" },
+		"двоичные данные с предупреждением": func(value *Project) { value.BinaryDataStorage = "use-with-warnings" },
+		"окно не из набора":                 func(value *Project) { value.MainWindowMode = "widget" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -791,13 +758,6 @@ func TestRootModesAreCheckedForShape(t *testing.T) {
 		})
 	}
 
-	// A release we have never heard of is accepted, because the release
-	// history is not ours to enumerate.
-	future := base()
-	future.CompatibilityVersion = "8.4.99"
-	if err := future.Validate(); err != nil {
-		t.Fatalf("an unknown release was refused: %v", err)
-	}
 }
 
 // The root no longer describes a mobile application: ML has no mobile client,
@@ -833,6 +793,52 @@ languages:
 		"standalone_configuration_content":           "[{kind: catalogs, object: 018f1f72-3b4c-7d6e-8f90-000000000080}]",
 		"standalone_data_exchange":                   "{period: 300}",
 		"standalone_configuration_restriction_roles": "[018f1f72-3b4c-7d6e-8f90-000000000082]",
+	} {
+		t.Run(key, func(t *testing.T) {
+			t.Parallel()
+			_, err := Decode(strings.NewReader(root + key + ": " + value + "\n"))
+			if err == nil || !strings.Contains(err.Error(), key) {
+				t.Fatalf("the root naming %s was read: %v", key, err)
+			}
+		})
+	}
+}
+
+// The modes that exist only for the ordinary application, and the modes of
+// earlier releases and of mechanisms ML does not have, are not carried (owner,
+// 14.10.2026, METADATA-OBJECTS «Только управляемое приложение»), nor the main
+// interface, a reference to the ordinary application's interface whose kind
+// is gone. A file naming one is refused by name. Defect caught: the root kept
+// a mode ML never acts on, shown in Studio as if it chose something, or read
+// it with the key dropped silently.
+func TestRootRefusesTheModesOfTheOrdinaryApplication(t *testing.T) {
+	t.Parallel()
+
+	const root = `format: 1
+id: 018f1f72-3b4c-7d6e-8f90-123456789abc
+name: SalesDemo
+title:
+  ru: Продажи и склад
+default_language: ru
+languages:
+  - id: 018f1f72-3b4c-7d6e-8f90-000000000001
+    name: Русский
+    title:
+      ru: Русский
+    code: ru
+`
+	for key, value := range map[string]string{
+		"default_run_mode":                          "managed-application",
+		"use_managed_forms_in_ordinary_application": "true",
+		"use_ordinary_forms_in_managed_application": "true",
+		"modality_use":                              "do-not-use",
+		"synchronous_platform_extension_call_use":   "do-not-use",
+		"synchronous_extension_call_use":            "do-not-use",
+		"interface_compatibility":                   "taxi",
+		"database_tablespaces_use":                  "do-not-use",
+		"compatibility_version":                     "8.3.21",
+		"extension_compatibility_version":           "8.3.27",
+		"default_interface":                         "ОсновнойИнтерфейс",
 	} {
 		t.Run(key, func(t *testing.T) {
 			t.Parallel()

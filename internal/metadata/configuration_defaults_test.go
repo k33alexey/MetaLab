@@ -110,7 +110,6 @@ func allDefaults(t *testing.T) func(configuration *project.Project) {
 	t.Helper()
 	return func(configuration *project.Project) {
 		configuration.DefaultStyle = mustParse(t, defaultsStyle)
-		configuration.DefaultInterface = "ОсновнойИнтерфейс"
 		configuration.DefaultRoles = []uuid.UUID{*mustParse(t, defaultsRole), *mustParse(t, defaultsSecondRole)}
 		configuration.DefaultReportForm = mustParse(t, defaultsReportForm)
 		configuration.DefaultReportSettingsForm = mustParse(t, defaultsSettingsForm)
@@ -142,8 +141,6 @@ func TestConfigurationDefaultsAreCarriedAndResolved(t *testing.T) {
 	switch {
 	case configuration.DefaultStyle == nil || configuration.DefaultStyle.String() != defaultsStyle:
 		t.Fatalf("the default style was lost: %+v", configuration.DefaultStyle)
-	case configuration.DefaultInterface != "ОсновнойИнтерфейс":
-		t.Fatalf("the default interface was lost: %q", configuration.DefaultInterface)
 	case len(configuration.DefaultRoles) != 2 || configuration.DefaultRoles[0].String() != defaultsRole:
 		t.Fatalf("the default roles were lost or reordered: %+v", configuration.DefaultRoles)
 	case configuration.DefaultReportForm == nil || configuration.DefaultReportSettingsForm == nil ||

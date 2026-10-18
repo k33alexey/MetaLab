@@ -112,13 +112,6 @@ type Project struct {
 	// DefaultStyle is what the application is drawn with unless something
 	// nearer says otherwise.
 	DefaultStyle *uuid.UUID `yaml:"default_style,omitempty" json:"defaultStyle,omitempty"`
-	// DefaultInterface is carried and never resolved. It names the main menu
-	// and toolbars an ordinary application is built from, and ML builds only
-	// managed interfaces - there is no kind of object for it to point at.
-	// Dropping it instead would be the one thing we forbade ourselves: a
-	// silent loss. It is carried by name, because the only thing that could
-	// give it an identifier is the branch that does not exist.
-	DefaultInterface string `yaml:"default_interface,omitempty" json:"defaultInterface,omitempty"`
 	// DefaultRoles are the rights a user works with when the list of users is
 	// empty. The order is the configuration's own and is kept as written.
 	DefaultRoles []uuid.UUID `yaml:"default_roles,omitempty" json:"defaultRoles,omitempty"`
@@ -199,56 +192,25 @@ type Project struct {
 	// so each one says which of the two it is: an identifier alone would make
 	// the reader of the file guess where to look.
 	AdditionalFullTextSearchDictionaries []DictionaryReference `yaml:"additional_full_text_search_dictionaries,omitempty" json:"additionalFullTextSearchDictionaries,omitempty"`
-	// What follows are the modes of the root. Almost all of them describe
-	// behaviour ML does not have at all: the ordinary application, modal
-	// windows, synchronous calls into platform extensions and add-ins,
-	// tablespaces of the database, and compatibility with earlier releases of
-	// the platform this one is written against.
+	// What follows are the modes of the root ML does not act on: they are
+	// stored as written and shown in the properties of the root - the second
+	// category of the conformance report, transferred and not implemented.
 	//
-	// They are stored as written, shown in the properties of the root and act
-	// on nothing - the second category of the conformance report, transferred
-	// and not implemented. Dropping them is the one outcome that category
-	// exists to prevent: a developer opening a transferred configuration must
-	// not find that part of its properties vanished without a word, and an
-	// administrator must not be left guessing why the transferred base behaves
-	// unlike the original.
-	DefaultRunMode                       ClientRunMode `yaml:"default_run_mode,omitempty" json:"defaultRunMode,omitempty"`
-	UsePurposes                          []UsePurpose  `yaml:"use_purposes,omitempty" json:"usePurposes,omitempty"`
-	UseManagedFormsInOrdinaryApplication bool          `yaml:"use_managed_forms_in_ordinary_application,omitempty" json:"useManagedFormsInOrdinaryApplication,omitempty"`
-	UseOrdinaryFormsInManagedApplication bool          `yaml:"use_ordinary_forms_in_managed_application,omitempty" json:"useOrdinaryFormsInManagedApplication,omitempty"`
-	ModalityUse                          UseMode       `yaml:"modality_use,omitempty" json:"modalityUse,omitempty"`
-	SynchronousPlatformExtensionCallUse  UseMode       `yaml:"synchronous_platform_extension_call_use,omitempty" json:"synchronousPlatformExtensionCallUse,omitempty"`
-	// SynchronousExtensionCallUse is the older mode of the same thing, left
-	// behind by the platform in 8.3.8 and still written in configurations from
-	// before it. Both are carried, because a configuration that holds the old
-	// one holds it, and which of the two it wrote is part of what it says.
-	SynchronousExtensionCallUse UseMode                    `yaml:"synchronous_extension_call_use,omitempty" json:"synchronousExtensionCallUse,omitempty"`
-	InterfaceCompatibility      InterfaceCompatibilityMode `yaml:"interface_compatibility,omitempty" json:"interfaceCompatibility,omitempty"`
-	MainWindowMode              MainWindowMode             `yaml:"main_window_mode,omitempty" json:"mainWindowMode,omitempty"`
-	DatabaseTablespacesUse      UseMode                    `yaml:"database_tablespaces_use,omitempty" json:"databaseTablespacesUse,omitempty"`
-	BinaryDataStorage           UseMode                    `yaml:"binary_data_storage,omitempty" json:"binaryDataStorage,omitempty"`
-	BinaryDataBlockStorageUse   UseMode                    `yaml:"binary_data_block_storage_use,omitempty" json:"binaryDataBlockStorageUse,omitempty"`
-	// The two compatibility versions are kept as versions and not as words
-	// from a list. The list is the release history of another platform: we do
-	// not own it, it grows without us, and a version we had not enumerated
-	// would be refused at import - which is the one thing a mode carried for
-	// the sake of not losing it must never do. Empty means the configuration
-	// is written against no earlier release.
-	CompatibilityVersion          string `yaml:"compatibility_version,omitempty" json:"compatibilityVersion,omitempty"`
-	ExtensionCompatibilityVersion string `yaml:"extension_compatibility_version,omitempty" json:"extensionCompatibilityVersion,omitempty"`
-	IncludeHelpInContents         bool   `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
+	// The modes that exist only for the ordinary application, and the modes
+	// of earlier releases and of mechanisms ML does not have, are not carried
+	// at all (owner, 14.10.2026, METADATA-OBJECTS «Только управляемое
+	// приложение»): the run mode, managed forms in the ordinary application
+	// and ordinary forms in the managed one, modality, both modes of
+	// synchronous calls, tablespaces, the compatibility of the platform, of
+	// the extensions and of the interface. A file naming one is refused by
+	// the strict reading; code reading Метаданные.РежимСовместимости and the
+	// like gets ML's own behaviour as a constant (METADATA-OBJECTS).
+	UsePurposes               []UsePurpose   `yaml:"use_purposes,omitempty" json:"usePurposes,omitempty"`
+	MainWindowMode            MainWindowMode `yaml:"main_window_mode,omitempty" json:"mainWindowMode,omitempty"`
+	BinaryDataStorage         UseMode        `yaml:"binary_data_storage,omitempty" json:"binaryDataStorage,omitempty"`
+	BinaryDataBlockStorageUse UseMode        `yaml:"binary_data_block_storage_use,omitempty" json:"binaryDataBlockStorageUse,omitempty"`
+	IncludeHelpInContents     bool           `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
 }
-
-// ClientRunMode is which application the platform starts by default. ML builds
-// only the managed application, so the value says what the configuration was
-// written for and nothing more.
-type ClientRunMode string
-
-const (
-	AutoRunMode                ClientRunMode = "auto"
-	ManagedApplicationRunMode  ClientRunMode = "managed-application"
-	OrdinaryApplicationRunMode ClientRunMode = "ordinary-application"
-)
 
 // UsePurpose is what the configuration, or a form of it, is meant to run on.
 // It is one type in the prototype for the root and for a form alike, so it is
@@ -263,27 +225,12 @@ const (
 	MobilePlatformApplicationPurpose UsePurpose = "mobile-platform-application"
 )
 
-// UseMode is the answer to "is this used": three-valued where the platform
-// warns before it refuses, two-valued everywhere else. Which of the two shapes
-// a mode has is checked per property, because a mode that cannot warn must not
-// be allowed to say it warns.
+// UseMode is the answer to "is this used".
 type UseMode string
 
 const (
-	Used            UseMode = "use"
-	NotUsed         UseMode = "do-not-use"
-	UsedWithWarning UseMode = "use-with-warnings"
-)
-
-// InterfaceCompatibilityMode is which generation of the prototype's interface
-// the configuration was drawn for.
-type InterfaceCompatibilityMode string
-
-const (
-	Version82Interface          InterfaceCompatibilityMode = "version-8-2"
-	Version82AllowTaxiInterface InterfaceCompatibilityMode = "version-8-2-allow-taxi"
-	TaxiAllowVersion82Interface InterfaceCompatibilityMode = "taxi-allow-version-8-2"
-	TaxiInterface               InterfaceCompatibilityMode = "taxi"
+	Used    UseMode = "use"
+	NotUsed UseMode = "do-not-use"
 )
 
 // MainWindowMode is what the main window of the client application looks like.
@@ -630,11 +577,6 @@ func (p Project) Validate() error {
 			add(path, "must be a non-zero UUID")
 		}
 	}
-	if p.DefaultInterface != "" && !isIdentifier(p.DefaultInterface) {
-		add("default_interface", "must start with a letter or an underscore and contain only letters, digits or underscores")
-	} else if utf8.RuneCountInString(p.DefaultInterface) > MaxNameLength {
-		add("default_interface", fmt.Sprintf("must not exceed %d characters", MaxNameLength))
-	}
 	for _, issue := range validateSubsystemsInterface(p.SubsystemsOrder, p.SubsystemsVisibility) {
 		field, message, _ := strings.Cut(issue, " ")
 		add(field, message)
@@ -701,11 +643,6 @@ func (p Project) Validate() error {
 		seenDictionaries[dictionary] = struct{}{}
 	}
 
-	switch p.DefaultRunMode {
-	case "", AutoRunMode, ManagedApplicationRunMode, OrdinaryApplicationRunMode:
-	default:
-		add("default_run_mode", "must be auto, managed-application or ordinary-application")
-	}
 	seenPurposes := make(map[UsePurpose]struct{}, len(p.UsePurposes))
 	for index, purpose := range p.UsePurposes {
 		path := fmt.Sprintf("use_purposes[%d]", index)
@@ -721,22 +658,7 @@ func (p Project) Validate() error {
 		}
 		seenPurposes[purpose] = struct{}{}
 	}
-	// A mode that cannot warn must not be allowed to say it warns: the
-	// platform either uses tablespaces or does not, and "with warnings" there
-	// would be a value nothing could act on.
 	for path, mode := range map[string]UseMode{
-		"modality_use": p.ModalityUse,
-		"synchronous_platform_extension_call_use": p.SynchronousPlatformExtensionCallUse,
-		"synchronous_extension_call_use":          p.SynchronousExtensionCallUse,
-	} {
-		switch mode {
-		case "", Used, NotUsed, UsedWithWarning:
-		default:
-			add(path, "must be use, do-not-use or use-with-warnings")
-		}
-	}
-	for path, mode := range map[string]UseMode{
-		"database_tablespaces_use":      p.DatabaseTablespacesUse,
 		"binary_data_storage":           p.BinaryDataStorage,
 		"binary_data_block_storage_use": p.BinaryDataBlockStorageUse,
 	} {
@@ -746,53 +668,16 @@ func (p Project) Validate() error {
 			add(path, "must be use or do-not-use")
 		}
 	}
-	switch p.InterfaceCompatibility {
-	case "", Version82Interface, Version82AllowTaxiInterface, TaxiAllowVersion82Interface, TaxiInterface:
-	default:
-		add("interface_compatibility", "must be one of the four interface generations")
-	}
 	switch p.MainWindowMode {
 	case "", NormalWindow, WorkplaceWindow, FullscreenWorkplaceWindow, EmbeddedWorkplaceWindow, KioskWindow:
 	default:
 		add("main_window_mode", "must be normal, workplace, fullscreen-workplace, embedded-workplace or kiosk")
 	}
-	for path, version := range map[string]string{
-		"compatibility_version":           p.CompatibilityVersion,
-		"extension_compatibility_version": p.ExtensionCompatibilityVersion,
-	} {
-		if version != "" && !isVersion(version) {
-			add(path, "must be a version such as 8.3.21")
-		}
-	}
-
 	if len(issues) > 0 {
 		return &ValidationError{Issues: issues, unsupportedFormat: p.Format > 0 && p.Format != CurrentFormat}
 	}
 
 	return nil
-}
-
-// isVersion says whether this is a version of the shape the compatibility
-// modes are written in - two or three numbers separated by dots. The set of
-// versions itself is not ours to know: it is another platform's release
-// history, and refusing a release we had not heard of would lose exactly what
-// carrying the mode was for.
-func isVersion(value string) bool {
-	parts := strings.Split(value, ".")
-	if len(parts) < 2 || len(parts) > 4 {
-		return false
-	}
-	for _, part := range parts {
-		if part == "" || len(part) > 4 {
-			return false
-		}
-		for _, digit := range part {
-			if !unicode.IsDigit(digit) {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 // isIdentifier is the prototype's rule for a name, the same one a metadata
