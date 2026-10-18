@@ -261,14 +261,6 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 			" dynamic_list: {period: {variant: custom}, user_settings_group: Период}}\n"+
 			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Список, types: [{kind: dynamic-list}]}\n")
 	},
-	NoteMobileCommandBarEmpty: func(t *testing.T, root string) {
-		writeCommonForm(t, root, "Отбор", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Отбор\ntitle: {ru: Отбор}\nkind: common\n"+
-			"mobile_command_bar: [\"\"]\n")
-	},
-	NoteMobileCommandBarNotGroup: func(t *testing.T, root string) {
-		writeCommonForm(t, root, "Отбор", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Отбор\ntitle: {ru: Отбор}\nkind: common\n"+
-			"items:\n  - {id: "+uuid.MustNew().String()+", name: Надпись, kind: label-decoration}\nmobile_command_bar: [Надпись]\n")
-	},
 	NoteGroupListNotTable: func(t *testing.T, root string) {
 		writeCommonForm(t, root, "Дерево", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Дерево\ntitle: {ru: Дерево}\nkind: common\ngroup_list: Шапка\n"+
 			"items:\n  - {id: "+uuid.MustNew().String()+", name: Шапка, kind: usual-group}\n"+

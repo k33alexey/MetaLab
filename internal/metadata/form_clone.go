@@ -36,7 +36,6 @@ func cloneRuntimeForm(value ManagedForm) ManagedForm {
 	result.ConditionalAppearance = cloneConditionalAppearance(value.ConditionalAppearance)
 	result.Parameters = cloneFormParameters(value.Parameters)
 	result.CommandInterface = value.CommandInterface.clone()
-	result.MobileCommandBar = slices.Clone(value.MobileCommandBar)
 	result.ExcludedCommands = slices.Clone(value.ExcludedCommands)
 	return result
 }

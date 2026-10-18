@@ -65,8 +65,6 @@ const (
 	NoteRepeatedElementName        NoteKind = "repeated-element-name"
 	NotePropertyOutsideHelp        NoteKind = "property-outside-help"
 	NoteUserSettingsGroupNotGroup  NoteKind = "user-settings-group-not-group"
-	NoteMobileCommandBarEmpty      NoteKind = "mobile-command-bar-empty"
-	NoteMobileCommandBarNotGroup   NoteKind = "mobile-command-bar-not-group"
 	NoteGroupListNotTable          NoteKind = "group-list-not-table"
 	NoteSettingsFolderNotGroup     NoteKind = "settings-folder-not-group"
 	NoteHeldAdditionOfAnother      NoteKind = "held-addition-of-another-element"
@@ -271,15 +269,6 @@ func init() {
 				"(2 формы выгрузок). Платформа создаёт элементы настроек внутри группы, а в поле их создать некуда — " +
 				"по всей видимости, след переименования или удаления группы.",
 			"Ссылка несётся как записана; элементы пользовательских настроек списка не создаются."},
-		NoteKindInfo{NoteMobileCommandBarEmpty,
-			"Пункт состава командной панели формы на мобильном устройстве пуст: прототип не записал, какой элемент в нём стоит " +
-				"(24 пункта в 6 формах sb и demo-base). Элементы есть в самой форме, а та же форма erp называет их по именам — по всей " +
-				"видимости, ссылка утеряна при переносе формы между конфигурациями; что делает с таким пунктом платформа, не проверено.",
-			"Пункт несётся пустым на своём месте; на мобильном устройстве он ничего не показывает."},
-		NoteKindInfo{NoteMobileCommandBarNotGroup,
-			"Пункт состава командной панели формы на мобильном устройстве называет элемент, который не группа и не кнопка: " +
-				"справка допускает в составе только их, прототип сохранил расширенную подсказку (1 раз в erp).",
-			"Ссылка несётся как записана; на мобильном устройстве такой пункт не показывается."},
 		NoteKindInfo{NoteGroupListNotTable,
 			"Список групп формы иерархического списка называет не таблицу, а элемент при ней: контекстное меню таблицы " +
 				"(8 форм обработок erp, acc и lombard1) или её строку поиска (1 форма lombard1). Прототип такое сохраняет; показывает ли форма дерево групп, " +
@@ -426,12 +415,6 @@ func init() {
 	}
 	noteRules[NoteUserSettingsGroupNotGroup] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteUserSettingsGroupNotGroup, note)
-	}
-	noteRules[NoteMobileCommandBarEmpty] = func(catalog *Catalog, note func(where, written string)) {
-		catalog.formNotesOf(NoteMobileCommandBarEmpty, note)
-	}
-	noteRules[NoteMobileCommandBarNotGroup] = func(catalog *Catalog, note func(where, written string)) {
-		catalog.formNotesOf(NoteMobileCommandBarNotGroup, note)
 	}
 	noteRules[NoteGroupListNotTable] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteGroupListNotTable, note)

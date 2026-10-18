@@ -2,7 +2,6 @@ package metadata
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -209,29 +208,6 @@ func formElementKinds(form ManagedForm) map[string]FormElementKind {
 	}
 	walk(form.FormItems())
 	return kinds
-}
-
-// noteMobileCommandBar carries what the command bar of a form holds on a
-// mobile device beyond a group or a button by name: an empty value
-// (NoteMobileCommandBarEmpty), an element of another kind - an extended
-// tooltip once in erp (NoteMobileCommandBarNotGroup) - and the code of an
-// element (noteElementCode).
-func (catalog *Catalog) noteMobileCommandBar(where string, form ManagedForm) {
-	if len(form.MobileCommandBar) == 0 {
-		return
-	}
-	kinds := formElementKinds(form)
-	for index, item := range form.MobileCommandBar {
-		at := fmt.Sprintf("%s mobile_command_bar[%d]", where, index)
-		switch kind := kinds[foldedName(item)]; {
-		case item == "":
-			catalog.noteForm(NoteMobileCommandBarEmpty, at, `""`)
-		case formElementCode.MatchString(item):
-			catalog.noteElementCode(at, item)
-		case kind != FormElementButton && !slices.Contains(formGroupKinds, kind):
-			catalog.noteForm(NoteMobileCommandBarNotGroup, at, item+" ("+string(kind)+")")
-		}
-	}
 }
 
 // formContextMenu is how a context menu is named where an element is told by
