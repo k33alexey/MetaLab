@@ -502,14 +502,25 @@ function subsystemFilterButton({schema, title, holder, applied}) {
    double click. chosen is the index of the row chosen, or a Set of them
    where several are chosen at once, as in the prototype's «Все ограничения
    доступа»: Ctrl adds a row or takes it away, Shift chooses the rows from the
-   last one clicked. A cell is [text, className], or a cell made already. */
-function roleListTable(headings, rows, chosen, choose, commands, empty) {
+   last one clicked. A cell is [text, className], or a cell made already.
+   A command is [key, text, act, enabled, menuText, keyText]; act gets
+   {row, column}, the row and the column of the cell clicked last - the
+   current row and column of the prototype's lists. With actions the bar
+   stands over the list, as the prototype's command bar, and starts with
+   «Действия», a menu of every command in its order under its menuText with
+   its keyText, an unavailable one shown so; a null command is a line
+   between groups of the menu, and Ins adds and F2 changes, as the menu
+   says. Enter and a double click change, Del removes. */
+function roleListTable(headings, rows, chosen, choose, commands, empty, {actions = false} = {}) {
   const table=node('table',undefined,'role-list'),head=node('tr');
   for(const text of headings)head.append(node('th',text));
   const thead=node('thead');thead.append(head);const body=node('tbody');
   const many=chosen instanceof Set,isChosen=index=>many?chosen.has(index):index===chosen;
-  let anchor=many?[...chosen].at(-1)??-1:chosen;
+  let anchor=many?[...chosen].at(-1)??-1:chosen,column=0,last=anchor;
+  const current=()=>({row:isChosen(last)?last:-1,column});
+  const run=name=>{const command=commands.find(item=>item?.[0]===name);if(command&&command[3]())command[2](current());};
   function click(index,event){
+    last=index;
     if(!many){chosen=index;choose(index);}
     else{
       if(event?.ctrlKey||event?.metaKey){if(!chosen.delete(index))chosen.add(index);anchor=index;}
@@ -523,18 +534,29 @@ function roleListTable(headings, rows, chosen, choose, commands, empty) {
   rows.forEach((cells,index)=>{
     const row=node('tr',undefined,isChosen(index)?'selected':undefined);row.tabIndex=0;
     for(const cell of cells){if(cell instanceof Node){row.append(cell);continue;}const [text,className]=cell,item=node('td',text,className);item.title=text;row.append(item);}
-    row.addEventListener('click',event=>click(index,event));
-    row.addEventListener('dblclick',()=>{if(!isChosen(index))click(index);commands.find(([key])=>key==='edit')?.[2]();});
-    row.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();row.dispatchEvent(new MouseEvent('dblclick'));}if(event.key==='Delete'){event.preventDefault();if(!isChosen(index))click(index);commands.find(([key])=>key==='remove')?.[2]();}});
+    row.addEventListener('click',event=>{const cell=event.target.closest?.('td');if(cell)column=[...row.children].indexOf(cell);click(index,event);});
+    row.addEventListener('dblclick',()=>{if(!isChosen(index))click(index);run('edit');});
+    row.addEventListener('keydown',event=>{if(event.key==='Enter'||(actions&&event.key==='F2')){event.preventDefault();row.dispatchEvent(new MouseEvent('dblclick'));}if(event.key==='Delete'){event.preventDefault();if(!isChosen(index))click(index);run('remove');}});
     body.append(row);
   });
   if(!rows.length){const row=node('tr'),cell=node('td',empty,'muted');cell.colSpan=headings.length;row.append(cell);body.append(row);}
   table.append(thead,body);
   const bar=node('div',undefined,'role-bulk'),buttons=[];
-  for(const [key,text,action,enabled] of commands){const button=node('button',text);button.type='button';button.dataset.command=key;button.addEventListener('click',action);buttons.push([button,enabled]);bar.append(button);}
+  if(actions){
+    const menu=node('button','Действия');menu.type='button';menu.setAttribute('aria-haspopup','menu');
+    menu.addEventListener('click',event=>showContextMenu(event,commands.map(command=>command&&[command[4]||command[1],()=>command[2](current()),command[3](),command[5]])));
+    bar.append(menu);
+  }
+  for(const [key,text,action,enabled] of commands.filter(Boolean)){const button=node('button',text);button.type='button';button.dataset.command=key;button.addEventListener('click',()=>action(current()));buttons.push([button,enabled]);bar.append(button);}
   function syncCommands(){for(const [button,enabled] of buttons)button.disabled=!enabled();}
   syncCommands();
-  const block=node('div');block.append(table,bar);return block;
+  const block=node('div');
+  if(actions){
+    bar.classList.add('role-bulk-top');block.append(bar,table);
+    table.tabIndex=0;
+    table.addEventListener('keydown',event=>{if(event.key==='Insert'){event.preventDefault();run('add');}});
+  }else block.append(table,bar);
+  return block;
 }
 
 /* The caption of a list in the windows of restrictions, with «Отметить все»

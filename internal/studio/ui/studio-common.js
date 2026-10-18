@@ -125,6 +125,20 @@ function selectInput(choices, value, apply, label) {
   return select;
 }
 
+/* clearableSelect is a drop-down list with a button that clears it, as the
+   prototype's field of a choice from a list: the clearing chooses the empty
+   value '', which selectInput's own change applies. */
+function clearableSelect(choices, value, apply, label) {
+  const wrapper = node('span', undefined, 'clearable-select');
+  const select = selectInput([['', ''], ...choices], value, apply, label);
+  const clear = node('button', '×', 'clearable-select-clear');
+  clear.type = 'button';
+  clear.setAttribute('aria-label', label ? `Очистить: ${label}` : 'Очистить');
+  clear.addEventListener('click', () => { select.value = ''; select.dispatchEvent(new Event('change', {bubbles: true})); });
+  wrapper.append(select, clear);
+  return wrapper;
+}
+
 /* checkboxField is a box with its caption after it. */
 function checkboxField(label, checked, apply, className = 'catalog-check', disabled = false) {
   const wrapper = node('label', undefined, className), input = node('input');
@@ -348,20 +362,27 @@ function showHelp(key) {
    closes when a command is chosen, on Escape, on a click elsewhere, when the
    page scrolls or loses focus. A menu opened from the keyboard (Shift+F10,
    the menu key) or by a button, as «Действия», stands under the element
-   instead. The arrows move between commands, Enter chooses one. */
+   instead. The arrows move between commands, Enter chooses one. An item
+   [text, act, false] is shown unavailable, as the prototype's menus show a
+   command that cannot act now; [text, act, enabled, key] shows its key at
+   the right, as «Ins» of «Добавить»; null is a line between groups. */
 function showContextMenu(event, items) {
   event.preventDefault();
   closeContextMenu();
   const menu = node('div', undefined, 'context-menu');
   menu.setAttribute('role', 'menu');
-  for (const [text, act] of items) {
+  for (const item of items) {
+    if (!item) { menu.append(node('div', undefined, 'context-menu-separator')); continue; }
+    const [text, act, enabled = true, key] = item;
     const button = node('button', text, 'context-menu-item');
     button.type = 'button';
+    if (key) button.append(node('span', key, 'context-menu-key'));
+    button.disabled = !enabled;
     button.setAttribute('role', 'menuitem');
     button.addEventListener('click', () => { closeContextMenu(); act(); });
     menu.append(button);
   }
-  const commands = [...menu.children];
+  const commands = [...menu.querySelectorAll('.context-menu-item')].filter(button => !button.disabled);
   menu.addEventListener('keydown', key => {
     const at = commands.indexOf(document.activeElement);
     if (key.key === 'Escape') { key.preventDefault(); closeContextMenu(); }

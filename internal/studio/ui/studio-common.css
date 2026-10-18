@@ -41,6 +41,9 @@
 .context-menu{position:fixed;z-index:1000;display:flex;flex-direction:column;min-width:200px;padding:4px;border:1px solid #4a4d54;border-radius:6px;background:#25262a;box-shadow:0 10px 40px #000a}
 .context-menu-item{background:transparent!important;border:none!important;border-radius:4px;padding:6px 12px!important;color:#dfe1e5;text-align:left;font-size:13px;cursor:pointer}
 .context-menu-item:hover,.context-menu-item:focus{background:#2f4a6d!important;outline:none}
+.context-menu-separator{height:1px;margin:4px 6px;background:#4a4d54}.context-menu-key{float:right;margin-left:24px;color:#aeb1b8}.context-menu-item:disabled .context-menu-key{color:inherit}
+.context-menu-item:disabled{color:#6f737a;cursor:default}.context-menu-item:disabled:hover{background:transparent!important}
+.clearable-select{display:inline-flex;align-items:stretch;gap:2px}.clearable-select select{flex:1}.clearable-select-clear{padding:2px 8px!important}
 
 /* Справка окна: страница studioHelp поверх открытого окна. */
 .localized-title-dialog.studio-help-dialog{width:min(560px,calc(100% - 40px))}
