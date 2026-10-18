@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/spec"
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -312,5 +313,86 @@ func TestBSLHelpIndexesEveryRoutine(t *testing.T) {
 	result, err := workspace.SearchBSLHelp("Процедура50000")
 	if err != nil || len(result.Items) == 0 || result.Truncated {
 		t.Fatalf("the last routine of a large module: %+v %v", result.Items, err)
+	}
+}
+
+// The help of a method of a manager is that of the manager the code reaches,
+// signed by the descriptor of the kind (kinds.Descriptor.Manager), and there
+// is one for every method of every manager. Defects caught: a method signed
+// by hand apart from the descriptor and parted from it, as НайтиПоНомеру
+// (Номер, Период) beside НомерДокумента and ДатаИнтервала until 2.337; one
+// topic per name for every manager - Получить of an enumeration answered by
+// Получить of a constant; a manager without help, as every kind but six had;
+// and a method of a manager offered for a call on anything else that has a
+// method of that name.
+func TestManagerMethodHelpIsTheDescriptors(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	path, _ := project.ModulePath(uuid.MustNew())
+	source := "Процедура Запустить()\n" +
+		"\tА = Справочники.Товары.НайтиПоКоду(\"1\");\n" +
+		"\tБ = Документы.Продажа.НайтиПоНомеру(\"1\");\n" +
+		"\tВ = Константы.Валюта.Получить();\n" +
+		"\tГ = Перечисления.Виды.Получить(0);\n" +
+		"\tД = РегистрыСведений.Цены.СрезПоследних();\n" +
+		"\tЕ = РегистрыРасчета.Начисления.Перерасчеты.Пересчет.СоздатьНаборЗаписей();\n" +
+		"\tЖ = Catalogs.Goods.FindByCode(\"1\");\n" +
+		"\tЗ = Запрос.Выполнить().Выбрать();\n" +
+		"КонецПроцедуры\n"
+	writeBSLTestSource(t, root, path, source)
+	workspace, _ := Open(root)
+	resolve := func(needle string) (BSLHelpItem, error) {
+		offset := strings.Index(source, needle) + len(needle) - 1
+		return workspace.ResolveBSLHelp(path, source, bslPosition(source, offset))
+	}
+	// The signatures are the help's (8.3.27), written here and not read from
+	// the descriptor the code reads.
+	for needle, signature := range map[string]string{
+		"Товары.НайтиПоКоду":           "СправочникМенеджер.НайтиПоКоду(Код, ПоискПоПолномуКоду = Ложь, Родитель, Владелец)",
+		"Продажа.НайтиПоНомеру":        "ДокументМенеджер.НайтиПоНомеру(НомерДокумента, ДатаИнтервала)",
+		"Валюта.Получить":              "КонстантаМенеджер.Получить()",
+		"Виды.Получить":                "ПеречислениеМенеджер.Получить(Индекс)",
+		"Цены.СрезПоследних":           "РегистрСведенийМенеджер.СрезПоследних(КонецПериода, Отбор)",
+		"Пересчет.СоздатьНаборЗаписей": "ПерерасчетМенеджер.СоздатьНаборЗаписей()",
+		"Goods.FindByCode":             "CatalogManager.FindByCode(Код, ПоискПоПолномуКоду = Ложь, Родитель, Владелец)",
+	} {
+		item, err := resolve(needle)
+		if err != nil {
+			t.Fatalf("ResolveBSLHelp(%q): %v", needle, err)
+		}
+		if !strings.Contains(item.Signature, signature) || item.Kind != "method" {
+			t.Errorf("ResolveBSLHelp(%q) = %q, expected %q", needle, item.Signature, signature)
+		}
+	}
+	if item, err := resolve("Выполнить().Выбрать"); !errors.Is(err, ErrBSLHelpNotFound) {
+		t.Errorf("a call on a query result was answered by %q", item.Signature)
+	}
+
+	workspace.mu.Lock()
+	index, err := workspace.ensureBSLHelpIndexLocked()
+	workspace.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	managers := 0
+	for _, descriptor := range kinds.All() {
+		manager, ok := descriptor.Manager()
+		if !ok {
+			continue
+		}
+		managers++
+		for _, member := range manager.Members {
+			if !member.Method {
+				continue
+			}
+			for _, name := range []string{member.Name.Russian, member.Name.English} {
+				if _, ok := index.byMethod[managerMethodKey(descriptor.Kind, name)]; !ok {
+					t.Errorf("%s.%s has no help", manager.Name.Russian, name)
+				}
+			}
+		}
+	}
+	if managers < 26 {
+		t.Fatalf("help was looked for in %d managers, the help has 26", managers)
 	}
 }

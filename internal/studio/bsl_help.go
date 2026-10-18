@@ -9,6 +9,7 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/bsl/spec"
 	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
+	"github.com/k33alexey/MetaLab/internal/kinds"
 )
 
 const (
@@ -49,12 +50,19 @@ type bslHelpDocument struct {
 	item       BSLHelpItem
 	aliases    []string
 	searchText string
+	// methods are the keys of a method of a manager (managerMethodKey), one
+	// per language. Such a document is found by the manager the code
+	// reaches and not by its name alone: ПолучитьФорму is a method of twenty
+	// managers, and Получить of a constant is not Получить of an
+	// enumeration.
+	methods []string
 }
 
 type bslHelpIndex struct {
 	documents []bslHelpDocument
 	byAlias   map[string][]int
 	bySymbol  map[string]int
+	byMethod  map[string]int
 	truncated bool
 }
 
@@ -130,6 +138,13 @@ func (workspace *Workspace) ResolveBSLHelp(relative, source string, position BSL
 	}
 
 	path := bslHelpTokenPath(tokens, offset)
+	if len(path) > 1 {
+		if descriptor, _, collection, ok := (bslManagers{}).walk(path[:len(path)-1]); ok && !collection {
+			if document, ok := index.byMethod[managerMethodKey(descriptor.Kind, path[len(path)-1])]; ok {
+				return cloneBSLHelpItem(index.documents[document].item), nil
+			}
+		}
+	}
 	for start := 0; start < len(path); start++ {
 		if item, ok := index.firstAlias(strings.Join(path[start:], ".")); ok {
 			return item, nil
@@ -157,7 +172,7 @@ func (workspace *Workspace) ensureBSLHelpIndexLocked() (*bslHelpIndex, error) {
 }
 
 func (workspace *Workspace) buildBSLHelpIndex(navigation *bslNavigationIndex) (*bslHelpIndex, error) {
-	result := &bslHelpIndex{byAlias: make(map[string][]int), bySymbol: make(map[string]int)}
+	result := &bslHelpIndex{byAlias: make(map[string][]int), bySymbol: make(map[string]int), byMethod: make(map[string]int)}
 	items, err := platformBSLHelp()
 	if err != nil {
 		return nil, err
@@ -216,6 +231,12 @@ func (index *bslHelpIndex) add(document bslHelpDocument, symbol string) {
 	document.searchText = strings.ToLower(strings.Join(search, "\n"))
 	position := len(index.documents)
 	index.documents = append(index.documents, document)
+	if len(document.methods) != 0 {
+		for _, key := range document.methods {
+			index.byMethod[key] = position
+		}
+		return
+	}
 	seen := make(map[string]bool)
 	for _, alias := range document.aliases {
 		key := strings.ToLower(strings.TrimSpace(alias))
@@ -315,7 +336,48 @@ func platformBSLHelp() ([]bslHelpDocument, error) {
 			Summary: definition.summary, Description: definition.description, Parameters: parameters, Returns: definition.returns, Source: "Платформа ML",
 		}, aliases: definition.aliases})
 	}
-	return result, nil
+	return append(result, managerMethodHelp()...), nil
+}
+
+// managerMethodHelp is a topic for every method of the manager of every kind,
+// signed as the help signs it: the type of the manager, the method and its
+// parameters in both languages (kinds.Descriptor.Manager). What the manager
+// of a kind has is said there once; help, completion and the signature of a
+// call read it alike.
+func managerMethodHelp() []bslHelpDocument {
+	var result []bslHelpDocument
+	for _, descriptor := range kinds.All() {
+		manager, ok := descriptor.Manager()
+		if !ok {
+			continue
+		}
+		for _, member := range manager.Members {
+			if !member.Method {
+				continue
+			}
+			parameters := make([]BSLHelpParameter, len(member.Parameters))
+			labels := make([]string, len(member.Parameters))
+			for index, parameter := range member.Parameters {
+				labels[index] = parameter.Label()
+				parameters[index] = BSLHelpParameter{Label: labels[index]}
+			}
+			call := "(" + strings.Join(labels, ", ") + ")"
+			result = append(result, bslHelpDocument{item: BSLHelpItem{
+				ID:   "platform:manager/" + string(descriptor.Kind) + "/" + member.Name.English,
+				Name: member.Name.Russian, Kind: "method",
+				Signature: manager.Name.Russian + "." + member.Name.Russian + call + " / " +
+					manager.Name.English + "." + member.Name.English + call,
+				Summary: "Метод типа " + manager.Name.Russian + ".", Parameters: parameters, Source: "Платформа ML",
+			}, methods: []string{managerMethodKey(descriptor.Kind, member.Name.Russian), managerMethodKey(descriptor.Kind, member.Name.English)}})
+		}
+	}
+	return result
+}
+
+// managerMethodKey names a method of the manager of a kind, in either
+// language and in any case, as the code writes it.
+func managerMethodKey(kind kinds.Kind, method string) string {
+	return string(kind) + "." + strings.ToLower(method)
 }
 
 var platformHelpDefinitions = []platformHelpDefinition{
@@ -336,19 +398,6 @@ var platformHelpDefinitions = []platformHelpDefinition{
 	{id: "system-enum/movement-kind", name: "ВидДвиженияНакопления", kind: "system-enum", signature: "ВидДвиженияНакопления.Приход | Расход", summary: "Вид движения регистра накопления.", aliases: []string{"ВидДвиженияНакопления", "AccumulationMovementKind", "ВидДвиженияНакопления.Приход", "ВидДвиженияНакопления.Расход", "AccumulationMovementKind.Receipt", "AccumulationMovementKind.Expense"}},
 	{id: "system-enum/document-write-mode", name: "РежимЗаписиДокумента", kind: "system-enum", signature: "РежимЗаписиДокумента.Запись | Проведение | ОтменаПроведения", summary: "Определяет операцию записи документа.", aliases: []string{"РежимЗаписиДокумента", "DocumentWriteMode", "РежимЗаписиДокумента.Запись", "РежимЗаписиДокумента.Проведение", "РежимЗаписиДокумента.ОтменаПроведения", "DocumentWriteMode.Write", "DocumentWriteMode.Post", "DocumentWriteMode.UndoPosting"}},
 	{id: "system-enum/document-posting-mode", name: "РежимПроведенияДокумента", kind: "system-enum", signature: "РежимПроведенияДокумента.Неоперативный | Оперативный", summary: "Определяет режим проведения документа.", aliases: []string{"РежимПроведенияДокумента", "DocumentPostingMode", "РежимПроведенияДокумента.Неоперативный", "РежимПроведенияДокумента.Оперативный", "DocumentPostingMode.Regular", "DocumentPostingMode.RealTime"}},
-	{id: "method/create-item", name: "СоздатьЭлемент", kind: "method", signature: "Справочники.<Имя>.СоздатьЭлемент() / Catalogs.<Name>.CreateItem()", summary: "Создаёт новый объект справочника в памяти.", aliases: []string{"СоздатьЭлемент", "CreateItem"}, returns: "Объект справочника."},
-	{id: "method/create-document", name: "СоздатьДокумент", kind: "method", signature: "Документы.<Имя>.СоздатьДокумент() / Documents.<Name>.CreateDocument()", summary: "Создаёт новый объект документа в памяти.", aliases: []string{"СоздатьДокумент", "CreateDocument"}, returns: "Объект документа."},
-	{id: "method/get-object", name: "ПолучитьОбъект", kind: "method", signature: "<Менеджер>.ПолучитьОбъект(Ссылка) / <Manager>.GetObject(Reference)", summary: "Загружает изменяемый объект по ссылке.", aliases: []string{"ПолучитьОбъект", "GetObject"}, parameters: []string{"Ссылка"}, returns: "Объект данных."},
-	{id: "method/find-by-code", name: "НайтиПоКоду", kind: "method", signature: "Справочники.<Имя>.НайтиПоКоду(Код) / Catalogs.<Name>.FindByCode(Code)", summary: "Ищет элемент справочника по коду.", aliases: []string{"НайтиПоКоду", "FindByCode"}, parameters: []string{"Код"}, returns: "Ссылка или пустая ссылка."},
-	{id: "method/find-by-number", name: "НайтиПоНомеру", kind: "method", signature: "Документы.<Имя>.НайтиПоНомеру(Номер, Период = Неопределено)", summary: "Ищет документ по номеру и необязательному периоду.", aliases: []string{"НайтиПоНомеру", "FindByNumber"}, parameters: []string{"Номер", "Период = Неопределено"}, returns: "Ссылка или пустая ссылка."},
-	{id: "method/get-reference", name: "ПолучитьСсылку", kind: "method", signature: "<Менеджер>.ПолучитьСсылку(Идентификатор) / <Manager>.GetRef(Identifier)", summary: "Возвращает ссылку с заданным внутренним идентификатором.", aliases: []string{"ПолучитьСсылку", "GetRef", "GetReference"}, parameters: []string{"Идентификатор"}, returns: "Ссылка объекта."},
-	{id: "method/create-record-set", name: "СоздатьНаборЗаписей", kind: "method", signature: "<Регистр>.СоздатьНаборЗаписей() / <Register>.CreateRecordSet()", summary: "Создаёт набор записей регистра.", aliases: []string{"СоздатьНаборЗаписей", "CreateRecordSet"}, returns: "Набор записей регистра."},
-	{id: "method/slice-last", name: "СрезПоследних", kind: "method", signature: "РегистрыСведений.<Имя>.СрезПоследних(Период, Отбор = Неопределено)", summary: "Получает последние записи регистра сведений на момент времени.", aliases: []string{"СрезПоследних", "SliceLast"}, parameters: []string{"Период", "Отбор = Неопределено"}, returns: "ТаблицаЗначений."},
-	{id: "method/slice-first", name: "СрезПервых", kind: "method", signature: "РегистрыСведений.<Имя>.СрезПервых(Период, Отбор = Неопределено)", summary: "Получает первые записи регистра сведений после момента времени.", aliases: []string{"СрезПервых", "SliceFirst"}, parameters: []string{"Период", "Отбор = Неопределено"}, returns: "ТаблицаЗначений."},
-	{id: "method/balances", name: "Остатки", kind: "method", signature: "РегистрыНакопления.<Имя>.Остатки(Момент = Неопределено, Отбор = Неопределено)", summary: "Получает остатки регистра накопления на момент: движения этого момента в остаток не входят. Без момента - текущие остатки.", aliases: []string{"Остатки", "Balances"}, parameters: []string{"Момент = Неопределено", "Отбор = Неопределено"}, returns: "ТаблицаЗначений."},
-	{id: "method/turnovers", name: "Обороты", kind: "method", signature: "РегистрыНакопления.<Имя>.Обороты(НачалоПериода = Неопределено, КонецПериода = Неопределено, Отбор = Неопределено)", summary: "Получает обороты регистра накопления за период, обе границы включительно. Без начала - с первого движения, без конца - до последнего.", aliases: []string{"Обороты", "Turnovers"}, parameters: []string{"НачалоПериода = Неопределено", "КонецПериода = Неопределено", "Отбор = Неопределено"}, returns: "ТаблицаЗначений."},
-	{id: "method/get", name: "Получить", kind: "method", signature: "Константы.<Имя>.Получить() / Constants.<Name>.Get()", summary: "Получает значение константы.", aliases: []string{"Получить", "Get"}, returns: "Значение константы."},
-	{id: "method/set", name: "Установить", kind: "method", signature: "Константы.<Имя>.Установить(Значение) / Constants.<Name>.Set(Value)", summary: "Устанавливает значение константы.", aliases: []string{"Установить", "Set"}, parameters: []string{"Значение"}},
 	{id: "directive/at-client", name: "НаКлиенте", kind: "directive", signature: "&НаКлиенте / &AtClient", summary: "Выполняет процедуру или функцию на клиенте.", aliases: []string{"НаКлиенте", "AtClient"}},
 	{id: "directive/at-server", name: "НаСервере", kind: "directive", signature: "&НаСервере / &AtServer", summary: "Выполняет процедуру или функцию на сервере с контекстом.", aliases: []string{"НаСервере", "AtServer"}},
 	{id: "directive/at-server-no-context", name: "НаСервереБезКонтекста", kind: "directive", signature: "&НаСервереБезКонтекста / &AtServerNoContext", summary: "Выполняет процедуру или функцию на сервере без контекста формы.", aliases: []string{"НаСервереБезКонтекста", "AtServerNoContext"}},
