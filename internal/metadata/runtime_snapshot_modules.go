@@ -116,11 +116,6 @@ func (namer ModuleNamer) Identify(relative string) ModuleIdentity {
 		// An external connection has no client at all: whatever runs there
 		// runs on the server, because there is nowhere else.
 		return ModuleIdentity{Name: ExternalConnectionModuleName, DefaultContext: syntax.ContextServer}
-	case project.OrdinaryApplicationModuleFile:
-		// Carried, compiled and never called. The ordinary application ran on
-		// the client, so that is the context it is read in - reading it as
-		// server code would report errors that were never there.
-		return ModuleIdentity{Name: OrdinaryApplicationModuleName, DefaultContext: syntax.ContextClient}
 	}
 	if item, ok := namer.common[relative]; ok {
 		return ModuleIdentity{Name: item.Name, Predefined: moduleWords(CommonModuleKind, ""),

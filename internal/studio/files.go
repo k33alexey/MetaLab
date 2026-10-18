@@ -34,7 +34,6 @@ type SourceFile struct {
 	Language string `json:"language"`
 	Content  string `json:"content"`
 	Revision string `json:"revision"`
-	ReadOnly bool   `json:"readOnly,omitempty"`
 }
 
 // ReadSource reads a canonical editable source without following symbolic links.
@@ -55,9 +54,6 @@ func (workspace *Workspace) saveSourceLocked(relative, content, expectedRevision
 	relative, language, err := validateEditablePath(relative)
 	if err != nil {
 		return SourceFile{}, err
-	}
-	if readOnlySource(relative) {
-		return SourceFile{}, ErrSourceReadOnly
 	}
 	if !utf8.ValidString(content) || strings.IndexByte(content, 0) >= 0 {
 		return SourceFile{}, fmt.Errorf("editable source must be valid UTF-8")
@@ -133,9 +129,6 @@ func (workspace *Workspace) replaceSourcesLocked(changes, originals map[string][
 	for relative := range changes {
 		if _, ok := originals[relative]; !ok {
 			return fmt.Errorf("missing refactoring source snapshot for %s", relative)
-		}
-		if readOnlySource(relative) {
-			return fmt.Errorf("%w: %s", ErrSourceReadOnly, relative)
 		}
 		paths = append(paths, relative)
 	}
@@ -255,7 +248,7 @@ func (workspace *Workspace) readSource(relative string) (SourceFile, error) {
 
 func sourceFile(relative, language string, content []byte) SourceFile {
 	digest := sha256.Sum256(content)
-	return SourceFile{Path: relative, Language: language, Content: string(content), Revision: hex.EncodeToString(digest[:]), ReadOnly: readOnlySource(relative)}
+	return SourceFile{Path: relative, Language: language, Content: string(content), Revision: hex.EncodeToString(digest[:])}
 }
 
 func validateEditablePath(relative string) (string, string, error) {

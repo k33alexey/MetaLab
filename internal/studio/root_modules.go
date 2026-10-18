@@ -1,7 +1,6 @@
 package studio
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,21 +13,19 @@ import (
 
 // rootModule is one module of the configuration root: what it is called in the
 // tree, the file it lies in, the address Studio opens it by, what it starts as
-// when it is opened for the first time, and whether Studio only shows it.
+// when it is opened for the first time.
 type rootModule struct {
-	id       string
-	title    string
-	file     string
-	stub     string
-	readOnly bool
+	id    string
+	title string
+	file  string
+	stub  string
 }
 
 // rootModules are the modules the configuration root owns. The session module
 // answers where session parameters get their values; the application module is
 // where the application itself starts and stops; the external connection
 // module is what runs when something outside connects with nobody in front of
-// it; the ordinary application module is carried from a transferred
-// configuration and never runs.
+// it. The ordinary application module is not carried (owner, 14.10.2026).
 //
 // Each stub is the predefined routines of that module, empty. A module always
 // stands in the tree whether or not its file exists, so opening one has to
@@ -51,28 +48,6 @@ var rootModules = []rootModule{
 		stub: "Процедура ПриНачалеРаботыСистемы()\n\nКонецПроцедуры\n\n" +
 			"Процедура ПриЗавершенииРаботыСистемы()\n\nКонецПроцедуры\n",
 	},
-	{
-		// Carried from a transferred configuration and never run: ML has no
-		// ordinary application. Studio shows it, so that a developer sees what
-		// used to happen at start-up, and never writes it - nor creates it,
-		// which would be an invitation to write code for nowhere (owner,
-		// 13.10.2026).
-		id: "ordinary-application-module", title: "Модуль обычного приложения",
-		file: project.OrdinaryApplicationModuleFile, readOnly: true,
-	},
-}
-
-// ErrSourceReadOnly refuses a write to a file Studio only shows.
-var ErrSourceReadOnly = errors.New("ML Project source is read-only")
-
-// readOnlySource reports whether Studio shows a file without writing it.
-func readOnlySource(relative string) bool {
-	for _, module := range rootModules {
-		if module.readOnly && module.file == relative {
-			return true
-		}
-	}
-	return false
 }
 
 func rootModuleByID(id string) (rootModule, bool) {
@@ -88,8 +63,7 @@ func rootModuleByID(id string) (rootModule, bool) {
 // node is always present, whether or not its file exists yet: a module of the
 // root belongs to it the way its description does, and a developer looking for
 // "where does the application start" must find it in the tree instead of having
-// to know it can be created. A node Studio opens is of kind "root-module"; a
-// read-only module that is not there has nothing to open and no path.
+// to know it can be created.
 func (workspace *Workspace) rootModuleNodesLocked() []Node {
 	nodes := make([]Node, 0, len(rootModules))
 	for _, module := range rootModules {
@@ -97,9 +71,6 @@ func (workspace *Workspace) rootModuleNodesLocked() []Node {
 		value := "создан"
 		if _, err := os.Stat(filepath.Join(workspace.root, module.file)); os.IsNotExist(err) {
 			value = "не создан"
-			if module.readOnly {
-				node.Kind, node.Path = "metadata", ""
-			}
 		}
 		node.Properties = []Property{{Name: "Файл", Value: module.file}, {Name: "Состояние", Value: value}}
 		nodes = append(nodes, node)
@@ -153,7 +124,7 @@ func (workspace *Workspace) OpenRootModule(id string) (SourceFile, error) {
 	if err == nil {
 		return file, nil
 	}
-	if err != ErrSourceNotFound || module.readOnly {
+	if err != ErrSourceNotFound {
 		return SourceFile{}, err
 	}
 	target := filepath.Join(workspace.root, module.file)

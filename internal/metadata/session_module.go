@@ -28,14 +28,6 @@ const ApplicationModuleName = "МодульПриложения"
 // role for the same reason as the two above.
 const ExternalConnectionModuleName = "МодульВнешнегоСоединения"
 
-// OrdinaryApplicationModuleName is the name the ordinary application module is
-// compiled under. Nothing calls it: ML has no ordinary application, and the
-// module is carried so that a transferred configuration does not lose what it
-// used to do at start-up. It is still compiled, because a module that is never
-// checked rots quietly, and a developer reading it deserves to be told that it
-// does not parse.
-const OrdinaryApplicationModuleName = "МодульОбычногоПриложения"
-
 const (
 	setSessionParametersRU = "УстановкаПараметровСеанса"
 	setSessionParametersEN = "SetSessionParameters"

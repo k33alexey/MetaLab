@@ -199,21 +199,6 @@ const studioPageWalk = `(async () => {
   return {editors: [...seen].sort(), languages, titles, steps};
 })()`
 
-// studioReadOnlyModule reads the tree again and opens the ordinary
-// application module, which the test has just carried into the project.
-const studioReadOnlyModule = `(async () => {
-  const studio = window.__studio;
-  studio.step = 'carried ordinary application module';
-  document.querySelector('#refresh').click();
-  await studio.settle();
-  const node = [...document.querySelectorAll('#tree .leaf')].find(item => item.textContent.includes('Модуль обычного приложения'));
-  node.click();
-  await studio.settle();
-  const editor = document.querySelector('#editor');
-  return {path: document.querySelector('#file-path').textContent, content: editor.value, readOnly: editor.readOnly,
-    renameHidden: document.querySelector('[data-bsl-action=rename]').hidden, problems: studio.problems};
-})()`
-
 // studioGutterFits opens the session module, of as many lines as the Go side
 // wrote, goes to its last line, puts a breakpoint and the line being executed
 // there and answers where the marker, the number and the inside of the gutter
@@ -267,9 +252,8 @@ const studioGutterFits = `(async () => {
 // that fails; a window that does not open or does not close; and an editor no
 // node of the tree reaches any more; a header or tab that names the
 // configuration otherwise than by its synonym in the display language (2.303:
-// "[object Object]"). A carried ordinary application module is
-// then opened, and has to come up read-only. Without Chrome the test is skipped, as
-// the tests run on Node are without Node.
+// "[object Object]"). Without Chrome the test is skipped, as the tests run
+// on Node are without Node.
 func TestStudioEditorsWorkInBrowser(t *testing.T) {
 	chrome := findChrome()
 	if chrome == "" {
@@ -323,28 +307,6 @@ func TestStudioEditorsWorkInBrowser(t *testing.T) {
 	}
 	t.Logf("%d steps, editors %v, languages %v", report.Steps, report.Editors, report.Languages)
 
-	ordinarySource := "Процедура ПриНачалеРаботыСистемы()\nКонецПроцедуры\n"
-	writeBSLTestSource(t, root, project.OrdinaryApplicationModuleFile, ordinarySource)
-	result, err = browser.evaluate(ctx, page, studioReadOnlyModule)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var carried struct {
-		Path         string   `json:"path"`
-		Content      string   `json:"content"`
-		ReadOnly     bool     `json:"readOnly"`
-		RenameHidden bool     `json:"renameHidden"`
-		Problems     []string `json:"problems"`
-	}
-	if err := json.Unmarshal(result, &carried); err != nil {
-		t.Fatalf("the page answered %s: %v", result, err)
-	}
-	if carried.Path != project.OrdinaryApplicationModuleFile || carried.Content != ordinarySource || !carried.ReadOnly || !carried.RenameHidden {
-		t.Errorf("the carried ordinary application module is not shown read-only: %+v", carried)
-	}
-	for _, problem := range carried.Problems {
-		t.Errorf("page: %s", problem)
-	}
 	for _, lines := range []int{9, 12000, 100000} {
 		writeBSLTestSource(t, root, project.SessionModuleFile, "Процедура П()\n"+strings.Repeat("\n", lines-2)+"КонецПроцедуры")
 		result, err = browser.evaluate(ctx, page, fmt.Sprintf(studioGutterFits, lines))

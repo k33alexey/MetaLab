@@ -157,7 +157,7 @@
     function closeEditors(kept){for(const item of fileEditors)if(item!==kept)item.close()}
     function setEditorsBusy(busy){for(const item of fileEditors)item.setDisabled(busy);formHost.inert=busy;editorHost.inert=busy}
     function showSourceEditor(file){closeEditors();formDesigner.close(true);formHost.hidden=true;editorHost.hidden=false;editor.value=file.content;editor.disabled=false;bslEditor.open(file);bslEditor.setBreakpoints(Array.from(debugBreakpoints.get(file.path)||[]))}
-    function insertDesignedQuery(query){if(currentFile?.readOnly){status.textContent='Модуль открыт только для чтения.';status.className='warning';return false}if(!currentFile||currentFile.isForm||currentFile.language!=='bsl'){status.textContent='Откройте BSL-модуль для вставки запроса.';status.className='warning';return false}const lines=query.replaceAll('"','""').split('\n'),literal='"'+lines[0]+lines.slice(1).map(line=>'\n|'+line).join('')+'"',expression='Новый Запрос('+literal+')';editor.setRangeText(expression,editor.selectionStart,editor.selectionEnd,'end');editor.dispatchEvent(new Event('input'));editor.focus();return true}
+    function insertDesignedQuery(query){if(!currentFile||currentFile.isForm||currentFile.language!=='bsl'){status.textContent='Откройте BSL-модуль для вставки запроса.';status.className='warning';return false}const lines=query.replaceAll('"','""').split('\n'),literal='"'+lines[0]+lines.slice(1).map(line=>'\n|'+line).join('')+'"',expression='Новый Запрос('+literal+')';editor.setRangeText(expression,editor.selectionStart,editor.selectionEnd,'end');editor.dispatchEvent(new Event('input'));editor.focus();return true}
     function showFormEditor(value){closeEditors();editorHost.hidden=true;bslEditor.close();formDesigner.open(value)}
     function showRoleEditor(value,preserveSelection=false){closeEditors(roleEditor);formDesigner.close();editorHost.hidden=true;bslEditor.close();roleEditor.open(value,preserveSelection);value.isRole=true;value.initialRole=JSON.stringify(roleEditor.value())}
     function showCatalogEditor(value){closeEditors(catalogEditor);formDesigner.close();editorHost.hidden=true;bslEditor.close();catalogEditor.open(value);value.isCatalog=true;value.initialCatalog=JSON.stringify(catalogEditor.value())}
@@ -184,7 +184,7 @@
         const refreshed=await loadTree(false);
         const fresh=(refreshed?.tree?.children||[]).find(item=>item.id===node.id);
         if(fresh)node.properties=fresh.properties;
-        status.className='';status.textContent=`${node.title} · ${currentFile.readOnly?'Только чтение':'Готово'}`;
+        status.className='';status.textContent=`${node.title} · Готово`;
         return true;
       }catch(error){status.textContent=String(error.message||error).trim();status.className='error';return false;}
       finally{loadingFile=false;}

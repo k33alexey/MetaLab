@@ -809,8 +809,6 @@ func writeSourceError(response http.ResponseWriter, err error) {
 		status = http.StatusConflict
 	case errors.Is(err, ErrSourceNotFound):
 		status = http.StatusNotFound
-	case errors.Is(err, ErrSourceReadOnly):
-		status = http.StatusForbidden
 	}
 	http.Error(response, err.Error(), status)
 }
@@ -822,8 +820,6 @@ func writeBSLNavigationError(response http.ResponseWriter, err error) {
 		status = http.StatusConflict
 	case errors.Is(err, ErrSourceNotFound), errors.Is(err, ErrBSLSymbolNotFound), errors.Is(err, ErrBSLHelpNotFound):
 		status = http.StatusNotFound
-	case errors.Is(err, ErrSourceReadOnly):
-		status = http.StatusForbidden
 	}
 	http.Error(response, err.Error(), status)
 }

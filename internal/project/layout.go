@@ -41,13 +41,6 @@ const (
 	// ExternalConnectionModuleFile holds what runs when something outside
 	// connects to the base without a person in front of it.
 	ExternalConnectionModuleFile = "МодульВнешнегоСоединения.bsl"
-	// OrdinaryApplicationModuleFile is carried and never run: ML has no
-	// ordinary application. It is not a precaution - in a real configuration
-	// this is a file of several thousand characters, and dropping it would
-	// lose the only record of what used to happen at start-up. Kept beside the
-	// others so that a developer sees what was there, and named by its role
-	// like every module of the root.
-	OrdinaryApplicationModuleFile = "МодульОбычногоПриложения.bsl"
 	// LogoDirectory and SplashDirectory are the two pictures the configuration
 	// root owns: the logo it is shown by and the splash it opens with. They
 	// are the root's own files and not references to common pictures - a
@@ -210,8 +203,12 @@ func init() {
 
 // rootModuleFiles is every module the configuration root may keep, in the
 // order the tree shows them.
-var rootModuleFiles = []string{SessionModuleFile, ApplicationModuleFile,
-	ExternalConnectionModuleFile, OrdinaryApplicationModuleFile}
+//
+// The ordinary application module is not among them: ML has no ordinary
+// application, and the module is not carried at all (owner, 14.10.2026,
+// METADATA-OBJECTS «Только управляемое приложение»). A file of that name at
+// the project root is no module - nothing reads, compiles or publishes it.
+var rootModuleFiles = []string{SessionModuleFile, ApplicationModuleFile, ExternalConnectionModuleFile}
 
 // rootPictureDirectories is every picture the configuration root may keep, in
 // the order the tree shows them.

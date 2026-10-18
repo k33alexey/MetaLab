@@ -3,7 +3,6 @@ package studio
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -256,15 +255,11 @@ func TestApplicationModuleIsCompiledIntoTheProjectProgram(t *testing.T) {
 	t.Fatalf("the application module did not reach the program: %+v", modules)
 }
 
-// All four modules of the root stand in the tree. Three open, created on the
-// first opening; the ordinary application module is the one that never runs,
-// and it is exactly the one a developer of a transferred configuration comes
-// looking for, so it is there to be found - but Studio only shows it, and with
-// no file there is nothing to open. Defects caught: a module missing from the
-// tree, a node the page cannot tell to open as a module of the root (the
-// external connection module did not open from 2.38 to 2.296), and a module
-// nothing runs created by a click.
-func TestRootKeepsFourModules(t *testing.T) {
+// The three modules of the root stand in the tree and open, created on the
+// first opening. Defects caught: a module missing from the tree, a node the
+// page cannot tell to open as a module of the root (the external connection
+// module did not open from 2.38 to 2.296).
+func TestRootKeepsThreeModules(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
 	workspace, err := Open(root)
@@ -291,29 +286,19 @@ func TestRootKeepsFourModules(t *testing.T) {
 			t.Fatalf("module %s does not open: %v", id, err)
 		}
 	}
-	ordinary := found["ordinary-application-module"]
-	if ordinary.Title != "Модуль обычного приложения" || ordinary.Kind == "root-module" || ordinary.Path != "" {
-		t.Fatalf("the ordinary application module with no file is offered to open: %+v", ordinary)
-	}
-	if _, err := workspace.OpenRootModule("ordinary-application-module"); !errors.Is(err, ErrSourceNotFound) {
-		t.Fatalf("opening the ordinary application module with no file answered %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(root, project.OrdinaryApplicationModuleFile)); !os.IsNotExist(err) {
-		t.Fatalf("opening created the ordinary application module: %v", err)
-	}
 }
 
-// A carried ordinary application module is shown and never written (owner,
-// 13.10.2026): the editor gets it marked read-only, and both ways Studio
-// writes sources refuse it - a save and the replacement a rename makes. Defects
-// caught: the module offered to open from the tree as nothing, opened for
-// editing, written by a save or by a rename, and a refusal the page cannot
-// tell from a bad request.
-func TestStudioOnlyShowsOrdinaryApplicationModule(t *testing.T) {
+// The ordinary application module is not carried (owner, 14.10.2026,
+// METADATA-OBJECTS «Только управляемое приложение»): a file of its name at the
+// project root is no module - the tree does not show it, Studio does not open
+// it, the program is not compiled from it. Defects caught: the module of an
+// application ML does not have still offered in the tree, opened, or compiled
+// as if it ran.
+func TestOrdinaryApplicationModuleIsNotCarried(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
-	ordinarySource := "Процедура ПриНачалеРаботыСистемы()\nКонецПроцедуры\n"
-	writeBSLTestSource(t, root, project.OrdinaryApplicationModuleFile, ordinarySource)
+	const file = "МодульОбычногоПриложения.bsl"
+	writeBSLTestSource(t, root, file, "Процедура ПриНачалеРаботыСистемы()\nКонецПроцедуры\n")
 	workspace, err := Open(root)
 	if err != nil {
 		t.Fatal(err)
@@ -323,39 +308,25 @@ func TestStudioOnlyShowsOrdinaryApplicationModule(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, node := range snapshot.Tree.Children {
-		if node.ID == "ordinary-application-module" && (node.Kind != "root-module" || node.Path != project.OrdinaryApplicationModuleFile) {
-			t.Fatalf("the carried ordinary application module does not open from the tree: %+v", node)
+		if node.ID == "ordinary-application-module" || node.Path == file || node.Title == "Модуль обычного приложения" {
+			t.Fatalf("the ordinary application module is in the tree: %+v", node)
 		}
 	}
-	opened, err := workspace.OpenRootModule("ordinary-application-module")
-	if err != nil || !opened.ReadOnly || opened.Content != ordinarySource {
-		t.Fatalf("the ordinary application module opened as %+v, %v", opened, err)
+	if _, err := workspace.OpenRootModule("ordinary-application-module"); err == nil {
+		t.Fatal("the ordinary application module opened as a module of the root")
 	}
-	if read, err := workspace.ReadSource(project.OrdinaryApplicationModuleFile); err != nil || !read.ReadOnly {
-		t.Fatalf("the ordinary application module read as %+v, %v", read, err)
+	catalog, err := metadata.Load(root)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := workspace.SaveSource(project.OrdinaryApplicationModuleFile, "", opened.Revision); !errors.Is(err, ErrSourceReadOnly) {
-		t.Fatalf("a save of the ordinary application module answered %v", err)
+	modules, err := metadata.LoadProjectModules(root, catalog)
+	if err != nil {
+		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPut, "/api/file", strings.NewReader(`{"path":"`+project.OrdinaryApplicationModuleFile+`","content":"","expectedRevision":"`+opened.Revision+`"}`))
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-ML-CSRF", "1")
-	response := httptest.NewRecorder()
-	NewHandler(workspace).ServeHTTP(response, request)
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("Studio answered a save of the ordinary application module with %d %s", response.Code, response.Body)
-	}
-	workspace.mu.Lock()
-	err = workspace.replaceSourcesLocked(map[string][]byte{project.OrdinaryApplicationModuleFile: nil}, map[string][]byte{project.OrdinaryApplicationModuleFile: []byte(ordinarySource)})
-	workspace.mu.Unlock()
-	if !errors.Is(err, ErrSourceReadOnly) {
-		t.Fatalf("the replacement a rename makes answered %v", err)
-	}
-	if kept, _ := os.ReadFile(filepath.Join(root, project.OrdinaryApplicationModuleFile)); string(kept) != ordinarySource {
-		t.Fatalf("the ordinary application module was written: %q", kept)
-	}
-	if session, err := workspace.OpenRootModule("session-module"); err != nil || session.ReadOnly {
-		t.Fatalf("the session module opened as %+v, %v", session, err)
+	for _, module := range modules {
+		if module.Filename == file {
+			t.Fatalf("the ordinary application module is compiled: %+v", module.Name)
+		}
 	}
 }
 

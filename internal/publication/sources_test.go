@@ -654,7 +654,6 @@ func TestRootFilesChangeTheContentDigest(t *testing.T) {
 		project.SessionModuleFile,
 		project.ApplicationModuleFile,
 		project.ExternalConnectionModuleFile,
-		project.OrdinaryApplicationModuleFile,
 		project.HelpDirectory + "/ru.html",
 		project.HelpDirectory + "/_files/1.png",
 		project.LogoDirectory + "/100.png",
@@ -703,6 +702,24 @@ func TestRootFilesChangeTheContentDigest(t *testing.T) {
 				t.Fatalf("a change to %s alone left the content digest as it was", file)
 			}
 		})
+	}
+}
+
+// The ordinary application module is not carried (owner, 14.10.2026): a file
+// of its name at the project root is no source of the package. Defect caught:
+// the module of an application ML does not have went into the package.
+func TestOrdinaryApplicationModuleIsNotPublished(t *testing.T) {
+	t.Parallel()
+	root := publicationProject(t)
+	if err := os.WriteFile(filepath.Join(root, "МодульОбычногоПриложения.bsl"), []byte("Процедура П()\nКонецПроцедуры\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	state, err := inspect(context.Background(), root, SourceState{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slicesContainPath(state.Files, "МодульОбычногоПриложения.bsl") {
+		t.Fatalf("the ordinary application module is among the package's files: %+v", state.Files)
 	}
 }
 
