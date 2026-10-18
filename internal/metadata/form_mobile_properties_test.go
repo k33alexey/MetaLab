@@ -91,3 +91,25 @@ func TestMobileOnlyEventsAreRefused(t *testing.T) {
 		t.Errorf("the reopening of a form and the activation of a row: %v", err)
 	}
 }
+
+// A form has no purpose (owner, 15.10.2026, METADATA-OBJECTS «Только
+// управляемое приложение»): with no mobile platform, an application of the
+// platform is the one value left and says nothing - every form is offered in
+// ML's one client, and no export has a form for the mobile platform alone. A
+// description naming one is refused by the strict reading.
+//
+// Defect caught: the purpose of a form taken and carried, as it was until
+// 2.360.
+func TestAFormHasNoPurpose(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	for _, purposes := range []string{"[platform-application]", "[platform-application, mobile-platform-application]"} {
+		if _, err := DecodeManagedForm("form.yaml", strings.NewReader(formAttrHead+"purposes: "+purposes+"\n"), configuration); err == nil ||
+			!strings.Contains(err.Error(), "field purposes not found") {
+			t.Errorf("purposes %s: %v", purposes, err)
+		}
+	}
+	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(formAttrHead), configuration); err != nil {
+		t.Errorf("a form without a purpose: %v", err)
+	}
+}

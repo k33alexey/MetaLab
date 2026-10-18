@@ -208,7 +208,6 @@ RENAMED_BY_KIND = {
     # проекта (internal/project). Оба вида сверяются с 02.10.2026: до того
     # дамп состава их не содержал, и сверка молча пропускала оба.
     ("Language", "LanguageCode"): "code",
-    ("CommonForm", "UsePurposes"): "purposes",
     ("Configuration", "ConfigurationInformationAddress"): "information_address",
     ("Configuration", "DefaultCollaborationSystemUsersChoiceForm"): "collaboration_system_users_choice_form",
     ("Configuration", "DefaultDataHistoryChangeHistoryForm"): "data_history_changes_form",
@@ -311,6 +310,8 @@ ACCEPTED = {
     ("Configuration", "AllowedIncomingShareRequestTypes"): "METADATA-OBJECTS.md: мобильное приложение не переносится - отказ владельца 14.10.2026",
     ("Configuration", "MobileClientSignature"): "METADATA-OBJECTS.md: мобильное приложение не переносится - отказ владельца 14.10.2026",
     ("Configuration", "StandaloneConfigurationRestrictionRoles"): "METADATA-OBJECTS.md: мобильное приложение не переносится - отказ владельца 14.10.2026",
+    ("Configuration", "UsePurposes"): "METADATA-OBJECTS.md: только управляемое приложение - назначение корня и формы снято целиком (без мобильной платформы одно значение), отказ владельца 15.10.2026",
+    ("CommonForm", "UsePurposes"): "METADATA-OBJECTS.md: только управляемое приложение - назначение корня и формы снято целиком (без мобильной платформы одно значение), отказ владельца 15.10.2026",
     ("Configuration", "DefaultRunMode"): "METADATA-OBJECTS.md: только управляемое приложение - режим обычного приложения, прежних выпусков или чужого механизма не переносится, отказ владельца 14.10.2026",
     ("Configuration", "UseManagedFormInOrdinaryApplication"): "METADATA-OBJECTS.md: только управляемое приложение - режим обычного приложения, прежних выпусков или чужого механизма не переносится, отказ владельца 14.10.2026",
     ("Configuration", "UseOrdinaryFormInManagedApplication"): "METADATA-OBJECTS.md: только управляемое приложение - режим обычного приложения, прежних выпусков или чужого механизма не переносится, отказ владельца 14.10.2026",

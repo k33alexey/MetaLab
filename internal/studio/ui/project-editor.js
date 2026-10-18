@@ -35,12 +35,6 @@ function createProjectModel(source) {
        константе, поэтому хранится парой «вид и объект»: по одному
        идентификатору читатель файла гадал бы, куда смотреть. */
     setFlag(field, on) { if (on) configuration[field] = true; else delete configuration[field]; },
-    /* Назначение, названное дважды, остаётся одним назначением. */
-    setPurpose(purpose, used) {
-      const kept = (configuration.usePurposes || []).filter(item => item !== purpose);
-      if (used) kept.push(purpose);
-      if (kept.length === 0) delete configuration.usePurposes; else configuration.usePurposes = kept;
-    },
     setDictionary(kind, id, used) {
       const kept = (configuration.additionalFullTextSearchDictionaries || [])
         .filter(item => !(item.kind === kind && item.object === id));
@@ -182,17 +176,6 @@ function createProjectEditor(host, onChange) {
   function checkField(label, field) {
     return checkboxField(label, Boolean(source.configuration[field]), checked => { model.setFlag(field, checked); touch(); }, 'project-role');
   }
-  function purposesField(label) {
-    const wrapper = node('div', undefined, 'project-localized');
-    wrapper.append(node('span', label, 'project-localized-label'));
-    const list = node('div', undefined, 'project-roles');
-    const chosen = source.configuration.usePurposes || [];
-    for (const [value, text] of [['platform-application', 'Приложение платформы'], ['mobile-platform-application', 'Приложение мобильной платформы']]) {
-      list.append(checkboxField(text, chosen.includes(value), checked => { model.setPurpose(value, checked); touch(); }, 'project-role'));
-    }
-    wrapper.append(list);
-    return wrapper;
-  }
   function note(text) { return node('p', text, 'project-note'); }
   function section(title) {
     const block = node('section', undefined, 'project-section');
@@ -307,14 +290,13 @@ function createProjectEditor(host, onChange) {
        чтобы никто не искал, почему выбранное ничего не меняет. Режимы только
        обычного приложения, прежних выпусков и чужих механизмов (запуск,
        модальность, синхронные вызовы, табличные пространства, совместимость)
-       не переносятся вовсе — METADATA-OBJECTS, «Только управляемое
-       приложение». */
+       и назначение использования не переносятся вовсе — METADATA-OBJECTS,
+       «Только управляемое приложение». */
     const plainUse = [['', 'Не задано'], ['do-not-use', 'Не использовать'], ['use', 'Использовать']];
     const modes = section('Режимы прототипа');
     modes.append(note('ML исполняет только то, что умеет сам. Всё в этом разделе переносится, '
       + 'показывается и ни на что не влияет — но и не теряется: перенесённая конфигурация не должна '
       + 'молча лишаться части своих свойств.'));
-    modes.append(purposesField('Назначение использования'));
     modes.append(choiceField('Основное окно приложения', 'mainWindowMode', [
       ['', 'Не задано'], ['normal', 'Обычное'], ['workplace', 'Рабочее место'],
       ['fullscreen-workplace', 'Полноэкранное рабочее место'],

@@ -83,18 +83,22 @@ func TestRootTextsStayLines(t *testing.T) {
 	}
 }
 
-// The purpose of the root is the purpose of a form: one type in the
-// prototype, one list here. Defect caught: the root spoke the words of the
-// format of 8.3.10, the form those of 8.3.27, and nothing tied the two.
-func TestRootPurposeIsTheFormsList(t *testing.T) {
+// The root has no purpose (owner, 15.10.2026, METADATA-OBJECTS «Только
+// управляемое приложение»): with no mobile platform, an application of the
+// platform is the one value left and says nothing. A file naming one, in the
+// spelling of ML or of either format of the prototype, is refused by the
+// strict reading. Defect caught: the purpose taken and carried, as it was
+// until 2.360.
+func TestRootHasNoPurpose(t *testing.T) {
 	t.Parallel()
-	value := rootForLimits()
-	value.UsePurposes = []UsePurpose{PlatformApplicationPurpose, MobilePlatformApplicationPurpose}
-	if err := value.Validate(); err != nil {
-		t.Fatal(err)
+	head := "format: 1\nid: 018f1f72-3b4c-7d6e-8f90-123456789abc\nname: Demo\ntitle: {ru: Демо}\ndefault_language: ru\n" +
+		"languages:\n  - {id: 018f1f72-3b4c-7d6e-8f90-000000000001, name: Русский, title: {ru: Русский}, code: ru}\n"
+	if _, err := Decode(strings.NewReader(head)); err != nil {
+		t.Fatalf("a root without a purpose: %v", err)
 	}
-	value.UsePurposes = []UsePurpose{"personal-computer"}
-	if err := value.Validate(); err == nil || !strings.Contains(err.Error(), "must be platform-application or mobile-platform-application") {
-		t.Fatalf("a word of the old list: refused for another reason or not at all: %v", err)
+	for _, purposes := range []string{"[platform-application]", "[platform-application, mobile-platform-application]"} {
+		if _, err := Decode(strings.NewReader(head + "use_purposes: " + purposes + "\n")); err == nil || !strings.Contains(err.Error(), "field use_purposes not found") {
+			t.Errorf("use_purposes %s: %v", purposes, err)
+		}
 	}
 }

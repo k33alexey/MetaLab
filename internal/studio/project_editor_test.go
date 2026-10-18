@@ -427,7 +427,6 @@ func TestProjectEditorSavesTheModesOfTheRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	updated := opened.Configuration
-	updated.UsePurposes = []project.UsePurpose{project.PlatformApplicationPurpose}
 	updated.MainWindowMode = project.NormalWindow
 	updated.BinaryDataStorage = project.NotUsed
 	updated.IncludeHelpInContents = true
@@ -440,8 +439,6 @@ func TestProjectEditorSavesTheModesOfTheRoot(t *testing.T) {
 	}
 	saved := reopened.Configuration
 	switch {
-	case len(saved.UsePurposes) != 1 || saved.UsePurposes[0] != project.PlatformApplicationPurpose:
-		t.Fatalf("the purposes were lost: %+v", saved.UsePurposes)
 	case saved.MainWindowMode != project.NormalWindow || saved.BinaryDataStorage != project.NotUsed:
 		t.Fatalf("a mode was lost: %+v", saved)
 	case !saved.IncludeHelpInContents:

@@ -139,16 +139,6 @@ test('a flag that is switched off disappears from the root',()=>{
   model.setFlag('includeHelpInContents',false);
   assert.equal('includeHelpInContents' in model.value(),false);
 });
-// Назначение, названное дважды, остаётся одним назначением, а список без
-// единого назначения пропадает.
-test('use purposes are named once and vanish together',()=>{
-  const model=create(fixture());
-  model.setPurpose('personal-computer',true);model.setPurpose('mobile-device',true);
-  model.setPurpose('personal-computer',true);
-  assert.deepEqual(model.value().usePurposes,['mobile-device','personal-computer']);
-  model.setPurpose('mobile-device',false);model.setPurpose('personal-computer',false);
-  assert.equal('usePurposes' in model.value(),false);
-});
 // Синоним языка локализован: язык называется на каждом языке проекта, и
 // стёртый перевод исчезает, а не остаётся пустой строкой. Английский не
 // правится вовсе.

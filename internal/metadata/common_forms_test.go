@@ -38,7 +38,6 @@ kind: common
 comment: Открывается из любого места конфигурации
 explanation: {ru: Кому и куда писать}
 extended_presentation: {ru: Адресная книга организации}
-purposes: [platform-application, mobile-platform-application]
 use_standard_commands: true
 include_help_in_contents: true
 `)
@@ -58,8 +57,6 @@ include_help_in_contents: true
 		t.Fatalf("the comment was lost: %+v", form)
 	case len(form.Explanation) == 0 || len(form.ExtendedPresentation) == 0:
 		t.Fatalf("the presentations were lost: %+v", form)
-	case len(form.Purposes) != 2:
-		t.Fatalf("what the form is meant for was lost: %+v", form.Purposes)
 	case !form.UseStandardCommands || !form.IncludeHelpInContents:
 		t.Fatalf("the two switches were lost: %+v", form)
 	}
@@ -155,9 +152,6 @@ kind: common
 func TestBrokenCommonFormPropertiesAreRefused(t *testing.T) {
 	t.Parallel()
 	for name, broken := range map[string]struct{ body, want string }{
-		"назначения не существует": {"purposes: [watch]", "purposes[0] is not a kind of application"},
-		"назначение повторено": {"purposes: [platform-application, platform-application]",
-			"purposes[1] is already among the purposes"},
 		"пояснение не на языке": {"explanation: {\"d=e\": Adressbuch}",
 			"explanation.d=e is not a language code"},
 	} {

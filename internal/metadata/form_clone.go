@@ -18,7 +18,6 @@ func cloneRuntimeForm(value ManagedForm) ManagedForm {
 	result.Title = cloneTitle(value.Title)
 	result.Explanation = maps.Clone(value.Explanation)
 	result.ExtendedPresentation = maps.Clone(value.ExtendedPresentation)
-	result.Purposes = slices.Clone(value.Purposes)
 	result.SettingsStorage = clonePointer(value.SettingsStorage)
 	result.Events = maps.Clone(value.Events)
 	result.Commands = make([]ManagedFormCommand, len(value.Commands))

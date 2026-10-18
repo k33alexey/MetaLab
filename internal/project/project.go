@@ -204,26 +204,15 @@ type Project struct {
 	// synchronous calls, tablespaces, the compatibility of the platform, of
 	// the extensions and of the interface. A file naming one is refused by
 	// the strict reading; code reading Метаданные.РежимСовместимости and the
-	// like gets ML's own behaviour as a constant (METADATA-OBJECTS).
-	UsePurposes               []UsePurpose   `yaml:"use_purposes,omitempty" json:"usePurposes,omitempty"`
+	// like gets ML's own behaviour as a constant (METADATA-OBJECTS). Nor is
+	// the purpose of the configuration - an application of the platform or
+	// of the mobile platform: with no mobile platform the one value left
+	// would say nothing (owner, 15.10.2026).
 	MainWindowMode            MainWindowMode `yaml:"main_window_mode,omitempty" json:"mainWindowMode,omitempty"`
 	BinaryDataStorage         UseMode        `yaml:"binary_data_storage,omitempty" json:"binaryDataStorage,omitempty"`
 	BinaryDataBlockStorageUse UseMode        `yaml:"binary_data_block_storage_use,omitempty" json:"binaryDataBlockStorageUse,omitempty"`
 	IncludeHelpInContents     bool           `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
 }
-
-// UsePurpose is what the configuration, or a form of it, is meant to run on.
-// It is one type in the prototype for the root and for a form alike, so it is
-// one list here. The format of 8.3.27 writes PlatformApplication and
-// MobilePlatformApplication; the format of 8.3.10 writes the same two as
-// PersonalComputer and MobileDevice (energy, 1587 and 1586 times), and they
-// are read as these two.
-type UsePurpose string
-
-const (
-	PlatformApplicationPurpose       UsePurpose = "platform-application"
-	MobilePlatformApplicationPurpose UsePurpose = "mobile-platform-application"
-)
 
 // UseMode is the answer to "is this used".
 type UseMode string
@@ -643,21 +632,6 @@ func (p Project) Validate() error {
 		seenDictionaries[dictionary] = struct{}{}
 	}
 
-	seenPurposes := make(map[UsePurpose]struct{}, len(p.UsePurposes))
-	for index, purpose := range p.UsePurposes {
-		path := fmt.Sprintf("use_purposes[%d]", index)
-		switch purpose {
-		case PlatformApplicationPurpose, MobilePlatformApplicationPurpose:
-		default:
-			add(path, "must be platform-application or mobile-platform-application")
-			continue
-		}
-		// Named twice, a purpose is still one purpose.
-		if _, exists := seenPurposes[purpose]; exists {
-			add(path, "must be unique")
-		}
-		seenPurposes[purpose] = struct{}{}
-	}
 	for path, mode := range map[string]UseMode{
 		"binary_data_storage":           p.BinaryDataStorage,
 		"binary_data_block_storage_use": p.BinaryDataBlockStorageUse,

@@ -77,18 +77,6 @@ type ManagedFormCommand struct {
 	Use               *FormAttributeRight `yaml:"use,omitempty" json:"use,omitempty"`
 }
 
-// FormPurpose is one kind of application a form is meant for. A form may be
-// meant for several, and the set is a property of the form: the reference
-// configuration keeps forms offered on the desktop but not on a phone. It is
-// the purpose of the configuration root - one type in the prototype, one list
-// here.
-type FormPurpose = project.UsePurpose
-
-const (
-	PlatformApplicationPurpose       = project.PlatformApplicationPurpose
-	MobilePlatformApplicationPurpose = project.MobilePlatformApplicationPurpose
-)
-
 // ManagedForm is the versioned source model edited by the visual form designer.
 //
 // Its module is not named here. A form keeps a folder, and the module lies in
@@ -109,10 +97,9 @@ type ManagedForm struct {
 	// A form has no type: every form is managed. ML builds no ordinary form,
 	// and the prototype's ordinary forms are not carried at all (owner,
 	// 14.10.2026, METADATA-OBJECTS), so the one value left would say nothing.
-	//
-	// Purposes says which kinds of application the form is meant for. Empty
-	// means the form makes no claim and is offered everywhere.
-	Purposes []FormPurpose `yaml:"purposes,omitempty" json:"purposes,omitempty"`
+	// For the same reason a form has no purpose - an application of the
+	// platform or of the mobile platform, as the root has none (owner,
+	// 15.10.2026): every form is offered in ML's one client.
 	// UseStandardCommands decides whether the platform offers its own commands
 	// on this form beside the ones it declares.
 	UseStandardCommands bool `yaml:"use_standard_commands,omitempty" json:"useStandardCommands,omitempty"`
@@ -289,19 +276,6 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	issues = append(issues, validateFormLayout(value.FormLayout)...)
 	issues = append(issues, validateExcludedCommands("excluded_commands", value.ExcludedCommands)...)
 	issues = append(issues, validateFormExtension(value.FormExtension, value.Attributes)...)
-	seenPurposes := map[FormPurpose]bool{}
-	for index, purpose := range value.Purposes {
-		switch purpose {
-		case PlatformApplicationPurpose, MobilePlatformApplicationPurpose:
-		default:
-			issues = append(issues, fmt.Sprintf("purposes[%d] is not a kind of application", index))
-			continue
-		}
-		if seenPurposes[purpose] {
-			issues = append(issues, fmt.Sprintf("purposes[%d] is already among the purposes", index))
-		}
-		seenPurposes[purpose] = true
-	}
 	// Both are optional: a form that says nothing extra about itself is a
 	// plain form, and an empty text passes the check as it is.
 	for name, text := range map[string]LocalizedText{

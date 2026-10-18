@@ -695,7 +695,6 @@ languages:
     title:
       ru: Русский
     code: ru
-use_purposes: [platform-application, mobile-platform-application]
 main_window_mode: normal
 binary_data_storage: use
 binary_data_block_storage_use: do-not-use
@@ -706,8 +705,6 @@ include_help_in_contents: true
 		t.Fatalf("Decode() error = %v", err)
 	}
 	switch {
-	case len(value.UsePurposes) != 2 || value.UsePurposes[0] != PlatformApplicationPurpose:
-		t.Fatalf("the purposes came back as %+v", value.UsePurposes)
 	case value.MainWindowMode != NormalWindow:
 		t.Fatalf("the window mode was lost: %+v", value)
 	case value.BinaryDataStorage != Used || value.BinaryDataBlockStorageUse != NotUsed:
@@ -741,10 +738,6 @@ func TestRootModesAreCheckedForShape(t *testing.T) {
 		}
 	}
 	for name, broken := range map[string]func(value *Project){
-		"назначение не из набора": func(value *Project) { value.UsePurposes = []UsePurpose{"watch"} },
-		"назначение дважды": func(value *Project) {
-			value.UsePurposes = []UsePurpose{PlatformApplicationPurpose, PlatformApplicationPurpose}
-		},
 		"двоичные данные с предупреждением": func(value *Project) { value.BinaryDataStorage = "use-with-warnings" },
 		"окно не из набора":                 func(value *Project) { value.MainWindowMode = "widget" },
 	} {
