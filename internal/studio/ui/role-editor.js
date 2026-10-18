@@ -222,14 +222,24 @@ function createRoleModel(source) {
     return result;
   }
   // Repair removes only what the configuration no longer has - an object, a
-  // part of one, a restriction pointing at a missing field. A right the
-  // object has no use for is carried, as the prototype carries it, and is
-  // never repaired away.
+  // part of one, a restriction pointing at a missing field - and the rights
+  // ML no longer keeps, putting the one standing for each in its place: the
+  // thin and the web client become «Запуск приложения» (ACCESS-RIGHTS, «Роли,
+  // сохранённые прежней версией ML»). A right the object has no use for is
+  // carried, as the prototype carries it, and is never repaired away.
   function repaired() {
     const result = clean();
-    const parts = value.schema.parts || {};
+    const parts = value.schema.parts || {}, dropped = value.schema.droppedRights || {};
     result.objects = result.objects.filter(item => parts[item.object]);
     for (const item of result.objects) {
+      // A right given through either right it replaces is given; one denied
+      // through them is denied only if neither gives it.
+      const kept = list => [...new Set((list || []).map(right => right in dropped ? dropped[right] : right).filter(Boolean))];
+      if (item.operations.some(right => right in dropped) || item.denied?.some(right => right in dropped)) {
+        item.operations = kept(item.operations);
+        const denied = kept(item.denied).filter(right => !item.operations.includes(right));
+        if (denied.length) item.denied = denied; else delete item.denied;
+      }
       item.fields = item.fields.filter(field => parts[item.object].includes(field.field));
       // A restriction loses a field the object no longer has, and goes when
       // it had fields and none is left: emptied, it would stand for every
@@ -858,7 +868,7 @@ function createRoleEditor(host, onChange) {
       identity.append(fieldsFlag);
       identity.append(checkbox('Независимые права подчиненных объектов',!!source.role.independentChildRights,enabled=>model.setIndependentChildRights(enabled)));
       host.append(identity);
-      warning=node('div',undefined,'role-warning');warning.append(node('span','В роли есть права на удалённые или изменённые объекты. '));const repair=node('button','Убрать недоступные права');repair.type='button';repair.addEventListener('click',()=>{model.removeUnavailable();changed();renderPanel();});warning.append(repair);warning.hidden=!model.hasUnavailable();host.append(warning);
+      warning=node('div',undefined,'role-warning');warning.append(node('span','В роли есть права на удалённые или изменённые объекты или права, которых в ML нет. '));const repair=node('button','Убрать недоступные права');repair.type='button';repair.addEventListener('click',()=>{model.removeUnavailable();changed();renderPanel();});warning.append(repair);warning.hidden=!model.hasUnavailable();host.append(warning);
       // The prototype's role window has two tabs: the rights and the
       // templates of restrictions.
       const tabs=node('div',undefined,'role-tabs');tabs.setAttribute('role','tablist');

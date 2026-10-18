@@ -120,16 +120,28 @@ var expectedConfigurationRights = []string{"Administration", "DataAdministration
 	"MainWindowModeEmbeddedWorkplace", "MainWindowModeFullscreenWorkplace", "MainWindowModeKiosk",
 	"ExclusiveModeTerminationAtSessionStart", "AnalyticsSystemClient"}
 
-// rightsByNames reads prototype names as rights, in the order of the help.
+// clientsNotKept are the rights of the prototype nothing stands for in ML:
+// its thick and mobile clients (ACCESS-RIGHTS, «Запуск клиента — одно
+// право»). The thin and the web client are the start of the application.
+var clientsNotKept = []string{"ThickClient", "MobileClient"}
+
+// rightsByNames reads prototype names as rights, in the order of the help,
+// each once: the thin and the web client are one right in ML, and the
+// clients ML does not keep are no right of it.
 func rightsByNames(t *testing.T, names []string) []PermissionOperation {
 	t.Helper()
 	result := []PermissionOperation{}
 	for _, name := range names {
+		if slices.Contains(clientsNotKept, name) {
+			continue
+		}
 		right, ok := RightByPrototypeName(name)
 		if !ok {
 			t.Fatalf("%s is no right of the prototype", name)
 		}
-		result = append(result, right)
+		if !slices.Contains(result, right) {
+			result = append(result, right)
+		}
 	}
 	slices.SortFunc(result, func(a, b PermissionOperation) int {
 		return slices.Index(RoleRights(), a) - slices.Index(RoleRights(), b)
@@ -142,7 +154,7 @@ func rightsByNames(t *testing.T, names []string) []PermissionOperation {
 // one it does: a catalog without the rights on its predefined data, a
 // constant with input by string, a register without the management of its
 // totals, a kind a role may name with no list at all, or a kind no export
-// gives rights on offered some. It also catches a right of the 69 the editor
+// gives rights on offered some. It also catches a right a role carries the editor
 // offers nowhere, and rights out of the order of the help.
 func TestEveryKindOffersThePrototypesRights(t *testing.T) {
 	t.Parallel()
@@ -256,6 +268,9 @@ func TestKindRightsAgreeWithTheExports(t *testing.T) {
 				allowed = usesOf(kind).offered
 			}
 			for _, right := range object.Rights {
+				if slices.Contains(clientsNotKept, right.Name) {
+					continue
+				}
 				operation, ok := RightByPrototypeName(right.Name)
 				if !ok || !slices.Contains(allowed, operation) {
 					t.Errorf("%s: %s on %s is not offered", path, right.Name, object.Name)

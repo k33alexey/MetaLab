@@ -53,6 +53,9 @@ func (catalog *Catalog) rightsTargetOf(id uuid.UUID) (rightsTarget, bool) {
 func (catalog *Catalog) validateRoleReferences(root string) error {
 	targets := map[uuid.UUID]rightsTarget{}
 	for _, role := range catalog.Roles {
+		if err := validateDroppedRights(role); err != nil {
+			return err
+		}
 		for _, permission := range role.Objects {
 			target, ok := targets[permission.Object]
 			if !ok {
@@ -97,6 +100,27 @@ func (catalog *Catalog) validateRoleReferences(root string) error {
 		}
 		return form, nil
 	})
+}
+
+// validateDroppedRights refuses a role that gives or denies a right ML no
+// longer keeps, naming the role and the right (ACCESS-RIGHTS, «Роли,
+// сохранённые прежней версией ML»): such a role is not translated, it is
+// repaired in Studio.
+func validateDroppedRights(role RoleDefinition) error {
+	for _, permission := range role.Objects {
+		for _, list := range []struct {
+			verb   string
+			rights []PermissionOperation
+		}{{"gives", permission.Operations}, {"denies", permission.Denied}} {
+			for _, operation := range list.rights {
+				if dropped, ok := droppedRightOf(operation); ok {
+					return fmt.Errorf("role %s %s the right %s, which ML does not keep: %s; open the role in Studio and take away the rights it cannot keep («Убрать недоступные права»)",
+						role.Name, list.verb, operation, dropped.why)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // validateRoleRestrictions checks the restrictions of one object against the

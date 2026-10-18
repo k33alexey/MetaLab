@@ -11,7 +11,7 @@ vm.runInContext(readFileSync(new URL('../internal/studio/ui/studio-common.js',im
 vm.runInContext(script,context);
 const create=context.createRoleModel;
 const plain=value=>JSON.parse(JSON.stringify(value));
-function fixture(){return {role:{id:'role',name:'Продавец',title:{ru:'Продавец'}},schema:{restrictionRules:[{right:'read',byFields:true},{right:'insert',byFields:false},{right:'update',byFields:false},{right:'delete',byFields:false}],rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'posting',title:'Проведение'}],objects:[{id:'base',root:true,rights:['administration','thin-client'],operations:[],fields:[],restrictionFields:[]},{id:'goods',rights:['read','insert','update','delete','view','edit','input-by-string'],restrictedRights:['read','insert','update','delete'],operations:['read','insert','update','delete'],fields:[{key:'ref',group:'standard-attributes',operations:['view','edit']},{key:'name',group:'attributes',operations:['view','edit']},{key:'part',group:'table-parts',operations:['view','edit']},{key:'column',group:'attributes',parent:'part',operations:['view','edit']},{key:'print',group:'commands',operations:['view']}],restrictionFields:[{key:'ref'},{key:'dataversion'},{key:'name'},{key:'part'},{key:'column',parent:'part'},{key:'part.linenumber',parent:'part'}]},{id:'other',rights:['read','view'],operations:['read'],fields:[],restrictionFields:[]}],parts:{base:[],goods:['column','name','part','print','ref'],other:[]},forms:[{id:'form',commands:[{id:'command'}]}]}};}
+function fixture(){return {role:{id:'role',name:'Продавец',title:{ru:'Продавец'}},schema:{restrictionRules:[{right:'read',byFields:true},{right:'insert',byFields:false},{right:'update',byFields:false},{right:'delete',byFields:false}],rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'posting',title:'Проведение'}],objects:[{id:'base',root:true,rights:['administration','run-application'],operations:[],fields:[],restrictionFields:[]},{id:'goods',rights:['read','insert','update','delete','view','edit','input-by-string'],restrictedRights:['read','insert','update','delete'],operations:['read','insert','update','delete'],fields:[{key:'ref',group:'standard-attributes',operations:['view','edit']},{key:'name',group:'attributes',operations:['view','edit']},{key:'part',group:'table-parts',operations:['view','edit']},{key:'column',group:'attributes',parent:'part',operations:['view','edit']},{key:'print',group:'commands',operations:['view']}],restrictionFields:[{key:'ref'},{key:'dataversion'},{key:'name'},{key:'part'},{key:'column',parent:'part'},{key:'part.linenumber',parent:'part'}]},{id:'other',rights:['read','view'],operations:['read'],fields:[],restrictionFields:[]}],parts:{base:[],goods:['column','name','part','print','ref'],other:[]},forms:[{id:'form',commands:[{id:'command'}]}],droppedRights:{'thin-client':'run-application','web-client':'run-application','thick-client':'','mobile-client':''}}};}
 
 test('Studio inline script remains valid JavaScript',()=>{
   const html=readFileSync(new URL('../internal/studio/ui/index.html',import.meta.url),'utf8');
@@ -117,6 +117,34 @@ test('restrictions and templates survive editing as written',()=>{
   assert.deepEqual(value.objects[0].denied,['read'],'a cleared right is denied and keeps its restriction');
   assert.equal(model.hasUnavailable(),false);
 });
+// A role saved before ML took the four clients away (ACCESS-RIGHTS, «Роли,
+// сохранённые прежней версией ML»): «Убрать недоступные права» puts «Запуск
+// приложения» in place of the thin and the web client, once, and takes the
+// thick and the mobile client away; a client denied stays denied only if no
+// client gives the start of the application. The expectation is written
+// here, not read from the schema's droppedRights.
+// Defect caught: the warning not shown for such a role, so it could never be
+// saved; a client kept, or the start of the application lost, doubled, or
+// both given and denied.
+test('repair puts the start of the application in place of the clients ML does not keep',()=>{
+  for(const [operations,denied,wantOperations,wantDenied] of [
+    [['administration','thin-client','web-client','mobile-client'],undefined,['administration','run-application'],undefined],
+    [['thick-client'],['web-client'],[],['run-application']],
+    [['web-client'],['thin-client','thick-client'],['run-application'],undefined],
+    [['administration'],['mobile-client'],['administration'],undefined],
+  ]){
+    const source=fixture();
+    source.role.objects=[{object:'base',operations,...(denied?{denied}:{}),fields:[]},{object:'goods',operations:['read'],fields:[]}];
+    const model=create(source);
+    assert.equal(model.hasUnavailable(),true,operations.join());
+    model.removeUnavailable();
+    assert.equal(model.hasUnavailable(),false,operations.join());
+    const base=plain(model.value().objects).find(item=>item.object==='base');
+    assert.deepEqual(base?.operations||[],wantOperations,operations.join());
+    assert.deepEqual(base?.denied,wantDenied,operations.join());
+    assert.deepEqual(plain(model.value().objects).find(item=>item.object==='goods').operations,['read']);
+  }
+});
 // Defect caught: a restriction naming a field the object lost kept on, so the
 // role could not be saved; or, emptied of fields, turned into a restriction
 // of every other field.
@@ -137,7 +165,7 @@ test('comment and default-grant flags round-trip through the model; a flag write
   const value=model.value();
   assert.equal(value.comment,'Только чтение справочников склада');assert.equal(value.grantNewObjectsByDefault,true);assert.equal(value.grantNewFieldsByDefault,true);assert.equal(value.independentChildRights,true);
   assert.deepEqual(value.objects.map(item=>`${item.object}:${item.denied.join(',')}:${item.fields.length}`),
-    ['base:administration,thin-client:0','goods:read,insert,update,delete,view,edit,input-by-string:1','other:read,view:0']);
+    ['base:administration,run-application:0','goods:read,insert,update,delete,view,edit,input-by-string:1','other:read,view:0']);
   // The command stood for the flag for new objects too, and is written as it stood.
   assert.deepEqual([...value.objects[1].fields[0].denied],['view']);assert.equal(value.objects[1].fields[0].field,'print');
   model.setGrantNewObjectsByDefault(false);assert.equal(model.value().grantNewObjectsByDefault,false);
@@ -317,7 +345,7 @@ test('templates are added, changed and removed in place',()=>{
 // 14.10.2026), «Снять все права» все их снимает.
 test('all rights set and clear every box of the role',()=>{
   const model=create(fixture());model.setEverything(true);
-  const boxes=[['base','administration'],['base','thin-client'],['goods','read'],['goods','input-by-string'],['other','view']];
+  const boxes=[['base','administration'],['base','run-application'],['goods','read'],['goods','input-by-string'],['other','view']];
   for(const [id,right] of boxes)assert.equal(model.hasObject(id,right),true,`${id} ${right}`);
   for(const [key,right] of [['ref','edit'],['name','view'],['part','edit'],['column','view'],['print','view']])assert.equal(model.hasField('goods',key,right),true,`${key} ${right}`);
   assert.equal(model.hasCommand('form','command'),true);

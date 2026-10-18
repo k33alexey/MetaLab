@@ -30,6 +30,10 @@ type PermissionSchema struct {
 	// the subsystem: the filter by subsystems of the windows of rights
 	// selects by them (help, «Отбор по подсистемам»; subsystemMembers).
 	Subsystems map[uuid.UUID][]uuid.UUID `json:"subsystems"`
+	// DroppedRights are the rights ML no longer keeps with the one standing
+	// for each, "" for none: a role saved before keeps them until
+	// «Убрать недоступные права» puts these in their place.
+	DroppedRights map[PermissionOperation]PermissionOperation `json:"droppedRights"`
 	// RestrictionRules are how each right a restriction may be on is
 	// restricted: the editor offers by them what saving keeps.
 	RestrictionRules []RestrictionRule `json:"restrictionRules"`
@@ -117,7 +121,7 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	if err != nil {
 		return PermissionSchema{}, err
 	}
-	result := PermissionSchema{Objects: []PermissionObject{}, Forms: []PermissionForm{}, RestrictionRules: slices.Clone(restrictionRules)}
+	result := PermissionSchema{Objects: []PermissionObject{}, Forms: []PermissionForm{}, RestrictionRules: slices.Clone(restrictionRules), DroppedRights: DroppedRights()}
 	for _, right := range roleRights {
 		result.Rights = append(result.Rights, PermissionRight{Key: right.operation, Title: nameInWords(right.russian)})
 	}

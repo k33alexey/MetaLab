@@ -22,52 +22,54 @@ const RoleKind = kinds.Role
 // PermissionOperation is one access right, named after the prototype's own
 // name for it in kebab case: Insert is insert, InteractivePosting is
 // interactive-posting. The help of ПравоДоступа lists sixty-nine of them, and
-// a role carries every one of them on whatever it is given to, whether or
-// not this platform acts on it yet.
+// a role carries every one of them ML keeps on whatever it is given to,
+// whether or not this platform acts on it yet; the rights ML does not keep
+// are droppedRights.
 type PermissionOperation string
 
 const (
-	PermissionRead                                       PermissionOperation = "read"
-	PermissionInsert                                     PermissionOperation = "insert"
-	PermissionUpdate                                     PermissionOperation = "update"
-	PermissionDelete                                     PermissionOperation = "delete"
-	PermissionPosting                                    PermissionOperation = "posting"
-	PermissionUndoPosting                                PermissionOperation = "undo-posting"
-	PermissionView                                       PermissionOperation = "view"
-	PermissionInteractiveInsert                          PermissionOperation = "interactive-insert"
-	PermissionEdit                                       PermissionOperation = "edit"
-	PermissionInteractiveDelete                          PermissionOperation = "interactive-delete"
-	PermissionInteractiveSetDeletionMark                 PermissionOperation = "interactive-set-deletion-mark"
-	PermissionInteractiveClearDeletionMark               PermissionOperation = "interactive-clear-deletion-mark"
-	PermissionInteractiveDeleteMarked                    PermissionOperation = "interactive-delete-marked"
-	PermissionInteractivePosting                         PermissionOperation = "interactive-posting"
-	PermissionInteractivePostingRegular                  PermissionOperation = "interactive-posting-regular"
-	PermissionInteractiveUndoPosting                     PermissionOperation = "interactive-undo-posting"
-	PermissionInteractiveChangeOfPosted                  PermissionOperation = "interactive-change-of-posted"
-	PermissionInputByString                              PermissionOperation = "input-by-string"
-	PermissionTotalsControl                              PermissionOperation = "totals-control"
-	PermissionUse                                        PermissionOperation = "use"
-	PermissionAdministration                             PermissionOperation = "administration"
-	PermissionDataAdministration                         PermissionOperation = "data-administration"
-	PermissionExclusiveMode                              PermissionOperation = "exclusive-mode"
-	PermissionActiveUsers                                PermissionOperation = "active-users"
-	PermissionEventLog                                   PermissionOperation = "event-log"
-	PermissionExternalConnection                         PermissionOperation = "external-connection"
-	PermissionAutomation                                 PermissionOperation = "automation"
-	PermissionInteractiveOpenExtDataProcessors           PermissionOperation = "interactive-open-ext-data-processors"
-	PermissionInteractiveOpenExtReports                  PermissionOperation = "interactive-open-ext-reports"
-	PermissionGet                                        PermissionOperation = "get"
-	PermissionSet                                        PermissionOperation = "set"
-	PermissionInteractiveActivate                        PermissionOperation = "interactive-activate"
-	PermissionStart                                      PermissionOperation = "start"
-	PermissionInteractiveStart                           PermissionOperation = "interactive-start"
-	PermissionExecute                                    PermissionOperation = "execute"
-	PermissionInteractiveExecute                         PermissionOperation = "interactive-execute"
-	PermissionOutput                                     PermissionOperation = "output"
-	PermissionUpdateDataBaseConfiguration                PermissionOperation = "update-database-configuration"
-	PermissionThinClient                                 PermissionOperation = "thin-client"
-	PermissionWebClient                                  PermissionOperation = "web-client"
-	PermissionThickClient                                PermissionOperation = "thick-client"
+	PermissionRead                             PermissionOperation = "read"
+	PermissionInsert                           PermissionOperation = "insert"
+	PermissionUpdate                           PermissionOperation = "update"
+	PermissionDelete                           PermissionOperation = "delete"
+	PermissionPosting                          PermissionOperation = "posting"
+	PermissionUndoPosting                      PermissionOperation = "undo-posting"
+	PermissionView                             PermissionOperation = "view"
+	PermissionInteractiveInsert                PermissionOperation = "interactive-insert"
+	PermissionEdit                             PermissionOperation = "edit"
+	PermissionInteractiveDelete                PermissionOperation = "interactive-delete"
+	PermissionInteractiveSetDeletionMark       PermissionOperation = "interactive-set-deletion-mark"
+	PermissionInteractiveClearDeletionMark     PermissionOperation = "interactive-clear-deletion-mark"
+	PermissionInteractiveDeleteMarked          PermissionOperation = "interactive-delete-marked"
+	PermissionInteractivePosting               PermissionOperation = "interactive-posting"
+	PermissionInteractivePostingRegular        PermissionOperation = "interactive-posting-regular"
+	PermissionInteractiveUndoPosting           PermissionOperation = "interactive-undo-posting"
+	PermissionInteractiveChangeOfPosted        PermissionOperation = "interactive-change-of-posted"
+	PermissionInputByString                    PermissionOperation = "input-by-string"
+	PermissionTotalsControl                    PermissionOperation = "totals-control"
+	PermissionUse                              PermissionOperation = "use"
+	PermissionAdministration                   PermissionOperation = "administration"
+	PermissionDataAdministration               PermissionOperation = "data-administration"
+	PermissionExclusiveMode                    PermissionOperation = "exclusive-mode"
+	PermissionActiveUsers                      PermissionOperation = "active-users"
+	PermissionEventLog                         PermissionOperation = "event-log"
+	PermissionExternalConnection               PermissionOperation = "external-connection"
+	PermissionAutomation                       PermissionOperation = "automation"
+	PermissionInteractiveOpenExtDataProcessors PermissionOperation = "interactive-open-ext-data-processors"
+	PermissionInteractiveOpenExtReports        PermissionOperation = "interactive-open-ext-reports"
+	PermissionGet                              PermissionOperation = "get"
+	PermissionSet                              PermissionOperation = "set"
+	PermissionInteractiveActivate              PermissionOperation = "interactive-activate"
+	PermissionStart                            PermissionOperation = "start"
+	PermissionInteractiveStart                 PermissionOperation = "interactive-start"
+	PermissionExecute                          PermissionOperation = "execute"
+	PermissionInteractiveExecute               PermissionOperation = "interactive-execute"
+	PermissionOutput                           PermissionOperation = "output"
+	PermissionUpdateDataBaseConfiguration      PermissionOperation = "update-database-configuration"
+	// PermissionRunApplication is the one right of starting the application
+	// (ACCESS-RIGHTS, «Запуск клиента — одно право»): the prototype gives one
+	// a client, and ML has one client, the browser.
+	PermissionRunApplication                             PermissionOperation = "run-application"
 	PermissionSaveUserData                               PermissionOperation = "save-user-data"
 	PermissionStandardAuthenticationChange               PermissionOperation = "standard-authentication-change"
 	PermissionSessionStandardAuthenticationChange        PermissionOperation = "session-standard-authentication-change"
@@ -87,7 +89,6 @@ const (
 	PermissionEditDataHistoryVersionComment              PermissionOperation = "edit-data-history-version-comment"
 	PermissionSwitchToDataHistoryVersion                 PermissionOperation = "switch-to-data-history-version"
 	PermissionCollaborationSystemInfoBaseRegistration    PermissionOperation = "collaboration-system-info-base-registration"
-	PermissionMobileClient                               PermissionOperation = "mobile-client"
 	PermissionMainWindowModeNormal                       PermissionOperation = "main-window-mode-normal"
 	PermissionMainWindowModeWorkplace                    PermissionOperation = "main-window-mode-workplace"
 	PermissionMainWindowModeEmbeddedWorkplace            PermissionOperation = "main-window-mode-embedded-workplace"
@@ -105,10 +106,13 @@ type roleRight struct {
 	russian   string
 }
 
-// roleRights is every right of the prototype, in the order of the help of
-// ПравоДоступа (8.3.27). The four exports use sixty-eight of them: the one
-// they do not, ending exclusive mode at the start of a session, the
-// configurator writes in its own samples of 3.25 and 3.27.
+// roleRights is every right a role carries, in the order of the help of
+// ПравоДоступа (8.3.27): the prototype's, but for those ML does not keep
+// (droppedRights), and the start of the application where the help lists
+// the thin client, the first of the clients. The four exports use
+// sixty-eight of the prototype's rights: the one they do not, ending
+// exclusive mode at the start of a session, the configurator writes in its
+// own samples of 3.25 and 3.27.
 var roleRights = []roleRight{
 	{PermissionRead, "Read", "Чтение"},
 	{PermissionInsert, "Insert", "Добавление"},
@@ -148,9 +152,7 @@ var roleRights = []roleRight{
 	{PermissionInteractiveExecute, "InteractiveExecute", "ИнтерактивноеВыполнение"},
 	{PermissionOutput, "Output", "Вывод"},
 	{PermissionUpdateDataBaseConfiguration, "UpdateDataBaseConfiguration", "ОбновлениеКонфигурацииБазыДанных"},
-	{PermissionThinClient, "ThinClient", "ТонкийКлиент"},
-	{PermissionWebClient, "WebClient", "ВебКлиент"},
-	{PermissionThickClient, "ThickClient", "ТолстыйКлиент"},
+	{PermissionRunApplication, "RunApplication", "ЗапускПриложения"},
 	{PermissionSaveUserData, "SaveUserData", "СохранениеДанныхПользователя"},
 	{PermissionStandardAuthenticationChange, "StandardAuthenticationChange", "ИзменениеСтандартнойАутентификации"},
 	{PermissionSessionStandardAuthenticationChange, "SessionStandardAuthenticationChange", "ИзменениеСтандартнойАутентификацииСеанса"},
@@ -170,7 +172,6 @@ var roleRights = []roleRight{
 	{PermissionEditDataHistoryVersionComment, "EditDataHistoryVersionComment", "РедактированиеКомментарияВерсииИсторииДанных"},
 	{PermissionSwitchToDataHistoryVersion, "SwitchToDataHistoryVersion", "ПереходНаВерсиюИсторииДанных"},
 	{PermissionCollaborationSystemInfoBaseRegistration, "CollaborationSystemInfoBaseRegistration", "РегистрацияИнформационнойБазыСистемыВзаимодействия"},
-	{PermissionMobileClient, "MobileClient", "МобильныйКлиент"},
 	{PermissionMainWindowModeNormal, "MainWindowModeNormal", "РежимОсновногоОкнаОбычный"},
 	{PermissionMainWindowModeWorkplace, "MainWindowModeWorkplace", "РежимОсновногоОкнаРабочееМесто"},
 	{PermissionMainWindowModeEmbeddedWorkplace, "MainWindowModeEmbeddedWorkplace", "РежимОсновногоОкнаВстроенноеРабочееМесто"},
@@ -179,6 +180,52 @@ var roleRights = []roleRight{
 	{PermissionTechnicalSpecialistMode, "TechnicalSpecialistMode", "РежимТехническогоСпециалиста"},
 	{PermissionExclusiveModeTerminationAtSessionStart, "ExclusiveModeTerminationAtSessionStart", "ЗавершениеМонопольногоРежимаПриНачалеСеанса"},
 	{PermissionAnalyticsSystemClient, "AnalyticsSystemClient", "КлиентСистемыАналитики"},
+}
+
+// droppedRight is a right of the prototype ML does not keep, under the names
+// the prototype knows it by, with the right that stands for it in ML - none
+// when nothing does - and why.
+type droppedRight struct {
+	roleRight
+	instead PermissionOperation
+	why     string
+}
+
+// droppedRights are the rights of the prototype ML does not keep
+// (ACCESS-RIGHTS, «Запуск клиента — одно право»): the thin and the web
+// client are «Запуск приложения» in ML, the thick and the mobile client
+// ML does not have. Taking a right away later is one more line here. A role
+// naming one is read for Studio to repair, and refused by every load that
+// runs it: the project is not saved into a database, an application whose
+// configuration gives one does not open (ACCESS-RIGHTS, «Роли, сохранённые
+// прежней версией ML»).
+var droppedRights = []droppedRight{
+	{roleRight{"thin-client", "ThinClient", "ТонкийКлиент"}, PermissionRunApplication, "the thin and the web client are the one right run-application in ML"},
+	{roleRight{"web-client", "WebClient", "ВебКлиент"}, PermissionRunApplication, "the thin and the web client are the one right run-application in ML"},
+	{roleRight{"thick-client", "ThickClient", "ТолстыйКлиент"}, "", "ML has no thick client"},
+	{roleRight{"mobile-client", "MobileClient", "МобильныйКлиент"}, "", "ML has no mobile client"},
+}
+
+// droppedRightOf finds a right ML does not keep by the name a role keeps it
+// under.
+func droppedRightOf(operation PermissionOperation) (droppedRight, bool) {
+	for _, right := range droppedRights {
+		if right.operation == operation {
+			return right, true
+		}
+	}
+	return droppedRight{}, false
+}
+
+// DroppedRights answers, by the name a role keeps it under, every right ML
+// does not keep with the one standing for it, "" for none: what Studio's
+// «Убрать недоступные права» puts in its place.
+func DroppedRights() map[PermissionOperation]PermissionOperation {
+	result := make(map[PermissionOperation]PermissionOperation, len(droppedRights))
+	for _, right := range droppedRights {
+		result[right.operation] = right.instead
+	}
+	return result
 }
 
 // renamedRights are the names a right was known by before. The help says the
@@ -215,11 +262,19 @@ func RoleRights() []PermissionOperation {
 }
 
 // RightByPrototypeName finds a right by either of the names the prototype
-// writes it under, or by the one it was called before, case aside.
+// writes it under, or by the one it was called before, case aside. A right
+// ML does not keep is found as the one standing for it - the thin and the
+// web client as the start of the application - and not at all when none
+// does.
 func RightByPrototypeName(name string) (PermissionOperation, bool) {
 	for old, operation := range renamedRights {
 		if strings.EqualFold(old, name) {
 			return operation, true
+		}
+	}
+	for _, right := range droppedRights {
+		if strings.EqualFold(right.english, name) || strings.EqualFold(right.russian, name) {
+			return right.instead, right.instead != ""
 		}
 	}
 	for _, right := range roleRights {
@@ -511,8 +566,10 @@ func ValidateRole(source string, value RoleDefinition, configuration project.Pro
 	return issuesError(source, value.Format, issues)
 }
 
-// validateRightStates checks that every right named is one of the
-// prototype's, named once, and either granted or denied - not both.
+// validateRightStates checks that every right named is one a role carries,
+// or one ML no longer keeps, which the load that runs the role refuses
+// (validateDroppedRights) and Studio reads to repair; named once, and either
+// granted or denied - not both.
 func validateRightStates(path string, granted, denied []PermissionOperation) []string {
 	var issues []string
 	seen := make(map[PermissionOperation]bool, len(granted)+len(denied))
@@ -521,7 +578,7 @@ func validateRightStates(path string, granted, denied []PermissionOperation) []s
 		rights []PermissionOperation
 	}{{"operations", granted}, {"denied", denied}} {
 		for _, operation := range list.rights {
-			if !knownRights[operation] {
+			if _, dropped := droppedRightOf(operation); !knownRights[operation] && !dropped {
 				issues = append(issues, fmt.Sprintf("%s.%s names %q, which is not a right it may hold", path, list.name, operation))
 			} else if seen[operation] {
 				issues = append(issues, fmt.Sprintf("%s.%s names %q a second time", path, list.name, operation))

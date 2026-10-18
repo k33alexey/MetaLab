@@ -32,7 +32,8 @@ func fullRole() RoleDefinition {
 }
 
 // A role written as its two files and read back is the same role: every one
-// of the sixty-nine rights, a denial apart from a grant, a part only denied,
+// of the sixty-six rights it carries - the prototype's sixty-nine but its four
+// clients, and the start of the application - a denial apart from a grant, a part only denied,
 // a dotted key, a restriction on an object the role only denies (235 such in
 // the exports), the flags and the commands.
 //
@@ -65,7 +66,7 @@ func TestRoleSurvivesItsTwoFiles(t *testing.T) {
 	if err != nil || !bytes.Equal(again, description) || !bytes.Equal(againGrid, grid) {
 		t.Fatalf("a second writing differs from the first (%v):\n%s\n%s", err, again, againGrid)
 	}
-	if !slices.Equal(decoded.Objects[0].Operations, RoleRights()) || len(RoleRights()) != 69 {
+	if !slices.Equal(decoded.Objects[0].Operations, RoleRights()) || len(RoleRights()) != 66 {
 		t.Fatalf("rights carried: %d of %d", len(decoded.Objects[0].Operations), len(RoleRights()))
 	}
 	if !decoded.IndependentChildRights || len(decoded.Objects[1].Restrictions) != 2 || len(decoded.RestrictionTemplates) != 1 || len(decoded.Commands) != 1 {
@@ -134,13 +135,80 @@ func TestRightsAreFoundByThePrototypesNames(t *testing.T) {
 		"РежимТехническогоСпециалиста":           PermissionTechnicalSpecialistMode,
 		"ExclusiveModeTerminationAtSessionStart": PermissionExclusiveModeTerminationAtSessionStart,
 		"insert":                                 PermissionInsert,
+		// The thin and the web client are the start of the application in ML
+		// (ACCESS-RIGHTS, «Запуск клиента — одно право»).
+		"ThinClient":       "run-application",
+		"ВебКлиент":        "run-application",
+		"RunApplication":   "run-application",
+		"ЗапускПриложения": "run-application",
 	} {
 		if got, ok := RightByPrototypeName(name); !ok || got != want {
 			t.Errorf("%s found as %q, %v", name, got, ok)
 		}
 	}
-	if _, ok := RightByPrototypeName("FullAccess"); ok {
-		t.Error("a name that is no right was found")
+	// FullAccess is no right; the thick and the mobile client are rights of
+	// the prototype nothing stands for in ML.
+	for _, name := range []string{"FullAccess", "ThickClient", "ТолстыйКлиент", "MobileClient", "МобильныйКлиент"} {
+		if got, ok := RightByPrototypeName(name); ok {
+			t.Errorf("%s found as %q", name, got)
+		}
+	}
+}
+
+// A role saved while ML still kept the four clients (ACCESS-RIGHTS, «Роли,
+// сохранённые прежней версией ML»): it is read - Studio opens it to repair -
+// and refused, naming the role and the right, by the load that saves the
+// project into a database and by the application reading the configuration
+// a database holds. The rights are written here, not read from droppedRights.
+//
+// Defects caught: such a role refused by the reading, so Studio cannot open
+// it to repair; accepted by the load or by the snapshot, so a right ML does
+// not keep runs; a refusal that does not say which role and which right.
+func TestRolesWithClientsMLDoesNotKeepAreReadAndNotRun(t *testing.T) {
+	t.Parallel()
+	for _, item := range []struct {
+		right  PermissionOperation
+		denied bool
+	}{{"thin-client", false}, {"web-client", false}, {"thick-client", false}, {"mobile-client", false}, {"web-client", true}} {
+		verb := "gives"
+		if item.denied {
+			verb = "denies"
+		}
+		want := "role Кладовщик " + verb + " the right " + string(item.right) + ", which ML does not keep"
+		root := compositeProject(t)
+		project, err := Load(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		role, _ := project.Role("Кладовщик")
+		permission := ObjectPermission{Object: project.Project.ID, Operations: []PermissionOperation{PermissionAdministration}}
+		if item.denied {
+			permission.Denied = []PermissionOperation{item.right}
+		} else {
+			permission.Operations = append(permission.Operations, item.right)
+		}
+		role.Objects = append(role.Objects, permission)
+		if err := WriteRole(root, role); err != nil {
+			t.Fatalf("%s: the role is not written: %v", want, err)
+		}
+		if _, err := LoadPermissionSchema(root); err != nil {
+			t.Fatalf("%s: the schema of the editor is not read: %v", want, err)
+		}
+		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("the load: %v, want %q", err, want)
+		}
+		if err := ValidateProjectRole(root, role); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("saving the role in Studio: %v, want %q", err, want)
+		}
+	}
+	catalog, role, form := roleCatalogFixture(t)
+	snapshot, err := NewRuntimeSnapshot(catalog, []ManagedForm{form})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot.Roles[0].Objects = append(snapshot.Roles[0].Objects, ObjectPermission{Object: catalog.Project.ID, Operations: []PermissionOperation{"thin-client"}})
+	if _, err := snapshot.Catalog(); err == nil || !strings.Contains(err.Error(), "role "+role.Name+" gives the right thin-client, which ML does not keep") {
+		t.Errorf("the configuration a database holds: %v", err)
 	}
 }
 
@@ -226,7 +294,7 @@ func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 		return permission
 	}
 	accepted := map[string]ObjectPermission{
-		"the configuration":     grant(project.Project.ID.String(), PermissionAdministration, PermissionThinClient),
+		"the configuration":     grant(project.Project.ID.String(), PermissionAdministration, PermissionRunApplication),
 		"a subsystem":           grant(cmpSubsystem, PermissionView),
 		"a common form":         grant(cmpCommonForm, PermissionView),
 		"a common command":      grant(cmpCommonCommand, PermissionView),
@@ -261,7 +329,7 @@ func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 	}{
 		"update on a report": {grant(cmpReport, PermissionView, PermissionUpdate), "reports Ведомость update"},
 		"posting denied":     {deny(grant(cmpReport, PermissionUse), PermissionPosting), "reports Ведомость posting"},
-		"view on the configuration": {grant(project.Project.ID.String(), PermissionThinClient, PermissionView),
+		"view on the configuration": {grant(project.Project.ID.String(), PermissionRunApplication, PermissionView),
 			"configuration " + project.Project.Name + " view"},
 		"use on a field of a standard table part": {part(grant(cmpAccounts, PermissionRead),
 			"extdimensiontypes.turnoversonly", PermissionView, PermissionUse),
