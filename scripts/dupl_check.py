@@ -55,8 +55,45 @@ def sources(extension, test_suffix):
     return sorted(found)
 
 
+# A block of constants that only names values - each line "Name Type = value"
+# or "Name = value", the value a string or a number - is a list, not code: two
+# such lists with as many lines are one copy to dupl, which compares the
+# block whole and neither the names nor the values, though they hold nothing
+# in common (the kinds of note and the rights of a role, 65 lines each, in
+# 2.357). Knowledge cannot be written twice in it, so a group whose every
+# place is such a block is no copy (owner, 18.10.2026). The threshold and the
+# baseline stay as they are.
+CONSTANT_LINE = re.compile(r'[A-Za-z_]\w*(\s+[A-Za-z_][\w.]*)?\s*=\s*("(?:[^"\\]|\\.)*"|`[^`]*`|-?\d[\w.]*)\s*(//.*)?')
+# What the rule takes for a list and what it does not, checked on every run so
+# that a looser pattern cannot let a piece of code through.
+CONSTANT_LIST_SAMPLES = [
+    (["const (", '\tNoteUnusedBound NoteKind = "unused-bound"', "\t// a comment", "",
+      '\tNoteWithoutSample = "accepted-without-sample"', "\tmaxNameLength = 255", ")"], True),
+    (["const (", '\tPermissionRead PermissionOperation = "read"', "\tlimit = len(names)", ")"], False),
+    (["const (", "\tFirst Kind = iota", "\tSecond", ")"], False),
+    (["var (", '\tname = "x"', ")"], False),
+    (["func f() {", '\tname := "x"', "}"], False),
+]
+
+
+def constant_list(lines):
+    """True when the lines are one const block that only names values."""
+    body = [line.strip() for line in lines]
+    if len(body) < 2 or body[0] != "const (" or body[-1] != ")":
+        return False
+    return all(not line or line.startswith("//") or CONSTANT_LINE.fullmatch(line) for line in body[1:-1])
+
+
+def constant_list_place(place):
+    path, span = place.rsplit(":", 1)
+    start, end = (int(number) for number in span.split(","))
+    with open(os.path.join(ROOT, path), encoding="utf-8") as file:
+        return constant_list(file.read().splitlines()[start - 1:end])
+
+
 def go_clones(threshold):
-    """Each group of copies as a list of "file:from,to"."""
+    """Each group of copies as a list of "file:from,to", but for lists of
+    constants (constant_list)."""
     run = subprocess.run(DUPL + ["-t", str(threshold), "-files"], cwd=ROOT,
                          input="\n".join(sources(".go", "_test.go")),
                          capture_output=True, text=True)
@@ -67,7 +104,8 @@ def go_clones(threshold):
         if line.startswith("  "):
             current.append(line.strip())
         elif current:
-            found.append(current)
+            if not all(constant_list_place(place) for place in current):
+                found.append(current)
             current = []
     return found
 
@@ -316,6 +354,9 @@ def check(title, clones, baseline_path, hint):
 
 
 def main():
+    for lines, expected in CONSTANT_LIST_SAMPLES:
+        if constant_list(lines) != expected:
+            sys.exit(f"dupl_check: constant_list takes {lines} for {'no ' if expected else ''}list of constants")
     arguments = sys.argv[1:]
     if "--near" in arguments:
         near("--all" in arguments)
