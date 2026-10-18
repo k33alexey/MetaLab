@@ -134,7 +134,7 @@ func TestAPictureOfAnElementMayBeASetOfVariants(t *testing.T) {
 	t.Parallel()
 	const button = "items:\n  - {id: c0de0000-0000-4000-8000-000000990001, name: Создать, kind: button, picture: {file: Picture, variants: [" +
 		"{file: 100.png, density: 100, glyph_width: 16, glyph_height: 16}, {file: 200.png, density: 200}," +
-		" {file: Picture.png, density: 100, interface: \"8.2\"}, {file: Picture.png, density: 100, interface: 8.2-ordinary-application}]}}\n"
+		" {file: Picture.png, density: 150}, {file: Picture.png, density: 100, interface: taxi-compact}]}}\n"
 	set := []string{"Создать/Picture/100.png", "Создать/Picture/200.png", "Создать/Picture/Picture.png"}
 	for name, test := range map[string]struct {
 		files []string
@@ -183,7 +183,7 @@ func TestAPictureOfAnElementMayBeASetOfVariants(t *testing.T) {
 			}
 			picture := form.FormItems()[0].Picture
 			want := []PictureVariant{{File: "100.png", Density: 100, GlyphWidth: 16, GlyphHeight: 16}, {File: "200.png", Density: 200},
-				{File: "Picture.png", Density: 100, Interface: Version82PictureInterface}, {File: "Picture.png", Density: 100, Interface: Version82OrdinaryInterface}}
+				{File: "Picture.png", Density: 150}, {File: "Picture.png", Density: 100, Interface: TaxiCompactInterface}}
 			if picture == nil || picture.File != "Picture" || !reflect.DeepEqual(picture.Variants, want) {
 				t.Fatalf("picture = %+v", picture)
 			}

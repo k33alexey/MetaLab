@@ -90,18 +90,18 @@ type PicturePixel struct {
 }
 
 // PictureInterface is the variant of the client's interface a picture variant
-// is drawn for. Empty is the current interface; the others are the older
-// looks a configuration still ships images for - the configurations being
-// moved keep 8.2 variants in 832, 240 and 379 pictures.
+// is drawn for. Empty is the current interface, Taxi; the other ML draws is
+// compact Taxi. The prototype draws four more - 8.2, 8.2 of the ordinary
+// application, 8.0 and mobile Taxi, kept in 832, 240 and 379 pictures of the
+// configurations being moved - and ML carries none of them: the looks of the
+// ordinary application, of old modes of compatibility and of the mobile
+// client (METADATA-OBJECTS, «Варианты»; the owner's decisions of 14 and
+// 15.10.2026). A description naming one is refused.
 type PictureInterface string
 
 const (
-	CurrentPictureInterface    PictureInterface = ""
-	Version82PictureInterface  PictureInterface = "8.2"
-	Version82OrdinaryInterface PictureInterface = "8.2-ordinary-application"
-	Version80PictureInterface  PictureInterface = "8.0"
-	TaxiMobilePictureInterface PictureInterface = "taxi-mobile"
-	TaxiCompactInterface       PictureInterface = "taxi-compact"
+	CurrentPictureInterface PictureInterface = ""
+	TaxiCompactInterface    PictureInterface = "taxi-compact"
 )
 
 // PictureVariant is one image of a picture: the file, the density and the
@@ -114,9 +114,10 @@ type PictureVariant struct {
 	File      string           `yaml:"file" json:"file"`
 	Density   ScreenDensity    `yaml:"density" json:"density"`
 	Interface PictureInterface `yaml:"interface,omitempty" json:"interface,omitempty"`
-	// Template draws the image in the current colour of the text on iOS
-	// (help, the editor of picture variants).
-	Template bool `yaml:"template,omitempty" json:"template,omitempty"`
+	// The flag «Шаблонная», drawing the image in the current colour in the
+	// mobile application on iOS (help, form_ZipPictureEditor), is not
+	// carried: ML has no mobile application (METADATA-OBJECTS, «Мобильное
+	// приложение»), and a description naming it is refused.
 	// GlyphWidth and GlyphHeight are the size the image is drawn at, in
 	// pixels of the interface. Left out, it is the size of the image.
 	GlyphWidth  int `yaml:"glyph_width,omitempty" json:"glyphWidth,omitempty"`
@@ -169,10 +170,9 @@ func validatePictureImages(images PictureImages) []string {
 			issues = append(issues, prefix+".density must be one of 85, 100, 125, 150, 175, 200, 300 or 400")
 		}
 		switch variant.Interface {
-		case CurrentPictureInterface, Version82PictureInterface, Version82OrdinaryInterface,
-			Version80PictureInterface, TaxiMobilePictureInterface, TaxiCompactInterface:
+		case CurrentPictureInterface, TaxiCompactInterface:
 		default:
-			issues = append(issues, prefix+".interface must be 8.2, 8.2-ordinary-application, 8.0, taxi-mobile or taxi-compact, or left out")
+			issues = append(issues, prefix+".interface must be taxi-compact, or left out for the current interface")
 		}
 		if variant.GlyphWidth < 0 || variant.GlyphHeight < 0 {
 			issues = append(issues, prefix+" must not have a negative glyph size")

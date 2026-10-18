@@ -149,8 +149,8 @@ func TestCommonPictureWithoutTheBaseDensityLoads(t *testing.T) {
 // file drawn for several variants (help, the editor of picture variants; erp
 // 874 pictures this way). It is also loaded transparent with the colour of one
 // pixel. Defect caught: the folder knew only files named by density, so the
-// interface, the template flag, the glyph size, the shared file and the
-// transparency were lost at import.
+// interface, the glyph size, the shared file and the transparency were lost
+// at import.
 func TestCommonPictureCarriesItsVariantsAndTransparency(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
@@ -158,10 +158,10 @@ func TestCommonPictureCarriesItsVariantsAndTransparency(t *testing.T) {
 transparent_pixel: {x: 14, y: 8}
 variants:
   - {file: 100.png, density: 100, glyph_width: 16, glyph_height: 16}
-  - {file: 200.png, density: 200, template: true}
-  - {file: Picture.png, density: 100, interface: "8.2", glyph_width: 16, glyph_height: 16}
-  - {file: Picture.png, density: 100, interface: 8.2-ordinary-application}
-  - {file: l.png, density: 150, interface: taxi-mobile}
+  - {file: 200.png, density: 200}
+  - {file: Picture.png, density: 100, interface: taxi-compact, glyph_width: 16, glyph_height: 16}
+  - {file: picture.png, density: 150}
+  - {file: l.png, density: 150, interface: taxi-compact}
 `)
 	// The prototype finds a file with case ignored, and keeps files no
 	// variant names.
@@ -180,10 +180,8 @@ variants:
 		t.Fatalf("the variants were lost: %+v", picture.Variants)
 	case picture.Variants[0].GlyphWidth != 16 || picture.Variants[0].GlyphHeight != 16:
 		t.Fatalf("the glyph size was lost: %+v", picture.Variants[0])
-	case !picture.Variants[1].Template || picture.Variants[0].Template:
-		t.Fatalf("the template flag was lost or invented: %+v", picture.Variants)
-	case picture.Variants[2].Interface != Version82PictureInterface || picture.Variants[3].Interface != Version82OrdinaryInterface ||
-		picture.Variants[4].Interface != TaxiMobilePictureInterface || picture.Variants[0].Interface != CurrentPictureInterface:
+	case picture.Variants[2].Interface != TaxiCompactInterface || picture.Variants[3].Interface != CurrentPictureInterface ||
+		picture.Variants[4].Interface != TaxiCompactInterface || picture.Variants[0].Interface != CurrentPictureInterface:
 		t.Fatalf("the interfaces were lost: %+v", picture.Variants)
 	}
 	picture.Variants[0].File = "Подменено"
@@ -269,10 +267,37 @@ id: `+commonPictureID+`
 name: Печать
 title: {ru: Печать}
 variants:
-  - {file: Picture.png, density: 100, interface: "8.2"}
-  - {file: Picture.png, density: 100, interface: 8.2-ordinary-application}
+  - {file: Picture.png, density: 100}
+  - {file: Picture.png, density: 100, interface: taxi-compact}
 `), metadataConfiguration()); err != nil {
 		t.Fatalf("one file for two interfaces: %v", err)
+	}
+}
+
+// The looks of the ordinary application, of old modes of compatibility and
+// of the mobile client, and the flag drawing a variant in the current colour
+// in the mobile application on iOS, are not carried (METADATA-OBJECTS,
+// «Варианты» and «Мобильное приложение»): a variant naming one is refused.
+// The values are written here, from the help, not read from the code.
+// Defect caught: a variant of a look ML does not draw, or the flag of a
+// client it does not have, taken and carried.
+func TestPictureVariantsOfLooksMLDoesNotDrawAreRefused(t *testing.T) {
+	t.Parallel()
+	body := func(variant string) string {
+		return "format: 1\nid: " + commonPictureID + "\nname: Печать\ntitle: {ru: Печать}\nvariants:\n  - {file: Picture.png, density: 100}\n  - " + variant + "\n"
+	}
+	for _, look := range []string{`"8.2"`, "8.2-ordinary-application", `"8.0"`, "taxi-mobile"} {
+		_, err := DecodeCommonPicture("object.yaml", strings.NewReader(body("{file: Picture.png, density: 150, interface: "+look+"}")), metadataConfiguration())
+		if err == nil || !strings.Contains(err.Error(), "variants[1].interface must be taxi-compact, or left out for the current interface") {
+			t.Errorf("interface %s: %v", look, err)
+		}
+	}
+	if _, err := DecodeCommonPicture("object.yaml", strings.NewReader(body("{file: Picture.png, density: 150, template: true}")), metadataConfiguration()); err == nil ||
+		!strings.Contains(err.Error(), "field template not found") {
+		t.Errorf("the flag of a template: %v", err)
+	}
+	if _, err := DecodeCommonPicture("object.yaml", strings.NewReader(body("{file: Picture.png, density: 150, interface: taxi-compact}")), metadataConfiguration()); err != nil {
+		t.Errorf("compact Taxi: %v", err)
 	}
 }
 

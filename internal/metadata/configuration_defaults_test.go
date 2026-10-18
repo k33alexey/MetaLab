@@ -421,7 +421,7 @@ func TestRootPicturesAreCheckedLikeEveryPicture(t *testing.T) {
 transparent_pixel: {x: 1, y: 2}
 variants:
   - {file: 100.png, density: 100, glyph_width: 16, glyph_height: 16}
-  - {file: Picture.png, density: 100, interface: "8.2"}
+  - {file: Picture.png, density: 100, interface: taxi-compact}
 `)
 	if _, err := Load(variants); err != nil {
 		t.Fatalf("the picture of the main section with variants was refused: %v", err)
@@ -430,7 +430,7 @@ variants:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !images.LoadTransparent || images.TransparentPixel == nil || len(images.Variants) != 2 || images.Variants[1].Interface != Version82PictureInterface {
+	if !images.LoadTransparent || images.TransparentPixel == nil || len(images.Variants) != 2 || images.Variants[1].Interface != TaxiCompactInterface {
 		t.Fatalf("the description of the picture was lost: %+v", images)
 	}
 	if _, err := ReadRootPictureImages(variants, "Обои"); err == nil {
