@@ -42,16 +42,6 @@ func (representation CommandRepresentation) ShownAs(picture *PictureReference) C
 	return representation
 }
 
-// ServerUnavailableBehavior is what a command does when the main server cannot
-// be reached.
-type ServerUnavailableBehavior string
-
-const (
-	ServerUnavailableAuto         ServerUnavailableBehavior = "auto"
-	ServerUnavailableAvailable    ServerUnavailableBehavior = "available"
-	ServerUnavailableNotAvailable ServerUnavailableBehavior = "not-available"
-)
-
 // standardCommandGroups are the places the platform itself offers. A command
 // either goes into one of them or into a command group the configuration
 // declares - one property, two kinds of answer, because that is how a command
@@ -184,11 +174,10 @@ type ObjectCommand struct {
 	ParameterUse CommandParameterUse `yaml:"parameter_use,omitempty" json:"parameterUse,omitempty"`
 	// ModifiesData decides whether the command may be offered where data must
 	// not change, so it is not a hint but a permission.
-	ModifiesData        bool                      `yaml:"modifies_data,omitempty" json:"modifiesData,omitempty"`
-	Picture             *PictureReference         `yaml:"picture,omitempty" json:"picture,omitempty"`
-	Representation      CommandRepresentation     `yaml:"representation,omitempty" json:"representation,omitempty"`
-	Shortcut            string                    `yaml:"shortcut,omitempty" json:"shortcut,omitempty"`
-	OnServerUnavailable ServerUnavailableBehavior `yaml:"on_server_unavailable,omitempty" json:"onServerUnavailable,omitempty"`
+	ModifiesData   bool                  `yaml:"modifies_data,omitempty" json:"modifiesData,omitempty"`
+	Picture        *PictureReference     `yaml:"picture,omitempty" json:"picture,omitempty"`
+	Representation CommandRepresentation `yaml:"representation,omitempty" json:"representation,omitempty"`
+	Shortcut       string                `yaml:"shortcut,omitempty" json:"shortcut,omitempty"`
 }
 
 // validateObjectCommands checks the commands of one object. Names and
@@ -263,11 +252,6 @@ func validateCommandShape(prefix string, command ObjectCommand, configuration pr
 	// A command may be drawn as a picture and have none: the prototype saves
 	// it, and the configurations being moved do it twice. It is kept as
 	// written and drawn as text - see ShownAs.
-	switch command.OnServerUnavailable {
-	case "", ServerUnavailableAuto, ServerUnavailableAvailable, ServerUnavailableNotAvailable:
-	default:
-		issues = append(issues, prefix+".on_server_unavailable must be auto, available or not-available")
-	}
 	return issues
 }
 

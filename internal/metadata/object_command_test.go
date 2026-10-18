@@ -180,7 +180,6 @@ commands:
     picture: {standard: Начислить}
     representation: picture-and-text
     shortcut: Ctrl+Shift+B
-    on_server_unavailable: not-available
 `)
 	writeCommandModule(t, root, CatalogKind, "Контрагенты", "НачислитьБонусы")
 	// The command is placed in a group of the configuration, so that group has
@@ -217,8 +216,6 @@ commands:
 		t.Fatalf("the representation was lost: %+v", command)
 	case command.Shortcut != "Ctrl+Shift+B":
 		t.Fatalf("the shortcut was lost: %+v", command)
-	case command.OnServerUnavailable != ServerUnavailableNotAvailable:
-		t.Fatalf("what the command does without the main server was lost: %+v", command)
 	}
 
 	// The catalog hands out copies: a caller that edits what it was given must

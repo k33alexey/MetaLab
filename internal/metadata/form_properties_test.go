@@ -152,7 +152,6 @@ items_and_titles_align: titles-left-data-auto
 vertical_spacing: one-and-half
 horizontal_spacing: half
 scale_variant: compact
-collapse_by_importance: dont-use
 scale: 90
 `
 
@@ -175,7 +174,7 @@ func TestTheLayoutOfAFormKeepsEveryProperty(t *testing.T) {
 		VerticalScroll: FormScrollUseIfNecessary, Width: 400, Height: 150, ChildrenGroup: ChildrenHorizontalIfPossible,
 		ChildrenWidth: ChildrenWidthLeftNarrowest, HorizontalAlign: ItemHorizontalCenter, VerticalAlign: ItemVerticalBottom,
 		ItemsAndTitlesAlign: ItemsAndTitlesTitlesLeftDataAuto, VerticalSpacing: ItemSpacingOneAndHalf,
-		HorizontalSpacing: ItemSpacingHalf, ScaleVariant: FormScaleCompact, CollapseByImportance: CollapseByImportanceDontUse, Scale: 90,
+		HorizontalSpacing: ItemSpacingHalf, ScaleVariant: FormScaleCompact, Scale: 90,
 	}
 	if form.FormLayout != want {
 		t.Fatalf("layout = %+v, want %+v", form.FormLayout, want)
@@ -230,7 +229,7 @@ func TestTheLayoutOfAFormDefaultsAsThePrototype(t *testing.T) {
 	}
 	source := formAttrHead + "vertical_scroll: auto\nwidth: 100000\nheight: 0\nchildren_group: vertical\nchildren_width: auto\n" +
 		"horizontal_align: auto\nvertical_align: auto\nitems_and_titles_align: auto\nvertical_spacing: auto\nhorizontal_spacing: auto\n" +
-		"scale_variant: auto\ncollapse_by_importance: auto\n"
+		"scale_variant: auto\n"
 	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration); err != nil {
 		t.Fatalf("a written default is refused: %v", err)
 	}
@@ -256,7 +255,6 @@ func TestTheLayoutOfAFormRefusesWhatIsNoneOfItsValues(t *testing.T) {
 		"vertical_spacing: triple":          "vertical_spacing must be auto, none, half, single, one-and-half or double",
 		"horizontal_spacing: triple":        "horizontal_spacing must be auto, none, half, single, one-and-half or double",
 		"scale_variant: large":              "scale_variant must be auto, normal or compact",
-		"collapse_by_importance: always":    "collapse_by_importance must be auto, use or dont-use",
 		"scale: -1":                         "scale must not be negative",
 	} {
 		t.Run(property, func(t *testing.T) {

@@ -231,7 +231,6 @@ RENAMED_BY_KIND = {
     ("CommonTemplate", "TemplateType"): "kind",
     ("EventSubscription", "Handler"): "procedure",
     ("EventSubscription", "Source"): "source",
-    ("CommonCommand", "OnMainServerUnavalableBehavior"): "on_server_unavailable",
     ("WebService", "XDTOPackages"): "packages",
     ("AccountingRegister", "EnableTotalsSplitting"): "allow_totals_splitting",
     ("AccumulationRegister", "EnableTotalsSplitting"): "allow_totals_splitting",
@@ -263,10 +262,9 @@ RENAMED_BY_KIND = {
     ("Task", "TaskNumberAutoPrefix"): "number_prefix",
     # Дочерние объекты: область - сам дочерний вид, не его владелец. Команда
     # значит одно и то же у справочника, документа, журнала, регистра сведений,
-    # отчёта, обработки и задачи, и до этих двух строк остаток повторял её
+    # отчёта, обработки и задачи, и до этой строки остаток повторял её
     # семь раз подряд.
     ("Command", "CommandParameterType"): "parameter",
-    ("Command", "OnMainServerUnavalableBehavior"): "on_server_unavailable",
     # Измерение последовательности: соответствие документам - это реквизиты
     # документа, из которых берётся значение, соответствие движениям - это
     # измерения регистров, где то же значение лежит.
@@ -334,6 +332,11 @@ ACCEPTED = {
     ("Configuration", "ConfigurationExtensionCompatibilityMode"): "METADATA-OBJECTS.md: только управляемое приложение - режим обычного приложения, прежних выпусков или чужого механизма не переносится, отказ владельца 14.10.2026",
     ("Configuration", "DefaultInterface"): "METADATA-OBJECTS.md: основной интерфейс - ссылка на интерфейс обычного приложения, вид снят, отказ владельца 15.10.2026",
     ("CommonForm", "FormType"): "METADATA-OBJECTS.md: принимаются только управляемые формы - вид формы снят с обычной формой, отказ владельца 14.10.2026",
+    # Поведение при недоступности основного сервера - только мобильный клиент
+    # и мобильное приложение (справка), снято в 2.371. У команды объекта
+    # строка по области подчинённого вида, как и переименования.
+    ("CommonCommand", "OnMainServerUnavalableBehavior"): "METADATA-OBJECTS.md: мобильное приложение не переносится - поведение при недоступности основного сервера только мобильного клиента, снято в 2.371",
+    ("Command", "OnMainServerUnavalableBehavior"): "METADATA-OBJECTS.md: мобильное приложение не переносится - поведение при недоступности основного сервера только мобильного клиента, снято в 2.371",
     #
     # Второй род - список, который у нас не список, а сама раскладка проекта.
     # Состав конфигурации - дерево на диске (METADATA-OBJECTS.md, «Состав
@@ -503,7 +506,6 @@ SELF_CHECK = [
     # именем владельца те же два свойства команды не совпадали ни разу и стояли
     # в остатке у семи видов сразу.
     ("Command", "CommandParameterType", ["parameter", "parameter_use"], ["parameter", "parameter_use"], True),
-    ("Command", "OnMainServerUnavalableBehavior", ["on_server_unavailable"], ["on_server_unavailable"], True),
     ("Dimension", "DocumentMap", ["document_attributes"], ["document_attributes"], True),
     ("Dimension", "RegisterRecordsMap", ["register_dimensions"], ["register_dimensions"], True),
     ("AddressingAttribute", "AddressingDimension", ["dimension"], ["dimension"], True),
@@ -691,8 +693,10 @@ def sweep_children(model: dict, only: str | None) -> int:
         # вида, а не его владельца: `CommandParameterType` значит у команды
         # одно и то же под справочником, документом и обработкой - потому она и
         # стояла в остатке семь раз подряд.
+        # Принятое расхождение - по области подчинённого вида, как и
+        # переименование: снятое у команды снято у всех её владельцев.
         missing = [(name, count) for name, count in sorted(relation["properties"].items())
-                   if not matches(name, fields, child, tops[(kind.lower(), owner, child)])]
+                   if not matches(name, fields, child, tops[(kind.lower(), owner, child)]) and (child, name) not in ACCEPTED]
         if not missing:
             continue
         total += len(missing)

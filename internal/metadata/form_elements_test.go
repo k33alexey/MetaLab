@@ -137,26 +137,22 @@ func TestAButtonKeepsItsTypeAndAGroupItsLayout(t *testing.T) {
 }
 
 // What every element has - its tooltip, how the tooltip shows, whom it is
-// shown to, how important it is on a narrow screen - is kept on a field, a
+// shown to - is kept on a field, a
 // group, a decoration, a table and a button, and comes back the same through
 // YAML and the Studio.
 //
 // Defect caught: a common property kept on one kind and lost on another; the
 // roles an element is shown to lost, so that a field the prototype shows to
-// no one until the user turns it on - 6590 of them - shows to everyone; the
-// importance of an element refused or lost (1582 elements of every kind),
-// so that a narrow screen hides what the configuration keeps.
+// no one until the user turns it on - 6590 of them - shows to everyone.
 func TestEveryElementKeepsWhatEveryElementHas(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
-	common := ", tool_tip: {ru: Подсказка}, tool_tip_representation: show-bottom, user_visible: {common: false, roles: [{role: " + formAttrRole + ", value: true}]}" +
-		", display_importance: very-low"
+	common := ", tool_tip: {ru: Подсказка}, tool_tip_representation: show-bottom, user_visible: {common: false, roles: [{role: " + formAttrRole + ", value: true}]}"
 	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field" + common + "}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Группа, kind: usual-group" + common + "}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Надпись, kind: label-decoration" + common + "}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Таблица, kind: table" + common + "}\n" +
-		"  - {id: c0de0000-0000-4000-8000-000000990005, name: Кнопка, kind: button, tool_tip_representation: balloon, user_visible: {common: false}," +
-		" display_importance: high}\n"
+		"  - {id: c0de0000-0000-4000-8000-000000990005, name: Кнопка, kind: button, tool_tip_representation: balloon, user_visible: {common: false}}\n"
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
 	if err != nil {
 		t.Fatal(err)
@@ -165,13 +161,11 @@ func TestEveryElementKeepsWhatEveryElementHas(t *testing.T) {
 		t.Helper()
 		for _, item := range items[:4] {
 			if item.ToolTip["ru"] != "Подсказка" || item.ToolTipRepresentation != FormToolTipShowBottom || item.UserVisible == nil ||
-				item.UserVisible.Common || len(item.UserVisible.Roles) != 1 || item.UserVisible.Roles[0].Role.String() != formAttrRole ||
-				item.DisplayImportance != FormDisplayImportanceVeryLow {
+				item.UserVisible.Common || len(item.UserVisible.Roles) != 1 || item.UserVisible.Roles[0].Role.String() != formAttrRole {
 				t.Fatalf("%s: %s lost what every element has: %+v", source, item.Kind, item)
 			}
 		}
-		if button := items[4]; button.ToolTipRepresentation != FormToolTipBalloon || button.UserVisible == nil || button.UserVisible.Common ||
-			button.DisplayImportance != FormDisplayImportanceHigh {
+		if button := items[4]; button.ToolTipRepresentation != FormToolTipBalloon || button.UserVisible == nil || button.UserVisible.Common {
 			t.Fatalf("%s: the button: %+v", source, button)
 		}
 	}
@@ -215,7 +209,6 @@ func TestEveryElementRefusesWhatIsWrongInWhatEveryElementHas(t *testing.T) {
 		"роль дважды":             {"kind: input-field, user_visible: {common: false, roles: [{role: " + formAttrRole + ", value: true}, {role: " + formAttrRole + ", value: false}]}", "items[0].user_visible.roles[1].role already has its answer"},
 		"роль без идентификатора": {"kind: usual-group, user_visible: {common: true, roles: [{role: 00000000-0000-0000-0000-000000000000, value: false}]}", "items[0].user_visible.roles[0].role must be a non-zero UUID"},
 		"подсказка не на языке":   {"kind: label-decoration, tool_tip: {\"d=e\": П}", "items[0].tool_tip"},
-		"важность прототипа":      {"kind: usual-group, display_importance: VeryHigh", "items[0].display_importance must be auto, very-low, low, usual, high or very-high"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

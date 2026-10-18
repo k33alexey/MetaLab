@@ -206,34 +206,22 @@ const (
 	FormScaleCompact FormScaleVariant = "compact"
 )
 
-// CollapseByImportance is whether the items of a form are collapsed by their
-// importance to fit a narrow screen (help, CollapseFormItemsByImportance).
-// Empty is Auto.
-type CollapseByImportance string
-
-const (
-	CollapseByImportanceAuto    CollapseByImportance = "auto"
-	CollapseByImportanceUse     CollapseByImportance = "use"
-	CollapseByImportanceDontUse CollapseByImportance = "dont-use"
-)
-
 // FormLayout is how a form lays out what it holds (help,
 // ClientApplicationForm). Width and height are in characters; 0 is chosen by
 // the platform. The prototype sets no limit on them: the forms being moved
 // are 18 to 400 wide and 2 to 150 high.
 type FormLayout struct {
-	VerticalScroll       FormVerticalScroll   `yaml:"vertical_scroll,omitempty" json:"verticalScroll,omitempty"`
-	Width                int                  `yaml:"width,omitempty" json:"width,omitempty"`
-	Height               int                  `yaml:"height,omitempty" json:"height,omitempty"`
-	ChildrenGroup        ChildrenGroup        `yaml:"children_group,omitempty" json:"childrenGroup,omitempty"`
-	ChildrenWidth        ChildrenWidth        `yaml:"children_width,omitempty" json:"childrenWidth,omitempty"`
-	HorizontalAlign      ItemHorizontalAlign  `yaml:"horizontal_align,omitempty" json:"horizontalAlign,omitempty"`
-	VerticalAlign        ItemVerticalAlign    `yaml:"vertical_align,omitempty" json:"verticalAlign,omitempty"`
-	ItemsAndTitlesAlign  ItemsAndTitlesAlign  `yaml:"items_and_titles_align,omitempty" json:"itemsAndTitlesAlign,omitempty"`
-	VerticalSpacing      ItemSpacing          `yaml:"vertical_spacing,omitempty" json:"verticalSpacing,omitempty"`
-	HorizontalSpacing    ItemSpacing          `yaml:"horizontal_spacing,omitempty" json:"horizontalSpacing,omitempty"`
-	ScaleVariant         FormScaleVariant     `yaml:"scale_variant,omitempty" json:"scaleVariant,omitempty"`
-	CollapseByImportance CollapseByImportance `yaml:"collapse_by_importance,omitempty" json:"collapseByImportance,omitempty"`
+	VerticalScroll      FormVerticalScroll  `yaml:"vertical_scroll,omitempty" json:"verticalScroll,omitempty"`
+	Width               int                 `yaml:"width,omitempty" json:"width,omitempty"`
+	Height              int                 `yaml:"height,omitempty" json:"height,omitempty"`
+	ChildrenGroup       ChildrenGroup       `yaml:"children_group,omitempty" json:"childrenGroup,omitempty"`
+	ChildrenWidth       ChildrenWidth       `yaml:"children_width,omitempty" json:"childrenWidth,omitempty"`
+	HorizontalAlign     ItemHorizontalAlign `yaml:"horizontal_align,omitempty" json:"horizontalAlign,omitempty"`
+	VerticalAlign       ItemVerticalAlign   `yaml:"vertical_align,omitempty" json:"verticalAlign,omitempty"`
+	ItemsAndTitlesAlign ItemsAndTitlesAlign `yaml:"items_and_titles_align,omitempty" json:"itemsAndTitlesAlign,omitempty"`
+	VerticalSpacing     ItemSpacing         `yaml:"vertical_spacing,omitempty" json:"verticalSpacing,omitempty"`
+	HorizontalSpacing   ItemSpacing         `yaml:"horizontal_spacing,omitempty" json:"horizontalSpacing,omitempty"`
+	ScaleVariant        FormScaleVariant    `yaml:"scale_variant,omitempty" json:"scaleVariant,omitempty"`
 	// Scale is the scale of the form in percent (help,
 	// ClientApplicationForm.Scale, a number); 0 is the platform's own. One
 	// form of lombard1 writes 90. The help gives no bounds.
@@ -296,7 +284,6 @@ func validateFormLayout(layout FormLayout) []string {
 	issues = append(issues, oneOf("vertical_spacing", layout.VerticalSpacing, spacings...)...)
 	issues = append(issues, oneOf("horizontal_spacing", layout.HorizontalSpacing, spacings...)...)
 	issues = append(issues, oneOf("scale_variant", layout.ScaleVariant, FormScaleAuto, FormScaleNormal, FormScaleCompact)...)
-	issues = append(issues, oneOf("collapse_by_importance", layout.CollapseByImportance, CollapseByImportanceAuto, CollapseByImportanceUse, CollapseByImportanceDontUse)...)
 	return issues
 }
 

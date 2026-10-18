@@ -46,7 +46,7 @@ func TestATableKeepsWhatItHasOfItsOwn(t *testing.T) {
 		" border_color: {source: style, from: {standard: BorderColor}}, title_font: {source: auto}, text_color: {source: auto}," +
 		" horizontal_scroll_bar: dont-use, vertical_scroll_bar: use-always, enable_drag: true, enable_start_drag: true, output: disable," +
 		" excluded_commands: [Add, Copy], file_drag_mode: as-file, height_control_variant: use-height-in-table-rows," +
-		" auto_mark_incomplete: true, display_importance: very-high, read_only: true}\n" +
+		" auto_mark_incomplete: true, read_only: true}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Товары, kind: table, header_height: 3}\n"
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
 	if err != nil {
@@ -91,7 +91,7 @@ func TestATableKeepsWhatItHasOfItsOwn(t *testing.T) {
 		case table.FileDragMode != FormFileDragAsFile || table.HeightControlVariant != FormHeightControlUseHeightInTableRows ||
 			table.AutoMarkIncomplete == nil || !*table.AutoMarkIncomplete:
 			t.Fatalf("%s: what it shares with other fields: %+v", source, table)
-		case table.DisplayImportance != FormDisplayImportanceVeryHigh || !table.ReadOnly:
+		case !table.ReadOnly:
 			t.Fatalf("%s: what every element has: %+v", source, table)
 		}
 	}
@@ -482,7 +482,7 @@ func TestATableKeepsItsAdditions(t *testing.T) {
 	configuration := managedFormConfiguration()
 	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Список, kind: table," +
 		" search_string_addition: {id: c0de0000-0000-4000-8000-000000990002, name: СписокСтрокаПоиска, kind: search-string-addition," +
-		" width: 30, no_auto_max_width: true, max_width: 40, horizontal_stretch: false, group_horizontal_align: right, display_importance: very-low," +
+		" width: 30, no_auto_max_width: true, max_width: 40, horizontal_stretch: false, group_horizontal_align: right," +
 		" context_menu: {id: c0de0000-0000-4000-8000-000000990003, name: СписокСтрокаПоискаКонтекстноеМеню}}," +
 		" view_status_addition: {id: c0de0000-0000-4000-8000-000000990004, name: СписокСостояниеПросмотра, kind: view-status-addition," +
 		" horizontal_align: left, title: {ru: Состояние}, disabled: true}," +
@@ -506,7 +506,7 @@ func TestATableKeepsItsAdditions(t *testing.T) {
 			t.Fatalf("%s: additions lost: %+v", source, table.TableAdditions)
 		case search.Name != "СписокСтрокаПоиска" || search.Width != 30 || !search.NoAutoMaxWidth || search.MaxWidth != 40 ||
 			search.HorizontalStretch == nil || *search.HorizontalStretch || search.GroupHorizontalAlign != ItemHorizontalRight ||
-			search.DisplayImportance != FormDisplayImportanceVeryLow || search.ContextMenu == nil || search.AdditionSource != "":
+			search.ContextMenu == nil || search.AdditionSource != "":
 			t.Fatalf("%s: the search string: %+v", source, search)
 		case status.HorizontalAlign != ItemHorizontalLeft || status.Title["ru"] != "Состояние" || !status.Disabled:
 			t.Fatalf("%s: the view status: %+v", source, status)

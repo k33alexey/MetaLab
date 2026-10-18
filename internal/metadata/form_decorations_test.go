@@ -201,7 +201,7 @@ func TestAnElementKeepsItsExtendedTooltip(t *testing.T) {
 	}
 	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, " +
 		tooltip("01", "ПолеРасширеннаяПодсказка", ", title: {ru: \"<b>Сумма</b> с НДС\"}, title_formatted: true, no_auto_max_width: true, max_width: 40,"+
-			" width: 43, text_color: {source: web, name: Gray}, on_main_server_unavailable: make-disable") + "}\n" +
+			" width: 43, text_color: {source: web, name: Gray}") + "}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Кнопка, kind: button, " + tooltip("02", "КнопкаExtendedTooltip", "") + "}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Страницы, kind: pages, children: [{id: c0de0000-0000-4000-8000-000000990004," +
 		" name: Страница, kind: page, " + tooltip("03", "СтраницаРасширеннаяПодсказка", "") + "}]}\n" +
@@ -217,8 +217,7 @@ func TestAnElementKeepsItsExtendedTooltip(t *testing.T) {
 		field := items[0].ExtendedTooltip
 		switch {
 		case field == nil || field.Name != "ПолеРасширеннаяПодсказка" || field.Kind != FormElementLabelDecoration || !field.TitleFormatted ||
-			field.Title["ru"] != "<b>Сумма</b> с НДС" || !field.NoAutoMaxWidth || field.MaxWidth != 40 || field.Width != 43 || field.TextColor == nil ||
-			field.OnMainServerUnavailable != FormServerUnavailableMakeDisable:
+			field.Title["ru"] != "<b>Сумма</b> с НДС" || !field.NoAutoMaxWidth || field.MaxWidth != 40 || field.Width != 43 || field.TextColor == nil:
 			t.Fatalf("%s: the tooltip of a field: %+v", source, field)
 		case items[1].ExtendedTooltip == nil || items[1].ExtendedTooltip.Name != "КнопкаExtendedTooltip":
 			t.Fatalf("%s: the tooltip of a button: %+v", source, items[1].ExtendedTooltip)
@@ -257,59 +256,6 @@ func TestAnElementKeepsItsExtendedTooltip(t *testing.T) {
 	}
 }
 
-// What an element does while the main server is out of reach is kept on
-// every element the help gives it to - a field, a table, a decoration and a
-// button - through YAML and the Studio; lombard1 writes it on a check box
-// field.
-//
-// Defect caught: the form of lombard1 holding that check box refused, as the
-// property was taken for a decoration's alone; the property lost on the way
-// back to YAML or through the Studio on one of the four.
-func TestEveryElementKeepsWhatItDoesWithoutTheMainServer(t *testing.T) {
-	t.Parallel()
-	configuration := managedFormConfiguration()
-	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Неактивно, kind: check-box-field, on_main_server_unavailable: dont-change-behavior}\n" +
-		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Список, kind: table, on_main_server_unavailable: make-disable}\n" +
-		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Надпись, kind: label-decoration, on_main_server_unavailable: auto}\n" +
-		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Кнопка, kind: button, on_main_server_unavailable: make-disable}\n"
-	want := []FormServerUnavailableBehavior{FormServerUnavailableDontChange, FormServerUnavailableMakeDisable, FormServerUnavailableAuto,
-		FormServerUnavailableMakeDisable}
-	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
-	if err != nil {
-		t.Fatal(err)
-	}
-	check := func(source string, items []ManagedFormElement) {
-		t.Helper()
-		for index, item := range items {
-			if item.OnMainServerUnavailable != want[index] {
-				t.Fatalf("%s: %s: %q, want %q", source, item.Kind, item.OnMainServerUnavailable, want[index])
-			}
-		}
-	}
-	check("read", form.Items)
-	written, err := yaml.Marshal(form)
-	if err != nil {
-		t.Fatal(err)
-	}
-	again, err := DecodeManagedForm("form.yaml", strings.NewReader(string(written)), configuration)
-	if err != nil {
-		t.Fatal(err)
-	}
-	check("written back", again.Items)
-	carried, err := json.Marshal(form)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var received ManagedForm
-	if err := json.Unmarshal(carried, &received); err != nil {
-		t.Fatal(err)
-	}
-	if err := ValidateManagedForm("studio", received, configuration); err != nil {
-		t.Fatal(err)
-	}
-	check("carried through the Studio", received.Items)
-}
-
 // What is wrong with an extended tooltip is refused, naming the place, and
 // the tooltip is checked as every element is.
 //
@@ -333,13 +279,9 @@ func TestAnExtendedTooltipRefusesWhatIsWrong(t *testing.T) {
 			"items[0].extended_tooltip.extended_tooltip: an extended tooltip has none of its own"},
 		"меню подсказки": {field("name: Подсказка, kind: label-decoration, context_menu: {id: c0de0000-0000-4000-8000-000000990003, name: Меню}"),
 			"items[0].extended_tooltip.context_menu: an extended tooltip has none"},
-		"имя поля":        {field("name: Поле, kind: label-decoration"), "items[0].extended_tooltip.name must be unique within the form"},
-		"идентификатор":   {field("name: Подсказка, kind: label-decoration") + "  - {id: c0de0000-0000-4000-8000-000000990002, name: Другое, kind: input-field}\n", ".id must be unique"},
-		"увеличение":      {field("name: Подсказка, kind: label-decoration, zoomable: true"), "items[0].extended_tooltip.zoomable is allowed only for picture fields and pictures"},
-		"сервер у группы": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Группа, kind: usual-group, on_main_server_unavailable: auto}\n", "items[0].on_main_server_unavailable is allowed only for fields, tables, decorations and buttons"},
-		"сервер у поиска": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Список, kind: table, search_string_addition: {id: c0de0000-0000-4000-8000-000000990002," +
-			" name: Поиск, kind: search-string-addition, on_main_server_unavailable: make-disable}}\n", "items[0].search_string_addition.on_main_server_unavailable is allowed only for fields, tables, decorations and buttons"},
-		"сервер прототипа": {field("name: Подсказка, kind: label-decoration, on_main_server_unavailable: MakeDisable"), "items[0].extended_tooltip.on_main_server_unavailable must be auto, dont-change-behavior or make-disable"},
+		"имя поля":      {field("name: Поле, kind: label-decoration"), "items[0].extended_tooltip.name must be unique within the form"},
+		"идентификатор": {field("name: Подсказка, kind: label-decoration") + "  - {id: c0de0000-0000-4000-8000-000000990002, name: Другое, kind: input-field}\n", ".id must be unique"},
+		"увеличение":    {field("name: Подсказка, kind: label-decoration, zoomable: true"), "items[0].extended_tooltip.zoomable is allowed only for picture fields and pictures"},
 		"источник ничей": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Список, kind: table, search_string_addition: {id: c0de0000-0000-4000-8000-000000990002," +
 			" name: Поиск, kind: search-string-addition, addition_source: СписокРасширеннаяПодсказка}}\n", "items[0].search_string_addition.addition_source names no element of the form"},
 	} {

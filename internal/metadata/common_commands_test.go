@@ -55,7 +55,6 @@ modifies_data: true
 picture: {standard: Открыть}
 representation: picture-and-text
 shortcut: Ctrl+Shift+O
-on_server_unavailable: not-available
 include_help_in_contents: true
 `, true)
 
@@ -80,8 +79,6 @@ include_help_in_contents: true
 		t.Fatalf("how the command is drawn was lost: %+v", command)
 	case command.Shortcut != "Ctrl+Shift+O":
 		t.Fatalf("the shortcut was lost: %+v", command)
-	case command.OnServerUnavailable != ServerUnavailableNotAvailable:
-		t.Fatalf("what the command does without the main server was lost: %+v", command)
 	case !command.IncludeHelpInContents:
 		t.Fatalf("where the help goes was lost: %+v", command)
 	}

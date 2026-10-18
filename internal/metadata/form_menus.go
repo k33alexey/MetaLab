@@ -8,19 +8,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// FormDisplayImportance is how important an element is when the form is
-// fitted to a narrow screen (help, DisplayImportance).
-type FormDisplayImportance string
-
-const (
-	FormDisplayImportanceAuto     FormDisplayImportance = "auto"
-	FormDisplayImportanceVeryLow  FormDisplayImportance = "very-low"
-	FormDisplayImportanceLow      FormDisplayImportance = "low"
-	FormDisplayImportanceUsual    FormDisplayImportance = "usual"
-	FormDisplayImportanceHigh     FormDisplayImportance = "high"
-	FormDisplayImportanceVeryHigh FormDisplayImportance = "very-high"
-)
-
 // FormAttachedMenu is the context menu of an element and the automatic
 // command bar of a table or of the form. Neither stands in the tree: each
 // belongs to its element, which the prototype writes it inside of, and a
@@ -39,10 +26,10 @@ type FormAttachedMenu struct {
 	NoAutofill bool `yaml:"no_autofill,omitempty" json:"noAutofill,omitempty"`
 	// HorizontalAlign is where a command bar puts its buttons (help,
 	// HorizontalAlign of a command bar - the prototype writes Auto too, which
-	// the help forbids setting from code); DisplayImportance is how
-	// important the command bar of the form is on a narrow screen (5 times).
-	HorizontalAlign   ItemHorizontalAlign   `yaml:"horizontal_align,omitempty" json:"horizontalAlign,omitempty"`
-	DisplayImportance FormDisplayImportance `yaml:"display_importance,omitempty" json:"displayImportance,omitempty"`
+	// the help forbids setting from code). The importance of a command bar on
+	// a narrow screen is not carried: the help gives it to the mobile device
+	// alone (2.371, as of every element).
+	HorizontalAlign ItemHorizontalAlign `yaml:"horizontal_align,omitempty" json:"horizontalAlign,omitempty"`
 	// Children are the buttons, button groups and popups of the menu, and of
 	// a command bar the search additions of its table too.
 	Children []ManagedFormElement `yaml:"children,omitempty" json:"children,omitempty"`
@@ -108,12 +95,10 @@ func validateAttachedMenu(path string, menu FormAttachedMenu, commandBar, ofForm
 	if menu.Name == "" && !ofForm || menu.Name != "" && (!validIdentifier(menu.Name) || utf8.RuneCountInString(menu.Name) > maxNameLength) {
 		issues = append(issues, path+".name must be a valid identifier of at most 255 characters")
 	}
-	if !commandBar && (menu.HorizontalAlign != "" || menu.DisplayImportance != "") {
-		issues = append(issues, path+" is a context menu: horizontal_align and display_importance are of a command bar")
+	if !commandBar && menu.HorizontalAlign != "" {
+		issues = append(issues, path+" is a context menu: horizontal_align is of a command bar")
 	}
 	issues = append(issues, oneOf(path+".horizontal_align", menu.HorizontalAlign, ItemHorizontalAuto, ItemHorizontalLeft, ItemHorizontalCenter, ItemHorizontalRight)...)
-	issues = append(issues, oneOf(path+".display_importance", menu.DisplayImportance, FormDisplayImportanceAuto, FormDisplayImportanceVeryLow,
-		FormDisplayImportanceLow, FormDisplayImportanceUsual, FormDisplayImportanceHigh, FormDisplayImportanceVeryHigh)...)
 	return issues
 }
 

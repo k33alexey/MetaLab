@@ -39,7 +39,7 @@ func TestAMenuAndACommandBarKeepWhatTheyHold(t *testing.T) {
 			" context_menu: {id: c0de0000-0000-4000-8000-000000990012, name: ПоискКонтекстноеМеню}}]}}\n"+
 			"  - {id: c0de0000-0000-4000-8000-000000990013, name: Панель, kind: command-bar, horizontal_align: auto, width: 19, read_only: true,"+
 			" enable_content_change: true, command_source: form}\n"),
-		"items:\n", "auto_command_bar: {id: c0de0000-0000-4000-8000-000000990014, display_importance: very-low, horizontal_align: center,"+
+		"items:\n", "auto_command_bar: {id: c0de0000-0000-4000-8000-000000990014, horizontal_align: center,"+
 			" children: [{id: c0de0000-0000-4000-8000-000000990015, name: Закрыть, kind: button, command: Form.StandardCommand.Close}]}\nitems:\n", 1)
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration)
 	if err != nil {
@@ -47,7 +47,7 @@ func TestAMenuAndACommandBarKeepWhatTheyHold(t *testing.T) {
 	}
 	field, table, bar := form.Items[0], form.Items[2], form.Items[3]
 	switch {
-	case form.AutoCommandBar.Name != "" || form.AutoCommandBar.DisplayImportance != FormDisplayImportanceVeryLow ||
+	case form.AutoCommandBar.Name != "" ||
 		form.AutoCommandBar.HorizontalAlign != ItemHorizontalCenter || form.AutoCommandBar.Children[0].Name != "Закрыть":
 		t.Fatalf("command bar of the form: %+v", form.AutoCommandBar)
 	case field.ContextMenu.Name != "ПолеКонтекстноеМеню" || !field.ContextMenu.NoAutofill || len(field.ContextMenu.Children) != 3:
@@ -115,8 +115,7 @@ func TestAMenuAndACommandBarStandWhereThePrototypePutsThem(t *testing.T) {
 		"поле в меню":              {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, context_menu: " + menu("М", ", children: [{id: c0de0000-0000-4000-8000-000000990003, name: Другое, kind: input-field}]") + "}\n", "items[0].context_menu.children[0]: context menu cannot hold input-field"},
 		"поиск в меню":             {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, context_menu: " + menu("М", ", children: [{id: c0de0000-0000-4000-8000-000000990003, name: Поиск, kind: search-string-addition}]") + "}\n", "items[0].context_menu.children[0]: context menu cannot hold search-string-addition"},
 		"поле в панели":            {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Список, kind: table, auto_command_bar: " + menu("П", ", children: [{id: c0de0000-0000-4000-8000-000000990003, name: Другое, kind: input-field}]") + "}\n", "items[0].auto_command_bar.children[0]: auto command bar cannot hold input-field"},
-		"выравнивание меню":        {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, context_menu: " + menu("М", ", horizontal_align: right") + "}\n", "items[0].context_menu is a context menu: horizontal_align and display_importance are of a command bar"},
-		"важность прототипа":       {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Список, kind: table, auto_command_bar: " + menu("П", ", display_importance: VeryLow") + "}\n", "items[0].auto_command_bar.display_importance must be auto, very-low, low, usual, high or very-high"},
+		"выравнивание меню":        {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, context_menu: " + menu("М", ", horizontal_align: right") + "}\n", "items[0].context_menu is a context menu: horizontal_align is of a command bar"},
 		"кнопка меню проверяется":  {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, context_menu: " + menu("М", ", children: [{id: c0de0000-0000-4000-8000-000000990003, name: Кнопка, kind: button, command: Form.Command.Нет}]") + "}\n", "items[0].context_menu.children[0].command names no command of the form"},
 	} {
 		_, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(test.items)), managedFormConfiguration())

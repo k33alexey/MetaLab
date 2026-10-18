@@ -219,8 +219,6 @@ func validateElementCommon(path string, item ManagedFormElement, class formEleme
 	issues = append(issues, oneOf(path+".tool_tip_representation", item.ToolTipRepresentation, FormToolTipAuto, FormToolTipNone, FormToolTipButton,
 		FormToolTipBalloon, FormToolTipShowAuto, FormToolTipShowTop, FormToolTipShowLeft, FormToolTipShowBottom, FormToolTipShowRight)...)
 	issues = append(issues, validateFormRight(path+".user_visible", item.UserVisible)...)
-	issues = append(issues, oneOf(path+".display_importance", item.DisplayImportance, FormDisplayImportanceAuto, FormDisplayImportanceVeryLow,
-		FormDisplayImportanceLow, FormDisplayImportanceUsual, FormDisplayImportanceHigh, FormDisplayImportanceVeryHigh)...)
 	return issues
 }
 

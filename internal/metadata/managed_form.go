@@ -170,10 +170,6 @@ type ManagedFormElement struct {
 	// everyone; the prototype writes it on 6611 elements, 6590 of them shown
 	// to no one until the user turns them on. The help does not name it.
 	UserVisible *FormAttributeRight `yaml:"user_visible,omitempty" json:"userVisible,omitempty"`
-	// DisplayImportance is how important the element is when the form is
-	// fitted to a narrow screen; the prototype writes it on 1582 elements of
-	// every kind.
-	DisplayImportance FormDisplayImportance `yaml:"display_importance,omitempty" json:"displayImportance,omitempty"`
 	// FieldBehavior is what a field has besides what every element has.
 	FieldBehavior `yaml:",inline"`
 	// FieldLayout is the size of a field and where it stands.
@@ -221,11 +217,6 @@ type ManagedFormElement struct {
 	// but an identifier and a name. Code reaches it by its name, which is
 	// kept as written: the configurator does not rename it with its element.
 	ExtendedTooltip *ManagedFormElement `yaml:"extended_tooltip,omitempty" json:"extendedTooltip,omitempty"`
-	// OnMainServerUnavailable is what an element does while the main server
-	// is out of reach. The help gives it to a field, a table, a decoration
-	// and a button (OnMainServerUnavalableBehavior); the prototype writes it
-	// twice, on an extended tooltip and on a check box field.
-	OnMainServerUnavailable FormServerUnavailableBehavior `yaml:"on_main_server_unavailable,omitempty" json:"onMainServerUnavailable,omitempty"`
 	// Events are the events of the element handled by procedures of the
 	// module of the form, by event.
 	Events map[FormEvent]string `yaml:"events,omitempty" json:"events,omitempty"`
@@ -529,12 +520,6 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		if current.tooltip && item.ContextMenu != nil {
 			issues = append(issues, current.path+".context_menu: an extended tooltip has none")
 		}
-		if item.OnMainServerUnavailable != "" && class != formFieldClass && class != formTableClass && class != formDecorationClass &&
-			class != formButtonClass {
-			issues = append(issues, current.path+".on_main_server_unavailable is allowed only for fields, tables, decorations and buttons")
-		}
-		issues = append(issues, oneOf(current.path+".on_main_server_unavailable", item.OnMainServerUnavailable, FormServerUnavailableAuto,
-			FormServerUnavailableDontChange, FormServerUnavailableMakeDisable)...)
 		switch {
 		case class != formAdditionClass && item.AdditionSource != "":
 			issues = append(issues, current.path+".addition_source is allowed only for additions of a table")

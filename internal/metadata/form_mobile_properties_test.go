@@ -113,3 +113,76 @@ func TestAFormHasNoPurpose(t *testing.T) {
 		t.Errorf("a form without a purpose: %v", err)
 	}
 }
+
+// The importance of an element on a narrow screen, the collapse of the items
+// of a form by it and what an element or a command does while the main server
+// is out of reach are not carried (2.371; METADATA-OBJECTS, «Мобильное
+// приложение»): the help gives the importance «for the screen of a mobile
+// device», on every element and on the command bar, the collapse to the mobile
+// client, and the behaviour without the main server to the mobile client and
+// the mobile application alone - the thin and the web client are named for
+// none. A description naming one is refused by the strict reading, whichever
+// element, command bar, form or command it is written on. The names are
+// written here, from the help, not read from the code.
+//
+// Defect caught: a property of the mobile client taken and carried - on 1582
+// elements, five command bars and every command that writes it.
+func TestImportanceAndTheMainServerAreRefused(t *testing.T) {
+	t.Parallel()
+	configuration := managedFormConfiguration()
+	for _, test := range []struct{ kind, property string }{
+		{"input-field", "display_importance: very-low"},
+		{"usual-group", "display_importance: high"},
+		{"page", "display_importance: low"},
+		{"table", "display_importance: very-high"},
+		{"button", "display_importance: usual"},
+		{"label-decoration", "display_importance: auto"},
+		{"check-box-field", "on_main_server_unavailable: dont-change-behavior"},
+		{"table", "on_main_server_unavailable: make-disable"},
+		{"label-decoration", "on_main_server_unavailable: auto"},
+		{"button", "on_main_server_unavailable: make-disable"},
+	} {
+		name := strings.SplitN(test.property, ":", 2)[0]
+		source := formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Элемент, kind: " + test.kind + ", " + test.property + "}\n")
+		if test.kind == "page" {
+			source = formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990002, name: Страницы, kind: pages, children: [" +
+				"{id: c0de0000-0000-4000-8000-000000990001, name: Элемент, kind: page, " + test.property + "}]}\n")
+		}
+		if _, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration); err == nil || !strings.Contains(err.Error(), "field "+name+" not found") {
+			t.Errorf("%s of %s: %v", name, test.kind, err)
+		}
+	}
+	bar := formAttrHead + "auto_command_bar: {id: c0de0000-0000-4000-8000-000000990014, display_importance: very-low}\n"
+	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(bar), configuration); err == nil || !strings.Contains(err.Error(), "field display_importance not found") {
+		t.Errorf("display_importance of the command bar of the form: %v", err)
+	}
+	collapse := formAttrHead + "collapse_by_importance: use\n"
+	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(collapse), configuration); err == nil || !strings.Contains(err.Error(), "field collapse_by_importance not found") {
+		t.Errorf("collapse_by_importance of a form: %v", err)
+	}
+	if _, err := DecodeCatalog("object.yaml", strings.NewReader(`format: 1
+id: `+commandCatalog+`
+name: Контрагенты
+title: {ru: Контрагенты}
+code: {type: string, length: 9, auto: true}
+description_length: 150
+commands:
+  - {id: `+commandID+`, name: Открыть, title: {ru: Открыть}, on_server_unavailable: not-available}
+`), metadataConfiguration()); err == nil || !strings.Contains(err.Error(), "field on_server_unavailable not found") {
+		t.Errorf("on_server_unavailable of a command of an object: %v", err)
+	}
+	if _, err := DecodeCommonCommand("object.yaml", strings.NewReader(`format: 1
+id: `+commonCommandID+`
+name: Открыть
+title: {ru: Открыть}
+group: actions-panel-tools
+on_server_unavailable: available
+`), metadataConfiguration()); err == nil || !strings.Contains(err.Error(), "field on_server_unavailable not found") {
+		t.Errorf("on_server_unavailable of a common command: %v", err)
+	}
+	kept := formAttrHead + "scale_variant: compact\nauto_command_bar: {id: c0de0000-0000-4000-8000-000000990014, horizontal_align: center}\n" +
+		"items:\n  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, user_visible: {common: false}}\n"
+	if _, err := DecodeManagedForm("form.yaml", strings.NewReader(kept), configuration); err != nil {
+		t.Errorf("the variant of the scale, the alignment of the bar and the visibility of a field: %v", err)
+	}
+}
