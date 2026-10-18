@@ -83,20 +83,35 @@ func (runtime *Runtime) LoadApplicationObjects(ctx context.Context, token string
 		// The navigation lists what the person may OPEN, not what code may
 		// read: an object shown in the menu that refuses to open would be a
 		// promise the next click breaks.
-		if !permissions.AllowsObject(item.ID, metadata.PermissionRead) || !permissions.AllowsObject(item.ID, metadata.PermissionView) {
+		if !mayOpen(permissions, item.ID) {
 			continue
 		}
 		result = append(result, ApplicationObject{Kind: metadata.CatalogKind, Name: item.Name,
 			Title: resolvedApplicationTitle(item.Title, item.Name, language), Operations: allowedOperations(permissions, item.ID)})
 	}
 	for _, item := range catalog.Documents {
-		if !permissions.AllowsObject(item.ID, metadata.PermissionRead) || !permissions.AllowsObject(item.ID, metadata.PermissionView) {
+		if !mayOpen(permissions, item.ID) {
 			continue
 		}
 		result = append(result, ApplicationObject{Kind: metadata.DocumentKind, Name: item.Name,
 			Title: resolvedApplicationTitle(item.Title, item.Name, language), Operations: allowedOperations(permissions, item.ID)})
 	}
 	return ApplicationObjects{Objects: result, Language: language}, nil
+}
+
+// openRights are what a person needs to open an object on a screen: reading
+// it, and seeing it, a right of its own beside reading. The navigation offers
+// what they open, and the opening asks for them, so the two cannot disagree.
+var openRights = []metadata.PermissionOperation{metadata.PermissionRead, metadata.PermissionView}
+
+// mayOpen says whether the person may open the object.
+func mayOpen(permissions *metadata.Permissions, objectID uuid.UUID) bool {
+	for _, right := range openRights {
+		if !permissions.AllowsObject(objectID, right) {
+			return false
+		}
+	}
+	return true
 }
 
 // applicationObjectID resolves the metadata identity a read permission is keyed
@@ -142,11 +157,10 @@ func (runtime *Runtime) requireApplicationView(ctx context.Context, databaseID, 
 	if err != nil {
 		return nil, err
 	}
-	if err := permissions.RequireObject(objectID, metadata.PermissionRead); err != nil {
-		return nil, err
-	}
-	if err := permissions.RequireObject(objectID, metadata.PermissionView); err != nil {
-		return nil, err
+	for _, right := range openRights {
+		if err := permissions.RequireObject(objectID, right); err != nil {
+			return nil, err
+		}
 	}
 	ctx = metadata.WithMLUser(metadata.WithPermissions(ctx, permissions), userID)
 	return metadata.WithSessionResolver(ctx, applicationSessionResolver(snapshot, pool, catalog, userID)), nil

@@ -92,6 +92,35 @@ EndFunction`)
 	}
 }
 
+// A value list finds its item by the value and by the identifier, each by its
+// own property, the first match winning (findListItemLocked); IndexOf finds
+// the very item and takes no number for one, Get takes the index
+// (indexOfReference, elementAt). Defects caught: FindByID comparing values, a
+// search answering the last match or none, IndexOf(1) answered as an index.
+func TestValueListFindsByValueAndByID(t *testing.T) {
+	t.Parallel()
+
+	machine := compileMachine(t, `Function Run()
+Items = New ValueList;
+First = Items.Add(100, "first");
+Second = Items.Add(100, "second");
+Return Items.FindByID(Second.ID).Presentation + ":" + Items.FindByValue(100).Presentation + ":" + (Items.FindByValue(7) = Undefined)
+	+ ":" + Items.IndexOf(Second) + ":" + Items.IndexOf(1) + ":" + Items.Get(1).Presentation;
+EndFunction`)
+	result, err := machine.Call("Run")
+	if err != nil || result.String() != "second:first:True:1:-1:second" {
+		t.Fatalf("Run() = %v, %v", result, err)
+	}
+	beyond := compileMachine(t, `Function Run()
+Items = New ValueList;
+Items.Add(100);
+Return Items.Get(1);
+EndFunction`)
+	if result, err := beyond.Call("Run"); err == nil {
+		t.Fatalf("Get past the end = %v, expected a refusal", result)
+	}
+}
+
 func TestValueTableColumnsRowsAndTotals(t *testing.T) {
 	t.Parallel()
 
@@ -197,5 +226,42 @@ EndProcedure`, limits)
 	count, err := bytecode.CollectionMethod(items, "Count", nil)
 	if err != nil || count.String() != "43" {
 		t.Fatalf("atomic collection count = %v, %v; want 43", count, err)
+	}
+}
+
+// Delete takes out exactly the element named - by its index, or for a list
+// and a table by the element itself - keeps the order of the rest, and
+// refuses one that is not there (removeAt, deleteListElement). Defects
+// caught: the collection not shrinking, the rest shifted wrongly, a missing
+// element passed over silently.
+func TestCollectionsDeleteTheElementNamed(t *testing.T) {
+	t.Parallel()
+
+	machine := compileMachine(t, `Function Run()
+Numbers = New Array;
+Numbers.Add(1); Numbers.Add(2); Numbers.Add(3);
+Numbers.Delete(1);
+Items = New ValueList;
+Items.Add("a"); Middle = Items.Add("b"); Items.Add("c");
+Items.Delete(Middle);
+Items.Delete(0);
+Table = New ValueTable;
+Table.Columns.Add("Name");
+First = Table.Add(); First.Name = "x";
+Second = Table.Add(); Second.Name = "y";
+Table.Delete(First);
+Return "" + Numbers.Count() + Numbers[0] + Numbers[1] + ":" + Items.Count() + Items[0].Value + ":" + Table.Count() + Table[0].Name;
+EndFunction`)
+	result, err := machine.Call("Run")
+	if err != nil || result.String() != "213:1c:1y" {
+		t.Fatalf("Run() = %v, %v", result, err)
+	}
+	for _, source := range []string{
+		"Function Run()\nItems = New ValueList;\nOther = New ValueList;\nItems.Delete(Other.Add(1));\nEndFunction",
+		"Function Run()\nTable = New ValueTable;\nTable.Delete(5);\nEndFunction",
+	} {
+		if _, err := compileMachine(t, source).Call("Run"); err == nil {
+			t.Errorf("deleting what is not there was accepted:\n%s", source)
+		}
 	}
 }

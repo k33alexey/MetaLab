@@ -1,7 +1,7 @@
 # Written by scripts/dupl_check.py --update. Shrinks only.
 1	cmd/mlwasm/main.go cmd/mlwasm/main.go cmd/mlwasm/main.go
 1	internal/appdb/identity.go internal/postgresadmin/admin.go
-3	internal/bsl/bytecode/collection.go internal/bsl/bytecode/collection.go
+1	internal/bsl/bytecode/collection.go internal/bsl/bytecode/collection.go
 1	internal/bsl/compiler/compiler.go internal/bsl/compiler/compiler.go
 1	internal/bsl/number/decimal.go internal/bsl/number/decimal.go
 1	internal/bsl/vm/vm.go internal/bsl/vm/vm.go
@@ -40,7 +40,6 @@
 1	internal/metadata/program_events.go internal/metadata/program_events.go internal/metadata/program_events.go internal/metadata/program_events.go
 1	internal/metadata/runtime.go internal/metadata/runtime.go
 1	internal/metadata/runtime.go internal/metadata/runtime.go internal/metadata/runtime.go internal/metadata/runtime.go
-1	internal/platform/application_metadata.go internal/platform/application_metadata.go
 1	internal/platform/application_write.go internal/platform/application_write.go
 1	internal/platform/runtime.go internal/platform/runtime.go
 2	internal/portal/portal.go internal/portal/portal.go

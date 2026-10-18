@@ -364,19 +364,13 @@ func arrayMethod(object *collectionObject, name string, arguments []Value) (Valu
 		if err != nil || index >= len(object.values) {
 			return Undefined(), invalidIndex(err)
 		}
-		copy(object.values[index:], object.values[index+1:])
-		object.values[len(object.values)-1] = Value{}
-		object.values = object.values[:len(object.values)-1]
+		object.values = removeAt(object.values, index)
 		return Undefined(), nil
 	case method(name, "Получить", "Get"):
 		if err := exactArguments(name, arguments, 1); err != nil {
 			return Undefined(), err
 		}
-		index, err := collectionIndex(arguments[0], false)
-		if err != nil || index >= len(object.values) {
-			return Undefined(), invalidIndex(err)
-		}
-		return object.values[index], nil
+		return elementAt(object.values, arguments[0])
 	case method(name, "Установить", "Set"):
 		if err := exactArguments(name, arguments, 2); err != nil {
 			return Undefined(), err
@@ -575,59 +569,27 @@ func valueListMethod(object *collectionObject, name string, arguments []Value) (
 		if err := exactArguments(name, arguments, 1); err != nil {
 			return Undefined(), err
 		}
-		index, err := collectionIndex(arguments[0], false)
-		if err != nil || index >= len(object.values) {
-			return Undefined(), invalidIndex(err)
-		}
-		return object.values[index], nil
+		return elementAt(object.values, arguments[0])
 	case method(name, "Индекс", "IndexOf"):
 		if err := exactArguments(name, arguments, 1); err != nil {
 			return Undefined(), err
 		}
-		for index, item := range object.values {
-			if SameReference(item, arguments[0]) {
-				return Number(float64(index)), nil
-			}
-		}
-		return Number(-1), nil
+		return indexOfReference(object.values, arguments[0]), nil
 	case method(name, "НайтиПоЗначению", "FindByValue"):
 		if err := exactArguments(name, arguments, 1); err != nil {
 			return Undefined(), err
 		}
-		for _, item := range object.values {
-			item.object.mu.RLock()
-			value, _ := collectionPropertyLocked(item, "Value")
-			item.object.mu.RUnlock()
-			if ValuesEqual(value, arguments[0]) {
-				return item, nil
-			}
-		}
-		return Undefined(), nil
+		return findListItemLocked(object.values, "Value", arguments[0]), nil
 	case method(name, "НайтиПоИдентификатору", "FindByID"):
 		if err := exactArguments(name, arguments, 1); err != nil {
 			return Undefined(), err
 		}
-		for _, item := range object.values {
-			item.object.mu.RLock()
-			value, _ := collectionPropertyLocked(item, "ID")
-			item.object.mu.RUnlock()
-			if ValuesEqual(value, arguments[0]) {
-				return item, nil
-			}
-		}
-		return Undefined(), nil
+		return findListItemLocked(object.values, "ID", arguments[0]), nil
 	case method(name, "Удалить", "Delete"):
 		if err := exactArguments(name, arguments, 1); err != nil {
 			return Undefined(), err
 		}
-		index := listItemIndex(object.values, arguments[0])
-		if index < 0 {
-			return Undefined(), fmt.Errorf("ValueList item not found")
-		}
-		copy(object.values[index:], object.values[index+1:])
-		object.values[len(object.values)-1] = Value{}
-		object.values = object.values[:len(object.values)-1]
-		return Undefined(), nil
+		return Undefined(), deleteListElement(&object.values, arguments[0], "ValueList item not found")
 	case method(name, "ЗагрузитьЗначения", "LoadValues"):
 		if err := exactArguments(name, arguments, 1); err != nil {
 			return Undefined(), err
@@ -767,33 +729,17 @@ func valueTableMethod(table *collectionObject, name string, arguments []Value) (
 		if err := exactArguments(name, arguments, 1); err != nil {
 			return Undefined(), err
 		}
-		index, err := collectionIndex(arguments[0], false)
-		if err != nil || index >= len(table.values) {
-			return Undefined(), invalidIndex(err)
-		}
-		return table.values[index], nil
+		return elementAt(table.values, arguments[0])
 	case method(name, "Индекс", "IndexOf"):
 		if err := exactArguments(name, arguments, 1); err != nil {
 			return Undefined(), err
 		}
-		for index, row := range table.values {
-			if SameReference(row, arguments[0]) {
-				return Number(float64(index)), nil
-			}
-		}
-		return Number(-1), nil
+		return indexOfReference(table.values, arguments[0]), nil
 	case method(name, "Удалить", "Delete"):
 		if err := exactArguments(name, arguments, 1); err != nil {
 			return Undefined(), err
 		}
-		index := listItemIndex(table.values, arguments[0])
-		if index < 0 {
-			return Undefined(), fmt.Errorf("ValueTable row not found")
-		}
-		copy(table.values[index:], table.values[index+1:])
-		table.values[len(table.values)-1] = Value{}
-		table.values = table.values[:len(table.values)-1]
-		return Undefined(), nil
+		return Undefined(), deleteListElement(&table.values, arguments[0], "ValueTable row not found")
 	case method(name, "Найти", "Find"):
 		if err := argumentRange(name, arguments, 1, 2); err != nil {
 			return Undefined(), err
@@ -1013,9 +959,7 @@ func tableColumnsMethod(table *collectionObject, name string, arguments []Value)
 		table.entries[len(table.entries)-1] = collectionEntry{}
 		table.entries = table.entries[:len(table.entries)-1]
 		for _, row := range table.values {
-			copy(row.object.values[index:], row.object.values[index+1:])
-			row.object.values[len(row.object.values)-1] = Value{}
-			row.object.values = row.object.values[:len(row.object.values)-1]
+			row.object.values = removeAt(row.object.values, index)
 		}
 		return Undefined(), nil
 	case method(name, "Очистить", "Clear"):
@@ -1648,6 +1592,65 @@ func deleteMapEntry(object *collectionObject, key Value) {
 		object.entries = object.entries[:len(object.entries)-1]
 	}
 }
+
+// deleteListElement is Удалить of a value list or a table: the element is
+// named by itself or by its index, and one that is not there is refused with
+// the collection's own words.
+func deleteListElement(values *[]Value, element Value, missing string) error {
+	index := listItemIndex(*values, element)
+	if index < 0 {
+		return errors.New(missing)
+	}
+	*values = removeAt(*values, index)
+	return nil
+}
+
+// removeAt takes the element at the index out of the list, clearing the place
+// it leaves at the end so the slice keeps no reference to it.
+func removeAt(values []Value, index int) []Value {
+	copy(values[index:], values[index+1:])
+	values[len(values)-1] = Value{}
+	return values[:len(values)-1]
+}
+
+// elementAt is Получить of an indexed collection: the element at an index the
+// collection has, a refusal for one it has not.
+func elementAt(values []Value, key Value) (Value, error) {
+	index, err := collectionIndex(key, false)
+	if err != nil || index >= len(values) {
+		return Undefined(), invalidIndex(err)
+	}
+	return values[index], nil
+}
+
+// indexOfReference is Индекс of an indexed collection: the position of the
+// very element given, -1 when it is not there. Unlike listItemIndex, behind
+// Удалить, it takes no number for an index: Индекс(2) of a list is -1.
+func indexOfReference(values []Value, element Value) Value {
+	for index, item := range values {
+		if SameReference(item, element) {
+			return Number(float64(index))
+		}
+	}
+	return Number(-1)
+}
+
+// findListItemLocked is the first item of a value list whose property equals
+// the value sought, Undefined when there is none. The caller holds the lock of
+// the list; each item is read under its own lock, taken after the list's, the
+// one order the list takes them in.
+func findListItemLocked(values []Value, property string, sought Value) Value {
+	for _, item := range values {
+		item.object.mu.RLock()
+		value, _ := collectionPropertyLocked(item, property)
+		item.object.mu.RUnlock()
+		if ValuesEqual(value, sought) {
+			return item
+		}
+	}
+	return Undefined()
+}
+
 func listItemIndex(values []Value, item Value) int {
 	if index, err := collectionIndex(item, false); err == nil && index < len(values) {
 		return index
