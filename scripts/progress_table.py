@@ -389,17 +389,12 @@ def current_iteration(blocks: list[Block]) -> tuple[Block, int, str] | None:
     return None
 
 
-def next_iteration_number() -> str | None:
-    """Номер итерации, которая делается сейчас: последний закоммиченный плюс один.
-
-    Номер итерации — сквозной счётчик коммитов «<заголовок> (N.NNN)», а не
-    место пункта в карте: в один пункт бывало по нескольку итераций, и пункт
-    дробится. Скрипт прогоняется и после push, когда последний коммит — уже
-    закрытая итерация; до коммита номер отстаёт на один. Без git номера нет.
-    """
+def last_iteration_in(repository: pathlib.Path) -> tuple[int, int, int] | None:
+    """Последняя закоммиченная итерация одного репозитория: старший номер,
+    младший и ширина младшего (ведущие нули), или None, если git нет."""
     try:
         subjects = subprocess.run(
-            ["git", "log", "--format=%s", "-200"], cwd=ROOT, capture_output=True,
+            ["git", "log", "--format=%s", "-200"], cwd=repository, capture_output=True,
             text=True, check=True,
         ).stdout.splitlines()
     except (OSError, subprocess.CalledProcessError):
@@ -407,9 +402,28 @@ def next_iteration_number() -> str | None:
     for subject in subjects:
         match = re.search(r"\((\d+)\.(\d+)\)\s*$", subject)
         if match:
-            major, minor = match.group(1), match.group(2)
-            return f"{major}.{int(minor) + 1:0{len(minor)}d}"
+            return int(match.group(1)), int(match.group(2)), len(match.group(2))
     return None
+
+
+def next_iteration_number() -> str | None:
+    """Номер итерации, которая делается сейчас: последний закоммиченный плюс один.
+
+    Номер итерации — сквозной счётчик коммитов «<заголовок> (N.NNN)», а не
+    место пункта в карте: в один пункт бывало по нескольку итераций, и пункт
+    дробится. Скрипт прогоняется и после push, когда последний коммит — уже
+    закрытая итерация; до коммита номер отстаёт на один. Без git номера нет.
+
+    Журналов два — кода и `docs/` (отдельный репозиторий): итерация, в
+    которой менялись только документы, коммитится только в `docs/`, и
+    пустой коммит в коде ради номера не нужен (решение владельца 18.10.2026).
+    Номер — больший из двух.
+    """
+    found = [last for last in (last_iteration_in(ROOT), last_iteration_in(ROOT / "docs")) if last]
+    if not found:
+        return None
+    major, minor, width = max(found)
+    return f"{major}.{minor + 1:0{width}d}"
 
 
 def short_iteration(text: str) -> str:
