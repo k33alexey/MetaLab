@@ -162,42 +162,31 @@ func (workspace *Workspace) DebugSnapshot() (vm.DebugSnapshot, error) {
 }
 
 func (workspace *Workspace) DebugCommand(action vm.DebugAction) (vm.DebugSnapshot, error) {
-	if target := workspace.currentDebugTarget(); target != nil {
-		return target.Command(action)
-	}
-	session, err := workspace.currentDebugSession()
-	if err != nil {
-		return vm.DebugSnapshot{}, err
-	}
-	if err := session.Resume(action); err != nil {
-		return vm.DebugSnapshot{}, err
-	}
-	return session.Snapshot(), nil
+	return workspace.routeDebug(func(target *debugtarget.Lease) (vm.DebugSnapshot, error) { return target.Command(action) },
+		func(session *vm.DebugSession) error { return session.Resume(action) })
 }
 
 func (workspace *Workspace) SetDebugBreakpoints(values []vm.DebugBreakpoint) (vm.DebugSnapshot, error) {
-	if target := workspace.currentDebugTarget(); target != nil {
-		return target.SetBreakpoints(values)
-	}
-	session, err := workspace.currentDebugSession()
-	if err != nil {
-		return vm.DebugSnapshot{}, err
-	}
-	if err := session.SetBreakpoints(values); err != nil {
-		return vm.DebugSnapshot{}, err
-	}
-	return session.Snapshot(), nil
+	return workspace.routeDebug(func(target *debugtarget.Lease) (vm.DebugSnapshot, error) { return target.SetBreakpoints(values) },
+		func(session *vm.DebugSession) error { return session.SetBreakpoints(values) })
 }
 
 func (workspace *Workspace) PauseDebug() (vm.DebugSnapshot, error) {
+	return workspace.routeDebug((*debugtarget.Lease).Pause, (*vm.DebugSession).Pause)
+}
+
+// routeDebug sends a command of the debugger where the debugging goes on: to
+// the runtime attached from outside when there is one, otherwise to the
+// session of Studio's own, answering with its state after the command.
+func (workspace *Workspace) routeDebug(remote func(*debugtarget.Lease) (vm.DebugSnapshot, error), local func(*vm.DebugSession) error) (vm.DebugSnapshot, error) {
 	if target := workspace.currentDebugTarget(); target != nil {
-		return target.Pause()
+		return remote(target)
 	}
 	session, err := workspace.currentDebugSession()
 	if err != nil {
 		return vm.DebugSnapshot{}, err
 	}
-	if err := session.Pause(); err != nil {
+	if err := local(session); err != nil {
 		return vm.DebugSnapshot{}, err
 	}
 	return session.Snapshot(), nil

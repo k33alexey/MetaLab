@@ -72,15 +72,7 @@ func (object *accumulationRegisterRecordSetObject) RuntimeCollectionElement(inde
 	return value, err == nil
 }
 func (object *accumulationRegisterRecordSetObject) RuntimeCollectionIndex(key bytecode.Value) (bytecode.Value, error) {
-	index, ok := key.NumberInteger()
-	if !ok || index < 0 {
-		return bytecode.Undefined(), fmt.Errorf("accumulation register record index must be a non-negative integer")
-	}
-	value, found := object.RuntimeCollectionElement(int(index))
-	if !found {
-		return bytecode.Undefined(), fmt.Errorf("accumulation register record index is out of range")
-	}
-	return value, nil
+	return indexedElement(key, "accumulation register record", object.RuntimeCollectionElement)
 }
 
 func (object *accumulationRegisterRecordObject) RuntimeTypeName() string {
@@ -157,15 +149,7 @@ func (object *accumulationVirtualTableObject) RuntimeCollectionElement(index int
 	return value, err == nil
 }
 func (object *accumulationVirtualTableObject) RuntimeCollectionIndex(key bytecode.Value) (bytecode.Value, error) {
-	index, ok := key.NumberInteger()
-	if !ok || index < 0 {
-		return bytecode.Undefined(), fmt.Errorf("virtual table row index must be a non-negative integer")
-	}
-	value, found := object.RuntimeCollectionElement(int(index))
-	if !found {
-		return bytecode.Undefined(), fmt.Errorf("virtual table row index is out of range")
-	}
-	return value, nil
+	return indexedElement(key, "virtual table row", object.RuntimeCollectionElement)
 }
 func (object *accumulationVirtualRowObject) RuntimeTypeName() string {
 	return "AccumulationRegisterVirtualRow." + object.owner.definition.Name

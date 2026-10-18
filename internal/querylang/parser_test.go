@@ -153,3 +153,29 @@ func BenchmarkParseExtendedQueryPackage(b *testing.B) {
 		}
 	}
 }
+
+// ИЛИ binds looser than И, both join from the left, and each node is placed at
+// its operator: one level of a logical operator for both (parseLogical).
+// Defects caught: И and ИЛИ taking one level, a level writing the other's
+// operator, a node placed at its left operand.
+func TestLogicalOperatorsTakeTheirLevels(t *testing.T) {
+	query, err := Parse("ВЫБРАТЬ 1 ИЗ Справочник.Товары КАК Т ГДЕ &А ИЛИ &Б И &В ИЛИ &Г")
+	if err != nil {
+		t.Fatal(err)
+	}
+	top, ok := query.Where.(Binary)
+	if !ok || top.Operator != "or" {
+		t.Fatalf("top = %#v, expected the last ИЛИ", query.Where)
+	}
+	left, ok := top.Left.(Binary)
+	if !ok || left.Operator != "or" {
+		t.Fatalf("left = %#v, expected the first ИЛИ", top.Left)
+	}
+	and, ok := left.Right.(Binary)
+	if !ok || and.Operator != "and" {
+		t.Fatalf("right of the first ИЛИ = %#v, expected И", left.Right)
+	}
+	if and.Position.Column <= left.Position.Column || top.Position.Column <= and.Position.Column {
+		t.Fatalf("the nodes are not placed at their operators: %+v %+v %+v", left.Position, and.Position, top.Position)
+	}
+}

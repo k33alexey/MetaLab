@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
@@ -212,5 +213,40 @@ func TestInformationRegisterEventSubscriptionHandlerEchoesReplaceAndCancels(t *t
 	cancelled, err = handler.HandleInformationRegisterEvent(context.Background(), InformationRegisterEventOnWrite, set, true)
 	if err != nil || cancelled {
 		t.Fatalf("mismatched event must be a no-op: cancelled=%v error=%v", cancelled, err)
+	}
+}
+
+// fakeCatalogHandler answers an event with what it was given and counts its
+// calls.
+type fakeCatalogHandler struct {
+	cancel bool
+	err    error
+	calls  *int
+}
+
+func (handler fakeCatalogHandler) HandleCatalogEvent(context.Context, CatalogEvent, *CatalogRecord) (bool, error) {
+	*handler.calls++
+	return handler.cancel, handler.err
+}
+
+// Every handler of an event runs though an earlier one has set Отказ, the
+// operation is cancelled when any of them cancels it, a missing handler is
+// passed over, and an error stops the round (runSubscribers). Defects caught:
+// a later handler's «no» overriding an earlier «yes», the round stopping at
+// the first cancellation, a nil handler called, the round going on past an
+// error.
+func TestEverySubscriberRunsAndAnyCancels(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	list := catalogEventHandlers{fakeCatalogHandler{cancel: true, calls: &calls}, nil, fakeCatalogHandler{calls: &calls}}
+	cancelled, err := list.HandleCatalogEvent(context.Background(), CatalogEventBefore, nil)
+	if err != nil || !cancelled || calls != 2 {
+		t.Fatalf("cancelled = %v, err = %v, calls = %d: expected both handlers run and the operation cancelled", cancelled, err, calls)
+	}
+	calls = 0
+	failure := errors.New("сбой")
+	list = catalogEventHandlers{fakeCatalogHandler{err: failure, calls: &calls}, fakeCatalogHandler{calls: &calls}}
+	if _, err := list.HandleCatalogEvent(context.Background(), CatalogEventBefore, nil); !errors.Is(err, failure) || calls != 1 {
+		t.Fatalf("err = %v, calls = %d: expected the error to stop the round", err, calls)
 	}
 }

@@ -84,16 +84,24 @@ func (object *informationRegisterRecordSetObject) RuntimeCollectionElement(index
 	value, err := bytecode.Object(&informationRegisterRecordObject{owner: object, record: object.set.Records[index]})
 	return value, err == nil
 }
-func (object *informationRegisterRecordSetObject) RuntimeCollectionIndex(key bytecode.Value) (bytecode.Value, error) {
+
+// indexedElement is the [] of a collection of records or rows of a register:
+// the index is a non-negative integer the platform's int holds, and the
+// element at it is there.
+func indexedElement(key bytecode.Value, what string, element func(int) (bytecode.Value, bool)) (bytecode.Value, error) {
 	index, ok := key.NumberInteger()
 	if !ok || index < 0 || uint64(index) > uint64(^uint(0)>>1) {
-		return bytecode.Undefined(), fmt.Errorf("information register record index must be a non-negative integer")
+		return bytecode.Undefined(), fmt.Errorf("%s index must be a non-negative integer", what)
 	}
-	value, found := object.RuntimeCollectionElement(int(index))
+	value, found := element(int(index))
 	if !found {
-		return bytecode.Undefined(), fmt.Errorf("information register record index is out of range")
+		return bytecode.Undefined(), fmt.Errorf("%s index is out of range", what)
 	}
 	return value, nil
+}
+
+func (object *informationRegisterRecordSetObject) RuntimeCollectionIndex(key bytecode.Value) (bytecode.Value, error) {
+	return indexedElement(key, "information register record", object.RuntimeCollectionElement)
 }
 
 func (object *informationRegisterRecordObject) RuntimeTypeName() string {

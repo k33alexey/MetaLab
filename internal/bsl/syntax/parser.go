@@ -477,35 +477,11 @@ func (p *parser) parseComparison() Expression {
 }
 
 func (p *parser) parseAdditive() Expression {
-	expression := p.parseMultiplicative()
-	for p.check(Plus) || p.check(Minus) {
-		operator := p.advance()
-		right := p.parseMultiplicative()
-		if expression == nil || right == nil {
-			return expression
-		}
-		expression = &BinaryExpression{
-			Left: expression, Operator: operator.Kind, Right: right,
-			SourceSpan: Span{Start: expression.NodeSpan().Start, End: right.NodeSpan().End},
-		}
-	}
-	return expression
+	return p.parseBinary(p.parseMultiplicative, Plus, Minus)
 }
 
 func (p *parser) parseMultiplicative() Expression {
-	expression := p.parseUnary()
-	for p.check(Star) || p.check(Slash) || p.check(Percent) {
-		operator := p.advance()
-		right := p.parseUnary()
-		if expression == nil || right == nil {
-			return expression
-		}
-		expression = &BinaryExpression{
-			Left: expression, Operator: operator.Kind, Right: right,
-			SourceSpan: Span{Start: expression.NodeSpan().Start, End: right.NodeSpan().End},
-		}
-	}
-	return expression
+	return p.parseBinary(p.parseUnary, Star, Slash, Percent)
 }
 
 func (p *parser) parseUnary() Expression {

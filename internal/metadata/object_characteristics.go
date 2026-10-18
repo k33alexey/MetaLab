@@ -519,19 +519,10 @@ func (catalog *Catalog) validateCharacteristic(where string, owner characteristi
 			return err
 		}
 	}
-	for _, optional := range []struct {
-		path  string
-		field *CharacteristicField
-	}{
-		{where + " types.data_path", characteristic.Types.DataPath},
-		{where + " types.multiple_values_use", characteristic.Types.MultipleValuesUse},
-	} {
-		if optional.field == nil {
-			continue
-		}
-		if _, err := characteristicFieldTypes(optional.path, kinds, *optional.field); err != nil {
-			return err
-		}
+	if err := optionalCharacteristicFields(kinds,
+		optionalField{where + " types.data_path", characteristic.Types.DataPath},
+		optionalField{where + " types.multiple_values_use", characteristic.Types.MultipleValuesUse}); err != nil {
+		return err
 	}
 	values, err := catalog.resolveCharacteristicTable(where+" values", characteristic.Values.Table)
 	if err != nil {
@@ -548,19 +539,10 @@ func (catalog *Catalog) validateCharacteristic(where string, owner characteristi
 	if _, err := characteristicFieldTypes(where+" values.value", values, characteristic.Values.Value); err != nil {
 		return err
 	}
-	for _, optional := range []struct {
-		path  string
-		field *CharacteristicField
-	}{
-		{where + " values.multiple_values_key", characteristic.Values.MultipleValuesKey},
-		{where + " values.multiple_values_order", characteristic.Values.MultipleValuesOrder},
-	} {
-		if optional.field == nil {
-			continue
-		}
-		if _, err := characteristicFieldTypes(optional.path, values, *optional.field); err != nil {
-			return err
-		}
+	if err := optionalCharacteristicFields(values,
+		optionalField{where + " values.multiple_values_key", characteristic.Values.MultipleValuesKey},
+		optionalField{where + " values.multiple_values_order", characteristic.Values.MultipleValuesOrder}); err != nil {
+		return err
 	}
 	// The two halves and the object are held together by what their fields can
 	// hold. A table of values whose object field cannot hold a reference to
@@ -584,6 +566,26 @@ func (catalog *Catalog) validateCharacteristic(where string, owner characteristi
 	}
 	if !typesIntersect(keyed, named) {
 		return fmt.Errorf("%s values.type cannot hold what types.key holds, so the two tables never join", where)
+	}
+	return nil
+}
+
+// optionalField is a field a characteristic may leave unnamed, at its path.
+type optionalField struct {
+	path  string
+	field *CharacteristicField
+}
+
+// optionalCharacteristicFields checks the fields a characteristic may leave
+// unnamed: one that is named is a field of its table.
+func optionalCharacteristicFields(table characteristicTable, fields ...optionalField) error {
+	for _, optional := range fields {
+		if optional.field == nil {
+			continue
+		}
+		if _, err := characteristicFieldTypes(optional.path, table, *optional.field); err != nil {
+			return err
+		}
 	}
 	return nil
 }

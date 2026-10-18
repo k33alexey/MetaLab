@@ -18,12 +18,20 @@ import (
 type catalogEventHandlers []CatalogEventHandler
 
 func (list catalogEventHandlers) HandleCatalogEvent(ctx context.Context, event CatalogEvent, record *CatalogRecord) (bool, error) {
+	return runSubscribers(list, func(handler CatalogEventHandler) (bool, error) { return handler.HandleCatalogEvent(ctx, event, record) })
+}
+
+// runSubscribers runs every handler of an event in turn, the object's own
+// module and its subscriptions, as the prototype runs them: each one runs
+// though an earlier one has set Отказ, the operation is cancelled when any of
+// them cancels it, and an error stops the round.
+func runSubscribers[H any](list []H, call func(H) (bool, error)) (bool, error) {
 	cancelled := false
 	for _, handler := range list {
-		if handler == nil {
+		if any(handler) == nil {
 			continue
 		}
-		cancel, err := handler.HandleCatalogEvent(ctx, event, record)
+		cancel, err := call(handler)
 		if err != nil {
 			return false, err
 		}
@@ -35,52 +43,25 @@ func (list catalogEventHandlers) HandleCatalogEvent(ctx context.Context, event C
 type documentEventHandlers []DocumentEventHandler
 
 func (list documentEventHandlers) HandleDocumentEvent(ctx context.Context, event DocumentEvent, record *DocumentRecord) (bool, error) {
-	cancelled := false
-	for _, handler := range list {
-		if handler == nil {
-			continue
-		}
-		cancel, err := handler.HandleDocumentEvent(ctx, event, record)
-		if err != nil {
-			return false, err
-		}
-		cancelled = cancelled || cancel
-	}
-	return cancelled, nil
+	return runSubscribers(list, func(handler DocumentEventHandler) (bool, error) {
+		return handler.HandleDocumentEvent(ctx, event, record)
+	})
 }
 
 type informationRegisterEventHandlers []InformationRegisterEventHandler
 
 func (list informationRegisterEventHandlers) HandleInformationRegisterEvent(ctx context.Context, event InformationRegisterEvent, set *InformationRegisterRecordSet, replace bool) (bool, error) {
-	cancelled := false
-	for _, handler := range list {
-		if handler == nil {
-			continue
-		}
-		cancel, err := handler.HandleInformationRegisterEvent(ctx, event, set, replace)
-		if err != nil {
-			return false, err
-		}
-		cancelled = cancelled || cancel
-	}
-	return cancelled, nil
+	return runSubscribers(list, func(handler InformationRegisterEventHandler) (bool, error) {
+		return handler.HandleInformationRegisterEvent(ctx, event, set, replace)
+	})
 }
 
 type accumulationRegisterEventHandlers []AccumulationRegisterEventHandler
 
 func (list accumulationRegisterEventHandlers) HandleAccumulationRegisterEvent(ctx context.Context, event AccumulationRegisterEvent, set *AccumulationRegisterRecordSet, replace bool) (bool, error) {
-	cancelled := false
-	for _, handler := range list {
-		if handler == nil {
-			continue
-		}
-		cancel, err := handler.HandleAccumulationRegisterEvent(ctx, event, set, replace)
-		if err != nil {
-			return false, err
-		}
-		cancelled = cancelled || cancel
-	}
-	return cancelled, nil
+	return runSubscribers(list, func(handler AccumulationRegisterEventHandler) (bool, error) {
+		return handler.HandleAccumulationRegisterEvent(ctx, event, set, replace)
+	})
 }
 
 // catalogEventSubscriptionHandler calls one common module procedure for one

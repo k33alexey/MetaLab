@@ -316,33 +316,27 @@ func (value *parser) parseJoinKind() (JoinKind, Position, bool, error) {
 }
 
 func (value *parser) parseOr() (Expression, error) {
-	left, err := value.parseAnd()
-	if err != nil {
-		return nil, err
-	}
-	for value.match(tokenOr) {
-		position := value.previous().position
-		right, err := value.parseAnd()
-		if err != nil {
-			return nil, err
-		}
-		left = Binary{Operator: "or", Left: left, Right: right, Position: position}
-	}
-	return left, nil
+	return value.parseLogical(tokenOr, "or", value.parseAnd)
 }
 
 func (value *parser) parseAnd() (Expression, error) {
-	left, err := value.parseNot()
+	return value.parseLogical(tokenAnd, "and", value.parseNot)
+}
+
+// parseLogical is one level of a logical operator, ИЛИ above И: operands of
+// the level below joined from the left, each node placed at its operator.
+func (value *parser) parseLogical(kind tokenKind, operator string, operand func() (Expression, error)) (Expression, error) {
+	left, err := operand()
 	if err != nil {
 		return nil, err
 	}
-	for value.match(tokenAnd) {
+	for value.match(kind) {
 		position := value.previous().position
-		right, err := value.parseNot()
+		right, err := operand()
 		if err != nil {
 			return nil, err
 		}
-		left = Binary{Operator: "and", Left: left, Right: right, Position: position}
+		left = Binary{Operator: operator, Left: left, Right: right, Position: position}
 	}
 	return left, nil
 }
