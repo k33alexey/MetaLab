@@ -269,7 +269,8 @@ var kindRightsOf = map[Kind][]PermissionOperation{
 // configurationRights are the rights the configurator offers on the
 // configuration itself, from the same exports: everything a user may do with
 // the infobase as a whole, the start of the application in place of the
-// clients (droppedRights) and the modes of the main window. The
+// clients and the modes of the main window; not the rights ML does not keep
+// (droppedRights). The
 // mode of the technical specialist is written under its old name too
 // (renamedRights); ending exclusive mode at the start of a session only the
 // configurator's samples write.
@@ -277,9 +278,7 @@ var configurationRights = inHelpOrder([]PermissionOperation{
 	PermissionAdministration, PermissionDataAdministration, PermissionUpdateDataBaseConfiguration,
 	PermissionExclusiveMode, PermissionActiveUsers, PermissionEventLog, PermissionRunApplication,
 	PermissionExternalConnection, PermissionAutomation,
-	PermissionTechnicalSpecialistMode, PermissionSaveUserData, PermissionInteractiveOpenExtDataProcessors,
-	PermissionInteractiveOpenExtReports, PermissionOutput, PermissionConfigurationExtensionsAdministration,
-	PermissionCollaborationSystemInfoBaseRegistration, PermissionMainWindowModeNormal,
+	PermissionTechnicalSpecialistMode, PermissionSaveUserData, PermissionOutput, PermissionMainWindowModeNormal,
 	PermissionMainWindowModeWorkplace, PermissionMainWindowModeEmbeddedWorkplace,
 	PermissionMainWindowModeFullscreenWorkplace, PermissionMainWindowModeKiosk,
 	PermissionExclusiveModeTerminationAtSessionStart, PermissionAnalyticsSystemClient,

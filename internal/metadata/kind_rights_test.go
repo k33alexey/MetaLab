@@ -120,19 +120,22 @@ var expectedConfigurationRights = []string{"Administration", "DataAdministration
 	"MainWindowModeEmbeddedWorkplace", "MainWindowModeFullscreenWorkplace", "MainWindowModeKiosk",
 	"ExclusiveModeTerminationAtSessionStart", "AnalyticsSystemClient"}
 
-// clientsNotKept are the rights of the prototype nothing stands for in ML:
-// its thick and mobile clients (ACCESS-RIGHTS, «Запуск клиента — одно
-// право»). The thin and the web client are the start of the application.
-var clientsNotKept = []string{"ThickClient", "MobileClient"}
+// rightsNotKept are the rights of the prototype nothing stands for in ML: its
+// thick and mobile clients (ACCESS-RIGHTS, «Запуск клиента — одно право»)
+// and the rights on the mechanisms ML refused (ACCESS-RIGHTS, «Права на
+// механизмы, от которых ML отказался, не переносятся»). The thin and the web
+// client are the start of the application.
+var rightsNotKept = []string{"ThickClient", "MobileClient", "InteractiveOpenExtDataProcessors", "InteractiveOpenExtReports",
+	"ConfigurationExtensionsAdministration", "CollaborationSystemInfoBaseRegistration"}
 
 // rightsByNames reads prototype names as rights, in the order of the help,
 // each once: the thin and the web client are one right in ML, and the
-// clients ML does not keep are no right of it.
+// rights ML does not keep are no right of it.
 func rightsByNames(t *testing.T, names []string) []PermissionOperation {
 	t.Helper()
 	result := []PermissionOperation{}
 	for _, name := range names {
-		if slices.Contains(clientsNotKept, name) {
+		if slices.Contains(rightsNotKept, name) {
 			continue
 		}
 		right, ok := RightByPrototypeName(name)
@@ -268,7 +271,7 @@ func TestKindRightsAgreeWithTheExports(t *testing.T) {
 				allowed = usesOf(kind).offered
 			}
 			for _, right := range object.Rights {
-				if slices.Contains(clientsNotKept, right.Name) {
+				if slices.Contains(rightsNotKept, right.Name) {
 					continue
 				}
 				operation, ok := RightByPrototypeName(right.Name)

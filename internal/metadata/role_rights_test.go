@@ -32,8 +32,9 @@ func fullRole() RoleDefinition {
 }
 
 // A role written as its two files and read back is the same role: every one
-// of the sixty-six rights it carries - the prototype's sixty-nine but its four
-// clients, and the start of the application - a denial apart from a grant, a part only denied,
+// of the sixty-two rights it carries - the prototype's sixty-nine but its four
+// clients and the four rights on mechanisms ML refused, and the start of the
+// application - a denial apart from a grant, a part only denied,
 // a dotted key, a restriction on an object the role only denies (235 such in
 // the exports), the flags and the commands.
 //
@@ -66,7 +67,7 @@ func TestRoleSurvivesItsTwoFiles(t *testing.T) {
 	if err != nil || !bytes.Equal(again, description) || !bytes.Equal(againGrid, grid) {
 		t.Fatalf("a second writing differs from the first (%v):\n%s\n%s", err, again, againGrid)
 	}
-	if !slices.Equal(decoded.Objects[0].Operations, RoleRights()) || len(RoleRights()) != 66 {
+	if !slices.Equal(decoded.Objects[0].Operations, RoleRights()) || len(RoleRights()) != 62 {
 		t.Fatalf("rights carried: %d of %d", len(decoded.Objects[0].Operations), len(RoleRights()))
 	}
 	if !decoded.IndependentChildRights || len(decoded.Objects[1].Restrictions) != 2 || len(decoded.RestrictionTemplates) != 1 || len(decoded.Commands) != 1 {
@@ -146,17 +147,21 @@ func TestRightsAreFoundByThePrototypesNames(t *testing.T) {
 			t.Errorf("%s found as %q, %v", name, got, ok)
 		}
 	}
-	// FullAccess is no right; the thick and the mobile client are rights of
-	// the prototype nothing stands for in ML.
-	for _, name := range []string{"FullAccess", "ThickClient", "ТолстыйКлиент", "MobileClient", "МобильныйКлиент"} {
+	// FullAccess is no right; the thick and the mobile client and the rights
+	// on the mechanisms ML refused are rights of the prototype nothing stands
+	// for in ML.
+	for _, name := range []string{"FullAccess", "ThickClient", "ТолстыйКлиент", "MobileClient", "МобильныйКлиент",
+		"InteractiveOpenExtDataProcessors", "ИнтерактивноеОткрытиеВнешнихОтчетов", "ConfigurationExtensionsAdministration",
+		"РегистрацияИнформационнойБазыСистемыВзаимодействия"} {
 		if got, ok := RightByPrototypeName(name); ok {
 			t.Errorf("%s found as %q", name, got)
 		}
 	}
 }
 
-// A role saved while ML still kept the four clients (ACCESS-RIGHTS, «Роли,
-// сохранённые прежней версией ML»): it is read - Studio opens it to repair -
+// A role saved while ML still kept the four clients or the rights on the
+// mechanisms it refused (ACCESS-RIGHTS, «Роли, сохранённые прежней версией
+// ML»): it is read - Studio opens it to repair -
 // and refused, naming the role and the right, by the load that saves the
 // project into a database and by the application reading the configuration
 // a database holds. The rights are written here, not read from droppedRights.
@@ -169,7 +174,9 @@ func TestRolesWithClientsMLDoesNotKeepAreReadAndNotRun(t *testing.T) {
 	for _, item := range []struct {
 		right  PermissionOperation
 		denied bool
-	}{{"thin-client", false}, {"web-client", false}, {"thick-client", false}, {"mobile-client", false}, {"web-client", true}} {
+	}{{"thin-client", false}, {"web-client", false}, {"thick-client", false}, {"mobile-client", false}, {"web-client", true},
+		{"interactive-open-ext-data-processors", false}, {"interactive-open-ext-reports", true},
+		{"configuration-extensions-administration", false}, {"collaboration-system-info-base-registration", false}} {
 		verb := "gives"
 		if item.denied {
 			verb = "denies"

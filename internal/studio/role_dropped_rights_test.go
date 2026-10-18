@@ -39,7 +39,9 @@ func TestStudioOpensARoleWithClientsMLDoesNotKeep(t *testing.T) {
 	if got := opened.Role.Objects[0].Operations; len(got) != 3 {
 		t.Fatalf("the role opens with %v", got)
 	}
-	for right, want := range map[metadata.PermissionOperation]metadata.PermissionOperation{"thin-client": "run-application", "web-client": "run-application", "thick-client": "", "mobile-client": ""} {
+	for right, want := range map[metadata.PermissionOperation]metadata.PermissionOperation{"thin-client": "run-application", "web-client": "run-application", "thick-client": "", "mobile-client": "",
+		"interactive-open-ext-data-processors": "", "interactive-open-ext-reports": "", "configuration-extensions-administration": "",
+		"collaboration-system-info-base-registration": ""} {
 		if got, ok := opened.Schema.DroppedRights[right]; !ok || got != want {
 			t.Errorf("the editor takes %s for %q (%v), want %q", right, got, ok, want)
 		}

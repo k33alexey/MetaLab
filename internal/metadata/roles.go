@@ -55,8 +55,6 @@ const (
 	PermissionEventLog                                   PermissionOperation = "event-log"
 	PermissionExternalConnection                         PermissionOperation = "external-connection"
 	PermissionAutomation                                 PermissionOperation = "automation"
-	PermissionInteractiveOpenExtDataProcessors           PermissionOperation = "interactive-open-ext-data-processors"
-	PermissionInteractiveOpenExtReports                  PermissionOperation = "interactive-open-ext-reports"
 	PermissionGet                                        PermissionOperation = "get"
 	PermissionSet                                        PermissionOperation = "set"
 	PermissionInteractiveActivate                        PermissionOperation = "interactive-activate"
@@ -74,7 +72,6 @@ const (
 	PermissionInteractiveSetDeletionMarkPredefinedData   PermissionOperation = "interactive-set-deletion-mark-predefined-data"
 	PermissionInteractiveClearDeletionMarkPredefinedData PermissionOperation = "interactive-clear-deletion-mark-predefined-data"
 	PermissionInteractiveDeleteMarkedPredefinedData      PermissionOperation = "interactive-delete-marked-predefined-data"
-	PermissionConfigurationExtensionsAdministration      PermissionOperation = "configuration-extensions-administration"
 	PermissionReadDataHistory                            PermissionOperation = "read-data-history"
 	PermissionViewDataHistory                            PermissionOperation = "view-data-history"
 	PermissionReadDataHistoryOfMissingData               PermissionOperation = "read-data-history-of-missing-data"
@@ -84,7 +81,6 @@ const (
 	PermissionUpdateDataHistoryVersionComment            PermissionOperation = "update-data-history-version-comment"
 	PermissionEditDataHistoryVersionComment              PermissionOperation = "edit-data-history-version-comment"
 	PermissionSwitchToDataHistoryVersion                 PermissionOperation = "switch-to-data-history-version"
-	PermissionCollaborationSystemInfoBaseRegistration    PermissionOperation = "collaboration-system-info-base-registration"
 	PermissionMainWindowModeNormal                       PermissionOperation = "main-window-mode-normal"
 	PermissionMainWindowModeWorkplace                    PermissionOperation = "main-window-mode-workplace"
 	PermissionMainWindowModeEmbeddedWorkplace            PermissionOperation = "main-window-mode-embedded-workplace"
@@ -143,8 +139,6 @@ var roleRights = []roleRight{
 	{PermissionEventLog, "EventLog", "ЖурналРегистрации"},
 	{PermissionExternalConnection, "ExternalConnection", "ВнешнееСоединение"},
 	{PermissionAutomation, "Automation", "Automation"},
-	{PermissionInteractiveOpenExtDataProcessors, "InteractiveOpenExtDataProcessors", "ИнтерактивноеОткрытиеВнешнихОбработок"},
-	{PermissionInteractiveOpenExtReports, "InteractiveOpenExtReports", "ИнтерактивноеОткрытиеВнешнихОтчетов"},
 	{PermissionGet, "Get", "Получение"},
 	{PermissionSet, "Set", "Установка"},
 	{PermissionInteractiveActivate, "InteractiveActivate", "ИнтерактивнаяАктивация"},
@@ -163,7 +157,6 @@ var roleRights = []roleRight{
 	{PermissionInteractiveSetDeletionMarkPredefinedData, "InteractiveSetDeletionMarkPredefinedData", "ИнтерактивнаяПометкаУдаленияПредопределенныхДанных"},
 	{PermissionInteractiveClearDeletionMarkPredefinedData, "InteractiveClearDeletionMarkPredefinedData", "ИнтерактивноеСнятиеПометкиУдаленияПредопределенныхДанных"},
 	{PermissionInteractiveDeleteMarkedPredefinedData, "InteractiveDeleteMarkedPredefinedData", "ИнтерактивноеУдалениеПомеченныхПредопределенныхДанных"},
-	{PermissionConfigurationExtensionsAdministration, "ConfigurationExtensionsAdministration", "АдминистрированиеРасширенийКонфигурации"},
 	{PermissionReadDataHistory, "ReadDataHistory", "ЧтениеИсторииДанных"},
 	{PermissionViewDataHistory, "ViewDataHistory", "ПросмотрИсторииДанных"},
 	{PermissionReadDataHistoryOfMissingData, "ReadDataHistoryOfMissingData", "ЧтениеИсторииДанныхОтсутствующихДанных"},
@@ -173,7 +166,6 @@ var roleRights = []roleRight{
 	{PermissionUpdateDataHistoryVersionComment, "UpdateDataHistoryVersionComment", "ИзменениеКомментарияВерсииИсторииДанных"},
 	{PermissionEditDataHistoryVersionComment, "EditDataHistoryVersionComment", "РедактированиеКомментарияВерсииИсторииДанных"},
 	{PermissionSwitchToDataHistoryVersion, "SwitchToDataHistoryVersion", "ПереходНаВерсиюИсторииДанных"},
-	{PermissionCollaborationSystemInfoBaseRegistration, "CollaborationSystemInfoBaseRegistration", "РегистрацияИнформационнойБазыСистемыВзаимодействия"},
 	{PermissionMainWindowModeNormal, "MainWindowModeNormal", "РежимОсновногоОкнаОбычный"},
 	{PermissionMainWindowModeWorkplace, "MainWindowModeWorkplace", "РежимОсновногоОкнаРабочееМесто"},
 	{PermissionMainWindowModeEmbeddedWorkplace, "MainWindowModeEmbeddedWorkplace", "РежимОсновногоОкнаВстроенноеРабочееМесто"},
@@ -193,10 +185,12 @@ type droppedRight struct {
 	why     string
 }
 
-// droppedRights are the rights of the prototype ML does not keep
-// (ACCESS-RIGHTS, «Запуск клиента — одно право»): the thin and the web
-// client are «Запуск приложения» in ML, the thick and the mobile client
-// ML does not have. Taking a right away later is one more line here. A role
+// droppedRights are the rights of the prototype ML does not keep: the thin
+// and the web client are «Запуск приложения» in ML, the thick and the mobile
+// client ML does not have (ACCESS-RIGHTS, «Запуск клиента — одно право»),
+// and nothing stands for a right on a mechanism ML refused (ACCESS-RIGHTS,
+// «Права на механизмы, от которых ML отказался, не переносятся»). Taking a
+// right away later is one more line here. A role
 // naming one is read for Studio to repair, and refused by every load that
 // runs it: the project is not saved into a database, an application whose
 // configuration gives one does not open (ACCESS-RIGHTS, «Роли, сохранённые
@@ -206,6 +200,13 @@ var droppedRights = []droppedRight{
 	{roleRight{"web-client", "WebClient", "ВебКлиент"}, PermissionRunApplication, "the thin and the web client are the one right run-application in ML"},
 	{roleRight{"thick-client", "ThickClient", "ТолстыйКлиент"}, "", "ML has no thick client"},
 	{roleRight{"mobile-client", "MobileClient", "МобильныйКлиент"}, "", "ML has no mobile client"},
+	{roleRight{"interactive-open-ext-data-processors", "InteractiveOpenExtDataProcessors", "ИнтерактивноеОткрытиеВнешнихОбработок"}, "",
+		"ML has no external data processors"},
+	{roleRight{"interactive-open-ext-reports", "InteractiveOpenExtReports", "ИнтерактивноеОткрытиеВнешнихОтчетов"}, "", "ML has no external reports"},
+	{roleRight{"configuration-extensions-administration", "ConfigurationExtensionsAdministration", "АдминистрированиеРасширенийКонфигурации"}, "",
+		"ML has no configuration extensions"},
+	{roleRight{"collaboration-system-info-base-registration", "CollaborationSystemInfoBaseRegistration", "РегистрацияИнформационнойБазыСистемыВзаимодействия"}, "",
+		"ML has no collaboration system"},
 }
 
 // droppedRightOf finds a right ML does not keep by the name a role keeps it
