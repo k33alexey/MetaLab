@@ -27,8 +27,7 @@
     async function analyze(current){
       if(!active||!file||current!==generation)return;if(controller)controller.abort();controller=new AbortController();const requestedSource=sourceText,requestedPath=file.path;
       try{
-        const response=await fetch('/api/bsl/analyze',{method:'POST',headers:{'Content-Type':'application/json','X-ML-CSRF':'1'},body:JSON.stringify({path:requestedPath,content:requestedSource}),signal:controller.signal});
-        if(!response.ok)throw new Error(await response.text());const result=await response.json();if(current!==generation||sourceText!==requestedSource||file?.path!==requestedPath)return;analysis=result;selectedPair=null;selectedPairKey='';renderAll()
+        const result=await postJSON('/api/bsl/analyze',{path:requestedPath,content:requestedSource},{signal:controller.signal});if(current!==generation||sourceText!==requestedSource||file?.path!==requestedPath)return;analysis=result;selectedPair=null;selectedPairKey='';renderAll()
       }catch(error){if(error.name==='AbortError')return;if(current!==generation)return;summary.textContent='Ошибка анализа';summary.className='error';problems.replaceChildren(emptyItem(String(error.message||error)))}
     }
 
@@ -38,7 +37,7 @@
     }
     async function requestCompletion(current,force){
       if(!active||!file||current!==completionGeneration)return;if(completionController)completionController.abort();completionController=new AbortController();const requestedSource=sourceText,requestedPath=file.path,position=cursorPosition(textarea.selectionStart);
-      try{const response=await fetch('/api/bsl/complete',{method:'POST',headers:{'Content-Type':'application/json','X-ML-CSRF':'1'},body:JSON.stringify({path:requestedPath,content:requestedSource,position}),signal:completionController.signal});if(!response.ok)throw new Error(await response.text());const result=await response.json();if(current!==completionGeneration||sourceText!==requestedSource||file?.path!==requestedPath)return;completionResult=result;completionSelection=0;renderCompletion(force,position)}catch(error){if(error.name!=='AbortError'&&current===completionGeneration)hideCompletion()}
+      try{const result=await postJSON('/api/bsl/complete',{path:requestedPath,content:requestedSource,position},{signal:completionController.signal});if(current!==completionGeneration||sourceText!==requestedSource||file?.path!==requestedPath)return;completionResult=result;completionSelection=0;renderCompletion(force,position)}catch(error){if(error.name!=='AbortError'&&current===completionGeneration)hideCompletion()}
     }
     function renderCompletion(force,position){
       renderSignature(completionResult?.signature,position);const items=completionResult?.items||[];completion.replaceChildren();if(!items.length){completion.hidden=true;return}const prefix=sourceSlice(completionResult.replace);if(!force&&!prefix&&!sourceText.slice(0,textarea.selectionStart).endsWith('.')){completion.hidden=true;return}items.forEach((item,index)=>{const button=document.createElement('button');button.type='button';button.role='option';button.className='completion-item';button.setAttribute('aria-selected',String(index===completionSelection));const icon=document.createElement('span'),text=document.createElement('span'),detail=document.createElement('span');icon.className=`completion-kind kind-${item.kind}`;icon.textContent=completionIcon(item.kind);text.className='completion-label';text.textContent=item.label;detail.className='completion-detail';detail.textContent=item.detail||'';button.append(icon,text,detail);button.addEventListener('mousedown',event=>{event.preventDefault();applyCompletion(index)});completion.append(button)});completion.hidden=false;positionPopup(completion,position)
@@ -48,14 +47,14 @@
     function moveCompletion(delta){const count=completionResult?.items?.length||0;if(!count)return;completionSelection=(completionSelection+delta+count)%count;const rows=completion.querySelectorAll('.completion-item');rows.forEach((row,index)=>row.setAttribute('aria-selected',String(index===completionSelection)));rows[completionSelection]?.scrollIntoView({block:'nearest'})}
     function hideCompletion(){completionResult=null;completion.hidden=true;signature.hidden=true}
     async function navigate(mode){
-      if(!active||!file)throw new Error('Откройте модуль BSL.');hideCompletion();const response=await fetch('/api/bsl/navigate',{method:'POST',headers:{'Content-Type':'application/json','X-ML-CSRF':'1'},body:JSON.stringify({path:file.path,content:sourceText,position:cursorPosition(textarea.selectionStart),mode})});if(!response.ok)throw new Error((await response.text()).trim());return response.json()
+      if(!active||!file)throw new Error('Откройте модуль BSL.');hideCompletion();return postJSON('/api/bsl/navigate',{path:file.path,content:sourceText,position:cursorPosition(textarea.selectionStart),mode})
     }
     async function rename(newName){
-      if(!active||!file)throw new Error('Откройте модуль BSL.');hideCompletion();const response=await fetch('/api/bsl/rename',{method:'POST',headers:{'Content-Type':'application/json','X-ML-CSRF':'1'},body:JSON.stringify({path:file.path,position:cursorPosition(textarea.selectionStart),newName,expectedRevision:file.revision})});if(!response.ok)throw new Error((await response.text()).trim());return response.json()
+      if(!active||!file)throw new Error('Откройте модуль BSL.');hideCompletion();return postJSON('/api/bsl/rename',{path:file.path,position:cursorPosition(textarea.selectionStart),newName,expectedRevision:file.revision})
     }
 
     async function help(){
-      if(!active||!file)throw new Error('Откройте модуль BSL.');hideCompletion();const response=await fetch('/api/bsl/help/resolve',{method:'POST',headers:{'Content-Type':'application/json','X-ML-CSRF':'1'},body:JSON.stringify({path:file.path,content:sourceText,position:cursorPosition(textarea.selectionStart)})});if(!response.ok)throw new Error((await response.text()).trim());return response.json()
+      if(!active||!file)throw new Error('Откройте модуль BSL.');hideCompletion();return postJSON('/api/bsl/help/resolve',{path:file.path,content:sourceText,position:cursorPosition(textarea.selectionStart)})
     }
     function setBreakpoints(lines){breakpoints=new Set(lines||[]);redrawGutterWindow()}
     function setExecutionLine(line){executionLine=line||0;redrawGutterWindow()}

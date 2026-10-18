@@ -251,7 +251,7 @@ function createRoleModel(source) {
   return {
     value: clean,
     setName(name) { value.role.name = name; },
-    setTitle(language, title) { if(title.trim())value.role.title[language]=title;else delete value.role.title[language]; },
+    setTitle(language, title) { value.role.title = setTranslation(value.role.title, language, title); },
     setComment(comment) { value.role.comment = comment; },
     // The flag decides only what a new object is given, as in the prototype:
     // every right it stood for until now is written as it was before it
@@ -328,21 +328,21 @@ function createRoleTree({schema, kindTitles, title, expanded, selection, choose,
     button.addEventListener('click', event => { event.preventDefault(); choose(next); render(); });
     return button;
   }
-  // A node with something beneath it opens and closes; its caption chooses it.
+  // A node with something beneath it opens and closes and stays as it was
+  // left across redraws, by its key in expanded. A branch's caption is the
+  // button that chooses it; a folder's caption only names it.
+  function foldable(key, className, summary, children, open) {
+    const block = node('details', undefined, className);
+    block.open = open || expanded.has(key);
+    block.addEventListener('toggle', () => { if (block.open) expanded.add(key); else expanded.delete(key); });
+    block.append(summary, ...children);
+    return block;
+  }
   function branch(key, caption, children, open) {
-    const block = node('details', undefined, 'role-tree-branch');
-    block.open = open || expanded.has(key);
-    block.addEventListener('toggle', () => { if (block.open) expanded.add(key); else expanded.delete(key); });
-    const summary = node('summary'); summary.append(caption); block.append(summary, ...children);
-    return block;
+    const summary = node('summary'); summary.append(caption);
+    return foldable(key, 'role-tree-branch', summary, children, open);
   }
-  function folder(key, caption, children, open) {
-    const block = node('details', undefined, 'role-tree-folder');
-    block.open = open || expanded.has(key);
-    block.addEventListener('toggle', () => { if (block.open) expanded.add(key); else expanded.delete(key); });
-    block.append(node('summary', caption), ...children);
-    return block;
-  }
+  const folder = (key, caption, children, open) => foldable(key, 'role-tree-folder', node('summary', caption), children, open);
   const matches = (item, needle) => !needle || `${item.name} ${title(item)}`.toLocaleLowerCase().includes(needle);
   // The nodes of one object: its parts in folders, then the objects inside it.
   // Null when neither the object nor anything in it matches the filter.
@@ -833,7 +833,7 @@ function createRoleEditor(host, onChange) {
     changed();renderPanel();
   }
   function showView(next){view=next;rightsBody.hidden=view!=='rights';templatesBody.hidden=view!=='templates';for(const button of host.querySelectorAll('.role-tabs button'))button.setAttribute('aria-selected',String(button.dataset.view===view));if(view==='templates')renderTemplates();}
-  return {
+  return hostedEditor(host, ()=>{clearTitleField();source=null;model=null;}, {
     open(value, preserveSelection=false) {
       clearTitleField();
       const previous=preserveSelection?selected:null;if(!preserveSelection)expanded.clear();source=structuredClone(value);model=createRoleModel(source);selected=null;if(previous?.object){const object=source.schema.objects.find(item=>item.id===previous.object.id);const part=previous.part&&object?.fields.find(item=>item.key===previous.part.key);if(object)selected=part?{object,part}:{object};}if(previous?.form){const form=source.schema.forms.find(item=>item.id===previous.form.id);if(form)selected={form};}host.hidden=false;host.replaceChildren();
@@ -874,7 +874,5 @@ function createRoleEditor(host, onChange) {
     // в дереве то, что только что было на экране.
     selectObject(id){const object=source?.schema.objects.find(item=>item.id===id);if(!object)return;selected={object};showView('rights');tree.reveal(object);tree.render();renderPanel();},
     value(){return model?.value();},
-    close(){clearTitleField();source=null;model=null;host.hidden=true;host.replaceChildren();},
-    setDisabled(disabled){host.inert=disabled;},
-  };
+  });
 }

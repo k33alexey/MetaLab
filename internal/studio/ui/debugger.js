@@ -3,11 +3,10 @@
 function createServerDebugger(panel,options) {
   const stateLabel=panel.querySelector('#debug-state'),targetSelect=panel.querySelector('#debug-target'),routine=panel.querySelector('#debug-routine'),argumentsInput=panel.querySelector('#debug-arguments'),stack=panel.querySelector('#debug-stack'),variables=panel.querySelector('#debug-variables'),watchesHost=panel.querySelector('#debug-watches'),watchInput=panel.querySelector('#debug-watch-input');
   let snapshot=null,selectedFrame=0,pollTimer=0,heartbeatTimer=0,watches=[];
-  const mutationHeaders={'Content-Type':'application/json','X-ML-CSRF':'1'};
   const terminal=state=>['completed','failed','stopped'].includes(state);
   function open(){panel.hidden=false;document.body.classList.add('debug-open');const suggested=options.routineAtCursor();if(suggested)routine.value=suggested;safe(refreshTargets)}
   function close(){panel.hidden=true;document.body.classList.remove('debug-open')}
-  async function request(path,method='GET',body){const init={method,headers:method==='GET'?{}:mutationHeaders};if(body!==undefined)init.body=JSON.stringify(body);const response=await fetch(path,init);if(!response.ok)throw new Error((await response.text()).trim());return response.json()}
+  async function request(path,method='GET',body){const response=await(method==='GET'?fetch(path):studioRequest(path,{method,body}));if(!response.ok)throw new Error((await response.text()).trim());return response.json()}
   async function refreshTargets(){const selected=targetSelect.value,targets=await request('/api/debug/targets');targetSelect.replaceChildren(option('','Локальный сервер Studio'));for(const target of targets){const label=`${kindText(target.kind)} · ${target.name}${target.attached?` · занят: ${target.attachedBy}`:''}`,item=option(target.id,label);item.disabled=target.attached;targetSelect.append(item)}if(Array.from(targetSelect.options).some(item=>item.value===selected&&!item.disabled))targetSelect.value=selected}
   function option(value,label){const item=document.createElement('option');item.value=value;item.textContent=label;return item}
   function kindText(kind){return kind==='client'?'Клиент':kind==='userSession'?'Сеанс':kind==='scheduledJob'?'Регламентное задание':'Фоновое задание'}
@@ -30,6 +29,6 @@ function createServerDebugger(panel,options) {
   function empty(text){return node('div',text,'debug-empty')}
   async function safe(action){try{await action()}catch(error){stateLabel.textContent=String(error.message||error);stateLabel.className='error'}}
   panel.querySelector('#debug-start').addEventListener('click',()=>safe(start));panel.querySelector('#debug-pause').addEventListener('click',()=>safe(pause));panel.querySelector('#debug-stop').addEventListener('click',()=>safe(stop));panel.querySelector('#debug-close').addEventListener('click',close);panel.querySelectorAll('[data-debug-command]').forEach(button=>button.addEventListener('click',()=>safe(()=>command(button.dataset.debugCommand))));panel.querySelector('#debug-watch-add').addEventListener('click',()=>safe(addWatch));watchInput.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();safe(addWatch)}});
-  window.addEventListener('pagehide',()=>{if(snapshot&&!terminal(snapshot.state))fetch('/api/debug/session',{method:'DELETE',headers:mutationHeaders,keepalive:true}).catch(()=>{})});
+  window.addEventListener('pagehide',()=>{if(snapshot&&!terminal(snapshot.state))studioRequest('/api/debug/session',{method:'DELETE',keepalive:true}).catch(()=>{})});
   return{open,syncBreakpoints};
 }

@@ -44,7 +44,7 @@ function createCatalogModel(source) {
     value() { return structuredClone(catalog); },
     typeKinds, indexingModes, referenceChoices, namesObject, attributeList,
     setName(name) { catalog.name = name; },
-    setTitle(language, text) { catalog.title ||= {}; if (text.trim()) catalog.title[language] = text; else delete catalog.title[language]; },
+    setTitle(language, text) { catalog.title = setTranslation(catalog.title, language, text); },
     setCodeType(type) { catalog.code.type = type; },
     setCodeLength(length) { catalog.code.length = length; },
     setCodeAuto(auto) { catalog.code.auto = auto; },
@@ -65,9 +65,7 @@ function createCatalogModel(source) {
     setAttributeName(container, id, name) { const attribute = attributeList(container)?.find(item => item.id === id); if (attribute) attribute.name = name; },
     setAttributeTitle(container, id, language, text) {
       const attribute = attributeList(container)?.find(item => item.id === id);
-      if (!attribute) return;
-      attribute.title ||= {};
-      if (text.trim()) attribute.title[language] = text; else delete attribute.title[language];
+      if (attribute) attribute.title = setTranslation(attribute.title, language, text);
     },
     setAttributeFillChecking(container, id, checked) {
       const attribute = attributeList(container)?.find(item => item.id === id);
@@ -115,9 +113,7 @@ function createCatalogModel(source) {
     setTablePartName(id, name) { const part = catalog.tableParts.find(item => item.id === id); if (part) part.name = name; },
     setTablePartTitle(id, language, text) {
       const part = catalog.tableParts.find(item => item.id === id);
-      if (!part) return;
-      part.title ||= {};
-      if (text.trim()) part.title[language] = text; else delete part.title[language];
+      if (part) part.title = setTranslation(part.title, language, text);
     },
   };
 }
@@ -197,20 +193,28 @@ function createCatalogEditor(host, onChange) {
     panel.append(types);
     return panel;
   }
-  function renderAttributeList(container, attributes) {
+  // A list of the sidebar: a button per item, the one chosen marked, and a
+  // button that adds one. choice(item) is what choosing the item selects;
+  // add() adds one and answers its choice, or null when none was added.
+  function choiceList(items, choice, addText, add) {
     const list = node('div', undefined, 'catalog-list');
-    for (const attribute of attributes) {
-      const button = node('button', title(attribute), 'catalog-list-item');
+    const same = (left, right) => left.kind === right.kind && left.container === right.container && left.id === right.id;
+    for (const item of items) {
+      const button = node('button', title(item), 'catalog-list-item');
       button.type = 'button';
-      button.classList.toggle('selected', selected.kind === 'attribute' && selected.container === container && selected.id === attribute.id);
-      button.addEventListener('click', () => { selected = {kind: 'attribute', container, id: attribute.id}; rerender(); });
+      button.classList.toggle('selected', same(selected, choice(item)));
+      button.addEventListener('click', () => { selected = choice(item); rerender(); });
       list.append(button);
     }
-    const add = node('button', '+ Реквизит');
-    add.type = 'button';
-    add.addEventListener('click', () => { const attribute = model.addAttribute(container); if (attribute) selected = {kind: 'attribute', container, id: attribute.id}; rerender(); });
-    list.append(add);
+    const more = node('button', addText);
+    more.type = 'button';
+    more.addEventListener('click', () => { const next = add(); if (next) selected = next; rerender(); });
+    list.append(more);
     return list;
+  }
+  function renderAttributeList(container, attributes) {
+    const choice = attribute => ({kind: 'attribute', container, id: attribute.id});
+    return choiceList(attributes, choice, '+ Реквизит', () => { const attribute = model.addAttribute(container); return attribute && choice(attribute); });
   }
   function renderTablePartPanel(part) {
     const panel = node('div', undefined, 'catalog-detail');
@@ -236,19 +240,8 @@ function createCatalogEditor(host, onChange) {
     const tableParts = node('details', undefined, 'catalog-group');
     tableParts.open = true;
     tableParts.append(node('summary', 'Табличные части'));
-    const partList = node('div', undefined, 'catalog-list');
-    for (const part of source.catalog.tableParts) {
-      const button = node('button', title(part), 'catalog-list-item');
-      button.type = 'button';
-      button.classList.toggle('selected', selected.kind === 'tablepart' && selected.id === part.id);
-      button.addEventListener('click', () => { selected = {kind: 'tablepart', id: part.id}; rerender(); });
-      partList.append(button);
-    }
-    const addPart = node('button', '+ Табличная часть');
-    addPart.type = 'button';
-    addPart.addEventListener('click', () => { const part = model.addTablePart(); selected = {kind: 'tablepart', id: part.id}; rerender(); });
-    partList.append(addPart);
-    tableParts.append(partList);
+    const partChoice = part => ({kind: 'tablepart', id: part.id});
+    tableParts.append(choiceList(source.catalog.tableParts, partChoice, '+ Табличная часть', () => partChoice(model.addTablePart())));
     sidebar.append(tableParts);
     return sidebar;
   }
@@ -289,7 +282,7 @@ function createCatalogEditor(host, onChange) {
     }
     body.append(panel);
   }
-  return {
+  return hostedEditor(host, () => { clearTitleFields(); source = null; model = null; }, {
     open(value) {
       clearTitleFields();
       source = structuredClone(value);
@@ -302,14 +295,11 @@ function createCatalogEditor(host, onChange) {
       renderBody();
     },
     value() { return model?.value(); },
-    close() { clearTitleFields(); source = null; model = null; host.hidden = true; host.replaceChildren(); },
-    setDisabled(disabled) { host.inert = disabled; },
-    // Selects the attribute or table part named by a tree-node fragment
+    // Selects the attribute or table part a node of the tree names
     // (`attribute:<id>` or `tablepart:<id>`), so a click on the main
     // configuration tree jumps straight to it inside the open editor.
-    selectFragment(fragment) {
-      if (!source || !fragment) return;
-      const [kind, id] = fragment.split(':');
+    select(kind, id) {
+      if (!source) return;
       if (kind === 'attribute' && source.catalog.attributes.some(item => item.id === id)) {
         selected = {kind: 'attribute', container: 'catalog', id};
         rerender();
@@ -354,5 +344,5 @@ function createCatalogEditor(host, onChange) {
       selected = {kind: 'catalog'};
       rerender();
     },
-  };
+  });
 }

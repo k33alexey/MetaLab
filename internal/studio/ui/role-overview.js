@@ -948,13 +948,11 @@ function createRoleOverview(host, openRole, onChange) {
     }
     renderBody();
   }
-  return {
+  return hostedEditor(host, () => { source = null; model = null; }, {
     open,
     show,
     title() { return overviewWindows[view]; },
     // Роли, изменённые в окне, — для сохранения одним запросом.
     value() { return model?.changes() || []; },
-    close() { source = null; model = null; host.hidden = true; host.replaceChildren(); },
-    setDisabled(disabled) { host.inert = disabled; },
-  };
+  });
 }

@@ -46,6 +46,17 @@ function resolveLocalizedText(text, language, defaultLanguage, languages) {
   return key === undefined ? '' : value(key);
 }
 
+/* setTranslation writes one translation of a localized text - a synonym,
+   a text of the configuration: a blank one is no translation, as the model
+   counts it (validateTitle: a translation says something in printable
+   characters), and is taken away. Answers the text, made when there was
+   none. */
+function setTranslation(text, language, value) {
+  text ||= {};
+  if (value.trim()) text[language] = value; else delete text[language];
+  return text;
+}
+
 /* languageBase is project.LanguageBase: the language of a code without its
    region, in lower case. */
 function languageBase(code) {
@@ -174,16 +185,19 @@ function localizedTextField(label, languages, value, apply, options = {}) {
    language as its own input in a small dialog.
    languages: [{code,title}], getValue(code)=>string, setValue(code,value),
    onChange() called after every edit (collapsed or expanded). */
+/* titleTranslationInput is the input of one translation of a title, alike in
+   the field and in its dialog of every language. The single line and the
+   limit of 512 are not the model's: BLOCKS, block 18, «переводимые тексты в
+   Studio многострочны и без предела длины». */
+function titleTranslationInput(value, apply) { return textInput(value, apply, {maxLength: 512}); }
+
 function createLocalizedTitleField(languages, getValue, setValue, onChange) {
   const wrapper = document.createElement('div');
   wrapper.className = 'localized-title-field';
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.maxLength = 512;
   function currentLanguage() { return StudioLanguage.get() || languages[0]?.code || ''; }
   function caption(code) { return languages.find(item => item.code === code)?.title || code; }
+  const input = titleTranslationInput('', value => { setValue(currentLanguage(), value); onChange(); });
   function refresh() { input.value = getValue(currentLanguage()) || ''; input.title = caption(currentLanguage()); }
-  input.addEventListener('input', () => { setValue(currentLanguage(), input.value); onChange(); });
   wrapper.append(input);
   if (languages.length > 1) {
     const expand = document.createElement('button');
@@ -202,36 +216,14 @@ function createLocalizedTitleField(languages, getValue, setValue, onChange) {
 }
 
 function openLocalizedTitleDialog(languages, getValue, setValue, onChange) {
-  const dialog = document.createElement('dialog');
-  dialog.className = 'localized-title-dialog';
-  const form = document.createElement('form');
-  form.method = 'dialog';
-  const heading = document.createElement('h3');
-  heading.textContent = 'Заголовок на языках проекта';
-  form.append(heading);
+  const content = document.createDocumentFragment();
   for (const language of languages) {
-    const label = document.createElement('label');
-    label.append(document.createTextNode(language.title || language.code));
-    const fieldInput = document.createElement('input');
-    fieldInput.type = 'text';
-    fieldInput.maxLength = 512;
-    fieldInput.value = getValue(language.code) || '';
-    fieldInput.addEventListener('input', () => { setValue(language.code, fieldInput.value); onChange(); });
-    label.append(fieldInput);
-    form.append(label);
+    const label = node('label');
+    label.append(document.createTextNode(language.title || language.code),
+      titleTranslationInput(getValue(language.code) || '', value => { setValue(language.code, value); onChange(); }));
+    content.append(label);
   }
-  const actions = document.createElement('div');
-  actions.className = 'localized-title-actions';
-  const close = document.createElement('button');
-  close.type = 'submit';
-  close.className = 'primary';
-  close.textContent = 'Готово';
-  actions.append(close);
-  form.append(actions);
-  dialog.append(form);
-  document.body.append(dialog);
-  dialog.addEventListener('close', () => dialog.remove());
-  dialog.showModal();
+  return showDialog({title: 'Заголовок на языках проекта', content, answers: [['done', 'Готово']]});
 }
 
 /* roleObjectRight is a right of a role on an object as the prototype reads
@@ -276,6 +268,45 @@ function restrictionFieldsCaption(object, restriction, title) {
     const parent = field.parent && own.get(field.parent);
     return parent ? `${caption(parent)}.${caption(field)}` : caption(field);
   }).join(', ');
+}
+
+/* hostedEditor is the part of an editor's contract with index.html that is
+   the same for every editor of a file: close() forgets the file (reset) and
+   hides and empties the host, setDisabled(flag) makes the host inert while
+   Studio opens, saves or creates something, selectFragment(fragment) passes
+   the part a node of the tree names - `kind:id`, as the server writes it
+   (Fragment of a node, studio.go) - to own.select(kind, id). own - the
+   editor's own methods, open, value and the rest. */
+function hostedEditor(host, reset, own) {
+  return {
+    close() { reset(); host.hidden = true; host.replaceChildren(); },
+    setDisabled(disabled) { host.inert = disabled; },
+    selectFragment(fragment) {
+      const at = fragment ? fragment.indexOf(':') : -1;
+      if (at > 0) own.select?.(fragment.slice(0, at), fragment.slice(at + 1));
+    },
+    ...own,
+  };
+}
+
+/* studioRequest is the one way a page of Studio asks its server to change
+   or work out something: every such request carries X-ML-CSRF, which the
+   server asks of it against a page of another site, and a body goes as JSON
+   (validateStudioMutation, decodeStudioJSON in studio.go). method is POST
+   unless named; signal and keepalive pass to fetch. Answers the response as
+   fetch does. */
+function studioRequest(path, {method = 'POST', body, signal, keepalive} = {}) {
+  const headers = {'X-ML-CSRF': '1'};
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  return fetch(path, {method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal, keepalive});
+}
+
+/* postJSON is studioRequest with body that answers the JSON of a response
+   that went well and throws the server's text, trimmed, of one that did not. */
+async function postJSON(path, body, options = {}) {
+  const response = await studioRequest(path, {...options, body});
+  if (!response.ok) throw new Error((await response.text()).trim());
+  return response.json();
 }
 
 /* showDialog shows a dialog of the page, never confirm(): a heading, an
@@ -459,7 +490,7 @@ function queryTextField(value, apply, label) {
     const text = textarea.value;
     controller?.abort(); controller = new AbortController();
     try {
-      const response = await fetch('/api/query/highlight', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-ML-CSRF': '1'}, body: JSON.stringify({text}), signal: controller.signal});
+      const response = await studioRequest('/api/query/highlight', {body: {text}, signal: controller.signal});
       if (!response.ok || textarea.value !== text) return;
       paint(text, (await response.json()).highlights || []);
     } catch (error) { if (error.name !== 'AbortError') paint(textarea.value, []); }

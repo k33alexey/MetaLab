@@ -150,13 +150,19 @@
     // ограничения доступа»).
     function treeCommands(node){if(node.id!=='project'&&node.id!=='metadata/roles')return[];return Object.entries(overviewWindows).map(([view,text])=>[text,()=>openRoleOverview(view)])}
     function offerTreeCommands(node,element){const commands=treeCommands(node);if(commands.length)element.addEventListener('contextmenu',event=>{event.stopPropagation();showContextMenu(event,commands)})}
-    function showSourceEditor(file){roleOverview.close();roleEditor.close();catalogEditor.close();projectEditor.close();languagesEditor.close();formDesigner.close(true);formHost.hidden=true;editorHost.hidden=false;editor.value=file.content;editor.disabled=false;bslEditor.open(file);bslEditor.setBreakpoints(Array.from(debugBreakpoints.get(file.path)||[]))}
+    // Редакторы файлов стоят на одном месте: открывается один, остальные
+    // закрываются, а пока Studio открывает, сохраняет или создаёт, ни один не
+    // правится. Перечень редакторов — здесь, один.
+    const fileEditors=[roleOverview,roleEditor,catalogEditor,projectEditor,languagesEditor];
+    function closeEditors(kept){for(const item of fileEditors)if(item!==kept)item.close()}
+    function setEditorsBusy(busy){for(const item of fileEditors)item.setDisabled(busy);formHost.inert=busy;editorHost.inert=busy}
+    function showSourceEditor(file){closeEditors();formDesigner.close(true);formHost.hidden=true;editorHost.hidden=false;editor.value=file.content;editor.disabled=false;bslEditor.open(file);bslEditor.setBreakpoints(Array.from(debugBreakpoints.get(file.path)||[]))}
     function insertDesignedQuery(query){if(currentFile?.readOnly){status.textContent='Модуль открыт только для чтения.';status.className='warning';return false}if(!currentFile||currentFile.isForm||currentFile.language!=='bsl'){status.textContent='Откройте BSL-модуль для вставки запроса.';status.className='warning';return false}const lines=query.replaceAll('"','""').split('\n'),literal='"'+lines[0]+lines.slice(1).map(line=>'\n|'+line).join('')+'"',expression='Новый Запрос('+literal+')';editor.setRangeText(expression,editor.selectionStart,editor.selectionEnd,'end');editor.dispatchEvent(new Event('input'));editor.focus();return true}
-    function showFormEditor(value){roleOverview.close();roleEditor.close();catalogEditor.close();projectEditor.close();languagesEditor.close();editorHost.hidden=true;bslEditor.close();formDesigner.open(value)}
-    function showRoleEditor(value,preserveSelection=false){roleOverview.close();formDesigner.close();catalogEditor.close();projectEditor.close();languagesEditor.close();editorHost.hidden=true;bslEditor.close();roleEditor.open(value,preserveSelection);value.isRole=true;value.initialRole=JSON.stringify(roleEditor.value())}
-    function showCatalogEditor(value){roleOverview.close();formDesigner.close();roleEditor.close();projectEditor.close();languagesEditor.close();editorHost.hidden=true;bslEditor.close();catalogEditor.open(value);value.isCatalog=true;value.initialCatalog=JSON.stringify(catalogEditor.value())}
-    function showProjectEditor(value){roleOverview.close();formDesigner.close();roleEditor.close();catalogEditor.close();languagesEditor.close();editorHost.hidden=true;bslEditor.close();projectEditor.open(value);value.isProject=true;value.isLanguages=false;value.initialProject=JSON.stringify(projectEditor.value());status.className='';status.textContent='Редактор проекта · Готово'}
-    function showLanguagesEditor(value){roleOverview.close();formDesigner.close();roleEditor.close();catalogEditor.close();projectEditor.close();editorHost.hidden=true;bslEditor.close();languagesEditor.open(value);value.isProject=true;value.isLanguages=true;value.initialProject=JSON.stringify(languagesEditor.value());status.className='';status.textContent='Языки · Готово'}
+    function showFormEditor(value){closeEditors();editorHost.hidden=true;bslEditor.close();formDesigner.open(value)}
+    function showRoleEditor(value,preserveSelection=false){closeEditors(roleEditor);formDesigner.close();editorHost.hidden=true;bslEditor.close();roleEditor.open(value,preserveSelection);value.isRole=true;value.initialRole=JSON.stringify(roleEditor.value())}
+    function showCatalogEditor(value){closeEditors(catalogEditor);formDesigner.close();editorHost.hidden=true;bslEditor.close();catalogEditor.open(value);value.isCatalog=true;value.initialCatalog=JSON.stringify(catalogEditor.value())}
+    function showProjectEditor(value){closeEditors(projectEditor);formDesigner.close();editorHost.hidden=true;bslEditor.close();projectEditor.open(value);value.isProject=true;value.isLanguages=false;value.initialProject=JSON.stringify(projectEditor.value());status.className='';status.textContent='Редактор проекта · Готово'}
+    function showLanguagesEditor(value){closeEditors(languagesEditor);formDesigner.close();editorHost.hidden=true;bslEditor.close();languagesEditor.open(value);value.isProject=true;value.isLanguages=true;value.initialProject=JSON.stringify(languagesEditor.value());status.className='';status.textContent='Языки · Готово'}
     async function loadRole(path){const response=await fetch(`/api/role?path=${encodeURIComponent(path)}`);if(!response.ok)throw new Error(await response.text());const value=await response.json();showRoleEditor(value);currentFile=value}
     // Модуль сеанса принадлежит корню конфигурации и в проекте ровно один,
     // поэтому открытие его же и создаёт: выбирать «создавать ли» не из чего,
@@ -167,7 +173,7 @@
       if(dirty&&!confirm('Текущий файл изменён. Отменить несохранённые изменения?'))return false;
       loadingFile=true;status.className='';status.textContent='Открытие файла…';
       try{
-        const response=await fetch(`/api/root-module/${encodeURIComponent(node.id)}`,{method:'POST',headers:{'X-ML-CSRF':'1'}});
+        const response=await studioRequest(`/api/root-module/${encodeURIComponent(node.id)}`);
         if(!response.ok)throw new Error(await response.text());
         currentFile=await response.json();currentFile.isForm=false;
         showSourceEditor(currentFile);
@@ -208,10 +214,10 @@
     async function loadLanguagesEditor(){const response=await fetch('/api/project-configuration');if(!response.ok)throw new Error(await response.text());const value=await response.json();showLanguagesEditor(value);currentFile=value}
     async function loadManagedForm(path){const response=await fetch(`/api/form?path=${encodeURIComponent(path)}`);if(!response.ok)throw new Error(await response.text());const value=await response.json();value.isForm=true;value.initialForm=JSON.stringify(value.form);currentFile=value;showFormEditor(value)}
     async function openFile(path){if(loadingFile)return false;if(currentFile?.path===path)return true;if(dirty&&!confirm('Текущий файл изменён. Отменить несохранённые изменения?'))return false;loadingFile=true;status.textContent='Открытие файла…';try{if(path==='configuration.yaml'){await loadProjectConfiguration()}else if((/^metadata\/common-forms\/[^/]+\/form\.yaml$/.test(path)||/^metadata\/[a-z-]+\/[^/]+\/(?:[a-z-]+\/[^/]+\/)*forms\/[^/]+\/form\.yaml$/.test(path))){await loadManagedForm(path)}else if(/^metadata\/roles\/[0-9a-f-]{36}\.yaml$/.test(path)){await loadRole(path)}else if(/^metadata\/catalogs\/[^/]+\/object\.yaml$/.test(path)){await loadCatalog(path)}else{const response=await fetch(`/api/file?path=${encodeURIComponent(path)}`);if(!response.ok)throw new Error(await response.text());currentFile=await response.json();currentFile.isForm=false;showSourceEditor(currentFile)}filePath.textContent=currentFile.path;dirty=false;saveButton.disabled=true;status.className='';status.textContent=currentFile.isProject?'Редактор проекта · Готово':currentFile.isRole?'Редактор ролей · Готово':currentFile.isCatalog?'Редактор справочника · Готово':currentFile.isForm?'Конструктор форм · Готово':`${currentFile.language.toUpperCase()} · Готово`;return true}catch(error){status.textContent=String(error.message||error);status.className='error';return false}finally{loadingFile=false}}
-    async function createFormHandler(command){if(!currentFile?.isForm)return;try{if(!await save())return;status.className='';status.textContent='Подготовка обработчика…';const response=await fetch('/api/form/handler',{method:'POST',headers:{'Content-Type':'application/json','X-ML-CSRF':'1'},body:JSON.stringify({path:currentFile.path,expectedRevision:currentFile.revision,command})});if(!response.ok)throw new Error(await response.text());const result=await response.json();result.form.isForm=true;result.form.initialForm=JSON.stringify(result.form.form);currentFile=result.form;dirty=false;saveButton.disabled=true;await loadTree(false);if(await openFile(result.module.path)){const position=result.created?{line:result.location.range.start.line+2,column:1}:result.location.range.start;bslEditor.goTo(position);status.textContent=result.created?'Обработчик создан':'Обработчик открыт'}}catch(error){status.textContent=String(error.message||error).trim();status.className='error'}}
+    async function createFormHandler(command){if(!currentFile?.isForm)return;try{if(!await save())return;status.className='';status.textContent='Подготовка обработчика…';const result=await postJSON('/api/form/handler',{path:currentFile.path,expectedRevision:currentFile.revision,command});result.form.isForm=true;result.form.initialForm=JSON.stringify(result.form.form);currentFile=result.form;dirty=false;saveButton.disabled=true;await loadTree(false);if(await openFile(result.module.path)){const position=result.created?{line:result.location.range.start.line+2,column:1}:result.location.range.start;bslEditor.goTo(position);status.textContent=result.created?'Обработчик создан':'Обработчик открыт'}}catch(error){status.textContent=String(error.message||error).trim();status.className='error'}}
     async function save(){
       if(!currentFile||loadingFile)return false;if(!dirty)return true;
-      loadingFile=true;saveButton.disabled=true;roleEditor.setDisabled(true);roleOverview.setDisabled(true);catalogEditor.setDisabled(true);projectEditor.setDisabled(true);languagesEditor.setDisabled(true);formHost.inert=true;editorHost.inert=true;
+      loadingFile=true;saveButton.disabled=true;setEditorsBusy(true);
       status.className='';status.textContent='Сохранение…';
       try{
         let endpoint='/api/file',payload={path:currentFile.path,content:bslEditor.source(),expectedRevision:currentFile.revision};
@@ -220,13 +226,13 @@
         if(currentFile.isRoleOverview){endpoint='/api/roles';payload={roles:roleOverview.value()};}
         if(currentFile.isCatalog){endpoint='/api/catalog';payload={path:currentFile.path,catalog:catalogEditor.value(),expectedRevision:currentFile.revision};}
         if(currentFile.isProject){endpoint='/api/project-configuration';payload={configuration:currentFile.isLanguages?languagesEditor.value():projectEditor.value(),expectedRevision:currentFile.revision};}
-        const response=await fetch(endpoint,{method:'PUT',headers:{'Content-Type':'application/json','X-ML-CSRF':'1'},body:JSON.stringify(payload)});
+        const response=await studioRequest(endpoint,{method:'PUT',body:payload});
         if(!response.ok){status.textContent=response.status===409?(currentFile.isRoleOverview?`Роль изменена вне Studio. Откройте «${roleOverview.title()}» заново и повторите правку.`:'Файл изменён вне Studio. Перезагрузите его и объедините изменения.'):await response.text();status.className=response.status===409?'warning':'error';return false;}
         let value=await response.json();
         if(currentFile.isRoleOverview){roleOverview.open(value,true);value=currentFile;}else if(currentFile.isRole){showRoleEditor(value,true);}else if(currentFile.isCatalog){showCatalogEditor(value);}else if(currentFile.isProject){if(currentFile.isLanguages)showLanguagesEditor(value);else showProjectEditor(value);}else if(currentFile.isForm){value.isForm=true;value.initialForm=JSON.stringify(value.form);showFormEditor(value);}else{showSourceEditor(value);}
         currentFile=value;dirty=false;status.className='';status.textContent='Сохранено';await loadTree(false);return true;
       }catch(error){showToolError(error);return false;}
-      finally{loadingFile=false;roleEditor.setDisabled(false);roleOverview.setDisabled(false);catalogEditor.setDisabled(false);projectEditor.setDisabled(false);languagesEditor.setDisabled(false);formHost.inert=false;editorHost.inert=false;saveButton.disabled=!dirty;}
+      finally{loadingFile=false;setEditorsBusy(false);saveButton.disabled=!dirty;}
     }
     const studioLanguageSelect=document.querySelector('#studio-language');
     studioLanguageSelect.addEventListener('change',()=>StudioLanguage.set(studioLanguageSelect.value));
@@ -256,9 +262,9 @@
         const latest=await response.json();if(currentFile!==opened||loadingFile)return;
         if(latest.revision===opened.revision){delete opened.externalRevision;return;}
         if(dirty){opened.externalRevision=latest.revision;status.textContent='Файл изменён вне Studio. Сохранение заблокировано до перезагрузки.';status.className='warning';return;}
-        loadingFile=true;roleEditor.setDisabled(true);roleOverview.setDisabled(true);catalogEditor.setDisabled(true);projectEditor.setDisabled(true);languagesEditor.setDisabled(true);formHost.inert=true;editorHost.inert=true;
+        loadingFile=true;setEditorsBusy(true);
         try{if(opened.isRole)await loadRole(opened.path);else if(opened.isCatalog)await loadCatalog(opened.path);else if(opened.isProject){if(opened.isLanguages)await loadLanguagesEditor();else await loadProjectConfiguration();}else if(opened.isForm)await loadManagedForm(opened.path);else{currentFile=latest;showSourceEditor(latest);}}
-        finally{loadingFile=false;roleEditor.setDisabled(false);roleOverview.setDisabled(false);catalogEditor.setDisabled(false);projectEditor.setDisabled(false);languagesEditor.setDisabled(false);formHost.inert=false;editorHost.inert=false;}
+        finally{loadingFile=false;setEditorsBusy(false);}
         status.textContent='Загружены внешние изменения';status.className='warning';
       }catch(error){showToolError(error);}
     }
@@ -282,9 +288,9 @@
     const gitDialog=document.querySelector('#git-dialog'),gitOutput=document.querySelector('#git-output'),gitDiff=document.querySelector('#git-diff');
     async function refreshGit(clearOutput=true){if(clearOutput)gitOutput.textContent='';const [statusResponse,branchesResponse]=await Promise.all([fetch('/api/git/status'),fetch('/api/git/branches')]);if(!statusResponse.ok){gitOutput.textContent=await statusResponse.text();return}const data=await statusResponse.json(),branches=branchesResponse.ok?await branchesResponse.json():{current:data.branch,items:[data.branch]};const conflicts=data.entries.filter(entry=>entry.conflicted).length;document.querySelector('#git-summary').textContent=`${data.branch||'без ветки'} · ${data.entries.length} изменений${conflicts?` · конфликтов: ${conflicts}`:''}${data.ahead||data.behind?` · ↑${data.ahead} ↓${data.behind}`:''}`;const branch=document.querySelector('#git-branch');branch.replaceChildren();for(const name of branches.items){const option=document.createElement('option');option.value=option.textContent=name;option.selected=name===branches.current;branch.append(option)}const changes=document.querySelector('#git-changes');changes.replaceChildren();for(const entry of data.entries){const button=document.createElement('button');button.className=`git-change${entry.conflicted?' conflict':''}`;const code=document.createElement('span'),path=document.createElement('span');code.textContent=`${entry.index}${entry.worktree}`;path.textContent=entry.path;button.append(code,path);button.addEventListener('click',()=>showGitDiff(entry));changes.append(button)}if(!data.entries.length)changes.textContent='Нет изменений'}
     async function showGitDiff(entry){const response=await fetch(`/api/git/diff?path=${encodeURIComponent(entry.path)}`);if(!response.ok){gitDiff.textContent=await response.text();return}const data=await response.json();gitDiff.textContent=data.diff||(entry.index==='?'?'Новый файл. Diff появится после добавления в индекс.':'Нет текстовых различий')}
-    async function gitAction(path,body){if(loadingFile)return false;if(dirty){gitOutput.textContent='Сначала сохраните текущий файл.';return false}gitOutput.textContent='Выполнение…';const options={method:'POST',headers:{'X-ML-CSRF':'1'}};if(body!==undefined){options.headers['Content-Type']='application/json';options.body=JSON.stringify(body)}const response=await fetch(path,options);const text=await response.text();if(!response.ok){gitOutput.textContent=text;return false}try{gitOutput.textContent=JSON.parse(text).output||'Готово'}catch{gitOutput.textContent='Готово'}await refreshGit(false);return true}
+    async function gitAction(path,body){if(loadingFile)return false;if(dirty){gitOutput.textContent='Сначала сохраните текущий файл.';return false}gitOutput.textContent='Выполнение…';const response=await studioRequest(path,{body});const text=await response.text();if(!response.ok){gitOutput.textContent=text;return false}try{gitOutput.textContent=JSON.parse(text).output||'Готово'}catch{gitOutput.textContent='Готово'}await refreshGit(false);return true}
     document.querySelector('#git-open').addEventListener('click',()=>{gitDialog.showModal();refreshGit()});document.querySelector('#git-close').addEventListener('click',()=>gitDialog.close());document.querySelector('#git-refresh').addEventListener('click',refreshGit);
-    function closeFile(){roleOverview.close();currentFile=null;dirty=false;editor.value='';editor.disabled=true;editorHost.hidden=false;roleEditor.close();catalogEditor.close();projectEditor.close();languagesEditor.close();formDesigner.close();saveButton.disabled=true;filePath.textContent='Выберите файл';bslEditor.close()}
+    function closeFile(){closeEditors();currentFile=null;dirty=false;editor.value='';editor.disabled=true;editorHost.hidden=false;formDesigner.close();saveButton.disabled=true;filePath.textContent='Выберите файл';bslEditor.close()}
     document.querySelector('#git-commit').addEventListener('click',async()=>{if(await gitAction('/api/git/commit',{message:document.querySelector('#git-message').value}))document.querySelector('#git-message').value=''});document.querySelector('#git-pull').addEventListener('click',async()=>{if(await gitAction('/api/git/pull')){closeFile();await loadTree()}});document.querySelector('#git-push').addEventListener('click',()=>gitAction('/api/git/push'));
     document.querySelector('#git-switch').addEventListener('click',async()=>{if(await gitAction('/api/git/branches/switch',{name:document.querySelector('#git-branch').value,create:false})){closeFile();await loadTree()}});document.querySelector('#git-create-branch').addEventListener('click',async()=>{const input=document.querySelector('#git-new-branch');if(await gitAction('/api/git/branches/switch',{name:input.value,create:true})){input.value='';closeFile();await loadTree()}});
     // «Сохранить данные» спрашивает подтверждение ровно тогда, когда сервер
@@ -323,7 +329,7 @@
     saveDataValueInput.addEventListener('change',updateSaveDataSubmit);
     document.querySelector('#save-data-cancel').addEventListener('click',()=>saveDataDialog.close());
     async function postSaveData(consent){
-      const response=await fetch('/api/save-data',{method:'POST',headers:{'X-ML-CSRF':'1','Content-Type':'application/json'},body:JSON.stringify({consent})});
+      const response=await studioRequest('/api/save-data',{body:{consent}});
       const text=await response.text();
       if(response.ok){let result={};try{result=JSON.parse(text)}catch{}return{ok:true,result};}
       if(response.status===409){try{const details=JSON.parse(text);if(details&&Array.isArray(details.changes))return{ok:false,details};}catch{}}
@@ -355,28 +361,24 @@
     roleCreateDialog.addEventListener('cancel',event=>{if(loadingFile)event.preventDefault();});
     document.querySelector('#role-create-form').addEventListener('submit',async event=>{
       event.preventDefault();if(loadingFile)return;
-      loadingFile=true;roleEditor.setDisabled(true);formHost.inert=true;editorHost.inert=true;
+      loadingFile=true;setEditorsBusy(true);
       const submit=document.querySelector('#role-create-submit');submit.disabled=true;roleCreateError.textContent='';
       try{
-        const response=await fetch('/api/role',{method:'POST',headers:{'Content-Type':'application/json','X-ML-CSRF':'1'},body:JSON.stringify({name:roleCreateName.value.trim()})});
-        if(!response.ok)throw new Error(await response.text());
-        const value=await response.json();showRoleEditor(value);currentFile=value;filePath.textContent=value.path;dirty=false;saveButton.disabled=true;roleCreateDialog.close();selectedNode={id:value.role.id,path:value.path,kind:'metadata'};updateTreeToolbar();await loadTree(false);status.className='';status.textContent='Роль создана. Отметьте разрешённые действия.';
+        const value=await postJSON('/api/role',{name:roleCreateName.value.trim()});showRoleEditor(value);currentFile=value;filePath.textContent=value.path;dirty=false;saveButton.disabled=true;roleCreateDialog.close();selectedNode={id:value.role.id,path:value.path,kind:'metadata'};updateTreeToolbar();await loadTree(false);status.className='';status.textContent='Роль создана. Отметьте разрешённые действия.';
       }catch(error){roleCreateError.textContent=String(error.message||error).trim();}
-      finally{loadingFile=false;submit.disabled=false;roleEditor.setDisabled(false);formHost.inert=false;editorHost.inert=false;}
+      finally{loadingFile=false;submit.disabled=false;setEditorsBusy(false);}
     });
     const catalogCreateDialog=document.querySelector('#catalog-create-dialog'),catalogCreateName=document.querySelector('#catalog-create-name'),catalogCreateError=document.querySelector('#catalog-create-error');
     document.querySelector('#catalog-create-cancel').addEventListener('click',()=>{if(!loadingFile)catalogCreateDialog.close();});
     catalogCreateDialog.addEventListener('cancel',event=>{if(loadingFile)event.preventDefault();});
     document.querySelector('#catalog-create-form').addEventListener('submit',async event=>{
       event.preventDefault();if(loadingFile)return;
-      loadingFile=true;catalogEditor.setDisabled(true);formHost.inert=true;editorHost.inert=true;
+      loadingFile=true;setEditorsBusy(true);
       const submit=document.querySelector('#catalog-create-submit');submit.disabled=true;catalogCreateError.textContent='';
       try{
-        const response=await fetch('/api/catalog',{method:'POST',headers:{'Content-Type':'application/json','X-ML-CSRF':'1'},body:JSON.stringify({name:catalogCreateName.value.trim()})});
-        if(!response.ok)throw new Error(await response.text());
-        const value=await response.json();showCatalogEditor(value);currentFile=value;filePath.textContent=value.path;dirty=false;saveButton.disabled=true;catalogCreateDialog.close();selectedNode={id:value.catalog.id,path:value.path,kind:'metadata'};updateTreeToolbar();await loadTree(false);status.className='';status.textContent='Справочник создан.';
+        const value=await postJSON('/api/catalog',{name:catalogCreateName.value.trim()});showCatalogEditor(value);currentFile=value;filePath.textContent=value.path;dirty=false;saveButton.disabled=true;catalogCreateDialog.close();selectedNode={id:value.catalog.id,path:value.path,kind:'metadata'};updateTreeToolbar();await loadTree(false);status.className='';status.textContent='Справочник создан.';
       }catch(error){catalogCreateError.textContent=String(error.message||error).trim();}
-      finally{loadingFile=false;submit.disabled=false;catalogEditor.setDisabled(false);formHost.inert=false;editorHost.inert=false;}
+      finally{loadingFile=false;submit.disabled=false;setEditorsBusy(false);}
     });
     // Generic configuration-tree toolbar: Add/Delete act on whatever is
     // currently selected in the tree, instead of one dedicated button per
@@ -462,7 +464,7 @@
       loadingFile=true;treeAddButton.disabled=true;treeDeleteButton.disabled=true;status.className='';status.textContent='Удаление…';
       try{
         const endpoint=context.kind==='catalog'?'/api/catalog':'/api/role';
-        const response=await fetch(`${endpoint}?path=${encodeURIComponent(context.path)}&expectedRevision=${encodeURIComponent(currentFile?.revision||'')}`,{method:'DELETE',headers:{'X-ML-CSRF':'1'}});
+        const response=await studioRequest(`${endpoint}?path=${encodeURIComponent(context.path)}&expectedRevision=${encodeURIComponent(currentFile?.revision||'')}`,{method:'DELETE'});
         if(!response.ok){status.textContent=await response.text();status.className='error';return;}
         closeFile();await loadTree();status.className='';status.textContent='Удалено.';
       }catch(error){showToolError(error);}

@@ -147,3 +147,33 @@ test('every help key a window passes has a page in studioHelp',async()=>{
     assert.ok(page.title&&page.text.length&&page.text.every(Boolean),`empty page ${key}`);
   }
 });
+
+// Ловит запрос Studio, ушедший без заголовка X-ML-CSRF или с телом не в JSON:
+// сервер отвечает на такой 403 или 415 (validateStudioMutation,
+// decodeStudioJSON), а заголовок прежде выписывался у каждого из двадцати
+// вызовов. И postJSON, отдавший разбор ответа с ошибкой как успех.
+test('a request of Studio carries the CSRF header and its body as JSON, postJSON throws the trimmed text of a refusal',async()=>{
+  const sent=[];
+  context.fetch=async(path,init)=>{sent.push({path,init});return init.method==='DELETE'?{ok:false,text:async()=>'  отказ \n'}:{ok:true,json:async()=>({done:true})};};
+  await context.studioRequest('/api/a');
+  assert.equal(sent[0].init.method,'POST');
+  assert.deepEqual({...sent[0].init.headers},{'X-ML-CSRF':'1'});
+  assert.equal(sent[0].init.body,undefined);
+  const answer=await context.postJSON('/api/b',{name:'Склад'},{method:'PUT'});
+  assert.deepEqual({...answer},{done:true});
+  assert.equal(sent[1].init.method,'PUT');
+  assert.deepEqual({...sent[1].init.headers},{'X-ML-CSRF':'1','Content-Type':'application/json'});
+  assert.equal(sent[1].init.body,'{"name":"Склад"}');
+  await assert.rejects(context.postJSON('/api/c',{},{method:'DELETE'}),error=>error.message==='отказ');
+  delete context.fetch;
+});
+
+// Ловит перевод из одних пробелов, оставленный в тексте: сервер такой
+// отвергает при записи (validateTitle), а редактор проекта прежде снимал
+// только совсем пустой.
+test('a blank translation is taken away, a translation with text is written',()=>{
+  const text=context.setTranslation(undefined,'ru','Склад');
+  assert.deepEqual({...text},{ru:'Склад'});
+  assert.equal(context.setTranslation(text,'en','  \n'),text);
+  assert.deepEqual({...context.setTranslation(text,'ru',' ')},{});
+});

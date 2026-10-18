@@ -10,9 +10,9 @@ test('the Studio page opens a module of the root from its own tree node',()=>{
   // Какой узел — модуль корня, говорит сервер видом узла: свой перечень
   // модулей на странице однажды забыл модуль внешнего соединения.
   assert.match(html,/node\.kind==='root-module'/);
-  // Открытие создаёт файл, поэтому идёт как мутация — с тем же заголовком,
-  // что и остальные изменяющие запросы Studio.
-  assert.match(html,/fetch\(`\/api\/root-module\/\$\{encodeURIComponent\(node\.id\)\}`,\{method:'POST',headers:\{'X-ML-CSRF':'1'\}\}\)/);
+  // Открытие создаёт файл, поэтому идёт как мутация — тем же запросом, что
+  // и остальные изменяющие запросы Studio (studioRequest, POST по умолчанию).
+  assert.match(html,/studioRequest\(`\/api\/root-module\/\$\{encodeURIComponent\(node\.id\)\}`\)/);
   // После создания дерево перечитывается: состояние узла меняется.
   const opener=html.slice(html.indexOf('async function openRootModule'),html.indexOf('// Узел группы «Роли»'));
   assert.match(opener,/await loadTree\(false\)/);

@@ -57,7 +57,7 @@ function createLanguagesEditor(host, onChange) {
     const language = selected && source.configuration.languages.find(item => item.code === selected);
     host.append(language ? renderLanguage(language) : renderOverview());
   }
-  return {
+  return hostedEditor(host, () => { source = null; model = null; selected = null; }, {
     open(value) {
       source = structuredClone(value);
       model = createProjectModel(source);
@@ -66,17 +66,13 @@ function createLanguagesEditor(host, onChange) {
       render();
     },
     value() { return model?.value(); },
-    close() { source = null; model = null; selected = null; host.hidden = true; host.replaceChildren(); },
-    setDisabled(disabled) { host.inert = disabled; },
-    // Switches straight to the language named by a tree-node fragment
+    // Switches straight to the language a node of the tree names
     // (`language:<code>`), so a click on the main configuration tree opens
     // that one language's own fields instead of the overview list.
-    selectFragment(fragment) {
-      if (!source || !fragment) return;
-      const [kind, code] = fragment.split(':');
-      if (kind !== 'language') return;
+    select(kind, code) {
+      if (!source || kind !== 'language') return;
       selected = code;
       render();
     },
-  };
+  });
 }

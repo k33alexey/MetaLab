@@ -22,8 +22,7 @@ function createProjectModel(source) {
       if (value === '') delete configuration[field]; else configuration[field] = value;
     },
     setText(field, code, value) {
-      const text = configuration[field] && typeof configuration[field] === 'object' ? configuration[field] : {};
-      if (value === '') delete text[code]; else text[code] = value;
+      const text = setTranslation(configuration[field] && typeof configuration[field] === 'object' ? configuration[field] : undefined, code, value);
       if (Object.keys(text).length === 0) delete configuration[field];
       else configuration[field] = text;
     },
@@ -357,7 +356,7 @@ function createProjectEditor(host, onChange) {
 
     host.append(panel);
   }
-  return {
+  return hostedEditor(host, () => { source = null; model = null; }, {
     open(value) {
       source = structuredClone(value);
       model = createProjectModel(source);
@@ -365,7 +364,5 @@ function createProjectEditor(host, onChange) {
       render();
     },
     value() { return model?.value(); },
-    close() { source = null; model = null; host.hidden = true; host.replaceChildren(); },
-    setDisabled(disabled) { host.inert = disabled; },
-  };
+  });
 }
