@@ -781,7 +781,13 @@ type FieldButtons struct {
 	ChoiceButtonRepresentation FormChoiceButtonRepresentation `yaml:"choice_button_representation,omitempty" json:"choiceButtonRepresentation,omitempty"`
 	ChoiceButtonPicture        *PictureReference              `yaml:"choice_button_picture,omitempty" json:"choiceButtonPicture,omitempty"`
 	// AutoShowClearButton and AutoShowOpenButton are when the clear and the
-	// open button show; the prototype writes them as AutoShow…Mode.
+	// open button show; the prototype writes them as AutoShow…Mode. The help
+	// lists only mobile clients where each is available, but its description
+	// speaks of a field of any client application, and the list of where a
+	// property is available names mobile clients alone for what every client
+	// shows too (the title of a form command), so they are carried: only a
+	// description naming a mobile device marks a property as the mobile
+	// client's alone (METADATA-OBJECTS, «Мобильное приложение»).
 	AutoShowClearButton FormAutoShowButton `yaml:"auto_show_clear_button,omitempty" json:"autoShowClearButton,omitempty"`
 	AutoShowOpenButton  FormAutoShowButton `yaml:"auto_show_open_button,omitempty" json:"autoShowOpenButton,omitempty"`
 }
@@ -868,8 +874,12 @@ type FieldTextInput struct {
 	// special characters are the mask.
 	Mask string `yaml:"mask,omitempty" json:"mask,omitempty"`
 	// InputHint is shown in an empty field without the focus.
-	InputHint            LocalizedText            `yaml:"input_hint,omitempty" json:"inputHint,omitempty"`
-	EditTextUpdate       FormEditTextUpdate       `yaml:"edit_text_update,omitempty" json:"editTextUpdate,omitempty"`
+	InputHint      LocalizedText      `yaml:"input_hint,omitempty" json:"inputHint,omitempty"`
+	EditTextUpdate FormEditTextUpdate `yaml:"edit_text_update,omitempty" json:"editTextUpdate,omitempty"`
+	// HeightControlVariant is how the height of the element is decided
+	// (FormHeightControlVariant). Its availability, like that of the buttons
+	// shown by themselves, names mobile clients alone and its description any
+	// client application, so it is carried.
 	HeightControlVariant FormHeightControlVariant `yaml:"height_control_variant,omitempty" json:"heightControlVariant,omitempty"`
 	// MultipleValuesExtendedEdit types several values straight into the field
 	// rather than in the dialog of a list of values (help, since 8.3.23). The
