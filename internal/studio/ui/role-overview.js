@@ -205,9 +205,8 @@ function createRoleOverviewModel(source) {
     // шаблонов, которых не называла, — об этом окно спрашивает «Заменить?».
     // Ответ — забранное, по строке на роль, объект и право.
     editRestrictions(rows, change, trial) {
-      return perform(trial, modelOf => byPlace(rows, (role, objectID, right, group) =>
-        taken(role, objectID, right, modelOf(role).writeRestrictions(objectID, right, group.map(row => ({index: row.index,
-          restriction: {fields: change.fields ? change.fields(row) : row.keys, condition: change.condition ?? row.condition}}))))));
+      return perform(trial, modelOf => writePlaces(modelOf, rows, undefined, row => ({index: row.index,
+        restriction: {fields: change.fields ? change.fields(row) : row.keys, condition: change.condition ?? row.condition}})));
     },
     // «Копировать шаблоны ограничений»: выбранные шаблоны — в отмеченные
     // роли, как ограничения (справка, form_CopyRowLevelInstrDlg); шаблон с
@@ -216,8 +215,7 @@ function createRoleOverviewModel(source) {
       return perform(trial, modelOf => roles.flatMap(role => takenTemplates(role, modelOf(role).writeTemplates(rows.map(row => ({template: {name: row.name, condition: row.condition}}))))));
     },
     copyRestrictions(rows, roles, trial) {
-      return perform(trial, modelOf => roles.flatMap(role => byPlace(rows, (_, objectID, right, group) =>
-        taken(role, objectID, right, modelOf(role).writeRestrictions(objectID, right, group.map(row => ({restriction: {fields: row.keys, condition: row.condition}})))), true)));
+      return perform(trial, modelOf => roles.flatMap(role => writePlaces(modelOf, rows, role, row => ({restriction: {fields: row.keys, condition: row.condition}}))));
     },
     removeRestrictions(rows) {
       for (const row of fromLast(rows)) at(row.roleIndex)?.removeRestriction(row.objectID, row.operation, row.index);
@@ -312,8 +310,8 @@ function createRoleOverviewModel(source) {
       fields: restrictionFieldChoices(items.map(item => item.id)).filter(choice => paths.has(choice.path))};
   }
   // Ключи отмеченных полей у объекта; null — у объекта нет ни одного из
-  // отмеченных: пустой состав стал бы «Прочими полями», а прототип такому
-  // объекту ограничения по этим полям не даёт. Ничего не отмечено —
+  // отмеченных: мастер такому объекту ограничения по этим полям не даёт,
+  // групповое «Изменить» даёт ему «Прочие поля». Ничего не отмечено —
   // «Прочие поля» у каждого.
   function chosenFieldKeys(choices, paths, objectID) {
     const keys = choices.filter(choice => paths.has(choice.path)).map(choice => choice.keys.get(objectID)).filter(Boolean);
@@ -324,15 +322,20 @@ function createRoleOverviewModel(source) {
     return operation(index => models[index]);
   }
   // Ограничения одного права пишутся вместе (writeRestrictions): строки
-  // собираются по роли, объекту и праву в том порядке, в каком выбраны.
-  function byPlace(rows, write, anyRole = false) {
+  // собираются по роли, объекту и праву в том порядке, в каком выбраны, и
+  // entry(row) пишется в роль toRole, а без неё — в роль самой строки (тогда
+  // и собираются по роли). Ответ — забранное (taken).
+  function writePlaces(modelOf, rows, toRole, entry) {
     const groups = new Map();
     for (const row of rows) {
-      const key = `${anyRole ? '' : row.roleIndex} ${row.objectID} ${row.operation}`;
+      const key = `${toRole === undefined ? row.roleIndex : ''} ${row.objectID} ${row.operation}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(row);
     }
-    return [...groups.values()].flatMap(group => write(group[0].roleIndex, group[0].objectID, group[0].operation, group));
+    return [...groups.values()].flatMap(group => {
+      const role = toRole ?? group[0].roleIndex, {objectID, operation} = group[0];
+      return taken(role, objectID, operation, modelOf(role).writeRestrictions(objectID, operation, group.map(entry)));
+    });
   }
   function byRole(rows) {
     const groups = new Map();
@@ -542,7 +545,10 @@ function createRoleOverview(host, openRole, onChange) {
   const restrictionLine = item => `${item.role} · ${item.object} · ${caption(item.operation)}: ${item.field}${item.whole ? '' : ' (поле переходит к новому ограничению)'}`;
   // Окно группового «Изменить» (справка, form_EditRowLevelRightDlg): флажки
   // «Изменять …» при расходящихся значениях сняты, и до их установки поле
-  // не правится.
+  // не правится. Объект, у которого нет ни одного из отмеченных полей,
+  // получает «Прочие поля», а не сохраняет свои; «ОК» недоступна, пока
+  // окно ничего не меняет (сверено в конфигураторе 14.10.2026, ACCESS-RIGHTS
+  // «Правка ограничений группой»).
   async function editRestrictions(rows) {
     const reading = rows.filter(row => restrictsByFields(source.schema, row.operation));
     const change = {fields: false, condition: false};
@@ -561,13 +567,17 @@ function createRoleOverview(host, openRole, onChange) {
     let condition = text ?? '';
     const editor = queryTextField(condition, value => { condition = value; }, 'Ограничение доступа');
     const content = restrictionWindowContent({fields, editor, change, group: true});
+    // Поля пишутся только праву, ограничиваемому по полям (restrictionEntry
+    // роли); у прочих они пусты, и сравнение «меняет ли окно» их не задевает.
+    const fieldsOf = row => restrictsByFields(source.schema, row.operation) ? model.chosenFieldKeys(choices, chosen, row.objectID) ?? [] : row.keys;
+    const sameKeys = (left, right) => left.length === right.length && left.every(key => right.includes(key));
+    const changes = () => rows.some(row => (change.fields && !sameKeys(fieldsOf(row), row.keys)) || (change.condition && condition !== row.condition));
     const answer = await showDialog({title: 'Ограничение доступа', explanation: rows.length > 1 ? `Выбрано ограничений: ${rows.length}.` : '', content,
       className: 'role-restriction-dialog', help: 'role-restriction-group',
-      answers: [['ok', 'ОК', {enabled: () => !change.fields || fields.filled()}], [null, 'Отмена']]});
-    if (answer !== 'ok' || (!change.fields && !change.condition)) return;
-    const fieldsOf = row => model.chosenFieldKeys(choices, chosen, row.objectID) ?? row.keys;
+      answers: [['ok', 'ОК', {enabled: () => (!change.fields || fields.filled()) && changes()}], [null, 'Отмена']]});
+    if (answer !== 'ok' || !changes()) return;
     const edit = {
-      fields: change.fields ? row => fieldsOf(row) : undefined,
+      fields: change.fields ? fieldsOf : undefined,
       condition: change.condition ? condition : undefined,
     };
     await applyReplacing(trial => model.editRestrictions(rows, edit, trial), restrictionLine);
