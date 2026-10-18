@@ -20,11 +20,8 @@ func TestInspectCarriesRolesAndSeparatesThemFromTheSchema(t *testing.T) {
 	t.Parallel()
 	root := publicationProject(t)
 	constant := metadata.Constant{Format: metadata.CurrentFormat, ID: uuid.MustNew(), Name: "Режим", Title: metadata.LocalizedText{"ru": "Режим"}, Types: []metadata.Type{{Kind: metadata.BooleanType}}}
-	form := metadata.ManagedForm{Format: metadata.CurrentFormat, ID: uuid.MustNew(), Name: "Форма", Title: metadata.LocalizedText{"ru": "Форма"}, Kind: metadata.CommonForm,
-		Commands: []metadata.ManagedFormCommand{{ID: uuid.MustNew(), Name: "Обновить", Title: metadata.LocalizedText{"ru": "Обновить"}, Action: metadata.FormCommandRefresh}}}
 	role := metadata.RoleDefinition{Format: metadata.CurrentFormat, ID: uuid.MustNew(), Name: "Читатель", Title: metadata.LocalizedText{"ru": "Читатель"},
-		Objects:  []metadata.ObjectPermission{{Object: constant.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead}}},
-		Commands: []metadata.CommandPermission{{Form: form.ID, Command: form.Commands[0].ID}}}
+		Objects: []metadata.ObjectPermission{{Object: constant.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead}}}}
 	write := func(relative string, value any) {
 		t.Helper()
 		if role, ok := value.(metadata.RoleDefinition); ok {
@@ -40,7 +37,6 @@ func TestInspectCarriesRolesAndSeparatesThemFromTheSchema(t *testing.T) {
 		writeSourceFile(t, root, relative, encoded.Bytes())
 	}
 	write("metadata/constants/"+constant.Name+"/"+project.ObjectMetadataFile, constant)
-	write("metadata/common-forms/"+form.Name+"/"+project.FormMetadataFile, form)
 	rolePath := "metadata/roles/" + role.ID.String() + ".yaml"
 	write(rolePath, role)
 
@@ -59,10 +55,12 @@ func TestInspectCarriesRolesAndSeparatesThemFromTheSchema(t *testing.T) {
 		t.Fatal("a rights change must version the sources without moving the database schema")
 	}
 
-	role.Commands[0].Command = uuid.MustNew()
+	// A role gives no right on a command of a form (ACCESS-RIGHTS, «Команды
+	// формы»); one an earlier ML saved with such rights is not published.
+	role.Commands = []metadata.CommandPermission{{Form: uuid.MustNew(), Command: uuid.MustNew()}}
 	write(rolePath, role)
 	if _, err := inspect(context.Background(), root, SourceState{}); err == nil {
-		t.Fatal("inspect accepted a role granting a command no form declares")
+		t.Fatal("inspect accepted a role giving a right on a command of a form")
 	}
 	if err := os.Remove(filepath.Join(root, filepath.FromSlash(rolePath))); err != nil {
 		t.Fatal(err)

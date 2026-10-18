@@ -34,14 +34,9 @@ function createRoleOverviewModel(source) {
     const granted = Math.min((grant?.fields || []).filter(field => keys.has(field.field) && (field.operations || []).includes('view')).length, total);
     return granted >= total ? 'все' : `${granted} из ${total}`;
   }
-  /* Строки окна по выбранному в дереве: права объекта, права части или
-     команды формы, у каждой — как прочитать и записать её в роли. */
+  /* Строки окна по выбранному в дереве: права объекта или права части, у
+     каждой — как прочитать и записать её в роли. */
   function lines(selection) {
-    if (selection?.form) {
-      const form = selection.form;
-      return form.commands.map(command => ({key: command.id, command,
-        get: model => model.hasCommand(form.id, command.id), set: (model, enabled) => model.setCommand(form.id, command.id, enabled)}));
-    }
     const object = selection?.object;
     if (!object) return [];
     if (selection.part) {
@@ -66,7 +61,7 @@ function createRoleOverviewModel(source) {
     roleCount() { return entries.length; },
     roles: roleList,
     model: at,
-    rows(selection) { return lines(selection).map(({key, command}) => ({key, command})); },
+    rows(selection) { return lines(selection).map(({key}) => ({key})); },
     has(index, selection, key) { const line = lines(selection).find(item => item.key === key); return !!line && line.get(at(index)); },
     set(index, selection, key, enabled) { const line = lines(selection).find(item => item.key === key); if (line && at(index)) line.set(at(index), enabled); },
     // Первая строка: все права роли на выбранное.
@@ -381,13 +376,13 @@ function createRoleOverview(host, openRole, onChange) {
     box.addEventListener('change', () => { action(box.checked); changed(); });
     return box;
   }
-  function rowCaption(row) { return row.command ? model.title(row.command) || row.command.name : caption(row.key); }
+  function rowCaption(row) { return caption(row.key); }
   function renderGrid() {
     const roles = model.roles(), rows = model.rows(selected);
     if (!roles.length) return node('p', 'В проекте нет ролей.', 'muted');
-    if (!rows.length) return node('p', selected.form ? 'У формы нет команд.' : selected.part ? 'Своих прав у этого узла нет: права даются на то, что в нём.' : 'Своих прав у объекта нет: права даются на его части.', 'muted');
+    if (!rows.length) return node('p', selected.part ? 'Своих прав у этого узла нет: права даются на то, что в нём.' : 'Своих прав у объекта нет: права даются на его части.', 'muted');
     const scroll = node('div', undefined, 'overview-grid'), table = node('table'), head = node('tr');
-    head.append(node('th', selected.form ? 'Команда' : 'Право', 'overview-right'));
+    head.append(node('th', 'Право', 'overview-right'));
     for (const role of roles) {
       const cell = node('th', undefined, role.path === chosenRole ? 'overview-chosen' : undefined), button = node('button', role.title, 'overview-role');
       button.type = 'button'; button.title = role.name;
@@ -396,7 +391,7 @@ function createRoleOverview(host, openRole, onChange) {
     }
     const thead = node('thead'), tbody = node('tbody');
     thead.append(head);
-    const all = node('tr', undefined, 'overview-all'), allCaption = node('th', selected.form ? 'Все команды' : 'Все права', 'overview-right');
+    const all = node('tr', undefined, 'overview-all'), allCaption = node('th', 'Все права', 'overview-right');
     all.append(allCaption);
     for (const role of roles) {
       const cell = node('td', undefined, role.path === chosenRole ? 'overview-chosen' : undefined);
@@ -889,7 +884,7 @@ function createRoleOverview(host, openRole, onChange) {
   function renderPanel() {
     panel.replaceChildren();
     if (!selected) { panel.append(node('p', 'Выберите объект слева: его права во всех ролях можно отметить здесь сразу.', 'muted')); return; }
-    const item = selected.form || selected.object;
+    const item = selected.object;
     panel.append(node('h3', selected.part ? `${model.title(item) || item.name} · ${model.title(selected.part) || selected.part.name}` : model.title(item) || item.name));
     panel.append(renderGrid());
     if (selected.object && !selected.part && selected.object.restrictedRights?.length) panel.append(renderRestrictions(selected.object));
@@ -898,7 +893,6 @@ function createRoleOverview(host, openRole, onChange) {
   // открывается заново с тем, что записано, на том же месте.
   function reselect() {
     if (!selected) return null;
-    if (selected.form) { const form = source.schema.forms.find(item => item.id === selected.form.id); return form ? {form} : null; }
     const object = model.objects().find(item => item.id === selected.object.id);
     if (!object) return null;
     const part = selected.part && object.fields.find(item => item.key === selected.part.key);

@@ -105,7 +105,6 @@ func roleCatalogFixture(t *testing.T) (*Catalog, RoleDefinition, ManagedForm) {
 	role.Objects[0].Fields[1].Denied = []PermissionOperation{PermissionEdit}
 	form := ManagedForm{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Форма", Title: LocalizedText{"ru": "Форма"}, Kind: ObjectForm,
 		Commands: []ManagedFormCommand{{ID: uuid.MustNew(), Name: "Обновить", Title: LocalizedText{"ru": "Обновить"}, Action: FormCommandRefresh}}}
-	role.Commands = []CommandPermission{{Form: form.ID, Command: form.Commands[0].ID}}
 	catalog, err := NewCatalogSnapshotWithRoles(metadataConfiguration(), nil, nil, nil, []CatalogDefinition{definition}, nil, nil, nil, []RoleDefinition{role})
 	if err != nil {
 		t.Fatal(err)
@@ -130,10 +129,9 @@ func TestRoleSnapshotIsolationAndReferences(t *testing.T) {
 	lookedUp.Objects[0].Fields[0].Operations[0] = PermissionUpdate
 	lookedUp.Objects[0].Denied[0] = PermissionInsert
 	lookedUp.Objects[0].Fields[1].Denied[0] = PermissionView
-	lookedUp.Commands[0].Command = uuid.MustNew()
 	again, ok := catalog.RoleByID(role.ID)
 	if !ok || again.Title["ru"] != "Читатель" || again.Objects[0].Operations[0] != PermissionRead || again.Objects[0].Fields[0].Operations[0] != PermissionView ||
-		again.Objects[0].Denied[0] != PermissionDelete || again.Objects[0].Fields[1].Denied[0] != PermissionEdit || again.Commands[0].Command != form.Commands[0].ID {
+		again.Objects[0].Denied[0] != PermissionDelete || again.Objects[0].Fields[1].Denied[0] != PermissionEdit {
 		t.Fatal("lookup exposed mutable role storage")
 	}
 	if _, ok := catalog.Role("нет"); ok {
@@ -182,10 +180,12 @@ func TestRoleReferencesRejectInvalidRuntimeMetadata(t *testing.T) {
 			r.Name = "ЧИТАТЕЛЬ"
 			c.Roles = append(c.Roles, r)
 		},
-		"global UUID collision":  func(c *Catalog, _ *ManagedForm) { c.Roles[0].ID = c.Catalogs[0].Attributes[0].ID },
-		"unknown form":           func(c *Catalog, _ *ManagedForm) { c.Roles[0].Commands[0].Form = uuid.MustNew() },
-		"wrong command owner":    func(c *Catalog, _ *ManagedForm) { c.Roles[0].Commands[0].Command = uuid.MustNew() },
-		"deleted command":        func(_ *Catalog, f *ManagedForm) { f.Commands = nil },
+		"global UUID collision": func(c *Catalog, _ *ManagedForm) { c.Roles[0].ID = c.Catalogs[0].Attributes[0].ID },
+		// A role gives no right on a command of a form, not even on one the
+		// form declares (ACCESS-RIGHTS, «Команды формы»).
+		"a command of a form": func(c *Catalog, f *ManagedForm) {
+			c.Roles[0].Commands = []CommandPermission{{Form: f.ID, Command: f.Commands[0].ID}}
+		},
 		"invalid JSON operation": func(c *Catalog, _ *ManagedForm) { c.Roles[0].Objects[0].Operations = []PermissionOperation{"admin"} },
 	}
 	for name, mutate := range tests {
@@ -219,9 +219,9 @@ func TestRoleReferencesRejectInvalidRuntimeMetadata(t *testing.T) {
 	}
 }
 
-func TestLoadRolesAndCommandSources(t *testing.T) {
+func TestLoadRolesAndCommonFormSources(t *testing.T) {
 	t.Parallel()
-	for _, broken := range []string{"", "role filename", "form folder", "missing form", "symlink form", "missing command", "unknown YAML field"} {
+	for _, broken := range []string{"", "role filename", "form folder", "symlink form", "unknown YAML field"} {
 		t.Run(broken, func(t *testing.T) {
 			root := metadataProject(t)
 			catalog, role, form := roleCatalogFixture(t)
@@ -256,12 +256,7 @@ func TestLoadRolesAndCommandSources(t *testing.T) {
 			if broken == "form folder" {
 				formPath = "metadata/common-forms/ДругоеИмя/" + project.FormMetadataFile
 			}
-			if broken == "missing command" {
-				form.Commands = nil
-			}
-			if broken != "missing form" {
-				write(formPath, form)
-			}
+			write(formPath, form)
 			if broken == "symlink form" {
 				target := filepath.Join(t.TempDir(), "form.yaml")
 				if err := os.Rename(filepath.Join(root, formPath), target); err != nil {
@@ -400,12 +395,12 @@ func TestRuntimeRolesStableOrderAndValidation(t *testing.T) {
 		t.Fatal("noncanonical role order accepted")
 	}
 	snapshot.Roles[0], snapshot.Roles[1] = snapshot.Roles[1], snapshot.Roles[0]
-	snapshot.Roles[0].Commands[0].Command = uuid.MustNew()
+	snapshot.Roles[0].Commands = []CommandPermission{{Form: form.ID, Command: form.Commands[0].ID}}
 	if _, err := snapshot.Catalog(); err == nil {
-		t.Fatal("runtime catalog accepted unknown command")
+		t.Fatal("runtime catalog accepted a right on a command of a form")
 	}
 	if err := snapshot.Validate(); err == nil {
-		t.Fatal("runtime validation accepted unknown command")
+		t.Fatal("runtime validation accepted a right on a command of a form")
 	}
 }
 

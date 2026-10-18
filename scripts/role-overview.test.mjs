@@ -33,8 +33,7 @@ function fixture(){
         restrictionFields:[{key:'ref',name:'Ссылка',title:{ru:'Ссылка'}},{key:'person',name:'Физлицо',title:{ru:'Физлицо'}}],
         restrictedRights:['read']},
     ],
-    parts:{goods:['ref','owner','price','print'],users:['ref','person']},
-    forms:[{id:'list',name:'ФормаСписка',title:{ru:'Форма списка'},commands:[{id:'post',name:'Провести',title:{ru:'Провести'}},{id:'copy',name:'Скопировать',title:{ru:'Скопировать'}}]}]},
+    parts:{goods:['ref','owner','price','print'],users:['ref','person']}},
     roles:[
       {path:'metadata/roles/a.yaml',revision:'ra',role:{id:'a',name:'Продавец',title:{ru:'Продавец'},objects:[
         {object:'goods',operations:['read','update'],fields:[{field:'ref',operations:['view']},{field:'owner',operations:['view']},{field:'print',operations:['view']}],
@@ -119,15 +118,6 @@ test('a part of an object is edited by its own rights, the object left as it was
   assert.equal(model.rightState(selection,'view'),'all');
   assert.deepEqual(plain(roleValue(model,1).objects),[{object:'goods',operations:[],fields:[{field:'price',operations:['view']}]}]);
   assert.deepEqual(plain(roleValue(model,0).objects[0].operations),['read','update']);
-});
-
-test('the commands of a form are rows too',()=>{
-  const source=fixture(),model=create(source),selection={form:source.schema.forms[0]};
-  assert.deepEqual(plain(model.rows(selection).map(row=>row.key)),['post','copy']);
-  model.setRole(0,selection,true);
-  assert.equal(model.roleState(0,selection),'all');
-  assert.deepEqual(plain(roleValue(model,0).commands),[{form:'list',command:'post'},{form:'list',command:'copy'}]);
-  assert.equal(model.roleState(1,selection),'none');
 });
 
 // Сохраняются только изменённые роли, каждая со своей ревизией. Дефект:

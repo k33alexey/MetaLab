@@ -50,7 +50,7 @@ func (catalog *Catalog) rightsTargetOf(id uuid.UUID) (rightsTarget, bool) {
 	return target, true
 }
 
-func (catalog *Catalog) validateRoleReferences(root string) error {
+func (catalog *Catalog) validateRoleReferences() error {
 	targets := map[uuid.UUID]rightsTarget{}
 	for _, role := range catalog.Roles {
 		if err := validateDroppedRights(role); err != nil {
@@ -75,38 +75,19 @@ func (catalog *Catalog) validateRoleReferences(root string) error {
 			}
 		}
 	}
-	if root == "" {
-		return nil
-	}
-	// The forms are read once, not once per reference: a common form is found
-	// by reading the folders now, and a configuration has as many roles
-	// referring to forms as it has rights to grant.
-	//
-	// They are read whether or not any role refers to one, because the folder
-	// is the whole declaration of a common form - if nothing read it, a form
-	// with a broken folder would load as a configuration without that form.
-	forms, err := ReadCommonForms(root, catalog.Project)
-	if err != nil {
-		return err
-	}
-	byID := make(map[uuid.UUID]ManagedForm, len(forms))
-	for _, form := range forms {
-		byID[form.ID] = form
-	}
-	return validateRoleCommands(catalog.Roles, func(id uuid.UUID) (ManagedForm, error) {
-		form, ok := byID[id]
-		if !ok {
-			return ManagedForm{}, fmt.Errorf("form %s is missing or unsafe", id)
-		}
-		return form, nil
-	})
+	return nil
 }
 
 // validateDroppedRights refuses a role that gives or denies a right ML no
-// longer keeps, naming the role and the right (ACCESS-RIGHTS, «Роли,
-// сохранённые прежней версией ML»): such a role is not translated, it is
-// repaired in Studio.
+// longer keeps, naming the role and the right, and one giving rights on
+// commands of forms, which a role does not give (RoleDefinition.Commands)
+// (ACCESS-RIGHTS, «Роли, сохранённые прежней версией ML»): such a role is not
+// translated, it is repaired in Studio.
 func validateDroppedRights(role RoleDefinition) error {
+	if len(role.Commands) > 0 {
+		return fmt.Errorf("role %s gives rights on %d commands of forms, which a role does not give: whom a command of a form is available to is the command's own use; open the role in Studio and take away the rights it cannot keep («Убрать недоступные права»)",
+			role.Name, len(role.Commands))
+	}
 	for _, permission := range role.Objects {
 		for _, list := range []struct {
 			verb   string
@@ -235,28 +216,4 @@ func readCommonForm(directory, name string, configuration project.Project) (Mana
 		return ManagedForm{}, err
 	}
 	return form, nil
-}
-
-func validateRoleCommands(roles []RoleDefinition, resolve func(uuid.UUID) (ManagedForm, error)) error {
-	forms := map[uuid.UUID]map[uuid.UUID]bool{}
-	for _, role := range roles {
-		for _, permission := range role.Commands {
-			commands, ok := forms[permission.Form]
-			if !ok {
-				form, err := resolve(permission.Form)
-				if err != nil {
-					return fmt.Errorf("role %s: %w", role.Name, err)
-				}
-				commands = make(map[uuid.UUID]bool, len(form.Commands))
-				for _, command := range form.Commands {
-					commands[command.ID] = true
-				}
-				forms[permission.Form] = commands
-			}
-			if !commands[permission.Command] {
-				return fmt.Errorf("role %s: command %s does not belong to form %s", role.Name, permission.Command, permission.Form)
-			}
-		}
-	}
-	return nil
 }

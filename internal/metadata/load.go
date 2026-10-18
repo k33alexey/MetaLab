@@ -1378,7 +1378,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 	}
-	if err := catalog.validateRoleReferences(root); err != nil {
+	if err := catalog.validateRoleReferences(); err != nil {
 		return err
 	}
 	if err := catalog.validateSubsystemReferences(); err != nil {

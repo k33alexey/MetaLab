@@ -11,7 +11,7 @@ vm.runInContext(readFileSync(new URL('../internal/studio/ui/studio-common.js',im
 vm.runInContext(script,context);
 const create=context.createRoleModel;
 const plain=value=>JSON.parse(JSON.stringify(value));
-function fixture(){return {role:{id:'role',name:'Продавец',title:{ru:'Продавец'}},schema:{restrictionRules:[{right:'read',byFields:true},{right:'insert',byFields:false},{right:'update',byFields:false},{right:'delete',byFields:false}],rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'posting',title:'Проведение'}],objects:[{id:'base',root:true,rights:['administration','run-application'],operations:[],fields:[],restrictionFields:[]},{id:'goods',rights:['read','insert','update','delete','view','edit','input-by-string'],restrictedRights:['read','insert','update','delete'],operations:['read','insert','update','delete'],fields:[{key:'ref',group:'standard-attributes',operations:['view','edit']},{key:'name',group:'attributes',operations:['view','edit']},{key:'part',group:'table-parts',operations:['view','edit']},{key:'column',group:'attributes',parent:'part',operations:['view','edit']},{key:'print',group:'commands',operations:['view']}],restrictionFields:[{key:'ref'},{key:'dataversion'},{key:'name'},{key:'part'},{key:'column',parent:'part'},{key:'part.linenumber',parent:'part'}]},{id:'other',rights:['read','view'],operations:['read'],fields:[],restrictionFields:[]}],parts:{base:[],goods:['column','name','part','print','ref'],other:[]},forms:[{id:'form',commands:[{id:'command'}]}],droppedRights:{'thin-client':'run-application','web-client':'run-application','thick-client':'','mobile-client':''}}};}
+function fixture(){return {role:{id:'role',name:'Продавец',title:{ru:'Продавец'}},schema:{restrictionRules:[{right:'read',byFields:true},{right:'insert',byFields:false},{right:'update',byFields:false},{right:'delete',byFields:false}],rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'posting',title:'Проведение'}],objects:[{id:'base',root:true,rights:['administration','run-application'],operations:[],fields:[],restrictionFields:[]},{id:'goods',rights:['read','insert','update','delete','view','edit','input-by-string'],restrictedRights:['read','insert','update','delete'],operations:['read','insert','update','delete'],fields:[{key:'ref',group:'standard-attributes',operations:['view','edit']},{key:'name',group:'attributes',operations:['view','edit']},{key:'part',group:'table-parts',operations:['view','edit']},{key:'column',group:'attributes',parent:'part',operations:['view','edit']},{key:'print',group:'commands',operations:['view']}],restrictionFields:[{key:'ref'},{key:'dataversion'},{key:'name'},{key:'part'},{key:'column',parent:'part'},{key:'part.linenumber',parent:'part'}]},{id:'other',rights:['read','view'],operations:['read'],fields:[],restrictionFields:[]}],parts:{base:[],goods:['column','name','part','print','ref'],other:[]},droppedRights:{'thin-client':'run-application','web-client':'run-application','thick-client':'','mobile-client':''}}};}
 
 test('Studio inline script remains valid JavaScript',()=>{
   const html=readFileSync(new URL('../internal/studio/ui/index.html',import.meta.url),'utf8');
@@ -30,7 +30,7 @@ test('marking an object gives its parts nothing',()=>{
   const model=create(fixture());model.setObject('goods','read',true);model.setObject('goods','update',true);
   for(const key of ['ref','name','part','column'])for(const right of ['view','edit'])assert.equal(model.hasField('goods',key,right),false,`${key} ${right}`);
   assert.equal(model.hasField('goods','print','view'),false);assert.equal(model.value().objects[0].fields.length,0);
-  assert.equal(model.hasObject('other','read'),false);assert.equal(model.hasCommand('form','command'),false);
+  assert.equal(model.hasObject('other','read'),false);
 });
 // Дефект: снятая галочка части только убирала разрешение - у прототипа у
 // права части два состояния, как у права объекта, и снятое пишется запретом.
@@ -83,10 +83,16 @@ test('a part only denied is kept when the role is cleaned',()=>{
   const source=fixture();source.role.objects=[{object:'goods',fields:[{field:'name',denied:['view']}]}];
   assert.equal(create(source).value().objects[0].fields.length,1);
 });
-test('commands are scoped and never grant data access',()=>{
-  const model=create(fixture());model.setCommand('form','command',true);model.setCommand('other','command',true);
-  assert.equal(model.value().commands.length,1);assert.equal(model.value().objects.length,0);
-  model.setCommand('form','command',false);assert.equal(model.value().commands.length,0);
+// Роль не даёт прав на команды формы: доступность команды по ролям —
+// свойство самой команды (ACCESS-RIGHTS, «Команды формы»). Роль, которой
+// прежняя версия ML их дала, открывается с предупреждением, и «Убрать
+// недоступные права» убирает их все. Дефект: такие права остаются в роли
+// после починки - сохранение её тогда отвергает, и роль не сохранить.
+test('the rights an earlier ML gave on commands of forms are repaired away',()=>{
+  const source=fixture();source.role.objects=[{object:'goods',operations:['read'],fields:[]}];source.role.commands=[{form:'form',command:'command'}];
+  const model=create(source);assert.equal(model.hasUnavailable(),true);assert.equal(model.value().commands.length,1);
+  model.removeUnavailable();assert.equal(model.hasUnavailable(),false);assert.equal(model.value().commands,undefined);
+  assert.equal(model.hasObject('goods','read'),true);
 });
 test('unsupported operations and fields cannot be granted through controls',()=>{
   const model=create(fixture());model.setObject('goods','admin',true);model.setObject('missing','read',true);model.setField('goods','print','edit',true);model.setField('goods','missing','view',true);
@@ -340,19 +346,18 @@ test('templates are added, changed and removed in place',()=>{
 // подсистемы берутся без флага или не берутся с ним; вложенный объект
 // отбрасывается, хотя проходит то, в чём он лежит; «<Не входящие в
 // подсистемы>» пропускает вошедшие; без отбора что-то скрыто.
-// Дефект: «Установить все права» пропускала корень, части объектов или
-// команды форм - у прототипа она отмечает все флажки роли (владелец
-// 14.10.2026), «Снять все права» все их снимает.
+// Дефект: «Установить все права» пропускала корень или части объектов - у
+// прототипа она отмечает все флажки роли (владелец 14.10.2026), «Снять все
+// права» все их снимает.
 test('all rights set and clear every box of the role',()=>{
   const model=create(fixture());model.setEverything(true);
   const boxes=[['base','administration'],['base','run-application'],['goods','read'],['goods','input-by-string'],['other','view']];
   for(const [id,right] of boxes)assert.equal(model.hasObject(id,right),true,`${id} ${right}`);
   for(const [key,right] of [['ref','edit'],['name','view'],['part','edit'],['column','view'],['print','view']])assert.equal(model.hasField('goods',key,right),true,`${key} ${right}`);
-  assert.equal(model.hasCommand('form','command'),true);
+  assert.equal(model.value().commands,undefined,'a role gives no right on a command of a form');
   model.setEverything(false);
   for(const [id,right] of boxes)assert.equal(model.hasObject(id,right),false,`${id} ${right}`);
   for(const [key,right] of [['ref','edit'],['name','view'],['column','view'],['print','view']])assert.equal(model.hasField('goods',key,right),false,`${key} ${right}`);
-  assert.equal(model.hasCommand('form','command'),false);
 });
 test('the filter by subsystems takes what the marked hold, beneath and above only by its flags',()=>{
   const schema={objects:[{id:'А'},{id:'Б',owner:'А'},{id:'В'},{id:'товары'},{id:'документы'},{id:'перерасчет',owner:'документы'},{id:'прочее'},{id:'свободный'}],

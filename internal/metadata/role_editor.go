@@ -25,7 +25,6 @@ type PermissionSchema struct {
 	// PartGroups are the folders of parts in the order of the tree, with
 	// their captions.
 	PartGroups []PermissionPartGroup `json:"partGroups"`
-	Forms      []PermissionForm      `json:"forms"`
 	// Subsystems are the objects every subsystem holds, as it lists them, by
 	// the subsystem: the filter by subsystems of the windows of rights
 	// selects by them (help, «Отбор по подсистемам»; subsystemMembers).
@@ -101,19 +100,6 @@ type PermissionPartGroup struct {
 	Title string    `json:"title"`
 }
 
-type PermissionForm struct {
-	ID       uuid.UUID           `json:"id"`
-	Name     string              `json:"name"`
-	Title    LocalizedText       `json:"title"`
-	Commands []PermissionCommand `json:"commands"`
-}
-
-type PermissionCommand struct {
-	ID    uuid.UUID     `json:"id"`
-	Name  string        `json:"name"`
-	Title LocalizedText `json:"title"`
-}
-
 // LoadPermissionSchema deliberately ignores existing role references so a
 // developer can repair them visually. It never returns executable metadata.
 func LoadPermissionSchema(root string) (PermissionSchema, error) {
@@ -121,7 +107,7 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	if err != nil {
 		return PermissionSchema{}, err
 	}
-	result := PermissionSchema{Objects: []PermissionObject{}, Forms: []PermissionForm{}, RestrictionRules: slices.Clone(restrictionRules), DroppedRights: DroppedRights()}
+	result := PermissionSchema{Objects: []PermissionObject{}, RestrictionRules: slices.Clone(restrictionRules), DroppedRights: DroppedRights()}
 	for _, right := range roleRights {
 		result.Rights = append(result.Rights, PermissionRight{Key: right.operation, Title: nameInWords(right.russian)})
 	}
@@ -208,16 +194,6 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	result.Subsystems = catalog.subsystemMembers()
 	for _, item := range partGroups {
 		result.PartGroups = append(result.PartGroups, PermissionPartGroup{Key: item.group, Title: item.title})
-	}
-	for _, form := range forms {
-		if len(form.Commands) == 0 {
-			continue
-		}
-		item := PermissionForm{ID: form.ID, Name: form.Name, Title: cloneTitle(form.Title)}
-		for _, command := range form.Commands {
-			item.Commands = append(item.Commands, PermissionCommand{ID: command.ID, Name: command.Name, Title: cloneTitle(command.Title)})
-		}
-		result.Forms = append(result.Forms, item)
 	}
 	return result, nil
 }

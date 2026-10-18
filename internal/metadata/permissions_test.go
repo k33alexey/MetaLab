@@ -11,7 +11,7 @@ import (
 
 func TestPermissionsDenyByDefault(t *testing.T) {
 	t.Parallel()
-	catalog, role, form := roleCatalogFixture(t)
+	catalog, role, _ := roleCatalogFixture(t)
 	empty, err := CompilePermissions(catalog, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -24,9 +24,6 @@ func TestPermissionsDenyByDefault(t *testing.T) {
 			if !errors.Is(policy.RequireFields(role.Objects[0].Object, operation, "description"), ErrPermissionDenied) {
 				t.Fatal("missing policy allowed a field")
 			}
-		}
-		if !errors.Is(policy.RequireCommand(form.ID, form.Commands[0].ID), ErrPermissionDenied) {
-			t.Fatal("implicit command grant")
 		}
 	}
 	if empty.ProjectID() != catalog.Project.ID {
@@ -43,7 +40,7 @@ func TestPermissionsDenyByDefault(t *testing.T) {
 }
 
 func TestPermissionsUnionAndIsolation(t *testing.T) {
-	catalog, reader, form := roleCatalogFixture(t)
+	catalog, reader, _ := roleCatalogFixture(t)
 	object := reader.Objects[0].Object
 	writer := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Создатель", Title: LocalizedText{"ru": "Создатель"},
 		Objects: []ObjectPermission{{Object: object, Operations: []PermissionOperation{PermissionInsert}, Fields: []FieldPermission{{Field: "description", Operations: []PermissionOperation{PermissionEdit}}}}}}
@@ -62,14 +59,10 @@ func TestPermissionsUnionAndIsolation(t *testing.T) {
 	if policy.AllowsFields(object, PermissionUpdate, "description") || policy.AllowsFields(object, PermissionInsert, "ref") || policy.AllowsFields(object, PermissionRead, "Description") {
 		t.Fatal("operation or field identity was widened")
 	}
-	if !policy.AllowsCommand(form.ID, form.Commands[0].ID) || policy.AllowsCommand(uuid.MustNew(), form.Commands[0].ID) {
-		t.Fatal("command was not scoped to its form")
-	}
 	ids[0] = uuid.MustNew()
 	catalog.Roles[0].Objects[0].Operations = nil
 	catalog.Roles[0].Objects[0].Fields[0].Operations = nil
-	catalog.Roles[0].Commands = nil
-	if !policy.AllowsFields(object, PermissionRead, "description") || !policy.AllowsCommand(form.ID, form.Commands[0].ID) {
+	if !policy.AllowsFields(object, PermissionRead, "description") {
 		t.Fatal("compiled permissions retained mutable source data")
 	}
 	var readers sync.WaitGroup
@@ -91,9 +84,9 @@ func TestPermissionsUnionAndIsolation(t *testing.T) {
 	}
 }
 
-func TestPermissionsObjectFieldAndCommandAreIndependent(t *testing.T) {
+func TestPermissionsObjectAndFieldAreIndependent(t *testing.T) {
 	t.Parallel()
-	catalog, role, form := roleCatalogFixture(t)
+	catalog, role, _ := roleCatalogFixture(t)
 	object := role.Objects[0].Object
 	part := catalog.Catalogs[0].TableParts[0]
 	column := part.Attributes[0].ID.String()
@@ -105,8 +98,8 @@ func TestPermissionsObjectFieldAndCommandAreIndependent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fieldOnly.AllowsFields(object, PermissionRead, column) || !fieldOnly.AllowsCommand(form.ID, form.Commands[0].ID) {
-		t.Fatal("field/command access implicitly granted object read")
+	if fieldOnly.AllowsFields(object, PermissionRead, column) || fieldOnly.AllowsObject(object, PermissionRead) {
+		t.Fatal("field access implicitly granted object read")
 	}
 	catalog.Roles[0].Objects[0] = ObjectPermission{Object: object, Operations: []PermissionOperation{PermissionRead}, Fields: []FieldPermission{{Field: column, Operations: []PermissionOperation{PermissionView}}}}
 	if err := catalog.indexAndValidate(""); err != nil {
@@ -140,39 +133,43 @@ func TestPermissionsRejectInvalidSelection(t *testing.T) {
 // The prototype bounds neither how many roles a user holds nor how many
 // rights they add up to, and erp has 1211 roles: a user given all of them, or
 // a few wide ones, must get every right of every role and not a refusal to
-// enter. 1300 roles, eleven of them with ten thousand commands each - more
-// than both ceilings that used to stand here.
+// enter. 1300 roles, eleven of them each viewing every one of ten thousand
+// attributes - more than both ceilings that used to stand here.
 func TestPermissionsTakeEveryRoleTheCatalogHas(t *testing.T) {
-	catalog, role, form := roleCatalogFixture(t)
+	catalog, role, _ := roleCatalogFixture(t)
+	const roles, wide, piece = 1300, 11, 10_000
+	object := role.Objects[0].Object
+	attributes := make([]Attribute, piece)
+	for index := range attributes {
+		attributes[index] = Attribute{ID: uuid.MustNew(), Name: fmt.Sprintf("Реквизит%d", index), Title: LocalizedText{"ru": "Реквизит"},
+			Types: []Type{{Kind: StringType, Length: 10}}}
+	}
+	catalog.Catalogs[0].Attributes = attributes
+	widest := ObjectPermission{Object: object, Operations: []PermissionOperation{PermissionRead}}
+	for _, attribute := range attributes {
+		widest.Fields = append(widest.Fields, FieldPermission{Field: attribute.ID.String(), Operations: []PermissionOperation{PermissionView}})
+	}
 	ids := []uuid.UUID{}
 	catalog.Roles = nil
-	const roles, wide, piece = 1300, 11, 10_000
-	var last CommandPermission
 	for index := 0; index < roles; index++ {
 		next := cloneRole(role)
 		next.ID, next.Name = uuid.MustNew(), fmt.Sprintf("Роль%d", index)
-		next.Commands = nil
+		next.Objects = []ObjectPermission{{Object: object, Operations: []PermissionOperation{PermissionRead},
+			Fields: []FieldPermission{{Field: "description", Operations: []PermissionOperation{PermissionView}}}}}
 		if index < wide {
-			next.Objects = nil
-			next.Commands = make([]CommandPermission, piece)
-			for position := range next.Commands {
-				next.Commands[position] = CommandPermission{Form: form.ID, Command: uuid.MustNew()}
-			}
-			last = next.Commands[piece-1]
+			next.Objects = []ObjectPermission{widest}
 		}
 		catalog.Roles = append(catalog.Roles, next)
 		ids = append(ids, next.ID)
 	}
-	// Catalog construction validates structure; runtime-snapshot validation is
-	// separately responsible for resolving every command against form sources.
 	if err := catalog.indexAndValidate(""); err != nil {
 		t.Fatal(err)
 	}
 	policy, err := CompilePermissions(catalog, ids)
 	if err != nil {
-		t.Fatalf("%d roles with %d commands among them were refused: %v", roles, wide*piece, err)
+		t.Fatalf("%d roles with %d rights on fields among them were refused: %v", roles, wide*piece, err)
 	}
-	if !policy.AllowsCommand(last.Form, last.Command) || !policy.AllowsFields(role.Objects[0].Object, PermissionRead, "description") {
+	if !policy.AllowsFields(object, PermissionRead, attributes[piece-1].ID.String()) || !policy.AllowsFields(object, PermissionRead, "description") {
 		t.Fatal("a right of one of the roles was lost")
 	}
 }

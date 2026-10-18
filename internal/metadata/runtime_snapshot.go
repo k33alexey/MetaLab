@@ -91,9 +91,6 @@ func NewRuntimeSnapshot(catalog *Catalog, forms []ManagedForm) (RuntimeSnapshot,
 		seen[form.ID] = true
 		result.Forms[index] = cloneRuntimeForm(form)
 	}
-	if err := result.validateRoleCommands(); err != nil {
-		return RuntimeSnapshot{}, err
-	}
 	if len(result.Subsystems) == 0 {
 		result.Subsystems = nil
 	}
@@ -172,7 +169,7 @@ func (snapshot RuntimeSnapshot) Catalog() (*Catalog, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := snapshot.validateRoleCommands(); err != nil {
+	if err := snapshot.validateFormIDs(); err != nil {
 		return nil, err
 	}
 	catalog.indexRuntimeObjectForms(snapshot.ObjectForms)
@@ -213,21 +210,17 @@ func (snapshot RuntimeSnapshot) Validate() error {
 	return nil
 }
 
-func (snapshot RuntimeSnapshot) validateRoleCommands() error {
-	forms := make(map[uuid.UUID]int, len(snapshot.Forms))
-	for index, form := range snapshot.Forms {
-		if _, exists := forms[form.ID]; exists {
+// validateFormIDs refuses two forms of the configuration a database holds
+// under one identifier: Form finds a form by it.
+func (snapshot RuntimeSnapshot) validateFormIDs() error {
+	forms := make(map[uuid.UUID]bool, len(snapshot.Forms))
+	for _, form := range snapshot.Forms {
+		if forms[form.ID] {
 			return fmt.Errorf("duplicate runtime form UUID %s", form.ID)
 		}
-		forms[form.ID] = index
+		forms[form.ID] = true
 	}
-	return validateRoleCommands(snapshot.Roles, func(id uuid.UUID) (ManagedForm, error) {
-		index, ok := forms[id]
-		if !ok {
-			return ManagedForm{}, fmt.Errorf("unknown runtime form %s", id)
-		}
-		return snapshot.Forms[index], nil
-	})
+	return nil
 }
 
 // Form returns an isolated managed form by stable UUID.

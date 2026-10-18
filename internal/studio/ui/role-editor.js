@@ -11,7 +11,6 @@ function createRoleModel(source) {
   // window «Все роли» builds a model for every role over one schema.
   const value = {...source, role: structuredClone(source.role)};
   value.role.objects ||= [];
-  value.role.commands ||= [];
   const definitions = new Map(value.schema.objects.map(item => [item.id, item]));
   const fields = new Map(value.schema.objects.map(item => [item.id, new Map(item.fields.map(field => [field.key, field]))]));
   // The fields a restriction of reading may name, by object - see
@@ -224,9 +223,10 @@ function createRoleModel(source) {
   // Repair removes only what the configuration no longer has - an object, a
   // part of one, a restriction pointing at a missing field - and the rights
   // ML no longer keeps, putting the one standing for each in its place: the
-  // thin and the web client become «Запуск приложения» (ACCESS-RIGHTS, «Роли,
-  // сохранённые прежней версией ML»). A right the object has no use for is
-  // carried, as the prototype carries it, and is never repaired away.
+  // thin and the web client become «Запуск приложения», and the rights on
+  // commands of forms an earlier ML gave go, a role giving none (ACCESS-RIGHTS,
+  // «Роли, сохранённые прежней версией ML»). A right the object has no use for
+  // is carried, as the prototype carries it, and is never repaired away.
   function repaired() {
     const result = clean();
     const parts = value.schema.parts || {}, dropped = value.schema.droppedRights || {};
@@ -255,7 +255,7 @@ function createRoleModel(source) {
       }
     }
     result.objects = result.objects.filter(item => item.operations.length || item.denied?.length || item.fields.length);
-    result.commands = result.commands.filter(item => value.schema.forms.some(form => form.id === item.form && form.commands.some(command => command.id === item.command)));
+    delete result.commands;
     return result;
   }
   return {
@@ -288,19 +288,12 @@ function createRoleModel(source) {
     setAllOfPart(id, key, enabled) { for(const operation of fields.get(id)?.get(key)?.operations || [])setField(id, key, operation, enabled); },
     // «Установить все права», «Снять все права» (help, «Редактирование
     // роли»): every box of the role - the rights of the configuration and of
-    // every object, of their parts and of the commands of forms.
+    // every object and of their parts.
     setEverything(enabled) {
       for (const definition of value.schema.objects) {
         this.setAll(definition.id, enabled);
         for (const part of definition.fields) this.setAllOfPart(definition.id, part.key, enabled);
       }
-      for (const form of value.schema.forms) for (const command of form.commands) this.setCommand(form.id, command.id, enabled);
-    },
-    hasCommand(form, command) { return value.role.commands.some(item => item.form === form && item.command === command); },
-    setCommand(form, command, enabled) {
-      if (!value.schema.forms.some(item => item.id === form && item.commands.some(item => item.id === command))) return;
-      value.role.commands = value.role.commands.filter(item => item.form !== form || item.command !== command);
-      if(enabled)value.role.commands.push({form,command});
     },
     restrictions: (id, right) => structuredClone(restrictionsOf(id, right)),
     restrictedByFields: byFields,
@@ -320,8 +313,8 @@ function rolePartGroupTitle(schema, group) { return schema.partGroups?.find(item
    role's editor and «Все роли»: the configuration itself at the top, then
    the objects kind by kind in the order the server lists them, each with its
    parts in folders and the objects inside it under their kind - a
-   recalculation under its register, a table under its source - and the
-   commands of forms last. A choice is {object}, {object, part} or {form};
+   recalculation under its register, a table under its source. A choice is
+   {object} or {object, part};
    selection() answers the one made, choose(next) makes one. expanded keeps
    the keys of the nodes left open, so a redraw keeps them open. subsystems()
    answers the filter by subsystems the tree is under, or null: the
@@ -413,8 +406,6 @@ function createRoleTree({schema, kindTitles, title, expanded, selection, choose,
       if (!group) { group = node('details'); group.open = true; group.append(node('summary', kindTitle(item.kind))); groups.set(item.kind, group); element.append(group); }
       group.append(entry);
     }
-    const forms = schema.forms.filter(item => shown(item.id) && matches(item, needle));
-    if (forms.length) { const group = node('details'); group.open = true; group.append(node('summary', 'Команды форм')); for (const form of forms) group.append(treeButton(title(form), form.name, 'role-tree-item', selection()?.form?.id === form.id, {form})); element.append(group); }
     if (!element.childElementCount) element.append(node('p', 'Нет подходящих объектов', 'muted'));
   }
   return {
@@ -792,7 +783,6 @@ function createRoleEditor(host, onChange) {
   function renderPanel() {
     panel.replaceChildren();
     if(!selected){panel.append(node('p','Выберите объект слева и отметьте разрешённые действия.','muted'));return;}
-    if(selected.form){const form=selected.form;panel.append(node('h3',title(form)),node('p','Доступ к команде не заменяет права на используемые данные.','muted'));for(const command of form.commands)panel.append(checkbox(title(command),model.hasCommand(form.id,command.id),enabled=>model.setCommand(form.id,command.id,enabled)));return;}
     const object=selected.object;
     const bulk=(set)=>{const all=node('div',undefined,'role-bulk');for(const [text,enabled] of [['Разрешить всё',true],['Снять все права',false]]){const button=node('button',text);button.type='button';button.addEventListener('click',()=>{set(enabled);changed();renderPanel();});all.append(button);}return all;};
     if(selected.part){
@@ -850,7 +840,7 @@ function createRoleEditor(host, onChange) {
   return hostedEditor(host, ()=>{clearTitleField();source=null;model=null;}, {
     open(value, preserveSelection=false) {
       clearTitleField();
-      const previous=preserveSelection?selected:null;if(!preserveSelection)expanded.clear();source=structuredClone(value);model=createRoleModel(source);selected=null;if(previous?.object){const object=source.schema.objects.find(item=>item.id===previous.object.id);const part=previous.part&&object?.fields.find(item=>item.key===previous.part.key);if(object)selected=part?{object,part}:{object};}if(previous?.form){const form=source.schema.forms.find(item=>item.id===previous.form.id);if(form)selected={form};}host.hidden=false;host.replaceChildren();
+      const previous=preserveSelection?selected:null;if(!preserveSelection)expanded.clear();source=structuredClone(value);model=createRoleModel(source);selected=null;if(previous?.object){const object=source.schema.objects.find(item=>item.id===previous.object.id);const part=previous.part&&object?.fields.find(item=>item.key===previous.part.key);if(object)selected=part?{object,part}:{object};}host.hidden=false;host.replaceChildren();
       const identity=node('div',undefined,'role-identity'),label=node('label','Имя роли'),name=node('input');name.value=source.role.name;name.maxLength=128;name.addEventListener('input',()=>{model.setName(name.value);changed();});label.append(name);identity.append(label);
       const titleLabel=node('label','Заголовок'),titleField=createLocalizedTitleField(source.languages,code=>source.role.title[code],(code,value)=>model.setTitle(code,value),changed);
       titleFieldCleanup=titleField.destroy;titleLabel.append(titleField);identity.append(titleLabel);

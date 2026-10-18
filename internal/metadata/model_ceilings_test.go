@@ -136,7 +136,7 @@ restart_interval_on_failure: 172800
 	}
 	role := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Роль", Title: LocalizedText{"ru": "Роль"}}
 	for range 10_001 {
-		role.Commands = append(role.Commands, CommandPermission{Form: uuid.MustNew(), Command: uuid.MustNew()})
+		role.Objects = append(role.Objects, ObjectPermission{Object: uuid.MustNew(), Operations: []PermissionOperation{PermissionRead}})
 	}
 	if err := ValidateRole("role.yaml", role, metadataConfiguration()); err != nil {
 		t.Fatalf("a role of more than ten thousand permissions was refused: %v", err)

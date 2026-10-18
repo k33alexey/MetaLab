@@ -47,9 +47,8 @@ type objectPermissions struct {
 // everything. Build a new policy from the active publication when grants change;
 // do not retain one across authenticated requests or publication versions.
 type Permissions struct {
-	project  uuid.UUID
-	objects  map[uuid.UUID]objectPermissions
-	commands map[CommandPermission]bool
+	project uuid.UUID
+	objects map[uuid.UUID]objectPermissions
 }
 
 // CompilePermissions consumes a validated catalog, never client-supplied role
@@ -65,7 +64,7 @@ func CompilePermissions(catalog *Catalog, roleIDs []uuid.UUID) (*Permissions, er
 	if catalog == nil || catalog.Project.ID.IsZero() {
 		return nil, ErrInvalidRoleSelection
 	}
-	result := &Permissions{project: catalog.Project.ID, objects: map[uuid.UUID]objectPermissions{}, commands: map[CommandPermission]bool{}}
+	result := &Permissions{project: catalog.Project.ID, objects: map[uuid.UUID]objectPermissions{}}
 	seen := map[uuid.UUID]bool{}
 	for _, id := range roleIDs {
 		if id.IsZero() || seen[id] {
@@ -112,9 +111,6 @@ func CompilePermissions(catalog *Catalog, roleIDs []uuid.UUID) (*Permissions, er
 				}
 			}
 			result.objects[grant.Object] = item
-		}
-		for _, command := range role.Commands {
-			result.commands[command] = true
 		}
 	}
 	return result, nil
@@ -171,10 +167,6 @@ func (permissions *Permissions) AllowsFields(object uuid.UUID, operation Permiss
 	return true
 }
 
-func (permissions *Permissions) AllowsCommand(form, command uuid.UUID) bool {
-	return permissions != nil && permissions.commands[CommandPermission{Form: form, Command: command}]
-}
-
 func (permissions *Permissions) RequireObject(object uuid.UUID, operation PermissionOperation) error {
 	if !permissions.AllowsObject(object, operation) {
 		return ErrPermissionDenied
@@ -184,13 +176,6 @@ func (permissions *Permissions) RequireObject(object uuid.UUID, operation Permis
 
 func (permissions *Permissions) RequireFields(object uuid.UUID, operation PermissionOperation, fields ...string) error {
 	if !permissions.AllowsFields(object, operation, fields...) {
-		return ErrPermissionDenied
-	}
-	return nil
-}
-
-func (permissions *Permissions) RequireCommand(form, command uuid.UUID) error {
-	if !permissions.AllowsCommand(form, command) {
 		return ErrPermissionDenied
 	}
 	return nil

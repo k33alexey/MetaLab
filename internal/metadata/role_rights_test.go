@@ -219,6 +219,66 @@ func TestRolesWithClientsMLDoesNotKeepAreReadAndNotRun(t *testing.T) {
 	}
 }
 
+// A role saved by an earlier ML with rights on commands of forms
+// (ACCESS-RIGHTS, «Команды формы»): it is read - Studio opens it to take them
+// away - and refused, naming the role, by the load, by saving the role and by
+// the configuration a database holds; a command of a form is available by the
+// roles its own use names. The pair here names a command no form declares
+// and one a common form does: neither is a right a role gives.
+//
+// Defects caught: such a role refused by the reading, so Studio cannot open
+// it to repair; accepted by the load or by the snapshot, so a right the
+// prototype has no place for is kept and published; a refusal not naming the
+// role.
+func TestRolesWithCommandsOfFormsAreReadAndNotRun(t *testing.T) {
+	t.Parallel()
+	const want = "role Кладовщик gives rights on 1 commands of forms, which a role does not give"
+	root := compositeProject(t)
+	project, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, _ := project.Role("Кладовщик")
+	role.Commands = []CommandPermission{{Form: uuid.MustNew(), Command: uuid.MustNew()}}
+	if err := WriteRole(root, role); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadPermissionSchema(root); err != nil {
+		t.Fatalf("the schema of the editor is not read: %v", err)
+	}
+	description, err := os.ReadFile(filepath.Join(root, "metadata", "roles", role.ID.String()+".yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	grid, err := os.ReadFile(filepath.Join(root, "metadata", "roles", role.ID.String(), RoleRightsFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, err := DecodeRole("role.yaml", bytes.NewReader(description), bytes.NewReader(grid), project.Project)
+	if err != nil || len(read.Commands) != 1 {
+		t.Fatalf("the role is not read to repair: %v, %+v", err, read.Commands)
+	}
+	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("the load: %v, want %q", err, want)
+	}
+	if err := ValidateProjectRole(root, role); err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("saving the role in Studio: %v, want %q", err, want)
+	}
+	role.Commands = nil
+	if err := ValidateProjectRole(root, role); err != nil {
+		t.Errorf("the role repaired is refused: %v", err)
+	}
+	catalog, reader, form := roleCatalogFixture(t)
+	snapshot, err := NewRuntimeSnapshot(catalog, []ManagedForm{form})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot.Roles[0].Commands = []CommandPermission{{Form: form.ID, Command: form.Commands[0].ID}}
+	if _, err := snapshot.Catalog(); err == nil || !strings.Contains(err.Error(), "role "+reader.Name+" gives rights on 1 commands of forms") {
+		t.Errorf("the configuration a database holds: %v", err)
+	}
+}
+
 // The loader reads the grid from the role's folder and refuses a folder that
 // is anything else.
 //
