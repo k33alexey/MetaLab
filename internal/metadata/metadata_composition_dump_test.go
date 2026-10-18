@@ -122,6 +122,28 @@ func metadataChildrenAtDepth(structType reflect.Type, depth int) map[string]any 
 	return children
 }
 
+// describedName is the name a field has in the description, and whether it is
+// a property at all. An empty name with true is a structure folded in.
+//
+// Two kinds of field are not properties. A field YAML skips is not in the
+// description: it is filled at load time. Dumped under the name "-" it had no
+// words, and the sweep took the empty name for the prefix of every property of
+// the prototype - a constant, a role and a sequence matched everything. And
+// every description opens with `format`, the version of its own layout; the
+// prototype's «Формат» is a property of a value and lies with us in
+// presentation.format. Dumped under one name, the version hid the property: the
+// sweep had to drop `format` altogether, and with it the real one.
+func describedName(field reflect.StructField) (string, bool) {
+	if field.PkgPath != "" {
+		return "", false
+	}
+	name := strings.Split(field.Tag.Get("yaml"), ",")[0]
+	if name == "-" || name == "format" && field.Type.Kind() == reflect.Int {
+		return "", false
+	}
+	return name, true
+}
+
 // metadataTopFieldNames is the names of the structure itself: its own fields
 // and those of the structures it folds in, without going into named structures
 // below them.
@@ -137,10 +159,10 @@ func metadataTopFieldNames(structType reflect.Type) []string {
 		}
 		for index := 0; index < current.NumField(); index++ {
 			field := current.Field(index)
-			if field.PkgPath != "" {
+			name, ok := describedName(field)
+			if !ok {
 				continue
 			}
-			name := strings.Split(field.Tag.Get("yaml"), ",")[0]
 			kind := field.Type
 			if kind.Kind() == reflect.Pointer {
 				kind = kind.Elem()
@@ -179,10 +201,10 @@ func metadataFieldNames(structType reflect.Type) []string {
 		}
 		for index := 0; index < current.NumField(); index++ {
 			field := current.Field(index)
-			if field.PkgPath != "" {
+			name, ok := describedName(field)
+			if !ok {
 				continue
 			}
-			name := strings.Split(field.Tag.Get("yaml"), ",")[0]
 			kind := field.Type
 			if kind.Kind() == reflect.Pointer {
 				kind = kind.Elem()

@@ -115,10 +115,16 @@ HELP_RENAMED_ANY = {"TabularSections": "table_parts"}
 # Свойства, которые у нас не поля описания, а файлы рядом с ним: модули и тела
 # объектов. Выгрузка состава их не видит, а в проекте они есть.
 HELP_AS_FILES = {"ManagerModule", "ObjectModule", "RecordSetModule", "ValueManagerModule",
-                 "CommandModule", "Module"}
+                 "CommandModule", "Module",
+                 # Справка объекта - папка help рядом с описанием (project.HelpDirectory).
+                 "Help"}
 HELP_AS_FILES_BY_KIND = {
     ("CommonPicture", "Picture"), ("Template", "Template"), ("XDTOPackage", "Package"),
     ("WSReference", "WSDefinition"), ("Style", "Style"),
+    # Сетка прав роли - отдельный файл JSON рядом с описанием (RoleRightsFile).
+    ("Role", "Rights"),
+    # Таблицы и кубы внешнего источника, таблицы измерений куба - своими папками.
+    ("ExternalDataSource", "Tables"), ("ExternalDataSource", "Cubes"), ("Cube", "DimensionTables"),
 }
 
 # Решено в docs/requirements: свойство есть у прототипа, у нас его нет нарочно.
@@ -281,7 +287,11 @@ RENAMED_BY_KIND = {
 
 
 # Наши поля, которых у прототипа нет: они не участвуют в сопоставлении.
-OURS_ONLY = {"format", "id"}
+# Версии формата файла описания здесь нет: выгрузка состава её не отдаёт
+# (`describedName`). Пока `format` стоял здесь, сверка выбрасывала вместе
+# с версией и настоящий «Формат» значения - presentation.format, - и «Формат»
+# прототипа находил себе пару только ложно, в нашем `edit_format`.
+OURS_ONLY = {"id"}
 
 # Осознанные расхождения: свойство у прототипа есть, у нас его нет нарочно, и
 # причина записана в docs/requirements. Правило закрытия блока требует записывать
@@ -386,10 +396,15 @@ def matches(prototype: str, ours: dict[str, frozenset[str]], kind: str = "", top
         return named in ours
     theirs = tokens(prototype)
     # Прототип называет каждый слот формы отдельным свойством - DefaultForm,
-    # DefaultListForm, DefaultFolderChoiceForm; у нас слоты лежат в одной
-    # структуре forms, и сверять их состав надо отдельно, а не по этим именам.
+    # DefaultListForm, AuxiliaryFolderChoiceForm; у нас слоты лежат в одной
+    # структуре forms под именем без «Default» и «Form»: list, folder_choice,
+    # auxiliary_list, а основная форма обработки, отчёта, журнала - main.
+    # Сверяется слот поимённо. Прежде любое такое свойство совпадало, раз у
+    # вида есть forms, - и снятый слот (вспомогательные формы, 2б) сверка не
+    # увидела бы (2.370).
     if "form" in theirs and "forms" in ours:
-        return True
+        slot = "_".join(word for word in ordered(prototype) if word not in ("default", "form"))
+        return (slot or "main") in ours
     renamed = frozenset(filter(None, (RENAMED.get(word, word) for word in theirs)))
     flat_theirs = flat(prototype)
     for our_name, our_tokens in ours.items():  # noqa: PLR1702
@@ -397,25 +412,26 @@ def matches(prototype: str, ours: dict[str, frozenset[str]], kind: str = "", top
             return True
         if flat_theirs == flat(our_name):
             return True
-        # Имя прототипа целиком внутри нашего или наоборот: у нас свойство
-        # часто сложено в структуру, и её имя несёт лишнее слово.
-        # Только одно направление: имя прототипа целиком внутри нашего. Наше
-        # имя внутри их имени - подстановка опасная, и она уже врала: наше
-        # `value` внутри filling схватило их `DataSeparationValue`, и принятое
-        # расхождение перестало считаться расхождением. Одно общее слово не
-        # делает два свойства одним свойством.
-        if theirs <= our_tokens or renamed <= our_tokens:
-            return True
+        # Имени прототипа целиком внутри нашего недостаточно, в обе стороны.
+        # Наше внутри их врало первым: `value` внутри filling схватило их
+        # `DataSeparationValue`. Их внутри нашего врало потом каждый раз, когда
+        # срабатывало (2.370): `FormType` общей формы - наш `report_form_type`,
+        # `Format` - наш `edit_format`, `Help` - `include_help_in_contents`,
+        # `Rights` роли - `independent_child_rights`. Лишнее слово у нас -
+        # уточнение, и с ним это другое свойство; снятое свойство так молча
+        # находило себе чужую пару, и сверка не видела снятия.
         # Наше имя в начале их имени - и только в начале. Прототип называет
         # свойства группы «группа плюс признак»: CodeLength, CodeType,
         # NumberPeriodicity, - поэтому наше `code` стоит за всеми тремя. А
         # `types` в конце `LinkByType` не группа, а признак, и подстановка по
         # вхождению куда угодно хватала связь по типу за наш набор типов.
         # Вдобавок имя должно быть верхнеуровневым: лист группой не бывает.
+        # Имя без слов началом не бывает: пустой префикс совпал бы с любым
+        # свойством (так поле `yaml:"-"` делало константу полной, 2.370).
         if our_name in top:
             theirs_words = [RENAMED.get(word, word) for word in ordered(prototype)]
             our_words = ordered(our_name)
-            if theirs_words[: len(our_words)] == our_words:
+            if our_words and theirs_words[: len(our_words)] == our_words:
                 return True
         if stems_match(theirs, our_tokens) or stems_match(renamed, our_tokens):
             return True
@@ -497,6 +513,19 @@ SELF_CHECK = [
     ("Method", "HTTPMethod", ["method"], ["method"], True),
     # И то, что осталось пробелом: у команды под именем владельца алиаса нет.
     ("Catalog", "CommandParameterType", ["parameter", "parameter_use"], ["parameter"], False),
+    # Врал (2.370): имя прототипа целиком внутри нашего. Наше лишнее слово -
+    # уточнение, и с ним свойство другое: вид формы снят, а сверка находила
+    # ему пару в виде формы отчёта и не видела снятия.
+    ("CommonForm", "FormType", ["report_form_type"], ["report_form_type"], False),
+    ("Constant", "Format", ["presentation", "edit_format"], ["presentation"], False),
+    ("Role", "Rights", ["independent_child_rights"], ["independent_child_rights"], False),
+    ("Constant", "Format", ["presentation", "format", "edit_format"], ["presentation"], True),
+    # Врал (2.370): слот формы совпадал, раз у вида есть forms, и снятый слот
+    # не был бы виден.
+    ("Catalog", "AuxiliaryListForm", ["forms", "list", "choice"], ["forms"], False),
+    ("Catalog", "AuxiliaryFolderChoiceForm", ["forms", "auxiliary_folder_choice"], ["forms"], True),
+    # Врал (2.370): имя без слов - поле `yaml:"-"` - было префиксом всего.
+    ("Constant", "ChoiceForm", ["-"], ["-"], False),
 ]
 
 
