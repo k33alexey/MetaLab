@@ -25,8 +25,10 @@ type FormEvent string
 
 // formElementEvents are the events each kind of element raises (help, the
 // events of FormField, FormTable, the decorations, pages and the extension
-// of each field), which are the events the exports write on them. A button,
-// a group other than pages, an addition and a command bar raise none.
+// of each field), which are the events the exports write on them; but not
+// the processing of a request to refresh a table, which the help raises on
+// the client of the mobile application alone. A button, a group other than
+// pages, an addition and a command bar raise none.
 var formElementEvents = map[FormElementKind][]FormEvent{
 	FormElementInputField: {
 		"auto-complete", "choice-processing", "clearing", "command-generate-processing", "creating", "edit-text-change",
@@ -106,7 +108,7 @@ var formElementEvents = map[FormElementKind][]FormEvent{
 		"before-load-user-settings-at-server", "before-row-change", "choice-processing", "drag", "drag-check", "drag-end",
 		"drag-start", "new-write-processing", "on-activate-cell", "on-activate-field", "on-activate-row", "on-change",
 		"on-current-parent-change", "on-edit-end", "on-get-data-at-server", "on-load-user-settings-at-server",
-		"on-save-user-settings-at-server", "on-start-edit", "on-update-user-setting-set-at-server", "refresh-request-processing",
+		"on-save-user-settings-at-server", "on-start-edit", "on-update-user-setting-set-at-server",
 		"selection", "url-get-processing", "url-list-get-processing", "value-choice",
 	},
 	FormElementPages: {
@@ -115,14 +117,18 @@ var formElementEvents = map[FormElementKind][]FormEvent{
 }
 
 // formEventsOfEveryForm are the events every managed form raises (help,
-// ClientApplicationForm).
+// ClientApplicationForm), but for those the help gives the mobile client
+// alone - the change of the availability of the main server and the reopening
+// from another server, before and on it: ML has no mobile client and no
+// autonomous server. A form naming one is refused as naming no event of a
+// form.
 var formEventsOfEveryForm = []FormEvent{
 	"activation-processing", "add-in-detachment-on-error", "before-close", "before-load-data-from-settings-at-server",
-	"before-reopen-from-other-server", "choice-processing", "collaboration-system-users-auto-complete",
+	"choice-processing", "collaboration-system-users-auto-complete",
 	"collaboration-system-users-choice-form-get-processing", "external-event", "fill-check-processing-at-server",
 	"navigation-processing", "new-write-processing", "notification-processing", "on-change-display-settings", "on-close",
-	"on-create-at-server", "on-load-data-from-settings-at-server", "on-main-server-availability-change", "on-open",
-	"on-paste-from-clipboard", "on-reopen", "on-reopen-from-other-server", "on-save-data-in-settings-at-server",
+	"on-create-at-server", "on-load-data-from-settings-at-server", "on-open",
+	"on-paste-from-clipboard", "on-reopen", "on-save-data-in-settings-at-server",
 	"url-get-processing", "url-list-get-processing", "url-processing",
 }
 
@@ -199,12 +205,12 @@ var formEventsByMainAttribute = map[TypeKind][]FormEvent{
 var formEvents = []FormEvent{
 	"activation-processing", "add-in-detachment-on-error", "after-write", "after-write-at-server", "before-close", "before-execute",
 	"before-load-data-from-settings-at-server", "before-load-user-settings-at-server", "before-load-variant-at-server",
-	"before-reopen-from-other-server", "before-start", "before-write", "before-write-at-server", "choice-processing",
+	"before-start", "before-write", "before-write-at-server", "choice-processing",
 	"collaboration-system-users-auto-complete", "collaboration-system-users-choice-form-get-processing", "external-event",
 	"fill-check-processing-at-server", "navigation-processing", "new-write-processing", "notification-processing",
 	"on-change-display-settings", "on-close", "on-create-at-server", "on-load-data-from-settings-at-server",
-	"on-load-user-settings-at-server", "on-load-variant-at-server", "on-main-server-availability-change", "on-open",
-	"on-paste-from-clipboard", "on-read-at-server", "on-reopen", "on-reopen-from-other-server",
+	"on-load-user-settings-at-server", "on-load-variant-at-server", "on-open",
+	"on-paste-from-clipboard", "on-read-at-server", "on-reopen",
 	"on-save-data-in-settings-at-server", "on-save-user-settings-at-server", "on-save-variant-at-server",
 	"on-update-user-setting-set-at-server", "on-write-at-server", "url-get-processing", "url-list-get-processing", "url-processing",
 	"value-choice",
