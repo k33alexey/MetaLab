@@ -80,17 +80,6 @@ type ManagedFormCommand struct {
 	Use               *FormAttributeRight `yaml:"use,omitempty" json:"use,omitempty"`
 }
 
-// FormType is how a form is built and shown. The platform builds managed
-// forms; an ordinary form is what the prototype's older configurations carry,
-// and it is kept so that importing one does not silently turn it into
-// something else.
-type FormType string
-
-const (
-	ManagedFormType  FormType = "managed"
-	OrdinaryFormType FormType = "ordinary"
-)
-
 // FormPurpose is one kind of application a form is meant for. A form may be
 // meant for several, and the set is a property of the form: the reference
 // configuration keeps forms offered on the desktop but not on a phone. It is
@@ -120,8 +109,10 @@ type ManagedForm struct {
 	Comment              string        `yaml:"comment,omitempty" json:"comment,omitempty"`
 	Explanation          LocalizedText `yaml:"explanation,omitempty" json:"explanation,omitempty"`
 	ExtendedPresentation LocalizedText `yaml:"extended_presentation,omitempty" json:"extendedPresentation,omitempty"`
-	// Type is managed unless the form says otherwise.
-	Type FormType `yaml:"type,omitempty" json:"type,omitempty"`
+	// A form has no type: every form is managed. ML builds no ordinary form,
+	// and the prototype's ordinary forms are not carried at all (owner,
+	// 14.10.2026, METADATA-OBJECTS), so the one value left would say nothing.
+	//
 	// Purposes says which kinds of application the form is meant for. Empty
 	// means the form makes no claim and is offered everywhere.
 	Purposes []FormPurpose `yaml:"purposes,omitempty" json:"purposes,omitempty"`
@@ -301,11 +292,6 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	default:
 		issues = append(issues, "kind must be object, list, choice or common")
 	}
-	switch value.Type {
-	case "", ManagedFormType, OrdinaryFormType:
-	default:
-		issues = append(issues, "type must be managed or ordinary")
-	}
 	issues = append(issues, validateFormWindow(value.FormWindow)...)
 	issues = append(issues, validateFormEvents("form", value.Events, formEvents, "a form")...)
 	issues = append(issues, validateFormLayout(value.FormLayout)...)
@@ -324,8 +310,8 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		}
 		seenPurposes[purpose] = true
 	}
-	// Both are optional: a form that says nothing extra about itself is an
-	// ordinary form, and an empty text passes the check as it is.
+	// Both are optional: a form that says nothing extra about itself is a
+	// plain form, and an empty text passes the check as it is.
 	for name, text := range map[string]LocalizedText{
 		"explanation": value.Explanation, "extended_presentation": value.ExtendedPresentation,
 	} {

@@ -166,9 +166,6 @@ type objectFormIndex struct {
 type objectFormRef struct {
 	name string
 	id   uuid.UUID
-	// ordinary is a form of the ordinary application: carried with its body
-	// and its module, never built and its module never compiled.
-	ordinary bool
 	// path is the form's description on disk, read whole once everything it
 	// may reference is loaded (checkFormAttributes).
 	path string

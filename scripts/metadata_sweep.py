@@ -208,7 +208,6 @@ RENAMED_BY_KIND = {
     # проекта (internal/project). Оба вида сверяются с 02.10.2026: до того
     # дамп состава их не содержал, и сверка молча пропускала оба.
     ("Language", "LanguageCode"): "code",
-    ("CommonForm", "FormType"): "type",
     ("CommonForm", "UsePurposes"): "purposes",
     ("Configuration", "CompatibilityMode"): "compatibility_version",
     ("Configuration", "ConfigurationExtensionCompatibilityMode"): "extension_compatibility_version",
@@ -313,6 +312,7 @@ ACCEPTED = {
     ("Configuration", "AllowedIncomingShareRequestTypes"): "METADATA-OBJECTS.md: мобильное приложение не переносится - отказ владельца 14.10.2026",
     ("Configuration", "MobileClientSignature"): "METADATA-OBJECTS.md: мобильное приложение не переносится - отказ владельца 14.10.2026",
     ("Configuration", "StandaloneConfigurationRestrictionRoles"): "METADATA-OBJECTS.md: мобильное приложение не переносится - отказ владельца 14.10.2026",
+    ("CommonForm", "FormType"): "METADATA-OBJECTS.md: принимаются только управляемые формы - вид формы снят с обычной формой, отказ владельца 14.10.2026",
     #
     # Второй род - список, который у нас не список, а сама раскладка проекта.
     # Состав конфигурации - дерево на диске (METADATA-OBJECTS.md, «Состав

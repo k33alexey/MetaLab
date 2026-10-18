@@ -108,12 +108,6 @@ const (
 	// FormModuleFile is the module of one form, beside the form's own
 	// description in that same folder.
 	FormModuleFile = string(kinds.FormModule) + ".bsl"
-	// FormBodyFile is the body of an ordinary form, beside its description,
-	// carried as the prototype wrote it (Form.bin, with the module inside: 157,
-	// 160, 0, 0 and 1547 ordinary forms in the exports). ML builds no ordinary
-	// form, so the body is not read; its module is taken out of it into
-	// FormModuleFile, where it is carried and not compiled.
-	FormBodyFile = "form.bin"
 	// ValueModuleFile is the module of a constant's value: the one the
 	// platform calls when the value is checked and written.
 	ValueModuleFile = string(kinds.ValueModule) + ".bsl"
@@ -209,7 +203,7 @@ func init() {
 			}
 			namedFolderKinds[kind] = files
 		case kinds.InFormFolder:
-			namedFolderKinds[kind] = []string{FormMetadataFile, FormModuleFile, FormBodyFile}
+			namedFolderKinds[kind] = []string{FormMetadataFile, FormModuleFile}
 		}
 	}
 }
@@ -786,14 +780,7 @@ func ReadModulePath(relative string) (ModuleAddress, bool) {
 // it, and an object has several commands whose modules would otherwise all
 // want the same name.
 func ObjectCommandDirectory(kind, name, command string) (string, error) {
-	directory, err := ObjectDirectory(kind, name)
-	if err != nil {
-		return "", err
-	}
-	if err := SubordinateName(command); err != nil {
-		return "", fmt.Errorf("command %w", err)
-	}
-	return path.Join(directory, "commands", command), nil
+	return subordinateDirectory(kind, name, "commands", "command", command)
 }
 
 // ObjectCommandModulePath returns the module that runs one command.
@@ -811,14 +798,7 @@ func ObjectCommandModulePath(kind, name, command string) (string, error) {
 // A form keeps a folder rather than a bare file because it owns more than its
 // description: the module that runs it lies beside it under a name of its own.
 func ObjectFormDirectory(kind, name, form string) (string, error) {
-	directory, err := ObjectDirectory(kind, name)
-	if err != nil {
-		return "", err
-	}
-	if err := SubordinateName(form); err != nil {
-		return "", fmt.Errorf("form %w", err)
-	}
-	return path.Join(directory, "forms", form), nil
+	return subordinateDirectory(kind, name, "forms", "form", form)
 }
 
 // ObjectFormPath returns the description of one of an object's own managed
@@ -906,25 +886,39 @@ func FormFolder(relative string) (string, bool) {
 // down under an object's templates/. The file is still named after the kind of
 // template, exactly as an object's template names it.
 func CommonTemplateContentPath(template, file string) (string, error) {
-	directory, err := ObjectDirectory("common-templates", template)
-	if err != nil {
-		return "", err
-	}
-	if err := plainFileName("template content", file); err != nil {
-		return "", err
-	}
-	return path.Join(directory, file), nil
+	return ownFile("common-templates", template, "template content", file)
 }
 
 // CommonPictureImagePath returns one image of a common picture. Which density
 // the image stands for is what it is called, so the caller passes the name and
 // the metadata layer, which knows the ladder, decides whether it is one.
 func CommonPictureImagePath(picture, file string) (string, error) {
-	directory, err := ObjectDirectory("common-pictures", picture)
+	return ownFile("common-pictures", picture, "picture image", file)
+}
+
+// subordinateDirectory returns the folder of one thing an object owns - a
+// command, a form, a template: under the object's folder, in the folder of
+// its collection, named after it.
+func subordinateDirectory(kind, name, collection, what, subordinate string) (string, error) {
+	directory, err := ObjectDirectory(kind, name)
 	if err != nil {
 		return "", err
 	}
-	if err := plainFileName("picture image", file); err != nil {
+	if err := SubordinateName(subordinate); err != nil {
+		return "", fmt.Errorf("%s %w", what, err)
+	}
+	return path.Join(directory, collection, subordinate), nil
+}
+
+// ownFile returns one file lying beside the description of an object that
+// nothing owns: the content of a common template, an image of a common
+// picture.
+func ownFile(kind, name, what, file string) (string, error) {
+	directory, err := ObjectDirectory(kind, name)
+	if err != nil {
+		return "", err
+	}
+	if err := plainFileName(what, file); err != nil {
 		return "", err
 	}
 	return path.Join(directory, file), nil
@@ -1104,14 +1098,7 @@ func TemplateResource(file string) bool {
 // not always one file: an HTML template holds one per language, and a template
 // may legitimately hold none at all while its editor has not been written yet.
 func ObjectTemplateDirectory(kind, name, template string) (string, error) {
-	directory, err := ObjectDirectory(kind, name)
-	if err != nil {
-		return "", err
-	}
-	if err := SubordinateName(template); err != nil {
-		return "", fmt.Errorf("template %w", err)
-	}
-	return path.Join(directory, "templates", template), nil
+	return subordinateDirectory(kind, name, "templates", "template", template)
 }
 
 // ObjectTemplateContentPath returns one file of a template's content. The file

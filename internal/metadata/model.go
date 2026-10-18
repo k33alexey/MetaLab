@@ -677,11 +677,8 @@ type Catalog struct {
 	formTypeLists   []formTypeList
 	// formNotes are the notes about the elements of the forms - see
 	// formNote.
-	formNotes  []formNote
-	formTitles []formTitle
-	// ordinaryCommonForms is the common forms of the ordinary application, by
-	// name as written: their modules are carried and not compiled.
-	ordinaryCommonForms             map[string]bool
+	formNotes                       []formNote
+	formTitles                      []formTitle
 	Constants                       []Constant
 	SessionParameters               []SessionParameter
 	sessionParameterByName          map[string]int

@@ -201,3 +201,38 @@ func testConfiguration() Project {
 		DefaultLanguage: "ru", Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: LocalizedText{"ru": "Русский"}, Code: "ru"}},
 	}
 }
+
+// What an object owns lies under the object's folder and nowhere else: the
+// folder of a command, a form and a template is named by an identifier, a
+// file of a common template or picture by a plain name. Defect caught: a name
+// such as ".." or "a/b" passed, and the path left the object's folder.
+func TestOwnedPathsStayInTheObjectFolder(t *testing.T) {
+	t.Parallel()
+	owned := map[string]func(string) (string, error){
+		"команда": func(name string) (string, error) { return ObjectCommandDirectory("catalogs", "Товары", name) },
+		"форма":   func(name string) (string, error) { return ObjectFormDirectory("catalogs", "Товары", name) },
+		"макет":   func(name string) (string, error) { return ObjectTemplateDirectory("catalogs", "Товары", name) },
+		"содержимое общего макета": func(name string) (string, error) {
+			return CommonTemplateContentPath("Печать", name)
+		},
+		"образ общей картинки": func(name string) (string, error) { return CommonPictureImagePath("Логотип", name) },
+	}
+	for what, build := range owned {
+		for _, name := range []string{"", "..", "a/b", `a\b`} {
+			if result, err := build(name); err == nil {
+				t.Errorf("%s %q: took the path %s", what, name, result)
+			}
+		}
+	}
+	for what, want := range map[string]string{
+		"команда": "metadata/catalogs/Товары/commands/Подбор",
+		"форма":   "metadata/catalogs/Товары/forms/Подбор",
+		"макет":   "metadata/catalogs/Товары/templates/Подбор",
+		"содержимое общего макета": "metadata/common-templates/Печать/Подбор",
+		"образ общей картинки":     "metadata/common-pictures/Логотип/Подбор",
+	} {
+		if result, err := owned[what]("Подбор"); err != nil || result != want {
+			t.Errorf("%s: %s, %v, want %s", what, result, err, want)
+		}
+	}
+}

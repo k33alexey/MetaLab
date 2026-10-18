@@ -38,7 +38,6 @@ kind: common
 comment: Открывается из любого места конфигурации
 explanation: {ru: Кому и куда писать}
 extended_presentation: {ru: Адресная книга организации}
-type: managed
 purposes: [platform-application, mobile-platform-application]
 use_standard_commands: true
 include_help_in_contents: true
@@ -59,8 +58,6 @@ include_help_in_contents: true
 		t.Fatalf("the comment was lost: %+v", form)
 	case len(form.Explanation) == 0 || len(form.ExtendedPresentation) == 0:
 		t.Fatalf("the presentations were lost: %+v", form)
-	case form.Type != ManagedFormType:
-		t.Fatalf("how the form is built was lost: %+v", form)
 	case len(form.Purposes) != 2:
 		t.Fatalf("what the form is meant for was lost: %+v", form.Purposes)
 	case !form.UseStandardCommands || !form.IncludeHelpInContents:
@@ -106,7 +103,7 @@ kind: common
 			if err := os.WriteFile(stray, []byte("x"), 0o644); err != nil {
 				t.Fatal(err)
 			}
-		}, "a form keeps only its description, its module, its help, the pictures of its elements and the body of an ordinary form"},
+		}, "a form keeps only its description, its module, its help and the pictures of its elements"},
 		"папка без описания": {func(t *testing.T, root string) {
 			if err := os.MkdirAll(filepath.Join(root, "metadata", "common-forms", "АдреснаяКнига"), 0o755); err != nil {
 				t.Fatal(err)
@@ -158,7 +155,6 @@ kind: common
 func TestBrokenCommonFormPropertiesAreRefused(t *testing.T) {
 	t.Parallel()
 	for name, broken := range map[string]struct{ body, want string }{
-		"вида формы не существует": {"type: рукописная", "type must be managed or ordinary"},
 		"назначения не существует": {"purposes: [watch]", "purposes[0] is not a kind of application"},
 		"назначение повторено": {"purposes: [platform-application, platform-application]",
 			"purposes[1] is already among the purposes"},

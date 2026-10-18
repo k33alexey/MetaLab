@@ -178,7 +178,6 @@ func readCommonForm(directory, name string, configuration project.Project) (Mana
 	if err != nil {
 		return ManagedForm{}, err
 	}
-	var body fs.DirEntry
 	for _, entry := range entries {
 		if entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 && entry.Name() == project.HelpDirectory {
 			if err := validateHelpFolder("common form "+name, filepath.Join(directory, name, entry.Name())); err != nil {
@@ -190,15 +189,9 @@ func readCommonForm(directory, name string, configuration project.Project) (Mana
 		if entry.Name() == project.FormItemsDirectory {
 			continue
 		}
-		// Whether a body may lie here is known once the form says what kind
-		// of form it is.
-		if entry.Name() == project.FormBodyFile {
-			body = entry
-			continue
-		}
 		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 ||
 			(entry.Name() != project.FormMetadataFile && entry.Name() != project.FormModuleFile) {
-			return ManagedForm{}, fmt.Errorf("keeps %q, and a form keeps only its description, its module, its help, the pictures of its elements and the body of an ordinary form", entry.Name())
+			return ManagedForm{}, fmt.Errorf("keeps %q, and a form keeps only its description, its module, its help and the pictures of its elements", entry.Name())
 		}
 	}
 	path := filepath.Join(directory, name, project.FormMetadataFile)
@@ -213,11 +206,6 @@ func readCommonForm(directory, name string, configuration project.Project) (Mana
 	}
 	if err := agreesWithFolder("form", form.Name, name); err != nil {
 		return ManagedForm{}, err
-	}
-	if body != nil {
-		if err := checkFormBody(body, form.Type); err != nil {
-			return ManagedForm{}, err
-		}
 	}
 	if err := validateFormItemPictureFiles(filepath.Join(directory, name), form); err != nil {
 		return ManagedForm{}, err

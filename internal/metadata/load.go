@@ -2250,7 +2250,7 @@ func findFolded(directory, name string) string {
 // The folder is the list of forms; the slots only say which of them the
 // platform opens by default. There are normally more forms than slots - the
 // prototype's catalog of users keeps seven forms behind three slots - so a
-// form no slot names is an ordinary form, not an orphan, and is kept.
+// form no slot names is a form like any other, not an orphan, and is kept.
 //
 // What is recorded is the form's own identifier, because that is what a role,
 // the portal and ML App refer to a form by. The name finds the file; the
@@ -2269,14 +2269,14 @@ func (catalog *Catalog) indexObjectForms(directory string, directoryKind Kind, k
 		if project.SubordinateName(entry.Name()) != nil {
 			return fmt.Errorf("%s %s keeps a form folder %q, which is not a name", kind, name, entry.Name())
 		}
-		id, formType, err := readObjectFormIdentity(directory, entry.Name())
+		id, err := readObjectFormIdentity(directory, entry.Name())
 		if err != nil {
 			return fmt.Errorf("%s %s form %s: %w", kind, name, entry.Name(), err)
 		}
-		if err := validateObjectFormFolder(directory, entry.Name(), formType); err != nil {
+		if err := validateObjectFormFolder(directory, entry.Name()); err != nil {
 			return fmt.Errorf("%s %s form %s: %w", kind, name, entry.Name(), err)
 		}
-		found[strings.ToLower(entry.Name())] = objectFormRef{name: entry.Name(), id: id, ordinary: formType == OrdinaryFormType,
+		found[strings.ToLower(entry.Name())] = objectFormRef{name: entry.Name(), id: id,
 			path: filepath.Join(directory, "forms", entry.Name(), project.FormMetadataFile)}
 	}
 	for _, slot := range slots {
@@ -2313,13 +2313,9 @@ func (catalog *Catalog) indexCommonForms(root string) error {
 		return err
 	}
 	catalog.commonFormNames = make(map[string]bool, len(forms))
-	catalog.ordinaryCommonForms = map[string]bool{}
 	catalog.commonFormsRead = forms
 	for _, form := range forms {
 		catalog.commonFormNames[strings.ToLower(form.Name)] = true
-		if form.Type == OrdinaryFormType {
-			catalog.ordinaryCommonForms[form.Name] = true
-		}
 		catalog.objects[form.ID] = indexedObject{kind: CommonFormKind, name: form.Name}
 	}
 	return nil
@@ -2350,21 +2346,15 @@ func (catalog *Catalog) validateCommonFormSlots(kind, name string, slots []formS
 }
 
 // validateObjectFormFolder checks that a form's folder holds the form, its
-// module, its help, the pictures of its elements and the body of an ordinary
-// form, and nothing else. The module is not declared anywhere - the file
+// module, its help and the pictures of its elements, and nothing else. The module is not declared anywhere - the file
 // lying there under the name of its role is the whole declaration - so the
 // only thing that can be wrong is a file nobody can name.
-func validateObjectFormFolder(directory, form string, formType FormType) error {
+func validateObjectFormFolder(directory, form string) error {
 	entries, err := os.ReadDir(filepath.Join(directory, "forms", form))
 	if err != nil {
 		return err
 	}
 	for _, entry := range entries {
-		if err := checkFormBody(entry, formType); err != nil {
-			return err
-		} else if entry.Name() == project.FormBodyFile {
-			continue
-		}
 		if entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 && entry.Name() == project.HelpDirectory {
 			if err := validateHelpFolder("form "+form, filepath.Join(directory, "forms", form, entry.Name())); err != nil {
 				return err
@@ -2378,70 +2368,51 @@ func validateObjectFormFolder(directory, form string, formType FormType) error {
 		}
 		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 ||
 			entry.Name() != project.FormMetadataFile && entry.Name() != project.FormModuleFile {
-			return fmt.Errorf("keeps %q, and a form keeps only its description, its module, its help, the pictures of its elements and the body of an ordinary form", entry.Name())
+			return fmt.Errorf("keeps %q, and a form keeps only its description, its module, its help and the pictures of its elements", entry.Name())
 		}
 	}
 	return nil
 }
 
 // readObjectFormIdentity reads the identifier one form keeps in its own
-// description and the kind of form it is, and checks the description agrees
-// about the form's name.
+// description, and checks the description agrees about the form's name.
 //
 // Only these fields are read here, while the objects are still being read.
 // The whole form is read once everything it may refer to is loaded
 // (checkFormAttributes), and a form that does not read refuses the project
 // there: the load is strict. Showing such a form as an error without closing
 // the project is the Studio's reading for editing, not this one.
-func readObjectFormIdentity(directory, form string) (uuid.UUID, FormType, error) {
+func readObjectFormIdentity(directory, form string) (uuid.UUID, error) {
 	path := filepath.Join(directory, "forms", form, project.FormMetadataFile)
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() {
-		return uuid.UUID{}, "", fmt.Errorf("has no %s", project.FormMetadataFile)
+		return uuid.UUID{}, fmt.Errorf("has no %s", project.FormMetadataFile)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return uuid.UUID{}, "", err
+		return uuid.UUID{}, err
 	}
 	var identity struct {
 		ID     uuid.UUID  `yaml:"id"`
 		Name   string     `yaml:"name"`
 		Module *uuid.UUID `yaml:"module"`
-		Type   FormType   `yaml:"type"`
 	}
 	if err := yaml.Unmarshal(content, &identity); err != nil {
-		return uuid.UUID{}, "", err
+		return uuid.UUID{}, err
 	}
 	if identity.ID.IsZero() {
-		return uuid.UUID{}, "", fmt.Errorf("has no identifier of its own")
+		return uuid.UUID{}, fmt.Errorf("has no identifier of its own")
 	}
 	// A form of an object does not name its module: the module is the file
 	// beside it. Naming one would be a second place to keep in step, and the
 	// two would disagree the first time either moved.
 	if identity.Module != nil {
-		return uuid.UUID{}, "", fmt.Errorf("names a module, and its module is %s beside it", project.FormModuleFile)
+		return uuid.UUID{}, fmt.Errorf("names a module, and its module is %s beside it", project.FormModuleFile)
 	}
 	if err := agreesWithFolder("form", identity.Name, form); err != nil {
-		return uuid.UUID{}, "", err
+		return uuid.UUID{}, err
 	}
-	return identity.ID, identity.Type, nil
-}
-
-// checkFormBody admits the body of a form only where a body is what the form
-// is made of: an ordinary form, which the prototype writes as one opaque file.
-// A managed form is its description, and a body beside it would be a second
-// form nobody reads.
-func checkFormBody(entry fs.DirEntry, formType FormType) error {
-	if entry.Name() != project.FormBodyFile {
-		return nil
-	}
-	if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
-		return fmt.Errorf("keeps %q, which must be a file", entry.Name())
-	}
-	if formType != OrdinaryFormType {
-		return fmt.Errorf("keeps %q, and only an ordinary form has a body beside its description", entry.Name())
-	}
-	return nil
+	return identity.ID, nil
 }
 
 // validateObjectFolderEntries checks that the object's own folder holds only
