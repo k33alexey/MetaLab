@@ -28,9 +28,7 @@ type PermissionSchema struct {
 	Forms      []PermissionForm      `json:"forms"`
 	// Subsystems are the objects every subsystem holds, as it lists them, by
 	// the subsystem: the filter by subsystems of the windows of rights
-	// selects by them (help, «Отбор по подсистемам»). A subsystem holding
-	// nothing is here too, with an empty list, as its subsystems beneath may
-	// hold something; a member naming a deleted object is carried.
+	// selects by them (help, «Отбор по подсистемам»; subsystemMembers).
 	Subsystems map[uuid.UUID][]uuid.UUID `json:"subsystems"`
 	// RestrictionRules are how each right a restriction may be on is
 	// restricted: the editor offers by them what saving keeps.
@@ -203,10 +201,7 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 			appendObject(descriptor.Kind, item.ID, item.Name, item.Title)
 		}
 	}
-	result.Subsystems = map[uuid.UUID][]uuid.UUID{}
-	for _, subsystem := range catalog.Subsystems {
-		result.Subsystems[subsystem.ID] = append([]uuid.UUID{}, subsystem.Members...)
-	}
+	result.Subsystems = catalog.subsystemMembers()
 	for _, item := range partGroups {
 		result.PartGroups = append(result.PartGroups, PermissionPartGroup{Key: item.group, Title: item.title})
 	}

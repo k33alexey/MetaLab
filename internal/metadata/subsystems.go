@@ -176,3 +176,53 @@ func (catalog *Catalog) knownMetadataObject(id uuid.UUID) bool {
 	_, ok := catalog.objects[id]
 	return ok
 }
+
+// SubsystemFilter is what the filter by subsystems selects by (help, «Отбор
+// по подсистемам»), for the tree of the configuration: every subsystem with
+// the one it is nested in, which the window of the filter shows as a tree,
+// every object lying inside another with its owner, as such an object passes
+// with the one it lies in, and what each subsystem holds. The windows of
+// rights read the same out of PermissionSchema.
+type SubsystemFilter struct {
+	Objects    []SubsystemFilterObject   `json:"objects"`
+	Subsystems map[uuid.UUID][]uuid.UUID `json:"subsystems"`
+}
+
+// SubsystemFilterObject is a subsystem, or an object inside another, as the
+// filter by subsystems knows it.
+type SubsystemFilterObject struct {
+	ID    uuid.UUID     `json:"id"`
+	Owner *uuid.UUID    `json:"owner,omitempty"`
+	Name  string        `json:"name"`
+	Title LocalizedText `json:"title"`
+}
+
+// SubsystemFilter answers the filter by subsystems of the catalog: the
+// subsystems by name, then the objects inside others by identifier.
+func (catalog *Catalog) SubsystemFilter() SubsystemFilter {
+	result := SubsystemFilter{Objects: []SubsystemFilterObject{}, Subsystems: catalog.subsystemMembers()}
+	for _, item := range catalog.objectsToShow(SubsystemKind, nil) {
+		result.Objects = append(result.Objects, SubsystemFilterObject{ID: item.ID, Owner: catalog.objects[item.ID].owner, Name: item.Name, Title: cloneTitle(item.Title)})
+	}
+	var inside []SubsystemFilterObject
+	for id, object := range catalog.objects {
+		if object.owner != nil && object.kind != SubsystemKind {
+			inside = append(inside, SubsystemFilterObject{ID: id, Owner: object.owner, Name: object.name, Title: cloneTitle(object.title)})
+		}
+	}
+	slices.SortFunc(inside, func(a, b SubsystemFilterObject) int { return strings.Compare(a.ID.String(), b.ID.String()) })
+	result.Objects = append(result.Objects, inside...)
+	return result
+}
+
+// subsystemMembers are the objects every subsystem holds, as it lists them,
+// by the subsystem. A subsystem holding nothing is there too, with an empty
+// list, as its subsystems beneath may hold something; a member naming a
+// deleted object is carried.
+func (catalog *Catalog) subsystemMembers() map[uuid.UUID][]uuid.UUID {
+	result := map[uuid.UUID][]uuid.UUID{}
+	for _, subsystem := range catalog.Subsystems {
+		result[subsystem.ID] = append([]uuid.UUID{}, subsystem.Members...)
+	}
+	return result
+}

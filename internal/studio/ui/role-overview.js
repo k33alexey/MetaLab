@@ -658,7 +658,7 @@ function createRoleOverview(host, openRole, onChange) {
     }
     // Отбор выбирается в своём окне, уже после щелчка, который окно с
     // деревом слышало: перемену ему сообщает событие change списка.
-    const button = subsystemFilterButton({schema: source.schema, title, holder, applied: () => {
+    const button = subsystemFilterButton({schema: () => source.schema, title, holder, applied: () => {
       refiltered(); fillObjects(); after(); objectList.dispatchEvent(new Event('change', {bubbles: true}));
     }});
     fillObjects();

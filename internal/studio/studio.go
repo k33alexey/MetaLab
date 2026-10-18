@@ -57,6 +57,10 @@ type Snapshot struct {
 	ProjectPath   string          `json:"projectPath"`
 	Configuration project.Project `json:"configuration"`
 	Tree          Node            `json:"tree"`
+	// Subsystems are what the tree's filter by subsystems selects by; absent
+	// while the project's descriptions do not read as a whole, and the
+	// filter is not offered then.
+	Subsystems *metadata.SubsystemFilter `json:"subsystems,omitempty"`
 }
 
 // Node represents a stable item in the metadata tree.
@@ -155,12 +159,23 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 	}
 	root.Children = append(root.Children, workspace.rootModuleNodesLocked()...)
 	root.Children = append(root.Children, workspace.rootPictureNodesLocked()...)
-	branches, err := workspace.metadataTree(configuration.DefaultLanguage, configuration.Languages)
+	// A tree listing must stay usable even while some object's metadata
+	// doesn't yet fully validate (e.g. mid-edit, or an older/minimal
+	// fixture) — so a load failure here just means the per-kind data
+	// groups (Реквизиты, Измерения, ...) come back empty and the filter by
+	// subsystems is not offered, not a broken tree.
+	loaded, _ := metadata.Load(workspace.root)
+	branches, err := workspace.metadataTree(loaded, configuration.DefaultLanguage, configuration.Languages)
 	if err != nil {
 		return Snapshot{}, err
 	}
 	root.Children = append(root.Children, branches...)
-	return Snapshot{ProjectPath: workspace.root, Configuration: configuration, Tree: root}, nil
+	snapshot := Snapshot{ProjectPath: workspace.root, Configuration: configuration, Tree: root}
+	if loaded != nil {
+		filter := loaded.SubsystemFilter()
+		snapshot.Subsystems = &filter
+	}
+	return snapshot, nil
 }
 
 // SaveDataProvider runs "Сохранить данные" against this Studio's database.
@@ -828,7 +843,7 @@ func writeBSLNavigationError(response http.ResponseWriter, err error) {
 // "Общие" group and the object kinds standing beside it. Sources never form
 // branches of their own - a module or a form is always reached through the
 // object that owns it, the way the specification fixes the tree.
-func (workspace *Workspace) metadataTree(language string, languages []project.Language) ([]Node, error) {
+func (workspace *Workspace) metadataTree(loaded *metadata.Catalog, language string, languages []project.Language) ([]Node, error) {
 	entries, err := os.ReadDir(filepath.Join(workspace.root, "metadata"))
 	if err != nil {
 		return nil, fmt.Errorf("read metadata directory: %w", err)
@@ -851,11 +866,6 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 	if len(unexpected) != 0 {
 		return nil, fmt.Errorf("unexpected metadata paths: %s", strings.Join(unexpected, ", "))
 	}
-	// A tree listing must stay usable even while some object's metadata
-	// doesn't yet fully validate (e.g. mid-edit, or an older/minimal
-	// fixture) — so a load failure here just means the per-kind data
-	// groups below (Реквизиты, Измерения, ...) come back empty, not a
-	// broken tree.
 	// Modules form no branch of their own - each one is reached through the
 	// object that owns it - but the directory is still checked here, so a
 	// stray file is reported when the tree is read and not only when data is
@@ -863,7 +873,6 @@ func (workspace *Workspace) metadataTree(language string, languages []project.La
 	if _, err := workspace.sourceFiles(filepath.Join(workspace.root, "modules"), "modules", ".bsl", "modules", language, languages); err != nil {
 		return nil, err
 	}
-	loaded, _ := metadata.Load(workspace.root)
 	built := make(map[string]Node, len(project.MetadataKinds()))
 	for _, kind := range project.MetadataKinds() {
 		relative := filepath.Join("metadata", kind)

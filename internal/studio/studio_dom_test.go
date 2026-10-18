@@ -255,40 +255,8 @@ const studioGutterFits = `(async () => {
 // "[object Object]"). Without Chrome the test is skipped, as the tests run
 // on Node are without Node.
 func TestStudioEditorsWorkInBrowser(t *testing.T) {
-	chrome := findChrome()
-	if chrome == "" {
-		t.Skip("Chrome or Chromium is required for this test (set ML_TEST_CHROME to its path)")
-	}
-	if runtime.GOOS == "windows" {
-		t.Skip("the browser is driven through descriptors 3 and 4, which Windows does not pass")
-	}
 	root := copyDemoProjectForStudioTest(t)
-	workspace, err := Open(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	addRestrictedRole(t, workspace, root)
-	server := httptest.NewServer(NewHandler(workspace))
-	defer server.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	defer cancel()
-	browser := startChrome(t, chrome)
-	page, err := browser.openPage(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := browser.call(ctx, page, "Page.addScriptToEvaluateOnNewDocument", map[string]any{"source": studioPageProbe}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := browser.call(ctx, page, "Page.navigate", map[string]any{"url": server.URL + "/"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := browser.evaluate(ctx, page, `(async () => {
-		while (!document.querySelector('#tree summary, #tree .leaf') || window.__studio.pending) await new Promise(resolve => setTimeout(resolve, 20));
-	})()`); err != nil {
-		t.Fatal(err)
-	}
+	ctx, browser, page := openStudioInBrowser(t, root, func(workspace *Workspace) { addRestrictedRole(t, workspace, root) })
 	result, err := browser.evaluate(ctx, page, studioPageWalk)
 	if err != nil {
 		t.Fatal(err)
@@ -361,6 +329,46 @@ func TestStudioEditorsWorkInBrowser(t *testing.T) {
 			t.Errorf("in language %s the header reads %q and the tab %q, want the synonym %q", code, title.Header, title.Tab, synonym)
 		}
 	}
+}
+
+// openStudioInBrowser serves Studio on the project at root, prepared by
+// prepare, and opens it in the browser with studioPageProbe, waiting for the
+// tree to be drawn. Without Chrome, or on Windows, the test is skipped.
+func openStudioInBrowser(t *testing.T, root string, prepare func(*Workspace)) (context.Context, *devtools, string) {
+	t.Helper()
+	chrome := findChrome()
+	if chrome == "" {
+		t.Skip("Chrome or Chromium is required for this test (set ML_TEST_CHROME to its path)")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("the browser is driven through descriptors 3 and 4, which Windows does not pass")
+	}
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepare(workspace)
+	server := httptest.NewServer(NewHandler(workspace))
+	t.Cleanup(server.Close)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	t.Cleanup(cancel)
+	browser := startChrome(t, chrome)
+	page, err := browser.openPage(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := browser.call(ctx, page, "Page.addScriptToEvaluateOnNewDocument", map[string]any{"source": studioPageProbe}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := browser.call(ctx, page, "Page.navigate", map[string]any{"url": server.URL + "/"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := browser.evaluate(ctx, page, `(async () => {
+		while (!document.querySelector('#tree summary, #tree .leaf') || window.__studio.pending) await new Promise(resolve => setTimeout(resolve, 20));
+	})()`); err != nil {
+		t.Fatal(err)
+	}
+	return ctx, browser, page
 }
 
 // addRestrictedRole gives the project a role with a right on the catalog

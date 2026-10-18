@@ -483,17 +483,21 @@ async function chooseSubsystemFilter({schema, title, current, apply}) {
 
 /* The button of the filter by subsystems: it opens the window and stays
    pressed while holder.subsystems, the filter, is in force; applied() is
-   called after the filter changed. */
-function subsystemFilterButton({schema, title, holder, applied}) {
-  const button = node('button', 'По подсистемам', 'role-subsystems');
-  button.type = 'button';
+   called after the filter changed. schema() answers what the window and
+   the filter read, as of the click. button is the one to make so, the tree
+   of the configuration giving its own; a button of the words is made
+   without it. */
+function subsystemFilterButton({schema, title, holder, applied, button = node('button', 'По подсистемам', 'role-subsystems')}) {
+  button.type = 'button'; button.classList.add('role-subsystems');
   const sync = () => { button.classList.toggle('selected', !!holder.subsystems); button.setAttribute('aria-pressed', String(!!holder.subsystems)); };
   button.addEventListener('click', async () => {
-    const next = await chooseSubsystemFilter({schema, title, current: holder.subsystems});
+    const next = await chooseSubsystemFilter({schema: schema(), title, current: holder.subsystems});
     if (next === undefined) return;
     holder.subsystems = next; sync(); applied();
   });
   sync();
+  // Whoever drops the filter by itself shows it so.
+  button.syncPressed = sync;
   return button;
 }
 
@@ -864,7 +868,7 @@ function createRoleEditor(host, onChange) {
       if(!preserveSelection)treeFilter.subsystems=null;
       const bar=node('div',undefined,'role-tree-bar'),actions=node('button','Действия');actions.type='button';actions.setAttribute('aria-haspopup','menu');
       actions.addEventListener('click',event=>showContextMenu(event,[['Установить все права',()=>{model.setEverything(true);changed();renderPanel();}],['Снять все права',()=>{model.setEverything(false);changed();renderPanel();}],['Установить по подсистемам...',()=>rightsBySubsystems(true)],['Снять по подсистемам...',()=>rightsBySubsystems(false)]]));
-      bar.append(actions,subsystemFilterButton({schema:source.schema,title,holder:treeFilter,applied:()=>tree.render(search.value)}));
+      bar.append(actions,subsystemFilterButton({schema:()=>source.schema,title,holder:treeFilter,applied:()=>tree.render(search.value)}));
       sidebar.append(bar,search,tree.element);panel=node('section',undefined,'role-permissions');body.append(sidebar,panel);rightsBody=body;templatesBody=node('section',undefined,'role-templates');host.append(body,templatesBody);
       if(!preserveSelection){view='rights';restriction.right=null;restriction.row=-1;templateRow=-1;}
       tree.render();renderPanel();showView(view);
