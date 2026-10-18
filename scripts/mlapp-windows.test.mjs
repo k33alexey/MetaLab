@@ -82,3 +82,31 @@ test('обновление предлагается, а не навязывае�
   assert.match(banner,/Позже/);
   assert.match(banner,/location\.reload\(\)/,'перезагрузка только по кнопке');
 });
+
+// Ловит запись, проведённую, отменённую или помеченную, после которой форма
+// показывает прежнее: openWindow берёт уже открытое окно как есть, и без
+// окна в вызове перечитанное до формы не доходило — флажок «Проведён»
+// оставался пустым, а вторая «Пометка удаления» снова ставила пометку.
+// И изменение, ушедшее без заголовка CSRF или с телом не в JSON.
+test('изменение открытой записи идёт с CSRF и перечитывает её в то же окно',async()=>{
+  const shellContext=vm.createContext({HTMLElement:class{},customElements:{define(){}},window:{addEventListener(){}},document:{},
+    localStorage:{getItem(){return null;},setItem(){}},sessionStorage:{getItem(){return null;},setItem(){}}});
+  vm.runInContext(source+'\nglobalThis.Shell=MLAppShell;',shellContext);
+  const sent=[],opened=[],notes=[];
+  shellContext.fetch=async(path,init)=>{sent.push({path,init});return {ok:true,text:async()=>'{}'};};
+  const shell=Object.create(shellContext.Shell.prototype);
+  Object.assign(shell,{databaseId:'b1',currentObject:{kind:'documents',name:'Приход'},currentReference:'r1',activeWindowId:'w7',objectState:{deletionMark:true},
+    announce:text=>notes.push(text),openObjectRecord:async(...args)=>opened.push(args)});
+  await shell.postCurrentDocument();
+  await shell.undoCurrentDocumentPosting();
+  await shell.toggleCurrentDeletionMark();
+  assert.deepEqual(sent.map(item=>item.path),['/api/databases/b1/documents/%D0%9F%D1%80%D0%B8%D1%85%D0%BE%D0%B4/post',
+    '/api/databases/b1/documents/%D0%9F%D1%80%D0%B8%D1%85%D0%BE%D0%B4/undo-posting','/api/databases/b1/objects/documents/%D0%9F%D1%80%D0%B8%D1%85%D0%BE%D0%B4/deletion-mark']);
+  for(const {init} of sent){
+    assert.equal(init.method,'POST');
+    assert.deepEqual({...init.headers},{'Content-Type':'application/json','X-ML-CSRF':'1'});
+  }
+  assert.deepEqual(JSON.parse(sent[2].init.body),{reference:'r1',mark:false});
+  assert.deepEqual(opened.map(args=>args[2]),['w7','w7','w7']);
+  assert.deepEqual(notes,['Проведён','Проведение отменено','Пометка на удаление снята']);
+});

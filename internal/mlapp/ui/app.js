@@ -1,3 +1,12 @@
+// postMutation is every request of ML App that changes something on the
+// server: it carries the header the server asks of it against a page of
+// another site (requireCSRF, portal.go), and its body, when there is
+// one, as JSON.
+function postMutation(path, body) {
+  const headers = {"X-ML-CSRF": "1"};
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  return fetch(path, {method: "POST", headers, body: body === undefined ? undefined : JSON.stringify(body)});
+}
 function fieldInputValue(kind, data) {
   if (!data) return "";
   if (kind === "date") return data.length >= 16 ? data.slice(0, 16) : data;
@@ -474,11 +483,11 @@ class MLAppShell extends HTMLElement {
       await this.openWindow({kind: "object", object: item, reference, title}, async created => this.openObjectRecord(item, reference, created.id));
       return;
     }
-    const formResponse = await fetch(`/api/databases/${encodeURIComponent(this.databaseId)}/forms/${encodeURIComponent(item.kind)}/${encodeURIComponent(item.name)}/object`, {headers: {"Accept": "application/json"}});
-    if (!formResponse.ok) { this.announce("Не удалось открыть форму"); return; }
+    const form = await this.fetchForm(item, "object");
+    if (!form) return;
     const stateResponse = await fetch(`/api/databases/${encodeURIComponent(this.databaseId)}/objects/${encodeURIComponent(item.kind)}/${encodeURIComponent(item.name)}/${encodeURIComponent(reference)}`, {headers: {"Accept": "application/json"}});
     if (!stateResponse.ok) { this.announce("Не удалось открыть запись"); return; }
-    const form = await formResponse.json(), state = await stateResponse.json();
+    const state = await stateResponse.json();
     applyObjectState(form, state);
     // state.reference is only really persisted when we weren't creating -
     // GetApplicationObject pre-allocates a reference for a new object
@@ -609,46 +618,48 @@ class MLAppShell extends HTMLElement {
     }
     return {fields, tables};
   }
+  // changeObject is every change of an object of the database the client
+  // asks of the server. Answers the text of the answer, or announces the
+  // refusal and answers null.
+  async changeObject(path, body) {
+    const response = await postMutation(`/api/databases/${encodeURIComponent(this.databaseId)}/${path}`, body);
+    const text = await response.text();
+    if (!response.ok) { this.announce(text); return null; }
+    return text;
+  }
+  objectPath(action) { return `objects/${encodeURIComponent(this.currentObject.kind)}/${encodeURIComponent(this.currentObject.name)}/${action}`; }
+  documentPath(action) { return `documents/${encodeURIComponent(this.currentObject.name)}/${action}`; }
   async saveCurrentObject(close) {
     const payload = this.collectObjectFormValues(); payload.reference = this.currentReference || "new";
-    const response = await fetch(`/api/databases/${encodeURIComponent(this.databaseId)}/objects/${encodeURIComponent(this.currentObject.kind)}/${encodeURIComponent(this.currentObject.name)}/save`, {
-      method: "POST", headers: {"Content-Type": "application/json", "X-ML-CSRF": "1"}, body: JSON.stringify(payload),
-    });
-    const text = await response.text();
-    if (!response.ok) { this.announce(text); return; }
+    const text = await this.changeObject(this.objectPath("save"), payload);
+    if (text === null) return;
     if (close) { this.markWindowModified(false); await this.closeWindow(this.activeWindowId, {discard: true}); return; }
     const state = JSON.parse(text);
     await this.openObjectRecord(this.currentObject, state.reference, this.activeWindowId);
     this.markWindowModified(false);
     this.announce("Сохранено");
   }
-  async postCurrentDocument() {
-    const response = await fetch(`/api/databases/${encodeURIComponent(this.databaseId)}/documents/${encodeURIComponent(this.currentObject.name)}/post`, {
-      method: "POST", headers: {"Content-Type": "application/json", "X-ML-CSRF": "1"}, body: JSON.stringify({reference: this.currentReference}),
-    });
-    const text = await response.text();
-    if (!response.ok) { this.announce(text); return; }
-    await this.openObjectRecord(this.currentObject, this.currentReference);
-    this.announce("Проведён");
+  // A change that keeps the object open - posting, its undoing, the deletion
+  // mark - reads the object again into the window it is shown in: the window
+  // already open is reused as it stands, and the form went on showing what it
+  // showed before the change.
+  async changeCurrentRecord(path, body, done) {
+    if (await this.changeObject(path, {reference: this.currentReference, ...body}) === null) return;
+    await this.openObjectRecord(this.currentObject, this.currentReference, this.activeWindowId);
+    this.announce(done);
   }
-  async undoCurrentDocumentPosting() {
-    const response = await fetch(`/api/databases/${encodeURIComponent(this.databaseId)}/documents/${encodeURIComponent(this.currentObject.name)}/undo-posting`, {
-      method: "POST", headers: {"Content-Type": "application/json", "X-ML-CSRF": "1"}, body: JSON.stringify({reference: this.currentReference}),
-    });
-    const text = await response.text();
-    if (!response.ok) { this.announce(text); return; }
-    await this.openObjectRecord(this.currentObject, this.currentReference);
-    this.announce("Проведение отменено");
-  }
-  async toggleCurrentDeletionMark() {
+  postCurrentDocument() { return this.changeCurrentRecord(this.documentPath("post"), {}, "Проведён"); }
+  undoCurrentDocumentPosting() { return this.changeCurrentRecord(this.documentPath("undo-posting"), {}, "Проведение отменено"); }
+  toggleCurrentDeletionMark() {
     const mark = !this.objectState?.deletionMark;
-    const response = await fetch(`/api/databases/${encodeURIComponent(this.databaseId)}/objects/${encodeURIComponent(this.currentObject.kind)}/${encodeURIComponent(this.currentObject.name)}/deletion-mark`, {
-      method: "POST", headers: {"Content-Type": "application/json", "X-ML-CSRF": "1"}, body: JSON.stringify({reference: this.currentReference, mark}),
-    });
-    const text = await response.text();
-    if (!response.ok) { this.announce(text); return; }
-    await this.openObjectRecord(this.currentObject, this.currentReference);
-    this.announce(mark ? "Помечен на удаление" : "Пометка на удаление снята");
+    return this.changeCurrentRecord(this.objectPath("deletion-mark"), {mark}, mark ? "Помечен на удаление" : "Пометка на удаление снята");
+  }
+  // fetchForm reads the form of an object - its list or the form of one
+  // record - or says it could not and answers null.
+  async fetchForm(item, formKind) {
+    const response = await fetch(`/api/databases/${encodeURIComponent(this.databaseId)}/forms/${encodeURIComponent(item.kind)}/${encodeURIComponent(item.name)}/${formKind}`, {headers: {"Accept": "application/json"}});
+    if (!response.ok) { this.announce("Не удалось открыть форму"); return null; }
+    return response.json();
   }
   async openForm(item, formKind, windowID) {
     if (!windowID) {
@@ -656,9 +667,9 @@ class MLAppShell extends HTMLElement {
         async created => this.openForm(item, formKind, created.id));
       return;
     }
-    const response = await fetch(`/api/databases/${encodeURIComponent(this.databaseId)}/forms/${encodeURIComponent(item.kind)}/${encodeURIComponent(item.name)}/${formKind}`, {headers: {"Accept": "application/json"}});
-    if (!response.ok) { this.announce("Не удалось открыть форму"); return; }
-    this.currentObject = item; this.currentFormKind = formKind; this.bootstrap.form = await response.json();
+    const form = await this.fetchForm(item, formKind);
+    if (!form) return;
+    this.currentObject = item; this.currentFormKind = formKind; this.bootstrap.form = form;
     this.activeWindowId = windowID;
     const target = (this.windows || []).find(entry => entry.id === windowID);
     if (target) { target.object = item; target.reference = null; target.title = this.bootstrap.form.title || item.title; target.modified = false; }
@@ -738,7 +749,7 @@ class MLAppShell extends HTMLElement {
       const response = await fetch(`/api/databases/${encodeURIComponent(databaseId)}/session`);
       if (!response.ok) { clearInterval(this._monitor); location.href = "/"; return; }
       const session = await response.json();
-      if (session.message) { this.announce(session.message); await fetch(`/api/sessions/${session.id}/message/ack`, {method: "POST", headers: {"X-ML-CSRF": "1"}}); }
+      if (session.message) { this.announce(session.message); await postMutation(`/api/sessions/${session.id}/message/ack`); }
     }, 5000);
   }
   // The browser's own confirmation is the only guard that works for closing a
