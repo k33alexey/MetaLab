@@ -106,9 +106,10 @@ const treeFilterWalk = `(async () => {
   const studio = window.__studio, steps = {};
   const caption = item => (item.querySelector(':scope > summary') || item).textContent.trim();
   const branch = text => [...document.querySelectorAll('#tree summary, #tree .leaf')].find(item => item.textContent.trim() === text);
-  const children = text => { const item = branch(text); return item?.tagName === 'SUMMARY' ? [...item.nextElementSibling.children].map(caption) : []; };
+  // A branch the tree does not show at all answers null, one shown empty [].
+  const children = text => { const item = branch(text); return !item ? null : item.tagName === 'SUMMARY' ? [...item.nextElementSibling.children].map(caption) : []; };
   const state = () => ({catalogs: children('Справочники'), documents: children('Документы'), subsystems: children('Подсистемы'),
-    registers: children('Регистры накопления'), forms: children('Общие формы'),
+    registers: children('Регистры накопления'), forms: children('Общие формы'), constants: children('Константы'),
     pressed: document.querySelector('#tree-subsystems').getAttribute('aria-pressed'), add: !document.querySelector('#tree-add').disabled});
   const dialog = () => document.querySelector('dialog[open]');
   const box = text => [...dialog().querySelectorAll('label')].find(label => label.textContent === text).querySelector('input');
@@ -141,9 +142,11 @@ const treeFilterWalk = `(async () => {
 // subordinate flag set); the filter leaves an object of an unmarked subsystem,
 // of none, or a subsystem not marked, or hides one marked; «Включать объекты
 // подчиненных подсистем» does not take in the nested subsystem and what it
-// holds; «Добавить» is offered under the filter, or not offered again after
-// «Отключить»; the button does not show the filter in force; reading the
-// project again drops the filter.
+// holds; a branch of a kind left with no object still shown under the
+// filter (the owner's decision of 18.10.2026: it is not), or a branch empty
+// of itself hidden without one; «Добавить» is offered under the filter, or
+// not offered again after «Отключить»; the button does not show the filter
+// in force; reading the project again drops the filter.
 func TestConfigurationTreeFiltersBySubsystems(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	addTreeSubsystems(t, root)
@@ -153,9 +156,9 @@ func TestConfigurationTreeFiltersBySubsystems(t *testing.T) {
 		t.Fatal(err)
 	}
 	type state struct {
-		Catalogs, Documents, Subsystems, Registers, Forms []string
-		Pressed                                           string
-		Add                                               bool
+		Catalogs, Documents, Subsystems, Registers, Forms, Constants []string
+		Pressed                                                      string
+		Add                                                          bool
 	}
 	var steps struct {
 		Before, Sales, Beneath, Reread, Off state
@@ -164,11 +167,15 @@ func TestConfigurationTreeFiltersBySubsystems(t *testing.T) {
 	if err := json.Unmarshal(result, &steps); err != nil {
 		t.Fatalf("the walk answered %s: %v", result, err)
 	}
+	// nil is a branch not shown, an empty list one shown with nothing in it:
+	// the example has no constant, numerator or sequence, and without the
+	// filter their branches stand empty; under it, a branch with nothing
+	// left - those, the register, the common forms - is not shown.
 	nested := []string{"Нумераторы", "Последовательности"}
 	whole := state{Catalogs: []string{"Контрагенты", "Товары"}, Documents: append(slices.Clone(nested), "ПоступлениеТоваров", "ПродажаТоваров"),
-		Subsystems: []string{"Продажи", "Склад"}, Registers: []string{"ОстаткиТоваров"}, Forms: []string{"ДемоФормаТовара"}, Pressed: "false", Add: true}
-	sales := state{Catalogs: []string{"Контрагенты"}, Documents: append(slices.Clone(nested), "ПродажаТоваров"),
-		Subsystems: []string{"Продажи"}, Pressed: "true"}
+		Subsystems: []string{"Продажи", "Склад"}, Registers: []string{"ОстаткиТоваров"}, Forms: []string{"ДемоФормаТовара"}, Constants: []string{},
+		Pressed: "false", Add: true}
+	sales := state{Catalogs: []string{"Контрагенты"}, Documents: []string{"ПродажаТоваров"}, Subsystems: []string{"Продажи"}, Pressed: "true"}
 	beneath := sales
 	beneath.Catalogs, beneath.Subsystems = []string{"Контрагенты", "Товары"}, []string{"Продажи", "Склад"}
 	for _, check := range []struct {
@@ -177,8 +184,10 @@ func TestConfigurationTreeFiltersBySubsystems(t *testing.T) {
 	}{{"before the filter", steps.Before, whole}, {"under Продажи alone", steps.Sales, sales}, {"with the subsystems beneath", steps.Beneath, beneath},
 		{"after reading the project again", steps.Reread, beneath}, {"after «Отключить»", steps.Off, whole}} {
 		got, want := check.got, check.want
-		if !slices.Equal(got.Catalogs, want.Catalogs) || !slices.Equal(got.Documents, want.Documents) || !slices.Equal(got.Subsystems, want.Subsystems) ||
-			!slices.Equal(got.Registers, want.Registers) || !slices.Equal(got.Forms, want.Forms) || got.Pressed != want.Pressed || got.Add != want.Add {
+		same := func(a, b []string) bool { return (a == nil) == (b == nil) && slices.Equal(a, b) }
+		if !same(got.Catalogs, want.Catalogs) || !same(got.Documents, want.Documents) || !same(got.Subsystems, want.Subsystems) ||
+			!same(got.Registers, want.Registers) || !same(got.Forms, want.Forms) || !same(got.Constants, want.Constants) ||
+			got.Pressed != want.Pressed || got.Add != want.Add {
 			t.Errorf("%s the tree shows %+v, want %+v", check.name, got, want)
 		}
 	}
