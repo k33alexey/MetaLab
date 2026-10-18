@@ -575,6 +575,23 @@ function markedListCaption(caption, mark, extra = []) {
   return heading;
 }
 
+/* The fold of a row of the trees of the windows of restrictions - the
+   fields of a table part, the objects of a kind: ▸ or ▾ before the row,
+   hiding or showing the rows beneath it. name is what the button names;
+   rows, the rows beneath, may be filled after. Answers {toggle, fold(open)}. */
+function restrictionFold(name, rows) {
+  const toggle = node('button', '▸', 'role-fields-toggle');
+  toggle.type = 'button';
+  const fold = open => {
+    toggle.textContent = open ? '▾' : '▸';
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-label', `${open ? 'Свернуть' : 'Развернуть'} ${name}`);
+    for (const row of rows) row.hidden = !open;
+  };
+  toggle.addEventListener('click', () => fold(toggle.getAttribute('aria-expanded') !== 'true'));
+  return {toggle, fold};
+}
+
 /* The fields of a restriction of reading, as the prototype's windows show
    them (help, form_RLFieldsListDlg; checked in the configurator 14.10.2026):
    one column by names, a table part folding under its own box with its fields
@@ -615,16 +632,9 @@ function restrictionFieldsChoice({chosen, taken = () => false}) {
     line.style.setProperty('--depth', depth);
     line.hidden = !!under;
     if (children.length) {
-      const toggle = node('button', '▸', 'role-fields-toggle');
-      toggle.type = 'button';
-      fold = open => {
-        toggle.textContent = open ? '▾' : '▸';
-        toggle.setAttribute('aria-expanded', String(open));
-        toggle.setAttribute('aria-label', `${open ? 'Свернуть' : 'Развернуть'} ${field.name}`);
-        for (const child of inside) child.hidden = !open;
-      };
-      toggle.addEventListener('click', () => fold(toggle.getAttribute('aria-expanded') !== 'true'));
-      line.append(toggle);
+      const folding = restrictionFold(field.name, inside);
+      fold = folding.fold;
+      line.append(folding.toggle);
     } else line.append(node('span', undefined, 'role-fields-toggle'));
     const box = checkboxField(field.name, false, enabled => mark(field.key, enabled), 'role-check');
     if (field.hint && field.hint !== field.name) box.title = field.hint;

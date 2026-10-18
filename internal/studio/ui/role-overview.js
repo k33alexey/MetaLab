@@ -596,40 +596,73 @@ function createRoleOverview(host, openRole, onChange) {
     return list;
   }
   const rightBoxes = (keys, chosen, after) => keys.map(key => checkboxField(caption(key), chosen.has(key), mark(chosen, key, after), 'role-check'));
-  // Объекты по видам, с флажком «все» у вида, и кнопка «По подсистемам» —
-  // у мастера и у окна отбора; offered — какие объекты предлагаются.
+  // Объекты деревом, как у прототипа (сверено в конфигураторе 14.10.2026,
+  // ACCESS-RIGHTS «Мастер, шаг 1»): флажок у корня конфигурации, у каждого
+  // вида и у объекта, виды свёрнуты; и кнопка «По подсистемам». Флажок над
+  // объектами показывает, отмечены все, часть или ни один: щелчок по снятому
+  // отмечает все, по отмеченному целиком или частично — снимает все. Одно
+  // дерево у мастера и у окна отбора; offered — какие объекты предлагаются.
   // holder.subsystems — отбор по подсистемам; объект, скрытый им, из выбора
-  // уходит: в работу идёт то, что видно в списке. after — после каждой
-  // перемены выбора. Ответ — список, кнопка и fill, рисующий список заново.
-  function objectChoice(chosenObjects, holder, after = () => {}, offered = () => model.restrictable()) {
-    const objectList = node('div', undefined, 'role-restriction-fields role-wizard-objects');
-    function fillObjects() {
-      const passes = subsystemFilterPasses(source.schema, holder.subsystems), groups = new Map();
-      for (const item of offered()) {
-        if (!passes(item.id)) { chosenObjects.delete(item.id); continue; }
-        if (!groups.has(item.kind)) groups.set(item.kind, []);
-        groups.get(item.kind).push(item);
-      }
-      objectList.replaceChildren();
-      if (!groups.size) objectList.append(node('p', 'Ни один объект не входит в отмеченные подсистемы.', 'muted'));
-      for (const [kind, items] of groups) {
-        const boxes = [], group = node('label', undefined, 'role-check role-wizard-kind'), all = node('input');
-        all.type = 'checkbox'; all.setAttribute('aria-label', `${source.kindTitles?.[kind] || kind} — все`);
-        const sync = () => { const marked = items.filter(item => chosenObjects.has(item.id)).length; all.checked = marked === items.length; all.indeterminate = marked > 0 && marked < items.length; };
-        all.addEventListener('change', () => { for (const item of items) if (all.checked) chosenObjects.add(item.id); else chosenObjects.delete(item.id); for (const box of boxes) box.checked = all.checked; sync(); after(); });
-        group.append(all, node('span', source.kindTitles?.[kind] || kind));
-        objectList.append(group);
-        for (const item of items) {
-          const box = checkboxField(item.title, chosenObjects.has(item.id), mark(chosenObjects, item.id, () => { sync(); after(); }), 'role-check');
-          box.classList.add('role-restriction-child');
-          boxes.push(box.querySelector('input')); objectList.append(box);
-        }
-        sync();
+  // уходит: в работу идёт то, что видно в списке. refiltered — после смены
+  // отбора, до перерисовки; after — после каждой перемены выбора. Ответ —
+  // список, кнопка, fill, рисующий список заново, и mark(enabled), отмечающий
+  // или снимающий все видимые.
+  function objectChoice(chosenObjects, holder, {after = () => {}, offered = () => model.restrictable(), refiltered = () => {}} = {}) {
+    const objectList = node('div', undefined, 'role-restriction-fields role-fields-tree role-wizard-objects');
+    let boxes = [], groups = [], shown = [];
+    // Отметки ставятся на месте: список, нарисованный заново, забрал бы
+    // фокус у флажка, по которому щёлкнули.
+    function sync() {
+      for (const [input, id] of boxes) input.checked = chosenObjects.has(id);
+      for (const [input, items] of groups) {
+        const marked = items.filter(item => chosenObjects.has(item.id)).length;
+        input.checked = marked > 0 && marked === items.length; input.indeterminate = marked > 0 && marked < items.length;
       }
     }
-    const button = subsystemFilterButton({schema: source.schema, title, holder, applied: () => { fillObjects(); after(); }});
+    function markAll(items, enabled) { for (const item of items) if (enabled) chosenObjects.add(item.id); else chosenObjects.delete(item.id); }
+    function groupBox(caption, items) {
+      const box = checkboxField(caption, false, () => { markAll(items, !items.some(item => chosenObjects.has(item.id))); sync(); after(); }, 'role-check');
+      groups.push([box.querySelector('input'), items]);
+      return box;
+    }
+    function line(depth, toggle, box) {
+      const row = node('div', undefined, 'role-fields-row');
+      row.style.setProperty('--depth', depth);
+      row.append(toggle || node('span', undefined, 'role-fields-toggle'), box);
+      objectList.append(row);
+      return row;
+    }
+    function fillObjects() {
+      const passes = subsystemFilterPasses(source.schema, holder.subsystems), kinds = new Map();
+      shown = [];
+      for (const item of offered()) {
+        if (!passes(item.id)) { chosenObjects.delete(item.id); continue; }
+        if (!kinds.has(item.kind)) kinds.set(item.kind, []);
+        kinds.get(item.kind).push(item); shown.push(item);
+      }
+      objectList.replaceChildren(); boxes = []; groups = [];
+      if (!kinds.size) { objectList.append(node('p', 'Ни один объект не входит в отмеченные подсистемы.', 'muted')); return; }
+      const root = source.schema.objects?.find(item => item.root);
+      line(0, null, groupBox(root ? title(root) || root.name : 'Конфигурация', shown));
+      for (const [kind, items] of kinds) {
+        const rows = [], caption = source.kindTitles?.[kind] || kind, folding = restrictionFold(caption, rows);
+        line(1, folding.toggle, groupBox(caption, items));
+        for (const item of items) {
+          const box = checkboxField(item.title, false, mark(chosenObjects, item.id, () => { sync(); after(); }), 'role-check');
+          boxes.push([box.querySelector('input'), item.id]);
+          rows.push(line(2, null, box));
+        }
+        folding.fold(false);
+      }
+      sync();
+    }
+    // Отбор выбирается в своём окне, уже после щелчка, который окно с
+    // деревом слышало: перемену ему сообщает событие change списка.
+    const button = subsystemFilterButton({schema: source.schema, title, holder, applied: () => {
+      refiltered(); fillObjects(); after(); objectList.dispatchEvent(new Event('change', {bubbles: true}));
+    }});
     fillObjects();
-    return {list: objectList, button, fill: fillObjects};
+    return {list: objectList, button, fill: fillObjects, mark(enabled) { markAll(shown, enabled); sync(); after(); }};
   }
   // Копирование выбранного в отмеченные роли (справка,
   // form_CopyRowLevelInstrDlg; сверено в конфигураторе 18.10.2026): у
@@ -683,9 +716,15 @@ function createRoleOverview(host, openRole, onChange) {
     let step = 1, condition = '', offered = [];
     const content = node('div', undefined, 'role-restriction-form');
     const first = node('div', undefined, 'role-restriction-form'), second = node('div', undefined, 'role-restriction-form role-restriction-window');
-    const objectsOffered = objectChoice(chosenObjects, wizardFilter), heading = node('div', undefined, 'overview-wizard-caption');
-    heading.append(node('span', 'Объекты', 'role-restriction-caption'), objectsOffered.button);
-    first.append(heading, objectsOffered.list, node('div', 'Роли', 'role-restriction-caption'), roleChoice(roles));
+    // Смена отбора по подсистемам — «Установить» или «Отключить» — снимает
+    // отметки всех объектов, и видимых тоже; роли остаются (сверено в
+    // конфигураторе 14.10.2026).
+    const objectsOffered = objectChoice(chosenObjects, wizardFilter, {refiltered: () => chosenObjects.clear()}), roleList = roleChoice(roles);
+    first.append(markedListCaption('Объекты:', enabled => objectsOffered.mark(enabled), [objectsOffered.button]), objectsOffered.list,
+      markedListCaption('Роли:', enabled => {
+        for (const role of model.roles()) if (enabled) roles.add(role.index); else roles.delete(role.index);
+        for (const input of roleList.querySelectorAll('input')) input.checked = enabled;
+      }), roleList);
     // Второй шаг строится по выбранному на первом: права слева — те, что
     // ограничиваются хотя бы у одного из объектов; справа поля всех объектов
     // с ограничением по полям, «Прочие поля» и текст ограничения. Отмеченное,
@@ -710,13 +749,16 @@ function createRoleOverview(host, openRole, onChange) {
     content.append(first, second);
     show();
     // Кнопки мастера видны всегда, ненужная на шаге недоступна, как у
-    // прототипа; на первом шаге «ОК» недоступна (сверено 14.10.2026).
+    // прототипа; на первом шаге «ОК» недоступна, «Далее >» — пока не отмечен
+    // ни один объект (сверено 14.10.2026; прототип после сброса отметок
+    // сменой отбора оставляет её доступной и ведёт на пустой второй шаг —
+    // его ошибка, ACCESS-RIGHTS).
     const answer = await showDialog({title: 'Новое ограничение доступа', content, className: 'role-restriction-dialog', help: 'role-restriction-wizard', answers: [
       ['back', '< Назад', {act: () => { step = 1; show(); }, enabled: () => step === 2}],
-      ['next', 'Далее >', {act: () => { step = 2; fillSecond(); show(); }, enabled: () => step === 1, primary: () => step === 1}],
+      ['next', 'Далее >', {act: () => { step = 2; fillSecond(); show(); }, enabled: () => step === 1 && chosenObjects.size > 0, primary: () => step === 1}],
       ['ok', 'ОК', {enabled: () => step === 2 && rights.size > 0 && (!fieldsChosen() || fields.filled()), primary: () => step === 2}],
       [null, 'Отмена']],
-    check: key => key === 'next' ? (!chosenObjects.size ? 'Отметьте объекты.' : !roles.size ? 'Отметьте роли.' : '') : ''});
+    check: key => key === 'next' && !roles.size ? 'Отметьте роли.' : ''});
     if (answer !== 'ok') return;
     // Только отмеченные поля, если отмечено право, ограничиваемое по полям:
     // без него поля ничего не значат.
@@ -755,8 +797,8 @@ function createRoleOverview(host, openRole, onChange) {
     const keys = {objects: offered.objects.map(item => item.id), roles: offered.roles.map(role => role.path), rights: offered.rights, paths: offered.fields.map(choice => choice.path)};
     const draft = {objects: opened(current?.objects, keys.objects), roles: opened(current?.roles, keys.roles), rights: opened(current?.rights, keys.rights),
       paths: opened(current?.paths, keys.paths), condition: current?.condition || '', subsystems: current?.subsystems ?? null};
-    const objects = objectChoice(draft.objects, draft, undefined, () => offered.objects), objectBlock = node('div', undefined, 'role-filter-list');
-    objectBlock.append(markedListCaption('Объект:', enabled => { for (const key of keys.objects) if (enabled) draft.objects.add(key); else draft.objects.delete(key); objects.fill(); }), objects.list);
+    const objects = objectChoice(draft.objects, draft, {offered: () => offered.objects}), objectBlock = node('div', undefined, 'role-filter-list');
+    objectBlock.append(markedListCaption('Объект:', enabled => objects.mark(enabled)), objects.list);
     const roleTitles = new Map(offered.roles.map(role => [role.path, role.title])), fieldCaptions = new Map(offered.fields.map(choice => [choice.path, choice.caption]));
     const text = textInput(draft.condition, value => { draft.condition = value; }, {kind: 'area', rows: 4});
     text.setAttribute('aria-label', 'Ограничение доступа');
