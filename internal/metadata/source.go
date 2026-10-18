@@ -50,6 +50,11 @@ type kindInfo struct {
 	namedBy []TypeKind
 	// uses says what else may name an object of the kind (kindUsesOf).
 	uses kindUses
+	// application says ML App opens objects of the kind on a screen: in its
+	// navigation, as a list and as a form, and writes them through the
+	// interactive path (ApplicationKinds). The other kinds are carried and do
+	// not open yet; their execution is block 9's.
+	application bool
 }
 
 // LanguageKind names a language of the configuration where something may name
@@ -466,7 +471,8 @@ func init() {
 			names(DefinedType),
 		describedAs(CatalogKind, DecodeCatalog, func(catalog *Catalog) *[]CatalogDefinition { return &catalog.Catalogs }, func(c *Catalog) map[uuid.UUID]int { return c.catalogByID }).
 			refers(kindReference{CatalogType, CatalogSet, tableRow}).
-			holds(CatalogObjectType, CatalogManagerType),
+			holds(CatalogObjectType, CatalogManagerType).
+			opens(),
 		describedAs(ChartOfCharacteristicTypesKind, DecodeChartOfCharacteristicTypes, func(catalog *Catalog) *[]ChartOfCharacteristicTypesDefinition {
 			return &catalog.ChartsOfCharacteristicTypes
 		}, func(c *Catalog) map[uuid.UUID]int { return c.chartOfCharacteristicTypesByID }).
@@ -505,7 +511,8 @@ func init() {
 			holds(BusinessProcessObjectType, BusinessProcessManagerType),
 		describedAs(DocumentKind, DecodeDocument, func(catalog *Catalog) *[]DocumentDefinition { return &catalog.Documents }, func(c *Catalog) map[uuid.UUID]int { return c.documentByID }).
 			refers(kindReference{DocumentType, DocumentSet, tableRow}).
-			holds(DocumentObjectType, DocumentManagerType),
+			holds(DocumentObjectType, DocumentManagerType).
+			opens(),
 		describedAs(InformationRegisterKind, DecodeInformationRegister, func(catalog *Catalog) *[]InformationRegisterDefinition { return &catalog.InformationRegisters }, func(c *Catalog) map[uuid.UUID]int { return c.informationRegisterByID }).
 			holds(InformationRegisterRecordSetType, InformationRegisterRecordManagerType, InformationRegisterManagerType),
 		describedAs(AccumulationRegisterKind, DecodeAccumulationRegister, func(catalog *Catalog) *[]AccumulationRegisterDefinition { return &catalog.AccumulationRegisters }, func(c *Catalog) map[uuid.UUID]int { return c.accumulationRegisterByID }).
@@ -582,6 +589,11 @@ func (item kindInfo) holds(types ...TypeKind) kindInfo {
 
 func (item kindInfo) names(types ...TypeKind) kindInfo {
 	item.namedBy = types
+	return item
+}
+
+func (item kindInfo) opens() kindInfo {
+	item.application = true
 	return item
 }
 

@@ -156,13 +156,8 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		if !requireCSRF(response, request) {
 			return
 		}
-		token, ok := requireToken(response, request)
+		token, id, ok := databaseRequest(response, request)
 		if !ok {
-			return
-		}
-		id, err := uuid.Parse(request.PathValue("id"))
-		if err != nil {
-			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
 			return
 		}
 		session, err := platformRuntime.OpenPortalDatabase(request.Context(), token, id)
@@ -209,13 +204,8 @@ func NewHandler(platformRuntime runtime) http.Handler {
 	// если она изменилась, показывает ненавязчивое предложение обновиться.
 	// Решает человек - у него могут быть несохранённые данные.
 	routes.HandleFunc("GET /api/databases/{id}/publication", func(response http.ResponseWriter, request *http.Request) {
-		token, ok := requireToken(response, request)
+		token, id, ok := databaseRequest(response, request)
 		if !ok {
-			return
-		}
-		id, err := uuid.Parse(request.PathValue("id"))
-		if err != nil {
-			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
 			return
 		}
 		marker, err := platformRuntime.ApplicationPublication(request.Context(), token, id)
@@ -226,13 +216,8 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		writeJSON(response, http.StatusOK, marker)
 	})
 	routes.HandleFunc("GET /api/databases/{id}/app-bootstrap", func(response http.ResponseWriter, request *http.Request) {
-		token, ok := requireToken(response, request)
+		token, id, ok := databaseRequest(response, request)
 		if !ok {
-			return
-		}
-		id, err := uuid.Parse(request.PathValue("id"))
-		if err != nil {
-			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
 			return
 		}
 		session, err := platformRuntime.ResumePortalDatabase(request.Context(), token, id)
@@ -267,18 +252,13 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		writeJSON(response, http.StatusOK, bootstrap)
 	})
 	routes.HandleFunc("GET /api/databases/{id}/forms/{objectKind}/{name}/{formKind}", func(response http.ResponseWriter, request *http.Request) {
-		token, ok := requireToken(response, request)
+		token, id, ok := databaseRequest(response, request)
 		if !ok {
-			return
-		}
-		id, err := uuid.Parse(request.PathValue("id"))
-		if err != nil {
-			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
 			return
 		}
 		objectKind := metadata.Kind(request.PathValue("objectKind"))
 		formKind := metadata.FormKind(request.PathValue("formKind"))
-		if objectKind != metadata.CatalogKind && objectKind != metadata.DocumentKind || formKind != metadata.ObjectForm && formKind != metadata.ListForm && formKind != metadata.ChoiceForm {
+		if !metadata.OpensInApplication(objectKind) || formKind != metadata.ObjectForm && formKind != metadata.ListForm && formKind != metadata.ChoiceForm {
 			http.Error(response, "Invalid managed form address", http.StatusBadRequest)
 			return
 		}
@@ -295,17 +275,12 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		writeJSON(response, http.StatusOK, form)
 	})
 	routes.HandleFunc("GET /api/databases/{id}/lists/{objectKind}/{name}", func(response http.ResponseWriter, request *http.Request) {
-		token, ok := requireToken(response, request)
+		token, id, ok := databaseRequest(response, request)
 		if !ok {
 			return
 		}
-		id, err := uuid.Parse(request.PathValue("id"))
-		if err != nil {
-			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
-			return
-		}
 		objectKind := metadata.Kind(request.PathValue("objectKind"))
-		if objectKind != metadata.CatalogKind && objectKind != metadata.DocumentKind {
+		if !metadata.OpensInApplication(objectKind) {
 			http.Error(response, "Invalid dynamic list address", http.StatusBadRequest)
 			return
 		}
@@ -322,17 +297,12 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		writeJSON(response, http.StatusOK, page)
 	})
 	routes.HandleFunc("GET /api/databases/{id}/objects/{objectKind}/{name}/{reference}", func(response http.ResponseWriter, request *http.Request) {
-		token, ok := requireToken(response, request)
+		token, id, ok := databaseRequest(response, request)
 		if !ok {
 			return
 		}
-		id, err := uuid.Parse(request.PathValue("id"))
-		if err != nil {
-			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
-			return
-		}
 		objectKind := metadata.Kind(request.PathValue("objectKind"))
-		if objectKind != metadata.CatalogKind && objectKind != metadata.DocumentKind {
+		if !metadata.OpensInApplication(objectKind) {
 			http.Error(response, "Invalid application object address", http.StatusBadRequest)
 			return
 		}
@@ -347,17 +317,12 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		if !requireCSRF(response, request) {
 			return
 		}
-		token, ok := requireToken(response, request)
+		token, id, ok := databaseRequest(response, request)
 		if !ok {
 			return
 		}
-		id, err := uuid.Parse(request.PathValue("id"))
-		if err != nil {
-			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
-			return
-		}
 		objectKind := metadata.Kind(request.PathValue("objectKind"))
-		if objectKind != metadata.CatalogKind && objectKind != metadata.DocumentKind {
+		if !metadata.OpensInApplication(objectKind) {
 			http.Error(response, "Invalid application object address", http.StatusBadRequest)
 			return
 		}
@@ -376,17 +341,12 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		if !requireCSRF(response, request) {
 			return
 		}
-		token, ok := requireToken(response, request)
+		token, id, ok := databaseRequest(response, request)
 		if !ok {
 			return
 		}
-		id, err := uuid.Parse(request.PathValue("id"))
-		if err != nil {
-			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
-			return
-		}
 		objectKind := metadata.Kind(request.PathValue("objectKind"))
-		if objectKind != metadata.CatalogKind && objectKind != metadata.DocumentKind {
+		if !metadata.OpensInApplication(objectKind) {
 			http.Error(response, "Invalid application object address", http.StatusBadRequest)
 			return
 		}
@@ -404,66 +364,11 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		}
 		writeJSON(response, http.StatusOK, state)
 	})
-	routes.HandleFunc("POST /api/databases/{id}/documents/{name}/post", func(response http.ResponseWriter, request *http.Request) {
-		if !requireCSRF(response, request) {
-			return
-		}
-		token, ok := requireToken(response, request)
-		if !ok {
-			return
-		}
-		id, err := uuid.Parse(request.PathValue("id"))
-		if err != nil {
-			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
-			return
-		}
-		var input struct {
-			Reference string `json:"reference"`
-		}
-		if !decodeJSON(response, request, &input) {
-			return
-		}
-		state, err := platformRuntime.PostApplicationDocument(request.Context(), token, id, request.PathValue("name"), input.Reference)
-		if err != nil {
-			http.Error(response, "Unable to post document", http.StatusBadRequest)
-			return
-		}
-		writeJSON(response, http.StatusOK, state)
-	})
-	routes.HandleFunc("POST /api/databases/{id}/documents/{name}/undo-posting", func(response http.ResponseWriter, request *http.Request) {
-		if !requireCSRF(response, request) {
-			return
-		}
-		token, ok := requireToken(response, request)
-		if !ok {
-			return
-		}
-		id, err := uuid.Parse(request.PathValue("id"))
-		if err != nil {
-			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
-			return
-		}
-		var input struct {
-			Reference string `json:"reference"`
-		}
-		if !decodeJSON(response, request, &input) {
-			return
-		}
-		state, err := platformRuntime.UndoApplicationDocumentPosting(request.Context(), token, id, request.PathValue("name"), input.Reference)
-		if err != nil {
-			http.Error(response, "Unable to undo document posting", http.StatusBadRequest)
-			return
-		}
-		writeJSON(response, http.StatusOK, state)
-	})
+	routes.HandleFunc("POST /api/databases/{id}/documents/{name}/post", documentAction(platformRuntime.PostApplicationDocument, "Unable to post document"))
+	routes.HandleFunc("POST /api/databases/{id}/documents/{name}/undo-posting", documentAction(platformRuntime.UndoApplicationDocumentPosting, "Unable to undo document posting"))
 	routes.HandleFunc("GET /api/databases/{id}/session", func(response http.ResponseWriter, request *http.Request) {
-		token, ok := requireToken(response, request)
+		token, id, ok := databaseRequest(response, request)
 		if !ok {
-			return
-		}
-		id, err := uuid.Parse(request.PathValue("id"))
-		if err != nil {
-			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
 			return
 		}
 		session, err := platformRuntime.ResumePortalDatabase(request.Context(), token, id)
@@ -585,6 +490,49 @@ func requireToken(response http.ResponseWriter, request *http.Request) (string, 
 		return "", false
 	}
 	return cookie.Value, true
+}
+
+// databaseRequest reads what every request of one database names - the
+// session's token and the identifier of the database - and answers false
+// when it has answered the refusal itself.
+func databaseRequest(response http.ResponseWriter, request *http.Request) (string, uuid.UUID, bool) {
+	token, ok := requireToken(response, request)
+	if !ok {
+		return "", uuid.UUID{}, false
+	}
+	id, err := uuid.Parse(request.PathValue("id"))
+	if err != nil {
+		http.Error(response, "Invalid database identifier", http.StatusBadRequest)
+		return "", uuid.UUID{}, false
+	}
+	return token, id, true
+}
+
+// documentAction is a route that does one thing to a written document - posts
+// it or undoes its posting - and answers the document as it then stands;
+// failure is what a refusal says.
+func documentAction(act func(context.Context, string, uuid.UUID, string, string) (platform.ApplicationObjectState, error), failure string) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		if !requireCSRF(response, request) {
+			return
+		}
+		token, id, ok := databaseRequest(response, request)
+		if !ok {
+			return
+		}
+		var input struct {
+			Reference string `json:"reference"`
+		}
+		if !decodeJSON(response, request, &input) {
+			return
+		}
+		state, err := act(request.Context(), token, id, request.PathValue("name"), input.Reference)
+		if err != nil {
+			http.Error(response, failure, http.StatusBadRequest)
+			return
+		}
+		writeJSON(response, http.StatusOK, state)
+	}
 }
 
 func requireCSRF(response http.ResponseWriter, request *http.Request) bool {

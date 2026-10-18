@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/k33alexey/MetaLab/internal/appdb"
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/publication"
@@ -78,23 +79,18 @@ func (runtime *Runtime) LoadApplicationObjects(ctx context.Context, token string
 		return ApplicationObjects{}, err
 	}
 	language := ApplicationLanguage(catalog.Project, preferences)
-	result := make([]ApplicationObject, 0, len(catalog.Catalogs)+len(catalog.Documents))
-	for _, item := range catalog.Catalogs {
-		// The navigation lists what the person may OPEN, not what code may
-		// read: an object shown in the menu that refuses to open would be a
-		// promise the next click breaks.
-		if !mayOpen(permissions, item.ID) {
-			continue
+	result := []ApplicationObject{}
+	for _, kind := range metadata.ApplicationKinds() {
+		for _, item := range catalog.ObjectHeads(kind) {
+			// The navigation lists what the person may OPEN, not what code may
+			// read: an object shown in the menu that refuses to open would be a
+			// promise the next click breaks.
+			if !mayOpen(permissions, item.ID) {
+				continue
+			}
+			result = append(result, ApplicationObject{Kind: kind, Name: item.Name,
+				Title: resolvedApplicationTitle(item.Title, item.Name, language), Operations: allowedOperations(permissions, item.ID)})
 		}
-		result = append(result, ApplicationObject{Kind: metadata.CatalogKind, Name: item.Name,
-			Title: resolvedApplicationTitle(item.Title, item.Name, language), Operations: allowedOperations(permissions, item.ID)})
-	}
-	for _, item := range catalog.Documents {
-		if !mayOpen(permissions, item.ID) {
-			continue
-		}
-		result = append(result, ApplicationObject{Kind: metadata.DocumentKind, Name: item.Name,
-			Title: resolvedApplicationTitle(item.Title, item.Name, language), Operations: allowedOperations(permissions, item.ID)})
 	}
 	return ApplicationObjects{Objects: result, Language: language}, nil
 }
@@ -118,22 +114,14 @@ func mayOpen(permissions *metadata.Permissions, objectID uuid.UUID) bool {
 // by. An unknown name is reported as unknown, never as denied, since the name
 // came from the developer's own metadata, not from the caller's grants.
 func applicationObjectID(catalog *metadata.Catalog, objectKind metadata.Kind, name string) (uuid.UUID, error) {
-	switch objectKind {
-	case metadata.CatalogKind:
-		definition, ok := catalog.CatalogDefinition(name)
-		if !ok {
-			return uuid.UUID{}, fmt.Errorf("unknown catalog %q", name)
-		}
-		return definition.ID, nil
-	case metadata.DocumentKind:
-		definition, ok := catalog.DocumentDefinition(name)
-		if !ok {
-			return uuid.UUID{}, fmt.Errorf("unknown document %q", name)
-		}
-		return definition.ID, nil
-	default:
+	if !metadata.OpensInApplication(objectKind) {
 		return uuid.UUID{}, fmt.Errorf("unsupported application object kind %q", objectKind)
 	}
+	head, ok := catalog.ObjectHead(objectKind, name)
+	if !ok {
+		return uuid.UUID{}, fmt.Errorf("unknown %s %q", strings.ToLower(kinds.Must(objectKind).Name.English), name)
+	}
+	return head.ID, nil
 }
 
 // requireApplicationView resolves the caller's policy for one INTERACTIVE

@@ -42,7 +42,7 @@
 1	internal/metadata/runtime.go internal/metadata/runtime.go internal/metadata/runtime.go internal/metadata/runtime.go
 1	internal/platform/application_write.go internal/platform/application_write.go
 1	internal/platform/runtime.go internal/platform/runtime.go
-2	internal/portal/portal.go internal/portal/portal.go
+1	internal/portal/portal.go internal/portal/portal.go
 1	internal/portal/portal.go internal/studio/studio.go
 1	internal/studio/catalog_editor.go internal/studio/roles.go
 1	internal/studio/query_designer.go internal/studio/query_designer.go

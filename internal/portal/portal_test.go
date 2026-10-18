@@ -3,6 +3,7 @@ package portal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -386,5 +387,55 @@ func TestPublicationMarkerIsServedToTheApplication(t *testing.T) {
 	handler.ServeHTTP(anonymousResponse, anonymous)
 	if anonymousResponse.Code != http.StatusUnauthorized {
 		t.Fatalf("anonymous publication status = %d", anonymousResponse.Code)
+	}
+}
+
+// Ловит маршрут базы, который принял неверный идентификатор базы, действие
+// с документом без заголовка CSRF, отказ проведения, отданный как успех, и
+// вид, которого приложение не открывает, пропущенный к исполнению: пролог
+// запроса базы, проведение и отмена проведения, перечень видов приложения
+// написаны по одному разу (databaseRequest, documentAction,
+// metadata.OpensInApplication).
+func TestDocumentActionsAndDatabaseRoutesRefuseWhatTheyShould(t *testing.T) {
+	t.Parallel()
+	runtime := &fakeRuntime{token: "token"}
+	handler := NewHandler(runtime)
+	send := func(method, path, body string, csrf bool) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(method, path, strings.NewReader(body))
+		request.AddCookie(&http.Cookie{Name: sessionCookie, Value: "token"})
+		request.Header.Set("Content-Type", "application/json")
+		if csrf {
+			request.Header.Set("X-ML-CSRF", "1")
+		}
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		return response
+	}
+	database := "/api/databases/" + uuid.MustNew().String()
+	for action, posted := range map[string]bool{"post": true, "undo-posting": false} {
+		response := send(http.MethodPost, database+"/documents/Приход/"+action, `{"reference":"r"}`, true)
+		var state platform.ApplicationObjectState
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &state) != nil || state.Posted != posted {
+			t.Fatalf("%s: status %d body %s", action, response.Code, response.Body.String())
+		}
+		if response := send(http.MethodPost, database+"/documents/Приход/"+action, `{"reference":"r"}`, false); response.Code != http.StatusForbidden {
+			t.Fatalf("%s without CSRF: status %d", action, response.Code)
+		}
+		if response := send(http.MethodPost, "/api/databases/not-a-database/documents/Приход/"+action, `{"reference":"r"}`, true); response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "Invalid database identifier") {
+			t.Fatalf("%s of no database: status %d body %s", action, response.Code, response.Body.String())
+		}
+	}
+	if response := send(http.MethodGet, "/api/databases/not-a-database/session", "", false); response.Code != http.StatusBadRequest {
+		t.Fatalf("session of no database: status %d", response.Code)
+	}
+	if response := send(http.MethodGet, database+"/objects/accumulation-registers/Остатки/r", "", false); response.Code != http.StatusBadRequest {
+		t.Fatalf("a register opened as an object of the application: status %d", response.Code)
+	}
+	if response := send(http.MethodGet, database+"/objects/catalogs/Товары/r", "", false); response.Code != http.StatusOK {
+		t.Fatalf("a catalog refused: status %d body %s", response.Code, response.Body.String())
+	}
+	runtime.failure = errors.New("refused")
+	if response := send(http.MethodPost, database+"/documents/Приход/post", `{"reference":"r"}`, true); response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "Unable to post document") {
+		t.Fatalf("a refused posting: status %d body %s", response.Code, response.Body.String())
 	}
 }
