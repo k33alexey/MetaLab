@@ -65,14 +65,11 @@ type ManagedFormCommand struct {
 	// ModifiesSavedData marks the form modified when the command runs (help,
 	// ModifiesStoredData; the prototype writes only that, 4970 times).
 	ModifiesSavedData bool `yaml:"modifies_saved_data,omitempty" json:"modifiesSavedData,omitempty"`
-	// CurrentRowUse says the command needs a current row of AssociatedTable,
-	// a table of the same form named by its element (help, CurrentRowUse and
-	// AssociatedTable); the prototype writes dont-use on 30738 commands, use
-	// on 240, the table by the code of an element 4 times
-	// (NoteFormReferenceAsWritten), and an element that is no table 5 times
-	// (NoteAssociatedTableNotTable).
-	CurrentRowUse   FormUse `yaml:"current_row_use,omitempty" json:"currentRowUse,omitempty"`
-	AssociatedTable string  `yaml:"associated_table,omitempty" json:"associatedTable,omitempty"`
+	// The use of the current row by a command and the table whose row it
+	// uses (help, FormCommand.CurrentRowUse and AssociatedTable: the type
+	// CurrentRowUse is what an element does on a mobile device, the table is
+	// used with it alone) are not carried: ML has no mobile client. A
+	// description naming either is refused.
 	// FunctionalOptions switch the command off, as they switch off an
 	// attribute; Use is whom the command is available to, by role, as the
 	// view of an attribute of a form is.
@@ -315,7 +312,6 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	commandNames, commandIDs := map[string]bool{}, map[uuid.UUID]bool{}
 	// A command names the table whose current row it needs, which is found
 	// once the whole form is walked.
-	var associatedCommands []struct{ path, table string }
 	for index, command := range value.Commands {
 		prefix := fmt.Sprintf("commands[%d]", index)
 		if command.ID.IsZero() {
@@ -347,9 +343,6 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 			issues = append(issues, prefix+".action is unsupported")
 		}
 		issues = append(issues, validateFormCommandProperties(prefix, command, configuration)...)
-		if table := command.AssociatedTable; table != "" && !formElementCode.MatchString(table) {
-			associatedCommands = append(associatedCommands, struct{ path, table string }{prefix, table})
-		}
 	}
 
 	type pending struct {
@@ -470,7 +463,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		issues = append(issues, validateButtonProperties(current.path, item.ButtonProperties, item.Kind)...)
 		issues = append(issues, validateTableProperties(current.path, item.TableProperties, item.Kind)...)
 		issues = append(issues, validateFormEvents(current.path, item.Events, formElementEvents[item.Kind], "a "+string(item.Kind))...)
-		if _, named := item.commandSourceItem(); item.AssociatedTable != "" || named {
+		if _, named := item.commandSourceItem(); named {
 			associated = append(associated, pending{element: item, path: current.path})
 		}
 		if class == formTableClass || class == formFieldClass {
@@ -579,20 +572,8 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 		}
 	}
 	for _, group := range associated {
-		if table := group.element.AssociatedTable; table != "" && sources[strings.ToLower(table)] != FormElementTable {
-			issues = append(issues, group.path+".associated_table names no table of the form")
-		}
 		if name, named := group.element.commandSourceItem(); named && sources[strings.ToLower(name)] == "" {
 			issues = append(issues, group.path+".command_source names no field or table of the form")
-		}
-	}
-	// The help makes the table of a command a table of the form; the
-	// prototype keeps an input field, a button or a context menu there too (5
-	// commands, NoteAssociatedTableNotTable), so it is held to naming an
-	// element of the form.
-	for _, command := range associatedCommands {
-		if !names[foldedName(command.table)] {
-			issues = append(issues, command.path+".associated_table names no element of the form")
 		}
 	}
 	for _, button := range commanded {

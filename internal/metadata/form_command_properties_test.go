@@ -15,9 +15,9 @@ import (
 
 // A command of a form keeps what it has besides its name, title and action
 // through YAML and the Studio: its tooltip, picture and how its buttons are
-// drawn, its shortcut, whether it modifies the saved data, the current row
-// it needs and of which table, the options that switch it off and whom it is
-// available to; and a command with no action is kept.
+// drawn, its shortcut, whether it modifies the saved data, the options that
+// switch it off and whom it is available to; and a command with no action is
+// kept.
 //
 // Defect caught: the tooltip (33305 commands), the picture (14750), the
 // representation (11433) or the shortcut (2295) of a command lost, so that
@@ -32,7 +32,7 @@ func TestAFormCommandKeepsWhatItHas(t *testing.T) {
 	source := formAttrHead + "commands:\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990001, name: Удалить, title: {ru: Удалить}, action: custom, handler: Удалить," +
 		" tool_tip: {ru: Удалить строку}, picture: {standard: Delete, load_transparent: true}, representation: picture-and-text, shortcut: Shift+F9," +
-		" modifies_saved_data: true, current_row_use: use, associated_table: Список, functional_options: [c0de0000-0000-4000-8000-000000990002]," +
+		" modifies_saved_data: true, functional_options: [c0de0000-0000-4000-8000-000000990002]," +
 		" use: {common: false, roles: [{role: c0de0000-0000-4000-8000-000000990003, value: true}]}}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Пусто, title: {ru: Пусто}, action: custom}\n" +
 		"items:\n  - {id: c0de0000-0000-4000-8000-000000990005, name: Список, kind: table}\n"
@@ -47,7 +47,7 @@ func TestAFormCommandKeepsWhatItHas(t *testing.T) {
 		case command.ToolTip["ru"] != "Удалить строку" || command.Picture == nil || command.Picture.Standard != "Delete" ||
 			command.Representation != CommandPictureAndText || command.Shortcut != "Shift+F9":
 			t.Fatalf("%s: how it is drawn: %+v", source, command)
-		case !command.ModifiesSavedData || command.CurrentRowUse != FormUseYes || command.AssociatedTable != "Список":
+		case !command.ModifiesSavedData:
 			t.Fatalf("%s: what it needs: %+v", source, command)
 		case len(command.FunctionalOptions) != 1 || command.Use == nil || command.Use.Common || len(command.Use.Roles) != 1:
 			t.Fatalf("%s: whom it is for: %+v", source, command)
@@ -85,8 +85,7 @@ func TestAFormCommandKeepsWhatItHas(t *testing.T) {
 // What is wrong in a command of a form is refused, naming it.
 //
 // Defect caught: the prototype's spelling of the representation (TextPicture)
-// or of the use of the current row taken as written; a table of the current
-// row naming nothing in the form; a shortcut with spaces around; a
+// taken as written; a shortcut with spaces around; a
 // functional option or a role with no identifier; a picture naming two; a
 // handler that is no name of a procedure; a tooltip in no language.
 func TestAFormCommandRefusesWhatIsWrong(t *testing.T) {
@@ -97,9 +96,6 @@ func TestAFormCommandRefusesWhatIsWrong(t *testing.T) {
 	}
 	for name, test := range map[string]struct{ source, want string }{
 		"отображение прототипа": {command(", representation: TextPicture"), "commands[0].representation must be auto, text, picture or picture-and-text"},
-		"строка прототипа":      {command(", current_row_use: DontUse"), "commands[0].current_row_use must be auto, use or dont-use"},
-		"таблицы нет":           {command(", associated_table: Список"), "commands[0].associated_table names no element of the form"},
-		"таблица с пробелом":    {command(", associated_table: Список товаров"), "commands[0].associated_table must be the name or the code of a table of the form"},
 		"сочетание":             {command(", shortcut: ' F5'"), "commands[0].shortcut must be written without surrounding spaces"},
 		"опция":                 {command(", functional_options: [00000000-0000-0000-0000-000000000000]"), "commands[0].functional_options[0] must be a non-zero UUID"},
 		"роль":                  {command(", use: {common: true, roles: [{role: 00000000-0000-0000-0000-000000000000, value: false}]}"), "commands[0].use.roles[0].role must be a non-zero UUID"},
@@ -117,29 +113,21 @@ func TestAFormCommandRefusesWhatIsWrong(t *testing.T) {
 	}
 }
 
-// What a command of a form names in the project is resolved at load, and
-// the table of its current row noted when it is written as a code or names
-// no table.
+// What a command of a form names in the project is resolved at load.
 //
 // Defect caught: a command switched off by a functional option or limited
 // to a role the project no longer has, or drawn with a common picture that
-// is gone, loading clean; the table of the current row naming an input
-// field (5 commands of the exports) or written as a code carried silently;
-// a note on a command whose table is a table.
+// is gone, loading clean; a note on a command whose names all resolve.
 func TestWhatAFormCommandNamesIsResolved(t *testing.T) {
 	t.Parallel()
 	for name, test := range map[string]struct {
 		command string
 		gone    string
-		note    NoteKind
-		written string
 	}{
-		"всё на месте":   {command: "functional_options: [" + cmpOption + "], use: {common: false, roles: [{role: " + cmpRole + ", value: true}]}, picture: {common: " + cmpCommonPicture + "}, associated_table: Список"},
-		"опции нет":      {command: "functional_options: [" + refGone + "]", gone: "command Удалить functional option"},
-		"роли нет":       {command: "use: {common: true, roles: [{role: " + refGone + ", value: false}]}", gone: "command Удалить right of role"},
-		"картинки нет":   {command: "picture: {common: " + refGone + "}", gone: "command Удалить picture"},
-		"таблица — поле": {command: "associated_table: Код", note: NoteAssociatedTableNotTable, written: "Код (input-field)"},
-		"таблица — код":  {command: "associated_table: \"3:409b9a53-7f7e-4178-86c1-33176c7c7a7a\"", note: NoteFormReferenceAsWritten, written: "3:409b9a53-7f7e-4178-86c1-33176c7c7a7a"},
+		"всё на месте": {command: "functional_options: [" + cmpOption + "], use: {common: false, roles: [{role: " + cmpRole + ", value: true}]}, picture: {common: " + cmpCommonPicture + "}"},
+		"опции нет":    {command: "functional_options: [" + refGone + "]", gone: "command Удалить functional option"},
+		"роли нет":     {command: "use: {common: true, roles: [{role: " + refGone + ", value: false}]}", gone: "command Удалить right of role"},
+		"картинки нет": {command: "picture: {common: " + refGone + "}", gone: "command Удалить picture"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -169,8 +157,8 @@ func TestWhatAFormCommandNamesIsResolved(t *testing.T) {
 					found = append(found, note)
 				}
 			}
-			if test.note == "" && len(found) != 0 || test.note != "" && (len(found) != 1 || found[0].Kind != test.note || found[0].Written != test.written) {
-				t.Fatalf("notes = %+v, want %s %q", found, test.note, test.written)
+			if len(found) != 0 {
+				t.Fatalf("notes = %+v, want none", found)
 			}
 		})
 	}

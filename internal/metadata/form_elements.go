@@ -1879,8 +1879,7 @@ const (
 )
 
 // FormUse is auto, use or do not use: the through alignment of the titles of
-// a usual group (help, ThroughAlign) and the use of the current row by a
-// command (help, FormCommand.CurrentRowUse).
+// a usual group (help, ThroughAlign).
 type FormUse string
 
 const (
@@ -1956,11 +1955,10 @@ type GroupProperties struct {
 	// The use of the current row - a usual group or pages hidden in the
 	// mobile client and shown from the context menu of a row, what the
 	// current row of a table does on a mobile device (help, CurrentRowUse,
-	// TableCurrentRowUse) - is not carried: ML has no mobile client. A
-	// description naming it is refused.
-	// AssociatedTable is the table of the same form, named by its element,
-	// whose row showed such a group.
-	AssociatedTable string `yaml:"associated_table,omitempty" json:"associatedTable,omitempty"`
+	// TableCurrentRowUse) - is not carried: ML has no mobile client, and with
+	// it not the table whose row showed such a group (help, AssociatedTable,
+	// used with the use of the current row alone). A description naming
+	// either is refused.
 	// ShowInHeader shows a group of columns in the header of its table; off
 	// by default, and the prototype writes only the "on" (1046 times) - the
 	// other way round from a field, whose header is shown unless hidden.
@@ -2033,7 +2031,6 @@ func validateGroupProperties(path string, group GroupProperties, kind FormElemen
 	only("picture", group.Picture != nil, "pages, popups, buttons and pictures", FormElementPage, FormElementPopup, FormElementButton, FormElementPictureDecoration)
 	only("scroll_on_compress", group.ScrollOnCompress != nil, "pages", FormElementPage)
 	only("enable_content_change", group.EnableContentChange, "groups", formGroupKinds...)
-	only("associated_table", group.AssociatedTable != "", "usual groups and pages", FormElementUsualGroup, FormElementPages)
 	only("show_in_header", group.ShowInHeader, "groups of columns", FormElementColumnGroup)
 	only("header_data_path", group.HeaderDataPath != "", "groups of columns", FormElementColumnGroup)
 	only("header_format", len(group.HeaderFormat) != 0, "groups of columns", FormElementColumnGroup)
@@ -2064,9 +2061,6 @@ func validateGroupProperties(path string, group GroupProperties, kind FormElemen
 		issues = append(issues, validateElementDataPath(path+".title_data_path", group.TitleDataPath)...)
 	}
 	issues = append(issues, validateElementPictureReference(path+".picture", group.Picture)...)
-	if group.AssociatedTable != "" && (!validIdentifier(group.AssociatedTable) || utf8.RuneCountInString(group.AssociatedTable) > maxNameLength) {
-		issues = append(issues, path+".associated_table must be the name of a table of the form")
-	}
 	issues = append(issues, oneOf(path+".shape_representation", group.ShapeRepresentation, FormShapeAuto, FormShapeNone, FormShapeAlways, FormShapeWhenActive)...)
 	if name, item := group.commandSourceItem(); item {
 		if !validIdentifier(name) || utf8.RuneCountInString(name) > maxNameLength {

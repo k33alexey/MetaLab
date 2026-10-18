@@ -251,9 +251,9 @@ func TestEveryReferenceWrittenAsACodeIsNoted(t *testing.T) {
 // form that was deleted since - one segment, the number the element had and
 // the identifier of an element of a form - is a remnant of what was deleted,
 // in every place the prototype writes a reference to an element: a button's
-// command, the source of commands, a link of a field, the table of a
-// command, the group of the user settings of a list, and what a form of a
-// report and of a hierarchical list names. A data path takes no such code. A
+// command, the source of commands, a link of a field, the group of the user
+// settings of a list, and what a form of a report and of a hierarchical list
+// names. A data path takes no such code. A
 // code with another identifier stays a note, and so does a code of several
 // segments outside a link (TestACodedPathOfALinkIsARemnant).
 //
@@ -273,8 +273,8 @@ func TestTheCodeOfADeletedElementIsARemnant(t *testing.T) {
 	}
 	report := "{kind: report-object, reference: " + cmpReport + "}"
 	for name, test := range map[string]struct {
-		items, commands, rest, common string
-		where                         string
+		items, common string
+		where         string
 	}{
 		"команда кнопки": {items: "  - {id: c0de0000-0000-4000-8000-000000990001, name: Кнопка, kind: button, command: \"" + gone + "\"}\n",
 			where: "element Кнопка command"},
@@ -284,8 +284,6 @@ func TestTheCodeOfADeletedElementIsARemnant(t *testing.T) {
 			" choice_parameter_links: [{name: Отбор.Владелец, data_path: \"" + gone + "\"}]}\n", where: "element Поле choice parameter link Отбор.Владелец"},
 		"связь по типу": {items: "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, data_path: Объект.Код," +
 			" type_link: {data_path: \"" + gone + "\"}}\n", where: "element Поле type link"},
-		"таблица команды": {commands: "commands:\n  - {id: c0de0000-0000-4000-8000-000000990010, name: Удалить, title: {ru: Удалить}, action: custom," +
-			" current_row_use: use, associated_table: \"" + gone + "\"}\n", where: "command Удалить associated_table"},
 		"группа настроек списка": {items: "  - {id: c0de0000-0000-4000-8000-000000990001, name: Таблица, kind: table, data_path: Список," +
 			" dynamic_list: {period: {variant: custom}, user_settings_group: \"" + gone + "\"}}\n", where: "element Таблица user_settings_group"},
 		"список групп":          {common: commonForm("{kind: dynamic-list}", "group_list: \""+gone+"\"\n"), where: "group_list"},
@@ -312,7 +310,7 @@ func TestTheCodeOfADeletedElementIsARemnant(t *testing.T) {
 				if test.items != "" {
 					form = strings.Replace(form, "attributes:\n", "items:\n"+test.items+"attributes:\n", 1)
 				}
-				writeFile(t, file, form+test.commands+test.rest)
+				writeFile(t, file, form)
 			}
 			unresolved := unresolvedOf(t, root)
 			if len(unresolved) != 1 || unresolved[0].Where != at+test.where || unresolved[0].Written != gone {

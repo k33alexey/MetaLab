@@ -2693,15 +2693,14 @@ func TestAGroupHoldsOnlyThePropertiesOfAFieldItIsGiven(t *testing.T) {
 // picture and scrolling of a page, the tabs of pages, the title hidden on a
 // group of columns and the group shown in the header, how a popup and a
 // button group are drawn and where they and a command bar take their
-// commands, the right to change what a group holds, and the table whose
-// current row a group shows.
+// commands, and the right to change what a group holds.
 //
 // Defect caught: a usual group drawn with no frame (34472 times), its title
 // hidden (36478), collapsible (905), not united (1848) or collapsed (753)
 // refused or lost; the width of what it holds, the alignment of items and
 // titles, a spacing, the path to the data of its title, the picture of a
 // page or its scrolling lost; a page that does not scroll read as not said;
-// the table a group names lost on the way through the Studio; the tabs of
+// the tabs of
 // pages (4040), a group of columns in the header (1046), the picture of a
 // popup (4097), or the source of commands of a button group (1920) lost.
 func TestAGroupKeepsWhatItHasOfItsOwn(t *testing.T) {
@@ -2711,9 +2710,9 @@ func TestAGroupKeepsWhatItHasOfItsOwn(t *testing.T) {
 		" hide_title: true, behavior: collapsible, not_united: true, collapsed: true, collapsed_title: {ru: Свёрнуто}, control_representation: title-hyperlink," +
 		" no_left_margin: true, children_width: left-narrowest, items_and_titles_align: items-right-titles-left, horizontal_spacing: one-and-half," +
 		" vertical_spacing: none, through_align: dont-use, title_data_path: Items.Список.CurrentData.Наименование, enable_content_change: true," +
-		" associated_table: таблица, hidden_representation_title_back_color: {source: absolute, rgb: \"#190E70\"}}\n" +
+		" hidden_representation_title_back_color: {source: absolute, rgb: \"#190E70\"}}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Страницы, kind: pages, representation: tabs-on-left-horizontal," +
-		" associated_table: Таблица, children: [" +
+		" children: [" +
 		"{id: c0de0000-0000-4000-8000-000000990003, name: Страница, kind: page, orientation: horizontal-if-possible, hide_title: true," +
 		" picture: {standard: Change, load_transparent: true}, scroll_on_compress: false, title_data_path: Объект.Товары.RowsCount}]}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990004, name: Таблица, kind: table, children: [{id: c0de0000-0000-4000-8000-000000990005," +
@@ -2747,9 +2746,9 @@ func TestAGroupKeepsWhatItHasOfItsOwn(t *testing.T) {
 	case group.ChildrenWidth != ChildrenWidthLeftNarrowest || group.ItemsAndTitlesAlign != ItemsRightTitlesLeft || group.HorizontalSpacing != ItemSpacingOneAndHalf ||
 		group.VerticalSpacing != ItemSpacingNone || group.ThroughAlign != FormUseDontUse:
 		t.Fatalf("layout: %+v", group.GroupProperties)
-	case group.TitleDataPath != "Items.Список.CurrentData.Наименование" || !group.EnableContentChange || group.AssociatedTable != "таблица":
+	case group.TitleDataPath != "Items.Список.CurrentData.Наименование" || !group.EnableContentChange:
 		t.Fatalf("data: %+v", group.GroupProperties)
-	case pages.Representation != "tabs-on-left-horizontal" || pages.AssociatedTable != "Таблица":
+	case pages.Representation != "tabs-on-left-horizontal":
 		t.Fatalf("pages: %+v", pages.GroupProperties)
 	case page.Orientation != FormHorizontalIfPossible || !page.HideTitle || page.Picture.Standard != "Change" || !page.Picture.LoadTransparent ||
 		page.ScrollOnCompress == nil || *page.ScrollOnCompress || page.TitleDataPath != "Объект.Товары.RowsCount":
@@ -2797,10 +2796,9 @@ func TestAGroupKeepsWhatItHasOfItsOwn(t *testing.T) {
 //
 // Defect caught: the behavior or the collapsing of a usual group kept on a
 // page, the picture of a page on a usual group, a spacing on a group of
-// columns, the right to change what a group holds on a field, the current
-// row on a page; the prototype's "PopUp" or "NormalSeparation" taken as
-// written; a title data path with spaces, a picture of a page that names two
-// pictures, or a table named by no name.
+// columns, the right to change what a group holds on a field; the
+// prototype's "PopUp" or "NormalSeparation" taken as written; a title data
+// path with spaces, or a picture of a page that names two pictures.
 func TestEachPropertyOfAGroupStandsOnItsGroup(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
@@ -2808,7 +2806,7 @@ func TestEachPropertyOfAGroupStandsOnItsGroup(t *testing.T) {
 	full := GroupProperties{HideTitle: true, Behavior: FormGroupBehaviorUsual, NotUnited: true, Collapsed: true, CollapsedTitle: LocalizedText{"ru": "Итог"},
 		ControlRepresentation: FormGroupControlPicture, NoLeftMargin: true, ChildrenWidth: ChildrenWidthEqual, ItemsAndTitlesAlign: ItemsAndTitlesNone,
 		HorizontalSpacing: ItemSpacingHalf, VerticalSpacing: ItemSpacingDouble, ThroughAlign: FormUseYes, TitleDataPath: "Объект.Валюта",
-		Picture: &PictureReference{Standard: "Change"}, ScrollOnCompress: &yes, EnableContentChange: true, AssociatedTable: "Список",
+		Picture: &PictureReference{Standard: "Change"}, ScrollOnCompress: &yes, EnableContentChange: true,
 		ShowInHeader: true, ShapeRepresentation: FormShapeNone, CommandSource: "Items.Список", HeaderDataPath: "Год1",
 		HeaderFormat: LocalizedText{"ru": "ЧГ="}, HiddenRepresentationTitleBackColor: &ColorValue{Source: AutoColor}}
 	// Written out from the help (the extension of each group) and the
@@ -2825,8 +2823,7 @@ func TestEachPropertyOfAGroupStandsOnItsGroup(t *testing.T) {
 		"CommandSource": {FormElementCommandBar, FormElementButtonGroup, FormElementPopup},
 		"EnableContentChange": {FormElementUsualGroup, FormElementPages, FormElementPage, FormElementColumnGroup, FormElementPopup, FormElementButtonGroup,
 			FormElementCommandBar},
-		"AssociatedTable": {FormElementUsualGroup, FormElementPages},
-		"HeaderDataPath":  {FormElementColumnGroup}, "HeaderFormat": {FormElementColumnGroup}, "HiddenRepresentationTitleBackColor": usual,
+		"HeaderDataPath": {FormElementColumnGroup}, "HeaderFormat": {FormElementColumnGroup}, "HiddenRepresentationTitleBackColor": usual,
 	}
 	value := reflect.ValueOf(full)
 	for index := range value.NumField() {
@@ -2862,7 +2859,6 @@ func TestEachPropertyOfAGroupStandsOnItsGroup(t *testing.T) {
 		"источник прототипа":           {GroupProperties{CommandSource: "FormCommandPanelGlobalCommands"}, "items[0].command_source must be form, global-commands, Items.<name> or the code of an element of a form"},
 		"источник элементом прототипа": {GroupProperties{CommandSource: "Item.Список"}, "items[0].command_source must be form, global-commands, Items.<name> or the code of an element of a form"},
 		"источник не именем":           {GroupProperties{CommandSource: "Items.Список.CurrentData"}, "items[0].command_source must name an element of the form after Items."},
-		"таблица не именем":            {GroupProperties{AssociatedTable: "Items.Список"}, "items[0].associated_table must be the name of a table of the form"},
 		"заголовок не код языка":       {GroupProperties{CollapsedTitle: LocalizedText{"русский язык": "Итог"}}, "items[0].collapsed_title"},
 		"путь шапки":                   {GroupProperties{HeaderDataPath: "Год1..Месяц"}, "items[0].header_data_path must be names separated by dots"},
 		"формат шапки не код языка":    {GroupProperties{HeaderFormat: LocalizedText{"русский язык": "ЧГ="}}, "items[0].header_format"},
@@ -2932,38 +2928,6 @@ func TestEachGroupLaysOutWhatItHoldsByItsKind(t *testing.T) {
 		_, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm("  - "+element+"\n")), managedFormConfiguration())
 		if test.want == "" && err != nil || test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)) {
 			t.Errorf("%s on %s: %v, want %q", test.orientation, test.kind, err, test.want)
-		}
-	}
-}
-
-// A group names the table whose current row it shows by the name of the
-// table's element, in any case, wherever in the form the table stands; a
-// name of no table of the form is refused.
-//
-// Defect caught: a table standing after the group, or inside it as in the
-// exports, not found because the form was not walked to the end; a name in
-// another case refused; a group, a field or an attribute of the same name
-// taken for the table; a table of no form accepted.
-func TestAGroupNamesATableOfItsForm(t *testing.T) {
-	t.Parallel()
-	for name, test := range map[string]struct {
-		items string
-		want  string
-	}{
-		"таблица внутри": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Группа, kind: usual-group, associated_table: ТаблицаКаталогов, children: [" +
-			"{id: c0de0000-0000-4000-8000-000000990002, name: ТаблицаКаталогов, kind: table}]}\n", ""},
-		"таблица после, другой регистр": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Страницы, kind: pages, associated_table: список}\n" +
-			"  - {id: c0de0000-0000-4000-8000-000000990002, name: Список, kind: table}\n", ""},
-		"не таблица": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Группа, kind: usual-group, associated_table: Список}\n" +
-			"  - {id: c0de0000-0000-4000-8000-000000990002, name: Список, kind: input-field}\n", "items[0].associated_table names no table of the form"},
-		"нет такой": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Группа, kind: usual-group, associated_table: Список}\n",
-			"items[0].associated_table names no table of the form"},
-		"сама группа": {"  - {id: c0de0000-0000-4000-8000-000000990001, name: Группа, kind: usual-group, associated_table: Группа}\n",
-			"items[0].associated_table names no table of the form"},
-	} {
-		_, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(test.items)), managedFormConfiguration())
-		if test.want == "" && err != nil || test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)) {
-			t.Errorf("%s: %v, want %q", name, err, test.want)
 		}
 	}
 }
@@ -3172,8 +3136,8 @@ func TestWhatOnlyAButtonHasStandsOnAButton(t *testing.T) {
 }
 
 // Every name a form writes by an identifier is taken up to the 255 letters
-// the designer allows, and refused one letter past it: the table of a group
-// and of a command, the source of commands of a bar, the group of user
+// the designer allows, and refused one letter past it: the source of
+// commands of a bar, the group of user
 // settings of a list, a parameter of the form and of the data of a list, a
 // context menu, the handler of an event, the table of an addition and each
 // part of a value by name.
@@ -3188,14 +3152,8 @@ func TestNamesOfAFormAreTakenUpTo255Letters(t *testing.T) {
 		what   string
 		issues func(name string) []string
 	}{
-		{"associated_table", func(name string) []string {
-			return validateGroupProperties("items[0]", GroupProperties{AssociatedTable: name}, FormElementUsualGroup, configuration)
-		}},
 		{"command_source", func(name string) []string {
 			return validateGroupProperties("items[0]", GroupProperties{CommandSource: "Items." + name}, FormElementCommandBar, configuration)
-		}},
-		{"commands[0].associated_table", func(name string) []string {
-			return validateFormCommandProperties("commands[0]", ManagedFormCommand{AssociatedTable: name}, configuration)
 		}},
 		{"user_settings_group", func(name string) []string {
 			return validateTableDynamicList("items[0]", TableDynamicList{UserSettingsGroup: name})

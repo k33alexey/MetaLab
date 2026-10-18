@@ -2,7 +2,6 @@ package metadata
 
 import (
 	"strings"
-	"unicode/utf8"
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -306,11 +305,6 @@ func validateFormCommandProperties(path string, command ManagedFormCommand, conf
 	if strings.TrimSpace(command.Shortcut) != command.Shortcut {
 		issues = append(issues, path+".shortcut must be written without surrounding spaces")
 	}
-	issues = append(issues, oneOf(path+".current_row_use", command.CurrentRowUse, FormUseAuto, FormUseYes, FormUseDontUse)...)
-	if table := command.AssociatedTable; table != "" && !formElementCode.MatchString(table) &&
-		(!validIdentifier(table) || utf8.RuneCountInString(table) > maxNameLength) {
-		issues = append(issues, path+".associated_table must be the name or the code of a table of the form")
-	}
 	issues = append(issues, validateFormOptions(path+".functional_options", command.FunctionalOptions)...)
 	issues = append(issues, validateFormRight(path+".use", command.Use)...)
 	return issues
@@ -318,21 +312,8 @@ func validateFormCommandProperties(path string, command ManagedFormCommand, conf
 
 // resolveFormCommands resolves what the commands of one form name in the
 // project: the functional options that switch them off, the roles they are
-// available to, the common picture they are drawn with; and notes the table
-// a command names by the code of an element, or by an element that is no
-// table.
+// available to, the common picture they are drawn with.
 func (catalog *Catalog) resolveFormCommands(form string, value ManagedForm) error {
-	kinds := map[string]FormElementKind{}
-	var walk func(items []ManagedFormElement)
-	walk = func(items []ManagedFormElement) {
-		for _, item := range items {
-			if _, seen := kinds[foldedName(item.Name)]; !seen {
-				kinds[foldedName(item.Name)] = item.Kind
-			}
-			walk(item.Nested())
-		}
-	}
-	walk(value.FormItems())
 	for _, command := range value.Commands {
 		where := form + " command " + command.Name
 		if err := catalog.resolveFormData(where, nil, command.FunctionalOptions, command.Use); err != nil {
@@ -342,16 +323,6 @@ func (catalog *Catalog) resolveFormCommands(form string, value ManagedForm) erro
 			if _, ok := catalog.commonPictureByID[*picture.Common]; !ok {
 				catalog.noteUnresolved(where+" picture", *picture.Common)
 			}
-		}
-		switch table := command.AssociatedTable; {
-		case formElementCode.MatchString(table):
-			catalog.noteElementCode(where+" associated_table", table)
-		case table != "" && kinds[foldedName(table)] != FormElementTable:
-			kind := string(kinds[foldedName(table)])
-			if kind == "" {
-				kind = "context menu or command bar"
-			}
-			catalog.noteForm(NoteAssociatedTableNotTable, where+" associated_table", table+" ("+kind+")")
 		}
 	}
 	return nil
