@@ -10,13 +10,15 @@ import (
 	"path/filepath"
 
 	"github.com/k33alexey/MetaLab/internal/ownerfile"
+	"github.com/k33alexey/MetaLab/internal/servicestate"
 )
 
 // fileBackend keeps each secret in its own file in a machine-wide directory:
 // the account that writes a secret (an administrator) is not the one that
 // reads it (the service), so a store scoped to a user does not fit. What a
-// file is sealed with, who it is handed to and how it replaces the previous
-// one is the operating system's part (native_windows.go, native_linux.go).
+// file is sealed with and how it replaces the previous one is the operating
+// system's part (native_windows.go, native_linux.go); where the directory
+// lies, how it is laid and who a file is handed to — servicestate's.
 type fileBackend struct {
 	// directory replaces the machine-wide one in tests.
 	directory string
@@ -29,7 +31,7 @@ func (store fileBackend) Set(service, account, secret string) error {
 	if err != nil {
 		return err
 	}
-	if err := prepareSecretDirectory(directory); err != nil {
+	if err := servicestate.PrepareOwnDirectory(directory); err != nil {
 		return err
 	}
 	sealed, err := sealSecret([]byte(secret))
@@ -54,7 +56,7 @@ func (store fileBackend) Set(service, account, secret string) error {
 	}
 	// The file is handed over before it gets its name, so a secret under its
 	// name is never one the service cannot read.
-	if err := handOverSecret(temporaryPath); err != nil {
+	if err := servicestate.HandOver(temporaryPath); err != nil {
 		return err
 	}
 	return replaceSecret(temporaryPath, path)
@@ -98,7 +100,7 @@ func (store fileBackend) secretPath(service, account string) (string, string, er
 	directory := store.directory
 	if directory == "" {
 		var err error
-		if directory, err = secretDirectory(); err != nil {
+		if directory, err = servicestate.Secrets(); err != nil {
 			return "", "", err
 		}
 	}

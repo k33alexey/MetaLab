@@ -14,6 +14,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/ownerfile"
 	"github.com/k33alexey/MetaLab/internal/pgtool"
 	"github.com/k33alexey/MetaLab/internal/postgresconn"
+	"github.com/k33alexey/MetaLab/internal/servicestate"
 )
 
 // Archive is the completed local backup metadata.
@@ -37,13 +38,11 @@ func New() (*Tool, error) {
 	return &Tool{tools: tools}, nil
 }
 
-// Create writes a custom-format archive through a protected temporary file and atomic rename.
+// Create writes a custom-format archive into an existing directory through a
+// protected temporary file and atomic rename.
 func (tool *Tool) Create(ctx context.Context, connection postgresconn.Descriptor, password, directory, fileName string) (Archive, error) {
 	if err := validateInputs(tool, connection, password, directory, fileName); err != nil {
 		return Archive{}, err
-	}
-	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return Archive{}, fmt.Errorf("create backup directory: %w", err)
 	}
 	temporary, err := ownerfile.CreateTemp(directory, ".backup-*.partial")
 	if err != nil {
@@ -70,6 +69,11 @@ func (tool *Tool) Create(ctx context.Context, connection postgresconn.Descriptor
 		return Archive{}, fmt.Errorf("backup file %q already exists", fileName)
 	} else if !os.IsNotExist(err) {
 		return Archive{}, fmt.Errorf("inspect backup target: %w", err)
+	}
+	// The service restores what an administrator archived, so the archive is
+	// handed to it before it gets its name, as a secret is.
+	if err := servicestate.HandOver(temporaryPath); err != nil {
+		return Archive{}, err
 	}
 	if err := os.Rename(temporaryPath, target); err != nil {
 		return Archive{}, fmt.Errorf("publish backup: %w", err)

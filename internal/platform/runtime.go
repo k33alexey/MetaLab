@@ -847,7 +847,7 @@ func (runtime *Runtime) CreateDatabaseBackup(ctx context.Context, databaseID uui
 	if err != nil {
 		return systemdb.Backup{}, err
 	}
-	directory, err := settings.BackupDirectory()
+	directory, err := settings.PrepareBackupDirectory()
 	if err != nil {
 		return systemdb.Backup{}, err
 	}

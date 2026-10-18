@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/postgresconn"
+	"github.com/k33alexey/MetaLab/internal/servicestate"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -135,16 +136,33 @@ func (settings Config) Validate() error {
 	return nil
 }
 
-// BackupDirectory resolves the configured or platform-default local archive directory.
+// BackupDirectory resolves the local archive directory: the configured one,
+// or the service's own, where the service, Manager and the command line find
+// the same archives (ML-SERVICE.md, «Управление службой»).
 func (settings Config) BackupDirectory() (string, error) {
 	if settings.Backups.Directory != "" {
 		return settings.Backups.Directory, nil
 	}
-	directory, err := os.UserConfigDir()
+	return servicestate.Backups()
+}
+
+// PrepareBackupDirectory resolves the archive directory and makes it ready
+// for a new archive. The service's own is closed to others as the secrets
+// folder is: an archive is a full copy of a database. A configured one is
+// the administrator's, its rights are left as they are; what is missing of
+// it is created.
+func (settings Config) PrepareBackupDirectory() (string, error) {
+	directory, err := settings.BackupDirectory()
 	if err != nil {
-		return "", fmt.Errorf("resolve backup directory: %w", err)
+		return "", err
 	}
-	return filepath.Join(directory, "MetaLab", "backups"), nil
+	if settings.Backups.Directory == "" {
+		return directory, servicestate.PrepareOwnDirectory(directory)
+	}
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return "", fmt.Errorf("create backup directory: %w", err)
+	}
+	return directory, nil
 }
 
 // Save writes a validated settings atomically with owner-only permissions.

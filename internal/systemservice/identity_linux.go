@@ -15,14 +15,14 @@ import (
 	kservice "github.com/kardianos/service"
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
-	"github.com/k33alexey/MetaLab/internal/secretstore"
+	"github.com/k33alexey/MetaLab/internal/servicestate"
 )
 
 // ML Service on Linux is a system service under its own account: the secrets
 // belong to that account (PLATFORM-MODEL.md, «Секреты в Linux»), and a user
 // service does not start at boot and stops when its user logs out.
 func configureServiceIdentity(configuration *kservice.Config) {
-	configuration.UserName = secretstore.ServiceAccount
+	configuration.UserName = servicestate.Account
 }
 
 // systemdPlatform is what kardianos/service reports under systemd; the
@@ -51,44 +51,45 @@ type installHost struct {
 func systemInstall() installHost {
 	return installHost{
 		euid: os.Geteuid, lookup: user.Lookup, addAccount: addServiceAccount,
-		claimState: secretstore.ClaimServiceState, permits: accountPermits,
+		claimState: servicestate.Claim, permits: accountPermits,
 	}
 }
 
 // prepare makes the machine ready for the service before its unit is
-// written: the account exists, owns its state directory, and reaches the
-// settings and the backup folder. Rights on the administrator's own files
-// are not changed — install names the path the account cannot reach.
+// written: the account exists, owns its state directory with the folders of
+// the secrets and the backups, and reaches the settings and a configured
+// backup folder. Rights on the administrator's own files are not changed —
+// install names the path the account cannot reach.
 func (host installHost) prepare(platform, settingsPath string) error {
 	if platform != systemdPlatform {
 		return fmt.Errorf("ML Service on Linux is installed under systemd only, this system uses %q", platform)
 	}
 	if host.euid() != 0 {
-		return fmt.Errorf("installing ML Service on Linux requires root: it creates the service account %q and a system service", secretstore.ServiceAccount)
+		return fmt.Errorf("installing ML Service on Linux requires root: it creates the service account %q and a system service", servicestate.Account)
 	}
 	settings, _, err := appconfig.Load(settingsPath)
 	if err != nil {
 		return err
 	}
-	account, err := host.lookup(secretstore.ServiceAccount)
+	account, err := host.lookup(servicestate.Account)
 	var unknown user.UnknownUserError
 	if errors.As(err, &unknown) {
 		if err := host.addAccount(); err != nil {
 			return err
 		}
-		account, err = host.lookup(secretstore.ServiceAccount)
+		account, err = host.lookup(servicestate.Account)
 	}
 	if err != nil {
-		return fmt.Errorf("service account %q is not available: %w", secretstore.ServiceAccount, err)
+		return fmt.Errorf("service account %q is not available: %w", servicestate.Account, err)
 	}
 	if err := host.claimState(); err != nil {
 		return err
 	}
 	if err := host.permits(account, settingsPath, false); err != nil {
-		return fmt.Errorf("service account %q cannot read settings %s: %w", secretstore.ServiceAccount, settingsPath, err)
+		return fmt.Errorf("service account %q cannot read settings %s: %w", servicestate.Account, settingsPath, err)
 	}
-	// Without a folder in the settings the service keeps backups under its
-	// own home, the state directory it has just been given.
+	// Without a folder in the settings the service keeps backups in its own
+	// folder, given to it with the state directory.
 	if settings.Backups.Directory == "" {
 		return nil
 	}
@@ -97,7 +98,7 @@ func (host installHost) prepare(platform, settingsPath string) error {
 		return err
 	}
 	if err := host.permits(account, folder, true); err != nil {
-		return fmt.Errorf("service account %q cannot write backups to %s: %w", secretstore.ServiceAccount, folder, err)
+		return fmt.Errorf("service account %q cannot write backups to %s: %w", servicestate.Account, folder, err)
 	}
 	return nil
 }
@@ -129,7 +130,7 @@ func existingFolder(path string) (string, error) {
 func addServiceAccount() error {
 	useradd, err := exec.LookPath("useradd")
 	if err != nil {
-		return fmt.Errorf("create service account %q: useradd is not available, create a system account without a login: %w", secretstore.ServiceAccount, err)
+		return fmt.Errorf("create service account %q: useradd is not available, create a system account without a login: %w", servicestate.Account, err)
 	}
 	shell := nologinShells[len(nologinShells)-1]
 	for _, candidate := range nologinShells {
@@ -139,10 +140,10 @@ func addServiceAccount() error {
 		}
 	}
 	output, err := exec.Command(useradd, "--system", "--user-group", "--no-create-home",
-		"--home-dir", secretstore.ServiceStateDirectory, "--shell", shell,
-		"--comment", "MetaLab Service", secretstore.ServiceAccount).CombinedOutput()
+		"--home-dir", servicestate.StateDirectory, "--shell", shell,
+		"--comment", "MetaLab Service", servicestate.Account).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("create service account %q: %w: %s", secretstore.ServiceAccount, err, output)
+		return fmt.Errorf("create service account %q: %w: %s", servicestate.Account, err, output)
 	}
 	return nil
 }
@@ -151,7 +152,7 @@ func addServiceAccount() error {
 // account with its groups: rights, access lists and every folder on the way
 // are then judged as they will be for the service.
 func accountPermits(account *user.User, path string, write bool) error {
-	uid, gid, err := secretstore.AccountIDs(account)
+	uid, gid, err := servicestate.AccountIDs(account)
 	if err != nil {
 		return err
 	}

@@ -4,41 +4,15 @@ package secretstore
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
-
-	"github.com/k33alexey/MetaLab/internal/ownerfile"
 )
 
 // A secret is sealed with the DPAPI machine key, which any process of the
 // machine can open; the rights on the file and the directory keep it from
 // other users (PLATFORM-MODEL.md, «Секреты в Windows»).
 const secretExtension = ".dpapi"
-
-func secretDirectory() (string, error) {
-	programData := os.Getenv("ProgramData")
-	if programData == "" {
-		return "", fmt.Errorf("ProgramData is not configured")
-	}
-	return filepath.Join(programData, "MetaLab", "secrets"), nil
-}
-
-func prepareSecretDirectory(directory string) error {
-	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return fmt.Errorf("create Windows secret directory: %w", err)
-	}
-	if err := ownerfile.Restrict(directory); err != nil {
-		return fmt.Errorf("restrict Windows secret directory: %w", err)
-	}
-	return nil
-}
-
-// handOverSecret has nothing to do: the system, the administrators and the
-// writing account already have access to a file ownerfile creates.
-func handOverSecret(string) error { return nil }
 
 func replaceSecret(temporaryPath, path string) error {
 	from, err := windows.UTF16PtrFromString(temporaryPath)
