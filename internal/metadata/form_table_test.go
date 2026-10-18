@@ -39,14 +39,14 @@ func TestATableKeepsWhatItHasOfItsOwn(t *testing.T) {
 		" choice_mode: true, multiple_choice: true, initial_list_view: end, initial_tree_view: expand-top-level," +
 		" command_bar_location: none, search_string_location: none, view_status_location: top, search_control_location: command-bar," +
 		" search_on_input: dont-use, height_in_table_rows: 5, no_auto_max_rows_count: true, max_rows_count: 8," +
-		" rows_picture: {standard: Change}, row_picture_data_path: Список.ВидПиктограммы, refresh_request: pull-from-top," +
-		" behavior_on_horizontal_compression: move-items-by-importance, hierarchy_panel_location: left," +
+		" rows_picture: {standard: Change}, row_picture_data_path: Список.ВидПиктограммы," +
+		" hierarchy_panel_location: left," +
 		" width: 60, height: 7, no_auto_max_width: true, max_width: 80, vertical_stretch: false, group_horizontal_align: right," +
 		" title_location: top, skip_on_input: true, default_item: true, shortcut: Cmd+1, title_height: 2," +
 		" border_color: {source: style, from: {standard: BorderColor}}, title_font: {source: auto}, text_color: {source: auto}," +
 		" horizontal_scroll_bar: dont-use, vertical_scroll_bar: use-always, enable_drag: true, enable_start_drag: true, output: disable," +
 		" excluded_commands: [Add, Copy], file_drag_mode: as-file, height_control_variant: use-height-in-table-rows," +
-		" auto_mark_incomplete: true, current_row_use: selection-presentation-and-choice, display_importance: very-high, read_only: true}\n" +
+		" auto_mark_incomplete: true, display_importance: very-high, read_only: true}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Товары, kind: table, header_height: 3}\n"
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
 	if err != nil {
@@ -76,9 +76,8 @@ func TestATableKeepsWhatItHasOfItsOwn(t *testing.T) {
 		case table.HeightInTableRows != 5 || !table.NoAutoMaxRowsCount || table.MaxRowsCount != 8 || table.RowsPicture == nil ||
 			table.RowsPicture.Standard != "Change" || table.RowPictureDataPath != "Список.ВидПиктограммы":
 			t.Fatalf("%s: height and pictures: %+v", source, table.TableProperties)
-		case table.RefreshRequest != FormRefreshRequestPullFromTop || table.BehaviorOnHorizontalCompression != FormHorizontalCompressionMoveItemsByImportance ||
-			table.HierarchyPanelLocation != "left":
-			t.Fatalf("%s: the mobile client: %+v", source, table.TableProperties)
+		case table.HierarchyPanelLocation != "left":
+			t.Fatalf("%s: the panel of the hierarchy: %+v", source, table.TableProperties)
 		case table.Width != 60 || table.Height != 7 || !table.NoAutoMaxWidth || table.MaxWidth != 80 || table.VerticalStretch == nil ||
 			*table.VerticalStretch || table.GroupHorizontalAlign != ItemHorizontalRight:
 			t.Fatalf("%s: size: %+v", source, table.FieldLayout)
@@ -90,7 +89,7 @@ func TestATableKeepsWhatItHasOfItsOwn(t *testing.T) {
 			table.EnableStartDrag == nil || table.Output != FormUseOutputDisable || !slices.Equal(table.ExcludedCommands, []string{"Add", "Copy"}):
 			t.Fatalf("%s: what it shares with a document: %+v", source, table.FieldDocument)
 		case table.FileDragMode != FormFileDragAsFile || table.HeightControlVariant != FormHeightControlUseHeightInTableRows ||
-			table.AutoMarkIncomplete == nil || !*table.AutoMarkIncomplete || table.CurrentRowUse != FormCurrentRowSelectionPresentationAndChoice:
+			table.AutoMarkIncomplete == nil || !*table.AutoMarkIncomplete:
 			t.Fatalf("%s: what it shares with other fields: %+v", source, table)
 		case table.DisplayImportance != FormDisplayImportanceVeryHigh || !table.ReadOnly:
 			t.Fatalf("%s: what every element has: %+v", source, table)
@@ -139,9 +138,9 @@ func TestEachPropertyOfATableStandsOnlyOnATable(t *testing.T) {
 		InitialListView: FormInitialListBeginning, InitialTreeView: FormInitialTreeNoExpand, CommandBarLocation: FormTableLocationBottom,
 		SearchStringLocation: FormTableLocationFormCaption, ViewStatusLocation: FormTableLocationAuto, SearchControlLocation: FormTableLocationNone,
 		SearchOnInput: FormSearchOnInputUse, HeightInTableRows: 1, NoAutoMaxRowsCount: true, MaxRowsCount: 1,
-		RowsPicture: &PictureReference{Standard: "Change"}, RowPictureDataPath: "Список.Картинка", RefreshRequest: FormRefreshRequestNone,
-		BehaviorOnHorizontalCompression: FormHorizontalCompressionAuto, DynamicList: &TableDynamicList{Period: FormStandardPeriod{Variant: "custom"}},
-		ViewMode: FormSettingsViewQuickAccess, NoNamedItemDetailedRepresentation: true, Autofill: true, HierarchyPanelLocation: "auto"}
+		RowsPicture: &PictureReference{Standard: "Change"}, RowPictureDataPath: "Список.Картинка",
+		DynamicList: &TableDynamicList{Period: FormStandardPeriod{Variant: "custom"}},
+		ViewMode:    FormSettingsViewQuickAccess, NoNamedItemDetailedRepresentation: true, Autofill: true, HierarchyPanelLocation: "auto"}
 	value := reflect.ValueOf(full)
 	for index := range value.NumField() {
 		name := value.Type().Field(index).Name
@@ -173,36 +172,32 @@ func TestATableRefusesWhatIsWrong(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
 	for name, test := range map[string]struct{ element, want string }{
-		"вид прототипа":           {"kind: table, representation: Tree", "items[0].representation must be list, hierarchical-list or tree"},
-		"выделение прототипа":     {"kind: table, selection_mode: SingleRow", "items[0].selection_mode must be single-row or multi-row"},
-		"выделение календаря":     {"kind: table, selection_mode: single", "items[0].selection_mode must be single-row or multi-row"},
-		"выделение строки":        {"kind: table, row_selection_mode: line", "items[0].row_selection_mode must be cell or row"},
-		"управление поиском":      {"kind: table, search_control_location: top", "items[0].search_control_location must be auto, none or command-bar"},
-		"состояние в заголовке":   {"kind: table, view_status_location: form-caption", "items[0].view_status_location must be auto, none, top or bottom"},
-		"панель в командной":      {"kind: table, command_bar_location: command-bar", "items[0].command_bar_location must be auto, none, top or bottom"},
-		"строка поиска":           {"kind: table, search_string_location: Top", "items[0].search_string_location must be auto, none, top, bottom, command-bar, form-caption or pull-from-top"},
-		"ввод строк":              {"kind: table, row_input_mode: EndOfList", "items[0].row_input_mode must be end-of-list, end-of-window, after-current-row or before-current-row"},
-		"начало списка":           {"kind: table, initial_list_view: top", "items[0].initial_list_view must be auto, beginning or end"},
-		"дерево":                  {"kind: table, initial_tree_view: expand", "items[0].initial_tree_view must be no-expand, expand-top-level or expand-all-levels"},
-		"поиск при вводе":         {"kind: table, search_on_input: yes", "items[0].search_on_input must be auto, use or dont-use"},
-		"обновление":              {"kind: table, refresh_request: auto", "items[0].refresh_request must be none, pull-from-bottom, pull-from-top or pull-from-top-or-bottom"},
-		"сжатие":                  {"kind: table, behavior_on_horizontal_compression: hide", "items[0].behavior_on_horizontal_compression must be auto, hide-items-by-importance or move-items-by-importance"},
-		"высота в строках":        {"kind: table, height_in_table_rows: -1", "items[0].height_in_table_rows must not be negative"},
-		"предел строк":            {"kind: table, max_rows_count: -1", "items[0].max_rows_count must not be negative"},
-		"высота шапки":            {"kind: table, header_height: -1", "items[0].header_height must not be negative"},
-		"высота подвала":          {"kind: table, footer_height: -2", "items[0].footer_height must not be negative"},
-		"путь картинки":           {"kind: table, row_picture_data_path: Список. Картинка", "items[0].row_picture_data_path must be names separated by dots"},
-		"картинка двух":           {"kind: table, rows_picture: {standard: Change, file: RowsPicture.png}", "items[0].rows_picture"},
-		"строки таблицы у поля":   {"kind: input-field, height_control_variant: use-height-in-table-rows", "items[0].height_control_variant must be auto, use-content-height or use-height-in-form-rows"},
-		"строка таблицы у группы": {"kind: usual-group, current_row_use: choice", "items[0].current_row_use must be auto, use or dont-use"},
-		"строка группы у таблицы": {"kind: table, current_row_use: use", "items[0].current_row_use must be auto, choice, selection-presentation or selection-presentation-and-choice"},
-		"картинка поля":           {"kind: table, file_drag_mode: as-file, picture_size: stretch", "items[0].picture_size is allowed only for picture fields and pictures"},
-		"текст поля":              {"kind: table, height_control_variant: auto, mask: '99'", "items[0] has the text input of an input field"},
-		"шапка у поля":            {"kind: input-field, no_header: true", "items[0] has what only a table has"},
-		"выравнивание колонки":    {"kind: table, horizontal_align: left", "items[0] has the size and alignment of a field"},
-		"рамка":                   {"kind: table, border: {source: auto}", "items[0] has the look of a field"},
-		"режим редактирования":    {"kind: table, edit_mode: directly", "items[0] has what only a field has"},
-		"панель иерархии":         {"kind: table, hierarchy_panel_location: Left", "items[0].hierarchy_panel_location must be a value spelled in lower case words joined by hyphens"},
+		"вид прототипа":         {"kind: table, representation: Tree", "items[0].representation must be list, hierarchical-list or tree"},
+		"выделение прототипа":   {"kind: table, selection_mode: SingleRow", "items[0].selection_mode must be single-row or multi-row"},
+		"выделение календаря":   {"kind: table, selection_mode: single", "items[0].selection_mode must be single-row or multi-row"},
+		"выделение строки":      {"kind: table, row_selection_mode: line", "items[0].row_selection_mode must be cell or row"},
+		"управление поиском":    {"kind: table, search_control_location: top", "items[0].search_control_location must be auto, none or command-bar"},
+		"состояние в заголовке": {"kind: table, view_status_location: form-caption", "items[0].view_status_location must be auto, none, top or bottom"},
+		"панель в командной":    {"kind: table, command_bar_location: command-bar", "items[0].command_bar_location must be auto, none, top or bottom"},
+		"строка поиска":         {"kind: table, search_string_location: Top", "items[0].search_string_location must be auto, none, top, bottom, command-bar, form-caption or pull-from-top"},
+		"ввод строк":            {"kind: table, row_input_mode: EndOfList", "items[0].row_input_mode must be end-of-list, end-of-window, after-current-row or before-current-row"},
+		"начало списка":         {"kind: table, initial_list_view: top", "items[0].initial_list_view must be auto, beginning or end"},
+		"дерево":                {"kind: table, initial_tree_view: expand", "items[0].initial_tree_view must be no-expand, expand-top-level or expand-all-levels"},
+		"поиск при вводе":       {"kind: table, search_on_input: yes", "items[0].search_on_input must be auto, use or dont-use"},
+		"высота в строках":      {"kind: table, height_in_table_rows: -1", "items[0].height_in_table_rows must not be negative"},
+		"предел строк":          {"kind: table, max_rows_count: -1", "items[0].max_rows_count must not be negative"},
+		"высота шапки":          {"kind: table, header_height: -1", "items[0].header_height must not be negative"},
+		"высота подвала":        {"kind: table, footer_height: -2", "items[0].footer_height must not be negative"},
+		"путь картинки":         {"kind: table, row_picture_data_path: Список. Картинка", "items[0].row_picture_data_path must be names separated by dots"},
+		"картинка двух":         {"kind: table, rows_picture: {standard: Change, file: RowsPicture.png}", "items[0].rows_picture"},
+		"строки таблицы у поля": {"kind: input-field, height_control_variant: use-height-in-table-rows", "items[0].height_control_variant must be auto, use-content-height or use-height-in-form-rows"},
+		"картинка поля":         {"kind: table, file_drag_mode: as-file, picture_size: stretch", "items[0].picture_size is allowed only for picture fields and pictures"},
+		"текст поля":            {"kind: table, height_control_variant: auto, mask: '99'", "items[0] has the text input of an input field"},
+		"шапка у поля":          {"kind: input-field, no_header: true", "items[0] has what only a table has"},
+		"выравнивание колонки":  {"kind: table, horizontal_align: left", "items[0] has the size and alignment of a field"},
+		"рамка":                 {"kind: table, border: {source: auto}", "items[0] has the look of a field"},
+		"режим редактирования":  {"kind: table, edit_mode: directly", "items[0] has what only a field has"},
+		"панель иерархии":       {"kind: table, hierarchy_panel_location: Left", "items[0].hierarchy_panel_location must be a value spelled in lower case words joined by hyphens"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

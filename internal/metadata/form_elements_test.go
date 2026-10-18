@@ -1040,8 +1040,8 @@ func TestThePictureOfAChoiceButtonIsResolved(t *testing.T) {
 // Defect caught: wrapping or editing the text turned off in the prototype
 // (6007 and 1600 times) turned on again after the move; a multiline field
 // written false read as not said; a mask losing its spaces; the hint, the
-// keyboard of a mobile client or the mode of updating the text lost or read
-// into a neighbour; the password mode of a label field refused, so that the
+// hint of autofill or the mode of updating the text lost or read into a
+// neighbour; the password mode of a label field refused, so that the
 // form is not moved; the extended edit of multiple values (lombard1, 600
 // times) lost, so that the field falls back to the dialog of a list.
 func TestAnInputFieldKeepsHowTextIsTyped(t *testing.T) {
@@ -1049,9 +1049,9 @@ func TestAnInputFieldKeepsHowTextIsTyped(t *testing.T) {
 	configuration := managedFormConfiguration()
 	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, no_wrap: true, no_text_edit: true," +
 		" multi_line: false, extended_edit: true, password_mode: false, mask: \"99 99\", input_hint: {ru: Введите код}," +
-		" edit_text_update: on-value-change, special_text_input_mode: phone-number, spell_checking: dont-use, auto_correction: use," +
-		" height_control_variant: use-content-height, multiple_values_extended_edit: true, auto_capitalization: none," +
-		" return_key_text: send, auto_fill_hint: phone-number}\n" +
+		" edit_text_update: on-value-change," +
+		" height_control_variant: use-content-height, multiple_values_extended_edit: true," +
+		" auto_fill_hint: phone-number}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Пароль, kind: label-field, password_mode: true}\n"
 	form, err := DecodeManagedForm("form.yaml", strings.NewReader(formElementsForm(items)), configuration)
 	if err != nil {
@@ -1069,16 +1069,14 @@ func TestAnInputFieldKeepsHowTextIsTyped(t *testing.T) {
 		t.Fatalf("switches: %+v", input)
 	case input.Mask != "99 99" || input.InputHint["ru"] != "Введите код":
 		t.Fatalf("mask and hint: %q %+v", input.Mask, input.InputHint)
-	case input.EditTextUpdate != FormEditTextUpdateOnValueChange || input.SpecialTextInputMode != FormSpecialTextInputPhoneNumber:
-		t.Fatalf("modes: %q %q", input.EditTextUpdate, input.SpecialTextInputMode)
-	case input.SpellChecking != FormTextInputUseDontUse || input.AutoCorrection != FormTextInputUseUse:
-		t.Fatalf("checking: %q %q", input.SpellChecking, input.AutoCorrection)
+	case input.EditTextUpdate != FormEditTextUpdateOnValueChange:
+		t.Fatalf("mode: %q", input.EditTextUpdate)
 	case input.HeightControlVariant != FormHeightControlUseContentHeight:
 		t.Fatalf("height: %q", input.HeightControlVariant)
 	case !input.MultipleValuesExtendedEdit:
 		t.Fatalf("multiple values: %+v", input)
-	case input.AutoCapitalization != "none" || input.ReturnKeyText != "send" || input.AutoFillHint != "phone-number":
-		t.Fatalf("keyboard of a mobile client: %q %q %q", input.AutoCapitalization, input.ReturnKeyText, input.AutoFillHint)
+	case input.AutoFillHint != "phone-number":
+		t.Fatalf("hint of autofill: %q", input.AutoFillHint)
 	case form.Items[1].PasswordMode == nil || !*form.Items[1].PasswordMode:
 		t.Fatalf("label field: %+v", form.Items[1].FieldTextInput)
 	}
@@ -1107,7 +1105,7 @@ func TestAnInputFieldKeepsHowTextIsTyped(t *testing.T) {
 // label field too - and each value is checked.
 //
 // Defect caught: a mask kept on a label field or a hint on a check box; an
-// unknown mode of updating the text, keyboard, checking or height accepted;
+// unknown mode of updating the text, height or hint of autofill accepted;
 // a hint in no printable characters.
 func TestAnInputFieldRefusesWrongTextInput(t *testing.T) {
 	t.Parallel()
@@ -1119,15 +1117,10 @@ func TestAnInputFieldRefusesWrongTextInput(t *testing.T) {
 		"несколько значений надписи": {"kind: label-field, multiple_values_extended_edit: true", "items[0] has the text input of an input field"},
 		"несколько значений таблицы": {"kind: table, multiple_values_extended_edit: true", "items[0] has the text input of an input field"},
 		"обновление текста":          {"kind: input-field, edit_text_update: OnValueChange", "items[0].edit_text_update must be auto, always, on-value-change or dont-use"},
-		"клавиатура":                 {"kind: input-field, special_text_input_mode: phone", "items[0].special_text_input_mode must be auto, none, digits, digits-and-punctuation, email, phone-number or url"},
-		"орфография":                 {"kind: input-field, spell_checking: never", "items[0].spell_checking must be auto, use or dont-use"},
-		"автоисправление":            {"kind: input-field, auto_correction: never", "items[0].auto_correction must be auto, use or dont-use"},
 		"высота":                     {"kind: input-field, height_control_variant: rows", "items[0].height_control_variant must be auto, use-content-height or use-height-in-form-rows"},
 		"подсказка без слов":         {"kind: input-field, input_hint: {ru: \"\\x01\"}", "items[0].input_hint.ru must say something in printable characters"},
-		"регистр прототипа":          {"kind: input-field, auto_capitalization: AllCharacters", "items[0].auto_capitalization must be auto, none, sentences, words or all-characters"},
-		"кнопка клавиатуры":          {"kind: input-field, return_key_text: enter", "items[0].return_key_text must be auto, continue, done, go, join, next, return, search or send"},
 		"автозаполнение":             {"kind: input-field, auto_fill_hint: phone", "items[0].auto_fill_hint must be dont-use, full-name"},
-		"регистр флажка":             {"kind: check-box-field, auto_capitalization: none", "items[0] has the text input of an input field"},
+		"автозаполнение флажка":      {"kind: check-box-field, auto_fill_hint: email", "items[0] has the text input of an input field"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -1152,8 +1145,8 @@ func TestEveryPropertyOfTextInputStandsOnlyOnAnInputField(t *testing.T) {
 	configuration := managedFormConfiguration()
 	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Поле, kind: input-field, no_wrap: true, no_text_edit: true," +
 		" multi_line: false, extended_edit: false, password_mode: false, mask: \"9\", input_hint: {ru: Код}," +
-		" edit_text_update: auto, special_text_input_mode: auto, spell_checking: auto, auto_correction: auto," +
-		" height_control_variant: auto, multiple_values_extended_edit: true, auto_capitalization: auto, return_key_text: auto," +
+		" edit_text_update: auto," +
+		" height_control_variant: auto, multiple_values_extended_edit: true," +
 		" auto_fill_hint: dont-use}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Флажок, kind: check-box-field}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990003, name: Надпись, kind: label-field}\n"
@@ -2718,8 +2711,8 @@ func TestAGroupKeepsWhatItHasOfItsOwn(t *testing.T) {
 		" hide_title: true, behavior: collapsible, not_united: true, collapsed: true, collapsed_title: {ru: Свёрнуто}, control_representation: title-hyperlink," +
 		" no_left_margin: true, children_width: left-narrowest, items_and_titles_align: items-right-titles-left, horizontal_spacing: one-and-half," +
 		" vertical_spacing: none, through_align: dont-use, title_data_path: Items.Список.CurrentData.Наименование, enable_content_change: true," +
-		" current_row_use: use, associated_table: таблица, hidden_representation_title_back_color: {source: absolute, rgb: \"#190E70\"}}\n" +
-		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Страницы, kind: pages, representation: tabs-on-left-horizontal, current_row_use: dont-use," +
+		" associated_table: таблица, hidden_representation_title_back_color: {source: absolute, rgb: \"#190E70\"}}\n" +
+		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Страницы, kind: pages, representation: tabs-on-left-horizontal," +
 		" associated_table: Таблица, children: [" +
 		"{id: c0de0000-0000-4000-8000-000000990003, name: Страница, kind: page, orientation: horizontal-if-possible, hide_title: true," +
 		" picture: {standard: Change, load_transparent: true}, scroll_on_compress: false, title_data_path: Объект.Товары.RowsCount}]}\n" +
@@ -2754,9 +2747,9 @@ func TestAGroupKeepsWhatItHasOfItsOwn(t *testing.T) {
 	case group.ChildrenWidth != ChildrenWidthLeftNarrowest || group.ItemsAndTitlesAlign != ItemsRightTitlesLeft || group.HorizontalSpacing != ItemSpacingOneAndHalf ||
 		group.VerticalSpacing != ItemSpacingNone || group.ThroughAlign != FormUseDontUse:
 		t.Fatalf("layout: %+v", group.GroupProperties)
-	case group.TitleDataPath != "Items.Список.CurrentData.Наименование" || !group.EnableContentChange || group.CurrentRowUse != FormUseYes || group.AssociatedTable != "таблица":
+	case group.TitleDataPath != "Items.Список.CurrentData.Наименование" || !group.EnableContentChange || group.AssociatedTable != "таблица":
 		t.Fatalf("data: %+v", group.GroupProperties)
-	case pages.Representation != "tabs-on-left-horizontal" || pages.CurrentRowUse != FormUseDontUse || pages.AssociatedTable != "Таблица":
+	case pages.Representation != "tabs-on-left-horizontal" || pages.AssociatedTable != "Таблица":
 		t.Fatalf("pages: %+v", pages.GroupProperties)
 	case page.Orientation != FormHorizontalIfPossible || !page.HideTitle || page.Picture.Standard != "Change" || !page.Picture.LoadTransparent ||
 		page.ScrollOnCompress == nil || *page.ScrollOnCompress || page.TitleDataPath != "Объект.Товары.RowsCount":
@@ -2815,7 +2808,7 @@ func TestEachPropertyOfAGroupStandsOnItsGroup(t *testing.T) {
 	full := GroupProperties{HideTitle: true, Behavior: FormGroupBehaviorUsual, NotUnited: true, Collapsed: true, CollapsedTitle: LocalizedText{"ru": "Итог"},
 		ControlRepresentation: FormGroupControlPicture, NoLeftMargin: true, ChildrenWidth: ChildrenWidthEqual, ItemsAndTitlesAlign: ItemsAndTitlesNone,
 		HorizontalSpacing: ItemSpacingHalf, VerticalSpacing: ItemSpacingDouble, ThroughAlign: FormUseYes, TitleDataPath: "Объект.Валюта",
-		Picture: &PictureReference{Standard: "Change"}, ScrollOnCompress: &yes, EnableContentChange: true, CurrentRowUse: FormUseAuto, AssociatedTable: "Список",
+		Picture: &PictureReference{Standard: "Change"}, ScrollOnCompress: &yes, EnableContentChange: true, AssociatedTable: "Список",
 		ShowInHeader: true, ShapeRepresentation: FormShapeNone, CommandSource: "Items.Список", HeaderDataPath: "Год1",
 		HeaderFormat: LocalizedText{"ru": "ЧГ="}, HiddenRepresentationTitleBackColor: &ColorValue{Source: AutoColor}}
 	// Written out from the help (the extension of each group) and the
@@ -2832,8 +2825,8 @@ func TestEachPropertyOfAGroupStandsOnItsGroup(t *testing.T) {
 		"CommandSource": {FormElementCommandBar, FormElementButtonGroup, FormElementPopup},
 		"EnableContentChange": {FormElementUsualGroup, FormElementPages, FormElementPage, FormElementColumnGroup, FormElementPopup, FormElementButtonGroup,
 			FormElementCommandBar},
-		"CurrentRowUse": {FormElementUsualGroup, FormElementPages, FormElementTable}, "AssociatedTable": {FormElementUsualGroup, FormElementPages},
-		"HeaderDataPath": {FormElementColumnGroup}, "HeaderFormat": {FormElementColumnGroup}, "HiddenRepresentationTitleBackColor": usual,
+		"AssociatedTable": {FormElementUsualGroup, FormElementPages},
+		"HeaderDataPath":  {FormElementColumnGroup}, "HeaderFormat": {FormElementColumnGroup}, "HiddenRepresentationTitleBackColor": usual,
 	}
 	value := reflect.ValueOf(full)
 	for index := range value.NumField() {
@@ -2862,7 +2855,6 @@ func TestEachPropertyOfAGroupStandsOnItsGroup(t *testing.T) {
 		"выравнивание":                 {GroupProperties{ItemsAndTitlesAlign: "ItemsLeftTitlesLeft"}, "items[0].items_and_titles_align must be auto, none, items-left-titles-left, items-left-titles-right, items-right-titles-left, items-right-titles-right or titles-left-data-auto"},
 		"интервал":                     {GroupProperties{VerticalSpacing: "triple"}, "items[0].vertical_spacing must be auto, none, half, single, one-and-half or double"},
 		"сквозное":                     {GroupProperties{ThroughAlign: "Use"}, "items[0].through_align must be auto, use or dont-use"},
-		"текущая строка":               {GroupProperties{CurrentRowUse: "yes"}, "items[0].current_row_use must be auto, use or dont-use"},
 		"путь заголовка":               {GroupProperties{TitleDataPath: " Объект.Валюта"}, "items[0].title_data_path must be a data path without surrounding spaces"},
 		"путь не путь":                 {GroupProperties{TitleDataPath: "Объект..Валюта"}, "items[0].title_data_path must be names separated by dots, each with an index if any"},
 		"картинка двумя":               {GroupProperties{Picture: &PictureReference{Standard: "Change", File: "Picture.png"}}, "items[0].picture names more than one of a standard picture, a common picture and a file"},

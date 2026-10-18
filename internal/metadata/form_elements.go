@@ -502,14 +502,7 @@ func validateFieldLayout(path string, layout FieldLayout, class formElementClass
 		return []string{path + " has the size and alignment of a field"}
 	}
 	var issues []string
-	for _, size := range []struct {
-		name  string
-		value int
-	}{{"width", layout.Width}, {"height", layout.Height}, {"max_width", layout.MaxWidth}, {"max_height", layout.MaxHeight}} {
-		if size.value < 0 {
-			issues = append(issues, path+"."+size.name+" must not be negative")
-		}
-	}
+	issues = append(issues, negativeSizes(path, sizeOf("width", layout.Width), sizeOf("height", layout.Height), sizeOf("max_width", layout.MaxWidth), sizeOf("max_height", layout.MaxHeight))...)
 	horizontal := []ItemHorizontalAlign{ItemHorizontalAuto, ItemHorizontalLeft, ItemHorizontalCenter, ItemHorizontalRight}
 	vertical := []ItemVerticalAlign{ItemVerticalAuto, ItemVerticalTop, ItemVerticalCenter, ItemVerticalBottom}
 	issues = append(issues, oneOf(path+".group_horizontal_align", layout.GroupHorizontalAlign, horizontal...)...)
@@ -573,6 +566,39 @@ type namedColor struct {
 	value *ColorValue
 }
 
+// namedFont is a font of an element by its key.
+type namedFont struct {
+	name  string
+	value *FontValue
+}
+
+// lookStyleItems lists the style items of the configuration the fonts, the
+// colours and the border of an element take their values from, each by its
+// key and with the type it must be: a font from a style names a font, a
+// colour a colour, a border a border.
+func lookStyleItems(fonts []namedFont, colors []namedColor, border *BorderValue) []styleItemUse {
+	var uses []styleItemUse
+	add := func(name string, itemType StyleItemType, reference *StyleItemReference) {
+		if use, ok := styleItemUseOf(name, itemType, reference); ok {
+			uses = append(uses, use)
+		}
+	}
+	for _, font := range fonts {
+		if font.value != nil && font.value.Source == StyleFont {
+			add(font.name, FontStyleItem, font.value.From)
+		}
+	}
+	for _, color := range colors {
+		if color.value != nil && color.value.Source == StyleColor {
+			add(color.name, ColorStyleItem, color.value.From)
+		}
+	}
+	if border != nil && border.Source == StyleBorder {
+		add("border", BorderStyleItem, border.From)
+	}
+	return uses
+}
+
 func (look FieldLook) colors() []namedColor {
 	return []namedColor{{"text_color", look.TextColor}, {"back_color", look.BackColor}, {"border_color", look.BorderColor},
 		{"title_text_color", look.TitleTextColor}, {"title_back_color", look.TitleBackColor}}
@@ -581,29 +607,7 @@ func (look FieldLook) colors() []namedColor {
 // styleItems lists the style items of the configuration the look takes its
 // values from, each with the type it must be.
 func (look FieldLook) styleItems() []styleItemUse {
-	var uses []styleItemUse
-	add := func(name string, itemType StyleItemType, reference *StyleItemReference) {
-		if use, ok := styleItemUseOf(name, itemType, reference); ok {
-			uses = append(uses, use)
-		}
-	}
-	for _, font := range []struct {
-		name  string
-		value *FontValue
-	}{{"font", look.Font}, {"title_font", look.TitleFont}} {
-		if font.value != nil && font.value.Source == StyleFont {
-			add(font.name, FontStyleItem, font.value.From)
-		}
-	}
-	for _, color := range look.colors() {
-		if color.value != nil && color.value.Source == StyleColor {
-			add(color.name, ColorStyleItem, color.value.From)
-		}
-	}
-	if look.Border != nil && look.Border.Source == StyleBorder {
-		add("border", BorderStyleItem, look.Border.From)
-	}
-	return uses
+	return lookStyleItems([]namedFont{{"font", look.Font}, {"title_font", look.TitleFont}}, look.colors(), look.Border)
 }
 
 type styleItemUse struct {
@@ -711,20 +715,7 @@ func (column FieldColumn) colors() []namedColor {
 // styleItems lists the style items of the configuration the footer takes its
 // font and colours from.
 func (column FieldColumn) styleItems() []styleItemUse {
-	var uses []styleItemUse
-	if font := column.FooterFont; font != nil && font.Source == StyleFont {
-		if use, ok := styleItemUseOf("footer_font", FontStyleItem, font.From); ok {
-			uses = append(uses, use)
-		}
-	}
-	for _, color := range column.colors() {
-		if color.value != nil && color.value.Source == StyleColor {
-			if use, ok := styleItemUseOf(color.name, ColorStyleItem, color.value.From); ok {
-				uses = append(uses, use)
-			}
-		}
-	}
-	return uses
+	return lookStyleItems([]namedFont{{"footer_font", column.FooterFont}}, column.colors(), nil)
 }
 
 // styleItemUseOf is the use of a style item of the configuration, or of one
@@ -841,31 +832,6 @@ const (
 	FormEditTextUpdateDontUse       FormEditTextUpdate = "dont-use"
 )
 
-// FormSpecialTextInputMode is the keyboard a mobile client offers for an
-// input field (help, SpecialTextInputMode). Empty is Auto.
-type FormSpecialTextInputMode string
-
-const (
-	FormSpecialTextInputAuto                 FormSpecialTextInputMode = "auto"
-	FormSpecialTextInputNone                 FormSpecialTextInputMode = "none"
-	FormSpecialTextInputDigits               FormSpecialTextInputMode = "digits"
-	FormSpecialTextInputDigitsAndPunctuation FormSpecialTextInputMode = "digits-and-punctuation"
-	FormSpecialTextInputEmail                FormSpecialTextInputMode = "email"
-	FormSpecialTextInputPhoneNumber          FormSpecialTextInputMode = "phone-number"
-	FormSpecialTextInputURL                  FormSpecialTextInputMode = "url"
-)
-
-// FormTextInputUse is whether spelling is checked or errors corrected as text
-// is typed into an input field (help, SpellCheckingOnTextInput and
-// AutoCorrectionOnTextInput). Empty is Auto.
-type FormTextInputUse string
-
-const (
-	FormTextInputUseAuto    FormTextInputUse = "auto"
-	FormTextInputUseUse     FormTextInputUse = "use"
-	FormTextInputUseDontUse FormTextInputUse = "dont-use"
-)
-
 // FormHeightControlVariant is how the height of a multiline input field is
 // governed (help, ItemHeightControlVariant). Empty is Auto.
 type FormHeightControlVariant string
@@ -904,9 +870,6 @@ type FieldTextInput struct {
 	// InputHint is shown in an empty field without the focus.
 	InputHint            LocalizedText            `yaml:"input_hint,omitempty" json:"inputHint,omitempty"`
 	EditTextUpdate       FormEditTextUpdate       `yaml:"edit_text_update,omitempty" json:"editTextUpdate,omitempty"`
-	SpecialTextInputMode FormSpecialTextInputMode `yaml:"special_text_input_mode,omitempty" json:"specialTextInputMode,omitempty"`
-	SpellChecking        FormTextInputUse         `yaml:"spell_checking,omitempty" json:"spellChecking,omitempty"`
-	AutoCorrection       FormTextInputUse         `yaml:"auto_correction,omitempty" json:"autoCorrection,omitempty"`
 	HeightControlVariant FormHeightControlVariant `yaml:"height_control_variant,omitempty" json:"heightControlVariant,omitempty"`
 	// MultipleValuesExtendedEdit types several values straight into the field
 	// rather than in the dialog of a list of values (help, since 8.3.23). The
@@ -917,31 +880,19 @@ type FieldTextInput struct {
 	// it leaves out is therefore off, the behaviour of a field made before
 	// 8.3.23.
 	MultipleValuesExtendedEdit bool `yaml:"multiple_values_extended_edit,omitempty" json:"multipleValuesExtendedEdit,omitempty"`
-	// AutoCapitalization and ReturnKeyText are what the keyboard of a mobile
-	// client does as text is typed: changes the case of letters, and names
-	// the key that ends the input (help, AutoCapitalizationOnTextInput and
-	// OnScreenKeyboardReturnKeyText). The exports write neither; the
-	// configurator writes both under these names (other exports, 2 and 2).
-	AutoCapitalization FormAutoCapitalization `yaml:"auto_capitalization,omitempty" json:"autoCapitalization,omitempty"`
-	ReturnKeyText      FormReturnKeyText      `yaml:"return_key_text,omitempty" json:"returnKeyText,omitempty"`
+	// What the keyboard of a mobile client does as text is typed - the
+	// keyboard offered, spelling checked, errors corrected, the case of
+	// letters changed, the key that ends the input named (help,
+	// SpecialTextInputMode, SpellCheckingOnTextInput, AutoCorrectionOnTextInput,
+	// AutoCapitalizationOnTextInput, OnScreenKeyboardReturnKeyText) - is not
+	// carried: ML has no mobile client (METADATA-OBJECTS, «Мобильное
+	// приложение»), and a description naming it is refused.
 	// AutoFillHint tells a mobile and the web client what the field holds,
 	// for the browser to offer what it remembers (help, since 8.3.23). No
 	// export writes it: it is carried under the name of the help and noted
 	// (NoteWithoutSample).
 	AutoFillHint FormAutoFillHint `yaml:"auto_fill_hint,omitempty" json:"autoFillHint,omitempty"`
 }
-
-// FormAutoCapitalization is how the keyboard changes the case of what is
-// typed (help, AutoCapitalizationOnTextInput).
-type FormAutoCapitalization string
-
-var formAutoCapitalizations = []FormAutoCapitalization{"auto", "none", "sentences", "words", "all-characters"}
-
-// FormReturnKeyText is what the key ending the input on the keyboard of a
-// mobile client says (help, OnScreenKeyboardReturnKeyText).
-type FormReturnKeyText string
-
-var formReturnKeyTexts = []FormReturnKeyText{"auto", "continue", "done", "go", "join", "next", "return", "search", "send"}
 
 // FormAutoFillHint is what an input field holds, for the browser to fill it
 // in (help, InputFieldAutofillHint).
@@ -953,9 +904,8 @@ var formAutoFillHints = []FormAutoFillHint{"dont-use", "full-name", "given-name"
 
 func (input FieldTextInput) empty() bool {
 	return !input.NoWrap && !input.NoTextEdit && input.MultiLine == nil && input.ExtendedEdit == nil && input.PasswordMode == nil &&
-		input.Mask == "" && len(input.InputHint) == 0 && input.EditTextUpdate == "" && input.SpecialTextInputMode == "" &&
-		input.SpellChecking == "" && input.AutoCorrection == "" && input.HeightControlVariant == "" && !input.MultipleValuesExtendedEdit &&
-		input.AutoCapitalization == "" && input.ReturnKeyText == "" && input.AutoFillHint == ""
+		input.Mask == "" && len(input.InputHint) == 0 && input.EditTextUpdate == "" &&
+		input.HeightControlVariant == "" && !input.MultipleValuesExtendedEdit && input.AutoFillHint == ""
 }
 
 func validateFieldTextInput(path string, input FieldTextInput, kind FormElementKind, configuration project.Project) []string {
@@ -978,19 +928,11 @@ func validateFieldTextInput(path string, input FieldTextInput, kind FormElementK
 	issues = append(issues, validateTitle(path+".input_hint", input.InputHint, configuration)...)
 	issues = append(issues, oneOf(path+".edit_text_update", input.EditTextUpdate,
 		FormEditTextUpdateAuto, FormEditTextUpdateAlways, FormEditTextUpdateOnValueChange, FormEditTextUpdateDontUse)...)
-	issues = append(issues, oneOf(path+".special_text_input_mode", input.SpecialTextInputMode,
-		FormSpecialTextInputAuto, FormSpecialTextInputNone, FormSpecialTextInputDigits, FormSpecialTextInputDigitsAndPunctuation,
-		FormSpecialTextInputEmail, FormSpecialTextInputPhoneNumber, FormSpecialTextInputURL)...)
-	uses := []FormTextInputUse{FormTextInputUseAuto, FormTextInputUseUse, FormTextInputUseDontUse}
-	issues = append(issues, oneOf(path+".spell_checking", input.SpellChecking, uses...)...)
-	issues = append(issues, oneOf(path+".auto_correction", input.AutoCorrection, uses...)...)
 	variants := []FormHeightControlVariant{FormHeightControlAuto, FormHeightControlUseContentHeight, FormHeightControlUseHeightInFormRows}
 	if kind == FormElementTable {
 		variants = append(variants, FormHeightControlUseHeightInTableRows)
 	}
 	issues = append(issues, oneOf(path+".height_control_variant", input.HeightControlVariant, variants...)...)
-	issues = append(issues, oneOf(path+".auto_capitalization", input.AutoCapitalization, formAutoCapitalizations...)...)
-	issues = append(issues, oneOf(path+".return_key_text", input.ReturnKeyText, formReturnKeyTexts...)...)
 	issues = append(issues, oneOf(path+".auto_fill_hint", input.AutoFillHint, formAutoFillHints...)...)
 	return issues
 }
@@ -1090,20 +1032,7 @@ func (values FieldMultipleValues) colors() []namedColor {
 // styleItems lists the style items of the configuration the values take their
 // colours and font from.
 func (values FieldMultipleValues) styleItems() []styleItemUse {
-	var uses []styleItemUse
-	if font := values.MultipleValuesFont; font != nil && font.Source == StyleFont {
-		if use, ok := styleItemUseOf("multiple_values_font", FontStyleItem, font.From); ok {
-			uses = append(uses, use)
-		}
-	}
-	for _, color := range values.colors() {
-		if color.value != nil && color.value.Source == StyleColor {
-			if use, ok := styleItemUseOf(color.name, ColorStyleItem, color.value.From); ok {
-				uses = append(uses, use)
-			}
-		}
-	}
-	return uses
+	return lookStyleItems([]namedFont{{"multiple_values_font", values.MultipleValuesFont}}, values.colors(), nil)
 }
 
 // FormNumber is a number an element of a form is given, as the prototype
@@ -1366,17 +1295,7 @@ func validateInputFieldChoiceParameters(path string, parameters InputFieldChoice
 	var issues []string
 	names := map[string]bool{}
 	for index, parameter := range parameters.ChoiceParameters {
-		where := fmt.Sprintf("%s.choice_parameters[%d]", path, index)
-		issues = append(issues, validateChoiceParameterName(where, parameter.Name, names)...)
-		if len(parameter.Values) == 0 {
-			issues = append(issues, where+".values must contain at least one value")
-		}
-		for position, value := range parameter.Values {
-			issues = append(issues, validateDesignTimeValue(fmt.Sprintf("%s.values[%d]", where, position), value)...)
-		}
-		if !parameter.List && len(parameter.Values) > 1 {
-			issues = append(issues, where+" sets several values, so it must say it is a list")
-		}
+		issues = append(issues, validateChoiceParameter(fmt.Sprintf("%s.choice_parameters[%d]", path, index), parameter, names)...)
 	}
 	linked := map[string]bool{}
 	for index, link := range parameters.ChoiceParameterLinks {
@@ -1516,14 +1435,7 @@ func validateFieldValueView(path string, view FieldValueView, kind FormElementKi
 	only("item_title_height", view.ItemTitleHeight != 0, "check boxes and radio button fields", items...)
 	issues = append(issues, oneOf(path+".check_box_type", view.CheckBoxType, FormCheckBoxAuto, FormCheckBoxCheckBox, FormCheckBoxTumbler, FormCheckBoxSwitch)...)
 	issues = append(issues, oneOf(path+".radio_button_type", view.RadioButtonType, FormRadioButtonAuto, FormRadioButtonRadioButton, FormRadioButtonTumbler)...)
-	for _, size := range []struct {
-		name  string
-		value int
-	}{{"columns_count", view.ColumnsCount}, {"item_width", view.ItemWidth}, {"item_height", view.ItemHeight}, {"item_title_height", view.ItemTitleHeight}} {
-		if size.value < 0 {
-			issues = append(issues, path+"."+size.name+" must not be negative")
-		}
-	}
+	issues = append(issues, negativeSizes(path, sizeOf("columns_count", view.ColumnsCount), sizeOf("item_width", view.ItemWidth), sizeOf("item_height", view.ItemHeight), sizeOf("item_title_height", view.ItemTitleHeight))...)
 	return issues
 }
 
@@ -1918,14 +1830,7 @@ func validateFieldOther(path string, other FieldOther, kind FormElementKind) []s
 	issues = append(issues, oneOf(path+".table_location", other.TableLocation, formGanttTableLocations...)...)
 	issues = append(issues, oneOf(path+".values_selection_mode", other.ValuesSelectionMode, formGanttSelectionModes...)...)
 	issues = append(issues, oneOf(path+".intervals_selection_mode", other.IntervalsSelectionMode, formGanttSelectionModes...)...)
-	for _, months := range []struct {
-		name  string
-		value *int
-	}{{"width_in_months", other.WidthInMonths}, {"height_in_months", other.HeightInMonths}} {
-		if months.value != nil && *months.value < 0 {
-			issues = append(issues, path+"."+months.name+" must not be negative")
-		}
-	}
+	issues = append(issues, negativeSizes(path, elementSize{"width_in_months", other.WidthInMonths}, elementSize{"height_in_months", other.HeightInMonths})...)
 	issues = append(issues, oneOfKind(path+".selection_mode", other.SelectionMode, kind, formSelectionModes)...)
 	issues = append(issues, oneOfKind(path+".representation", other.Representation, kind, formRepresentations)...)
 	issues = append(issues, oneOf(path+".marking_appearance", other.MarkingAppearance,
@@ -1974,20 +1879,14 @@ const (
 )
 
 // FormUse is auto, use or do not use: the through alignment of the titles of
-// a usual group (help, ThroughAlign) and the use of the current row of a
-// table (help, CurrentRowUse).
+// a usual group (help, ThroughAlign) and the use of the current row by a
+// command (help, FormCommand.CurrentRowUse).
 type FormUse string
 
 const (
 	FormUseAuto    FormUse = "auto"
 	FormUseYes     FormUse = "use"
 	FormUseDontUse FormUse = "dont-use"
-	// What the current row of a table does in the mobile client beside auto
-	// (help, TableCurrentRowUse): offers a choice, shows the row selected,
-	// or both.
-	FormCurrentRowChoice                         FormUse = "choice"
-	FormCurrentRowSelectionPresentation          FormUse = "selection-presentation"
-	FormCurrentRowSelectionPresentationAndChoice FormUse = "selection-presentation-and-choice"
 )
 
 // FormShapeRepresentation is when the shape of a button or a popup is drawn
@@ -2054,13 +1953,14 @@ type GroupProperties struct {
 	// FormGroup - a command bar is a group too); the prototype writes only
 	// the "on" (1240 times, on every group and on command bars).
 	EnableContentChange bool `yaml:"enable_content_change,omitempty" json:"enableContentChange,omitempty"`
-	// CurrentRowUse hides a usual group or pages in the mobile client and
-	// shows them from the context menu of a row of AssociatedTable, a table of
-	// the same form named by its element. On a table it is what the current
-	// row does in the mobile client (help, TableCurrentRowUse), with values
-	// of its own.
-	CurrentRowUse   FormUse `yaml:"current_row_use,omitempty" json:"currentRowUse,omitempty"`
-	AssociatedTable string  `yaml:"associated_table,omitempty" json:"associatedTable,omitempty"`
+	// The use of the current row - a usual group or pages hidden in the
+	// mobile client and shown from the context menu of a row, what the
+	// current row of a table does on a mobile device (help, CurrentRowUse,
+	// TableCurrentRowUse) - is not carried: ML has no mobile client. A
+	// description naming it is refused.
+	// AssociatedTable is the table of the same form, named by its element,
+	// whose row showed such a group.
+	AssociatedTable string `yaml:"associated_table,omitempty" json:"associatedTable,omitempty"`
 	// ShowInHeader shows a group of columns in the header of its table; off
 	// by default, and the prototype writes only the "on" (1046 times) - the
 	// other way round from a field, whose header is shown unless hidden.
@@ -2091,12 +1991,7 @@ type GroupProperties struct {
 // styleItems lists the style items of the configuration the groups take their
 // colours from.
 func (group GroupProperties) styleItems() []styleItemUse {
-	if color := group.HiddenRepresentationTitleBackColor; color != nil && color.Source == StyleColor {
-		if use, ok := styleItemUseOf("hidden_representation_title_back_color", ColorStyleItem, color.From); ok {
-			return []styleItemUse{use}
-		}
-	}
-	return nil
+	return lookStyleItems(nil, []namedColor{{"hidden_representation_title_back_color", group.HiddenRepresentationTitleBackColor}}, nil)
 }
 
 // commandSourceItem is the name of the element a source of commands names,
@@ -2138,7 +2033,6 @@ func validateGroupProperties(path string, group GroupProperties, kind FormElemen
 	only("picture", group.Picture != nil, "pages, popups, buttons and pictures", FormElementPage, FormElementPopup, FormElementButton, FormElementPictureDecoration)
 	only("scroll_on_compress", group.ScrollOnCompress != nil, "pages", FormElementPage)
 	only("enable_content_change", group.EnableContentChange, "groups", formGroupKinds...)
-	only("current_row_use", group.CurrentRowUse != "", "usual groups, pages and tables", FormElementUsualGroup, FormElementPages, FormElementTable)
 	only("associated_table", group.AssociatedTable != "", "usual groups and pages", FormElementUsualGroup, FormElementPages)
 	only("show_in_header", group.ShowInHeader, "groups of columns", FormElementColumnGroup)
 	only("header_data_path", group.HeaderDataPath != "", "groups of columns", FormElementColumnGroup)
@@ -2170,12 +2064,6 @@ func validateGroupProperties(path string, group GroupProperties, kind FormElemen
 		issues = append(issues, validateElementDataPath(path+".title_data_path", group.TitleDataPath)...)
 	}
 	issues = append(issues, validateElementPictureReference(path+".picture", group.Picture)...)
-	if kind == FormElementTable {
-		issues = append(issues, oneOf(path+".current_row_use", group.CurrentRowUse, FormUseAuto, FormCurrentRowChoice,
-			FormCurrentRowSelectionPresentation, FormCurrentRowSelectionPresentationAndChoice)...)
-	} else {
-		issues = append(issues, oneOf(path+".current_row_use", group.CurrentRowUse, FormUseAuto, FormUseYes, FormUseDontUse)...)
-	}
 	if group.AssociatedTable != "" && (!validIdentifier(group.AssociatedTable) || utf8.RuneCountInString(group.AssociatedTable) > maxNameLength) {
 		issues = append(issues, path+".associated_table must be the name of a table of the form")
 	}

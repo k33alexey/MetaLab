@@ -367,17 +367,7 @@ func validateChoiceParameters(prefix string, choice FieldChoice) []string {
 	// a form applies is decided with the choice in forms.
 	names, linked := map[string]bool{}, map[string]bool{}
 	for index, parameter := range choice.Parameters {
-		path := fmt.Sprintf("%s.choice.parameters[%d]", prefix, index)
-		issues = append(issues, validateChoiceParameterName(path, parameter.Name, names)...)
-		if len(parameter.Values) == 0 {
-			issues = append(issues, path+".values must contain at least one value")
-		}
-		for position, value := range parameter.Values {
-			issues = append(issues, validateDesignTimeValue(fmt.Sprintf("%s.values[%d]", path, position), value)...)
-		}
-		if !parameter.List && len(parameter.Values) > 1 {
-			issues = append(issues, path+" sets several values, so it must say it is a list")
-		}
+		issues = append(issues, validateChoiceParameter(fmt.Sprintf("%s.choice.parameters[%d]", prefix, index), parameter, names)...)
 	}
 	for index, link := range choice.ParameterLinks {
 		path := fmt.Sprintf("%s.choice.parameter_links[%d]", prefix, index)
@@ -395,6 +385,24 @@ func validateChoiceParameters(prefix string, choice FieldChoice) []string {
 		if link.Item < 0 {
 			issues = append(issues, path+".item must not be negative")
 		}
+	}
+	return issues
+}
+
+// validateChoiceParameter checks one fixed parameter of choice, of an
+// attribute or of an input field: named once among the fixed ones (names),
+// with a value at least, each a value of the designer, and a list when it
+// sets several.
+func validateChoiceParameter(path string, parameter ChoiceParameter, names map[string]bool) []string {
+	issues := validateChoiceParameterName(path, parameter.Name, names)
+	if len(parameter.Values) == 0 {
+		issues = append(issues, path+".values must contain at least one value")
+	}
+	for position, value := range parameter.Values {
+		issues = append(issues, validateDesignTimeValue(fmt.Sprintf("%s.values[%d]", path, position), value)...)
+	}
+	if !parameter.List && len(parameter.Values) > 1 {
+		issues = append(issues, path+" sets several values, so it must say it is a list")
 	}
 	return issues
 }

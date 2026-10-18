@@ -253,6 +253,28 @@ func oneOf[T ~string](name string, value T, allowed ...T) []string {
 	return []string{name + " must be " + strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]}
 }
 
+// elementSize is a size, a count or a height of an element, by its key; one not
+// said is nil.
+type elementSize struct {
+	name  string
+	value *int
+}
+
+// sizeOf names a size the description always has.
+func sizeOf(name string, value int) elementSize { return elementSize{name, &value} }
+
+// negativeSizes refuses each size below zero, under path: none of an
+// element's sizes, counts and heights is negative.
+func negativeSizes(path string, sizes ...elementSize) []string {
+	var issues []string
+	for _, item := range sizes {
+		if item.value != nil && *item.value < 0 {
+			issues = append(issues, path+"."+item.name+" must not be negative")
+		}
+	}
+	return issues
+}
+
 func validateFormLayout(layout FormLayout) []string {
 	var issues []string
 	issues = append(issues, oneOf("vertical_scroll", layout.VerticalScroll, FormScrollAuto, FormScrollUse, FormScrollUseWithoutStretch, FormScrollUseIfNecessary)...)

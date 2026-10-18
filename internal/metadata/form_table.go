@@ -74,28 +74,6 @@ const (
 	FormSearchOnInputDontUse FormSearchOnInput = "dont-use"
 )
 
-// FormRefreshRequest is how a table is asked to refresh in the mobile client
-// (help, RefreshRequestMethod). None is a value of its own here, so empty is
-// not said.
-type FormRefreshRequest string
-
-const (
-	FormRefreshRequestNone                FormRefreshRequest = "none"
-	FormRefreshRequestPullFromBottom      FormRefreshRequest = "pull-from-bottom"
-	FormRefreshRequestPullFromTop         FormRefreshRequest = "pull-from-top"
-	FormRefreshRequestPullFromTopOrBottom FormRefreshRequest = "pull-from-top-or-bottom"
-)
-
-// FormHorizontalCompression is what a table does when the screen is too
-// narrow for it (help, TableBehaviorOnHorizontalCompression).
-type FormHorizontalCompression string
-
-const (
-	FormHorizontalCompressionAuto                  FormHorizontalCompression = "auto"
-	FormHorizontalCompressionHideItemsByImportance FormHorizontalCompression = "hide-items-by-importance"
-	FormHorizontalCompressionMoveItemsByImportance FormHorizontalCompression = "move-items-by-importance"
-)
-
 // TableProperties is what a table has of its own (help, FormTable), apart
 // from what it shares with a field - its size, title, look, scroll bars,
 // dragging and output, carried in the groups of a field - and from what a
@@ -164,10 +142,10 @@ type TableProperties struct {
 	// element is.
 	RowsPicture        *PictureReference `yaml:"rows_picture,omitempty" json:"rowsPicture,omitempty"`
 	RowPictureDataPath string            `yaml:"row_picture_data_path,omitempty" json:"rowPictureDataPath,omitempty"`
-	// RefreshRequest and BehaviorOnHorizontalCompression are of the mobile
-	// client.
-	RefreshRequest                  FormRefreshRequest        `yaml:"refresh_request,omitempty" json:"refreshRequest,omitempty"`
-	BehaviorOnHorizontalCompression FormHorizontalCompression `yaml:"behavior_on_horizontal_compression,omitempty" json:"behaviorOnHorizontalCompression,omitempty"`
+	// How a table is asked to refresh on the mobile platform and what it does
+	// fitting a narrow screen of a device (help, RefreshRequest,
+	// BehaviorOnHorizontalCompression) are not carried: ML has no mobile
+	// client, and a description naming them is refused.
 	// DynamicList is what a table showing a dynamic list has besides.
 	DynamicList *TableDynamicList `yaml:"dynamic_list,omitempty" json:"dynamicList,omitempty"`
 	// ViewMode is whether a table of a filter or of the user settings of a
@@ -327,8 +305,8 @@ func (table TableProperties) empty() bool {
 		!table.ChoiceMode && !table.MultipleChoice && table.InitialListView == "" && table.InitialTreeView == "" &&
 		table.CommandBarLocation == "" && table.SearchStringLocation == "" && table.ViewStatusLocation == "" &&
 		table.SearchControlLocation == "" && table.SearchOnInput == "" && table.HeightInTableRows == 0 && !table.NoAutoMaxRowsCount &&
-		table.MaxRowsCount == 0 && table.RowsPicture == nil && table.RowPictureDataPath == "" && table.RefreshRequest == "" &&
-		table.BehaviorOnHorizontalCompression == "" && table.DynamicList == nil && table.ViewMode == "" &&
+		table.MaxRowsCount == 0 && table.RowsPicture == nil && table.RowPictureDataPath == "" &&
+		table.DynamicList == nil && table.ViewMode == "" &&
 		!table.NoNamedItemDetailedRepresentation && !table.Autofill && table.HierarchyPanelLocation == ""
 }
 
@@ -344,22 +322,8 @@ func validateTableProperties(path string, table TableProperties, kind FormElemen
 	if location := table.HierarchyPanelLocation; location != "" && !enumerationSpelling.MatchString(location) {
 		issues = append(issues, path+".hierarchy_panel_location must be a value spelled in lower case words joined by hyphens")
 	}
-	for _, size := range []struct {
-		name  string
-		value int
-	}{{"height_in_table_rows", table.HeightInTableRows}, {"max_rows_count", table.MaxRowsCount}} {
-		if size.value < 0 {
-			issues = append(issues, path+"."+size.name+" must not be negative")
-		}
-	}
-	for _, height := range []struct {
-		name  string
-		value *int
-	}{{"header_height", table.HeaderHeight}, {"footer_height", table.FooterHeight}} {
-		if height.value != nil && *height.value < 0 {
-			issues = append(issues, path+"."+height.name+" must not be negative")
-		}
-	}
+	issues = append(issues, negativeSizes(path, sizeOf("height_in_table_rows", table.HeightInTableRows), sizeOf("max_rows_count", table.MaxRowsCount))...)
+	issues = append(issues, negativeSizes(path, elementSize{"header_height", table.HeaderHeight}, elementSize{"footer_height", table.FooterHeight})...)
 	issues = append(issues, oneOf(path+".row_input_mode", table.RowInputMode, FormRowInputEndOfList, FormRowInputEndOfWindow,
 		FormRowInputAfterCurrentRow, FormRowInputBeforeCurrentRow)...)
 	issues = append(issues, oneOf(path+".initial_list_view", table.InitialListView, FormInitialListAuto, FormInitialListBeginning, FormInitialListEnd)...)
@@ -379,10 +343,6 @@ func validateTableProperties(path string, table TableProperties, kind FormElemen
 	if table.RowPictureDataPath != "" {
 		issues = append(issues, validateElementDataPath(path+".row_picture_data_path", table.RowPictureDataPath)...)
 	}
-	issues = append(issues, oneOf(path+".refresh_request", table.RefreshRequest, FormRefreshRequestNone, FormRefreshRequestPullFromBottom,
-		FormRefreshRequestPullFromTop, FormRefreshRequestPullFromTopOrBottom)...)
-	issues = append(issues, oneOf(path+".behavior_on_horizontal_compression", table.BehaviorOnHorizontalCompression,
-		FormHorizontalCompressionAuto, FormHorizontalCompressionHideItemsByImportance, FormHorizontalCompressionMoveItemsByImportance)...)
 	if table.DynamicList != nil {
 		issues = append(issues, validateTableDynamicList(path+".dynamic_list", *table.DynamicList)...)
 	}

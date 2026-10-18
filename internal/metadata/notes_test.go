@@ -561,8 +561,7 @@ func TestSoundSettingsCarryNoNotes(t *testing.T) {
 		"items:\n  - {id: "+uuid.MustNew().String()+", name: Метки, kind: input-field, multiple_value_data_path: Метки.Значение,"+
 		" multiple_values_hyperlink: true, show_check_boxes_in_drop_list: false, allow_input_empty_multiple_values: true,"+
 		" multiple_value_picture_size: small, multiple_value_picture_shape: circle, multiple_values_text_color: {source: web, name: White},"+
-		" multiple_values_back_color: {source: absolute, rgb: \"#190E70\"}, multiple_values_font: {source: auto},"+
-		" auto_capitalization: none, return_key_text: send}\n"+
+		" multiple_values_back_color: {source: absolute, rgb: \"#190E70\"}, multiple_values_font: {source: auto}}\n"+
 		"  - {id: "+uuid.MustNew().String()+", name: Кнопка, kind: button, command_uniqueness: false}\n"+
 		"  - {id: "+uuid.MustNew().String()+", name: Календарь, kind: calendar-field, calendar_navigation: false}\n"+
 		"  - {id: "+uuid.MustNew().String()+", name: Планировщик, kind: planner-field, dimension_item_hyperlink: true, time_scale_item_hyperlink: true}\n"+

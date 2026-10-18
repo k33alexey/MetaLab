@@ -16,7 +16,6 @@
 1	internal/metadata/accumulation_register_store.go internal/metadata/accumulation_register_store.go
 1	internal/metadata/accumulation_register_store.go internal/metadata/accumulation_register_store.go internal/metadata/catalog_store.go internal/metadata/document_store.go internal/metadata/information_register_store.go
 3	internal/metadata/accumulation_register_store.go internal/metadata/information_register_store.go
-1	internal/metadata/attribute_presentation.go internal/metadata/form_elements.go
 1	internal/metadata/business_process.go internal/metadata/document_model.go
 1	internal/metadata/catalog_runtime.go internal/metadata/catalog_runtime.go internal/metadata/document_runtime.go
 8	internal/metadata/catalog_runtime.go internal/metadata/document_runtime.go
@@ -27,7 +26,6 @@
 1	internal/metadata/data_lock.go internal/metadata/data_lock.go
 1	internal/metadata/document_movements_runtime.go internal/metadata/document_movements_runtime.go
 1	internal/metadata/event_subscription_bsl_events.go internal/metadata/event_subscription_bsl_events.go
-1	internal/metadata/form_elements.go internal/metadata/form_elements.go
 2	internal/metadata/load.go internal/metadata/load.go
 1	internal/metadata/load.go internal/metadata/load.go internal/metadata/load.go
 1	internal/metadata/notes_rules.go internal/metadata/notes_rules.go internal/metadata/notes_rules.go
