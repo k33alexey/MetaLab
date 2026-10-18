@@ -57,6 +57,26 @@ func contentAttribute(autoUse CommonAttributeAutoUse, items ...CommonAttributeCo
 	}
 }
 
+// areaParameters are the two session parameters of a separator holding the
+// types given, as the configurator creates them when «Разделять» is set: the
+// value of the type of the attribute, the use Boolean.
+func areaParameters(types []Type) []SessionParameter {
+	return []SessionParameter{
+		{Format: CurrentFormat, ID: uuid.MustNew(), Name: "ОбластьДанныхЗначение",
+			Title: LocalizedText{"ru": "Область данных значение"}, Types: types},
+		{Format: CurrentFormat, ID: uuid.MustNew(), Name: "ОбластьДанныхИспользование",
+			Title: LocalizedText{"ru": "Область данных использование"}, Types: []Type{{Kind: BooleanType}}},
+	}
+}
+
+// separating makes the attribute a separator naming the parameters of
+// areaParameters.
+func separating(common CommonAttributeDefinition, parameters []SessionParameter) CommonAttributeDefinition {
+	common.DataSeparation, common.SeparatedDataUse = SeparationSeparate, SeparatedDataIndependently
+	common.DataSeparationValue, common.DataSeparationUse = &parameters[0].ID, &parameters[1].ID
+	return common
+}
+
 func reached(t *testing.T, catalog *Catalog) map[string]bool {
 	t.Helper()
 	if err := catalog.propagateCommonAttributes(); err != nil {
@@ -252,16 +272,17 @@ func TestACommonAttributeHasAConditionOfItsOwn(t *testing.T) {
 		Types: []Type{{Kind: BooleanType}}}
 	number := Constant{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Курс", Title: LocalizedText{"ru": "Курс"},
 		Types: []Type{{Kind: NumberType, Precision: 10, Scale: 2}}}
+	area := areaParameters([]Type{{Kind: NumberType, Precision: 7}})
 	attribute := func(condition uuid.UUID, items ...CommonAttributeContentItem) CommonAttributeDefinition {
-		return CommonAttributeDefinition{
+		return separating(CommonAttributeDefinition{
 			Format: CurrentFormat, ID: uuid.MustNew(), Name: "ОбластьДанных", Title: LocalizedText{"ru": "Область данных"},
 			Types: []Type{{Kind: NumberType, Precision: 7}}, AutoUse: CommonAttributeAutoUseUse,
 			Content: items, ConditionalSeparation: &condition,
-		}
+		}, area)
 	}
 	load := func(common CommonAttributeDefinition) (*Catalog, error) {
 		return NewCatalogSnapshotWithCommonAttributes(metadataConfiguration(), []Constant{flag, number}, nil, nil,
-			[]CatalogDefinition{goods}, nil, nil, nil, nil, nil, nil, []CommonAttributeDefinition{common})
+			[]CatalogDefinition{goods}, nil, nil, nil, nil, nil, area, []CommonAttributeDefinition{common})
 	}
 	excluded := []CommonAttributeContentItem{
 		{Metadata: flag.ID, Use: CommonAttributeUseDontUse}, {Metadata: number.ID, Use: CommonAttributeUseDontUse},
@@ -452,23 +473,26 @@ func TestConditionalSeparationIsResolvedAcrossTheConfiguration(t *testing.T) {
 // data area, which is the half of the mechanism we carry and do not execute.
 //
 // The defect this catches is the one that would hurt most: refusing such a
-// composition outright, so a real configuration could not be read at all.
+// composition outright, so a real configuration could not be read at all. All
+// those compositions are of separators: an attribute that separates nothing
+// does not take a constant in (TestOnlyASeparatorTakesInWhatGetsNoField).
 func TestCommonAttributeCompositionMayNameWhatCannotHoldAField(t *testing.T) {
 	t.Parallel()
 	goods := CatalogDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Товары", Title: LocalizedText{"ru": "Товары"},
 		Code: CatalogCode{Type: StringType, Length: 9}, DescriptionLength: 100}
 	flag := Constant{Format: CurrentFormat, ID: uuid.MustNew(), Name: "РазделятьУчет", Title: LocalizedText{"ru": "Разделять учёт"},
 		Types: []Type{{Kind: BooleanType}}}
-	common := CommonAttributeDefinition{
+	area := areaParameters([]Type{{Kind: StringType, Length: 100}})
+	common := separating(CommonAttributeDefinition{
 		Format: CurrentFormat, ID: uuid.MustNew(), Name: "Организация", Title: LocalizedText{"ru": "Организация"},
 		Types: []Type{{Kind: StringType, Length: 100}},
 		Content: []CommonAttributeContentItem{
 			{Metadata: goods.ID, Use: CommonAttributeUseUse},
 			{Metadata: flag.ID, Use: CommonAttributeUseUse},
 		},
-	}
+	}, area)
 	catalog, err := NewCatalogSnapshotWithCommonAttributes(metadataConfiguration(), []Constant{flag}, nil, nil,
-		[]CatalogDefinition{goods}, nil, nil, nil, nil, nil, nil, []CommonAttributeDefinition{common})
+		[]CatalogDefinition{goods}, nil, nil, nil, nil, nil, area, []CommonAttributeDefinition{common})
 	if err != nil {
 		t.Fatalf("a composition naming a constant was refused: %v", err)
 	}
@@ -483,9 +507,127 @@ func TestCommonAttributeCompositionMayNameWhatCannotHoldAField(t *testing.T) {
 	dangling.Content = append([]CommonAttributeContentItem{}, common.Content...)
 	dangling.Content[1].Metadata = uuid.MustNew()
 	_, err = NewCatalogSnapshotWithCommonAttributes(metadataConfiguration(), []Constant{flag}, nil, nil,
-		[]CatalogDefinition{goods}, nil, nil, nil, nil, nil, nil, []CommonAttributeDefinition{dangling})
+		[]CatalogDefinition{goods}, nil, nil, nil, nil, nil, area, []CommonAttributeDefinition{dangling})
 	if err == nil || !strings.Contains(err.Error(), "unknown object") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+// An attribute that separates nothing takes in only what gets its field: the
+// configurator's window of its composition has no constants and no scheduled
+// jobs (the owner, 13.10.2026; block 00, «Общий реквизит»), and journals it
+// shows cannot be set there. A separator takes them all in, as every
+// configuration being moved writes it. Defects caught: a constant, a scheduled
+// job or a journal taken in by an attribute that separates nothing, as until
+// 2.336, whatever the verdict of the item; the rule turned on a separator, so
+// the configurations being moved could not be read; and an object that does
+// get the field - a sequence among them, whose record takes the field of an
+// attribute that separates nothing - refused with them.
+func TestOnlyASeparatorTakesInWhatGetsNoField(t *testing.T) {
+	t.Parallel()
+	constant, job, journal, sequence := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	build := func(common CommonAttributeDefinition) *Catalog {
+		catalog := contentCatalog(common)
+		catalog.Constants = []Constant{{ID: constant, Name: "ВалютаУчета"}}
+		catalog.ScheduledJobs = []ScheduledJobDefinition{{ID: job, Name: "ОбновлениеКурсов"}}
+		catalog.DocumentJournals = []DocumentJournalDefinition{{ID: journal, Name: "Взаимодействия"}}
+		catalog.Sequences = []SequenceDefinition{{ID: sequence, Name: "Партии"}}
+		return catalog
+	}
+	item := func(id uuid.UUID, use CommonAttributeUse) CommonAttributeContentItem {
+		return CommonAttributeContentItem{Metadata: id, Use: use}
+	}
+	for name, test := range map[string]struct {
+		item   CommonAttributeContentItem
+		object string
+	}{
+		"константа": {item(constant, CommonAttributeUseUse), "ВалютаУчета"},
+		"константа «не использовать»": {item(constant, CommonAttributeUseDontUse), "ВалютаУчета"},
+		"константа «авто»":            {item(constant, CommonAttributeUseAuto), "ВалютаУчета"},
+		"регламентное задание":        {item(job, CommonAttributeUseUse), "ОбновлениеКурсов"},
+		"журнал документов":           {item(journal, CommonAttributeUseUse), "Взаимодействия"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			common := contentAttribute(CommonAttributeAutoUseDontUse, item(contentFirst, CommonAttributeUseUse), test.item)
+			err := build(common).propagateCommonAttributes()
+			if err == nil || !strings.Contains(err.Error(), "separates no data") || !strings.Contains(err.Error(), test.object) {
+				t.Fatalf("error = %v, expected a refusal naming %s", err, test.object)
+			}
+		})
+	}
+	fields := contentAttribute(CommonAttributeAutoUseDontUse, item(contentFirst, CommonAttributeUseUse),
+		item(contentInformation, CommonAttributeUseUse), item(contentExchange, CommonAttributeUseDontUse),
+		item(sequence, CommonAttributeUseUse))
+	catalog := build(fields)
+	if err := catalog.propagateCommonAttributes(); err != nil {
+		t.Fatalf("a composition of objects that get the field was refused: %v", err)
+	}
+	if len(catalog.Sequences[0].CommonAttributeFields) != 1 {
+		t.Fatal("the record of the sequence did not get the field")
+	}
+	separator := separating(contentAttribute(CommonAttributeAutoUseDontUse, item(contentFirst, CommonAttributeUseUse),
+		item(constant, CommonAttributeUseUse), item(job, CommonAttributeUseUse)), areaParameters(nil))
+	if err := build(separator).propagateCommonAttributes(); err != nil {
+		t.Fatalf("a separator taking in a constant and a scheduled job was refused: %v", err)
+	}
+}
+
+// The two session parameters of a separator are typed as the configurator's
+// check of the configuration types them (14.10.2026): the use is Boolean, the
+// value holds what the attribute holds. Defects caught: a parameter of use of
+// another type accepted, as until 2.336; a parameter of value of another
+// type, of another length or precision, holding more or fewer types accepted;
+// and the same type refused for being written differently - in another
+// order, or through a defined type that holds it.
+func TestTheSessionParametersOfASeparatorAreTypedAsTheAttribute(t *testing.T) {
+	t.Parallel()
+	goods := CatalogDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Товары", Title: LocalizedText{"ru": "Товары"},
+		Code: CatalogCode{Type: StringType, Length: 9}, DescriptionLength: 100}
+	number := Type{Kind: NumberType, Precision: 7}
+	area := DefinedTypeObject{Format: CurrentFormat, ID: uuid.MustNew(), Name: "ОбластьДанных",
+		Title: LocalizedText{"ru": "Область данных"}, Types: []Type{number}}
+	load := func(attribute, value, use []Type) error {
+		parameters := areaParameters(value)
+		parameters[1].Types = use
+		common := separating(CommonAttributeDefinition{
+			Format: CurrentFormat, ID: uuid.MustNew(), Name: "Область", Title: LocalizedText{"ru": "Область"},
+			Types: attribute, Content: []CommonAttributeContentItem{{Metadata: goods.ID, Use: CommonAttributeUseUse}},
+		}, parameters)
+		_, err := NewCatalogSnapshotWithCommonAttributes(metadataConfiguration(), nil, nil, []DefinedTypeObject{area},
+			[]CatalogDefinition{goods}, nil, nil, nil, nil, nil, parameters, []CommonAttributeDefinition{common})
+		return err
+	}
+	boolean := []Type{{Kind: BooleanType}}
+	text := Type{Kind: StringType, Length: 7}
+	defined := []Type{{Kind: DefinedType, Reference: &area.ID}}
+	for name, test := range map[string]struct{ attribute, value, use []Type }{
+		"один тип": {[]Type{number}, []Type{number}, boolean},
+		"составной в другом порядке": {[]Type{number, text}, []Type{text, number}, boolean},
+		"через определяемый тип":     {defined, []Type{number}, boolean},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := load(test.attribute, test.value, test.use); err != nil {
+				t.Fatalf("the parameters of the type of the attribute were refused: %v", err)
+			}
+		})
+	}
+	for name, test := range map[string]struct {
+		attribute, value, use []Type
+		message               string
+	}{
+		"использование — число":       {[]Type{number}, []Type{number}, []Type{number}, "not Boolean"},
+		"использование — составное":   {[]Type{number}, []Type{number}, []Type{boolean[0], number}, "not Boolean"},
+		"значение — строка":           {[]Type{number}, []Type{text}, boolean, "not the type of the attribute"},
+		"значение другой разрядности": {[]Type{number}, []Type{{Kind: NumberType, Precision: 8}}, boolean, "not the type of the attribute"},
+		"значение шире реквизита":     {[]Type{number}, []Type{number, text}, boolean, "not the type of the attribute"},
+		"значение уже реквизита":      {[]Type{number, text}, []Type{number}, boolean, "not the type of the attribute"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := load(test.attribute, test.value, test.use)
+			if err == nil || !strings.Contains(err.Error(), test.message) {
+				t.Fatalf("error = %v, expected it to name %q", err, test.message)
+			}
+		})
 	}
 }
 

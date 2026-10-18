@@ -3,6 +3,7 @@ package metadata
 import (
 	"fmt"
 	"io"
+	"maps"
 	"reflect"
 	"slices"
 	"sort"
@@ -423,6 +424,12 @@ type commonAttributeTarget struct {
 	takes func(CommonAttributeDefinition) bool
 }
 
+// gets says whether the object becomes a field of the attribute when the
+// attribute reaches it.
+func (target commonAttributeTarget) gets(common CommonAttributeDefinition) bool {
+	return target.takes == nil || target.takes(common)
+}
+
 // commonAttributeTargets is every object a common attribute can be
 // propagated into, in a fixed order. The order matters: with auto-use the
 // attribute reaches objects the composition never mentions, so propagation
@@ -560,7 +567,11 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 		return catalog.CommonAttributes[i].ID.String() < catalog.CommonAttributes[j].ID.String()
 	})
 	targets := catalog.commonAttributeTargets()
-	known := catalog.knownObjectIDs()
+	byID := make(map[uuid.UUID]commonAttributeTarget, len(targets))
+	for _, target := range targets {
+		byID[target.id] = target
+	}
+	known := catalog.knownObjects()
 	for _, common := range catalog.CommonAttributes {
 		attribute := Attribute{
 			ID: common.ID, Name: common.Name, Title: cloneTitle(common.Title), Types: cloneTypes(common.Types),
@@ -580,22 +591,35 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 		}
 		// An item naming nothing at all is caught before anything is
 		// propagated. Naming something that cannot hold a field is not an
-		// error: in the real configuration compositions name constants and
-		// scheduled jobs - 138 constants and 70 scheduled jobs among six
-		// common attributes - and for a job, and for a constant the attribute
-		// separates only independently, being in the composition does not
-		// mean getting a field. It means being separated by the area, which
-		// is the half of the mechanism we carry and do not execute.
-		//
+		// error in a separator: in the real configuration compositions name
+		// constants and scheduled jobs - 138 constants and 70 scheduled jobs
+		// among six common attributes - and for a job, and for a constant the
+		// attribute separates only independently, being in the composition
+		// does not mean getting a field. It means being separated by the area,
+		// which is the half of the mechanism we carry and do not execute.
 		// Refusing them would reject a real configuration outright, which is
 		// the worst thing an importer can do.
-		for _, item := range common.Content {
-			if !known[item.Metadata] {
+		//
+		// An attribute that separates nothing has only the first meaning, so
+		// its composition names only what gets the field. The configurator
+		// does not offer the rest: its window of the composition of such an
+		// attribute has no constants and no scheduled jobs (the owner,
+		// 13.10.2026; block 00, «Общий реквизит», 15.10.2026), and none of the
+		// configurations being moved writes one there.
+		for index, item := range common.Content {
+			name, ok := known[item.Metadata]
+			if !ok {
 				return fmt.Errorf("common attribute %s references unknown object %s", common.Name, item.Metadata)
+			}
+			if common.DataSeparation == SeparationSeparate {
+				continue
+			}
+			if target, ok := byID[item.Metadata]; !ok || !target.gets(common) {
+				return fmt.Errorf("common attribute %s separates no data, and content[%d] names %s, which gets no field from it: only a separator takes in what gets no field", common.Name, index, name)
 			}
 		}
 		for _, target := range targets {
-			if !common.reaches(target.id) || target.takes != nil && !target.takes(common) {
+			if !common.reaches(target.id) || !target.gets(common) {
 				continue
 			}
 			fields := target.fields()
@@ -621,10 +645,10 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 	return nil
 }
 
-// validateConditionalSeparationReferences resolves what every condition of
-// every composition names, and it is a pass over the whole catalog because one
-// file cannot answer it: the condition points at a constant or at an attribute
-// of another object.
+// validateSeparationReferences resolves what every condition of every
+// composition names, and the session parameters of separation, and it is a
+// pass over the whole catalog because one file cannot answer it: the
+// condition points at a constant or at an attribute of another object.
 //
 // Three things are checked, and all three come from the prototype's own
 // description of the property. The boolean has to exist - a condition pointing
@@ -634,7 +658,7 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 // last one is what ties the condition to the data area
 // it decides about, and it also means a register cannot hold one - a register
 // forms no reference.
-func (catalog *Catalog) validateConditionalSeparationReferences() error {
+func (catalog *Catalog) validateSeparationReferences() error {
 	for _, common := range catalog.CommonAttributes {
 		for index, item := range common.Content {
 			separation := item.ConditionalSeparation
@@ -679,19 +703,55 @@ func (catalog *Catalog) validateConditionalSeparationReferences() error {
 				return fmt.Errorf("common attribute %s conditional_separation names constant %s, which is not boolean", common.Name, constant.Name)
 			}
 		}
-		// The two session parameters of separation point outside the file as
-		// well, and a parameter that is not there leaves the platform with no
-		// way to learn which area the session is in.
-		for name, parameter := range map[string]*uuid.UUID{
-			"data_separation_value": common.DataSeparationValue, "data_separation_use": common.DataSeparationUse,
-		} {
-			if parameter == nil {
-				continue
-			}
-			if _, ok := catalog.SessionParameterByID(*parameter); !ok {
-				return fmt.Errorf("common attribute %s %s names unknown session parameter %s", common.Name, name, parameter)
-			}
+		if err := catalog.validateSeparationParameters(common); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// validateSeparationParameters resolves the two session parameters of
+// separation, which point outside the file as well: a parameter that is not
+// there leaves the platform with no way to learn which area the session is in.
+//
+// Their types are checked as the configurator's check of the configuration
+// checks them (14.10.2026, METADATA-OBJECTS «Общие: общие реквизиты»): the
+// parameter of use says whether separation is in force and is Boolean only,
+// and the parameter of value holds the separator of the session and holds
+// exactly what the attribute holds. The window of the attribute takes another
+// type, and the check of the configuration then names it an error.
+func (catalog *Catalog) validateSeparationParameters(common CommonAttributeDefinition) error {
+	parameter := func(name string, id *uuid.UUID) (SessionParameter, bool, error) {
+		if id == nil {
+			return SessionParameter{}, false, nil
+		}
+		found, ok := catalog.SessionParameterByID(*id)
+		if !ok {
+			return SessionParameter{}, false, fmt.Errorf("common attribute %s %s names unknown session parameter %s", common.Name, name, id)
+		}
+		return found, true, nil
+	}
+	use, ok, err := parameter("data_separation_use", common.DataSeparationUse)
+	if err != nil {
+		return err
+	}
+	if ok && !isBooleanOnly(use.Types) {
+		return fmt.Errorf("common attribute %s data_separation_use names session parameter %s, which is not Boolean: it says whether separation is in force", common.Name, use.Name)
+	}
+	value, ok, err := parameter("data_separation_value", common.DataSeparationValue)
+	if err != nil || !ok {
+		return err
+	}
+	held, err := catalog.heldTypes(common.Types)
+	if err != nil {
+		return err
+	}
+	holds, err := catalog.heldTypes(value.Types)
+	if err != nil {
+		return err
+	}
+	if !maps.Equal(held, holds) {
+		return fmt.Errorf("common attribute %s data_separation_value names session parameter %s, whose type is not the type of the attribute: it holds the separator of the session", common.Name, value.Name)
 	}
 	return nil
 }
@@ -746,13 +806,6 @@ func (catalog *Catalog) referableObject(id uuid.UUID) (string, []Attribute, Type
 	return "", nil, "", false
 }
 
-// knownObjectIDs is every metadata object of the configuration, of every kind.
-//
-// It is gathered by walking the collections of the catalog rather than by
-// listing them, and that is deliberate: the list would be twenty-odd names
-// today and would quietly fall behind on the first kind added, turning a
-// perfectly good object into an "unknown object" at load time. A collection
-// added to the catalog is known here the moment it is added.
 // OwnAttributes returns the attributes an object declares itself, leaving out
 // the common attributes propagation has added to the same list.
 //
@@ -800,33 +853,30 @@ func (value CommonAttributeDefinition) jointSeparator() bool {
 	return value.DataSeparation == SeparationSeparate && value.SeparatedDataUse == SeparatedDataIndependentlyAndSimultaneously
 }
 
-func (catalog *Catalog) knownObjectIDs() map[uuid.UUID]bool {
-	known := map[uuid.UUID]bool{}
+// knownObjects is every metadata object of the configuration, of every kind,
+// by its name.
+//
+// It is gathered by walking the collections of the catalog rather than by
+// listing them, and that is deliberate: the list would be twenty-odd names
+// today and would quietly fall behind on the first kind added, turning a
+// perfectly good object into an "unknown object" at load time. A collection
+// added to the catalog is known here the moment it is added.
+func (catalog *Catalog) knownObjects() map[uuid.UUID]string {
+	known := map[uuid.UUID]string{}
 	// A recalculation lies inside its calculation register, and a composition
 	// names it all the same: it is one of the fourteen kinds.
 	for _, register := range catalog.CalculationRegisters {
 		for _, recalculation := range register.Recalculations {
-			known[recalculation.ID] = true
+			known[recalculation.ID] = register.Name + "." + recalculation.Name
 		}
 	}
-	value := reflect.ValueOf(*catalog)
-	for index := 0; index < value.NumField(); index++ {
-		field := value.Field(index)
-		if !field.CanInterface() || field.Kind() != reflect.Slice {
-			continue
-		}
-		for item := 0; item < field.Len(); item++ {
-			element := field.Index(item)
-			if element.Kind() != reflect.Struct {
-				break
+	eachCatalogObject(catalog, func(object reflect.Value, _ string) {
+		if field := object.FieldByName("ID"); field.IsValid() {
+			if id, ok := field.Interface().(uuid.UUID); ok {
+				known[id] = nameOf(object)
 			}
-			id := element.FieldByName("ID")
-			if !id.IsValid() || id.Type() != reflect.TypeOf(uuid.UUID{}) {
-				break
-			}
-			known[id.Interface().(uuid.UUID)] = true
 		}
-	}
+	})
 	return known
 }
 

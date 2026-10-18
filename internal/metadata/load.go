@@ -1432,7 +1432,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	if err := catalog.validateCommonPictureFiles(root); err != nil {
 		return err
 	}
-	if err := catalog.validateConditionalSeparationReferences(); err != nil {
+	if err := catalog.validateSeparationReferences(); err != nil {
 		return err
 	}
 	if err := catalog.validateCommonPictureReferences(); err != nil {
@@ -1638,13 +1638,9 @@ func (catalog *Catalog) validateTaskAddressing(owner string, item TaskDefinition
 		// A value the dimension cannot hold is a value the register will never
 		// be asked about: the task would be addressed to somebody the platform
 		// then fails to find, and nothing anywhere would say so.
-		allowed, err := catalog.expandTypes(byID[*attribute.Dimension], nil)
+		held, err := catalog.heldTypes(byID[*attribute.Dimension])
 		if err != nil {
 			return err
-		}
-		held := map[string]bool{}
-		for _, one := range allowed {
-			held[typeKey(one)] = true
 		}
 		addressed, err := catalog.expandTypes(attribute.Types, nil)
 		if err != nil {

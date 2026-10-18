@@ -231,6 +231,22 @@ func typeKey(item Type) string {
 	return key
 }
 
+// heldTypes is every concrete type a type description holds, by typeKey:
+// defined types, characteristics and sets of references expanded, so two
+// descriptions written differently that hold the same values hold the same
+// set.
+func (catalog *Catalog) heldTypes(types []Type) (map[string]bool, error) {
+	expanded, err := catalog.expandTypes(types, nil)
+	if err != nil {
+		return nil, err
+	}
+	held := make(map[string]bool, len(expanded))
+	for _, item := range expanded {
+		held[typeKey(item)] = true
+	}
+	return held, nil
+}
+
 func (catalog *Catalog) expandTypes(types []Type, stack map[uuid.UUID]bool) ([]Type, error) {
 	if stack == nil {
 		stack = make(map[uuid.UUID]bool)
