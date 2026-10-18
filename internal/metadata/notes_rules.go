@@ -42,6 +42,7 @@ const (
 	NoteRecalculationHalfSet       NoteKind = "recalculation-dimension-half-set"
 	NoteRegisterWithoutFields      NoteKind = "register-without-fields"
 	NoteDuplicateAggregate         NoteKind = "duplicate-aggregate"
+	NoteAggregatesOfBalance        NoteKind = "aggregates-of-balance-register"
 	NoteCriterionWithoutType       NoteKind = "filter-criterion-without-type"
 	NoteHTTPRootsDifferInCase      NoteKind = "http-roots-differ-in-case"
 	NoteUnfilledParentWithoutTree  NoteKind = "unfilled-parent-without-hierarchy"
@@ -177,6 +178,10 @@ func init() {
 		NoteKindInfo{NoteDuplicateAggregate,
 			"Два агрегата регистра накопления с теми же измерениями и той же периодичностью.",
 			"Оба несутся как записаны; второй повторяет первый."},
+		NoteKindInfo{NoteAggregatesOfBalance,
+			"Агрегаты у регистра остатков. Правит агрегаты только оборотный регистр; заданные у оборотного, после смены " +
+				"вида на «Остатки» конфигуратор хранит скрытыми и проверкой конфигурации не отвергает.",
+			"Агрегаты несутся как записаны и не действуют."},
 		NoteKindInfo{NoteCriterionWithoutType,
 			"Критерий отбора без типа при заполненном составе (sb: 190 полей).",
 			"Несётся как записан и ничего не находит."},
@@ -391,6 +396,7 @@ func init() {
 	noteRules[NoteRecalculationHalfSet] = noteRecalculationHalfSet
 	noteRules[NoteRegisterWithoutFields] = noteRegisterWithoutFields
 	noteRules[NoteDuplicateAggregate] = noteDuplicateAggregate
+	noteRules[NoteAggregatesOfBalance] = noteAggregatesOfBalance
 	noteRules[NoteCriterionWithoutType] = noteCriterionWithoutType
 	noteRules[NoteHTTPRootsDifferInCase] = noteHTTPRootsDifferInCase
 	noteRules[NoteUnfilledParentWithoutTree] = noteUnfilledParentWithoutTree
@@ -960,6 +966,18 @@ func noteDuplicateAggregate(catalog *Catalog, note func(where, written string)) 
 				continue
 			}
 			seen[key] = index
+		}
+	}
+}
+
+// noteAggregatesOfBalance notes the aggregates of a balance register: the
+// configurator edits aggregates on a turnover register only, and keeps those
+// a turnover register had, hidden, after its kind is changed to balances
+// (block 00, «Регистр накопления», 15.10.2026).
+func noteAggregatesOfBalance(catalog *Catalog, note func(where, written string)) {
+	for _, register := range catalog.AccumulationRegisters {
+		if register.Kind == AccumulationRegisterBalance && len(register.Aggregates) != 0 {
+			note("accumulation-registers "+register.Name+" aggregates", strconv.Itoa(len(register.Aggregates))+" aggregates")
 		}
 	}
 }

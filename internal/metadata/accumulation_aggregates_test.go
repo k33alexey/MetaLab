@@ -150,10 +150,13 @@ func TestAnAggregateIsRefusedWhenItCannotBeBuiltOrIsACopy(t *testing.T) {
 	}
 }
 
-// The open question, written down as a test so it is visible when it is
-// settled: the help gives aggregates to the accumulation register without
-// saying which kind may carry them. A balance register with aggregates is
-// stored as written rather than refused on a guess.
+// A balance register with aggregates is carried with a note: the
+// configurator keeps the aggregates of a turnover register changed to
+// balances, hidden, and its check of the configuration does not refuse them
+// (block 00, 15.10.2026). Defects caught: such a register refused, as the
+// map once asked on the strength of the window alone; carried silently, as
+// until 2.338, so nothing said its aggregates act on nothing; and the note
+// given to a turnover register, whose aggregates do act.
 func TestAggregatesOnABalanceRegisterAreKeptNotRefused(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
@@ -180,5 +183,20 @@ aggregates:
 	register, _ := catalog.AccumulationRegisterDefinition("ОстаткиТоваров")
 	if len(register.Aggregates) != 1 || !register.AllowTotalsSplitting {
 		t.Fatalf("the declaration was not kept as written: %+v", register.Aggregates)
+	}
+	notes := catalog.Notes()
+	if len(notes) != 1 || notes[0].Kind != NoteAggregatesOfBalance || notes[0].Where != "accumulation-registers ОстаткиТоваров aggregates" {
+		t.Fatalf("notes = %+v, expected the aggregates of the balance register", notes)
+	}
+
+	turnover := metadataProject(t)
+	writeMetadata(t, turnover, AccumulationRegisterKind, aggregateRegisterID,
+		aggregateRegisterBody("aggregates:\n  - {periodicity: month, dimensions: [Номенклатура]}\n"))
+	catalog, err = Load(turnover)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if notes := catalog.Notes(); len(notes) != 0 {
+		t.Fatalf("a turnover register with aggregates was noted: %+v", notes)
 	}
 }

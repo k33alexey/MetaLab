@@ -178,6 +178,10 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		writeMetadata(t, root, AccumulationRegisterKind, aggregateRegisterID, aggregateRegisterBody("aggregates:\n"+
 			"  - {periodicity: month, dimensions: [Номенклатура, Склад]}\n  - {periodicity: month, dimensions: [Склад, Номенклатура]}\n"))
 	},
+	NoteAggregatesOfBalance: func(t *testing.T, root string) {
+		writeMetadata(t, root, AccumulationRegisterKind, aggregateRegisterID, strings.Replace(aggregateRegisterBody(
+			"aggregates:\n  - {periodicity: month, dimensions: [Склад]}\n"), "kind: turnover", "kind: balance", 1))
+	},
 	NoteCriterionWithoutType: func(t *testing.T, root string) {
 		id := uuid.MustNew().String()
 		writeMetadata(t, root, FilterCriterionKind, id, "format: 1\nid: "+id+"\nname: СтруктураПодчиненности\ntitle: {ru: Структура}\ntypes: []\n")

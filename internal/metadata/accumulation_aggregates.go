@@ -35,14 +35,14 @@ import (
 // both modes are data of the base and both may be permitted at once - see
 // register_totals_mode.go - and it is not refused for that reason.
 //
-// **Open question: which kind of register may carry them.** The help gives
-// Агрегаты to ОбъектМетаданных: РегистрНакопления without distinguishing a
-// turnover register from a balance one, and says nothing anywhere else. The
-// wording "instead of totals the aggregates are used" reads as a turnover
-// mechanism, but reading is not knowing, and refusing a balance register with
-// aggregates would refuse a configuration on a guess. Stored as written;
-// settled by a run on the platform, like the numbering of period fields in
-// data composition and the difference between the two kinds of indexing.
+// **Only a turnover register edits them.** The help gives Агрегаты to
+// ОбъектМетаданных: РегистрНакопления without distinguishing the kinds, so
+// the configurator answered (block 00, «Регистр накопления», 15.10.2026): the
+// button «Агрегаты» of the window works on a turnover register alone, and
+// the aggregates of a turnover register changed to balances are kept, hidden,
+// and not refused by the check of the configuration - changed back, it has
+// them again. A balance register with aggregates is therefore carried, and
+// its aggregates act on nothing (NoteAggregatesOfBalance).
 
 // AggregatePeriodicity is how coarsely an aggregate folds time.
 //
