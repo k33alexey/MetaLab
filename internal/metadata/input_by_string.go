@@ -234,45 +234,40 @@ func cloneObjectInput(input ObjectInput) ObjectInput {
 // validateInputByStringTypes resolves the searched attributes whose type is a
 // defined type, and holds them to the rule validateInputByStringAttribute
 // holds the others to. Every kind that is searched by string embeds its list
-// and its attributes the same way, so the walk finds them by name and a kind
-// added later is covered without being listed.
+// and its attributes the same way, so the walk over the objects of the
+// catalog (eachCatalogObject) finds them by name and a kind added later is
+// covered without being listed. The first refusal found is the answer.
 func (catalog *Catalog) validateInputByStringTypes() error {
-	top := reflect.ValueOf(catalog).Elem()
-	for index := range top.NumField() {
-		list := top.Field(index)
-		if list.Kind() != reflect.Slice || list.Type().Elem().Kind() != reflect.Struct {
-			continue
+	var refusal error
+	eachCatalogObject(catalog, func(object reflect.Value, where string) {
+		searchedField, attributesField := object.FieldByName("InputByString"), object.FieldByName("Attributes")
+		if refusal != nil || !searchedField.IsValid() || !attributesField.IsValid() {
+			return
 		}
-		for item := range list.Len() {
-			object := list.Index(item)
-			searchedField, attributesField := object.FieldByName("InputByString"), object.FieldByName("Attributes")
-			if !searchedField.IsValid() || !attributesField.IsValid() {
-				break
+		searched, _ := searchedField.Interface().([]ObjectField)
+		attributes, _ := attributesField.Interface().([]Attribute)
+		for _, field := range searched {
+			if field.Attribute == "" {
+				continue
 			}
-			searched, _ := searchedField.Interface().([]ObjectField)
-			attributes, _ := attributesField.Interface().([]Attribute)
-			for _, field := range searched {
-				if field.Attribute == "" {
+			for _, attribute := range attributes {
+				if !strings.EqualFold(attribute.Name, field.Attribute) {
 					continue
 				}
-				for _, attribute := range attributes {
-					if !strings.EqualFold(attribute.Name, field.Attribute) {
-						continue
-					}
-					if single, ok := SingleType(attribute.Types); !ok || single.Kind != DefinedType {
-						break
-					}
-					resolved, err := catalog.expandTypes(attribute.Types, nil)
-					if err != nil {
-						return fmt.Errorf("%s %s input by string attribute %s: %w", kebab(top.Type().Field(index).Name), nameOf(object), attribute.Name, err)
-					}
-					if !isOneStringOrNumber(resolved) {
-						return fmt.Errorf("%s %s input by string attribute %s must be of one type, string or number, to be searched by, and its defined type stands for another",
-							kebab(top.Type().Field(index).Name), nameOf(object), attribute.Name)
-					}
+				if single, ok := SingleType(attribute.Types); !ok || single.Kind != DefinedType {
+					break
+				}
+				resolved, err := catalog.expandTypes(attribute.Types, nil)
+				if err != nil {
+					refusal = fmt.Errorf("%s input by string attribute %s: %w", where, attribute.Name, err)
+					return
+				}
+				if !isOneStringOrNumber(resolved) {
+					refusal = fmt.Errorf("%s input by string attribute %s must be of one type, string or number, to be searched by, and its defined type stands for another", where, attribute.Name)
+					return
 				}
 			}
 		}
-	}
-	return nil
+	})
+	return refusal
 }

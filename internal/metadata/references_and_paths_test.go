@@ -59,7 +59,7 @@ func TestInputByStringTakesADefinedTypeForWhatItStandsFor(t *testing.T) {
 	} {
 		root := metadataProject(t)
 		pathsAssets(t, root, types, ", indexing: index")
-		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "input by string attribute ИнвентарныйНомер") {
+		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "catalogs ОбъектыЭксплуатации input by string attribute ИнвентарныйНомер") {
 			t.Errorf("a search by a defined type standing for %s: %v", name, err)
 		}
 	}
@@ -74,7 +74,9 @@ func TestInputByStringTakesADefinedTypeForWhatItStandsFor(t *testing.T) {
 // catalog does.
 //
 // Defect caught: the load-time check found the searched fields of one group
-// and not of the other, so a document searched by a defined date loaded.
+// and not of the other, so a document searched by a defined date loaded; the
+// refusal named another place than the document, or, with a catalog refused
+// too, not the first one found but the last.
 func TestADocumentSearchedByADefinedTypeIsCheckedToo(t *testing.T) {
 	t.Parallel()
 	for types, accepted := range map[string]bool{"[{kind: number, precision: 10}]": true, "[{kind: date, date_parts: date}]": false} {
@@ -83,11 +85,20 @@ func TestADocumentSearchedByADefinedTypeIsCheckedToo(t *testing.T) {
 			"\nname: НомерЗаказа\ntitle: {ru: Номер заказа}\ntypes: "+types+"\n")
 		writeMetadata(t, root, DocumentKind, pathsOrder, "format: 1\nid: "+pathsOrder+"\nname: Заказ\ntitle: {ru: Заказ}\n"+
 			"number: {type: string, length: 11, periodicity: year}\n"+
-			"attributes:\n  - {id: "+pathsNumber+", name: НомерКлиента, title: {ru: Номер}, types: [{kind: defined-type, reference: "+pathsDefinedType+"}], indexing: index}\n"+
+			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: НомерКлиента, title: {ru: Номер}, types: [{kind: defined-type, reference: "+pathsDefinedType+"}], indexing: index}\n"+
 			"input_by_string:\n  - {attribute: НомерКлиента}\n")
 		_, err := Load(root)
-		if accepted && err != nil || !accepted && (err == nil || !strings.Contains(err.Error(), "input by string attribute НомерКлиента")) {
+		if accepted && err != nil || !accepted && (err == nil || !strings.Contains(err.Error(), "documents Заказ input by string attribute НомерКлиента")) {
 			t.Errorf("a document searched by a defined %s: err = %v", types, err)
+		}
+		if accepted {
+			continue
+		}
+		// The catalog searched by the same defined date: refused first, as
+		// catalogs come before documents in the catalog of the project.
+		pathsAssets(t, root, types, ", indexing: index")
+		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "catalogs ОбъектыЭксплуатации input by string") || strings.Contains(err.Error(), "documents Заказ") {
+			t.Errorf("a catalog and a document searched by a defined %s: err = %v", types, err)
 		}
 	}
 }
