@@ -247,16 +247,13 @@ func NewHandler(workspace *Workspace) http.Handler {
 		response.Header().Set("Cache-Control", "no-store")
 		_, _ = response.Write(page)
 	})
-	routes.HandleFunc("GET /api/project", func(response http.ResponseWriter, _ *http.Request) {
-		snapshot, err := workspace.Snapshot()
-		if err != nil {
-			http.Error(response, err.Error(), http.StatusConflict)
-			return
-		}
-		response.Header().Set("Content-Type", "application/json; charset=utf-8")
-		response.Header().Set("Cache-Control", "no-store")
-		_ = json.NewEncoder(response).Encode(snapshot)
-	})
+	// A project that does not read is in conflict with what Studio shows,
+	// not a request it could not use.
+	routes.HandleFunc("GET /api/project", answerQuery(func(response http.ResponseWriter, err error) {
+		http.Error(response, err.Error(), http.StatusConflict)
+	}, func(*http.Request) (any, error) {
+		return workspace.Snapshot()
+	}))
 	routes.HandleFunc("GET /api/file", func(response http.ResponseWriter, request *http.Request) {
 		file, err := workspace.ReadSource(request.URL.Query().Get("path"))
 		if err != nil {
@@ -278,14 +275,9 @@ func NewHandler(workspace *Workspace) http.Handler {
 	}) (any, error) {
 		return workspace.SaveSource(input.Path, input.Content, input.ExpectedRevision)
 	}))
-	routes.HandleFunc("GET /api/form", func(response http.ResponseWriter, request *http.Request) {
-		form, err := workspace.ReadManagedForm(request.URL.Query().Get("path"))
-		if err != nil {
-			writeSourceError(response, err)
-			return
-		}
-		writeStudioJSON(response, form)
-	})
+	routes.HandleFunc("GET /api/form", answerQuery(writeSourceError, func(request *http.Request) (any, error) {
+		return workspace.ReadManagedForm(request.URL.Query().Get("path"))
+	}))
 	routes.HandleFunc("PUT /api/form", answerStudio(0, writeSourceError, func(input struct {
 		Path             string               `json:"path"`
 		ExpectedRevision string               `json:"expectedRevision"`
@@ -308,20 +300,11 @@ func NewHandler(workspace *Workspace) http.Handler {
 			return
 		}
 		result, err := workspace.EnsureManagedFormHandler(input.Path, input.ExpectedRevision, commandID)
-		if err != nil {
-			writeSourceError(response, err)
-			return
-		}
-		writeStudioJSON(response, result)
+		answerRoute(response, writeSourceError, result, err)
 	})
-	routes.HandleFunc("GET /api/query/schema", func(response http.ResponseWriter, _ *http.Request) {
-		schema, err := workspace.QueryDesignerSchema()
-		if err != nil {
-			writeSourceError(response, err)
-			return
-		}
-		writeStudioJSON(response, schema)
-	})
+	routes.HandleFunc("GET /api/query/schema", answerQuery(writeSourceError, func(*http.Request) (any, error) {
+		return workspace.QueryDesignerSchema()
+	}))
 	routes.HandleFunc("POST /api/query/build", answerStudio(querylang.MaxSourceBytes, writeBadRequest, func(design QueryDesign) (any, error) {
 		return workspace.BuildDesignedQuery(design)
 	}))
@@ -356,11 +339,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 			return
 		}
 		analysis, err := AnalyzeBSL(relative, input.Content)
-		if err != nil {
-			http.Error(response, err.Error(), http.StatusBadRequest)
-			return
-		}
-		writeStudioJSON(response, analysis)
+		answerRoute(response, writeBadRequest, analysis, err)
 	})
 	routes.HandleFunc("POST /api/bsl/complete", answerStudio(0, writeBadRequest, func(input struct {
 		Path     string      `json:"path"`
@@ -385,22 +364,12 @@ func NewHandler(workspace *Workspace) http.Handler {
 	}) (any, error) {
 		return workspace.RenameBSL(input.Path, input.Position, input.NewName, input.ExpectedRevision)
 	}))
-	routes.HandleFunc("GET /api/search", func(response http.ResponseWriter, request *http.Request) {
-		result, err := workspace.SearchProject(request.URL.Query().Get("query"))
-		if err != nil {
-			http.Error(response, err.Error(), http.StatusBadRequest)
-			return
-		}
-		writeStudioJSON(response, result)
-	})
-	routes.HandleFunc("GET /api/bsl/help", func(response http.ResponseWriter, request *http.Request) {
-		result, err := workspace.SearchBSLHelp(request.URL.Query().Get("query"))
-		if err != nil {
-			http.Error(response, err.Error(), http.StatusBadRequest)
-			return
-		}
-		writeStudioJSON(response, result)
-	})
+	routes.HandleFunc("GET /api/search", answerQuery(writeBadRequest, func(request *http.Request) (any, error) {
+		return workspace.SearchProject(request.URL.Query().Get("query"))
+	}))
+	routes.HandleFunc("GET /api/bsl/help", answerQuery(writeBadRequest, func(request *http.Request) (any, error) {
+		return workspace.SearchBSLHelp(request.URL.Query().Get("query"))
+	}))
 	routes.HandleFunc("POST /api/bsl/help/resolve", answerStudio(0, writeBSLNavigationError, func(input struct {
 		Path     string      `json:"path"`
 		Content  string      `json:"content"`
@@ -408,45 +377,16 @@ func NewHandler(workspace *Workspace) http.Handler {
 	}) (any, error) {
 		return workspace.ResolveBSLHelp(input.Path, input.Content, input.Position)
 	}))
-	routes.HandleFunc("GET /api/git/status", func(response http.ResponseWriter, request *http.Request) {
-		client, err := gitclient.Open(request.Context(), workspace.root)
-		if err != nil {
-			writeGitError(response, err)
-			return
-		}
-		status, err := client.Status(request.Context())
-		if err != nil {
-			writeGitError(response, err)
-			return
-		}
-		writeStudioJSON(response, status)
-	})
-	routes.HandleFunc("GET /api/git/diff", func(response http.ResponseWriter, request *http.Request) {
-		client, err := gitclient.Open(request.Context(), workspace.root)
-		if err != nil {
-			writeGitError(response, err)
-			return
-		}
+	routes.HandleFunc("GET /api/git/status", workspace.gitQuery(func(request *http.Request, client *gitclient.Client) (any, error) {
+		return client.Status(request.Context())
+	}))
+	routes.HandleFunc("GET /api/git/diff", workspace.gitQuery(func(request *http.Request, client *gitclient.Client) (any, error) {
 		diff, err := client.Diff(request.Context(), request.URL.Query().Get("path"))
-		if err != nil {
-			writeGitError(response, err)
-			return
-		}
-		writeStudioJSON(response, map[string]string{"diff": diff})
-	})
-	routes.HandleFunc("GET /api/git/branches", func(response http.ResponseWriter, request *http.Request) {
-		client, err := gitclient.Open(request.Context(), workspace.root)
-		if err != nil {
-			writeGitError(response, err)
-			return
-		}
-		branches, err := client.Branches(request.Context())
-		if err != nil {
-			writeGitError(response, err)
-			return
-		}
-		writeStudioJSON(response, branches)
-	})
+		return map[string]string{"diff": diff}, err
+	}))
+	routes.HandleFunc("GET /api/git/branches", workspace.gitQuery(func(request *http.Request, client *gitclient.Client) (any, error) {
+		return client.Branches(request.Context())
+	}))
 	routes.HandleFunc("POST /api/git/commit", func(response http.ResponseWriter, request *http.Request) {
 		var input struct {
 			Message string `json:"message"`
@@ -454,40 +394,27 @@ func NewHandler(workspace *Workspace) http.Handler {
 		if !decodeStudioMutation(response, request, &input) {
 			return
 		}
-		client, err := gitclient.Open(request.Context(), workspace.root)
-		if err == nil {
-			var result gitclient.Result
-			result, err = client.Commit(request.Context(), input.Message)
-			if err == nil {
-				writeStudioJSON(response, result)
-				return
-			}
-		}
-		writeGitError(response, err)
-	})
-	for path, operation := range map[string]func(context.Context, *gitclient.Client) (gitclient.Result, error){
-		"/api/git/pull": func(ctx context.Context, client *gitclient.Client) (gitclient.Result, error) { return client.Pull(ctx) },
-		"/api/git/push": func(ctx context.Context, client *gitclient.Client) (gitclient.Result, error) { return client.Push(ctx) },
-	} {
-		routes.HandleFunc("POST "+path, func(response http.ResponseWriter, request *http.Request) {
-			if !validateStudioMutation(response, request) {
-				return
-			}
-			client, err := gitclient.Open(request.Context(), workspace.root)
-			if err == nil {
-				var result gitclient.Result
-				result, err = operation(request.Context(), client)
-				if err == nil {
-					if path == "/api/git/pull" {
-						workspace.invalidateBSLIndex()
-					}
-					writeStudioJSON(response, result)
-					return
-				}
-			}
-			writeGitError(response, err)
+		result, err := workspace.git(request, func(request *http.Request, client *gitclient.Client) (any, error) {
+			return client.Commit(request.Context(), input.Message)
 		})
-	}
+		answerRoute(response, writeGitError, result, err)
+	})
+	// Pulling and switching a branch change the modules under the index of
+	// BSL, so it is read again.
+	routes.HandleFunc("POST /api/git/pull", answerMarked(writeGitError, func(request *http.Request) (any, error) {
+		result, err := workspace.git(request, func(request *http.Request, client *gitclient.Client) (any, error) {
+			return client.Pull(request.Context())
+		})
+		if err == nil {
+			workspace.invalidateBSLIndex()
+		}
+		return result, err
+	}))
+	routes.HandleFunc("POST /api/git/push", answerMarked(writeGitError, func(request *http.Request) (any, error) {
+		return workspace.git(request, func(request *http.Request, client *gitclient.Client) (any, error) {
+			return client.Push(request.Context())
+		})
+	}))
 	routes.HandleFunc("POST /api/git/branches/switch", func(response http.ResponseWriter, request *http.Request) {
 		var input struct {
 			Name   string `json:"name"`
@@ -496,17 +423,13 @@ func NewHandler(workspace *Workspace) http.Handler {
 		if !decodeStudioMutation(response, request, &input) {
 			return
 		}
-		client, err := gitclient.Open(request.Context(), workspace.root)
+		result, err := workspace.git(request, func(request *http.Request, client *gitclient.Client) (any, error) {
+			return client.SwitchBranch(request.Context(), input.Name, input.Create)
+		})
 		if err == nil {
-			var result gitclient.Result
-			result, err = client.SwitchBranch(request.Context(), input.Name, input.Create)
-			if err == nil {
-				workspace.invalidateBSLIndex()
-				writeStudioJSON(response, result)
-				return
-			}
+			workspace.invalidateBSLIndex()
 		}
-		writeGitError(response, err)
+		answerRoute(response, writeGitError, result, err)
 	})
 	routes.HandleFunc("POST /api/save-data", func(response http.ResponseWriter, request *http.Request) {
 		if !validateStudioMutation(response, request) {
@@ -557,10 +480,19 @@ func decodeStudioMutation(response http.ResponseWriter, request *http.Request, v
 	return decodeStudioJSON(response, request, value, studioMutationCeiling)
 }
 
+// answerRoute answers what a route of Studio did: the result as JSON, or the
+// error the way the route answers errors. Every route answers through it.
+func answerRoute(response http.ResponseWriter, refuse func(http.ResponseWriter, error), result any, err error) {
+	if err != nil {
+		refuse(response, err)
+		return
+	}
+	writeStudioJSON(response, result)
+}
+
 // answerStudio is a route of Studio that reads a request the one way
 // (decodeStudioJSON, with the ceiling of the route), does what it asks and
-// answers with the result as JSON, or with the error the way the route
-// answers errors.
+// answers through answerRoute.
 func answerStudio[In any](limit int64, refuse func(http.ResponseWriter, error), do func(In) (any, error)) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		var input In
@@ -568,12 +500,63 @@ func answerStudio[In any](limit int64, refuse func(http.ResponseWriter, error), 
 			return
 		}
 		result, err := do(input)
-		if err != nil {
+		answerRoute(response, refuse, result, err)
+	}
+}
+
+// answerQuery is a route of Studio that reads nothing but its address - a
+// path, a query - does what it asks and answers through answerRoute.
+func answerQuery(refuse func(http.ResponseWriter, error), do func(*http.Request) (any, error)) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		result, err := do(request)
+		answerRoute(response, refuse, result, err)
+	}
+}
+
+// answerMarked is a route of Studio that changes something and carries no
+// body: it acts only on a request with the mark of Studio's page
+// (validateStudioMutation) and answers through answerRoute.
+func answerMarked(refuse func(http.ResponseWriter, error), do func(*http.Request) (any, error)) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		if !validateStudioMutation(response, request) {
+			return
+		}
+		result, err := do(request)
+		answerRoute(response, refuse, result, err)
+	}
+}
+
+// answerRemoval is a route of Studio that deletes what its address names: it
+// acts only on a marked request and answers No Content, or the error the way
+// the route answers errors.
+func answerRemoval(refuse func(http.ResponseWriter, error), remove func(*http.Request) error) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		if !validateStudioMutation(response, request) {
+			return
+		}
+		if err := remove(request); err != nil {
 			refuse(response, err)
 			return
 		}
-		writeStudioJSON(response, result)
+		response.WriteHeader(http.StatusNoContent)
 	}
+}
+
+// git opens the project's repository for a request and does one thing with
+// it; a project that is no repository is an error of the route like any
+// other.
+func (workspace *Workspace) git(request *http.Request, do func(*http.Request, *gitclient.Client) (any, error)) (any, error) {
+	client, err := gitclient.Open(request.Context(), workspace.root)
+	if err != nil {
+		return nil, err
+	}
+	return do(request, client)
+}
+
+// gitQuery is a route of Studio that reads the project's repository by its
+// address, answered through answerQuery with the errors of git.
+func (workspace *Workspace) gitQuery(do func(*http.Request, *gitclient.Client) (any, error)) http.HandlerFunc {
+	return answerQuery(writeGitError, func(request *http.Request) (any, error) { return workspace.git(request, do) })
 }
 
 // writeBadRequest answers a request whose content the route could not use.

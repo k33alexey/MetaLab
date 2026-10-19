@@ -540,14 +540,9 @@ func roleLanguages(configuration project.Project) []FormLanguage {
 }
 
 func registerRoleRoutes(routes *http.ServeMux, workspace *Workspace) {
-	routes.HandleFunc("GET /api/roles", func(response http.ResponseWriter, request *http.Request) {
-		overview, err := workspace.ReadAllRoles()
-		if err != nil {
-			writeSourceError(response, err)
-			return
-		}
-		writeStudioJSON(response, overview)
-	})
+	routes.HandleFunc("GET /api/roles", answerQuery(writeSourceError, func(*http.Request) (any, error) {
+		return workspace.ReadAllRoles()
+	}))
 	routes.HandleFunc("PUT /api/roles", answerStudio(0, writeSourceError, func(input struct {
 		Roles []RoleSave `json:"roles"`
 	}) (any, error) {
@@ -589,14 +584,7 @@ func registerRoleRoutes(routes *http.ServeMux, workspace *Workspace) {
 	}) (any, error) {
 		return workspace.CreateRole(input.Name)
 	}))
-	routes.HandleFunc("DELETE /api/role", func(response http.ResponseWriter, request *http.Request) {
-		if !validateStudioMutation(response, request) {
-			return
-		}
-		if err := workspace.DeleteRole(request.URL.Query().Get("path"), request.URL.Query().Get("expectedRevision")); err != nil {
-			writeSourceError(response, err)
-			return
-		}
-		response.WriteHeader(http.StatusNoContent)
-	})
+	routes.HandleFunc("DELETE /api/role", answerRemoval(writeSourceError, func(request *http.Request) error {
+		return workspace.DeleteRole(request.URL.Query().Get("path"), request.URL.Query().Get("expectedRevision"))
+	}))
 }

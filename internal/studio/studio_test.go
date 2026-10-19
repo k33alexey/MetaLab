@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -384,6 +385,71 @@ func TestEveryChangingRequestOfStudioIsReadOneWay(t *testing.T) {
 			if response.Code != testCase.status || !refused {
 				t.Errorf("%s %s, %s: status %d, want %d (%s)", route.method, route.path, testCase.name, response.Code, testCase.status, strings.TrimSpace(response.Body.String()))
 			}
+		}
+	}
+}
+
+// Every route of Studio without a body answers one way: one that changes
+// something acts only on a request with the mark of Studio's page, one that
+// reads its address answers its result as JSON that is not cached, and each
+// refuses with the status of its own errors (answerRoute, answerQuery,
+// answerMarked, answerRemoval). The statuses are written here from what each
+// route promises, not read off the code. Defects caught: a route that changes
+// something acting without the mark; a deletion answering anything but No
+// Content, or the error of another route; a read answered with a cached body
+// or without its type; an error of git, of the debugger or of a source
+// answered with the status of another.
+func TestEveryRouteWithoutABodyAnswersOneWay(t *testing.T) {
+	t.Parallel()
+	workspace, err := Open(createProject(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(workspace)
+	serve := func(method, path string, marked bool) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(method, path, nil)
+		if marked {
+			request.Header.Set("X-ML-CSRF", "1")
+		}
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		return response
+	}
+	missing := url.QueryEscape("metadata/catalogs/Нет/object.yaml")
+	for _, route := range []struct{ method, path string }{
+		{http.MethodPost, "/api/root-module/session"}, {http.MethodPost, "/api/session-module"},
+		{http.MethodPost, "/api/git/pull"}, {http.MethodPost, "/api/git/push"},
+		{http.MethodPost, "/api/debug/heartbeat"}, {http.MethodPost, "/api/debug/pause"}, {http.MethodDelete, "/api/debug/session"},
+		{http.MethodDelete, "/api/catalog?path=" + missing}, {http.MethodDelete, "/api/role?path=metadata/roles/Нет.yaml"},
+	} {
+		if response := serve(route.method, route.path, false); response.Code != http.StatusForbidden {
+			t.Errorf("%s %s without the mark answers %d %q, want 403", route.method, route.path, response.Code, response.Body.String())
+		}
+	}
+	for _, check := range []struct {
+		method, path string
+		marked       bool
+		status       int
+	}{
+		{http.MethodGet, "/api/project", false, http.StatusOK},
+		{http.MethodGet, "/api/roles", false, http.StatusOK},
+		{http.MethodGet, "/api/project-configuration", false, http.StatusOK},
+		{http.MethodGet, "/api/catalog?path=" + missing, false, http.StatusNotFound},
+		{http.MethodDelete, "/api/catalog?path=" + missing, true, http.StatusNotFound},
+		{http.MethodGet, "/api/git/status", false, http.StatusConflict},
+		{http.MethodPost, "/api/git/push", true, http.StatusConflict},
+		{http.MethodGet, "/api/debug/state", false, http.StatusNotFound},
+		{http.MethodPost, "/api/debug/pause", true, http.StatusNotFound},
+	} {
+		response := serve(check.method, check.path, check.marked)
+		if response.Code != check.status {
+			t.Errorf("%s %s answers %d %q, want %d", check.method, check.path, response.Code, response.Body.String(), check.status)
+			continue
+		}
+		if check.status == http.StatusOK && (!strings.HasPrefix(response.Header().Get("Content-Type"), "application/json") ||
+			response.Header().Get("Cache-Control") != "no-store") {
+			t.Errorf("%s %s answers %q, %q, want JSON not cached", check.method, check.path,
+				response.Header().Get("Content-Type"), response.Header().Get("Cache-Control"))
 		}
 	}
 }

@@ -388,81 +388,45 @@ func decodeDebugArgument(raw json.RawMessage, depth int) (bytecode.Value, error)
 }
 
 func registerDebugRoutes(routes *http.ServeMux, workspace *Workspace) {
-	routes.HandleFunc("GET /api/debug/targets", func(response http.ResponseWriter, _ *http.Request) {
-		targets, err := workspace.DebugTargets()
-		writeDebugResponse(response, targets, err)
-	})
-	routes.HandleFunc("POST /api/debug/start", func(response http.ResponseWriter, request *http.Request) {
-		var input studioDebugStart
-		if !decodeStudioJSONRequest(response, request, &input) {
-			return
-		}
-		snapshot, err := workspace.StartDebug(input)
-		writeDebugResponse(response, snapshot, err)
-	})
-	routes.HandleFunc("GET /api/debug/state", func(response http.ResponseWriter, _ *http.Request) {
-		snapshot, err := workspace.DebugSnapshot()
-		writeDebugResponse(response, snapshot, err)
-	})
-	routes.HandleFunc("POST /api/debug/heartbeat", func(response http.ResponseWriter, request *http.Request) {
-		if !validateStudioMutation(response, request) {
-			return
-		}
-		err := workspace.DebugHeartbeat()
-		writeDebugResponse(response, map[string]bool{"ok": err == nil}, err)
-	})
-	routes.HandleFunc("POST /api/debug/command", func(response http.ResponseWriter, request *http.Request) {
-		var input struct {
-			Action vm.DebugAction `json:"action"`
-		}
-		if !decodeStudioMutation(response, request, &input) {
-			return
-		}
-		snapshot, err := workspace.DebugCommand(input.Action)
-		writeDebugResponse(response, snapshot, err)
-	})
-	routes.HandleFunc("POST /api/debug/pause", func(response http.ResponseWriter, request *http.Request) {
-		if !validateStudioMutation(response, request) {
-			return
-		}
-		snapshot, err := workspace.PauseDebug()
-		writeDebugResponse(response, snapshot, err)
-	})
-	routes.HandleFunc("PUT /api/debug/breakpoints", func(response http.ResponseWriter, request *http.Request) {
-		var input struct {
-			Breakpoints []vm.DebugBreakpoint `json:"breakpoints"`
-		}
-		if !decodeStudioMutation(response, request, &input) {
-			return
-		}
-		snapshot, err := workspace.SetDebugBreakpoints(input.Breakpoints)
-		writeDebugResponse(response, snapshot, err)
-	})
-	routes.HandleFunc("POST /api/debug/evaluate", func(response http.ResponseWriter, request *http.Request) {
-		var input struct {
-			Frame      int    `json:"frame"`
-			Expression string `json:"expression"`
-		}
-		if !decodeStudioMutation(response, request, &input) {
-			return
-		}
-		value, err := workspace.EvaluateDebug(input.Frame, input.Expression)
-		writeDebugResponse(response, value, err)
-	})
-	routes.HandleFunc("DELETE /api/debug/session", func(response http.ResponseWriter, request *http.Request) {
-		if !validateStudioMutation(response, request) {
-			return
-		}
-		snapshot, err := workspace.StopDebug()
-		writeDebugResponse(response, snapshot, err)
-	})
+	routes.HandleFunc("GET /api/debug/targets", answerQuery(writeDebugError, func(*http.Request) (any, error) {
+		return workspace.DebugTargets()
+	}))
+	routes.HandleFunc("POST /api/debug/start", answerStudio(0, writeDebugError, func(input studioDebugStart) (any, error) {
+		return workspace.StartDebug(input)
+	}))
+	routes.HandleFunc("GET /api/debug/state", answerQuery(writeDebugError, func(*http.Request) (any, error) {
+		return workspace.DebugSnapshot()
+	}))
+	routes.HandleFunc("POST /api/debug/heartbeat", answerMarked(writeDebugError, func(*http.Request) (any, error) {
+		return map[string]bool{"ok": true}, workspace.DebugHeartbeat()
+	}))
+	routes.HandleFunc("POST /api/debug/command", answerStudio(studioMutationCeiling, writeDebugError, func(input struct {
+		Action vm.DebugAction `json:"action"`
+	}) (any, error) {
+		return workspace.DebugCommand(input.Action)
+	}))
+	routes.HandleFunc("POST /api/debug/pause", answerMarked(writeDebugError, func(*http.Request) (any, error) {
+		return workspace.PauseDebug()
+	}))
+	routes.HandleFunc("PUT /api/debug/breakpoints", answerStudio(studioMutationCeiling, writeDebugError, func(input struct {
+		Breakpoints []vm.DebugBreakpoint `json:"breakpoints"`
+	}) (any, error) {
+		return workspace.SetDebugBreakpoints(input.Breakpoints)
+	}))
+	routes.HandleFunc("POST /api/debug/evaluate", answerStudio(studioMutationCeiling, writeDebugError, func(input struct {
+		Frame      int    `json:"frame"`
+		Expression string `json:"expression"`
+	}) (any, error) {
+		return workspace.EvaluateDebug(input.Frame, input.Expression)
+	}))
+	routes.HandleFunc("DELETE /api/debug/session", answerMarked(writeDebugError, func(*http.Request) (any, error) {
+		return workspace.StopDebug()
+	}))
 }
 
-func writeDebugResponse(response http.ResponseWriter, value any, err error) {
-	if err == nil {
-		writeStudioJSON(response, value)
-		return
-	}
+// writeDebugError answers an error of the debugger: a session not started is
+// not found, a command out of turn conflicts with where the run is.
+func writeDebugError(response http.ResponseWriter, err error) {
 	status := http.StatusBadRequest
 	if strings.Contains(err.Error(), "not started") {
 		status = http.StatusNotFound

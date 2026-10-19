@@ -283,14 +283,9 @@ func withoutRemovedTranslations(configuration project.Project) project.Project {
 }
 
 func registerProjectEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
-	routes.HandleFunc("GET /api/project-configuration", func(response http.ResponseWriter, _ *http.Request) {
-		value, err := workspace.ReadProjectEditor()
-		if err != nil {
-			writeSourceError(response, err)
-			return
-		}
-		writeStudioJSON(response, value)
-	})
+	routes.HandleFunc("GET /api/project-configuration", answerQuery(writeSourceError, func(*http.Request) (any, error) {
+		return workspace.ReadProjectEditor()
+	}))
 	routes.HandleFunc("PUT /api/project-configuration", answerStudio(0, writeSourceError, func(input struct {
 		ExpectedRevision string          `json:"expectedRevision"`
 		Configuration    project.Project `json:"configuration"`

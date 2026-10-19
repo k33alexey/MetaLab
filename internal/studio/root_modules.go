@@ -160,28 +160,12 @@ func (workspace *Workspace) OpenSessionModule() (SourceFile, error) {
 }
 
 func registerRootModuleRoutes(routes *http.ServeMux, workspace *Workspace) {
-	routes.HandleFunc("POST /api/root-module/{id}", func(response http.ResponseWriter, request *http.Request) {
-		if !validateStudioMutation(response, request) {
-			return
-		}
-		file, err := workspace.OpenRootModule(request.PathValue("id"))
-		if err != nil {
-			writeSourceError(response, err)
-			return
-		}
-		writeStudioJSON(response, file)
-	})
+	routes.HandleFunc("POST /api/root-module/{id}", answerMarked(writeSourceError, func(request *http.Request) (any, error) {
+		return workspace.OpenRootModule(request.PathValue("id"))
+	}))
 	// The session module kept its own address: it had one before the root had
 	// two modules, and an address that already works is not worth breaking.
-	routes.HandleFunc("POST /api/session-module", func(response http.ResponseWriter, request *http.Request) {
-		if !validateStudioMutation(response, request) {
-			return
-		}
-		file, err := workspace.OpenSessionModule()
-		if err != nil {
-			writeSourceError(response, err)
-			return
-		}
-		writeStudioJSON(response, file)
-	})
+	routes.HandleFunc("POST /api/session-module", answerMarked(writeSourceError, func(*http.Request) (any, error) {
+		return workspace.OpenSessionModule()
+	}))
 }

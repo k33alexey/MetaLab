@@ -290,14 +290,9 @@ func (workspace *Workspace) DeleteCatalog(relative, expectedRevision string) err
 }
 
 func registerCatalogEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
-	routes.HandleFunc("GET /api/catalog", func(response http.ResponseWriter, request *http.Request) {
-		value, err := workspace.ReadCatalogEditor(request.URL.Query().Get("path"))
-		if err != nil {
-			writeSourceError(response, err)
-			return
-		}
-		writeStudioJSON(response, value)
-	})
+	routes.HandleFunc("GET /api/catalog", answerQuery(writeSourceError, func(request *http.Request) (any, error) {
+		return workspace.ReadCatalogEditor(request.URL.Query().Get("path"))
+	}))
 	routes.HandleFunc("PUT /api/catalog", answerStudio(0, writeSourceError, func(input struct {
 		Path             string                     `json:"path"`
 		ExpectedRevision string                     `json:"expectedRevision"`
@@ -310,14 +305,7 @@ func registerCatalogEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
 	}) (any, error) {
 		return workspace.CreateCatalog(input.Name)
 	}))
-	routes.HandleFunc("DELETE /api/catalog", func(response http.ResponseWriter, request *http.Request) {
-		if !validateStudioMutation(response, request) {
-			return
-		}
-		if err := workspace.DeleteCatalog(request.URL.Query().Get("path"), request.URL.Query().Get("expectedRevision")); err != nil {
-			writeSourceError(response, err)
-			return
-		}
-		response.WriteHeader(http.StatusNoContent)
-	})
+	routes.HandleFunc("DELETE /api/catalog", answerRemoval(writeSourceError, func(request *http.Request) error {
+		return workspace.DeleteCatalog(request.URL.Query().Get("path"), request.URL.Query().Get("expectedRevision"))
+	}))
 }
