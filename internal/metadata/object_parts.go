@@ -34,12 +34,15 @@ const (
 
 // partGroupInfo is one sort of part: the word the prototype names a part of
 // it by in a role (Catalog.Товары.TabularSection.Состав), the caption of its
-// folder, and the rights the configurator offers on such a part.
+// folder, the rights the configurator offers on such a part, and the field of
+// a description that lists the parts of the sort (describedParts) - empty for
+// a sort the platform gives or a kind reads in its own way.
 type partGroupInfo struct {
 	group     PartGroup
 	prototype string
 	title     string
 	rights    []PermissionOperation
+	field     string
 }
 
 // partGroups lists every sort of part in the order the tree shows them. The
@@ -49,20 +52,20 @@ type partGroupInfo struct {
 // service. A template of an HTTP service has no rights: the exports write
 // them on its methods only.
 var partGroups = []partGroupInfo{
-	{StandardAttributesPart, "StandardAttribute", "Стандартные реквизиты", fieldRights},
-	{DimensionsPart, "Dimension", "Измерения", fieldRights},
-	{ResourcesPart, "Resource", "Ресурсы", fieldRights},
-	{AttributesPart, "Attribute", "Реквизиты", fieldRights},
-	{AddressingAttributesPart, "AddressingAttribute", "Реквизиты адресации", fieldRights},
-	{AccountingFlagsPart, "AccountingFlag", "Признаки учета", fieldRights},
-	{ExtDimensionAccountingFlagsPart, "ExtDimensionAccountingFlag", "Признаки учета субконто", fieldRights},
-	{TablePartsPart, "TabularSection", "Табличные части", fieldRights},
-	{StandardTablePartsPart, "StandardTabularSection", "Стандартные табличные части", fieldRights},
-	{FieldsPart, "Field", "Поля", fieldRights},
-	{CommandsPart, "Command", "Команды", []PermissionOperation{PermissionView}},
-	{OperationsPart, "Operation", "Операции", []PermissionOperation{PermissionUse}},
-	{URLTemplatesPart, "URLTemplate", "Шаблоны URL", nil},
-	{MethodsPart, "Method", "Методы", []PermissionOperation{PermissionUse}},
+	{StandardAttributesPart, "StandardAttribute", "Стандартные реквизиты", fieldRights, ""},
+	{DimensionsPart, "Dimension", "Измерения", fieldRights, "Dimensions"},
+	{ResourcesPart, "Resource", "Ресурсы", fieldRights, "Resources"},
+	{AttributesPart, "Attribute", "Реквизиты", fieldRights, "Attributes"},
+	{AddressingAttributesPart, "AddressingAttribute", "Реквизиты адресации", fieldRights, ""},
+	{AccountingFlagsPart, "AccountingFlag", "Признаки учета", fieldRights, "AccountingFlags"},
+	{ExtDimensionAccountingFlagsPart, "ExtDimensionAccountingFlag", "Признаки учета субконто", fieldRights, "ExtDimensionAccountingFlags"},
+	{TablePartsPart, "TabularSection", "Табличные части", fieldRights, "TableParts"},
+	{StandardTablePartsPart, "StandardTabularSection", "Стандартные табличные части", fieldRights, ""},
+	{FieldsPart, "Field", "Поля", fieldRights, "Fields"},
+	{CommandsPart, "Command", "Команды", []PermissionOperation{PermissionView}, "Commands"},
+	{OperationsPart, "Operation", "Операции", []PermissionOperation{PermissionUse}, ""},
+	{URLTemplatesPart, "URLTemplate", "Шаблоны URL", nil, ""},
+	{MethodsPart, "Method", "Методы", []PermissionOperation{PermissionUse}, ""},
 }
 
 // fieldRights are a field's two rights, whatever the field is.
@@ -113,9 +116,13 @@ type objectPart struct {
 // kindComposition is what an object of a kind holds, kept beside kindInfos
 // as kindUsesOf is.
 type kindComposition struct {
-	// parts lists the declared parts of the object, in the order of its
-	// description; the standard ones every object of the kind has are added
-	// by partsOf. Nil is a kind whose objects declare no parts.
+	// described is a kind whose objects declare their parts in the fields of
+	// their description that partGroups names (describedParts); the standard
+	// ones every object of the kind has are added by partsOf.
+	described bool
+	// parts lists the declared parts of an object of a kind that reads them
+	// in its own way - a task, a criterion of filter, the services. Nil, and
+	// not described, is a kind whose objects declare no parts.
 	parts func(catalog *Catalog, id uuid.UUID) []objectPart
 	// dataVersion is a kind whose objects keep the version of their data
 	// (help, the tables of the query language; the table of a chart of
@@ -142,12 +149,6 @@ type kindComposition struct {
 	files func(catalog *Catalog, id uuid.UUID) objectFiles
 }
 
-// withFiles is the composition with the files its objects keep.
-func (composition kindComposition) withFiles(files func(catalog *Catalog, id uuid.UUID) objectFiles) kindComposition {
-	composition.files = files
-	return composition
-}
-
 // formRoles is the forms of a description: every kind keeps its own set of
 // roles and says which it has (formSlot).
 type formRoles interface{ slots() []formSlot }
@@ -159,15 +160,10 @@ type formRoles interface{ slots() []formSlot }
 // checked for them without a word here.
 func declaredFilesOf(catalog *Catalog, id uuid.UUID) objectFiles {
 	var files objectFiles
-	info, _ := kindInfoOf(catalog.objects[id].kind)
-	if info.object == nil {
-		return files
-	}
-	found, ok := info.object(catalog, id)
+	description, ok := descriptionOf(catalog, catalog.objects[id].kind, id)
 	if !ok {
 		return files
 	}
-	description := reflect.ValueOf(found)
 	if forms := description.FieldByName("Forms"); forms.IsValid() {
 		files.formSlots = forms.Interface().(formRoles).slots()
 	}
@@ -178,6 +174,67 @@ func declaredFilesOf(catalog *Catalog, id uuid.UUID) objectFiles {
 		files.templates = templates.Interface().([]ObjectTemplate)
 	}
 	return files
+}
+
+// descriptionOf is the description of an object of the kind, found by the
+// kind (kindInfo.object); false where the kind keeps none to find.
+func descriptionOf(catalog *Catalog, kind Kind, id uuid.UUID) (reflect.Value, bool) {
+	info, _ := kindInfoOf(kind)
+	if info.object == nil {
+		return reflect.Value{}, false
+	}
+	found, ok := info.object(catalog, id)
+	if !ok {
+		return reflect.Value{}, false
+	}
+	return reflect.ValueOf(found), true
+}
+
+// describedParts is the parts an object declares in its description, read
+// off the description itself: for every sort of part in the order of
+// partGroups, the list its field names (partGroupInfo.field) - fields, with
+// the fields of each table part after it, and commands. A kind whose
+// description has the field has the parts, so a kind that gains table parts
+// is read for them without a word here.
+func describedParts(catalog *Catalog, kind Kind, id uuid.UUID) []objectPart {
+	description, ok := descriptionOf(catalog, kind, id)
+	if !ok {
+		return nil
+	}
+	var parts []objectPart
+	for _, sort := range partGroups {
+		list := reflect.Value{}
+		if sort.field != "" {
+			list = description.FieldByName(sort.field)
+		}
+		for index := 0; list.IsValid() && index < list.Len(); index++ {
+			item := list.Index(index).Addr().Interface()
+			switch sort.group {
+			case TablePartsPart:
+				part := item.(*TablePart)
+				parts = append(parts, objectPart{key: part.ID.String(), name: part.Name, title: part.Title, group: TablePartsPart})
+				for field := range part.Attributes {
+					parts = append(parts, fieldPart(&part.Attributes[field], AttributesPart, part.ID.String()))
+				}
+			case CommandsPart:
+				command := item.(*ObjectCommand)
+				parts = append(parts, objectPart{key: command.ID.String(), name: command.Name, title: command.Title, group: CommandsPart})
+			default:
+				parts = append(parts, fieldPart(attributeIn(item), sort.group, ""))
+			}
+		}
+	}
+	return parts
+}
+
+// attributeIn is the field an item of a list of fields is: the item itself,
+// or the Attribute a dimension, a resource or a flag holds beside what is its
+// own.
+func attributeIn(item any) *Attribute {
+	if attribute, ok := item.(*Attribute); ok {
+		return attribute
+	}
+	return reflect.ValueOf(item).Elem().FieldByName("Attribute").Addr().Interface().(*Attribute)
 }
 
 // heldIdentity is something an object holds with an identifier of its own,
@@ -191,9 +248,15 @@ type heldIdentity struct {
 // identitiesOf names the items of a list the way heldIdentity does, by their
 // ID and Name: every list it is given is of descriptions that have both.
 func identitiesOf[T any](word string, items []T) []heldIdentity {
-	result := make([]heldIdentity, 0, len(items))
-	for index := range items {
-		item := reflect.ValueOf(&items[index]).Elem()
+	return identitiesIn(word, reflect.ValueOf(items))
+}
+
+// identitiesIn names the items of a list read off a description, as
+// identitiesOf does.
+func identitiesIn(word string, items reflect.Value) []heldIdentity {
+	result := make([]heldIdentity, 0, items.Len())
+	for index := range items.Len() {
+		item := items.Index(index)
 		result = append(result, heldIdentity{id: item.FieldByName("ID").Interface().(uuid.UUID), word: word,
 			name: item.FieldByName("Name").String()})
 	}
@@ -231,9 +294,7 @@ var kindCompositionOf = map[Kind]kindComposition{
 	}},
 	CommonModuleKind:      {},
 	EventSubscriptionKind: {},
-	EnumerationKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
-		return declaredParts(nil, nil, c.Enumerations[c.enumerationByID[id]].Commands)
-	}, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
+	EnumerationKind: {described: true, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("value", c.Enumerations[c.enumerationByID[id]].Values)
 	}, files: declaredFilesOf},
 	ScheduledJobKind:   {},
@@ -252,11 +313,7 @@ var kindCompositionOf = map[Kind]kindComposition{
 	WSReferenceKind:        {},
 	WebSocketClientKind:    {},
 	ExternalDataSourceKind: {},
-	ExternalDataSourceTableKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
-		location := c.externalTableByID[id]
-		table := c.ExternalDataSources[location.source].Tables[location.table]
-		return externalFieldParts(table.Fields, table.Commands)
-	}, files: func(c *Catalog, id uuid.UUID) objectFiles {
+	ExternalDataSourceTableKind: {described: true, files: func(c *Catalog, id uuid.UUID) objectFiles {
 		files := declaredFilesOf(c, id)
 		// The kind has both modules of data; a table keeps the one of its
 		// type.
@@ -270,19 +327,11 @@ var kindCompositionOf = map[Kind]kindComposition{
 	// A cube is read as a register is: its dimensions and resources are the
 	// fields of its records (help: ВнешнийИсточникДанныхКубЗапись.<Имя
 	// измерения>, <Имя ресурса>).
-	ExternalCubeKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
-		location := c.externalCubeByID[id]
-		cube := c.ExternalDataSources[location.source].Cubes[location.cube]
-		return registerParts(cube.dimensionAttributes(), cube.resourceAttributes(), nil, cube.Commands)
-	}, files: declaredFilesOf},
+	ExternalCubeKind: {described: true, files: declaredFilesOf},
 	// A dimension table holds fields as a table of a source does (help:
 	// ВнешнийИсточникДанныхКубТаблицаИзмеренияОбъект.<Имя поля>).
-	ExternalDimensionTableKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
-		location := c.externalDimensionTableByID[id]
-		table := c.ExternalDataSources[location.source].Cubes[location.cube].DimensionTables[location.table]
-		return externalFieldParts(table.Fields, table.Commands)
-	}, files: declaredFilesOf},
-	ExternalFunctionKind: {},
+	ExternalDimensionTableKind: {described: true, files: declaredFilesOf},
+	ExternalFunctionKind:       {},
 	HTTPServiceKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		var parts []objectPart
 		for _, template := range c.HTTPServices[c.httpServiceByID[id]].Templates {
@@ -300,38 +349,21 @@ var kindCompositionOf = map[Kind]kindComposition{
 	FunctionalOptionKind:          {},
 	FunctionalOptionParameterKind: {},
 	SettingsStorageKind:           {files: declaredFilesOf},
+	// The fields of a criterion are what it searches by, not parts of its
+	// own: only its commands are.
 	FilterCriterionKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		return declaredParts(nil, nil, c.FilterCriteria[c.filterCriterionByID[id]].Commands)
 	}, files: declaredFilesOf},
 	DefinedTypeKind: {types: func(c *Catalog, id uuid.UUID) []Type {
 		return c.DefinedTypes[c.definedTypeByID[id]].Types
 	}},
-	LanguageKind: {},
-	CatalogKind: referenceKind(func(c *Catalog, id uuid.UUID) ([]Attribute, []TablePart, []ObjectCommand, []PredefinedCatalogItem) {
-		item := c.Catalogs[c.catalogByID[id]]
-		return item.Attributes, item.TableParts, item.Commands, item.Predefined
-	}).withFiles(declaredFilesOf),
-	ChartOfCharacteristicTypesKind: referenceKind(func(c *Catalog, id uuid.UUID) ([]Attribute, []TablePart, []ObjectCommand, []PredefinedCharacteristic) {
-		item := c.ChartsOfCharacteristicTypes[c.chartOfCharacteristicTypesByID[id]]
-		return item.Attributes, item.TableParts, item.Commands, item.Predefined
-	}).withFiles(declaredFilesOf),
-	ChartOfAccountsKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
-		item := c.ChartsOfAccounts[c.chartOfAccountsByID[id]]
-		parts := declaredParts(item.Attributes, nil, nil)
-		for index := range item.AccountingFlags {
-			parts = append(parts, fieldPart(&item.AccountingFlags[index].Attribute, AccountingFlagsPart, ""))
-		}
-		for index := range item.ExtDimensionAccountingFlags {
-			parts = append(parts, fieldPart(&item.ExtDimensionAccountingFlags[index].Attribute, ExtDimensionAccountingFlagsPart, ""))
-		}
-		return append(parts, declaredParts(nil, item.TableParts, item.Commands)...)
-	}, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
-		return identitiesOf("predefined item", c.ChartsOfAccounts[c.chartOfAccountsByID[id]].Predefined)
-	}, files: declaredFilesOf},
-	ChartOfCalculationTypesKind: referenceKind(func(c *Catalog, id uuid.UUID) ([]Attribute, []TablePart, []ObjectCommand, []PredefinedCalculationType) {
-		item := c.ChartsOfCalculationTypes[c.chartOfCalculationTypesByID[id]]
-		return item.Attributes, item.TableParts, item.Commands, item.Predefined
-	}).withFiles(declaredFilesOf),
+	LanguageKind:                   {},
+	CatalogKind:                    referenceKind(CatalogKind),
+	ChartOfCharacteristicTypesKind: referenceKind(ChartOfCharacteristicTypesKind),
+	ChartOfAccountsKind:            referenceKind(ChartOfAccountsKind),
+	ChartOfCalculationTypesKind:    referenceKind(ChartOfCalculationTypesKind),
+	// The addressing attributes of a task are no fields of its own sort:
+	// they stand between its attributes and its table parts.
 	TaskKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.Tasks[c.taskByID[id]]
 		parts := declaredParts(item.Attributes, nil, nil)
@@ -340,43 +372,23 @@ var kindCompositionOf = map[Kind]kindComposition{
 		}
 		return append(parts, declaredParts(nil, item.TableParts, item.Commands)...)
 	}, files: declaredFilesOf},
-	AccountingRegisterKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
-		item := c.AccountingRegisters[c.accountingRegisterByID[id]]
-		return registerParts(RegisterDimensionAttributes(item.Dimensions), accountingResourceAttributes(item.Resources), item.Attributes, item.Commands)
-	}, files: declaredFilesOf},
-	CalculationRegisterKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
-		item := c.CalculationRegisters[c.calculationRegisterByID[id]]
-		return registerParts(RegisterDimensionAttributes(item.Dimensions), item.Resources, item.attributeFields(), item.Commands)
-	}, files: declaredFilesOf},
+	AccountingRegisterKind:  {described: true, files: declaredFilesOf},
+	CalculationRegisterKind: {dataVersion: true, described: true, files: declaredFilesOf},
 	RecalculationKind: {identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		recalculation, _ := c.recalculationOf(id)
 		return identitiesOf("dimension", recalculation.Dimensions)
 	}},
-	ReportKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
-		item := c.Reports[c.reportByID[id]]
-		return declaredParts(item.Attributes, item.TableParts, item.Commands)
-	}, files: declaredFilesOf},
-	DataProcessorKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
-		item := c.DataProcessors[c.dataProcessorByID[id]]
-		return declaredParts(item.Attributes, item.TableParts, item.Commands)
-	}, files: declaredFilesOf},
-	NumeratorKind: {},
+	ReportKind:        {described: true, files: declaredFilesOf},
+	DataProcessorKind: {described: true, files: declaredFilesOf},
+	NumeratorKind:     {},
 	SequenceKind: {identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("dimension", c.Sequences[c.sequenceByID[id]].Dimensions)
 	}, files: declaredFilesOf},
-	DocumentJournalKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
-		return declaredParts(nil, nil, c.DocumentJournals[c.documentJournalByID[id]].Commands)
-	}, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
+	DocumentJournalKind: {described: true, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("column", c.DocumentJournals[c.documentJournalByID[id]].Columns)
 	}, files: declaredFilesOf},
-	ExchangePlanKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
-		item := c.ExchangePlans[c.exchangePlanByID[id]]
-		return declaredParts(item.Attributes, item.TableParts, item.Commands)
-	}, files: declaredFilesOf},
-	BusinessProcessKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
-		item := c.BusinessProcesses[c.businessProcessByID[id]]
-		return declaredParts(item.Attributes, item.TableParts, item.Commands)
-	}, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
+	ExchangePlanKind: {dataVersion: true, described: true, files: declaredFilesOf},
+	BusinessProcessKind: {dataVersion: true, described: true, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("route point", c.BusinessProcesses[c.businessProcessByID[id]].Route.Points)
 	}, files: func(c *Catalog, id uuid.UUID) objectFiles {
 		// The route map keeps the pictures its items draw in a folder of
@@ -386,31 +398,19 @@ var kindCompositionOf = map[Kind]kindComposition{
 		files.route = &c.BusinessProcesses[c.businessProcessByID[id]].Route
 		return files
 	}},
-	DocumentKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
-		item := c.Documents[c.documentByID[id]]
-		return declaredParts(item.Attributes, item.TableParts, item.Commands)
-	}, files: declaredFilesOf},
-	InformationRegisterKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
-		item := c.InformationRegisters[c.informationRegisterByID[id]]
-		return registerParts(RegisterDimensionAttributes(item.Dimensions), item.Resources, item.Attributes, item.Commands)
-	}, files: declaredFilesOf},
-	AccumulationRegisterKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
-		item := c.AccumulationRegisters[c.accumulationRegisterByID[id]]
-		return registerParts(RegisterDimensionAttributes(item.Dimensions), item.Resources, item.Attributes, item.Commands)
-	}, files: declaredFilesOf},
+	DocumentKind:             {dataVersion: true, described: true, files: declaredFilesOf},
+	InformationRegisterKind:  {described: true, files: declaredFilesOf},
+	AccumulationRegisterKind: {described: true, files: declaredFilesOf},
 }
 
-// referenceKind is the composition of a kind whose objects declare
-// attributes, table parts and commands and have predefined items, read by
-// object.
-func referenceKind[P any](object func(c *Catalog, id uuid.UUID) ([]Attribute, []TablePart, []ObjectCommand, []P)) kindComposition {
-	return kindComposition{dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
-		attributes, tableParts, commands, _ := object(c, id)
-		return declaredParts(attributes, tableParts, commands)
-	}, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
-		_, _, _, predefined := object(c, id)
-		return identitiesOf("predefined item", predefined)
-	}}
+// referenceKind is the composition of a kind of reference with predefined
+// items - a catalog, the three charts: its parts read off its description,
+// the version of its data, its predefined items and the files it declares.
+func referenceKind(kind Kind) kindComposition {
+	return kindComposition{dataVersion: true, described: true, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
+		description, _ := descriptionOf(c, kind, id)
+		return identitiesIn("predefined item", description.FieldByName("Predefined"))
+	}, files: declaredFilesOf}
 }
 
 // fieldPart is a field of an object or of its table part.
@@ -438,29 +438,6 @@ func declaredParts(attributes []Attribute, tableParts []TablePart, commands []Ob
 	return parts
 }
 
-// externalFieldParts is the fields and the commands of a table of a source or
-// of a cube's dimension.
-func externalFieldParts(fields []ExternalField, commands []ObjectCommand) []objectPart {
-	parts := make([]objectPart, 0, len(fields)+len(commands))
-	for index := range fields {
-		parts = append(parts, fieldPart(&fields[index].Attribute, FieldsPart, ""))
-	}
-	return append(parts, declaredParts(nil, nil, commands)...)
-}
-
-// registerParts is the dimensions, the resources, the attributes and the
-// commands of a register.
-func registerParts(dimensions, resources, attributes []Attribute, commands []ObjectCommand) []objectPart {
-	var parts []objectPart
-	for index := range dimensions {
-		parts = append(parts, fieldPart(&dimensions[index], DimensionsPart, ""))
-	}
-	for index := range resources {
-		parts = append(parts, fieldPart(&resources[index], ResourcesPart, ""))
-	}
-	return append(parts, declaredParts(attributes, nil, commands)...)
-}
-
 // partsOf is the one walk of what an object holds: its standard attributes,
 // what it declares, and the standard table parts of its kind with their
 // fields. The second result is false when the configuration has no such
@@ -477,8 +454,10 @@ func (catalog *Catalog) partsOf(kind Kind, id uuid.UUID) ([]objectPart, bool) {
 	for _, field := range catalog.standardAttributeFields(kind, id) {
 		parts = append(parts, standard(field, strings.ToLower(field.en), "", StandardAttributesPart))
 	}
-	if declared := kindCompositionOf[kind].parts; declared != nil {
-		parts = append(parts, declared(catalog, id)...)
+	if composition := kindCompositionOf[kind]; composition.described {
+		parts = append(parts, describedParts(catalog, kind, id)...)
+	} else if composition.parts != nil {
+		parts = append(parts, composition.parts(catalog, id)...)
 	}
 	for _, part := range standardTablePartsOfKind(kind) {
 		key := strings.ToLower(part.en)

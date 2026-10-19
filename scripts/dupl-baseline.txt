@@ -26,7 +26,6 @@
 1	internal/metadata/notes_rules.go internal/metadata/notes_rules.go internal/metadata/notes_rules.go
 3	internal/metadata/object_integrity.go internal/metadata/object_integrity.go
 1	internal/metadata/object_list.go internal/metadata/object_list.go
-1	internal/metadata/object_parts.go internal/metadata/object_parts.go
 1	internal/metadata/object_value_bridge.go internal/metadata/object_value_bridge.go
 1	internal/metadata/program_events.go internal/metadata/program_events.go
 1	internal/metadata/program_events.go internal/metadata/program_events.go internal/metadata/program_events.go

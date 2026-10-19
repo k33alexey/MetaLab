@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -289,4 +290,65 @@ func TestKindRightsAgreeWithTheExports(t *testing.T) {
 		t.Fatal("no role read")
 	}
 	t.Logf("roles read: %d", read)
+}
+
+// A kind whose parts are read off its description (kindComposition.described)
+// keeps in every field partGroups names a list of parts of that sort: fields
+// (an Attribute, or a dimension, a resource, a flag holding one), table parts,
+// commands. Defects caught: a kind read off its description that keeps under
+// such a name something else - the fields a criterion of filter searches by
+// are uuids - and fails the load the first time an object of it is read, or
+// that the composition cannot find, and so silently holds no parts at all; a
+// field partGroups names that no kind has, so that its parts are read nowhere.
+func TestADescribedKindKeepsPartsWhereItsPartsAreRead(t *testing.T) {
+	t.Parallel()
+	attribute := reflect.TypeFor[Attribute]()
+	holdsField := func(element reflect.Type) bool {
+		if element == attribute {
+			return true
+		}
+		field, ok := element.FieldByName("Attribute")
+		return ok && field.Type == attribute
+	}
+	kept := map[string]bool{}
+	for kind, composition := range kindCompositionOf {
+		if !composition.described {
+			continue
+		}
+		info, _ := kindInfoOf(kind)
+		if info.object == nil {
+			t.Errorf("%s reads its parts off a description it cannot find", kind)
+			continue
+		}
+		for _, sort := range partGroups {
+			if sort.field == "" {
+				continue
+			}
+			field, ok := info.described.FieldByName(sort.field)
+			if !ok {
+				continue
+			}
+			kept[sort.field] = true
+			want := "a list of fields"
+			okType := field.Type.Kind() == reflect.Slice
+			if okType {
+				switch element := field.Type.Elem(); sort.group {
+				case TablePartsPart:
+					want, okType = "a list of table parts", element == reflect.TypeFor[TablePart]()
+				case CommandsPart:
+					want, okType = "a list of commands", element == reflect.TypeFor[ObjectCommand]()
+				default:
+					okType = holdsField(element)
+				}
+			}
+			if !okType {
+				t.Errorf("%s keeps %s in %s, want %s", kind, field.Type, sort.field, want)
+			}
+		}
+	}
+	for _, sort := range partGroups {
+		if sort.field != "" && !kept[sort.field] {
+			t.Errorf("no kind keeps %s in %s", sort.group, sort.field)
+		}
+	}
 }
