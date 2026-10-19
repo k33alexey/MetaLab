@@ -256,9 +256,117 @@ func TestConfigurationTreeFiltersBySubsystems(t *testing.T) {
 			t.Errorf("%s the tree shows %+v, want %+v", check.name, got, want)
 		}
 	}
-	window := []string{"Продажи=true", "Склад=true", "<Не входящие в подсистемы>=true", "Включать объекты подчиненных подсистем=true", "Включать объекты родительских подсистем=false"}
+	window := []string{"ПродажиИСклад=true", "Продажи=true", "Склад=true", "<Не входящие в подсистемы>=true", "Включать объекты подчиненных подсистем=true", "Включать объекты родительских подсистем=false"}
 	if !slices.Equal(steps.Window, window) {
 		t.Errorf("the window opens as %v, want %v", steps.Window, window)
+	}
+	for _, problem := range browser.problems() {
+		t.Errorf("browser: %s", problem)
+	}
+}
+
+// subsystemFilterWindow opens the window of the filter from the tree of the
+// configuration and answers, after each click, every row of its tree - the
+// caption, the depth, the box checked, in the third state or not, whether
+// the row folds and is shown - then the buttons and whether they stand to the
+// right of the tree; then the same window of «Снять по подсистемам...» of the
+// role Кладовщик, with the place of each button in the column.
+const subsystemFilterWindow = `(async () => {
+  const studio = window.__studio, steps = {};
+  const dialog = () => document.querySelector('dialog[open]');
+  const rows = () => [...dialog().querySelectorAll('.role-subsystem-tree .role-fields-row')].map(row => {
+    const input = row.querySelector('input');
+    return [row.querySelector('label').textContent, row.style.getPropertyValue('--depth'), input.checked ? 'x' : input.indeterminate ? '~' : '-',
+      row.querySelector('button.role-fields-toggle') ? 'fold' : '', row.offsetParent ? 'shown' : 'hidden'].join(' ');
+  });
+  const row = text => [...dialog().querySelectorAll('.role-subsystem-tree .role-fields-row')].find(item => item.querySelector('label').textContent === text);
+  const click = async (text, step) => { row(text).querySelector('input').click(); await studio.settle(); steps[step] = rows(); };
+  const buttons = () => [...dialog().querySelectorAll('.localized-title-actions > *')];
+  const column = () => buttons().map(item => ({text: item.textContent, top: item.getBoundingClientRect().top}));
+  document.querySelector('#tree-subsystems').click(); await studio.settle();
+  steps.opened = rows();
+  steps.buttons = buttons().map(item => item.textContent);
+  steps.beside = dialog().querySelector('.localized-title-actions').getBoundingClientRect().left >= dialog().querySelector('.role-subsystem-tree').getBoundingClientRect().right;
+  steps.flags = [...dialog().querySelectorAll('.role-subsystem-flag')].map(label => label.querySelector('input').getBoundingClientRect().left > label.querySelector('span').getBoundingClientRect().right);
+  await click('ПродажиИСклад', 'rootOff');
+  await click('Склад', 'nested');
+  await click('ПродажиИСклад', 'rootSome');
+  await click('Продажи', 'parent');
+  row('Продажи').querySelector('button').click(); await studio.settle();
+  steps.folded = rows();
+  buttons().find(item => item.textContent === 'Отмена').click(); await studio.settle();
+  [...document.querySelectorAll('#tree summary, #tree .leaf')].find(item => item.textContent.trim() === 'Кладовщик').click(); await studio.settle();
+  [...document.querySelectorAll('#role-editor button')].find(item => item.textContent === 'Действия').click();
+  [...document.querySelectorAll('.context-menu .context-menu-item')].find(item => item.textContent === 'Снять по подсистемам...').click();
+  await studio.settle();
+  steps.apply = column();
+  buttons().find(item => item.textContent === 'Отмена').click(); await studio.settle();
+  return steps;
+})()`
+
+// The window of the filter by subsystems is the prototype's (snapshots
+// obolochka/32, derevo/21, configurator-2026-10-14/rol-snyat-po-podsistemam-
+// okno; help, form_subsystemchoicedlg; the owner's decision of 19.10.2026 on
+// the clicks). Defects caught: no row of the configuration at the root, or the
+// subsystems not beneath it, the nested one not beneath its parent or the
+// parent not folding; a parent left unmarked with a nested one marked shown
+// empty, or the root shown empty or marked while not every row is; a click at
+// the root that does not take every mark away while any row is marked, or
+// does not mark every row while none is; a parent marked taking in the
+// subsystem beneath it; folding that leaves the nested row shown; the
+// buttons in a row under the tree, or the flags' boxes before their words;
+// «Снять по подсистемам...» closing up the place of «Отключить».
+func TestTheWindowOfTheFilterBySubsystemsIsThePrototypes(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	addTreeSubsystems(t, root)
+	ctx, browser, page := openStudioInBrowser(t, root, func(workspace *Workspace) { addRestrictedRole(t, workspace, root) })
+	result, err := browser.evaluate(ctx, page, subsystemFilterWindow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps struct {
+		Opened, RootOff, Nested, RootSome, Parent, Folded []string
+		Buttons                                           []string
+		Beside                                            bool
+		Flags                                             []bool
+		Apply                                             []struct {
+			Text string
+			Top  float64
+		}
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	tree := func(root, sales, warehouse, none string, shown string) []string {
+		return []string{"ПродажиИСклад 0 " + root + "  shown", "Продажи 1 " + sales + " fold shown", "Склад 2 " + warehouse + "  " + shown, "<Не входящие в подсистемы> 1 " + none + "  shown"}
+	}
+	for _, check := range []struct {
+		name      string
+		got, want []string
+	}{
+		{"as opened", steps.Opened, tree("x", "x", "x", "x", "shown")},
+		{"after a click at the root marked whole", steps.RootOff, tree("-", "-", "-", "-", "shown")},
+		{"with the nested one marked", steps.Nested, tree("~", "~", "x", "-", "shown")},
+		{"after a click at the root marked in part", steps.RootSome, tree("-", "-", "-", "-", "shown")},
+		{"with the parent marked", steps.Parent, tree("~", "x", "-", "-", "shown")},
+		{"with the parent folded", steps.Folded, tree("~", "x", "-", "-", "hidden")},
+	} {
+		if !slices.Equal(check.got, check.want) {
+			t.Errorf("%s the window shows %q, want %q", check.name, check.got, check.want)
+		}
+	}
+	if !slices.Equal(steps.Buttons, []string{"Установить", "Отключить", "Отмена", "Справка"}) || !steps.Beside {
+		t.Errorf("the buttons are %v, beside the tree: %v; want Установить, Отключить, Отмена, Справка to the right", steps.Buttons, steps.Beside)
+	}
+	if !slices.Equal(steps.Flags, []bool{true, true}) {
+		t.Errorf("the flags' boxes stand after their words: %v, want both", steps.Flags)
+	}
+	// The place of «Отключить» stays empty: «Отмена» stands lower under
+	// «Снять» than «Справка» under «Отмена».
+	apply := steps.Apply
+	if len(apply) != 4 || apply[0].Text != "Снять" || apply[1].Text != "" || apply[2].Text != "Отмена" || apply[3].Text != "Справка" ||
+		apply[2].Top-apply[0].Top < 1.5*(apply[3].Top-apply[2].Top) {
+		t.Errorf("«Снять по подсистемам...» shows its buttons as %+v, want Снять, an empty place, Отмена, Справка", apply)
 	}
 	for _, problem := range browser.problems() {
 		t.Errorf("browser: %s", problem)

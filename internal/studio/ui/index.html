@@ -461,7 +461,7 @@
       return null;
     }
     const treeAddButton=document.querySelector('#tree-add'),treeDeleteButton=document.querySelector('#tree-delete');
-    const treeSubsystemsButton=subsystemFilterButton({schema:()=>projectData.subsystems,title:item=>localizedTitle(item,configuration.defaultLanguage,configuration.languages),holder:treeFilter,applied:renderTree,button:document.querySelector('#tree-subsystems')});
+    const treeSubsystemsButton=subsystemFilterButton({schema:()=>projectData.subsystems,root:()=>configuration.name,holder:treeFilter,applied:renderTree,button:document.querySelector('#tree-subsystems')});
     // Под отбором по подсистемам дерево не правится: «Добавить» и «Удалить»
     // недоступны (ТЗ ACCESS-RIGHTS, «Дерево конфигурации»).
     function updateTreeToolbar(){

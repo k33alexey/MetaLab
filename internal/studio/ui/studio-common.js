@@ -319,7 +319,9 @@ async function postJSON(path, body, options = {}) {
    unavailable without hiding it, as the prototype's buttons are; the
    primary one - the first whose primary() holds, or else the first
    available - is pressed by Enter, and not at all while it is unavailable.
-   Both are asked again after every change in the dialog. help names the window's page of studioHelp: «Справка» and
+   Both are asked again after every change in the dialog. A null in place
+   of a button keeps its place empty, as the prototype keeps the place of a
+   button a window of the same kind shows. help names the window's page of studioHelp: «Справка» and
    F1 open it over the dialog. */
 function showDialog({title, explanation, content, answers, check, className, help, side}) {
   return new Promise(resolve => {
@@ -337,8 +339,9 @@ function showDialog({title, explanation, content, answers, check, className, hel
     form.append(problem);
     const actions = node('div', undefined, 'localized-title-actions');
     let answer = null;
-    const buttons = answers.map(([key, text, step]) => {
-      const button = node('button', text);
+    const buttons = answers.flatMap(place => {
+      if (!place) { actions.append(node('span', undefined, 'dialog-gap')); return []; }
+      const [key, text, step] = place, button = node('button', text);
       button.type = 'submit';
       button.addEventListener('click', event => {
         const refusal = key !== null && check ? check(key) : '';
@@ -348,7 +351,7 @@ function showDialog({title, explanation, content, answers, check, className, hel
         answer = key;
       });
       actions.append(button);
-      return [button, step];
+      return [[button, step]];
     });
     if (help) {
       const button = node('button', 'Справка');

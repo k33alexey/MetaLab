@@ -621,9 +621,7 @@ function createRoleOverview(host, openRole, onChange) {
       return box;
     }
     function line(depth, toggle, box) {
-      const row = node('div', undefined, 'role-fields-row');
-      row.style.setProperty('--depth', depth);
-      row.append(toggle || node('span', undefined, 'role-fields-toggle'), box);
+      const row = restrictionTreeRow(depth, toggle, box);
       objectList.append(row);
       return row;
     }
@@ -653,7 +651,7 @@ function createRoleOverview(host, openRole, onChange) {
     }
     // Отбор выбирается в своём окне, уже после щелчка, который окно с
     // деревом слышало: перемену ему сообщает событие change списка.
-    const button = subsystemFilterButton({schema: () => source.schema, title, holder, applied: () => {
+    const button = subsystemFilterButton({schema: () => source.schema, root: () => configurationName(source.schema), holder, applied: () => {
       refiltered(); fillObjects(); after(); objectList.dispatchEvent(new Event('change', {bubbles: true}));
     }});
     fillObjects();

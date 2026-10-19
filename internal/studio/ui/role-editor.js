@@ -441,19 +441,33 @@ function subsystemFilterPasses(schema, filter) {
   };
 }
 
-/* The window of the filter by subsystems (help, «Отбор по подсистемам»): the
-   tree of subsystems with a box at each, «<Не входящие в подсистемы>» and the
-   two flags. One window for every place that filters by subsystems. Without
-   a filter in force it opens with everything marked and the subsystems
-   beneath taken in, as the prototype's does. As a filter it is set with
-   «Установить» or turned off; given apply - «Установить» or «Снять» of the
-   role's rights by subsystems - it only chooses, without «Отключить».
+/* The name of the configuration of a role's schema: its root object. */
+function configurationName(schema) { return schema.objects?.find(item => item.root)?.name || ''; }
+
+/* The window of the filter by subsystems (help, «Отбор по подсистемам»;
+   snapshots obolochka/32, derevo/21): the configuration, by its name, at the
+   root, the subsystems by their names beneath it in the order of the
+   configuration, a nested one under its parent, which folds, and
+   «<Не входящие в подсистемы>» last at the top; the two flags under the
+   tree, their boxes at the right; the buttons in a column to the right of
+   it. A subsystem is marked by itself, without those beneath it: the help
+   takes them in by the flag «Включать объекты подчиненных подсистем». One
+   not marked with one marked beneath it shows the third state, as the root
+   does while not every row is marked; a click at the root marks every row,
+   or takes every mark away when any row is marked (the owner's decision of
+   19.10.2026, as the objects of the wizard). One window for every place
+   that filters by subsystems; root is the name of the configuration.
+   Without a filter in force it opens with everything marked and the
+   subsystems beneath taken in, as the prototype's does. As a filter it is
+   set with «Установить» or turned off; given apply - «Установить» or
+   «Снять» of the role's rights by subsystems - it only chooses, and the
+   place of «Отключить» stays empty (snapshot rol-snyat-po-podsistemam-okno).
    Answers the filter chosen, null for «Отключить», undefined when closed
    without either. */
-async function chooseSubsystemFilter({schema, title, current, apply}) {
-  const subsystems = schema.subsystems || {}, chosen = new Set(current ? current.chosen : [...Object.keys(subsystems), '']);
+async function chooseSubsystemFilter({schema, root, current, apply}) {
+  const subsystems = schema.subsystems || {}, every = [...Object.keys(subsystems), ''];
+  const chosen = new Set(current ? current.chosen : every);
   const flags = current ? {children: !!current.children, parents: !!current.parents} : {children: true, parents: false};
-  const mark = id => enabled => { if (enabled) chosen.add(id); else chosen.delete(id); };
   const beneath = new Map();
   for (const item of schema.objects) {
     if (!(item.id in subsystems)) continue;
@@ -461,22 +475,48 @@ async function chooseSubsystemFilter({schema, title, current, apply}) {
     if (!beneath.has(parent)) beneath.set(parent, []);
     beneath.get(parent).push(item);
   }
-  const tree = node('div', undefined, 'role-restriction-fields role-subsystem-tree');
-  (function add(parent, depth) {
+  const tree = node('div', undefined, 'role-restriction-fields role-fields-tree role-subsystem-tree'), boxes = [];
+  // The marks are put on the boxes in place: a tree drawn anew would take
+  // the focus away from the box just pressed.
+  function sync() {
+    for (const [input, id, under] of boxes) { input.checked = chosen.has(id); input.indeterminate = !input.checked && under.some(other => chosen.has(other)); }
+    const marked = every.filter(id => chosen.has(id)).length;
+    rootInput.checked = marked === every.length; rootInput.indeterminate = marked > 0 && marked < every.length;
+  }
+  function choice(host, id, caption, depth, toggle, under = []) {
+    const box = checkboxField(caption, false, enabled => { if (enabled) chosen.add(id); else chosen.delete(id); sync(); }, 'role-check');
+    host.append(restrictionTreeRow(depth, toggle, box));
+    boxes.push([box.querySelector('input'), id, under]);
+  }
+  // Answers every subsystem beneath parent, at any depth.
+  function add(host, parent, depth) {
+    const all = [];
     for (const item of beneath.get(parent) || []) {
-      const box = checkboxField(title(item) || item.name, chosen.has(item.id), mark(item.id), 'role-check');
-      box.title = item.name; box.style.setProperty('--depth', depth);
-      tree.append(box);
-      add(item.id, depth + 1);
+      if (!beneath.has(item.id)) { choice(host, item.id, item.name, depth); all.push(item.id); continue; }
+      const inside = node('div'), folding = restrictionFold(item.name, [inside]), under = [];
+      choice(host, item.id, item.name, depth, folding.toggle, under);
+      host.append(inside);
+      under.push(...add(inside, item.id, depth + 1));
+      folding.fold(true);
+      all.push(item.id, ...under);
     }
-  })('', 0);
-  tree.append(checkboxField('<Не входящие в подсистемы>', chosen.has(''), mark(''), 'role-check'));
+    return all;
+  }
+  const rootBox = checkboxField(root, false, () => {
+    const any = every.some(id => chosen.has(id));
+    for (const id of every) if (any) chosen.delete(id); else chosen.add(id);
+    sync();
+  }, 'role-check'), rootInput = rootBox.querySelector('input');
+  tree.append(restrictionTreeRow(0, null, rootBox));
+  add(tree, '', 1);
+  choice(tree, '', '<Не входящие в подсистемы>', 1);
+  sync();
   const content = node('div', undefined, 'role-restriction-form');
   content.append(tree,
-    checkboxField('Включать объекты подчиненных подсистем', flags.children, enabled => { flags.children = enabled; }, 'role-check'),
-    checkboxField('Включать объекты родительских подсистем', flags.parents, enabled => { flags.parents = enabled; }, 'role-check'));
-  const answer = await showDialog({title: 'Отбор по подсистемам', content, className: 'role-restriction-dialog', help: 'subsystem-filter',
-    answers: apply ? [['ok', apply], [null, 'Отмена']] : [['ok', 'Установить'], ['off', 'Отключить'], [null, 'Отмена']],
+    checkboxField('Включать объекты подчиненных подсистем', flags.children, enabled => { flags.children = enabled; }, 'role-check role-subsystem-flag'),
+    checkboxField('Включать объекты родительских подсистем', flags.parents, enabled => { flags.parents = enabled; }, 'role-check role-subsystem-flag'));
+  const answer = await showDialog({title: 'Отбор по подсистемам', content, className: 'role-restriction-dialog role-subsystem-dialog', help: 'subsystem-filter', side: true,
+    answers: apply ? [['ok', apply], null, [null, 'Отмена']] : [['ok', 'Установить'], ['off', 'Отключить'], [null, 'Отмена']],
     check: key => key === 'ok' && !chosen.size ? (apply ? 'Отметьте подсистемы.' : 'Отметьте подсистемы или нажмите «Отключить».') : ''});
   if (answer === 'off') return null;
   return answer === 'ok' ? {chosen, ...flags} : undefined;
@@ -485,14 +525,14 @@ async function chooseSubsystemFilter({schema, title, current, apply}) {
 /* The button of the filter by subsystems: it opens the window and stays
    pressed while holder.subsystems, the filter, is in force; applied() is
    called after the filter changed. schema() answers what the window and
-   the filter read, as of the click. button is the one to make so, the tree
-   of the configuration giving its own; a button of the words is made
-   without it. */
-function subsystemFilterButton({schema, title, holder, applied, button = node('button', 'По подсистемам', 'role-subsystems')}) {
+   the filter read, as of the click, root() the name of the configuration.
+   button is the one to make so, the tree of the configuration giving its
+   own; a button of the words is made without it. */
+function subsystemFilterButton({schema, root, holder, applied, button = node('button', 'По подсистемам', 'role-subsystems')}) {
   button.type = 'button'; button.classList.add('role-subsystems');
   const sync = () => { button.classList.toggle('selected', !!holder.subsystems); button.setAttribute('aria-pressed', String(!!holder.subsystems)); };
   button.addEventListener('click', async () => {
-    const next = await chooseSubsystemFilter({schema: schema(), title, current: holder.subsystems});
+    const next = await chooseSubsystemFilter({schema: schema(), root: root(), current: holder.subsystems});
     if (next === undefined) return;
     holder.subsystems = next; sync(); applied();
   });
@@ -597,6 +637,15 @@ function restrictionFold(name, rows) {
   return {toggle, fold};
 }
 
+/* A row of those trees at depth: the fold of the row, or an empty place
+   where the row does not fold, and its box. */
+function restrictionTreeRow(depth, toggle, box) {
+  const row = node('div', undefined, 'role-fields-row');
+  row.style.setProperty('--depth', depth);
+  row.append(toggle || node('span', undefined, 'role-fields-toggle'), box);
+  return row;
+}
+
 /* The fields of a restriction of reading, as the prototype's windows show
    them (help, form_RLFieldsListDlg; checked in the configurator 14.10.2026):
    one column by names, a table part folding under its own box with its fields
@@ -632,22 +681,16 @@ function restrictionFieldsChoice({chosen, taken = () => false}) {
   }
   // A table part folds: its fields are under it, hidden until it is opened.
   function row(field, depth, under) {
-    const line = node('div', undefined, 'role-fields-row'), children = fields.filter(item => item.parent === field.key), inside = [];
-    let fold = null;
-    line.style.setProperty('--depth', depth);
-    line.hidden = !!under;
-    if (children.length) {
-      const folding = restrictionFold(field.name, inside);
-      fold = folding.fold;
-      line.append(folding.toggle);
-    } else line.append(node('span', undefined, 'role-fields-toggle'));
+    const children = fields.filter(item => item.parent === field.key), inside = [];
+    const folding = children.length ? restrictionFold(field.name, inside) : null;
     const box = checkboxField(field.name, false, enabled => mark(field.key, enabled), 'role-check');
     if (field.hint && field.hint !== field.name) box.title = field.hint;
     boxes.set(field.key, box.querySelector('input'));
-    line.append(box);
+    const line = restrictionTreeRow(depth, folding?.toggle, box);
+    line.hidden = !!under;
     list.append(line);
     for (const child of children) inside.push(row(child, depth + 1, line));
-    fold?.(false);
+    folding?.fold(false);
     return line;
   }
   const block = node('div', undefined, 'role-restriction-form role-fields-choice');
@@ -830,7 +873,7 @@ function createRoleEditor(host, onChange) {
   // chosen, and «Просмотр» of those subsystems; the configuration itself
   // keeps its rights.
   async function rightsBySubsystems(enabled){
-    const filter=await chooseSubsystemFilter({schema:source.schema,title,current:null,apply:enabled?'Установить':'Снять'});
+    const filter=await chooseSubsystemFilter({schema:source.schema,root:configurationName(source.schema),current:null,apply:enabled?'Установить':'Снять'});
     if(!filter)return;
     const passes=subsystemFilterPasses(source.schema,filter);
     for(const item of source.schema.objects)if(!item.root&&passes(item.id))model.setAll(item.id,enabled);
@@ -868,7 +911,7 @@ function createRoleEditor(host, onChange) {
       if(!preserveSelection)treeFilter.subsystems=null;
       const bar=node('div',undefined,'role-tree-bar'),actions=node('button','Действия');actions.type='button';actions.setAttribute('aria-haspopup','menu');
       actions.addEventListener('click',event=>showContextMenu(event,[['Установить все права',()=>{model.setEverything(true);changed();renderPanel();}],['Снять все права',()=>{model.setEverything(false);changed();renderPanel();}],['Установить по подсистемам...',()=>rightsBySubsystems(true)],['Снять по подсистемам...',()=>rightsBySubsystems(false)]]));
-      bar.append(actions,subsystemFilterButton({schema:()=>source.schema,title,holder:treeFilter,applied:()=>tree.render(search.value)}));
+      bar.append(actions,subsystemFilterButton({schema:()=>source.schema,root:()=>configurationName(source.schema),holder:treeFilter,applied:()=>tree.render(search.value)}));
       sidebar.append(bar,search,tree.element);panel=node('section',undefined,'role-permissions');body.append(sidebar,panel);rightsBody=body;templatesBody=node('section',undefined,'role-templates');host.append(body,templatesBody);
       if(!preserveSelection){view='rights';restriction.right=null;restriction.row=-1;templateRow=-1;}
       tree.render();renderPanel();showView(view);
