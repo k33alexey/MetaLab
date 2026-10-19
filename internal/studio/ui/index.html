@@ -36,7 +36,7 @@
     aside,main { min-width:0; overflow:auto } aside { background:#25262a } #tree-panel { border-right:1px solid #393b40 } #properties-panel { border-left:1px solid #393b40 }
     .panel-title { position:sticky; top:0; z-index:2; display:flex; align-items:center; justify-content:space-between; height:36px; padding:0 12px; background:#2b2d30; border-bottom:1px solid #393b40; font-size:12px; font-weight:700 }
     #tree { padding:7px 5px 24px } details { margin:1px 0 } summary,.leaf { min-height:27px; display:flex; align-items:center; gap:6px; padding:4px 8px; border-radius:5px; cursor:pointer; user-select:none; font-size:13px }
-    summary { list-style:none } summary::-webkit-details-marker { display:none } summary::before { content:'›'; width:10px; color:#8c9098 } details[open]>summary::before { transform:rotate(90deg) }
+    summary { list-style:none } summary::-webkit-details-marker { display:none } summary::before,.leaf::before { content:'›'; width:10px; flex:none; color:#8c9098 } .leaf::before { content:'' } details[open]>summary::before { transform:rotate(90deg) }
     summary:hover,.leaf:hover,.selected { background:#3c3f45 } .children { margin-left:15px }
     .tree-icon { flex:none; width:16px; height:16px }
     main { display:grid; grid-template-rows:36px minmax(0,1fr); background:#1e1f22 }

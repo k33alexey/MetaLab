@@ -362,3 +362,106 @@ func TestTheEdgeOfAHeadingFollowsTheMouseAndIsKept(t *testing.T) {
 		t.Errorf("browser: %s", problem)
 	}
 }
+
+// templateListWalk opens «Настройка списка» of the list of templates and
+// reads what the window gives each column; then on the list of restrictions
+// hides «Поля», applies, enters 11 lines of height and closes by «Отмена».
+const templateListWalk = `(async () => {` + openAllRestrictions + `
+  const answer = {};
+  const settings = async () => {
+    [...document.querySelectorAll('.overview-block .role-bulk button')].find(button => button.textContent === 'Действия').click();
+    [...document.querySelectorAll('.context-menu .context-menu-item')].find(item => item.textContent.startsWith('Настройка списка')).click();
+    await studio.settle();
+    return document.querySelector('dialog[open]');
+  };
+  const field = (dialog, label) => dialog.querySelector('[aria-label="' + label + '"]');
+  const columnOf = dialog => ({width: field(dialog, 'Ширина').value, height: field(dialog, 'Высота').value,
+    auto: [...dialog.querySelectorAll('.list-settings-check input')][0].checked});
+  const choose = (dialog, title) => [...dialog.querySelectorAll('.list-settings-item')].find(item => item.textContent === title).querySelector('span').click();
+  const press = (dialog, text) => [...dialog.querySelectorAll('.localized-title-actions button')].find(item => item.textContent === text).click();
+  [...document.querySelectorAll('.overview-tab')].find(item => item.textContent === 'Шаблоны ограничений').click();
+  await studio.settle();
+  let dialog = await settings();
+  answer.templates = {};
+  for (const title of ['Роль', 'Наименование', 'Текст шаблона']) { choose(dialog, title); answer.templates[title] = columnOf(dialog); }
+  press(dialog, 'Отмена');
+  await studio.settle();
+  [...document.querySelectorAll('.overview-tab')].find(item => item.textContent === 'Ограничения доступа').click();
+  await studio.settle();
+  dialog = await settings();
+  choose(dialog, 'Ограничение доступа');
+  const height = field(dialog, 'Высота');
+  height.value = '11'; height.dispatchEvent(new Event('change', {bubbles: true}));
+  answer.heightAfterEleven = height.value;
+  height.value = '10'; height.dispatchEvent(new Event('change', {bubbles: true}));
+  answer.heightAfterTen = height.value;
+  [...dialog.querySelectorAll('.list-settings-item')].find(item => item.textContent === 'Поля').querySelector('input').click();
+  press(dialog, 'Применить');
+  await studio.settle();
+  answer.applied = headings();
+  press(dialog, 'Отмена');
+  await studio.settle();
+  answer.cancelled = headings();
+  answer.kept = await (await fetch('/api/settings/lists')).json();
+  return answer;
+})()`
+
+// The window of «Настройка списка» gives the columns of the templates what
+// the prototype's does - «Роль» and «Наименование» 14 characters and a line,
+// «Текст шаблона» 38 characters and up to 10 lines by its text - takes a
+// height of 10 lines and not of 11, and «Отмена» after «Применить» takes the
+// applied setting back from the list and from what the user keeps
+// (snapshots configurator-2026-10-19/shabl-19…26; the expectations are
+// written here from them). Defects caught: the columns of the templates by
+// the look of shabl-01 (2 and 8 lines, 39 characters); a height above the
+// prototype's limit taken; «Отмена» leaving the list as «Применить» set it,
+// or the list taken back while the user's file keeps the applied setting.
+func TestTheListSettingsOfTemplatesAndCancelAreThePrototypes(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	directory := t.TempDir()
+	ctx, browser, page := openStudioInBrowser(t, root, func(opened *Workspace) {
+		opened.KeepUserSettingsIn(directory)
+		addRestrictedRole(t, opened, root)
+	})
+	result, err := browser.evaluate(ctx, page, templateListWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type column struct {
+		Width, Height string
+		Auto          bool
+	}
+	var walk struct {
+		Templates         map[string]column
+		HeightAfterEleven string
+		HeightAfterTen    string
+		Applied           []string
+		Cancelled         []string
+		Kept              map[string]struct {
+			Columns []struct {
+				Key     string
+				Visible bool
+			}
+		}
+	}
+	if err := json.Unmarshal(result, &walk); err != nil {
+		t.Fatalf("%v: %s", err, result)
+	}
+	want := map[string]column{"Роль": {"14", "1", false}, "Наименование": {"14", "1", false}, "Текст шаблона": {"38", "10", true}}
+	for title, expected := range want {
+		if walk.Templates[title] != expected {
+			t.Errorf("the window gives «%s» %+v, want %+v", title, walk.Templates[title], expected)
+		}
+	}
+	if walk.HeightAfterEleven != "5" || walk.HeightAfterTen != "10" {
+		t.Errorf("the height took %q after 11 and %q after 10, want 5 kept and 10 taken", walk.HeightAfterEleven, walk.HeightAfterTen)
+	}
+	if slices.Contains(walk.Applied, "Поля") || !slices.Contains(walk.Cancelled, "Поля") {
+		t.Errorf("the list shows %v applied and %v cancelled, want «Поля» hidden and then back", walk.Applied, walk.Cancelled)
+	}
+	for _, item := range walk.Kept["all-restrictions"].Columns {
+		if item.Key == "field" && !item.Visible {
+			t.Errorf("the user keeps «Поля» hidden after «Отмена»: %+v", walk.Kept["all-restrictions"])
+		}
+	}
+}

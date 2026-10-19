@@ -353,12 +353,11 @@ const overviewLists = {
   restrictions: createListSettings({key: 'all-restrictions', opening: 'end', autoOpening: 'beginning', sort: {column: 'object'}, columns: [
     {key: 'object', title: 'Объект'}, {key: 'role', title: 'Роль'}, {key: 'operation', title: 'Право'}, {key: 'field', title: 'Поля'},
     {key: 'condition', title: 'Ограничение доступа', height: 5, autoHeight: true}]}),
-  // «Наименование» и «Текст шаблона» окном настройки не сняты: ширина,
-  // высота и автовысота — по виду списка на снимке shabl-01 (BLOCKS, 2в,
-  // доснять).
+  // «Роль» и «Наименование» — стандартные, «Текст шаблона» — 38 знаков, до
+  // 10 строк по тексту (снимки configurator-2026-10-19/shabl-19, -20).
   templates: createListSettings({key: 'all-templates', opening: 'end', autoOpening: 'beginning', sort: {column: 'role'}, columns: [
-    {key: 'role', title: 'Роль'}, {key: 'name', title: 'Наименование', height: 2, autoHeight: true},
-    {key: 'condition', title: 'Текст шаблона', width: 39, height: 8, autoHeight: true}]}),
+    {key: 'role', title: 'Роль'}, {key: 'name', title: 'Наименование'},
+    {key: 'condition', title: 'Текст шаблона', width: 38, height: 10, autoHeight: true}]}),
 };
 
 function createRoleOverview(host, openRole, onChange) {

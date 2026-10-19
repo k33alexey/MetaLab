@@ -15,6 +15,11 @@
 const listColumnLocations = [['new', 'Новая колонка'], ['next-row', 'На следующей строке'], ['same-column', 'В той же колонке']];
 const listColumnResizes = [['change', 'Изменять'], ['keep', 'Не изменять']];
 const listOpenings = [['beginning', 'В начало списка'], ['end', 'В конец списка'], ['auto', 'Автоматически']];
+/* The height of a column is from 1 to 10 lines, its width from 1 character
+   with no bound above: the window of the prototype refuses 0 and 11 lines
+   and 0 characters, and takes eleven nines of characters
+   (snapshots configurator-2026-10-19/shabl-21…24). */
+const listColumnHeightLimit = 10;
 
 /* createListSettings is the setting of one list, apart from the page:
    definition names the list (key, the key it is kept under), its columns
@@ -33,7 +38,7 @@ function createListSettings(definition) {
   const byKey = new Map(columns.map(column => [column.key, column]));
   const standardSort = {column: definition.sort?.column ?? columns[0]?.key, descending: !!definition.sort?.descending};
   const among = (choices, value) => choices.some(([key]) => key === value);
-  const size = (value, standard) => Number.isInteger(value) && value >= 1 ? value : standard;
+  const size = (value, standard, limit = Infinity) => Number.isInteger(value) && value >= 1 && value <= limit ? value : standard;
   const own = column => ({key: column.key, visible: column.visible, location: column.location, resize: column.resize, width: column.width, height: column.height, autoHeight: column.autoHeight});
   function standardColumns() { return columns.map(own); }
   return {
@@ -59,7 +64,7 @@ function createListSettings(definition) {
         kept.push({key: item.key, visible: typeof item.visible === 'boolean' ? item.visible : true,
           location: among(listColumnLocations, item.location) ? item.location : standard.location,
           resize: among(listColumnResizes, item.resize) ? item.resize : standard.resize,
-          width: size(item.width, standard.width), height: size(item.height, standard.height),
+          width: size(item.width, standard.width), height: size(item.height, standard.height, listColumnHeightLimit),
           autoHeight: typeof item.autoHeight === 'boolean' ? item.autoHeight : standard.autoHeight});
       }
       result.columns = [...kept, ...columns.filter(column => !seen.has(column.key)).map(own)];
@@ -330,13 +335,13 @@ async function chooseListSettings(list, settings, applied) {
     const column = draft.columns[chosen];
     group.replaceChildren(node('legend', 'Колонка'));
     if (column) {
-      const number = (value, apply, label) => {
-        // What is not a whole number from 1 is not taken: the field shows
-        // again the last value taken.
+      const number = (value, apply, label, limit = Infinity) => {
+        // What is not a whole number from 1 up to the limit is not taken:
+        // the field shows again the last value taken.
         let taken = value;
         const input = textInput(value, entered => {
-          if (Number.isInteger(entered) && entered >= 1) { taken = entered; apply(entered); } else input.value = taken;
-        }, {type: 'number', min: 1});
+          if (Number.isInteger(entered) && entered >= 1 && entered <= limit) { taken = entered; apply(entered); } else input.value = taken;
+        }, {type: 'number', min: 1, ...(limit < Infinity ? {max: limit} : {})});
         input.setAttribute('aria-label', label);
         return input;
       };
@@ -344,7 +349,7 @@ async function chooseListSettings(list, settings, applied) {
         labeledField('Положение:', selectInput(listColumnLocations, column.location, value => { column.location = value; }, 'Положение'), 'list-settings-field'),
         labeledField('Изменение размера:', selectInput(listColumnResizes, column.resize, value => { column.resize = value; }, 'Изменение размера'), 'list-settings-field'),
         labeledField('Ширина:', number(column.width, value => { column.width = value; }, 'Ширина'), 'list-settings-field'),
-        labeledField('Высота:', number(column.height, value => { column.height = value; }, 'Высота'), 'list-settings-field'),
+        labeledField('Высота:', number(column.height, value => { column.height = value; }, 'Высота', listColumnHeightLimit), 'list-settings-field'),
         checkboxField('Автовысота', column.autoHeight, enabled => { column.autoHeight = enabled; }, 'list-settings-check'));
     }
     opening.value = draft.opening;
@@ -355,5 +360,9 @@ async function chooseListSettings(list, settings, applied) {
   content.append(tabs, columnsPage, otherPage);
   const answer = await showDialog({title: 'Настройка списка', content, className: 'list-settings-dialog', help: 'list-settings',
     answers: [['ok', 'ОК'], [null, 'Отмена'], ['apply', 'Применить', {act: () => { given = structuredClone(draft); applied(structuredClone(draft)); }, enabled: () => !same(draft, given)}]]});
+  // «Отмена» takes back what «Применить» gave as well: the list returns to
+  // the setting the window opened with (snapshot
+  // configurator-2026-10-19/shabl-26).
+  if (answer !== 'ok' && !same(given, settings)) applied(structuredClone(settings));
   return answer === 'ok' ? draft : null;
 }
